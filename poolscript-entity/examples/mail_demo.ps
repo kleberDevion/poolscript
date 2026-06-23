@@ -1,0 +1,22 @@
+// Lib `mail` — envio de email via SMTP
+// Para rodar de verdade, descomente e use credenciais reais (gmail exige senha de app).
+import mail
+
+post("== Lib mail carregada ==")
+post("Provedores auto: gmail.com, yahoo.com, outlook.com, hotmail.com, proton.me")
+
+// Exemplo (não executa de verdade):
+//
+// server = mail.MailServer()
+// server.conn("gmail.com")
+// server.login("user@gmail.com", "senha-de-app")
+//
+// msg = mail.MailMessage()
+// msg.from_address("user@gmail.com")
+// msg.to("destino@site.com")
+// msg.subject("Teste")
+// msg.body("Olá <b>mundo</b>", true)
+// msg.attach("/tmp/relatorio.pdf")
+//
+// server.send(msg)
+// server.quit()

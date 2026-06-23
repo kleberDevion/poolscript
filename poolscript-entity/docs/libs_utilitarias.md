@@ -1,0 +1,302 @@
+# Libs Utilitárias
+
+---
+
+## date — Data e Hora
+
+```
+import date
+```
+
+| Função | Retorno | Exemplo |
+|---|---|---|
+| `date.time()` | `"HH:MM:SS"` | `"14:30:00"` |
+| `date.today()` | `"DD/MM/YYYY"` | `"03/05/2026"` |
+| `date.datahora()` | `"DD/MM/YYYY HH:MM:SS"` | `"03/05/2026 14:30:00"` |
+| `date.now()` | ISO 8601 | `"2026-05-03 14:30:00"` |
+| `date.timestamp()` | Unix timestamp | `1746281400` |
+| `date.hora(hours, minutes, days)` | Segundos | `86400` |
+
+### Exemplos
+
+```
+import date
+
+post(date.today())       # 03/05/2026
+post(date.datahora())    # 03/05/2026 14:30:00
+post(date.timestamp())   # 1746281400
+
+# Calcular expiração pra JWT
+exp_24h = date.timestamp() + date.hora(hours=24)
+exp_30min = date.timestamp() + date.hora(minutes=30)
+exp_7dias = date.timestamp() + date.hora(days=7)
+```
+
+---
+
+## mail — Envio de Email
+
+```
+import mail
+```
+
+### Configuração
+
+```
+s = mail.MailServer()
+s.conn("gmail.com")
+s.login(user="seu@gmail.com", password="sua_senha_app")
+```
+
+Para Gmail use uma **senha de app** — não a senha normal da conta.
+
+### Montando e enviando
+
+```
+m = mail.MailMessage()
+m.from_address("seu@gmail.com")
+m.to("destino@email.com")
+m.subject("Assunto aqui")
+m.body("Corpo do email em texto")
+
+s.send(m)
+s.quit()
+```
+
+Body em HTML:
+
+```
+m.body("<h1>Olá!</h1><p>Bem vindo.</p>", true)
+```
+
+### Exemplo completo
+
+```
+import mail
+import date
+import os
+from dotenv import load
+
+load()
+
+action enviar_email(nome, email_destino) {
+    try {
+        s = mail.MailServer()
+        s.conn("gmail.com")
+        s.login(
+            user=os.getenv("MAIL_SYSTEM"),
+            password=os.getenv("PASSWORD_SYSTEM")
+        )
+
+        m = mail.MailMessage()
+        m.from_address(os.getenv("MAIL_SYSTEM"))
+        m.to(email_destino)
+        m.subject(f"Olá {nome}!")
+        m.body(f"Login realizado em: {date.datahora()}")
+
+        s.send(m)
+        s.quit()
+        post(f"Email enviado para {email_destino}")
+        return None
+    } catch (e) {
+        post(f"Erro no envio: {e}")
+        return None
+    }
+}
+```
+
+---
+
+## os — Sistema Operacional
+
+```
+import os
+```
+
+| Função | O que faz | Exemplo |
+|---|---|---|
+| `os.getenv("CHAVE")` | Lê variável de ambiente | `os.getenv("DB_PATH")` |
+| `os.getenv("CHAVE", "default")` | Lê com valor padrão | `os.getenv("PORT", "8000")` |
+| `os.path(caminho)` | Resolve caminho | `os.path("./dados")` |
+| `os.exists(caminho)` | Verifica se existe | `os.exists("banco.db")` |
+| `os.listdir(caminho)` | Lista arquivos | `os.listdir("./")` |
+
+```
+import os
+from dotenv import load
+
+load()
+
+str db = os.getenv("DB_PATH")
+str secret = os.getenv("SECRET_KEY")
+str porta = os.getenv("PORT", "7700")
+
+post(db)      # database.db
+post(porta)   # 7700
+```
+
+---
+
+## dotenv — Variáveis de Ambiente
+
+```
+from dotenv import load
+
+load()
+```
+
+Estrutura do `.env`:
+
+```
+DB_PATH=database.db
+SECRET_KEY=minha_chave_super_secreta_aqui
+MAIL_SYSTEM=seu@gmail.com
+PASSWORD_SYSTEM=senha_app_gmail
+PORT=7700
+```
+
+Depois de `load()`, acesse com `os.getenv()`:
+
+```
+from dotenv import load
+import os
+
+load()
+
+str banco = os.getenv("DB_PATH")
+str chave = os.getenv("SECRET_KEY")
+str email = os.getenv("MAIL_SYSTEM")
+```
+
+---
+
+## request — Requisições HTTP
+
+```
+import request
+```
+
+| Função | O que faz |
+|---|---|
+| `request.get(url)` | Requisição GET |
+| `request.post(url, body)` | Requisição POST |
+| `request.put(url, body)` | Requisição PUT |
+| `request.delete(url)` | Requisição DELETE |
+| `request.ws_connect(url)` | Conecta WebSocket |
+
+### Requisições HTTP
+
+```
+import request
+
+resp = request.get("https://api.exemplo.com/users")
+data = resp.get_json()
+post(data)
+
+resp2 = request.post(
+    "https://api.exemplo.com/users",
+    body={"nome": "ana", "email": "ana@email.com"}
+)
+post(resp2.get_json())
+```
+
+### WebSocket — cliente
+
+Precisa instalar: `pip install websockets`
+
+```
+import request
+
+conn = request.ws_connect("ws://localhost:7701/chat")
+post(conn)  # <WsConnection ws://localhost:7701/chat [conectado]>
+
+conn.send({"user_name": "joao", "body_msg": "Oi!"})
+```
+
+**Exemplo — chat no terminal:**
+
+```
+import request
+
+str nome = input("Seu nome: ")
+
+conn = request.ws_connect("ws://localhost:7701/chat")
+post(f"Conectado como {nome}!")
+
+while (true) {
+    str msg = input("")
+    if (msg == "sair") {
+        conn.close()
+        break
+    }
+    conn.send({"user_name": nome, "body_msg": msg})
+}
+```
+
+---
+
+## Lambda, map e filter
+
+### Lambda — função anônima
+
+```
+dobro = action(n) { return n * 2 }
+post(dobro(5))   # 10
+
+quadrado = action(n) { return n * n }
+post(quadrado(4))  # 16
+```
+
+Passando lambda como argumento:
+
+```
+action aplicar(func, valor) {
+    return func(valor)
+}
+
+post(aplicar(dobro, 7))     # 14
+post(aplicar(quadrado, 3))  # 9
+```
+
+### map()
+
+Aplica uma função em cada item da lista:
+
+```
+list nums = [1, 2, 3, 4, 5]
+
+dobrados = map(nums, action(n) { return n * 2 })
+post(dobrados)  # [2, 4, 6, 8, 10]
+
+quadrados = map(nums, action(n) { return n * n })
+post(quadrados)  # [1, 4, 9, 16, 25]
+
+list nomes = ["ana", "leo", "bia"]
+iniciais = map(nomes, action(n) { return n[0:1] })
+post(iniciais)  # ["a", "l", "b"]
+```
+
+### filter()
+
+Filtra itens da lista que passam na condição:
+
+```
+list nums = [1, 2, 3, 4, 5, 6]
+
+pares = filter(nums, action(n) { return n % 2 == 0 })
+post(pares)  # [2, 4, 6]
+
+maiores = filter(nums, action(n) { return n > 3 })
+post(maiores)  # [4, 5, 6]
+```
+
+Combinando map e filter:
+
+```
+list nums = [1, 2, 3, 4, 5, 6]
+
+# Pega os pares e dobra
+pares = filter(nums, action(n) { return n % 2 == 0 })
+resultado = map(pares, action(n) { return n * 2 })
+post(resultado)  # [4, 8, 12]
+```

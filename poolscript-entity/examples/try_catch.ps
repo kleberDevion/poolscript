@@ -1,0 +1,14 @@
+// try_catch.ps — captura de erros
+try {
+    x = 10 / 0
+} catch (e) {
+    post("capturou: " {e})
+}
+
+try {
+    y = lista_inexistente[0]
+} catch (e) {
+    post("tambem capturou: " {e})
+}
+
+post("depois dos try/catch")

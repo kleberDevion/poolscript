@@ -1,0 +1,14 @@
+// Lib `date` — funções de data e hora
+import date
+
+post("hora:" date.time())
+post("hoje:" date.today())
+post("agora:" date.datahora())
+
+// Importação direta
+from date import today, datahora
+
+str d = today()
+str ts = datahora()
+post("d=" d)
+post("ts=" ts)

@@ -1,0 +1,13 @@
+// push_get.ps — sintaxe de import estilo Pool
+PUSH os GET getenv, pathFile
+
+valor = getenv("HOME")
+post(f"HOME = {valor}")
+
+import json
+texto = json.stringify(["a", "b", "c"])
+post(texto)
+
+from json import parse
+obj = parse("{\"name\": \"Pool\"}")
+post(obj["name"])

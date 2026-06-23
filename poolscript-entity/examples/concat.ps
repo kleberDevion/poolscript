@@ -1,0 +1,12 @@
+// concat.ps — formas de concatenação do spec
+grau = 25
+
+// Forma 1: Chaves diretas entre strings
+post("Clima: " {grau} "°")
+
+// Forma 2: f-string
+post(f"Clima: {grau}°")
+
+// Forma 3: Junção de variáveis (string + interp dentro de parens)
+juncao = ("Resultado: " {grau})
+post(juncao)

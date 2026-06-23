@@ -1,0 +1,12 @@
+// action.ps — funções com escopo local
+action somar(a, b) {
+    resultado = a + b
+    return resultado
+}
+
+action saudar(nome) {
+    return f"Olá, {nome}!"
+}
+
+post(somar(10, 20))
+post(saudar("Pool"))

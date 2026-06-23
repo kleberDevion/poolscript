@@ -1,0 +1,9 @@
+// request.ps — exemplo de HTTP request
+// Nota: precisa de internet para rodar.
+PUSH request GET get
+
+response = get("https://httpbin.org/json")
+post("status: " {response.status})
+
+dados = response.get_json("slideshow")
+post(dados)
