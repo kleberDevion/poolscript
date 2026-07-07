@@ -8,8 +8,7 @@ _argv = sys.argv[1:]
 # ── Short-circuit: flags que não precisam carregar o interpretador ────────────
 if _argv and _argv[0] in ("--version", "-V"):
     from . import __version__
-    from .ps_errors import IS_PYPY, RUNTIME
-    print(f"PoolScript v{__version__}  [{RUNTIME}]")
+    print(f"PoolScript v{__version__}")
     sys.exit(0)
 
 if _argv and _argv[0] in ("--help", "-h", "help"):

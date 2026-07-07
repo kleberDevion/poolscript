@@ -107,12 +107,7 @@ def _cmd_version() -> None:
         version = __version__
     except Exception:
         version = "?"
-    try:
-        from .ps_errors import RUNTIME
-        runtime = RUNTIME
-    except Exception:
-        runtime = f"Python {sys.version_info.major}.{sys.version_info.minor}"
-    print(f"PoolScript v{version}  [{runtime}]")
+    print(f"PoolScript v{version}")
 
 
 def _cmd_help() -> None:
