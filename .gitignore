@@ -7,3 +7,4 @@ dist/
 test.db
 .venv/
 venv/
+.mypy_cache/

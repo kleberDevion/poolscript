@@ -40,18 +40,29 @@ def test_doc():
     assert "http" in out
 
 
-def test_install_stub(monkeypatch):
-    # `pool install` chama `pip install` de verdade — não deve depender de
-    # rede/PyPI real no teste. Mocka subprocess.run para simular sucesso.
+def test_install_py_flag(tmp_path, monkeypatch):
+    # `psl install <nome> -py` chama `pip install` de verdade — não deve
+    # depender de rede/PyPI real no teste. Mocka subprocess.run.
     import subprocess
+
+    monkeypatch.setenv("POOLSCRIPT_HOME", str(tmp_path / ".poolscript"))
 
     class _FakeCompleted:
         returncode = 0
 
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: _FakeCompleted())
-    rc, out, _ = run_cli(["install", "minha_lib"])
+    rc, out, _ = run_cli(["install", "minha_lib", "-py"])
     assert rc == 0
     assert "minha_lib" in out
+
+
+def test_install_bare_name_without_registry_fails(tmp_path, monkeypatch):
+    # Sem `-py` e sem registro configurado, um nome que não termina em
+    # `.ps` não deve mais cair silenciosamente no pip (comportamento antigo).
+    monkeypatch.setenv("POOLSCRIPT_HOME", str(tmp_path / ".poolscript"))
+    rc, _, err = run_cli(["install", "minha_lib"])
+    assert rc == 1
+    assert "registro" in err
 
 
 def test_update_stub():

@@ -24,8 +24,33 @@ pool build                    # roda todos os .ps da pasta atual
 pool --version                # versão
 psl --help                    # ajuda
 psl //doc                     # URL da spec
-psl install <lib>             # placeholder
 ```
+
+## Gerenciador de pacotes (`psl install`)
+
+`psl install` tem três modos, escolhidos pelo alvo e por flags:
+
+```bash
+psl install arquivo.ps            # instala como comando global (rodável de qualquer lugar)
+psl install arquivo.ps -asLib     # instala como lib importável (`import nome` em qualquer script)
+psl install nome -py              # instala uma lib Python via pip
+psl install nome [-asLib]         # nome sem .ps e sem -py: busca no registro configurado
+
+psl uninstall nome [-asLib | -py] # remove o que foi instalado (mesmas flags do install)
+psl list                          # lista comandos / libs PoolScript / libs Python instalados
+
+psl registry set-url <url>        # aponta para o seu próprio índice (JSON {"nome": "url_do_.ps"})
+psl registry show                 # mostra o registro configurado
+```
+
+Tudo fica em `~/.poolscript/` (ou `$POOLSCRIPT_HOME`, se definida): comandos e libs
+instalados, o que está registrado (`installed.json`) e o registro configurado
+(`config.json`). Comandos globais viram um shim em `~/.poolscript/bin`, que é
+adicionado automaticamente ao PATH do usuário no Windows na primeira instalação.
+
+Alvos terminados em `.ps` são resolvidos como arquivo local; qualquer outro nome
+(sem `-py`) é procurado no índice remoto configurado via `psl registry set-url` —
+não há dependência de nenhum índice de terceiros, o registro é seu.
 
 ## Sintaxe (resumo)
 
@@ -234,6 +259,7 @@ src/poolscript/
 ├── interpreter.py  ← tree-walking, scopes, closures, imports
 ├── errors.py       ← códigos de erro nomeados
 ├── cli.py          ← comandos pool/psl
+├── pkgmgr.py       ← gerenciador de pacotes do psl install/uninstall/list/registry
 ├── __main__.py     ← `python -m poolscript`
 └── stdlib/
     ├── __init__.py     ← registry
@@ -249,7 +275,7 @@ tests/      ← suíte pytest
 
 - `Class` / `class` / `type` são keywords reservadas mas o parser/interpreter ainda não suportam declaração de classes.
 - Decorators (`@route`, `@app`) são parseados mas ignorados (no-op).
-- `psl install` e `psl -up release` são stubs (sem package manager nem auto-update).
+- `psl -up release` é stub (sem auto-update).
 - `async` / `await`, `listen`, `route` HTTP — reservados, sem implementação.
 
 ## Contato

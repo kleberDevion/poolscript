@@ -2,14 +2,21 @@
 CLI da PoolScript — comandos `pool` e `psl`.
 
 Comandos suportados:
-    pool arquivo.ps        Roda um arquivo
-    pool build             Roda todos os .ps da pasta atual
-    pool repl              REPL interativo
-    pool --version / -V    Mostra versão e runtime
-    pool --help  / -h      Ajuda
-    psl //doc              Imprime URL da spec
-    psl install <lib>      Stub: registra lib
-    psl -up release        Stub: sem atualizações
+    pool arquivo.ps                Roda um arquivo
+    pool build                     Roda todos os .ps da pasta atual
+    pool repl                      REPL interativo
+    pool --version / -V            Mostra versão e runtime
+    pool --help  / -h              Ajuda
+    psl //doc                      Imprime URL da spec
+    psl install <arquivo.ps>       Instala como comando global
+    psl install <arquivo.ps> -asLib   Instala como lib importável (`import nome`)
+    psl install <nome> -py         Instala lib Python via pip
+    psl install <nome> [-asLib]    Busca <nome> no registro configurado
+    psl uninstall <nome> [-asLib|-py]   Remove o que foi instalado
+    psl list                       Lista comandos/libs/libs Python instalados
+    psl registry set-url <url>     Configura o índice de pacotes
+    psl registry show              Mostra o registro configurado
+    psl -up release                Stub: sem atualizações
 """
 from __future__ import annotations
 
@@ -70,6 +77,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_install(argv[1:])
     if cmd == "uninstall":
         return _cmd_uninstall(argv[1:])
+    if cmd == "list":
+        return _cmd_list()
+    if cmd == "registry":
+        return _cmd_registry(argv[1:])
     if cmd == "compile":
         return _cmd_compile()
     if cmd == "-up":
@@ -120,6 +131,15 @@ Uso:
   pool --version        Mostra a versão e runtime
   pool --help           Mostra esta ajuda
 
+  psl install arquivo.ps          Instala como comando global
+  psl install arquivo.ps -asLib   Instala como lib importável (import nome)
+  psl install nome -py            Instala lib Python via pip
+  psl install nome [-asLib]       Busca nome no registro configurado
+  psl uninstall nome [-asLib|-py] Remove o que foi instalado
+  psl list                        Lista comandos/libs/libs Python instalados
+  psl registry set-url <url>      Configura o índice de pacotes
+  psl registry show               Mostra o registro configurado
+
 Libs: os, dotenv, date, db, mail, request, hash, jwt, jinker, manpu
 
 Contato: {CONTACT_EMAIL}
@@ -166,29 +186,68 @@ def _cmd_doc() -> int:
 
 def _cmd_install(args: list[str]) -> int:
     if not args:
-        print("uso: psl install <lib>", file=sys.stderr)
+        print("uso: psl install <arquivo.ps | nome> [-asLib | -py]", file=sys.stderr)
         return 1
-    lib = args[0]
-    import subprocess
-    print(f"Instalando {lib}...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", lib],
-        capture_output=False,
-    )
-    return result.returncode
+    target = args[0]
+    flags = set(args[1:])
+
+    from . import pkgmgr
+    try:
+        if "-py" in flags:
+            msg = pkgmgr.install_py(target)
+        elif "-asLib" in flags:
+            msg = pkgmgr.install_lib(target)
+        else:
+            msg = pkgmgr.install_command(target)
+        print(msg)
+        return 0
+    except pkgmgr.PkgmgrError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
 
 
 def _cmd_uninstall(args: list[str]) -> int:
     if not args:
-        print("uso: psl uninstall <lib>", file=sys.stderr)
+        print("uso: psl uninstall <nome> [-asLib | -py]", file=sys.stderr)
         return 1
-    lib = args[0]
-    import subprocess
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "uninstall", "-y", lib],
-        capture_output=False,
-    )
-    return result.returncode
+    name = args[0]
+    flags = set(args[1:])
+
+    from . import pkgmgr
+    try:
+        if "-py" in flags:
+            msg = pkgmgr.uninstall_py(name)
+        elif "-asLib" in flags:
+            msg = pkgmgr.uninstall_lib(name)
+        else:
+            msg = pkgmgr.uninstall_command(name)
+        print(msg)
+        return 0
+    except pkgmgr.PkgmgrError as e:
+        print(f"Erro: {e}", file=sys.stderr)
+        return 1
+
+
+def _cmd_list() -> int:
+    from . import pkgmgr
+    print(pkgmgr.list_installed())
+    return 0
+
+
+def _cmd_registry(args: list[str]) -> int:
+    from . import pkgmgr
+    if not args or args[0] == "show":
+        print(pkgmgr.registry_show())
+        return 0
+    if args[0] == "set-url":
+        if len(args) < 2:
+            print("uso: psl registry set-url <url>", file=sys.stderr)
+            return 1
+        pkgmgr.registry_set_url(args[1])
+        print(f"registro configurado: {args[1]}")
+        return 0
+    print("uso: psl registry [show | set-url <url>]", file=sys.stderr)
+    return 1
 
 
 def _cmd_compile() -> int:

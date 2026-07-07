@@ -1296,6 +1296,46 @@ class Interpreter:
                     scope.define(bind_name, Module(module_name, sub_exports))
             return
 
+        # 3. Tenta resolver como lib instalada globalmente via `psl install
+        # <arquivo>.ps -asLib` — vive em ~/.poolscript/libs/, independe do
+        # diretório do projeto (mesmo tratamento de arquivo local do passo 2).
+        module_name = ".".join(node.module)
+        from .pkgmgr import global_lib_path
+        global_candidate = global_lib_path(module_name)
+        if global_candidate is not None:
+            sub_source = global_candidate.read_text(encoding="utf-8")
+            sub_program = parse_source(sub_source, str(global_candidate))
+            sub_interp = Interpreter(source=sub_source, filename=str(global_candidate), is_import=True,
+                                      import_root=global_candidate.parent)
+            try:
+                sub_interp.run(sub_program)
+            except _PSBaseRuntimeError as _sub_err:
+                if not _sub_err.filename:
+                    _sub_err.filename = str(global_candidate)
+                    _sub_err.source   = sub_source
+                import_frame = (self.filename, node.line, node.col, self.source)
+                if import_frame not in _sub_err.call_stack:
+                    _sub_err.call_stack.append(import_frame)
+                raise
+            sub_exports = {k: v for k, v in sub_interp.globals.values.items()
+                           if k not in {"post", "input", "open", "len", "range", "type"}}
+            if node.mode == "import":
+                bind_name = node.module_alias or node.module[-1]
+                scope.define(bind_name, Module(module_name, sub_exports))
+            else:  # from / push
+                if node.names:
+                    for name in node.names:
+                        if name not in sub_exports:
+                            raise PoolRuntimeError(
+                                f"módulo '{module_name}' não exporta '{name}'", node, self.source,
+                            )
+                        bind_name = node.name_aliases.get(name, name)
+                        scope.define(bind_name, sub_exports[name])
+                else:
+                    bind_name = node.module_alias or node.module[-1]
+                    scope.define(bind_name, Module(module_name, sub_exports))
+            return
+
         raise PoolRuntimeError(
             f"módulo desconhecido: {'.'.join(node.module)}", node, self.source,
         )
