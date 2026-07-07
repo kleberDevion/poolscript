@@ -1,3 +1,0 @@
-[console_scripts]
-pool = poolscript.cli:fast_main
-psl = poolscript.cli:fast_main

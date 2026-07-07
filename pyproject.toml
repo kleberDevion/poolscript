@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.mypyc]
+opt_level = "2"
+strictness = "mypy_ini"
+
+[project]
+name = "poolscript"
+version = "7.0.2"
+description = "PoolScript - linguagem de programação híbrida (dinâmica/estática) com sintaxe Python+JS"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "PoolScript", email = "poolscript@proton.me"}]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+# Sem dependências obrigatórias — usa stdlib do Python
+dependencies = []
+
+[project.optional-dependencies]
+dev    = ["pytest>=7"]
+native = ["mypy>=1.0"]   # para compilação nativa com mypyc
+all    = [               # libs externas opcionais (também funcionam no PyPy)
+    "requests",
+    "PyJWT",
+    "websockets",
+    "python-dotenv",
+    "cryptography",
+    "Pillow",
+    "qrcode",
+    "openpyxl",
+]
+
+[project.scripts]
+pool = "poolscript.cli:fast_main"
+psl  = "poolscript.cli:fast_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths  = ["tests"]
+pythonpath = ["src"]

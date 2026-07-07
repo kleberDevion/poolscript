@@ -1,6 +1,0 @@
-
-[dev]
-pytest>=7
-
-[native]
-mypy>=1.0
