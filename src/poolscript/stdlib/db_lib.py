@@ -47,14 +47,11 @@ class DbCursor:
 
     def execute(self, sql: str, params: tuple = ()):
         global _last_cursor
-        try:
-            # MySQL usa %s em vez de ? como placeholder
-            if self._db_type == "mysql":
-                sql = sql.replace("?", "%s")
-            self._cursor.execute(sql, params)
-            _last_cursor = self._cursor
-        except Exception as e:
-            return str(e)
+        # MySQL usa %s em vez de ? como placeholder
+        if self._db_type == "mysql":
+            sql = sql.replace("?", "%s")
+        self._cursor.execute(sql, params)
+        _last_cursor = self._cursor
         return self
 
     def __repr__(self):
@@ -103,35 +100,23 @@ class MongoCollection:
 
     def insert(self, document: dict) -> Any:
         """Insere um documento."""
-        try:
-            self._col.insert_one(document)
-            return None
-        except Exception as e:
-            return str(e)
+        self._col.insert_one(document)
+        return None
 
     def insert_many(self, documents: list) -> Any:
         """Insere vários documentos."""
-        try:
-            self._col.insert_many(documents)
-            return None
-        except Exception as e:
-            return str(e)
+        self._col.insert_many(documents)
+        return None
 
     def update(self, query: dict, new_values: dict) -> Any:
         """Atualiza documentos que batem com a query."""
-        try:
-            self._col.update_many(query, {"$set": new_values})
-            return None
-        except Exception as e:
-            return str(e)
+        self._col.update_many(query, {"$set": new_values})
+        return None
 
     def remove(self, query: dict) -> Any:
         """Remove documentos que batem com a query."""
-        try:
-            self._col.delete_many(query)
-            return None
-        except Exception as e:
-            return str(e)
+        self._col.delete_many(query)
+        return None
 
     def count(self, query: dict | None = None) -> int:
         return self._col.count_documents(query or {})
@@ -189,63 +174,42 @@ def connect(driver: str = "sqlite", host: str = "localhost", port: int = 0,
 
     if db_type == "sqlite":
         target = base or database
-        try:
-            conn = sqlite3.connect(target)
-            return DbConnection(conn, "sqlite")
-        except sqlite3.Error as e:
-            return str(e)
+        conn = sqlite3.connect(target)
+        return DbConnection(conn, "sqlite")
 
     if db_type in ("postgres", "postgresql", "pg"):
-        try:
-            import psycopg2
-        except ImportError:
-            return "Error: instale psycopg2 — pip install psycopg2-binary"
-        try:
-            conn = psycopg2.connect(
-                host=host,
-                port=port or 5432,
-                user=user,
-                password=password,
-                dbname=database
-            )
-            return DbConnection(conn, "postgres")
-        except Exception as e:
-            return str(e)
+        import psycopg2
+        conn = psycopg2.connect(
+            host=host,
+            port=port or 5432,
+            user=user,
+            password=password,
+            dbname=database
+        )
+        return DbConnection(conn, "postgres")
 
     if db_type in ("mysql", "mariadb"):
-        try:
-            import mysql.connector
-        except ImportError:
-            return "Error: instale mysql-connector-python — pip install mysql-connector-python"
-        try:
-            conn = mysql.connector.connect(
-                host=host,
-                port=port or 3306,
-                user=user,
-                password=password,
-                database=database
-            )
-            return DbConnection(conn, "mysql")
-        except Exception as e:
-            return str(e)
+        import mysql.connector
+        conn = mysql.connector.connect(
+            host=host,
+            port=port or 3306,
+            user=user,
+            password=password,
+            database=database
+        )
+        return DbConnection(conn, "mysql")
 
     if db_type in ("mongo", "mongodb"):
-        try:
-            import pymongo
-        except ImportError:
-            return "Error: instale pymongo — pip install pymongo"
-        try:
-            if user and password:
-                uri = f"mongodb://{user}:{password}@{host}:{port or 27017}/{database}"
-            else:
-                uri = f"mongodb://{host}:{port or 27017}/"
-            client = pymongo.MongoClient(uri)
-            db_obj = client[database]
-            return MongoConnection(client, db_obj)
-        except Exception as e:
-            return str(e)
+        import pymongo
+        if user and password:
+            uri = f"mongodb://{user}:{password}@{host}:{port or 27017}/{database}"
+        else:
+            uri = f"mongodb://{host}:{port or 27017}/"
+        client = pymongo.MongoClient(uri)
+        db_obj = client[database]
+        return MongoConnection(client, db_obj)
 
-    return f"Error: tipo de banco desconhecido: {driver}. Use sqlite, postgres, mysql ou mongo"
+    raise ValueError(f"tipo de banco desconhecido: {driver}. Use sqlite, postgres, mysql ou mongo")
 
 
 # ── query() — SQLite legado ────────────────────────────────────────────
@@ -253,42 +217,35 @@ def connect(driver: str = "sqlite", host: str = "localhost", port: int = 0,
 def query(base: str = "", cmd: Any = None, table: str = "") -> Any:
     """SQLite — modo convencional e modo curto."""
     if cmd is None:
-        try:
-            conn = sqlite3.connect(base)
-            return DbConnection(conn, "sqlite")
-        except sqlite3.Error as e:
-            return str(e)
-
-    try:
         conn = sqlite3.connect(base)
-        cur = conn.cursor()
+        return DbConnection(conn, "sqlite")
 
-        if isinstance(cmd, tuple):
-            sql = cmd[0]
-            params = cmd[1] if len(cmd) > 1 else ()
-        else:
-            sql = cmd
-            params = ()
+    conn = sqlite3.connect(base)
+    cur = conn.cursor()
 
-        if table:
-            sql = sql.replace("@t", table)
+    if isinstance(cmd, tuple):
+        sql = cmd[0]
+        params = cmd[1] if len(cmd) > 1 else ()
+    else:
+        sql = cmd
+        params = ()
 
-        cur.execute(sql, params)
+    if table:
+        sql = sql.replace("@t", table)
 
-        if sql.strip().upper().startswith("SELECT"):
-            rows = cur.fetchall()
-            conn.close()
-            if not rows:
-                return None
-            cols = [d[0] for d in cur.description]
-            return [dict(zip(cols, row)) for row in rows]
+    cur.execute(sql, params)
 
-        conn.commit()
+    if sql.strip().upper().startswith("SELECT"):
+        rows = cur.fetchall()
         conn.close()
-        return None
+        if not rows:
+            return None
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in rows]
 
-    except sqlite3.Error as e:
-        return str(e)
+    conn.commit()
+    conn.close()
+    return None
 
 
 EXPORTS = {

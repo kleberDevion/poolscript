@@ -155,54 +155,51 @@ str DB = os.getenv("DB_PATH")
 app = Jinker(__name__)
 cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
 
-@app.middleware() {
-    action auth() {
-        token = request.get("token")
-        if (not token) {
-            return jsonify({"msg": "não autorizado"}), 401
+@app.middleware()
+action auth() {
+    token = request.get("token")
+    if (not token) {
+        return jsonify({"msg": "não autorizado"}), 401
+    }
+    payload = jwt.check(token, SECRET)
+    if (not payload) {
+        return jsonify({"msg": "token inválido ou expirado"}), 401
+    }
+    continue
+}
+
+@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
+action login() {
+    data = request.get_json()
+    email = data.get("email")
+    senha = data.get("senha")
+
+    result = db.query(
+        base=DB,
+        cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
+        table="users"
+    )
+
+    if (result and hash.check(result[0]["senha"], senha)) {
+        payload = {
+            "user_id": result[0]["id"],
+            "email": result[0]["email"],
+            "exp": date.timestamp() + date.hora(hours=24)
         }
-        payload = jwt.check(token, SECRET)
-        if (not payload) {
-            return jsonify({"msg": "token inválido ou expirado"}), 401
-        }
-        continue
+        token = jwt.gen(payload, SECRET, algorithm="HS256")
+        return jsonify({
+            "msg": "login feito!",
+            "token": token,
+            "user_id": result[0]["id"]
+        }), 200
+    } else {
+        return jsonify({"msg": "email ou senha incorretos"}), 401
     }
 }
 
-@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"])) {
-    action login() {
-        data = request.get_json()
-        email = data.get("email")
-        senha = data.get("senha")
-
-        result = db.query(
-            base=DB,
-            cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
-            table="users"
-        )
-
-        if (result and hash.check(result[0]["senha"], senha)) {
-            payload = {
-                "user_id": result[0]["id"],
-                "email": result[0]["email"],
-                "exp": date.timestamp() + date.hora(hours=24)
-            }
-            token = jwt.gen(payload, SECRET, algorithm="HS256")
-            return jsonify({
-                "msg": "login feito!",
-                "token": token,
-                "user_id": result[0]["id"]
-            }), 200
-        } else {
-            return jsonify({"msg": "email ou senha incorretos"}), 401
-        }
-    }
-}
-
-@app.route("/api/perfil", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware) {
-    action perfil() {
-        return jsonify({"msg": "área protegida — token válido!"}), 200
-    }
+@app.route("/api/perfil", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
+action perfil() {
+    return jsonify({"msg": "área protegida — token válido!"}), 200
 }
 
 run_selfwith_("main") {

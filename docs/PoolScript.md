@@ -524,79 +524,75 @@ model Usuario() {
     senha: str(length=100)
 }
 
-@app.middleware() {
-    action verificar() {
-        token = request.get("token")
-        if (not token) {
-            return jsonify({"msg": "não autorizado"}), 401
-        }
-        payload = jwt.check(token, SECRET)
-        if (not payload) {
-            return jsonify({"msg": "token inválido"}), 401
-        }
+@app.middleware()
+action verificar() {
+    token = request.get("token")
+    if (not token) {
+        return jsonify({"msg": "não autorizado"}), 401
+    }
+    payload = jwt.check(token, SECRET)
+    if (not payload) {
+        return jsonify({"msg": "token inválido"}), 401
+    }
+    continue
+}
+
+@app.route("/api/cadastro", auth=cors.permiser(), methods=cors.options(["POST"]))
+action cadastrar() {
+    data = request.get_json()
+
+    if (data == Usuario) {
         continue
+    } else {
+        return jsonify({"msg": "dados inválidos"}), 400
     }
-}
 
-@app.route("/api/cadastro", auth=cors.permiser(), methods=cors.options(["POST"])) {
-    action cadastrar() {
-        data = request.get_json()
+    nome = data.get("nome")
+    email = data.get("email")
+    senha = data.get("senha")
+    senha_hash = hash.crypt(senha)
 
-        if (data == Usuario) {
-            continue
-        } else {
-            return jsonify({"msg": "dados inválidos"}), 400
-        }
-
-        nome = data.get("nome")
-        email = data.get("email")
-        senha = data.get("senha")
-        senha_hash = hash.crypt(senha)
-
-        try {
-            db.query(
-                base=DB_PATH,
-                cmd=("INSERT INTO @t (nome, email, senha) VALUES (?, ?, ?)",
-                     (nome, email, senha_hash)),
-                table="usuarios"
-            )
-            return jsonify({"msg": "cadastrado!"}), 201
-        } catch (e) {
-            return jsonify({"msg": "erro interno"}), 500
-        }
-    }
-}
-
-@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"])) {
-    action logar() {
-        data = request.get_json()
-        email = data.get("email")
-        senha = data.get("senha")
-
-        result = db.query(
+    try {
+        db.query(
             base=DB_PATH,
-            cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
+            cmd=("INSERT INTO @t (nome, email, senha) VALUES (?, ?, ?)",
+                 (nome, email, senha_hash)),
             table="usuarios"
         )
-
-        if (result and hash.check(result[0]["senha"], senha)) {
-            payload = {
-                "user_id": result[0]["id"],
-                "email": result[0]["email"],
-                "exp": date.timestamp() + date.hora(hours=24)
-            }
-            token = jwt.gen(payload, SECRET, algorithm="HS256")
-            return jsonify({"msg": "login feito", "token": token}), 200
-        } else {
-            return jsonify({"msg": "credenciais inválidas"}), 401
-        }
+        return jsonify({"msg": "cadastrado!"}), 201
+    } catch (e) {
+        return jsonify({"msg": "erro interno"}), 500
     }
 }
 
-@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware) {
-    action dados() {
-        return jsonify({"msg": "área protegida"}), 200
+@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
+action logar() {
+    data = request.get_json()
+    email = data.get("email")
+    senha = data.get("senha")
+
+    result = db.query(
+        base=DB_PATH,
+        cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
+        table="usuarios"
+    )
+
+    if (result and hash.check(result[0]["senha"], senha)) {
+        payload = {
+            "user_id": result[0]["id"],
+            "email": result[0]["email"],
+            "exp": date.timestamp() + date.hora(hours=24)
+        }
+        token = jwt.gen(payload, SECRET, algorithm="HS256")
+        return jsonify({"msg": "login feito", "token": token}), 200
+    } else {
+        return jsonify({"msg": "credenciais inválidas"}), 401
     }
+}
+
+@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
+action dados() {
+    return jsonify({"msg": "área protegida"}), 200
 }
 
 run_selfwith_("main") {

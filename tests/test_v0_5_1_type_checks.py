@@ -105,3 +105,20 @@ if (a < b and b > a and a <= 10 and b >= 20 and a in items and b not in items an
     interp = Interpreter(source=source)
     interp.run(program)
     assert interp.output == ["all-comparisons-ok"]
+
+
+def test_poolscript_is_operator_isinstance_check_against_stdlib_class(tmp_path):
+    """`valor is AlgumaClasse` deve funcionar como isinstance() pra qualquer
+    classe exportada da stdlib (ex: PoolFile), não só pros tipos primitivos."""
+    arquivo = tmp_path / "relatorio.pdf"
+    arquivo.write_bytes(b"%PDF-1.4 fake")
+    source = f'''
+from os import PoolFile, loadFile
+
+texto = "so um texto"
+arq = loadFile(r"{arquivo}")
+
+if (arq is PoolFile) {{ post("arquivo-e-poolfile") }}
+if (texto not is PoolFile) {{ post("texto-nao-e-poolfile") }}
+'''
+    assert run_source(source) == ["arquivo-e-poolfile", "texto-nao-e-poolfile"]

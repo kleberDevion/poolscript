@@ -1,13 +1,15 @@
 {
   "name": "poolscript",
   "displayName": "PoolScript",
-  "description": "Syntax highlighting, snippets and Dracula theme for PoolScript (.ps).",
-  "version": "1.0.0",
+  "description": "Syntax highlighting, snippets, Dracula theme and a real Language Server (completions, hover, diagnostics) for PoolScript (.ps).",
+  "version": "1.1.0",
   "publisher": "KleberSantanadeOliveira",
   "icon": "images/icon.png",
-  "engines": { "vscode": "^1.70.0" },
+  "engines": { "vscode": "^1.75.0" },
   "categories": ["Programming Languages", "Snippets", "Themes"],
-  "keywords": ["poolscript", "ps", "dracula"],
+  "keywords": ["poolscript", "ps", "dracula", "lsp"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onLanguage:poolscript"],
   "contributes": {
     "languages": [
       {
@@ -40,6 +42,42 @@
         "uiTheme": "vs-dark",
         "path": "./themes/dracula-poolscript-color-theme.json"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "PoolScript",
+      "properties": {
+        "poolscript.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Interpretador Python usado para rodar o language server do PoolScript. Precisa ter o pacote 'poolscript' instalado com o extra de LSP (pip install -e \".[lsp]\")."
+        },
+        "poolscript.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ativa o Language Server do PoolScript (completions com escopo real, hover com docstring, diagnostics)."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[poolscript]": {
+        "editor.wordBasedSuggestions": "off"
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run esbuild-base -- --minify",
+    "esbuild-base": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "compile": "npm run esbuild-base -- --sourcemap",
+    "watch": "npm run esbuild-base -- --sourcemap --watch"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^8.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.75.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.4.0"
   }
 }

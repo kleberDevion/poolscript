@@ -2273,6 +2273,11 @@ class Interpreter:
                 return isinstance(left, PoolTypeRef)
         if right is None:
             return left is None
+        # `valor is AlgumaClasse` — comparação de tipo estilo isinstance,
+        # útil pra distinguir PoolFile/PoolFileUpload de str/dict em código genérico
+        # (ex: checar se o corpo de um e-mail é um arquivo carregado ou texto puro).
+        if isinstance(right, type):
+            return isinstance(left, right)
         return left is right or self.equals(left, right)
 
     def equals(self, left: Any, right: Any) -> bool:

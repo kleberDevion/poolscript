@@ -15,6 +15,7 @@ Hierarquia:
 from __future__ import annotations
 import sys
 import os
+import sqlite3 as _sqlite3
 
 # ── Detecção de runtime ───────────────────────────────────────────────────────
 IS_PYPY = hasattr(sys, "pypy_version_info")
@@ -232,6 +233,9 @@ def shield(exc: Exception, node=None, source: str = "", filename: str = "<script
         TimeoutError:       ("operação expirou",                  "TimeoutError"),
         ConnectionError:    ("falha de conexão",                  "NetworkError"),
         NotImplementedError:("recurso ainda não implementado",    "NotImplemented"),
+        _sqlite3.Error:     ("erro de banco de dados",            "DatabaseError"),
+        OSError:            ("erro de sistema/arquivo",           "OSError"),
+        RuntimeError:       ("erro de execução",                  "RuntimeError"),
     }
     for exc_type, (friendly_msg, code) in _MAP.items():
         if isinstance(exc, exc_type):
@@ -250,8 +254,11 @@ def shield(exc: Exception, node=None, source: str = "", filename: str = "<script
                 error_cls = _BasePoolRuntimeError
             return error_cls(msg, node or _FakeNode(0, 0), source, code, filename)
 
-    # Fallback — erro desconhecido → InternalError (não expõe tipo Python)
-    return PoolInternalError(context=type(exc).__name__)
+    # Fallback — erro desconhecido → InternalError, mas ainda assim informa
+    # tipo + mensagem originais (sem traceback) pra não virar caixa-preta.
+    detail = str(exc)
+    context = f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+    return PoolInternalError(context=context)
 
 
 class _FakeNode:

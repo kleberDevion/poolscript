@@ -39,14 +39,13 @@ cors(options=["POST", "GET", "DELETE"], permiser=["*/api", "allowed.all/Users-Ag
 ## Rotas
 
 ```
-@app.route("/api/hello", auth=cors.permiser(), methods=cors.options(["GET"])) {
-    action handler() {
-        return jsonify({"msg": "olá!"}), 200
-    }
+@app.route("/api/hello", auth=cors.permiser(), methods=cors.options(["GET"]))
+action handler() {
+    return jsonify({"msg": "olá!"}), 200
 }
 ```
 
-A `action` não recebe parâmetros — `request` já está disponível automaticamente dentro dela.
+Não precisa envolver a `action` em chaves extras — o `@app.route(...)` já captura a próxima `action` como handler da rota. A `action` não recebe parâmetros — `request` já está disponível automaticamente dentro dela.
 
 ---
 
@@ -55,15 +54,14 @@ A `action` não recebe parâmetros — `request` já está disponível automatic
 Disponível automaticamente dentro de qualquer rota:
 
 ```
-@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["POST"])) {
-    action receber() {
-        data = request.get_json()       # body como dict
-        nome = request.get("nome")      # campo específico do JSON ou query string
-        metodo = request.method         # "POST"
-        caminho = request.path          # "/api/dados"
-        texto = request.text()          # body como texto puro
-        return jsonify({"recebido": data}), 200
-    }
+@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["POST"]))
+action receber() {
+    data = request.get_json()       # body como dict
+    nome = request.get("nome")      # campo específico do JSON ou query string
+    metodo = request.method         # "POST"
+    caminho = request.path          # "/api/dados"
+    texto = request.text()          # body como texto puro
+    return jsonify({"recebido": data}), 200
 }
 ```
 
@@ -95,17 +93,16 @@ return None    # responde 204
 Define verificação que roda antes de rotas protegidas:
 
 ```
-@app.middleware() {
-    action verificar() {
-        token = request.get("token")
-        if (not token) {
-            return jsonify({
-                "status": "erro",
-                "msg": "Sem permissão"
-            }), 401
-        }
-        continue   # libera pra entrar na rota
+@app.middleware()
+action verificar() {
+    token = request.get("token")
+    if (not token) {
+        return jsonify({
+            "status": "erro",
+            "msg": "Sem permissão"
+        }), 401
     }
+    continue   # libera pra entrar na rota
 }
 ```
 
@@ -113,17 +110,15 @@ Aplica em rotas específicas com `middleware=app.middleware`:
 
 ```
 # rota livre — sem middleware
-@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"])) {
-    action login() {
-        return jsonify({"msg": "ok"}), 200
-    }
+@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
+action login() {
+    return jsonify({"msg": "ok"}), 200
 }
 
 # rota protegida — middleware roda primeiro
-@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware) {
-    action dados() {
-        return jsonify({"msg": "área protegida"}), 200
-    }
+@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
+action dados() {
+    return jsonify({"msg": "área protegida"}), 200
 }
 ```
 
@@ -134,16 +129,14 @@ Aplica em rotas específicas com `middleware=app.middleware`:
 ```
 from jinker import Jinker, cors, render
 
-@app.route("/", auth=cors.permiser(), methods=cors.options(["GET"])) {
-    action index() {
-        return render("index.html")
-    }
+@app.route("/", auth=cors.permiser(), methods=cors.options(["GET"]))
+action index() {
+    return render("index.html")
 }
 
-@app.route("/login", auth=cors.permiser(), methods=cors.options(["GET"])) {
-    action login() {
-        return render("login.html")
-    }
+@app.route("/login", auth=cors.permiser(), methods=cors.options(["GET"]))
+action login() {
+    return render("login.html")
 }
 ```
 
@@ -196,16 +189,15 @@ Precisa instalar: `pip install websockets`
 O WebSocket sobe automaticamente na porta `HTTP + 1`. Se o servidor HTTP for na porta `7700`, o WebSocket fica na `7701`.
 
 ```
-@app.socket("/chat", channel=True) {
-    action bora_msg() {
-        msg = request.get_json()
-        app.channel(forAll=msg)
+@app.socket("/chat", channel=True)
+action bora_msg() {
+    msg = request.get_json()
+    app.channel(forAll=msg)
 
-        if (app.channel.status == "Success") {
-            post("Mensagem enviada!")
-        } else {
-            post("Erro no envio")
-        }
+    if (app.channel.status == "Success") {
+        post("Mensagem enviada!")
+    } else {
+        post("Erro no envio")
     }
 }
 ```
@@ -266,73 +258,69 @@ app = Jinker(__name__)
 cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
 
 # Middleware de autenticação
-@app.middleware() {
-    action auth() {
-        token = request.get("token")
-        if (not token) {
-            return jsonify({"msg": "não autorizado"}), 401
-        }
-        payload = jwt.check(token, SECRET)
-        if (not payload) {
-            return jsonify({"msg": "token inválido"}), 401
-        }
-        continue
+@app.middleware()
+action auth() {
+    token = request.get("token")
+    if (not token) {
+        return jsonify({"msg": "não autorizado"}), 401
     }
+    payload = jwt.check(token, SECRET)
+    if (not payload) {
+        return jsonify({"msg": "token inválido"}), 401
+    }
+    continue
 }
 
 # Página principal
-@app.route("/", auth=cors.permiser(), methods=cors.options(["GET"])) {
-    action index() {
-        return render("index.html")
-    }
+@app.route("/", auth=cors.permiser(), methods=cors.options(["GET"]))
+action index() {
+    return render("index.html")
 }
 
 # API de login
-@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"])) {
-    action login() {
-        data = request.get_json()
-        email = data.get("email")
-        senha = data.get("senha")
+@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
+action login() {
+    data = request.get_json()
+    email = data.get("email")
+    senha = data.get("senha")
 
-        result = db.query(
-            base=DB_PATH,
-            cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
-            table="usuarios"
-        )
+    result = db.query(
+        base=DB_PATH,
+        cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
+        table="usuarios"
+    )
 
-        if (result and hash.check(result[0]["senha"], senha)) {
-            payload = {
-                "user_id": result[0]["id"],
-                "exp": date.timestamp() + date.hora(hours=24)
-            }
-            token = jwt.gen(payload, SECRET, algorithm="HS256")
-            return jsonify({"token": token}), 200
-        } else {
-            return jsonify({"msg": "credenciais inválidas"}), 401
+    if (result and hash.check(result[0]["senha"], senha)) {
+        payload = {
+            "user_id": result[0]["id"],
+            "exp": date.timestamp() + date.hora(hours=24)
         }
+        token = jwt.gen(payload, SECRET, algorithm="HS256")
+        return jsonify({"token": token}), 200
+    } else {
+        return jsonify({"msg": "credenciais inválidas"}), 401
     }
 }
 
 # Chat em tempo real
-@app.socket("/chat", channel=True) {
-    action mensagem() {
-        msg = request.get_json()
-        author = msg.get("user_name")
-        content = msg.get("body_msg")
+@app.socket("/chat", channel=True)
+action mensagem() {
+    msg = request.get_json()
+    author = msg.get("user_name")
+    content = msg.get("body_msg")
 
-        try {
-            db.query(
-                base=DB_PATH,
-                cmd=("INSERT INTO @t (author, corpo, data) VALUES (?, ?, ?)",
-                     (author, content, date.datahora())),
-                table="chat"
-            )
-        } catch (e) {
-            post(f"Erro ao salvar msg: {e}")
-        }
-
-        app.channel(forAll=msg)
+    try {
+        db.query(
+            base=DB_PATH,
+            cmd=("INSERT INTO @t (author, corpo, data) VALUES (?, ?, ?)",
+                 (author, content, date.datahora())),
+            table="chat"
+        )
+    } catch (e) {
+        post(f"Erro ao salvar msg: {e}")
     }
+
+    app.channel(forAll=msg)
 }
 
 run_selfwith_("main") {

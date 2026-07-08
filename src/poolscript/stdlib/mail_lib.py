@@ -49,27 +49,21 @@ class MailServer:
         self.user = None
 
     def conn(self, provider_or_host, port=None):
-        try:
-            if provider_or_host in HOSTS_CONFIG:
-                host, port = HOSTS_CONFIG[provider_or_host]
-            else:
-                host = provider_or_host
-                port = port or 587
-            self.server = smtplib.SMTP(host, int(port))
-            self.server.starttls()
-            return True
-        except Exception as e:
-            return {"error": "connection_error", "detail": str(e)}
+        if provider_or_host in HOSTS_CONFIG:
+            host, port = HOSTS_CONFIG[provider_or_host]
+        else:
+            host = provider_or_host
+            port = port or 587
+        self.server = smtplib.SMTP(host, int(port))
+        self.server.starttls()
+        return True
 
     def login(self, user, password):
-        try:
-            self.user = user
-            if self.server is None:
-                return {"error": "not_connected", "detail": "chame .conn() antes de .login()"}
-            self.server.login(user, password)
-            return True
-        except Exception as e:
-            return {"error": "auth_error", "detail": str(e)}
+        if self.server is None:
+            raise RuntimeError("chame .conn() antes de .login()")
+        self.user = user
+        self.server.login(user, password)
+        return True
 
     def send(self, to_or_msg, subject=None, body=None, html=False):
         """
@@ -77,26 +71,23 @@ class MailServer:
           server.send(msg)                                  # objeto MailMessage
           server.send("dest@x.com", "subj", "body", html)   # direto
         """
-        try:
-            if self.server is None:
-                return {"error": "not_connected", "detail": "chame .conn() antes de .send()"}
-            if isinstance(to_or_msg, MailMessage):
-                mime = to_or_msg.msg
-                if not mime.get("From") and self.user:
-                    mime["From"] = self.user
-                self.server.send_message(mime)
-                return True
-            # forma direta
-            mime = MIMEMultipart()
-            mime["From"] = self.user or ""
-            mime["To"] = to_or_msg
-            mime["Subject"] = subject or ""
-            tipo = "html" if html else "plain"
-            mime.attach(MIMEText(body or "", tipo, "utf-8"))
+        if self.server is None:
+            raise RuntimeError("chame .conn() antes de .send()")
+        if isinstance(to_or_msg, MailMessage):
+            mime = to_or_msg.msg
+            if not mime.get("From") and self.user:
+                mime["From"] = self.user
             self.server.send_message(mime)
             return True
-        except Exception as e:
-            return {"error": "send_error", "detail": str(e)}
+        # forma direta
+        mime = MIMEMultipart()
+        mime["From"] = self.user or ""
+        mime["To"] = to_or_msg
+        mime["Subject"] = subject or ""
+        tipo = "html" if html else "plain"
+        mime.attach(MIMEText(body or "", tipo, "utf-8"))
+        self.server.send_message(mime)
+        return True
 
     def quit(self):
         if self.server:
@@ -133,32 +124,29 @@ class MailMessage:
 
     def attach(self, file_or_path):
         """Aceita caminho string, PoolFile (binário) ou PoolFileUpload (upload)."""
-        try:
-            # PoolFile ou PoolFileUpload — já tem os bytes em memória
-            if hasattr(file_or_path, "_data") or hasattr(file_or_path, "_bytes"):
-                data     = getattr(file_or_path, "_data", None) or getattr(file_or_path, "_bytes", None)
-                filename = file_or_path.name
-            elif isinstance(file_or_path, str):
-                # caminho de arquivo
-                if not os.path.exists(file_or_path):
-                    return {"error": "file_not_found", "path": file_or_path}
-                filename = os.path.basename(file_or_path)
-                with open(file_or_path, "rb") as f:
-                    data = f.read()
-            else:
-                return {"error": "attach_error", "detail": "tipo não suportado"}
+        # PoolFile ou PoolFileUpload — já tem os bytes em memória
+        if hasattr(file_or_path, "_data") or hasattr(file_or_path, "_bytes"):
+            data     = getattr(file_or_path, "_data", None) or getattr(file_or_path, "_bytes", None)
+            filename = file_or_path.name
+        elif isinstance(file_or_path, str):
+            # caminho de arquivo
+            if not os.path.exists(file_or_path):
+                raise FileNotFoundError(f"arquivo não encontrado: {file_or_path}")
+            filename = os.path.basename(file_or_path)
+            with open(file_or_path, "rb") as f:
+                data = f.read()
+        else:
+            raise TypeError(f"tipo não suportado para anexo: {type(file_or_path).__name__}")
 
-            part = MIMEBase("application", "octet-stream")
-            part.set_payload(data)
-            encoders.encode_base64(part)
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={filename}",
-            )
-            self.msg.attach(part)
-            return True
-        except Exception as e:
-            return {"error": "attach_error", "detail": str(e)}
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(data)
+        encoders.encode_base64(part)
+        part.add_header(
+            "Content-Disposition",
+            f"attachment; filename={filename}",
+        )
+        self.msg.attach(part)
+        return True
 
     def get_as_string(self):
         return self.msg.as_string()

@@ -79,8 +79,8 @@ def test_mail_message_html():
 
 def test_mail_message_attach_file_not_found():
     msg = MailMessage()
-    r = msg.attach("/tmp/nao_existe_xyz_123.pdf")
-    assert isinstance(r, dict) and r.get("error") == "file_not_found"
+    with pytest.raises(FileNotFoundError):
+        msg.attach("/tmp/nao_existe_xyz_123.pdf")
 
 
 def test_mail_message_attach_ok():
@@ -103,8 +103,8 @@ def test_mail_server_hosts_config():
 
 def test_mail_server_send_sem_conn():
     s = MailServer()
-    r = s.send("x@x.com", "s", "b")
-    assert isinstance(r, dict) and r.get("error") == "not_connected"
+    with pytest.raises(RuntimeError):
+        s.send("x@x.com", "s", "b")
 
 
 # ── built-in open + FileHandle ───────────────────────────────────────────
@@ -212,9 +212,7 @@ def test_request_lib_tem_patch():
     assert "patch" in resolve_module(["request"])
 
 
-def test_request_connection_error_retorna_dict():
+def test_request_connection_error_levanta_connection_error():
     from poolscript.stdlib.request_lib import get
-    r = get("http://localhost:1/nao-existe", timeout=1)
-    # connection error retorna dict, não Response
-    assert isinstance(r, dict)
-    assert r.get("error") == "connection_error"
+    with pytest.raises(ConnectionError):
+        get("http://localhost:1/nao-existe", timeout=1)

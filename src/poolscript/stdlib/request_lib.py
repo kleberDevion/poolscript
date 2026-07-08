@@ -105,9 +105,9 @@ def _request(method: str, url: str, headers: dict | None = None, body=None,
             headers=dict(exc.headers or {}), url=url,
         )
     except urllib.error.URLError as exc:
-        return {"error": "connection_error", "message": str(exc.reason), "url": url}
+        raise ConnectionError(f"{exc.reason} (url={url})") from exc
     except TimeoutError:
-        return {"error": "timeout", "message": f"requisição passou de {timeout}s", "url": url}
+        raise TimeoutError(f"requisição passou de {timeout}s (url={url})")
 
 
 def get(url: str, headers: dict | None = None, body=None, timeout: int = 30):
