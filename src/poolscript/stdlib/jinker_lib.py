@@ -533,9 +533,10 @@ class ChannelManager:
             return list(self._connections)
         return list(self._rooms.get(str(room_id), ()))
 
-    def emit(self, payload: Any = None, room_id: Any = None) -> "ChannelStatus":
+    def emit(self, payload: Any = None, room_id: Any = None, exclude: "set | None" = None) -> "ChannelStatus":
         """Envia payload pros conectados. room_id filtra pra uma sala específica;
-        sem room_id, faz broadcast geral (igual __call__(forAll=...))."""
+        sem room_id, faz broadcast geral (igual __call__(forAll=...)).
+        exclude: set de conexões a pular (usado pra não ecoar pro remetente)."""
         if payload is None:
             self.status = ChannelStatus(False)
             return self.status
@@ -543,6 +544,8 @@ class ChannelManager:
         import asyncio
         msg = payload if isinstance(payload, str) else _json.dumps(payload, ensure_ascii=False)
         targets = self._targets(room_id)
+        if exclude:
+            targets = [t for t in targets if t not in exclude]
 
         try:
             sent = 0
@@ -572,9 +575,20 @@ class ChannelManager:
         return f"<Channel connections={len(self._connections)} rooms={len(self._rooms)}>"
 
 
+def _current_ws():
+    """Websocket da conexão que está sendo processada agora (dentro de um
+    handler de socket), se houver. Usado pra excluir o remetente do emit."""
+    current = request._current
+    return getattr(current, "_ws", None) if current is not None else None
+
+
 class SocketEmitter:
     """Emissor obtido em runtime via `app.socket()` (sem args), dentro de um
     handler — usado pra mandar mensagens a uma sala específica ou broadcast.
+
+    Por padrão, quem disparou o handler (o remetente) NÃO recebe o próprio
+    emit de volta — evita a mensagem aparecer duplicada pro remetente.
+    Passe exclude_self=false pra ecoar de volta também pro remetente.
 
     Uso:
         send = sk.socket()
@@ -585,8 +599,13 @@ class SocketEmitter:
     def __init__(self, app: "Jinker"):
         self._app = app
 
-    def emit(self, payload: Any = None, room_id: Any = None) -> "ChannelStatus":
-        return self._app.channel.emit(payload, room_id=room_id)
+    def emit(self, payload: Any = None, room_id: Any = None, exclude_self: bool = True) -> "ChannelStatus":
+        exclude = None
+        if exclude_self:
+            ws = _current_ws()
+            if ws is not None:
+                exclude = {ws}
+        return self._app.channel.emit(payload, room_id=room_id, exclude=exclude)
 
     def status_send(self) -> "ChannelStatus":
         return self._app.channel.status
@@ -630,8 +649,13 @@ class SocketNamespace:
             return _SocketRegistrar(self._app, path, channel)
         return SocketEmitter(self._app)
 
-    def emit(self, payload: Any = None, room_id: Any = None) -> "ChannelStatus":
-        return self._app.channel.emit(payload, room_id=room_id)
+    def emit(self, payload: Any = None, room_id: Any = None, exclude_self: bool = True) -> "ChannelStatus":
+        exclude = None
+        if exclude_self:
+            ws = _current_ws()
+            if ws is not None:
+                exclude = {ws}
+        return self._app.channel.emit(payload, room_id=room_id, exclude=exclude)
 
     def status_send(self) -> "ChannelStatus":
         return self._app.channel.status
@@ -687,6 +711,7 @@ def _start_ws_server(app: "Jinker", host: str, port: int, debug: bool) -> None:
                 from .jinker_lib import request as req_proxy
 
                 class WsRequest:
+                    _ws = websocket  # conexão que enviou esta mensagem — usado por exclude_self
                     def get_json(self):
                         return msg_data
                     def json(self):

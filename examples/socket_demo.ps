@@ -16,14 +16,13 @@ cors(options=["POST", "GET"], origins=["https://nome.com"])
             if not msg {
                 post("mensagem vazia recebida na sala " {id})
             } else {
-                // com instância
+                // emite pra sala UMA vez (broadcast pra todos conectados na sala,
+                // incluindo quem enviou). Poderia usar sk.socket.emit(...) direto
+                // no lugar dessas 3 linhas — são equivalentes, não chame as duas.
                 send = sk.socket()
                 send.emit(payload=msg, room_id=id)
                 state = send.status_send()
-                post("emit (com instância) — status: " {state})
-
-                // sem instância — equivalente
-                sk.socket.emit(payload=msg, room_id=id)
+                post("emit — status: " {state})
             }
         } catch (e) {
             post("erro no handler do socket: " {e})
