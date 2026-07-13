@@ -19,6 +19,28 @@ Uso em PoolScript:
     run_selfwith_("main") {
         server(debug=True, host='0.0.0.0', port=2000)
     }
+
+WebSocket com salas:
+    from jinker import Jinker, cors
+
+    sk = Jinker(__name__)
+    cors(options=["POST"], origins=["https://nome.com"])
+
+    # Cada conexão em /sala:id entra automaticamente na sala = valor de :id
+    @sk.socket("/sala:id", channel=true) {
+        action main() {
+            msg = request.get_json()
+            id = request.path_param('id')
+
+            # com instância
+            send = sk.socket()
+            send.emit(payload=msg, room_id=id)
+            state = send.status_send()
+
+            # sem instância — equivalente
+            sk.socket.emit(payload=msg, room_id=id)
+        }
+    }
 """
 from __future__ import annotations
 
@@ -472,36 +494,60 @@ class ChannelStatus:
 
 class ChannelManager:
     """
-    app.channel — gerencia conexões websocket abertas.
+    app.channel — gerencia conexões websocket abertas, com suporte a salas.
 
-    app.channel(forAll=msg)  → broadcast pra todos
-    app.channel.status       → status do último envio
+    Uma conexão entra automaticamente numa "sala" quando o path do socket tem
+    parâmetro dinâmico (ex: /sala:id → sala = valor de :id).
+
+    app.channel(forAll=msg)               → broadcast pra todos
+    app.channel.emit(msg, room_id="123")  → manda só pra sala "123"
+    app.channel.status                    → status do último envio
     """
 
     def __init__(self):
         self._connections: set = set()
+        self._rooms: dict[str, set] = {}
+        self._ws_room: dict = {}
         self.status = ChannelStatus(True)
         self._loop = None
 
-    def _register(self, ws) -> None:
+    def _register(self, ws, room_id: Any = None) -> None:
         self._connections.add(ws)
+        if room_id is not None:
+            room_key = str(room_id)
+            self._rooms.setdefault(room_key, set()).add(ws)
+            self._ws_room[ws] = room_key
 
     def _unregister(self, ws) -> None:
         self._connections.discard(ws)
+        room_key = self._ws_room.pop(ws, None)
+        if room_key is not None:
+            room = self._rooms.get(room_key)
+            if room is not None:
+                room.discard(ws)
+                if not room:
+                    del self._rooms[room_key]
 
-    def __call__(self, forAll: Any = None) -> "ChannelStatus":
-        """Broadcast pra todos os conectados."""
-        if forAll is None:
+    def _targets(self, room_id: Any = None) -> list:
+        if room_id is None:
+            return list(self._connections)
+        return list(self._rooms.get(str(room_id), ()))
+
+    def emit(self, payload: Any = None, room_id: Any = None) -> "ChannelStatus":
+        """Envia payload pros conectados. room_id filtra pra uma sala específica;
+        sem room_id, faz broadcast geral (igual __call__(forAll=...))."""
+        if payload is None:
             self.status = ChannelStatus(False)
             return self.status
 
         import asyncio
-        msg = forAll if isinstance(forAll, str) else _json.dumps(forAll, ensure_ascii=False)
+        msg = payload if isinstance(payload, str) else _json.dumps(payload, ensure_ascii=False)
+        targets = self._targets(room_id)
 
         try:
             sent = 0
             dead = set()
-            for ws in list(self._connections):
+            for ws in targets:
                 try:
                     if self._loop and not self._loop.is_closed():
                         asyncio.run_coroutine_threadsafe(ws.send(msg), self._loop)
@@ -511,15 +557,42 @@ class ChannelManager:
                 except Exception:
                     dead.add(ws)
             for ws in dead:
-                self._connections.discard(ws)
-            self.status = ChannelStatus(sent > 0 or len(self._connections) == 0)
+                self._unregister(ws)
+            self.status = ChannelStatus(sent > 0 or len(targets) == 0)
         except Exception:
             self.status = ChannelStatus(False)
 
         return self.status
 
+    def __call__(self, forAll: Any = None) -> "ChannelStatus":
+        """Broadcast pra todos os conectados. Atalho de emit(payload, room_id=None)."""
+        return self.emit(forAll, room_id=None)
+
     def __repr__(self):
-        return f"<Channel connections={len(self._connections)}>"
+        return f"<Channel connections={len(self._connections)} rooms={len(self._rooms)}>"
+
+
+class SocketEmitter:
+    """Emissor obtido em runtime via `app.socket()` (sem args), dentro de um
+    handler — usado pra mandar mensagens a uma sala específica ou broadcast.
+
+    Uso:
+        send = sk.socket()
+        send.emit(payload=msg, room_id=identify["id"])
+        state = send.status_send()
+    """
+
+    def __init__(self, app: "Jinker"):
+        self._app = app
+
+    def emit(self, payload: Any = None, room_id: Any = None) -> "ChannelStatus":
+        return self._app.channel.emit(payload, room_id=room_id)
+
+    def status_send(self) -> "ChannelStatus":
+        return self._app.channel.status
+
+    def __repr__(self):
+        return f"<SocketEmitter {self._app.name}>"
 
 
 class _SocketRegistrar:
@@ -537,10 +610,41 @@ class _SocketRegistrar:
         return f"<SocketRegistrar {self._path}>"
 
 
+class SocketNamespace:
+    """app.socket — dupla função:
+
+    1. Decorator de registro:  @sk.socket("/sala:id", channel=true)
+    2. Emissor em runtime, com ou sem instância:
+         send = sk.socket()               # instancia um emissor
+         send.emit(payload=msg, room_id=identify["id"])
+         state = send.status_send()
+
+         sk.socket.emit(payload=msg, room_id=identify["id"])  # direto, sem instanciar
+    """
+
+    def __init__(self, app: "Jinker"):
+        self._app = app
+
+    def __call__(self, path: str = None, channel: bool = False):
+        if path is not None:
+            return _SocketRegistrar(self._app, path, channel)
+        return SocketEmitter(self._app)
+
+    def emit(self, payload: Any = None, room_id: Any = None) -> "ChannelStatus":
+        return self._app.channel.emit(payload, room_id=room_id)
+
+    def status_send(self) -> "ChannelStatus":
+        return self._app.channel.status
+
+    def __repr__(self):
+        return f"<SocketNamespace {self._app.name}>"
+
+
 def _start_ws_server(app: "Jinker", host: str, port: int, debug: bool) -> None:
     """Inicia servidor websocket em thread separada."""
     try:
         import asyncio
+        import threading
         import websockets
     except ImportError:
         print("[jinker] Error: instale websockets — pip install websockets")
@@ -556,10 +660,20 @@ def _start_ws_server(app: "Jinker", host: str, port: int, debug: bool) -> None:
             await websocket.close(1008, "path não encontrado")
             return
 
+        # Sala automática = valor do(s) parâmetro(s) dinâmico(s) do path.
+        # Ex: /sala:id conectado em /sala/42 → entra na sala "42"
+        room_id = None
+        if path_params:
+            if len(path_params) == 1:
+                room_id = next(iter(path_params.values()))
+            else:
+                room_id = "|".join(f"{k}={v}" for k, v in sorted(path_params.items()))
+
         if socket_cfg["channel"]:
-            channel._register(websocket)
+            channel._register(websocket, room_id=room_id)
             if debug:
-                print(f"[jinker-ws] cliente conectou: {path} ({len(channel._connections)} total)")
+                room_info = f" sala={room_id}" if room_id is not None else ""
+                print(f"[jinker-ws] cliente conectou: {path}{room_info} ({len(channel._connections)} total)")
 
         try:
             async for raw_msg in websocket:
@@ -808,6 +922,7 @@ class Jinker:
         self._middleware_handler: Callable | None = None
         self._sockets: list[dict] = []
         self.channel = ChannelManager()
+        self.socket = SocketNamespace(self)
         # SPA / static
         self.static_folder = static_folder   # ex: "frontend/dist"
         self.static_url    = static_url      # ex: "/"
@@ -834,10 +949,6 @@ class Jinker:
         resolved_auth = auth if auth is not None else cors.permiser()
         # middleware pode ser None, uma função, ou o próprio app (resolve depois)
         return _RouteRegistrar(self, path, resolved_methods, resolved_auth, middleware)
-
-    def socket(self, path: str, channel: bool = False):
-        """@app.socket('/path', channel=True) — define endpoint websocket."""
-        return _SocketRegistrar(self, path, channel)
 
     def _register_socket(self, path: str, channel: bool, handler: Callable) -> None:
         self._sockets.append({"path": path, "channel": channel, "handler": handler})
@@ -1254,6 +1365,13 @@ class RequestProxy:
 
     def text(self):
         return self._current.text() if self._current else None
+
+    def path_param(self, key: str):
+        """request.path_param('id') → valor do parâmetro dinâmico da rota/socket.
+        Ex: /sala:id ou /user/<id>"""
+        if self._current is None:
+            return None
+        return self._current.path_param(key)
 
     def file(self, field: str, allowed: list = None):
         """request.file('campo', allowed=['.jpg', '.png']) → PoolFileUpload"""
