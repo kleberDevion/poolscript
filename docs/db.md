@@ -94,6 +94,44 @@ post(result[0]["email"])
 
 ---
 
+## sqlite3 — acesso direto (sem abstração)
+
+Módulo separado do `db`. Sem `query()`/`table=`/`@t` — é o `sqlite3` puro do
+Python, mesma API (`connect`, `cursor`, `execute`, `fetchall`, `fetchone`,
+`fetchmany`, `commit`, `rollback`, `close`):
+
+```
+import sqlite3
+
+conn = sqlite3.connect("banco.db")
+cursor = conn.cursor()
+cursor.execute("SELECT * FROM users")
+result = cursor.fetchall()   # lista de dicts
+post(result)
+conn.close()
+
+# com parâmetros
+conn = sqlite3.connect("banco.db")
+conn.execute("INSERT INTO users (nome) VALUES (?)", ("Kleber",))
+conn.commit()
+conn.close()
+
+# como context manager — commit + close automáticos ao sair do bloco
+using sqlite3.connect("banco.db") as conn {
+    conn.execute("INSERT INTO users (nome) VALUES (?)", ("Ana",))
+}
+```
+
+`fetchall()`/`fetchone()`/`fetchmany(size)` convertem cada linha em `dict`
+(usando os nomes das colunas) sempre que o cursor tiver `description` —
+igual ao modo curto do `db`. `CREATE`/`DROP`/`ALTER`/`PRAGMA`/`ATTACH`/
+`DETACH`/`VACUUM` retornam `None` em vez de cursor.
+
+Use `db` quando quiser trocar de banco (Postgres/MySQL/Mongo) sem mudar o
+código; use `sqlite3` quando quiser SQL puro sem abstração nenhuma.
+
+---
+
 ## PostgreSQL
 
 Instale: `pip install psycopg2-binary`

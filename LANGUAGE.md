@@ -345,6 +345,36 @@ action precisa(v) {
 precisa(Null)   // erro
 ```
 
+**`global`**: dentro de uma `action`/`reaction`, declara que um nome se
+refere à variável do escopo global — leituras e escritas passam a atingir
+direto o global, em vez de criar/usar uma variável local (igual ao `global`
+do Python):
+
+```
+contador = 0
+
+action incrementar() {
+    global contador
+    contador = contador + 1
+}
+
+incrementar()
+incrementar()
+post(contador)   // 2
+```
+
+Também funciona para criar uma variável global que ainda não existe:
+
+```
+action registrar() {
+    global total_visitas
+    total_visitas = 1
+}
+
+registrar()
+post(total_visitas)   // 1 — visível fora da action também
+```
+
 ---
 
 ## `async` / `await`
@@ -587,6 +617,26 @@ import os as sistema      // alias
 Libs embutidas (lazy-loaded, só carregam quando importadas):
 `os, json, dotenv, mail, date, jinker, db, hash, jwt, request/requests,
 manpu/mp, regex, sqlite3, qrcode/qr, sys, datasentity/dataentity`.
+
+Referência completa de cada lib (todo membro acessível, com exemplos) em
+`docs/`:
+
+| Lib | Doc |
+|---|---|
+| `os`, `dotenv`, `mail`, `date`, `request`/`requests` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](docs/libs_utilitarias.md) |
+| `jinker` (HTTP + WebSocket com salas) | [`docs/jinker.md`](docs/jinker.md) |
+| `db` (SQLite/Postgres/MySQL/Mongo) + `sqlite3` (acesso direto) | [`docs/db.md`](docs/db.md) |
+| `hash`, `jwt` | [`docs/hash_jwt.md`](docs/hash_jwt.md) |
+| `manpu`/`mp` | [`docs/manpu.md`](docs/manpu.md) |
+| `json` | [`docs/json.md`](docs/json.md) |
+| `regex` | [`docs/regex.md`](docs/regex.md) |
+| `qrcode`/`qr` | [`docs/qrcode.md`](docs/qrcode.md) |
+| `sys` | [`docs/sys.md`](docs/sys.md) |
+| `datasentity`/`dataentity` | [`docs/datasentity.md`](docs/datasentity.md) |
+| `Parsing` (builtin global, sem import) | [`docs/parsing.md`](docs/parsing.md) |
+
+`Parsing` (conversões de tipo seguras) é builtin global, não precisa de
+`import` — ver `docs/parsing.md`.
 
 Libs "stub" (existem mas não implementadas nesta versão — erro claro e
 catchable ao chamar, não ao importar): `sqlite, smtplib, mimetext,

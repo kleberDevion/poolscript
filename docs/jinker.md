@@ -65,6 +65,17 @@ action receber() {
 }
 ```
 
+Em rotas ou sockets com parâmetro dinâmico no path (`/user:id`, `/user/<id>`),
+pegue o valor com `request.path_param()`:
+
+```
+@app.route("/user:id", auth=cors.permiser(), methods=cors.options(["GET"]))
+action perfil() {
+    id = request.path_param("id")
+    return jsonify({"user_id": id}), 200
+}
+```
+
 ---
 
 ## Retornos da rota
@@ -219,6 +230,56 @@ ws.send(JSON.stringify({
     body_msg: "Olá pessoal!"
 }))
 ```
+
+### Salas (rooms)
+
+Quando o path do socket tem parâmetro dinâmico, cada conexão entra
+automaticamente numa "sala" = valor do parâmetro. Um `emit(room_id=...)`
+alcança só quem está conectado naquela sala — as outras salas não recebem:
+
+```
+@app.socket("/sala:id", channel=True)
+action mensagem() {
+    msg = request.get_json()
+    id  = request.path_param("id")
+
+    send = app.socket()             # emissor em runtime — com instância
+    send.emit(payload=msg, room_id=id)
+    post("status: " {send.status_send()})
+}
+```
+
+`app.socket.emit(...)` faz a mesma coisa sem precisar instanciar:
+
+```
+app.socket.emit(payload=msg, room_id=id)
+```
+
+`app.socket()` chamado **com** `path` continua funcionando como decorator
+de registro (`@app.socket("/chat", channel=True)`); chamado **sem** args,
+em runtime, devolve um emissor.
+
+**Quem enviou a mensagem não recebe o próprio broadcast de volta por
+padrão** — evita a mensagem aparecer duplicada em UIs de chat. Pra ecoar
+de volta também pro remetente, passe `exclude_self=false`:
+
+```
+send.emit(payload=msg, room_id=id, exclude_self=false)
+```
+
+Sem `room_id`, `emit()`/`app.socket.emit()` faz broadcast pra todo mundo
+conectado no socket (equivalente a `app.channel(forAll=...)`, também
+sujeito ao `exclude_self`).
+
+| Membro | Uso |
+|---|---|
+| `app.socket(path, channel=True)` | decorator — registra o handler do socket |
+| `app.socket()` | instancia um emissor (`SocketEmitter`) pra usar em runtime |
+| `app.socket.emit(payload, room_id=None, exclude_self=True)` | emite direto, sem instanciar |
+| `send = app.socket(); send.emit(...)` | emite via instância |
+| `send.status_send()` | status do último emit feito por essa instância |
+| `app.channel(forAll=msg)` | broadcast geral (todas as salas), API antiga |
+| `app.channel.status` | status do último `app.channel(forAll=...)` |
 
 ---
 
