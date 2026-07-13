@@ -8,6 +8,7 @@ ficam no próprio interpreter porque dependem de `self.output`.
 """
 from __future__ import annotations
 from .stdlib.parsing_lib import Parsing
+from .stdlib.os_lib import PoolFile
 from typing import Any
 
 
@@ -127,6 +128,7 @@ GLOBAL_BUILTINS = {
     "flo":      float,
     "bool":     bool,
     "Parsing":  Parsing,
+    "PoolFile": PoolFile,   # comparação de tipo (`x is PoolFile`) sem precisar de `from os import PoolFile`
     # ── Utilitários de memória e conversão ──────────────────────────
     "id":       id,        # endereço de memória do objeto
     "hex":      hex,       # int → "0xff"

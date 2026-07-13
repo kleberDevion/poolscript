@@ -38,6 +38,7 @@ from .parser import (
     BreakStmt,
     CatchClause,
     ContinueStmt,
+    GlobalStmt,
     ModelDecl,
     ModelField,
     CountEachStmt,
@@ -333,17 +334,31 @@ class PoolFuture:
 
 
 class Scope:
-    __slots__ = ('parent', 'values')
+    __slots__ = ('parent', 'values', 'global_names')
 
     def __init__(self, parent: "Scope | None" = None) -> None:
         self.parent = parent
         self.values: dict[str, Any] = {}
+        # Nomes declarados via `global x` neste escopo específico — lazy,
+        # a imensa maioria dos escopos nunca usa `global`.
+        self.global_names: "set[str] | None" = None
 
     def define(self, name: str, value: Any) -> None:
         self.values[sys.intern(name)] = value
 
     def has_local(self, name: str) -> bool:
         return name in self.values
+
+    def declare_global(self, name: str) -> None:
+        if self.global_names is None:
+            self.global_names = set()
+        self.global_names.add(sys.intern(name))
+
+    def _root(self) -> "Scope":
+        scope = self
+        while scope.parent is not None:
+            scope = scope.parent
+        return scope
 
     def set(self, name: str, value: Any) -> bool:
         # Interna uma única vez aqui — a cadeia de parents é percorrida de
@@ -352,6 +367,9 @@ class Scope:
         name = sys.intern(name)
         scope: "Scope | None" = self
         while scope is not None:
+            if scope.global_names is not None and name in scope.global_names:
+                scope._root().values[name] = value
+                return True
             if name in scope.values:
                 scope.values[name] = value
                 return True
@@ -362,6 +380,11 @@ class Scope:
         name = sys.intern(name)
         scope: "Scope | None" = self
         while scope is not None:
+            if scope.global_names is not None and name in scope.global_names:
+                root_values = scope._root().values
+                if name in root_values:
+                    return root_values[name]
+                raise KeyError(name)
             if name in scope.values:
                 return scope.values[name]
             scope = scope.parent
@@ -853,6 +876,10 @@ class Interpreter:
                 raise ContinueSignal()
             if node.__class__ is BreakStmt:
                 raise BreakSignal()
+            if node.__class__ is GlobalStmt:
+                for name in node.names:
+                    scope.declare_global(name)
+                return None
             if node.__class__ is TryCatchStmt:
                 _error_to_reraise = None
                 try:

@@ -113,7 +113,7 @@ def test_poolscript_is_operator_isinstance_check_against_stdlib_class(tmp_path):
     arquivo = tmp_path / "relatorio.pdf"
     arquivo.write_bytes(b"%PDF-1.4 fake")
     source = f'''
-from os import PoolFile, loadFile
+from os import loadFile
 
 texto = "so um texto"
 arq = loadFile(r"{arquivo}")

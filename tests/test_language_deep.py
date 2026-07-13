@@ -715,3 +715,60 @@ def test_deep_scope_chain_assignment_to_outer_variable():
         "post(total)\n"
     )
     assert run(src) == ["10"]
+
+
+def test_global_stmt_writes_persist_across_calls():
+    src = (
+        "contador = 0\n"
+        "action incrementar() {\n"
+        "    global contador\n"
+        "    contador = contador + 1\n"
+        "}\n"
+        "incrementar()\n"
+        "incrementar()\n"
+        "incrementar()\n"
+        "post(contador)\n"
+    )
+    assert run(src) == ["3"]
+
+
+def test_global_stmt_creates_variable_visible_outside_action():
+    src = (
+        "action registrar() {\n"
+        "    global visitas\n"
+        "    visitas = 1\n"
+        "}\n"
+        "registrar()\n"
+        "post(visitas)\n"
+    )
+    assert run(src) == ["1"]
+
+
+def test_global_stmt_reaches_through_nested_block():
+    src = (
+        "contador = 0\n"
+        "action bump() {\n"
+        "    global contador\n"
+        "    if (true) {\n"
+        "        contador = contador + 100\n"
+        "    }\n"
+        "}\n"
+        "bump()\n"
+        "post(contador)\n"
+    )
+    assert run(src) == ["100"]
+
+
+def test_without_global_stmt_local_assignment_does_not_leak():
+    src = (
+        "action f() {\n"
+        "    x = 99\n"
+        "}\n"
+        "f()\n"
+        "try {\n"
+        "    post(x)\n"
+        "} catch (e) {\n"
+        "    post(\"nao-vazou\")\n"
+        "}\n"
+    )
+    assert run(src) == ["nao-vazou"]

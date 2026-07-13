@@ -63,6 +63,8 @@ KEYWORDS = {
     # "base" NÃO é keyword global — tratado contextualmente no parser
     # operador `count` (v0.5.2)
     "count",
+    # `global` — declara nome como referência à variável global (estilo Python)
+    "global",
     # HTTP/JSON (também reservadas)
     "POST", "PUT", "DELETE", "JSON", "json",
     # manpu palavras reservadas

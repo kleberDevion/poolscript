@@ -314,6 +314,13 @@ class BreakStmt(Node):
     pass
 
 
+@dataclass(slots=True)
+class GlobalStmt(Node):
+    """`global nome, outro` — dentro de action/reaction, faz leitura e
+    escrita dessas variáveis atingirem direto o escopo global (estilo Python)."""
+    names: list[str]
+
+
 
 @dataclass(slots=True)
 class MatchPattern(Node):
@@ -559,6 +566,8 @@ class Parser:
                 self.pos += 1
                 self.consume_optional_semi()
                 return BreakStmt(line=tok.line, col=tok.col)
+            if tok.value == "global":
+                return self.parse_global_stmt()
             if tok.value == "try":
                 return self.parse_try_stmt()
             if tok.value == "using":
@@ -1486,6 +1495,14 @@ class Parser:
         while self.match("COMMA"):
             names.append(self.parse_name_like("esperado nome após ','"))
         return names
+
+    def parse_global_stmt(self) -> GlobalStmt:
+        start = self.expect("KW", value="global")
+        names = [self.parse_name_like("esperado nome de variável após 'global'")]
+        while self.match("COMMA"):
+            names.append(self.parse_name_like("esperado nome de variável após ','"))
+        self.consume_optional_semi()
+        return GlobalStmt(line=start.line, col=start.col, names=names)
 
     def parse_name_like(self, msg: str) -> str:
         """Aceita IDENT, IDENT_UPPER ou qualquer KW como nome de membro.
