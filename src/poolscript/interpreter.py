@@ -1243,34 +1243,84 @@ class Interpreter:
             raise _shield(exc, node, self.source, self.filename) from None
 
     # ── Imports ─────────────────────────────────────────────────────────
+    def _bind_module_exports(self, node: ImportStmt, scope: Scope,
+                              module_name: str, exports: dict) -> None:
+        """Vincula os exports resolvidos ao escopo, conforme node.mode
+        (import / from / push) — compartilhado por todo caminho de resolução
+        de import (stdlib, arquivo relativo, arquivo de projeto, lib global)."""
+        if node.mode == "import":
+            bind_name = node.module_alias or node.module[-1]
+            scope.define(bind_name, Module(module_name, exports))
+            return
+        # from / push
+        if node.names:
+            for name in node.names:
+                if name not in exports:
+                    raise PoolRuntimeError(
+                        f"módulo '{module_name}' não exporta '{name}'", node, self.source,
+                    )
+                bind_name = node.name_aliases.get(name, name)
+                scope.define(bind_name, exports[name])
+        else:
+            bind_name = node.module_alias or node.module[-1]
+            scope.define(bind_name, Module(module_name, exports))
+
+    def _run_imported_file(self, candidate: Path, node: ImportStmt, scope: Scope,
+                            import_root: Path, module_name: str) -> None:
+        """Lê, executa e vincula um arquivo .ps importado — usado pela
+        resolução relativa, pela resolução via raiz do projeto e pela lib
+        global (`psl install -asLib`)."""
+        sub_source = candidate.read_text(encoding="utf-8")
+        sub_program = parse_source(sub_source, str(candidate))
+        sub_interp = Interpreter(source=sub_source, filename=str(candidate), is_import=True,
+                                  import_root=import_root)
+        try:
+            sub_interp.run(sub_program)
+        except _PSBaseRuntimeError as _sub_err:
+            # Garante que o filename do erro aponta para o arquivo importado,
+            # não para o executor. Adiciona frame do arquivo que fez o import.
+            if not _sub_err.filename:
+                _sub_err.filename = str(candidate)
+                _sub_err.source   = sub_source
+            import_frame = (self.filename, node.line, node.col, self.source)
+            if import_frame not in _sub_err.call_stack:
+                _sub_err.call_stack.append(import_frame)
+            raise
+        sub_exports = {k: v for k, v in sub_interp.globals.values.items()
+                       if k not in {"post", "input", "open", "len", "range", "type"}}
+        self._bind_module_exports(node, scope, module_name, sub_exports)
+
     def _exec_import(self, node: ImportStmt, scope: Scope) -> None:
+        # 0. Import relativo (`from .modulo import x` / `from ..pkg.modulo import x`)
+        # — igual ao Python: sempre relativo à pasta do arquivo que faz o
+        # import (não à raiz do projeto), e nunca tenta resolver contra a
+        # stdlib. `.` = mesma pasta do arquivo atual; cada `.` extra sobe
+        # mais um nível de diretório.
+        if node.level > 0:
+            if not node.module:
+                raise PoolRuntimeError(
+                    "import relativo precisa de um módulo depois dos pontos "
+                    "(ex: 'from .modulo import x')", node, self.source,
+                )
+            base_dir = Path(self.filename).parent
+            for _ in range(node.level - 1):
+                base_dir = base_dir.parent
+            rel_path = Path(*node.module).with_suffix(".ps")
+            candidate = base_dir / rel_path
+            module_name = ("." * node.level) + ".".join(node.module)
+            if not candidate.is_file():
+                raise PoolRuntimeError(
+                    f"módulo relativo não encontrado: {module_name} "
+                    f"(procurado em {candidate})", node, self.source,
+                )
+            self._run_imported_file(candidate, node, scope, self._import_root, module_name)
+            return
+
         # 1. Tenta resolver via stdlib registry
         module_exports = resolve_module(node.module)
         if module_exports is not None:
             module_name = ".".join(node.module)
-            if node.mode == "import":
-                bind_name = node.module_alias or node.module[-1]
-                scope.define(bind_name, Module(module_name, module_exports))
-            elif node.mode == "from":
-                for name in node.names:
-                    if name not in module_exports:
-                        raise PoolRuntimeError(
-                            f"módulo '{module_name}' não exporta '{name}'", node, self.source,
-                        )
-                    bind_name = node.name_aliases.get(name, name)
-                    scope.define(bind_name, module_exports[name])
-            elif node.mode == "push":
-                if node.names:
-                    for name in node.names:
-                        if name not in module_exports:
-                            raise PoolRuntimeError(
-                                f"módulo '{module_name}' não exporta '{name}'", node, self.source,
-                            )
-                        bind_name = node.name_aliases.get(name, name)
-                        scope.define(bind_name, module_exports[name])
-                else:
-                    bind_name = node.module_alias or node.module[-1]
-                    scope.define(bind_name, Module(module_name, module_exports))
+            self._bind_module_exports(node, scope, module_name, module_exports)
             return
 
         # 2. Tenta resolver como arquivo .ps do usuário — SEMPRE relativo à
@@ -1282,40 +1332,8 @@ class Interpreter:
         rel_path = Path(*node.module).with_suffix(".ps")
         candidate = base_dir / rel_path
         if candidate.is_file():
-            sub_source = candidate.read_text(encoding="utf-8")
-            sub_program = parse_source(sub_source, str(candidate))
-            sub_interp = Interpreter(source=sub_source, filename=str(candidate), is_import=True,
-                                      import_root=self._import_root)
-            try:
-                sub_interp.run(sub_program)
-            except _PSBaseRuntimeError as _sub_err:
-                # Garante que o filename do erro aponta para o arquivo importado,
-                # não para o executor. Adiciona frame do arquivo que fez o import.
-                if not _sub_err.filename:
-                    _sub_err.filename = str(candidate)
-                    _sub_err.source   = sub_source
-                import_frame = (self.filename, node.line, node.col, self.source)
-                if import_frame not in _sub_err.call_stack:
-                    _sub_err.call_stack.append(import_frame)
-                raise
-            sub_exports = {k: v for k, v in sub_interp.globals.values.items()
-                           if k not in {"post", "input", "open", "len", "range", "type"}}
             module_name = ".".join(node.module)
-            if node.mode == "import":
-                bind_name = node.module_alias or node.module[-1]
-                scope.define(bind_name, Module(module_name, sub_exports))
-            else:  # from / push
-                if node.names:
-                    for name in node.names:
-                        if name not in sub_exports:
-                            raise PoolRuntimeError(
-                                f"módulo '{module_name}' não exporta '{name}'", node, self.source,
-                            )
-                        bind_name = node.name_aliases.get(name, name)
-                        scope.define(bind_name, sub_exports[name])
-                else:
-                    bind_name = node.module_alias or node.module[-1]
-                    scope.define(bind_name, Module(module_name, sub_exports))
+            self._run_imported_file(candidate, node, scope, self._import_root, module_name)
             return
 
         # 3. Tenta resolver como lib instalada globalmente via `psl install
@@ -1325,37 +1343,8 @@ class Interpreter:
         from .pkgmgr import global_lib_path
         global_candidate = global_lib_path(module_name)
         if global_candidate is not None:
-            sub_source = global_candidate.read_text(encoding="utf-8")
-            sub_program = parse_source(sub_source, str(global_candidate))
-            sub_interp = Interpreter(source=sub_source, filename=str(global_candidate), is_import=True,
-                                      import_root=global_candidate.parent)
-            try:
-                sub_interp.run(sub_program)
-            except _PSBaseRuntimeError as _sub_err:
-                if not _sub_err.filename:
-                    _sub_err.filename = str(global_candidate)
-                    _sub_err.source   = sub_source
-                import_frame = (self.filename, node.line, node.col, self.source)
-                if import_frame not in _sub_err.call_stack:
-                    _sub_err.call_stack.append(import_frame)
-                raise
-            sub_exports = {k: v for k, v in sub_interp.globals.values.items()
-                           if k not in {"post", "input", "open", "len", "range", "type"}}
-            if node.mode == "import":
-                bind_name = node.module_alias or node.module[-1]
-                scope.define(bind_name, Module(module_name, sub_exports))
-            else:  # from / push
-                if node.names:
-                    for name in node.names:
-                        if name not in sub_exports:
-                            raise PoolRuntimeError(
-                                f"módulo '{module_name}' não exporta '{name}'", node, self.source,
-                            )
-                        bind_name = node.name_aliases.get(name, name)
-                        scope.define(bind_name, sub_exports[name])
-                else:
-                    bind_name = node.module_alias or node.module[-1]
-                    scope.define(bind_name, Module(module_name, sub_exports))
+            self._run_imported_file(global_candidate, node, scope,
+                                     global_candidate.parent, module_name)
             return
 
         raise PoolRuntimeError(

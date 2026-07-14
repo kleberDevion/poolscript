@@ -211,6 +211,10 @@ class ImportStmt(Node):
     names: list[str]
     module_alias: str | None = None
     name_aliases: dict[str, str] = field(default_factory=dict)
+    # Nº de pontos antes do módulo em `from .x import y` / `from ..x import y`
+    # (igual ao `level` do ast.ImportFrom no Python). 0 = import absoluto,
+    # resolvido a partir da raiz do projeto/stdlib.
+    level: int = 0
 
 
 @dataclass(slots=True)
@@ -1401,13 +1405,20 @@ class Parser:
                 module=module, names=[], module_alias=module_alias,
             )
         if self.match("KW", "from"):
-            module = self.parse_module_path()
+            level = 0
+            while self.current().type == "DOT":
+                self.pos += 1
+                level += 1
+            if level > 0 and (self.current().type == "KW" and self.current().value == "import"):
+                module: list[str] = []
+            else:
+                module = self.parse_module_path()
             self.expect("KW", "import")
             names, name_aliases = self.parse_name_list_with_aliases()
             self.consume_optional_semi()
             return ImportStmt(
                 line=start.line, col=start.col, mode="from",
-                module=module, names=names, name_aliases=name_aliases,
+                module=module, names=names, name_aliases=name_aliases, level=level,
             )
         self.expect("KW", "PUSH")
         module = self.parse_module_path()
@@ -1450,6 +1461,14 @@ class Parser:
             # @NonNull action foo(...) { } — captura a action como bloco single-node
             action_node = self.parse_action_decl()
             from dataclasses import fields
+            block = Block(line=action_node.line, col=action_node.col, style="brace", statements=[action_node])
+        elif (capture_action and self.current().type == "KW"
+              and self.current().value in {"int", "bool", "str", "flo"}
+              and self.pos + 1 < len(self.tokens)
+              and self.tokens[self.pos + 1].type == "KW"
+              and self.tokens[self.pos + 1].value in {"action", "reaction"}):
+            # @NonNull int reaction foo(...) / @NonNull bool action foo(...) — sem async
+            action_node = self.parse_action_decl()
             block = Block(line=action_node.line, col=action_node.col, style="brace", statements=[action_node])
         elif capture_action and self.current().type == "KW" and self.current().value == "async":
             # @NonNull async action foo(...) / @NonNull async int reaction foo(...)
