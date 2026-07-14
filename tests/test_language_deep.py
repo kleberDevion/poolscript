@@ -369,6 +369,42 @@ def test_nonnull_decorator_allows_non_null_argument():
     assert run(src) == ["5"]
 
 
+# @NonNull precisa funcionar em toda combinação de forma de declaração:
+# action/reaction, com/sem tipo de retorno (int/bool/str/flo), com/sem async.
+# Cada uma é um caminho de parsing diferente em parse_decorator_stmt — testar
+# só `action` (como acima) deixa passar bugs como o de `@NonNull int reaction`
+# sem `async`, que quebrava com "@NonNull deve ser seguido de uma action".
+@pytest.mark.parametrize("decl, call, expected", [
+    ("reaction precisa(v) { return v }", "precisa(5)", "5"),
+    ("int reaction precisa(v) { return v }", "precisa(5)", "5"),
+    ("bool reaction precisa(v) { return v }", "precisa(true)", "True"),
+    ("str reaction precisa(v) { return v }", "precisa(\"ok\")", "ok"),
+    ("flo reaction precisa(v) { return v }", "precisa(1.5)", "1.5"),
+    ("action precisa(v) { return v }", "precisa(5)", "5"),
+    ("async action precisa(v) { return v }", "await precisa(5)", "5"),
+    ("async reaction precisa(v) { return v }", "await precisa(5)", "5"),
+    ("async int reaction precisa(v) { return v }", "await precisa(5)", "5"),
+    ("async bool reaction precisa(v) { return v }", "await precisa(true)", "True"),
+])
+def test_nonnull_decorator_parses_every_declaration_form(decl, call, expected):
+    src = f"@NonNull\n{decl}\npost({call})\n"
+    assert run(src) == [expected]
+
+
+@pytest.mark.parametrize("decl", [
+    "reaction precisa(v) { return v }",
+    "int reaction precisa(v) { return v }",
+    "action precisa(v) { return v }",
+    "async int reaction precisa(v) { return v }",
+])
+def test_nonnull_decorator_rejects_null_in_every_declaration_form(decl):
+    is_async = decl.startswith("async")
+    call = "await precisa(Null)" if is_async else "precisa(Null)"
+    src = f"@NonNull\n{decl}\n{call}\n"
+    with pytest.raises(PoolRuntimeError):
+        run(src)
+
+
 # ═══════════════════════════ count / count each ═════════════════════════════
 
 def test_count_prefix_form():
