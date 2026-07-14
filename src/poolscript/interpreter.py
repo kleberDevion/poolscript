@@ -575,7 +575,6 @@ class Interpreter:
         self._install_post()
         self.globals.define("input", self._builtin_input)
         self.globals.define("__name__", self.filename or "__main__")
-        self.globals.define("getAll", self._builtin_getall)
         self.globals.define("load", self._builtin_load)
         self.globals.define("map", self._builtin_map)
         self.globals.define("filter", self._builtin_filter)
@@ -637,10 +636,6 @@ class Interpreter:
             else:
                 result.append(f)
         return result
-
-    def _builtin_getall(self) -> Any:
-        from .stdlib.db_lib import getAll
-        return getAll()
 
     def _builtin_load(self, path: str | None = None) -> Any:
         from .stdlib.dotenv_lib import load

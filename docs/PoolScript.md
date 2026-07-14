@@ -470,7 +470,6 @@ post(VERSAO)       # 1.0
 | `range(n)` | Lista de 0 até n-1 |
 | `type(x)` | Tipo do valor |
 | `open(path)` | Abre arquivo |
-| `getAll()` | Resultado do último cursor.execute() |
 | `load()` | Carrega o .env |
 
 ### post.flush()

@@ -38,6 +38,7 @@ all    = [               # libs externas opcionais (também funcionam no PyPy)
     "Pillow",
     "qrcode",
     "openpyxl",
+    "pyodbc",
 ]
 
 [project.scripts]
