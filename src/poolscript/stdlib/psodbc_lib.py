@@ -241,7 +241,8 @@ def _pick_mssql_odbc_driver(preferred: str = "") -> str:
 
 def connect(driver: str = "sqlite", host: str = "localhost", port: int = 0,
             user: str = "", password: str = "", database: str = "",
-            base: str = "", url: str = "", odbc_driver: str = "") -> Any:
+            base: str = "", url: str = "", odbc_driver: str = "",
+            trust_server_cert: bool = True) -> Any:
     """
     Conecta a um banco de dados — por parâmetros ou por URL.
 
@@ -310,7 +311,14 @@ def connect(driver: str = "sqlite", host: str = "localhost", port: int = 0,
             parts += [f"UID={user}", f"PWD={password}"]
         else:
             parts.append("Trusted_Connection=yes")
-        conn = pyodbc.connect(";".join(parts))
+        # ODBC Driver 18+ passou a exigir Encrypt=yes por padrão e valida o
+        # certificado — quebra conexão local com o certificado autoassinado
+        # do SQL Server. TrustServerCertificate=yes contorna isso.
+        parts.append(f"TrustServerCertificate={'yes' if trust_server_cert else 'no'}")
+        # autocommit=True — sem isso o pyodbc abre uma transação implícita e
+        # comandos como CREATE DATABASE/DROP DATABASE são rejeitados pelo SQL
+        # Server ("not allowed within multi-statement transaction").
+        conn = pyodbc.connect(";".join(parts), autocommit=True)
         return DbConnection(conn, "mssql")
 
     if db_type == "mongo":

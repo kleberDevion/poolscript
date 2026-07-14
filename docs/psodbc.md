@@ -13,12 +13,22 @@ script.
 
 | Nome | Assinatura | Retorno |
 |---|---|---|
-| `psodbc.connect` | `connect(driver="sqlite", host="localhost", port=0, user="", password="", database="", base="", url="", odbc_driver="")` | `DbConnection` ou `MongoConnection` |
+| `psodbc.connect` | `connect(driver="sqlite", host="localhost", port=0, user="", password="", database="", base="", url="", odbc_driver="", trust_server_cert=True)` | `DbConnection` ou `MongoConnection` |
 | `psodbc.query` | `query(base="", cmd=None, table="")` | `DbConnection`, `list[dict]` ou `None` |
 
 `driver` aceita: `sqlite`, `postgres`/`postgresql`/`pg`, `mysql`/`mariadb`,
 `mssql`/`sqlserver`, `mongo`/`mongodb`. `url`/o próprio `driver` também aceitam
 uma string de conexão (`sqlserver://user:senha@host:porta/banco`, etc.).
+
+`trust_server_cert` (só `mssql`): manda `TrustServerCertificate=yes` pro
+driver — necessário porque o ODBC Driver 18+ passou a validar o certificado
+por padrão e derruba a conexão com certificado autoassinado (erro `08001`
+"cadeia de certificação... não é de confiança"). Já vem `True`; só usa `False`
+se o servidor tiver certificado de CA confiável de verdade.
+
+Conexão `mssql` já abre com `autocommit=True` — sem isso comandos como
+`CREATE DATABASE`/`DROP DATABASE` são rejeitados pelo SQL Server por rodarem
+dentro de uma transação implícita.
 
 ---
 
