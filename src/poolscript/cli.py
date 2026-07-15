@@ -42,11 +42,13 @@ def fast_main() -> None:
     argv = sys.argv[1:]
 
     # ── Short-circuit sem carregar o interpretador ────────────────────
-    if not argv or argv[0] in ("--version", "-V"):
+    # OBS: "sem argumento nenhum" NÃO entra aqui — precisa cair no main(argv)
+    # abaixo pra abrir o REPL (_cmd_repl), igual a `python`/`node` sem args.
+    if argv and argv[0] in ("--version", "-V"):
         _cmd_version()
         sys.exit(0)
 
-    if argv[0] in ("--help", "-h", "help"):
+    if argv and argv[0] in ("--help", "-h", "help"):
         _cmd_help()
         sys.exit(0)
 

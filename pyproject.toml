@@ -34,11 +34,13 @@ all    = [               # libs externas opcionais (também funcionam no PyPy)
     "PyJWT",
     "websockets",
     "python-dotenv",
-    "cryptography",
     "Pillow",
     "qrcode",
     "openpyxl",
     "pyodbc",
+    "psycopg2-binary",     # psodbc_lib.py: connect(engine="postgres"/"postgresql")
+    "pymongo",             # psodbc_lib.py: connect(engine="mongo"/"mongodb")
+    "mysql-connector-python",  # psodbc_lib.py: connect(engine="mysql")
 ]
 
 [project.scripts]
