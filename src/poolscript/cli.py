@@ -254,7 +254,65 @@ def _cmd_compile() -> int:
 
 
 def _cmd_update(args: list[str]) -> int:
-    print("Nenhuma atualização disponível.")
+    if not args or args[0] != "release":
+        print("uso: psl -up release", file=sys.stderr)
+        return 1
+
+    import re
+    import subprocess
+
+    from . import __version__ as current_version
+
+    # src/poolscript/cli.py -> raiz do projeto (2 níveis acima). Só funciona
+    # numa instalação via clone git (editable install) — não faz sentido pra
+    # instalação via wheel/PyPI, que não tem histórico git pra comparar.
+    repo_root = Path(__file__).resolve().parents[2]
+    if not (repo_root / ".git").is_dir():
+        print("Instalação não é um clone git — não dá pra verificar atualização automaticamente.")
+        print("Baixe a versão mais nova em: https://github.com/kleberDevion/poolscript-lang")
+        return 1
+
+    def _git(*a: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", *a], cwd=repo_root, capture_output=True, text=True)
+
+    fetch = _git("fetch", "--quiet", "origin")
+    if fetch.returncode != 0:
+        print(f"Erro ao buscar atualizações: {fetch.stderr.strip()}", file=sys.stderr)
+        return 1
+
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
+    local_head = _git("rev-parse", "HEAD").stdout.strip()
+    remote_head = _git("rev-parse", f"origin/{branch}").stdout.strip()
+
+    if local_head == remote_head:
+        print(f"PoolScript v{current_version} já é a versão mais recente ({branch} em dia).")
+        return 0
+
+    counts = _git("rev-list", "--left-right", "--count", f"{local_head}...{remote_head}").stdout.split()
+    behind = int(counts[1]) if len(counts) == 2 else 0
+    if behind == 0:
+        print(f"PoolScript v{current_version}: sua cópia está à frente de origin/{branch} (nada pra atualizar).")
+        return 0
+
+    # --ff-only: nunca reescreve histórico nem descarta mudança local — se
+    # houver commit/edição local que conflite, falha limpo sem tocar em nada.
+    merge = _git("merge", "--ff-only", f"origin/{branch}")
+    if merge.returncode != 0:
+        print("Não deu pra atualizar automaticamente (histórico divergiu ou há mudanças locais).", file=sys.stderr)
+        print(f"Resolva manualmente em {repo_root} (ex: 'git status', 'git pull').", file=sys.stderr)
+        return 1
+
+    new_version = "?"
+    try:
+        pyproject_text = (repo_root / "pyproject.toml").read_text(encoding="utf-8")
+        m = re.search(r'^version\s*=\s*"([^"]+)"', pyproject_text, re.MULTILINE)
+        if m:
+            new_version = m.group(1)
+    except OSError:
+        pass
+
+    print(f"Atualizado: v{current_version} -> v{new_version} ({behind} commit(s) novo(s) em {branch}).")
+    print("Reinicie 'pool'/'psl' para usar a versão nova.")
     return 0
 
 
