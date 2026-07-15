@@ -1,0 +1,609 @@
+{
+  "os": [
+    {
+      "name": "pathFile",
+      "kind": "function",
+      "detail": "os.pathFile(name) — Retorna caminho absoluto de um arquivo."
+    },
+    {
+      "name": "pathFolder",
+      "kind": "function",
+      "detail": "os.pathFolder(name) — Retorna caminho absoluto de uma pasta."
+    },
+    {
+      "name": "loadFile",
+      "kind": "function",
+      "detail": "os.loadFile(name, encoding?) — Carrega um arquivo."
+    },
+    {
+      "name": "getenv",
+      "kind": "function",
+      "detail": "os.getenv(key, default?) — Lê variável de ambiente."
+    },
+    {
+      "name": "warn",
+      "kind": "function",
+      "detail": "os.warn(text?, color?) — Emite mensagem colorida no terminal."
+    },
+    {
+      "name": "ipmach",
+      "kind": "function",
+      "detail": "os.ipmach() — Retorna e exibe o IP da máquina."
+    },
+    {
+      "name": "mkdir",
+      "kind": "function",
+      "detail": "os.mkdir(path, exist_ok?) — Cria diretório. exist_ok=true não dá erro se já existir."
+    },
+    {
+      "name": "rmdir",
+      "kind": "function",
+      "detail": "os.rmdir(path, force?) — Remove diretório. force=true remove mesmo com conteúdo."
+    },
+    {
+      "name": "ls",
+      "kind": "function",
+      "detail": "os.ls(path?) — Lista arquivos e pastas do diretório com detalhes."
+    },
+    {
+      "name": "cmd",
+      "kind": "function",
+      "detail": "os.cmd(command, capture?) — Executa comando no terminal."
+    },
+    {
+      "name": "code",
+      "kind": "function",
+      "detail": "os.code(path?) — Abre o editor de código do OS no caminho especificado."
+    },
+    {
+      "name": "exists",
+      "kind": "function",
+      "detail": "os.exists(path) — Verifica se arquivo ou pasta existe."
+    },
+    {
+      "name": "isfile",
+      "kind": "function",
+      "detail": "os.isfile(path) — Verifica se é um arquivo."
+    },
+    {
+      "name": "isdir",
+      "kind": "function",
+      "detail": "os.isdir(path) — Verifica se é uma pasta."
+    },
+    {
+      "name": "rename",
+      "kind": "function",
+      "detail": "os.rename(src, dst) — Renomeia arquivo ou pasta."
+    },
+    {
+      "name": "copy",
+      "kind": "function",
+      "detail": "os.copy(src, dst) — Copia arquivo."
+    },
+    {
+      "name": "move",
+      "kind": "function",
+      "detail": "os.move(src, dst) — Move arquivo ou pasta."
+    },
+    {
+      "name": "size",
+      "kind": "function",
+      "detail": "os.size(path) — Retorna tamanho do arquivo em bytes."
+    },
+    {
+      "name": "cwd",
+      "kind": "function",
+      "detail": "os.cwd() — Retorna diretório atual."
+    },
+    {
+      "name": "chdir",
+      "kind": "function",
+      "detail": "os.chdir(path) — Muda o diretório atual."
+    },
+    {
+      "name": "environ",
+      "kind": "function",
+      "detail": "os.environ(key?) — Retorna variável de ambiente ou todas se key=None."
+    },
+    {
+      "name": "PoolFile",
+      "kind": "class",
+      "detail": "os.PoolFile(path) — Arquivo binário carregado — suporta move, copy, delete."
+    }
+  ],
+  "json": [
+    {
+      "name": "parse",
+      "kind": "function",
+      "detail": "json.parse(text)"
+    },
+    {
+      "name": "stringify",
+      "kind": "function",
+      "detail": "json.stringify(value)"
+    }
+  ],
+  "JSON": [
+    {
+      "name": "parse",
+      "kind": "function",
+      "detail": "JSON.parse(text)"
+    },
+    {
+      "name": "stringify",
+      "kind": "function",
+      "detail": "JSON.stringify(value)"
+    }
+  ],
+  "dotenv": [
+    {
+      "name": "load",
+      "kind": "function",
+      "detail": "dotenv.load(path?) — Carrega .env (KEY=VALUE por linha) para os.environ."
+    }
+  ],
+  "mail": [
+    {
+      "name": "MailServer",
+      "kind": "class",
+      "detail": "mail.MailServer() — Conexão SMTP com TLS automático."
+    },
+    {
+      "name": "MailMessage",
+      "kind": "class",
+      "detail": "mail.MailMessage() — Construtor MIME para emails ricos (HTML + anexos)."
+    }
+  ],
+  "date": [
+    {
+      "name": "time",
+      "kind": "function",
+      "detail": "date.time() — Hora atual no formato HH:MM:SS."
+    },
+    {
+      "name": "today",
+      "kind": "function",
+      "detail": "date.today() — Data atual no formato DD/MM/YYYY."
+    },
+    {
+      "name": "datahora",
+      "kind": "function",
+      "detail": "date.datahora() — Data + hora no formato DD/MM/YYYY HH:MM:SS."
+    },
+    {
+      "name": "now",
+      "kind": "function",
+      "detail": "date.now() — Alias de datahora() — formato ISO 8601."
+    },
+    {
+      "name": "timestamp",
+      "kind": "function",
+      "detail": "date.timestamp() — Unix timestamp em segundos."
+    },
+    {
+      "name": "hora",
+      "kind": "function",
+      "detail": "date.hora(hours?, minutes?, days?) — Retorna segundos totais — use para somar com timestamp() no JWT exp."
+    }
+  ],
+  "jinker": [
+    {
+      "name": "Jinker",
+      "kind": "class",
+      "detail": "jinker.Jinker(name?, oauth?, static_folder?, static_url?) — Aplicação HTTP da PoolScript."
+    },
+    {
+      "name": "cors",
+      "kind": "method",
+      "detail": "jinker.cors(options?, origins?, permiser?) — Configuração global de CORS. Instância única por aplicação."
+    },
+    {
+      "name": "jsonify",
+      "kind": "function",
+      "detail": "jinker.jsonify(data) — Atalho: jsonify(dict) → JinkerResponse com JSON."
+    },
+    {
+      "name": "render",
+      "kind": "function",
+      "detail": "jinker.render(folder_or_file, file?) — Serve um arquivo estático com MIME type correto."
+    },
+    {
+      "name": "JinkerRequest",
+      "kind": "class",
+      "detail": "jinker.JinkerRequest(method, path, headers, body, query) — Objeto de requisição disponível dentro da action do handler."
+    },
+    {
+      "name": "JinkerResponse",
+      "kind": "class",
+      "detail": "jinker.JinkerResponse() — Objeto de resposta que a action pode montar e retornar."
+    },
+    {
+      "name": "request",
+      "kind": "property",
+      "detail": "jinker.request — Proxy do `request` para uso com `import request` na PoolScript."
+    }
+  ],
+  "psodbc": [
+    {
+      "name": "query",
+      "kind": "function",
+      "detail": "psodbc.query(base?, cmd?, table?) — SQLite — modo convencional e modo curto."
+    },
+    {
+      "name": "connect",
+      "kind": "function",
+      "detail": "psodbc.connect(driver?, host?, port?, user?, password?, database?, base?, url?, odbc_driver?, trust_server_cert?) — Conecta a um banco de dados — por parâmetros ou por URL."
+    }
+  ],
+  "hash": [
+    {
+      "name": "crypt",
+      "kind": "function",
+      "detail": "hash.crypt(senha) — Gera hash seguro da senha com salt aleatório."
+    },
+    {
+      "name": "check",
+      "kind": "function",
+      "detail": "hash.check(senha_hash, senha_digitada) — Verifica se a senha digitada bate com o hash salvo."
+    }
+  ],
+  "jwt": [
+    {
+      "name": "gen",
+      "kind": "function",
+      "detail": "jwt.gen(payload, secret, algorithm?) — Gera um token JWT."
+    },
+    {
+      "name": "check",
+      "kind": "function",
+      "detail": "jwt.check(token, secret) — Verifica o token e retorna o payload. Retorna None se inválido ou expirado."
+    }
+  ],
+  "request": [
+    {
+      "name": "get_json",
+      "kind": "function",
+      "detail": "request.get_json()"
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "detail": "request.get(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "post",
+      "kind": "function",
+      "detail": "request.post(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "put",
+      "kind": "function",
+      "detail": "request.put(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "patch",
+      "kind": "function",
+      "detail": "request.patch(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "delete",
+      "kind": "function",
+      "detail": "request.delete(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "text",
+      "kind": "function",
+      "detail": "request.text()"
+    },
+    {
+      "name": "ws_connect",
+      "kind": "function",
+      "detail": "request.ws_connect(url) — Conecta a um servidor WebSocket."
+    }
+  ],
+  "requests": [
+    {
+      "name": "get_json",
+      "kind": "function",
+      "detail": "requests.get_json()"
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "detail": "requests.get(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "post",
+      "kind": "function",
+      "detail": "requests.post(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "put",
+      "kind": "function",
+      "detail": "requests.put(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "patch",
+      "kind": "function",
+      "detail": "requests.patch(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "delete",
+      "kind": "function",
+      "detail": "requests.delete(url, headers?, body?, timeout?)"
+    },
+    {
+      "name": "text",
+      "kind": "function",
+      "detail": "requests.text()"
+    },
+    {
+      "name": "ws_connect",
+      "kind": "function",
+      "detail": "requests.ws_connect(url) — Conecta a um servidor WebSocket."
+    }
+  ],
+  "manpu": [
+    {
+      "name": "read",
+      "kind": "function",
+      "detail": "manpu.read(filepath) — Lê um arquivo e retorna seu conteúdo formatado."
+    },
+    {
+      "name": "load",
+      "kind": "function",
+      "detail": "manpu.load(filepath) — Carrega o arquivo pra uso em outros contextos (ex: corpo de email)."
+    },
+    {
+      "name": "write",
+      "kind": "function",
+      "detail": "manpu.write(content?, column?, celula?, target?) — Escreve conteúdo em um arquivo."
+    },
+    {
+      "name": "remove",
+      "kind": "function",
+      "detail": "manpu.remove(value?, content?, column?, celula?, amount?, target?) — Remove conteúdo de um arquivo."
+    },
+    {
+      "name": "open",
+      "kind": "function",
+      "detail": "manpu.open(target) — Abre um arquivo pra operações — use com `using`:"
+    },
+    {
+      "name": "src",
+      "kind": "function",
+      "detail": "manpu.src(filepath) — Resolve o caminho absoluto do arquivo."
+    }
+  ],
+  "mp": [
+    {
+      "name": "read",
+      "kind": "function",
+      "detail": "mp.read(filepath) — Lê um arquivo e retorna seu conteúdo formatado."
+    },
+    {
+      "name": "load",
+      "kind": "function",
+      "detail": "mp.load(filepath) — Carrega o arquivo pra uso em outros contextos (ex: corpo de email)."
+    },
+    {
+      "name": "write",
+      "kind": "function",
+      "detail": "mp.write(content?, column?, celula?, target?) — Escreve conteúdo em um arquivo."
+    },
+    {
+      "name": "remove",
+      "kind": "function",
+      "detail": "mp.remove(value?, content?, column?, celula?, amount?, target?) — Remove conteúdo de um arquivo."
+    },
+    {
+      "name": "open",
+      "kind": "function",
+      "detail": "mp.open(target) — Abre um arquivo pra operações — use com `using`:"
+    },
+    {
+      "name": "src",
+      "kind": "function",
+      "detail": "mp.src(filepath) — Resolve o caminho absoluto do arquivo."
+    }
+  ],
+  "regex": [
+    {
+      "name": "match",
+      "kind": "function",
+      "detail": "regex.match(pattern, string, flags?) — Verifica se a string casa completamente com o padrão."
+    },
+    {
+      "name": "search",
+      "kind": "function",
+      "detail": "regex.search(pattern, string, flags?) — Verifica se o padrão existe em qualquer posição da string."
+    },
+    {
+      "name": "findall",
+      "kind": "function",
+      "detail": "regex.findall(pattern, string, flags?) — Retorna lista com todas as ocorrências do padrão."
+    },
+    {
+      "name": "sub",
+      "kind": "function",
+      "detail": "regex.sub(pattern, repl, string, count?, flags?) — Substitui ocorrências do padrão. Retorna PoolStr (encadeável)."
+    },
+    {
+      "name": "split",
+      "kind": "function",
+      "detail": "regex.split(pattern, string, maxsplit?, flags?) — Divide a string pelo padrão."
+    },
+    {
+      "name": "escape",
+      "kind": "function",
+      "detail": "regex.escape(string) — Escapa caracteres especiais de regex."
+    }
+  ],
+  "sqlite3": [
+    {
+      "name": "connect",
+      "kind": "function",
+      "detail": "sqlite3.connect(database, kwargs) — Abre conexão com banco SQLite. Cria o arquivo se não existir."
+    }
+  ],
+  "qrcode": [
+    {
+      "name": "gen",
+      "kind": "function",
+      "detail": "qrcode.gen(data, save?, size?, border?, color?, bg?, name?, error_correction?, qr32?) — Gera um QR Code — função de alto nível da PoolScript."
+    },
+    {
+      "name": "make",
+      "kind": "function",
+      "detail": "qrcode.make(data, error_correction?, box_size?, border?, fill_color?, back_color?, name?) — Atalho estilo Python: `qrcode.make(data)`."
+    },
+    {
+      "name": "QRCode",
+      "kind": "class",
+      "detail": "qrcode.QRCode(version?, error_correction?, box_size?, border?) — Wrapper de qrcode.QRCode — mesma API da lib Python:"
+    },
+    {
+      "name": "ERROR_CORRECT_L",
+      "kind": "property",
+      "detail": "qrcode.ERROR_CORRECT_L — str(object='') -> str"
+    },
+    {
+      "name": "ERROR_CORRECT_M",
+      "kind": "property",
+      "detail": "qrcode.ERROR_CORRECT_M — str(object='') -> str"
+    },
+    {
+      "name": "ERROR_CORRECT_Q",
+      "kind": "property",
+      "detail": "qrcode.ERROR_CORRECT_Q — str(object='') -> str"
+    },
+    {
+      "name": "ERROR_CORRECT_H",
+      "kind": "property",
+      "detail": "qrcode.ERROR_CORRECT_H — str(object='') -> str"
+    }
+  ],
+  "qr": [
+    {
+      "name": "gen",
+      "kind": "function",
+      "detail": "qr.gen(data, save?, size?, border?, color?, bg?, name?, error_correction?, qr32?) — Gera um QR Code — função de alto nível da PoolScript."
+    },
+    {
+      "name": "make",
+      "kind": "function",
+      "detail": "qr.make(data, error_correction?, box_size?, border?, fill_color?, back_color?, name?) — Atalho estilo Python: `qrcode.make(data)`."
+    },
+    {
+      "name": "QRCode",
+      "kind": "class",
+      "detail": "qr.QRCode(version?, error_correction?, box_size?, border?) — Wrapper de qrcode.QRCode — mesma API da lib Python:"
+    },
+    {
+      "name": "ERROR_CORRECT_L",
+      "kind": "property",
+      "detail": "qr.ERROR_CORRECT_L — str(object='') -> str"
+    },
+    {
+      "name": "ERROR_CORRECT_M",
+      "kind": "property",
+      "detail": "qr.ERROR_CORRECT_M — str(object='') -> str"
+    },
+    {
+      "name": "ERROR_CORRECT_Q",
+      "kind": "property",
+      "detail": "qr.ERROR_CORRECT_Q — str(object='') -> str"
+    },
+    {
+      "name": "ERROR_CORRECT_H",
+      "kind": "property",
+      "detail": "qr.ERROR_CORRECT_H — str(object='') -> str"
+    }
+  ],
+  "sys": [
+    {
+      "name": "stdout",
+      "kind": "property",
+      "detail": "sys.stdout — sys.stdout — saída padrão."
+    },
+    {
+      "name": "stderr",
+      "kind": "property",
+      "detail": "sys.stderr — sys.stderr — saida de erro."
+    },
+    {
+      "name": "argv",
+      "kind": "property",
+      "detail": "sys.argv — Acesso aos argumentos da linha de comando."
+    },
+    {
+      "name": "exit",
+      "kind": "function",
+      "detail": "sys.exit(code?) — Encerra o programa."
+    },
+    {
+      "name": "platform",
+      "kind": "function",
+      "detail": "sys.platform() — Retorna o sistema operacional: 'windows', 'linux', 'darwin'."
+    },
+    {
+      "name": "RelativePath",
+      "kind": "function",
+      "detail": "sys.RelativePath(name) — Busca recursivamente a partir do diretório de trabalho atual"
+    }
+  ],
+  "datasentity": [
+    {
+      "name": "dataentity",
+      "kind": "function",
+      "detail": "datasentity.dataentity(entity_class) — Decorador @dataentity para Entity PoolScript."
+    },
+    {
+      "name": "asdict",
+      "kind": "function",
+      "detail": "datasentity.asdict(instance) — DataEntity → dict PoolScript."
+    },
+    {
+      "name": "astuple",
+      "kind": "function",
+      "detail": "datasentity.astuple(instance) — DataEntity → tupla com os valores na ordem dos campos."
+    },
+    {
+      "name": "aslist",
+      "kind": "function",
+      "detail": "datasentity.aslist(instance) — DataEntity → lista com os valores na ordem dos campos."
+    },
+    {
+      "name": "asjson",
+      "kind": "function",
+      "detail": "datasentity.asjson(instance) — DataEntity → string JSON."
+    }
+  ],
+  "dataentity": [
+    {
+      "name": "dataentity",
+      "kind": "function",
+      "detail": "dataentity.dataentity(entity_class) — Decorador @dataentity para Entity PoolScript."
+    },
+    {
+      "name": "asdict",
+      "kind": "function",
+      "detail": "dataentity.asdict(instance) — DataEntity → dict PoolScript."
+    },
+    {
+      "name": "astuple",
+      "kind": "function",
+      "detail": "dataentity.astuple(instance) — DataEntity → tupla com os valores na ordem dos campos."
+    },
+    {
+      "name": "aslist",
+      "kind": "function",
+      "detail": "dataentity.aslist(instance) — DataEntity → lista com os valores na ordem dos campos."
+    },
+    {
+      "name": "asjson",
+      "kind": "function",
+      "detail": "dataentity.asjson(instance) — DataEntity → string JSON."
+    }
+  ]
+}
