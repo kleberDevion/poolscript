@@ -1,6 +1,6 @@
 """
 Servidor LSP da PoolScript — roda sobre stdio, usado pela extensão do VSCode
-(vscode-poolscript) via vscode-languageclient.
+(psl-poolscript-vsix) via vscode-languageclient.
 
 Reaproveita o lexer/parser reais da linguagem (poolscript.lexer/parser),
 então diagnostics e símbolos refletem exatamente o que o interpretador aceita

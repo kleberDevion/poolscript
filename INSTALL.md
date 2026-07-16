@@ -1,34 +1,17 @@
-# Instalação do PoolScript v0.5.2
+# Instalação do PoolScript
 
-## Instalação automática (recomendado)
+## Instalação
 
-### Linux / macOS
 ```bash
-chmod +x install.sh
-./install.sh
+pip install -e .
 ```
 
-### Windows
-Duplo-clique em `install.bat` ou execute no CMD:
-```cmd
-install.bat
-```
-
-O instalador faz tudo automaticamente:
-1. **Remove versões antigas** do PoolScript (Python + extensão VSCode + pastas residuais)
-2. **Instala** o pacote Python `poolscript` (comandos `pool` e `psl`)
-3. **Instala** a extensão VSCode (tema Dracula + syntax highlighting)
+Isso registra os comandos `pool` e `psl` no PATH.
 
 ## Desinstalação
 
-### Linux / macOS
 ```bash
-./uninstall.sh
-```
-
-### Windows
-```cmd
-uninstall.bat
+pip uninstall poolscript
 ```
 
 ## Pré-requisitos
@@ -42,14 +25,8 @@ pool --version
 pool examples/01_hello.ps
 ```
 
-## Instalação manual
-
-Se preferir não usar o script:
+## Extensão VSCode (opcional)
 
 ```bash
-# Python
-pip install --user .
-
-# VSCode
-code --install-extension vscode-poolscript/poolscript.poolscript-0.5.2.vsix
+code --install-extension psl-poolscript-vsix/psl-poolscript-1.4.1.vsix
 ```
