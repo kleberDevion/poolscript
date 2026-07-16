@@ -161,7 +161,7 @@
       "patterns": [
         {
           "name": "keyword.control.poolscript",
-          "match": "\\b(if|elif|else|while|for|each|in|is|return|try|catch|finally|raise|as|with|of|using|async|await|count|continue|break|match|case|yield|to|run_selfwith_|NonNull|base|static)\\b"
+          "match": "\\b(if|elif|else|while|for|each|in|is|return|try|catch|finally|raise|as|with|of|using|async|await|count|continue|break|match|case|yield|to|run_selfwith_|NonNull|base|static|global)\\b"
         }
       ]
     },

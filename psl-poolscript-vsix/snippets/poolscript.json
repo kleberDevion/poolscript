@@ -21,6 +21,14 @@
     "prefix": "action",
     "body": ["action ${1:nome}(${2:args}) {", "    ${0:return Null}", "}"]
   },
+  "action lambda": {
+    "prefix": "actionl",
+    "body": ["action(${1:args}) { return ${0:expr} }"]
+  },
+  "global": {
+    "prefix": "global",
+    "body": ["global ${0:nome}"]
+  },
   "try/catch": {
     "prefix": "try",
     "body": ["try {", "    ${1:codigo()}", "} catch (${2:e}) {", "    ${0:return e}", "}"]
