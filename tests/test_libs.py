@@ -23,6 +23,15 @@ def test_resolve_module():
     assert resolve_module(["doesnt_exist"]) is None
 
 
+def test_db_is_alias_de_psodbc():
+    # "db" é o nome documentado em docs/PoolScript.md, docs/hash_jwt.md,
+    # docs/jinker.md e no --help da CLI — mas o módulo real é psodbc_lib.py.
+    # Sem esse alias, todo `import db` desses exemplos falhava em runtime.
+    assert resolve_module(["db"]) is resolve_module(["psodbc"])
+    assert "connect" in resolve_module(["db"])
+    assert "query" in resolve_module(["db"])
+
+
 def test_resolve_name():
     assert callable(resolve_name(["os"], "getenv"))
     assert resolve_name(["os"], "doesnt_exist") is None

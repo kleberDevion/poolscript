@@ -1,4 +1,4 @@
-# PoolScript v8.0.0 — Referência da linguagem
+# PoolScript v8.1.1 — Referência da linguagem
 
 Este documento descreve, de forma completa, tudo que existe atualmente na linguagem
 PoolScript: sintaxe, tipos, controle de fluxo, funções, classes, tratamento de
@@ -625,7 +625,7 @@ Referência completa de cada lib (todo membro acessível, com exemplos) em
 |---|---|
 | `os`, `dotenv`, `mail`, `date`, `request`/`requests` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](docs/libs_utilitarias.md) |
 | `jinker` (HTTP + WebSocket com salas) | [`docs/jinker.md`](docs/jinker.md) |
-| `db` (SQLite/Postgres/MySQL/Mongo) + `sqlite3` (acesso direto) | [`docs/db.md`](docs/db.md) |
+| `db` (SQLite/Postgres/MySQL/Mongo, alias de `psodbc`) + `sqlite3` (acesso direto) | [`docs/psodbc.md`](docs/psodbc.md) |
 | `hash`, `jwt` | [`docs/hash_jwt.md`](docs/hash_jwt.md) |
 | `manpu`/`mp` | [`docs/manpu.md`](docs/manpu.md) |
 | `json` | [`docs/json.md`](docs/json.md) |

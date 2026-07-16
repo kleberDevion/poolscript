@@ -240,6 +240,18 @@
       "detail": "psodbc.connect(driver?, host?, port?, user?, password?, database?, base?, url?, odbc_driver?, trust_server_cert?) — Conecta a um banco de dados — por parâmetros ou por URL."
     }
   ],
+  "db": [
+    {
+      "name": "query",
+      "kind": "function",
+      "detail": "db.query(base?, cmd?, table?) — SQLite — modo convencional e modo curto."
+    },
+    {
+      "name": "connect",
+      "kind": "function",
+      "detail": "db.connect(driver?, host?, port?, user?, password?, database?, base?, url?, odbc_driver?, trust_server_cert?) — Conecta a um banco de dados — por parâmetros ou por URL."
+    }
+  ],
   "hash": [
     {
       "name": "crypt",

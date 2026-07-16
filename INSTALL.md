@@ -28,5 +28,5 @@ pool examples/01_hello.ps
 ## Extensão VSCode (opcional)
 
 ```bash
-code --install-extension psl-poolscript-vsix/psl-poolscript-1.4.1.vsix
+code --install-extension psl-poolscript-vsix/psl-poolscript-1.4.3.vsix
 ```

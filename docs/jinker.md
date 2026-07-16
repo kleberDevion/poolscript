@@ -97,6 +97,20 @@ return "olá mundo"
 return None    # responde 204
 ```
 
+`jsonify(...)` devolve um objeto `JinkerResponse`, encadeável com `.header()`
+pra mandar cabeçalhos customizados e `.status()` pra trocar o código depois:
+
+```
+return jsonify({"msg": "ok"}).header("X-Request-Id", "abc123"), 200
+return jsonify({"msg": "criado"}).status(201)   // status() dispensa a tupla
+```
+
+`request` (o parâmetro implícito de toda rota) é uma instância de
+`JinkerRequest`; o objeto de retorno é `JinkerResponse` — ambos exportados
+pela lib (`from jinker import JinkerRequest, JinkerResponse`) caso precise
+checar o tipo (`request is JinkerRequest`) ou construir uma resposta na mão
+em vez de usar `jsonify`/`render`.
+
 ---
 
 ## Middleware

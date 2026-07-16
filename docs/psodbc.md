@@ -7,6 +7,11 @@ o que é interno/privado do módulo Python (não aparece do lado de fora).
 
 ## Acessível — `import psodbc`
 
+```
+import psodbc
+// ou: import db   (alias)
+```
+
 O interpretador só expõe o que está no dict `EXPORTS` de `psodbc_lib.py`.
 Qualquer outra coisa do arquivo **não existe** em `psodbc.*` dentro de um
 script.
@@ -29,6 +34,79 @@ se o servidor tiver certificado de CA confiável de verdade.
 Conexão `mssql` já abre com `autocommit=True` — sem isso comandos como
 `CREATE DATABASE`/`DROP DATABASE` são rejeitados pelo SQL Server por rodarem
 dentro de uma transação implícita.
+
+---
+
+## Exemplos
+
+**SQLite — modo convencional** (igual aos outros drivers: `connect()` +
+`cursor()` + `execute()` + `fetchall()`):
+
+```
+import psodbc
+
+conn = psodbc.connect(driver="sqlite", base="meu_banco.db")
+cursor = conn.cursor()
+cursor.execute("SELECT * FROM users")
+result = cursor.fetchall()
+post(result)
+conn.close()
+```
+
+**SQLite — modo curto** (`query()` já devolve os dados prontos, sem passar por
+`cursor()`):
+
+```
+resultado = psodbc.query(base="meu_banco.db", cmd="SELECT * FROM @t", table="users")
+post(resultado)   // list[dict], ou None se não for SELECT
+```
+
+**Por parâmetros — Postgres/MySQL/SQL Server**:
+
+```
+conn = psodbc.connect(
+    driver="postgres",
+    host="localhost",
+    port=5432,
+    user="admin",
+    password="senha",
+    database="meu_banco"
+)
+cursor = conn.cursor()
+cursor.execute("SELECT * FROM users WHERE ativo = ?", (true,))
+post(cursor.fetchall())
+conn.close()
+```
+
+**Por URL de conexão** — funciona com qualquer driver suportado, escolhido
+pelo prefixo:
+
+```
+conn = psodbc.connect(url="postgres://admin:senha@localhost:5432/meu_banco")
+conn = psodbc.connect(url="mysql://admin:senha@localhost:3306/meu_banco")
+conn = psodbc.connect(url="sqlserver://user:senha@localhost:1433/meu_banco")
+conn = psodbc.connect(url="mongodb://localhost:27017/meu_banco")
+conn = psodbc.connect(url="sqlite:///meu_banco.db")
+```
+
+**SQL Server local com autenticação do Windows** (sem `user`/`password`):
+
+```
+conn = psodbc.connect(driver="sqlserver", host="localhost\\SQLEXPRESS", database="meu_banco")
+```
+
+**MongoDB** — API diferente (`.collection()` em vez de `cursor()`/`execute()`):
+
+```
+conn = psodbc.connect(driver="mongo", host="localhost", port=27017, database="meu_banco")
+col = conn.collection("users")
+
+achados = col.find({"nome": "ana"})
+post(achados)
+
+col.insert({"nome": "leo", "email": "leo@email.com"})
+conn.close()
+```
 
 ---
 

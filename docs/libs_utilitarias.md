@@ -176,13 +176,13 @@ action enviar_email(nome, email_destino) {
 import os
 ```
 
+### Variáveis de ambiente
+
 | Função | O que faz | Exemplo |
 |---|---|---|
-| `os.getenv("CHAVE")` | Lê variável de ambiente | `os.getenv("DB_PATH")` |
+| `os.getenv("CHAVE")` | Lê variável de ambiente (chama `dotenv.load()` sozinho) | `os.getenv("DB_PATH")` |
 | `os.getenv("CHAVE", "default")` | Lê com valor padrão | `os.getenv("PORT", "8000")` |
-| `os.path(caminho)` | Resolve caminho | `os.path("./dados")` |
-| `os.exists(caminho)` | Verifica se existe | `os.exists("banco.db")` |
-| `os.listdir(caminho)` | Lista arquivos | `os.listdir("./")` |
+| `os.environ(key=None)` | Lê 1 variável (sem `dotenv.load()` automático), ou o dict inteiro se `key` for omitido | `os.environ("PATH")`, `os.environ()` |
 
 ```
 import os
@@ -196,6 +196,69 @@ str porta = os.getenv("PORT", "7700")
 
 post(db)      # database.db
 post(porta)   # 7700
+```
+
+### Caminhos e arquivos
+
+`pathFile`/`pathFolder` buscam pelo nome a partir do diretório do `.ps` em
+execução e depois do `cwd` (inclusive em subpastas) — não é preciso montar o
+caminho relativo à mão.
+
+| Função | O que faz | Exemplo |
+|---|---|---|
+| `os.pathFile(nome)` | Caminho absoluto de um arquivo (erro se não achar) | `os.pathFile("dados.json")` |
+| `os.pathFolder(nome)` | Caminho absoluto de uma pasta (erro se não achar) | `os.pathFolder("uploads")` |
+| `os.exists(caminho)` | Verifica se existe (arquivo ou pasta) | `os.exists("banco.db")` |
+| `os.isfile(caminho)` | É um arquivo? | `os.isfile("banco.db")` |
+| `os.isdir(caminho)` | É uma pasta? | `os.isdir("uploads")` |
+| `os.size(caminho)` | Tamanho em bytes | `os.size("relatorio.pdf")` |
+| `os.rename(src, dst)` | Renomeia arquivo ou pasta | `os.rename("a.txt", "b.txt")` |
+| `os.copy(src, dst)` | Copia arquivo | `os.copy("a.txt", "backup/a.txt")` |
+| `os.move(src, dst)` | Move arquivo ou pasta | `os.move("a.txt", "arquivo/a.txt")` |
+| `os.loadFile(nome, encoding=null)` | Carrega conteúdo — binário (`.pdf/.jpg/.png/.docx`...) vira `PoolFile`, texto (`.txt/.json/.csv/.html`...) vira `str`/`dict`/`list` | `os.loadFile("dados.json")` |
+
+`loadFile` detecta o tipo pela extensão automaticamente. Pra forçar, passe
+`encoding="rb"` (só extensões binárias) ou um encoding de texto tipo `"utf-8"`
+(só extensões texto) — misturar dá erro claro (`TypeError`).
+
+`PoolFile` (o que `loadFile` devolve pra binários) tem `.name`, `.ext`,
+`.size`, `.bytes()`, `.path()`, `.move(destino)`, `.copy(destino)`,
+`.delete()`.
+
+### Diretórios
+
+| Função | O que faz | Exemplo |
+|---|---|---|
+| `os.cwd()` | Diretório atual | `os.cwd()` |
+| `os.chdir(caminho)` | Muda o diretório atual | `os.chdir("uploads")` |
+| `os.mkdir(caminho, exist_ok=false)` | Cria diretório (cria pais também) | `os.mkdir("uploads/2026", exist_ok=true)` |
+| `os.rmdir(caminho, force=false)` | Remove diretório — `force=true` remove mesmo com conteúdo | `os.rmdir("tmp", force=true)` |
+| `os.ls(caminho=".")` | Lista arquivos/pastas com `name`/`type`/`size` | `os.ls("./uploads")` |
+
+### Sistema / terminal
+
+| Função | O que faz | Exemplo |
+|---|---|---|
+| `os.cmd(comando, capture=false)` | Roda comando no shell; `capture=true` devolve a saída como `str` em vez de imprimir | `os.cmd("python --version", capture=true)` |
+| `os.code(caminho=".")` | Abre o editor de código instalado (VS Code, Cursor, Zed, nano, vim, nessa ordem) no caminho | `os.code("./meu_projeto")` |
+| `os.warn(texto="", color="yellow")` | Mensagem colorida no terminal (`red/green/yellow/blue/magenta/cyan/white`) | `os.warn("Pasta criada", color="blue")` |
+| `os.ipmach()` | Descobre e imprime o IP da máquina, devolve como `str` | `ip = os.ipmach()` |
+
+```
+import os
+
+os.mkdir("uploads", exist_ok=true)
+os.warn("Pasta criada!", color="green")
+
+if (os.isfile("uploads/antigo.txt")) {
+    os.rename("uploads/antigo.txt", "uploads/backup.txt")
+}
+
+for each item in os.ls("uploads"):
+    post(item["name"] " - " item["type"])
+
+versao = os.cmd("python --version", capture=true)
+post(versao)
 ```
 
 ---

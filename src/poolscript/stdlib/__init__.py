@@ -15,7 +15,7 @@ def _stub(lib_name: str):
         def _missing(*args, **kwargs):
             raise NotImplementedError(
                 f"`{lib_name}.{name}` ainda não está implementado nesta versão da PoolScript. "
-                f"Libs disponíveis: os, json, dotenv, request, mail, date, psodbc, hash, jwt, jinker."
+                f"Libs disponíveis: os, json, dotenv, request, mail, date, db, hash, jwt, jinker."
             )
         return _missing
     return _factory
@@ -45,6 +45,7 @@ _LAZY_LOADERS: dict[str, str] = {
     "date":    "date_lib",
     "jinker":  "jinker_lib",
     "psodbc":  "psodbc_lib",
+    "db":      "psodbc_lib",
     "hash":    "hash_lib",
     "jwt":     "jwt_lib",
     "request": "request_lib",

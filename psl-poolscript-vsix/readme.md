@@ -28,7 +28,7 @@ IntelliSense features require **Python 3.10+** on your PATH (or configured via `
 
 ## Install (.vsix)
 ```bash
-code --install-extension psl-poolscript-1.4.1.vsix
+code --install-extension psl-poolscript-1.4.3.vsix
 ```
 
 Then activate the theme: **Ctrl+K Ctrl+T → "Dracula (PoolScript)"**.
