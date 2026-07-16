@@ -3,11 +3,14 @@ from __future__ import annotations
 import os
 import tempfile
 import pytest
+from unittest.mock import MagicMock
 
 from poolscript import run_source
 from poolscript.stdlib import resolve_module
 from poolscript.stdlib.date_lib import time as ps_time, today as ps_today, datahora
-from poolscript.stdlib.mail_lib import MailServer, MailMessage, HOSTS_CONFIG
+from poolscript.stdlib.mail_lib import (
+    MailServer, MailMessage, HOSTS_CONFIG, MailReader, IMAP_HOSTS_CONFIG,
+)
 from poolscript.builtins import FileHandle, ps_open, ps_len, ps_range, ps_type
 
 
@@ -21,6 +24,7 @@ def test_mail_lib_registrado():
     assert mail is not None
     assert "MailServer" in mail
     assert "MailMessage" in mail
+    assert "MailReader" in mail
 
 
 def test_date_lib_registrada():
@@ -105,6 +109,115 @@ def test_mail_server_send_sem_conn():
     s = MailServer()
     with pytest.raises(RuntimeError):
         s.send("x@x.com", "s", "b")
+
+
+# ── lib mail — MailReader (leitura via IMAP, sem rede) ───────────────────
+
+def test_mail_reader_registrado_no_exports():
+    mail = resolve_module(["mail"])
+    assert "MailReader" in mail
+    assert mail["MailReader"] is MailReader
+
+
+def test_mail_reader_imap_hosts_config():
+    assert IMAP_HOSTS_CONFIG["gmail.com"] == ("imap.gmail.com", 993)
+    assert "outlook.com" in IMAP_HOSTS_CONFIG
+    # não interfere no mapa de SMTP do MailServer
+    assert HOSTS_CONFIG["gmail.com"] == ("smtp.gmail.com", 587)
+
+
+def test_mail_reader_select_sem_conn():
+    r = MailReader()
+    with pytest.raises(RuntimeError):
+        r.select("INBOX")
+
+
+def test_mail_reader_search_sem_select():
+    r = MailReader()
+    r.server = MagicMock()  # conectado, mas sem pasta selecionada
+    with pytest.raises(RuntimeError):
+        r.search("ALL")
+
+
+def test_mail_reader_select_retorna_self_encadeavel():
+    r = MailReader()
+    r.server = MagicMock()
+    r.server.select.return_value = ("OK", [b"1"])
+    assert r.select("INBOX") is r
+    assert r.folder == "INBOX"
+
+
+def test_mail_reader_search_subject_sem_term():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    with pytest.raises(ValueError):
+        r.search("SUBJECT")
+
+
+def test_mail_reader_search_criterio_desconhecido():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    with pytest.raises(ValueError):
+        r.search("BOGUS")
+
+
+def test_mail_reader_search_retorna_dicts_decodificados():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b"1 2"])
+    r.server.fetch.side_effect = [
+        ("OK", [(b"1 (RFC822.HEADER)", (
+            b"From: a@x.com\r\nSubject: Oi\r\nDate: Mon, 01 Jan 2026 10:00:00 +0000\r\n\r\n"
+        ))]),
+        ("OK", [(b"2 (RFC822.HEADER)", (
+            b"From: b@y.com\r\nSubject: =?UTF-8?B?T2zDoQ==?=\r\nDate: Tue, 02 Jan 2026 11:00:00 +0000\r\n\r\n"
+        ))]),
+    ]
+    resultados = r.search("ALL")
+    assert resultados == [
+        {"id": "1", "from": "a@x.com", "subject": "Oi", "date": "Mon, 01 Jan 2026 10:00:00 +0000"},
+        {"id": "2", "from": "b@y.com", "subject": "Olá", "date": "Tue, 02 Jan 2026 11:00:00 +0000"},
+    ]
+
+
+def test_mail_reader_search_respeita_limit():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b"1 2 3 4 5"])
+    r.server.fetch.return_value = ("OK", [(b"x", b"From: a@x.com\r\nSubject: s\r\nDate: d\r\n\r\n")])
+    resultados = r.search("ALL", limit=2)
+    assert len(resultados) == 2
+
+
+def test_mail_reader_search_from_e_since_usam_term():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b""])
+
+    r.search("FROM", "joao@empresa.com")
+    r.server.search.assert_called_with(None, "FROM", '"joao@empresa.com"')
+
+    r.search("SINCE", "01-Jan-2026")
+    r.server.search.assert_called_with(None, "SINCE", '"01-Jan-2026"')
+
+
+def test_mail_reader_close_desconecta():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    assert r.close() is True
+    assert r.server is None
+    assert r.folder is None
+
+
+def test_mail_reader_close_sem_conexao_nao_quebra():
+    r = MailReader()
+    assert r.close() is True
 
 
 # ── built-in open + FileHandle ───────────────────────────────────────────

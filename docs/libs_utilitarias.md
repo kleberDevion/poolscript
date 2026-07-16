@@ -69,7 +69,70 @@ Body em HTML:
 m.body("<h1>Olá!</h1><p>Bem vindo.</p>", true)
 ```
 
-### Exemplo completo
+### Lendo e-mails (`MailReader`)
+
+```
+r = mail.MailReader()
+r.conn("gmail.com")
+r.login(user="seu@gmail.com", password="sua_senha_app")
+```
+
+`.conn()` auto-mapeia o mesmo conjunto de provedores do `MailServer` (gmail, yahoo, outlook, hotmail, live) pra host/porta IMAP — só o Proton não tem mapeamento automático aqui porque exige a ponte local (Proton Mail Bridge); nesse caso passe `host` e `port` manualmente: `r.conn("127.0.0.1", 1143)`.
+
+`.select()` escolhe a pasta e retorna o próprio objeto, então dá pra encadear direto com `.search()`:
+
+```
+emails = r.select("INBOX", true).search("UNSEEN")   // true = readonly, não marca como lida
+```
+
+`.search(criterion_type, term, limit)` aceita:
+
+| `criterion_type` | `term` | O que faz |
+|---|---|---|
+| `"ALL"` | — | Todas as mensagens da pasta |
+| `"UNSEEN"` | — | Só as não lidas |
+| `"SUBJECT"` | obrigatório | Filtra por palavra no assunto |
+| `"FROM"` | obrigatório | Filtra pelo remetente |
+| `"SINCE"` | obrigatório, `"DD-Mon-YYYY"` | Mensagens recebidas depois da data |
+
+`limit` (opcional) corta o resultado pras N mensagens mais recentes.
+
+Cada mensagem volta como `{"id": ..., "from": ..., "subject": ..., "date": ...}` — assunto e remetente já vêm decodificados (sem `=?UTF-8?B?...?=` cru), mesmo que o servidor tenha mandado em base64/quoted-printable.
+
+```
+emails = r.select("INBOX").search("SUBJECT", "fatura", limit=5)
+for each e in emails:
+    post(e["from"] " - " e["subject"] " (" e["date"] ")")
+
+r.close()
+```
+
+### Exemplo completo — leitura
+
+```
+import mail
+from dotenv import load
+import os
+
+load()
+
+action verificar_caixa() {
+    r = mail.MailReader()
+    r.conn("gmail.com")
+    r.login(user=os.getenv("MAIL_SYSTEM"), password=os.getenv("PASSWORD_SYSTEM"))
+
+    nao_lidos = r.select("INBOX", true).search("UNSEEN")
+    post(f"{len(nao_lidos)} email(s) não lido(s)")
+
+    for each e in nao_lidos:
+        post(f'De: {e["from"]} | Assunto: {e["subject"]} | {e["date"]}')
+
+    r.close()
+}
+verificar_caixa()
+```
+
+### Exemplo completo — envio
 
 ```
 import mail

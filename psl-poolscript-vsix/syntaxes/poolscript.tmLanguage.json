@@ -278,8 +278,8 @@
           }
         },
         {
-          "comment": "mail lib — MailServer e MailMessage",
-          "match": "\\.(conn|login|send|quit|from_address|to|subject|body|attach|get_as_string)\\b",
+          "comment": "mail lib — MailServer, MailMessage e MailReader",
+          "match": "\\.(conn|login|send|quit|from_address|to|subject|body|attach|get_as_string|select|search|close)\\b",
           "captures": {
             "0": {
               "name": "support.function.stdlib.mail.poolscript"

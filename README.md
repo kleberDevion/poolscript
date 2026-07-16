@@ -330,6 +330,31 @@ server.send(msg)
 server.quit()
 ```
 
+### Lib `mail` — leitura (`MailReader`, v0.6.0)
+IMAP com auto-detecção de provedor (gmail, outlook, yahoo, hotmail):
+
+```poolscript
+import mail
+
+reader = mail.MailReader()
+reader.conn("gmail.com")                      // porta/host automáticos
+reader.login("user@gmail.com", "senha-de-app")
+
+reader.select("INBOX", true)                   // true = readonly (não marca como lida)
+emails = reader.search("UNSEEN")
+for each e in emails:
+    post(e["from"] " — " e["subject"] " (" e["date"] ")")
+
+// outros filtros: "ALL", "SUBJECT", "FROM", "SINCE"
+recentes = reader.select().search("SINCE", "01-Jan-2026", 10)   // 10 últimos desde a data
+do_joao   = reader.select().search("FROM", "joao@empresa.com")
+sobre_nf  = reader.select().search("SUBJECT", "nota fiscal")
+
+reader.close()
+```
+
+Cada item retornado é um dict: `{"id", "from", "subject", "date"}`.
+
 ### Lib `request` (atualizada)
 - `patch()` adicionado
 - Body dict/list vira JSON automaticamente

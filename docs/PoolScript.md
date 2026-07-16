@@ -489,7 +489,7 @@ post.flush("Pronto!", delay=0.08)
 | `dotenv` | `from dotenv import load` | Arquivo .env |
 | `date` | `import date` | Data e hora |
 | `db` | `import db` | SQLite, PostgreSQL, MySQL, MongoDB |
-| `mail` | `import mail` | Envio de email |
+| `mail` | `import mail` | Envio (`MailServer`/`MailMessage`) e leitura (`MailReader`, IMAP) de email |
 | `request` | `import request` | Requisições HTTP |
 | `hash` | `import hash` | Hash de senhas |
 | `jwt` | `import jwt` | Tokens JWT |

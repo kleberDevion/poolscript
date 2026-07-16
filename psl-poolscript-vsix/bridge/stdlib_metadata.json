@@ -152,6 +152,11 @@
       "name": "MailMessage",
       "kind": "class",
       "detail": "mail.MailMessage() — Construtor MIME para emails ricos (HTML + anexos)."
+    },
+    {
+      "name": "MailReader",
+      "kind": "class",
+      "detail": "mail.MailReader() — Conexão IMAP com TLS automático — busca e decodifica e-mails recebidos."
     }
   ],
   "date": [

@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.6.0 — Lib `mail`: leitura de e-mails (`MailReader`)
+
+### Lib `mail`
+- Nova classe **`MailReader`** — conexão IMAP, busca e decodificação de e-mails recebidos. Não altera `MailServer`/`MailMessage` (envio) já existentes.
+  - `.conn(provider_or_host, port=None)` — auto-mapeia host/porta IMAP pra gmail, yahoo, outlook, hotmail e live (`IMAP_HOSTS_CONFIG`, mesmo padrão do `HOSTS_CONFIG` de SMTP). Provedor/host fora do mapa (ex: Proton via bridge local) aceita host+porta manuais.
+  - `.login(user, password)`.
+  - `.select(folder="INBOX", readonly=True)` — retorna `self`, permite encadear com `.search()`.
+  - `.search(criterion_type="ALL", term=None, limit=None)` — filtros `ALL`, `UNSEEN`, `SUBJECT`, `FROM`, `SINCE`. Retorna lista de `{"id", "from", "subject", "date"}` com assunto/remetente já decodificados (headers MIME em base64/quoted-printable viram texto legível).
+  - `.close()` — fecha a pasta e desloga.
+- `EXPORTS` da lib `mail` ganhou a chave `"MailReader"`.
+
+### Testes
+- 12 novos testes em `tests/test_v0_3_0.py` cobrindo `MailReader` (registro em `EXPORTS`, mapa de hosts IMAP, encadeamento `.select().search()`, validação de argumentos, decodificação de headers, `limit`, `.close()`) — mockando `imaplib`, sem rede.
+- Total: **441 testes passando** (429 antigos + 12 novos, sem regressões).
+
+### Documentação
+- `README.md` e `docs/libs_utilitarias.md` ganharam seção de leitura de e-mail com exemplos completos.
+- `docs/PoolScript.md` — descrição da lib `mail` atualizada na tabela de libs.
+- Extensão VS Code (`psl-poolscript-vsix`): `stdlib_metadata.json` regenerado (`gen_stdlib_metadata.py`) e `poolscript.tmLanguage.json` atualizado com os métodos novos (`select`, `search`, `close`) pra syntax highlighting.
+
 ## v0.5.2 — Operador `count`
 
 ### Linguagem

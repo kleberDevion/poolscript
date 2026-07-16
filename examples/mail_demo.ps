@@ -1,11 +1,12 @@
-// Lib `mail` — envio de email via SMTP
+// Lib `mail` — envio (SMTP) e leitura (IMAP) de email
 // Para rodar de verdade, descomente e use credenciais reais (gmail exige senha de app).
 import mail
 
 post("== Lib mail carregada ==")
-post("Provedores auto: gmail.com, yahoo.com, outlook.com, hotmail.com, proton.me")
+post("Provedores auto (envio): gmail.com, yahoo.com, outlook.com, hotmail.com, proton.me")
+post("Provedores auto (leitura): gmail.com, yahoo.com, outlook.com, hotmail.com, live.com")
 
-// Exemplo (não executa de verdade):
+// Exemplo — envio (não executa de verdade):
 //
 // server = mail.MailServer()
 // server.conn("gmail.com")
@@ -20,3 +21,15 @@ post("Provedores auto: gmail.com, yahoo.com, outlook.com, hotmail.com, proton.me
 //
 // server.send(msg)
 // server.quit()
+
+// Exemplo — leitura (não executa de verdade):
+//
+// reader = mail.MailReader()
+// reader.conn("gmail.com")
+// reader.login("user@gmail.com", "senha-de-app")
+//
+// nao_lidos = reader.select("INBOX", true).search("UNSEEN")
+// for each e in nao_lidos:
+//     post(e["from"] " - " e["subject"] " (" e["date"] ")")
+//
+// reader.close()
