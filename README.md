@@ -350,8 +350,13 @@ recentes = reader.select().search("SINCE", "01-Jan-2026", 10)   // 10 últimos d
 do_joao   = reader.select().search("FROM", "joao@empresa.com")
 sobre_nf  = reader.select().search("SUBJECT", "nota fiscal")
 
+// corpo do e-mail: sob demanda pelo id, ou já embutido na busca (v0.6.1)
+corpo = reader.body(sobre_nf[0]["id"])
+com_corpo = reader.select().search("SUBJECT", "nota fiscal", include_body=true)
+
 reader.close()
 ```
+`SUBJECT`/`FROM` são *case-insensitive* (padrão do IMAP) e aceitam vírgula/espaço no termo sem problema. Veja [docs/mailreader_body.md](docs/mailreader_body.md) para os detalhes de `.body()` vs `include_body`.
 
 Cada item retornado é um dict: `{"id", "from", "subject", "date"}`.
 

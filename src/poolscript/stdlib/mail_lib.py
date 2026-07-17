@@ -67,6 +67,43 @@ def _decode_mime_header(raw_value):
     return texto
 
 
+def _decode_payload(part):
+    """Decodifica o payload de uma parte MIME respeitando seu charset declarado."""
+    payload = part.get_payload(decode=True)
+    if payload is None:
+        return ""
+    charset = part.get_content_charset() or "utf-8"
+    try:
+        return payload.decode(charset, errors="replace")
+    except LookupError:
+        return payload.decode("utf-8", errors="replace")
+
+
+def _extract_body(msg):
+    """Extrai o corpo de uma mensagem parseada — prefere text/plain, cai pra text/html."""
+    texto_plain = None
+    texto_html = None
+    if msg.is_multipart():
+        for part in msg.walk():
+            if "attachment" in str(part.get("Content-Disposition") or ""):
+                continue
+            content_type = part.get_content_type()
+            if content_type == "text/plain" and texto_plain is None:
+                texto_plain = _decode_payload(part)
+            elif content_type == "text/html" and texto_html is None:
+                texto_html = _decode_payload(part)
+    elif msg.get_content_type() == "text/html":
+        texto_html = _decode_payload(msg)
+    else:
+        texto_plain = _decode_payload(msg)
+    return texto_plain if texto_plain is not None else (texto_html or "")
+
+
+def _imap_quote(term):
+    """Escapa um termo pra uso como string entre aspas num comando IMAP SEARCH."""
+    return '"' + term.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 class MailServer:
     """Conexão SMTP com TLS automático."""
 
@@ -214,7 +251,7 @@ class MailReader:
         self.folder = folder
         return self
 
-    def search(self, criterion_type="ALL", term=None, limit=None):
+    def search(self, criterion_type="ALL", term=None, limit=None, include_body=False):
         if self.server is None or self.folder is None:
             raise RuntimeError("chame .select() antes de .search()")
 
@@ -224,7 +261,7 @@ class MailReader:
         elif criterio in self._CRITERIOS_COM_TERM:
             if not term:
                 raise ValueError(f'.search("{criterio}") exige o argumento term')
-            typ, data = self.server.search(None, criterio, f'"{term}"')
+            typ, data = self.server.search("UTF-8", criterio, _imap_quote(term))
         else:
             raise ValueError(
                 f"criterion_type desconhecido: '{criterion_type}'. "
@@ -238,19 +275,35 @@ class MailReader:
         if limit:
             ids = ids[-int(limit):]
 
+        fetch_spec = "(RFC822)" if include_body else "(RFC822.HEADER)"
+
         resultados = []
         for eid in ids:
-            typ, msg_data = self.server.fetch(eid, "(RFC822.HEADER)")
+            typ, msg_data = self.server.fetch(eid, fetch_spec)
             if typ != "OK" or not msg_data or not msg_data[0]:
                 continue
             msg = email.message_from_bytes(msg_data[0][1])
-            resultados.append({
+            item = {
                 "id": eid.decode(),
                 "from": _decode_mime_header(msg.get("From", "")),
                 "subject": _decode_mime_header(msg.get("Subject", "")),
                 "date": msg.get("Date", ""),
-            })
+            }
+            if include_body:
+                item["body"] = _extract_body(msg)
+            resultados.append(item)
         return resultados
+
+    def body(self, id):
+        """Busca e decodifica o corpo de um e-mail específico pelo id retornado por .search()."""
+        if self.server is None or self.folder is None:
+            raise RuntimeError("chame .select() antes de .body()")
+        eid = id.encode() if isinstance(id, str) else id
+        typ, msg_data = self.server.fetch(eid, "(RFC822)")
+        if typ != "OK" or not msg_data or not msg_data[0]:
+            raise RuntimeError(f"não foi possível buscar o e-mail id={id}")
+        msg = email.message_from_bytes(msg_data[0][1])
+        return _extract_body(msg)
 
     def close(self):
         if self.server:

@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.6.1 — Lib `mail`: corpo de e-mail no `MailReader`
+
+### Lib `mail`
+- `MailReader.search()` só buscava `RFC822.HEADER` — o corpo do e-mail nunca era baixado. Duas formas de resolver:
+  - **`.body(id)`** — novo método, busca e decodifica o corpo (`RFC822` completo) de um e-mail específico pelo `id` retornado por `.search()`. Prefere a parte `text/plain`; cai pra `text/html` se não houver texto puro. Ignora partes marcadas como anexo.
+  - **`.search(..., include_body=True)`** — parâmetro novo, opcional (default `False`). Quando ligado, cada resultado já vem com a chave `"body"`, evitando um fetch por e-mail depois. Mais caro se a busca trouxer muitos resultados — prefira `.body(id)` sob demanda nesse caso.
+- Corrigido `.search()` pra usar `CHARSET UTF-8` no comando IMAP (antes usava `None`, que assume US-ASCII e falha silenciosamente com termos acentuados — comum em assunto de e-mail em PT-BR). Termos com `"` ou `\` agora são escapados corretamente (`_imap_quote`) em vez de interpolados crus na string do comando.
+- `SUBJECT`/`FROM`/etc. já eram (e continuam sendo) *case-insensitive substring match* — isso é definido pelo protocolo IMAP (RFC 3501), não pela lib. Vírgula e espaços dentro do termo sempre funcionaram, por já irem entre aspas como uma única string.
+
+### Testes
+- 9 novos testes em `tests/test_v0_3_0.py`: `include_body` liga/desliga o fetch de `RFC822` vs `RFC822.HEADER`, `.body()` com e-mail multipart (prioriza plain sobre html), `.body()` só-html, `.body()` sem `.select()`, `.body()` com fetch falho, escaping de aspas/barra invertida no termo de busca, termo acentuado com vírgula.
+- Total: **450 testes passando** (441 antigos + 9 novos, sem regressões).
+
+### Documentação
+- `README.md`, `docs/libs_utilitarias.md`, `docs/PoolScript.md` — atualizados com `.body()` e `include_body`.
+- Novo `docs/mailreader_body.md` — guia dedicado sobre acesso ao corpo do e-mail: por que não vinha, as duas formas de pegar agora, e a real do `SUBJECT` case-insensitive/charset.
+- Extensão VS Code (`psl-poolscript-vsix`): `stdlib_metadata.json` regenerado, `poolscript.tmLanguage.json` ganhou `body` no regex de highlighting da lib `mail`.
+
 ## v0.6.0 — Lib `mail`: leitura de e-mails (`MailReader`)
 
 ### Lib `mail`

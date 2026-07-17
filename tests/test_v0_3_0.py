@@ -200,10 +200,113 @@ def test_mail_reader_search_from_e_since_usam_term():
     r.server.search.return_value = ("OK", [b""])
 
     r.search("FROM", "joao@empresa.com")
-    r.server.search.assert_called_with(None, "FROM", '"joao@empresa.com"')
+    r.server.search.assert_called_with("UTF-8", "FROM", '"joao@empresa.com"')
 
     r.search("SINCE", "01-Jan-2026")
-    r.server.search.assert_called_with(None, "SINCE", '"01-Jan-2026"')
+    r.server.search.assert_called_with("UTF-8", "SINCE", '"01-Jan-2026"')
+
+
+def test_mail_reader_search_escapa_aspas_e_barra_no_term():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b""])
+
+    r.search("SUBJECT", 'nota "urgente" \\ importante')
+    r.server.search.assert_called_with(
+        "UTF-8", "SUBJECT", '"nota \\"urgente\\" \\\\ importante"'
+    )
+
+
+def test_mail_reader_search_com_termo_acentuado_e_virgula():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b""])
+
+    r.search("SUBJECT", "Relatório, urgente")
+    r.server.search.assert_called_with("UTF-8", "SUBJECT", '"Relatório, urgente"')
+
+
+def test_mail_reader_search_include_body_busca_rfc822_completo():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b"1"])
+    r.server.fetch.return_value = ("OK", [(b"1 (RFC822)", (
+        b"From: a@x.com\r\nSubject: Oi\r\nDate: d\r\n"
+        b"Content-Type: text/plain; charset=utf-8\r\n\r\n"
+        b"corpo em texto puro"
+    ))])
+
+    resultados = r.search("ALL", include_body=True)
+    r.server.fetch.assert_called_with(b"1", "(RFC822)")
+    assert resultados[0]["body"] == "corpo em texto puro"
+
+
+def test_mail_reader_search_sem_include_body_nao_traz_corpo():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.search.return_value = ("OK", [b"1"])
+    r.server.fetch.return_value = ("OK", [(b"1 (RFC822.HEADER)", (
+        b"From: a@x.com\r\nSubject: Oi\r\nDate: d\r\n\r\n"
+    ))])
+
+    resultados = r.search("ALL")
+    r.server.fetch.assert_called_with(b"1", "(RFC822.HEADER)")
+    assert "body" not in resultados[0]
+
+
+def test_mail_reader_body_retorna_texto_plain_de_email_multipart():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    raw = (
+        b"From: a@x.com\r\nSubject: Oi\r\n"
+        b'Content-Type: multipart/alternative; boundary="B"\r\n\r\n'
+        b"--B\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+        b"texto simples\r\n"
+        b"--B\r\nContent-Type: text/html; charset=utf-8\r\n\r\n"
+        b"<p>texto html</p>\r\n"
+        b"--B--\r\n"
+    )
+    r.server.fetch.return_value = ("OK", [(b"5 (RFC822)", raw)])
+
+    corpo = r.body("5")
+    r.server.fetch.assert_called_with(b"5", "(RFC822)")
+    assert corpo == "texto simples"
+
+
+def test_mail_reader_body_cai_pra_html_se_nao_tiver_plain():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    raw = (
+        b"From: a@x.com\r\nSubject: Oi\r\n"
+        b"Content-Type: text/html; charset=utf-8\r\n\r\n"
+        b"<p>somente html</p>"
+    )
+    r.server.fetch.return_value = ("OK", [(b"9 (RFC822)", raw)])
+
+    corpo = r.body("9")
+    assert corpo == "<p>somente html</p>"
+
+
+def test_mail_reader_body_sem_select_da_erro():
+    r = MailReader()
+    r.server = MagicMock()
+    with pytest.raises(RuntimeError):
+        r.body("1")
+
+
+def test_mail_reader_body_fetch_falho_da_erro():
+    r = MailReader()
+    r.server = MagicMock()
+    r.folder = "INBOX"
+    r.server.fetch.return_value = ("NO", [None])
+    with pytest.raises(RuntimeError):
+        r.body("1")
 
 
 def test_mail_reader_close_desconecta():

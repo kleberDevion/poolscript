@@ -32,4 +32,8 @@ post("Provedores auto (leitura): gmail.com, yahoo.com, outlook.com, hotmail.com,
 // for each e in nao_lidos:
 //     post(e["from"] " - " e["subject"] " (" e["date"] ")")
 //
+// // corpo do e-mail — sob demanda pelo id, ou embutido na busca:
+// corpo = reader.body(nao_lidos[0]["id"])
+// com_corpo = reader.select().search("UNSEEN", include_body=true)
+//
 // reader.close()

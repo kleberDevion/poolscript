@@ -97,7 +97,7 @@ emails = r.select("INBOX", true).search("UNSEEN")   // true = readonly, não mar
 
 `limit` (opcional) corta o resultado pras N mensagens mais recentes.
 
-Cada mensagem volta como `{"id": ..., "from": ..., "subject": ..., "date": ...}` — assunto e remetente já vêm decodificados (sem `=?UTF-8?B?...?=` cru), mesmo que o servidor tenha mandado em base64/quoted-printable.
+Cada mensagem volta como `{"id": ..., "from": ..., "subject": ..., "date": ...}` — assunto e remetente já vêm decodificados (sem `=?UTF-8?B?...?=` cru), mesmo que o servidor tenha mandado em base64/quoted-printable. `SUBJECT`/`FROM` são case-insensitive (o protocolo IMAP já garante isso) e o termo pode ter vírgula, espaço, acento — tudo bem.
 
 ```
 emails = r.select("INBOX").search("SUBJECT", "fatura", limit=5)
@@ -106,6 +106,22 @@ for each e in emails:
 
 r.close()
 ```
+
+### Corpo do e-mail (v0.6.1)
+
+`.search()` por padrão só traz os headers (`id`/`from`/`subject`/`date`) — não baixa o corpo, que é o dado mais pesado. Duas formas de pegar:
+
+```
+// (a) sob demanda, só do e-mail que interessa
+emails = r.select("INBOX").search("SUBJECT", "fatura")
+corpo = r.body(emails[0]["id"])
+
+// (b) já embutido em cada resultado da busca
+emails = r.select("INBOX").search("SUBJECT", "fatura", include_body=true)
+post(emails[0]["body"])
+```
+
+Use `(a)` quando a busca pode trazer muitos resultados e você só vai abrir alguns; use `(b)` quando já sabe que vai precisar do corpo de todos. `.body()` prefere a parte `text/plain`; se o e-mail só tiver HTML, cai pro HTML cru (sem strip de tags). Veja [mailreader_body.md](mailreader_body.md) para os detalhes.
 
 ### Exemplo completo — leitura
 

@@ -3,7 +3,7 @@ from .interpreter import run_source, Interpreter, PoolRuntimeError
 from .parser import parse_source, PoolParseError
 from .lexer import Lexer, PoolSyntaxError
 
-__version__ = "8.1.1"
+__version__ = "8.2.0"
 
 __all__ = [
     "run_source",
