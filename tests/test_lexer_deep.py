@@ -196,6 +196,54 @@ def test_identifier_named_f_or_r_without_adjacent_quote_is_ident():
     assert toks("r = 2")[0].type == "IDENT"
 
 
+# ═══════════════════════════ strings multi-linha '''...''' ══════════════════
+# Aspas duplas triplas (""") já são comentário de bloco — string multi-linha
+# usa aspas simples triplas pra não colidir com isso.
+
+def test_triple_single_quote_string_spans_lines():
+    t = toks("'''linha 1\nlinha 2'''")[0]
+    assert t.type == "STR"
+    assert t.value == "linha 1\nlinha 2"
+
+
+def test_triple_single_quote_fstring_tokenizes_as_fstring():
+    t = toks("f'''oi {x}\nsegunda'''")[0]
+    assert t.type == "FSTRING"
+    assert t.value == "oi {x}\nsegunda"
+
+
+def test_triple_single_quote_raw_string_preserves_backslashes():
+    t = toks("r'''C:\\Users\\test\nsem escape'''")[0]
+    assert t.type == "STR"
+    assert t.value == "C:\\Users\\test\nsem escape"
+
+
+def test_triple_single_quote_string_processes_escapes_when_not_raw():
+    t = toks("'''a\\nb'''")[0]
+    assert t.value == "a\nb"
+
+
+def test_triple_double_quote_remains_block_comment_not_string():
+    # não regride: aspas duplas triplas continuam sendo comentário, não string
+    tk = types('"""comentario"""\nx')
+    assert "STR" not in tk
+    assert tk.count("IDENT") == 1
+
+
+def test_unterminated_triple_string_raises():
+    with pytest.raises(PoolSyntaxError):
+        toks("'''abc sem fechar")
+
+
+def test_line_tracking_correct_after_multiline_string():
+    # depois de consumir uma string de N linhas, o token seguinte precisa
+    # reportar o número de linha certo (regressão: contagem manual de \n
+    # dentro de _read_triple_string tem que bater com o resto do lexer)
+    tokens = toks("x = '''a\nb\nc'''\ny = 1")
+    y_tok = next(t for t in tokens if t.type == "IDENT" and t.value == "y")
+    assert y_tok.line == 4
+
+
 # ═══════════════════════════ cores ══════════════════════════════════════════
 
 def test_hex_color_6_digits():

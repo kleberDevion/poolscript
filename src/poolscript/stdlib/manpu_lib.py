@@ -225,10 +225,11 @@ class ManpuFile:
     Funciona com `using mp.open(...) as arq { ... }` da PoolScript.
     """
 
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, encoding: str = "utf-8"):
         self.filepath = str(filepath)
         self._ext = _ext(self.filepath)
         self._path = Path(self.filepath)
+        self._encoding = encoding
         self._wb = None  # workbook xlsx
         self._rows = None  # rows csv
         self._text = None  # texto puro
@@ -236,7 +237,7 @@ class ManpuFile:
         # Carrega o arquivo
         if self._ext == "csv":
             if self._path.is_file():
-                with open(self._path, newline="", encoding="utf-8") as f:
+                with open(self._path, newline="", encoding=self._encoding) as f:
                     self._rows = list(csv.reader(f))
             else:
                 self._rows = []
@@ -251,7 +252,7 @@ class ManpuFile:
             except ImportError:
                 pass
         else:
-            self._text = self._path.read_text(encoding="utf-8") if self._path.is_file() else ""
+            self._text = self._path.read_text(encoding=self._encoding) if self._path.is_file() else ""
 
     def write(self, content: Any = "", column: int = 0,
               cell: Any = None, celula: Any = None,
@@ -357,12 +358,12 @@ class ManpuFile:
         """Salva as alterações no arquivo."""
         try:
             if self._ext == "csv" and self._rows is not None:
-                with open(self._path, "w", newline="", encoding="utf-8") as f:
+                with open(self._path, "w", newline="", encoding=self._encoding) as f:
                     csv.writer(f).writerows(self._rows)
             elif self._ext in ("xlsx", "xls") and self._wb:
                 self._wb.save(self._path)
             elif self._text is not None:
-                self._path.write_text(self._text, encoding="utf-8")
+                self._path.write_text(self._text, encoding=self._encoding)
             return ManpuResult(True)
         except Exception as e:
             return ManpuResult(False, f"Error: {e}")
@@ -380,15 +381,19 @@ class ManpuFile:
         return f"<ManpuFile {self._path.name}>"
 
 
-def open_file(target: str) -> ManpuFile:
+def open_file(target: str, encoding: str = "utf-8") -> ManpuFile:
     """
     Abre um arquivo pra operações — use com `using`:
 
         using mp.open(target="meu.xlsx") as arq {
             arq.write(column=0, cell=full, content=lista)
         }
+
+    encoding: charset usado pra ler/escrever CSV e arquivos de texto puro
+    (ignorado para xlsx/xls). Default "utf-8" — passe "latin-1"/"cp1252"
+    etc. pra arquivos legados que não são utf-8.
     """
-    return ManpuFile(str(target))
+    return ManpuFile(str(target), encoding=encoding)
 
 
 def src(filepath: str) -> str:

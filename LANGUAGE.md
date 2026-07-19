@@ -1,4 +1,4 @@
-# PoolScript v8.2.0 — Referência da linguagem
+# PoolScript v8.2.3 — Referência da linguagem
 
 Este documento descreve, de forma completa, tudo que existe atualmente na linguagem
 PoolScript: sintaxe, tipos, controle de fluxo, funções, classes, tratamento de
@@ -171,6 +171,22 @@ com `\t` virando um TAB literal). Para caminhos/regex, use **string raw**:
 ```
 r"C:\Users\nome"     # preserva tudo literalmente, sem processar escapes
 r'C:\Users\nome'
+```
+
+**String multi-linha** — aspas simples **triplas** (`'''...'''`), combina com
+`f`/`r`. Aspas duplas triplas (`"""`) já são comentário de bloco (ver
+[Comentários](#comentários)), por isso multi-linha usa `'''` e não `"""`:
+
+```
+str sql = '''SELECT *
+FROM users
+WHERE ativo = 1'''
+
+f'''Olá {nome}!
+Segunda linha.'''
+
+r'''C:\Users\nome
+sem processar escape'''
 ```
 
 **f-string** (interpolação com chaves):
@@ -654,7 +670,7 @@ post(...)            // imprime (join dos argumentos com espaço) e guarda no ou
 post.flush(texto, delay=0.05)   // efeito de digitação, char a char
 input(prompt="")     // sempre devolve str
 
-open(path, modo)     // FileHandle
+open(path, mode="r", encoding="utf-8")     // FileHandle: .read() .readlines() .readline() .write(t) .writelines(l) .close()
 len(x)  range(...)  type(x)
 str(x)  int(x)  flo(x)  bool(x)   // conversores
 

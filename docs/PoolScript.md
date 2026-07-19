@@ -1,4 +1,4 @@
-# PoolScript v1.0.8
+# PoolScript v8.2.3
 
 Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
 Criada por Kleber Santana de Oliveira.
@@ -15,7 +15,7 @@ Verificando:
 
 ```bash
 pool --version
-# PoolScript v1.0.8
+# PoolScript  v8.2.3
 ```
 
 ---
@@ -37,7 +37,7 @@ pool repl
 ```
 
 ```
-PoolScript v1.0.8 — REPL
+PoolScript v8.2.3 — REPL
 Digite 'sair' ou Ctrl+C para sair.
 
 >>> str nome = "joao"
@@ -107,6 +107,22 @@ Aspas simples também funcionam:
 ```
 str x = 'texto aqui'
 ```
+
+Aspas simples **triplas** — `'''...'''` — abrem string multi-linha (útil pra
+SQL, textos longos etc.). Funciona com `f'''...'''` (interpolação) e
+`r'''...'''` (raw, sem escape):
+
+```
+str sql = '''SELECT *
+FROM users
+WHERE ativo = 1'''
+
+str msg = f'''Olá {nome}!
+Segunda linha.'''
+```
+
+Aspas **duplas** triplas (`"""`) são reservadas pra comentário de bloco (ver
+[Comentários](#comentários)) — não servem de string, só `'''` multi-linha.
 
 ---
 
@@ -401,6 +417,25 @@ count each int(7) in nums {
 
 ## using
 
+`using <expr> as <nome>` — igual `if`/`while`/`action`, aceita bloco com
+chaves `{ }` ou estilo Python com `:` e indentação (testado, os dois funcionam).
+
+Funciona com qualquer objeto que tenha `__enter__`/`__exit__` — o builtin
+global `open()` (sem import, sempre disponível) é o caso mais comum:
+
+```
+using open("log.txt", "a", encoding="utf-8") as f:
+    f.write("nova linha\n")
+# arquivo fechado automaticamente, mesmo se f.write() der erro
+```
+
+`open(path, mode="r", encoding="utf-8")` — `mode` aceita os mesmos valores do
+Python (`"r"`, `"w"`, `"a"`, `"rb"`, `"wb"`...); `encoding` é ignorado em modo
+binário (`"b"` no mode).
+
+E `manpu.open()` (lib separada, pensada pra CSV/XLSX estruturado — ver
+[manpu.md](manpu.md)):
+
 ```
 import manpu as mp
 
@@ -411,6 +446,15 @@ using mp.open(target="planilha.xlsx") as arq {
 }
 # arquivo salvo e fechado automaticamente
 ```
+
+```
+using mp.open(target="planilha.xlsx", encoding="latin-1") as arq:
+    arq.write(column=0, cell=full, content=lista)
+# arquivo salvo e fechado automaticamente
+```
+
+`mp.open()` aceita `encoding=` (default `"utf-8"`) pra CSV/texto puro —
+veja [manpu.md](manpu.md).
 
 ---
 
@@ -469,7 +513,7 @@ post(VERSAO)       # 1.0
 | `len(x)` | Tamanho de lista, string ou dict |
 | `range(n)` | Lista de 0 até n-1 |
 | `type(x)` | Tipo do valor |
-| `open(path)` | Abre arquivo |
+| `open(path, mode="r", encoding="utf-8")` | Abre arquivo — devolve `FileHandle` (`.read()`, `.readlines()`, `.readline()`, `.write(texto)`, `.writelines(lista)`, `.close()`). Use com `using` pra fechar automático |
 | `load()` | Carrega o .env |
 
 ### post.flush()

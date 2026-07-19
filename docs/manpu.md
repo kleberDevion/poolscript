@@ -128,6 +128,29 @@ using mp.open(target="compras.xlsx") as arq {
 # arquivo salvo e fechado automaticamente
 ```
 
+`using` aceita bloco com chaves `{ }` (como acima) ou estilo Python com `:` e
+indentação — são a mesma sintaxe, `using` não é diferente de `if`/`while`/
+`action` nesse sentido:
+
+```
+using mp.open(target="compras.xlsx") as arq:
+    arq.write(column=0, cell=full, content=lista)
+# arquivo salvo e fechado automaticamente
+```
+
+**Parâmetros de `mp.open()`:**
+
+| Parâmetro | Descrição |
+|---|---|
+| `target` | Caminho do arquivo |
+| `encoding` | Charset pra ler/escrever CSV e texto puro (default `"utf-8"`; ignorado em xlsx/xls). Use `"latin-1"`, `"cp1252"` etc. pra arquivos legados que não são utf-8 |
+
+```
+using mp.open(target="legado.csv", encoding="latin-1") as arq:
+    dados = arq.read()
+    post(dados)
+```
+
 ### arq.write()
 
 ```

@@ -205,12 +205,14 @@
     {
       "name": "jsonify",
       "kind": "function",
-      "detail": "jinker.jsonify(data) — Atalho: jsonify(dict) → JinkerResponse com JSON."
+      "detail": "jinker.jsonify(data) — Atalho: jsonify(dict) → JinkerResponse com JSON.",
+      "returns": "JinkerResponse"
     },
     {
       "name": "render",
       "kind": "function",
-      "detail": "jinker.render(folder_or_file, file?) — Serve um arquivo estático com MIME type correto."
+      "detail": "jinker.render(folder_or_file, file?) — Serve um arquivo estático com MIME type correto.",
+      "returns": "JinkerResponse"
     },
     {
       "name": "JinkerRequest",
@@ -285,27 +287,32 @@
     {
       "name": "get",
       "kind": "function",
-      "detail": "request.get(url, headers?, body?, timeout?)"
+      "detail": "request.get(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "post",
       "kind": "function",
-      "detail": "request.post(url, headers?, body?, timeout?)"
+      "detail": "request.post(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "put",
       "kind": "function",
-      "detail": "request.put(url, headers?, body?, timeout?)"
+      "detail": "request.put(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "patch",
       "kind": "function",
-      "detail": "request.patch(url, headers?, body?, timeout?)"
+      "detail": "request.patch(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "delete",
       "kind": "function",
-      "detail": "request.delete(url, headers?, body?, timeout?)"
+      "detail": "request.delete(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "text",
@@ -315,7 +322,8 @@
     {
       "name": "ws_connect",
       "kind": "function",
-      "detail": "request.ws_connect(url) — Conecta a um servidor WebSocket."
+      "detail": "request.ws_connect(url) — Conecta a um servidor WebSocket.",
+      "returns": "WsConnection"
     }
   ],
   "requests": [
@@ -327,27 +335,32 @@
     {
       "name": "get",
       "kind": "function",
-      "detail": "requests.get(url, headers?, body?, timeout?)"
+      "detail": "requests.get(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "post",
       "kind": "function",
-      "detail": "requests.post(url, headers?, body?, timeout?)"
+      "detail": "requests.post(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "put",
       "kind": "function",
-      "detail": "requests.put(url, headers?, body?, timeout?)"
+      "detail": "requests.put(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "patch",
       "kind": "function",
-      "detail": "requests.patch(url, headers?, body?, timeout?)"
+      "detail": "requests.patch(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "delete",
       "kind": "function",
-      "detail": "requests.delete(url, headers?, body?, timeout?)"
+      "detail": "requests.delete(url, headers?, body?, timeout?)",
+      "returns": "Response"
     },
     {
       "name": "text",
@@ -357,7 +370,8 @@
     {
       "name": "ws_connect",
       "kind": "function",
-      "detail": "requests.ws_connect(url) — Conecta a um servidor WebSocket."
+      "detail": "requests.ws_connect(url) — Conecta a um servidor WebSocket.",
+      "returns": "WsConnection"
     }
   ],
   "manpu": [
@@ -374,17 +388,20 @@
     {
       "name": "write",
       "kind": "function",
-      "detail": "manpu.write(content?, column?, celula?, target?) — Escreve conteúdo em um arquivo."
+      "detail": "manpu.write(content?, column?, celula?, target?) — Escreve conteúdo em um arquivo.",
+      "returns": "ManpuResult"
     },
     {
       "name": "remove",
       "kind": "function",
-      "detail": "manpu.remove(value?, content?, column?, celula?, amount?, target?) — Remove conteúdo de um arquivo."
+      "detail": "manpu.remove(value?, content?, column?, celula?, amount?, target?) — Remove conteúdo de um arquivo.",
+      "returns": "ManpuResult"
     },
     {
       "name": "open",
       "kind": "function",
-      "detail": "manpu.open(target) — Abre um arquivo pra operações — use com `using`:"
+      "detail": "manpu.open(target, encoding?) — Abre um arquivo pra operações — use com `using`:",
+      "returns": "ManpuFile"
     },
     {
       "name": "src",
@@ -406,17 +423,20 @@
     {
       "name": "write",
       "kind": "function",
-      "detail": "mp.write(content?, column?, celula?, target?) — Escreve conteúdo em um arquivo."
+      "detail": "mp.write(content?, column?, celula?, target?) — Escreve conteúdo em um arquivo.",
+      "returns": "ManpuResult"
     },
     {
       "name": "remove",
       "kind": "function",
-      "detail": "mp.remove(value?, content?, column?, celula?, amount?, target?) — Remove conteúdo de um arquivo."
+      "detail": "mp.remove(value?, content?, column?, celula?, amount?, target?) — Remove conteúdo de um arquivo.",
+      "returns": "ManpuResult"
     },
     {
       "name": "open",
       "kind": "function",
-      "detail": "mp.open(target) — Abre um arquivo pra operações — use com `using`:"
+      "detail": "mp.open(target, encoding?) — Abre um arquivo pra operações — use com `using`:",
+      "returns": "ManpuFile"
     },
     {
       "name": "src",
@@ -443,7 +463,8 @@
     {
       "name": "sub",
       "kind": "function",
-      "detail": "regex.sub(pattern, repl, string, count?, flags?) — Substitui ocorrências do padrão. Retorna PoolStr (encadeável)."
+      "detail": "regex.sub(pattern, repl, string, count?, flags?) — Substitui ocorrências do padrão. Retorna PoolStr (encadeável).",
+      "returns": "PoolStr"
     },
     {
       "name": "split",
@@ -453,14 +474,16 @@
     {
       "name": "escape",
       "kind": "function",
-      "detail": "regex.escape(string) — Escapa caracteres especiais de regex."
+      "detail": "regex.escape(string) — Escapa caracteres especiais de regex.",
+      "returns": "PoolStr"
     }
   ],
   "sqlite3": [
     {
       "name": "connect",
       "kind": "function",
-      "detail": "sqlite3.connect(database, kwargs) — Abre conexão com banco SQLite. Cria o arquivo se não existir."
+      "detail": "sqlite3.connect(database, kwargs) — Abre conexão com banco SQLite. Cria o arquivo se não existir.",
+      "returns": "PoolConnection"
     }
   ],
   "qrcode": [
@@ -472,7 +495,8 @@
     {
       "name": "make",
       "kind": "function",
-      "detail": "qrcode.make(data, error_correction?, box_size?, border?, fill_color?, back_color?, name?) — Atalho estilo Python: `qrcode.make(data)`."
+      "detail": "qrcode.make(data, error_correction?, box_size?, border?, fill_color?, back_color?, name?) — Atalho estilo Python: `qrcode.make(data)`.",
+      "returns": "QRImage"
     },
     {
       "name": "QRCode",
@@ -509,7 +533,8 @@
     {
       "name": "make",
       "kind": "function",
-      "detail": "qr.make(data, error_correction?, box_size?, border?, fill_color?, back_color?, name?) — Atalho estilo Python: `qrcode.make(data)`."
+      "detail": "qr.make(data, error_correction?, box_size?, border?, fill_color?, back_color?, name?) — Atalho estilo Python: `qrcode.make(data)`.",
+      "returns": "QRImage"
     },
     {
       "name": "QRCode",
@@ -622,5 +647,247 @@
       "kind": "function",
       "detail": "dataentity.asjson(instance) — DataEntity → string JSON."
     }
-  ]
+  ],
+  "__classes__": {
+    "JinkerResponse": [
+      {
+        "name": "header",
+        "kind": "method",
+        "detail": "JinkerResponse.header(key, value)"
+      },
+      {
+        "name": "json",
+        "kind": "method",
+        "detail": "JinkerResponse.json(data, status?)"
+      },
+      {
+        "name": "send",
+        "kind": "method",
+        "detail": "JinkerResponse.send(text, status?)"
+      },
+      {
+        "name": "status",
+        "kind": "method",
+        "detail": "JinkerResponse.status(code)"
+      }
+    ],
+    "Response": [
+      {
+        "name": "get",
+        "kind": "method",
+        "detail": "Response.get(key) — Header (case-insensitive) ou chave do JSON parseado."
+      },
+      {
+        "name": "get_json",
+        "kind": "method",
+        "detail": "Response.get_json(key?)"
+      },
+      {
+        "name": "json",
+        "kind": "method",
+        "detail": "Response.json() — Retorna o body parseado como dict/list Python (None se inválido)."
+      }
+    ],
+    "WsConnection": [
+      {
+        "name": "close",
+        "kind": "method",
+        "detail": "WsConnection.close() — Fecha a conexão."
+      },
+      {
+        "name": "on_message",
+        "kind": "method",
+        "detail": "WsConnection.on_message(callback) — Define callback chamado quando chega mensagem."
+      },
+      {
+        "name": "send",
+        "kind": "method",
+        "detail": "WsConnection.send(data) — Envia uma mensagem pro servidor."
+      }
+    ],
+    "ManpuResult": [],
+    "ManpuFile": [
+      {
+        "name": "read",
+        "kind": "method",
+        "detail": "ManpuFile.read() — Lê o conteúdo do arquivo aberto."
+      },
+      {
+        "name": "save",
+        "kind": "method",
+        "detail": "ManpuFile.save() — Salva as alterações no arquivo."
+      },
+      {
+        "name": "write",
+        "kind": "method",
+        "detail": "ManpuFile.write(content?, column?, cell?, celula?, init?, sep?, size?) — Escreve conteúdo no arquivo aberto."
+      }
+    ],
+    "PoolStr": [
+      {
+        "name": "capitalize",
+        "kind": "method",
+        "detail": "PoolStr.capitalize() — Return a capitalized version of the string."
+      },
+      {
+        "name": "contains",
+        "kind": "method",
+        "detail": "PoolStr.contains(sub) — Alias legível: 'abc'.contains('a') → True"
+      },
+      {
+        "name": "endswith",
+        "kind": "method",
+        "detail": "PoolStr.endswith(suffix) — Return True if the string ends with the specified suffix, False otherwise."
+      },
+      {
+        "name": "findall",
+        "kind": "method",
+        "detail": "PoolStr.findall(pattern) — Retorna todas as ocorrências do padrão."
+      },
+      {
+        "name": "isalnum",
+        "kind": "method",
+        "detail": "PoolStr.isalnum() — Return True if the string is an alpha-numeric string, False otherwise."
+      },
+      {
+        "name": "isalpha",
+        "kind": "method",
+        "detail": "PoolStr.isalpha() — Return True if the string is an alphabetic string, False otherwise."
+      },
+      {
+        "name": "isdigit",
+        "kind": "method",
+        "detail": "PoolStr.isdigit() — Return True if the string is a digit string, False otherwise."
+      },
+      {
+        "name": "islower",
+        "kind": "method",
+        "detail": "PoolStr.islower() — Return True if the string is a lowercase string, False otherwise."
+      },
+      {
+        "name": "isnumeric",
+        "kind": "method",
+        "detail": "PoolStr.isnumeric() — Return True if the string is a numeric string, False otherwise."
+      },
+      {
+        "name": "isspace",
+        "kind": "method",
+        "detail": "PoolStr.isspace() — Return True if the string is a whitespace string, False otherwise."
+      },
+      {
+        "name": "isupper",
+        "kind": "method",
+        "detail": "PoolStr.isupper() — Return True if the string is an uppercase string, False otherwise."
+      },
+      {
+        "name": "join",
+        "kind": "method",
+        "detail": "PoolStr.join(iterable) — Concatenate any number of strings."
+      },
+      {
+        "name": "len",
+        "kind": "method",
+        "detail": "PoolStr.len()"
+      },
+      {
+        "name": "lower",
+        "kind": "method",
+        "detail": "PoolStr.lower() — Return a copy of the string converted to lowercase."
+      },
+      {
+        "name": "lstrip",
+        "kind": "method",
+        "detail": "PoolStr.lstrip(chars?) — Return a copy of the string with leading whitespace removed."
+      },
+      {
+        "name": "match",
+        "kind": "method",
+        "detail": "PoolStr.match(pattern) — Verifica se a string casa com o padrão (fullmatch)."
+      },
+      {
+        "name": "replace",
+        "kind": "method",
+        "detail": "PoolStr.replace(old, new?, count?) — .replace(\"alvo\", \"novo\")           → substitui string"
+      },
+      {
+        "name": "rstrip",
+        "kind": "method",
+        "detail": "PoolStr.rstrip(chars?) — Return a copy of the string with trailing whitespace removed."
+      },
+      {
+        "name": "split",
+        "kind": "method",
+        "detail": "PoolStr.split(sep?, maxsplit?) — Return a list of the substrings in the string, using sep as the separator string."
+      },
+      {
+        "name": "startswith",
+        "kind": "method",
+        "detail": "PoolStr.startswith(prefix) — Return True if the string starts with the specified prefix, False otherwise."
+      },
+      {
+        "name": "strip",
+        "kind": "method",
+        "detail": "PoolStr.strip(chars?) — Return a copy of the string with leading and trailing whitespace removed."
+      },
+      {
+        "name": "sub",
+        "kind": "method",
+        "detail": "PoolStr.sub(pattern, repl) — Substitui por regex. Encadeável."
+      },
+      {
+        "name": "title",
+        "kind": "method",
+        "detail": "PoolStr.title() — Return a version of the string where each word is titlecased."
+      },
+      {
+        "name": "upper",
+        "kind": "method",
+        "detail": "PoolStr.upper() — Return a copy of the string converted to uppercase."
+      }
+    ],
+    "PoolConnection": [
+      {
+        "name": "close",
+        "kind": "method",
+        "detail": "PoolConnection.close()"
+      },
+      {
+        "name": "commit",
+        "kind": "method",
+        "detail": "PoolConnection.commit()"
+      },
+      {
+        "name": "cursor",
+        "kind": "method",
+        "detail": "PoolConnection.cursor()"
+      },
+      {
+        "name": "execute",
+        "kind": "method",
+        "detail": "PoolConnection.execute(sql, params?) — Atalho: conn.execute() sem precisar criar cursor."
+      },
+      {
+        "name": "rollback",
+        "kind": "method",
+        "detail": "PoolConnection.rollback()"
+      }
+    ],
+    "QRImage": [
+      {
+        "name": "resize",
+        "kind": "method",
+        "detail": "QRImage.resize(width, height) — Redimensiona a imagem (equivalente ao qr32 do gen())."
+      },
+      {
+        "name": "save",
+        "kind": "method",
+        "detail": "QRImage.save(path) — Salva a imagem. Se path for pasta, usa self.name."
+      },
+      {
+        "name": "to_file",
+        "kind": "method",
+        "detail": "QRImage.to_file() — Converte para QRPoolFile (bytes em memória)."
+      }
+    ]
+  }
 }

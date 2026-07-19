@@ -1946,8 +1946,30 @@ class Interpreter:
 
             return self._exec_function_body(fn, local_scope, node)
         if callable(fn):
+            # Código nativo (stdlib) não sabe executar UserFunction/BoundMethod/
+            # StaticMethod diretamente — ex: connect.on_message(minhaReaction)
+            # guarda o valor e depois faz callback(msg) em Python puro, o que
+            # quebraria com "'UserFunction' object is not callable". Envolve
+            # qualquer função PoolScript passada como argumento pra código
+            # nativo num callable Python de verdade, que rechama de volta
+            # em self._call — assim funciona não importa de onde o nativo
+            # invoque (inclusive de outra thread, como callbacks de socket).
+            args = [self._wrap_pool_callable(a, node) for a in args]
+            kwargs = {k: self._wrap_pool_callable(v, node) for k, v in kwargs.items()}
             return fn(*args, **kwargs)
         raise PoolRuntimeError("tentativa de chamar algo que não é função", node, self.source, filename=self.filename)
+
+    def _wrap_pool_callable(self, value: Any, node: Node) -> Any:
+        """Se `value` for uma função PoolScript (UserFunction/BoundMethod/
+        StaticMethod), devolve um callable Python que a invoca via self._call
+        — permite que stdlib nativa guarde e chame de volta depois (ex:
+        on_message(callback), setTimeout-like, event handlers). Qualquer
+        outro valor volta inalterado."""
+        if isinstance(value, (UserFunction, BoundMethod, StaticMethod)):
+            def _invoke(*call_args, **call_kwargs):
+                return self._call(value, list(call_args), call_kwargs, node)
+            return _invoke
+        return value
 
     def _make_dataentity_init(self, fields: list, closure: "Scope") -> "UserFunction":
         """Gera um __init__ sintético para @dataentity com base nos campos declarados."""

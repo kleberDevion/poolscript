@@ -21,6 +21,14 @@ const KIND_MAP = {
 
 let stdlibMetadata = {};
 let STDLIB_MEMBERS = {};
+// Classes devolvidas por factory functions da stdlib (WsConnection de
+// request.ws_connect, Response de request.get/post, JinkerResponse de
+// jsonify/render, ...) — gen_stdlib_metadata.py introspecciona a classe de
+// retorno de cada função via type hint e coloca aqui embaixo de
+// "__classes__". Sem isso, `conn = request.ws_connect(...); conn.<TAB>`
+// não tinha member-completion nenhuma: STDLIB_MEMBERS só cobre membros de
+// MÓDULO (request.X), não da instância devolvida por uma chamada.
+let STDLIB_CLASSES = {};
 function loadStdlibMetadata() {
     try {
         const p = path.join(__dirname, 'bridge', 'stdlib_metadata.json');
@@ -31,13 +39,25 @@ function loadStdlibMetadata() {
         stdlibMetadata = JSON.parse(fs.readFileSync(p, 'utf-8'));
         const members = {};
         for (const [libName, entries] of Object.entries(stdlibMetadata)) {
+            if (libName === '__classes__') continue;
             members[libName] = entries.map(e => ({
                 name: e.name,
                 kind: KIND_MAP[e.kind] || vscode.CompletionItemKind.Function,
                 detail: e.detail,
+                returns: e.returns || null,
             }));
         }
         STDLIB_MEMBERS = members;
+
+        const classes = {};
+        for (const [className, entries] of Object.entries(stdlibMetadata.__classes__ || {})) {
+            classes[className] = entries.map(e => ({
+                name: e.name,
+                kind: KIND_MAP[e.kind] || vscode.CompletionItemKind.Method,
+                detail: e.detail,
+            }));
+        }
+        STDLIB_CLASSES = classes;
     } catch (e) {
         console.warn(`[poolscript] falha ao carregar stdlib_metadata.json: ${e}`);
     }
@@ -45,6 +65,20 @@ function loadStdlibMetadata() {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+/** Resolve o nome de import (com apelido) de volta pra chave da stdlib, ex:
+ * `import request as r` → resolveStdlibKey('r', localData) === 'request'.
+ * Compartilhado entre completion de módulo (request.X) e inferência de tipo
+ * de retorno (x = request.ws_connect(...)), pra não duplicar a lógica de
+ * apelido nos dois lugares. */
+function resolveStdlibKey(objName, localData) {
+    let stdlibKey = objName.replace(/^_/, ''); // ex: _json → json
+    if (!STDLIB_MEMBERS[stdlibKey] && localData) {
+        const imp = localData.imports.find(i => i.mode === 'import' && (i.alias || i.module) === objName);
+        if (imp && STDLIB_MEMBERS[imp.module]) stdlibKey = imp.module;
+    }
+    return stdlibKey;
+}
 
 /** Monta uma assinatura legível a partir dos dados reais vindos da bridge Python. */
 function formatFunctionSignature(fn) {
@@ -143,8 +177,12 @@ function extractEntityMembers(bodyLines) {
     for (const line of bodyLines) {
         const t = line.trim();
 
-        // action dentro da Entity
-        let m = t.match(/^action\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
+        // action/reaction dentro da Entity — 'reaction' é sinônimo de 'action'
+        // no lexer real (lexer.py: KW inclui os dois), mas esse extrator
+        // regex de fallback só conhecia 'action' — por isso um método
+        // declarado com 'reaction' sumia do hover/completion sempre que o
+        // bridge Python (parser de verdade) não estava disponível/atualizado.
+        let m = t.match(/^(?:async\s+)?(?:action|reaction)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
         if (m && m[1] !== '__init__') {
             if (!seen.has(m[1])) {
                 const params = m[2].split(',')
@@ -185,7 +223,7 @@ function parsePoolScript(content) {
 
     const lines = content.split('\n');
     const RESERVED = new Set([
-        'if','elif','else','for','while','return','action',
+        'if','elif','else','for','while','return','action','reaction',
         'Entity','Class','import','from','true','false','null',
         'none','and','or','not','in','is','count','each'
     ]);
@@ -226,8 +264,10 @@ function parsePoolScript(content) {
             continue;
         }
 
-        // ── action global ─────────────────────────────────────────────
-        m = t.match(/^(?:@\w+(?:\([^)]*\))?\s+)*action\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
+        // ── action/reaction global — 'reaction' é um alias de 'action' no
+        // lexer real (poolscript/lexer.py: KEYWORDS inclui os dois), então
+        // precisa ser reconhecido aqui igual — ver nota em extractEntityMembers.
+        m = t.match(/^(?:@\w+(?:\([^)]*\))?\s+)*(?:async\s+)?(?:action|reaction)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
         if (m) {
             const fnName = m[1];
             const params = m[2].split(',').map(p => p.trim()).filter(Boolean);
@@ -671,8 +711,20 @@ class PoolScriptAnalyzer {
         const textBefore = this.document.getText(
             new vscode.Range(0, 0, this.position.line, this.position.character)
         );
+        const localData = this.provider.fileData.get(this.document.uri.fsPath);
         const lines = textBefore.split('\n').reverse();
         for (const ln of lines) {
+            // objeto devolvido por função da stdlib: x = request.ws_connect(...),
+            // x = request.get(...) etc. — resolve via "returns" do metadata
+            // (gerado por introspecção real, ver gen_stdlib_metadata.py).
+            let dm = ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*([A-Za-z_]\\w*)\\.([A-Za-z_]\\w*)\\s*\\(`));
+            if (dm) {
+                const stdlibKey = resolveStdlibKey(dm[1], localData);
+                const member = (STDLIB_MEMBERS[stdlibKey] || []).find(mm => mm.name === dm[2]);
+                if (member?.returns && STDLIB_CLASSES[member.returns]) {
+                    return { stdlibClass: member.returns };
+                }
+            }
             // instanciação de Entity: x = User(...)
             let m = ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*([A-Za-z_]\\w*)\\s*\\(`));
             if (m) {
@@ -939,13 +991,15 @@ class PoolScriptLinter {
             const t = lines[li].trim();
             if (!t || t.startsWith('//')) continue;
 
-            // action sem parênteses — dois testes: tem "action nome", mas NÃO tem "action nome("
-            if (/^(?:@\w+(?:\([^)]*\))?\s+)*action\s+\w+/.test(t) &&
-                !/^(?:@\w+(?:\([^)]*\))?\s+)*action\s+\w+\s*\(/.test(t)) {
-                const col = lines[li].search(/\baction\b/);
+            // action/reaction sem parênteses — dois testes: tem "action nome"
+            // (ou "reaction nome", sinônimo no lexer real), mas NÃO tem "... nome("
+            const kwKind = /^(?:@\w+(?:\([^)]*\))?\s+)*(action|reaction)\s+\w+/.exec(t);
+            if (kwKind &&
+                !new RegExp(`^(?:@\\w+(?:\\([^)]*\\))?\\s+)*${kwKind[1]}\\s+\\w+\\s*\\(`).test(t)) {
+                const col = lines[li].search(new RegExp(`\\b${kwKind[1]}\\b`));
                 diags.push(new vscode.Diagnostic(
-                    new vscode.Range(li, col, li, col + 6),
-                    `Assinatura de 'action' sem parênteses.`,
+                    new vscode.Range(li, col, li, col + kwKind[1].length),
+                    `Assinatura de '${kwKind[1]}' sem parênteses.`,
                     vscode.DiagnosticSeverity.Warning));
             }
 
@@ -1536,11 +1590,7 @@ function activate(context) {
                 if (access) {
                     // 1. módulo stdlib conhecido (ex: date.X, os.X, cors.X) — resolve
                     // também apelidos de import (`import os as o` → o.pathFile(...)).
-                    let stdlibKey = access.obj.replace(/^_/, ''); // ex: _json → json
-                    if (!STDLIB_MEMBERS[stdlibKey] && localData) {
-                        const imp = localData.imports.find(i => i.mode === 'import' && (i.alias || i.module) === access.obj);
-                        if (imp && STDLIB_MEMBERS[imp.module]) stdlibKey = imp.module;
-                    }
+                    let stdlibKey = resolveStdlibKey(access.obj, localData);
                     if (STDLIB_MEMBERS[stdlibKey]) {
                         // sortText preserva a ordem de declaração da lib (ver
                         // gen_stdlib_metadata.py) — sem isso o VS Code cai no
@@ -1553,12 +1603,21 @@ function activate(context) {
                         });
                     }
 
-                    // 2. variável tipada (instância de Entity)
+                    // 2. variável tipada (instância de Entity, ou objeto devolvido
+                    // por uma função da stdlib — WsConnection, Response, ...)
                     const type = analyzer.getVariableType(access.obj);
                     if (type === 'json_dict') {
                         return analyzer.getDictKeys(access.obj).map(k => {
                             const it = new vscode.CompletionItem(k, vscode.CompletionItemKind.Field);
                             it.detail = 'dict key';
+                            return it;
+                        });
+                    }
+                    if (type && typeof type === 'object' && type.stdlibClass) {
+                        const clsMembers = STDLIB_CLASSES[type.stdlibClass] || [];
+                        return clsMembers.map(m => {
+                            const it = new vscode.CompletionItem(m.name, m.kind);
+                            it.detail = m.detail;
                             return it;
                         });
                     }
@@ -1760,6 +1819,12 @@ function activate(context) {
                 const type = analyzer.getVariableType(word);
                 if (!type) return null;
                 const md = new vscode.MarkdownString();
+                if (typeof type === 'object' && type.stdlibClass) {
+                    md.appendMarkdown(`**PoolScript** — \`${type.stdlibClass}\` (stdlib)\n\n`);
+                    const clsMembers = STDLIB_CLASSES[type.stdlibClass] || [];
+                    for (const m of clsMembers) md.appendMarkdown(`- \`${m.detail}\`\n`);
+                    return new vscode.Hover(md);
+                }
                 md.appendMarkdown(`**PoolScript** — \`${type}\`\n\n`);
                 md.appendMarkdown('Instâncias de Entity são sempre **Truthy**.');
                 return new vscode.Hover(md);

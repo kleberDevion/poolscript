@@ -110,23 +110,23 @@ def _request(method: str, url: str, headers: dict | None = None, body=None,
         raise TimeoutError(f"requisição passou de {timeout}s (url={url})")
 
 
-def get(url: str, headers: dict | None = None, body=None, timeout: int = 30):
+def get(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
     return _request("GET", url, headers=headers, body=body, timeout=timeout)
 
 
-def post(url: str, headers: dict | None = None, body=None, timeout: int = 30):
+def post(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
     return _request("POST", url, headers=headers, body=body, timeout=timeout)
 
 
-def put(url: str, headers: dict | None = None, body=None, timeout: int = 30):
+def put(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
     return _request("PUT", url, headers=headers, body=body, timeout=timeout)
 
 
-def patch(url: str, headers: dict | None = None, body=None, timeout: int = 30):
+def patch(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
     return _request("PATCH", url, headers=headers, body=body, timeout=timeout)
 
 
-def delete(url: str, headers: dict | None = None, body=None, timeout: int = 30):
+def delete(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
     return _request("DELETE", url, headers=headers, body=body, timeout=timeout)
 
 

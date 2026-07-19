@@ -332,6 +332,47 @@ class Lexer:
             self._lines[start_line - 1] if start_line - 1 < len(self._lines) else "",
         )
 
+    def _read_triple_string(self, quote: str, is_fstring: bool = False, is_raw: bool = False) -> None:
+        """String multi-linha: '''...'''  (e f'''...''' / r'''...''').
+
+        Aspas duplas triplas já são comentário de bloco (ver
+        _skip_block_comment) — string multi-linha usa aspas simples triplas
+        pra não colidir com isso.
+        """
+        start_line, start_col = self.line, self.col
+        triple = quote * 3
+        self._advance(3)  # abre as 3 aspas — sem \n aqui, avanço simples é seguro
+        out = []
+        while self.pos < len(self.src):
+            if self.src[self.pos:self.pos + 3] == triple:
+                self.pos += 3
+                self.col += 3
+                tok_type = "FSTRING" if is_fstring else "STR"
+                self._emit(tok_type, "".join(out), triple + "".join(out) + triple, start_line, start_col)
+                return
+            c = self.src[self.pos]
+            if not is_raw and c == "\\" and self.pos + 1 < len(self.src):
+                nxt = self.src[self.pos + 1]
+                escapes = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'"}
+                out.append(escapes.get(nxt, nxt))
+                self.pos += 2
+                self.col += 2
+                continue
+            if c == "\n":
+                out.append(c)
+                self.pos += 1
+                self.line += 1
+                self.col = 1
+                continue
+            out.append(c)
+            self.pos += 1
+            self.col += 1
+        raise PoolSyntaxError(
+            f"string multi-linha {triple} não foi fechada",
+            start_line, start_col,
+            self._lines[start_line - 1] if start_line - 1 < len(self._lines) else "",
+        )
+
     # ── números ────────────────────────────────────────────────────
     def _read_number(self) -> None:
         start_col = self.col
@@ -351,10 +392,20 @@ class Lexer:
         m = self._re_ident_lower.match(self.src, self.pos) or self._re_ident_upper.match(self.src, self.pos)
         assert m is not None
         text = m.group(0)
+        # f-string multi-linha: f'''...'''
+        if text == "f" and self._peek(1) == "'" and self._peek(2) == "'" and self._peek(3) == "'":
+            self._advance(1)  # consome o 'f'
+            self._read_triple_string("'", is_fstring=True)
+            return
         # f-string: f"..." → identificador 'f' colado em aspa
         if text == "f" and self._peek(1) == '"':
             self._advance(1)  # consome o 'f'
             self._read_string('"', is_fstring=True)
+            return
+        # r-string multi-linha: r'''...'''
+        if text == "r" and self._peek(1) == "'" and self._peek(2) == "'" and self._peek(3) == "'":
+            self._advance(1)  # consome o 'r'
+            self._read_triple_string("'", is_raw=True)
             return
         # r-string: r"..." ou r'...' → raw string sem escapes
         if text == "r" and self._peek(1) in ('"', "'"):
@@ -473,6 +524,12 @@ class Lexer:
             # comentário de bloco """ ... """
             if c == '"' and self._peek(1) == '"' and self._peek(2) == '"':
                 self._skip_block_comment()
+                continue
+
+            # string multi-linha '''...''' (aspas simples triplas — """ é
+            # comentário de bloco, ver acima, por isso não dá pra reusar)
+            if c == "'" and self._peek(1) == "'" and self._peek(2) == "'":
+                self._read_triple_string("'")
                 continue
 
             # string

@@ -326,6 +326,16 @@ import request
 | `request.delete(url)` | Requisição DELETE |
 | `request.ws_connect(url)` | Conecta WebSocket |
 
+`ws_connect(url)` devolve um `WsConnection`:
+
+| Método | O que faz |
+|---|---|
+| `conn.send(data)` | Manda uma mensagem (dict vira JSON automaticamente) |
+| `conn.on_message(callback)` | Registra a função chamada a cada mensagem recebida do servidor |
+| `conn.close()` | Fecha a conexão |
+
+**`on_message` é obrigatório se você quer ver o que o servidor manda de volta** — sem ele, mensagens recebidas (inclusive broadcasts de outros clientes) chegam na thread de leitura e são descartadas silenciosamente, sem nenhum aviso ou erro.
+
 ### Requisições HTTP
 
 ```
@@ -352,6 +362,7 @@ import request
 conn = request.ws_connect("ws://localhost:7701/chat")
 post(conn)  # <WsConnection ws://localhost:7701/chat [conectado]>
 
+conn.on_message(action(msg) { post(msg) })
 conn.send({"user_name": "joao", "body_msg": "Oi!"})
 ```
 
@@ -363,6 +374,7 @@ import request
 str nome = input("Seu nome: ")
 
 conn = request.ws_connect("ws://localhost:7701/chat")
+conn.on_message(action(msg) { post(f"\n{msg}") })
 post(f"Conectado como {nome}!")
 
 while (true) {
@@ -374,6 +386,8 @@ while (true) {
     conn.send({"user_name": nome, "body_msg": msg})
 }
 ```
+
+Sem o `conn.on_message(...)`, dois terminais conectados no mesmo chat **não vão trocar mensagens visivelmente**: o broadcast chega em cada cliente, mas fica preso na thread de leitura porque nenhum callback foi registrado pra exibi-lo.
 
 ---
 
