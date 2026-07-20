@@ -30,11 +30,17 @@ MODULES = [
 def check():
     try:
         from mypyc.build import mypycify
-        import mypy
-        print(f"✅ mypyc disponível — mypy {mypy.__version__}")
+        from mypy.version import __version__ as mypy_version
+        print(f"[ok] mypyc disponivel - mypy {mypy_version}")
         return True
-    except ImportError:
-        print("❌ mypyc não encontrado. Instale com: pip install mypy")
+    except ImportError as e:
+        # Python 3.14 removeu o distutils da stdlib; o mypyc ainda importa
+        # `from distutils import ccompiler` — o shim vem do setuptools.
+        if "distutils" in str(e):
+            print("[erro] mypyc precisa do distutils (removido no Python 3.12+).")
+            print("       Instale o setuptools, que fornece o shim: pip install setuptools")
+        else:
+            print("[erro] mypyc nao encontrado. Instale com: pip install mypy setuptools")
         return False
 
 def clean():
@@ -51,7 +57,7 @@ def clean():
                 removed += 1
             except:
                 pass
-    print(f"✅ {removed} artefatos removidos")
+    print(f"[ok] {removed} artefatos removidos")
 
 def compile_native():
     if not check():
@@ -62,7 +68,20 @@ def compile_native():
     
     env = os.environ.copy()
     env["POOLSCRIPT_COMPILE"] = "1"
-    
+
+    # vcvarsall.bat (VS 2026 Build Tools) chama 'vswhere.exe' SEM caminho
+    # absoluto. Se a pasta do VS Installer não está no PATH, o cmd imprime
+    # "'vswhere.exe' não é reconhecido..." no meio da saída — e esse lixo
+    # corrompe o parse de variáveis do setuptools, que então falha com
+    # "Unable to find a compatible Visual Studio installation." mesmo com
+    # o compilador 100% instalado. Garante a pasta no PATH do subprocesso.
+    vs_installer = os.path.join(
+        os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+        "Microsoft Visual Studio", "Installer",
+    )
+    if os.path.isdir(vs_installer) and vs_installer.lower() not in env.get("PATH", "").lower():
+        env["PATH"] = env.get("PATH", "") + os.pathsep + vs_installer
+
     result = subprocess.run(
         [sys.executable, "setup.py", "build_ext", "--inplace"],
         env=env,
@@ -70,11 +89,11 @@ def compile_native():
     )
     
     if result.returncode == 0:
-        print("\n[PoolScript] ✅ Compilação concluída!")
-        print("A PoolScript agora roda com código nativo C.")
+        print("\n[PoolScript] Compilacao concluida!")
+        print("A PoolScript agora roda com codigo nativo C.")
         print("Execute 'pool --version' para confirmar.")
     else:
-        print("\n[PoolScript] ❌ Falha na compilação.")
+        print("\n[PoolScript] Falha na compilacao.")
         print("Verifique os requisitos e tente novamente.")
         sys.exit(1)
 

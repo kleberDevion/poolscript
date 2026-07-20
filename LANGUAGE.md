@@ -1,4 +1,4 @@
-# PoolScript v8.2.3 — Referência da linguagem
+# PoolScript v8.2.6 — Referência da linguagem
 
 Este documento descreve, de forma completa, tudo que existe atualmente na linguagem
 PoolScript: sintaxe, tipos, controle de fluxo, funções, classes, tratamento de
@@ -536,6 +536,19 @@ inválido. Tipos aceitos: `str(length=N)`, `int(length=N)`, `flo`, `bool`.
 ---
 
 ## `Entity` (classes)
+
+`class` (e `Class`) são aliases de `Entity` — os três declaram exatamente a
+mesma coisa e podem se misturar no mesmo arquivo, inclusive herdando entre si:
+
+```
+class Animal():
+    action falar(self):
+        return "..."
+
+Entity Gato(Animal):    // Entity herdando de class — tanto faz
+    action falar(self):
+        return "miau"
+```
 
 ```
 Entity Animal():

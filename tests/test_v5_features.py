@@ -332,8 +332,13 @@ def test_ast_no_dict():
     assert not hasattr(n, "__dict__")
 
 def test_scope_slots():
+    # O que importa é a intenção: Scope não pode ter __dict__ por instância
+    # (economia de memória). Interpretado isso vem de __slots__; compilado
+    # (mypyc) a classe nativa nem expõe __slots__, mas a garantia é a mesma —
+    # por isso o teste verifica a instância, não o atributo de classe.
     from poolscript.interpreter import Scope
-    assert hasattr(Scope, "__slots__")
+    s = Scope()
+    assert not hasattr(s, "__dict__")
 
 
 # ── 14. count — não-regressão ────────────────────────────────────────────────
@@ -406,6 +411,28 @@ Entity U():
 post(U.dobrar(5))
 """
     assert run(code) == ["10"]
+
+def test_class_alias_of_entity():
+    # `class` (e `Class`) declaram Entity igualzinho — inclusive herança
+    # cruzada entre os dois estilos no mesmo arquivo.
+    code = """
+class Animal():
+    action __init__(self, nome):
+        self.nome = nome
+    action falar(self):
+        return "..."
+Entity Gato(Animal):
+    action falar(self):
+        return f"{self.nome}: miau"
+Class Cao(Animal):
+    action falar(self):
+        return f"{self.nome}: au"
+g = Gato("Felix")
+c = Cao("Rex")
+post(g.falar())
+post(c.falar())
+"""
+    assert run(code) == ["Felix: miau", "Rex: au"]
 
 
 # ── 18. try / catch / finally ────────────────────────────────────────────────

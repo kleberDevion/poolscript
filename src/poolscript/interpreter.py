@@ -108,6 +108,17 @@ from .builtins import GLOBAL_BUILTINS
 from .stdlib.strmethod_lib import PoolStr
 from .stdlib.parsing_lib import Parsing, TransientValue
 
+# mypyc não compila classe que herda de builtin (ex: StringWithJson(str)) —
+# o decorator oficial marca a classe como não-nativa só na compilação.
+# Fallback no-op pra rodar interpretado sem mypy_extensions instalado.
+try:
+    from mypy_extensions import mypyc_attr as _mypyc_attr
+except ImportError:  # pragma: no cover
+    def _mypyc_attr(*_attrs: str, **_kwattrs: object):  # type: ignore[misc]
+        def _deco(cls):
+            return cls
+        return _deco
+
 
 # PoolRuntimeError now inherits from ps_errors for unified error handling
 from .ps_errors import _BasePoolRuntimeError as _PSBaseRuntimeError
@@ -120,8 +131,9 @@ class PoolRuntimeError(_PSBaseRuntimeError):
             return value.value
         return value
 
-    def __init__(self, msg: str, node: Node, source: str = "", code: str = "RuntimeError",
+    def __init__(self, msg: str, node: "Node | None", source: str = "", code: str = "RuntimeError",
                  filename: str = "", call_stack: "list | None" = None):
+        # node=None é tolerado — format() usa getattr(..., 0) pra line/col
         # Inicializa diretamente sem chamar super().__init__ com args incompatíveis
         self.msg        = msg
         self.node       = node
@@ -418,8 +430,13 @@ class UserFunction:
         self._has_yield_cache = None
 
 
+@_mypyc_attr(native_class=False)
 class Module:
-    """Wrapper para módulos importados — permite acesso por ponto: os.getenv."""
+    """Wrapper para módulos importados — permite acesso por ponto: os.getenv.
+
+    non-native (mypyc): seta atributos dinâmicos por nome vindo do EXPORTS
+    de cada lib — impossível em classe nativa (sem __dict__).
+    """
     def __init__(self, name: str, exports: dict):
         self._name = name
         for k, v in exports.items():
@@ -429,6 +446,7 @@ class Module:
         return f"<Module {self._name}>"
 
 
+@_mypyc_attr(native_class=False)
 class StringWithJson(str):
     """Subclasse de str que adiciona .get_json() / .get() — usado para retornos de funções."""
     def get_json(self, key: str | None = None):
@@ -448,8 +466,14 @@ class StringWithJson(str):
 
 
 
+@_mypyc_attr(native_class=False)
 class PoolEntityInstance:
-    """Instância de uma Entity em PoolScript. Equivalente a um objeto Python."""
+    """Instância de uma Entity em PoolScript. Equivalente a um objeto Python.
+
+    non-native (mypyc): usa object.__setattr__/__getattr__ pra armazenar
+    atributos dinâmicos — classe nativa não tem __dict__ e quebra no
+    primeiro `self.x = ...` de uma Entity.
+    """
 
     def __init__(self, entity: "PoolEntityClass"):
         # __dict__ de instância — armazena todos os self.x
@@ -498,17 +522,24 @@ class StaticMethod:
         return f"<static action {self.func.name}>"
 
 
+@_mypyc_attr(native_class=False)
 class PoolEntityClass:
-    """A própria Entity (a 'classe') — callable para instanciar."""
+    """A própria Entity (a 'classe') — callable para instanciar.
+
+    non-native (mypyc): usa __getattr__ pra métodos estáticos e recebe
+    atributo dinâmico (_dataentity) — semântica de classe nativa quebra isso.
+    """
 
     def __init__(self, name: str, parents: "list[PoolEntityClass]", methods: dict[str, UserFunction]):
         self.name    = name
         self.parents = parents   # lista de pais (MRO simples: esquerda pra direita)
         self.methods = methods
+        # True quando declarada com @dataentity — usado pelas conversões
+        self._dataentity: bool = False
 
     # legado — primeiro pai (compatibilidade com código antigo)
     @property
-    def parent(self):
+    def parent(self) -> "PoolEntityClass | None":
         return self.parents[0] if self.parents else None
 
     def find_method(self, name: str) -> "UserFunction | None":
@@ -542,6 +573,49 @@ class PoolEntityClass:
         return f"<Entity {self.name}>"
 
 
+class PostObject:
+    """Builtin `post()` com suporte a post.flush() (efeito digitação).
+
+    Nível de módulo (não aninhada em _install_post) — mypyc não compila
+    classe definida dentro de função. Recebe o Interpreter no construtor
+    em vez de capturá-lo por closure.
+    """
+
+    def __init__(self, interp: "Interpreter"):
+        self._interp = interp
+
+    def __call__(self, *args, **kwargs):
+        # post() sem argumentos é no-op. Valores None/Null são
+        # impressos como "null" (igual ao print() do Python com um
+        # valor None) — inclusive quando vêm de índice fora do limite,
+        # de um builtin sem resultado, ou de um `return Null` explícito.
+        if not args:
+            return None
+        text = " ".join(self._interp.stringify(arg) for arg in args)
+        self._interp.output.append(text)
+        print(text)
+        return None
+
+    def flush(self, text: str = "", delay: float = 0.05):
+        """Efeito de digitação — escreve caractere por caractere."""
+        import time as _time
+        delay = float(delay)
+        if delay > 10.1:
+            delay = 10.1
+        if delay < 0:
+            delay = 0.0
+        out_text = self._interp.stringify(text)
+        for char in out_text:
+            print(char, end="", flush=True)
+            _time.sleep(delay)
+        print()  # quebra de linha no final
+        self._interp.output.append(out_text)
+        return None
+
+    def __repr__(self):
+        return "<builtin post>"
+
+
 class Interpreter:
     def __init__(self, source: str = "", filename: str = "<stdin>", is_import: bool = False,
                  import_root: "Path | None" = None):
@@ -568,7 +642,8 @@ class Interpreter:
         self._action_depth: int = 0
         # Executor compartilhado para 'async action'/'async reaction'.
         # Criado sob demanda (lazy) — só se o script usar async de fato.
-        self._executor = None
+        from concurrent.futures import ThreadPoolExecutor as _TPE
+        self._executor: "_TPE | None" = None
         self._install_builtins()
 
     def _install_builtins(self) -> None:
@@ -689,44 +764,7 @@ class Interpreter:
         return result
 
     def _install_post(self) -> None:
-        import time as _time
-
-        interp = self
-
-        class PostObject:
-            """post() com suporte a post.flush() efeito digitação."""
-
-            def __call__(self, *args, **kwargs):
-                # post() sem argumentos é no-op. Valores None/Null são
-                # impressos como "null" (igual ao print() do Python com um
-                # valor None) — inclusive quando vêm de índice fora do limite,
-                # de um builtin sem resultado, ou de um `return Null` explícito.
-                if not args:
-                    return None
-                text = " ".join(interp.stringify(arg) for arg in args)
-                interp.output.append(text)
-                print(text)
-                return None
-
-            def flush(self, text: str = "", delay: float = 0.05):
-                """Efeito de digitação — escreve caractere por caractere."""
-                delay = float(delay)
-                if delay > 10.1:
-                    delay = 10.1
-                if delay < 0:
-                    delay = 0
-                text = interp.stringify(text)
-                for char in text:
-                    print(char, end="", flush=True)
-                    _time.sleep(delay)
-                print()  # quebra de linha no final
-                interp.output.append(text)
-                return None
-
-            def __repr__(self):
-                return "<builtin post>"
-
-        self.globals.define("post", PostObject())
+        self.globals.define("post", PostObject(self))
 
     def _builtin_post(self, *args: Any, **kwargs: Any) -> None:
         text = " ".join(self.stringify(arg) for arg in args)
@@ -1384,7 +1422,7 @@ class Interpreter:
             if node.__class__ is TypeName:
                 return PoolTypeRef(sys.intern(node.name))
             if node.__class__ is InterpolatedString:
-                out = []
+                out: list[str] = []
                 for part in node.parts:
                     if isinstance(part, Literal):
                         out.append(self.stringify(part.value))
@@ -1405,15 +1443,15 @@ class Interpreter:
             if node.__class__ is TupleLiteral:
                 return tuple(self.eval_expr(item, scope) for item in node.items)
             if node.__class__ is DictLiteral:
-                out = {}
+                dct: dict[Any, Any] = {}
                 for entry in node.entries:
                     if isinstance(entry.key, Name):
                         # Em dict literal {chave: valor}, a chave Name é o lexema
                         key = entry.key.value
                     else:
                         key = self.eval_expr(entry.key, scope)
-                    out[key] = self.eval_expr(entry.value, scope)
-                return out
+                    dct[key] = self.eval_expr(entry.value, scope)
+                return dct
             if node.__class__ is UnaryOp:
                 value = self.eval_expr(node.operand, scope)
                 return self._eval_unary(node.operator, value, node)
@@ -1694,7 +1732,7 @@ class Interpreter:
         """Executa um bloco como generator — yield entrega valores."""
         for stmt in block.statements:
             try:
-                result = self.exec_block(
+                self.exec_block(
                     type("B", (), {"statements": [stmt], "style": "brace"})(),
                     scope, create_child=False
                 )
@@ -1719,7 +1757,7 @@ class Interpreter:
             return True, {pattern.name: value}
 
         if kind == "or":
-            for pat in pattern.patterns:
+            for pat in (pattern.patterns or []):
                 matched, bindings = self._match_pattern(pat, value, scope)
                 if matched:
                     return True, bindings
@@ -1728,10 +1766,11 @@ class Interpreter:
         if kind == "list":
             if not isinstance(value, list):
                 return False, {}
-            if len(value) != len(pattern.items):
+            items = pattern.items or []
+            if len(value) != len(items):
                 return False, {}
             bindings = {}
-            for sub_pat, sub_val in zip(pattern.items, value):
+            for sub_pat, sub_val in zip(items, value):
                 matched, sub_bindings = self._match_pattern(sub_pat, sub_val, scope)
                 if not matched:
                     return False, {}
@@ -1742,7 +1781,7 @@ class Interpreter:
             if not isinstance(value, dict):
                 return False, {}
             bindings = {}
-            for key, sub_pat in pattern.keys.items():
+            for key, sub_pat in (pattern.keys or {}).items():
                 if key not in value:
                     return False, {}
                 matched, sub_bindings = self._match_pattern(sub_pat, value[key], scope)
@@ -1753,7 +1792,7 @@ class Interpreter:
 
         return False, {}
 
-    def _exec_function_body(self, fn: "UserFunction", local_scope: "Scope", node: Node) -> Any:
+    def _exec_function_body(self, fn: "UserFunction", local_scope: "Scope", node: "Node | None") -> Any:
         """Executa o corpo de uma action/reaction e aplica a semântica de
         return_type ('int'/'bool'). Usado para chamadas síncronas e também
         como alvo do ThreadPoolExecutor para 'async action'/'async reaction'.
@@ -1790,7 +1829,9 @@ class Interpreter:
             return bool(result) if result is not None else True
         return result
 
-    def _call(self, fn: Any, args: list[Any], kwargs: dict[str, Any], node: Node) -> Any:
+    def _call(self, fn: Any, args: list[Any], kwargs: dict[str, Any], node: "Node | None") -> Any:
+        # node=None é aceito (só alimenta mensagens de erro) — compilado com
+        # mypyc a anotação vira checagem de runtime, então precisa ser honesta.
         # ── Instanciação de Entity: User("ana", ...) ──────────────────────
         if isinstance(fn, PoolEntityClass):
             instance = PoolEntityInstance(fn)
@@ -1959,7 +2000,7 @@ class Interpreter:
             return fn(*args, **kwargs)
         raise PoolRuntimeError("tentativa de chamar algo que não é função", node, self.source, filename=self.filename)
 
-    def _wrap_pool_callable(self, value: Any, node: Node) -> Any:
+    def _wrap_pool_callable(self, value: Any, node: "Node | None") -> Any:
         """Se `value` for uma função PoolScript (UserFunction/BoundMethod/
         StaticMethod), devolve um callable Python que a invoca via self._call
         — permite que stdlib nativa guarde e chame de volta depois (ex:
@@ -1973,19 +2014,26 @@ class Interpreter:
 
     def _make_dataentity_init(self, fields: list, closure: "Scope") -> "UserFunction":
         """Gera um __init__ sintético para @dataentity com base nos campos declarados."""
-        from .parser import Block, MemberAssignment, Name, Assignment
+        from .parser import Block, MemberAssignment, Name, Literal
 
         # Constrói bloco de statements: self.campo = campo para cada field
-        stmts = []
+        stmts: list[Node] = []
         params = ["self"]
         defaults = {}
 
         for field in fields:
             params.append(field.field_name)
+            # UserFunction.defaults guarda NÓS de AST, avaliados na hora da
+            # chamada (_call faz eval_expr em cada default faltante) — igual
+            # aos defaults de action normais. Pré-avaliar aqui pra valor
+            # Python quebrava a chamada: eval_expr("localhost") → "expressão
+            # não suportada: str".
             if field.default is not None:
-                defaults[field.field_name] = self.eval_expr(field.default, closure)
+                defaults[field.field_name] = field.default
             else:
-                defaults[field.field_name] = None  # sem default = obrigatório (Null sentinel)
+                # sem default = Null sentinel — nó Literal(None), avaliável
+                defaults[field.field_name] = Literal(line=field.line, col=field.col,
+                                                     value=None, kind="null")
             # self.campo = campo  → MemberAssignment(target=Name("self"), member=campo, value=Name(campo))
             stmt = MemberAssignment(
                 line=field.line, col=field.col,
@@ -2009,7 +2057,7 @@ class Interpreter:
 
 
     def _call_method(self, func: UserFunction, instance: PoolEntityInstance,
-                     args: list[Any], kwargs: dict[str, Any], node: Node,
+                     args: list[Any], kwargs: dict[str, Any], node: "Node | None",
                      owner_entity: "PoolEntityClass | None" = None) -> Any:
         """Chama um action de Entity injetando self como primeiro parâmetro.
         

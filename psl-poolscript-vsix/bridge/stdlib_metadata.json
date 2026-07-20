@@ -146,17 +146,20 @@
     {
       "name": "MailServer",
       "kind": "class",
-      "detail": "mail.MailServer() — Conexão SMTP com TLS automático."
+      "detail": "mail.MailServer() — Conexão SMTP com TLS automático.",
+      "returns": "MailServer"
     },
     {
       "name": "MailMessage",
       "kind": "class",
-      "detail": "mail.MailMessage() — Construtor MIME para emails ricos (HTML + anexos)."
+      "detail": "mail.MailMessage() — Construtor MIME para emails ricos (HTML + anexos).",
+      "returns": "MailMessage"
     },
     {
       "name": "MailReader",
       "kind": "class",
-      "detail": "mail.MailReader() — Conexão IMAP com TLS automático — busca e decodifica e-mails recebidos."
+      "detail": "mail.MailReader() — Conexão IMAP com TLS automático — busca e decodifica e-mails recebidos.",
+      "returns": "MailReader"
     }
   ],
   "date": [
@@ -195,7 +198,8 @@
     {
       "name": "Jinker",
       "kind": "class",
-      "detail": "jinker.Jinker(name?, oauth?, static_folder?, static_url?) — Aplicação HTTP da PoolScript."
+      "detail": "jinker.Jinker(name?, oauth?, static_folder?, static_url?) — Aplicação HTTP da PoolScript.",
+      "returns": "Jinker"
     },
     {
       "name": "cors",
@@ -222,7 +226,8 @@
     {
       "name": "JinkerResponse",
       "kind": "class",
-      "detail": "jinker.JinkerResponse() — Objeto de resposta que a action pode montar e retornar."
+      "detail": "jinker.JinkerResponse() — Objeto de resposta que a action pode montar e retornar.",
+      "returns": "JinkerResponse"
     },
     {
       "name": "request",
@@ -501,7 +506,8 @@
     {
       "name": "QRCode",
       "kind": "class",
-      "detail": "qrcode.QRCode(version?, error_correction?, box_size?, border?) — Wrapper de qrcode.QRCode — mesma API da lib Python:"
+      "detail": "qrcode.QRCode(version?, error_correction?, box_size?, border?) — Wrapper de qrcode.QRCode — mesma API da lib Python:",
+      "returns": "QRCode"
     },
     {
       "name": "ERROR_CORRECT_L",
@@ -539,7 +545,8 @@
     {
       "name": "QRCode",
       "kind": "class",
-      "detail": "qr.QRCode(version?, error_correction?, box_size?, border?) — Wrapper de qrcode.QRCode — mesma API da lib Python:"
+      "detail": "qr.QRCode(version?, error_correction?, box_size?, border?) — Wrapper de qrcode.QRCode — mesma API da lib Python:",
+      "returns": "QRCode"
     },
     {
       "name": "ERROR_CORRECT_L",
@@ -649,6 +656,186 @@
     }
   ],
   "__classes__": {
+    "PoolFile": [
+      {
+        "name": "bytes",
+        "kind": "method",
+        "detail": "PoolFile.bytes() — Retorna os bytes brutos do arquivo."
+      },
+      {
+        "name": "copy",
+        "kind": "method",
+        "detail": "PoolFile.copy(destino) — Copia o arquivo para destino. Retorna novo PoolFile."
+      },
+      {
+        "name": "delete",
+        "kind": "method",
+        "detail": "PoolFile.delete() — Deleta o arquivo do disco."
+      },
+      {
+        "name": "move",
+        "kind": "method",
+        "detail": "PoolFile.move(destino) — Move o arquivo para destino. Retorna novo PoolFile."
+      },
+      {
+        "name": "path",
+        "kind": "method",
+        "detail": "PoolFile.path() — Retorna o caminho absoluto atual."
+      }
+    ],
+    "MailServer": [
+      {
+        "name": "conn",
+        "kind": "method",
+        "detail": "MailServer.conn(provider_or_host, port?)"
+      },
+      {
+        "name": "login",
+        "kind": "method",
+        "detail": "MailServer.login(user, password)"
+      },
+      {
+        "name": "quit",
+        "kind": "method",
+        "detail": "MailServer.quit()"
+      },
+      {
+        "name": "send",
+        "kind": "method",
+        "detail": "MailServer.send(to_or_msg, subject?, body?, html?) — Duas formas:"
+      },
+      {
+        "name": "server",
+        "kind": "property",
+        "detail": "MailServer.server"
+      },
+      {
+        "name": "user",
+        "kind": "property",
+        "detail": "MailServer.user"
+      }
+    ],
+    "MailMessage": [
+      {
+        "name": "attach",
+        "kind": "method",
+        "detail": "MailMessage.attach(file_or_path) — Aceita caminho string, PoolFile (binário) ou PoolFileUpload (upload)."
+      },
+      {
+        "name": "body",
+        "kind": "method",
+        "detail": "MailMessage.body(content, is_html?)"
+      },
+      {
+        "name": "from_address",
+        "kind": "method",
+        "detail": "MailMessage.from_address(address)"
+      },
+      {
+        "name": "get_as_string",
+        "kind": "method",
+        "detail": "MailMessage.get_as_string()"
+      },
+      {
+        "name": "subject",
+        "kind": "method",
+        "detail": "MailMessage.subject(title)"
+      },
+      {
+        "name": "to",
+        "kind": "method",
+        "detail": "MailMessage.to(address)"
+      },
+      {
+        "name": "msg",
+        "kind": "property",
+        "detail": "MailMessage.msg"
+      }
+    ],
+    "MailReader": [
+      {
+        "name": "body",
+        "kind": "method",
+        "detail": "MailReader.body(id) — Busca e decodifica o corpo de um e-mail específico pelo id retornado por .search()."
+      },
+      {
+        "name": "close",
+        "kind": "method",
+        "detail": "MailReader.close()"
+      },
+      {
+        "name": "conn",
+        "kind": "method",
+        "detail": "MailReader.conn(provider_or_host, port?)"
+      },
+      {
+        "name": "login",
+        "kind": "method",
+        "detail": "MailReader.login(user, password)"
+      },
+      {
+        "name": "search",
+        "kind": "method",
+        "detail": "MailReader.search(criterion_type?, term?, limit?, include_body?)"
+      },
+      {
+        "name": "select",
+        "kind": "method",
+        "detail": "MailReader.select(folder?, readonly?)"
+      },
+      {
+        "name": "folder",
+        "kind": "property",
+        "detail": "MailReader.folder"
+      },
+      {
+        "name": "server",
+        "kind": "property",
+        "detail": "MailReader.server"
+      },
+      {
+        "name": "user",
+        "kind": "property",
+        "detail": "MailReader.user"
+      }
+    ],
+    "Jinker": [
+      {
+        "name": "route",
+        "kind": "method",
+        "detail": "Jinker.route(path, methods?, auth?, middleware?)"
+      },
+      {
+        "name": "channel",
+        "kind": "method",
+        "detail": "Jinker.channel(forAll?) — app.channel — gerencia conexões websocket abertas, com suporte a salas."
+      },
+      {
+        "name": "middleware",
+        "kind": "property",
+        "detail": "Jinker.middleware"
+      },
+      {
+        "name": "name",
+        "kind": "property",
+        "detail": "Jinker.name"
+      },
+      {
+        "name": "socket",
+        "kind": "method",
+        "detail": "Jinker.socket(path?, channel?) — app.socket — dupla função:"
+      },
+      {
+        "name": "static_folder",
+        "kind": "property",
+        "detail": "Jinker.static_folder"
+      },
+      {
+        "name": "static_url",
+        "kind": "property",
+        "detail": "Jinker.static_url"
+      }
+    ],
     "JinkerResponse": [
       {
         "name": "header",
@@ -669,6 +856,43 @@
         "name": "status",
         "kind": "method",
         "detail": "JinkerResponse.status(code)"
+      },
+      {
+        "name": "status_code",
+        "kind": "property",
+        "detail": "JinkerResponse.status_code"
+      }
+    ],
+    "JinkerRequest": [
+      {
+        "name": "file",
+        "kind": "method",
+        "detail": "JinkerRequest.file(field, allowed?) — Retorna um único arquivo do upload."
+      },
+      {
+        "name": "files",
+        "kind": "method",
+        "detail": "JinkerRequest.files(field, allowed?) — Retorna lista de arquivos do upload (múltiplos arquivos no mesmo campo)."
+      },
+      {
+        "name": "get",
+        "kind": "method",
+        "detail": "JinkerRequest.get(key) — Pega do query string ou do body JSON."
+      },
+      {
+        "name": "json",
+        "kind": "method",
+        "detail": "JinkerRequest.json()"
+      },
+      {
+        "name": "path_param",
+        "kind": "method",
+        "detail": "JinkerRequest.path_param(key) — Retorna parâmetro dinâmico da URL. Ex: /user:<id> → request.path_param('id')"
+      },
+      {
+        "name": "text",
+        "kind": "method",
+        "detail": "JinkerRequest.text()"
       }
     ],
     "Response": [
@@ -843,6 +1067,146 @@
         "name": "upper",
         "kind": "method",
         "detail": "PoolStr.upper() — Return a copy of the string converted to uppercase."
+      },
+      {
+        "name": "casefold",
+        "kind": "method",
+        "detail": "PoolStr.casefold() — Return a version of the string suitable for caseless comparisons."
+      },
+      {
+        "name": "center",
+        "kind": "method",
+        "detail": "PoolStr.center(width, fillchar?) — Return a centered string of length width."
+      },
+      {
+        "name": "count",
+        "kind": "method",
+        "detail": "PoolStr.count — Return the number of non-overlapping occurrences of substring sub in string S[start:end]."
+      },
+      {
+        "name": "encode",
+        "kind": "method",
+        "detail": "PoolStr.encode(encoding?, errors?) — Encode the string using the codec registered for encoding."
+      },
+      {
+        "name": "expandtabs",
+        "kind": "method",
+        "detail": "PoolStr.expandtabs(tabsize?) — Return a copy where all tab characters are expanded using spaces."
+      },
+      {
+        "name": "find",
+        "kind": "method",
+        "detail": "PoolStr.find — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "format",
+        "kind": "method",
+        "detail": "PoolStr.format(args, kwargs) — Return a formatted version of the string, using substitutions from args and kwargs."
+      },
+      {
+        "name": "format_map",
+        "kind": "method",
+        "detail": "PoolStr.format_map(mapping) — Return a formatted version of the string, using substitutions from mapping."
+      },
+      {
+        "name": "index",
+        "kind": "method",
+        "detail": "PoolStr.index — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "isascii",
+        "kind": "method",
+        "detail": "PoolStr.isascii() — Return True if all characters in the string are ASCII, False otherwise."
+      },
+      {
+        "name": "isdecimal",
+        "kind": "method",
+        "detail": "PoolStr.isdecimal() — Return True if the string is a decimal string, False otherwise."
+      },
+      {
+        "name": "isidentifier",
+        "kind": "method",
+        "detail": "PoolStr.isidentifier() — Return True if the string is a valid Python identifier, False otherwise."
+      },
+      {
+        "name": "isprintable",
+        "kind": "method",
+        "detail": "PoolStr.isprintable() — Return True if all characters in the string are printable, False otherwise."
+      },
+      {
+        "name": "istitle",
+        "kind": "method",
+        "detail": "PoolStr.istitle() — Return True if the string is a title-cased string, False otherwise."
+      },
+      {
+        "name": "ljust",
+        "kind": "method",
+        "detail": "PoolStr.ljust(width, fillchar?) — Return a left-justified string of length width."
+      },
+      {
+        "name": "maketrans",
+        "kind": "method",
+        "detail": "PoolStr.maketrans — Return a translation table usable for str.translate()."
+      },
+      {
+        "name": "partition",
+        "kind": "method",
+        "detail": "PoolStr.partition(sep) — Partition the string into three parts using the given separator."
+      },
+      {
+        "name": "removeprefix",
+        "kind": "method",
+        "detail": "PoolStr.removeprefix(prefix) — Return a str with the given prefix string removed if present."
+      },
+      {
+        "name": "removesuffix",
+        "kind": "method",
+        "detail": "PoolStr.removesuffix(suffix) — Return a str with the given suffix string removed if present."
+      },
+      {
+        "name": "rfind",
+        "kind": "method",
+        "detail": "PoolStr.rfind — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "rindex",
+        "kind": "method",
+        "detail": "PoolStr.rindex — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "rjust",
+        "kind": "method",
+        "detail": "PoolStr.rjust(width, fillchar?) — Return a right-justified string of length width."
+      },
+      {
+        "name": "rpartition",
+        "kind": "method",
+        "detail": "PoolStr.rpartition(sep) — Partition the string into three parts using the given separator."
+      },
+      {
+        "name": "rsplit",
+        "kind": "method",
+        "detail": "PoolStr.rsplit(sep?, maxsplit?) — Return a list of the substrings in the string, using sep as the separator string."
+      },
+      {
+        "name": "splitlines",
+        "kind": "method",
+        "detail": "PoolStr.splitlines(keepends?) — Return a list of the lines in the string, breaking at line boundaries."
+      },
+      {
+        "name": "swapcase",
+        "kind": "method",
+        "detail": "PoolStr.swapcase() — Convert uppercase characters to lowercase and lowercase characters to uppercase."
+      },
+      {
+        "name": "translate",
+        "kind": "method",
+        "detail": "PoolStr.translate(table) — Replace each character in the string using the given translation table."
+      },
+      {
+        "name": "zfill",
+        "kind": "method",
+        "detail": "PoolStr.zfill(width) — Pad a numeric string with zeros on the left, to fill a field of the given width."
       }
     ],
     "PoolConnection": [
@@ -888,6 +1252,594 @@
         "kind": "method",
         "detail": "QRImage.to_file() — Converte para QRPoolFile (bytes em memória)."
       }
+    ],
+    "QRCode": [
+      {
+        "name": "add_data",
+        "kind": "method",
+        "detail": "PoolQRCode.add_data(data)"
+      },
+      {
+        "name": "clear",
+        "kind": "method",
+        "detail": "PoolQRCode.clear()"
+      },
+      {
+        "name": "make",
+        "kind": "method",
+        "detail": "PoolQRCode.make(fit?)"
+      },
+      {
+        "name": "make_image",
+        "kind": "method",
+        "detail": "PoolQRCode.make_image(fill_color?, back_color?, name?)"
+      }
+    ],
+    "str": [
+      {
+        "name": "capitalize",
+        "kind": "method",
+        "detail": "str.capitalize() — Return a capitalized version of the string."
+      },
+      {
+        "name": "casefold",
+        "kind": "method",
+        "detail": "str.casefold() — Return a version of the string suitable for caseless comparisons."
+      },
+      {
+        "name": "center",
+        "kind": "method",
+        "detail": "str.center(width, fillchar?) — Return a centered string of length width."
+      },
+      {
+        "name": "count",
+        "kind": "method",
+        "detail": "str.count — Return the number of non-overlapping occurrences of substring sub in string S[start:end]."
+      },
+      {
+        "name": "encode",
+        "kind": "method",
+        "detail": "str.encode(encoding?, errors?) — Encode the string using the codec registered for encoding."
+      },
+      {
+        "name": "endswith",
+        "kind": "method",
+        "detail": "str.endswith — Return True if the string ends with the specified suffix, False otherwise."
+      },
+      {
+        "name": "expandtabs",
+        "kind": "method",
+        "detail": "str.expandtabs(tabsize?) — Return a copy where all tab characters are expanded using spaces."
+      },
+      {
+        "name": "find",
+        "kind": "method",
+        "detail": "str.find — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "format",
+        "kind": "method",
+        "detail": "str.format(args, kwargs) — Return a formatted version of the string, using substitutions from args and kwargs."
+      },
+      {
+        "name": "format_map",
+        "kind": "method",
+        "detail": "str.format_map(mapping) — Return a formatted version of the string, using substitutions from mapping."
+      },
+      {
+        "name": "index",
+        "kind": "method",
+        "detail": "str.index — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "isalnum",
+        "kind": "method",
+        "detail": "str.isalnum() — Return True if the string is an alpha-numeric string, False otherwise."
+      },
+      {
+        "name": "isalpha",
+        "kind": "method",
+        "detail": "str.isalpha() — Return True if the string is an alphabetic string, False otherwise."
+      },
+      {
+        "name": "isascii",
+        "kind": "method",
+        "detail": "str.isascii() — Return True if all characters in the string are ASCII, False otherwise."
+      },
+      {
+        "name": "isdecimal",
+        "kind": "method",
+        "detail": "str.isdecimal() — Return True if the string is a decimal string, False otherwise."
+      },
+      {
+        "name": "isdigit",
+        "kind": "method",
+        "detail": "str.isdigit() — Return True if the string is a digit string, False otherwise."
+      },
+      {
+        "name": "isidentifier",
+        "kind": "method",
+        "detail": "str.isidentifier() — Return True if the string is a valid Python identifier, False otherwise."
+      },
+      {
+        "name": "islower",
+        "kind": "method",
+        "detail": "str.islower() — Return True if the string is a lowercase string, False otherwise."
+      },
+      {
+        "name": "isnumeric",
+        "kind": "method",
+        "detail": "str.isnumeric() — Return True if the string is a numeric string, False otherwise."
+      },
+      {
+        "name": "isprintable",
+        "kind": "method",
+        "detail": "str.isprintable() — Return True if all characters in the string are printable, False otherwise."
+      },
+      {
+        "name": "isspace",
+        "kind": "method",
+        "detail": "str.isspace() — Return True if the string is a whitespace string, False otherwise."
+      },
+      {
+        "name": "istitle",
+        "kind": "method",
+        "detail": "str.istitle() — Return True if the string is a title-cased string, False otherwise."
+      },
+      {
+        "name": "isupper",
+        "kind": "method",
+        "detail": "str.isupper() — Return True if the string is an uppercase string, False otherwise."
+      },
+      {
+        "name": "join",
+        "kind": "method",
+        "detail": "str.join(iterable) — Concatenate any number of strings."
+      },
+      {
+        "name": "ljust",
+        "kind": "method",
+        "detail": "str.ljust(width, fillchar?) — Return a left-justified string of length width."
+      },
+      {
+        "name": "lower",
+        "kind": "method",
+        "detail": "str.lower() — Return a copy of the string converted to lowercase."
+      },
+      {
+        "name": "lstrip",
+        "kind": "method",
+        "detail": "str.lstrip(chars?) — Return a copy of the string with leading whitespace removed."
+      },
+      {
+        "name": "maketrans",
+        "kind": "method",
+        "detail": "str.maketrans — Return a translation table usable for str.translate()."
+      },
+      {
+        "name": "partition",
+        "kind": "method",
+        "detail": "str.partition(sep) — Partition the string into three parts using the given separator."
+      },
+      {
+        "name": "removeprefix",
+        "kind": "method",
+        "detail": "str.removeprefix(prefix) — Return a str with the given prefix string removed if present."
+      },
+      {
+        "name": "removesuffix",
+        "kind": "method",
+        "detail": "str.removesuffix(suffix) — Return a str with the given suffix string removed if present."
+      },
+      {
+        "name": "replace",
+        "kind": "method",
+        "detail": "str.replace(old, new, count?) — Return a copy with all occurrences of substring old replaced by new."
+      },
+      {
+        "name": "rfind",
+        "kind": "method",
+        "detail": "str.rfind — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "rindex",
+        "kind": "method",
+        "detail": "str.rindex — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+      },
+      {
+        "name": "rjust",
+        "kind": "method",
+        "detail": "str.rjust(width, fillchar?) — Return a right-justified string of length width."
+      },
+      {
+        "name": "rpartition",
+        "kind": "method",
+        "detail": "str.rpartition(sep) — Partition the string into three parts using the given separator."
+      },
+      {
+        "name": "rsplit",
+        "kind": "method",
+        "detail": "str.rsplit(sep?, maxsplit?) — Return a list of the substrings in the string, using sep as the separator string."
+      },
+      {
+        "name": "rstrip",
+        "kind": "method",
+        "detail": "str.rstrip(chars?) — Return a copy of the string with trailing whitespace removed."
+      },
+      {
+        "name": "split",
+        "kind": "method",
+        "detail": "str.split(sep?, maxsplit?) — Return a list of the substrings in the string, using sep as the separator string."
+      },
+      {
+        "name": "splitlines",
+        "kind": "method",
+        "detail": "str.splitlines(keepends?) — Return a list of the lines in the string, breaking at line boundaries."
+      },
+      {
+        "name": "startswith",
+        "kind": "method",
+        "detail": "str.startswith — Return True if the string starts with the specified prefix, False otherwise."
+      },
+      {
+        "name": "strip",
+        "kind": "method",
+        "detail": "str.strip(chars?) — Return a copy of the string with leading and trailing whitespace removed."
+      },
+      {
+        "name": "swapcase",
+        "kind": "method",
+        "detail": "str.swapcase() — Convert uppercase characters to lowercase and lowercase characters to uppercase."
+      },
+      {
+        "name": "title",
+        "kind": "method",
+        "detail": "str.title() — Return a version of the string where each word is titlecased."
+      },
+      {
+        "name": "translate",
+        "kind": "method",
+        "detail": "str.translate(table) — Replace each character in the string using the given translation table."
+      },
+      {
+        "name": "upper",
+        "kind": "method",
+        "detail": "str.upper() — Return a copy of the string converted to uppercase."
+      },
+      {
+        "name": "zfill",
+        "kind": "method",
+        "detail": "str.zfill(width) — Pad a numeric string with zeros on the left, to fill a field of the given width."
+      }
+    ],
+    "int": [
+      {
+        "name": "as_integer_ratio",
+        "kind": "method",
+        "detail": "int.as_integer_ratio() — Return a pair of integers, whose ratio is equal to the original int."
+      },
+      {
+        "name": "bit_count",
+        "kind": "method",
+        "detail": "int.bit_count() — Number of ones in the binary representation of the absolute value of self."
+      },
+      {
+        "name": "bit_length",
+        "kind": "method",
+        "detail": "int.bit_length() — Number of bits necessary to represent self in binary."
+      },
+      {
+        "name": "conjugate",
+        "kind": "method",
+        "detail": "int.conjugate() — Returns self, the complex conjugate of any int."
+      },
+      {
+        "name": "denominator",
+        "kind": "property",
+        "detail": "int.denominator"
+      },
+      {
+        "name": "from_bytes",
+        "kind": "method",
+        "detail": "int.from_bytes(bytes, byteorder?, signed?) — Return the integer represented by the given array of bytes."
+      },
+      {
+        "name": "imag",
+        "kind": "property",
+        "detail": "int.imag"
+      },
+      {
+        "name": "is_integer",
+        "kind": "method",
+        "detail": "int.is_integer() — Returns True. Exists for duck type compatibility with float.is_integer."
+      },
+      {
+        "name": "numerator",
+        "kind": "property",
+        "detail": "int.numerator"
+      },
+      {
+        "name": "real",
+        "kind": "property",
+        "detail": "int.real"
+      },
+      {
+        "name": "to_bytes",
+        "kind": "method",
+        "detail": "int.to_bytes(length?, byteorder?, signed?) — Return an array of bytes representing an integer."
+      }
+    ],
+    "flo": [
+      {
+        "name": "as_integer_ratio",
+        "kind": "method",
+        "detail": "float.as_integer_ratio() — Return a pair of integers, whose ratio is exactly equal to the original float."
+      },
+      {
+        "name": "conjugate",
+        "kind": "method",
+        "detail": "float.conjugate() — Return self, the complex conjugate of any float."
+      },
+      {
+        "name": "from_number",
+        "kind": "method",
+        "detail": "float.from_number(number) — Convert real number to a floating-point number."
+      },
+      {
+        "name": "fromhex",
+        "kind": "method",
+        "detail": "float.fromhex(string) — Create a floating-point number from a hexadecimal string."
+      },
+      {
+        "name": "hex",
+        "kind": "method",
+        "detail": "float.hex() — Return a hexadecimal representation of a floating-point number."
+      },
+      {
+        "name": "imag",
+        "kind": "property",
+        "detail": "float.imag"
+      },
+      {
+        "name": "is_integer",
+        "kind": "method",
+        "detail": "float.is_integer() — Return True if the float is an integer."
+      },
+      {
+        "name": "real",
+        "kind": "property",
+        "detail": "float.real"
+      }
+    ],
+    "bool": [
+      {
+        "name": "as_integer_ratio",
+        "kind": "method",
+        "detail": "bool.as_integer_ratio() — Return a pair of integers, whose ratio is equal to the original int."
+      },
+      {
+        "name": "bit_count",
+        "kind": "method",
+        "detail": "bool.bit_count() — Number of ones in the binary representation of the absolute value of self."
+      },
+      {
+        "name": "bit_length",
+        "kind": "method",
+        "detail": "bool.bit_length() — Number of bits necessary to represent self in binary."
+      },
+      {
+        "name": "conjugate",
+        "kind": "method",
+        "detail": "bool.conjugate() — Returns self, the complex conjugate of any int."
+      },
+      {
+        "name": "denominator",
+        "kind": "property",
+        "detail": "bool.denominator"
+      },
+      {
+        "name": "from_bytes",
+        "kind": "method",
+        "detail": "bool.from_bytes(bytes, byteorder?, signed?) — Return the integer represented by the given array of bytes."
+      },
+      {
+        "name": "imag",
+        "kind": "property",
+        "detail": "bool.imag"
+      },
+      {
+        "name": "is_integer",
+        "kind": "method",
+        "detail": "bool.is_integer() — Returns True. Exists for duck type compatibility with float.is_integer."
+      },
+      {
+        "name": "numerator",
+        "kind": "property",
+        "detail": "bool.numerator"
+      },
+      {
+        "name": "real",
+        "kind": "property",
+        "detail": "bool.real"
+      },
+      {
+        "name": "to_bytes",
+        "kind": "method",
+        "detail": "bool.to_bytes(length?, byteorder?, signed?) — Return an array of bytes representing an integer."
+      }
     ]
-  }
+  },
+  "Parsing": [
+    {
+      "name": "Arrayformatt",
+      "kind": "method",
+      "detail": "Parsing.Arrayformatt(value, to_type?) — Converte para lista."
+    },
+    {
+      "name": "JSONformatt",
+      "kind": "method",
+      "detail": "Parsing.JSONformatt(value, to_type?) — Converte para dict/list (JSON)."
+    },
+    {
+      "name": "TransientValue",
+      "kind": "method",
+      "detail": "Parsing.TransientValue(value, to_type?) — Converte preservando o valor original sem distorção."
+    },
+    {
+      "name": "Tuplasformatt",
+      "kind": "method",
+      "detail": "Parsing.Tuplasformatt(value, to_type?) — Converte para tupla."
+    },
+    {
+      "name": "boolean",
+      "kind": "method",
+      "detail": "Parsing.boolean(value, to_type?) — Converte para bool."
+    },
+    {
+      "name": "floating",
+      "kind": "method",
+      "detail": "Parsing.floating(value, to_type?) — Converte para float — suporte a separador BR."
+    },
+    {
+      "name": "integer",
+      "kind": "method",
+      "detail": "Parsing.integer(value, to_type?) — Converte para inteiro — trunca float sem arredondar."
+    },
+    {
+      "name": "string",
+      "kind": "method",
+      "detail": "Parsing.string(value, to_type?) — Remove caracteres não textuais e retorna PoolStr."
+    }
+  ],
+  "__builtins__": [
+    {
+      "name": "open",
+      "kind": "function",
+      "detail": "open(path, mode?, encoding?) — Built-in `open(path, mode)` — abre um arquivo. Use com `using` pra fechar auto:"
+    },
+    {
+      "name": "len",
+      "kind": "function",
+      "detail": "len(value)"
+    },
+    {
+      "name": "range",
+      "kind": "function",
+      "detail": "range(args)"
+    },
+    {
+      "name": "type",
+      "kind": "function",
+      "detail": "type(value)"
+    },
+    {
+      "name": "str",
+      "kind": "class",
+      "detail": "str — str(object='') -> str",
+      "returns": "str"
+    },
+    {
+      "name": "int",
+      "kind": "class",
+      "detail": "int — int([x]) -> integer",
+      "returns": "int"
+    },
+    {
+      "name": "flo",
+      "kind": "class",
+      "detail": "flo(x?) — Convert a string or number to a floating-point number, if possible.",
+      "returns": "flo"
+    },
+    {
+      "name": "bool",
+      "kind": "class",
+      "detail": "bool(object?) — Returns True when the argument is true, False otherwise.",
+      "returns": "bool"
+    },
+    {
+      "name": "Parsing",
+      "kind": "property",
+      "detail": "Parsing — Objeto builtin `Parsing` — disponível globalmente."
+    },
+    {
+      "name": "PoolFile",
+      "kind": "class",
+      "detail": "PoolFile(path) — Arquivo binário carregado — suporta move, copy, delete."
+    },
+    {
+      "name": "id",
+      "kind": "function",
+      "detail": "id(obj) — Return the identity of an object."
+    },
+    {
+      "name": "hex",
+      "kind": "function",
+      "detail": "hex(number) — Return the hexadecimal representation of an integer."
+    },
+    {
+      "name": "bin",
+      "kind": "function",
+      "detail": "bin(number) — Return the binary representation of an integer."
+    },
+    {
+      "name": "oct",
+      "kind": "function",
+      "detail": "oct(number) — Return the octal representation of an integer."
+    },
+    {
+      "name": "ord",
+      "kind": "function",
+      "detail": "ord(character) — Return the ordinal value of a character."
+    },
+    {
+      "name": "chr",
+      "kind": "function",
+      "detail": "chr(i) — Return a Unicode string of one character with ordinal i; 0 <= i <= 0x10ffff."
+    },
+    {
+      "name": "abs",
+      "kind": "function",
+      "detail": "abs(x) — Return the absolute value of the argument."
+    },
+    {
+      "name": "round",
+      "kind": "function",
+      "detail": "round(number, ndigits?) — Round a number to a given precision in decimal digits."
+    },
+    {
+      "name": "sum",
+      "kind": "function",
+      "detail": "sum(iterable, start?) — Return the sum of a 'start' value (default: 0) plus an iterable of numbers"
+    },
+    {
+      "name": "min",
+      "kind": "function",
+      "detail": "min — min(iterable, *[, default=obj, key=func]) -> value"
+    },
+    {
+      "name": "max",
+      "kind": "function",
+      "detail": "max — max(iterable, *[, default=obj, key=func]) -> value"
+    },
+    {
+      "name": "sorted",
+      "kind": "function",
+      "detail": "sorted(iterable, key?, reverse?) — Return a new list containing all items from the iterable in ascending order."
+    },
+    {
+      "name": "reversed",
+      "kind": "function",
+      "detail": "reversed(x)"
+    },
+    {
+      "name": "enumerate",
+      "kind": "function",
+      "detail": "enumerate(x)"
+    },
+    {
+      "name": "zip",
+      "kind": "function",
+      "detail": "zip(a)"
+    }
+  ]
 }

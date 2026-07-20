@@ -51,16 +51,6 @@
       ""
     ]
   },
-  "route": {
-    "prefix": "route",
-    "body": [
-      "@app.route(\"/${1:caminho}\", auth=cors.permiser(), methods=cors.options([\"${2:GET}\"])) {",
-      "    action ${3:handler}() {",
-      "        ${0:return jsonify({\"msg\": \"ok\"}), 200}",
-      "    }",
-      "}"
-    ]
-  },
   "db query curto": {
     "prefix": "dbq",
     "body": [

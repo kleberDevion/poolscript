@@ -11,7 +11,7 @@ Estratégia:
 """
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Any, Iterator
 import re
 import sys
 from .ps_errors import _BasePoolSyntaxError as _PSBaseSyntaxError
@@ -23,7 +23,10 @@ from .ps_errors import _BasePoolSyntaxError as _PSBaseSyntaxError
 @dataclass
 class Token:
     type: str          # ex: "IDENT", "INT", "STR", "KW", "OP", "LBRACE"...
-    value: object      # valor já convertido (int, float, str, bool, None) ou lexema
+    # Any (não `object`): compilado com mypyc, a resolução das annotations do
+    # dataclass avalia cada nome num namespace sem builtins → `object` dá
+    # KeyError no import do .pyd; `Any` (importado no topo) resolve normal.
+    value: Any         # valor já convertido (int, float, str, bool, None) ou lexema
     line: int          # 1-based
     col: int           # 1-based
     lexeme: str = ""   # texto original (útil para mensagens de erro)
@@ -297,7 +300,7 @@ class Lexer:
     def _read_string(self, quote: str, is_fstring: bool = False, is_raw: bool = False) -> None:
         start_line, start_col = self.line, self.col
         self._advance(1)  # consome a aspa inicial
-        out = []
+        out: list[str] = []
         while self.pos < len(self.src):
             c = self.src[self.pos]
             if is_raw:
@@ -342,7 +345,7 @@ class Lexer:
         start_line, start_col = self.line, self.col
         triple = quote * 3
         self._advance(3)  # abre as 3 aspas — sem \n aqui, avanço simples é seguro
-        out = []
+        out: list[str] = []
         while self.pos < len(self.src):
             if self.src[self.pos:self.pos + 3] == triple:
                 self.pos += 3

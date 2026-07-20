@@ -168,8 +168,8 @@ class ActionDecl(Node):
     name: str
     params: list[str]
     block: Block
-    defaults: dict = None       # {param_name: default_node}
-    return_type: str = None     # None | "int" | "bool"
+    defaults: dict | None = None       # {param_name: default_node}
+    return_type: str | None = None     # None | "int" | "bool"
     is_async: bool = False       # `async action` / `async reaction`
 
 
@@ -331,10 +331,10 @@ class MatchPattern(Node):
     """Padrão de um case — valor, wildcard, lista, dict ou captura."""
     kind: str          # "value", "wildcard", "capture", "list", "dict", "or"
     value: "Any" = None       # para kind="value" — o literal
-    name: str = None          # para kind="capture" — nome da variável
-    items: list = None        # para kind="list" — lista de sub-padrões
-    keys: dict = None         # para kind="dict" — {chave: sub-padrão}
-    patterns: list = None     # para kind="or" — lista de padrões alternativos
+    name: str | None = None          # para kind="capture" — nome da variável
+    items: list | None = None        # para kind="list" — lista de sub-padrões
+    keys: dict | None = None         # para kind="dict" — {chave: sub-padrão}
+    patterns: list | None = None     # para kind="or" — lista de padrões alternativos
     guard: "Node | None" = None  # condição if opcional
 
 
@@ -388,7 +388,7 @@ class EntityDecl(Node):
     name: str
     parents: "list[str]"   # lista de pais (vazia = sem herança)
     body: list[Node]
-    fields: "list[EntityField]" = None  # campos tipados (para @dataentity)
+    fields: "list[EntityField] | None" = None  # campos tipados (para @dataentity)
 
 
 @dataclass(slots=True)
@@ -556,7 +556,8 @@ class Parser:
                 return self.parse_action_decl()
             if tok.value == "model":
                 return self.parse_model_decl()
-            if tok.value == "Entity":
+            if tok.value in {"Entity", "class", "Class"}:
+                # `class`/`Class` são aliases de `Entity`
                 return self.parse_entity_decl()
             if tok.value == "match":
                 # match(...) = chamada de função (regex); match expr: = match/case
@@ -979,7 +980,7 @@ class Parser:
                 self.expect(("IDENT",), msg="esperado 'length'")
                 self.expect("OP", "=", msg="esperado '=' após 'length'")
                 len_tok = self.expect("INT", msg="esperado número após 'length='")
-                length = int(len_tok.value)
+                length = int(str(len_tok.value))
                 self.expect("RPAREN", msg="esperado ')' após o valor de length")
             self.consume_optional_semi()
             self.skip_separators()
@@ -990,8 +991,12 @@ class Parser:
 
 
     def parse_entity_decl(self) -> "EntityDecl":
-        """`Entity NomeClasse(Pai) { action __init__(self, ...) { } ... }`"""
-        start = self.expect("KW", "Entity")
+        """`Entity NomeClasse(Pai) { action __init__(self, ...) { } ... }`
+        `class`/`Class` funcionam como aliases de `Entity`."""
+        start = self.current()
+        if not (start.type == "KW" and start.value in {"Entity", "class", "Class"}):
+            raise self.error("esperado 'Entity' (ou o alias 'class')", start)
+        self.pos += 1
         name_tok = self.expect(("IDENT", "IDENT_UPPER"), msg="esperado nome da Entity após 'Entity'")
         name = str(name_tok.value)
 
@@ -1102,7 +1107,7 @@ class Parser:
         default = None
         if self.current().type == "OP" and self.current().value == "=":
             self.pos += 1  # consume '='
-            default = self.parse_expr()
+            default = self.parse_expression()
         return EntityField(
             line=name_tok.line, col=name_tok.col,
             field_name=str(name_tok.value),
@@ -1233,8 +1238,11 @@ class Parser:
         if tok.type == "OP" and tok.value == "-":
             self.pos += 1
             num = self.current()
+            if num.type not in {"INT", "FLO"}:
+                raise self.error("esperado número após '-' no padrão de case", num)
             self.pos += 1
-            pat = MatchPattern(line=tok.line, col=tok.col, kind="value", value=-num.value)
+            neg_value = -float(str(num.value)) if num.type == "FLO" else -int(str(num.value))
+            pat = MatchPattern(line=tok.line, col=tok.col, kind="value", value=neg_value)
             return self._maybe_or_pattern(pat)
 
         raise self.error("padrão de case inválido", tok)
@@ -1394,6 +1402,12 @@ class Parser:
 
     def parse_import_stmt(self) -> ImportStmt:
         start = self.current()
+        # anotados uma vez aqui — cada branch retorna, mas o mypy(c) não
+        # aceita a mesma variável re-anotada em branches diferentes [no-redef]
+        module: list[str]
+        module_alias: str | None
+        names: list[str]
+        name_aliases: dict[str, str]
         if self.match("KW", "import"):
             module = self.parse_module_path()
             module_alias = None
@@ -1410,7 +1424,7 @@ class Parser:
                 self.pos += 1
                 level += 1
             if level > 0 and (self.current().type == "KW" and self.current().value == "import"):
-                module: list[str] = []
+                module = []
             else:
                 module = self.parse_module_path()
             self.expect("KW", "import")
@@ -1425,8 +1439,8 @@ class Parser:
         module_alias = None
         if self.match("KW", "as"):
             module_alias = self.parse_name_like("esperado nome após 'as'")
-        names: list[str] = []
-        name_aliases: dict[str, str] = {}
+        names = []
+        name_aliases = {}
         if self.match("KW", "GET"):
             names, name_aliases = self.parse_name_list_with_aliases()
         self.consume_optional_semi()
@@ -1542,8 +1556,9 @@ class Parser:
 
     def parse_block(self) -> Block:
         tok = self.current()
+        statements: list[Node]
         if self.match("LBRACE"):
-            statements: list[Node] = []
+            statements = []
             self.skip_separators()
             while self.current().type not in {"RBRACE", "EOF"}:
                 statements.append(self.parse_statement())
@@ -1555,7 +1570,7 @@ class Parser:
         if self.match("COLON"):
             self.expect("NEWLINE", msg="faltou quebra de linha após ':'")
             self.expect("INDENT", msg="faltou indentação após ':'")
-            statements: list[Node] = []
+            statements = []
             self.skip_separators()
             while self.current().type not in {"DEDENT", "EOF"}:
                 statements.append(self.parse_statement())
@@ -1784,7 +1799,7 @@ class Parser:
         if tok.type == "COLOR":
             self.pos += 1
             str_expr = self.parse_primary()
-            return ColorStrExpr(color=tok.value, expr=str_expr, line=tok.line, col=tok.col)
+            return ColorStrExpr(color=str(tok.value), expr=str_expr, line=tok.line, col=tok.col)
         if tok.type == "STR":
             return self.parse_string_like()
         # Forma prefixa do count em expressão: `count <type>[(<value>)] in <container>`
@@ -1859,7 +1874,7 @@ class Parser:
         if tok.type == "IDENT" and tok.value == "base":
             self.pos += 1
             self.expect("LPAREN", msg="esperado '(' após 'base'")
-            args: list[CallArg] = []
+            args = []
             if self.current().type != "RPAREN":
                 while True:
                     arg_val = self.parse_expression()

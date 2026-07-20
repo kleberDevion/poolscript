@@ -39,7 +39,11 @@ function loadStdlibMetadata() {
         stdlibMetadata = JSON.parse(fs.readFileSync(p, 'utf-8'));
         const members = {};
         for (const [libName, entries] of Object.entries(stdlibMetadata)) {
-            if (libName === '__classes__') continue;
+            if (libName === '__classes__' || libName === '__builtins__') continue;
+            // Inclui pseudo-módulos de builtin singleton (ex: "Parsing", ver
+            // gen_stdlib_metadata.py) — mesmo tratamento de "os"/"date"/etc,
+            // então "Parsing.<TAB>" cai no MESMO tier 1 de completion sem
+            // nenhum código extra aqui.
             members[libName] = entries.map(e => ({
                 name: e.name,
                 kind: KIND_MAP[e.kind] || vscode.CompletionItemKind.Function,
@@ -58,6 +62,19 @@ function loadStdlibMetadata() {
             }));
         }
         STDLIB_CLASSES = classes;
+
+        // Builtins globais (sem import) — gerados por introspecção real de
+        // GLOBAL_BUILTINS (builtins.py). A lista GLOBAL_BUILTINS hardcoded
+        // logo no topo deste arquivo cobre também builtins registrados só
+        // no interpreter.py (post/input/map/filter/sleep/...), que não
+        // passam por builtins.py — por isso é um MERGE (nome novo entra,
+        // nome já existente na lista fixa não é sobrescrito), não substituição.
+        const seenBuiltins = new Set(GLOBAL_BUILTINS.map(b => b.name));
+        for (const b of (stdlibMetadata.__builtins__ || [])) {
+            if (seenBuiltins.has(b.name)) continue;
+            seenBuiltins.add(b.name);
+            GLOBAL_BUILTINS.push({ name: b.name, detail: b.detail });
+        }
     } catch (e) {
         console.warn(`[poolscript] falha ao carregar stdlib_metadata.json: ${e}`);
     }
@@ -224,7 +241,7 @@ function parsePoolScript(content) {
     const lines = content.split('\n');
     const RESERVED = new Set([
         'if','elif','else','for','while','return','action','reaction',
-        'Entity','Class','import','from','true','false','null',
+        'Entity','Class','class','import','from','true','false','null',
         'none','and','or','not','in','is','count','each'
     ]);
 
@@ -252,7 +269,7 @@ function parsePoolScript(content) {
         }
 
         // ── Entity / Class ────────────────────────────────────────────
-        m = t.match(/^(?:Entity|Class)\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*([:{])?/);
+        m = t.match(/^(?:Entity|Class|class)\s+([A-Za-z_]\w*)\s*\([^)]*\)\s*([:{])?/);
         if (m) {
             const entityName  = m[1];
             const baseIndent  = (raw.match(/^( *)/) || ['', ''])[1].length;
@@ -305,6 +322,15 @@ class PythonBridge {
         this._buffer = '';
         this._warned = false;
         this._disposed = false;
+        // Antes: um crash com código de saída != 0 desligava o bridge PRA
+        // SEMPRE pelo resto da sessão do VS Code (só reiniciava uma vez, e só
+        // se o processo saísse com código 0 — o que quase nunca acontece num
+        // crash de verdade). Um travamento isolado no início virava "cai pro
+        // regex" permanentemente, sem aviso nenhum depois do 1º popup. Agora
+        // sempre tenta de novo, com backoff — o popup de aviso ainda aparece
+        // só uma vez (não fica martelando o usuário), mas a tentativa de
+        // religar nunca para.
+        this._restartAttempts = 0;
         this._start();
     }
 
@@ -324,12 +350,16 @@ class PythonBridge {
             proc = spawn(this._pythonPath(), [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
         } catch (e) {
             this._onUnavailable(String(e && e.message || e));
+            this._scheduleRestart();
             return;
         }
         this.proc = proc;
         this.available = true;
 
-        proc.on('error', (e) => this._onUnavailable(String(e && e.message || e)));
+        proc.on('error', (e) => {
+            this._onUnavailable(String(e && e.message || e));
+            this._scheduleRestart();
+        });
         proc.stdout.setEncoding('utf-8');
         proc.stdout.on('data', (chunk) => this._onData(chunk));
         proc.stderr.on('data', () => { /* mensagens não estruturadas — ignoradas */ });
@@ -338,13 +368,18 @@ class PythonBridge {
             for (const [, p] of this.pending) p.resolve(null);
             this.pending.clear();
             if (this._disposed) return;
-            if (code !== 0 && !this._warned) {
-                this._onUnavailable(`processo de análise saiu com código ${code}`);
-                return;
-            }
-            // reinicia uma vez após uma pequena pausa (ex: crash isolado)
-            setTimeout(() => { if (!this._disposed && !this._warned) this._start(); }, 1500);
+            if (code !== 0) this._onUnavailable(`processo de análise saiu com código ${code}`);
+            this._scheduleRestart();
         });
+    }
+
+    /** Backoff exponencial com teto de 30s — nunca desiste de vez, só
+     * espaça as tentativas pra não martelar o sistema num crash-loop. */
+    _scheduleRestart() {
+        if (this._disposed) return;
+        this._restartAttempts++;
+        const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(this._restartAttempts, 5)));
+        setTimeout(() => { if (!this._disposed) this._start(); }, delay);
     }
 
     _onUnavailable(reason) {
@@ -353,7 +388,7 @@ class PythonBridge {
         this._warned = true;
         vscode.window.showWarningMessage(
             `PoolScript: não foi possível iniciar o analisador Python (${reason}). ` +
-            `O IntelliSense vai funcionar em modo básico (sem diagnósticos/definições precisas). ` +
+            `O IntelliSense vai funcionar em modo básico (sem diagnósticos/definições precisas) até religar. ` +
             `Configure "poolscript.pythonPath" nas settings se o Python não estiver no PATH.`
         );
     }
@@ -367,6 +402,11 @@ class PythonBridge {
             if (!line.trim()) continue;
             let msg;
             try { msg = JSON.parse(line); } catch (_) { continue; }
+            // Resposta válida chegou — o processo está saudável de verdade
+            // (não só "spawned", mas respondendo). Zera o contador de
+            // backoff e o aviso, pra um crash futuro poder avisar de novo.
+            this._restartAttempts = 0;
+            this._warned = false;
             const pending = this.pending.get(msg.id);
             if (pending) { this.pending.delete(msg.id); pending.resolve(msg); }
         }
@@ -427,7 +467,9 @@ function bridgeResultToFileData(result) {
 
     for (const en of result.entities || []) {
         const members = [
-            ...(en.methods || []).map(m => ({
+            // __init__ não é chamado via ponto depois de instanciar
+            // (p.__init__() não faz sentido) — não entra no completion de membro
+            ...(en.methods || []).filter(m => m.name !== '__init__').map(m => ({
                 name: m.name,
                 kind: vscode.CompletionItemKind.Method,
                 detail: formatFunctionSignature(m),
@@ -453,6 +495,10 @@ function bridgeResultToFileData(result) {
     const variables = (result.variables || []).map(v => ({
         name: v.name, line: toZeroBasedLine(v.line), col: toZeroBasedCol(v.col), declaredType: v.declaredType,
         scope: v.scope || 'module',
+        // Calculado uma vez pelo parser REAL (analyze.py: infer_type) — ver
+        // getVariableType, que agora resolve tipo a partir disso em vez de
+        // regex em cima do texto bruto.
+        inferredType: v.inferredType || null,
     }));
 
     // Escopos (função/método): usados pra só sugerir variáveis locais
@@ -489,6 +535,24 @@ class WorkspaceSymbolProvider {
         this._indexWorkspace();
         vscode.workspace.onDidDeleteFiles(e => e.files.forEach(u => this.fileData.delete(u.fsPath)));
         vscode.workspace.onDidCreateFiles(e => e.files.forEach(u => this._parseUri(u)));
+        // Renomear arquivo/pasta no Explorer NÃO disparava atualização de
+        // import em nenhum outro arquivo do projeto (buraco real reportado —
+        // Pylance/outros LSPs fazem isso). onWillRenameFiles monta os edits
+        // ANTES do rename efetivar (aplicado atomicamente junto pelo VS Code);
+        // onDidRenameFiles só realoca a entrada em fileData pro fsPath novo.
+        vscode.workspace.onWillRenameFiles(e => {
+            e.waitUntil(this._buildRenameImportsEdit(e.files));
+        });
+        vscode.workspace.onDidRenameFiles(e => {
+            for (const { oldUri, newUri } of e.files) {
+                const data = this.fileData.get(oldUri.fsPath);
+                if (data) {
+                    this.fileData.delete(oldUri.fsPath);
+                    this.fileData.set(newUri.fsPath, data);
+                }
+                this._parseUri(newUri);
+            }
+        });
     }
 
     async _indexWorkspace() {
@@ -576,6 +640,58 @@ class WorkspaceSymbolProvider {
             if (s) return s;
         }
         return null;
+    }
+
+    /** Converte fsPath → nome de módulo dotted, relativo à raiz do workspace
+     * (só suporta import absoluto, level=0 — é o que _fsPathToModuleName
+     * consegue inferir sem saber de onde o import parte). Ex:
+     * <root>/utils/helpers.ps → "utils.helpers". Usado por
+     * _buildRenameImportsEdit pra saber o nome antigo/novo de um arquivo ou
+     * pasta renomeada, e comparar contra imp.module dos arquivos indexados. */
+    _fsPathToModuleName(fsPath) {
+        const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(fsPath));
+        const base = folder ? folder.uri.fsPath
+            : (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders[0]
+                ? vscode.workspace.workspaceFolders[0].uri.fsPath : null);
+        if (!base) return null;
+        let rel = path.relative(base, fsPath);
+        if (!rel || rel.startsWith('..')) return null;
+        rel = rel.replace(/\.(ps|psl)$/, '');
+        return rel.split(path.sep).filter(Boolean).join('.');
+    }
+
+    /** Monta o WorkspaceEdit que atualiza "import X"/"from X import Y" em
+     * TODO arquivo indexado que referencia o módulo/pasta renomeado — cobre
+     * tanto o próprio arquivo (module === oldModule) quanto qualquer coisa
+     * dentro de uma pasta renomeada (module.startsWith(oldModule + '.')).
+     * Só cobre import ABSOLUTO (level=0); import relativo (`from .x`) não
+     * muda com o rename porque a estrutura relativa entre os arquivos
+     * continua a mesma. */
+    async _buildRenameImportsEdit(files) {
+        const edit = new vscode.WorkspaceEdit();
+        for (const { oldUri, newUri } of files) {
+            const oldModule = this._fsPathToModuleName(oldUri.fsPath);
+            const newModule = this._fsPathToModuleName(newUri.fsPath);
+            if (!oldModule || !newModule || oldModule === newModule) continue;
+
+            for (const [fsPath, data] of this.fileData) {
+                const uri = fsPath === oldUri.fsPath ? oldUri : vscode.Uri.file(fsPath);
+                for (const imp of data.imports || []) {
+                    if (imp.level > 0) continue;
+                    if (imp.module !== oldModule && !imp.module.startsWith(oldModule + '.')) continue;
+                    const newModuleName = newModule + imp.module.slice(oldModule.length);
+                    try {
+                        const doc = await vscode.workspace.openTextDocument(uri);
+                        const lineText = doc.lineAt(imp.line).text;
+                        const col = lineText.indexOf(imp.module);
+                        if (col >= 0) {
+                            edit.replace(uri, new vscode.Range(imp.line, col, imp.line, col + imp.module.length), newModuleName);
+                        }
+                    } catch (_) { /* arquivo pode ter sido fechado/movido nesse meio-tempo */ }
+                }
+            }
+        }
+        return edit;
     }
 
     /** Base dir de resolução de import, espelhando Interpreter._exec_import
@@ -701,38 +817,88 @@ class PoolScriptAnalyzer {
         if (varName === 'self') {
             const lines = this.document.getText().split('\n');
             for (let i = this.position.line; i >= 0; i--) {
-                const m = lines[i].match(/(?:Entity|Class)\s+([A-Za-z_]\w*)/);
+                const m = lines[i].match(/(?:Entity|Class|class)\s+([A-Za-z_]\w*)/);
                 if (m) return m[1];
             }
             return null;
         }
 
-        // Varre para trás a partir do cursor buscando: varName = SomeClass(...)
+        const localData = this.provider.fileData.get(this.document.uri.fsPath);
+
+        // Caminho principal: usa o "inferredType" calculado pelo parser REAL
+        // (analyze.py: infer_type), a partir da árvore — não regex em cima
+        // do texto. Pega a atribuição mais recente antes do cursor pra esse
+        // nome (a árvore garante que é a atribuição de verdade, não um match
+        // por acaso dentro de string/comentário/outra função).
+        if (localData && localData.ok && Array.isArray(localData.variables)) {
+            const candidates = localData.variables.filter(v => v.name === varName && v.line <= this.position.line);
+            if (candidates.length) {
+                const latest = candidates.reduce((a, b) => (b.line > a.line ? b : a));
+                const it = latest.inferredType;
+                if (!it) return null; // parser já disse: não é dict/call — não arrisca ficar num tipo de uma atribuição mais antiga
+                if (it.kind === 'dict') return 'json_dict';
+                if (it.kind === 'call') return this._resolveCalleeType(it.callee, localData);
+                return null;
+            }
+        }
+
+        // Fallback: bridge indisponível (fileData.ok === false, sem
+        // inferredType nenhum) — regex antigo em cima do texto bruto,
+        // menos preciso mas melhor que nada enquanto há erro de digitação.
         const textBefore = this.document.getText(
             new vscode.Range(0, 0, this.position.line, this.position.character)
         );
-        const localData = this.provider.fileData.get(this.document.uri.fsPath);
         const lines = textBefore.split('\n').reverse();
         for (const ln of lines) {
-            // objeto devolvido por função da stdlib: x = request.ws_connect(...),
-            // x = request.get(...) etc. — resolve via "returns" do metadata
-            // (gerado por introspecção real, ver gen_stdlib_metadata.py).
             let dm = ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*([A-Za-z_]\\w*)\\.([A-Za-z_]\\w*)\\s*\\(`));
             if (dm) {
-                const stdlibKey = resolveStdlibKey(dm[1], localData);
-                const member = (STDLIB_MEMBERS[stdlibKey] || []).find(mm => mm.name === dm[2]);
-                if (member?.returns && STDLIB_CLASSES[member.returns]) {
-                    return { stdlibClass: member.returns };
-                }
+                const resolved = this._resolveCalleeType([dm[1], dm[2]], localData);
+                if (resolved) return resolved;
             }
-            // instanciação de Entity: x = User(...)
             let m = ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*([A-Za-z_]\\w*)\\s*\\(`));
             if (m) {
-                const sym = this.provider.getSymbolByName(m[1], this.document.uri);
-                if (sym?.kind === vscode.CompletionItemKind.Class) return m[1];
+                const resolved = this._resolveCalleeType([m[1]], localData);
+                if (resolved) return resolved;
             }
-            // dict
             if (ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*\\{`))) return 'json_dict';
+        }
+        return null;
+    }
+
+    /** Resolve um "callee" (caminho pontilhado da chamada do lado direito de
+     * uma atribuição, ex: ["Pessoa"] ou ["request","ws_connect"] ou
+     * ["modulo","Pessoa"]) pro tipo real: instância de Entity local, classe
+     * da stdlib, ou objeto devolvido por factory function da stdlib.
+     * Compartilhado entre o caminho principal (AST real) e o fallback
+     * (regex) — a lógica de resolução é a mesma, só muda de onde o
+     * "callee" veio. */
+    _resolveCalleeType(callee, localData) {
+        if (!callee || !callee.length) return null;
+        if (callee.length === 1) {
+            const sym = this.provider.getSymbolByName(callee[0], this.document.uri);
+            if (sym?.kind === vscode.CompletionItemKind.Class) return callee[0];
+            return null;
+        }
+        const [first, second] = callee;
+        // objeto devolvido por função da stdlib: request.ws_connect(...) etc.
+        // — resolve via "returns" do metadata (introspecção real, ver
+        // gen_stdlib_metadata.py) — cobre tanto função-fábrica quanto classe
+        // exportada direto (ex: jinker.Jinker).
+        const stdlibKey = resolveStdlibKey(first, localData);
+        const member = (STDLIB_MEMBERS[stdlibKey] || []).find(mm => mm.name === second);
+        if (member?.returns && STDLIB_CLASSES[member.returns]) {
+            return { stdlibClass: member.returns };
+        }
+        // módulo LOCAL — modulo.MinhaClasse(...): "import modulo" (não
+        // "from modulo import Classe") + instanciar via prefixo do módulo.
+        if (localData) {
+            const modImp = localData.imports.find(i =>
+                i.mode === 'import' && (i.alias || i.module) === first);
+            if (modImp) {
+                const ms = this.provider._getModuleSymbols(modImp.module, this.document.uri.fsPath, modImp.level);
+                const sym = ms && ms.find(s => s.name === second);
+                if (sym?.kind === vscode.CompletionItemKind.Class) return second;
+            }
         }
         return null;
     }
@@ -812,10 +978,18 @@ function findEnclosingScopeId(fileData, line) {
  * ou seja, o cursor está no INÍCIO lógico de um statement (onde keywords
  * como `if`/`while`/`import` fazem sentido). Fora disso (no meio de uma
  * expressão, depois de `=`, dentro de uma chamada, etc.) essas keywords
- * não são sugestões válidas — só um valor/identificador é. */
+ * não são sugestões válidas — só um valor/identificador é.
+ *
+ * Ignora a palavra parcial já digitada antes de checar: sem isso, o
+ * momento em que você digita "re" (pra completar "reaction") já teria "re"
+ * como texto não-branco antes do cursor, e a tier inteira de keywords de
+ * início de statement (action/reaction/if/while/Entity/...) sumia assim
+ * que a primeira letra era digitada — só aparecia com Ctrl+Space numa
+ * linha 100% vazia, antes de digitar qualquer coisa. */
 function isStatementStartContext(document, position) {
     const prefix = document.getText(new vscode.Range(position.line, 0, position.line, position.character));
-    return /^\s*$/.test(prefix);
+    const withoutPartialWord = prefix.replace(/[A-Za-z_]\w*$/, '');
+    return /^\s*$/.test(withoutPartialWord);
 }
 
 /** Decompõe o texto já digitado depois de "import "/"from " em
@@ -1431,7 +1605,7 @@ class PoolScriptInlayHintsProvider {
         const data = this.provider.fileData.get(document.uri.fsPath);
         if (!data) return [];
         const hints = [];
-        const NOT_CALLS = new Set(['if', 'while', 'for', 'elif', 'action', 'reaction', 'Entity', 'import', 'from', 'model', 'match', 'catch']);
+        const NOT_CALLS = new Set(['if', 'while', 'for', 'elif', 'action', 'reaction', 'Entity', 'Class', 'class', 'import', 'from', 'model', 'match', 'catch']);
 
         for (let li = range.start.line; li <= range.end.line && li < document.lineCount; li++) {
             const lineText = document.lineAt(li).text;
@@ -1603,6 +1777,26 @@ function activate(context) {
                         });
                     }
 
+                    // 1.5 módulo LOCAL (.ps/.psl próprio do projeto) importado
+                    // inteiro — "import minhalib" (ou "as apelido") seguido de
+                    // "minhalib." — faltava completamente: só stdlib (tier 1)
+                    // e instância de Entity via "from X import Y" tinham
+                    // completion; "import X; X.<algo>" não devolvia nada.
+                    if (localData) {
+                        const modImp = localData.imports.find(i =>
+                            i.mode === 'import' && (i.alias || i.module) === access.obj);
+                        if (modImp) {
+                            const ms = provider._getModuleSymbols(modImp.module, document.uri.fsPath, modImp.level);
+                            if (ms) {
+                                return ms.map(s => {
+                                    const it = new vscode.CompletionItem(s.name, s.kind);
+                                    it.detail = s.detail || undefined;
+                                    return it;
+                                });
+                            }
+                        }
+                    }
+
                     // 2. variável tipada (instância de Entity, ou objeto devolvido
                     // por uma função da stdlib — WsConnection, Response, ...)
                     const type = analyzer.getVariableType(access.obj);
@@ -1716,6 +1910,7 @@ function activate(context) {
                       { label: 'int reaction',  detail: 'reaction com retorno int' },
                       { label: 'bool reaction', detail: 'reaction com retorno bool' },
                       { label: 'Entity',        detail: 'declaração de classe' },
+                      { label: 'class',         detail: 'alias de Entity' },
                       { label: 'model',         detail: 'validação de estrutura' },
                       { label: 'if',            detail: 'condicional' },
                       { label: 'elif',          detail: 'senão se' },
@@ -1740,6 +1935,32 @@ function activate(context) {
                     ];
                     for (const kw of STATEMENT_KEYWORDS) {
                         addItem(kw.label, vscode.CompletionItemKind.Keyword, kw.detail, '5');
+                    }
+
+                    // Snippet condicional: só faz sentido se o arquivo já
+                    // importa jinker (pressupõe `app`/`cors` existindo, via
+                    // "@app.route(...)"). Antes era um snippet ESTÁTICO
+                    // (snippets/poolscript.json), que não tem como ser
+                    // condicional — aparecia em QUALQUER .ps, mesmo sem
+                    // jinker nenhum, com o mesmo nome do método real
+                    // Jinker.route(), causando confusão sobre de onde vinha.
+                    if (localData && localData.imports.some(i => i.module === 'jinker') && !seen.has('jroute')) {
+                        seen.add('jroute');
+                        // kind=Method (não Snippet) — "editor.snippetSuggestions: none"
+                        // (settings, pra parar de misturar snippet estático fora de
+                        // contexto) suprimiria isso também se ficasse como Snippet,
+                        // mesmo sendo um item corretamente gated por import real.
+                        const it = new vscode.CompletionItem('jroute', vscode.CompletionItemKind.Method);
+                        it.detail = 'rota Jinker (@app.route + action) — só aparece com "import jinker" no arquivo';
+                        it.insertText = new vscode.SnippetString(
+                            '@app.route("/${1:caminho}", auth=cors.permiser(), methods=cors.options(["${2:GET}"])) {\n' +
+                            '    action ${3:handler}() {\n' +
+                            '        ${0:return jsonify({"msg": "ok"}), 200}\n' +
+                            '    }\n' +
+                            '}'
+                        );
+                        it.sortText = '5_jroute';
+                        items.push(it);
                     }
                 }
 

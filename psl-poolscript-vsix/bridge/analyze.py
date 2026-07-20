@@ -193,6 +193,40 @@ def analyze_source(text):
             walk_expr(node.value_node)
         # Literal / TypeName: nada a percorrer
 
+    def infer_type(value_node):
+        """Descreve o LADO DIREITO de uma atribuição de forma estruturada,
+        pra extension.js resolver o tipo da variável sem precisar refazer
+        essa pergunta com regex em cima do texto bruto (que é frágil: pega
+        a linha errada em reatribuição, não entende chamada multi-linha,
+        casa string/comentário por engano, etc). Isso é calculado UMA VEZ
+        aqui, a partir da árvore real — extension.js só consome o resultado.
+
+        Retorna None (sem informação) ou:
+          {"kind": "dict"}
+          {"kind": "call", "callee": ["Pessoa"]}            # Pessoa(...)
+          {"kind": "call", "callee": ["modulo", "Pessoa"]}  # modulo.Pessoa(...)
+        """
+        if value_node is None:
+            return None
+        t = _node_type(value_node)
+        if t == "DictLiteral":
+            return {"kind": "dict"}
+        if t == "Call":
+            path = []
+            node = value_node.callee
+            while True:
+                nt = _node_type(node)
+                if nt == "Name":
+                    path.insert(0, node.value)
+                    break
+                if nt == "MemberAccess":
+                    path.insert(0, node.member)
+                    node = node.target
+                    continue
+                return None  # callee complexo demais (índice, chamada encadeada, etc.) — sem inferência
+            return {"kind": "call", "callee": path}
+        return None
+
     def walk_unpack_target(target, node, scope_id):
         for el in target.elements:
             if isinstance(el, str):
@@ -339,11 +373,19 @@ def analyze_source(text):
         elif t == "ImportStmt":
             register_import(node)
         elif t == "VarDecl":
-            variables.append({"name": node.name, "line": node.line, "col": node.col, "declaredType": node.declared_type, "scope": scope_id})
+            variables.append({
+                "name": node.name, "line": node.line, "col": node.col,
+                "declaredType": node.declared_type, "scope": scope_id,
+                "inferredType": infer_type(node.value),
+            })
             record_ref(node.name, node)
             walk_expr(node.value)
         elif t == "Assignment":
-            variables.append({"name": node.target, "line": node.line, "col": node.col, "declaredType": None, "scope": scope_id})
+            variables.append({
+                "name": node.target, "line": node.line, "col": node.col,
+                "declaredType": None, "scope": scope_id,
+                "inferredType": infer_type(node.value),
+            })
             record_ref(node.target, node)
             walk_expr(node.value)
         elif t == "UnpackAssignment":

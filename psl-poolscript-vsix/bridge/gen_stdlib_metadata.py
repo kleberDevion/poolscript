@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 from poolscript.stdlib import _LAZY_LOADERS, _load  # noqa: E402
+from poolscript.builtins import GLOBAL_BUILTINS  # noqa: E402
 
 # Construtores/typing genéricos que aparecem em anotações compostas
 # ("PoolFileUpload | None", "list[PoolFileUpload]") mas não são a classe
@@ -77,19 +78,87 @@ def _find_class_by_name(name: str):
     return None
 
 
+def _instance_members(instance, type_name: str) -> list[dict]:
+    """Introspecciona uma instância JÁ EXISTENTE (não a classe) — pega tanto
+    método de classe quanto atributo de instância setado em __init__ (ex:
+    Jinker.socket/channel), e objeto-callable (tem __call__, ex:
+    ChannelManager) tratado igual a método (inspect.signature introspecciona
+    o __call__ automaticamente)."""
+    members: dict[str, dict] = {}
+    for member_name, value in inspect.getmembers(instance):
+        if member_name.startswith("_"):
+            continue
+        if callable(value):
+            members[member_name] = {
+                "name": member_name,
+                "kind": "method",
+                "detail": _detail_for(type_name, member_name, value),
+            }
+        else:
+            members[member_name] = {
+                "name": member_name,
+                "kind": "property",
+                "detail": f"{type_name}.{member_name}",
+            }
+    return list(members.values())
+
+
 def _class_members(cls) -> list[dict]:
-    members = []
+    members: dict[str, dict] = {}
     for member_name, value in inspect.getmembers(cls):
         if member_name.startswith("_"):
             continue
         if not (inspect.isfunction(value) or inspect.ismethod(value)):
             continue
-        members.append({
+        members[member_name] = {
             "name": member_name,
             "kind": "method",
             "detail": _detail_for(cls.__name__, member_name, value),
-        })
-    return members
+        }
+    # Muita classe da stdlib guarda a API de verdade em ATRIBUTO DE INSTÂNCIA
+    # setado no __init__ (ex: Jinker.socket / Jinker.channel são objetos
+    # atribuídos em self.socket = ..., não métodos da classe) — só olhar a
+    # classe (getmembers(cls)) não vê isso. Instancia sem args pra pegar
+    # também — se falhar (construtor exige argumento obrigatório), fica só
+    # com o que já foi achado acima.
+    try:
+        instance_members = {m["name"]: m for m in _instance_members(cls(), cls.__name__)}
+        for name, m in instance_members.items():
+            members.setdefault(name, m)
+    except Exception:
+        pass
+    return list(members.values())
+
+
+_PRIMITIVE_TYPE_NAMES = {"str", "int", "float", "bool", "dict", "list", "tuple", "Any"}
+
+
+def _looks_constructible(cls) -> bool:
+    """False pra classe cujo __init__ pede um tipo que PoolScript não tem
+    como fornecer direto (ex: `path: Path` do PoolFile — path é sempre str
+    do lado da linguagem, nunca um pathlib.Path de verdade). Essas classes
+    normalmente só existem no builtin/lib pra comparação de tipo (`x is
+    PoolFile`), nunca pra ser instanciadas pelo usuário — anunciar
+    "PoolFile(path)" como se fosse construtor de verdade é enganoso.
+    Continua entrando em __classes__ (útil se algum dia vier de outro
+    jeito), só não vira sugestão de "chame isso pra criar um".
+    """
+    try:
+        sig = inspect.signature(cls.__init__)
+    except (TypeError, ValueError):
+        return True
+    for pname, p in sig.parameters.items():
+        if pname in ("self", "args", "kwargs"):
+            continue
+        ann = p.annotation
+        if ann is inspect.Parameter.empty:
+            continue
+        ann_str = ann if isinstance(ann, str) else getattr(ann, "__name__", str(ann))
+        m = re.match(r"[A-Za-z_][A-Za-z0-9_]*", ann_str)
+        base = m.group(0) if m else ann_str
+        if base not in _PRIMITIVE_TYPE_NAMES:
+            return False
+    return True
 
 
 def _kind_of(value) -> str:
@@ -125,7 +194,9 @@ def _detail_for(lib_name: str, member_name: str, value) -> str:
     sig = _signature_str(member_name, value)
     doc = inspect.getdoc(value)
     first_doc_line = doc.splitlines()[0].strip() if doc else None
-    call_form = f"{lib_name}.{sig}" if sig else f"{lib_name}.{member_name}"
+    # lib_name vazio = builtin global, sem prefixo de módulo (post(...), não .post(...))
+    prefix = f"{lib_name}." if lib_name else ""
+    call_form = f"{prefix}{sig}" if sig else f"{prefix}{member_name}"
     if first_doc_line:
         return f"{call_form} — {first_doc_line}"
     return call_form
@@ -144,15 +215,26 @@ def build_metadata() -> dict:
         for member_name, value in exports.items():
             if member_name.startswith("__"):
                 continue
+            kind = _kind_of(value)
             member = {
                 "name": member_name,
-                "kind": _kind_of(value),
+                "kind": kind,
                 "detail": _detail_for(lib_name, member_name, value),
             }
+            # Classe exportada direto (ex: jinker.Jinker) — instanciada como
+            # `app = jinker.Jinker(...)` — introspecciona os métodos dela
+            # também, senão `app.<TAB>` (route/socket/channel...) não tinha
+            # nenhuma sugestão porque só função-fábrica com "-> Tipo" virava
+            # entrada em __classes__, nunca a classe em si.
+            if kind == "class":
+                if member_name not in classes:
+                    classes[member_name] = _class_members(value)
+                if _looks_constructible(value):
+                    member["returns"] = member_name
             # Função que devolve um objeto rico (WsConnection, Response, ...)
             # — resolve a classe e introspecciona os métodos dela também,
             # pra extension.js oferecer completion em `x = lib.func(); x.`
-            return_name = _return_class_name(value) if _kind_of(value) == "function" else None
+            return_name = _return_class_name(value) if kind == "function" else None
             if return_name:
                 cls = _find_class_by_name(return_name)
                 if cls is not None:
@@ -166,6 +248,36 @@ def build_metadata() -> dict:
         # como sortText pra completions de membro não caírem no A-Z padrão.
         metadata[lib_name] = members
     metadata["__classes__"] = classes
+
+    # ── builtins globais (sem import) ─────────────────────────────────
+    # Antes: GLOBAL_BUILTINS era uma cópia manual dentro do PRÓPRIO
+    # extension.js (mesmo anti-padrão que motivou esse script pras libs) —
+    # e além de poder dessincronizar a lista em si, objetos-instância
+    # como `Parsing` (builtin global, ver builtins.py) nunca tinham member
+    # completion: "Parsing.<TAB>" não mostrava nada porque nada
+    # introspeccionava esse objeto. Agora entra no mesmo mecanismo das libs.
+    builtins_list = []
+    for name, value in GLOBAL_BUILTINS.items():
+        kind = _kind_of(value)
+        builtins_list.append({
+            "name": name,
+            "kind": kind,
+            "detail": _detail_for("", name, value),
+        })
+        if kind == "class":
+            if name not in classes:
+                classes[name] = _class_members(value)
+            if _looks_constructible(value):
+                builtins_list[-1]["returns"] = name
+        elif kind not in ("class", "function") and not inspect.isbuiltin(value):
+            # objeto-instância singleton com API própria (ex: Parsing) —
+            # vira um pseudo-módulo de primeira classe no metadata: quem
+            # digita "Parsing." bate no MESMO caminho de "os." (tier 1 de
+            # completion), sem precisar de nenhuma mudança no extension.js.
+            member_list = _instance_members(value, name)
+            if member_list and name not in metadata:
+                metadata[name] = member_list
+    metadata["__builtins__"] = builtins_list
     return metadata
 
 
