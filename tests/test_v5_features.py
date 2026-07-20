@@ -412,6 +412,21 @@ post(U.dobrar(5))
 """
     assert run(code) == ["10"]
 
+def test_json_module_dot_access():
+    # regressão: `json` é TYPE_KEYWORD — antes, `json.stringify(...)` parseava
+    # como TypeName("json").stringify e falhava com "string não tem método";
+    # a lib json inteira era inacessível por ponto (só o alias JSON escapava).
+    code = """
+import json
+s = json.stringify({"ok": true})
+post(s)
+d = json.parse(s)
+post(d["ok"])
+x = 1
+post(type(x) == "int")
+"""
+    assert run(code) == ['{"ok": true}', "True", "True"]
+
 def test_class_alias_of_entity():
     # `class` (e `Class`) declaram Entity igualzinho — inclusive herança
     # cruzada entre os dois estilos no mesmo arquivo.

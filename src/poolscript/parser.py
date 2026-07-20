@@ -1821,10 +1821,17 @@ class Parser:
             self.expect("RPAREN")
             block = self.parse_block()
             return LambdaExpr(line=tok.line, col=tok.col, params=params, block=block)
-        if tok.type == "KW" and tok.value in TYPE_KEYWORDS and self.peek().type != "LPAREN":
+        # Keyword de tipo seguida de '(' é chamada (int(x), str(x)...) e
+        # seguida de '.' é acesso de MÓDULO (json.parse, json.stringify — o
+        # `import json` binda um Module nesse nome) — nos dois casos vira
+        # Name, não TypeName. Sem o caso do DOT, `json.stringify(...)`
+        # parseava como TypeName("json").stringify → PoolTypeRef (subclasse
+        # de str) → "string não tem método 'stringify'": a lib json inteira
+        # era inacessível por ponto (só o alias JSON funcionava).
+        if tok.type == "KW" and tok.value in TYPE_KEYWORDS and self.peek().type not in {"LPAREN", "DOT"}:
             self.pos += 1
             return TypeName(line=tok.line, col=tok.col, name=str(tok.value))
-        if tok.type == "KW" and tok.value in TYPE_KEYWORDS and self.peek().type == "LPAREN":
+        if tok.type == "KW" and tok.value in TYPE_KEYWORDS and self.peek().type in {"LPAREN", "DOT"}:
             self.pos += 1
             return Name(line=tok.line, col=tok.col, value=str(tok.value))
         # base(NomePai, args...) ou base(args...) — chama __init__ do pai
