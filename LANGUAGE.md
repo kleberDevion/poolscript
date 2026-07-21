@@ -537,58 +537,209 @@ inválido. Tipos aceitos: `str(length=N)`, `int(length=N)`, `flo`, `bool`.
 
 ## `Entity` (classes)
 
-`class` (e `Class`) são aliases de `Entity` — os três declaram exatamente a
-mesma coisa e podem se misturar no mesmo arquivo, inclusive herdando entre si:
+`Entity`, `class` e `Class` são **a mesma keyword** — três grafias do mesmo
+recurso. Podem se misturar no mesmo arquivo e herdar entre si sem restrição.
+Daqui pra frente o texto usa `class`, mas tudo vale igual para os três.
+
+### Declaração e instância
 
 ```
 class Animal():
-    action falar(self):
-        return "..."
-
-Entity Gato(Animal):    // Entity herdando de class — tanto faz
-    action falar(self):
-        return "miau"
-```
-
-```
-Entity Animal():
     action __init__(self, nome):
         self.nome = nome
     action falar(self):
-        return "..."
+        return f"{self.nome} faz um som"
 
-Entity Cachorro(Animal):
-    action __init__(self, nome):
-        base(nome)             // chama __init__ do pai
-    action falar(self):
-        return "Au!"
-
-c = Cachorro("Rex")
-post(c.nome)      // Rex
-post(c.falar())   // Au!
+a = Animal("Bicho")     // chama __init__ automaticamente
+post(a.nome)            // Bicho
+post(a.falar())         // Bicho faz um som
 ```
 
-- Herança múltipla é suportada; `base(NomePai, args...)` escolhe o pai
-  explicitamente quando há mais de um.
-- Herança encadeada (A → B → C) funciona normalmente, cada nível chamando
-  `base(...)` para o `__init__` do pai imediato.
-- `@static` — método de classe, chamado sem instância: `Util.metodo(...)`.
-- `@dataentity` (via `from datasentity import dataentity, asdict, astuple,
-  aslist, asjson`) — gera `__init__` automático a partir de campos tipados
-  (`nome: str`, `idade: int`, ...) e helpers de conversão:
+Regras concretas:
+
+- **Os parênteses após o nome são obrigatórios**, mesmo sem herança:
+  `class Animal()` — `class Animal` sozinho é erro de sintaxe.
+- **`__init__` é opcional.** Sem ele, a instância nasce sem atributos e você
+  os cria depois (`obj.x = ...`) ou só usa os métodos.
+- **Todo método declarado precisa de `self` como primeiro parâmetro** — é o
+  próprio objeto. Chamar `obj.metodo(a, b)` injeta `self` automaticamente; você
+  passa só `a, b`. Um método sem `self` é erro em tempo de execução.
+- **Atributos vivem em `self.x`.** Não existe declaração prévia de campos (a
+  não ser via `@dataentity`, abaixo) — atribuir `self.x = valor` dentro de
+  qualquer método cria/atualiza o atributo.
+- **`post(obj)`** imprime `<NomeDaClasse {atributos}>`.
+
+### Herança simples e `base()`
+
+`base(...)` chama o `__init__` do **pai imediato**. Só funciona dentro de um
+`__init__` (fora dele dá erro "base() só pode ser chamado dentro de um
+__init__ de Entity").
+
+```
+class Cachorro(Animal):
+    action __init__(self, nome, raca):
+        base(nome)          // executa Animal.__init__(self, nome)
+        self.raca = raca    // e aí adiciona o atributo próprio
+    action falar(self):     // sobrescreve o falar do pai
+        return f"{self.nome} ({self.raca}) late"
+
+c = Cachorro("Rex", "vira-lata")
+post(c.falar())     // Rex (vira-lata) late
+post(c.nome)        // Rex   — atributo herdado, criado pelo base()
+```
+
+Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
+`falar`, então usa o do `Animal`:
+
+```
+class Gato(Animal):
+    action __init__(self, nome):
+        base(nome)
+
+post(Gato("Felix").falar())   // Felix faz um som   (veio de Animal)
+```
+
+Cadeia de qualquer profundidade funciona; cada nível chama o `base()` do seu
+pai imediato:
+
+```
+class Base():
+    action __init__(self, x):
+        self.x = x
+class Meio(Base):
+    action __init__(self, x, y):
+        base(x)          // Base.__init__
+        self.y = y
+class Topo(Meio):
+    action __init__(self, x, y, z):
+        base(x, y)       // Meio.__init__
+        self.z = z
+
+t = Topo(1, 2, 3)
+post(t.x, t.y, t.z)      // 1 2 3
+```
+
+### Herança múltipla e `base(Pai, ...)`
+
+Com mais de um pai, `base(...)` sozinho miraria só o **primeiro** pai da lista.
+Para escolher um pai específico, passe o nome dele como primeiro argumento:
+`base(NomePai, args...)`.
+
+```
+class Motor():
+    action __init__(self, cavalos):
+        self.cavalos = cavalos
+class Roda():
+    action __init__(self, qtd):
+        self.qtd_rodas = qtd
+
+class Carro(Motor, Roda):
+    action __init__(self):
+        base(Motor, 300)     // mira Motor, passa 300
+        base(Roda, 4)        // mira Roda, passa 4
+        self.tipo = "esportivo"
+
+c = Carro()
+post(c.cavalos, c.qtd_rodas, c.tipo)   // 300 4 esportivo
+```
+
+> ⚠️ **Armadilha real (verificada):** o alvo do pai só é reconhecido quando há
+> uma **vírgula** depois do nome. `base(Motor, 300)` funciona. Mas
+> `base(Motor)` — nome sozinho, sem vírgula — **NÃO** mira o pai `Motor`: o
+> parser trata `Motor` como um *argumento comum* passado para o primeiro pai, e
+> você recebe um erro tipo `esperava até 0 argumento(s), recebeu 1`.
+>
+> Para mirar um pai que **não recebe argumentos**, use a **vírgula final**:
+> `base(Motor,)` — mira `Motor` com zero args. Isso funciona:
+>
+> ```
+> class A():
+>     action __init__(self):
+>         self.a = 1
+> class C(A, B):
+>     action __init__(self):
+>         base(A,)     // vírgula final = mira A, sem argumentos
+>         base(B,)
+> ```
+
+Resolução de métodos (não-`__init__`) na herança múltipla é **esquerda-para-
+direita**: `class C(A, B)` procura o método primeiro em `C`, depois em `A` (e
+toda a cadeia de `A`), depois em `B`. O primeiro encontrado vence.
+
+### `@static` — método sem instância
+
+Método marcado com `@static` é chamado direto na classe, sem criar objeto e
+sem `self`:
+
+```
+class Util():
+    @static
+    action dobro(n):
+        return n * 2
+
+post(Util.dobro(21))    // 42   — sem instanciar Util
+```
+
+### `@NonNull` — barra argumentos Null
+
+Aplicado a um método, faz a chamada falhar (erro `@NonNull: parâmetro '...' não
+pode ser Null`) se qualquer argumento recebido for `Null`/`None`.
+
+```
+class Calc():
+    action __init__(self):
+        self.total = 0
+    @NonNull
+    action somar(self, valor):
+        self.total = self.total + valor
+        return self.total
+
+c = Calc()
+c.somar(5)        // ok
+c.somar(Null)     // ERRO: @NonNull: parâmetro 'valor' em 'somar' não pode ser Null
+```
+
+**Escopo (por design):** `@NonNull` vale para chamadas de método normais
+(`obj.metodo(...)`), métodos `@static` e funções soltas. Ele **não** dispara
+no `__init__` durante a instanciação — isso é intencional, não uma falha:
+`Null` é usado como sentinela interna de "campo sem default" (ver
+`@dataentity`), então barrar `Null` no construtor conflitaria com esse
+mecanismo. Da mesma forma, `@NonNull` não rejeita um valor **default** que seja
+`Null`. Se quiser validar um campo obrigatório no construtor, faça a checagem à
+mão dentro do `__init__` (`if dono is Null: raise ...`).
+
+### `@dataentity` — `__init__` automático + conversões
+
+Gera o `__init__` sozinho a partir de campos tipados declarados no corpo (no
+formato `nome: tipo`, opcionalmente `nome: tipo = default`). Precisa importar
+de `datasentity`:
 
 ```
 from datasentity import dataentity, asdict, astuple, aslist, asjson
-@dataentity
-Entity P():
-    nome: str
-    idade: int
 
-p = P(nome="Ana", idade=30)
-post(asdict(p)["nome"])    // Ana
-post(astuple(p)[1])         // 30
-post(aslist(p)[0])          // Ana
+@dataentity
+class Pessoa():
+    nome: str
+    idade: int = 18        // default opcional
+
+p = Pessoa(nome="Ana", idade=30)    // __init__ gerado — aceita kwargs
+q = Pessoa(nome="Léo")               // idade cai no default 18
+
+post(asdict(p))     // {"nome": "Ana", "idade": 30}
+post(astuple(p))    // ("Ana", 30)
+post(aslist(p))     // ["Ana", 30]
+post(asjson(p))     // string JSON
+post(q.idade)       // 18
 ```
+
+Detalhes de `@dataentity`:
+
+- Campos **sem default** viram argumentos obrigatórios; passar menos que o
+  necessário é erro.
+- Se você declarar seu **próprio** `__init__` no corpo, ele tem prioridade — o
+  automático só é gerado quando não há `__init__` escrito à mão.
+- `asdict`/`astuple`/`aslist`/`asjson` seguem a **ordem de declaração** dos
+  campos.
 
 ---
 

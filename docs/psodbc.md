@@ -16,24 +16,102 @@ O interpretador só expõe o que está no dict `EXPORTS` de `psodbc_lib.py`.
 Qualquer outra coisa do arquivo **não existe** em `psodbc.*` dentro de um
 script.
 
-| Nome | Assinatura | Retorno |
+| Nome | Serve para | Retorno |
 |---|---|---|
-| `psodbc.connect` | `connect(driver="sqlite", host="localhost", port=0, user="", password="", database="", base="", url="", odbc_driver="", trust_server_cert=True)` | `DbConnection` ou `MongoConnection` |
-| `psodbc.query` | `query(base="", cmd=None, table="")` | `DbConnection`, `list[dict]` ou `None` |
+| `psodbc.connect` | **Qualquer** banco suportado (SQLite, Postgres, MySQL, SQL Server, Mongo) | `DbConnection` ou `MongoConnection` |
+| `psodbc.query` | **SÓ SQLite** — atalho de arquivo `.db` local. Não funciona com SQL Server/Postgres/MySQL/Mongo (chama `sqlite3.connect` fixo) | `DbConnection`, `list[dict]` ou `None` |
 
 `driver` aceita: `sqlite`, `postgres`/`postgresql`/`pg`, `mysql`/`mariadb`,
 `mssql`/`sqlserver`, `mongo`/`mongodb`. `url`/o próprio `driver` também aceitam
 uma string de conexão (`sqlserver://user:senha@host:porta/banco`, etc.).
 
-`trust_server_cert` (só `mssql`): manda `TrustServerCertificate=yes` pro
-driver — necessário porque o ODBC Driver 18+ passou a validar o certificado
-por padrão e derruba a conexão com certificado autoassinado (erro `08001`
-"cadeia de certificação... não é de confiança"). Já vem `True`; só usa `False`
-se o servidor tiver certificado de CA confiável de verdade.
+---
 
-Conexão `mssql` já abre com `autocommit=True` — sem isso comandos como
-`CREATE DATABASE`/`DROP DATABASE` são rejeitados pelo SQL Server por rodarem
-dentro de uma transação implícita.
+## `connect()` — parâmetros por driver
+
+Assinatura completa:
+
+```
+connect(driver="sqlite", host="localhost", port=0, user="", password="",
+        database="", base="", url="", odbc_driver="", trust_server_cert=True)
+```
+
+Nem todo parâmetro vale pra todo driver — esta tabela diz qual usa o quê:
+
+| Parâmetro | sqlite | postgres | mysql | **mssql/sqlserver** | mongo |
+|---|---|---|---|---|---|
+| `base` (caminho do arquivo) | **sim** (obrigatório) | — | — | — | — |
+| `host` | — | sim | sim | **sim** (aceita instância: `r"host\INSTANCIA"`) | sim |
+| `port` (default se 0) | — | 5432 | 3306 | **1433** | 27017 |
+| `user` / `password` | — | sim | sim | **sim — os DOIS juntos, senão vira autenticação do Windows** | sim |
+| `database` | — | sim | sim | **sim** (vazio = banco padrão do login) | sim |
+| `odbc_driver` | — | — | — | **sim** (só dele) | — |
+| `trust_server_cert` | — | — | — | **sim** (só dele) | — |
+| `url` | `sqlite:///arq.db` | `postgres://...` | `mysql://...` | **`sqlserver://user:senha@host:1433/banco`** | `mongodb://...` |
+
+### SQL Server em detalhe (`driver="mssql"` ou `"sqlserver"`)
+
+**Autenticação — a regra exata do código:**
+- `user` **e** `password` preenchidos → autenticação SQL (`UID`/`PWD` na
+  connection string).
+- Qualquer um dos dois vazio/omitido → **autenticação do Windows**
+  (`Trusted_Connection=yes`) — útil pra SQL Server local logado na sua conta.
+
+**`host` com instância nomeada — armadilha de escape:** em
+`"localhost\SQLEXPRESS"` o `\S` não é escape conhecido e a PoolScript
+**descarta a barra** silenciosamente (vira `localhostSQLEXPRESS`). Escreva
+`r"localhost\SQLEXPRESS"` (string raw) ou `"localhost\\SQLEXPRESS"`.
+
+**`port`:** omitido/0 deixa o driver resolver (1433). Informado, a connection
+string vira `SERVER=host,porta` (vírgula — convenção do SQL Server, feito
+automaticamente). Com instância nomeada normalmente NÃO se passa porta.
+
+**`odbc_driver`:** vazio auto-detecta o primeiro instalado, nesta ordem:
+`ODBC Driver 18 for SQL Server` → `17` → `13` → `SQL Server Native Client
+11.0` → `FreeTDS` → `SQL Server`. Se nenhum existir, erro claro pedindo pra
+instalar o 17/18. Só passe o nome exato se quiser forçar um específico.
+
+**`trust_server_cert`** (default `true`): manda `TrustServerCertificate=yes` —
+necessário porque o ODBC Driver 18+ valida o certificado por padrão e derruba
+a conexão com certificado autoassinado (erro `08001` "cadeia de certificação...
+não é de confiança"). Só use `false` se o servidor tiver certificado de CA
+confiável de verdade.
+
+**Automático (não é parâmetro):** a conexão abre com `autocommit=True` — sem
+isso `CREATE DATABASE`/`DROP DATABASE` são rejeitados pelo SQL Server por
+rodarem dentro de transação implícita. E o placeholder de parâmetros no
+`execute()` é `?` (pyodbc): `cursor.execute("... WHERE id = ?", (1,))`.
+
+**Exemplos completos:**
+
+```
+import psodbc
+
+// 1. Autenticação SQL, servidor remoto, porta explícita
+conn = psodbc.connect(
+    driver="sqlserver",
+    host="10.0.0.5",
+    port=1433,
+    user="sa",
+    password="Senha@123",
+    database="vendas"
+)
+
+// 2. Autenticação do Windows, instância local nomeada (repare o r"")
+conn = psodbc.connect(driver="sqlserver", host=r"localhost\SQLEXPRESS", database="vendas")
+
+// 3. Por URL — igual ao exemplo 1 (senha com @ vira %40 na URL)
+conn = psodbc.connect(url="sqlserver://sa:Senha%40123@10.0.0.5:1433/vendas")
+
+// 4. Forçando um driver ODBC específico
+conn = psodbc.connect(driver="sqlserver", host="localhost", database="vendas",
+                      odbc_driver="ODBC Driver 17 for SQL Server")
+
+cursor = conn.cursor()
+cursor.execute("SELECT * FROM clientes WHERE ativo = ?", (true,))
+post(cursor.fetchall())
+conn.close()
+```
 
 ---
 
