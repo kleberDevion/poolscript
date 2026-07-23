@@ -78,3 +78,58 @@ def test_stub_lib_raises():
     assert out == ["ok"]
     with pytest.raises(PoolRuntimeError):
         run('from flask import Flask\nFlask("app")')
+
+
+# ── shield(): erro de biblioteca != bug do interpretador ─────────────────────
+# Antes, TODA exceção fora do _MAP virava PoolInternalError, que diz "erro
+# inesperado no interpretador" e manda abrir issue no GitHub — mesmo quando a
+# causa era do usuário (host errado, arquivo corrompido) e o erro tinha vindo
+# de uma lib por baixo (pyodbc, zipfile, sqlite3...).
+
+def test_shield_lib_error_is_not_internal_error():
+    from poolscript.ps_errors import shield, PoolLibraryError, PoolInternalError, _FakeNode
+    import sqlite3
+    try:
+        sqlite3.connect(":memory:").execute("SELECT * FROM tabela_inexistente")
+    except Exception as e:
+        err = shield(e, _FakeNode(1, 1), "x = 1", "s.ps")
+    assert isinstance(err, PoolLibraryError)
+    assert not isinstance(err, PoolInternalError)
+    msg = err.pool_message()
+    assert "sqlite3" in msg          # diz de qual lib veio
+    assert "github.com" not in msg   # não manda reportar issue contra o interpretador
+    assert "interpretador" not in msg
+
+
+def test_shield_lib_error_shows_root_frames():
+    """O 'log raiz' da lib deve aparecer — frames da lib, nunca do interpretador."""
+    from poolscript.ps_errors import shield, _FakeNode
+    import zipfile, io
+    try:
+        zipfile.ZipFile(io.BytesIO(b"nao e um zip"))
+    except Exception as e:
+        err = shield(e, _FakeNode(1, 1), "x = 1", "s.ps")
+    assert err.lib == "zipfile"
+    assert err.origin_frames, "deveria trazer os frames de origem da lib"
+    # nenhum frame do próprio interpretador pode vazar como se fosse da lib
+    assert not any("interpreter.py" in f for f in err.origin_frames)
+
+
+def test_shield_real_interpreter_bug_still_internal_error():
+    """Erro sem origem de lib continua sendo InternalError (bug de verdade)."""
+    from poolscript.ps_errors import shield, PoolInternalError, _FakeNode
+    err = shield(AttributeError("objeto interno sem atributo"), _FakeNode(1, 1), "x = 1", "s.ps")
+    assert isinstance(err, PoolInternalError)
+    assert "github.com" in err.pool_message()
+
+
+def test_shield_accepts_fake_node_when_compiled():
+    """shield() usa _FakeNode por padrão; construir o erro não pode estourar.
+
+    Compilado com mypyc a anotação de tipo vira checagem em runtime — com
+    `node: "Node | None"` isso levantava TypeError DENTRO do tratamento de erro
+    e escondia o erro real do usuário.
+    """
+    from poolscript.ps_errors import shield, _FakeNode
+    err = shield(TypeError("tipos incompatíveis"), _FakeNode(2, 3), "y = 2", "s.ps")
+    assert err.pool_message()  # não pode levantar

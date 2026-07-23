@@ -131,9 +131,13 @@ class PoolRuntimeError(_PSBaseRuntimeError):
             return value.value
         return value
 
-    def __init__(self, msg: str, node: "Node | None", source: str = "", code: str = "RuntimeError",
+    def __init__(self, msg: str, node: Any, source: str = "", code: str = "RuntimeError",
                  filename: str = "", call_stack: "list | None" = None):
-        # node=None é tolerado — format() usa getattr(..., 0) pra line/col
+        # node: Any (não "Node | None") de propósito. Compilado com mypyc a
+        # anotação vira checagem de tipo em runtime, e o shield() constrói erro
+        # com `_FakeNode` (nó sintético de ps_errors, sem posição no AST) —
+        # com "Node | None" isso estourava TypeError DENTRO do tratamento de
+        # erro, escondendo o erro real do usuário. Só precisa de .line/.col.
         # Inicializa diretamente sem chamar super().__init__ com args incompatíveis
         self.msg        = msg
         self.node       = node

@@ -72,6 +72,12 @@
 					"type": "string",
 					"default": "python",
 					"description": "Caminho do interpretador Python usado para rodar o analisador real da linguagem (bridge/analyze.py), que dá diagnósticos, go to definition, find references, signature help e hover precisos. Precisa ser Python 3.10+ (mesma versão suportada pelo poolscript-lang). Se deixado no padrão, usa o 'python' do PATH do sistema."
+				},
+				"poolscript.analysisDelay": {
+					"type": "number",
+					"default": 100,
+					"minimum": 0,
+					"description": "Milissegundos de espera apos parar de digitar antes de reanalisar o arquivo (diagnosticos/erros de sintaxe). O analisador leva ~5-10ms num arquivo de ~160 linhas, entao o padrao de 100ms e dominado por essa espera, nao pela analise. Diminua para feedback mais imediato; aumente em arquivos muito grandes ou maquinas lentas."
 				}
 			}
 		}

@@ -97,12 +97,35 @@ return "olá mundo"
 return None    # responde 204
 ```
 
-`jsonify(...)` devolve um objeto `JinkerResponse`, encadeável com `.header()`
-pra mandar cabeçalhos customizados e `.status()` pra trocar o código depois:
+### `jsonify` e `JinkerResponse` são a MESMA coisa
+
+`jsonify(dados)` **não é um tipo diferente** — é literalmente um atalho de uma
+linha que constrói um `JinkerResponse` e chama `.json(dados)` nele. Ou seja,
+estas três formas produzem exatamente a mesma resposta:
+
+```
+return jsonify({"msg": "ok"})                      // atalho
+return JinkerResponse().json({"msg": "ok"})        // idêntico ao de cima
+return {"msg": "ok"}                                // dict puro: a rota converte sozinha
+```
+
+Use `jsonify` por ser mais curto; use `JinkerResponse` direto quando quiser
+montar a resposta em etapas (ou quando não for JSON — veja `.send()` abaixo).
+
+**Métodos do `JinkerResponse`** (todos devolvem o próprio objeto, então
+encadeiam):
+
+| Método | Faz |
+|---|---|
+| `.json(dados, status=200)` | corpo JSON (`application/json`) — é o que `jsonify` chama |
+| `.send(texto, status=200)` | corpo texto puro (`text/plain`) — **não** tem atalho tipo `jsonify` |
+| `.status(codigo)` | troca só o status, sem mexer no corpo |
+| `.header(chave, valor)` | adiciona um cabeçalho |
 
 ```
 return jsonify({"msg": "ok"}).header("X-Request-Id", "abc123"), 200
 return jsonify({"msg": "criado"}).status(201)   // status() dispensa a tupla
+return JinkerResponse().send("texto puro", 200)  // resposta não-JSON
 ```
 
 `request` (o parâmetro implícito de toda rota) é uma instância de

@@ -608,8 +608,27 @@ class WorkspaceSymbolProvider {
             };
         }
 
+        // Versão do documento que gerou esses dados — permite saber se o que
+        // está em cache já está velho em relação ao texto atual do editor.
+        data.version = doc.version;
         this.fileData.set(doc.uri.fsPath, data);
         return data;
+    }
+
+    /** fileData do documento, reanalisando ANTES se o cache estiver velho.
+     *
+     * Completion/hover liam o cache direto, que com o debounce podia estar
+     * atrasado em relação ao que o usuário acabou de digitar — dava sugestão
+     * do estado anterior (ou nenhuma). Como a análise custa ~5-10ms, esperar
+     * por ela aqui é imperceptível e devolve sempre o estado atual. */
+    async freshData(doc) {
+        const cached = this.fileData.get(doc.uri.fsPath);
+        if (cached && cached.version === doc.version) return cached;
+        try {
+            return await this.reparse(doc);
+        } catch (_) {
+            return cached || null;   // falhou reanalisar: usa o que tiver
+        }
     }
 
     /** Retorna símbolo pelo nome: local → import → workspace */
@@ -1039,11 +1058,27 @@ class PoolScriptLinter {
                 const lineNo = Math.max(0, Math.min(document.lineCount - 1, err.line - 1));
                 const lineText = document.lineAt(lineNo).text;
                 const col = Math.max(0, (err.col || 1) - 1);
-                const endCol = Math.max(col + 1, Math.min(lineText.length, col + 1));
-                diags.push(new vscode.Diagnostic(
+                // Sublinha o TOKEN inteiro a partir da coluna do erro. Antes o
+                // fim era `Math.max(col+1, Math.min(len, col+1))`, que sempre
+                // dá col+1 — ou seja, 1 caractere só: o squiggle era quase
+                // invisível e parecia "não funcionar".
+                let endCol;
+                const rest = lineText.slice(col);
+                const tokenMatch = rest.match(/^\s*([A-Za-z_]\w*|[^\s\w])/);
+                if (tokenMatch) {
+                    endCol = col + tokenMatch[0].length;
+                } else {
+                    // sem token à frente (ex: erro no fim da linha) — marca até
+                    // o fim, ou a linha toda se ela terminar antes da coluna
+                    endCol = Math.max(lineText.length, col + 1);
+                }
+                endCol = Math.min(Math.max(endCol, col + 1), Math.max(lineText.length, col + 1));
+                const diag = new vscode.Diagnostic(
                     new vscode.Range(lineNo, col, lineNo, endCol),
                     err.message,
-                    vscode.DiagnosticSeverity.Error));
+                    vscode.DiagnosticSeverity.Error);
+                diag.source = 'poolscript';
+                diags.push(diag);
             }
         } else {
             diags.push(...this._checkSyntaxFallback(document, text));
@@ -1673,6 +1708,9 @@ function activate(context) {
     context.subscriptions.push({ dispose: () => bridge.dispose() });
 
     // ── Reanálise + lint: imediata em open/save, com debounce em edição ──────
+    // Configurável: quem tiver máquina lenta ou arquivo gigante pode subir.
+    const DEBOUNCE_MS = Math.max(
+        0, vscode.workspace.getConfiguration('poolscript').get('analysisDelay', 100));
     const debounceTimers = new Map();
     async function reparseAndLint(document, immediate) {
         if (document.languageId !== 'poolscript') return;
@@ -1688,7 +1726,10 @@ function activate(context) {
         if (immediate) {
             await run();
         } else {
-            debounceTimers.set(key, setTimeout(run, 250));
+            // 250ms era herança de quando a análise era cara. Medido: o bridge
+            // responde em ~5-10ms num arquivo de 160 linhas, então o debounce
+            // ERA o gargalo percebido (250ms de espera pra 6ms de trabalho).
+            debounceTimers.set(key, setTimeout(run, DEBOUNCE_MS));
         }
     }
 
@@ -1701,8 +1742,11 @@ function activate(context) {
     // ── Autocomplete ──────────────────────────────────────────────────────────
     context.subscriptions.push(
         vscode.languages.registerCompletionItemProvider('poolscript', {
-            provideCompletionItems(document, position) {
-                const localData = provider.fileData.get(document.uri.fsPath);
+            async provideCompletionItems(document, position) {
+                // freshData (não fileData direto): garante que a análise reflete
+                // o texto ATUAL. Com o debounce, ler o cache dava sugestões do
+                // estado anterior ao que acabou de ser digitado.
+                const localData = await provider.freshData(document);
 
                 // ── "import X" / "from X import Y" — sugere lib/pasta/arquivo ──
                 // Sem isso, escrever "import " não mostrava NADA (o buraco

@@ -281,12 +281,77 @@ def build_metadata() -> dict:
     return metadata
 
 
+def _alt(names) -> str:
+    """Alternância de regex ordenada por tamanho decrescente — nome mais longo
+    primeiro, senão 'db' casaria antes de 'dbx' e cortaria o realce no meio."""
+    return "|".join(sorted(set(names), key=lambda n: (-len(n), n)))
+
+
+def update_grammar(metadata: dict) -> str:
+    """Reescreve as listas de nomes da grammar TextMate a partir da stdlib REAL.
+
+    As listas de módulos/builtins/exports eram mantidas À MÃO no
+    syntaxes/poolscript.tmLanguage.json — mesmo anti-padrão que já tinha
+    quebrado o autocomplete. O sintoma: 'psodbc' nunca esteve na lista de
+    módulos (só 'db'/'sqlite3'), então não recebia realce; e 'jsonify' só era
+    reconhecido como '.jsonify' (com ponto), enquanto o uso real é sem ponto
+    ('from jinker import jsonify' → 'return jsonify({...})').
+
+    Aqui as três listas passam a ser geradas por introspecção:
+      stdlib_modules  — todo nome importável (inclui psodbc, datasentity…)
+      builtins        — GLOBAL_BUILTINS reais + os registrados no interpreter
+      stdlib_exports  — nomes exportados pelas libs, usados SEM ponto depois
+                        de `from X import Y` (jsonify, Jinker, cors, asdict…)
+    """
+    grammar_path = Path(__file__).parent.parent / "syntaxes" / "poolscript.tmLanguage.json"
+    grammar = json.loads(grammar_path.read_text(encoding="utf-8"))
+
+    modules = [k for k in _LAZY_LOADERS]
+    # builtins do builtins.py + os que só existem via interpreter.globals.define
+    interp_only = ["post", "input", "load", "map", "filter", "sleep", "gather",
+                   "addEnd", "removeEnd", "addStart", "removeStart"]
+    builtins_names = [b["name"] for b in metadata.get("__builtins__", [])] + interp_only
+
+    exports = set()
+    for lib_name in _LAZY_LOADERS:
+        for m in metadata.get(lib_name, []) or []:
+            if not m["name"].startswith("_"):
+                exports.add(m["name"])
+    # não duplica o que já é módulo ou builtin (o escopo mais específico ganha)
+    exports -= set(modules) | set(builtins_names)
+
+    grammar["repository"]["stdlib_modules"]["patterns"][0]["match"] = (
+        rf"\b({_alt(modules)})\b"
+    )
+    grammar["repository"]["builtins"]["patterns"][0]["match"] = (
+        rf"\b({_alt(builtins_names)})\b(?=\s*(\(|$))"
+    )
+    # nomes importados usados sem ponto — só quando chamados/referenciados
+    grammar["repository"]["stdlib_exports"] = {
+        "patterns": [{
+            "name": "support.function.stdlib.poolscript",
+            "match": rf"\b({_alt(exports)})\b",
+        }]
+    }
+    if {"include": "#stdlib_exports"} not in grammar["patterns"]:
+        # depois de builtins pra não roubar match de nome mais específico
+        idx = grammar["patterns"].index({"include": "#builtins"}) + 1
+        grammar["patterns"].insert(idx, {"include": "#stdlib_exports"})
+
+    grammar_path.write_text(
+        json.dumps(grammar, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return (f"{len(modules)} módulos, {len(set(builtins_names))} builtins, "
+            f"{len(exports)} exports")
+
+
 def main():
     metadata = build_metadata()
     out_path = Path(__file__).parent / "stdlib_metadata.json"
     out_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
     total_members = sum(len(v) for v in metadata.values())
     print(f"gerado {out_path} — {len(metadata)} módulos, {total_members} membros")
+    print(f"grammar atualizada — {update_grammar(metadata)}")
 
 
 if __name__ == "__main__":

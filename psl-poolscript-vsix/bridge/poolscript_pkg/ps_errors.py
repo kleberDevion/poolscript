@@ -178,6 +178,12 @@ class PoolInternalError(PoolError):
     """
     Usado quando algo inesperado acontece no próprio interpretador.
     Nunca mostra o stack Python — apenas uma mensagem amigável + código de suporte.
+
+    IMPORTANTE: só deve ser usado para bug REAL do interpretador. Erro que veio
+    de uma biblioteca por baixo (sqlite3, pyodbc, websockets…) vira
+    PoolLibraryError — ver shield(). Antes tudo que não estava no _MAP caía
+    aqui e mandava o usuário abrir issue no GitHub por causa de, por exemplo,
+    um hostname digitado errado.
     """
     def __init__(self, context: str = ""):
         self._context = context
@@ -191,6 +197,49 @@ class PoolInternalError(PoolError):
         if self._context:
             lines.append(DIM(f"  Contexto: {self._context}"))
         return "\n".join(lines)
+
+    def pool_message(self) -> str:
+        return self._build()
+
+
+# ── LibraryError — erro vindo de biblioteca usada por baixo ──────────────────
+class PoolLibraryError(_BasePoolRuntimeError):
+    """
+    Erro que borbulhou de uma biblioteca Python que a PoolScript usa por baixo
+    (sqlite3, pyodbc, psycopg2, pymongo, websockets, openpyxl, smtplib…).
+
+    NÃO é bug do interpretador — normalmente é configuração/uso (host errado,
+    tabela inexistente, credencial inválida). Mostra de qual biblioteca veio,
+    o tipo/mensagem originais e o frame raiz dentro da lib, além da linha do
+    script PoolScript que disparou.
+    """
+    def __init__(self, msg, node, source="", code="LibraryError", filename="<script>",
+                 call_stack=None, lib="", origin_frames=None, exc_type=""):
+        self.lib           = lib
+        self.origin_frames = origin_frames or []
+        self.exc_type      = exc_type
+        super().__init__(msg, node, source, code, filename, call_stack)
+
+    def _build(self) -> str:
+        base = super()._build()
+        extra = []
+        if self.lib:
+            # ASCII puro no marcador: console Windows (cp1252) não encoda '↳'
+            # e o caractere sairia escapado como "↳" no meio da mensagem.
+            # só repete o tipo original quando o código exibido é diferente
+            # (ex: code=DatabaseError, exc_type=OperationalError) — senão vira
+            # "OperationalError ... - OperationalError".
+            suffix = f" - {self.exc_type}" if self.exc_type and self.exc_type != self.code else ""
+            extra.append(
+                DIM("  -> origem: ") + CYAN(f"biblioteca '{self.lib}'") + DIM(suffix)
+            )
+        if self.origin_frames:
+            extra.append(DIM(f"\n  Traceback interno de '{self.lib}' (origem real):"))
+            for fr in self.origin_frames:
+                extra.append(DIM(f"    {fr}"))
+        if not extra:
+            return base
+        return base + "\n" + "\n".join(extra)
 
     def pool_message(self) -> str:
         return self._build()
@@ -210,6 +259,75 @@ def _clean_filename(filename: str) -> str:
         return os.path.basename(filename)
 
 
+# Diretório do próprio interpretador — frames aqui dentro NÃO são "biblioteca".
+_POOLSCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _clean_lib_path(path: str) -> str:
+    """Encurta caminho de arquivo de biblioteca pra algo legível.
+
+    _clean_filename() usa relpath do cwd, o que pra libs fora do projeto vira
+    '..\\..\\..\\..\\Python\\...\\Lib\\zipfile\\__init__.py'. Aqui cortamos no
+    marcador do pacote ('site-packages/' ou '/Lib/'), sobrando 'zipfile/
+    __init__.py' e 'openpyxl/reader/excel.py'.
+    """
+    norm = path.replace("\\", "/")
+    for marker in ("/site-packages/", "/dist-packages/", "/Lib/", "/lib/"):
+        idx = norm.rfind(marker)
+        if idx != -1:
+            return norm[idx + len(marker):]
+    # fora dos diretórios conhecidos: mantém no máximo os 3 últimos segmentos
+    parts = norm.split("/")
+    return "/".join(parts[-3:]) if len(parts) > 3 else norm
+
+
+def _exception_origin(exc: Exception) -> tuple:
+    """
+    Descobre de qual biblioteca a exceção realmente veio.
+
+    Retorna (lib, frames):
+      lib    — pacote de topo ('sqlite3', 'pyodbc', 'websockets'…) ou "" quando
+               a origem é o próprio interpretador/builtins (= bug de verdade).
+      frames — linhas do traceback FORA do interpretador, do mais externo pro
+               mais interno: o "log raiz" da lib, que é o que interessa pra
+               diagnosticar (ex: qual chamada do sqlite3 estourou).
+    """
+    lib = ""
+    mod = getattr(type(exc), "__module__", "") or ""
+    top = mod.split(".")[0]
+    # Exceção definida numa lib (sqlite3.Error, pyodbc.OperationalError…).
+    # 'builtins' não identifica origem — aí a gente cai no traceback abaixo.
+    if top and top not in ("builtins", "__main__", "poolscript"):
+        lib = top
+
+    frames = []
+    tb = getattr(exc, "__traceback__", None)
+    while tb is not None:
+        frame = tb.tb_frame
+        fpath = frame.f_code.co_filename
+        fmod = frame.f_globals.get("__name__", "") or ""
+        ftop = fmod.split(".")[0]
+        # É frame do próprio interpretador? Checa pelo NOME DO MÓDULO primeiro —
+        # o caminho não serve sozinho: módulo compilado com mypyc (.pyd) reporta
+        # co_filename RELATIVO ("src\poolscript\interpreter.py"), que não bate
+        # com o diretório absoluto do pacote e vazava como se fosse "biblioteca".
+        is_internal = (
+            ftop == "poolscript"
+            or os.path.abspath(fpath).startswith(_POOLSCRIPT_DIR)
+            or f"{os.sep}poolscript{os.sep}" in os.path.normpath(fpath)
+        )
+        if not is_internal:
+            func = frame.f_code.co_name
+            frames.append(f"{_clean_lib_path(fpath)}, linha {tb.tb_lineno}, em {func}()")
+            # se ainda não sabemos a lib, deduz pelo módulo do frame
+            if not lib and ftop and ftop not in ("builtins", "__main__"):
+                lib = ftop
+        tb = tb.tb_next
+
+    # só os últimos frames importam (a origem real, mais interna)
+    return lib, frames[-3:]
+
+
 def shield(exc: Exception, node=None, source: str = "", filename: str = "<script>") -> PoolError:
     """
     Converte qualquer exceção Python em um PoolError sem expor internos.
@@ -217,6 +335,8 @@ def shield(exc: Exception, node=None, source: str = "", filename: str = "<script
     """
     if isinstance(exc, PoolError):
         return exc
+
+    lib, origin_frames = _exception_origin(exc)
 
     # Mapeia tipos Python comuns para mensagens amigáveis
     _MAP = {
@@ -252,11 +372,33 @@ def shield(exc: Exception, node=None, source: str = "", filename: str = "<script
                 error_cls = _PublicRuntimeError
             except ImportError:
                 error_cls = _BasePoolRuntimeError
+            # Mesmo mapeado, se veio de uma lib (sqlite3, pyodbc…) mostra a
+            # origem + o log raiz dela — senão "erro de banco de dados: x" não
+            # diz de onde saiu nem onde estourou de verdade.
+            if lib:
+                return PoolLibraryError(
+                    msg, node or _FakeNode(0, 0), source, code, filename,
+                    lib=lib, origin_frames=origin_frames,
+                    exc_type=type(exc).__name__,
+                )
             return error_cls(msg, node or _FakeNode(0, 0), source, code, filename)
 
-    # Fallback — erro desconhecido → InternalError, mas ainda assim informa
-    # tipo + mensagem originais (sem traceback) pra não virar caixa-preta.
+    # Não está no _MAP. Se veio de uma BIBLIOTECA, não é bug do interpretador —
+    # é erro de uso/configuração (host errado, credencial inválida, tabela
+    # inexistente…). Antes isso virava InternalError e mandava o usuário abrir
+    # issue no GitHub por engano.
     detail = str(exc)
+    if lib:
+        msg = f"{detail}" if detail else type(exc).__name__
+        # Código = nome real da exceção da lib (BadZipFile, OperationalError…),
+        # que é informativo; "zipfileError"/"pyodbcError" não existe em lugar
+        # nenhum e só confunde quem for procurar o significado.
+        return PoolLibraryError(
+            msg, node or _FakeNode(0, 0), source, type(exc).__name__, filename,
+            lib=lib, origin_frames=origin_frames, exc_type=type(exc).__name__,
+        )
+
+    # Origem é o próprio interpretador/builtins → aí sim é bug de verdade.
     context = f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
     return PoolInternalError(context=context)
 
