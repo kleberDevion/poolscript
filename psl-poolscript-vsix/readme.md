@@ -3,7 +3,7 @@
 Syntax highlighting, real IntelliSense, snippets, file icons, and a tailored **Dracula** theme for `.ps` and `.psl` files.
 
 ## Features
-- 🧠 **IntelliSense powered by the real PoolScript parser** (v1.3.0+): a bundled Python bridge (`bridge/analyze.py`)
+-  **IntelliSense powered by the real PoolScript parser** (v1.3.0+): a bundled Python bridge (`bridge/analyze.py`)
   lexes and parses your code with the exact same parser used by the `pool` CLI — never executes your code, only
   static analysis. This gives:
   - **Real-time diagnostics** — syntax errors shown at the exact line/column the real parser reports, not a
@@ -16,11 +16,11 @@ Syntax highlighting, real IntelliSense, snippets, file icons, and a tailored **D
     inside strings/comments).
   - Falls back gracefully to a lighter regex-based analysis if Python isn't available — nothing breaks, you just
     get fewer precise features. Configure `poolscript.pythonPath` in settings if Python isn't on your PATH.
-- 🎨 Dracula color theme tuned for PoolScript scopes
-- 🔤 Syntax highlighting for all keywords, types, decorators, f-strings, HTTP verbs and built-ins
-- ✂️ Snippets for `if`/`while`/`for each`/`action`/`try`/`using` in BOTH brace `{}` and colon `:` styles
-- 📄 File icon for `.ps` / `.psl`
-- 🧱 Auto-indent after `:` and after `{`
+-  Dracula color theme tuned for PoolScript scopes
+-  Syntax highlighting for all keywords, types, decorators, f-strings, HTTP verbs and built-ins
+-  Snippets for `if`/`while`/`for each`/`action`/`try`/`using` in BOTH brace `{}` and colon `:` styles
+-  File icon for `.ps` / `.psl`
+-  Auto-indent after `:` and after `{`
 
 ## Requirements
 IntelliSense features require **Python 3.10+** on your PATH (or configured via `poolscript.pythonPath`). No
