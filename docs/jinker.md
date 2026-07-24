@@ -11,35 +11,51 @@ Para WebSocket instale: `pip install websockets`
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__)
-cors(options=["GET", "POST"], permiser=["*/api", "allowed.all/Users-Agent"])
+cors(options=["GET", "POST"], origins=["https://meusite.com"])
 ```
 
 ---
 
 ## cors()
 
-Define as configurações globais de acesso:
+Define as configurações globais de acesso. Dois parâmetros:
 
 ```
-cors(options=["POST", "GET", "DELETE"], permiser=["*/api", "allowed.all/Users-Agent"])
+cors(options=["POST", "GET", "DELETE"], origins=["https://meusite.com"])
 ```
 
-**options** — métodos HTTP aceitos: `GET`, `POST`, `PUT`, `PATCH`, `DELETE`
+**options** — métodos HTTP aceitos globalmente: `GET`, `POST`, `PUT`,
+`PATCH`, `DELETE`. Cada rota pode restringir esse conjunto com
+`cors.options([...])`.
 
-**permiser** — regras de acesso:
+**origins** — lista de origens (domínios) permitidas a acessar a API.
+São checadas contra o header `Origin`/`Referer` da requisição:
 
-| Regra | Significado |
+| `origins=` | Efeito |
 |---|---|
-| `"*/api"` | Qualquer origem para rotas com prefixo `/api` |
-| `"://meusite.com/api"` | Só de um domínio específico |
-| `"allowed.all/Users-Agent"` | Libera qualquer User-Agent |
+| `[]` (ou omitido) | **Libera qualquer origem** (sem restrição) |
+| `["https://meusite.com"]` | Só requisições vindas desse domínio |
+| `["https://a.com", "https://b.com"]` | Vários domínios permitidos |
+
+Regras automáticas (não precisa configurar):
+- **Origens locais** (`localhost`, `127.x.x.x`, `0.0.0.0`, `::1`) são sempre
+  permitidas, mesmo com uma lista de `origins` restrita — pra você testar
+  local sem liberar o mundo.
+- **Cliente sem `Origin`** (Insomnia, Postman, `curl`, outro backend) passa —
+  a checagem de origem é uma proteção de *browser*, não bloqueia ferramenta.
+
+> **Legado:** o parâmetro `permiser=` e o método `cors.origins()` ainda
+> existem por compatibilidade, mas `permiser=` na config é **silenciosamente
+> ignorado** (não configura nada) e `cors.origins()` é só um apelido de
+> `cors.origins()`. Use `origins=` e `cors.origins()`. Formatos antigos como
+> `"*/api"` ou `"allowed.all/Users-Agent"` **não existem** — eram fictícios.
 
 ---
 
 ## Rotas
 
 ```
-@app.route("/api/hello", auth=cors.permiser(), methods=cors.options(["GET"]))
+@app.route("/api/hello", auth=cors.origins(), methods=cors.options(["GET"]))
 action handler() {
     return jsonify({"msg": "olá!"}), 200
 }
@@ -54,7 +70,7 @@ Não precisa envolver a `action` em chaves extras — o `@app.route(...)` já ca
 Disponível automaticamente dentro de qualquer rota:
 
 ```
-@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["POST"]))
+@app.route("/api/dados", auth=cors.origins(), methods=cors.options(["POST"]))
 action receber() {
     data = request.get_json()       # body como dict
     nome = request.get("nome")      # campo específico do JSON ou query string
@@ -69,7 +85,7 @@ Em rotas ou sockets com parâmetro dinâmico no path (`/user:id`, `/user/<id>`),
 pegue o valor com `request.path_param()`:
 
 ```
-@app.route("/user:id", auth=cors.permiser(), methods=cors.options(["GET"]))
+@app.route("/user:id", auth=cors.origins(), methods=cors.options(["GET"]))
 action perfil() {
     id = request.path_param("id")
     return jsonify({"user_id": id}), 200
@@ -158,13 +174,13 @@ Aplica em rotas específicas com `middleware=app.middleware`:
 
 ```
 # rota livre — sem middleware
-@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
+@app.route("/api/login", auth=cors.origins(), methods=cors.options(["POST"]))
 action login() {
     return jsonify({"msg": "ok"}), 200
 }
 
 # rota protegida — middleware roda primeiro
-@app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
+@app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]), middleware=app.middleware)
 action dados() {
     return jsonify({"msg": "área protegida"}), 200
 }
@@ -177,12 +193,12 @@ action dados() {
 ```
 from jinker import Jinker, cors, render
 
-@app.route("/", auth=cors.permiser(), methods=cors.options(["GET"]))
+@app.route("/", auth=cors.origins(), methods=cors.options(["GET"]))
 action index() {
     return render("index.html")
 }
 
-@app.route("/login", auth=cors.permiser(), methods=cors.options(["GET"]))
+@app.route("/login", auth=cors.origins(), methods=cors.options(["GET"]))
 action login() {
     return render("login.html")
 }
@@ -370,13 +386,13 @@ action auth() {
 }
 
 # Página principal
-@app.route("/", auth=cors.permiser(), methods=cors.options(["GET"]))
+@app.route("/", auth=cors.origins(), methods=cors.options(["GET"]))
 action index() {
     return render("index.html")
 }
 
 # API de login
-@app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
+@app.route("/api/login", auth=cors.origins(), methods=cors.options(["POST"]))
 action login() {
     data = request.get_json()
     email = data.get("email")
