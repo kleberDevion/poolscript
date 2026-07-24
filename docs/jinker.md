@@ -1,11 +1,89 @@
 # jinker — Servidor HTTP
 
 Lib de servidor HTTP da PoolScript. Zero dependências externas para HTTP básico.
-Para WebSocket instale: `pip install websockets`
+Para WebSocket instale: `pip install websockets`.
+
+## O que é e como funciona (leia isto primeiro)
+
+Um servidor HTTP fica **esperando requisições** (um navegador ou app pedindo
+uma URL) e, pra cada uma, decide o que responder. No jinker você descreve
+esse "o que responder" em pedaços chamados **rotas**.
+
+Uma **rota** é a ligação entre:
+
+- um **caminho** de URL (ex: `/api/hello`), e
+- uma **`action`** que roda quando alguém acessa esse caminho e devolve a
+  resposta.
+
+O ciclo de uma requisição é sempre este:
+
+```
+navegador pede  GET /api/hello
+        │
+        ▼
+jinker acha a rota "/api/hello"  ──► roda a sua action  ──► você faz `return ...`
+        │
+        ▼
+jinker transforma seu return em resposta HTTP  ──►  navegador recebe
+```
+
+Dentro da action você tem dois objetos de graça (não precisa declarar):
+`request` (o que chegou) e o `return` (o que você manda de volta). O resto
+deste doc é só detalhar cada parte desse ciclo.
+
+## Primeiro servidor (exemplo completo, rode e veja)
+
+Crie um arquivo `app.ps` com isto — é um servidor inteiro, funcional:
+
+```
+from jinker import Jinker, cors, jsonify
+import os
+
+app = Jinker(__name__)              // 1. cria a aplicação
+
+// 2. uma rota: quem acessar GET /  recebe o JSON abaixo
+@app.route("/", methods=cors.options(["GET"]))
+action inicio() {
+    return jsonify({"msg": "meu primeiro servidor jinker!"})
+}
+
+// 3. uma rota que lê algo de quem chamou
+@app.route("/somar", methods=cors.options(["POST"]))
+action somar() {
+    a = request.get("a")            // pega do corpo JSON ou da query string
+    b = request.get("b")
+    return jsonify({"resultado": a + b})
+}
+
+// 4. sobe o servidor quando o arquivo é executado direto
+run_selfwith_("main") {
+    porta = int(os.getenv("PORT", "8080"))
+    app(debug=true, host="0.0.0.0", port=porta)
+}
+```
+
+Rode com `pool app.ps` e teste no navegador `http://localhost:8080/` — você vê
+o JSON. Entendendo cada bloco:
+
+1. **`Jinker(__name__)`** cria a aplicação. Tudo (rotas, sockets) pendura nela.
+2. **`@app.route("/", ...)`** registra a `action` logo abaixo como a resposta
+   pra `GET /`. Você **não** chama `inicio()` — o jinker chama por você quando
+   a URL é acessada.
+3. Dentro da action, **`request`** já existe. `return jsonify(...)` vira a
+   resposta HTTP (mais sobre retornos adiante).
+4. **`run_selfwith_("main")`** é o ponto de entrada (só roda quando você
+   executa o arquivo direto, não quando ele é importado). `app(...)` liga o
+   servidor de verdade.
+
+> Repare: **não** teve `cors(...)` nem `auth=`. Sem configurar origens, o
+> jinker libera qualquer origem — perfeito pra começar. Restrições de acesso
+> são o próximo assunto, e são opcionais.
 
 ---
 
-## Setup
+## Setup completo (com CORS)
+
+Quando você for pro sério, adiciona a configuração de acesso global:
 
 ```
 from jinker import Jinker, cors, jsonify
@@ -13,6 +91,8 @@ from jinker import Jinker, cors, jsonify
 app = Jinker(__name__)
 cors(options=["GET", "POST"], origins=["https://meusite.com"])
 ```
+
+`cors(...)` é opcional (sem ele, tudo é liberado). A próxima seção explica.
 
 ---
 
@@ -44,11 +124,12 @@ Regras automáticas (não precisa configurar):
 - **Cliente sem `Origin`** (Insomnia, Postman, `curl`, outro backend) passa —
   a checagem de origem é uma proteção de *browser*, não bloqueia ferramenta.
 
-> **Legado:** o parâmetro `permiser=` e o método `cors.origins()` ainda
-> existem por compatibilidade, mas `permiser=` na config é **silenciosamente
-> ignorado** (não configura nada) e `cors.origins()` é só um apelido de
-> `cors.origins()`. Use `origins=` e `cors.origins()`. Formatos antigos como
-> `"*/api"` ou `"allowed.all/Users-Agent"` **não existem** — eram fictícios.
+> **Legado:** o parâmetro `permiser=` e o método `cors.permiser()` ainda
+> existem por compatibilidade (não vão ser removidos), mas `permiser=` na
+> config é **silenciosamente ignorado** (não configura nada) e
+> `cors.permiser()` é só um apelido de `cors.origins()`. Prefira `origins=` e
+> `cors.origins()`. Formatos antigos como `"*/api"` ou
+> `"allowed.all/Users-Agent"` **não existem** — eram fictícios.
 
 ---
 
@@ -188,43 +269,119 @@ action dados() {
 
 ---
 
-## render — Servir páginas HTML
+## render — Servir um arquivo (HTML, CSS, imagem, qualquer coisa)
+
+`render(caminho)` lê um arquivo do disco e devolve um `JinkerResponse` com o
+**MIME type correto detectado pela extensão** (`.html` → `text/html`, `.png` →
+`image/png`, `.pdf` → `application/pdf`, etc.). Arquivos de texto vão como
+texto; binários (imagem/pdf/…) vão como bytes automaticamente.
+
+### Assinatura e as duas formas de passar o caminho
+
+```
+render(caminho)                 # um argumento só
+render(pasta, arquivo)          # dois argumentos — junta os dois com "/"
+```
+
+As duas formas abaixo são **exatamente equivalentes** — escolha a que ficar
+mais legível:
+
+```
+return render("paginas/index.html")     // caminho completo num argumento só
+return render("paginas", "index.html")  // pasta + arquivo separados
+```
+
+Internamente `render("paginas", "index.html")` só faz `"paginas" / "index.html"`
+= `"paginas/index.html"`, então dá no mesmo. A forma de dois argumentos é útil
+quando a pasta é fixa e o arquivo é variável:
+
+```
+action pagina() {
+    nome = request.path_param("nome")
+    return render("paginas", f"{nome}.html")   // paginas/<nome>.html
+}
+```
+
+### Onde `render()` procura o arquivo
+
+O caminho é resolvido, nesta ordem, relativo a:
+
+1. **A pasta do arquivo `.ps` em execução** (onde está o seu `app.ps`);
+2. **O diretório atual** (`cwd`, de onde você rodou `pool`).
+
+O primeiro que tiver o arquivo vence. Um caminho absoluto
+(`render("C:/algo/x.html")`) é usado como está, sem busca.
+
+Não existe pasta obrigatória: `render("index.html")`, `render("web/index.html")`
+e `render("qualquer/pasta/que/voce/quiser/pag.html")` funcionam igual — a
+"pasta" é só o começo do caminho que você escreveu.
+
+Se o arquivo **não existir**, `render()` devolve uma resposta **404** com uma
+página de erro (não estoura exceção) — então dá pra usar direto no `return`.
 
 ```
 from jinker import Jinker, cors, render
 
 @app.route("/", auth=cors.origins(), methods=cors.options(["GET"]))
 action index() {
-    return render("index.html")
-}
-
-@app.route("/login", auth=cors.origins(), methods=cors.options(["GET"]))
-action login() {
-    return render("login.html")
+    return render("web/index.html")
 }
 ```
-
-O `render()` busca o arquivo na pasta `templates/` do projeto.
 
 ---
 
 ## Arquivos estáticos
 
-Coloque CSS, JS e imagens na pasta `static/`. São servidos automaticamente:
+Há **duas** formas de servir CSS/JS/imagens automaticamente — uma fixa
+(`/static/`) e uma configurável (`static_folder`).
+
+### 1. Pasta `/static/` (fixa, sem configuração)
+
+Qualquer URL que comece com `/static/` é servida a partir de uma pasta
+`static/` no diretório onde você rodou o servidor. Não precisa configurar nada,
+mas **o nome `static` é fixo** — não dá pra renomear.
 
 ```
-/static/style.css   →  http://localhost:2000/static/style.css
-/static/script.js   →  http://localhost:2000/static/script.js
-/static/logo.png    →  http://localhost:2000/static/logo.png
+/static/style.css   →  serve  ./static/style.css
+/static/script.js   →  serve  ./static/script.js
+/static/logo.png    →  serve  ./static/logo.png
 ```
-
-No HTML:
 
 ```html
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/script.js"></script>
 <img src="/static/logo.png">
 ```
+
+### 2. `static_folder` (configurável, modo SPA)
+
+No construtor do `Jinker` você aponta uma pasta com o build do front (React,
+Vue, etc.). Aí **qualquer** URL que não bata numa rota tenta servir o arquivo
+físico correspondente dentro dessa pasta; se não achar, cai no `index.html`
+dela (o roteamento client-side de SPA assume dali).
+
+```
+app = Jinker(__name__, static_folder="frontend/dist")
+```
+
+Fluxo de uma requisição, na ordem em que o servidor decide o que responder:
+
+1. Bateu numa **rota** `@app.route(...)`? → executa o handler.
+2. Começa com **`/static/`** e o arquivo existe em `static/`? → serve o arquivo.
+3. `static_folder` está definido e a URL corresponde a um **arquivo físico**
+   dentro dele (ex: `/app.js` → `frontend/dist/app.js`)? → serve o arquivo.
+4. `static_folder` definido mas a URL não é um arquivo? → serve o
+   **`index.html`** da pasta (fallback de SPA).
+5. Nada disso? → **404**.
+
+`static_folder` é buscado nas mesmas raízes do `render()` (pasta do `.ps` e
+`cwd`), então `"frontend/dist"` pode estar ao lado do seu `app.ps`.
+
+> **Nota:** o construtor também aceita `static_url="/"`, mas hoje esse valor é
+> **guardado e não usado** na hora de servir — a correspondência é feita contra
+> a URL inteira. Ou seja, não dá (ainda) pra "montar" o SPA num prefixo tipo
+> `/app`. Isso é justamente o que dá pra melhorar (ver a conversa sobre
+> flexibilizar a sintaxe).
 
 ---
 
@@ -369,7 +526,7 @@ str DB_PATH = os.getenv("DB_PATH")
 str SECRET = os.getenv("SECRET_KEY")
 
 app = Jinker(__name__)
-cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
+cors(options=["POST", "GET"], origins=["https://meusite.com"])
 
 # Middleware de autenticação
 @app.middleware()
