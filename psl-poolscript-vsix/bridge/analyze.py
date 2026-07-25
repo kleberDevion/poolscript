@@ -465,12 +465,26 @@ def analyze_source(text):
 
 
 def main():
+    # utf-8-sig remove um BOM inicial no nível de decode e trata o stream como
+    # UTF-8 independentemente do locale do Windows (que poderia ser cp1252 e
+    # bagunçar acentos/BOM). errors="replace" evita crash em byte inesperado.
+    try:
+        sys.stdin.reconfigure(encoding="utf-8-sig", errors="replace")
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     for raw_line in sys.stdin:
-        raw_line = raw_line.strip()
+        raw_line = raw_line.lstrip(chr(0xFEFF)).strip()
         if not raw_line:
             continue
+        # Ping de saúde da extensão (id == -1): responde algo válido e segue,
+        # sem precisar analisar nada.
         try:
             request = json.loads(raw_line)
+            if request.get("id") == -1:
+                sys.stdout.write(json.dumps({"id": -1, "ok": True}) + "\n")
+                sys.stdout.flush()
+                continue
             result = analyze_source(request.get("text", ""))
             result["id"] = request.get("id")
         except Exception as e:  # protocolo malformado ou erro totalmente inesperado

@@ -334,8 +334,51 @@ class PythonBridge {
         this._start();
     }
 
-    _pythonPath() {
-        return vscode.workspace.getConfiguration('poolscript').get('pythonPath', 'python');
+    /** Lista de comandos python a tentar, em ordem. O configurado (se houver)
+     * vem primeiro; depois os nomes comuns e caminhos absolutos do Windows.
+     *
+     * Motivo: quando o VS Code é aberto pelo menu Iniciar (não por um terminal),
+     * o ambiente dele pode NÃO ter `python` no PATH — mesmo o terminal tendo.
+     * Aí o bridge nunca subia e só o realce (grammar declarativa) funcionava,
+     * dando a impressão de "o LSP não roda". Tentar vários candidatos resolve
+     * isso sem o usuário precisar configurar nada. */
+    _pythonCandidates() {
+        const configured = vscode.workspace.getConfiguration('poolscript').get('pythonPath', '');
+        const list = [];
+        if (configured && configured !== 'python') list.push(configured);
+
+        if (process.platform === 'win32') {
+            // WINDOWS: a ordem importa. `python`/`python3` no PATH podem ser o
+            // STUB da Microsoft Store — um alias que existe (não dá ENOENT) mas
+            // não roda Python de verdade (abre a Store e fica mudo), fazendo o
+            // bridge travar sem resposta. Por isso, no Windows preferimos:
+            //   1. `py` (o Python Launcher oficial — confiável)
+            //   2. caminhos absolutos de instalações reais (existsSync confirma)
+            //   3. só então `python` (pode ser o stub)
+            // `python3` fica de fora no Windows — quase sempre é o stub.
+            list.push('py');
+            const home = process.env.USERPROFILE || '';
+            const abs = [
+                'C:\\Python314\\python.exe', 'C:\\Python313\\python.exe',
+                'C:\\Python312\\python.exe', 'C:\\Python311\\python.exe',
+                'C:\\Python310\\python.exe',
+                'C:\\Program Files\\PyManager\\python.exe',
+            ];
+            if (home) {
+                for (const v of ['314', '313', '312', '311', '310']) {
+                    abs.push(path.join(home, 'AppData', 'Local', 'Programs', 'Python', 'Python' + v, 'python.exe'));
+                }
+            }
+            for (const c of abs) {
+                try { if (fs.existsSync(c)) list.push(c); } catch (_) {}
+            }
+            list.push('python');
+        } else {
+            // Linux/Mac: python3 é o certo; python às vezes é o 2.
+            list.push('python3', 'python');
+        }
+        // remove duplicatas preservando ordem
+        return [...new Set(list)];
     }
 
     _start() {
@@ -345,20 +388,49 @@ class PythonBridge {
             this.available = false;
             return;
         }
+        // Índice do candidato atual — avança quando um não é encontrado (ENOENT).
+        if (this._candidates === undefined) {
+            this._candidates = this._pythonCandidates();
+            this._candIdx = 0;
+        }
+        const pyCmd = this._candidates[this._candIdx] || 'python';
         let proc;
         try {
-            proc = spawn(this._pythonPath(), [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
+            proc = spawn(pyCmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
         } catch (e) {
-            this._onUnavailable(String(e && e.message || e));
-            this._scheduleRestart();
+            this._tryNextCandidateOrGiveUp(String(e && e.message || e));
             return;
         }
         this.proc = proc;
         this.available = true;
 
+        // Probe de saúde: o stub da Microsoft Store (Windows) É "spawnável"
+        // (não dá ENOENT) mas nunca responde — travaria o bridge nesse
+        // candidato pra sempre. Mandamos um ping; se não vier resposta válida
+        // em 4s E ainda não confirmamos esse candidato, mata e tenta o próximo.
+        this._confirmed = false;
+        const probe = setTimeout(() => {
+            if (this._disposed || this._confirmed) return;
+            const naoConfirmado = this._candidates && this._candIdx < this._candidates.length - 1;
+            if (naoConfirmado) {
+                try { proc.kill(); } catch (_) {}
+                this._tryNextCandidateOrGiveUp(`'${pyCmd}' abriu mas não respondeu (possível stub da Store)`);
+            }
+        }, 4000);
+        this._probeTimer = probe;
+        // dispara o ping (id negativo pra não colidir com requisições reais)
+        try { proc.stdin.write(JSON.stringify({ id: -1, path: '_probe_', text: '' }) + '\n'); } catch (_) {}
+
         proc.on('error', (e) => {
-            this._onUnavailable(String(e && e.message || e));
-            this._scheduleRestart();
+            clearTimeout(probe);
+            const msg = String(e && e.message || e);
+            // ENOENT = esse python não existe — tenta o próximo da lista.
+            if ((e && e.code === 'ENOENT') || /ENOENT/.test(msg)) {
+                this._tryNextCandidateOrGiveUp(msg);
+            } else {
+                this._onUnavailable(msg);
+                this._scheduleRestart();
+            }
         });
         proc.stdout.setEncoding('utf-8');
         proc.stdout.on('data', (chunk) => this._onData(chunk));
@@ -371,6 +443,25 @@ class PythonBridge {
             if (code !== 0) this._onUnavailable(`processo de análise saiu com código ${code}`);
             this._scheduleRestart();
         });
+    }
+
+    /** Um candidato de python não foi encontrado (ENOENT) — avança pro próximo
+     * da lista. Só quando TODOS falham é que avisa o usuário e agenda retry. */
+    _tryNextCandidateOrGiveUp(reason) {
+        if (this._disposed) return;
+        this.available = false;
+        this._candIdx = (this._candIdx || 0) + 1;
+        if (this._candidates && this._candIdx < this._candidates.length) {
+            // tenta o próximo já, sem esperar
+            setTimeout(() => { if (!this._disposed) this._start(); }, 0);
+        } else {
+            // esgotou a lista — aí sim avisa e agenda um retry mais tarde
+            // (reseta o índice pra tentar tudo de novo no próximo ciclo)
+            this._candIdx = 0;
+            this._onUnavailable(reason + ' — nenhum python encontrado (tentei: '
+                + (this._candidates || []).join(', ') + ')');
+            this._scheduleRestart();
+        }
     }
 
     /** Backoff exponencial com teto de 30s — nunca desiste de vez, só
@@ -403,10 +494,19 @@ class PythonBridge {
             let msg;
             try { msg = JSON.parse(line); } catch (_) { continue; }
             // Resposta válida chegou — o processo está saudável de verdade
-            // (não só "spawned", mas respondendo). Zera o contador de
-            // backoff e o aviso, pra um crash futuro poder avisar de novo.
+            // (não só "spawned", mas respondendo). Confirma o candidato,
+            // cancela o probe, zera backoff/aviso, e fixa esse python (não
+            // volta a testar os outros num restart futuro).
+            this._confirmed = true;
+            if (this._probeTimer) { clearTimeout(this._probeTimer); this._probeTimer = null; }
             this._restartAttempts = 0;
             this._warned = false;
+            if (this._candidates && this._candidates.length > 1) {
+                this._candidates = [this._candidates[this._candIdx || 0]];
+                this._candIdx = 0;
+            }
+            // resposta do probe (id -1) é só pra confirmar saúde — não resolve nada
+            if (msg.id === -1) continue;
             const pending = this.pending.get(msg.id);
             if (pending) { this.pending.delete(msg.id); pending.resolve(msg); }
         }
