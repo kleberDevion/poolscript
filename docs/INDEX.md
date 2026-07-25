@@ -11,8 +11,11 @@ Para a **linguagem em si** (sintaxe, tipos, `if`/`while`/`for`, `Entity`,
 ## Builtins (sem `import`)
 
 - **[builtins](builtins/builtins.md)** — `post`, `input`, `len`, `range`, `map`,
-  `filter`, `open`, `sleep`, conversores, e utilitários de número — sempre
-  disponíveis.
+  `filter`, `open`, `sleep`, conversores (`str/int/flo/bool/list`), e utilitários
+  de número — sempre disponíveis.
+- **[string methods](string/string.md)** — métodos de texto embutidos:
+  `upper`/`lower`, `strip`, `replace` (com lista!), `split`/`join`, verificações
+  (`isdigit`…), e regex integrado (`match`/`findall`/`sub`).
 
 ---
 

@@ -326,6 +326,59 @@ def uninstall_py(name: str) -> str:
     return f"lib Python '{name}' removida"
 
 
+# ── uninstall automático (sem flag) ──────────────────────────────────────────
+def _where_installed(name: str) -> list[str]:
+    """Em quais categorias `name` está instalado: 'command', 'lib' e/ou 'py'.
+
+    Olha o installed.json e, como rede de segurança, os arquivos no disco —
+    assim um .ps órfão (registro dessincronizado) ainda é encontrado."""
+    data = _load_installed()
+    found: list[str] = []
+    if name in data.get("commands", {}):
+        found.append("command")
+    if name in data.get("libs", {}):
+        found.append("lib")
+    if name in data.get("py", {}):
+        found.append("py")
+
+    if not found:
+        p = _paths()
+        if (p.commands / f"{name}.ps").exists():
+            found.append("command")
+        if (p.libs / f"{name}.ps").exists():
+            found.append("lib")
+    return found
+
+
+def uninstall_auto(name: str) -> str:
+    """`psl uninstall <nome>` sem flag: descobre sozinho se `name` é comando,
+    lib PoolScript ou lib Python, e remove de onde estiver.
+
+    Se estiver em mais de um lugar, não adivinha — pede pra desambiguar com a
+    flag certa, pra nunca remover a coisa errada silenciosamente."""
+    found = _where_installed(name)
+
+    if not found:
+        raise PkgmgrError(
+            f"'{name}' não está instalado (nem como comando, nem lib PoolScript, nem lib Python)"
+        )
+    if len(found) > 1:
+        # ASCII apenas — a mensagem passa por print no console Windows (cp1252),
+        # que não codifica setas/símbolos unicode.
+        raise PkgmgrError(
+            f"'{name}' esta instalado em mais de uma categoria ({', '.join(found)}). "
+            f"Especifique com a flag: -asLib (lib pool) ou -py (lib Python). "
+            f"O comando de mesmo nome sai sem flag, depois que os outros forem removidos."
+        )
+
+    only = found[0]
+    if only == "command":
+        return uninstall_command(name)
+    if only == "lib":
+        return uninstall_lib(name)
+    return uninstall_py(name)
+
+
 # ── listagem ───────────────────────────────────────────────────────────────────
 
 def list_installed() -> str:

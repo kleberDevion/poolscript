@@ -51,7 +51,7 @@ len([1, 2, 3])       // já funciona
 | Função | O que faz | Página |
 |---|---|---|
 | `type(x)` | o tipo do valor, como texto | [type/type.md](type/type.md) |
-| `str/int/flo/bool(x)` | conversores de tipo | [conversores/conversores.md](conversores/conversores.md) |
+| `str/int/flo/bool/list(x)` | conversores de tipo | [conversores/conversores.md](conversores/conversores.md) |
 
 ## Async
 
@@ -69,5 +69,7 @@ todos na página [numeros_e_utilitarios/numeros_e_utilitarios.md](numeros_e_util
 
 ## Também sempre disponíveis (têm doc própria)
 
+- **String methods** — `upper`, `strip`, `replace`, `split`/`join`, `match`… →
+  [string](../string/string.md)
 - **`Parsing`** — conversões tolerantes → [Parsing](../Parsing/Parsing.md)
 - **`PoolFile`** — arquivo binário → [os/PoolFile](../os/PoolFile/PoolFile.md)

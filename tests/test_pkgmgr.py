@@ -94,6 +94,41 @@ def test_uninstall_lib_removes_file(tmp_path, monkeypatch):
     assert not (pkgmgr._paths().libs / "greetlib.ps").exists()
 
 
+def test_uninstall_lib_without_flag_auto_detects(tmp_path, monkeypatch):
+    """`psl uninstall <nome>` sem flag deve achar e remover a lib pool sozinho."""
+    monkeypatch.chdir(tmp_path)
+    _write_ps(tmp_path, "randomlib.ps", body='action r() {\n    return 4\n}')
+    _run(["install", "randomlib.ps", "-asLib"])
+    assert (pkgmgr._paths().libs / "randomlib.ps").exists()
+
+    rc, out, _ = _run(["uninstall", "randomlib"])   # sem -asLib
+    assert rc == 0
+    assert "randomlib" in out
+    assert not (pkgmgr._paths().libs / "randomlib.ps").exists()
+
+
+def test_uninstall_ambiguous_requires_flag(tmp_path, monkeypatch):
+    """Mesmo nome como comando E lib: sem flag não adivinha, pede desambiguação."""
+    monkeypatch.chdir(tmp_path)
+    _write_ps(tmp_path, "dup.ps")
+    _run(["install", "dup.ps"])            # comando
+    _run(["install", "dup.ps", "-asLib"])  # lib
+
+    rc, _, err = _run(["uninstall", "dup"])   # sem flag -> ambíguo
+    assert rc == 1
+    assert "command" in err and "lib" in err
+
+    # a flag desambigua: remove só a lib...
+    rc, _, _ = _run(["uninstall", "dup", "-asLib"])
+    assert rc == 0
+    assert not (pkgmgr._paths().libs / "dup.ps").exists()
+
+    # ...e agora, sem ambiguidade, o sem-flag remove o comando.
+    rc, _, _ = _run(["uninstall", "dup"])
+    assert rc == 0
+    assert not (pkgmgr._paths().commands / "dup.ps").exists()
+
+
 # ── instalação de lib Python ─────────────────────────────────────────────────
 
 def test_install_py_calls_pip(monkeypatch):

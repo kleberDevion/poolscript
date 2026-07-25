@@ -127,6 +127,7 @@ GLOBAL_BUILTINS = {
     "int":      int,
     "flo":      float,
     "bool":     bool,
+    "list":     list,      # list() → []  |  list("ab") → ["a","b"]  |  list(range(3)) → [0,1,2]
     "Parsing":  Parsing,
     "PoolFile": PoolFile,   # comparação de tipo (`x is PoolFile`) sem precisar de `from os import PoolFile`
     # ── Utilitários de memória e conversão ──────────────────────────

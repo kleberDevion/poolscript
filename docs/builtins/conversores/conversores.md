@@ -1,4 +1,4 @@
-# Conversores: `str(x)`, `int(x)`, `flo(x)`, `bool(x)`
+# Conversores: `str(x)`, `int(x)`, `flo(x)`, `bool(x)`, `list(x)`
 
 Convertem um valor de um tipo pra outro. São **estritos** — se a conversão não
 faz sentido, dá erro (diferente do [`Parsing`](../../Parsing/Parsing.md), que é
@@ -37,6 +37,34 @@ bool(1)            // true
 bool(0)            // false
 bool("")           // false  (vazio)
 bool("texto")      // true
+```
+
+## `list(x)` — pra lista
+
+Transforma qualquer **iterável** numa lista nova. Sem argumento, devolve uma
+lista vazia.
+
+```
+list()             // []           (lista vazia)
+list("abc")        // ["a","b","c"] (quebra a string em caracteres)
+list(range(3))     // [0, 1, 2]    (materializa o range)
+list((1, 2, 3))    // [1, 2, 3]    (tupla → lista)
+```
+
+Com um **dict**, devolve as **chaves** (igual ao Python):
+
+```
+list({"nome": "ana", "idade": 30})   // ["nome", "idade"]
+```
+
+Uso comum — **copiar** uma lista pra não mexer na original:
+
+```
+original = [1, 2, 3]
+copia = list(original)
+addEnd(copia, 4)
+post(original)     // [1, 2, 3]     (intacta)
+post(copia)        // [1, 2, 3, 4]
 ```
 
 ---

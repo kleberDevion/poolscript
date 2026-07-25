@@ -12,7 +12,8 @@ Comandos suportados:
     psl install <arquivo.ps> -asLib   Instala como lib importável (`import nome`)
     psl install <nome> -py         Instala lib Python via pip
     psl install <nome> [-asLib]    Busca <nome> no registro configurado
-    psl uninstall <nome> [-asLib|-py]   Remove o que foi instalado
+    psl uninstall <nome>           Remove (acha sozinho: comando, lib pool ou lib py)
+    psl uninstall <nome> [-asLib|-py]   Força a categoria (desambigua)
     psl list                       Lista comandos/libs/libs Python instalados
     psl registry set-url <url>     Configura o índice de pacotes
     psl registry show              Mostra o registro configurado
@@ -132,7 +133,8 @@ Uso:
   psl install arquivo.ps -asLib   Instala como lib importável (import nome)
   psl install nome -py            Instala lib Python via pip
   psl install nome [-asLib]       Busca nome no registro configurado
-  psl uninstall nome [-asLib|-py] Remove o que foi instalado
+  psl uninstall nome              Remove (acha sozinho: comando/lib pool/lib py)
+  psl uninstall nome [-asLib|-py] Força a categoria, se estiver em mais de uma
   psl list                        Lista comandos/libs/libs Python instalados
   psl registry set-url <url>      Configura o índice de pacotes
   psl registry show               Mostra o registro configurado
@@ -217,7 +219,8 @@ def _cmd_uninstall(args: list[str]) -> int:
         elif "-asLib" in flags:
             msg = pkgmgr.uninstall_lib(name)
         else:
-            msg = pkgmgr.uninstall_command(name)
+            # sem flag: descobre sozinho (comando, lib pool ou lib py)
+            msg = pkgmgr.uninstall_auto(name)
         print(msg)
         return 0
     except pkgmgr.PkgmgrError as e:
