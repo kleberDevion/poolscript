@@ -1,4 +1,4 @@
-# PoolScript v8.2.8 — Referência da linguagem
+# PoolScript v8.2.9 — Referência da linguagem
 
 Este documento descreve, de forma completa, tudo que existe atualmente na linguagem
 PoolScript: sintaxe, tipos, controle de fluxo, funções, classes, tratamento de

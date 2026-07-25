@@ -388,66 +388,81 @@ class PythonBridge {
             this.available = false;
             return;
         }
+        // Mata qualquer processo anterior ainda vivo antes de spawnar outro —
+        // sem isto, um restart podia deixar DOIS bridges rodando (órfão + novo),
+        // que competiam e contribuíam pro ciclo de "roda e para". O handler de
+        // exit do órfão é neutralizado por `_confirmed=false` + `settled`.
+        if (this.proc) {
+            try { this.proc.removeAllListeners('exit'); this.proc.kill(); } catch (_) {}
+            this.proc = null;
+        }
         // Índice do candidato atual — avança quando um não é encontrado (ENOENT).
         if (this._candidates === undefined) {
             this._candidates = this._pythonCandidates();
             this._candIdx = 0;
         }
         const pyCmd = this._candidates[this._candIdx] || 'python';
+
+        // `settled`: esta tentativa de spawn JÁ decidiu o que fazer (avançou de
+        // candidato ou foi confirmada). Impede a corrida que causava o ciclo:
+        // o probe matava o processo → o handler `exit` disparava também →
+        // dois restarts competindo → kill/restart em loop ("roda e para").
+        let settled = false;
+        const advance = (reason) => {
+            if (settled || this._disposed) return;
+            settled = true;
+            clearTimeout(probe);
+            this._advanceCandidate(reason);
+        };
+
+        this._confirmed = false;
         let proc;
         try {
             proc = spawn(pyCmd, [scriptPath], { stdio: ['pipe', 'pipe', 'pipe'] });
         } catch (e) {
-            this._tryNextCandidateOrGiveUp(String(e && e.message || e));
+            this._advanceCandidate(String(e && e.message || e));
             return;
         }
         this.proc = proc;
         this.available = true;
 
         // Probe de saúde: o stub da Microsoft Store (Windows) É "spawnável"
-        // (não dá ENOENT) mas nunca responde — travaria o bridge nesse
-        // candidato pra sempre. Mandamos um ping; se não vier resposta válida
-        // em 4s E ainda não confirmamos esse candidato, mata e tenta o próximo.
-        this._confirmed = false;
+        // (não dá ENOENT) mas nunca responde. Manda um ping; se não vier
+        // resposta em 5s e ainda não foi confirmado, avança pro próximo
+        // candidato (o `advance` cuida de matar e não deixar o exit duplicar).
         const probe = setTimeout(() => {
-            if (this._disposed || this._confirmed) return;
-            const naoConfirmado = this._candidates && this._candIdx < this._candidates.length - 1;
-            if (naoConfirmado) {
-                try { proc.kill(); } catch (_) {}
-                this._tryNextCandidateOrGiveUp(`'${pyCmd}' abriu mas não respondeu (possível stub da Store)`);
-            }
-        }, 4000);
+            if (this._disposed || this._confirmed || settled) return;
+            try { proc.kill(); } catch (_) {}
+            advance(`'${pyCmd}' abriu mas não respondeu em 5s (possível stub da Store)`);
+        }, 5000);
         this._probeTimer = probe;
-        // dispara o ping (id negativo pra não colidir com requisições reais)
         try { proc.stdin.write(JSON.stringify({ id: -1, path: '_probe_', text: '' }) + '\n'); } catch (_) {}
 
-        proc.on('error', (e) => {
-            clearTimeout(probe);
-            const msg = String(e && e.message || e);
-            // ENOENT = esse python não existe — tenta o próximo da lista.
-            if ((e && e.code === 'ENOENT') || /ENOENT/.test(msg)) {
-                this._tryNextCandidateOrGiveUp(msg);
-            } else {
-                this._onUnavailable(msg);
-                this._scheduleRestart();
-            }
-        });
+        proc.on('error', (e) => advance(String(e && e.message || e)));
         proc.stdout.setEncoding('utf-8');
         proc.stdout.on('data', (chunk) => this._onData(chunk));
         proc.stderr.on('data', () => { /* mensagens não estruturadas — ignoradas */ });
         proc.on('exit', (code) => {
+            clearTimeout(probe);
             this.available = false;
             for (const [, p] of this.pending) p.resolve(null);
             this.pending.clear();
             if (this._disposed) return;
-            if (code !== 0) this._onUnavailable(`processo de análise saiu com código ${code}`);
-            this._scheduleRestart();
+            if (this._confirmed) {
+                // Um bridge que JÁ funcionava morreu (crash transitório) —
+                // reinicia o MESMO candidato (que já sabemos que presta).
+                this._confirmed = false;
+                this._scheduleRestart();
+            } else {
+                // Nunca respondeu — trata como candidato ruim e avança.
+                advance(`processo saiu com código ${code}`);
+            }
         });
     }
 
-    /** Um candidato de python não foi encontrado (ENOENT) — avança pro próximo
-     * da lista. Só quando TODOS falham é que avisa o usuário e agenda retry. */
-    _tryNextCandidateOrGiveUp(reason) {
+    /** Avança pro próximo candidato de python; se a lista esgotou, avisa e
+     * agenda um retry da lista inteira mais tarde (com backoff). */
+    _advanceCandidate(reason) {
         if (this._disposed) return;
         this.available = false;
         this._candIdx = (this._candIdx || 0) + 1;
@@ -1272,7 +1287,10 @@ class PoolScriptLinter {
                 }
                 if (ch2 === '"""') { inTriple = true; ci += 3; continue; }
                 if (ch === '"' || ch === "'") { inStr = ch; ci++; continue; }
-                if (ch === '/' && ln[ci + 1] === '/') break; // comentário
+                // Comentário até o fim da linha: `//` OU `#`. O `#` faltava —
+                // por isso parênteses dentro de `# ... )` eram contados como
+                // desbalanceados e viravam erro de sintaxe falso (caso 1).
+                if ((ch === '/' && ln[ci + 1] === '/') || ch === '#') break;
 
                 if (OPEN[ch])   { stack.push({ ch, li, ci }); }
                 else if (CLOSE.has(ch)) {
@@ -1298,7 +1316,7 @@ class PoolScriptLinter {
         // ── Verificações linha a linha ─────────────────────────────
         for (let li = 0; li < lines.length; li++) {
             const t = lines[li].trim();
-            if (!t || t.startsWith('//')) continue;
+            if (!t || t.startsWith('//') || t.startsWith('#')) continue;
 
             // action/reaction sem parênteses — dois testes: tem "action nome"
             // (ou "reaction nome", sinônimo no lexer real), mas NÃO tem "... nome("

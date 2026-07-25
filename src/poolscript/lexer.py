@@ -221,6 +221,23 @@ class Lexer:
         if self.brace_depth > 0:
             return
 
+        # Continuação com ponto inicial: se a próxima linha (ignorando espaços)
+        # começa com `.membro`, é continuação da expressão anterior (method
+        # chaining em várias linhas). NÃO emite NEWLINE nem mexe na indentação
+        # — assim `obj()\n    .json()\n    .status()` funciona no modo colon,
+        # igual já funcionava dentro de chaves. Só vale pra `.` seguido de
+        # letra/underscore (membro); `.5` (float) ou `.` solto seguem o fluxo
+        # normal.
+        p = self.pos
+        while p < len(self.src) and self.src[p] in (" ", "\t"):
+            p += 1
+        if (p < len(self.src) and self.src[p] == "."
+                and p + 1 < len(self.src)
+                and (self.src[p + 1].isalpha() or self.src[p + 1] == "_")):
+            self.col += (p - self.pos)
+            self.pos = p
+            return
+
         # NEWLINE token só é emitido fora de parênteses
         self._emit("NEWLINE", None, "\\n", self.line - 1, self.col)
 

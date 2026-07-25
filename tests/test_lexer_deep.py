@@ -407,3 +407,25 @@ def test_error_message_includes_line_and_col():
     except PoolSyntaxError as e:
         assert e.line == 1
         assert e.col >= 5
+
+
+# ── continuação com ponto inicial (method chaining multi-linha em colon) ──────
+# `obj()` seguido de `.metodo()` em linha nova (modo colon) deve continuar a
+# expressão, não virar erro. Antes só funcionava dentro de chaves {} (onde a
+# indentação é ignorada); no modo `:` o NEWLINE/INDENT quebrava a cadeia.
+
+def test_leading_dot_continuation_suppresses_newline_colon_mode():
+    # usa toks() (inclui NEWLINE) — types() filtra NEWLINE
+    src = "x = obj()\n    .a()\n    .b()\n"
+    tt = [t.type for t in toks(src)]
+    joined = " ".join(tt)
+    # entre o RPAREN de obj() e o DOT de .a() NÃO pode haver NEWLINE/INDENT
+    assert "RPAREN DOT" in joined, f"esperava continuacao (RPAREN DOT), veio: {joined}"
+
+
+def test_leading_dot_float_not_treated_as_continuation():
+    # `.5` no inicio de linha NAO e continuacao (ponto seguido de digito) —
+    # deve haver NEWLINE antes (fluxo normal)
+    src = "x = 1\n.5\n"
+    tt = [t.type for t in toks(src)]
+    assert "NEWLINE" in tt
