@@ -13,17 +13,102 @@ import urllib.parse
 from dataclasses import dataclass, field
 
 
+DEFAULT_MAX_STREAM = 100 * 1024 * 1024  # 100 MB — teto padrão quando stream=true
+
+
+def _parse_size(value) -> int:
+    """Aceita bytes (int) ou string amigável: '100mb', '50kb', '2gb', '500b'."""
+    if isinstance(value, (int, float)):
+        return int(value)
+    s = str(value).strip().lower().replace(" ", "")
+    for suf, mult in (("gb", 1024 ** 3), ("mb", 1024 ** 2), ("kb", 1024), ("b", 1)):
+        if s.endswith(suf):
+            return int(float(s[: -len(suf)]) * mult)
+    return int(float(s))  # sem sufixo → bytes
+
+
 @dataclass
 class Response:
     status: int
-    text: str
     headers: dict = field(default_factory=dict)
     url: str = ""
+    _raw: bytes = b""
+
+    # ── corpo ─────────────────────────────────────────────────────────
+    @property
+    def text(self) -> str:
+        """Corpo como texto UTF-8 (tolerante). Para binário, use .content."""
+        return self._raw.decode("utf-8", errors="replace")
+
+    @property
+    def content(self) -> bytes:
+        """Bytes crus — use para binário (imagem, .exe, zip, pdf...)."""
+        return self._raw
+
+    @property
+    def size(self) -> int:
+        """Tamanho do corpo em bytes."""
+        return len(self._raw)
 
     @property
     def ok(self) -> bool:
         return 200 <= self.status < 300
 
+    def decode(self, encoding: str = "utf-8") -> str:
+        """Decodifica o corpo com o encoding dado (ex: .decode('latin-1'))."""
+        return self._raw.decode(encoding, errors="replace")
+
+    def content_type(self, expected: str) -> "Response":
+        """Valida que o Content-Type da resposta bate com o esperado.
+        Lança erro (cai no catch) se não bater — bom para downloads específicos.
+        Encadeável: request.get(url).content_type('application/octet-stream')."""
+        actual = ""
+        for k, v in self.headers.items():
+            if k.lower() == "content-type":
+                actual = v
+                break
+        if actual.split(";")[0].strip().lower() != str(expected).split(";")[0].strip().lower():
+            raise ValueError(
+                f"Content-Type inesperado — esperado '{expected}', "
+                f"veio '{actual or '(vazio)'}' (url={self.url})"
+            )
+        return self
+
+    @property
+    def filename(self) -> str:
+        """Nome sugerido pelo servidor (Content-Disposition) ou o fim da URL."""
+        return self._derive_filename()
+
+    def save(self, path: str = "."):
+        """Salva o corpo em disco. Se `path` for uma pasta (ex: '.'), o nome do
+        arquivo vem do Content-Disposition (ou do fim da URL). Se `path` já
+        incluir o nome, usa ele.
+
+        Retorna um PoolFile do arquivo salvo — com `.name`, `.size`, `.bytes()`,
+        `.move(destino)`, `.copy(destino)`, `.delete()`, `.path()`."""
+        from pathlib import Path as _Path
+        s = str(path)
+        p = _Path(s)
+        # trata como PASTA se: '.', '..', termina em barra, ou já existe como dir
+        if s in (".", "..") or s.endswith(("/", "\\")) or p.is_dir():
+            p = p / self._derive_filename()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(self._raw)
+        from .os_lib import PoolFile as _PoolFile
+        return _PoolFile(p)
+
+    def _derive_filename(self) -> str:
+        import re as _re
+        for k, v in self.headers.items():
+            if k.lower() == "content-disposition":
+                m = _re.search(r'filename\*?=(?:"([^"]+)"|([^;]+))', v)
+                if m:
+                    return (m.group(1) or m.group(2)).strip().strip('"')
+        from urllib.parse import urlparse, unquote
+        tail = unquote(urlparse(self.url).path.rsplit("/", 1)[-1])
+        return tail or "download"
+
+    # ── helpers de leitura (retrocompatíveis) ─────────────────────────
     def get(self, key: str):
         """Header (case-insensitive) ou chave do JSON parseado."""
         for k, v in self.headers.items():
@@ -53,7 +138,7 @@ class Response:
         return self.get_json()
 
     def __repr__(self):
-        return f"<Response status={self.status} url={self.url!r}>"
+        return f"<Response status={self.status} url={self.url!r} ({self.size} bytes)>"
 
 
 DEFAULT_USER_AGENT = (
@@ -74,8 +159,36 @@ def _apply_default_headers(headers: dict | None, has_body: bool = False) -> dict
     return h
 
 
+def _read_body(resp, stream: bool, max_size) -> bytes:
+    """Lê o corpo. Com stream=true, lê em pedaços e aborta (raise) se passar
+    do teto de memória (max_size, ou 100 MB por padrão)."""
+    if not stream:
+        return resp.read()
+    cap = _parse_size(max_size) if max_size is not None else DEFAULT_MAX_STREAM
+    clen = resp.headers.get("Content-Length")
+    if clen and clen.isdigit() and int(clen) > cap:
+        raise MemoryError(
+            f"download de {int(clen)} bytes passa do limite de {cap} bytes — "
+            f"aumente com max_size= (ex: max_size='500mb')"
+        )
+    chunks = []
+    total = 0
+    while True:
+        chunk = resp.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > cap:
+            raise MemoryError(
+                f"download passou do limite de {cap} bytes — "
+                f"aumente com max_size= (ex: max_size='500mb')"
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _request(method: str, url: str, headers: dict | None = None, body=None,
-             timeout: int = 30) -> Response | dict:
+             timeout: int = 30, stream: bool = False, max_size=None) -> Response:
     data = None
     h = _apply_default_headers(headers, body is not None)
     if body is not None:
@@ -93,16 +206,16 @@ def _request(method: str, url: str, headers: dict | None = None, body=None,
     req = urllib.request.Request(url, data=data, headers=h, method=method.upper())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            text = resp.read().decode("utf-8", errors="replace")
+            raw = _read_body(resp, stream, max_size)
             return Response(
-                status=resp.status, text=text,
-                headers=dict(resp.headers), url=resp.geturl(),
+                status=resp.status, headers=dict(resp.headers),
+                url=resp.geturl(), _raw=raw,
             )
     except urllib.error.HTTPError as exc:
-        text = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
+        raw = exc.read() if exc.fp else b""
         return Response(
-            status=exc.code, text=text,
-            headers=dict(exc.headers or {}), url=url,
+            status=exc.code, headers=dict(exc.headers or {}),
+            url=url, _raw=raw,
         )
     except urllib.error.URLError as exc:
         raise ConnectionError(f"{exc.reason} (url={url})") from exc
@@ -110,24 +223,34 @@ def _request(method: str, url: str, headers: dict | None = None, body=None,
         raise TimeoutError(f"requisição passou de {timeout}s (url={url})")
 
 
-def get(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
-    return _request("GET", url, headers=headers, body=body, timeout=timeout)
+def get(url: str, headers: dict | None = None, body=None, timeout: int = 30,
+        stream: bool = False, max_size=None) -> Response:
+    return _request("GET", url, headers=headers, body=body, timeout=timeout,
+                    stream=stream, max_size=max_size)
 
 
-def post(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
-    return _request("POST", url, headers=headers, body=body, timeout=timeout)
+def post(url: str, headers: dict | None = None, body=None, timeout: int = 30,
+         stream: bool = False, max_size=None) -> Response:
+    return _request("POST", url, headers=headers, body=body, timeout=timeout,
+                    stream=stream, max_size=max_size)
 
 
-def put(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
-    return _request("PUT", url, headers=headers, body=body, timeout=timeout)
+def put(url: str, headers: dict | None = None, body=None, timeout: int = 30,
+        stream: bool = False, max_size=None) -> Response:
+    return _request("PUT", url, headers=headers, body=body, timeout=timeout,
+                    stream=stream, max_size=max_size)
 
 
-def patch(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
-    return _request("PATCH", url, headers=headers, body=body, timeout=timeout)
+def patch(url: str, headers: dict | None = None, body=None, timeout: int = 30,
+          stream: bool = False, max_size=None) -> Response:
+    return _request("PATCH", url, headers=headers, body=body, timeout=timeout,
+                    stream=stream, max_size=max_size)
 
 
-def delete(url: str, headers: dict | None = None, body=None, timeout: int = 30) -> Response:
-    return _request("DELETE", url, headers=headers, body=body, timeout=timeout)
+def delete(url: str, headers: dict | None = None, body=None, timeout: int = 30,
+           stream: bool = False, max_size=None) -> Response:
+    return _request("DELETE", url, headers=headers, body=body, timeout=timeout,
+                    stream=stream, max_size=max_size)
 
 
 class WsConnection:

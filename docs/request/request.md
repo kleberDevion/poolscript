@@ -27,6 +27,20 @@ import request
 
 Todas devolvem um [`Response`](Response/Response.md).
 
+### Baixar arquivo (binário)
+
+Pra baixar binário (`.exe`, imagem, zip, pdf), use os bytes crus e o `stream`:
+
+| Recurso | O que faz |
+|---|---|
+| `resp.content` | bytes crus (não decodifica — não corrompe) |
+| `resp.save(pasta_ou_caminho)` | grava em disco e devolve um [`PoolFile`](../os/PoolFile/PoolFile.md) (`.name`/`.size`/`.move()`) |
+| `resp.decode('utf-8')` | corpo como texto num encoding específico |
+| `stream=true` | baixa em pedaços; aborta com raise se passar de `max_size` (padrão 100MB) |
+| `resp.content_type('...')` | valida o MIME; raise se não bater |
+
+Ver a página de [download](download/download.md) e [`Response`](Response/Response.md).
+
 ## WebSocket (cliente)
 
 | Membro | O que faz | Página |
