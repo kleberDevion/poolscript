@@ -11,7 +11,7 @@
 ; ============================================================================
 
 #define MyAppName      "PoolScript"
-#define MyAppVersion   "8.2.11"
+#define MyAppVersion   "8.2.12"
 #define MyAppPublisher "PoolScript"
 #define MyAppExeName   "pool.exe"
 
@@ -50,6 +50,8 @@ UninstallDisplayName={#MyAppName} {#MyAppVersion}
 
 ; Necessário para o Windows avisar os processos que o PATH mudou (WM_SETTINGCHANGE)
 ChangesEnvironment=yes
+; Faz o Inno avisar o Explorer que as associações de arquivo mudaram (atualiza ícones)
+ChangesAssociations=yes
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -59,15 +61,34 @@ Name: "english";             MessagesFile: "compiler:Default.isl"
 Name: "addtopath"; \
   Description: "Adicionar o PoolScript ao PATH do sistema (recomendado — permite rodar 'pool' em qualquer terminal)"; \
   GroupDescription: "Integração com o sistema:"
+Name: "associate"; \
+  Description: "Associar arquivos .ps ao PoolScript (ícone da Pool no Explorer + duplo-clique executa)"; \
+  GroupDescription: "Integração com o sistema:"
 
 [Files]
 Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; A logo em .ico acompanha a instalação para servir de ícone dos arquivos .ps
+Source: "assets\pool.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Registry]
+; ── PATH da máquina ──────────────────────────────────────────────────────────
 ; Acrescenta {app} ao PATH da máquina — só se a task estiver marcada E ainda não estiver lá.
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\Session Manager\Environment"; \
   ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; \
   Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}'))
+
+; ── Associação do .ps (ícone + abrir) ────────────────────────────────────────
+; HKA = HKLM\Software\Classes numa instalação admin (vale pra todos os usuários).
+; A extensão .ps aponta para o ProgID "PoolScript.psfile", que define nome,
+; ícone (a logo da Pool) e o comando de abrir (roda com o pool.exe).
+Root: HKA; Subkey: "Software\Classes\.ps"; ValueType: string; ValueName: ""; \
+  ValueData: "PoolScript.psfile"; Flags: uninsdeletevalue; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\PoolScript.psfile"; ValueType: string; ValueName: ""; \
+  ValueData: "Código-fonte PoolScript"; Flags: uninsdeletekey; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\PoolScript.psfile\DefaultIcon"; ValueType: string; ValueName: ""; \
+  ValueData: "{app}\pool.ico"; Tasks: associate
+Root: HKA; Subkey: "Software\Classes\PoolScript.psfile\shell\open\command"; ValueType: string; ValueName: ""; \
+  ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Tasks: associate
 
 [Code]
 const
