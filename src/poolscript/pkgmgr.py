@@ -125,6 +125,8 @@ def _fetch_registry_index(url: str) -> dict:
     import urllib.request
     import urllib.error
 
+    if not _https_ok(url):
+        raise PkgmgrError(f"o registro precisa ser https (recusando http inseguro): {url}")
     try:
         with urllib.request.urlopen(url, timeout=10) as resp:
             raw = resp.read().decode("utf-8")
@@ -165,37 +167,74 @@ def _registry_index() -> dict:
     return index
 
 
-def _registry_lookup(name: str) -> str:
+def _registry_lookup(name: str) -> tuple[str, str | None]:
+    """Retorna (url, sha256_esperado | None). O índice pode mapear o nome para
+    uma string (só a url) ou um objeto {"url": ..., "sha256": ...} — este último
+    ativa a verificação de integridade do pacote."""
     index = _registry_index()
     if name not in index:
         raise PkgmgrError(f"pacote '{name}' não encontrado no registro")
-    return index[name]
+    entry = index[name]
+    if isinstance(entry, dict):
+        return entry.get("url", ""), entry.get("sha256")
+    return entry, None
+
+
+def _https_ok(url: str) -> bool:
+    """True se a URL é https (ou http só em localhost, para dev). Bloqueia http
+    remoto: sem TLS, alguém no meio do caminho troca o código que você instala."""
+    from urllib.parse import urlparse
+    u = urlparse(url)
+    if u.scheme == "https":
+        return True
+    if u.scheme == "http" and (u.hostname or "").lower() in ("localhost", "127.0.0.1", "::1"):
+        return True
+    return False
 
 
 # ── resolução de origem ───────────────────────────────────────────────────────
 
-def resolve_source(target: str) -> tuple[str, str]:
-    """Retorna ('local', caminho) ou ('registry', url_do_source)."""
+def resolve_source(target: str) -> tuple[str, str, str | None]:
+    """Retorna ('local', caminho, None) ou ('registry', url, sha256|None)."""
     if target.endswith(".ps"):
         path = Path(target)
         if not path.is_file():
             raise PkgmgrError(f"arquivo não encontrado: {target}")
-        return "local", str(path)
-    url = _registry_lookup(target)
-    return "registry", url
+        return "local", str(path), None
+    url, sha = _registry_lookup(target)
+    return "registry", url, sha
 
 
-def _read_source_text(kind: str, location: str) -> str:
+def _read_source_text(kind: str, location: str, expected_sha: str | None = None) -> str:
     if kind == "local":
         return Path(location).read_text(encoding="utf-8")
+
     import urllib.request
     import urllib.error
 
+    # 1) TLS obrigatório para fonte remota (bloqueia troca do código via MITM)
+    if not _https_ok(location):
+        raise PkgmgrError(
+            f"recusando baixar por HTTP inseguro: {location} — use https "
+            f"(sem TLS o código instalado pode ser adulterado no caminho)"
+        )
     try:
         with urllib.request.urlopen(location, timeout=10) as resp:
-            return resp.read().decode("utf-8")
+            raw = resp.read()
     except urllib.error.URLError as e:
         raise PkgmgrError(f"não foi possível baixar {location}: {e}") from None
+
+    # 2) verificação de integridade: se o registro forneceu um sha256, ele TEM
+    #    que bater — senão o pacote foi adulterado e a instalação é abortada.
+    if expected_sha:
+        import hashlib
+        got = hashlib.sha256(raw).hexdigest()
+        if got.lower() != expected_sha.strip().lower():
+            raise PkgmgrError(
+                f"hash não confere para {location} — esperado {expected_sha}, "
+                f"veio {got}. Pacote possivelmente adulterado; instalação abortada."
+            )
+    return raw.decode("utf-8")
 
 
 def _derive_name(target: str) -> str:
@@ -206,9 +245,9 @@ def _derive_name(target: str) -> str:
 # ── instalação: comando global ───────────────────────────────────────────────
 
 def install_command(target: str, name_override: str | None = None) -> str:
-    kind, location = resolve_source(target)
+    kind, location, expected_sha = resolve_source(target)
     name = name_override or _derive_name(target)
-    source_text = _read_source_text(kind, location)
+    source_text = _read_source_text(kind, location, expected_sha)
 
     p = _paths()
     dest = p.commands / f"{name}.ps"
@@ -229,9 +268,9 @@ def install_command(target: str, name_override: str | None = None) -> str:
 def uninstall_command(name: str) -> str:
     p = _paths()
     ps_file = p.commands / f"{name}.ps"
-    shim = p.bin / f"{name}.cmd"
     removed = False
-    for f in (ps_file, shim):
+    # remove o .ps e o atalho (o nome do atalho difere entre Windows e Linux)
+    for f in (ps_file, p.bin / f"{name}.cmd", p.bin / name):
         if f.exists():
             f.unlink()
             removed = True
@@ -249,16 +288,24 @@ def uninstall_command(name: str) -> str:
 
 def _write_shim(name: str, ps_path: Path) -> None:
     p = _paths()
-    shim = p.bin / f"{name}.cmd"
-    shim.write_text(f'@echo off\r\npool "{ps_path}" %*\r\n', encoding="utf-8")
+    if sys.platform == "win32":
+        shim = p.bin / f"{name}.cmd"
+        shim.write_text(f'@echo off\r\npool "{ps_path}" %*\r\n', encoding="utf-8")
+    else:
+        # Linux/macOS: o .cmd do Windows não executa aqui — precisa de um
+        # script shell com shebang e bit de execução.
+        import stat as _stat
+        shim = p.bin / name
+        shim.write_text(f'#!/bin/sh\nexec pool "{ps_path}" "$@"\n', encoding="utf-8")
+        shim.chmod(shim.stat().st_mode | _stat.S_IXUSR | _stat.S_IXGRP | _stat.S_IXOTH)
 
 
 # ── instalação: lib importável ────────────────────────────────────────────────
 
 def install_lib(target: str, name_override: str | None = None) -> str:
-    kind, location = resolve_source(target)
+    kind, location, expected_sha = resolve_source(target)
     name = name_override or _derive_name(target)
-    source_text = _read_source_text(kind, location)
+    source_text = _read_source_text(kind, location, expected_sha)
 
     p = _paths()
     dest = p.libs / f"{name}.ps"
@@ -269,6 +316,34 @@ def install_lib(target: str, name_override: str | None = None) -> str:
     _save_installed(data)
 
     return f"lib '{name}' instalada — disponível via `import {name}` em qualquer script ({dest})"
+
+
+# ── instalação automática por marcador (#!lib / #!cmd) ───────────────────────
+def _peek_marker(target: str) -> str | None:
+    """Lê a 1ª linha com conteúdo do .ps e devolve 'lib' ou 'cmd' se ela for o
+    marcador `#!lib` / `#!cmd`. Senão, None."""
+    kind, location, expected_sha = resolve_source(target)
+    text = _read_source_text(kind, location, expected_sha)
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s == "#!lib":
+            return "lib"
+        if s == "#!cmd":
+            return "cmd"
+        return None  # 1ª linha com conteúdo não é marcador
+    return None
+
+
+def install_auto(target: str) -> str:
+    """`psl install <foo.ps>` sem flag: o próprio arquivo declara o que é, pelo
+    marcador na 1ª linha — `#!lib` instala como lib importável, `#!cmd` como
+    comando global. Sem marcador, o padrão é comando."""
+    marker = _peek_marker(target)
+    if marker == "lib":
+        return install_lib(target)
+    return install_command(target)
 
 
 def uninstall_lib(name: str) -> str:
@@ -415,9 +490,24 @@ def _ensure_bin_on_path() -> str | None:
         return f"adicione {bin_dir} ao seu PATH para usar os comandos instalados globalmente"
 
     if sys.platform != "win32":
-        if bin_dir not in os.environ.get("PATH", ""):
-            return f"adicione {bin_dir} ao seu PATH para usar os comandos instalados globalmente"
-        return None
+        if bin_dir in os.environ.get("PATH", "").split(os.pathsep):
+            return None
+        # adiciona ao ~/.bashrc e ~/.profile (idempotente) — estilo pipx, pra
+        # os comandos instalados serem achados em qualquer terminal novo.
+        line = f'\n# PoolScript — comandos instalados via `psl install`\nexport PATH="{bin_dir}:$PATH"\n'
+        added = False
+        for rc in (Path.home() / ".bashrc", Path.home() / ".profile"):
+            try:
+                existing = rc.read_text(encoding="utf-8") if rc.exists() else ""
+                if bin_dir not in existing:
+                    with rc.open("a", encoding="utf-8") as fh:
+                        fh.write(line)
+                    added = True
+            except OSError:
+                pass
+        if added:
+            return f"{bin_dir} adicionado ao PATH — abra um novo terminal para usar os comandos"
+        return f"adicione {bin_dir} ao seu PATH para usar os comandos instalados globalmente"
 
     try:
         import winreg

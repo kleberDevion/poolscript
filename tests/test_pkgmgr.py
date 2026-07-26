@@ -129,6 +129,34 @@ def test_uninstall_ambiguous_requires_flag(tmp_path, monkeypatch):
     assert not (pkgmgr._paths().commands / "dup.ps").exists()
 
 
+# ── marcador #!lib / #!cmd na 1ª linha ──────────────────────────────────────
+
+def test_install_marker_lib_goes_to_libs(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ps(tmp_path, "mylib.ps", body='#!lib\naction greet() {\n    return "hi"\n}')
+    rc, _, _ = _run(["install", "mylib.ps"])          # SEM -asLib
+    assert rc == 0
+    assert (pkgmgr._paths().libs / "mylib.ps").is_file()
+    assert not (pkgmgr._paths().commands / "mylib.ps").exists()
+
+
+def test_install_marker_cmd_goes_to_commands(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ps(tmp_path, "mycmd.ps", body='#!cmd\naction main() {\n    post("oi")\n}\nmain()')
+    rc, _, _ = _run(["install", "mycmd.ps"])
+    assert rc == 0
+    assert (pkgmgr._paths().commands / "mycmd.ps").is_file()
+    assert not (pkgmgr._paths().libs / "mycmd.ps").exists()
+
+
+def test_install_no_marker_defaults_to_command(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    _write_ps(tmp_path, "plain.ps")                   # sem marcador
+    rc, _, _ = _run(["install", "plain.ps"])
+    assert rc == 0
+    assert (pkgmgr._paths().commands / "plain.ps").is_file()
+
+
 # ── instalação de lib Python ─────────────────────────────────────────────────
 
 def test_install_py_calls_pip(monkeypatch):
@@ -226,6 +254,66 @@ def test_install_unknown_name_in_registry_errors(monkeypatch):
     rc, _, err = _run(["install", "ghost"])
     assert rc == 1
     assert "ghost" in err
+
+
+# ── segurança do registro: HTTPS obrigatório + verificação de hash ───────────
+
+class _FakeResp:
+    def __init__(self, data):
+        self._data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self):
+        return self._data
+
+
+def _mock_urlopen(monkeypatch, responses):
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen",
+                        lambda url, timeout=10: _FakeResp(responses[url]))
+
+
+def test_install_rejects_http_remote_source(monkeypatch):
+    _run(["registry", "set-url", "https://example.com/index.json"])
+    idx = json.dumps({"pkg": "http://evil.com/pkg.ps"}).encode("utf-8")   # http inseguro
+    _mock_urlopen(monkeypatch, {"https://example.com/index.json": idx})
+    rc, _, err = _run(["install", "pkg", "-asLib"])
+    assert rc == 1
+    assert "https" in err.lower() or "inseguro" in err.lower()
+
+
+def test_install_aborts_on_wrong_sha256(monkeypatch):
+    import hashlib
+    _run(["registry", "set-url", "https://example.com/index.json"])
+    payload = b'action greet() {\n    return "ok"\n}'
+    idx = json.dumps({"pkg": {"url": "https://example.com/pkg.ps", "sha256": "0" * 64}}).encode("utf-8")
+    _mock_urlopen(monkeypatch, {
+        "https://example.com/index.json": idx,
+        "https://example.com/pkg.ps": payload,
+    })
+    rc, _, err = _run(["install", "pkg", "-asLib"])
+    assert rc == 1
+    assert "hash" in err.lower()
+
+
+def test_install_ok_with_correct_sha256(monkeypatch):
+    import hashlib
+    _run(["registry", "set-url", "https://example.com/index.json"])
+    payload = b'action greet() {\n    return "ok"\n}'
+    good = hashlib.sha256(payload).hexdigest()
+    idx = json.dumps({"pkg": {"url": "https://example.com/pkg.ps", "sha256": good}}).encode("utf-8")
+    _mock_urlopen(monkeypatch, {
+        "https://example.com/index.json": idx,
+        "https://example.com/pkg.ps": payload,
+    })
+    rc, _, _ = _run(["install", "pkg", "-asLib"])
+    assert rc == 0
+    assert (pkgmgr._paths().libs / "pkg.ps").is_file()
 
 
 def _run(args):

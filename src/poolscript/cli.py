@@ -8,8 +8,8 @@ Comandos suportados:
     pool --version / -V            Mostra versão e runtime
     pool --help  / -h              Ajuda
     psl //doc                      Imprime URL da spec
-    psl install <arquivo.ps>       Instala como comando global
-    psl install <arquivo.ps> -asLib   Instala como lib importável (`import nome`)
+    psl install <arquivo.ps>       Instala (lê #!lib / #!cmd na 1ª linha; padrão: comando)
+    psl install <arquivo.ps> -asLib   Força lib importável (`import nome`)
     psl install <nome> -py         Instala lib Python via pip
     psl install <nome> [-asLib]    Busca <nome> no registro configurado
     psl uninstall <nome>           Remove (acha sozinho: comando, lib pool ou lib py)
@@ -129,8 +129,8 @@ Uso:
   pool --version        Mostra a versão e runtime
   pool --help           Mostra esta ajuda
 
-  psl install arquivo.ps          Instala como comando global
-  psl install arquivo.ps -asLib   Instala como lib importável (import nome)
+  psl install arquivo.ps          Instala (o arquivo decide via #!lib / #!cmd)
+  psl install arquivo.ps -asLib   Força lib importável (import nome)
   psl install nome -py            Instala lib Python via pip
   psl install nome [-asLib]       Busca nome no registro configurado
   psl uninstall nome              Remove (acha sozinho: comando/lib pool/lib py)
@@ -197,7 +197,8 @@ def _cmd_install(args: list[str]) -> int:
         elif "-asLib" in flags:
             msg = pkgmgr.install_lib(target)
         else:
-            msg = pkgmgr.install_command(target)
+            # sem flag: o arquivo decide via marcador #!lib / #!cmd (padrão: comando)
+            msg = pkgmgr.install_auto(target)
         print(msg)
         return 0
     except pkgmgr.PkgmgrError as e:

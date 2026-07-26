@@ -289,10 +289,13 @@ def environ(key: str = None) -> "str | dict":
 
 
 def cmd(command: str, capture: bool = False):
-    """Executa comando no terminal.
-    
-    os.cmd("mkdir uploads")
-    result = os.cmd("python --version", capture=true)
+    """Executa comando no terminal COM shell (interpreta ;, |, $, etc).
+
+        os.cmd("mkdir uploads")
+        result = os.cmd("python --version", capture=true)
+
+    ⚠️ NÃO passe dados do usuário aqui — `os.cmd(f"mkdir {nome}")` com
+    nome = "x; rm -rf ~" executa o rm. Para isso, use `os.run([...])` (sem shell).
     """
     import subprocess as _sub
     if capture:
@@ -301,6 +304,26 @@ def cmd(command: str, capture: bool = False):
     else:
         _sub.run(command, shell=True)
         return None
+
+
+def run(args, capture: bool = False):
+    """Executa um comando SEM shell — cada argumento é separado, então dados do
+    usuário NÃO conseguem injetar (`;`, `|`, `$`, `&` viram texto literal).
+
+        os.run(["mkdir", nome_do_user])          # seguro: nome nunca injeta
+        v = os.run(["python", "--version"], capture=true)
+
+    Aceita também string (dividida respeitando aspas, sem interpretar shell),
+    mas a forma com lista é a recomendada."""
+    import subprocess as _sub
+    import shlex as _shlex
+    if isinstance(args, str):
+        args = _shlex.split(args)
+    if capture:
+        result = _sub.run(args, capture_output=True, text=True)
+        return result.stdout.strip() or result.stderr.strip()
+    _sub.run(args)
+    return None
 
 
 def code(path: str = "."):
@@ -335,6 +358,7 @@ EXPORTS = {
     "rmdir":      rmdir,
     "ls":         ls,
     "cmd":        cmd,
+    "run":        run,
     "code":       code,
     "exists":     exists,
     "isfile":     isfile,

@@ -402,22 +402,35 @@ def render(folder_or_file: str, file: str = None) -> "JinkerResponse":
     import mimetypes as _mimetypes
     from pathlib import Path as _Path
 
-    if file is not None:
-        file_path = _Path(folder_or_file) / file
-    else:
-        file_path = _Path(folder_or_file)
+    from .os_lib import _search_roots
 
-    # resolve relativo ao script dir ou cwd
-    if not file_path.is_absolute():
-        from .os_lib import _search_roots
+    if file is not None:
+        # folder + file (ex: render("static", nome_do_user)): confina o arquivo
+        # DENTRO da pasta base. Bloqueia path traversal — tanto '../../etc/passwd'
+        # quanto caminho absoluto '/etc/passwd' escapam e viram 404.
+        # file_path só é setado se um arquivo VÁLIDO (dentro da base) for achado;
+        # senão fica None -> 404 (nunca cai num is_file() relativo que reabriria
+        # o traversal via CWD).
+        base_rel = _Path(folder_or_file)
+        file_path = None
         for root in _search_roots():
-            candidate = root / file_path
-            if candidate.is_file():
+            base = (root / base_rel).resolve()
+            candidate = (base / file).resolve()
+            if candidate.is_relative_to(base) and candidate.is_file():
                 file_path = candidate
                 break
+    else:
+        # arquivo único (caminho fixo do dev) — resolve relativo ao script/cwd
+        file_path = _Path(folder_or_file)
+        if not file_path.is_absolute():
+            for root in _search_roots():
+                candidate = root / file_path
+                if candidate.is_file():
+                    file_path = candidate
+                    break
 
     r = JinkerResponse()
-    if not file_path.is_file():
+    if file_path is None or not file_path.is_file():
         r.status_code = 404
         r._body = f"<h1>404 — arquivo não encontrado: {file_path}</h1>"
         r._content_type = "text/html; charset=utf-8"
@@ -928,7 +941,10 @@ def _build_acao_origin(origin: str, allowed: list[str] | None) -> str:
     for o in allowed:
         if o.rstrip("/") == origin_clean:
             return origin
-    return "*"
+    # origem NÃO permitida: nunca devolver "*" (isso liberava geral e tornava a
+    # allowlist decorativa). Devolve uma origem permitida qualquer — que não bate
+    # com a do atacante, então o browser BLOQUEIA a resposta cross-origin.
+    return allowed[0]
 
 
 class Jinker:
@@ -1041,9 +1057,12 @@ class Jinker:
                 return route, m.groupdict()
         return None, None
 
-    def __call__(self, debug: bool = False, host: str = "0.0.0.0",
+    def __call__(self, debug: bool = False, host: str = "127.0.0.1",
                  port: int = 2000, reload: bool = False) -> None:
-        """Inicia o servidor. Chamado no run_selfwith_."""
+        """Inicia o servidor. Chamado no run_selfwith_.
+
+        host padrão é 127.0.0.1 (só a própria máquina) — mais seguro. Para expor
+        na rede/LAN, passe host="0.0.0.0" EXPLICITAMENTE, ciente do risco."""
         self._debug = debug
         app = self
 
@@ -1055,6 +1074,15 @@ class Jinker:
 
         BaseHTTPRequestHandler, _ = _get_server_classes()
         class Handler(BaseHTTPRequestHandler):
+            # HTTP/1.1 → conexões persistentes (keep-alive): não abre um TCP
+            # novo a cada request. Seguro aqui porque TODA resposta com corpo
+            # manda Content-Length (o cliente sabe onde o corpo termina).
+            protocol_version = "HTTP/1.1"
+            # TCP_NODELAY: desliga o Nagle — corta os atrasos de dezenas/centenas
+            # de ms (às vezes segundos) que aparecem em respostas pequenas.
+            disable_nagle_algorithm = True
+            # fecha conexão keep-alive ociosa após 30s (não segura thread eterna)
+            timeout = 30
             # Suprime headers que revelam tecnologia
             server_version = ""
             sys_version    = ""
@@ -1278,6 +1306,8 @@ class Jinker:
 
         _, ThreadingHTTPServer = _get_server_classes()
         server = ThreadingHTTPServer((host, port), Handler)
+        # threads de conexão morrem junto com o processo (sem travar o shutdown)
+        server.daemon_threads = True
 
         if _ssl_ctx:
             import ssl as _ssl_mod
