@@ -1,0 +1,35 @@
+// socket_demo.ps — websocket com salas (rooms) no Jinker
+// Cada conexão em /sala:id entra automaticamente na sala = valor de :id.
+// Um emit(room_id=id) só alcança quem está conectado naquela sala.
+
+from jinker import Jinker, cors
+
+sk = Jinker(__name__)
+cors(options=["POST", "GET"], origins=["https://nome.com"])
+
+@sk.socket("/sala:id", channel=true) {
+    action main() {
+        msg = request.get_json()
+        id = request.path_param('id')
+
+        try {
+            if not msg {
+                post("mensagem vazia recebida na sala " {id})
+            } else {
+                // emite pra sala UMA vez (broadcast pra todos conectados na sala,
+                // incluindo quem enviou). Poderia usar sk.socket.emit(...) direto
+                // no lugar dessas 3 linhas — são equivalentes, não chame as duas.
+                send = sk.socket()
+                send.emit(payload=msg, room_id=id)
+                state = send.status_send()
+                post("emit — status: " {state})
+            }
+        } catch (e) {
+            post("erro no handler do socket: " {e})
+        }
+    }
+}
+
+run_selfwith_("main") {
+    sk(debug=True, host='0.0.0.0', port=2000)
+}

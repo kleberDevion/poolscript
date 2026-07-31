@@ -1,0 +1,30 @@
+#!cmd
+import sys
+import os
+
+target = sys.argv[0]
+target_2 = sys.argv[1]
+
+
+
+
+bool reaction mainter()
+{
+    try {
+        if (target and sys.platform() == 'windows' and target.contains('.')) {
+            os.chdir('/mnt/c/Users/klebe/')
+            post(os.pathFile(target))
+        } elif (target and sys.platform() == 'linux' and target.contains('.')) {
+            os.chdir('/home/kleberDevion')
+            post(os.pathFile(target))
+        } elif (target and sys.platform() == 'linux' and target.contains('.') and target_2 == "--ct") {
+            os.chdir('/home/kleberDevion')
+            file = os.pathFile(target)
+        }
+    } catch (e) {
+        post(<red>f"WhereCommandError: {e}")
+    }
+    return false
+}
+
+mainter()

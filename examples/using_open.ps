@@ -1,0 +1,12 @@
+// Built-ins novos da v0.3.0: open + using
+// Cria/anexa em log.txt, lê de volta e mostra.
+
+using open("/tmp/poolscript_demo.txt", "w") as f {
+    f.write("primeira linha\n")
+    f.write("segunda linha\n")
+}
+
+using open("/tmp/poolscript_demo.txt", "r") as f {
+    str conteudo = f.read()
+    post("conteudo:" conteudo)
+}

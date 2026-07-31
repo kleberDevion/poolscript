@@ -1,0 +1,63 @@
+reaction SearchInbox(self, data):
+    try:
+        connDatabase()
+        mouse = conn.cursor()
+
+        if data:
+            mouse.execute('''
+            SELECT * FROM emails WHERE id_user = ?
+            ''', (data["id"],))
+            resultado = mouse.fetchone()
+            return jinker.jsonify({
+                "status_code": 209,
+                "infos": resultado
+            }), 209
+        else:
+            page = 1
+            per_page = 20
+            if data:
+                p = data.get("page")
+                if p:
+                    page = int(p)
+                    pp = data.get("per_page")
+                if pp:
+                    per_page = int(pp)
+                if page < 1:
+                    page = 1
+                if per_page < 1:
+                    per_page = 20
+                if per_page > 100:
+                    per_page = 100
+
+                    offset = (page - 1) * per_page
+            
+                mouse.execute("SELECT * FROM emails LIMIT ? OFFSET ?", (per_page, offset))
+                resultado_2 = mouse.fetchall()
+
+                mouse.execute("SELECT COUNT(*) as total FROM emails")
+                total = mouse.fetchone()["total"]
+                total_pages = int((total + per_page - 1) / per_page)   // arredonda pra cima
+
+                return jinker.jsonify({
+                    "status_code": 200,
+                    "page": page,
+                    "per_page": per_page,
+                    "total": total,
+                    "total_pages": total_pages,
+                    "has_next": page < total_pages,
+                    "has_prev": page > 1,
+                    "infos": resultado_2
+                }), 200
+
+    catch (ConnectionError e):
+        post(<red>f"Erro interno em SmtpControl.SearchInbox(): {e}")
+        return jinker.jsonify({
+            "status_code": 500,
+            "message": "Connection Error!"
+        }), 500
+    catch (e):
+        post(<red>f"Erro interno em SmtpControl.SearchInbox(): {e}")
+        return jinker.jsonify({
+            "status_code": 500,
+            "message": "Server Internal Error!"
+        }), 500

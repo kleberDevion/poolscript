@@ -1,0 +1,9 @@
+import native_hash
+
+secret_key = "efghjkiouivtcrerctvybuinompomnibuvytcrxezjdfghjklfd"
+
+hash_verdadeiro = native_hash.hashing(segredo=secret_key)
+post(hash_verdadeiro)
+
+valido = native_hash.check_hash(segredo=secret_key, hash_comparar=hash_verdadeiro)
+post(valido)

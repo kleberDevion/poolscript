@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.mypyc]
+opt_level = "2"
+strictness = "mypy_ini"
+
+[project]
+name = "poolscript"
+version = "8.2.30"
+description = "PoolScript - linguagem de programação híbrida (dinâmica/estática) com sintaxe Python+JS"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "PoolScript", email = "poolscript@proton.me"}]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+# Sem dependências obrigatórias — usa stdlib do Python
+dependencies = []
+
+[project.optional-dependencies]
+dev    = ["pytest>=7"]
+native = ["mypy>=1.0"]   # para compilação nativa com mypyc
+lsp    = ["pygls>=1.3"]  # servidor de Language Server (extensão VSCode)
+all    = [               # libs externas opcionais (também funcionam no PyPy)
+    "requests",
+    "PyJWT",
+    "websockets",
+    "python-dotenv",
+    "Pillow",
+    "qrcode",
+    "openpyxl",
+    "pyodbc",
+    "psycopg2-binary",     # psodbc_lib.py: connect(engine="postgres"/"postgresql")
+    "pymongo",             # psodbc_lib.py: connect(engine="mongo"/"mongodb")
+    "mysql-connector-python",  # psodbc_lib.py: connect(engine="mysql")
+]
+
+[project.scripts]
+pool          = "poolscript.cli:fast_main"
+psl           = "poolscript.cli:fast_main"
+poolscript-lsp = "poolscript.lsp.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths  = ["tests"]
+pythonpath = ["src"]

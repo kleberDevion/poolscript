@@ -1,0 +1,39 @@
+#!lib
+
+reaction hashing(segredo=none) {
+   lista = str(list(segredo)).replace("'", "").replace(",", "").replace(" ", "").replace("[", "").replace("]", "")
+   box = []
+   for each i in lista {
+       ascii = ord(i.upper())
+       addEnd(box, ascii)
+   }
+   lista_reversa = reversed(box)
+   livre_hash = ""
+   for each i in lista_reversa {
+      passo1 = (i * 2147483647) + 4294967291
+      mais = 33 + (passo1 % 94)
+      livre_hash = livre_hash + chr(mais)
+   }
+   return livre_hash
+}
+
+reaction check_hash(segredo=none, hash_comparar=none) {
+   lista = str(list(segredo)).replace("'", "").replace(",", "").replace(" ", "").replace("[", "").replace("]", "")
+   box = []
+   for each i in lista {
+       ascii = ord(i.upper())
+       addEnd(box, ascii)
+   }
+   lista_reversa = reversed(box)
+   livre = ""
+   for each i in lista_reversa {
+      passo1 = (i * 2147483647) + 4294967291
+      mais = 33 + (passo1 % 94)
+      livre = livre + chr(mais)
+   }
+   if (hash_comparar == livre) {
+      return true
+   } else {
+      return false
+   }
+}

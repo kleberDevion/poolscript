@@ -1,0 +1,42 @@
+# ── artefatos de build ──────────────────────────────────────────────────────
+# Extensão C da VM — gere com ./rebuild_vm.sh
+src/poolscript/vm/*.so
+src/poolscript/vm/*.pyd
+
+# Saída do mypyc/setuptools. `build/` guardava 78 MB de .pyd cp314-win_amd64
+# vindos de uma máquina Windows — nada disso é reproduzível a partir daqui.
+build/
+*.pyd
+*.dll
+*.so
+*.o
+
+# Instaladores e binários empacotados — NADA de dist/ vai pro repo (o binário
+# se gera com `make` / pyinstaller, não se versiona).
+dist/
+
+# ── caches ──────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.coverage
+htmlcov/
+
+# ── ambiente ────────────────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+.env
+
+# ── editor / SO ─────────────────────────────────────────────────────────────
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# binário de build da raiz (regenerável com `make`)
+/pool

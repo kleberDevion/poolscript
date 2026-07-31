@@ -1,0 +1,330 @@
+{
+  "name": "Dracula (PoolScript)",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#282a36",
+    "editor.foreground": "#f8f8f2",
+    "editorLineNumber.foreground": "#6272a4",
+    "editorLineNumber.activeForeground": "#f8f8f2",
+    "editor.selectionBackground": "#44475a",
+    "editor.lineHighlightBackground": "#44475a",
+    "editorCursor.foreground": "#f8f8f2",
+    "editor.findMatchBackground": "#f1fa8c88",
+    "editor.findMatchHighlightBackground": "#f1fa8c44",
+    "editorIndentGuide.background": "#424450",
+    "editorBracketMatch.background": "#44475a",
+    "editorBracketMatch.border": "#50fa7b",
+    "activityBar.background": "#21222c",
+    "activityBar.foreground": "#f8f8f2",
+    "sideBar.background": "#21222c",
+    "sideBar.foreground": "#e6e6e6",
+    "sideBarTitle.foreground": "#f8f8f2",
+    "statusBar.background": "#21222c",
+    "statusBar.foreground": "#e6e6e6",
+    "titleBar.activeBackground": "#21222c",
+    "titleBar.activeForeground": "#f8f8f2",
+    "tab.activeBackground": "#282a36",
+    "tab.activeForeground": "#f8f8f2",
+    "tab.inactiveBackground": "#21222c",
+    "tab.inactiveForeground": "#6272a4",
+    "terminal.background": "#282a36",
+    "terminal.foreground": "#f8f8f2",
+    "terminal.ansiBlack": "#21222c",
+    "terminal.ansiRed": "#ff5555",
+    "terminal.ansiGreen": "#50fa7b",
+    "terminal.ansiYellow": "#f1fa8c",
+    "terminal.ansiBlue": "#bd93f9",
+    "terminal.ansiMagenta": "#ff79c6",
+    "terminal.ansiCyan": "#8be9fd",
+    "terminal.ansiWhite": "#f8f8f2",
+    "button.background": "#50fa7b",
+    "button.foreground": "#282a36",
+    "input.background": "#21222c",
+    "input.foreground": "#f8f8f2",
+    "dropdown.background": "#21222c",
+    "dropdown.foreground": "#f8f8f2",
+    "list.activeSelectionBackground": "#44475a",
+    "list.hoverBackground": "#343746",
+    "scrollbarSlider.background": "#44475a80",
+    "scrollbarSlider.hoverBackground": "#44475acc"
+  },
+  "tokenColors": [
+    {
+      "name": "Comentários",
+      "scope": [
+        "comment",
+        "comment.line",
+        "comment.block",
+        "punctuation.definition.comment"
+      ],
+      "settings": {
+        "foreground": "#6272a4",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Strings",
+      "scope": [
+        "string",
+        "string.quoted.double",
+        "string.quoted.single",
+        "string.quoted.double.poolscript",
+        "string.quoted.single.poolscript"
+      ],
+      "settings": {
+        "foreground": "#f1fa8c"
+      }
+    },
+    {
+      "name": "F-Strings",
+      "scope": [
+        "string.quoted.double.fstring.poolscript",
+        "string.quoted.single.fstring.poolscript",
+        "string.template"
+      ],
+      "settings": {
+        "foreground": "#f1fa8c"
+      }
+    },
+    {
+      "name": "Interpolação em f-string",
+      "scope": [
+        "meta.embedded.inline.poolscript",
+        "variable.other.readwrite.poolscript"
+      ],
+      "settings": {
+        "foreground": "#ff79c6"
+      }
+    },
+    {
+      "name": "Escape de string",
+      "scope": [
+        "constant.character.escape"
+      ],
+      "settings": {
+        "foreground": "#bd93f9"
+      }
+    },
+    {
+      "name": "Números",
+      "scope": [
+        "constant.numeric",
+        "constant.numeric.integer",
+        "constant.numeric.float",
+        "constant.numeric.poolscript"
+      ],
+      "settings": {
+        "foreground": "#bd93f9"
+      }
+    },
+    {
+      "name": "Constantes de linguagem — true false null none",
+      "scope": [
+        "constant.language",
+        "constant.language.boolean",
+        "constant.language.null",
+        "constant.language.poolscript",
+        "constant.language.boolean.poolscript",
+        "constant.language.null.poolscript"
+      ],
+      "settings": {
+        "foreground": "#bd93f9"
+      }
+    },
+    {
+      "name": "Constantes especiais — __name__ __init__",
+      "scope": [
+        "constant.language.special.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Keywords de controle — if else while for return global",
+      "scope": [
+        "keyword",
+        "keyword.control",
+        "keyword.control.poolscript",
+        "keyword.control.import.poolscript",
+        "keyword.operator.logical.poolscript"
+      ],
+      "settings": {
+        "foreground": "#ff79c6"
+      }
+    },
+    {
+      "name": "Keywords de declaração — action Entity",
+      "scope": [
+        "keyword.declaration",
+        "keyword.declaration.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd"
+      }
+    },
+    {
+      "name": "Tipo de storage — str int flo bool",
+      "scope": [
+        "storage.type",
+        "storage.type.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd"
+      }
+    },
+    {
+      "name": "Nomes de funções definidas",
+      "scope": [
+        "entity.name.function",
+        "entity.name.function.definition.poolscript"
+      ],
+      "settings": {
+        "foreground": "#50fa7b"
+      }
+    },
+    {
+      "name": "Chamadas de função",
+      "scope": [
+        "entity.name.function.call.poolscript"
+      ],
+      "settings": {
+        "foreground": "#50fa7b"
+      }
+    },
+    {
+      "name": "Decoradores",
+      "scope": [
+        "entity.name.function.decorator",
+        "entity.name.function.decorator.poolscript",
+        "punctuation.definition.decorator.poolscript"
+      ],
+      "settings": {
+        "foreground": "#50fa7b",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Módulos stdlib",
+      "scope": [
+        "support.class.stdlib.module.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd"
+      }
+    },
+    {
+      "name": "Classes e Entities",
+      "scope": [
+        "support.class",
+        "support.class.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd"
+      }
+    },
+    {
+      "name": "Funções builtin",
+      "scope": [
+        "support.function.builtin",
+        "support.function.builtin.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd"
+      }
+    },
+    {
+      "name": "Métodos de string",
+      "scope": [
+        "support.function.string",
+        "support.function.string.poolscript"
+      ],
+      "settings": {
+        "foreground": "#50fa7b"
+      }
+    },
+    {
+      "name": "Funções stdlib — request date os etc",
+      "scope": [
+        "support.function.stdlib",
+        "support.function.stdlib.request.poolscript",
+        "support.function.stdlib.date.poolscript",
+        "support.function.stdlib.os.poolscript",
+        "support.function.stdlib.jinker.poolscript",
+        "support.function.stdlib.db.poolscript",
+        "support.function.stdlib.hash.poolscript",
+        "support.function.stdlib.jwt.poolscript",
+        "support.function.stdlib.mail.poolscript",
+        "support.function.stdlib.regex.poolscript",
+        "support.function.stdlib.sys.poolscript",
+        "support.function.stdlib.manpu.poolscript",
+        "support.function.stdlib.json.poolscript",
+        "support.function.stdlib.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd"
+      }
+    },
+    {
+      "name": "self",
+      "scope": [
+        "variable.language.self",
+        "variable.language.self.poolscript"
+      ],
+      "settings": {
+        "foreground": "#ff79c6",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Parâmetros nomeados",
+      "scope": [
+        "variable.parameter",
+        "variable.parameter.poolscript"
+      ],
+      "settings": {
+        "foreground": "#ffb86c",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Operadores de atribuição",
+      "scope": [
+        "keyword.operator.assignment",
+        "keyword.operator.assignment.poolscript",
+        "keyword.operator.assignment.compound.poolscript"
+      ],
+      "settings": {
+        "foreground": "#ff79c6"
+      }
+    },
+    {
+      "name": "Operadores de comparação e aritméticos",
+      "scope": [
+        "keyword.operator",
+        "keyword.operator.comparison",
+        "keyword.operator.arithmetic",
+        "keyword.operator.logical.symbol",
+        "keyword.operator.increment",
+        "keyword.operator.comparison.poolscript",
+        "keyword.operator.arithmetic.poolscript",
+        "keyword.operator.logical.symbol.poolscript",
+        "keyword.operator.increment.poolscript"
+      ],
+      "settings": {
+        "foreground": "#ff79c6"
+      }
+    },
+    {
+      "name": "Tipo de retorno de action/reaction — int bool str flo",
+      "scope": [
+        "storage.type.return.poolscript"
+      ],
+      "settings": {
+        "foreground": "#8be9fd",
+        "fontStyle": "italic"
+      }
+    }
+  ]
+}

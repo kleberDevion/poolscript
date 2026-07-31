@@ -1,0 +1,47 @@
+// hello.ps — exemplo principal coberto pelos checks
+grau = 25
+post("Clima: " {grau} "°")
+post(f"Clima: {grau}°")
+
+x = 10
+if (x == 10) {
+    post("dez")
+} elif x > 10:
+    post("maior")
+else {
+    post("menor")
+}
+
+if x == 10:
+    post("dez de novo")
+
+minha_lista = ["A", "B", "C"]
+for each index in minha_lista:
+    post(index)
+
+action somar(a, b) {
+    return a + b
+}
+
+i = 0
+while i < 3 {
+    post(i)
+    i++
+}
+
+total = somar(2, 3)
+post("total: " {total})
+
+try {
+    z = 10 / 0
+} catch (e) {
+    post("Erro detectado: " {e})
+}
+
+// Imports estilo Pool
+PUSH os GET getenv
+
+// Null nullish equality
+post("kleber")
+if Null == 0:
+    post("Null == 0 é True")

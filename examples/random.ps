@@ -1,0 +1,27 @@
+#!lib
+code = none
+
+reaction randint():
+    var = 6565576
+    semente = int(id(var))
+    resultado_bruto = (1103515245 * semente) + 12345
+        
+    code = resultado_bruto % 10000000
+
+    return code
+
+letter = none
+
+reaction letter():
+    quantidade_de_letras = 15
+    semente = 12345
+    caixa = []
+    for each i in range(quantidade_de_letras):
+        semente = (1103515245 * semente) + 12345
+    
+        codigo_da_letra = (semente % 26) + 65
+    
+        letras = chr(codigo_da_letra)
+        addEnd(caixa, letras)
+    
+    return str(caixa).replace(["[", "]", "'", ",", " "], "")
