@@ -37,7 +37,7 @@ static void ajuda(void)
 "  pool --version / -V       Mostra a versao\n"
 "  pool --help / -h          Mostra esta ajuda\n"
 "\n"
-"Pacotes (so lib/comando .ps — nada de pip):\n"
+"Pacotes (lib e comando .ps):\n"
 "  pool install <arq.ps>         Instala (o arquivo decide via #!lib / #!cmd)\n"
 "  pool install <arq.ps> -asLib  Forca lib importavel (import nome)\n"
 "  pool install <nome>           Busca <nome> no registry configurado\n"
