@@ -444,7 +444,7 @@ typedef struct {
     char  *static_folder, *static_url;
     /* oauth */
     int    poolip_on; long ip_rate, ip_bloq;
-    int    usa_tls; char *cert;
+    int    usa_tls; char *cert; char *key;   /* key= separado (Let's Encrypt: privkey.pem) */
     /* runtime */
     JkWsAtiva *ws; int nws, cap_ws;
     Value  ch_status;               /* ChannelStatus do último envio */
@@ -1325,7 +1325,7 @@ static void libera_obj(VM *vm, Obj *o)
         for (int i = 0; i < j->nhits; i++) free(j->hits[i].ts);
         free(j->hits);
         free(j->bans);
-        free(j->nome); free(j->static_folder); free(j->static_url); free(j->cert);
+        free(j->nome); free(j->static_folder); free(j->static_url); free(j->cert); free(j->key);
         vm->alocado -= sizeof(PSJinker);
     } else if (o->type == OBJ_JCORS) {
         PSJCors *c = (PSJCors *)o;
@@ -11147,6 +11147,7 @@ static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
         k = jk_str_val(vm, "bloq");   if (dict_get(d, &k, &v) == 0 && v.t == V_INT) j->ip_bloq = v.as.i;
         k = jk_str_val(vm, "tls");    if (dict_get(d, &k, &v) == 0 && val_truthy(&v)) j->usa_tls = 1;
         k = jk_str_val(vm, "cert");   if (dict_get(d, &k, &v) == 0 && EH_STRING(v)) j->cert = strdup(COMO_STRING(v)->chars);
+        k = jk_str_val(vm, "key");    if (dict_get(d, &k, &v) == 0 && EH_STRING(v)) j->key = strdup(COMO_STRING(v)->chars);
     }
     /* static_folder / static_url nomeados */
     if (n >= 3 && EH_STRING(args[2])) { free(j->static_folder); j->static_folder = strdup(COMO_STRING(args[2])->chars); }
@@ -11790,7 +11791,23 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         char cert[1024], key[1024], erro[256];
         if (j->cert && j->cert[0]) {
             snprintf(cert, sizeof(cert), "%s", j->cert);
-            snprintf(key, sizeof(key), "%s", j->cert);   /* mesma via, como o wrapper tenta */
+            if (j->key && j->key[0]) {
+                /* chave explícita — o caso do Let's Encrypt (privkey.pem) */
+                snprintf(key, sizeof(key), "%s", j->key);
+            } else {
+                /* sem key=: procura <mesmo_nome sem ext>.key ao lado (como o
+                 * interpretador); se não achar, assume cert+chave no MESMO PEM. */
+                snprintf(key, sizeof(key), "%s", j->cert);
+                const char *ponto = strrchr(j->cert, '.');
+                const char *barra = strrchr(j->cert, '/');
+                if (ponto && (!barra || ponto > barra)) {
+                    char cand[1024];
+                    int base = (int)(ponto - j->cert);
+                    snprintf(cand, sizeof(cand), "%.*s.key", base, j->cert);
+                    struct stat ks;
+                    if (stat(cand, &ks) == 0) snprintf(key, sizeof(key), "%s", cand);
+                }
+            }
         } else {
             snprintf(cert, sizeof(cert), ".jinkerTls");
             snprintf(key, sizeof(key), ".jinkerTls.key");
