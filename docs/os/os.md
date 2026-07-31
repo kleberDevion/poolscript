@@ -54,7 +54,8 @@ precisa de caminho absoluto.
 |---|---|---|
 | `getenv(chave, default)` | lê variável de ambiente | [getenv/getenv.md](getenv/getenv.md) |
 | `environ(chave)` | uma variável, ou todas se sem argumento | [environ/environ.md](environ/environ.md) |
-| `cmd(comando, capture)` | roda um comando no terminal | [cmd/cmd.md](cmd/cmd.md) |
+| `cmd(comando, capture)` | roda um comando COM shell (interpreta `;` `\|` `$`) | [cmd/cmd.md](cmd/cmd.md) |
+| `run(args, capture)` | roda SEM shell (lista de args — à prova de injeção) | [run/run.md](run/run.md) |
 | `code(caminho)` | abre o editor de código no caminho | [code/code.md](code/code.md) |
 | `ipmach()` | IP da máquina | [ipmach/ipmach.md](ipmach/ipmach.md) |
 | `warn(texto, cor)` | mensagem colorida no terminal | [warn/warn.md](warn/warn.md) |

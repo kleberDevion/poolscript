@@ -47,6 +47,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <string.h>
 
 #include "ps_lexer.h"
@@ -7194,18 +7195,51 @@ static int mod_os_ipmach(VM *vm, Value *args, int n, Value *out)
     return devolve_texto(vm, out, ip, (int)strlen(ip));
 }
 
+/* Se o `execvp` falhar (programa inexistente), o filho manda o errno pelo
+ * exec-error pipe (FD_CLOEXEC: exec bem-sucedido fecha o cano e o pai lê 0
+ * bytes). Espelha o FileNotFoundError que o subprocess do os_lib levanta —
+ * `os.run(["nao_existe"])` erra IOError nos dois motores, não devolve Null. */
+static int checa_exec_erro(VM *vm, int rfd, const char *prog)
+{
+    int err = 0;
+    ssize_t r = read(rfd, &err, sizeof(err));
+    close(rfd);
+    if (r == (ssize_t)sizeof(err) && err != 0) {
+        snprintf(vm->erro, sizeof(vm->erro),
+                 "arquivo não encontrado: [Errno %d] %s: '%.120s'",
+                 err, strerror(err), prog ? prog : "");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "IOError");
+        return -1;
+    }
+    return 0;
+}
+
 /* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`, que é o
  * que o `os_lib.py` faz — comando que falhou tem a mensagem no stderr. */
 static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
                          int capturar, Value *out)
 {
+    /* exec-error pipe: o child escreve errno aqui se o exec falhar */
+    int ep[2];
+    if (pipe(ep) != 0) BERRO(vm, "RuntimeError", "sem pipe");
+    fcntl(ep[0], F_SETFD, FD_CLOEXEC);
+    fcntl(ep[1], F_SETFD, FD_CLOEXEC);
+
     if (!capturar) {
         pid_t pid = fork();
-        if (pid < 0) BERRO(vm, "RuntimeError", "nao consegui criar processo");
+        if (pid < 0) { close(ep[0]); close(ep[1]); BERRO(vm, "RuntimeError", "nao consegui criar processo"); }
         if (pid == 0) {
+            close(ep[0]);
             if (cmd_sh) execl("/bin/sh", "sh", "-c", cmd_sh, (char *)NULL);
             else        execvp(argv_[0], argv_);
+            int err = errno;
+            (void)write(ep[1], &err, sizeof(err));
             _exit(127);
+        }
+        close(ep[1]);
+        if (checa_exec_erro(vm, ep[0], cmd_sh ? NULL : argv_[0]) != 0) {
+            int st; waitpid(pid, &st, 0);
+            return -1;
         }
         int st;
         waitpid(pid, &st, 0);
@@ -7214,19 +7248,27 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
     }
 
     int po[2], pe[2];
-    if (pipe(po) != 0) BERRO(vm, "RuntimeError", "sem pipe");
-    if (pipe(pe) != 0) { close(po[0]); close(po[1]); BERRO(vm, "RuntimeError", "sem pipe"); }
+    if (pipe(po) != 0) { close(ep[0]); close(ep[1]); BERRO(vm, "RuntimeError", "sem pipe"); }
+    if (pipe(pe) != 0) { close(ep[0]); close(ep[1]); close(po[0]); close(po[1]); BERRO(vm, "RuntimeError", "sem pipe"); }
     pid_t pid = fork();
-    if (pid < 0) { close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
+    if (pid < 0) { close(ep[0]); close(ep[1]); close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
                    BERRO(vm, "RuntimeError", "nao consegui criar processo"); }
     if (pid == 0) {
+        close(ep[0]);
         dup2(po[1], 1); dup2(pe[1], 2);
         close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
         if (cmd_sh) execl("/bin/sh", "sh", "-c", cmd_sh, (char *)NULL);
         else        execvp(argv_[0], argv_);
+        int err = errno;
+        (void)write(ep[1], &err, sizeof(err));
         _exit(127);
     }
-    close(po[1]); close(pe[1]);
+    close(po[1]); close(pe[1]); close(ep[1]);
+    if (checa_exec_erro(vm, ep[0], cmd_sh ? NULL : argv_[0]) != 0) {
+        close(po[0]); close(pe[0]);
+        int st; waitpid(pid, &st, 0);
+        return -1;
+    }
     SBuf so = {0}, se = {0};
     char buf[4096];
     ssize_t r;

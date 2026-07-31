@@ -54,11 +54,15 @@ if (git) {
 
 `os.cmd(...)` roda com `shell=true` — o comando é interpretado pelo shell. **Não
 monte o comando concatenando entrada não confiável do usuário** (isso permite
-injeção de comando). Para valores dinâmicos vindos de fora, valide antes.
+injeção de comando): `os.cmd("mkdir " + nome)` com `nome = "x; rm -rf ~"`
+executa o `rm`. Para valores dinâmicos vindos de fora, use
+[`os.run([...])`](../run/run.md), que roda **sem shell** e trata cada argumento
+como texto literal.
 
 ---
 
 ## Relacionados
 
+- [`os.run()`](../run/run.md) — roda SEM shell (à prova de injeção); prefira para dado de usuário
 - [`os.code()`](../code/code.md) — abrir o editor de código
 - [`os.mkdir()`](../mkdir/mkdir.md) — criar pasta sem shell (mais seguro que `cmd("mkdir")`)

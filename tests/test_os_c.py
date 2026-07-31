@@ -406,3 +406,28 @@ def test_ipmach_devolve_endereco(caixa):
     entre as duas execuções), então o que se checa é o formato."""
     linhas = via_c(IMP + 'ip = os.ipmach()' + NL + 'post(ip.count(".") == 3)', caixa())
     assert linhas[-1] == "True"
+
+
+# ── os.run / os.cmd: rodar processo ─────────────────────────────────────────
+
+def test_run_echo(mesmo):
+    mesmo(IMP + 'post(os.run(["echo", "ok"], true))')
+
+
+def test_run_sem_shell_nao_injeta(mesmo):
+    # metacaractere de shell vira texto literal (segurança do run)
+    mesmo(IMP + 'post(os.run(["echo", "a; b | c"], true))')
+
+
+def test_run_programa_inexistente_erra_igual(mesmo):
+    # autoridade: subprocess levanta FileNotFoundError -> IOError; a VM idem
+    mesmo(IMP + 'try {' + NL
+              + '  post(os.run(["prog_inexistente_zzz_123"], true))' + NL
+              + '} catch (IOError e) {' + NL
+              + '  post("IOError")' + NL
+              + '}')
+
+
+def test_cmd_shell_comando_ruim_nao_erra(mesmo):
+    # com shell, comando inexistente NAO vira IOError (retorna Null nos dois)
+    mesmo(IMP + 'post(os.cmd("cmd_inexistente_zzz 2>/dev/null"))')
