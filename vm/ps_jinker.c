@@ -29,6 +29,7 @@
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include <openssl/pem.h>
 
 #include "ps_jinker.h"
@@ -777,6 +778,7 @@ int ps_jk_tls_autogera(const char *cert_path, const char *key_path,
 
     X509 *x = X509_new();
     if (!x) { EVP_PKEY_free(pk); snprintf(erro, ecap, "X509_new falhou"); return -1; }
+    X509_set_version(x, 2);          /* v3: obrigatório pra ter extensões (SAN) */
     ASN1_INTEGER_set(X509_get_serialNumber(x), (long)time(NULL));
     X509_gmtime_adj(X509_getm_notBefore(x), 0);
     X509_gmtime_adj(X509_getm_notAfter(x), 365L * 24 * 3600);
@@ -785,6 +787,20 @@ int ps_jk_tls_autogera(const char *cert_path, const char *key_path,
     X509_NAME_add_entry_by_txt(nome, "CN", MBSTRING_ASC,
                                (const unsigned char *)"localhost", -1, -1, 0);
     X509_set_issuer_name(x, nome);   /* self-signed: emissor = sujeito */
+
+    /* Extensões v3. Sem Subject Alternative Name o cliente moderno (browser,
+     * curl, urllib) REJEITA mesmo confiando na CA — CN sozinho não vale mais.
+     * CA:TRUE permite adicionar o cert ao trust store como sua própria CA. */
+    X509V3_CTX ctx;
+    X509V3_set_ctx_nodb(&ctx);
+    X509V3_set_ctx(&ctx, x, x, NULL, NULL, 0);
+    X509_EXTENSION *ext;
+    ext = X509V3_EXT_conf_nid(NULL, &ctx, NID_subject_alt_name,
+                              "DNS:localhost,IP:127.0.0.1,IP:0:0:0:0:0:0:0:1");
+    if (ext) { X509_add_ext(x, ext, -1); X509_EXTENSION_free(ext); }
+    ext = X509V3_EXT_conf_nid(NULL, &ctx, NID_basic_constraints, "critical,CA:TRUE");
+    if (ext) { X509_add_ext(x, ext, -1); X509_EXTENSION_free(ext); }
+
     if (X509_sign(x, pk, EVP_sha256()) == 0) {
         snprintf(erro, ecap, "assinatura do certificado falhou");
         goto fim;

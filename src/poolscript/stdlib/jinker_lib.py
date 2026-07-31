@@ -904,13 +904,18 @@ def _setup_tls(cert_path: str = None) -> tuple:
         tmp_key  = Path.cwd() / ".jinkerTls.key"
 
         try:
+            # -addext subjectAltName: sem SAN o cert é REJEITADO por cliente
+            # moderno (browser, curl, urllib) mesmo depois de confiar na CA —
+            # CN sozinho não vale mais. CA:TRUE permite adicioná-lo ao trust.
             subprocess.run([
                 "openssl", "req", "-x509", "-newkey", "rsa:2048",
                 "-keyout", str(tmp_key),
                 "-out", str(tmp_cert),
                 "-days", "365",
                 "-nodes",
-                "-subj", "/CN=localhost"
+                "-subj", "/CN=localhost",
+                "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1",
+                "-addext", "basicConstraints=critical,CA:TRUE",
             ], check=True, capture_output=True)
 
             cert_file = str(tmp_cert)
