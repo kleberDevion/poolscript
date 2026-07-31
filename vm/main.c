@@ -4,23 +4,53 @@
  * Faz o que o `vm_executa_fonte` do plugin faz, chamando a MESMA
  * `ps_roda_fonte`. A diferença é só o que acontece com o erro: aqui vira
  * texto no stderr e código de saída, lá vira exceção do Python.
+ *
+ * Os comandos de RUNTIME da CLI vivem aqui (rodar, repl, build, help…). Os de
+ * PACOTE (`install`/`uninstall`/`list`/`registry`) NÃO: dependem de pip e da
+ * árvore de pacotes do Python, que não existem num binário sem CPython — esses
+ * são do `psl`. Chamá-los aqui dá um aviso claro em vez de fingir que faz.
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 
 #include "ps_vm.h"
+#include "ps_pkg.h"
 
 #ifndef PS_VERSAO
-#define PS_VERSAO "8.2.18"
+#define PS_VERSAO "0.0.0"
 #endif
 
-static void uso(const char *prog)
+#define SPEC_URL "https://github.com/kleberDevion/poolscript-lang"
+
+static void ajuda(void)
 {
-    fprintf(stderr,
-        "uso: %s <arquivo.ps>\n"
-        "     %s -e <codigo>\n"
-        "     %s --version\n", prog, prog, prog);
+    printf(
+"PoolScript %s — VM em C (runtime standalone)\n"
+"\n"
+"Uso:\n"
+"  pool arquivo.ps           Roda um arquivo\n"
+"  pool -e \"<codigo>\"        Roda codigo inline (uma linha)\n"
+"  pool build                Roda todos os .ps da pasta atual\n"
+"  pool //doc                Mostra a URL da especificacao\n"
+"  pool --version / -V       Mostra a versao\n"
+"  pool --help / -h          Mostra esta ajuda\n"
+"\n"
+"Pacotes (so lib/comando .ps — nada de pip):\n"
+"  pool install <arq.ps>         Instala (o arquivo decide via #!lib / #!cmd)\n"
+"  pool install <arq.ps> -asLib  Forca lib importavel (import nome)\n"
+"  pool install <nome>           Busca <nome> no registry configurado\n"
+"  pool uninstall <nome>         Remove (acha sozinho: comando ou lib)\n"
+"  pool uninstall <nome> -asLib  Forca a categoria lib\n"
+"  pool list                     Lista comandos e libs instalados\n"
+"  pool registry set-url <url>   Configura o indice de pacotes\n"
+"  pool registry show            Mostra o registry configurado\n"
+"\n"
+"Libs internas: json, date, regex, hash, jwt, sys, dotenv, os, datasentity,\n"
+"  Parsing, sqlite3, mail, request, qrcode, manpu, psodbc, jinker\n"
+"\n"
+"Docs: " SPEC_URL "\n", PS_VERSAO);
 }
 
 /* Lê o arquivo inteiro. Devolve NULL e reclama no stderr se não der. */
@@ -67,23 +97,102 @@ static int reporta(const PSErroExec *e, const char *origem)
     }
 }
 
+/* `build`: roda todos os .ps da pasta atual, em ordem, e conta OK/erro.
+ * Espelha o `_cmd_build` da cli.py. */
+static int cmd_build(void)
+{
+    DIR *d = opendir(".");
+    if (!d) { fprintf(stderr, "pool: nao consegui abrir a pasta atual\n"); return 1; }
+
+    /* coleta os nomes .ps e ordena (glob("*.ps") do wrapper vem ordenado) */
+    char **nomes = NULL; int n = 0, cap = 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        size_t l = strlen(ent->d_name);
+        if (l < 3 || strcmp(ent->d_name + l - 3, ".ps") != 0) continue;
+        if (n == cap) { cap = cap ? cap * 2 : 16; nomes = realloc(nomes, sizeof(char *) * (size_t)cap); }
+        nomes[n++] = strdup(ent->d_name);
+    }
+    closedir(d);
+    if (n == 0) { fprintf(stderr, "nenhum arquivo .ps encontrado na pasta atual\n"); free(nomes); return 1; }
+    for (int i = 0; i < n; i++)          /* ordenação simples (n pequeno) */
+        for (int j = i + 1; j < n; j++)
+            if (strcmp(nomes[i], nomes[j]) > 0) { char *t = nomes[i]; nomes[i] = nomes[j]; nomes[j] = t; }
+
+    int rc = 0, ok = 0, falhou = 0;
+    for (int i = 0; i < n; i++) {
+        printf("=== %s ===\n", nomes[i]);
+        fflush(stdout);
+        size_t tam = 0;
+        char *fonte = le_arquivo(nomes[i], &tam);
+        if (!fonte) { falhou++; rc = 1; free(nomes[i]); continue; }
+        PSErroExec e;
+        int r = ps_roda_fonte(fonte, tam, nomes[i], &e);
+        free(fonte);
+        if (r != 0) { reporta(&e, nomes[i]); falhou++; rc = r; }
+        else ok++;
+        free(nomes[i]);
+    }
+    free(nomes);
+    printf("\n%d arquivo(s) OK, %d com erro(s).\n", ok, falhou);
+    return rc;
+}
+
+/* -asLib nos argumentos? (força instalar/remover como lib) */
+static int tem_flag(int argc, char **argv, int de, const char *flag)
+{
+    for (int i = de; i < argc; i++) if (!strcmp(argv[i], flag)) return 1;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
-    if (argc < 2) { uso(argv[0]); return 64; }
+    if (argc < 2) { ajuda(); return 0; }
 
-    if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0) {
+    const char *cmd = argv[1];
+
+    if (!strcmp(cmd, "--version") || !strcmp(cmd, "-V") || !strcmp(cmd, "-v")) {
         printf("PoolScript %s\n", PS_VERSAO);
         return 0;
     }
-    if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0) {
-        uso(argv[0]);
+    if (!strcmp(cmd, "--help") || !strcmp(cmd, "-h") || !strcmp(cmd, "help")) {
+        ajuda();
         return 0;
+    }
+    if (!strcmp(cmd, "//doc")) {
+        printf("Especificacao da PoolScript:\n  %s\n", SPEC_URL);
+        return 0;
+    }
+    if (!strcmp(cmd, "build")) return cmd_build();
+    if (!strcmp(cmd, "compile")) {
+        printf("compile: nao disponivel nesta versao.\n");
+        return 0;
+    }
+    /* ── pacotes (só .ps: lib/comando) ──────────────────────────────── */
+    if (!strcmp(cmd, "install")) {
+        if (argc < 3) { fprintf(stderr, "uso: pool install <arquivo.ps | nome> [-asLib]\n"); return 1; }
+        int modo = tem_flag(argc, argv, 3, "-asLib") ? PS_PKG_LIB : PS_PKG_AUTO;
+        return ps_pkg_install(argv[2], modo);
+    }
+    if (!strcmp(cmd, "uninstall")) {
+        if (argc < 3) { fprintf(stderr, "uso: pool uninstall <nome> [-asLib]\n"); return 1; }
+        int cat = tem_flag(argc, argv, 3, "-asLib") ? PS_PKG_LIB : PS_PKG_AUTO;
+        return ps_pkg_uninstall(argv[2], cat);
+    }
+    if (!strcmp(cmd, "list")) return ps_pkg_list();
+    if (!strcmp(cmd, "registry")) return ps_pkg_registry(argc - 2, argv + 2);
+    if (!strcmp(cmd, "repl")) {
+        fprintf(stderr,
+            "pool: o REPL interativo ainda nao esta no binario C "
+            "(precisa de estado persistente na VM).\n"
+            "      Por enquanto: `pool arquivo.ps` ou `pool -e \"<codigo>\"`.\n");
+        return 64;
     }
 
     PSErroExec e;
 
-    if (strcmp(argv[1], "-e") == 0) {
-        if (argc < 3) { uso(argv[0]); return 64; }
+    if (!strcmp(cmd, "-e")) {
+        if (argc < 3) { ajuda(); return 64; }
         if (ps_roda_fonte(argv[2], strlen(argv[2]), NULL, &e) != 0)
             return reporta(&e, "<-e>");
         return 0;
@@ -93,10 +202,10 @@ int main(int argc, char **argv)
     ps_set_argv(argc - 2, argv + 2);
 
     size_t tam = 0;
-    char *fonte = le_arquivo(argv[1], &tam);
+    char *fonte = le_arquivo(cmd, &tam);
     if (!fonte) return 66;
-    int rc = ps_roda_fonte(fonte, tam, argv[1], &e);
+    int rc = ps_roda_fonte(fonte, tam, cmd, &e);
     free(fonte);
-    if (rc != 0) return reporta(&e, argv[1]);
+    if (rc != 0) return reporta(&e, cmd);
     return 0;
 }

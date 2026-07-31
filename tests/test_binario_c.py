@@ -53,15 +53,66 @@ def test_version_e_help():
     assert roda("--help").returncode == 0
 
 
-def test_sem_argumento_reclama():
+def test_sem_argumento_mostra_ajuda():
+    # sem REPL no binário C, `pool` sem args mostra a ajuda (stdout, exit 0),
+    # em vez de reclamar — é o mesmo que `pool --help`.
     r = roda()
-    assert r.returncode != 0 and "uso:" in r.stderr
+    assert r.returncode == 0 and "Uso:" in r.stdout and "pool install" in r.stdout
 
 
 # ── execução ────────────────────────────────────────────────────────────────
 
 def test_executa_expressao():
     assert saida("-e", 'post("oi")') == ["oi"]
+
+
+# ── gerenciador de pacotes (só .ps: lib e comando) ──────────────────────────
+
+def test_pkgmgr_lib_e_comando(tmp_path):
+    """install/list/import/uninstall de lib e comando .ps, isolados num
+    POOLSCRIPT_HOME temporário — sem tocar o ~/.poolscript real."""
+    home = tmp_path / "pshome"
+    env = {"POOLSCRIPT_HOME": str(home)}
+
+    lib = tmp_path / "saud.ps"
+    lib.write_text("#!lib\naction ola(n) { return \"oi \" + n }\n")
+    cmd = tmp_path / "diz.ps"
+    cmd.write_text("#!cmd\npost(\"comando rodou\")\n")
+
+    # install (auto pelo marcador)
+    assert roda("install", str(lib), env=env).returncode == 0
+    assert roda("install", str(cmd), env=env).returncode == 0
+    assert (home / "libs" / "saud.ps").is_file()
+    assert (home / "commands" / "diz.ps").is_file()
+
+    # list mostra os dois
+    out = saida("list", env=env)
+    assert any("saud" in l for l in out) and any("diz" in l for l in out)
+
+    # a lib instalada é importável
+    prog = tmp_path / "usa.ps"
+    prog.write_text("import saud\npost(saud.ola(\"ana\"))\n")
+    assert saida(str(prog), env=env) == ["oi ana"]
+
+    # o comando roda pelo shim
+    shim = home / "bin" / "diz"
+    assert shim.is_file()
+    r = subprocess.run([str(shim)], capture_output=True, text=True,
+                       env=dict(os.environ, PATH=f"{RAIZ}:{os.environ['PATH']}", **env))
+    assert "comando rodou" in r.stdout
+
+    # uninstall remove tudo
+    assert roda("uninstall", "saud", env=env).returncode == 0
+    assert roda("uninstall", "diz", env=env).returncode == 0
+    assert not (home / "libs" / "saud.ps").exists()
+    assert not (home / "commands" / "diz.ps").exists()
+
+
+def test_pkgmgr_registry_config(tmp_path):
+    env = {"POOLSCRIPT_HOME": str(tmp_path / "h")}
+    assert "nenhum registry" in roda("registry", "show", env=env).stdout
+    assert roda("registry", "set-url", "https://ex.com/i.json", env=env).returncode == 0
+    assert "https://ex.com/i.json" in roda("registry", "show", env=env).stdout
 
 
 def test_executa_arquivo(tmp_path):
