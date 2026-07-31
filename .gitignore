@@ -40,3 +40,6 @@ Thumbs.db
 
 # binário de build da raiz (regenerável com `make`)
 /pool
+
+# config local do Claude Code — nunca vai pro repo
+.claude/
