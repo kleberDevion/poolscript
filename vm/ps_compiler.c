@@ -1394,13 +1394,31 @@ static void stmt(C *c, Unidade *u, PSNode *n)
         }
 
         case N_IMPORT_STMT: {
-            /* Só módulo nativo de nome simples. `import a.b`, import relativo
-             * e arquivo `.ps` do usuário precisam de carregador de módulo —
-             * param aqui em vez de gerar bytecode que não faz o que parece. */
+            /* Nome do módulo codificado como o `module_name` do interpretador:
+             * `n->i2` pontos de nível relativo, seguidos do caminho pontuado.
+             * `from .a.b import x` -> ".a.b"; `from pkg.mod import x` -> "pkg.mod";
+             * `import json` -> "json". O runtime (carrega_modulo_ps) resolve. */
             if (!n->texto) { cerro(c, "import mal formado", n); return; }
-            if (n->i2 > 0) { cerro(c, "import relativo ainda nao compila na VM", n); return; }
-            if (n->lista.n != 1) { cerro(c, "import de submodulo ainda nao compila na VM", n); return; }
-            const char *mod = n->lista.itens[0]->texto;
+            if (n->i2 > 0 && n->lista.n == 0) {
+                cerro(c, "import relativo precisa de um modulo depois dos pontos "
+                         "(ex: from .modulo import x)", n);
+                return;
+            }
+            char encoded[512]; int el = 0;
+            for (int32_t i = 0; i < n->i2 && el < 500; i++) encoded[el++] = '.';
+            for (int32_t i = 0; i < n->lista.n && el < 500; i++) {
+                if (i) encoded[el++] = '.';
+                const char *pt = n->lista.itens[i]->texto ? n->lista.itens[i]->texto : "";
+                int pl = (int)strlen(pt);
+                if (el + pl >= 500) pl = 500 - el;
+                memcpy(encoded + el, pt, (size_t)pl); el += pl;
+            }
+            encoded[el] = '\0';
+            const char *mod = encoded;
+            /* ligar o MÓDULO inteiro a um nome (import x / import x as y) só
+             * vale pra nome simples — pontuado/relativo exige `from ... import`,
+             * como no interpretador (`import a.b` não liga `a`). */
+            int simples = (n->i2 == 0 && n->lista.n == 1);
 
             /* `PUSH mod` é `import mod`; `PUSH mod GET a, b` é
              * `from mod import a, b`. Com GET, o módulo NÃO fica visível —
@@ -1408,6 +1426,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * interpretador faz. */
             if (strcmp(n->texto, "push") == 0) {
                 if (n->lista2.n == 0) {
+                    if (!simples) { cerro(c, "import de modulo pontuado/relativo precisa de 'from ... import ...'", n); return; }
                     emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
                     guarda_nome(c, u, n->texto2 ? n->texto2 : mod);
                     return;
@@ -1424,6 +1443,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             }
 
             if (strcmp(n->texto, "import") == 0) {
+                if (!simples) { cerro(c, "import de modulo pontuado/relativo precisa de 'from ... import ...'", n); return; }
                 emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
                 guarda_nome(c, u, n->texto2 ? n->texto2 : mod);
                 return;

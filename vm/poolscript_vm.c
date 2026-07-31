@@ -767,8 +767,12 @@ struct VM_ {
     struct { char *nome; Value valor; } *mods_ps;
     int      nmods_ps;
     int      cap_mods_ps;
-    /* Diretório do arquivo em execução — base do `import` relativo. */
+    /* Diretório do ENTRY point — raiz do projeto, base do import absoluto
+     * (`from pkg.mod import x`). Constante durante toda a execução. */
     char     dir_script[512];
+    /* Diretório do arquivo cujo corpo está rodando AGORA — base do import
+     * RELATIVO (`from .mod import x`). Muda ao entrar/sair de cada módulo. */
+    char     dir_modulo[512];
     /* Argumentos do usuário: `pool arquivo.ps a b` -> {"a","b"}. */
     char   **argv_user;
     int      argc_user;
@@ -14362,19 +14366,49 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
  * instaladas pelo `psl`. A ordem importa — um arquivo local com o mesmo nome
  * de uma lib global tem que ganhar, senão instalar uma lib quebraria projeto
  * que já tinha um módulo com esse nome. */
+/* Resolve o nome codificado (ver o compilador) num caminho de arquivo:
+ *   - `.a.b` / `..a` (nível>0): RELATIVO ao dir do arquivo importador
+ *     (vm->dir_modulo), subindo nível-1 pastas; nunca tenta libs.
+ *   - `a.b` (nível 0): ABSOLUTO da raiz do projeto (vm->dir_script), depois
+ *     lib instalada em ~/.poolscript/libs/<a.b>.ps.
+ * O caminho pontuado vira caminho de pasta (`a.b` -> `a/b`). */
 static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
 {
+    int nivel = 0;
+    const char *p = nome;
+    while (*p == '.') { nivel++; p++; }      /* pontos de nível relativo */
+
+    /* caminho pontuado -> caminho de pasta (`a.b.c` -> `a/b/c`) */
+    char rel[512]; int rl = 0;
+    for (const char *q = p; *q && rl < 510; q++) rel[rl++] = (*q == '.') ? '/' : *q;
+    rel[rl] = '\0';
+
     FILE *f;
+    if (nivel > 0) {
+        char base[512];
+        snprintf(base, sizeof(base), "%s", vm->dir_modulo[0] ? vm->dir_modulo : ".");
+        for (int i = 0; i < nivel - 1; i++) {   /* cada ponto extra sobe uma pasta */
+            char *barra = strrchr(base, '/');
+            if (barra) *barra = '\0';
+            else { snprintf(base, sizeof(base), "%s", ".."); }
+        }
+        snprintf(saida, cap, "%s/%s.ps", base, rel);
+        if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        return -1;                              /* relativo não cai pras libs */
+    }
+
+    /* nível 0: raiz do projeto (dir do entry) */
     if (vm->dir_script[0]) {
-        snprintf(saida, cap, "%s/%s.ps", vm->dir_script, nome);
+        snprintf(saida, cap, "%s/%s.ps", vm->dir_script, rel);
         if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
     }
+    /* lib instalada — o nome de arquivo usa o nome pontuado como está */
     const char *over = getenv("POOLSCRIPT_HOME");
-    if (over && *over) snprintf(saida, cap, "%s/libs/%s.ps", over, nome);
+    if (over && *over) snprintf(saida, cap, "%s/libs/%s.ps", over, p);
     else {
         const char *h = getenv("HOME");
         if (!h) return -1;
-        snprintf(saida, cap, "%s/.poolscript/libs/%s.ps", h, nome);
+        snprintf(saida, cap, "%s/.poolscript/libs/%s.ps", h, p);
     }
     if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
     return -1;
@@ -14385,15 +14419,24 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
  * dele executou. */
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
 {
-    for (int i = 0; i < vm->nmods_ps; i++)          /* já importado antes */
-        if (strcmp(vm->mods_ps[i].nome, nome) == 0) { *out = vm->mods_ps[i].valor; return 0; }
-
+    /* resolve ANTES de olhar o cache: o mesmo nome relativo (".util") aponta
+     * pra arquivos diferentes conforme quem importa, então a chave do cache é
+     * o CAMINHO ABSOLUTO, não o nome. */
     char caminho[1024];
     if (acha_modulo_ps(vm, nome, caminho, sizeof(caminho)) != 0) {
         snprintf(vm->erro, sizeof(vm->erro), "modulo nao encontrado: %.200s", nome);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
     }
+    /* realpath aloca (NULL) — passar buffer fixo < PATH_MAX estoura. Copio pro
+     * meu buffer (caminhos reais cabem de sobra em 1024). */
+    char abspath[1024];
+    char *rp = realpath(caminho, NULL);
+    if (rp) { snprintf(abspath, sizeof(abspath), "%s", rp); free(rp); }
+    else     snprintf(abspath, sizeof(abspath), "%s", caminho);
+
+    for (int i = 0; i < vm->nmods_ps; i++)          /* já importado antes */
+        if (strcmp(vm->mods_ps[i].nome, abspath) == 0) { *out = vm->mods_ps[i].valor; return 0; }
 
     FILE *f = fopen(caminho, "rb");
     if (!f) { snprintf(vm->erro, sizeof(vm->erro), "nao consegui abrir %.200s", caminho); return -1; }
@@ -14483,17 +14526,32 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         vm->mods_ps = nv;
         vm->cap_mods_ps = novo;
     }
-    vm->mods_ps[vm->nmods_ps].nome = strdup(nome);
+    vm->mods_ps[vm->nmods_ps].nome = strdup(abspath);   /* chave = caminho absoluto */
     vm->mods_ps[vm->nmods_ps].valor = MK_OBJ(m);
     vm->nmods_ps++;
     ps_compila_free(prog);
 
+    /* Enquanto o corpo do módulo roda, o dir do import RELATIVO é o dir DESTE
+     * arquivo — assim `from .x import y` dentro dele resolve certo, e imports
+     * aninhados também. Restaura ao sair (inclusive em erro). */
+    char dir_prev[512];
+    snprintf(dir_prev, sizeof(dir_prev), "%s", vm->dir_modulo);
+    char moddir[1024];
+    snprintf(moddir, sizeof(moddir), "%s", abspath);
+    char *barra = strrchr(moddir, '/');
+    if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
+    snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", moddir);
+
     /* roda o corpo: é o que faz as `action` e Entity dele existirem */
     Value ignora;
     int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
-    if (fixa_raiz(vm, MK_OBJ(m)) != 0) { snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1; }
+    if (fixa_raiz(vm, MK_OBJ(m)) != 0) {
+        snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);
+        snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1;
+    }
     int rc = vm_executa_base(vm, bp, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, &ignora);
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
+    snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);   /* volta o dir do importador */
     if (rc != 0) return -1;                 /* vm->erro já veio do módulo */
 
     *out = MK_OBJ(m);
@@ -14573,6 +14631,9 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             snprintf(vm.dir_script, sizeof(vm.dir_script), ".");
         }
     }
+    /* no começo, o "arquivo atual" é o entry: import relativo do topo resolve
+     * a partir do dir dele (e o absoluto usa dir_script, que é o mesmo aqui). */
+    snprintf(vm.dir_modulo, sizeof(vm.dir_modulo), "%s", vm.dir_script);
     vm.argv_user  = g_argv_user;
     vm.argc_user  = g_argc_user;
     vm.nglobals   = prog->nglobais > 0 ? prog->nglobais : 1;

@@ -278,3 +278,31 @@ def test_binario_e_extensao_concordam(src):
     with os.fdopen(r, "rb") as f:
         pela_extensao = f.read().decode("utf-8").splitlines()
     assert saida("-e", src) == pela_extensao
+
+
+# ── import relativo e pontuado (from .mod / from pkg.mod) ────────────────────
+
+def test_import_relativo_e_pontuado(tmp_path):
+    """from .sibling (relativo mesmo dir), from ..logIn (relativo pai) e
+    from pkg.mod (absoluto da raiz do projeto) — tudo resolvido pela VM."""
+    (tmp_path / "pkg" / "deep").mkdir(parents=True)
+    (tmp_path / "pkg" / "sibling.ps").write_text("valor = 42\n")
+    (tmp_path / "pkg" / "mod.ps").write_text(
+        "from .sibling import valor\naction pega() { return valor }\n")
+    (tmp_path / "pkg" / "logIn.ps").write_text("chave = \"LOG\"\n")
+    (tmp_path / "pkg" / "deep" / "worker.ps").write_text(
+        "from ..logIn import chave\naction run() { return chave }\n")
+    (tmp_path / "main.ps").write_text(
+        "from pkg.mod import pega\n"
+        "from pkg.deep.worker import run\n"
+        "post(pega(), run())\n")
+
+    r = roda("main.ps", cwd=str(tmp_path))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "42 LOG"
+
+
+def test_import_relativo_inexistente_erra(tmp_path):
+    (tmp_path / "main.ps").write_text("from .nao_existe import x\npost(x)\n")
+    r = roda("main.ps", cwd=str(tmp_path))
+    assert r.returncode != 0 and "nao encontrado" in r.stderr
