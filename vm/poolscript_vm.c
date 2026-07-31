@@ -14579,6 +14579,13 @@ void ps_set_argv(int argc, char **argv)
 
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e)
 {
+    /* Ignora SIGPIPE: o `send()` do socket usa MSG_NOSIGNAL, mas o SSL_write
+     * (TLS) escreve no fd SEM essa flag — um cliente que fecha a conexão no
+     * meio (browser abre várias em paralelo e fecha algumas) faria o write num
+     * pipe quebrado matar o processo com SIGPIPE, silenciosamente. Sem isto o
+     * servidor jinker HTTPS "parava do nada" ao ser acessado no navegador. */
+    signal(SIGPIPE, SIG_IGN);
+
     e->tipo = PS_ERRO_NENHUM;
     e->msg[0] = '\0';
     e->linha = e->col = 0;
