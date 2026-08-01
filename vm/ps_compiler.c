@@ -722,12 +722,27 @@ static void expr(C *c, Unidade *u, PSNode *n)
             unsigned r = 0, g = 0, b = 0;
             if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) { cerro(c, "cor invalida", n); return; }
 
-            /* o texto interno é sempre literal — o parser só aceita isso */
-            const char *txt = (n->a && n->a->texto) ? n->a->texto : "";
-            char buf[1024];
-            int len = snprintf(buf, sizeof(buf), "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, txt);
-            if (len < 0 || len >= (int)sizeof(buf)) { cerro(c, "string colorida longa demais", n); return; }
-            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, buf, len));
+            /* String SIMPLES (literal): a cor é conhecida em compilação, então
+             * vira UMA constante já com os escapes ANSI — caminho rápido. */
+            if (n->a && n->a->kind == N_LITERAL && n->a->lit == L_STR) {
+                const char *txt = n->a->texto ? n->a->texto : "";
+                char buf[1024];
+                int len = snprintf(buf, sizeof(buf), "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, txt);
+                if (len < 0 || len >= (int)sizeof(buf)) { cerro(c, "string colorida longa demais", n); return; }
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, buf, len));
+                return;
+            }
+
+            /* Interno DINÂMICO (f-string, interpolação `"txt" {x}`, etc.): o
+             * valor só existe em runtime. Concatena: PREFIXO + interno + RESET.
+             * Bug antigo: assumia literal e embutia `{x}` cru, sem interpolar. */
+            char pref[32];
+            int pl = snprintf(pref, sizeof(pref), "\033[38;2;%u;%u;%um", r, g, b);
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, pref, pl));
+            expr(c, u, n->a);                 /* compila o interno DE VERDADE */
+            emite(c, u, OP_ADD, 0);           /* prefixo + interno */
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, "\033[0m", 4));
+            emite(c, u, OP_ADD, 0);           /* + reset */
             return;
         }
 

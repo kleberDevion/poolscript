@@ -2008,3 +2008,21 @@ def test_iteracao_de_string_por_codepoint(src):
 ])
 def test_parsing_conversoes_br(src):
     mesmo(src)
+
+
+# ── string colorida <cor> com interpolação (regressão de paridade) ──────────
+# BUG antigo: `<red>f"...{x}"` na VM NÃO interpolava (embutia o template cru),
+# enquanto o interpretador interpolava. Cor só valia pra string literal.
+
+def test_cor_com_fstring_interpola():
+    mesmo('io = "ola"\npost(<red>f"cuuuuu {io}")')
+
+def test_cor_com_string_simples_nao_interpola():
+    # string comum: {x} é literal nos DOIS (esperado)
+    mesmo('io = "ola"\npost(<red>"cuuuuu {io}")')
+
+def test_cor_verde_fstring():
+    mesmo('n = 25\npost(<00ff00>f"grau {n}")')
+
+def test_cor_com_interpolacao_justaposta():
+    mesmo('x = 7\npost(<blue>"val " {x} " fim")')
