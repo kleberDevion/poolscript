@@ -12607,7 +12607,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* UNSET = nunca atribuída. Ler antes de definir é erro, como no
              * interpretador ("variável não definida") — não pode devolver
              * Null calado, senão um typo vira `null` silencioso. */
-            if (vm->globals[arg].t == V_UNSET) ERRO_T(vm, "RuntimeError", "variavel nao definida");
+            if (vm->globals[arg].t == V_UNSET)
+                ERRO_TF(vm, "RuntimeError", "variavel nao definida: %s",
+                        (arg < vm->n_nomes_globais && vm->nomes_globais[arg]) ? vm->nomes_globais[arg] : "?");
             stack[sp++] = vm->globals[arg];
             break;
         case OP_STORE_GLOBAL:
@@ -13353,7 +13355,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (v.t != V_UNSET) { stack[sp++] = v; break; }
             if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
             Value g = vm->globals[arg];
-            if (g.t == V_UNSET) ERRO_T(vm, "RuntimeError", "variavel nao definida");
+            if (g.t == V_UNSET)
+                ERRO_TF(vm, "RuntimeError", "variavel nao definida: %s",
+                        (arg < vm->n_nomes_globais && vm->nomes_globais[arg]) ? vm->nomes_globais[arg] : "?");
             stack[sp++] = g;
             break;
         }
