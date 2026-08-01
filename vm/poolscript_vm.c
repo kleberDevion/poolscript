@@ -14594,6 +14594,45 @@ void ps_set_argv(int argc, char **argv)
     g_argc_user = argc;
 }
 
+int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e)
+{
+    (void)caminho;   /* verificação não resolve import — só a gramática local */
+    e->tipo = PS_ERRO_NENHUM; e->msg[0] = '\0'; e->tipo_nome[0] = '\0';
+    e->linha = e->col = 0;
+
+    PSTokenList *toks = ps_lexer_tokenize(fonte, len);
+    if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+    if (!toks->ok) {
+        e->tipo = PS_ERRO_SINTAXE;
+        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
+        e->linha = toks->erro_linha; e->col = toks->erro_col;
+        ps_lexer_free(toks);
+        return -1;
+    }
+    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    ps_lexer_free(toks);
+    if (!r) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+    if (!r->ok) {
+        e->tipo = PS_ERRO_SINTAXE;
+        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
+        e->linha = r->erro_linha; e->col = r->erro_col;
+        ps_parse_free(r);
+        return -1;
+    }
+    PSPrograma *prog = ps_compila(r->programa);
+    ps_parse_free(r);
+    if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+    if (!prog->ok) {
+        e->tipo = PS_ERRO_NAO_SUPORTADO;
+        snprintf(e->msg, sizeof(e->msg), "%s", prog->erro);
+        e->linha = prog->erro_linha; e->col = prog->erro_col;
+        ps_compila_free(prog);
+        return -1;
+    }
+    ps_compila_free(prog);
+    return 0;
+}
+
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e)
 {
     /* Ignora SIGPIPE: o `send()` do socket usa MSG_NOSIGNAL, mas o SSL_write

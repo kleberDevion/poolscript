@@ -138,6 +138,61 @@ static int cmd_build(void)
     return rc;
 }
 
+/* escreve `s` como string JSON (aspas + escapes) no stdout */
+static void json_str(const char *s)
+{
+    putchar('"');
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++) {
+        switch (*p) {
+            case '"':  fputs("\\\"", stdout); break;
+            case '\\': fputs("\\\\", stdout); break;
+            case '\n': fputs("\\n", stdout);  break;
+            case '\r': fputs("\\r", stdout);  break;
+            case '\t': fputs("\\t", stdout);  break;
+            default:
+                if (*p < 0x20) printf("\\u%04x", *p);
+                else putchar(*p);
+        }
+    }
+    putchar('"');
+}
+
+/* `pool --check [arquivo.ps]` — lexer/parser/compilador da VM, SEM rodar, com
+ * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
+ * manda o conteúdo não salvo). NUNCA executa o código. */
+static int cmd_check(const char *arquivo)
+{
+    size_t tam = 0;
+    char *fonte = NULL;
+    if (arquivo) {
+        fonte = le_arquivo(arquivo, &tam);
+        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"IOError\",\"msg\":\"nao consegui abrir o arquivo\",\"linha\":1,\"coluna\":1}\n"); return 0; }
+    } else {
+        size_t cap = 65536; tam = 0;
+        fonte = malloc(cap);
+        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return 0; }
+        size_t r;
+        while ((r = fread(fonte + tam, 1, cap - tam, stdin)) > 0) {
+            tam += r;
+            if (tam == cap) { cap *= 2; char *nb = realloc(fonte, cap); if (!nb) { free(fonte); printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return 0; } fonte = nb; }
+        }
+        fonte[tam] = '\0';
+    }
+
+    PSErroExec e;
+    int rc = ps_verifica_fonte(fonte, tam, arquivo, &e);
+    free(fonte);
+    if (rc == 0) { printf("{\"ok\":true}\n"); return 0; }
+
+    const char *tipo = e.tipo == PS_ERRO_SINTAXE ? "SyntaxError"
+                     : e.tipo == PS_ERRO_NAO_SUPORTADO ? "NotImplementedError"
+                     : e.tipo == PS_ERRO_MEMORIA ? "MemoryError" : "RuntimeError";
+    printf("{\"ok\":false,\"tipo\":\"%s\",\"msg\":", tipo);
+    json_str(e.msg);
+    printf(",\"linha\":%d,\"coluna\":%d}\n", e.linha, e.col);
+    return 0;
+}
+
 /* -asLib nos argumentos? (força instalar/remover como lib) */
 static int tem_flag(int argc, char **argv, int de, const char *flag)
 {
@@ -163,6 +218,8 @@ int main(int argc, char **argv)
         printf("Especificacao da PoolScript:\n  %s\n", SPEC_URL);
         return 0;
     }
+    if (!strcmp(cmd, "--check") || !strcmp(cmd, "check"))
+        return cmd_check(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "build")) return cmd_build();
     if (!strcmp(cmd, "compile")) {
         printf("compile: nao disponivel nesta versao.\n");

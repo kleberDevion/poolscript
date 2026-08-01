@@ -19,12 +19,46 @@ Protocolo (uma linha JSON por request/response, LF no fim):
 import json
 import sys
 import os
+import shutil
+import subprocess
 import dataclasses
 from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from poolscript_pkg import Lexer, parse_source, PoolParseError, PoolSyntaxError  # noqa: E402
+
+
+# ── diagnóstico pela VM (o binário `pool --check`) ───────────────────────────
+# A cópia Python (poolscript_pkg) extrai os SÍMBOLOS (completion/hover), mas os
+# ERROS de sintaxe/compilação vêm do `pool --check` — a MESMA gramática C que a
+# linguagem roda, então o editor nunca discorda do binário. `--check` só lexa/
+# parseia/compila; NUNCA executa o código do usuário.
+_POOL_BIN = os.environ.get("POOL_BIN") or shutil.which("pool") or "/usr/local/bin/pool"
+
+
+def vm_check(text):
+    """Devolve {"ok": bool, "errors": [...]} pela VM, ou None se o `pool` não
+    estiver disponível (aí o chamador cai no diagnóstico da cópia Python)."""
+    if not _POOL_BIN or not os.path.isfile(_POOL_BIN):
+        return None
+    try:
+        p = subprocess.run([_POOL_BIN, "--check"], input=text,
+                           capture_output=True, text=True, timeout=8)
+        linha = ""
+        for l in p.stdout.splitlines():   # o JSON é a última linha não-vazia
+            if l.strip():
+                linha = l
+        d = json.loads(linha)
+    except Exception:
+        return None
+    if d.get("ok"):
+        return {"ok": True, "errors": []}
+    return {"ok": False, "errors": [{
+        "line": d.get("linha", 1),
+        "col":  d.get("coluna", 1),
+        "message": d.get("msg", "erro de sintaxe"),
+    }]}
 
 
 def _error_position(exc):
@@ -485,7 +519,20 @@ def main():
                 sys.stdout.write(json.dumps({"id": -1, "ok": True}) + "\n")
                 sys.stdout.flush()
                 continue
-            result = analyze_source(request.get("text", ""))
+            text = request.get("text", "")
+            result = analyze_source(text)          # símbolos (cópia Python)
+            vm = vm_check(text)                     # diagnóstico autoritativo (VM)
+            if vm is not None:
+                result["ok"] = vm["ok"]
+                result["errors"] = vm["errors"]
+                # a cópia Python pode ter falhado o parse (sem símbolos) enquanto
+                # a VM aceita: garante as chaves pra completion não quebrar.
+                result.setdefault("functions", [])
+                result.setdefault("entities", [])
+                result.setdefault("variables", [])
+                result.setdefault("imports", [])
+                result.setdefault("references", {})
+                result.setdefault("scopes", [])
             result["id"] = request.get("id")
         except Exception as e:  # protocolo malformado ou erro totalmente inesperado
             result = {"id": None, "ok": False, "errors": [{"line": 1, "col": 1, "message": f"bridge error: {e}"}]}

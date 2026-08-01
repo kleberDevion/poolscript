@@ -306,3 +306,33 @@ def test_import_relativo_inexistente_erra(tmp_path):
     (tmp_path / "main.ps").write_text("from .nao_existe import x\npost(x)\n")
     r = roda("main.ps", cwd=str(tmp_path))
     assert r.returncode != 0 and "nao encontrado" in r.stderr
+
+
+# ── pool --check (diagnóstico pro LSP, sem rodar) ────────────────────────────
+
+def test_check_valido_nao_roda(tmp_path):
+    import json as _j
+    # tem post(), mas --check NAO executa — a saida e so o JSON
+    r = roda("--check", input=None) if False else subprocess.run(
+        [POOL, "--check"], input='post("NAO DEVE APARECER")\n',
+        capture_output=True, text=True)
+    d = _j.loads(r.stdout.strip().splitlines()[-1])
+    assert d["ok"] is True
+    assert "NAO DEVE APARECER" not in r.stdout
+
+
+def test_check_erro_sintaxe_json():
+    import json as _j
+    r = subprocess.run([POOL, "--check"], input="x = (1\n",
+                       capture_output=True, text=True)
+    d = _j.loads(r.stdout.strip().splitlines()[-1])
+    assert d["ok"] is False and d["tipo"] == "SyntaxError"
+    assert d["linha"] >= 1 and d["coluna"] >= 1
+
+
+def test_check_arquivo(tmp_path):
+    import json as _j
+    f = tmp_path / "ok.ps"
+    f.write_text("action f(){ return 1 }\n")
+    r = subprocess.run([POOL, "--check", str(f)], capture_output=True, text=True)
+    assert _j.loads(r.stdout.strip())["ok"] is True

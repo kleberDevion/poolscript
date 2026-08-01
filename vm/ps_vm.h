@@ -38,4 +38,9 @@ void ps_set_argv(int argc, char **argv);
 
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
 
+/* Só VERIFICA (lexer → parser → compilador), NUNCA roda. Para o LSP/editor:
+ * usa exatamente a gramática da VM pra apontar erro de sintaxe/compilação sem
+ * executar o código do usuário. 0 = sem erro; -1 preenche `e`. */
+int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
+
 #endif /* PS_VM_H */
