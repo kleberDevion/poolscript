@@ -1163,6 +1163,7 @@ class Interpreter:
                     parent_entities.append(pe)
                 # registra métodos
                 methods: dict = {}
+                private_names: set = set()   # membros `private` — acesso só de dentro da classe
                 pending_nonnull = False
                 pending_static  = False
                 for method_node in node.body:
@@ -1173,6 +1174,8 @@ class Interpreter:
                             pending_static = True
                         continue
                     if isinstance(method_node, ActionDecl):
+                        if getattr(method_node, "is_private", False):
+                            private_names.add(method_node.name)
                         fn = UserFunction(
                             name=method_node.name,
                             params=method_node.params,
@@ -1192,6 +1195,11 @@ class Interpreter:
                 if node.fields and "__init__" not in methods:
                     methods["__init__"] = self._make_dataentity_init(node.fields, scope)
 
+                # campos declarados como `private`
+                for f in (node.fields or []):
+                    if getattr(f, "is_private", False):
+                        private_names.add(f.field_name)
+
                 entity_class = PoolEntityClass(
                     name=node.name,
                     parents=parent_entities,
@@ -1199,6 +1207,8 @@ class Interpreter:
                 )
                 # marca como dataentity para as funções de conversão
                 entity_class._dataentity = bool(node.fields)
+                # membros privados: só acessíveis de dentro de métodos da classe
+                entity_class._private = private_names
                 scope.define(node.name, entity_class)
                 return None
 
@@ -1243,6 +1253,7 @@ class Interpreter:
             # ── self.x = valor ────────────────────────────────────────────
             if node.__class__ is MemberAssignment:
                 target_obj = self.eval_expr(node.target, scope)
+                self._checa_privado(node, target_obj)   # escrita em private de fora = erro
                 value = self.eval_expr(node.value, scope)
                 if isinstance(target_obj, PoolEntityInstance):
                     setattr(target_obj, sys.intern(node.member), value)
@@ -1438,6 +1449,34 @@ class Interpreter:
         )
 
     # ── Avaliação de expressões ────────────────────────────────────────
+    def _checa_privado(self, node, target) -> None:
+        """Encapsulamento: se `target` é uma Entity e `node.member` foi marcado
+        `private` (nela ou num pai), o acesso só vale de DENTRO da classe — na
+        prática, quando o receptor é `self`. De fora, levanta erro. Membro
+        público (o default) nunca cai aqui."""
+        ent = getattr(target, "_ps_entity", None)
+        if ent is None:
+            return
+        tgt = getattr(node, "target", None)
+        # receptor `self` = acesso interno, liberado
+        if tgt is not None and tgt.__class__ is Name and getattr(tgt, "value", None) == "self":
+            return
+        member = node.member
+        pilha = [ent]
+        visto = set()
+        while pilha:
+            e = pilha.pop()
+            if id(e) in visto:
+                continue
+            visto.add(id(e))
+            if member in getattr(e, "_private", ()):  # private em algum nível
+                raise PoolRuntimeError(
+                    f"acesso negado: '{member}' é private de {ent.name} "
+                    f"(só acessível de dentro da classe)",
+                    node, self.source, filename=self.filename,
+                )
+            pilha.extend(getattr(e, "parents", None) or [])
+
     def eval_expr(self, node: Node, scope: Scope) -> Any:
         try:
             if node.__class__ is ColorStrExpr:
@@ -1517,6 +1556,11 @@ class Interpreter:
                 return self._call(fn, args, kwargs, node)
             if node.__class__ is MemberAccess:
                 target = self.eval_expr(node.target, scope)
+                # encapsulamento: membro `private` só é acessível de DENTRO da
+                # classe — na prática, quando o receptor é `self`. De fora
+                # (`conta.saldo`) é erro. Default é público, então isto só morde
+                # o que o dev marcou como private.
+                self._checa_privado(node, target)
                 # str → PoolStr para expor métodos estendidos e encadeamento
                 if isinstance(target, str) and not isinstance(target, PoolStr):
                     if sys.intern(node.member) in {"get_json", "get"}:
