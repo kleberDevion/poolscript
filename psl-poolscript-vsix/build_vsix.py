@@ -13,6 +13,7 @@ Uso:
 from __future__ import annotations
 
 import json
+import sys
 import zipfile
 from pathlib import Path
 from xml.sax.saxutils import escape
@@ -125,6 +126,15 @@ def build_manifest(pkg: dict) -> str:
 
 
 def main() -> int:
+    # metadata dos hovers/completion sai das specs — regenera pra nunca ir
+    # stale no pacote (docs_meta.json = builtins+string; stdlib = módulos).
+    import subprocess as _sub
+    for gen in ("gen_docs_meta.py", "gen_stdlib_metadata.py"):
+        try:
+            _sub.run([sys.executable, str(HERE / "bridge" / gen)], check=True)
+        except Exception as e:
+            print(f"[aviso] falha ao rodar {gen}: {e} — usando o que já existe")
+
     pkg = json.loads((HERE / "package.json").read_text(encoding="utf-8"))
     out = HERE / f"{pkg['name']}-{pkg['version']}.vsix"
 

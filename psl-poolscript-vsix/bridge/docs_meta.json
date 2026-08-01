@@ -1,0 +1,2099 @@
+{
+ "builtins": {
+  "post": {
+   "sig": "post(v1, v2, ...)",
+   "resumo": "Imprime os valores no stdout, separados por espaço, com quebra de linha no final.",
+   "params": [
+    {
+     "nome": "v...",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": "zero ou mais valores"
+    }
+   ],
+   "ret": "Null",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(1, \"a\", true)",
+     "saida": "1 a True"
+    },
+    {
+     "codigo": "post([1, Null], {\"k\": 2})",
+     "saida": "[1, null] {'k': 2}"
+    }
+   ],
+   "bordas": [
+    "`post()` sem argumento nenhum não imprime nada — nem a quebra de linha; linha em branco é `post(\"\")`",
+    "`Null` imprime `null`, inclusive aninhado (`[Null]` → `[null]`)"
+   ]
+  },
+  "len": {
+   "sig": "len(x)",
+   "resumo": "Tamanho de string (em caracteres), lista, tupla, dict ou bytes.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "str | list | tup | dict | bytes",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tipo sem tamanho (int, float, bool, Null)"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(len(\"olá\"), len([1, 2]), len({\"a\": 1}))",
+     "saida": "3 2 1"
+    }
+   ],
+   "bordas": [
+    "string conta CARACTERES unicode, não bytes — `len(\"ç\")` é 1"
+   ]
+  },
+  "str": {
+   "sig": "str(x)",
+   "resumo": "Converte qualquer valor para texto, na renderização da PoolScript.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(str(12) + \"!\", str(Null), str(true))",
+     "saida": "12! null True"
+    }
+   ],
+   "bordas": [
+    "`str(Null)` é `\"null\"` (nunca `None`); bool vira `True`/`False`"
+   ]
+  },
+  "int": {
+   "sig": "int(x)",
+   "resumo": "Converte para inteiro: string numérica, float (trunca) ou bool.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "str | flo | bool | int",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "string que não é número"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(int(\"7\"), int(3.9), int(true))",
+     "saida": "7 3 1"
+    }
+   ],
+   "bordas": [
+    "float TRUNCA em direção ao zero (`int(3.9)` → 3), não arredonda"
+   ]
+  },
+  "flo": {
+   "sig": "flo(x)",
+   "resumo": "Converte para número de ponto flutuante.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "str | int | bool | flo",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "flo",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "string que não é número"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(flo(\"2.5\"), flo(3))",
+     "saida": "2.5 3.0"
+    }
+   ],
+   "bordas": [
+    "o nome é `flo`, não `float` — `float` não existe na linguagem"
+   ]
+  },
+  "bool": {
+   "sig": "bool(x)",
+   "resumo": "Verdade do valor: vazio/zero/Null são falsos, o resto é verdadeiro.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(bool(0), bool(\"\"), bool([1]), bool(Null))",
+     "saida": "False False True False"
+    }
+   ],
+   "bordas": []
+  },
+  "type": {
+   "sig": "type(x)",
+   "resumo": "Nome do tipo do valor, como string.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(type(1), type(\"a\"), type([1]), type(Null))",
+     "saida": "int str list Null"
+    }
+   ],
+   "bordas": [
+    "igual ao método universal `x.type()` — os dois respondem o mesmo nome"
+   ]
+  },
+  "abs": {
+   "sig": "abs(n)",
+   "resumo": "Valor absoluto de um número.",
+   "params": [
+    {
+     "nome": "n",
+     "tipo": "int | flo | bool",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int | flo",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "não-número"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(abs(0 - 4), abs(2.5))",
+     "saida": "4 2.5"
+    }
+   ],
+   "bordas": []
+  },
+  "round": {
+   "sig": "round(n, casas=0)",
+   "resumo": "Arredonda um número, opcionalmente com casas decimais.",
+   "params": [
+    {
+     "nome": "n",
+     "tipo": "int | flo",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "casas",
+     "tipo": "int",
+     "default": "0",
+     "nota": ""
+    }
+   ],
+   "ret": "int | flo",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "não-número"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(round(3.567, 2), round(2.5))",
+     "saida": "3.57 2"
+    }
+   ],
+   "bordas": [
+    "arredondamento de banco (half-to-even): `round(2.5)` → 2, como no Python"
+   ]
+  },
+  "hex": {
+   "sig": "hex(n)",
+   "resumo": "Inteiro em hexadecimal, com prefixo 0x.",
+   "params": [
+    {
+     "nome": "n",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "não-inteiro"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(hex(255))",
+     "saida": "0xff"
+    }
+   ],
+   "bordas": []
+  },
+  "bin": {
+   "sig": "bin(n)",
+   "resumo": "Inteiro em binário, com prefixo 0b.",
+   "params": [
+    {
+     "nome": "n",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "não-inteiro"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(bin(5))",
+     "saida": "0b101"
+    }
+   ],
+   "bordas": []
+  },
+  "oct": {
+   "sig": "oct(n)",
+   "resumo": "Inteiro em octal, com prefixo 0o.",
+   "params": [
+    {
+     "nome": "n",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "não-inteiro"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(oct(8))",
+     "saida": "0o10"
+    }
+   ],
+   "bordas": []
+  },
+  "ord": {
+   "sig": "ord(c)",
+   "resumo": "Codepoint unicode de um caractere.",
+   "params": [
+    {
+     "nome": "c",
+     "tipo": "str de 1 caractere",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "string com tamanho diferente de 1"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(ord(\"A\"))",
+     "saida": "65"
+    }
+   ],
+   "bordas": []
+  },
+  "chr": {
+   "sig": "chr(n)",
+   "resumo": "Caractere do codepoint unicode.",
+   "params": [
+    {
+     "nome": "n",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "fora da faixa unicode"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(chr(66), chr(231))",
+     "saida": "B ç"
+    }
+   ],
+   "bordas": []
+  },
+  "range": {
+   "sig": "range(fim) | range(inicio, fim, passo=1)",
+   "resumo": "Lista de inteiros de inicio (inclusive) a fim (exclusive).",
+   "params": [
+    {
+     "nome": "inicio",
+     "tipo": "int",
+     "default": "0",
+     "nota": ""
+    },
+    {
+     "nome": "fim",
+     "tipo": "int",
+     "default": "—",
+     "nota": "exclusive"
+    },
+    {
+     "nome": "passo",
+     "tipo": "int",
+     "default": "1",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "argumento não-inteiro"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(range(3), range(1, 7, 2))",
+     "saida": "[0, 1, 2] [1, 3, 5]"
+    }
+   ],
+   "bordas": [
+    "devolve LISTA concreta, não um iterador preguiçoso"
+   ]
+  },
+  "list": {
+   "sig": "list(x)",
+   "resumo": "Converte para lista: string vira caracteres, dict vira chaves, tupla vira lista.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "str | dict | tup | list",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tipo não-iterável"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(list(\"abc\"), list({\"a\": 1}))",
+     "saida": "['a', 'b', 'c'] ['a']"
+    }
+   ],
+   "bordas": []
+  },
+  "sum": {
+   "sig": "sum(lista)",
+   "resumo": "Soma os números de uma lista.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list | tup",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int | flo",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "item não-numérico"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(sum([1, 2, 3]))",
+     "saida": "6"
+    }
+   ],
+   "bordas": [
+    "lista vazia soma 0"
+   ]
+  },
+  "min": {
+   "sig": "min(lista) | min(a, b, ...)",
+   "resumo": "Menor valor de uma lista ou dos argumentos.",
+   "params": [
+    {
+     "nome": "lista | a, b...",
+     "tipo": "list ou 2+ valores",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "valor",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "lista vazia ou tipos não comparáveis"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(min([3, 1]), min(5, 2, 8))",
+     "saida": "1 2"
+    }
+   ],
+   "bordas": []
+  },
+  "max": {
+   "sig": "max(lista) | max(a, b, ...)",
+   "resumo": "Maior valor de uma lista ou dos argumentos.",
+   "params": [
+    {
+     "nome": "lista | a, b...",
+     "tipo": "list ou 2+ valores",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "valor",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "lista vazia ou tipos não comparáveis"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(max([3, 1]), max(2, 9, 4))",
+     "saida": "3 9"
+    }
+   ],
+   "bordas": []
+  },
+  "sorted": {
+   "sig": "sorted(lista)",
+   "resumo": "Nova lista com os itens em ordem crescente; a original não muda.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list | tup",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tipos não comparáveis entre si"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(sorted([3, 1, 2]))",
+     "saida": "[1, 2, 3]"
+    }
+   ],
+   "bordas": []
+  },
+  "reversed": {
+   "sig": "reversed(lista)",
+   "resumo": "Nova lista com os itens na ordem inversa; a original não muda.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list | tup",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tipo não-sequência"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(reversed([1, 2, 3]))",
+     "saida": "[3, 2, 1]"
+    }
+   ],
+   "bordas": []
+  },
+  "enumerate": {
+   "sig": "enumerate(lista)",
+   "resumo": "Lista de tuplas (indice, item), começando em 0.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list | tup | str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "list de tup",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tipo não-iterável"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(enumerate([\"a\", \"b\"]))",
+     "saida": "[(0, 'a'), (1, 'b')]"
+    }
+   ],
+   "bordas": []
+  },
+  "zip": {
+   "sig": "zip(a, b, ...)",
+   "resumo": "Lista de tuplas pareando os iteráveis; para no menor.",
+   "params": [
+    {
+     "nome": "a, b...",
+     "tipo": "list | tup",
+     "default": "—",
+     "nota": "2+ iteráveis"
+    }
+   ],
+   "ret": "list de tup",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tipo não-iterável"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(zip([1, 2], [\"x\", \"y\"]))",
+     "saida": "[(1, 'x'), (2, 'y')]"
+    }
+   ],
+   "bordas": [
+    "comprimentos diferentes truncam no MENOR, sem erro"
+   ]
+  },
+  "addEnd": {
+   "sig": "addEnd(lista, item)",
+   "resumo": "Anexa o item no FIM da lista, mutando a própria lista.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list",
+     "default": "—",
+     "nota": "mutada in-place"
+    },
+    {
+     "nome": "item",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "Null",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "primeiro argumento não é lista"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "l = [1]\naddEnd(l, 2)\npost(l)",
+     "saida": "[1, 2]"
+    }
+   ],
+   "bordas": [
+    "muta e devolve Null — não encadeia (`addEnd(l,2).x` não existe)"
+   ]
+  },
+  "addStart": {
+   "sig": "addStart(lista, item)",
+   "resumo": "Insere o item no INÍCIO da lista, mutando a própria lista.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list",
+     "default": "—",
+     "nota": "mutada in-place"
+    },
+    {
+     "nome": "item",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "Null",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "primeiro argumento não é lista"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "l = [1]\naddStart(l, 0)\npost(l)",
+     "saida": "[0, 1]"
+    }
+   ],
+   "bordas": []
+  },
+  "removeEnd": {
+   "sig": "removeEnd(lista)",
+   "resumo": "Remove e devolve o ÚLTIMO item da lista.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list",
+     "default": "—",
+     "nota": "mutada in-place"
+    }
+   ],
+   "ret": "o item removido",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "lista vazia ou não-lista"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "l = [1, 2]\npost(removeEnd(l), l)",
+     "saida": "2 [1]"
+    }
+   ],
+   "bordas": []
+  },
+  "removeStart": {
+   "sig": "removeStart(lista)",
+   "resumo": "Remove e devolve o PRIMEIRO item da lista.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list",
+     "default": "—",
+     "nota": "mutada in-place"
+    }
+   ],
+   "ret": "o item removido",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "lista vazia ou não-lista"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "l = [1, 2]\npost(removeStart(l), l)",
+     "saida": "1 [2]"
+    }
+   ],
+   "bordas": []
+  },
+  "map": {
+   "sig": "map(lista, fn)",
+   "resumo": "Nova lista com fn aplicada a cada item. A LISTA vem primeiro.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list | tup",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "fn",
+     "tipo": "action",
+     "default": "—",
+     "nota": "recebe 1 argumento"
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "fn não é chamável (ex.: `map(l, str)` — nome nu de tipo não é função)"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "action dobro(x) { return x * 2 }\npost(map([1, 2, 3], dobro))",
+     "saida": "[2, 4, 6]"
+    }
+   ],
+   "bordas": [
+    "a ordem dos argumentos é INVERSA à do Python: lista primeiro, função depois"
+   ]
+  },
+  "filter": {
+   "sig": "filter(lista, fn)",
+   "resumo": "Nova lista só com os itens em que fn devolve verdadeiro. A LISTA vem primeiro.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list | tup",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "fn",
+     "tipo": "action",
+     "default": "—",
+     "nota": "recebe 1 argumento"
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "fn não é chamável"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "action par(x) { return x % 2 == 0 }\npost(filter([1, 2, 3, 4], par))",
+     "saida": "[2, 4]"
+    }
+   ],
+   "bordas": []
+  },
+  "open": {
+   "sig": "open(caminho, modo=\"r\")",
+   "resumo": "Abre um arquivo e devolve o handle; combine com `using` para fechar sozinho.",
+   "params": [
+    {
+     "nome": "caminho",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "modo",
+     "tipo": "str",
+     "default": "\"r\"",
+     "nota": "\"r\", \"w\", \"a\", \"rb\", \"wb\"..."
+    }
+   ],
+   "ret": "FileHandle (read/write/close)",
+   "erros": [
+    {
+     "tipo": "IOError",
+     "quando": "arquivo inexistente no modo de leitura"
+    }
+   ],
+   "ex": [],
+   "bordas": [
+    "`using open(p, \"w\") as f { f.write(\"x\") }` fecha ao sair do bloco",
+    "sem `using`, feche com `f.close()` — o GC fecha o que sobrar, mas tarde"
+   ]
+  },
+  "sleep": {
+   "sig": "sleep(segundos)",
+   "resumo": "Pausa a execução pelo tempo dado (aceita fração).",
+   "params": [
+    {
+     "nome": "segundos",
+     "tipo": "int | flo",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "Null",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "não-número"
+    }
+   ],
+   "ex": [],
+   "bordas": [
+    "é sono do processo — nada a ver com async"
+   ]
+  },
+  "gather": {
+   "sig": "gather(a, b, ...)",
+   "resumo": "Devolve os argumentos como lista.",
+   "params": [
+    {
+     "nome": "a, b...",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(gather(1, \"a\", true))",
+     "saida": "[1, 'a', True]"
+    }
+   ],
+   "bordas": [
+    "no interpretador espera PoolFutures de `async action`; com valores comuns devolve a lista como está — na VM (sem async) é sempre isso"
+   ]
+  },
+  "input": {
+   "sig": "input(prompt=Null)",
+   "resumo": "Lê uma linha do stdin; o prompt opcional é impresso antes, sem quebra.",
+   "params": [
+    {
+     "nome": "prompt",
+     "tipo": "str",
+     "default": "Null",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [],
+   "bordas": [
+    "SEMPRE devolve str — quem quer número converte com `int(x)`",
+    "o `\\r\\n` do Windows não entra no texto lido"
+   ]
+  },
+  "id": {
+   "sig": "id(x)",
+   "resumo": "Identidade do valor: endereço para objetos, o próprio conteúdo para imediatos.",
+   "params": [
+    {
+     "nome": "x",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [],
+   "ex": [],
+   "bordas": [
+    "dois `5` têm o mesmo id (valor imediato); duas listas iguais têm ids diferentes"
+   ]
+  },
+  "load": {
+   "sig": "load(path=Null)",
+   "resumo": "Carrega variáveis de um arquivo .env para o ambiente — atalho de dotenv.load.",
+   "params": [
+    {
+     "nome": "path",
+     "tipo": "str",
+     "default": "Null",
+     "nota": "Null procura o .env por perto"
+    }
+   ],
+   "ret": "bool",
+   "erros": [],
+   "ex": [],
+   "bordas": [
+    "é a MESMA função de `dotenv.load` exposta sem import"
+   ]
+  }
+ },
+ "string": {
+  "upper": {
+   "sig": "s.upper()",
+   "resumo": "Tudo em maiúsculas (unicode: ç→Ç, á→Á).",
+   "params": [],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ação\".upper())",
+     "saida": "AÇÃO"
+    }
+   ],
+   "bordas": []
+  },
+  "lower": {
+   "sig": "s.lower()",
+   "resumo": "Tudo em minúsculas.",
+   "params": [],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"AÇÃO\".lower())",
+     "saida": "ação"
+    }
+   ],
+   "bordas": []
+  },
+  "title": {
+   "sig": "s.title()",
+   "resumo": "Primeira letra de cada palavra em maiúscula.",
+   "params": [],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ola mundo\".title())",
+     "saida": "Ola Mundo"
+    }
+   ],
+   "bordas": []
+  },
+  "capitalize": {
+   "sig": "s.capitalize()",
+   "resumo": "Só a primeira letra da string em maiúscula; o resto minúsculo.",
+   "params": [],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"OLA mundo\".capitalize())",
+     "saida": "Ola mundo"
+    }
+   ],
+   "bordas": []
+  },
+  "swapcase": {
+   "sig": "s.swapcase()",
+   "resumo": "Inverte a caixa de cada letra.",
+   "params": [],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"AbC\".swapcase())",
+     "saida": "aBc"
+    }
+   ],
+   "bordas": []
+  },
+  "casefold": {
+   "sig": "s.casefold()",
+   "resumo": "Minúsculas agressivas para comparação sem caixa.",
+   "params": [],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"Straße\".casefold())",
+     "saida": "strasse"
+    }
+   ],
+   "bordas": [
+    "ß vira ss — mais forte que lower()"
+   ]
+  },
+  "strip": {
+   "sig": "s.strip(chars=Null)",
+   "resumo": "Remove espaços (ou os chars dados) das duas pontas.",
+   "params": [
+    {
+     "nome": "chars",
+     "tipo": "str",
+     "default": "Null",
+     "nota": "conjunto de caracteres a remover"
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"  oi  \".strip() + \"!\")",
+     "saida": "oi!"
+    },
+    {
+     "codigo": "post(\"xxoixx\".strip(\"x\"))",
+     "saida": "oi"
+    }
+   ],
+   "bordas": []
+  },
+  "lstrip": {
+   "sig": "s.lstrip(chars=Null)",
+   "resumo": "Remove da ponta ESQUERDA.",
+   "params": [
+    {
+     "nome": "chars",
+     "tipo": "str",
+     "default": "Null",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"  oi\".lstrip() + \"!\")",
+     "saida": "oi!"
+    }
+   ],
+   "bordas": []
+  },
+  "rstrip": {
+   "sig": "s.rstrip(chars=Null)",
+   "resumo": "Remove da ponta DIREITA.",
+   "params": [
+    {
+     "nome": "chars",
+     "tipo": "str",
+     "default": "Null",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"oi  \".rstrip() + \"!\")",
+     "saida": "oi!"
+    }
+   ],
+   "bordas": []
+  },
+  "removeprefix": {
+   "sig": "s.removeprefix(p)",
+   "resumo": "Remove o prefixo exato, se presente.",
+   "params": [
+    {
+     "nome": "p",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"api_nome\".removeprefix(\"api_\"))",
+     "saida": "nome"
+    }
+   ],
+   "bordas": [
+    "sem o prefixo, devolve a string intacta"
+   ]
+  },
+  "removesuffix": {
+   "sig": "s.removesuffix(p)",
+   "resumo": "Remove o sufixo exato, se presente.",
+   "params": [
+    {
+     "nome": "p",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"nome.txt\".removesuffix(\".txt\"))",
+     "saida": "nome"
+    }
+   ],
+   "bordas": []
+  },
+  "ljust": {
+   "sig": "s.ljust(largura, preenchimento=\" \")",
+   "resumo": "Preenche à direita até a largura.",
+   "params": [
+    {
+     "nome": "largura",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "preenchimento",
+     "tipo": "str de 1 char",
+     "default": "\" \"",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ab\".ljust(5, \"-\"))",
+     "saida": "ab---"
+    }
+   ],
+   "bordas": []
+  },
+  "rjust": {
+   "sig": "s.rjust(largura, preenchimento=\" \")",
+   "resumo": "Preenche à esquerda até a largura.",
+   "params": [
+    {
+     "nome": "largura",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "preenchimento",
+     "tipo": "str de 1 char",
+     "default": "\" \"",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ab\".rjust(5, \"-\"))",
+     "saida": "---ab"
+    }
+   ],
+   "bordas": []
+  },
+  "center": {
+   "sig": "s.center(largura, preenchimento=\" \")",
+   "resumo": "Centraliza preenchendo dos dois lados.",
+   "params": [
+    {
+     "nome": "largura",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "preenchimento",
+     "tipo": "str de 1 char",
+     "default": "\" \"",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ab\".center(6, \"*\"))",
+     "saida": "**ab**"
+    }
+   ],
+   "bordas": []
+  },
+  "zfill": {
+   "sig": "s.zfill(largura)",
+   "resumo": "Preenche com zeros à esquerda, respeitando sinal.",
+   "params": [
+    {
+     "nome": "largura",
+     "tipo": "int",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"42\".zfill(5), \"-7\".zfill(4))",
+     "saida": "00042 -007"
+    }
+   ],
+   "bordas": []
+  },
+  "expandtabs": {
+   "sig": "s.expandtabs(tabsize=8)",
+   "resumo": "Troca cada tab por espaços até a próxima parada de tabulação (não por um número fixo de espaços).",
+   "params": [
+    {
+     "nome": "tabsize",
+     "tipo": "int",
+     "default": "8",
+     "nota": "largura da coluna de tabulação"
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a\\tbc\\td\".expandtabs(4))",
+     "saida": "a   bc  d"
+    }
+   ],
+   "bordas": [
+    "o número de espaços varia com a posição: o tab alinha na próxima parada, não insere `tabsize` espaços fixos"
+   ]
+  },
+  "startswith": {
+   "sig": "s.startswith(prefixo)",
+   "resumo": "True se começa com o prefixo.",
+   "params": [
+    {
+     "nome": "prefixo",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"poolscript\".startswith(\"pool\"))",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "endswith": {
+   "sig": "s.endswith(sufixo)",
+   "resumo": "True se termina com o sufixo.",
+   "params": [
+    {
+     "nome": "sufixo",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a.ps\".endswith(\".ps\"))",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "contains": {
+   "sig": "s.contains(sub)",
+   "resumo": "True se contém a substring (extensão da PoolScript).",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".contains(\"nan\"))",
+     "saida": "True"
+    }
+   ],
+   "bordas": [
+    "`has` é o mesmo teste com outro nome"
+   ]
+  },
+  "has": {
+   "sig": "s.has(sub)",
+   "resumo": "Alias de contains — True se a substring aparece.",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".has(\"xyz\"))",
+     "saida": "False"
+    }
+   ],
+   "bordas": []
+  },
+  "find": {
+   "sig": "s.find(sub, inicio=0)",
+   "resumo": "Índice da primeira ocorrência, ou -1.",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "inicio",
+     "tipo": "int",
+     "default": "0",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".find(\"na\"), \"banana\".find(\"xyz\"))",
+     "saida": "2 -1"
+    }
+   ],
+   "bordas": []
+  },
+  "rfind": {
+   "sig": "s.rfind(sub)",
+   "resumo": "Índice da ÚLTIMA ocorrência, ou -1.",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".rfind(\"na\"))",
+     "saida": "4"
+    }
+   ],
+   "bordas": []
+  },
+  "index": {
+   "sig": "s.index(sub)",
+   "resumo": "Como find, mas ERRA quando não acha.",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "substring ausente"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".index(\"na\"))",
+     "saida": "2"
+    }
+   ],
+   "bordas": []
+  },
+  "rindex": {
+   "sig": "s.rindex(sub)",
+   "resumo": "Como rfind, mas ERRA quando não acha.",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "substring ausente"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".rindex(\"na\"))",
+     "saida": "4"
+    }
+   ],
+   "bordas": []
+  },
+  "count": {
+   "sig": "s.count(sub)",
+   "resumo": "Quantas ocorrências (sem sobreposição) da substring.",
+   "params": [
+    {
+     "nome": "sub",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "int",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".count(\"na\"))",
+     "saida": "2"
+    }
+   ],
+   "bordas": []
+  },
+  "len": {
+   "sig": "s.len()",
+   "resumo": "Tamanho em caracteres — forma de método do builtin len.",
+   "params": [],
+   "ret": "int",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"olá\".len())",
+     "saida": "3"
+    }
+   ],
+   "bordas": [
+    "número não tem `.len()` — `(150).len()` é erro"
+   ]
+  },
+  "get_json": {
+   "sig": "s.get_json()",
+   "resumo": "Interpreta a string como JSON e devolve o valor.",
+   "params": [],
+   "ret": "dict | list | valor",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "JSON inválido"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"{\\\"a\\\": 1}\".get_json())",
+     "saida": "{'a': 1}"
+    }
+   ],
+   "bordas": [
+    "JSON estrito, como o módulo json"
+   ]
+  },
+  "get": {
+   "sig": "s.get(chave)",
+   "resumo": "Interpreta como JSON de objeto e devolve o valor da chave.",
+   "params": [
+    {
+     "nome": "chave",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "valor | Null",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "JSON inválido"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"{\\\"a\\\": 1}\".get(\"a\"))",
+     "saida": "1"
+    }
+   ],
+   "bordas": []
+  },
+  "isalpha": {
+   "sig": "s.isalpha()",
+   "resumo": "True se só tem letras (e não é vazia).",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"abc\".isalpha(), \"a1\".isalpha())",
+     "saida": "True False"
+    }
+   ],
+   "bordas": []
+  },
+  "isdigit": {
+   "sig": "s.isdigit()",
+   "resumo": "True se só tem dígitos.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"123\".isdigit(), \"1.5\".isdigit())",
+     "saida": "True False"
+    }
+   ],
+   "bordas": [
+    "número também responde: `(150).isdigit()` é True — conversão automática pra string"
+   ]
+  },
+  "isnumeric": {
+   "sig": "s.isnumeric()",
+   "resumo": "True se só tem caracteres numéricos.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"123\".isnumeric())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "isdecimal": {
+   "sig": "s.isdecimal()",
+   "resumo": "True se só tem dígitos decimais.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"123\".isdecimal())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "isalnum": {
+   "sig": "s.isalnum()",
+   "resumo": "True se só tem letras e dígitos.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a1\".isalnum(), \"a 1\".isalnum())",
+     "saida": "True False"
+    }
+   ],
+   "bordas": []
+  },
+  "isspace": {
+   "sig": "s.isspace()",
+   "resumo": "True se só tem espaços em branco.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"  \".isspace())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "isupper": {
+   "sig": "s.isupper()",
+   "resumo": "True se as letras são todas maiúsculas.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ABC\".isupper())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "islower": {
+   "sig": "s.islower()",
+   "resumo": "True se as letras são todas minúsculas.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"abc\".islower())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "isascii": {
+   "sig": "s.isascii()",
+   "resumo": "True se todos os caracteres são ASCII.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"abc\".isascii(), \"ção\".isascii())",
+     "saida": "True False"
+    }
+   ],
+   "bordas": []
+  },
+  "istitle": {
+   "sig": "s.istitle()",
+   "resumo": "True se cada palavra começa com maiúscula.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"Ola Mundo\".istitle())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "isprintable": {
+   "sig": "s.isprintable()",
+   "resumo": "True se todos os caracteres são imprimíveis.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"oi\".isprintable())",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "isidentifier": {
+   "sig": "s.isidentifier()",
+   "resumo": "True se a string é um identificador válido.",
+   "params": [],
+   "ret": "bool",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"nome_1\".isidentifier(), \"1a\".isidentifier())",
+     "saida": "True False"
+    }
+   ],
+   "bordas": []
+  },
+  "split": {
+   "sig": "s.split(sep=Null, max=-1)",
+   "resumo": "Divide em lista; sem separador, divide por espaços.",
+   "params": [
+    {
+     "nome": "sep",
+     "tipo": "str",
+     "default": "Null",
+     "nota": "Null = qualquer branco, colapsando"
+    },
+    {
+     "nome": "max",
+     "tipo": "int",
+     "default": "-1",
+     "nota": "máximo de divisões"
+    }
+   ],
+   "ret": "list",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a,b,c\".split(\",\"), \" a  b \".split())",
+     "saida": "['a', 'b', 'c'] ['a', 'b']"
+    }
+   ],
+   "bordas": []
+  },
+  "rsplit": {
+   "sig": "s.rsplit(sep=Null, max=-1)",
+   "resumo": "Como split, mas conta as divisões da DIREITA.",
+   "params": [
+    {
+     "nome": "sep",
+     "tipo": "str",
+     "default": "Null",
+     "nota": ""
+    },
+    {
+     "nome": "max",
+     "tipo": "int",
+     "default": "-1",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a,b,c\".rsplit(\",\", 1))",
+     "saida": "['a,b', 'c']"
+    }
+   ],
+   "bordas": []
+  },
+  "splitlines": {
+   "sig": "s.splitlines()",
+   "resumo": "Divide por quebras de linha, sem incluí-las.",
+   "params": [],
+   "ret": "list",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a\\nb\".splitlines())",
+     "saida": "['a', 'b']"
+    }
+   ],
+   "bordas": []
+  },
+  "join": {
+   "sig": "sep.join(lista)",
+   "resumo": "Junta os itens da lista com o separador.",
+   "params": [
+    {
+     "nome": "lista",
+     "tipo": "list de str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "item não-string"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"-\".join([\"a\", \"b\", \"c\"]))",
+     "saida": "a-b-c"
+    }
+   ],
+   "bordas": []
+  },
+  "partition": {
+   "sig": "s.partition(sep)",
+   "resumo": "Tupla (antes, sep, depois) na PRIMEIRA ocorrência.",
+   "params": [
+    {
+     "nome": "sep",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "tup de 3",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a-b-c\".partition(\"-\"))",
+     "saida": "('a', '-', 'b-c')"
+    }
+   ],
+   "bordas": [
+    "sem o separador: `(s, \"\", \"\")`"
+   ]
+  },
+  "rpartition": {
+   "sig": "s.rpartition(sep)",
+   "resumo": "Tupla (antes, sep, depois) na ÚLTIMA ocorrência.",
+   "params": [
+    {
+     "nome": "sep",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "tup de 3",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"a-b-c\".rpartition(\"-\"))",
+     "saida": "('a-b', '-', 'c')"
+    }
+   ],
+   "bordas": []
+  },
+  "replace": {
+   "sig": "s.replace(velho, novo, count=-1)",
+   "resumo": "Troca ocorrências; velho pode ser LISTA de alvos.",
+   "params": [
+    {
+     "nome": "velho",
+     "tipo": "str | list",
+     "default": "—",
+     "nota": "lista troca cada um pelo mesmo novo"
+    },
+    {
+     "nome": "novo",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "count",
+     "tipo": "int",
+     "default": "-1",
+     "nota": "máximo de trocas"
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"banana\".replace(\"na\", \"NA\", 1))",
+     "saida": "baNAna"
+    },
+    {
+     "codigo": "post(\"a-b_c\".replace([\"-\", \"_\"], \".\"))",
+     "saida": "a.b.c"
+    }
+   ],
+   "bordas": [
+    "a forma com lista é extensão da PoolScript"
+   ]
+  },
+  "format": {
+   "sig": "s.format(a, b, ...)",
+   "resumo": "Preenche {} posicionais e {nome} nomeados.",
+   "params": [
+    {
+     "nome": "a, b...",
+     "tipo": "qualquer",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "chave/índice ausente"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"{} e {}\".format(1, \"x\"))",
+     "saida": "1 e x"
+    }
+   ],
+   "bordas": [
+    "`Null` formata como null, não None"
+   ]
+  },
+  "format_map": {
+   "sig": "s.format_map(dict)",
+   "resumo": "Como format, buscando os {nome} num dict.",
+   "params": [
+    {
+     "nome": "dict",
+     "tipo": "dict",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "chave ausente"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"{a}!\".format_map({\"a\": \"oi\"}))",
+     "saida": "oi!"
+    }
+   ],
+   "bordas": []
+  },
+  "maketrans": {
+   "sig": "s.maketrans(de, para)",
+   "resumo": "Tabela de tradução caractere-a-caractere para translate.",
+   "params": [
+    {
+     "nome": "de",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "para",
+     "tipo": "str",
+     "default": "—",
+     "nota": "mesmo tamanho"
+    }
+   ],
+   "ret": "dict",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "tamanhos diferentes"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"abc\".translate(\"abc\".maketrans(\"abc\", \"xyz\")))",
+     "saida": "xyz"
+    }
+   ],
+   "bordas": []
+  },
+  "translate": {
+   "sig": "s.translate(tabela)",
+   "resumo": "Troca caracteres segundo a tabela do maketrans (de→para, caractere a caractere).",
+   "params": [
+    {
+     "nome": "tabela",
+     "tipo": "dict",
+     "default": "—",
+     "nota": "resultado de `maketrans(de, para)`"
+    }
+   ],
+   "ret": "str",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"hello\".translate(\"l\".maketrans(\"l\", \"L\")))",
+     "saida": "heLLo"
+    }
+   ],
+   "bordas": [
+    "a tabela vem sempre do `maketrans` — não é um dict qualquer montado à mão"
+   ]
+  },
+  "match": {
+   "sig": "s.match(padrao)",
+   "resumo": "True se o padrão casa a string INTEIRA (fullmatch).",
+   "params": [
+    {
+     "nome": "padrao",
+     "tipo": "str regex",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "bool",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "padrão inválido"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"a1\".match(\"[a-z][0-9]\"), \"a1b\".match(\"[a-z][0-9]\"))",
+     "saida": "True False"
+    }
+   ],
+   "bordas": [
+    "é fullmatch: o padrão tem que cobrir a string toda — pra achar num pedaço use findall"
+   ]
+  },
+  "findall": {
+   "sig": "s.findall(padrao)",
+   "resumo": "Lista com todas as ocorrências do padrão.",
+   "params": [
+    {
+     "nome": "padrao",
+     "tipo": "str regex",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "list",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "padrão inválido"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"a1b2\".findall(\"[0-9]\"))",
+     "saida": "['1', '2']"
+    }
+   ],
+   "bordas": []
+  },
+  "sub": {
+   "sig": "s.sub(padrao, novo)",
+   "resumo": "Substitui as ocorrências do padrão regex.",
+   "params": [
+    {
+     "nome": "padrao",
+     "tipo": "str regex",
+     "default": "—",
+     "nota": ""
+    },
+    {
+     "nome": "novo",
+     "tipo": "str",
+     "default": "—",
+     "nota": ""
+    }
+   ],
+   "ret": "str",
+   "erros": [
+    {
+     "tipo": "SomeValueUnexpected",
+     "quando": "padrão inválido"
+    }
+   ],
+   "ex": [
+    {
+     "codigo": "post(\"a1b2\".sub(\"[0-9]\", \"#\"))",
+     "saida": "a#b#"
+    }
+   ],
+   "bordas": []
+  },
+  "encode": {
+   "sig": "s.encode(encoding=\"utf-8\")",
+   "resumo": "Converte a string para bytes.",
+   "params": [
+    {
+     "nome": "encoding",
+     "tipo": "str",
+     "default": "\"utf-8\"",
+     "nota": "aceito e ignorado — tudo é utf-8"
+    }
+   ],
+   "ret": "bytes",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(\"ab\".encode())",
+     "saida": "b'ab'"
+    }
+   ],
+   "bordas": [
+    "bytes só é igual a bytes: `\"ab\" == \"ab\".encode()` é False"
+   ]
+  }
+ }
+}

@@ -43,3 +43,6 @@ Thumbs.db
 
 # config local do Claude Code — nunca vai pro repo
 .claude/
+
+# artefato empacotado da extensao (gera com build_vsix.py)
+psl-poolscript-vsix/*.vsix

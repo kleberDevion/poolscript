@@ -80,6 +80,57 @@ function loadStdlibMetadata() {
     }
 }
 
+// ─── Docs ricos p/ hover (estilo Pylance) ──────────────────────────────────────
+// docs_meta.json vem das MESMAS specs da doc do site (gen_docs_meta.py), então
+// o card do editor nunca diverge da documentação. Cobre os 35 builtins e os 55
+// métodos de string, com assinatura, params, retorno, erros e exemplo.
+let DOCS_META = { builtins: {}, string: {} };
+function loadDocsMeta() {
+    try {
+        const p = path.join(__dirname, 'bridge', 'docs_meta.json');
+        if (fs.existsSync(p)) DOCS_META = JSON.parse(fs.readFileSync(p, 'utf-8'));
+    } catch (e) {
+        console.warn(`[poolscript] falha ao carregar docs_meta.json: ${e}`);
+    }
+}
+
+/** Monta um card de hover rico a partir de um meta {sig, resumo, params,
+ * ret, erros, ex, bordas}. `rodape` é uma nota discreta do fim (ex: origem). */
+function renderCard(meta, rodape) {
+    const md = new vscode.MarkdownString();
+    md.supportHtml = false;
+    // assinatura com syntax highlight (o que dá o "look" do Pylance)
+    md.appendCodeblock(meta.sig, 'poolscript');
+    if (meta.resumo) md.appendMarkdown('\n' + meta.resumo + '\n');
+    if (meta.params && meta.params.length) {
+        md.appendMarkdown('\n**Parâmetros**\n');
+        for (const p of meta.params) {
+            const def = (p.default && p.default !== '—') ? ` = \`${p.default}\`` : '';
+            const nota = p.nota ? ` — ${p.nota}` : '';
+            md.appendMarkdown(`\n- \`${p.nome}\`: *${p.tipo}*${def}${nota}`);
+        }
+        md.appendMarkdown('\n');
+    }
+    if (meta.ret) md.appendMarkdown(`\n**Retorno:** *${meta.ret}*\n`);
+    if (meta.erros && meta.erros.length) {
+        md.appendMarkdown('\n**Erros**\n');
+        for (const e of meta.erros) md.appendMarkdown(`\n- **${e.tipo}** — ${e.quando}`);
+        md.appendMarkdown('\n');
+    }
+    if (meta.ex && meta.ex.length) {
+        md.appendMarkdown('\n**Exemplo**\n');
+        for (const ex of meta.ex) {
+            md.appendCodeblock(ex.codigo, 'poolscript');
+            if (ex.saida) md.appendCodeblock(ex.saida, 'text');
+        }
+    }
+    if (meta.bordas && meta.bordas.length) {
+        md.appendMarkdown('\n' + meta.bordas.map(b => `> ${b}`).join('\n>\n') + '\n');
+    }
+    if (rodape) md.appendMarkdown(`\n\n*${rodape}*`);
+    return md;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
@@ -1819,6 +1870,7 @@ class PoolScriptInlayHintsProvider {
 // ─── activate ─────────────────────────────────────────────────────────────────
 function activate(context) {
     loadStdlibMetadata();
+    loadDocsMeta();
     const bridge   = new PythonBridge();
     const provider = new WorkspaceSymbolProvider(bridge);
     const linter   = new PoolScriptLinter();
@@ -2008,6 +2060,12 @@ function activate(context) {
                     const it = new vscode.CompletionItem(label, kind);
                     it.detail = detail;
                     it.sortText = `${tier}_${label}`;
+                    // doc rica das specs no painel ⓘ da completion (builtins)
+                    const meta = DOCS_META.builtins[label];
+                    if (meta && kind === vscode.CompletionItemKind.Function) {
+                        it.detail = meta.sig;
+                        it.documentation = renderCard(meta, 'builtin da PoolScript');
+                    }
                     items.push(it);
                 }
 
@@ -2157,6 +2215,19 @@ function activate(context) {
                 if (!range) return null;
                 const word     = document.getText(range);
                 const analyzer = new PoolScriptAnalyzer(document, position, provider);
+
+                // 0. Card rico das specs: builtin (nome nu) ou método de string
+                // (`.metodo`). Precede o resto — é a doc canônica da linguagem.
+                const antes = document.getText(new vscode.Range(
+                    new vscode.Position(range.start.line, Math.max(0, range.start.character - 1)),
+                    range.start));
+                const ehMembro = antes === '.';
+                if (!ehMembro && DOCS_META.builtins[word]) {
+                    return new vscode.Hover(renderCard(DOCS_META.builtins[word], 'builtin da PoolScript'));
+                }
+                if (ehMembro && DOCS_META.string[word]) {
+                    return new vscode.Hover(renderCard(DOCS_META.string[word], 'método de string'));
+                }
 
                 // 1. Símbolo real (function/Entity/import) vindo da bridge
                 const sym = provider.getSymbolByName(word, document.uri);
