@@ -17,7 +17,13 @@
       "include": "#decorators"
     },
     {
+      "include": "#unpack_targets"
+    },
+    {
       "include": "#keywords_control"
+    },
+    {
+      "include": "#keywords_visibility"
     },
     {
       "include": "#return_type_decl"
@@ -173,6 +179,29 @@
         {
           "name": "keyword.declaration.poolscript",
           "match": "\\b(action|reaction|Entity|Class|class|model|type)\\b"
+        }
+      ]
+    },
+    "keywords_visibility": {
+      "patterns": [
+        {
+          "name": "storage.modifier.poolscript",
+          "match": "\\b(private|public)\\b"
+        }
+      ]
+    },
+    "unpack_targets": {
+      "comment": "alvos de desempacotamento: `a, b = ...` — realça cada nome",
+      "begin": "^\\s*(?=[A-Za-z_][A-Za-z0-9_]*\\s*,\\s*[A-Za-z_][A-Za-z0-9_]*[^=\\n]*=(?!=))",
+      "end": "(?==(?!=))",
+      "patterns": [
+        {
+          "name": "variable.other.readwrite.poolscript",
+          "match": "[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+          "name": "punctuation.separator.poolscript",
+          "match": ","
         }
       ]
     },
