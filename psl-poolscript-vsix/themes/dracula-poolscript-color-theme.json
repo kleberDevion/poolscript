@@ -9,11 +9,11 @@
     "editor.selectionBackground": "#44475a",
     "editor.lineHighlightBackground": "#44475a",
     "editorCursor.foreground": "#f8f8f2",
-    "editor.findMatchBackground": "#f1fa8c88",
-    "editor.findMatchHighlightBackground": "#f1fa8c44",
+    "editor.findMatchBackground": "#d9e08d88",
+    "editor.findMatchHighlightBackground": "#d9e08d44",
     "editorIndentGuide.background": "#424450",
     "editorBracketMatch.background": "#44475a",
-    "editorBracketMatch.border": "#50fa7b",
+    "editorBracketMatch.border": "#5fcc7b",
     "activityBar.background": "#21222c",
     "activityBar.foreground": "#f8f8f2",
     "sideBar.background": "#21222c",
@@ -31,13 +31,13 @@
     "terminal.foreground": "#f8f8f2",
     "terminal.ansiBlack": "#21222c",
     "terminal.ansiRed": "#ff5555",
-    "terminal.ansiGreen": "#50fa7b",
-    "terminal.ansiYellow": "#f1fa8c",
-    "terminal.ansiBlue": "#bd93f9",
-    "terminal.ansiMagenta": "#ff79c6",
-    "terminal.ansiCyan": "#8be9fd",
+    "terminal.ansiGreen": "#5fcc7b",
+    "terminal.ansiYellow": "#d9e08d",
+    "terminal.ansiBlue": "#bf9def",
+    "terminal.ansiMagenta": "#eb83bf",
+    "terminal.ansiCyan": "#90d5e3",
     "terminal.ansiWhite": "#f8f8f2",
-    "button.background": "#50fa7b",
+    "button.background": "#5fcc7b",
     "button.foreground": "#282a36",
     "input.background": "#21222c",
     "input.foreground": "#f8f8f2",
@@ -72,7 +72,7 @@
         "string.quoted.single.poolscript"
       ],
       "settings": {
-        "foreground": "#f1fa8c"
+        "foreground": "#d9e08d"
       }
     },
     {
@@ -83,7 +83,7 @@
         "string.template"
       ],
       "settings": {
-        "foreground": "#f1fa8c"
+        "foreground": "#d9e08d"
       }
     },
     {
@@ -93,7 +93,7 @@
         "variable.other.readwrite.poolscript"
       ],
       "settings": {
-        "foreground": "#ff79c6"
+        "foreground": "#eb83bf"
       }
     },
     {
@@ -102,7 +102,7 @@
         "constant.character.escape"
       ],
       "settings": {
-        "foreground": "#bd93f9"
+        "foreground": "#bf9def"
       }
     },
     {
@@ -114,7 +114,7 @@
         "constant.numeric.poolscript"
       ],
       "settings": {
-        "foreground": "#bd93f9"
+        "foreground": "#bf9def"
       }
     },
     {
@@ -128,7 +128,7 @@
         "constant.language.null.poolscript"
       ],
       "settings": {
-        "foreground": "#bd93f9"
+        "foreground": "#bf9def"
       }
     },
     {
@@ -137,7 +137,7 @@
         "constant.language.special.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd",
+        "foreground": "#90d5e3",
         "fontStyle": "italic"
       }
     },
@@ -151,7 +151,7 @@
         "keyword.operator.logical.poolscript"
       ],
       "settings": {
-        "foreground": "#ff79c6"
+        "foreground": "#eb83bf"
       }
     },
     {
@@ -161,7 +161,7 @@
         "keyword.declaration.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd"
+        "foreground": "#90d5e3"
       }
     },
     {
@@ -171,7 +171,7 @@
         "storage.type.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd"
+        "foreground": "#90d5e3"
       }
     },
     {
@@ -181,7 +181,7 @@
         "entity.name.function.definition.poolscript"
       ],
       "settings": {
-        "foreground": "#50fa7b"
+        "foreground": "#5fcc7b"
       }
     },
     {
@@ -190,7 +190,7 @@
         "entity.name.function.call.poolscript"
       ],
       "settings": {
-        "foreground": "#50fa7b"
+        "foreground": "#5fcc7b"
       }
     },
     {
@@ -201,7 +201,7 @@
         "punctuation.definition.decorator.poolscript"
       ],
       "settings": {
-        "foreground": "#50fa7b",
+        "foreground": "#5fcc7b",
         "fontStyle": "italic"
       }
     },
@@ -211,7 +211,7 @@
         "support.class.stdlib.module.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd"
+        "foreground": "#90d5e3"
       }
     },
     {
@@ -221,7 +221,7 @@
         "support.class.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd"
+        "foreground": "#90d5e3"
       }
     },
     {
@@ -231,7 +231,7 @@
         "support.function.builtin.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd"
+        "foreground": "#90d5e3"
       }
     },
     {
@@ -241,7 +241,7 @@
         "support.function.string.poolscript"
       ],
       "settings": {
-        "foreground": "#50fa7b"
+        "foreground": "#5fcc7b"
       }
     },
     {
@@ -263,7 +263,7 @@
         "support.function.stdlib.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd"
+        "foreground": "#90d5e3"
       }
     },
     {
@@ -273,7 +273,7 @@
         "variable.language.self.poolscript"
       ],
       "settings": {
-        "foreground": "#ff79c6",
+        "foreground": "#eb83bf",
         "fontStyle": "italic"
       }
     },
@@ -284,7 +284,7 @@
         "variable.parameter.poolscript"
       ],
       "settings": {
-        "foreground": "#ffb86c",
+        "foreground": "#f2b879",
         "fontStyle": "italic"
       }
     },
@@ -296,7 +296,7 @@
         "keyword.operator.assignment.compound.poolscript"
       ],
       "settings": {
-        "foreground": "#ff79c6"
+        "foreground": "#eb83bf"
       }
     },
     {
@@ -313,7 +313,7 @@
         "keyword.operator.increment.poolscript"
       ],
       "settings": {
-        "foreground": "#ff79c6"
+        "foreground": "#eb83bf"
       }
     },
     {
@@ -322,7 +322,7 @@
         "storage.type.return.poolscript"
       ],
       "settings": {
-        "foreground": "#8be9fd",
+        "foreground": "#90d5e3",
         "fontStyle": "italic"
       }
     }
