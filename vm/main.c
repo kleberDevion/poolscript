@@ -74,6 +74,29 @@ static char *le_arquivo(const char *caminho, size_t *tam)
     return buf;
 }
 
+/* Imprime a localização + o trecho do fonte, como o interpretador:
+ *     -> arquivo, linha N
+ *     | <a linha de código>
+ *     | ^
+ * Só quando há linha e o arquivo abre (origem "<-e>"/stdin não tem trecho). */
+static void imprime_trecho(const char *origem, int linha)
+{
+    if (linha <= 0 || !origem || origem[0] == '<') return;
+    FILE *f = fopen(origem, "rb");
+    if (!f) return;
+    char buf[4096];
+    int atual = 0;
+    while (fgets(buf, sizeof(buf), f)) {
+        if (++atual != linha) continue;
+        size_t l = strlen(buf);
+        while (l > 0 && (buf[l-1] == '\n' || buf[l-1] == '\r')) buf[--l] = '\0';
+        int ini = 0; while (buf[ini] == ' ' || buf[ini] == '\t') ini++;
+        fprintf(stderr, "  | %s\n  | %*s^\n", buf, ini, "");
+        break;
+    }
+    fclose(f);
+}
+
 /* Erro do usuário sai no formato que o interpretador já usa, pra mensagem
  * não mudar de cara conforme quem executou. */
 static int reporta(const PSErroExec *e, const char *origem)
@@ -82,10 +105,12 @@ static int reporta(const PSErroExec *e, const char *origem)
         case PS_ERRO_SINTAXE:
             fprintf(stderr, "SyntaxError: %s\n  -> %s, linha %d, coluna %d\n",
                     e->msg, origem, e->linha, e->col);
+            imprime_trecho(origem, e->linha);
             return 2;
         case PS_ERRO_NAO_SUPORTADO:
             fprintf(stderr, "NotImplementedError: %s\n  -> %s, linha %d, coluna %d\n",
                     e->msg, origem, e->linha, e->col);
+            imprime_trecho(origem, e->linha);
             return 3;
         case PS_ERRO_MEMORIA:
             fprintf(stderr, "MemoryError: %s\n", e->msg);
@@ -93,6 +118,9 @@ static int reporta(const PSErroExec *e, const char *origem)
         default:
             fprintf(stderr, "%s: %s\n",
                     e->tipo_nome[0] ? e->tipo_nome : "RuntimeError", e->msg);
+            if (e->linha > 0)
+                fprintf(stderr, "  -> %s, linha %d\n", origem, e->linha);
+            imprime_trecho(origem, e->linha);
             return 1;
     }
 }

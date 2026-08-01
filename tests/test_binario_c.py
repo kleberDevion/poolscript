@@ -336,3 +336,53 @@ def test_check_arquivo(tmp_path):
     f.write_text("action f(){ return 1 }\n")
     r = subprocess.run([POOL, "--check", str(f)], capture_output=True, text=True)
     assert _j.loads(r.stdout.strip())["ok"] is True
+
+
+# ── erro de runtime mostra ONDE caiu (arquivo/linha/trecho) ──────────────────
+# A suite era so de PARIDADE e nao pegava isto: a VM dava erro de runtime SEM
+# localizacao ("pra cego"). Agora o erro aponta o arquivo, a linha e o trecho.
+
+def test_runtime_erro_mostra_linha_e_trecho(tmp_path):
+    f = tmp_path / "e.ps"
+    f.write_text(
+        "Entity Ctrl() {" + NL +
+        "    int reaction m(self, name=none) { return 1 }" + NL +
+        "}" + NL +
+        "post(\"antes\")" + NL +
+        "x = Ctrl().naoExiste(name=1)" + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode != 0
+    assert "antes" in r.stdout                    # rodou ate a linha do erro
+    assert "membro inexistente: naoExiste" in r.stderr   # mensagem especifica
+    assert "linha 5" in r.stderr                  # a linha certa
+    assert "Ctrl().naoExiste" in r.stderr         # o trecho do fonte
+
+
+def test_runtime_erro_linha_interna_da_action(tmp_path):
+    # erro DENTRO de uma action chamada aponta a linha INTERNA, nao a chamada
+    f = tmp_path / "e.ps"
+    f.write_text(
+        "action f(n) {" + NL +
+        "    return n / 0" + NL +
+        "}" + NL +
+        "post(f(3))" + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode != 0
+    assert "linha 2" in r.stderr and "n / 0" in r.stderr
+
+
+def test_runtime_divisao_por_zero_com_linha(tmp_path):
+    f = tmp_path / "e.ps"
+    f.write_text("a = 10" + NL + "post(a / 0)" + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode != 0 and "linha 2" in r.stderr
+
+
+def test_arg_nomeado_errado_diz_o_nome(tmp_path):
+    f = tmp_path / "e.ps"
+    f.write_text(
+        "action f(a, b) { return a }" + NL +
+        "post(f(a=1, zzz=2))" + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode != 0
+    assert "zzz" in r.stderr and "linha 2" in r.stderr

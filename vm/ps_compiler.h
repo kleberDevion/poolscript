@@ -32,6 +32,8 @@ typedef struct {
 typedef struct {
     char    *nome;
     int32_t *code;      /* pares [opcode, arg] */
+    int32_t *linhas;    /* linha do fonte de cada palavra do code (paralelo) —
+                         * pro erro de runtime dizer ONDE aconteceu */
     int32_t  ncode;
     PSConst *consts;
     int32_t  nconsts;

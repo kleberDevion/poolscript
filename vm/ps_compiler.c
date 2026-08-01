@@ -187,6 +187,9 @@ typedef struct {
     /* Estamos dentro de uma Entity (com ou sem pai)? `base()` sem pai é
      * no-op aqui e erro fora. */
     int dentro_entity;
+    /* Linha do fonte do nó sendo compilado agora — o `emite()` grava por
+     * instrução, pra o erro de runtime dizer ONDE aconteceu. */
+    int32_t linha_atual;
 } C;
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
@@ -211,9 +214,15 @@ static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
         int32_t *nc = realloc(UP(c, u)->code, sizeof(int32_t) * (size_t)novo);
         if (!nc) { cerro(c, "sem memoria", NULL); return -1; }
         UP(c, u)->code = nc;
+        /* tabela de linhas cresce junto com o code (mesma capacidade) */
+        int32_t *nl = realloc(UP(c, u)->linhas, sizeof(int32_t) * (size_t)novo);
+        if (!nl) { cerro(c, "sem memoria", NULL); return -1; }
+        UP(c, u)->linhas = nl;
         u->cap_code = novo;
     }
     int32_t pos = UP(c, u)->ncode;
+    UP(c, u)->linhas[pos]     = c->linha_atual;
+    UP(c, u)->linhas[pos + 1] = c->linha_atual;
     UP(c, u)->code[UP(c, u)->ncode++] = op;
     UP(c, u)->code[UP(c, u)->ncode++] = arg;
     return pos;
@@ -518,6 +527,7 @@ static void count_operandos(C *c, Unidade *u, PSNode *n)
 /* ── expressões ─────────────────────────────────────────────────────────── */
 static void expr(C *c, Unidade *u, PSNode *n)
 {
+    if (n && n->line) c->linha_atual = n->line;
     if (CFALHOU(c) || !n) return;
 
     switch (n->kind) {
@@ -977,6 +987,7 @@ static void bloco_stmts(C *c, Unidade *u, PSNode *b)
 static void stmt(C *c, Unidade *u, PSNode *n)
 {
     if (CFALHOU(c) || !n) return;
+    if (n->line) c->linha_atual = n->line;
 
     switch (n->kind) {
         case N_ACTION_DECL: {
@@ -1845,6 +1856,7 @@ void ps_compila_free(PSPrograma *p)
     for (int32_t i = 0; i < p->nprotos; i++) {
         free(p->protos[i].nome);
         free(p->protos[i].code);
+        free(p->protos[i].linhas);
         if (p->protos[i].param_nomes) {
             for (int32_t k = 0; k < p->protos[i].nparams; k++)
                 free(p->protos[i].param_nomes[k]);

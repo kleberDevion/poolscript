@@ -697,6 +697,7 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 
 typedef struct {
     int32_t  *code;
+    int32_t  *linhas;      /* linha do fonte de cada palavra do code (ou NULL) */
     int       ncode;
     Value    *consts;
     int       nconsts;
@@ -823,6 +824,7 @@ struct VM_ {
 
     char    erro[256];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
+    int     erro_linha;      /* linha do fonte onde o erro de runtime caiu (0 = ?) */
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -12227,6 +12229,14 @@ static Builtin BUILTINS[] = {
     goto erro_runtime; \
 } while (0)
 
+/* Como ERRO_T, mas com mensagem formatada — pra o erro DIZER o nome do que
+ * faltou (membro/argumento), em vez de um texto genérico que não ajuda. */
+#define ERRO_TF(vm, tipo, ...) do { \
+    snprintf((vm)->erro, sizeof((vm)->erro), __VA_ARGS__); \
+    snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "%s", (tipo)); \
+    goto erro_runtime; \
+} while (0)
+
 /* ── o laço de execução ─────────────────────────────────────────────────── */
 /* Roda `proto_inicial` a partir de uma BASE de frame/pilha/locais, em vez de
  * sempre do zero. É o que permite reentrar na VM: um builtin em C (`map`,
@@ -12751,7 +12761,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                      * o campo real em Null e segue. Em action é erro. É
                      * assimétrico, mas é o que o interpretador faz. */
                     if (EH_CLASS(alvo_kw)) continue;
-                    ERRO(vm, "argumento nomeado nao corresponde a nenhum parametro");
+                    ERRO_TF(vm, "SomeValueUnexpected",
+                            "argumento nomeado '%s' nao corresponde a nenhum parametro de %s()",
+                            ns->chars, pk->nome ? pk->nome : "?");
                 }
                 /* Nomeado SOBRESCREVE posicional — `f(1, a=2)` devolve 2, é
                  * o que o interpretador faz. Recusar seria mais restritivo
@@ -13524,7 +13536,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         stack[sp - 1] = MK_OBJ(mn);
                         break;
                     }
-                    ERRO_T(vm, "RuntimeError", "atributo nao encontrado na entity");
+                    ERRO_TF(vm, "RuntimeError", "membro inexistente: %s", nome);
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSBound *b = novo_bound(vm, alvo, mp);
@@ -13535,7 +13547,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_CLASS(alvo)) {
                 /* método estático: chamado direto na Entity */
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), nome);
-                if (mp < 0) ERRO_T(vm, "RuntimeError", "Entity nao tem esse metodo");
+                if (mp < 0) ERRO_TF(vm, "RuntimeError", "membro inexistente: %s (na Entity %s)",
+                                    nome, COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?");
                 stack[sp - 1] = MK_FUNC(mp);
                 break;
             }
@@ -14066,6 +14079,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         continue;
 
     erro_runtime:
+        /* Linha do fonte da instrução que falhou. `ip` já avançou 2 na busca,
+         * então a instrução é `ip-2`. Cada erro entra aqui UMA vez com o `p`
+         * do frame que falhou (frames aninhados são o mesmo laço), então isto
+         * grava a linha CERTA — inclusive sobrescrevendo a de um erro anterior
+         * já capturado. */
+        if (p && p->linhas && ip >= 2 && (ip - 2) < p->ncode)
+            vm->erro_linha = p->linhas[ip - 2];
         /* Procura o `try` mais interno ainda ativo. Restaurar fp/sp/
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
@@ -14102,6 +14122,7 @@ static void libera_vm(VM *vm)
     if (vm->protos) {
         for (int i = 0; i < vm->nprotos; i++) {
             free(vm->protos[i].code);
+            free(vm->protos[i].linhas);
             free(vm->protos[i].consts);
             free(vm->protos[i].nome);
             if (vm->protos[i].param_nomes) {
@@ -14232,6 +14253,12 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         }
         if (!p->code || !p->consts) return -1;
         memcpy(p->code, o->code, sizeof(int32_t) * (size_t)o->ncode);
+        /* tabela de linhas (pro erro de runtime dizer onde) — pode faltar */
+        p->linhas = NULL;
+        if (o->linhas && o->ncode > 0) {
+            p->linhas = malloc(sizeof(int32_t) * (size_t)o->ncode);
+            if (p->linhas) memcpy(p->linhas, o->linhas, sizeof(int32_t) * (size_t)o->ncode);
+        }
 
         /* zera antes: se criar string disparar GC, o pool precisa estar
          * num estado marcável */
@@ -14341,6 +14368,12 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         if (!d->code) return -1;
         memcpy(d->code, o->code, sizeof(int32_t) * (size_t)o->ncode);
         reloca_codigo(d->code, d->ncode, *base_proto, *base_global, *base_classe);
+        /* linhas não sofrem relocação (são do fonte, não índices) */
+        d->linhas = NULL;
+        if (o->linhas && o->ncode > 0) {
+            d->linhas = malloc(sizeof(int32_t) * (size_t)o->ncode);
+            if (d->linhas) memcpy(d->linhas, o->linhas, sizeof(int32_t) * (size_t)o->ncode);
+        }
 
         d->nlocals = o->nlocals;
         d->nparams = o->nparams;
@@ -14777,6 +14810,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         e->tipo = PS_ERRO_RUNTIME;
         snprintf(e->msg, sizeof(e->msg), "%s", vm.erro);
         snprintf(e->tipo_nome, sizeof(e->tipo_nome), "%s", vm.erro_tipo);
+        e->linha = vm.erro_linha;   /* linha do fonte onde caiu (0 = desconhecida) */
         libera_vm(&vm);
         return -1;
     }
@@ -14830,6 +14864,7 @@ static PyObject *vm_roda(PyObject *self, PyObject *args)
         Proto *p   = &vm.protos[i];
         p->ncode   = (int)nc;
         p->code    = malloc(sizeof(int32_t) * (size_t)(nc > 0 ? nc : 1));
+        p->linhas  = NULL;   /* extensão Python (diff-test) não passa linhas */
         p->nconsts = (int)nk;
         p->consts  = malloc(sizeof(Value) * (size_t)(nk > 0 ? nk : 1));
         p->nlocals = nlocals;
