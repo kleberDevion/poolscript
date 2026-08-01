@@ -114,3 +114,21 @@ def test_vm_escrita_private_de_fora_erra():
 
 def test_vm_publico_ok():
     assert via_c("Entity P() { v: int = 7 }\np = P()\npost(p.v)\n") == "7\n"
+
+
+# ── atribuição aumentada em membro (self.x += v) — era erro de sintaxe ───────
+
+MEMBRO_AUG = (
+    "Entity C() {\n"
+    "  n: int = 10\n"
+    "  public reaction add(self, v) { self.n += v  return self.n }\n"
+    "  public reaction sub(self, v) { self.n -= v  return self.n }\n"
+    "}\n"
+    "c = C()\npost(c.add(5))\npost(c.sub(3))\n"
+)
+
+def test_membro_aug_interp():
+    assert roda(MEMBRO_AUG) == "15\n12\n"
+
+def test_membro_aug_vm_bate_com_interp():
+    assert via_c(MEMBRO_AUG) == roda(MEMBRO_AUG)

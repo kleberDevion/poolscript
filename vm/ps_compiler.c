@@ -1505,11 +1505,22 @@ static void stmt(C *c, Unidade *u, PSNode *n)
         }
 
         case N_MEMBER_ASSIGNMENT: {
-            expr(c, u, n->a);
-            expr(c, u, n->b);
-            emite(c, u, OP_SET_MEMBER,
-                  idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
-                            n->texto ? (int32_t)strlen(n->texto) : 0));
+            int32_t mi = idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
+                                   n->texto ? (int32_t)strlen(n->texto) : 0);
+            expr(c, u, n->a);                 /* objeto */
+            if (n->texto2 && strcmp(n->texto2, "=") != 0) {
+                /* aumentada `obj.x += v`: lê o atual sem re-avaliar o objeto */
+                emite(c, u, OP_DUP, 0);
+                emite(c, u, OP_GET_MEMBER, mi);
+                expr(c, u, n->b);
+                char bin[2] = { n->texto2[0], 0 };
+                int32_t op = op_binario(bin);
+                if (op < 0) { cerro(c, "operador de atribuicao invalido", n); return; }
+                emite(c, u, op, 0);
+            } else {
+                expr(c, u, n->b);
+            }
+            emite(c, u, OP_SET_MEMBER, mi);
             return;
         }
 

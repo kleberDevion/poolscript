@@ -1599,8 +1599,11 @@ static PSNode *statement(P *p)
                    || p->toks[k+1].type == T_KW)) {
             n_dots++; k += 2;
         }
-        if (n_dots > 0 && k < p->n && p->toks[k].type == T_OP
-                && p->toks[k].texto && strcmp(p->toks[k].texto, "=") == 0) {
+        if (n_dots > 0 && k < p->n && p->toks[k].type == T_OP && p->toks[k].texto
+                && (strcmp(p->toks[k].texto, "=")  == 0 || strcmp(p->toks[k].texto, "+=") == 0
+                 || strcmp(p->toks[k].texto, "-=") == 0 || strcmp(p->toks[k].texto, "*=") == 0
+                 || strcmp(p->toks[k].texto, "/=") == 0 || strcmp(p->toks[k].texto, "%=") == 0)) {
+            const char *op_membro = dup_tok(p, &p->toks[k]);
             PSNode *base = ps_node_novo(p->arena, N_NAME, t->line, t->col);
             if (!base) return NULL;
             base->texto = dup_tok(p, t);
@@ -1618,6 +1621,7 @@ static PSNode *statement(P *p)
             PSNode *n = ps_node_novo(p->arena, N_MEMBER_ASSIGNMENT, t->line, t->col);
             if (!n) return NULL;
             n->a = base; n->texto = ultimo;
+            n->texto2 = op_membro;          /* "=" ou aumentado (+=, -=, ...) */
             n->b = expressao(p);
             if (FALHOU(p)) return NULL;
             return n;

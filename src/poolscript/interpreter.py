@@ -1255,6 +1255,12 @@ class Interpreter:
                 target_obj = self.eval_expr(node.target, scope)
                 self._checa_privado(node, target_obj)   # escrita em private de fora = erro
                 value = self.eval_expr(node.value, scope)
+                if getattr(node, "operator", "=") != "=":
+                    # aumentada (`self.x += 1`): lê o atual e reaplica o operador,
+                    # herdando as mesmas regras de tipo de `a + b`.
+                    m = sys.intern(node.member)
+                    atual = getattr(target_obj, m, None)
+                    value = self._eval_binary(atual, node.operator[:-1], value, node)
                 if isinstance(target_obj, PoolEntityInstance):
                     setattr(target_obj, sys.intern(node.member), value)
                 elif hasattr(target_obj, sys.intern(node.member)):
