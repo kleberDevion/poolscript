@@ -104,6 +104,18 @@ def test_sqlite_tipo_e_url(mesmo):
     mesmo(IMP + 'c = db.connect(url="sqlite:///s.db")' + NL + 'post(type(c))' + NL + 'c.close()')
 
 
+def test_param_solto_erra_claro(tmp_path):
+    # `(x)` sem vírgula é um valor solto, não uma sequência. Antes a VM
+    # descartava em silêncio e o `%s`/`?` vazava cru pro banco; agora erra
+    # claro. (o `(x,)` COM vírgula é tupla e funciona — coberto acima.)
+    src = (IMP + 'c = db.connect(driver="sqlite", base="t.db")' + NL
+           + 'k = c.cursor()' + NL
+           + 'k.execute("CREATE TABLE u (email TEXT)")' + NL
+           + 'k.execute("SELECT * FROM u WHERE email = ?", ("a@x.com"))' + NL)
+    st, _ = _c(src, tmp_path)
+    assert st == "ERR"
+
+
 def test_query_curto_e_longo(mesmo):
     mesmo(IMP + 'c = db.connect(driver="sqlite", base="q.db")' + NL
           + 'c.cursor().execute("CREATE TABLE a (x INTEGER)")' + NL + 'c.close()' + NL

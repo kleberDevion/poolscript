@@ -1482,6 +1482,23 @@ static int32_t acha_metodo(PSClass *cl, const char *nome)
     return -1;
 }
 
+/* Nome do global de índice `arg`, pra mensagem de erro. Primeiro o script
+ * principal (nomes_globais); se não achar, procura nos módulos `.ps` já
+ * carregados (cada um cobre a faixa [base, base+n)). "?" só se nada bater. */
+static const char *nome_do_global(VM *vm, int32_t arg)
+{
+    if (arg >= 0 && arg < vm->n_nomes_globais && vm->nomes_globais && vm->nomes_globais[arg])
+        return vm->nomes_globais[arg];
+    for (int i = 0; i < vm->nmods_ps; i++) {
+        Value v = vm->mods_ps[i].valor;
+        if (v.t != V_OBJ || v.as.obj->type != OBJ_MODULO_PS) continue;
+        PSModuloPS *m = (PSModuloPS *)v.as.obj;
+        if (arg >= m->base && arg < m->base + m->n && m->nomes && m->nomes[arg - m->base])
+            return m->nomes[arg - m->base];
+    }
+    return "?";
+}
+
 /* Encapsulamento: 1 se `nome` é membro `private` de `cl` (ou de um ancestral)
  * E o protótipo em execução (`proto_atual`) NÃO é um método da classe que o
  * declara — isto é, acesso de FORA. 0 = liberado (público, ou private acessado
@@ -9955,6 +9972,10 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSDbCursor *cu = COMO_DBCUR(alvo);
     PSDbConexao *cn = COMO_DBCONN(cu->conexao);
     if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
+    /* param solto (não-sequência) era descartado em silêncio -> o `%s` vazava
+     * cru pro banco. Erra claro, igual ao caminho do sqlite. */
+    if (n == 2 && args[1].t != V_NULL && args[1].t != V_UNSET && !EH_SEQ(args[1]))
+        MERRO(vm, "SomeValueUnexpected", "execute() espera tupla ou lista de parametros");
     ps_db_res_libera(&cu->res);
     cu->pos = 0;
     int np = 0;
@@ -12609,7 +12630,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * Null calado, senão um typo vira `null` silencioso. */
             if (vm->globals[arg].t == V_UNSET)
                 ERRO_TF(vm, "RuntimeError", "variavel nao definida: %s",
-                        (arg < vm->n_nomes_globais && vm->nomes_globais[arg]) ? vm->nomes_globais[arg] : "?");
+                        nome_do_global(vm, arg));
             stack[sp++] = vm->globals[arg];
             break;
         case OP_STORE_GLOBAL:
@@ -13357,7 +13378,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value g = vm->globals[arg];
             if (g.t == V_UNSET)
                 ERRO_TF(vm, "RuntimeError", "variavel nao definida: %s",
-                        (arg < vm->n_nomes_globais && vm->nomes_globais[arg]) ? vm->nomes_globais[arg] : "?");
+                        nome_do_global(vm, arg));
             stack[sp++] = g;
             break;
         }
