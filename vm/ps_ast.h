@@ -144,6 +144,9 @@ struct PSNode {
     /* BLOCK: "brace" ou "colon"; ACTION_DECL: tipo de retorno ou NULL */
     const char *estilo;
     int         is_async;
+    /* ACTION_DECL / ENTITY_FIELD: marcado `private` (encapsulamento). NÃO é
+     * serializado no diff de AST/bytecode — é metadado de acesso, não código. */
+    int         is_private;
 };
 
 /* ── arena ──────────────────────────────────────────────────────────────── */

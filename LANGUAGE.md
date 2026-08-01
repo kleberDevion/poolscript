@@ -603,6 +603,41 @@ Regras concretas:
   qualquer método cria/atualiza o atributo.
 - **`post(obj)`** imprime `<NomeDaClasse {atributos}>`.
 
+### `private` / `public` — encapsulamento
+
+Um campo ou método pode ser marcado `private` (ou `public`, que é o **default**).
+Membro `private` só é acessível **de dentro de um método da própria classe** —
+tentar ler, escrever ou chamar de fora levanta erro:
+
+```
+Entity Conta() {
+    private saldo: int = 0          // só a própria classe mexe
+    public dono: str = "kleber"     // público (igual a não pôr nada)
+
+    public reaction deposita(self, v) {
+        self.saldo = self.saldo + v   // OK: dentro da classe
+        return self.saldo
+    }
+    private reaction _log(self) { return "interno" }   // só a classe chama
+}
+
+c = Conta()
+post(c.deposita(100))   // 100  — via método público
+post(c.dono)            // kleber — público
+post(c.saldo)           // ERRO: 'saldo' é private de Conta
+c._log()                // ERRO: 'private'
+c.saldo = 9             // ERRO: escrita em private de fora
+```
+
+- **Default é público** — código sem modificador funciona como sempre.
+- Encapsulamento é **disciplina de código**, não blindagem de segurança: não
+  protege contra debugger, dump de memória ou processo externo lendo a RAM
+  (nenhuma linguagem faz isso — nem o `private` do Java). Serve pra forçar o
+  acesso pela API pública, não pra esconder segredo de um atacante com acesso à
+  máquina.
+- Campo `private` precisa ser **declarado tipado** no corpo (`private x: tipo`);
+  atributos criados só por `self.x = ...` num método são públicos.
+
 ### Herança simples e `base()`
 
 `base(...)` chama o `__init__` do **pai imediato**. Só funciona dentro de um

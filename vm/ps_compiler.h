@@ -55,6 +55,10 @@ typedef struct {
     int32_t *met_protos;
     int32_t  nmetodos;
     int32_t  npais;
+    /* nomes de membros `private` (campo ou método) — a VM barra acesso a eles
+     * de fora da classe (encapsulamento). */
+    char   **priv_nomes;
+    int32_t  npriv;
 } PSClassDef;
 
 /* Campo de `model`, na forma neutra do compilador. */

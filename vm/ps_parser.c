@@ -1530,6 +1530,16 @@ static PSNode *statement(P *p)
         pula_separadores(p);
         while (!checa(p, chaves ? T_RBRACE : T_DEDENT) && !checa(p, T_EOF)) {
             PSToken *mt = atual(p);
+            /* modificador de visibilidade opcional antes de campo/método.
+             * `is_private` não entra na serialização do AST (não é código), então
+             * o diff de parser/bytecode continua batendo. */
+            int membro_priv = 0;
+            if (mt->type == T_KW && mt->texto
+                    && (strcmp(mt->texto, "private") == 0 || strcmp(mt->texto, "public") == 0)) {
+                membro_priv = (strcmp(mt->texto, "private") == 0);
+                p->pos++;
+                mt = atual(p);
+            }
             if (checa(p, T_AT)) {
                 int salvo_flag = p->dec_sem_captura;
                 p->dec_sem_captura = 1;
@@ -1542,6 +1552,7 @@ static PSNode *statement(P *p)
                         || strcmp(mt->texto,"async")==0 || eh_tipo_kw(mt))) {
                 PSNode *a = statement(p);
                 if (FALHOU(p)) return NULL;
+                if (a) a->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
             } else if (mt->type == T_IDENT || mt->type == T_IDENT_UPPER) {
                 /* campo `nome: tipo [= default]`. Sem o `:` NÃO é campo —
@@ -1566,6 +1577,7 @@ static PSNode *statement(P *p)
                     f->a = expressao(p);
                     if (FALHOU(p)) return NULL;
                 }
+                f->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else {
                 perro(p, "dentro de Entity so sao permitidas declaracoes 'action', decoradores ou campos 'nome: tipo'", mt);

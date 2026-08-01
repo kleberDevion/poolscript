@@ -200,6 +200,8 @@ typedef struct PSClass_ {
     char   **met_nomes;
     int32_t *met_protos;
     int32_t  nmetodos;
+    char   **priv_nomes;   /* membros `private` — acesso de fora barrado */
+    int32_t  npriv;
 } PSClass;
 
 typedef struct {
@@ -738,6 +740,8 @@ typedef struct {
     int32_t *met_protos;
     int32_t  nmetodos;
     int32_t  npais;
+    char   **priv_nomes;   /* membros `private` (copiado do PSClassDef) */
+    int32_t  npriv;
 } PSClassDefC;
 
 struct VM_ {
@@ -1227,6 +1231,8 @@ static void libera_obj(VM *vm, Obj *o)
         for (int32_t i = 0; i < cl->nmetodos; i++) free(cl->met_nomes[i]);
         free(cl->met_nomes);
         free(cl->met_protos);
+        for (int32_t i = 0; i < cl->npriv; i++) free(cl->priv_nomes[i]);
+        free(cl->priv_nomes);
         free(cl->pais);
     } else if (o->type == OBJ_INSTANCE) {
         vm->alocado -= sizeof(PSInstance);
@@ -1474,6 +1480,29 @@ static int32_t acha_metodo(PSClass *cl, const char *nome)
         if (r >= 0) return r;
     }
     return -1;
+}
+
+/* Encapsulamento: 1 se `nome` é membro `private` de `cl` (ou de um ancestral)
+ * E o protótipo em execução (`proto_atual`) NÃO é um método da classe que o
+ * declara — isto é, acesso de FORA. 0 = liberado (público, ou private acessado
+ * de dentro de um método da própria classe). Regra igual à do Java. */
+static int priv_barrado(PSClass *cl, const char *nome, int32_t proto_atual)
+{
+    PSClass *pilha[64]; int np = 0;
+    if (cl) pilha[np++] = cl;
+    while (np > 0) {
+        PSClass *c = pilha[--np];
+        for (int32_t i = 0; i < c->npriv; i++) {
+            if (strcmp(c->priv_nomes[i], nome) == 0) {
+                for (int32_t k = 0; k < c->nmetodos; k++)
+                    if (c->met_protos[k] == proto_atual) return 0;  /* de dentro */
+                return 1;                                            /* de fora — barra */
+            }
+        }
+        for (int32_t i = 0; i < c->npais && np < 64; i++)
+            if (c->pais[i]) pilha[np++] = c->pais[i];
+    }
+    return 0;   /* não é private */
 }
 
 /* ── conversões com o mundo Python ──────────────────────────────────────── */
@@ -13496,6 +13525,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 cl->met_nomes[i] = strdup(def->met_nomes[i]);
                 cl->met_protos[i] = def->met_protos[i];
             }
+            /* membros private (encapsulamento) — copiados da def */
+            cl->npriv = def->npriv;
+            cl->priv_nomes = NULL;
+            if (def->npriv > 0) {
+                cl->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
+                if (!cl->priv_nomes) ERRO(vm, "sem memoria");
+                for (int32_t i = 0; i < def->npriv; i++)
+                    cl->priv_nomes[i] = strdup(def->priv_nomes[i]);
+            }
             cl->npais = def->npais;
             cl->pais = def->npais > 0 ? calloc((size_t)def->npais, sizeof(PSClass *)) : NULL;
             for (int32_t i = def->npais - 1; i >= 0; i--) {
@@ -13515,6 +13553,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             if (EH_INST(alvo)) {
                 PSInstance *inst = COMO_INST(alvo);
+                /* encapsulamento: membro private só de dentro da classe */
+                if (priv_barrado(inst->classe, nome, (int32_t)(p - vm->protos)))
+                    ERRO_TF(vm, "RuntimeError",
+                            "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
+                            nome, inst->classe && inst->classe->nome ? inst->classe->nome : "?");
                 Value v;
                 /* campo tem prioridade sobre método, como no interpretador */
                 if (inst->campos && dict_get(inst->campos, &nomev, &v) == 0) {
@@ -13770,6 +13813,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value nomev = p->consts[arg];
             if (!EH_INST(alvo)) ERRO_T(vm, "RuntimeError", "so instancia aceita atribuicao de membro");
             PSInstance *inst = COMO_INST(alvo);
+            if (EH_STRING(nomev) && priv_barrado(inst->classe, COMO_STRING(nomev)->chars, (int32_t)(p - vm->protos)))
+                ERRO_TF(vm, "RuntimeError",
+                        "acesso negado: '%s' e private de %s (so acessivel de dentro da classe)",
+                        COMO_STRING(nomev)->chars, inst->classe && inst->classe->nome ? inst->classe->nome : "?");
             vm->sp = sp; vm->locals_top = locals_top;
             if (!inst->campos) {
                 PSDict *d = novo_dict(vm, 4);
@@ -14140,6 +14187,9 @@ static void libera_vm(VM *vm)
                 free(vm->classes[i].met_nomes[k]);
             free(vm->classes[i].met_nomes);
             free(vm->classes[i].met_protos);
+            for (int32_t k = 0; k < vm->classes[i].npriv; k++)
+                free(vm->classes[i].priv_nomes[k]);
+            free(vm->classes[i].priv_nomes);
         }
         free(vm->classes);
     }
@@ -14197,6 +14247,14 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                     d->met_nomes[k] = strdup(o->met_nomes[k] ? o->met_nomes[k] : "?");
                     d->met_protos[k] = o->met_protos[k];
                 }
+            }
+            /* nomes private (encapsulamento) */
+            d->npriv = o->npriv;
+            if (o->npriv > 0) {
+                d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
+                if (!d->priv_nomes) return -1;
+                for (int32_t k = 0; k < o->npriv; k++)
+                    d->priv_nomes[k] = strdup(o->priv_nomes[k] ? o->priv_nomes[k] : "?");
             }
         }
     }
@@ -14356,6 +14414,13 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
                 d->met_nomes[k]  = strdup(o->met_nomes[k] ? o->met_nomes[k] : "?");
                 d->met_protos[k] = o->met_protos[k] + *base_proto;   /* desloca */
             }
+        }
+        d->npriv = o->npriv;   /* private de classe em módulo importado */
+        if (o->npriv > 0) {
+            d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
+            if (!d->priv_nomes) return -1;
+            for (int32_t k = 0; k < o->npriv; k++)
+                d->priv_nomes[k] = strdup(o->priv_nomes[k] ? o->priv_nomes[k] : "?");
         }
     }
     vm->nclasses = nc;

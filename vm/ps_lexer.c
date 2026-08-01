@@ -34,6 +34,7 @@ static const char *KEYWORDS[] = {
     "clear", "space", "addEnd", "char", "list",
     "Class", "class", "type",
     "Entity", "self",
+    "private", "public",
     "match", "case",
     "yield",
     "raise", "finally",

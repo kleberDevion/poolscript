@@ -1347,6 +1347,24 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             def->nome = strdup(n->texto ? n->texto : "?");
             def->npais = n->lista2.n;
 
+            /* nomes de membros `private` — métodos (n->lista) + campos
+             * (n->lista2_alias). A VM usa isto p/ barrar acesso de fora. */
+            int32_t npriv_max = n->lista.n + n->lista2_alias.n;
+            if (npriv_max > 0) {
+                def->priv_nomes = calloc((size_t)npriv_max, sizeof(char *));
+                if (!def->priv_nomes) { cerro(c, "sem memoria", n); return; }
+                for (int32_t i = 0; i < n->lista.n; i++) {
+                    PSNode *m = n->lista.itens[i];
+                    if (m->kind == N_ACTION_DECL && m->is_private && m->texto)
+                        def->priv_nomes[def->npriv++] = strdup(m->texto);
+                }
+                for (int32_t i = 0; i < n->lista2_alias.n; i++) {
+                    PSNode *f = n->lista2_alias.itens[i];
+                    if (f->kind == N_ENTITY_FIELD && f->is_private && f->texto)
+                        def->priv_nomes[def->npriv++] = strdup(f->texto);
+                }
+            }
+
             int32_t nm = 0;
             for (int32_t i = 0; i < n->lista.n; i++)
                 if (n->lista.itens[i]->kind == N_ACTION_DECL) nm++;
@@ -1890,6 +1908,9 @@ void ps_compila_free(PSPrograma *p)
             free(p->classes[i].met_nomes[k]);
         free(p->classes[i].met_nomes);
         free(p->classes[i].met_protos);
+        for (int32_t k = 0; k < p->classes[i].npriv; k++)
+            free(p->classes[i].priv_nomes[k]);
+        free(p->classes[i].priv_nomes);
     }
     free(p->classes);
     for (int32_t i = 0; i < p->nmodels; i++) {
