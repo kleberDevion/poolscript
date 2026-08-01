@@ -55,6 +55,8 @@ KEYWORDS = {
     "Class", "class", "type",
     # Entity (classes)
     "Entity", "self",
+    # visibilidade (encapsulamento) — modificador de campo/método
+    "private", "public",
     # Match/case
     "match", "case",
     # Generator

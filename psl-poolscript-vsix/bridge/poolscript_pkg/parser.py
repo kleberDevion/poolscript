@@ -186,6 +186,7 @@ class ActionDecl(Node):
     defaults: dict | None = None       # {param_name: default_node}
     return_type: str | None = None     # None | "int" | "bool"
     is_async: bool = False       # `async action` / `async reaction`
+    is_private: bool = False     # `private action`/`private reaction` — só acessível de dentro da classe
 
 
 @dataclass(slots=True)
@@ -396,6 +397,7 @@ class EntityField(Node):
     field_name: str
     type_name:  str
     default:    "Any" = None
+    is_private: bool = False   # `private nome: tipo` — só acessível de dentro da classe
 
 @dataclass(slots=True)
 class EntityDecl(Node):
@@ -1090,17 +1092,19 @@ class Parser:
             while self.current().type not in {"RBRACE", "EOF"}:
                 if self.current().type == "AT":
                     body.append(self.parse_decorator_stmt(capture_action=False))
-                elif self._starts_action_decl():
-                    body.append(self.parse_action_decl())
-                elif self.current().type in {"IDENT", "IDENT_UPPER"}:
-                    # campo tipado: nome: tipo [= default]
-                    ef = self._parse_entity_field()
-                    if ef: fields.append(ef)
                 else:
-                    raise self.error(
-                        "dentro de Entity só são permitidas declarações 'action', decoradores ou campos 'nome: tipo'",
-                        self.current()
-                    )
+                    vis = self._optional_visibility()
+                    if self._starts_action_decl():
+                        a = self.parse_action_decl(); a.is_private = vis
+                        body.append(a)
+                    elif self.current().type in {"IDENT", "IDENT_UPPER"}:
+                        ef = self._parse_entity_field()
+                        if ef: ef.is_private = vis; fields.append(ef)
+                    else:
+                        raise self.error(
+                            "dentro de Entity só são permitidas 'action'/'reaction', decoradores, campos 'nome: tipo' ou modificador 'private'/'public'",
+                            self.current()
+                        )
                 self.skip_separators()
             self.expect("RBRACE")
 
@@ -1112,17 +1116,19 @@ class Parser:
             while self.current().type not in {"DEDENT", "EOF"}:
                 if self.current().type == "AT":
                     body.append(self.parse_decorator_stmt(capture_action=False))
-                elif self._starts_action_decl():
-                    body.append(self.parse_action_decl())
-                elif self.current().type in {"IDENT", "IDENT_UPPER"}:
-                    # campo tipado: nome: tipo [= default]
-                    ef = self._parse_entity_field()
-                    if ef: fields.append(ef)
                 else:
-                    raise self.error(
-                        "dentro de Entity só são permitidas declarações 'action', decoradores ou campos 'nome: tipo'",
-                        self.current()
-                    )
+                    vis = self._optional_visibility()
+                    if self._starts_action_decl():
+                        a = self.parse_action_decl(); a.is_private = vis
+                        body.append(a)
+                    elif self.current().type in {"IDENT", "IDENT_UPPER"}:
+                        ef = self._parse_entity_field()
+                        if ef: ef.is_private = vis; fields.append(ef)
+                    else:
+                        raise self.error(
+                            "dentro de Entity só são permitidas 'action'/'reaction', decoradores, campos 'nome: tipo' ou modificador 'private'/'public'",
+                            self.current()
+                        )
                 self.skip_separators()
             self.expect("DEDENT")
         else:
@@ -1153,6 +1159,15 @@ class Parser:
                 and self.tokens[self.pos + 1].type == "KW"
                 and self.tokens[self.pos + 1].value in {"action", "reaction"}):
             return True
+        return False
+
+    def _optional_visibility(self) -> bool:
+        """Consome um modificador `private`/`public` se estiver presente antes
+        de um campo/método. Devolve True se for `private` (default: público)."""
+        t = self.current()
+        if t.type == "KW" and t.value in ("private", "public"):
+            self.pos += 1
+            return t.value == "private"
         return False
 
     def _parse_entity_field(self):
