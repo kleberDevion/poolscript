@@ -448,6 +448,24 @@ static PSNode *primario(P *p)
             return n;
         }
         case T_KW: {
+            /* `to <tipo>` — açúcar do Parsing: vira a STRING com o nome do tipo
+             * (ex: `Parsing.string(x, to int)` == `Parsing.string(x, "int")`).
+             * Igual ao interpretador (parser.py). */
+            if (strcmp(t->texto, "to") == 0) {
+                PSToken *tt = espia(p, 1);
+                static const char *TIPOS[] = {"int","float","str","flo","bool","json","list","tup","dict"};
+                int ok = 0;
+                if (tt->texto)
+                    for (size_t i = 0; i < sizeof(TIPOS)/sizeof(TIPOS[0]); i++)
+                        if (strcmp(tt->texto, TIPOS[i]) == 0) { ok = 1; break; }
+                if (!ok) { perro(p, "esperado 'int', 'float' ou 'str' apos 'to'", tt); return NULL; }
+                p->pos += 2;                       /* to <tipo> */
+                PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
+                if (!n) return NULL;
+                n->lit = L_STR;
+                n->texto = dup_tok(p, tt);         /* string com o nome do tipo */
+                return n;
+            }
             /* lambda: `action(params) { ... }` como expressão */
             if ((strcmp(t->texto, "action") == 0 || strcmp(t->texto, "reaction") == 0)
                     && espia(p, 1)->type == T_LPAREN) {

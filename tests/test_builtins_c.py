@@ -2026,3 +2026,10 @@ def test_cor_verde_fstring():
 
 def test_cor_com_interpolacao_justaposta():
     mesmo('x = 7\npost(<blue>"val " {x} " fim")')
+
+
+# ── `to <tipo>` (acucar do Parsing) — vira a string do nome do tipo ─────────
+def test_to_cast_vira_string():
+    mesmo('post(to int)')
+    mesmo('post(to str)')
+    mesmo('post(Parsing.string("  ana  ", to str))')
