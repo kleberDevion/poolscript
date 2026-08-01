@@ -103,6 +103,9 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 O construtor, o `oauth` (rate limit com `poolip`, HTTPS com `tls`) e como ligar
 o servidor têm página própria: **[Jinker/Jinker.md](Jinker/Jinker.md)**.
 
+HTTPS e o aviso **"não seguro"** do navegador (self-signed, mkcert no dev,
+Let's Encrypt em produção): **[tls.md](tls.md)**.
+
 ---
 
 ## Arquivos estáticos

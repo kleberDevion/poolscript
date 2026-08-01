@@ -75,15 +75,31 @@ Sem `poolip: true`, não há limite nenhum (o `rate`/`bloq` são ignorados).
 |---|---|
 | `tls: true` | serve em **https://** em vez de http:// |
 | `cert: "caminho"` | caminho do certificado (opcional) |
+| `key: "caminho"` | caminho da chave privada, quando em arquivo separado |
 
 Se `tls: true` e nenhum `cert`, o jinker procura um `.jinkerTls` no projeto;
-não achando, **gera um certificado self-signed automático** pra uso temporário
-(o terminal avisa que é temporário e que produção precisa de um real, tipo
-Let's Encrypt).
+não achando, **gera um certificado self-signed automático** (v3, com SAN pra
+localhost/127.0.0.1/::1) pra uso temporário — o navegador ainda marca "não
+seguro" porque é self-signed.
+
+Cert e chave podem vir **juntos** num PEM só, ou **separados** (é como
+Let's Encrypt e mkcert entregam: `fullchain.pem` + `privkey.pem`):
 
 ```
+// juntos (cert e chave no mesmo arquivo)
 app = Jinker(__name__, oauth={tls: true, cert: ".jinkerTls"})
+
+// separados (o normal de um cert real)
+app = Jinker(__name__, oauth={tls: true, cert: "fullchain.pem", key: "privkey.pem"})
 ```
+
+Sem `key`, o jinker procura a chave irmã `<base>.key` ao lado do cert (ex:
+`cert.pem` → `cert.key`); não achando, assume que a chave está dentro do próprio
+cert.
+
+**Sumir com o "não seguro" do navegador** (self-signed sempre avisa): use um
+cert confiável — **mkcert** no dev, **Let's Encrypt** em produção. Receita
+passo a passo: **[tls.md](../tls.md)**.
 
 ---
 
