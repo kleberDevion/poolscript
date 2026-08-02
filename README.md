@@ -1,4 +1,4 @@
-# 🏊 PoolScript
+# PoolScript
 
 PoolScript é uma linguagem de programação **híbrida (dinâmica/estática)** que mistura a legibilidade do Python com a estrutura de blocos do JS/C. Esta é a implementação de referência do interpretador, escrita em Python puro (sem dependências externas obrigatórias).
 
@@ -284,7 +284,7 @@ tests/      ← suíte pytest
 
 ---
 
-## 🆕 v0.3.0 — Novos built-ins
+## v0.3.0 — Novos built-ins
 
 ### Built-ins globais (sem import)
 - `open(path, mode)` — abre arquivo. Modo: `r`, `w`, `a`, `rb`, `wb`...
