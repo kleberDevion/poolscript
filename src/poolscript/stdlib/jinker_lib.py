@@ -1063,11 +1063,16 @@ class Jinker:
         return None, None
 
     def __call__(self, debug: bool = False, host: str = "127.0.0.1",
-                 port: int = 2000, reload: bool = False) -> None:
+                 port: int = 2000, reload: bool = False, workers: int = 1) -> None:
         """Inicia o servidor. Chamado no run_selfwith_.
 
         host padrão é 127.0.0.1 (só a própria máquina) — mais seguro. Para expor
-        na rede/LAN, passe host="0.0.0.0" EXPLICITAMENTE, ciente do risco."""
+        na rede/LAN, passe host="0.0.0.0" EXPLICITAMENTE, ciente do risco.
+
+        `workers` é a paralelização multi-processo do binário `pool` (fork de N
+        workers pra usar todos os núcleos). O interpretador é o runtime de
+        referência/dev e roda sempre em UM processo — aceita `workers` só pra o
+        mesmo `.ps` rodar nos dois motores sem mudar."""
         self._debug = debug
         app = self
 

@@ -36,9 +36,11 @@ run_selfwith_("main") {
 | `host` | `"0.0.0.0"` | interface de rede (`"0.0.0.0"` = aceita de qualquer IP; `"127.0.0.1"` = só local) |
 | `port` | `2000` | porta HTTP |
 | `reload` | `false` | reinicia sozinho quando o arquivo `.ps` muda (dev) |
+| `workers` | `1` | nº de processos (prefork). `>1` usa vários núcleos: forka N processos que dividem o socket HTTP. Só no binário `pool`; o interpretador roda sempre em 1. |
 
 Se houver algum `@app.socket(...)`, o servidor WebSocket sobe automaticamente
-na porta **HTTP + 1**.
+na porta **HTTP + 1**. Com `workers>1`, o WebSocket roda **só no worker 0**
+(salas/broadcast num processo só, corretas) — o HTTP é que espalha nos N.
 
 ---
 

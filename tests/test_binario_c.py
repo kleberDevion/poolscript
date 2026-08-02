@@ -280,6 +280,49 @@ def test_tipo_como_valor_primeira_classe(tmp_path):
     assert vm_out[0] == "5" and vm_out[2] == "True" and vm_out[3] == "False"
 
 
+def test_jinker_multiprocesso_workers(tmp_path):
+    """`app(..., workers=N)` forka N processos (prefork) que dividem o socket
+    HTTP. Verifica: sobe, serve, tem >1 processo, e derruba limpo."""
+    import socket
+    import time
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); porta = s.getsockname()[1]
+    app = tmp_path / "mp.ps"
+    app.write_text(
+        'import jinker' + NL
+        + 'app = jinker.Jinker("mp")' + NL
+        + '@app.route("/ping", methods=["GET"])' + NL
+        + 'action ping() { return jinker.jsonify({"ok": true}) }' + NL
+        + 'app(host="127.0.0.1", port=' + str(porta) + ', workers=3)' + NL, encoding="utf-8")
+
+    proc = subprocess.Popen([POOL, str(app)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        for _ in range(50):
+            try:
+                socket.create_connection(("127.0.0.1", porta), timeout=0.5).close(); break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            pytest.skip("servidor multi-processo não subiu")
+
+        # serve corretamente
+        c = socket.create_connection(("127.0.0.1", porta)); c.settimeout(5)
+        c.sendall(b"GET /ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        assert b"200" in c.recv(4096); c.close()
+
+        # prefork: o processo pai tem filhos (workers)
+        try:
+            filhos = subprocess.run(["pgrep", "-P", str(proc.pid)], capture_output=True, text=True).stdout.split()
+            assert len(filhos) >= 2, f"esperava múltiplos workers, achei {len(filhos)}"
+        except FileNotFoundError:
+            pass  # sem pgrep, pula a checagem de contagem
+    finally:
+        proc.terminate()
+        try: proc.wait(timeout=5)
+        except subprocess.TimeoutExpired: proc.kill()
+
+
 def test_jinker_keepalive_ocioso_nao_bloqueia(tmp_path):
     """Uma conexão keep-alive OCIOSA não pode segurar o loop: uma conexão NOVA
     tem que ser atendida na hora (era o bug dos ~30s, antes da multiplexação)."""

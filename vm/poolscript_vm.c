@@ -11990,10 +11990,45 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     char erro[256];
     int fd = ps_jk_listen(host, porta, erro, sizeof(erro));
     if (fd < 0) { if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx); BERRO(vm, "NetworkError", "%s", erro); }
-    /* WebSocket num socket separado em port+1, como o wrapper (thread própria
-     * lá; aqui é o mesmo loop, só outro fd). */
+    /* Multi-processo (prefork): workers>1 forka N processos que dividem o
+     * socket HTTP (o kernel balanceia o accept()). Cada worker tem a PRÓPRIA
+     * VM (o fork copia tudo) — sem thread, sem GC concorrente, sem corrida. O
+     * WebSocket roda só no worker 0 (rooms/broadcast num processo só, corretos;
+     * espalhar WS entre processos exigiria backplane, fora de escopo). */
+    int workers = (n >= 5 && args[4].t == V_INT) ? (int)args[4].as.i : 1;
+    if (workers < 1) workers = 1;
+    if (workers > 256) workers = 256;
+    int sirvo_ws = 1;
+
+    if (workers > 1) {
+        printf("[jinker] multi-processo: %d workers em %s://%s:%d\n", workers, proto, host, porta);
+        fflush(stdout);
+        pid_t kids[256]; int nk = 0, eh_filho = 0;
+        for (int w = 0; w < workers; w++) {
+            pid_t pid = fork();
+            if (pid < 0) break;
+            if (pid == 0) { sirvo_ws = (w == 0); eh_filho = 1; break; }
+            kids[nk++] = pid;
+        }
+        if (!eh_filho) {
+            /* PAI: só supervisiona; Ctrl+C/TERM derruba os filhos. */
+            struct sigaction sp; memset(&sp, 0, sizeof(sp));
+            sp.sa_handler = jk_sigint; sigaction(SIGINT, &sp, NULL); sigaction(SIGTERM, &sp, NULL);
+            g_jk_parar = 0;
+            while (!g_jk_parar) { int st; if (waitpid(-1, &st, 0) < 0 && errno != EINTR) break; }
+            for (int i = 0; i < nk; i++) kill(kids[i], SIGTERM);
+            for (int i = 0; i < nk; i++) { int st; waitpid(kids[i], &st, 0); }
+            close(fd);
+            if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
+            *out = MK_NULL();
+            return 0;
+        }
+        /* FILHO: cai pro loop de servir abaixo. */
+    }
+
+    /* WebSocket num socket separado em port+1 — só quem serve WS abre. */
     int fd_ws = -1;
-    if (j->nsocks > 0) {
+    if (sirvo_ws && j->nsocks > 0) {
         fd_ws = ps_jk_listen(host, porta + 1, erro, sizeof(erro));
         if (fd_ws >= 0) printf("[jinker] websocket rodando em ws://%s:%d\n", host, porta + 1);
     }
@@ -12013,9 +12048,11 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     vm->jk_app = alvo;
 
-    printf("[jinker] servidor rodando em %s://%s:%d\n", proto, host, porta);
-    if (j->poolip_on) printf("[jinker] PoolIp ativo — rate: %ld req/min, ban: %ld dia(s)\n", j->ip_rate, j->ip_bloq);
-    if (j->debug) printf("[jinker] modo debug ativado\n");
+    if (workers == 1) {
+        printf("[jinker] servidor rodando em %s://%s:%d\n", proto, host, porta);
+        if (j->poolip_on) printf("[jinker] PoolIp ativo — rate: %ld req/min, ban: %ld dia(s)\n", j->ip_rate, j->ip_bloq);
+        if (j->debug) printf("[jinker] modo debug ativado\n");
+    }
     fflush(stdout);
 
     struct sigaction sa; memset(&sa, 0, sizeof(sa));
@@ -12145,7 +12182,7 @@ static const MembroMod MOD_JINKER[] = {
 /* despacho de chamada em objetos jinker (usado por OP_CALL/OP_CALL_KW) */
 static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn)
 {
-    if (EH_JINKER(alvo))  { *params = "debug,host,port,reload"; *fn = jk_app_run;  return 1; }
+    if (EH_JINKER(alvo))  { *params = "debug,host,port,reload,workers"; *fn = jk_app_run;  return 1; }
     if (EH_JCORS(alvo))   { *params = "options,origins,permiser"; *fn = jcors_call; return 1; }
     if (EH_JSOCKNS(alvo)) { *params = "path,channel"; *fn = jsockns_call; return 1; }
     if (EH_JCHAN(alvo))   { *params = "forAll"; *fn = jchan_call; return 1; }

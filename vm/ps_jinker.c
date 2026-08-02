@@ -126,6 +126,13 @@ int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
         snprintf(erro, ecap, "listen: %s", strerror(errno));
         close(fd); return -1;
     }
+    /* fd de escuta NÃO-BLOQUEANTE: com multi-processo (prefork) vários workers
+     * acordam no mesmo `poll` (thundering herd) e chamam accept(); um pega, os
+     * outros recebem EAGAIN -> ps_jk_accept devolve NULL e o worker segue, em
+     * vez de travar bloqueado no accept(). A conexão aceita continua bloqueante
+     * (com o SO_RCVTIMEO dela), só o socket de escuta muda. */
+    int fl = fcntl(fd, F_GETFL, 0);
+    if (fl != -1) fcntl(fd, F_SETFL, fl | O_NONBLOCK);
     return fd;
 }
 
