@@ -257,27 +257,33 @@ comum, e hoje a linguagem a proíbe sem dizer por quê.
 
 ## Em aberto
 
-### O motor de regex: lookahead e `\b` ainda faltam (retrovisor/nomeado/flags CORRIGIDOS)
+### O motor de regex — CORRIGIDO (praticamente completo vs `re` do Python)
 
-**Corrigidos** (motor C agora bate com o `re` do Python — `test_regex_recursos_avancados`):
+Fechado nesta leva (motor C bate com o `re` — `test_regex_recursos_avancados`):
 
 ```
-(a)\1  \1..\9    retrovisor — átomo A_BACKREF casa o span já capturado
+(a)\1  \1..\9    retrovisor — A_BACKREF casa o span já capturado
 (?P<nome>a)      grupo nomeado — capturado como numerado (findall/sub batem)
-(?i) (?m) (?s)   flags inline: IGNORECASE (ASCII), MULTILINE, DOTALL
+(?i)(?m)(?s)     flags inline GLOBAIS
+(?i:...)         flags com ESCOPO (por-átomo, carimbadas no parse)
+\b \B \A \Z      âncoras (fronteira de palavra, início/fim de string)
+(?=) (?!)        lookahead / lookahead negativo
+(?<=) (?<!)      lookbehind / negativo (largura fixa em codepoints, como o re)
+IGNORECASE       dobra ASCII + Latin-1 (café/CAFÉ, ção, ñ)
 ```
 
 **Ainda em aberto** (recusados na compilação, nunca casam errado em silêncio):
 
 ```
-(?=a)  (?!a)     lookahead/lookbehind — casar sem consumir e voltar
-\b  \B           fronteira de palavra
-(?i:...)         flags com ESCOPO (só as globais `(?i)` valem)
+(?>...)          grupo atômico
+(?(id)a|b)       condicional
+(?#...)          comentário inline
+[a\D]            \D/\W/\S negado DENTRO de []
+IGNORECASE       fora de ASCII+Latin-1 (grego/cirílico não dobram)
 ```
 
-Limite conhecido do IGNORECASE: dobra só ASCII — `(?i)é` não casa "É" (folding
-Unicode completo ficaria pra depois). O resto (classes, quantificadores, âncoras,
-`\d \w \s`, alternância) bate com o Python, verificado caso a caso.
+O resto (classes, quantificadores gulosos/preguiçosos, alternância, `\d\w\s`)
+bate com o Python, verificado caso a caso.
 
 ### `str`/`int` como valor de primeira classe — CORRIGIDO
 

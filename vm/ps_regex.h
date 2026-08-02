@@ -11,12 +11,16 @@
  * um autômato daria outra resposta em casos como `(a|ab)c`.
  *
  * Suporta: classes, quantificadores (gulosos/preguiçosos), alternância,
- * grupos, âncoras, `\d \w \s` e negações, retrovisor (`\1`..`\9`), grupo
- * nomeado `(?P<n>...)` (tratado como numerado) e flags inline `(?i)`/`(?m)`/
- * `(?s)`. IGNORECASE dobra ASCII (não-ASCII acentuado não dobra).
+ * grupos, âncoras `^ $ \A \Z \b \B`, `\d \w \s` e negações, retrovisor
+ * (`\1`..`\9`), grupo nomeado `(?P<n>...)` (tratado como numerado), flags
+ * inline global e com escopo `(?i)`/`(?m)`/`(?s)`/`(?i:...)`, e
+ * lookahead/lookbehind `(?=)`/`(?!)`/`(?<=)`/`(?<!)` (lookbehind de largura
+ * fixa, como o `re`). IGNORECASE dobra ASCII + Latin-1 (café/CAFÉ); outros
+ * scripts (grego, cirílico) não dobram.
  *
- * O que NÃO suporta, e para com erro em vez de errar em silêncio:
- * lookahead/lookbehind, `\b`, e flags com escopo `(?i:...)`.
+ * O que NÃO suporta, e para com erro em vez de errar em silêncio: grupo
+ * atômico `(?>...)`, condicional `(?(id)...)`, comentário `(?#...)`, e
+ * `\D`/`\W`/`\S` negado DENTRO de `[...]`.
  */
 #ifndef PS_REGEX_H
 #define PS_REGEX_H

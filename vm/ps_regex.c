@@ -13,7 +13,12 @@
  *
  * Um Seq guarda os Quant num array; a alternância é uma lista de Seq. */
 
-typedef enum { A_CHAR, A_QUALQUER, A_CLASSE, A_GRUPO, A_BOL, A_EOL, A_BACKREF } TipoAtomo;
+typedef enum { A_CHAR, A_QUALQUER, A_CLASSE, A_GRUPO, A_BOL, A_EOL, A_BACKREF,
+               A_WORDB,      /* \b (idx_grupo=0) e \B (idx_grupo=1, negado) */
+               A_STARTA,     /* \A — início da string (ignora MULTILINE) */
+               A_ENDZ,       /* \Z — fim da string */
+               A_LOOK        /* lookahead/lookbehind — ver campos em Atomo */
+             } TipoAtomo;
 
 /* flags inline `(?i)`/`(?m)`/`(?s)` — os mesmos do `re` do Python */
 #define RX_I 1   /* IGNORECASE */
@@ -37,10 +42,16 @@ typedef struct {
 
 typedef struct {
     TipoAtomo tipo;
-    unsigned char c;              /* A_CHAR */
+    unsigned int cp;             /* A_CHAR — codepoint (não byte, pra unicode) */
     Classe      classe;           /* A_CLASSE */
-    Alt         *grupo;           /* A_GRUPO */
-    int          idx_grupo;       /* -1 = não capturante */
+    Alt         *grupo;           /* A_GRUPO e A_LOOK (o sub-padrão) */
+    int          idx_grupo;       /* -1 = não capturante; A_WORDB: 0=\b 1=\B */
+    int          look_neg;        /* A_LOOK: 1 = negativo (?! / ?<!) */
+    int          look_atras;      /* A_LOOK: 1 = lookbehind (?<= / ?<!) */
+    int          look_larg;       /* A_LOOK lookbehind: largura fixa em codepoints */
+    int          flags;           /* flags efetivas NESTE átomo (RX_I|RX_M|RX_S),
+                                   * carimbadas no parse — é o que faz `(?i:...)`
+                                   * com escopo funcionar no matcher de continuação */
 } Atomo;
 
 typedef struct {
@@ -252,51 +263,66 @@ static void le_classe(Leitor *l, Atomo *a)
     l->i++;                                   /* passa ']' */
 }
 
+static int larg_fixa_alt(const Alt *a);   /* largura fixa em codepoints, -1 = variável */
+
 static int le_atomo(Leitor *l, Atomo *a)
 {
     if (l->i >= l->n) return 0;
     char c = l->p[l->i];
     a->grupo = NULL;
     a->idx_grupo = -1;
+    a->flags = l->flags;          /* carimba as flags efetivas neste átomo */
+    a->look_neg = a->look_atras = a->look_larg = 0;
     if (c == '(') {
         l->i++;
         int captura = 1;
+        int eh_look = 0, lk_neg = 0, lk_atras = 0;
+        int flags_escopo = 0, restaura_flags = 0, flags_salvo = l->flags;
         if (l->i + 1 < l->n && l->p[l->i] == '?') {
             char esp = l->p[l->i + 1];
             if (esp == 'i' || esp == 'm' || esp == 's') {
-                /* flags inline globais `(?ims)` — sem átomo, aplica ao padrão
-                 * inteiro (como o `re`). Escopo `(?i:...)` é recusado. */
-                l->i++;                          /* passa '?' */
-                while (l->i < l->n && (l->p[l->i]=='i' || l->p[l->i]=='m' || l->p[l->i]=='s')) {
-                    if      (l->p[l->i]=='i') l->flags |= RX_I;
-                    else if (l->p[l->i]=='m') l->flags |= RX_M;
-                    else                       l->flags |= RX_S;
-                    l->i++;
+                /* flags inline: `(?ims)` global (sem átomo) ou `(?ims:...)` com
+                 * escopo (só dentro do grupo). Distinção: ')' vs ':'. */
+                int j = l->i + 1, fl = 0;
+                while (j < l->n && (l->p[j]=='i' || l->p[j]=='m' || l->p[j]=='s')) {
+                    if      (l->p[j]=='i') fl |= RX_I;
+                    else if (l->p[j]=='m') fl |= RX_M;
+                    else                    fl |= RX_S;
+                    j++;
                 }
-                if (l->i >= l->n || l->p[l->i] != ')') { rerro(l, "flag inline invalida (so (?i) (?m) (?s))"); return 0; }
-                l->i++;                          /* passa ')' */
-                return le_atomo(l, a);           /* lê o próximo átomo de verdade */
+                if (j < l->n && l->p[j] == ')') {          /* global */
+                    l->flags |= fl; l->i = j + 1;
+                    return le_atomo(l, a);
+                }
+                if (j < l->n && l->p[j] == ':') {          /* escopo */
+                    captura = 0; flags_escopo = fl; restaura_flags = 1;
+                    l->flags |= fl; l->i = j + 1;
+                } else { rerro(l, "flag inline invalida (so (?i)/(?m)/(?s) e (?i:...))"); return 0; }
             }
-            if (l->p[l->i + 1] == ':') { captura = 0; l->i += 2; }
-            else if (l->p[l->i + 1] == 'P' && l->i + 2 < l->n && l->p[l->i + 2] == '<') {
-                /* grupo nomeado `(?P<nome>...)` — no findall/match/sub o `re`
-                 * trata nomeado igual a numerado, então captura como grupo
-                 * numerado normal. (Acesso por nome exigiria objeto-match.) */
-                l->i += 3;                       /* passa "?P<" */
+            else if (esp == ':') { captura = 0; l->i += 2; }
+            else if (esp == '=') { eh_look = 1; lk_neg = 0; lk_atras = 0; captura = 0; l->i += 2; }
+            else if (esp == '!') { eh_look = 1; lk_neg = 1; lk_atras = 0; captura = 0; l->i += 2; }
+            else if (esp == '<' && l->i + 2 < l->n && (l->p[l->i+2] == '=' || l->p[l->i+2] == '!')) {
+                eh_look = 1; lk_atras = 1; lk_neg = (l->p[l->i+2] == '!'); captura = 0; l->i += 3;
+            }
+            else if (esp == 'P' && l->i + 2 < l->n && l->p[l->i + 2] == '<') {
+                /* grupo nomeado `(?P<nome>...)` — capturado como numerado */
+                l->i += 3;
                 while (l->i < l->n && l->p[l->i] != '>') l->i++;
                 if (l->i >= l->n) { rerro(l, "grupo nomeado sem '>'"); return 0; }
-                l->i++;                          /* passa '>' */
+                l->i++;
             }
-            else { rerro(l, "grupo especial nao suportado (so (?:...) e (?P<nome>...))"); return 0; }
+            else { rerro(l, "grupo especial nao suportado (?:...) (?P<n>...) (?ims:) (?= ?! ?<= ?<!)"); return 0; }
         }
-        a->tipo = A_GRUPO;
+        a->tipo = eh_look ? A_LOOK : A_GRUPO;
+        a->look_neg = lk_neg; a->look_atras = lk_atras;
+        (void)flags_escopo;
         if (captura) {
             if (l->ngrupos + 1 >= RX_MAX_GRUPOS) { rerro(l, "grupos demais"); return 0; }
             a->idx_grupo = ++l->ngrupos;
         }
         a->grupo = le_alt(l);
-        /* Em erro o átomo NÃO entra na sequência, então o libera_seq nunca
-         * chegaria neste Alt — quem abandona, libera. */
+        if (restaura_flags) l->flags = flags_salvo;   /* flags de escopo saem do grupo */
         if (l->falhou) { libera_alt(a->grupo); a->grupo = NULL; return 0; }
         if (l->i >= l->n || l->p[l->i] != ')') {
             rerro(l, "faltou ')'");
@@ -304,6 +330,13 @@ static int le_atomo(Leitor *l, Atomo *a)
             return 0;
         }
         l->i++;
+        if (eh_look && lk_atras) {
+            a->look_larg = larg_fixa_alt(a->grupo);
+            if (a->look_larg < 0) {
+                rerro(l, "lookbehind precisa de largura fixa");
+                libera_alt(a->grupo); a->grupo = NULL; return 0;
+            }
+        }
         return 1;
     }
     if (c == '[') {
@@ -326,18 +359,26 @@ static int le_atomo(Leitor *l, Atomo *a)
             a->idx_grupo = e - '0';
             return 1;
         }
-        if (e == 'b' || e == 'B') { rerro(l, "\\b nao suportado"); return 0; }
+        if (e == 'b' || e == 'B') { a->tipo = A_WORDB; a->idx_grupo = (e == 'B'); return 1; }
+        if (e == 'A') { a->tipo = A_STARTA; return 1; }
+        if (e == 'Z') { a->tipo = A_ENDZ;   return 1; }
         int ok;
         unsigned char v = escape_simples(e, &ok);
         if (!ok) { rerro(l, "escape desconhecido"); return 0; }
-        a->tipo = A_CHAR; a->c = v;
+        a->tipo = A_CHAR; a->cp = v;
         return 1;
     }
     if (c == ')' || c == '|') return 0;        /* fim deste Seq */
     if (c == '*' || c == '+' || c == '?') { rerro(l, "quantificador sem alvo"); return 0; }
-    l->i++;
-    a->tipo = A_CHAR;
-    a->c = (unsigned char)c;
+    /* literal: lê o CODEPOINT inteiro (não um byte), pra `é`/`ção` casarem
+     * como um caractere só — inclusive com quantificador (`é+`) e folding. */
+    {
+        unsigned int cp;
+        int u = cp_le(l->p, l->n, l->i, &cp);
+        l->i += u ? u : 1;
+        a->tipo = A_CHAR;
+        a->cp = u ? cp : (unsigned char)c;
+    }
     return 1;
 }
 
@@ -421,8 +462,9 @@ static void libera_alt(Alt *a);
 static void libera_seq(Seq *s)
 {
     for (int i = 0; i < s->n; i++) {
-        if (s->itens[i].atomo.tipo == A_GRUPO) libera_alt(s->itens[i].atomo.grupo);
-        else if (s->itens[i].atomo.tipo == A_CLASSE) free(s->itens[i].atomo.classe.faixas);
+        TipoAtomo t = s->itens[i].atomo.tipo;
+        if (t == A_GRUPO || t == A_LOOK) libera_alt(s->itens[i].atomo.grupo);
+        else if (t == A_CLASSE) free(s->itens[i].atomo.classe.faixas);
     }
     free(s->itens);
 }
@@ -433,6 +475,38 @@ static void libera_alt(Alt *a)
     for (int i = 0; i < a->n; i++) libera_seq(&a->ramos[i]);
     free(a->ramos);
     free(a);
+}
+
+/* Largura fixa (em CODEPOINTS) de um sub-padrão, pro lookbehind. -1 = variável.
+ * Char/classe/`.` valem 1 codepoint; âncoras 0; grupo recorre; retrovisor e
+ * quantificador variável dão -1 -> lookbehind recusado na compilação. */
+static int larg_fixa_atomo(const Atomo *a);
+static int larg_fixa_alt(const Alt *a)
+{
+    int larg = -1;
+    for (int r = 0; r < a->n; r++) {
+        const Seq *s = &a->ramos[r];
+        int soma = 0;
+        for (int i = 0; i < s->n; i++) {
+            const Quant *q = &s->itens[i];
+            if (q->min != q->max) return -1;
+            int w = larg_fixa_atomo(&q->atomo);
+            if (w < 0) return -1;
+            soma += w * q->min;
+        }
+        if (larg < 0) larg = soma;
+        else if (larg != soma) return -1;
+    }
+    return larg < 0 ? 0 : larg;
+}
+static int larg_fixa_atomo(const Atomo *a)
+{
+    switch (a->tipo) {
+        case A_CHAR: case A_CLASSE: case A_QUALQUER: return 1;   /* 1 codepoint */
+        case A_BOL: case A_EOL: case A_WORDB: case A_STARTA: case A_ENDZ: case A_LOOK: return 0;
+        case A_GRUPO:  return larg_fixa_alt(a->grupo);
+        default:       return -1;   /* A_BACKREF */
+    }
 }
 
 PSRegex *ps_regex_compila(const char *padrao, int len, char *erro, int erro_cap)
@@ -481,15 +555,40 @@ typedef struct {
     int         flags;         /* RX_I | RX_M | RX_S */
 } Estado;
 
-/* Folding ASCII pro IGNORECASE. Não-ASCII passa direto (byte a byte) — o
- * folding Unicode completo do `re` fica de fora, então `(?i)` em acento
- * (É/é) não dobra; é o único ponto onde IGNORECASE pode divergir do Python. */
+/* Folding pro IGNORECASE: ASCII + Latin-1 Supplement (À-Þ<->à-þ), que cobre o
+ * não-ASCII comum (café, ção, ñ). Outros scripts (grego, cirílico) não dobram
+ * — é o único ponto onde IGNORECASE ainda pode divergir do `re`. */
 static unsigned char rx_lower(unsigned char c) { return (c >= 'A' && c <= 'Z') ? (unsigned char)(c + 32) : c; }
+static unsigned int  rx_lower_cp(unsigned int cp)
+{
+    if (cp >= 'A' && cp <= 'Z') return cp + 32;
+    if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) return cp + 0x20;   /* À-Þ -> à-þ */
+    return cp;
+}
 static unsigned int  rx_swap_cp(unsigned int cp)
 {
     if (cp >= 'A' && cp <= 'Z') return cp + 32;
     if (cp >= 'a' && cp <= 'z') return cp - 32;
+    if (cp >= 0xC0 && cp <= 0xDE && cp != 0xD7) return cp + 0x20;   /* maiúscula Latin-1 */
+    if (cp >= 0xE0 && cp <= 0xFE && cp != 0xF7) return cp - 0x20;   /* minúscula Latin-1 */
     return cp;
+}
+
+/* Caractere de palavra (\w): igual ao classe_escape('w') — ASCII alnum + '_'
+ * e qualquer não-ASCII (o \w do Python é Unicode-aware). */
+static int rx_is_word(unsigned int cp)
+{
+    return (cp >= '0' && cp <= '9') || (cp >= 'a' && cp <= 'z')
+        || (cp >= 'A' && cp <= 'Z') || cp == '_' || cp >= 128;
+}
+
+/* Codepoint que TERMINA em `pos` (o caractere logo antes). 0 se pos<=0. */
+static int rx_cp_antes(const char *s, int pos, unsigned int *cp)
+{
+    if (pos <= 0) return 0;
+    int i = pos - 1;
+    while (i > 0 && ((unsigned char)s[i] & 0xC0) == 0x80) i--;   /* volta ao lead byte */
+    return cp_le(s, pos, i, cp);
 }
 
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k);
@@ -517,43 +616,95 @@ static int m_alt(Estado *e, const Alt *a, int pos, const Cont *k)
     return 0;
 }
 
+/* Lookahead `(?=P)`: P casa QUALQUER prefixo a partir de `pos`? Zero-width —
+ * a posição não anda. Restaura fim[0] (o sub-match não é o casamento). */
+static int look_ahead(Estado *e, const Alt *alt, int pos)
+{
+    int sf = e->cap->fim[0], se = e->exigir_fim;
+    e->exigir_fim = 0;
+    int r = m_alt(e, alt, pos, NULL);
+    e->cap->fim[0] = sf; e->exigir_fim = se;
+    return r;
+}
+
+/* Recua `ncp` codepoints a partir de `pos`; devolve o byte inicial, ou -1 se
+ * não houver caracteres suficientes antes. */
+static int rx_recua_cp(const char *s, int pos, int ncp)
+{
+    int i = pos;
+    while (ncp-- > 0) {
+        if (i <= 0) return -1;
+        i--;
+        while (i > 0 && ((unsigned char)s[i] & 0xC0) == 0x80) i--;
+    }
+    return i;
+}
+
+/* Lookbehind `(?<=P)`: P casa EXATAMENTE de `start` até `fim`? Encolhe o `n`
+ * pro sub-padrão não ler além de `fim`, e exige terminar lá. */
+static int look_atras_em(Estado *e, const Alt *alt, int start, int fim)
+{
+    if (start < 0) return 0;
+    int sn = e->n, se = e->exigir_fim, sf0 = e->cap->fim[0];
+    e->n = fim; e->exigir_fim = 1;
+    int r = m_alt(e, alt, start, NULL);
+    e->n = sn; e->exigir_fim = se; e->cap->fim[0] = sf0;
+    return r;
+}
+
 /* Casa um átomo SIMPLES (não-grupo) em `pos`. Devolve bytes consumidos, ou -1. */
 static int casa_simples(Estado *e, const Atomo *a, int pos)
 {
     switch (a->tipo) {
         case A_BOL:
             if (pos == 0) return 0;
-            if ((e->flags & RX_M) && pos > 0 && e->s[pos - 1] == '\n') return 0;  /* MULTILINE */
+            if ((a->flags & RX_M) && pos > 0 && e->s[pos - 1] == '\n') return 0;  /* MULTILINE */
             return -1;
         case A_EOL:
             if (pos == e->n) return 0;
-            if ((e->flags & RX_M) && pos < e->n && e->s[pos] == '\n') return 0;   /* MULTILINE */
+            if ((a->flags & RX_M) && pos < e->n && e->s[pos] == '\n') return 0;   /* MULTILINE */
             return -1;
         case A_QUALQUER: {
             /* consome o CODEPOINT inteiro — um `.` não pode partir UTF-8 no
              * meio. Sem DOTALL não casa '\n'; com DOTALL casa. */
             if (pos >= e->n) return -1;
-            if (!(e->flags & RX_S) && e->s[pos] == '\n') return -1;
+            if (!(a->flags & RX_S) && e->s[pos] == '\n') return -1;
             unsigned int cp;
             int u = cp_le(e->s, e->n, pos, &cp);
             return u ? u : -1;
         }
-        case A_CHAR:
+        case A_CHAR: {
             if (pos >= e->n) return -1;
-            if (e->flags & RX_I)
-                return rx_lower((unsigned char)e->s[pos]) == rx_lower(a->c) ? 1 : -1;
-            return (unsigned char)e->s[pos] == a->c ? 1 : -1;
+            unsigned int cp;
+            int u = cp_le(e->s, e->n, pos, &cp);
+            if (!u) return -1;
+            if (a->flags & RX_I)
+                return rx_lower_cp(cp) == rx_lower_cp(a->cp) ? u : -1;
+            return cp == a->cp ? u : -1;
+        }
         case A_CLASSE: {
             if (pos >= e->n) return -1;
             unsigned int cp;
             int u = cp_le(e->s, e->n, pos, &cp);
             if (!u) return -1;
             int ok = classe_contem(&a->classe, cp);
-            if (!ok && (e->flags & RX_I)) {          /* IGNORECASE: tenta o outro caso */
+            if (!ok && (a->flags & RX_I)) {          /* IGNORECASE: tenta o outro caso */
                 unsigned int alt = rx_swap_cp(cp);
                 if (alt != cp) ok = classe_contem(&a->classe, alt);
             }
             return ok ? u : -1;
+        }
+        case A_STARTA: return pos == 0    ? 0 : -1;   /* \A */
+        case A_ENDZ:   return pos == e->n ? 0 : -1;   /* \Z */
+        case A_WORDB: {                               /* \b (idx 0) / \B (idx 1) */
+            unsigned int cpa = 0, cpb = 0;
+            int tem_a = (pos < e->n) && cp_le(e->s, e->n, pos, &cpa);
+            int tem_b = rx_cp_antes(e->s, pos, &cpb);
+            int wa = tem_a && rx_is_word(cpa);
+            int wb = tem_b && rx_is_word(cpb);
+            int fronteira = (wa != wb);
+            int quer = (a->idx_grupo == 0) ? fronteira : !fronteira;
+            return quer ? 0 : -1;
         }
         case A_BACKREF: {
             /* casa os MESMOS bytes que o grupo referenciado capturou */
@@ -567,7 +718,7 @@ static int casa_simples(Estado *e, const Atomo *a, int pos)
             for (int t = 0; t < len; t++) {
                 unsigned char x = (unsigned char)e->s[pos + t];
                 unsigned char y = (unsigned char)e->s[gi_ini + t];
-                if (e->flags & RX_I) { x = rx_lower(x); y = rx_lower(y); }
+                if (a->flags & RX_I) { x = rx_lower(x); y = rx_lower(y); }
                 if (x != y) return -1;
             }
             return len;
@@ -650,6 +801,16 @@ static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
     if (a->tipo == A_GRUPO) {
         RepGrupo rg = { e, q, s, i, k };
         return m_rep_grupo(&rg, 0, pos);
+    }
+
+    if (a->tipo == A_LOOK) {
+        /* asserção de largura zero: verifica e segue no MESMO pos */
+        int ok = a->look_atras
+                     ? look_atras_em(e, a->grupo, rx_recua_cp(e->s, pos, a->look_larg), pos)
+                     : look_ahead(e, a->grupo, pos);
+        if (a->look_neg) ok = !ok;
+        if (!ok) return 0;
+        return m_seq(e, s, i + 1, pos, k);
     }
 
     /* átomo simples: mede o máximo e volta atrás conforme a ganância */

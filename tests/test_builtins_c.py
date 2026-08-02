@@ -790,24 +790,24 @@ def test_regex_erro(src):
     ambos_falham(src)
 
 
+B = chr(92) + chr(92)   # "\\" no fonte .ps -> uma barra pro motor de regex
+
 @pytest.mark.parametrize("src", [
-    'import regex' + NL + 'post(regex.match("(?=a)", "a"))',      # lookahead
-    'import regex' + NL + 'post(regex.match("(?!a)", "b"))',      # lookahead negativo
-    'import regex' + NL + 'post(regex.match("' + chr(92) + chr(92) + 'ba", "a"))',   # fronteira de palavra
+    'import regex' + NL + 'post(regex.search("(?#coment)abc", "xabc"))',   # comentário inline
+    'import regex' + NL + 'post(regex.match("(?>a)b", "ab"))',             # grupo atômico
+    'import regex' + NL + 'post(regex.match("[a' + B + 'D]", "a"))',       # \\D negado dentro de []
 ])
 def test_regex_construcao_nao_suportada(src):
     """O interpretador (que é o `re` do Python) aceita; o motor em C não.
 
-    Para com erro explícito em vez de casar errado. Ainda abertos: lookahead/
-    lookbehind e `\\b` (retrovisor, grupo nomeado e flags JÁ foram implementados
-    — ver test_regex_recursos_avancados).
+    Para com erro explícito em vez de casar errado. (lookahead/lookbehind, `\\b`,
+    retrovisor, grupo nomeado e flags JÁ foram implementados — ver
+    test_regex_recursos_avancados.)
     """
     via_interpretador(src)                      # o Python resolve
     with pytest.raises(Exception):              # o C recusa, e diz por quê
         via_c(src)
 
-
-B = chr(92) + chr(92)   # "\\" no fonte .ps -> uma barra pro motor de regex
 
 @pytest.mark.parametrize("src", [
     # retrovisor
@@ -817,15 +817,30 @@ B = chr(92) + chr(92)   # "\\" no fonte .ps -> uma barra pro motor de regex
     'import regex' + NL + 'post(regex.sub("(' + B + 'w+)@(' + B + 'w+)", "' + B + '2.' + B + '1", "user@host"))',
     # grupo nomeado (tratado como numerado)
     'import regex' + NL + 'post(regex.findall("(?P<n>' + B + 'd+)", "a1b22c333"))',
-    # flags inline
+    # flags inline global + escopo
     'import regex' + NL + 'post(regex.findall("(?i)ab", "AB ab Ab aB"))',
     'import regex' + NL + 'post(regex.search("(?s)a.b", "a' + B + 'nb"))',
     'import regex' + NL + 'post(regex.findall("(?m)^' + B + 'd+", "12' + B + 'n34' + B + 'n5"))',
-    'import regex' + NL + 'post(regex.match("(?i)abc", "ABC"))',
+    'import regex' + NL + 'post(regex.search("(?i:hello) world", "HELLO world"))',
+    'import regex' + NL + 'post(regex.search("(?i:hello) world", "HELLO WORLD"))',
+    # ancoras
+    'import regex' + NL + 'post(regex.findall("' + B + 'bcat' + B + 'b", "cat category cat"))',
+    'import regex' + NL + 'post(regex.search("' + B + 'Ahi", "hi there"))',
+    'import regex' + NL + 'post(regex.search("end' + B + 'Z", "the end"))',
+    # lookahead / lookbehind (inclusive unicode e combinado)
+    'import regex' + NL + 'post(regex.findall("' + B + 'd+(?=px)", "10px 20em 30px"))',
+    'import regex' + NL + 'post(regex.findall("' + B + 'd+(?!px)", "10px 20em 30px"))',
+    'import regex' + NL + 'post(regex.findall("(?<=@)' + B + 'w+", "a@host b@srv"))',
+    'import regex' + NL + 'post(regex.findall("(?<=' + B + 'w)' + B + 'd", "a1 b2 3c"))',
+    'import regex' + NL + 'post(regex.search("(?<![a-z])cat", "bobcat"))',
+    # IGNORECASE unicode (Latin-1) + literal nao-ASCII com quantificador
+    'import regex' + NL + 'post(regex.search("(?i)caf' + chr(233) + '", "um CAF' + chr(201) + '"))',
+    'import regex' + NL + 'post(regex.findall("' + chr(233) + '+", "caf' + chr(233) + chr(233) + " x" + chr(233) + '"))',
 ])
 def test_regex_recursos_avancados(src):
-    """Retrovisor, grupo nomeado e flags inline `(?ims)`: o motor C bate com
-    o `re` do Python (diferencial)."""
+    """Retrovisor, grupo nomeado, flags (global+escopo), âncoras (\\b/\\A/\\Z),
+    lookahead/lookbehind e IGNORECASE unicode: o motor C bate com o `re` do
+    Python (diferencial)."""
     assert via_c(src) == via_interpretador(src)
 
 
