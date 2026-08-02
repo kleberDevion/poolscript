@@ -12022,54 +12022,90 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     sa.sa_handler = jk_sigint; sigaction(SIGINT, &sa, NULL); sigaction(SIGTERM, &sa, NULL);
     g_jk_parar = 0;
 
-    /* Event loop single-thread: poll no fd HTTP, no fd WS e em TODA conexão WS
-     * viva. Assim várias conexões WS coexistem (salas/broadcast exigem isso)
-     * sem thread — o handler `.ps` roda inline, um evento por vez. */
+    /* Event loop single-thread com MULTIPLEXAÇÃO: poll no fd HTTP, no fd WS, em
+     * toda conexão WS viva E em toda conexão HTTP keep-alive viva. Uma conexão
+     * keep-alive OCIOSA não segura mais o loop (era o bug dos +5s/30s: o loop
+     * ficava bloqueado lendo a próxima requisição dela): agora ela só é lida
+     * quando o poll diz que há dados. O handler `.ps` roda inline, um por vez. */
+    struct HttpConn { PSJkConn *c; char ip[64]; time_t visto; };
+    struct HttpConn *hc = NULL; int nhc = 0, cap_hc = 0;
     struct pollfd *pfd = NULL; int cap_pfd = 0;
     while (!g_jk_parar) {
-        int need = 2 + j->nws;
-        if (need > cap_pfd) { cap_pfd = need + 8; pfd = realloc(pfd, sizeof(struct pollfd) * (size_t)cap_pfd); if (!pfd) break; }
+        int nws0 = j->nws;
+        int need = 2 + nws0 + nhc;
+        if (need > cap_pfd) { cap_pfd = need + 16; pfd = realloc(pfd, sizeof(struct pollfd) * (size_t)cap_pfd); if (!pfd) break; }
         pfd[0].fd = fd; pfd[0].events = POLLIN; pfd[0].revents = 0;
         pfd[1].fd = fd_ws; pfd[1].events = fd_ws >= 0 ? POLLIN : 0; pfd[1].revents = 0;
-        for (int i = 0; i < j->nws; i++) { pfd[2 + i].fd = ps_jk_fd(j->ws[i].conn); pfd[2 + i].events = POLLIN; pfd[2 + i].revents = 0; }
+        for (int i = 0; i < nws0; i++)  { pfd[2 + i].fd = ps_jk_fd(j->ws[i].conn); pfd[2 + i].events = POLLIN; pfd[2 + i].revents = 0; }
+        for (int i = 0; i < nhc; i++)   { pfd[2 + nws0 + i].fd = ps_jk_fd(hc[i].c); pfd[2 + nws0 + i].events = POLLIN; pfd[2 + nws0 + i].revents = 0; }
         int pr = poll(pfd, (nfds_t)need, 500);
-        if (pr <= 0) continue;
+        time_t agora = time(NULL);
 
-        /* mensagens de conexões WS já abertas (de trás pra frente: jk_ws_del
-         * troca o último pro buraco, então iterar decrescente não pula ninguém) */
-        for (int i = j->nws - 1; i >= 0; i--)
-            if (pfd[2 + i].revents & (POLLIN | POLLHUP | POLLERR))
-                jk_ws_processa(vm, j, i);
-
-        /* nova conexão WebSocket (port+1) */
-        if (fd_ws >= 0 && (pfd[1].revents & POLLIN)) {
-            char ip[64] = "";
-            struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
-            if (c) {
-                PSJkReq hr;
-                if (ps_jk_le_request(c, &hr) == 0) { jk_ws_aceita(vm, j, c, &hr); ps_jk_req_solta(&hr); }
-                else ps_jk_close(c);
-            }
-        }
-
-        /* nova conexão HTTP */
-        if (pfd[0].revents & POLLIN) {
-            char ip[64] = "";
-            struct PSJkConn *c = ps_jk_accept(fd, ssl_ctx, ip, sizeof(ip));
-            if (c) {
-                for (;;) {
+        if (pr > 0) {
+            /* conexões HTTP keep-alive vivas: serve UMA requisição por evento e
+             * volta pro poll — nunca bloqueia esperando a próxima. */
+            for (int i = nhc - 1; i >= 0; i--) {
+                short rev = pfd[2 + nws0 + i].revents;
+                if (!rev) continue;
+                int fechar = 0;
+                if (rev & (POLLHUP | POLLERR)) fechar = 1;
+                else {
                     PSJkReq hr;
-                    if (ps_jk_le_request(c, &hr) != 0) break;
-                    int servir = jk_serve_uma(vm, j, c, &hr, ip);
-                    int ka = hr.keep_alive;
-                    ps_jk_req_solta(&hr);
-                    if (!servir || !ka) break;
+                    if (ps_jk_le_request(hc[i].c, &hr) != 0) fechar = 1;
+                    else {
+                        int servir = jk_serve_uma(vm, j, hc[i].c, &hr, hc[i].ip);
+                        int ka = hr.keep_alive;
+                        ps_jk_req_solta(&hr);
+                        hc[i].visto = agora;
+                        if (!servir || !ka) fechar = 1;
+                    }
                 }
-                ps_jk_close(c);
+                if (fechar) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
+            }
+
+            /* mensagens de conexões WS já abertas (decrescente: jk_ws_del troca
+             * o último pro buraco, então não pula ninguém) */
+            for (int i = nws0 - 1; i >= 0; i--)
+                if (pfd[2 + i].revents & (POLLIN | POLLHUP | POLLERR))
+                    jk_ws_processa(vm, j, i);
+
+            /* nova conexão WebSocket (port+1) */
+            if (fd_ws >= 0 && (pfd[1].revents & POLLIN)) {
+                char ip[64] = "";
+                struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
+                if (c) {
+                    PSJkReq hr;
+                    if (ps_jk_le_request(c, &hr) == 0) { jk_ws_aceita(vm, j, c, &hr); ps_jk_req_solta(&hr); }
+                    else ps_jk_close(c);
+                }
+            }
+
+            /* nova conexão HTTP: aceita e ENFILEIRA no poll (não serve inline,
+             * senão bloquearia o loop de novo). O 1º request dela é servido no
+             * próximo ciclo, quando o poll marcar a fd como legível. */
+            if (pfd[0].revents & POLLIN) {
+                char ip[64] = "";
+                struct PSJkConn *c = ps_jk_accept(fd, ssl_ctx, ip, sizeof(ip));
+                if (c) {
+                    if (nhc + 1 > cap_hc) {
+                        int novo = cap_hc ? cap_hc * 2 : 32;
+                        struct HttpConn *nh = realloc(hc, sizeof(struct HttpConn) * (size_t)novo);
+                        if (nh) { hc = nh; cap_hc = novo; }
+                    }
+                    if (nhc < cap_hc) { hc[nhc].c = c; snprintf(hc[nhc].ip, sizeof(hc[nhc].ip), "%s", ip); hc[nhc].visto = agora; nhc++; }
+                    else ps_jk_close(c);   /* estouro: recusa em vez de vazar */
+                }
             }
         }
+
+        /* fecha keep-alive ocioso demais (evita vazar conexão parada) */
+        for (int i = nhc - 1; i >= 0; i--)
+            if (agora - hc[i].visto > 75) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
+
         if (vm->alocado > vm->proximo_gc) gc_coleta(vm);
     }
+    for (int i = 0; i < nhc; i++) ps_jk_close(hc[i].c);
+    free(hc);
     free(pfd);
     while (j->nws > 0) jk_ws_del(j, j->nws - 1);
 

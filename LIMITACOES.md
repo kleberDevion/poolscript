@@ -304,11 +304,14 @@ IDENTIDADE nos dois motores (`str is str`/`int is int` True, cruzados False,
 ### `jinker` e `ws_connect` na VM são single-thread
 
 O servidor `jinker` do binário roda num event loop `poll` de uma thread só (o
-handler `.ps` reentra na VM sem thread nem GC concorrente). Isso atende HTTP e
-WebSocket concorrentes de verdade — salas, broadcast e `emit`/`exclude_self`
-batem com o interpretador —, mas uma requisição HTTP com `keep-alive` segura o
-loop enquanto está sendo servida. Pro alvo da linguagem (API/app pequeno) é
-aceitável; um servidor de altíssima concorrência não é o caso de uso.
+handler `.ps` reentra na VM sem thread nem GC concorrente). Ele **multiplexa**
+o socket de escuta + todas as conexões WS + todas as conexões HTTP keep-alive,
+então conexões ociosas NÃO seguram o loop (bug antigo: uma keep-alive parada
+travava conexões novas por até 30s — corrigido, `test_jinker_keepalive_ocioso_
+nao_bloqueia`). O que ainda vale: como é uma thread só, um **handler lento**
+(query pesada, cálculo longo) bloqueia os outros ENQUANTO roda, e não usa
+múltiplos núcleos. Pro alvo (API/app pequeno-médio) atende; multi-core exigiria
+multi-processo (fork de workers) — trabalho futuro, não impedimento.
 
 O **`ws_connect`** (cliente WebSocket) está implementado no binário — mesmo
 framing do servidor, com a máscara obrigatória do lado cliente. A diferença

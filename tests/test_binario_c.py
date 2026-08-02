@@ -280,6 +280,52 @@ def test_tipo_como_valor_primeira_classe(tmp_path):
     assert vm_out[0] == "5" and vm_out[2] == "True" and vm_out[3] == "False"
 
 
+def test_jinker_keepalive_ocioso_nao_bloqueia(tmp_path):
+    """Uma conexão keep-alive OCIOSA não pode segurar o loop: uma conexão NOVA
+    tem que ser atendida na hora (era o bug dos ~30s, antes da multiplexação)."""
+    import socket
+    import time
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); porta = s.getsockname()[1]
+    app = tmp_path / "srv.ps"
+    app.write_text(
+        'import jinker' + NL
+        + 'app = jinker.Jinker("t")' + NL
+        + '@app.route("/ping", methods=["GET"])' + NL
+        + 'action ping() { return jinker.jsonify({"ok": true}) }' + NL
+        + 'app(host="127.0.0.1", port=' + str(porta) + ')' + NL, encoding="utf-8")
+
+    proc = subprocess.Popen([POOL, str(app)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        # espera subir
+        for _ in range(50):
+            try:
+                socket.create_connection(("127.0.0.1", porta), timeout=0.5).close(); break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            pytest.skip("servidor jinker não subiu")
+
+        # c1: keep-alive, manda 1 request, lê, e fica OCIOSO (não fecha)
+        c1 = socket.create_connection(("127.0.0.1", porta)); c1.settimeout(5)
+        c1.sendall(b"GET /ping HTTP/1.1\r\nHost: x\r\nConnection: keep-alive\r\n\r\n")
+        assert b"200" in c1.recv(4096)
+
+        # c2: conexão NOVA enquanto c1 está ocioso — tem que ser rápida
+        t = time.time()
+        c2 = socket.create_connection(("127.0.0.1", porta)); c2.settimeout(5)
+        c2.sendall(b"GET /ping HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        assert b"200" in c2.recv(4096)
+        dt = time.time() - t
+        c1.close(); c2.close()
+        assert dt < 3.0, f"conexão nova demorou {dt:.1f}s — keep-alive ocioso bloqueou o loop"
+    finally:
+        proc.terminate()
+        try: proc.wait(timeout=5)
+        except subprocess.TimeoutExpired: proc.kill()
+
+
 # ── import de `.ps` ─────────────────────────────────────────────────────────
 
 def test_importa_modulo_vizinho(tmp_path):
