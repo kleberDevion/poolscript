@@ -418,6 +418,34 @@ def test_jinker_keepalive_ocioso_nao_bloqueia(tmp_path):
         except subprocess.TimeoutExpired: proc.kill()
 
 
+def test_import_psl_e_p(tmp_path):
+    """`.psl` e `.p` são extensões válidas — importáveis igual a `.ps`."""
+    (tmp_path / "libx.psl").write_text("action a(n) {" + NL + " return n + 1" + NL + "}" + NL, encoding="utf-8")
+    (tmp_path / "liby.p").write_text("action b(n) {" + NL + " return n * 2" + NL + "}" + NL, encoding="utf-8")
+    uso = tmp_path / "uso.ps"
+    uso.write_text("from libx import a" + NL + "from liby import b" + NL
+                   + "post(a(10), b(10))" + NL, encoding="utf-8")
+    assert saida(str(uso)) == ["11 20"]
+
+
+def test_pkgmgr_instala_psl_e_p(tmp_path):
+    """`psl install` reconhece `.psl` (lib) e `.p` (cmd), não só `.ps`."""
+    home = tmp_path / "h"
+    lib = tmp_path / "somax.psl"
+    lib.write_text("#!lib" + NL + "action soma(a, b) { return a + b }" + NL, encoding="utf-8")
+    cmd = tmp_path / "oi.p"
+    cmd.write_text("#!cmd" + NL + 'post("oi")' + NL, encoding="utf-8")
+    env = {"POOLSCRIPT_HOME": str(home)}
+    assert roda("install", str(lib), env=env).returncode == 0
+    assert roda("install", str(cmd), env=env).returncode == 0
+    listado = roda("list", env=env).stdout
+    assert "somax" in listado and "oi" in listado
+    # a lib instalada (.psl) é importável
+    prog = tmp_path / "u.ps"
+    prog.write_text("import somax" + NL + "post(somax.soma(2, 3))" + NL, encoding="utf-8")
+    assert saida(str(prog), env=env) == ["5"]
+
+
 # ── import de `.ps` ─────────────────────────────────────────────────────────
 
 def test_importa_modulo_vizinho(tmp_path):

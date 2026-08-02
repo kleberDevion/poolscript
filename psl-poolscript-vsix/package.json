@@ -43,7 +43,8 @@
 				],
 				"extensions": [
 					".ps",
-					".psl"
+					".psl",
+					".p"
 				],
 				"configuration": "./language-configuration/language-configuration.json",
 				"icon": {

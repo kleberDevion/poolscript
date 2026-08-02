@@ -1433,8 +1433,12 @@ class Interpreter:
             base_dir = Path(self.filename).parent
             for _ in range(node.level - 1):
                 base_dir = base_dir.parent
-            rel_path = Path(*node.module).with_suffix(".ps")
-            candidate = base_dir / rel_path
+            candidate = base_dir / Path(*node.module).with_suffix(".ps")
+            for _ext in (".ps", ".psl", ".p"):   # extensões válidas da linguagem
+                _c = base_dir / Path(*node.module).with_suffix(_ext)
+                if _c.is_file():
+                    candidate = _c
+                    break
             module_name = ("." * node.level) + ".".join(node.module)
             if not candidate.is_file():
                 raise PoolRuntimeError(
@@ -1457,8 +1461,12 @@ class Interpreter:
         # services/service_ctrl_user.ps resolve para <raiz>/services/controllSmtp.ps,
         # não para services/services/controllSmtp.ps.
         base_dir = self._import_root
-        rel_path = Path(*node.module).with_suffix(".ps")
-        candidate = base_dir / rel_path
+        candidate = base_dir / Path(*node.module).with_suffix(".ps")
+        for _ext in (".ps", ".psl", ".p"):       # extensões válidas da linguagem
+            _c = base_dir / Path(*node.module).with_suffix(_ext)
+            if _c.is_file():
+                candidate = _c
+                break
         if candidate.is_file():
             module_name = ".".join(node.module)
             self._run_imported_file(candidate, node, scope, self._import_root, module_name)

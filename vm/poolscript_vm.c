@@ -14828,6 +14828,8 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
     for (const char *q = p; *q && rl < 510; q++) rel[rl++] = (*q == '.') ? '/' : *q;
     rel[rl] = '\0';
 
+    /* extensões válidas da linguagem — tenta as três em cada local */
+    static const char *EXTS[] = { ".ps", ".psl", ".p" };
     FILE *f;
     if (nivel > 0) {
         char base[512];
@@ -14837,25 +14839,33 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
             if (barra) *barra = '\0';
             else { snprintf(base, sizeof(base), "%s", ".."); }
         }
-        snprintf(saida, cap, "%s/%s.ps", base, rel);
-        if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        for (int e = 0; e < 3; e++) {
+            snprintf(saida, cap, "%s/%s%s", base, rel, EXTS[e]);
+            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        }
         return -1;                              /* relativo não cai pras libs */
     }
 
     /* nível 0: raiz do projeto (dir do entry) */
     if (vm->dir_script[0]) {
-        snprintf(saida, cap, "%s/%s.ps", vm->dir_script, rel);
-        if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        for (int e = 0; e < 3; e++) {
+            snprintf(saida, cap, "%s/%s%s", vm->dir_script, rel, EXTS[e]);
+            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        }
     }
     /* lib instalada — o nome de arquivo usa o nome pontuado como está */
+    char libdir[600];
     const char *over = getenv("POOLSCRIPT_HOME");
-    if (over && *over) snprintf(saida, cap, "%s/libs/%s.ps", over, p);
+    if (over && *over) snprintf(libdir, sizeof(libdir), "%s/libs", over);
     else {
         const char *h = getenv("HOME");
         if (!h) return -1;
-        snprintf(saida, cap, "%s/.poolscript/libs/%s.ps", h, p);
+        snprintf(libdir, sizeof(libdir), "%s/.poolscript/libs", h);
     }
-    if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+    for (int e = 0; e < 3; e++) {
+        snprintf(saida, cap, "%s/%s%s", libdir, p, EXTS[e]);
+        if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+    }
     return -1;
 }
 

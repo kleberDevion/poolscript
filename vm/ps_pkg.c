@@ -89,20 +89,25 @@ static int existe(const char *caminho)
     return stat(caminho, &st) == 0 && S_ISREG(st.st_mode);
 }
 
-/* nome base sem diretório e sem ".ps" */
+/* nome base sem diretório e sem a extensão (.ps / .psl / .p) */
 static void derive_name(const char *target, char *out, size_t cap)
 {
     const char *base = strrchr(target, '/');
     base = base ? base + 1 : target;
     snprintf(out, cap, "%s", base);
     size_t l = strlen(out);
-    if (l > 3 && strcmp(out + l - 3, ".ps") == 0) out[l - 3] = '\0';
+    if      (l > 4 && strcmp(out + l - 4, ".psl") == 0) out[l - 4] = '\0';
+    else if (l > 3 && strcmp(out + l - 3, ".ps")  == 0) out[l - 3] = '\0';
+    else if (l > 2 && strcmp(out + l - 2, ".p")   == 0) out[l - 2] = '\0';
 }
 
+/* arquivo local da linguagem: .ps, .psl ou .p */
 static int termina_em_ps(const char *s)
 {
     size_t l = strlen(s);
-    return l > 3 && strcmp(s + l - 3, ".ps") == 0;
+    return (l > 4 && strcmp(s + l - 4, ".psl") == 0)
+        || (l > 3 && strcmp(s + l - 3, ".ps")  == 0)
+        || (l > 2 && strcmp(s + l - 2, ".p")   == 0);
 }
 
 /* marcador na 1ª linha com conteúdo: "#!lib" -> 1, "#!cmd" -> 0, senão -1 */

@@ -143,17 +143,21 @@ static int cmd_build(void)
     DIR *d = opendir(".");
     if (!d) { fprintf(stderr, "pool: nao consegui abrir a pasta atual\n"); return 1; }
 
-    /* coleta os nomes .ps e ordena (glob("*.ps") do wrapper vem ordenado) */
+    /* coleta os arquivos .ps/.psl/.p e ordena */
     char **nomes = NULL; int n = 0, cap = 0;
     struct dirent *ent;
     while ((ent = readdir(d)) != NULL) {
         size_t l = strlen(ent->d_name);
-        if (l < 3 || strcmp(ent->d_name + l - 3, ".ps") != 0) continue;
+        const char *nm = ent->d_name;
+        int eh = (l > 3 && strcmp(nm + l - 3, ".ps")  == 0)
+              || (l > 4 && strcmp(nm + l - 4, ".psl") == 0)
+              || (l > 2 && strcmp(nm + l - 2, ".p")   == 0);
+        if (!eh) continue;
         if (n == cap) { cap = cap ? cap * 2 : 16; nomes = realloc(nomes, sizeof(char *) * (size_t)cap); }
         nomes[n++] = strdup(ent->d_name);
     }
     closedir(d);
-    if (n == 0) { fprintf(stderr, "nenhum arquivo .ps encontrado na pasta atual\n"); free(nomes); return 1; }
+    if (n == 0) { fprintf(stderr, "nenhum arquivo .ps/.psl/.p encontrado na pasta atual\n"); free(nomes); return 1; }
     for (int i = 0; i < n; i++)          /* ordenação simples (n pequeno) */
         for (int j = i + 1; j < n; j++)
             if (strcmp(nomes[i], nomes[j]) > 0) { char *t = nomes[i]; nomes[i] = nomes[j]; nomes[j] = t; }
