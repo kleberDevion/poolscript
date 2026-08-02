@@ -280,6 +280,55 @@ def test_tipo_como_valor_primeira_classe(tmp_path):
     assert vm_out[0] == "5" and vm_out[2] == "True" and vm_out[3] == "False"
 
 
+def test_jinker_reload_recarrega_ao_mudar(tmp_path):
+    """`app(..., reload=true)` re-executa o processo quando o `.ps` muda (dev).
+    Era um param MORTO no binário; agora vigia o arquivo e recarrega."""
+    import socket
+    import time
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0)); porta = s.getsockname()[1]
+    app = tmp_path / "rl.ps"
+    def escreve(v):
+        app.write_text(
+            'import jinker' + NL
+            + 'app = jinker.Jinker("rl")' + NL
+            + '@app.route("/v", methods=["GET"])' + NL
+            + 'action v() { return jinker.jsonify({"v": "' + v + '"}) }' + NL
+            + 'app(host="127.0.0.1", port=' + str(porta) + ', reload=true)' + NL, encoding="utf-8")
+    def pega():
+        c = socket.create_connection(("127.0.0.1", porta)); c.settimeout(5)
+        c.sendall(b"GET /v HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+        d = c.recv(4096); c.close(); return d
+
+    escreve("A")
+    proc = subprocess.Popen([POOL, str(app)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        for _ in range(50):
+            try: socket.create_connection(("127.0.0.1", porta), timeout=0.5).close(); break
+            except OSError: time.sleep(0.1)
+        else:
+            pytest.skip("servidor não subiu")
+        assert b'"v": "A"' in pega()
+
+        time.sleep(1.1)                 # garante mtime diferente
+        escreve("B_RELOAD")
+        # espera o re-exec pegar o novo arquivo
+        novo = b""
+        for _ in range(60):
+            time.sleep(0.2)
+            try:
+                novo = pega()
+                if b"B_RELOAD" in novo: break
+            except OSError:
+                pass                     # janela do re-exec (porta fecha e reabre)
+        assert b"B_RELOAD" in novo, "reload não recarregou o arquivo alterado"
+    finally:
+        proc.terminate()
+        try: proc.wait(timeout=5)
+        except subprocess.TimeoutExpired: proc.kill()
+
+
 def test_jinker_multiprocesso_workers(tmp_path):
     """`app(..., workers=N)` forka N processos (prefork) que dividem o socket
     HTTP. Verifica: sobe, serve, tem >1 processo, e derruba limpo."""

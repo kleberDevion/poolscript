@@ -12059,6 +12059,17 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     sa.sa_handler = jk_sigint; sigaction(SIGINT, &sa, NULL); sigaction(SIGTERM, &sa, NULL);
     g_jk_parar = 0;
 
+    /* auto-reload (dev): vigia o mtime do .ps de entrada e RE-EXECUTA o processo
+     * quando ele muda. Só single-process (é feature de dev; com workers>1 é prod
+     * e não faz sentido). Antes era um param MORTO no binário. */
+    int reload = (n >= 4 && val_truthy(&args[3]) && workers == 1);
+    time_t src_mtime = 0;
+    if (reload) {
+        struct stat st0;
+        if (vm->nome_script[0] && stat(vm->nome_script, &st0) == 0) src_mtime = st0.st_mtime;
+        printf("[jinker] auto-reload ativado (vigiando %s)\n", vm->nome_script); fflush(stdout);
+    }
+
     /* Event loop single-thread com MULTIPLEXAÇÃO: poll no fd HTTP, no fd WS, em
      * toda conexão WS viva E em toda conexão HTTP keep-alive viva. Uma conexão
      * keep-alive OCIOSA não segura mais o loop (era o bug dos +5s/30s: o loop
@@ -12138,6 +12149,30 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         /* fecha keep-alive ocioso demais (evita vazar conexão parada) */
         for (int i = nhc - 1; i >= 0; i--)
             if (agora - hc[i].visto > 75) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
+
+        /* auto-reload: o .ps mudou -> RE-EXECUTA `pool <script> [args]`. */
+        if (reload) {
+            struct stat st;
+            if (stat(vm->nome_script, &st) == 0 && src_mtime && st.st_mtime != src_mtime) {
+                printf("\n[jinker] %s alterado — recarregando...\n", vm->nome_script); fflush(stdout);
+                for (int i = 0; i < nhc; i++) ps_jk_close(hc[i].c);
+                if (fd >= 0) close(fd);
+                if (fd_ws >= 0) close(fd_ws);
+                char exe[1024]; ssize_t rl = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+                if (rl > 0) {
+                    exe[rl] = '\0';
+                    char **av = malloc(sizeof(char *) * (size_t)(3 + vm->argc_user));
+                    if (av) {
+                        int k = 0; av[k++] = exe; av[k++] = vm->nome_script;
+                        for (int i = 0; i < vm->argc_user; i++) av[k++] = vm->argv_user[i];
+                        av[k] = NULL;
+                        execv(exe, av);   /* só retorna se falhar */
+                    }
+                }
+                fprintf(stderr, "[jinker] falha no re-exec do reload\n");
+                src_mtime = st.st_mtime;   /* evita loop de tentativa */
+            }
+        }
 
         if (vm->alocado > vm->proximo_gc) gc_coleta(vm);
     }

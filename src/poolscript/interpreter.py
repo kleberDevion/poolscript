@@ -820,6 +820,13 @@ class Interpreter:
         return PoolStr(input(str(prompt)))
 
     def run(self, program: Program) -> list[str]:
+        # registra o arquivo de entrada (pro auto-reload do jinker vigiar o .ps
+        # certo, não o entry do interpretador)
+        try:
+            from .stdlib import os_lib as _os_lib
+            _os_lib._set_script_dir(self.filename)
+        except Exception:
+            pass
         try:
             self.exec_program(program, self.globals)
         except ReturnSignal:

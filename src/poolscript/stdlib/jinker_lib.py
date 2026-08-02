@@ -1329,11 +1329,14 @@ class Jinker:
         if debug:
             print(f"[jinker] modo debug ativado")
         if reload:
-            print(f"[jinker] auto-reload ativado")
             import sys
             import os
             import signal
-            watched_file = sys.argv[0] if sys.argv else None
+            # o .ps de entrada — NÃO `sys.argv[0]` (que é o entry do interpretador
+            # e nunca muda: era esse o bug que fazia o reload nunca disparar).
+            from .os_lib import _SCRIPT_FILE
+            watched_file = _SCRIPT_FILE or (sys.argv[0] if sys.argv else None)
+            print(f"[jinker] auto-reload ativado (vigiando {watched_file})")
             last_mtime = os.path.getmtime(watched_file) if watched_file and os.path.isfile(watched_file) else None
 
             def _watch_reload():

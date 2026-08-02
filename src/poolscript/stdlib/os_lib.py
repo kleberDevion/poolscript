@@ -55,14 +55,19 @@ class PoolFile:
         return f"<PoolFile '{self.name}' ({self.size} bytes)>"
 
 
-# Diretório do script .ps em execução — injetado pelo interpreter
+# Diretório e ARQUIVO do script .ps em execução — injetado pelo interpreter
 _SCRIPT_DIR: "Path | None" = None
+_SCRIPT_FILE: "str | None" = None
 
 
 def _set_script_dir(path: str):
-    """Chamado pelo interpreter ao iniciar — define o diretório base."""
-    global _SCRIPT_DIR
+    """Chamado pelo interpreter ao iniciar — define o diretório base e o
+    arquivo de entrada (este último usado pelo auto-reload do jinker)."""
+    global _SCRIPT_DIR, _SCRIPT_FILE
+    if not path or path.startswith("<"):
+        return
     _SCRIPT_DIR = Path(path).resolve().parent
+    _SCRIPT_FILE = str(Path(path).resolve())
 
 
 def _search_roots():
