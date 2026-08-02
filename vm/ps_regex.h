@@ -10,8 +10,13 @@
  * ordem de alternativas, quais grupos ficam preenchidos) é o requisito —
  * um autômato daria outra resposta em casos como `(a|ab)c`.
  *
+ * Suporta: classes, quantificadores (gulosos/preguiçosos), alternância,
+ * grupos, âncoras, `\d \w \s` e negações, retrovisor (`\1`..`\9`), grupo
+ * nomeado `(?P<n>...)` (tratado como numerado) e flags inline `(?i)`/`(?m)`/
+ * `(?s)`. IGNORECASE dobra ASCII (não-ASCII acentuado não dobra).
+ *
  * O que NÃO suporta, e para com erro em vez de errar em silêncio:
- * lookahead/lookbehind, retrovisor (`\1`), grupo nomeado, flags, `\b`.
+ * lookahead/lookbehind, `\b`, e flags com escopo `(?i:...)`.
  */
 #ifndef PS_REGEX_H
 #define PS_REGEX_H

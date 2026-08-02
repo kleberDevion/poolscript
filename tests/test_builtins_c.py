@@ -794,18 +794,39 @@ def test_regex_erro(src):
     'import regex' + NL + 'post(regex.match("(?=a)", "a"))',      # lookahead
     'import regex' + NL + 'post(regex.match("(?!a)", "b"))',      # lookahead negativo
     'import regex' + NL + 'post(regex.match("' + chr(92) + chr(92) + 'ba", "a"))',   # fronteira de palavra
-    'import regex' + NL + 'post(regex.match("(a)' + chr(92) + chr(92) + '1", "aa"))', # retrovisor
 ])
 def test_regex_construcao_nao_suportada(src):
     """O interpretador (que é o `re` do Python) aceita; o motor em C não.
 
-    Para com erro explícito em vez de casar errado. Está catalogado como
-    aberto em LIMITACOES.md — implementar exige o motor guardar posição para
-    voltar (lookahead) ou o texto casado por grupo (retrovisor).
+    Para com erro explícito em vez de casar errado. Ainda abertos: lookahead/
+    lookbehind e `\\b` (retrovisor, grupo nomeado e flags JÁ foram implementados
+    — ver test_regex_recursos_avancados).
     """
     via_interpretador(src)                      # o Python resolve
     with pytest.raises(Exception):              # o C recusa, e diz por quê
         via_c(src)
+
+
+B = chr(92) + chr(92)   # "\\" no fonte .ps -> uma barra pro motor de regex
+
+@pytest.mark.parametrize("src", [
+    # retrovisor
+    'import regex' + NL + 'post(regex.search("(' + B + 'w+) ' + B + '1", "hello hello"))',
+    'import regex' + NL + 'post(regex.search("(' + B + 'w+) ' + B + '1", "hello world"))',
+    'import regex' + NL + 'post(regex.findall("(a)(b)' + B + '2' + B + '1", "abba x abba"))',
+    'import regex' + NL + 'post(regex.sub("(' + B + 'w+)@(' + B + 'w+)", "' + B + '2.' + B + '1", "user@host"))',
+    # grupo nomeado (tratado como numerado)
+    'import regex' + NL + 'post(regex.findall("(?P<n>' + B + 'd+)", "a1b22c333"))',
+    # flags inline
+    'import regex' + NL + 'post(regex.findall("(?i)ab", "AB ab Ab aB"))',
+    'import regex' + NL + 'post(regex.search("(?s)a.b", "a' + B + 'nb"))',
+    'import regex' + NL + 'post(regex.findall("(?m)^' + B + 'd+", "12' + B + 'n34' + B + 'n5"))',
+    'import regex' + NL + 'post(regex.match("(?i)abc", "ABC"))',
+])
+def test_regex_recursos_avancados(src):
+    """Retrovisor, grupo nomeado e flags inline `(?ims)`: o motor C bate com
+    o `re` do Python (diferencial)."""
+    assert via_c(src) == via_interpretador(src)
 
 
 def test_regex_catastrofica_para_em_vez_de_travar():

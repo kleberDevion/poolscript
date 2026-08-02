@@ -257,22 +257,27 @@ comum, e hoje a linguagem a proíbe sem dizer por quê.
 
 ## Em aberto
 
-### O motor de regex não faz lookahead nem retrovisor
+### O motor de regex: lookahead e `\b` ainda faltam (retrovisor/nomeado/flags CORRIGIDOS)
 
-O `re` do Python aceita, o motor em C recusa com erro explícito:
+**Corrigidos** (motor C agora bate com o `re` do Python — `test_regex_recursos_avancados`):
 
 ```
-(?=a)  (?!a)     lookahead — precisa casar sem consumir e voltar
+(a)\1  \1..\9    retrovisor — átomo A_BACKREF casa o span já capturado
+(?P<nome>a)      grupo nomeado — capturado como numerado (findall/sub batem)
+(?i) (?m) (?s)   flags inline: IGNORECASE (ASCII), MULTILINE, DOTALL
+```
+
+**Ainda em aberto** (recusados na compilação, nunca casam errado em silêncio):
+
+```
+(?=a)  (?!a)     lookahead/lookbehind — casar sem consumir e voltar
 \b  \B           fronteira de palavra
-(a)\1            retrovisor — precisa guardar o TEXTO casado por grupo
-(?P<nome>a)      grupo nomeado
-flags            IGNORECASE, MULTILINE, DOTALL
+(?i:...)         flags com ESCOPO (só as globais `(?i)` valem)
 ```
 
-Nada disso casa errado em silêncio: o padrão é recusado na compilação. O
-resto (classes, quantificadores gulosos e preguiçosos, alternância, grupos,
-âncoras, `\d \w \s` e suas negações) bate com o Python, verificado caso a
-caso contra o próprio `re`.
+Limite conhecido do IGNORECASE: dobra só ASCII — `(?i)é` não casa "É" (folding
+Unicode completo ficaria pra depois). O resto (classes, quantificadores, âncoras,
+`\d \w \s`, alternância) bate com o Python, verificado caso a caso.
 
 ### `str`/`int` como valor de primeira classe — CORRIGIDO
 

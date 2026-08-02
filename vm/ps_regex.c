@@ -13,7 +13,12 @@
  *
  * Um Seq guarda os Quant num array; a alternância é uma lista de Seq. */
 
-typedef enum { A_CHAR, A_QUALQUER, A_CLASSE, A_GRUPO, A_BOL, A_EOL } TipoAtomo;
+typedef enum { A_CHAR, A_QUALQUER, A_CLASSE, A_GRUPO, A_BOL, A_EOL, A_BACKREF } TipoAtomo;
+
+/* flags inline `(?i)`/`(?m)`/`(?s)` — os mesmos do `re` do Python */
+#define RX_I 1   /* IGNORECASE */
+#define RX_M 2   /* MULTILINE  */
+#define RX_S 4   /* DOTALL     */
 
 typedef struct Alt Alt;
 
@@ -57,6 +62,7 @@ struct Alt {
 struct PSRegex {
     Alt *raiz;
     int  ngrupos;
+    int  flags;      /* RX_I | RX_M | RX_S */
 };
 
 /* ── construção ──────────────────────────────────────────────────────────── */
@@ -68,6 +74,7 @@ typedef struct {
     char       *erro;
     int         erro_cap;
     int         falhou;
+    int         flags;       /* acumula as flags inline `(?i)` etc. */
 } Leitor;
 
 static void rerro(Leitor *l, const char *msg)
@@ -255,8 +262,32 @@ static int le_atomo(Leitor *l, Atomo *a)
         l->i++;
         int captura = 1;
         if (l->i + 1 < l->n && l->p[l->i] == '?') {
+            char esp = l->p[l->i + 1];
+            if (esp == 'i' || esp == 'm' || esp == 's') {
+                /* flags inline globais `(?ims)` — sem átomo, aplica ao padrão
+                 * inteiro (como o `re`). Escopo `(?i:...)` é recusado. */
+                l->i++;                          /* passa '?' */
+                while (l->i < l->n && (l->p[l->i]=='i' || l->p[l->i]=='m' || l->p[l->i]=='s')) {
+                    if      (l->p[l->i]=='i') l->flags |= RX_I;
+                    else if (l->p[l->i]=='m') l->flags |= RX_M;
+                    else                       l->flags |= RX_S;
+                    l->i++;
+                }
+                if (l->i >= l->n || l->p[l->i] != ')') { rerro(l, "flag inline invalida (so (?i) (?m) (?s))"); return 0; }
+                l->i++;                          /* passa ')' */
+                return le_atomo(l, a);           /* lê o próximo átomo de verdade */
+            }
             if (l->p[l->i + 1] == ':') { captura = 0; l->i += 2; }
-            else { rerro(l, "grupo especial nao suportado (so (?:...))"); return 0; }
+            else if (l->p[l->i + 1] == 'P' && l->i + 2 < l->n && l->p[l->i + 2] == '<') {
+                /* grupo nomeado `(?P<nome>...)` — no findall/match/sub o `re`
+                 * trata nomeado igual a numerado, então captura como grupo
+                 * numerado normal. (Acesso por nome exigiria objeto-match.) */
+                l->i += 3;                       /* passa "?P<" */
+                while (l->i < l->n && l->p[l->i] != '>') l->i++;
+                if (l->i >= l->n) { rerro(l, "grupo nomeado sem '>'"); return 0; }
+                l->i++;                          /* passa '>' */
+            }
+            else { rerro(l, "grupo especial nao suportado (so (?:...) e (?P<nome>...))"); return 0; }
         }
         a->tipo = A_GRUPO;
         if (captura) {
@@ -289,7 +320,12 @@ static int le_atomo(Leitor *l, Atomo *a)
         unsigned char e = (unsigned char)l->p[l->i++];
         memset(&a->classe, 0, sizeof(a->classe));
         if (classe_escape(e, &a->classe)) { a->tipo = A_CLASSE; return 1; }
-        if (e >= '1' && e <= '9') { rerro(l, "retrovisor (\\1) nao suportado"); return 0; }
+        if (e >= '1' && e <= '9') {           /* retrovisor `\1`..`\9` */
+            if (e - '0' > l->ngrupos) { rerro(l, "referencia a grupo inexistente"); return 0; }
+            a->tipo = A_BACKREF;
+            a->idx_grupo = e - '0';
+            return 1;
+        }
         if (e == 'b' || e == 'B') { rerro(l, "\\b nao suportado"); return 0; }
         int ok;
         unsigned char v = escape_simples(e, &ok);
@@ -401,7 +437,7 @@ static void libera_alt(Alt *a)
 
 PSRegex *ps_regex_compila(const char *padrao, int len, char *erro, int erro_cap)
 {
-    Leitor l = { padrao, len, 0, 0, erro, erro_cap, 0 };
+    Leitor l = { padrao, len, 0, 0, erro, erro_cap, 0, 0 };
     Alt *raiz = le_alt(&l);
     if (!l.falhou && l.i != l.n) {
         /* sobrou ')' sem abrir, ou coisa parecida */
@@ -412,6 +448,7 @@ PSRegex *ps_regex_compila(const char *padrao, int len, char *erro, int erro_cap)
     if (!r) { libera_alt(raiz); return NULL; }
     r->raiz = raiz;
     r->ngrupos = l.ngrupos;
+    r->flags = l.flags;
     return r;
 }
 
@@ -441,7 +478,19 @@ typedef struct {
     long        passos;
     int         estourou;
     int         exigir_fim;    /* fullmatch: só aceita terminando em n */
+    int         flags;         /* RX_I | RX_M | RX_S */
 } Estado;
+
+/* Folding ASCII pro IGNORECASE. Não-ASCII passa direto (byte a byte) — o
+ * folding Unicode completo do `re` fica de fora, então `(?i)` em acento
+ * (É/é) não dobra; é o único ponto onde IGNORECASE pode divergir do Python. */
+static unsigned char rx_lower(unsigned char c) { return (c >= 'A' && c <= 'Z') ? (unsigned char)(c + 32) : c; }
+static unsigned int  rx_swap_cp(unsigned int cp)
+{
+    if (cp >= 'A' && cp <= 'Z') return cp + 32;
+    if (cp >= 'a' && cp <= 'z') return cp - 32;
+    return cp;
+}
 
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k);
 static int m_pos_grupo(Estado *e, int pos, const Cont *k);
@@ -472,24 +521,56 @@ static int m_alt(Estado *e, const Alt *a, int pos, const Cont *k)
 static int casa_simples(Estado *e, const Atomo *a, int pos)
 {
     switch (a->tipo) {
-        case A_BOL: return pos == 0 ? 0 : -1;
-        case A_EOL: return pos == e->n ? 0 : -1;
+        case A_BOL:
+            if (pos == 0) return 0;
+            if ((e->flags & RX_M) && pos > 0 && e->s[pos - 1] == '\n') return 0;  /* MULTILINE */
+            return -1;
+        case A_EOL:
+            if (pos == e->n) return 0;
+            if ((e->flags & RX_M) && pos < e->n && e->s[pos] == '\n') return 0;   /* MULTILINE */
+            return -1;
         case A_QUALQUER: {
             /* consome o CODEPOINT inteiro — um `.` não pode partir UTF-8 no
-             * meio. E não casa com '\n', igual ao `re` sem DOTALL. */
-            if (pos >= e->n || e->s[pos] == '\n') return -1;
+             * meio. Sem DOTALL não casa '\n'; com DOTALL casa. */
+            if (pos >= e->n) return -1;
+            if (!(e->flags & RX_S) && e->s[pos] == '\n') return -1;
             unsigned int cp;
             int u = cp_le(e->s, e->n, pos, &cp);
             return u ? u : -1;
         }
         case A_CHAR:
-            return (pos < e->n && (unsigned char)e->s[pos] == a->c) ? 1 : -1;
+            if (pos >= e->n) return -1;
+            if (e->flags & RX_I)
+                return rx_lower((unsigned char)e->s[pos]) == rx_lower(a->c) ? 1 : -1;
+            return (unsigned char)e->s[pos] == a->c ? 1 : -1;
         case A_CLASSE: {
             if (pos >= e->n) return -1;
             unsigned int cp;
             int u = cp_le(e->s, e->n, pos, &cp);
             if (!u) return -1;
-            return classe_contem(&a->classe, cp) ? u : -1;
+            int ok = classe_contem(&a->classe, cp);
+            if (!ok && (e->flags & RX_I)) {          /* IGNORECASE: tenta o outro caso */
+                unsigned int alt = rx_swap_cp(cp);
+                if (alt != cp) ok = classe_contem(&a->classe, alt);
+            }
+            return ok ? u : -1;
+        }
+        case A_BACKREF: {
+            /* casa os MESMOS bytes que o grupo referenciado capturou */
+            int gi = a->idx_grupo;
+            if (gi < 1 || gi >= RX_MAX_GRUPOS) return -1;
+            int gi_ini = e->cap->inicio[gi], gi_fim = e->cap->fim[gi];
+            if (gi_ini < 0 || gi_fim < 0) return -1;   /* grupo não participou */
+            int len = gi_fim - gi_ini;
+            if (len == 0) return 0;
+            if (pos + len > e->n) return -1;
+            for (int t = 0; t < len; t++) {
+                unsigned char x = (unsigned char)e->s[pos + t];
+                unsigned char y = (unsigned char)e->s[gi_ini + t];
+                if (e->flags & RX_I) { x = rx_lower(x); y = rx_lower(y); }
+                if (x != y) return -1;
+            }
+            return len;
         }
         default:
             return -1;
@@ -602,7 +683,7 @@ static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
 {
     for (int inicio = de; inicio <= len; inicio++) {
-        Estado e = { s, len, cap, 0, 0, 0 };
+        Estado e = { s, len, cap, 0, 0, 0, r->flags };
         for (int g = 0; g < RX_MAX_GRUPOS; g++) { cap->inicio[g] = -1; cap->fim[g] = -1; }
         cap->ngrupos = r->ngrupos;
         cap->inicio[0] = inicio;
@@ -614,7 +695,7 @@ int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
 
 int ps_regex_casa_tudo(PSRegex *r, const char *s, int len, RxCaptura *cap)
 {
-    Estado e = { s, len, cap, 0, 0, 1 };
+    Estado e = { s, len, cap, 0, 0, 1, r->flags };
     for (int g = 0; g < RX_MAX_GRUPOS; g++) { cap->inicio[g] = -1; cap->fim[g] = -1; }
     cap->ngrupos = r->ngrupos;
     cap->inicio[0] = 0;
