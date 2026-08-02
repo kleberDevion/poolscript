@@ -12673,6 +12673,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
         case OP_ADD: {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (a.t == V_INT && b.t == V_INT)          stack[sp - 1] = MK_INT(a.as.i + b.as.i);
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d + b.as.d);
             else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i + b.as.d);
@@ -12727,6 +12729,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_SUB: {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (a.t == V_INT && b.t == V_INT)          stack[sp - 1] = MK_INT(a.as.i - b.as.i);
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d - b.as.d);
             else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i - b.as.d);
@@ -12736,6 +12740,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_MUL: {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (a.t == V_INT && b.t == V_INT)          stack[sp - 1] = MK_INT(a.as.i * b.as.i);
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d * b.as.d);
             else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i * b.as.d);
@@ -12763,6 +12769,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_DIV: {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if ((a.t != V_INT && a.t != V_FLOAT) || (b.t != V_INT && b.t != V_FLOAT))
                 ERRO_T(vm, "SomeValueUnexpected", "'/' entre tipos incompativeis");
             double x = (a.t == V_INT) ? (double)a.as.i : a.as.d;
@@ -12773,6 +12781,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_MOD: {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (a.t == V_INT && b.t == V_INT) {
                 if (b.as.i == 0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: integer modulo by zero");
                 int64_t r = a.as.i % b.as.i;
@@ -12801,6 +12811,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 #define CMP(OPNAME, C_OP)                                                     \
         case OPNAME: {                                                        \
             Value b = stack[--sp], a = stack[sp - 1];                         \
+            /* bool conta como int (0/1) — Python: bool é subclasse de int,  \
+             * então `true < 3`, `false < true` valem, igual ao interp. */    \
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }      \
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }      \
             /* Null não se ordena: qualquer `<`, `>`, `<=`, `>=` com Null de  \
              * um dos lados é False — inclusive `Null >= Null`. É o que o     \
              * interpretador faz, e é melhor que erro: `if x > 0` com `x`     \

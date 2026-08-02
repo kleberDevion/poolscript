@@ -65,6 +65,22 @@ def ambos_falham(src):
         via_c(src)
 
 
+@pytest.mark.parametrize("src", [
+    'post(true < 3)',            # bool comparado com int
+    'post(false < true)',        # bool com bool
+    'post(true + 1)',            # bool em aritmética -> int
+    'post(true + true + false)',
+    'post(true * 5, false * 5)',
+    'post((1 < 2) < 3)',         # resultado bool volta pra comparação
+    'post(true - 1, true / 2, true % 2)',
+])
+def test_bool_conta_como_int(src):
+    """Python: bool é subclasse de int. A VM tratava bool como tipo à parte
+    em comparação/aritmética ('tipos incompativeis'); agora coage 0/1 igual
+    ao interp. (achado pela varredura diferencial)"""
+    mesmo(src)
+
+
 # ═════════════════════════ conversão e tipo ═════════════════════════════════
 
 @pytest.mark.parametrize("src", [
