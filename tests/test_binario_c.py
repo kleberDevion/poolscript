@@ -193,6 +193,16 @@ def test_using_nao_mascara_erro_de_aquisicao(tmp_path):
     assert "variavel nao definida: f" not in r.stderr
 
 
+def test_metodo_inexistente_nomeia_o_metodo(tmp_path):
+    """Método que não existe no tipo nomeia o método (paridade com o interp:
+    'membro inexistente: save'), não o genérico 'esse tipo nao tem esse metodo'."""
+    f = tmp_path / "t.ps"
+    f.write_text("u = 5" + NL + 'u.save(".")' + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode == 1
+    assert "membro inexistente: save" in r.stderr
+
+
 # ── import de `.ps` ─────────────────────────────────────────────────────────
 
 def test_importa_modulo_vizinho(tmp_path):

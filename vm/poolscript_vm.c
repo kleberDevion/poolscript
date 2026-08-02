@@ -13810,7 +13810,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             {
                 int tab, mi;
                 if (acha_metodo_valor(alvo, nome, &tab, &mi) != 0)
-                    ERRO_T(vm, "RuntimeError", "esse tipo nao tem esse metodo");
+                    ERRO_TF(vm, "RuntimeError", "membro inexistente: %s", nome);
                 Value base = alvo;
                 /* Número recebe método de string por conversão automática, pra
                  * `(150).isdigit()` valer sem str() na frente. `len` fica de
