@@ -1268,9 +1268,13 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             /* `using <expr> as f { ... }` — abre, roda, fecha. O fechamento é
              * emitido nos DOIS caminhos (fim normal e erro), como o `finally`,
              * porque sub-rotina exigiria opcode de chamada interna. */
-            int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
+            /* Abre e liga o `f` ANTES do try: se a própria aquisição falhar
+             * (ex.: open() com arg inválido), o erro real tem que propagar —
+             * senão a limpeza faria LOAD de um `f` nunca gravado e mascararia
+             * tudo com "variavel nao definida". O try cobre só o corpo. */
             expr(c, u, n->a);
             guarda_nome_modo(c, u, n->texto ? n->texto : "_", 1);
+            int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
             bloco_stmts(c, u, n->b);
             c->dentro_try--;

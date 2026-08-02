@@ -139,6 +139,60 @@ def test_erro_sai_com_codigo_proprio(src, esperado, rc):
     assert esperado in r.stderr
 
 
+# ── traceback completo (call stack) ─────────────────────────────────────────
+
+def test_traceback_call_stack_completo(tmp_path):
+    """Erro não-capturado mostra a pilha inteira, do <module> ao frame que
+    falhou (estilo Python), com arquivo/linha/trecho em cada quadro."""
+    f = tmp_path / "t.ps"
+    f.write_text(
+        "action c(x) {" + NL + " return x + naoexiste" + NL + "}" + NL
+        + "action b(x) {" + NL + " return c(x)" + NL + "}" + NL
+        + "post(b(1))" + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode == 1
+    assert "Traceback" in r.stderr
+    # os três quadros aparecem, na ordem externa->interna
+    i_mod = r.stderr.find("em <module>")
+    i_b   = r.stderr.find("em b")
+    i_c   = r.stderr.find("em c")
+    assert 0 <= i_mod < i_b < i_c
+    assert "variavel nao definida: naoexiste" in r.stderr
+
+
+def test_traceback_atravessa_modulo(tmp_path):
+    (tmp_path / "u.ps").write_text(
+        "action quebra() {" + NL + " return sumiu" + NL + "}" + NL, encoding="utf-8")
+    f = tmp_path / "t.ps"
+    f.write_text("from u import quebra" + NL + "post(quebra())" + NL, encoding="utf-8")
+    r = roda(str(f))
+    assert r.returncode == 1 and "Traceback" in r.stderr
+    assert "u.ps" in r.stderr and "em quebra" in r.stderr
+
+
+def test_using_open_com_mode_kwarg(tmp_path):
+    """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
+    f = tmp_path / "t.ps"
+    f.write_text(
+        'using open("saida.txt", mode="w") as arq:' + NL
+        + '    arq.write("oi")' + NL
+        + '    post("ok")' + NL, encoding="utf-8")
+    assert saida(str(f), cwd=str(tmp_path)) == ["ok"]
+    assert (tmp_path / "saida.txt").read_text() == "oi"
+
+
+def test_using_nao_mascara_erro_de_aquisicao(tmp_path):
+    """Se a expressão do `using` falha, o erro REAL propaga — não vira o
+    enganoso "variavel nao definida: f" da limpeza."""
+    f = tmp_path / "t.ps"
+    f.write_text(
+        'using open("x.txt", argento="w") as f:' + NL
+        + '    f.write("hi")' + NL, encoding="utf-8")
+    r = roda(str(f), cwd=str(tmp_path))
+    assert r.returncode != 0
+    assert "variavel nao definida: f" not in r.stderr
+
+
 # ── import de `.ps` ─────────────────────────────────────────────────────────
 
 def test_importa_modulo_vizinho(tmp_path):

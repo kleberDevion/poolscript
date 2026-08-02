@@ -116,6 +116,21 @@ static int reporta(const PSErroExec *e, const char *origem)
             fprintf(stderr, "MemoryError: %s\n", e->msg);
             return 4;
         default:
+            /* Traceback completo (call stack): do mais externo ao mais interno,
+             * como o Python — a linha do erro fica por último. */
+            if (e->ntb > 0) {
+                fprintf(stderr, "Traceback (ultima chamada por ultimo):\n");
+                for (int i = 0; i < e->ntb; i++) {
+                    const char *arq = e->tb[i].arquivo[0] ? e->tb[i].arquivo : origem;
+                    fprintf(stderr, "  %s, linha %d, em %s\n",
+                            arq, e->tb[i].linha, e->tb[i].nome);
+                    imprime_trecho(arq, e->tb[i].linha);
+                }
+                fprintf(stderr, "%s: %s\n",
+                        e->tipo_nome[0] ? e->tipo_nome : "RuntimeError", e->msg);
+                return 1;
+            }
+            /* sem traceback (ex.: erro antes de rodar): formato de uma linha */
             fprintf(stderr, "%s: %s\n",
                     e->tipo_nome[0] ? e->tipo_nome : "RuntimeError", e->msg);
             if (e->linha > 0)

@@ -708,6 +708,7 @@ typedef struct {
     int       ndefaults;   /* quantos parâmetros finais têm valor padrão */
     char    **param_nomes; /* nome de cada parâmetro — só pra argumento nomeado */
     char     *nome;        /* nome da action — usado na mensagem de erro */
+    char     *arquivo;     /* arquivo-fonte deste proto — pro traceback (ou NULL) */
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
 } Proto;
 
@@ -829,6 +830,10 @@ struct VM_ {
     char    erro[256];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
     int     erro_linha;      /* linha do fonte onde o erro de runtime caiu (0 = ?) */
+    /* Traceback do erro não-capturado: do <module> (mais externo) ao frame que
+     * falhou (mais interno), na ordem em que o Python imprime. */
+    struct { int proto; int linha; } tb[64];
+    int     ntb;
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -12255,7 +12260,7 @@ static Builtin BUILTINS[] = {
     { "removeStart", nativa_remove_start, NULL },
     { "map", nativa_map, NULL },
     { "filter", nativa_filter, NULL },
-    { "open", nativa_open, NULL },
+    { "open", nativa_open, "path,mode,encoding" },
     { "sleep", nativa_sleep, NULL },
     { "gather", nativa_gather, NULL },
     { "input", nativa_input, NULL },
@@ -14161,7 +14166,26 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         /* Procura o `try` mais interno ainda ativo. Restaurar fp/sp/
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
-        if (nh == 0) return -1;
+        if (nh == 0) {
+            /* sem handler: erro não-capturado. Monta o traceback andando a
+             * pilha — chamadores frames[fp0..fp-1] e, por fim, o frame ativo
+             * (p,ip). Assim sai do mais externo (<module>) ao mais interno. */
+            vm->ntb = 0;
+            for (int f = fp0; f < fp && vm->ntb < 63; f++) {
+                Proto *pr = &vm->protos[vm->frames[f].proto];
+                int qip = vm->frames[f].ip;
+                vm->tb[vm->ntb].proto = vm->frames[f].proto;
+                vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
+                                        ? pr->linhas[qip - 2] : 0;
+                vm->ntb++;
+            }
+            if (vm->ntb < 64) {
+                vm->tb[vm->ntb].proto = (int)(p - vm->protos);
+                vm->tb[vm->ntb].linha = vm->erro_linha;
+                vm->ntb++;
+            }
+            return -1;
+        }
         {
             nh--;
             Handler *h = &handlers[nh];
@@ -14197,6 +14221,7 @@ static void libera_vm(VM *vm)
             free(vm->protos[i].linhas);
             free(vm->protos[i].consts);
             free(vm->protos[i].nome);
+            free(vm->protos[i].arquivo);
             if (vm->protos[i].param_nomes) {
                 for (int k = 0; k < vm->protos[i].nparams; k++)
                     free(vm->protos[i].param_nomes[k]);
@@ -14618,6 +14643,9 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao carregar %.200s", nome);
         return -1;
     }
+    /* protos recém-anexados são deste módulo — marca o arquivo pro traceback */
+    for (int32_t i = 0; i < prog->nprotos; i++)
+        if (!vm->protos[bp + i].arquivo) vm->protos[bp + i].arquivo = strdup(abspath);
 
     /* builtins também valem dentro do módulo */
     for (int32_t i = 0; i < prog->nglobais; i++) {
@@ -14768,6 +14796,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     e->tipo = PS_ERRO_NENHUM;
     e->msg[0] = '\0';
     e->linha = e->col = 0;
+    e->ntb = 0;
 
     PSTokenList *toks = ps_lexer_tokenize(fonte, len);
     if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
@@ -14841,6 +14870,11 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria");
         return -1;
     }
+    /* todos os protos carregados aqui são do script principal — marca o arquivo
+     * deles pro traceback (os de módulo importado são marcados ao carregar). */
+    if (caminho)
+        for (int i = 0; i < vm.nprotos; i++)
+            if (!vm.protos[i].arquivo) vm.protos[i].arquivo = strdup(caminho);
 
     /* liga os builtins nativos pelos nomes que o compilador registrou */
     for (int32_t i = 0; i < prog->nglobais; i++) {
@@ -14901,6 +14935,17 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         snprintf(e->msg, sizeof(e->msg), "%s", vm.erro);
         snprintf(e->tipo_nome, sizeof(e->tipo_nome), "%s", vm.erro_tipo);
         e->linha = vm.erro_linha;   /* linha do fonte onde caiu (0 = desconhecida) */
+        /* traduz o traceback (índices de proto -> nome/arquivo/linha) enquanto
+         * a VM ainda está viva. */
+        e->ntb = vm.ntb < 64 ? vm.ntb : 64;
+        for (int i = 0; i < e->ntb; i++) {
+            Proto *pr = &vm.protos[vm.tb[i].proto];
+            snprintf(e->tb[i].nome, sizeof(e->tb[i].nome), "%s",
+                     pr->nome && pr->nome[0] ? pr->nome : "<module>");
+            snprintf(e->tb[i].arquivo, sizeof(e->tb[i].arquivo), "%s",
+                     pr->arquivo ? pr->arquivo : "");
+            e->tb[i].linha = vm.tb[i].linha;
+        }
         libera_vm(&vm);
         return -1;
     }

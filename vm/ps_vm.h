@@ -22,12 +22,23 @@ typedef enum {
     PS_ERRO_MEMORIA
 } PSTipoErro;
 
+/* Um quadro do traceback: função, arquivo e linha. */
+typedef struct {
+    char nome[64];      /* nome da função (ou "<module>") */
+    char arquivo[256];  /* arquivo-fonte do quadro (vazio = desconhecido) */
+    int  linha;
+} PSQuadroTB;
+
 typedef struct {
     PSTipoErro tipo;
     char       msg[256];
     char       tipo_nome[64];  /* nome do erro em runtime — o que o `catch` compara */
     int        linha;
     int        col;
+    /* Traceback do runtime: do mais externo (<module>) ao mais interno, na
+     * ordem do Python. `ntb == 0` quando não há (erro de sintaxe, etc.). */
+    PSQuadroTB tb[64];
+    int        ntb;
 } PSErroExec;
 
 /* Roda o `.ps` inteiro. 0 = sucesso; -1 preenche `e`. */
