@@ -110,7 +110,14 @@ def _cmd_version() -> None:
         version = __version__
     except Exception:
         version = "?"
-    print(f"PoolScript v{version}")
+    # runtime tag: o binário `pool` (VM em C) mostra "[PSVM]"; o interpretador
+    # de referência roda sobre CPython/PyPy e diz onde está hospedado — assim o
+    # `--version` sozinho já revela em qual motor você está.
+    try:
+        from .ps_errors import RUNTIME
+        print(f"PoolScript v{version} [{RUNTIME}]")
+    except Exception:
+        print(f"PoolScript v{version}")
 
 
 def _cmd_help() -> None:

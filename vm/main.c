@@ -27,7 +27,7 @@
 static void ajuda(void)
 {
     printf(
-"PoolScript %s — VM em C (runtime standalone)\n"
+"PoolScript %s — PSVM (VM em C, runtime standalone)\n"
 "\n"
 "Uso:\n"
 "  pool arquivo.ps           Roda um arquivo\n"
@@ -250,7 +250,7 @@ int main(int argc, char **argv)
     const char *cmd = argv[1];
 
     if (!strcmp(cmd, "--version") || !strcmp(cmd, "-V") || !strcmp(cmd, "-v")) {
-        printf("PoolScript %s\n", PS_VERSAO);
+        printf("PoolScript %s [PSVM]\n", PS_VERSAO);
         return 0;
     }
     if (!strcmp(cmd, "--help") || !strcmp(cmd, "-h") || !strcmp(cmd, "help")) {

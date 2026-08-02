@@ -8,7 +8,13 @@ _argv = sys.argv[1:]
 # ── Short-circuit: flags que não precisam carregar o interpretador ────────────
 if _argv and _argv[0] in ("--version", "-V"):
     from . import __version__
-    print(f"PoolScript v{__version__}")
+    # runtime tag: o binário `pool` (PSVM, VM em C) mostra "[PSVM]"; aqui roda o
+    # interpretador de referência sobre CPython/PyPy — o `--version` já revela o motor.
+    try:
+        from .ps_errors import RUNTIME
+        print(f"PoolScript v{__version__} [{RUNTIME}]")
+    except Exception:
+        print(f"PoolScript v{__version__}")
     sys.exit(0)
 
 if _argv and _argv[0] in ("--help", "-h", "help"):

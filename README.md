@@ -7,7 +7,7 @@ mistura a legibilidade do Python com a estrutura de blocos do JS/C — indentaç
 Ela roda em **dois motores que ficam em paridade**:
 
 - **Interpretador em Python** (`src/poolscript/`) — a autoridade semântica, tree-walking, sem dependências obrigatórias.
-- **VM em C** (`vm/`) — o runtime de produção, distribuído como o binário `pool` (e também como extensão CPython). Rápido, sem runtime Python instalado.
+- **PSVM** — a VM em C (`vm/`), o runtime de produção, distribuída como o binário `pool` (e também como extensão CPython). Rápida, sem runtime Python instalado.
 
 Os dois são testados de forma **diferencial**: o mesmo programa tem que produzir
 o mesmo `stdout` **e** o mesmo texto de erro (traceback incluso) nos dois. Se
@@ -342,7 +342,7 @@ src/poolscript/     ← interpretador de referência (Python)
   ├── cli.py          comandos pool/psl
   ├── pkgmgr.py       psl install/uninstall/list/registry
   └── stdlib/         bibliotecas padrão
-vm/                 ← VM em C (binário `pool` + extensão CPython)
+vm/                 ← PSVM: a VM em C (binário `pool` + extensão CPython)
   ├── poolscript_vm.c   compilador + máquina virtual
   ├── ps_regex.c        engine de regex
   ├── ps_pkg.c          resolução de módulos/pacotes
