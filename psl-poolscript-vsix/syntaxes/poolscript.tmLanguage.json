@@ -4,7 +4,8 @@
   "scopeName": "source.poolscript",
   "fileTypes": [
     "ps",
-    "psl"
+    "psl",
+    "p"
   ],
   "patterns": [
     {
