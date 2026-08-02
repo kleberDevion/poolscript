@@ -700,6 +700,7 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 typedef struct {
     int32_t  *code;
     int32_t  *linhas;      /* linha do fonte de cada palavra do code (ou NULL) */
+    int32_t  *colunas;     /* coluna do fonte de cada palavra (ou NULL) */
     int       ncode;
     Value    *consts;
     int       nconsts;
@@ -832,8 +833,9 @@ struct VM_ {
     int     erro_linha;      /* linha do fonte onde o erro de runtime caiu (0 = ?) */
     /* Traceback do erro não-capturado: do <module> (mais externo) ao frame que
      * falhou (mais interno), na ordem em que o Python imprime. */
-    struct { int proto; int linha; } tb[64];
+    struct { int proto; int linha; int col; } tb[64];
     int     ntb;
+    int     erro_col;        /* coluna do fonte onde o erro caiu (0 = ?) */
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -4290,6 +4292,20 @@ static int arq_exige(VM *vm, Value v, const char *quem, PSArquivo **out)
     return 0;
 }
 
+static PSString *novo_bytes(VM *vm, const char *dados, int n);   /* def. abaixo */
+
+/* Devolve o conteúdo lido como BYTES se o arquivo é binário, senão string —
+ * igual ao FileHandle do interp (read() de "rb" dá bytes, de "r" dá str). */
+static int devolve_leitura(VM *vm, SBuf *b, int binario, Value *out)
+{
+    if (!binario) return devolve_sbuf(vm, b, out);
+    PSString *by = novo_bytes(vm, b->b ? b->b : "", b->n);
+    free(b->b);
+    if (!by) MERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(by);
+    return 0;
+}
+
 static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
@@ -4310,7 +4326,7 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (quer > 0 && sb_bytes(&b, pedaco, quer) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
         if (limite >= 0 && b.n >= limite) break;
     }
-    return devolve_sbuf(vm, &b, out);
+    return devolve_leitura(vm, &b, a->binario, out);
 }
 
 static int met_a_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -4326,7 +4342,7 @@ static int met_a_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (sb_bytes(&b, &c, 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
         if (c == '\n') break;              /* a quebra fica na linha, como no Python */
     }
-    return devolve_sbuf(vm, &b, out);
+    return devolve_leitura(vm, &b, a->binario, out);
 }
 
 static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -4348,7 +4364,8 @@ static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (c == '\n') break;
         }
         if (!viu) { free(b.b); break; }
-        PSString *linha = nova_string(vm, b.b ? b.b : "", b.n);
+        PSString *linha = a->binario ? novo_bytes(vm, b.b ? b.b : "", b.n)
+                                     : nova_string(vm, b.b ? b.b : "", b.n);
         free(b.b);
         if (!linha) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
         if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
@@ -4369,6 +4386,12 @@ static int met_a_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (EH_STRING(args[0])) {
         PSString *ss = COMO_STRING(args[0]);
         size_t w = fwrite(ss->chars, 1, (size_t)ss->len, a->f);
+        *out = MK_INT((int64_t)w);
+        return 0;
+    }
+    if (EH_BYTES(args[0])) {                 /* bytes crus (ex.: req.content) */
+        PSString *by = COMO_BYTES(args[0]);
+        size_t w = fwrite(by->chars, 1, (size_t)by->len, a->f);
         *out = MK_INT((int64_t)w);
         return 0;
     }
@@ -4407,10 +4430,54 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+static int cria_pais(const char *caminho);   /* definido mais abaixo */
+
+/* Salva o conteúdo do arquivo num caminho (mesmo contrato dos outros .save():
+ * pasta -> deriva o nome do próprio arquivo). Devolve o caminho final. */
+static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n > 1) MERRO(vm, "SomeValueUnexpected", "save() espera 0 ou 1 argumento");
+    if (n == 1 && !EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera o destino como str");
+    PSArquivo *a;
+    if (arq_exige(vm, alvo, "save", &a) != 0) return -1;
+    if (a->f) fflush(a->f);
+
+    const char *destino = (n == 1) ? COMO_STRING(args[0])->chars : ".";
+    struct stat st;
+    int eh_pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
+                    || (destino[0] && destino[strlen(destino) - 1] == '/')
+                    || (stat(destino, &st) == 0 && S_ISDIR(st.st_mode)));
+    const char *base = strrchr(a->caminho, '/');
+    base = base ? base + 1 : a->caminho;
+    char caminho[1024];
+    if (eh_pasta) snprintf(caminho, sizeof(caminho), "%.500s/%.400s", destino, base);
+    else          snprintf(caminho, sizeof(caminho), "%.1000s", destino);
+
+    /* copia byte-a-byte, só se o destino for outro arquivo */
+    char *rpa = realpath(caminho, NULL), *rpo = realpath(a->caminho, NULL);
+    int mesmo = (rpa && rpo && strcmp(rpa, rpo) == 0);
+    free(rpa); free(rpo);
+    if (!mesmo) {
+        cria_pais(caminho);
+        FILE *src = fopen(a->caminho, "rb");
+        if (!src) MERRO(vm, "IOError", "nao consegui ler '%.180s'", a->caminho);
+        FILE *dst = fopen(caminho, "wb");
+        if (!dst) { fclose(src); MERRO(vm, "IOError", "nao consegui escrever '%.180s'", caminho); }
+        char buf[8192]; size_t r;
+        while ((r = fread(buf, 1, sizeof(buf), src)) > 0) fwrite(buf, 1, r, dst);
+        fclose(src); fclose(dst);
+    }
+    PSString *s = nova_string(vm, caminho, (int)strlen(caminho));
+    if (!s) MERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(s);
+    return 0;
+}
+
 static const MetodoNat METODOS_ARQ[] = {
     { "read", met_a_read, NULL }, { "readline", met_a_readline, NULL },
     { "readlines", met_a_readlines, NULL }, { "write", met_a_write, NULL },
     { "writelines", met_a_writelines, NULL }, { "close", met_a_close, NULL },
+    { "save", met_a_save, NULL },
 };
 
 static int nativa_open(VM *vm, Value *args, int n, Value *out)
@@ -4422,10 +4489,34 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
         if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "open() espera o modo como str");
         modo = COMO_STRING(args[1])->chars;
     }
+    /* Valida o modo como o Python faz — senão um modo inválido ("Rb", "wz")
+     * caía no fopen e virava o enganoso "arquivo nao encontrado". Mensagem
+     * casa com o interp ("valor inválido: invalid mode: '...'"). */
+    {
+        int prim = 0, tb = 0, seen[128] = {0};
+        for (const char *m = modo; *m; m++) {
+            unsigned char ch = (unsigned char)*m;
+            if (ch >= 128 || !strchr("xrwabt+", (int)*m) || seen[ch])
+                BERRO(vm, "SomeValueUnexpected", "valor inválido: invalid mode: '%s'", modo);
+            seen[ch] = 1;
+            if (*m == 'r' || *m == 'w' || *m == 'a' || *m == 'x') prim++;
+            if (*m == 't' || *m == 'b') tb++;
+        }
+        if (prim != 1)
+            BERRO(vm, "SomeValueUnexpected", "valor inválido: Must have exactly one of "
+                  "create/read/write/append mode and at most one plus");
+        if (tb > 1)
+            BERRO(vm, "SomeValueUnexpected", "valor inválido: can't have text and binary mode at once");
+    }
+    /* fopen do C não entende 't'; tira (modo texto já é o padrão) */
+    char cfmodo[8]; int ci = 0;
+    for (const char *m = modo; *m && ci < 7; m++) if (*m != 't') cfmodo[ci++] = *m;
+    cfmodo[ci] = '\0';
+
     /* o 3º argumento é `encoding` no interpretador; aqui tudo é UTF-8 e o
      * valor é aceito e ignorado, pra o mesmo `.ps` rodar nos dois */
     PSString *cam = COMO_STRING(args[0]);
-    FILE *f = fopen(cam->chars, modo);
+    FILE *f = fopen(cam->chars, cfmodo);
     if (!f) BERRO(vm, "IOError", "arquivo nao encontrado: '%s'", cam->chars);
 
     PSArquivo *a = malloc(sizeof(PSArquivo));
@@ -12634,7 +12725,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * interpretador ("variável não definida") — não pode devolver
              * Null calado, senão um typo vira `null` silencioso. */
             if (vm->globals[arg].t == V_UNSET)
-                ERRO_TF(vm, "RuntimeError", "variavel nao definida: %s",
+                ERRO_TF(vm, "RuntimeError", "variável não definida: %s",
                         nome_do_global(vm, arg));
             stack[sp++] = vm->globals[arg];
             break;
@@ -13382,7 +13473,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
             Value g = vm->globals[arg];
             if (g.t == V_UNSET)
-                ERRO_TF(vm, "RuntimeError", "variavel nao definida: %s",
+                ERRO_TF(vm, "RuntimeError", "variável não definida: %s",
                         nome_do_global(vm, arg));
             stack[sp++] = g;
             break;
@@ -14163,25 +14254,32 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * já capturado. */
         if (p && p->linhas && ip >= 2 && (ip - 2) < p->ncode)
             vm->erro_linha = p->linhas[ip - 2];
+        if (p && p->colunas && ip >= 2 && (ip - 2) < p->ncode)
+            vm->erro_col = p->colunas[ip - 2];
         /* Procura o `try` mais interno ainda ativo. Restaurar fp/sp/
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
         if (nh == 0) {
-            /* sem handler: erro não-capturado. Monta o traceback andando a
-             * pilha — chamadores frames[fp0..fp-1] e, por fim, o frame ativo
-             * (p,ip). Assim sai do mais externo (<module>) ao mais interno. */
+            /* sem handler: erro não-capturado. Monta o traceback na MESMA ordem
+             * do interpretador (que é a autoridade): os chamadores do mais
+             * interno (quem chamou a função que estourou) pro mais externo
+             * (<module>), e por fim o frame do erro. A coluna do chamador é a
+             * do início do statement (1ª não-branco), como o interp; a do erro
+             * é a coluna exata da expressão que falhou. */
             vm->ntb = 0;
-            for (int f = fp0; f < fp && vm->ntb < 63; f++) {
+            for (int f = fp - 1; f >= fp0 && vm->ntb < 63; f--) {
                 Proto *pr = &vm->protos[vm->frames[f].proto];
                 int qip = vm->frames[f].ip;
                 vm->tb[vm->ntb].proto = vm->frames[f].proto;
                 vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
                                         ? pr->linhas[qip - 2] : 0;
+                vm->tb[vm->ntb].col = 0;   /* 0 = reporta usa a 1ª não-branco */
                 vm->ntb++;
             }
             if (vm->ntb < 64) {
                 vm->tb[vm->ntb].proto = (int)(p - vm->protos);
                 vm->tb[vm->ntb].linha = vm->erro_linha;
+                vm->tb[vm->ntb].col   = vm->erro_col;
                 vm->ntb++;
             }
             return -1;
@@ -14219,6 +14317,7 @@ static void libera_vm(VM *vm)
         for (int i = 0; i < vm->nprotos; i++) {
             free(vm->protos[i].code);
             free(vm->protos[i].linhas);
+            free(vm->protos[i].colunas);
             free(vm->protos[i].consts);
             free(vm->protos[i].nome);
             free(vm->protos[i].arquivo);
@@ -14367,6 +14466,11 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
             p->linhas = malloc(sizeof(int32_t) * (size_t)o->ncode);
             if (p->linhas) memcpy(p->linhas, o->linhas, sizeof(int32_t) * (size_t)o->ncode);
         }
+        p->colunas = NULL;
+        if (o->colunas && o->ncode > 0) {
+            p->colunas = malloc(sizeof(int32_t) * (size_t)o->ncode);
+            if (p->colunas) memcpy(p->colunas, o->colunas, sizeof(int32_t) * (size_t)o->ncode);
+        }
 
         /* zera antes: se criar string disparar GC, o pool precisa estar
          * num estado marcável */
@@ -14488,6 +14592,11 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         if (o->linhas && o->ncode > 0) {
             d->linhas = malloc(sizeof(int32_t) * (size_t)o->ncode);
             if (d->linhas) memcpy(d->linhas, o->linhas, sizeof(int32_t) * (size_t)o->ncode);
+        }
+        d->colunas = NULL;
+        if (o->colunas && o->ncode > 0) {
+            d->colunas = malloc(sizeof(int32_t) * (size_t)o->ncode);
+            if (d->colunas) memcpy(d->colunas, o->colunas, sizeof(int32_t) * (size_t)o->ncode);
         }
 
         d->nlocals = o->nlocals;
@@ -14945,6 +15054,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             snprintf(e->tb[i].arquivo, sizeof(e->tb[i].arquivo), "%s",
                      pr->arquivo ? pr->arquivo : "");
             e->tb[i].linha = vm.tb[i].linha;
+            e->tb[i].col   = vm.tb[i].col;
         }
         libera_vm(&vm);
         return -1;

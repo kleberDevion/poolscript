@@ -34,6 +34,8 @@ typedef struct {
     int32_t *code;      /* pares [opcode, arg] */
     int32_t *linhas;    /* linha do fonte de cada palavra do code (paralelo) —
                          * pro erro de runtime dizer ONDE aconteceu */
+    int32_t *colunas;   /* coluna do fonte de cada palavra (paralelo a code) —
+                         * pro cursor `^^^` cair na posição certa, igual ao interp */
     int32_t  ncode;
     PSConst *consts;
     int32_t  nconsts;

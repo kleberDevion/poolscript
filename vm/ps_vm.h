@@ -27,6 +27,7 @@ typedef struct {
     char nome[64];      /* nome da função (ou "<module>") */
     char arquivo[256];  /* arquivo-fonte do quadro (vazio = desconhecido) */
     int  linha;
+    int  col;           /* coluna do cursor `^^^` (0 = 1ª não-branco da linha) */
 } PSQuadroTB;
 
 typedef struct {

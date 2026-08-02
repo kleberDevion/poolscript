@@ -61,6 +61,24 @@ class FileHandle:
             self._closed = True
         return None
 
+    def save(self, destino: str = "."):
+        """Salva o conteúdo do arquivo num caminho (como os outros `.save()`):
+        se `destino` é pasta ('.', termina em '/', ou é diretório), o nome vem
+        do próprio arquivo. Devolve o caminho final."""
+        import os
+        import shutil
+        self._f.flush()
+        if destino in (".", "..") or destino.endswith("/") or os.path.isdir(destino):
+            alvo = os.path.join(destino, os.path.basename(self.path))
+        else:
+            alvo = destino
+        if os.path.abspath(alvo) != os.path.abspath(self.path):
+            pai = os.path.dirname(alvo)
+            if pai:
+                os.makedirs(pai, exist_ok=True)
+            shutil.copyfile(self.path, alvo)
+        return alvo
+
     # context manager — habilita `using ... as f`
     def __enter__(self):
         return self

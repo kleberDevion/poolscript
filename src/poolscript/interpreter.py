@@ -1116,17 +1116,19 @@ class Interpreter:
                                 registrar.register(make_handler(action_fn))
                 return None
             if node.__class__ is UsingStmt:
+                # Como o `with` do Python (e como a VM): o corpo roda no ESCOPO
+                # ATUAL — variáveis atribuídas dentro do `using` sobrevivem depois
+                # dele. Sem isto o interp abria um escopo-filho e divergia da VM.
                 resource = self.eval_expr(node.resource, scope)
-                child = Scope(scope)
-                child.define(node.var_name, resource)
+                scope.define(node.var_name, resource)
                 try:
                     if hasattr(resource, "__enter__"):
                         with resource as bound:
-                            child.define(node.var_name, bound)
-                            self.exec_block(node.block, child, create_child=False)
+                            scope.define(node.var_name, bound)
+                            self.exec_block(node.block, scope, create_child=False)
                     else:
                         try:
-                            self.exec_block(node.block, child, create_child=False)
+                            self.exec_block(node.block, scope, create_child=False)
                         finally:
                             if hasattr(resource, "close"):
                                 try:

@@ -79,8 +79,11 @@ static char *le_arquivo(const char *caminho, size_t *tam)
  *     | <a linha de código>
  *     | ^
  * Só quando há linha e o arquivo abre (origem "<-e>"/stdin não tem trecho). */
-static void imprime_trecho(const char *origem, int linha)
+/* Um quadro: "  em <arq>, linha N" + a linha do fonte + o cursor `^^^`. Igual
+ * ao `_fmt_frame` do interpretador. `col<=0` => cursor na 1ª não-branco. */
+static void imprime_quadro(const char *origem, int linha, int col)
 {
+    fprintf(stderr, "  em %s, linha %d\n", origem, linha);
     if (linha <= 0 || !origem || origem[0] == '<') return;
     FILE *f = fopen(origem, "rb");
     if (!f) return;
@@ -90,52 +93,45 @@ static void imprime_trecho(const char *origem, int linha)
         if (++atual != linha) continue;
         size_t l = strlen(buf);
         while (l > 0 && (buf[l-1] == '\n' || buf[l-1] == '\r')) buf[--l] = '\0';
-        int ini = 0; while (buf[ini] == ' ' || buf[ini] == '\t') ini++;
-        fprintf(stderr, "  | %s\n  | %*s^\n", buf, ini, "");
+        int sp;
+        if (col > 0) sp = col - 1;
+        else { sp = 0; while (buf[sp] == ' ' || buf[sp] == '\t') sp++; }
+        fprintf(stderr, "  | %s\n  | %*s^^^\n", buf, sp, "");
         break;
     }
     fclose(f);
 }
 
-/* Erro do usuário sai no formato que o interpretador já usa, pra mensagem
- * não mudar de cara conforme quem executou. */
+/* Erro do usuário sai EXATAMENTE como o interpretador (a autoridade): a
+ * mensagem primeiro, depois o traceback do mais interno ao mais externo, e o
+ * quadro do erro por último. O header só aparece quando há chamadores. */
 static int reporta(const PSErroExec *e, const char *origem)
 {
     switch (e->tipo) {
         case PS_ERRO_SINTAXE:
-            fprintf(stderr, "SyntaxError: %s\n  -> %s, linha %d, coluna %d\n",
-                    e->msg, origem, e->linha, e->col);
-            imprime_trecho(origem, e->linha);
+            fprintf(stderr, "SyntaxError: %s\n", e->msg);
+            imprime_quadro(origem, e->linha, e->col);
             return 2;
         case PS_ERRO_NAO_SUPORTADO:
-            fprintf(stderr, "NotImplementedError: %s\n  -> %s, linha %d, coluna %d\n",
-                    e->msg, origem, e->linha, e->col);
-            imprime_trecho(origem, e->linha);
+            fprintf(stderr, "NotImplementedError: %s\n", e->msg);
+            imprime_quadro(origem, e->linha, e->col);
             return 3;
         case PS_ERRO_MEMORIA:
             fprintf(stderr, "MemoryError: %s\n", e->msg);
             return 4;
         default:
-            /* Traceback completo (call stack): do mais externo ao mais interno,
-             * como o Python — a linha do erro fica por último. */
-            if (e->ntb > 0) {
-                fprintf(stderr, "Traceback (ultima chamada por ultimo):\n");
-                for (int i = 0; i < e->ntb; i++) {
-                    const char *arq = e->tb[i].arquivo[0] ? e->tb[i].arquivo : origem;
-                    fprintf(stderr, "  %s, linha %d, em %s\n",
-                            arq, e->tb[i].linha, e->tb[i].nome);
-                    imprime_trecho(arq, e->tb[i].linha);
-                }
-                fprintf(stderr, "%s: %s\n",
-                        e->tipo_nome[0] ? e->tipo_nome : "RuntimeError", e->msg);
-                return 1;
-            }
-            /* sem traceback (ex.: erro antes de rodar): formato de uma linha */
             fprintf(stderr, "%s: %s\n",
                     e->tipo_nome[0] ? e->tipo_nome : "RuntimeError", e->msg);
-            if (e->linha > 0)
-                fprintf(stderr, "  -> %s, linha %d\n", origem, e->linha);
-            imprime_trecho(origem, e->linha);
+            if (e->ntb > 0) {
+                if (e->ntb > 1)
+                    fprintf(stderr, "\nTraceback (arquivo mais recente por último):\n");
+                for (int i = 0; i < e->ntb; i++) {
+                    const char *arq = e->tb[i].arquivo[0] ? e->tb[i].arquivo : origem;
+                    imprime_quadro(arq, e->tb[i].linha, e->tb[i].col);
+                }
+            } else if (e->linha > 0) {
+                imprime_quadro(origem, e->linha, e->col);
+            }
             return 1;
     }
 }

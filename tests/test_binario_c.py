@@ -142,8 +142,9 @@ def test_erro_sai_com_codigo_proprio(src, esperado, rc):
 # ── traceback completo (call stack) ─────────────────────────────────────────
 
 def test_traceback_call_stack_completo(tmp_path):
-    """Erro não-capturado mostra a pilha inteira, do <module> ao frame que
-    falhou (estilo Python), com arquivo/linha/trecho em cada quadro."""
+    """Erro não-capturado mostra a pilha inteira com arquivo/linha/trecho em
+    cada quadro — e no MESMO formato do interpretador (a autoridade): mensagem
+    primeiro, header, quadros `em <arq>, linha N` + trecho + cursor `^^^`."""
     f = tmp_path / "t.ps"
     f.write_text(
         "action c(x) {" + NL + " return x + naoexiste" + NL + "}" + NL
@@ -151,13 +152,14 @@ def test_traceback_call_stack_completo(tmp_path):
         + "post(b(1))" + NL, encoding="utf-8")
     r = roda(str(f))
     assert r.returncode == 1
-    assert "Traceback" in r.stderr
-    # os três quadros aparecem, na ordem externa->interna
-    i_mod = r.stderr.find("em <module>")
-    i_b   = r.stderr.find("em b")
-    i_c   = r.stderr.find("em c")
-    assert 0 <= i_mod < i_b < i_c
-    assert "variavel nao definida: naoexiste" in r.stderr
+    assert r.stderr.startswith("RuntimeError: variável não definida: naoexiste")
+    assert "Traceback (arquivo mais recente por último):" in r.stderr
+    # os três quadros (linhas 5, 7, 2) aparecem, na ordem do interp
+    i5 = r.stderr.find("linha 5")
+    i7 = r.stderr.find("linha 7")
+    i2 = r.stderr.find("linha 2")
+    assert 0 <= i5 < i7 < i2
+    assert "return x + naoexiste" in r.stderr and "^^^" in r.stderr
 
 
 def test_traceback_atravessa_modulo(tmp_path):
@@ -167,7 +169,42 @@ def test_traceback_atravessa_modulo(tmp_path):
     f.write_text("from u import quebra" + NL + "post(quebra())" + NL, encoding="utf-8")
     r = roda(str(f))
     assert r.returncode == 1 and "Traceback" in r.stderr
-    assert "u.ps" in r.stderr and "em quebra" in r.stderr
+    # o quadro do módulo aponta o arquivo certo (u.ps) e mostra o trecho
+    assert "u.ps" in r.stderr and "return sumiu" in r.stderr
+
+
+def test_traceback_identico_ao_interp(tmp_path):
+    """A prova de paridade: a saída de erro do binário é IGUAL à do interp
+    (a autoridade). Simples e aninhado."""
+    import io
+    from contextlib import redirect_stdout
+    from poolscript import ps_errors as pe
+    from poolscript.interpreter import Interpreter
+    from poolscript.parser import parse_source
+
+    def do_interp(src, path):
+        pe._USE_COLOR = False
+        try:
+            with redirect_stdout(io.StringIO()):
+                Interpreter(source=src, filename=path).run(parse_source(src, path))
+        except BaseException as ex:
+            return ex.format() if hasattr(ex, "format") else str(ex)
+        return ""
+
+    casos = {
+        "simp.ps": "x = 5" + NL + "y = naoexiste" + NL,
+        "nest.ps": ("action c(x) {" + NL + " return x + naoexiste" + NL + "}" + NL
+                    + "action b(x) {" + NL + " return c(x)" + NL + "}" + NL
+                    + "post(b(1))" + NL),
+    }
+    for nome, src in casos.items():
+        f = tmp_path / nome
+        f.write_text(src, encoding="utf-8")
+        # uso real: `pool arquivo.ps` com path relativo, a partir do dir dele —
+        # é assim que os dois mostram o mesmo nome de arquivo.
+        vm_out = roda(nome, cwd=str(tmp_path)).stderr.rstrip("\n")
+        interp_out = do_interp(src, nome).rstrip("\n")
+        assert vm_out == interp_out, f"\n--VM--\n{vm_out}\n--INTERP--\n{interp_out}"
 
 
 def test_using_open_com_mode_kwarg(tmp_path):
