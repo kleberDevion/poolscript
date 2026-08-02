@@ -129,9 +129,16 @@ def main() -> int:
     # metadata dos hovers/completion sai das specs — regenera pra nunca ir
     # stale no pacote (docs_meta.json = builtins+string; stdlib = módulos).
     import subprocess as _sub
+    import os as _os
+    # gen_stdlib_metadata importa o pacote `poolscript` (do repo, em ../src) —
+    # sem isso o gerador falha ("No module named poolscript") e o metadata sai
+    # stale no vsix. Aponta o PYTHONPATH pro src do repo.
+    _env = dict(_os.environ)
+    _src = HERE.parent / "src"
+    _env["PYTHONPATH"] = str(_src) + _os.pathsep + _env.get("PYTHONPATH", "")
     for gen in ("gen_docs_meta.py", "gen_stdlib_metadata.py"):
         try:
-            _sub.run([sys.executable, str(HERE / "bridge" / gen)], check=True)
+            _sub.run([sys.executable, str(HERE / "bridge" / gen)], check=True, env=_env)
         except Exception as e:
             print(f"[aviso] falha ao rodar {gen}: {e} — usando o que já existe")
 

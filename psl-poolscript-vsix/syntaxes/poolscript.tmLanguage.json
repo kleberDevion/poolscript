@@ -242,7 +242,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.poolscript",
-          "match": "\\b(removeStart|enumerate|removeEnd|PoolFile|addStart|reversed|Parsing|addEnd|filter|gather|sorted|input|range|round|sleep|bool|load|open|post|type|abs|bin|chr|flo|hex|int|len|map|max|min|oct|ord|str|sum|zip|id)\\b(?=\\s*(\\(|$))"
+          "match": "\\b(removeStart|enumerate|removeEnd|PoolFile|addStart|reversed|Parsing|addEnd|filter|gather|sorted|input|range|round|sleep|bool|list|load|open|post|type|abs|bin|chr|flo|hex|int|len|map|max|min|oct|ord|str|sum|zip|id)\\b(?=\\s*(\\(|$))"
         }
       ]
     },
@@ -523,7 +523,7 @@
       "patterns": [
         {
           "name": "support.function.stdlib.poolscript",
-          "match": "\\b(ERROR_CORRECT_H|ERROR_CORRECT_L|ERROR_CORRECT_M|ERROR_CORRECT_Q|JinkerResponse|JinkerRequest|RelativePath|MailMessage|MailReader|MailServer|pathFolder|ws_connect|stringify|timestamp|datahora|get_json|loadFile|pathFile|platform|astuple|connect|environ|findall|jsonify|Jinker|QRCode|asdict|asjson|aslist|delete|escape|exists|getenv|ipmach|isfile|remove|rename|render|search|stderr|stdout|chdir|check|crypt|isdir|match|mkdir|parse|patch|query|rmdir|split|today|write|argv|code|copy|cors|exit|hora|make|move|read|size|text|time|warn|cmd|cwd|gen|get|now|put|src|sub|ls)\\b"
+          "match": "\\b(ERROR_CORRECT_H|ERROR_CORRECT_L|ERROR_CORRECT_M|ERROR_CORRECT_Q|JinkerResponse|JinkerRequest|RelativePath|MailMessage|MailReader|MailServer|pathFolder|ws_connect|stringify|timestamp|datahora|get_json|loadFile|pathFile|platform|astuple|connect|environ|findall|jsonify|Jinker|QRCode|asdict|asjson|aslist|delete|escape|exists|getenv|ipmach|isfile|remove|rename|render|search|stderr|stdout|chdir|check|crypt|isdir|match|mkdir|parse|patch|query|rmdir|split|today|write|argv|code|copy|cors|exit|hora|make|move|read|size|text|time|warn|cmd|cwd|gen|get|now|put|run|src|sub|ls)\\b"
         }
       ]
     }

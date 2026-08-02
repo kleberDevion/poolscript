@@ -48,7 +48,12 @@
     {
       "name": "cmd",
       "kind": "function",
-      "detail": "os.cmd(command, capture?) — Executa comando no terminal."
+      "detail": "os.cmd(command, capture?) — Executa comando no terminal COM shell (interpreta ;, |, $, etc)."
+    },
+    {
+      "name": "run",
+      "kind": "function",
+      "detail": "os.run(args, capture?) — Executa um comando SEM shell — cada argumento é separado, então dados do"
     },
     {
       "name": "code",
@@ -275,7 +280,7 @@
     {
       "name": "gen",
       "kind": "function",
-      "detail": "jwt.gen(payload, secret, algorithm?) — Gera um token JWT."
+      "detail": "jwt.gen(payload, secret, algorithm?) — Gera um token JWT. Só HS256."
     },
     {
       "name": "check",
@@ -292,31 +297,31 @@
     {
       "name": "get",
       "kind": "function",
-      "detail": "request.get(url, headers?, body?, timeout?)",
+      "detail": "request.get(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "post",
       "kind": "function",
-      "detail": "request.post(url, headers?, body?, timeout?)",
+      "detail": "request.post(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "put",
       "kind": "function",
-      "detail": "request.put(url, headers?, body?, timeout?)",
+      "detail": "request.put(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "patch",
       "kind": "function",
-      "detail": "request.patch(url, headers?, body?, timeout?)",
+      "detail": "request.patch(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "delete",
       "kind": "function",
-      "detail": "request.delete(url, headers?, body?, timeout?)",
+      "detail": "request.delete(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
@@ -340,31 +345,31 @@
     {
       "name": "get",
       "kind": "function",
-      "detail": "requests.get(url, headers?, body?, timeout?)",
+      "detail": "requests.get(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "post",
       "kind": "function",
-      "detail": "requests.post(url, headers?, body?, timeout?)",
+      "detail": "requests.post(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "put",
       "kind": "function",
-      "detail": "requests.put(url, headers?, body?, timeout?)",
+      "detail": "requests.put(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "patch",
       "kind": "function",
-      "detail": "requests.patch(url, headers?, body?, timeout?)",
+      "detail": "requests.patch(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
       "name": "delete",
       "kind": "function",
-      "detail": "requests.delete(url, headers?, body?, timeout?)",
+      "detail": "requests.delete(url, headers?, body?, timeout?, stream?, max_size?)",
       "returns": "Response"
     },
     {
@@ -583,7 +588,7 @@
     {
       "name": "argv",
       "kind": "property",
-      "detail": "sys.argv — Acesso aos argumentos da linha de comando."
+      "detail": "sys.argv — Argumentos do usuário: `pool arquivo.ps a b` dá [\"a\", \"b\"]."
     },
     {
       "name": "exit",
@@ -897,6 +902,16 @@
     ],
     "Response": [
       {
+        "name": "content_type",
+        "kind": "method",
+        "detail": "Response.content_type(expected) — Valida que o Content-Type da resposta bate com o esperado."
+      },
+      {
+        "name": "decode",
+        "kind": "method",
+        "detail": "Response.decode(encoding?) — Decodifica o corpo com o encoding dado (ex: .decode('latin-1'))."
+      },
+      {
         "name": "get",
         "kind": "method",
         "detail": "Response.get(key) — Header (case-insensitive) ou chave do JSON parseado."
@@ -910,6 +925,11 @@
         "name": "json",
         "kind": "method",
         "detail": "Response.json() — Retorna o body parseado como dict/list Python (None se inválido)."
+      },
+      {
+        "name": "save",
+        "kind": "method",
+        "detail": "Response.save(path?) — Salva o corpo em disco. Se `path` for uma pasta (ex: '.'), o nome do"
       }
     ],
     "WsConnection": [
@@ -961,12 +981,27 @@
       {
         "name": "endswith",
         "kind": "method",
-        "detail": "PoolStr.endswith(suffix) — Return True if the string ends with the specified suffix, False otherwise."
+        "detail": "PoolStr.endswith(suffix) — S.endswith(suffix[, start[, end]]) -> bool"
       },
       {
         "name": "findall",
         "kind": "method",
         "detail": "PoolStr.findall(pattern) — Retorna todas as ocorrências do padrão."
+      },
+      {
+        "name": "format",
+        "kind": "method",
+        "detail": "PoolStr.format(args, kwargs) — `\"{}\".format(Null)` é \"null\", não \"None\"."
+      },
+      {
+        "name": "format_map",
+        "kind": "method",
+        "detail": "PoolStr.format_map(mapping) — S.format_map(mapping) -> str"
+      },
+      {
+        "name": "has",
+        "kind": "method",
+        "detail": "PoolStr.has(sub) — Alias de contains — 'abc'.has('a') → True (consistente com dict/list.has)."
       },
       {
         "name": "isalnum",
@@ -1046,7 +1081,7 @@
       {
         "name": "startswith",
         "kind": "method",
-        "detail": "PoolStr.startswith(prefix) — Return True if the string starts with the specified prefix, False otherwise."
+        "detail": "PoolStr.startswith(prefix) — S.startswith(prefix[, start[, end]]) -> bool"
       },
       {
         "name": "strip",
@@ -1081,7 +1116,7 @@
       {
         "name": "count",
         "kind": "method",
-        "detail": "PoolStr.count — Return the number of non-overlapping occurrences of substring sub in string S[start:end]."
+        "detail": "PoolStr.count — S.count(sub[, start[, end]]) -> int"
       },
       {
         "name": "encode",
@@ -1096,22 +1131,12 @@
       {
         "name": "find",
         "kind": "method",
-        "detail": "PoolStr.find — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
-      },
-      {
-        "name": "format",
-        "kind": "method",
-        "detail": "PoolStr.format(args, kwargs) — Return a formatted version of the string, using substitutions from args and kwargs."
-      },
-      {
-        "name": "format_map",
-        "kind": "method",
-        "detail": "PoolStr.format_map(mapping) — Return a formatted version of the string, using substitutions from mapping."
+        "detail": "PoolStr.find — S.find(sub[, start[, end]]) -> int"
       },
       {
         "name": "index",
         "kind": "method",
-        "detail": "PoolStr.index — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "PoolStr.index — S.index(sub[, start[, end]]) -> int"
       },
       {
         "name": "isascii",
@@ -1131,7 +1156,7 @@
       {
         "name": "isprintable",
         "kind": "method",
-        "detail": "PoolStr.isprintable() — Return True if all characters in the string are printable, False otherwise."
+        "detail": "PoolStr.isprintable() — Return True if the string is printable, False otherwise."
       },
       {
         "name": "istitle",
@@ -1166,12 +1191,12 @@
       {
         "name": "rfind",
         "kind": "method",
-        "detail": "PoolStr.rfind — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "PoolStr.rfind — S.rfind(sub[, start[, end]]) -> int"
       },
       {
         "name": "rindex",
         "kind": "method",
-        "detail": "PoolStr.rindex — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "PoolStr.rindex — S.rindex(sub[, start[, end]]) -> int"
       },
       {
         "name": "rjust",
@@ -1294,7 +1319,7 @@
       {
         "name": "count",
         "kind": "method",
-        "detail": "str.count — Return the number of non-overlapping occurrences of substring sub in string S[start:end]."
+        "detail": "str.count — S.count(sub[, start[, end]]) -> int"
       },
       {
         "name": "encode",
@@ -1304,7 +1329,7 @@
       {
         "name": "endswith",
         "kind": "method",
-        "detail": "str.endswith — Return True if the string ends with the specified suffix, False otherwise."
+        "detail": "str.endswith — S.endswith(suffix[, start[, end]]) -> bool"
       },
       {
         "name": "expandtabs",
@@ -1314,22 +1339,22 @@
       {
         "name": "find",
         "kind": "method",
-        "detail": "str.find — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "str.find — S.find(sub[, start[, end]]) -> int"
       },
       {
         "name": "format",
         "kind": "method",
-        "detail": "str.format(args, kwargs) — Return a formatted version of the string, using substitutions from args and kwargs."
+        "detail": "str.format — S.format(*args, **kwargs) -> str"
       },
       {
         "name": "format_map",
         "kind": "method",
-        "detail": "str.format_map(mapping) — Return a formatted version of the string, using substitutions from mapping."
+        "detail": "str.format_map — S.format_map(mapping) -> str"
       },
       {
         "name": "index",
         "kind": "method",
-        "detail": "str.index — Return the lowest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "str.index — S.index(sub[, start[, end]]) -> int"
       },
       {
         "name": "isalnum",
@@ -1374,7 +1399,7 @@
       {
         "name": "isprintable",
         "kind": "method",
-        "detail": "str.isprintable() — Return True if all characters in the string are printable, False otherwise."
+        "detail": "str.isprintable() — Return True if the string is printable, False otherwise."
       },
       {
         "name": "isspace",
@@ -1439,12 +1464,12 @@
       {
         "name": "rfind",
         "kind": "method",
-        "detail": "str.rfind — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "str.rfind — S.rfind(sub[, start[, end]]) -> int"
       },
       {
         "name": "rindex",
         "kind": "method",
-        "detail": "str.rindex — Return the highest index in S where substring sub is found, such that sub is contained within S[start:end]."
+        "detail": "str.rindex — S.rindex(sub[, start[, end]]) -> int"
       },
       {
         "name": "rjust",
@@ -1479,7 +1504,7 @@
       {
         "name": "startswith",
         "kind": "method",
-        "detail": "str.startswith — Return True if the string starts with the specified prefix, False otherwise."
+        "detail": "str.startswith — S.startswith(prefix[, start[, end]]) -> bool"
       },
       {
         "name": "strip",
@@ -1531,7 +1556,7 @@
       {
         "name": "conjugate",
         "kind": "method",
-        "detail": "int.conjugate() — Returns self, the complex conjugate of any int."
+        "detail": "int.conjugate — Returns self, the complex conjugate of any int."
       },
       {
         "name": "denominator",
@@ -1581,11 +1606,6 @@
         "detail": "float.conjugate() — Return self, the complex conjugate of any float."
       },
       {
-        "name": "from_number",
-        "kind": "method",
-        "detail": "float.from_number(number) — Convert real number to a floating-point number."
-      },
-      {
         "name": "fromhex",
         "kind": "method",
         "detail": "float.fromhex(string) — Create a floating-point number from a hexadecimal string."
@@ -1630,7 +1650,7 @@
       {
         "name": "conjugate",
         "kind": "method",
-        "detail": "bool.conjugate() — Returns self, the complex conjugate of any int."
+        "detail": "bool.conjugate — Returns self, the complex conjugate of any int."
       },
       {
         "name": "denominator",
@@ -1666,6 +1686,63 @@
         "name": "to_bytes",
         "kind": "method",
         "detail": "bool.to_bytes(length?, byteorder?, signed?) — Return an array of bytes representing an integer."
+      }
+    ],
+    "list": [
+      {
+        "name": "append",
+        "kind": "method",
+        "detail": "list.append(object) — Append object to the end of the list."
+      },
+      {
+        "name": "clear",
+        "kind": "method",
+        "detail": "list.clear() — Remove all items from list."
+      },
+      {
+        "name": "copy",
+        "kind": "method",
+        "detail": "list.copy() — Return a shallow copy of the list."
+      },
+      {
+        "name": "count",
+        "kind": "method",
+        "detail": "list.count(value) — Return number of occurrences of value."
+      },
+      {
+        "name": "extend",
+        "kind": "method",
+        "detail": "list.extend(iterable) — Extend list by appending elements from the iterable."
+      },
+      {
+        "name": "index",
+        "kind": "method",
+        "detail": "list.index(value, start?, stop?) — Return first index of value."
+      },
+      {
+        "name": "insert",
+        "kind": "method",
+        "detail": "list.insert(index, object) — Insert object before index."
+      },
+      {
+        "name": "pop",
+        "kind": "method",
+        "detail": "list.pop(index?) — Remove and return item at index (default last)."
+      },
+      {
+        "name": "remove",
+        "kind": "method",
+        "detail": "list.remove(value) — Remove first occurrence of value."
+      },
+      {
+        "name": "reverse",
+        "kind": "method",
+        "detail": "list.reverse() — Reverse *IN PLACE*."
+      },
+      {
+        "name": "sort",
+        "kind": "method",
+        "detail": "list.sort(key?, reverse?) — Sort the list in ascending order and return None."
       }
     ]
   },
@@ -1747,14 +1824,20 @@
     {
       "name": "flo",
       "kind": "class",
-      "detail": "flo(x?) — Convert a string or number to a floating-point number, if possible.",
+      "detail": "flo(x?) — Convert a string or number to a floating point number, if possible.",
       "returns": "flo"
     },
     {
       "name": "bool",
       "kind": "class",
-      "detail": "bool(object?) — Returns True when the argument is true, False otherwise.",
+      "detail": "bool — bool(x) -> bool",
       "returns": "bool"
+    },
+    {
+      "name": "list",
+      "kind": "class",
+      "detail": "list(iterable?) — Built-in mutable sequence.",
+      "returns": "list"
     },
     {
       "name": "Parsing",
@@ -1789,7 +1872,7 @@
     {
       "name": "ord",
       "kind": "function",
-      "detail": "ord(character) — Return the ordinal value of a character."
+      "detail": "ord(c) — Return the Unicode code point for a one-character string."
     },
     {
       "name": "chr",
