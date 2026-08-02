@@ -2594,6 +2594,22 @@ static int nativa_list(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+/* Tipo (V_TIPO) usado como valor chamável -> o conversor nativo correspondente,
+ * O MESMO da chamada direta `str(...)`. json/dict/tup não convertem (NULL). */
+static int nativa_type(VM *vm, Value *args, int n, Value *out);
+static FnNativa tipo_conversor(int32_t idx)
+{
+    switch (idx) {
+        case TIPO_STR:  return nativa_str;
+        case TIPO_INT:  return nativa_int;
+        case TIPO_FLO:  return nativa_flo;
+        case TIPO_BOOL: return nativa_bool;
+        case TIPO_LIST: return nativa_list;
+        case TIPO_TYPE: return nativa_type;
+        default:        return NULL;   /* dict, tup */
+    }
+}
+
 static int nativa_sum(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "sum", 1);
@@ -12417,6 +12433,17 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         PSMetodoNat *m = COMO_METNAT(fn);
         return TABELAS[m->tabela][m->idx].fn(vm, m->alvo, args, n, out);
     }
+    if (fn.t == V_TIPO) {
+        /* tipo como valor (`map(l, str)`) -> conversor nativo correspondente */
+        FnNativa conv = tipo_conversor(fn.as.i);
+        if (!conv) {
+            snprintf(vm->erro, sizeof(vm->erro), "tipo '%s' não pode ser usado como conversor",
+                     (fn.as.i >= 0 && fn.as.i <= TIPO_TYPE) ? NOME_TIPO[fn.as.i] : "?");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            return -1;
+        }
+        return conv(vm, args, n, out);
+    }
 
     int proto;
     Value reais[8];
@@ -13093,6 +13120,24 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (TABELAS[m->tabela][m->idx].fn(vm, m->alvo, &stack[sp - n], n, &rv) != 0) {
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                    goto erro_runtime;
+                }
+                sp = sp - n - 1;
+                stack[sp++] = rv;
+            } else if (alvo.t == V_TIPO) {
+                /* Tipo como valor de 1ª classe: `f = str; f(x)` e `map(l, str)`
+                 * convertem, usando O MESMO conversor nativo da chamada direta
+                 * `str(...)`. json/dict/tup não têm conversor -> recusam. */
+                FnNativa conv = tipo_conversor(alvo.as.i);
+                if (!conv)
+                    ERRO_TF(vm, "SomeValueUnexpected",
+                            "tipo '%s' não pode ser usado como conversor",
+                            (alvo.as.i >= 0 && alvo.as.i <= TIPO_TYPE) ? NOME_TIPO[alvo.as.i] : "?");
+                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->erro_tipo[0] = '\0';
+                Value rv;
+                if (conv(vm, &stack[sp - n], n, &rv) != 0) {
+                    if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
                 }
                 sp = sp - n - 1;
@@ -14139,7 +14184,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_IS: {
             Value b = stack[--sp], a = stack[sp - 1];
             int r;
-            if (b.t == V_TIPO)          r = valor_eh_tipo(&a, b.as.i);
+            /* tipo vs tipo -> IDENTIDADE (`str is str`, `int is int`); todo
+             * tipo `is type`. (json/dict já colapsam no mesmo índice.) */
+            if (a.t == V_TIPO && b.t == V_TIPO)
+                                        r = (b.as.i == TIPO_TYPE) || (a.as.i == b.as.i);
+            else if (b.t == V_TIPO)     r = valor_eh_tipo(&a, b.as.i);
             else if (b.t == V_NULL)     r = (a.t == V_NULL || a.t == V_UNSET);
             else if (EH_CLASS(b))       r = EH_INST(a) && COMO_INST(a)->classe == COMO_CLASS(b);
             else                        r = val_iguais(&a, &b);

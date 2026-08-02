@@ -309,6 +309,22 @@ class PoolTypeRef(str, Enum):
     TUP = "tup"
     TYPE = "type"
 
+    def __call__(self, *args):
+        """Tipo como valor de primeira classe: `f = str; f("5")` e
+        `map(l, str)` convertem. Delega para EXATAMENTE o mesmo conversor da
+        chamada direta `str(...)` (os builtins), pra não divergir. Tipos sem
+        conversor (`json`/`dict`/`tup`) recusam com erro claro."""
+        v = self.value
+        if v == "str":  return str(*args)
+        if v == "int":  return int(*args)
+        if v == "flo":  return float(*args)
+        if v == "bool": return bool(*args)
+        if v == "list": return list(*args)
+        if v == "type":
+            from .builtins import ps_type
+            return ps_type(*args)
+        raise TypeError(f"tipo '{v}' não pode ser usado como conversor")
+
 
 class PoolFuture:
     """
@@ -2509,6 +2525,15 @@ class Interpreter:
 
     def _is_value(self, left: Any, right: Any) -> bool:
         if isinstance(right, PoolTypeRef):
+            # tipo vs tipo -> IDENTIDADE de tipo. Sem isto, como PoolTypeRef é
+            # subclasse de str, `int is str` dava True e `int is int` dava
+            # False (o isinstance abaixo mordia o valor, não o tipo). `json` e
+            # `dict` são apelidos do mesmo tipo (a VM colapsa os dois).
+            if isinstance(left, PoolTypeRef):
+                if right == PoolTypeRef.TYPE:
+                    return True
+                norm = {PoolTypeRef.JSON: PoolTypeRef.DICT}
+                return norm.get(left, left) == norm.get(right, right)
             if right == PoolTypeRef.STR:
                 return isinstance(left, str)
             if right == PoolTypeRef.INT:

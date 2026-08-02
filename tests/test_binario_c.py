@@ -240,6 +240,46 @@ def test_metodo_inexistente_nomeia_o_metodo(tmp_path):
     assert "membro inexistente: save" in r.stderr
 
 
+def test_tipo_como_valor_primeira_classe(tmp_path):
+    """Tipos (`str`/`int`/...) usáveis como VALOR: `f = str; f("5")`,
+    `map(l, str)`, `filter(l, bool)`. E `is` entre tipos = identidade
+    (`int is int` True, `int is str` False). Binário IDÊNTICO ao interp."""
+    import io
+    from contextlib import redirect_stdout
+    from poolscript import ps_errors as pe
+    from poolscript.interpreter import Interpreter
+    from poolscript.parser import parse_source
+
+    src = (
+        'f = str' + NL + 'post(f("5"))' + NL
+        + 'post(str is str)' + NL + 'post(int is int)' + NL
+        + 'post(int is str)' + NL + 'post(list is list)' + NL
+        + 'post(str is type)' + NL + 'post(json is dict)' + NL
+        + 'x = 5' + NL + 'post(x is int)' + NL
+        + 'post(map([1,2,3], str))' + NL
+        + 'post(map(["1","2"], int))' + NL
+        + 'post(filter([0,1,2,0], bool))' + NL
+        + 'post(map([1,2], flo))' + NL
+        + 'g = int' + NL + 'post(g("42") + 1)' + NL
+    )
+    f = tmp_path / "tv.ps"
+    f.write_text(src, encoding="utf-8")
+
+    vm_out = saida(str(f))
+
+    pe._USE_COLOR = False
+    interp = Interpreter(source=src, filename=str(f))
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        interp.run(parse_source(src, str(f)))
+    interp_out = buf.getvalue().splitlines()
+
+    assert vm_out == interp_out, f"\nVM={vm_out}\nINTERP={interp_out}"
+    # e o valor certo, pra não passar por dois errados iguais
+    # 0:"5"  2:int is int=True  3:int is str=False
+    assert vm_out[0] == "5" and vm_out[2] == "True" and vm_out[3] == "False"
+
+
 # ── import de `.ps` ─────────────────────────────────────────────────────────
 
 def test_importa_modulo_vizinho(tmp_path):
