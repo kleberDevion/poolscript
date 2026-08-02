@@ -274,13 +274,21 @@ resto (classes, quantificadores gulosos e preguiçosos, alternância, grupos,
 âncoras, `\d \w \s` e suas negações) bate com o Python, verificado caso a
 caso contra o próprio `re`.
 
-### `str`/`int` como valor de primeira classe
+### `str`/`int` como valor de primeira classe — CORRIGIDO
 
-`f = abs` funciona nos dois motores, mas `f = str` não: nome nu de tipo é
-`PoolTypeRef`, não função. No interpretador vira um valor inútil (não
-chamável); na VM nem compila. Depende do nó `TypeName`, que ainda está na
-camada 3 — está catalogado aqui porque o sintoma (`map(l, str)`) não parece
-"nó não migrado" pra quem escreve o `.ps`.
+**Era:** `f = str` não funcionava (nome nu de tipo virava `PoolTypeRef`/`V_TIPO`
+não-chamável), então `map(l, str)` e `filter(l, bool)` falhavam.
+
+**Como foi resolvido:** o tipo, chamado, converte usando o MESMO conversor da
+chamada direta `str(...)`. Interp: `PoolTypeRef.__call__` delega a
+str/int/float/bool/list e `ps_type`. VM: `OP_CALL`/`chama_valor` em `V_TIPO`
+despacham via `tipo_conversor` pra `nativa_*`. `json`/`dict`/`tup` recusam com
+erro claro. Regressão diferencial em `tests/test_binario_c.py`.
+
+Junto saiu um bug do `is` entre tipos: como `PoolTypeRef` é subclasse de `str`,
+`int is str` dava True e `int is int` dava False. Agora tipo-vs-tipo é
+IDENTIDADE nos dois motores (`str is str`/`int is int` True, cruzados False,
+`X is type` True, `json`==`dict`).
 
 ### `jinker` e `ws_connect` na VM são single-thread
 
