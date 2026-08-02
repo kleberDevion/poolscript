@@ -24,11 +24,14 @@ Nunca edite esses arquivos na mão — use o script, que aplica o rollover e
 mantém os três arquivos da linguagem sincronizados:
 
 ```bash
-python bump_version.py            # só valida, não altera
-python bump_version.py lang       # +1 na linguagem
-python bump_version.py ext        # +1 na extensão
-python bump_version.py lang ext   # ambas
+./bump_version.py            # só valida, não altera
+./bump_version.py lang       # +1 na linguagem
+./bump_version.py ext        # +1 na extensão
+./bump_version.py lang ext   # ambas
 ```
+
+(o sistema pode não ter o comando `python`, só `python3` — por isso o script
+é executável direto; alternativamente `python3 bump_version.py ...`)
 
 ## Extensão VS Code: cópia do parser
 
@@ -38,7 +41,7 @@ importa o pacote `poolscript` inteiro, pra garantir que não executa código do
 usuário. Sempre que mexer nesses três arquivos, sincronize:
 
 ```bash
-python psl-poolscript-vsix/bridge/sync_parser.py
+python3 psl-poolscript-vsix/bridge/sync_parser.py
 ```
 
 Sem isso o editor acusa erro de sintaxe em código válido (a cópia fica parada
