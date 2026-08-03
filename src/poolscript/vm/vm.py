@@ -144,22 +144,27 @@ def executa(co: CodeObj, gvars: list[Any], args: list[Any]) -> Any:
         # Tipo declarado: converte o que a linguagem manda converter
         # (`flo x = 5`, `int x = "7"`) e recusa o resto.
         elif o == op.COERCE_DECL:
+            # operando empacotado: tipo nos 2 bits baixos, índice do nome
+            # (const string) no resto — ver compiler.py / ps_compiler.c.
+            tipo = arg & 3
+            nome_idx = arg >> 2
             v = pilha[sp - 1]
-            if arg == 1 and isinstance(v, str):
+            if tipo == 1 and isinstance(v, str):
                 pilha[sp - 1] = int(v.strip())
-            elif arg == 2 and isinstance(v, str):
+            elif tipo == 2 and isinstance(v, str):
                 pilha[sp - 1] = float(v.strip())
-            elif arg == 2 and isinstance(v, int) and not isinstance(v, bool):
+            elif tipo == 2 and isinstance(v, int) and not isinstance(v, bool):
                 pilha[sp - 1] = float(v)
             else:
-                esperado = ("str", "int", "flo", "bool")[arg]
-                tipos = (str, int, (int, float), bool)[arg]
-                ok = isinstance(v, tipos) and (arg == 0 or arg == 3
+                esperado = ("str", "int", "flo", "bool")[tipo]
+                tipos = (str, int, (int, float), bool)[tipo]
+                ok = isinstance(v, tipos) and (tipo == 0 or tipo == 3
                                                or not isinstance(v, bool))
-                if arg == 3:
+                if tipo == 3:
                     ok = isinstance(v, bool)
                 if not ok:
-                    raise ErroVM(f"variavel esperava {esperado}")
+                    vn = consts[nome_idx] if 0 <= nome_idx < len(consts) else ""
+                    raise ErroVM(f"variável {vn} esperava {esperado}")
 
         # ── resto das comparações ────────────────────────────────────────
         elif o == op.GT:

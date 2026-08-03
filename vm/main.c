@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <unistd.h>   /* getcwd — encurta o caminho do traceback pro relativo */
 
 #include "ps_vm.h"
 #include "ps_pkg.h"
@@ -79,11 +80,31 @@ static char *le_arquivo(const char *caminho, size_t *tam)
  *     | <a linha de código>
  *     | ^
  * Só quando há linha e o arquivo abre (origem "<-e>"/stdin não tem trecho). */
+/* Encurta o caminho pra exibição: relativo-ao-cwd se estiver sob ele, senão
+ * só o basename — espelha o `_clean_filename` do interpretador (a autoridade),
+ * pra que os dois motores mostrem o MESMO nome no traceback. O caminho cheio
+ * ainda é usado pra abrir o arquivo e ler o trecho. */
+static const char *limpa_arquivo(const char *fn, char *buf, size_t cap)
+{
+    if (!fn || !fn[0] || fn[0] == '<') return (fn && fn[0]) ? fn : "<script>";
+    char cwd[1024];
+    if (getcwd(cwd, sizeof(cwd))) {
+        size_t lc = strlen(cwd);
+        if (strncmp(fn, cwd, lc) == 0 && fn[lc] == '/') {   /* sob o cwd => relativo */
+            snprintf(buf, cap, "%s", fn + lc + 1);
+            return buf;
+        }
+    }
+    const char *b = strrchr(fn, '/');           /* fora do cwd => basename */
+    return b ? b + 1 : fn;
+}
+
 /* Um quadro: "  em <arq>, linha N" + a linha do fonte + o cursor `^^^`. Igual
  * ao `_fmt_frame` do interpretador. `col<=0` => cursor na 1ª não-branco. */
 static void imprime_quadro(const char *origem, int linha, int col)
 {
-    fprintf(stderr, "  em %s, linha %d\n", origem, linha);
+    char nome_buf[1024];
+    fprintf(stderr, "  em %s, linha %d\n", limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
     if (linha <= 0 || !origem || origem[0] == '<') return;
     FILE *f = fopen(origem, "rb");
     if (!f) return;

@@ -1350,6 +1350,14 @@ class Interpreter:
                 return None
             raise PoolRuntimeError(f"statement não suportado: {type(node).__name__}", node, self.source, filename=self.filename)
         except _PSBaseRuntimeError as _pse:
+            # O primeiro handler a capturar o erro está no MESMO interpretador
+            # onde ele nasceu — se o filename veio vazio (raise sem filename=),
+            # é aqui que ele passa a ser o correto. Sem isso o handler confunde o
+            # próprio frame do erro com um frame de chamador e ele acaba duplicado
+            # no traceback (visível em erro DURANTE import).
+            if not _pse.filename:
+                _pse.filename = self.filename
+                _pse.source   = _pse.source or self.source
             # Adiciona frame do CHAMADOR apenas se for arquivo/linha diferente do erro
             if node and self.filename:
                 err_fname = _pse.filename or ""
@@ -1398,9 +1406,17 @@ class Interpreter:
         """Lê, executa e vincula um arquivo .ps importado — usado pela
         resolução relativa, pela resolução via raiz do projeto e pela lib
         global (`psl install -asLib`)."""
+        # Guarda o caminho ABSOLUTO do módulo — o _clean_filename encurta pro
+        # relativo-ao-cwd na hora de imprimir (ex: "classes/mod.ps"), que
+        # localiza o arquivo. Guardar o relativo faria o clean cair no basename
+        # (só "mod.ps"), perdendo a subpasta. A VM faz o mesmo (path absoluto).
+        try:
+            abscand = str(candidate.resolve())
+        except Exception:
+            abscand = str(candidate)
         sub_source = candidate.read_text(encoding="utf-8")
-        sub_program = parse_source(sub_source, str(candidate))
-        sub_interp = Interpreter(source=sub_source, filename=str(candidate), is_import=True,
+        sub_program = parse_source(sub_source, abscand)
+        sub_interp = Interpreter(source=sub_source, filename=abscand, is_import=True,
                                   import_root=import_root)
         try:
             sub_interp.run(sub_program)
@@ -1408,7 +1424,7 @@ class Interpreter:
             # Garante que o filename do erro aponta para o arquivo importado,
             # não para o executor. Adiciona frame do arquivo que fez o import.
             if not _sub_err.filename:
-                _sub_err.filename = str(candidate)
+                _sub_err.filename = abscand
                 _sub_err.source   = sub_source
             import_frame = (self.filename, node.line, node.col, self.source)
             if import_frame not in _sub_err.call_stack:
@@ -1781,6 +1797,9 @@ class Interpreter:
                 return None
             raise PoolRuntimeError(f"expressão não suportada: {type(node).__name__}", node, self.source, filename=self.filename)
         except _PSBaseRuntimeError as _pse:
+            if not _pse.filename:
+                _pse.filename = self.filename
+                _pse.source   = _pse.source or self.source
             if node and self.filename and _pse.filename and self.filename != _pse.filename:
                 if (self.filename, node.line, node.col, self.source) not in _pse.call_stack:
                     _pse.call_stack.insert(0, (self.filename, node.line, node.col, self.source))
@@ -2773,25 +2792,28 @@ class Interpreter:
 
     def _check_declared_type(self, node: VarDecl, value: Any) -> None:
         expected = node.declared_type
+        # O cursor `^^^` aponta no VALOR errado (node.value), não no início da
+        # declaração — é ali que o erro realmente está. Casa com a VM.
+        pos = node.value if getattr(node, "value", None) is not None else node
         if expected == "str" and not isinstance(value, str):
             raise PoolRuntimeError(
-                f"variável {node.name} esperava str", node, self.source,
-                code=ATTRIBUTTED_VALUE_ERROR,
+                f"variável {node.name} esperava str", pos, self.source,
+                code=ATTRIBUTTED_VALUE_ERROR, filename=self.filename,
             )
         if expected == "int" and (not isinstance(value, int) or isinstance(value, bool)):
             raise PoolRuntimeError(
-                f"variável {node.name} esperava int", node, self.source,
-                code=ATTRIBUTTED_VALUE_ERROR,
+                f"variável {node.name} esperava int", pos, self.source,
+                code=ATTRIBUTTED_VALUE_ERROR, filename=self.filename,
             )
         if expected == "flo" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
             raise PoolRuntimeError(
-                f"variável {node.name} esperava flo", node, self.source,
-                code=ATTRIBUTTED_VALUE_ERROR,
+                f"variável {node.name} esperava flo", pos, self.source,
+                code=ATTRIBUTTED_VALUE_ERROR, filename=self.filename,
             )
         if expected == "bool" and not isinstance(value, bool):
             raise PoolRuntimeError(
-                f"variável {node.name} esperava bool", node, self.source,
-                code=ATTRIBUTTED_VALUE_ERROR,
+                f"variável {node.name} esperava bool", pos, self.source,
+                code=ATTRIBUTTED_VALUE_ERROR, filename=self.filename,
             )
 
 

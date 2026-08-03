@@ -836,6 +836,12 @@ struct VM_ {
     struct { int proto; int linha; int col; } tb[64];
     int     ntb;
     int     erro_col;        /* coluna do fonte onde o erro caiu (0 = ?) */
+    /* Traceback preservado de um import que estourou DENTRO do módulo: sem isto
+     * o erro_runtime externo reconstruiria o tb só com o frame do `import` e a
+     * linha de dentro do módulo (onde o erro está de verdade) se perderia. */
+    struct { int proto; int linha; int col; } tb_mod[64];
+    int     ntb_mod;
+    int     import_falhou;   /* 1 = o erro atual veio de dentro de um módulo importado */
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -13708,8 +13714,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* `int x = "7"` e `flo x = "1.5"` convertem — o tipo escrito é
              * uma ordem, não um comentário. `flo x = 5` também (int sobe pra
              * flo). O resto é violação: `int x = 5.9` não trunca em silêncio. */
+            /* operando empacotado: tipo nos 2 bits baixos, índice do nome da
+             * variável (const string) no resto — ver ps_compiler.c. */
+            int tipo = arg & 3;
+            int nome_idx = (int)((unsigned)arg >> 2);
             Value v = stack[sp - 1];
-            if (arg == TIPO_INT && EH_STRING(v)) {
+            if (tipo == TIPO_INT && EH_STRING(v)) {
                 PSString *t = COMO_STRING(v);
                 int64_t r;
                 if (texto_para_int(t->chars, t->len, &r) != 0)
@@ -13717,7 +13727,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp - 1] = MK_INT(r);
                 break;
             }
-            if (arg == TIPO_FLO) {
+            if (tipo == TIPO_FLO) {
                 if (v.t == V_INT) { stack[sp - 1] = MK_FLOAT((double)v.as.i); break; }
                 if (EH_STRING(v)) {
                     PSString *t = COMO_STRING(v);
@@ -13729,14 +13739,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
             }
             int ok;
-            switch (arg) {
+            switch (tipo) {
                 case TIPO_STR:  ok = EH_STRING(v); break;
                 case TIPO_INT:  ok = v.t == V_INT; break;
                 case TIPO_FLO:  ok = v.t == V_INT || v.t == V_FLOAT; break;
                 default:        ok = v.t == V_BOOL; break;
             }
             if (!ok) {
-                snprintf(vm->erro, sizeof(vm->erro), "variavel esperava %s", NOME_TIPO[arg]);
+                const char *vn = "";
+                if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))
+                    vn = COMO_STRING(p->consts[nome_idx])->chars;
+                snprintf(vm->erro, sizeof(vm->erro), "variável %s esperava %s", vn, NOME_TIPO[tipo]);
                 snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AtributtedValueError");
                 goto erro_runtime;
             }
@@ -14361,6 +14374,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (rc_mod != 0) {
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
+                    /* O corpo do módulo rodou num loop aninhado que já montou o
+                     * traceball de DENTRO dele (frames + linha do erro real).
+                     * Preserva pro erro_runtime externo prepender o frame do
+                     * `import` em vez de descartar tudo. */
+                    if (vm->ntb > 0) {
+                        vm->ntb_mod = vm->ntb < 64 ? vm->ntb : 64;
+                        for (int i = 0; i < vm->ntb_mod; i++) {
+                            vm->tb_mod[i].proto = vm->tb[i].proto;
+                            vm->tb_mod[i].linha = vm->tb[i].linha;
+                            vm->tb_mod[i].col   = vm->tb[i].col;
+                        }
+                        vm->import_falhou = 1;
+                    }
                     goto erro_runtime;
                 }
                 stack[sp++] = mod;
@@ -14418,6 +14444,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         continue;
 
     erro_runtime:
+        ;
+        /* Erro que borbulhou de dentro de um import? Lê e limpa a flag agora, pra
+         * que um `try` (nh>0) ou um erro posterior não a vejam pendurada. */
+        int veio_de_import = vm->import_falhou;
+        vm->import_falhou = 0;
         /* Linha do fonte da instrução que falhou. `ip` já avançou 2 na busca,
          * então a instrução é `ip-2`. Cada erro entra aqui UMA vez com o `p`
          * do frame que falhou (frames aninhados são o mesmo laço), então isto
@@ -14433,25 +14464,59 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         if (nh == 0) {
             /* sem handler: erro não-capturado. Monta o traceback na MESMA ordem
              * do interpretador (que é a autoridade): os chamadores do mais
-             * interno (quem chamou a função que estourou) pro mais externo
-             * (<module>), e por fim o frame do erro. A coluna do chamador é a
-             * do início do statement (1ª não-branco), como o interp; a do erro
-             * é a coluna exata da expressão que falhou. */
+             * interno pro mais externo, cruzando a fronteira do `import`, e o
+             * frame do erro real por último. A coluna do chamador é a do início
+             * do statement (1ª não-branco); a do erro é a coluna exata. */
             vm->ntb = 0;
-            for (int f = fp - 1; f >= fp0 && vm->ntb < 63; f--) {
-                Proto *pr = &vm->protos[vm->frames[f].proto];
-                int qip = vm->frames[f].ip;
-                vm->tb[vm->ntb].proto = vm->frames[f].proto;
-                vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
-                                        ? pr->linhas[qip - 2] : 0;
-                vm->tb[vm->ntb].col = 0;   /* 0 = reporta usa a 1ª não-branco */
-                vm->ntb++;
-            }
-            if (vm->ntb < 64) {
-                vm->tb[vm->ntb].proto = (int)(p - vm->protos);
-                vm->tb[vm->ntb].linha = vm->erro_linha;
-                vm->tb[vm->ntb].col   = vm->erro_col;
-                vm->ntb++;
+            if (veio_de_import) {
+                /* ordem: [callers internos do módulo] [frame do import]
+                 *        [callers externos] [erro real, dentro do módulo].
+                 * O erro real é o ÚLTIMO quadro do tb preservado; os anteriores
+                 * são os callers internos do módulo. */
+                for (int i = 0; i < vm->ntb_mod - 1 && vm->ntb < 63; i++) {
+                    vm->tb[vm->ntb].proto = vm->tb_mod[i].proto;
+                    vm->tb[vm->ntb].linha = vm->tb_mod[i].linha;
+                    vm->tb[vm->ntb].col   = vm->tb_mod[i].col;
+                    vm->ntb++;
+                }
+                if (vm->ntb < 63) {   /* frame do `import` (chamou o módulo) */
+                    vm->tb[vm->ntb].proto = (int)(p - vm->protos);
+                    vm->tb[vm->ntb].linha = vm->erro_linha;
+                    vm->tb[vm->ntb].col   = vm->erro_col;
+                    vm->ntb++;
+                }
+                for (int f = fp - 1; f >= fp0 && vm->ntb < 63; f--) {
+                    Proto *pr = &vm->protos[vm->frames[f].proto];
+                    int qip = vm->frames[f].ip;
+                    vm->tb[vm->ntb].proto = vm->frames[f].proto;
+                    vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
+                                            ? pr->linhas[qip - 2] : 0;
+                    vm->tb[vm->ntb].col = 0;
+                    vm->ntb++;
+                }
+                if (vm->ntb_mod > 0 && vm->ntb < 64) {   /* erro real, por último */
+                    vm->tb[vm->ntb].proto = vm->tb_mod[vm->ntb_mod - 1].proto;
+                    vm->tb[vm->ntb].linha = vm->tb_mod[vm->ntb_mod - 1].linha;
+                    vm->tb[vm->ntb].col   = vm->tb_mod[vm->ntb_mod - 1].col;
+                    vm->ntb++;
+                }
+            } else {
+                /* caminho normal: [callers externos] [frame do erro]. */
+                for (int f = fp - 1; f >= fp0 && vm->ntb < 63; f--) {
+                    Proto *pr = &vm->protos[vm->frames[f].proto];
+                    int qip = vm->frames[f].ip;
+                    vm->tb[vm->ntb].proto = vm->frames[f].proto;
+                    vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
+                                            ? pr->linhas[qip - 2] : 0;
+                    vm->tb[vm->ntb].col = 0;   /* 0 = reporta usa a 1ª não-branco */
+                    vm->ntb++;
+                }
+                if (vm->ntb < 64) {
+                    vm->tb[vm->ntb].proto = (int)(p - vm->protos);
+                    vm->tb[vm->ntb].linha = vm->erro_linha;
+                    vm->tb[vm->ntb].col   = vm->erro_col;
+                    vm->ntb++;
+                }
             }
             return -1;
         }

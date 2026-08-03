@@ -1029,7 +1029,12 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             static const char *ESC[] = { "str", "int", "flo", "bool" };
             for (int k = 0; k < 4; k++)
                 if (n->texto2 && !strcmp(n->texto2, ESC[k])) {
-                    emite(c, u, OP_COERCE_DECL, k);   /* 0=str 1=int 2=flo 3=bool */
+                    /* Empacota nome+tipo num só operando: tipo nos 2 bits baixos
+                     * (0-3), índice do nome (const string) no resto. O VM usa o
+                     * nome pra dizer "variável X esperava T", igual ao interp. */
+                    const char *vn = n->texto ? n->texto : "";
+                    int32_t ni = idx_const(c, u, K_STR, 0, 0, vn, (int32_t)strlen(vn));
+                    emite(c, u, OP_COERCE_DECL, (ni << 2) | k);
                     break;
                 }
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);

@@ -207,6 +207,39 @@ def test_traceback_identico_ao_interp(tmp_path):
         assert vm_out == interp_out, f"\n--VM--\n{vm_out}\n--INTERP--\n{interp_out}"
 
 
+def test_traceback_erro_durante_import_atravessa(tmp_path):
+    """Erro no código TOP-LEVEL de um módulo, que roda ao ser importado: o
+    traceback tem que atravessar a fronteira do `import` e apontar a linha/coluna
+    de DENTRO do módulo (onde o erro está), não só a linha do `import` no main.
+    Byte-a-byte igual ao interpretador (a autoridade)."""
+    (tmp_path / "classes").mkdir()
+    (tmp_path / "classes" / "mod.ps").write_text(
+        "action ok() {" + NL + " return 1" + NL + "}" + NL
+        + "str ruim = 123" + NL, encoding="utf-8")
+    (tmp_path / "main.ps").write_text(
+        "from classes.mod import ok" + NL + "post(ok())" + NL, encoding="utf-8")
+
+    vm = roda("main.ps", cwd=str(tmp_path), env={"NO_COLOR": "1"})
+    assert vm.returncode == 1
+    # atravessou o import: aponta o arquivo e a linha de DENTRO do módulo…
+    assert "classes/mod.ps, linha 4" in vm.stderr, vm.stderr
+    # …com o nome da variável na mensagem
+    assert "variável ruim esperava str" in vm.stderr, vm.stderr
+    # …e o cursor no VALOR errado (col 12 = o "123"), não no início da linha
+    linhas = vm.stderr.splitlines()
+    i = next(k for k, l in enumerate(linhas) if "str ruim = 123" in l)
+    assert linhas[i + 1].index("^") == len("  | str ruim = "), linhas[i + 1]
+
+    # paridade byte-a-byte com o interp
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "main.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "NO_COLOR": "1", "PYTHONPATH": os.path.join(RAIZ, "src")},
+    )
+    assert vm.stderr.rstrip("\n") == interp.stderr.rstrip("\n"), (
+        f"\n--VM--\n{vm.stderr}\n--INTERP--\n{interp.stderr}")
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"

@@ -145,7 +145,11 @@ class Compilador:
                 escalares = ("str", "int", "flo", "bool")
                 declarado = getattr(no, "declared_type", None)
                 if declarado in escalares:
-                    self._emite(co, op.COERCE_DECL, escalares.index(declarado))
+                    # Empacota nome+tipo num operando só: tipo nos 2 bits baixos,
+                    # índice do nome (const string) no resto — espelha ps_compiler.c,
+                    # pra VM dizer "variável X esperava T".
+                    ni = self._const(co, nome)
+                    self._emite(co, op.COERCE_DECL, (ni << 2) | escalares.index(declarado))
             self._guarda_nome(co, nome, no_topo)
             return
 
