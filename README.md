@@ -352,11 +352,7 @@ examples/             ← exemplos .ps
 tests/                ← suíte pytest (inclui testes diferenciais interp × VM)
 ```
 
-## Versionamento
-
-O projeto **não usa semver**: os dois dígitos à direita vão de `0` a `99` e
-fazem rollover em base 100 (`8.2.99` → `8.3.0`, `8.99.99` → `9.0.0`). Versão
-atual: **8.2.31**.
+# atual: **8.2.31**.
 
 ## Contato
 
