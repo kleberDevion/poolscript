@@ -352,7 +352,7 @@ examples/             ← exemplos .ps
 tests/                ← suíte pytest (inclui testes diferenciais interp × VM)
 ```
 
-# atual: **8.2.31**.
+* Versão atual: **8.2.31**.
 
 ## Contato
 
