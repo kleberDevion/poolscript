@@ -6221,6 +6221,330 @@ static const MembroMod MOD_HASH[] = {
 };
 
 
+/* ── bytes (módulo) ────────────────────────────────────────────────────────
+ * Criar e converter sequências de bytes — espelha stdlib/bytes_lib.py. O tipo
+ * `bytes` já existe (OBJ_BYTES); este módulo é o que permite CRIAR do zero
+ * (lista de ints, hex, base64, inteiro) e CONVERTER de volta. As mensagens de
+ * erro batem com o interp: um TypeError vira "operação inválida entre os
+ * tipos: " + msg e um ValueError vira "valor inválido: " + msg, ambos com o
+ * código SomeValueUnexpected. */
+
+/* prefixos dos erros — batem com o wrap de TypeError/ValueError do interp */
+#define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "SomeValueUnexpected", "operação inválida entre os tipos: " __VA_ARGS__)
+#define BY_ERRO_VALOR(vm, ...) BERRO(vm, "SomeValueUnexpected", "valor inválido: " __VA_ARGS__)
+
+/* nome do tipo como o `_nome` do bytes_lib.py (dict = "json") */
+static const char *by_nome(Value v)
+{
+    switch (v.t) {
+        case V_NULL: case V_UNSET: return "Null";
+        case V_BOOL:  return "bool";
+        case V_INT:   return "int";
+        case V_FLOAT: return "flo";
+        case V_OBJ:
+            switch (v.as.obj->type) {
+                case OBJ_STRING: return "str";
+                case OBJ_LIST:   return "list";
+                case OBJ_TUPLE:  return "tuple";
+                case OBJ_DICT:   return "json";
+                case OBJ_BYTES:  return "bytes";
+                default: break;
+            }
+            break;
+        default: break;
+    }
+    return "objeto";
+}
+
+static int by_hexval(int c)
+{
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+/* 1 = big, 0 = little, -1 = inválido (não-string também é inválido) */
+static int by_ordem(Value v)
+{
+    if (!EH_STRING(v)) return -1;
+    PSString *s = COMO_STRING(v);
+    if (s->len == 3 && memcmp(s->chars, "big", 3) == 0) return 1;
+    if (s->len == 6 && memcmp(s->chars, "little", 6) == 0) return 0;
+    return -1;
+}
+
+static int by_devolve(VM *vm, Value *out, const char *dados, int n)
+{
+    PSString *b = novo_bytes(vm, (dados && n > 0) ? dados : "", n);
+    if (!b) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(b);
+    return 0;
+}
+
+static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
+{
+    if (n > 1) BERRO(vm, "SomeValueUnexpected", "new() espera 0 ou 1 argumento");
+    if (n == 0 || args[0].t == V_UNSET) return by_devolve(vm, out, "", 0);
+    Value x = args[0];
+    if (EH_BYTES(x) || EH_STRING(x)) {   /* bytes e str têm o mesmo layout */
+        PSString *s = COMO_STRING(x);
+        return by_devolve(vm, out, s->chars, s->len);
+    }
+    if (x.t == V_BOOL) BY_ERRO_TIPO(vm, "bytes.new: bool não é um tamanho válido");
+    if (x.t == V_INT) {
+        if (x.as.i < 0) BY_ERRO_VALOR(vm, "bytes.new: tamanho negativo");
+        int64_t sz = x.as.i;
+        char *buf = calloc((size_t)(sz > 0 ? sz : 1), 1);
+        if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+        int r = by_devolve(vm, out, buf, (int)sz);
+        free(buf);
+        return r;
+    }
+    if (EH_SEQ(x)) {
+        PSList *l = COMO_LIST(x);
+        char *buf = malloc((size_t)(l->len > 0 ? l->len : 1));
+        if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+        for (int i = 0; i < l->len; i++) {
+            Value it = l->itens[i];
+            int64_t bv;
+            if (it.t == V_INT || it.t == V_BOOL) bv = it.as.i;  /* True/False = 1/0, igual Python */
+            else { free(buf); BY_ERRO_VALOR(vm, "bytes.new: a lista precisa conter inteiros de 0 a 255"); }
+            if (bv < 0 || bv > 255) { free(buf); BY_ERRO_VALOR(vm, "bytes.new: a lista precisa conter inteiros de 0 a 255"); }
+            buf[i] = (char)(unsigned char)bv;
+        }
+        int r = by_devolve(vm, out, buf, l->len);
+        free(buf);
+        return r;
+    }
+    BY_ERRO_TIPO(vm, "bytes.new: não sei criar bytes de %s", by_nome(x));
+}
+
+static int mod_bytes_fromhex(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "fromhex", 1);
+    if (!EH_STRING(args[0])) BY_ERRO_TIPO(vm, "bytes.fromhex: esperava str");
+    PSString *s = COMO_STRING(args[0]);
+    char *limpo = malloc((size_t)s->len + 1);
+    if (!limpo) BERRO(vm, "MemoryError", "sem memoria");
+    int m = 0;
+    for (int i = 0; i < s->len; i++) {   /* tira todo espaço em branco, como "".join(s.split()) */
+        unsigned char c = (unsigned char)s->chars[i];
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v') continue;
+        limpo[m++] = (char)c;
+    }
+    if (m % 2 != 0) { free(limpo); BY_ERRO_VALOR(vm, "bytes.fromhex: hex inválido: '%.*s'", s->len, s->chars); }
+    char *buf = malloc((size_t)(m / 2 > 0 ? m / 2 : 1));
+    if (!buf) { free(limpo); BERRO(vm, "MemoryError", "sem memoria"); }
+    for (int i = 0; i < m; i += 2) {
+        int hi = by_hexval((unsigned char)limpo[i]), lo = by_hexval((unsigned char)limpo[i + 1]);
+        if (hi < 0 || lo < 0) { free(limpo); free(buf); BY_ERRO_VALOR(vm, "bytes.fromhex: hex inválido: '%.*s'", s->len, s->chars); }
+        buf[i / 2] = (char)((hi << 4) | lo);
+    }
+    free(limpo);
+    int r = by_devolve(vm, out, buf, m / 2);
+    free(buf);
+    return r;
+}
+
+static int mod_bytes_hex(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "hex", 1);
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.hex: esperava bytes, recebeu %s", by_nome(args[0]));
+    PSString *b = COMO_BYTES(args[0]);
+    char *buf = malloc((size_t)b->len * 2 + 1);
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+    for (int i = 0; i < b->len; i++) snprintf(buf + i * 2, 3, "%02x", (unsigned char)b->chars[i]);
+    int r = devolve_texto(vm, out, buf, b->len * 2);
+    free(buf);
+    return r;
+}
+
+static int mod_bytes_base64(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "base64", 1);
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.base64: esperava bytes, recebeu %s", by_nome(args[0]));
+    PSString *b = COMO_BYTES(args[0]);
+    size_t cap = 4 * (((size_t)b->len + 2) / 3) + 4;
+    char *buf = malloc(cap);
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+    size_t nb = ps_base64_encode((const unsigned char *)b->chars, (size_t)b->len, buf);
+    int r = devolve_texto(vm, out, buf, (int)nb);
+    free(buf);
+    return r;
+}
+
+static int mod_bytes_frombase64(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "frombase64", 1);
+    if (!EH_STRING(args[0])) BY_ERRO_TIPO(vm, "bytes.frombase64: esperava str");
+    PSString *s = COMO_STRING(args[0]);
+    unsigned char *buf = malloc((size_t)s->len + 4);
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+    long nb = ps_base64_decode(s->chars, (size_t)s->len, buf, (size_t)s->len + 4);
+    if (nb < 0) { free(buf); BY_ERRO_VALOR(vm, "bytes.frombase64: base64 inválido"); }
+    int r = by_devolve(vm, out, (const char *)buf, (int)nb);
+    free(buf);
+    return r;
+}
+
+static int mod_bytes_fromint(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "fromint() espera de 1 a 3 argumentos");
+    if (args[0].t == V_BOOL || args[0].t != V_INT) BY_ERRO_TIPO(vm, "bytes.fromint: esperava um inteiro");
+    int64_t v = args[0].as.i;
+    if (v < 0) BY_ERRO_VALOR(vm, "bytes.fromint: negativo não suportado");
+    int big = 1;   /* byteorder checado antes de length, como no interp */
+    if (n > 2 && args[2].t != V_UNSET) {
+        big = by_ordem(args[2]);
+        if (big < 0) BY_ERRO_VALOR(vm, "bytes.fromint: byteorder deve ser 'big' ou 'little'");
+    }
+    int64_t length = 0;
+    if (n > 1 && args[1].t != V_UNSET) {
+        if (args[1].t == V_BOOL || args[1].t != V_INT) BY_ERRO_TIPO(vm, "bytes.fromint: length deve ser inteiro");
+        length = args[1].as.i;
+    }
+    int bits = 0; uint64_t u = (uint64_t)v; while (u) { bits++; u >>= 1; }
+    int minimo = (bits + 7) / 8; if (minimo == 0) minimo = 1;
+    int largura = length > 0 ? (int)length : minimo;
+    if (largura < minimo) BY_ERRO_VALOR(vm, "bytes.fromint: %lld não cabe em %d byte(s)", (long long)v, largura);
+    unsigned char *buf = calloc((size_t)(largura > 0 ? largura : 1), 1);
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+    u = (uint64_t)v;
+    for (int i = 0; i < largura && i < 8; i++) {
+        int idx = big ? (largura - 1 - i) : i;
+        buf[idx] = (unsigned char)(u & 0xFF);
+        u >>= 8;
+    }
+    int r = by_devolve(vm, out, (const char *)buf, largura);
+    free(buf);
+    return r;
+}
+
+static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "toint() espera 1 ou 2 argumentos");
+    int big = 1;   /* byteorder checado antes do tipo dos bytes, como no interp */
+    if (n > 1 && args[1].t != V_UNSET) {
+        big = by_ordem(args[1]);
+        if (big < 0) BY_ERRO_VALOR(vm, "bytes.toint: byteorder deve ser 'big' ou 'little'");
+    }
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.toint: esperava bytes, recebeu %s", by_nome(args[0]));
+    PSString *b = COMO_BYTES(args[0]);
+    uint64_t acc = 0;
+    for (int i = 0; i < b->len; i++) {
+        int idx = big ? i : (b->len - 1 - i);
+        acc = (acc << 8) | (unsigned char)b->chars[idx];
+    }
+    *out = MK_INT((int64_t)acc);
+    return 0;
+}
+
+static int mod_bytes_tolist(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "tolist", 1);
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.tolist: esperava bytes, recebeu %s", by_nome(args[0]));
+    PSString *b = COMO_BYTES(args[0]);
+    PSList *l = lista_com_cap(vm, b->len, OBJ_LIST);
+    if (!l) BERRO(vm, "MemoryError", "sem memoria");
+    for (int i = 0; i < b->len; i++) l->itens[i] = MK_INT((unsigned char)b->chars[i]);
+    l->len = b->len;
+    *out = MK_OBJ(l);
+    return 0;
+}
+
+static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "concat", 1);
+    if (!EH_SEQ(args[0])) BY_ERRO_TIPO(vm, "bytes.concat: esperava uma lista de bytes");
+    PSList *l = COMO_LIST(args[0]);
+    int64_t total = 0;
+    for (int i = 0; i < l->len; i++) {
+        if (!EH_BYTES(l->itens[i])) BY_ERRO_TIPO(vm, "bytes.concat: item %d não é bytes (%s)", i, by_nome(l->itens[i]));
+        total += COMO_BYTES(l->itens[i])->len;
+    }
+    char *buf = malloc((size_t)(total > 0 ? total : 1));
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+    int off = 0;
+    for (int i = 0; i < l->len; i++) {
+        PSString *bi = COMO_BYTES(l->itens[i]);
+        memcpy(buf + off, bi->chars, (size_t)bi->len);
+        off += bi->len;
+    }
+    int r = by_devolve(vm, out, buf, (int)total);
+    free(buf);
+    return r;
+}
+
+static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "slice() espera de 1 a 3 argumentos");
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.slice: esperava bytes, recebeu %s", by_nome(args[0]));
+    PSString *b = COMO_BYTES(args[0]);
+    int len = b->len;
+    int64_t ini = 0;
+    if (n > 1 && args[1].t != V_UNSET) {
+        if (args[1].t == V_BOOL || args[1].t != V_INT) BY_ERRO_TIPO(vm, "bytes.slice: ini deve ser inteiro");
+        ini = args[1].as.i;
+    }
+    int64_t fim = len;
+    if (n > 2 && args[2].t != V_UNSET) {
+        if (args[2].t == V_BOOL || args[2].t != V_INT) BY_ERRO_TIPO(vm, "bytes.slice: fim deve ser inteiro");
+        fim = args[2].as.i;
+    }
+    if (ini < 0) ini += len;  if (ini < 0) ini = 0;  if (ini > len) ini = len;
+    if (fim < 0) fim += len;  if (fim < 0) fim = 0;  if (fim > len) fim = len;
+    int outlen = (fim > ini) ? (int)(fim - ini) : 0;
+    return by_devolve(vm, out, b->chars + ini, outlen);
+}
+
+static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "get", 2);
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.get: esperava bytes, recebeu %s", by_nome(args[0]));
+    PSString *b = COMO_BYTES(args[0]);
+    if (args[1].t == V_BOOL || args[1].t != V_INT) BY_ERRO_TIPO(vm, "bytes.get: índice deve ser inteiro");
+    int64_t i = args[1].as.i;
+    if (i < -(int64_t)b->len || i >= b->len)
+        BY_ERRO_VALOR(vm, "bytes.get: índice %lld fora do range (0..%d)", (long long)i, b->len - 1);
+    if (i < 0) i += b->len;
+    *out = MK_INT((unsigned char)b->chars[i]);
+    return 0;
+}
+
+static int mod_bytes_xor(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "xor", 2);
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.xor: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[1])) BY_ERRO_TIPO(vm, "bytes.xor: esperava bytes, recebeu %s", by_nome(args[1]));
+    PSString *d = COMO_BYTES(args[0]);
+    PSString *k = COMO_BYTES(args[1]);
+    if (k->len == 0) BY_ERRO_VALOR(vm, "bytes.xor: chave vazia");
+    char *buf = malloc((size_t)(d->len > 0 ? d->len : 1));
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
+    for (int i = 0; i < d->len; i++)
+        buf[i] = (char)((unsigned char)d->chars[i] ^ (unsigned char)k->chars[i % k->len]);
+    int r = by_devolve(vm, out, buf, d->len);
+    free(buf);
+    return r;
+}
+
+static const MembroMod MOD_BYTES[] = {
+    { "new", mod_bytes_new, 0, NULL },
+    { "fromhex", mod_bytes_fromhex, 0, NULL },
+    { "hex", mod_bytes_hex, 0, NULL },
+    { "base64", mod_bytes_base64, 0, NULL },
+    { "frombase64", mod_bytes_frombase64, 0, NULL },
+    { "fromint", mod_bytes_fromint, 0, "n,length,byteorder" },
+    { "toint", mod_bytes_toint, 0, "b,byteorder" },
+    { "tolist", mod_bytes_tolist, 0, NULL },
+    { "concat", mod_bytes_concat, 0, NULL },
+    { "slice", mod_bytes_slice, 0, "b,ini,fim" },
+    { "get", mod_bytes_get, 0, NULL },
+    { "xor", mod_bytes_xor, 0, NULL },
+};
+
+
 /* ── jwt ────────────────────────────────────────────────────────────────── */
 /* HS256, formato `header.payload.assinatura`, tudo em base64 URL-safe SEM
  * padding. A assinatura cobre exatamente `header.payload` como texto — por
@@ -12265,6 +12589,7 @@ static const ModuloNat MODULOS[] = {
     { "_stderr", MOD_STDERR, (int)(sizeof(MOD_STDERR) / sizeof(MOD_STDERR[0])) },
     { "jwt", MOD_JWT, (int)(sizeof(MOD_JWT) / sizeof(MOD_JWT[0])) },
     { "hash", MOD_HASH, (int)(sizeof(MOD_HASH) / sizeof(MOD_HASH[0])) },
+    { "bytes", MOD_BYTES, (int)(sizeof(MOD_BYTES) / sizeof(MOD_BYTES[0])) },
     { "sqlite3", MOD_SQLITE3, (int)(sizeof(MOD_SQLITE3) / sizeof(MOD_SQLITE3[0])) },
     { "mail", MOD_MAIL, (int)(sizeof(MOD_MAIL) / sizeof(MOD_MAIL[0])) },
     { "request", MOD_REQUEST, (int)(sizeof(MOD_REQUEST) / sizeof(MOD_REQUEST[0])) },

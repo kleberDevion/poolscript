@@ -216,6 +216,7 @@ importam sob demanda (instale com `pip install ".[all]"`).
 | `hash` | hash de senha: `crypt`, `check` |
 | `jwt` | tokens JWT: `gen`, `check` (HS256…) |
 | `regex` | engine própria com paridade com o `re` do Python |
+| `bytes` | criar/converter bytes: `new`, `fromhex`/`hex`, `base64`/`frombase64`, `fromint`/`toint`, `tolist`, `concat`, `slice`, `get`, `xor` |
 | `psodbc` / `db` | SQLite, PostgreSQL, MySQL, SQL Server e MongoDB |
 | `sqlite3` | SQLite direto |
 | `qrcode` / `qr` | geração de QR Code (`make`, `.save`) |

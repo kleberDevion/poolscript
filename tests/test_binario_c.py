@@ -240,6 +240,59 @@ def test_traceback_erro_durante_import_atravessa(tmp_path):
         f"\n--VM--\n{vm.stderr}\n--INTERP--\n{interp.stderr}")
 
 
+def test_bytes_modulo_diferencial(tmp_path):
+    """O módulo `bytes`: saída conferida e IDÊNTICA entre a VM e o interp."""
+    src = NL.join([
+        "import bytes",
+        'post(bytes.new([72, 105]))',
+        'post(bytes.new("Oi"))',
+        "post(bytes.new(3))",
+        "post(bytes.new())",
+        'post(bytes.hex(bytes.fromhex("48 65 6c 6c 6f")))',
+        'post(bytes.base64(bytes.new("Hello")))',
+        'post(bytes.frombase64("SGVsbG8="))',
+        "post(bytes.hex(bytes.fromint(258, 4)))",
+        'post(bytes.hex(bytes.fromint(258, 4, "little")))',
+        "post(bytes.toint(bytes.fromint(70000, 4)))",
+        'post(bytes.tolist(bytes.new("ABC")))',
+        'post(bytes.get(bytes.new("ABC"), -1))',
+        'post(bytes.slice(bytes.new("Hello"), 1, 3))',
+        'post(bytes.concat([bytes.new("Hi"), bytes.new("!!")]))',
+        'post(bytes.hex(bytes.xor(bytes.xor(bytes.new("secret"), bytes.new("KEY")), bytes.new("KEY"))))',
+    ]) + NL
+    f = tmp_path / "b.ps"
+    f.write_text(src, encoding="utf-8")
+    esperado = [
+        "b'Hi'", "b'Oi'", r"b'\x00\x00\x00'", "b''", "48656c6c6f",
+        "SGVsbG8=", "b'Hello'", "00000102", "02010000", "70000",
+        "[65, 66, 67]", "67", "b'el'", "b'Hi!!'", "736563726574",
+    ]
+    assert saida("b.ps", cwd=str(tmp_path)) == esperado
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "b.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "NO_COLOR": "1", "PYTHONPATH": os.path.join(RAIZ, "src")},
+    )
+    assert roda("b.ps", cwd=str(tmp_path)).stdout == interp.stdout
+
+
+def test_bytes_erro_mensagem_identica(tmp_path):
+    """A LINHA da mensagem de erro do módulo bytes é a mesma nos dois motores.
+    (O caret de coluna em erro de função nativa diverge por limitação
+    pré-existente — vale pra todos os módulos, não só bytes.)"""
+    f = tmp_path / "e.ps"
+    f.write_text("import bytes" + NL + "post(bytes.new(3.5))" + NL, encoding="utf-8")
+    vm = roda("e.ps", cwd=str(tmp_path), env={"NO_COLOR": "1"})
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "e.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "NO_COLOR": "1", "PYTHONPATH": os.path.join(RAIZ, "src")},
+    )
+    assert vm.returncode == 1
+    assert vm.stderr.splitlines()[0] == interp.stderr.splitlines()[0]
+    assert "não sei criar bytes de flo" in vm.stderr
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"
