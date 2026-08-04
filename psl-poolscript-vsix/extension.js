@@ -993,6 +993,10 @@ class PoolScriptAnalyzer {
 
     getMemberAccess() {
         const until = this.line.substring(0, this.position.character);
+        // literal de string seguido de ponto: "abc".<...> / 'x'.<...> — expõe os
+        // métodos de string direto no literal, sem precisar guardar numa variável.
+        const strLit = until.match(/(["'])(?:\\.|(?!\1).)*\1\s*\.(\w*)$/);
+        if (strLit) return { obj: null, member: strLit[2], literalType: 'str' };
         const m = until.match(/(\w+)\.(\w*)$/);
         return m ? { obj: m[1], member: m[2] } : null;
     }
@@ -1019,9 +1023,18 @@ class PoolScriptAnalyzer {
             const candidates = localData.variables.filter(v => v.name === varName && v.line <= this.position.line);
             if (candidates.length) {
                 const latest = candidates.reduce((a, b) => (b.line > a.line ? b : a));
+                // tipo DECLARADO explícito (`str x = ...`, `list x = ...`) tem
+                // prioridade — é o que o usuário escreveu, e cobre os escalares
+                // e a lista, que antes não expunham método nenhum.
+                const dt = latest.declaredType;
+                if (dt === 'str') return { scalar: 'str' };
+                if (dt === 'json') return 'json_dict';
+                if (dt === 'list' || dt === 'int' || dt === 'flo' || dt === 'bool') return { stdlibClass: dt };
                 const it = latest.inferredType;
                 if (!it) return null; // parser já disse: não é dict/call — não arrisca ficar num tipo de uma atribuição mais antiga
                 if (it.kind === 'dict') return 'json_dict';
+                if (it.kind === 'str')  return { scalar: 'str' };
+                if (it.kind === 'list') return { stdlibClass: 'list' };
                 if (it.kind === 'call') return this._resolveCalleeType(it.callee, localData);
                 return null;
             }
@@ -1034,18 +1047,32 @@ class PoolScriptAnalyzer {
             new vscode.Range(0, 0, this.position.line, this.position.character)
         );
         const lines = textBefore.split('\n').reverse();
+        const v = escapeRegex(varName);
         for (const ln of lines) {
-            let dm = ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*([A-Za-z_]\\w*)\\.([A-Za-z_]\\w*)\\s*\\(`));
+            // tipo DECLARADO (`str nome = ...`, `list nums = ...`) — é o caso mais
+            // comum e o fallback é o caminho REAL durante completion: com o "."
+            // no fim a linha é inválida, o parser falha e o AST não vem, então
+            // sem isto string/list tipadas não expunham método nenhum.
+            let td = ln.match(new RegExp(`\\b(str|int|flo|bool|list|json)\\s+${v}\\s*=`));
+            if (td) {
+                if (td[1] === 'str')  return { scalar: 'str' };
+                if (td[1] === 'json') return 'json_dict';
+                return { stdlibClass: td[1] };  // list / int / flo / bool
+            }
+            let dm = ln.match(new RegExp(`\\b${v}\\s*=\\s*([A-Za-z_]\\w*)\\.([A-Za-z_]\\w*)\\s*\\(`));
             if (dm) {
                 const resolved = this._resolveCalleeType([dm[1], dm[2]], localData);
                 if (resolved) return resolved;
             }
-            let m = ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*([A-Za-z_]\\w*)\\s*\\(`));
+            let m = ln.match(new RegExp(`\\b${v}\\s*=\\s*([A-Za-z_]\\w*)\\s*\\(`));
             if (m) {
                 const resolved = this._resolveCalleeType([m[1]], localData);
                 if (resolved) return resolved;
             }
-            if (ln.match(new RegExp(`\\b${escapeRegex(varName)}\\s*=\\s*\\{`))) return 'json_dict';
+            // literal atribuído: string ("..."/'...'/f"...") ou lista ([...]).
+            if (ln.match(new RegExp(`\\b${v}\\s*=\\s*[fF]?["']`))) return { scalar: 'str' };
+            if (ln.match(new RegExp(`\\b${v}\\s*=\\s*\\[`)))          return { stdlibClass: 'list' };
+            if (ln.match(new RegExp(`\\b${v}\\s*=\\s*\\{`)))          return 'json_dict';
         }
         return null;
     }
@@ -1062,6 +1089,10 @@ class PoolScriptAnalyzer {
         if (callee.length === 1) {
             const sym = this.provider.getSymbolByName(callee[0], this.document.uri);
             if (sym?.kind === vscode.CompletionItemKind.Class) return callee[0];
+            // classe/tipo da stdlib usada como construtor: PoolFile(...),
+            // str(...), etc. — expõe os métodos do objeto criado.
+            if (callee[0] === 'str') return { scalar: 'str' };
+            if (STDLIB_CLASSES[callee[0]]) return { stdlibClass: callee[0] };
             return null;
         }
         const [first, second] = callee;
@@ -1976,6 +2007,17 @@ function activate(context) {
                 const access   = analyzer.getMemberAccess();
 
                 if (access) {
+                    // método de string — tanto em literal ("abc".<...>) quanto
+                    // em variável tipada/inferida como str. Os 55 métodos vêm do
+                    // docs_meta (PoolStr), com assinatura, doc e exemplo ricos.
+                    const stringMethodItems = () => Object.entries(DOCS_META.string).map(([name, meta]) => {
+                        const it = new vscode.CompletionItem(name, vscode.CompletionItemKind.Method);
+                        it.detail = meta.sig || `s.${name}()`;
+                        it.documentation = renderCard(meta, 'método de string');
+                        return it;
+                    });
+                    if (access.literalType === 'str') return stringMethodItems();
+
                     // 1. módulo stdlib conhecido (ex: date.X, os.X, cors.X) — resolve
                     // também apelidos de import (`import os as o` → o.pathFile(...)).
                     let stdlibKey = resolveStdlibKey(access.obj, localData);
@@ -2020,6 +2062,9 @@ function activate(context) {
                             it.detail = 'dict key';
                             return it;
                         });
+                    }
+                    if (type && typeof type === 'object' && type.scalar === 'str') {
+                        return stringMethodItems();
                     }
                     if (type && typeof type === 'object' && type.stdlibClass) {
                         const clsMembers = STDLIB_CLASSES[type.stdlibClass] || [];

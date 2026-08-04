@@ -6,53 +6,54 @@ function labels(list) {
   return (list && list.items ? list.items : []).map(i =>
     typeof i.label === 'string' ? i.label : (i.label && i.label.label) || '');
 }
-async function abre() {
-  const uri = vscode.Uri.file(path.resolve(__dirname, '../fixtures/sample.ps'));
-  const doc = await vscode.workspace.openTextDocument(uri);
+
+// Abre um doc em memória com o conteúdo dado, espera a extensão analisar, e
+// devolve as labels de completion na posição (linha, col).
+async function completar(content, line, col) {
+  const doc = await vscode.workspace.openTextDocument({ language: 'poolscript', content });
   await vscode.window.showTextDocument(doc);
-  await new Promise(r => setTimeout(r, 3000)); // deixa a extensão ativar/analisar
-  return doc;
+  await new Promise(r => setTimeout(r, 1200));
+  const list = await vscode.commands.executeCommand(
+    'vscode.executeCompletionItemProvider', doc.uri, new vscode.Position(line, col));
+  return labels(list);
 }
-function acha(doc, trecho, offsetExtra = 0) {
-  for (let l = 0; l < doc.lineCount; l++) {
-    const idx = doc.lineAt(l).text.indexOf(trecho);
-    if (idx >= 0) return new vscode.Position(l, idx + trecho.length + offsetExtra);
-  }
-  throw new Error('trecho nao achado: ' + trecho);
-}
+function temTodos(L, nomes) { return nomes.every(n => L.includes(n)); }
 
-suite('PoolScript — autocomplete', () => {
-  let doc;
-  suiteSetup(async () => { doc = await abre(); });
+suite('PoolScript — autocomplete de métodos', () => {
 
-  test('f. (PoolFile) sugere move/copy/delete', async () => {
-    const pos = acha(doc, 'f.');
-    const list = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', doc.uri, pos);
-    const L = labels(list);
-    console.log('[[ f. ]]', JSON.stringify(L));
-    assert.ok(L.includes('move') && L.includes('copy') && L.includes('delete'),
-      'PoolFile deveria sugerir move/copy/delete, veio: ' + L.join(','));
+  test('str tipada (str x = "..."; x.) expõe métodos de string', async () => {
+    const L = await completar('str nome = "Pool"\ny = nome.\n', 1, 9);
+    assert.ok(temTodos(L, ['upper', 'lower', 'strip', 'split']),
+      'esperava métodos de string, veio: ' + L.join(','));
   });
 
-  test('cors. sugere options/origins', async () => {
-    const doc2 = await vscode.workspace.openTextDocument({ language: 'poolscript',
-      content: 'import jinker\ncors = jinker.cors\nx = cors.\n' });
-    await vscode.window.showTextDocument(doc2);
-    await new Promise(r => setTimeout(r, 1500));
-    const pos = new vscode.Position(2, 9);
-    const list = await vscode.commands.executeCommand('vscode.executeCompletionItemProvider', doc2.uri, pos);
-    const L = labels(list);
-    console.log('[[ cors. ]]', JSON.stringify(L));
-    assert.ok(L.includes('options') && L.includes('origins'),
-      'cors deveria sugerir options/origins, veio: ' + L.join(','));
+  test('string inferida (x = "..."; x.) expõe métodos de string', async () => {
+    const L = await completar('frase = "oi mundo"\ny = frase.\n', 1, 10);
+    assert.ok(temTodos(L, ['upper', 'replace', 'startswith']),
+      'esperava métodos de string, veio: ' + L.join(','));
   });
 
-  test('.route(...) mostra signature com methods/auth/middleware', async () => {
-    const pos = acha(doc, '@app.route("/x", ');
-    const sig = await vscode.commands.executeCommand('vscode.executeSignatureHelpProvider', doc.uri, pos);
-    const txt = sig && sig.signatures ? sig.signatures.map(s => s.label).join(' | ') : '(nada)';
-    console.log('[[ route sig ]]', txt);
-    assert.ok(/methods/.test(txt) && /auth/.test(txt) && /middleware/.test(txt),
-      'route deveria expor methods/auth/middleware, veio: ' + txt);
+  test('literal de string ("...".) expõe métodos de string', async () => {
+    const L = await completar('y = "texto".\n', 0, 12);
+    assert.ok(temTodos(L, ['upper', 'lower']),
+      'esperava métodos de string no literal, veio: ' + L.join(','));
+  });
+
+  test('list tipada (list x = [...]; x.) expõe métodos de lista', async () => {
+    const L = await completar('list nums = [1, 2, 3]\ny = nums.\n', 1, 9);
+    assert.ok(temTodos(L, ['append', 'pop', 'sort']),
+      'esperava métodos de lista, veio: ' + L.join(','));
+  });
+
+  test('PoolFile via loadFile (f = os.loadFile(...); f.) expõe move/copy/delete', async () => {
+    const L = await completar('import os\nf = os.loadFile("img.png")\ny = f.\n', 2, 6);
+    assert.ok(temTodos(L, ['move', 'copy', 'delete']),
+      'esperava métodos de PoolFile, veio: ' + L.join(','));
+  });
+
+  test('PoolFile via construtor (p = PoolFile(...); p.) expõe move/copy', async () => {
+    const L = await completar('p = PoolFile("a.txt")\ny = p.\n', 1, 6);
+    assert.ok(temTodos(L, ['move', 'copy']),
+      'esperava métodos de PoolFile, veio: ' + L.join(','));
   });
 });

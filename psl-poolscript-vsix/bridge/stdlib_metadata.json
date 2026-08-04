@@ -13,7 +13,8 @@
     {
       "name": "loadFile",
       "kind": "function",
-      "detail": "os.loadFile(name, encoding?) — Carrega um arquivo."
+      "detail": "os.loadFile(name, encoding?) — Carrega um arquivo.",
+      "returns": "PoolFile"
     },
     {
       "name": "getenv",
@@ -658,6 +659,68 @@
       "name": "asjson",
       "kind": "function",
       "detail": "dataentity.asjson(instance) — DataEntity → string JSON."
+    }
+  ],
+  "bytes": [
+    {
+      "name": "new",
+      "kind": "function",
+      "detail": "bytes.new(x?) — Cria bytes de: lista de inteiros (0-255), texto (utf-8), um tamanho"
+    },
+    {
+      "name": "fromhex",
+      "kind": "function",
+      "detail": "bytes.fromhex(s) — Bytes a partir de uma string hex ('48656c6c6f'). Espaços são ignorados."
+    },
+    {
+      "name": "hex",
+      "kind": "function",
+      "detail": "bytes.hex(b) — String hex minúscula, sem separador ('48656c6c6f')."
+    },
+    {
+      "name": "base64",
+      "kind": "function",
+      "detail": "bytes.base64(b) — String base64 (padrão, com padding)."
+    },
+    {
+      "name": "frombase64",
+      "kind": "function",
+      "detail": "bytes.frombase64(s) — Bytes a partir de uma string base64."
+    },
+    {
+      "name": "fromint",
+      "kind": "function",
+      "detail": "bytes.fromint(n, length?, byteorder?) — Inteiro (>= 0) empacotado em bytes. `length` fixa a largura em bytes"
+    },
+    {
+      "name": "toint",
+      "kind": "function",
+      "detail": "bytes.toint(b, byteorder?) — Desempacota bytes num inteiro (>= 0). `byteorder` 'big' (padrão) ou 'little'."
+    },
+    {
+      "name": "tolist",
+      "kind": "function",
+      "detail": "bytes.tolist(b) — Lista com o valor inteiro (0-255) de cada byte."
+    },
+    {
+      "name": "concat",
+      "kind": "function",
+      "detail": "bytes.concat(lista) — Junta uma lista de bytes num só."
+    },
+    {
+      "name": "slice",
+      "kind": "function",
+      "detail": "bytes.slice(b, ini?, fim?) — Uma fatia dos bytes [ini:fim]. Índices negativos contam do fim."
+    },
+    {
+      "name": "get",
+      "kind": "function",
+      "detail": "bytes.get(b, i) — O valor inteiro (0-255) do byte na posição `i` (negativo conta do fim)."
+    },
+    {
+      "name": "xor",
+      "kind": "function",
+      "detail": "bytes.xor(dados, chave) — XOR byte a byte de `dados` com `chave`. Se a chave for menor, ela repete"
     }
   ],
   "__classes__": {

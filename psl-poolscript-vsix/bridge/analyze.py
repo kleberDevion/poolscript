@@ -245,6 +245,18 @@ def analyze_source(text):
         t = _node_type(value_node)
         if t == "DictLiteral":
             return {"kind": "dict"}
+        if t == "ListLiteral" or t == "TupleLiteral":
+            return {"kind": "list"}
+        if t == "InterpolatedString":
+            return {"kind": "str"}
+        if t == "Literal":
+            # kind do Literal é o TIPO DO TOKEN: "STR"/"FSTRING" = string de
+            # verdade. (kind="str" minúsculo é o tipo `str` usado como valor —
+            # uma referência de tipo, não uma string; esse fica de fora.)
+            lk = getattr(value_node, "kind", None)
+            if lk in ("STR", "STRING", "FSTRING"):
+                return {"kind": "str"}
+            return None
         if t == "Call":
             path = []
             node = value_node.callee

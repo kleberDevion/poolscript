@@ -250,7 +250,7 @@
       "patterns": [
         {
           "name": "support.class.stdlib.module.poolscript",
-          "match": "\\b(datasentity|dataentity|requests|request|sqlite3|dotenv|jinker|psodbc|qrcode|manpu|regex|JSON|date|hash|json|mail|jwt|sys|db|mp|os|qr)\\b"
+          "match": "\\b(datasentity|dataentity|requests|request|sqlite3|dotenv|jinker|psodbc|qrcode|bytes|manpu|regex|JSON|date|hash|json|mail|jwt|sys|db|mp|os|qr)\\b"
         }
       ]
     },
@@ -523,7 +523,7 @@
       "patterns": [
         {
           "name": "support.function.stdlib.poolscript",
-          "match": "\\b(ERROR_CORRECT_H|ERROR_CORRECT_L|ERROR_CORRECT_M|ERROR_CORRECT_Q|JinkerResponse|JinkerRequest|RelativePath|MailMessage|MailReader|MailServer|pathFolder|ws_connect|stringify|timestamp|datahora|get_json|loadFile|pathFile|platform|astuple|connect|environ|findall|jsonify|Jinker|QRCode|asdict|asjson|aslist|delete|escape|exists|getenv|ipmach|isfile|remove|rename|render|search|stderr|stdout|chdir|check|crypt|isdir|match|mkdir|parse|patch|query|rmdir|split|today|write|argv|code|copy|cors|exit|hora|make|move|read|size|text|time|warn|cmd|cwd|gen|get|now|put|run|src|sub|ls)\\b"
+          "match": "\\b(ERROR_CORRECT_H|ERROR_CORRECT_L|ERROR_CORRECT_M|ERROR_CORRECT_Q|JinkerResponse|JinkerRequest|RelativePath|MailMessage|MailReader|MailServer|frombase64|pathFolder|ws_connect|stringify|timestamp|datahora|get_json|loadFile|pathFile|platform|astuple|connect|environ|findall|fromhex|fromint|jsonify|Jinker|QRCode|asdict|asjson|aslist|base64|concat|delete|escape|exists|getenv|ipmach|isfile|remove|rename|render|search|stderr|stdout|tolist|chdir|check|crypt|isdir|match|mkdir|parse|patch|query|rmdir|slice|split|today|toint|write|argv|code|copy|cors|exit|hora|make|move|read|size|text|time|warn|cmd|cwd|gen|get|new|now|put|run|src|sub|xor|ls)\\b"
         }
       ]
     }

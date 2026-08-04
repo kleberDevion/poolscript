@@ -107,7 +107,7 @@ def pathFolder(name: str) -> str:
     raise FileNotFoundError(f"pasta não encontrada: {name}")
 
 
-def loadFile(name: str, encoding: str = None):
+def loadFile(name: str, encoding: str = None) -> "PoolFile":
     """Carrega um arquivo.
 
     Sem mode — automático pelo extension:

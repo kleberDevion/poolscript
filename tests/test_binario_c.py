@@ -385,7 +385,18 @@ def test_jinker_reload_recarrega_ao_mudar(tmp_path):
     def pega():
         c = socket.create_connection(("127.0.0.1", porta)); c.settimeout(5)
         c.sendall(b"GET /v HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-        d = c.recv(4096); c.close(); return d
+        # lê ATÉ o servidor fechar (Connection: close) — um recv() só pega os
+        # headers quando o body vem em outro segmento TCP (era o flaky daqui).
+        d = b""
+        while True:
+            try:
+                chunk = c.recv(4096)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            d += chunk
+        c.close(); return d
 
     escreve("A")
     proc = subprocess.Popen([POOL, str(app)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
