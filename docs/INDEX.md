@@ -29,6 +29,7 @@ Para a **linguagem em si** (sintaxe, tipos, `if`/`while`/`for`, `Entity`,
 - **[os](os/os.md)** — sistema de arquivos, ambiente, terminal
 - **[manpu](manpu/manpu.md)** — arquivos CSV/XLSX/texto
 - **[json](json/json.md)** — texto JSON ↔ dados
+- **[bytes](bytes/bytes.md)** — criar/converter dados binários (hex, base64, inteiros)
 - **[psodbc](psodbc/psodbc.md)** — banco de dados (SQLite/Postgres/MySQL/SQL Server/Mongo)
 
 ### Segurança e comunicação
