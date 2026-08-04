@@ -293,6 +293,29 @@ def test_bytes_erro_mensagem_identica(tmp_path):
     assert "não sei criar bytes de flo" in vm.stderr
 
 
+def test_ansi_escapes_diferencial(tmp_path):
+    r"""Escapes ANSI (\033, \x1b, \e) e de C/Python (octal/hex) viram os MESMOS
+    bytes nos dois motores — o ESC (0x1b) sai pro terminal renderizar cor/itálico."""
+    src = (
+        r'post("\033[1mA\033[0m")' + NL
+        + r'post("\x1b[31mB\x1b[0m")' + NL
+        + r'post("\e[3mC\e[0m")' + NL
+        + r'post("\101-\x42-\xe9")' + NL
+    )
+    f = tmp_path / "a.ps"
+    f.write_text(src, encoding="utf-8")
+    vm = roda("a.ps", cwd=str(tmp_path))
+    assert vm.returncode == 0, vm.stderr
+    assert "\x1b[1mA\x1b[0m" in vm.stdout      # \033 vira o byte ESC de verdade
+    assert "\x1b[3mC\x1b[0m" in vm.stdout      # \e também
+    assert "A-B-é" in vm.stdout           # octal \101=A, hex \x42=B, \xe9=é (utf-8)
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "a.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert vm.stdout == interp.stdout
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"

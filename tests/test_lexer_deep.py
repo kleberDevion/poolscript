@@ -148,6 +148,17 @@ def test_string_recognized_escapes():
     assert toks(r'"a\"b"')[0].value == 'a"b'
 
 
+def test_string_ansi_e_escapes_c():
+    # ANSI + escapes de C/Python: octal \033, hex \x1b, \e — todos = ESC (0x1b).
+    assert toks(r'"\033[1m"')[0].value == "\x1b[1m"
+    assert toks(r'"\x1b[0m"')[0].value == "\x1b[0m"
+    assert toks(r'"\e[3m"')[0].value == "\x1b[3m"
+    assert toks(r'"\101"')[0].value == "A"          # octal → 'A'
+    assert toks(r'"\x41"')[0].value == "A"          # hex → 'A'
+    assert toks(r'"\xe9"')[0].value == "é"      # hex não-ASCII → codepoint
+    assert toks(r'"\a\b\f\v"')[0].value == "\a\b\f\v"
+
+
 def test_string_unrecognized_escape_drops_backslash():
     # Comportamento documentado (igual a várias linguagens C-like): uma
     # sequência de escape não reconhecida perde o backslash e mantém só a

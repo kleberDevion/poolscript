@@ -319,6 +319,46 @@ class Lexer:
         )
 
     # ── strings ────────────────────────────────────────────────────
+    _ESC_SIMPLES = {
+        "n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'",
+        "a": "\a", "b": "\b", "f": "\f", "v": "\v",
+        "e": "\x1b",   # ESC — pra sequências ANSI: "\e[3m..." / "\033[3m..."
+    }
+
+    def _decode_escape(self, i: int) -> "tuple[str, int]":
+        """Decodifica o escape que começa no '\\' em self.src[i]. Devolve
+        (texto, nº de chars do fonte consumidos, incluindo a barra).
+
+        Suporta os escapes de C/Python: `\\n \\t \\r \\a \\b \\f \\v \\e`,
+        `\\\\ \\" \\'`, octal `\\033`, hex `\\x1b`, e unicode `\\uXXXX`/`\\UXXXXXXXX`.
+        O valor é um CODEPOINT (vira UTF-8 na saída) — a VM em C faz igual, então
+        `\\033`/`\\x1b` dão o mesmo byte ESC nos dois motores. Escape
+        desconhecido mantém o comportamento antigo: solta a barra, mantém o char."""
+        src = self.src
+        n = len(src)
+        if i + 1 >= n:
+            return "\\", 1
+        nxt = src[i + 1]
+        if nxt in self._ESC_SIMPLES:
+            return self._ESC_SIMPLES[nxt], 2
+        if nxt in "01234567":                       # octal \ooo (1-3 dígitos)
+            j, o = i + 1, ""
+            while j < n and src[j] in "01234567" and len(o) < 3:
+                o += src[j]; j += 1
+            return chr(int(o, 8)), (j - i)
+        if nxt in "xX":                             # hex \xHH
+            h = src[i + 2:i + 4]
+            if len(h) == 2 and all(ch in "0123456789abcdefABCDEF" for ch in h):
+                return chr(int(h, 16)), 4
+            return nxt, 2
+        if nxt in "uU":                             # unicode \uXXXX / \UXXXXXXXX
+            k = 4 if nxt == "u" else 8
+            h = src[i + 2:i + 2 + k]
+            if len(h) == k and all(ch in "0123456789abcdefABCDEF" for ch in h):
+                return chr(int(h, 16)), 2 + k
+            return nxt, 2
+        return nxt, 2                               # desconhecido: solta a barra
+
     def _read_string(self, quote: str, is_fstring: bool = False, is_raw: bool = False) -> None:
         start_line, start_col = self.line, self.col
         self._advance(1)  # consome a aspa inicial
@@ -337,10 +377,9 @@ class Lexer:
                 self._advance(1)
                 continue
             if c == "\\" and self.pos + 1 < len(self.src):
-                nxt = self.src[self.pos + 1]
-                escapes = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'"}
-                out.append(escapes.get(nxt, nxt))
-                self._advance(2)
+                txt, consumido = self._decode_escape(self.pos)
+                out.append(txt)
+                self._advance(consumido)
                 continue
             if c == quote:
                 self._advance(1)
@@ -377,11 +416,10 @@ class Lexer:
                 return
             c = self.src[self.pos]
             if not is_raw and c == "\\" and self.pos + 1 < len(self.src):
-                nxt = self.src[self.pos + 1]
-                escapes = {"n": "\n", "t": "\t", "r": "\r", "\\": "\\", '"': '"', "'": "'"}
-                out.append(escapes.get(nxt, nxt))
-                self.pos += 2
-                self.col += 2
+                txt, consumido = self._decode_escape(self.pos)
+                out.append(txt)
+                self.pos += consumido
+                self.col += consumido
                 continue
             if c == "\n":
                 out.append(c)

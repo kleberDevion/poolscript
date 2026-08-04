@@ -19,7 +19,10 @@ import sqlite3 as _sqlite3
 
 # ── Detecção de runtime ───────────────────────────────────────────────────────
 IS_PYPY = hasattr(sys, "pypy_version_info")
-RUNTIME  = f"PyPy {sys.pypy_version_info[:3]}" if IS_PYPY else f"CPython {sys.version_info[:3]}"
+RUNTIME  = (
+    "PyPy "   + ".".join(map(str, sys.pypy_version_info[:3])) if IS_PYPY
+    else "CPython " + ".".join(map(str, sys.version_info[:3]))
+)
 
 # ── Cores ANSI ────────────────────────────────────────────────────────────────
 _USE_COLOR = sys.stderr.isatty() and os.environ.get("NO_COLOR") is None

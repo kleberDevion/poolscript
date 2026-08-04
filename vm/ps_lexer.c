@@ -271,14 +271,78 @@ static void pula_comentario_bloco(Lexer *lx)
 }
 
 /* ── strings ────────────────────────────────────────────────────────────── */
-static char resolve_escape(char c)
+static int ehexdig(char c) { return (c>='0'&&c<='9')||(c>='a'&&c<='f')||(c>='A'&&c<='F'); }
+static int hexval(char c)  { if (c>='0'&&c<='9') return c-'0'; if (c>='a'&&c<='f') return c-'a'+10; return c-'A'+10; }
+
+/* codepoint -> UTF-8 no buffer. O interp faz `chr(cp)` (str) que vira UTF-8 na
+ * saída; aqui codificamos igual, então `\033`/`\x1b` dão o MESMO byte ESC e um
+ * `\xff` dá os mesmos 2 bytes UTF-8 nos dois motores. */
+static int buf_push_utf8(Buf *bf, unsigned long cp)
 {
-    switch (c) {
-        case 'n': return '\n';
-        case 't': return '\t';
-        case 'r': return '\r';
-        default:  return c;      /* \\ \" \' e qualquer outro: literal */
+    if (cp < 0x80) return buf_push(bf, (char)cp);
+    if (cp < 0x800) {
+        if (buf_push(bf, (char)(0xC0 | (cp >> 6))) != 0) return -1;
+        return buf_push(bf, (char)(0x80 | (cp & 0x3F)));
     }
+    if (cp < 0x10000) {
+        if (buf_push(bf, (char)(0xE0 | (cp >> 12))) != 0) return -1;
+        if (buf_push(bf, (char)(0x80 | ((cp >> 6) & 0x3F))) != 0) return -1;
+        return buf_push(bf, (char)(0x80 | (cp & 0x3F)));
+    }
+    if (buf_push(bf, (char)(0xF0 | (cp >> 18))) != 0) return -1;
+    if (buf_push(bf, (char)(0x80 | ((cp >> 12) & 0x3F))) != 0) return -1;
+    if (buf_push(bf, (char)(0x80 | ((cp >> 6) & 0x3F))) != 0) return -1;
+    return buf_push(bf, (char)(0x80 | (cp & 0x3F)));
+}
+
+/* Processa o escape que começa no '\\' em lx->pos, empurra o resultado (UTF-8)
+ * em bf e avança lx->pos/col pelos chars consumidos. Espelha o _decode_escape
+ * do lexer.py (a autoridade): \n \t \r \a \b \f \v \e, \\ \" \', octal \033,
+ * hex \x1b, unicode \uXXXX/\UXXXXXXXX. Desconhecido solta a barra. 0 ok, -1 mem. */
+static int decode_escape(Lexer *lx, Buf *bf)
+{
+    const char *s = lx->src;
+    size_t n = lx->len, i = lx->pos;      /* i aponta pro '\\' */
+    char nxt = s[i + 1];
+    int consumido = 2;
+    unsigned long cp;
+    switch (nxt) {
+        case 'n': cp = '\n'; break;
+        case 't': cp = '\t'; break;
+        case 'r': cp = '\r'; break;
+        case 'a': cp = '\a'; break;
+        case 'b': cp = '\b'; break;
+        case 'f': cp = '\f'; break;
+        case 'v': cp = '\v'; break;
+        case 'e': cp = 0x1b; break;                 /* ESC — sequências ANSI */
+        case '\\': cp = '\\'; break;
+        case '"':  cp = '"';  break;
+        case '\'': cp = '\''; break;
+        default:
+            if (nxt >= '0' && nxt <= '7') {          /* octal \ooo (1-3) */
+                unsigned long v = 0; int d = 0; size_t j = i + 1;
+                while (j < n && s[j] >= '0' && s[j] <= '7' && d < 3) {
+                    v = v * 8 + (unsigned long)(s[j] - '0'); j++; d++;
+                }
+                cp = v; consumido = (int)(j - i);
+            } else if (nxt == 'x' || nxt == 'X') {   /* hex \xHH */
+                if (i + 3 < n && ehexdig(s[i+2]) && ehexdig(s[i+3])) {
+                    cp = (unsigned long)(hexval(s[i+2]) * 16 + hexval(s[i+3])); consumido = 4;
+                } else { cp = (unsigned char)nxt; consumido = 2; }
+            } else if (nxt == 'u' || nxt == 'U') {   /* unicode \uXXXX / \UXXXXXXXX */
+                int k = (nxt == 'u') ? 4 : 8, ok = 1; unsigned long v = 0;
+                for (int t = 0; t < k; t++) {
+                    if (i + 2 + (size_t)t >= n || !ehexdig(s[i+2+t])) { ok = 0; break; }
+                    v = v * 16 + (unsigned long)hexval(s[i+2+t]);
+                }
+                if (ok) { cp = v; consumido = 2 + k; }
+                else    { cp = (unsigned char)nxt; consumido = 2; }
+            } else {
+                cp = (unsigned char)nxt; consumido = 2;   /* desconhecido: solta a barra */
+            }
+    }
+    lx->pos += (size_t)consumido; lx->col += consumido;
+    return buf_push_utf8(bf, cp);
 }
 
 static void le_string(Lexer *lx, char aspa, int fstring, int raw)
@@ -290,10 +354,7 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw)
     while (lx->pos < lx->len) {
         char c = lx->src[lx->pos];
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
-            if (buf_push(&bf, resolve_escape(lx->src[lx->pos + 1])) != 0) {
-                free(bf.b); erro(lx, "sem memoria"); return;
-            }
-            lx->pos += 2; lx->col += 2;
+            if (decode_escape(lx, &bf) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
         if (c == aspa) {
@@ -332,10 +393,7 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw)
         }
         char c = lx->src[lx->pos];
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
-            if (buf_push(&bf, resolve_escape(lx->src[lx->pos + 1])) != 0) {
-                free(bf.b); erro(lx, "sem memoria"); return;
-            }
-            lx->pos += 2; lx->col += 2;
+            if (decode_escape(lx, &bf) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
         if (c == '\n') {

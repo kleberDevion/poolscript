@@ -418,10 +418,12 @@ class BaseCall(Node):
 
 @dataclass(slots=True)
 class MemberAssignment(Node):
-    """`self.x = valor` ou `obj.x = valor` — atribuição de membro."""
+    """`self.x = valor` ou `obj.x = valor` — atribuição de membro.
+    Aceita também as formas aumentadas (`self.x += 1`, `.x -= ...`)."""
     target: Node        # a expressão do objeto (ex: Name("self"))
     member: str         # nome do atributo
     value: Node         # valor a atribuir
+    operator: str = "="  # "=", "+=", "-=", ...
 
 
 
@@ -686,10 +688,11 @@ class Parser:
             if (chain
                     and peek < len(self.tokens)
                     and self.tokens[peek].type == "OP"
-                    and self.tokens[peek].value == "="):
-                # padrão confirmado — agora consome
+                    and self.tokens[peek].value in ASSIGN_OPS):
+                # padrão confirmado — agora consome (aceita `=` e aumentados)
                 obj_tok = self.current()
-                self.pos = peek + 1  # pula objeto + cadeia de dots + "="
+                op_str = str(self.tokens[peek].value)
+                self.pos = peek + 1  # pula objeto + cadeia de dots + operador
                 val = self.parse_expression()
                 self.consume_optional_semi()
                 base_node = Name(line=obj_tok.line, col=obj_tok.col, value=str(obj_tok.value))
@@ -697,7 +700,8 @@ class Parser:
                     base_node = MemberAccess(line=obj_tok.line, col=obj_tok.col,
                                               target=base_node, member=attr)
                 return MemberAssignment(line=obj_tok.line, col=obj_tok.col,
-                                         target=base_node, member=chain[-1], value=val)
+                                         target=base_node, member=chain[-1], value=val,
+                                         operator=op_str)
 
         expr = self.parse_expression()
 
