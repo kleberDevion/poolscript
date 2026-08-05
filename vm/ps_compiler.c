@@ -740,14 +740,20 @@ static void expr(C *c, Unidade *u, PSNode *n)
                 return;
             }
 
-            /* Interno DINÂMICO (f-string, interpolação `"txt" {x}`, etc.): o
-             * valor só existe em runtime. Concatena: PREFIXO + interno + RESET.
-             * Bug antigo: assumia literal e embutia `{x}` cru, sem interpolar. */
+            /* Interno DINÂMICO (f-string, interpolação `"txt" {x}`, variável,
+             * etc.): o valor só existe em runtime. Concatena PREFIXO + interno
+             * + RESET. O interno passa por `str(...)` primeiro (via OP_LOAD_TIPO
+             * str + OP_CALL, o MESMO que `str(x)` compila) — assim `<green>x`
+             * colore QUALQUER tipo, igual o interp faz. Sem isso, x int/flo dava
+             * "'+' entre tipos incompativeis" (o + interno da tag, que o usuário
+             * nunca escreveu — ele só está imprimindo). */
             char pref[32];
             int pl = snprintf(pref, sizeof(pref), "\033[38;2;%u;%u;%um", r, g, b);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, pref, pl));
+            emite(c, u, OP_LOAD_TIPO, 0);     /* 0 = tipo str */
             expr(c, u, n->a);                 /* compila o interno DE VERDADE */
-            emite(c, u, OP_ADD, 0);           /* prefixo + interno */
+            emite(c, u, OP_CALL, 1);          /* str(interno) */
+            emite(c, u, OP_ADD, 0);           /* prefixo + str(interno) */
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, "\033[0m", 4));
             emite(c, u, OP_ADD, 0);           /* + reset */
             return;

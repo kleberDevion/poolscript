@@ -316,6 +316,30 @@ def test_ansi_escapes_diferencial(tmp_path):
     assert vm.stdout == interp.stdout
 
 
+def test_color_tag_coage_nao_string(tmp_path):
+    """`<cor>valor` colore QUALQUER tipo (não só string): a tag faz str(valor)
+    por dentro, igual ao interp. Antes a VM concatenava cru e um int/flo dava
+    "'+' entre tipos incompativeis" — um `+` que o usuário nunca escreveu
+    (ele só está imprimindo). Byte-a-byte igual ao interp."""
+    src = (
+        "x = 42" + NL
+        + "f = 3.14" + NL
+        + "post(<green>x)" + NL
+        + "post(<red>f)" + NL
+        + "post(<blue>[1, 2])" + NL
+    )
+    f = tmp_path / "c.ps"
+    f.write_text(src, encoding="utf-8")
+    vm = roda("c.ps", cwd=str(tmp_path))
+    assert vm.returncode == 0, vm.stderr
+    assert "42" in vm.stdout and "3.14" in vm.stdout and "[1, 2]" in vm.stdout
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "c.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert vm.stdout == interp.stdout
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"
