@@ -1376,6 +1376,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             memset(def, 0, sizeof(*def));
             def->nome = strdup(n->texto ? n->texto : "?");
             def->npais = n->lista2.n;
+            def->classe_privada = n->is_private;   /* `private class` = não exportada */
 
             /* nomes de membros `private` — métodos (n->lista) + campos
              * (n->lista2_alias). A VM usa isto p/ barrar acesso de fora. */

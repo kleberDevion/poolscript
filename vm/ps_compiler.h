@@ -61,6 +61,8 @@ typedef struct {
      * de fora da classe (encapsulamento). */
     char   **priv_nomes;
     int32_t  npriv;
+    /* `private class Nome()` — a classe INTEIRA não é exportada no import. */
+    int32_t  classe_privada;
 } PSClassDef;
 
 /* Campo de `model`, na forma neutra do compilador. */

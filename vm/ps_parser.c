@@ -1519,11 +1519,27 @@ static PSNode *statement(P *p)
         return n;
     }
 
+    /* `public class Nome()` / `private class Nome()` — modificador de visibilidade
+     * na PRÓPRIA classe. `private` = não exportada no import (só usável no arquivo).
+     * `is_private` não entra na serialização do AST, então o diff continua batendo. */
+    int classe_priv = 0;
+    if (t->type == T_KW && t->texto
+            && (strcmp(t->texto, "private") == 0 || strcmp(t->texto, "public") == 0)) {
+        PSToken *nx = espia(p, 1);
+        if (nx && nx->type == T_KW && nx->texto
+                && (strcmp(nx->texto, "Entity") == 0 || strcmp(nx->texto, "class") == 0
+                    || strcmp(nx->texto, "Class") == 0)) {
+            classe_priv = (strcmp(t->texto, "private") == 0);
+            p->pos++;          /* consome private/public */
+            t = atual(p);      /* agora aponta pro Entity/class/Class */
+        }
+    }
     /* Entity Nome(Pai) { action ... | campo: tipo | @decorador } */
     if (checa_kw(p, "Entity") || checa_kw(p, "class") || checa_kw(p, "Class")) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_ENTITY_DECL, t->line, t->col);
         if (!n) return NULL;
+        n->is_private = classe_priv;
         n->texto = exige_nome(p, "Entity");
         if (FALHOU(p)) return NULL;
         if (!exige(p, T_LPAREN, "esperado '(' apos nome da Entity")) return NULL;

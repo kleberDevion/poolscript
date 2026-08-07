@@ -369,6 +369,46 @@ def test_traceback_erro_em_metodo_de_lib(tmp_path):
         f"\n--VM--\n{vm.stderr}\n--INTERP--\n{interp.stderr}")
 
 
+def test_public_private_class(tmp_path):
+    """`public class`/`private class` (modificador na declaração da classe):
+    as duas são usáveis no próprio arquivo; `private class` NÃO é exportada no
+    import (só vive no arquivo). Byte-a-byte igual ao interp."""
+    (tmp_path / "lib.p").write_text(
+        "public class Aberta() {" + NL
+        + "    action __init__(self, v) { self.v = v }" + NL
+        + "    action ver(self) { return self.v }" + NL
+        + "}" + NL
+        + "private class Secreta() {" + NL
+        + "    action __init__(self) { self.x = 99 }" + NL
+        + "}" + NL, encoding="utf-8")
+
+    # same-file: as duas funcionam
+    same = tmp_path / "same.ps"
+    same.write_text(
+        "public class A() { action __init__(self) { self.n = 1 } }" + NL
+        + "private class B() { action __init__(self) { self.n = 2 } }" + NL
+        + "post(A().n)" + NL + "post(B().n)" + NL, encoding="utf-8")
+    assert saida("same.ps", cwd=str(tmp_path)) == ["1", "2"]
+
+    # import: pública acessível
+    up = tmp_path / "up.ps"
+    up.write_text("from lib import Aberta" + NL + "post(Aberta(7).ver())" + NL, encoding="utf-8")
+    assert saida("up.ps", cwd=str(tmp_path)) == ["7"]
+
+    # import: privada barrada, mesma mensagem do interp
+    pr = tmp_path / "pr.ps"
+    pr.write_text("from lib import Secreta" + NL + "post(Secreta())" + NL, encoding="utf-8")
+    vm = roda("pr.ps", cwd=str(tmp_path), env={"NO_COLOR": "1"})
+    assert vm.returncode == 1
+    assert "não exporta 'Secreta'" in vm.stderr, vm.stderr
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "pr.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "NO_COLOR": "1", "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert vm.stderr.rstrip("\n") == interp.stderr.rstrip("\n"), (
+        f"\n--VM--\n{vm.stderr}\n--INTERP--\n{interp.stderr}")
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"

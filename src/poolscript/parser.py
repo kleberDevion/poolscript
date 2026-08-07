@@ -406,6 +406,7 @@ class EntityDecl(Node):
     parents: "list[str]"   # lista de pais (vazia = sem herança)
     body: list[Node]
     fields: "list[EntityField] | None" = None  # campos tipados (para @dataentity)
+    is_private: bool = False   # `private class Nome()` — não exportada no import
 
 
 @dataclass(slots=True)
@@ -607,6 +608,15 @@ class Parser:
                 return self.parse_action_decl()
             if tok.value == "model":
                 return self.parse_model_decl()
+            if (tok.value in {"private", "public"} and self.peek().type == "KW"
+                    and self.peek().value in {"Entity", "class", "Class"}):
+                # `public class Nome()` / `private class Nome()` — modificador de
+                # visibilidade na própria classe. `private` = não exportada no import.
+                is_priv = tok.value == "private"
+                self.pos += 1  # consome private/public
+                decl = self.parse_entity_decl()
+                decl.is_private = is_priv
+                return decl
             if tok.value in {"Entity", "class", "Class"}:
                 # `class`/`Class` são aliases de `Entity`
                 return self.parse_entity_decl()

@@ -202,6 +202,7 @@ typedef struct PSClass_ {
     int32_t  nmetodos;
     char   **priv_nomes;   /* membros `private` — acesso de fora barrado */
     int32_t  npriv;
+    int32_t  classe_privada;   /* `private class` — não exportada no import */
 } PSClass;
 
 typedef struct {
@@ -744,6 +745,7 @@ typedef struct {
     int32_t  npais;
     char   **priv_nomes;   /* membros `private` (copiado do PSClassDef) */
     int32_t  npriv;
+    int32_t  classe_privada;   /* `private class` — não exportada no import */
 } PSClassDefC;
 
 struct VM_ {
@@ -14161,6 +14163,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 cl->met_protos[i] = def->met_protos[i];
             }
             /* membros private (encapsulamento) — copiados da def */
+            cl->classe_privada = def->classe_privada;   /* `private class` */
             cl->npriv = def->npriv;
             cl->priv_nomes = NULL;
             if (def->npriv > 0) {
@@ -14236,6 +14239,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (strcmp(m->nomes[k], nome) != 0) continue;
                     Value v = vm->globals[m->base + k];
                     if (v.t == V_UNSET) ERRO_T(vm, "RuntimeError", "membro nao definido no modulo");
+                    /* `private class Nome()` não sai do arquivo — mesma msg do interp */
+                    if (EH_CLASS(v) && COMO_CLASS(v)->classe_privada)
+                        ERRO_TF(vm, "RuntimeError", "módulo '%s' não exporta '%s'", m->nome, nome);
                     stack[sp - 1] = v;
                     goto membro_ok;
                 }
@@ -14969,6 +14975,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
             }
             /* nomes private (encapsulamento) */
             d->npriv = o->npriv;
+            d->classe_privada = o->classe_privada;
             if (o->npriv > 0) {
                 d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
                 if (!d->priv_nomes) return -1;
@@ -15140,6 +15147,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
             }
         }
         d->npriv = o->npriv;   /* private de classe em módulo importado */
+        d->classe_privada = o->classe_privada;
         if (o->npriv > 0) {
             d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
             if (!d->priv_nomes) return -1;

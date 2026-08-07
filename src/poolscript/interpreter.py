@@ -1234,6 +1234,8 @@ class Interpreter:
                 entity_class._dataentity = bool(node.fields)
                 # membros privados: só acessíveis de dentro de métodos da classe
                 entity_class._private = private_names
+                # `private class Nome()`: a classe inteira não é exportada no import
+                entity_class._class_private = getattr(node, "is_private", False)
                 scope.define(node.name, entity_class)
                 return None
 
@@ -1431,7 +1433,8 @@ class Interpreter:
                 _sub_err.call_stack.append(import_frame)
             raise
         sub_exports = {k: v for k, v in sub_interp.globals.values.items()
-                       if k not in {"post", "input", "open", "len", "range", "type"}}
+                       if k not in {"post", "input", "open", "len", "range", "type"}
+                       and not getattr(v, "_class_private", False)}   # `private class` não sai do arquivo
         self._bind_module_exports(node, scope, module_name, sub_exports)
 
     def _exec_import(self, node: ImportStmt, scope: Scope) -> None:
