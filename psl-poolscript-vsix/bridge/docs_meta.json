@@ -2095,5 +2095,666 @@
     "bytes só é igual a bytes: `\"ab\" == \"ab\".encode()` é False"
    ]
   }
+ },
+ "keywords": {
+  "if": {
+   "sig": "if (cond) { ... } elif outra: else { ... }",
+   "resumo": "Executa o bloco quando a condição é verdadeira. Aceita `:` ou `{}` e encadeia com `elif`/`else`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "if (5 > 3) { post(\"maior\") }",
+     "saida": "maior"
+    }
+   ],
+   "bordas": []
+  },
+  "elif": {
+   "sig": "if (a) { } elif (b) { } else { }",
+   "resumo": "Senão-se: testado só quando os `if`/`elif` anteriores falharam.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "x = 2\nif (x == 1) { post(\"um\") } elif (x == 2) { post(\"dois\") }",
+     "saida": "dois"
+    }
+   ],
+   "bordas": []
+  },
+  "else": {
+   "sig": "if (cond) { } else { }",
+   "resumo": "Bloco executado quando nenhuma condição anterior foi verdadeira.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "if (false) { post(\"a\") } else { post(\"b\") }",
+     "saida": "b"
+    }
+   ],
+   "bordas": []
+  },
+  "while": {
+   "sig": "while (cond) { ... }",
+   "resumo": "Repete o bloco enquanto a condição for verdadeira.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "i = 0\nwhile (i < 3) { post(i)\n i++ }",
+     "saida": "0\n1\n2"
+    }
+   ],
+   "bordas": []
+  },
+  "for": {
+   "sig": "for each item in colecao: ...",
+   "resumo": "Itera sobre lista, tupla ou string. Sempre acompanhado de `each`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "for each n in [1, 2, 3] { post(n) }",
+     "saida": "1\n2\n3"
+    }
+   ],
+   "bordas": []
+  },
+  "each": {
+   "sig": "for each item in colecao:",
+   "resumo": "Parte obrigatória do `for each` — nomeia o item da iteração atual.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "for each c in \"ab\" { post(c) }",
+     "saida": "a\nb"
+    }
+   ],
+   "bordas": []
+  },
+  "in": {
+   "sig": "for each x in lista   |   x in colecao",
+   "resumo": "No `for each`, a coleção a percorrer. Como operador, testa pertencimento (retorna bool).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(2 in [1, 2, 3])",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "break": {
+   "sig": "break",
+   "resumo": "Sai imediatamente do laço `for`/`while` mais interno.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "for each n in [1, 2, 3] { if (n == 2) { break }\n post(n) }",
+     "saida": "1"
+    }
+   ],
+   "bordas": []
+  },
+  "continue": {
+   "sig": "continue",
+   "resumo": "Pula para a próxima iteração do laço, ignorando o resto do bloco.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "for each n in [1, 2, 3] { if (n == 2) { continue }\n post(n) }",
+     "saida": "1\n3"
+    }
+   ],
+   "bordas": []
+  },
+  "match": {
+   "sig": "match valor { case 1: ...  case _: ... }",
+   "resumo": "Casa um valor contra padrões (`case`). `case _` é o padrão coringa. Cada `case` aceita corpo em `{ }` ou em `:` + linha indentada.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "x = 2\nmatch x { case 1 { post(\"um\") } case 2 { post(\"dois\") } case _ { post(\"outro\") } }",
+     "saida": "dois"
+    }
+   ],
+   "bordas": []
+  },
+  "case": {
+   "sig": "case <padrao>: ...",
+   "resumo": "Um ramo do `match`. Casa por valor, lista, dict, ou captura em variável; `case _` pega o resto.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "match 5 { case 5 { post(\"cinco\") } }",
+     "saida": "cinco"
+    }
+   ],
+   "bordas": []
+  },
+  "action": {
+   "sig": "action nome(a, b=default) { return ... }",
+   "resumo": "Declara uma função. Pode ter tipo de retorno (`int action f()`) e parâmetros com default.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "action somar(a, b) { return a + b }\npost(somar(2, 3))",
+     "saida": "5"
+    }
+   ],
+   "bordas": []
+  },
+  "reaction": {
+   "sig": "reaction nome(a, b) { return ... }",
+   "resumo": "Sinônimo de `action` — declara uma função, idêntico em tudo.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "reaction dobro(x) { return x * 2 }\npost(dobro(4))",
+     "saida": "8"
+    }
+   ],
+   "bordas": []
+  },
+  "return": {
+   "sig": "return <expr>   |   return;",
+   "resumo": "Devolve um valor da função e encerra. `return;` (sem valor) devolve Null (ou o total, dentro de `count each`).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "action id(x) { return x }\npost(id(42))",
+     "saida": "42"
+    }
+   ],
+   "bordas": []
+  },
+  "yield": {
+   "sig": "yield <expr>",
+   "resumo": "Torna a `action` um gerador: produz valores sob demanda, um por `yield`, sem montar a lista inteira na memória.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "action conta() { yield 1\n yield 2 }\nfor each v in conta() { post(v) }",
+     "saida": "1\n2"
+    }
+   ],
+   "bordas": []
+  },
+  "Entity": {
+   "sig": "Entity Nome() { action __init__(self, ...) { } }",
+   "resumo": "Declara uma classe (com herança, métodos, `private`/`public`, `@static`). O nome é seguido de `()` — dentro dos parênteses vão as Entities-pai.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "Entity Ponto() {\n action __init__(self, x) { self.x = x }\n}\np = Ponto(7)\npost(p.x)",
+     "saida": "7"
+    }
+   ],
+   "bordas": []
+  },
+  "class": {
+   "sig": "class Nome() { ... }",
+   "resumo": "Apelido de `Entity` — declara uma classe.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "class Caixa() { action __init__(self, v) { self.v = v } }\npost(Caixa(3).v)",
+     "saida": "3"
+    }
+   ],
+   "bordas": []
+  },
+  "Class": {
+   "sig": "Class Nome() { ... }",
+   "resumo": "Apelido de `Entity` (com C maiúsculo) — declara uma classe.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "self": {
+   "sig": "action metodo(self, ...) { self.campo }",
+   "resumo": "A instância atual — primeiro parâmetro de todo método de Entity. Acessa e define os campos com `self.campo`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "Entity C() {\n action __init__(self, n) { self.n = n }\n action get(self) { return self.n }\n}\npost(C(9).get())",
+     "saida": "9"
+    }
+   ],
+   "bordas": []
+  },
+  "private": {
+   "sig": "private saldo: int = 0   |   private reaction _log(self)",
+   "resumo": "Marca um campo ou método da Entity como PRIVADO: só acessível de dentro de um método da própria classe. Acessar de fora dá erro — encapsulamento real, enforçado nos dois motores.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "Entity Conta() {\n private saldo: int = 0\n public reaction deposita(self, v) { self.saldo = self.saldo + v }\n public reaction ver(self) { return self.saldo }\n}\nc = Conta()\nc.deposita(50)\npost(c.ver())",
+     "saida": "50"
+    }
+   ],
+   "bordas": [
+    "`c.saldo` de fora da classe dá erro (`'saldo' é private de Conta`) — use um método público pra expor o valor."
+   ]
+  },
+  "public": {
+   "sig": "public dono: str = \"...\"   |   public reaction metodo(self)",
+   "resumo": "Marca um campo ou método da Entity como PÚBLICO — acessível de fora. É o padrão: não pôr `private`/`public` equivale a `public`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "Entity Pessoa() {\n public reaction __init__(self, nome) { self.nome = nome }\n}\np = Pessoa(\"Ana\")\npost(p.nome)",
+     "saida": "Ana"
+    }
+   ],
+   "bordas": []
+  },
+  "model": {
+   "sig": "model Nome { campo: tipo }",
+   "resumo": "Define um modelo de dados que valida um dict contra campos tipados.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "import": {
+   "sig": "import modulo   |   import modulo as apelido",
+   "resumo": "Carrega uma lib (stdlib, arquivo local .ps/.psl/.p ou lib instalada) e vincula o namespace.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "import json\npost(json.stringify([1, 2]))",
+     "saida": "[1, 2]"
+    }
+   ],
+   "bordas": []
+  },
+  "from": {
+   "sig": "from modulo import nome1, nome2",
+   "resumo": "Importa nomes específicos de um módulo direto pro escopo atual.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "from json import stringify\npost(stringify([1, 2, 3]))",
+     "saida": "[1, 2, 3]"
+    }
+   ],
+   "bordas": []
+  },
+  "as": {
+   "sig": "import modulo as apelido   |   from m import x as y",
+   "resumo": "Dá um apelido ao módulo ou nome importado.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "import json as j\npost(j.stringify(true))",
+     "saida": "true"
+    }
+   ],
+   "bordas": []
+  },
+  "PUSH": {
+   "sig": "PUSH modulo GET nome",
+   "resumo": "Sintaxe alternativa de import: `PUSH os GET getenv` ≡ `from os import getenv`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "GET": {
+   "sig": "PUSH modulo GET nome",
+   "resumo": "Parte do import `PUSH ... GET ...` — nomeia o que trazer do módulo. (Também é o verbo HTTP em rotas da jinker.)",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "global": {
+   "sig": "global nome",
+   "resumo": "Declara que o nome referencia a variável global, não uma local nova.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "try": {
+   "sig": "try { ... } catch (e) { ... }",
+   "resumo": "Executa o bloco protegendo contra erros; se estourar, cai no `catch`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "try { x = 1 / 0 } catch (e) { post(\"peguei\") }",
+     "saida": "peguei"
+    }
+   ],
+   "bordas": []
+  },
+  "catch": {
+   "sig": "catch (e) { ... }   |   catch (Tipo e) { ... }",
+   "resumo": "Captura o erro lançado no `try`. `e` é a mensagem; pode filtrar por tipo (`catch (ConnectionError e)`).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "try { raise \"ops\" } catch (e) { post(e) }",
+     "saida": "ops"
+    }
+   ],
+   "bordas": []
+  },
+  "finally": {
+   "sig": "try { } catch (e) { } finally { }",
+   "resumo": "Bloco que executa SEMPRE ao sair do try/catch — com ou sem erro.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "try { post(\"a\") } catch (e) { } finally { post(\"b\") }",
+     "saida": "a\nb"
+    }
+   ],
+   "bordas": []
+  },
+  "raise": {
+   "sig": "raise \"mensagem\"",
+   "resumo": "Lança um erro, interrompendo a execução (capturável por `try`/`catch`).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "try { raise \"falhou\" } catch (e) { post(e) }",
+     "saida": "falhou"
+    }
+   ],
+   "bordas": []
+  },
+  "using": {
+   "sig": "using <recurso> as nome { ... }",
+   "resumo": "Context manager: usa um recurso e o FECHA automaticamente ao sair do bloco, mesmo se der erro (ex: `using open(...) as f`).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "and": {
+   "sig": "a and b",
+   "resumo": "E lógico: verdadeiro só quando ambos os lados são verdadeiros.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(true and false)",
+     "saida": "False"
+    }
+   ],
+   "bordas": []
+  },
+  "or": {
+   "sig": "a or b",
+   "resumo": "OU lógico: verdadeiro quando pelo menos um lado é verdadeiro.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(false or true)",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "not": {
+   "sig": "not x",
+   "resumo": "Negação lógica: inverte o valor booleano.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(not false)",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "Not": {
+   "sig": "Not x",
+   "resumo": "Apelido de `not` (com N maiúsculo) — negação lógica.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "is": {
+   "sig": "x is int   |   x is None   |   x not is None",
+   "resumo": "Testa o TIPO de um valor (`is int`/`is str`/...) ou identidade com `None`/`Null`. Combina com `not` (`not is`).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(5 is int)",
+     "saida": "True"
+    }
+   ],
+   "bordas": []
+  },
+  "count": {
+   "sig": "count int(7) in colecao   |   count int in colecao",
+   "resumo": "Conta ocorrências tipadas em lista/dict/string/número. Retorna `int` (0 é falsy), então combina direto em `if`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(count int(7) in [7, 7, 7])",
+     "saida": "3"
+    }
+   ],
+   "bordas": []
+  },
+  "await": {
+   "sig": "await <futuro>",
+   "resumo": "Aguarda o resultado de uma `async action`/`reaction` (ou de uma lista delas) e devolve o valor pronto.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  },
+  "async": {
+   "sig": "async action f() { ... }",
+   "resumo": "Marca a função pra rodar em paralelo (thread pool); a chamada devolve um futuro que você resolve com `await`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [],
+   "bordas": []
+  }
+ },
+ "types": {
+  "str": {
+   "sig": "str nome = \"texto\"   |   str(x)",
+   "resumo": "Texto (string). Como tipo declarado, cobra/converte; chamado como função, converte qualquer valor pra texto.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "str s = \"oi\"\npost(s.upper())",
+     "saida": "OI"
+    }
+   ],
+   "bordas": []
+  },
+  "int": {
+   "sig": "int n = 10   |   int(x)",
+   "resumo": "Número inteiro. Declarado, converte string numérica/float/bool; chamado, converte (float trunca).",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(int(\"7\") + 1)",
+     "saida": "8"
+    }
+   ],
+   "bordas": []
+  },
+  "flo": {
+   "sig": "flo x = 2.5   |   flo(x)",
+   "resumo": "Número de ponto flutuante. O nome é `flo`, não `float`.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(flo(3))",
+     "saida": "3.0"
+    }
+   ],
+   "bordas": []
+  },
+  "bool": {
+   "sig": "bool ok = True   |   bool(x)",
+   "resumo": "Verdadeiro/falso (`True`/`False`). Conta como `int` (0/1) em aritmética.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(bool(0), bool(1))",
+     "saida": "False True"
+    }
+   ],
+   "bordas": []
+  },
+  "list": {
+   "sig": "list xs = [1, 2, 3]   |   list(x)",
+   "resumo": "Lista ordenada e mutável. Tem métodos: `append`, `pop`, `sort`, ...",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "list xs = [3, 1, 2]\nxs.sort()\npost(xs)",
+     "saida": "[1, 2, 3]"
+    }
+   ],
+   "bordas": []
+  },
+  "json": {
+   "sig": "json d = {\"k\": 1}",
+   "resumo": "Objeto chave→valor (dict). `json` e `dict` são o MESMO tipo.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "json d = {\"a\": 1}\npost(d[\"a\"])",
+     "saida": "1"
+    }
+   ],
+   "bordas": []
+  },
+  "dict": {
+   "sig": "dict d = {\"k\": 1}",
+   "resumo": "Objeto chave→valor. Apelido de `json` — o mesmo tipo.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "dict d = {\"x\": 9}\npost(d[\"x\"])",
+     "saida": "9"
+    }
+   ],
+   "bordas": []
+  },
+  "tup": {
+   "sig": "tup t = (1, 2, 3)",
+   "resumo": "Tupla: sequência ordenada e IMUTÁVEL.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "t = (1, 2)\npost(t[0])",
+     "saida": "1"
+    }
+   ],
+   "bordas": []
+  },
+  "type": {
+   "sig": "type(x)",
+   "resumo": "Devolve o nome do tipo de um valor, como string.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "post(type(5), type(\"a\"), type([]))",
+     "saida": "int str list"
+    }
+   ],
+   "bordas": []
+  }
  }
 }

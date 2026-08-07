@@ -84,7 +84,7 @@ function loadStdlibMetadata() {
 // docs_meta.json vem das MESMAS specs da doc do site (gen_docs_meta.py), então
 // o card do editor nunca diverge da documentação. Cobre os 35 builtins e os 55
 // métodos de string, com assinatura, params, retorno, erros e exemplo.
-let DOCS_META = { builtins: {}, string: {} };
+let DOCS_META = { builtins: {}, string: {}, keywords: {}, types: {} };
 function loadDocsMeta() {
     try {
         const p = path.join(__dirname, 'bridge', 'docs_meta.json');
@@ -2273,6 +2273,14 @@ function activate(context) {
                 if (ehMembro && DOCS_META.string[word]) {
                     return new vscode.Hover(renderCard(DOCS_META.string[word], 'método de string'));
                 }
+                // keyword (if/for/action/try/...) — card rico, estilo Pylance
+                if (!ehMembro && DOCS_META.keywords[word]) {
+                    return new vscode.Hover(renderCard(DOCS_META.keywords[word], 'palavra-chave da PoolScript'));
+                }
+                // tipo escrito como nome (json/dict/tup/type — os que não são builtin)
+                if (!ehMembro && DOCS_META.types[word]) {
+                    return new vscode.Hover(renderCard(DOCS_META.types[word], 'tipo da PoolScript'));
+                }
 
                 // 1. Símbolo real (function/Entity/import) vindo da bridge
                 const sym = provider.getSymbolByName(word, document.uri);
@@ -2314,9 +2322,15 @@ function activate(context) {
                     }
                 }
 
-                // 3. Fallback: tipo inferido de variável local (comportamento antigo)
+                // 3. Fallback: tipo inferido de variável local
                 const type = analyzer.getVariableType(word);
                 if (!type) return null;
+                // variável de tipo ESCALAR (str/int/flo/bool) → card do tipo, com o
+                // nome da variável no rodapé (antes isto virava "[object Object]").
+                if (typeof type === 'object' && type.scalar && DOCS_META.types[type.scalar]) {
+                    return new vscode.Hover(renderCard(
+                        DOCS_META.types[type.scalar], `variável \`${word}\` — tipo ${type.scalar}`));
+                }
                 const md = new vscode.MarkdownString();
                 if (typeof type === 'object' && type.stdlibClass) {
                     md.appendMarkdown(`**PoolScript** — \`${type.stdlibClass}\` (stdlib)\n\n`);

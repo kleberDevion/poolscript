@@ -57,3 +57,37 @@ suite('PoolScript — autocomplete de métodos', () => {
       'esperava métodos de PoolFile, veio: ' + L.join(','));
   });
 });
+
+// Extrai o texto de um hover.
+async function hover(content, line, col) {
+  const doc = await vscode.workspace.openTextDocument({ language: 'poolscript', content });
+  await vscode.window.showTextDocument(doc);
+  await new Promise(r => setTimeout(r, 1200));
+  const hs = await vscode.commands.executeCommand(
+    'vscode.executeHoverProvider', doc.uri, new vscode.Position(line, col));
+  if (!hs || !hs.length) return '';
+  return hs.map(h => (h.contents || []).map(c => typeof c === 'string' ? c : c.value).join('\n')).join('\n');
+}
+
+suite('PoolScript — hover de keyword / tipo / var tipada', () => {
+  test('hover em keyword `if` mostra card', async () => {
+    const txt = await hover('if (5 > 3) { post("x") }\n', 0, 1); // cursor no "if"
+    assert.ok(/if \(cond\)|condição/.test(txt), 'hover de `if` vazio ou errado: ' + JSON.stringify(txt));
+  });
+
+  test('hover em keyword `for` mostra card', async () => {
+    const txt = await hover('for each n in [1, 2] { post(n) }\n', 0, 1);
+    assert.ok(/for each|Itera/.test(txt), 'hover de `for` vazio: ' + JSON.stringify(txt));
+  });
+
+  test('hover em tipo `json` mostra card', async () => {
+    const txt = await hover('json d = {"a": 1}\n', 0, 1);
+    assert.ok(/json|dict|chave/.test(txt), 'hover de `json` vazio: ' + JSON.stringify(txt));
+  });
+
+  test('hover em variável str mostra o tipo (não [object Object])', async () => {
+    const txt = await hover('str nome = "Pool"\npost(nome)\n', 1, 6); // cursor em "nome" na linha 2
+    assert.ok(txt && !/\[object Object\]/.test(txt), 'hover de var str quebrado: ' + JSON.stringify(txt));
+    assert.ok(/str|texto|nome/.test(txt), 'hover de var str sem conteúdo de tipo: ' + JSON.stringify(txt));
+  });
+});

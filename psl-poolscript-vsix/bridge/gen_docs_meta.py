@@ -16,6 +16,7 @@ sys.path.insert(0, str(RAIZ / "scripts"))
 
 from doc_specs_builtins import BUILTINS   # noqa: E402
 from doc_specs_string import STRMET       # noqa: E402
+from doc_specs_keywords import KEYWORDS_DOC, TYPES_DOC  # noqa: E402
 
 
 def conv(spec):
@@ -35,10 +36,13 @@ def main():
     out = {
         "builtins": {nome: conv(s) for nome, s in BUILTINS.items()},
         "string":   {nome: conv(s) for nome, s in STRMET.items()},
+        "keywords": {nome: conv(s) for nome, s in KEYWORDS_DOC.items()},
+        "types":    {nome: conv(s) for nome, s in TYPES_DOC.items()},
     }
     destino = Path(__file__).resolve().parent / "docs_meta.json"
     destino.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"docs_meta.json: {len(out['builtins'])} builtins + {len(out['string'])} métodos de string")
+    print(f"docs_meta.json: {len(out['builtins'])} builtins + {len(out['string'])} métodos de string "
+          f"+ {len(out['keywords'])} keywords + {len(out['types'])} tipos")
 
 
 if __name__ == "__main__":

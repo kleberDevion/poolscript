@@ -5402,7 +5402,9 @@ static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 3) BERRO(vm, "SomeValueUnexpected", "hora() espera ate 3 argumentos");
     int64_t v[3] = { 0, 0, 0 };
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n && i < 3; i++) {
+        /* buraco de arg nomeado ausente = 0 (o mapeador preenche com NULL/UNSET) */
+        if (args[i].t == V_UNSET || args[i].t == V_NULL) continue;
         if (args[i].t == V_INT)        v[i] = args[i].as.i;
         else if (args[i].t == V_FLOAT) v[i] = (int64_t)args[i].as.d;
         else if (args[i].t == V_BOOL)  v[i] = args[i].as.b ? 1 : 0;
@@ -5927,7 +5929,7 @@ static const MembroMod MOD_JSON[] = {
 static const MembroMod MOD_DATE[] = {
     { "time", mod_date_time, 0, NULL }, { "today", mod_date_today, 0, NULL },
     { "datahora", mod_date_datahora, 0, NULL }, { "now", mod_date_now, 0, NULL },
-    { "timestamp", mod_date_timestamp, 0, NULL }, { "hora", mod_date_hora, 0, NULL },
+    { "timestamp", mod_date_timestamp, 0, NULL }, { "hora", mod_date_hora, 0, "hours,minutes,days" },
 };
 
 
