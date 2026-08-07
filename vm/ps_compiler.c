@@ -1040,6 +1040,13 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                      * nome pra dizer "variável X esperava T", igual ao interp. */
                     const char *vn = n->texto ? n->texto : "";
                     int32_t ni = idx_const(c, u, K_STR, 0, 0, vn, (int32_t)strlen(vn));
+                    /* aponta o erro no INÍCIO do valor (RHS), não na sub-expressão
+                     * mais profunda que o expr() deixou em coluna_atual — é o
+                     * lugar EXATO do erro, igual ao node.value do interp. */
+                    if (n->a) {
+                        if (n->a->line) c->linha_atual  = n->a->line;
+                        if (n->a->col)  c->coluna_atual = n->a->col;
+                    }
                     emite(c, u, OP_COERCE_DECL, (ni << 2) | k);
                     break;
                 }

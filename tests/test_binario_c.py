@@ -340,6 +340,35 @@ def test_color_tag_coage_nao_string(tmp_path):
     assert vm.stdout == interp.stdout
 
 
+def test_traceback_erro_em_metodo_de_lib(tmp_path):
+    """Erro DENTRO de um método de Entity importado de uma lib: o traceback tem
+    que mostrar o arquivo que CHAMA (o do usuário) E o da lib onde o erro está —
+    igual Python/Java. Antes o interp atribuía o erro ao arquivo do chamador
+    (método executava no contexto errado). Byte-a-byte igual ao interp."""
+    (tmp_path / "minilib.p").write_text(
+        "Entity gerador() {" + NL
+        + "    action faz(self, n) {" + NL
+        + "        return n + naoexiste" + NL
+        + "    }" + NL
+        + "}" + NL, encoding="utf-8")
+    f = tmp_path / "t.ps"
+    f.write_text(
+        "from minilib import gerador" + NL
+        + "r = gerador().faz(5)" + NL
+        + "post(r)" + NL, encoding="utf-8")
+    vm = roda("t.ps", cwd=str(tmp_path), env={"NO_COLOR": "1"})
+    assert vm.returncode == 1
+    # mostra o arquivo do usuário (chamada) E o da lib (erro real)
+    assert "t.ps" in vm.stderr and "minilib.p" in vm.stderr, vm.stderr
+    assert "gerador().faz(5)" in vm.stderr and "return n + naoexiste" in vm.stderr
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "t.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "NO_COLOR": "1", "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert vm.stderr.rstrip("\n") == interp.stderr.rstrip("\n"), (
+        f"\n--VM--\n{vm.stderr}\n--INTERP--\n{interp.stderr}")
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"

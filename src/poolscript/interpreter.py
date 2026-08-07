@@ -1797,12 +1797,14 @@ class Interpreter:
                 return None
             raise PoolRuntimeError(f"expressão não suportada: {type(node).__name__}", node, self.source, filename=self.filename)
         except _PSBaseRuntimeError as _pse:
+            # Só popula o filename se veio vazio (erro cru, sem posição). O frame
+            # do CHAMADOR é adicionado pelo exec_statement (nível de statement,
+            # col do statement — igual à VM). Inserir aqui também DUPLICAVA o
+            # frame do chamador em erro cross-file (col da chamada + col do
+            # statement, mesma linha, dois quadros).
             if not _pse.filename:
                 _pse.filename = self.filename
                 _pse.source   = _pse.source or self.source
-            if node and self.filename and _pse.filename and self.filename != _pse.filename:
-                if (self.filename, node.line, node.col, self.source) not in _pse.call_stack:
-                    _pse.call_stack.insert(0, (self.filename, node.line, node.col, self.source))
             raise
         except Exception as exc:
             raise _shield(exc, node, self.source, self.filename) from None
@@ -2288,11 +2290,23 @@ class Interpreter:
         for name, value in zip(params_without_self, args_final):
             local_scope.define(name, value)
         self._action_depth += 1
+        # Troca filename/source pro arquivo que DEFINE o método (igual
+        # _call_function) — sem isso, erro dentro de um método de Entity
+        # importado de uma lib era atribuído ao arquivo do CHAMADOR, não ao
+        # da lib. O traceback tem que apontar onde o código realmente está.
+        _prev_filename = self.filename
+        _prev_source   = self.source
+        _fn_filename = getattr(func, "filename", None)
+        if _fn_filename:
+            self.filename = _fn_filename
+            self.source   = getattr(func, "source", None) or self.source
         try:
             self.exec_block(func.block, local_scope, create_child=False)
         except ReturnSignal as signal:
             return signal.value
         finally:
+            self.filename = _prev_filename
+            self.source   = _prev_source
             self._action_depth -= 1
         return None
 
@@ -2763,6 +2777,9 @@ class Interpreter:
         Sem declaração de tipo, nenhuma conversão acontece — igual Python:
         `x = input()` SEMPRE retorna str, não importa o que foi digitado.
         """
+        # O `^^^` aponta no VALOR do lado direito (node.value) — o lugar EXATO do
+        # erro — não na palavra do tipo. Casa com a VM.
+        _pos = node.value if (node is not None and getattr(node, "value", None) is not None) else node
         if declared_type == "int" and isinstance(value, str) and not isinstance(value, bool):
             try:
                 return int(value.strip())
@@ -2771,7 +2788,7 @@ class Interpreter:
                 raise PoolRuntimeError(
                     f"não foi possível converter '{value}' para int "
                     f"(declarado como 'int {_name}')",
-                    node, self.source, code="ConversionError", filename=self.filename,
+                    _pos, self.source, code="ConversionError", filename=self.filename,
                 )
 
         if declared_type == "flo":
@@ -2785,7 +2802,7 @@ class Interpreter:
                     raise PoolRuntimeError(
                         f"não foi possível converter '{value}' para flo "
                         f"(declarado como 'flo {_name}')",
-                        node, self.source, code="ConversionError", filename=self.filename,
+                        _pos, self.source, code="ConversionError", filename=self.filename,
                     )
 
         return value

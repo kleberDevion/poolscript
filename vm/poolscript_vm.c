@@ -14044,11 +14044,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int tipo = arg & 3;
             int nome_idx = (int)((unsigned)arg >> 2);
             Value v = stack[sp - 1];
+            const char *decl_nome = "?";
+            if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))
+                decl_nome = COMO_STRING(p->consts[nome_idx])->chars;
             if (tipo == TIPO_INT && EH_STRING(v)) {
                 PSString *t = COMO_STRING(v);
                 int64_t r;
                 if (texto_para_int(t->chars, t->len, &r) != 0)
-                    ERRO_T(vm, "ConversionError", "nao foi possivel converter para int");
+                    ERRO_TF(vm, "ConversionError",
+                            "não foi possível converter '%.*s' para int (declarado como 'int %s')",
+                            (int)t->len, t->chars, decl_nome);
                 stack[sp - 1] = MK_INT(r);
                 break;
             }
@@ -14058,7 +14063,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     PSString *t = COMO_STRING(v);
                     double d;
                     if (texto_para_flo(t->chars, t->len, &d) != 0)
-                        ERRO_T(vm, "ConversionError", "nao foi possivel converter para flo");
+                        ERRO_TF(vm, "ConversionError",
+                                "não foi possível converter '%.*s' para flo (declarado como 'flo %s')",
+                                (int)t->len, t->chars, decl_nome);
                     stack[sp - 1] = MK_FLOAT(d);
                     break;
                 }
