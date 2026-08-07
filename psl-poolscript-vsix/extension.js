@@ -2,6 +2,7 @@
 const vscode = require('vscode');
 const path   = require('path');
 const fs     = require('fs');
+const os     = require('os');
 const { spawn } = require('child_process');
 
 // ─── Stdlib metadata ──────────────────────────────────────────────────────────
@@ -779,6 +780,36 @@ class WorkspaceSymbolProvider {
         data.version = doc.version;
         this.fileData.set(doc.uri.fsPath, data);
         return data;
+    }
+
+    /** Indexa as libs instaladas por `psl install -asLib` (em
+     * $POOLSCRIPT_HOME/libs ou ~/.poolscript/libs) no fileData, pra `import
+     * minhalib` resolver e dar hover/completion mesmo fora do workspace. O
+     * fallback por basename em _resolveModuleFsPath as acha depois de indexadas. */
+    async indexInstalledLibs() {
+        // o bridge sobe async no constructor — espera ele ficar pronto (~6s máx)
+        for (let i = 0; i < 30 && !(this.bridge && this.bridge.available); i++)
+            await new Promise(r => setTimeout(r, 200));
+        if (!this.bridge || !this.bridge.available) return;
+        const home = process.env.POOLSCRIPT_HOME || path.join(os.homedir(), '.poolscript');
+        const libsDir = path.join(home, 'libs');
+        let entries;
+        try { entries = fs.readdirSync(libsDir); } catch (_) { return; }  // sem libs instaladas
+        for (const name of entries) {
+            if (!/\.(ps|psl|p)$/.test(name)) continue;
+            const fsPath = path.join(libsDir, name);
+            if (this.fileData.has(fsPath)) continue;
+            let text;
+            try { text = fs.readFileSync(fsPath, 'utf-8'); } catch (_) { continue; }
+            try {
+                const result = await this.bridge.analyze(fsPath, text);
+                if (result && result.ok) {
+                    const data = bridgeResultToFileData(result);
+                    data.errors = []; data.ok = true; data.version = -1;
+                    this.fileData.set(fsPath, data);
+                }
+            } catch (_) { /* lib que não analisa não derruba o resto */ }
+        }
     }
 
     /** fileData do documento, reanalisando ANTES se o cache estiver velho.
@@ -1939,6 +1970,8 @@ function activate(context) {
     vscode.workspace.onDidChangeTextDocument(
         e => reparseAndLint(e.document, false), null, context.subscriptions);
     vscode.workspace.textDocuments.forEach(d => reparseAndLint(d, true));
+    // indexa as libs instaladas (psl install -asLib) pra `import minhalib` resolver
+    provider.indexInstalledLibs();
 
     // ── Autocomplete ──────────────────────────────────────────────────────────
     context.subscriptions.push(

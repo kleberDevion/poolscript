@@ -91,3 +91,12 @@ suite('PoolScript — hover de keyword / tipo / var tipada', () => {
     assert.ok(/str|texto|nome/.test(txt), 'hover de var str sem conteúdo de tipo: ' + JSON.stringify(txt));
   });
 });
+
+suite('PoolScript — libs instaladas (~/.poolscript/libs)', () => {
+  test('import de lib instalada resolve membros (greetlib.)', async () => {
+    // greetlib está em POOLSCRIPT_HOME/libs (montado pelo runTest.js)
+    const L = await completar('import greetlib\nx = greetlib.\n', 1, 13);
+    assert.ok(temTodos(L, ['saudar', 'Pessoa']),
+      'esperava membros da lib instalada (saudar, Pessoa), veio: ' + L.join(','));
+  });
+});
