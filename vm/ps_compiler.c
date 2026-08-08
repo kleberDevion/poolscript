@@ -43,6 +43,7 @@ enum {
     OP_JUMP_IF_TRUE = 47, OP_LEN = 48, OP_HAS_KEY = 49,
     OP_MAKE_CLASS = 50, OP_GET_MEMBER = 51, OP_SET_MEMBER = 52, OP_LOAD_SELF = 53, OP_CALL_BASE = 54, OP_DUP2 = 55, OP_IMPORT_MOD = 56,
     OP_NOT = 67, OP_TO_BOOL = 68, OP_COERCE_DECL = 69, OP_COERCE_RET = 70, OP_RERAISE = 71,
+    OP_SKIP_IF_IMPORT = 72,   /* pula o bloco de run_selfwith_ quando importando */
     OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
     OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
     OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66
@@ -107,6 +108,7 @@ const char *ps_op_nome(int32_t op)
         case OP_COERCE_DECL: return "COERCE_DECL";
         case OP_COERCE_RET: return "COERCE_RET";
         case OP_RERAISE: return "RERAISE";
+        case OP_SKIP_IF_IMPORT: return "SKIP_IF_IMPORT";
         case OP_TO_BOOL: return "TO_BOOL";
         case OP_COUNT: return "COUNT";
         case OP_COUNT_PARES: return "COUNT_PARES";
@@ -1282,13 +1284,15 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             return;
         }
 
-        case N_RUN_SELFWITH_STMT:
-            /* No interpretador ele é pulado quando o arquivo está sendo
-             * IMPORTADO. A VM ainda não importa `.ps`, então aqui sempre roda
-             * — quando o carregador existir, é este ponto que ganha a
-             * condição, não outro. */
+        case N_RUN_SELFWITH_STMT: {
+            /* Igual ao interp: o bloco é PULADO quando o arquivo está sendo
+             * IMPORTADO (só roda quando é o principal). OP_SKIP_IF_IMPORT
+             * salta o bloco em runtime se vm->importando > 0. */
+            int32_t s = emite(c, u, OP_SKIP_IF_IMPORT, 0);
             bloco_stmts(c, u, n->b ? n->b : n->a);
+            if (s >= 0) UP(c, u)->code[s + 1] = UP(c, u)->ncode;   /* alvo = pós-bloco */
             return;
+        }
 
         case N_USING_STMT: {
             /* `using <expr> as f { ... }` — abre, roda, fecha. O fechamento é

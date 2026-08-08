@@ -79,6 +79,7 @@ enum {
     OP_JUMP_IF_TRUE = 47, OP_LEN = 48, OP_HAS_KEY = 49,
     OP_MAKE_CLASS = 50, OP_GET_MEMBER = 51, OP_SET_MEMBER = 52, OP_LOAD_SELF = 53, OP_CALL_BASE = 54, OP_DUP2 = 55, OP_IMPORT_MOD = 56,
     OP_NOT = 67, OP_TO_BOOL = 68, OP_COERCE_DECL = 69, OP_COERCE_RET = 70, OP_RERAISE = 71,
+    OP_SKIP_IF_IMPORT = 72,   /* pula o bloco de run_selfwith_ quando importando */
     OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
     OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
     OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66
@@ -844,6 +845,7 @@ struct VM_ {
     struct { int proto; int linha; int col; } tb_mod[64];
     int     ntb_mod;
     int     import_falhou;   /* 1 = o erro atual veio de dentro de um módulo importado */
+    int     importando;      /* >0 = rodando o corpo de um módulo importado (run_selfwith_ pula) */
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -13203,6 +13205,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             ip = arg;
             break;
 
+        case OP_SKIP_IF_IMPORT:
+            /* run_selfwith_: pula o bloco quando o arquivo está sendo importado
+             * (só roda como principal) — mesma regra do interp. */
+            if (vm->importando > 0) ip = arg;
+            break;
+
         case OP_LOAD_GLOBAL:
             if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
             /* UNSET = nunca atribuída. Ler antes de definir é erro, como no
@@ -15414,7 +15422,9 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);
         snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1;
     }
+    vm->importando++;   /* corpo importado: run_selfwith_ é pulado (igual interp) */
     int rc = vm_executa_base(vm, bp, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, &ignora);
+    vm->importando--;
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);   /* volta o dir do importador */
     if (rc != 0) return -1;                 /* vm->erro já veio do módulo */

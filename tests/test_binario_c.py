@@ -409,6 +409,28 @@ def test_public_private_class(tmp_path):
         f"\n--VM--\n{vm.stderr}\n--INTERP--\n{interp.stderr}")
 
 
+def test_run_selfwith_pulado_no_import(tmp_path):
+    """`run_selfwith_` só roda quando o arquivo é o PRINCIPAL. Ao ser importado,
+    o bloco é PULADO (igual ao interp) — antes a VM executava o run_selfwith_ da
+    lib no import. Byte-a-byte igual ao interp."""
+    (tmp_path / "lib.ps").write_text(
+        "action util() { return 42 }" + NL
+        + 'run_selfwith_("main") { post("NAO DEVIA RODAR NO IMPORT") }' + NL,
+        encoding="utf-8")
+    m = tmp_path / "main.ps"
+    m.write_text("from lib import util" + NL + "post(util())" + NL, encoding="utf-8")
+    # import: run_selfwith_ da lib NÃO roda
+    assert saida("main.ps", cwd=str(tmp_path)) == ["42"]
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "main.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "NO_COLOR": "1", "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert roda("main.ps", cwd=str(tmp_path)).stdout == interp.stdout
+
+    # rodar a própria lib como principal: run_selfwith_ RODA
+    assert saida("lib.ps", cwd=str(tmp_path)) == ["NAO DEVIA RODAR NO IMPORT"]
+
+
 def test_using_open_com_mode_kwarg(tmp_path):
     """open() aceita `mode=` (paridade com o interp) e o `using` grava/fecha."""
     f = tmp_path / "t.ps"
