@@ -193,6 +193,11 @@ static int serializa(SBuf *s, const PSNode *n)
         if (sb_str(s, " nil") != 0) return -1;
     }
 
+    /* ternário: 3º filho (else) sai depois de a (then) e b (cond) */
+    if (n->kind == N_CONDITIONAL && n->c) {
+        if (sb_str(s, " ") != 0 || serializa(s, n->c) != 0) return -1;
+    }
+
     /* MatchPattern: guard e valor saem como `a`/`b` na parte genérica
      * acima; aqui só entram as chaves (dict) e os subpadrões. */
     if (n->kind == N_MATCH_PATTERN) {

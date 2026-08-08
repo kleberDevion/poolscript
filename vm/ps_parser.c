@@ -201,6 +201,7 @@ static int eh_tipo_kw_expr(PSToken *t)
 
 /* ── protótipos ─────────────────────────────────────────────────────────── */
 static PSNode *expressao(P *p);
+static PSNode *e_ou(P *p);
 static PSNode *unario(P *p);
 static PSNode *primario(P *p);
 static PSNode *soma(P *p);
@@ -870,7 +871,7 @@ static PSNode *e_logico(P *p)
     return no;
 }
 
-static PSNode *expressao(P *p)
+static PSNode *e_ou(P *p)
 {
     PSNode *no = e_logico(p);
     if (FALHOU(p)) return NULL;
@@ -882,6 +883,37 @@ static PSNode *expressao(P *p)
         if (FALHOU(p)) return NULL;
         no = bin_no(p, t, no, d);
         if (!no) return NULL;
+    }
+    return no;
+}
+
+/* Topo da expressão: nível `or` + condicional inline (ternário Python)
+ * `A if cond else B`. `if` só é ternário DEPOIS de uma expressão — no início
+ * de statement ele já foi despachado como `if` statement, sem ambiguidade. */
+static PSNode *expressao(P *p)
+{
+    PSNode *no = e_ou(p);
+    if (FALHOU(p)) return NULL;
+    if (checa_kw(p, "if")) {
+        PSToken *t = atual(p);
+        int32_t salvo = p->pos;
+        p->pos++;                       /* consome 'if' */
+        PSNode *cond = e_ou(p);         /* cond = nível or (sem ternário aninhado) */
+        if (FALHOU(p)) return NULL;
+        /* O `else` desambigua: dentro de `{ }` não há NEWLINE entre statements,
+         * então `x = A` seguido de `if cond { ... }` chega como `A if cond {`.
+         * Só é ternário se vier `else`; senão o `if` inicia um statement e é
+         * devolvido intacto (backtrack) pro parser de bloco. */
+        if (checa_kw(p, "else")) {
+            p->pos++;                   /* consome 'else' */
+            PSNode *bfalso = expressao(p);  /* else à direita: permite encadear */
+            if (FALHOU(p)) return NULL;
+            PSNode *n = ps_node_novo(p->arena, N_CONDITIONAL, t->line, t->col);
+            if (!n) return NULL;
+            n->a = no; n->b = cond; n->c = bfalso;
+            return n;
+        }
+        p->pos = salvo;                 /* não era ternário: é um `if` statement */
     }
     return no;
 }

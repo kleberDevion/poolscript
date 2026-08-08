@@ -64,6 +64,14 @@ class BinaryOp(Node):
 
 
 @dataclass(slots=True)
+class Conditional(Node):
+    """Condicional inline (ternário estilo Python): `A if cond else B`."""
+    then_val: Node
+    cond: Node
+    else_val: Node
+
+
+@dataclass(slots=True)
 class TypeName(Node):
     name: str
 
@@ -1712,7 +1720,23 @@ class Parser:
         raise self.error("esperado início de bloco com '{' ou ':'", tok)
 
     def parse_expression(self) -> Node:
-        return self.parse_or()
+        node = self.parse_or()
+        # condicional inline (ternário Python): `A if cond else B`. O `else` é o
+        # que desambigua: dentro de `{ }` não há NEWLINE entre statements, então
+        # `x = A` seguido de `if cond { ... }` chega aqui como `A if cond {`.
+        # Só é ternário se vier `else` DEPOIS da cond; senão o `if` inicia um
+        # statement e é devolvido intacto (backtrack) pro parser de bloco.
+        if self.current().type == "KW" and self.current().value == "if":
+            op = self.current()
+            salvo = self.pos
+            self.pos += 1  # consome 'if'
+            cond = self.parse_or()
+            if self.current().type == "KW" and self.current().value == "else":
+                self.pos += 1  # consome 'else'
+                else_val = self.parse_expression()  # à direita: permite encadear
+                return Conditional(line=op.line, col=op.col, then_val=node, cond=cond, else_val=else_val)
+            self.pos = salvo  # não era ternário: é um `if` statement
+        return node
 
     def parse_or(self) -> Node:
         node = self.parse_and()

@@ -32,6 +32,7 @@ from .parser import (
     ActionDecl,
     Assignment,
     BinaryOp,
+    Conditional,
     Block,
     Call,
     CallArg,
@@ -1597,6 +1598,11 @@ class Interpreter:
                         key = self.eval_expr(entry.key, scope)
                     dct[key] = self.eval_expr(entry.value, scope)
                 return dct
+            if node.__class__ is Conditional:
+                # ternário: `A if cond else B` — avalia só o ramo escolhido
+                if self.truthy(self.eval_expr(node.cond, scope)):
+                    return self.eval_expr(node.then_val, scope)
+                return self.eval_expr(node.else_val, scope)
             if node.__class__ is UnaryOp:
                 value = self.eval_expr(node.operand, scope)
                 return self._eval_unary(node.operator, value, node)

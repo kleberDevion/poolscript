@@ -561,6 +561,19 @@ static void expr(C *c, Unidade *u, PSNode *n)
             carrega_nome(c, u, n->texto ? n->texto : "");
             return;
 
+        case N_CONDITIONAL: {
+            /* ternário `A if cond else B` (a=A, b=cond, c=B): avalia só o ramo
+             * escolhido; deixa UM valor na pilha (like o if statement, mas expr). */
+            expr(c, u, n->b);                               /* cond */
+            int32_t js = emite(c, u, OP_JUMP_IF_FALSE, 0);  /* pop cond; falso → else */
+            expr(c, u, n->a);                               /* then */
+            int32_t je = emite(c, u, OP_JUMP, 0);           /* pula o else */
+            if (js >= 0) UP(c, u)->code[js + 1] = UP(c, u)->ncode;   /* else: */
+            expr(c, u, n->c);                               /* else */
+            if (je >= 0) UP(c, u)->code[je + 1] = UP(c, u)->ncode;   /* fim: */
+            return;
+        }
+
         case N_BINARY_OP: {
             /* `is`/`in` não estão na tabela de opcode binário: o argumento
              * carrega a negação, então cada um vira uma instrução só em vez

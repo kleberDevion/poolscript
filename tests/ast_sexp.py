@@ -49,6 +49,8 @@ def sexp(no) -> str:
         return f"(Name {no.value})"
     if c is P.BinaryOp:
         return f"(BinaryOp {no.operator} {sexp(no.left)} {sexp(no.right)})"
+    if c is P.Conditional:
+        return f"(Conditional {sexp(no.then_val)} {sexp(no.cond)} {sexp(no.else_val)})"
     if c is P.UnaryOp:
         return f"(UnaryOp {no.operator} {sexp(no.operand)})"
     if c is P.Call:

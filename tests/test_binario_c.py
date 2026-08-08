@@ -928,3 +928,36 @@ def test_arg_nomeado_errado_diz_o_nome(tmp_path):
     r = roda(str(f))
     assert r.returncode != 0
     assert "zzz" in r.stderr and "linha 2" in r.stderr
+
+
+def test_condicional_inline_diferencial(tmp_path):
+    """Ternário `A if cond else B` (estilo Python): só avalia o ramo escolhido,
+    encadeia à direita, e — crítico — NÃO engole o `if` de um statement dentro de
+    `{ }` (onde não há NEWLINE entre statements). Byte-a-byte igual ao interp."""
+    src = (
+        'post("sim" if 5 > 3 else "nao")' + NL
+        + 'post("sim" if 1 > 3 else "nao")' + NL
+        # curto-circuito: o ramo não escolhido nem é avaliado (senão dividiria por 0)
+        + 'x = 10' + NL
+        + 'post(1 if x > 0 else x / 0)' + NL
+        # encadeado (right-assoc): pega o do meio
+        + 'n = 2' + NL
+        + 'post("um" if n == 1 else "dois" if n == 2 else "outro")' + NL
+        # DENTRO de action: `if` statement após uma atribuição não vira ternário
+        + 'action classifica(v) {' + NL
+        + '    r = "?"' + NL
+        + '    if v > 0 { r = "pos" }' + NL
+        + '    return r' + NL
+        + '}' + NL
+        + 'post(classifica(7))' + NL
+    )
+    f = tmp_path / "t.ps"
+    f.write_text(src, encoding="utf-8")
+    vm = roda("t.ps", cwd=str(tmp_path))
+    assert vm.returncode == 0, vm.stderr
+    assert vm.stdout.splitlines() == ["sim", "nao", "1", "dois", "pos"]
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "t.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert vm.stdout == interp.stdout

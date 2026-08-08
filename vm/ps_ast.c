@@ -96,6 +96,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_LITERAL:         return "Literal";
         case N_NAME:            return "Name";
         case N_BINARY_OP:       return "BinaryOp";
+        case N_CONDITIONAL:     return "Conditional";
         case N_UNARY_OP:        return "UnaryOp";
         case N_CALL:            return "Call";
         case N_CALL_ARG:        return "CallArg";

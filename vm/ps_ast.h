@@ -23,6 +23,7 @@ typedef enum {
     N_LITERAL,        /* int, flo, str, bool, null */
     N_NAME,
     N_BINARY_OP,
+    N_CONDITIONAL,   /* ternário: A if cond else B (a=A, b=cond, c=B) */
     N_UNARY_OP,
     N_CALL,
     N_CALL_ARG,
