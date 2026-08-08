@@ -46,7 +46,8 @@ enum {
     OP_SKIP_IF_IMPORT = 72,   /* pula o bloco de run_selfwith_ quando importando */
     OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
     OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
-    OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66
+    OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66,
+    OP_MAKE_ENUM = 73   /* enum Nome { ... } — descritor em vm->enum_* */
 };
 
 const char *ps_op_nome(int32_t op)
@@ -114,6 +115,7 @@ const char *ps_op_nome(int32_t op)
         case OP_COUNT_PARES: return "COUNT_PARES";
         case OP_CHECK_NONNULL: return "CHECK_NONNULL";
         case OP_MAKE_MODEL: return "MAKE_MODEL";
+        case OP_MAKE_ENUM: return "MAKE_ENUM";
         case OP_UNPACK: return "UNPACK";
         case OP_YIELD: return "YIELD";
         case OP_CLOSE_SE_TEM: return "CLOSE_SE_TEM";
@@ -177,6 +179,7 @@ typedef struct {
     int         nlacos;
     int32_t     cap_classes;
     int32_t     cap_models;
+    int32_t     cap_enums;
     /* `@NonNull` visto, esperando a action que ele decora. */
     int         pendente_nonnull;
     /* profundidade de `try` aberto — `yield` dentro de um é recusado */
@@ -1214,6 +1217,40 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        case N_ENUM_DECL: {
+            /* Descritor no programa (nome + nomes dos membros + flag auto);
+             * os valores EXPLÍCITOS são expressões, empilhadas em ordem de
+             * membro antes do MAKE_ENUM, que aplica a auto-numeração. */
+            if (c->out->nenums + 1 > c->cap_enums) {
+                int32_t novo = c->cap_enums < 8 ? 8 : c->cap_enums * 2;
+                PSEnumDef *ne = realloc(c->out->enums, sizeof(PSEnumDef) * (size_t)novo);
+                if (!ne) { cerro(c, "sem memoria", n); return; }
+                c->out->enums = ne;
+                c->cap_enums = novo;
+            }
+            int32_t ei = c->out->nenums++;
+            PSEnumDef *def = &c->out->enums[ei];
+            memset(def, 0, sizeof(*def));
+            def->nome = strdup(n->texto ? n->texto : "?");
+            def->nmembros = n->lista.n;
+            def->membros = n->lista.n > 0
+                         ? calloc((size_t)n->lista.n, sizeof(PSEnumMembroDef)) : NULL;
+            for (int32_t i = 0; i < n->lista.n; i++) {
+                PSNode *m = n->lista.itens[i];
+                def->membros[i].nome = strdup(m->texto ? m->texto : "?");
+                def->membros[i].tem_valor = (m->a != NULL);
+            }
+            /* empilha os valores explícitos, na ordem de declaração */
+            for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
+                PSNode *m = n->lista.itens[i];
+                if (m->a) expr(c, u, m->a);
+            }
+            if (CFALHOU(c)) return;
+            emite(c, u, OP_MAKE_ENUM, ei);
+            guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            return;
+        }
+
         case N_DECORATOR_STMT: {
             /* O decorador é resolvido em COMPILAÇÃO, não em runtime: os três
              * que a linguagem define mudam como a action é gerada, não o que
@@ -1980,5 +2017,12 @@ void ps_compila_free(PSPrograma *p)
         free(p->models[i].campos);
     }
     free(p->models);
+    for (int32_t i = 0; i < p->nenums; i++) {
+        free(p->enums[i].nome);
+        for (int32_t k = 0; k < p->enums[i].nmembros; k++)
+            free(p->enums[i].membros[k].nome);
+        free(p->enums[i].membros);
+    }
+    free(p->enums);
     free(p);
 }

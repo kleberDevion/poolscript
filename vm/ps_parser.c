@@ -1856,6 +1856,37 @@ static PSNode *statement(P *p)
         return n;
     }
 
+    /* enum Nome { A, B=v } — namespace de constantes; Nome.A devolve o valor.
+     * Membro é NOME (auto) ou NOME = expr (explícito); vírgula opcional. */
+    if (checa_kw(p, "enum")) {
+        p->pos++;
+        PSNode *n = ps_node_novo(p->arena, N_ENUM_DECL, t->line, t->col);
+        if (!n) return NULL;
+        n->texto = exige_nome(p, "enum");
+        if (FALHOU(p)) return NULL;
+        pula_separadores(p);
+        if (!exige(p, T_LBRACE, "esperado '{' para abrir o enum")) return NULL;
+        pula_separadores(p);
+        while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+            PSToken *mt = atual(p);
+            const char *nome_m = exige_nome(p, "membro");
+            if (FALHOU(p)) return NULL;
+            PSNode *m = ps_node_novo(p->arena, N_ENUM_MEMBER, mt->line, mt->col);
+            if (!m) return NULL;
+            m->texto = nome_m;
+            if (checa_op(p, "=")) {
+                p->pos++;
+                m->a = expressao(p);          /* valor explícito */
+                if (FALHOU(p)) return NULL;
+            }
+            if (ps_vec_push(p->arena, &n->lista, m) != 0) return NULL;
+            aceita(p, T_COMMA);               /* vírgula opcional entre membros */
+            pula_separadores(p);
+        }
+        if (!exige(p, T_RBRACE, "faltou '}' no enum")) return NULL;
+        return n;
+    }
+
     /* `count each <tipo> in <cont> { ... }` — statement quando há bloco */
     if (checa_kw(p, "count") && espia(p, 1)->type == T_KW
             && espia(p, 1)->texto && strcmp(espia(p, 1)->texto, "each") == 0) {

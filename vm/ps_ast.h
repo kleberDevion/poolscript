@@ -68,6 +68,8 @@ typedef enum {
     /* ── lote 4: model e count ── */
     N_MODEL_DECL,
     N_MODEL_FIELD,
+    N_ENUM_DECL,      /* enum Nome { A, B=v } — texto=nome, lista=membros */
+    N_ENUM_MEMBER,    /* membro — texto=nome, a=valor (NULL = auto) */
     N_COUNT_EXPR,
     N_COUNT_EACH_STMT,
     N_COUNT_EACH_EXPR,

@@ -44,7 +44,7 @@ KEYWORDS = {
     # fluxo
     "if", "else", "elif", "while", "for", "each", "in", "is",
     "and", "or", "not", "Not",
-    "action", "reaction", "return", "continue", "break", "model", "async", "await",
+    "action", "reaction", "return", "continue", "break", "model", "enum", "async", "await",
     "try", "catch", "as", "with", "of", "using",
     "import", "from", "PUSH", "GET",
     # tipos primitivos

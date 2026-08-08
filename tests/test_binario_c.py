@@ -961,3 +961,51 @@ def test_condicional_inline_diferencial(tmp_path):
         capture_output=True, text=True, cwd=str(tmp_path),
         env={**os.environ, "PYTHONPATH": os.path.join(RAIZ, "src")})
     assert vm.stdout == interp.stdout
+
+
+def test_enum_diferencial(tmp_path):
+    """`enum Nome { ... }` — namespace de constantes; `Nome.M` devolve o valor.
+    Auto-numeração 0-based, valor int explícito reancora, auto+explícito se
+    misturam, `.type()`=="enum", `<enum Nome>` no print. Byte-a-byte c/ interp."""
+    src = (
+        "enum Cor { RED, GREEN, BLUE }" + NL
+        + 'enum Hex { RED="#f00", GREEN="#0f0" }' + NL
+        + "enum Mix { A, B=10, C, D=\"x\", E }" + NL
+        + "post(Cor.RED)" + NL + "post(Cor.BLUE)" + NL
+        + "post(Hex.RED)" + NL
+        + "post(Mix.A)" + NL + "post(Mix.C)" + NL + "post(Mix.E)" + NL
+        + "post(Cor)" + NL + "post(Cor.type())" + NL
+        # dentro de action + comparação (o `if` NÃO pode virar ternário)
+        + "action f(s) {" + NL
+        + "    if s == Cor.RED { return \"vermelho\" }" + NL
+        + "    return \"outro\"" + NL
+        + "}" + NL
+        + "post(f(Cor.RED))" + NL
+    )
+    f = tmp_path / "e.ps"
+    f.write_text(src, encoding="utf-8")
+    vm = roda("e.ps", cwd=str(tmp_path))
+    assert vm.returncode == 0, vm.stderr
+    assert vm.stdout.splitlines() == [
+        "0", "2", "#f00", "0", "11", "12", "<enum Cor>", "enum", "vermelho"]
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "e.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "PYTHONPATH": os.path.join(RAIZ, "src")})
+    assert vm.stdout == interp.stdout
+
+
+def test_enum_membro_inexistente_mensagem_identica(tmp_path):
+    """Acessar membro que não existe dá a MESMA mensagem nos dois motores."""
+    src = "enum Cor { RED, GREEN }" + NL + "post(Cor.ROXO)" + NL
+    f = tmp_path / "e.ps"
+    f.write_text(src, encoding="utf-8")
+    vm = roda("e.ps", cwd=str(tmp_path))
+    assert vm.returncode != 0
+    assert "enum 'Cor' não tem membro 'ROXO'" in vm.stdout + vm.stderr
+    interp = subprocess.run(
+        [sys.executable, "-m", "poolscript", "e.ps"],
+        capture_output=True, text=True, cwd=str(tmp_path),
+        env={**os.environ, "PYTHONPATH": os.path.join(RAIZ, "src")})
+    # a linha da mensagem de erro bate byte-a-byte entre os motores
+    assert "enum 'Cor' não tem membro 'ROXO'" in interp.stdout + interp.stderr

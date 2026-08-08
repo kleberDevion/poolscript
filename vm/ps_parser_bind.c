@@ -78,6 +78,8 @@ static int serializa(SBuf *s, const PSNode *n)
         case N_POSTFIX_OP:
         case N_COLOR_STR_EXPR:
         case N_RUN_SELFWITH_STMT:
+        case N_ENUM_DECL:
+        case N_ENUM_MEMBER:
             snprintf(tmp, sizeof(tmp), " %s", n->texto ? n->texto : "");
             if (sb_str(s, tmp) != 0) return -1;
             break;
@@ -183,7 +185,7 @@ static int serializa(SBuf *s, const PSNode *n)
     if (n->a) { if (sb_str(s, " ") != 0 || serializa(s, n->a) != 0) return -1; }
     else if (n->kind == N_IF_BRANCH || n->kind == N_RETURN_STMT
              || n->kind == N_YIELD_STMT || n->kind == N_SLICE_ACCESS
-             || n->kind == N_MATCH_PATTERN) {
+             || n->kind == N_MATCH_PATTERN || n->kind == N_ENUM_MEMBER) {
         if (sb_str(s, " nil") != 0) return -1;
     }
     if (n->b) { if (sb_str(s, " ") != 0 || serializa(s, n->b) != 0) return -1; }
@@ -203,6 +205,10 @@ static int serializa(SBuf *s, const PSNode *n)
     if (n->kind == N_MATCH_PATTERN) {
         if (sb_str(s, " ") != 0 || serializa_lista(s, &n->lista2) != 0) return -1;
         if (sb_str(s, " ") != 0 || serializa_lista(s, &n->lista) != 0) return -1;
+        goto fim_lista;
+    }
+    if (n->kind == N_ENUM_DECL) {
+        if (sb_str(s, " ") != 0 || serializa_lista(s, &n->lista) != 0) return -1;   /* membros */
         goto fim_lista;
     }
     if (n->kind == N_ENTITY_DECL) {

@@ -173,6 +173,11 @@ def sexp(no) -> str:
     if c is P.ModelField:
         ln = no.length if no.length is not None else "nil"
         return f"(ModelField {no.name} {no.type_name} {ln})"
+    if c is P.EnumDecl:
+        ms = "[" + " ".join(sexp(x) for x in no.members) + "]"
+        return f"(EnumDecl {no.name} {ms})"
+    if c is P.EnumMember:
+        return f"(EnumMember {no.name} {sexp(no.value)})"
     if c is P.CountExpr:
         return (f"(CountExpr {no.target_type} {no.mode} "
                 f"{sexp(no.value_node)} {sexp(no.container)})")

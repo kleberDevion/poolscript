@@ -82,7 +82,8 @@ enum {
     OP_SKIP_IF_IMPORT = 72,   /* pula o bloco de run_selfwith_ quando importando */
     OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
     OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
-    OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66
+    OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66,
+    OP_MAKE_ENUM = 73   /* enum Nome { ... } — descritor em vm->enum_* */
 };
 
 /* ── objetos gerenciados pelo GC ────────────────────────────────────────── */
@@ -97,6 +98,7 @@ typedef enum {
     OBJ_MODULO,    /* namespace nativo (`import json`) */
     OBJ_NATIVA,    /* função nativa solta — `json.parse` guardado em variável */
     OBJ_MODEL,     /* `model U { ... }` — esquema que valida dict por `==` */
+    OBJ_ENUM,      /* `enum Cor { ... }` — namespace de constantes (Cor.RED) */
     OBJ_GERADOR,   /* action com `yield` — frame suspenso, retomável */
     OBJ_ARQUIVO,   /* handle de `open()` — fechado pelo `using` */
     OBJ_MODULO_PS, /* `.ps` importado — namespace sobre as globais dele */
@@ -259,6 +261,17 @@ typedef struct {
     PSModelCampo *campos;
     int32_t       ncampos;
 } PSModel;
+
+/* `enum Cor { RED, GREEN }` — namespace de constantes. `nome` e `nomes`
+ * apontam pros descritores do VM (vivem até o fim); `valores` é por-instância
+ * (malloc), computado no MAKE_ENUM e liberado no free. GC marca cada valor. */
+typedef struct {
+    Obj      obj;
+    char    *nome;      /* aponta pro descritor (vm->enum_nomes[i]) */
+    int32_t  n;
+    char   **nomes;     /* aponta pro descritor (vm->enum_membro_nomes[i]) */
+    Value   *valores;   /* por-instância */
+} PSEnum;
 
 /* Gerador: um frame CONGELADO.
  *
@@ -627,6 +640,7 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define COMO_MODULO(v) ((PSModulo*)(v).as.obj)
 #define COMO_NATIVA(v) ((PSNativa*)(v).as.obj)
 #define EH_MODEL(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_MODEL)
+#define EH_ENUM(v)     ((v).t == V_OBJ && (v).as.obj->type == OBJ_ENUM)
 #define COMO_MODEL(v)  ((PSModel*)(v).as.obj)
 #define EH_GERADOR(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_GERADOR)
 #define COMO_GER(v)    ((PSGerador*)(v).as.obj)
@@ -759,6 +773,12 @@ struct VM_ {
     int32_t       *model_ncampos;
     char         **model_nomes;
     int            nmodels;
+    /* descritores de enum — nome do enum, nomes dos membros e flag auto/expl */
+    char         **enum_nomes;
+    char        ***enum_membro_nomes;
+    int8_t       **enum_auto;
+    int32_t       *enum_nmembros;
+    int            nenums;
     Value  *globals;
     int     nglobals;
     Value  *stack;
@@ -1166,6 +1186,10 @@ static void percorre_cinzas(VM *vm)
         } else if (o->type == OBJ_MODULO || o->type == OBJ_NATIVA
                 || o->type == OBJ_MODEL) {
             /* sem filhos: o descritor é estático (o do model vive no VM) */
+        } else if (o->type == OBJ_ENUM) {
+            /* nome/nomes vivem no descritor do VM; só os VALORES são filhos */
+            PSEnum *e = (PSEnum *)o;
+            for (int32_t i = 0; i < e->n; i++) marca_valor(vm, &e->valores[i]);
         } else if (o->type == OBJ_DICT) {
             PSDict *d = (PSDict *)o;
             for (int i = 0; i < d->usados; i++) {
@@ -1263,6 +1287,10 @@ static void libera_obj(VM *vm, Obj *o)
         vm->alocado -= sizeof(PSNativa);
     } else if (o->type == OBJ_MODEL) {
         vm->alocado -= sizeof(PSModel);
+    } else if (o->type == OBJ_ENUM) {
+        /* nome/nomes apontam pro descritor do VM; só valores é por-instância */
+        free(((PSEnum *)o)->valores);
+        vm->alocado -= sizeof(PSEnum);
     } else if (o->type == OBJ_POOLFILE) {
         PSPoolFile *f = (PSPoolFile *)o;
         free(f->caminho); free(f->nome); free(f->ext);
@@ -1928,6 +1956,8 @@ static void escreve_valor(const Value *v, int dentro)
                 printf("<arquivo %s>", ((PSArquivo *)v->as.obj)->caminho);
             } else if (v->as.obj->type == OBJ_MODEL) {
                 printf("<model %s>", ((PSModel *)v->as.obj)->nome);
+            } else if (v->as.obj->type == OBJ_ENUM) {
+                printf("<enum %s>", ((PSEnum *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_MODULO) {
                 {
                     /* módulo oculto sai sem o `_` de registro: o usuário
@@ -2076,6 +2106,12 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             }
             if (v->as.obj->type == OBJ_JPROXY)
                 return txt_put(t, "<jinker.request>", 16);
+            if (v->as.obj->type == OBJ_ENUM) {
+                char buf[300];
+                const char *nm = ((PSEnum *)v->as.obj)->nome;
+                int nn = snprintf(buf, sizeof(buf), "<enum %s>", nm ? nm : "?");
+                return txt_put(t, buf, nn);
+            }
             return 0;
     }
     return 0;
@@ -2257,6 +2293,7 @@ static int nativa_type(VM *vm, Value *args, int n, Value *out)
                 case OBJ_METODO_NAT: t = "action"; break;
                 case OBJ_MODULO:     t = "module"; break;
                 case OBJ_MODEL:      t = "PoolModel"; break;
+                case OBJ_ENUM:       t = "enum";   break;
                 case OBJ_GERADOR:    t = "generator"; break;
                 case OBJ_ARQUIVO:    t = "FileHandle"; break;
                 case OBJ_MODULO_PS:  t = "module"; break;
@@ -4261,6 +4298,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_METODO_NAT:  t = "action"; break;
                 case OBJ_MODULO:      t = "module"; break;
                 case OBJ_MODEL:       t = "PoolModel"; break;
+                case OBJ_ENUM:        t = "enum";   break;
                 case OBJ_GERADOR:     t = "generator"; break;
                 case OBJ_ARQUIVO:     t = "FileHandle"; break;
                 case OBJ_MODULO_PS:   t = "module"; break;
@@ -14241,6 +14279,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp - 1] = MK_FUNC(mp);
                 break;
             }
+            if (EH_ENUM(alvo)) {
+                PSEnum *e = (PSEnum *)alvo.as.obj;
+                for (int32_t k = 0; k < e->n; k++) {
+                    if (strcmp(e->nomes[k], nome) != 0) continue;
+                    stack[sp - 1] = e->valores[k];
+                    goto membro_ok;
+                }
+                /* `.type` é universal: deixa cair no dispatch geral lá embaixo.
+                 * Qualquer outro nome é membro inexistente do enum. */
+                if (strcmp(nome, "type") != 0)
+                    ERRO_TF(vm, "RuntimeError", "enum '%s' não tem membro '%s'",
+                            e->nome ? e->nome : "?", nome);
+            }
             if (EH_MODPS(alvo)) {
                 PSModuloPS *m = COMO_MODPS(alvo);
                 for (int32_t k = 0; k < m->n; k++) {
@@ -14628,6 +14679,35 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
+        case OP_MAKE_ENUM: {
+            vm->sp = sp; vm->locals_top = locals_top;
+            int32_t nm = vm->enum_nmembros[arg];
+            int32_t nexp = 0;
+            for (int32_t i = 0; i < nm; i++) if (!vm->enum_auto[arg][i]) nexp++;
+            int32_t base = sp - nexp;      /* valores explícitos, ordem de membro */
+            PSEnum *e = malloc(sizeof(PSEnum));
+            if (!e) ERRO(vm, "sem memoria no enum");
+            e->valores = nm > 0 ? malloc(sizeof(Value) * (size_t)nm) : NULL;
+            if (nm > 0 && !e->valores) { free(e); ERRO(vm, "sem memoria no enum"); }
+            e->obj.type = OBJ_ENUM; e->obj.marked = 0;
+            e->nome  = vm->enum_nomes[arg];
+            e->n     = nm;
+            e->nomes = vm->enum_membro_nomes[arg];
+            /* auto-numeração: 0-based; um int explícito reancora a sequência */
+            int64_t next_auto = 0;
+            int32_t ei = 0;
+            for (int32_t i = 0; i < nm; i++) {
+                Value v = vm->enum_auto[arg][i] ? MK_INT(next_auto) : stack[base + ei++];
+                e->valores[i] = v;
+                if (v.t == V_INT) next_auto = v.as.i + 1;
+            }
+            e->obj.next = vm->objetos; vm->objetos = (Obj *)e;   /* linka pronto */
+            sp = base;                     /* pop dos valores explícitos */
+            vm->alocado += sizeof(PSEnum);
+            stack[sp++] = MK_OBJ(e);
+            break;
+        }
+
         case OP_CHECK_NONNULL: {
             for (int k = 0; k < arg; k++) {
                 Value v = vm->locals[lbase + k];
@@ -14937,6 +15017,19 @@ static void libera_vm(VM *vm)
         free(vm->model_campos);
         free(vm->model_ncampos);
     }
+    if (vm->enum_nomes) {
+        for (int32_t i = 0; i < vm->nenums; i++) {
+            free(vm->enum_nomes[i]);
+            for (int32_t k = 0; k < vm->enum_nmembros[i]; k++)
+                free(vm->enum_membro_nomes[i][k]);
+            free(vm->enum_membro_nomes[i]);
+            free(vm->enum_auto[i]);
+        }
+        free(vm->enum_nomes);
+        free(vm->enum_membro_nomes);
+        free(vm->enum_auto);
+        free(vm->enum_nmembros);
+    }
     if (vm->mods_ps) {
         for (int i = 0; i < vm->nmods_ps; i++) free(vm->mods_ps[i].nome);
         free(vm->mods_ps);
@@ -15010,6 +15103,30 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                 vm->model_campos[i][k].nome = strdup(o->campos[k].nome ? o->campos[k].nome : "?");
                 vm->model_campos[i][k].tipo = o->campos[k].tipo;
                 vm->model_campos[i][k].length = o->campos[k].length;
+            }
+        }
+    }
+
+    /* enums: mesma cópia — nome do enum, nomes dos membros, flag auto/expl */
+    vm->nenums = prog->nenums;
+    if (prog->nenums > 0) {
+        vm->enum_nomes        = calloc((size_t)prog->nenums, sizeof(char *));
+        vm->enum_membro_nomes = calloc((size_t)prog->nenums, sizeof(char **));
+        vm->enum_auto         = calloc((size_t)prog->nenums, sizeof(int8_t *));
+        vm->enum_nmembros     = calloc((size_t)prog->nenums, sizeof(int32_t));
+        if (!vm->enum_nomes || !vm->enum_membro_nomes || !vm->enum_auto
+                || !vm->enum_nmembros) return -1;
+        for (int32_t i = 0; i < prog->nenums; i++) {
+            PSEnumDef *o = &prog->enums[i];
+            vm->enum_nomes[i] = strdup(o->nome ? o->nome : "?");
+            vm->enum_nmembros[i] = o->nmembros;
+            vm->enum_membro_nomes[i] = o->nmembros > 0
+                                     ? calloc((size_t)o->nmembros, sizeof(char *)) : NULL;
+            vm->enum_auto[i] = o->nmembros > 0
+                             ? calloc((size_t)o->nmembros, sizeof(int8_t)) : NULL;
+            for (int32_t k = 0; k < o->nmembros; k++) {
+                vm->enum_membro_nomes[i][k] = strdup(o->membros[k].nome ? o->membros[k].nome : "?");
+                vm->enum_auto[i][k] = (int8_t)(o->membros[k].tem_valor ? 0 : 1);
             }
         }
     }

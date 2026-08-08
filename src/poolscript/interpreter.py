@@ -42,6 +42,8 @@ from .parser import (
     GlobalStmt,
     ModelDecl,
     ModelField,
+    EnumDecl,
+    EnumMember,
     CountEachStmt,
     CountEachExpr,
     CountExpr,
@@ -470,6 +472,18 @@ class Module:
 
     def __repr__(self):
         return f"<Module {self._name}>"
+
+
+@_mypyc_attr(native_class=False)
+class PoolEnum:
+    """`enum Cor { RED, GREEN }` — namespace de constantes. `Cor.RED` devolve o
+    valor. Os membros ficam num dict ordenado (ordem de declaração)."""
+    def __init__(self, name: str, members: dict):
+        self._name = name
+        self._members = members
+
+    def __repr__(self):
+        return f"<enum {self._name}>"
 
 
 @_mypyc_attr(native_class=False)
@@ -1168,6 +1182,20 @@ class Interpreter:
                 model = PoolModel(name=node.name, fields=node.fields)
                 scope.define(node.name, model)
                 return None
+            if node.__class__ is EnumDecl:
+                members: dict = {}
+                next_auto = 0
+                for m in node.members:
+                    if m.value is not None:
+                        v = self.eval_expr(m.value, scope)
+                    else:
+                        v = next_auto
+                    members[m.name] = v
+                    # valor int (não bool) reancora a sequência auto
+                    if isinstance(v, int) and not isinstance(v, bool):
+                        next_auto = v + 1
+                scope.define(node.name, PoolEnum(node.name, members))
+                return None
 
             # ── Entity declaration ────────────────────────────────────────
             if node.__class__ is EntityDecl:
@@ -1637,6 +1665,8 @@ class Interpreter:
                         from .stdlib.parsing_lib import TransientValue
                         if isinstance(v, PoolTypeRef):
                             return "type"
+                        if isinstance(v, PoolEnum):
+                            return "enum"
                         if type(v).__name__ == "PoolGenerator":
                             return "generator"
                         _ent = getattr(v, "_ps_entity", None)
@@ -1665,6 +1695,15 @@ class Interpreter:
                         return StaticMethod(func=method)
                     raise PoolRuntimeError(
                         f"Entity '{target.name}' não tem método estático '{sys.intern(node.member)}' — instancie primeiro",
+                        node, self.source, filename=self.filename,
+                    )
+                # enum: Cor.RED devolve o valor do membro
+                if isinstance(target, PoolEnum):
+                    _m = sys.intern(node.member)
+                    if _m in target._members:
+                        return target._members[_m]
+                    raise PoolRuntimeError(
+                        f"enum '{target._name}' não tem membro '{_m}'",
                         node, self.source, filename=self.filename,
                     )
                 if isinstance(target, PoolStr):

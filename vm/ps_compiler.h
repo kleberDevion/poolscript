@@ -78,6 +78,20 @@ typedef struct {
     int32_t          ncampos;
 } PSModelDef;
 
+/* Membro de `enum`, na forma neutra do compilador. O VALOR explícito não fica
+ * aqui: é expressão, compilada e empilhada antes do MAKE_ENUM. `tem_valor`
+ * diz se este membro empilha um valor (explícito) ou é auto-numerado. */
+typedef struct {
+    char   *nome;
+    int32_t tem_valor;   /* 1 = valor explícito na pilha; 0 = auto */
+} PSEnumMembroDef;
+
+typedef struct {
+    char            *nome;
+    PSEnumMembroDef *membros;
+    int32_t          nmembros;
+} PSEnumDef;
+
 typedef struct {
     PSProto *protos;    /* índice 0 = módulo */
     int32_t  nprotos;
@@ -90,6 +104,9 @@ typedef struct {
 
     PSModelDef *models;
     int32_t     nmodels;
+
+    PSEnumDef  *enums;
+    int32_t     nenums;
 
     int      ok;
     char     erro[256];

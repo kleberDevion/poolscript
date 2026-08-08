@@ -331,6 +331,24 @@ class ModelDecl(Node):
 
 
 @dataclass(slots=True)
+class EnumMember(Node):
+    """Membro de um enum: `RED` (auto-numerado) ou `RED = "#f00"` (explícito)."""
+    name: str
+    value: Node | None    # None = auto (pega o próximo número da sequência)
+
+
+@dataclass(slots=True)
+class EnumDecl(Node):
+    """`enum Cor { RED, GREEN }` ou `enum Cor { RED="#f00", GREEN="#0f0" }`.
+
+    Namespace de constantes: `Cor.RED` devolve o valor. Auto-numeração começa
+    em 0; um valor int explícito reancora a sequência (`{A, B=10, C}` -> 0,10,11).
+    Auto e explícito podem se misturar."""
+    name: str
+    members: list["EnumMember"]
+
+
+@dataclass(slots=True)
 class ContinueStmt(Node):
     """Ignora e segue o fluxo — equivalente ao pass do Python."""
     pass
@@ -616,6 +634,8 @@ class Parser:
                 return self.parse_action_decl()
             if tok.value == "model":
                 return self.parse_model_decl()
+            if tok.value == "enum":
+                return self.parse_enum_decl()
             if (tok.value in {"private", "public"} and self.peek().type == "KW"
                     and self.peek().value in {"Entity", "class", "Class"}):
                 # `public class Nome()` / `private class Nome()` — modificador de
@@ -1081,6 +1101,35 @@ class Parser:
                                      name=field_name, type_name=type_name, length=length))
         self.expect("RBRACE")
         return ModelDecl(line=start.line, col=start.col, name=name, fields=fields)
+
+    def parse_enum_decl(self) -> "EnumDecl":
+        """`enum Cor { RED, GREEN }` ou `enum Cor { RED="#f00", GREEN="#0f0" }`.
+
+        Membros separados por vírgula (opcional no fim). Um membro é `NOME` (auto)
+        ou `NOME = expr` (explícito); auto e explícito se misturam."""
+        start = self.expect("KW", "enum")
+        name_tok = self.expect_name("enum", msg="esperado nome do enum após 'enum'")
+        name = str(name_tok.value)
+        self.skip_separators()
+        self.expect("LBRACE", msg="esperado '{' para abrir o enum")
+        self.skip_separators()
+        members: list[EnumMember] = []
+        while self.current().type != "RBRACE":
+            m_tok = self.expect_name("membro", msg="esperado nome do membro do enum")
+            m_name = str(m_tok.value)
+            value: Node | None = None
+            if self.current().type == "OP" and self.current().value == "=":
+                self.pos += 1  # consome '='
+                value = self.parse_expression()
+            members.append(EnumMember(line=m_tok.line, col=m_tok.col,
+                                      name=m_name, value=value))
+            # vírgula entre membros (opcional no último); separadores toleram
+            # quebras se um dia forem emitidas dentro de `{ }`
+            if self.current().type == "COMMA":
+                self.pos += 1
+            self.skip_separators()
+        self.expect("RBRACE")
+        return EnumDecl(line=start.line, col=start.col, name=name, members=members)
 
 
     def parse_entity_decl(self) -> "EntityDecl":

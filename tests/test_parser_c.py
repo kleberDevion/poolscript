@@ -324,6 +324,26 @@ def test_model(src):
 
 
 @pytest.mark.parametrize("src", [
+    "enum Cor { RED, GREEN, BLUE }",
+    'enum Hex { RED="#f00", GREEN="#0f0" }',
+    'enum Mix { A, B=10, C, D="x", E }',
+    "enum Vazio { SO }",
+])
+def test_enum(src):
+    mesmo(src)
+
+
+@pytest.mark.parametrize("src", [
+    'x = "sim" if 5 > 3 else "nao"',
+    "y = 1 if a else 2 if b else 3",   # encadeado (right-assoc)
+    # `if` statement dentro de bloco NÃO é ternário (backtrack no else)
+    "action f() {\n r = 0\n if r == 0 { r = 1 }\n return r\n}",
+])
+def test_condicional_inline(src):
+    mesmo(src)
+
+
+@pytest.mark.parametrize("src", [
     "post(count int(7) in nums)",      # prefixo com valor
     "post(count int in nums)",         # prefixo só com tipo
     "post(count int() in nums)",       # parênteses vazios = só tipo

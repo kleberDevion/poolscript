@@ -2,7 +2,7 @@
 	"name": "psl-poolscript",
 	"displayName": "PoolScript Pro",
 	"description": "Syntax highlighting, real IntelliSense powered by the actual PoolScript parser (diagnostics, go to definition, find references, signature help, hover, outline, workspace symbols, rename, code actions, call hierarchy, inlay hints, folding), snippets and Dracula theme for PoolScript (.ps).",
-	"version": "1.4.35",
+	"version": "1.4.36",
 	"publisher": "KleberSantanadeOliveira",
 	"icon": "images/icon.png",
 	"engines": {

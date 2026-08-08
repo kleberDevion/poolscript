@@ -137,6 +137,8 @@ const char *ps_node_nome(PSNodeKind k)
         case N_MATCH_PATTERN:   return "MatchPattern";
         case N_MODEL_DECL:      return "ModelDecl";
         case N_MODEL_FIELD:     return "ModelField";
+        case N_ENUM_DECL:       return "EnumDecl";
+        case N_ENUM_MEMBER:     return "EnumMember";
         case N_COUNT_EXPR:      return "CountExpr";
         case N_COUNT_EACH_STMT: return "CountEachStmt";
         case N_COUNT_EACH_EXPR: return "CountEachExpr";
