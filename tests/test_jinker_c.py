@@ -114,6 +114,21 @@ action reqinfo() {
     }
 }
 
+@app.route("/status_attr", methods=["GET"])
+action status_attr() {
+    r = JinkerResponse()
+    r.send("via atributo")
+    r.status_code = 418
+    return r
+}
+
+@app.route("/appinfo", methods=["GET"])
+action appinfo() {
+    // name = __name__ = caminho do arquivo (difere entre os 2 servidores),
+    // então fica de fora da comparação; sf/su são o que a paridade cobre
+    return {"sf": app.static_folder, "su": app.static_url}
+}
+
 run_selfwith_("main") {
     app(debug=false, host="127.0.0.1", port=__PORTA__)
 }
@@ -201,6 +216,9 @@ CASOS = [
     ("GET", "/lista", None, None),
     # request.method / request.path / request.header(nome) (case-insensitive)
     ("GET", "/reqinfo", None, {"X-Meu": "abc123"}),
+    # JinkerResponse.status_code = N (atribuição) e app.static_folder/url (leitura)
+    ("GET", "/status_attr", None, None),
+    ("GET", "/appinfo", None, None),
     ("GET", "/nao-existe", None, None),
     ("DELETE", "/ping", None, None),          # método não registrado -> 404
     ("OPTIONS", "/ping", None, None),         # preflight

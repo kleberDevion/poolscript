@@ -14456,6 +14456,20 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = MK_OBJ(s2);
                     break;
                 }
+                if (strcmp(nome, "static_folder") == 0) {
+                    if (!jj->static_folder) { stack[sp - 1] = MK_NULL(); break; }
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *s2 = nova_string(vm, jj->static_folder, (int)strlen(jj->static_folder));
+                    if (!s2) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(s2); break;
+                }
+                if (strcmp(nome, "static_url") == 0) {
+                    if (!jj->static_url) { stack[sp - 1] = MK_NULL(); break; }
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *s2 = nova_string(vm, jj->static_url, (int)strlen(jj->static_url));
+                    if (!s2) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(s2); break;
+                }
                 /* route/middleware caem no METNAT genérico abaixo */
             }
             if (EH_JCHAN(alvo)) {
@@ -14564,6 +14578,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value valor = stack[--sp];
             Value alvo = stack[--sp];
             Value nomev = p->consts[arg];
+            /* JinkerResponse.status_code = N — atalho pro status (o interp
+             * expõe status_code como atributo gravável; .status(N) é o método). */
+            if (EH_JRESP(alvo) && EH_STRING(nomev)
+                    && strcmp(COMO_STRING(nomev)->chars, "status_code") == 0) {
+                if (valor.t != V_INT)
+                    ERRO_T(vm, "RuntimeError", "status_code espera um int");
+                COMO_JRESP(alvo)->status = (int)valor.as.i;
+                break;
+            }
             if (!EH_INST(alvo)) ERRO_T(vm, "RuntimeError", "so instancia aceita atribuicao de membro");
             PSInstance *inst = COMO_INST(alvo);
             if (EH_STRING(nomev) && priv_barrado(inst->classe, COMO_STRING(nomev)->chars, (int32_t)(p - vm->protos)))
