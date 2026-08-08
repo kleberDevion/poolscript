@@ -856,11 +856,12 @@ class PoolIp:
 
 # ── TLS — Certificado ─────────────────────────────────────────────────────────
 
-def _setup_tls(cert_path: str = None) -> tuple:
+def _setup_tls(cert_path: str = None, key_path: str = None) -> tuple:
     """Configura TLS. Retorna (ssl_context, cert_file, key_file).
-    
+
     Ordem:
-    1. cert_path explícito
+    1. cert_path explícito (com key_path explícito, se dado — ex: Let's Encrypt
+       cert=fullchain.pem, key=privkey.pem; senão deriva do nome do cert)
     2. .jinkerTls no diretório do projeto (busca recursiva)
     3. Gera self-signed automaticamente
     """
@@ -880,10 +881,13 @@ def _setup_tls(cert_path: str = None) -> tuple:
         p = Path(cert_path)
         if p.is_file():
             cert_file = str(p)
-            # tenta achar key no mesmo dir
-            key_candidate = p.parent / (p.stem + ".key")
-            if key_candidate.is_file():
-                key_file = str(key_candidate)
+            # key= explícito vence; senão tenta achar a key no mesmo dir
+            if key_path and Path(key_path).is_file():
+                key_file = str(Path(key_path))
+            else:
+                key_candidate = p.parent / (p.stem + ".key")
+                if key_candidate.is_file():
+                    key_file = str(key_candidate)
 
     # 2. busca .jinkerTls
     if not cert_file:
@@ -981,6 +985,9 @@ class Jinker:
         ) if self._oauth.get("poolip") else None
         self._use_tls = bool(self._oauth.get("tls"))
         self._cert    = self._oauth.get("cert", None)
+        # key= separado (Let's Encrypt: cert=fullchain.pem, key=privkey.pem).
+        # Sem ele, _setup_tls deriva a key do nome do cert (cert.stem + ".key").
+        self._key     = self._oauth.get("key", None)
 
     @property
     def middleware(self):
@@ -1322,7 +1329,7 @@ class Jinker:
         _ssl_ctx = None
         protocol = "http"
         if self._use_tls:
-            _ssl_ctx, _, _ = _setup_tls(self._cert)
+            _ssl_ctx, _, _ = _setup_tls(self._cert, self._key)
             if _ssl_ctx:
                 protocol = "https"
 

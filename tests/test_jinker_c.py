@@ -428,3 +428,58 @@ def test_static_url_prefixo(tmp_path):
                 p.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 p.kill()
+
+
+def test_tls_cert_key_separados(tmp_path):
+    """oauth={tls, cert, key} com cert e key em arquivos SEPARADOS (convenção
+    Let's Encrypt: fullchain.pem + privkey.pem). Os dois motores sobem HTTPS e
+    servem com o MESMO corpo — antes o interp ignorava `key` e caía no
+    self-signed."""
+    import shutil
+    import ssl as _ssl
+    if not shutil.which("openssl"):
+        pytest.skip("openssl não disponível")
+    # cert + key separados
+    r = subprocess.run(
+        ["openssl", "req", "-x509", "-newkey", "rsa:2048",
+         "-keyout", str(tmp_path / "privkey.pem"),
+         "-out", str(tmp_path / "fullchain.pem"),
+         "-days", "2", "-nodes", "-subj", "/CN=localhost",
+         "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1"],
+        capture_output=True)
+    if r.returncode != 0:
+        pytest.skip("openssl falhou ao gerar cert")
+    pc, pi = porta_livre(), porta_livre()
+    while pc == pi:
+        pi = porta_livre()
+    APP = ('from jinker import Jinker, jsonify\n'
+           'app = Jinker(__name__, oauth={tls: true, cert: "fullchain.pem", key: "privkey.pem"})\n'
+           '@app.route("/ping", methods=["GET"]) {\n'
+           '    action p() { return jsonify({"tls": true}) }\n'
+           '}\n'
+           'app(host="127.0.0.1", port=__P__)\n')
+    (tmp_path / "c.ps").write_text(APP.replace("__P__", str(pc)), encoding="utf-8")
+    (tmp_path / "i.ps").write_text(APP.replace("__P__", str(pi)), encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(SRC))
+    proc_c = sobe([str(POOL), str(tmp_path / "c.ps")], pc, cwd=str(tmp_path))
+    proc_i = sobe([sys.executable, "-m", "poolscript", str(tmp_path / "i.ps")], pi,
+                  cwd=str(tmp_path), env=env)
+    ctx = _ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = _ssl.CERT_NONE
+    try:
+        def get_https(porta):
+            req_ = urllib.request.Request(f"https://127.0.0.1:{porta}/ping")
+            with urllib.request.urlopen(req_, timeout=4, context=ctx) as resp:
+                return resp.status, resp.read().decode()
+        sc, bc = get_https(pc)
+        si, bi = get_https(pi)
+        assert sc == si == 200
+        assert json.loads(bc) == json.loads(bi) == {"tls": True}
+    finally:
+        for p in (proc_c, proc_i):
+            p.terminate()
+            try:
+                p.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                p.kill()
