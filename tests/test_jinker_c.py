@@ -393,3 +393,38 @@ def test_ws_connect_cliente(servidores2, tmp_path):
                            capture_output=True, text=True, timeout=15)
         saidas.append(r.stdout)
     assert saidas[0] == saidas[1] == "recebi: eco\nfim\n"
+
+
+def test_static_url_prefixo(tmp_path):
+    """static_url monta o static_folder sob um prefixo. Default "/" serve na
+    raiz (coberto pelos outros testes); com static_url="/app", /app/x.js serve
+    o arquivo e /x.js (fora do prefixo) dá 404 — idêntico nos dois motores."""
+    (tmp_path / "dist").mkdir()
+    (tmp_path / "dist" / "app.js").write_text("CONTEUDO-APP-JS", encoding="utf-8")
+    (tmp_path / "dist" / "index.html").write_text("<h1>ok</h1>", encoding="utf-8")
+    pc, pi = porta_livre(), porta_livre()
+    while pc == pi:
+        pi = porta_livre()
+    APP = ('from jinker import Jinker\n'
+           'app = Jinker(__name__, static_folder="dist", static_url="/app")\n'
+           'app(host="127.0.0.1", port=__P__)\n')
+    (tmp_path / "c.ps").write_text(APP.replace("__P__", str(pc)), encoding="utf-8")
+    (tmp_path / "i.ps").write_text(APP.replace("__P__", str(pi)), encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(SRC))
+    proc_c = sobe([str(POOL), str(tmp_path / "c.ps")], pc, cwd=str(tmp_path))
+    proc_i = sobe([sys.executable, "-m", "poolscript", str(tmp_path / "i.ps")], pi,
+                  cwd=str(tmp_path), env=env)
+    try:
+        # sob o prefixo → serve o arquivo (byte-a-byte igual)
+        compara(req(pc, "GET", "/app/app.js"), req(pi, "GET", "/app/app.js"))
+        # fora do prefixo → 404 nos dois
+        a = req(pc, "GET", "/app.js")
+        b = req(pi, "GET", "/app.js")
+        assert a[0] == b[0] == 404, f"status fora do prefixo: {a[0]} vs {b[0]}"
+    finally:
+        for p in (proc_c, proc_i):
+            p.terminate()
+            try:
+                p.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                p.kill()

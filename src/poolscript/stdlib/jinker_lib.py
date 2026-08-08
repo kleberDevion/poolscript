@@ -1175,17 +1175,29 @@ class Jinker:
 
                 # ── Tier 2b: SPA static_folder — arquivos físicos do dist ─
                 if route is None and app.static_folder:
+                    # static_url = prefixo onde o static_folder é montado. Default
+                    # "/" (prefixo vazio) = servido na RAIZ, como sempre foi — não
+                    # é obrigatório. Um prefixo tipo "/app" monta os arquivos só
+                    # sob ele; fora dele, o static_folder não responde.
+                    _prefix = (app.static_url or "/").rstrip("/")
+                    if _prefix == "":
+                        _rel = path.lstrip("/")
+                    elif path == _prefix or path.startswith(_prefix + "/"):
+                        _rel = path[len(_prefix):].lstrip("/")
+                    else:
+                        _rel = None
                     from .os_lib import _search_roots
                     from pathlib import Path as _SPath
                     static_root = None
-                    for root in _search_roots():
-                        candidate = root / app.static_folder
-                        if candidate.is_dir():
-                            static_root = candidate
-                            break
+                    if _rel is not None:
+                        for root in _search_roots():
+                            candidate = root / app.static_folder
+                            if candidate.is_dir():
+                                static_root = candidate
+                                break
 
                     if static_root:
-                        file_path = static_root / path.lstrip("/")
+                        file_path = static_root / _rel
                         if file_path.is_file():
                             # arquivo físico existe — serve direto
                             mime, _ = mimetypes.guess_type(str(file_path))

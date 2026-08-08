@@ -12219,11 +12219,24 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         }
         /* SPA static_folder */
         if (j->static_folder) {
+            /* static_url = prefixo de montagem. Default "/" (vazio) = raiz, como
+             * sempre foi (não obrigatório). "/app" monta os arquivos só sob ele;
+             * fora do prefixo, o static_folder não responde (cai no 404). */
+            const char *su = j->static_url ? j->static_url : "/";
+            char prefixo[256]; size_t pl = 0;
+            for (const char *q = su; *q && pl < sizeof(prefixo) - 1; q++) prefixo[pl++] = *q;
+            while (pl > 0 && prefixo[pl - 1] == '/') pl--;   /* rstrip '/' */
+            prefixo[pl] = '\0';
+            const char *rel = NULL;
+            if (pl == 0)                                       rel = hr->path + (hr->path[0] == '/' ? 1 : 0);
+            else if (strcmp(hr->path, prefixo) == 0)           rel = "";
+            else if (strncmp(hr->path, prefixo, pl) == 0 && hr->path[pl] == '/') rel = hr->path + pl + 1;
+
             char base[2048]; int achou_base = 0;
-            if (vm->dir_script[0] && acha_em(vm->dir_script, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1;
-            else { char cwd[512]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
+            if (rel && vm->dir_script[0] && acha_em(vm->dir_script, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1;
+            else if (rel) { char cwd[512]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
             if (achou_base) {
-                char cam[3072]; snprintf(cam, sizeof(cam), "%s/%s", base, hr->path + (hr->path[0]=='/'?1:0));
+                char cam[3072]; snprintf(cam, sizeof(cam), "%s/%s", base, rel);
                 struct stat st;
                 const char *serve = NULL; char idx[3072];
                 if (stat(cam, &st) == 0 && S_ISREG(st.st_mode)) serve = cam;

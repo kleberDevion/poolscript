@@ -92,13 +92,22 @@ meu_projeto/
 
 ---
 
-## Limitação atual: `static_url`
+## Montando num prefixo: `static_url`
 
-O construtor também aceita `static_url="/"`, mas hoje esse valor é **guardado e
-não usado** na hora de servir — a correspondência é sempre feita contra a URL
-inteira. Ou seja, **não dá (ainda) pra "montar" o SPA num prefixo** tipo
-`/app`. Se você definir `static_url="/app"`, ele não tem efeito. É um ponto em
-aberto pra evoluir.
+Por padrão (`static_url="/"`) o `static_folder` é servido a partir da **raiz** —
+é o caso acima e você não precisa mexer em nada. Se quiser **montar os arquivos
+sob um prefixo** (pra não colidir com as rotas de API), passe `static_url`:
+
+```
+app = Jinker(__name__, static_folder="dist", static_url="/app")
+
+// dist/app.js  →  GET /app/app.js
+// fora do prefixo (ex: /users) o static_folder NÃO responde → sobra pra API
+```
+
+Detalhes na [página do `static_url`](../static_url/static_url.md). Um aviso: o
+prefixo **`/static`** é reservado pela pasta física `/static/` (mecanismo fixo,
+ver abaixo), então escolha outro (`/app`, `/assets`…) pra montar o SPA.
 
 ---
 
