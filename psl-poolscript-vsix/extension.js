@@ -71,13 +71,15 @@ function parsePoolSource(text) {
     const impAs = semComentario.match(/^\s*import\s+([A-Za-z_]\w*)\s+as\s+([A-Za-z_]\w*)/);
     if (impAs) sym.aliases[impAs[2]] = impAs[1];
 
-    // action/reaction NOME(params)
-    const act = semComentario.match(/\b(?:async\s+)?(?:int\s+|str\s+|flo\s+|bool\s+)?(?:action|reaction)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
+    // action/reaction NOME(params) — captura QUAL (action vs reaction) e o
+    // prefixo de visibilidade/tipo (`public int reaction ...`)
+    const act = semComentario.match(/\b(?:async\s+)?(?:private\s+|public\s+)?(?:int\s+|str\s+|flo\s+|bool\s+)?(action|reaction)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
     if (act) {
       const alvo = classeAtual
         ? (sym.classes[classeAtual].members)
         : sym.functions;
-      alvo.push({ name: act[1], kind: classeAtual ? 'method' : 'function', params: parseParams(act[2]) });
+      alvo.push({ name: act[2], kind: classeAtual ? 'method' : 'function',
+                  params: parseParams(act[3]), reaction: act[1] === 'reaction' });
     }
 
     // Entity/class/Class NOME  (abre um corpo de classe)
@@ -386,6 +388,35 @@ const completionProvider = {
   provideCompletionItems(doc, pos) {
     const linhaAteCursor = doc.lineAt(pos.line).text.slice(0, pos.character);
 
+    // ── 0. decorador: `@` (nome parcial, sem ponto ainda) ──
+    // (`@app.route` cai no member completion abaixo, pois `app` resolve Jinker)
+    const dec = linhaAteCursor.match(/(?:^|\s)@(\w*)$/);
+    if (dec) {
+      const itens = [];
+      const builtinDec = [
+        ['static', 'método/atributo estático — chamável sem instanciar'],
+        ['NonNull', 'os parâmetros da action não podem ser Null'],
+        ['dataentity', 'Entity de dados (campos tipados, sem __init__ à mão)'],
+      ];
+      for (const [nome, desc] of builtinDec) {
+        const it = new vscode.CompletionItem(nome, vscode.CompletionItemKind.Property);
+        it.detail = '@' + nome;
+        it.documentation = new vscode.MarkdownString(desc);
+        itens.push(it);
+      }
+      // apps jinker do arquivo → pra `@app.route(...)`
+      const local = simbolosLocais(doc);
+      for (const v of local.vars) {
+        const t = tipoDaVar(v.name, doc);
+        if (t && t.cls === 'Jinker') {
+          const it = new vscode.CompletionItem(v.name, vscode.CompletionItemKind.Variable);
+          it.detail = `app jinker — @${v.name}.route(...) / .socket(...) / .middleware`;
+          itens.push(it);
+        }
+      }
+      return itens;
+    }
+
     // ── 1. member completion: depois de um '.' ──
     const recv = receptorAntesDoPonto(linhaAteCursor);
     if (recv) {
@@ -499,8 +530,11 @@ const hoverProvider = {
         const m = membros && membros.find(x => x.name === palavra);
         if (m) {
           const dono = (tipo && (tipo.module || tipo.cls || tipo.scalar)) || '';
-          const sig = (dono ? dono + '.' : '') + (m.sig || m.name) + (m.returns ? ' -> ' + m.returns : '');
-          return hoverRico(sig, m.kind === 'property' ? 'propriedade' : m.kind, m.doc, null);
+          const corpo = m.sig || (m.name + '(' + (m.params || []).map(p => p.name + (p.opt ? '?' : '')).join(', ') + ')');
+          const pref = m.reaction ? 'reaction ' : '';
+          const sig = (dono ? dono + '.' : '') + pref + corpo + (m.returns ? ' -> ' + m.returns : '');
+          const et = m.reaction ? 'reaction' : (m.kind === 'property' ? 'propriedade' : m.kind);
+          return hoverRico(sig, et, m.doc, null);
         }
       }
     }
@@ -527,7 +561,11 @@ const hoverProvider = {
     // 4. símbolo local do arquivo
     const local = simbolosLocais(doc);
     const f = local.functions.find(x => x.name === palavra);
-    if (f) return hoverRico(`action ${f.name}(${f.params.map(p => p.name + (p.opt ? '?' : '')).join(', ')})`, 'ação local', null, null);
+    if (f) {
+      const pref = f.reaction ? 'reaction' : 'action';
+      return hoverRico(`${pref} ${f.name}(${f.params.map(p => p.name + (p.opt ? '?' : '')).join(', ')})`,
+                       f.reaction ? 'reação local' : 'ação local', null, null);
+    }
     if (local.classes[palavra]) return hoverRico(`class ${palavra}`, 'classe local', null, null);
     if (local.enums.includes(palavra)) return hoverRico(`enum ${palavra}`, 'enum local', null, null);
     return null;
@@ -541,7 +579,7 @@ function activate(ctx) {
 
   const sel = { language: 'poolscript' };
   ctx.subscriptions.push(
-    vscode.languages.registerCompletionItemProvider(sel, completionProvider, '.', '=', '('),
+    vscode.languages.registerCompletionItemProvider(sel, completionProvider, '.', '=', '(', '@'),
     vscode.languages.registerHoverProvider(sel, hoverProvider),
   );
   // re-indexa libs instaladas se elas mudarem
