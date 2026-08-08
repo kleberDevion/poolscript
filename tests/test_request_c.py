@@ -137,6 +137,8 @@ def mesmo(src):
 
 @pytest.mark.parametrize("frag", [
     'post(r.status, r.ok)',
+    'post(r.status_code)',              # alias de .status (estilo requests do py)
+    'post(r.status == r.status_code)',  # os dois devolvem o mesmo status
     'post(r.json())',
     'post(r.get_json("a"))',
     'post(r.get_json("b"))',

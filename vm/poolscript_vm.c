@@ -14396,6 +14396,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * são @property no wrapper — todos sem parêntese */
                 PSResponse *rp = COMO_RESP(alvo);
                 if (strcmp(nome, "status") == 0) { stack[sp - 1] = MK_INT(rp->status); break; }
+                if (strcmp(nome, "status_code") == 0) { stack[sp - 1] = MK_INT(rp->status); break; }  /* alias estilo requests */
                 if (strcmp(nome, "headers") == 0) { stack[sp - 1] = rp->headers; break; }
                 if (strcmp(nome, "url") == 0) { stack[sp - 1] = rp->url; break; }
                 if (strcmp(nome, "content") == 0) { stack[sp - 1] = rp->corpo; break; }

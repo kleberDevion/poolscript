@@ -51,6 +51,12 @@ class Response:
         return len(self._raw)
 
     @property
+    def status_code(self) -> int:
+        """Alias de `.status` — mesmo nome que a lib `requests` do Python usa,
+        pra quem tem o hábito. Só leitura (a resposta já chegou)."""
+        return self.status
+
+    @property
     def ok(self) -> bool:
         return 200 <= self.status < 300
 
