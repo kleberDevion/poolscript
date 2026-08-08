@@ -35,19 +35,31 @@ mantém os três arquivos da linguagem sincronizados:
 (o sistema pode não ter o comando `python`, só `python3` — por isso o script
 é executável direto; alternativamente `python3 bump_version.py ...`)
 
-## Extensão VS Code: cópia do parser
+## Extensão VS Code: metadata type-aware
 
-`psl-poolscript-vsix/bridge/poolscript_pkg/` é uma **cópia** de
-`lexer.py`/`parser.py`/`ps_errors.py` — o bridge de análise estática nunca
-importa o pacote `poolscript` inteiro, pra garantir que não executa código do
-usuário. Sempre que mexer nesses três arquivos, sincronize:
+`psl-poolscript-vsix/bridge/gen_metadata.py` **introspecta a stdlib real** e
+gera `bridge/metadata.json` — cada função de lib com seus PARÂMETROS e cada
+classe com seus MEMBROS e TIPO DE RETORNO. É o que faz o autocomplete ser
+type-aware (a cadeia `conn = psodbc.connect()` → `DbConnection` →
+`conn.cursor()` → `DbCursor` → `fetchall/fetchone/...`, mais argumento nomeado
+`connect(driver=...)`). O `extension.js` resolve tipo por essa cadeia e, se o
+tipo é desconhecido, NÃO sugere nada (nada de método falso).
+
+Sempre que mexer nas assinaturas/classes da stdlib, regenere:
 
 ```bash
-python3 psl-poolscript-vsix/bridge/sync_parser.py
+PYTHONPATH=src python3 psl-poolscript-vsix/bridge/gen_metadata.py
 ```
 
-Sem isso o editor acusa erro de sintaxe em código válido (a cópia fica parada
-numa versão antiga da linguagem).
+Testes (harness Node que dirige o `extension.js` real, sem VS Code):
+
+```bash
+node psl-poolscript-vsix/test/completion.test.js   # cenários (cadeia DB, arg nomeado)
+node psl-poolscript-vsix/test/coverage.test.js     # varre TODO o metadata (100%)
+```
+
+Build do `.vsix`: `cd psl-poolscript-vsix && npx @vscode/vsce package
+--allow-star-activation --skip-license` (o `.vsix` é gitignored).
 
 ## Build do binário
 
