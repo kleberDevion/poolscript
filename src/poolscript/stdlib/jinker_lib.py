@@ -1437,6 +1437,19 @@ class RequestProxy:
     def headers(self):
         return self._current.headers if self._current else {}
 
+    def header(self, key: str):
+        """request.header('User-Agent') → valor do header (case-insensitive),
+        ou Null se não existir. Atalho pra request.headers sem precisar do dict
+        inteiro nem se preocupar com maiúsculas/minúsculas."""
+        if self._current is None:
+            return None
+        h = self._current.headers or {}
+        kl = key.lower()
+        for k, v in h.items():
+            if k.lower() == kl:
+                return v
+        return None
+
     def text(self):
         return self._current.text() if self._current else None
 

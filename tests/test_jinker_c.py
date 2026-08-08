@@ -103,6 +103,17 @@ action lista() {
     return [1, 2, 3, "quatro"]
 }
 
+@app.route("/reqinfo", methods=["GET"])
+action reqinfo() {
+    return {
+        "method": request.method,
+        "path": request.path,
+        "ua": request.header("user-agent"),
+        "custom": request.header("X-Meu"),
+        "faltante": request.header("X-Nao-Existe")
+    }
+}
+
 run_selfwith_("main") {
     app(debug=false, host="127.0.0.1", port=__PORTA__)
 }
@@ -188,6 +199,8 @@ CASOS = [
     ("POST", "/comstatus", "{}", None),
     ("GET", "/resp", None, None),
     ("GET", "/lista", None, None),
+    # request.method / request.path / request.header(nome) (case-insensitive)
+    ("GET", "/reqinfo", None, {"X-Meu": "abc123"}),
     ("GET", "/nao-existe", None, None),
     ("DELETE", "/ping", None, None),          # método não registrado -> 404
     ("OPTIONS", "/ping", None, None),         # preflight

@@ -4966,6 +4966,7 @@ static int met_jpx_get_json(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_get(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_text(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_path_param(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jpx_header(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_file(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_files(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -4998,6 +4999,7 @@ static const MetodoNat METODOS_JPROXY[] = {
     { "get", met_jpx_get, "key" },
     { "text", met_jpx_text, NULL },
     { "path_param", met_jpx_path_param, "key" },
+    { "header", met_jpx_header, "key" },
     { "file", met_jpx_file, "field,allowed" },
     { "files", met_jpx_files, "field,allowed" },
 };
@@ -11540,6 +11542,28 @@ static int met_jpx_path_param(VM *vm, Value alvo, Value *args, int n, Value *out
     return 0;
 }
 
+static int met_jpx_header(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)alvo;
+    ARGS_MET(vm, "header", 1);
+    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "header() espera str");
+    PSJReq *r = jk_req_corrente(vm);
+    if (!r || !EH_DICT(r->headers)) { *out = MK_NULL(); return 0; }
+    /* headers HTTP são case-insensitive: varre comparando sem caixa */
+    const char *want = COMO_STRING(args[0])->chars;
+    PSDict *d = COMO_DICT(r->headers);
+    for (int i = 0; i < d->usados; i++) {
+        if (d->entradas[i].estado != 1) continue;
+        Value k = d->entradas[i].chave;
+        if (EH_STRING(k) && strcasecmp(COMO_STRING(k)->chars, want) == 0) {
+            *out = d->entradas[i].valor;
+            return 0;
+        }
+    }
+    *out = MK_NULL();
+    return 0;
+}
+
 /* multipart: parseia e devolve upload(s) do campo */
 static const char *JK_BLOQ[] = {
     ".exe",".bat",".sh",".ps1",".cmd",".msi",".dll",".php",".py",".rb",
@@ -14476,6 +14500,35 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!s2) ERRO(vm, "sem memoria");
                 stack[sp - 1] = MK_OBJ(s2);
                 break;
+            }
+            if (EH_JPROXY(alvo)) {
+                /* propriedades do request (sem parêntese), lendo a requisição
+                 * corrente — paridade com o RequestProxy do interpretador.
+                 * Fora de um handler: method/path = Null, headers = {} (idem). */
+                PSJReq *r = jk_req_corrente(vm);
+                if (strcmp(nome, "method") == 0) {
+                    if (!r) { stack[sp - 1] = MK_NULL(); break; }
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *s2 = nova_string(vm, r->metodo, (int)strlen(r->metodo));
+                    if (!s2) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(s2); break;
+                }
+                if (strcmp(nome, "path") == 0) {
+                    if (!r) { stack[sp - 1] = MK_NULL(); break; }
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    const char *pth = r->path ? r->path : "";
+                    PSString *s2 = nova_string(vm, pth, (int)strlen(pth));
+                    if (!s2) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(s2); break;
+                }
+                if (strcmp(nome, "headers") == 0) {
+                    if (r && EH_DICT(r->headers)) { stack[sp - 1] = r->headers; break; }
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSDict *d = novo_dict(vm, 1);
+                    if (!d) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(d); break;
+                }
+                /* demais nomes caem no dispatch de método (get_json/header/...) */
             }
             {
                 int tab, mi;
