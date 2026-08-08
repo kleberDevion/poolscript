@@ -335,6 +335,46 @@
       "kind": "function",
       "detail": "request.ws_connect(url) — Conecta a um servidor WebSocket.",
       "returns": "WsConnection"
+    },
+    {
+      "name": "file",
+      "kind": "method",
+      "detail": "JinkerRequest.file(field, allowed?) — request.file('campo', allowed=['.jpg', '.png']) → PoolFileUpload"
+    },
+    {
+      "name": "files",
+      "kind": "method",
+      "detail": "JinkerRequest.files(field, allowed?) — request.files('campo') → lista de PoolFileUpload"
+    },
+    {
+      "name": "header",
+      "kind": "method",
+      "detail": "JinkerRequest.header(key) — request.header('User-Agent') → valor do header (case-insensitive),"
+    },
+    {
+      "name": "headers",
+      "kind": "property",
+      "detail": "JinkerRequest.headers"
+    },
+    {
+      "name": "json",
+      "kind": "method",
+      "detail": "JinkerRequest.json() — Alias de get_json() — o corpo do POST como dict. O JinkerRequest usa"
+    },
+    {
+      "name": "method",
+      "kind": "property",
+      "detail": "JinkerRequest.method"
+    },
+    {
+      "name": "path",
+      "kind": "property",
+      "detail": "JinkerRequest.path"
+    },
+    {
+      "name": "path_param",
+      "kind": "method",
+      "detail": "JinkerRequest.path_param(key) — request.path_param('id') → valor do parâmetro dinâmico da rota/socket."
     }
   ],
   "requests": [

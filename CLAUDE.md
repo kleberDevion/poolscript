@@ -11,11 +11,13 @@ O projeto **não usa semver**. Os dígitos 2 e 3 vão de `0` a `99`; ao chegar e
 8.99.99 -> 9.0.0
 ```
 
-A versão da **linguagem** vive em três arquivos que precisam bater entre si:
+A versão da **linguagem** vive em quatro arquivos que precisam bater entre si:
 
 - `pyproject.toml`
 - `src/poolscript/__init__.py`
 - `installer/pool_installer.iss`
+- `docs/PoolScript.md` (título + exemplo do `pool --version` + banner do REPL —
+  o script atualiza as três citações de uma vez, pra doc não ficar defasada)
 
 A da **extensão VS Code** vive em `psl-poolscript-vsix/package.json` e é
 independente da versão da linguagem.

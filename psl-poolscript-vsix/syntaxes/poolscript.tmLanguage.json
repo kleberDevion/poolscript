@@ -523,7 +523,7 @@
       "patterns": [
         {
           "name": "support.function.stdlib.poolscript",
-          "match": "\\b(ERROR_CORRECT_H|ERROR_CORRECT_L|ERROR_CORRECT_M|ERROR_CORRECT_Q|JinkerResponse|JinkerRequest|RelativePath|MailMessage|MailReader|MailServer|frombase64|pathFolder|ws_connect|stringify|timestamp|datahora|get_json|loadFile|pathFile|platform|astuple|connect|environ|findall|fromhex|fromint|jsonify|Jinker|QRCode|asdict|asjson|aslist|base64|concat|delete|escape|exists|getenv|ipmach|isfile|remove|rename|render|search|stderr|stdout|tolist|chdir|check|crypt|isdir|match|mkdir|parse|patch|query|rmdir|slice|split|today|toint|write|argv|code|copy|cors|exit|hora|make|move|read|size|text|time|warn|cmd|cwd|gen|get|new|now|put|run|src|sub|xor|ls)\\b"
+          "match": "\\b(ERROR_CORRECT_H|ERROR_CORRECT_L|ERROR_CORRECT_M|ERROR_CORRECT_Q|JinkerResponse|JinkerRequest|RelativePath|MailMessage|MailReader|MailServer|frombase64|pathFolder|path_param|ws_connect|stringify|timestamp|datahora|get_json|loadFile|pathFile|platform|astuple|connect|environ|findall|fromhex|fromint|headers|jsonify|Jinker|QRCode|asdict|asjson|aslist|base64|concat|delete|escape|exists|getenv|header|ipmach|isfile|method|remove|rename|render|search|stderr|stdout|tolist|chdir|check|crypt|files|isdir|match|mkdir|parse|patch|query|rmdir|slice|split|today|toint|write|argv|code|copy|cors|exit|file|hora|make|move|path|read|size|text|time|warn|cmd|cwd|gen|get|new|now|put|run|src|sub|xor|ls)\\b"
         }
       ]
     }

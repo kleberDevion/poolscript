@@ -247,6 +247,23 @@ def build_metadata() -> dict:
         # escolhida por quem escreveu a lib — extension.js usa esse índice
         # como sortText pra completions de membro não caírem no A-Z padrão.
         metadata[lib_name] = members
+
+    # jinker expõe `request` como um PROXY server-side (RequestProxy) — mesmo
+    # nome do módulo `request` (cliente HTTP), API diferente. Sem isto, dentro
+    # de uma rota, `request.header(...)`, `.path_param()`, `.method`, `.headers`
+    # etc. não tinham NENHUMA sugestão no editor (só os métodos do cliente HTTP
+    # apareciam). Mescla os membros do proxy no mesmo índice de `request.`.
+    try:
+        proxy = _load("jinker").get("request")
+        if proxy is not None:
+            existentes = {m["name"] for m in metadata.get("request", [])}
+            for m in _instance_members(proxy, "JinkerRequest"):
+                if m["name"] not in existentes:
+                    metadata.setdefault("request", []).append(m)
+    except Exception as e:
+        print(f"[aviso] proxy request do jinker não introspeccionado: {e}",
+              file=sys.stderr)
+
     metadata["__classes__"] = classes
 
     # ── builtins globais (sem import) ─────────────────────────────────

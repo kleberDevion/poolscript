@@ -33,6 +33,9 @@ LANG_FILES = [
     (ROOT / "pyproject.toml", re.compile(r'^version\s*=\s*"(\d+\.\d+\.\d+)"', re.M)),
     (ROOT / "src/poolscript/__init__.py", re.compile(r'^__version__\s*=\s*"(\d+\.\d+\.\d+)"', re.M)),
     (ROOT / "installer/pool_installer.iss", re.compile(r'^#define MyAppVersion\s+"(\d+\.\d+\.\d+)"', re.M)),
+    # a doc cita a versão no título, no exemplo do `pool --version` e no banner
+    # do REPL — todas sobem juntas pra doc nunca ficar defasada (era um problema)
+    (ROOT / "docs/PoolScript.md", re.compile(r'PoolScript\s+v(\d+\.\d+\.\d+)')),
 ]
 EXT_FILES = [
     (ROOT / "psl-poolscript-vsix/package.json", re.compile(r'^\s*"version":\s*"(\d+\.\d+\.\d+)"', re.M)),
@@ -70,10 +73,18 @@ def read_versions(files) -> dict[Path, str]:
     found = {}
     for path, pattern in files:
         text = path.read_text(encoding="utf-8")
-        match = pattern.search(text)
-        if not match:
+        # um arquivo pode citar a versão em vários lugares (ex: a doc, que a
+        # mostra no título, no `pool --version` e no banner do REPL) — todas
+        # têm que concordar, senão o sync não teria o que significar.
+        matches = pattern.findall(text)
+        if not matches:
             raise SystemExit(f"[erro] não achei a versão em {path}")
-        found[path] = match.group(1)
+        distintas = set(matches)
+        if len(distintas) > 1:
+            raise SystemExit(
+                f"[erro] {path.relative_to(ROOT)} tem versões divergentes "
+                f"dentro do próprio arquivo: {sorted(distintas)}")
+        found[path] = matches[0]
     return found
 
 
@@ -98,10 +109,18 @@ def apply(name: str, files, current: str) -> None:
     new = bump(current)
     for path, pattern in files:
         text = path.read_text(encoding="utf-8")
-        match = pattern.search(text)
-        start, end = match.span(1)
-        path.write_text(text[:start] + new + text[end:], encoding="utf-8")
-        print(f"  {path.relative_to(ROOT)}: {current} -> {new}")
+
+        # substitui SÓ o grupo 1 (a versão) em TODAS as ocorrências — a doc
+        # cita a versão em vários pontos e todos têm que subir juntos.
+        def troca(m):
+            ini, fim = m.span(1)
+            base = m.start()
+            return m.group(0)[:ini - base] + new + m.group(0)[fim - base:]
+
+        novo_texto, n = pattern.subn(troca, text)
+        path.write_text(novo_texto, encoding="utf-8")
+        sufixo = f" ({n}x)" if n > 1 else ""
+        print(f"  {path.relative_to(ROOT)}: {current} -> {new}{sufixo}")
     print(f"{name}: {current} -> {new}")
 
 

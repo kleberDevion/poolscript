@@ -33,6 +33,7 @@ action receber() {
 | `.get(chave)` | um campo do JSON **ou** da query string | [get/get.md](get/get.md) |
 | `.get_json()` | o corpo inteiro como dict/lista | [get_json/get_json.md](get_json/get_json.md) |
 | `.path_param(chave)` | valor de parâmetro dinâmico da URL (`/user/<id>`) | [path_param/path_param.md](path_param/path_param.md) |
+| `.header(nome)` | **um** cabeçalho pelo nome (case-insensitive), `Null` se faltar | [header/header.md](header/header.md) |
 | `.text()` | o corpo cru como texto | [text/text.md](text/text.md) |
 | `.file(campo, allowed)` | **um** arquivo enviado (upload) | [file/file.md](file/file.md) |
 | `.files(campo, allowed)` | **vários** arquivos enviados | [files/files.md](files/files.md) |
