@@ -357,4 +357,4 @@ tests/                ← suíte pytest (inclui testes diferenciais interp × VM
 
 ## Contato
 
-📧 poolscript@proton.me
+kleberdevion@proton.me
