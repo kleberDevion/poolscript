@@ -256,6 +256,23 @@ else:
     post("Reprovado")
 ```
 
+### Condicional inline (ternário)
+
+Como **expressão**, `if`/`else` viram o condicional inline no estilo Python —
+`A if cond else B`. Devolve `A` quando a condição é verdadeira, senão `B`, e só
+avalia o ramo escolhido:
+
+```
+str situacao = "aprovado" if nota >= 7 else "reprovado"
+post(situacao)
+
+# encadeia à direita
+str faixa = "A" if nota >= 9 else "B" if nota >= 7 else "C"
+```
+
+O `else` é obrigatório — é ele que separa o ternário de um `if` statement. Por
+isso um `if cond { ... }` dentro de um bloco continua sendo statement normal.
+
 ---
 
 ## while
@@ -406,6 +423,46 @@ Campos disponíveis:
 | `int(length=N)` | `idade: int(length=3)` | inteiro com máx N dígitos |
 | `flo` | `altura: flo` | número decimal |
 | `bool` | `ativo: bool` | true ou false |
+
+---
+
+## enum
+
+Namespace de constantes nomeadas. `Cor.RED` devolve o valor do membro:
+
+```
+enum Cor { RED, GREEN, BLUE }
+
+post(Cor.RED)     # 0
+post(Cor.GREEN)   # 1
+post(Cor.BLUE)    # 2
+```
+
+A auto-numeração começa em `0`. Cada membro pode receber um valor explícito —
+inclusive string:
+
+```
+enum Hex {
+    RED   = "#f00",
+    GREEN = "#0f0",
+    BLUE  = "#00f"
+}
+
+post(Hex.RED)   # #f00
+```
+
+Auto e explícito se misturam. Um valor **int** explícito reancora a sequência
+(os próximos autos continuam a partir dele); um valor não-int não mexe no
+contador:
+
+```
+enum Mix { A, B = 10, C, D = "x", E }
+# A=0  B=10  C=11  D="x"  E=12
+```
+
+Membros separados por vírgula (opcional no último). Acessar um membro que não
+existe é erro (`enum 'Cor' não tem membro 'ROXO'`). `Cor.type()` devolve
+`"enum"`.
 
 ---
 

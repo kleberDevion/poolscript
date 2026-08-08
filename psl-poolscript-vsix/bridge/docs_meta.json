@@ -2098,8 +2098,8 @@
  },
  "keywords": {
   "if": {
-   "sig": "if (cond) { ... } elif outra: else { ... }",
-   "resumo": "Executa o bloco quando a condição é verdadeira. Aceita `:` ou `{}` e encadeia com `elif`/`else`.",
+   "sig": "if (cond) { ... } elif outra: else { ... }   |   A if cond else B",
+   "resumo": "Executa o bloco quando a condição é verdadeira. Aceita `:` ou `{}` e encadeia com `elif`/`else`. Como EXPRESSÃO vira o condicional inline (ternário, estilo Python): `A if cond else B` devolve A quando a condição é verdadeira, senão B — só o ramo escolhido é avaliado.",
    "params": [],
    "ret": "",
    "erros": [],
@@ -2107,6 +2107,10 @@
     {
      "codigo": "if (5 > 3) { post(\"maior\") }",
      "saida": "maior"
+    },
+    {
+     "codigo": "x = \"sim\" if 5 > 3 else \"nao\"\npost(x)",
+     "saida": "sim"
     }
    ],
    "bordas": []
@@ -2395,6 +2399,24 @@
    "ret": "",
    "erros": [],
    "ex": [],
+   "bordas": []
+  },
+  "enum": {
+   "sig": "enum Nome { A, B }   |   enum Nome { A=\"x\", B=10 }",
+   "resumo": "Namespace de constantes: `Nome.A` devolve o valor. A auto-numeração começa em 0; um valor int explícito reancora a sequência (`{A, B=10, C}` -> 0, 10, 11) e um valor não-int não mexe no contador. Auto e explícito podem se misturar.",
+   "params": [],
+   "ret": "",
+   "erros": [],
+   "ex": [
+    {
+     "codigo": "enum Cor { RED, GREEN, BLUE }\npost(Cor.GREEN)",
+     "saida": "1"
+    },
+    {
+     "codigo": "enum Hex { RED=\"#f00\", GREEN=\"#0f0\" }\npost(Hex.RED)",
+     "saida": "#f00"
+    }
+   ],
    "bordas": []
   },
   "import": {

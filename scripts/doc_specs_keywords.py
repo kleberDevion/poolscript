@@ -18,10 +18,13 @@ def _kw(sig, resumo, ex=None, bordas=None):
 KEYWORDS_DOC = {
     # ── controle de fluxo ────────────────────────────────────────────────
     "if": _kw(
-        "if (cond) { ... } elif outra: else { ... }",
+        "if (cond) { ... } elif outra: else { ... }   |   A if cond else B",
         "Executa o bloco quando a condição é verdadeira. Aceita `:` ou `{}` e "
-        "encadeia com `elif`/`else`.",
-        ex=[('if (5 > 3) { post("maior") }', "maior")]),
+        "encadeia com `elif`/`else`. Como EXPRESSÃO vira o condicional inline "
+        "(ternário, estilo Python): `A if cond else B` devolve A quando a "
+        "condição é verdadeira, senão B — só o ramo escolhido é avaliado.",
+        ex=[('if (5 > 3) { post("maior") }', "maior"),
+            ('x = "sim" if 5 > 3 else "nao"\npost(x)', "sim")]),
     "elif": _kw(
         "if (a) { } elif (b) { } else { }",
         "Senão-se: testado só quando os `if`/`elif` anteriores falharam.",
@@ -132,6 +135,14 @@ KEYWORDS_DOC = {
         'model Nome { campo: tipo }',
         "Define um modelo de dados que valida um dict contra campos tipados.",
         ex=[]),
+    "enum": _kw(
+        'enum Nome { A, B }   |   enum Nome { A="x", B=10 }',
+        "Namespace de constantes: `Nome.A` devolve o valor. A auto-numeração "
+        "começa em 0; um valor int explícito reancora a sequência "
+        "(`{A, B=10, C}` -> 0, 10, 11) e um valor não-int não mexe no contador. "
+        "Auto e explícito podem se misturar.",
+        ex=[('enum Cor { RED, GREEN, BLUE }\npost(Cor.GREEN)', "1"),
+            ('enum Hex { RED="#f00", GREEN="#0f0" }\npost(Hex.RED)', "#f00")]),
 
     # ── módulos ──────────────────────────────────────────────────────────
     "import": _kw(
