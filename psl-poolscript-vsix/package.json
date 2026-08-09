@@ -1,0 +1,40 @@
+{
+  "name": "psl-poolscript",
+  "displayName": "PoolScript",
+  "description": "Suporte à linguagem PoolScript: syntax highlighting e autocomplete type-aware (métodos por tipo, argumentos nomeados, libs instaladas).",
+  "version": "1.5.7",
+  "publisher": "KleberSantanadeOliveira",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "icon": "images/icon.png",
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:poolscript"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "poolscript",
+        "aliases": ["PoolScript", "poolscript", "psl"],
+        "extensions": [".ps", ".psl", ".p"],
+        "configuration": "./language-configuration.json",
+        "icon": { "light": "./images/icon.png", "dark": "./images/icon.png" }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "poolscript",
+        "scopeName": "source.poolscript",
+        "path": "./syntaxes/poolscript.tmLanguage.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "PoolScript One Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/poolscript-one-dark.json"
+      }
+    ]
+  },
+  "scripts": {
+    "gen": "PYTHONPATH=../src python3 bridge/gen_metadata.py"
+  }
+}
