@@ -32,6 +32,7 @@ typedef struct {
     SSL_CTX *ctx;
     char     buf[8192];
     int      nbuf;
+    int      expirou;   /* último read falhou por timeout (SO_RCVTIMEO) */
 } Conn;
 
 static void conn_fecha(Conn *c)
@@ -121,7 +122,12 @@ static int liga_tls(Conn *c, const char *host, PSHttpResp *r)
 
 static int cru_le(Conn *c, char *out, int cap)
 {
-    return c->ssl ? SSL_read(c->ssl, out, cap) : (int)read(c->fd, out, (size_t)cap);
+    errno = 0;
+    int k = c->ssl ? SSL_read(c->ssl, out, cap) : (int)read(c->fd, out, (size_t)cap);
+    /* SO_RCVTIMEO estourado sai como EAGAIN — marca pra virar TimeoutError,
+     * como no interp (no TLS o SSL_read propaga o errno do fd por baixo) */
+    if (k <= 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) c->expirou = 1;
+    return k;
 }
 static int cru_escreve(Conn *c, const char *d, int n)
 {
@@ -267,7 +273,7 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
     if (parse_url(url, &https, host, sizeof(host), &porta, caminho, sizeof(caminho)) != 0)
         REDE(r, "NetworkError", "falha de conexão: URL inválida: %.200s", url);
 
-    Conn c = { -1, NULL, NULL, {0}, 0 };
+    Conn c = { -1, NULL, NULL, {0}, 0, 0 };
     c.fd = tcp_conecta(host, porta, timeout, r);
     if (c.fd < 0) return -1;
     if (https && liga_tls(&c, host, r) != 0) { conn_fecha(&c); return -1; }
@@ -293,7 +299,13 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
     /* status line */
     char status_line[1024];
     if (le_linha(&c, status_line, sizeof(status_line)) < 0) {
+        int exp = c.expirou;
         conn_fecha(&c);
+        /* espirra o mesmo tipo/mensagem do interp: read que estoura o
+         * SO_RCVTIMEO é TimeoutError, não falha de conexão */
+        if (exp)
+            REDE(r, "TimeoutError",
+                 "operação expirou: requisição passou de %ds (url=%.200s)", timeout, url);
         REDE(r, "NetworkError", "falha de conexão: sem resposta");
     }
     const char *sp = strchr(status_line, ' ');
@@ -315,6 +327,12 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
         else if (header_igual(lin, "Location"))
             snprintf(local, lcap, "%s", header_valor(lin));
     }
+    if (c.expirou) {
+        free(hbloco.b);
+        conn_fecha(&c);
+        REDE(r, "TimeoutError",
+             "operação expirou: requisição passou de %ds (url=%.200s)", timeout, url);
+    }
     r->headers = hbloco.b ? hbloco.b : strdup("");
 
     /* corpo — HEAD e 204/304 não têm */
@@ -332,6 +350,14 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
             snprintf(r->erro, sizeof(r->erro), "download passou do limite de %ld bytes", teto);
             snprintf(r->erro_tipo, sizeof(r->erro_tipo), "MemoryError");
             return -1;
+        }
+        /* timeout no meio do corpo também é TimeoutError (o interp estoura
+         * no resp.read()); conexão derrubada sem timeout segue tolerada */
+        if (c.expirou) {
+            free(corpo_acc.b);
+            conn_fecha(&c);
+            REDE(r, "TimeoutError",
+                 "operação expirou: requisição passou de %ds (url=%.200s)", timeout, url);
         }
     }
     conn_fecha(&c);

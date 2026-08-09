@@ -31,7 +31,7 @@ vm = pytest.importorskip(
 NL = chr(10)
 
 _SERVIDOR = r'''
-import json, sys
+import json, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
@@ -67,6 +67,9 @@ class H(BaseHTTPRequestHandler):
                        {"Content-Disposition": 'attachment; filename="arq.dat"'})
         elif p == "/big":
             self._send(200, b"x" * 5000, "application/octet-stream")
+        elif p == "/lento":
+            time.sleep(3)
+            self._send(200, "tarde demais")
         elif p == "/redir":
             self.send_response(302); self.send_header("Location", "/json")
             self.send_header("Content-Length", "0"); self.send_header("Connection", "close")
@@ -256,3 +259,13 @@ def test_host_invalido_e_networkerror():
     mesmo(IMP + 'try {' + NL
           + ' request.get("http://nao.existe.zzz.invalid")' + NL
           + '} catch (NetworkError e) { post("rede") }')
+
+
+def test_timeout_de_leitura_e_timeouterror(servidor):
+    """Servidor que demora mais que o `timeout=`: os dois motores estouram
+    **TimeoutError** (não NetworkError) — o catch tipado casa igual e a
+    mensagem é a mesma. Era a última cratera sem teste: a VM tratava o
+    SO_RCVTIMEO estourado como falha de conexão."""
+    mesmo(IMP + 'try {' + NL
+          + ' request.get("%s/lento", timeout=1)' % servidor + NL
+          + '} catch (TimeoutError e) { post("expirou:", e) }')
