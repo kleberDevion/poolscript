@@ -49,11 +49,30 @@
         "uiTheme": "vs-dark",
         "path": "./themes/poolscript-one-dark.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "PoolScript",
+      "properties": {
+        "poolscript.lsp.ativo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Usa o language server da linguagem (poolscript-lsp) quando disponível — parser real e tipos vivos. Desligado ou indisponível, a extensão usa o cérebro embutido."
+        },
+        "poolscript.lsp.comando": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Comando do servidor LSP (ex: [\"python3\", \"-m\", \"poolscript.lsp.server\"]). Vazio = detecta sozinho (poolscript-lsp no PATH, depois python3 -m poolscript.lsp.server)."
+        }
+      }
+    }
   },
   "scripts": {
     "gen": "PYTHONPATH=../src python3 bridge/gen_metadata.py",
     "test:e2e": "ELECTRON_RUN_AS_NODE= node test/runTest.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@vscode/test-electron": "^2.4.0",

@@ -546,6 +546,12 @@ def _workspace_roots(ls: LanguageServer, uri: str | None = None) -> list[Path]:
         fp = _uri_para_path(uri)
         if fp:
             roots.append(fp.parent)
+    # libs instaladas pelo pkgmgr também são importáveis — mesmas raízes que
+    # o interpretador e o cérebro embutido do vsix enxergam
+    for r in list(roots):
+        libs = r / ".poolscript" / "libs"
+        if libs.is_dir():
+            roots.append(libs)
     return roots
 
 

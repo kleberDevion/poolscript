@@ -773,7 +773,59 @@ function diagnosticosNaoUsados(doc) {
   return diags;
 }
 
-function activate(ctx) {
+// ── modo LSP (arquitetura Pylance) ─────────────────────────────────────────
+// O cérebro preferido é o language server DENTRO do pacote da linguagem
+// (poolscript.lsp.server): parser real, tipos por introspecção viva. Se o
+// servidor não subir (linguagem não instalada nessa máquina), a extensão cai
+// no cérebro embutido abaixo — que continua completo e testado.
+
+function candidatosLSP() {
+  if (process.env.POOLSCRIPT_LSP_CMD) {
+    try { return [JSON.parse(process.env.POOLSCRIPT_LSP_CMD)]; } catch (e) { /* segue */ }
+  }
+  let cfg = [];
+  try { cfg = vscode.workspace.getConfiguration('poolscript').get('lsp.comando') || []; } catch (e) { /* harness */ }
+  if (Array.isArray(cfg) && cfg.length) return [cfg];
+  return [['poolscript-lsp'], ['python3', '-m', 'poolscript.lsp.server']];
+}
+
+async function iniciaClienteLSP(ctx) {
+  let ativo = true;
+  try { ativo = vscode.workspace.getConfiguration('poolscript').get('lsp.ativo', true); } catch (e) { /* harness */ }
+  if (!ativo) return false;
+  let LanguageClient;
+  try { ({ LanguageClient } = require('vscode-languageclient/node')); }
+  catch (e) { return false; }   // dependência ausente (harness de teste)
+  for (const cmd of candidatosLSP()) {
+    const client = new LanguageClient(
+      'poolscript', 'PoolScript',
+      { command: cmd[0], args: cmd.slice(1), options: { env: Object.assign({}, process.env) } },
+      { documentSelector: [{ language: 'poolscript' }] },
+    );
+    try {
+      await client.start();
+      ctx.subscriptions.push(client);
+      return true;
+    } catch (e) {
+      try { await client.dispose(); } catch (e2) { /* já morto */ }
+    }
+  }
+  return false;
+}
+
+async function activate(ctx) {
+  // harness de teste (vscode stub sem getConfiguration): embutido, síncrono —
+  // ativaEmbutido roda ANTES de qualquer await, então o stub lê os providers
+  // logo após chamar activate, como sempre fez
+  if (!vscode.workspace || typeof vscode.workspace.getConfiguration !== 'function') {
+    ativaEmbutido(ctx);
+    return;
+  }
+  if (await iniciaClienteLSP(ctx)) return;   // servidor no comando; embutido em espera
+  ativaEmbutido(ctx);
+}
+
+function ativaEmbutido(ctx) {
   carregaMetadata(ctx);
   indexaLibsInstaladas();
 
