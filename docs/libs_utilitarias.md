@@ -238,8 +238,9 @@ caminho relativo à mão.
 (só extensões texto) — misturar dá erro claro (`TypeError`).
 
 `PoolFile` (o que `loadFile` devolve pra binários) tem `.name`, `.ext`,
-`.size`, `.bytes()`, `.path()`, `.move(destino)`, `.copy(destino)`,
-`.delete()`.
+`.size`, `.bytes()`, `.path()`, `.save(path=null)`, `.move(destino)`,
+`.copy(destino)`, `.delete()`. O `save` grava o conteúdo em disco: sem `path`
+salva na pasta do script em execução com o próprio nome.
 
 ### Diretórios
 

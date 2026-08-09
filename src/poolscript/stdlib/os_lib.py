@@ -47,6 +47,20 @@ class PoolFile:
         """Retorna os bytes brutos do arquivo."""
         return self._bytes
 
+    def save(self, path: str = None) -> "PoolFile":
+        """Grava o conteúdo em disco. Com `path`, salva lá; sem `path`, salva na
+        pasta do script em execução com o nome do próprio arquivo. Retorna o
+        PoolFile do destino."""
+        if path:
+            dest = Path(path)
+        else:
+            base = _SCRIPT_DIR if _SCRIPT_DIR is not None else Path.cwd()
+            dest = base / self.name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(self._bytes)
+        self._path = dest
+        return PoolFile(dest)
+
     def path(self) -> str:
         """Retorna o caminho absoluto atual."""
         return str(self._path.resolve())

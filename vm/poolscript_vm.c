@@ -4811,6 +4811,34 @@ static int met_pf_bytes(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    /* save() ou save(path): grava o conteúdo em disco. Sem path, salva na
+     * pasta do script em execução com o nome do próprio arquivo. */
+    if (n > 1) MERRO(vm, "SomeValueUnexpected", "save() aceita no maximo 1 argumento");
+    PSPoolFile *f = COMO_PFILE(alvo);
+    char dest[2048];
+    if (n == 1) {
+        if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera str");
+        snprintf(dest, sizeof(dest), "%s", COMO_STRING(args[0])->chars);
+    } else {
+        const char *base = vm->dir_script[0] ? vm->dir_script : ".";
+        snprintf(dest, sizeof(dest), "%s/%s", base, f->nome ? f->nome : "arquivo");
+    }
+    cria_pais(dest);
+    FILE *fp = fopen(dest, "wb");
+    if (!fp) MERRO(vm, "SomeValueUnexpected", "nao consegui salvar em '%s'", dest);
+    PSString *b = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo) : NULL;
+    if (b && b->len > 0) fwrite(b->chars, 1, (size_t)b->len, fp);
+    fclose(fp);
+    PSPoolFile *novo = novo_poolfile(vm, dest);
+    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%s'", dest);
+    free(f->caminho);
+    f->caminho = strdup(dest);
+    *out = MK_OBJ(novo);
+    return 0;
+}
+
 static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
@@ -4823,7 +4851,7 @@ static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static const MetodoNat METODOS_PFILE[] = {
     { "move", met_pf_move, NULL }, { "copy", met_pf_copy, NULL }, { "delete", met_pf_delete, NULL },
-    { "bytes", met_pf_bytes, NULL }, { "path", met_pf_path, NULL },
+    { "bytes", met_pf_bytes, NULL }, { "save", met_pf_save, NULL }, { "path", met_pf_path, NULL },
 };
 
 static const MetodoNat METODOS_LIST[] = {

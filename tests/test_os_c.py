@@ -224,6 +224,28 @@ def test_poolfile_operacoes(src, mesmo):
     mesmo(IMP + src)
 
 
+@pytest.mark.parametrize("src", [
+    # save(path) grava o conteúdo em outro lugar (criando as pastas que faltam)
+    'f = os.loadFile("img.png")' + NL + 'g = f.save("sub/nova/c.png")' + NL
+    + 'post(g.name, os.exists("sub/nova/c.png"), os.exists("img.png"))',
+    # save() sem path: pasta do script + nome do próprio arquivo — o conteúdo
+    # vive em memória, então restaura o arquivo mesmo depois do delete
+    'f = os.loadFile("img.png")' + NL + 'f.delete()' + NL + 'g = f.save()' + NL
+    + 'post(g.name, os.exists("img.png"), g.size)',
+    # o PoolFile devolvido é reaberto do disco: mesmo tamanho e bytes
+    'f = os.loadFile("img.png")' + NL + 'g = f.save("dup2.png")' + NL
+    + 'post(g.size, f.size, len(g.bytes()))',
+])
+def test_poolfile_save(src, mesmo):
+    """`save` grava o conteúdo em disco. Sem path salva na pasta do script em
+    execução com o próprio nome; com path cria as pastas de destino."""
+    mesmo(IMP + src)
+
+
+def test_poolfile_save_recusa_nao_string(ambos_falham):
+    ambos_falham(IMP + 'f = os.loadFile("img.png")' + NL + 'f.save(5)')
+
+
 def test_poolfile_atributo_inexistente(ambos_falham):
     ambos_falham(IMP + 'f = os.loadFile("img.png")' + NL + 'post(f.naoexiste)')
 

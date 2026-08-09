@@ -2221,6 +2221,19 @@
      "doc": "Retorna o caminho absoluto atual."
     },
     {
+     "name": "save",
+     "kind": "method",
+     "params": [
+      {
+       "name": "path",
+       "opt": true
+      }
+     ],
+     "sig": "save(path?)",
+     "returns": "PoolFile",
+     "doc": "Grava o conteúdo em disco. Com `path`, salva lá; sem `path`, salva na pasta do script em execução com o nome do próprio arquivo. Retorna o PoolFile do destino."
+    },
+    {
      "name": "name",
      "kind": "property"
     },
