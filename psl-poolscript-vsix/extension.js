@@ -29,7 +29,7 @@ const KEYWORDS = [
   'await', 'try', 'catch', 'as', 'with', 'using', 'import', 'from', 'str', 'int',
   'flo', 'bool', 'list', 'dict', 'json', 'tup', 'class', 'Class', 'Entity', 'self',
   'private', 'public', 'match', 'case', 'yield', 'raise', 'finally', 'count',
-  'global', 'true', 'false', 'Null', 'post', 'input',
+  'global', 'true', 'false', 'Null', 'post', 'input', 'run_selfwith_',
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ function parseParams(assinatura) {
 }
 
 function parsePoolSource(text) {
-  const sym = { functions: [], classes: {}, enums: [], vars: [], aliases: {}, imports: {} };
+  const sym = { functions: [], classes: {}, enums: [], vars: [], aliases: {}, imports: {}, usaJinker: false };
   const linhas = text.split('\n');
   let classeAtual = null, classeDepth = 0, depth = 0;
   let funcAtual = null, funcDepth = 0;   // p/ inferir o `return` de uma função
@@ -67,6 +67,10 @@ function parsePoolSource(text) {
   for (let i = 0; i < linhas.length; i++) {
     const linha = linhas[i];
     const semComentario = linha.replace(/(#|\/\/).*$/, '');
+
+    // contexto jinker: dentro dele `request` é a REQUISIÇÃO que chega (proxy,
+    // estilo Flask), não o cliente HTTP `requests`.
+    if (/^\s*(from\s+jinker\b|import\s+jinker\b)/.test(semComentario)) sym.usaJinker = true;
 
     // import MOD as ALIAS  → aliases[ALIAS] = MOD  (pra `nv.` resolver dotenv)
     const impAs = semComentario.match(/^\s*import\s+([A-Za-z_]\w*)\s+as\s+([A-Za-z_]\w*)/);
@@ -103,6 +107,17 @@ function parsePoolSource(text) {
       classeAtual = cls[1];
       classeDepth = depth;
       if (!sym.classes[classeAtual]) sym.classes[classeAtual] = { members: [] };
+      sym.classes[classeAtual].start = i;   // início do corpo (p/ achar `self`)
+    }
+
+    // campo da classe: `[public|private] self.NOME: tipo = ...` ou `self.x = ...`
+    // (declaração/atribuição, não leitura) — vira membro da classe atual
+    if (classeAtual) {
+      const fld = semComentario.match(/^\s*(?:public\s+|private\s+)?self\.([A-Za-z_]\w*)\s*[:=]/);
+      if (fld) {
+        const ms = sym.classes[classeAtual].members;
+        if (!ms.some(x => x.name === fld[1])) ms.push({ name: fld[1], kind: 'property' });
+      }
     }
 
     // enum NOME
@@ -120,7 +135,10 @@ function parsePoolSource(text) {
       if (ch === '{') depth++;
       else if (ch === '}') {
         depth--;
-        if (classeAtual && depth <= classeDepth) classeAtual = null;
+        if (classeAtual && depth <= classeDepth) {
+          if (sym.classes[classeAtual]) sym.classes[classeAtual].end = i;
+          classeAtual = null;
+        }
         if (funcAtual && depth <= funcDepth) funcAtual = null;
       }
     }
@@ -247,10 +265,30 @@ function resolveChain(segs, doc, ateLinha) {
   return tipo;
 }
 
+function classeEnvolvente(local, linha) {
+  // qual classe do arquivo contém esta linha (pra resolver `self`)
+  for (const [nome, info] of Object.entries(local.classes)) {
+    const ini = info.start === undefined ? -1 : info.start;
+    const fim = info.end === undefined ? Infinity : info.end;
+    if (linha >= ini && linha <= fim) return nome;
+  }
+  return null;
+}
+
 function tipoDoSegmentoBase(seg, doc, ateLinha) {
   let nome = seg.name;
+  const local = simbolosLocais(doc);
+  // `self` -> a classe onde o cursor está (expõe campos public/private e métodos)
+  if (!seg.call && nome === 'self') {
+    const c = classeEnvolvente(local, ateLinha === undefined ? 1e9 : ateLinha);
+    if (c) return { cls: c };
+  }
+  // os TRÊS `request`: `request` (sem s) dentro de jinker é a requisição que
+  // CHEGA (proxy, estilo Flask) -> RequestProxy; fora do jinker é o cliente
+  // HTTP; `requests` (com s) é sempre o cliente HTTP (estilo Python).
+  if (!seg.call && nome === 'request' && local.usaJinker) return { cls: 'RequestProxy' };
   // alias de import (`import dotenv as nv` -> nv resolve dotenv)
-  const alias = simbolosLocais(doc).aliases[nome];
+  const alias = local.aliases[nome];
   if (alias) nome = alias;
   // módulo importado?
   if (!seg.call && (META.modules[nome] || LIBS_INSTALADAS[nome])) return { module: nome };
