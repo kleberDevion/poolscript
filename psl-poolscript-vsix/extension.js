@@ -493,6 +493,13 @@ const completionProvider = {
   provideCompletionItems(doc, pos) {
     const linhaAteCursor = doc.lineAt(pos.line).text.slice(0, pos.character);
 
+    // 0a. `from PATH import <nomes>` -> o que PATH EXPORTA (não builtins)
+    const fromImp = linhaAteCursor.match(/^\s*from\s+([.\w/]+)\s+import\s+[\w,\s]*$/);
+    if (fromImp) return completionDeImport(fromImp[1], doc);
+    // 0b. `from <PATH>` / `import <PATH>` (antes do import) -> de ONDE importar
+    if (/^\s*from\s+[.\w/]*$/.test(linhaAteCursor) || /^\s*import\s+[.\w/]*$/.test(linhaAteCursor))
+      return completionDeFrom(doc);
+
     // ── 0. decorador: `@` (nome parcial, sem ponto ainda) ──
     // (`@app.route` cai no member completion abaixo, pois `app` resolve Jinker)
     const dec = linhaAteCursor.match(/(?:^|\s)@(\w*)$/);
@@ -553,6 +560,53 @@ const completionProvider = {
     return completionDeTopo(doc);
   },
 };
+
+// `from PATH import <TAB>` -> só os nomes que PATH exporta (stdlib, arquivo
+// local ._x, ou lib instalada). Nada de builtins/keywords aqui.
+function completionDeImport(p, doc) {
+  const itens = [];
+  if (META.modules[p]) {
+    for (const m of META.modules[p].members) itens.push(itemDeMembro(m));
+    return itens;
+  }
+  const isym = simbolosDeArquivoImportado(p, doc) || LIBS_INSTALADAS[p];
+  if (isym) {
+    for (const f of isym.functions) {
+      const it = new vscode.CompletionItem(f.name, vscode.CompletionItemKind.Function);
+      it.detail = 'de ' + p; it.insertText = f.name; itens.push(it);
+    }
+    for (const c of Object.keys(isym.classes))
+      itens.push(new vscode.CompletionItem(c, vscode.CompletionItemKind.Class));
+    for (const e of isym.enums)
+      itens.push(new vscode.CompletionItem(e, vscode.CompletionItemKind.Enum));
+  }
+  return itens;
+}
+
+// `from <TAB>` / `import <TAB>` -> de ONDE importar: módulos, libs instaladas
+// e arquivos .ps vizinhos (como `._connect`).
+function completionDeFrom(doc) {
+  const itens = [];
+  for (const nome of Object.keys(META.modules)) {
+    const it = new vscode.CompletionItem(nome, vscode.CompletionItemKind.Module);
+    it.detail = 'modulo'; itens.push(it);
+  }
+  for (const nome of Object.keys(LIBS_INSTALADAS)) {
+    const it = new vscode.CompletionItem(nome, vscode.CompletionItemKind.Module);
+    it.detail = 'lib instalada'; itens.push(it);
+  }
+  try {
+    const dir = require('path').dirname(doc.uri.fsPath);
+    for (const f of require('fs').readdirSync(dir)) {
+      const m = f.match(/^(.+)\.(ps|psl|p)$/);
+      if (m && require('path').join(dir, f) !== doc.uri.fsPath) {
+        const it = new vscode.CompletionItem('.' + m[1], vscode.CompletionItemKind.File);
+        it.detail = 'arquivo local'; it.insertText = '.' + m[1]; itens.push(it);
+      }
+    }
+  } catch (e) { /* dir ilegível */ }
+  return itens;
+}
 
 function completionDeTopo(doc) {
   const itens = [];
