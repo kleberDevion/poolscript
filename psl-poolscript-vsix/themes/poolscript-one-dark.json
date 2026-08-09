@@ -1,0 +1,74 @@
+{
+  "name": "PoolScript One Dark",
+  "type": "dark",
+  "colors": {
+    "editor.background": "#282C34",
+    "editor.foreground": "#ABB2BF",
+    "editorLineNumber.foreground": "#4B5263",
+    "editorLineNumber.activeForeground": "#ABB2BF",
+    "editor.selectionBackground": "#3E4451",
+    "editor.lineHighlightBackground": "#2C313A",
+    "editorCursor.foreground": "#528BFF",
+    "editorIndentGuide.background1": "#3B4048",
+    "sideBar.background": "#21252B",
+    "activityBar.background": "#282C34",
+    "statusBar.background": "#21252B",
+    "titleBar.activeBackground": "#282C34",
+    "tab.activeBackground": "#282C34",
+    "tab.inactiveBackground": "#21252B"
+  },
+  "tokenColors": [
+    {
+      "scope": ["comment", "comment.line.double-slash.poolscript", "comment.line.number-sign.poolscript", "comment.block.poolscript"],
+      "settings": { "foreground": "#5C6370", "fontStyle": "italic" }
+    },
+    {
+      "scope": ["string", "string.quoted.double.poolscript", "string.quoted.single.poolscript", "string.quoted.triple.poolscript"],
+      "settings": { "foreground": "#98C379" }
+    },
+    {
+      "scope": ["constant.character.escape.poolscript"],
+      "settings": { "foreground": "#56B6C2" }
+    },
+    {
+      "scope": ["constant.numeric.poolscript"],
+      "settings": { "foreground": "#D19A66" }
+    },
+    {
+      "scope": ["constant.language.boolean.poolscript", "constant.language.null.poolscript"],
+      "settings": { "foreground": "#D19A66" }
+    },
+    {
+      "scope": ["keyword.control.poolscript"],
+      "settings": { "foreground": "#C678DD" }
+    },
+    {
+      "scope": ["keyword.operator.logical.poolscript"],
+      "settings": { "foreground": "#56B6C2" }
+    },
+    {
+      "scope": ["storage.type.poolscript", "storage.type.function.poolscript", "storage.type.class.poolscript"],
+      "settings": { "foreground": "#C678DD" }
+    },
+    {
+      "scope": ["storage.modifier.poolscript"],
+      "settings": { "foreground": "#E06C75", "fontStyle": "italic" }
+    },
+    {
+      "scope": ["entity.name.function.poolscript", "entity.name.function.call.poolscript"],
+      "settings": { "foreground": "#61AFEF" }
+    },
+    {
+      "scope": ["entity.name.type.poolscript"],
+      "settings": { "foreground": "#E5C07B" }
+    },
+    {
+      "scope": ["entity.name.function.decorator.poolscript", "punctuation.decorator.poolscript", "meta.decorator.poolscript"],
+      "settings": { "foreground": "#E5C07B" }
+    },
+    {
+      "scope": ["meta.embedded.poolscript"],
+      "settings": { "foreground": "#ABB2BF" }
+    }
+  ]
+}
