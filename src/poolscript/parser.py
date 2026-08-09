@@ -995,6 +995,8 @@ class Parser:
                     defaults[param_name] = self.parse_expression()
                 if not self.match("COMMA"):
                     break
+                if self.current().type == "RPAREN":   # vírgula final
+                    break
         self.expect("RPAREN")
         # Permite { na próxima linha — pula NEWLINEs antes de parse_block
         while self.current().type in {"NEWLINE", "NL"}:
@@ -2236,6 +2238,8 @@ class Parser:
                     items.append(self.parse_expression())
                     if not self.match("COMMA"):
                         break
+                    if self.current().type == "RBRACK":   # vírgula final
+                        break
         finally:
             self.grupo_depth -= 1
         self.expect("RBRACK", msg="faltou ']' na lista")
@@ -2267,6 +2271,8 @@ class Parser:
                 if not self.match("COMMA"):
                     break
                 self.skip_separators()
+                if self.current().type == "RBRACE":   # vírgula final
+                    break
         self.expect("RBRACE", msg="faltou '}' no dicionário")
         return DictLiteral(line=start_tok.line, col=start_tok.col, entries=entries)
 

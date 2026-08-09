@@ -497,3 +497,14 @@ def test_arquivos_reais_do_repo(arquivo):
     except NaoCoberto as e:
         pytest.skip(f"nó {e} ainda fora do subconjunto do parser em C")
     assert parser_c.parse_sexp(src) == esperado
+
+
+@pytest.mark.parametrize("src", [
+    'x = {"a": 1, "b": 2,}',
+    "y = [1, 2, 3,]",
+    "action f(a, b,) { return a }",
+    'z = {"so": 1,}',
+    "w = [9,]",
+])
+def test_virgula_final(src):
+    mesmo(src)

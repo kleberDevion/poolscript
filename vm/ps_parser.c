@@ -1419,6 +1419,7 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
             }
             if (ps_vec_push(p->arena, &n->lista, par) != 0) { perro(p, "sem memoria", pt); return NULL; }
             if (!aceita(p, T_COMMA)) break;
+            if (checa(p, T_RPAREN)) break;   /* vírgula final */
         }
     }
     if (!exige(p, T_RPAREN, "faltou ')' na declaracao da action")) return NULL;
