@@ -6,6 +6,10 @@ Cada página tem assinatura, parâmetros, o **porquê** e exemplos reais.
 Para a **linguagem em si** (sintaxe, tipos, `if`/`while`/`for`, `Entity`,
 `match`, decorators…), veja [`LANGUAGE.md`](../LANGUAGE.md).
 
+Para usar a PoolScript **em qualquer editor** (VS Code, IntelliJ IDEA,
+Neovim…) com completion type-aware e diagnóstico do parser real, veja
+[`lsp.md`](lsp.md) — o language server da linguagem.
+
 ---
 
 ## Builtins (sem `import`)

@@ -8,7 +8,7 @@ strictness = "mypy_ini"
 
 [project]
 name = "poolscript"
-version = "8.2.40"
+version = "8.2.41"
 description = "PoolScript - linguagem de programação híbrida (dinâmica/estática) com sintaxe Python+JS"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,7 @@ dependencies = []
 [project.optional-dependencies]
 dev    = ["pytest>=7"]
 native = ["mypy>=1.0"]   # para compilação nativa com mypyc
-lsp    = ["pygls>=1.3"]  # servidor de Language Server (extensão VSCode)
+lsp    = ["pygls>=2"]  # language server (VS Code, IntelliJ via LSP4IJ, Neovim...)
 all    = [               # libs externas opcionais (também funcionam no PyPy)
     "requests",
     "PyJWT",
