@@ -2219,6 +2219,18 @@
      "sig": "path()",
      "returns": "str",
      "doc": "Retorna o caminho absoluto atual."
+    },
+    {
+     "name": "name",
+     "kind": "property"
+    },
+    {
+     "name": "ext",
+     "kind": "property"
+    },
+    {
+     "name": "size",
+     "kind": "property"
     }
    ],
    "doc": "Arquivo binário carregado — suporta move, copy, delete."
@@ -2291,6 +2303,14 @@
      "sig": "send(to_or_msg, subject?, body?, html?)",
      "returns": null,
      "doc": "Duas formas: server.send(msg)                                  # objeto MailMessage server.send(\"dest@x.com\", \"subj\", \"body\", html)   # direto"
+    },
+    {
+     "name": "server",
+     "kind": "property"
+    },
+    {
+     "name": "user",
+     "kind": "property"
     }
    ],
    "doc": "Conexão SMTP com TLS automático."
@@ -2373,6 +2393,10 @@
      "sig": "to(address)",
      "returns": null,
      "doc": null
+    },
+    {
+     "name": "msg",
+     "kind": "property"
     }
    ],
    "doc": "Construtor MIME para emails ricos (HTML + anexos)."
@@ -2475,6 +2499,18 @@
      "sig": "select(folder?, readonly?)",
      "returns": null,
      "doc": null
+    },
+    {
+     "name": "server",
+     "kind": "property"
+    },
+    {
+     "name": "user",
+     "kind": "property"
+    },
+    {
+     "name": "folder",
+     "kind": "property"
     }
    ],
    "doc": "Conexão IMAP com TLS automático — busca e decodifica e-mails recebidos."
@@ -2511,6 +2547,26 @@
      "sig": "route(path, methods?, auth?, middleware?)",
      "returns": null,
      "doc": null
+    },
+    {
+     "name": "name",
+     "kind": "property"
+    },
+    {
+     "name": "channel",
+     "kind": "property"
+    },
+    {
+     "name": "socket",
+     "kind": "property"
+    },
+    {
+     "name": "static_folder",
+     "kind": "property"
+    },
+    {
+     "name": "static_url",
+     "kind": "property"
     }
    ],
    "doc": "Aplicação HTTP da PoolScript."
@@ -2614,6 +2670,10 @@
      "sig": "status(code)",
      "returns": "JinkerResponse",
      "doc": null
+    },
+    {
+     "name": "status_code",
+     "kind": "property"
     }
    ],
    "doc": "Objeto de resposta que a action pode montar e retornar."
@@ -2695,6 +2755,26 @@
      "sig": "text()",
      "returns": "str",
      "doc": null
+    },
+    {
+     "name": "method",
+     "kind": "property"
+    },
+    {
+     "name": "path",
+     "kind": "property"
+    },
+    {
+     "name": "headers",
+     "kind": "property"
+    },
+    {
+     "name": "body_raw",
+     "kind": "property"
+    },
+    {
+     "name": "query",
+     "kind": "property"
     }
    ],
    "doc": "Objeto de requisição disponível dentro da action do handler."
@@ -2734,6 +2814,22 @@
      "sig": "save(destino)",
      "returns": "PoolFileUpload",
      "doc": "Salva os bytes em disco no caminho especificado."
+    },
+    {
+     "name": "name",
+     "kind": "property"
+    },
+    {
+     "name": "content_type",
+     "kind": "property"
+    },
+    {
+     "name": "size",
+     "kind": "property"
+    },
+    {
+     "name": "ext",
+     "kind": "property"
     }
    ],
    "doc": "Arquivo recebido via upload — vive em memória, sem path temporário."
@@ -2760,12 +2856,21 @@
      "sig": "emit(payload?, room_id?, exclude?)",
      "returns": "ChannelStatus",
      "doc": "Envia payload pros conectados. room_id filtra pra uma sala específica; sem room_id, faz broadcast geral (igual __call__(forAll=...)). exclude: set de conexões a pular (usado pra não ecoar pro remetente)."
+    },
+    {
+     "name": "status",
+     "kind": "property"
     }
    ],
    "doc": "app.channel — gerencia conexões websocket abertas, com suporte a salas."
   },
   "ChannelStatus": {
-   "members": [],
+   "members": [
+    {
+     "name": "status",
+     "kind": "property"
+    }
+   ],
    "doc": "Status de envio do channel."
   },
   "MiddlewareRegistrar": {
@@ -2834,6 +2939,18 @@
      "sig": "unban(ip)",
      "returns": null,
      "doc": null
+    },
+    {
+     "name": "rate",
+     "kind": "property"
+    },
+    {
+     "name": "window",
+     "kind": "property"
+    },
+    {
+     "name": "bloq",
+     "kind": "property"
     }
    ],
    "doc": "Gerencia rate limit e ban de IPs por instância Jinker."
@@ -2959,7 +3076,28 @@
    "doc": "Proxy do `request` para uso com `import request` na PoolScript. Os métodos delegam pro JinkerRequest atual injetado no escopo pela rota. O interpretador injeta o objeto real em _current antes de chamar a action."
   },
   "Route": {
-   "members": [],
+   "members": [
+    {
+     "name": "path",
+     "kind": "property"
+    },
+    {
+     "name": "methods",
+     "kind": "property"
+    },
+    {
+     "name": "auth",
+     "kind": "property"
+    },
+    {
+     "name": "handler",
+     "kind": "property"
+    },
+    {
+     "name": "middleware",
+     "kind": "property"
+    }
+   ],
    "doc": "Uma rota registrada no Jinker."
   },
   "SocketEmitter": {
@@ -3404,7 +3542,12 @@
    "doc": "Conexão WebSocket do lado cliente."
   },
   "ManpuResult": {
-   "members": [],
+   "members": [
+    {
+     "name": "status",
+     "kind": "property"
+    }
+   ],
    "doc": "Resultado de operação da manpu."
   },
   "ManpuFile": {
@@ -3461,6 +3604,10 @@
      "sig": "write(content?, column?, cell?, celula?, init?, sep?, size?)",
      "returns": "ManpuResult",
      "doc": "Escreve conteúdo no arquivo aberto."
+    },
+    {
+     "name": "filepath",
+     "kind": "property"
     }
    ],
    "doc": "Arquivo aberto pelo mp.open() — mantém o arquivo aberto durante operações. Funciona com `using mp.open(...) as arq { ... }` da PoolScript."
@@ -3953,6 +4100,10 @@
      "sig": "to_file()",
      "returns": "QRPoolFile",
      "doc": "Converte para QRPoolFile (bytes em memória)."
+    },
+    {
+     "name": "name",
+     "kind": "property"
     }
    ],
    "doc": "Wrapper da imagem PIL retornada por make_image — estilo Python."
@@ -3979,6 +4130,22 @@
      "sig": "save(path)",
      "returns": "QRPoolFile",
      "doc": null
+    },
+    {
+     "name": "name",
+     "kind": "property"
+    },
+    {
+     "name": "ext",
+     "kind": "property"
+    },
+    {
+     "name": "size",
+     "kind": "property"
+    },
+    {
+     "name": "content_type",
+     "kind": "property"
     }
    ],
    "doc": "Arquivo de QR Code em memória — usado quando save= não é fornecido."

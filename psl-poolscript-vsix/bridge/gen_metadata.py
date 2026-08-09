@@ -150,6 +150,17 @@ def _classe(cls):
             })
             if ret and ret not in _PRIMITIVOS.values():
                 _talvez_classe_por_nome(cls, ret)
+    # atributos de INSTÂNCIA (`self.x` no __init__) não aparecem em
+    # getmembers(cls) — só existem na instância. Lê o fonte do __init__ e captura
+    # os `self.NOME =`/`self.NOME:` (ex: PoolFile.name/ext/size).
+    import re as _re
+    try:
+        src = inspect.getsource(cls.__init__)
+        for a in _re.findall(r"self\.([A-Za-z_]\w*)\s*[:=]", src):
+            if not a.startswith("_") and not any(m["name"] == a for m in membros):
+                membros.append({"name": a, "kind": "property"})
+    except (OSError, TypeError):
+        pass
     _CLASSES[nome] = {"members": membros, "doc": _doc(cls)}
     return nome
 
