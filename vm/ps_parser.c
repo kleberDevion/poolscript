@@ -133,6 +133,18 @@ static PSToken *exige(P *p, PSTokType t, const char *msg)
     return NULL;
 }
 
+/* Fechamento de estrutura aberta — '(' '[' '{'. Token inesperado em OUTRA
+ * linha: a culpa é do ABRIDOR (o "faltou ')'" marca a chamada aberta, não o
+ * `if` da linha de baixo). Na mesma linha, aponta o token estranho. Espelha
+ * o expect_fecha do parser.py. */
+static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
+{
+    if (checa(p, t)) return &p->toks[p->pos++];
+    PSToken *tk = atual(p);
+    perro(p, msg, (tk->line != abre->line) ? abre : tk);
+    return NULL;
+}
+
 static void pula_separadores(P *p)
 {
     while (checa(p, T_NEWLINE) || checa(p, T_SEMI)) p->pos++;
@@ -164,17 +176,39 @@ static const char *exige_nome(P *p, const char *contexto)
 /* Um argumento pode seguir outro SEM vírgula: `post("a" b)` são dois
  * argumentos. É a justaposição da linguagem, e o parser Python a implementa
  * continuando o laço quando o token seguinte puder iniciar expressão. */
+/* keywords que valem como NOME em expressão (post, self, list...) — espelho
+ * do EXPR_NAME_KEYWORDS do parser.py. `if`/`return`/`while` etc. NÃO abrem
+ * expressão: sem isso, `f(x` esquecido aberto engolia o `if` da linha de
+ * baixo como argumento e o erro saía no lugar errado. */
+static int kw_abre_expr(const char *s)
+{
+    static const char *NOMES[] = {
+        "post", "input", "create", "clear", "space", "addEnd", "char", "list",
+        "json", "dict", "tup", "JSON", "full", "mei", "self",
+        "upper", "lower", "replace", "split", "strip", "join", "startswith",
+        "endswith", "find", "index", "format", "encode", "decode", "lstrip",
+        "rstrip", "title", "capitalize", "not", "Not", NULL
+    };
+    if (!s) return 0;
+    for (int i = 0; NOMES[i]; i++)
+        if (strcmp(s, NOMES[i]) == 0) return 1;
+    return 0;
+}
+
 static int pode_iniciar_expr(PSToken *t)
 {
     switch (t->type) {
         case T_INT: case T_FLO: case T_STR: case T_FSTRING:
         case T_BOOL: case T_NULL: case T_COLOR:
-        case T_IDENT: case T_IDENT_UPPER: case T_KW:
+        case T_IDENT: case T_IDENT_UPPER:
         case T_LPAREN: case T_LBRACK: case T_LBRACE:
             return 1;
+        case T_KW:
+            return kw_abre_expr(t->texto);
         case T_OP:
+            /* mesmo conjunto do parser.py: unários que abrem expressão */
             return t->texto && (strcmp(t->texto, "-") == 0 || strcmp(t->texto, "+") == 0
-                             || strcmp(t->texto, "~") == 0 || strcmp(t->texto, "!") == 0);
+                             || strcmp(t->texto, "!") == 0);
         default:
             return 0;
     }
@@ -351,11 +385,11 @@ static PSNode *primario(P *p)
                     if (!aceita(p, T_COMMA)) break;
                 }
                 p->grupo_depth--;
-                if (!exige(p, T_RPAREN, "faltou ')' na tupla")) return NULL;
+                if (!exige_fecha(p, T_RPAREN, "faltou ')' na tupla", t)) return NULL;
                 return n;
             }
             p->grupo_depth--;
-            if (!exige(p, T_RPAREN, "faltou ')'")) return NULL;
+            if (!exige_fecha(p, T_RPAREN, "faltou ')'", t)) return NULL;
             return e;
         }
         case T_LBRACK: {
@@ -380,7 +414,7 @@ static PSNode *primario(P *p)
             }
             pula_separadores(p);
             p->grupo_depth--;
-            if (!exige(p, T_RBRACK, "faltou ']' na lista")) return NULL;
+            if (!exige_fecha(p, T_RBRACK, "faltou ']' na lista", t)) return NULL;
             return n;
         }
         case T_LBRACE: {
@@ -434,7 +468,7 @@ static PSNode *primario(P *p)
             }
             pula_separadores(p);
             p->grupo_depth--;
-            if (!exige(p, T_RBRACE, "faltou '}' no dicionario")) return NULL;
+            if (!exige_fecha(p, T_RBRACE, "faltou '}' no dicionario", t)) return NULL;
             return n;
         }
         case T_COLOR: {
@@ -599,7 +633,7 @@ static PSNode *posfixo(P *p)
             }
             pula_separadores(p);
             p->grupo_depth--;
-            if (!exige(p, T_RPAREN, "faltou ')' na chamada")) return NULL;
+            if (!exige_fecha(p, T_RPAREN, "faltou ')' na chamada", t)) return NULL;
             no = c;
             continue;
         }
@@ -661,7 +695,7 @@ static PSNode *posfixo(P *p)
                     inicio = primeiro;
                 }
             }
-            if (!exige(p, T_RBRACK, "faltou ']' no indice")) return NULL;
+            if (!exige_fecha(p, T_RBRACK, "faltou ']' no indice", t)) return NULL;
 
             if (eh_slice) {
                 PSNode *sl = ps_node_novo(p->arena, N_SLICE_ACCESS, no->line, no->col);
@@ -1588,6 +1622,7 @@ static PSNode *statement(P *p)
         if (!exige(p, T_RPAREN, "esperado ')' apos heranca da Entity")) return NULL;
         pula_separadores(p);
 
+        PSToken *abre_ent = atual(p);
         int chaves = aceita(p, T_LBRACE);
         if (!chaves) {
             if (!exige(p, T_COLON, "esperado '{' ou ':' para abrir o corpo da Entity")) return NULL;
@@ -1652,7 +1687,11 @@ static PSNode *statement(P *p)
             }
             pula_separadores(p);
         }
-        if (!exige(p, chaves ? T_RBRACE : T_DEDENT, "corpo da Entity nao foi fechado")) return NULL;
+        if (chaves) {
+            if (!exige_fecha(p, T_RBRACE, "corpo da Entity nao foi fechado", abre_ent)) return NULL;
+        } else {
+            if (!exige(p, T_DEDENT, "corpo da Entity nao foi fechado")) return NULL;
+        }
         return n;
     }
 
@@ -1821,7 +1860,8 @@ static PSNode *statement(P *p)
         if (!exige(p, T_LPAREN, "esperado '(' apos nome do model")) return NULL;
         if (!exige(p, T_RPAREN, "esperado ')' apos '('")) return NULL;
         pula_separadores(p);
-        if (!exige(p, T_LBRACE, "esperado '{' para abrir o model")) return NULL;
+        PSToken *abre_model = exige(p, T_LBRACE, "esperado '{' para abrir o model");
+        if (!abre_model) return NULL;
         pula_separadores(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             PSToken *ft = atual(p);
@@ -1853,7 +1893,7 @@ static PSNode *statement(P *p)
             if (ps_vec_push(p->arena, &n->lista, f) != 0) return NULL;
             pula_separadores(p);
         }
-        if (!exige(p, T_RBRACE, "faltou '}' no model")) return NULL;
+        if (!exige_fecha(p, T_RBRACE, "faltou '}' no model", abre_model)) return NULL;
         return n;
     }
 
@@ -1866,7 +1906,8 @@ static PSNode *statement(P *p)
         n->texto = exige_nome(p, "enum");
         if (FALHOU(p)) return NULL;
         pula_separadores(p);
-        if (!exige(p, T_LBRACE, "esperado '{' para abrir o enum")) return NULL;
+        PSToken *abre_enum = exige(p, T_LBRACE, "esperado '{' para abrir o enum");
+        if (!abre_enum) return NULL;
         pula_separadores(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             PSToken *mt = atual(p);
@@ -1884,7 +1925,7 @@ static PSNode *statement(P *p)
             aceita(p, T_COMMA);               /* vírgula opcional entre membros */
             pula_separadores(p);
         }
-        if (!exige(p, T_RBRACE, "faltou '}' no enum")) return NULL;
+        if (!exige_fecha(p, T_RBRACE, "faltou '}' no enum", abre_enum)) return NULL;
         return n;
     }
 
@@ -1921,6 +1962,7 @@ static PSNode *statement(P *p)
         if (FALHOU(p)) return NULL;
         pula_separadores(p);
 
+        PSToken *abre_match = atual(p);
         int estilo_chaves = aceita(p, T_LBRACE);
         if (!estilo_chaves) {
             if (!exige(p, T_COLON, "esperado ':' ou '{' apos expressao do match")) return NULL;
@@ -1975,7 +2017,7 @@ static PSNode *statement(P *p)
             pula_separadores(p);
         }
 
-        if (estilo_chaves) { if (!exige(p, T_RBRACE, "faltou '}' no match")) return NULL; }
+        if (estilo_chaves) { if (!exige_fecha(p, T_RBRACE, "faltou '}' no match", abre_match)) return NULL; }
         else               { if (!exige(p, T_DEDENT, "match indentado nao fechou")) return NULL; }
         return n;
     }

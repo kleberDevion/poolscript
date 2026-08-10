@@ -573,6 +573,19 @@ class Parser:
     def error(self, msg: str, token: Token | None = None) -> PoolParseError:
         return PoolParseError(msg, token or self.current(), self.source, self.filename)
 
+    def expect_fecha(self, type_: str, msg: str, abre: Token) -> Token:
+        """Fechamento de estrutura aberta — `(`, `[` ou `{`. Se o token
+        inesperado está em OUTRA linha, a culpa aponta pro ABRIDOR: um
+        "faltou ')'" tem que marcar a chamada que ficou aberta, não o `if`
+        inocente da linha de baixo. Na mesma linha, aponta o token estranho
+        (ali ele é a informação útil)."""
+        tok = self.current()
+        if tok.type == type_:
+            self.pos += 1
+            return tok
+        blame = abre if tok.line != abre.line else tok
+        raise self.error(msg, blame)
+
     def skip_separators(self) -> None:
         while self.current().type in {"NEWLINE", "SEMI"}:
             self.pos += 1
@@ -1076,7 +1089,7 @@ class Parser:
         self.expect("LPAREN", msg="esperado '(' após nome do model")
         self.expect("RPAREN", msg="esperado ')' após '('")
         self.skip_separators()
-        self.expect("LBRACE", msg="esperado '{' para abrir o model")
+        abre_model = self.expect("LBRACE", msg="esperado '{' para abrir o model")
         self.skip_separators()
         fields: list[ModelField] = []
         while self.current().type != "RBRACE":
@@ -1101,7 +1114,7 @@ class Parser:
             self.skip_separators()
             fields.append(ModelField(line=field_tok.line, col=field_tok.col,
                                      name=field_name, type_name=type_name, length=length))
-        self.expect("RBRACE")
+        self.expect_fecha("RBRACE", "faltou '}' no model", abre_model)
         return ModelDecl(line=start.line, col=start.col, name=name, fields=fields)
 
     def parse_enum_decl(self) -> "EnumDecl":
@@ -1113,7 +1126,7 @@ class Parser:
         name_tok = self.expect_name("enum", msg="esperado nome do enum após 'enum'")
         name = str(name_tok.value)
         self.skip_separators()
-        self.expect("LBRACE", msg="esperado '{' para abrir o enum")
+        abre_enum = self.expect("LBRACE", msg="esperado '{' para abrir o enum")
         self.skip_separators()
         members: list[EnumMember] = []
         while self.current().type != "RBRACE":
@@ -1130,7 +1143,7 @@ class Parser:
             if self.current().type == "COMMA":
                 self.pos += 1
             self.skip_separators()
-        self.expect("RBRACE")
+        self.expect_fecha("RBRACE", "faltou '}' no enum", abre_enum)
         return EnumDecl(line=start.line, col=start.col, name=name, members=members)
 
 
@@ -1159,7 +1172,8 @@ class Parser:
         body: list[Node] = []
         fields: list = []
 
-        if self.match("LBRACE"):
+        abre_ent = self.match("LBRACE")
+        if abre_ent:
             # estilo chaves
             self.skip_separators()
             while self.current().type not in {"RBRACE", "EOF"}:
@@ -1179,7 +1193,7 @@ class Parser:
                             self.current()
                         )
                 self.skip_separators()
-            self.expect("RBRACE")
+            self.expect_fecha("RBRACE", "corpo da Entity não foi fechado", abre_ent)
 
         elif self.match("COLON"):
             # estilo Python
@@ -1288,14 +1302,15 @@ class Parser:
         self.skip_separators()
         cases: list = []
 
-        if self.match("LBRACE"):
+        abre_match = self.match("LBRACE")
+        if abre_match:
             # estilo {}
             self.skip_separators()
             while self.current().type != "RBRACE":
                 if self.current().type == "KW" and self.current().value == "case":
                     cases.append(self._parse_match_case_brace())
                 self.skip_separators()
-            self.expect("RBRACE")
+            self.expect_fecha("RBRACE", "faltou '}' no match", abre_match)
         else:
             # estilo :
             self.expect("COLON", msg="esperado ':' ou '{' após expressão do match")
@@ -1929,18 +1944,20 @@ class Parser:
     def parse_postfix(self) -> Node:
         node = self.parse_primary()
         while True:
-            if self.match("LPAREN"):
+            abre = self.match("LPAREN")
+            if abre:
                 args = []
                 if self.current().type != "RPAREN":
                     args = self.parse_call_args_until("RPAREN")
-                end = self.expect("RPAREN", msg="faltou ')' na chamada")
+                end = self.expect_fecha("RPAREN", "faltou ')' na chamada", abre)
                 node = Call(line=end.line, col=end.col, callee=node, args=args)
                 continue
             if self.match("DOT"):
                 member = self.parse_name_like("esperado membro após '.'")
                 node = MemberAccess(line=node.line, col=node.col, target=node, member=member)
                 continue
-            if self.match("LBRACK"):
+            abre_ix = self.match("LBRACK")
+            if abre_ix:
                 # Detecta slice: [start:stop:step]
                 # Se o primeiro token for COLON, start é None
                 start = None
@@ -1972,7 +1989,7 @@ class Parser:
                     else:
                         first_val = first
 
-                self.expect("RBRACK", msg="faltou ']'")
+                self.expect_fecha("RBRACK", "faltou ']' no índice", abre_ix)
 
                 if is_slice:
                     node = SliceAccess(line=node.line, col=node.col,
@@ -2242,7 +2259,7 @@ class Parser:
                         break
         finally:
             self.grupo_depth -= 1
-        self.expect("RBRACK", msg="faltou ']' na lista")
+        self.expect_fecha("RBRACK", "faltou ']' na lista", start_tok)
         return ListLiteral(line=start_tok.line, col=start_tok.col, items=items)
 
     def parse_dict_literal(self, start_tok: Token) -> DictLiteral:
@@ -2273,7 +2290,7 @@ class Parser:
                 self.skip_separators()
                 if self.current().type == "RBRACE":   # vírgula final
                     break
-        self.expect("RBRACE", msg="faltou '}' no dicionário")
+        self.expect_fecha("RBRACE", "faltou '}' no dicionário", start_tok)
         return DictLiteral(line=start_tok.line, col=start_tok.col, entries=entries)
 
 
