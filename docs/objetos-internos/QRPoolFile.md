@@ -20,4 +20,4 @@ name pode ser customizado via gen(data, name="meu.png").
 | `.name` | atributo |
 | `.size` | atributo |
 
-[← índice](../qrcode.md)
+[← índice](objetos-internos.md)

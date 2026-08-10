@@ -13,4 +13,4 @@ Resultado de operação da manpu.
 |---|---|
 | `.status` | atributo |
 
-[← índice](../manpu.md)
+[← índice](objetos-internos.md)

@@ -17,4 +17,4 @@ Uma rota registrada no Jinker.
 | `.middleware` | atributo |
 | `.path` | atributo |
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

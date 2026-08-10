@@ -30,4 +30,4 @@ Retorna um único arquivo do upload.
 allowed: lista de extensões permitidas ex: [".jpg", ".png"]
          None = aceita qualquer extensão segura
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

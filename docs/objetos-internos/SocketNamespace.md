@@ -22,4 +22,4 @@ app.socket — dupla função:
 | `.emit(payload=None, room_id=None, exclude_self=True)` |  |
 | `.status_send()` |  |
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

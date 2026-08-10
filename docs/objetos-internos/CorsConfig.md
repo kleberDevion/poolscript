@@ -20,4 +20,4 @@ Configuração global de CORS. Instância única por aplicação.
 cors.options()           → todos os métodos configurados
 cors.options(["POST"])   → filtra/sobrescreve para a rota
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

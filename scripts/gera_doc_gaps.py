@@ -130,10 +130,36 @@ def pagina_classe(alias, cnome, cls, indice_rel):
     return "\n".join(md)
 
 
+OBJ_DIR = DOCS / "objetos-internos"
+
+
+def _paginas_a_mao() -> dict:
+    """Mapa Nome -> caminho relativo (a partir de OBJ_DIR) das páginas de
+    classe escritas À MÃO (sem o marcador do gerador). O índice único aponta
+    pra elas em vez de duplicar com uma versão fina."""
+    a_mao = {}
+    for md in DOCS.rglob("*.md"):
+        if OBJ_DIR in md.parents:
+            continue
+        nome = md.stem
+        if not (nome[:1].isupper()):
+            continue
+        try:
+            if MARCADOR in md.read_text(encoding="utf-8"):
+                continue
+        except OSError:
+            continue
+        import os as _os
+        a_mao[nome] = _os.path.relpath(md, OBJ_DIR)
+    return a_mao
+
+
 def main():
     so_audita = "--so-audita" in sys.argv
     vistos_modulos = set()
     gaps_fn, gaps_cls, geradas = [], [], 0
+    catalogo = []   # (Nome, alias, destino_rel) de cada objeto interno
+    a_mao = _paginas_a_mao()
 
     for alias, module_name in _LAZY_LOADERS.items():
         if module_name in vistos_modulos:
@@ -163,12 +189,18 @@ def main():
             if destino.is_file() and so_audita:
                 continue
             if inspect.isclass(val):
+                if nome in a_mao:
+                    catalogo.append((nome, alias, a_mao[nome]))   # já tem à mão
+                    continue
                 gaps_cls.append(f"{alias}.{nome}")
+                catalogo.append((nome, alias, f"{nome}.md"))
                 if not so_audita:
-                    destino.parent.mkdir(parents=True, exist_ok=True)
-                    destino.write_text(pagina_classe(alias, nome, val, indice),
-                                       encoding="utf-8")
+                    OBJ_DIR.mkdir(parents=True, exist_ok=True)
+                    (OBJ_DIR / f"{nome}.md").write_text(
+                        pagina_classe(alias, nome, val, "objetos-internos.md"),
+                        encoding="utf-8")
                     geradas += 1
+                continue
             elif callable(val):
                 gaps_fn.append(f"{alias}.{nome}")
                 if not so_audita:
@@ -184,17 +216,37 @@ def main():
             for cnome, val in inspect.getmembers(mod, inspect.isclass):
                 if val.__module__ != mod.__name__ or cnome.startswith("_"):
                     continue
-                destino = dir_lib / cnome / f"{cnome}.md"
-                if destino.is_file() and MARCADOR not in destino.read_text(encoding="utf-8"):
-                    continue   # página à mão: intocada
+                if cnome in a_mao:
+                    catalogo.append((cnome, alias, a_mao[cnome]))
+                    continue
+                destino = OBJ_DIR / f"{cnome}.md"
                 if destino.is_file() and so_audita:
                     continue
                 gaps_cls.append(f"{alias}.{cnome}")
+                catalogo.append((cnome, alias, f"{cnome}.md"))
                 if not so_audita:
-                    destino.parent.mkdir(parents=True, exist_ok=True)
-                    destino.write_text(pagina_classe(alias, cnome, val, indice),
+                    OBJ_DIR.mkdir(parents=True, exist_ok=True)
+                    destino.write_text(pagina_classe(alias, cnome, val,
+                                                     "objetos-internos.md"),
                                        encoding="utf-8")
                     geradas += 1
+
+    # índice único de todos os objetos internos
+    if not so_audita and catalogo:
+        OBJ_DIR.mkdir(parents=True, exist_ok=True)
+        vistos_cat = {}
+        for nome, alias, destino_rel in catalogo:
+            vistos_cat.setdefault(nome, (alias, destino_rel))
+        md = [MARCADOR, "# Objetos internos da linguagem", "",
+              "Tipos que você **não cria na mão** — cada um é o que uma lib te",
+              "entrega pronto (o `type(obj)` mostra esse nome). Um índice só,",
+              "todos juntos.", "",
+              "| Objeto | Vem da lib |", "|---|---|"]
+        for nome in sorted(vistos_cat):
+            alias, destino_rel = vistos_cat[nome]
+            md.append(f"| [`{nome}`]({destino_rel}) | `{alias}` |")
+        md.append("")
+        (OBJ_DIR / "objetos-internos.md").write_text("\n".join(md), encoding="utf-8")
 
     print(f"funções sem página: {len(gaps_fn)}")
     print(f"classes sem página: {len(gaps_cls)}")

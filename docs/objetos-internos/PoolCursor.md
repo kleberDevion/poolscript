@@ -20,4 +20,4 @@ Wrapper do cursor SQLite — expõe métodos como atributos.
 | `.lastrowid` |  |
 | `.rowcount` |  |
 
-[← índice](../sqlite3.md)
+[← índice](objetos-internos.md)

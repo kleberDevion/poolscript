@@ -12,4 +12,4 @@ Marcador interno — indica que uma Entity foi decorada com @dataentity.
 | Acesso | O que faz |
 |---|---|
 
-[← índice](../datasentity.md)
+[← índice](objetos-internos.md)

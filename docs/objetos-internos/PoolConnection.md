@@ -17,4 +17,4 @@ Wrapper da conexão SQLite — expõe métodos como atributos.
 | `.execute(sql, params=None)` | Atalho: conn.execute() sem precisar criar cursor. |
 | `.rollback()` |  |
 
-[← índice](../sqlite3.md)
+[← índice](objetos-internos.md)

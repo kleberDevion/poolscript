@@ -27,4 +27,4 @@ Envia payload pros conectados. room_id filtra pra uma sala específica;
 sem room_id, faz broadcast geral (igual __call__(forAll=...)).
 exclude: set de conexões a pular (usado pra não ecoar pro remetente).
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

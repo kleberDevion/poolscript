@@ -1,16 +1,16 @@
 <!-- gerado: gera_doc_gaps.py — pode regenerar -->
-# `MiddlewareRegistrar`
+# `ChannelStatus`
 
-> **Objeto interno da linguagem** — você não cria `MiddlewareRegistrar` na mão:
+> **Objeto interno da linguagem** — você não cria `ChannelStatus` na mão:
 > é o TIPO de um objeto que a lib `jinker` te entrega pronto.
 > Confira com `type(obj)`, que mostra exatamente este nome.
 
-Registrador do middleware.
+Status de envio do channel.
 
 ## Métodos e propriedades
 
 | Acesso | O que faz |
 |---|---|
-| `.register(handler)` |  |
+| `.status` | atributo |
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

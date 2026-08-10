@@ -24,4 +24,4 @@ Gerencia rate limit e ban de IPs por instância Jinker.
 Verifica se o IP pode fazer requisição.
 Retorna (allowed: bool, reason: str)
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

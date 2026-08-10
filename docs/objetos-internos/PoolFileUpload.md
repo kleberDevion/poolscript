@@ -19,4 +19,4 @@ Arquivo recebido via upload — vive em memória, sem path temporário.
 | `.name` | atributo |
 | `.size` | atributo |
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

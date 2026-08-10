@@ -46,4 +46,4 @@ request.get_json()) pra não pegar ninguém de surpresa.
 request.path_param('id') → valor do parâmetro dinâmico da rota/socket.
 Ex: /sala:id ou /user/<id>
 
-[← índice](../jinker.md)
+[← índice](objetos-internos.md)

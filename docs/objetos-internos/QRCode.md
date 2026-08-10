@@ -21,4 +21,4 @@ Wrapper de qrcode.QRCode — mesma API da lib Python:
 | `.make(fit=True)` |  |
 | `.make_image(fill_color='black', back_color='white', name='qrcode.png')` |  |
 
-[← índice](../qrcode.md)
+[← índice](objetos-internos.md)
