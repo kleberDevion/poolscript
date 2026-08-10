@@ -39,14 +39,14 @@ static void ajuda(void)
 "  pool --help / -h          Mostra esta ajuda\n"
 "\n"
 "Pacotes (lib e comando .ps):\n"
-"  pool install <arq.ps>         Instala (o arquivo decide via #!lib / #!cmd)\n"
-"  pool install <arq.ps> -asLib  Forca lib importavel (import nome)\n"
-"  pool install <nome>           Busca <nome> no registry configurado\n"
-"  pool uninstall <nome>         Remove (acha sozinho: comando ou lib)\n"
-"  pool uninstall <nome> -asLib  Forca a categoria lib\n"
-"  pool list                     Lista comandos e libs instalados\n"
-"  pool registry set-url <url>   Configura o indice de pacotes\n"
-"  pool registry show            Mostra o registry configurado\n"
+"  psl install <arq.ps>          Instala (o arquivo decide via #!lib / #!cmd)\n"
+"  psl install <arq.ps> -asLib   Forca lib importavel (import nome)\n"
+"  psl install <nome>            Busca <nome> no registry configurado\n"
+"  psl uninstall <nome>          Remove (acha sozinho: comando ou lib)\n"
+"  psl uninstall <nome> -asLib   Forca a categoria lib\n"
+"  psl list                      Lista comandos e libs instalados\n"
+"  psl registry set-url <url>    Configura o indice de pacotes\n"
+"  psl registry show             Mostra o registry configurado\n"
 "\n"
 "Libs internas: json, date, regex, hash, jwt, sys, dotenv, os, datasentity,\n"
 "  Parsing, sqlite3, mail, request, qrcode, manpu, psodbc, jinker\n"
@@ -291,12 +291,12 @@ int main(int argc, char **argv)
     }
     /* ── pacotes (só .ps: lib/comando) ──────────────────────────────── */
     if (!strcmp(cmd, "install")) {
-        if (argc < 3) { fprintf(stderr, "uso: pool install <arquivo.ps | nome> [-asLib]\n"); return 1; }
+        if (argc < 3) { fprintf(stderr, "uso: psl install <arquivo.ps | nome> [-asLib]\n"); return 1; }
         int modo = tem_flag(argc, argv, 3, "-asLib") ? PS_PKG_LIB : PS_PKG_AUTO;
         return ps_pkg_install(argv[2], modo);
     }
     if (!strcmp(cmd, "uninstall")) {
-        if (argc < 3) { fprintf(stderr, "uso: pool uninstall <nome> [-asLib]\n"); return 1; }
+        if (argc < 3) { fprintf(stderr, "uso: psl uninstall <nome> [-asLib]\n"); return 1; }
         int cat = tem_flag(argc, argv, 3, "-asLib") ? PS_PKG_LIB : PS_PKG_AUTO;
         return ps_pkg_uninstall(argv[2], cat);
     }

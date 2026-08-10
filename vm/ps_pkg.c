@@ -204,7 +204,7 @@ static void ensure_bin_no_path(const char *home)
     if (!h) return;
     char linha[1400];
     snprintf(linha, sizeof(linha),
-             "\n# PoolScript — comandos instalados via `pool install`\nexport PATH=\"%s:$PATH\"\n",
+             "\n# PoolScript — comandos instalados via `psl install`\nexport PATH=\"%s:$PATH\"\n",
              bindir);
     int add = 0;
     const char *rcs[2] = { ".bashrc", ".profile" };
@@ -302,7 +302,7 @@ static int registry_lookup(const char *home, const char *nome, char *url, size_t
 {
     char idx_url[1024];
     if (registry_url(home, idx_url, sizeof(idx_url)) != 0) {
-        fprintf(stderr, "Erro: nenhum registry configurado — use `pool registry set-url <url>` "
+        fprintf(stderr, "Erro: nenhum registry configurado — use `psl registry set-url <url>` "
                         "ou instale de um arquivo local (nome.ps)\n");
         return -1;
     }
@@ -543,15 +543,15 @@ int ps_pkg_registry(int argc, char **argv)
     if (argc == 0 || !strcmp(argv[0], "show")) {
         char url[1024];
         if (registry_url(home, url, sizeof(url)) == 0) printf("registry atual: %s\n", url);
-        else printf("nenhum registry configurado — use `pool registry set-url <url>`\n");
+        else printf("nenhum registry configurado — use `psl registry set-url <url>`\n");
         return 0;
     }
     if (!strcmp(argv[0], "set-url")) {
-        if (argc < 2) { fprintf(stderr, "uso: pool registry set-url <url>\n"); return 1; }
+        if (argc < 2) { fprintf(stderr, "uso: psl registry set-url <url>\n"); return 1; }
         if (registry_set(home, argv[1]) != 0) { fprintf(stderr, "Erro: nao consegui gravar config\n"); return 1; }
         printf("registry configurado: %s\n", argv[1]);
         return 0;
     }
-    fprintf(stderr, "uso: pool registry [show | set-url <url>]\n");
+    fprintf(stderr, "uso: psl registry [show | set-url <url>]\n");
     return 1;
 }
