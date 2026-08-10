@@ -10,7 +10,7 @@
     <string>(\{[^}"']*|\([^)"']*|\[[^\]"']*)$</string>
     <key>decreaseIndentPattern</key>
     <string>^\s*[}\])]</string>
-    <key>bracketIndentNextLinePattern</key>
+    <key>indentNextLinePattern</key>
     <string>^\s*$</string>
   </dict>
 </dict>

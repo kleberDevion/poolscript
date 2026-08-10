@@ -166,6 +166,25 @@ def test_tipo_desconhecido_nao_sugere(cliente, ws):
     assert cliente.completa(uri, 1, 2) == []
 
 
+def test_string_methods_na_variavel(cliente, ws):
+    """Var de tipo str (inferido OU declarado) expõe os métodos de string."""
+    src = ('nome = "ana"' + NL + 'nome.' + NL
+           + 'str email = "x"' + NL + 'email.' + NL)
+    uri = cliente.abre(ws / "sm.ps", src)
+    for linha, col in ((1, len('nome.')), (3, len('email.'))):
+        nomes = cliente.completa(uri, linha, col)
+        for esperado in ("upper", "lower", "split", "replace", "strip"):
+            assert esperado in nomes, f"faltou {esperado} na linha {linha}: {nomes[:12]}"
+
+
+def test_string_method_encadeia(cliente, ws):
+    """upper() devolve str: nome.upper(). segue sugerindo métodos de string."""
+    src = 'nome = "ana"' + NL + 'nome.upper().' + NL
+    uri = cliente.abre(ws / "sme.ps", src)
+    nomes = cliente.completa(uri, 1, len('nome.upper().'))
+    assert "lower" in nomes, f"cadeia não resolveu: {nomes[:12]}"
+
+
 def test_poolfile_com_save(cliente, ws):
     src = ('import os' + NL + 'f = os.loadFile("a.png")' + NL + 'f.' + NL)
     uri = cliente.abre(ws / "pf.ps", src)

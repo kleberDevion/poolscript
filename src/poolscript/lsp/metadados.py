@@ -235,6 +235,27 @@ class ModeloTipos:
             self.builtins = {n: pega(s) for n, s in BUILTINS.items()}
         except Exception:
             pass
+        # métodos de STRING (specs da doc viva) viram a "classe" str — é o que
+        # faz `nome.` sugerir upper/lower/split/replace... como qualquer tipo
+        try:
+            from doc_specs_string import STRMET                      # noqa
+            membros = {}
+            for nome, spec in STRMET.items():
+                ret_txt = (spec.get("ret") or "").strip().lower()
+                ret = next((t for t in ("str", "int", "flo", "bool", "list",
+                                        "dict", "tup", "bytes")
+                            if ret_txt.startswith(t)), None)
+                params = [{"name": p, "opt": bool(d) and d not in ("—", "-")}
+                          for (p, _t, d, _n) in spec.get("params", [])]
+                membros[nome] = {"kind": "method", "params": params,
+                                 "sig": spec.get("sig", f"{nome}()"),
+                                 "returns": ret,
+                                 "doc": spec.get("resumo") or None}
+            if membros:
+                self.classes["str"] = {"members": membros,
+                                       "doc": "métodos de string da linguagem"}
+        except Exception:
+            pass
         finally:
             if sys.path and sys.path[0] == str(scripts):
                 sys.path.pop(0)
