@@ -1,4 +1,9 @@
+<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `JinkerRequest`
+
+> **Objeto interno da linguagem** — você não cria `JinkerRequest` na mão:
+> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
+> Confira com `type(obj)`, que mostra exatamente este nome.
 
 Objeto de requisição disponível dentro da action do handler.
 

@@ -1,4 +1,9 @@
+<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `PoolFileUpload`
+
+> **Objeto interno da linguagem** — você não cria `PoolFileUpload` na mão:
+> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
+> Confira com `type(obj)`, que mostra exatamente este nome.
 
 Arquivo recebido via upload — vive em memória, sem path temporário.
 

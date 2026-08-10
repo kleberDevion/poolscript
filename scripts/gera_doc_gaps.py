@@ -65,7 +65,7 @@ def exemplo_do_docstring(doc: str) -> str | None:
 def pagina_funcao(alias, nome, fn, indice_rel):
     doc = doc_completa(fn)
     sig = assinatura(alias, nome, fn)
-    md = [f"# `{sig}`", ""]
+    md = [MARCADOR, f"# `{sig}`", ""]
     if doc:
         md += [doc, ""]
     ps = params_de(fn)
@@ -87,9 +87,16 @@ def pagina_funcao(alias, nome, fn, indice_rel):
     return "\n".join(md)
 
 
+MARCADOR = "<!-- gerado: gera_doc_gaps.py — pode regenerar -->"
+
+
 def pagina_classe(alias, cnome, cls, indice_rel):
     doc = doc_completa(cls)
-    md = [f"# `{cnome}`", ""]
+    md = [MARCADOR, f"# `{cnome}`", "",
+          f"> **Objeto interno da linguagem** — você não cria `{cnome}` na mão:",
+          f"> é o TIPO de um objeto que a lib `{alias}` te entrega pronto.",
+          f"> Confira com `type(obj)`, que mostra exatamente este nome.",
+          ""]
     if doc:
         md += [doc, ""]
     md += ["## Métodos e propriedades", "", "| Acesso | O que faz |", "|---|---|"]
@@ -151,7 +158,9 @@ def main():
             if nome.startswith("_"):
                 continue
             destino = dir_lib / nome / f"{nome}.md"
-            if destino.is_file():
+            if destino.is_file() and MARCADOR not in destino.read_text(encoding="utf-8"):
+                continue   # página escrita à mão: nunca sobrescreve
+            if destino.is_file() and so_audita:
                 continue
             if inspect.isclass(val):
                 gaps_cls.append(f"{alias}.{nome}")
@@ -176,7 +185,9 @@ def main():
                 if val.__module__ != mod.__name__ or cnome.startswith("_"):
                     continue
                 destino = dir_lib / cnome / f"{cnome}.md"
-                if destino.is_file():
+                if destino.is_file() and MARCADOR not in destino.read_text(encoding="utf-8"):
+                    continue   # página à mão: intocada
+                if destino.is_file() and so_audita:
                     continue
                 gaps_cls.append(f"{alias}.{cnome}")
                 if not so_audita:

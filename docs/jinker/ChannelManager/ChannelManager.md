@@ -1,4 +1,9 @@
+<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `ChannelManager`
+
+> **Objeto interno da linguagem** — você não cria `ChannelManager` na mão:
+> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
+> Confira com `type(obj)`, que mostra exatamente este nome.
 
 app.channel — gerencia conexões websocket abertas, com suporte a salas.
 

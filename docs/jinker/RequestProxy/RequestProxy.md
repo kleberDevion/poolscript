@@ -1,4 +1,9 @@
+<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `RequestProxy`
+
+> **Objeto interno da linguagem** — você não cria `RequestProxy` na mão:
+> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
+> Confira com `type(obj)`, que mostra exatamente este nome.
 
 Proxy do `request` para uso com `import request` na PoolScript.
 Os métodos delegam pro JinkerRequest atual injetado no escopo pela rota.

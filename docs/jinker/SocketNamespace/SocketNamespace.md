@@ -1,4 +1,9 @@
+<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `SocketNamespace`
+
+> **Objeto interno da linguagem** — você não cria `SocketNamespace` na mão:
+> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
+> Confira com `type(obj)`, que mostra exatamente este nome.
 
 app.socket — dupla função:
 

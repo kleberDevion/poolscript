@@ -1,4 +1,9 @@
+<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `DataEntityMeta`
+
+> **Objeto interno da linguagem** — você não cria `DataEntityMeta` na mão:
+> é o TIPO de um objeto que a lib `datasentity` te entrega pronto.
+> Confira com `type(obj)`, que mostra exatamente este nome.
 
 Marcador interno — indica que uma Entity foi decorada com @dataentity.
 
