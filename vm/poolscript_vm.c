@@ -14336,7 +14336,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         stack[sp - 1] = MK_OBJ(mn);
                         break;
                     }
-                    ERRO_TF(vm, "RuntimeError", "membro inexistente: %s", nome);
+                    ERRO_TF(vm, "RuntimeError", "membro inexistente: %s (em %s)", nome, nome_do_tipo_valor(alvo));
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSBound *b = novo_bound(vm, alvo, mp);
@@ -14597,7 +14597,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             {
                 int tab, mi;
                 if (acha_metodo_valor(alvo, nome, &tab, &mi) != 0)
-                    ERRO_TF(vm, "RuntimeError", "membro inexistente: %s", nome);
+                    ERRO_TF(vm, "RuntimeError", "membro inexistente: %s (em %s)", nome, nome_do_tipo_valor(alvo));
                 Value base = alvo;
                 /* Número recebe método de string por conversão automática, pra
                  * `(150).isdigit()` valer sem str() na frente. `len` fica de

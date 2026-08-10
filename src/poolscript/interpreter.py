@@ -1772,7 +1772,8 @@ class Interpreter:
                         return getattr(as_str, _member)
                 if hasattr(target, sys.intern(node.member)):
                     return getattr(target, sys.intern(node.member))
-                raise PoolRuntimeError(f"membro inexistente: {sys.intern(node.member)}", node, self.source, filename=self.filename)
+                from .builtins import ps_type as _pstype
+                raise PoolRuntimeError(f"membro inexistente: {sys.intern(node.member)} (em {_pstype(target)})", node, self.source, filename=self.filename)
             if node.__class__ is SliceAccess:
                 target = self.eval_expr(node.target, scope)
                 start = self.eval_expr(node.start, scope) if node.start is not None else None

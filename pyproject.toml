@@ -8,7 +8,7 @@ strictness = "mypy_ini"
 
 [project]
 name = "poolscript"
-version = "8.2.49"
+version = "8.2.50"
 description = "PoolScript - linguagem de programação híbrida (dinâmica/estática) com sintaxe Python+JS"
 readme = "README.md"
 requires-python = ">=3.10"
