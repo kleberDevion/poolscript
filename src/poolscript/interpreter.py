@@ -1793,7 +1793,17 @@ class Interpreter:
                             node.line, node.col, code=INDEX_OUT_OF_BOUNDS_WARNING,
                         )
                         return None
-                return target[index]
+                try:
+                    return target[index]
+                except TypeError:
+                    # o erro DIZ o tipo que travou — "tipo nao indexavel" seco
+                    # não explica que req["x"] falhou porque req é Response
+                    from .builtins import ps_type
+                    raise PoolRuntimeError(
+                        f"tipo nao indexavel: {ps_type(target)}",
+                        node, self.source, code=SOME_VALUE_UNEXPECTED,
+                        filename=self.filename,
+                    )
             if node.__class__ is PostfixOp:
                 if not isinstance(node.operand, Name):
                     raise PoolRuntimeError("++/-- só funcionam em variáveis", node, self.source, filename=self.filename)

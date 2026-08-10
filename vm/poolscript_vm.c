@@ -2268,10 +2268,10 @@ static int nativa_bool(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-static int nativa_type(VM *vm, Value *args, int n, Value *out)
+/* Nome do tipo de um Value, como o type() mostra — usado também em erro de
+ * runtime pra DIZER qual tipo travou (ex: "tipo nao indexavel: Response"). */
+static const char *nome_do_tipo_valor(Value v)
 {
-    EXIGE_ARGS(vm, "type", 1);
-    Value v = args[0];
     const char *t = "object";
     switch (v.t) {
         case V_NULL: case V_UNSET: t = "Null";   break;
@@ -2335,6 +2335,13 @@ static int nativa_type(VM *vm, Value *args, int n, Value *out)
             }
             break;
     }
+    return t;
+}
+
+static int nativa_type(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "type", 1);
+    const char *t = nome_do_tipo_valor(args[0]);
     return devolve_texto(vm, out, t, (int)strlen(t));
 }
 
@@ -13884,7 +13891,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!c) ERRO(vm, "sem memoria");
                 stack[sp - 1] = MK_OBJ(c);
             } else {
-                ERRO_T(vm, "SomeValueUnexpected", "tipo nao indexavel");
+                ERRO_TF(vm, "SomeValueUnexpected", "tipo nao indexavel: %s",
+                        nome_do_tipo_valor(alvo));
             }
             break;
         }

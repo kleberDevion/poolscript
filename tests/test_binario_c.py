@@ -55,9 +55,12 @@ def test_version_e_help():
 
 def test_sem_argumento_mostra_ajuda():
     # sem REPL no binário C, `pool` sem args mostra a ajuda (stdout, exit 0),
-    # em vez de reclamar — é o mesmo que `pool --help`.
+    # em vez de reclamar — é o mesmo que `pool --help`. O help respeita a
+    # divisão de design: pool RODA, psl gerencia PACOTES.
     r = roda()
-    assert r.returncode == 0 and "Uso:" in r.stdout and "pool install" in r.stdout
+    assert r.returncode == 0 and "Uso:" in r.stdout
+    assert "pool arquivo.ps" in r.stdout      # executor = pool
+    assert "psl install" in r.stdout          # pacotes  = psl
 
 
 # ── execução ────────────────────────────────────────────────────────────────
