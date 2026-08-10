@@ -53,13 +53,15 @@ public class PoolEnterIndent implements EnterHandlerDelegate {
     }
     String prevTrim = prev.trim();
     int base = indentDe(prev);
-    boolean abriu = prevTrim.endsWith("{") || prevTrim.endsWith("(") || prevTrim.endsWith("[");
+    boolean abreChave = prevTrim.endsWith("{") || prevTrim.endsWith("(") || prevTrim.endsWith("[");
+    // bloco estilo Python: linha terminando em ':' tambem indenta (+4)
+    boolean abriu = abreChave || prevTrim.endsWith(":");
 
     int inicioLinha = doc.getLineStartOffset(linha);
     int fimLinha = doc.getLineEndOffset(linha);
     String resto = texto.substring(Math.min(offset, fimLinha), fimLinha).trim();
 
-    if (abriu && (resto.startsWith("}") || resto.startsWith(")") || resto.startsWith("]"))) {
+    if (abreChave && (resto.startsWith("}") || resto.startsWith(")") || resto.startsWith("]"))) {
       // Enter entre abre e fecha: fecha desce alinhado, cursor fica no meio
       String corpo = espacos(base + PASSO);
       doc.replaceString(inicioLinha, offset, corpo);
