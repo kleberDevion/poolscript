@@ -275,6 +275,24 @@ def _tipo_expr_base(node, idx: "PoolIndex"):
 # Construção do índice
 # ─────────────────────────────────────────────────────────────────────
 
+def _col_do_nome(source_lines: list[str], line_1based: int, nome: str, col_node: int,
+                 apos: str = "") -> int:
+    """Coluna (1-based) do NOME declarado na linha — o marcador de não-usado
+    tem que sublinhar `os` em `import os` e `x` em `int x = 1`, nunca a
+    keyword nem o tipo. Fallback: a coluna do nó."""
+    if 0 < line_1based <= len(source_lines):
+        linha = source_lines[line_1based - 1]
+        base = 0
+        if apos:
+            i = linha.find(apos)
+            if i >= 0:
+                base = i + len(apos)
+        m = re.search(rf"\b{re.escape(nome)}\b", linha[base:])
+        if m:
+            return base + m.start() + 1
+    return col_node
+
+
 def build_index(program, source_text: str, roots: list[Path]) -> PoolIndex:
     idx = PoolIndex(source_lines=source_text.splitlines())
     declarados: list[Declarado] = []
@@ -313,11 +331,14 @@ def build_index(program, source_text: str, roots: list[Path]) -> PoolIndex:
                 idx.usa_jinker = True
             if node.mode == "import":
                 alias = node.module_alias or node.module[-1]
-                declarados.append(Declarado(alias, node.line, node.col, "import"))
+                col = _col_do_nome(idx.source_lines, node.line, alias, node.col)
+                declarados.append(Declarado(alias, node.line, col, "import"))
             else:
                 for nome in (node.names or []):
                     bind = node.name_aliases.get(nome, nome)
-                    declarados.append(Declarado(bind, node.line, node.col, "import"))
+                    col = _col_do_nome(idx.source_lines, node.line, bind, node.col,
+                                       apos="import")
+                    declarados.append(Declarado(bind, node.line, col, "import"))
 
     # 2ª passada: tipos de variável (as funções/entidades/imports já existem)
     for node in _walk(program):
@@ -326,10 +347,12 @@ def build_index(program, source_text: str, roots: list[Path]) -> PoolIndex:
             t = node.declared_type or _tipo_expr(node.value, idx)
             if t:
                 idx.var_tipos[node.name] = t
-            declarados.append(Declarado(node.name, node.line, node.col, "var"))
+            col = _col_do_nome(idx.source_lines, node.line, node.name, node.col)
+            declarados.append(Declarado(node.name, node.line, col, "var"))
         elif isinstance(node, Assignment):
             if node.target not in idx.local_names:
-                declarados.append(Declarado(node.target, node.line, node.col, "var"))
+                col = _col_do_nome(idx.source_lines, node.line, node.target, node.col)
+                declarados.append(Declarado(node.target, node.line, col, "var"))
             idx.local_names.add(node.target)
             t = _tipo_expr(node.value, idx)
             if t and node.operator == "=":

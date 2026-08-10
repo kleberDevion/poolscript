@@ -2,15 +2,36 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "PoolScript",
   "scopeName": "source.poolscript",
+  "fileTypes": [
+    "ps",
+    "psl",
+    "p"
+  ],
   "patterns": [
-    { "include": "#comments" },
-    { "include": "#strings" },
-    { "include": "#decorators" },
-    { "include": "#declarations" },
-    { "include": "#keywords" },
-    { "include": "#constants" },
-    { "include": "#numbers" },
-    { "include": "#calls" }
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#decorators"
+    },
+    {
+      "include": "#declarations"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#calls"
+    }
   ],
   "repository": {
     "comments": {
@@ -20,8 +41,14 @@
           "begin": "\"\"\"",
           "end": "\"\"\""
         },
-        { "name": "comment.line.double-slash.poolscript", "match": "//.*$" },
-        { "name": "comment.line.number-sign.poolscript", "match": "#.*$" }
+        {
+          "name": "comment.line.double-slash.poolscript",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.line.number-sign.poolscript",
+          "match": "#.*$"
+        }
       ]
     },
     "strings": {
@@ -30,19 +57,43 @@
           "name": "string.quoted.triple.poolscript",
           "begin": "[frbFRB]*'''",
           "end": "'''",
-          "patterns": [{ "include": "#interp" }, { "name": "constant.character.escape.poolscript", "match": "\\\\." }]
+          "patterns": [
+            {
+              "include": "#interp"
+            },
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            }
+          ]
         },
         {
           "name": "string.quoted.double.poolscript",
           "begin": "[frbFRB]*\"",
           "end": "\"",
-          "patterns": [{ "include": "#interp" }, { "name": "constant.character.escape.poolscript", "match": "\\\\." }]
+          "patterns": [
+            {
+              "include": "#interp"
+            },
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            }
+          ]
         },
         {
           "name": "string.quoted.single.poolscript",
           "begin": "[frbFRB]*'",
           "end": "'",
-          "patterns": [{ "include": "#interp" }, { "name": "constant.character.escape.poolscript", "match": "\\\\." }]
+          "patterns": [
+            {
+              "include": "#interp"
+            },
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            }
+          ]
         }
       ]
     },
@@ -50,16 +101,41 @@
       "name": "meta.embedded.poolscript",
       "begin": "\\{",
       "end": "\\}",
-      "beginCaptures": { "0": { "name": "punctuation.definition.template-expression.begin.poolscript" } },
-      "endCaptures": { "0": { "name": "punctuation.definition.template-expression.end.poolscript" } },
-      "patterns": [{ "include": "#keywords" }, { "include": "#constants" }, { "include": "#numbers" }, { "include": "#calls" }]
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.template-expression.begin.poolscript"
+        }
+      },
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.template-expression.end.poolscript"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#keywords"
+        },
+        {
+          "include": "#constants"
+        },
+        {
+          "include": "#numbers"
+        },
+        {
+          "include": "#calls"
+        }
+      ]
     },
     "decorators": {
       "name": "meta.decorator.poolscript",
       "match": "(@)([A-Za-z_][\\w]*(?:\\.[A-Za-z_]\\w*)*)",
       "captures": {
-        "1": { "name": "punctuation.decorator.poolscript" },
-        "2": { "name": "entity.name.function.decorator.poolscript" }
+        "1": {
+          "name": "punctuation.decorator.poolscript"
+        },
+        "2": {
+          "name": "entity.name.function.decorator.poolscript"
+        }
       }
     },
     "declarations": {
@@ -67,15 +143,23 @@
         {
           "match": "\\b(action|reaction)\\s+([A-Za-z_]\\w*)",
           "captures": {
-            "1": { "name": "storage.type.function.poolscript" },
-            "2": { "name": "entity.name.function.poolscript" }
+            "1": {
+              "name": "storage.type.function.poolscript"
+            },
+            "2": {
+              "name": "entity.name.function.poolscript"
+            }
           }
         },
         {
           "match": "\\b(Entity|class|Class|model|enum)\\s+([A-Za-z_]\\w*)",
           "captures": {
-            "1": { "name": "storage.type.class.poolscript" },
-            "2": { "name": "entity.name.type.poolscript" }
+            "1": {
+              "name": "storage.type.class.poolscript"
+            },
+            "2": {
+              "name": "entity.name.type.poolscript"
+            }
           }
         }
       ]
@@ -102,8 +186,14 @@
     },
     "constants": {
       "patterns": [
-        { "name": "constant.language.boolean.poolscript", "match": "\\b(true|True|false|False)\\b" },
-        { "name": "constant.language.null.poolscript", "match": "\\b(Null|null|None|none)\\b" }
+        {
+          "name": "constant.language.boolean.poolscript",
+          "match": "\\b(true|True|false|False)\\b"
+        },
+        {
+          "name": "constant.language.null.poolscript",
+          "match": "\\b(Null|null|None|none)\\b"
+        }
       ]
     },
     "numbers": {
@@ -112,7 +202,11 @@
     },
     "calls": {
       "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()",
-      "captures": { "1": { "name": "entity.name.function.call.poolscript" } }
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.poolscript"
+        }
+      }
     }
   }
 }

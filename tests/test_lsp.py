@@ -234,6 +234,18 @@ def test_import_nao_usado_e_apagado(cliente, ws):
     naousado = [d for d in diags if "não é usado" in d["message"]]
     assert naousado, f"import não usado não marcado: {diags}"
     assert 1 in (naousado[0].get("tags") or []), "sem DiagnosticTag.Unnecessary"
+    # sublinha o `os`, NÃO a keyword `import` (col 7, 0-based)
+    assert naousado[0]["range"]["start"]["character"] == 7, naousado[0]["range"]
+
+
+def test_var_tipada_marca_o_nome_nao_o_tipo(cliente, ws):
+    """`int x = 1` sem uso: o apagado fica no `x` (col 4), não no `int`."""
+    uri = cliente.abre(ws / "vt.ps", 'int x = 1' + NL + 'post("fim")' + NL)
+    diags = cliente.diagnosticos(uri)
+    naousado = [d for d in diags if "não é usado" in d["message"]]
+    assert naousado, f"var tipada não usada não marcada: {diags}"
+    assert naousado[0]["range"]["start"]["character"] == 4, naousado[0]["range"]
+    assert naousado[0]["range"]["end"]["character"] == 5, naousado[0]["range"]
 
 
 def test_variavel_usada_nao_marca(cliente, ws):
