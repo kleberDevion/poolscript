@@ -1,11 +1,12 @@
 <idea-plugin>
   <id>poolscript.icons</id>
-  <name>PoolScript Icons</name>
+  <name>PoolScript IDEA</name>
   <vendor>PoolScript</vendor>
-  <description>Ícone P azul (#2196F7) para arquivos PoolScript (.ps/.psl/.p).</description>
+  <description>PoolScript no IntelliJ: ícone P por extensão (.ps azul, .p roxo, .psl vermelho) e indentação automática no Enter (estilo VS Code).</description>
   <idea-version since-build="231"/>
   <depends>com.intellij.modules.platform</depends>
   <extensions defaultExtensionNs="com.intellij">
     <fileIconProvider implementation="poolscript.icons.PoolIconProvider"/>
+    <enterHandlerDelegate implementation="poolscript.icons.PoolEnterIndent"/>
   </extensions>
 </idea-plugin>
