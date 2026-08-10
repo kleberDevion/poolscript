@@ -11,7 +11,7 @@
 ; ============================================================================
 
 #define MyAppName      "PoolScript"
-#define MyAppVersion   "8.2.42"
+#define MyAppVersion   "8.2.43"
 #define MyAppPublisher "PoolScript"
 #define MyAppExeName   "pool.exe"
 

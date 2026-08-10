@@ -827,6 +827,12 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams):
     roots = _workspace_roots(ls, uri)
     m = modelo()
     vazio = lsp.CompletionList(is_incomplete=False, items=[])
+    # caractere que disparou o popup ('.'/'('/','/'@') — None quando o usuário
+    # está digitando um nome ou pediu Ctrl+Espaço. Gatilho pontual responde SÓ
+    # o que lhe diz respeito: vírgula sem argumento nomeado = popup NENHUM,
+    # nunca a lista genérica (que fazia o Enter "escrever sozinho" no editor).
+    ctx = getattr(params, "context", None)
+    gatilho = getattr(ctx, "trigger_character", None) if ctx else None
 
     # 1) `from X import |` — exports do módulo/arquivo, NUNCA builtins
     fi = _RE_FROM_IMPORT.match(prefix)
@@ -860,6 +866,8 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams):
                  for v in sorted(idx.var_tipos)
                  if idx.var_tipos[v] not in _PRIM_LABEL]
         return lsp.CompletionList(is_incomplete=False, items=itens)
+    if gatilho == "@":
+        return vazio
 
     # 4) membro: `cadeia.|`
     segs, _parcial = _cadeia(prefix)
@@ -909,6 +917,8 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams):
             return vazio
         return lsp.CompletionList(is_incomplete=False, items=[
             _item_membro(n, i) for n, i in sorted(membros.items())])
+    if gatilho == ".":
+        return vazio   # ponto sem cadeia resolvível (ex: `1.`): nada
 
     # 5) argumento nomeado dentro de chamada aberta
     aberta = _chamada_aberta(prefix)
@@ -927,6 +937,8 @@ def completions(ls: LanguageServer, params: lsp.CompletionParams):
                 itens += [lsp.CompletionItem(label=n, kind=lsp.CompletionItemKind.Variable)
                           for n in sorted(idx.local_names)]
             return lsp.CompletionList(is_incomplete=False, items=itens)
+    if gatilho in (",", "("):
+        return vazio   # sem argumento nomeado pra sugerir: popup NENHUM
 
     # 6) topo: keywords/builtins/tipos ricos + símbolos do arquivo
     itens: list[lsp.CompletionItem] = []

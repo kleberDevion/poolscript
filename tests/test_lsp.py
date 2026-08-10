@@ -106,10 +106,12 @@ class ClienteLSP:
                     return n["params"]["diagnostics"]
         raise AssertionError("publishDiagnostics não chegou")
 
-    def completa(self, uri: str, linha: int, col: int) -> list[str]:
-        r = self._responde("textDocument/completion", {
-            "textDocument": {"uri": uri},
-            "position": {"line": linha, "character": col}})
+    def completa(self, uri: str, linha: int, col: int, gatilho: str = None) -> list[str]:
+        params = {"textDocument": {"uri": uri},
+                  "position": {"line": linha, "character": col}}
+        if gatilho:
+            params["context"] = {"triggerKind": 2, "triggerCharacter": gatilho}
+        r = self._responde("textDocument/completion", params)
         itens = r["items"] if isinstance(r, dict) else (r or [])
         return [i["label"] for i in itens]
 
@@ -210,6 +212,25 @@ def test_argumento_nomeado(cliente, ws):
     uri = cliente.abre(ws / "arg.ps", src)
     nomes = cliente.completa(uri, 1, len('psodbc.connect('))
     assert any(n.startswith("driver") for n in nomes), f"faltou driver= em {nomes[:15]}"
+
+
+def test_virgula_sem_arg_nomeado_nao_abre_popup(cliente, ws):
+    """`,` fora de chamada conhecida NÃO despeja keywords/builtins — era o
+    popup gigante que fazia o Enter 'escrever sozinho' no IntelliJ."""
+    uri = cliente.abre(ws / "vg.ps", 'x = [1,' + NL)
+    assert cliente.completa(uri, 0, len('x = [1,'), gatilho=",") == []
+
+
+def test_virgula_com_arg_nomeado_sugere(cliente, ws):
+    src = 'import psodbc' + NL + 'psodbc.connect(base="d",' + NL
+    uri = cliente.abre(ws / "vg2.ps", src)
+    nomes = cliente.completa(uri, 1, len('psodbc.connect(base="d",'), gatilho=",")
+    assert any(n.startswith("driver") for n in nomes), f"faltou driver= em {nomes[:15]}"
+
+
+def test_ponto_em_numero_nao_abre_popup(cliente, ws):
+    uri = cliente.abre(ws / "pn.ps", 'x = 1.' + NL)
+    assert cliente.completa(uri, 0, len('x = 1.'), gatilho=".") == []
 
 
 def test_from_import_sem_builtins(cliente, ws):
