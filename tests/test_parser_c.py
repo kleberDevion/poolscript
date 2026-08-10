@@ -85,6 +85,18 @@ def test_fstring_continua_literal():
     mesmo('x = f"Ola, {nome}!"')
 
 
+@pytest.mark.parametrize("src", [
+    "x = f'Ola, {nome}!'",                 # aspas simples valem igual
+    "x = [False, f'{nome}']",              # dentro de lista (o caso do bug)
+    'x = f\'diga "oi" {n}\'',              # aspas duplas DENTRO do f-string
+    "x = f'a {1 + 1} b'",
+])
+def test_fstring_aspas_simples(src):
+    """f'...' é o MESMO f-string de f"..." — aspas são equivalentes na
+    linguagem (era gap: o lexer só aceitava f seguido de aspas duplas)."""
+    mesmo(src)
+
+
 # ── acesso ──────────────────────────────────────────────────────────────────
 @pytest.mark.parametrize("src", [
     "post(a.b.c)",

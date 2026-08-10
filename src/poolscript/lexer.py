@@ -460,10 +460,12 @@ class Lexer:
             self._advance(1)  # consome o 'f'
             self._read_triple_string("'", is_fstring=True)
             return
-        # f-string: f"..." → identificador 'f' colado em aspa
-        if text == "f" and self._peek(1) == '"':
+        # f-string: f"..." ou f'...' — aspas simples e duplas são equivalentes
+        # na linguagem, e o f-string segue a mesma regra
+        if text == "f" and self._peek(1) in ('"', "'"):
+            quote = self._peek(1)
             self._advance(1)  # consome o 'f'
-            self._read_string('"', is_fstring=True)
+            self._read_string(quote, is_fstring=True)
             return
         # r-string multi-linha: r'''...'''
         if text == "r" and self._peek(1) == "'" and self._peek(2) == "'" and self._peek(3) == "'":

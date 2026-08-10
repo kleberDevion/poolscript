@@ -217,11 +217,13 @@ r'''C:\Users\nome
 sem processar escape'''
 ```
 
-**f-string** (interpolação com chaves):
+**f-string** (interpolação com chaves — aspas simples e duplas valem igual,
+como em qualquer string):
 
 ```
 grau = 25
 post(f"Clima: {grau} graus")
+post(f'Clima: {grau} graus')     // mesma coisa
 ```
 
 **Concatenação com interpolação** (sem `f`, útil em `post(...)` com vários

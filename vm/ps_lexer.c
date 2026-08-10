@@ -454,7 +454,8 @@ static void le_ident(Lexer *lx)
             le_string_tripla(lx, '\'', fstring, !fstring);
             return;
         }
-        if (prox == '"' || (prox == '\'' && !fstring)) {
+        /* f"..." e f'...' valem igual — aspas são equivalentes na linguagem */
+        if (prox == '"' || prox == '\'') {
             le_string(lx, prox, fstring, !fstring);
             return;
         }
