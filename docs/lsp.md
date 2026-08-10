@@ -46,15 +46,21 @@ Dois passos: o **cérebro** (LSP) e as **cores** (TextMate).
 **1. Cérebro — plugin LSP4IJ** (Red Hat; funciona no Community e no Ultimate,
 sem escrever plugin):
 
-1. `Settings → Plugins → Marketplace` → instale **LSP4IJ**.
-2. `Settings → Languages & Frameworks → Language Servers` → `+` (New server):
+1. `Ctrl+Alt+S` (Settings) → **Plugins** → aba **Marketplace** → busque
+   **LSP4IJ** (autor Red Hat) → Install → Restart IDE se pedir.
+2. `Ctrl+Alt+S` → **Languages & Frameworks → Language Servers** (o menu só
+   aparece com o LSP4IJ instalado) → `+`:
    - **Name:** `PoolScript`
-   - **Command:** `poolscript-lsp`
+   - Aba **Server** → **Command:** o caminho COMPLETO do `poolscript-lsp`
+     (descubra com `which poolscript-lsp`; ex:
+     `/home/voce/.local/bin/poolscript-lsp`) — app gráfico nem sempre herda
+     o PATH do terminal, então caminho absoluto é o seguro.
      (alternativa sem instalar o pacote: `python3 -m poolscript.lsp.server`,
      com a variável `PYTHONPATH` apontando pro `src/` do repositório)
-   - **Mappings → File name patterns:** `*.ps;*.psl;*.p`, language id
-     `poolscript`.
-3. Abra um `.ps` — completion, hover e diagnósticos passam a vir do servidor.
+   - Aba **Mappings** → **File name patterns** → `+` → `*.ps`, `*.psl` e
+     `*.p`, language id `poolscript`.
+3. **OK/Apply** e abra um `.ps` — completion, hover e diagnósticos passam a
+   vir do servidor.
 
 **2. Cores — bundle TextMate** (o IDEA lê a gramática da extensão VS Code
 como está):
