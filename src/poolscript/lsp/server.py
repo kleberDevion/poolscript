@@ -578,95 +578,83 @@ def _workspace_roots(ls: LanguageServer, uri: str | None = None) -> list[Path]:
     return roots
 
 
-def _parse_com_reparo(text: str, uri: str):
-    """Parse tolerante a digitação: se falhar, neutraliza a linha do erro e
-    tenta de novo (até 3 linhas) — é como o índice continua vivo enquanto o
-    usuário está no meio de um `cur.`. Devolve (program, texto_usado) ou
-    levanta o PRIMEIRO erro (que vira diagnóstico)."""
-    try:
-        tokens = Lexer(text, uri).tokenize()
-        return Parser(tokens, text, uri).parse(), text
-    except (PoolSyntaxError, PoolParseError) as primeiro:
-        linhas = text.splitlines()
-        erro = primeiro
-        for _ in range(3):
-            token = getattr(erro, "token", None)
-            line = getattr(erro, "line", None) or getattr(token, "line", None)
-            if not line or not linhas:
-                raise primeiro
-            # erro em EOF aponta pra linha vazia — anda pra trás até a linha
-            # que tem conteúdo (o `connect(` incompleto de verdade)
-            alvo = min(line, len(linhas))
-            while alvo >= 1 and not linhas[alvo - 1].strip():
-                alvo -= 1
-            if alvo < 1:
-                raise primeiro
-            linhas[alvo - 1] = ""
-            reparado = "\n".join(linhas)
-            try:
-                tokens = Lexer(reparado, uri).tokenize()
-                programa = Parser(tokens, reparado, uri).parse()
-                raise _Reparado(programa, reparado, primeiro)
-            except (PoolSyntaxError, PoolParseError) as e:
-                erro = e
-        raise primeiro
-
-
-class _Reparado(Exception):
-    """Parse só passou com reparo — carrega o programa E o erro original."""
-    def __init__(self, programa, texto, erro):
-        self.programa = programa
-        self.texto = texto
-        self.erro = erro
+def _diag_de_erro(e) -> lsp.Diagnostic:
+    line = getattr(e, "line", None)
+    col = getattr(e, "col", None)
+    token = getattr(e, "token", None)
+    if line is None and token is not None:
+        line = getattr(token, "line", 1)
+        col = getattr(token, "col", 1)
+    line0 = max((line or 1) - 1, 0)
+    col0 = max((col or 1) - 1, 0)
+    return lsp.Diagnostic(
+        range=lsp.Range(
+            start=lsp.Position(line=line0, character=col0),
+            end=lsp.Position(line=line0, character=col0 + 1),
+        ),
+        message=getattr(e, "msg", str(e)),
+        severity=lsp.DiagnosticSeverity.Error,
+        source="poolscript",
+    )
 
 
 def _diagnose_and_index(ls: LanguageServer, uri: str, text: str) -> None:
+    """Parse iterativo: cada erro vira diagnóstico, a linha culpada é
+    neutralizada e o parse SEGUE — o editor mostra TODOS os erros do arquivo,
+    não só o primeiro (o binário continua parando no primeiro, como Python).
+    O índice nasce do texto reparado, então completion sobrevive a arquivo
+    quebrado no meio da digitação."""
     diagnostics: list[lsp.Diagnostic] = []
-    try:
+    vistos: set = set()
+    linhas = text.splitlines()
+    texto_usado = text
+    programa = None
+    for _ in range(25):
         try:
-            program, texto_usado = _parse_com_reparo(text, uri)
-            erro_original = None
-        except _Reparado as r:
-            program, texto_usado = r.programa, r.texto
-            erro_original = r.erro
-        idx = build_index(program, texto_usado, _workspace_roots(ls, uri))
-        _INDEXES[uri] = idx
-        if erro_original is not None:
-            raise erro_original
-        for d in idx.nao_usados:
-            line0 = max(d.line - 1, 0)
-            col0 = max(d.col - 1, 0)
-            rotulo = "import" if d.tipo == "import" else "variável"
-            diagnostics.append(lsp.Diagnostic(
-                range=lsp.Range(
-                    start=lsp.Position(line=line0, character=col0),
-                    end=lsp.Position(line=line0, character=col0 + max(len(d.nome), 1)),
-                ),
-                message=f"{rotulo} '{d.nome}' não é usado",
-                severity=lsp.DiagnosticSeverity.Hint,
-                tags=[lsp.DiagnosticTag.Unnecessary],
-                source="poolscript",
-            ))
-    except (PoolSyntaxError, PoolParseError) as e:
-        line = getattr(e, "line", None)
-        col = getattr(e, "col", None)
-        token = getattr(e, "token", None)
-        if line is None and token is not None:
-            line = getattr(token, "line", 1)
-            col = getattr(token, "col", 1)
-        line = max((line or 1) - 1, 0)
-        col = max((col or 1) - 1, 0)
-        diagnostics.append(lsp.Diagnostic(
-            range=lsp.Range(
-                start=lsp.Position(line=line, character=col),
-                end=lsp.Position(line=line, character=col + 1),
-            ),
-            message=getattr(e, "msg", str(e)),
-            severity=lsp.DiagnosticSeverity.Error,
-            source="poolscript",
-        ))
+            tokens = Lexer(texto_usado, uri).tokenize()
+            programa = Parser(tokens, texto_usado, uri).parse()
+            break
+        except (PoolSyntaxError, PoolParseError) as e:
+            token = getattr(e, "token", None)
+            line = getattr(e, "line", None) or getattr(token, "line", None)
+            chave = (line, getattr(e, "col", None), getattr(e, "msg", str(e)))
+            if chave not in vistos:
+                vistos.add(chave)
+                diagnostics.append(_diag_de_erro(e))
+            if not line or not linhas:
+                break
+            # erro em EOF aponta linha vazia — anda até a linha com conteúdo
+            alvo = min(line, len(linhas))
+            while alvo >= 1 and not linhas[alvo - 1].strip():
+                alvo -= 1
+            if alvo < 1 or linhas[alvo - 1] == "":
+                break   # sem progresso possível
+            linhas[alvo - 1] = ""
+            texto_usado = "\n".join(linhas)
+        except Exception:
+            break   # nunca derruba o servidor por causa de um arquivo
+    try:
+        if programa is not None:
+            idx = build_index(programa, texto_usado, _workspace_roots(ls, uri))
+            _INDEXES[uri] = idx
+            if not diagnostics:   # não-usado só em arquivo sem erro de sintaxe
+                for d in idx.nao_usados:
+                    line0 = max(d.line - 1, 0)
+                    col0 = max(d.col - 1, 0)
+                    rotulo = "import" if d.tipo == "import" else "variável"
+                    diagnostics.append(lsp.Diagnostic(
+                        range=lsp.Range(
+                            start=lsp.Position(line=line0, character=col0),
+                            end=lsp.Position(line=line0,
+                                             character=col0 + max(len(d.nome), 1)),
+                        ),
+                        message=f"{rotulo} '{d.nome}' não é usado",
+                        severity=lsp.DiagnosticSeverity.Hint,
+                        tags=[lsp.DiagnosticTag.Unnecessary],
+                        source="poolscript",
+                    ))
     except Exception:
-        pass   # nunca derruba o servidor por causa de um arquivo
+        pass
     ls.text_document_publish_diagnostics(
         lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diagnostics)
     )

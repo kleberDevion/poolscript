@@ -268,6 +268,17 @@ def test_erro_de_sintaxe_vira_diagnostico(cliente, ws):
     assert diags[0]["severity"] == 1   # Error
 
 
+def test_varios_erros_todos_apontados(cliente, ws):
+    """Arquivo com DOIS erros: o editor mostra os dois, não só o primeiro."""
+    src = ('action f( {' + NL + 'post("ok")' + NL
+           + 'x = [1, 2' + NL + 'post("fim")' + NL)
+    uri = cliente.abre(ws / "err2.ps", src)
+    diags = [d for d in cliente.diagnosticos(uri) if d["severity"] == 1]
+    assert len(diags) >= 2, f"só {len(diags)} erro(s): {[d['message'] for d in diags]}"
+    linhas = {d["range"]["start"]["line"] for d in diags}
+    assert 0 in linhas and 2 in linhas, f"linhas erradas: {linhas}"
+
+
 def test_import_nao_usado_e_apagado(cliente, ws):
     uri = cliente.abre(ws / "nu.ps", 'import os' + NL + 'post("oi")' + NL)
     diags = cliente.diagnosticos(uri)
