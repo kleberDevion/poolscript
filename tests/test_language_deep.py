@@ -160,7 +160,8 @@ def test_try_catch_typed_wrong_type_falls_to_generic():
         "}\n"
     )
     out = run(src)
-    assert out == ["generico: algo"]
+    # o valor do catch carrega o ponto do erro por default (linha do raise)
+    assert out == ["generico: algo (linha 2)"]
 
 
 def test_try_finally_runs_on_success():

@@ -994,11 +994,16 @@ class Interpreter:
                     else:
                         exc_type = type(exc).__name__
 
+                    # o valor ligado no catch mostra o PONTO EXATO por default:
+                    # "mensagem\n  em linha N, coluna C" — igual nos 2 motores
+                    _no = getattr(exc, "node", None)
+                    _ln = getattr(_no, "line", 0) if _no is not None else 0
+                    err_valor = f"{message} (linha {_ln})" if _ln else message
                     matched = False
                     for clause in node.catches:
                         if clause.error_type is None or clause.error_type == exc_type:
                             catch_scope = Scope(scope)
-                            catch_scope.define(clause.error_name, message)
+                            catch_scope.define(clause.error_name, err_valor)
                             self.exec_block(clause.block, catch_scope, create_child=False)
                             matched = True
                             break

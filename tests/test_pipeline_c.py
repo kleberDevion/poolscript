@@ -434,6 +434,18 @@ def test_try_catch(src):
 
 
 @pytest.mark.parametrize("src", [
+    # o valor do catch carrega o PONTO do erro por default (mesma linha nos 2)
+    'action c() {\n x = 5\n return x["a"]\n}\ntry {\n post(c())\n} catch (e) {\n post(e)\n}',
+    'try {\n post(zzz)\n} catch (e) {\n post(e)\n}',
+    'try {\n post({"a":1}["z"])\n} catch (e) {\n post(e)\n}',
+])
+def test_catch_mostra_a_linha(src):
+    """`post(e)` mostra 'mensagem (linha N)' — o ponto do erro, sem digitar
+    nada. VM e interp em uma linha só, byte-idêntico."""
+    mesmo(src)
+
+
+@pytest.mark.parametrize("src", [
     'action f() {\n return 1/0\n}\ntry {\n post(f())\n} catch (e) {\n post("pego")\n}',
     'action a() {\n return 1/0\n}\naction b() {\n return a()\n}\ntry {\n post(b())\n} catch (e) {\n post("pego")\n}',
     "action f() {\n try {\n  return 1/0\n } catch (e) {\n  return -1\n }\n}\npost(f())",

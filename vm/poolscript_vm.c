@@ -13871,7 +13871,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp - 1] = l->itens[i];
             } else if (EH_DICT(alvo)) {
                 Value v;
-                if (dict_get(COMO_DICT(alvo), &idx, &v) != 0) ERRO_T(vm, "KeyError", "chave inexistente");
+                if (dict_get(COMO_DICT(alvo), &idx, &v) != 0) {
+                    /* diz QUAL chave, igual ao interp ("chave não encontrada: 'z'") */
+                    TxtBuf kb = {0};
+                    valor_para_texto(&kb, &idx, 1);
+                    char em[600];
+                    snprintf(em, sizeof(em), "chave não encontrada: %s", kb.b ? kb.b : "");
+                    free(kb.b);
+                    ERRO_T(vm, "KeyError", em);
+                }
                 stack[sp - 1] = v;
             } else if (EH_STRING(alvo)) {
                 if (idx.t != V_INT) ERRO(vm, "indice de string precisa ser int");
@@ -15084,9 +15092,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             lbase = h->lbase;
             nargs = (fp > fp0) ? vm->frames[fp - 1].nargs : nargs_in;
 
-            /* a mensagem vira o valor ligado no `catch` */
+            /* a mensagem + PONTO EXATO viram o valor ligado no `catch` — o
+             * mesmo formato do interp: "mensagem\n  em linha N, coluna C".
+             * erro_linha/erro_col já foram gravados no topo do erro_runtime. */
             vm->sp = sp; vm->locals_top = locals_top;
-            PSString *msg = nova_string(vm, vm->erro, (int)strlen(vm->erro));
+            char msgbuf[1200];
+            if (vm->erro_linha > 0)
+                snprintf(msgbuf, sizeof(msgbuf), "%s (linha %d)",
+                         vm->erro, vm->erro_linha);
+            else
+                snprintf(msgbuf, sizeof(msgbuf), "%s", vm->erro);
+            PSString *msg = nova_string(vm, msgbuf, (int)strlen(msgbuf));
             if (!msg) return -1;
             stack[sp++] = MK_OBJ(msg);
             ip = h->ip;

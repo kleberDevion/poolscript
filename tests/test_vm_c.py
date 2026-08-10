@@ -352,7 +352,8 @@ def test_indice_fora_do_intervalo_avisa_e_devolve_null():
 
 
 def test_chave_inexistente():
-    with pytest.raises(RuntimeError, match="chave inexistente"):
+    # diz QUAL chave, igual ao interp: "chave não encontrada: 'z'"
+    with pytest.raises(RuntimeError, match="chave não encontrada: 'z'"):
         via_c('post({"a": 1}["z"])')
 
 

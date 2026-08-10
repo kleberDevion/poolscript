@@ -4514,11 +4514,11 @@
   },
   "catch": {
    "sig": "catch (e) { ... }   |   catch (Tipo e) { ... }",
-   "resumo": "Captura o erro lançado no `try`. `e` é a mensagem; pode filtrar por tipo (`catch (ConnectionError e)`).",
+   "resumo": "Captura o erro lançado no `try`. `e` é a mensagem JÁ COM O PONTO do erro ('mensagem (linha N)') — `post(e)` mostra onde caiu sem você fazer nada. Pode filtrar por tipo (`catch (ConnectionError e)`).",
    "ex": [
     [
-     "try { raise \"ops\" } catch (e) { post(e) }",
-     "ops"
+     "try { post(1 / 0) } catch (e) { post(e) }",
+     "divisão por zero: division by zero (linha 1)"
     ]
    ]
   },

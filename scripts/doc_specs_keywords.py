@@ -180,9 +180,11 @@ KEYWORDS_DOC = {
         ex=[('try { x = 1 / 0 } catch (e) { post("peguei") }', "peguei")]),
     "catch": _kw(
         "catch (e) { ... }   |   catch (Tipo e) { ... }",
-        "Captura o erro lançado no `try`. `e` é a mensagem; pode filtrar por tipo "
-        "(`catch (ConnectionError e)`).",
-        ex=[('try { raise "ops" } catch (e) { post(e) }', "ops")]),
+        "Captura o erro lançado no `try`. `e` é a mensagem JÁ COM O PONTO do erro "
+        "('mensagem (linha N)') — `post(e)` mostra onde caiu sem você fazer nada. "
+        "Pode filtrar por tipo (`catch (ConnectionError e)`).",
+        ex=[('try { post(1 / 0) } catch (e) { post(e) }',
+             "divisão por zero: division by zero (linha 1)")]),
     "finally": _kw(
         "try { } catch (e) { } finally { }",
         "Bloco que executa SEMPRE ao sair do try/catch — com ou sem erro.",
