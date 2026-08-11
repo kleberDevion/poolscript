@@ -6,20 +6,17 @@
   <key>scope</key><string>source.poolscript</string>
   <key>settings</key>
   <dict>
+    <!-- realce do par correspondente (só destaca, não digita nada) -->
     <key>highlightPairs</key>
     <array>
       <array><string>{</string><string>}</string></array>
       <array><string>(</string><string>)</string></array>
       <array><string>[</string><string>]</string></array>
     </array>
+    <!-- VAZIO de propósito: o IDEA NÃO auto-fecha nada em PoolScript.
+         Você digita { e } você mesmo — sem o } fantasma que virava {}}. -->
     <key>smartTypingPairs</key>
-    <array>
-      <array><string>{</string><string>}</string></array>
-      <array><string>(</string><string>)</string></array>
-      <array><string>[</string><string>]</string></array>
-      <array><string>"</string><string>"</string></array>
-      <array><string>'</string><string>'</string></array>
-    </array>
+    <array/>
   </dict>
 </dict>
 </plist>
