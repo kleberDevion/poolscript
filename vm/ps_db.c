@@ -90,6 +90,7 @@ static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, int np
         return 0;
     }
     res->tem_result = 1;
+    res->rowcount = -1;   /* sqlite3 DBAPI: rowcount de SELECT é -1 (igual interp) */
     res->ncols = ncol;
     res->cols = calloc((size_t)ncol, sizeof(char *));
     for (int i = 0; i < ncol; i++) res->cols[i] = strdup(sqlite3_column_name(st, i));
@@ -153,6 +154,7 @@ static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparam
     if (st == PGRES_TUPLES_OK) {
         int ncol = PQnfields(r), nrow = PQntuples(r);
         res->tem_result = 1;
+        res->rowcount = nrow;   /* psycopg2: rowcount de SELECT = nº de linhas */
         res->ncols = ncol;
         res->cols = calloc((size_t)ncol, sizeof(char *));
         for (int i = 0; i < ncol; i++) res->cols[i] = strdup(PQfname(r, i));
@@ -242,6 +244,7 @@ static int mysql_exec(PSDbConn *c, const char *sql, const char **params, int npa
     int ncol = (int)mysql_num_fields(r);
     MYSQL_FIELD *campos = mysql_fetch_fields(r);
     res->tem_result = 1;
+    res->rowcount = (int64_t)mysql_num_rows(r);   /* SELECT bufferizado: nº de linhas */
     res->ncols = ncol;
     res->cols = calloc((size_t)ncol, sizeof(char *));
     for (int i = 0; i < ncol; i++) res->cols[i] = strdup(campos[i].name);

@@ -14435,6 +14435,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
                 if (strcmp(nome, "size") == 0) { stack[sp - 1] = MK_INT(q->tamanho); break; }
             }
+            if (EH_DBCUR(alvo)) {
+                /* rowcount é @property no interp (sem parêntese) — linhas
+                 * afetadas em DML, ou (por driver) o nº de linhas do SELECT */
+                if (strcmp(nome, "rowcount") == 0) {
+                    stack[sp - 1] = MK_INT(COMO_DBCUR(alvo)->res.rowcount);
+                    break;
+                }
+            }
             if (EH_RESP(alvo)) {
                 /* status/headers/url são campos; text/content/size/ok/filename
                  * são @property no wrapper — todos sem parêntese */

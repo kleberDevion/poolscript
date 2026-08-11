@@ -1,4 +1,4 @@
-# PoolScript v8.2.51
+# PoolScript v8.2.52
 
 Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
 Criada por Kleber Santana de Oliveira.
@@ -15,7 +15,7 @@ Verificando:
 
 ```bash
 pool --version
-# PoolScript  v8.2.51
+# PoolScript  v8.2.52
 ```
 
 ---
@@ -37,7 +37,7 @@ pool repl
 ```
 
 ```
-PoolScript v8.2.51 — REPL
+PoolScript v8.2.52 — REPL
 Digite 'sair' ou Ctrl+C para sair.
 
 >>> str nome = "joao"

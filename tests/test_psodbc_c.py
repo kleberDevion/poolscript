@@ -100,6 +100,23 @@ def test_sqlite_fetch(frag, mesmo):
           + frag + NL + 'c.close()')
 
 
+@pytest.mark.parametrize("frag", [
+    # rowcount é @property (sem parêntese): DML devolve linhas afetadas,
+    # SELECT no sqlite devolve -1 (mesma regra do DBAPI que o interp usa)
+    'k.execute("INSERT INTO u (nome) VALUES (\'a\'), (\'b\'), (\'c\')")' + NL + 'post(k.rowcount)',
+    'k.execute("SELECT * FROM u")' + NL + 'post(k.rowcount)',
+    'k.execute("UPDATE u SET nome=\'z\'")' + NL + 'post(k.rowcount)',
+    'k.execute("DELETE FROM u")' + NL + 'post(k.rowcount)',
+])
+def test_sqlite_rowcount(frag, mesmo):
+    """`cursor.rowcount` — era gap de paridade: existia no interp, faltava no
+    VM (o usuário bateu nisso com `mouse.rowcount`)."""
+    mesmo(IMP + 'c = db.connect(driver="sqlite", base="t.db")' + NL + 'k = c.cursor()' + NL
+          + 'k.execute("CREATE TABLE u (id INTEGER PRIMARY KEY, nome TEXT)")' + NL
+          + 'k.execute("INSERT INTO u (nome) VALUES (\'x\')")' + NL
+          + frag + NL + 'c.close()')
+
+
 def test_sqlite_tipo_e_url(mesmo):
     mesmo(IMP + 'c = db.connect(url="sqlite:///s.db")' + NL + 'post(type(c))' + NL + 'c.close()')
 
