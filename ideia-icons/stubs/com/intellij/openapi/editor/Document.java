@@ -6,4 +6,6 @@ public interface Document {
   int getLineEndOffset(int line);
   void insertString(int offset, CharSequence s);
   void replaceString(int start, int end, CharSequence s);
+  CharSequence getCharsSequence();
+  int getTextLength();
 }
