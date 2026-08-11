@@ -117,6 +117,30 @@ def test_sqlite_rowcount(frag, mesmo):
           + frag + NL + 'c.close()')
 
 
+def test_sqlite_rollback_no_erro(mesmo):
+    """INSERT sem commit + erro NÃO persiste (transação implícita, igual ao
+    sqlite3 do Python). Cada motor roda em pasta própria, então o `.db` é
+    isolado — o teste mede só o rollback."""
+    mesmo(IMP + 'c = db.connect(driver="sqlite", base="t.db")' + NL + 'k = c.cursor()' + NL
+          + 'k.execute("CREATE TABLE u (nome TEXT)")' + NL + 'c.commit()' + NL
+          + 'try {' + NL
+          + '  k.execute("INSERT INTO u VALUES (\'deve_sumir\')")' + NL
+          + '  z = 5' + NL + '  post(z["boom"])' + NL + '  c.commit()' + NL
+          + '} catch (e) { post("erro sem commit") }' + NL
+          + 'c.close()' + NL
+          + 'c2 = db.connect(driver="sqlite", base="t.db")' + NL
+          + 'post(c2.cursor().execute("SELECT * FROM u").fetchall())' + NL + 'c2.close()')
+
+
+def test_sqlite_commit_persiste(mesmo):
+    """O contraponto: COM commit, o INSERT fica (não é que tudo some)."""
+    mesmo(IMP + 'c = db.connect(driver="sqlite", base="t.db")' + NL + 'k = c.cursor()' + NL
+          + 'k.execute("CREATE TABLE u (nome TEXT)")' + NL
+          + 'k.execute("INSERT INTO u VALUES (\'fica\')")' + NL + 'c.commit()' + NL + 'c.close()' + NL
+          + 'c2 = db.connect(driver="sqlite", base="t.db")' + NL
+          + 'post(c2.cursor().execute("SELECT * FROM u").fetchall())' + NL + 'c2.close()')
+
+
 def test_sqlite_tipo_e_url(mesmo):
     mesmo(IMP + 'c = db.connect(url="sqlite:///s.db")' + NL + 'post(type(c))' + NL + 'c.close()')
 
@@ -224,6 +248,25 @@ def test_pg_url(pg, mesmo):
     mesmo(IMP + 'c = db.connect(url="postgres://pooluser@127.0.0.1:%d/testdb")' % pg + NL
           + 'post(c.cursor().execute("SELECT nota FROM u ORDER BY id").fetchall())' + NL
           + 'c.close()')
+
+
+def test_pg_rollback_no_erro(pg, mesmo):
+    """Transação implícita, igual ao psycopg2: INSERT sem commit + erro NÃO
+    persiste (rollback ao fechar). Era o bug que o usuário viu — o VM cru fica
+    em autocommit e gravava na hora. Começa limpando `__rb__` pra ser
+    determinístico entre os dois runs do `mesmo`."""
+    conn = _CONN(pg)
+    mesmo(
+        IMP + 'c = ' + conn + NL + 'k = c.cursor()' + NL
+        + 'k.execute("DELETE FROM u WHERE nome = \'__rb__\'")' + NL + 'c.commit()' + NL
+        + 'try {' + NL
+        + '  k.execute("INSERT INTO u (nome, nota) VALUES (\'__rb__\', 1)")' + NL
+        + '  z = 5' + NL + '  post(z["boom"])' + NL + '  c.commit()' + NL
+        + '} catch (e) { post("erro sem commit") }' + NL
+        + 'c.close()' + NL
+        + 'c2 = ' + conn + NL
+        + 'post(c2.cursor().execute("SELECT count(*) AS n FROM u WHERE nome = \'__rb__\'").fetchall())' + NL
+        + 'c2.close()')
 
 
 @pytest.mark.parametrize("frag,tipo", [

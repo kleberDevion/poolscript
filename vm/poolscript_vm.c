@@ -402,7 +402,7 @@ typedef struct {
 
 /* psodbc: conexão e cursor unificados (sqlite/postgres/mysql/mssql). O cursor
  * bufferiza o result de um SELECT e os fetch* leem dele com `pos`. */
-typedef struct { Obj obj; PSDbConn *conn; int fechado; int drv; } PSDbConexao;
+typedef struct { Obj obj; PSDbConn *conn; int fechado; int drv; int em_transacao; } PSDbConexao;
 typedef struct { Obj obj; Value conexao; PSDbRes res; int pos; int drv; } PSDbCursor;
 typedef struct { Obj obj; PSMongo *m; int fechado; } PSMongoConn;
 typedef struct { Obj obj; Value conexao; char *nome; } PSMongoCol;
@@ -10414,7 +10414,7 @@ static PSDbConexao *novo_dbconn(VM *vm, PSDbConn *c, int drv)
     if (!o) return NULL;
     o->obj.type = OBJ_DBCONN; o->obj.marked = 0;
     o->obj.next = vm->objetos; vm->objetos = (Obj *)o;
-    o->conn = c; o->fechado = 0; o->drv = drv;
+    o->conn = c; o->fechado = 0; o->drv = drv; o->em_transacao = 0;
     vm->alocado += sizeof(PSDbConexao);
     return o;
 }
@@ -10501,6 +10501,20 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
         MERRO(vm, "SomeValueUnexpected", "execute() espera tupla ou lista de parametros");
     ps_db_res_libera(&cu->res);
     cu->pos = 0;
+    /* Transação implícita antes de DML — igual ao psycopg2/sqlite3 do interp:
+     * sem isto o postgres/mysql cru fica em AUTOCOMMIT e cada INSERT já grava,
+     * então um erro depois (antes do commit()) NÃO desfaz — o registro fica no
+     * banco. Com o BEGIN, só o commit() persiste; erro antes disso + close/GC
+     * da conexão faz o servidor dar rollback. */
+    char kw[16];
+    sql_palavra(COMO_STRING(args[0])->chars, kw, sizeof(kw));
+    if (sql_eh_dml(kw) && !cn->em_transacao) {
+        PSDbRes rb = {0}; char eb[256] = "", tb[64] = "";
+        if (ps_db_exec(cn->conn, "BEGIN", NULL, 0, &rb, eb, sizeof(eb), tb, sizeof(tb)) == 0) {
+            ps_db_res_libera(&rb);
+            cn->em_transacao = 1;
+        }
+    }
     int np = 0;
     char **pars = (n == 2) ? db_params_txt(vm, args[1], &np) : NULL;
     char erro[512], tp[64];
@@ -10580,11 +10594,15 @@ static int met_dbconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "commit() nao aceita argumento");
     PSDbConexao *cn = COMO_DBCONN(alvo);
     if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
-    /* commit explícito: sqlite/pg em autocommit no PQexec/step, mas manter a
-     * chamada válida (no-op seguro) casa com o wrapper */
-    char erro[256]; PSDbRes r;
-    ps_db_exec(cn->conn, cn->drv == PS_DB_SQLITE ? "" : "COMMIT", NULL, 0, &r, erro, sizeof(erro), NULL, 0);
-    ps_db_res_libera(&r);
+    /* fecha a transação implícita aberta no primeiro DML (BEGIN). Sem tx aberta
+     * é no-op seguro, igual ao wrapper. Todos os drivers usam COMMIT — inclusive
+     * sqlite, que só tem `em_transacao` quando o BEGIN de fato rodou. */
+    if (cn->em_transacao) {
+        char erro[256]; PSDbRes r;
+        ps_db_exec(cn->conn, "COMMIT", NULL, 0, &r, erro, sizeof(erro), NULL, 0);
+        ps_db_res_libera(&r);
+        cn->em_transacao = 0;
+    }
     *out = MK_NULL();
     return 0;
 }
