@@ -93,7 +93,8 @@ VS Code direto: `code --install-extension psl-poolscript-vsix/*.vsix`.
 O binário **PSVM** (`pool`) já traz **embutido** (não precisa instalar nada):
 
 > **sqlite, libpq (postgres), mysqlclient, odbc, openssl (TLS), png, expat, z.**
-> Ou seja: postgres, mysql, sqlite, TLS e qrcode rodam sem instalar lib nenhuma.
+> Ou seja: Todas as libs que são padrão da linguagem ja estão com suas dependencias embutidas no ELF, so existem
+> algumas que são estaticas e e necessario o ``.so`` dela para o ELF chamar em Runtime
 
 O binário **chama de fora** (a `.so` precisa existir no servidor):
 - **Mongo** — `libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5` (só se usar MongoDB).
