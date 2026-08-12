@@ -36,12 +36,24 @@ Um instalador que detecta o OS, **pergunta qual motor** (INTERP ou PSVM),
 **remove instalação anterior** e resolve as dependências sozinho (no PSVM, se
 faltar `.so` cai no bundle portátil). É o caminho sem precisar decorar comando:
 
+**Standalone (sem clonar nada) — baixa só o script e ele instala via curl:**
 ```bash
-# Linux / macOS
-./installer/pooler.sh              # menu; ou: --engine psvm|interp --yes  [--system]
-
+# Linux / macOS — baixa o pooler e roda (menu interativo)
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/installer/pooler.sh -o pooler.sh && sh pooler.sh
+# ou direto, sem menu:
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/installer/pooler.sh | sh -s -- --engine psvm --yes
+```
+```powershell
 # Windows (PowerShell)
-.\installer\pooler.ps1             # menu; ou: -Engine interp -Yes
+irm https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/installer/pooler.ps1 | iex
+```
+Fora do repositório ele baixa o INTERP direto do GitHub (pip) e o PSVM do
+**release** (`pool-linux` / `pool-portable.tar.gz`).
+
+**Dentro do repositório clonado:**
+```bash
+./installer/pooler.sh              # menu; ou: --engine psvm|interp --yes  [--system]
+.\installer\pooler.ps1             # Windows; ou: -Engine interp -Yes
 ```
 
 Ou instale manual, escolhendo o motor:

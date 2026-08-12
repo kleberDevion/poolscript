@@ -20,10 +20,16 @@
 set -eu
 
 # ── localização e flags ─────────────────────────────────────────────────────
-REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd || echo /tmp)"
 ENGINE=""
 ASSUME_YES=0
 BINDIR="${POOLER_BINDIR:-$HOME/.local/bin}"
+
+# Onde buscar quando rodar STANDALONE (curl | sh, fora do repositório)
+REPO_URL="${POOLER_REPO_URL:-https://github.com/kleberDevion/poolscript-lang}"
+REL_URL="$REPO_URL/releases/latest/download"     # assets do último release
+# "no repo" = tem o código-fonte ao lado; senão é standalone (baixa tudo)
+if [ -f "$REPO/pyproject.toml" ]; then IN_REPO=1; else IN_REPO=0; fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -49,9 +55,9 @@ case "$OS" in
   Darwin) OS_NOME="macOS" ;;
   *)      OS_NOME="$OS" ;;
 esac
-# PSVM só tem binário publicado pra Linux x86-64
+# PSVM só tem binário pra Linux x86-64 (local em dist/ ou baixado do release)
 PSVM_OK=0
-[ "$OS" = "Linux" ] && { [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; } && [ -f "$REPO/dist/pool-linux" ] && PSVM_OK=1
+[ "$OS" = "Linux" ] && { [ "$ARCH" = "x86_64" ] || [ "$ARCH" = "amd64" ]; } && PSVM_OK=1
 
 say "${c_bold}PoolScript · pooler${c_off}"
 say "${c_dim}sistema: $OS_NOME $ARCH${c_off}"
@@ -99,7 +105,11 @@ escolhe_motor() {
   if [ "$ASSUME_YES" = 1 ]; then
     ENGINE=$([ "$PSVM_OK" = 1 ] && echo psvm || echo interp); return
   fi
-  printf "escolha [1/2]: "; read -r resp
+  # lê do terminal mesmo em 'curl | sh' (stdin é o script, não o teclado);
+  # sem terminal e sem --yes, assume o recomendado
+  printf "escolha [1/2]: "
+  if [ -r /dev/tty ]; then read -r resp </dev/tty; else
+    resp=""; say "${c_dim}(sem terminal — usando $rec)${c_off}"; fi
   case "$resp" in
     1) ENGINE=psvm ;;
     2) ENGINE=interp ;;
@@ -124,33 +134,51 @@ instala_deps_psvm() {
   return 1
 }
 
+# baixa um arquivo (curl ou wget) pra saída dada; 0 = ok
+baixa() {
+  url="$1"; saida="$2"
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$url" -o "$saida"
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$saida" "$url"
+  else return 1; fi
+}
+
 usa_bundle() {
   warn "não deu pra instalar as libs — usando o BUNDLE portátil (carrega tudo junto)"
-  [ -d "$REPO/dist/pool-portable" ] || (cd "$REPO" && make -s bundle >/dev/null 2>&1) || {
-    warn "bundle indisponível (rode 'make bundle' na máquina de build)"; return 1; }
-  dest="$HOME/.local/share/poolscript"
-  rm -rf "$dest"; mkdir -p "$dest"
-  cp -r "$REPO/dist/pool-portable/." "$dest/"
-  for nome in pool psl; do
-    ln -sf "$dest/pool" "$BINDIR/$nome"
-  done
+  dest="$HOME/.local/share/poolscript"; rm -rf "$dest"; mkdir -p "$dest"
+  if [ "$IN_REPO" = 1 ] && { [ -d "$REPO/dist/pool-portable" ] || (cd "$REPO" && make -s bundle >/dev/null 2>&1); }; then
+    cp -r "$REPO/dist/pool-portable/." "$dest/"
+  else
+    tmp="$dest/pool-portable.tar.gz"
+    baixa "$REL_URL/pool-portable.tar.gz" "$tmp" || { warn "bundle indisponível (publique um release com pool-portable.tar.gz)"; return 1; }
+    tar -C "$dest" -xzf "$tmp" && mv "$dest"/pool-portable/* "$dest"/ 2>/dev/null; rm -f "$tmp"
+  fi
+  chmod +x "$dest/pool" 2>/dev/null || true
+  for nome in pool psl; do ln -sf "$dest/pool" "$BINDIR/$nome"; done
   ok "bundle instalado em $dest (sem depender de lib do sistema)"
 }
 
 instala_psvm() {
   [ "$PSVM_OK" = 1 ] || { warn "PSVM não tem binário pra $OS_NOME $ARCH — caindo pro INTERP"; instala_interp; return; }
   mkdir -p "$BINDIR"
-  install -m755 "$REPO/dist/pool-linux" "$BINDIR/pool"
+  if [ "$IN_REPO" = 1 ] && [ -f "$REPO/dist/pool-linux" ]; then
+    install -m755 "$REPO/dist/pool-linux" "$BINDIR/pool"
+  else
+    say "${c_dim}baixando o binário PSVM do release…${c_off}"
+    baixa "$REL_URL/pool-linux" "$BINDIR/pool" || {
+      warn "não baixei o PSVM (publique um release com pool-linux) — caindo pro INTERP"; instala_interp; return; }
+    chmod 755 "$BINDIR/pool"
+  fi
   cp "$BINDIR/pool" "$BINDIR/psl"
   ok "PSVM instalado em $BINDIR (pool, psl)"
   instala_deps_psvm || usa_bundle
 }
 
-# ── 5. INTERP via pip ────────────────────────────────────────────────────────
+# ── 5. INTERP via pip (local do repo OU direto do GitHub) ────────────────────
 instala_interp() {
   command -v python3 >/dev/null 2>&1 || { warn "Python 3.10+ não encontrado — instale o Python primeiro"; exit 1; }
-  python3 -m pip install --user --upgrade "$REPO" >/dev/null 2>&1 \
-    || python3 -m pip install --user --break-system-packages --upgrade "$REPO"
+  if [ "$IN_REPO" = 1 ]; then alvo="$REPO"; else alvo="git+$REPO_URL.git"; fi
+  python3 -m pip install --user --upgrade "$alvo" >/dev/null 2>&1 \
+    || python3 -m pip install --user --break-system-packages --upgrade "$alvo"
   ok "INTERP instalado via pip (pool, psl, poolscript-lsp)"
 }
 
