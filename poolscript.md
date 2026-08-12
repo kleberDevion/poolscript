@@ -130,4 +130,4 @@ glibc compatível (x86-64).
 
 ## Versionamento
 
-** Versão mas recente - 8.0.53
+Versão mas recente - 8.0.53
