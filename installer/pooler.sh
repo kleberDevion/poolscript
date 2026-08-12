@@ -26,7 +26,7 @@ ASSUME_YES=0
 BINDIR="${POOLER_BINDIR:-$HOME/.local/bin}"
 
 # Onde buscar quando rodar STANDALONE (curl | sh, fora do repositório)
-REPO_URL="${POOLER_REPO_URL:-https://github.com/kleberDevion/poolscript-lang}"
+REPO_URL="${POOLER_REPO_URL:-https://github.com/kleberDevion/poolscript}"
 REL_URL="$REPO_URL/releases/latest/download"     # assets do último release
 # "no repo" = tem o código-fonte ao lado; senão é standalone (baixa tudo)
 if [ -f "$REPO/pyproject.toml" ]; then IN_REPO=1; else IN_REPO=0; fi
