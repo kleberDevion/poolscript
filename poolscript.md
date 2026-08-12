@@ -2,7 +2,7 @@
 
 Linguagem de programação **híbrida (dinâmica/estática)** — a legibilidade do
 Python com a estrutura de blocos do JS/C: indentação **ou** chaves, `:` **ou**
-`{}`, à vontade e no mesmo arquivo. Criada por Kleber Santana de Oliveira.
+`{}`, à vontade e no mesmo arquivo.
 
 Extensões reconhecidas em tudo (rodar, importar, `psl install`, `pool build`,
 editor): **`.ps`**, **`.psl`**, **`.p`**.
