@@ -1,15 +1,8 @@
 # PoolScript v8.2.53
 
 Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
-Criada por Kleber Santana de Oliveira.
 
 ---
-
-## Instalação
-
-```bash
-pip install -e .
-```
 
 Verificando:
 
@@ -140,7 +133,7 @@ post(nomes)         # ['joao', 'leo', 'bia']
 
 ---
 
-## Dicionários
+## Dicionário
 
 ```
 data = {"nome": "ana", "idade": 20, "ativo": true}
@@ -151,7 +144,7 @@ post(len(data))       # 3
 
 ---
 
-## Tuplas
+## Tupla
 
 ```
 cmd = ("SELECT * FROM users WHERE nome = ?", ("joao",))
