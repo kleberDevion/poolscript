@@ -30,6 +30,22 @@ Dois comandos, o **mesmo** binário/pacote:
 
 ## Instalação
 
+### Jeito fácil — `pooler` (recomendado)
+
+Um instalador que detecta o OS, **pergunta qual motor** (INTERP ou PSVM),
+**remove instalação anterior** e resolve as dependências sozinho (no PSVM, se
+faltar `.so` cai no bundle portátil). É o caminho sem precisar decorar comando:
+
+```bash
+# Linux / macOS
+./installer/pooler.sh              # menu; ou: --engine psvm|interp --yes  [--system]
+
+# Windows (PowerShell)
+.\installer\pooler.ps1             # menu; ou: -Engine interp -Yes
+```
+
+Ou instale manual, escolhendo o motor:
+
 ### Versão INTERP (Python) — dev, portátil, sem compilar
 
 ```bash
