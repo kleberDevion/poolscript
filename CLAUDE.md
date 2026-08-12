@@ -75,3 +75,19 @@ pyinstaller pool.spec --noconfirm
 
 O binário Linux publicado é `dist/pool-linux` (o PyInstaller gera `dist/pool`,
 que é renomeado).
+
+### Bundle portátil da VM (rodar em VPS sem apt install)
+
+O binário `pool` da VM em C (`make pool`) já embute estático o essencial
+(sqlite, libpq, mysqlclient, odbc, openssl). Mas ainda depende dinâmico de
+`libmongoc`/`libbson` (mongo — não têm `.a` no sistema) e da cauda de auth do
+libpq (ldap/gssapi/gnutls/krb5...), que num VPS "pelado" faltam e o binário não
+sobe.
+
+Solução sem static-linking frágil: `make bundle` (roda `build_bundle.sh`).
+Ele monta `dist/pool-portable/` = `pool` (wrapper) + `pool.bin` + `lib/` com
+TODAS as `.so` (via `ldd`), e o wrapper aponta `LD_LIBRARY_PATH` pra esse `lib/`.
+NÃO empacota o núcleo do glibc (libc/m/pthread/dl/rt/resolv + loader) — esse vem
+do alvo, senão o getaddrinfo/DNS (NSS) quebra. glibc é retrocompatível, então o
+único requisito do VPS é ter glibc ≥ a do build. Gera também
+`dist/pool-portable.tar.gz`; no VPS: `tar xzf … && ./pool-portable/pool app.ps`.
