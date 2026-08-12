@@ -17,7 +17,11 @@ param(
   [switch]$Yes
 )
 $ErrorActionPreference = 'Stop'
-$Repo    = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+# rodando de dentro do repo (tem o fonte ao lado) ou standalone (irm | iex)?
+$Repo = ''
+if ($PSScriptRoot) { $Repo = (Resolve-Path (Join-Path $PSScriptRoot '..') -ErrorAction SilentlyContinue).Path }
+$InRepo  = $Repo -and (Test-Path (Join-Path $Repo 'pyproject.toml'))
+$RepoUrl = 'https://github.com/kleberDevion/poolscript'
 $InstDir = Join-Path $env:LOCALAPPDATA 'Programs\PoolScript'
 
 function Say($m)  { Write-Host $m }
@@ -74,7 +78,9 @@ function Instala-Interp {
   $py = Get-Command py -ErrorAction SilentlyContinue
   if (-not $py) { $py = Get-Command python -ErrorAction SilentlyContinue }
   if (-not $py) { Warn "Python 3.10+ nao encontrado - instale de python.org (ou 'winget install Python.Python.3.12')"; exit 1 }
-  & $py.Source -m pip install --user --upgrade $Repo
+  # no repo usa o fonte ao lado; standalone (irm|iex) instala direto do GitHub
+  $alvo = if ($InRepo) { $Repo } else { "git+$RepoUrl.git" }
+  & $py.Source -m pip install --user --upgrade $alvo
   OK "INTERP instalado via pip (pool, psl, poolscript-lsp)"
   Say "  (o Scripts do Python ja fica no PATH; se 'pool' nao achar, reabra o terminal)"
 }

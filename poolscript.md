@@ -39,13 +39,13 @@ faltar `.so` cai no bundle portátil). É o caminho sem precisar decorar comando
 **Standalone (sem clonar nada) — baixa só o script e ele instala via curl:**
 ```bash
 # Linux / macOS — baixa o pooler e roda (menu interativo)
-curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/installer/pooler.sh -o pooler.sh && sh pooler.sh
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/installer/pooler.sh -o pooler.sh && sh pooler.sh
 # ou direto, sem menu:
-curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/installer/pooler.sh | sh -s -- --engine psvm --yes
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/installer/pooler.sh | sh -s -- --engine psvm --yes
 ```
 ```powershell
 # Windows (PowerShell)
-irm https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/installer/pooler.ps1 | iex
+irm https://raw.githubusercontent.com/kleberDevion/poolscript/main/installer/pooler.ps1 | iex
 ```
 Fora do repositório ele baixa o INTERP direto do GitHub (pip) e o PSVM do
 **release** (`pool-linux` / `pool-portable.tar.gz`).
