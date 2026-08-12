@@ -16,7 +16,7 @@ PoolScript roda em **dois motores que produzem exatamente o mesmo resultado**:
 | Motor | O que é | Onde vive | Pra quê |
 |---|---|---|---|
 | **INTERP** | Interpretador em Python (tree-walking) — a **autoridade semântica** | `src/poolscript/` | referência; roda com Python 3.10+, sem dependência obrigatória |
-| **PSVM** | Máquina virtual em **C** (lexer→parser→compilador→bytecode→VM) | `vm/` | runtime de produção; binário `pool` **sem Python instalado** |
+| **PSVM** | Máquina virtual em **C** (lexer→parser→compilador→bytecode→VM) | `vm/` | runtime de produção; binário `pool` |
 
 Os dois são testados de forma **diferencial**: o mesmo programa tem que dar o
 mesmo `stdout` **e** o mesmo texto de erro (traceback incluso). Se diverge, é
