@@ -128,6 +128,20 @@ glibc compatível (x86-64).
 - **Como buildar / versionar** (base-100, os 4 arquivos de versão, bundle):
   [`CLAUDE.md`](CLAUDE.md)
 
+## Import — como um nome é resolvido
+
+`import x` procura nesta ordem (nos dois motores, idêntico):
+
+1. **lib da linguagem** (stdlib: `os`, `json`, `request`, `jinker`…)
+2. **lib instalada** via `psl install ... -asLib` (`~/.poolscript/libs/`)
+3. **arquivo `.ps/.psl/.p` do projeto** (relativo à raiz)
+
+Ou seja: **uma lib SEMPRE ganha de um arquivo local de mesmo nome** — o nome
+que você dá aos seus arquivos nunca ofusca uma lib. Um `random.psl` na pasta
+não atrapalha `import random` achar a lib `random` (é o inverso do Python, de
+propósito). Import de arquivo local do projeto usa caminho pontuado
+(`from pkg.modulo import x`) ou relativo (`from .vizinho import y`).
+
 ## Versionamento
 
 Versão mas recente - 8.0.53

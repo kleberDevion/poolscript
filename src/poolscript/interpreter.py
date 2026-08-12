@@ -1508,32 +1508,31 @@ class Interpreter:
             self._bind_module_exports(node, scope, module_name, module_exports)
             return
 
-        # 2. Tenta resolver como arquivo .ps do usuário — SEMPRE relativo à
-        # raiz do projeto (self._import_root), igual ao Python: um import
-        # `from services.controllSmtp import x` dentro de
-        # services/service_ctrl_user.ps resolve para <raiz>/services/controllSmtp.ps,
-        # não para services/services/controllSmtp.ps.
-        base_dir = self._import_root
-        candidate = base_dir / Path(*node.module).with_suffix(".ps")
-        for _ext in (".ps", ".psl", ".p"):       # extensões válidas da linguagem
-            _c = base_dir / Path(*node.module).with_suffix(_ext)
-            if _c.is_file():
-                candidate = _c
-                break
-        if candidate.is_file():
-            module_name = ".".join(node.module)
-            self._run_imported_file(candidate, node, scope, self._import_root, module_name)
-            return
-
-        # 3. Tenta resolver como lib instalada globalmente via `psl install
-        # <arquivo>.ps -asLib` — vive em ~/.poolscript/libs/, independe do
-        # diretório do projeto (mesmo tratamento de arquivo local do passo 2).
         module_name = ".".join(node.module)
+
+        # 2. Lib instalada globalmente (`psl install ... -asLib`, em
+        # ~/.poolscript/libs/) — vem ANTES do arquivo local: `import random`
+        # sempre acha a LIB `random`, não importa como o usuário nomeou seus
+        # arquivos. O nome de arquivo nunca ofusca uma lib instalada.
         from .pkgmgr import global_lib_path
         global_candidate = global_lib_path(module_name)
         if global_candidate is not None:
             self._run_imported_file(global_candidate, node, scope,
                                      global_candidate.parent, module_name)
+            return
+
+        # 3. Arquivo .ps do usuário — relativo à raiz do projeto
+        # (self._import_root): `from services.controllSmtp import x` resolve
+        # para <raiz>/services/controllSmtp.ps.
+        base_dir = self._import_root
+        candidate = None
+        for _ext in (".ps", ".psl", ".p"):       # extensões válidas da linguagem
+            _c = base_dir / Path(*node.module).with_suffix(_ext)
+            if _c.is_file():
+                candidate = _c
+                break
+        if candidate is not None:
+            self._run_imported_file(candidate, node, scope, self._import_root, module_name)
             return
 
         raise PoolRuntimeError(

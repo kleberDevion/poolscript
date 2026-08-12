@@ -717,8 +717,11 @@ def test_importa_lib_instalada_de_outra_pasta(tmp_path):
     assert saida(str(uso), env={"POOLSCRIPT_HOME": str(lar)}) == ["da lib"]
 
 
-def test_arquivo_vizinho_ganha_da_lib_instalada(tmp_path):
-    """Instalar uma lib não pode sequestrar um módulo local de mesmo nome."""
+def test_lib_instalada_ganha_de_arquivo_vizinho(tmp_path):
+    """`import m` acha a LIB instalada, não um arquivo local de mesmo nome — o
+    nome do arquivo nunca ofusca uma lib. (Decisão do dono da linguagem: o
+    inverso do Python; um `random.psl` na pasta não pega no lugar da lib
+    `random`.) Vale nos dois motores."""
     lar = tmp_path / "lar"
     (lar / "libs").mkdir(parents=True)
     (lar / "libs" / "m.ps").write_text(
@@ -729,7 +732,7 @@ def test_arquivo_vizinho_ganha_da_lib_instalada(tmp_path):
         'action q() {' + NL + ' return "local"' + NL + '}' + NL, encoding="utf-8")
     uso = proj / "uso.ps"
     uso.write_text("import m" + NL + "post(m.q())" + NL, encoding="utf-8")
-    assert saida(str(uso), env={"POOLSCRIPT_HOME": str(lar)}) == ["local"]
+    assert saida(str(uso), env={"POOLSCRIPT_HOME": str(lar)}) == ["global"]
 
 
 def test_modulo_nativo_ganha_de_arquivo_local(tmp_path):

@@ -1,27 +1,104 @@
 #!lib
-code = none
 
-reaction randint():
-    var = 6565576
-    semente = int(id(var))
-    resultado_bruto = (1103515245 * semente) + 12345
-        
-    code = resultado_bruto % 10000000
+public class asterisco()
+{
 
-    return code
+    @static
+    public int reaction registernumcheck(self, baseinit, elevenindex, lastdigits)
+    {
+        """
+         Validação de CPF:
+        """
+        list ix = []
+        valores = list(str(baseinit).replace(".", ""))
+        for each i in valores {
+            // 127.970.195
+            addEnd(ix, Parsing.integer(i, to int))
+        }
+            
+        list listerine = [
+            int(ix[0]) * 10, int(ix[1]) * 9, int(ix[2]) * 8,
+            int(ix[3]) * 7,  int(ix[4]) * 6, int(ix[5]) * 5, 
+            int(ix[6]) * 4,  int(ix[7]) * 3, int(ix[8]) * 2
+        ]
+        int soma = listerine[0]+listerine[1]+listerine[2]+listerine[3]+listerine[4]+listerine[5]+listerine[6]+listerine[7]+listerine[8]
+        resto = soma % 11
+            
+        int fg = 0
+        if (resto >= 2) {
+            fg = 11 - resto
+        }
+            
+        seila = Parsing.TransientValue(str((fg, elevenindex)).replace([" ", " )", "( ", ", "], ""), to int)
+        if (seila == Parsing.integer(lastdigits, to int)) {
+            return True
+        }
+        return false
+    }
 
-letter = none
+    @static
+    public int reaction randint(self, limit_digits=int, seed=int)
+    {
+        """
+        Números aleatorios:
+        """
+        //var = 6565576
+        //semente = int(id(var))
+        resultado_bruto = (1103515245 * seed) + 12345
+                
+        coding = resultado_bruto % limit_digits
 
-reaction letter():
-    quantidade_de_letras = 15
-    semente = 12345
-    caixa = []
-    for each i in range(quantidade_de_letras):
-        semente = (1103515245 * semente) + 12345
+        return coding;
+    }
+
+    @static
+    public int reaction letter(self, limit_letters=int, tup_division=int)
+    {
+        """
+        Letras aleatorias:
+        """
+        quantidade_de_letras = limit_letters
+        semente = 12345
+        list caixa = []
+        for each i in range(quantidade_de_letras) {
+            semente = (1103515245 * semente) + 12345
+                
+            codigo_da_letra = (semente % tup_division) + 65
+                
+            letras = chr(codigo_da_letra)
+            addEnd(caixa, letras)
+        }
+        return str(caixa).replace(["[", "]", "'", ",", " "], "")
+    }
+
+    @static
+    public int reaction idSession(self, webToken=str)
+    {
+        """
+        Gera o ID de sessão: 
+        """
+        try {
+            list index1 = list(webToken)
+
+            list box = []
+            for each i in index1 {
+                if (str(i).isalpha()) {
+                    addStart(box, ord(i))
+                }
+                continue
+            }
+
+            return str(box).replace([" ", ".", ",", "[", "]"], "");
+        } catch (e) {
+            return e
+        }
+
+
+    }
     
-        codigo_da_letra = (semente % 26) + 65
-    
-        letras = chr(codigo_da_letra)
-        addEnd(caixa, letras)
-    
-    return str(caixa).replace(["[", "]", "'", ",", " "], "")
+}
+
+// teste da classe
+run_selfwith_("main"):
+    teste = (asterisco().randint(limit_digits=1234567, seed=1000000000000000000), asterisco().letter(limit_letters=30, tup_division=40), asterisco().idSession(webToken="xrcfvghuubiyvtcrxertv7c654x3z4wxecr6gt7h8j9k09n8b7v6c5x46c4v78b7n98b7v6c5v7b8798m9n7bv6r7b8n798"))
+    post(teste)

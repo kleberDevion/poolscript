@@ -15546,25 +15546,29 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
         return -1;                              /* relativo não cai pras libs */
     }
 
-    /* nível 0: raiz do projeto (dir do entry) */
-    if (vm->dir_script[0]) {
-        for (int e = 0; e < 3; e++) {
-            snprintf(saida, cap, "%s/%s%s", vm->dir_script, rel, EXTS[e]);
-            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
-        }
-    }
-    /* lib instalada — o nome de arquivo usa o nome pontuado como está */
+    /* nível 0. LIB INSTALADA primeiro (~/.poolscript/libs): `import random`
+     * sempre acha a LIB, não importa como o usuário nomeou seus arquivos — o
+     * nome de arquivo local nunca ofusca uma lib instalada. */
     char libdir[600];
     const char *over = getenv("POOLSCRIPT_HOME");
     if (over && *over) snprintf(libdir, sizeof(libdir), "%s/libs", over);
     else {
         const char *h = getenv("HOME");
-        if (!h) return -1;
-        snprintf(libdir, sizeof(libdir), "%s/.poolscript/libs", h);
+        if (h) snprintf(libdir, sizeof(libdir), "%s/.poolscript/libs", h);
+        else   libdir[0] = '\0';
     }
-    for (int e = 0; e < 3; e++) {
-        snprintf(saida, cap, "%s/%s%s", libdir, p, EXTS[e]);
-        if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+    if (libdir[0]) {
+        for (int e = 0; e < 3; e++) {
+            snprintf(saida, cap, "%s/%s%s", libdir, p, EXTS[e]);
+            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        }
+    }
+    /* depois: arquivo do projeto (raiz = dir do entry) */
+    if (vm->dir_script[0]) {
+        for (int e = 0; e < 3; e++) {
+            snprintf(saida, cap, "%s/%s%s", vm->dir_script, rel, EXTS[e]);
+            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        }
     }
     return -1;
 }
