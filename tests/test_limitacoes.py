@@ -6,7 +6,7 @@ cobrem a migração para C: comparam duas implementações da MESMA linguagem.
 Aqui o assunto é outro — buraco na linguagem, que não aparece num diferencial
 porque os dois lados estão igualmente errados.
 
-Cada bloco corresponde a uma entrada de [`LIMITACOES.md`](../LIMITACOES.md) e
+Cada bloco corresponde a uma entrada de [`LIMITACOES.md`](../notas/LIMITACOES.md) e
 checa as duas coisas: que o interpretador (a autoridade semântica) faz o certo,
 e que a VM em C concorda com ele.
 """
