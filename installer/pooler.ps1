@@ -28,10 +28,12 @@ function Say($m)  { Write-Host $m }
 function OK($m)   { Write-Host "OK $m" -ForegroundColor Green }
 function Warn($m) { Write-Host "!  $m" -ForegroundColor Red }
 
-# PSVM no Windows só se houver um pool.exe pronto (o VM em C usa libpq/mongoc —
-# normalmente só há build Linux; por isso o padrão do Windows é o INTERP)
-$PoolExe = Join-Path $Repo 'dist\pool.exe'
-$PsvmOk  = Test-Path $PoolExe
+# PSVM no Windows = pool.exe (INTERP congelado pelo PyInstaller, roda sem
+# Python). Disponível se houver um local (no repo) OU pra baixar do release.
+$RelUrl  = "$RepoUrl/releases/latest/download"
+$PoolExe = if ($Repo) { Join-Path $Repo 'dist\pool.exe' } else { '' }
+$LocalExe = $PoolExe -and (Test-Path $PoolExe)
+$PsvmOk  = $true   # sempre ofertável no Windows (local ou download); com fallback
 
 Say "PoolScript - pooler"
 Say "sistema: Windows ($env:PROCESSOR_ARCHITECTURE)"
@@ -87,10 +89,16 @@ function Instala-Interp {
 
 # ── PSVM (copia o pool.exe, se existir) ──────────────────────────────────────
 function Instala-Psvm {
-  if (-not $PsvmOk) { Warn "PSVM nao tem pool.exe publicado para Windows - caindo pro INTERP"; Instala-Interp; return }
   New-Item -ItemType Directory -Force -Path $InstDir | Out-Null
-  Copy-Item $PoolExe (Join-Path $InstDir 'pool.exe') -Force
-  Copy-Item $PoolExe (Join-Path $InstDir 'psl.exe')  -Force
+  $destExe = Join-Path $InstDir 'pool.exe'
+  if ($LocalExe) {
+    Copy-Item $PoolExe $destExe -Force
+  } else {
+    Say "baixando pool.exe do release..."
+    try { Invoke-WebRequest "$RelUrl/pool.exe" -OutFile $destExe -UseBasicParsing }
+    catch { Warn "nao baixei o pool.exe (release sem esse asset) - caindo pro INTERP"; Instala-Interp; return }
+  }
+  Copy-Item $destExe (Join-Path $InstDir 'psl.exe') -Force
   $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
   if ($userPath -notlike "*$InstDir*") {
     [Environment]::SetEnvironmentVariable('Path', "$InstDir;$userPath", 'User')
