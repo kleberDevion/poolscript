@@ -98,19 +98,17 @@ O binário **PSVM** (`pool`) já traz **embutido** (não precisa instalar nada):
 
 O binário **chama de fora** (a `.so` precisa existir no servidor):
 - **Mongo** — `libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5` (só se usar MongoDB).
-- **Cauda de auth do libpq** (LDAP/Kerberos/GnuTLS — não usada com Neon, mas carrega junto) — `libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30`.
+- **Cauda de auth do libpq** (LDAP/Kerberos/GnuTLS — `libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30`.
 - **Sistema** — `libltdl7 libzstd1 libstdc++6 libgcc-s1`.
-- **glibc** (`libc`, `libm`, `pthread`, `dl`, `resolv`) — sempre do sistema; todo Linux já tem. (Não dá pra embutir sem quebrar o DNS/`getaddrinfo`.)
+- **glibc** (`libc`, `libm`, `pthread`, `dl`, `resolv`) — todo Linux já tem. 
 
-**No VPS (Debian/Ubuntu), uma linha:**
+**VPS (Debian/Ubuntu), uma linha:**
 ```bash
 sudo apt update && sudo apt install -y \
   libmongoc-1.0-0 libbson-1.0-0 libmongocrypt0 libsnappy1v5 \
   libldap-2.5-0 libsasl2-2 libgssapi-krb5-2 libgnutls30 libzstd1 libltdl7
 ```
 Se faltar alguma: `ldd ./pool | grep "not found"` mostra o nome exato.
-**Não** precisa instalar: sqlite3, libpq/postgresql-client, mysqlclient, unixodbc,
-openssl, libpng, expat — já estão dentro do binário.
 
 **Alternativa sem instalar nada** — bundle portátil (`make bundle`): gera
 `dist/pool-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper
@@ -132,6 +130,4 @@ glibc compatível (x86-64).
 
 ## Versionamento
 
-Não usa semver. Os dígitos 2 e 3 vão de 0 a 99; ao chegar em 100, zeram e somam
-1 à esquerda (base 100): `8.2.99 → 8.3.0`, `8.99.99 → 9.0.0`. Nunca edite a
-versão na mão — use `./bump_version.py lang|ext`.
+** Versão mas recente - 8.0.53
