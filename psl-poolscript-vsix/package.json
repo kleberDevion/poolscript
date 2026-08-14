@@ -2,7 +2,7 @@
   "name": "psl-poolscript",
   "displayName": "PoolScript",
   "description": "Suporte à linguagem PoolScript: syntax highlighting e autocomplete type-aware (métodos por tipo, argumentos nomeados, libs instaladas).",
-  "version": "1.5.18",
+  "version": "1.5.19",
   "publisher": "KleberSantanadeOliveira",
   "engines": {
     "vscode": "^1.75.0"
@@ -13,7 +13,8 @@
   "icon": "images/icon.png",
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:poolscript"
+    "onLanguage:poolscript",
+    "onLanguage:poolscript-psl"
   ],
   "contributes": {
     "languages": [
@@ -22,11 +23,10 @@
         "aliases": [
           "PoolScript",
           "poolscript",
-          "psl"
+          "ps"
         ],
         "extensions": [
           ".ps",
-          ".psl",
           ".p"
         ],
         "configuration": "./language-configuration.json",
@@ -34,11 +34,31 @@
           "light": "./images/poolscript-p.svg",
           "dark": "./images/poolscript-p.svg"
         }
+      },
+      {
+        "id": "poolscript-psl",
+        "aliases": [
+          "PoolScript",
+          "psl"
+        ],
+        "extensions": [
+          ".psl"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/poolscript-psl.svg",
+          "dark": "./images/poolscript-psl.svg"
+        }
       }
     ],
     "grammars": [
       {
         "language": "poolscript",
+        "scopeName": "source.poolscript",
+        "path": "./syntaxes/poolscript.tmLanguage.json"
+      },
+      {
+        "language": "poolscript-psl",
         "scopeName": "source.poolscript",
         "path": "./syntaxes/poolscript.tmLanguage.json"
       }

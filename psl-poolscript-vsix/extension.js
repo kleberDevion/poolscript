@@ -800,7 +800,7 @@ async function iniciaClienteLSP(ctx) {
     const client = new LanguageClient(
       'poolscript', 'PoolScript',
       { command: cmd[0], args: cmd.slice(1), options: { env: Object.assign({}, process.env) } },
-      { documentSelector: [{ language: 'poolscript' }] },
+      { documentSelector: [{ language: 'poolscript' }, { language: 'poolscript-psl' }] },
     );
     try {
       await client.start();
@@ -834,7 +834,8 @@ function ativaEmbutido(ctx) {
   if (vscode.languages.createDiagnosticCollection) {
     const diagCol = vscode.languages.createDiagnosticCollection('poolscript');
     ctx.subscriptions.push(diagCol);
-    const atualiza = (d) => { if (d && d.languageId === 'poolscript') diagCol.set(d.uri, diagnosticosNaoUsados(d)); };
+    const ehPS = (d) => d && (d.languageId === 'poolscript' || d.languageId === 'poolscript-psl');
+    const atualiza = (d) => { if (ehPS(d)) diagCol.set(d.uri, diagnosticosNaoUsados(d)); };
     ctx.subscriptions.push(
       vscode.workspace.onDidOpenTextDocument(atualiza),
       vscode.workspace.onDidChangeTextDocument((e) => atualiza(e.document)),
@@ -843,7 +844,7 @@ function ativaEmbutido(ctx) {
     (vscode.workspace.textDocuments || []).forEach(atualiza);
   }
 
-  const sel = { language: 'poolscript' };
+  const sel = [{ language: 'poolscript' }, { language: 'poolscript-psl' }];
   ctx.subscriptions.push(
     vscode.languages.registerCompletionItemProvider(sel, completionProvider, '.', '=', '(', '@'),
     vscode.languages.registerHoverProvider(sel, hoverProvider),
