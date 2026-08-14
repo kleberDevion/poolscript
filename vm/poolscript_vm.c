@@ -5264,7 +5264,7 @@ GUZ_ELEM(gel_table,"table",GUZ_BOX)         GUZ_ELEM(gel_thead,"thead",GUZ_BOX)
 GUZ_ELEM(gel_tbody,"tbody",GUZ_BOX)         GUZ_ELEM(gel_tfoot,"tfoot",GUZ_BOX)
 GUZ_ELEM(gel_tr,"tr",GUZ_BOX)               GUZ_ELEM(gel_td,"td",GUZ_BOX)
 GUZ_ELEM(gel_th,"th",GUZ_BOX)               GUZ_ELEM(gel_caption,"caption",GUZ_BOX)
-GUZ_ELEM(gel_form,"form",GUZ_BOX)           GUZ_ELEM(gel_input,"input",GUZ_BOX)
+GUZ_ELEM(gel_form,"form",GUZ_BOX)           GUZ_ELEM(gel_entry,"entry",GUZ_BOX)
 GUZ_ELEM(gel_textarea,"textarea",GUZ_BOX)   GUZ_ELEM(gel_select,"select",GUZ_BOX)
 GUZ_ELEM(gel_option,"option",GUZ_BOX)       GUZ_ELEM(gel_optgroup,"optgroup",GUZ_BOX)
 GUZ_ELEM(gel_label,"label",GUZ_BOX)         GUZ_ELEM(gel_fieldset,"fieldset",GUZ_BOX)
@@ -5348,7 +5348,7 @@ static const MetodoNat METODOS_GUZ_UI[] = {
     { "tbody", gel_tbody, P_ELEM }, { "tfoot", gel_tfoot, P_ELEM },
     { "tr", gel_tr, P_ELEM }, { "td", gel_td, P_ELEM },
     { "th", gel_th, P_ELEM }, { "caption", gel_caption, P_ELEM },
-    { "form", gel_form, P_ELEM }, { "input", gel_input, P_ELEM },
+    { "form", gel_form, P_ELEM }, { "entry", gel_entry, P_ELEM },
     { "textarea", gel_textarea, P_ELEM }, { "select", gel_select, P_ELEM },
     { "option", gel_option, P_ELEM }, { "optgroup", gel_optgroup, P_ELEM },
     { "label", gel_label, P_ELEM }, { "fieldset", gel_fieldset, P_ELEM },
