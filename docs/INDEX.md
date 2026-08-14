@@ -41,6 +41,9 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 - **[jwt](jwt/jwt.md)** — tokens de autenticação
 - **[mail](mail/mail.md)** — enviar e ler e-mails
 
+### Interface (desktop)
+- **[guzer](guzer/guzer.md)** — UI desktop: objetos estilizados com CSS real, janela nativa (INTERP)
+
 ### Utilidades
 - **[date](date/date.md)** — data e hora
 - **[regex](regex/regex.md)** — expressões regulares

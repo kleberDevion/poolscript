@@ -2165,6 +2165,34 @@
      "doc": "XOR byte a byte de `dados` com `chave`. Se a chave for menor, ela repete (cifra XOR de chave repetida). Chave vazia é erro."
     }
    ]
+  },
+  "guzer": {
+   "members": [
+    {
+     "name": "UI",
+     "kind": "class",
+     "returns": "UI",
+     "doc": "Raiz do app. Cria os objetos e, ao fim do script, abre a janela nativa."
+    },
+    {
+     "name": "Window",
+     "kind": "class",
+     "returns": "Window",
+     "doc": "Janela/contêiner do app: tamanho e cor de fundo."
+    },
+    {
+     "name": "Button",
+     "kind": "class",
+     "returns": "Button",
+     "doc": "Botão. `onclick=` recebe uma reaction (por referência), que roda no clique."
+    },
+    {
+     "name": "Popup",
+     "kind": "class",
+     "returns": "Popup",
+     "doc": "Popup/modal centralizado. `event_child=` recebe uma reaction (roda no clique)."
+    }
+   ]
   }
  },
  "classes": {
@@ -4226,6 +4254,177 @@
   "DataEntityMeta": {
    "members": [],
    "doc": "Marcador interno — indica que uma Entity foi decorada com @dataentity."
+  },
+  "UI": {
+   "members": [
+    {
+     "name": "button",
+     "kind": "method",
+     "params": [
+      {
+       "name": "onclick",
+       "opt": true
+      }
+     ],
+     "sig": "button(onclick?)",
+     "returns": "Button",
+     "doc": null
+    },
+    {
+     "name": "popup",
+     "kind": "method",
+     "params": [
+      {
+       "name": "event_child",
+       "opt": true
+      }
+     ],
+     "sig": "popup(event_child?)",
+     "returns": "Popup",
+     "doc": null
+    },
+    {
+     "name": "show",
+     "kind": "method",
+     "params": [],
+     "sig": "show()",
+     "returns": null,
+     "doc": "Abre a janela nativa com o app montado (bloqueante)."
+    },
+    {
+     "name": "window",
+     "kind": "method",
+     "params": [],
+     "sig": "window()",
+     "returns": "Window",
+     "doc": null
+    }
+   ],
+   "doc": "Raiz do app. Cria os objetos e, ao fim do script, abre a janela nativa."
+  },
+  "Button": {
+   "members": [
+    {
+     "name": "stylesheet",
+     "kind": "method",
+     "params": [
+      {
+       "name": "styles",
+       "opt": true
+      }
+     ],
+     "sig": "stylesheet(styles?)",
+     "returns": "_Widget",
+     "doc": null
+    },
+    {
+     "name": "text",
+     "kind": "method",
+     "params": [
+      {
+       "name": "value",
+       "opt": false
+      }
+     ],
+     "sig": "text(value)",
+     "returns": "_Widget",
+     "doc": null
+    }
+   ],
+   "doc": "Botão. `onclick=` recebe uma reaction (por referência), que roda no clique."
+  },
+  "_Widget": {
+   "members": [
+    {
+     "name": "stylesheet",
+     "kind": "method",
+     "params": [
+      {
+       "name": "styles",
+       "opt": true
+      }
+     ],
+     "sig": "stylesheet(styles?)",
+     "returns": "_Widget",
+     "doc": null
+    },
+    {
+     "name": "text",
+     "kind": "method",
+     "params": [
+      {
+       "name": "value",
+       "opt": false
+      }
+     ],
+     "sig": "text(value)",
+     "returns": "_Widget",
+     "doc": null
+    }
+   ],
+   "doc": "Base de todo objeto de tela. `DEFAULT` é o design default da subclasse; `.stylesheet(...)` sobrescreve por cima dele, chave a chave."
+  },
+  "Popup": {
+   "members": [
+    {
+     "name": "stylesheet",
+     "kind": "method",
+     "params": [
+      {
+       "name": "styles",
+       "opt": true
+      }
+     ],
+     "sig": "stylesheet(styles?)",
+     "returns": "_Widget",
+     "doc": null
+    },
+    {
+     "name": "text",
+     "kind": "method",
+     "params": [
+      {
+       "name": "value",
+       "opt": false
+      }
+     ],
+     "sig": "text(value)",
+     "returns": "_Widget",
+     "doc": null
+    }
+   ],
+   "doc": "Popup/modal centralizado. `event_child=` recebe uma reaction (roda no clique)."
+  },
+  "Window": {
+   "members": [
+    {
+     "name": "stylesheet",
+     "kind": "method",
+     "params": [
+      {
+       "name": "styles",
+       "opt": true
+      }
+     ],
+     "sig": "stylesheet(styles?)",
+     "returns": "_Widget",
+     "doc": null
+    },
+    {
+     "name": "text",
+     "kind": "method",
+     "params": [
+      {
+       "name": "value",
+       "opt": false
+      }
+     ],
+     "sig": "text(value)",
+     "returns": "_Widget",
+     "doc": null
+    }
+   ],
+   "doc": "Janela/contêiner do app: tamanho e cor de fundo."
   }
  },
  "keywords": {
