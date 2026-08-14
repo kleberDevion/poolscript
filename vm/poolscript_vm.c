@@ -41,6 +41,7 @@
 #include "ps_db.h"
 #include "ps_mongo.h"
 #include "ps_jinker.h"
+#include "ps_guzer.h"
 #include <poll.h>
 #include <signal.h>
 #include <dirent.h>
@@ -130,7 +131,9 @@ typedef enum {
     OBJ_WSCONN,    /* request.ws_connect — cliente WebSocket */
     OBJ_QRBUILD,   /* qrcode.QRCode — builder com add_data/make/make_image */
     OBJ_QRIMAGE,   /* retorno do make/make_image — save/resize/to_file */
-    OBJ_MANPU_FILE /* mp.open() — arquivo aberto com write/read/save + using */
+    OBJ_MANPU_FILE,/* mp.open() — arquivo aberto com write/read/save + using */
+    OBJ_GUZ_UI,    /* guzer.UI — raiz do app desktop */
+    OBJ_GUZ_WID    /* guzer window/button/popup — objeto de tela nativo */
 } ObjType;
 
 typedef struct Obj {
@@ -238,7 +241,8 @@ enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_UNIV, T_MET_ARQ,
        T_MET_DBCONN, T_MET_DBCUR, T_MET_MONGOCONN, T_MET_MONGOCOL,
        T_MET_JINKER, T_MET_JCORS, T_MET_JREG, T_MET_JRESP, T_MET_JPROXY,
        T_MET_JUPLOAD, T_MET_JSOCKNS, T_MET_JEMIT, T_MET_JCHAN, T_MET_WSCONN,
-       T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE };
+       T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE,
+       T_MET_GUZ_UI, T_MET_GUZ_WID };
 
 /* Módulo nativo: um nome e uma tabela de membros. Não tem estado, então o
  * objeto guarda só o índice do descritor — dois `import json` no mesmo
@@ -704,6 +708,27 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define COMO_WSCONN(v) ((PSWsConn*)(v).as.obj)
 #define EH_QRBUILD(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_QRBUILD)
 #define COMO_QRBUILD(v) ((PSQRBuild*)(v).as.obj)
+
+/* ── guzer — UI desktop nativa (X11). Espelha o guzer_lib.py (tkinter). ──── */
+enum { GUZ_WINDOW = 0, GUZ_BUTTON = 1, GUZ_POPUP = 2 };
+typedef struct {
+    Obj  obj;
+    int  kind;                 /* GUZ_WINDOW/BUTTON/POPUP */
+    int  w, h;                 /* dimensões (px) */
+    unsigned long bg, fg;      /* 0xRRGGBB */
+    char *text;                /* rótulo (malloc) ou NULL */
+    Value handler;             /* reaction do clique (V_NULL = nenhuma) */
+} PSGuzWid;
+typedef struct {
+    Obj    obj;
+    char  *titulo;             /* malloc */
+    Value *filhos;             /* array de widgets (Value) */
+    int    nfilhos, capfilhos;
+} PSGuzUI;
+#define EH_GUZ_UI(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_GUZ_UI)
+#define COMO_GUZ_UI(v) ((PSGuzUI*)(v).as.obj)
+#define EH_GUZ_WID(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_GUZ_WID)
+#define COMO_GUZ_WID(v) ((PSGuzWid*)(v).as.obj)
 #define EH_QRIMAGE(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_QRIMAGE)
 #define COMO_QRIMAGE(v) ((PSQRImage*)(v).as.obj)
 #define EH_MPFILE(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_MANPU_FILE)
@@ -847,6 +872,7 @@ struct VM_ {
     Value    jk_proxy;     /* singleton do `request` */
     Value    jk_req;       /* requisição corrente (V_NULL fora de handler) */
     Value    jk_app;       /* o app servindo agora (pra emit/socket) */
+    Value    guz_app;      /* guzer: UI a exibir ao fim do script (raiz do GC) */
     char   **nomes_globais;
     int      n_nomes_globais;   /* só as do script principal — nglobals cresce
                                  * com import de .ps, esta tabela não */
@@ -1207,6 +1233,11 @@ static void percorre_cinzas(VM *vm)
                 if (cl->pais[i]) marca_obj(vm, (Obj *)cl->pais[i]);
         } else if (o->type == OBJ_BOUND) {
             marca_valor(vm, &((PSBound *)o)->instancia);
+        } else if (o->type == OBJ_GUZ_UI) {
+            PSGuzUI *u = (PSGuzUI *)o;
+            for (int i = 0; i < u->nfilhos; i++) marca_valor(vm, &u->filhos[i]);
+        } else if (o->type == OBJ_GUZ_WID) {
+            marca_valor(vm, &((PSGuzWid *)o)->handler);
         } else if (o->type == OBJ_JINKER) {
             PSJinker *j = (PSJinker *)o;
             for (int i = 0; i < j->nrotas; i++) {
@@ -1361,6 +1392,13 @@ static void libera_obj(VM *vm, Obj *o)
         free(g->locais);
         free(g->pilha);
         free(g->handlers);
+    } else if (o->type == OBJ_GUZ_UI) {
+        PSGuzUI *u = (PSGuzUI *)o;
+        free(u->titulo); free(u->filhos);
+        vm->alocado -= sizeof(PSGuzUI);
+    } else if (o->type == OBJ_GUZ_WID) {
+        free(((PSGuzWid *)o)->text);
+        vm->alocado -= sizeof(PSGuzWid);
     } else if (o->type == OBJ_JINKER) {
         PSJinker *j = (PSJinker *)o;
         for (int i = 0; i < j->nrotas; i++) {
@@ -1446,6 +1484,7 @@ static void gc_coleta(VM *vm)
     marca_valor(vm, &vm->jk_proxy);
     marca_valor(vm, &vm->jk_req);
     marca_valor(vm, &vm->jk_app);
+    marca_valor(vm, &vm->guz_app);
     for (int i = 0; i < vm->sp; i++)         marca_valor(vm, &vm->stack[i]);
     for (int i = 0; i < vm->locals_top; i++) marca_valor(vm, &vm->locals[i]);
     for (int i = 0; i < vm->nprotos; i++)
@@ -2311,6 +2350,9 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_DBCUR:      t = "DbCursor"; break;
                 case OBJ_MONGOCONN:  t = "MongoConnection"; break;
                 case OBJ_MONGOCOL:   t = "MongoCollection"; break;
+                case OBJ_GUZ_UI:     t = "UI"; break;
+                case OBJ_GUZ_WID:    t = COMO_GUZ_WID(v)->kind == GUZ_BUTTON ? "Button"
+                                       : COMO_GUZ_WID(v)->kind == GUZ_POPUP ? "Popup" : "Window"; break;
                 case OBJ_JINKER:     t = "Jinker"; break;
                 case OBJ_JCORS:      t = "CorsConfig"; break;
                 case OBJ_JREG: {
@@ -4323,6 +4365,9 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_DBCUR:       t = "DbCursor"; break;
                 case OBJ_MONGOCONN:   t = "MongoConnection"; break;
                 case OBJ_MONGOCOL:    t = "MongoCollection"; break;
+                case OBJ_GUZ_UI:      t = "UI"; break;
+                case OBJ_GUZ_WID:     t = COMO_GUZ_WID(alvo)->kind == GUZ_BUTTON ? "Button"
+                                        : COMO_GUZ_WID(alvo)->kind == GUZ_POPUP ? "Popup" : "Window"; break;
                 case OBJ_JINKER:      t = "Jinker"; break;
                 case OBJ_JCORS:       t = "CorsConfig"; break;
                 case OBJ_JREG: {
@@ -5091,6 +5136,180 @@ static const MetodoNat METODOS_MPFILE[] = {
     { "save", met_mpf_save, NULL },
 };
 
+/* ── guzer — objetos da UI desktop (X11). Espelha guzer_lib.py (tkinter). ── */
+/* Primeira medida de um Value ("500" / "8px 14px" / número) -> px. */
+static int guz_px_val(Value v, int def)
+{
+    if (v.t == V_INT)   return (int)v.as.i;
+    if (v.t == V_FLOAT) return (int)v.as.d;
+    if (EH_STRING(v)) {
+        const char *s = COMO_STRING(v)->chars;
+        while (*s && (*s < '0' || *s > '9') && *s != '-') s++;
+        if (*s) return atoi(s);
+    }
+    return def;
+}
+/* "#RRGGBB" (ou "RRGGBB") -> 0xRRGGBB. */
+static unsigned long guz_cor_val(Value v, unsigned long def)
+{
+    if (!EH_STRING(v)) return def;
+    const char *s = COMO_STRING(v)->chars;
+    if (*s == '#') s++;
+    if (strlen(s) < 6) return def;
+    return (unsigned long)strtoul(s, NULL, 16);
+}
+/* Busca uma chave string no dict; 1 e escreve *out se achou. */
+static int guz_dict_get(Value dv, const char *chave, Value *out)
+{
+    if (!EH_DICT(dv)) return 0;
+    PSDict *d = COMO_DICT(dv);
+    for (int i = 0; i < d->usados; i++) {
+        if (d->entradas[i].estado != 1) continue;
+        Value k = d->entradas[i].chave;
+        if (EH_STRING(k) && strcmp(COMO_STRING(k)->chars, chave) == 0) {
+            *out = d->entradas[i].valor; return 1;
+        }
+    }
+    return 0;
+}
+static PSGuzWid *novo_guz_wid(VM *vm, int kind)
+{
+    PSGuzWid *w = malloc(sizeof(PSGuzWid));
+    if (!w) return NULL;
+    w->obj.type = OBJ_GUZ_WID; w->obj.marked = 0;
+    w->obj.next = vm->objetos; vm->objetos = (Obj *)w;
+    w->kind = kind; w->text = NULL; w->handler = MK_NULL();
+    if (kind == GUZ_BUTTON)      { w->w = 120; w->h = 34;  w->bg = 0x2196F7; w->fg = 0xFFFFFF; }
+    else if (kind == GUZ_POPUP)  { w->w = 260; w->h = 150; w->bg = 0xFFFFFF; w->fg = 0x101418; }
+    else                         { w->w = 480; w->h = 320; w->bg = 0xFFFFFF; w->fg = 0x000000; }
+    vm->alocado += sizeof(PSGuzWid);
+    return w;
+}
+static int guz_add_filho(PSGuzUI *u, Value w)
+{
+    if (u->nfilhos >= u->capfilhos) {
+        int nc = u->capfilhos ? u->capfilhos * 2 : 4;
+        Value *nf = realloc(u->filhos, sizeof(Value) * (size_t)nc);
+        if (!nf) return -1;
+        u->filhos = nf; u->capfilhos = nc;
+    }
+    u->filhos[u->nfilhos++] = w;
+    return 0;
+}
+static int guz_cria(VM *vm, Value alvo, int kind, Value handler, Value *out)
+{
+    if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
+    PSGuzWid *w = novo_guz_wid(vm, kind);
+    if (!w) MERRO(vm, "MemoryError", "sem memoria");
+    if (handler.t == V_OBJ) w->handler = handler;
+    Value wv = MK_OBJ(w);
+    if (guz_add_filho(COMO_GUZ_UI(alvo), wv) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    *out = wv;
+    return 0;
+}
+static int met_guz_window(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ (void)args; (void)n; return guz_cria(vm, alvo, GUZ_WINDOW, MK_NULL(), out); }
+static int met_guz_button(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ Value h = (n > 0) ? args[0] : MK_NULL(); return guz_cria(vm, alvo, GUZ_BUTTON, h, out); }
+static int met_guz_popup(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ Value h = (n > 0) ? args[0] : MK_NULL(); return guz_cria(vm, alvo, GUZ_POPUP, h, out); }
+static int met_guz_stylesheet(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "stylesheet", 1);
+    if (!EH_GUZ_WID(alvo)) MERRO(vm, "SomeValueUnexpected", "stylesheet() em objeto guzer");
+    PSGuzWid *w = COMO_GUZ_WID(alvo);
+    Value v;
+    if (guz_dict_get(args[0], "background", &v) || guz_dict_get(args[0], "bg", &v))
+        w->bg = guz_cor_val(v, w->bg);
+    if (guz_dict_get(args[0], "color", &v))  w->fg = guz_cor_val(v, w->fg);
+    if (guz_dict_get(args[0], "width", &v))  w->w  = guz_px_val(v, w->w);
+    if (guz_dict_get(args[0], "height", &v)) w->h  = guz_px_val(v, w->h);
+    *out = alvo;
+    return 0;
+}
+static int met_guz_text(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "text", 1);
+    if (!EH_GUZ_WID(alvo)) MERRO(vm, "SomeValueUnexpected", "text() em objeto guzer");
+    PSGuzWid *w = COMO_GUZ_WID(alvo);
+    free(w->text); w->text = NULL;
+    if (EH_STRING(args[0])) w->text = strdup(COMO_STRING(args[0])->chars);
+    else if (args[0].t == V_INT) { char b[32]; snprintf(b, sizeof b, "%lld", (long long)args[0].as.i); w->text = strdup(b); }
+    *out = alvo;
+    return 0;
+}
+/* guzer.UI(title="PoolScript") — cria o app; o último criado abre no fim. */
+static int mod_guz_UI(VM *vm, Value *args, int n, Value *out)
+{
+    PSGuzUI *u = malloc(sizeof(PSGuzUI));
+    if (!u) BERRO(vm, "MemoryError", "sem memoria");
+    u->obj.type = OBJ_GUZ_UI; u->obj.marked = 0;
+    u->obj.next = vm->objetos; vm->objetos = (Obj *)u;
+    const char *tit = (n > 0 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "PoolScript";
+    u->titulo = strdup(tit);
+    u->filhos = NULL; u->nfilhos = 0; u->capfilhos = 0;
+    vm->alocado += sizeof(PSGuzUI);
+    *out = MK_OBJ(u);
+    vm->guz_app = *out;
+    return 0;
+}
+static const MetodoNat METODOS_GUZ_UI[] = {
+    { "window", met_guz_window, NULL },
+    { "button", met_guz_button, "onclick" },
+    { "popup",  met_guz_popup,  "event_child" },
+};
+static const MetodoNat METODOS_GUZ_WID[] = {
+    { "stylesheet", met_guz_stylesheet, NULL },
+    { "text",       met_guz_text,       NULL },
+};
+/* clique num widget -> roda a reaction dele (single-thread, na thread da VM) */
+static void guz_click(int id, void *ud)
+{
+    VM *vm = (VM *)ud;
+    if (!EH_GUZ_UI(vm->guz_app)) return;
+    PSGuzUI *u = COMO_GUZ_UI(vm->guz_app);
+    if (id < 0 || id >= u->nfilhos) return;
+    PSGuzWid *w = COMO_GUZ_WID(u->filhos[id]);
+    if (w->handler.t != V_OBJ) return;
+    Value ret;
+    if (chama_valor(vm, w->handler, NULL, 0, &ret) != 0) {
+        fprintf(stderr, "[guzer] erro no handler: %s\n", vm->erro);
+        vm->erro[0] = '\0';
+    }
+}
+/* Abre a janela nativa com o app montado (bloqueante). GUZER_HEADLESS pula. */
+static void guz_mostra(VM *vm)
+{
+    if (getenv("GUZER_HEADLESS")) return;
+    if (!EH_GUZ_UI(vm->guz_app)) return;
+    PSGuzUI *u = COMO_GUZ_UI(vm->guz_app);
+    int win_w = 480, win_h = 320; unsigned long win_bg = 0xFFFFFF;
+    for (int i = 0; i < u->nfilhos; i++) {
+        PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
+        if (w->kind == GUZ_WINDOW) { win_w = w->w; win_h = w->h; win_bg = w->bg; break; }
+    }
+    PSGuzWidget *arr = malloc(sizeof(PSGuzWidget) * (size_t)(u->nfilhos > 0 ? u->nfilhos : 1));
+    if (!arr) return;
+    int m = 0, y = 12;
+    for (int i = 0; i < u->nfilhos; i++) {
+        PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
+        if (w->kind == GUZ_WINDOW) continue;
+        arr[m].kind     = (w->kind == GUZ_POPUP) ? PSGUZ_POPUP : PSGUZ_BUTTON;
+        arr[m].w        = w->w; arr[m].h = w->h;
+        arr[m].bg       = w->bg; arr[m].fg = w->fg;
+        arr[m].text     = w->text ? w->text : "";
+        arr[m].clicavel = (w->handler.t == V_OBJ);
+        arr[m].id       = i;
+        if (w->kind == GUZ_POPUP) { arr[m].x = (win_w - w->w) / 2; arr[m].y = (win_h - w->h) / 2; }
+        else                      { arr[m].x = 12; arr[m].y = y; y += w->h + 10; }
+        m++;
+    }
+    char erro[128] = {0};
+    if (ps_guz_run(u->titulo, win_w, win_h, win_bg, arr, m, guz_click, vm, erro, sizeof erro) != 0)
+        fprintf(stderr, "%s\n", erro);
+    free(arr);
+}
+
 static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_UNIV, METODOS_ARQ, METODOS_BYTES,
                                       METODOS_PFILE, METODOS_SQLCONN, METODOS_SQLCUR,
@@ -5102,7 +5321,7 @@ static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_JRESP, METODOS_JPROXY, METODOS_JUPLOAD,
                                       METODOS_JSOCKNS, METODOS_JEMIT, METODOS_JCHAN,
                                       METODOS_WSCONN, METODOS_QRBUILD, METODOS_QRIMAGE,
-                                      METODOS_MPFILE };
+                                      METODOS_MPFILE, METODOS_GUZ_UI, METODOS_GUZ_WID };
 static const int TAM_TABELA[] = {
     N_METODOS_STR,
     (int)(sizeof(METODOS_LIST) / sizeof(METODOS_LIST[0])),
@@ -5135,6 +5354,8 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_QRBUILD) / sizeof(METODOS_QRBUILD[0])),
     (int)(sizeof(METODOS_QRIMAGE) / sizeof(METODOS_QRIMAGE[0])),
     (int)(sizeof(METODOS_MPFILE) / sizeof(METODOS_MPFILE[0])),
+    (int)(sizeof(METODOS_GUZ_UI) / sizeof(METODOS_GUZ_UI[0])),
+    (int)(sizeof(METODOS_GUZ_WID) / sizeof(METODOS_GUZ_WID[0])),
 };
 
 /* Resolve `alvo.nome`. `.type()` vem primeiro porque vale pra todo valor. */
@@ -5173,6 +5394,8 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_QRBUILD(alvo)) qual = T_MET_QRBUILD;
     else if (EH_QRIMAGE(alvo)) qual = T_MET_QRIMAGE;
     else if (EH_MPFILE(alvo))  qual = T_MET_MPFILE;
+    else if (EH_GUZ_UI(alvo))  qual = T_MET_GUZ_UI;
+    else if (EH_GUZ_WID(alvo)) qual = T_MET_GUZ_WID;
     else return -1;
     for (int i = 0; i < TAM_TABELA[qual]; i++)
         if (strcmp(TABELAS[qual][i].nome, nome) == 0) { *tab = qual; *idx = i; return 0; }
@@ -12711,6 +12934,9 @@ static const MembroMod MOD_MULTIPART_STUB[] = { STUB("MIMEMultipart") };
 static const MembroMod MOD_FLASK_STUB[]     = { STUB("Flask"), STUB("route"), STUB("run") };
 #undef STUB
 
+static const MembroMod MOD_GUZER[] = {
+    { "UI", mod_guz_UI, 0, "title" },
+};
 static const ModuloNat MODULOS[] = {
     { "json", MOD_JSON, (int)(sizeof(MOD_JSON) / sizeof(MOD_JSON[0])) },
     { "date", MOD_DATE, (int)(sizeof(MOD_DATE) / sizeof(MOD_DATE[0])) },
@@ -12735,6 +12961,7 @@ static const ModuloNat MODULOS[] = {
     { "psodbc", MOD_PSODBC, (int)(sizeof(MOD_PSODBC) / sizeof(MOD_PSODBC[0])) },
     { "db", MOD_PSODBC, (int)(sizeof(MOD_PSODBC) / sizeof(MOD_PSODBC[0])) },
     { "jinker", MOD_JINKER, (int)(sizeof(MOD_JINKER) / sizeof(MOD_JINKER[0])) },
+    { "guzer", MOD_GUZER, (int)(sizeof(MOD_GUZER) / sizeof(MOD_GUZER[0])) },
     { "sqlite", MOD_SQLITE_STUB, (int)(sizeof(MOD_SQLITE_STUB) / sizeof(MOD_SQLITE_STUB[0])) },
     { "smtplib", MOD_SMTPLIB_STUB, (int)(sizeof(MOD_SMTPLIB_STUB) / sizeof(MOD_SMTPLIB_STUB[0])) },
     { "mimetext", MOD_MIMETEXT_STUB, (int)(sizeof(MOD_MIMETEXT_STUB) / sizeof(MOD_MIMETEXT_STUB[0])) },
@@ -15946,6 +16173,9 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         libera_vm(&vm);
         return -1;
     }
+    /* guzer: se o script montou uma UI, abre a janela nativa agora (bloqueante,
+     * como o auto-show do guzer_lib.py). GUZER_HEADLESS pula (testes/CI). */
+    guz_mostra(&vm);
     libera_vm(&vm);
     return 0;
 }
