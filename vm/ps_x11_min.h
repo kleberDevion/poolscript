@@ -40,6 +40,9 @@ typedef struct _XGC     *GC;        /* opaco */
 #define DoRed   1
 #define DoGreen 2
 #define DoBlue  4
+/* XChangeProperty */
+#define PropModeReplace 0
+#define XA_CARDINAL     6      /* átomo predefinido do X */
 
 typedef struct {
     unsigned long  pixel;
@@ -114,6 +117,8 @@ extern Window   XCreateSimpleWindow(Display *, Window, int, int, unsigned, unsig
 extern int      XStoreName(Display *, Window, const char *);
 extern Atom     XInternAtom(Display *, const char *, Bool);
 extern Status   XSetWMProtocols(Display *, Window, Atom *, int);
+extern int      XChangeProperty(Display *, Window, Atom, Atom, int, int,
+                                const unsigned char *, int);
 extern int      XSelectInput(Display *, Window, long);
 extern int      XMapWindow(Display *, Window);
 extern GC       XCreateGC(Display *, Drawable, unsigned long, void *);

@@ -42,7 +42,8 @@ typedef void (*PSGuzClickCb)(int id, void *ud);
  * Retorna 0 ao fechar normalmente; -1 se não deu pra abrir (sem DISPLAY, sem
  * libX11), com a razão em `erro`.
  */
-int ps_guz_run(const char *titulo, int win_w, int win_h, unsigned long win_bg,
+int ps_guz_run(const char *titulo, const char *icone,
+               int win_w, int win_h, unsigned long win_bg,
                const PSGuzWidget *widgets, int n,
                PSGuzClickCb cb, void *ud,
                char *erro, size_t ecap);

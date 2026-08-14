@@ -11,6 +11,8 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <png.h>
 
 /* Layout da ABI do X11 (x86-64 SysV). Se algo aqui falhar, é o header à mão
  * que está errado — pega na compilação, sem precisar abrir janela. */
@@ -53,7 +55,37 @@ static void desenha(Display *dpy, Window win, GC gc, Colormap cmap,
     XFlush(dpy);
 }
 
-int ps_guz_run(const char *titulo, int win_w, int win_h, unsigned long win_bg,
+/* Ícone da janela: decodifica o PNG (libpng) e seta _NET_WM_ICON (w,h,ARGB...). */
+static void guz_set_icon(Display *dpy, Window win, const char *path)
+{
+    png_image img;
+    memset(&img, 0, sizeof img);
+    img.version = PNG_IMAGE_VERSION;
+    if (!png_image_begin_read_from_file(&img, path)) return;   /* não é PNG / não abriu */
+    img.format = PNG_FORMAT_RGBA;
+    png_bytep buf = malloc(PNG_IMAGE_SIZE(img));
+    if (!buf) { png_image_free(&img); return; }
+    if (png_image_finish_read(&img, NULL, buf, 0, NULL)) {
+        int w = (int)img.width, h = (int)img.height;
+        long *prop = malloc(sizeof(long) * (size_t)(2 + w * h));
+        if (prop) {
+            prop[0] = w; prop[1] = h;
+            for (int i = 0; i < w * h; i++) {
+                unsigned char r = buf[i*4], g = buf[i*4+1], b = buf[i*4+2], a = buf[i*4+3];
+                prop[2 + i] = ((long)a << 24) | ((long)r << 16) | ((long)g << 8) | (long)b;
+            }
+            Atom net_icon = XInternAtom(dpy, "_NET_WM_ICON", False);
+            XChangeProperty(dpy, win, net_icon, XA_CARDINAL, 32, PropModeReplace,
+                            (const unsigned char *)prop, 2 + w * h);
+            free(prop);
+        }
+    }
+    free(buf);
+    png_image_free(&img);
+}
+
+int ps_guz_run(const char *titulo, const char *icone,
+               int win_w, int win_h, unsigned long win_bg,
                const PSGuzWidget *widgets, int n,
                PSGuzClickCb cb, void *ud,
                char *erro, size_t ecap)
@@ -71,6 +103,7 @@ int ps_guz_run(const char *titulo, int win_w, int win_h, unsigned long win_bg,
         dpy, root, 0, 0, (unsigned)win_w, (unsigned)win_h, 0,
         XBlackPixel(dpy, scr), aloca_cor(dpy, cmap, win_bg));
     XStoreName(dpy, win, titulo ? titulo : "PoolScript");
+    if (icone) guz_set_icon(dpy, win, icone);
 
     Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
     XSetWMProtocols(dpy, win, &wm_delete, 1);

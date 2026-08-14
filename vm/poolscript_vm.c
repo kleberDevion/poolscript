@@ -724,6 +724,7 @@ typedef struct {
 typedef struct {
     Obj    obj;
     char  *titulo;             /* malloc */
+    char  *icon;               /* caminho do .png do ícone (malloc) ou NULL */
     Value *filhos;             /* array de widgets (Value) */
     int    nfilhos, capfilhos;
 } PSGuzUI;
@@ -1396,7 +1397,7 @@ static void libera_obj(VM *vm, Obj *o)
         free(g->handlers);
     } else if (o->type == OBJ_GUZ_UI) {
         PSGuzUI *u = (PSGuzUI *)o;
-        free(u->titulo); free(u->filhos);
+        free(u->titulo); free(u->icon); free(u->filhos);
         vm->alocado -= sizeof(PSGuzUI);
     } else if (o->type == OBJ_GUZ_WID) {
         free(((PSGuzWid *)o)->text);
@@ -5310,6 +5311,7 @@ static int mod_guz_UI(VM *vm, Value *args, int n, Value *out)
     u->obj.next = vm->objetos; vm->objetos = (Obj *)u;
     const char *tit = (n > 0 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "PoolScript";
     u->titulo = strdup(tit);
+    u->icon = (n > 1 && EH_STRING(args[1])) ? strdup(COMO_STRING(args[1])->chars) : NULL;
     u->filhos = NULL; u->nfilhos = 0; u->capfilhos = 0;
     vm->alocado += sizeof(PSGuzUI);
     *out = MK_OBJ(u);
@@ -5408,7 +5410,7 @@ static void guz_mostra(VM *vm)
         m++;
     }
     char erro[128] = {0};
-    if (ps_guz_run(u->titulo, win_w, win_h, win_bg, arr, m, guz_click, vm, erro, sizeof erro) != 0)
+    if (ps_guz_run(u->titulo, u->icon, win_w, win_h, win_bg, arr, m, guz_click, vm, erro, sizeof erro) != 0)
         fprintf(stderr, "%s\n", erro);
     free(arr);
 }
@@ -13038,7 +13040,7 @@ static const MembroMod MOD_FLASK_STUB[]     = { STUB("Flask"), STUB("route"), ST
 #undef STUB
 
 static const MembroMod MOD_GUZER[] = {
-    { "UI", mod_guz_UI, 0, "title" },
+    { "UI", mod_guz_UI, 0, "title,icon" },
 };
 static const ModuloNat MODULOS[] = {
     { "json", MOD_JSON, (int)(sizeof(MOD_JSON) / sizeof(MOD_JSON[0])) },
