@@ -171,7 +171,7 @@
       "patterns": [
         {
           "name": "keyword.control.poolscript",
-          "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|with|using|await|async|import|from|as|global|count)\\b"
+          "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|with|using|await|async|import|from|as|global|count|to|of)\\b"
         },
         {
           "name": "keyword.operator.logical.poolscript",
@@ -179,11 +179,19 @@
         },
         {
           "name": "storage.type.poolscript",
-          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|action|reaction|Entity|class|Class|model|enum|type)\\b"
+          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|action|reaction|Entity|class|Class|model|enum|type|char)\\b"
         },
         {
           "name": "storage.modifier.poolscript",
           "match": "\\b(private|public|self)\\b"
+        },
+        {
+          "name": "keyword.control.verb.poolscript",
+          "match": "\\b(PUSH|GET|POST|PUT|DELETE|JSON)\\b"
+        },
+        {
+          "name": "support.function.builtin.poolscript",
+          "match": "\\b(post|input|listen|route|create|clear|space|addEnd|full|mei)\\b"
         }
       ]
     },
