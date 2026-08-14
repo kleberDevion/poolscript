@@ -18,7 +18,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
 NL = chr(10)
 
-from poolscript.stdlib.guzer_lib import UI, Window, Button, Popup, _px  # noqa: E402
+from poolscript.stdlib.guzer_lib import UI, Window, Button, _px  # noqa: E402
 
 
 def test_px_pega_primeiro_numero():
@@ -40,8 +40,8 @@ def test_stylesheet_mescla_sobre_default_e_encadeia():
 
 def test_defaults_por_objeto():
     app = UI()
-    assert app.button()._bg() == "#2196F7"      # botão default
-    assert app.popup()._style["width"] == "260"  # popup default
+    assert app.button()._bg() == "#2196F7"       # botão default
+    assert app.button()._style["height"] == "34"  # botão default
 
 
 def test_bg_aceita_background_ou_bg():
@@ -62,14 +62,6 @@ def test_handler_por_referencia_so_roda_no_evento():
     assert b._handler() == "Ola" and marca == [1]
 
 
-def test_popup_event_child_vira_handler():
-    app = UI()
-    def child():
-        return 42
-    p = app.popup(event_child=child)
-    assert p._handler is child and p._handler() == 42
-
-
 def test_text_encadeia():
     app = UI()
     b = app.button().text("OK")
@@ -86,7 +78,6 @@ def test_interpretador_real_import_e_encadeia(tmp_path):
         'app = guzer.UI("x")' + NL +
         'app.window().stylesheet({ "width": "500", "background": "#101418" })' + NL +
         'app.button(onclick=Clicker).stylesheet({ "width": "100" }).text("Vai")' + NL +
-        'app.popup(event_child=Clicker)' + NL +
         'post("guzer-ok")' + NL,
         encoding="utf-8",
     )
@@ -112,7 +103,6 @@ def test_paridade_dois_motores(tmp_path):
         'app = guzer.UI("Demo")' + NL +
         'app.window().stylesheet({ "width": "500", "height": "300", "background": "#101418" })' + NL +
         'b = app.button(onclick=Clicker).stylesheet({ "width": "120" }).text("Vai")' + NL +
-        'app.popup(event_child=Clicker)' + NL +
         'post(type(app))' + NL +
         'post(type(b))' + NL,
         encoding="utf-8",

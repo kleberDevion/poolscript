@@ -1,4 +1,4 @@
-# PoolScript v8.2.56
+# PoolScript v8.2.57
 
 Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
 
@@ -8,7 +8,7 @@ Verificando:
 
 ```bash
 pool --version
-# PoolScript  v8.2.56
+# PoolScript  v8.2.57
 ```
 
 ---
@@ -30,7 +30,7 @@ pool repl
 ```
 
 ```
-PoolScript v8.2.56 — REPL
+PoolScript v8.2.57 — REPL
 Digite 'sair' ou Ctrl+C para sair.
 
 >>> str nome = "joao"

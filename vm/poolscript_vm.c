@@ -710,13 +710,15 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define COMO_QRBUILD(v) ((PSQRBuild*)(v).as.obj)
 
 /* ── guzer — UI desktop nativa (X11). Espelha o guzer_lib.py (tkinter). ──── */
-enum { GUZ_WINDOW = 0, GUZ_BUTTON = 1, GUZ_POPUP = 2 };
+enum { GUZ_WINDOW = 0, GUZ_BUTTON = 1, GUZ_POPUP = 2, GUZ_BOX = 3 };
 typedef struct {
     Obj  obj;
-    int  kind;                 /* GUZ_WINDOW/BUTTON/POPUP */
+    int  kind;                 /* GUZ_WINDOW/BUTTON/POPUP/BOX */
+    const char *tag;           /* nome do elemento HTML (div/section/...) — pro type() */
     int  w, h;                 /* dimensões (px) */
     unsigned long bg, fg;      /* 0xRRGGBB */
     char *text;                /* rótulo (malloc) ou NULL */
+    char *placeholder;         /* input: placeholder (malloc) ou NULL */
     Value handler;             /* reaction do clique (V_NULL = nenhuma) */
 } PSGuzWid;
 typedef struct {
@@ -1398,6 +1400,7 @@ static void libera_obj(VM *vm, Obj *o)
         vm->alocado -= sizeof(PSGuzUI);
     } else if (o->type == OBJ_GUZ_WID) {
         free(((PSGuzWid *)o)->text);
+        free(((PSGuzWid *)o)->placeholder);
         vm->alocado -= sizeof(PSGuzWid);
     } else if (o->type == OBJ_JINKER) {
         PSJinker *j = (PSJinker *)o;
@@ -2351,8 +2354,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_MONGOCONN:  t = "MongoConnection"; break;
                 case OBJ_MONGOCOL:   t = "MongoCollection"; break;
                 case OBJ_GUZ_UI:     t = "UI"; break;
-                case OBJ_GUZ_WID:    t = COMO_GUZ_WID(v)->kind == GUZ_BUTTON ? "Button"
-                                       : COMO_GUZ_WID(v)->kind == GUZ_POPUP ? "Popup" : "Window"; break;
+                case OBJ_GUZ_WID:    t = COMO_GUZ_WID(v)->tag; break;
                 case OBJ_JINKER:     t = "Jinker"; break;
                 case OBJ_JCORS:      t = "CorsConfig"; break;
                 case OBJ_JREG: {
@@ -4366,8 +4368,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_MONGOCONN:   t = "MongoConnection"; break;
                 case OBJ_MONGOCOL:    t = "MongoCollection"; break;
                 case OBJ_GUZ_UI:      t = "UI"; break;
-                case OBJ_GUZ_WID:     t = COMO_GUZ_WID(alvo)->kind == GUZ_BUTTON ? "Button"
-                                        : COMO_GUZ_WID(alvo)->kind == GUZ_POPUP ? "Popup" : "Window"; break;
+                case OBJ_GUZ_WID:     t = COMO_GUZ_WID(alvo)->tag; break;
                 case OBJ_JINKER:      t = "Jinker"; break;
                 case OBJ_JCORS:       t = "CorsConfig"; break;
                 case OBJ_JREG: {
@@ -5172,15 +5173,17 @@ static int guz_dict_get(Value dv, const char *chave, Value *out)
     }
     return 0;
 }
-static PSGuzWid *novo_guz_wid(VM *vm, int kind)
+static PSGuzWid *novo_guz_wid(VM *vm, int kind, const char *tag)
 {
     PSGuzWid *w = malloc(sizeof(PSGuzWid));
     if (!w) return NULL;
     w->obj.type = OBJ_GUZ_WID; w->obj.marked = 0;
     w->obj.next = vm->objetos; vm->objetos = (Obj *)w;
-    w->kind = kind; w->text = NULL; w->handler = MK_NULL();
+    w->kind = kind; w->tag = tag; w->text = NULL; w->placeholder = NULL;
+    w->handler = MK_NULL();
     if (kind == GUZ_BUTTON)      { w->w = 120; w->h = 34;  w->bg = 0x2196F7; w->fg = 0xFFFFFF; }
     else if (kind == GUZ_POPUP)  { w->w = 260; w->h = 150; w->bg = 0xFFFFFF; w->fg = 0x101418; }
+    else if (kind == GUZ_BOX)    { w->w = 200; w->h = 28;  w->bg = 0xF0F0F0; w->fg = 0x101418; }
     else                         { w->w = 480; w->h = 320; w->bg = 0xFFFFFF; w->fg = 0x000000; }
     vm->alocado += sizeof(PSGuzWid);
     return w;
@@ -5196,10 +5199,10 @@ static int guz_add_filho(PSGuzUI *u, Value w)
     u->filhos[u->nfilhos++] = w;
     return 0;
 }
-static int guz_cria(VM *vm, Value alvo, int kind, Value handler, Value *out)
+static int guz_cria(VM *vm, Value alvo, int kind, const char *tag, Value handler, Value *out)
 {
     if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
-    PSGuzWid *w = novo_guz_wid(vm, kind);
+    PSGuzWid *w = novo_guz_wid(vm, kind, tag);
     if (!w) MERRO(vm, "MemoryError", "sem memoria");
     if (handler.t == V_OBJ) w->handler = handler;
     Value wv = MK_OBJ(w);
@@ -5208,11 +5211,71 @@ static int guz_cria(VM *vm, Value alvo, int kind, Value handler, Value *out)
     return 0;
 }
 static int met_guz_window(VM *vm, Value alvo, Value *args, int n, Value *out)
-{ (void)args; (void)n; return guz_cria(vm, alvo, GUZ_WINDOW, MK_NULL(), out); }
+{ (void)args; (void)n; return guz_cria(vm, alvo, GUZ_WINDOW, "Window", MK_NULL(), out); }
 static int met_guz_button(VM *vm, Value alvo, Value *args, int n, Value *out)
-{ Value h = (n > 0) ? args[0] : MK_NULL(); return guz_cria(vm, alvo, GUZ_BUTTON, h, out); }
-static int met_guz_popup(VM *vm, Value alvo, Value *args, int n, Value *out)
-{ Value h = (n > 0) ? args[0] : MK_NULL(); return guz_cria(vm, alvo, GUZ_POPUP, h, out); }
+{ Value h = (n > 0) ? args[0] : MK_NULL(); return guz_cria(vm, alvo, GUZ_BUTTON, "Button", h, out); }
+
+/* Elemento HTML genérico. Params (superset) = atributos do HTML, renomeados
+ * quando batem com keyword (type->typeinp, for->forid, method->methd). Lê o
+ * placeholder (slot 1) e o onclick (slot 13); os demais atributos são aceitos. */
+#define P_ELEM "typeinp,placeholder,value,name,href,src,alt,target,forid,action,methd,rows,cols,onclick"
+static int guz_elem(VM *vm, Value alvo, const char *tag, int kind, Value *args, int n, Value *out)
+{
+    Value h = (n > 13 && args[13].t == V_OBJ) ? args[13] : MK_NULL();
+    int rc = guz_cria(vm, alvo, kind, tag, h, out);
+    if (rc != 0) return rc;
+    if (n > 1 && EH_STRING(args[1])) {                 /* placeholder */
+        PSString *s = COMO_STRING(args[1]);
+        char *p = malloc((size_t)s->len + 1);
+        if (p) { memcpy(p, s->chars, (size_t)s->len + 1); COMO_GUZ_WID(*out)->placeholder = p; }
+    }
+    return 0;
+}
+#define GUZ_ELEM(FN, TAG, KIND) \
+    static int FN(VM *vm, Value alvo, Value *args, int n, Value *out) \
+    { return guz_elem(vm, alvo, TAG, KIND, args, n, out); }
+/* todos os elementos do HTML — a maioria é caixa (GUZ_BOX); dialog é modal */
+GUZ_ELEM(gel_div,"div",GUZ_BOX)             GUZ_ELEM(gel_section,"section",GUZ_BOX)
+GUZ_ELEM(gel_article,"article",GUZ_BOX)     GUZ_ELEM(gel_aside,"aside",GUZ_BOX)
+GUZ_ELEM(gel_header,"header",GUZ_BOX)       GUZ_ELEM(gel_footer,"footer",GUZ_BOX)
+GUZ_ELEM(gel_nav,"nav",GUZ_BOX)             GUZ_ELEM(gel_main,"main",GUZ_BOX)
+GUZ_ELEM(gel_figure,"figure",GUZ_BOX)       GUZ_ELEM(gel_figcaption,"figcaption",GUZ_BOX)
+GUZ_ELEM(gel_address,"address",GUZ_BOX)     GUZ_ELEM(gel_span,"span",GUZ_BOX)
+GUZ_ELEM(gel_p,"p",GUZ_BOX)                 GUZ_ELEM(gel_a,"a",GUZ_BOX)
+GUZ_ELEM(gel_strong,"strong",GUZ_BOX)       GUZ_ELEM(gel_em,"em",GUZ_BOX)
+GUZ_ELEM(gel_bb,"b",GUZ_BOX)                GUZ_ELEM(gel_ii,"i",GUZ_BOX)
+GUZ_ELEM(gel_uu,"u",GUZ_BOX)                GUZ_ELEM(gel_ss,"s",GUZ_BOX)
+GUZ_ELEM(gel_small,"small",GUZ_BOX)         GUZ_ELEM(gel_mark,"mark",GUZ_BOX)
+GUZ_ELEM(gel_sub,"sub",GUZ_BOX)             GUZ_ELEM(gel_sup,"sup",GUZ_BOX)
+GUZ_ELEM(gel_code,"code",GUZ_BOX)           GUZ_ELEM(gel_pre,"pre",GUZ_BOX)
+GUZ_ELEM(gel_blockquote,"blockquote",GUZ_BOX) GUZ_ELEM(gel_cite,"cite",GUZ_BOX)
+GUZ_ELEM(gel_q,"q",GUZ_BOX)                 GUZ_ELEM(gel_abbr,"abbr",GUZ_BOX)
+GUZ_ELEM(gel_time,"time",GUZ_BOX)           GUZ_ELEM(gel_kbd,"kbd",GUZ_BOX)
+GUZ_ELEM(gel_samp,"samp",GUZ_BOX)           GUZ_ELEM(gel_vartag,"var",GUZ_BOX)
+GUZ_ELEM(gel_del,"del",GUZ_BOX)             GUZ_ELEM(gel_ins,"ins",GUZ_BOX)
+GUZ_ELEM(gel_hr,"hr",GUZ_BOX)               GUZ_ELEM(gel_br,"br",GUZ_BOX)
+GUZ_ELEM(gel_h1,"h1",GUZ_BOX)               GUZ_ELEM(gel_h2,"h2",GUZ_BOX)
+GUZ_ELEM(gel_h3,"h3",GUZ_BOX)               GUZ_ELEM(gel_h4,"h4",GUZ_BOX)
+GUZ_ELEM(gel_h5,"h5",GUZ_BOX)               GUZ_ELEM(gel_h6,"h6",GUZ_BOX)
+GUZ_ELEM(gel_ul,"ul",GUZ_BOX)               GUZ_ELEM(gel_ol,"ol",GUZ_BOX)
+GUZ_ELEM(gel_li,"li",GUZ_BOX)               GUZ_ELEM(gel_dl,"dl",GUZ_BOX)
+GUZ_ELEM(gel_dt,"dt",GUZ_BOX)               GUZ_ELEM(gel_dd,"dd",GUZ_BOX)
+GUZ_ELEM(gel_table,"table",GUZ_BOX)         GUZ_ELEM(gel_thead,"thead",GUZ_BOX)
+GUZ_ELEM(gel_tbody,"tbody",GUZ_BOX)         GUZ_ELEM(gel_tfoot,"tfoot",GUZ_BOX)
+GUZ_ELEM(gel_tr,"tr",GUZ_BOX)               GUZ_ELEM(gel_td,"td",GUZ_BOX)
+GUZ_ELEM(gel_th,"th",GUZ_BOX)               GUZ_ELEM(gel_caption,"caption",GUZ_BOX)
+GUZ_ELEM(gel_form,"form",GUZ_BOX)           GUZ_ELEM(gel_input,"input",GUZ_BOX)
+GUZ_ELEM(gel_textarea,"textarea",GUZ_BOX)   GUZ_ELEM(gel_select,"select",GUZ_BOX)
+GUZ_ELEM(gel_option,"option",GUZ_BOX)       GUZ_ELEM(gel_optgroup,"optgroup",GUZ_BOX)
+GUZ_ELEM(gel_label,"label",GUZ_BOX)         GUZ_ELEM(gel_fieldset,"fieldset",GUZ_BOX)
+GUZ_ELEM(gel_legend,"legend",GUZ_BOX)       GUZ_ELEM(gel_datalist,"datalist",GUZ_BOX)
+GUZ_ELEM(gel_output,"output",GUZ_BOX)       GUZ_ELEM(gel_progress,"progress",GUZ_BOX)
+GUZ_ELEM(gel_meter,"meter",GUZ_BOX)         GUZ_ELEM(gel_img,"img",GUZ_BOX)
+GUZ_ELEM(gel_audio,"audio",GUZ_BOX)         GUZ_ELEM(gel_video,"video",GUZ_BOX)
+GUZ_ELEM(gel_canvas,"canvas",GUZ_BOX)       GUZ_ELEM(gel_iframe,"iframe",GUZ_BOX)
+GUZ_ELEM(gel_details,"details",GUZ_BOX)     GUZ_ELEM(gel_summary,"summary",GUZ_BOX)
+GUZ_ELEM(gel_menu,"menu",GUZ_BOX)           GUZ_ELEM(gel_picture,"picture",GUZ_BOX)
+GUZ_ELEM(gel_dialog,"dialog",GUZ_POPUP)
 static int met_guz_stylesheet(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "stylesheet", 1);
@@ -5256,7 +5319,47 @@ static int mod_guz_UI(VM *vm, Value *args, int n, Value *out)
 static const MetodoNat METODOS_GUZ_UI[] = {
     { "window", met_guz_window, NULL },
     { "button", met_guz_button, "onclick" },
-    { "popup",  met_guz_popup,  "event_child" },
+    { "div", gel_div, P_ELEM }, { "section", gel_section, P_ELEM },
+    { "article", gel_article, P_ELEM }, { "aside", gel_aside, P_ELEM },
+    { "header", gel_header, P_ELEM }, { "footer", gel_footer, P_ELEM },
+    { "nav", gel_nav, P_ELEM }, { "main", gel_main, P_ELEM },
+    { "figure", gel_figure, P_ELEM }, { "figcaption", gel_figcaption, P_ELEM },
+    { "address", gel_address, P_ELEM }, { "span", gel_span, P_ELEM },
+    { "p", gel_p, P_ELEM }, { "a", gel_a, P_ELEM },
+    { "strong", gel_strong, P_ELEM }, { "em", gel_em, P_ELEM },
+    { "b", gel_bb, P_ELEM }, { "i", gel_ii, P_ELEM },
+    { "u", gel_uu, P_ELEM }, { "s", gel_ss, P_ELEM },
+    { "small", gel_small, P_ELEM }, { "mark", gel_mark, P_ELEM },
+    { "sub", gel_sub, P_ELEM }, { "sup", gel_sup, P_ELEM },
+    { "code", gel_code, P_ELEM }, { "pre", gel_pre, P_ELEM },
+    { "blockquote", gel_blockquote, P_ELEM }, { "cite", gel_cite, P_ELEM },
+    { "q", gel_q, P_ELEM }, { "abbr", gel_abbr, P_ELEM },
+    { "time", gel_time, P_ELEM }, { "kbd", gel_kbd, P_ELEM },
+    { "samp", gel_samp, P_ELEM }, { "var", gel_vartag, P_ELEM },
+    { "del", gel_del, P_ELEM }, { "ins", gel_ins, P_ELEM },
+    { "hr", gel_hr, P_ELEM }, { "br", gel_br, P_ELEM },
+    { "h1", gel_h1, P_ELEM }, { "h2", gel_h2, P_ELEM },
+    { "h3", gel_h3, P_ELEM }, { "h4", gel_h4, P_ELEM },
+    { "h5", gel_h5, P_ELEM }, { "h6", gel_h6, P_ELEM },
+    { "ul", gel_ul, P_ELEM }, { "ol", gel_ol, P_ELEM },
+    { "li", gel_li, P_ELEM }, { "dl", gel_dl, P_ELEM },
+    { "dt", gel_dt, P_ELEM }, { "dd", gel_dd, P_ELEM },
+    { "table", gel_table, P_ELEM }, { "thead", gel_thead, P_ELEM },
+    { "tbody", gel_tbody, P_ELEM }, { "tfoot", gel_tfoot, P_ELEM },
+    { "tr", gel_tr, P_ELEM }, { "td", gel_td, P_ELEM },
+    { "th", gel_th, P_ELEM }, { "caption", gel_caption, P_ELEM },
+    { "form", gel_form, P_ELEM }, { "input", gel_input, P_ELEM },
+    { "textarea", gel_textarea, P_ELEM }, { "select", gel_select, P_ELEM },
+    { "option", gel_option, P_ELEM }, { "optgroup", gel_optgroup, P_ELEM },
+    { "label", gel_label, P_ELEM }, { "fieldset", gel_fieldset, P_ELEM },
+    { "legend", gel_legend, P_ELEM }, { "datalist", gel_datalist, P_ELEM },
+    { "output", gel_output, P_ELEM }, { "progress", gel_progress, P_ELEM },
+    { "meter", gel_meter, P_ELEM }, { "img", gel_img, P_ELEM },
+    { "audio", gel_audio, P_ELEM }, { "video", gel_video, P_ELEM },
+    { "canvas", gel_canvas, P_ELEM }, { "iframe", gel_iframe, P_ELEM },
+    { "details", gel_details, P_ELEM }, { "summary", gel_summary, P_ELEM },
+    { "menu", gel_menu, P_ELEM }, { "picture", gel_picture, P_ELEM },
+    { "dialog", gel_dialog, P_ELEM },
 };
 static const MetodoNat METODOS_GUZ_WID[] = {
     { "stylesheet", met_guz_stylesheet, NULL },
@@ -5297,7 +5400,7 @@ static void guz_mostra(VM *vm)
         arr[m].kind     = (w->kind == GUZ_POPUP) ? PSGUZ_POPUP : PSGUZ_BUTTON;
         arr[m].w        = w->w; arr[m].h = w->h;
         arr[m].bg       = w->bg; arr[m].fg = w->fg;
-        arr[m].text     = w->text ? w->text : "";
+        arr[m].text     = w->text ? w->text : (w->placeholder ? w->placeholder : "");
         arr[m].clicavel = (w->handler.t == V_OBJ);
         arr[m].id       = i;
         if (w->kind == GUZ_POPUP) { arr[m].x = (win_w - w->w) / 2; arr[m].y = (win_h - w->h) / 2; }

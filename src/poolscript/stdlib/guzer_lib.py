@@ -88,12 +88,6 @@ class Button(_Widget):
                "color": "#ffffff", "font-size": "13"}
 
 
-class Popup(_Widget):
-    """Popup/modal centralizado. `event_child=` recebe uma reaction (roda no clique)."""
-    DEFAULT = {"width": "260", "height": "150", "background": "#ffffff",
-               "color": "#101418", "font-size": "13"}
-
-
 class UI:
     """Raiz do app. Cria os objetos e, ao fim do script, abre a janela nativa."""
 
@@ -117,9 +111,6 @@ class UI:
 
     def button(self, onclick: Callable | None = None) -> Button:
         return self._make(Button, handler=onclick)
-
-    def popup(self, event_child: Callable | None = None) -> Popup:
-        return self._make(Popup, handler=event_child)
 
     # -- exibição --
     def _auto_show(self):
@@ -147,10 +138,6 @@ class UI:
         def _font(w):
             return tkfont.Font(size=_px(w._style.get("font-size"), 13))
 
-        def _bind(widget, w):
-            if w._handler is not None:
-                widget.bind("<Button-1>", lambda _e, fn=w._handler: fn())
-
         y = 12
         for c in self._children:
             if isinstance(c, Button):
@@ -164,20 +151,6 @@ class UI:
                         height=_px(c._style.get("height"), 34))
                 y += _px(c._style.get("height"), 34) + 10
 
-        for c in self._children:
-            if isinstance(c, Popup):
-                pw = _px(c._style.get("width"), 260)
-                ph = _px(c._style.get("height"), 150)
-                top = tk.Toplevel(root)
-                top.title(self._title)
-                top.geometry(f"{pw}x{ph}+{w_px // 2 - pw // 2}+{h_px // 2 - ph // 2}")
-                if c._bg():
-                    top.configure(bg=c._bg())
-                lbl = tk.Label(top, text=c._text or "", font=_font(c),
-                               bg=c._bg() or "#ffffff", fg=c._fg() or "#000000")
-                lbl.place(relx=0.5, rely=0.5, anchor="center")
-                _bind(top, c)
-
         root.mainloop()
 
     def __repr__(self):
@@ -188,5 +161,4 @@ EXPORTS = {
     "UI": UI,
     "Window": Window,
     "Button": Button,
-    "Popup": Popup,
 }
