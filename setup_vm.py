@@ -38,7 +38,8 @@ vm_ext = Extension(
     extra_compile_args=FLAGS + ["-DPS_MODULO_PYTHON", "-I/usr/include/postgresql", "-I/usr/include/mysql", "-I/usr/include/libmongoc-1.0", "-I/usr/include/libbson-1.0"],
     library_dirs=["/usr/lib/postgresql/16/lib"],
     libraries=["sqlite3", "pq", "pgcommon", "pgport", "mysqlclient", "odbc", "ssl", "crypto", "png", "expat", "z", "stdc++", "zstd", "ltdl", "ldap", "lber", "gssapi_krb5", "mongoc-1.0", "bson-1.0", "rt"],
-    extra_link_args=["-l:libX11.so.6"],   # guzer: janela nativa X11 (runtime já no sistema)
+    extra_link_args=["-l:libX11.so.6",     # guzer: janela nativa X11 (runtime já no sistema)
+                     "-l:libgmp.so.10"],   # bignum: inteiro de precisão arbitrária
 )
 
 # Binding TEMPORÁRIO do lexer em C, só pro teste diferencial da transição:

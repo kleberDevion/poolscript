@@ -15814,6 +15814,13 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                     p->consts[k] = MK_OBJ(str);
                     break;
                 }
+                case K_BIGINT: {
+                    PSBigInt *bg = novo_bigint(vm);
+                    if (!bg) return -1;
+                    mpz_set_str(bg->v, kc->s ? kc->s : "0", 10);
+                    p->consts[k] = MK_OBJ(bg);
+                    break;
+                }
             }
         }
     }
@@ -15953,6 +15960,13 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
                     PSString *st = nova_string(vm, cc->s ? cc->s : "", cc->slen);
                     if (!st) return -1;
                     d->consts[k] = MK_OBJ(st);
+                    break;
+                }
+                case K_BIGINT: {
+                    PSBigInt *bg = novo_bigint(vm);
+                    if (!bg) return -1;
+                    mpz_set_str(bg->v, cc->s ? cc->s : "0", 10);
+                    d->consts[k] = MK_OBJ(bg);
                     break;
                 }
             }

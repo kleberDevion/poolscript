@@ -33,6 +33,13 @@ SCRIPT = NL.join([
     "for each i in range(25) { b = 1103515245 * b + 12345 }",
     "post(b % 26)",
     "post(b)",
+    # literais gigantes no codigo-fonte (fase 2)
+    "post(99999999999999999999999999999999999999)",
+    "big = 100000000000000000000000000000000000000000000000000",
+    "post(big + 1)",
+    "post(big * big)",
+    "post(42)",   # int pequeno segue int
+    "post(-7)",
 ]) + NL
 
 

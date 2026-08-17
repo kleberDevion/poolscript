@@ -88,7 +88,7 @@ typedef enum {
 } PSNodeKind;
 
 /* Qual campo do literal vale */
-typedef enum { L_INT = 0, L_FLO, L_STR, L_BOOL, L_NULL, L_FSTRING } PSLitKind;
+typedef enum { L_INT = 0, L_FLO, L_STR, L_BOOL, L_NULL, L_FSTRING, L_BIGINT } PSLitKind;
 
 typedef struct PSNode PSNode;
 

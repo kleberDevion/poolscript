@@ -19,7 +19,7 @@
 #include "ps_ast.h"
 
 /* Constante numa forma que não depende do runtime. */
-typedef enum { K_NULL = 0, K_BOOL, K_INT, K_FLO, K_STR } PSConstKind;
+typedef enum { K_NULL = 0, K_BOOL, K_INT, K_FLO, K_STR, K_BIGINT } PSConstKind;
 
 typedef struct {
     PSConstKind kind;

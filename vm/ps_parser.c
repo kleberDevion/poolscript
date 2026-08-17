@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 typedef struct {
     PSToken   *toks;
@@ -257,7 +258,12 @@ static PSNode *primario(P *p)
             p->pos++;
             PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
             if (!n) return NULL;
-            n->lit = L_INT; n->i = t->i;
+            /* Literal maior que int64 vira bignum: o lexer trava em INT64_MAX,
+             * então re-checo o texto original com errno. */
+            errno = 0;
+            (void)strtoll(t->texto ? t->texto : "0", NULL, 10);
+            if (errno == ERANGE && t->texto) { n->lit = L_BIGINT; n->texto = dup_tok(p, t); }
+            else                             { n->lit = L_INT;    n->i = t->i; }
             return n;
         }
         case T_FLO: {

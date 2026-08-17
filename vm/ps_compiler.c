@@ -247,7 +247,7 @@ static int32_t idx_const(C *c, Unidade *u, PSConstKind k,
     for (int32_t x = 0; x < UP(c, u)->nconsts; x++) {
         PSConst *e = &UP(c, u)->consts[x];
         if (e->kind != k) continue;
-        if (k == K_STR) {
+        if (k == K_STR || k == K_BIGINT) {
             if (e->slen == slen && memcmp(e->s, s, (size_t)slen) == 0) return x;
         } else if (k == K_FLO) {
             if (e->d == d) return x;
@@ -267,7 +267,7 @@ static int32_t idx_const(C *c, Unidade *u, PSConstKind k,
     PSConst *e = &UP(c, u)->consts[UP(c, u)->nconsts];
     memset(e, 0, sizeof(*e));
     e->kind = k; e->i = i; e->d = d;
-    if (k == K_STR) {
+    if (k == K_STR || k == K_BIGINT) {
         e->s = malloc((size_t)slen + 1);
         if (!e->s) { cerro(c, "sem memoria", NULL); return -1; }
         memcpy(e->s, s, (size_t)slen);
@@ -553,6 +553,11 @@ static void expr(C *c, Unidade *u, PSNode *n)
                     emite(c, u, OP_LOAD_CONST,
                           idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
                                     n->texto ? (int32_t)strlen(n->texto) : 0));
+                    break;
+                case L_BIGINT:
+                    emite(c, u, OP_LOAD_CONST,
+                          idx_const(c, u, K_BIGINT, 0, 0, n->texto ? n->texto : "0",
+                                    n->texto ? (int32_t)strlen(n->texto) : 1));
                     break;
                 case L_FSTRING:
                     compila_fstring(c, u, n);
@@ -905,6 +910,9 @@ static void padrao_literal(C *c, Unidade *u, PSNode *lit)
         case L_FLO:  emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_FLO, 0, lit->d, NULL, 0)); break;
         case L_BOOL: emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, lit->i, 0, NULL, 0)); break;
         case L_NULL: emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0)); break;
+        case L_BIGINT: emite(c, u, OP_LOAD_CONST,
+                  idx_const(c, u, K_BIGINT, 0, 0, lit->texto ? lit->texto : "0",
+                            lit->texto ? (int32_t)strlen(lit->texto) : 1)); break;
         default:
             emite(c, u, OP_LOAD_CONST,
                   idx_const(c, u, K_STR, 0, 0, lit->texto ? lit->texto : "",
