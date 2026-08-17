@@ -1160,22 +1160,7 @@ static void percorre_cinzas(VM *vm)
         if (o->type == OBJ_LIST || o->type == OBJ_TUPLE) {
             PSList *l = (PSList *)o;
             for (int i = 0; i < l->len; i++) marca_valor(vm, &l->itens[i]);
-        } else if (o->type == OBJ_POOLFILE) {
-        PSPoolFile *f = (PSPoolFile *)o;
-        free(f->caminho); free(f->nome); free(f->ext);
-        vm->alocado -= sizeof(PSPoolFile);
-    } else if (o->type == OBJ_MODULO_PS) {
-        PSModuloPS *m = (PSModuloPS *)o;
-        for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
-        free(m->nomes);
-        free(m->nome);
-        vm->alocado -= sizeof(PSModuloPS);
-    } else if (o->type == OBJ_ARQUIVO) {
-        PSArquivo *a = (PSArquivo *)o;
-        /* fecha o que o usuário esqueceu: o processo pode continuar rodando */
-        if (!a->fechado && a->f) fclose(a->f);
-        vm->alocado -= sizeof(PSArquivo);
-    } else if (o->type == OBJ_GERADOR) {
+        } else if (o->type == OBJ_GERADOR) {
             PSGerador *g = (PSGerador *)o;
             for (int32_t i = 0; i < g->nlocais; i++) marca_valor(vm, &g->locais[i]);
             for (int32_t i = 0; i < g->npilha; i++) marca_valor(vm, &g->pilha[i]);
@@ -1489,6 +1474,10 @@ static void gc_coleta(VM *vm)
     marca_valor(vm, &vm->jk_req);
     marca_valor(vm, &vm->jk_app);
     marca_valor(vm, &vm->guz_app);
+    /* módulos `.ps` importados vivem no cache mods_ps pro programa inteiro
+     * (igual sys.modules do Python) — são RAÍZES, senão o GC coleta um módulo
+     * ainda em uso e depois libera de novo -> double free -> segfault. */
+    for (int i = 0; i < vm->nmods_ps; i++)   marca_valor(vm, &vm->mods_ps[i].valor);
     for (int i = 0; i < vm->sp; i++)         marca_valor(vm, &vm->stack[i]);
     for (int i = 0; i < vm->locals_top; i++) marca_valor(vm, &vm->locals[i]);
     for (int i = 0; i < vm->nprotos; i++)
