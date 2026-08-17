@@ -44,6 +44,9 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 ### Interface (desktop)
 - **[guzer](guzer/guzer.md)** — UI desktop: objetos estilizados com CSS real, janela nativa (INTERP)
 
+### Linguagem
+- **[exceptions](exceptions/exceptions.md)** — erros, `raise` (tipo livre) e `catch` (tipo/variável opcionais)
+
 ### Utilidades
 - **[date](date/date.md)** — data e hora
 - **[regex](regex/regex.md)** — expressões regulares

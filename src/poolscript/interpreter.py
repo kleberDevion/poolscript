@@ -1503,6 +1503,7 @@ class Interpreter:
                 raise PoolRuntimeError(
                     f"módulo relativo não encontrado: {module_name} "
                     f"(procurado em {candidate})", node, self.source,
+                    code="ImportError",
                 )
             self._run_imported_file(candidate, node, scope, self._import_root, module_name)
             return
@@ -1543,6 +1544,7 @@ class Interpreter:
 
         raise PoolRuntimeError(
             f"módulo desconhecido: {'.'.join(node.module)}", node, self.source,
+            code="ImportError",
         )
 
     # ── Avaliação de expressões ────────────────────────────────────────
