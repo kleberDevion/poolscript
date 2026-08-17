@@ -2039,16 +2039,21 @@ static PSNode *statement(P *p)
 
             PSToken *tk = atual(p);
             const char *tipo = NULL;
-            /* `catch (TipoErro nome)`: só quando IDENT_UPPER vem seguido de
-             * outro nome — senão `catch (E)` seria lido como tipo sem nome */
-            if (tk->type == T_IDENT_UPPER
-                    && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+            const char *nome = NULL;
+            /* catch (Tipo [nome]) — o nome é OPCIONAL; catch (nome) — captura
+             * tudo ligando a variável; catch () — captura tudo sem variável. */
+            if (tk->type == T_IDENT_UPPER) {
                 tipo = dup_tok(p, tk);
                 p->pos++;
+                if (atual(p)->type == T_IDENT || atual(p)->type == T_IDENT_UPPER) {
+                    nome = exige_nome(p, "erro");
+                    if (FALHOU(p)) return NULL;
+                }
+            } else if (atual(p)->type != T_RPAREN) {
+                nome = exige_nome(p, "erro");
+                if (FALHOU(p)) return NULL;
             }
-            const char *nome = exige_nome(p, "erro");
-            if (FALHOU(p)) return NULL;
-            if (!exige(p, T_RPAREN, "esperado ')' apos nome do erro")) return NULL;
+            if (!exige(p, T_RPAREN, "esperado ')' apos catch")) return NULL;
 
             PSNode *cl = ps_node_novo(p->arena, N_CATCH_CLAUSE, tk->line, tk->col);
             if (!cl) return NULL;

@@ -1003,7 +1003,8 @@ class Interpreter:
                     for clause in node.catches:
                         if clause.error_type is None or clause.error_type == exc_type:
                             catch_scope = Scope(scope)
-                            catch_scope.define(clause.error_name, err_valor)
+                            if clause.error_name:
+                                catch_scope.define(clause.error_name, err_valor)
                             self.exec_block(clause.block, catch_scope, create_child=False)
                             matched = True
                             break

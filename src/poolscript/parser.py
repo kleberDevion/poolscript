@@ -215,8 +215,9 @@ class ReturnStmt(Node):
 @dataclass
 @dataclass(slots=True)
 class CatchClause(Node):
-    """Um bloco catch com tipo opcional: catch (TypeError e) { ... }"""
-    error_name: str
+    """Um bloco catch com tipo E nome opcionais: catch (TypeError e),
+    catch (TypeError), catch (e), catch ()."""
+    error_name: str | None  # None = não liga variável do erro
     error_type: str | None  # None = captura qualquer erro
     block: "Block"
 
@@ -1043,17 +1044,19 @@ class Parser:
             self.expect("KW", "catch")
             self.expect("LPAREN", msg="esperado '(' após 'catch'")
             tok = self.current()
-            next_tok = self.peek()
-            if tok.type == "IDENT_UPPER" and next_tok.type in {"IDENT", "IDENT_UPPER"}:
-                # catch (TipoErro nome)
+            error_type = None
+            error_name = None
+            if tok.type == "IDENT_UPPER":
+                # catch (TipoErro [nome]) — o nome do erro é OPCIONAL
                 error_type = str(tok.value)
                 self.pos += 1
-                error_name = self.parse_bindable_name("erro", msg="nome do erro")
-            else:
-                # catch (e) — captura qualquer erro
-                error_type = None
+                if self.current().type in {"IDENT", "IDENT_UPPER"}:
+                    error_name = self.parse_bindable_name("erro", msg="nome do erro")
+            elif tok.type != "RPAREN":
+                # catch (e) — captura qualquer erro, ligando na variável
                 error_name = self.parse_bindable_name("erro", msg="nome do erro em catch")
-            self.expect("RPAREN", msg="esperado ')' após nome do erro")
+            # catch () — captura qualquer erro, sem ligar variável
+            self.expect("RPAREN", msg="esperado ')' após o catch")
             catch_block = self.parse_block()
             catches.append(CatchClause(
                 line=tok.line, col=tok.col,
