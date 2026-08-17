@@ -29,7 +29,9 @@ typedef const __mpz_struct *mpz_srcptr;
 
 extern void   __gmpz_init(mpz_ptr);
 extern void   __gmpz_clear(mpz_ptr);
+extern void   __gmpz_set(mpz_ptr, mpz_srcptr);
 extern void   __gmpz_set_si(mpz_ptr, long);
+extern double __gmpz_get_d(mpz_srcptr);
 extern int    __gmpz_set_str(mpz_ptr, const char *, int);
 extern char  *__gmpz_get_str(char *, int, mpz_srcptr);
 extern void   __gmpz_add(mpz_ptr, mpz_srcptr, mpz_srcptr);
@@ -47,7 +49,9 @@ extern size_t __gmpz_sizeinbase(mpz_srcptr, int);
 
 #define mpz_init         __gmpz_init
 #define mpz_clear        __gmpz_clear
+#define mpz_set          __gmpz_set
 #define mpz_set_si       __gmpz_set_si
+#define mpz_get_d        __gmpz_get_d
 #define mpz_set_str      __gmpz_set_str
 #define mpz_get_str      __gmpz_get_str
 #define mpz_add          __gmpz_add

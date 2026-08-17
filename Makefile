@@ -22,7 +22,7 @@ FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
 # porque as fontes .c não mudaram.
 pool: $(FONTES) src/poolscript/__init__.py Makefile
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lmysqlclient -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libX11.so.6
+	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lmysqlclient -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libX11.so.6 -l:libgmp.so.10
 
 # Bundle PORTÁTIL: pool + todas as .so numa pasta lib/, com wrapper. Roda em
 # qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls, krb5,

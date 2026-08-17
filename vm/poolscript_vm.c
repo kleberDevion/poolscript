@@ -42,6 +42,7 @@
 #include "ps_mongo.h"
 #include "ps_jinker.h"
 #include "ps_guzer.h"
+#include "ps_gmp_min.h"
 #include <poll.h>
 #include <signal.h>
 #include <dirent.h>
@@ -133,7 +134,8 @@ typedef enum {
     OBJ_QRIMAGE,   /* retorno do make/make_image — save/resize/to_file */
     OBJ_MANPU_FILE,/* mp.open() — arquivo aberto com write/read/save + using */
     OBJ_GUZ_UI,    /* guzer.UI — raiz do app desktop */
-    OBJ_GUZ_WID    /* guzer window/button/popup — objeto de tela nativo */
+    OBJ_GUZ_WID,   /* guzer window/button/popup — objeto de tela nativo */
+    OBJ_BIGINT     /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
 } ObjType;
 
 typedef struct Obj {
@@ -319,6 +321,12 @@ typedef struct {
     int32_t  n;
     char   **nomes;      /* nome de cada global, na ordem */
 } PSModuloPS;
+
+/* Inteiro de precisão arbitrária (GMP). Só existe quando um int64 estoura;
+ * resultado que volta a caber em int64 é rebaixado pra V_INT (como o Python). */
+typedef struct { Obj obj; mpz_t v; } PSBigInt;
+#define EH_BIGINT(x)   ((x).t == V_OBJ && (x).as.obj->type == OBJ_BIGINT)
+#define COMO_BIGINT(x) ((PSBigInt *)(x).as.obj)
 
 /* Arquivo binário já lido pra memória. Diferente do `PSArquivo`, que é um
  * handle aberto: aqui o conteúdo inteiro já está carregado, e o objeto expõe
@@ -944,6 +952,74 @@ static PSString *nova_string(VM *vm, const char *chars, int len)
     return s;
 }
 
+/* ── bignum (GMP) ───────────────────────────────────────────────────────── */
+static PSBigInt *novo_bigint(VM *vm)
+{
+    PSBigInt *b = malloc(sizeof(PSBigInt));
+    if (!b) return NULL;
+    b->obj.type = OBJ_BIGINT; b->obj.marked = 0;
+    b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
+    mpz_init(b->v);
+    vm->alocado += sizeof(PSBigInt);
+    return b;
+}
+
+/* Resultado de uma conta: rebaixa pra V_INT se couber em int64 (como o Python),
+ * senão embrulha num bignum. */
+static Value mk_from_mpz(VM *vm, mpz_srcptr z)
+{
+    if (mpz_fits_slong_p(z)) return MK_INT((int64_t)mpz_get_si(z));
+    PSBigInt *b = novo_bigint(vm);
+    if (!b) return MK_NULL();
+    mpz_set(b->v, z);
+    return MK_OBJ(b);
+}
+
+/* Carrega um Value inteiro (V_INT ou bignum) num mpz já inicializado. */
+static void mpz_de_val(mpz_t z, Value v)
+{
+    if (EH_BIGINT(v)) mpz_set(z, COMO_BIGINT(v)->v);
+    else              mpz_set_si(z, (long)v.as.i);   /* V_INT (bool já virou int) */
+}
+
+/* v é inteiro (int64 ou bignum)? / inteiro como double (pra misturar com float) */
+#define EH_INTEIRO(v) ((v).t == V_INT || EH_BIGINT(v))
+static double int_como_double(Value v)
+{
+    return EH_BIGINT(v) ? mpz_get_d(COMO_BIGINT(v)->v) : (double)v.as.i;
+}
+
+/* Dígitos decimais de um bignum, em buffer malloc (o chamador dá free). */
+static char *bigint_str(mpz_srcptr z)
+{
+    char *s = malloc(mpz_sizeinbase(z, 10) + 2);   /* + sinal + '\0' */
+    if (s) mpz_get_str(s, 10, z);
+    return s;
+}
+
+/* a OP b entre inteiros (int64 e/ou bignum). Caminho rápido em int64; se
+ * estourar, PROMOVE pra bignum. op = '+' '-' '*'. Pode alocar — o chamador
+ * publica vm->sp antes. */
+static Value int_arit(VM *vm, Value a, Value b, char op)
+{
+    if (a.t == V_INT && b.t == V_INT) {
+        int64_t r;
+        int of = (op == '+') ? __builtin_add_overflow(a.as.i, b.as.i, &r)
+               : (op == '-') ? __builtin_sub_overflow(a.as.i, b.as.i, &r)
+               :               __builtin_mul_overflow(a.as.i, b.as.i, &r);
+        if (!of) return MK_INT(r);
+    }
+    mpz_t za, zb, zr;
+    mpz_init(za); mpz_init(zb); mpz_init(zr);
+    mpz_de_val(za, a); mpz_de_val(zb, b);
+    if (op == '+')      mpz_add(zr, za, zb);
+    else if (op == '-') mpz_sub(zr, za, zb);
+    else                mpz_mul(zr, za, zb);
+    Value out = mk_from_mpz(vm, zr);
+    mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
+    return out;
+}
+
 static PSList *nova_seq(VM *vm, int cap, ObjType tipo)
 {
     PSList *l = malloc(sizeof(PSList));
@@ -1020,6 +1096,12 @@ static uint32_t hash_valor(const Value *v)
         case V_OBJ:
             if (v->as.obj->type == OBJ_STRING || v->as.obj->type == OBJ_BYTES)
                 return ((PSString *)v->as.obj)->hash;
+            if (v->as.obj->type == OBJ_BIGINT) {
+                char *s = bigint_str(((PSBigInt *)v->as.obj)->v);
+                uint32_t h = s ? hash_str(s, (int)strlen(s)) : 0;
+                free(s);
+                return h;
+            }
             return (uint32_t)(uintptr_t)v->as.obj;
         default:
             return (uint32_t)(uintptr_t)v->as.obj;
@@ -1263,8 +1345,9 @@ static void percorre_cinzas(VM *vm)
             marca_valor(vm, &((PSWsConn *)o)->on_msg);
         } else if (o->type == OBJ_JCORS || o->type == OBJ_JPROXY
                 || o->type == OBJ_JCHST || o->type == OBJ_QRBUILD
-                || o->type == OBJ_QRIMAGE || o->type == OBJ_MANPU_FILE) {
-            /* estado é C puro — sem filho Value */
+                || o->type == OBJ_QRIMAGE || o->type == OBJ_MANPU_FILE
+                || o->type == OBJ_BIGINT) {
+            /* estado é C puro (bignum: os limbs da GMP) — sem filho Value */
         }
     }
 }
@@ -1320,6 +1403,9 @@ static void libera_obj(VM *vm, Obj *o)
         free(m->nomes);
         free(m->nome);
         vm->alocado -= sizeof(PSModuloPS);
+    } else if (o->type == OBJ_BIGINT) {
+        mpz_clear(((PSBigInt *)o)->v);
+        vm->alocado -= sizeof(PSBigInt);
     } else if (o->type == OBJ_ARQUIVO) {
         PSArquivo *a = (PSArquivo *)o;
         /* fecha o que o usuário esqueceu: o processo pode continuar rodando */
@@ -1642,6 +1728,12 @@ static PyObject *value_para_py(const Value *v)
         case V_TIPO:   return PyUnicode_FromString(NOME_TIPO[v->as.i]);
         case V_UNSET:  Py_RETURN_NONE;
         case V_OBJ:
+            if (v->as.obj->type == OBJ_BIGINT) {
+                char *s = bigint_str(((PSBigInt *)v->as.obj)->v);
+                PyObject *py = s ? PyLong_FromString(s, NULL, 10) : NULL;
+                free(s);
+                return py;
+            }
             if (v->as.obj->type == OBJ_STRING) {
                 PSString *s = (PSString *)v->as.obj;
                 return PyUnicode_FromStringAndSize(s->chars, s->len);
@@ -1730,6 +1822,14 @@ static int val_iguais(const Value *a, const Value *b)
         return strings_iguais(COMO_BYTES(*a), COMO_BYTES(*b));
     if (a->t == V_INT && b->t == V_INT)   return a->as.i == b->as.i;
     if (a->t == V_BOOL && b->t == V_BOOL) return a->as.b == b->as.b;
+    if (EH_BIGINT(*a) || EH_BIGINT(*b)) {
+        if (EH_BIGINT(*a) && EH_BIGINT(*b))
+            return mpz_cmp(COMO_BIGINT(*a)->v, COMO_BIGINT(*b)->v) == 0;
+        if (a->t == V_FLOAT || b->t == V_FLOAT)   /* bignum vs float: aproximado */
+            return int_como_double(EH_BIGINT(*a) ? *a : *b)
+                   == (a->t == V_FLOAT ? a->as.d : b->as.d);
+        return 0;   /* bignum vs int64/bool: nunca igual (fora do alcance do int64) */
+    }
     /* ManpuResult == true/false compara o sucesso; == "texto" compara status */
     if (EH_MANPURES(*a) || EH_MANPURES(*b)) {
         const Value *mr = EH_MANPURES(*a) ? a : b, *o = EH_MANPURES(*a) ? b : a;
@@ -1857,6 +1957,9 @@ static void escreve_valor(const Value *v, int dentro)
                 if (dentro) putchar('\'');
                 fwrite(s->chars, 1, (size_t)s->len, stdout);
                 if (dentro) putchar('\'');
+            } else if (v->as.obj->type == OBJ_BIGINT) {
+                char *bs = bigint_str(((PSBigInt *)v->as.obj)->v);
+                if (bs) { fputs(bs, stdout); free(bs); }
             } else if (v->as.obj->type == OBJ_LIST || v->as.obj->type == OBJ_TUPLE) {
                 PSList *l = (PSList *)v->as.obj;
                 int tupla = (v->as.obj->type == OBJ_TUPLE);
@@ -2055,6 +2158,13 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
         case V_TIPO:   return txt_put(t, NOME_TIPO[v->as.i], (int)strlen(NOME_TIPO[v->as.i]));
         case V_UNSET:  return txt_put(t, "null", 4);
         case V_OBJ:
+            if (v->as.obj->type == OBJ_BIGINT) {
+                char *bs = bigint_str(((PSBigInt *)v->as.obj)->v);
+                if (!bs) return -1;
+                int rc = txt_put(t, bs, (int)strlen(bs));
+                free(bs);
+                return rc;
+            }
             if (v->as.obj->type == OBJ_BYTES) {
                 /* mesmo repr do `escreve_valor`; sem isto `str(b)` saía vazio */
                 PSString *b = (PSString *)v->as.obj;
@@ -2314,6 +2424,7 @@ static const char *nome_do_tipo_valor(Value v)
         case V_TIPO:               t = "type";  break;
         case V_OBJ:
             switch (v.as.obj->type) {
+                case OBJ_BIGINT:   t = "int";    break;
                 case OBJ_STRING:   t = "str";    break;
                 case OBJ_LIST:     t = "list";   break;
                 case OBJ_TUPLE:    t = "tup";    break;
@@ -4328,6 +4439,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
         case V_TIPO:                t = "type";  break;
         case V_OBJ:
             switch (alvo.as.obj->type) {
+                case OBJ_BIGINT:      t = "int";   break;
                 case OBJ_STRING:      t = "str";   break;
                 case OBJ_LIST:        t = "list";  break;
                 case OBJ_TUPLE:       t = "tup";   break;
@@ -5548,6 +5660,8 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
             snprintf(vm->erro, sizeof(vm->erro), "tipo nao serializavel em json");
             return -1;
     }
+    if (EH_BIGINT(*v)) { char *s = bigint_str(COMO_BIGINT(*v)->v);
+                         int rc = s ? sb_bytes(b, s, (int)strlen(s)) : -1; free(s); return rc; }
     if (EH_STRING(*v)) { PSString *s = COMO_STRING(*v); return json_texto(b, s->chars, s->len); }
     if (EH_SEQ(*v)) {
         PSList *l = COMO_LIST(*v);
@@ -13461,10 +13575,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value b = stack[--sp], a = stack[sp - 1];
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
-            if (a.t == V_INT && b.t == V_INT)          stack[sp - 1] = MK_INT(a.as.i + b.as.i);
+            if (EH_INTEIRO(a) && EH_INTEIRO(b))        { vm->sp = sp; vm->locals_top = locals_top; stack[sp - 1] = int_arit(vm, a, b, '+'); }
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d + b.as.d);
-            else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i + b.as.d);
-            else if (a.t == V_FLOAT && b.t == V_INT)   stack[sp - 1] = MK_FLOAT(a.as.d + (double)b.as.i);
+            else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) + b.as.d);
+            else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d + int_como_double(b));
             else if (EH_STRING(a) && EH_STRING(b)) {
                 PSString *x = COMO_STRING(a), *y = COMO_STRING(b);
                 /* publica o estado antes de alocar: se este malloc for o que
@@ -13517,10 +13631,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value b = stack[--sp], a = stack[sp - 1];
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
-            if (a.t == V_INT && b.t == V_INT)          stack[sp - 1] = MK_INT(a.as.i - b.as.i);
+            if (EH_INTEIRO(a) && EH_INTEIRO(b))        { vm->sp = sp; vm->locals_top = locals_top; stack[sp - 1] = int_arit(vm, a, b, '-'); }
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d - b.as.d);
-            else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i - b.as.d);
-            else if (a.t == V_FLOAT && b.t == V_INT)   stack[sp - 1] = MK_FLOAT(a.as.d - (double)b.as.i);
+            else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) - b.as.d);
+            else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d - int_como_double(b));
             else ERRO_T(vm, "SomeValueUnexpected", "'-' entre tipos incompativeis");
             break;
         }
@@ -13528,10 +13642,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value b = stack[--sp], a = stack[sp - 1];
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
-            if (a.t == V_INT && b.t == V_INT)          stack[sp - 1] = MK_INT(a.as.i * b.as.i);
+            if (EH_INTEIRO(a) && EH_INTEIRO(b))        { vm->sp = sp; vm->locals_top = locals_top; stack[sp - 1] = int_arit(vm, a, b, '*'); }
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d * b.as.d);
-            else if (a.t == V_INT && b.t == V_FLOAT)   stack[sp - 1] = MK_FLOAT((double)a.as.i * b.as.d);
-            else if (a.t == V_FLOAT && b.t == V_INT)   stack[sp - 1] = MK_FLOAT(a.as.d * (double)b.as.i);
+            else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) * b.as.d);
+            else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d * int_como_double(b));
             /* Repetição: `[1,2] * 3` e `3 * [1,2]`. Contagem <= 0 dá
              * sequência vazia (é o que o `list * int` do interpretador faz). */
             else if ((EH_SEQ(a) && b.t == V_INT) || (EH_SEQ(b) && a.t == V_INT)) {
@@ -13557,10 +13671,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value b = stack[--sp], a = stack[sp - 1];
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
-            if ((a.t != V_INT && a.t != V_FLOAT) || (b.t != V_INT && b.t != V_FLOAT))
+            if ((!EH_INTEIRO(a) && a.t != V_FLOAT) || (!EH_INTEIRO(b) && b.t != V_FLOAT))
                 ERRO_T(vm, "SomeValueUnexpected", "'/' entre tipos incompativeis");
-            double x = (a.t == V_INT) ? (double)a.as.i : a.as.d;
-            double y = (b.t == V_INT) ? (double)b.as.i : b.as.d;
+            double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
+            double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
             if (y == 0.0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: division by zero");
             stack[sp - 1] = MK_FLOAT(x / y);
             break;
@@ -13574,11 +13688,22 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int64_t r = a.as.i % b.as.i;
                 if (r != 0 && ((r < 0) != (b.as.i < 0))) r += b.as.i;  /* sinal do divisor, como Python */
                 stack[sp - 1] = MK_INT(r);
-            } else if ((a.t == V_INT || a.t == V_FLOAT) && (b.t == V_INT || b.t == V_FLOAT)) {
+            } else if (EH_INTEIRO(a) && EH_INTEIRO(b)) {   /* pelo menos um bignum */
+                mpz_t za, zb, zr; mpz_init(za); mpz_init(zb); mpz_init(zr);
+                mpz_de_val(za, a); mpz_de_val(zb, b);
+                if (mpz_cmp_si(zb, 0) == 0) {
+                    mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
+                    ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: integer modulo by zero");
+                }
+                mpz_fdiv_r(zr, za, zb);   /* resto com sinal do divisor, como Python */
+                vm->sp = sp; vm->locals_top = locals_top;
+                stack[sp - 1] = mk_from_mpz(vm, zr);
+                mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
+            } else if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
                 /* `fmod` trunca pra zero; o Python (e o interpretador) usam o
                  * sinal do DIVISOR — `-1.0 % 3` é 2.0, não -1.0. */
-                double x = (a.t == V_INT) ? (double)a.as.i : a.as.d;
-                double y = (b.t == V_INT) ? (double)b.as.i : b.as.d;
+                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
+                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
                 if (y == 0.0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: float modulo");
                 double r = fmod(x, y);
                 if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
@@ -13588,7 +13713,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_NEG: {
             Value a = stack[sp - 1];
-            if (a.t == V_INT)        stack[sp - 1] = MK_INT(-a.as.i);
+            if (a.t == V_INT && a.as.i != INT64_MIN) stack[sp - 1] = MK_INT(-a.as.i);
+            else if (EH_INTEIRO(a)) {              /* bignum, ou -INT64_MIN que estoura */
+                vm->sp = sp; vm->locals_top = locals_top;
+                mpz_t z; mpz_init(z); mpz_de_val(z, a); mpz_neg(z, z);
+                stack[sp - 1] = mk_from_mpz(vm, z); mpz_clear(z);
+            }
             else if (a.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(-a.as.d);
             else ERRO_T(vm, "SomeValueUnexpected", "'-' unario em tipo invalido");
             break;
@@ -13618,12 +13748,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int c = memcmp(x->chars, y->chars, (size_t)m);                \
                 if (c == 0) c = (x->len > y->len) - (x->len < y->len);        \
                 stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+            } else if (EH_INTEIRO(a) && EH_INTEIRO(b)) {                      \
+                mpz_t za, zb; mpz_init(za); mpz_init(zb);                     \
+                mpz_de_val(za, a); mpz_de_val(zb, b);                         \
+                int c = mpz_cmp(za, zb); mpz_clear(za); mpz_clear(zb);        \
+                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
             } else {                                                          \
-                if ((a.t != V_INT && a.t != V_FLOAT) ||                       \
-                    (b.t != V_INT && b.t != V_FLOAT))                         \
+                if (!(EH_INTEIRO(a) || a.t == V_FLOAT) ||                     \
+                    !(EH_INTEIRO(b) || b.t == V_FLOAT))                       \
                     ERRO_T(vm, "SomeValueUnexpected", "comparacao entre tipos incompativeis");         \
-                double x = (a.t == V_INT) ? (double)a.as.i : a.as.d;          \
-                double y = (b.t == V_INT) ? (double)b.as.i : b.as.d;          \
+                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);    \
+                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);    \
                 stack[sp - 1] = MK_BOOL(x C_OP y);                            \
             }                                                                 \
             break;                                                            \
