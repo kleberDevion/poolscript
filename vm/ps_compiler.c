@@ -1636,8 +1636,16 @@ static void stmt(C *c, Unidade *u, PSNode *n)
         }
 
         case N_RAISE_STMT:
-            expr(c, u, n->a);
-            emite(c, u, OP_RAISE, 0);
+            if (n->texto) {                       /* raise Tipo[("msg")] — tipo livre */
+                if (n->a) expr(c, u, n->a);        /* mensagem na pilha */
+                else emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, "", 0));
+                emite(c, u, OP_LOAD_CONST,         /* nome do tipo por cima */
+                      idx_const(c, u, K_STR, 0, 0, n->texto, (int32_t)strlen(n->texto)));
+                emite(c, u, OP_RERAISE, 0);         /* consome (tipo, msg) */
+            } else {
+                expr(c, u, n->a);
+                emite(c, u, OP_RAISE, 0);
+            }
             return;
 
         case N_TRY_CATCH_STMT: {

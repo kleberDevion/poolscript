@@ -1536,8 +1536,23 @@ static PSNode *statement(P *p)
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_RAISE_STMT, t->line, t->col);
         if (!n) return NULL;
-        n->a = expressao(p);
-        if (FALHOU(p)) return NULL;
+        /* raise Tipo  ou  raise Tipo("msg") — nome de tipo livre (IDENT_UPPER).
+         * texto = nome do tipo; a = expressão da mensagem (ou NULL). */
+        if (atual(p)->type == T_IDENT_UPPER) {
+            n->texto = dup_tok(p, atual(p));
+            p->pos++;
+            if (checa(p, T_LPAREN)) {
+                p->pos++;
+                if (!checa(p, T_RPAREN)) {
+                    n->a = expressao(p);
+                    if (FALHOU(p)) return NULL;
+                }
+                if (!exige(p, T_RPAREN, "esperado ')' no raise")) return NULL;
+            }
+        } else {
+            n->a = expressao(p);
+            if (FALHOU(p)) return NULL;
+        }
         return n;
     }
     if (checa_kw(p, "yield")) {

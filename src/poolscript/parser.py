@@ -199,7 +199,8 @@ class ActionDecl(Node):
 
 @dataclass(slots=True)
 class RaiseStmt(Node):
-    value: Node
+    value: Node | None
+    error_type: str | None = None  # raise Tipo("msg") — nome de tipo livre
 
 
 @dataclass(slots=True)
@@ -684,9 +685,22 @@ class Parser:
                 return self.parse_return_stmt()
             if tok.value == "raise":
                 self.pos += 1
-                value = self.parse_expression()
+                error_type = None
+                value = None
+                if self.current().type == "IDENT_UPPER":
+                    # raise Tipo  ou  raise Tipo("mensagem") — nome de tipo livre
+                    error_type = str(self.current().value)
+                    self.pos += 1
+                    if self.current().type == "LPAREN":
+                        self.pos += 1
+                        if self.current().type != "RPAREN":
+                            value = self.parse_expression()
+                        self.expect("RPAREN", msg="esperado ')' no raise")
+                else:
+                    value = self.parse_expression()
                 self.consume_optional_semi()
-                return RaiseStmt(line=tok.line, col=tok.col, value=value)
+                return RaiseStmt(line=tok.line, col=tok.col, value=value,
+                                 error_type=error_type)
             if tok.value == "yield":
                 self.pos += 1
                 value = None

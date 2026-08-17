@@ -962,6 +962,11 @@ class Interpreter:
                 value = None if node.value is None else self.eval_expr(node.value, scope)
                 raise ReturnSignal(value)
             if node.__class__ is RaiseStmt:
+                if node.error_type is not None:
+                    # raise Tipo("msg") — nome de tipo livre; vira o `code` do erro
+                    msg = "" if node.value is None else str(self.eval_expr(node.value, scope))
+                    raise PoolRuntimeError(msg, node, self.source,
+                                           code=node.error_type, filename=self.filename)
                 value = self.eval_expr(node.value, scope)
                 if isinstance(value, Exception):
                     raise value
