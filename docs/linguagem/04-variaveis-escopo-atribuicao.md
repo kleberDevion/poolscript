@@ -258,8 +258,9 @@ faz — são detalhadas na parte de bibliotecas.)
 - **Não há `pass`.** Um bloco precisa de pelo menos um statement; não existe
   um "não faça nada" — use um comentário se quiser marcar o lugar, ou
   reestruture para não ter bloco vazio.
-- Nomes seguem as regras léxicas da seção 1.4 (minúscula = variável comum;
-  MAIÚSCULA = lib/classe/tipo de erro).
+- Nomes seguem as regras léxicas da seção 1.4. A caixa MAIÚSCULA é
+  **convenção** para libs/classes/tipos de erro, mas não é reserva: um nome
+  maiúsculo pode ser variável comum (`MAX = 100`, `str NOME = "ana"`).
 
 ---
 

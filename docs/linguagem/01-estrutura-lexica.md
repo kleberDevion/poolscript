@@ -116,10 +116,12 @@ Um identificador nomeia variáveis, funções, campos, parâmetros, etc.
   (regex: `[A-Za-z_][A-Za-z0-9_]*`).
 - A **caixa da primeira letra é semântica** e o lexer distingue dois tokens:
   - **minúscula ou `_`** → `IDENT` — variáveis, funções, parâmetros comuns.
-  - **MAIÚSCULA** → `IDENT_UPPER` — reservado para **libs, classes/Entity e
-    tipos de erro**. O parser usa essa distinção (por exemplo, `catch (Tipo e)`
-    e `raise Tipo(...)` só reconhecem o tipo quando ele começa com maiúscula;
-    ver a seção de exceptions).
+  - **MAIÚSCULA** → `IDENT_UPPER` — por **convenção** usado para **libs,
+    classes/Entity e tipos de erro**. Não é uma reserva rígida: um nome
+    maiúsculo também pode ser uma variável comum (`str NOME = "ana"` ou
+    `MAX = 100`). Mas o parser usa a caixa em alguns pontos — por exemplo,
+    `catch (Tipo e)` e `raise Tipo(...)` só reconhecem o tipo quando ele começa
+    com maiúscula (ver a seção de exceptions).
 
 ```ps
 nome      = "ana"     // IDENT
