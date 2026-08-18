@@ -1,0 +1,273 @@
+# Referência da Linguagem — 1. Estrutura léxica
+
+Esta seção especifica como o **lexer** (o primeiro estágio do compilador/
+interpretador) transforma o texto-fonte de um `.ps`/`.psl`/`.p` numa sequência
+de *tokens*. É o nível mais baixo da linguagem: o que conta como espaço,
+comentário, número, string, operador, e como blocos são delimitados. As seções
+seguintes (tipos, expressões, statements) assumem estas regras.
+
+O modelo é o mesmo dos dois motores (o interpretador em Python e a VM em C): o
+mesmo fonte produz os mesmos tokens.
+
+---
+
+## 1.1. Modelo de código-fonte
+
+- O fonte é **texto UTF-8**. Fora de strings, a linguagem usa apenas ASCII para
+  palavras-chave, operadores e pontuação; dentro de strings qualquer caractere
+  Unicode é válido.
+- A varredura é **caractere a caractere**, mantendo `linha` e `coluna` (ambas
+  1-based) para as mensagens de erro no estilo Python (com o indicador `^^^`).
+- Quebras de linha `\n` e `\r\n` são reconhecidas; o `\r` isolado é ignorado.
+
+---
+
+## 1.2. Comentários
+
+Há três formas de comentário, todas **descartadas** na tokenização (não viram
+tokens, não afetam o programa):
+
+| Forma | Sintaxe | Alcance |
+|---|---|---|
+| Linha (`//`) | `// texto` | do `//` até o fim da linha |
+| Linha (`#`) | `# texto` | do `#` até o fim da linha |
+| Bloco | `""" ... """` | de `"""` até o próximo `"""`, podendo cruzar linhas |
+
+```ps
+// isto é um comentário de linha
+x = 10   # também é comentário de linha
+
+"""
+comentário de bloco:
+pode ocupar várias linhas
+"""
+```
+
+> **Atenção — `"""` é comentário, não string.** Aspas duplas triplas iniciam um
+> **comentário de bloco**, nunca uma string multi-linha. Para uma string que
+> ocupa várias linhas, use **aspas simples triplas** `''' ... '''` (ver 1.6.3).
+> Um `"""` que nunca fecha é erro de sintaxe (`bloco de comentário """ não foi
+> fechado`).
+
+---
+
+## 1.3. Espaço em branco e delimitação de blocos
+
+A PoolScript aceita **dois estilos de bloco**, e eles podem coexistir no mesmo
+arquivo (embora misturar no mesmo trecho seja desencorajado):
+
+### 1.3.1. Blocos por chaves `{ }` — modo *brace*
+
+Dentro de `(`, `[` ou `{`, a **indentação é ignorada** e as quebras de linha não
+geram tokens estruturais. É o modo livre, estilo C/JS:
+
+```ps
+action soma(a, b) {
+    return a + b
+}
+```
+
+### 1.3.2. Blocos por indentação — modo *colon*
+
+Um `:` no **fim lógico da linha** (só espaços/comentário depois dele) abre um
+bloco por indentação, estilo Python:
+
+```ps
+action soma(a, b):
+    return a + b
+```
+
+A política de indentação é **estrita**:
+
+- **Apenas espaços.** TAB é proibido (`indentação com TAB não é permitida; use
+  4 espaços`).
+- Cada nível é **exatamente 4 espaços** (`INDENT_UNIT = 4`). Indentar com um
+  número que não seja múltiplo de 4 é erro; avançar mais de um nível de uma vez
+  (ex.: 8 espaços de uma vez) também é erro.
+- Ao desindentar, a coluna precisa bater com um nível aberto anteriormente
+  (`indentação inconsistente`).
+
+Linhas em branco e linhas só com comentário **não** alteram a pilha de
+indentação.
+
+### 1.3.3. Continuação de linha por `.membro`
+
+Quando a próxima linha (ignorando espaços) começa com `.` seguido de letra ou
+`_`, ela é tratada como **continuação da expressão anterior** — não gera
+NEWLINE nem mexe na indentação. Isto habilita *method chaining* em várias
+linhas, inclusive no modo colon:
+
+```ps
+resposta = request.get(url=u)
+                  .json()
+                  .get("dados")
+```
+
+Um `.` seguido de dígito (`.5`, um float) ou um `.` isolado **não** dispara essa
+regra — seguem o fluxo normal.
+
+---
+
+## 1.4. Identificadores
+
+Um identificador nomeia variáveis, funções, campos, parâmetros, etc.
+
+- Deve começar com **letra ou `_`** e seguir com letras, dígitos ou `_`
+  (regex: `[A-Za-z_][A-Za-z0-9_]*`).
+- A **caixa da primeira letra é semântica** e o lexer distingue dois tokens:
+  - **minúscula ou `_`** → `IDENT` — variáveis, funções, parâmetros comuns.
+  - **MAIÚSCULA** → `IDENT_UPPER` — reservado para **libs, classes/Entity e
+    tipos de erro**. O parser usa essa distinção (por exemplo, `catch (Tipo e)`
+    e `raise Tipo(...)` só reconhecem o tipo quando ele começa com maiúscula;
+    ver a seção de exceptions).
+
+```ps
+nome      = "ana"     // IDENT
+_cache    = []        // IDENT
+Usuario   = ...       // IDENT_UPPER (uma Entity/classe)
+```
+
+---
+
+## 1.5. Palavras reservadas (keywords)
+
+As palavras abaixo são reservadas e **não podem ser usadas como nome comum**.
+Estão agrupadas por função (a lista é a do lexer):
+
+| Grupo | Palavras |
+|---|---|
+| Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `return` |
+| Lógicos | `and` `or` `not` `Not` |
+| Funções | `action` `reaction` `async` `await` `yield` |
+| Tipos | `str` `int` `flo` `bool` `list` `dict` `tup` `char` `json` `JSON` |
+| Classes | `Entity` `class` `Class` `self` `model` `enum` `type` |
+| Encapsulamento | `private` `public` |
+| Módulos | `import` `from` `as` `PUSH` `GET` |
+| Exceptions | `try` `catch` `finally` `raise` |
+| Recursos/ctx | `using` `with` `of` `global` |
+| Conversão | `to` |
+| Operador | `count` |
+| Builtins/spec | `post` `input` `listen` `route` `create` `clear` `space` `addEnd` |
+| HTTP | `POST` `PUT` `DELETE` |
+| manpu | `full` `mei` |
+
+> `dict` é apelido de `json`; `tup` é o nome do tipo tupla. `base` **não** é
+> keyword global — é tratada contextualmente pelo parser (dentro de Entity).
+
+---
+
+## 1.6. Literais
+
+### 1.6.1. Inteiros
+
+Sequência de dígitos decimais (`\d+`). Sem limite de tamanho: um literal maior
+que 64 bits é promovido automaticamente a **inteiro de precisão arbitrária**
+(bignum) — `type()` continua devolvendo `"int"`.
+
+```ps
+x = 42
+gigante = 99999999999999999999999999999999999999   // ainda é int
+```
+
+### 1.6.2. Ponto flutuante (`flo`)
+
+Dígitos com um ponto decimal (`\d+\.\d+`). Não há notação científica no literal
+(use conversão se precisar).
+
+```ps
+pi = 3.14159
+```
+
+### 1.6.3. Strings
+
+Aspas **simples e duplas são equivalentes** — escolha uma; não há diferença de
+semântica. Uma string não pode cruzar a quebra de linha (erro `string não
+fechada antes da quebra de linha`), a menos que seja multi-linha.
+
+| Forma | Exemplo | Observação |
+|---|---|---|
+| Simples/dupla | `"oi"` / `'oi'` | equivalentes |
+| Multi-linha | `''' ... '''` | aspas **simples** triplas (as duplas triplas são comentário) |
+| f-string | `f"olá {nome}"` | interpola expressões entre `{ }` |
+| f-string multi-linha | `f''' ... {x} ... '''` | |
+| raw | `r"\n literal"` | não processa escapes |
+| raw multi-linha | `r''' ... '''` | |
+
+**Escapes** (processados fora de raw strings):
+
+| Escape | Resultado | | Escape | Resultado |
+|---|---|---|---|---|
+| `\n` | nova linha | | `\\` | `\` |
+| `\t` | tab | | `\"` `\'` | aspas |
+| `\r` | retorno | | `\a \b \f \v` | controle |
+| `\e` | ESC (`\x1b`, p/ ANSI) | | `\033` | octal (1–3 díg.) |
+| `\xHH` | hex (2 díg.) | | `\uXXXX` / `\UXXXXXXXX` | Unicode |
+
+Um escape desconhecido mantém o caractere e solta a barra. O valor de `\033`,
+`\x1b` e `\e` é o **mesmo byte** ESC nos dois motores.
+
+```ps
+post("linha1\nlinha2")
+post("\e[1mnegrito\e[0m")        // ANSI
+post(r"C:\temp\nome")            // raw: a \n fica literal
+nome = "mundo"
+post(f"olá, {nome}!")            // f-string
+```
+
+### 1.6.4. Booleanos e nulo
+
+- **Booleano:** `True`/`true` e `False`/`false` (as quatro formas valem).
+- **Nulo:** `Null`/`null`/`None`/`none` (as quatro valem; o valor imprime como
+  `null`).
+
+### 1.6.5. Literal de cor — `<cor>"texto"`
+
+Uma sintaxe própria: `<hex>` ou `<nome>` colado numa string produz um token de
+cor (aplicado como sequência ANSI na saída).
+
+- `<hex>` = **3 ou 6** dígitos hexadecimais (como no CSS). 4 ou 5 dígitos **não**
+  são cor válida e o `<...>` volta a ser tratado como operador.
+- `<nome>` = uma das cores nomeadas: `red green blue yellow cyan magenta white
+  black purple orange pink gray/grey lime teal`.
+
+```ps
+post(<red>"erro!")
+post(<2196F3>"azul")
+```
+
+### 1.6.6. Coleções
+
+Sintaxe reconhecida no parser (detalhada na seção de tipos):
+
+```ps
+lista = [1, 2, 3]                 // list
+mapa  = { "a": 1, "b": 2 }        // dict/json
+tupla = (1, 2, 3)                 // tup (imutável)
+```
+
+---
+
+## 1.7. Operadores e pontuação
+
+**Operadores de múltiplos caracteres** (reconhecidos do mais longo para o mais
+curto): `===` `!==` `==` `!=` `<=` `>=` `&&` `||` `<<` `>>` `+=` `-=` `*=` `/=`
+`%=` `++` `--`.
+
+**Operadores de um caractere:** `+ - * / % = < > ! . , @ | ^ & ~`.
+
+**Pontuação estrutural** (cada uma é seu próprio token): `( )` `[ ]` `{ }` `:`
+`;` `,` `.` `@`.
+
+Os operadores lógicos existem em duas grafias equivalentes: `&&`/`and`,
+`||`/`or`, `!`/`not`. A semântica (precedência, curto-circuito, coerção) é
+definida na seção de expressões.
+
+---
+
+## 1.8. Resumo dos tipos de token
+
+O lexer emite: `IDENT`, `IDENT_UPPER`, `KW` (keyword), `INT`, `FLO`, `STR`,
+`FSTRING`, `BOOL`, `NULL`, `COLOR`, `OP` (operador), os tokens de pontuação
+(`LPAREN`, `RBRACE`, `COLON`, ...), `NEWLINE`, `INDENT`, `DEDENT` e `EOF`. As
+próximas seções descrevem como o parser combina esses tokens em expressões e
+statements.
