@@ -169,6 +169,24 @@ def ps_type(value: Any) -> str:
     return type(value).__name__
 
 
+def ps_round(n, casas=None):
+    # 1 arg -> int (round(n) do Python); 2 args -> float. Casas NEGATIVAS são
+    # clampadas a 0 pra bater com a VM (que não arredonda dezenas/centenas).
+    if casas is None:
+        return round(n)
+    return round(n, max(0, int(casas)))
+
+
+def ps_min(*a):
+    # Só posicional: a VM não tem os kwargs key=/default= do Python. Mantém a
+    # paridade (min/max recebem 1 iterável ou vários valores, nada de kwargs).
+    return min(*a)
+
+
+def ps_max(*a):
+    return max(*a)
+
+
 GLOBAL_BUILTINS = {
     "open":     ps_open,
     "len":      ps_len,
@@ -189,10 +207,10 @@ GLOBAL_BUILTINS = {
     "ord":      ord,       # char → int  (ex: ord("A") → 65)
     "chr":      chr,       # int → char  (ex: chr(65) → "A")
     "abs":      abs,       # valor absoluto
-    "round":    round,     # arredondamento
-    "sum":      sum,       # soma de lista
-    "min":      min,       # mínimo
-    "max":      max,       # máximo
+    "round":    ps_round,  # arredondamento (casas negativas clampadas a 0, como a VM)
+    "sum":      sum,       # soma de lista (aceita start; a VM agora também)
+    "min":      ps_min,    # mínimo (posicional; sem kwargs, como a VM)
+    "max":      ps_max,    # máximo (posicional; sem kwargs, como a VM)
     "sorted":   sorted,    # lista ordenada
     "reversed": lambda x: list(reversed(x)),  # lista invertida
     "enumerate": lambda x: list(enumerate(x)),  # enumerate(lista) → [(0,x),(1,y)...]

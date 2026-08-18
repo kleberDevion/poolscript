@@ -2394,6 +2394,7 @@ static int texto_para_int(const char *s, int len, int64_t *out)
 
 static int nativa_int(VM *vm, Value *args, int n, Value *out)
 {
+    if (n == 0) { *out = MK_INT(0); return 0; }   /* int() -> 0, como o interp */
     EXIGE_ARGS(vm, "int", 1);
     Value v = args[0];
     if (v.t == V_INT)   { *out = v; return 0; }
@@ -2870,12 +2871,19 @@ static FnNativa tipo_conversor(int32_t idx)
 
 static int nativa_sum(VM *vm, Value *args, int n, Value *out)
 {
-    EXIGE_ARGS(vm, "sum", 1);
+    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "sum() espera 1 ou 2 argumentos");
     if (!EH_SEQ(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() espera lista");
     PSList *l = COMO_LIST(args[0]);
     int64_t si = 0;
     double  sd = 0;
     int flutuou = 0;
+    if (n == 2) {                        /* valor inicial (start), como o sum() do interp */
+        Value s = args[1];
+        if (s.t == V_INT)        si = s.as.i;
+        else if (s.t == V_BOOL)  si = s.as.b ? 1 : 0;
+        else if (s.t == V_FLOAT) { sd = s.as.d; flutuou = 1; }
+        else BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() start deve ser numero");
+    }
     for (int i = 0; i < l->len; i++) {
         Value v = l->itens[i];
         if (v.t == V_INT)        { si += v.as.i; }
