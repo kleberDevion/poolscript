@@ -361,6 +361,11 @@ static PSNode *primario(P *p)
                 if (!exige(p, T_RPAREN, "faltou ')' em base()")) return NULL;
                 return n;
             }
+            /* `base` sem `(` não é nome válido — mesmo erro do interp */
+            if (t->texto && strcmp(t->texto, "base") == 0) {
+                perro(p, "esperado '(' após 'base'", t);
+                return NULL;
+            }
             p->pos++;
             PSNode *n = ps_node_novo(p->arena, N_NAME, t->line, t->col);
             if (!n) return NULL;

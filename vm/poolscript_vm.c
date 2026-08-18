@@ -1999,7 +1999,16 @@ static void escreve_valor(const Value *v, int dentro)
             } else if (v->as.obj->type == OBJ_CLASS) {
                 printf("<Entity %s>", ((PSClass *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_INSTANCE) {
-                printf("<%s>", ((PSInstance *)v->as.obj)->classe->nome);
+                /* <Nome {campos}> — igual ao interp (campos como dict) */
+                PSInstance *inst = (PSInstance *)v->as.obj;
+                printf("<%s ", inst->classe->nome);
+                if (inst->campos) {
+                    Value dv = MK_OBJ((Obj *)inst->campos);
+                    escreve_valor(&dv, 1);
+                } else {
+                    fputs("{}", stdout);
+                }
+                putchar('>');
             } else if (v->as.obj->type == OBJ_GERADOR) {
                 printf("<generator %s>",
                        vm_corrente && ((PSGerador *)v->as.obj)->proto < vm_corrente->nprotos
@@ -2230,9 +2239,20 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             if (v->as.obj->type == OBJ_CLASS)
                 return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<Entity %s>",
                                                 ((PSClass *)v->as.obj)->nome));
-            if (v->as.obj->type == OBJ_INSTANCE)
-                return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<%s>",
-                                                ((PSInstance *)v->as.obj)->classe->nome));
+            if (v->as.obj->type == OBJ_INSTANCE) {
+                /* <Nome {campos}> — igual ao interp */
+                PSInstance *inst = (PSInstance *)v->as.obj;
+                if (txt_put(t, "<", 1) != 0) return -1;
+                if (txt_put(t, inst->classe->nome, (int)strlen(inst->classe->nome)) != 0) return -1;
+                if (txt_put(t, " ", 1) != 0) return -1;
+                if (inst->campos) {
+                    Value dv = MK_OBJ((Obj *)inst->campos);
+                    if (valor_para_texto(t, &dv, 1) != 0) return -1;
+                } else {
+                    if (txt_put(t, "{}", 2) != 0) return -1;
+                }
+                return txt_put(t, ">", 1);
+            }
             if (v->as.obj->type == OBJ_BOUND) return txt_put(t, "<metodo>", 8);
             if (v->as.obj->type == OBJ_BYTES) {
                 /* mesmo repr do `escreve_valor`; sem isto `str(b)` saía vazio */
@@ -14100,6 +14120,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* método ligado: `self` entra como primeiro argumento */
                 PSBound *b = COMO_BOUND(alvo);
                 Proto *np = &vm->protos[b->proto];
+                if (np->nparams == 0)
+                    ERRO_TF(vm, "RuntimeError",
+                            "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                            np->nome ? np->nome : "?");
                 if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no metodo");
                 if (fp + 1 >= MAX_FRAMES) ERRO(vm, "estouro de frames");
                 if (locals_top + np->nlocals >= LOCALS_SIZE) ERRO(vm, "estouro do pool de locais");
@@ -14125,9 +14149,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* Aceita MENOS argumentos: o prólogo do callee preenche os
                  * que faltam com o default. Mais que os parâmetros continua
                  * erro. */
-                if (n > np->nparams) ERRO(vm, "argumentos demais na chamada");
+                if (n > np->nparams)
+                    ERRO_TF(vm, "RuntimeError",
+                            "action '%s' esperava até %d argumentos, recebeu %d",
+                            np->nome ? np->nome : "?", np->nparams, n);
                 if (n < np->nparams - np->ndefaults)
-                    ERRO(vm, "argumentos de menos na chamada");
+                    ERRO_TF(vm, "RuntimeError", "action '%s' faltando argumento: '%s'",
+                            np->nome ? np->nome : "?",
+                            (np->param_nomes && np->param_nomes[n]) ? np->param_nomes[n] : "?");
                 if (np->eh_gerador) {
                     /* chamar um gerador não executa nada: devolve o frame
                      * congelado, e o corpo só roda no primeiro `next` */
