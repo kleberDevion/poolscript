@@ -131,28 +131,30 @@ Usuario   = ...       // IDENT_UPPER (uma Entity/classe)
 
 ## 1.5. Palavras reservadas (keywords)
 
-As palavras abaixo são reservadas e **não podem ser usadas como nome comum**.
-Estão agrupadas por função (a lista é a do lexer):
+Estas são as palavras **da linguagem** — reservadas, não podem nomear variáveis.
+Agrupadas por papel:
 
 | Grupo | Palavras |
 |---|---|
 | Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `return` |
 | Lógicos | `and` `or` `not` `Not` |
 | Funções | `action` `reaction` `async` `await` `yield` |
-| Tipos | `str` `int` `flo` `bool` `list` `dict` `tup` `char` `json` `JSON` |
-| Classes | `Entity` `class` `Class` `self` `model` `enum` `type` |
+| Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` |
+| Classes / OO | `Entity` `class` `Class` `self` `base` `model` `enum` |
 | Encapsulamento | `private` `public` |
 | Módulos | `import` `from` `as` `PUSH` `GET` |
 | Exceptions | `try` `catch` `finally` `raise` |
-| Recursos/ctx | `using` `with` `of` `global` |
-| Conversão | `to` |
-| Operador | `count` |
-| Builtins/spec | `post` `input` `listen` `route` `create` `clear` `space` `addEnd` |
-| HTTP | `POST` `PUT` `DELETE` |
-| manpu | `full` `mei` |
+| Escopo / contexto | `global` `using` |
+| Conversão / operador | `to` `count` |
 
-> `dict` é apelido de `json`; `tup` é o nome do tipo tupla. `base` **não** é
-> keyword global — é tratada contextualmente pelo parser (dentro de Entity).
+`dict` é apelido de `json`; `tup` nomeia a tupla; `base` é reconhecida
+contextualmente dentro de `Entity` (chama o construtor do pai).
+
+Os **builtins** (`post`, `input`, `len`, `range`, `addEnd`, `chr`, `ord`, ...)
+também são nomes reservados, mas são **funções**, não palavras de controle —
+documentadas na seção *Builtins*. O lexer ainda reserva um punhado de palavras
+**históricas ou de lib** (sem gramática nem builtin ativo) que não fazem parte
+da linguagem e portanto não são listadas aqui.
 
 ---
 
