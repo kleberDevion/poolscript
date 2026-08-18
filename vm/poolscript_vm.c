@@ -735,6 +735,7 @@ typedef struct {
     char  *icon;               /* caminho do .png do ícone (malloc) ou NULL */
     Value *filhos;             /* array de widgets (Value) */
     int    nfilhos, capfilhos;
+    int    shown;              /* já abriu a janela? (show() e auto-show idempotentes) */
 } PSGuzUI;
 #define EH_GUZ_UI(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_GUZ_UI)
 #define COMO_GUZ_UI(v) ((PSGuzUI*)(v).as.obj)
@@ -1081,7 +1082,10 @@ static uint32_t hash_valor(const Value *v)
 {
     switch (v->t) {
         case V_NULL:  return 0u;
-        case V_BOOL:  return v->as.b ? 1u : 2u;
+        /* bool hasheia como o int equivalente (true->1, false->0), pra
+         * `d[1]`/`d[true]` e `d[0]`/`d[false]` serem a MESMA chave — bool é
+         * subtipo de int, igual ao interpretador (Python). */
+        case V_BOOL:  return (uint32_t)((uint64_t)(v->as.b ? 1 : 0) * 2654435761u);
         case V_INT:   return (uint32_t)((uint64_t)v->as.i * 2654435761u);
         case V_FLOAT: {
             /* inteiro guardado como float precisa colidir com o int
@@ -1857,9 +1861,13 @@ static int val_iguais(const Value *a, const Value *b)
     /* duas referências ao mesmo tipo são o mesmo valor — `str == str` */
     if (a->t == V_TIPO && b->t == V_TIPO) return a->as.i == b->as.i;
     if (a->t == V_TIPO || b->t == V_TIPO) return 0;
-    if ((a->t == V_INT || a->t == V_FLOAT) && (b->t == V_INT || b->t == V_FLOAT)) {
-        double x = (a->t == V_INT) ? (double)a->as.i : a->as.d;
-        double y = (b->t == V_INT) ? (double)b->as.i : b->as.d;
+    /* int/float/bool se comparam por valor numérico — bool é subtipo de int
+     * (true==1, false==0), como no interpretador. int==int e bool==bool já
+     * saíram acima; aqui é sempre mistura. */
+    if ((a->t == V_INT || a->t == V_FLOAT || a->t == V_BOOL) &&
+        (b->t == V_INT || b->t == V_FLOAT || b->t == V_BOOL)) {
+        double x = (a->t == V_FLOAT) ? a->as.d : (double)(a->t == V_BOOL ? a->as.b : a->as.i);
+        double y = (b->t == V_FLOAT) ? b->as.d : (double)(b->t == V_BOOL ? b->as.b : b->as.i);
         return x == y;
     }
     if (EH_SEQ(*a) && EH_SEQ(*b) && a->as.obj->type == b->as.obj->type) {
@@ -1868,6 +1876,20 @@ static int val_iguais(const Value *a, const Value *b)
         if (x->len != y->len) return 0;
         for (int i = 0; i < x->len; i++)
             if (!val_iguais(&x->itens[i], &y->itens[i])) return 0;
+        return 1;
+    }
+    /* dicts: igualdade ESTRUTURAL, como as listas acima e como o interp —
+     * mesmas chaves com mesmos valores, independente da ordem de inserção. */
+    if (EH_DICT(*a) && EH_DICT(*b)) {
+        PSDict *x = COMO_DICT(*a), *y = COMO_DICT(*b);
+        if (x == y) return 1;
+        if (x->count != y->count) return 0;
+        for (int k = 0; k < x->usados; k++) {
+            if (x->entradas[k].estado != 1) continue;
+            Value vy;
+            if (dict_get(y, &x->entradas[k].chave, &vy) != 0) return 0;   /* chave só em x */
+            if (!val_iguais(&x->entradas[k].valor, &vy)) return 0;
+        }
         return 1;
     }
     if (a->t == V_OBJ && b->t == V_OBJ) return a->as.obj == b->as.obj;
@@ -5316,6 +5338,14 @@ static int met_guz_window(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n; return guz_cria(vm, alvo, GUZ_WINDOW, "Window", MK_NULL(), out); }
 static int met_guz_button(VM *vm, Value alvo, Value *args, int n, Value *out)
 { Value h = (n > 0) ? args[0] : MK_NULL(); return guz_cria(vm, alvo, GUZ_BUTTON, "Button", h, out); }
+static void guz_mostra(VM *vm);
+/* app.show() — abre a janela nativa explicitamente (bloqueante). Idempotente:
+ * se já abriu (por show() ou pelo auto-show do fim do script), não reabre.
+ * Paridade com o .show() do interp (guzer_lib.py). */
+static int met_guz_show(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ (void)args; (void)n;
+  if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
+  vm->guz_app = alvo; guz_mostra(vm); *out = MK_NULL(); return 0; }
 
 /* Elemento HTML genérico. Params (superset) = atributos do HTML, renomeados
  * quando batem com keyword (type->typeinp, for->forid, method->methd). Lê o
@@ -5413,7 +5443,7 @@ static int mod_guz_UI(VM *vm, Value *args, int n, Value *out)
     const char *tit = (n > 0 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "PoolScript";
     u->titulo = strdup(tit);
     u->icon = (n > 1 && EH_STRING(args[1])) ? strdup(COMO_STRING(args[1])->chars) : NULL;
-    u->filhos = NULL; u->nfilhos = 0; u->capfilhos = 0;
+    u->filhos = NULL; u->nfilhos = 0; u->capfilhos = 0; u->shown = 0;
     vm->alocado += sizeof(PSGuzUI);
     *out = MK_OBJ(u);
     vm->guz_app = *out;
@@ -5422,6 +5452,7 @@ static int mod_guz_UI(VM *vm, Value *args, int n, Value *out)
 static const MetodoNat METODOS_GUZ_UI[] = {
     { "window", met_guz_window, NULL },
     { "button", met_guz_button, "onclick" },
+    { "show",   met_guz_show,   NULL },
     { "div", gel_div, P_ELEM }, { "section", gel_section, P_ELEM },
     { "article", gel_article, P_ELEM }, { "aside", gel_aside, P_ELEM },
     { "header", gel_header, P_ELEM }, { "footer", gel_footer, P_ELEM },
@@ -5489,6 +5520,8 @@ static void guz_mostra(VM *vm)
     if (getenv("GUZER_HEADLESS")) return;
     if (!EH_GUZ_UI(vm->guz_app)) return;
     PSGuzUI *u = COMO_GUZ_UI(vm->guz_app);
+    if (u->shown) return;   /* já aberta: show() e auto-show não reabrem */
+    u->shown = 1;
     int win_w = 480, win_h = 320; unsigned long win_bg = 0xFFFFFF;
     for (int i = 0; i < u->nfilhos; i++) {
         PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
