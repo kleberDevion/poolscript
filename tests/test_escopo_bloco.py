@@ -64,6 +64,12 @@ CASOS = [
     # função: bloco não vaza, mas parâmetro sobrevive
     ("action f(a):" + NL + "    if a > 0:" + NL + "        tmp = a * 2" + NL
      + "        return tmp" + NL + "    return a" + NL + "post(f(3))" + NL, "6", False),
+    # finally: corpo É de bloco (não vaza)
+    ("try:" + NL + "    a = 1" + NL + "catch (e):" + NL + "    b = 0" + NL
+     + "finally:" + NL + "    fv = 1" + NL + "post(fv)" + NL, "", True),
+    # using: EXCEÇÃO deliberada — a var e o corpo SOBREVIVEM depois do bloco
+    ("Entity R():" + NL + "    action close(self):" + NL + "        return 0" + NL
+     + "using R() as r:" + NL + "    viveu = 1" + NL + "post(viveu)" + NL, "1", False),
 ]
 
 

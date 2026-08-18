@@ -1475,14 +1475,14 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * (ex.: open() com arg inválido), o erro real tem que propagar —
              * senão a limpeza faria LOAD de um `f` nunca gravado e mascararia
              * tudo com "variavel nao definida". O try cobre só o corpo. */
-            int32_t Mu = escopo_marca(u);      /* escopo da var do using (f) */
+            /* NÃO abre escopo de bloco: no interp, a var do `using` e as
+             * variáveis atribuídas no corpo SOBREVIVEM depois do bloco (é
+             * deliberado). Manter igual pra não divergir. */
             expr(c, u, n->a);
             guarda_nome_modo(c, u, n->texto ? n->texto : "_", 1);
-            int32_t Mub = escopo_marca(u);     /* escopo do corpo */
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
             bloco_stmts(c, u, n->b);
-            escopo_fecha(c, u, Mub);           /* vars do corpo não vazam */
             c->dentro_try--;
             emite(c, u, OP_POP_TRY, 0);
 
@@ -1498,7 +1498,6 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_RAISE, 0);          /* a mensagem já está na pilha */
 
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
-            escopo_fecha(c, u, Mu);            /* a var do using (f) não vaza */
             return;
         }
 
