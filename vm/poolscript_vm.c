@@ -15086,8 +15086,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             {
                 int tab, mi;
-                if (acha_metodo_valor(alvo, nome, &tab, &mi) != 0)
+                if (acha_metodo_valor(alvo, nome, &tab, &mi) != 0) {
+                    /* dict: um nome que NÃO é método vira acesso a chave —
+                     * `d.chave` equivale a `d["chave"]` (o método de dict, como
+                     * `.get`/`.keys`, ainda ganha por ser resolvido antes). */
+                    if (EH_DICT(alvo)) {
+                        Value dv;
+                        if (dict_get(COMO_DICT(alvo), &nomev, &dv) == 0) { stack[sp - 1] = dv; break; }
+                        ERRO_TF(vm, "KeyError", "chave não encontrada: '%s'", nome);
+                    }
                     ERRO_TF(vm, "RuntimeError", "membro inexistente: %s (em %s)", nome, nome_do_tipo_valor(alvo));
+                }
                 Value base = alvo;
                 /* Número recebe método de string por conversão automática, pra
                  * `(150).isdigit()` valer sem str() na frente. `len` fica de
@@ -15125,6 +15134,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (valor.t != V_INT)
                     ERRO_T(vm, "RuntimeError", "status_code espera um int");
                 COMO_JRESP(alvo)->status = (int)valor.as.i;
+                break;
+            }
+            if (EH_DICT(alvo)) {   /* d.chave = v  ->  d["chave"] = v */
+                vm->sp = sp; vm->locals_top = locals_top;
+                if (dict_set(vm, COMO_DICT(alvo), &nomev, &valor) != 0) ERRO(vm, "sem memoria");
                 break;
             }
             if (!EH_INST(alvo)) ERRO_T(vm, "RuntimeError", "so instancia aceita atribuicao de membro");

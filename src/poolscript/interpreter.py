@@ -1322,19 +1322,25 @@ class Interpreter:
                 target_obj = self.eval_expr(node.target, scope)
                 self._checa_privado(node, target_obj)   # escrita em private de fora = erro
                 value = self.eval_expr(node.value, scope)
+                m = sys.intern(node.member)
+                # dict: `d.chave = v` equivale a `d["chave"] = v` (inclui `+=` etc.)
+                if isinstance(target_obj, dict):
+                    if getattr(node, "operator", "=") != "=":
+                        value = self._eval_binary(target_obj.get(m), node.operator[:-1], value, node)
+                    target_obj[m] = value
+                    return None
                 if getattr(node, "operator", "=") != "=":
                     # aumentada (`self.x += 1`): lê o atual e reaplica o operador,
                     # herdando as mesmas regras de tipo de `a + b`.
-                    m = sys.intern(node.member)
                     atual = getattr(target_obj, m, None)
                     value = self._eval_binary(atual, node.operator[:-1], value, node)
                 if isinstance(target_obj, PoolEntityInstance):
-                    setattr(target_obj, sys.intern(node.member), value)
-                elif hasattr(target_obj, sys.intern(node.member)):
-                    setattr(target_obj, sys.intern(node.member), value)
+                    setattr(target_obj, m, value)
+                elif hasattr(target_obj, m):
+                    setattr(target_obj, m, value)
                 else:
                     raise PoolRuntimeError(
-                        f"não é possível atribuir membro '{sys.intern(node.member)}' em {type(target_obj).__name__}",
+                        f"não é possível atribuir membro '{m}' em {type(target_obj).__name__}",
                         node, self.source, filename=self.filename,
                     )
                 return None
@@ -1745,13 +1751,12 @@ class Interpreter:
                         return lambda: dict(target)
                     if _member == "len":
                         return lambda: len(target)   # método com () — igual a str/list/tup
-                    # Acesso por chave
+                    # Acesso por chave: `d.chave` equivale a `d["chave"]`
                     if _member in target:
                         return target[_member]
                     raise PoolRuntimeError(
-                        "chave '" + _member + "' não encontrada no dict"
-                        " — use colchetes: ty['" + _member + "'] ou ty.get('" + _member + "')",
-                        node, self.source, filename=self.filename
+                        "chave não encontrada: '" + _member + "'",
+                        node, self.source, code="KeyError", filename=self.filename
                     )
 
                 # list e tuple — métodos de conveniência consistentes com dict/str
