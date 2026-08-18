@@ -47,7 +47,10 @@ enum {
     OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
     OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
     OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66,
-    OP_MAKE_ENUM = 73   /* enum Nome { ... } — descritor em vm->enum_* */
+    OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
+    /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
+     * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
+    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75
 };
 
 const char *ps_op_nome(int32_t op)
@@ -119,6 +122,8 @@ const char *ps_op_nome(int32_t op)
         case OP_UNPACK: return "UNPACK";
         case OP_YIELD: return "YIELD";
         case OP_CLOSE_SE_TEM: return "CLOSE_SE_TEM";
+        case OP_CLEAR_LOCAL: return "CLEAR_LOCAL";
+        case OP_CLEAR_GLOBAL: return "CLEAR_GLOBAL";
     }
     return "?";
 }
@@ -150,6 +155,14 @@ typedef struct {
      * RETURN converter Null e faz o corpo inteiro virar um `try` implícito —
      * é o contrato dessas duas declarações: nunca propagam erro. */
     int      tipo_ret;
+    /* Módulo (eh_modulo): nomes de globais CRIADOS por atribuição, em ordem.
+     * Um nome atribuído dentro de um bloco que ainda não existe vira "nascido
+     * no bloco" e é apagado (OP_CLEAR_GLOBAL) no fim dele; reatribuir um nome
+     * já criado é write-through (não entra de novo). Só o módulo usa isto —
+     * função usa a marca sobre `locais`. */
+    char   **mod_criados;
+    int32_t  n_mod_criados;
+    int32_t  cap_mod_criados;
 } Unidade;
 
 /* `break`/`continue` precisam saber o laço em que estão. O endereço do fim
@@ -169,6 +182,11 @@ typedef struct {
      * quando a iteração TERMINA. Um `break` sai por fora, então precisa
      * limpá-los na mão; sem isso o lixo sobra e corrompe o laço externo. */
     int     slots_pilha;
+    int32_t escopo_marca;       /* entrada do laço (inclui var do laço/self): o
+                                 * break e a saída normal apagam tudo daí pra frente */
+    int32_t escopo_marca_body;  /* início do CORPO (após self/_count etc.): o
+                                 * continue e o fim de iteração resetam só daqui —
+                                 * é o escopo por-iteração, sem tocar no que é do laço */
 } Laco;
 
 typedef struct {
@@ -312,8 +330,78 @@ static int32_t idx_local(C *c, Unidade *u, const char *nome)
     if (!copia) { cerro(c, "sem memoria", NULL); return -1; }
     memcpy(copia, nome, n + 1);
     u->locais[u->nlocais] = copia;
-    UP(c, u)->nlocals = u->nlocais + 1;
+    /* nlocals = MARCA D'ÁGUA (maior slot já usado + 1), não o corrente: com
+     * escopo de bloco os slots são reaproveitados (nlocais encolhe no fim do
+     * bloco), e o frame precisa caber o pico, não o valor do momento. */
+    if (u->nlocais + 1 > UP(c, u)->nlocals) UP(c, u)->nlocals = u->nlocais + 1;
     return u->nlocais++;
+}
+
+/* ── escopo de bloco ──────────────────────────────────────────────────────
+ * Variável nascida dentro de um bloco (if/for/while/...) não vaza pro escopo
+ * de fora — igual ao interpretador. A marca é o nº de nomes vivos na entrada
+ * do bloco; no fim, os nomes dali pra frente são apagados em runtime
+ * (OP_CLEAR_LOCAL/GLOBAL) e some da resolução de compilação. */
+static int32_t escopo_marca(Unidade *u)
+{
+    return u->eh_modulo ? u->n_mod_criados : u->nlocais;
+}
+
+/* Emite os OP_CLEAR_* dos nomes nascidos desde `marca` — SEM mexer no estado
+ * de compilação. Usado no fim de bloco (fall-through), no continue e no break. */
+static void escopo_emite_clears(C *c, Unidade *u, int32_t marca)
+{
+    if (u->eh_modulo) {
+        for (int32_t i = u->n_mod_criados - 1; i >= marca; i--)
+            emite(c, u, OP_CLEAR_GLOBAL, idx_global(c, u->mod_criados[i]));
+    } else {
+        for (int32_t i = u->nlocais - 1; i >= marca; i--)
+            emite(c, u, OP_CLEAR_LOCAL, i);
+    }
+}
+
+/* Remove da resolução de compilação os nomes nascidos desde `marca` (sem
+ * emitir nada). Depois disso o mesmo nome, se reusado, ganha slot/global novo. */
+static void escopo_trunca(Unidade *u, int32_t marca)
+{
+    if (u->eh_modulo) {
+        for (int32_t i = u->n_mod_criados - 1; i >= marca; i--)
+            free(u->mod_criados[i]);
+        if (u->n_mod_criados > marca) u->n_mod_criados = marca;
+    } else {
+        for (int32_t i = u->nlocais - 1; i >= marca; i--) {
+            free(u->locais[i]);
+            if (i < 256) u->certo[i] = 0;
+        }
+        if (u->nlocais > marca) u->nlocais = marca;
+    }
+}
+
+/* Fecha um bloco comum (não-laço): apaga em runtime e some da compilação. */
+static void escopo_fecha(C *c, Unidade *u, int32_t marca)
+{
+    escopo_emite_clears(c, u, marca);
+    escopo_trunca(u, marca);
+}
+
+/* Módulo: registra um global CRIADO por atribuição (idempotente). Nome já
+ * registrado (em qualquer escopo já aberto) é write-through — não reentra. */
+static void mod_criados_add(C *c, Unidade *u, const char *nome)
+{
+    for (int32_t i = 0; i < u->n_mod_criados; i++)
+        if (strcmp(u->mod_criados[i], nome) == 0) return;
+    if (u->n_mod_criados + 1 > u->cap_mod_criados) {
+        int32_t novo = u->cap_mod_criados < 8 ? 8 : u->cap_mod_criados * 2;
+        char **nl = realloc(u->mod_criados, sizeof(char *) * (size_t)novo);
+        if (!nl) { cerro(c, "sem memoria", NULL); return; }
+        u->mod_criados = nl;
+        u->cap_mod_criados = novo;
+    }
+    size_t n = strlen(nome);
+    char *copia = malloc(n + 1);
+    if (!copia) { cerro(c, "sem memoria", NULL); return; }
+    memcpy(copia, nome, n + 1);
+    u->mod_criados[u->n_mod_criados++] = copia;
 }
 
 /* ── operador do AST → opcode ───────────────────────────────────────────── */
@@ -388,6 +476,7 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
 static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
 {
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
+        if (u->eh_modulo) mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
         return;
     }
@@ -1114,19 +1203,29 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_RETURN, 0);
             return;
 
-        case N_BLOCK:
+        case N_BLOCK: {
+            int32_t M = escopo_marca(u);
             bloco_stmts(c, u, n);
+            escopo_fecha(c, u, M);   /* variáveis do bloco não vazam */
             return;
+        }
 
         case N_IF_STMT: {
             int32_t fins[64];
             int nfins = 0;
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *ramo = n->lista.itens[i];
-                if (!ramo->a) { bloco_stmts(c, u, ramo->b); break; }   /* else */
-                expr(c, u, ramo->a);
+                if (!ramo->a) {                        /* else */
+                    int32_t Me = escopo_marca(u);
+                    bloco_stmts(c, u, ramo->b);
+                    escopo_fecha(c, u, Me);
+                    break;
+                }
+                expr(c, u, ramo->a);                   /* condição: fora do escopo do corpo */
                 int32_t salto_falso = emite(c, u, OP_JUMP_IF_FALSE, 0);
+                int32_t M = escopo_marca(u);
                 bloco_stmts(c, u, ramo->b);
+                escopo_fecha(c, u, M);
                 if (nfins < 64) fins[nfins++] = emite(c, u, OP_JUMP, 0);
                 if (salto_falso >= 0) UP(c, u)->code[salto_falso + 1] = UP(c, u)->ncode;
             }
@@ -1135,14 +1234,20 @@ static void stmt(C *c, Unidade *u, PSNode *n)
         }
 
         case N_WHILE_STMT: {
+            int32_t M = escopo_marca(u);        /* sem var de laço: corpo == laço */
             int32_t topo = UP(c, u)->ncode;
             expr(c, u, n->a);
             int32_t sai = emite(c, u, OP_JUMP_IF_FALSE, 0);
             abre_laco(c, topo, 0);
+            c->lacos[c->nlacos - 1].escopo_marca = M;
+            c->lacos[c->nlacos - 1].escopo_marca_body = M;
             bloco_stmts(c, u, n->b);
+            escopo_emite_clears(c, u, M);        /* reset por-iteração */
             emite(c, u, OP_JUMP, topo);
             if (sai >= 0) UP(c, u)->code[sai + 1] = UP(c, u)->ncode;
-            fecha_laco(c, u, topo);
+            fecha_laco(c, u, topo);              /* break/saída normal caem aqui */
+            escopo_emite_clears(c, u, M);        /* limpa o que sobrou na saída */
+            escopo_trunca(u, M);
             return;
         }
 
@@ -1156,6 +1261,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              *   <corpo>
              *   JUMP topo
              * fim: */
+            int32_t M = escopo_marca(u);        /* marca ANTES da var do laço */
             expr(c, u, n->a);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
             int32_t topo = UP(c, u)->ncode;
@@ -1163,10 +1269,17 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             /* variável do laço é local desta função, como o parâmetro */
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             abre_laco(c, topo, 2);      /* container + indice */
+            /* a var do laço é re-atribuída no topo a cada volta, então limpá-la
+             * por-iteração é inofensivo — corpo e var compartilham a marca */
+            c->lacos[c->nlacos - 1].escopo_marca = M;
+            c->lacos[c->nlacos - 1].escopo_marca_body = M;
             bloco_stmts(c, u, n->b);
+            escopo_emite_clears(c, u, M);        /* reset por-iteração */
             emite(c, u, OP_JUMP, topo);
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             fecha_laco(c, u, topo);
+            escopo_emite_clears(c, u, M);        /* saída: var do laço não vaza */
+            escopo_trunca(u, M);
             return;
         }
 
@@ -1347,7 +1460,9 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * IMPORTADO (só roda quando é o principal). OP_SKIP_IF_IMPORT
              * salta o bloco em runtime se vm->importando > 0. */
             int32_t s = emite(c, u, OP_SKIP_IF_IMPORT, 0);
+            int32_t Mr = escopo_marca(u);
             bloco_stmts(c, u, n->b ? n->b : n->a);
+            escopo_fecha(c, u, Mr);            /* vars do run_selfwith_ não vazam */
             if (s >= 0) UP(c, u)->code[s + 1] = UP(c, u)->ncode;   /* alvo = pós-bloco */
             return;
         }
@@ -1360,11 +1475,14 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * (ex.: open() com arg inválido), o erro real tem que propagar —
              * senão a limpeza faria LOAD de um `f` nunca gravado e mascararia
              * tudo com "variavel nao definida". O try cobre só o corpo. */
+            int32_t Mu = escopo_marca(u);      /* escopo da var do using (f) */
             expr(c, u, n->a);
             guarda_nome_modo(c, u, n->texto ? n->texto : "_", 1);
+            int32_t Mub = escopo_marca(u);     /* escopo do corpo */
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
             bloco_stmts(c, u, n->b);
+            escopo_fecha(c, u, Mub);           /* vars do corpo não vazam */
             c->dentro_try--;
             emite(c, u, OP_POP_TRY, 0);
 
@@ -1380,6 +1498,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_RAISE, 0);          /* a mensagem já está na pilha */
 
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
+            escopo_fecha(c, u, Mu);            /* a var do using (f) não vaza */
             return;
         }
 
@@ -1392,6 +1511,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * pode chamar `f` duas vezes. Daí o DUP2 antes do COUNT. */
             int32_t a = arg_count(c, n);
             if (a < 0) return;
+            int32_t M = escopo_marca(u);         /* laço: antes de self/_count */
             count_operandos(c, u, n);
             emite(c, u, OP_DUP2, 0);
             emite(c, u, OP_COUNT, a);
@@ -1399,6 +1519,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             /* `self` dentro do bloco é o TOTAL, e não muda durante o laço */
             guarda_nome_modo(c, u, "self", 1);
             guarda_nome_modo(c, u, "_count", 1);
+            int32_t Mb = escopo_marca(u);        /* corpo: self/_count sobrevivem ao laço */
             emite(c, u, OP_COUNT_PARES, a);
 
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
@@ -1413,12 +1534,17 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_INDEX_GET, 0);
             guarda_nome_modo(c, u, "_match", 1);
             abre_laco(c, topo, 2);          /* lista + indice */
+            c->lacos[c->nlacos - 1].escopo_marca = M;
+            c->lacos[c->nlacos - 1].escopo_marca_body = Mb;
             c->dentro_count_each++;
             bloco_stmts(c, u, n->e);
             c->dentro_count_each--;
+            escopo_emite_clears(c, u, Mb);       /* reset por-iteração (_index/_match + corpo) */
             emite(c, u, OP_JUMP, topo);
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             fecha_laco(c, u, topo);
+            escopo_emite_clears(c, u, M);        /* saída: self/_count e cia. somem */
+            escopo_trunca(u, M);
             return;
         }
 
@@ -1624,6 +1750,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *caso = n->lista.itens[i];
                 emite(c, u, OP_DUP, 0);        /* cada teste consome uma cópia */
+                int32_t Mc = escopo_marca(u);  /* captura do padrão + corpo: escopo do case */
                 padrao_testa(c, u, caso->a);
                 int32_t falhou = emite(c, u, OP_JUMP_IF_FALSE, 0);
                 /* guarda do case: `case v if v > 5` */
@@ -1633,6 +1760,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                     falhou_guarda = emite(c, u, OP_JUMP_IF_FALSE, 0);
                 }
                 bloco_stmts(c, u, caso->b);
+                escopo_fecha(c, u, Mc);        /* captura/vars do case não vazam */
                 if (nfins < 64) fins[nfins++] = emite(c, u, OP_JUMP, 0);
                 if (falhou >= 0) UP(c, u)->code[falhou + 1] = UP(c, u)->ncode;
                 if (falhou_guarda >= 0) UP(c, u)->code[falhou_guarda + 1] = UP(c, u)->ncode;
@@ -1673,7 +1801,9 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * que ele roda sempre. */
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
+            int32_t Mt = escopo_marca(u);
             bloco_stmts(c, u, n->a);
+            escopo_fecha(c, u, Mt);            /* vars do try não vazam (saída normal) */
             c->dentro_try--;
             emite(c, u, OP_POP_TRY, 0);
             int32_t pula_catches = emite(c, u, OP_JUMP, 0);
@@ -1703,8 +1833,10 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                     prox_falha = emite(c, u, OP_JUMP_IF_FALSE, 0);
                 }
                 /* liga a mensagem ao nome do catch e roda o bloco */
+                int32_t Mcat = escopo_marca(u);
                 guarda_nome_modo(c, u, cl->texto ? cl->texto : "e", 1);
                 bloco_stmts(c, u, cl->b);
+                escopo_fecha(c, u, Mcat);      /* var do catch (e) + corpo não vazam */
                 if (nfins < 32) fins[nfins++] = emite(c, u, OP_JUMP, 0);
             }
 
@@ -1716,7 +1848,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                 /* tipo junto da mensagem: o `finally` roda antes do RERAISE e
                  * pode ter trocado o erro corrente da VM */
                 emite(c, u, OP_PUSH_ERR_TYPE, 0);
-                if (n->c) bloco_stmts(c, u, n->c);
+                if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }
                 emite(c, u, OP_RERAISE, 0);
             }
 
@@ -1724,7 +1856,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (pula_catches >= 0) UP(c, u)->code[pula_catches + 1] = fim_catches;
             for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = fim_catches;
 
-            if (n->c) bloco_stmts(c, u, n->c);       /* finally */
+            if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }  /* finally */
             return;
         }
 
@@ -1755,6 +1887,9 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (c->nlacos == 0) { cerro(c, "'break' fora de laco", n); return; }
             Laco *l = &c->lacos[c->nlacos - 1];
             if (l->nsaidas >= MAX_SAIDAS) { cerro(c, "'break' demais no mesmo laco", n); return; }
+            /* saindo do laço: apaga TUDO nascido nele até aqui (var do laço +
+             * corpo + blocos aninhados abertos), pra nada vazar pra fora */
+            escopo_emite_clears(c, u, l->escopo_marca);
             /* limpa o estado do iterador antes de sair do laço */
             for (int k = 0; k < l->slots_pilha; k++) emite(c, u, OP_POP_TOP, 0);
             l->saidas[l->nsaidas++] = emite(c, u, OP_JUMP, 0);
@@ -1765,6 +1900,9 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (c->nlacos == 0) { cerro(c, "'continue' fora de laco", n); return; }
             Laco *l = &c->lacos[c->nlacos - 1];
             if (l->ncontinues >= MAX_SAIDAS) { cerro(c, "'continue' demais no mesmo laco", n); return; }
+            /* próxima iteração começa limpa: apaga só o escopo do CORPO (o que é
+             * do laço — var/ self/_count — é re-atribuído no topo ou persiste) */
+            escopo_emite_clears(c, u, l->escopo_marca_body);
             l->continues[l->ncontinues++] = emite(c, u, OP_JUMP, 0);
             return;
         }
@@ -1867,6 +2005,8 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
 
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
+    for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
+    free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
     return idx;
@@ -1956,6 +2096,8 @@ static int32_t compila_action(C *c, PSNode *n)
 
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
+    for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
+    free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
 
@@ -1990,6 +2132,8 @@ PSPrograma *ps_compila(PSNode *programa)
 
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
+    for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
+    free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
     return out;

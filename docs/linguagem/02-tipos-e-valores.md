@@ -115,17 +115,36 @@ flo   preco = 9.90
 bool  ativo = True
 ```
 
-Regras de coerção na declaração (`OP_COERCE_DECL`):
+A checagem vale **só na declaração**. A partir daí a variável é dinâmica: uma
+atribuição posterior (sem o tipo na frente) pode trocar o valor por outro tipo
+livremente — ver seção 4.
 
-| Declaração | Resultado |
-|---|---|
-| `int x = "7"` | converte a string → `7` |
-| `flo x = "1.5"` | converte a string → `1.5` |
-| `flo x = 5` | promove int → `5.0` |
-| `int x = 5.9` | **erro** — não trunca em silêncio |
+Regras de coerção na declaração, por tipo-alvo:
 
-Ou seja: a linguagem faz as conversões *seguras* (string numérica → número, int →
-float), mas recusa as que perdem informação (float → int implícito).
+| Alvo | Aceita direto | Coage | Recusa |
+|---|---|---|---|
+| `int` | `int` | string numérica inteira (`"7"`→`7`) | `flo` (mesmo `5.0`), `bool` |
+| `flo` | `flo` | `int` (`5`→`5.0`), string numérica (`"1.5"`→`1.5`) | `bool` |
+| `str` | `str` | — | `int`, `flo`, `bool` (não "stringifica") |
+| `bool` | `bool` | — | `int` (mesmo `1`), etc. |
+| `list` `dict` `tup` `json` | o próprio tipo | — | os demais |
+
+Ou seja: a linguagem faz só as conversões que não perdem nem adivinham
+informação — **int→flo** (alargamento) e **string numérica→número** (parsing).
+O resto é erro, e há dois erros distintos:
+
+- **`AtributtedValueError`** — tipo incompatível que não se coage
+  (`int x = 5.0`, `str s = 42`, `bool b = 1`).
+- **`ConversionError`** — o valor é uma string que não representa o número
+  pedido (`int x = "abc"`).
+
+```ps
+int  x = "7"      // 7    (parsing de string numérica)
+flo  f = 5        // 5.0  (alargamento int→flo)
+int  y = 5.0      // AtributtedValueError — não trunca nem aceita float
+str  s = 42       // AtributtedValueError — não "stringifica" sozinho
+int  z = "abc"    // ConversionError — string não vira int
+```
 
 ---
 

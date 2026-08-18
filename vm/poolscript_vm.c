@@ -85,7 +85,10 @@ enum {
     OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
     OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
     OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66,
-    OP_MAKE_ENUM = 73   /* enum Nome { ... } — descritor em vm->enum_* */
+    OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
+    /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
+     * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
+    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75
 };
 
 /* ── objetos gerenciados pelo GC ────────────────────────────────────────── */
@@ -14627,6 +14630,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
+        case OP_CLEAR_LOCAL:
+            /* fim de bloco: apaga um slot de local nascido no bloco */
+            vm->locals[lbase + arg] = MK_UNSET();
+            break;
+
+        case OP_CLEAR_GLOBAL:
+            /* fim de bloco (nível de módulo): apaga um global nascido no bloco */
+            if (arg < vm->nglobals) vm->globals[arg] = MK_UNSET();
+            break;
+
         case OP_SETUP_TRY:
             if (nh >= MAX_HANDLERS) ERRO(vm, "try aninhado demais");
             handlers[nh].ip = arg;
@@ -15891,6 +15904,7 @@ static void reloca_codigo(int32_t *code, int ncode,
         switch (code[i]) {
             case OP_LOAD_GLOBAL: case OP_STORE_GLOBAL:
             case OP_LOAD_NAME:   case OP_STORE_NAME:
+            case OP_CLEAR_GLOBAL:
                 code[i + 1] += base_global;
                 break;
             case OP_MAKE_FUNCTION:
