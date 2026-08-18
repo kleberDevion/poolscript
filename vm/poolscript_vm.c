@@ -2328,6 +2328,7 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
         return -1;
     }
     Value v = args[0];
+    if (v.t == V_NULL) { *out = MK_INT(0); return 0; }   /* len(null) = 0, como o interp */
     /* string conta CARACTERES (codepoints), como o método s.len() e o
      * interpretador — contar bytes fazia len("olá") responder 4 */
     if (EH_STRING(v)) { *out = MK_INT(utf8_conta(COMO_STRING(v)->chars, COMO_STRING(v)->len)); return 0; }
@@ -2627,8 +2628,10 @@ static int nativa_ord(VM *vm, Value *args, int n, Value *out)
 static int nativa_chr(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "chr", 1);
-    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "operacao invalida: chr() espera int");
-    int64_t cp = args[0].as.i;
+    /* aceita bool como int (true->1, false->0), como o interp */
+    if (args[0].t != V_INT && args[0].t != V_BOOL)
+        BERRO(vm, "SomeValueUnexpected", "operacao invalida: chr() espera int");
+    int64_t cp = (args[0].t == V_BOOL) ? (args[0].as.b ? 1 : 0) : args[0].as.i;
     if (cp < 0 || cp > 0x10FFFF) BERRO(vm, "SomeValueUnexpected", "valor invalido: chr() fora do intervalo Unicode");
     char b[4];
     int k = 0;
@@ -2769,6 +2772,17 @@ static int nativa_range(VM *vm, Value *args, int n, Value *out)
         if (args[i].t == V_INT)       lim[i] = args[i].as.i;
         else if (args[i].t == V_BOOL) lim[i] = args[i].as.b ? 1 : 0;
         else if (args[i].t == V_FLOAT)lim[i] = (int64_t)args[i].as.d;
+        else if (EH_STRING(args[i])) {
+            /* string numérica é parseada, como o interp faz (int(a)) */
+            const char *s = COMO_STRING(args[i])->chars;
+            while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+            char *end = NULL;
+            long long val = strtoll(s, &end, 10);
+            while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') end++;
+            if (end == s || *end != '\0')
+                BERRO(vm, "SomeValueUnexpected", "operacao invalida: range() nao aceita esse texto");
+            lim[i] = (int64_t)val;
+        }
         else BERRO(vm, "SomeValueUnexpected", "operacao invalida: range() so aceita numero");
     }
     int64_t ini = (n == 1) ? 0 : lim[0];
