@@ -727,7 +727,7 @@ class Parser:
         if tok.type == "IDENT" and tok.value == "run_selfwith_":
             return self.parse_run_selfwith()
 
-        if tok.type == "IDENT" and self.peek().type == "OP" and self.peek().value in ASSIGN_OPS:
+        if tok.type in {"IDENT", "IDENT_UPPER"} and self.peek().type == "OP" and self.peek().value in ASSIGN_OPS:
             return self.parse_assignment()
 
         # Desempacotamento: `a, b = 1, 2` / `a, (b, c) = 1, (2, 3)` / `a, *resto = [...]`
