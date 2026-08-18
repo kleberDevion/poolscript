@@ -10,7 +10,8 @@ Carrega variáveis de um arquivo .env para o ambiente — atalho de dotenv.load.
 
 ## Retorno
 
-bool
+`dict` com as variáveis lidas do `.env` (`{ "CHAVE": "valor", ... }`); dict
+vazio se não achar nenhum `.env`.
 
 ## Bordas
 

@@ -10,11 +10,11 @@ Remove e devolve o PRIMEIRO item da lista.
 
 ## Retorno
 
-o item removido
+o item removido; **`null`** se a lista estiver vazia (não é erro)
 
 ## Erros
 
-- **SomeValueUnexpected** — lista vazia ou não-lista
+- **SomeValueUnexpected** — o argumento não é uma lista
 
 ## Exemplos
 
