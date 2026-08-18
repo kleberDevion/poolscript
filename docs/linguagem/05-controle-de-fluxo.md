@@ -1,0 +1,240 @@
+# Referência da Linguagem — 5. Controle de fluxo
+
+Statements que decidem **o que roda e quantas vezes**: condicionais (`if`),
+laços (`while`, `for each`, `count each`), o casamento de padrões (`match`), os
+desvios `break`/`continue` e o guard de entrada `run_selfwith_`.
+
+Os dois estilos de bloco da seção 1.3 valem em todos eles: `:` + indentação, ou
+`{ }`. Os exemplos usam o estilo `:`. Toda regra desta seção foi verificada
+rodando o mesmo fonte no interpretador e na VM em C.
+
+Lembrete de escopo (seção 4): cada bloco aqui é um **escopo próprio** —
+variável nova dentro dele não vaza pra fora, e o corpo de um laço reinicia a
+cada iteração.
+
+---
+
+## 5.1. Condicional — `if` / `elif` / `else`
+
+```ps
+if nota >= 7:
+    post("aprovado")
+elif nota >= 5:
+    post("recuperação")
+else:
+    post("reprovado")
+```
+
+- A condição é avaliada pela **verdade** do valor (*truthiness*, seção 2.3), não
+  precisa ser `bool`: `0`, `""`, `[]`, `{}` e `null` são falsos; o resto é
+  verdadeiro.
+- `elif` encadeia quantas vezes quiser; `else` é opcional e vem por último.
+- A palavra é **`elif`** — não existe `else if` (é erro de sintaxe).
+
+```ps
+if 5:        post("entra")     // int não-zero é verdadeiro
+if []:       post("não entra") // lista vazia é falsa
+if "texto":  post("entra")     // string não-vazia é verdadeira
+```
+
+Para escolher um **valor** (em vez de statements), use a expressão condicional
+`A if cond else B` (seção 3.9).
+
+---
+
+## 5.2. Laço `while`
+
+Repete o corpo enquanto a condição for verdadeira (mesma regra de verdade do
+`if`).
+
+```ps
+n = 0
+while n < 3:
+    post(n)
+    n += 1
+```
+
+Não existe `while ... else` (é erro de sintaxe). A variável de controle
+(`n` acima) precisa existir **fora** do laço para sobreviver entre as iterações
+— uma variável criada só no corpo é reiniciada a cada volta (seção 4.6.3).
+
+---
+
+## 5.3. Laço `for each`
+
+Itera sobre os elementos de uma sequência, ligando **uma** variável por
+elemento:
+
+```ps
+for each x in [10, 20, 30]:
+    post(x)
+
+for each ch in "abc":       // string: um caractere por vez
+    post(ch)
+```
+
+Regras e limites (verificados):
+
+- Aceita **lista, tupla e string**. **Não** itera `dict` diretamente
+  (erro `for each exige lista, tupla ou string`) — para percorrer um dict, use
+  `d.keys()`, `d.values()` ou `d.items()`:
+
+  ```ps
+  d = { "a": 1, "b": 2 }
+  for each k in d.keys():
+      post(k, d[k])
+  ```
+
+- A variável do laço é **um único nome**. Não há forma com índice embutido nem
+  desempacotamento no cabeçalho: `for each i, x in ...` é erro. Se cada elemento
+  é uma tupla, ele chega inteiro na variável (desempacote no corpo, ou itere
+  índices com `range`).
+- A variável do laço **não existe depois** do laço (seção 4.6.3).
+
+### 5.3.1. `range` — sequência de inteiros
+
+`range` gera os inteiros para contar num `for each`. Tem três formas (iguais às
+do Python; o fim é **exclusivo**):
+
+| Forma | Gera |
+|---|---|
+| `range(fim)` | `0, 1, …, fim-1` |
+| `range(início, fim)` | `início, …, fim-1` |
+| `range(início, fim, passo)` | de `passo` em `passo`; `passo` negativo conta pra trás |
+
+```ps
+for each i in range(3):          // 0 1 2
+    post(i)
+for each i in range(2, 5):       // 2 3 4
+    post(i)
+for each i in range(10, 0, -2):  // 10 8 6 4 2
+    post(i)
+```
+
+---
+
+## 5.4. `break` e `continue`
+
+Dentro de um laço (`while`, `for each`, `count each`):
+
+- **`break`** encerra o laço imediatamente.
+- **`continue`** pula pro próximo elemento/iteração.
+
+Ambos agem sobre o laço **mais interno**. Fora de um laço são erro de
+compilação (`'break' fora de laco`).
+
+```ps
+for each n in range(100):
+    if n == 5:
+        break            // para no 5
+    if n % 2 == 0:
+        continue         // pula os pares
+    post(n)              // 1 3
+```
+
+---
+
+## 5.5. `match` / `case`
+
+Compara um valor (o *sujeito*) contra uma série de **padrões**, na ordem, e roda
+o bloco do primeiro que casar.
+
+```ps
+match comando:
+    case "oi":
+        post("olá")
+    case "sair":
+        post("tchau")
+    case _:
+        post("comando desconhecido:", comando)
+```
+
+Padrões suportados (verificados):
+
+| Padrão | Casa quando | Liga |
+|---|---|---|
+| Literal — `case 2:` / `case "x":` | o sujeito é igual àquele valor | — |
+| Captura — `case x:` | sempre (pega qualquer valor) | `x` = o sujeito |
+| Curinga — `case _:` | sempre (não liga nome) | — |
+| Alternativa — `case 1 \| 2 \| 3:` | casa com qualquer um dos valores | — |
+| Lista — `case [a, b]:` | o sujeito é uma lista com essa forma | `a`, `b` = os elementos |
+| Guarda — `case x if x > 5:` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
+
+```ps
+match ponto:
+    case [0, 0]:
+        post("origem")
+    case [x, 0]:
+        post("no eixo X, em", x)
+    case [x, y] if x == y:
+        post("na diagonal")
+    case _:
+        post("outro lugar")
+```
+
+- **Nenhum casou:** o `match` simplesmente não faz nada (não é erro). Um
+  `case _:` no fim funciona como "senão".
+- Os nomes ligados por um `case` (`x`, `a`, `b`…) são **do bloco daquele case** —
+  não existem depois do `match` (seção 4.6.1).
+
+---
+
+## 5.6. `count each` — laço sobre os elementos de um tipo
+
+`count each <Tipo> in <container>:` percorre **apenas os elementos daquele tipo**
+dentro do container, e já entrega a contagem total. Dentro do bloco:
+
+| Nome | Valor |
+|---|---|
+| `_match` | o elemento atual (que é do tipo pedido) |
+| `_index` | a posição dele **no container original** |
+| `self` / `_count` | o total de elementos daquele tipo (não muda durante o laço) |
+
+```ps
+count each int in [10, "x", 20, 30]:
+    post("achei", _match, "na posição", _index, "de", _count)
+// achei 10 na posição 0 de 3
+// achei 20 na posição 2 de 3
+// achei 30 na posição 3 de 3
+```
+
+Os elementos que não são do tipo (o `"x"` acima) são pulados. `self`, `_count`,
+`_index` e `_match` são do escopo do laço — não existem depois dele.
+
+(Existe também a forma de **expressão** do `count`, que só devolve a contagem
+sem laço — `int(2) count in xs` e `int in xs count` — na seção 3.10.)
+
+---
+
+## 5.7. `run_selfwith_` — código só quando é o principal
+
+O bloco `run_selfwith_("main"):` roda **apenas quando o arquivo é executado
+direto**, e é pulado quando ele é **importado** por outro. É o
+`if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
+
+```ps
+action principal():
+    post("rodando o app")
+
+run_selfwith_("main"):
+    principal()
+```
+
+Assim, `import` desse arquivo traz a `action principal` sem disparar o
+`principal()`. Como os outros blocos, é um escopo próprio (variáveis criadas
+dentro não vazam).
+
+---
+
+## 5.8. Resumo
+
+- **`if` / `elif` / `else`** — condição por *truthiness*; `elif` (não `else if`).
+- **`while`** — repete enquanto verdadeiro; sem `while/else`.
+- **`for each x in seq`** — lista/tupla/string (não dict direto: use `.keys()`
+  etc.); uma variável só; `range(...)` pra contar.
+- **`break` / `continue`** — no laço mais interno.
+- **`match` / `case`** — literal, captura, `_`, `|`, lista, guarda; sem casar =
+  no-op; ligações são do case.
+- **`count each Tipo in c`** — laço sobre os elementos do tipo (`_match`,
+  `_index`, `self`/`_count`).
+- **`run_selfwith_("main")`** — só quando principal, pulado no import.
