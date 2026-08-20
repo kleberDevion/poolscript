@@ -1,3 +1,4 @@
+
 /*
  * VM da PoolScript em C — modelo de valores próprio + GC mark-and-sweep.
  *
@@ -834,6 +835,15 @@ struct VM_ {
      * chamar builtin, pra um `vm_executa_base` aninhado saber onde começar
      * sem sobrescrever o frame de quem chamou. */
     int     frame_topo;
+
+    /* Teto de cada pool de execução. Normalmente = STACK_SIZE/LOCALS_SIZE/
+     * MAX_FRAMES (a execução principal usa os arrays cheios). Uma FIBRA de
+     * handler roda em arrays PRÓPRIOS menores e reaponta esses tetos pro
+     * tamanho dela — as checagens de estouro passam a respeitar o array da
+     * fibra em vez do global (senão a fibra escreveria fora do próprio array).*/
+    int     stack_teto;
+    int     locals_teto;
+    int     frames_teto;
 
     /* Módulos `.ps` já carregados, pra `import` duas vezes não reexecutar. */
     struct { char *nome; Value valor; } *mods_ps;
@@ -6605,9 +6615,9 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     }
     Proto *pr = &vm->protos[g->proto];
     int fp0 = vm->frame_topo, sp0 = vm->sp, lb0 = vm->locals_top;
-    if (fp0 + 1 >= MAX_FRAMES) { snprintf(vm->erro, sizeof(vm->erro), "estouro de frames"); return -1; }
-    if (lb0 + pr->nlocals >= LOCALS_SIZE) { snprintf(vm->erro, sizeof(vm->erro), "estouro do pool de locais"); return -1; }
-    if (sp0 + g->npilha + pr->ncode / 2 + 8 >= STACK_SIZE) {
+    if (fp0 + 1 >= vm->frames_teto) { snprintf(vm->erro, sizeof(vm->erro), "estouro de frames"); return -1; }
+    if (lb0 + pr->nlocals >= vm->locals_teto) { snprintf(vm->erro, sizeof(vm->erro), "estouro do pool de locais"); return -1; }
+    if (sp0 + g->npilha + pr->ncode / 2 + 8 >= vm->stack_teto) {
         snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha de valores"); return -1;
     }
 
@@ -13402,7 +13412,7 @@ static int nativa_id(VM *vm, Value *args, int n, Value *out)
  * que o AddressSanitizer pegou. */
 static int fixa_raiz(VM *vm, Value v)
 {
-    if (vm->sp + 1 >= STACK_SIZE) return -1;
+    if (vm->sp + 1 >= vm->stack_teto) return -1;
     vm->stack[vm->sp++] = v;
     return 0;
 }
@@ -13593,11 +13603,11 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "SomeValueUnexpected");
         return -1;
     }
-    if (vm->frame_topo + 1 >= MAX_FRAMES) {
+    if (vm->frame_topo + 1 >= vm->frames_teto) {
         snprintf(vm->erro, sizeof(vm->erro), "%s", "estouro de frames (recursao profunda demais)");
         return -1;
     }
-    if (vm->locals_top + pr->nlocals >= LOCALS_SIZE) {
+    if (vm->locals_top + pr->nlocals >= vm->locals_teto) {
         snprintf(vm->erro, sizeof(vm->erro), "%s", "estouro do pool de locais");
         return -1;
     }
@@ -14111,9 +14121,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 marcado[achou] = 1;
             }
 
-            if (fp + 1 >= MAX_FRAMES) ERRO(vm, "estouro de frames");
-            if (locals_top + pk->nlocals >= LOCALS_SIZE) ERRO(vm, "estouro do pool de locais");
-            if (sp + pk->ncode / 2 + 8 >= STACK_SIZE) ERRO(vm, "estouro da pilha de valores");
+            if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
+            if (locals_top + pk->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
+            if (sp + pk->ncode / 2 + 8 >= vm->stack_teto) ERRO(vm, "estouro da pilha de valores");
 
             vm->frames[fp].proto       = (int)(p - vm->protos);
             vm->frames[fp].ip          = ip;
@@ -14156,8 +14166,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* empurra self na frente dos argumentos */
                 Proto *np = &vm->protos[mp];
                 if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no __init__");
-                if (fp + 1 >= MAX_FRAMES) ERRO(vm, "estouro de frames");
-                if (locals_top + np->nlocals >= LOCALS_SIZE) ERRO(vm, "estouro do pool de locais");
+                if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
                 vm->frames[fp].proto = (int)(p - vm->protos);
                 vm->frames[fp].ip = ip;
                 vm->frames[fp].locals_base = lbase;
@@ -14184,8 +14194,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                             "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
                 if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no metodo");
-                if (fp + 1 >= MAX_FRAMES) ERRO(vm, "estouro de frames");
-                if (locals_top + np->nlocals >= LOCALS_SIZE) ERRO(vm, "estouro do pool de locais");
+                if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
                 vm->frames[fp].proto = (int)(p - vm->protos);
                 vm->frames[fp].ip = ip;
                 vm->frames[fp].locals_base = lbase;
@@ -14227,13 +14237,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp++] = MK_OBJ(g);
                     break;
                 }
-                if (fp + 1 >= MAX_FRAMES) ERRO(vm, "estouro de frames (recursao profunda demais)");
-                if (locals_top + np->nlocals >= LOCALS_SIZE) ERRO(vm, "estouro do pool de locais");
+                if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames (recursao profunda demais)");
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
                 /* Cota da pilha do chamado: cada instrução empilha no máximo
                  * um valor, então ncode/2 é teto seguro. Sem esta checagem,
                  * recursão profunda escrevia fora do array — corrupção de
                  * memória silenciosa em vez de erro. */
-                if (sp + np->ncode / 2 + 8 >= STACK_SIZE)
+                if (sp + np->ncode / 2 + 8 >= vm->stack_teto)
                     ERRO(vm, "estouro da pilha de valores (expressao ou recursao profunda demais)");
 
                 vm->frames[fp].proto       = (int)(p - vm->protos);
@@ -15406,7 +15416,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (star >= 0 && l->len < fixos)
                 ERRO_T(vm, "OutputUnexpectedValues", "valores insuficientes para desempacotar");
 
-            if (sp + n_alvos + 1 >= STACK_SIZE) ERRO(vm, "estouro da pilha no desempacotamento");
+            if (sp + n_alvos + 1 >= vm->stack_teto) ERRO(vm, "estouro da pilha no desempacotamento");
             /* empurra em ordem INVERSA: stores subsequentes saem na ordem
              * dos alvos. A estrela vira uma lista nova com o miolo. */
             int depois = star >= 0 ? n_alvos - 1 - star : 0;
@@ -15605,8 +15615,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             Proto *np = &vm->protos[mp];
             if (n + 1 > np->nparams) ERRO(vm, "argumentos demais em base()");
-            if (fp + 1 >= MAX_FRAMES) ERRO(vm, "estouro de frames");
-            if (locals_top + np->nlocals >= LOCALS_SIZE) ERRO(vm, "estouro do pool de locais");
+            if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
+            if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
             vm->frames[fp].proto = (int)(p - vm->protos);
             vm->frames[fp].ip = ip;
             vm->frames[fp].locals_base = lbase;
@@ -16472,6 +16482,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     vm.stack   = calloc(STACK_SIZE, sizeof(Value));
     vm.locals  = calloc(LOCALS_SIZE, sizeof(Value));
     vm.frames  = calloc(MAX_FRAMES, sizeof(Frame));
+    vm.stack_teto = STACK_SIZE; vm.locals_teto = LOCALS_SIZE; vm.frames_teto = MAX_FRAMES;
     if (!vm.globals || !vm.stack || !vm.locals || !vm.frames) {
         libera_vm(&vm); ps_compila_free(prog);
         e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria");
@@ -16596,6 +16607,7 @@ static PyObject *vm_roda(PyObject *self, PyObject *args)
     vm.stack   = calloc(STACK_SIZE, sizeof(Value));
     vm.locals  = calloc(LOCALS_SIZE, sizeof(Value));
     vm.frames  = calloc(MAX_FRAMES, sizeof(Frame));
+    vm.stack_teto = STACK_SIZE; vm.locals_teto = LOCALS_SIZE; vm.frames_teto = MAX_FRAMES;
     if (!vm.protos || !vm.globals || !vm.stack || !vm.locals || !vm.frames) {
         libera_vm(&vm);
         return PyErr_NoMemory();
