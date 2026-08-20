@@ -1074,7 +1074,13 @@ class Interpreter:
                         registrar = obj.socket(*args, **kwargs)
                     elif hasattr(obj, method_name):
                         args, kwargs = self._eval_call_args(dec.args, scope)
-                        registrar = getattr(obj, method_name)(*args, **kwargs)
+                        metodo = getattr(obj, method_name)
+                        # Entity do usuário: o método vem como BoundMethod (não é
+                        # chamável pelo Python) — chama pelo motor, igual à VM.
+                        if isinstance(metodo, (BoundMethod, UserFunction, StaticMethod)):
+                            registrar = self._call(metodo, list(args), kwargs, node)
+                        else:
+                            registrar = metodo(*args, **kwargs)
                     else:
                         registrar = None
                 else:
@@ -1083,11 +1089,18 @@ class Interpreter:
                 if node.block is not None:
                     block_scope = Scope(scope)
                     self.exec_block(node.block, block_scope, create_child=False)
-                    if registrar is not None and hasattr(registrar, "register"):
-                        handlers = [
-                            v for v in block_scope.values.values()
-                            if isinstance(v, UserFunction)
-                        ]
+                    handlers = [
+                        v for v in block_scope.values.values()
+                        if isinstance(v, UserFunction)
+                    ]
+                    # Registrar que é Entity do usuário: protocolo GENÉRICO —
+                    # registrar.register(action) com a action PURA, igual à VM
+                    # (sem o embrulho req/res do jinker).
+                    if isinstance(registrar, PoolEntityInstance) and handlers:
+                        reg_method = getattr(registrar, "register", None)
+                        if reg_method is not None:
+                            self._call(reg_method, [handlers[0]], {}, node)
+                    elif registrar is not None and hasattr(registrar, "register"):
                         if handlers:
                             action_fn = handlers[0]
                             interp = self
