@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <ctype.h>
 #include <math.h>
 #include <errno.h>
@@ -138,7 +139,8 @@ typedef enum {
     OBJ_MANPU_FILE,/* mp.open() — arquivo aberto com write/read/save + using */
     OBJ_GUZ_UI,    /* guzer.UI — raiz do app desktop */
     OBJ_GUZ_WID,   /* guzer window/button/popup — objeto de tela nativo */
-    OBJ_BIGINT     /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
+    OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
+    OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
 typedef struct Obj {
@@ -1242,120 +1244,154 @@ static void marca_valor(VM *vm, const Value *v)
     if (v->t == V_OBJ) marca_obj(vm, v->as.obj);
 }
 
+/* ── GC: cada tipo DECLARA como marca seus filhos ─────────────────────────
+ * Em vez de um `else if` gigante (fácil de esquecer um tipo novo => vaza como
+ * use-after-free silencioso), cada ObjType tem uma entrada em GC_INFO:
+ *   GC_LEAF  = sem filho Value/Obj
+ *   GC_ONE   = um único Value, no offset dado
+ *   GC_FN    = tracer próprio (arrays/múltiplos campos)
+ * GC_UNSET (=0) é "não declarado": o check de boot (gc_valida_tabela) ABORTA
+ * se qualquer tipo ficar assim. Assim, adicionar um ObjType obriga a declarar. */
+typedef enum { GC_UNSET = 0, GC_LEAF, GC_ONE, GC_FN } GcKind;
+typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *); } GcInfo;
+
+static void gct_seq(VM *vm, Obj *o) {
+    PSList *l = (PSList *)o;
+    for (int i = 0; i < l->len; i++) marca_valor(vm, &l->itens[i]);
+}
+static void gct_dict(VM *vm, Obj *o) {
+    PSDict *d = (PSDict *)o;
+    for (int i = 0; i < d->usados; i++) {
+        if (d->entradas[i].estado != 1) continue;
+        marca_valor(vm, &d->entradas[i].chave);
+        marca_valor(vm, &d->entradas[i].valor);
+    }
+}
+static void gct_gerador(VM *vm, Obj *o) {
+    PSGerador *g = (PSGerador *)o;
+    for (int32_t i = 0; i < g->nlocais; i++) marca_valor(vm, &g->locais[i]);
+    for (int32_t i = 0; i < g->npilha; i++)  marca_valor(vm, &g->pilha[i]);
+}
+static void gct_response(VM *vm, Obj *o) {
+    PSResponse *rp = (PSResponse *)o;
+    marca_valor(vm, &rp->headers); marca_valor(vm, &rp->url); marca_valor(vm, &rp->corpo);
+}
+static void gct_instance(VM *vm, Obj *o) {
+    PSInstance *inst = (PSInstance *)o;
+    if (inst->classe) marca_obj(vm, (Obj *)inst->classe);
+    if (inst->campos) marca_obj(vm, (Obj *)inst->campos);
+}
+static void gct_class(VM *vm, Obj *o) {
+    PSClass *cl = (PSClass *)o;
+    for (int32_t i = 0; i < cl->npais; i++)
+        if (cl->pais[i]) marca_obj(vm, (Obj *)cl->pais[i]);
+}
+static void gct_enum(VM *vm, Obj *o) {
+    PSEnum *e = (PSEnum *)o;
+    for (int32_t i = 0; i < e->n; i++) marca_valor(vm, &e->valores[i]);
+}
+static void gct_jinker(VM *vm, Obj *o) {
+    PSJinker *j = (PSJinker *)o;
+    for (int i = 0; i < j->nrotas; i++) {
+        marca_valor(vm, &j->rotas[i].handler);
+        marca_valor(vm, &j->rotas[i].middleware);
+    }
+    for (int i = 0; i < j->nsocks; i++) marca_valor(vm, &j->socks[i].handler);
+    for (int i = 0; i < j->nws; i++)    marca_valor(vm, &j->ws[i].params);
+    marca_valor(vm, &j->mw_handler);
+    marca_valor(vm, &j->ch_status);
+}
+static void gct_jreg(VM *vm, Obj *o) {
+    PSJReg *r = (PSJReg *)o; marca_valor(vm, &r->app); marca_valor(vm, &r->middleware);
+}
+static void gct_jresp(VM *vm, Obj *o) {
+    PSJResp *r = (PSJResp *)o; marca_valor(vm, &r->corpo); marca_valor(vm, &r->headers);
+}
+static void gct_jreq(VM *vm, Obj *o) {
+    PSJReq *r = (PSJReq *)o;
+    marca_valor(vm, &r->headers); marca_valor(vm, &r->corpo); marca_valor(vm, &r->query);
+    marca_valor(vm, &r->params);  marca_valor(vm, &r->ws_msg);
+}
+static void gct_guz_ui(VM *vm, Obj *o) {
+    PSGuzUI *u = (PSGuzUI *)o;
+    for (int i = 0; i < u->nfilhos; i++) marca_valor(vm, &u->filhos[i]);
+}
+
+/* A tabela: TODO tipo aparece aqui. Esquecer um => GC_UNSET => aborta no boot. */
+static const GcInfo GC_INFO[OBJ__COUNT] = {
+    [OBJ_STRING]     = { GC_LEAF, 0, NULL },
+    [OBJ_LIST]       = { GC_FN,   0, gct_seq },
+    [OBJ_TUPLE]      = { GC_FN,   0, gct_seq },
+    [OBJ_DICT]       = { GC_FN,   0, gct_dict },
+    [OBJ_CLASS]      = { GC_FN,   0, gct_class },
+    [OBJ_INSTANCE]   = { GC_FN,   0, gct_instance },
+    [OBJ_BOUND]      = { GC_ONE,  offsetof(PSBound, instancia), NULL },
+    [OBJ_METODO_NAT] = { GC_ONE,  offsetof(PSMetodoNat, alvo), NULL },
+    [OBJ_MODULO]     = { GC_LEAF, 0, NULL },
+    [OBJ_NATIVA]     = { GC_LEAF, 0, NULL },
+    [OBJ_MODEL]      = { GC_LEAF, 0, NULL },
+    [OBJ_ENUM]       = { GC_FN,   0, gct_enum },
+    [OBJ_GERADOR]    = { GC_FN,   0, gct_gerador },
+    [OBJ_ARQUIVO]    = { GC_LEAF, 0, NULL },   /* globais vivem em vm->globals (raiz) */
+    [OBJ_MODULO_PS]  = { GC_LEAF, 0, NULL },
+    [OBJ_BYTES]      = { GC_LEAF, 0, NULL },
+    [OBJ_SQLCONN]    = { GC_LEAF, 0, NULL },
+    [OBJ_SQLCUR]     = { GC_ONE,  offsetof(PSSqlCur, conn), NULL },
+    [OBJ_MAILSRV]    = { GC_LEAF, 0, NULL },
+    [OBJ_MAILMSG]    = { GC_LEAF, 0, NULL },
+    [OBJ_MAILRD]     = { GC_LEAF, 0, NULL },
+    [OBJ_RESPONSE]   = { GC_FN,   0, gct_response },
+    [OBJ_QRFILE]     = { GC_ONE,  offsetof(PSQRFile, conteudo), NULL },
+    [OBJ_MANPU_RES]  = { GC_LEAF, 0, NULL },
+    [OBJ_DBCONN]     = { GC_LEAF, 0, NULL },
+    [OBJ_DBCUR]      = { GC_ONE,  offsetof(PSDbCursor, conexao), NULL },
+    [OBJ_MONGOCONN]  = { GC_LEAF, 0, NULL },
+    [OBJ_MONGOCOL]   = { GC_ONE,  offsetof(PSMongoCol, conexao), NULL },
+    [OBJ_POOLFILE]   = { GC_ONE,  offsetof(PSPoolFile, conteudo), NULL },
+    [OBJ_JINKER]     = { GC_FN,   0, gct_jinker },
+    [OBJ_JCORS]      = { GC_LEAF, 0, NULL },
+    [OBJ_JREG]       = { GC_FN,   0, gct_jreg },
+    [OBJ_JRESP]      = { GC_FN,   0, gct_jresp },
+    [OBJ_JREQ]       = { GC_FN,   0, gct_jreq },
+    [OBJ_JPROXY]     = { GC_LEAF, 0, NULL },
+    [OBJ_JUPLOAD]    = { GC_ONE,  offsetof(PSJUpload, dados), NULL },
+    [OBJ_JSOCKNS]    = { GC_ONE,  offsetof(PSJSockNs, app), NULL },
+    [OBJ_JEMIT]      = { GC_ONE,  offsetof(PSJEmit, app), NULL },
+    [OBJ_JCHAN]      = { GC_ONE,  offsetof(PSJChan, app), NULL },
+    [OBJ_JCHST]      = { GC_LEAF, 0, NULL },
+    [OBJ_WSCONN]     = { GC_ONE,  offsetof(PSWsConn, on_msg), NULL },
+    [OBJ_QRBUILD]    = { GC_LEAF, 0, NULL },
+    [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL },
+    [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL },
+    [OBJ_GUZ_UI]     = { GC_FN,   0, gct_guz_ui },
+    [OBJ_GUZ_WID]    = { GC_ONE,  offsetof(PSGuzWid, handler), NULL },
+    [OBJ_BIGINT]     = { GC_LEAF, 0, NULL },
+};
+
+/* Boot: recusa qualquer ObjType que não declarou seu tracer (GC_UNSET).
+ * É a rede de segurança: tipo novo sem entrada em GC_INFO aborta AQUI, alto e
+ * claro, em vez de virar use-after-free silencioso lá na frente. */
+static void gc_valida_tabela(void) {
+    static int checado = 0;
+    if (checado) return;
+    checado = 1;
+    for (int t = 0; t < OBJ__COUNT; t++) {
+        if (GC_INFO[t].kind == GC_UNSET) {
+            fprintf(stderr, "ERRO FATAL: ObjType %d sem tracer de GC declarado "
+                            "(adicione em GC_INFO[])\n", t);
+            abort();
+        }
+    }
+}
+
 static void percorre_cinzas(VM *vm)
 {
     while (vm->ncinzas > 0) {
         Obj *o = vm->cinzas[--vm->ncinzas];
-        if (o->type == OBJ_LIST || o->type == OBJ_TUPLE) {
-            PSList *l = (PSList *)o;
-            for (int i = 0; i < l->len; i++) marca_valor(vm, &l->itens[i]);
-        } else if (o->type == OBJ_GERADOR) {
-            PSGerador *g = (PSGerador *)o;
-            for (int32_t i = 0; i < g->nlocais; i++) marca_valor(vm, &g->locais[i]);
-            for (int32_t i = 0; i < g->npilha; i++) marca_valor(vm, &g->pilha[i]);
-        } else if (o->type == OBJ_POOLFILE) {
-            marca_valor(vm, &((PSPoolFile *)o)->conteudo);
-        } else if (o->type == OBJ_SQLCUR) {
-            /* o cursor segura a conexão: fechar o banco com cursor vivo
-             * viraria use-after-free dentro da própria sqlite */
-            marca_valor(vm, &((PSSqlCur *)o)->conn);
-        } else if (o->type == OBJ_SQLCONN) {
-            /* sem filhos Value */
-        } else if (o->type == OBJ_MAILSRV || o->type == OBJ_MAILRD
-                || o->type == OBJ_MAILMSG) {
-            /* estado é tudo C puro (sockets, strings malloc) — sem Value */
-        } else if (o->type == OBJ_DBCUR) {
-            marca_valor(vm, &((PSDbCursor *)o)->conexao);
-        } else if (o->type == OBJ_MONGOCOL) {
-            marca_valor(vm, &((PSMongoCol *)o)->conexao);
-        } else if (o->type == OBJ_MONGOCONN) {
-            /* sem filho Value */
-        } else if (o->type == OBJ_DBCONN) {
-            /* sem filho Value */
-        } else if (o->type == OBJ_RESPONSE) {
-            PSResponse *rp = (PSResponse *)o;
-            marca_valor(vm, &rp->headers);
-            marca_valor(vm, &rp->url);
-            marca_valor(vm, &rp->corpo);
-        } else if (o->type == OBJ_QRFILE) {
-            marca_valor(vm, &((PSQRFile *)o)->conteudo);
-        } else if (o->type == OBJ_BYTES) {
-            /* conteúdo é byte cru, não Value: nada a marcar */
-        } else if (o->type == OBJ_ARQUIVO || o->type == OBJ_MODULO_PS) {
-            /* Módulo não marca nada: as globais dele vivem em vm->globals, que
-             * o coletor já varre inteiro como raiz. */
-        } else if (o->type == OBJ_METODO_NAT) {
-            marca_valor(vm, &((PSMetodoNat *)o)->alvo);
-        } else if (o->type == OBJ_MODULO || o->type == OBJ_NATIVA
-                || o->type == OBJ_MODEL) {
-            /* sem filhos: o descritor é estático (o do model vive no VM) */
-        } else if (o->type == OBJ_ENUM) {
-            /* nome/nomes vivem no descritor do VM; só os VALORES são filhos */
-            PSEnum *e = (PSEnum *)o;
-            for (int32_t i = 0; i < e->n; i++) marca_valor(vm, &e->valores[i]);
-        } else if (o->type == OBJ_DICT) {
-            PSDict *d = (PSDict *)o;
-            for (int i = 0; i < d->usados; i++) {
-                if (d->entradas[i].estado != 1) continue;
-                marca_valor(vm, &d->entradas[i].chave);
-                marca_valor(vm, &d->entradas[i].valor);
-            }
-        } else if (o->type == OBJ_INSTANCE) {
-            PSInstance *inst = (PSInstance *)o;
-            if (inst->classe) marca_obj(vm, (Obj *)inst->classe);
-            if (inst->campos) marca_obj(vm, (Obj *)inst->campos);
-        } else if (o->type == OBJ_CLASS) {
-            PSClass *cl = (PSClass *)o;
-            for (int32_t i = 0; i < cl->npais; i++)
-                if (cl->pais[i]) marca_obj(vm, (Obj *)cl->pais[i]);
-        } else if (o->type == OBJ_BOUND) {
-            marca_valor(vm, &((PSBound *)o)->instancia);
-        } else if (o->type == OBJ_GUZ_UI) {
-            PSGuzUI *u = (PSGuzUI *)o;
-            for (int i = 0; i < u->nfilhos; i++) marca_valor(vm, &u->filhos[i]);
-        } else if (o->type == OBJ_GUZ_WID) {
-            marca_valor(vm, &((PSGuzWid *)o)->handler);
-        } else if (o->type == OBJ_JINKER) {
-            PSJinker *j = (PSJinker *)o;
-            for (int i = 0; i < j->nrotas; i++) {
-                marca_valor(vm, &j->rotas[i].handler);
-                marca_valor(vm, &j->rotas[i].middleware);
-            }
-            for (int i = 0; i < j->nsocks; i++) marca_valor(vm, &j->socks[i].handler);
-            for (int i = 0; i < j->nws; i++)    marca_valor(vm, &j->ws[i].params);
-            marca_valor(vm, &j->mw_handler);
-            marca_valor(vm, &j->ch_status);
-        } else if (o->type == OBJ_JREG) {
-            PSJReg *r = (PSJReg *)o;
-            marca_valor(vm, &r->app);
-            marca_valor(vm, &r->middleware);
-        } else if (o->type == OBJ_JRESP) {
-            PSJResp *r = (PSJResp *)o;
-            marca_valor(vm, &r->corpo);
-            marca_valor(vm, &r->headers);
-        } else if (o->type == OBJ_JREQ) {
-            PSJReq *r = (PSJReq *)o;
-            marca_valor(vm, &r->headers);
-            marca_valor(vm, &r->corpo);
-            marca_valor(vm, &r->query);
-            marca_valor(vm, &r->params);
-            marca_valor(vm, &r->ws_msg);
-        } else if (o->type == OBJ_JUPLOAD) {
-            marca_valor(vm, &((PSJUpload *)o)->dados);
-        } else if (o->type == OBJ_JSOCKNS) {
-            marca_valor(vm, &((PSJSockNs *)o)->app);
-        } else if (o->type == OBJ_JEMIT) {
-            marca_valor(vm, &((PSJEmit *)o)->app);
-        } else if (o->type == OBJ_JCHAN) {
-            marca_valor(vm, &((PSJChan *)o)->app);
-        } else if (o->type == OBJ_WSCONN) {
-            marca_valor(vm, &((PSWsConn *)o)->on_msg);
-        } else if (o->type == OBJ_JCORS || o->type == OBJ_JPROXY
-                || o->type == OBJ_JCHST || o->type == OBJ_QRBUILD
-                || o->type == OBJ_QRIMAGE || o->type == OBJ_MANPU_FILE
-                || o->type == OBJ_BIGINT) {
-            /* estado é C puro (bignum: os limbs da GMP) — sem filho Value */
-        }
+        const GcInfo *gi = &GC_INFO[o->type];
+        if (gi->kind == GC_FN)       gi->fn(vm, o);
+        else if (gi->kind == GC_ONE) marca_valor(vm, (Value *)((char *)o + gi->off));
+        /* GC_LEAF: sem filho a marcar */
     }
 }
 
@@ -1557,6 +1593,7 @@ static void libera_obj(VM *vm, Obj *o)
 
 static void gc_coleta(VM *vm)
 {
+    gc_valida_tabela();   /* rede de segurança: aborta se algum tipo não declarou tracer */
     vm->ncinzas = 0;
 
     /* raízes: globais, pilha viva, locais vivos e constantes dos protótipos */
