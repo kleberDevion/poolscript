@@ -1695,6 +1695,21 @@ class Parser:
             if is_async_action:
                 action_node = self.parse_action_decl()
                 block = Block(line=action_node.line, col=action_node.col, style="brace", statements=[action_node])
+        elif (capture_action and self.current().type == "KW"
+              and (self.current().value in {"Entity", "class", "Class"}
+                   or (self.current().value in {"private", "public"}
+                       and self.pos + 1 < len(self.tokens)
+                       and self.tokens[self.pos + 1].type == "KW"
+                       and self.tokens[self.pos + 1].value in {"Entity", "class", "Class"}))):
+            # @app.route(...) class Nome(): ... — handler baseado em classe: o
+            # decorador captura a classe como bloco e enxerga a action dentro dela.
+            is_priv = False
+            if self.current().value in {"private", "public"}:
+                is_priv = self.current().value == "private"
+                self.pos += 1
+            entity_node = self.parse_entity_decl()
+            entity_node.is_private = is_priv
+            block = Block(line=entity_node.line, col=entity_node.col, style="brace", statements=[entity_node])
         return DecoratorStmt(line=start.line, col=start.col, decorator=decorator, block=block)
 
     def parse_decorator_call(self, at_tok: Token) -> DecoratorCall:

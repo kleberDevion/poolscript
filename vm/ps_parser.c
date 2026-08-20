@@ -1863,7 +1863,20 @@ static PSNode *statement(P *p)
                                  && (strcmp(n3->texto,"action")==0 || strcmp(n3->texto,"reaction")==0));
                 }
             }
-            if (eh_action) {
+            /* @app.route(...) class Nome(): ... — handler baseado em classe.
+             * O decorador captura a classe (com prefixo private/public opcional)
+             * como bloco; o compilador enxerga a action dentro dela. */
+            int eh_classe = (nt->type == T_KW && nt->texto
+                             && (strcmp(nt->texto,"Entity")==0 || strcmp(nt->texto,"class")==0
+                                 || strcmp(nt->texto,"Class")==0));
+            if (!eh_classe && nt->type == T_KW && nt->texto
+                    && (strcmp(nt->texto,"private")==0 || strcmp(nt->texto,"public")==0)) {
+                PSToken *n2 = espia(p, 1);
+                eh_classe = (n2->type == T_KW && n2->texto
+                             && (strcmp(n2->texto,"Entity")==0 || strcmp(n2->texto,"class")==0
+                                 || strcmp(n2->texto,"Class")==0));
+            }
+            if (eh_action || eh_classe) {
                 PSNode *acao = statement(p);
                 if (FALHOU(p)) return NULL;
                 PSNode *b = ps_node_novo(p->arena, N_BLOCK, acao->line, acao->col);

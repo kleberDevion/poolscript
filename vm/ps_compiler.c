@@ -1392,9 +1392,23 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (dec && dec->lista.n > 1) {
                 if (!n->b) return;
                 const char *act = NULL;
+                const char *cls_nome = NULL, *met_nome = NULL;
                 if (n->b->kind == N_BLOCK)
-                    for (int32_t i = 0; i < n->b->lista.n; i++)
-                        if (n->b->lista.itens[i]->kind == N_ACTION_DECL) { act = n->b->lista.itens[i]->texto; break; }
+                    for (int32_t i = 0; i < n->b->lista.n; i++) {
+                        PSNode *bi = n->b->lista.itens[i];
+                        if (bi->kind == N_ACTION_DECL) { act = bi->texto; break; }
+                        /* handler baseado em CLASSE: acha a action DENTRO da
+                         * classe (a primeira fora de __init__), nome qualquer */
+                        if (bi->kind == N_ENTITY_DECL) {
+                            cls_nome = bi->texto;
+                            for (int32_t j = 0; j < bi->lista.n; j++) {
+                                PSNode *m = bi->lista.itens[j];
+                                if (m->kind == N_ACTION_DECL && m->texto
+                                        && strcmp(m->texto, "__init__") != 0) { met_nome = m->texto; break; }
+                            }
+                            break;
+                        }
+                    }
 
                 /* 1) avalia SEMPRE a expressão do decorador como CHAMADA
                  * `obj.metodo(args)` — é o que o interpretador faz (erro do
@@ -1426,6 +1440,18 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                     carrega_nome(c, u, "$reg");
                     emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "register", 8));
                     carrega_nome(c, u, act);
+                    emite(c, u, OP_CALL, 1);
+                    emite(c, u, OP_POP_TOP, 0);
+                } else if (cls_nome && met_nome) {
+                    /* handler de classe: instancia a classe e registra o método
+                     * dela — $inst = Classe(); $reg.register($inst.metodo) */
+                    carrega_nome(c, u, cls_nome);
+                    emite(c, u, OP_CALL, 0);
+                    guarda_nome_modo(c, u, "$inst", 1);
+                    carrega_nome(c, u, "$reg");
+                    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "register", 8));
+                    carrega_nome(c, u, "$inst");
+                    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, met_nome, (int32_t)strlen(met_nome)));
                     emite(c, u, OP_CALL, 1);
                     emite(c, u, OP_POP_TOP, 0);
                 }

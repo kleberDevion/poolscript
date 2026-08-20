@@ -1061,6 +1061,13 @@ class Interpreter:
                             fn_val._nonnull = True
                     return None
 
+                if dec.path == ["dataentity"]:
+                    # marcador: define a Entity normalmente no escopo atual (o
+                    # __init__ de campos tipados é gerado no próprio EntityDecl).
+                    if node.block is not None:
+                        self.exec_block(node.block, scope, create_child=False)
+                    return None
+
                 if len(dec.path) >= 2:
                     obj = self._safe_get(scope, dec.path[0], node)
                     method_name = dec.path[1]
@@ -1093,6 +1100,19 @@ class Interpreter:
                         v for v in block_scope.values.values()
                         if isinstance(v, UserFunction)
                     ]
+                    # Handler baseado em CLASSE: se o bloco define uma classe (e
+                    # não uma action solta), o decorador ENXERGA a action dentro
+                    # da classe e registra ela — instancia a classe e liga o
+                    # método (o único método fora de __init__).
+                    if not handlers:
+                        for v in block_scope.values.values():
+                            if isinstance(v, PoolEntityClass):
+                                mets = [f for n, f in v.methods.items()
+                                        if n != "__init__"]
+                                if mets:
+                                    inst = self._call(v, [], {}, node)
+                                    handlers = [BoundMethod(instance=inst, func=mets[0])]
+                                break
                     # Registrar que é Entity do usuário: protocolo GENÉRICO —
                     # registrar.register(action) com a action PURA, igual à VM
                     # (sem o embrulho req/res do jinker).
@@ -1108,16 +1128,20 @@ class Interpreter:
                             # Socket handler — injeta request e channel no escopo
                             from .stdlib.jinker_lib import _SocketRegistrar
                             if isinstance(registrar, _SocketRegistrar):
-                                def make_socket_handler(fn: UserFunction, app_obj):
+                                def make_socket_handler(fn, app_obj):
+                                    func = fn.func if isinstance(fn, BoundMethod) else fn
+                                    inst = fn.instance if isinstance(fn, BoundMethod) else None
                                     def socket_handler():
                                         from .stdlib.jinker_lib import request as req_proxy
-                                        local = Scope(fn.closure)
+                                        local = Scope(func.closure)
                                         local.define("request", req_proxy)
+                                        if inst is not None and func.params and func.params[0] == "self":
+                                            local.define("self", inst)
                                         if hasattr(app_obj, "channel"):
                                             local.define("channel", app_obj.channel)
                                         interp._action_depth += 1
                                         try:
-                                            interp.exec_block(fn.block, local, create_child=False)
+                                            interp.exec_block(func.block, local, create_child=False)
                                         except ReturnSignal:
                                             pass
                                         except ContinueSignal:
@@ -1128,17 +1152,29 @@ class Interpreter:
 
                                 registrar.register(make_socket_handler(action_fn, obj))
                             else:
-                                def make_handler(fn: UserFunction):
+                                def make_handler(fn):
+                                    # fn: UserFunction (action) ou BoundMethod
+                                    # (método achado dentro de uma classe decorada)
+                                    func = fn.func if isinstance(fn, BoundMethod) else fn
+                                    inst = fn.instance if isinstance(fn, BoundMethod) else None
                                     def handler(req, res):
                                         import json as _json
                                         from .stdlib.jinker_lib import JinkerResponse, request as req_proxy
                                         req_proxy._set(req)
-                                        local = Scope(fn.closure)
+                                        local = Scope(func.closure)
                                         local.define("request", req_proxy)
+                                        if inst is not None:
+                                            # handler de classe: método precisa de
+                                            # 'self' (igual à VM) — senão, mesmo erro
+                                            if not (func.params and func.params[0] == "self"):
+                                                raise PoolRuntimeError(
+                                                    f"action '{func.name}' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                                                    node, interp.source, filename=interp.filename)
+                                            local.define("self", inst)
                                         interp._action_depth += 1
                                         result = None
                                         try:
-                                            interp.exec_block(fn.block, local, create_child=False)
+                                            interp.exec_block(func.block, local, create_child=False)
                                         except ReturnSignal as sig:
                                             result = sig.value
                                         except ContinueSignal:
