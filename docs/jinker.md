@@ -537,10 +537,10 @@ action lento() {
 ```
 
 Medido (1 worker, handler com `sleep(0.1)`): **100 clientes simultâneos → ~570
-req/s** (antes, serializado, eram ~10 req/s). São até **64 handlers em execução
-ao mesmo tempo por worker**; passando disso, as requisições entram numa fila e
-são servidas assim que uma fibra libera (nunca travam o servidor, nunca estouram
-a memória).
+req/s** (antes, serializado, eram ~10 req/s). O pool de fibras **cresce sob
+demanda** (não trava num teto fixo), com uma rede de segurança lá no alto; na
+prática um worker roda **centenas de handlers ao mesmo tempo** sem travar nem
+estourar a memória.
 
 **Consulta de banco também não trava.** Um `SELECT` lento roda dentro do driver
 em C (libpq/mysql/odbc) fazendo `recv` bloqueante — isso travaria o worker. Por
@@ -553,10 +553,19 @@ automático pros drivers de rede (postgres/mysql/sqlserver). SQLite roda direto
 Abrir a conexão (`connect()`) também é async pelos mesmos motivos — o handshake
 de rede vai pra thread e a fibra cede.
 
+**Requisição de saída também não trava.** Um `request.get/post/...` (chamar uma
+API, disparar um webhook) e o `ws_connect(...)` (WebSocket de saída) fazem
+DNS+connect+TLS+envio+recepção — rede bloqueante que travaria o worker. Igual ao
+banco, isso vai pra uma **thread** e a fibra cede: dá pra chamar várias APIs em
+paralelo sem congelar o servidor. Medido: 3 webhooks a um alvo de 0.5s em ~0.78s,
+não 1.5s. (Dentro de um handler, `request` é a requisição de **entrada**; o
+módulo de saída entra como `import request as web` e você usa `web.get(...)`.)
+
 > **O que ainda trava a fibra:** um cálculo pesado **puro de CPU** (não tem I/O
 > pra ceder — só termina ocupando o núcleo; use `workers` pra espalhar). O
 > `commit()`/`BEGIN` do banco seguem inline (são controle rápido, um round-trip).
-> Cedem hoje: `sleep`, a consulta ao banco (postgres/mysql) e o `connect()`.
+> Cedem hoje: `sleep`, a consulta ao banco (postgres/mysql), o `connect()`, as
+> requisições de saída (`request.*`) e o `ws_connect()`.
 
 ### Muitas conexões ao mesmo tempo
 

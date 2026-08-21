@@ -108,7 +108,7 @@ post(removeStart(l))  // 1   (e l == [2, 3, 4])
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `gather` | `gather(a, b, …)` | empacota os argumentos numa lista. No **interpretador**, aguarda os futuros de `async action` antes de coletar (equivale a `await [f1, f2, …]`); na VM (sem async) só empacota. |
+| `gather` | `gather(a, b, …)` | espera vários `async action` **concorrentes** e devolve os valores numa lista (na ordem). Funciona **nos dois motores** (interpretador e VM); valor comum passa direto. Aceita lista de futures. |
 | `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `null`. |
 | `id` | `id(x)` | identidade do valor como `int`. Para objetos, o endereço; para imediatos, o conteúdo bruto. (No interp usa o `id()` do Python — o valor exato do número difere entre motores; use só pra comparar identidade, não pro número em si.) |
 

@@ -190,23 +190,31 @@ post(list(conta()))  // [1, 2, 3]
 
 ---
 
-## 6.8. Assíncrono — `async` / `await`
+## 6.8. Assíncrono — `async` / `await` / `gather`
 
-Uma action pode ser marcada `async` (`async action`, `async reaction`), e o seu
-resultado é obtido com `await`. No **interpretador** isto roda de verdade (sobre
-um executor de threads): `async action` devolve um futuro e `await` bloqueia até
-o valor ficar pronto.
+Uma action marcada `async` (`async action`, `async reaction`) **não roda na
+chamada**: devolve um **future** (uma promessa do resultado). O valor sai com
+`await` (espera um future) ou `gather` (espera vários). As tasks correm
+**concorrentes** — enquanto uma espera I/O, as outras andam.
 
 ```ps
-async action busca():
-    return 42
+async action dobro(n):
+    sleep(0.2)
+    return n * 2
+
+post(await dobro(21))                          # 42
+post(gather(dobro(1), dobro(2), dobro(3)))     # [2, 4, 6] — os três em ~0.2s, não 0.6s
 ```
 
-> **Limitação atual de paridade.** O `await` **ainda não é suportado na VM em C**
-> (levanta `NotImplementedError` na compilação). Ou seja, hoje o assíncrono só
-> funciona pelo interpretador. Enquanto essa lacuna não for fechada, evite
-> `await` em código que precise rodar pelo `pool` (VM). O `async` sozinho
-> (definir e chamar sem `await`) roda nos dois — a chamada é síncrona.
+`gather` também aceita uma **lista** de futures (`gather(fs)` → lista com os
+valores na mesma ordem). `await` de um valor comum (não-future) devolve o próprio
+valor.
+
+Roda **nos dois motores**: no interpretador (sobre um executor de threads) e na
+**VM em C** (sobre fibras/*green-threads* — cada `async action` vira uma fibra e o
+escalonador as revessa; `sleep`, banco e requisições de saída cedem sozinhos). O
+modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
+**centenas** de tasks concorrentes, onde ganha do Node em tempo e memória.
 
 ---
 
@@ -221,4 +229,5 @@ async action busca():
   no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.
 - Funções são **valores** (first-class); há **recursão** e **geradores**
   (`yield`).
-- **`async`/`await`** funciona no interpretador; `await` ainda **não** na VM.
+- **`async`/`await`/`gather`** funcionam **nos dois motores** (interpretador e
+  VM); as tasks correm concorrentes.
