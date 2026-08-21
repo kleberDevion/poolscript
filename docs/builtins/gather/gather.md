@@ -31,6 +31,10 @@ post(gather(dobro(1), dobro(2), dobro(3)))
 Os três correm juntos: sai em ~0.2s, não 0.6s. Com uma lista:
 
 ```ps
+async action dobro(n):
+    sleep(0.2)
+    return n * 2
+
 fs = []
 for each i in range(3):
     addEnd(fs, dobro(i))

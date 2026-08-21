@@ -9267,6 +9267,28 @@ static int met_mm_asstring(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 /* ── MailServer ─────────────────────────────────────────────────────────── */
 
+/* SMTP offloadado: a I/O de rede bloqueante (connect/login/envia) roda numa
+ * thread do pool e a fibra cede — igual banco e HTTP, pra `await` no mail não
+ * travar o worker. Só dados C viajam pra thread. */
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto do jinker */
+typedef struct { const char *host; int porta; char *erro; size_t cap; PSMailConn *conn; } SmtpConnOff;
+static void smtp_conn_off(void *p){ SmtpConnOff *o = (SmtpConnOff *)p;
+    o->conn = ps_smtp_conecta(o->host, o->porta, o->erro, o->cap); }
+typedef struct { PSMailConn *c; const char *user, *senha; char *erro; size_t cap; int rc; } SmtpLoginOff;
+static void smtp_login_off(void *p){ SmtpLoginOff *o = (SmtpLoginOff *)p;
+    o->rc = ps_smtp_login(o->c, o->user, o->senha, o->erro, o->cap); }
+typedef struct { PSMailConn *c; const char *de, *para, *msg; size_t n; char *erro; size_t cap; int rc; } SmtpSendOff;
+static void smtp_send_off(void *p){ SmtpSendOff *o = (SmtpSendOff *)p;
+    o->rc = ps_smtp_envia(o->c, o->de, o->para, o->msg, o->n, o->erro, o->cap); }
+/* IMAP (leitura de mail) offloadado — reusa as structs conn/login do SMTP */
+static void imap_conn_off(void *p){ SmtpConnOff *o = (SmtpConnOff *)p;
+    o->conn = ps_imap_conecta(o->host, o->porta, o->erro, o->cap); }
+static void imap_login_off(void *p){ SmtpLoginOff *o = (SmtpLoginOff *)p;
+    o->rc = ps_imap_login(o->c, o->user, o->senha, o->erro, o->cap); }
+typedef struct { PSMailConn *c; const char *pasta; int readonly; char *erro; size_t cap; int rc; } ImapSelOff;
+static void imap_sel_off(void *p){ ImapSelOff *o = (ImapSelOff *)p;
+    o->rc = ps_imap_select(o->c, o->pasta, o->readonly, o->erro, o->cap); }
+
 static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "conn() espera 1 ou 2 argumentos");
@@ -9279,7 +9301,9 @@ static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (m->conn) { ps_mail_solta(m->conn); m->conn = NULL; }
     char e[180];
-    PSMailConn *c = ps_smtp_conecta(host, porta, e, sizeof(e));
+    SmtpConnOff co = { host, porta, e, sizeof(e), NULL };
+    fib_offload(vm, smtp_conn_off, &co);   /* connect+TLS na thread: não trava */
+    PSMailConn *c = co.conn;
     if (!c) MAIL_ERRO_REDE(vm, e);
     m->conn = c;
     *out = MK_BOOL(1);
@@ -9292,7 +9316,9 @@ static int met_ms_login(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() antes de .login()");
     char e[180];
-    if (ps_smtp_login(m->conn, COMO_STRING(args[0])->chars, COMO_STRING(args[1])->chars, e, sizeof(e)) != 0)
+    SmtpLoginOff lo = { m->conn, COMO_STRING(args[0])->chars, COMO_STRING(args[1])->chars, e, sizeof(e), 0 };
+    fib_offload(vm, smtp_login_off, &lo);   /* AUTH na thread: não trava */
+    if (lo.rc != 0)
         MAIL_ERRO_REDE(vm, e);
     free(m->user);
     m->user = strdup(COMO_STRING(args[0])->chars);
@@ -9337,8 +9363,10 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (rc != 0) { free(b.b); return -1; }
     }
     char e[180];
-    int rc = ps_smtp_envia(m->conn, m->user ? m->user : "", para ? para : "",
-                           b.b ? b.b : "", (size_t)b.n, e, sizeof(e));
+    SmtpSendOff so = { m->conn, m->user ? m->user : "", para ? para : "",
+                       b.b ? b.b : "", (size_t)b.n, e, sizeof(e), 0 };
+    fib_offload(vm, smtp_send_off, &so);   /* MAIL/RCPT/DATA na thread: não trava */
+    int rc = so.rc;
     free(b.b);
     if (rc != 0) MAIL_ERRO_REDE(vm, e);
     *out = MK_BOOL(1);
@@ -9367,7 +9395,9 @@ static int met_mr_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (m->conn) { ps_mail_solta(m->conn); m->conn = NULL; }
     char e[180];
-    PSMailConn *c = ps_imap_conecta(host, porta, e, sizeof(e));
+    SmtpConnOff co = { host, porta, e, sizeof(e), NULL };
+    fib_offload(vm, imap_conn_off, &co);   /* connect+TLS IMAP na thread: não trava */
+    PSMailConn *c = co.conn;
     if (!c) MAIL_ERRO_REDE(vm, e);
     m->conn = c;
     *out = MK_BOOL(1);
@@ -9380,7 +9410,9 @@ static int met_mr_login(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() antes de .login()");
     char e[180];
-    if (ps_imap_login(m->conn, COMO_STRING(args[0])->chars, COMO_STRING(args[1])->chars, e, sizeof(e)) != 0)
+    SmtpLoginOff lo = { m->conn, COMO_STRING(args[0])->chars, COMO_STRING(args[1])->chars, e, sizeof(e), 0 };
+    fib_offload(vm, imap_login_off, &lo);   /* AUTH IMAP na thread: não trava */
+    if (lo.rc != 0)
         MAIL_ERRO_REDE(vm, e);
     *out = MK_BOOL(1);
     return 0;
@@ -9393,7 +9425,9 @@ static int met_mr_select(VM *vm, Value alvo, Value *args, int n, Value *out)
     const char *pasta = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "INBOX";
     int readonly = (n >= 2) ? val_truthy(&args[1]) : 1;
     char e[180];
-    if (ps_imap_select(m->conn, pasta, readonly, e, sizeof(e)) != 0)
+    ImapSelOff so = { m->conn, pasta, readonly, e, sizeof(e), 0 };
+    fib_offload(vm, imap_sel_off, &so);   /* SELECT IMAP na thread: não trava */
+    if (so.rc != 0)
         MAIL_ERRO_REDE(vm, e);
     m->teve_select = 1;
     *out = alvo;
@@ -9862,6 +9896,12 @@ static int ws_drena(VM *vm, PSWsConn *w, int timeout_ms)
     return 0;
 }
 
+/* envio do WS cliente offloadado (o write pode bloquear se o buffer do peer
+ * encher) — mesma thread do pool, a fibra cede. */
+typedef struct { PSJkConn *c; const char *msg; size_t n; int rc; } WsSendOff;
+static void ws_send_off(void *p){ WsSendOff *o = (WsSendOff *)p;
+    o->rc = ps_jk_ws_envia_texto_cli(o->c, o->msg, o->n); }
+
 static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "send", 1);
@@ -9877,11 +9917,15 @@ static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
     int rc;
     if (EH_STRING(args[0])) {
         PSString *s = COMO_STRING(args[0]);
-        rc = ps_jk_ws_envia_texto_cli(w->conn, s->chars, (size_t)s->len);
+        WsSendOff wo = { w->conn, s->chars, (size_t)s->len, 0 };
+        fib_offload(vm, ws_send_off, &wo);
+        rc = wo.rc;
     } else {
         SBuf b = {0};
         if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); MERRO(vm, "SomeValueUnexpected", "%s", vm->erro); }
-        rc = ps_jk_ws_envia_texto_cli(w->conn, b.b ? b.b : "null", b.b ? (size_t)b.n : 4);
+        WsSendOff wo = { w->conn, b.b ? b.b : "null", b.b ? (size_t)b.n : 4, 0 };
+        fib_offload(vm, ws_send_off, &wo);
+        rc = wo.rc;
         free(b.b);
     }
     if (rc != 0) { ps_jk_close(w->conn); w->conn = NULL; }
@@ -11539,6 +11583,28 @@ static int mongo_json_para_lista(VM *vm, const char *json, Value *out)
 
 static int met_mcol_find(VM *vm, Value alvo, Value *args, int n, Value *out);   /* fwd */
 
+/* mongo offloadado: as ops de rede (find/insert/update/remove/count/connect)
+ * rodam numa thread do pool e a fibra cede — igual postgres/mysql, pra `await`
+ * no mongo não travar o worker. Só dados C (PSMongo + JSON) viajam pra thread. */
+typedef struct { PSMongo *m; const char *col, *q; int umso; char **rj; char *erro; size_t cap; int rc; } MgFindOff;
+static void mg_find_off(void *p){ MgFindOff *o = (MgFindOff *)p;
+    o->rc = ps_mongo_find(o->m, o->col, o->q, o->umso, o->rj, o->erro, o->cap); }
+typedef struct { PSMongo *m; const char *col, *doc; int muitos; char *erro; size_t cap; int rc; } MgInsOff;
+static void mg_ins_off(void *p){ MgInsOff *o = (MgInsOff *)p;
+    o->rc = ps_mongo_insert(o->m, o->col, o->doc, o->muitos, o->erro, o->cap); }
+typedef struct { PSMongo *m; const char *col, *q, *s; char *erro; size_t cap; int rc; } MgUpdOff;
+static void mg_upd_off(void *p){ MgUpdOff *o = (MgUpdOff *)p;
+    o->rc = ps_mongo_update(o->m, o->col, o->q, o->s, o->erro, o->cap); }
+typedef struct { PSMongo *m; const char *col, *q; char *erro; size_t cap; int rc; } MgRmOff;
+static void mg_rm_off(void *p){ MgRmOff *o = (MgRmOff *)p;
+    o->rc = ps_mongo_remove(o->m, o->col, o->q, o->erro, o->cap); }
+typedef struct { PSMongo *m; const char *col, *q; char *erro; size_t cap; long rc; } MgCntOff;
+static void mg_cnt_off(void *p){ MgCntOff *o = (MgCntOff *)p;
+    o->rc = ps_mongo_count(o->m, o->col, o->q, o->erro, o->cap); }
+typedef struct { const char *uri, *db; char *erro; size_t cap; PSMongo *m; } MgConnOff;
+static void mg_conn_off(void *p){ MgConnOff *o = (MgConnOff *)p;
+    o->m = ps_mongo_conecta(o->uri, o->db, o->erro, o->cap); }
+
 /* núcleo do find/find_one */
 static int mongo_faz_find(VM *vm, Value alvo, Value *args, int n, int um_so, Value *out)
 {
@@ -11549,7 +11615,9 @@ static int mongo_faz_find(VM *vm, Value alvo, Value *args, int n, int um_so, Val
     char *qj = mongo_json_de_valor(vm, n == 1 ? args[0] : MK_NULL());
     if (!qj) MERRO(vm, "MemoryError", "sem memoria");
     char *rj = NULL, erro[512];
-    int rc = ps_mongo_find(cn->m, mc->nome, qj, um_so, &rj, erro, sizeof(erro));
+    MgFindOff fo = { cn->m, mc->nome, qj, um_so, &rj, erro, sizeof(erro), 0 };
+    fib_offload(vm, mg_find_off, &fo);
+    int rc = fo.rc;
     free(qj);
     if (rc != 0) { free(rj); snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     Value lista;
@@ -11575,7 +11643,9 @@ static int met_mcol_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
     char *dj = mongo_json_de_valor(vm, args[0]);
     if (!dj) MERRO(vm, "MemoryError", "sem memoria");
     char erro[512];
-    int rc = ps_mongo_insert(cn->m, mc->nome, dj, 0, erro, sizeof(erro));
+    MgInsOff io = { cn->m, mc->nome, dj, 0, erro, sizeof(erro), 0 };
+    fib_offload(vm, mg_ins_off, &io);
+    int rc = io.rc;
     free(dj);
     if (rc != 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     *out = MK_NULL();   /* insert devolve None no wrapper */
@@ -11590,7 +11660,9 @@ static int met_mcol_insert_many(VM *vm, Value alvo, Value *args, int n, Value *o
     char *dj = mongo_json_de_valor(vm, args[0]);
     if (!dj) MERRO(vm, "MemoryError", "sem memoria");
     char erro[512];
-    int rc = ps_mongo_insert(cn->m, mc->nome, dj, 1, erro, sizeof(erro));
+    MgInsOff io = { cn->m, mc->nome, dj, 1, erro, sizeof(erro), 0 };
+    fib_offload(vm, mg_ins_off, &io);
+    int rc = io.rc;
     free(dj);
     if (rc != 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     *out = MK_NULL();
@@ -11605,7 +11677,9 @@ static int met_mcol_update(VM *vm, Value alvo, Value *args, int n, Value *out)
     char *sj = mongo_json_de_valor(vm, args[1]);
     if (!qj || !sj) { free(qj); free(sj); MERRO(vm, "MemoryError", "sem memoria"); }
     char erro[512];
-    int rc = ps_mongo_update(cn->m, mc->nome, qj, sj, erro, sizeof(erro));
+    MgUpdOff uo = { cn->m, mc->nome, qj, sj, erro, sizeof(erro), 0 };
+    fib_offload(vm, mg_upd_off, &uo);
+    int rc = uo.rc;
     free(qj); free(sj);
     if (rc != 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     *out = MK_NULL();
@@ -11619,7 +11693,9 @@ static int met_mcol_remove(VM *vm, Value alvo, Value *args, int n, Value *out)
     char *qj = mongo_json_de_valor(vm, args[0]);
     if (!qj) MERRO(vm, "MemoryError", "sem memoria");
     char erro[512];
-    int rc = ps_mongo_remove(cn->m, mc->nome, qj, erro, sizeof(erro));
+    MgRmOff ro = { cn->m, mc->nome, qj, erro, sizeof(erro), 0 };
+    fib_offload(vm, mg_rm_off, &ro);
+    int rc = ro.rc;
     free(qj);
     if (rc != 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     *out = MK_NULL();
@@ -11633,7 +11709,9 @@ static int met_mcol_count(VM *vm, Value alvo, Value *args, int n, Value *out)
     char *qj = mongo_json_de_valor(vm, n == 1 ? args[0] : MK_NULL());
     if (!qj) MERRO(vm, "MemoryError", "sem memoria");
     char erro[512];
-    long r = ps_mongo_count(cn->m, mc->nome, qj, erro, sizeof(erro));
+    MgCntOff no = { cn->m, mc->nome, qj, erro, sizeof(erro), 0 };
+    fib_offload(vm, mg_cnt_off, &no);
+    long r = no.rc;
     free(qj);
     if (r < 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     *out = MK_INT(r);
@@ -11676,7 +11754,9 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user,
     else
         snprintf(uri, sizeof(uri), "mongodb://%s:%d/", host && host[0] ? host : "localhost", porta ? porta : 27017);
     char erro[512];
-    PSMongo *m = ps_mongo_conecta(uri, db, erro, sizeof(erro));
+    MgConnOff mco = { uri, db, erro, sizeof(erro), NULL };
+    fib_offload(vm, mg_conn_off, &mco);   /* handshake mongo na thread: não trava */
+    PSMongo *m = mco.m;
     if (!m) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"NetworkError"); return -1; }
     PSMongoConn *o = novo_mongoconn(vm, m);
     if (!o) { ps_mongo_fecha(m); BERRO(vm, "MemoryError", "sem memoria"); }

@@ -564,8 +564,10 @@ módulo de saída entra como `import request as web` e você usa `web.get(...)`.
 > **O que ainda trava a fibra:** um cálculo pesado **puro de CPU** (não tem I/O
 > pra ceder — só termina ocupando o núcleo; use `workers` pra espalhar). O
 > `commit()`/`BEGIN` do banco seguem inline (são controle rápido, um round-trip).
-> Cedem hoje: `sleep`, a consulta ao banco (postgres/mysql), o `connect()`, as
-> requisições de saída (`request.*`) e o `ws_connect()`.
+> **Toda a I/O de rede cede** (offload pra thread): `sleep`, o banco
+> (postgres/mysql/mongo — query e `connect()`), as requisições de saída
+> (`request.get/post/...`), o WebSocket (`ws_connect()` e `.send()`) e o **mail**
+> (envio SMTP e leitura IMAP). Você não muda nada no código — é automático.
 
 ### Muitas conexões ao mesmo tempo
 
