@@ -46,6 +46,7 @@
 #include "ps_guzer.h"
 #include "ps_gmp_min.h"
 #include <poll.h>
+#include <ucontext.h>
 #include <signal.h>
 #include <dirent.h>
 #include <sys/wait.h>
@@ -845,6 +846,19 @@ struct VM_ {
     int     locals_teto;
     int     frames_teto;
 
+    /* ── fibras (green-threads do jinker) ────────────────────────────────
+     * `fib_atual` != NULL quando um handler está rodando numa fibra: nesse
+     * caso os campos stack/locals/frames/sp/... acima descrevem o contexto da
+     * FIBRA, e o contexto da execução principal (o poll loop dentro de
+     * app.run()) fica salvo nos `m_*`. `sched_ctx` é a pilha-C do escalonador
+     * (o poll loop), pra onde a fibra volta ao ceder ou terminar. */
+    struct Fiber *fib_atual;
+    ucontext_t    sched_ctx;
+    Value  *m_stack;  Value *m_locals;  Frame *m_frames;
+    int     m_sp, m_locals_top, m_frame_topo;
+    int     m_stack_teto, m_locals_teto, m_frames_teto;
+    Value   m_jk_req;
+
     /* Módulos `.ps` já carregados, pra `import` duas vezes não reexecutar. */
     struct { char *nome; Value valor; } *mods_ps;
     int      nmods_ps;
@@ -1601,6 +1615,8 @@ static void libera_obj(VM *vm, Obj *o)
     free(o);
 }
 
+static void fib_marca_gc(VM *vm);   /* marca contextos de fibra (def. junto do jinker) */
+
 static void gc_coleta(VM *vm)
 {
     gc_valida_tabela();   /* rede de segurança: aborta se algum tipo não declarou tracer */
@@ -1620,6 +1636,7 @@ static void gc_coleta(VM *vm)
     for (int i = 0; i < vm->nmods_ps; i++)   marca_valor(vm, &vm->mods_ps[i].valor);
     for (int i = 0; i < vm->sp; i++)         marca_valor(vm, &vm->stack[i]);
     for (int i = 0; i < vm->locals_top; i++) marca_valor(vm, &vm->locals[i]);
+    fib_marca_gc(vm);   /* MAIN salvo + fibras suspensas (contextos fora de vm->) */
     for (int i = 0; i < vm->nprotos; i++)
         for (int k = 0; k < vm->protos[i].nconsts; k++)
             marca_valor(vm, &vm->protos[i].consts[k]);
@@ -12960,6 +12977,153 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     return hr->keep_alive;
 }
 
+/* ── FIBRAS (green-threads) do jinker ─────────────────────────────────────
+ * Cada requisição HTTP roda numa fibra: pilha do C própria (ucontext) + arrays
+ * de execução (pilha de valores/locais/frames) PRÓPRIOS e pequenos. Quando o
+ * handler bate numa I/O que bloquearia — por ora só `sleep()` — a fibra devolve
+ * o controle ao poll loop (o escalonador) via swapcontext; outra requisição é
+ * atendida enquanto isso; a fibra é retomada quando a condição fica pronta.
+ * Thread ÚNICA: sem corrida, sem GC concorrente. O handler continua SÍNCRONO
+ * (nada de await). Se o pool de fibras enche, o handler é servido INLINE
+ * (bloqueante, como antes) — degradação graciosa, nunca estoura memória. */
+#define FIB_MAX     64            /* fibras concorrentes por worker */
+#define FIB_STACK   2048          /* Values na pilha de valores da fibra */
+#define FIB_LOCALS  4096          /* Values no pool de locais */
+#define FIB_FRAMES  512           /* frames de chamada */
+#define FIB_CSTACK  (256 * 1024)  /* pilha do C da fibra (ucontext) */
+
+typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
+
+typedef struct Fiber {
+    ucontext_t ctx;               /* contexto do C desta fibra */
+    void      *cstack;            /* pilha do C (malloc, reusada no pool) */
+    Value     *stack;  Value *locals;  Frame *frames;   /* arrays próprios */
+    /* estado da VM salvo enquanto a fibra NÃO está corrente */
+    int        sp, locals_top, frame_topo;
+    Value      jk_req;
+    FibStatus  status;
+    int        usada;             /* slot do pool ocupado */
+    /* trabalho: servir uma requisição HTTP nesta conexão */
+    PSJinker  *j;
+    struct PSJkConn *conn;
+    char       ip[64];
+    PSJkReq    hr;                /* a requisição é DONA da fibra (vive além do yield) */
+    int        leu;              /* 1 = a requisição foi lida com sucesso */
+    int        rc;              /* retorno do jk_serve_uma (servir de novo?) */
+    int        keep_alive;
+    /* espera por timer (sleep) */
+    int        tem_timer;
+    struct timespec wake_at;
+} Fiber;
+
+static Fiber g_fibs[FIB_MAX];
+static VM   *g_fib_vm;            /* makecontext não passa args: a fibra lê daqui */
+
+/* salva o contexto de execução MAIN e instala o da fibra em vm-> */
+static void fib_troca_entra(VM *vm, Fiber *f)
+{
+    vm->m_stack = vm->stack; vm->m_locals = vm->locals; vm->m_frames = vm->frames;
+    vm->m_sp = vm->sp; vm->m_locals_top = vm->locals_top; vm->m_frame_topo = vm->frame_topo;
+    vm->m_stack_teto = vm->stack_teto; vm->m_locals_teto = vm->locals_teto; vm->m_frames_teto = vm->frames_teto;
+    vm->m_jk_req = vm->jk_req;
+
+    vm->stack = f->stack; vm->locals = f->locals; vm->frames = f->frames;
+    vm->sp = f->sp; vm->locals_top = f->locals_top; vm->frame_topo = f->frame_topo;
+    vm->stack_teto = FIB_STACK; vm->locals_teto = FIB_LOCALS; vm->frames_teto = FIB_FRAMES;
+    vm->jk_req = f->jk_req;
+    vm->fib_atual = f;
+}
+
+/* salva o estado corrente da fibra (pra retomar) e restaura o MAIN em vm-> */
+static void fib_troca_sai(VM *vm, Fiber *f)
+{
+    f->sp = vm->sp; f->locals_top = vm->locals_top; f->frame_topo = vm->frame_topo;
+    f->jk_req = vm->jk_req;
+
+    vm->stack = vm->m_stack; vm->locals = vm->m_locals; vm->frames = vm->m_frames;
+    vm->sp = vm->m_sp; vm->locals_top = vm->m_locals_top; vm->frame_topo = vm->m_frame_topo;
+    vm->stack_teto = vm->m_stack_teto; vm->locals_teto = vm->m_locals_teto; vm->frames_teto = vm->m_frames_teto;
+    vm->jk_req = vm->m_jk_req;
+    vm->fib_atual = NULL;
+}
+
+/* corpo da fibra: lê a requisição, serve e devolve o controle ao escalonador.
+ * Só roda no PRIMEIRO swap pra dentro; um yield (sleep) retoma DENTRO do sleep,
+ * não aqui. */
+static void fib_trampolim(void)
+{
+    VM *vm = g_fib_vm;
+    Fiber *f = vm->fib_atual;
+    if (ps_jk_le_request(f->conn, &f->hr) != 0) {
+        f->leu = 0; f->rc = 0;   /* falha na leitura -> fechar conexão */
+    } else {
+        f->leu = 1;
+        f->rc = jk_serve_uma(vm, f->j, f->conn, &f->hr, f->ip);
+        f->keep_alive = f->hr.keep_alive;
+        ps_jk_req_solta(&f->hr);
+    }
+    f->status = FIB_PRONTA;
+    swapcontext(&f->ctx, &vm->sched_ctx);   /* volta pro poll loop; não retorna */
+}
+
+/* pega um slot livre do pool e o arma pra servir `c`. NULL = pool cheio. */
+static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
+{
+    Fiber *f = NULL;
+    for (int i = 0; i < FIB_MAX; i++) if (!g_fibs[i].usada) { f = &g_fibs[i]; break; }
+    if (!f) return NULL;
+    if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
+    if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
+    if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
+    if (!f->cstack) f->cstack = malloc(FIB_CSTACK);
+    if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
+    f->usada = 1; f->status = FIB_SUSPENSA;
+    f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
+    f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
+    f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0;
+    getcontext(&f->ctx);
+    f->ctx.uc_stack.ss_sp = f->cstack;
+    f->ctx.uc_stack.ss_size = FIB_CSTACK;
+    f->ctx.uc_link = NULL;
+    makecontext(&f->ctx, fib_trampolim, 0);
+    return f;
+}
+
+static void fib_libera(Fiber *f)
+{
+    f->usada = 0; f->status = FIB_LIVRE; f->conn = NULL; f->jk_req = MK_NULL();
+    /* arrays/cstack ficam alocados pra reuso pelo próximo handler */
+}
+
+/* entra na fibra e roda até ela CEDER (sleep) ou TERMINAR. Ao voltar, o estado
+ * já está salvo (fib_troca_sai): f->status diz o que aconteceu. */
+static void fib_resume(VM *vm, Fiber *f)
+{
+    g_fib_vm = vm;
+    fib_troca_entra(vm, f);
+    swapcontext(&vm->sched_ctx, &f->ctx);
+    fib_troca_sai(vm, f);
+}
+
+/* GC: marca os contextos que NÃO estão em vm-> (o corrente é marcado pelo
+ * gc_coleta normal). Ou seja: o MAIN salvo (quando uma fibra é a corrente) e
+ * toda fibra suspensa que não seja a corrente. */
+static void fib_marca_gc(VM *vm)
+{
+    if (vm->fib_atual) {   /* uma fibra é a corrente -> o MAIN está salvo em m_* */
+        for (int i = 0; i < vm->m_sp; i++)         marca_valor(vm, &vm->m_stack[i]);
+        for (int i = 0; i < vm->m_locals_top; i++) marca_valor(vm, &vm->m_locals[i]);
+        marca_valor(vm, &vm->m_jk_req);
+    }
+    for (int i = 0; i < FIB_MAX; i++) {
+        Fiber *f = &g_fibs[i];
+        if (!f->usada || f == vm->fib_atual) continue;
+        for (int k = 0; k < f->sp; k++)         marca_valor(vm, &f->stack[k]);
+        for (int k = 0; k < f->locals_top; k++) marca_valor(vm, &f->locals[k]);
+        marca_valor(vm, &f->jk_req);
+    }
+}
+
 static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSJinker *j = COMO_JINKER(alvo);
@@ -13090,12 +13254,15 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         printf("[jinker] auto-reload ativado (vigiando %s)\n", vm->nome_script); fflush(stdout);
     }
 
-    /* Event loop single-thread com MULTIPLEXAÇÃO: poll no fd HTTP, no fd WS, em
-     * toda conexão WS viva E em toda conexão HTTP keep-alive viva. Uma conexão
-     * keep-alive OCIOSA não segura mais o loop (era o bug dos +5s/30s: o loop
-     * ficava bloqueado lendo a próxima requisição dela): agora ela só é lida
-     * quando o poll diz que há dados. O handler `.ps` roda inline, um por vez. */
-    struct HttpConn { PSJkConn *c; char ip[64]; time_t visto; };
+    /* Event loop single-thread com MULTIPLEXAÇÃO + FIBRAS: poll no fd HTTP, no
+     * fd WS, em toda conexão WS viva e em toda keep-alive OCIOSA. Cada
+     * requisição HTTP é servida numa FIBRA (green-thread): se o handler cede
+     * numa I/O (hoje: sleep), a fibra suspende e o loop atende OUTRAS conexões,
+     * retomando-a quando o timer vence — um `sleep`/espera num handler não trava
+     * mais o worker inteiro. Pool de fibras cheio -> serve inline (bloqueante),
+     * como antes. Conexões são compactadas só no FIM do ciclo (flag `morto`),
+     * pra remoção não desalinhar os índices do `pfd` no meio. */
+    struct HttpConn { PSJkConn *c; char ip[64]; time_t visto; Fiber *fib; int morto; };
     struct HttpConn *hc = NULL; int nhc = 0, cap_hc = 0;
     struct pollfd *pfd = NULL; int cap_pfd = 0;
     while (!g_jk_parar) {
@@ -13105,39 +13272,71 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         pfd[0].fd = fd; pfd[0].events = POLLIN; pfd[0].revents = 0;
         pfd[1].fd = fd_ws; pfd[1].events = fd_ws >= 0 ? POLLIN : 0; pfd[1].revents = 0;
         for (int i = 0; i < nws0; i++)  { pfd[2 + i].fd = ps_jk_fd(j->ws[i].conn); pfd[2 + i].events = POLLIN; pfd[2 + i].revents = 0; }
-        for (int i = 0; i < nhc; i++)   { pfd[2 + nws0 + i].fd = ps_jk_fd(hc[i].c); pfd[2 + nws0 + i].events = POLLIN; pfd[2 + nws0 + i].revents = 0; }
-        int pr = poll(pfd, (nfds_t)need, 500);
+        /* back-pressure: se o pool de fibras está cheio, NÃO lê novas
+         * requisições (events=0) — a conexão espera um slot livre em vez de ser
+         * servida INLINE (que bloquearia o loop) ou de causar hot-spin. */
+        int pool_cheio = 1;
+        for (int i = 0; i < FIB_MAX; i++) if (!g_fibs[i].usada) { pool_cheio = 0; break; }
+        /* conexão com fibra ativa (handler dormindo) NÃO é lida pela fd: ela
+         * espera um TIMER, não dados. Só keep-alive ociosa (fib==NULL) é polada.*/
+        for (int i = 0; i < nhc; i++)   { pfd[2 + nws0 + i].fd = ps_jk_fd(hc[i].c); pfd[2 + nws0 + i].events = (hc[i].fib || pool_cheio) ? 0 : POLLIN; pfd[2 + nws0 + i].revents = 0; }
+
+        /* timeout do poll = até o próximo despertar de fibra (senão 500ms) */
+        int timeout = 500;
+        struct timespec agora_m; clock_gettime(CLOCK_MONOTONIC, &agora_m);
+        for (int i = 0; i < nhc; i++) if (hc[i].fib && hc[i].fib->tem_timer) {
+            long ms = (long)(hc[i].fib->wake_at.tv_sec - agora_m.tv_sec) * 1000
+                    + (hc[i].fib->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
+            if (ms < 0) ms = 0;
+            if (ms < timeout) timeout = (int)ms;
+        }
+        int pr = poll(pfd, (nfds_t)need, timeout);
         time_t agora = time(NULL);
+        clock_gettime(CLOCK_MONOTONIC, &agora_m);
+
+        /* (1) retoma fibras cujo timer venceu — INDEPENDE do poll (pr pode ser 0
+         * num despertar por timeout). Sem compactar: só marca `morto`. */
+        for (int i = 0; i < nhc; i++) {
+            Fiber *f = hc[i].fib;
+            if (!f || !f->tem_timer) continue;
+            long ms = (long)(f->wake_at.tv_sec - agora_m.tv_sec) * 1000
+                    + (f->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
+            if (ms > 0) continue;                 /* ainda dormindo */
+            fib_resume(vm, f);
+            if (f->status == FIB_PRONTA) {
+                int fechar = (!f->leu) || (!f->rc) || (!f->keep_alive);
+                hc[i].visto = agora; hc[i].fib = NULL; fib_libera(f);
+                if (fechar) hc[i].morto = 1;
+            }
+        }
 
         if (pr > 0) {
-            /* conexões HTTP keep-alive vivas: serve UMA requisição por evento e
-             * volta pro poll — nunca bloqueia esperando a próxima. */
-            for (int i = nhc - 1; i >= 0; i--) {
+            /* (2) keep-alive ociosa com dados: inicia uma FIBRA pra servir */
+            for (int i = 0; i < nhc; i++) {
+                if (hc[i].fib || hc[i].morto) continue;   /* já tem handler / morta */
                 short rev = pfd[2 + nws0 + i].revents;
                 if (!rev) continue;
-                int fechar = 0;
-                if (rev & (POLLHUP | POLLERR)) fechar = 1;
-                else {
-                    PSJkReq hr;
-                    if (ps_jk_le_request(hc[i].c, &hr) != 0) fechar = 1;
-                    else {
-                        int servir = jk_serve_uma(vm, j, hc[i].c, &hr, hc[i].ip);
-                        int ka = hr.keep_alive;
-                        ps_jk_req_solta(&hr);
-                        hc[i].visto = agora;
-                        if (!servir || !ka) fechar = 1;
+                if (rev & (POLLHUP | POLLERR)) { hc[i].morto = 1; continue; }
+                Fiber *f = fib_pega(vm, j, hc[i].c, hc[i].ip);
+                if (f) {
+                    hc[i].fib = f;
+                    fib_resume(vm, f);
+                    if (f->status == FIB_PRONTA) {
+                        int fechar = (!f->leu) || (!f->rc) || (!f->keep_alive);
+                        hc[i].visto = agora; hc[i].fib = NULL; fib_libera(f);
+                        if (fechar) hc[i].morto = 1;
                     }
                 }
-                if (fechar) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
+                /* pool cheio (fib_pega==NULL): deixa a conexão PRONTA e serve
+                 * no próximo ciclo, quando uma fibra liberar. Não bloqueia. */
             }
 
-            /* mensagens de conexões WS já abertas (decrescente: jk_ws_del troca
-             * o último pro buraco, então não pula ninguém) */
+            /* (3) mensagens de conexões WS já abertas (decrescente) */
             for (int i = nws0 - 1; i >= 0; i--)
                 if (pfd[2 + i].revents & (POLLIN | POLLHUP | POLLERR))
                     jk_ws_processa(vm, j, i);
 
-            /* nova conexão WebSocket (port+1) */
+            /* (4) nova conexão WebSocket (port+1) */
             if (fd_ws >= 0 && (pfd[1].revents & POLLIN)) {
                 char ip[64] = "";
                 struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
@@ -13148,8 +13347,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 }
             }
 
-            /* nova conexão HTTP: aceita e ENFILEIRA no poll (não serve inline,
-             * senão bloquearia o loop de novo). O 1º request dela é servido no
+            /* (5) nova conexão HTTP: aceita e ENFILEIRA (fib=NULL); servida no
              * próximo ciclo, quando o poll marcar a fd como legível. */
             if (pfd[0].revents & POLLIN) {
                 char ip[64] = "";
@@ -13160,15 +13358,20 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                         struct HttpConn *nh = realloc(hc, sizeof(struct HttpConn) * (size_t)novo);
                         if (nh) { hc = nh; cap_hc = novo; }
                     }
-                    if (nhc < cap_hc) { hc[nhc].c = c; snprintf(hc[nhc].ip, sizeof(hc[nhc].ip), "%s", ip); hc[nhc].visto = agora; nhc++; }
+                    if (nhc < cap_hc) { hc[nhc].c = c; snprintf(hc[nhc].ip, sizeof(hc[nhc].ip), "%s", ip); hc[nhc].visto = agora; hc[nhc].fib = NULL; hc[nhc].morto = 0; nhc++; }
                     else ps_jk_close(c);   /* estouro: recusa em vez de vazar */
                 }
             }
         }
 
-        /* fecha keep-alive ocioso demais (evita vazar conexão parada) */
+        /* fecha keep-alive ociosa demais — só as SEM fibra ativa (o handler não
+         * pode ser derrubado no meio de um sleep). */
+        for (int i = 0; i < nhc; i++)
+            if (!hc[i].fib && !hc[i].morto && agora - hc[i].visto > 75) hc[i].morto = 1;
+
+        /* compactação ÚNICA do ciclo: remove todas as conexões `morto` */
         for (int i = nhc - 1; i >= 0; i--)
-            if (agora - hc[i].visto > 75) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
+            if (hc[i].morto) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
 
         /* auto-reload: o .ps mudou -> RE-EXECUTA `pool <script> [args]`. */
         if (reload) {
@@ -13339,11 +13542,27 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
     else if (args[0].t == V_FLOAT) seg = args[0].as.d;
     else BERRO(vm, "SomeValueUnexpected", "sleep() espera numero");
     if (seg > 0) {
-        struct timespec t;
-        t.tv_sec  = (time_t)seg;
-        t.tv_nsec = (long)((seg - (double)t.tv_sec) * 1e9);
-        /* laço porque um sinal pode interromper antes da hora */
-        while (nanosleep(&t, &t) == -1 && errno == EINTR) { }
+        if (vm->fib_atual) {
+            /* dentro de um handler-fibra: em vez de bloquear o worker inteiro,
+             * agenda o despertar e CEDE o controle ao poll loop. Outras
+             * requisições correm enquanto esta dorme. */
+            Fiber *f = vm->fib_atual;
+            clock_gettime(CLOCK_MONOTONIC, &f->wake_at);
+            f->wake_at.tv_sec  += (time_t)seg;
+            f->wake_at.tv_nsec += (long)((seg - (double)(time_t)seg) * 1e9);
+            if (f->wake_at.tv_nsec >= 1000000000L) { f->wake_at.tv_sec++; f->wake_at.tv_nsec -= 1000000000L; }
+            f->tem_timer = 1;
+            f->status = FIB_SUSPENSA;
+            swapcontext(&f->ctx, &vm->sched_ctx);   /* dorme; retoma aqui no timer */
+            f->tem_timer = 0;
+        } else {
+            /* fora de fibra (script comum): dorme bloqueante como sempre */
+            struct timespec t;
+            t.tv_sec  = (time_t)seg;
+            t.tv_nsec = (long)((seg - (double)t.tv_sec) * 1e9);
+            /* laço porque um sinal pode interromper antes da hora */
+            while (nanosleep(&t, &t) == -1 && errno == EINTR) { }
+        }
     }
     *out = MK_NULL();
     return 0;
