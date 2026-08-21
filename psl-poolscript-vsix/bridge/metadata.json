@@ -2185,12 +2185,6 @@
      "kind": "class",
      "returns": "Button",
      "doc": "Botão. `onclick=` recebe uma reaction (por referência), que roda no clique."
-    },
-    {
-     "name": "Popup",
-     "kind": "class",
-     "returns": "Popup",
-     "doc": "Popup/modal centralizado. `event_child=` recebe uma reaction (roda no clique)."
     }
    ]
   }
@@ -4271,19 +4265,6 @@
      "doc": null
     },
     {
-     "name": "popup",
-     "kind": "method",
-     "params": [
-      {
-       "name": "event_child",
-       "opt": true
-      }
-     ],
-     "sig": "popup(event_child?)",
-     "returns": "Popup",
-     "doc": null
-    },
-    {
      "name": "show",
      "kind": "method",
      "params": [],
@@ -4363,37 +4344,6 @@
     }
    ],
    "doc": "Base de todo objeto de tela. `DEFAULT` é o design default da subclasse; `.stylesheet(...)` sobrescreve por cima dele, chave a chave."
-  },
-  "Popup": {
-   "members": [
-    {
-     "name": "stylesheet",
-     "kind": "method",
-     "params": [
-      {
-       "name": "styles",
-       "opt": true
-      }
-     ],
-     "sig": "stylesheet(styles?)",
-     "returns": "_Widget",
-     "doc": null
-    },
-    {
-     "name": "text",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "text(value)",
-     "returns": "_Widget",
-     "doc": null
-    }
-   ],
-   "doc": "Popup/modal centralizado. `event_child=` recebe uma reaction (roda no clique)."
   },
   "Window": {
    "members": [
