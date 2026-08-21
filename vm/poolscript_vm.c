@@ -47,6 +47,8 @@
 #include "ps_gmp_min.h"
 #include <poll.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
+#include <pthread.h>
 #include <ucontext.h>
 #include <signal.h>
 #include <dirent.h>
@@ -470,9 +472,10 @@ typedef struct {
  * PRIMEIRO campo é `int tipo`, pra dispatch. Aqui os do WS e listen; o do HTTP
  * (HttpConn) fica junto do loop. g_jk_epfd é o epoll do worker — jk_ws_add/del
  * registram/desregistram as conexões WS nele. */
-enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS };
+enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS, EPW_FIBWAIT };
 static int g_jk_epfd = -1;
 typedef struct { int tipo; struct PSJkConn *conn; } EpWs;
+typedef struct { int tipo; struct Fiber *f; } EpFibW;   /* fibra esperando um fd (offload) */
 
 /* PoolIp — rate limit por IP (janela 60 s) e ban em dias */
 typedef struct { char ip[64]; double *ts; int n, cap; } JkIpHit;
@@ -11071,6 +11074,21 @@ static char **db_params_txt(VM *vm, Value v, int *nout)
 }
 static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0;i<n;i++) free(arr[i]); free(arr); }
 
+/* offload de ps_db_exec pra thread pool: a chamada é C pura (enche PSDbRes, não
+ * toca a VM), então roda numa thread enquanto a fibra cede — o `recv` bloqueante
+ * do driver não trava mais o worker. (def. de fib_offload junto do jinker.) */
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);
+typedef struct {
+    PSDbConn *c; const char *sql; const char **params; int nparams;
+    PSDbRes *res; char *erro; size_t ecap; char *tipo_out; size_t tcap; int rc;
+} DbExecArgs;
+static void db_exec_offload(void *p)
+{
+    DbExecArgs *a = (DbExecArgs *)p;
+    a->rc = ps_db_exec(a->c, a->sql, a->params, a->nparams, a->res,
+                       a->erro, a->ecap, a->tipo_out, a->tcap);
+}
+
 static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "execute() espera 1 ou 2 argumentos");
@@ -11101,7 +11119,14 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     int np = 0;
     char **pars = (n == 2) ? db_params_txt(vm, args[1], &np) : NULL;
     char erro[512], tp[64];
-    if (ps_db_exec(cn->conn, COMO_STRING(args[0])->chars, (const char **)pars, np, &cu->res, erro, sizeof(erro), tp, sizeof(tp)) != 0) {
+    DbExecArgs dea = { cn->conn, COMO_STRING(args[0])->chars, (const char **)pars, np,
+                       &cu->res, erro, sizeof(erro), tp, sizeof(tp), 0 };
+    /* SQLite é local e rápido -> roda inline (offload seria só overhead de thread).
+     * Drivers de rede (postgres/mysql/mssql) fazem recv bloqueante -> offload pra
+     * thread e a fibra cede, sem travar o worker. */
+    if (cu->drv == PS_DB_SQLITE) db_exec_offload(&dea);
+    else                         fib_offload(vm, db_exec_offload, &dea);
+    if (dea.rc != 0) {
         db_params_libera(pars, np);
         snprintf(vm->erro, sizeof(vm->erro), "%.200s", erro);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%.60s", tp);
@@ -13037,6 +13062,9 @@ typedef struct Fiber {
     /* espera por timer (sleep) */
     int        tem_timer;
     struct timespec wake_at;
+    /* espera por fd (offload de I/O bloqueante numa thread — ex: DB) */
+    int        wait_fd;
+    EpFibW     fibw;
 } Fiber;
 
 static Fiber g_fibs[FIB_MAX];
@@ -13103,7 +13131,7 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     f->usada = 1; f->status = FIB_SUSPENSA;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
-    f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0;
+    f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1;
     getcontext(&f->ctx);
     f->ctx.uc_stack.ss_sp = f->cstack;
     f->ctx.uc_stack.ss_size = FIB_CSTACK;
@@ -13126,6 +13154,87 @@ static void fib_resume(VM *vm, Fiber *f)
     fib_troca_entra(vm, f);
     swapcontext(&vm->sched_ctx, &f->ctx);
     fib_troca_sai(vm, f);
+}
+
+/* ── thread pool p/ I/O bloqueante (DB) ───────────────────────────────────
+ * O driver de banco (libpq/mysql/mongo) faz `recv` BLOQUEANTE dentro do código
+ * compilado — não dá pra ceder de dentro dele. Solução: a fibra entrega a
+ * chamada bloqueante a uma thread do pool e CEDE; a thread roda, avisa o loop
+ * por um eventfd; o loop retoma a fibra com o resultado pronto. A thread só toca
+ * o handle do driver e um buffer C (PSDbRes) — NUNCA o heap da VM — então não há
+ * corrida com o GC (que roda só na thread principal). */
+typedef struct PoolJob {
+    void (*fn)(void *);
+    void *arg;
+    int   efd;
+    struct PoolJob *next;
+} PoolJob;
+static pthread_mutex_t g_pool_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  g_pool_cv = PTHREAD_COND_INITIALIZER;
+static PoolJob *g_pool_head, *g_pool_tail;
+static int g_pool_on = 0;
+#define POOL_THREADS 8
+
+static void *pool_worker(void *ign)
+{
+    (void)ign;
+    for (;;) {
+        pthread_mutex_lock(&g_pool_mx);
+        while (!g_pool_head) pthread_cond_wait(&g_pool_cv, &g_pool_mx);
+        PoolJob *j = g_pool_head;
+        g_pool_head = j->next;
+        if (!g_pool_head) g_pool_tail = NULL;
+        pthread_mutex_unlock(&g_pool_mx);
+        j->fn(j->arg);                       /* roda a chamada bloqueante */
+        uint64_t um = 1;
+        ssize_t w = write(j->efd, &um, sizeof(um));   /* acorda o poll loop */
+        (void)w;
+        free(j);
+    }
+    return NULL;
+}
+static void pool_garante(void)
+{
+    if (g_pool_on) return;
+    g_pool_on = 1;
+    for (int i = 0; i < POOL_THREADS; i++) {
+        pthread_t t;
+        if (pthread_create(&t, NULL, pool_worker, NULL) == 0) pthread_detach(t);
+    }
+}
+static void pool_submete(void (*fn)(void *), void *arg, int efd)
+{
+    PoolJob *j = malloc(sizeof(PoolJob));
+    if (!j) { fn(arg); uint64_t um = 1; ssize_t w = write(efd, &um, sizeof(um)); (void)w; return; }
+    j->fn = fn; j->arg = arg; j->efd = efd; j->next = NULL;
+    pthread_mutex_lock(&g_pool_mx);
+    if (g_pool_tail) g_pool_tail->next = j; else g_pool_head = j;
+    g_pool_tail = j;
+    pthread_cond_signal(&g_pool_cv);
+    pthread_mutex_unlock(&g_pool_mx);
+}
+
+/* Roda `fn(arg)` (uma chamada C bloqueante) SEM travar o worker: se estamos
+ * numa fibra de handler, joga pra thread do pool e cede até terminar; fora de
+ * fibra (script comum), roda inline como sempre. */
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
+{
+    if (!vm->fib_atual || g_jk_epfd < 0) { fn(arg); return; }   /* fora de handler: inline */
+    int efd = eventfd(0, EFD_CLOEXEC);
+    if (efd < 0) { fn(arg); return; }                           /* sem eventfd: inline */
+    pool_garante();
+    Fiber *f = vm->fib_atual;
+    f->fibw.tipo = EPW_FIBWAIT; f->fibw.f = f;
+    struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &f->fibw;
+    if (epoll_ctl(g_jk_epfd, EPOLL_CTL_ADD, efd, &ev) != 0) { close(efd); fn(arg); return; }
+    f->wait_fd = efd;
+    f->status = FIB_SUSPENSA;
+    pool_submete(fn, arg, efd);
+    swapcontext(&f->ctx, &vm->sched_ctx);      /* cede; retoma quando o efd dispara */
+    epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, efd, NULL);
+    uint64_t drena; ssize_t r = read(efd, &drena, sizeof(drena)); (void)r;
+    close(efd);
+    f->wait_fd = -1;
 }
 
 /* GC: marca os contextos que NÃO estão em vm-> (o corrente é marcado pelo
@@ -13304,7 +13413,14 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         for (int w = 0; w < workers; w++) {
             pid_t pid = fork();
             if (pid < 0) break;
-            if (pid == 0) { sirvo_ws = (w == 0); eh_filho = 1; break; }
+            if (pid == 0) {
+                sirvo_ws = (w == 0); eh_filho = 1;
+                /* fork() só copia a thread que chamou: as threads do pool NÃO
+                 * vêm junto. Zera o estado pra cada worker recriar o seu pool
+                 * na 1ª query (senão jobs submetidos nunca rodariam). */
+                g_pool_on = 0; g_pool_head = g_pool_tail = NULL;
+                break;
+            }
             kids[nk++] = pid;
         }
         if (!eh_filho) {
@@ -13449,6 +13565,12 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 int idx = -1;
                 for (int k = 0; k < j->nws; k++) if (j->ws[k].conn == w->conn) { idx = k; break; }
                 if (idx >= 0) jk_ws_processa(vm, j, idx);
+            } else if (tipo == EPW_FIBWAIT) {
+                /* uma thread do pool terminou a I/O bloqueante -> retoma a fibra */
+                Fiber *f = ((EpFibW *)evs[e].data.ptr)->f;
+                HttpConn *h = (HttpConn *)f->dono;
+                fib_resume(vm, f);
+                http_pos_fibra(&S, h, f);
             } else {   /* EPW_HTTP */
                 HttpConn *h = (HttpConn *)evs[e].data.ptr;
                 if (h->fib) { /* ocupada: não deveria disparar (fd desarmada) */ }
