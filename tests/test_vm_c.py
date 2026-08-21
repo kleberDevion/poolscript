@@ -220,7 +220,8 @@ def test_recursao_infinita_da_erro_claro():
 
 
 def test_aridade_errada_da_erro():
-    with pytest.raises(RuntimeError, match="argumentos"):
+    # a mensagem é "action 'f' faltando argumento: 'b'" — casa "argumento"
+    with pytest.raises(RuntimeError, match="argumento"):
         via_c("action f(a, b) {\n return a\n}\npost(f(1))")
 
 

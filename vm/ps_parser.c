@@ -2141,27 +2141,36 @@ static PSNode *statement(P *p)
     if (checa_kw(p, "for"))   return for_stmt(p);
     if (checa_kw(p, "return")) return return_stmt(p);
 
-    if (checa_kw(p, "action") || checa_kw(p, "reaction")) return action_decl(p, 0, NULL);
-
-    if (checa_kw(p, "async")) {
-        PSToken *nx = espia(p, 1);
-        if (nx->type == T_KW && nx->texto
-                && (strcmp(nx->texto, "action") == 0 || strcmp(nx->texto, "reaction") == 0)) {
-            p->pos++;
-            return action_decl(p, 1, NULL);
+    /* action/reaction com modificadores em QUALQUER ordem (a ordem é do usuário):
+     * [public|private] {async|tipo}* action/reaction — ex: `int async reaction`,
+     * `public async reaction`, `async int action`, `private reaction`... */
+    {
+        int off = 0, is_priv = -1;
+        PSToken *m0 = espia(p, 0);
+        if (m0->type == T_KW && m0->texto
+                && (strcmp(m0->texto, "public") == 0 || strcmp(m0->texto, "private") == 0)) {
+            is_priv = (strcmp(m0->texto, "private") == 0);
+            off = 1;
         }
-        /* `async int action f()` — async E tipo de retorno juntos. Sem este
-         * caso, `async` era lido como expressão solta e a action perdia a
-         * marca de assíncrona. */
-        if (eh_tipo_kw(nx)) {
-            PSToken *nx2 = espia(p, 2);
-            if (nx2->type == T_KW && nx2->texto
-                    && (strcmp(nx2->texto, "action") == 0 || strcmp(nx2->texto, "reaction") == 0)) {
-                p->pos++;                          /* async */
-                const char *tipo = dup_tok(p, atual(p));
-                p->pos++;                          /* tipo */
-                return action_decl(p, 1, tipo);
+        int j = off;
+        PSToken *mk;
+        while ((mk = espia(p, j))->type == T_KW && mk->texto
+                && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw(mk))) j++;
+        PSToken *ap = espia(p, j);
+        if (ap->type == T_KW && ap->texto
+                && (strcmp(ap->texto, "action") == 0 || strcmp(ap->texto, "reaction") == 0)) {
+            if (off) p->pos++;                 /* consome public/private */
+            int is_async = 0; const char *tipo = NULL;
+            PSToken *cur;
+            while ((cur = atual(p))->type == T_KW && cur->texto
+                    && (strcmp(cur->texto, "async") == 0 || eh_tipo_kw(cur))) {
+                if (strcmp(cur->texto, "async") == 0) is_async = 1;
+                else tipo = dup_tok(p, cur);
+                p->pos++;
             }
+            PSNode *ad = action_decl(p, is_async, tipo);
+            if (ad && is_priv >= 0) ad->is_private = is_priv;
+            return ad;
         }
     }
 

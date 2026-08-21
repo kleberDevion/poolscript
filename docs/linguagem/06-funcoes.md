@@ -132,6 +132,19 @@ post(quebra())        // 500  (erro engolido)
 > `"7"`, não o inteiro `7`. O `int`/`bool` aqui rege o tratamento de
 > ausência/erro, não uma conversão do valor retornado.
 
+### Ordem dos modificadores é livre
+
+Os prefixos de uma action/reaction — tipo de retorno (`int`/`bool`/`str`/`flo`),
+`async` e visibilidade (`public`/`private`) — podem vir em **qualquer ordem**.
+Todos abaixo são equivalentes e válidos (nos dois motores):
+
+```ps
+int async reaction f():   ...
+async int reaction f():   ...
+public async reaction f(): ...
+private int action f():   ...
+```
+
 ---
 
 ## 6.5. Funções são valores (first-class)

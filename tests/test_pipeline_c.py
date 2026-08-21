@@ -560,10 +560,10 @@ def test_tipo_incompativel():
         via_c('post("a" + 1)')
 
 
-def test_no_nao_compilavel_da_erro_claro():
-    """Nó ainda não migrado para com erro explícito, não com bytecode torto."""
-    with pytest.raises(NotImplementedError):
-        via_c("async action f() {\n return 1\n}\npost(await f())\npost(1)")
+def test_async_await_roda():
+    """async action + await RODAM na VM (await resolve o future) — antes nem
+    compilavam (NotImplementedError)."""
+    assert via_c("async action f() {\n return 1\n}\npost(await f())\npost(1)") == ["1", "1"]
 
 
 def test_erro_de_sintaxe():

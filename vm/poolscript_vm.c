@@ -2095,6 +2095,7 @@ static const ModuloNat MODULOS[];
 static VM *vm_corrente = NULL;
 
 static void escreve_valor(const Value *v, int dentro);
+static int fut_resolve(VM *vm, PSFuturo *fu);   /* async: resolve o future (def. junto do jinker) */
 
 static void escreve_valor(const Value *v, int dentro)
 {
@@ -2443,13 +2444,18 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 /* ── builtins nativos ───────────────────────────────────────────────────── */
 static int nativa_post(VM *vm, Value *args, int n, Value *out)
 {
-    (void)vm;
     /* `post()` sem argumento nenhum não imprime nada — nem a quebra de linha.
      * Quem quer linha em branco escreve `post("")`. */
     if (n == 0) { *out = MK_NULL(); return 0; }
     for (int i = 0; i < n; i++) {
         if (i) putchar(' ');
-        escreve_valor(&args[i], 0);
+        Value v = args[i];
+        if (EH_FUTURO(v)) {   /* async: resolve e mostra o VALOR (paridade com o interp) */
+            PSFuturo *fu = COMO_FUTURO(v);
+            if (fut_resolve(vm, fu) != 0) return -1;
+            v = fu->valor;
+        }
+        escreve_valor(&v, 0);
     }
     putchar('\n');
     *out = MK_NULL();

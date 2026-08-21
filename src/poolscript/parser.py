@@ -620,23 +620,18 @@ class Parser:
                 )
 
         if tok.type == "KW":
-            # 'async' — sempre antes de [tipo] action/reaction
-            # async action foo() / async int reaction foo()
-            if tok.value == "async" and self.pos + 1 < len(self.tokens):
-                nxt = self.tokens[self.pos + 1]
-                if nxt.type == "KW" and nxt.value in {"action", "reaction"}:
-                    return self.parse_action_decl()
-                if (nxt.type == "KW" and nxt.value in {"int", "bool", "str", "flo"}
-                        and self.pos + 2 < len(self.tokens)
-                        and self.tokens[self.pos + 2].type == "KW"
-                        and self.tokens[self.pos + 2].value in {"action", "reaction"}):
-                    return self.parse_action_decl()
-            # tipo de retorno opcional ANTES de var_decl: int reaction / bool action
-            if (tok.value in {"int", "bool", "str", "flo"}
-                    and self.pos + 1 < len(self.tokens)
-                    and self.tokens[self.pos + 1].type == "KW"
-                    and self.tokens[self.pos + 1].value in {"action", "reaction"}):
-                return self.parse_action_decl()
+            # action/reaction com modificadores em QUALQUER ordem (quem decide a
+            # ordem é o usuário): [public|private] {async|int|bool|str|flo}*
+            # action/reaction — ex: `int async reaction`, `public async reaction`,
+            # `async int action`, `private reaction`...
+            _adl, _vis = self._peek_action_decl()
+            if _adl:
+                if _vis is not None:
+                    self.pos += 1  # consome public/private
+                decl = self.parse_action_decl()
+                if _vis is not None:
+                    decl.is_private = (_vis == "private")
+                return decl
             if tok.value in {"str", "int", "flo", "bool"}:
                 return self.parse_var_decl()
             if tok.value == "if":
@@ -978,23 +973,39 @@ class Parser:
         block = self.parse_block()
         return ForEachStmt(line=start.line, col=start.col, item_name=str(name_tok.value), iterable=iterable, block=block)
 
-    def parse_action_decl(self) -> ActionDecl:
-        # 'async' — prefixo opcional, vem antes de tudo
-        # async action foo() / async int reaction foo()
-        is_async = False
-        if self.current().type == "KW" and self.current().value == "async":
-            is_async = True
-            self.pos += 1
+    def _peek_action_decl(self) -> "tuple[bool, str | None]":
+        """Sem consumir: '[public|private] {async|int|bool|str|flo}* action/reaction'
+        a partir de self.pos? Devolve (True, visibilidade|None) ou (False, None).
+        A ordem dos modificadores é livre; visibilidade (se houver) vem primeiro."""
+        t = self.tokens
+        i = self.pos
+        vis = None
+        if i < len(t) and t[i].type == "KW" and t[i].value in {"public", "private"}:
+            vis = str(t[i].value)
+            i += 1
+        while i < len(t) and t[i].type == "KW" and t[i].value in {
+                "async", "int", "bool", "str", "flo"}:
+            i += 1
+        if i < len(t) and t[i].type == "KW" and t[i].value in {"action", "reaction"}:
+            return True, vis
+        return False, None
 
-        # Tipo de retorno opcional antes da keyword: int, bool
+    def parse_action_decl(self) -> ActionDecl:
+        # Modificadores em QUALQUER ordem antes de action/reaction:
+        #   async, tipo de retorno (int/bool/str/flo).
+        #   Ex: `async reaction`, `int reaction`, `async int reaction`,
+        #       `int async reaction` — todos válidos. (public/private é
+        #       consumido pelo chamador, no dispatch.)
+        is_async = False
         return_type: str | None = None
-        if (self.current().type == "KW"
-                and self.current().value in {"int", "bool", "str", "flo"}
-                and self.pos + 1 < len(self.tokens)
-                and self.tokens[self.pos + 1].type == "KW"
-                and self.tokens[self.pos + 1].value in {"action", "reaction"}):
-            return_type = str(self.current().value)
-            self.pos += 1  # consume tipo
+        while self.current().type == "KW" and self.current().value in {
+                "async", "int", "bool", "str", "flo"}:
+            v = str(self.current().value)
+            if v == "async":
+                is_async = True
+            else:
+                return_type = v
+            self.pos += 1
 
         # aceita 'action' ou 'reaction' como keyword de declaração
         tok = self.current()

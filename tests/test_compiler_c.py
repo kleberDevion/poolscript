@@ -151,10 +151,11 @@ def test_actions_aninhadas():
 
 
 # ── nó não suportado para com erro, nunca gera bytecode errado ──────────────
-def test_no_nao_suportado_levanta():
-    """Nó fora do subconjunto para com erro — nunca gera bytecode errado."""
-    with pytest.raises(NotImplementedError):
-        compiler_c.desmonta("async action f() {\n return 1\n}\npost(await f())")
+def test_async_await_compila():
+    """async action + await COMPILAM na VM — o runtime de async (fibras+future)
+    fechou a lacuna que antes dava NotImplementedError."""
+    bc = compiler_c.desmonta("async action f() {\n return 1\n}\npost(await f())")
+    assert bc  # devolveu o disassembly, não levantou
 
 
 def test_erro_de_sintaxe_propaga():
