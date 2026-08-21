@@ -542,14 +542,18 @@ ao mesmo tempo por worker**; passando disso, as requisições entram numa fila e
 são servidas assim que uma fibra libera (nunca travam o servidor, nunca estouram
 a memória).
 
-> **Limite honesto:** só a espera de `sleep` cede a fibra por enquanto. Uma
-> consulta de banco (`db`) roda **dentro do driver em C** (libpq/mysql/mongo/
-> odbc), que faz o `recv` do resultado de forma BLOQUEANTE. Como o worker é de
-> thread única, esse bloqueio **trava o worker inteiro** até o banco responder —
-> não só a fibra dela; nenhuma outra requisição desse worker é atendida nesse
-> intervalo. Mitigação hoje: mais `workers` (os outros processos seguem
-> servindo). I/O de banco não-bloqueante é a fase seguinte. Um cálculo pesado
-> puro de CPU também trava enquanto roda (não tem I/O pra ceder).
+**Consulta de banco também não trava.** Um `SELECT` lento roda dentro do driver
+em C (libpq/mysql/odbc) fazendo `recv` bloqueante — isso travaria o worker. Por
+isso a consulta é jogada numa **thread** enquanto a fibra cede: várias queries
+correm em paralelo e o worker segue atendendo. Medido (Postgres, `pg_sleep(0.2)`):
+10 requisições concorrentes em ~0,4s, não 2s. Você não muda nada no código — é
+automático pros drivers de rede (postgres/mysql/sqlserver). SQLite roda direto
+(é local e rápido, não bloqueia em rede).
+
+> **O que ainda trava a fibra:** um cálculo pesado **puro de CPU** (não tem I/O
+> pra ceder — só termina ocupando o núcleo; use `workers` pra espalhar). O
+> `connect()` e o `commit()` do banco ainda são bloqueantes (rápidos; a query é
+> que era o problema). Só a espera de `sleep` e o I/O de banco cedem hoje.
 
 ### Muitas conexões ao mesmo tempo
 
