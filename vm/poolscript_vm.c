@@ -492,6 +492,7 @@ typedef struct {
                                      * explícito da rota roda) */
     int    debug;
     char  *static_folder, *static_url;
+    char  *route_prefix;    /* prefixo de TODAS as rotas: "/api" ou NULL */
     /* oauth */
     int    poolip_on; long ip_rate, ip_bloq;
     int    usa_tls; char *cert; char *key;   /* key= separado (Let's Encrypt: privkey.pem) */
@@ -1629,7 +1630,7 @@ static void libera_obj(VM *vm, Obj *o)
         for (int i = 0; i < j->nhits; i++) free(j->hits[i].ts);
         free(j->hits);
         free(j->bans);
-        free(j->nome); free(j->static_folder); free(j->static_url); free(j->cert); free(j->key);
+        free(j->nome); free(j->static_folder); free(j->static_url); free(j->route_prefix); free(j->cert); free(j->key);
         vm->alocado -= sizeof(PSJinker);
     } else if (o->type == OBJ_JCORS) {
         PSJCors *c = (PSJCors *)o;
@@ -12183,7 +12184,16 @@ static int met_jreg_register(VM *vm, Value alvo, Value *args, int n, Value *out)
         j->rotas = nr; j->cap_rotas = nc;
     }
     JkRota *rt = &j->rotas[j->nrotas++];
-    rt->path = strdup(r->path ? r->path : "/");
+    const char *rpath = r->path ? r->path : "/";
+    if (j->route_prefix && strcmp(rpath, "/") == 0) {
+        rt->path = strdup(j->route_prefix);              /* "/" -> só o prefixo */
+    } else if (j->route_prefix) {
+        size_t a = strlen(j->route_prefix), b = strlen(rpath);
+        rt->path = malloc(a + b + 1);
+        if (rt->path) { memcpy(rt->path, j->route_prefix, a); memcpy(rt->path + a, rpath, b + 1); }
+    } else {
+        rt->path = strdup(rpath);
+    }
     /* transfere posse dos vetores do registrar pra rota */
     rt->metodos = r->metodos; rt->nmetodos = r->nmetodos;
     rt->auth = r->auth; rt->nauth = r->nauth;
@@ -12202,7 +12212,17 @@ static int jsockns_call(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n >= 1 && EH_STRING(args[0])) {
         PSJReg *r = jk_novo_reg(vm, ns->app, JREG_SOCKET);
         if (!r) MERRO(vm, "MemoryError", "sem memoria");
-        r->path = strdup(COMO_STRING(args[0])->chars);
+        const char *sp = COMO_STRING(args[0])->chars;
+        PSJinker *jj = EH_JINKER(ns->app) ? COMO_JINKER(ns->app) : NULL;
+        if (jj && jj->route_prefix && strcmp(sp, "/") != 0) {
+            size_t a = strlen(jj->route_prefix), b = strlen(sp);
+            r->path = malloc(a + b + 1);
+            if (r->path) { memcpy(r->path, jj->route_prefix, a); memcpy(r->path + a, sp, b + 1); }
+        } else if (jj && jj->route_prefix) {
+            r->path = strdup(jj->route_prefix);
+        } else {
+            r->path = strdup(sp);
+        }
         r->channel = (n >= 2 && val_truthy(&args[1]));
         *out = MK_OBJ(r);
         return 0;
@@ -12563,6 +12583,17 @@ static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
     /* static_folder / static_url nomeados */
     if (n >= 3 && EH_STRING(args[2])) { free(j->static_folder); j->static_folder = strdup(COMO_STRING(args[2])->chars); }
     if (n >= 4 && EH_STRING(args[3])) { free(j->static_url); j->static_url = strdup(COMO_STRING(args[3])->chars); }
+    /* route_prefix nomeado: "api" | "/api/" -> "/api" (prefixo de TODAS as rotas) */
+    if (n >= 5 && EH_STRING(args[4])) {
+        const char *rp = COMO_STRING(args[4])->chars;
+        while (*rp == '/') rp++;
+        size_t L = strlen(rp);
+        while (L > 0 && rp[L - 1] == '/') L--;
+        if (L > 0) {
+            j->route_prefix = malloc(L + 2);
+            if (j->route_prefix) { j->route_prefix[0] = '/'; memcpy(j->route_prefix + 1, rp, L); j->route_prefix[L + 1] = '\0'; }
+        }
+    }
     vm->alocado += sizeof(PSJinker);
     *out = MK_OBJ(j);
     return 0;
@@ -14024,7 +14055,7 @@ static int mod_jk_new_request(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 static const MembroMod MOD_JINKER[] = {
-    { "Jinker", mod_jk_Jinker, 0, "name,oauth,static_folder,static_url" },
+    { "Jinker", mod_jk_Jinker, 0, "name,oauth,static_folder,static_url,route_prefix" },
     { "cors", mod_jk_cors, 1, NULL },
     { "jsonify", mod_jk_jsonify, 0, "data" },
     { "render", mod_jk_render, 0, "folder_or_file,file" },

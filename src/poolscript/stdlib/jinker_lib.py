@@ -965,8 +965,12 @@ class Jinker:
     """
 
     def __init__(self, name: str = "__main__", oauth: dict = None,
-                 static_folder: str = None, static_url: str = "/"):
+                 static_folder: str = None, static_url: str = "/",
+                 route_prefix: str = ""):
         self.name = name
+        # prefixo aplicado a TODAS as rotas/sockets: "api" | "/api/" -> "/api"
+        _rp = (route_prefix or "").strip("/")
+        self.route_prefix = ("/" + _rp) if _rp else ""
         self._routes: list[Route] = []
         self._debug = False
         self._middleware_handler: Callable | None = None
@@ -1004,6 +1008,8 @@ class Jinker:
         return _RouteRegistrar(self, path, resolved_methods, resolved_auth, middleware)
 
     def _register_socket(self, path: str, channel: bool, handler: Callable) -> None:
+        if self.route_prefix:
+            path = self.route_prefix + ("" if path == "/" else path)
         self._sockets.append({"path": path, "channel": channel, "handler": handler})
         if self._debug:
             print(f"[jinker] socket registrado: {path} (channel={channel})")
@@ -1037,6 +1043,8 @@ class Jinker:
     def _register_route(self, path: str, methods: list[str],
                         auth: list[str] | None, handler: Callable,
                         middleware: Callable | None = None) -> None:
+        if self.route_prefix:
+            path = self.route_prefix + ("" if path == "/" else path)
         self._routes.append(Route(path, methods, auth, handler, middleware))
         if self._debug:
             print(f"[jinker] rota registrada: {methods} {path}")

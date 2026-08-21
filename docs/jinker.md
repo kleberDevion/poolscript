@@ -144,6 +144,23 @@ action handler() {
 
 Não precisa envolver a `action` em chaves extras — o `@app.route(...)` já captura a próxima `action` como handler da rota. A `action` não recebe parâmetros — `request` já está disponível automaticamente dentro dela.
 
+### Prefixo em todas as rotas — `route_prefix`
+
+Passe `route_prefix` no construtor pra montar **todas** as rotas (e sockets) sob
+um prefixo comum, sem repetir em cada `@app.route`:
+
+```
+app = Jinker(route_prefix="api")     // "api" | "/api/" -> "/api"
+
+@app.route("/hello", methods=["GET"])   // servida em  /api/hello
+action hello():
+    return {"ok": true}
+```
+
+`GET /api/hello` → `200`; `GET /hello` → `404`. A `/` da raiz vira o próprio
+prefixo (`/api`). O valor é normalizado: `"api"`, `"/api"` e `"/api/"` dão o
+mesmo resultado. Sem `route_prefix`, nada muda (comportamento de antes).
+
 ---
 
 ## request
