@@ -10,11 +10,15 @@ JSON.
 
 | Acesso | O que é |
 |---|---|
-| `.status` | código HTTP (`200`, `404`, `500`…) |
+| `.status` | código HTTP (`200`, `404`, `500`…). `-1` em falha de transporte. |
+| `.status_code` | **alias** de `.status` (mesmo nome da lib `requests` do Python) |
 | `.ok` | `true` se o status for `2xx` (sucesso) |
-| `.text` | o corpo como texto cru (string) |
+| `.text` | o corpo como texto UTF-8 (tolerante a bytes inválidos) |
+| `.content` | o corpo em **bytes** crus — use pra binário (imagem, zip, pdf, exe); não corrompe |
+| `.size` | tamanho do corpo em bytes |
 | `.headers` | dict com os cabeçalhos da resposta |
 | `.url` | a URL final (após redirecionamentos) |
+| `.filename` | nome sugerido pelo servidor (`Content-Disposition`) ou o fim da URL |
 
 ---
 
@@ -25,6 +29,32 @@ JSON.
 | `.json()` | o corpo parseado como dict/lista (`Null` se não for JSON válido) |
 | `.get_json(chave=None)` | o JSON inteiro, ou só uma chave dele |
 | `.get(chave)` | um **header** (case-insensitive) **ou** uma chave do JSON |
+
+---
+
+## Binário e download
+
+| Método | O que faz |
+|---|---|
+| `.decode(encoding)` | corpo como texto num encoding específico — ex: `.decode("latin-1")` (o `.text` já assume UTF-8) |
+| `.content_type(esperado)` | valida o `Content-Type`: **erra** (cai no `try/catch`) se não bater. Encadeável — devolve o próprio `Response`. |
+| `.save(caminho)` | grava o corpo em disco e devolve um [`PoolFile`](../../os/PoolFile/PoolFile.md). Se `caminho` for uma pasta (`"."`, termina em `/`, ou já existe como dir), o nome vem do `.filename`; senão usa o caminho dado. |
+
+```
+# baixar um arquivo — nome vem do servidor
+resp = request.get("https://exemplo.com/relatorio.pdf")
+arq = resp.save(".")                 # PoolFile
+post("salvo:", arq.name, "-", arq.size, "bytes")
+
+# validar o tipo antes de salvar (erra se não for PDF)
+try:
+    request.get(url).content_type("application/pdf").save("doc.pdf")
+except SomeError as e:
+    post("não é PDF:", e)
+
+# binário na mão, sem salvar
+bruto = request.get(url).content    # bytes
+```
 
 ---
 
