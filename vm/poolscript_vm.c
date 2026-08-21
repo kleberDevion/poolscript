@@ -46,6 +46,7 @@
 #include "ps_guzer.h"
 #include "ps_gmp_min.h"
 #include <poll.h>
+#include <sys/epoll.h>
 #include <ucontext.h>
 #include <signal.h>
 #include <dirent.h>
@@ -462,7 +463,16 @@ typedef struct {
     int    idx_sock;  /* qual JkSock atende esse path */
     int    canal;     /* entra no broadcast (socket com channel=true) */
     Value  params;    /* dict dos path params */
+    void  *epw;       /* watcher do epoll (EpWs*) — identifica o fd no epoll_wait */
 } JkWsAtiva;
+
+/* watchers do epoll: o data.ptr de cada fd registrado aponta pra algo cujo
+ * PRIMEIRO campo é `int tipo`, pra dispatch. Aqui os do WS e listen; o do HTTP
+ * (HttpConn) fica junto do loop. g_jk_epfd é o epoll do worker — jk_ws_add/del
+ * registram/desregistram as conexões WS nele. */
+enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS };
+static int g_jk_epfd = -1;
+typedef struct { int tipo; struct PSJkConn *conn; } EpWs;
 
 /* PoolIp — rate limit por IP (janela 60 s) e ban em dias */
 typedef struct { char ip[64]; double *ts; int n, cap; } JkIpHit;
@@ -12651,16 +12661,28 @@ static void jk_ws_add(VM *vm, PSJinker *j, struct PSJkConn *conn, int idx_sock,
         if (!nw) return;
         j->ws = nw; j->cap_ws = nc;
     }
-    j->ws[j->nws].conn = conn;
-    j->ws[j->nws].sala = sala ? strdup(sala) : NULL;
-    j->ws[j->nws].idx_sock = idx_sock;
-    j->ws[j->nws].canal = canal;
-    j->ws[j->nws].params = params;
+    int k = j->nws;
+    j->ws[k].conn = conn;
+    j->ws[k].sala = sala ? strdup(sala) : NULL;
+    j->ws[k].idx_sock = idx_sock;
+    j->ws[k].canal = canal;
+    j->ws[k].params = params;
+    EpWs *w = malloc(sizeof(EpWs));
+    j->ws[k].epw = w;
+    if (w) {
+        w->tipo = EPW_WS; w->conn = conn;
+        if (g_jk_epfd >= 0) {
+            struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = w;
+            epoll_ctl(g_jk_epfd, EPOLL_CTL_ADD, ps_jk_fd(conn), &ev);
+        }
+    }
     j->nws++;
     (void)vm;
 }
 static void jk_ws_del(PSJinker *j, int i)
 {
+    if (g_jk_epfd >= 0) epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, ps_jk_fd(j->ws[i].conn), NULL);
+    free(j->ws[i].epw);
     ps_jk_close(j->ws[i].conn);
     free(j->ws[i].sala);
     j->ws[i] = j->ws[--j->nws];
@@ -13011,6 +13033,7 @@ typedef struct Fiber {
     int        leu;              /* 1 = a requisição foi lida com sucesso */
     int        rc;              /* retorno do jk_serve_uma (servir de novo?) */
     int        keep_alive;
+    void      *dono;           /* HttpConn* que esta fibra serve (o escalonador usa) */
     /* espera por timer (sleep) */
     int        tem_timer;
     struct timespec wake_at;
@@ -13121,6 +13144,96 @@ static void fib_marca_gc(VM *vm)
         for (int k = 0; k < f->sp; k++)         marca_valor(vm, &f->stack[k]);
         for (int k = 0; k < f->locals_top; k++) marca_valor(vm, &f->locals[k]);
         marca_valor(vm, &f->jk_req);
+    }
+}
+
+/* ── epoll: readiness O(1) pra segurar MUITA conexão ociosa ───────────────
+ * poll() é O(n): relê a lista inteira a cada evento -> com milhares de
+ * keep-alive ociosas o throughput despenca (medido: 4300->213 rps com 8k
+ * ociosas). O epoll registra o fd UMA vez e só devolve os PRONTOS -> conexão
+ * ociosa não custa nada. É a mesma peça que o libuv/Node usa.
+ * (os tipos EpWs, EPW_ e g_jk_epfd ficam mais acima, antes de jk_ws_add.) */
+static int g_ep_lhttp = EPW_LHTTP;          /* watcher do listen HTTP (só o tipo importa) */
+static int g_ep_lws   = EPW_LWS;            /* watcher do listen WS */
+
+typedef struct HttpConn {
+    int    tipo;             /* EPW_HTTP — PRIMEIRO campo: dispatch por data.ptr */
+    struct PSJkConn *c;
+    char   ip[64];
+    time_t visto;
+    Fiber *fib;              /* fibra servindo esta conexão (NULL = ociosa) */
+    int    armado;          /* 1 = registrado com EPOLLIN */
+    int    na_fila;         /* 1 = esperando fibra livre (pool cheio) */
+    int    idx;             /* posição em conns[] (remoção O(1)) */
+} HttpConn;
+
+typedef struct {
+    int epfd;
+    PSJinker *j;
+    void *ssl_ctx;
+    int fd, fd_ws;
+    HttpConn **conns; int nconns, cap_conns;   /* TODAS as conns HTTP (sweep de ocioso) */
+    HttpConn **fila;  int nfila,  cap_fila;    /* conns esperando fibra (pool cheio) */
+} SrvLoop;
+
+static void http_arma(SrvLoop *s, HttpConn *h, int on)
+{
+    struct epoll_event ev; ev.events = on ? EPOLLIN : 0; ev.data.ptr = h;
+    epoll_ctl(s->epfd, EPOLL_CTL_MOD, ps_jk_fd(h->c), &ev);
+    h->armado = on;
+}
+
+static void http_remove(SrvLoop *s, HttpConn *h)
+{
+    epoll_ctl(s->epfd, EPOLL_CTL_DEL, ps_jk_fd(h->c), NULL);
+    ps_jk_close(h->c);
+    int i = h->idx;
+    s->conns[i] = s->conns[--s->nconns];
+    s->conns[i]->idx = i;
+    free(h);
+}
+
+/* depois de rodar/retomar a fibra `f` (dona = h): se terminou, re-arma
+ * (keep-alive) ou fecha; se cedeu (sleep), segue ocupada. */
+static void http_pos_fibra(SrvLoop *s, HttpConn *h, Fiber *f)
+{
+    if (f->status != FIB_PRONTA) return;      /* cedeu: segue ocupada */
+    int fechar = (!f->leu) || (!f->rc) || (!f->keep_alive);
+    h->fib = NULL; fib_libera(f);
+    if (fechar) http_remove(s, h);
+    else { h->visto = time(NULL); ps_jk_conn_solta_buf(h->c); http_arma(s, h, 1); }   /* ociosa: solta o buffer de 16KB */
+}
+
+/* serve UMA requisição de `h` numa fibra. Pool cheio -> enfileira (back-pressure). */
+static void http_serve(VM *vm, SrvLoop *s, HttpConn *h)
+{
+    Fiber *f = fib_pega(vm, s->j, h->c, h->ip);
+    if (!f) {
+        http_arma(s, h, 0);       /* desarma: não re-dispara enquanto espera slot */
+        if (!h->na_fila) {
+            if (s->nfila + 1 > s->cap_fila) {
+                int nc = s->cap_fila ? s->cap_fila * 2 : 32;
+                HttpConn **nf = realloc(s->fila, sizeof(HttpConn *) * (size_t)nc);
+                if (nf) { s->fila = nf; s->cap_fila = nc; }
+            }
+            if (s->nfila < s->cap_fila) { s->fila[s->nfila++] = h; h->na_fila = 1; }
+        }
+        return;
+    }
+    h->fib = f; f->dono = h; http_arma(s, h, 0);   /* ocupada: desarma durante o serve */
+    fib_resume(vm, f);
+    http_pos_fibra(s, h, f);
+}
+
+/* drena a fila de pendentes enquanto houver slot de fibra livre */
+static void http_drena_fila(VM *vm, SrvLoop *s)
+{
+    while (s->nfila > 0) {
+        int livre = 0;
+        for (int i = 0; i < FIB_MAX; i++) if (!g_fibs[i].usada) { livre = 1; break; }
+        if (!livre) break;
+        HttpConn *h = s->fila[--s->nfila]; h->na_fila = 0;
+        http_serve(vm, s, h);
     }
 }
 
@@ -13254,90 +13367,76 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         printf("[jinker] auto-reload ativado (vigiando %s)\n", vm->nome_script); fflush(stdout);
     }
 
-    /* Event loop single-thread com MULTIPLEXAÇÃO + FIBRAS: poll no fd HTTP, no
-     * fd WS, em toda conexão WS viva e em toda keep-alive OCIOSA. Cada
-     * requisição HTTP é servida numa FIBRA (green-thread): se o handler cede
-     * numa I/O (hoje: sleep), a fibra suspende e o loop atende OUTRAS conexões,
-     * retomando-a quando o timer vence — um `sleep`/espera num handler não trava
-     * mais o worker inteiro. Pool de fibras cheio -> serve inline (bloqueante),
-     * como antes. Conexões são compactadas só no FIM do ciclo (flag `morto`),
-     * pra remoção não desalinhar os índices do `pfd` no meio. */
-    struct HttpConn { PSJkConn *c; char ip[64]; time_t visto; Fiber *fib; int morto; };
-    struct HttpConn *hc = NULL; int nhc = 0, cap_hc = 0;
-    struct pollfd *pfd = NULL; int cap_pfd = 0;
-    while (!g_jk_parar) {
-        int nws0 = j->nws;
-        int need = 2 + nws0 + nhc;
-        if (need > cap_pfd) { cap_pfd = need + 16; pfd = realloc(pfd, sizeof(struct pollfd) * (size_t)cap_pfd); if (!pfd) break; }
-        pfd[0].fd = fd; pfd[0].events = POLLIN; pfd[0].revents = 0;
-        pfd[1].fd = fd_ws; pfd[1].events = fd_ws >= 0 ? POLLIN : 0; pfd[1].revents = 0;
-        for (int i = 0; i < nws0; i++)  { pfd[2 + i].fd = ps_jk_fd(j->ws[i].conn); pfd[2 + i].events = POLLIN; pfd[2 + i].revents = 0; }
-        /* back-pressure: se o pool de fibras está cheio, NÃO lê novas
-         * requisições (events=0) — a conexão espera um slot livre em vez de ser
-         * servida INLINE (que bloquearia o loop) ou de causar hot-spin. */
-        int pool_cheio = 1;
-        for (int i = 0; i < FIB_MAX; i++) if (!g_fibs[i].usada) { pool_cheio = 0; break; }
-        /* conexão com fibra ativa (handler dormindo) NÃO é lida pela fd: ela
-         * espera um TIMER, não dados. Só keep-alive ociosa (fib==NULL) é polada.*/
-        for (int i = 0; i < nhc; i++)   { pfd[2 + nws0 + i].fd = ps_jk_fd(hc[i].c); pfd[2 + nws0 + i].events = (hc[i].fib || pool_cheio) ? 0 : POLLIN; pfd[2 + nws0 + i].revents = 0; }
+    /* Event loop com EPOLL + FIBRAS. epoll = readiness O(1): conexão OCIOSA não
+     * custa nada (segura milhares de keep-alive sem o colapso do poll). Cada
+     * requisição HTTP roda numa FIBRA; se o handler cede numa I/O (hoje: sleep),
+     * a fibra suspende e o loop atende outras, retomando no timer. Pool de fibras
+     * cheio -> back-pressure (desarma a fd e enfileira; nunca bloqueia). */
+    int epfd = epoll_create1(0);
+    if (epfd < 0) {
+        close(fd); if (fd_ws >= 0) close(fd_ws); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
+        BERRO(vm, "NetworkError", "epoll_create1: %s", strerror(errno));
+    }
+    g_jk_epfd = epfd;
+    SrvLoop S; memset(&S, 0, sizeof(S));
+    S.epfd = epfd; S.j = j; S.ssl_ctx = ssl_ctx; S.fd = fd; S.fd_ws = fd_ws;
+    { struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &g_ep_lhttp; epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev); }
+    if (fd_ws >= 0) { struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &g_ep_lws; epoll_ctl(epfd, EPOLL_CTL_ADD, fd_ws, &ev); }
 
-        /* timeout do poll = até o próximo despertar de fibra (senão 500ms) */
+    struct epoll_event evs[256];
+    time_t ultimo_sweep = time(NULL);
+    while (!g_jk_parar) {
+        /* timeout = até o próximo despertar de fibra (senão 500ms) */
         int timeout = 500;
         struct timespec agora_m; clock_gettime(CLOCK_MONOTONIC, &agora_m);
-        for (int i = 0; i < nhc; i++) if (hc[i].fib && hc[i].fib->tem_timer) {
-            long ms = (long)(hc[i].fib->wake_at.tv_sec - agora_m.tv_sec) * 1000
-                    + (hc[i].fib->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
+        for (int i = 0; i < FIB_MAX; i++) if (g_fibs[i].usada && g_fibs[i].tem_timer) {
+            long ms = (long)(g_fibs[i].wake_at.tv_sec - agora_m.tv_sec) * 1000
+                    + (g_fibs[i].wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
             if (ms < 0) ms = 0;
             if (ms < timeout) timeout = (int)ms;
         }
-        int pr = poll(pfd, (nfds_t)need, timeout);
+        int nready = epoll_wait(epfd, evs, 256, timeout);
         time_t agora = time(NULL);
         clock_gettime(CLOCK_MONOTONIC, &agora_m);
 
-        /* (1) retoma fibras cujo timer venceu — INDEPENDE do poll (pr pode ser 0
-         * num despertar por timeout). Sem compactar: só marca `morto`. */
-        for (int i = 0; i < nhc; i++) {
-            Fiber *f = hc[i].fib;
-            if (!f || !f->tem_timer) continue;
+        /* (1) fibras cujo timer venceu (independe do epoll_wait: pode ter sido
+         * um despertar por timeout). */
+        for (int i = 0; i < FIB_MAX; i++) {
+            Fiber *f = &g_fibs[i];
+            if (!f->usada || f->status != FIB_SUSPENSA || !f->tem_timer) continue;
             long ms = (long)(f->wake_at.tv_sec - agora_m.tv_sec) * 1000
                     + (f->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
             if (ms > 0) continue;                 /* ainda dormindo */
+            HttpConn *h = (HttpConn *)f->dono;
             fib_resume(vm, f);
-            if (f->status == FIB_PRONTA) {
-                int fechar = (!f->leu) || (!f->rc) || (!f->keep_alive);
-                hc[i].visto = agora; hc[i].fib = NULL; fib_libera(f);
-                if (fechar) hc[i].morto = 1;
-            }
+            http_pos_fibra(&S, h, f);
         }
 
-        if (pr > 0) {
-            /* (2) keep-alive ociosa com dados: inicia uma FIBRA pra servir */
-            for (int i = 0; i < nhc; i++) {
-                if (hc[i].fib || hc[i].morto) continue;   /* já tem handler / morta */
-                short rev = pfd[2 + nws0 + i].revents;
-                if (!rev) continue;
-                if (rev & (POLLHUP | POLLERR)) { hc[i].morto = 1; continue; }
-                Fiber *f = fib_pega(vm, j, hc[i].c, hc[i].ip);
-                if (f) {
-                    hc[i].fib = f;
-                    fib_resume(vm, f);
-                    if (f->status == FIB_PRONTA) {
-                        int fechar = (!f->leu) || (!f->rc) || (!f->keep_alive);
-                        hc[i].visto = agora; hc[i].fib = NULL; fib_libera(f);
-                        if (fechar) hc[i].morto = 1;
+        /* (2) fds prontos: cada data.ptr começa com `int tipo` */
+        for (int e = 0; e < nready; e++) {
+            int tipo = *(int *)evs[e].data.ptr;
+            if (tipo == EPW_LHTTP) {
+                /* drena TODO o backlog de accept (o listen é não-bloqueante) */
+                for (;;) {
+                    char ip[64] = "";
+                    struct PSJkConn *c = ps_jk_accept(fd, ssl_ctx, ip, sizeof(ip));
+                    if (!c) break;
+                    HttpConn *h = calloc(1, sizeof(HttpConn));
+                    if (!h) { ps_jk_close(c); break; }
+                    h->tipo = EPW_HTTP; h->c = c; snprintf(h->ip, sizeof(h->ip), "%s", ip);
+                    h->visto = agora; h->fib = NULL; h->na_fila = 0;
+                    if (S.nconns + 1 > S.cap_conns) {
+                        int nc = S.cap_conns ? S.cap_conns * 2 : 64;
+                        HttpConn **nn = realloc(S.conns, sizeof(HttpConn *) * (size_t)nc);
+                        if (!nn) { ps_jk_close(c); free(h); break; }
+                        S.conns = nn; S.cap_conns = nc;
                     }
+                    h->idx = S.nconns; S.conns[S.nconns++] = h;
+                    struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = h;
+                    if (epoll_ctl(epfd, EPOLL_CTL_ADD, ps_jk_fd(c), &ev) == 0) h->armado = 1;
+                    else http_remove(&S, h);
                 }
-                /* pool cheio (fib_pega==NULL): deixa a conexão PRONTA e serve
-                 * no próximo ciclo, quando uma fibra liberar. Não bloqueia. */
-            }
-
-            /* (3) mensagens de conexões WS já abertas (decrescente) */
-            for (int i = nws0 - 1; i >= 0; i--)
-                if (pfd[2 + i].revents & (POLLIN | POLLHUP | POLLERR))
-                    jk_ws_processa(vm, j, i);
-
-            /* (4) nova conexão WebSocket (port+1) */
-            if (fd_ws >= 0 && (pfd[1].revents & POLLIN)) {
+            } else if (tipo == EPW_LWS) {
                 char ip[64] = "";
                 struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
                 if (c) {
@@ -13345,42 +13444,39 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                     if (ps_jk_le_request(c, &hr) == 0) { jk_ws_aceita(vm, j, c, &hr); ps_jk_req_solta(&hr); }
                     else ps_jk_close(c);
                 }
-            }
-
-            /* (5) nova conexão HTTP: aceita e ENFILEIRA (fib=NULL); servida no
-             * próximo ciclo, quando o poll marcar a fd como legível. */
-            if (pfd[0].revents & POLLIN) {
-                char ip[64] = "";
-                struct PSJkConn *c = ps_jk_accept(fd, ssl_ctx, ip, sizeof(ip));
-                if (c) {
-                    if (nhc + 1 > cap_hc) {
-                        int novo = cap_hc ? cap_hc * 2 : 32;
-                        struct HttpConn *nh = realloc(hc, sizeof(struct HttpConn) * (size_t)novo);
-                        if (nh) { hc = nh; cap_hc = novo; }
-                    }
-                    if (nhc < cap_hc) { hc[nhc].c = c; snprintf(hc[nhc].ip, sizeof(hc[nhc].ip), "%s", ip); hc[nhc].visto = agora; hc[nhc].fib = NULL; hc[nhc].morto = 0; nhc++; }
-                    else ps_jk_close(c);   /* estouro: recusa em vez de vazar */
-                }
+            } else if (tipo == EPW_WS) {
+                EpWs *w = (EpWs *)evs[e].data.ptr;
+                int idx = -1;
+                for (int k = 0; k < j->nws; k++) if (j->ws[k].conn == w->conn) { idx = k; break; }
+                if (idx >= 0) jk_ws_processa(vm, j, idx);
+            } else {   /* EPW_HTTP */
+                HttpConn *h = (HttpConn *)evs[e].data.ptr;
+                if (h->fib) { /* ocupada: não deveria disparar (fd desarmada) */ }
+                else if (evs[e].events & EPOLLIN) http_serve(vm, &S, h);
+                else if (evs[e].events & (EPOLLHUP | EPOLLERR)) http_remove(&S, h);
             }
         }
 
-        /* fecha keep-alive ociosa demais — só as SEM fibra ativa (o handler não
-         * pode ser derrubado no meio de um sleep). */
-        for (int i = 0; i < nhc; i++)
-            if (!hc[i].fib && !hc[i].morto && agora - hc[i].visto > 75) hc[i].morto = 1;
+        /* (3) drena a fila de pendentes conforme as fibras liberam slot */
+        http_drena_fila(vm, &S);
 
-        /* compactação ÚNICA do ciclo: remove todas as conexões `morto` */
-        for (int i = nhc - 1; i >= 0; i--)
-            if (hc[i].morto) { ps_jk_close(hc[i].c); hc[i] = hc[--nhc]; }
+        /* (4) sweep de keep-alive ociosa (a cada ~5s; O(n) mas raro). Não mexe em
+         * conexão com fibra ativa nem enfileirada. */
+        if (agora - ultimo_sweep >= 5) {
+            ultimo_sweep = agora;
+            for (int i = S.nconns - 1; i >= 0; i--) {
+                HttpConn *h = S.conns[i];
+                if (!h->fib && !h->na_fila && agora - h->visto > 75) http_remove(&S, h);
+            }
+        }
 
         /* auto-reload: o .ps mudou -> RE-EXECUTA `pool <script> [args]`. */
         if (reload) {
             struct stat st;
             if (stat(vm->nome_script, &st) == 0 && src_mtime && st.st_mtime != src_mtime) {
                 printf("\n[jinker] %s alterado — recarregando...\n", vm->nome_script); fflush(stdout);
-                for (int i = 0; i < nhc; i++) ps_jk_close(hc[i].c);
-                if (fd >= 0) close(fd);
-                if (fd_ws >= 0) close(fd_ws);
+                for (int i = 0; i < S.nconns; i++) ps_jk_close(S.conns[i]->c);
+                close(epfd); if (fd >= 0) close(fd); if (fd_ws >= 0) close(fd_ws);
                 char exe[1024]; ssize_t rl = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
                 if (rl > 0) {
                     exe[rl] = '\0';
@@ -13399,10 +13495,13 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 
         if (vm->alocado > vm->proximo_gc) gc_coleta(vm);
     }
-    for (int i = 0; i < nhc; i++) ps_jk_close(hc[i].c);
-    free(hc);
-    free(pfd);
+    for (int i = 0; i < S.nconns; i++) {
+        epoll_ctl(epfd, EPOLL_CTL_DEL, ps_jk_fd(S.conns[i]->c), NULL);
+        ps_jk_close(S.conns[i]->c); free(S.conns[i]);
+    }
+    free(S.conns); free(S.fila);
     while (j->nws > 0) jk_ws_del(j, j->nws - 1);
+    close(epfd); g_jk_epfd = -1;
 
     close(fd);
     if (fd_ws >= 0) close(fd_ws);

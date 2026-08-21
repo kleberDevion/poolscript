@@ -31,6 +31,7 @@ PSJkConn *ps_jk_accept(int fd_escuta, void *ssl_ctx, char *ip, size_t ipcap);
 
 int  ps_jk_fd(const PSJkConn *c);
 void ps_jk_close(PSJkConn *c);
+void ps_jk_conn_solta_buf(PSJkConn *c);   /* libera o buffer de leitura na ociosidade */
 
 /* ── requisição HTTP ────────────────────────────────────────────────────── */
 typedef struct { char *nome; char *valor; } PSJkHdr;

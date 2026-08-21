@@ -279,6 +279,9 @@ def servidores2(tmp_path_factory):
     env = dict(os.environ, PYTHONPATH=str(SRC))
     proc_c = sobe([str(POOL), str(d / "a_c.ps")], pc)
     proc_i = sobe([sys.executable, "-m", "poolscript", str(d / "a_i.ps")], pi, env=env)
+    # o socket WS abre em port+1 um instante DEPOIS do HTTP: espera ele também,
+    # senão um teste de WS pode bater ConnectionRefused nessa janela (sob carga).
+    espera_subir(pc + 1); espera_subir(pi + 1)
     try:
         yield pc, pi
     finally:

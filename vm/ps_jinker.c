@@ -181,6 +181,16 @@ void ps_jk_close(PSJkConn *c)
     free(c);
 }
 
+/* Solta o buffer de leitura (16KB+) de uma conexão OCIOSA — keep-alive esperando
+ * a próxima requisição. Sem nada bufferizado (n==0), o buffer não serve pra nada
+ * enquanto a conexão dorme; realoca sozinho no próximo `conn_garante`. Isso faz
+ * 100k conexões ociosas custarem ~200 bytes cada em vez de ~16KB. Se há bytes
+ * pendentes (pipelining), NÃO solta. */
+void ps_jk_conn_solta_buf(PSJkConn *c)
+{
+    if (c && c->n == 0 && c->buf) { free(c->buf); c->buf = NULL; c->cap = 0; }
+}
+
 /* ── parse da requisição ────────────────────────────────────────────────── */
 
 const char *ps_jk_header(const PSJkReq *r, const char *nome)
