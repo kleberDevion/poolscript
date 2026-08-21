@@ -9723,6 +9723,22 @@ static int monta_response(VM *vm, PSHttpResp *hr, Value *out)
 }
 
 /* Uma corrida do padrão nomeado: url[, headers, body, timeout, stream, max_size] */
+/* request de SAÍDA offloada: a I/O de rede (DNS+connect+TLS+send+recv) roda numa
+ * thread do pool pra NÃO travar o worker — mesmíssimo mecanismo do banco. Só
+ * dados C viajam pra thread; nenhum acesso à VM (por isso é seguro). */
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto do jinker */
+typedef struct {
+    const char *metodo, *url, *cabs, *corpo;
+    size_t ncorpo; int timeout; long teto;
+    PSHttpResp *hr; int rc;
+} ReqOffload;
+static void req_http_offload(void *p)
+{
+    ReqOffload *r = (ReqOffload *)p;
+    r->rc = ps_http_request(r->metodo, r->url, r->cabs, r->corpo, r->ncorpo,
+                            r->timeout, r->teto, r->hr);
+}
+
 static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *out)
 {
     if (n < 1) BERRO(vm, "SomeValueUnexpected", "%s() espera ao menos a URL", metodo);
@@ -9790,10 +9806,12 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
      * logo após o buffer (dependia dos módulos rodados antes na suíte). */
     if (cabs.b && sb_bytes(&cabs, "\0", 1) != 0) { free(cabs.b); if (corpo_livre) free(corpo); BERRO(vm, "MemoryError", "sem memoria"); }
 
-    vm->frame_topo = vm->frame_topo;   /* estado já publicado pelo chamador */
+    /* estado já publicado pelo chamador -> seguro ceder no offload */
     PSHttpResp hr;
-    int rc = ps_http_request(metodo, COMO_STRING(args[0])->chars, cabs.b ? cabs.b : "",
-                             corpo, ncorpo, timeout, teto, &hr);
+    ReqOffload ro = { metodo, COMO_STRING(args[0])->chars, cabs.b ? cabs.b : "",
+                      corpo, ncorpo, timeout, teto, &hr, 0 };
+    fib_offload(vm, req_http_offload, &ro);   /* rede numa thread: NÃO trava o worker */
+    int rc = ro.rc;
     free(cabs.b);
     if (corpo_livre) free(corpo);
     if (rc != 0) {
@@ -9897,6 +9915,17 @@ static int met_ws_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+/* connect+handshake do WebSocket de saída offloado (não trava o worker) */
+typedef struct {
+    const char *host; int porta; const char *path;
+    char *erro; size_t nerro; PSJkConn *conn;
+} WsConnOffload;
+static void ws_conn_offload(void *p)
+{
+    WsConnOffload *o = (WsConnOffload *)p;
+    o->conn = ps_jk_ws_conecta(o->host, o->porta, o->path, o->erro, o->nerro);
+}
+
 static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "ws_connect", 1);
@@ -9923,8 +9952,11 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     vm->alocado += sizeof(PSWsConn);
     char erro[256];
     /* falha de conexão NÃO erra: o wrapper devolve o objeto desconectado e
-     * o send avisa "Error: não conectado" — mesmo contrato aqui */
-    w->conn = ps_jk_ws_conecta(host, porta, path, erro, sizeof(erro));
+     * o send avisa "Error: não conectado" — mesmo contrato aqui.
+     * connect+handshake na thread do pool: NÃO trava o worker. */
+    WsConnOffload wo = { host, porta, path, erro, sizeof(erro), NULL };
+    fib_offload(vm, ws_conn_offload, &wo);
+    w->conn = wo.conn;
     *out = MK_OBJ(w);
     return 0;
 }
