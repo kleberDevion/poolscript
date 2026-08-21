@@ -132,7 +132,6 @@ def test_arquivo_inexistente():
 @pytest.mark.parametrize("src,esperado,rc", [
     ("post(1/0)",            "SomeValueUnexpected", 1),
     ("x = (1",               "SyntaxError",       2),
-    ("post(await 1)",        "NotImplementedError", 3),
 ])
 def test_erro_sai_com_codigo_proprio(src, esperado, rc):
     """Cada fase tem seu código de saída — script de shell precisa distinguir

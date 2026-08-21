@@ -94,7 +94,7 @@ enum {
     OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
     /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
      * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
-    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75
+    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76
 };
 
 /* ── objetos gerenciados pelo GC ────────────────────────────────────────── */
@@ -145,6 +145,7 @@ typedef enum {
     OBJ_GUZ_UI,    /* guzer.UI — raiz do app desktop */
     OBJ_GUZ_WID,   /* guzer window/button/popup — objeto de tela nativo */
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
+    OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
@@ -676,6 +677,8 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define COMO_MODEL(v)  ((PSModel*)(v).as.obj)
 #define EH_GERADOR(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_GERADOR)
 #define COMO_GER(v)    ((PSGerador*)(v).as.obj)
+#define EH_FUTURO(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_FUTURO)
+#define COMO_FUTURO(v) ((PSFuturo*)(v).as.obj)
 #define EH_ARQUIVO(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_ARQUIVO)
 #define COMO_ARQ(v)    ((PSArquivo*)(v).as.obj)
 #define EH_MODPS(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_MODULO_PS)
@@ -784,6 +787,7 @@ typedef struct {
     char     *nome;        /* nome da action — usado na mensagem de erro */
     char     *arquivo;     /* arquivo-fonte deste proto — pro traceback (ou NULL) */
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
+    int       eh_async;    /* `async action` — chamar cria fibra+future */
 } Proto;
 
 typedef struct {
@@ -1329,9 +1333,25 @@ static void marca_valor(VM *vm, const Value *v)
 typedef enum { GC_UNSET = 0, GC_LEAF, GC_ONE, GC_FN } GcKind;
 typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *); } GcInfo;
 
+/* `async action` — resultado pendente. A fibra que o produz vive no pool de
+ * fibras (marcada por fib_marca_gc enquanto `usada`); aqui marcamos só o valor
+ * final. */
+typedef struct PSFuturo {
+    Obj    obj;
+    struct Fiber *fib;      /* fibra que roda a action (NULL após concluir) */
+    int    done;
+    int    erro;           /* 1 = a action levantou */
+    char   erro_msg[256];
+    char   erro_tipo[64];
+    Value  valor;          /* resultado quando done */
+} PSFuturo;
+
 static void gct_seq(VM *vm, Obj *o) {
     PSList *l = (PSList *)o;
     for (int i = 0; i < l->len; i++) marca_valor(vm, &l->itens[i]);
+}
+static void gct_futuro(VM *vm, Obj *o) {
+    marca_valor(vm, &((PSFuturo *)o)->valor);
 }
 static void gct_dict(VM *vm, Obj *o) {
     PSDict *d = (PSDict *)o;
@@ -1406,6 +1426,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_MODEL]      = { GC_LEAF, 0, NULL },
     [OBJ_ENUM]       = { GC_FN,   0, gct_enum },
     [OBJ_GERADOR]    = { GC_FN,   0, gct_gerador },
+    [OBJ_FUTURO]     = { GC_FN,   0, gct_futuro },
     [OBJ_ARQUIVO]    = { GC_LEAF, 0, NULL },   /* globais vivem em vm->globals (raiz) */
     [OBJ_MODULO_PS]  = { GC_LEAF, 0, NULL },
     [OBJ_BYTES]      = { GC_LEAF, 0, NULL },
@@ -2586,6 +2607,7 @@ static const char *nome_do_tipo_valor(Value v)
         case V_OBJ:
             switch (v.as.obj->type) {
                 case OBJ_BIGINT:   t = "int";    break;
+                case OBJ_FUTURO:   t = "future"; break;
                 case OBJ_STRING:   t = "str";    break;
                 case OBJ_LIST:     t = "list";   break;
                 case OBJ_TUPLE:    t = "tup";    break;
@@ -4621,6 +4643,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
         case V_OBJ:
             switch (alvo.as.obj->type) {
                 case OBJ_BIGINT:      t = "int";   break;
+                case OBJ_FUTURO:      t = "future";break;
                 case OBJ_STRING:      t = "str";   break;
                 case OBJ_LIST:        t = "list";  break;
                 case OBJ_TUPLE:       t = "tup";   break;
@@ -13086,13 +13109,17 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
  * Thread ÚNICA: sem corrida, sem GC concorrente. O handler continua SÍNCRONO
  * (nada de await). Se o pool de fibras enche, o handler é servido INLINE
  * (bloqueante, como antes) — degradação graciosa, nunca estoura memória. */
-#define FIB_MAX     64            /* fibras concorrentes por worker */
+/* Pool de fibras DINÂMICO: cresce sob demanda (não trava num teto). Cada fibra
+ * é malloc'da à parte (ponteiro estável — o vetor g_fibs pode realocar sem
+ * invalidar referências). FIB_HARD é só a rede de segurança contra loop maluco.*/
+#define FIB_HARD    8192          /* teto de segurança de fibras concorrentes */
 #define FIB_STACK   2048          /* Values na pilha de valores da fibra */
 #define FIB_LOCALS  4096          /* Values no pool de locais */
 #define FIB_FRAMES  512           /* frames de chamada */
-#define FIB_CSTACK  (256 * 1024)  /* pilha do C da fibra (ucontext) */
+#define FIB_CSTACK  (128 * 1024)  /* pilha do C da fibra (ucontext) */
 
 typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
+enum { FIB_HTTP = 0, FIB_ASYNC = 1 };   /* o que a fibra roda */
 
 typedef struct Fiber {
     PS_CTX ctx;                   /* contexto do C desta fibra */
@@ -13103,6 +13130,13 @@ typedef struct Fiber {
     Value      jk_req;
     FibStatus  status;
     int        usada;             /* slot do pool ocupado */
+    int        kind;              /* FIB_HTTP (handler) | FIB_ASYNC (async action) */
+    /* async action: proto + args a rodar, e o future a resolver */
+    int        a_proto;
+    Value      a_args[8];
+    int        a_nargs;
+    PSFuturo  *fut;
+    PSFuturo  *wait_fut;         /* != NULL: fibra cedeu esperando este future */
     /* trabalho: servir uma requisição HTTP nesta conexão */
     PSJinker  *j;
     struct PSJkConn *conn;
@@ -13120,8 +13154,27 @@ typedef struct Fiber {
     EpFibW     fibw;
 } Fiber;
 
-static Fiber g_fibs[FIB_MAX];
+static Fiber **g_fibs = NULL;    /* vetor DINÂMICO de ponteiros p/ fibras */
+static int     g_nfibs = 0, g_cap_fibs = 0;
 static VM   *g_fib_vm;            /* makecontext não passa args: a fibra lê daqui */
+
+/* devolve um slot de fibra livre (reusa) ou cria um novo (cresce o pool). NULL
+ * só no teto de segurança / falta de memória. */
+static Fiber *fib_slot(void)
+{
+    for (int i = 0; i < g_nfibs; i++) if (!g_fibs[i]->usada) return g_fibs[i];
+    if (g_nfibs >= FIB_HARD) return NULL;
+    if (g_nfibs >= g_cap_fibs) {
+        int nc = g_cap_fibs ? g_cap_fibs * 2 : 32;
+        Fiber **nv = realloc(g_fibs, sizeof(Fiber *) * (size_t)nc);
+        if (!nv) return NULL;
+        g_fibs = nv; g_cap_fibs = nc;
+    }
+    Fiber *f = calloc(1, sizeof(Fiber));
+    if (!f) return NULL;
+    g_fibs[g_nfibs++] = f;
+    return f;
+}
 
 /* salva o contexto de execução MAIN e instala o da fibra em vm-> */
 static void fib_troca_entra(VM *vm, Fiber *f)
@@ -13158,6 +13211,25 @@ static void fib_trampolim(void)
 {
     VM *vm = g_fib_vm;
     Fiber *f = vm->fib_atual;
+    if (f->kind == FIB_ASYNC) {
+        /* roda a async action no corpo da fibra; ao ceder num sleep/DB, o
+         * escalonador atende outras; ao terminar, resolve o future. */
+        Value fn; fn.t = V_FUNC; fn.as.proto = f->a_proto;
+        Value res = MK_NULL();
+        int rc = chama_valor(vm, fn, f->a_args, f->a_nargs, &res);
+        if (rc != 0) {
+            f->fut->erro = 1;
+            snprintf(f->fut->erro_msg, sizeof(f->fut->erro_msg), "%s", vm->erro);
+            snprintf(f->fut->erro_tipo, sizeof(f->fut->erro_tipo), "%s", vm->erro_tipo);
+            vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';  /* re-levantado no await/gather */
+        } else {
+            f->fut->valor = res;
+        }
+        f->fut->done = 1; f->fut->fib = NULL;
+        f->status = FIB_PRONTA;
+        ps_ctx_swap(&f->ctx, &vm->sched_ctx);
+        return;
+    }
     if (ps_jk_le_request(f->conn, &f->hr) != 0) {
         f->leu = 0; f->rc = 0;   /* falha na leitura -> fechar conexão */
     } else {
@@ -13173,20 +13245,56 @@ static void fib_trampolim(void)
 /* pega um slot livre do pool e o arma pra servir `c`. NULL = pool cheio. */
 static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
 {
-    Fiber *f = NULL;
-    for (int i = 0; i < FIB_MAX; i++) if (!g_fibs[i].usada) { f = &g_fibs[i]; break; }
+    Fiber *f = fib_slot();
     if (!f) return NULL;
     if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
     if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
     if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
     if (!f->cstack) f->cstack = malloc(FIB_CSTACK);
     if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
-    f->usada = 1; f->status = FIB_SUSPENSA;
+    f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_HTTP;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
-    f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1;
+    f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL;
     ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
     return f;
+}
+
+/* aloca um future novo (heap gerenciado pelo GC) */
+static PSFuturo *novo_futuro(VM *vm)
+{
+    PSFuturo *fu = malloc(sizeof(PSFuturo));
+    if (!fu) return NULL;
+    fu->obj.type = OBJ_FUTURO; fu->obj.marked = 0;
+    fu->obj.next = vm->objetos; vm->objetos = (Obj *)fu;
+    fu->fib = NULL; fu->done = 0; fu->erro = 0;
+    fu->erro_msg[0] = '\0'; fu->erro_tipo[0] = '\0'; fu->valor = MK_NULL();
+    vm->alocado += sizeof(PSFuturo);
+    return fu;
+}
+
+/* arma uma fibra pra rodar `async action` proto(args...); devolve o future. NULL
+ * = pool cheio ou sem memória. A fibra fica PRONTA-P/-RODAR (só corre quando o
+ * escalonador — async_roda_ate/poll loop — a resume). */
+static PSFuturo *fib_pega_async(VM *vm, int proto, Value *args, int nargs)
+{
+    Fiber *f = fib_slot();
+    if (!f) return NULL;
+    if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
+    if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
+    if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
+    if (!f->cstack) f->cstack = malloc(FIB_CSTACK);
+    if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
+    PSFuturo *fu = novo_futuro(vm);
+    if (!fu) return NULL;
+    f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_ASYNC;
+    f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
+    f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL; f->conn = NULL;
+    f->a_proto = proto; f->a_nargs = nargs > 8 ? 8 : nargs;
+    for (int i = 0; i < f->a_nargs; i++) f->a_args[i] = args[i];
+    f->fut = fu; fu->fib = f;
+    ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
+    return fu;
 }
 
 static void fib_libera(Fiber *f)
@@ -13286,6 +13394,91 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
     f->wait_fd = -1;
 }
 
+/* ── escalonador de async actions (top-level) ─────────────────────────────
+ * Roda as fibras async PRONTAS (nunca iniciadas ou timer vencido) e espera os
+ * eventos (timer de sleep / eventfd de DB) até todos os `alvos` resolverem.
+ * Reusa fib_resume + o sleep/DB que já cedem. Só é chamado FORA de fibra
+ * (top-level): async dentro de handler roda inline, então não aninha. */
+static long fib_ms_ate(struct timespec *wake, struct timespec *agora)
+{
+    return (long)(wake->tv_sec - agora->tv_sec) * 1000
+         + (wake->tv_nsec - agora->tv_nsec) / 1000000;
+}
+static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
+{
+    int meu_ep = -1, ep_ant = g_jk_epfd;
+    if (g_jk_epfd < 0) { meu_ep = epoll_create1(0); g_jk_epfd = meu_ep; }
+    struct epoll_event evs[64];
+    for (;;) {
+        int falta = 0;
+        for (int i = 0; i < nalvos; i++) if (alvos[i] && !alvos[i]->done) { falta = 1; break; }
+        if (!falta) break;
+
+        /* (1) roda toda fibra async pronta pra rodar */
+        int rodou = 0;
+        struct timespec agora; clock_gettime(CLOCK_MONOTONIC, &agora);
+        for (int i = 0; i < g_nfibs; i++) {
+            Fiber *f = g_fibs[i];
+            if (!f->usada || f->kind != FIB_ASYNC || f->status != FIB_SUSPENSA) continue;
+            if (f->wait_fd >= 0) continue;                      /* espera DB (fd) */
+            if (f->tem_timer && fib_ms_ate(&f->wake_at, &agora) > 0) continue;  /* dormindo */
+            fib_resume(vm, f);
+            rodou = 1;
+            if (f->status == FIB_PRONTA) fib_libera(f);
+        }
+        if (rodou) continue;
+
+        /* (2) nada pronto: espera o próximo evento */
+        clock_gettime(CLOCK_MONOTONIC, &agora);
+        int timeout = -1, tem_fd = 0, tem_timer = 0;
+        for (int i = 0; i < g_nfibs; i++) {
+            Fiber *f = g_fibs[i];
+            if (!f->usada || f->kind != FIB_ASYNC || f->status != FIB_SUSPENSA) continue;
+            if (f->wait_fd >= 0) tem_fd = 1;
+            if (f->tem_timer) {
+                long ms = fib_ms_ate(&f->wake_at, &agora); if (ms < 0) ms = 0;
+                if (timeout < 0 || ms < timeout) timeout = (int)ms;
+                tem_timer = 1;
+            }
+        }
+        if (!tem_fd && !tem_timer) break;   /* nada pra esperar e alvos abertos: evita travar */
+        int nr = epoll_wait(g_jk_epfd, evs, 64, timeout);
+        for (int e = 0; e < nr; e++) {
+            if (*(int *)evs[e].data.ptr != EPW_FIBWAIT) continue;
+            Fiber *f = ((EpFibW *)evs[e].data.ptr)->f;
+            fib_resume(vm, f);
+            if (f->status == FIB_PRONTA) fib_libera(f);
+        }
+        /* timers vencidos são pegos no passo (1) da próxima volta */
+    }
+    if (meu_ep >= 0) { close(meu_ep); g_jk_epfd = ep_ant; }
+}
+
+/* Resolve UM future: dentro de fibra CEDE ao escalonador; no top-level DIRIGE.
+ * Devolve 0 (ok, valor em fu->valor) ou -1 (erro já em vm->erro/erro_tipo). */
+static int fut_resolve(VM *vm, PSFuturo *fu)
+{
+    if (!fu->done) {
+        if (vm->fib_atual) {
+            Fiber *cur = vm->fib_atual;
+            while (!fu->done) {
+                cur->wait_fut = fu; cur->status = FIB_SUSPENSA;
+                ps_ctx_swap(&cur->ctx, &vm->sched_ctx);
+                cur->wait_fut = NULL;
+            }
+        } else {
+            async_roda_ate(vm, &fu, 1);
+        }
+    }
+    if (fu->erro) {
+        snprintf(vm->erro, sizeof(vm->erro), "%s", fu->erro_msg);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
+                 fu->erro_tipo[0] ? fu->erro_tipo : "RuntimeError");
+        return -1;
+    }
+    return 0;
+}
+
 /* GC: marca os contextos que NÃO estão em vm-> (o corrente é marcado pelo
  * gc_coleta normal). Ou seja: o MAIN salvo (quando uma fibra é a corrente) e
  * toda fibra suspensa que não seja a corrente. */
@@ -13296,9 +13489,13 @@ static void fib_marca_gc(VM *vm)
         for (int i = 0; i < vm->m_locals_top; i++) marca_valor(vm, &vm->m_locals[i]);
         marca_valor(vm, &vm->m_jk_req);
     }
-    for (int i = 0; i < FIB_MAX; i++) {
-        Fiber *f = &g_fibs[i];
-        if (!f->usada || f == vm->fib_atual) continue;
+    for (int i = 0; i < g_nfibs; i++) {
+        Fiber *f = g_fibs[i];
+        if (!f->usada) continue;
+        /* args da async action ficam vivos até o corpo consumi-los (raiz sempre) */
+        if (f->kind == FIB_ASYNC)
+            for (int k = 0; k < f->a_nargs; k++) marca_valor(vm, &f->a_args[k]);
+        if (f == vm->fib_atual) continue;   /* a corrente é marcada via vm->stack */
         for (int k = 0; k < f->sp; k++)         marca_valor(vm, &f->stack[k]);
         for (int k = 0; k < f->locals_top; k++) marca_valor(vm, &f->locals[k]);
         marca_valor(vm, &f->jk_req);
@@ -13388,7 +13585,8 @@ static void http_drena_fila(VM *vm, SrvLoop *s)
 {
     while (s->nfila > 0) {
         int livre = 0;
-        for (int i = 0; i < FIB_MAX; i++) if (!g_fibs[i].usada) { livre = 1; break; }
+        for (int i = 0; i < g_nfibs; i++) if (!g_fibs[i]->usada) { livre = 1; break; }
+        if (g_nfibs < FIB_HARD) livre = 1;   /* pode crescer o pool */
         if (!livre) break;
         HttpConn *h = s->fila[--s->nfila]; h->na_fila = 0;
         http_serve(vm, s, h);
@@ -13551,31 +13749,45 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     struct epoll_event evs[256];
     time_t ultimo_sweep = time(NULL);
     while (!g_jk_parar) {
-        /* timeout = até o próximo despertar de fibra (senão 500ms) */
+        struct timespec agora_m;
+        /* (1) roda TODA fibra pronta: async nunca-iniciada, timer vencido, ou que
+         * esperava um future já resolvido. É o escalonador unificado — handler e
+         * async correm no mesmo loop. Fixpoint: uma que termina pode destravar
+         * outra que a aguardava (await). */
+        int mexeu = 1;
+        while (mexeu) {
+            mexeu = 0;
+            clock_gettime(CLOCK_MONOTONIC, &agora_m);
+            for (int i = 0; i < g_nfibs; i++) {
+                Fiber *f = g_fibs[i];
+                if (!f->usada || f->status != FIB_SUSPENSA) continue;
+                if (f->wait_fd >= 0) continue;                    /* espera DB (fd) */
+                if (f->wait_fut && !f->wait_fut->done) continue;  /* espera future */
+                if (f->tem_timer) {
+                    long ms = (long)(f->wake_at.tv_sec - agora_m.tv_sec) * 1000
+                            + (f->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
+                    if (ms > 0) continue;                         /* ainda dormindo */
+                }
+                HttpConn *h = (f->kind == FIB_HTTP) ? (HttpConn *)f->dono : NULL;
+                fib_resume(vm, f);
+                mexeu = 1;
+                if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
+                else if (f->status == FIB_PRONTA) fib_libera(f);
+            }
+        }
+
+        /* timeout = até o próximo despertar por timer (o resto já rodou acima) */
         int timeout = 500;
-        struct timespec agora_m; clock_gettime(CLOCK_MONOTONIC, &agora_m);
-        for (int i = 0; i < FIB_MAX; i++) if (g_fibs[i].usada && g_fibs[i].tem_timer) {
-            long ms = (long)(g_fibs[i].wake_at.tv_sec - agora_m.tv_sec) * 1000
-                    + (g_fibs[i].wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
+        clock_gettime(CLOCK_MONOTONIC, &agora_m);
+        for (int i = 0; i < g_nfibs; i++) if (g_fibs[i]->usada && g_fibs[i]->status == FIB_SUSPENSA && g_fibs[i]->tem_timer) {
+            long ms = (long)(g_fibs[i]->wake_at.tv_sec - agora_m.tv_sec) * 1000
+                    + (g_fibs[i]->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
             if (ms < 0) ms = 0;
             if (ms < timeout) timeout = (int)ms;
         }
         int nready = epoll_wait(epfd, evs, 256, timeout);
         time_t agora = time(NULL);
         clock_gettime(CLOCK_MONOTONIC, &agora_m);
-
-        /* (1) fibras cujo timer venceu (independe do epoll_wait: pode ter sido
-         * um despertar por timeout). */
-        for (int i = 0; i < FIB_MAX; i++) {
-            Fiber *f = &g_fibs[i];
-            if (!f->usada || f->status != FIB_SUSPENSA || !f->tem_timer) continue;
-            long ms = (long)(f->wake_at.tv_sec - agora_m.tv_sec) * 1000
-                    + (f->wake_at.tv_nsec - agora_m.tv_nsec) / 1000000;
-            if (ms > 0) continue;                 /* ainda dormindo */
-            HttpConn *h = (HttpConn *)f->dono;
-            fib_resume(vm, f);
-            http_pos_fibra(&S, h, f);
-        }
 
         /* (2) fds prontos: cada data.ptr começa com `int tipo` */
         for (int e = 0; e < nready; e++) {
@@ -13615,11 +13827,13 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 for (int k = 0; k < j->nws; k++) if (j->ws[k].conn == w->conn) { idx = k; break; }
                 if (idx >= 0) jk_ws_processa(vm, j, idx);
             } else if (tipo == EPW_FIBWAIT) {
-                /* uma thread do pool terminou a I/O bloqueante -> retoma a fibra */
+                /* uma thread do pool terminou a I/O bloqueante -> retoma a fibra
+                 * (pode ser handler HTTP ou fibra async — trata por kind) */
                 Fiber *f = ((EpFibW *)evs[e].data.ptr)->f;
-                HttpConn *h = (HttpConn *)f->dono;
+                HttpConn *h = (f->kind == FIB_HTTP) ? (HttpConn *)f->dono : NULL;
                 fib_resume(vm, f);
-                http_pos_fibra(&S, h, f);
+                if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
+                else if (f->status == FIB_PRONTA) fib_libera(f);
             } else {   /* EPW_HTTP */
                 HttpConn *h = (HttpConn *)evs[e].data.ptr;
                 if (h->fib) { /* ocupada: não deveria disparar (fd desarmada) */ }
@@ -13838,15 +14052,46 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-/* Sem futuros na VM, `gather` devolve os argumentos como estão — que é
- * exatamente o que o interpretador faz com valor que não é PoolFuture. */
+/* gather(f1, f2, ...) ou gather([f1, f2, ...]) — resolve os futures (rodando-os
+ * CONCORRENTES) e devolve os valores na mesma ordem. Argumento que não é future
+ * passa direto; lista de futures vira lista de valores. */
 static int nativa_gather(VM *vm, Value *args, int n, Value *out)
 {
+    /* PASSO 1: resolve todo future (arg direto ou dentro de uma lista). Resolver
+     * um já roda TODOS os prontos (o escalonador não para num só) -> concorrência. */
+    for (int i = 0; i < n; i++) {
+        if (EH_FUTURO(args[i])) {
+            if (fut_resolve(vm, COMO_FUTURO(args[i])) != 0) return -1;
+        } else if (EH_LIST(args[i])) {
+            PSList *s = COMO_LIST(args[i]);
+            for (int k = 0; k < s->len; k++)
+                if (EH_FUTURO(s->itens[k]) && fut_resolve(vm, COMO_FUTURO(s->itens[k])) != 0)
+                    return -1;
+        }
+    }
+    /* PASSO 2: monta a lista de resultados (futures já resolvidos). `l` fica
+     * fixado como raiz enquanto aloca sub-listas, pra o GC não recolhê-lo. */
     PSList *l = lista_com_cap(vm, n > 0 ? n : 1, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em gather()");
-    for (int i = 0; i < n; i++) l->itens[i] = args[i];
-    l->len = n;
     *out = MK_OBJ(l);
+    if (fixa_raiz(vm, *out) != 0) BERRO(vm, "RuntimeError", "estouro");
+    for (int i = 0; i < n; i++) {
+        Value a = args[i];
+        if (EH_FUTURO(a)) {
+            l->itens[l->len++] = COMO_FUTURO(a)->valor;
+        } else if (EH_LIST(a)) {
+            PSList *s = COMO_LIST(a);
+            PSList *sub = lista_com_cap(vm, s->len > 0 ? s->len : 1, OBJ_LIST);
+            if (!sub) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria em gather()"); }
+            for (int k = 0; k < s->len; k++)
+                sub->itens[sub->len++] = EH_FUTURO(s->itens[k]) ? COMO_FUTURO(s->itens[k])->valor
+                                                               : s->itens[k];
+            l->itens[l->len++] = MK_OBJ(sub);
+        } else {
+            l->itens[l->len++] = a;
+        }
+    }
+    vm->sp--;   /* solta l da raiz */
     return 0;
 }
 
@@ -14726,6 +14971,18 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp++] = MK_OBJ(g);
                     break;
                 }
+                if (np->eh_async) {
+                    /* `async action`: NUNCA roda inline — cria uma fibra (lazy) e
+                     * devolve um future. O corpo corre quando gather/await dirige
+                     * o escalonador (top-level) ou cede a ele (dentro de handler).*/
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSFuturo *fu = fib_pega_async(vm, (int32_t)(np - vm->protos),
+                                                  &stack[sp - n], n);
+                    if (!fu) ERRO(vm, "sem memoria/pool cheio no async");
+                    sp = sp - n - 1;
+                    stack[sp++] = MK_OBJ(fu);
+                    break;
+                }
                 if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames (recursao profunda demais)");
                 if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
                 /* Cota da pilha do chamado: cada instrução empilha no máximo
@@ -15226,6 +15483,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* fim de bloco (nível de módulo): apaga um global nascido no bloco */
             if (arg < vm->nglobals) vm->globals[arg] = MK_UNSET();
             break;
+
+        case OP_AWAIT: {
+            /* `await expr` — se é future, dirige o escalonador até resolver e
+             * troca pelo valor; se não é future, fica como está (await x == x). */
+            Value av = stack[sp - 1];
+            if (EH_FUTURO(av)) {
+                PSFuturo *fu = COMO_FUTURO(av);
+                vm->sp = sp; vm->locals_top = locals_top;   /* GC vê a pilha viva */
+                if (fut_resolve(vm, fu) != 0) goto erro_runtime;
+                stack[sp - 1] = fu->valor;
+            }
+            break;
+        }
 
         case OP_SETUP_TRY:
             if (nh >= MAX_HANDLERS) ERRO(vm, "try aninhado demais");
@@ -16413,6 +16683,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         p->nparams = o->nparams;
         p->ndefaults = o->ndefaults;
         p->eh_gerador = o->eh_gerador;
+        p->eh_async = o->eh_async;
         /* COPIA os nomes: o PSPrograma é liberado logo depois de carregar,
          * antes da execução. Guardar o ponteiro dele deixava `param_nomes`
          * pendurado e a primeira chamada nomeada segfaultava. */
@@ -16585,6 +16856,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         d->nparams = o->nparams;
         d->ndefaults = o->ndefaults;
         d->eh_gerador = o->eh_gerador;
+        d->eh_async = o->eh_async;
         d->nome = strdup(o->nome ? o->nome : "?");
         d->param_nomes = NULL;
         if (o->param_nomes && o->nparams > 0) {

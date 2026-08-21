@@ -50,7 +50,7 @@ enum {
     OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
     /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
      * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
-    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75
+    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76
 };
 
 const char *ps_op_nome(int32_t op)
@@ -124,6 +124,7 @@ const char *ps_op_nome(int32_t op)
         case OP_CLOSE_SE_TEM: return "CLOSE_SE_TEM";
         case OP_CLEAR_LOCAL: return "CLEAR_LOCAL";
         case OP_CLEAR_GLOBAL: return "CLEAR_GLOBAL";
+        case OP_AWAIT: return "AWAIT";
     }
     return "?";
 }
@@ -907,6 +908,12 @@ static void expr(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_GET_MEMBER,
                   idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
                             n->texto ? (int32_t)strlen(n->texto) : 0));
+            return;
+
+        case N_AWAIT_EXPR:
+            /* `await expr` — avalia a expr (que dá um future) e resolve. */
+            expr(c, u, n->a);
+            emite(c, u, OP_AWAIT, 0);
             return;
 
         case N_BASE_CALL_NODE: {
@@ -2064,6 +2071,7 @@ static int32_t compila_action(C *c, PSNode *n)
     }
     c->out->protos[idx].nparams = n->lista.n;
     c->out->protos[idx].ndefaults = ndef;
+    c->out->protos[idx].eh_async = n->is_async;
     if (n->lista.n > 0) {
         char **nomes = calloc((size_t)n->lista.n, sizeof(char *));
         if (!nomes) { cerro(c, "sem memoria", n); }

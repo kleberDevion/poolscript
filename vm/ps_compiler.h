@@ -43,6 +43,7 @@ typedef struct {
     int32_t  nparams;
     int32_t  ndefaults;   /* quantos parâmetros finais têm valor padrão */
     int32_t  eh_gerador;  /* contém `yield` — chamar cria gerador, não frame */
+    int32_t  eh_async;    /* `async action` — chamar cria fibra+future, não roda inline */
     /* Nome de cada parâmetro, na ordem. Só existe pra resolver argumento
      * nomeado em runtime — o call site não sabe qual função vai chamar. */
     char   **param_nomes;
