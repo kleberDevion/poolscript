@@ -130,6 +130,63 @@ def test_sleep_nao_serializa(tmp_path):
             proc.kill()
 
 
+async def _ka_le(r):
+    head = b""
+    while b"\r\n\r\n" not in head:
+        c = await asyncio.wait_for(r.read(4096), timeout=10)
+        if not c:
+            return False
+        head += c
+    sep = head.index(b"\r\n\r\n") + 4
+    cl = 0
+    for l in head[:sep].decode("latin1").lower().split("\r\n"):
+        if l.startswith("content-length:"):
+            cl = int(l.split(":", 1)[1])
+    body = head[sep:]
+    while len(body) < cl:
+        c = await asyncio.wait_for(r.read(cl - len(body)), timeout=10)
+        if not c:
+            return False
+        body += c
+    return True
+
+
+def test_muitas_conexoes_ociosas(tmp_path):
+    """Segura 300 conexões keep-alive OCIOSAS e verifica que o servidor continua
+    respondendo certo e rápido (epoll: ocioso não bloqueia nem vaza)."""
+    proc, porta = sobe(tmp_path)
+    try:
+        async def roda():
+            conns = []
+            async def hold():
+                r, w = await asyncio.open_connection("127.0.0.1", porta)
+                w.write(b"GET /slow HTTP/1.1\r\nHost: h\r\nConnection: keep-alive\r\n\r\n")
+                await w.drain()
+                await _ka_le(r)            # lê a resposta e MANTÉM a conexão aberta
+                conns.append((r, w))
+            N = 300
+            for i in range(0, N, 50):
+                await asyncio.gather(*[hold() for _ in range(min(50, N - i))])
+            # com 300 ociosas seguradas, uma requisição NOVA ainda responde
+            res = [None]
+            t0 = time.monotonic()
+            await _uma(porta, "/calc", res, 0)
+            dt = time.monotonic() - t0
+            for _, w in conns:
+                w.close()
+            return len(conns), res[0], dt
+        n, corpo, dt = asyncio.run(roda())
+        assert n == 300, n
+        assert corpo and '"total": 499500' in corpo, corpo
+        assert dt < 1.0, f"resposta lenta com 300 ociosas: {dt:.2f}s"
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
+
 def test_gc_sob_fibras_suspensas(tmp_path):
     """Handler que aloca 1000 entradas + dorme + soma: com 16 concorrentes o GC
     roda com fibras suspensas; todo checksum tem que bater (1000*999/2 = 499500)."""

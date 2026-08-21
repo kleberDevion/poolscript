@@ -506,6 +506,73 @@ run_selfwith_("main") {
 | `debug` | Mostra erros detalhados no terminal |
 | `host` | `"0.0.0.0"` aceita qualquer conexão, `"127.0.0.1"` só local |
 | `port` | Porta do servidor |
+| `reload` | (dev) Reinicia o servidor quando o `.ps` muda. Só com `workers=1`. |
+| `workers` | Nº de processos que dividem a porta (paralelismo real entre núcleos). Padrão `1`. |
+
+---
+
+## Concorrência e escala
+
+Esta seção descreve o motor `pool` (binário em C). O interpretador
+(`python -m poolscript`) é o runtime de referência/dev e roda sempre em um
+processo com uma thread por requisição — o **observável** (o que a rota devolve)
+é idêntico; o que muda é a capacidade sob carga.
+
+### Como as requisições rodam
+
+Cada requisição HTTP é servida numa **fibra** (green-thread): um fluxo de
+execução leve e próprio, com a sua pilha. Você **não escreve nada de diferente** —
+a `action` continua síncrona, sem `async`/`await`. A diferença aparece quando um
+handler **espera**: se ele chama `sleep(...)`, a fibra **devolve o controle ao
+servidor** e outras requisições são atendidas enquanto essa dorme; quando o tempo
+passa, ela continua de onde parou. Ou seja, um handler que espera **não trava**
+os outros no mesmo worker.
+
+```
+@app.route("/lento")
+action lento() {
+    sleep(1)                 // 100 clientes aqui NÃO viram 100s de fila:
+    return jsonify({"ok": true})   // todos dormem juntos e respondem em ~1s
+}
+```
+
+Medido (1 worker, handler com `sleep(0.1)`): **100 clientes simultâneos → ~570
+req/s** (antes, serializado, eram ~10 req/s). São até **64 handlers em execução
+ao mesmo tempo por worker**; passando disso, as requisições entram numa fila e
+são servidas assim que uma fibra libera (nunca travam o servidor, nunca estouram
+a memória).
+
+> **Limite honesto:** só a espera de `sleep` cede a fibra por enquanto. Uma
+> consulta de banco (`db`) roda **dentro do driver em C** (libpq/mysql/mongo/
+> odbc), que faz o `recv` do resultado de forma BLOQUEANTE. Como o worker é de
+> thread única, esse bloqueio **trava o worker inteiro** até o banco responder —
+> não só a fibra dela; nenhuma outra requisição desse worker é atendida nesse
+> intervalo. Mitigação hoje: mais `workers` (os outros processos seguem
+> servindo). I/O de banco não-bloqueante é a fase seguinte. Um cálculo pesado
+> puro de CPU também trava enquanto roda (não tem I/O pra ceder).
+
+### Muitas conexões ao mesmo tempo
+
+O servidor usa `epoll`: uma conexão **parada** (keep-alive esperando a próxima
+requisição) praticamente **não custa** — nem CPU (só as conexões com dados são
+processadas) nem memória (o buffer de leitura de 16 KB é liberado enquanto a
+conexão está ociosa, ~275 bytes cada). Medido: **16 mil conexões ociosas
+consomem ~16 MB** e o throughput não cai. Extrapolando, ~100 mil conexões ociosas
+ficam na casa de **~40 MB**.
+
+### Usando todos os núcleos (`workers`)
+
+Uma fibra é concorrência **dentro de um núcleo** (uma coisa roda por vez, elas se
+revezam na espera). Pra usar os vários núcleos da máquina, suba mais processos:
+
+```
+app(host="0.0.0.0", port=2000, workers=4)   // 4 processos dividem a porta
+```
+
+Cada worker é um processo próprio (o kernel balanceia as conexões entre eles),
+com a sua VM e as suas fibras — sem corrida, sem estado compartilhado. Regra
+prática: `workers` ≈ número de núcleos; cada worker soma a sua concorrência de
+fibras. (WebSocket com salas/broadcast roda só no worker 0.)
 
 ---
 
