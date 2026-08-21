@@ -87,7 +87,8 @@ function parsePoolSource(text) {
 
     // action/reaction NOME(params) — captura QUAL (action vs reaction) e o
     // prefixo de visibilidade/tipo (`public int reaction ...`)
-    const act = semComentario.match(/\b(?:async\s+)?(?:private\s+|public\s+)?(?:int\s+|str\s+|flo\s+|bool\s+)?(action|reaction)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
+    // modificadores em QUALQUER ordem (async/visibilidade/tipo) antes de action/reaction
+    const act = semComentario.match(/\b(?:(?:async|private|public|int|str|flo|bool)\s+)*(action|reaction)\s+([A-Za-z_]\w*)\s*\(([^)]*)\)/);
     if (act) {
       const fn = { name: act[2], kind: classeAtual ? 'method' : 'function',
                    params: parseParams(act[3]), reaction: act[1] === 'reaction', retExpr: null };

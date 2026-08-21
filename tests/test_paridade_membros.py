@@ -80,6 +80,9 @@ _FORA = {
     "_RouteRegistrar", "_SocketRegistrar",
     # meta/infra do interp sem contraparte de runtime
     "DataEntityMeta", "PoolModel", "FileHandle",
+    # swagger: gerador de BUILD (lê o target, escreve openapi/cliente/UI) — roda
+    # pelo interpretador, não é lib de runtime do `pool`.
+    "SwaggerBuilder",
 }
 
 # membros que NÃO viram `obj.membro` no VM por design (helpers internos do
