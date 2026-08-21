@@ -820,6 +820,43 @@ typedef struct {
     int32_t  classe_privada;   /* `private class` — não exportada no import */
 } PSClassDefC;
 
+/* Troca de contexto de fibra em ASSEMBLY (x86-64): salva só os registradores
+ * callee-saved + rsp, ZERO syscall — ao contrário do swapcontext do glibc, que
+ * faz sigprocmask a cada troca. Outras arquiteturas usam ucontext. */
+#if defined(__x86_64__)
+typedef void *PS_CTX;
+extern void ps_fctx_swap(PS_CTX *from, PS_CTX *to);
+__asm__(
+".text\n"
+".globl ps_fctx_swap\n"
+".type ps_fctx_swap,@function\n"
+"ps_fctx_swap:\n"
+"    pushq %rbp\n    pushq %rbx\n    pushq %r12\n"
+"    pushq %r13\n    pushq %r14\n    pushq %r15\n"
+"    movq %rsp, (%rdi)\n"
+"    movq (%rsi), %rsp\n"
+"    popq %r15\n    popq %r14\n    popq %r13\n"
+"    popq %r12\n    popq %rbx\n    popq %rbp\n"
+"    ret\n"
+".size ps_fctx_swap, .-ps_fctx_swap\n"
+);
+static inline void ps_ctx_swap(PS_CTX *from, PS_CTX *to) { ps_fctx_swap(from, to); }
+static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*entry)(void)) {
+    uintptr_t top = ((uintptr_t)stack + size) & ~(uintptr_t)0xFULL;
+    void **sp = (void **)(top - 64);
+    for (int i = 0; i < 6; i++) sp[i] = 0;   /* rbp,rbx,r12-r15 (garbage inicial) */
+    sp[6] = (void *)entry;                    /* alvo do `ret`: rsp fica em top-8 */
+    *ctx = (void *)sp;
+}
+#else
+typedef ucontext_t PS_CTX;
+static inline void ps_ctx_swap(PS_CTX *from, PS_CTX *to) { swapcontext(from, to); }
+static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*entry)(void)) {
+    getcontext(ctx); ctx->uc_stack.ss_sp = stack; ctx->uc_stack.ss_size = size;
+    ctx->uc_link = NULL; makecontext(ctx, entry, 0);
+}
+#endif
+
 struct VM_ {
     Proto  *protos;
     int     nprotos;
@@ -866,7 +903,7 @@ struct VM_ {
      * app.run()) fica salvo nos `m_*`. `sched_ctx` é a pilha-C do escalonador
      * (o poll loop), pra onde a fibra volta ao ceder ou terminar. */
     struct Fiber *fib_atual;
-    ucontext_t    sched_ctx;
+    PS_CTX        sched_ctx;
     Value  *m_stack;  Value *m_locals;  Frame *m_frames;
     int     m_sp, m_locals_top, m_frame_topo;
     int     m_stack_teto, m_locals_teto, m_frames_teto;
@@ -13042,7 +13079,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
 typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
 
 typedef struct Fiber {
-    ucontext_t ctx;               /* contexto do C desta fibra */
+    PS_CTX ctx;                   /* contexto do C desta fibra */
     void      *cstack;            /* pilha do C (malloc, reusada no pool) */
     Value     *stack;  Value *locals;  Frame *frames;   /* arrays próprios */
     /* estado da VM salvo enquanto a fibra NÃO está corrente */
@@ -13114,7 +13151,7 @@ static void fib_trampolim(void)
         ps_jk_req_solta(&f->hr);
     }
     f->status = FIB_PRONTA;
-    swapcontext(&f->ctx, &vm->sched_ctx);   /* volta pro poll loop; não retorna */
+    ps_ctx_swap(&f->ctx, &vm->sched_ctx);   /* volta pro poll loop; não retorna */
 }
 
 /* pega um slot livre do pool e o arma pra servir `c`. NULL = pool cheio. */
@@ -13132,11 +13169,7 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
     f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1;
-    getcontext(&f->ctx);
-    f->ctx.uc_stack.ss_sp = f->cstack;
-    f->ctx.uc_stack.ss_size = FIB_CSTACK;
-    f->ctx.uc_link = NULL;
-    makecontext(&f->ctx, fib_trampolim, 0);
+    ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
     return f;
 }
 
@@ -13152,7 +13185,7 @@ static void fib_resume(VM *vm, Fiber *f)
 {
     g_fib_vm = vm;
     fib_troca_entra(vm, f);
-    swapcontext(&vm->sched_ctx, &f->ctx);
+    ps_ctx_swap(&vm->sched_ctx, &f->ctx);
     fib_troca_sai(vm, f);
 }
 
@@ -13230,7 +13263,7 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
     f->wait_fd = efd;
     f->status = FIB_SUSPENSA;
     pool_submete(fn, arg, efd);
-    swapcontext(&f->ctx, &vm->sched_ctx);      /* cede; retoma quando o efd dispara */
+    ps_ctx_swap(&f->ctx, &vm->sched_ctx);      /* cede; retoma quando o efd dispara */
     epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, efd, NULL);
     uint64_t drena; ssize_t r = read(efd, &drena, sizeof(drena)); (void)r;
     close(efd);
@@ -13774,7 +13807,7 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
             if (f->wake_at.tv_nsec >= 1000000000L) { f->wake_at.tv_sec++; f->wake_at.tv_nsec -= 1000000000L; }
             f->tem_timer = 1;
             f->status = FIB_SUSPENSA;
-            swapcontext(&f->ctx, &vm->sched_ctx);   /* dorme; retoma aqui no timer */
+            ps_ctx_swap(&f->ctx, &vm->sched_ctx);   /* dorme; retoma aqui no timer */
             f->tem_timer = 0;
         } else {
             /* fora de fibra (script comum): dorme bloqueante como sempre */
