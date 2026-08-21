@@ -550,10 +550,13 @@ correm em paralelo e o worker segue atendendo. Medido (Postgres, `pg_sleep(0.2)`
 automático pros drivers de rede (postgres/mysql/sqlserver). SQLite roda direto
 (é local e rápido, não bloqueia em rede).
 
+Abrir a conexão (`connect()`) também é async pelos mesmos motivos — o handshake
+de rede vai pra thread e a fibra cede.
+
 > **O que ainda trava a fibra:** um cálculo pesado **puro de CPU** (não tem I/O
 > pra ceder — só termina ocupando o núcleo; use `workers` pra espalhar). O
-> `connect()` e o `commit()` do banco ainda são bloqueantes (rápidos; a query é
-> que era o problema). Só a espera de `sleep` e o I/O de banco cedem hoje.
+> `commit()`/`BEGIN` do banco seguem inline (são controle rápido, um round-trip).
+> Cedem hoje: `sleep`, a consulta ao banco (postgres/mysql) e o `connect()`.
 
 ### Muitas conexões ao mesmo tempo
 

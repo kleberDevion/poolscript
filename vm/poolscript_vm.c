@@ -11125,6 +11125,18 @@ static void db_exec_offload(void *p)
     a->rc = ps_db_exec(a->c, a->sql, a->params, a->nparams, a->res,
                        a->erro, a->ecap, a->tipo_out, a->tcap);
 }
+/* mesmo esquema pro connect() — o handshake de rede também é bloqueante */
+typedef struct {
+    PSDbDriver drv; const char *host; int porta;
+    const char *user, *senha, *db, *base;
+    char *erro; size_t ecap; PSDbConn *out;
+} DbConnArgs;
+static void db_conn_offload(void *p)
+{
+    DbConnArgs *a = (DbConnArgs *)p;
+    a->out = ps_db_conecta(a->drv, a->host, a->porta, a->user, a->senha,
+                           a->db, a->base, a->erro, a->ecap);
+}
 
 static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -11340,9 +11352,13 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
     }
 
     char erro[512];
-    vm->frame_topo = vm->frame_topo;
-    PSDbConn *c = ps_db_conecta(drv, host, porta, user, senha,
-                                db[0] ? db : base, base, erro, sizeof(erro));
+    DbConnArgs dca = { drv, host, porta, user, senha, db[0] ? db : base, base,
+                       erro, sizeof(erro), NULL };
+    /* SQLite abre na hora (arquivo local); rede (postgres/mysql/mssql) faz
+     * handshake bloqueante -> offload pra thread, a fibra cede. */
+    if (drv == PS_DB_SQLITE) db_conn_offload(&dca);
+    else                     fib_offload(vm, db_conn_offload, &dca);
+    PSDbConn *c = dca.out;
     if (!c) {
         snprintf(vm->erro, sizeof(vm->erro), "%.200s", erro);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo),

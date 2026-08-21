@@ -89,7 +89,7 @@ app = Jinker(__name__)
 action q() {
     conn = psodbc.connect(driver="postgres", host="127.0.0.1", port=__PGPORT__, user="__USER__", password="", database="postgres")
     cur = conn.cursor()
-    cur.execute("SELECT pg_sleep(0.15)")
+    cur.execute("SELECT pg_sleep(0.3)")
     cur.fetchall()
     conn.close()
     return jsonify({"ok": true})
@@ -117,8 +117,9 @@ async def _uma(porta, res, i):
 
 
 def test_query_lenta_nao_serializa(pg, tmp_path):
-    """8 handlers com pg_sleep(0.15) concorrentes terminam sobrepostos (bem menos
-    que 8*0.15=1.2s), provando que a query no banco não trava o worker."""
+    """8 handlers com pg_sleep(0.3) concorrentes terminam sobrepostos (bem menos
+    que 8*0.3=2.4s), provando que a query no banco não trava o worker. Margem
+    folgada (< 1.5s) pra não piscar sob carga — o connect() TAMBÉM é async."""
     pgport, user = pg
     porta = porta_livre()
     src = tmp_path / "app.ps"
@@ -137,8 +138,8 @@ def test_query_lenta_nao_serializa(pg, tmp_path):
             return time.monotonic() - t0, res
         elapsed, res = asyncio.run(roda())
         assert all(r is True for r in res), res
-        # serializado seria >= 1.2s; sobreposto ~0.3-0.6s. Margem folgada.
-        assert elapsed < 0.9, f"query serializou o worker? {elapsed:.2f}s para 8x pg_sleep(0.15)"
+        # serializado seria >= 2.4s; sobreposto ~0.5s. Margem bem folgada (1.5s).
+        assert elapsed < 1.5, f"query serializou o worker? {elapsed:.2f}s para 8x pg_sleep(0.3)"
     finally:
         proc.terminate()
         try:
