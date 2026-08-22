@@ -31,7 +31,8 @@ vm = pytest.importorskip(
 )
 
 RAIZ = Path(__file__).resolve().parent.parent
-PASTAS = [RAIZ / "docs" / "builtins", RAIZ / "docs" / "string"]
+PASTAS = [RAIZ / "docs" / "builtins", RAIZ / "docs" / "string",
+          RAIZ / "docs" / "sockets"]
 
 BLOCO = re.compile(r"```ps\n(.*?)```\n\n```saida\n(.*?)```", re.S)
 

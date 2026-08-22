@@ -11,6 +11,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 PEGA = (
@@ -48,7 +49,6 @@ def test_interp_raise_sem_catch_eh_limpo(tmp_path):
     assert "Traceback" not in r.stderr or "NetworkError" in r.stderr  # sem crash do runtime
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_paridade_raise_tipo(tmp_path):
     a = _run([sys.executable, "-m", "poolscript"], PEGA, tmp_path).stdout
     b = _run([str(POOL_BIN)], PEGA, tmp_path).stdout

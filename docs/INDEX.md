@@ -28,6 +28,7 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 ### Web e rede
 - **[jinker](jinker/jinker.md)** — servidor HTTP + WebSocket
 - **[request](request/request.md)** — cliente HTTP + WebSocket
+- **[sockets](sockets/sockets.md)** — sockets de rede crus (a API do `socket` do Python: TCP/UDP/UNIX, cliente e servidor)
 
 ### Dados e arquivos
 - **[os](os/os.md)** — sistema de arquivos, ambiente, terminal

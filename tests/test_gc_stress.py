@@ -14,6 +14,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 # aninha dict/list/string/tupla e mantém referências vivas cruzadas — se o mark
@@ -49,7 +50,6 @@ def test_interp_gc_stress(tmp_path):
     assert r.stdout.strip() == str(esperado) + " " + str(guardados), r.stdout
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_paridade_gc_stress(tmp_path):
     a = _run([sys.executable, "-m", "poolscript"], tmp_path)
     b = _run([str(POOL_BIN)], tmp_path)

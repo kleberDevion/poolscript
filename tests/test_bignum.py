@@ -15,6 +15,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 SCRIPT = NL.join([
@@ -61,7 +62,6 @@ def test_interp_bignum(tmp_path):
     assert linhas[3] == "1" + "0" * 40                 # 10^40 (após o laço)
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_paridade_bignum(tmp_path):
     """A conta gigante tem que dar EXATAMENTE a mesma coisa nos dois motores."""
     a = _run([sys.executable, "-m", "poolscript"], tmp_path).stdout

@@ -17,6 +17,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 
@@ -80,7 +81,6 @@ def test_interp_escopo_bloco(src, esperado, erro, tmp_path):
     assert (rc != 0) == erro, "returncode inesperado: " + str(rc)
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 @pytest.mark.parametrize("src,esperado,erro", CASOS)
 def test_paridade_escopo_bloco(src, esperado, erro, tmp_path):
     oi, ri = _interp(src, tmp_path)

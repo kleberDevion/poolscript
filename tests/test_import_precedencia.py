@@ -15,6 +15,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 
@@ -45,7 +46,6 @@ def test_interp_lib_ganha_de_arquivo_local(tmp_path):
     assert "LIB" in r.stdout and "ARQUIVO_LOCAL" not in r.stdout, r.stdout + r.stderr
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_vm_lib_ganha_de_arquivo_local(tmp_path):
     home, entry = _cenario(tmp_path)
     r = subprocess.run([str(POOL_BIN), str(entry)],
@@ -53,7 +53,6 @@ def test_vm_lib_ganha_de_arquivo_local(tmp_path):
     assert "LIB" in r.stdout and "ARQUIVO_LOCAL" not in r.stdout, r.stdout + r.stderr
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_dois_motores_batem(tmp_path):
     """A saída tem que ser IDÊNTICA nos dois motores (paridade)."""
     home, entry = _cenario(tmp_path)

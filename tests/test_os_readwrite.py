@@ -9,6 +9,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL = RAIZ / "pool"
+assert POOL.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 SRC = RAIZ / "src"
 
 # escreve num subdiretório inexistente (writeFile cria a pasta pai) e lê de volta
@@ -38,6 +39,5 @@ def test_interp(tmp_path):
     _confere(_run([sys.executable, "-m", "poolscript"], tmp_path, "a.ps"), tmp_path)
 
 
-@pytest.mark.skipif(not POOL.exists(), reason="binário pool não compilado")
 def test_vm(tmp_path):
     _confere(_run([str(POOL)], tmp_path, "b.ps"), tmp_path)

@@ -14,6 +14,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 
@@ -39,7 +40,6 @@ REPR_VAZIA = (
 )
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 @pytest.mark.parametrize("src,esperado", [
     (REPR, "<U {'nome': 'ana', 'idade': 30}>"),
     (REPR_VAZIA, "<R {}>"),
@@ -62,7 +62,6 @@ ERROS = [
 ]
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 @pytest.mark.parametrize("src,trecho", ERROS)
 def test_mensagem_erro_paridade(src, trecho, tmp_path):
     # roda os dois; ambos devem falhar e conter o mesmo trecho na saída de erro

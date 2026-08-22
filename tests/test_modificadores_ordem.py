@@ -13,6 +13,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL = RAIZ / "pool"
+assert POOL.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 SRC = RAIZ / "src"
 
 CASOS = [
@@ -50,7 +51,6 @@ def test_ordem_livre_interp(src, esperado, tmp_path):
     assert _interp(src, tmp_path) == esperado
 
 
-@pytest.mark.skipif(not POOL.exists(), reason="binário pool não compilado")
 @pytest.mark.parametrize("src,esperado", CASOS)
 def test_ordem_livre_vm(src, esperado, tmp_path):
     assert _vm(src, tmp_path) == esperado

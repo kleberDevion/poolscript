@@ -23,7 +23,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 POOL = RAIZ / "pool"
 SRC = RAIZ / "src"
 
-pytestmark = pytest.mark.skipif(not POOL.exists(), reason="binário pool não compilado")
+assert POOL.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 
 ALVO = """\
 import sys, time

@@ -58,6 +58,15 @@
 #include <sys/eventfd.h>
 #include <pthread.h>
 #include <ucontext.h>
+/* lib sockets (espelho do módulo socket do Python) */
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <net/if.h>
+#include <fcntl.h>
 #include <signal.h>
 #include <dirent.h>
 #include <sys/wait.h>
@@ -154,8 +163,10 @@ typedef enum {
     OBJ_GUZ_WID,   /* guzer window/button/popup — objeto de tela nativo */
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
     OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
+    OBJ_SOCKET,    /* lib sockets — espelho do socket.socket do Python */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
+
 
 typedef struct Obj {
     ObjType      type;
@@ -243,6 +254,15 @@ typedef struct {
     Value    instancia;
     int32_t  proto;
 } PSBound;
+/* lib `sockets`: o objeto socket cru (TCP/UDP/UNIX). O espelho é 1:1 com o
+ * Python: bind/listen/accept/connect/send/recv/..., endereço = tup
+ * (host, porta), recv devolve bytes. I/O bloqueante cede via fib_offload. */
+typedef struct {
+    Obj    obj;
+    int    fd;         /* -1 = fechado ou detach() */
+    int    familia, tipo, proto;
+    double timeout;    /* segundos; < 0 = bloqueante (None, default) */
+} PSSocket;
 
 /* `"ab".upper` — método nativo já preso ao valor de origem.
  *
@@ -263,7 +283,7 @@ enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_UNIV, T_MET_ARQ,
        T_MET_JINKER, T_MET_JCORS, T_MET_JREG, T_MET_JRESP, T_MET_JPROXY,
        T_MET_JUPLOAD, T_MET_JSOCKNS, T_MET_JEMIT, T_MET_JCHAN, T_MET_WSCONN,
        T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE,
-       T_MET_GUZ_UI, T_MET_GUZ_WID };
+       T_MET_GUZ_UI, T_MET_GUZ_WID, T_MET_SOCKET };
 
 /* Módulo nativo: um nome e uma tabela de membros. Não tem estado, então o
  * objeto guarda só o índice do descritor — dois `import json` no mesmo
@@ -688,6 +708,8 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define COMO_GER(v)    ((PSGerador*)(v).as.obj)
 #define EH_FUTURO(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_FUTURO)
 #define COMO_FUTURO(v) ((PSFuturo*)(v).as.obj)
+#define EH_SOCKET(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_SOCKET)
+#define COMO_SOCKET(v) ((PSSocket*)(v).as.obj)
 #define EH_ARQUIVO(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_ARQUIVO)
 #define COMO_ARQ(v)    ((PSArquivo*)(v).as.obj)
 #define EH_MODPS(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_MODULO_PS)
@@ -1340,7 +1362,14 @@ static void marca_valor(VM *vm, const Value *v)
  * GC_UNSET (=0) é "não declarado": o check de boot (gc_valida_tabela) ABORTA
  * se qualquer tipo ficar assim. Assim, adicionar um ObjType obriga a declarar. */
 typedef enum { GC_UNSET = 0, GC_LEAF, GC_ONE, GC_FN } GcKind;
-typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *); } GcInfo;
+/* `fn`  = tracer (marca os filhos).
+ * `tam` = tamanho FIXO do objeto, descontado de vm->alocado no sweep (0 quando o
+ *         tamanho é variável — aí o `fin` faz a conta).
+ * `fin` = finalizer: libera os buffers C do objeto (e, se `tam`==0, também faz o
+ *         `vm->alocado -=`). Centraliza o cleanup que antes era um `if/else`
+ *         gigante em libera_obj (os "garis" espalhados). NULL = nada a liberar. */
+typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *);
+                 size_t tam; void (*fin)(VM *, Obj *); } GcInfo;
 
 /* `async action` — resultado pendente. A fibra que o produz vive no pool de
  * fibras (marcada por fib_marca_gc enquanto `usada`); aqui marcamos só o valor
@@ -1420,56 +1449,142 @@ static void gct_guz_ui(VM *vm, Obj *o) {
     for (int i = 0; i < u->nfilhos; i++) marca_valor(vm, &u->filhos[i]);
 }
 
+/* ── finalizers (Fase 1: migração do `if/else` de libera_obj pra tabela) ────
+ * Cada um libera os buffers C do objeto. Quando o tamanho é VARIÁVEL (string,
+ * list, dict, gerador), o finalizer também faz o `vm->alocado -=` (a entrada põe
+ * tam=0); quando é fixo, o `tam` da tabela cuida da conta e o finalizer só
+ * libera os buffers internos. */
+static void fin_str(VM *vm, Obj *o) {        /* STRING e BYTES (tam variável) */
+    PSString *s = (PSString *)o;
+    vm->alocado -= sizeof(PSString) + (size_t)s->len + 1;
+}
+static void fin_seq(VM *vm, Obj *o) {        /* LIST e TUPLE (tam variável) */
+    PSList *l = (PSList *)o;
+    vm->alocado -= sizeof(PSList) + sizeof(Value) * (size_t)l->cap;
+    free(l->itens);
+}
+static void fin_dict(VM *vm, Obj *o) {       /* DICT (tam variável) */
+    PSDict *d = (PSDict *)o;
+    vm->alocado -= sizeof(PSDict) + sizeof(Entrada) * (size_t)d->cap
+                 + sizeof(int32_t) * (size_t)d->icap;
+    free(d->entradas);
+    free(d->indices);
+}
+static void fin_gerador(VM *vm, Obj *o) {    /* GERADOR (tam variável) */
+    PSGerador *g = (PSGerador *)o;
+    vm->alocado -= sizeof(PSGerador) + sizeof(Value) * (size_t)(g->nlocais + g->npilha);
+    free(g->locais);
+    free(g->pilha);
+    free(g->handlers);
+}
+static void fin_class(VM *vm, Obj *o) {      /* CLASS (tam fixo; só buffers) */
+    (void)vm;
+    PSClass *cl = (PSClass *)o;
+    free(cl->nome);
+    for (int32_t i = 0; i < cl->nmetodos; i++) free(cl->met_nomes[i]);
+    free(cl->met_nomes);
+    free(cl->met_protos);
+    for (int32_t i = 0; i < cl->npriv; i++) free(cl->priv_nomes[i]);
+    free(cl->priv_nomes);
+    free(cl->pais);
+}
+static void fin_enum(VM *vm, Obj *o) {       /* nome/nomes são do descritor; só valores é por-instância */
+    (void)vm;
+    free(((PSEnum *)o)->valores);
+}
+static void fin_moduleps(VM *vm, Obj *o) {
+    (void)vm;
+    PSModuloPS *m = (PSModuloPS *)o;
+    for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
+    free(m->nomes);
+    free(m->nome);
+}
+static void fin_bigint(VM *vm, Obj *o) {
+    (void)vm;
+    mpz_clear(((PSBigInt *)o)->v);
+}
+static void fin_poolfile(VM *vm, Obj *o) {
+    (void)vm;
+    PSPoolFile *f = (PSPoolFile *)o;
+    free(f->caminho); free(f->nome); free(f->ext);
+}
+static void fin_socket(VM *vm, Obj *o) {   /* fecha o que o usuário esqueceu */
+    (void)vm;
+    PSSocket *s = (PSSocket *)o;
+    if (s->fd >= 0) close(s->fd);
+}
+
+/* Finalizers de lib/servidor (lote 2): DEFINIDOS mais abaixo, junto do
+ * libera_obj, porque usam tipos/funções de lib que só existem lá. Aqui só o
+ * forward-declare pra a GC_INFO poder referenciá-los. Cada um faz o
+ * `vm->alocado -=` (a entrada põe tam=0) + libera os buffers. */
+static void fin_arquivo(VM *, Obj *);   static void fin_sqlcur(VM *, Obj *);
+static void fin_sqlconn(VM *, Obj *);   static void fin_mailsrv(VM *, Obj *);
+static void fin_mailrd(VM *, Obj *);    static void fin_response(VM *, Obj *);
+static void fin_qrfile(VM *, Obj *);    static void fin_manpu_res(VM *, Obj *);
+static void fin_dbconn(VM *, Obj *);    static void fin_dbcur(VM *, Obj *);
+static void fin_mongoconn(VM *, Obj *); static void fin_mongocol(VM *, Obj *);
+static void fin_mailmsg(VM *, Obj *);   static void fin_guz_ui(VM *, Obj *);
+static void fin_guz_wid(VM *, Obj *);   static void fin_jinker(VM *, Obj *);
+static void fin_jcors(VM *, Obj *);     static void fin_jreg(VM *, Obj *);
+static void fin_jresp(VM *, Obj *);     static void fin_jreq(VM *, Obj *);
+static void fin_jproxy(VM *, Obj *);    static void fin_jupload(VM *, Obj *);
+static void fin_jsockns(VM *, Obj *);   static void fin_jemit(VM *, Obj *);
+static void fin_jchan(VM *, Obj *);     static void fin_jchst(VM *, Obj *);
+static void fin_wsconn(VM *, Obj *);    static void fin_qrbuild(VM *, Obj *);
+static void fin_qrimage(VM *, Obj *);   static void fin_manpu_file(VM *, Obj *);
+
 /* A tabela: TODO tipo aparece aqui. Esquecer um => GC_UNSET => aborta no boot. */
 static const GcInfo GC_INFO[OBJ__COUNT] = {
-    [OBJ_STRING]     = { GC_LEAF, 0, NULL },
-    [OBJ_LIST]       = { GC_FN,   0, gct_seq },
-    [OBJ_TUPLE]      = { GC_FN,   0, gct_seq },
-    [OBJ_DICT]       = { GC_FN,   0, gct_dict },
-    [OBJ_CLASS]      = { GC_FN,   0, gct_class },
-    [OBJ_INSTANCE]   = { GC_FN,   0, gct_instance },
-    [OBJ_BOUND]      = { GC_ONE,  offsetof(PSBound, instancia), NULL },
-    [OBJ_METODO_NAT] = { GC_ONE,  offsetof(PSMetodoNat, alvo), NULL },
-    [OBJ_MODULO]     = { GC_LEAF, 0, NULL },
-    [OBJ_NATIVA]     = { GC_LEAF, 0, NULL },
-    [OBJ_MODEL]      = { GC_LEAF, 0, NULL },
-    [OBJ_ENUM]       = { GC_FN,   0, gct_enum },
-    [OBJ_GERADOR]    = { GC_FN,   0, gct_gerador },
-    [OBJ_FUTURO]     = { GC_FN,   0, gct_futuro },
-    [OBJ_ARQUIVO]    = { GC_LEAF, 0, NULL },   /* globais vivem em vm->globals (raiz) */
-    [OBJ_MODULO_PS]  = { GC_LEAF, 0, NULL },
-    [OBJ_BYTES]      = { GC_LEAF, 0, NULL },
-    [OBJ_SQLCONN]    = { GC_LEAF, 0, NULL },
-    [OBJ_SQLCUR]     = { GC_ONE,  offsetof(PSSqlCur, conn), NULL },
-    [OBJ_MAILSRV]    = { GC_LEAF, 0, NULL },
-    [OBJ_MAILMSG]    = { GC_LEAF, 0, NULL },
-    [OBJ_MAILRD]     = { GC_LEAF, 0, NULL },
-    [OBJ_RESPONSE]   = { GC_FN,   0, gct_response },
-    [OBJ_QRFILE]     = { GC_ONE,  offsetof(PSQRFile, conteudo), NULL },
-    [OBJ_MANPU_RES]  = { GC_LEAF, 0, NULL },
-    [OBJ_DBCONN]     = { GC_LEAF, 0, NULL },
-    [OBJ_DBCUR]      = { GC_ONE,  offsetof(PSDbCursor, conexao), NULL },
-    [OBJ_MONGOCONN]  = { GC_LEAF, 0, NULL },
-    [OBJ_MONGOCOL]   = { GC_ONE,  offsetof(PSMongoCol, conexao), NULL },
-    [OBJ_POOLFILE]   = { GC_ONE,  offsetof(PSPoolFile, conteudo), NULL },
-    [OBJ_JINKER]     = { GC_FN,   0, gct_jinker },
-    [OBJ_JCORS]      = { GC_LEAF, 0, NULL },
-    [OBJ_JREG]       = { GC_FN,   0, gct_jreg },
-    [OBJ_JRESP]      = { GC_FN,   0, gct_jresp },
-    [OBJ_JREQ]       = { GC_FN,   0, gct_jreq },
-    [OBJ_JPROXY]     = { GC_LEAF, 0, NULL },
-    [OBJ_JUPLOAD]    = { GC_ONE,  offsetof(PSJUpload, dados), NULL },
-    [OBJ_JSOCKNS]    = { GC_ONE,  offsetof(PSJSockNs, app), NULL },
-    [OBJ_JEMIT]      = { GC_ONE,  offsetof(PSJEmit, app), NULL },
-    [OBJ_JCHAN]      = { GC_ONE,  offsetof(PSJChan, app), NULL },
-    [OBJ_JCHST]      = { GC_LEAF, 0, NULL },
-    [OBJ_WSCONN]     = { GC_ONE,  offsetof(PSWsConn, on_msg), NULL },
-    [OBJ_QRBUILD]    = { GC_LEAF, 0, NULL },
-    [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL },
-    [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL },
-    [OBJ_GUZ_UI]     = { GC_FN,   0, gct_guz_ui },
-    [OBJ_GUZ_WID]    = { GC_ONE,  offsetof(PSGuzWid, handler), NULL },
-    [OBJ_BIGINT]     = { GC_LEAF, 0, NULL },
+    [OBJ_STRING]     = { GC_LEAF, 0, NULL, 0, fin_str },
+    [OBJ_LIST]       = { GC_FN,   0, gct_seq, 0, fin_seq },
+    [OBJ_TUPLE]      = { GC_FN,   0, gct_seq, 0, fin_seq },
+    [OBJ_DICT]       = { GC_FN,   0, gct_dict, 0, fin_dict },
+    [OBJ_CLASS]      = { GC_FN,   0, gct_class, sizeof(PSClass), fin_class },
+    [OBJ_INSTANCE]   = { GC_FN,   0, gct_instance, sizeof(PSInstance), NULL },
+    [OBJ_BOUND]      = { GC_ONE,  offsetof(PSBound, instancia), NULL, sizeof(PSBound), NULL },
+    [OBJ_METODO_NAT] = { GC_ONE,  offsetof(PSMetodoNat, alvo), NULL, sizeof(PSMetodoNat), NULL },
+    [OBJ_MODULO]     = { GC_LEAF, 0, NULL, sizeof(PSModulo), NULL },
+    [OBJ_NATIVA]     = { GC_LEAF, 0, NULL, sizeof(PSNativa), NULL },
+    [OBJ_MODEL]      = { GC_LEAF, 0, NULL, sizeof(PSModel), NULL },
+    [OBJ_ENUM]       = { GC_FN,   0, gct_enum, sizeof(PSEnum), fin_enum },
+    [OBJ_GERADOR]    = { GC_FN,   0, gct_gerador, 0, fin_gerador },
+    [OBJ_FUTURO]     = { GC_FN,   0, gct_futuro, sizeof(PSFuturo), NULL },   /* o libera_obj ANTIGO esquecia o alocado-= do futuro (leak de conta); agora conta */
+    [OBJ_SOCKET]     = { GC_LEAF, 0, NULL, sizeof(PSSocket), fin_socket },
+    [OBJ_ARQUIVO]    = { GC_LEAF, 0, NULL, 0, fin_arquivo },   /* globais vivem em vm->globals (raiz) */
+    [OBJ_MODULO_PS]  = { GC_LEAF, 0, NULL, sizeof(PSModuloPS), fin_moduleps },
+    [OBJ_BYTES]      = { GC_LEAF, 0, NULL, 0, fin_str },
+    [OBJ_SQLCONN]    = { GC_LEAF, 0, NULL, 0, fin_sqlconn },
+    [OBJ_SQLCUR]     = { GC_ONE,  offsetof(PSSqlCur, conn), NULL, 0, fin_sqlcur },
+    [OBJ_MAILSRV]    = { GC_LEAF, 0, NULL, 0, fin_mailsrv },
+    [OBJ_MAILMSG]    = { GC_LEAF, 0, NULL, 0, fin_mailmsg },
+    [OBJ_MAILRD]     = { GC_LEAF, 0, NULL, 0, fin_mailrd },
+    [OBJ_RESPONSE]   = { GC_FN,   0, gct_response, 0, fin_response },
+    [OBJ_QRFILE]     = { GC_ONE,  offsetof(PSQRFile, conteudo), NULL, 0, fin_qrfile },
+    [OBJ_MANPU_RES]  = { GC_LEAF, 0, NULL, 0, fin_manpu_res },
+    [OBJ_DBCONN]     = { GC_LEAF, 0, NULL, 0, fin_dbconn },
+    [OBJ_DBCUR]      = { GC_ONE,  offsetof(PSDbCursor, conexao), NULL, 0, fin_dbcur },
+    [OBJ_MONGOCONN]  = { GC_LEAF, 0, NULL, 0, fin_mongoconn },
+    [OBJ_MONGOCOL]   = { GC_ONE,  offsetof(PSMongoCol, conexao), NULL, 0, fin_mongocol },
+    [OBJ_POOLFILE]   = { GC_ONE,  offsetof(PSPoolFile, conteudo), NULL, sizeof(PSPoolFile), fin_poolfile },
+    [OBJ_JINKER]     = { GC_FN,   0, gct_jinker, 0, fin_jinker },
+    [OBJ_JCORS]      = { GC_LEAF, 0, NULL, 0, fin_jcors },
+    [OBJ_JREG]       = { GC_FN,   0, gct_jreg, 0, fin_jreg },
+    [OBJ_JRESP]      = { GC_FN,   0, gct_jresp, 0, fin_jresp },
+    [OBJ_JREQ]       = { GC_FN,   0, gct_jreq, 0, fin_jreq },
+    [OBJ_JPROXY]     = { GC_LEAF, 0, NULL, 0, fin_jproxy },
+    [OBJ_JUPLOAD]    = { GC_ONE,  offsetof(PSJUpload, dados), NULL, 0, fin_jupload },
+    [OBJ_JSOCKNS]    = { GC_ONE,  offsetof(PSJSockNs, app), NULL, 0, fin_jsockns },
+    [OBJ_JEMIT]      = { GC_ONE,  offsetof(PSJEmit, app), NULL, 0, fin_jemit },
+    [OBJ_JCHAN]      = { GC_ONE,  offsetof(PSJChan, app), NULL, 0, fin_jchan },
+    [OBJ_JCHST]      = { GC_LEAF, 0, NULL, 0, fin_jchst },
+    [OBJ_WSCONN]     = { GC_ONE,  offsetof(PSWsConn, on_msg), NULL, 0, fin_wsconn },
+    [OBJ_QRBUILD]    = { GC_LEAF, 0, NULL, 0, fin_qrbuild },
+    [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL, 0, fin_qrimage },
+    [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL, 0, fin_manpu_file },
+    [OBJ_GUZ_UI]     = { GC_FN,   0, gct_guz_ui, 0, fin_guz_ui },
+    [OBJ_GUZ_WID]    = { GC_ONE,  offsetof(PSGuzWid, handler), NULL, 0, fin_guz_wid },
+    [OBJ_BIGINT]     = { GC_LEAF, 0, NULL, sizeof(PSBigInt), fin_bigint },
 };
 
 /* Boot: recusa qualquer ObjType que não declarou seu tracer (GC_UNSET).
@@ -1483,6 +1598,15 @@ static void gc_valida_tabela(void) {
         if (GC_INFO[t].kind == GC_UNSET) {
             fprintf(stderr, "ERRO FATAL: ObjType %d sem tracer de GC declarado "
                             "(adicione em GC_INFO[])\n", t);
+            abort();
+        }
+        /* O sweep é table-driven: cada tipo tem que dizer como libera — `tam`
+         * (tamanho fixo) OU `fin` (finalizer). Sem nenhum dos dois, o objeto
+         * vazaria os buffers e a conta de vm->alocado desanda. Aborta no boot,
+         * igual ao tracer — um ObjType novo é obrigado a declarar o cleanup. */
+        if (GC_INFO[t].tam == 0 && GC_INFO[t].fin == NULL) {
+            fprintf(stderr, "ERRO FATAL: ObjType %d sem finalizer/tam de GC "
+                            "(adicione tam ou fin em GC_INFO[])\n", t);
             abort();
         }
     }
@@ -1499,199 +1623,165 @@ static void percorre_cinzas(VM *vm)
     }
 }
 
+/* ── finalizers de lib/servidor (Fase 1, lote 2) ────────────────────────────
+ * Definidos aqui (e não junto de fin_str) porque usam tipos/funções de lib que
+ * só existem a esta altura do arquivo. Cada um faz o `vm->alocado -=` (a entrada
+ * na tabela põe tam=0) + libera os buffers internos. */
+static void fin_arquivo(VM *vm, Obj *o) {
+    PSArquivo *a = (PSArquivo *)o;
+    if (!a->fechado && a->f) fclose(a->f);   /* fecha o que o usuário esqueceu */
+    vm->alocado -= sizeof(PSArquivo);
+}
+static void fin_sqlcur(VM *vm, Obj *o) {
+    PSSqlCur *cu = (PSSqlCur *)o;
+    if (cu->stmt) sqlite3_finalize(cu->stmt);
+    vm->alocado -= sizeof(PSSqlCur);
+}
+static void fin_sqlconn(VM *vm, Obj *o) {
+    PSSqlConn *cn = (PSSqlConn *)o;
+    if (!cn->fechado && cn->db) sqlite3_close_v2(cn->db);   /* v2 tolera stmt vivo */
+    vm->alocado -= sizeof(PSSqlConn);
+}
+static void fin_mailsrv(VM *vm, Obj *o) {
+    PSMailSrv *m = (PSMailSrv *)o;
+    if (m->conn) ps_mail_solta(m->conn);   /* socket órfão: só fecha */
+    free(m->user);
+    vm->alocado -= sizeof(PSMailSrv);
+}
+static void fin_mailrd(VM *vm, Obj *o) {
+    PSMailMsg_reader *m = (PSMailMsg_reader *)o;
+    if (m->conn) ps_mail_solta(m->conn);
+    vm->alocado -= sizeof(PSMailMsg_reader);
+}
+static void fin_response(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSResponse); }
+static void fin_qrfile(VM *vm, Obj *o) {
+    PSQRFile *q = (PSQRFile *)o;
+    free(q->nome); free(q->ext);
+    vm->alocado -= sizeof(PSQRFile);
+}
+static void fin_manpu_res(VM *vm, Obj *o) {
+    free(((PSManpuRes *)o)->status);
+    vm->alocado -= sizeof(PSManpuRes);
+}
+static void fin_dbconn(VM *vm, Obj *o) {
+    PSDbConexao *cn = (PSDbConexao *)o;
+    if (!cn->fechado && cn->conn) ps_db_solta(cn->conn);
+    else free(cn->conn);
+    vm->alocado -= sizeof(PSDbConexao);
+}
+static void fin_dbcur(VM *vm, Obj *o) {
+    ps_db_res_libera(&((PSDbCursor *)o)->res);
+    vm->alocado -= sizeof(PSDbCursor);
+}
+static void fin_mongoconn(VM *vm, Obj *o) {
+    PSMongoConn *cn = (PSMongoConn *)o;
+    if (!cn->fechado && cn->m) ps_mongo_fecha(cn->m);
+    vm->alocado -= sizeof(PSMongoConn);
+}
+static void fin_mongocol(VM *vm, Obj *o) {
+    free(((PSMongoCol *)o)->nome);
+    vm->alocado -= sizeof(PSMongoCol);
+}
+static void fin_mailmsg(VM *vm, Obj *o) {
+    PSMailMsg *m = (PSMailMsg *)o;
+    for (int k = 0; k < m->ncabs; k++) { free(m->cabs[k].nome); free(m->cabs[k].valor); }
+    free(m->cabs);
+    for (int k = 0; k < m->npartes; k++) { free(m->partes[k].ct); free(m->partes[k].dados); }
+    free(m->partes);
+    vm->alocado -= sizeof(PSMailMsg);
+}
+static void fin_guz_ui(VM *vm, Obj *o) {
+    PSGuzUI *u = (PSGuzUI *)o;
+    free(u->titulo); free(u->icon); free(u->filhos);
+    vm->alocado -= sizeof(PSGuzUI);
+}
+static void fin_guz_wid(VM *vm, Obj *o) {
+    free(((PSGuzWid *)o)->text);
+    free(((PSGuzWid *)o)->placeholder);
+    vm->alocado -= sizeof(PSGuzWid);
+}
+static void fin_jinker(VM *vm, Obj *o) {
+    PSJinker *j = (PSJinker *)o;
+    for (int i = 0; i < j->nrotas; i++) {
+        free(j->rotas[i].path);
+        for (int k = 0; k < j->rotas[i].nmetodos; k++) free(j->rotas[i].metodos[k]);
+        free(j->rotas[i].metodos);
+        for (int k = 0; k < j->rotas[i].nauth; k++) free(j->rotas[i].auth[k]);
+        free(j->rotas[i].auth);
+    }
+    free(j->rotas);
+    for (int i = 0; i < j->nsocks; i++) free(j->socks[i].path);
+    free(j->socks);
+    for (int i = 0; i < j->nws; i++) free(j->ws[i].sala);
+    free(j->ws);
+    for (int i = 0; i < j->nhits; i++) free(j->hits[i].ts);
+    free(j->hits);
+    free(j->bans);
+    free(j->nome); free(j->static_folder); free(j->static_url); free(j->route_prefix); free(j->cert); free(j->key);
+    vm->alocado -= sizeof(PSJinker);
+}
+static void fin_jcors(VM *vm, Obj *o) {
+    PSJCors *c = (PSJCors *)o;
+    for (int i = 0; i < c->nmetodos; i++) free(c->metodos[i]);
+    free(c->metodos);
+    for (int i = 0; i < c->norigens; i++) free(c->origens[i]);
+    free(c->origens);
+    vm->alocado -= sizeof(PSJCors);
+}
+static void fin_jreg(VM *vm, Obj *o) {
+    PSJReg *r = (PSJReg *)o;
+    free(r->path);
+    for (int i = 0; i < r->nmetodos; i++) free(r->metodos[i]);
+    free(r->metodos);
+    for (int i = 0; i < r->nauth; i++) free(r->auth[i]);
+    free(r->auth);
+    vm->alocado -= sizeof(PSJReg);
+}
+static void fin_jresp(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJResp); }
+static void fin_jreq(VM *vm, Obj *o) {
+    free(((PSJReq *)o)->path);
+    vm->alocado -= sizeof(PSJReq);
+}
+static void fin_jproxy(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJProxy); }
+static void fin_jupload(VM *vm, Obj *o) {
+    PSJUpload *u = (PSJUpload *)o;
+    free(u->nome); free(u->ctype); free(u->ext);
+    vm->alocado -= sizeof(PSJUpload);
+}
+static void fin_jsockns(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJSockNs); }
+static void fin_jemit(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJEmit); }
+static void fin_jchan(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJChan); }
+static void fin_jchst(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSJChSt); }
+static void fin_wsconn(VM *vm, Obj *o) {
+    PSWsConn *w = (PSWsConn *)o;
+    if (w->conn) ps_jk_close(w->conn);
+    free(w->url);
+    vm->alocado -= sizeof(PSWsConn);
+}
+static void fin_qrbuild(VM *vm, Obj *o) {
+    free(((PSQRBuild *)o)->dados);
+    vm->alocado -= sizeof(PSQRBuild);
+}
+static void fin_qrimage(VM *vm, Obj *o) {
+    PSQRImage *q = (PSQRImage *)o;
+    free(q->dados); free(q->cor); free(q->fundo); free(q->nome);
+    vm->alocado -= sizeof(PSQRImage);
+}
+static void fin_manpu_file(VM *vm, Obj *o) {
+    PSManpuFile *m = (PSManpuFile *)o;
+    free(m->caminho); free(m->texto);
+    ps_grade_libera(&m->grade);
+    vm->alocado -= sizeof(PSManpuFile);
+}
+
+/* Sweep 100%% table-driven: `tam` desconta o tamanho fixo (0 quando variável) e
+ * `fin` libera os buffers internos (e faz a conta do variável). O antigo
+ * `if/else` gigante por tipo virou os finalizers acima. */
 static void libera_obj(VM *vm, Obj *o)
 {
-    if (o->type == OBJ_STRING || o->type == OBJ_BYTES) {
-        PSString *s = (PSString *)o;
-        vm->alocado -= sizeof(PSString) + (size_t)s->len + 1;
-    } else if (o->type == OBJ_LIST || o->type == OBJ_TUPLE) {
-        PSList *l = (PSList *)o;
-        vm->alocado -= sizeof(PSList) + sizeof(Value) * (size_t)l->cap;
-        free(l->itens);
-    } else if (o->type == OBJ_DICT) {
-        PSDict *d = (PSDict *)o;
-        vm->alocado -= sizeof(PSDict) + sizeof(Entrada) * (size_t)d->cap
-                     + sizeof(int32_t) * (size_t)d->icap;
-        free(d->entradas);
-        free(d->indices);
-    } else if (o->type == OBJ_CLASS) {
-        PSClass *cl = (PSClass *)o;
-        vm->alocado -= sizeof(PSClass);
-        free(cl->nome);
-        for (int32_t i = 0; i < cl->nmetodos; i++) free(cl->met_nomes[i]);
-        free(cl->met_nomes);
-        free(cl->met_protos);
-        for (int32_t i = 0; i < cl->npriv; i++) free(cl->priv_nomes[i]);
-        free(cl->priv_nomes);
-        free(cl->pais);
-    } else if (o->type == OBJ_INSTANCE) {
-        vm->alocado -= sizeof(PSInstance);
-    } else if (o->type == OBJ_BOUND) {
-        vm->alocado -= sizeof(PSBound);
-    } else if (o->type == OBJ_METODO_NAT) {
-        vm->alocado -= sizeof(PSMetodoNat);
-    } else if (o->type == OBJ_MODULO) {
-        vm->alocado -= sizeof(PSModulo);
-    } else if (o->type == OBJ_NATIVA) {
-        vm->alocado -= sizeof(PSNativa);
-    } else if (o->type == OBJ_MODEL) {
-        vm->alocado -= sizeof(PSModel);
-    } else if (o->type == OBJ_ENUM) {
-        /* nome/nomes apontam pro descritor do VM; só valores é por-instância */
-        free(((PSEnum *)o)->valores);
-        vm->alocado -= sizeof(PSEnum);
-    } else if (o->type == OBJ_POOLFILE) {
-        PSPoolFile *f = (PSPoolFile *)o;
-        free(f->caminho); free(f->nome); free(f->ext);
-        vm->alocado -= sizeof(PSPoolFile);
-    } else if (o->type == OBJ_MODULO_PS) {
-        PSModuloPS *m = (PSModuloPS *)o;
-        for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
-        free(m->nomes);
-        free(m->nome);
-        vm->alocado -= sizeof(PSModuloPS);
-    } else if (o->type == OBJ_BIGINT) {
-        mpz_clear(((PSBigInt *)o)->v);
-        vm->alocado -= sizeof(PSBigInt);
-    } else if (o->type == OBJ_ARQUIVO) {
-        PSArquivo *a = (PSArquivo *)o;
-        /* fecha o que o usuário esqueceu: o processo pode continuar rodando */
-        if (!a->fechado && a->f) fclose(a->f);
-        vm->alocado -= sizeof(PSArquivo);
-    } else if (o->type == OBJ_SQLCUR) {
-        PSSqlCur *cu = (PSSqlCur *)o;
-        if (cu->stmt) sqlite3_finalize(cu->stmt);
-        vm->alocado -= sizeof(PSSqlCur);
-    } else if (o->type == OBJ_SQLCONN) {
-        PSSqlConn *cn = (PSSqlConn *)o;
-        /* v2 tolera statement vivo: adia o fechamento em vez de corromper */
-        if (!cn->fechado && cn->db) sqlite3_close_v2(cn->db);
-        vm->alocado -= sizeof(PSSqlConn);
-    } else if (o->type == OBJ_MAILSRV) {
-        PSMailSrv *m = (PSMailSrv *)o;
-        if (m->conn) ps_mail_solta(m->conn);   /* socket órfão: só fecha */
-        free(m->user);
-        vm->alocado -= sizeof(PSMailSrv);
-    } else if (o->type == OBJ_MAILRD) {
-        PSMailMsg_reader *m = (PSMailMsg_reader *)o;
-        if (m->conn) ps_mail_solta(m->conn);
-        vm->alocado -= sizeof(PSMailMsg_reader);
-    } else if (o->type == OBJ_RESPONSE) {
-        vm->alocado -= sizeof(PSResponse);
-    } else if (o->type == OBJ_QRFILE) {
-        PSQRFile *q = (PSQRFile *)o;
-        free(q->nome); free(q->ext);
-        vm->alocado -= sizeof(PSQRFile);
-    } else if (o->type == OBJ_MANPU_RES) {
-        free(((PSManpuRes *)o)->status);
-        vm->alocado -= sizeof(PSManpuRes);
-    } else if (o->type == OBJ_DBCONN) {
-        PSDbConexao *cn = (PSDbConexao *)o;
-        if (!cn->fechado && cn->conn) ps_db_solta(cn->conn);
-        else free(cn->conn);
-        vm->alocado -= sizeof(PSDbConexao);
-    } else if (o->type == OBJ_DBCUR) {
-        ps_db_res_libera(&((PSDbCursor *)o)->res);
-        vm->alocado -= sizeof(PSDbCursor);
-    } else if (o->type == OBJ_MONGOCONN) {
-        PSMongoConn *cn = (PSMongoConn *)o;
-        if (!cn->fechado && cn->m) ps_mongo_fecha(cn->m);
-        vm->alocado -= sizeof(PSMongoConn);
-    } else if (o->type == OBJ_MONGOCOL) {
-        free(((PSMongoCol *)o)->nome);
-        vm->alocado -= sizeof(PSMongoCol);
-    } else if (o->type == OBJ_MAILMSG) {
-        PSMailMsg *m = (PSMailMsg *)o;
-        for (int k = 0; k < m->ncabs; k++) { free(m->cabs[k].nome); free(m->cabs[k].valor); }
-        free(m->cabs);
-        for (int k = 0; k < m->npartes; k++) { free(m->partes[k].ct); free(m->partes[k].dados); }
-        free(m->partes);
-        vm->alocado -= sizeof(PSMailMsg);
-    } else if (o->type == OBJ_GERADOR) {
-        PSGerador *g = (PSGerador *)o;
-        vm->alocado -= sizeof(PSGerador) + sizeof(Value) * (size_t)(g->nlocais + g->npilha);
-        free(g->locais);
-        free(g->pilha);
-        free(g->handlers);
-    } else if (o->type == OBJ_GUZ_UI) {
-        PSGuzUI *u = (PSGuzUI *)o;
-        free(u->titulo); free(u->icon); free(u->filhos);
-        vm->alocado -= sizeof(PSGuzUI);
-    } else if (o->type == OBJ_GUZ_WID) {
-        free(((PSGuzWid *)o)->text);
-        free(((PSGuzWid *)o)->placeholder);
-        vm->alocado -= sizeof(PSGuzWid);
-    } else if (o->type == OBJ_JINKER) {
-        PSJinker *j = (PSJinker *)o;
-        for (int i = 0; i < j->nrotas; i++) {
-            free(j->rotas[i].path);
-            for (int k = 0; k < j->rotas[i].nmetodos; k++) free(j->rotas[i].metodos[k]);
-            free(j->rotas[i].metodos);
-            for (int k = 0; k < j->rotas[i].nauth; k++) free(j->rotas[i].auth[k]);
-            free(j->rotas[i].auth);
-        }
-        free(j->rotas);
-        for (int i = 0; i < j->nsocks; i++) free(j->socks[i].path);
-        free(j->socks);
-        for (int i = 0; i < j->nws; i++) free(j->ws[i].sala);
-        free(j->ws);
-        for (int i = 0; i < j->nhits; i++) free(j->hits[i].ts);
-        free(j->hits);
-        free(j->bans);
-        free(j->nome); free(j->static_folder); free(j->static_url); free(j->route_prefix); free(j->cert); free(j->key);
-        vm->alocado -= sizeof(PSJinker);
-    } else if (o->type == OBJ_JCORS) {
-        PSJCors *c = (PSJCors *)o;
-        for (int i = 0; i < c->nmetodos; i++) free(c->metodos[i]);
-        free(c->metodos);
-        for (int i = 0; i < c->norigens; i++) free(c->origens[i]);
-        free(c->origens);
-        vm->alocado -= sizeof(PSJCors);
-    } else if (o->type == OBJ_JREG) {
-        PSJReg *r = (PSJReg *)o;
-        free(r->path);
-        for (int i = 0; i < r->nmetodos; i++) free(r->metodos[i]);
-        free(r->metodos);
-        for (int i = 0; i < r->nauth; i++) free(r->auth[i]);
-        free(r->auth);
-        vm->alocado -= sizeof(PSJReg);
-    } else if (o->type == OBJ_JRESP) {
-        vm->alocado -= sizeof(PSJResp);
-    } else if (o->type == OBJ_JREQ) {
-        free(((PSJReq *)o)->path);
-        vm->alocado -= sizeof(PSJReq);
-    } else if (o->type == OBJ_JPROXY) {
-        vm->alocado -= sizeof(PSJProxy);
-    } else if (o->type == OBJ_JUPLOAD) {
-        PSJUpload *u = (PSJUpload *)o;
-        free(u->nome); free(u->ctype); free(u->ext);
-        vm->alocado -= sizeof(PSJUpload);
-    } else if (o->type == OBJ_JSOCKNS) {
-        vm->alocado -= sizeof(PSJSockNs);
-    } else if (o->type == OBJ_JEMIT) {
-        vm->alocado -= sizeof(PSJEmit);
-    } else if (o->type == OBJ_JCHAN) {
-        vm->alocado -= sizeof(PSJChan);
-    } else if (o->type == OBJ_JCHST) {
-        vm->alocado -= sizeof(PSJChSt);
-    } else if (o->type == OBJ_WSCONN) {
-        PSWsConn *w = (PSWsConn *)o;
-        if (w->conn) ps_jk_close(w->conn);
-        free(w->url);
-        vm->alocado -= sizeof(PSWsConn);
-    } else if (o->type == OBJ_QRBUILD) {
-        free(((PSQRBuild *)o)->dados);
-        vm->alocado -= sizeof(PSQRBuild);
-    } else if (o->type == OBJ_QRIMAGE) {
-        PSQRImage *q = (PSQRImage *)o;
-        free(q->dados); free(q->cor); free(q->fundo); free(q->nome);
-        vm->alocado -= sizeof(PSQRImage);
-    } else if (o->type == OBJ_MANPU_FILE) {
-        PSManpuFile *m = (PSManpuFile *)o;
-        free(m->caminho); free(m->texto);
-        ps_grade_libera(&m->grade);
-        vm->alocado -= sizeof(PSManpuFile);
-    }
+    const GcInfo *gi = &GC_INFO[o->type];
+    vm->alocado -= gi->tam;
+    if (gi->fin) gi->fin(vm, o);
     free(o);
 }
 
@@ -2232,6 +2322,11 @@ static void escreve_valor(const Value *v, int dentro)
                 PSWsConn *w = (PSWsConn *)v->as.obj;
                 printf("<WsConnection %s [%s]>", w->url,
                        w->conn ? "conectado" : "desconectado");
+            } else if (v->as.obj->type == OBJ_SOCKET) {
+                PSSocket *sk = (PSSocket *)v->as.obj;
+                if (sk->fd < 0) fputs("<socket fechado>", stdout);
+                else printf("<socket family=%d type=%d proto=%d fd=%d>",
+                            sk->familia, sk->tipo, sk->proto, sk->fd);
             } else if (v->as.obj->type == OBJ_QRBUILD) {
                 fputs("<PoolQRCode>", stdout);
             } else if (v->as.obj->type == OBJ_QRIMAGE) {
@@ -2307,6 +2402,12 @@ static void escreve_valor(const Value *v, int dentro)
  * ".0", string aninhada ganha aspas. Duplicar essa lógica faria a
  * interpolação divergir da impressão sem ninguém notar. */
 typedef struct { char *b; int n; int cap; } TxtBuf;
+
+/* TxtBuf TEMPORÁRIO com liberação automática na saída do escopo — mesma regra
+ * do SBUF_AUTO (ver o comentário lá): só pra buffer local cuja posse nunca sai
+ * da função; se transferir, zere t.b logo após. */
+static void txt_solta_auto(TxtBuf *t) { free(t->b); }
+#define TXTBUF_AUTO __attribute__((cleanup(txt_solta_auto))) TxtBuf
 
 static int txt_put(TxtBuf *t, const char *s, int n)
 {
@@ -2515,10 +2616,9 @@ static int devolve_texto(VM *vm, Value *out, const char *buf, int len)
 static int nativa_str(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "str", 1);
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria em str()"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria em str()"); }
     int r = devolve_texto(vm, out, t.b ? t.b : "", t.n);
-    free(t.b);
     return r;
 }
 
@@ -2675,6 +2775,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_QRBUILD:    t = "PoolQRCode"; break;
                 case OBJ_QRIMAGE:    t = "QRImage"; break;
                 case OBJ_MANPU_FILE: t = "ManpuFile"; break;
+                case OBJ_SOCKET:     t = "socket"; break;
                 case OBJ__COUNT:     break;   /* sentinela: nunca ocorre */
             }
             break;
@@ -3347,6 +3448,18 @@ static int cp_eh_branco(uint32_t c)
 /* Buffer de saída dos métodos que constroem texto. */
 typedef struct { char *b; int n; int cap; } SBuf;
 
+/* SBuf TEMPORÁRIO com liberação automática na saída do escopo (Fase 2 do
+ * refactor de memória): `SBUF_AUTO b = {0};` libera o .b sozinho em QUALQUER
+ * saída — return, MERRO/BERRO (que retornam), goto pra fora do bloco — o que
+ * elimina os `free(b.b)` espalhados por todo ramo de erro (e os leaks nos
+ * ramos que esqueciam). Regras:
+ *   - só pra buffer LOCAL cuja posse NUNCA sai da função (nova_string copia);
+ *   - se a posse é transferida em algum ramo, zere: `b.b = NULL; b.n = 0;`
+ *     logo após a transferência (free(NULL) é no-op no cleanup);
+ *   - atenção: cleanup NÃO roda em longjmp (só o ps_qr.c/libpng usa, isolado). */
+static void sb_solta(SBuf *s) { free(s->b); }
+#define SBUF_AUTO __attribute__((cleanup(sb_solta))) SBuf
+
 static int sb_grow(SBuf *s, int extra)
 {
     if (s->n + extra <= s->cap) return 0;
@@ -3401,6 +3514,9 @@ static int devolve_sbuf(VM *vm, SBuf *s, Value *out)
 {
     PSString *r = nova_string(vm, s->b ? s->b : "", s->n);
     free(s->b);
+    /* ZERA após consumir: os chamadores agora usam SBUF_AUTO (cleanup libera na
+     * saída do escopo) — sem zerar aqui, o cleanup daria double-free. */
+    s->b = NULL; s->n = 0; s->cap = 0;
     if (!r) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
     return 0;
@@ -3418,7 +3534,7 @@ static int met_caixa(VM *vm, Value alvo, int n, Value *out, const char *quem, in
 {
     if (n != 0) MERRO(vm, "SomeValueUnexpected", "%s() nao aceita argumento", quem);
     PSString *s = COMO_STRING(alvo);
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int inicio_palavra = 1;
     for (int i = 0; i < s->len; ) {
         uint32_t cp;
@@ -3436,7 +3552,7 @@ static int met_caixa(VM *vm, Value alvo, int n, Value *out, const char *quem, in
                  * "ss" (por isso casefold ≠ lower) e o sigma final grego
                  * normaliza. O resto cai no lower comum. */
                 if (cp == 0x00DF || cp == 0x1E9E) {
-                    if (sb_bytes(&b, "ss", 2) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
+                    if (sb_bytes(&b, "ss", 2) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
                     inicio_palavra = 0;
                     i += k;
                     continue;
@@ -3444,7 +3560,7 @@ static int met_caixa(VM *vm, Value alvo, int n, Value *out, const char *quem, in
                 r = cp == 0x03C2 ? 0x03C3 : cp_minuscula(cp);
                 break;
         }
-        if (sb_cp(&b, r) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
+        if (sb_cp(&b, r) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
         inicio_palavra = !cp_eh_letra(cp);
         i += k;
     }
@@ -3835,12 +3951,12 @@ static int met_join(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSString *sep = COMO_STRING(alvo);
     if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "join() espera uma lista");
     PSList *l = COMO_LIST(args[0]);
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     for (int i = 0; i < l->len; i++) {
-        if (!EH_STRING(l->itens[i])) { free(b.b); MERRO(vm, "SomeValueUnexpected", "join() so junta str"); }
-        if (i && sb_bytes(&b, sep->chars, sep->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (!EH_STRING(l->itens[i])) { MERRO(vm, "SomeValueUnexpected", "join() so junta str"); }
+        if (i && sb_bytes(&b, sep->chars, sep->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         PSString *x = COMO_STRING(l->itens[i]);
-        if (sb_bytes(&b, x->chars, x->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, x->chars, x->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     }
     return devolve_sbuf(vm, &b, out);
 }
@@ -3888,19 +4004,19 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
         limite = args[2].as.i;
     }
     int64_t feitos_vazio = 0;
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     if (velho->len == 0) {
         /* alvo vazio casa em toda fronteira de caractere, inclusive nas
          * pontas: `"a".replace("", "x")` é "xax". */
         for (int i = 0; i <= s->len; ) {
             if ((limite < 0 || feitos_vazio < limite) && novo
-                    && sb_bytes(&b, novo->chars, novo->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+                    && sb_bytes(&b, novo->chars, novo->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             feitos_vazio++;
             if (i == s->len) break;
             uint32_t cp;
             int k = utf8_le(s->chars, s->len, i, &cp);
             if (!k) k = 1;
-            if (sb_bytes(&b, s->chars + i, k) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, s->chars + i, k) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i += k;
         }
         return devolve_sbuf(vm, &b, out);
@@ -3910,11 +4026,11 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     while (i < s->len) {
         if ((limite < 0 || feitos < limite) && i + velho->len <= s->len
                 && memcmp(s->chars + i, velho->chars, (size_t)velho->len) == 0) {
-            if (novo && sb_bytes(&b, novo->chars, novo->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (novo && sb_bytes(&b, novo->chars, novo->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i += velho->len;
             feitos++;
         } else {
-            if (sb_bytes(&b, s->chars + i, 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, s->chars + i, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i++;
         }
     }
@@ -4024,12 +4140,12 @@ static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
         esq = falta / 2 + (falta & larg & 1);
         dir = falta - esq;
     }
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     for (int64_t k = 0; k < esq; k++)
-        if (sb_bytes(&b, ench, ench_len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
-    if (sb_bytes(&b, s->chars, s->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, ench, ench_len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
+    if (sb_bytes(&b, s->chars, s->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     for (int64_t k = 0; k < dir; k++)
-        if (sb_bytes(&b, ench, ench_len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, ench, ench_len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     return devolve_sbuf(vm, &b, out);
 }
 
@@ -4046,16 +4162,16 @@ static int met_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
     int64_t larg = args[0].as.i;
     int atual = utf8_conta(s->chars, s->len);
     int64_t falta = larg - atual;
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int sinal = (s->len > 0 && (s->chars[0] == '+' || s->chars[0] == '-')) ? 1 : 0;
     if (falta <= 0) {
-        if (sb_bytes(&b, s->chars, s->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, s->chars, s->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         return devolve_sbuf(vm, &b, out);
     }
-    if (sinal && sb_bytes(&b, s->chars, 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+    if (sinal && sb_bytes(&b, s->chars, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     for (int64_t k = 0; k < falta; k++)
-        if (sb_bytes(&b, "0", 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
-    if (sb_bytes(&b, s->chars + sinal, s->len - sinal) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, "0", 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
+    if (sb_bytes(&b, s->chars + sinal, s->len - sinal) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     return devolve_sbuf(vm, &b, out);
 }
 
@@ -4068,17 +4184,17 @@ static int met_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "expandtabs() espera int");
         passo = args[0].as.i;
     }
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int coluna = 0;
     for (int i = 0; i < s->len; i++) {
         char c = s->chars[i];
         if (c == '\t') {
             int64_t ate = passo > 0 ? passo - (coluna % passo) : 0;
             for (int64_t k = 0; k < ate; k++)
-                if (sb_bytes(&b, " ", 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+                if (sb_bytes(&b, " ", 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             coluna += (int)ate;
         } else {
-            if (sb_bytes(&b, &c, 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, &c, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             if (c == '\n' || c == '\r') coluna = 0;
             else if (((unsigned char)c & 0xC0) != 0x80) coluna++;
         }
@@ -4120,7 +4236,7 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
     char num[128];
     const char *txt = NULL;
     int ntxt = 0;
-    TxtBuf t = {0};
+    TXTBUF_AUTO t = {0};
 
     if (tipo == 'f') {
         double d = (v->t == V_INT) ? (double)v->as.i : (v->t == V_FLOAT) ? v->as.d : 0;
@@ -4149,7 +4265,7 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
         }
         txt = num;
     } else if (tipo == 's' || tipo == 0) {
-        if (valor_para_texto(&t, v, 0) != 0) { free(t.b); return -1; }
+        if (valor_para_texto(&t, v, 0) != 0) { return -1; }
         txt = t.b ? t.b : "";
         ntxt = t.n;
         if (prec >= 0 && prec < ntxt) ntxt = prec;
@@ -4169,7 +4285,6 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
     for (int k = 0; k < esq && !rc; k++) rc = sb_bytes(saida, &preenche, 1);
     if (!rc) rc = sb_bytes(saida, txt, ntxt);
     for (int k = 0; k < dir && !rc; k++) rc = sb_bytes(saida, &preenche, 1);
-    free(t.b);
     return rc;
 }
 
@@ -4178,26 +4293,26 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
 static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, Value mapa)
 {
     PSString *s = COMO_STRING(alvo);
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int auto_idx = 0;
     for (int i = 0; i < s->len; ) {
         char c = s->chars[i];
         if (c == '{' && i + 1 < s->len && s->chars[i+1] == '{') {
-            if (sb_bytes(&b, "{", 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, "{", 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i += 2; continue;
         }
         if (c == '}' && i + 1 < s->len && s->chars[i+1] == '}') {
-            if (sb_bytes(&b, "}", 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, "}", 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i += 2; continue;
         }
         if (c != '{') {
-            if (sb_bytes(&b, &c, 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, &c, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             i++; continue;
         }
         /* campo: {campo[:spec]} */
         int fim = i + 1;
         while (fim < s->len && s->chars[fim] != '}') fim++;
-        if (fim >= s->len) { free(b.b); MERRO(vm, "SomeValueUnexpected", "format: '{' sem fechar"); }
+        if (fim >= s->len) { MERRO(vm, "SomeValueUnexpected", "format: '{' sem fechar"); }
         int corte = i + 1;
         while (corte < fim && s->chars[corte] != ':') corte++;
         const char *campo = s->chars + i + 1;
@@ -4219,17 +4334,15 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
                 if (idx < n) { v = args[idx]; achou = 1; }
             } else if (EH_DICT(mapa)) {
                 PSString *ch = nova_string(vm, campo, ncampo);
-                if (!ch) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+                if (!ch) { MERRO(vm, "MemoryError", "sem memoria"); }
                 Value cv = MK_OBJ(ch);
                 achou = dict_get(COMO_DICT(mapa), &cv, &v) == 0;
             }
         }
         if (!achou) {
-            free(b.b);
             MERRO(vm, "SomeValueUnexpected", "format: campo '%.*s' sem valor", ncampo, campo);
         }
         if (formata_um(vm, &b, &v, spec, nspec) != 0) {
-            free(b.b);
             if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
             return -1;
         }
@@ -4307,7 +4420,7 @@ static int met_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "translate", 1);
     if (!EH_DICT(args[0])) MERRO(vm, "SomeValueUnexpected", "translate() espera um dict");
     PSString *s = COMO_STRING(alvo);
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     for (int i = 0; i < s->len; ) {
         uint32_t cp;
         int k = utf8_le(s->chars, s->len, i, &cp);
@@ -4316,13 +4429,13 @@ static int met_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (dict_get(COMO_DICT(args[0]), &ch, &destino) == 0) {
             /* Null na tabela REMOVE o caractere, como no Python */
             if (destino.t == V_INT) {
-                if (sb_cp(&b, (uint32_t)destino.as.i) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+                if (sb_cp(&b, (uint32_t)destino.as.i) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             } else if (EH_STRING(destino)) {
                 PSString *d2 = COMO_STRING(destino);
-                if (sb_bytes(&b, d2->chars, d2->len) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+                if (sb_bytes(&b, d2->chars, d2->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             }
         } else {
-            if (sb_bytes(&b, s->chars + i, k) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, s->chars + i, k) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         }
         i += k;
     }
@@ -4720,6 +4833,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_QRBUILD:     t = "PoolQRCode"; break;
                 case OBJ_QRIMAGE:     t = "QRImage"; break;
                 case OBJ_MANPU_FILE:  t = "ManpuFile"; break;
+                case OBJ_SOCKET:      t = "socket"; break;
                 case OBJ__COUNT:      break;   /* sentinela: nunca ocorre */
             }
             break;
@@ -4749,6 +4863,7 @@ static int devolve_leitura(VM *vm, SBuf *b, int binario, Value *out)
     if (!binario) return devolve_sbuf(vm, b, out);
     PSString *by = novo_bytes(vm, b->b ? b->b : "", b->n);
     free(b->b);
+    b->b = NULL; b->n = 0; b->cap = 0;   /* mesma regra do devolve_sbuf (SBUF_AUTO) */
     if (!by) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(by);
     return 0;
@@ -4765,13 +4880,13 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "read() espera int");
         limite = (long)args[0].as.i;
     }
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     char pedaco[4096];
     size_t lidos;
     while ((lidos = fread(pedaco, 1, sizeof(pedaco), a->f)) > 0) {
         int quer = (int)lidos;
         if (limite >= 0 && b.n + quer > limite) quer = (int)(limite - b.n);
-        if (quer > 0 && sb_bytes(&b, pedaco, quer) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (quer > 0 && sb_bytes(&b, pedaco, quer) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         if (limite >= 0 && b.n >= limite) break;
     }
     return devolve_leitura(vm, &b, a->binario, out);
@@ -4783,11 +4898,11 @@ static int met_a_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n != 0) MERRO(vm, "SomeValueUnexpected", "readline() nao aceita argumento");
     PSArquivo *a;
     if (arq_exige(vm, alvo, "readline", &a) != 0) return -1;
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int ch;
     while ((ch = fgetc(a->f)) != EOF) {
         char c = (char)ch;
-        if (sb_bytes(&b, &c, 1) != 0) { free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, &c, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         if (c == '\n') break;              /* a quebra fica na linha, como no Python */
     }
     return devolve_leitura(vm, &b, a->binario, out);
@@ -4803,18 +4918,17 @@ static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!l) MERRO(vm, "MemoryError", "sem memoria");
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
     for (;;) {
-        SBuf b = {0};
+        SBUF_AUTO b = {0};
         int ch, viu = 0;
         while ((ch = fgetc(a->f)) != EOF) {
             char c = (char)ch;
             viu = 1;
-            if (sb_bytes(&b, &c, 1) != 0) { free(b.b); vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, &c, 1) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
             if (c == '\n') break;
         }
-        if (!viu) { free(b.b); break; }
+        if (!viu) { break; }
         PSString *linha = a->binario ? novo_bytes(vm, b.b ? b.b : "", b.n)
                                      : nova_string(vm, b.b ? b.b : "", b.n);
-        free(b.b);
         if (!linha) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
         if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; MERRO(vm, "MemoryError", "sem memoria"); }
         l->itens[l->len++] = MK_OBJ(linha);
@@ -4830,7 +4944,7 @@ static int met_a_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSArquivo *a;
     if (arq_exige(vm, alvo, "write", &a) != 0) return -1;
     /* não-string vira texto, como o FileHandle do interpretador faz */
-    TxtBuf t = {0};
+    TXTBUF_AUTO t = {0};
     if (EH_STRING(args[0])) {
         PSString *ss = COMO_STRING(args[0]);
         size_t w = fwrite(ss->chars, 1, (size_t)ss->len, a->f);
@@ -4843,9 +4957,8 @@ static int met_a_write(VM *vm, Value alvo, Value *args, int n, Value *out)
         *out = MK_INT((int64_t)w);
         return 0;
     }
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); MERRO(vm, "MemoryError", "sem memoria"); }
+    if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     size_t w = fwrite(t.b ? t.b : "", 1, (size_t)t.n, a->f);
-    free(t.b);
     *out = MK_INT((int64_t)w);
     return 0;
 }
@@ -4858,10 +4971,9 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "writelines() espera uma lista");
     PSList *l = COMO_LIST(args[0]);
     for (int i = 0; i < l->len; i++) {
-        TxtBuf t = {0};
-        if (valor_para_texto(&t, &l->itens[i], 0) != 0) { free(t.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        TXTBUF_AUTO t = {0};
+        if (valor_para_texto(&t, &l->itens[i], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         fwrite(t.b ? t.b : "", 1, (size_t)t.n, a->f);
-        free(t.b);
     }
     *out = MK_NULL();
     return 0;
@@ -5024,11 +5136,11 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)args;
     if (n != 0) MERRO(vm, "SomeValueUnexpected", "hex() nao aceita argumento");
     PSString *b = COMO_BYTES(alvo);
-    SBuf sb = {0};
+    SBUF_AUTO sb = {0};
     for (int i = 0; i < b->len; i++) {
         char par[3];
         snprintf(par, sizeof(par), "%02x", (unsigned char)b->chars[i]);
-        if (sb_bytes(&sb, par, 2) != 0) { free(sb.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&sb, par, 2) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     }
     return devolve_sbuf(vm, &sb, out);
 }
@@ -5441,6 +5553,56 @@ static const MetodoNat METODOS_WSCONN[] = {
     { "close", met_ws_close, NULL },
 };
 
+/* lib sockets — métodos do objeto socket (espelho 1:1 do socket.socket) */
+static int met_sk_bind(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_listen(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_accept(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_connect(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_connect_ex(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_send(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_sendall(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_sendto(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_recv(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_recvfrom(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_close(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_shutdown(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_settimeout(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_gettimeout(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_setblocking(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_getblocking(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_getsockname(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_getpeername(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_fileno(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_detach(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_sk_dup(VM *vm, Value alvo, Value *args, int n, Value *out);
+static const MetodoNat METODOS_SOCKET[] = {
+    { "bind", met_sk_bind, "address" },
+    { "listen", met_sk_listen, "backlog" },
+    { "accept", met_sk_accept, NULL },
+    { "connect", met_sk_connect, "address" },
+    { "connect_ex", met_sk_connect_ex, "address" },
+    { "send", met_sk_send, "data,flags" },
+    { "sendall", met_sk_sendall, "data,flags" },
+    { "sendto", met_sk_sendto, "data,address,flags" },
+    { "recv", met_sk_recv, "bufsize,flags" },
+    { "recvfrom", met_sk_recvfrom, "bufsize,flags" },
+    { "close", met_sk_close, NULL },
+    { "shutdown", met_sk_shutdown, "how" },
+    { "setsockopt", met_sk_setsockopt, "level,optname,value" },
+    { "getsockopt", met_sk_getsockopt, "level,optname,buflen" },
+    { "settimeout", met_sk_settimeout, "timeout" },
+    { "gettimeout", met_sk_gettimeout, NULL },
+    { "setblocking", met_sk_setblocking, "flag" },
+    { "getblocking", met_sk_getblocking, NULL },
+    { "getsockname", met_sk_getsockname, NULL },
+    { "getpeername", met_sk_getpeername, NULL },
+    { "fileno", met_sk_fileno, NULL },
+    { "detach", met_sk_detach, NULL },
+    { "dup", met_sk_dup, NULL },
+};
+
 static int met_qrb_add_data(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_qrb_make(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_qrb_make_image(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -5767,7 +5929,8 @@ static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_JRESP, METODOS_JPROXY, METODOS_JUPLOAD,
                                       METODOS_JSOCKNS, METODOS_JEMIT, METODOS_JCHAN,
                                       METODOS_WSCONN, METODOS_QRBUILD, METODOS_QRIMAGE,
-                                      METODOS_MPFILE, METODOS_GUZ_UI, METODOS_GUZ_WID };
+                                      METODOS_MPFILE, METODOS_GUZ_UI, METODOS_GUZ_WID,
+                                      METODOS_SOCKET };
 static const int TAM_TABELA[] = {
     N_METODOS_STR,
     (int)(sizeof(METODOS_LIST) / sizeof(METODOS_LIST[0])),
@@ -5802,6 +5965,7 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_MPFILE) / sizeof(METODOS_MPFILE[0])),
     (int)(sizeof(METODOS_GUZ_UI) / sizeof(METODOS_GUZ_UI[0])),
     (int)(sizeof(METODOS_GUZ_WID) / sizeof(METODOS_GUZ_WID[0])),
+    (int)(sizeof(METODOS_SOCKET) / sizeof(METODOS_SOCKET[0])),
 };
 
 /* Resolve `alvo.nome`. `.type()` vem primeiro porque vale pra todo valor. */
@@ -5842,6 +6006,7 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_MPFILE(alvo))  qual = T_MET_MPFILE;
     else if (EH_GUZ_UI(alvo))  qual = T_MET_GUZ_UI;
     else if (EH_GUZ_WID(alvo)) qual = T_MET_GUZ_WID;
+    else if (EH_SOCKET(alvo))  qual = T_MET_SOCKET;
     else return -1;
     for (int i = 0; i < TAM_TABELA[qual]; i++)
         if (strcmp(TABELAS[qual][i].nome, nome) == 0) { *tab = qual; *idx = i; return 0; }
@@ -5926,10 +6091,9 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
                 PSString *ks = COMO_STRING(k);
                 if (json_texto(b, ks->chars, ks->len) != 0) return -1;
             } else {
-                TxtBuf t = {0};
-                if (valor_para_texto(&t, &k, 0) != 0) { free(t.b); return -1; }
+                TXTBUF_AUTO t = {0};
+                if (valor_para_texto(&t, &k, 0) != 0) { return -1; }
                 int r = json_texto(b, t.b ? t.b : "", t.n);
-                free(t.b);
                 if (r != 0) return -1;
             }
             if (sb_bytes(b, compacto ? ":" : ": ", compacto ? 1 : 2) != 0) return -1;
@@ -5946,14 +6110,12 @@ static int mod_json_stringify(VM *vm, Value *args, int n, Value *out)
     if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "stringify() espera 1 ou 2 argumentos");
     /* 2º argumento liga o modo compacto: `json.stringify(x, True)` */
     int compacto = (n == 2) && val_truthy(&args[1]);
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     if (json_escreve(vm, &b, &args[0], 0, compacto) != 0) {
-        free(b.b);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
         return -1;
     }
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
-    free(b.b);
     if (!r) BERRO(vm, "MemoryError", "sem memoria em stringify()");
     *out = MK_OBJ(r);
     return 0;
@@ -5974,12 +6136,12 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof);
 static int j_texto(VM *vm, JLeitor *j, Value *out)
 {
     j->i++;                                   /* passa a aspa de abertura */
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     while (j->i < j->n && j->s[j->i] != '"') {
         char c = j->s[j->i];
         if (c == '\\') {
             j->i++;
-            if (j->i >= j->n) { free(b.b); BERRO(vm, "SomeValueUnexpected", "json: escape incompleto"); }
+            if (j->i >= j->n) { BERRO(vm, "SomeValueUnexpected", "json: escape incompleto"); }
             char e = j->s[j->i++];
             char saida = 0;
             switch (e) {
@@ -5988,39 +6150,37 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
                 case 't': saida = '\t'; break;   case 'r':  saida = '\r'; break;
                 case 'b': saida = '\b'; break;   case 'f':  saida = '\f'; break;
                 case 'u': {
-                    if (j->i + 4 > j->n) { free(b.b); BERRO(vm, "SomeValueUnexpected", "json: \\u incompleto"); }
+                    if (j->i + 4 > j->n) { BERRO(vm, "SomeValueUnexpected", "json: \\u incompleto"); }
                     uint32_t cp = 0;
                     for (int k = 0; k < 4; k++) {
                         char h = j->s[j->i + k];
                         int d = (h >= '0' && h <= '9') ? h - '0'
                               : (h >= 'a' && h <= 'f') ? h - 'a' + 10
                               : (h >= 'A' && h <= 'F') ? h - 'A' + 10 : -1;
-                        if (d < 0) { free(b.b); BERRO(vm, "SomeValueUnexpected", "json: \\u invalido"); }
+                        if (d < 0) { BERRO(vm, "SomeValueUnexpected", "json: \\u invalido"); }
                         cp = cp * 16 + (uint32_t)d;
                     }
                     j->i += 4;
-                    if (sb_cp(&b, cp) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
+                    if (sb_cp(&b, cp) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
                     continue;
                 }
-                default: free(b.b); BERRO(vm, "SomeValueUnexpected", "json: escape desconhecido");
+                default: BERRO(vm, "SomeValueUnexpected", "json: escape desconhecido");
             }
-            if (sb_bytes(&b, &saida, 1) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, &saida, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         } else {
             /* controle cru dentro de string é inválido em JSON estrito, que é
              * o modo do `json.loads` — sem isso o parser aceitaria um texto
              * que o interpretador recusa. */
             if ((unsigned char)c < 0x20) {
-                free(b.b);
                 BERRO(vm, "SomeValueUnexpected", "json: caractere de controle invalido na string");
             }
-            if (sb_bytes(&b, &c, 1) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, &c, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
             j->i++;
         }
     }
-    if (j->i >= j->n) { free(b.b); BERRO(vm, "SomeValueUnexpected", "json: string nao fechada"); }
+    if (j->i >= j->n) { BERRO(vm, "SomeValueUnexpected", "json: string nao fechada"); }
     j->i++;                                   /* aspa de fechamento */
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
-    free(b.b);
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
     return 0;
@@ -6276,15 +6436,13 @@ static int count_percorre(VM *vm, Value cont, int64_t tipo, const Value *val, in
     int cont_era_int = (cont.t == V_INT);
     Value conv = cont;
     if (cont.t == V_INT) {
-        TxtBuf t = {0};
+        TXTBUF_AUTO t = {0};
         if (valor_para_texto(&t, &cont, 0) != 0) {
-            free(t.b);
             if (pares) vm->sp--;
             snprintf(vm->erro, sizeof(vm->erro), "sem memoria em count");
             return -1;
         }
         PSString *txt = nova_string(vm, t.b ? t.b : "", t.n);
-        free(t.b);
         if (!txt) { if (pares) vm->sp--; snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
         conv = MK_OBJ(txt);
     }
@@ -6479,30 +6637,29 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s, const R
 static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
                   const char *rep, int rlen, int64_t limite, Value *out)
 {
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int de = 0;
     int64_t feitos = 0;
     while (de <= len) {
         if (limite > 0 && feitos >= limite) break;
         RxCaptura cap;
         int achou = ps_regex_busca(r, s, len, de, &cap);
-        if (achou < 0) { free(b.b); ps_regex_free(r); BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
+        if (achou < 0) { ps_regex_free(r); BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
         if (!achou) break;
-        if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) { free(b.b); ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-        if (rx_expande(&b, rep, rlen, s, &cap) != 0) { free(b.b); ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (rx_expande(&b, rep, rlen, s, &cap) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
         feitos++;
         if (cap.fim[0] > cap.inicio[0]) {
             de = cap.fim[0];
         } else {
             /* casamento vazio: copia um byte e anda, senão repetiria pra sempre */
-            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], 1) != 0) { free(b.b); ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], 1) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
             de = cap.fim[0] + 1;
         }
     }
-    if (de < len && sb_bytes(&b, s + de, len - de) != 0) { free(b.b); ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (de < len && sb_bytes(&b, s + de, len - de) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
     ps_regex_free(r);
     PSString *res = nova_string(vm, b.b ? b.b : "", b.n);
-    free(b.b);
     if (!res) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(res);
     return 0;
@@ -6602,18 +6759,17 @@ static int mod_regex_escape(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "escape", 1);
     if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "escape() espera str");
     PSString *s = COMO_STRING(args[0]);
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     for (int i = 0; i < s->len; i++) {
         unsigned char c = (unsigned char)s->chars[i];
         /* o `re.escape` moderno só escapa o que é especial; alfanumérico,
          * '_' e byte alto passam intactos */
         int alfa = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
                 || (c >= '0' && c <= '9') || c == '_' || c >= 0x80;
-        if (!alfa && sb_bytes(&b, "\\", 1) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
-        if (sb_bytes(&b, s->chars + i, 1) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (!alfa && sb_bytes(&b, "\\", 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, s->chars + i, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     }
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
-    free(b.b);
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
     return 0;
@@ -6881,17 +7037,15 @@ static const MembroMod MOD_DATASENTITY[] = {
 static int mod_hash_crypt(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "crypt", 1);
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
 
     unsigned char sal[HASH_SAL], chave[PS_SHA256_TAM], bruto[HASH_SAL + PS_SHA256_TAM];
     if (ps_random_bytes(sal, sizeof(sal)) != 0) {
-        free(t.b);
         BERRO(vm, "RuntimeError", "sem fonte de aleatoriedade do sistema");
     }
     ps_pbkdf2_sha256((const unsigned char *)(t.b ? t.b : ""), (size_t)t.n,
                      sal, sizeof(sal), HASH_ITER, chave);
-    free(t.b);
     memcpy(bruto, sal, HASH_SAL);
     memcpy(bruto + HASH_SAL, chave, PS_SHA256_TAM);
 
@@ -6912,12 +7066,11 @@ static int mod_hash_check(VM *vm, Value *args, int n, Value *out)
     long nb = ps_base64_decode(hs->chars, (size_t)hs->len, bruto, sizeof(bruto));
     if (nb != HASH_SAL + PS_SHA256_TAM) { *out = MK_BOOL(0); return 0; }
 
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[1], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[1], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     unsigned char chave[PS_SHA256_TAM];
     ps_pbkdf2_sha256((const unsigned char *)(t.b ? t.b : ""), (size_t)t.n,
                      bruto, HASH_SAL, HASH_ITER, chave);
-    free(t.b);
     *out = MK_BOOL(ps_iguais_constante(bruto + HASH_SAL, chave, PS_SHA256_TAM));
     return 0;
 }
@@ -6927,11 +7080,10 @@ static int mod_hash_check(VM *vm, Value *args, int n, Value *out)
 static int mod_hash_sha256(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "sha256", 1);
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     unsigned char h[PS_SHA256_TAM];
     ps_sha256((const unsigned char *)(t.b ? t.b : ""), (size_t)t.n, h);
-    free(t.b);
     char hex[PS_SHA256_TAM * 2 + 1];
     for (int i = 0; i < PS_SHA256_TAM; i++) snprintf(hex + i * 2, 3, "%02x", h[i]);
     return devolve_texto(vm, out, hex, PS_SHA256_TAM * 2);
@@ -6940,13 +7092,12 @@ static int mod_hash_sha256(VM *vm, Value *args, int n, Value *out)
 static int mod_hash_b64encode(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "b64encode", 1);
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     size_t cap = 4 * (((size_t)t.n + 2) / 3) + 4;
     char *b = malloc(cap);
-    if (!b) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (!b) { BERRO(vm, "MemoryError", "sem memoria"); }
     size_t nb = ps_base64_encode((const unsigned char *)(t.b ? t.b : ""), (size_t)t.n, b);
-    free(t.b);
     int r = devolve_texto(vm, out, b, (int)nb);
     free(b);
     return r;
@@ -7310,13 +7461,12 @@ static const MembroMod MOD_BYTES[] = {
 /* Serializa em JSON compacto e já devolve em base64 urlsafe sem padding. */
 static int jwt_parte(VM *vm, const Value *v, char **saida, size_t *nsaida)
 {
-    SBuf b = {0};
-    if (json_escreve(vm, &b, v, 0, 1) != 0) { free(b.b); return -1; }
+    SBUF_AUTO b = {0};
+    if (json_escreve(vm, &b, v, 0, 1) != 0) { return -1; }
     size_t cap = 4 * (((size_t)b.n + 2) / 3) + 4;
     char *out = malloc(cap);
-    if (!out) { free(b.b); return -1; }
+    if (!out) { return -1; }
     *nsaida = ps_base64_encode_ex((const unsigned char *)(b.b ? b.b : ""), (size_t)b.n, out, 1, 0);
-    free(b.b);
     *saida = out;
     return 0;
 }
@@ -7550,10 +7700,9 @@ static int mod_sys_relativepath(VM *vm, Value *args, int n, Value *out)
 static int escreve_em(VM *vm, FILE *f, Value *args, int n, Value *out, int sempre_quebra)
 {
     if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "write() espera 1 ou 2 argumentos");
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     fwrite(t.b ? t.b : "", 1, (size_t)t.n, f);
-    free(t.b);
     int quebra = sempre_quebra || (n == 2 && val_truthy(&args[1]));
     if (quebra) fputc('\n', f);
     fflush(f);
@@ -7741,12 +7890,11 @@ static void limpa_flo(const char *s, int n, char *saida, size_t cap)
 
 static int texto_do_arg(VM *vm, Value v, char *saida, size_t cap, int *n)
 {
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &v, 0) != 0) { free(t.b); return -1; }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &v, 0) != 0) { return -1; }
     int len = t.n < (int)cap - 1 ? t.n : (int)cap - 1;
     memcpy(saida, t.b ? t.b : "", (size_t)len);
     saida[len] = '\0';
-    free(t.b);
     *n = len;
     return 0;
 }
@@ -7809,15 +7957,15 @@ static int par_string(VM *vm, Value *args, int n, Value *out)
     char txt[1024];
     int len;
     if (texto_do_arg(vm, args[0], txt, sizeof(txt), &len) != 0) BERRO(vm, "MemoryError", "sem memoria");
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int i = 0, primeiro = 1;
     while (i < len) {
         while (i < len && (txt[i]==' '||txt[i]=='\t'||txt[i]=='\n'||txt[i]=='\r')) i++;
         if (i >= len) break;
         int ini = i;
         while (i < len && !(txt[i]==' '||txt[i]=='\t'||txt[i]=='\n'||txt[i]=='\r')) i++;
-        if (!primeiro && sb_bytes(&b, " ", 1) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
-        if (sb_bytes(&b, txt + ini, i - ini) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (!primeiro && sb_bytes(&b, " ", 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, txt + ini, i - ini) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         primeiro = 0;
     }
     return devolve_sbuf(vm, &b, out);
@@ -7855,10 +8003,9 @@ static int par_transient(VM *vm, Value *args, int n, Value *out)
     if (!strcmp(para, "int")) return par_integer(vm, args, 1, out);
     if (!strcmp(para, "flo") || !strcmp(para, "float")) return par_floating(vm, args, 1, out);
     if (!strcmp(para, "str")) {
-        TxtBuf t = {0};
-        if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+        TXTBUF_AUTO t = {0};
+        if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         int r = devolve_texto(vm, out, t.b ? t.b : "", t.n);
-        free(t.b);
         return r;
     }
     *out = args[0];
@@ -7988,7 +8135,7 @@ static int csv_para_lista(VM *vm, const char *texto, int tam, Value *out)
     PSList *cab = lista_com_cap(vm, 4, OBJ_LIST);
     if (!cab) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
     if (fixa_raiz(vm, MK_OBJ(cab)) != 0) { vm->sp--; BERRO(vm, "RuntimeError", "estouro"); }
-    SBuf campo = {0};
+    SBUF_AUTO campo = {0};
     int fim = 0;
     while (c.i < c.n && !fim) {
         if (csv_campo(&c, &campo, &fim) != 0) goto sem_memoria;
@@ -8033,13 +8180,11 @@ static int csv_para_lista(VM *vm, const char *texto, int tam, Value *out)
         if (linhas->len >= linhas->cap && cresce_lista(vm, linhas) != 0) goto sem_memoria;
         linhas->itens[linhas->len++] = dv;
     }
-    free(campo.b);
     vm->sp -= 2;
     *out = MK_OBJ(linhas);
     return 0;
 
 sem_memoria:
-    free(campo.b);
     vm->sp -= 2;
     BERRO(vm, "MemoryError", "sem memoria");
 }
@@ -8147,22 +8292,20 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 
     FILE *f = fopen(caminho, "rb");
     if (!f) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "nao consegui abrir o arquivo"); }
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     char pedaco[4096];
     size_t lidos;
     while ((lidos = fread(pedaco, 1, sizeof(pedaco), f)) > 0)
-        if (sb_bytes(&b, pedaco, (int)lidos) != 0) { fclose(f); free(b.b); vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, pedaco, (int)lidos) != 0) { fclose(f); vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
     fclose(f);
     vm->sp--;
 
     if (!strcmp(ext, ".csv")) {
         int rc = csv_para_lista(vm, b.b ? b.b : "", b.n, out);
-        free(b.b);
         return rc;
     }
     if (!strcmp(ext, ".json")) {
         PSString *txt = nova_string(vm, b.b ? b.b : "", b.n);
-        free(b.b);
         if (!txt) BERRO(vm, "MemoryError", "sem memoria");
         Value um[1] = { MK_OBJ(txt) };
         return mod_json_parse(vm, um, 1, out);
@@ -8450,10 +8593,9 @@ static int mod_os_warn(VM *vm, Value *args, int n, Value *out)
         for (size_t i = 0; i < sizeof(CORES)/sizeof(CORES[0]); i++)
             if (!strcmp(c, CORES[i].nome)) { cod = CORES[i].cod; break; }
     }
-    TxtBuf t = {0};
-    if (n >= 1 && valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (n >= 1 && valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     printf("%s%.*s\033[0m\n", cod, t.n, t.b ? t.b : "");
-    free(t.b);
     fflush(stdout);
     *out = MK_NULL();
     return 0;
@@ -8560,7 +8702,8 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
         int st; waitpid(pid, &st, 0);
         return -1;
     }
-    SBuf so = {0}, se = {0};
+    SBUF_AUTO so = {0};
+    SBUF_AUTO se = {0};
     char buf[4096];
     ssize_t r;
     while ((r = read(po[0], buf, sizeof(buf))) > 0) sb_bytes(&so, buf, (int)r);
@@ -8579,9 +8722,7 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
     }
     int ini = 0;
     while (ini < fim && (escolhido->b[ini] == '\n' || escolhido->b[ini] == ' ')) ini++;
-    int rc = devolve_texto(vm, out, escolhido->b ? escolhido->b + ini : "", fim - ini);
-    free(so.b); free(se.b);
-    return rc;
+    return devolve_texto(vm, out, escolhido->b ? escolhido->b + ini : "", fim - ini);
 }
 
 static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
@@ -9307,16 +9448,15 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         const char *caminho = COMO_STRING(args[0])->chars;
         FILE *f = fopen(caminho, "rb");
         if (!f) BERRO(vm, "IOError", "arquivo não encontrado: arquivo não encontrado: %s", caminho);
-        SBuf b = {0};
+        SBUF_AUTO b = {0};
         char ped[4096];
         size_t k;
         while ((k = fread(ped, 1, sizeof(ped), f)) > 0)
-            if (sb_bytes(&b, ped, (int)k) != 0) { fclose(f); free(b.b); MERRO(vm, "MemoryError", "sem memoria"); }
+            if (sb_bytes(&b, ped, (int)k) != 0) { fclose(f); MERRO(vm, "MemoryError", "sem memoria"); }
         fclose(f);
         const char *base = strrchr(caminho, '/');
         base = base ? base + 1 : caminho;
         int rc = mailmsg_add_parte(vm, m, 1, base, b.b ? b.b : "", (size_t)b.n);
-        free(b.b);
         if (rc != 0) return -1;
         *out = MK_BOOL(1);
         return 0;
@@ -9327,14 +9467,1046 @@ static int met_mm_asstring(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
     if (n != 0) MERRO(vm, "SomeValueUnexpected", "get_as_string() nao aceita argumento");
-    SBuf b = {0};
-    if (mailmsg_monta(vm, COMO_MAILMSG(alvo), &b) != 0) { free(b.b); return -1; }
+    SBUF_AUTO b = {0};
+    if (mailmsg_monta(vm, COMO_MAILMSG(alvo), &b) != 0) { return -1; }
     PSString *s = nova_string(vm, b.b ? b.b : "", b.n);
-    free(b.b);
     if (!s) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(s);
     return 0;
 }
+
+/* ══ lib `sockets` — espelho do módulo socket do Python ═════════════════════
+ *
+ * Toda a API: o objeto socket (bind, listen, accept, connect, send, recv...),
+ * resolução de nomes (getaddrinfo, gethostbyname...), conversões
+ * (inet_aton..., htons...) e as constantes (AF_, SOCK_, SO_...).
+ *
+ * Convenções (idênticas ao Python):
+ *   endereço  = tup (host, porta); AF_UNIX = caminho str; IPv6 = 4-tupla
+ *   recv      = bytes; send aceita str (UTF-8) ou bytes
+ *   settimeout(0) = não-bloqueante; None = bloqueante; >0 = prazo
+ *
+ * I/O bloqueante (connect/accept/recv/send) roda na thread do pool via
+ * fib_offload — dentro de handler jinker a fibra cede (async uniforme).
+ * REGRA DE GC: NUNCA criar objeto da VM antes de um fib_offload no mesmo
+ * método (a fibra cede -> outras rodam -> GC pode coletar o recém-nascido);
+ * só depois do offload voltar. */
+
+static double g_sk_def_timeout = -1.0;   /* setdefaulttimeout(); <0 = None */
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto do jinker */
+
+static PSSocket *novo_socket(VM *vm, int fd, int familia, int tipo, int proto)
+{
+    PSSocket *s = malloc(sizeof(PSSocket));
+    if (!s) return NULL;
+    s->obj.type = OBJ_SOCKET; s->obj.marked = 0;
+    s->obj.next = vm->objetos; vm->objetos = (Obj *)s;
+    s->fd = fd; s->familia = familia; s->tipo = tipo; s->proto = proto;
+    s->timeout = -1.0;
+    vm->alocado += sizeof(PSSocket);
+    return s;
+}
+
+static int sk_exige(VM *vm, Value alvo, const char *quem, PSSocket **out)
+{
+    PSSocket *s = COMO_SOCKET(alvo);
+    if (s->fd < 0) MERRO(vm, "RuntimeError", "%s: socket fechado", quem);
+    *out = s;
+    return 0;
+}
+
+/* timeout do jeito do Python: <0 = bloqueante; 0 = não-bloqueante (O_NONBLOCK);
+ * >0 = SO_RCVTIMEO/SO_SNDTIMEO (recv/send/accept honram no Linux). */
+static void sk_aplica_timeout(PSSocket *s)
+{
+    int fl = fcntl(s->fd, F_GETFL, 0);
+    if (s->timeout == 0.0) { fcntl(s->fd, F_SETFL, fl | O_NONBLOCK); return; }
+    fcntl(s->fd, F_SETFL, fl & ~O_NONBLOCK);
+    struct timeval tv = {0, 0};
+    if (s->timeout > 0) {
+        tv.tv_sec = (time_t)s->timeout;
+        tv.tv_usec = (suseconds_t)((s->timeout - (double)tv.tv_sec) * 1e6);
+    }
+    setsockopt(s->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(s->fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+}
+
+/* erro de socket com a cara do Python: timeout vira "timed out" */
+#define SK_ERRNO(vm, quem, e) do { \
+    if ((e) == EAGAIN || (e) == EWOULDBLOCK || (e) == EINPROGRESS || (e) == ETIMEDOUT) \
+        MERRO(vm, "RuntimeError", "%s: timed out", (quem)); \
+    MERRO(vm, "RuntimeError", "%s: %s", (quem), strerror(e)); \
+} while (0)
+
+/* Value (tup/list (host, porta) | str caminho AF_UNIX) -> sockaddr.
+ * Host resolve por getaddrinfo (numérico ou nome — igual ao Python). */
+static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *quem,
+                         struct sockaddr_storage *sa, socklen_t *sl, int passivo)
+{
+    memset(sa, 0, sizeof(*sa));
+    if (familia == AF_UNIX) {
+        if (!EH_STRING(addr)) MERRO(vm, "SomeValueUnexpected", "%s: AF_UNIX espera caminho str", quem);
+        struct sockaddr_un *un = (struct sockaddr_un *)sa;
+        un->sun_family = AF_UNIX;
+        snprintf(un->sun_path, sizeof(un->sun_path), "%s", COMO_STRING(addr)->chars);
+        *sl = (socklen_t)sizeof(*un);
+        return 0;
+    }
+    if (!EH_TUPLA(addr) && !EH_LIST(addr))
+        MERRO(vm, "SomeValueUnexpected", "%s: endereço deve ser (host, porta)", quem);
+    PSList *t = COMO_LIST(addr);
+    if (t->len < 2 || !EH_STRING(t->itens[0]) || t->itens[1].t != V_INT)
+        MERRO(vm, "SomeValueUnexpected", "%s: endereço deve ser (host str, porta int)", quem);
+    const char *host = COMO_STRING(t->itens[0])->chars;
+    char porta[16];
+    snprintf(porta, sizeof(porta), "%lld", (long long)t->itens[1].as.i);
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = familia;
+    hints.ai_socktype = tipo;
+    if (passivo) hints.ai_flags = AI_PASSIVE;
+    int rc = getaddrinfo(host[0] ? host : NULL, porta, &hints, &res);
+    if (rc != 0) MERRO(vm, "RuntimeError", "%s: %s", quem, gai_strerror(rc));
+    memcpy(sa, res->ai_addr, res->ai_addrlen);
+    *sl = (socklen_t)res->ai_addrlen;
+    freeaddrinfo(res);
+    return 0;
+}
+
+/* sockaddr -> Value no formato do Python: v4 = (ip, porta);
+ * v6 = (ip, porta, flowinfo, scope_id); AF_UNIX = caminho str. */
+static int sk_addr_valor(VM *vm, const struct sockaddr_storage *sa, Value *out)
+{
+    char ip[INET6_ADDRSTRLEN] = "";
+    if (sa->ss_family == AF_INET) {
+        const struct sockaddr_in *v4 = (const struct sockaddr_in *)sa;
+        inet_ntop(AF_INET, &v4->sin_addr, ip, sizeof(ip));
+        PSList *t = lista_com_cap(vm, 2, OBJ_TUPLE);
+        if (!t) return -1;
+        PSString *h = nova_string(vm, ip, (int)strlen(ip));
+        if (!h) return -1;
+        t->itens[0] = MK_OBJ(h); t->itens[1] = MK_INT(ntohs(v4->sin_port)); t->len = 2;
+        *out = MK_OBJ(t);
+        return 0;
+    }
+    if (sa->ss_family == AF_INET6) {
+        const struct sockaddr_in6 *v6 = (const struct sockaddr_in6 *)sa;
+        inet_ntop(AF_INET6, &v6->sin6_addr, ip, sizeof(ip));
+        PSList *t = lista_com_cap(vm, 4, OBJ_TUPLE);
+        if (!t) return -1;
+        PSString *h = nova_string(vm, ip, (int)strlen(ip));
+        if (!h) return -1;
+        t->itens[0] = MK_OBJ(h);
+        t->itens[1] = MK_INT(ntohs(v6->sin6_port));
+        t->itens[2] = MK_INT(ntohl(v6->sin6_flowinfo));
+        t->itens[3] = MK_INT(v6->sin6_scope_id);
+        t->len = 4;
+        *out = MK_OBJ(t);
+        return 0;
+    }
+    if (sa->ss_family == AF_UNIX) {
+        const struct sockaddr_un *un = (const struct sockaddr_un *)sa;
+        PSString *h = nova_string(vm, un->sun_path, (int)strlen(un->sun_path));
+        if (!h) return -1;
+        *out = MK_OBJ(h);
+        return 0;
+    }
+    *out = MK_NULL();
+    return 0;
+}
+
+/* dados de um send: str vira UTF-8, bytes vai cru (chars/len servem pros dois) */
+static int sk_dados(VM *vm, Value v, const char *quem, const char **p, size_t *n)
+{
+    if (!EH_STRING(v) && !EH_BYTES(v)) MERRO(vm, "SomeValueUnexpected", "%s: esperava str ou bytes", quem);
+    *p = COMO_STRING(v)->chars;
+    *n = (size_t)COMO_STRING(v)->len;
+    return 0;
+}
+
+/* ── offloads (thread do pool; SÓ dados C) ── */
+typedef struct { int fd; const struct sockaddr *sa; socklen_t sl; double timeout; int rc, err; } SkConnOff;
+static void sk_conn_off(void *p)
+{
+    SkConnOff *o = (SkConnOff *)p;
+    if (o->timeout >= 0) {
+        /* com prazo: não-bloqueante + poll + SO_ERROR (o que o Python faz) */
+        int fl = fcntl(o->fd, F_GETFL, 0);
+        fcntl(o->fd, F_SETFL, fl | O_NONBLOCK);
+        int rc = connect(o->fd, o->sa, o->sl);
+        if (rc != 0 && errno == EINPROGRESS) {
+            struct pollfd pf = { o->fd, POLLOUT, 0 };
+            int pr = poll(&pf, 1, o->timeout > 0 ? (int)(o->timeout * 1000) : 0);
+            if (pr <= 0) { o->rc = -1; o->err = ETIMEDOUT; fcntl(o->fd, F_SETFL, fl); return; }
+            int soerr = 0; socklen_t sn = sizeof(soerr);
+            getsockopt(o->fd, SOL_SOCKET, SO_ERROR, &soerr, &sn);
+            rc = soerr ? -1 : 0; errno = soerr;
+        }
+        o->rc = rc; o->err = rc ? errno : 0;
+        fcntl(o->fd, F_SETFL, fl);   /* volta ao modo de antes */
+        return;
+    }
+    int rc;
+    do { rc = connect(o->fd, o->sa, o->sl); } while (rc != 0 && errno == EINTR);
+    o->rc = rc; o->err = rc ? errno : 0;
+}
+
+typedef struct { int fd; int novofd; struct sockaddr_storage sa; socklen_t sl; int err; } SkAccOff;
+static void sk_acc_off(void *p)
+{
+    SkAccOff *o = (SkAccOff *)p;
+    o->sl = (socklen_t)sizeof(o->sa);
+    do { o->novofd = accept(o->fd, (struct sockaddr *)&o->sa, &o->sl); }
+    while (o->novofd < 0 && errno == EINTR);
+    o->err = o->novofd < 0 ? errno : 0;
+}
+
+typedef struct { int fd; char *buf; size_t cap; int flags; long rc; int err;
+                 int com_addr; struct sockaddr_storage sa; socklen_t sl; } SkRecvOff;
+static void sk_recv_off(void *p)
+{
+    SkRecvOff *o = (SkRecvOff *)p;
+    if (o->com_addr) {
+        o->sl = (socklen_t)sizeof(o->sa);
+        do { o->rc = recvfrom(o->fd, o->buf, o->cap, o->flags, (struct sockaddr *)&o->sa, &o->sl); }
+        while (o->rc < 0 && errno == EINTR);
+    } else {
+        do { o->rc = recv(o->fd, o->buf, o->cap, o->flags); }
+        while (o->rc < 0 && errno == EINTR);
+    }
+    o->err = o->rc < 0 ? errno : 0;
+}
+
+typedef struct { int fd; const char *p; size_t n; int flags; int tudo; long rc; int err;
+                 const struct sockaddr *sa; socklen_t sl; } SkSendOff;
+static void sk_send_off(void *p)
+{
+    SkSendOff *o = (SkSendOff *)p;
+    if (o->sa) {   /* sendto */
+        do { o->rc = sendto(o->fd, o->p, o->n, o->flags, o->sa, o->sl); }
+        while (o->rc < 0 && errno == EINTR);
+        o->err = o->rc < 0 ? errno : 0;
+        return;
+    }
+    if (!o->tudo) {
+        do { o->rc = send(o->fd, o->p, o->n, o->flags); }
+        while (o->rc < 0 && errno == EINTR);
+        o->err = o->rc < 0 ? errno : 0;
+        return;
+    }
+    /* sendall: insiste até o fim (é o contrato do Python) */
+    size_t feito = 0;
+    while (feito < o->n) {
+        long r = send(o->fd, o->p + feito, o->n - feito, o->flags);
+        if (r < 0) { if (errno == EINTR) continue; o->rc = -1; o->err = errno; return; }
+        feito += (size_t)r;
+    }
+    o->rc = (long)feito; o->err = 0;
+}
+
+/* ── métodos ── */
+static int met_sk_bind(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "bind", 1);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "bind", &s) != 0) return -1;
+    struct sockaddr_storage sa; socklen_t sl;
+    if (sk_monta_addr(vm, s->familia, s->tipo, args[0], "bind", &sa, &sl, 1) != 0) return -1;
+    if (bind(s->fd, (struct sockaddr *)&sa, sl) != 0) SK_ERRNO(vm, "bind", errno);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_listen(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n > 1) MERRO(vm, "SomeValueUnexpected", "listen() espera 0 ou 1 argumento");
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "listen", &s) != 0) return -1;
+    int backlog = (n == 1 && args[0].t == V_INT) ? (int)args[0].as.i : SOMAXCONN;
+    if (listen(s->fd, backlog) != 0) SK_ERRNO(vm, "listen", errno);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_accept(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) MERRO(vm, "SomeValueUnexpected", "accept() nao aceita argumento");
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "accept", &s) != 0) return -1;
+    SkAccOff o = { s->fd, -1, {0}, 0, 0 };
+    fib_offload(vm, sk_acc_off, &o);
+    if (o.novofd < 0) SK_ERRNO(vm, "accept", o.err);
+    PSSocket *ns = novo_socket(vm, o.novofd, s->familia, s->tipo, s->proto);
+    if (!ns) { close(o.novofd); MERRO(vm, "MemoryError", "sem memoria"); }
+    ns->timeout = s->timeout;
+    if (ns->timeout >= 0) sk_aplica_timeout(ns);
+    Value av;
+    if (sk_addr_valor(vm, &o.sa, &av) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    PSList *par = lista_com_cap(vm, 2, OBJ_TUPLE);
+    if (!par) MERRO(vm, "MemoryError", "sem memoria");
+    par->itens[0] = MK_OBJ(ns); par->itens[1] = av; par->len = 2;
+    *out = MK_OBJ(par);
+    return 0;
+}
+
+static int sk_connect_nucleo(VM *vm, Value alvo, Value addr, const char *quem, int *err)
+{
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
+    struct sockaddr_storage sa; socklen_t sl;
+    if (sk_monta_addr(vm, s->familia, s->tipo, addr, quem, &sa, &sl, 0) != 0) return -1;
+    SkConnOff o = { s->fd, (struct sockaddr *)&sa, sl, s->timeout, 0, 0 };
+    fib_offload(vm, sk_conn_off, &o);
+    *err = o.rc ? o.err : 0;
+    return 0;
+}
+
+static int met_sk_connect(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "connect", 1);
+    int err;
+    if (sk_connect_nucleo(vm, alvo, args[0], "connect", &err) != 0) return -1;
+    if (err) SK_ERRNO(vm, "connect", err);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_connect_ex(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "connect_ex", 1);
+    int err;
+    if (sk_connect_nucleo(vm, alvo, args[0], "connect_ex", &err) != 0) return -1;
+    *out = MK_INT(err);   /* 0 = ok; senão o errno — igual ao Python */
+    return 0;
+}
+
+static int sk_send_nucleo(VM *vm, Value alvo, Value *args, int n, const char *quem,
+                          int tudo, Value *out)
+{
+    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 ou 2 argumentos", quem);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
+    const char *p = NULL; size_t tam = 0;
+    if (sk_dados(vm, args[0], quem, &p, &tam) != 0) return -1;
+    int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    SkSendOff o = { s->fd, p, tam, flags, tudo, 0, 0, NULL, 0 };
+    fib_offload(vm, sk_send_off, &o);
+    if (o.rc < 0) SK_ERRNO(vm, quem, o.err);
+    *out = tudo ? MK_NULL() : MK_INT(o.rc);
+    return 0;
+}
+
+static int met_sk_send(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ return sk_send_nucleo(vm, alvo, args, n, "send", 0, out); }
+
+static int met_sk_sendall(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ return sk_send_nucleo(vm, alvo, args, n, "sendall", 1, out); }
+
+static int met_sk_sendto(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 3) MERRO(vm, "SomeValueUnexpected", "sendto() espera 2 ou 3 argumentos");
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "sendto", &s) != 0) return -1;
+    const char *p = NULL; size_t tam = 0;
+    if (sk_dados(vm, args[0], "sendto", &p, &tam) != 0) return -1;
+    /* Python: sendto(data, addr) OU sendto(data, flags, addr) */
+    Value addr = args[n - 1];
+    int flags = (n == 3 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    struct sockaddr_storage sa; socklen_t sl;
+    if (sk_monta_addr(vm, s->familia, s->tipo, addr, "sendto", &sa, &sl, 0) != 0) return -1;
+    SkSendOff o = { s->fd, p, tam, flags, 0, 0, 0, (struct sockaddr *)&sa, sl };
+    fib_offload(vm, sk_send_off, &o);
+    if (o.rc < 0) SK_ERRNO(vm, "sendto", o.err);
+    *out = MK_INT(o.rc);
+    return 0;
+}
+
+static int sk_recv_nucleo(VM *vm, Value alvo, Value *args, int n, const char *quem,
+                          int com_addr, Value *out)
+{
+    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 ou 2 argumentos", quem);
+    if (args[0].t != V_INT || args[0].as.i <= 0)
+        MERRO(vm, "SomeValueUnexpected", "%s: bufsize deve ser int positivo", quem);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
+    size_t cap = (size_t)args[0].as.i;
+    int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    char *buf = malloc(cap);
+    if (!buf) MERRO(vm, "MemoryError", "sem memoria");
+    SkRecvOff o = { s->fd, buf, cap, flags, 0, 0, com_addr, {0}, 0 };
+    fib_offload(vm, sk_recv_off, &o);
+    if (o.rc < 0) { int e = o.err; free(buf); SK_ERRNO(vm, quem, e); }
+    PSString *by = novo_bytes(vm, buf, (int)o.rc);
+    free(buf);
+    if (!by) MERRO(vm, "MemoryError", "sem memoria");
+    if (!com_addr) { *out = MK_OBJ(by); return 0; }
+    Value av;
+    if (sk_addr_valor(vm, &o.sa, &av) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    PSList *par = lista_com_cap(vm, 2, OBJ_TUPLE);
+    if (!par) MERRO(vm, "MemoryError", "sem memoria");
+    par->itens[0] = MK_OBJ(by); par->itens[1] = av; par->len = 2;
+    *out = MK_OBJ(par);
+    return 0;
+}
+
+static int met_sk_recv(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ return sk_recv_nucleo(vm, alvo, args, n, "recv", 0, out); }
+
+static int met_sk_recvfrom(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ return sk_recv_nucleo(vm, alvo, args, n, "recvfrom", 1, out); }
+
+static int met_sk_close(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)vm; (void)args; (void)n;
+    PSSocket *s = COMO_SOCKET(alvo);
+    if (s->fd >= 0) { close(s->fd); s->fd = -1; }
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_shutdown(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "shutdown", 1);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "shutdown", &s) != 0) return -1;
+    if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "shutdown: how deve ser int");
+    if (shutdown(s->fd, (int)args[0].as.i) != 0) SK_ERRNO(vm, "shutdown", errno);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "setsockopt", 3);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "setsockopt", &s) != 0) return -1;
+    if (args[0].t != V_INT || args[1].t != V_INT)
+        MERRO(vm, "SomeValueUnexpected", "setsockopt: level/optname devem ser int");
+    int rc;
+    if (EH_BYTES(args[2]) || EH_STRING(args[2]))
+        rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i,
+                        COMO_STRING(args[2])->chars, (socklen_t)COMO_STRING(args[2])->len);
+    else if (args[2].t == V_INT || args[2].t == V_BOOL) {
+        int v = args[2].t == V_INT ? (int)args[2].as.i : (args[2].as.b ? 1 : 0);
+        rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, sizeof(v));
+    } else
+        MERRO(vm, "SomeValueUnexpected", "setsockopt: value deve ser int ou bytes");
+    if (rc != 0) SK_ERRNO(vm, "setsockopt", errno);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 3) MERRO(vm, "SomeValueUnexpected", "getsockopt() espera 2 ou 3 argumentos");
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "getsockopt", &s) != 0) return -1;
+    if (args[0].t != V_INT || args[1].t != V_INT)
+        MERRO(vm, "SomeValueUnexpected", "getsockopt: level/optname devem ser int");
+    if (n == 3) {   /* com buflen -> bytes, igual ao Python */
+        if (args[2].t != V_INT || args[2].as.i <= 0 || args[2].as.i > 1024)
+            MERRO(vm, "SomeValueUnexpected", "getsockopt: buflen invalido");
+        char buf[1024]; socklen_t sl = (socklen_t)args[2].as.i;
+        if (getsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, buf, &sl) != 0)
+            SK_ERRNO(vm, "getsockopt", errno);
+        PSString *by = novo_bytes(vm, buf, (int)sl);
+        if (!by) MERRO(vm, "MemoryError", "sem memoria");
+        *out = MK_OBJ(by);
+        return 0;
+    }
+    int v = 0; socklen_t sl = sizeof(v);
+    if (getsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, &sl) != 0)
+        SK_ERRNO(vm, "getsockopt", errno);
+    *out = MK_INT(v);
+    return 0;
+}
+
+static int met_sk_settimeout(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "settimeout", 1);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "settimeout", &s) != 0) return -1;
+    if (args[0].t == V_NULL) s->timeout = -1.0;
+    else if (args[0].t == V_INT) s->timeout = (double)args[0].as.i;
+    else if (args[0].t == V_FLOAT) s->timeout = args[0].as.d;
+    else MERRO(vm, "SomeValueUnexpected", "settimeout: espera numero ou null");
+    if (s->timeout < 0 && args[0].t != V_NULL)
+        MERRO(vm, "SomeValueUnexpected", "settimeout: prazo negativo");
+    sk_aplica_timeout(s);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_gettimeout(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)vm; (void)args; (void)n;
+    PSSocket *s = COMO_SOCKET(alvo);
+    *out = s->timeout < 0 ? MK_NULL() : MK_FLOAT(s->timeout);
+    return 0;
+}
+
+static int met_sk_setblocking(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "setblocking", 1);
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "setblocking", &s) != 0) return -1;
+    s->timeout = val_truthy(&args[0]) ? -1.0 : 0.0;   /* igual settimeout(None/0) */
+    sk_aplica_timeout(s);
+    *out = MK_NULL();
+    return 0;
+}
+
+static int met_sk_getblocking(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)vm; (void)args; (void)n;
+    /* Python: True se gettimeout() != 0 (None ou prazo > 0) */
+    *out = MK_BOOL(COMO_SOCKET(alvo)->timeout != 0.0);
+    return 0;
+}
+
+static int sk_nome_nucleo(VM *vm, Value alvo, const char *quem, int peer, Value *out)
+{
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
+    struct sockaddr_storage sa; socklen_t sl = sizeof(sa);
+    int rc = peer ? getpeername(s->fd, (struct sockaddr *)&sa, &sl)
+                  : getsockname(s->fd, (struct sockaddr *)&sa, &sl);
+    if (rc != 0) SK_ERRNO(vm, quem, errno);
+    if (sk_addr_valor(vm, &sa, out) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    return 0;
+}
+
+static int met_sk_getsockname(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ (void)args; (void)n; return sk_nome_nucleo(vm, alvo, "getsockname", 0, out); }
+
+static int met_sk_getpeername(VM *vm, Value alvo, Value *args, int n, Value *out)
+{ (void)args; (void)n; return sk_nome_nucleo(vm, alvo, "getpeername", 1, out); }
+
+static int met_sk_fileno(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)vm; (void)args; (void)n;
+    *out = MK_INT(COMO_SOCKET(alvo)->fd);
+    return 0;
+}
+
+static int met_sk_detach(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)vm; (void)args; (void)n;
+    PSSocket *s = COMO_SOCKET(alvo);
+    *out = MK_INT(s->fd);
+    s->fd = -1;   /* devolve o fd cru; o objeto para de possuí-lo */
+    return 0;
+}
+
+static int met_sk_dup(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args; (void)n;
+    PSSocket *s = NULL; if (sk_exige(vm, alvo, "dup", &s) != 0) return -1;
+    int nf = dup(s->fd);
+    if (nf < 0) SK_ERRNO(vm, "dup", errno);
+    PSSocket *ns = novo_socket(vm, nf, s->familia, s->tipo, s->proto);
+    if (!ns) { close(nf); MERRO(vm, "MemoryError", "sem memoria"); }
+    ns->timeout = s->timeout;
+    *out = MK_OBJ(ns);
+    return 0;
+}
+
+/* ── funções do módulo ── */
+static int mod_sk_socket(VM *vm, Value *args, int n, Value *out)
+{
+    if (n > 3) BERRO(vm, "SomeValueUnexpected", "socket() espera ate 3 argumentos");
+    int familia = (n >= 1 && args[0].t == V_INT) ? (int)args[0].as.i : AF_INET;
+    int tipo    = (n >= 2 && args[1].t == V_INT) ? (int)args[1].as.i : SOCK_STREAM;
+    int proto   = (n >= 3 && args[2].t == V_INT) ? (int)args[2].as.i : 0;
+    int fd = socket(familia, tipo, proto);
+    if (fd < 0) BERRO(vm, "RuntimeError", "socket: %s", strerror(errno));
+    PSSocket *s = novo_socket(vm, fd, familia, tipo, proto);
+    if (!s) { close(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (g_sk_def_timeout >= 0) { s->timeout = g_sk_def_timeout; sk_aplica_timeout(s); }
+    *out = MK_OBJ(s);
+    return 0;
+}
+
+static int mod_sk_create_connection(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "create_connection() espera 1 a 3 argumentos");
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) BERRO(vm, "RuntimeError", "create_connection: %s", strerror(errno));
+    PSSocket *s = novo_socket(vm, fd, AF_INET, SOCK_STREAM, 0);
+    if (!s) { close(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (n >= 2 && args[1].t != V_NULL && args[1].t != V_UNSET) {
+        s->timeout = args[1].t == V_FLOAT ? args[1].as.d : (double)args[1].as.i;
+        sk_aplica_timeout(s);
+    } else if (g_sk_def_timeout >= 0) { s->timeout = g_sk_def_timeout; sk_aplica_timeout(s); }
+    if (n >= 3 && (EH_TUPLA(args[2]) || EH_LIST(args[2]))) {
+        struct sockaddr_storage sa; socklen_t sl;
+        if (sk_monta_addr(vm, AF_INET, SOCK_STREAM, args[2], "create_connection", &sa, &sl, 1) != 0) return -1;
+        if (bind(fd, (struct sockaddr *)&sa, sl) != 0) BERRO(vm, "RuntimeError", "create_connection: %s", strerror(errno));
+    }
+    int err;
+    if (sk_connect_nucleo(vm, MK_OBJ(s), args[0], "create_connection", &err) != 0) return -1;
+    if (err) { close(s->fd); s->fd = -1; SK_ERRNO(vm, "create_connection", err); }
+    *out = MK_OBJ(s);
+    return 0;
+}
+
+static int mod_sk_create_server(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "create_server() espera 1 a 3 argumentos");
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) BERRO(vm, "RuntimeError", "create_server: %s", strerror(errno));
+    PSSocket *s = novo_socket(vm, fd, AF_INET, SOCK_STREAM, 0);
+    if (!s) { close(fd); BERRO(vm, "MemoryError", "sem memoria"); }
+    int um = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &um, sizeof(um));
+    if (n >= 3 && val_truthy(&args[2])) setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &um, sizeof(um));
+    struct sockaddr_storage sa; socklen_t sl;
+    if (sk_monta_addr(vm, AF_INET, SOCK_STREAM, args[0], "create_server", &sa, &sl, 1) != 0) return -1;
+    if (bind(fd, (struct sockaddr *)&sa, sl) != 0) BERRO(vm, "RuntimeError", "create_server: %s", strerror(errno));
+    int backlog = (n >= 2 && args[1].t == V_INT) ? (int)args[1].as.i : SOMAXCONN;
+    if (listen(fd, backlog) != 0) BERRO(vm, "RuntimeError", "create_server: %s", strerror(errno));
+    *out = MK_OBJ(s);
+    return 0;
+}
+
+static int mod_sk_socketpair(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) BERRO(vm, "SomeValueUnexpected", "socketpair() nao aceita argumento");
+    int par[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, par) != 0)
+        BERRO(vm, "RuntimeError", "socketpair: %s", strerror(errno));
+    PSSocket *a = novo_socket(vm, par[0], AF_UNIX, SOCK_STREAM, 0);
+    if (!a) { close(par[0]); close(par[1]); BERRO(vm, "MemoryError", "sem memoria"); }
+    PSSocket *b = novo_socket(vm, par[1], AF_UNIX, SOCK_STREAM, 0);
+    if (!b) { close(par[1]); BERRO(vm, "MemoryError", "sem memoria"); }
+    PSList *t = lista_com_cap(vm, 2, OBJ_TUPLE);
+    if (!t) BERRO(vm, "MemoryError", "sem memoria");
+    t->itens[0] = MK_OBJ(a); t->itens[1] = MK_OBJ(b); t->len = 2;
+    *out = MK_OBJ(t);
+    return 0;
+}
+
+static int mod_sk_gethostname(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args; (void)n;
+    char nome[256] = "";
+    gethostname(nome, sizeof(nome) - 1);
+    PSString *r = nova_string(vm, nome, (int)strlen(nome));
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+/* resolve nome -> primeiro IPv4 (offloadado: DNS bloqueia) */
+typedef struct { const char *host; char ip[INET6_ADDRSTRLEN]; int fam_hint; int rc; } SkDnsOff;
+static void sk_dns_off(void *p)
+{
+    SkDnsOff *o = (SkDnsOff *)p;
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = o->fam_hint;
+    o->rc = getaddrinfo(o->host, NULL, &hints, &res);
+    if (o->rc == 0) {
+        if (res->ai_family == AF_INET)
+            inet_ntop(AF_INET, &((struct sockaddr_in *)res->ai_addr)->sin_addr, o->ip, sizeof(o->ip));
+        else
+            inet_ntop(AF_INET6, &((struct sockaddr_in6 *)res->ai_addr)->sin6_addr, o->ip, sizeof(o->ip));
+        freeaddrinfo(res);
+    }
+}
+
+static int mod_sk_gethostbyname(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "gethostbyname", 1);
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "gethostbyname: espera str");
+    SkDnsOff o = { COMO_STRING(args[0])->chars, "", AF_INET, 0 };
+    fib_offload(vm, sk_dns_off, &o);
+    if (o.rc != 0) BERRO(vm, "RuntimeError", "gethostbyname: %s", gai_strerror(o.rc));
+    PSString *r = nova_string(vm, o.ip, (int)strlen(o.ip));
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+static int mod_sk_getfqdn(VM *vm, Value *args, int n, Value *out)
+{
+    char nome[256] = "";
+    if (n >= 1 && EH_STRING(args[0]) && COMO_STRING(args[0])->len > 0)
+        snprintf(nome, sizeof(nome), "%s", COMO_STRING(args[0])->chars);
+    else
+        gethostname(nome, sizeof(nome) - 1);
+    /* canonical name via getaddrinfo AI_CANONNAME (o que o Python tenta) */
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_flags = AI_CANONNAME;
+    const char *fq = nome;
+    if (getaddrinfo(nome, NULL, &hints, &res) == 0 && res && res->ai_canonname)
+        fq = res->ai_canonname;
+    PSString *r = nova_string(vm, fq, (int)strlen(fq));
+    if (res) freeaddrinfo(res);
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+static int sk_host_ex(VM *vm, const char *nome_of, const char *host, Value *out)
+{
+    /* (nome, [aliases], [ips]) — gethostbyname_r/gethostbyaddr já resolvido */
+    struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
+    if (gethostbyname_r(host, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe)
+        BERRO(vm, "RuntimeError", "%s: host nao encontrado: %s", nome_of, host);
+    PSList *t = lista_com_cap(vm, 3, OBJ_TUPLE);
+    if (!t) BERRO(vm, "MemoryError", "sem memoria");
+    t->len = 3;
+    t->itens[1] = MK_NULL(); t->itens[2] = MK_NULL();   /* GC ve tup consistente */
+    PSString *nm = nova_string(vm, rhe->h_name, (int)strlen(rhe->h_name));
+    if (!nm) BERRO(vm, "MemoryError", "sem memoria");
+    t->itens[0] = MK_OBJ(nm);
+    PSList *al = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!al) BERRO(vm, "MemoryError", "sem memoria");
+    t->itens[1] = MK_OBJ(al);
+    for (char **a = rhe->h_aliases; a && *a; a++) {
+        PSString *sa2 = nova_string(vm, *a, (int)strlen(*a));
+        if (!sa2 || lista_push(vm, al, MK_OBJ(sa2)) != 0) BERRO(vm, "MemoryError", "sem memoria");
+    }
+    PSList *ips = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!ips) BERRO(vm, "MemoryError", "sem memoria");
+    t->itens[2] = MK_OBJ(ips);
+    for (char **a = rhe->h_addr_list; a && *a; a++) {
+        char ip[INET6_ADDRSTRLEN];
+        inet_ntop(rhe->h_addrtype, *a, ip, sizeof(ip));
+        PSString *si = nova_string(vm, ip, (int)strlen(ip));
+        if (!si || lista_push(vm, ips, MK_OBJ(si)) != 0) BERRO(vm, "MemoryError", "sem memoria");
+    }
+    *out = MK_OBJ(t);
+    return 0;
+}
+
+static int mod_sk_gethostbyname_ex(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "gethostbyname_ex", 1);
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "gethostbyname_ex: espera str");
+    return sk_host_ex(vm, "gethostbyname_ex", COMO_STRING(args[0])->chars, out);
+}
+
+static int mod_sk_gethostbyaddr(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "gethostbyaddr", 1);
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "gethostbyaddr: espera str");
+    const char *ip = COMO_STRING(args[0])->chars;
+    struct in_addr v4;
+    if (inet_pton(AF_INET, ip, &v4) != 1)
+        BERRO(vm, "SomeValueUnexpected", "gethostbyaddr: endereco invalido: %s", ip);
+    struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
+    if (gethostbyaddr_r(&v4, sizeof(v4), AF_INET, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe)
+        BERRO(vm, "RuntimeError", "gethostbyaddr: host nao encontrado: %s", ip);
+    return sk_host_ex(vm, "gethostbyaddr", rhe->h_name, out);
+}
+
+static int mod_sk_getaddrinfo(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 6) BERRO(vm, "SomeValueUnexpected", "getaddrinfo() espera 2 a 6 argumentos");
+    const char *host = EH_STRING(args[0]) && COMO_STRING(args[0])->len ? COMO_STRING(args[0])->chars : NULL;
+    char porta[64] = "";
+    if (args[1].t == V_INT) snprintf(porta, sizeof(porta), "%lld", (long long)args[1].as.i);
+    else if (EH_STRING(args[1])) snprintf(porta, sizeof(porta), "%s", COMO_STRING(args[1])->chars);
+    struct addrinfo hints, *res = NULL;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family   = (n >= 3 && args[2].t == V_INT) ? (int)args[2].as.i : AF_UNSPEC;
+    hints.ai_socktype = (n >= 4 && args[3].t == V_INT) ? (int)args[3].as.i : 0;
+    hints.ai_protocol = (n >= 5 && args[4].t == V_INT) ? (int)args[4].as.i : 0;
+    hints.ai_flags    = (n >= 6 && args[5].t == V_INT) ? (int)args[5].as.i : 0;
+    int rc = getaddrinfo(host, porta[0] ? porta : NULL, &hints, &res);
+    if (rc != 0) BERRO(vm, "RuntimeError", "getaddrinfo: %s", gai_strerror(rc));
+    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!l) { freeaddrinfo(res); BERRO(vm, "MemoryError", "sem memoria"); }
+    *out = MK_OBJ(l);
+    for (struct addrinfo *ai = res; ai; ai = ai->ai_next) {
+        PSList *t = lista_com_cap(vm, 5, OBJ_TUPLE);
+        if (!t || lista_push(vm, l, MK_OBJ(t)) != 0) { freeaddrinfo(res); BERRO(vm, "MemoryError", "sem memoria"); }
+        t->len = 5;
+        t->itens[0] = MK_INT(ai->ai_family);
+        t->itens[1] = MK_INT(ai->ai_socktype);
+        t->itens[2] = MK_INT(ai->ai_protocol);
+        const char *cn = ai->ai_canonname ? ai->ai_canonname : "";
+        t->itens[3] = MK_NULL(); t->itens[4] = MK_NULL();
+        PSString *cs = nova_string(vm, cn, (int)strlen(cn));
+        if (!cs) { freeaddrinfo(res); BERRO(vm, "MemoryError", "sem memoria"); }
+        t->itens[3] = MK_OBJ(cs);
+        struct sockaddr_storage sa; memset(&sa, 0, sizeof(sa));
+        memcpy(&sa, ai->ai_addr, ai->ai_addrlen);
+        Value av;
+        if (sk_addr_valor(vm, &sa, &av) != 0) { freeaddrinfo(res); BERRO(vm, "MemoryError", "sem memoria"); }
+        t->itens[4] = av;
+    }
+    freeaddrinfo(res);
+    return 0;
+}
+
+static int mod_sk_getnameinfo(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getnameinfo() espera 1 ou 2 argumentos");
+    struct sockaddr_storage sa; socklen_t sl;
+    if (sk_monta_addr(vm, AF_UNSPEC, 0, args[0], "getnameinfo", &sa, &sl, 0) != 0) return -1;
+    int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    char host[256] = "", serv[64] = "";
+    int rc = getnameinfo((struct sockaddr *)&sa, sl, host, sizeof(host), serv, sizeof(serv), flags);
+    if (rc != 0) BERRO(vm, "RuntimeError", "getnameinfo: %s", gai_strerror(rc));
+    PSList *t = lista_com_cap(vm, 2, OBJ_TUPLE);
+    if (!t) BERRO(vm, "MemoryError", "sem memoria");
+    t->len = 2; t->itens[0] = MK_NULL(); t->itens[1] = MK_NULL();
+    PSString *h = nova_string(vm, host, (int)strlen(host));
+    if (!h) BERRO(vm, "MemoryError", "sem memoria");
+    t->itens[0] = MK_OBJ(h);
+    PSString *sv = nova_string(vm, serv, (int)strlen(serv));
+    if (!sv) BERRO(vm, "MemoryError", "sem memoria");
+    t->itens[1] = MK_OBJ(sv);
+    *out = MK_OBJ(t);
+    return 0;
+}
+
+static int mod_sk_getservbyname(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getservbyname() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "getservbyname: espera str");
+    const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
+    struct servent *se = getservbyname(COMO_STRING(args[0])->chars, proto);
+    if (!se) BERRO(vm, "RuntimeError", "getservbyname: servico nao encontrado: %s", COMO_STRING(args[0])->chars);
+    *out = MK_INT(ntohs((uint16_t)se->s_port));
+    return 0;
+}
+
+static int mod_sk_getservbyport(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getservbyport() espera 1 ou 2 argumentos");
+    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "getservbyport: espera int");
+    const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
+    struct servent *se = getservbyport(htons((uint16_t)args[0].as.i), proto);
+    if (!se) BERRO(vm, "RuntimeError", "getservbyport: porta sem servico: %lld", (long long)args[0].as.i);
+    PSString *r = nova_string(vm, se->s_name, (int)strlen(se->s_name));
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+static int mod_sk_getprotobyname(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "getprotobyname", 1);
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "getprotobyname: espera str");
+    struct protoent *pe = getprotobyname(COMO_STRING(args[0])->chars);
+    if (!pe) BERRO(vm, "RuntimeError", "getprotobyname: protocolo nao encontrado: %s", COMO_STRING(args[0])->chars);
+    *out = MK_INT(pe->p_proto);
+    return 0;
+}
+
+#define SK_CONV(nome_fn, quem, expr) \
+static int nome_fn(VM *vm, Value *args, int n, Value *out) \
+{ \
+    EXIGE_ARGS(vm, quem, 1); \
+    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", quem ": espera int"); \
+    int64_t x = args[0].as.i; (void)x; \
+    *out = MK_INT((int64_t)(expr)); \
+    return 0; \
+}
+SK_CONV(mod_sk_htons, "htons", htons((uint16_t)x))
+SK_CONV(mod_sk_htonl, "htonl", htonl((uint32_t)x))
+SK_CONV(mod_sk_ntohs, "ntohs", ntohs((uint16_t)x))
+SK_CONV(mod_sk_ntohl, "ntohl", ntohl((uint32_t)x))
+
+static int mod_sk_inet_aton(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "inet_aton", 1);
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "inet_aton: espera str");
+    struct in_addr a;
+    if (inet_aton(COMO_STRING(args[0])->chars, &a) == 0)
+        BERRO(vm, "SomeValueUnexpected", "inet_aton: endereco invalido: %s", COMO_STRING(args[0])->chars);
+    PSString *by = novo_bytes(vm, (const char *)&a, 4);
+    if (!by) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(by);
+    return 0;
+}
+
+static int mod_sk_inet_ntoa(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "inet_ntoa", 1);
+    if ((!EH_BYTES(args[0]) && !EH_STRING(args[0])) || COMO_STRING(args[0])->len != 4)
+        BERRO(vm, "SomeValueUnexpected", "inet_ntoa: espera 4 bytes");
+    struct in_addr a;
+    memcpy(&a, COMO_STRING(args[0])->chars, 4);
+    const char *ip = inet_ntoa(a);
+    PSString *r = nova_string(vm, ip, (int)strlen(ip));
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+static int mod_sk_inet_pton(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "inet_pton", 2);
+    if (args[0].t != V_INT || !EH_STRING(args[1]))
+        BERRO(vm, "SomeValueUnexpected", "inet_pton: espera (family, str)");
+    unsigned char buf[16];
+    int fam = (int)args[0].as.i;
+    int rc = inet_pton(fam, COMO_STRING(args[1])->chars, buf);
+    if (rc != 1) BERRO(vm, "SomeValueUnexpected", "inet_pton: endereco invalido: %s", COMO_STRING(args[1])->chars);
+    PSString *by = novo_bytes(vm, (const char *)buf, fam == AF_INET6 ? 16 : 4);
+    if (!by) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(by);
+    return 0;
+}
+
+static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "inet_ntop", 2);
+    if (args[0].t != V_INT || (!EH_BYTES(args[1]) && !EH_STRING(args[1])))
+        BERRO(vm, "SomeValueUnexpected", "inet_ntop: espera (family, bytes)");
+    char ip[INET6_ADDRSTRLEN];
+    if (!inet_ntop((int)args[0].as.i, COMO_STRING(args[1])->chars, ip, sizeof(ip)))
+        BERRO(vm, "SomeValueUnexpected", "inet_ntop: bytes invalidos");
+    PSString *r = nova_string(vm, ip, (int)strlen(ip));
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+static int mod_sk_setdefaulttimeout(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "setdefaulttimeout", 1);
+    if (args[0].t == V_NULL) g_sk_def_timeout = -1.0;
+    else if (args[0].t == V_INT) g_sk_def_timeout = (double)args[0].as.i;
+    else if (args[0].t == V_FLOAT) g_sk_def_timeout = args[0].as.d;
+    else BERRO(vm, "SomeValueUnexpected", "setdefaulttimeout: espera numero ou null");
+    *out = MK_NULL();
+    return 0;
+}
+
+static int mod_sk_getdefaulttimeout(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args; (void)n; (void)vm;
+    *out = g_sk_def_timeout < 0 ? MK_NULL() : MK_FLOAT(g_sk_def_timeout);
+    return 0;
+}
+
+static int mod_sk_has_dualstack_ipv6(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args; (void)n; (void)vm;
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd < 0) { *out = MK_BOOL(0); return 0; }
+    int zero = 0;
+    int ok = setsockopt(fd, IPPROTO_IPV6, IPV6_V6ONLY, &zero, sizeof(zero)) == 0;
+    close(fd);
+    *out = MK_BOOL(ok);
+    return 0;
+}
+
+static int mod_sk_if_nameindex(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) BERRO(vm, "SomeValueUnexpected", "if_nameindex() nao aceita argumento");
+    struct if_nameindex *ifs = if_nameindex();
+    if (!ifs) BERRO(vm, "RuntimeError", "if_nameindex: %s", strerror(errno));
+    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!l) { if_freenameindex(ifs); BERRO(vm, "MemoryError", "sem memoria"); }
+    *out = MK_OBJ(l);
+    for (struct if_nameindex *i = ifs; i->if_index != 0 && i->if_name; i++) {
+        PSList *t = lista_com_cap(vm, 2, OBJ_TUPLE);
+        if (!t || lista_push(vm, l, MK_OBJ(t)) != 0) { if_freenameindex(ifs); BERRO(vm, "MemoryError", "sem memoria"); }
+        t->len = 2;
+        t->itens[0] = MK_INT(i->if_index); t->itens[1] = MK_NULL();
+        PSString *nm = nova_string(vm, i->if_name, (int)strlen(i->if_name));
+        if (!nm) { if_freenameindex(ifs); BERRO(vm, "MemoryError", "sem memoria"); }
+        t->itens[1] = MK_OBJ(nm);
+    }
+    if_freenameindex(ifs);
+    return 0;
+}
+
+static int mod_sk_if_nametoindex(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "if_nametoindex", 1);
+    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "if_nametoindex: espera str");
+    unsigned idx = if_nametoindex(COMO_STRING(args[0])->chars);
+    if (idx == 0) BERRO(vm, "RuntimeError", "if_nametoindex: interface nao encontrada: %s", COMO_STRING(args[0])->chars);
+    *out = MK_INT(idx);
+    return 0;
+}
+
+static int mod_sk_if_indextoname(VM *vm, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "if_indextoname", 1);
+    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "if_indextoname: espera int");
+    char nome[IF_NAMESIZE];
+    if (!if_indextoname((unsigned)args[0].as.i, nome))
+        BERRO(vm, "RuntimeError", "if_indextoname: indice invalido: %lld", (long long)args[0].as.i);
+    PSString *r = nova_string(vm, nome, (int)strlen(nome));
+    if (!r) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+/* constantes: cada uma vira um membro `eh_valor` (resolvido no acesso) */
+#define SK_CONST(nome) \
+static int mod_sk_c_##nome(VM *vm, Value *args, int n, Value *out) \
+{ (void)vm; (void)args; (void)n; *out = MK_INT((int64_t)(nome)); return 0; }
+SK_CONST(AF_INET)      SK_CONST(AF_INET6)    SK_CONST(AF_UNIX)     SK_CONST(AF_UNSPEC)
+SK_CONST(AF_PACKET)
+SK_CONST(SOCK_STREAM)  SK_CONST(SOCK_DGRAM)  SK_CONST(SOCK_RAW)    SK_CONST(SOCK_SEQPACKET)
+SK_CONST(SOL_SOCKET)   SK_CONST(SO_REUSEADDR) SK_CONST(SO_REUSEPORT) SK_CONST(SO_KEEPALIVE)
+SK_CONST(SO_BROADCAST) SK_CONST(SO_LINGER)   SK_CONST(SO_RCVBUF)   SK_CONST(SO_SNDBUF)
+SK_CONST(SO_ERROR)     SK_CONST(SO_RCVTIMEO) SK_CONST(SO_SNDTIMEO) SK_CONST(SO_OOBINLINE)
+SK_CONST(SO_DONTROUTE) SK_CONST(SO_TYPE)
+SK_CONST(TCP_NODELAY)  SK_CONST(TCP_KEEPIDLE) SK_CONST(TCP_KEEPINTVL) SK_CONST(TCP_KEEPCNT)
+SK_CONST(IPPROTO_IP)   SK_CONST(IPPROTO_TCP) SK_CONST(IPPROTO_UDP) SK_CONST(IPPROTO_ICMP)
+SK_CONST(IPPROTO_RAW)
+SK_CONST(SHUT_RD)      SK_CONST(SHUT_WR)     SK_CONST(SHUT_RDWR)
+SK_CONST(MSG_PEEK)     SK_CONST(MSG_WAITALL) SK_CONST(MSG_DONTWAIT) SK_CONST(MSG_OOB)
+SK_CONST(MSG_DONTROUTE) SK_CONST(MSG_TRUNC)
+SK_CONST(AI_PASSIVE)   SK_CONST(AI_CANONNAME) SK_CONST(AI_NUMERICHOST) SK_CONST(AI_NUMERICSERV)
+SK_CONST(AI_ADDRCONFIG) SK_CONST(AI_V4MAPPED) SK_CONST(AI_ALL)
+SK_CONST(NI_NUMERICHOST) SK_CONST(NI_NUMERICSERV) SK_CONST(NI_NOFQDN) SK_CONST(NI_NAMEREQD)
+SK_CONST(NI_DGRAM)
+SK_CONST(SOMAXCONN)    SK_CONST(INADDR_ANY)  SK_CONST(INADDR_LOOPBACK) SK_CONST(INADDR_BROADCAST)
+SK_CONST(IP_TTL)       SK_CONST(IP_MULTICAST_TTL) SK_CONST(IP_MULTICAST_LOOP)
+SK_CONST(IP_ADD_MEMBERSHIP) SK_CONST(IP_DROP_MEMBERSHIP) SK_CONST(IPV6_V6ONLY)
+
+#define SK_C(nome) { #nome, mod_sk_c_##nome, 1, NULL }
+static const MembroMod MOD_SOCKETS[] = {
+    { "socket", mod_sk_socket, 0, "family,type,proto" },
+    { "create_connection", mod_sk_create_connection, 0, "address,timeout,source_address" },
+    { "create_server", mod_sk_create_server, 0, "address,backlog,reuse_port" },
+    { "socketpair", mod_sk_socketpair, 0, NULL },
+    { "gethostname", mod_sk_gethostname, 0, NULL },
+    { "getfqdn", mod_sk_getfqdn, 0, "name" },
+    { "gethostbyname", mod_sk_gethostbyname, 0, "hostname" },
+    { "gethostbyname_ex", mod_sk_gethostbyname_ex, 0, "hostname" },
+    { "gethostbyaddr", mod_sk_gethostbyaddr, 0, "address" },
+    { "getaddrinfo", mod_sk_getaddrinfo, 0, "host,port,family,type,proto,flags" },
+    { "getnameinfo", mod_sk_getnameinfo, 0, "sockaddr,flags" },
+    { "getservbyname", mod_sk_getservbyname, 0, "servicename,protocolname" },
+    { "getservbyport", mod_sk_getservbyport, 0, "port,protocolname" },
+    { "getprotobyname", mod_sk_getprotobyname, 0, "protocolname" },
+    { "htons", mod_sk_htons, 0, "x" }, { "htonl", mod_sk_htonl, 0, "x" },
+    { "ntohs", mod_sk_ntohs, 0, "x" }, { "ntohl", mod_sk_ntohl, 0, "x" },
+    { "inet_aton", mod_sk_inet_aton, 0, "ip_string" },
+    { "inet_ntoa", mod_sk_inet_ntoa, 0, "packed_ip" },
+    { "inet_pton", mod_sk_inet_pton, 0, "address_family,ip_string" },
+    { "inet_ntop", mod_sk_inet_ntop, 0, "address_family,packed_ip" },
+    { "setdefaulttimeout", mod_sk_setdefaulttimeout, 0, "timeout" },
+    { "getdefaulttimeout", mod_sk_getdefaulttimeout, 0, NULL },
+    { "has_dualstack_ipv6", mod_sk_has_dualstack_ipv6, 0, NULL },
+    { "if_nameindex", mod_sk_if_nameindex, 0, NULL },
+    { "if_nametoindex", mod_sk_if_nametoindex, 0, "if_name" },
+    { "if_indextoname", mod_sk_if_indextoname, 0, "if_index" },
+    SK_C(AF_INET), SK_C(AF_INET6), SK_C(AF_UNIX), SK_C(AF_UNSPEC), SK_C(AF_PACKET),
+    SK_C(SOCK_STREAM), SK_C(SOCK_DGRAM), SK_C(SOCK_RAW), SK_C(SOCK_SEQPACKET),
+    SK_C(SOL_SOCKET), SK_C(SO_REUSEADDR), SK_C(SO_REUSEPORT), SK_C(SO_KEEPALIVE),
+    SK_C(SO_BROADCAST), SK_C(SO_LINGER), SK_C(SO_RCVBUF), SK_C(SO_SNDBUF),
+    SK_C(SO_ERROR), SK_C(SO_RCVTIMEO), SK_C(SO_SNDTIMEO), SK_C(SO_OOBINLINE),
+    SK_C(SO_DONTROUTE), SK_C(SO_TYPE),
+    SK_C(TCP_NODELAY), SK_C(TCP_KEEPIDLE), SK_C(TCP_KEEPINTVL), SK_C(TCP_KEEPCNT),
+    SK_C(IPPROTO_IP), SK_C(IPPROTO_TCP), SK_C(IPPROTO_UDP), SK_C(IPPROTO_ICMP),
+    SK_C(IPPROTO_RAW),
+    SK_C(SHUT_RD), SK_C(SHUT_WR), SK_C(SHUT_RDWR),
+    SK_C(MSG_PEEK), SK_C(MSG_WAITALL), SK_C(MSG_DONTWAIT), SK_C(MSG_OOB),
+    SK_C(MSG_DONTROUTE), SK_C(MSG_TRUNC),
+    SK_C(AI_PASSIVE), SK_C(AI_CANONNAME), SK_C(AI_NUMERICHOST), SK_C(AI_NUMERICSERV),
+    SK_C(AI_ADDRCONFIG), SK_C(AI_V4MAPPED), SK_C(AI_ALL),
+    SK_C(NI_NUMERICHOST), SK_C(NI_NUMERICSERV), SK_C(NI_NOFQDN), SK_C(NI_NAMEREQD),
+    SK_C(NI_DGRAM),
+    SK_C(SOMAXCONN), SK_C(INADDR_ANY), SK_C(INADDR_LOOPBACK), SK_C(INADDR_BROADCAST),
+    SK_C(IP_TTL), SK_C(IP_MULTICAST_TTL), SK_C(IP_MULTICAST_LOOP),
+    SK_C(IP_ADD_MEMBERSHIP), SK_C(IP_DROP_MEMBERSHIP), SK_C(IPV6_V6ONLY),
+};
+
 
 /* ── MailServer ─────────────────────────────────────────────────────────── */
 
@@ -9402,7 +10574,7 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() antes de .send()");
 
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     const char *para = NULL;
     if (EH_MAILMSG(args[0])) {
         PSMailMsg *msg = COMO_MAILMSG(args[0]);
@@ -9413,7 +10585,7 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!tem_from && m->user) mailmsg_add_cab(vm, msg, "From", m->user);
         for (int i = 0; i < msg->ncabs; i++)
             if (strcmp(msg->cabs[i].nome, "To") == 0) para = msg->cabs[i].valor;
-        if (mailmsg_monta(vm, msg, &b) != 0) { free(b.b); return -1; }
+        if (mailmsg_monta(vm, msg, &b) != 0) { return -1; }
     } else {
         if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "send() espera destino str ou MailMessage");
         const char *dest = COMO_STRING(args[0])->chars;
@@ -9431,14 +10603,13 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         free(tmp.cabs);
         for (int k = 0; k < tmp.npartes; k++) { free(tmp.partes[k].ct); free(tmp.partes[k].dados); }
         free(tmp.partes);
-        if (rc != 0) { free(b.b); return -1; }
+        if (rc != 0) { return -1; }
     }
     char e[180];
     SmtpSendOff so = { m->conn, m->user ? m->user : "", para ? para : "",
                        b.b ? b.b : "", (size_t)b.n, e, sizeof(e), 0 };
     fib_offload(vm, smtp_send_off, &so);   /* MAIL/RCPT/DATA na thread: não trava */
     int rc = so.rc;
-    free(b.b);
     if (rc != 0) MAIL_ERRO_REDE(vm, e);
     *out = MK_BOOL(1);
     return 0;
@@ -9859,7 +11030,7 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     if (stream && n > 5 && args[5].t == V_INT) teto = args[5].as.i;
 
     /* headers do usuário + defaults */
-    SBuf cabs = {0};
+    SBUF_AUTO cabs = {0};
     int tem_ua = 0, tem_accept = 0, tem_ct = 0;
     if (EH_DICT(headers)) {
         PSDict *d = COMO_DICT(headers);
@@ -9872,13 +11043,12 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
             if (strcmp(low, "user-agent") == 0) tem_ua = 1;
             if (strcmp(low, "accept") == 0) tem_accept = 1;
             if (strcmp(low, "content-type") == 0) tem_ct = 1;
-            TxtBuf vt = {0};
-            if (valor_para_texto(&vt, &v, 0) != 0) { free(vt.b); free(cabs.b); BERRO(vm, "MemoryError", "sem memoria"); }
+            TXTBUF_AUTO vt = {0};
+            if (valor_para_texto(&vt, &v, 0) != 0) BERRO(vm, "MemoryError", "sem memoria");
             sb_bytes(&cabs, COMO_STRING(k)->chars, COMO_STRING(k)->len);
             sb_bytes(&cabs, ": ", 2);
             sb_bytes(&cabs, vt.b ? vt.b : "", vt.n);
             sb_bytes(&cabs, "\r\n", 2);
-            free(vt.b);
         }
     }
     if (!tem_ua)     { sb_bytes(&cabs, "User-Agent: ", 12); sb_bytes(&cabs, REQ_UA, (int)strlen(REQ_UA)); sb_bytes(&cabs, "\r\n", 2); }
@@ -9891,7 +11061,7 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     if (body.t != V_NULL && body.t != V_UNSET) {
         if (EH_DICT(body) || EH_LIST(body) || EH_TUPLA(body)) {
             SBuf jb = {0};
-            if (json_escreve(vm, &jb, &body, 0, 0) != 0) { free(jb.b); free(cabs.b); BERRO(vm, "SomeValueUnexpected", "corpo nao serializavel em json"); }
+            if (json_escreve(vm, &jb, &body, 0, 0) != 0) { free(jb.b); BERRO(vm, "SomeValueUnexpected", "corpo nao serializavel em json"); }
             corpo = jb.b; ncorpo = (size_t)jb.n; corpo_livre = 1;
             if (!tem_ct) { sb_bytes(&cabs, "Content-Type: application/json\r\n", 32); }
         } else if (EH_STRING(body) || EH_BYTES(body)) {
@@ -9899,7 +11069,7 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
             corpo = s->chars; ncorpo = (size_t)s->len;
         } else {
             TxtBuf vt = {0};
-            if (valor_para_texto(&vt, &body, 0) != 0) { free(vt.b); free(cabs.b); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (valor_para_texto(&vt, &body, 0) != 0) { free(vt.b); BERRO(vm, "MemoryError", "sem memoria"); }
             corpo = vt.b; ncorpo = (size_t)vt.n; corpo_livre = 1;
         }
     }
@@ -9909,7 +11079,7 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
      * requests de tamanho errado que travavam o servidor esperando corpo
      * fantasma. Só aparecia quando o layout do heap deixava lixo não-nulo
      * logo após o buffer (dependia dos módulos rodados antes na suíte). */
-    if (cabs.b && sb_bytes(&cabs, "\0", 1) != 0) { free(cabs.b); if (corpo_livre) free(corpo); BERRO(vm, "MemoryError", "sem memoria"); }
+    if (cabs.b && sb_bytes(&cabs, "\0", 1) != 0) { if (corpo_livre) free(corpo); BERRO(vm, "MemoryError", "sem memoria"); }
 
     /* estado já publicado pelo chamador -> seguro ceder no offload */
     PSHttpResp hr;
@@ -9917,7 +11087,6 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
                       corpo, ncorpo, timeout, teto, &hr, 0 };
     fib_offload(vm, req_http_offload, &ro);   /* rede numa thread: NÃO trava o worker */
     int rc = ro.rc;
-    free(cabs.b);
     if (corpo_livre) free(corpo);
     if (rc != 0) {
         char msg[300];
@@ -9940,16 +11109,31 @@ static int mod_req_put(VM *v, Value *a, int n, Value *o)    { return request_com
 static int mod_req_patch(VM *v, Value *a, int n, Value *o)  { return request_comum(v, "PATCH", a, n, o); }
 static int mod_req_delete(VM *v, Value *a, int n, Value *o) { return request_comum(v, "DELETE", a, n, o); }
 
-/* Drena as mensagens já chegadas e entrega ao on_message. Sem thread, a
- * entrega acontece aqui (chamado no send e no close) — o interpretador
+/* Drena as mensagens já chegadas e entrega ao on_message. Sem thread própria,
+ * a entrega acontece aqui (chamado no send e no close) — o interpretador
  * entrega em background; o observável (mensagens processadas na ordem)
- * é o mesmo desde que o script dê uma chance à conexão antes de fechar. */
+ * é o mesmo desde que o script dê uma chance à conexão antes de fechar.
+ *
+ * OFFLOAD (último pedaço do "async uniforme"): a ESPERA (poll com timeout) e a
+ * LEITURA do frame (que pode bloquear no meio de um frame fatiado) rodam numa
+ * thread do pool via fib_offload — a fibra cede e o worker atende outros
+ * requests enquanto isso. Só dados C viajam pra thread; o callback on_message
+ * (objetos da VM) roda de volta na fibra, na ordem de chegada. */
+typedef struct { PSJkConn *c; int timeout_ms; int tem; int fr; char *raw; size_t nraw; } WsRecvOff;
+static void ws_recv_off(void *p){ WsRecvOff *o = (WsRecvOff *)p;
+    o->tem = ps_jk_ws_tem_dados(o->c, o->timeout_ms);
+    if (o->tem) o->fr = ps_jk_ws_le_frame(o->c, &o->raw, &o->nraw); }
+
 static int ws_drena(VM *vm, PSWsConn *w, int timeout_ms)
 {
-    while (w->conn && ps_jk_ws_tem_dados(w->conn, timeout_ms)) {
+    for (;;) {
+        if (!w->conn) break;
+        WsRecvOff ro = { w->conn, timeout_ms, 0, 0, NULL, 0 };
+        fib_offload(vm, ws_recv_off, &ro);
+        if (!ro.tem) break;
         timeout_ms = 0;   /* só a primeira espera paga o timeout */
-        char *raw = NULL; size_t nraw = 0;
-        int fr = ps_jk_ws_le_frame(w->conn, &raw, &nraw);
+        char *raw = ro.raw;
+        int fr = ro.fr;
         if (fr != 0) { free(raw); ps_jk_close(w->conn); w->conn = NULL; break; }
         if (w->on_msg.t == V_NULL || w->on_msg.t == V_UNSET) { free(raw); continue; }
         /* parseia como JSON; se falhar, entrega a string crua */
@@ -9992,12 +11176,11 @@ static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         fib_offload(vm, ws_send_off, &wo);
         rc = wo.rc;
     } else {
-        SBuf b = {0};
-        if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); REERRO(vm, "SomeValueUnexpected"); }
+        SBUF_AUTO b = {0};
+        if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "SomeValueUnexpected"); }
         WsSendOff wo = { w->conn, b.b ? b.b : "null", b.b ? (size_t)b.n : 4, 0 };
         fib_offload(vm, ws_send_off, &wo);
         rc = wo.rc;
-        free(b.b);
     }
     if (rc != 0) { ps_jk_close(w->conn); w->conn = NULL; }
     *out = MK_NULL();
@@ -10770,10 +11953,9 @@ static int mod_mp_src(VM *vm, Value *args, int n, Value *out)
 /* valor -> texto pra escrever numa célula/arquivo */
 static int mp_valor_txt(VM *vm, Value v, char *out, size_t cap)
 {
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &v, 0) != 0) { free(t.b); return -1; }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &v, 0) != 0) { return -1; }
     snprintf(out, cap, "%.*s", t.n, t.b ? t.b : "");
-    free(t.b);
     return 0;
 }
 
@@ -10866,7 +12048,7 @@ static int mod_mp_remove(VM *vm, Value *args, int n, Value *out)
     if (mp_le_arquivo(target, &b, &nb) != 0) { PSManpuRes *r = novo_manpures(vm, 0, "Error"); *out = MK_OBJ(r); return 0; }
     /* substitui: full = tira tudo; mei = tira a metade final de cada ocorrência
      * (aproxima o comportamento de texto do interpretador) */
-    SBuf saida = {0};
+    SBUF_AUTO saida = {0};
     int la = (int)strlen(alvo);
     int meio = la / 2;
     for (int i = 0; i < nb; ) {
@@ -10879,7 +12061,6 @@ static int mod_mp_remove(VM *vm, Value *args, int n, Value *out)
     FILE *f = fopen(target, "wb");
     int ok = f != NULL;
     if (f) { if (saida.n) fwrite(saida.b, 1, (size_t)saida.n, f); fclose(f); }
-    free(saida.b);
     PSManpuRes *r = novo_manpures(vm, ok, ok ? "Success" : "Error");
     *out = MK_OBJ(r);
     return 0;
@@ -10895,7 +12076,7 @@ static int mp_csv_para_grade(const char *texto, int tam, PSGrade *g)
 {
     ps_grade_init(g);
     CsvLeitor c = { texto, tam, 0 };
-    SBuf campo = {0};
+    SBUF_AUTO campo = {0};
     int lin = 0, col = 0;
     while (c.i < c.n) {
         /* linha vazia = ZERO células (o csv.reader dá `[]`, não `['']`) —
@@ -10909,18 +12090,17 @@ static int mp_csv_para_grade(const char *texto, int tam, PSGrade *g)
             continue;
         }
         int fim_linha = 0;
-        if (csv_campo(&c, &campo, &fim_linha) != 0) { free(campo.b); return -1; }
+        if (csv_campo(&c, &campo, &fim_linha) != 0) { return -1; }
         char *val = malloc((size_t)campo.n + 1);
-        if (!val) { free(campo.b); return -1; }
+        if (!val) { return -1; }
         memcpy(val, campo.b ? campo.b : "", (size_t)campo.n);
         val[campo.n] = '\0';
         int rc = ps_grade_set(g, lin, col, val, 's');
         free(val);
-        if (rc != 0) { free(campo.b); return -1; }
+        if (rc != 0) { return -1; }
         if (fim_linha) { lin++; col = 0; }
         else col++;
     }
-    free(campo.b);
     return 0;
 }
 
@@ -11014,18 +12194,18 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     long size = (n > 6 && args[6].t == V_INT) ? args[6].as.i : 0;
 
     /* texto do conteúdo (bytes decodifica; resto é str()) */
-    TxtBuf t = {0};
+    TXTBUF_AUTO t = {0};
     char *texto; int ntexto;
     if (EH_BYTES(content)) { texto = COMO_BYTES(content)->chars; ntexto = COMO_BYTES(content)->len; }
     else {
-        if (valor_para_texto(&t, &content, 0) != 0) { free(t.b); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (valor_para_texto(&t, &content, 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         texto = t.b ? t.b : ""; ntexto = t.n;
     }
 
     /* divide em partes: por tamanho fixo ou pelo separador */
     char **partes = NULL; int nprt = 0, cap = 8;
     partes = malloc(sizeof(char *) * (size_t)cap);
-    if (!partes) { free(t.b); MERRO(vm, "MemoryError", "sem memoria"); }
+    if (!partes) { MERRO(vm, "MemoryError", "sem memoria"); }
     if (size > 0) {
         for (int i = 0; i < ntexto; i += (int)size) {
             int fim = i + (int)size > ntexto ? ntexto : i + (int)size;
@@ -11097,7 +12277,6 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
 
     for (int i = 0; i < nprt; i++) free(partes[i]);
     free(partes);
-    free(t.b);
     PSManpuRes *r = novo_manpures(vm, status == NULL, status ? status : "Success");
     if (!r) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
@@ -11144,13 +12323,12 @@ static int met_mpf_read(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int mpf_salva(PSManpuFile *m)
 {
     if (m->modo == 1) {
-        SBuf b = {0};
-        if (mp_grade_para_csv(&m->grade, &b) != 0) { free(b.b); return -1; }
+        SBUF_AUTO b = {0};
+        if (mp_grade_para_csv(&m->grade, &b) != 0) { return -1; }
         FILE *f = fopen(m->caminho, "wb");
-        if (!f) { free(b.b); return -1; }
+        if (!f) { return -1; }
         if (b.n) fwrite(b.b, 1, (size_t)b.n, f);
         fclose(f);
-        free(b.b);
         return 0;
     }
     if (m->modo == 2) {
@@ -11270,11 +12448,10 @@ static char **db_params_txt(VM *vm, Value v, int *nout)
     for (int i = 0; i < l->len; i++) {
         Value e = l->itens[i];
         if (e.t == V_NULL || e.t == V_UNSET) { arr[i] = NULL; continue; }
-        TxtBuf t = {0};
-        if (valor_para_texto(&t, &e, 0) != 0) { free(t.b); continue; }
+        TXTBUF_AUTO t = {0};
+        if (valor_para_texto(&t, &e, 0) != 0) { continue; }
         arr[i] = malloc((size_t)t.n + 1);
         if (arr[i]) { memcpy(arr[i], t.b ? t.b : "", (size_t)t.n); arr[i][t.n] = 0; }
-        free(t.b);
     }
     *nout = l->len;
     return arr;
@@ -12020,10 +13197,9 @@ static int met_jresp_send(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "send() espera 1 ou 2 argumentos");
     PSJResp *r = COMO_JRESP(alvo);
-    TxtBuf t = {0};
-    if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); MERRO(vm, "MemoryError", "sem memoria"); }
+    TXTBUF_AUTO t = {0};
+    if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     r->corpo = jk_str_val(vm, t.b ? t.b : "");
-    free(t.b);
     r->status = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 200;
     snprintf(r->ctype, sizeof(r->ctype), "text/plain; charset=utf-8");
     *out = alvo;
@@ -12033,12 +13209,11 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "json() espera 1 ou 2 argumentos");
     PSJResp *r = COMO_JRESP(alvo);
-    SBuf b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); REERRO(vm, "SomeValueUnexpected"); }
+    SBUF_AUTO b = {0};
+    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "SomeValueUnexpected"); }
     /* SBuf NÃO é NUL-terminado — sempre entregar com o TAMANHO, nunca como
      * C-string (mesma lição do bson do mongo) */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
-    free(b.b);
     if (!cs) MERRO(vm, "MemoryError", "sem memoria");
     r->corpo = MK_OBJ(cs);
     r->status = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 200;
@@ -12079,11 +13254,10 @@ static int mod_jk_jsonify(VM *vm, Value *args, int n, Value *out)
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     Value rv = MK_OBJ(r);
     if (fixa_raiz(vm, rv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
-    SBuf b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); vm->sp--; REERRO(vm, "SomeValueUnexpected"); }
+    SBUF_AUTO b = {0};
+    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { vm->sp--; REERRO(vm, "SomeValueUnexpected"); }
     /* SBuf sem NUL: entrega por tamanho */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
-    free(b.b);
     if (!cs) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
     r->corpo = MK_OBJ(cs);
     snprintf(r->ctype, sizeof(r->ctype), "application/json; charset=utf-8");
@@ -12333,18 +13507,24 @@ static int jk_emit_nucleo(VM *vm, PSJinker *j, Value payload, Value room,
     char *msg = NULL; size_t nmsg = 0; char *livre = NULL;
     if (EH_STRING(payload)) { msg = COMO_STRING(payload)->chars; nmsg = (size_t)COMO_STRING(payload)->len; }
     else {
-        SBuf b = {0};
-        if (json_escreve(vm, &b, &payload, 0, 0) != 0) { free(b.b); jk_ch_status(vm, j, 0); *out = j->ch_status; return 0; }
-        msg = b.b ? b.b : (livre = strdup("null")); nmsg = b.b ? (size_t)b.n : 4;
-        livre = b.b;
+        SBUF_AUTO b = {0};
+        if (json_escreve(vm, &b, &payload, 0, 0) != 0) { jk_ch_status(vm, j, 0); *out = j->ch_status; return 0; }
+        if (b.b) {
+            /* posse TRANSFERIDA pra `livre` (liberado no fim da função):
+             * zera b.b pra o cleanup do escopo não dar double-free. */
+            msg = b.b; nmsg = (size_t)b.n; livre = b.b;
+            b.b = NULL; b.n = 0; b.cap = 0;
+        } else {
+            /* antes: `livre = b.b` (NULL) sobrescrevia o strdup e VAZAVA */
+            livre = strdup("null"); msg = livre; nmsg = 4;
+        }
     }
     char sala[128] = "";
     int tem_sala = 0;
     if (room.t != V_NULL && room.t != V_UNSET) {
-        TxtBuf t = {0};
+        TXTBUF_AUTO t = {0};
         valor_para_texto(&t, &room, 0);
         snprintf(sala, sizeof(sala), "%s", t.b ? t.b : "");
-        free(t.b);
         tem_sala = 1;
     }
     int enviados = 0, alvos = 0;
@@ -12432,10 +13612,9 @@ static int met_jpx_text(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!r) { *out = MK_NULL(); return 0; }
     if (r->eh_ws) {
         if (r->ws_msg.t == V_UNSET) { *out = jk_str_val(vm, ""); return 0; }
-        TxtBuf t = {0};
+        TXTBUF_AUTO t = {0};
         valor_para_texto(&t, &r->ws_msg, 0);
         *out = jk_str_val(vm, t.b ? t.b : "");
-        free(t.b);
         return 0;
     }
     *out = jk_str_val(vm, EH_BYTES(r->corpo) ? COMO_BYTES(r->corpo)->chars : "");
@@ -12900,21 +14079,19 @@ static void jk_converte_retorno(VM *vm, Value res, int *status, const char **cty
         return;
     }
     if (EH_DICT(res) || EH_SEQ(res)) {
-        SBuf b = {0};
+        SBUF_AUTO b = {0};
         if (json_escreve(vm, &b, &res, 0, 0) == 0) {
             PSString *s = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
             if (s) { *guarda = MK_OBJ(s); *corpo = s->chars; *ncorpo = (size_t)s->len; }
         }
-        free(b.b);
         *status = 200;
         *ctype = "application/json; charset=utf-8";
         return;
     }
     /* str / outro -> texto */
-    TxtBuf t = {0};
+    TXTBUF_AUTO t = {0};
     valor_para_texto(&t, &res, 0);
     PSString *s = nova_string(vm, t.b ? t.b : "", t.b ? t.n : 0);
-    free(t.b);
     if (s) { *guarda = MK_OBJ(s); *corpo = s->chars; *ncorpo = (size_t)s->len; }
     *status = 200;
     *ctype = "text/plain; charset=utf-8";
@@ -14195,6 +15372,7 @@ static const ModuloNat MODULOS[] = {
     { "db", MOD_PSODBC, (int)(sizeof(MOD_PSODBC) / sizeof(MOD_PSODBC[0])) },
     { "jinker", MOD_JINKER, (int)(sizeof(MOD_JINKER) / sizeof(MOD_JINKER[0])) },
     { "guzer", MOD_GUZER, (int)(sizeof(MOD_GUZER) / sizeof(MOD_GUZER[0])) },
+    { "sockets", MOD_SOCKETS, (int)(sizeof(MOD_SOCKETS) / sizeof(MOD_SOCKETS[0])) },
     { "sqlite", MOD_SQLITE_STUB, (int)(sizeof(MOD_SQLITE_STUB) / sizeof(MOD_SQLITE_STUB[0])) },
     { "smtplib", MOD_SMTPLIB_STUB, (int)(sizeof(MOD_SMTPLIB_STUB) / sizeof(MOD_SMTPLIB_STUB[0])) },
     { "mimetext", MOD_MIMETEXT_STUB, (int)(sizeof(MOD_MIMETEXT_STUB) / sizeof(MOD_MIMETEXT_STUB[0])) },
@@ -14312,19 +15490,18 @@ static int nativa_input(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 1) BERRO(vm, "SomeValueUnexpected", "input() espera 0 ou 1 argumento");
     if (n == 1) {
-        TxtBuf t = {0};
-        if (valor_para_texto(&t, &args[0], 0) != 0) { free(t.b); BERRO(vm, "MemoryError", "sem memoria"); }
+        TXTBUF_AUTO t = {0};
+        if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         fwrite(t.b ? t.b : "", 1, (size_t)t.n, stdout);
-        free(t.b);
         fflush(stdout);
     }
     /* SEMPRE devolve str, sem converter — quem quer número escreve `int(x)`
      * ou declara o tipo. */
-    SBuf b = {0};
+    SBUF_AUTO b = {0};
     int c;
     while ((c = fgetc(stdin)) != EOF && c != '\n') {
         char ch = (char)c;
-        if (sb_bytes(&b, &ch, 1) != 0) { free(b.b); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, &ch, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     }
     /* `\r\n` do Windows não pode virar parte do texto lido */
     if (b.n > 0 && b.b[b.n - 1] == '\r') b.n--;
@@ -15498,11 +16675,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 Value v;
                 if (dict_get(COMO_DICT(alvo), &idx, &v) != 0) {
                     /* diz QUAL chave, igual ao interp ("chave não encontrada: 'z'") */
-                    TxtBuf kb = {0};
+                    TXTBUF_AUTO kb = {0};
                     valor_para_texto(&kb, &idx, 1);
                     char em[256];   /* cabe em vm->erro sem truncar */
                     snprintf(em, sizeof(em), "chave não encontrada: %s", kb.b ? kb.b : "");
-                    free(kb.b);
                     ERRO_T(vm, "KeyError", em);
                 }
                 stack[sp - 1] = v;
@@ -15622,14 +16798,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_BUILD_STR: {
             /* interpolação: concatena `arg` valores como texto */
             vm->sp = sp; vm->locals_top = locals_top;
-            TxtBuf t = {0};
+            TXTBUF_AUTO t = {0};
             for (int k = 0; k < arg; k++) {
                 if (valor_para_texto(&t, &stack[sp - arg + k], 0) != 0) {
-                    free(t.b); ERRO(vm, "sem memoria na interpolacao");
+                    ERRO(vm, "sem memoria na interpolacao");
                 }
             }
             PSString *r = nova_string(vm, t.b ? t.b : "", t.n);
-            free(t.b);
             if (!r) ERRO(vm, "sem memoria na interpolacao");
             sp -= arg;
             stack[sp++] = MK_OBJ(r);
@@ -15689,11 +16864,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->sp = sp; vm->locals_top = locals_top;
             if (EH_STRING(alvo)) {
                 PSString *src = COMO_STRING(alvo);
-                TxtBuf t = {0};
+                TXTBUF_AUTO t = {0};
                 for (int64_t i = i0; (st > 0 ? i < i1 : i > i1); i += st)
-                    if (txt_put(&t, src->chars + i, 1) != 0) { free(t.b); ERRO(vm, "sem memoria"); }
+                    if (txt_put(&t, src->chars + i, 1) != 0) { ERRO(vm, "sem memoria"); }
                 PSString *r = nova_string(vm, t.b ? t.b : "", t.n);
-                free(t.b);
                 if (!r) ERRO(vm, "sem memoria no slice");
                 stack[sp - 1] = MK_OBJ(r);
             } else {
@@ -15786,10 +16960,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_RAISE: {
             Value v = stack[--sp];
             vm->sp = sp; vm->locals_top = locals_top;
-            TxtBuf t = {0};
+            TXTBUF_AUTO t = {0};
             valor_para_texto(&t, &v, 0);
             snprintf(vm->erro, sizeof(vm->erro), "%s", t.b ? t.b : "");
-            free(t.b);
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "RuntimeError");
             goto erro_runtime;
         }
@@ -15797,10 +16970,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_RERAISE: {
             Value tipo = stack[--sp], msg = stack[--sp];
             vm->sp = sp; vm->locals_top = locals_top;
-            TxtBuf t = {0};
+            TXTBUF_AUTO t = {0};
             valor_para_texto(&t, &msg, 0);
             snprintf(vm->erro, sizeof(vm->erro), "%s", t.b ? t.b : "");
-            free(t.b);
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
                      EH_STRING(tipo) ? COMO_STRING(tipo)->chars : "RuntimeError");
             goto erro_runtime;
@@ -16091,6 +17263,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     break;
                 }
             }
+            if (EH_SOCKET(alvo)) {
+                /* family/type/proto são CAMPOS (sem parêntese), como no Python */
+                PSSocket *sk = COMO_SOCKET(alvo);
+                if (strcmp(nome, "family") == 0) { stack[sp - 1] = MK_INT(sk->familia); break; }
+                if (strcmp(nome, "type") == 0)   { stack[sp - 1] = MK_INT(sk->tipo); break; }
+                if (strcmp(nome, "proto") == 0)  { stack[sp - 1] = MK_INT(sk->proto); break; }
+            }
             if (EH_RESP(alvo)) {
                 /* status/headers/url são campos; text/content/size/ok/filename
                  * são @property no wrapper — todos sem parêntese */
@@ -16279,10 +17458,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (strcmp(nome, "len") == 0)
                         ERRO_T(vm, "RuntimeError", "len() nao se aplica a numero");
                     vm->sp = sp; vm->locals_top = locals_top;
-                    TxtBuf t = {0};
-                    if (valor_para_texto(&t, &alvo, 0) != 0) { free(t.b); ERRO(vm, "sem memoria"); }
+                    TXTBUF_AUTO t = {0};
+                    if (valor_para_texto(&t, &alvo, 0) != 0) { ERRO(vm, "sem memoria"); }
                     PSString *conv = nova_string(vm, t.b ? t.b : "", t.n);
-                    free(t.b);
                     if (!conv) ERRO(vm, "sem memoria");
                     base = MK_OBJ(conv);
                     stack[sp - 1] = base;    /* raiz enquanto o metnat é alocado */
@@ -16337,6 +17515,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
         case OP_CLOSE_SE_TEM: {
             Value v = stack[--sp];
+            if (EH_SOCKET(v)) {
+                PSSocket *sk = COMO_SOCKET(v);
+                if (sk->fd >= 0) { close(sk->fd); sk->fd = -1; }
+            }
             if (EH_ARQUIVO(v)) {
                 PSArquivo *a = COMO_ARQ(v);
                 if (!a->fechado && a->f) { fclose(a->f); a->f = NULL; a->fechado = 1; }
@@ -17027,7 +18209,8 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
  * por protótipo, slot é por frame — nenhum dos três atravessa programas.
  */
 static void reloca_codigo(int32_t *code, int ncode,
-                          int32_t base_proto, int32_t base_global, int32_t base_classe)
+                          int32_t base_proto, int32_t base_global, int32_t base_classe,
+                          int32_t base_model, int32_t base_enum)
 {
     for (int i = 0; i + 1 < ncode; i += 2) {
         switch (code[i]) {
@@ -17041,6 +18224,12 @@ static void reloca_codigo(int32_t *code, int ncode,
                 break;
             case OP_MAKE_CLASS:
                 code[i + 1] += base_classe;
+                break;
+            case OP_MAKE_MODEL:
+                code[i + 1] += base_model;   /* índice em vm->model_* */
+                break;
+            case OP_MAKE_ENUM:
+                code[i + 1] += base_enum;    /* índice em vm->enum_* */
                 break;
             default:
                 break;   /* const/salto/slot: não atravessam programa */
@@ -17103,6 +18292,67 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
     }
     vm->nclasses = nc;
 
+    /* MODELS do módulo: anexa aos descritores da VM, igual às classes. Sem
+     * isso, OP_MAKE_MODEL no corpo do módulo lia vm->model_nomes[idx] com o
+     * array NULL (o programa principal podia não ter model nenhum) -> segfault.
+     * O índice do model no bytecode é ABSOLUTO, então também é relocado abaixo
+     * (base_model). Mesma história pros enums. */
+    int32_t base_model = vm->nmodels;
+    if (prog->nmodels > 0) {
+        int32_t nmn = vm->nmodels + prog->nmodels;
+        char          **mn  = realloc(vm->model_nomes,   sizeof(char *)        * (size_t)nmn);
+        PSModelCampo  **mc  = realloc(vm->model_campos,  sizeof(PSModelCampo *) * (size_t)nmn);
+        int32_t        *mnc = realloc(vm->model_ncampos, sizeof(int32_t)        * (size_t)nmn);
+        if (mn)  vm->model_nomes   = mn;
+        if (mc)  vm->model_campos  = mc;
+        if (mnc) vm->model_ncampos = mnc;
+        if (!mn || !mc || !mnc) return -1;
+        for (int32_t i = 0; i < prog->nmodels; i++) {
+            PSModelDef *o = &prog->models[i];
+            int32_t d = base_model + i;
+            vm->model_nomes[d]   = strdup(o->nome ? o->nome : "?");
+            vm->model_ncampos[d] = o->ncampos;
+            vm->model_campos[d]  = o->ncampos > 0
+                                 ? calloc((size_t)o->ncampos, sizeof(PSModelCampo)) : NULL;
+            for (int32_t k = 0; k < o->ncampos; k++) {
+                vm->model_campos[d][k].nome   = strdup(o->campos[k].nome ? o->campos[k].nome : "?");
+                vm->model_campos[d][k].tipo   = o->campos[k].tipo;
+                vm->model_campos[d][k].length = o->campos[k].length;
+            }
+        }
+        vm->nmodels = nmn;
+    }
+
+    /* ENUMS do módulo: mesma anexação + relocação (base_enum). */
+    int32_t base_enum = vm->nenums;
+    if (prog->nenums > 0) {
+        int32_t nen = vm->nenums + prog->nenums;
+        char    **en  = realloc(vm->enum_nomes,        sizeof(char *)   * (size_t)nen);
+        char   ***emn = realloc(vm->enum_membro_nomes, sizeof(char **)  * (size_t)nen);
+        int8_t  **ea  = realloc(vm->enum_auto,         sizeof(int8_t *) * (size_t)nen);
+        int32_t  *enm = realloc(vm->enum_nmembros,     sizeof(int32_t)  * (size_t)nen);
+        if (en)  vm->enum_nomes        = en;
+        if (emn) vm->enum_membro_nomes = emn;
+        if (ea)  vm->enum_auto         = ea;
+        if (enm) vm->enum_nmembros     = enm;
+        if (!en || !emn || !ea || !enm) return -1;
+        for (int32_t i = 0; i < prog->nenums; i++) {
+            PSEnumDef *o = &prog->enums[i];
+            int32_t d = base_enum + i;
+            vm->enum_nomes[d]    = strdup(o->nome ? o->nome : "?");
+            vm->enum_nmembros[d] = o->nmembros;
+            vm->enum_membro_nomes[d] = o->nmembros > 0
+                                     ? calloc((size_t)o->nmembros, sizeof(char *)) : NULL;
+            vm->enum_auto[d] = o->nmembros > 0
+                             ? calloc((size_t)o->nmembros, sizeof(int8_t)) : NULL;
+            for (int32_t k = 0; k < o->nmembros; k++) {
+                vm->enum_membro_nomes[d][k] = strdup(o->membros[k].nome ? o->membros[k].nome : "?");
+                vm->enum_auto[d][k] = (int8_t)(o->membros[k].tem_valor ? 0 : 1);
+            }
+        }
+        vm->nenums = nen;
+    }
+
     for (int32_t i = 0; i < prog->nprotos; i++) {
         PSProto *o = &prog->protos[i];
         Proto   *d = &vm->protos[*base_proto + i];
@@ -17110,7 +18360,8 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         d->code = malloc(sizeof(int32_t) * (size_t)(o->ncode > 0 ? o->ncode : 1));
         if (!d->code) return -1;
         memcpy(d->code, o->code, sizeof(int32_t) * (size_t)o->ncode);
-        reloca_codigo(d->code, d->ncode, *base_proto, *base_global, *base_classe);
+        reloca_codigo(d->code, d->ncode, *base_proto, *base_global, *base_classe,
+                      base_model, base_enum);
         /* linhas não sofrem relocação (são do fonte, não índices) */
         d->linhas = NULL;
         if (o->linhas && o->ncode > 0) {

@@ -16,10 +16,9 @@ import pytest
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 POOL = os.path.join(RAIZ, "pool")
 
-pytestmark = pytest.mark.skipif(
-    not os.path.isfile(POOL),
-    reason="binário não compilado — rode: make",
-)
+assert os.path.isfile(POOL), (
+    "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: "
+    "skip = falso verde)")
 
 NL = chr(10)
 

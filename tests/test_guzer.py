@@ -16,6 +16,7 @@ os.environ.setdefault("GUZER_HEADLESS", "1")
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 from poolscript.stdlib.guzer_lib import UI, Window, Button, _px  # noqa: E402
@@ -91,7 +92,6 @@ def test_interpretador_real_import_e_encadeia(tmp_path):
     assert "Traceback" not in r.stderr, r.stderr
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_paridade_dois_motores(tmp_path):
     """O MESMO script guzer nos DOIS motores (INTERP e VM em C) tem que dar a
     saída IDÊNTICA — o objeto, os tipos, o encadeamento. A janela em si não roda

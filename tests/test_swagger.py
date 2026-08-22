@@ -11,6 +11,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL = RAIZ / "pool"
+assert POOL.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 SRC = RAIZ / "src"
 SWAGGER_PS = SRC / "poolscript" / "stdlib" / "swagger.ps"
 
@@ -76,7 +77,6 @@ def test_swagger_interp(tmp_path):
     _confere(docs)
 
 
-@pytest.mark.skipif(not POOL.exists(), reason="binário pool não compilado")
 def test_swagger_vm(tmp_path):
     gen, docs = _setup(tmp_path)
     r = _run([str(POOL)], gen)

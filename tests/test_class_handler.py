@@ -14,6 +14,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 
@@ -61,14 +62,12 @@ def test_interp_class_handler(tmp_path):
     assert r.stdout.strip() == "ok: V", r.stdout
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_paridade_class_handler(tmp_path):
     a = _run([sys.executable, "-m", "poolscript"], COM_SELF, tmp_path).stdout
     b = _run([str(POOL_BIN)], COM_SELF, tmp_path).stdout
     assert a == b == "ok: V" + NL, "INT:[" + a + "] VM:[" + b + "]"
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_class_handler_sem_self_erra_nos_dois(tmp_path):
     src = REG + NL + '@app.rota("/x")' + NL + "class login():" + NL + \
         "    action semself():" + NL + '        return "V"'
@@ -84,7 +83,6 @@ def test_interp_dataentity_regressao(tmp_path):
     assert r.stdout.strip() == "5"
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_paridade_dataentity_regressao(tmp_path):
     a = _run([sys.executable, "-m", "poolscript"], DATAENT, tmp_path).stdout
     b = _run([str(POOL_BIN)], DATAENT, tmp_path).stdout

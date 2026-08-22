@@ -13,6 +13,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 CASOS = [
@@ -38,7 +39,6 @@ def test_interp_nome_maiusculo(src, esperado, tmp_path):
     assert _run([sys.executable, "-m", "poolscript"], src, tmp_path) == esperado
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 @pytest.mark.parametrize("src,esperado", CASOS)
 def test_paridade_nome_maiusculo(src, esperado, tmp_path):
     oi = _run([sys.executable, "-m", "poolscript"], src, tmp_path)

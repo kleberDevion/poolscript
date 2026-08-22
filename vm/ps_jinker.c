@@ -209,6 +209,40 @@ static char *dup_faixa(const char *a, const char *b)
     return s;
 }
 
+/* ── arena do request ───────────────────────────────────────────────────────
+ * Bump allocator: as alocações PEQUENAS do parse (path, query, vetor de
+ * headers, nome/valor de cada header) saem de UM bloco de 4KB (encadeia outro
+ * se estourar) em vez de ~10-20 mallocs por requisição; ps_jk_req_solta solta a
+ * cadeia inteira de uma vez — impossível vazar um campo isolado. A arena vive
+ * na PSJkReq (não na conexão) pra 100k conexões keep-alive OCIOSAS não pagarem
+ * 4KB cada (mesma razão do ps_jk_conn_solta_buf). */
+typedef struct JkArBloco { struct JkArBloco *prox; size_t cap, usado; char mem[]; } JkArBloco;
+
+static void *jk_ar_alloc(PSJkReq *r, size_t n)
+{
+    n = (n + 7) & ~(size_t)7;
+    JkArBloco *b = (JkArBloco *)r->ar;
+    if (!b || b->usado + n > b->cap) {
+        size_t cap = n > 4096 ? n : 4096;
+        JkArBloco *nb = malloc(sizeof(JkArBloco) + cap);
+        if (!nb) return NULL;
+        nb->prox = b; nb->cap = cap; nb->usado = 0;
+        r->ar = nb; b = nb;
+    }
+    void *p = b->mem + b->usado;
+    b->usado += n;
+    return p;
+}
+
+static char *jk_ar_faixa(PSJkReq *r, const char *a, const char *b)
+{
+    size_t n = (size_t)(b - a);
+    char *s = jk_ar_alloc(r, n + 1);
+    if (!s) return NULL;
+    memcpy(s, a, n); s[n] = '\0';
+    return s;
+}
+
 int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
 {
     memset(r, 0, sizeof(*r));
@@ -237,20 +271,20 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
     memcpy(r->metodo, p, nm); r->metodo[nm] = '\0';
     char *sp2 = memchr(sp1 + 1, ' ', (size_t)(eol - sp1 - 1));
     if (!sp2) return -1;
-    char *alvo = dup_faixa(sp1 + 1, sp2);
-    if (!alvo) return -1;
+    char *alvo = jk_ar_faixa(r, sp1 + 1, sp2);
+    if (!alvo) { ps_jk_req_solta(r); return -1; }
 
     /* separa query e decodifica o path */
     char *q = strchr(alvo, '?');
-    if (q) { *q = '\0'; r->query = strdup(q + 1); }
-    else     r->query = strdup("");
+    if (q) { *q = '\0'; r->query = jk_ar_faixa(r, q + 1, q + 1 + strlen(q + 1)); }
+    else     r->query = jk_ar_faixa(r, "", "");
     ps_jk_urldecode(alvo);
     r->path = alvo;
     if (!r->query) { ps_jk_req_solta(r); return -1; }
 
     /* headers */
     int cap_c = 8;
-    r->cabs = malloc(sizeof(PSJkHdr) * (size_t)cap_c);
+    r->cabs = jk_ar_alloc(r, sizeof(PSJkHdr) * (size_t)cap_c);
     if (!r->cabs) { ps_jk_req_solta(r); return -1; }
     p = eol + 2;
     while (p < c->buf + nhead - 4) {
@@ -259,15 +293,18 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
         char *dois = memchr(p, ':', (size_t)(e2 - p));
         if (dois) {
             if (r->ncabs == cap_c) {
+                /* bump não realloca: pega vetor maior da arena e copia; o
+                 * antigo fica abandonado no bloco (o reset recolhe tudo) */
                 cap_c *= 2;
-                PSJkHdr *nh = realloc(r->cabs, sizeof(PSJkHdr) * (size_t)cap_c);
+                PSJkHdr *nh = jk_ar_alloc(r, sizeof(PSJkHdr) * (size_t)cap_c);
                 if (!nh) { ps_jk_req_solta(r); return -1; }
+                memcpy(nh, r->cabs, sizeof(PSJkHdr) * (size_t)r->ncabs);
                 r->cabs = nh;
             }
             const char *v = dois + 1;
             while (v < e2 && (*v == ' ' || *v == '\t')) v++;
-            r->cabs[r->ncabs].nome  = dup_faixa(p, dois);
-            r->cabs[r->ncabs].valor = dup_faixa(v, e2);
+            r->cabs[r->ncabs].nome  = jk_ar_faixa(r, p, dois);
+            r->cabs[r->ncabs].valor = jk_ar_faixa(r, v, e2);
             if (!r->cabs[r->ncabs].nome || !r->cabs[r->ncabs].valor) { ps_jk_req_solta(r); return -1; }
             r->ncabs++;
         }
@@ -305,9 +342,11 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
 
 void ps_jk_req_solta(PSJkReq *r)
 {
-    free(r->path); free(r->query); free(r->corpo);
-    for (int i = 0; i < r->ncabs; i++) { free(r->cabs[i].nome); free(r->cabs[i].valor); }
-    free(r->cabs);
+    /* path/query/cabs/nome/valor vivem na ARENA — a cadeia sai de uma vez.
+     * Só o corpo (alocação única, potencialmente grande) é malloc avulso. */
+    free(r->corpo);
+    JkArBloco *b = (JkArBloco *)r->ar;
+    while (b) { JkArBloco *px = b->prox; free(b); b = px; }
     memset(r, 0, sizeof(*r));
 }
 

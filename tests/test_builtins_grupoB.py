@@ -15,6 +15,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL_BIN = RAIZ / "pool"
+assert POOL_BIN.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 NL = chr(10)
 
 CASOS = [
@@ -43,7 +44,6 @@ def test_interp_builtins_grupoB(src, esperado, tmp_path):
     assert _run([sys.executable, "-m", "poolscript"], src, tmp_path) == esperado
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 @pytest.mark.parametrize("src,esperado", CASOS)
 def test_paridade_builtins_grupoB(src, esperado, tmp_path):
     oi = _run([sys.executable, "-m", "poolscript"], src, tmp_path)
@@ -51,7 +51,6 @@ def test_paridade_builtins_grupoB(src, esperado, tmp_path):
     assert oi == ov == esperado, "INT:" + oi + " VM:" + ov
 
 
-@pytest.mark.skipif(not POOL_BIN.exists(), reason="binário ./pool não compilado")
 def test_min_max_sem_kwargs_erram_nos_dois(tmp_path):
     # kwargs do Python (default=/key=) não existem: os dois motores erram
     src = "post(min([], default=0))"

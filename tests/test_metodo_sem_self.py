@@ -20,8 +20,9 @@ CLAREZA = "deve ter 'self' como primeiro parâmetro"
 
 def _engines():
     yield [sys.executable, "-m", "poolscript"]
-    if POOL.exists():
-        yield [str(POOL)]
+    # VM em C NÃO se pula: se o pool não existe, o teste FALHA (skip = falso verde).
+    assert POOL.exists(), "binário 'pool' não compilado — rode ./rebuild_vm.sh."
+    yield [str(POOL)]
 
 
 def _run(cmd, tmp_path, prog):

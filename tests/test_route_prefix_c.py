@@ -16,6 +16,7 @@ import pytest
 
 RAIZ = Path(__file__).resolve().parent.parent
 POOL = RAIZ / "pool"
+assert POOL.exists(), "binário pool não compilado — rode ./rebuild_vm.sh (VM em C não se pula: skip = falso verde)"
 SRC = RAIZ / "src"
 
 APP = """\
@@ -71,7 +72,6 @@ def _checa(proc, pp):
         except Exception: proc.kill()
 
 
-@pytest.mark.skipif(not POOL.exists(), reason="binário pool não compilado")
 def test_route_prefix_vm(tmp_path):
     proc, pp = _sobe([str(POOL)], tmp_path, "vm.ps")
     _checa(proc, pp)

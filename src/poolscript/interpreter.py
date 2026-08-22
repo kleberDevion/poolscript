@@ -1734,6 +1734,12 @@ class Interpreter:
                     target = PoolStr(target)
                 # .type() — retorna o tipo PoolScript do valor
                 if node.member == "type":
+                    # exceção: objetos que expõem `type` como CAMPO próprio
+                    # (ex.: sockets.socket().type, igual ao Python) — o campo
+                    # ganha do universal, senão viraria o método type() e a
+                    # paridade com a VM quebrava.
+                    if getattr(type(target), "_ps_type_e_campo", False):
+                        return target.type
                     def _type_of(v):
                         from .stdlib.parsing_lib import TransientValue
                         if isinstance(v, PoolTypeRef):

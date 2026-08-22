@@ -2225,6 +2225,665 @@
      "doc": "Botão. `onclick=` recebe uma reaction (por referência), que roda no clique."
     }
    ]
+  },
+  "sockets": {
+   "members": [
+    {
+     "name": "socket",
+     "kind": "function",
+     "params": [
+      {
+       "name": "family",
+       "opt": true
+      },
+      {
+       "name": "type",
+       "opt": true
+      },
+      {
+       "name": "proto",
+       "opt": true
+      }
+     ],
+     "sig": "socket(family?, type?, proto?)",
+     "returns": "PoolSocket",
+     "doc": "sockets.socket(family, type, proto) — igual ao Python."
+    },
+    {
+     "name": "create_connection",
+     "kind": "function",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      },
+      {
+       "name": "timeout",
+       "opt": true
+      },
+      {
+       "name": "source_address",
+       "opt": true
+      }
+     ],
+     "sig": "create_connection(addr, timeout?, source_address?)",
+     "returns": "PoolSocket",
+     "doc": null
+    },
+    {
+     "name": "create_server",
+     "kind": "function",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      },
+      {
+       "name": "backlog",
+       "opt": true
+      },
+      {
+       "name": "reuse_port",
+       "opt": true
+      }
+     ],
+     "sig": "create_server(addr, backlog?, reuse_port?)",
+     "returns": "PoolSocket",
+     "doc": null
+    },
+    {
+     "name": "socketpair",
+     "kind": "function",
+     "params": [],
+     "sig": "socketpair()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "gethostname",
+     "kind": "function",
+     "params": [],
+     "sig": "gethostname()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getfqdn",
+     "kind": "function",
+     "params": [
+      {
+       "name": "name",
+       "opt": true
+      }
+     ],
+     "sig": "getfqdn(name?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "gethostbyname",
+     "kind": "function",
+     "params": [
+      {
+       "name": "name",
+       "opt": false
+      }
+     ],
+     "sig": "gethostbyname(name)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "gethostbyname_ex",
+     "kind": "function",
+     "params": [
+      {
+       "name": "name",
+       "opt": false
+      }
+     ],
+     "sig": "gethostbyname_ex(name)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "gethostbyaddr",
+     "kind": "function",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      }
+     ],
+     "sig": "gethostbyaddr(addr)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getaddrinfo",
+     "kind": "function",
+     "params": [
+      {
+       "name": "host",
+       "opt": false
+      },
+      {
+       "name": "port",
+       "opt": false
+      },
+      {
+       "name": "family",
+       "opt": true
+      },
+      {
+       "name": "type",
+       "opt": true
+      },
+      {
+       "name": "proto",
+       "opt": true
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "getaddrinfo(host, port, family?, type?, proto?, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getnameinfo",
+     "kind": "function",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "getnameinfo(addr, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getservbyname",
+     "kind": "function",
+     "params": [
+      {
+       "name": "name",
+       "opt": false
+      },
+      {
+       "name": "proto",
+       "opt": true
+      }
+     ],
+     "sig": "getservbyname(name, proto?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getservbyport",
+     "kind": "function",
+     "params": [
+      {
+       "name": "port",
+       "opt": false
+      },
+      {
+       "name": "proto",
+       "opt": true
+      }
+     ],
+     "sig": "getservbyport(port, proto?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getprotobyname",
+     "kind": "function",
+     "params": [
+      {
+       "name": "name",
+       "opt": false
+      }
+     ],
+     "sig": "getprotobyname(name)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "htons",
+     "kind": "function",
+     "params": [
+      {
+       "name": "x",
+       "opt": false
+      }
+     ],
+     "sig": "htons(x)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "htonl",
+     "kind": "function",
+     "params": [
+      {
+       "name": "x",
+       "opt": false
+      }
+     ],
+     "sig": "htonl(x)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "ntohs",
+     "kind": "function",
+     "params": [
+      {
+       "name": "x",
+       "opt": false
+      }
+     ],
+     "sig": "ntohs(x)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "ntohl",
+     "kind": "function",
+     "params": [
+      {
+       "name": "x",
+       "opt": false
+      }
+     ],
+     "sig": "ntohl(x)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "inet_aton",
+     "kind": "function",
+     "params": [
+      {
+       "name": "ip",
+       "opt": false
+      }
+     ],
+     "sig": "inet_aton(ip)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "inet_ntoa",
+     "kind": "function",
+     "params": [
+      {
+       "name": "b",
+       "opt": false
+      }
+     ],
+     "sig": "inet_ntoa(b)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "inet_pton",
+     "kind": "function",
+     "params": [
+      {
+       "name": "family",
+       "opt": false
+      },
+      {
+       "name": "ip",
+       "opt": false
+      }
+     ],
+     "sig": "inet_pton(family, ip)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "inet_ntop",
+     "kind": "function",
+     "params": [
+      {
+       "name": "family",
+       "opt": false
+      },
+      {
+       "name": "b",
+       "opt": false
+      }
+     ],
+     "sig": "inet_ntop(family, b)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "setdefaulttimeout",
+     "kind": "function",
+     "params": [
+      {
+       "name": "t",
+       "opt": false
+      }
+     ],
+     "sig": "setdefaulttimeout(t)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getdefaulttimeout",
+     "kind": "function",
+     "params": [],
+     "sig": "getdefaulttimeout()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "has_dualstack_ipv6",
+     "kind": "function",
+     "params": [],
+     "sig": "has_dualstack_ipv6()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "if_nameindex",
+     "kind": "function",
+     "params": [],
+     "sig": "if_nameindex()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "if_nametoindex",
+     "kind": "function",
+     "params": [
+      {
+       "name": "nome",
+       "opt": false
+      }
+     ],
+     "sig": "if_nametoindex(nome)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "if_indextoname",
+     "kind": "function",
+     "params": [
+      {
+       "name": "idx",
+       "opt": false
+      }
+     ],
+     "sig": "if_indextoname(idx)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "AF_INET",
+     "kind": "value"
+    },
+    {
+     "name": "AF_INET6",
+     "kind": "value"
+    },
+    {
+     "name": "AF_UNIX",
+     "kind": "value"
+    },
+    {
+     "name": "AF_UNSPEC",
+     "kind": "value"
+    },
+    {
+     "name": "AF_PACKET",
+     "kind": "value"
+    },
+    {
+     "name": "SOCK_STREAM",
+     "kind": "value"
+    },
+    {
+     "name": "SOCK_DGRAM",
+     "kind": "value"
+    },
+    {
+     "name": "SOCK_RAW",
+     "kind": "value"
+    },
+    {
+     "name": "SOCK_SEQPACKET",
+     "kind": "value"
+    },
+    {
+     "name": "SOL_SOCKET",
+     "kind": "value"
+    },
+    {
+     "name": "SO_REUSEADDR",
+     "kind": "value"
+    },
+    {
+     "name": "SO_REUSEPORT",
+     "kind": "value"
+    },
+    {
+     "name": "SO_KEEPALIVE",
+     "kind": "value"
+    },
+    {
+     "name": "SO_BROADCAST",
+     "kind": "value"
+    },
+    {
+     "name": "SO_LINGER",
+     "kind": "value"
+    },
+    {
+     "name": "SO_RCVBUF",
+     "kind": "value"
+    },
+    {
+     "name": "SO_SNDBUF",
+     "kind": "value"
+    },
+    {
+     "name": "SO_ERROR",
+     "kind": "value"
+    },
+    {
+     "name": "SO_RCVTIMEO",
+     "kind": "value"
+    },
+    {
+     "name": "SO_SNDTIMEO",
+     "kind": "value"
+    },
+    {
+     "name": "SO_OOBINLINE",
+     "kind": "value"
+    },
+    {
+     "name": "SO_DONTROUTE",
+     "kind": "value"
+    },
+    {
+     "name": "SO_TYPE",
+     "kind": "value"
+    },
+    {
+     "name": "TCP_NODELAY",
+     "kind": "value"
+    },
+    {
+     "name": "TCP_KEEPIDLE",
+     "kind": "value"
+    },
+    {
+     "name": "TCP_KEEPINTVL",
+     "kind": "value"
+    },
+    {
+     "name": "TCP_KEEPCNT",
+     "kind": "value"
+    },
+    {
+     "name": "IPPROTO_IP",
+     "kind": "value"
+    },
+    {
+     "name": "IPPROTO_TCP",
+     "kind": "value"
+    },
+    {
+     "name": "IPPROTO_UDP",
+     "kind": "value"
+    },
+    {
+     "name": "IPPROTO_ICMP",
+     "kind": "value"
+    },
+    {
+     "name": "IPPROTO_RAW",
+     "kind": "value"
+    },
+    {
+     "name": "SHUT_RD",
+     "kind": "value"
+    },
+    {
+     "name": "SHUT_WR",
+     "kind": "value"
+    },
+    {
+     "name": "SHUT_RDWR",
+     "kind": "value"
+    },
+    {
+     "name": "MSG_PEEK",
+     "kind": "value"
+    },
+    {
+     "name": "MSG_WAITALL",
+     "kind": "value"
+    },
+    {
+     "name": "MSG_DONTWAIT",
+     "kind": "value"
+    },
+    {
+     "name": "MSG_OOB",
+     "kind": "value"
+    },
+    {
+     "name": "MSG_DONTROUTE",
+     "kind": "value"
+    },
+    {
+     "name": "MSG_TRUNC",
+     "kind": "value"
+    },
+    {
+     "name": "AI_PASSIVE",
+     "kind": "value"
+    },
+    {
+     "name": "AI_CANONNAME",
+     "kind": "value"
+    },
+    {
+     "name": "AI_NUMERICHOST",
+     "kind": "value"
+    },
+    {
+     "name": "AI_NUMERICSERV",
+     "kind": "value"
+    },
+    {
+     "name": "AI_ADDRCONFIG",
+     "kind": "value"
+    },
+    {
+     "name": "AI_V4MAPPED",
+     "kind": "value"
+    },
+    {
+     "name": "AI_ALL",
+     "kind": "value"
+    },
+    {
+     "name": "NI_NUMERICHOST",
+     "kind": "value"
+    },
+    {
+     "name": "NI_NUMERICSERV",
+     "kind": "value"
+    },
+    {
+     "name": "NI_NOFQDN",
+     "kind": "value"
+    },
+    {
+     "name": "NI_NAMEREQD",
+     "kind": "value"
+    },
+    {
+     "name": "NI_DGRAM",
+     "kind": "value"
+    },
+    {
+     "name": "SOMAXCONN",
+     "kind": "value"
+    },
+    {
+     "name": "INADDR_ANY",
+     "kind": "value"
+    },
+    {
+     "name": "INADDR_LOOPBACK",
+     "kind": "value"
+    },
+    {
+     "name": "INADDR_BROADCAST",
+     "kind": "value"
+    },
+    {
+     "name": "IP_TTL",
+     "kind": "value"
+    },
+    {
+     "name": "IP_MULTICAST_TTL",
+     "kind": "value"
+    },
+    {
+     "name": "IP_MULTICAST_LOOP",
+     "kind": "value"
+    },
+    {
+     "name": "IP_ADD_MEMBERSHIP",
+     "kind": "value"
+    },
+    {
+     "name": "IP_DROP_MEMBERSHIP",
+     "kind": "value"
+    },
+    {
+     "name": "IPV6_V6ONLY",
+     "kind": "value"
+    }
+   ]
   }
  },
  "classes": {
@@ -4417,6 +5076,323 @@
     }
    ],
    "doc": "Janela/contêiner do app: tamanho e cor de fundo."
+  },
+  "PoolSocket": {
+   "members": [
+    {
+     "name": "accept",
+     "kind": "method",
+     "params": [],
+     "sig": "accept()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "bind",
+     "kind": "method",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      }
+     ],
+     "sig": "bind(addr)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "close",
+     "kind": "method",
+     "params": [],
+     "sig": "close()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "connect",
+     "kind": "method",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      }
+     ],
+     "sig": "connect(addr)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "connect_ex",
+     "kind": "method",
+     "params": [
+      {
+       "name": "addr",
+       "opt": false
+      }
+     ],
+     "sig": "connect_ex(addr)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "detach",
+     "kind": "method",
+     "params": [],
+     "sig": "detach()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "dup",
+     "kind": "method",
+     "params": [],
+     "sig": "dup()",
+     "returns": "PoolSocket",
+     "doc": null
+    },
+    {
+     "name": "family",
+     "kind": "property",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "fileno",
+     "kind": "method",
+     "params": [],
+     "sig": "fileno()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getblocking",
+     "kind": "method",
+     "params": [],
+     "sig": "getblocking()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getpeername",
+     "kind": "method",
+     "params": [],
+     "sig": "getpeername()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getsockname",
+     "kind": "method",
+     "params": [],
+     "sig": "getsockname()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "getsockopt",
+     "kind": "method",
+     "params": [
+      {
+       "name": "level",
+       "opt": false
+      },
+      {
+       "name": "optname",
+       "opt": false
+      },
+      {
+       "name": "buflen",
+       "opt": true
+      }
+     ],
+     "sig": "getsockopt(level, optname, buflen?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "gettimeout",
+     "kind": "method",
+     "params": [],
+     "sig": "gettimeout()",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "listen",
+     "kind": "method",
+     "params": [
+      {
+       "name": "backlog",
+       "opt": true
+      }
+     ],
+     "sig": "listen(backlog?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "proto",
+     "kind": "property",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "recv",
+     "kind": "method",
+     "params": [
+      {
+       "name": "bufsize",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "recv(bufsize, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "recvfrom",
+     "kind": "method",
+     "params": [
+      {
+       "name": "bufsize",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "recvfrom(bufsize, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "send",
+     "kind": "method",
+     "params": [
+      {
+       "name": "dados",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "send(dados, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "sendall",
+     "kind": "method",
+     "params": [
+      {
+       "name": "dados",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "sendall(dados, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "sendto",
+     "kind": "method",
+     "params": [
+      {
+       "name": "dados",
+       "opt": false
+      },
+      {
+       "name": "addr",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "sendto(dados, addr, flags?)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "setblocking",
+     "kind": "method",
+     "params": [
+      {
+       "name": "flag",
+       "opt": false
+      }
+     ],
+     "sig": "setblocking(flag)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "setsockopt",
+     "kind": "method",
+     "params": [
+      {
+       "name": "level",
+       "opt": false
+      },
+      {
+       "name": "optname",
+       "opt": false
+      },
+      {
+       "name": "value",
+       "opt": false
+      }
+     ],
+     "sig": "setsockopt(level, optname, value)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "settimeout",
+     "kind": "method",
+     "params": [
+      {
+       "name": "t",
+       "opt": false
+      }
+     ],
+     "sig": "settimeout(t)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "shutdown",
+     "kind": "method",
+     "params": [
+      {
+       "name": "how",
+       "opt": false
+      }
+     ],
+     "sig": "shutdown(how)",
+     "returns": null,
+     "doc": null
+    },
+    {
+     "name": "type",
+     "kind": "property",
+     "returns": null,
+     "doc": null
+    }
+   ],
+   "doc": "Espelho do socket.socket do Python — mesmos métodos, mesmos retornos."
   }
  },
  "keywords": {

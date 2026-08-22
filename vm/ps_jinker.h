@@ -46,6 +46,10 @@ typedef struct {
     size_t    ncorpo;
     int       keep_alive; /* HTTP/1.1 sem "Connection: close" */
     int       eh_ws;      /* Upgrade: websocket */
+    /* ARENA do request (opaca, ps_jinker.c): path/query/cabs/nome/valor saem
+     * de UM bloco bump-alocado em vez de ~10-20 mallocs; ps_jk_req_solta
+     * devolve tudo de uma vez. O corpo (até 64MB, 1 alocação) fica em malloc. */
+    void     *ar;
 } PSJkReq;
 
 /* Lê UMA requisição completa da conexão (bloqueante com timeout curto).
