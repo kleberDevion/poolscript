@@ -2162,22 +2162,44 @@ class Interpreter:
                             f"@NonNull: parâmetro '{p}' em '{fn.func.name}' não pode ser Null",
                             node, self.source, filename=self.filename,
                         )
-            # chama sem self
-            local_scope = Scope(fn.func.closure)
-            params = fn.func.params
-            if len(args) < len(params):
-                filled = list(args)
-                for p in params[len(args):]:
-                    if p in fn.func.defaults:
-                        filled.append(self.eval_expr(fn.func.defaults[p], fn.func.closure))
+            # chama sem instância — @static dropa o 'self' declarado pra o
+            # argumento posicional cair no primeiro parâmetro REAL (webToken),
+            # não no self. Liga posicional + nomeado + defaults igual instância.
+            func = fn.func
+            params = func.params[1:] if (func.params and func.params[0] == "self") else list(func.params)
+            defaults = func.defaults if func.defaults else {}
+            if len(args) > len(params):
+                raise PoolRuntimeError(
+                    f"@static action '{func.name}' esperava até {len(params)} argumentos, recebeu {len(args)}",
+                    node, self.source, filename=self.filename,
+                )
+            bound: dict[str, Any] = {}
+            for i, val in enumerate(args):
+                bound[params[i]] = val
+            for k, v in kwargs.items():
+                if k not in params:
+                    raise PoolRuntimeError(
+                        f"@static action '{func.name}' não tem parâmetro '{k}'",
+                        node, self.source, filename=self.filename,
+                    )
+                if k in bound:
+                    raise PoolRuntimeError(
+                        f"@static action '{func.name}' recebeu '{k}' posicional e nomeado",
+                        node, self.source, filename=self.filename,
+                    )
+                bound[k] = v
+            for p in params:
+                if p not in bound:
+                    if p in defaults:
+                        bound[p] = self.eval_expr(defaults[p], func.closure)
                     else:
                         raise PoolRuntimeError(
-                            f"@static action '{fn.func.name}' faltando argumento: '{p}'",
+                            f"@static action '{func.name}' faltando argumento: '{p}'",
                             node, self.source, filename=self.filename,
                         )
-                args = filled
-            for name, value in zip(params, args):
-                local_scope.define(name, value)
+            local_scope = Scope(func.closure)
+            for name in params:
+                local_scope.define(name, bound[name])
             self._action_depth += 1
             try:
                 self.exec_block(fn.func.block, local_scope, create_child=False)

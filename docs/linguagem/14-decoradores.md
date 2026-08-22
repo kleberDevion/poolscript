@@ -27,6 +27,29 @@ post(Mat.soma(2, 3))     // 5
 Sem `@static`, um método precisa de `self`; com ele, é uma função ligada ao
 tipo.
 
+### Método `@static` que também declara `self`
+
+Você pode escrever `self` num método `@static` — útil quando o **mesmo** método
+é chamado dos dois jeitos: na Entity (`C.metodo(x)`) e numa instância
+(`C().metodo(x)`). Na chamada **estática** não existe instância, então o `self`
+é **dropado**: o argumento posicional cai no **primeiro parâmetro real**, não no
+`self`.
+
+```ps
+Entity C():
+    @static
+    reaction f(self, a, b=10):
+        return a + b
+
+post(C.f(5))        // 15  — o 5 vai pro `a`, NÃO pro self
+post(C.f(a=7))      // 17
+post(C().f(5))      // 15  — via instância, self = a instância
+```
+
+Passar argumento demais, ou faltar um obrigatório, dá erro claro
+(`esperava até N argumentos` / `faltando argumento: 'a'`) — nunca um erro
+obscuro lá adentro.
+
 ---
 
 ## 14.2. `@NonNull` — barra argumento nulo

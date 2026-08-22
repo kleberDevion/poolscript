@@ -14507,6 +14507,21 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
     Value reais[8];
     if (fn.t == V_FUNC) {
         proto = fn.as.proto;
+        /* @static com `self` na assinatura, chamado como VALOR (map/filter/
+         * callback/handler/async): não há instância — dropa o self pra o
+         * argumento cair no 1º parâmetro REAL, e o slot do self nasce UNSET.
+         * Mesma heurística do OP_CALL/OP_CALL_KW e do interpretador. Sem isto,
+         * o 1º argumento caía no self e o corpo estourava runtime ("'*' entre
+         * tipos incompativeis", parâmetro real ficando UNSET). */
+        Proto *pf = &vm->protos[proto];
+        if (pf->param_nomes && pf->param_nomes[0]
+                && strcmp(pf->param_nomes[0], "self") == 0) {
+            if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais"); return -1; }
+            reais[0] = MK_UNSET();
+            for (int i = 0; i < n; i++) reais[i + 1] = args[i];
+            args = reais;
+            n = n + 1;
+        }
     } else if (EH_BOUND(fn)) {
         /* método ligado: o `self` entra como argumento 0 */
         PSBound *b = COMO_BOUND(fn);
@@ -15012,9 +15027,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int marcado[64];
             if (pk->nparams > 64) ERRO(vm, "parametros demais pra chamada nomeada");
             for (int k = 0; k < pk->nparams; k++) marcado[k] = 0;
-            /* Com `self`, o slot 0 já está tomado e os posicionais andam um. */
-            int desloca = (inst_kw.t != V_NULL) ? 1 : 0;
-            if (desloca) { finais[0] = inst_kw; marcado[0] = 1; }
+            /* Com `self` de instância, o slot 0 já está tomado e os posicionais
+             * andam um. No @static (FUNC cujo 1º param é 'self', sem instância)
+             * também anda um, mas o slot 0 fica UNSET — dropa o self pra o
+             * posicional/nomeado cair no 1º parâmetro REAL. */
+            int eh_static_self = (inst_kw.t == V_NULL && alvo_kw.t == V_FUNC
+                                  && pk->param_nomes && pk->param_nomes[0]
+                                  && strcmp(pk->param_nomes[0], "self") == 0);
+            int desloca = (inst_kw.t != V_NULL || eh_static_self) ? 1 : 0;
+            if (inst_kw.t != V_NULL) { finais[0] = inst_kw; marcado[0] = 1; }
             if (npos + desloca > pk->nparams) ERRO(vm, "argumentos demais na chamada");
             for (int k = 0; k < npos; k++) {
                 finais[k + desloca] = stack[sp - total + k];
@@ -15140,17 +15161,25 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             if (alvo.t == V_FUNC) {
                 Proto *np = &vm->protos[alvo.as.proto];
+                /* Método @static acessado direto na Entity (`Classe.metodo`)
+                 * chega como FUNC puro. Não há instância pra o `self`: dropa-o
+                 * pra o argumento posicional cair no 1º parâmetro REAL, e o
+                 * slot do self nasce UNSET (não bindável fora de instância).
+                 * Mesma heurística do interpretador (`params[0] == "self"`). */
+                int desloca = (np->param_nomes && np->param_nomes[0]
+                               && strcmp(np->param_nomes[0], "self") == 0) ? 1 : 0;
+                int maxpos = np->nparams - desloca;
                 /* Aceita MENOS argumentos: o prólogo do callee preenche os
                  * que faltam com o default. Mais que os parâmetros continua
                  * erro. */
-                if (n > np->nparams)
+                if (n > maxpos)
                     ERRO_TF(vm, "RuntimeError",
                             "action '%s' esperava até %d argumentos, recebeu %d",
-                            np->nome ? np->nome : "?", np->nparams, n);
-                if (n < np->nparams - np->ndefaults)
+                            np->nome ? np->nome : "?", maxpos, n);
+                if (n < (np->nparams - np->ndefaults) - desloca)
                     ERRO_TF(vm, "RuntimeError", "action '%s' faltando argumento: '%s'",
                             np->nome ? np->nome : "?",
-                            (np->param_nomes && np->param_nomes[n]) ? np->param_nomes[n] : "?");
+                            (np->param_nomes && np->param_nomes[n + desloca]) ? np->param_nomes[n + desloca] : "?");
                 if (np->eh_gerador) {
                     /* chamar um gerador não executa nada: devolve o frame
                      * congelado, e o corpo só roda no primeiro `next` */
@@ -15191,12 +15220,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->frames[fp].devolve_self = 0;
 
                 int novo_lbase = locals_top;
+                /* `desloca`: no @static o slot 0 (self) nasce UNSET e os
+                 * posicionais entram a partir do slot 1. */
+                for (int k = 0; k < desloca; k++)
+                    vm->locals[novo_lbase + k] = MK_UNSET();
                 for (int k = 0; k < n; k++)
-                    vm->locals[novo_lbase + k] = stack[sp - n + k];
+                    vm->locals[novo_lbase + desloca + k] = stack[sp - n + k];
                 /* Locais além dos parâmetros nascem UNSET, não Null: é o que
                  * permite ao LOAD_NAME distinguir "ainda não atribuído nesta
                  * função" de "atribuído com o valor Null". */
-                for (int k = n; k < np->nlocals; k++)
+                for (int k = desloca + n; k < np->nlocals; k++)
                     vm->locals[novo_lbase + k] = MK_UNSET();
 
                 fp++;
@@ -15205,7 +15238,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 p     = np;
                 ip    = 0;
                 lbase = novo_lbase;
-                nargs = n;
+                nargs = n + desloca;
             } else if (alvo.t == V_NATIVE) {
                 /* builtin em C — nenhuma travessia pro Python */
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
