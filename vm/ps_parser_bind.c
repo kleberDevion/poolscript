@@ -60,6 +60,9 @@ static int serializa(SBuf *s, const PSNode *n)
                 case L_NULL: snprintf(tmp, sizeof(tmp), " null"); break;
                 case L_STR:  snprintf(tmp, sizeof(tmp), " str "); break;
                 case L_FSTRING: snprintf(tmp, sizeof(tmp), " fstring "); break;
+                /* bigint = int arbitrário; o lado Python também serializa como
+                 * `int <valor>` (Python int já é bignum), então casa o formato. */
+                case L_BIGINT: snprintf(tmp, sizeof(tmp), " int %s", n->texto ? n->texto : "0"); break;
             }
             if (sb_str(s, tmp) != 0) return -1;
             if (n->lit == L_STR || n->lit == L_FSTRING) {

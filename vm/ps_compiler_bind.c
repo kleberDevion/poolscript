@@ -62,6 +62,11 @@ static int desmonta_const(SBuf *s, const PSConst *k)
             if (sb_str(s, "str \"") != 0) return -1;
             if (sb_put(s, k->s ? k->s : "", (size_t)k->slen) != 0) return -1;
             return sb_str(s, "\"");
+        /* bigint = int arbitrário (dígitos em k->s); o Python dumpa como
+         * `int <valor>`. sb_str direto pra não esbarrar no tmp[256]. */
+        case K_BIGINT:
+            if (sb_str(s, "int ") != 0) return -1;
+            return sb_str(s, k->s ? k->s : "0");
     }
     return sb_str(s, "?");
 }

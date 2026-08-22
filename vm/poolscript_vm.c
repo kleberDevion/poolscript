@@ -22,6 +22,14 @@
  * Raízes: tabela de globais, pilha viva [0,sp), pool de locais
  * [0,locals_top) e as constantes de todos os protótipos.
  */
+/* Antes de QUALQUER include: expõe as extensões POSIX/GNU (struct sigaction,
+ * getcwd, etc.). O gcc em -std=gnu* já liga o _DEFAULT_SOURCE implícito, mas o
+ * build de extensão e os analisadores de IDE em -std=c* estrito não — e aí
+ * `struct sigaction` aparecia como tipo incompleto. Definir aqui deixa igual
+ * pros dois. Python.h também define _GNU_SOURCE, então é compatível. */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
+#endif
 #define PY_SSIZE_T_CLEAN
 #ifdef PS_MODULO_PYTHON
 #include <Python.h>
@@ -2667,6 +2675,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_QRBUILD:    t = "PoolQRCode"; break;
                 case OBJ_QRIMAGE:    t = "QRImage"; break;
                 case OBJ_MANPU_FILE: t = "ManpuFile"; break;
+                case OBJ__COUNT:     break;   /* sentinela: nunca ocorre */
             }
             break;
     }
@@ -3371,6 +3380,14 @@ typedef struct { const char *nome; FnMetodo fn; const char *params; } MetodoNat;
 
 #define MERRO(vm, tipo, ...) do { \
     snprintf((vm)->erro, sizeof((vm)->erro), __VA_ARGS__); \
+    snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "%s", (tipo)); \
+    return -1; \
+} while (0)
+
+/* Re-levanta um erro cuja MENSAGEM já está em vm->erro (ex.: json_escreve
+ * falhou e escreveu ali): só fixa o TIPO e sai. Evita `snprintf(vm->erro,
+ * "%s", vm->erro)` — origem = destino, que é UB (e -Wrestrict). */
+#define REERRO(vm, tipo) do { \
     snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "%s", (tipo)); \
     return -1; \
 } while (0)
@@ -4703,6 +4720,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_QRBUILD:     t = "PoolQRCode"; break;
                 case OBJ_QRIMAGE:     t = "QRImage"; break;
                 case OBJ_MANPU_FILE:  t = "ManpuFile"; break;
+                case OBJ__COUNT:      break;   /* sentinela: nunca ocorre */
             }
             break;
     }
@@ -5138,7 +5156,7 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
         unlink(f->caminho);
     }
     PSPoolFile *novo = novo_poolfile(vm, dest);
-    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%s'", dest);
+    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%.200s'", dest);
     free(f->caminho);
     f->caminho = strdup(dest);
     *out = MK_OBJ(novo);
@@ -5155,7 +5173,7 @@ static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (copia_arquivo(f->caminho, dest) != 0)
         MERRO(vm, "SomeValueUnexpected", "nao consegui copiar para '%s'", dest);
     PSPoolFile *novo = novo_poolfile(vm, dest);
-    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%s'", dest);
+    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%.200s'", dest);
     *out = MK_OBJ(novo);
     return 0;
 }
@@ -5193,12 +5211,12 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     cria_pais(dest);
     FILE *fp = fopen(dest, "wb");
-    if (!fp) MERRO(vm, "SomeValueUnexpected", "nao consegui salvar em '%s'", dest);
+    if (!fp) MERRO(vm, "SomeValueUnexpected", "nao consegui salvar em '%.200s'", dest);
     PSString *b = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo) : NULL;
     if (b && b->len > 0) fwrite(b->chars, 1, (size_t)b->len, fp);
     fclose(fp);
     PSPoolFile *novo = novo_poolfile(vm, dest);
-    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%s'", dest);
+    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%.200s'", dest);
     free(f->caminho);
     f->caminho = strdup(dest);
     *out = MK_OBJ(novo);
@@ -7226,8 +7244,12 @@ static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
         if (args[2].t == V_BOOL || args[2].t != V_INT) BY_ERRO_TIPO(vm, "bytes.slice: fim deve ser inteiro");
         fim = args[2].as.i;
     }
-    if (ini < 0) ini += len;  if (ini < 0) ini = 0;  if (ini > len) ini = len;
-    if (fim < 0) fim += len;  if (fim < 0) fim = 0;  if (fim > len) fim = len;
+    if (ini < 0) ini += len;
+    if (ini < 0) ini = 0;
+    if (ini > len) ini = len;
+    if (fim < 0) fim += len;
+    if (fim < 0) fim = 0;
+    if (fim > len) fim = len;
     int outlen = (fim > ini) ? (int)(fim - ini) : 0;
     return by_devolve(vm, out, b->chars + ini, outlen);
 }
@@ -8502,7 +8524,7 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
             if (cmd_sh) execl("/bin/sh", "sh", "-c", cmd_sh, (char *)NULL);
             else        execvp(argv_[0], argv_);
             int err = errno;
-            (void)write(ep[1], &err, sizeof(err));
+            if (write(ep[1], &err, sizeof(err)) < 0) { /* filho sai a seguir; nada a tratar */ }
             _exit(127);
         }
         close(ep[1]);
@@ -8529,7 +8551,7 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
         if (cmd_sh) execl("/bin/sh", "sh", "-c", cmd_sh, (char *)NULL);
         else        execvp(argv_[0], argv_);
         int err = errno;
-        (void)write(ep[1], &err, sizeof(err));
+        if (write(ep[1], &err, sizeof(err)) < 0) { /* filho sai a seguir; nada a tratar */ }
         _exit(127);
     }
     close(po[1]); close(pe[1]); close(ep[1]);
@@ -9971,7 +9993,7 @@ static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         rc = wo.rc;
     } else {
         SBuf b = {0};
-        if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); MERRO(vm, "SomeValueUnexpected", "%s", vm->erro); }
+        if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); REERRO(vm, "SomeValueUnexpected"); }
         WsSendOff wo = { w->conn, b.b ? b.b : "null", b.b ? (size_t)b.n : 4, 0 };
         fib_offload(vm, ws_send_off, &wo);
         rc = wo.rc;
@@ -12012,7 +12034,7 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "json() espera 1 ou 2 argumentos");
     PSJResp *r = COMO_JRESP(alvo);
     SBuf b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); MERRO(vm, "SomeValueUnexpected", "%s", vm->erro); }
+    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); REERRO(vm, "SomeValueUnexpected"); }
     /* SBuf NÃO é NUL-terminado — sempre entregar com o TAMANHO, nunca como
      * C-string (mesma lição do bson do mongo) */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
@@ -12058,7 +12080,7 @@ static int mod_jk_jsonify(VM *vm, Value *args, int n, Value *out)
     Value rv = MK_OBJ(r);
     if (fixa_raiz(vm, rv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
     SBuf b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); vm->sp--; BERRO(vm, "SomeValueUnexpected", "%s", vm->erro); }
+    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { free(b.b); vm->sp--; REERRO(vm, "SomeValueUnexpected"); }
     /* SBuf sem NUL: entrega por tamanho */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
     free(b.b);
@@ -12096,7 +12118,7 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
             if (realpath(cand, resolv) && strncmp(resolv, base, strlen(base)) == 0) {
                 struct stat st;
                 if (stat(resolv, &st) == 0 && S_ISREG(st.st_mode)) {
-                    snprintf(achado, sizeof(achado), "%s", resolv); ok = 1;
+                    snprintf(achado, sizeof(achado), "%.2047s", resolv); ok = 1;
                 }
             }
         }
@@ -12120,7 +12142,7 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
     }
 
     FILE *f = fopen(achado, "rb");
-    if (!f) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "render: nao abriu %s", achado); }
+    if (!f) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "render: nao abriu %.200s", achado); }
     fseek(f, 0, SEEK_END); long tam = ftell(f); fseek(f, 0, SEEK_SET);
     if (tam < 0) tam = 0;
     char *buf = malloc((size_t)tam + 1);
@@ -13135,7 +13157,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         /* /static/ físico */
         if (strncmp(hr->path, "/static/", 8) == 0) {
             char cam[1024];
-            char cwd[512]; getcwd(cwd, sizeof(cwd));
+            char cwd[512]; if (!getcwd(cwd, sizeof(cwd))) snprintf(cwd, sizeof(cwd), ".");
             snprintf(cam, sizeof(cam), "%s/%s", cwd, hr->path + 1);
             struct stat st;
             if (stat(cam, &st) == 0 && S_ISREG(st.st_mode)) {
@@ -15478,7 +15500,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     /* diz QUAL chave, igual ao interp ("chave não encontrada: 'z'") */
                     TxtBuf kb = {0};
                     valor_para_texto(&kb, &idx, 1);
-                    char em[600];
+                    char em[256];   /* cabe em vm->erro sem truncar */
                     snprintf(em, sizeof(em), "chave não encontrada: %s", kb.b ? kb.b : "");
                     free(kb.b);
                     ERRO_T(vm, "KeyError", em);
@@ -17341,7 +17363,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     snprintf(moddir, sizeof(moddir), "%s", abspath);
     char *barra = strrchr(moddir, '/');
     if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
-    snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", moddir);
+    snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%.511s", moddir);
 
     /* roda o corpo: é o que faz as `action` e Entity dele existirem */
     Value ignora;
