@@ -61,7 +61,6 @@ _LAZY_LOADERS: dict[str, str] = {
     "dataentity":   "datasentity_lib",
     "bytes":        "bytes_lib",
     "guzer":        "guzer_lib",
-    "swagger":      "swagger_lib",
 }
 
 # Cache — evita recarregar o mesmo módulo duas vezes

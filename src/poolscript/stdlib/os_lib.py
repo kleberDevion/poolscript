@@ -214,6 +214,26 @@ def ipmach() -> str:
     return ip
 
 
+def readFile(path: str, encoding: str = "utf-8") -> str:
+    """Lê um arquivo de texto e devolve a string (UTF-8 por padrão)."""
+    from pathlib import Path as _P
+    return _P(path).read_text(encoding=encoding)
+
+
+def writeFile(path: str, content, encoding: str = "utf-8") -> str:
+    """Escreve `content` (str ou bytes) num arquivo, criando a pasta se preciso.
+    Devolve o caminho escrito."""
+    from pathlib import Path as _P
+    p = _P(path)
+    if p.parent and str(p.parent) not in ("", "."):
+        p.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(content, (bytes, bytearray)):
+        p.write_bytes(bytes(content))
+    else:
+        p.write_text(str(content), encoding=encoding)
+    return str(p)
+
+
 def mkdir(path: str, exist_ok: bool = False):
     """Cria diretório. exist_ok=true não dá erro se já existir."""
     import os as _os
@@ -370,6 +390,8 @@ EXPORTS = {
     "pathFile":   pathFile,
     "pathFolder": pathFolder,
     "loadFile":   loadFile,
+    "readFile":   readFile,
+    "writeFile":  writeFile,
     "getenv":     getenv,
     "warn":       warn,
     "ipmach":     ipmach,

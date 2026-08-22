@@ -8148,6 +8148,47 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
     return devolve_sbuf(vm, &b, out);
 }
 
+static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1) BERRO(vm, "SomeValueUnexpected", "readFile() espera o caminho");
+    PSString *p;
+    if (os_str(vm, args[0], "readFile", &p) != 0) return -1;
+    FILE *f = fopen(p->chars, "rb");
+    if (!f) BERRO(vm, "SomeValueUnexpected", "nao consegui abrir '%s'", p->chars);
+    fseek(f, 0, SEEK_END); long t = ftell(f); if (t < 0) t = 0; fseek(f, 0, SEEK_SET);
+    char *buf = malloc((size_t)t + 1);
+    if (!buf) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
+    size_t rd = fread(buf, 1, (size_t)t, f);
+    fclose(f); buf[rd] = '\0';
+    PSString *s = nova_string(vm, buf, (int)rd);
+    free(buf);
+    if (!s) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(s);
+    return 0;
+}
+
+static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 2) BERRO(vm, "SomeValueUnexpected", "writeFile() espera caminho e conteudo");
+    PSString *p;
+    if (os_str(vm, args[0], "writeFile", &p) != 0) return -1;
+    const char *dados; int ndados;
+    if (EH_STRING(args[1]))      { PSString *c = COMO_STRING(args[1]); dados = c->chars; ndados = c->len; }
+    else if (EH_BYTES(args[1]))  { PSString *c = COMO_BYTES(args[1]);  dados = c->chars; ndados = c->len; }
+    else BERRO(vm, "SomeValueUnexpected", "writeFile() espera str ou bytes no conteudo");
+    /* cria a pasta pai (como makedirs) */
+    char tmp[2048]; snprintf(tmp, sizeof(tmp), "%s", p->chars);
+    for (char *q = tmp + 1; *q; q++) { if (*q == '/') { *q = '\0'; mkdir(tmp, 0755); *q = '/'; } }
+    FILE *f = fopen(p->chars, "wb");
+    if (!f) BERRO(vm, "SomeValueUnexpected", "nao consegui escrever '%s'", p->chars);
+    if (ndados > 0) fwrite(dados, 1, (size_t)ndados, f);
+    fclose(f);
+    PSString *rp = nova_string(vm, p->chars, p->len);
+    if (!rp) BERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(rp);
+    return 0;
+}
+
 static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "mkdir() espera 1 ou 2 argumentos");
@@ -8612,6 +8653,7 @@ static int mod_os_poolfile_tipo(VM *vm, Value *args, int n, Value *out)
 static const MembroMod MOD_OS[] = {
     { "pathFile", mod_os_pathfile, 0, "name" }, { "pathFolder", mod_os_pathfolder, 0, "name" },
     { "loadFile", mod_os_loadfile, 0, "name,encoding" }, { "getenv", mod_os_getenv, 0, "key,default" },
+    { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
     { "cmd", mod_os_cmd, 0, "command,capture" }, { "run", mod_os_run, 0, "args,capture" }, { "code", mod_os_code, 0, "path" },

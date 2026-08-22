@@ -1,0 +1,209 @@
+# swagger — gerador de OpenAPI + cliente + Swagger UI, escrito em PoolScript.
+# Roda IGUAL nos dois motores (interp e VM) porque usa só libs que existem nos
+# dois: os (ler/escrever arquivo), regex (extrair rotas), json (parse/stringify).
+#
+#   import swagger
+#   swagger.infos(target="app.ps")
+#          .title("Minha API").description("...").version("1.0.0")
+#          .authorContact().email("eu@x.com").name("Fulano").number("(27) 0")
+#          .newDoc(folder_name="docs", contracts=["contratos", "json"])
+#          .bundle(lang="typescript", router="react_router")
+#          .metaData(file_type=".json", name="openapi")
+#          .SwaggerGEN()
+
+import os
+import regex
+import json
+
+
+Entity SwaggerBuilder():
+    action __init__(self, target):
+        self.target = target
+        self.info = { "title": "API", "version": "1.0.0" }
+        self.contact = {}
+        self.doc_folder = "."
+        self.contracts_dir = ""
+        self.contracts_type = "json"
+        self.has_contracts = false
+        self.bundle_lang = ""
+        self.bundle_router = ""
+        self.has_bundle = false
+        self.file_type = ".json"
+        self.file_name = "openapi"
+
+    # ── info (encadeável) ──────────────────────────────────────────────
+    action title(self, v):
+        self.info["title"] = v
+        return self
+
+    action description(self, v):
+        self.info["description"] = v
+        return self
+
+    action version(self, v):
+        self.info["version"] = v
+        return self
+
+    action authorContact(self):
+        return self
+
+    action email(self, v):
+        self.contact["email"] = v
+        return self
+
+    action name(self, v):
+        self.contact["name"] = v
+        return self
+
+    action number(self, v):
+        self.contact["x-phone"] = v
+        return self
+
+    # ── saída (config) ─────────────────────────────────────────────────
+    action newDoc(self, folder_name=".", contracts=null):
+        self.doc_folder = folder_name
+        if contracts != null:
+            self.has_contracts = true
+            self.contracts_dir = contracts[0]
+            if len(contracts) > 1:
+                self.contracts_type = contracts[1]
+        return self
+
+    action bundle(self, lang="typescript", router="react_router"):
+        self.bundle_lang = lang
+        self.bundle_router = router
+        self.has_bundle = true
+        return self
+
+    action metaData(self, file_type=".json", name="openapi"):
+        self.file_type = file_type
+        self.file_name = name
+        return self
+
+    # ── rotas do target (estático, via regex) ──────────────────────────
+    action _rotas(self):
+        paths = {}
+        if not os.exists(self.target):
+            return paths
+        src = os.readFile(self.target)
+        achados = regex.findall("@\\w+\\.route\\(\\s*[\"']([^\"']+)[\"']([^)]*)\\)", src)
+        for each m in achados:
+            rota = m[0]
+            resto = m[1]
+            metodos = regex.findall("[\"']([A-Za-z]+)[\"']", resto)
+            if len(metodos) == 0:
+                metodos = ["GET"]
+            op_path = regex.sub("[:<](\\w+)>?", "{\\1}", rota)
+            nomes_param = regex.findall("\\{(\\w+)\\}", op_path)
+            if not paths.has(op_path):
+                paths[op_path] = {}
+            for each mt in metodos:
+                mt_low = mt.lower()
+                if mt_low == "options" or mt_low == "head":
+                    continue
+                op = { "summary": op_path, "responses": { "200": { "description": "OK" } } }
+                if len(nomes_param) > 0:
+                    ps = []
+                    for each pn in nomes_param:
+                        addEnd(ps, { "name": pn, "in": "path", "required": true, "schema": { "type": "string" } })
+                    op["parameters"] = ps
+                paths[op_path][mt_low] = op
+        return paths
+
+    # ── contratos (opcional): @rota -> requestBody ─────────────────────
+    action _aplica_contratos(self, paths):
+        if not self.has_contracts:
+            return
+        if not os.isdir(self.contracts_dir):
+            return
+        for each item in os.ls(self.contracts_dir):
+            nome = item["name"]
+            if self.contracts_type == "json" and not nome.endswith(".json"):
+                continue
+            dados = json.parse(os.readFile(self.contracts_dir + "/" + nome))
+            if dados == null:
+                continue
+            chaves = dados.keys()
+            if len(chaves) == 0:
+                continue
+            chave = chaves[0]
+            rota = "/" + chave.replace("@", "").replace("/", "")
+            body = dados[chave]
+            rb = { "content": { "application/json": { "example": body } } }
+            for each p in paths.keys():
+                if p == rota or p.endswith(rota):
+                    for each mt in paths[p].keys():
+                        paths[p][mt]["requestBody"] = rb
+                    break
+
+    action spec(self):
+        info = { "title": self.info["title"], "version": self.info["version"] }
+        if self.info.has("description"):
+            info["description"] = self.info["description"]
+        if len(self.contact.keys()) > 0:
+            info["contact"] = self.contact
+        paths = self._rotas()
+        self._aplica_contratos(paths)
+        return { "openapi": "3.0.0", "info": info, "paths": paths }
+
+    # ── cliente TS (uma função por rota) ───────────────────────────────
+    action _cliente(self, esp):
+        L = "// cliente gerado por swagger (" + self.bundle_lang + " / " + self.bundle_router + ")\n"
+        L += "const BASE = \"\";\n\n"
+        L += "async function _req(method, path, body) {\n"
+        L += "  const r = await fetch(BASE + path, {\n"
+        L += "    method,\n"
+        L += "    headers: body !== undefined ? { \"Content-Type\": \"application/json\" } : {},\n"
+        L += "    body: body !== undefined ? JSON.stringify(body) : undefined,\n"
+        L += "  });\n  return r.json();\n}\n\n"
+        rr = ""
+        for each path in esp["paths"].keys():
+            segs = regex.findall("[A-Za-z0-9]+", path)
+            ts_path = regex.sub("\\{(\\w+)\\}", "${\\1}", path)
+            rr_path = regex.sub("\\{(\\w+)\\}", ":\\1", path)
+            for each mt in esp["paths"][path].keys():
+                fn = mt
+                for each s in segs:
+                    fn += s.capitalize()
+                tem_body = mt == "post" or mt == "put" or mt == "patch"
+                args_ = ""
+                params = regex.findall("\\{(\\w+)\\}", path)
+                for each pn in params:
+                    args_ += pn
+                    args_ += ", "
+                if tem_body:
+                    args_ += "body"
+                bodyarg = "undefined"
+                if tem_body:
+                    bodyarg = "body"
+                L += "export async function " + fn + "(" + args_ + ") { return _req(\"" + mt.upper() + "\", `" + ts_path + "`, " + bodyarg + "); }\n"
+                rr += "  \"" + rr_path + "\": { " + mt + ": " + fn + " },\n"
+        L += "\nexport const routes = {\n" + rr + "};\n"
+        return L
+
+    # ── UI pro browser ─────────────────────────────────────────────────
+    action _html(self, spec_file):
+        h = "<!DOCTYPE html>\n<html lang=\"pt-br\">\n<head>\n"
+        h += "  <meta charset=\"utf-8\">\n"
+        h += "  <title>" + self.info["title"] + " - Swagger UI</title>\n"
+        h += "  <link rel=\"stylesheet\" href=\"https://unpkg.com/swagger-ui-dist/swagger-ui.css\">\n"
+        h += "</head>\n<body>\n  <div id=\"swagger-ui\"></div>\n"
+        h += "  <script src=\"https://unpkg.com/swagger-ui-dist/swagger-ui-bundle.js\"></script>\n"
+        h += "  <script>window.onload=function(){SwaggerUIBundle({url:\"./" + spec_file + "\",dom_id:\"#swagger-ui\"});};</script>\n"
+        h += "</body>\n</html>\n"
+        return h
+
+    # ── gera tudo ──────────────────────────────────────────────────────
+    action SwaggerGEN(self):
+        esp = self.spec()
+        os.mkdir(self.doc_folder, exist_ok=true)
+        spec_file = self.file_name + self.file_type
+        os.writeFile(self.doc_folder + "/" + spec_file, json.stringify(esp))
+        os.writeFile(self.doc_folder + "/index.html", self._html(spec_file))
+        if self.has_bundle:
+            os.writeFile(self.doc_folder + "/client.ts", self._cliente(esp))
+        return self.doc_folder + "/" + spec_file
+
+
+action infos(target=""):
+    return SwaggerBuilder(target)

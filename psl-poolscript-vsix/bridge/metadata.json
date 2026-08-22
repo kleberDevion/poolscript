@@ -46,6 +46,44 @@
      "doc": "Carrega um arquivo."
     },
     {
+     "name": "readFile",
+     "kind": "function",
+     "params": [
+      {
+       "name": "path",
+       "opt": false
+      },
+      {
+       "name": "encoding",
+       "opt": true
+      }
+     ],
+     "sig": "readFile(path, encoding?)",
+     "returns": "str",
+     "doc": "Lê um arquivo de texto e devolve a string (UTF-8 por padrão)."
+    },
+    {
+     "name": "writeFile",
+     "kind": "function",
+     "params": [
+      {
+       "name": "path",
+       "opt": false
+      },
+      {
+       "name": "content",
+       "opt": false
+      },
+      {
+       "name": "encoding",
+       "opt": true
+      }
+     ],
+     "sig": "writeFile(path, content, encoding?)",
+     "returns": "str",
+     "doc": "Escreve `content` (str ou bytes) num arquivo, criando a pasta se preciso. Devolve o caminho escrito."
+    },
+    {
      "name": "getenv",
      "kind": "function",
      "params": [
@@ -2185,23 +2223,6 @@
      "kind": "class",
      "returns": "Button",
      "doc": "Botão. `onclick=` recebe uma reaction (por referência), que roda no clique."
-    }
-   ]
-  },
-  "swagger": {
-   "members": [
-    {
-     "name": "infos",
-     "kind": "function",
-     "params": [
-      {
-       "name": "target",
-       "opt": true
-      }
-     ],
-     "sig": "infos(target?)",
-     "returns": null,
-     "doc": null
     }
    ]
   }
@@ -4396,164 +4417,6 @@
     }
    ],
    "doc": "Janela/contêiner do app: tamanho e cor de fundo."
-  },
-  "SwaggerBuilder": {
-   "members": [
-    {
-     "name": "SwaggerGEN",
-     "kind": "method",
-     "params": [],
-     "sig": "SwaggerGEN()",
-     "returns": null,
-     "doc": "Gera o spec em `<folder>/<name><file_type>` e, se `bundle` foi chamado, o cliente da API. Devolve o caminho do spec."
-    },
-    {
-     "name": "authorContact",
-     "kind": "method",
-     "params": [],
-     "sig": "authorContact()",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "bundle",
-     "kind": "method",
-     "params": [
-      {
-       "name": "lang",
-       "opt": true
-      },
-      {
-       "name": "router",
-       "opt": true
-      }
-     ],
-     "sig": "bundle(lang?, router?)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "description",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "description(value)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "email",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "email(value)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "metaData",
-     "kind": "method",
-     "params": [
-      {
-       "name": "file_type",
-       "opt": true
-      },
-      {
-       "name": "name",
-       "opt": true
-      }
-     ],
-     "sig": "metaData(file_type?, name?)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "name",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "name(value)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "newDoc",
-     "kind": "method",
-     "params": [
-      {
-       "name": "folder_name",
-       "opt": true
-      },
-      {
-       "name": "contracts",
-       "opt": true
-      }
-     ],
-     "sig": "newDoc(folder_name?, contracts?)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "number",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "number(value)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "spec",
-     "kind": "method",
-     "params": [],
-     "sig": "spec()",
-     "returns": "dict",
-     "doc": "Monta o dict OpenAPI (info da config + rotas do target + contratos)."
-    },
-    {
-     "name": "title",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "title(value)",
-     "returns": null,
-     "doc": null
-    },
-    {
-     "name": "version",
-     "kind": "method",
-     "params": [
-      {
-       "name": "value",
-       "opt": false
-      }
-     ],
-     "sig": "version(value)",
-     "returns": null,
-     "doc": null
-    }
-   ],
-   "doc": "Builder encadeável do spec OpenAPI. Cada método guarda um pedaço da config e devolve o próprio builder; `SwaggerGEN()` gera o arquivo."
   }
  },
  "keywords": {

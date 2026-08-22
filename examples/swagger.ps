@@ -1,0 +1,20 @@
+import swagger
+
+
+int async reaction main()
+{
+    desgraca = swagger.infos(target="/path/nome.ps")
+           .title("OpenAPI - API de app de pedidos")
+           .description("API feita para apps de pedido, e entrega, com creds de pagamento configuraveis.")
+           .version("1.0.0")
+           .authorContact()
+               .email("ex@mail.com")
+               .name("kleber santana")
+               .number("(27) 00000-0000")
+    desgraca.newDoc(folder_name="path/docs", contracts=["path/contratos", "json"])
+    desgraca.bundle(lang="language/typescript", router="react_router")
+    desgraca.metaData(file_type=".json", name="openapi")
+    desgraca.SwaggerGEN()
+}
+
+main()

@@ -1572,6 +1572,12 @@ class Interpreter:
 
         module_name = ".".join(node.module)
 
+        # 1b. Lib "bundled" escrita em .ps que vem com a linguagem (ex: swagger)
+        _bundled_ps = Path(__file__).resolve().parent / "stdlib" / (module_name + ".ps")
+        if _bundled_ps.is_file():
+            self._run_imported_file(_bundled_ps, node, scope, _bundled_ps.parent, module_name)
+            return
+
         # 2. Lib instalada globalmente (`psl install ... -asLib`, em
         # ~/.poolscript/libs/) — vem ANTES do arquivo local: `import random`
         # sempre acha a LIB `random`, não importa como o usuário nomeou seus
