@@ -636,6 +636,15 @@ static PSNode *posfixo(P *p)
                         continue;
                     }
                     if (checa(p, T_RPAREN)) break;
+                    /* Um `{` (dicionário) NUNCA justapõe: sem vírgula antes
+                     * dele é vírgula esquecida, não um novo argumento. Deixar
+                     * justapor fazia o dict virar "argumento a mais" silencioso
+                     * ("argumentos demais"), que não faz sentido. Erro claro
+                     * apontando a vírgula que falta. */
+                    if (checa(p, T_LBRACE)) {
+                        perro(p, "faltou ',' antes do dicionario '{' — cada argumento precisa de virgula", atual(p));
+                        return NULL;
+                    }
                     /* sem vírgula: só continua se o próximo puder abrir
                      * expressão — é a justaposição `post("a" b)` */
                     if (pode_iniciar_expr(atual(p))) continue;

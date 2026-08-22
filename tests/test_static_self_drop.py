@@ -66,3 +66,27 @@ def test_erro_limpo(tmp_path, corpo, trecho):
         r = _run(cmd, tmp_path, corpo)
         assert r.returncode != 0, (cmd, corpo, r.stdout)
         assert trecho in (r.stdout + r.stderr), (cmd, corpo, r.stdout + r.stderr)
+
+
+# @static passado como VALOR (map/filter/callback) também dropa o self —
+# antes a VM mandava o elemento pro self e estourava runtime.
+CB = """public class C()
+{
+    @static
+    public reaction dobro(self, x)
+    {
+        return x * 2
+    }
+}
+post(map([1, 2, 3], C.dobro))
+"""
+
+
+def test_static_como_callback(tmp_path):
+    ps = tmp_path / "cb.ps"
+    ps.write_text(CB, encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(SRC))
+    for cmd in _engines():
+        r = subprocess.run(cmd + [str(ps)], capture_output=True, text=True,
+                           env=env, timeout=15)
+        assert r.stdout.strip() == "[2, 4, 6]", (cmd, r.stdout, r.stderr)

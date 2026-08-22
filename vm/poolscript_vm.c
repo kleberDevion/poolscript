@@ -14526,6 +14526,18 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         /* método ligado: o `self` entra como argumento 0 */
         PSBound *b = COMO_BOUND(fn);
         proto = b->proto;
+        /* Método de instância PRECISA declarar `self` como 1º parâmetro (mesma
+         * regra do interp e do OP_CALL) — senão a instância cairia no parâmetro
+         * real e daria "argumentos demais" sem nexo. */
+        Proto *pb = &vm->protos[proto];
+        if (pb->nparams == 0 || !pb->param_nomes || !pb->param_nomes[0]
+                || strcmp(pb->param_nomes[0], "self") != 0) {
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                     pb->nome ? pb->nome : "?");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+            return -1;
+        }
         if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais"); return -1; }
         reais[0] = b->instancia;
         for (int i = 0; i < n; i++) reais[i + 1] = args[i];
@@ -15021,6 +15033,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             Proto *pk = &vm->protos[proto_kw];
             if (!pk->param_nomes) ERRO(vm, "action sem nomes de parametro");
+            /* Método de instância (bound) chamado por nome também exige `self`
+             * no slot 0 — senão a instância cairia no 1º parâmetro real. Mesma
+             * regra do OP_CALL e do interpretador. */
+            if (EH_BOUND(alvo_kw) && (!pk->param_nomes[0]
+                    || strcmp(pk->param_nomes[0], "self") != 0))
+                ERRO_TF(vm, "RuntimeError",
+                        "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                        pk->nome ? pk->nome : "?");
 
             /* monta os argumentos finais na ordem dos parâmetros */
             Value finais[64];
@@ -15135,7 +15155,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* método ligado: `self` entra como primeiro argumento */
                 PSBound *b = COMO_BOUND(alvo);
                 Proto *np = &vm->protos[b->proto];
-                if (np->nparams == 0)
+                /* Método de instância PRECISA declarar `self` como 1º parâmetro.
+                 * Sem isso, a VM injetava a instância no 1º parâmetro real e o
+                 * argumento do usuário virava o 2º -> "argumentos demais" sem
+                 * nexo. Erro claro, igual ao interpretador. */
+                if (np->nparams == 0 || !np->param_nomes || !np->param_nomes[0]
+                        || strcmp(np->param_nomes[0], "self") != 0)
                     ERRO_TF(vm, "RuntimeError",
                             "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");

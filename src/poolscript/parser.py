@@ -2099,6 +2099,14 @@ class Parser:
                 continue
             if self.current().type == closing_type:
                 break
+            # Um `{` (dicionário) NUNCA justapõe: sem vírgula antes dele é
+            # vírgula esquecida, não um novo argumento. Deixar justapor fazia o
+            # dict virar "argumento a mais" silencioso ("argumentos demais"),
+            # que não faz sentido. Erro claro apontando a vírgula que falta.
+            if self.current().type == "LBRACE":
+                raise self.error(
+                    "faltou ',' antes do dicionario '{' — cada argumento precisa de virgula",
+                    self.current())
             if self._can_start_expression(self.current()):
                 continue
             break
