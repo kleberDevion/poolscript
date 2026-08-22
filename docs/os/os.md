@@ -24,6 +24,8 @@ precisa de caminho absoluto.
 | `pathFile(nome)` | caminho absoluto de um arquivo (busca pelo nome) | [pathFile/pathFile.md](pathFile/pathFile.md) |
 | `pathFolder(nome)` | caminho absoluto de uma pasta | [pathFolder/pathFolder.md](pathFolder/pathFolder.md) |
 | `loadFile(nome, encoding)` | lê um arquivo — texto vira str/dict, binário vira `PoolFile` | [loadFile/loadFile.md](loadFile/loadFile.md) |
+| `readFile(caminho, encoding)` | lê um arquivo como **texto** (str), UTF-8 por padrão | [readFile/readFile.md](readFile/readFile.md) |
+| `writeFile(caminho, conteudo, encoding)` | **escreve** str/bytes num arquivo, criando a pasta pai; devolve o caminho | [writeFile/writeFile.md](writeFile/writeFile.md) |
 | `PoolFile` | tipo de arquivo binário carregado (move/copy/delete) | [PoolFile/PoolFile.md](PoolFile/PoolFile.md) |
 
 ### Verificar / navegar
