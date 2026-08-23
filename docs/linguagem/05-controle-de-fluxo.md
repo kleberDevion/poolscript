@@ -16,6 +16,10 @@ cada iteração.
 
 ## 5.1. Condicional — `if` / `elif` / `else`
 
+![exemplo 1](../assets/linguagem__05-controle-de-fluxo_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 if nota >= 7:
     post("aprovado")
@@ -25,17 +29,25 @@ else:
     post("reprovado")
 ```
 
+</details>
+
 - A condição é avaliada pela **verdade** do valor (*truthiness*, seção 2.3), não
   precisa ser `bool`: `0`, `""`, `[]`, `{}` e `null` são falsos; o resto é
   verdadeiro.
 - `elif` encadeia quantas vezes quiser; `else` é opcional e vem por último.
 - A palavra é **`elif`** — não existe `else if` (é erro de sintaxe).
 
+![exemplo 2](../assets/linguagem__05-controle-de-fluxo_ex2.png)
+
+<details><summary>código</summary>
+
 ```ps
 if 5:        post("entra")     // int não-zero é verdadeiro
 if []:       post("não entra") // lista vazia é falsa
 if "texto":  post("entra")     // string não-vazia é verdadeira
 ```
+
+</details>
 
 Para escolher um **valor** (em vez de statements), use a expressão condicional
 `A if cond else B` (seção 3.9).
@@ -47,12 +59,18 @@ Para escolher um **valor** (em vez de statements), use a expressão condicional
 Repete o corpo enquanto a condição for verdadeira (mesma regra de verdade do
 `if`).
 
+![exemplo 3](../assets/linguagem__05-controle-de-fluxo_ex3.png)
+
+<details><summary>código</summary>
+
 ```ps
 n = 0
 while n < 3:
     post(n)
     n += 1
 ```
+
+</details>
 
 Não existe `while ... else` (é erro de sintaxe). A variável de controle
 (`n` acima) precisa existir **fora** do laço para sobreviver entre as iterações
@@ -65,6 +83,10 @@ Não existe `while ... else` (é erro de sintaxe). A variável de controle
 Itera sobre os elementos de uma sequência, ligando **uma** variável por
 elemento:
 
+![exemplo 4](../assets/linguagem__05-controle-de-fluxo_ex4.png)
+
+<details><summary>código</summary>
+
 ```ps
 for each x in [10, 20, 30]:
     post(x)
@@ -73,17 +95,25 @@ for each ch in "abc":       // string: um caractere por vez
     post(ch)
 ```
 
+</details>
+
 Regras e limites (verificados):
 
 - Aceita **lista, tupla e string**. **Não** itera `dict` diretamente
   (erro `for each exige lista, tupla ou string`) — para percorrer um dict, use
   `d.keys()`, `d.values()` ou `d.items()`:
 
-  ```ps
+  ![exemplo 5](../assets/linguagem__05-controle-de-fluxo_ex5.png)
+
+<details><summary>código</summary>
+
+```ps
   d = { "a": 1, "b": 2 }
   for each k in d.keys():
       post(k, d[k])
   ```
+
+</details>
 
 - A variável do laço é **um único nome**. Não há forma com índice embutido nem
   desempacotamento no cabeçalho: `for each i, x in ...` é erro. Se cada elemento
@@ -102,6 +132,10 @@ do Python; o fim é **exclusivo**):
 | `range(início, fim)` | `início, …, fim-1` |
 | `range(início, fim, passo)` | de `passo` em `passo`; `passo` negativo conta pra trás |
 
+![exemplo 6](../assets/linguagem__05-controle-de-fluxo_ex6.png)
+
+<details><summary>código</summary>
+
 ```ps
 for each i in range(3):          // 0 1 2
     post(i)
@@ -110,6 +144,8 @@ for each i in range(2, 5):       // 2 3 4
 for each i in range(10, 0, -2):  // 10 8 6 4 2
     post(i)
 ```
+
+</details>
 
 ---
 
@@ -123,6 +159,10 @@ Dentro de um laço (`while`, `for each`, `count each`):
 Ambos agem sobre o laço **mais interno**. Fora de um laço são erro de
 compilação (`'break' fora de laco`).
 
+![exemplo 7](../assets/linguagem__05-controle-de-fluxo_ex7.png)
+
+<details><summary>código</summary>
+
 ```ps
 for each n in range(100):
     if n == 5:
@@ -132,12 +172,18 @@ for each n in range(100):
     post(n)              // 1 3
 ```
 
+</details>
+
 ---
 
 ## 5.5. `match` / `case`
 
 Compara um valor (o *sujeito*) contra uma série de **padrões**, na ordem, e roda
 o bloco do primeiro que casar.
+
+![exemplo 8](../assets/linguagem__05-controle-de-fluxo_ex8.png)
+
+<details><summary>código</summary>
 
 ```ps
 match comando:
@@ -148,6 +194,8 @@ match comando:
     case _:
         post("comando desconhecido:", comando)
 ```
+
+</details>
 
 Padrões suportados (verificados):
 
@@ -160,6 +208,10 @@ Padrões suportados (verificados):
 | Lista — `case [a, b]:` | o sujeito é uma lista com essa forma | `a`, `b` = os elementos |
 | Guarda — `case x if x > 5:` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
 
+![exemplo 9](../assets/linguagem__05-controle-de-fluxo_ex9.png)
+
+<details><summary>código</summary>
+
 ```ps
 match ponto:
     case [0, 0]:
@@ -171,6 +223,8 @@ match ponto:
     case _:
         post("outro lugar")
 ```
+
+</details>
 
 - **Nenhum casou:** o `match` simplesmente não faz nada (não é erro). Um
   `case _:` no fim funciona como "senão".
@@ -190,6 +244,10 @@ dentro do container, e já entrega a contagem total. Dentro do bloco:
 | `_index` | a posição dele **no container original** |
 | `self` / `_count` | o total de elementos daquele tipo (não muda durante o laço) |
 
+![exemplo 10](../assets/linguagem__05-controle-de-fluxo_ex10.png)
+
+<details><summary>código</summary>
+
 ```ps
 count each int in [10, "x", 20, 30]:
     post("achei", _match, "na posição", _index, "de", _count)
@@ -197,6 +255,8 @@ count each int in [10, "x", 20, 30]:
 // achei 20 na posição 2 de 3
 // achei 30 na posição 3 de 3
 ```
+
+</details>
 
 Os elementos que não são do tipo (o `"x"` acima) são pulados. `self`, `_count`,
 `_index` e `_match` são do escopo do laço — não existem depois dele.
@@ -212,6 +272,10 @@ O bloco `run_selfwith_("main"):` roda **apenas quando o arquivo é executado
 direto**, e é pulado quando ele é **importado** por outro. É o
 `if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
 
+![exemplo 11](../assets/linguagem__05-controle-de-fluxo_ex11.png)
+
+<details><summary>código</summary>
+
 ```ps
 action principal():
     post("rodando o app")
@@ -219,6 +283,8 @@ action principal():
 run_selfwith_("main"):
     principal()
 ```
+
+</details>
 
 Assim, `import` desse arquivo traz a `action principal` sem disparar o
 `principal()`. Como os outros blocos, é um escopo próprio (variáveis criadas

@@ -294,12 +294,31 @@ BUILTINS = {
     ),
     "gather": dict(
         sig="gather(a, b, ...)",
-        resumo="Devolve os argumentos como lista.",
-        params=[("a, b...", "qualquer", "—", "")],
-        ret="list",
+        resumo="Espera vários `async action` de uma vez, **rodando-os concorrentes**, "
+               "e devolve os resultados numa lista, na ordem dos argumentos. Argumento "
+               "que não é future passa direto. Aceita também uma **lista** de futures "
+               "(`gather(fs)`).",
+        params=[("a, b...", "future/qualquer", "—",
+                 "futures de `async action`; valor comum passa direto")],
+        ret="list — os valores resolvidos, na ordem dos argumentos.",
         erros=[],
-        ex=[('post(gather(1, "a", true))', "[1, 'a', True]")],
-        bordas=["no interpretador espera PoolFutures de `async action`; com valores comuns devolve a lista como está — na VM (sem async) é sempre isso"],
+        ex=[
+            ("async action dobro(n):\n    sleep(0.2)\n    return n * 2\n\n"
+             "post(gather(dobro(1), dobro(2), dobro(3)))",
+             "[2, 4, 6]"),
+            ("async action dobro(n):\n    sleep(0.2)\n    return n * 2\n\n"
+             "fs = []\nfor each i in range(3):\n    addEnd(fs, dobro(i))\n"
+             "post(gather(fs))",
+             "[[0, 2, 4]]"),
+        ],
+        bordas=[
+            "Funciona **nos dois motores** (interpretador e VM em C): resolve os "
+            "futures rodando as tasks concorrentes. Valor comum (não-future) volta "
+            "como está.",
+            "`gather(fs)` com uma lista devolve **lista dentro de lista** (um "
+            "resultado por argumento; o argumento-lista vira a sub-lista dos seus "
+            "valores).",
+        ],
     ),
     "input": dict(
         sig="input(prompt=Null)",

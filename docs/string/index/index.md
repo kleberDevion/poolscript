@@ -18,9 +18,15 @@ int
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__index__index_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("banana".index("na"))
 ```
+
+</details>
 
 ```saida
 2

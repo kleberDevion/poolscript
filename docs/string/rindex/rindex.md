@@ -18,9 +18,15 @@ int
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__rindex__rindex_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("banana".rindex("na"))
 ```
+
+</details>
 
 ```saida
 4

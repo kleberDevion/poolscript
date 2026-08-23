@@ -14,9 +14,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__expandtabs__expandtabs_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("a\tbc\td".expandtabs(4))
 ```
+
+</details>
 
 ```saida
 a   bc  d

@@ -14,9 +14,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__translate__translate_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("hello".translate("l".maketrans("l", "L")))
 ```
+
+</details>
 
 ```saida
 heLLo

@@ -18,9 +18,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__chr__chr_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(chr(66), chr(231))
 ```
+
+</details>
 
 ```saida
 B ç

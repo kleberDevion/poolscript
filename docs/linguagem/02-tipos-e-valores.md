@@ -38,6 +38,10 @@ representa um caractere isolado — **não** existe um valor `char` distinto de
 O builtin `type(x)` devolve o **nome** do tipo como string, e todo valor também
 expõe o método `.type()` (equivalente):
 
+![exemplo 1](../assets/linguagem__02-tipos-e-valores_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(type(42))        // int
 post(type(3.14))      // flo
@@ -46,12 +50,20 @@ post(type([1,2]))     // list
 post((1,2).type())    // tup
 ```
 
+</details>
+
 Um número gigante (bignum) continua sendo `"int"` — a promoção é transparente:
+
+![exemplo 2](../assets/linguagem__02-tipos-e-valores_ex2.png)
+
+<details><summary>código</summary>
 
 ```ps
 g = 99999999999999999999999999999999999999
 post(type(g))         // int
 ```
+
+</details>
 
 ---
 
@@ -70,11 +82,17 @@ segundo estas regras — **iguais nos dois motores**:
 | `Null`/`none` | **sempre falso** |
 | Entity/instância/função | **sempre verdadeiro** |
 
+![exemplo 3](../assets/linguagem__02-tipos-e-valores_ex3.png)
+
+<details><summary>código</summary>
+
 ```ps
 if ([]) { post("não entra") }      // lista vazia é falsa
 if ("x") { post("entra") }         // string não vazia é verdadeira
 if (Null) { post("não entra") }    // Null é falso
 ```
+
+</details>
 
 ---
 
@@ -83,11 +101,17 @@ if (Null) { post("não entra") }    // Null é falso
 Como no Python, `bool` é subtipo de `int`: `True` vale `1` e `False` vale `0` em
 qualquer operação aritmética ou de comparação.
 
+![exemplo 4](../assets/linguagem__02-tipos-e-valores_ex4.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(True + True)     // 2
 post(False < 3)       // True
 post([10, 20][True])  // 20  (índice 1)
 ```
+
+</details>
 
 ---
 
@@ -108,12 +132,18 @@ post([10, 20][True])  // 20  (índice 1)
 
 Declarar o tipo antes do nome torna a atribuição **checada e coagida**:
 
+![exemplo 5](../assets/linguagem__02-tipos-e-valores_ex5.png)
+
+<details><summary>código</summary>
+
 ```ps
 int   idade = 30
 str   nome  = "ana"
 flo   preco = 9.90
 bool  ativo = True
 ```
+
+</details>
 
 A checagem vale **só na declaração**. A partir daí a variável é dinâmica: uma
 atribuição posterior (sem o tipo na frente) pode trocar o valor por outro tipo
@@ -138,6 +168,10 @@ O resto é erro, e há dois erros distintos:
 - **`ConversionError`** — o valor é uma string que não representa o número
   pedido (`int x = "abc"`).
 
+![exemplo 6](../assets/linguagem__02-tipos-e-valores_ex6.png)
+
+<details><summary>código</summary>
+
 ```ps
 int  x = "7"      // 7    (parsing de string numérica)
 flo  f = 5        // 5.0  (alargamento int→flo)
@@ -145,6 +179,8 @@ int  y = 5.0      // AtributtedValueError — não trunca nem aceita float
 str  s = 42       // AtributtedValueError — não "stringifica" sozinho
 int  z = "abc"    // ConversionError — string não vira int
 ```
+
+</details>
 
 ---
 
@@ -155,20 +191,32 @@ Há três mecanismos, do mais direto ao mais tolerante:
 1. **Construtores builtin** — `int(x)`, `flo(x)`, `str(x)`, `bool(x)`,
    `list(x)`. Convertem ou estouram se impossível:
 
-   ```ps
+   ![exemplo 7](../assets/linguagem__02-tipos-e-valores_ex7.png)
+
+<details><summary>código</summary>
+
+```ps
    n = int("42")        // 42
    s = str(3.14)        // "3.14"
    l = list("abc")      // ["a", "b", "c"]
    ```
+
+</details>
 
 2. **Lib `Parsing` com alvo `to <tipo>`** — conversão *tolerante* (não estoura;
    devolve o que der), boa para entrada suja. O `to <tipo>` diz o tipo-alvo às
    funções do `Parsing`; **não é um cast solto** — `"7" to int` sozinho não
    converte (continua string). Detalhada na seção de bibliotecas.
 
-   ```ps
+   ![exemplo 8](../assets/linguagem__02-tipos-e-valores_ex8.png)
+
+<details><summary>código</summary>
+
+```ps
    n = Parsing.integer("  127.abc ", to int)
    ```
+
+</details>
 
 ---
 
@@ -180,11 +228,17 @@ Em operação mista, a linguagem promove seguindo a regra do Python:
 - Qualquer operando `flo` → o resultado é `flo`.
 - `bool` participa como `int` (0/1).
 
+![exemplo 9](../assets/linguagem__02-tipos-e-valores_ex9.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(2 + 3)          // 5      (int)
 post(2 + 3.0)        // 5.0    (flo)
 post(9223372036854775807 + 1)   // 9223372036854775808  (bignum, sem estourar)
 ```
+
+</details>
 
 A divisão `/` é **sempre real** (resultado `flo`), inclusive entre inteiros:
 `7 / 2` é `3.5`. O `%` segue o **sinal do divisor** (como o Python): `-1 % 3` é
@@ -198,6 +252,10 @@ A divisão `/` é **sempre real** (resultado `flo`), inclusive entre inteiros:
   `l[0] = x`, `d["k"] = v`).
 - **Imutáveis:** `str`, `tup`, `bytes`, números — operações geram um novo valor.
 
+![exemplo 10](../assets/linguagem__02-tipos-e-valores_ex10.png)
+
+<details><summary>código</summary>
+
 ```ps
 l = [1, 2]
 addEnd(l, 3)         // l vira [1, 2, 3] (mesma lista)
@@ -205,3 +263,5 @@ addEnd(l, 3)         // l vira [1, 2, 3] (mesma lista)
 t = (1, 2)
 // t[0] = 9         // erro — tupla é imutável
 ```
+
+</details>

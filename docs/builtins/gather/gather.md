@@ -1,8 +1,6 @@
 # `gather(a, b, ...)`
 
-Espera vários `async action` de uma vez, **rodando-os concorrentes**, e devolve os
-resultados numa lista, na ordem dos argumentos. Argumento que não é future passa
-direto. Aceita também uma **lista** de futures (`gather(fs)`).
+Espera vários `async action` de uma vez, **rodando-os concorrentes**, e devolve os resultados numa lista, na ordem dos argumentos. Argumento que não é future passa direto. Aceita também uma **lista** de futures (`gather(fs)`).
 
 ## Parâmetros
 
@@ -16,6 +14,10 @@ list — os valores resolvidos, na ordem dos argumentos.
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__gather__gather_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 async action dobro(n):
     sleep(0.2)
@@ -24,11 +26,15 @@ async action dobro(n):
 post(gather(dobro(1), dobro(2), dobro(3)))
 ```
 
+</details>
+
 ```saida
 [2, 4, 6]
 ```
 
-Os três correm juntos: sai em ~0.2s, não 0.6s. Com uma lista:
+![exemplo 2](../../assets/builtins__gather__gather_ex2.png)
+
+<details><summary>código</summary>
 
 ```ps
 async action dobro(n):
@@ -41,15 +47,15 @@ for each i in range(3):
 post(gather(fs))
 ```
 
+</details>
+
 ```saida
 [[0, 2, 4]]
 ```
 
 ## Bordas
 
-- Funciona **nos dois motores** (interpretador e VM em C): resolve os futures
-  rodando as tasks concorrentes. Valor comum (não-future) volta como está.
-- `gather(fs)` com uma lista devolve **lista dentro de lista** (um resultado por
-  argumento; o argumento-lista vira a sub-lista dos seus valores).
+- Funciona **nos dois motores** (interpretador e VM em C): resolve os futures rodando as tasks concorrentes. Valor comum (não-future) volta como está.
+- `gather(fs)` com uma lista devolve **lista dentro de lista** (um resultado por argumento; o argumento-lista vira a sub-lista dos seus valores).
 
 [← índice](../builtins.md)

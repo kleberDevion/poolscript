@@ -18,9 +18,15 @@ int
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__len__len_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(len("olá"), len([1, 2]), len({"a": 1}))
 ```
+
+</details>
 
 ```saida
 3 2 1

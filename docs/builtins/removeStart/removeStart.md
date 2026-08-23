@@ -10,18 +10,24 @@ Remove e devolve o PRIMEIRO item da lista.
 
 ## Retorno
 
-o item removido; **`null`** se a lista estiver vazia (não é erro)
+o item removido
 
 ## Erros
 
-- **SomeValueUnexpected** — o argumento não é uma lista
+- **SomeValueUnexpected** — lista vazia ou não-lista
 
 ## Exemplos
+
+![exemplo 1](../../assets/builtins__removeStart__removeStart_ex1.png)
+
+<details><summary>código</summary>
 
 ```ps
 l = [1, 2]
 post(removeStart(l), l)
 ```
+
+</details>
 
 ```saida
 1 [2]

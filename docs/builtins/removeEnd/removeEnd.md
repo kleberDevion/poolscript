@@ -10,18 +10,24 @@ Remove e devolve o ÚLTIMO item da lista.
 
 ## Retorno
 
-o item removido; **`null`** se a lista estiver vazia (não é erro)
+o item removido
 
 ## Erros
 
-- **SomeValueUnexpected** — o argumento não é uma lista
+- **SomeValueUnexpected** — lista vazia ou não-lista
 
 ## Exemplos
+
+![exemplo 1](../../assets/builtins__removeEnd__removeEnd_ex1.png)
+
+<details><summary>código</summary>
 
 ```ps
 l = [1, 2]
 post(removeEnd(l), l)
 ```
+
+</details>
 
 ```saida
 2 [1]

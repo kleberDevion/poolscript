@@ -19,9 +19,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__sub__sub_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("a1b2".sub("[0-9]", "#"))
 ```
+
+</details>
 
 ```saida
 a#b#

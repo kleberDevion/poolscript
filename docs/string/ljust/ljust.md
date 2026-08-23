@@ -15,9 +15,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__ljust__ljust_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("ab".ljust(5, "-"))
 ```
+
+</details>
 
 ```saida
 ab---

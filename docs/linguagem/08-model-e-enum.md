@@ -13,6 +13,10 @@ Verificado nos dois motores.
 Um `model` descreve os campos que um dict deve ter e de que tipo. Depois, o
 operador `==` valida um dict contra o model.
 
+![exemplo 1](../assets/linguagem__08-model-e-enum_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 model Usuario() {
     nome: str
@@ -23,6 +27,8 @@ post({ "nome": "ana", "idade": 30 } == Usuario)     // True
 post({ "nome": "ana", "idade": "x" } == Usuario)    // False (idade não é int)
 post({ "nome": "ana" } == Usuario)                  // False (falta idade)
 ```
+
+</details>
 
 Sintaxe:
 
@@ -36,6 +42,10 @@ Sintaxe:
 Um campo `str` (ou numérico) pode fixar um **comprimento máximo** com
 `tipo(length=N)`:
 
+![exemplo 2](../assets/linguagem__08-model-e-enum_ex2.png)
+
+<details><summary>código</summary>
+
 ```ps
 model Documento() {
     cpf: str(length=11)
@@ -45,6 +55,8 @@ post({ "cpf": "12345678901" } == Documento)   // True  (11 caracteres)
 post({ "cpf": "123" } == Documento)           // True  (menos que 11 — ok)
 post({ "cpf": "123456789012" } == Documento)  // False (12 > 11)
 ```
+
+</details>
 
 `length` é um **máximo**, não um valor exato: strings mais curtas passam.
 
@@ -57,10 +69,16 @@ post({ "cpf": "123456789012" } == Documento)  // False (12 > 11)
 
 Chaves **a mais** no dict são ignoradas (não invalidam):
 
+![exemplo 3](../assets/linguagem__08-model-e-enum_ex3.png)
+
+<details><summary>código</summary>
+
 ```ps
 model P() { x: int }
 post({ "x": 1, "extra": 9 } == P)     // True — 'extra' é ignorado
 ```
+
+</details>
 
 Faltar um campo, ou um campo com o tipo errado / longo demais, torna a
 comparação `False`. O `model` não levanta erro na validação — ele responde
@@ -72,6 +90,10 @@ comparação `False`. O `model` não levanta erro na validação — ele respond
 
 Um `enum` agrupa constantes sob um nome. Cada membro é, no fundo, um **inteiro**.
 
+![exemplo 4](../assets/linguagem__08-model-e-enum_ex4.png)
+
+<details><summary>código</summary>
+
 ```ps
 enum Cor {
     RED
@@ -81,6 +103,8 @@ enum Cor {
 
 post(Cor.RED, Cor.GREEN, Cor.BLUE)    // 0 1 2
 ```
+
+</details>
 
 Sintaxe:
 
@@ -93,6 +117,10 @@ Sintaxe:
 Sem valor explícito, os membros são numerados **a partir de 0**. Um valor
 explícito (`= n`) fixa aquele membro; os seguintes **continuam a contar a partir
 dele**:
+
+![exemplo 5](../assets/linguagem__08-model-e-enum_ex5.png)
+
+<details><summary>código</summary>
 
 ```ps
 enum Status {
@@ -108,6 +136,8 @@ enum E {
 }
 post(E.A, E.B, E.C)                   // 10 11 12   (B e C continuam de 10)
 ```
+
+</details>
 
 ### 8.2.2. Uso
 

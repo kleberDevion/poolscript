@@ -46,3 +46,6 @@ Thumbs.db
 
 # artefato empacotado da extensao (gera com build_vsix.py)
 psl-poolscript-vsix/*.vsix
+
+# fontes .ps de trabalho dos prints da doc (as imagens em docs/assets ficam no repo)
+docs/assets/src/

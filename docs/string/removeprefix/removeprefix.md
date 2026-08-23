@@ -14,9 +14,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__removeprefix__removeprefix_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("api_nome".removeprefix("api_"))
 ```
+
+</details>
 
 ```saida
 nome

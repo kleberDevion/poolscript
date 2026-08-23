@@ -14,9 +14,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__zfill__zfill_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("42".zfill(5), "-7".zfill(4))
 ```
+
+</details>
 
 ```saida
 00042 -007

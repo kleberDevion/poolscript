@@ -18,9 +18,15 @@ list de tup
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__zip__zip_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(zip([1, 2], ["x", "y"]))
 ```
+
+</details>
 
 ```saida
 [(1, 'x'), (2, 'y')]

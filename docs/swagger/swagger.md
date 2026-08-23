@@ -16,6 +16,10 @@ import swagger
 
 ## Exemplo completo
 
+![exemplo 1](../assets/swagger__swagger_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 import swagger
 
@@ -35,6 +39,8 @@ int async reaction main():
 
 main()
 ```
+
+</details>
 
 Isso escreve `docs/openapi.json`, `docs/index.html` e `docs/client.ts`.
 

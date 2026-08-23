@@ -73,6 +73,10 @@ tipada, estão na seção 2.)
 | `map` | `map(lista, fn)` | nova lista com `fn` aplicada a cada item. **A lista vem primeiro** (ao contrário do Python). |
 | `filter` | `filter(lista, fn)` | nova lista só com os itens em que `fn` é verdadeiro. **A lista vem primeiro.** |
 
+![exemplo 1](../assets/linguagem__11-builtins_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 action dobro(x):
     return x * 2
@@ -82,6 +86,8 @@ action par(x):
 post(map([1, 2, 3], dobro))        // [2, 4, 6]
 post(filter([1, 2, 3, 4], par))    // [2, 4]
 ```
+
+</details>
 
 ---
 
@@ -96,11 +102,17 @@ Estes **alteram a própria lista** e por isso não encadeiam (devolvem o item ou
 | `removeEnd` | `removeEnd(lista)` | remove e devolve o **último** item; lista vazia → `null` (não é erro). |
 | `removeStart` | `removeStart(lista)` | remove e devolve o **primeiro** item; lista vazia → `null`. |
 
+![exemplo 2](../assets/linguagem__11-builtins_ex2.png)
+
+<details><summary>código</summary>
+
 ```ps
 l = [1, 2, 3]
 addEnd(l, 4)          // l == [1, 2, 3, 4]
 post(removeStart(l))  // 1   (e l == [2, 3, 4])
 ```
+
+</details>
 
 ---
 

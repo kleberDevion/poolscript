@@ -81,6 +81,10 @@ cur.execute("SELECT * FROM users WHERE idade > ?", (18,))
 
 ## Exemplo completo (roda inteiro)
 
+![exemplo 1](../assets/sqlite3__sqlite3_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 import sqlite3
 
@@ -96,11 +100,17 @@ post(cur.fetchall())
 conn.close()
 ```
 
+</details>
+
 ```saida
 [{'nome': 'Beto', 'idade': 25}, {'nome': 'Ana', 'idade': 30}]
 ```
 
 ### `fetchone` e `lastrowid`
+
+![exemplo 2](../assets/sqlite3__sqlite3_ex2.png)
+
+<details><summary>código</summary>
 
 ```ps
 import sqlite3
@@ -112,6 +122,8 @@ post(c.lastrowid)
 post(conn.execute("SELECT v FROM t").fetchone())
 conn.close()
 ```
+
+</details>
 
 ```saida
 1

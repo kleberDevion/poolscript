@@ -18,9 +18,15 @@ str
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__bin__bin_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(bin(5))
 ```
+
+</details>
 
 ```saida
 0b101

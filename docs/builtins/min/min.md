@@ -18,9 +18,15 @@ valor
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__min__min_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(min([3, 1]), min(5, 2, 8))
 ```
+
+</details>
 
 ```saida
 1 2

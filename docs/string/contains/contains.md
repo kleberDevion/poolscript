@@ -14,9 +14,15 @@ bool
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__contains__contains_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("banana".contains("nan"))
 ```
+
+</details>
 
 ```saida
 True

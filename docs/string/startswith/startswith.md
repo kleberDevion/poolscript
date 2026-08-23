@@ -14,9 +14,15 @@ bool
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__startswith__startswith_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("poolscript".startswith("pool"))
 ```
+
+</details>
 
 ```saida
 True

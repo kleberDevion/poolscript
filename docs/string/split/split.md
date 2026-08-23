@@ -15,9 +15,15 @@ list
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__split__split_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("a,b,c".split(","), " a  b ".split())
 ```
+
+</details>
 
 ```saida
 ['a', 'b', 'c'] ['a', 'b']

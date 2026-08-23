@@ -34,7 +34,9 @@ RAIZ = Path(__file__).resolve().parent.parent
 PASTAS = [RAIZ / "docs" / "builtins", RAIZ / "docs" / "string",
           RAIZ / "docs" / "sockets"]
 
-BLOCO = re.compile(r"```ps\n(.*?)```\n\n```saida\n(.*?)```", re.S)
+# o par pode ter o fechamento do <details> (código dobrável + print) entre
+# os fences — tolera qualquer coisa que NÃO seja outro bloco no meio
+BLOCO = re.compile(r"```ps\n(.*?)```\s*(?:</details>)?\s*```saida\n(.*?)```", re.S)
 
 
 def casos():
@@ -73,7 +75,16 @@ def via_c(src):
         return f.read().decode("utf-8", "replace").rstrip("\n")
 
 
-@pytest.mark.parametrize("codigo,saida", list(casos()))
+CASOS = list(casos())
+
+
+def test_coleta_nao_vazia():
+    # parametrize com lista VAZIA skipa em silêncio = falso verde. Se a doc
+    # mudar de formato e a extração parar de achar os pares, este teste FALHA.
+    assert len(CASOS) >= 90, f"extracao da doc viva quebrou: só {len(CASOS)} exemplos achados"
+
+
+@pytest.mark.parametrize("codigo,saida", CASOS)
 def test_exemplo_da_doc(codigo, saida):
     assert via_interpretador(codigo) == saida, "doc diverge do INTERPRETADOR"
     assert via_c(codigo) == saida, "doc diverge da VM"

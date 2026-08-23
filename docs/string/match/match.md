@@ -18,9 +18,15 @@ bool
 
 ## Exemplos
 
+![exemplo 1](../../assets/string__match__match_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post("a1".match("[a-z][0-9]"), "a1b".match("[a-z][0-9]"))
 ```
+
+</details>
 
 ```saida
 True False

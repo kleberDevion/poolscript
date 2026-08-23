@@ -18,9 +18,15 @@ list
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__reversed__reversed_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(reversed([1, 2, 3]))
 ```
+
+</details>
 
 ```saida
 [3, 2, 1]

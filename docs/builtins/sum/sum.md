@@ -18,9 +18,15 @@ int | flo
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__sum__sum_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 post(sum([1, 2, 3]))
 ```
+
+</details>
 
 ```saida
 6

@@ -19,10 +19,16 @@ list
 
 ## Exemplos
 
+![exemplo 1](../../assets/builtins__filter__filter_ex1.png)
+
+<details><summary>código</summary>
+
 ```ps
 action par(x) { return x % 2 == 0 }
 post(filter([1, 2, 3, 4], par))
 ```
+
+</details>
 
 ```saida
 [2, 4]

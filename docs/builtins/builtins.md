@@ -15,7 +15,7 @@ Funções disponíveis em qualquer `.ps`, sem import.
 | [`enumerate`](enumerate/enumerate.md) | `enumerate(lista)` | Lista de tuplas (indice, item), começando em 0. |
 | [`filter`](filter/filter.md) | `filter(lista, fn)` | Nova lista só com os itens em que fn devolve verdadeiro. A LISTA vem primeiro. |
 | [`flo`](flo/flo.md) | `flo(x)` | Converte para número de ponto flutuante. |
-| [`gather`](gather/gather.md) | `gather(a, b, ...)` | Espera vários `async action` concorrentes e devolve os valores numa lista. |
+| [`gather`](gather/gather.md) | `gather(a, b, ...)` | Espera vários `async action` de uma vez, **rodando-os concorrentes**, e devolve os resultados numa lista, na ordem dos argumentos. Argumento que não é future passa direto. Aceita também uma **lista** de futures (`gather(fs)`). |
 | [`hex`](hex/hex.md) | `hex(n)` | Inteiro em hexadecimal, com prefixo 0x. |
 | [`id`](id/id.md) | `id(x)` | Identidade do valor: endereço para objetos, o próprio conteúdo para imediatos. |
 | [`input`](input/input.md) | `input(prompt=Null)` | Lê uma linha do stdin; o prompt opcional é impresso antes, sem quebra. |
