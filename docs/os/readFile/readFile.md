@@ -16,17 +16,11 @@ Para binário (imagem, zip…), use [`loadFile`](../loadFile/loadFile.md) (devol
 
 ## Exemplo
 
-![exemplo 1](../../assets/os__readFile__readFile_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 import os
 os.writeFile("nota.txt", "oi\nmundo")
 post(os.readFile("nota.txt"))
 ```
-
-</details>
 
 ```saida
 oi

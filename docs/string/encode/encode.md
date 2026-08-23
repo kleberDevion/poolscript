@@ -14,15 +14,9 @@ bytes
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__encode__encode_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("ab".encode())
 ```
-
-</details>
 
 ```saida
 b'ab'

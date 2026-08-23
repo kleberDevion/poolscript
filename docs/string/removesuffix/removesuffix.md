@@ -14,15 +14,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__removesuffix__removesuffix_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("nome.txt".removesuffix(".txt"))
 ```
-
-</details>
 
 ```saida
 nome

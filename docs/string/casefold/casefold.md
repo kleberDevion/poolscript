@@ -8,15 +8,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__casefold__casefold_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("Straße".casefold())
 ```
-
-</details>
 
 ```saida
 strasse

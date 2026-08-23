@@ -19,17 +19,11 @@ Null
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__addStart__addStart_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 l = [1]
 addStart(l, 0)
 post(l)
 ```
-
-</details>
 
 ```saida
 [0, 1]

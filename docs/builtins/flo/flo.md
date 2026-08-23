@@ -18,15 +18,9 @@ flo
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__flo__flo_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(flo("2.5"), flo(3))
 ```
-
-</details>
 
 ```saida
 2.5 3.0

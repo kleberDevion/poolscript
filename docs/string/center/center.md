@@ -15,15 +15,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__center__center_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("ab".center(6, "*"))
 ```
-
-</details>
 
 ```saida
 **ab**

@@ -20,15 +20,9 @@ list
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__range__range_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(range(3), range(1, 7, 2))
 ```
-
-</details>
 
 ```saida
 [0, 1, 2] [1, 3, 5]

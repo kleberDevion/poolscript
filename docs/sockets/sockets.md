@@ -111,10 +111,6 @@ opções `SOL_SOCKET`, `SO_REUSEADDR`, `SO_REUSEPORT`, `SO_KEEPALIVE`,
 
 Conversões e resolução (saída verificada nos dois motores):
 
-![exemplo 1](../assets/sockets__sockets_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 import sockets
 post(sockets.htons(1), sockets.ntohs(sockets.htons(1)))
@@ -124,8 +120,6 @@ post(sockets.gethostbyname("localhost"))
 post(sockets.getservbyname("http", "tcp"))
 post(sockets.getprotobyname("tcp"))
 ```
-
-</details>
 
 ```saida
 256 1
@@ -138,10 +132,6 @@ post(sockets.getprotobyname("tcp"))
 
 Servidor + cliente TCP no mesmo script (o `connect` completa contra o backlog
 do `listen`, então dá pra testar sem thread):
-
-![exemplo 2](../assets/sockets__sockets_ex2.png)
-
-<details><summary>código</summary>
 
 ```ps
 import sockets
@@ -164,18 +154,12 @@ post(str(cli.recv(64).decode()))
 conn.close(); cli.close(); srv.close()
 ```
 
-</details>
-
 ```saida
 ola servidor
 resposta
 ```
 
 UDP (datagramas, sem conexão):
-
-![exemplo 3](../assets/sockets__sockets_ex3.png)
-
-<details><summary>código</summary>
 
 ```ps
 import sockets
@@ -190,18 +174,12 @@ post(str(r[0].decode()), r[1][0])
 u1.close(); u2.close()
 ```
 
-</details>
-
 ```saida
 9
 datagrama 127.0.0.1
 ```
 
 Timeout capturável:
-
-![exemplo 4](../assets/sockets__sockets_ex4.png)
-
-<details><summary>código</summary>
 
 ```ps
 import sockets
@@ -216,17 +194,11 @@ try {
 u.close()
 ```
 
-</details>
-
 ```saida
 True
 ```
 
 Cliente HTTP na unha (é literalmente o exemplo clássico do Python):
-
-![exemplo 5](../assets/sockets__sockets_ex5.png)
-
-<details><summary>código</summary>
 
 ```ps
 import sockets
@@ -237,5 +209,3 @@ resposta = s.recv(4096)
 post(str(resposta.decode())[0:15])   // "HTTP/1.0 200 OK"
 s.close()
 ```
-
-</details>

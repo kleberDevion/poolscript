@@ -20,31 +20,15 @@ from scripts.doc_specs_builtins import BUILTINS   # noqa: E402
 from scripts.doc_specs_string import STRMET       # noqa: E402
 
 
-def bloco_exemplos(exemplos, slug=None, rel_assets=None):
-    """Cada exemplo vira: print colorido (docs/assets, gerado pelo
-    scripts/gera_asset_prints.py) + o código DOBRÁVEL (o fence ```ps fica no
-    arquivo — é dele que a doc viva extrai e o leitor copia)."""
+def bloco_exemplos(exemplos):
     partes = []
-    for i, (codigo, saida) in enumerate(exemplos, 1):
-        if slug and rel_assets:
-            png = RAIZ / "docs" / "assets" / f"{slug}_ex{i}.png"
-            if png.exists():
-                partes.append(f"![exemplo {i}]({rel_assets}/{slug}_ex{i}.png)\n")
-                partes.append("<details><summary>código</summary>\n")
-                partes.append("```ps\n" + codigo + "\n```\n")
-                partes.append("</details>\n")
-                partes.append("```saida\n" + saida + "\n```\n")
-                continue
+    for codigo, saida in exemplos:
         partes.append("```ps\n" + codigo + "\n```\n")
         partes.append("```saida\n" + saida + "\n```\n")
     return "\n".join(partes)
 
 
 def gera_item(nome, spec, pasta, indice_rel):
-    # slug do print segue o caminho do .md: docs/<pasta>/<nome>/<nome>.md
-    # -> "<pasta>__<nome>__<nome>" (o mesmo esquema do gera_asset_prints.py);
-    # a página fica 2 níveis abaixo de docs/, então assets = ../../assets
-    slug = f"{pasta.name}__{nome}__{nome}"
     md = [f"# `{spec['sig']}`", "", spec["resumo"], ""]
     if spec["params"]:
         md += ["## Parâmetros", "", "| nome | tipo | default | nota |", "|---|---|---|---|"]
@@ -58,7 +42,7 @@ def gera_item(nome, spec, pasta, indice_rel):
             md.append(f"- **{tipo}** — {quando}")
         md.append("")
     if spec["ex"]:
-        md += ["## Exemplos", "", bloco_exemplos(spec["ex"], slug, "../../assets")]
+        md += ["## Exemplos", "", bloco_exemplos(spec["ex"])]
     if spec["bordas"]:
         md += ["## Bordas", ""]
         for b in spec["bordas"]:

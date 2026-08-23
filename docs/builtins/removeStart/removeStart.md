@@ -18,16 +18,10 @@ o item removido
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__removeStart__removeStart_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 l = [1, 2]
 post(removeStart(l), l)
 ```
-
-</details>
 
 ```saida
 1 [2]

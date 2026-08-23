@@ -14,29 +14,17 @@ Null
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__post__post_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(1, "a", true)
 ```
-
-</details>
 
 ```saida
 1 a True
 ```
 
-![exemplo 2](../../assets/builtins__post__post_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 post([1, Null], {"k": 2})
 ```
-
-</details>
 
 ```saida
 [1, null] {'k': 2}

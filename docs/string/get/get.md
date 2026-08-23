@@ -18,15 +18,9 @@ valor | Null
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__get__get_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("{\"a\": 1}".get("a"))
 ```
-
-</details>
 
 ```saida
 1

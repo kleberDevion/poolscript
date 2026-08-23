@@ -18,15 +18,9 @@ int
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__ord__ord_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(ord("A"))
 ```
-
-</details>
 
 ```saida
 65

@@ -15,15 +15,9 @@ int
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__find__find_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("banana".find("na"), "banana".find("xyz"))
 ```
-
-</details>
 
 ```saida
 2 -1

@@ -11,10 +11,6 @@ Verificado nos dois motores.
 
 ## 9.1. `import` — o módulo inteiro
 
-![exemplo 1](../assets/linguagem__09-imports_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 import mymod
 
@@ -22,23 +18,15 @@ post(mymod.saudar("ana"))    // acesso por ponto
 post(mymod.valor)
 ```
 
-</details>
-
 `import <modulo>` executa o módulo (uma vez) e liga o **nome do módulo** no
 escopo atual; tudo que ele define é acessado por `modulo.membro`.
 
 Com **`as`**, o módulo ganha outro nome local:
 
-![exemplo 2](../assets/linguagem__09-imports_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 import mymod as m
 post(m.valor)
 ```
-
-</details>
 
 Um caminho com pontos importa submódulos: `import pacote.modulo` (o nome ligado é
 o último segmento, ou o `as`).
@@ -48,10 +36,6 @@ o último segmento, ou o `as`).
 ## 9.2. `from … import` — nomes específicos
 
 Traz **nomes soltos** do módulo direto pro escopo (sem o prefixo):
-
-![exemplo 3](../assets/linguagem__09-imports_ex3.png)
-
-<details><summary>código</summary>
 
 ```ps
 from mymod import saudar, valor
@@ -63,8 +47,6 @@ post(oi("ze"))
 from mymod import Ponto             // funções, Entities, constantes — tudo que o módulo exporta
 p = Ponto(1, 2)
 ```
-
-</details>
 
 Pedir um nome que o módulo não exporta é erro
 (`módulo '…' não exporta '…'`).
@@ -79,10 +61,6 @@ Pedir um nome que o módulo não exporta é erro
 - **`PUSH <modulo> GET <x>, <y>`** — igual a `from <modulo> import <x>, <y>`
   (liga só os nomes listados).
 
-![exemplo 4](../assets/linguagem__09-imports_ex4.png)
-
-<details><summary>código</summary>
-
 ```ps
 PUSH mymod                 // == import mymod
 post(mymod.valor)
@@ -91,8 +69,6 @@ PUSH mymod GET valor       // == from mymod import valor
 post(valor)
 ```
 
-</details>
-
 ---
 
 ## 9.4. Imports relativos
@@ -100,16 +76,10 @@ post(valor)
 Prefixar o módulo com pontos importa **relativo à pasta do arquivo atual** (como
 no Python), sem passar pela stdlib:
 
-![exemplo 5](../assets/linguagem__09-imports_ex5.png)
-
-<details><summary>código</summary>
-
 ```ps
 from .modulo import x        // mesma pasta
 from ..pacote.modulo import y   // um nível acima
 ```
-
-</details>
 
 Cada `.` extra sobe um diretório. Um relativo não encontrado é
 `ImportError` (`módulo relativo não encontrado: …`).
@@ -143,10 +113,6 @@ executa** (só roda quando o arquivo é o principal — seção 5.7). Assim, imp
 um módulo traz as definições (actions, Entities, constantes) sem disparar o
 ponto de entrada:
 
-![exemplo 6](../assets/linguagem__09-imports_ex6.png)
-
-<details><summary>código</summary>
-
 ```ps
 // mymod.ps
 action saudar(nome):
@@ -158,8 +124,6 @@ run_selfwith_("main"):
 import mymod                 // NÃO imprime a linha do run_selfwith_
 post(mymod.saudar("ana"))
 ```
-
-</details>
 
 ---
 

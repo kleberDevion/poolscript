@@ -8,15 +8,9 @@ bool
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__isdigit__isdigit_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("123".isdigit(), "1.5".isdigit())
 ```
-
-</details>
 
 ```saida
 True False

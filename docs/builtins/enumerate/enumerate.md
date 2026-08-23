@@ -18,15 +18,9 @@ list de tup
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__enumerate__enumerate_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(enumerate(["a", "b"]))
 ```
-
-</details>
 
 ```saida
 [(0, 'a'), (1, 'b')]

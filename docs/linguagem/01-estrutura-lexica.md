@@ -33,10 +33,6 @@ tokens, não afetam o programa):
 | Linha (`#`) | `# texto` | do `#` até o fim da linha |
 | Bloco | `""" ... """` | de `"""` até o próximo `"""`, podendo cruzar linhas |
 
-![exemplo 1](../assets/linguagem__01-estrutura-lexica_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 // isto é um comentário de linha
 x = 10   # também é comentário de linha
@@ -46,8 +42,6 @@ comentário de bloco:
 pode ocupar várias linhas
 """
 ```
-
-</details>
 
 > **Atenção — `"""` é comentário, não string.** Aspas duplas triplas iniciam um
 > **comentário de bloco**, nunca uma string multi-linha. Para uma string que
@@ -67,33 +61,21 @@ arquivo (embora misturar no mesmo trecho seja desencorajado):
 Dentro de `(`, `[` ou `{`, a **indentação é ignorada** e as quebras de linha não
 geram tokens estruturais. É o modo livre, estilo C/JS:
 
-![exemplo 2](../assets/linguagem__01-estrutura-lexica_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 action soma(a, b) {
     return a + b
 }
 ```
 
-</details>
-
 ### 1.3.2. Blocos por indentação — modo *colon*
 
 Um `:` no **fim lógico da linha** (só espaços/comentário depois dele) abre um
 bloco por indentação, estilo Python:
 
-![exemplo 3](../assets/linguagem__01-estrutura-lexica_ex3.png)
-
-<details><summary>código</summary>
-
 ```ps
 action soma(a, b):
     return a + b
 ```
-
-</details>
 
 A política de indentação é **estrita**:
 
@@ -115,17 +97,11 @@ Quando a próxima linha (ignorando espaços) começa com `.` seguido de letra ou
 NEWLINE nem mexe na indentação. Isto habilita *method chaining* em várias
 linhas, inclusive no modo colon:
 
-![exemplo 4](../assets/linguagem__01-estrutura-lexica_ex4.png)
-
-<details><summary>código</summary>
-
 ```ps
 resposta = request.get(url=u)
                   .json()
                   .get("dados")
 ```
-
-</details>
 
 Um `.` seguido de dígito (`.5`, um float) ou um `.` isolado **não** dispara essa
 regra — seguem o fluxo normal.
@@ -147,17 +123,11 @@ Um identificador nomeia variáveis, funções, campos, parâmetros, etc.
     `catch (Tipo e)` e `raise Tipo(...)` só reconhecem o tipo quando ele começa
     com maiúscula (ver a seção de exceptions).
 
-![exemplo 5](../assets/linguagem__01-estrutura-lexica_ex5.png)
-
-<details><summary>código</summary>
-
 ```ps
 nome      = "ana"     // IDENT
 _cache    = []        // IDENT
 Usuario   = ...       // IDENT_UPPER (uma Entity/classe)
 ```
-
-</details>
 
 ---
 
@@ -198,31 +168,19 @@ Sequência de dígitos decimais (`\d+`). Sem limite de tamanho: um literal maior
 que 64 bits é promovido automaticamente a **inteiro de precisão arbitrária**
 (bignum) — `type()` continua devolvendo `"int"`.
 
-![exemplo 6](../assets/linguagem__01-estrutura-lexica_ex6.png)
-
-<details><summary>código</summary>
-
 ```ps
 x = 42
 gigante = 99999999999999999999999999999999999999   // ainda é int
 ```
-
-</details>
 
 ### 1.6.2. Ponto flutuante (`flo`)
 
 Dígitos com um ponto decimal (`\d+\.\d+`). Não há notação científica no literal
 (use conversão se precisar).
 
-![exemplo 7](../assets/linguagem__01-estrutura-lexica_ex7.png)
-
-<details><summary>código</summary>
-
 ```ps
 pi = 3.14159
 ```
-
-</details>
 
 ### 1.6.3. Strings
 
@@ -252,10 +210,6 @@ fechada antes da quebra de linha`), a menos que seja multi-linha.
 Um escape desconhecido mantém o caractere e solta a barra. O valor de `\033`,
 `\x1b` e `\e` é o **mesmo byte** ESC nos dois motores.
 
-![exemplo 8](../assets/linguagem__01-estrutura-lexica_ex8.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("linha1\nlinha2")
 post("\e[1mnegrito\e[0m")        // ANSI
@@ -263,8 +217,6 @@ post(r"C:\temp\nome")            // raw: a \n fica literal
 nome = "mundo"
 post(f"olá, {nome}!")            // f-string
 ```
-
-</details>
 
 ### 1.6.4. Booleanos e nulo
 
@@ -282,32 +234,20 @@ cor (aplicado como sequência ANSI na saída).
 - `<nome>` = uma das cores nomeadas: `red green blue yellow cyan magenta white
   black purple orange pink gray/grey lime teal`.
 
-![exemplo 9](../assets/linguagem__01-estrutura-lexica_ex9.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(<red>"erro!")
 post(<2196F3>"azul")
 ```
 
-</details>
-
 ### 1.6.6. Coleções
 
 Sintaxe reconhecida no parser (detalhada na seção de tipos):
-
-![exemplo 10](../assets/linguagem__01-estrutura-lexica_ex10.png)
-
-<details><summary>código</summary>
 
 ```ps
 lista = [1, 2, 3]                 // list
 mapa  = { "a": 1, "b": 2 }        // dict/json
 tupla = (1, 2, 3)                 // tup (imutável)
 ```
-
-</details>
 
 ---
 

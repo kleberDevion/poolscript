@@ -11,15 +11,9 @@ Verificado nos dois motores.
 
 ## 10.1. `raise` — levantar uma exception
 
-![exemplo 1](../assets/linguagem__10-excecoes_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 raise ValorInvalido("idade não pode ser negativa")
 ```
-
-</details>
 
 - O **tipo** é um nome que **começa com maiúscula** e é **livre**: você inventa
   o nome que fizer sentido (`ValorInvalido`, `SaldoInsuficiente`, …) — não
@@ -33,10 +27,6 @@ erro — dá pra usar `raise` sozinho, como uma parada com mensagem.
 
 ## 10.2. `try` / `catch` / `finally`
 
-![exemplo 2](../assets/linguagem__10-excecoes_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 try:
     n = int(entrada)
@@ -45,8 +35,6 @@ catch (ConversionError e):
 finally:
     post("terminei a tentativa")
 ```
-
-</details>
 
 - **`try:`** — o bloco que pode falhar.
 - **`catch (...)`** — roda se o `try` levantar um erro que ele capture. Os
@@ -71,10 +59,6 @@ O `catch` tem quatro formas, do mais específico ao mais geral:
 | `catch (e)` | **qualquer** erro | `e` |
 | `catch ()` | **qualquer** erro | — |
 
-![exemplo 3](../assets/linguagem__10-excecoes_ex3.png)
-
-<details><summary>código</summary>
-
 ```ps
 try:
     risco()
@@ -83,8 +67,6 @@ catch (KeyError e):        // só KeyError
 catch (e):                 // qualquer outro
     post("outro erro:", e)
 ```
-
-</details>
 
 - Um `catch` com **tipo** só pega erros **daquele tipo**; um erro de tipo
   diferente **não** é capturado ali e continua propagando (para o próximo
@@ -110,18 +92,12 @@ erros — e você pode capturá-los por tipo:
 | `ImportError` | módulo não encontrado no `import` |
 | `MemoryError` | sem memória |
 
-![exemplo 4](../assets/linguagem__10-excecoes_ex4.png)
-
-<details><summary>código</summary>
-
 ```ps
 try:
     x = 1 / 0
 catch (SomeValueUnexpected e):
     post("erro de valor:", e)
 ```
-
-</details>
 
 Observações:
 

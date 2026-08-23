@@ -17,18 +17,12 @@ existir. Sobrescreve se já existir. Devolve o caminho escrito.
 
 ## Exemplo
 
-![exemplo 1](../../assets/os__writeFile__writeFile_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 import os
 caminho = os.writeFile("docs/saida.txt", "conteudo")
 post(caminho)
 post(os.readFile("docs/saida.txt"))
 ```
-
-</details>
 
 ```saida
 docs/saida.txt

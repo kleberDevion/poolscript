@@ -110,10 +110,6 @@ A maioria **altera a própria lista** (in-place) e devolve `null` — não encad
 | `copy()` | cópia rasa (nova lista) | não |
 | `len()` | tamanho (igual a `len(l)`) | não |
 
-![exemplo 1](../assets/linguagem__12-metodos-string-list-dict_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 l = [3, 1, 2]
 l.append(4)          // l == [3, 1, 2, 4]
@@ -121,8 +117,6 @@ l.sort()             // l == [1, 2, 3, 4]
 post(l.pop())        // 4   (e l == [1, 2, 3])
 post(l.index(2))     // 1
 ```
-
-</details>
 
 > Cópia é **rasa**: `l.copy()` cria uma lista nova, mas os itens são
 > compartilhados. Para não mutar, use `sorted(l)`/`reversed(l)` (devolvem cópia)
@@ -145,10 +139,6 @@ post(l.index(2))     // 1
 | `copy()` | cópia rasa |
 | `len()` | nº de pares (igual a `len(d)`) |
 
-![exemplo 2](../assets/linguagem__12-metodos-string-list-dict_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 d = { "nome": "ana", "idade": 30 }
 post(d.get("nome"))          // ana
@@ -158,24 +148,16 @@ for each k in d.keys():
     post(k, d[k])
 ```
 
-</details>
-
 ### Acesso por chave: `[]` e `.chave`
 
 Além dos métodos, uma chave é lida/escrita por colchete **ou por atributo**
 (equivalentes):
-
-![exemplo 3](../assets/linguagem__12-metodos-string-list-dict_ex3.png)
-
-<details><summary>código</summary>
 
 ```ps
 d = { "nome": "ana" }
 post(d["nome"], d.nome)      // ana ana
 d.idade = 30                 // == d["idade"] = 30
 ```
-
-</details>
 
 Uma chave inexistente por `[]`/`.chave` dá `KeyError`; para um acesso que não
 falha, use `d.get(chave)`. (Um método com o mesmo nome de uma chave — `d.keys`

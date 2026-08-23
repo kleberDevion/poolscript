@@ -15,15 +15,9 @@ list
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__rsplit__rsplit_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("a,b,c".rsplit(",", 1))
 ```
-
-</details>
 
 ```saida
 ['a,b', 'c']

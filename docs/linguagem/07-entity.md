@@ -12,34 +12,22 @@ Tudo verificado nos dois motores.
 
 ## 7.1. Declaração
 
-![exemplo 1](../assets/linguagem__07-entity_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 Entity Usuario():
     nome: str
     idade: int
 ```
 
-</details>
-
 - O nome da Entity começa com **maiúscula** (é `IDENT_UPPER`, seção 1.4).
 - Os **parênteses são obrigatórios**: `Entity Usuario:` é erro; use
   `Entity Usuario()`. Entre eles vão as superclasses (7.6), ou nada.
 - **`class` e `Class` são sinônimos de `Entity`** — mesma semântica.
-
-![exemplo 2](../assets/linguagem__07-entity_ex2.png)
-
-<details><summary>código</summary>
 
 ```ps
 class Ponto():          // idêntico a Entity Ponto()
     x: int
     y: int
 ```
-
-</details>
 
 ---
 
@@ -48,10 +36,6 @@ class Ponto():          // idêntico a Entity Ponto()
 Campos são declarados com **tipo** (`nome: tipo`). A partir deles a linguagem
 **sintetiza um construtor** (`__init__`) que recebe um argumento por campo, na
 ordem declarada:
-
-![exemplo 3](../assets/linguagem__07-entity_ex3.png)
-
-<details><summary>código</summary>
 
 ```ps
 Entity Usuario():
@@ -62,15 +46,9 @@ u = Usuario("ana", 30)
 post(u.nome, u.idade)      // ana 30
 ```
 
-</details>
-
 - **Valor padrão** num campo torna o argumento opcional:
 
-  ![exemplo 4](../assets/linguagem__07-entity_ex4.png)
-
-<details><summary>código</summary>
-
-```ps
+  ```ps
   Entity Config():
       host: str = "localhost"
       porta: int = 8080
@@ -79,31 +57,19 @@ post(u.nome, u.idade)      // ana 30
   post(c.host, c.porta)     // localhost 8080
   ```
 
-</details>
-
 - **Campos dinâmicos:** um método pode criar um campo não declarado com
   `self.x = ...` — ele passa a existir na instância:
 
-  ![exemplo 5](../assets/linguagem__07-entity_ex5.png)
-
-<details><summary>código</summary>
-
-```ps
+  ```ps
   Entity Bolsa():
       action guarda(self, item):
           self.conteudo = item
   ```
 
-</details>
-
 ### 7.2.1. Construtor próprio — `action __init__`
 
 Para um construtor com lógica própria (validação, campos derivados), defina
 `action __init__(self, …)`. Isso **substitui** o construtor sintetizado:
-
-![exemplo 6](../assets/linguagem__07-entity_ex6.png)
-
-<details><summary>código</summary>
 
 ```ps
 Entity Retangulo():
@@ -116,18 +82,12 @@ r = Retangulo(3, 4)
 post(r.area)              // 12
 ```
 
-</details>
-
 ---
 
 ## 7.3. Métodos e `self`
 
 Um método é uma `action` cujo **primeiro parâmetro é `self`** (a instância).
 Sem `self`, é erro (a não ser que seja `@static`, 7.4).
-
-![exemplo 7](../assets/linguagem__07-entity_ex7.png)
-
-<details><summary>código</summary>
 
 ```ps
 Entity Contador():
@@ -142,8 +102,6 @@ c = Contador(0)
 post(c.inc(), c.inc())   // 1 2
 ```
 
-</details>
-
 Dentro de um método, `self.campo` acessa/atribui campos e `self.outro(...)`
 chama outros métodos da instância.
 
@@ -154,10 +112,6 @@ chama outros métodos da instância.
 Prefixado com `@static`, o método **não recebe `self`** e é chamado **na
 própria Entity** (não numa instância):
 
-![exemplo 8](../assets/linguagem__07-entity_ex8.png)
-
-<details><summary>código</summary>
-
 ```ps
 Entity Mat():
     @static
@@ -166,8 +120,6 @@ Entity Mat():
 
 post(Mat.soma(2, 3))     // 5
 ```
-
-</details>
 
 Chamar um `@static` por uma instância (`m.soma(...)`) é erro — ele pertence ao
 tipo, não ao objeto. (Ver também a nota sobre `@static` na seção de
@@ -180,10 +132,6 @@ decoradores.)
 Uma Entity pode herdar de uma ou mais outras, listadas entre os parênteses. Os
 **métodos** do(s) pai(s) ficam disponíveis; um método redefinido no filho
 **sobrescreve** o do pai.
-
-![exemplo 9](../assets/linguagem__07-entity_ex9.png)
-
-<details><summary>código</summary>
 
 ```ps
 Entity Animal():
@@ -203,8 +151,6 @@ Entity C(A, B):          // herda métodos de A e de B
     x: int
 ```
 
-</details>
-
 ### 7.5.1. Construtor e herança
 
 - Um filho que **não declara campos nem `__init__`** herda o construtor do pai
@@ -217,10 +163,6 @@ Entity C(A, B):          // herda métodos de A e de B
 
 Dentro de um `__init__` próprio, `base(args)` chama o **construtor da
 superclasse**:
-
-![exemplo 10](../assets/linguagem__07-entity_ex10.png)
-
-<details><summary>código</summary>
 
 ```ps
 Entity A():
@@ -236,8 +178,6 @@ b = B(1, 2)
 post(b.x, b.y)           // 1 2
 ```
 
-</details>
-
 `base` serve para o **construtor** do pai; não é a forma de chamar um método
 qualquer da superclasse.
 
@@ -248,10 +188,6 @@ qualquer da superclasse.
 Um campo ou método marcado **`private`** só é acessível **de dentro da própria
 Entity**. Acessá-lo de fora é erro (`acesso negado: 'x' é private de …`) — a
 regra é **imposta pelos dois motores**, não é só convenção.
-
-![exemplo 11](../assets/linguagem__07-entity_ex11.png)
-
-<details><summary>código</summary>
 
 ```ps
 Entity Conta():
@@ -265,8 +201,6 @@ c = Conta(100)
 post(c.ver())            // 100  (acessa saldo de dentro)
 post(c.saldo)            // ERRO — saldo é private
 ```
-
-</details>
 
 `public` é o padrão (tudo é público se não disser nada); a palavra existe para
 deixar a intenção explícita. Também há `private class`/`private Entity` (a

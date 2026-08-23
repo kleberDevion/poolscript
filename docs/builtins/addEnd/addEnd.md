@@ -19,17 +19,11 @@ Null
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__addEnd__addEnd_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 l = [1]
 addEnd(l, 2)
 post(l)
 ```
-
-</details>
 
 ```saida
 [1, 2]

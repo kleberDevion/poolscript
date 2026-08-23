@@ -14,15 +14,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__str__str_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(str(12) + "!", str(Null), str(true))
 ```
-
-</details>
 
 ```saida
 12! null True

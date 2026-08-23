@@ -14,15 +14,9 @@ int
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__count__count_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("banana".count("na"))
 ```
-
-</details>
 
 ```saida
 2

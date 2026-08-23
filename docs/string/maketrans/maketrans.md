@@ -19,15 +19,9 @@ dict
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__maketrans__maketrans_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("abc".translate("abc".maketrans("abc", "xyz")))
 ```
-
-</details>
 
 ```saida
 xyz

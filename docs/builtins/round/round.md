@@ -19,15 +19,9 @@ int | flo
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__round__round_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(round(3.567, 2), round(2.5))
 ```
-
-</details>
 
 ```saida
 3.57 2

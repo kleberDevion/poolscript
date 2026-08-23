@@ -14,10 +14,6 @@ list — os valores resolvidos, na ordem dos argumentos.
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__gather__gather_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 async action dobro(n):
     sleep(0.2)
@@ -26,15 +22,9 @@ async action dobro(n):
 post(gather(dobro(1), dobro(2), dobro(3)))
 ```
 
-</details>
-
 ```saida
 [2, 4, 6]
 ```
-
-![exemplo 2](../../assets/builtins__gather__gather_ex2.png)
-
-<details><summary>código</summary>
 
 ```ps
 async action dobro(n):
@@ -46,8 +36,6 @@ for each i in range(3):
     addEnd(fs, dobro(i))
 post(gather(fs))
 ```
-
-</details>
 
 ```saida
 [[0, 2, 4]]

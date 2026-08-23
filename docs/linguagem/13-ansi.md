@@ -14,16 +14,10 @@ Verificado nos dois motores (mesmos bytes de saída).
 Colar uma cor entre `< >` imediatamente antes de uma string tinge **aquela
 string**:
 
-![exemplo 1](../assets/linguagem__13-ansi_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(<red>"erro!")
 post(<2196F3>"azul em hex")
 ```
-
-</details>
 
 A cor pode ser:
 
@@ -79,17 +73,11 @@ Para o que o literal de cor não cobre (negrito, fundo, sublinhado, 256 cores…
 escreva a sequência ANSI na mão. O byte ESC que abre toda sequência é o escape
 **`\e`** (equivalente a `\033` e a `\x1b` — o mesmo byte nos dois motores):
 
-![exemplo 2](../assets/linguagem__13-ansi_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("\e[1mnegrito\e[0m")
 post("\e[4msublinhado\e[0m")
 post("\e[41m fundo vermelho \e[0m")
 ```
-
-</details>
 
 Uma sequência de estilo tem a forma `\e[` + códigos separados por `;` + `m`.
 Sempre feche com `\e[0m` (reset), senão o estilo **vaza** para o resto da saída.
@@ -115,16 +103,10 @@ Sempre feche com `\e[0m` (reset), senão o estilo **vaza** para o resto da saíd
 literal `<cor>` usa por baixo. Dá pra combinar códigos: `\e[1;38;2;255;0;0m` é
 negrito + vermelho vivo.
 
-![exemplo 3](../assets/linguagem__13-ansi_ex3.png)
-
-<details><summary>código</summary>
-
 ```ps
 // negrito + fundo azul + texto branco
 post("\e[1;44;97m  título  \e[0m")
 ```
-
-</details>
 
 > Para colorir com um NOME sem escrever a sequência à mão, o mais direto é o
 > literal `<cor>` (13.1). O `\e` é para estilos e fundo, que o literal não faz.

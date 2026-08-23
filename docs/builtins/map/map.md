@@ -19,16 +19,10 @@ list
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__map__map_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 action dobro(x) { return x * 2 }
 post(map([1, 2, 3], dobro))
 ```
-
-</details>
 
 ```saida
 [2, 4, 6]

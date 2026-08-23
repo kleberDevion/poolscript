@@ -18,15 +18,9 @@ list
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__sorted__sorted_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(sorted([3, 1, 2]))
 ```
-
-</details>
 
 ```saida
 [1, 2, 3]

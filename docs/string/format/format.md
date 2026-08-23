@@ -18,15 +18,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__format__format_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("{} e {}".format(1, "x"))
 ```
-
-</details>
 
 ```saida
 1 e x

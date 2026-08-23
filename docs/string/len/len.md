@@ -8,15 +8,9 @@ int
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__len__len_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("olá".len())
 ```
-
-</details>
 
 ```saida
 3

@@ -18,15 +18,9 @@ list
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__list__list_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(list("abc"), list({"a": 1}))
 ```
-
-</details>
 
 ```saida
 ['a', 'b', 'c'] ['a']

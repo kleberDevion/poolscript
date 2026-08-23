@@ -5,16 +5,10 @@ como "não seguro".
 
 Ligar HTTPS é uma linha:
 
-![exemplo 1](../assets/jinker__tls_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 app = Jinker(__name__, oauth={tls: true})
 run_selfwith_("main") { app(debug=false, host="0.0.0.0", port=2000) }
 ```
-
-</details>
 
 Com `tls: true` e nenhum certificado, o jinker **gera um self-signed** na hora
 (`.jinkerTls` + `.jinkerTls.key`, já com SAN pra localhost/127.0.0.1/::1). O
@@ -40,10 +34,6 @@ conforme onde o servidor roda.
 Um cert real vem em **dois arquivos**: o certificado e a chave privada. O
 jinker aceita os dois modos:
 
-![exemplo 2](../assets/jinker__tls_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 // separados (o normal — Let's Encrypt, mkcert)
 app = Jinker(__name__, oauth={tls: true, cert: "fullchain.pem", key: "privkey.pem"})
@@ -51,8 +41,6 @@ app = Jinker(__name__, oauth={tls: true, cert: "fullchain.pem", key: "privkey.pe
 // juntos, num PEM só (cert + chave concatenados)
 app = Jinker(__name__, oauth={tls: true, cert: "tudo.pem"})
 ```
-
-</details>
 
 Sem `key`, o jinker procura a chave irmã `<base>.key` ao lado do cert
 (`cert.pem` → `cert.key`); não achando, assume a chave dentro do próprio cert.
@@ -79,10 +67,6 @@ mkcert localhost 127.0.0.1 192.168.0.10
 #    → gera localhost+2.pem e localhost+2-key.pem
 ```
 
-![exemplo 3](../assets/jinker__tls_ex3.png)
-
-<details><summary>código</summary>
-
 ```ps
 app = Jinker(__name__, oauth={
     tls:  true,
@@ -90,8 +74,6 @@ app = Jinker(__name__, oauth={
     key:  "localhost+2-key.pem"
 })
 ```
-
-</details>
 
 No **seu** PC não aparece mais "não seguro". Num **outro** dispositivo (celular,
 outro PC), ou você instala a CA do mkcert nele também (o mkcert gera um
@@ -116,10 +98,6 @@ sudo certbot certonly --standalone -d api.seusite.com
 #   → /etc/letsencrypt/live/api.seusite.com/privkey.pem
 ```
 
-![exemplo 4](../assets/jinker__tls_ex4.png)
-
-<details><summary>código</summary>
-
 ```ps
 app = Jinker(__name__, oauth={
     tls:  true,
@@ -128,8 +106,6 @@ app = Jinker(__name__, oauth={
 })
 run_selfwith_("main") { app(debug=false, host="0.0.0.0", port=443) }
 ```
-
-</details>
 
 **Renovação** (o cert dura 90 dias): `sudo certbot renew` renova; agende num
 cron e **reinicie o jinker** depois pra ele carregar o cert novo.

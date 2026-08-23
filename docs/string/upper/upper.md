@@ -8,15 +8,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__upper__upper_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("ação".upper())
 ```
-
-</details>
 
 ```saida
 AÇÃO

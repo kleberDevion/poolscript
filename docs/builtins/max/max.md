@@ -18,15 +18,9 @@ valor
 
 ## Exemplos
 
-![exemplo 1](../../assets/builtins__max__max_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post(max([3, 1]), max(2, 9, 4))
 ```
-
-</details>
 
 ```saida
 3 9

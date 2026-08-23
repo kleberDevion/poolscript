@@ -16,29 +16,17 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__replace__replace_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("banana".replace("na", "NA", 1))
 ```
-
-</details>
 
 ```saida
 baNAna
 ```
 
-![exemplo 2](../../assets/string__replace__replace_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("a-b_c".replace(["-", "_"], "."))
 ```
-
-</details>
 
 ```saida
 a.b.c

@@ -15,10 +15,6 @@ Verificado nos dois motores.
 Dentro de uma `Entity`, marca um método que **não recebe `self`** e é chamado
 **na própria Entity**, não numa instância (ver seção 7.4):
 
-![exemplo 1](../assets/linguagem__14-decoradores_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 Entity Mat():
     @static
@@ -27,8 +23,6 @@ Entity Mat():
 
 post(Mat.soma(2, 3))     // 5
 ```
-
-</details>
 
 Sem `@static`, um método precisa de `self`; com ele, é uma função ligada ao
 tipo.
@@ -41,10 +35,6 @@ Você pode escrever `self` num método `@static` — útil quando o **mesmo** m�
 é **dropado**: o argumento posicional cai no **primeiro parâmetro real**, não no
 `self`.
 
-![exemplo 2](../assets/linguagem__14-decoradores_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 Entity C():
     @static
@@ -55,8 +45,6 @@ post(C.f(5))        // 15  — o 5 vai pro `a`, NÃO pro self
 post(C.f(a=7))      // 17
 post(C().f(5))      // 15  — via instância, self = a instância
 ```
-
-</details>
 
 Passar argumento demais, ou faltar um obrigatório, dá erro claro
 (`esperava até N argumentos` / `faltando argumento: 'a'`) — nunca um erro
@@ -69,10 +57,6 @@ obscuro lá adentro.
 Marca uma `action` cujos **argumentos não podem ser `null`**. Passar `null` num
 parâmetro levanta erro antes do corpo rodar:
 
-![exemplo 3](../assets/linguagem__14-decoradores_ex3.png)
-
-<details><summary>código</summary>
-
 ```ps
 @NonNull
 action saudar(nome):
@@ -81,8 +65,6 @@ action saudar(nome):
 post(saudar("ana"))      // olá, ana
 saudar(null)             // RuntimeError: @NonNull: parâmetro 'nome' em 'saudar' não pode ser Null
 ```
-
-</details>
 
 A checagem é sobre os **parâmetros** (a entrada), não sobre o valor de retorno.
 
@@ -95,10 +77,6 @@ construtor automático a partir dos **campos tipados** (seção 7.2) já acontec
 com ou sem o decorador — então `@dataentity` é sobretudo uma **declaração de
 intenção**, deixando claro que aquela Entity é um registro de dados.
 
-![exemplo 4](../assets/linguagem__14-decoradores_ex4.png)
-
-<details><summary>código</summary>
-
 ```ps
 @dataentity
 Entity Pessoa():
@@ -109,17 +87,11 @@ p = Pessoa(nome="Ana", idade=30)     // construtor aceita posicional e nomeado
 q = Pessoa(nome="Léo")               // idade cai no default 18
 ```
 
-</details>
-
 ### Conversões — a lib `datasentity`
 
 O companheiro do `@dataentity` são as funções de conversão da lib
 **`datasentity`**, que transformam uma instância em dict, tupla, lista ou JSON.
 São **funções** (recebem a instância), não métodos:
-
-![exemplo 5](../assets/linguagem__14-decoradores_ex5.png)
-
-<details><summary>código</summary>
 
 ```ps
 from datasentity import dataentity, asdict, astuple, aslist, asjson
@@ -136,8 +108,6 @@ post(aslist(p))     // ['Ana', 30]
 post(asjson(p))     // {"nome": "Ana", "idade": 30}
 ```
 
-</details>
-
 (Detalhe de cada função na parte de bibliotecas.)
 
 ---
@@ -148,17 +118,11 @@ Um decorador também pode ser uma **chamada a um método de um objeto**. É o qu
 bibliotecas usam para **registrar** a action decorada como um handler — o caso
 mais comum é registrar rotas de servidor com o **jinker**:
 
-![exemplo 6](../assets/linguagem__14-decoradores_ex6.png)
-
-<details><summary>código</summary>
-
 ```ps
 @app.route("/usuarios", methods=["GET"])
 action listar():
     return { "ok": true }
 ```
-
-</details>
 
 O protocolo é: a expressão do decorador (`app.route(...)`) é avaliada, a `action`
 abaixo é definida, e o objeto a registra como handler. Os detalhes de cada
@@ -172,10 +136,6 @@ documentação da biblioteca que os oferece (ex.: jinker).
 Se o decorador não é nenhum dos embutidos nem um registrador válido, a `action`
 decorada **não é registrada** — ela simplesmente não passa a existir:
 
-![exemplo 7](../assets/linguagem__14-decoradores_ex7.png)
-
-<details><summary>código</summary>
-
 ```ps
 @qualquer
 action f():
@@ -183,8 +143,6 @@ action f():
 
 f()      // RuntimeError: variável não definida: f  (o @qualquer engoliu a action)
 ```
-
-</details>
 
 É o mesmo comportamento nos dois motores: um decorador que a linguagem não
 entende descarta a declaração em vez de rodá-la sem o decorador.

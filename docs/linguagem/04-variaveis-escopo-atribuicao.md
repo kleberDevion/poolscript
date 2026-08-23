@@ -14,16 +14,10 @@ dois motores (interpretador e VM em C) e comparando a saída.
 
 Há duas formas de introduzir uma variável:
 
-![exemplo 1](../assets/linguagem__04-variaveis-escopo-atribuicao_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 nome = "ana"          // atribuição simples (dinâmica)
 str nome = "ana"      // declaração com tipo (checada/coagida na criação)
 ```
-
-</details>
 
 - **Simples** (`nome = valor`): o nome recebe o valor e passa a existir; o tipo
   é o do valor.
@@ -53,10 +47,6 @@ exatamente as regras de tipo do operador binário correspondente (seção 3).
 | `x /= e` | `x = x / e` |
 | `x %= e` | `x = x % e` |
 
-![exemplo 2](../assets/linguagem__04-variaveis-escopo-atribuicao_ex2.png)
-
-<details><summary>código</summary>
-
 ```ps
 n = 10
 n += 5           // 15
@@ -65,8 +55,6 @@ s += "b"         // "ab"  (+ concatena str; ver 3.2.5)
 l = [1]
 l += [2]         // [1, 2]
 ```
-
-</details>
 
 Funcionam também sobre índice, membro e chave de dict (4.3):
 `l[0] += 1`, `self.x += 1`, `d.chave += 1`.
@@ -78,17 +66,11 @@ Funcionam também sobre índice, membro e chave de dict (4.3):
 `++` e `--` são **pós-fixados** e alteram a variável no lugar. Como expressão,
 devolvem o valor **anterior** (pós-incremento):
 
-![exemplo 3](../assets/linguagem__04-variaveis-escopo-atribuicao_ex3.png)
-
-<details><summary>código</summary>
-
 ```ps
 x = 5
 x++              // agora x é 6
 y = x++          // y = 6 (valor antes), x = 7
 ```
-
-</details>
 
 Não há forma **prefixa**: `++x` é erro de sintaxe.
 
@@ -97,10 +79,6 @@ Não há forma **prefixa**: `++x` é erro de sintaxe.
 ## 4.4. Atribuição a alvos compostos
 
 O lado esquerdo pode ser um elemento, um membro ou uma chave:
-
-![exemplo 4](../assets/linguagem__04-variaveis-escopo-atribuicao_ex4.png)
-
-<details><summary>código</summary>
 
 ```ps
 l = [1, 2, 3]
@@ -113,8 +91,6 @@ d["idade"] = 30      // chave de dict por colchete
 d.cidade = "SP"      // chave de dict por atributo (equivalente; ver seção de dict)
 ```
 
-</details>
-
 Não há **atribuição por fatia**: `l[1:3] = [...]` é erro de sintaxe. Para
 substituir um trecho, monte a lista nova.
 
@@ -125,10 +101,6 @@ substituir um trecho, monte a lista nova.
 Vários alvos de uma vez, no estilo Python. O lado direito é distribuído pelos
 nomes à esquerda.
 
-![exemplo 5](../assets/linguagem__04-variaveis-escopo-atribuicao_ex5.png)
-
-<details><summary>código</summary>
-
 ```ps
 a, b = 1, 2                 // a=1, b=2
 a, b = b, a                 // troca (swap) sem variável temporária
@@ -137,8 +109,6 @@ primeiro, *resto = [10, 20, 30, 40]   // primeiro=10, resto=[20,30,40]
 
 (x, y), z = (1, 2), 3       // aninhado: x=1, y=2, z=3
 ```
-
-</details>
 
 - Um único alvo pode ter `*` (recebe uma lista com o que sobrar); só um `*` por
   nível.
@@ -157,26 +127,16 @@ O escopo é **léxico** e por **bloco** — igual ao interpretador. Cada `if`,
 Um nome **criado** dentro de um bloco só existe ali. Depois do bloco, ele não é
 mais visível:
 
-![exemplo 6](../assets/linguagem__04-variaveis-escopo-atribuicao_ex6.png)
-
-<details><summary>código</summary>
-
 ```ps
 if true:
     dentro = 5
 post(dentro)        // ERRO — variável não definida: dentro
 ```
 
-</details>
-
 ### 4.6.2. Reatribuir uma variável de fora (write-through)
 
 Se o nome **já existe** num escopo mais externo, a atribuição no bloco **altera
 essa variável** (não cria uma nova):
-
-![exemplo 7](../assets/linguagem__04-variaveis-escopo-atribuicao_ex7.png)
-
-<details><summary>código</summary>
 
 ```ps
 x = 1
@@ -190,8 +150,6 @@ for each i in [1, 2, 3]:
 post(total)             // 6
 ```
 
-</details>
-
 Ou seja: **atribuir a um nome existente lá fora → atualiza; atribuir a um nome
 novo → cria, preso ao bloco.**
 
@@ -200,10 +158,6 @@ novo → cria, preso ao bloco.**
 O corpo de um laço é um escopo **por iteração**: uma variável criada numa volta
 não sobrevive para a próxima (a menos que exista fora do laço). A variável do
 `for each` também não vaza depois do laço:
-
-![exemplo 8](../assets/linguagem__04-variaveis-escopo-atribuicao_ex8.png)
-
-<details><summary>código</summary>
 
 ```ps
 for each i in [1, 2, 3]:
@@ -216,8 +170,6 @@ for each i in [1, 2, 3]:
 post(i)              // ERRO — i não existe fora do for
 ```
 
-</details>
-
 `break` e `continue` respeitam isso: ao sair (ou reiniciar), o que nasceu no
 laço é descartado.
 
@@ -226,17 +178,11 @@ laço é descartado.
 Depois de criada, a variável é **dinâmica**: uma atribuição simples posterior
 pode trocar o tipo à vontade. O `Tipo` na frente vale só no momento da criação.
 
-![exemplo 9](../assets/linguagem__04-variaveis-escopo-atribuicao_ex9.png)
-
-<details><summary>código</summary>
-
 ```ps
 str s = "oi"
 s = 42              // ok — agora s é o int 42
 post(type(s))       // int
 ```
-
-</details>
 
 ### 4.6.5. Funções e o escopo de módulo
 
@@ -246,18 +192,12 @@ post(type(s))       // int
 - Dentro de uma função, atribuir a um nome que **não existe fora** cria uma
   variável **local** à função — ela some quando a função retorna:
 
-![exemplo 10](../assets/linguagem__04-variaveis-escopo-atribuicao_ex10.png)
-
-<details><summary>código</summary>
-
 ```ps
 action f():
     local = 5       // local à função
 f()
 post(local)         // ERRO — local não existe aqui
 ```
-
-</details>
 
 ---
 
@@ -266,10 +206,6 @@ post(local)         // ERRO — local não existe aqui
 Dentro de uma função, `global nome` faz esse nome se referir à variável de
 **módulo**, em vez de criar uma local. É como se cria ou altera uma global de
 dentro de uma função:
-
-![exemplo 11](../assets/linguagem__04-variaveis-escopo-atribuicao_ex11.png)
-
-<details><summary>código</summary>
 
 ```ps
 contador = 0
@@ -282,8 +218,6 @@ bump()
 bump()
 post(contador)      // 2
 ```
-
-</details>
 
 Sem o `global`, `contador = ...` dentro de `bump` criaria uma local e a de fora
 ficaria em `0`. (Apenas **reatribuir** uma global que já existe funciona sem
@@ -301,18 +235,12 @@ dos tipos que a linguagem sabe fechar — **arquivo**, **conexão de banco**
 Python: garante a liberação mesmo se o bloco estourar. Para um valor que não é
 um desses recursos, o `using` só executa o bloco (não há o que fechar).
 
-![exemplo 12](../assets/linguagem__04-variaveis-escopo-atribuicao_ex12.png)
-
-<details><summary>código</summary>
-
 ```ps
 using conexao as db:        // db é fechada/comitada ao sair, mesmo com erro
     // ... usa db aqui dentro ...
     resultado = 42
 post(resultado)             // resultado ainda existe aqui (ver nota abaixo)
 ```
-
-</details>
 
 > **`using` é a exceção ao escopo de bloco.** Diferente dos outros blocos, a
 > variável do `using` (`db`) e as variáveis atribuídas no corpo (`resultado`)

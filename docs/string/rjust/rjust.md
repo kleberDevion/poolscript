@@ -15,15 +15,9 @@ str
 
 ## Exemplos
 
-![exemplo 1](../../assets/string__rjust__rjust_ex1.png)
-
-<details><summary>código</summary>
-
 ```ps
 post("ab".rjust(5, "-"))
 ```
-
-</details>
 
 ```saida
 ---ab
