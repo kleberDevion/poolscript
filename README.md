@@ -21,4 +21,3 @@ pip install -e .          # comandos `pool` (roda) e `psl` (pacotes) no PATH
 pool examples/01_hello.ps
 ```
 
-Feito por Kleber Santana de Oliveira.
