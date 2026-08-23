@@ -1,0 +1,24 @@
+# `entry(placeholder=, value=, name=, ...)`
+
+Campo de formulário — campo de UMA linha. No **interpretador** é um campo NATIVO editável
+(tkinter): o usuário digita e o seu handler lê com `.value`. No binário `pool`
+(X11) a caixa mostra o texto/placeholder; a edição por teclado ainda não existe
+lá — o `.value` devolve o estado do modelo.
+
+- `name=` — a chave pro [getitemByIdentify](../getitemByIdentify/getitemByIdentify.md).
+- `value=` — valor inicial.
+- `placeholder=` — dica exibida sem texto.
+
+```
+import guzer
+import scripts
+
+app = guzer.UI("Cadastro")
+form = app.form()
+form.entry(name="nome", placeholder="seu nome")
+form.button(onclick=scripts.Enviar).text("Enviar")
+```
+
+No handler: `app.POOLHTMLElements.getitemByIdentify("nome").value`.
+
+[← índice](../guzer.md)

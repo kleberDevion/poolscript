@@ -134,4 +134,21 @@ extern int      XFreeGC(Display *, GC);
 extern int      XDestroyWindow(Display *, Window);
 extern int      XUnloadFont(Display *, Font);
 
+/* imagem (guzer img): XImage é OPACO aqui — o XCreateImage aloca e inicializa
+ * a struct; nós só repassamos o ponteiro pro XPutImage e soltamos com XFree
+ * (o buffer de pixels é nosso: free() manual, o XFree não o libera). */
+typedef struct _XImage  XImage;
+typedef struct _Visual  Visual;
+#define ZPixmap 2
+extern Visual  *XDefaultVisual(Display *, int);
+extern int      XDefaultDepth(Display *, int);
+extern XImage  *XCreateImage(Display *, Visual *, unsigned, int, int, char *,
+                             unsigned, unsigned, int, int);
+extern int      XPutImage(Display *, Drawable, GC, XImage *, int, int, int, int,
+                          unsigned, unsigned);
+extern int      XFree(void *);
+/* loop com timeout (vídeo): espera no fd da conexão X + XPending */
+extern int      XConnectionNumber(Display *);
+extern int      XPending(Display *);
+
 #endif /* PS_X11_MIN_H */

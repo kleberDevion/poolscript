@@ -33,8 +33,9 @@ def _membros_do_vm() -> set:
     É o vocabulário completo de membros que `obj.X` resolve no VM."""
     src = VM_C.read_text(encoding="utf-8")
     nomes = set()
-    # 1. entradas de tabela de método: { "fetchall", met_...,
-    for m in re.finditer(r'\{\s*"([A-Za-z_]\w*)"\s*,\s*met_', src):
+    # 1. entradas de tabela de método: { "fetchall", met_..., } e os elementos
+    #    HTML do guzer: { "div", gel_div, ... }
+    for m in re.finditer(r'\{\s*"([A-Za-z_]\w*)"\s*,\s*(?:met_|gel_)', src):
         nomes.add(m.group(1))
     # 2. propriedades: strcmp(nome, "rowcount") == 0
     for m in re.finditer(r'strcmp\(\s*nome\s*,\s*"([A-Za-z_]\w*)"\s*\)\s*==\s*0', src):

@@ -772,16 +772,24 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define COMO_QRBUILD(v) ((PSQRBuild*)(v).as.obj)
 
 /* ── guzer — UI desktop nativa (X11). Espelha o guzer_lib.py (tkinter). ──── */
-enum { GUZ_WINDOW = 0, GUZ_BUTTON = 1, GUZ_POPUP = 2, GUZ_BOX = 3 };
+enum { GUZ_WINDOW = 0, GUZ_BUTTON = 1, GUZ_DIALOG = 2, GUZ_BOX = 3 };
 typedef struct {
     Obj  obj;
-    int  kind;                 /* GUZ_WINDOW/BUTTON/POPUP/BOX */
+    int  kind;                 /* GUZ_WINDOW/BUTTON/DIALOG/BOX */
     const char *tag;           /* nome do elemento HTML (div/section/...) — pro type() */
     int  w, h;                 /* dimensões (px) */
+    int  w_set, h_set;         /* usuário fixou no stylesheet? (img: sem fixar, usa o tamanho natural) */
     unsigned long bg, fg;      /* 0xRRGGBB */
     char *text;                /* rótulo (malloc) ou NULL */
     char *placeholder;         /* input: placeholder (malloc) ou NULL */
+    char *src;                 /* img: caminho do arquivo (malloc) ou NULL — de onde o usuário quiser */
+    char *name;                /* atributo name= (malloc) — a chave do getitemByIdentify */
+    char *value;               /* atributo value= (malloc) — lido pelo campo .value */
     Value handler;             /* reaction do clique (V_NULL = nenhuma) */
+    Value app;                 /* o guzer.UI dono (pra criar filho a partir do pai) */
+    Value *kids;               /* ÁRVORE: filhos deste elemento (entry numa div...) */
+    int nkids, capkids;
+    int raiz;                  /* 1 = filho direto do app; 0 = dentro de um contêiner */
 } PSGuzWid;
 typedef struct {
     Obj    obj;
@@ -1448,6 +1456,12 @@ static void gct_guz_ui(VM *vm, Obj *o) {
     PSGuzUI *u = (PSGuzUI *)o;
     for (int i = 0; i < u->nfilhos; i++) marca_valor(vm, &u->filhos[i]);
 }
+static void gct_guz_wid(VM *vm, Obj *o) {
+    PSGuzWid *w = (PSGuzWid *)o;
+    marca_valor(vm, &w->handler);
+    marca_valor(vm, &w->app);
+    for (int i = 0; i < w->nkids; i++) marca_valor(vm, &w->kids[i]);
+}
 
 /* ── finalizers (Fase 1: migração do `if/else` de libera_obj pra tabela) ────
  * Cada um libera os buffers C do objeto. Quando o tamanho é VARIÁVEL (string,
@@ -1583,7 +1597,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_QRIMAGE]    = { GC_LEAF, 0, NULL, 0, fin_qrimage },
     [OBJ_MANPU_FILE] = { GC_LEAF, 0, NULL, 0, fin_manpu_file },
     [OBJ_GUZ_UI]     = { GC_FN,   0, gct_guz_ui, 0, fin_guz_ui },
-    [OBJ_GUZ_WID]    = { GC_ONE,  offsetof(PSGuzWid, handler), NULL, 0, fin_guz_wid },
+    [OBJ_GUZ_WID]    = { GC_FN,   0, gct_guz_wid, 0, fin_guz_wid },
     [OBJ_BIGINT]     = { GC_LEAF, 0, NULL, sizeof(PSBigInt), fin_bigint },
 };
 
@@ -1698,6 +1712,10 @@ static void fin_guz_ui(VM *vm, Obj *o) {
 static void fin_guz_wid(VM *vm, Obj *o) {
     free(((PSGuzWid *)o)->text);
     free(((PSGuzWid *)o)->placeholder);
+    free(((PSGuzWid *)o)->src);
+    free(((PSGuzWid *)o)->name);
+    free(((PSGuzWid *)o)->value);
+    free(((PSGuzWid *)o)->kids);
     vm->alocado -= sizeof(PSGuzWid);
 }
 static void fin_jinker(VM *vm, Obj *o) {
@@ -5673,9 +5691,13 @@ static PSGuzWid *novo_guz_wid(VM *vm, int kind, const char *tag)
     w->obj.type = OBJ_GUZ_WID; w->obj.marked = 0;
     w->obj.next = vm->objetos; vm->objetos = (Obj *)w;
     w->kind = kind; w->tag = tag; w->text = NULL; w->placeholder = NULL;
+    w->src = NULL; w->w_set = 0; w->h_set = 0;
+    w->name = NULL; w->value = NULL;
     w->handler = MK_NULL();
+    w->app = MK_NULL(); w->kids = NULL; w->nkids = 0; w->capkids = 0;
+    w->raiz = 1;   /* vira 0 quando criado DENTRO de um contêiner */
     if (kind == GUZ_BUTTON)      { w->w = 120; w->h = 34;  w->bg = 0x2196F7; w->fg = 0xFFFFFF; }
-    else if (kind == GUZ_POPUP)  { w->w = 260; w->h = 150; w->bg = 0xFFFFFF; w->fg = 0x101418; }
+    else if (kind == GUZ_DIALOG) { w->w = 260; w->h = 150; w->bg = 0xFFFFFF; w->fg = 0x101418; }
     else if (kind == GUZ_BOX)    { w->w = 200; w->h = 28;  w->bg = 0xF0F0F0; w->fg = 0x101418; }
     else                         { w->w = 480; w->h = 320; w->bg = 0xFFFFFF; w->fg = 0x000000; }
     vm->alocado += sizeof(PSGuzWid);
@@ -5692,14 +5714,37 @@ static int guz_add_filho(PSGuzUI *u, Value w)
     u->filhos[u->nfilhos++] = w;
     return 0;
 }
+static int guz_wid_add_kid(PSGuzWid *pai, Value w)
+{
+    if (pai->nkids >= pai->capkids) {
+        int nc = pai->capkids ? pai->capkids * 2 : 4;
+        Value *nk = realloc(pai->kids, sizeof(Value) * (size_t)nc);
+        if (!nk) return -1;
+        pai->kids = nk; pai->capkids = nc;
+    }
+    pai->kids[pai->nkids++] = w;
+    return 0;
+}
+/* O pai pode ser o app (guzer.UI) OU um elemento-contêiner (entry DENTRO da
+ * div, inputs DENTRO do form...) — é a ÁRVORE do HTML. Todo elemento também
+ * entra na lista FLAT do UI (clique, getitemByIdentify). */
 static int guz_cria(VM *vm, Value alvo, int kind, const char *tag, Value handler, Value *out)
 {
-    if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
+    Value app;
+    if (EH_GUZ_UI(alvo)) app = alvo;
+    else if (EH_GUZ_WID(alvo)) app = COMO_GUZ_WID(alvo)->app;
+    else MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI ou de um elemento");
+    if (!EH_GUZ_UI(app)) MERRO(vm, "RuntimeError", "elemento sem app dono");
     PSGuzWid *w = novo_guz_wid(vm, kind, tag);
     if (!w) MERRO(vm, "MemoryError", "sem memoria");
     if (handler.t == V_OBJ) w->handler = handler;
+    w->app = app;
     Value wv = MK_OBJ(w);
-    if (guz_add_filho(COMO_GUZ_UI(alvo), wv) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    if (EH_GUZ_WID(alvo)) {
+        if (guz_wid_add_kid(COMO_GUZ_WID(alvo), wv) != 0) MERRO(vm, "MemoryError", "sem memoria");
+        w->raiz = 0;
+    }
+    if (guz_add_filho(COMO_GUZ_UI(app), wv) != 0) MERRO(vm, "MemoryError", "sem memoria");
     *out = wv;
     return 0;
 }
@@ -5730,6 +5775,12 @@ static int guz_elem(VM *vm, Value alvo, const char *tag, int kind, Value *args, 
         char *p = malloc((size_t)s->len + 1);
         if (p) { memcpy(p, s->chars, (size_t)s->len + 1); COMO_GUZ_WID(*out)->placeholder = p; }
     }
+    if (n > 2 && EH_STRING(args[2]))                   /* value */
+        COMO_GUZ_WID(*out)->value = strdup(COMO_STRING(args[2])->chars);
+    if (n > 3 && EH_STRING(args[3]))                   /* name — chave do getitemByIdentify */
+        COMO_GUZ_WID(*out)->name = strdup(COMO_STRING(args[3])->chars);
+    if (n > 5 && EH_STRING(args[5]))                   /* src (img/picture/...) */
+        COMO_GUZ_WID(*out)->src = strdup(COMO_STRING(args[5])->chars);
     return 0;
 }
 #define GUZ_ELEM(FN, TAG, KIND) \
@@ -5776,7 +5827,25 @@ GUZ_ELEM(gel_audio,"audio",GUZ_BOX)         GUZ_ELEM(gel_video,"video",GUZ_BOX)
 GUZ_ELEM(gel_canvas,"canvas",GUZ_BOX)       GUZ_ELEM(gel_iframe,"iframe",GUZ_BOX)
 GUZ_ELEM(gel_details,"details",GUZ_BOX)     GUZ_ELEM(gel_summary,"summary",GUZ_BOX)
 GUZ_ELEM(gel_menu,"menu",GUZ_BOX)           GUZ_ELEM(gel_picture,"picture",GUZ_BOX)
-GUZ_ELEM(gel_dialog,"dialog",GUZ_POPUP)
+GUZ_ELEM(gel_dialog,"dialog",GUZ_DIALOG)
+/* app.POOLHTMLElements.getitemByIdentify("nome") — acha o elemento pelo
+ * atributo name= (o registro POOLHTMLElements é o próprio app). Sem achar,
+ * devolve null (igual ao DOM). */
+static int met_guz_getitem(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "getitemByIdentify", 1);
+    if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
+    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "getitemByIdentify: espera str");
+    PSGuzUI *u = COMO_GUZ_UI(alvo);
+    const char *chave = COMO_STRING(args[0])->chars;
+    for (int i = 0; i < u->nfilhos; i++) {
+        PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
+        if (w->name && strcmp(w->name, chave) == 0) { *out = u->filhos[i]; return 0; }
+    }
+    *out = MK_NULL();
+    return 0;
+}
+
 static int met_guz_stylesheet(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "stylesheet", 1);
@@ -5786,8 +5855,8 @@ static int met_guz_stylesheet(VM *vm, Value alvo, Value *args, int n, Value *out
     if (guz_dict_get(args[0], "background", &v) || guz_dict_get(args[0], "bg", &v))
         w->bg = guz_cor_val(v, w->bg);
     if (guz_dict_get(args[0], "color", &v))  w->fg = guz_cor_val(v, w->fg);
-    if (guz_dict_get(args[0], "width", &v))  w->w  = guz_px_val(v, w->w);
-    if (guz_dict_get(args[0], "height", &v)) w->h  = guz_px_val(v, w->h);
+    if (guz_dict_get(args[0], "width", &v))  { w->w = guz_px_val(v, w->w); w->w_set = 1; }
+    if (guz_dict_get(args[0], "height", &v)) { w->h = guz_px_val(v, w->h); w->h_set = 1; }
     *out = alvo;
     return 0;
 }
@@ -5822,6 +5891,7 @@ static const MetodoNat METODOS_GUZ_UI[] = {
     { "window", met_guz_window, NULL },
     { "button", met_guz_button, "onclick" },
     { "show",   met_guz_show,   NULL },
+    { "getitemByIdentify", met_guz_getitem, "identify" },
     { "div", gel_div, P_ELEM }, { "section", gel_section, P_ELEM },
     { "article", gel_article, P_ELEM }, { "aside", gel_aside, P_ELEM },
     { "header", gel_header, P_ELEM }, { "footer", gel_footer, P_ELEM },
@@ -5867,6 +5937,50 @@ static const MetodoNat METODOS_GUZ_UI[] = {
 static const MetodoNat METODOS_GUZ_WID[] = {
     { "stylesheet", met_guz_stylesheet, NULL },
     { "text",       met_guz_text,       NULL },
+    /* a ÁRVORE do HTML: qualquer elemento-contêiner cria filhos DENTRO de si
+     * (entry numa div, inputs num form...) — os mesmos métodos do app */
+    { "button", met_guz_button, "onclick" },
+    { "div", gel_div, P_ELEM }, { "section", gel_section, P_ELEM },
+    { "article", gel_article, P_ELEM }, { "aside", gel_aside, P_ELEM },
+    { "header", gel_header, P_ELEM }, { "footer", gel_footer, P_ELEM },
+    { "nav", gel_nav, P_ELEM }, { "main", gel_main, P_ELEM },
+    { "figure", gel_figure, P_ELEM }, { "figcaption", gel_figcaption, P_ELEM },
+    { "address", gel_address, P_ELEM }, { "span", gel_span, P_ELEM },
+    { "p", gel_p, P_ELEM }, { "a", gel_a, P_ELEM },
+    { "strong", gel_strong, P_ELEM }, { "em", gel_em, P_ELEM },
+    { "b", gel_bb, P_ELEM }, { "i", gel_ii, P_ELEM },
+    { "u", gel_uu, P_ELEM }, { "s", gel_ss, P_ELEM },
+    { "small", gel_small, P_ELEM }, { "mark", gel_mark, P_ELEM },
+    { "sub", gel_sub, P_ELEM }, { "sup", gel_sup, P_ELEM },
+    { "code", gel_code, P_ELEM }, { "pre", gel_pre, P_ELEM },
+    { "blockquote", gel_blockquote, P_ELEM }, { "cite", gel_cite, P_ELEM },
+    { "q", gel_q, P_ELEM }, { "abbr", gel_abbr, P_ELEM },
+    { "time", gel_time, P_ELEM }, { "kbd", gel_kbd, P_ELEM },
+    { "samp", gel_samp, P_ELEM }, { "var", gel_vartag, P_ELEM },
+    { "del", gel_del, P_ELEM }, { "ins", gel_ins, P_ELEM },
+    { "hr", gel_hr, P_ELEM }, { "br", gel_br, P_ELEM },
+    { "h1", gel_h1, P_ELEM }, { "h2", gel_h2, P_ELEM },
+    { "h3", gel_h3, P_ELEM }, { "h4", gel_h4, P_ELEM },
+    { "h5", gel_h5, P_ELEM }, { "h6", gel_h6, P_ELEM },
+    { "ul", gel_ul, P_ELEM }, { "ol", gel_ol, P_ELEM },
+    { "li", gel_li, P_ELEM }, { "dl", gel_dl, P_ELEM },
+    { "dt", gel_dt, P_ELEM }, { "dd", gel_dd, P_ELEM },
+    { "table", gel_table, P_ELEM }, { "thead", gel_thead, P_ELEM },
+    { "tbody", gel_tbody, P_ELEM }, { "tfoot", gel_tfoot, P_ELEM },
+    { "tr", gel_tr, P_ELEM }, { "td", gel_td, P_ELEM },
+    { "th", gel_th, P_ELEM }, { "caption", gel_caption, P_ELEM },
+    { "form", gel_form, P_ELEM }, { "entry", gel_entry, P_ELEM },
+    { "textarea", gel_textarea, P_ELEM }, { "select", gel_select, P_ELEM },
+    { "option", gel_option, P_ELEM }, { "optgroup", gel_optgroup, P_ELEM },
+    { "label", gel_label, P_ELEM }, { "fieldset", gel_fieldset, P_ELEM },
+    { "legend", gel_legend, P_ELEM }, { "datalist", gel_datalist, P_ELEM },
+    { "output", gel_output, P_ELEM }, { "progress", gel_progress, P_ELEM },
+    { "meter", gel_meter, P_ELEM }, { "img", gel_img, P_ELEM },
+    { "audio", gel_audio, P_ELEM }, { "video", gel_video, P_ELEM },
+    { "canvas", gel_canvas, P_ELEM }, { "iframe", gel_iframe, P_ELEM },
+    { "details", gel_details, P_ELEM }, { "summary", gel_summary, P_ELEM },
+    { "menu", gel_menu, P_ELEM }, { "picture", gel_picture, P_ELEM },
+    { "dialog", gel_dialog, P_ELEM },
 };
 /* clique num widget -> roda a reaction dele (single-thread, na thread da VM) */
 static void guz_click(int id, void *ud)
@@ -5896,25 +6010,99 @@ static void guz_mostra(VM *vm)
         PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
         if (w->kind == GUZ_WINDOW) { win_w = w->w; win_h = w->h; win_bg = w->bg; break; }
     }
-    PSGuzWidget *arr = malloc(sizeof(PSGuzWidget) * (size_t)(u->nfilhos > 0 ? u->nfilhos : 1));
-    if (!arr) return;
-    int m = 0, y = 12;
+    int nf = u->nfilhos > 0 ? u->nfilhos : 1;
+    PSGuzWidget *arr = malloc(sizeof(PSGuzWidget) * (size_t)nf);
+    char **srcs = calloc((size_t)nf, sizeof(char *));
+    int *eff_w = calloc((size_t)nf, sizeof(int));
+    int *eff_h = calloc((size_t)nf, sizeof(int));
+    int *idx_de = calloc((size_t)nf, sizeof(int));   /* índice do widget no flat do UI */
+    if (!arr || !srcs || !eff_w || !eff_h || !idx_de) {
+        free(arr); free(srcs); free(eff_w); free(eff_h); free(idx_de);
+        return;
+    }
+    /* pré-passo: resolve src (de onde o usuário quiser) e o tamanho efetivo */
     for (int i = 0; i < u->nfilhos; i++) {
         PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
-        if (w->kind == GUZ_WINDOW) continue;
-        arr[m].kind     = (w->kind == GUZ_POPUP) ? PSGUZ_POPUP : PSGUZ_BUTTON;
-        arr[m].w        = w->w; arr[m].h = w->h;
+        eff_w[i] = w->w; eff_h[i] = w->h;
+        if (!w->src) continue;
+        char cand[1024] = {0};
+        if (w->src[0] == '/') snprintf(cand, sizeof cand, "%s", w->src);
+        else {
+            if (vm->dir_script[0]) snprintf(cand, sizeof cand, "%s/%s", vm->dir_script, w->src);
+            FILE *fh = cand[0] ? fopen(cand, "rb") : NULL;
+            if (fh) fclose(fh);
+            else snprintf(cand, sizeof cand, "%s", w->src);
+        }
+        srcs[i] = strdup(cand);
+        int nw, nh;
+        if (srcs[i] && ps_guz_png_tamanho(srcs[i], &nw, &nh) == 0) {
+            if (!w->w_set) eff_w[i] = nw;
+            if (!w->h_set) eff_h[i] = nh;
+        }
+    }
+    /* altura AUTOMÁTICA de contêiner com filhos (sem height explícito):
+     * 8px de borda + filhos empilhados com 10px de vão */
+    for (int passo = 0; passo < 4; passo++) {      /* aninhamento até 4 níveis */
+        for (int i = 0; i < u->nfilhos; i++) {
+            PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
+            if (w->nkids == 0 || w->h_set) continue;
+            int soma = 8;
+            for (int k = 0; k < w->nkids; k++) {
+                for (int j = 0; j < u->nfilhos; j++)
+                    if (u->filhos[j].as.obj == w->kids[k].as.obj) { soma += eff_h[j] + 10; break; }
+            }
+            eff_h[i] = soma - 10 + 8 > w->h ? soma - 10 + 8 : w->h;
+        }
+    }
+    /* layout em ÁRVORE: raiz empilha na janela; filho empilha DENTRO do pai */
+    int m = 0;
+    /* pilha explícita simples: processa raízes na ordem, filhos logo após o pai */
+    typedef struct { int idx; int x, y; } Item;
+    Item fila[1024];
+    int nfila = 0, y_raiz = 12;
+    for (int i = 0; i < u->nfilhos; i++) {
+        PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
+        if (w->kind == GUZ_WINDOW || !w->raiz) continue;
+        int x, y;
+        if (w->kind == GUZ_DIALOG) { x = (win_w - eff_w[i]) / 2; y = (win_h - eff_h[i]) / 2; }
+        else { x = 12; y = y_raiz; y_raiz += eff_h[i] + 10; }
+        if (nfila < 1024) { fila[nfila].idx = i; fila[nfila].x = x; fila[nfila].y = y; nfila++; }
+    }
+    for (int q = 0; q < nfila && m < u->nfilhos; q++) {
+        int i = fila[q].idx;
+        PSGuzWid *w = COMO_GUZ_WID(u->filhos[i]);
+        arr[m].kind     = (w->kind == GUZ_DIALOG) ? PSGUZ_DIALOG
+                        : (w->tag && strcmp(w->tag, "video") == 0 && srcs[i]) ? PSGUZ_VIDEO
+                        : (w->tag && strcmp(w->tag, "audio") == 0 && srcs[i]) ? PSGUZ_AUDIO
+                        : PSGUZ_BUTTON;
+        arr[m].x        = fila[q].x; arr[m].y = fila[q].y;
+        arr[m].w        = eff_w[i]; arr[m].h = eff_h[i];
         arr[m].bg       = w->bg; arr[m].fg = w->fg;
         arr[m].text     = w->text ? w->text : (w->placeholder ? w->placeholder : "");
+        arr[m].src      = srcs[i];
         arr[m].clicavel = (w->handler.t == V_OBJ);
         arr[m].id       = i;
-        if (w->kind == GUZ_POPUP) { arr[m].x = (win_w - w->w) / 2; arr[m].y = (win_h - w->h) / 2; }
-        else                      { arr[m].x = 12; arr[m].y = y; y += w->h + 10; }
+        idx_de[m] = i;
         m++;
+        /* enfileira os filhos DENTRO da caixa do pai */
+        int ky = fila[q].y + 8;
+        for (int k = 0; k < w->nkids && nfila < 1024; k++) {
+            for (int j = 0; j < u->nfilhos; j++)
+                if (u->filhos[j].as.obj == w->kids[k].as.obj) {
+                    fila[nfila].idx = j;
+                    fila[nfila].x = fila[q].x + 8;
+                    fila[nfila].y = ky;
+                    ky += eff_h[j] + 10;
+                    nfila++;
+                    break;
+                }
+        }
     }
     char erro[128] = {0};
     if (ps_guz_run(u->titulo, u->icon, win_w, win_h, win_bg, arr, m, guz_click, vm, erro, sizeof erro) != 0)
         fprintf(stderr, "%s\n", erro);
+    for (int i = 0; i < u->nfilhos; i++) free(srcs[i]);
+    free(srcs); free(eff_w); free(eff_h); free(idx_de);
     free(arr);
 }
 
@@ -17260,6 +17448,26 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * afetadas em DML, ou (por driver) o nº de linhas do SELECT */
                 if (strcmp(nome, "rowcount") == 0) {
                     stack[sp - 1] = MK_INT(COMO_DBCUR(alvo)->res.rowcount);
+                    break;
+                }
+            }
+            if (EH_GUZ_UI(alvo)) {
+                /* o registro dos elementos é o próprio app:
+                 * app.POOLHTMLElements.getitemByIdentify("nome").value */
+                if (strcmp(nome, "POOLHTMLElements") == 0) { stack[sp - 1] = alvo; break; }
+            }
+            if (EH_GUZ_WID(alvo)) {
+                /* .value (campo): o valor atual do elemento —
+                 * value= > .text() > placeholder= > "" */
+                if (strcmp(nome, "value") == 0) {
+                    PSGuzWid *gw = COMO_GUZ_WID(alvo);
+                    const char *v = gw->value ? gw->value
+                                  : gw->text ? gw->text
+                                  : gw->placeholder ? gw->placeholder : "";
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *sv = nova_string(vm, v, (int)strlen(v));
+                    if (!sv) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(sv);
                     break;
                 }
             }

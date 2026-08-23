@@ -19,7 +19,7 @@
 #include <stddef.h>
 
 /* Um widget já resolvido em pixels e cores (0xRRGGBB). */
-typedef enum { PSGUZ_BUTTON, PSGUZ_POPUP } PSGuzKind;
+typedef enum { PSGUZ_BUTTON, PSGUZ_DIALOG, PSGUZ_VIDEO, PSGUZ_AUDIO } PSGuzKind;
 
 typedef struct {
     PSGuzKind kind;
@@ -27,6 +27,7 @@ typedef struct {
     unsigned long bg;     /* 0xRRGGBB */
     unsigned long fg;
     const char   *text;   /* pode ser "" */
+    const char   *src;    /* img: caminho JÁ RESOLVIDO de um .png (ou NULL) */
     int   clicavel;       /* tem handler? */
     int   id;             /* devolvido no callback de clique */
 } PSGuzWidget;
@@ -42,6 +43,10 @@ typedef void (*PSGuzClickCb)(int id, void *ud);
  * Retorna 0 ao fechar normalmente; -1 se não deu pra abrir (sem DISPLAY, sem
  * libX11), com a razão em `erro`.
  */
+/* Tamanho natural de um PNG (pra caixa do img sem width/height explícitos).
+ * 0 = ok; -1 = não deu pra ler. */
+int ps_guz_png_tamanho(const char *path, int *w, int *h);
+
 int ps_guz_run(const char *titulo, const char *icone,
                int win_w, int win_h, unsigned long win_bg,
                const PSGuzWidget *widgets, int n,

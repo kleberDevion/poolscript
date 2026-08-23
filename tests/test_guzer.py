@@ -117,3 +117,97 @@ def test_paridade_dois_motores(tmp_path):
     assert a.returncode == 0 and b.returncode == 0, a.stdout + a.stderr + b.stdout + b.stderr
     assert a.stdout == b.stdout, "divergência:\nINTERP:\n" + a.stdout + "\nVM C:\n" + b.stdout
     assert a.stdout.strip().splitlines()[-2:] == ["UI", "Button"], a.stdout
+
+
+# ── TODOS os elementos do HTML, paridade elemento a elemento ────────────────
+# A tabela é a MESMA nos dois motores (METODOS_GUZ_UI na VM; _TAGS_BOX no
+# interp). Cada elemento é criado, o type() devolve a TAG, stylesheet/text
+# encadeiam, e os atributos (placeholder/src/href/onclick) são aceitos.
+TAGS = ("div section article aside header footer nav main figure figcaption "
+        "address span p a strong em b i u s small mark sub sup code pre "
+        "blockquote cite q abbr time kbd samp var del ins hr br h1 h2 h3 h4 "
+        "h5 h6 ul ol li dl dt dd table thead tbody tfoot tr td th caption "
+        "form entry textarea select option optgroup label fieldset legend "
+        "datalist output progress meter img audio video canvas iframe "
+        "details summary menu picture dialog").split()
+
+
+def test_todos_os_elementos_nos_dois_motores(tmp_path):
+    corpo = ["import guzer", 'app = guzer.UI("t")']
+    for t in TAGS:
+        corpo.append(f"post(type(app.{t}()))")
+    corpo.append('e = app.entry(placeholder="dica")')
+    corpo.append('post(type(e))')
+    corpo.append('i = app.img(src="qualquer/caminho/logo.png")')
+    corpo.append('post(type(i))')
+    corpo.append('post(app.div().stylesheet({"width": "300"}).text("x") is null == false)')
+    entry = tmp_path / "app.ps"
+    entry.write_text(NL.join(corpo) + NL, encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(RAIZ / "src"), GUZER_HEADLESS="1")
+    a = subprocess.run([sys.executable, "-m", "poolscript", str(entry)],
+                       capture_output=True, text=True, env=env)
+    b = subprocess.run([str(POOL_BIN), str(entry)],
+                       capture_output=True, text=True, env=env)
+    assert a.returncode == 0, "interp: " + a.stdout + a.stderr
+    assert b.returncode == 0, "VM: " + b.stdout + b.stderr
+    assert a.stdout == b.stdout, "divergência:\nINTERP:\n" + a.stdout + "\nVM:\n" + b.stdout
+    linhas = a.stdout.strip().splitlines()
+    assert linhas[:len(TAGS)] == TAGS, "type() de algum elemento não devolve a tag"
+
+
+def test_icon_e_img_resolvem_de_qualquer_caminho(tmp_path):
+    """img/ícone vêm de onde o usuário quiser: absoluto, relativo ao script,
+    ou ao diretório atual (headless valida o modelo; o desenho é na janela)."""
+    from poolscript.stdlib.guzer_lib import _resolve_arquivo
+    png = tmp_path / "logo.png"
+    png.write_bytes(b"\x89PNG\r\n\x1a\n")          # só pra existir no disco
+    assert _resolve_arquivo(str(png)) == str(png)   # absoluto
+    assert _resolve_arquivo(str(tmp_path / "nao_existe.png")) is None
+
+
+def _roda_nos_dois(tmp_path, fonte):
+    entry = tmp_path / "app.ps"
+    entry.write_text(fonte, encoding="utf-8")
+    env = dict(os.environ, PYTHONPATH=str(RAIZ / "src"), GUZER_HEADLESS="1")
+    a = subprocess.run([sys.executable, "-m", "poolscript", str(entry)],
+                       capture_output=True, text=True, env=env)
+    b = subprocess.run([str(POOL_BIN), str(entry)],
+                       capture_output=True, text=True, env=env)
+    assert a.returncode == 0, "interp: " + a.stdout + a.stderr
+    assert b.returncode == 0, "VM: " + b.stdout + b.stderr
+    assert a.stdout == b.stdout, "divergência:\nINTERP:\n" + a.stdout + "\nVM:\n" + b.stdout
+    return a.stdout
+
+
+def test_arvore_elemento_dentro_de_container(tmp_path):
+    """A ÁRVORE do HTML: entry DENTRO do form, p DENTRO da div — o filho é
+    criado A PARTIR do pai e o layout o põe dentro da caixa dele."""
+    saida = _roda_nos_dois(tmp_path,
+        "import guzer" + NL +
+        'app = guzer.UI("t")' + NL +
+        "form = app.form(name=\"cadastro\")" + NL +
+        'e1 = form.entry(name="nome", placeholder="seu nome")' + NL +
+        "bt = form.button()" + NL +
+        "d = app.div()" + NL +
+        'd.p().text("dentro")' + NL +
+        "post(type(form), type(e1), type(bt))" + NL +
+        'post(app.POOLHTMLElements.getitemByIdentify("nome").value)' + NL)
+    assert saida == "form entry Button" + NL + "seu nome" + NL
+
+
+def test_registro_poolhtmlelements(tmp_path):
+    """app.POOLHTMLElements.getitemByIdentify("nome").value — acha o elemento
+    pelo name= (em QUALQUER nível da árvore); .value = value= > .text() >
+    placeholder= > ""; sem achar: null."""
+    saida = _roda_nos_dois(tmp_path,
+        "import guzer" + NL +
+        'app = guzer.UI("t")' + NL +
+        "form = app.form()" + NL +
+        'form.entry(name="nome", value="kleber")' + NL +
+        'app.entry(name="email")' + NL +
+        'post(app.POOLHTMLElements.getitemByIdentify("nome").value)' + NL +
+        'post(app.POOLHTMLElements.getitemByIdentify("email").value == "")' + NL +
+        'post(app.POOLHTMLElements.getitemByIdentify("x") == null)' + NL +
+        'app.getitemByIdentify("email").text("x@y.z")' + NL +
+        'post(app.POOLHTMLElements.getitemByIdentify("email").value)' + NL)
+    assert saida == "kleber" + NL + "True" + NL + "True" + NL + "x@y.z" + NL
