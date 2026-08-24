@@ -1,11 +1,11 @@
-# `MailMessage.attach(arquivo)`
+# `MailMessage.attach(file_or_path)`
 
 Anexa um arquivo ao e-mail. Aceita um **caminho** (string), um
 [`PoolFile`](../../../os/PoolFile/PoolFile.md) (binário carregado) ou um
 `PoolFileUpload` (arquivo recebido num upload).
 
 ```
-m.attach(arquivo) -> None
+m.attach(file_or_path) -> None
 ```
 
 ---

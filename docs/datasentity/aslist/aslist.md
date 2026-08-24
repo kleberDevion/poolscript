@@ -1,10 +1,10 @@
-# `aslist(instancia)`
+# `aslist(instance)`
 
 Converte uma instância de `@dataentity` numa **lista**, com os valores na ordem
 de declaração dos campos.
 
 ```
-aslist(instancia) -> list
+aslist(instance) -> list
 ```
 
 ---

@@ -1,11 +1,14 @@
-# `Parsing.JSONformatt(valor)`
+# `Parsing.JSONformatt(value, to_type="json")`
 
 Converte um valor pra **dict/lista** (JSON). String vira JSON parseado; dict/
 lista voltam como estão.
 
 ```
-Parsing.JSONformatt(valor) -> dict | list
+Parsing.JSONformatt(value, to_type="json") -> dict | list
 ```
+
+`to_type` existe por uniformidade com as outras funções do `Parsing` — aqui
+**não muda nada**.
 
 ---
 

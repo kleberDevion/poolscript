@@ -1,14 +1,14 @@
-# `os.mkdir(caminho, exist_ok=false)`
+# `os.mkdir(path, exist_ok=false)`
 
 Cria uma pasta (diretório).
 
 ```
-os.mkdir(caminho: str, exist_ok: bool = false) -> None
+os.mkdir(path: str, exist_ok: bool = false) -> None
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `caminho` | — | caminho da pasta a criar |
+| `path` | — | caminho da pasta a criar |
 | `exist_ok` | `false` | `true` = não dá erro se a pasta já existir |
 
 ---

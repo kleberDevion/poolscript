@@ -1,10 +1,10 @@
-# `os.pathFile(nome)`
+# `os.pathFile(name)`
 
 Devolve o **caminho absoluto** de um arquivo, buscando-o pelo nome a partir da
 pasta do `.ps` em execução e depois do diretório atual. Erro se não encontrar.
 
 ```
-os.pathFile(nome: str) -> str
+os.pathFile(name: str) -> str
 ```
 
 ---

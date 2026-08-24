@@ -1,16 +1,16 @@
-# `os.getenv(chave, default=None)`
+# `os.getenv(key, default=None)`
 
 Lê uma **variável de ambiente**. É como você pega segredos e configuração
 (senhas, caminhos, chaves de API) sem escrever no código — normalmente vindas
 de um arquivo `.env`.
 
 ```
-os.getenv(chave: str, default: any = None) -> str | default
+os.getenv(key: str, default: any = None) -> str | default
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `chave` | — | nome da variável (ex: `"DB_PATH"`) |
+| `key` | — | nome da variável (ex: `"DB_PATH"`) |
 | `default` | `None` | valor devolvido se a variável não existir |
 
 ---
@@ -34,7 +34,7 @@ from dotenv import load
 load()                                   // carrega o .env pro ambiente
 
 str banco = os.getenv("DB_PATH")         // "dados.db"
-str chave = os.getenv("SECRET_KEY")      // "abc123"
+str key = os.getenv("SECRET_KEY")      // "abc123"
 porta = int(os.getenv("PORT", "3000"))   // "8080" → 8080
 ```
 

@@ -1,10 +1,13 @@
-# `Parsing.boolean(valor)`
+# `Parsing.boolean(value, to_type="bool")`
 
 Converte um valor pra **booleano** (`true`/`false`), entendendo textos comuns.
 
 ```
-Parsing.boolean(valor) -> bool
+Parsing.boolean(value, to_type="bool") -> bool
 ```
+
+`to_type` existe por uniformidade com as outras funções do `Parsing` — aqui
+**não muda nada**: o resultado é sempre `bool`.
 
 ---
 

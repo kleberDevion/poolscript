@@ -1,9 +1,9 @@
-# `MailMessage.to(email)`
+# `MailMessage.to(address)`
 
 Define o **destinatário** do e-mail (quem recebe).
 
 ```
-m.to(email: str) -> None
+m.to(address: str) -> None
 ```
 
 ---
@@ -12,7 +12,7 @@ m.to(email: str) -> None
 
 ```
 m = mail.MailMessage()
-m.to("cliente@email.com")
+m.to("cliente@address.com")
 ```
 
 ---

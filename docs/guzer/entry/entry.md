@@ -1,4 +1,4 @@
-# `entry(placeholder=, value=, name=, ...)`
+# `entry(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
 Campo de formulário — campo de UMA linha. No **interpretador** é um campo NATIVO editável
 (tkinter): o usuário digita e o seu handler lê com `.value`. No binário `pool`

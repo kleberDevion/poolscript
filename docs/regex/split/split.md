@@ -1,16 +1,16 @@
-# `regex.split(padrão, texto, maxsplit=0, flags=0)`
+# `regex.split(pattern, string, maxsplit=0, flags=0)`
 
 **Divide** o texto onde o padrão bate, devolvendo uma lista de pedaços. Como o
 `split` de string, mas o separador é um padrão (não um texto fixo).
 
 ```
-regex.split(padrão: str, texto: str, maxsplit=0, flags=0) -> list
+regex.split(pattern: str, string: str, maxsplit=0, flags=0) -> list
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `padrão` | — | o separador (como regex) |
-| `texto` | — | o texto a dividir |
+| `pattern` | — | o separador (como regex) |
+| `string` | — | o texto a dividir |
 | `maxsplit` | `0` | máximo de divisões (`0` = ilimitado) |
 
 ---

@@ -1,15 +1,15 @@
-# `JinkerResponse.status(codigo)`
+# `JinkerResponse.status(code)`
 
 Troca **só o código HTTP** da resposta, sem mexer no corpo nem no
 `Content-Type`. Devolve o próprio `JinkerResponse` (encadeável).
 
 ```
-status(codigo: int) -> JinkerResponse
+status(code: int) -> JinkerResponse
 ```
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `codigo` | `int` | código HTTP (ex: `200`, `201`, `404`, `500`) |
+| `code` | `int` | código HTTP (ex: `200`, `201`, `404`, `500`) |
 
 ---
 

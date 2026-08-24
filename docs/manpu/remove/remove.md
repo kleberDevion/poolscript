@@ -1,18 +1,19 @@
-# `manpu.remove(value, column, celula, amount, target)`
+# `manpu.remove(value="", content="", column=0, celula=0, amount="full", target="")`
 
 Remove conteúdo de um arquivo — por posição (coluna/célula) em CSV, ou por
 texto encontrado em HTML/txt.
 
 ```
-manpu.remove(value=..., column=..., celula=..., amount=..., target="arquivo") -> ManpuResult
+manpu.remove(value="", content="", column=0, celula=0, amount="full", target="") -> ManpuResult
 ```
 
-| Parâmetro | O que é |
-|---|---|
-| `value` | o texto a remover (em HTML/txt) |
-| `column` / `celula` | posição a limpar (em CSV) |
-| `amount` | `full` = remove tudo que encontrar; `mei` = remove metade |
-| `target` | caminho do arquivo |
+| Parâmetro | Padrão | O que é |
+|---|---|---|
+| `value` | `""` | o texto a remover (em HTML/txt) |
+| `content` | `""` | **apelido** de `value` — usado só quando `value` está vazio (`value or content`) |
+| `column` / `celula` | `0` | posição a limpar (em CSV): coluna e célula |
+| `amount` | `"full"` | `full` = remove tudo que encontrar; `mei` = remove metade |
+| `target` | `""` | caminho do arquivo (obrigatório na prática: sem arquivo, devolve `ManpuResult` de erro) |
 
 ---
 

@@ -1,9 +1,9 @@
-# `MailMessage.from_address(email)`
+# `MailMessage.from_address(address)`
 
 Define o **remetente** do e-mail (quem envia).
 
 ```
-m.from_address(email: str) -> None
+m.from_address(address: str) -> None
 ```
 
 ---

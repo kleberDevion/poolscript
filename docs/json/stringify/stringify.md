@@ -1,9 +1,9 @@
-# `json.stringify(valor)`
+# `json.stringify(value)`
 
 Converte dados da PoolScript (dict, lista, etc.) em uma **string JSON**.
 
 ```
-json.stringify(valor) -> str
+json.stringify(value) -> str
 ```
 
 ---

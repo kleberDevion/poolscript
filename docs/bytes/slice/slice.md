@@ -1,4 +1,4 @@
-# `bytes.slice(b, ini, fim)`
+# `bytes.slice(b, ini=0, fim=None)`
 
 Recorta uma **fatia** dos bytes, de `ini` (inclusive) até `fim` (exclusive) —
 mesma semântica de fatia do Python. Índices negativos contam a partir do fim.

@@ -47,3 +47,6 @@ Thumbs.db
 # artefato empacotado da extensao (gera com build_vsix.py)
 psl-poolscript-vsix/*.vsix
 
+# assinaturas introspectadas pra auditoria da doc (scripts/audita_doc_sigs.py)
+.audita_sigs.json
+

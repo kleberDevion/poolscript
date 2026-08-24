@@ -1,15 +1,15 @@
-# `request.files(campo, allowed=None)`
+# `request.files(field, allowed=None)`
 
 Pega **vários arquivos** enviados no mesmo campo (upload múltiplo). Devolve uma
 **lista** de `PoolFileUpload` — lista vazia se não houver arquivo.
 
 ```
-request.files(campo: str, allowed: list = None) -> list[PoolFileUpload]
+request.files(field: str, allowed: list = None) -> list[PoolFileUpload]
 ```
 
 | Parâmetro | O que é |
 |---|---|
-| `campo` | nome do campo do formulário |
+| `field` | nome do campo do formulário |
 | `allowed` | extensões permitidas (ex: `[".jpg", ".png"]`); `Null` = qualquer extensão *segura* |
 
 ---
@@ -46,7 +46,7 @@ sempre levantam erro; sua lista `allowed` restringe o resto.
 ## `.files()` vs `.file()`
 
 - [`.file(campo)`](../file/file.md) — devolve **um** `PoolFileUpload` (ou `Null`).
-- `.files(campo)` — devolve uma **lista** (vazia se nada). Use quando o
+- `.files(field)` — devolve uma **lista** (vazia se nada). Use quando o
   formulário permite selecionar vários arquivos no mesmo campo.
 
 ---

@@ -1,0 +1,217 @@
+
+// Auditoria das assinaturas da doc (escrita em PoolScript — dogfood).
+//
+// O titulo "# `x(args)`" de cada pagina docs/<lib>/<m>/<m>.md e
+// docs/<lib>/<Classe>/<m>/<m>.md tem que bater com a assinatura REAL da stdlib
+// (nomes E defaults), que vem do .audita_sigs.json gerado por
+// scripts/audita_doc_sigs.py. Assinatura de doc NUNCA e digitada a mao.
+//
+//   PYTHONPATH=src python3 scripts/audita_doc_sigs.py   # gera .audita_sigs.json
+//   ./pool scripts/audita_doc.ps                         # so relata
+//   APLICA=1 ./pool scripts/audita_doc.ps                # reescreve os titulos
+//
+// Rodar da RAIZ do repositorio. Paginas geradas de specs (docs/string,
+// docs/builtins) ficam fora: a autoridade delas e scripts/doc_specs_*.py.
+import os
+import json
+
+RAIZ = os.cwd() + "/docs"
+SIGS = json.parse(os.readFile(os.getenv("SIGS", os.cwd() + "/.audita_sigs.json")))
+APLICA = os.getenv("APLICA", "") == "1"
+PULA = ["string", "builtins", "linguagem", "sockets", "assets"]
+
+EST = { "paginas": 0, "ok": 0, "reescritas": 0 }
+RELATO = []
+
+action render(params):
+    partes = []
+    for each p in params:
+        if p["kw"]:
+            partes.append(p["name"] + "=")
+        elif p["default"] == null:
+            partes.append(p["name"])
+        else:
+            partes.append(p["name"] + "=" + p["default"])
+    return ", ".join(partes)
+
+// nomes_de: "a, b=1, c=" -> ["a","b","c"]
+action nomes_de(args):
+    saida = []
+    if args.strip() == "":
+        return saida
+    for each peca in args.split(","):
+        p = peca.strip()
+        i = p.find("=")
+        if i >= 0:
+            p = p[0:i].strip()
+        saida.append(p)
+    return saida
+
+action acha_classe(alias, dono):
+    classes = SIGS["classes"]
+    if classes.has(dono):
+        return dono
+    mods = SIGS["modulos"]
+    // dono pode ser um VALOR/funcao do modulo (request, cors) -> a classe dele
+    if mods.has(alias) and mods[alias].has(dono) and mods[alias][dono].has("classe") and mods[alias][dono]["classe"] != null:
+        return mods[alias][dono]["classe"]
+    return null
+
+action acha_membro(alias, dono, nome):
+    mods = SIGS["modulos"]
+    classes = SIGS["classes"]
+    if not mods.has(alias):
+        return null
+    if dono == null:
+        if mods[alias].has(nome):
+            return mods[alias][nome]
+        // pagina de classe: docs/<lib>/<Classe>/<Classe>.md
+        if classes.has(nome) and SIGS["classes_do_modulo"][alias].contains(nome):
+            return { "kind": "class", "classe": nome }
+        // membro de instancia de uma classe do modulo (app.route no jinker)
+        for each c in SIGS["classes_do_modulo"][alias]:
+            if classes[c].has(nome):
+                return classes[c][nome]
+        return null
+    cls = acha_classe(alias, dono)
+    if cls == null:
+        return null
+    if classes[cls].has(nome):
+        return classes[cls][nome]
+    return null
+
+// parse_titulo: "# `X(args)`" -> [X, args, resto]. resto != "" => titulo composto
+action parse_titulo(linha):
+    if not linha.startswith("# `"):
+        return null
+    resto = linha[3:len(linha)]
+    fim = resto.find("`")
+    if fim < 0:
+        return null
+    dentro = resto[0:fim]
+    depois = resto[fim + 1:len(resto)].strip()
+    abre = dentro.find("(")
+    if abre < 0:
+        return [dentro, null, depois]
+    if not dentro.endswith(")"):
+        return null
+    return [dentro[0:abre], dentro[abre + 1:len(dentro) - 1], depois]
+
+action relata(tipo, pagina, velho, novo):
+    RELATO.append(tipo + "  " + pagina.replace(RAIZ + "/", "") + "  |  " + str(velho) + "  ->  " + str(novo))
+
+// renomeia parametro antigo -> novo no CORPO: celulas de tabela `velho`,
+// e a palavra inteira nas linhas de bloco de codigo que repetem a assinatura
+action renomeia_corpo(linhas, nome, velhos, novos):
+    em_codigo = false
+    for each i in range(len(linhas)):
+        ln = linhas[i]
+        if ln.startswith("```"):
+            em_codigo = not em_codigo
+            continue
+        for each k in range(len(velhos)):
+            v = velhos[k]
+            n = novos[k]
+            if v == n:
+                continue
+            if ln.startswith("| `"):
+                ln = ln.replace("`" + v + "`", "`" + n + "`")
+            elif em_codigo and ln.contains(nome + "(") and ln.contains(")"):
+                ln = ln.replace("(" + v + ",", "(" + n + ",").replace("(" + v + ")", "(" + n + ")").replace("(" + v + "=", "(" + n + "=").replace(" " + v + ",", " " + n + ",").replace(" " + v + ")", " " + n + ")").replace(" " + v + "=", " " + n + "=").replace("(" + v + ":", "(" + n + ":").replace(" " + v + ":", " " + n + ":")
+            elif ln.contains("`" + v + "`"):
+                ln = ln.replace("`" + v + "`", "`" + n + "`")
+        linhas[i] = ln
+
+action checa(pagina, alias, dono, nome):
+    EST["paginas"] = EST["paginas"] + 1
+    membro = acha_membro(alias, dono, nome)
+    txt = os.readFile(pagina)
+    linhas = txt.split("\n")
+    idx = -1
+    for each i in range(len(linhas)):
+        if linhas[i].startswith("# "):
+            idx = i
+            break
+    if idx < 0:
+        relata("SEM-TITULO", pagina, "", "")
+        return
+    if not linhas[idx].startswith("# `"):
+        relata("GUIA", pagina, linhas[idx], "")
+        return
+    tit = parse_titulo(linhas[idx])
+    if membro == null:
+        relata("NAO-ACHEI", pagina, linhas[idx], "")
+        return
+    if tit == null:
+        relata("TITULO-ESTRANHO", pagina, linhas[idx], "")
+        return
+    // "@app.route(...)" / "@dataentity": titulo em forma de USO do decorator
+    if tit[0].startswith("@"):
+        EST["ok"] = EST["ok"] + 1
+        return
+    // "app.channel — ..." sem parenteses: pagina-visao de um objeto (tem classe)
+    if tit[1] == null and membro.has("classe") and membro["classe"] != null:
+        EST["ok"] = EST["ok"] + 1
+        return
+    if membro["kind"] == "property" or membro["kind"] == "value":
+        if tit[1] != null:
+            relata("PROP-COM-PARENTESES", pagina, linhas[idx], "")
+        else:
+            EST["ok"] = EST["ok"] + 1
+        return
+    if membro["kind"] == "class" and tit[1] == null:
+        EST["ok"] = EST["ok"] + 1
+        return
+    if not membro.has("params") or membro["params"] == null:
+        relata("DINAMICO", pagina, linhas[idx], "")
+        return
+    if tit[1] == null:
+        relata("SEM-PARENTESES", pagina, linhas[idx], render(membro["params"]))
+        return
+    esperado = render(membro["params"])
+    if tit[1] == esperado:
+        EST["ok"] = EST["ok"] + 1
+        return
+    if tit[2] != "":
+        relata("COMPOSTO", pagina, linhas[idx], esperado)
+        return
+    velhos = nomes_de(tit[1])
+    novos = nomes_de(esperado)
+    tipo = "DEFAULT"
+    if velhos != novos:
+        tipo = "NOMES"
+        if len(velhos) != len(novos):
+            tipo = "NOMES-QTD"
+    relata(tipo, pagina, tit[1], esperado)
+    if APLICA:
+        linhas[idx] = "# `" + tit[0] + "(" + esperado + ")`"
+        if tipo == "NOMES":
+            renomeia_corpo(linhas, nome, velhos, novos)
+        os.writeFile(pagina, "\n".join(linhas))
+        EST["reescritas"] = EST["reescritas"] + 1
+
+for each lib in os.ls(RAIZ):
+    if lib["type"] != "dir" or PULA.contains(lib["name"]):
+        continue
+    alias = lib["name"]
+    for each m in os.ls(RAIZ + "/" + alias):
+        if m["type"] != "dir":
+            continue
+        nome = m["name"]
+        pasta = RAIZ + "/" + alias + "/" + nome
+        pagina = pasta + "/" + nome + ".md"
+        if os.isfile(pagina):
+            checa(pagina, alias, null, nome)
+        for each sub in os.ls(pasta):
+            if sub["type"] != "dir":
+                continue
+            sn = sub["name"]
+            p2 = pasta + "/" + sn + "/" + sn + ".md"
+            if os.isfile(p2):
+                checa(p2, alias, nome, sn)
+
+RELATO.sort()
+for each r in RELATO:
+    post(r)
+post("")
+post("paginas:", EST["paginas"], " ok:", EST["ok"], " relatadas:", len(RELATO), " reescritas:", EST["reescritas"])

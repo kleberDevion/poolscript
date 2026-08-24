@@ -35,9 +35,9 @@ Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
 
 | Método | Faz |
 |---|---|
-| `find(sub)` / `rfind(sub)` | índice da 1ª / última ocorrência, ou **-1** se não achar |
-| `index(sub)` / `rindex(sub)` | como find/rfind, mas **erro** se não achar |
-| `count(sub)` | quantas vezes `sub` aparece |
+| `find(sub, inicio=0, fim=null)` / `rfind(...)` | índice da 1ª / última ocorrência, ou **-1** se não achar; `inicio`/`fim` limitam a faixa de busca (em caracteres, negativo conta do fim) |
+| `index(sub, inicio=0, fim=null)` / `rindex(...)` | como find/rfind, mas **erro** se não achar |
+| `count(sub, inicio=0, fim=null)` | quantas vezes `sub` aparece (na faixa) |
 | `contains(sub)` / `has(sub)` | `sub` está na string? (`bool`) |
 | `startswith(pre)` / `endswith(suf)` | começa / termina com? (`bool`) |
 

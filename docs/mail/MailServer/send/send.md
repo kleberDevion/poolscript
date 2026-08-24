@@ -1,11 +1,12 @@
-# `MailServer.send(msg)` / `.send(to, subject, body, html)`
+# `MailServer.send(to_or_msg, subject=None, body=None, html=false)`
 
-Envia um e-mail. Duas formas: passar um [`MailMessage`](../../MailMessage/MailMessage.md)
-pronto, ou os campos direto.
+Envia um e-mail. O primeiro parâmetro (`to_or_msg`) aceita duas coisas: um
+[`MailMessage`](../../MailMessage/MailMessage.md) pronto, ou o e-mail de
+destino (aí os demais campos vêm direto).
 
 ```
-s.send(msg)                                   // objeto MailMessage
-s.send(to, subject=None, body=None, html=false)   // direto
+s.send(msg)                                            // to_or_msg = MailMessage
+s.send(to, subject=None, body=None, html=false)        // to_or_msg = destinatário
 ```
 
 ---

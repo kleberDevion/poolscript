@@ -1,10 +1,10 @@
-# `manpu.read(arquivo)`
+# `manpu.read(filepath)`
 
 Lê um arquivo e devolve o conteúdo já no formato certo, **detectado pela
 extensão**.
 
 ```
-manpu.read(arquivo: str) -> list | dict | str
+manpu.read(filepath: str) -> list | dict | str
 ```
 
 ---

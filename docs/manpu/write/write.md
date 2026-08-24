@@ -1,4 +1,4 @@
-# `manpu.write(content, column=0, celula=None, target)`
+# `manpu.write(content="", column=0, celula=0, target="")`
 
 Escreve um valor numa posição (coluna/célula) de um arquivo CSV/XLSX/texto, em
 **uma operação única** (abre, escreve, salva).

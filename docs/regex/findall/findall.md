@@ -1,10 +1,10 @@
-# `regex.findall(padrão, texto, flags=0)`
+# `regex.findall(pattern, string, flags=0)`
 
 Acha **todas** as ocorrências do padrão e devolve uma **lista** com elas
 (lista vazia se não achar nada).
 
 ```
-regex.findall(padrão: str, texto: str, flags=0) -> list
+regex.findall(pattern: str, string: str, flags=0) -> list
 ```
 
 ---
@@ -23,7 +23,7 @@ palavras = regex.findall(r"\w+", "olá, mundo!")
 post(palavras)      // ["olá", "mundo"]
 
 // todos os e-mails de um texto
-emails = regex.findall(r"[^@\s]+@[^@\s]+\.[^@\s]+", texto)
+emails = regex.findall(r"[^@\s]+@[^@\s]+\.[^@\s]+", string)
 ```
 
 ---

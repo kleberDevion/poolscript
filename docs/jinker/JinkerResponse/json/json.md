@@ -1,22 +1,22 @@
-# `JinkerResponse.json(dados, status=200)`
+# `JinkerResponse.json(data, status=200)`
 
 Define o corpo da resposta como **JSON** e o `Content-Type` como
 `application/json`. Devolve o próprio `JinkerResponse` (encadeável).
 
 ```
-json(dados: any, status: int = 200) -> JinkerResponse
+json(data: any, status: int = 200) -> JinkerResponse
 ```
 
 | Parâmetro | Tipo | Padrão | O que é |
 |---|---|---|---|
-| `dados` | dict / lista / valor | — | o que vira JSON no corpo |
+| `data` | dict / lista / valor | — | o que vira JSON no corpo |
 | `status` | `int` | `200` | código HTTP da resposta |
 
 ---
 
 ## É o que o `jsonify` faz por baixo
 
-`jsonify(dados)` é literalmente `JinkerResponse().json(dados)`. Então estas
+`jsonify(data)` é literalmente `JinkerResponse().json(data)`. Então estas
 duas linhas são idênticas:
 
 ```
@@ -41,7 +41,7 @@ Equivale a `jsonify({"erro": "não encontrado"}), 404`.
 
 ---
 
-## O que pode ir em `dados`
+## O que pode ir em `data`
 
 Qualquer coisa serializável em JSON: dict, lista, string, número, bool, `Null`
 (vira `null`), e combinações aninhadas.

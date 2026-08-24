@@ -1,4 +1,4 @@
-# `jsonify(dados)`
+# `jsonify(data)`
 
 Atalho para criar uma resposta JSON. Devolve um
 [`JinkerResponse`](../JinkerResponse/JinkerResponse.md) com o corpo já
@@ -7,18 +7,18 @@ serializado e o `Content-Type` marcado como `application/json`.
 ```
 from jinker import jsonify
 
-jsonify(dados: any) -> JinkerResponse
+jsonify(data: any) -> JinkerResponse
 ```
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `dados` | dict / lista / valor | o que vira JSON no corpo da resposta |
+| `data` | dict / lista / valor | o que vira JSON no corpo da resposta |
 
 ---
 
 ## É literalmente um atalho
 
-`jsonify(dados)` é `JinkerResponse().json(dados)` — nada mais. As duas linhas
+`jsonify(data)` é `JinkerResponse().json(data)` — nada mais. As duas linhas
 abaixo produzem exatamente a mesma resposta:
 
 ```

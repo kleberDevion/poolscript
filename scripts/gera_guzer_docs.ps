@@ -1,0 +1,209 @@
+// Gerador das paginas dos ELEMENTOS da guzer (docs/guzer/<tag>/<tag>.md) e da
+// tabela "Todos os elementos" do indice — escrito em PoolScript (dogfood).
+// Rodar da RAIZ do repositorio:   ./pool scripts/gera_guzer_docs.ps
+//
+// Gera as paginas docs/guzer/<tag>/<tag>.md dos elementos HTML com conteudo
+// ESPECIFICO por tag (o que a tag significa, quais atributos sao dela, o que o
+// guzer faz com ela HOJE), em vez do texto-modelo "caixa empilhada".
+// Paginas com comportamento proprio ja escritas a mao (entry, textarea, video,
+// audio, img, picture, dialog) NAO sao tocadas.
+import os
+
+RAIZ = os.cwd() + "/docs/guzer"
+ASSIN = "typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick="
+PULA = ["entry", "textarea", "video", "audio", "img", "picture", "dialog"]
+
+// tag -> [descricao, atributos proprios no HTML, exemplo (linhas), eh_container, eh_inline]
+T = {
+    "div": ["Contêiner genérico — a caixa que agrupa outros elementos sem significado próprio. É o bloco de construção do layout: você cria filhos **dentro** dela (`d.p()`, `d.entry()`, `d.button()`) e, sem `height`, ela cresce pra caber todos.", [], ["d = app.div().stylesheet({ \"width\": \"320\", \"background\": \"#e8eef5\" })", "d.h2().text(\"Bloco\")", "d.p().text(\"dentro da div\")", "d.button(onclick=scripts.Ok).text(\"OK\")"], true, false],
+    "section": ["Seção temática — um agrupamento com título próprio (normalmente começa com um `h1`–`h6`). Use pra dividir a tela em partes nomeadas.", [], ["s = app.section()", "s.h2().text(\"Contato\")", "s.p().text(\"fale com a gente\")"], true, false],
+    "article": ["Conteúdo autônomo, que faz sentido sozinho — um post, um card, um comentário, uma notícia.", [], ["card = app.article().stylesheet({ \"width\": \"300\" })", "card.h3().text(\"Título do card\")", "card.p().text(\"resumo...\")"], true, false],
+    "aside": ["Conteúdo lateral/relacionado — barra lateral, nota à margem, links relacionados.", [], ["lado = app.aside()", "lado.h4().text(\"Veja também\")", "lado.a(href=\"/docs\").text(\"Documentação\")"], true, false],
+    "header": ["Cabeçalho de página ou de seção — título, logo, navegação inicial. Vai no topo da pilha.", [], ["topo = app.header()", "topo.img(src=\"logo.png\")", "topo.h1().text(\"Meu app\")"], true, false],
+    "footer": ["Rodapé — créditos, links finais, copyright. Vai no fim da pilha.", [], ["app.footer().text(\"© 2026 — feito em PoolScript\")"], true, false],
+    "nav": ["Bloco de navegação — agrupa os links (`a`) principais do app.", [], ["menu = app.nav()", "menu.a(href=\"/\").text(\"Início\")", "menu.a(href=\"/sobre\").text(\"Sobre\")"], true, false],
+    "main": ["O conteúdo principal da janela — um por app; o que não é cabeçalho, rodapé nem lateral.", [], ["corpo = app.main()", "corpo.h1().text(\"Painel\")", "corpo.p().text(\"conteúdo principal\")"], true, false],
+    "figure": ["Conteúdo ilustrativo autocontido (imagem, gráfico, trecho de código) — combina com `img` e `figcaption` como filhos.", [], ["f = app.figure()", "f.img(src=\"grafico.png\")", "f.figcaption().text(\"Vendas de 2026\")"], true, false],
+    "figcaption": ["Legenda de um `figure` — o texto que explica a ilustração.", [], ["f = app.figure()", "f.img(src=\"foto.png\")", "f.figcaption().text(\"Foto: equipe em 2026\")"], false, false],
+    "address": ["Informação de contato (e-mail, telefone, endereço) do autor ou da organização.", [], ["app.address().text(\"contato@empresa.com — (11) 99999-0000\")"], false, false],
+    "span": ["Trecho inline genérico — marca um pedaço de texto sem significado próprio (o equivalente inline da `div`).", [], ["app.span().stylesheet({ \"color\": \"#c0392b\" }).text(\"destaque\")"], false, true],
+    "p": ["Parágrafo de texto — o elemento de texto corrido mais comum.", [], ["app.p().stylesheet({ \"width\": \"400\", \"height\": \"60\" }).text(\"Um parágrafo inteiro de texto na janela.\")"], false, false],
+    "a": ["Link. `href=` é o destino e `target=` a janela-alvo. **Hoje o guzer não abre o navegador ao clicar**: o `href=` fica guardado no elemento (você pode lê-lo no handler) e o clique dispara o `onclick=`, se você passar um.", ["href=", "target="], ["app.a(href=\"https://poolscript.dev\", onclick=scripts.AbrirSite).text(\"site oficial\")"], false, true],
+    "strong": ["Importância forte — em HTML vira negrito. No guzer a fonte é a do sistema (sem negrito hoje); o que a tag carrega é a **semântica**.", [], ["app.strong().text(\"Atenção: salve antes de sair\")"], false, true],
+    "em": ["Ênfase — em HTML vira itálico. Aqui a fonte é a do sistema; a tag marca a intenção.", [], ["app.em().text(\"muito\")"], false, true],
+    "b": ["Negrito de estilo, **sem** importância semântica (nomes de produto, palavras-chave). Prefira `strong` quando o texto for importante de verdade.", [], ["app.b().text(\"PoolScript\")"], false, true],
+    "i": ["Itálico de estilo — termo técnico, pensamento, nome de navio, palavra em outra língua. Prefira `em` pra ênfase.", [], ["app.i().text(\"et cetera\")"], false, true],
+    "u": ["Sublinhado — anotação não-textual (ex.: marcar um erro ortográfico). Não use pra links.", [], ["app.u().text(\"palavra sublinhada\")"], false, true],
+    "s": ["Texto riscado — conteúdo que não vale mais (preço antigo, item cancelado).", [], ["app.s().text(\"R$ 99,90\")", "app.strong().text(\"R$ 79,90\")"], false, true],
+    "small": ["Texto secundário/miúdo — letras miúdas, avisos legais, notas de rodapé.", [], ["app.small().text(\"* sujeito a alteração sem aviso\")"], false, true],
+    "mark": ["Texto destacado (como marca-texto) — o termo encontrado numa busca, por exemplo.", [], ["app.mark().stylesheet({ \"background\": \"#fff176\" }).text(\"resultado\")"], false, true],
+    "sub": ["Subscrito — o `2` de H₂O, índices.", [], ["app.p().text(\"H\")", "app.sub().text(\"2\")", "app.p().text(\"O\")"], false, true],
+    "sup": ["Sobrescrito — expoentes (x²), notas de rodapé, ordinais.", [], ["app.p().text(\"x\")", "app.sup().text(\"2\")"], false, true],
+    "code": ["Trecho de código — em HTML, fonte monoespaçada. Aqui a caixa mostra o texto tal como veio.", [], ["app.code().text(\"post(\\\"olá\\\")\")"], false, true],
+    "pre": ["Texto pré-formatado — em HTML, espaços e quebras de linha são preservados. A caixa do guzer mostra o texto como veio (uma linha por caixa; use `height` maior pra várias linhas no interpretador).", [], ["app.pre().stylesheet({ \"height\": \"80\" }).text(\"linha 1\\nlinha 2\")"], false, false],
+    "blockquote": ["Citação em bloco — trecho vindo de outra fonte. Ponha a origem num `cite` filho.", [], ["bq = app.blockquote()", "bq.p().text(\"Simplicidade é o último grau de sofisticação.\")", "bq.cite().text(\"Leonardo da Vinci\")"], true, false],
+    "cite": ["Título de uma obra citada — livro, filme, artigo, autor da citação.", [], ["app.cite().text(\"Dom Casmurro\")"], false, true],
+    "q": ["Citação curta, inline — em HTML ganha aspas automáticas; aqui escreva-as no texto se quiser.", [], ["app.q().text(\"\\\"ser ou não ser\\\"\")"], false, true],
+    "abbr": ["Abreviação ou sigla (`PS`, `HTML`). Em HTML a expansão vai no `title`; aqui guarde-a em `value=` pra ler depois.", ["value="], ["app.abbr(value=\"PoolScript\").text(\"PS\")"], false, true],
+    "time": ["Data/hora — `value=` guarda o formato de máquina (ISO) e `.text()` mostra o texto humano; `.value` devolve o ISO.", ["value="], ["app.time(value=\"2026-08-24\", name=\"quando\").text(\"24 de agosto de 2026\")", "// depois: app.POOLHTMLElements.getitemByIdentify(\"quando\").value -> \"2026-08-24\""], false, true],
+    "kbd": ["Entrada de teclado — uma tecla ou atalho (`Ctrl+S`).", [], ["app.kbd().text(\"Ctrl+S\")"], false, true],
+    "samp": ["Saída de exemplo de um programa — o que apareceu no terminal.", [], ["app.samp().text(\"Erro 404: não encontrado\")"], false, true],
+    "var": ["Variável — de matemática ou de programa (`x`, `total`).", [], ["app.var().text(\"total\")"], false, true],
+    "del": ["Texto removido numa revisão (em HTML, riscado). Combina com `ins` pra mostrar o antes/depois.", [], ["app.del().text(\"prazo: 10 dias\")", "app.ins().text(\"prazo: 5 dias\")"], false, true],
+    "ins": ["Texto inserido numa revisão (em HTML, sublinhado). Par do `del`.", [], ["app.ins().text(\"novo item\")"], false, true],
+    "hr": ["Quebra temática — a linha horizontal que separa blocos. Sem `.text()` é uma caixa vazia; dê `height` pequena e uma cor pra virar uma linha de verdade.", [], ["app.hr().stylesheet({ \"height\": \"2\", \"width\": \"400\", \"background\": \"#cccccc\" })"], false, false],
+    "br": ["Quebra de linha. No guzer cada elemento já ocupa uma linha da pilha — o `br` serve de **espaçador** vazio (controle o espaço com `height`).", [], ["app.p().text(\"acima\")", "app.br().stylesheet({ \"height\": \"20\", \"background\": \"#ffffff\" })", "app.p().text(\"abaixo\")"], false, false],
+    "h1": ["Título de nível 1 — o maior e mais importante (um por tela). A fonte é a do sistema: diferencie com `font-size` (só no interpretador) e `height`.", [], ["app.h1().stylesheet({ \"font-size\": \"24\", \"height\": \"40\" }).text(\"Título principal\")"], false, false],
+    "h2": ["Título de nível 2 — seção principal abaixo do `h1`.", [], ["app.h2().stylesheet({ \"font-size\": \"20\", \"height\": \"34\" }).text(\"Seção\")"], false, false],
+    "h3": ["Título de nível 3 — subseção.", [], ["app.h3().stylesheet({ \"font-size\": \"17\" }).text(\"Subseção\")"], false, false],
+    "h4": ["Título de nível 4.", [], ["app.h4().text(\"Tópico\")"], false, false],
+    "h5": ["Título de nível 5.", [], ["app.h5().text(\"Subtópico\")"], false, false],
+    "h6": ["Título de nível 6 — o menor da hierarquia.", [], ["app.h6().text(\"Detalhe\")"], false, false],
+    "ul": ["Lista **não ordenada** — contêiner de `li`. Os itens empilham dentro dela; não há marcador (•) automático, escreva-o no `.text()` se quiser.", [], ["u = app.ul()", "u.li().text(\"• leite\")", "u.li().text(\"• pão\")"], true, false],
+    "ol": ["Lista **ordenada** — contêiner de `li`. A numeração não é automática aqui: escreva-a no `.text()`.", [], ["o = app.ol()", "o.li().text(\"1. misture\")", "o.li().text(\"2. asse\")"], true, false],
+    "li": ["Item de lista — filho de `ul`, `ol` ou `menu`.", [], ["u = app.ul()", "u.li().text(\"item\")"], false, false],
+    "dl": ["Lista de definições — pares `dt` (termo) / `dd` (descrição), como um glossário.", [], ["g = app.dl()", "g.dt().text(\"action\")", "g.dd().text(\"declara uma função\")"], true, false],
+    "dt": ["Termo de uma lista de definições (`dl`).", [], ["g = app.dl()", "g.dt().text(\"reaction\")", "g.dd().text(\"sinônimo de action\")"], false, false],
+    "dd": ["Descrição/definição do `dt` anterior.", [], ["g = app.dl()", "g.dt().text(\"entity\")", "g.dd().text(\"declara uma classe\")"], false, false],
+    "table": ["Tabela — contêiner de `caption`, `thead`/`tbody`/`tfoot` e `tr`. **Hoje o guzer empilha**: cada `tr` é uma caixa e as células ficam dentro dela, uma abaixo da outra — não há grade com colunas alinhadas.", [], ["t = app.table()", "t.caption().text(\"Estoque\")", "linha = t.tr()", "linha.th().text(\"produto\")", "linha.th().text(\"qtd\")", "linha2 = t.tr()", "linha2.td().text(\"café\")", "linha2.td().text(\"12\")"], true, false],
+    "thead": ["Grupo das linhas de **cabeçalho** da tabela (as `tr` com `th`).", [], ["t = app.table()", "cab = t.thead()", "cab.tr().th().text(\"nome\")"], true, false],
+    "tbody": ["Grupo das linhas do **corpo** da tabela.", [], ["t = app.table()", "corpo = t.tbody()", "corpo.tr().td().text(\"ana\")"], true, false],
+    "tfoot": ["Grupo das linhas de **rodapé** da tabela (totais).", [], ["t = app.table()", "pe = t.tfoot()", "pe.tr().td().text(\"total: 12\")"], true, false],
+    "tr": ["Linha da tabela — contêiner de `td`/`th`.", [], ["t = app.table()", "l = t.tr()", "l.td().text(\"a\")", "l.td().text(\"b\")"], true, false],
+    "td": ["Célula de dados de uma linha (`tr`).", [], ["l = app.table().tr()", "l.td().text(\"valor\")"], false, false],
+    "th": ["Célula de **cabeçalho** de uma linha (`tr`).", [], ["l = app.table().tr()", "l.th().text(\"coluna\")"], false, false],
+    "caption": ["Título/legenda da tabela — o primeiro filho do `table`.", [], ["t = app.table()", "t.caption().text(\"Vendas por mês\")"], false, false],
+    "form": ["Formulário — agrupa os campos (`entry`, `textarea`, `select`) e o `button` de envio. **Não há envio HTTP automático**: `action=`/`methd=` ficam guardados; o \"envio\" é o `onclick=` do botão lendo os campos pelo registro (`name=`).", ["action=", "methd="], ["form = app.form(action=\"/salvar\", methd=\"post\")", "form.label(forid=\"nome\").text(\"Nome\")", "form.entry(name=\"nome\", placeholder=\"seu nome\")", "form.button(onclick=scripts.Enviar).text(\"Enviar\")", "// em scripts.Enviar: app.POOLHTMLElements.getitemByIdentify(\"nome\").value"], true, false],
+    "select": ["Lista de opções (combo) — em HTML contém `option`s. **Hoje** o guzer mostra uma caixa com o `placeholder=`/`.text()`; não há menu suspenso nem escolha por clique — `.value` é o `value=`/`.text()` que o seu código pôs. `option`s criados como filhos ficam empilhados dentro dele.", ["name=", "value="], ["sel = app.select(name=\"uf\", value=\"SP\")", "sel.option(value=\"SP\").text(\"São Paulo\")", "sel.option(value=\"RJ\").text(\"Rio de Janeiro\")"], true, false],
+    "option": ["Uma opção de `select` ou `datalist` — `value=` é o valor, `.text()` o rótulo mostrado.", ["value="], ["sel = app.select(name=\"cor\")", "sel.option(value=\"#ff0000\").text(\"vermelho\")"], false, false],
+    "optgroup": ["Grupo de `option`s com um rótulo (`.text()`), dentro de um `select`.", [], ["sel = app.select()", "g = sel.optgroup().text(\"Sul\")", "g.option(value=\"PR\").text(\"Paraná\")"], true, false],
+    "label": ["Rótulo de um campo — `forid=` guarda o `name=` do campo associado (é o `for` do HTML, renomeado porque `for` é palavra da linguagem). Clicar no rótulo **não** foca o campo hoje.", ["forid="], ["app.label(forid=\"email\").text(\"E-mail\")", "app.entry(name=\"email\", placeholder=\"voce@exemplo.com\")"], false, false],
+    "fieldset": ["Grupo de campos de um formulário, com um `legend` como título.", [], ["fs = app.fieldset()", "fs.legend().text(\"Endereço\")", "fs.entry(name=\"rua\", placeholder=\"rua\")", "fs.entry(name=\"cep\", placeholder=\"CEP\")"], true, false],
+    "legend": ["Título de um `fieldset`.", [], ["fs = app.fieldset()", "fs.legend().text(\"Dados pessoais\")"], false, false],
+    "datalist": ["Lista de sugestões pra um campo (`option`s filhos). **Hoje é só o modelo**: o `entry` não puxa as sugestões dela.", [], ["dl = app.datalist(name=\"cidades\")", "dl.option(value=\"Recife\")", "dl.option(value=\"Natal\")"], true, false],
+    "output": ["Resultado de um cálculo ou ação — escreva-o com `.text(...)`/`value=` antes de abrir a janela e leia em `.value`.", ["value="], ["app.output(name=\"total\", value=\"42\").text(\"Total: 42\")"], false, false],
+    "progress": ["Barra de progresso — em HTML, `value`/`max`. **Hoje não há barra desenhada**: a caixa mostra o texto; represente o andamento no `.text()` (`\"40%\"`) e guarde o número em `value=`.", ["value="], ["app.progress(name=\"envio\", value=\"40\").text(\"40%\")"], false, false],
+    "meter": ["Medidor escalar — nível de bateria, nota, uso de disco. `value=` guarda o valor; **sem desenho** hoje (a caixa mostra o `.text()`).", ["value="], ["app.meter(value=\"0.7\").text(\"bateria: 70%\")"], false, false],
+    "canvas": ["Área de desenho por script (em HTML, via JavaScript). **No guzer não há API de desenho**: é uma caixa — dê `width`/`height`/`background` pra reservar a área.", [], ["app.canvas().stylesheet({ \"width\": \"300\", \"height\": \"200\", \"background\": \"#000000\" })"], false, false],
+    "iframe": ["Documento embutido (outra página). **O guzer não carrega conteúdo externo**: é uma caixa; `src=` fica guardado.", ["src="], ["app.iframe(src=\"https://exemplo.com\").text(\"(conteúdo externo não é carregado)\")"], false, false],
+    "details": ["Bloco expansível (abre/fecha) com `summary` como título. **Hoje fica sempre aberto**: o `summary` e o conteúdo aparecem empilhados.", [], ["d = app.details()", "d.summary().text(\"Mais detalhes\")", "d.p().text(\"conteúdo que no HTML ficaria escondido\")"], true, false],
+    "summary": ["Título de um `details` — a linha que, no HTML, abre e fecha o bloco.", [], ["d = app.details()", "d.summary().text(\"Avançado\")"], false, false],
+    "menu": ["Lista de comandos/ações — contêiner de `li` ou `button`s.", [], ["m = app.menu()", "m.button(onclick=scripts.Novo).text(\"Novo\")", "m.button(onclick=scripts.Abrir).text(\"Abrir\")"], true, false],
+}
+
+action pagina(tag):
+    d = T[tag]
+    desc = d[0]
+    proprios = d[1]
+    exemplo = d[2]
+    container = d[3]
+    inline = d[4]
+    L = []
+    L.append("# `" + tag + "(" + ASSIN + ")`")
+    L.append("")
+    L.append("Elemento `" + tag + "` — " + desc)
+    L.append("")
+    if inline:
+        L.append("> No HTML `" + tag + "` é **inline** (fica na mesma linha do texto ao redor). No guzer")
+        L.append("> cada elemento é uma caixa própria na pilha — pra compor uma frase com um trecho")
+        L.append("> marcado, hoje o jeito é um `p` com o texto inteiro.")
+        L.append("")
+    if container:
+        L.append("É **contêiner**: `x = app." + tag + "()` e depois `x.p()`, `x.entry()`, `x.button()`...")
+        L.append("criam filhos **dentro** dele (borda de 8px, empilhados). Sem `height` explícito, a")
+        L.append("caixa cresce pra caber os filhos.")
+        L.append("")
+    L.append("## O que o guzer faz com ele hoje")
+    L.append("")
+    L.append("- Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada")
+    L.append("  na janela — ou dentro do pai, se foi criado por um contêiner.")
+    L.append("- O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.")
+    L.append("- `type()` devolve `\"" + tag + "\"` nos dois motores (tkinter no interpretador, X11 no `pool`).")
+    L.append("- `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).")
+    L.append("")
+    L.append("## Atributos")
+    L.append("")
+    if len(proprios) > 0:
+        marcados = []
+        for each a in proprios:
+            marcados.append("`" + a + "`")
+        L.append("No HTML, os atributos próprios de `" + tag + "` são " + ", ".join(marcados) + ".")
+        L.append("")
+    L.append("| argumento | efeito hoje |")
+    L.append("|---|---|")
+    L.append("| `placeholder=` | texto mostrado quando não há `.text(...)` |")
+    L.append("| `value=` | o que `.value` devolve (sem ele: o `.text()`; sem os dois: o `placeholder=`) |")
+    L.append("| `name=` | identifica no registro: `app.POOLHTMLElements.getitemByIdentify(\"nome\").value` |")
+    L.append("| `onclick=` | reaction (por referência) que roda no clique |")
+    L.append("| `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `" + tag + "` |")
+    L.append("")
+    L.append("Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`")
+    L.append("(esta só no interpretador; o backend X11 usa a fonte do sistema).")
+    L.append("")
+    L.append("## Exemplo")
+    L.append("")
+    L.append("```")
+    L.append("import guzer")
+    L.append("import scripts")
+    L.append("")
+    L.append("app = guzer.UI(\"Demo\")")
+    for each ln in exemplo:
+        L.append(ln)
+    L.append("```")
+    L.append("")
+    L.append("[← índice](../guzer.md)")
+    L.append("")
+    return "\n".join(L)
+
+gerados = 0
+for each tag in T.keys():
+    if PULA.contains(tag):
+        continue
+    os.writeFile(RAIZ + "/" + tag + "/" + tag + ".md", pagina(tag))
+    gerados = gerados + 1
+post("paginas geradas:", gerados, " tags na tabela:", len(T.keys()))
+
+// ── indice: tabela "Todos os elementos" com UMA linha de descricao por tag ──
+// (as 7 paginas escritas a mao entram com a descricao daqui)
+MAO = {
+    "entry": "campo de UMA linha — editável no interpretador (tkinter); `.value` lê o digitado",
+    "textarea": "campo de VÁRIAS linhas — editável no interpretador; `.value` lê o digitado",
+    "img": "desenha o `.png` do `src=` (tamanho natural sem width/height)",
+    "picture": "como `img` — desenha o `.png` do `src=`",
+    "video": "REPRODUZ o vídeo do `src=` na janela (ffmpeg do sistema)",
+    "audio": "TOCA o áudio do `src=` ao abrir a janela (ffplay do sistema)",
+    "dialog": "modal centralizado na janela (260×150, fundo branco)",
+}
+
+// resumo: primeira frase da descricao, sem markdown de negrito
+action resumo(tag):
+    if MAO.has(tag):
+        return MAO[tag]
+    d = T[tag][0].replace("**", "")
+    corte = d.find(". ")
+    if corte < 0:
+        corte = d.find(" — ")
+    if corte >= 0:
+        d = d[0:corte]
+    if d.endswith("."):
+        d = d[0:len(d) - 1]
+    return d
+
+todas = T.keys()
+for each t in MAO.keys():
+    todas.append(t)
+todas.sort()
+linhas = ["| elemento | o que é |", "|---|---|"]
+for each tag in todas:
+    linhas.append("| [`" + tag + "`](" + tag + "/" + tag + ".md) | " + resumo(tag) + " |")
+
+indice = RAIZ + "/guzer.md"
+txt = os.readFile(indice)
+ini = txt.find("## Todos os elementos")
+fim = txt.find("## Exemplo completo")
+if ini < 0 or fim < 0:
+    post("marcadores do indice nao achados — indice NAO alterado")
+else:
+    novo = txt[0:ini] + "## Todos os elementos (" + str(len(todas)) + ")\n\n" + "\n".join(linhas) + "\n\n" + txt[fim:len(txt)]
+    os.writeFile(indice, novo)
+    post("indice: tabela com", len(todas), "elementos")

@@ -1,16 +1,16 @@
-# `os.move(orig, dest)`
+# `os.move(src, dst)`
 
 Move um arquivo ou pasta pra outro lugar. Diferente de `copy`, o original
 **deixa de existir** no lugar antigo.
 
 ```
-os.move(orig: str, dest: str) -> None
+os.move(src: str, dst: str) -> None
 ```
 
 | Parâmetro | O que é |
 |---|---|
-| `orig` | caminho de origem (arquivo ou pasta) |
-| `dest` | caminho de destino |
+| `src` | caminho de origem (arquivo ou pasta) |
+| `dst` | caminho de destino |
 
 ---
 

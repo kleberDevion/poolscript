@@ -1,14 +1,14 @@
-# `os.rmdir(caminho, force=false)`
+# `os.rmdir(path, force=false)`
 
 Remove uma pasta.
 
 ```
-os.rmdir(caminho: str, force: bool = false) -> None
+os.rmdir(path: str, force: bool = false) -> None
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `caminho` | — | pasta a remover |
+| `path` | — | pasta a remover |
 | `force` | `false` | `true` = remove **mesmo com conteúdo** dentro |
 
 ---

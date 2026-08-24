@@ -1,10 +1,13 @@
-# `Parsing.Tuplasformatt(valor)`
+# `Parsing.Tuplasformatt(value, to_type="tup")`
 
 Converte um valor pra **tupla** (lista imutável).
 
 ```
-Parsing.Tuplasformatt(valor) -> tup
+Parsing.Tuplasformatt(value, to_type="tup") -> tup
 ```
+
+`to_type` existe por uniformidade com as outras funções do `Parsing` — aqui
+**não muda nada**: o resultado é sempre `tup`.
 
 ---
 

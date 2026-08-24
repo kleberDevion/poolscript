@@ -1,11 +1,14 @@
-# `Parsing.integer(valor)`
+# `Parsing.integer(value, to_type="int")`
 
 Converte um valor pra **inteiro**, de forma tolerante — extrai os dígitos e
 trunca decimais (não arredonda).
 
 ```
-Parsing.integer(valor) -> int
+Parsing.integer(value, to_type="int") -> int
 ```
+
+`to_type` existe por uniformidade com as outras funções do `Parsing` — aqui
+**não muda nada**: o resultado é sempre `int`.
 
 ---
 

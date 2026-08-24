@@ -1,10 +1,10 @@
-# `regex.match(padrão, texto, flags=0)`
+# `regex.match(pattern, string, flags=0)`
 
 Testa se o texto **começa** com o padrão. Devolve um objeto de correspondência
 (truthy) se casar no início, ou `Null` se não.
 
 ```
-regex.match(padrão: str, texto: str, flags=0)
+regex.match(pattern: str, string: str, flags=0)
 ```
 
 ---

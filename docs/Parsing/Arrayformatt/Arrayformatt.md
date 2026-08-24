@@ -1,10 +1,13 @@
-# `Parsing.Arrayformatt(valor)`
+# `Parsing.Arrayformatt(value, to_type="list")`
 
 Converte um valor pra **lista**.
 
 ```
-Parsing.Arrayformatt(valor) -> list
+Parsing.Arrayformatt(value, to_type="list") -> list
 ```
+
+`to_type` existe por uniformidade com as outras funções do `Parsing` — aqui
+**não muda nada**: o resultado é sempre `list`.
 
 ---
 

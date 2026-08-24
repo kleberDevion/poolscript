@@ -1,11 +1,14 @@
-# `Parsing.floating(valor)`
+# `Parsing.floating(value, to_type="flo")`
 
 Converte um valor pra **número decimal** (float), entendendo o separador
 brasileiro (vírgula).
 
 ```
-Parsing.floating(valor) -> flo
+Parsing.floating(value, to_type="flo") -> flo
 ```
+
+`to_type` existe por uniformidade com as outras funções do `Parsing` — aqui
+**não muda nada**: o resultado é sempre `flo`.
 
 ---
 

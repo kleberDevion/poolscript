@@ -1,4 +1,4 @@
-# `bytes.new(x)`
+# `bytes.new(x=0)`
 
 Cria uma sequência de bytes a partir de uma **lista de inteiros** (0-255), de um
 **texto** (codificado em utf-8), de um **tamanho** (N bytes zerados) ou de uma

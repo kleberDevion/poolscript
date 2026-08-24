@@ -1,19 +1,21 @@
-# `ManpuFile.write(content, column=0, cell=None, init=0)`
+# `ManpuFile.write(content="", column=0, cell=None, celula=None, init=0, sep="\n", size=0)`
 
 Escreve num arquivo aberto (dentro do `using`). Mesma ideia da
 [`manpu.write()`](../../write/write.md) solta, mas sem reabrir o arquivo a cada
 chamada — você pode chamar várias vezes no mesmo bloco.
 
 ```
-arq.write(content=..., column=0, cell=..., init=0) -> ManpuResult
+arq.write(content="", column=0, cell=None, celula=None, init=0, sep="\n", size=0) -> ManpuResult
 ```
 
-| Parâmetro | O que é |
-|---|---|
-| `content` | o valor a escrever |
-| `column` | coluna alvo (número, ou `full` pra todas) |
-| `cell` (ou `celula`) | índice da célula, ou `full` pra descer linha a linha |
-| `init` | de onde começar no conteúdo (índice; padrão `0`) |
+| Parâmetro | Padrão | O que é |
+|---|---|---|
+| `content` | `""` | o valor a escrever (str ou bytes) |
+| `column` | `0` | coluna alvo (número, ou `full` pra todas) |
+| `cell` (ou `celula`) | `None` | índice da célula, ou `full` pra descer linha a linha (`cell` tem prioridade se os dois vierem) |
+| `init` | `0` | de onde começar no conteúdo (índice da 1ª parte usada) |
+| `sep` | `"\n"` | separador que divide o `content` em partes (uma por célula) |
+| `size` | `0` | tamanho **fixo** por parte — se `> 0`, corta o `content` de `size` em `size` caracteres em vez de usar `sep` |
 
 ---
 

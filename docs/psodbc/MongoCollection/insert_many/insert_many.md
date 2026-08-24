@@ -1,9 +1,9 @@
-# `MongoCollection.insert_many(documentos)`
+# `MongoCollection.insert_many(documents)`
 
 Insere **vários** documentos de uma vez, a partir de uma lista.
 
 ```
-col.insert_many(documentos: list) -> None
+col.insert_many(documents: list) -> None
 ```
 
 ---

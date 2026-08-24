@@ -1,9 +1,9 @@
-# `manpu.src(arquivo)`
+# `manpu.src(filepath)`
 
 Resolve e devolve o **caminho absoluto** de um arquivo.
 
 ```
-manpu.src(arquivo: str) -> str
+manpu.src(filepath: str) -> str
 ```
 
 ---

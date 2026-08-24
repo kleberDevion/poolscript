@@ -1,11 +1,11 @@
-# `@app.socket(caminho, channel=true)`
+# `@app.socket(path=None, channel=false)`
 
 Registra um handler de **WebSocket** — conexão persistente de mão-dupla, boa
 pra chat, notificações, dados ao vivo. A `reaction`/`action` logo abaixo roda
 **a cada mensagem recebida** naquela conexão.
 
 ```
-@app.socket(caminho, channel=true)
+@app.socket(path, channel=true)
 reaction nome() {
     // request disponível; roda a cada mensagem que chega
 }

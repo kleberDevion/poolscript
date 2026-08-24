@@ -1,4 +1,4 @@
-# `cors(options=..., origins=...)`
+# `cors(options=None, origins=None, permiser=None)`
 
 Configuração **global** de acesso da aplicação: quais métodos HTTP são aceitos
 e de quais origens (domínios). É uma instância única, importada da lib.

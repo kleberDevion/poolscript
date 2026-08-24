@@ -1,10 +1,10 @@
-# `Parsing.TransientValue(valor, to_type="str")`
+# `Parsing.TransientValue(value, to_type="str")`
 
 Converte um valor **preservando o original sem distorção** — trunca float pra
 int sem arredondar, extrai dígitos de string, entende separador BR pra float.
 
 ```
-Parsing.TransientValue(valor, to_type="str")
+Parsing.TransientValue(value, to_type="str")
 ```
 
 | `to_type` | Converte pra |

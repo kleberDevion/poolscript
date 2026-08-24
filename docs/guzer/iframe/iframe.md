@@ -1,27 +1,38 @@
 # `iframe(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Elemento `iframe` — caixa reservada para mídia. A reprodução embutida não existe na janela nativa; a caixa marca o lugar e mostra o texto.
+Elemento `iframe` — Documento embutido (outra página). **O guzer não carrega conteúdo externo**: é uma caixa; `src=` fica guardado.
 
-## Como todo elemento do guzer
+## O que o guzer faz com ele hoje
 
-- Vem do `app` (o `guzer.UI`): `app.iframe(...)`.
-- `type()` devolve `"iframe"` — igual nos dois motores.
-- `.stylesheet({...})` e `.text(...)` encadeiam (retornam o próprio).
-- Design default: caixa **200×28**, fundo `#F0F0F0`, texto `#101418`.
+- Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
+  na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `onclick=` recebe uma reaction por referência — roda no clique.
-- Os demais atributos do HTML (`href=`, `name=`, `value=`...) são aceitos na
-  assinatura.
+- `type()` devolve `"iframe"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
-Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height`,
-`font-size` (esta só no interpretador; o backend X11 usa a fonte do sistema).
+## Atributos
+
+No HTML, os atributos próprios de `iframe` são `src=`.
+
+| argumento | efeito hoje |
+|---|---|
+| `placeholder=` | texto mostrado quando não há `.text(...)` |
+| `value=` | o que `.value` devolve (sem ele: o `.text()`; sem os dois: o `placeholder=`) |
+| `name=` | identifica no registro: `app.POOLHTMLElements.getitemByIdentify("nome").value` |
+| `onclick=` | reaction (por referência) que roda no clique |
+| `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `iframe` |
+
+Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
+(esta só no interpretador; o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 
 ```
 import guzer
+import scripts
+
 app = guzer.UI("Demo")
-app.iframe().stylesheet({ "width": "320" }).text("conteúdo")
+app.iframe(src="https://exemplo.com").text("(conteúdo externo não é carregado)")
 ```
 
 [← índice](../guzer.md)

@@ -255,7 +255,64 @@ comum, e hoje a linguagem a proíbe sem dizer por quê.
 
 ---
 
+### Fatia e índice de string em BYTES na VM
+
+**O que não funcionava:** `"padrão"[0:5]` dava `padrã` na VM (`padrão` no
+interp); `"padrão: str"[5]` devolvia meio caractere (byte quebrado);
+`s[s.find("x"):len(s)]` perdia o fim da string sempre que havia acento antes.
+`len`/`find` já contavam CARACTERES, só `[]`/`[a:b]` contavam bytes — e a
+combinação (índice de `find` usado numa fatia) corrompia texto em silêncio.
+
+Achado em 2026-08-24 escrevendo um script de apoio em PoolScript
+(reescrita de páginas da doc): as linhas com acento saíam truncadas.
+
+**Como foi resolvido:** `utf8_byte_de(s, len, cp)` (codepoint → byte) em
+`vm/poolscript_vm.c`; `OP_SLICE` e `OP_INDEX_GET` normalizam contra
+`utf8_conta` e copiam por codepoint (fatia com passo 1 vira uma faixa contígua
+de bytes). Regressão: `tests/test_str_utf8_e_busca.py`.
+
+### `find`/`rfind`/`index`/`rindex`/`count` sem `inicio`/`fim` na VM
+
+**O que não funcionava:** a doc prometia `s.find(sub, inicio=0)`, o interp
+aceitava (delega pro `str` do Python: `"abcabc".find("c", 3)` → 5) e a VM
+recusava com `find() espera 1 argumento(s)`. Divergência que nenhum diferencial
+cobria porque nenhum teste passava o 2º argumento.
+
+**Como foi resolvido:** `faixa_busca()` converte `inicio`/`fim` (em caracteres,
+negativo conta do fim, satura; `inicio` além do tamanho → -1 como no Python)
+pra uma faixa de bytes; os cinco métodos aceitam de 1 a 3 argumentos. Spec
+(`scripts/doc_specs_string.py`) e seção 12 da referência atualizadas; doc viva
+com exemplos de faixa. Regressão: `tests/test_str_utf8_e_busca.py`.
+
+### Comentário (ou linha vazia) como 1ª linha de um bloco `:`
+
+**O que não funcionava:** nos DOIS motores,
+
+```
+action f(x):
+    // comentário
+    return x
+```
+
+dava `SyntaxError: faltou indentação após ':'`. O lexer não mexe na pilha de
+indentação em linha só-comentário (certo), mas já tinha emitido o `NEWLINE`
+dela — o parser via `: NEWLINE NEWLINE INDENT` e exigia `INDENT` logo após o
+primeiro `NEWLINE`.
+
+**Como foi resolvido:** nos dois parsers (`parser.py` e `ps_parser.c`, bloco
+comum e corpo de Entity), depois do `NEWLINE` obrigatório pulam-se os
+`NEWLINE` extras antes de exigir o `INDENT`. Regressão:
+`tests/test_str_utf8_e_busca.py` (action, if, for each, Entity, `#` e `//`).
+
 ## Em aberto
+
+### Sem list comprehension (design, não defeito)
+
+`[f(x) for x in xs]` é `SyntaxError: faltou ']' na lista` nos dois motores —
+coerente, a doc nunca prometeu. Fica registrado porque é o tropeço imediato de
+quem vem do Python (junto com "variável criada dentro do `if` não existe
+depois", que é regra documentada na seção 4.6.1). Se um dia entrar, é feature
+da linguagem (parser + interp + VM + vsix), não conserto.
 
 ### O motor de regex — CORRIGIDO (praticamente completo vs `re` do Python)
 

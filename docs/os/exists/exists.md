@@ -1,9 +1,9 @@
-# `os.exists(caminho)`
+# `os.exists(path)`
 
 Diz se um caminho **existe** — seja arquivo ou pasta. Devolve `true`/`false`.
 
 ```
-os.exists(caminho: str) -> bool
+os.exists(path: str) -> bool
 ```
 
 ---

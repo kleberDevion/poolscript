@@ -1,10 +1,10 @@
-# `MailServer.login(user, senha)`
+# `MailServer.login(user, password)`
 
 Autentica no servidor SMTP com usuário e senha. Chame **depois** de
 [`.conn()`](../conn/conn.md).
 
 ```
-s.login(user: str, senha: str) -> None
+s.login(user: str, password: str) -> None
 ```
 
 ---

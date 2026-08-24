@@ -1,9 +1,9 @@
-# `QRImage.save(caminho)`
+# `QRImage.save(path)`
 
 Grava a imagem do QR Code num arquivo.
 
 ```
-img.save(caminho: str) -> None
+img.save(path: str) -> None
 ```
 
 ---

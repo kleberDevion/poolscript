@@ -1,4 +1,4 @@
-# `psodbc.query(base, cmd=None, table="")`
+# `psodbc.query(base="", cmd=None, table="")`
 
 Atalho **só pra SQLite** (arquivo local). Faz a consulta e já devolve os dados
 prontos, sem você abrir cursor manualmente.

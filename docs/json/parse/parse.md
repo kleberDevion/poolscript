@@ -1,9 +1,9 @@
-# `json.parse(texto)`
+# `json.parse(text)`
 
 Converte uma **string JSON** em dados da PoolScript (dict ou lista).
 
 ```
-json.parse(texto: str) -> dict | list
+json.parse(text: str) -> dict | list
 ```
 
 ---
@@ -31,7 +31,7 @@ json.parse('[1, 2, 3]')      // lista → [1, 2, 3]
 
 ```
 texto = json.stringify({"a": 1})    // '{"a": 1}'
-dados = json.parse(texto)           // {"a": 1}  (de volta)
+dados = json.parse(text)           // {"a": 1}  (de volta)
 ```
 
 ---

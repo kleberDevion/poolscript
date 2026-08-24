@@ -1,10 +1,10 @@
-# `MailReader.conn(provedor_ou_host, port=None)`
+# `MailReader.conn(provider_or_host, port=None)`
 
 Conecta ao servidor **IMAP** (leitura). Igual ao envio, aceita o nome do
 provedor (auto-configura) ou host manual.
 
 ```
-r.conn(provedor_ou_host: str, port: int = None) -> None
+r.conn(provider_or_host: str, port: int = None) -> None
 ```
 
 ---

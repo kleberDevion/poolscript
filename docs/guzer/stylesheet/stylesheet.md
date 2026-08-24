@@ -1,4 +1,4 @@
-# `.stylesheet({...})`
+# `.stylesheet(styles=None)`
 
 Sobrescreve o design default do elemento, **chave a chave** — as que você não
 passar continuam no default. Encadeável (retorna o próprio elemento).

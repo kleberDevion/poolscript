@@ -10,18 +10,18 @@ Chamados direto no valor: `"texto".metodo()`. Número também recebe método de 
 | [`casefold`](casefold/casefold.md) | `s.casefold()` | Minúsculas agressivas para comparação sem caixa. |
 | [`center`](center/center.md) | `s.center(largura, preenchimento=" ")` | Centraliza preenchendo dos dois lados. |
 | [`contains`](contains/contains.md) | `s.contains(sub)` | True se contém a substring (extensão da PoolScript). |
-| [`count`](count/count.md) | `s.count(sub)` | Quantas ocorrências (sem sobreposição) da substring. |
+| [`count`](count/count.md) | `s.count(sub, inicio=0, fim=null)` | Quantas ocorrências (sem sobreposição) da substring. |
 | [`encode`](encode/encode.md) | `s.encode(encoding="utf-8")` | Converte a string para bytes. |
 | [`endswith`](endswith/endswith.md) | `s.endswith(sufixo)` | True se termina com o sufixo. |
 | [`expandtabs`](expandtabs/expandtabs.md) | `s.expandtabs(tabsize=8)` | Troca cada tab por espaços até a próxima parada de tabulação (não por um número fixo de espaços). |
-| [`find`](find/find.md) | `s.find(sub, inicio=0)` | Índice da primeira ocorrência, ou -1. |
+| [`find`](find/find.md) | `s.find(sub, inicio=0, fim=null)` | Índice da primeira ocorrência, ou -1. |
 | [`findall`](findall/findall.md) | `s.findall(padrao)` | Lista com todas as ocorrências do padrão. |
 | [`format`](format/format.md) | `s.format(a, b, ...)` | Preenche {} posicionais e {nome} nomeados. |
 | [`format_map`](format_map/format_map.md) | `s.format_map(dict)` | Como format, buscando os {nome} num dict. |
 | [`get`](get/get.md) | `s.get(chave)` | Interpreta como JSON de objeto e devolve o valor da chave. |
 | [`get_json`](get_json/get_json.md) | `s.get_json()` | Interpreta a string como JSON e devolve o valor. |
 | [`has`](has/has.md) | `s.has(sub)` | Alias de contains — True se a substring aparece. |
-| [`index`](index/index.md) | `s.index(sub)` | Como find, mas ERRA quando não acha. |
+| [`index`](index/index.md) | `s.index(sub, inicio=0, fim=null)` | Como find, mas ERRA quando não acha. |
 | [`isalnum`](isalnum/isalnum.md) | `s.isalnum()` | True se só tem letras e dígitos. |
 | [`isalpha`](isalpha/isalpha.md) | `s.isalpha()` | True se só tem letras (e não é vazia). |
 | [`isascii`](isascii/isascii.md) | `s.isascii()` | True se todos os caracteres são ASCII. |
@@ -45,8 +45,8 @@ Chamados direto no valor: `"texto".metodo()`. Número também recebe método de 
 | [`removeprefix`](removeprefix/removeprefix.md) | `s.removeprefix(p)` | Remove o prefixo exato, se presente. |
 | [`removesuffix`](removesuffix/removesuffix.md) | `s.removesuffix(p)` | Remove o sufixo exato, se presente. |
 | [`replace`](replace/replace.md) | `s.replace(velho, novo, count=-1)` | Troca ocorrências; velho pode ser LISTA de alvos. |
-| [`rfind`](rfind/rfind.md) | `s.rfind(sub)` | Índice da ÚLTIMA ocorrência, ou -1. |
-| [`rindex`](rindex/rindex.md) | `s.rindex(sub)` | Como rfind, mas ERRA quando não acha. |
+| [`rfind`](rfind/rfind.md) | `s.rfind(sub, inicio=0, fim=null)` | Índice da ÚLTIMA ocorrência, ou -1. |
+| [`rindex`](rindex/rindex.md) | `s.rindex(sub, inicio=0, fim=null)` | Como rfind, mas ERRA quando não acha. |
 | [`rjust`](rjust/rjust.md) | `s.rjust(largura, preenchimento=" ")` | Preenche à esquerda até a largura. |
 | [`rpartition`](rpartition/rpartition.md) | `s.rpartition(sep)` | Tupla (antes, sep, depois) na ÚLTIMA ocorrência. |
 | [`rsplit`](rsplit/rsplit.md) | `s.rsplit(sep=Null, max=-1)` | Como split, mas conta as divisões da DIREITA. |

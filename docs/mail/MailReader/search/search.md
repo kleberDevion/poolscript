@@ -1,15 +1,15 @@
-# `MailReader.search(criterio="ALL", term=None, limit=None, include_body=false)`
+# `MailReader.search(criterion_type="ALL", term=None, limit=None, include_body=false)`
 
 Busca e-mails na pasta selecionada. Devolve uma **lista de dicts**, um por
 e-mail encontrado.
 
 ```
-r.search(criterio="ALL", term=None, limit=None, include_body=false) -> list
+r.search(criterion_type="ALL", term=None, limit=None, include_body=false) -> list
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `criterio` | `"ALL"` | o filtro (ver tabela abaixo) |
+| `criterion_type` | `"ALL"` | o filtro (ver tabela abaixo) |
 | `term` | `None` | o termo de busca (exigido por alguns critérios) |
 | `limit` | `None` | máximo de e-mails a trazer (os mais recentes) |
 | `include_body` | `false` | `true` = já traz o corpo de cada e-mail |

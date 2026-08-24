@@ -1,10 +1,10 @@
-# `regex.search(padrão, texto, flags=0)`
+# `regex.search(pattern, string, flags=0)`
 
 Procura o padrão em **qualquer posição** do texto. Devolve um objeto de
 correspondência (truthy) se achar, ou `Null` se não.
 
 ```
-regex.search(padrão: str, texto: str, flags=0)
+regex.search(pattern: str, string: str, flags=0)
 ```
 
 ---

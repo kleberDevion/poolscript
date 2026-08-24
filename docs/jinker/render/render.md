@@ -9,8 +9,8 @@ HTML, imagens, PDFs — qualquer arquivo.
 ```
 from jinker import render
 
-render(caminho: str) -> JinkerResponse
-render(pasta: str, arquivo: str) -> JinkerResponse
+render(folder_or_file: str) -> JinkerResponse            // caminho completo
+render(folder_or_file: str, file: str) -> JinkerResponse // pasta + arquivo
 ```
 
 ---

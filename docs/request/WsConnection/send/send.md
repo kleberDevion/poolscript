@@ -1,14 +1,14 @@
-# `WsConnection.send(dados)`
+# `WsConnection.send(data)`
 
 Envia uma mensagem pro servidor WebSocket.
 
 ```
-conn.send(dados) -> None
+conn.send(data) -> None
 ```
 
 | Parâmetro | O que é |
 |---|---|
-| `dados` | o que enviar — **dict/lista viram JSON automaticamente**; string vai como está |
+| `data` | o que enviar — **dict/lista viram JSON automaticamente**; string vai como está |
 
 ---
 

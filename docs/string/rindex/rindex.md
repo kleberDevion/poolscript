@@ -1,4 +1,4 @@
-# `s.rindex(sub)`
+# `s.rindex(sub, inicio=0, fim=null)`
 
 Como rfind, mas ERRA quando não acha.
 
@@ -7,6 +7,8 @@ Como rfind, mas ERRA quando não acha.
 | nome | tipo | default | nota |
 |---|---|---|---|
 | `sub` | str | — |  |
+| `inicio` | int | 0 | posição (em caracteres) onde a faixa de busca começa |
+| `fim` | int | null | onde a faixa termina (exclusivo); `null` = até o fim |
 
 ## Retorno
 
@@ -14,7 +16,7 @@ int
 
 ## Erros
 
-- **SomeValueUnexpected** — substring ausente
+- **SomeValueUnexpected** — substring ausente (na faixa dada)
 
 ## Exemplos
 
@@ -24,6 +26,14 @@ post("banana".rindex("na"))
 
 ```saida
 4
+```
+
+```ps
+post("banana".rindex("na", 0, 4))
+```
+
+```saida
+2
 ```
 
 [← índice](../string.md)

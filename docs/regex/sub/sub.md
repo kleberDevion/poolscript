@@ -1,17 +1,17 @@
-# `regex.sub(padrão, novo, texto, count=0, flags=0)`
+# `regex.sub(pattern, repl, string, count=0, flags=0)`
 
 **Substitui** as ocorrências do padrão por outro texto. Devolve o texto novo
 (o original não muda).
 
 ```
-regex.sub(padrão: str, novo: str, texto: str, count=0, flags=0) -> str
+regex.sub(pattern: str, repl: str, string: str, count=0, flags=0) -> str
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `padrão` | — | o que procurar |
-| `novo` | — | o texto que substitui |
-| `texto` | — | onde substituir |
+| `pattern` | — | o que procurar |
+| `repl` | — | o texto que substitui |
+| `string` | — | onde substituir |
 | `count` | `0` | quantas trocas fazer (`0` = todas) |
 
 ---
@@ -22,7 +22,7 @@ regex.sub(padrão: str, novo: str, texto: str, count=0, flags=0) -> str
 import regex
 
 // trocar espaços múltiplos por um só
-limpo = regex.sub(" +", " ", "texto    com   espaços")
+limpo = regex.sub(" +", " ", "string    com   espaços")
 post(limpo)          // "texto com espaços"
 
 // remover todos os dígitos (substitui por nada)

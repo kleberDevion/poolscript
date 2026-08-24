@@ -1,10 +1,10 @@
-# `request.post(url, headers=None, body=None, timeout=30)`
+# `request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=None)`
 
 Faz uma requisição HTTP **POST** — usada pra **enviar dados** (criar recursos,
 fazer login, etc.). Devolve um [`Response`](../Response/Response.md).
 
 ```
-request.post(url, headers=None, body=None, timeout=30) -> Response
+request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=None) -> Response
 ```
 
 | Parâmetro | Padrão | O que é |
@@ -13,6 +13,8 @@ request.post(url, headers=None, body=None, timeout=30) -> Response
 | `headers` | `None` | dict de cabeçalhos |
 | `body` | `None` | o que enviar — **dict/lista viram JSON automaticamente** |
 | `timeout` | `30` | segundos até desistir |
+| `stream` | `false` | `true` = lê a resposta em pedaços de 64 KB com **teto de memória** — passa do teto, levanta erro em vez de engolir a RAM |
+| `max_size` | `None` | o teto quando `stream=true`: bytes ou texto com unidade (`"500mb"`); `None` = 100 MB. Ignorado sem `stream` |
 
 ---
 

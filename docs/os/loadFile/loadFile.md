@@ -1,16 +1,16 @@
-# `os.loadFile(nome, encoding=None)`
+# `os.loadFile(name, encoding=None)`
 
 Lê um arquivo e devolve o conteúdo já no formato certo, **detectado pela
 extensão**: texto vira `str`, JSON vira dict/lista, CSV vira lista de dicts, e
 arquivos binários (imagem, PDF, docx…) viram um [`PoolFile`](../PoolFile/PoolFile.md).
 
 ```
-os.loadFile(nome: str, encoding: str = None) -> str | dict | list | PoolFile
+os.loadFile(name: str, encoding: str = None) -> str | dict | list | PoolFile
 ```
 
 | Parâmetro | O que é |
 |---|---|
-| `nome` | nome/caminho do arquivo (buscado a partir da pasta do `.ps` e do cwd) |
+| `name` | nome/caminho do arquivo (buscado a partir da pasta do `.ps` e do cwd) |
 | `encoding` | força o modo — ver abaixo. `None` = automático pela extensão |
 
 ---

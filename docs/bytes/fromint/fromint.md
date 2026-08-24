@@ -1,4 +1,4 @@
-# `bytes.fromint(n, length, byteorder)`
+# `bytes.fromint(n, length=0, byteorder="big")`
 
 Empacota um inteiro (>= 0) em bytes. Útil pra montar formatos binários com
 campos de largura fixa (cabeçalhos, protocolos).

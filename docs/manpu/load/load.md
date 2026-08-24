@@ -1,11 +1,11 @@
-# `manpu.load(arquivo)`
+# `manpu.load(filepath)`
 
 Carrega o arquivo em **bytes** — o conteúdo cru, sem parsear. Útil quando você
 vai **repassar** o arquivo (anexar num email, enviar por rede) em vez de ler o
 conteúdo.
 
 ```
-manpu.load(arquivo: str) -> bytes
+manpu.load(filepath: str) -> bytes
 ```
 
 ---

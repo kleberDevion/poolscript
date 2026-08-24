@@ -1,4 +1,4 @@
-# `psodbc.connect(...)`
+# `psodbc.connect(driver="sqlite", host="localhost", port=0, user="", password="", database="", base="", url="", odbc_driver="", trust_server_cert=true)`
 
 Conecta a um banco de dados. O mesmo `connect` serve pra todos os bancos —
 muda só o `driver` e os parâmetros que cada um usa.

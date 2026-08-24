@@ -1,15 +1,15 @@
-# `JinkerResponse.send(texto, status=200)`
+# `JinkerResponse.send(text, status=200)`
 
 Define o corpo da resposta como **texto puro** e o `Content-Type` como
 `text/plain`. Devolve o próprio `JinkerResponse` (encadeável).
 
 ```
-send(texto: str, status: int = 200) -> JinkerResponse
+send(text: str, status: int = 200) -> JinkerResponse
 ```
 
 | Parâmetro | Tipo | Padrão | O que é |
 |---|---|---|---|
-| `texto` | `str` | — | conteúdo textual do corpo |
+| `text` | `str` | — | conteúdo textual do corpo |
 | `status` | `int` | `200` | código HTTP da resposta |
 
 ---
@@ -77,7 +77,7 @@ Resumindo:
 
 | Quero mandar… | Uso |
 |---|---|
-| um texto que eu montei na hora | `.send(texto)` |
+| um texto que eu montei na hora | `.send(text)` |
 | o conteúdo de um arquivo do disco | `render("arquivo")` |
 
 `.send()` é pra texto que você **já tem na mão** (uma mensagem, um resultado

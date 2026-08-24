@@ -1,9 +1,9 @@
-# `asdict(instancia)`
+# `asdict(instance)`
 
 Converte uma instância de `@dataentity` num **dict**, com os campos como chaves.
 
 ```
-asdict(instancia) -> dict
+asdict(instance) -> dict
 ```
 
 ---

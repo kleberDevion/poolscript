@@ -91,7 +91,6 @@ def _load(lib_name: str) -> dict:
             "delete": request_real.EXPORTS["delete"],
             "text": proxy.text,
             "ws_connect": request_real.EXPORTS["ws_connect"],
-            "__proxy__": proxy,
         }
     _CACHE[lib_name] = exports
     return exports

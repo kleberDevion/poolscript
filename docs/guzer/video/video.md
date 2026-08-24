@@ -1,4 +1,4 @@
-# `video(src=, ...)`
+# `video(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
 **Reproduz o vídeo NA JANELA** do arquivo do `src=` — de onde você quiser (absoluto, relativo ao script,
 ou ao diretório atual). A decodificação usa o **ffmpeg** do sistema

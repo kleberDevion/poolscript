@@ -1,9 +1,9 @@
-# `os.size(caminho)`
+# `os.size(path)`
 
 Devolve o **tamanho de um arquivo em bytes**.
 
 ```
-os.size(caminho: str) -> int
+os.size(path: str) -> int
 ```
 
 ---

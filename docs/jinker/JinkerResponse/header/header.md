@@ -1,17 +1,17 @@
-# `JinkerResponse.header(chave, valor)`
+# `JinkerResponse.header(key, value)`
 
 Adiciona **um cabeçalho HTTP** (header) à resposta. Devolve o próprio
 `JinkerResponse`, então você pode encadear (`.header(...).header(...)`) e
 juntar com `.json()`/`.send()`/`.status()`.
 
 ```
-header(chave: str, valor: str) -> JinkerResponse
+header(key: str, value: str) -> JinkerResponse
 ```
 
 | Parâmetro | Tipo | O que é |
 |---|---|---|
-| `chave` | `str` | nome do header (ex: `"X-Request-Id"`, `"Cache-Control"`) |
-| `valor` | `str` | valor do header (ex: `"abc123"`, `"no-cache"`) |
+| `key` | `str` | nome do header (ex: `"X-Request-Id"`, `"Cache-Control"`) |
+| `value` | `str` | valor do header (ex: `"abc123"`, `"no-cache"`) |
 
 ---
 
@@ -29,7 +29,7 @@ Exemplos de coisas que vivem em headers, não no corpo:
 - se o conteúdo deve ser baixado como arquivo em vez de exibido;
 - um token, uma versão de API, etc.
 
-`.header(chave, valor)` é como você adiciona qualquer um desses.
+`.header(key, value)` é como você adiciona qualquer um desses.
 
 ---
 

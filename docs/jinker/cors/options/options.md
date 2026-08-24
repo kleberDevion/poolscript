@@ -1,4 +1,4 @@
-# `cors.options([subset])`
+# `cors.options(subset=None)`
 
 Resolve a lista de métodos HTTP de uma rota. Usado no `methods=` do
 `@app.route(...)`.

@@ -1,10 +1,10 @@
-# `regex.escape(texto)`
+# `regex.escape(string)`
 
 Escapa os caracteres especiais de regex num texto, pra ele ser usado como
 **texto literal** dentro de um padrão. Devolve a versão escapada.
 
 ```
-regex.escape(texto: str) -> str
+regex.escape(string: str) -> str
 ```
 
 ---

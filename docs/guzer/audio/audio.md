@@ -1,4 +1,4 @@
-# `audio(src=, ...)`
+# `audio(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
 **Toca o áudio** do arquivo do `src=` — de onde você quiser (absoluto, relativo ao script,
 ou ao diretório atual). A decodificação usa o **ffmpeg** do sistema

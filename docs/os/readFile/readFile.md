@@ -1,4 +1,4 @@
-# `os.readFile(caminho, encoding="utf-8")`
+# `os.readFile(path, encoding="utf-8")`
 
 Lê um arquivo de **texto** e devolve o conteúdo como `str` (UTF-8 por padrão).
 Para binário (imagem, zip…), use [`loadFile`](../loadFile/loadFile.md) (devolve `PoolFile`).
@@ -7,7 +7,7 @@ Para binário (imagem, zip…), use [`loadFile`](../loadFile/loadFile.md) (devol
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `caminho` | str | — | caminho do arquivo |
+| `path` | str | — | caminho do arquivo |
 | `encoding` | str | `"utf-8"` | codificação do texto |
 
 ## Retorno

@@ -1,4 +1,4 @@
-# `textarea(placeholder=, value=, name=, ...)`
+# `textarea(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
 Campo de formulário — área de VÁRIAS linhas. No **interpretador** é um campo NATIVO editável
 (tkinter): o usuário digita e o seu handler lê com `.value`. No binário `pool`

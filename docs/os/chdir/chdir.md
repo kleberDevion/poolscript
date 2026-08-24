@@ -1,10 +1,10 @@
-# `os.chdir(caminho)`
+# `os.chdir(path)`
 
 Muda o **diretório de trabalho atual** — daí em diante, caminhos relativos
 partem da nova pasta.
 
 ```
-os.chdir(caminho: str) -> None
+os.chdir(path: str) -> None
 ```
 
 ---

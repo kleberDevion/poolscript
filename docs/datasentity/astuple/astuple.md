@@ -1,10 +1,10 @@
-# `astuple(instancia)`
+# `astuple(instance)`
 
 Converte uma instância de `@dataentity` numa **tupla**, com os valores na ordem
 de declaração dos campos.
 
 ```
-astuple(instancia) -> tup
+astuple(instance) -> tup
 ```
 
 ---

@@ -1,11 +1,11 @@
-# `request.get(chave)`
+# `request.get(key)`
 
 Pega **um campo** da requisição, procurando primeiro na **query string** e
 depois no **corpo JSON**. Atalho pra quando você quer só um valor sem parsear o
 corpo inteiro.
 
 ```
-request.get(chave: str) -> valor | Null
+request.get(key: str) -> valor | Null
 ```
 
 ---

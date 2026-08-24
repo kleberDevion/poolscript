@@ -1,15 +1,15 @@
-# `os.cmd(comando, capture=false)`
+# `os.cmd(command, capture=false)`
 
 Executa um **comando no terminal** do sistema. Por padrão só roda; com
 `capture=true`, devolve a saída como texto.
 
 ```
-os.cmd(comando: str, capture: bool = false) -> str | Null
+os.cmd(command: str, capture: bool = false) -> str | Null
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `comando` | — | a linha de comando a executar (ex: `"python --version"`) |
+| `command` | — | a linha de comando a executar (ex: `"python --version"`) |
 | `capture` | `false` | `true` = devolve a saída; `false` = só roda e devolve `Null` |
 
 ---

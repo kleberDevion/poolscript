@@ -133,6 +133,19 @@ if true:
 post(dentro)        // ERRO — variável não definida: dentro
 ```
 
+O tropeço mais comum de quem vem do Python é criar a variável **nos dois ramos**
+de um `if`/`else` e usá-la depois — na PoolScript isso é o mesmo erro. Declare
+o nome **antes** do bloco (aí a atribuição dentro dele é write-through, 4.6.2):
+
+```ps
+novo = linha            // declarada FORA
+if em_codigo:
+    novo = troca(linha)
+else:
+    novo = ajusta(linha)
+post(novo)              // ok
+```
+
 ### 4.6.2. Reatribuir uma variável de fora (write-through)
 
 Se o nome **já existe** num escopo mais externo, a atribuição no bloco **altera

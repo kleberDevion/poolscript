@@ -1,10 +1,10 @@
-# `MailReader.login(user, senha)`
+# `MailReader.login(user, password)`
 
 Autentica na caixa de e-mail (IMAP). Chame depois de
 [`.conn()`](../conn/conn.md).
 
 ```
-r.login(user: str, senha: str) -> None
+r.login(user: str, password: str) -> None
 ```
 
 ---

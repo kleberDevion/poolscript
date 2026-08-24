@@ -1,10 +1,11 @@
-# `DbCursor.rowcount()`
+# `DbCursor.rowcount`
 
-Devolve quantas linhas foram **afetadas** pelo último comando (INSERT, UPDATE,
-DELETE).
+Quantas linhas foram **afetadas** pelo último comando (INSERT, UPDATE,
+DELETE). É uma **propriedade** — lê-se **sem parênteses**; `cursor.rowcount()`
+dá erro (`tentativa de chamar algo que não é função`) nos dois motores.
 
 ```
-cursor.rowcount() -> int
+cursor.rowcount -> int
 ```
 
 ---
@@ -14,7 +15,7 @@ cursor.rowcount() -> int
 ```
 cursor.execute("DELETE FROM produtos WHERE preco = ?", (0,))
 conn.commit()
-post(cursor.rowcount(), "produtos removidos")
+post(cursor.rowcount, "produtos removidos")
 ```
 
 Serve pra confirmar quantos registros um UPDATE/DELETE mexeu.

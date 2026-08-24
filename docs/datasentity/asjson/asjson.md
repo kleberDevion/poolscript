@@ -1,9 +1,9 @@
-# `asjson(instancia)`
+# `asjson(instance)`
 
 Converte uma instância de `@dataentity` direto numa **string JSON**.
 
 ```
-asjson(instancia) -> str
+asjson(instance) -> str
 ```
 
 ---

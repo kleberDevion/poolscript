@@ -1,10 +1,10 @@
-# `Parsing.string(valor, to_type="str")`
+# `Parsing.string(value, to_type="str")`
 
 Limpa um valor e devolve texto, removendo caracteres estranhos e normalizando
 espaços.
 
 ```
-Parsing.string(valor, to_type="str")
+Parsing.string(value, to_type="str")
 ```
 
 ---

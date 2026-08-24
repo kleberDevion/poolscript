@@ -1,15 +1,15 @@
-# `request.file(campo, allowed=None)`
+# `request.file(field, allowed=None)`
 
 Pega **um arquivo enviado** por upload (formulário `multipart/form-data`).
 Devolve um `PoolFileUpload` ou `Null` se o campo não tiver arquivo.
 
 ```
-request.file(campo: str, allowed: list = None) -> PoolFileUpload | Null
+request.file(field: str, allowed: list = None) -> PoolFileUpload | Null
 ```
 
 | Parâmetro | O que é |
 |---|---|
-| `campo` | nome do campo do formulário que contém o arquivo |
+| `field` | nome do campo do formulário que contém o arquivo |
 | `allowed` | lista de extensões permitidas (ex: `[".jpg", ".png"]`); `Null` = qualquer extensão *segura* |
 
 ---

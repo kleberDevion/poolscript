@@ -1,27 +1,42 @@
 # `optgroup(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Elemento `optgroup` — campo de formulário. Hoje é uma caixa que mostra o `placeholder=` (ou o `.text()`); a edição pelo teclado dentro da janela nativa ainda não existe — o valor é o que o seu código põe com `.text(...)`.
+Elemento `optgroup` — Grupo de `option`s com um rótulo (`.text()`), dentro de um `select`.
 
-## Como todo elemento do guzer
+É **contêiner**: `x = app.optgroup()` e depois `x.p()`, `x.entry()`, `x.button()`...
+criam filhos **dentro** dele (borda de 8px, empilhados). Sem `height` explícito, a
+caixa cresce pra caber os filhos.
 
-- Vem do `app` (o `guzer.UI`): `app.optgroup(...)`.
-- `type()` devolve `"optgroup"` — igual nos dois motores.
-- `.stylesheet({...})` e `.text(...)` encadeiam (retornam o próprio).
-- Design default: caixa **200×28**, fundo `#F0F0F0`, texto `#101418`.
+## O que o guzer faz com ele hoje
+
+- Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
+  na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `onclick=` recebe uma reaction por referência — roda no clique.
-- Os demais atributos do HTML (`href=`, `name=`, `value=`...) são aceitos na
-  assinatura.
+- `type()` devolve `"optgroup"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
-Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height`,
-`font-size` (esta só no interpretador; o backend X11 usa a fonte do sistema).
+## Atributos
+
+| argumento | efeito hoje |
+|---|---|
+| `placeholder=` | texto mostrado quando não há `.text(...)` |
+| `value=` | o que `.value` devolve (sem ele: o `.text()`; sem os dois: o `placeholder=`) |
+| `name=` | identifica no registro: `app.POOLHTMLElements.getitemByIdentify("nome").value` |
+| `onclick=` | reaction (por referência) que roda no clique |
+| `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `optgroup` |
+
+Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
+(esta só no interpretador; o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 
 ```
 import guzer
+import scripts
+
 app = guzer.UI("Demo")
-app.optgroup().stylesheet({ "width": "320" }).text("conteúdo")
+sel = app.select()
+g = sel.optgroup().text("Sul")
+g.option(value="PR").text("Paraná")
 ```
 
 [← índice](../guzer.md)

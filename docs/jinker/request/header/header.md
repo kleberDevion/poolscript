@@ -1,4 +1,4 @@
-# `request.header(nome)`
+# `request.header(key)`
 
 Devolve **um** cabeçalho da requisição pelo nome, ou `Null` se não existir. A
 busca é **case-insensitive** — headers HTTP não distinguem maiúsculas de
@@ -6,7 +6,7 @@ minúsculas, então `"Content-Type"`, `"content-type"` e `"CONTENT-TYPE"` acham 
 mesma coisa.
 
 ```
-request.header(nome: str) -> str | Null
+request.header(key: str) -> str | Null
 ```
 
 ---
@@ -25,7 +25,7 @@ request.header(nome: str) -> str | Null
 
 ---
 
-## `.header(nome)` vs `.headers`
+## `.header(key)` vs `.headers`
 
 - `.header("X")` — **um** header, sem se preocupar com a caixa. `Null` se faltar.
 - `.headers` — o **dict inteiro** dos cabeçalhos, com as chaves como o cliente

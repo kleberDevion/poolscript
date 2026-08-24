@@ -1,10 +1,10 @@
-# `MongoConnection.collection(nome)`
+# `MongoConnection.collection(name)`
 
 Devolve uma [`MongoCollection`](../../MongoCollection/MongoCollection.md) — o
 equivalente Mongo de uma "tabela", onde os documentos ficam.
 
 ```
-conn.collection(nome: str) -> MongoCollection
+conn.collection(name: str) -> MongoCollection
 ```
 
 ---

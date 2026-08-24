@@ -61,6 +61,29 @@ node psl-poolscript-vsix/test/coverage.test.js     # varre TODO o metadata (100%
 Build do `.vsix`: `cd psl-poolscript-vsix && npx @vscode/vsce package
 --allow-star-activation --skip-license` (o `.vsix` é gitignored).
 
+## Doc: assinatura vem do CÓDIGO, nunca digitada
+
+O título `# \`lib.fn(a, b=1)\`` de cada página `docs/<lib>/<m>/<m>.md` (e
+`docs/<lib>/<Classe>/<m>/<m>.md`) tem que bater com a assinatura real da
+stdlib — nomes E defaults. Auditoria (escrita em PoolScript):
+
+```bash
+PYTHONPATH=src python3 scripts/audita_doc_sigs.py   # introspecta -> .audita_sigs.json
+./pool scripts/audita_doc.ps                         # relata divergências
+APLICA=1 ./pool scripts/audita_doc.ps                # reescreve os títulos
+```
+
+`docs/string` e `docs/builtins` ficam fora (são gerados de `scripts/doc_specs_*.py`
+por `PYTHONPATH=.:src python3 scripts/gera_doc.py`). As páginas dos elementos
+da guzer e a tabela do índice saem de `./pool scripts/gera_guzer_docs.ps`.
+
+## Scripts de apoio: em PoolScript
+
+Automação, auditoria e smoke tests de apoio são escritos em `.ps` e rodados no
+`./pool` (e no interp, pra pegar divergência de graça). Python só pro que a PS
+não alcança (introspectar a stdlib Python). Todo tropeço escrevendo `.ps` é bug
+ou limitação candidata — anotar em `notas/LIMITACOES.md` ou corrigir na hora.
+
 ## Build do binário
 
 `pool.spec` (PyInstaller) precisa que as libs opcionais estejam instaladas no

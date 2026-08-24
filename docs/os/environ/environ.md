@@ -1,10 +1,10 @@
-# `os.environ(chave=None)`
+# `os.environ(key=None)`
 
 Devolve uma **variável de ambiente**, ou **todas** de uma vez se você não
 passar chave.
 
 ```
-os.environ(chave: str = None) -> str | dict
+os.environ(key: str = None) -> str | dict
 ```
 
 | Argumento | Devolve |

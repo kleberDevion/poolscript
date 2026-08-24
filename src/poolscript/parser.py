@@ -1226,6 +1226,10 @@ class Parser:
         elif self.match("COLON"):
             # estilo Python
             self.expect("NEWLINE", msg="faltou quebra de linha após ':'")
+            # linha em branco ou só-comentário logo após o ':' gera NEWLINE
+            # extra antes do INDENT — pula (Python aceita; aqui também)
+            while self.current().type == "NEWLINE":
+                self.pos += 1
             self.expect("INDENT", msg="faltou indentação após ':'")
             self.skip_separators()
             while self.current().type not in {"DEDENT", "EOF"}:
@@ -1816,6 +1820,10 @@ class Parser:
             return Block(line=tok.line, col=tok.col, style="brace", statements=statements)
         if self.match("COLON"):
             self.expect("NEWLINE", msg="faltou quebra de linha após ':'")
+            # linha em branco ou só-comentário logo após o ':' gera NEWLINE
+            # extra antes do INDENT — pula (Python aceita; aqui também)
+            while self.current().type == "NEWLINE":
+                self.pos += 1
             self.expect("INDENT", msg="faltou indentação após ':'")
             statements = []
             self.skip_separators()

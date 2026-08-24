@@ -1,4 +1,4 @@
-# `qrcode.make(data, ...)`
+# `qrcode.make(data, error_correction="L", box_size=10, border=4, fill_color="black", back_color="white", name="qrcode.png")`
 
 Atalho estilo Python pra gerar um QR Code: `qrcode.make(data)` devolve a imagem,
 que você salva com `.save()`. Mais simples que [`gen`](../gen/gen.md), pros

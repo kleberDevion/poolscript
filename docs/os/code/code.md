@@ -1,14 +1,14 @@
-# `os.code(caminho=".")`
+# `os.code(path=".")`
 
 Abre o **editor de código** do sistema (ex: VS Code) no caminho indicado.
 
 ```
-os.code(caminho: str = ".") -> None
+os.code(path: str = ".") -> None
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `caminho` | `"."` (pasta atual) | arquivo ou pasta a abrir no editor |
+| `path` | `"."` (pasta atual) | arquivo ou pasta a abrir no editor |
 
 ---
 

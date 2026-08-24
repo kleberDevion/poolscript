@@ -1,15 +1,15 @@
-# `os.ls(caminho=".")`
+# `os.ls(path=".")`
 
 Lista o conteúdo de uma pasta. Devolve uma **lista de dicts**, um por item, com
 nome, tipo e tamanho.
 
 ```
-os.ls(caminho: str = ".") -> list
+os.ls(path: str = ".") -> list
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `caminho` | `"."` (pasta atual) | a pasta a listar |
+| `path` | `"."` (pasta atual) | a pasta a listar |
 
 ---
 

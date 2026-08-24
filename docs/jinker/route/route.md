@@ -1,11 +1,11 @@
-# `@app.route(caminho, methods=..., auth=..., middleware=...)`
+# `@app.route(path, methods=None, auth=None, middleware=None)`
 
 Registra uma **rota**: liga um caminho de URL à `action` declarada logo abaixo
 do decorador. Quando alguém acessa esse caminho, o jinker chama a action e usa
 o que ela retorna como resposta.
 
 ```
-@app.route(caminho, methods=..., auth=..., middleware=...)
+@app.route(path, methods=..., auth=..., middleware=...)
 action nome_da_rota() {
     // request disponível aqui; return vira a resposta
 }
@@ -13,7 +13,7 @@ action nome_da_rota() {
 
 | Parâmetro | Tipo | Padrão | O que é |
 |---|---|---|---|
-| `caminho` | `str` | — | o path da URL (ex: `"/api/hello"`) |
+| `path` | `str` | — | o path da URL (ex: `"/api/hello"`) |
 | `methods` | lista | todos do `cors` | métodos HTTP aceitos — use [`cors.options([...])`](../cors/options/options.md) |
 | `auth` | lista | origens do `cors` | checagem de origem — use [`cors.origins()`](../cors/origins/origins.md) |
 | `middleware` | função | nenhum | roda antes da action (ver [middleware](../middleware/middleware.md)) |

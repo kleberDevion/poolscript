@@ -1,10 +1,10 @@
-# `request.get(url, headers=None, body=None, timeout=30)`
+# `request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=None)`
 
 Faz uma requisição HTTP **GET** para uma URL. Devolve um
 [`Response`](../Response/Response.md).
 
 ```
-request.get(url, headers=None, body=None, timeout=30) -> Response
+request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=None) -> Response
 ```
 
 | Parâmetro | Padrão | O que é |
@@ -13,6 +13,8 @@ request.get(url, headers=None, body=None, timeout=30) -> Response
 | `headers` | `None` | dict de cabeçalhos a enviar |
 | `body` | `None` | corpo da requisição (dict vira JSON automaticamente) |
 | `timeout` | `30` | segundos até desistir |
+| `stream` | `false` | `true` = lê o corpo em pedaços de 64 KB com **teto de memória** — passa do teto, levanta erro em vez de engolir a RAM (pra download grande) |
+| `max_size` | `None` | o teto quando `stream=true`: bytes ou texto com unidade (`"500mb"`); `None` = 100 MB. Ignorado sem `stream` |
 
 ---
 

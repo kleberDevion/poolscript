@@ -1,15 +1,15 @@
-# `os.warn(texto="", color="yellow")`
+# `os.warn(text="", color="yellow")`
 
 Imprime uma mensagem **colorida** no terminal. Útil pra destacar avisos, erros
 ou informações nos logs do seu programa.
 
 ```
-os.warn(texto: str = "", color: str = "yellow") -> None
+os.warn(text: str = "", color: str = "yellow") -> None
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `texto` | `""` | a mensagem |
+| `text` | `""` | a mensagem |
 | `color` | `"yellow"` | cor do texto |
 
 ---
@@ -34,7 +34,7 @@ os.warn("tudo certo", "green")                        // verde
 
 ## `os.warn` vs `post` colorido
 
-- **`os.warn(texto, cor)`** — atalho pra uma mensagem colorida no stderr,
+- **`os.warn(text, cor)`** — atalho pra uma mensagem colorida no stderr,
   pensado pra avisos/logs.
 - **`post(<red>"texto")`** — cor inline em qualquer `post`, pra saída normal.
 

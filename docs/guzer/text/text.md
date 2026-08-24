@@ -1,4 +1,4 @@
-# `.text(valor)`
+# `.text(value)`
 
 Define o **texto** do elemento (str ou número). Encadeável. Sem `.text()`, o
 elemento mostra o `placeholder=` (se tiver).

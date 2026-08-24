@@ -1,10 +1,10 @@
-# `os.isdir(caminho)`
+# `os.isdir(path)`
 
 Diz se o caminho existe **e é uma pasta** (não um arquivo). Devolve
 `true`/`false`.
 
 ```
-os.isdir(caminho: str) -> bool
+os.isdir(path: str) -> bool
 ```
 
 ---

@@ -1,10 +1,10 @@
-# `MailServer.conn(provedor_ou_host, port=None)`
+# `MailServer.conn(provider_or_host, port=None)`
 
 Conecta ao servidor SMTP (envio). Aceita o **nome do provedor** (auto-configura
 host e porta) ou um host manual.
 
 ```
-s.conn(provedor_ou_host: str, port: int = None) -> None
+s.conn(provider_or_host: str, port: int = None) -> None
 ```
 
 ---

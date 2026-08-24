@@ -1,27 +1,38 @@
 # `progress(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Elemento `progress` — campo de formulário. Hoje é uma caixa que mostra o `placeholder=` (ou o `.text()`); a edição pelo teclado dentro da janela nativa ainda não existe — o valor é o que o seu código põe com `.text(...)`.
+Elemento `progress` — Barra de progresso — em HTML, `value`/`max`. **Hoje não há barra desenhada**: a caixa mostra o texto; represente o andamento no `.text()` (`"40%"`) e guarde o número em `value=`.
 
-## Como todo elemento do guzer
+## O que o guzer faz com ele hoje
 
-- Vem do `app` (o `guzer.UI`): `app.progress(...)`.
-- `type()` devolve `"progress"` — igual nos dois motores.
-- `.stylesheet({...})` e `.text(...)` encadeiam (retornam o próprio).
-- Design default: caixa **200×28**, fundo `#F0F0F0`, texto `#101418`.
+- Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
+  na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `onclick=` recebe uma reaction por referência — roda no clique.
-- Os demais atributos do HTML (`href=`, `name=`, `value=`...) são aceitos na
-  assinatura.
+- `type()` devolve `"progress"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
-Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height`,
-`font-size` (esta só no interpretador; o backend X11 usa a fonte do sistema).
+## Atributos
+
+No HTML, os atributos próprios de `progress` são `value=`.
+
+| argumento | efeito hoje |
+|---|---|
+| `placeholder=` | texto mostrado quando não há `.text(...)` |
+| `value=` | o que `.value` devolve (sem ele: o `.text()`; sem os dois: o `placeholder=`) |
+| `name=` | identifica no registro: `app.POOLHTMLElements.getitemByIdentify("nome").value` |
+| `onclick=` | reaction (por referência) que roda no clique |
+| `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `progress` |
+
+Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
+(esta só no interpretador; o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 
 ```
 import guzer
+import scripts
+
 app = guzer.UI("Demo")
-app.progress().stylesheet({ "width": "320" }).text("conteúdo")
+app.progress(name="envio", value="40").text("40%")
 ```
 
 [← índice](../guzer.md)

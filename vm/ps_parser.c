@@ -997,6 +997,9 @@ static PSNode *bloco(P *p)
 
     if (aceita(p, T_COLON)) {
         if (!exige(p, T_NEWLINE, "faltou quebra de linha apos ':'")) return NULL;
+        /* linha em branco ou so-comentario logo apos o ':' gera NEWLINE extra
+         * antes do INDENT — pula (Python aceita; parser.py faz o mesmo) */
+        while (checa(p, T_NEWLINE)) p->pos++;
         if (!exige(p, T_INDENT, "faltou indentacao apos ':'")) return NULL;
         PSNode *b = ps_node_novo(p->arena, N_BLOCK, t->line, t->col);
         if (!b) return NULL;
@@ -1662,6 +1665,7 @@ static PSNode *statement(P *p)
         if (!chaves) {
             if (!exige(p, T_COLON, "esperado '{' ou ':' para abrir o corpo da Entity")) return NULL;
             if (!exige(p, T_NEWLINE, "faltou quebra de linha apos ':'")) return NULL;
+            while (checa(p, T_NEWLINE)) p->pos++;   /* comentario/linha vazia apos ':' */
             if (!exige(p, T_INDENT, "faltou indentacao apos ':'")) return NULL;
         }
         pula_separadores(p);

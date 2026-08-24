@@ -1,4 +1,4 @@
-# `bytes.toint(b, byteorder)`
+# `bytes.toint(b, byteorder="big")`
 
 Desempacota bytes num inteiro (>= 0). É o caminho de volta do
 [`bytes.fromint()`](../fromint/fromint.md).

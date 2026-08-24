@@ -1,27 +1,38 @@
 # `br(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Elemento `br` — separador. É uma caixa como as demais; dê a ele a altura/cor que quiser no `.stylesheet` (ex.: `height: 2` faz uma linha).
+Elemento `br` — Quebra de linha. No guzer cada elemento já ocupa uma linha da pilha — o `br` serve de **espaçador** vazio (controle o espaço com `height`).
 
-## Como todo elemento do guzer
+## O que o guzer faz com ele hoje
 
-- Vem do `app` (o `guzer.UI`): `app.br(...)`.
-- `type()` devolve `"br"` — igual nos dois motores.
-- `.stylesheet({...})` e `.text(...)` encadeiam (retornam o próprio).
-- Design default: caixa **200×28**, fundo `#F0F0F0`, texto `#101418`.
+- Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
+  na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `onclick=` recebe uma reaction por referência — roda no clique.
-- Os demais atributos do HTML (`href=`, `name=`, `value=`...) são aceitos na
-  assinatura.
+- `type()` devolve `"br"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
-Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height`,
-`font-size` (esta só no interpretador; o backend X11 usa a fonte do sistema).
+## Atributos
+
+| argumento | efeito hoje |
+|---|---|
+| `placeholder=` | texto mostrado quando não há `.text(...)` |
+| `value=` | o que `.value` devolve (sem ele: o `.text()`; sem os dois: o `placeholder=`) |
+| `name=` | identifica no registro: `app.POOLHTMLElements.getitemByIdentify("nome").value` |
+| `onclick=` | reaction (por referência) que roda no clique |
+| `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `br` |
+
+Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
+(esta só no interpretador; o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 
 ```
 import guzer
+import scripts
+
 app = guzer.UI("Demo")
-app.br().stylesheet({ "width": "320" }).text("conteúdo")
+app.p().text("acima")
+app.br().stylesheet({ "height": "20", "background": "#ffffff" })
+app.p().text("abaixo")
 ```
 
 [← índice](../guzer.md)

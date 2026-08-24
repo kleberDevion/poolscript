@@ -1,15 +1,15 @@
-# `os.rename(orig, dest)`
+# `os.rename(src, dst)`
 
 Renomeia um arquivo ou pasta.
 
 ```
-os.rename(orig: str, dest: str) -> None
+os.rename(src: str, dst: str) -> None
 ```
 
 | Parâmetro | O que é |
 |---|---|
-| `orig` | nome/caminho atual |
-| `dest` | novo nome/caminho |
+| `src` | nome/caminho atual |
+| `dst` | novo nome/caminho |
 
 ---
 

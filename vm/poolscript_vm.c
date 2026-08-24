@@ -1199,6 +1199,7 @@ static int val_iguais(const Value *a, const Value *b);
 static int model_valida(const PSModel *m, const Value *v);
 static int utf8_conta(const char *s, int len);
 static int utf8_le(const char *s, int len, int i, uint32_t *cp);
+static int utf8_byte_de(const char *s, int len, int64_t cp);
 
 static uint32_t hash_valor(const Value *v)
 {
@@ -3423,6 +3424,19 @@ static int utf8_escreve(char *dest, uint32_t cp)
     return 4;
 }
 
+/* byte onde começa o codepoint `cp` (0..n); cp == n (ou além) -> len */
+static int utf8_byte_de(const char *s, int len, int64_t cp)
+{
+    int i = 0;
+    while (cp > 0 && i < len) {
+        uint32_t c;
+        int k = utf8_le(s, len, i, &c);
+        i += k ? k : 1;
+        cp--;
+    }
+    return i;
+}
+
 static int utf8_conta(const char *s, int len)
 {
     int n = 0;
@@ -3694,19 +3708,55 @@ static int posicao_cp(const char *s, int bytes)
     return utf8_conta(s, bytes);
 }
 
+/* `inicio`/`fim` opcionais (args[1], args[2]) de find/rfind/index/rindex/count,
+ * em CARACTERES, regra do Python: negativo conta do fim, limites saturam,
+ * Null = ausente. Sai a faixa em BYTES [*b0, *b1); inicio além do fim da
+ * string vira faixa invertida (b1 < b0) = "não acha", como no Python. */
+static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem,
+                       int *b0, int *b1)
+{
+    int64_t total = utf8_conta(s->chars, s->len);
+    int64_t i0 = 0, i1 = total;
+    if (n >= 2 && args[1].t != V_NULL) {
+        if (args[1].t != V_INT) MERRO(vm, "SomeValueUnexpected", "%s(): inicio precisa ser int", quem);
+        i0 = args[1].as.i;
+        if (i0 < 0) i0 += total;
+        if (i0 < 0) i0 = 0;
+        if (i0 > total) { *b0 = s->len; *b1 = s->len - 1; return 0; }
+    }
+    if (n >= 3 && args[2].t != V_NULL) {
+        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "%s(): fim precisa ser int", quem);
+        i1 = args[2].as.i;
+        if (i1 < 0) i1 += total;
+        if (i1 < 0) i1 = 0;
+        if (i1 > total) i1 = total;
+    }
+    *b0 = utf8_byte_de(s->chars, s->len, i0);
+    *b1 = utf8_byte_de(s->chars, s->len, i1);
+    return 0;
+}
+
 static int met_busca(VM *vm, Value alvo, Value *args, int n, Value *out,
                      const char *quem, int reverso, int levanta)
 {
-    ARGS_MET(vm, quem, 1);
+    if (n < 1 || n > 3)
+        MERRO(vm, "SomeValueUnexpected", "%s() espera de 1 a 3 argumentos (sub, inicio, fim)", quem);
     PSString *s = COMO_STRING(alvo), *sub;
     if (exige_str(vm, args[0], quem, &sub) != 0) return -1;
+    int b0 = 0, b1 = s->len;
+    if (faixa_busca(vm, s, args, n, quem, &b0, &b1) != 0) return -1;
     int achou = -1;
-    if (reverso) {
-        for (int i = s->len - sub->len; i >= 0; i--)
-            if (memcmp(s->chars + i, sub->chars, (size_t)sub->len) == 0) { achou = i; break; }
-        if (sub->len == 0) achou = s->len;
-    } else {
-        achou = acha_bytes(s->chars, s->len, sub->chars, sub->len, 0);
+    if (b1 >= b0) {
+        const char *base = s->chars + b0;
+        int len = b1 - b0;
+        if (reverso) {
+            for (int i = len - sub->len; i >= 0; i--)
+                if (memcmp(base + i, sub->chars, (size_t)sub->len) == 0) { achou = i; break; }
+            if (sub->len == 0) achou = len;
+        } else {
+            achou = acha_bytes(base, len, sub->chars, sub->len, 0);
+        }
+        if (achou >= 0) achou += b0;
     }
     if (achou < 0) {
         if (levanta) MERRO(vm, "SomeValueUnexpected", "valor invalido: subcadeia nao encontrada");
@@ -3724,13 +3774,19 @@ static int met_rindex(VM *v, Value a, Value *g, int n, Value *o) { return met_bu
 
 static int met_count(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    ARGS_MET(vm, "count", 1);
+    if (n < 1 || n > 3)
+        MERRO(vm, "SomeValueUnexpected", "count() espera de 1 a 3 argumentos (sub, inicio, fim)");
     PSString *s = COMO_STRING(alvo), *sub;
     if (exige_str(vm, args[0], "count", &sub) != 0) return -1;
-    if (sub->len == 0) { *out = MK_INT(utf8_conta(s->chars, s->len) + 1); return 0; }
+    int b0 = 0, b1 = s->len;
+    if (faixa_busca(vm, s, args, n, "count", &b0, &b1) != 0) return -1;
+    if (b1 < b0) { *out = MK_INT(0); return 0; }
+    const char *base = s->chars + b0;
+    int len = b1 - b0;
+    if (sub->len == 0) { *out = MK_INT(utf8_conta(base, len) + 1); return 0; }
     int64_t q = 0;
-    for (int i = 0; i + sub->len <= s->len; )
-        if (memcmp(s->chars + i, sub->chars, (size_t)sub->len) == 0) { q++; i += sub->len; }
+    for (int i = 0; i + sub->len <= len; )
+        if (memcmp(base + i, sub->chars, (size_t)sub->len) == 0) { q++; i += sub->len; }
         else i++;
     *out = MK_INT(q);
     return 0;
@@ -16874,17 +16930,24 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (idx.t != V_INT) ERRO(vm, "indice de string precisa ser int");
                 PSString *s = COMO_STRING(alvo);
                 int64_t i = idx.as.i;
+                /* índice em CARACTERES (codepoints), não em bytes — "pão"[1]
+                 * é "ã" inteiro, igual ao interp */
+                int64_t ncp = utf8_conta(s->chars, s->len);
                 /* mesma regra da lista: fora do intervalo avisa e devolve
                  * Null, não trava (IndexOutOfBoundsWarning do spec) */
-                if (i < -s->len || i >= s->len) {
-                    fprintf(stderr, "IndexOutOfBoundsWarning: índice %lld fora do tamanho %d\n",
-                            (long long)i, s->len);
+                if (i < -ncp || i >= ncp) {
+                    fprintf(stderr, "IndexOutOfBoundsWarning: índice %lld fora do tamanho %lld\n",
+                            (long long)i, (long long)ncp);
                     stack[sp - 1] = MK_NULL();
                     break;
                 }
-                if (i < 0) i += s->len;
+                if (i < 0) i += ncp;
+                int b = utf8_byte_de(s->chars, s->len, i);
+                uint32_t cp;
+                int k = utf8_le(s->chars, s->len, b, &cp);
+                if (!k) k = 1;
                 vm->sp = sp; vm->locals_top = locals_top;
-                PSString *c = nova_string(vm, s->chars + i, 1);
+                PSString *c = nova_string(vm, s->chars + b, k);
                 if (!c) ERRO(vm, "sem memoria");
                 stack[sp - 1] = MK_OBJ(c);
             } else {
@@ -17017,7 +17080,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             int64_t n;
             if (EH_SEQ(alvo))         n = COMO_LIST(alvo)->len;
-            else if (EH_STRING(alvo)) n = COMO_STRING(alvo)->len;
+            /* string fatia em CARACTERES (codepoints), não em bytes — senão
+             * "padrão"[0:5] cortava o "ã" no meio e divergia do interp */
+            else if (EH_STRING(alvo)) n = utf8_conta(COMO_STRING(alvo)->chars, COMO_STRING(alvo)->len);
             else ERRO(vm, "tipo nao fatiavel");
 
             int64_t st = 1;
@@ -17053,8 +17118,20 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_STRING(alvo)) {
                 PSString *src = COMO_STRING(alvo);
                 TXTBUF_AUTO t = {0};
-                for (int64_t i = i0; (st > 0 ? i < i1 : i > i1); i += st)
-                    if (txt_put(&t, src->chars + i, 1) != 0) { ERRO(vm, "sem memoria"); }
+                if (st == 1) {
+                    /* caminho comum: uma faixa contígua de bytes */
+                    int b0 = utf8_byte_de(src->chars, src->len, i0);
+                    int b1 = utf8_byte_de(src->chars, src->len, i1);
+                    if (b1 > b0 && txt_put(&t, src->chars + b0, b1 - b0) != 0) { ERRO(vm, "sem memoria"); }
+                } else {
+                    for (int64_t i = i0; (st > 0 ? i < i1 : i > i1); i += st) {
+                        int b = utf8_byte_de(src->chars, src->len, i);
+                        uint32_t cp;
+                        int k = utf8_le(src->chars, src->len, b, &cp);
+                        if (!k) k = 1;
+                        if (txt_put(&t, src->chars + b, k) != 0) { ERRO(vm, "sem memoria"); }
+                    }
+                }
                 PSString *r = nova_string(vm, t.b ? t.b : "", t.n);
                 if (!r) ERRO(vm, "sem memoria no slice");
                 stack[sp - 1] = MK_OBJ(r);

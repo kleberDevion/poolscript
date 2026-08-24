@@ -1,4 +1,4 @@
-# `Jinker(name, oauth=None, static_folder=None, static_url="/")`
+# `Jinker(name="__main__", oauth=None, static_folder=None, static_url="/", route_prefix="")`
 
 O construtor da aplicação. Cria o objeto `app` onde tudo se pendura — rotas,
 sockets, middleware — e onde você configura segurança (rate limit, HTTPS) e
@@ -16,6 +16,7 @@ app = Jinker(__name__)
 | `oauth` | dict | `None` | segurança: rate limit (`poolip`) e HTTPS (`tls`) — ver abaixo |
 | `static_folder` | `str` | `None` | pasta com build de front a servir (SPA) — ver [static_folder](../static_folder/static_folder.md) |
 | `static_url` | `str` | `"/"` | (guardado, **ainda não usado** na correspondência de URL) |
+| `route_prefix` | `str` | `""` | prefixo aplicado a **todas** as rotas e sockets: `"api"` ou `"/api/"` viram `/api`, e `@app.route("/users")` responde em `/api/users` (a raiz `"/"` vira só `/api`) |
 
 ---
 
