@@ -32,6 +32,7 @@ vm = pytest.importorskip(
 
 RAIZ = Path(__file__).resolve().parent.parent
 PASTAS = [RAIZ / "docs" / "builtins", RAIZ / "docs" / "string",
+          RAIZ / "docs" / "list", RAIZ / "docs" / "dict",
           RAIZ / "docs" / "sockets"]
 
 # o par pode ter o fechamento do <details> (código dobrável + print) entre

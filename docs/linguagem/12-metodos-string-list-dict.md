@@ -2,9 +2,10 @@
 
 Estes métodos são **parte da linguagem** (não vêm de `import`): qualquer `str`,
 `list` ou `dict` os expõe direto, com a sintaxe `valor.metodo(...)`. Esta seção
-é a referência agrupada; os métodos de **string** têm ainda uma página
-detalhada cada em [`docs/string/`](../string/string.md), com exemplos que
-**rodam nos dois motores** pela suíte.
+é a referência agrupada; cada método tem ainda uma **página detalhada** —
+[`docs/string/`](../string/string.md), [`docs/list/`](../list/list.md) e
+[`docs/dict/`](../dict/dict.md) — com parâmetros, retorno, erros, bordas e
+exemplos que **rodam nos dois motores** pela suíte.
 
 Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
 
@@ -75,7 +76,7 @@ Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
 | Método | Faz |
 |---|---|
 | `format(...)` / `format_map(dict)` | preenche `{}`/`{0}`/`{nome}` no template |
-| `match(padrao)` | casa a regex no início; devolve o match ou vazio |
+| `match(padrao)` | a string **inteira** casa com a regex? (`bool`) — igual ao [`regex.match`](../regex/match/match.md), que é o `fullmatch` do Python |
 | `findall(padrao)` | lista de todas as ocorrências da regex |
 | `sub(padrao, novo, count=…)` | substitui as ocorrências da regex |
 
@@ -124,12 +125,12 @@ post(l.index(2))     // 1
 
 ---
 
-## 12.3. Métodos de `dict` (11)
+## 12.3. Métodos de `dict` (12)
 
 | Método | Faz |
 |---|---|
 | `keys()` | lista das chaves |
-| `values()` | lista dos valores |
+| `values()` / `value()` | lista dos valores (os dois nomes, o mesmo resultado) |
 | `items()` | lista de tuplas `(chave, valor)` |
 | `get(chave, default=null)` | valor da chave, ou `default` (ou `null`) se não existir — **não dá erro** |
 | `has(chave)` / `contains(chave)` | a chave existe? (`bool`) |
@@ -147,6 +148,25 @@ post(d.has("idade"))         // True
 for each k in d.keys():
     post(k, d[k])
 ```
+
+### `in` olha a CHAVE; pro VALOR, use `value()`
+
+`x in d` testa se `x` é uma **chave** (como no Python) — então procurar um
+valor ali dá `false` sempre, seja ele str, int, flo, list ou tup:
+
+```ps
+d = { "nome": "ana", "idade": 30, "tags": [1, 2] }
+
+post("nome" in d)            // True   (é chave)
+post("ana" in d)             // False  (é VALOR — `in` não olha valor)
+
+post("ana" in d.value())     // True
+post(30 in d.value())        // True
+post([1, 2] in d.value())    // True
+```
+
+`value()` e `values()` devolvem a mesma lista; o nome curto existe justamente
+pra essa leitura (`x in d.value()`).
 
 ### Acesso por chave: `[]` e `.chave`
 
@@ -174,5 +194,5 @@ etc. — tem prioridade sobre o acesso por atributo.)
   formatação e regex). Detalhe por método em `docs/string/`.
 - **`list`**: 14 — a maioria muta a lista (`append`/`sort`/`pop`/…); `sorted`/
   `reversed` (builtins) devolvem cópia.
-- **`dict`**: 11 — `keys`/`values`/`items`, `get` (com default, sem erro),
+- **`dict`**: 12 — `keys`/`values` (ou `value`)/`items`, `get` (com default, sem erro),
   `has`, `pop`, `update`, `copy`… mais acesso por `[]` e por `.chave`.

@@ -245,6 +245,44 @@ def _talvez_classe_por_nome_mod(module_name, nome_tipo):
         _classe(getattr(mod, nome_tipo))
 
 
+# tabela do VM -> "classe" do editor. Os métodos de dict/list/tup e do Pattern
+# (regex.compile) não são classes Python introspectáveis: vivem nas tabelas
+# METODOS_* do vm/poolscript_vm.c. Raspar de lá mantém a regra "nada escrito à
+# mão" e faz o completion acompanhar o motor (é a mesma fonte que o
+# tests/test_paridade_membros.py usa).
+_TABELAS_TIPO = {
+    "dict": "METODOS_DICT",
+    "list": "METODOS_LIST",
+    "tup": "METODOS_TUPLA",    # imutável: só os métodos de leitura
+    "Pattern": "METODOS_REGEX",
+}
+
+
+def _classes_dos_tipos():
+    """Registra dict/list/tup/Pattern como 'classes' do modelo, com os métodos
+    lidos das tabelas do VM em C."""
+    import re as _re
+    fonte = (RAIZ / "vm" / "poolscript_vm.c").read_text(encoding="utf-8")
+    for rotulo, tabela in _TABELAS_TIPO.items():
+        m = _re.search(r"static const MetodoNat " + tabela + r"\[\] = \{(.*?)\n\};",
+                       fonte, _re.S)
+        if not m:
+            print(f"[aviso] tabela {tabela} não achada no VM", file=sys.stderr)
+            continue
+        nomes = sorted(set(_re.findall(r'\{\s*"([A-Za-z_]\w*)"\s*,', m.group(1))))
+        if not nomes:
+            continue
+        _CLASSES[rotulo] = {
+            "members": [{"name": n, "kind": "method", "params": [],
+                         "sig": f"{n}()", "returns": None} for n in nomes],
+            "doc": f"métodos de {rotulo} da linguagem",
+        }
+    # `.pattern` do Pattern é campo (sem parênteses), no OP_GET_MEMBER
+    if "Pattern" in _CLASSES:
+        _CLASSES["Pattern"]["members"].append({"name": "pattern", "kind": "property",
+                                               "returns": "str"})
+
+
 def main():
     modulos = {}
     # agrupa aliases pelo módulo real, mas emite uma entrada por NOME que o
@@ -268,6 +306,8 @@ def main():
         builtins = {n: _pega(s) for n, s in BUILTINS.items()}
     except Exception as e:
         print(f"[aviso] docs de keywords/builtins não carregaram: {e}", file=sys.stderr)
+
+    _classes_dos_tipos()
 
     out = {
         "modules": modulos,

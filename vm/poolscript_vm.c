@@ -164,6 +164,7 @@ typedef enum {
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
     OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
     OBJ_SOCKET,    /* lib sockets — espelho do socket.socket do Python */
+    OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
@@ -263,6 +264,14 @@ typedef struct {
     int    familia, tipo, proto;
     double timeout;    /* segundos; < 0 = bloqueante (None, default) */
 } PSSocket;
+/* `regex.compile(padrao)`: o padrao COMPILADO uma vez e reusado — o mesmo
+ * PSRegex que as funcoes do modulo compilam e jogam fora a cada chamada. */
+typedef struct {
+    Obj      obj;
+    PSRegex *rx;
+    char    *pat;      /* o texto do padrao (campo `.pattern`) */
+    int32_t  npat;
+} PSRegexObj;
 
 /* `"ab".upper` — método nativo já preso ao valor de origem.
  *
@@ -283,7 +292,7 @@ enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_UNIV, T_MET_ARQ,
        T_MET_JINKER, T_MET_JCORS, T_MET_JREG, T_MET_JRESP, T_MET_JPROXY,
        T_MET_JUPLOAD, T_MET_JSOCKNS, T_MET_JEMIT, T_MET_JCHAN, T_MET_WSCONN,
        T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE,
-       T_MET_GUZ_UI, T_MET_GUZ_WID, T_MET_SOCKET };
+       T_MET_GUZ_UI, T_MET_GUZ_WID, T_MET_SOCKET, T_MET_REGEX, T_MET_TUPLA };
 
 /* Módulo nativo: um nome e uma tabela de membros. Não tem estado, então o
  * objeto guarda só o índice do descritor — dois `import json` no mesmo
@@ -709,6 +718,8 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define EH_FUTURO(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_FUTURO)
 #define COMO_FUTURO(v) ((PSFuturo*)(v).as.obj)
 #define EH_SOCKET(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_SOCKET)
+#define EH_REGEX(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_REGEX)
+#define COMO_REGEX(v)  ((PSRegexObj *)(v).as.obj)
 #define COMO_SOCKET(v) ((PSSocket*)(v).as.obj)
 #define EH_ARQUIVO(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_ARQUIVO)
 #define COMO_ARQ(v)    ((PSArquivo*)(v).as.obj)
@@ -1529,6 +1540,13 @@ static void fin_socket(VM *vm, Obj *o) {   /* fecha o que o usuário esqueceu */
     if (s->fd >= 0) close(s->fd);
 }
 
+static void fin_regex(VM *vm, Obj *o) {
+    (void)vm;
+    PSRegexObj *r = (PSRegexObj *)o;
+    if (r->rx) ps_regex_free(r->rx);
+    free(r->pat);
+}
+
 /* Finalizers de lib/servidor (lote 2): DEFINIDOS mais abaixo, junto do
  * libera_obj, porque usam tipos/funções de lib que só existem lá. Aqui só o
  * forward-declare pra a GC_INFO poder referenciá-los. Cada um faz o
@@ -1566,6 +1584,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_GERADOR]    = { GC_FN,   0, gct_gerador, 0, fin_gerador },
     [OBJ_FUTURO]     = { GC_FN,   0, gct_futuro, sizeof(PSFuturo), NULL },   /* o libera_obj ANTIGO esquecia o alocado-= do futuro (leak de conta); agora conta */
     [OBJ_SOCKET]     = { GC_LEAF, 0, NULL, sizeof(PSSocket), fin_socket },
+    [OBJ_REGEX]      = { GC_LEAF, 0, NULL, sizeof(PSRegexObj), fin_regex },
     [OBJ_ARQUIVO]    = { GC_LEAF, 0, NULL, 0, fin_arquivo },   /* globais vivem em vm->globals (raiz) */
     [OBJ_MODULO_PS]  = { GC_LEAF, 0, NULL, sizeof(PSModuloPS), fin_moduleps },
     [OBJ_BYTES]      = { GC_LEAF, 0, NULL, 0, fin_str },
@@ -2795,6 +2814,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_QRIMAGE:    t = "QRImage"; break;
                 case OBJ_MANPU_FILE: t = "ManpuFile"; break;
                 case OBJ_SOCKET:     t = "socket"; break;
+                case OBJ_REGEX:      t = "Pattern"; break;
                 case OBJ__COUNT:     break;   /* sentinela: nunca ocorre */
             }
             break;
@@ -4753,6 +4773,8 @@ static int dict_extrai(VM *vm, Value alvo, Value *out, int o_que)
 
 static int met_d_keys(VM *v, Value a, Value *g, int n, Value *o)   { (void)g; if (n) MERRO(v,"SomeValueUnexpected","keys() nao aceita argumento"); return dict_extrai(v, a, o, 0); }
 static int met_d_values(VM *v, Value a, Value *g, int n, Value *o) { (void)g; if (n) MERRO(v,"SomeValueUnexpected","values() nao aceita argumento"); return dict_extrai(v, a, o, 1); }
+/* value() == values(): existe pro `in` olhar os VALORES (`x in d` testa a CHAVE) */
+static int met_d_value(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; if (n) MERRO(v,"SomeValueUnexpected","value() nao aceita argumento"); return dict_extrai(v, a, o, 1); }
 static int met_d_items(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; if (n) MERRO(v,"SomeValueUnexpected","items() nao aceita argumento"); return dict_extrai(v, a, o, 2); }
 
 static int met_d_get(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -4908,6 +4930,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_QRIMAGE:     t = "QRImage"; break;
                 case OBJ_MANPU_FILE:  t = "ManpuFile"; break;
                 case OBJ_SOCKET:      t = "socket"; break;
+                case OBJ_REGEX:       t = "Pattern"; break;
                 case OBJ__COUNT:      break;   /* sentinela: nunca ocorre */
             }
             break;
@@ -5431,8 +5454,17 @@ static const MetodoNat METODOS_LIST[] = {
     { "reverse", met_l_reverse, NULL }, { "sort", met_l_sort, NULL },
     { "clear", met_l_clear, NULL }, { "copy", met_l_copy, NULL }, { "len", met_l_len, NULL },
 };
+/* Tupla é IMUTÁVEL: só os métodos de LEITURA da lista. Antes ela caía na
+ * METODOS_LIST inteira (EH_SEQ) e `(1,2,3).append(9)` MUTAVA a tupla no VM,
+ * enquanto o interpretador recusava — divergência que nenhum teste pegava. */
+static const MetodoNat METODOS_TUPLA[] = {
+    { "index", met_l_index, NULL }, { "count", met_l_count, NULL },
+    { "contains", met_l_contains, NULL }, { "has", met_l_contains, NULL },
+    { "len", met_l_len, NULL },
+};
 static const MetodoNat METODOS_DICT[] = {
-    { "keys", met_d_keys, NULL }, { "values", met_d_values, NULL }, { "items", met_d_items, NULL },
+    { "keys", met_d_keys, NULL }, { "values", met_d_values, NULL }, { "value", met_d_value, NULL },
+    { "items", met_d_items, NULL },
     { "get", met_d_get, NULL }, { "has", met_d_has, NULL }, { "contains", met_d_has, NULL },
     { "pop", met_d_pop, NULL }, { "update", met_d_update, NULL }, { "clear", met_d_clear, NULL },
     { "copy", met_d_copy, NULL }, { "len", met_d_len, NULL },
@@ -6162,6 +6194,20 @@ static void guz_mostra(VM *vm)
     free(arr);
 }
 
+/* Pattern (regex.compile) — os métodos vivem lá embaixo, junto do módulo
+ * regex; a tabela precisa existir aqui pro TABELAS. */
+static int met_rx_match(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_rx_search(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_rx_findall(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out);
+
+static const MetodoNat METODOS_REGEX[] = {
+    { "match", met_rx_match, NULL }, { "fullmatch", met_rx_match, NULL },
+    { "search", met_rx_search, NULL }, { "findall", met_rx_findall, NULL },
+    { "sub", met_rx_sub, NULL }, { "split", met_rx_split, NULL },
+};
+
 static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_UNIV, METODOS_ARQ, METODOS_BYTES,
                                       METODOS_PFILE, METODOS_SQLCONN, METODOS_SQLCUR,
@@ -6174,7 +6220,7 @@ static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_JSOCKNS, METODOS_JEMIT, METODOS_JCHAN,
                                       METODOS_WSCONN, METODOS_QRBUILD, METODOS_QRIMAGE,
                                       METODOS_MPFILE, METODOS_GUZ_UI, METODOS_GUZ_WID,
-                                      METODOS_SOCKET };
+                                      METODOS_SOCKET, METODOS_REGEX, METODOS_TUPLA };
 static const int TAM_TABELA[] = {
     N_METODOS_STR,
     (int)(sizeof(METODOS_LIST) / sizeof(METODOS_LIST[0])),
@@ -6210,6 +6256,8 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_GUZ_UI) / sizeof(METODOS_GUZ_UI[0])),
     (int)(sizeof(METODOS_GUZ_WID) / sizeof(METODOS_GUZ_WID[0])),
     (int)(sizeof(METODOS_SOCKET) / sizeof(METODOS_SOCKET[0])),
+    (int)(sizeof(METODOS_REGEX) / sizeof(METODOS_REGEX[0])),
+    (int)(sizeof(METODOS_TUPLA) / sizeof(METODOS_TUPLA[0])),
 };
 
 /* Resolve `alvo.nome`. `.type()` vem primeiro porque vale pra todo valor. */
@@ -6219,6 +6267,7 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
         if (strcmp(METODOS_UNIV[i].nome, nome) == 0) { *tab = T_MET_UNIV; *idx = i; return 0; }
     int qual;
     if (EH_STRING(alvo) || alvo.t == V_INT || alvo.t == V_FLOAT) qual = T_MET_STR;
+    else if (EH_TUPLA(alvo)) qual = T_MET_TUPLA;   /* imutável: só leitura */
     else if (EH_SEQ(alvo))  qual = T_MET_LIST;
     else if (EH_DICT(alvo)) qual = T_MET_DICT;
     else if (EH_ARQUIVO(alvo)) qual = T_MET_ARQ;
@@ -6251,6 +6300,7 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_GUZ_UI(alvo))  qual = T_MET_GUZ_UI;
     else if (EH_GUZ_WID(alvo)) qual = T_MET_GUZ_WID;
     else if (EH_SOCKET(alvo))  qual = T_MET_SOCKET;
+    else if (EH_REGEX(alvo))   qual = T_MET_REGEX;
     else return -1;
     for (int i = 0; i < TAM_TABELA[qual]; i++)
         if (strcmp(TABELAS[qual][i].nome, nome) == 0) { *tab = qual; *idx = i; return 0; }
@@ -6809,51 +6859,51 @@ static PSRegex *rx_compila(VM *vm, Value v, const char *quem)
 
 /* `findall` do Python: sem grupo devolve o casamento inteiro; com UM grupo
  * devolve só ele; com vários, uma tupla por casamento. */
+/* NÃO libera o `r`: quem compila é quem libera (o Pattern reusa). */
 static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
 {
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
-    if (!l) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-    if (fixa_raiz(vm, MK_OBJ(l)) != 0) { ps_regex_free(r); BERRO(vm, "RuntimeError", "estouro da pilha"); }
+    if (!l) { BERRO(vm, "MemoryError", "sem memoria"); }
+    if (fixa_raiz(vm, MK_OBJ(l)) != 0) { BERRO(vm, "RuntimeError", "estouro da pilha"); }
     int ng = ps_regex_ngrupos(r);
     int de = 0;
     for (;;) {
         RxCaptura cap;
         int achou = ps_regex_busca(r, s, len, de, &cap);
-        if (achou < 0) { vm->sp--; ps_regex_free(r); BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
+        if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
         if (!achou) break;
         Value item;
         if (ng == 0) {
             PSString *m = nova_string(vm, s + cap.inicio[0], cap.fim[0] - cap.inicio[0]);
-            if (!m) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (!m) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
             item = MK_OBJ(m);
         } else if (ng == 1) {
             int i0 = cap.inicio[1], i1 = cap.fim[1];
             PSString *m = (i0 < 0) ? nova_string(vm, "", 0) : nova_string(vm, s + i0, i1 - i0);
-            if (!m) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (!m) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
             item = MK_OBJ(m);
         } else {
             PSList *t = nova_seq(vm, ng, OBJ_TUPLE);
-            if (!t) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (!t) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
             t->len = 0;
             item = MK_OBJ(t);
-            if (fixa_raiz(vm, item) != 0) { vm->sp--; ps_regex_free(r); BERRO(vm, "RuntimeError", "estouro"); }
+            if (fixa_raiz(vm, item) != 0) { vm->sp--; BERRO(vm, "RuntimeError", "estouro"); }
             for (int g = 1; g <= ng; g++) {
                 int i0 = cap.inicio[g], i1 = cap.fim[g];
                 PSString *m = (i0 < 0) ? nova_string(vm, "", 0) : nova_string(vm, s + i0, i1 - i0);
-                if (!m) { vm->sp -= 2; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+                if (!m) { vm->sp -= 2; BERRO(vm, "MemoryError", "sem memoria"); }
                 t->itens[g - 1] = MK_OBJ(m);
                 t->len = g;
             }
             vm->sp--;
         }
-        if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         l->itens[l->len++] = item;
         /* casamento vazio não pode travar o laço: anda um caractere */
         de = (cap.fim[0] > cap.inicio[0]) ? cap.fim[0] : cap.fim[0] + 1;
         if (de > len) break;
     }
     vm->sp--;
-    ps_regex_free(r);
     *out = MK_OBJ(l);
     return 0;
 }
@@ -6878,6 +6928,9 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s, const R
     return 0;
 }
 
+/* NÃO libera o `r`: quem compila é quem libera. O Pattern de `regex.compile`
+ * reusa o mesmo PSRegex em toda chamada — liberar aqui deixava o objeto com
+ * ponteiro solto e o uso seguinte era segfault. */
 static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
                   const char *rep, int rlen, int64_t limite, Value *out)
 {
@@ -6888,21 +6941,20 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         if (limite > 0 && feitos >= limite) break;
         RxCaptura cap;
         int achou = ps_regex_busca(r, s, len, de, &cap);
-        if (achou < 0) { ps_regex_free(r); BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
+        if (achou < 0) BERRO(vm, "RuntimeError", "regex: backtracking demais");
         if (!achou) break;
-        if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-        if (rx_expande(&b, rep, rlen, s, &cap) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+        if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        if (rx_expande(&b, rep, rlen, s, &cap) != 0) BERRO(vm, "MemoryError", "sem memoria");
         feitos++;
         if (cap.fim[0] > cap.inicio[0]) {
             de = cap.fim[0];
         } else {
             /* casamento vazio: copia um byte e anda, senão repetiria pra sempre */
-            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], 1) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+            if (cap.fim[0] < len && sb_bytes(&b, s + cap.fim[0], 1) != 0) BERRO(vm, "MemoryError", "sem memoria");
             de = cap.fim[0] + 1;
         }
     }
-    if (de < len && sb_bytes(&b, s + de, len - de) != 0) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-    ps_regex_free(r);
+    if (de < len && sb_bytes(&b, s + de, len - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
     PSString *res = nova_string(vm, b.b ? b.b : "", b.n);
     if (!res) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(res);
@@ -6946,7 +6998,9 @@ static int mod_regex_findall(VM *vm, Value *args, int n, Value *out)
     PSRegex *r = rx_compila(vm, args[0], "findall");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
-    return rx_findall(vm, r, s->chars, s->len, out);
+    int rc = rx_findall(vm, r, s->chars, s->len, out);
+    ps_regex_free(r);      /* quem compila, libera */
+    return rc;
 }
 
 static int mod_regex_sub(VM *vm, Value *args, int n, Value *out)
@@ -6961,7 +7015,39 @@ static int mod_regex_sub(VM *vm, Value *args, int n, Value *out)
     PSRegex *r = rx_compila(vm, args[0], "sub");
     if (!r) return -1;
     PSString *rep = COMO_STRING(args[1]), *s = COMO_STRING(args[2]);
-    return rx_sub(vm, r, s->chars, s->len, rep->chars, rep->len, limite, out);
+    int rc = rx_sub(vm, r, s->chars, s->len, rep->chars, rep->len, limite, out);
+    ps_regex_free(r);      /* quem compila, libera */
+    return rc;
+}
+
+/* corpo do split, compartilhado pelo módulo e pelo Pattern compilado (que NÃO
+ * pode liberar o `r` — ele vive no objeto). */
+static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, Value *out)
+{
+    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!l) BERRO(vm, "MemoryError", "sem memoria");
+    if (fixa_raiz(vm, MK_OBJ(l)) != 0) BERRO(vm, "RuntimeError", "estouro");
+    int de = 0, ini_campo = 0;
+    while (de <= slen) {
+        RxCaptura cap;
+        int achou = ps_regex_busca(r, src, slen, de, &cap);
+        if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
+        if (!achou) break;
+        /* separador vazio não divide — o `re` também pula */
+        if (cap.fim[0] == cap.inicio[0]) { de = cap.fim[0] + 1; continue; }
+        PSString *campo = nova_string(vm, src + ini_campo, cap.inicio[0] - ini_campo);
+        if (!campo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+        if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+        l->itens[l->len++] = MK_OBJ(campo);
+        ini_campo = de = cap.fim[0];
+    }
+    PSString *ultimo = nova_string(vm, src + ini_campo, slen - ini_campo);
+    if (!ultimo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+    if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+    l->itens[l->len++] = MK_OBJ(ultimo);
+    vm->sp--;
+    *out = MK_OBJ(l);
+    return 0;
 }
 
 static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
@@ -6971,30 +7057,94 @@ static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
     PSRegex *r = rx_compila(vm, args[0], "split");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
-    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
-    if (!l) { ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-    if (fixa_raiz(vm, MK_OBJ(l)) != 0) { ps_regex_free(r); BERRO(vm, "RuntimeError", "estouro"); }
-    int de = 0, ini_campo = 0;
-    while (de <= s->len) {
-        RxCaptura cap;
-        int achou = ps_regex_busca(r, s->chars, s->len, de, &cap);
-        if (achou < 0) { vm->sp--; ps_regex_free(r); BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
-        if (!achou) break;
-        /* separador vazio não divide — o `re` também pula */
-        if (cap.fim[0] == cap.inicio[0]) { de = cap.fim[0] + 1; continue; }
-        PSString *campo = nova_string(vm, s->chars + ini_campo, cap.inicio[0] - ini_campo);
-        if (!campo) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-        if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-        l->itens[l->len++] = MK_OBJ(campo);
-        ini_campo = de = cap.fim[0];
-    }
-    PSString *ultimo = nova_string(vm, s->chars + ini_campo, s->len - ini_campo);
-    if (!ultimo) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-    if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
-    l->itens[l->len++] = MK_OBJ(ultimo);
-    vm->sp--;
+    int rc = rx_split(vm, r, s->chars, s->len, out);
     ps_regex_free(r);
-    *out = MK_OBJ(l);
+    return rc;
+}
+
+/* ── regex.compile(): o padrão COMPILADO como objeto (o `re.Pattern`) ──────
+ * As funções do módulo compilam e jogam fora a cada chamada; aqui o PSRegex
+ * fica no objeto e é reusado — o ganho é num laço. Os métodos são os mesmos
+ * do módulo, sem repetir o padrão. `.pattern` é campo (sem parênteses). */
+
+static int rx_obj_str(VM *vm, Value alvo, Value *args, int n, const char *quem,
+                      PSRegex **r, PSString **s)
+{
+    if (n != 1) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 argumento", quem);
+    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "%s() espera str", quem);
+    *r = COMO_REGEX(alvo)->rx;
+    *s = COMO_STRING(args[0]);
+    return 0;
+}
+
+static int met_rx_match(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    PSRegex *r; PSString *s;
+    if (rx_obj_str(vm, alvo, args, n, "match", &r, &s) != 0) return -1;
+    RxCaptura cap;
+    int v = ps_regex_casa_tudo(r, s->chars, s->len, &cap);
+    if (v < 0) MERRO(vm, "RuntimeError", "regex: backtracking demais");
+    *out = MK_BOOL(v);
+    return 0;
+}
+
+static int met_rx_search(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    PSRegex *r; PSString *s;
+    if (rx_obj_str(vm, alvo, args, n, "search", &r, &s) != 0) return -1;
+    RxCaptura cap;
+    int v = ps_regex_busca(r, s->chars, s->len, 0, &cap);
+    if (v < 0) MERRO(vm, "RuntimeError", "regex: backtracking demais");
+    *out = MK_BOOL(v);
+    return 0;
+}
+
+static int met_rx_findall(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    PSRegex *r; PSString *s;
+    if (rx_obj_str(vm, alvo, args, n, "findall", &r, &s) != 0) return -1;
+    return rx_findall(vm, r, s->chars, s->len, out);
+}
+
+static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    PSRegex *r; PSString *s;
+    if (n == 2 && args[1].t != V_INT)
+        MERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
+    if (rx_obj_str(vm, alvo, args, n > 1 ? 1 : n, "split", &r, &s) != 0) return -1;
+    return rx_split(vm, r, s->chars, s->len, out);
+}
+
+static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 3) MERRO(vm, "SomeValueUnexpected", "sub() espera 2 ou 3 argumentos");
+    if (!EH_STRING(args[0]) || !EH_STRING(args[1]))
+        MERRO(vm, "SomeValueUnexpected", "sub() espera str");
+    int64_t limite = 0;
+    if (n == 3) {
+        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "count de sub() precisa ser int");
+        limite = args[2].as.i;
+    }
+    PSString *rep = COMO_STRING(args[0]), *s = COMO_STRING(args[1]);
+    return rx_sub(vm, COMO_REGEX(alvo)->rx, s->chars, s->len,
+                  rep->chars, rep->len, limite, out);
+}
+
+static int mod_regex_compile(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "compile() espera 1 ou 2 argumentos");
+    PSRegex *r = rx_compila(vm, args[0], "compile");
+    if (!r) return -1;
+    PSString *p = COMO_STRING(args[0]);
+    PSRegexObj *o = malloc(sizeof(PSRegexObj));
+    char *pat = malloc((size_t)p->len + 1);
+    if (!o || !pat) { free(o); free(pat); ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
+    memcpy(pat, p->chars, (size_t)p->len); pat[p->len] = '\0';
+    o->obj.type = OBJ_REGEX; o->obj.marked = 0;
+    o->obj.next = vm->objetos; vm->objetos = (Obj *)o;
+    o->rx = r; o->pat = pat; o->npat = p->len;
+    vm->alocado += sizeof(PSRegexObj) + (size_t)p->len + 1;
+    *out = MK_OBJ(o);
     return 0;
 }
 
@@ -7043,7 +7193,9 @@ static int met_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_REGEX[] = {
+    { "compile", mod_regex_compile, 0, "pattern,flags" },
     { "match", mod_regex_match, 0, "pattern,string,flags" },
+    { "fullmatch", mod_regex_match, 0, "pattern,string,flags" },
     { "search", mod_regex_search, 0, "pattern,string,flags" },
     { "findall", mod_regex_findall, 0, "pattern,string,flags" },
     { "sub", mod_regex_sub, 0, "pattern,repl,string,count,flags" },
@@ -17697,6 +17849,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (strcmp(nome, "family") == 0) { stack[sp - 1] = MK_INT(sk->familia); break; }
                 if (strcmp(nome, "type") == 0)   { stack[sp - 1] = MK_INT(sk->tipo); break; }
                 if (strcmp(nome, "proto") == 0)  { stack[sp - 1] = MK_INT(sk->proto); break; }
+            }
+            if (EH_REGEX(alvo)) {
+                /* `.pattern` é CAMPO (sem parêntese), como no re.Pattern */
+                PSRegexObj *rxo = COMO_REGEX(alvo);
+                if (strcmp(nome, "pattern") == 0) {
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *ps = nova_string(vm, rxo->pat, rxo->npat);
+                    if (!ps) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(ps);
+                    break;
+                }
             }
             if (EH_RESP(alvo)) {
                 /* status/headers/url são campos; text/content/size/ok/filename

@@ -1796,7 +1796,9 @@ class Interpreter:
                         return target.get
                     if _member == "keys":
                         return lambda: list(target.keys())
-                    if _member == "values":
+                    if _member == "values" or _member == "value":
+                        # `value()` é o mesmo que `values()` — existe pro `in`
+                        # olhar os VALORES (`x in d` testa a CHAVE)
                         return lambda: list(target.values())
                     if _member == "items":
                         return lambda: list(target.items())

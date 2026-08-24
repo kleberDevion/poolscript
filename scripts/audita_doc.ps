@@ -18,7 +18,9 @@ import json
 RAIZ = os.cwd() + "/docs"
 SIGS = json.parse(os.readFile(os.getenv("SIGS", os.cwd() + "/.audita_sigs.json")))
 APLICA = os.getenv("APLICA", "") == "1"
-PULA = ["string", "builtins", "linguagem", "sockets", "assets"]
+// docs/string, builtins, list e dict sao GERADOS de scripts/doc_specs_*.py
+// (a autoridade deles e a spec + a doc viva), entao ficam fora daqui.
+PULA = ["string", "builtins", "list", "dict", "linguagem", "sockets", "assets"]
 
 EST = { "paginas": 0, "ok": 0, "reescritas": 0 }
 RELATO = []

@@ -20,6 +20,12 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 - **[string methods](string/string.md)** — métodos de texto embutidos:
   `upper`/`lower`, `strip`, `replace` (com lista!), `split`/`join`, verificações
   (`isdigit`…), e regex integrado (`match`/`findall`/`sub`).
+- **[list methods](list/list.md)** — `append`/`extend`/`insert`, `pop`/`remove`,
+  `sort`/`reverse`, `index`/`count`/`contains`, `copy`, `len`. A maioria **muta
+  a lista** e devolve `null`.
+- **[dict methods](dict/dict.md)** — `keys`/`values` (ou `value`)/`items`,
+  `get` (com default), `has`, `pop`, `update`, `copy`, `len`. `x in d` testa a
+  **chave**; pro **valor**, `x in d.value()`.
 
 ---
 

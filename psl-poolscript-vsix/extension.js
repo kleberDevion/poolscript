@@ -20,7 +20,8 @@ function carregaMetadata(ctx) {
 
 // mapeia um escalar declarado pro "tipo-classe" que carrega os métodos.
 // str -> PoolStr (que o metadata já introspecta com os métodos de string).
-const ESCALAR_CLASSE = { str: 'PoolStr' };
+// dict/list/tup vêm das tabelas METODOS_* do VM (gen_metadata raspa de lá).
+const ESCALAR_CLASSE = { str: 'PoolStr', dict: 'dict', list: 'list', tup: 'tup' };
 
 // palavras-chave da linguagem (espelha o lexer) — pro completion de topo e hover.
 const KEYWORDS = [

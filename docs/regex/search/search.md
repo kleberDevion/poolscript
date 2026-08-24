@@ -1,11 +1,14 @@
 # `regex.search(pattern, string, flags=0)`
 
-Procura o padrão em **qualquer posição** do texto. Devolve um objeto de
-correspondência (truthy) se achar, ou `Null` se não.
+Procura o padrão em **qualquer posição** do texto. Devolve **`bool`**: `true`
+se achou em algum lugar, `false` se não.
 
 ```
-regex.search(pattern: str, string: str, flags=0)
+regex.search(pattern: str, string: str, flags=0) -> bool
 ```
+
+Pra pegar **o que** casou (e não só se casou), use
+[`findall`](../findall/findall.md).
 
 ---
 

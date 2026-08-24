@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Gera a doc de builtins e métodos de string a partir das specs.
+"""Gera a doc de builtins e dos métodos de string, list e dict a partir das specs.
 
-    python3 scripts/gera_doc.py
+    PYTHONPATH=.:src python3 scripts/gera_doc.py
 
-Materializa docs/builtins/<nome>/<nome>.md e docs/string/<nome>/<nome>.md
-(pasta por item, o padrão das libs) + os índices builtins.md e string.md.
+Materializa docs/<grupo>/<nome>/<nome>.md (pasta por item, o padrão das libs)
+para builtins, string, list e dict + o índice de cada grupo.
 Os exemplos de cada spec são validados pela suíte (test_docs_exemplos.py):
 editar a spec e regenerar é o fluxo — editar o .md na mão se perde no próximo
 gerar.
@@ -18,6 +18,8 @@ sys.path.insert(0, str(RAIZ / "scripts"))
 
 from scripts.doc_specs_builtins import BUILTINS   # noqa: E402
 from scripts.doc_specs_string import STRMET       # noqa: E402
+from scripts.doc_specs_list import LISTMET        # noqa: E402
+from scripts.doc_specs_dict import DICTMET        # noqa: E402
 
 
 def bloco_exemplos(exemplos):
@@ -72,10 +74,16 @@ def gera_indice(titulo, intro, specs, arquivo):
 def main():
     pb = RAIZ / "docs" / "builtins"
     ps = RAIZ / "docs" / "string"
+    pl = RAIZ / "docs" / "list"
+    pd = RAIZ / "docs" / "dict"
     for nome, spec in BUILTINS.items():
         gera_item(nome, spec, pb, "../builtins.md")
     for nome, spec in STRMET.items():
         gera_item(nome, spec, ps, "../string.md")
+    for nome, spec in LISTMET.items():
+        gera_item(nome, spec, pl, "../list.md")
+    for nome, spec in DICTMET.items():
+        gera_item(nome, spec, pd, "../dict.md")
     gera_indice("Builtins da PoolScript",
                 "Funções disponíveis em qualquer `.ps`, sem import.",
                 BUILTINS, pb / "builtins.md")
@@ -84,7 +92,18 @@ def main():
                 "recebe método de string por conversão automática "
                 "(`(150).isdigit()`), exceto `len`.",
                 STRMET, ps / "string.md")
-    print(f"gerados: {len(BUILTINS)} builtins + {len(STRMET)} métodos de string")
+    gera_indice("Métodos de list",
+                "Chamados direto no valor: `l.metodo()`. A MAIORIA muta a "
+                "lista no lugar e devolve `null` — não encadeia. Para uma "
+                "cópia modificada, use os builtins `sorted(l)`/`reversed(l)`.",
+                LISTMET, pl / "list.md")
+    gera_indice("Métodos de dict",
+                "Chamados direto no valor: `d.metodo()`. Lembre: `x in d` "
+                "testa a **chave**; para procurar um **valor**, "
+                "`x in d.value()`.",
+                DICTMET, pd / "dict.md")
+    print(f"gerados: {len(BUILTINS)} builtins + {len(STRMET)} string + "
+          f"{len(LISTMET)} list + {len(DICTMET)} dict")
 
 
 if __name__ == "__main__":

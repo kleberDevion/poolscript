@@ -104,6 +104,11 @@ class ModeloTipos:
         self.tipos: dict[str, dict] = {}
         self.builtins: dict[str, dict] = {}
         self._carrega_modulos()
+        # dict/list/tup e o Pattern (regex.compile) não são classes Python: os
+        # métodos vivem nas tabelas METODOS_* do vm/poolscript_vm.c. Ler de lá
+        # mantém o completion colado no motor (mesma fonte do
+        # tests/test_paridade_membros.py) — nada escrito à mão aqui.
+        self._classes_das_tabelas_do_vm(Path(__file__).resolve().parents[3])
         self._carrega_docs_ricas()
 
     # ── consulta ──────────────────────────────────────────────────────
@@ -203,6 +208,32 @@ class ModeloTipos:
         if mod and hasattr(mod, nome_tipo) and inspect.isclass(getattr(mod, nome_tipo)):
             self._classe(getattr(mod, nome_tipo))
 
+    def _classes_das_tabelas_do_vm(self, raiz: Path):
+        """dict/list/tup/Pattern: os métodos saem das tabelas METODOS_* do
+        vm/poolscript_vm.c. Fora do repositório o arquivo não existe — aí
+        esses tipos simplesmente não completam (não inventa método)."""
+        fonte = raiz / "vm" / "poolscript_vm.c"
+        if not fonte.is_file():
+            return
+        try:
+            src = fonte.read_text(encoding="utf-8")
+        except OSError:
+            return
+        for rotulo, tabela in _TABELAS_TIPO.items():
+            m = re.search(r"static const MetodoNat " + tabela + r"\[\] = \{(.*?)\n\};",
+                          src, re.S)
+            if not m:
+                continue
+            nomes = sorted(set(re.findall(r'\{\s*"([A-Za-z_]\w*)"\s*,', m.group(1))))
+            if not nomes:
+                continue
+            membros = {n: {"kind": "method", "params": [], "sig": f"{n}()",
+                           "returns": None} for n in nomes}
+            if rotulo == "Pattern":     # `.pattern` é campo, no OP_GET_MEMBER
+                membros["pattern"] = {"kind": "property", "returns": "str"}
+            self.classes[rotulo] = {"members": membros,
+                                    "doc": f"métodos de {rotulo} da linguagem"}
+
     def _classe_por_nome(self, module_name, nome_tipo):
         if nome_tipo in self.classes:
             return
@@ -235,6 +266,10 @@ class ModeloTipos:
             self.builtins = {n: pega(s) for n, s in BUILTINS.items()}
         except Exception:
             pass
+        # dict/list/tup e o Pattern (regex.compile) não são classes Python:
+        # os métodos vivem nas tabelas METODOS_* do vm/poolscript_vm.c. Ler de
+        # lá mantém o completion colado no motor (mesma fonte do
+        # tests/test_paridade_membros.py) — nada escrito à mão aqui.
         # métodos de STRING (specs da doc viva) viram a "classe" str — é o que
         # faz `nome.` sugerir upper/lower/split/replace... como qualquer tipo
         try:
@@ -259,6 +294,14 @@ class ModeloTipos:
         finally:
             if sys.path and sys.path[0] == str(scripts):
                 sys.path.pop(0)
+
+
+_TABELAS_TIPO = {
+    "dict": "METODOS_DICT",
+    "list": "METODOS_LIST",
+    "tup": "METODOS_TUPLA",     # imutável: só os métodos de leitura
+    "Pattern": "METODOS_REGEX",
+}
 
 
 _MODELO: ModeloTipos | None = None

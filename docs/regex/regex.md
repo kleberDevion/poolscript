@@ -10,12 +10,30 @@ import regex
 
 | Membro | O que faz | Página |
 |---|---|---|
-| `regex.match(padrão, texto)` | testa se o texto **começa** com o padrão | [match/match.md](match/match.md) |
-| `regex.search(padrão, texto)` | acha o padrão **em qualquer lugar** | [search/search.md](search/search.md) |
+| `regex.compile(padrão)` | compila **uma vez** e devolve um `Pattern` reusável | [compile/compile.md](compile/compile.md) |
+| `regex.match(padrão, texto)` | o texto **inteiro** casa? (`bool`) | [match/match.md](match/match.md) |
+| `regex.fullmatch(padrão, texto)` | o mesmo que `match`, com o nome do Python | [fullmatch/fullmatch.md](fullmatch/fullmatch.md) |
+| `regex.search(padrão, texto)` | acha o padrão **em qualquer lugar** (`bool`) | [search/search.md](search/search.md) |
 | `regex.findall(padrão, texto)` | acha **todas** as ocorrências (lista) | [findall/findall.md](findall/findall.md) |
 | `regex.sub(padrão, novo, texto)` | **substitui** o padrão por outro texto | [sub/sub.md](sub/sub.md) |
 | `regex.split(padrão, texto)` | **divide** o texto onde o padrão bate | [split/split.md](split/split.md) |
 | `regex.escape(texto)` | escapa caracteres especiais do texto | [escape/escape.md](escape/escape.md) |
+
+---
+
+## A barra invertida: use `r"..."` ou `"\\"`
+
+O padrão chega como **string**, e a string já consome a barra: `"\d"` vira
+apenas `d` (verificado nos dois motores) — o padrão fica errado **em silêncio**,
+achando nada.
+
+```
+regex.findall("\d+", "a12")      // []        ← a string virou "d+"
+regex.findall("\\d+", "a12")     // ['12']    ← barra dobrada
+regex.findall(r"\d+", "a12")     // ['12']    ← string crua (mais legível)
+```
+
+Regra: em padrão com `\d`, `\w`, `\s`, `\b`, `\.`, use **`r"..."`**.
 
 ---
 

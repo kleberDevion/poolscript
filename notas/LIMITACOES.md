@@ -353,6 +353,40 @@ do `cmd_check` do `vm/main.c` (`{"ok":true}` /
 da entrada padrão, e no `--help` dos dois. Regressão:
 `tests/test_check_paridade.py` (inclusive "não executa o script").
 
+### Tupla podia ser MUTADA no VM
+
+**O que não funcionava:** tupla é imutável — e no VM não era. Ela caía na
+tabela de métodos da LISTA inteira (o `EH_SEQ` do `acha_metodo_valor` casa
+lista E tupla), então `(1,2,3).append(9)` devolvia `(1,2,3,9)`, e `sort`,
+`clear`, `pop`, `remove`, `insert`, `extend`, `reverse` mexiam na tupla do
+mesmo jeito; `.copy()` devolvia uma **lista**. O interpretador (autoridade)
+recusava os nove com "membro inexistente".
+
+Achado em 2026-08-24 ligando o completion de dict/list/tup no editor: pra
+listar os métodos de `tup` eu fui ler a tabela do VM e ela era a da lista.
+
+**Como foi resolvido:** `METODOS_TUPLA` própria, só com os cinco de LEITURA
+(`index`, `count`, `contains`, `has`, `len`), e `EH_TUPLA` testado **antes** do
+`EH_SEQ` no `acha_metodo_valor`. Mensagem de erro já batia nos dois motores.
+Regressão: `tests/test_tupla_imutavel.py` (14 métodos × 2 motores + a lista
+intacta).
+
+### `regex.compile` liberava o padrão que o objeto ainda usava
+
+**O que não funcionava:** ao criar o `Pattern` de `regex.compile()`, a segunda
+chamada de `.sub()`/`.findall()` no mesmo objeto dava **segfault**. Causa:
+`rx_sub` e `rx_findall` faziam `ps_regex_free(r)` no fim — elas tomavam posse
+do PSRegex, o que era invisível enquanto só as funções soltas do módulo (que
+compilam e jogam fora) as chamavam. Com um padrão compilado guardado no
+objeto, o primeiro uso liberava e o segundo lia ponteiro solto.
+
+**Como foi resolvido:** posse única e explícita — **quem compila, libera**.
+Os helpers `rx_sub`/`rx_findall`/`rx_split` não liberam mais nada; cada
+`mod_regex_*` chama `ps_regex_free` depois de usar, e o `Pattern` mantém o
+seu vivo até o GC (finalizer `fin_regex`). Regressão:
+`tests/test_regex_compile.py` (inclui `sub` e `split` do mesmo objeto na mesma
+linha, que era o repro, e 2000 compiles pro finalizer).
+
 ## Em aberto
 
 ### Sem list comprehension (design, não defeito)

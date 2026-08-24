@@ -73,9 +73,15 @@ PYTHONPATH=src python3 scripts/audita_doc_sigs.py   # introspecta -> .audita_sig
 APLICA=1 ./pool scripts/audita_doc.ps                # reescreve os títulos
 ```
 
-`docs/string` e `docs/builtins` ficam fora (são gerados de `scripts/doc_specs_*.py`
-por `PYTHONPATH=.:src python3 scripts/gera_doc.py`). As páginas dos elementos
-da guzer e a tabela do índice saem de `./pool scripts/gera_guzer_docs.ps`.
+`docs/string`, `docs/builtins`, `docs/list` e `docs/dict` ficam fora — são
+GERADOS de `scripts/doc_specs_*.py` por
+`PYTHONPATH=.:src python3 scripts/gera_doc.py` (editar o `.md` na mão se perde
+no próximo gerar). As páginas dos elementos da guzer e a tabela do índice saem
+de `./pool scripts/gera_guzer_docs.ps`.
+
+Todo método de `str`/`list`/`dict`/`tup` do motor precisa ter página: o
+`tests/test_doc_cobre_metodos.py` cruza as tabelas `METODOS_*` do
+`vm/poolscript_vm.c` com as specs e falha se faltar (ou sobrar) alguma.
 
 ## Scripts de apoio: em PoolScript
 

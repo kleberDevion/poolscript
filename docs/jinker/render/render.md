@@ -1,4 +1,4 @@
-# `render(caminho)` / `render(pasta, arquivo)`
+# `render(folder_or_file, file=None)`
 
 Lê um arquivo do disco e devolve um
 [`JinkerResponse`](../JinkerResponse/JinkerResponse.md) com o **MIME type

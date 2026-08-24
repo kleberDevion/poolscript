@@ -1586,6 +1586,23 @@
   "regex": {
    "members": [
     {
+     "name": "compile",
+     "kind": "function",
+     "params": [
+      {
+       "name": "pattern",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "compile(pattern, flags?)",
+     "returns": "Pattern",
+     "doc": "Compila o padrão UMA vez e devolve um `Pattern` reusável."
+    },
+    {
      "name": "match",
      "kind": "function",
      "params": [
@@ -1605,6 +1622,27 @@
      "sig": "match(pattern, string, flags?)",
      "returns": "bool",
      "doc": "Verifica se a string casa completamente com o padrão."
+    },
+    {
+     "name": "fullmatch",
+     "kind": "function",
+     "params": [
+      {
+       "name": "pattern",
+       "opt": false
+      },
+      {
+       "name": "string",
+       "opt": false
+      },
+      {
+       "name": "flags",
+       "opt": true
+      }
+     ],
+     "sig": "fullmatch(pattern, string, flags?)",
+     "returns": "bool",
+     "doc": "Casa a string INTEIRA — o nome do Python pro que `match` já faz aqui."
     },
     {
      "name": "search",
@@ -4469,6 +4507,58 @@
     }
    ],
    "doc": "Arquivo aberto pelo mp.open() — mantém o arquivo aberto durante operações. Funciona com `using mp.open(...) as arq { ... }` da PoolScript."
+  },
+  "Pattern": {
+   "members": [
+    {
+     "name": "findall",
+     "kind": "method",
+     "params": [],
+     "sig": "findall()",
+     "returns": null
+    },
+    {
+     "name": "fullmatch",
+     "kind": "method",
+     "params": [],
+     "sig": "fullmatch()",
+     "returns": null
+    },
+    {
+     "name": "match",
+     "kind": "method",
+     "params": [],
+     "sig": "match()",
+     "returns": null
+    },
+    {
+     "name": "search",
+     "kind": "method",
+     "params": [],
+     "sig": "search()",
+     "returns": null
+    },
+    {
+     "name": "split",
+     "kind": "method",
+     "params": [],
+     "sig": "split()",
+     "returns": null
+    },
+    {
+     "name": "sub",
+     "kind": "method",
+     "params": [],
+     "sig": "sub()",
+     "returns": null
+    },
+    {
+     "name": "pattern",
+     "kind": "property",
+     "returns": "str"
+    }
+   ],
+   "doc": "métodos de Pattern da linguagem"
   },
   "PoolStr": {
    "members": [
@@ -26651,6 +26741,238 @@
     }
    ],
    "doc": "Espelho do socket.socket do Python — mesmos métodos, mesmos retornos."
+  },
+  "dict": {
+   "members": [
+    {
+     "name": "clear",
+     "kind": "method",
+     "params": [],
+     "sig": "clear()",
+     "returns": null
+    },
+    {
+     "name": "contains",
+     "kind": "method",
+     "params": [],
+     "sig": "contains()",
+     "returns": null
+    },
+    {
+     "name": "copy",
+     "kind": "method",
+     "params": [],
+     "sig": "copy()",
+     "returns": null
+    },
+    {
+     "name": "get",
+     "kind": "method",
+     "params": [],
+     "sig": "get()",
+     "returns": null
+    },
+    {
+     "name": "has",
+     "kind": "method",
+     "params": [],
+     "sig": "has()",
+     "returns": null
+    },
+    {
+     "name": "items",
+     "kind": "method",
+     "params": [],
+     "sig": "items()",
+     "returns": null
+    },
+    {
+     "name": "keys",
+     "kind": "method",
+     "params": [],
+     "sig": "keys()",
+     "returns": null
+    },
+    {
+     "name": "len",
+     "kind": "method",
+     "params": [],
+     "sig": "len()",
+     "returns": null
+    },
+    {
+     "name": "pop",
+     "kind": "method",
+     "params": [],
+     "sig": "pop()",
+     "returns": null
+    },
+    {
+     "name": "update",
+     "kind": "method",
+     "params": [],
+     "sig": "update()",
+     "returns": null
+    },
+    {
+     "name": "value",
+     "kind": "method",
+     "params": [],
+     "sig": "value()",
+     "returns": null
+    },
+    {
+     "name": "values",
+     "kind": "method",
+     "params": [],
+     "sig": "values()",
+     "returns": null
+    }
+   ],
+   "doc": "métodos de dict da linguagem"
+  },
+  "list": {
+   "members": [
+    {
+     "name": "append",
+     "kind": "method",
+     "params": [],
+     "sig": "append()",
+     "returns": null
+    },
+    {
+     "name": "clear",
+     "kind": "method",
+     "params": [],
+     "sig": "clear()",
+     "returns": null
+    },
+    {
+     "name": "contains",
+     "kind": "method",
+     "params": [],
+     "sig": "contains()",
+     "returns": null
+    },
+    {
+     "name": "copy",
+     "kind": "method",
+     "params": [],
+     "sig": "copy()",
+     "returns": null
+    },
+    {
+     "name": "count",
+     "kind": "method",
+     "params": [],
+     "sig": "count()",
+     "returns": null
+    },
+    {
+     "name": "extend",
+     "kind": "method",
+     "params": [],
+     "sig": "extend()",
+     "returns": null
+    },
+    {
+     "name": "has",
+     "kind": "method",
+     "params": [],
+     "sig": "has()",
+     "returns": null
+    },
+    {
+     "name": "index",
+     "kind": "method",
+     "params": [],
+     "sig": "index()",
+     "returns": null
+    },
+    {
+     "name": "insert",
+     "kind": "method",
+     "params": [],
+     "sig": "insert()",
+     "returns": null
+    },
+    {
+     "name": "len",
+     "kind": "method",
+     "params": [],
+     "sig": "len()",
+     "returns": null
+    },
+    {
+     "name": "pop",
+     "kind": "method",
+     "params": [],
+     "sig": "pop()",
+     "returns": null
+    },
+    {
+     "name": "remove",
+     "kind": "method",
+     "params": [],
+     "sig": "remove()",
+     "returns": null
+    },
+    {
+     "name": "reverse",
+     "kind": "method",
+     "params": [],
+     "sig": "reverse()",
+     "returns": null
+    },
+    {
+     "name": "sort",
+     "kind": "method",
+     "params": [],
+     "sig": "sort()",
+     "returns": null
+    }
+   ],
+   "doc": "métodos de list da linguagem"
+  },
+  "tup": {
+   "members": [
+    {
+     "name": "contains",
+     "kind": "method",
+     "params": [],
+     "sig": "contains()",
+     "returns": null
+    },
+    {
+     "name": "count",
+     "kind": "method",
+     "params": [],
+     "sig": "count()",
+     "returns": null
+    },
+    {
+     "name": "has",
+     "kind": "method",
+     "params": [],
+     "sig": "has()",
+     "returns": null
+    },
+    {
+     "name": "index",
+     "kind": "method",
+     "params": [],
+     "sig": "index()",
+     "returns": null
+    },
+    {
+     "name": "len",
+     "kind": "method",
+     "params": [],
+     "sig": "len()",
+     "returns": null
+    }
+   ],
+   "doc": "métodos de tup da linguagem"
   }
  },
  "keywords": {
