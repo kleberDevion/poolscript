@@ -22,6 +22,27 @@ pool build          # roda todos os .ps da pasta atual
 
 ---
 
+## Só checar a sintaxe (sem rodar)
+
+`--check` analisa o arquivo (lexer + parser) e **não executa nada** — é o que
+um editor/LSP usa pra sublinhar erro enquanto você digita. A saída é um JSON
+de uma linha, igual nos dois motores:
+
+```bash
+pool --check meu_arquivo.ps
+# {"ok":true}
+
+pool --check com_erro.ps
+# {"ok":false,"tipo":"SyntaxError","msg":"faltou ')' na declaracao da action","linha":1,"coluna":11}
+
+cat meu_arquivo.ps | pool --check     # sem arquivo, lê da entrada padrão
+```
+
+O processo sai com código 0 mesmo quando o arquivo tem erro — quem chama olha
+o campo `ok`.
+
+---
+
 ## REPL
 
 ```bash

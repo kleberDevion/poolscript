@@ -1,11 +1,12 @@
-# `request.put(url, headers=None, body=None, timeout=30, stream=false, max_size=None)`
+# `request.put(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None)`
 
 Faz uma requisição HTTP **PUT** — usada pra **substituir um recurso inteiro**.
 Mesma assinatura e comportamento de [`request.post`](../post/post.md); muda só
 o método HTTP. Devolve um [`Response`](../Response/Response.md).
 
 ```
-request.put(url, headers=None, body=None, timeout=30, stream=false, max_size=None) -> Response
+request.put(url, headers=None, body=None, timeout=30, stream=false, max_size=None,
+            fields=None, file=None) -> Response
 ```
 
 ---

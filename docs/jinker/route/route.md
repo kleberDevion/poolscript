@@ -86,6 +86,30 @@ action login() {
 `methods` e `auth` são **opcionais**. Sem `methods`, vale o conjunto global do
 `cors()`. Sem `auth`, não há restrição de origem.
 
+### `HEAD` vem junto com o `GET`
+
+Uma rota que aceita **GET** responde **HEAD** automaticamente: mesmo status e
+mesmos cabeçalhos (`Content-Length` inclusive), **sem o corpo** — é o que a
+RFC 9110 manda e serve pra quem só quer checar existência/tamanho:
+
+```
+@app.route("/relatorio.pdf", methods=cors.options(["GET"]))
+action relatorio() {
+    return render("arquivos/relatorio.pdf")
+}
+```
+
+```bash
+curl -I http://localhost:2000/relatorio.pdf
+# HTTP/1.1 200 OK
+# Content-Length: 184320     ← o tamanho que o GET traria
+# (sem corpo)
+```
+
+Rota que **não** aceita GET (só POST, por exemplo) devolve 404 no HEAD, igual
+ao GET. Do outro lado, pra **fazer** uma requisição HEAD, use
+[`request.head()`](../../request/head/head.md).
+
 ---
 
 ## O que a action pode retornar

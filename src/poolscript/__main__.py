@@ -24,6 +24,8 @@ Uso:
   pool arquivo.ps       Roda um arquivo .ps
   pool repl             Abre o REPL interativo
   pool build            Roda todos os .ps da pasta atual
+  pool --check [arq.ps] Só analisa (não roda); JSON com o erro. Sem arquivo,
+                        lê da entrada padrão
   pool --version        Mostra a versão e runtime
   pool --help           Mostra esta ajuda
 

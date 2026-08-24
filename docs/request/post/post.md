@@ -1,10 +1,11 @@
-# `request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=None)`
+# `request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None)`
 
 Faz uma requisição HTTP **POST** — usada pra **enviar dados** (criar recursos,
-fazer login, etc.). Devolve um [`Response`](../Response/Response.md).
+fazer login, subir arquivo). Devolve um [`Response`](../Response/Response.md).
 
 ```
-request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=None) -> Response
+request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=None,
+             fields=None, file=None) -> Response
 ```
 
 | Parâmetro | Padrão | O que é |
@@ -15,6 +16,47 @@ request.post(url, headers=None, body=None, timeout=30, stream=false, max_size=No
 | `timeout` | `30` | segundos até desistir |
 | `stream` | `false` | `true` = lê a resposta em pedaços de 64 KB com **teto de memória** — passa do teto, levanta erro em vez de engolir a RAM |
 | `max_size` | `None` | o teto quando `stream=true`: bytes ou texto com unidade (`"500mb"`); `None` = 100 MB. Ignorado sem `stream` |
+| `fields` | `None` | **multipart**: dict com os campos simples do formulário — ver a seção abaixo |
+| `file` | `None` | **multipart**: `{campo: {"name": caminho}}` — a lib lê o arquivo do disco e envia como parte binária |
+
+---
+
+## Multipart — enviar arquivo (`fields=` + `file=`)
+
+Pra APIs que recebem **arquivo** (upload, transcrição de áudio...), use
+`fields=`/`file=` em vez de `body=` — a lib monta o `multipart/form-data`
+inteiro sozinha (boundary, cabeçalhos de cada parte, o arquivo em binário):
+
+```
+import request
+
+resp = request.post("https://api.exemplo.com/audio/transcriptions",
+    headers={"Authorization": "Bearer TOKEN"},
+    fields={
+        "model": "whisper-large-v3",
+        "response_format": "json",
+        "language": "pt"
+    },
+    file={
+        "file": { "name": "gravacao.mp3" }
+    }
+)
+post(resp.get_json())
+```
+
+- **`fields=`** — os campos "de texto" do formulário (`{nome: valor}`; valor
+  que não é string vira string).
+- **`file=`** — os arquivos: a **chave** é o nome do campo no formulário, e
+  `"name"` é o **caminho** do arquivo, de onde você quiser — absoluto,
+  relativo à pasta do script em execução, ou ao diretório atual (a mesma
+  regra da lib `os`). O nome enviado é o do arquivo (basename), como
+  `application/octet-stream`.
+- O `Content-Type` da requisição é **da lib** (carrega o boundary gerado) —
+  um `Content-Type` manual nos `headers=` é descartado, senão o boundary não
+  bateria. O `Authorization` e os demais headers passam normal.
+- `body=` **ou** `fields=`/`file=` — os dois juntos é erro
+  (`use body= OU fields=/file= (multipart) — não os dois juntos`).
+- Arquivo que não existe: `FileNotFoundError` com o caminho pedido.
 
 ---
 

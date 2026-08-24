@@ -24,6 +24,7 @@ import request
 | `request.put(url, ...)` | requisição PUT | [put/put.md](put/put.md) |
 | `request.patch(url, ...)` | requisição PATCH | [patch/patch.md](patch/patch.md) |
 | `request.delete(url, ...)` | requisição DELETE | [delete/delete.md](delete/delete.md) |
+| `request.head(url, ...)` | requisição HEAD — status/headers sem baixar o corpo | [head/head.md](head/head.md) |
 
 Todas devolvem um [`Response`](Response/Response.md).
 

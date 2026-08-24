@@ -89,6 +89,7 @@ def _load(lib_name: str) -> dict:
             "put": request_real.EXPORTS["put"],
             "patch": request_real.EXPORTS["patch"],
             "delete": request_real.EXPORTS["delete"],
+            "head": request_real.EXPORTS["head"],
             "text": proxy.text,
             "ws_connect": request_real.EXPORTS["ws_connect"],
         }

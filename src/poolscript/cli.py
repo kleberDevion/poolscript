@@ -90,6 +90,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_update(argv[1:])
     if cmd == "build":
         return _cmd_build()
+    if cmd in {"--check", "check"}:
+        return _cmd_check(argv[1] if len(argv) > 1 else None)
     if cmd == "repl":
         return _cmd_repl()
 
@@ -101,6 +103,45 @@ def main(argv: list[str] | None = None) -> int:
 def _run_file(path: Path) -> int:
     from .ps_runner import run_file
     return run_file(path)
+
+
+def _cmd_check(arquivo: str | None) -> int:
+    """`pool --check [arquivo.ps]` — só analisa (lexer + parser), NÃO executa.
+    Sem arquivo, lê da entrada padrão. Saída em JSON de uma linha, no MESMO
+    formato do binário C (cmd_check em vm/main.c) — é o que o LSP/editor
+    consome, então os dois motores têm que responder igual."""
+    import json as _json
+
+    def _fim(obj) -> int:
+        print(_json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
+        return 0
+
+    if arquivo:
+        try:
+            fonte = Path(arquivo).read_text(encoding="utf-8")
+        except OSError:
+            return _fim({"ok": False, "tipo": "IOError",
+                         "msg": "nao consegui abrir o arquivo", "linha": 1, "coluna": 1})
+    else:
+        fonte = sys.stdin.read()
+
+    from .lexer import Lexer
+    from .parser import Parser
+    from .ps_errors import PoolParseError, PoolSyntaxError
+    try:
+        nome = arquivo or "<stdin>"
+        Parser(Lexer(fonte, filename=nome).tokenize(), source=fonte, filename=nome).parse()
+    except (PoolSyntaxError, PoolParseError) as e:
+        # o ParseError guarda a posição no TOKEN; o SyntaxError, direto no erro
+        tok = getattr(e, "token", None)
+        linha = getattr(e, "line", None) or getattr(tok, "line", None) or 1
+        coluna = getattr(e, "col", None) or getattr(tok, "col", None) or 1
+        return _fim({"ok": False, "tipo": "SyntaxError", "msg": getattr(e, "msg", str(e)),
+                     "linha": linha, "coluna": coluna})
+    except Exception as e:                     # erro inesperado do analisador
+        return _fim({"ok": False, "tipo": type(e).__name__, "msg": str(e),
+                     "linha": 1, "coluna": 1})
+    return _fim({"ok": True})
 
 
 def _cmd_version() -> None:
@@ -133,6 +174,8 @@ Uso:
   pool arquivo.ps       Roda um arquivo .ps
   pool repl             Abre o REPL interativo
   pool build            Roda todos os .ps da pasta atual
+  pool --check [arq.ps] Só analisa (não roda); JSON com o erro. Sem arquivo,
+                        lê da entrada padrão
   pool --version        Mostra a versão e runtime
   pool --help           Mostra esta ajuda
 

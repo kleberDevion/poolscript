@@ -304,6 +304,55 @@ comum e corpo de Entity), depois do `NEWLINE` obrigatório pulam-se os
 `NEWLINE` extras antes de exigir o `INDENT`. Regressão:
 `tests/test_str_utf8_e_busca.py` (action, if, for each, Entity, `#` e `//`).
 
+### HEAD não existia em lugar nenhum (cliente nem servidor)
+
+**O que não funcionava:** o método HTTP HEAD, nos três pontos onde ele aparece:
+
+- `request.head(url)` / `requests.head(url)` — **não existia** nos dois
+  motores (a lib tinha get/post/put/patch/delete e parou aí), embora o cliente
+  C já soubesse que HEAD não tem corpo (`ps_http.c`: `sem_corpo`);
+- **jinker servindo HEAD** — divergência dupla e silenciosa: o interpretador
+  respondia **501** (o `BaseHTTPRequestHandler` não tinha `do_HEAD`) e o VM
+  respondia **404** (o método não casava com a rota de GET no laço de
+  roteamento).
+
+**Como foi resolvido:** cliente — `head(url, headers, timeout)` no
+`request_lib.py` e `mod_req_head` na tabela `MOD_REQUEST` do VM (remapeia pro
+`request_comum` com método "HEAD"); o alias `request`/`requests` exporta os
+dois. Servidor — uma rota que aceita GET responde HEAD com os MESMOS headers
+(Content-Length inclusive) e **sem corpo** (RFC 9110): no interp, `do_HEAD` +
+`_escreve()` (que pula o corpo em HEAD) e fallback de rota GET; no VM,
+`PSJkConn.sem_corpo` (ligado ao ler a requisição, checado no
+`ps_jk_responde`) + a mesma segunda tentativa de casamento com "GET".
+Regressões: `tests/test_request_multipart_head.py`, `tests/test_jinker_head.py`.
+
+### `multipart/form-data` não tinha como ser enviado
+
+**O que não funcionava:** mandar arquivo pra uma API (upload, transcrição de
+áudio) era impossível: `body=` só fazia JSON/texto/bytes, e montar o multipart
+na mão em PoolScript não dá (precisa de boundary + bytes crus do arquivo).
+
+**Como foi resolvido:** `fields=` (campos do formulário) e `file=`
+(`{campo: {"name": caminho}}`) em get/post/put/patch/delete nos dois motores —
+a lib lê o arquivo (absoluto | pasta do script | cwd), monta as partes e põe o
+`Content-Type` com o boundary gerado (um `Content-Type` manual é descartado, se
+não o boundary não bateria). `body=` junto com `fields=`/`file=` é erro claro
+nos dois. Regressão: `tests/test_request_multipart_head.py` (confere sha256 do
+binário que atravessou).
+
+### `--check` existia só na VM
+
+**O que não funcionava:** `pool --check arq.ps` (analisa sem executar — o que
+um editor/LSP consome) era só do binário C. No interpretador, `--check` caía no
+caminho de "rodar arquivo": erro `arquivo não encontrado: --check` e, se
+existisse um arquivo com esse nome, ele seria **executado**.
+
+**Como foi resolvido:** `_cmd_check` no `cli.py`, com o MESMO JSON de uma linha
+do `cmd_check` do `vm/main.c` (`{"ok":true}` /
+`{"ok":false,"tipo":...,"msg":...,"linha":N,"coluna":N}`), lendo de arquivo ou
+da entrada padrão, e no `--help` dos dois. Regressão:
+`tests/test_check_paridade.py` (inclusive "não executa o script").
+
 ## Em aberto
 
 ### Sem list comprehension (design, não defeito)

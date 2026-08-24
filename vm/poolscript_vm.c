@@ -11273,6 +11273,21 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     long teto     = 0;
     if (stream && n > 5 && args[5].t == V_INT) teto = args[5].as.i;
 
+    /* multipart/form-data: fields= (campos simples) e file= ({campo: {"name":
+     * caminho}}) — a MESMA API do request_lib.py. Quando presentes, o corpo é
+     * montado aqui e o Content-Type (com o boundary gerado) é da lib. */
+    Value fields = n > 6 ? args[6] : MK_NULL();
+    Value vfile  = n > 7 ? args[7] : MK_NULL();
+    int multipart = 0;
+    if (fields.t != V_NULL && fields.t != V_UNSET) {
+        if (!EH_DICT(fields)) BERRO(vm, "TypeError", "fields= espera um dict {campo: valor}");
+        multipart = 1;
+    }
+    if (vfile.t != V_NULL && vfile.t != V_UNSET) {
+        if (!EH_DICT(vfile)) BERRO(vm, "TypeError", "file= espera um dict {campo: {\"name\": caminho}}");
+        multipart = 1;
+    }
+
     /* headers do usuário + defaults */
     SBUF_AUTO cabs = {0};
     int tem_ua = 0, tem_accept = 0, tem_ct = 0;
@@ -11284,6 +11299,9 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
             if (!EH_STRING(k)) continue;
             char low[64];
             minusculo(COMO_STRING(k)->chars, low, sizeof(low));
+            /* multipart: o Content-Type carrega o boundary gerado — um manual
+             * não serviria (o interp descarta igual) */
+            if (multipart && strcmp(low, "content-type") == 0) continue;
             if (strcmp(low, "user-agent") == 0) tem_ua = 1;
             if (strcmp(low, "accept") == 0) tem_accept = 1;
             if (strcmp(low, "content-type") == 0) tem_ct = 1;
@@ -11302,6 +11320,8 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     char *corpo = NULL;
     size_t ncorpo = 0;
     int corpo_livre = 0;
+    if (multipart && body.t != V_NULL && body.t != V_UNSET)
+        BERRO(vm, "ValueError", "use body= OU fields=/file= (multipart) — não os dois juntos");
     if (body.t != V_NULL && body.t != V_UNSET) {
         if (EH_DICT(body) || EH_LIST(body) || EH_TUPLA(body)) {
             SBuf jb = {0};
@@ -11316,6 +11336,107 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
             if (valor_para_texto(&vt, &body, 0) != 0) { free(vt.b); BERRO(vm, "MemoryError", "sem memoria"); }
             corpo = vt.b; ncorpo = (size_t)vt.n; corpo_livre = 1;
         }
+    }
+
+    if (multipart) {
+        static unsigned mp_seq = 0;
+        char boundary[80];
+        snprintf(boundary, sizeof(boundary), "----poolscript%08x%08x%08x",
+                 (unsigned)getpid(), (unsigned)time(NULL), ++mp_seq);
+        SBuf mp = {0};
+        int falhou = 0;
+        if (EH_DICT(fields)) {
+            PSDict *d = COMO_DICT(fields);
+            for (int i = 0; i < d->usados && !falhou; i++) {
+                if (d->entradas[i].estado != 1) continue;
+                Value k = d->entradas[i].chave, v = d->entradas[i].valor;
+                if (!EH_STRING(k) || v.t == V_NULL || v.t == V_UNSET) continue;
+                TXTBUF_AUTO vt = {0};
+                if (valor_para_texto(&vt, &v, 0) != 0) { falhou = 1; break; }
+                char cab_p[512];
+                int np = snprintf(cab_p, sizeof(cab_p),
+                                  "--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n",
+                                  boundary, COMO_STRING(k)->chars);
+                if (np < 0 || np >= (int)sizeof(cab_p)
+                    || sb_bytes(&mp, cab_p, np) != 0
+                    || sb_bytes(&mp, vt.b ? vt.b : "", vt.n) != 0
+                    || sb_bytes(&mp, "\r\n", 2) != 0) falhou = 1;
+            }
+        }
+        if (EH_DICT(vfile) && !falhou) {
+            PSDict *d = COMO_DICT(vfile);
+            for (int i = 0; i < d->usados && !falhou; i++) {
+                if (d->entradas[i].estado != 1) continue;
+                Value k = d->entradas[i].chave, v = d->entradas[i].valor;
+                if (!EH_STRING(k)) continue;
+                const char *caminho = NULL;
+                if (EH_DICT(v)) {
+                    PSDict *dv = COMO_DICT(v);
+                    for (int q = 0; q < dv->usados; q++) {
+                        if (dv->entradas[q].estado != 1) continue;
+                        Value kk = dv->entradas[q].chave;
+                        if (EH_STRING(kk) && strcmp(COMO_STRING(kk)->chars, "name") == 0
+                                && EH_STRING(dv->entradas[q].valor)) {
+                            caminho = COMO_STRING(dv->entradas[q].valor)->chars;
+                            break;
+                        }
+                    }
+                } else if (EH_STRING(v)) {
+                    caminho = COMO_STRING(v)->chars;
+                }
+                if (!caminho || !caminho[0]) {
+                    free(mp.b);
+                    BERRO(vm, "ValueError", "file=: campo \"%s\" sem \"name\" (o caminho do arquivo)",
+                          COMO_STRING(k)->chars);
+                }
+                /* arquivo de ONDE o usuário quiser: absoluto | pasta do script | cwd */
+                char cam[1024]; cam[0] = '\0';
+                struct stat st;
+                if (caminho[0] == '/') {
+                    if (stat(caminho, &st) == 0 && S_ISREG(st.st_mode))
+                        snprintf(cam, sizeof(cam), "%s", caminho);
+                } else {
+                    if (vm->dir_script[0]) {
+                        snprintf(cam, sizeof(cam), "%s/%s", vm->dir_script, caminho);
+                        if (!(stat(cam, &st) == 0 && S_ISREG(st.st_mode))) cam[0] = '\0';
+                    }
+                    if (!cam[0] && stat(caminho, &st) == 0 && S_ISREG(st.st_mode))
+                        snprintf(cam, sizeof(cam), "%s", caminho);
+                }
+                if (!cam[0]) {
+                    free(mp.b);
+                    BERRO(vm, "FileNotFoundError", "file=: arquivo não encontrado: %s", caminho);
+                }
+                const char *nome_arq = strrchr(cam, '/');
+                nome_arq = nome_arq ? nome_arq + 1 : cam;
+                FILE *f = fopen(cam, "rb");
+                if (!f) { free(mp.b); BERRO(vm, "FileNotFoundError", "file=: arquivo não encontrado: %s", caminho); }
+                fseek(f, 0, SEEK_END); long tam = ftell(f); fseek(f, 0, SEEK_SET);
+                char *dados = malloc((size_t)(tam > 0 ? tam : 1));
+                size_t rd = dados ? fread(dados, 1, (size_t)(tam > 0 ? tam : 0), f) : 0;
+                fclose(f);
+                if (!dados) { free(mp.b); BERRO(vm, "MemoryError", "sem memoria"); }
+                char cab_p[1200];
+                int np = snprintf(cab_p, sizeof(cab_p),
+                                  "--%s\r\nContent-Disposition: form-data; name=\"%s\"; filename=\"%s\"\r\n"
+                                  "Content-Type: application/octet-stream\r\n\r\n",
+                                  boundary, COMO_STRING(k)->chars, nome_arq);
+                if (np < 0 || np >= (int)sizeof(cab_p)
+                    || sb_bytes(&mp, cab_p, np) != 0
+                    || sb_bytes(&mp, dados, (int)rd) != 0
+                    || sb_bytes(&mp, "\r\n", 2) != 0) falhou = 1;
+                free(dados);
+            }
+        }
+        char fecho[96];
+        int nf = snprintf(fecho, sizeof(fecho), "--%s--\r\n", boundary);
+        char ctl[160];
+        int nct = snprintf(ctl, sizeof(ctl), "Content-Type: multipart/form-data; boundary=%s\r\n", boundary);
+        if (falhou || sb_bytes(&mp, fecho, nf) != 0 || sb_bytes(&cabs, ctl, nct) != 0) {
+            free(mp.b);
+            BERRO(vm, "MemoryError", "sem memoria no multipart");
+        }
+        corpo = mp.b; ncorpo = (size_t)mp.n; corpo_livre = 1;
     }
 
     /* O ps_http lê `cabs` como C-string, mas SBuf não é NUL-terminado: sem
@@ -11352,6 +11473,18 @@ static int mod_req_post(VM *v, Value *a, int n, Value *o)   { return request_com
 static int mod_req_put(VM *v, Value *a, int n, Value *o)    { return request_comum(v, "PUT", a, n, o); }
 static int mod_req_patch(VM *v, Value *a, int n, Value *o)  { return request_comum(v, "PATCH", a, n, o); }
 static int mod_req_delete(VM *v, Value *a, int n, Value *o) { return request_comum(v, "DELETE", a, n, o); }
+
+/* head(url, headers, timeout) — só cabeçalhos, sem corpo. Remapeia pro layout
+ * do request_comum (timeout é o 4º argumento lá). */
+static int mod_req_head(VM *v, Value *a, int n, Value *o)
+{
+    Value b[4];
+    b[0] = n > 0 ? a[0] : MK_NULL();
+    b[1] = n > 1 ? a[1] : MK_NULL();
+    b[2] = MK_NULL();
+    b[3] = n > 2 ? a[2] : MK_NULL();
+    return request_comum(v, "HEAD", b, n >= 3 ? 4 : n, o);
+}
 
 /* Drena as mensagens já chegadas e entrega ao on_message. Sem thread própria,
  * a entrega acontece aqui (chamado no send e no close) — o interpretador
@@ -11503,11 +11636,13 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-#define REQ_PARAMS "url,headers,body,timeout,stream,max_size"
+#define REQ_PARAMS "url,headers,body,timeout,stream,max_size,fields,file"
 static const MembroMod MOD_REQUEST[] = {
     { "get", mod_req_get, 0, REQ_PARAMS }, { "post", mod_req_post, 0, REQ_PARAMS },
     { "put", mod_req_put, 0, REQ_PARAMS }, { "patch", mod_req_patch, 0, REQ_PARAMS },
-    { "delete", mod_req_delete, 0, REQ_PARAMS }, { "ws_connect", mod_req_ws, 0, "url" },
+    { "delete", mod_req_delete, 0, REQ_PARAMS },
+    { "head", mod_req_head, 0, "url,headers,timeout" },
+    { "ws_connect", mod_req_ws, 0, "url" },
 };
 
 
@@ -14562,14 +14697,22 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     Value pv = params ? MK_OBJ(params) : MK_NULL();
     if (params && fixa_raiz(vm, pv) != 0) return 0;
     JkRota *rota = NULL;
-    for (int i = 0; i < j->nrotas; i++) {
-        /* método tem que casar (como o _find_route) */
-        int mok = 0;
-        for (int k = 0; k < j->rotas[i].nmetodos; k++)
-            if (strcasecmp(j->rotas[i].metodos[k], hr->metodo) == 0) { mok = 1; break; }
-        if (!mok) continue;
-        if (params) { params->count = 0; params->usados = 0; }
-        if (jk_casa(vm, j->rotas[i].path, hr->path, params)) { rota = &j->rotas[i]; break; }
+    /* HEAD é atendido pela rota de GET (RFC 9110: mesmos headers, sem corpo).
+     * Uma rota que declare HEAD explicitamente casa na 1ª volta. */
+    const char *metodos_tenta[2] = { hr->metodo, NULL };
+    if (strcmp(hr->metodo, "HEAD") == 0) metodos_tenta[1] = "GET";
+    for (int t = 0; t < 2 && !rota; t++) {
+        const char *met = metodos_tenta[t];
+        if (!met) break;
+        for (int i = 0; i < j->nrotas; i++) {
+            /* método tem que casar (como o _find_route) */
+            int mok = 0;
+            for (int k = 0; k < j->rotas[i].nmetodos; k++)
+                if (strcasecmp(j->rotas[i].metodos[k], met) == 0) { mok = 1; break; }
+            if (!mok) continue;
+            if (params) { params->count = 0; params->usados = 0; }
+            if (jk_casa(vm, j->rotas[i].path, hr->path, params)) { rota = &j->rotas[i]; break; }
+        }
     }
 
     /* Tier 2/2b/3: arquivos estáticos e SPA */

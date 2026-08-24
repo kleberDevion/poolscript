@@ -43,6 +43,10 @@ struct PSJkConn {
     SSL  *ssl;      /* NULL sem TLS */
     char *buf;      /* bytes já lidos e ainda não consumidos */
     size_t n, cap;
+    /* HEAD: a resposta leva os MESMOS headers do GET (Content-Length
+     * inclusive) e NENHUM corpo (RFC 9110). Quem roteia liga isto ao ler a
+     * requisição, e ps_jk_responde pula a escrita do corpo. */
+    int   sem_corpo;
 };
 
 /* ── E/S básica ─────────────────────────────────────────────────────────── */
@@ -269,6 +273,8 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
     size_t nm = (size_t)(sp1 - p);
     if (nm >= sizeof(r->metodo)) return -1;
     memcpy(r->metodo, p, nm); r->metodo[nm] = '\0';
+    /* HEAD: mesma resposta do GET, sem o corpo (ver PSJkConn.sem_corpo) */
+    c->sem_corpo = (strcmp(r->metodo, "HEAD") == 0);
     char *sp2 = memchr(sp1 + 1, ' ', (size_t)(eol - sp1 - 1));
     if (!sp2) return -1;
     char *alvo = jk_ar_faixa(r, sp1 + 1, sp2);
@@ -400,6 +406,7 @@ int ps_jk_responde(PSJkConn *c, int status, const char *ctype,
                      extra ? extra : "");
     if (n < 0 || n >= (int)sizeof(cab)) return -1;
     if (conn_escreve(c, cab, (size_t)n) != 0) return -1;
+    if (c->sem_corpo) return 0;          /* HEAD: headers sim, corpo não */
     if (ncorpo && conn_escreve(c, corpo, ncorpo) != 0) return -1;
     return 0;
 }

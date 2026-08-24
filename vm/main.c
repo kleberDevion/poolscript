@@ -34,6 +34,8 @@ static void ajuda(void)
 "  pool arquivo.ps           Roda um arquivo\n"
 "  pool -e \"<codigo>\"        Roda codigo inline (uma linha)\n"
 "  pool build                Roda todos os .ps da pasta atual\n"
+"  pool --check [arq.ps]     So analisa (nao roda); JSON com o erro. Sem\n"
+"                            arquivo, le da entrada padrao\n"
 "  pool //doc                Mostra a URL da especificacao\n"
 "  pool --version / -V       Mostra a versao\n"
 "  pool --help / -h          Mostra esta ajuda\n"

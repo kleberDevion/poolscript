@@ -1141,7 +1141,7 @@ class Jinker:
                         self.send_header("Content-Length", str(len(body)))
                         self.send_header("Retry-After", str(_poolip.bloq * 86400))
                         self.end_headers()
-                        self.wfile.write(body)
+                        self._escreve(body)
                         return
 
                 parsed = urlparse(self.path)
@@ -1165,10 +1165,14 @@ class Jinker:
                     self.send_header("Content-Length", str(len(body_bytes)))
                     self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
-                    self.wfile.write(body_bytes)
+                    self._escreve(body_bytes)
 
                 # ── Tier 1: Rotas de API (maior prioridade) ──────────────
                 route, path_params = app._find_route(method, path)
+                # HEAD é atendido pela rota de GET (RFC 9110: os MESMOS
+                # headers, sem corpo). Uma rota que declare HEAD casa acima.
+                if route is None and method == "HEAD":
+                    route, path_params = app._find_route("GET", path)
                 path_params = path_params or {}
 
                 # ── Tier 2: Arquivos físicos em /static/ ─────────────────
@@ -1183,7 +1187,7 @@ class Jinker:
                         self.send_header("Content-Length", str(len(data)))
                         self.send_header("Access-Control-Allow-Origin", _build_acao_origin(origin, None))
                         self.end_headers()
-                        self.wfile.write(data)
+                        self._escreve(data)
                     else:
                         send_error_response(404, f"arquivo não encontrado: {path}")
                     return
@@ -1224,7 +1228,7 @@ class Jinker:
                             self.send_header("Content-Length", str(len(data)))
                             self.send_header("Access-Control-Allow-Origin", _build_acao_origin(origin, None))
                             self.end_headers()
-                            self.wfile.write(data)
+                            self._escreve(data)
                             return
 
                         # ── Tier 3: SPA fallback — serve index.html ───────
@@ -1236,7 +1240,7 @@ class Jinker:
                             self.send_header("Content-Length", str(len(data)))
                             self.send_header("Access-Control-Allow-Origin", _build_acao_origin(origin, None))
                             self.end_headers()
-                            self.wfile.write(data)
+                            self._escreve(data)
                             return
 
                 if route is None:
@@ -1268,7 +1272,7 @@ class Jinker:
                             self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
                             self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
                             self.end_headers()
-                            self.wfile.write(body_bytes)
+                            self._escreve(body_bytes)
                             return
 
                     # injeta path_params no escopo da rota
@@ -1288,7 +1292,7 @@ class Jinker:
                         self.send_header("Content-Length", str(len(body_bytes)))
                         self.send_header("Access-Control-Allow-Origin", _build_acao_origin(origin, route.auth))
                         self.end_headers()
-                        self.wfile.write(body_bytes)
+                        self._escreve(body_bytes)
                         return
                     if isinstance(result, JinkerResponse):
                         res = result
@@ -1313,10 +1317,18 @@ class Jinker:
                 for k, v in res._headers.items():
                     self.send_header(k, v)
                 self.end_headers()
-                self.wfile.write(body_bytes)
+                self._escreve(body_bytes)
+
+            def _escreve(self, dados: bytes):
+                """Escreve o corpo — MENOS em HEAD: a resposta leva os mesmos
+                headers do GET (Content-Length inclusive) e nenhum corpo
+                (RFC 9110). Igual ao `sem_corpo` da conexão no VM em C."""
+                if self.command != "HEAD":
+                    self.wfile.write(dados)
 
             # Mapeia todos os métodos HTTP para _handle
             def do_GET(self): self._handle()
+            def do_HEAD(self): self._handle()
             def do_POST(self): self._handle()
             def do_PUT(self): self._handle()
             def do_PATCH(self): self._handle()

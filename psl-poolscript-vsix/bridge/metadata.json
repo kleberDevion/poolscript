@@ -866,9 +866,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "get(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "get(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -899,9 +907,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "post(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "post(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -932,9 +948,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "put(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "put(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -965,9 +989,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "patch(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "patch(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -998,11 +1030,40 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "delete(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "delete(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
+    },
+    {
+     "name": "head",
+     "kind": "function",
+     "params": [
+      {
+       "name": "url",
+       "opt": false
+      },
+      {
+       "name": "headers",
+       "opt": true
+      },
+      {
+       "name": "timeout",
+       "opt": true
+      }
+     ],
+     "sig": "head(url, headers?, timeout?)",
+     "returns": "Response",
+     "doc": "HEAD — só os cabeçalhos: mesmo status/headers do GET, corpo vazio. Serve pra checar existência/tamanho/tipo sem baixar o conteúdo."
     },
     {
      "name": "text",
@@ -1064,9 +1125,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "get(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "get(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -1097,9 +1166,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "post(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "post(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -1130,9 +1207,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "put(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "put(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -1163,9 +1248,17 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "patch(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "patch(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
     },
@@ -1196,11 +1289,40 @@
       {
        "name": "max_size",
        "opt": true
+      },
+      {
+       "name": "fields",
+       "opt": true
+      },
+      {
+       "name": "file",
+       "opt": true
       }
      ],
-     "sig": "delete(url, headers?, body?, timeout?, stream?, max_size?)",
+     "sig": "delete(url, headers?, body?, timeout?, stream?, max_size?, fields?, file?)",
      "returns": "Response",
      "doc": null
+    },
+    {
+     "name": "head",
+     "kind": "function",
+     "params": [
+      {
+       "name": "url",
+       "opt": false
+      },
+      {
+       "name": "headers",
+       "opt": true
+      },
+      {
+       "name": "timeout",
+       "opt": true
+      }
+     ],
+     "sig": "head(url, headers?, timeout?)",
+     "returns": "Response",
+     "doc": "HEAD — só os cabeçalhos: mesmo status/headers do GET, corpo vazio. Serve pra checar existência/tamanho/tipo sem baixar o conteúdo."
     },
     {
      "name": "text",

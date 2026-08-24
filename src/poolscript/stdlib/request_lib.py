@@ -7,6 +7,7 @@ requests sem identificação. Body dict/list vira JSON automaticamente.
 """
 from __future__ import annotations
 import json as _json
+import os as _os
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -193,11 +194,74 @@ def _read_body(resp, stream: bool, max_size) -> bytes:
     return b"".join(chunks)
 
 
+def _resolve_arquivo(caminho: str) -> str:
+    """Arquivo de ONDE o usuário quiser: absoluto, relativo à pasta do script
+    em execução, ou ao diretório atual (a mesma regra da lib os/guzer)."""
+    if _os.path.isabs(caminho):
+        if _os.path.isfile(caminho):
+            return caminho
+    else:
+        try:
+            from .os_lib import _SCRIPT_DIR
+            if _SCRIPT_DIR is not None:
+                p = _os.path.join(str(_SCRIPT_DIR), caminho)
+                if _os.path.isfile(p):
+                    return p
+        except Exception:
+            pass
+        if _os.path.isfile(caminho):
+            return caminho
+    raise FileNotFoundError(f"file=: arquivo não encontrado: {caminho}")
+
+
+def _monta_multipart(fields, file) -> "tuple[bytes, str]":
+    """Corpo multipart/form-data: `fields=` são os campos simples do
+    formulário; `file=` é {campo: {"name": caminho}} — o arquivo é lido do
+    disco e entra como parte binária (application/octet-stream)."""
+    boundary = "----poolscript" + _os.urandom(16).hex()
+    partes = []
+    if fields is not None:
+        if not isinstance(fields, dict):
+            raise TypeError("fields= espera um dict {campo: valor}")
+        for k, v in fields.items():
+            if v is None:
+                continue
+            valor = v if isinstance(v, str) else str(v)
+            partes.append(
+                (f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n').encode("utf-8")
+                + valor.encode("utf-8") + b"\r\n")
+    if file is not None:
+        if not isinstance(file, dict):
+            raise TypeError('file= espera um dict {campo: {"name": caminho}}')
+        for campo, spec in file.items():
+            caminho = spec.get("name") if isinstance(spec, dict) else spec
+            if not caminho:
+                raise ValueError(f'file=: campo "{campo}" sem "name" (o caminho do arquivo)')
+            caminho = _resolve_arquivo(str(caminho))
+            nome_arq = _os.path.basename(caminho)
+            with open(caminho, "rb") as f:
+                conteudo = f.read()
+            partes.append(
+                (f'--{boundary}\r\nContent-Disposition: form-data; name="{campo}"; '
+                 f'filename="{nome_arq}"\r\nContent-Type: application/octet-stream\r\n\r\n').encode("utf-8")
+                + conteudo + b"\r\n")
+    corpo = b"".join(partes) + f"--{boundary}--\r\n".encode("utf-8")
+    return corpo, f"multipart/form-data; boundary={boundary}"
+
+
 def _request(method: str, url: str, headers: dict | None = None, body=None,
-             timeout: int = 30, stream: bool = False, max_size=None) -> Response:
+             timeout: int = 30, stream: bool = False, max_size=None,
+             fields=None, file=None) -> Response:
     data = None
-    h = _apply_default_headers(headers, body is not None)
-    if body is not None:
+    h = _apply_default_headers(headers, body is not None or fields is not None or file is not None)
+    if fields is not None or file is not None:
+        if body is not None:
+            raise ValueError("use body= OU fields=/file= (multipart) — não os dois juntos")
+        data, ct = _monta_multipart(fields, file)
+        # o Content-Type carrega o boundary gerado — um manual não serviria
+        h = {k: v for k, v in h.items() if k.lower() != "content-type"}
+        h["Content-Type"] = ct
+    elif body is not None:
         if isinstance(body, (dict, list)):
             data = _json.dumps(body).encode("utf-8")
             if not any(k.lower() == "content-type" for k in h):
@@ -230,33 +294,39 @@ def _request(method: str, url: str, headers: dict | None = None, body=None,
 
 
 def get(url: str, headers: dict | None = None, body=None, timeout: int = 30,
-        stream: bool = False, max_size=None) -> Response:
+        stream: bool = False, max_size=None, fields=None, file=None) -> Response:
     return _request("GET", url, headers=headers, body=body, timeout=timeout,
-                    stream=stream, max_size=max_size)
+                    stream=stream, max_size=max_size, fields=fields, file=file)
 
 
 def post(url: str, headers: dict | None = None, body=None, timeout: int = 30,
-         stream: bool = False, max_size=None) -> Response:
+         stream: bool = False, max_size=None, fields=None, file=None) -> Response:
     return _request("POST", url, headers=headers, body=body, timeout=timeout,
-                    stream=stream, max_size=max_size)
+                    stream=stream, max_size=max_size, fields=fields, file=file)
 
 
 def put(url: str, headers: dict | None = None, body=None, timeout: int = 30,
-        stream: bool = False, max_size=None) -> Response:
+        stream: bool = False, max_size=None, fields=None, file=None) -> Response:
     return _request("PUT", url, headers=headers, body=body, timeout=timeout,
-                    stream=stream, max_size=max_size)
+                    stream=stream, max_size=max_size, fields=fields, file=file)
 
 
 def patch(url: str, headers: dict | None = None, body=None, timeout: int = 30,
-          stream: bool = False, max_size=None) -> Response:
+          stream: bool = False, max_size=None, fields=None, file=None) -> Response:
     return _request("PATCH", url, headers=headers, body=body, timeout=timeout,
-                    stream=stream, max_size=max_size)
+                    stream=stream, max_size=max_size, fields=fields, file=file)
 
 
 def delete(url: str, headers: dict | None = None, body=None, timeout: int = 30,
-           stream: bool = False, max_size=None) -> Response:
+           stream: bool = False, max_size=None, fields=None, file=None) -> Response:
     return _request("DELETE", url, headers=headers, body=body, timeout=timeout,
-                    stream=stream, max_size=max_size)
+                    stream=stream, max_size=max_size, fields=fields, file=file)
+
+
+def head(url: str, headers: dict | None = None, timeout: int = 30) -> Response:
+    """HEAD — só os cabeçalhos: mesmo status/headers do GET, corpo vazio.
+    Serve pra checar existência/tamanho/tipo sem baixar o conteúdo."""
+    return _request("HEAD", url, headers=headers, timeout=timeout)
 
 
 class WsConnection:
@@ -350,5 +420,6 @@ EXPORTS = {
     "put": put,
     "patch": patch,
     "delete": delete,
+    "head": head,
     "ws_connect": ws_connect,
 }
