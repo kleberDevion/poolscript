@@ -46,6 +46,16 @@ extern long   __gmpz_get_si(mpz_srcptr);
 extern void   __gmpz_neg(mpz_ptr, mpz_srcptr);
 extern void   __gmpz_pow_ui(mpz_ptr, mpz_srcptr, unsigned long);
 extern size_t __gmpz_sizeinbase(mpz_srcptr, int);
+/* bitwise e deslocamento — o `|`, `^`, `&`, `<<` e `>>` da linguagem passam
+ * por aqui quando um dos lados não cabe no int64 (ou quando o `<<` estouraria) */
+extern void   __gmpz_ior(mpz_ptr, mpz_srcptr, mpz_srcptr);
+extern void   __gmpz_xor(mpz_ptr, mpz_srcptr, mpz_srcptr);
+extern void   __gmpz_and(mpz_ptr, mpz_srcptr, mpz_srcptr);
+extern void   __gmpz_com(mpz_ptr, mpz_srcptr);                  /* ~x */
+extern void   __gmpz_mul_2exp(mpz_ptr, mpz_srcptr, unsigned long);   /* x << n */
+extern void   __gmpz_fdiv_q_2exp(mpz_ptr, mpz_srcptr, unsigned long); /* x >> n */
+extern int    __gmpz_fits_ulong_p(mpz_srcptr);
+extern unsigned long __gmpz_get_ui(mpz_srcptr);
 
 #define mpz_init         __gmpz_init
 #define mpz_clear        __gmpz_clear
@@ -66,5 +76,15 @@ extern size_t __gmpz_sizeinbase(mpz_srcptr, int);
 #define mpz_neg          __gmpz_neg
 #define mpz_pow_ui       __gmpz_pow_ui
 #define mpz_sizeinbase   __gmpz_sizeinbase
+#define mpz_ior          __gmpz_ior
+#define mpz_xor          __gmpz_xor
+#define mpz_and          __gmpz_and
+#define mpz_com          __gmpz_com
+#define mpz_mul_2exp     __gmpz_mul_2exp
+#define mpz_fdiv_q_2exp  __gmpz_fdiv_q_2exp
+#define mpz_fits_ulong_p __gmpz_fits_ulong_p
+#define mpz_get_ui       __gmpz_get_ui
+/* sgn é macro no gmp.h de verdade: olha o campo _mp_size direto */
+#define mpz_sgn(z)       ((z)->_mp_size < 0 ? -1 : (z)->_mp_size > 0)
 
 #endif /* PS_GMP_MIN_H */

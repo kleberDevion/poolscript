@@ -286,6 +286,12 @@ int main(int argc, char **argv)
     }
     if (!strcmp(cmd, "--check") || !strcmp(cmd, "check"))
         return cmd_check(argc >= 3 ? argv[2] : NULL);
+    /* modelo de tipos direto do motor — o editor e a auditoria de doc leem
+     * daqui em vez de introspectar a stdlib do interpretador */
+    if (!strcmp(cmd, "--metadata") || !strcmp(cmd, "metadata")) {
+        ps_metadata_json(stdout);
+        return 0;
+    }
     if (!strcmp(cmd, "build")) return cmd_build();
     if (!strcmp(cmd, "compile")) {
         printf("compile: nao disponivel nesta versao.\n");

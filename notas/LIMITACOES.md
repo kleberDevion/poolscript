@@ -387,6 +387,62 @@ seu vivo até o GC (finalizer `fin_regex`). Regressão:
 `tests/test_regex_compile.py` (inclui `sub` e `split` do mesmo objeto na mesma
 linha, que era o repro, e 2000 compiles pro finalizer).
 
+### Leva de 2026-08-25: o que a caça com agentes achou e foi corrigido
+
+77 achados confirmados (lista completa e repro em
+[`caca-bugs-2026-08-25.md`](caca-bugs-2026-08-25.md)). Esta seção registra o
+que já está FECHADO na VM em C — o resto continua na lista.
+
+**Derrubavam o processo** (`tests/test_vm_crashes.py`):
+
+- imprimir lista/dict que contém a si mesmo → SEGFAULT. A recursão da
+  impressão descia até estourar a pilha do C. Agora detecta o CICLO e imprime
+  `[...]`, como o Python (`ps_em_ciclo` + pilha de ponteiros em
+  `escreve_valor`/`valor_para_texto`, zerada a cada topo).
+- `==`/`contains` entre estruturas mutuamente recursivas → SEGFAULT. Teto de
+  profundidade em `val_iguais`.
+- `-9223372036854775808 % -1` → **SIGFPE** (core dumped): é UB no C. O resto é
+  0, que é o que o interpretador devolve.
+- `"a".zfill(9223372036854775807)` → a VM alocava em laço até o OOM killer
+  derrubar a SESSÃO da máquina. Teto de 256 MB (`PS_STR_MAX`) em
+  zfill/ljust/rjust/center.
+- `import` de módulo `.ps` dentro de `async action` → SEGFAULT. O `import`
+  realoca `vm->protos` e as OUTRAS fibras seguiam com o `p` pendurado. Agora
+  toda chamada nativa e todo `await` reancoram o ponteiro (macro `REANCORA`).
+
+**Rodavam errado, calado** (`tests/test_vm_inteiros_grandes.py`,
+`tests/test_vm_finally_e_dict.py`):
+
+- `1 << 63` virava NEGATIVO e `1 << 64` virava 1 (shift em int64 = UB). Agora
+  `<<`, `>>`, `|`, `^`, `&` promovem a bignum como `+` e `*` já faziam.
+- bignum era recusado por `|`, `>>`, `abs`, `sum`, `sorted`, `max`, `min`,
+  `round`, `flo`, `int` com "exige int" — enquanto o `type()` do MESMO valor
+  respondia `int`. Todos aceitam agora.
+- `abs(-9223372036854775808)` devolvia número NEGATIVO.
+- `int("<32 dígitos>")` dava a volta em silêncio; `json.parse` de inteiro
+  grande SATURAVA em INT64_MAX. Os dois vão pro bignum.
+- a VM aceitava LISTA e DICT como chave de dicionário (valor mutável!).
+  `dict_set` recusa, com mensagem própria.
+
+**Não funcionavam** (`tests/test_vm_features_faltando.py`):
+
+- `finally` não rodava com `return`, `break`, `continue` nem com `raise`
+  dentro do `catch` — o bloco só era emitido inline nas duas saídas "normais".
+  Agora o compilador mantém uma pilha de `finally` pendentes e emite antes de
+  cada salto; um try interno cobre o `raise` de dentro do catch.
+- `for each i` DESTRUÍA a variável (ou a action!) de mesmo nome de fora. Agora
+  sombreia: salva o valor anterior e devolve na saída.
+- f-string com UMA expressão pulava o `BUILD_STR` "por otimização" e devolvia o
+  valor cru — `f"{lista}"` era a PRÓPRIA lista (mutar o resultado mutava o
+  original) e `type()` dizia `list`.
+- `bytes[1:3]` respondia "tipo nao fatiavel".
+- `f.read(3)` lia em blocos de 4096 e descartava o excedente: o cursor ia pro
+  fim e a leitura seguinte vinha vazia.
+- `@NonNull` dentro de Entity era descartado junto com o nó do decorador (o
+  corpo da Entity só compilava `N_ACTION_DECL`) — mesmo buraco do `@static`.
+- `import pacote.modulo`, documentado em `docs/linguagem/09-imports.md`, era
+  `NotImplementedError`. Liga o último segmento, como a doc diz.
+
 ## Em aberto
 
 ### Sem list comprehension (design, não defeito)

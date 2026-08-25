@@ -1908,19 +1908,32 @@ def test_nome_do_erro_casa_nos_dois(captura, src):
     assert via_c(prog) == via_interpretador(prog) == ["pego"]
 
 
-# ═════════════════════════ f-string tolera erro no trecho ═══════════════════
+# ═════════════════════════ f-string: erro no trecho ESTOURA ═════════════════
 
 @pytest.mark.parametrize("src", [
     'post(f"Ola, {nome}!")',                     # nome indefinido
     'post(f"x {1/0} y")',                        # expressão que estoura
-    'a = 1' + NL + 'post(f"{a} {b} {a+1}")',     # mistura
-    'nome = "ana"' + NL + 'post(f"Ola, {nome}!")',
+    'a = 1' + NL + 'post(f"{a} {b} {a+1}")',     # mistura: o `b` não existe
 ])
-def test_fstring_trecho_com_erro_sai_cru(src):
-    """Trecho que estoura aparece como o texto original entre chaves —
-    `f"oi {nome}"` sem `nome` imprime `oi {nome}`, não aborta. O resto da
-    f-string continua avaliando normal."""
-    mesmo(src)
+def test_fstring_trecho_com_erro_estoura(src):
+    """Trecho de f-string que estoura LEVANTA o erro, nos dois motores.
+
+    Antes cada trecho tinha uma rede: o que falhasse saía como o texto cru
+    entre chaves — `f"oi {nome}"` sem `nome` imprimia `oi {nome}` e o bug de
+    quem escreveu sumia em silêncio (foi assim que um `{solucao}` fora de
+    escopo virou saída "normal"). Erro engolido é pior que erro barulhento."""
+    ambos_falham(src)
+
+
+@pytest.mark.parametrize("src,esperado", [
+    ('nome = "ana"' + NL + 'post(f"Ola, {nome}!")', ["Ola, ana!"]),
+    ('post(f"{{literal}} e {1 + 1}")',              ["{literal} e 2"]),
+    ('a = 1' + NL + 'post(f"{a} {a + 1}")',         ["1 2"]),
+])
+def test_fstring_valida_continua_interpolando(src, esperado):
+    """O aperto acima não pode ter pegado f-string boa: nome definido,
+    expressão e escape `{{`/`}}` seguem funcionando igual nos dois."""
+    assert via_c(src) == via_interpretador(src) == esperado
 
 
 # ═════════════════════════ PUSH ... GET ... ═════════════════════════════════

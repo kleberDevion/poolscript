@@ -44,6 +44,11 @@ typedef struct {
     int32_t  ndefaults;   /* quantos parâmetros finais têm valor padrão */
     int32_t  eh_gerador;  /* contém `yield` — chamar cria gerador, não frame */
     int32_t  eh_async;    /* `async action` — chamar cria fibra+future, não roda inline */
+    /* `@static`: chamável direto na Entity (`Classe.metodo()`), sem instância.
+     * Sem esta marca a VM tinha que ADIVINHAR pelo 1º parâmetro chamar-se
+     * `self` — e aí `Classe.metodoNormal()` passava batido, dropava o self em
+     * silêncio e o erro saía no parâmetro seguinte. */
+    int32_t  eh_static;
     /* Nome de cada parâmetro, na ordem. Só existe pra resolver argumento
      * nomeado em runtime — o call site não sabe qual função vai chamar. */
     char   **param_nomes;

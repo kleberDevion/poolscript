@@ -201,6 +201,16 @@ typedef struct {
     int32_t     cap_enums;
     /* `@NonNull` visto, esperando a action que ele decora. */
     int         pendente_nonnull;
+    /* `@static` visto, esperando a action que ele decora — vira Proto.eh_static */
+    int         pendente_static;
+    /* `finally` PENDENTES (try aninhado): o bloco é emitido inline nas saídas
+     * do try, mas `return`, `break` e `continue` saltam por fora — sem isto o
+     * finally simplesmente NÃO rodava nesses três caminhos. Cada entrada
+     * guarda o bloco e em que laço/função ele estava, pra saber quais rodar. */
+    PSNode     *fin_bloco[32];
+    int         fin_laco[32];     /* c->nlacos no momento em que entrou */
+    const void *fin_unidade[32];  /* qual Unidade (função) abriu o try */
+    int         nfinally;
     /* profundidade de `try` aberto — `yield` dentro de um é recusado */
     int         dentro_try;
     /* profundidade de `count each` aberto — muda o que `return;` devolve */
@@ -474,6 +484,23 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
 }
 
 /* `certa` = o nome é local com certeza (parâmetro ou declaração tipada) */
+/* O nome já existe no escopo atual? Serve pro `for each`: se existe, a
+ * variável do laço tem que SOMBREAR (salvar e devolver depois) em vez de
+ * sobrescrever — antes, `i = "x"` seguido de `for each i in [1,2]` deixava o
+ * `i` valendo 2 pra sempre, e com uma ACTION de mesmo nome a função sumia. */
+static int nome_ja_existe(Unidade *u, const char *nome)
+{
+    if (!nome || !*nome) return 0;
+    if (u->eh_modulo) {
+        for (int32_t i = 0; i < u->n_mod_criados; i++)
+            if (strcmp(u->mod_criados[i], nome) == 0) return 1;
+        return 0;
+    }
+    for (int32_t i = 0; i < u->nlocais; i++)
+        if (strcmp(u->locais[i], nome) == 0) return 1;
+    return 0;
+}
+
 static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
 {
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
@@ -557,27 +584,12 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
             }
             PSNode *st = r->programa->lista.itens[0];
             PSNode *alvo = (st->kind == N_EXPRESSION_STMT) ? st->a : st;
-            /* Trecho que estoura sai como o texto original entre chaves —
-             * `f"oi {nome}"` com `nome` indefinido imprime `oi {nome}`. É o
-             * que o interpretador faz; sem isto o mesmo `.ps` roda num motor
-             * e aborta no outro. Cada trecho tem seu `try` porque o resto da
-             * f-string continua válido. */
-            int32_t rede_f = emite(c, u, OP_SETUP_TRY, 0);
+            /* O trecho é compilado como expressão NORMAL: se estourar (nome
+             * fora de escopo, método inexistente...), o erro SOBE. Antes cada
+             * trecho tinha um `try` que devolvia o texto cru — `f"oi {nome}"`
+             * com `nome` indefinido imprimia `oi {nome}` e o bug do usuário
+             * sumia. Erro engolido é pior que erro barulhento. */
             expr(c, u, alvo);
-            emite(c, u, OP_POP_TRY, 0);
-            int32_t fim_f = emite(c, u, OP_JUMP, 0);
-            if (rede_f >= 0) UP(c, u)->code[rede_f + 1] = UP(c, u)->ncode;
-            emite(c, u, OP_POP_TOP, 0);              /* descarta a mensagem */
-            {
-                char *cru = malloc((size_t)elen + 3);
-                if (!cru) { ps_parse_free(r); free(e); free(buf); cerro(c, "sem memoria na f-string", n); return; }
-                cru[0] = '{';
-                memcpy(cru + 1, e, (size_t)elen);
-                cru[elen + 1] = '}';
-                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, cru, elen + 2));
-                free(cru);
-            }
-            if (fim_f >= 0) UP(c, u)->code[fim_f + 1] = UP(c, u)->ncode;
             /* A AST do trecho vive na arena do parse acima; o bytecode já foi
              * emitido e não guarda ponteiro pra ela, então liberar aqui é
              * seguro (as constantes string foram COPIADAS pro pool). */
@@ -598,7 +610,11 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
     if (CFALHOU(c)) return;
 
     if (partes == 0) emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, "", 0));
-    else if (partes > 1) emite(c, u, OP_BUILD_STR, partes);
+    /* Com UMA parte só o BUILD_STR era pulado "por otimização" — e aí
+     * `f"{l}"` devolvia a PRÓPRIA lista em vez de texto: `type()` dava `list`,
+     * dava pra chamar `.append` no resultado e isso MUTAVA o original.
+     * f-string é sempre string: converte também no caso de uma parte. */
+    else emite(c, u, OP_BUILD_STR, partes);
 }
 
 
@@ -1134,6 +1150,23 @@ static void bloco_stmts(C *c, Unidade *u, PSNode *b)
         stmt(c, u, b->lista.itens[i]);
 }
 
+
+/* Emite os blocos `finally` pendentes, do mais interno pro mais externo, que
+ * a saída atual está atravessando. `ate_laco` < 0 = todos da função (return);
+ * >= 0 = só os que estão DENTRO do laço indicado (break/continue). */
+static void emite_finallys(C *c, Unidade *u, int ate_laco)
+{
+    for (int i = c->nfinally - 1; i >= 0; i--) {
+        if (c->fin_unidade[i] != (const void *)u) break;   /* outra função */
+        if (ate_laco >= 0 && c->fin_laco[i] < ate_laco) break;
+        PSNode *bloco = c->fin_bloco[i];
+        if (!bloco) continue;
+        int32_t M = escopo_marca(u);
+        bloco_stmts(c, u, bloco);
+        escopo_fecha(c, u, M);
+    }
+}
+
 static void stmt(C *c, Unidade *u, PSNode *n)
 {
     if (CFALHOU(c) || !n) return;
@@ -1207,6 +1240,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             else if (n->a) expr(c, u, n->a);
             else      emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
             if (u->tipo_ret) emite(c, u, OP_COERCE_RET, u->tipo_ret);
+            emite_finallys(c, u, -1);   /* todos os finally abertos nesta função */
             emite(c, u, OP_RETURN, 0);
             return;
 
@@ -1268,6 +1302,16 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              *   <corpo>
              *   JUMP topo
              * fim: */
+            /* Se o nome do laço já existe, guarda o valor de fora num nome
+             * escondido e devolve na saída: o laço SOMBREIA, não destrói. */
+            const char *var_laco = n->texto ? n->texto : "";
+            char salvo[128];
+            int sombreia = nome_ja_existe(u, var_laco);
+            if (sombreia) {
+                snprintf(salvo, sizeof(salvo), "  fe$%s", var_laco);   /* nome não digitável */
+                carrega_nome(c, u, var_laco);
+                guarda_nome_modo(c, u, salvo, 1);
+            }
             int32_t M = escopo_marca(u);        /* marca ANTES da var do laço */
             expr(c, u, n->a);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
@@ -1287,6 +1331,10 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             fecha_laco(c, u, topo);
             escopo_emite_clears(c, u, M);        /* saída: var do laço não vaza */
             escopo_trunca(u, M);
+            if (sombreia) {                      /* devolve o valor de fora */
+                carrega_nome(c, u, salvo);
+                guarda_nome_modo(c, u, var_laco, 1);
+            }
             return;
         }
 
@@ -1468,8 +1516,12 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * interpretador aceita e segue. Recusar quebrava script válido. */
             if (!n->b) return;
             if (nome && strcmp(nome, "static") == 0) {
-                /* `@static` fora de Entity é só uma action comum */
+                /* Marca a action decorada como estática (chamável na Entity
+                 * sem instância). Fora de Entity, a marca é inofensiva: só
+                 * vale na resolução de `Classe.metodo`. */
+                c->pendente_static = 1;
                 bloco_stmts(c, u, n->b);
+                c->pendente_static = 0;
                 return;
             }
             if (nome && strcmp(nome, "NonNull") == 0) {
@@ -1628,10 +1680,31 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             int dentro_salvo = c->dentro_entity;
             c->entity_pai = (n->lista2.n > 0) ? n->lista2.itens[0]->texto : NULL;
             c->dentro_entity = 1;
+            /* Dentro de Entity o decorador é uma entrada SEPARADA do corpo
+             * (dec_sem_captura no parser): ele não embrulha a action. Então o
+             * `@static` visto aqui vale pra PRÓXIMA action da lista — é assim
+             * que a marca chega no Proto (Proto.eh_static). */
+            int static_pendente = 0, nonnull_pendente = 0;
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *m = n->lista.itens[i];
-                if (m->kind != N_ACTION_DECL) continue;   /* decorador: ignorado por ora */
+                if (m->kind == N_DECORATOR_STMT) {
+                    PSNode *dec = m->a;
+                    const char *dn = (dec && dec->lista.n == 1) ? dec->lista.itens[0]->texto : NULL;
+                    if (dn && strcmp(dn, "static") == 0) static_pendente = 1;
+                    /* `@NonNull` dentro de Entity era DESCARTADO junto com o
+                     * nó do decorador: o método rodava sem checagem nenhuma
+                     * enquanto o interpretador recusava o Null. */
+                    if (dn && strcmp(dn, "NonNull") == 0) nonnull_pendente = 1;
+                    continue;
+                }
+                if (m->kind != N_ACTION_DECL) continue;
+                c->pendente_static = static_pendente;
+                c->pendente_nonnull = nonnull_pendente;
                 int32_t pi = compila_action(c, m);
+                c->pendente_static = 0;
+                c->pendente_nonnull = 0;
+                static_pendente = 0;
+                nonnull_pendente = 0;
                 if (CFALHOU(c)) return;
                 def = &c->out->classes[ci];               /* realloc pode ter mexido */
                 def->met_nomes[def->nmetodos] = strdup(m->texto ? m->texto : "?");
@@ -1710,10 +1783,13 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             }
             encoded[el] = '\0';
             const char *mod = encoded;
-            /* ligar o MÓDULO inteiro a um nome (import x / import x as y) só
-             * vale pra nome simples — pontuado/relativo exige `from ... import`,
-             * como no interpretador (`import a.b` não liga `a`). */
-            int simples = (n->i2 == 0 && n->lista.n == 1);
+            /* `import pacote.modulo` liga o ÚLTIMO segmento (`modulo`), como
+             * a doc diz e o interpretador faz — antes a VM recusava com
+             * NotImplementedError. Import RELATIVO (`import .x`) segue exigindo
+             * `from`, porque aí não há nome óbvio pra ligar. */
+            int simples = (n->i2 == 0 && n->lista.n >= 1);
+            const char *ultimo = n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto
+                               ? n->lista.itens[n->lista.n - 1]->texto : mod;
 
             /* `PUSH mod` é `import mod`; `PUSH mod GET a, b` é
              * `from mod import a, b`. Com GET, o módulo NÃO fica visível —
@@ -1723,7 +1799,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                 if (n->lista2.n == 0) {
                     if (!simples) { cerro(c, "import de modulo pontuado/relativo precisa de 'from ... import ...'", n); return; }
                     emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
-                    guarda_nome(c, u, n->texto2 ? n->texto2 : mod);
+                    guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                     return;
                 }
                 for (int32_t i = 0; i < n->lista2.n; i++) {
@@ -1740,7 +1816,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (strcmp(n->texto, "import") == 0) {
                 if (!simples) { cerro(c, "import de modulo pontuado/relativo precisa de 'from ... import ...'", n); return; }
                 emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
-                guarda_nome(c, u, n->texto2 ? n->texto2 : mod);
+                guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                 return;
             }
             /* `from mod import a, b as c` — um GET_MEMBER por nome pedido */
@@ -1833,6 +1909,17 @@ static void stmt(C *c, Unidade *u, PSNode *n)
              * que ele roda sempre. */
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
+            /* enquanto o corpo (e os catches) compilam, este `finally` fica
+             * PENDENTE: `return`/`break`/`continue` lá dentro emitem o bloco
+             * antes de saltar, senão ele não roda nesses caminhos. */
+            int fin_meu = -1;
+            if (c->nfinally < 32) {
+                fin_meu = c->nfinally;
+                c->fin_bloco[fin_meu]   = n->c;      /* pode ser NULL (sem finally) */
+                c->fin_laco[fin_meu]    = c->nlacos;
+                c->fin_unidade[fin_meu] = (const void *)u;
+                c->nfinally++;
+            }
             int32_t Mt = escopo_marca(u);
             bloco_stmts(c, u, n->a);
             escopo_fecha(c, u, Mt);            /* vars do try não vazam (saída normal) */
@@ -1841,6 +1928,13 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             int32_t pula_catches = emite(c, u, OP_JUMP, 0);
 
             if (setup >= 0) UP(c, u)->code[setup + 1] = UP(c, u)->ncode;
+
+            /* Erro levantado DENTRO de um catch também tem que passar pelo
+             * finally. O bloco inline só cobre a saída normal e o "nenhum
+             * catch casou"; um `raise` no corpo do catch desenrolava por cima
+             * dele. Um try interno segura esse caso e repropaga. */
+            int32_t setup_cat = -1;
+            if (n->c) setup_cat = emite(c, u, OP_SETUP_TRY, 0);
 
             /* Cada catch: se tem tipo, compara; senão captura tudo.
              * A mensagem já está no topo quando chegamos aqui. */
@@ -1879,13 +1973,32 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                 UP(c, u)->code[prox_falha + 1] = UP(c, u)->ncode;
                 /* tipo junto da mensagem: o `finally` roda antes do RERAISE e
                  * pode ter trocado o erro corrente da VM */
+                if (setup_cat >= 0) emite(c, u, OP_POP_TRY, 0);   /* não caia no próprio handler */
                 emite(c, u, OP_PUSH_ERR_TYPE, 0);
                 if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }
                 emite(c, u, OP_RERAISE, 0);
             }
 
+            if (fin_meu >= 0) c->nfinally = fin_meu;   /* sai de pendente */
+
+            int32_t pula_handler = -1;
+            if (setup_cat >= 0) {
+                /* fim normal de um catch: fecha o try interno e segue */
+                int32_t pos_pop = UP(c, u)->ncode;
+                emite(c, u, OP_POP_TRY, 0);
+                pula_handler = emite(c, u, OP_JUMP, 0);
+                for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = pos_pop;
+                nfins = 0;
+                /* handler: erro veio de dentro de um catch -> finally + repropaga */
+                UP(c, u)->code[setup_cat + 1] = UP(c, u)->ncode;
+                emite(c, u, OP_PUSH_ERR_TYPE, 0);
+                { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }
+                emite(c, u, OP_RERAISE, 0);
+            }
+
             int32_t fim_catches = UP(c, u)->ncode;
             if (pula_catches >= 0) UP(c, u)->code[pula_catches + 1] = fim_catches;
+            if (pula_handler >= 0) UP(c, u)->code[pula_handler + 1] = fim_catches;
             for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = fim_catches;
 
             if (n->c) { int32_t Mf = escopo_marca(u); bloco_stmts(c, u, n->c); escopo_fecha(c, u, Mf); }  /* finally */
@@ -1921,6 +2034,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (l->nsaidas >= MAX_SAIDAS) { cerro(c, "'break' demais no mesmo laco", n); return; }
             /* saindo do laço: apaga TUDO nascido nele até aqui (var do laço +
              * corpo + blocos aninhados abertos), pra nada vazar pra fora */
+            emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca);
             /* limpa o estado do iterador antes de sair do laço */
             for (int k = 0; k < l->slots_pilha; k++) emite(c, u, OP_POP_TOP, 0);
@@ -1934,6 +2048,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             if (l->ncontinues >= MAX_SAIDAS) { cerro(c, "'continue' demais no mesmo laco", n); return; }
             /* próxima iteração começa limpa: apaga só o escopo do CORPO (o que é
              * do laço — var/ self/_count — é re-atribuído no topo ou persiste) */
+            emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
             escopo_emite_clears(c, u, l->escopo_marca_body);
             l->continues[l->ncontinues++] = emite(c, u, OP_JUMP, 0);
             return;
@@ -2072,6 +2187,7 @@ static int32_t compila_action(C *c, PSNode *n)
     c->out->protos[idx].nparams = n->lista.n;
     c->out->protos[idx].ndefaults = ndef;
     c->out->protos[idx].eh_async = n->is_async;
+    c->out->protos[idx].eh_static = c->pendente_static;
     if (n->lista.n > 0) {
         char **nomes = calloc((size_t)n->lista.n, sizeof(char *));
         if (!nomes) { cerro(c, "sem memoria", n); }

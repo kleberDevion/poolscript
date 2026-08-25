@@ -13,6 +13,7 @@
 #define PS_VM_H
 
 #include <stddef.h>
+#include <stdio.h>
 
 typedef enum {
     PS_ERRO_NENHUM = 0,
@@ -54,5 +55,14 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
  * usa exatamente a gramática da VM pra apontar erro de sintaxe/compilação sem
  * executar o código do usuário. 0 = sem erro; -1 preenche `e`. */
 int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
+
+/* Despeja o MODELO DE TIPOS da linguagem em JSON: todo módulo com seus
+ * membros e os nomes dos parâmetros, e os métodos de cada tipo/objeto nativo.
+ *
+ * Sai do próprio motor (tabelas MODULOS[]/METODOS_*), que é a única fonte que
+ * não tem como ficar defasada. É o que o editor (autocomplete) e a auditoria
+ * de assinatura da doc consomem — antes isso era introspecção da stdlib em
+ * Python, o que amarrava o tooling ao interpretador. */
+void ps_metadata_json(FILE *saida);
 
 #endif /* PS_VM_H */

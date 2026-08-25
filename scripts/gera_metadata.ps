@@ -1,0 +1,98 @@
+// Gera psl-poolscript-vsix/bridge/metadata.json — o modelo que o editor usa
+// pro autocomplete — a partir do PRÓPRIO MOTOR (`pool --metadata`).
+//
+// Antes isso saía de `gen_metadata.py`, que introspectava a stdlib do
+// INTERPRETADOR: o autocomplete ficava amarrado ao Python e podia divergir do
+// que a VM realmente aceita. Agora a fonte é a mesma tabela que executa.
+//
+//   ./pool scripts/gera_metadata.ps            # grava o metadata.json
+//   ./pool scripts/gera_metadata.ps --stdout   # só imprime
+//
+// As docs ricas de keyword/builtin (texto humano + exemplos) continuam vindo
+// das specs em scripts/doc_specs_*.py: são TEXTO escrito à mão, não
+// introspecção — e o que existir hoje no metadata.json é preservado.
+import os
+import json
+import sys
+
+RAIZ = os.cwd()
+DESTINO = RAIZ + "/psl-poolscript-vsix/bridge/metadata.json"
+SO_TELA = len(sys.argv) > 0 and sys.argv[0] == "--stdout"
+
+PRIMITIVOS = ["str", "int", "flo", "bool", "list", "dict", "tup", "bytes"]
+
+bruto = os.cmd(RAIZ + "/pool --metadata", capture=true)
+motor = json.parse(bruto)
+
+// assinatura no formato que o editor mostra: nome(a, b?, c?)
+// recebe os params JÁ convertidos ({name, opt}) — opcional sai com "?"
+action assinatura(nome, params):
+    partes = []
+    for each p in params:
+        if p["opt"]:
+            partes.append(p["name"] + "?")
+        else:
+            partes.append(p["name"])
+    return nome + "(" + ", ".join(partes) + ")"
+
+action converte(nome, m, kind_padrao):
+    params = []
+    for each p in m["params"]:
+        params.append({ "name": p["nome"], "opt": p["default"] != null })
+    kind = kind_padrao
+    if m.has("kind") and m["kind"] == "value":
+        kind = "value"
+    return {
+        "name": m["nome"],
+        "kind": kind,
+        "params": params,
+        "sig": assinatura(m["nome"], params),
+        "returns": m["retorna"],
+        "doc": null
+    }
+
+modules = {}
+for each alias in motor["modulos"].keys():
+    membros = []
+    for each m in motor["modulos"][alias]:
+        membros.append(converte(alias, m, "function"))
+    modules[alias] = { "members": membros }
+
+classes = {}
+for each tipo in motor["tipos"].keys():
+    if tipo == "__universal__":
+        continue
+    membros = []
+    for each m in motor["tipos"][tipo]:
+        membros.append(converte(tipo, m, "method"))
+    classes[tipo] = { "members": membros, "doc": "métodos de " + tipo }
+
+// keywords/types/builtins: texto humano — reaproveita o que já está no json
+anterior = { "keywords": {}, "types": {}, "builtins": {} }
+if os.isfile(DESTINO):
+    velho = json.parse(os.readFile(DESTINO))
+    for each ch in ["keywords", "types", "builtins"]:
+        if velho.has(ch):
+            anterior[ch] = velho[ch]
+
+saida = {
+    "modules": modules,
+    "classes": classes,
+    "keywords": anterior["keywords"],
+    "types": anterior["types"],
+    "builtins": anterior["builtins"]
+}
+
+texto = json.stringify(saida)
+if SO_TELA:
+    post(texto)
+else:
+    os.writeFile(DESTINO, texto)
+    nmem = 0
+    for each alias in modules.keys():
+        nmem = nmem + len(modules[alias]["members"])
+    nmet = 0
+    for each t in classes.keys():
+        nmet = nmet + len(classes[t]["members"])
+    post("metadata.json:", len(modules.keys()), "módulos,", nmem, "membros,",
+         len(classes.keys()), "tipos,", nmet, "métodos — direto do motor")

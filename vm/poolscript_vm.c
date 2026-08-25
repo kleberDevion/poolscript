@@ -838,6 +838,7 @@ typedef struct {
     char     *arquivo;     /* arquivo-fonte deste proto — pro traceback (ou NULL) */
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
     int       eh_async;    /* `async action` — chamar cria fibra+future */
+    int       eh_static;   /* `@static` — chamável na Entity sem instância */
 } Proto;
 
 typedef struct {
@@ -1300,8 +1301,25 @@ static int dict_cresce(VM *vm, PSDict *d)
     return 0;
 }
 
+/* Chave de dict tem que ser IMUTÁVEL. A VM aceitava lista/dict como chave e
+ * ainda deduplicava por valor — se a lista fosse mutada depois, a chave ficava
+ * pendurada e o dict inconsistente. O interpretador recusa; agora os dois. */
+static int chave_hashavel(VM *vm, const Value *k)
+{
+    if (k->t != V_OBJ) return 0;
+    if (k->as.obj->type == OBJ_LIST || k->as.obj->type == OBJ_DICT) {
+        snprintf(vm->erro, sizeof(vm->erro),
+                 "tipo nao pode ser chave de dict (é mutável): %s",
+                 k->as.obj->type == OBJ_LIST ? "list" : "dict");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        return -1;
+    }
+    return 0;
+}
+
 static int dict_set(VM *vm, PSDict *d, const Value *chave, const Value *valor)
 {
+    if (chave_hashavel(vm, chave) != 0) return -1;
     if (d->usados + 1 > d->cap * 3 / 4 || d->icap == 0) {
         if (dict_cresce(vm, d) != 0) return -1;
     }
@@ -2084,8 +2102,16 @@ static int strings_iguais(const PSString *a, const PSString *b)
 }
 
 /* regra do spec: Null == 0 é True */
+/* Profundidade da comparação: estruturas MUTUAMENTE recursivas (a contém b,
+ * b contém a) faziam val_iguais descer pra sempre — segfault. O teto devolve
+ * "diferente" em vez de derrubar o processo; comparação legítima nunca chega
+ * perto de 256 níveis. */
+#define PS_CMP_MAX 256
+static int ps_prof_cmp = 0;
+
 static int val_iguais(const Value *a, const Value *b)
 {
+    if (ps_prof_cmp > PS_CMP_MAX) return 0;
     if (a->t == V_NULL) {
         if (b->t == V_NULL)  return 1;
         if (b->t == V_INT)   return b->as.i == 0;
@@ -2149,8 +2175,12 @@ static int val_iguais(const Value *a, const Value *b)
         PSList *x = COMO_LIST(*a), *y = COMO_LIST(*b);
         if (x == y) return 1;
         if (x->len != y->len) return 0;
-        for (int i = 0; i < x->len; i++)
-            if (!val_iguais(&x->itens[i], &y->itens[i])) return 0;
+        for (int i = 0; i < x->len; i++) {
+            ps_prof_cmp++;
+            int ig = val_iguais(&x->itens[i], &y->itens[i]);
+            ps_prof_cmp--;
+            if (!ig) return 0;
+        }
         return 1;
     }
     /* dicts: igualdade ESTRUTURAL, como as listas acima e como o interp —
@@ -2163,7 +2193,10 @@ static int val_iguais(const Value *a, const Value *b)
             if (x->entradas[k].estado != 1) continue;
             Value vy;
             if (dict_get(y, &x->entradas[k].chave, &vy) != 0) return 0;   /* chave só em x */
-            if (!val_iguais(&x->entradas[k].valor, &vy)) return 0;
+            ps_prof_cmp++;
+            { int ig = val_iguais(&x->entradas[k].valor, &vy);
+              ps_prof_cmp--;
+              if (!ig) return 0; }
         }
         return 1;
     }
@@ -2222,6 +2255,16 @@ static int float_para_texto(char *buf, size_t cap, double d)
  * nome", que é o certo pra quem embrulha builtin do Python posicional. */
 typedef struct { const char *nome; FnNativa fn; int eh_valor; const char *params; } MembroMod;
 typedef struct { const char *nome; const MembroMod *membros; int n; } ModuloNat;
+
+/* Tamanho do NOME dentro de um segmento de `params`. A string aceita
+ * `nome=default` ("timeout=30") pra o motor ser a fonte da assinatura
+ * completa — o casamento de argumento nomeado tem que parar no '='. */
+static size_t par_nome_tam(const char *seg, size_t tam)
+{
+    for (size_t i = 0; i < tam; i++) if (seg[i] == '=') return i;
+    return tam;
+}
+
 static const ModuloNat MODULOS[];
 
 /* A VM em execução. Existe só pra `escreve_valor` conseguir o NOME do
@@ -2230,11 +2273,37 @@ static const ModuloNat MODULOS[];
  * escritor, execução single-threaded. */
 static VM *vm_corrente = NULL;
 
+/* Estrutura que se contém (`l.append(l)`) fazia a recursão descer até estourar
+ * a pilha do C — SEGFAULT, sem mensagem nenhuma. Em vez de um teto de
+ * profundidade (que ainda cospe uma saída gigante), detecta o CICLO: o
+ * container que já está sendo impresso vira `[...]`, igual ao Python. */
+#define PS_CICLO_MAX 256
+static const void *ps_pilha_texto[PS_CICLO_MAX];
+static int ps_prof_texto = 0;
+
+static int ps_em_ciclo(const void *o)
+{
+    for (int i = 0; i < ps_prof_texto; i++) if (ps_pilha_texto[i] == o) return 1;
+    return 0;
+}
+
 static void escreve_valor(const Value *v, int dentro);
 static int fut_resolve(VM *vm, PSFuturo *fu);   /* async: resolve o future (def. junto do jinker) */
 
 static void escreve_valor(const Value *v, int dentro)
 {
+    /* Mesma guarda de ciclo do valor_para_texto: `l.append(l)` descia até
+     * estourar a pilha do C (segfault sem mensagem). Container que já está
+     * sendo escrito vira `[...]`, como no Python. */
+    if (v->t == V_OBJ && (v->as.obj->type == OBJ_LIST || v->as.obj->type == OBJ_TUPLE
+                          || v->as.obj->type == OBJ_DICT)) {
+        if (ps_em_ciclo(v->as.obj)) {
+            fputs(v->as.obj->type == OBJ_TUPLE ? "(...)"
+                  : v->as.obj->type == OBJ_DICT ? "{...}" : "[...]", stdout);
+            return;
+        }
+        if (ps_prof_texto < PS_CICLO_MAX) ps_pilha_texto[ps_prof_texto] = v->as.obj;
+    }
     switch (v->t) {
         case V_NULL:   fputs("null", stdout); break;
         case V_BOOL:   fputs(v->as.b ? "True" : "False", stdout); break;
@@ -2264,7 +2333,7 @@ static void escreve_valor(const Value *v, int dentro)
                 putchar(tupla ? '(' : '[');
                 for (int i = 0; i < l->len; i++) {
                     if (i) fputs(", ", stdout);
-                    escreve_valor(&l->itens[i], 1);
+                    ps_prof_texto++; escreve_valor(&l->itens[i], 1); ps_prof_texto--;
                 }
                 /* tupla de 1 elemento imprime `(x,)`, como no Python */
                 if (tupla && l->len == 1) putchar(',');
@@ -2277,7 +2346,7 @@ static void escreve_valor(const Value *v, int dentro)
                 printf("<%s ", inst->classe->nome);
                 if (inst->campos) {
                     Value dv = MK_OBJ((Obj *)inst->campos);
-                    escreve_valor(&dv, 1);
+                    ps_prof_texto++; escreve_valor(&dv, 1); ps_prof_texto--;
                 } else {
                     fputs("{}", stdout);
                 }
@@ -2425,9 +2494,9 @@ static void escreve_valor(const Value *v, int dentro)
                 for (int i = 0; i < d->usados; i++) {
                     if (d->entradas[i].estado != 1) continue;
                     if (n++) fputs(", ", stdout);
-                    escreve_valor(&d->entradas[i].chave, 1);
+                    ps_prof_texto++; escreve_valor(&d->entradas[i].chave, 1); ps_prof_texto--;
                     fputs(": ", stdout);
-                    escreve_valor(&d->entradas[i].valor, 1);
+                    ps_prof_texto++; escreve_valor(&d->entradas[i].valor, 1); ps_prof_texto--;
                 }
                 putchar('}');
             }
@@ -2465,6 +2534,7 @@ static int txt_put(TxtBuf *t, const char *s, int n)
 static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 {
     char tmp[64];
+    if (!dentro) ps_prof_texto = 0;   /* topo: zera a pilha de ciclo */
     switch (v->t) {
         case V_NULL:   return txt_put(t, "null", 4);
         case V_BOOL:   return v->as.b ? txt_put(t, "True", 4) : txt_put(t, "False", 5);
@@ -2512,10 +2582,17 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             if (v->as.obj->type == OBJ_LIST || v->as.obj->type == OBJ_TUPLE) {
                 PSList *l = (PSList *)v->as.obj;
                 int tup = (v->as.obj->type == OBJ_TUPLE);
+                /* já estou imprimindo este container -> ciclo */
+                if (ps_em_ciclo(v->as.obj))
+                    return txt_put(t, tup ? "(...)" : "[...]", 5);
+                if (ps_prof_texto < PS_CICLO_MAX) ps_pilha_texto[ps_prof_texto] = v->as.obj;
                 if (txt_put(t, tup ? "(" : "[", 1) != 0) return -1;
                 for (int i = 0; i < l->len; i++) {
                     if (i && txt_put(t, ", ", 2) != 0) return -1;
-                    if (valor_para_texto(t, &l->itens[i], 1) != 0) return -1;
+                    ps_prof_texto++;
+                    { int rc_i = valor_para_texto(t, &l->itens[i], 1);
+                      ps_prof_texto--;
+                      if (rc_i != 0) return -1; }
                 }
                 if (tup && l->len == 1 && txt_put(t, ",", 1) != 0) return -1;
                 return txt_put(t, tup ? ")" : "]", 1);
@@ -2531,7 +2608,10 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                 if (txt_put(t, " ", 1) != 0) return -1;
                 if (inst->campos) {
                     Value dv = MK_OBJ((Obj *)inst->campos);
-                    if (valor_para_texto(t, &dv, 1) != 0) return -1;
+                    ps_prof_texto++;
+                    { int rc_i = valor_para_texto(t, &dv, 1);
+                      ps_prof_texto--;
+                      if (rc_i != 0) return -1; }
                 } else {
                     if (txt_put(t, "{}", 2) != 0) return -1;
                 }
@@ -2559,14 +2639,22 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             }
             if (v->as.obj->type == OBJ_DICT) {
                 PSDict *d = (PSDict *)v->as.obj;
+                if (ps_em_ciclo(v->as.obj)) return txt_put(t, "{...}", 5);
+                if (ps_prof_texto < PS_CICLO_MAX) ps_pilha_texto[ps_prof_texto] = v->as.obj;
                 if (txt_put(t, "{", 1) != 0) return -1;
                 int k = 0;
                 for (int i = 0; i < d->usados; i++) {
                     if (d->entradas[i].estado != 1) continue;
                     if (k++ && txt_put(t, ", ", 2) != 0) return -1;
-                    if (valor_para_texto(t, &d->entradas[i].chave, 1) != 0) return -1;
+                    ps_prof_texto++;
+                    { int rc_k = valor_para_texto(t, &d->entradas[i].chave, 1);
+                      ps_prof_texto--;
+                      if (rc_k != 0) return -1; }
                     if (txt_put(t, ": ", 2) != 0) return -1;
-                    if (valor_para_texto(t, &d->entradas[i].valor, 1) != 0) return -1;
+                    ps_prof_texto++;
+                    { int rc_v = valor_para_texto(t, &d->entradas[i].valor, 1);
+                      ps_prof_texto--;
+                      if (rc_v != 0) return -1; }
                 }
                 return txt_put(t, "}", 1);
             }
@@ -2602,7 +2690,12 @@ static int nativa_post(VM *vm, Value *args, int n, Value *out)
             if (fut_resolve(vm, fu) != 0) return -1;
             v = fu->valor;
         }
+        /* Começa SEMPRE do zero: a pilha de ciclo é global e um resto de
+         * chamada anterior fazia um container inocente casar com endereço
+         * velho e sair impresso como `[...]`. */
+        ps_prof_texto = 0;
         escreve_valor(&v, 0);
+        ps_prof_texto = 0;
     }
     putchar('\n');
     *out = MK_NULL();
@@ -2674,6 +2767,10 @@ static int texto_para_int(const char *s, int len, int64_t *out)
     int64_t v = 0;
     for (; i < j; i++) {
         if (!isdigit((unsigned char)s[i])) return -1;
+        /* passou do int64: quem chama decide (o `int()` vai pro bignum). Antes
+         * o valor dava a volta em silêncio — `int("<32 dígitos>")` virava
+         * lixo negativo sem erro nenhum. */
+        if (v > (INT64_MAX - (s[i] - '0')) / 10) return 1;   /* 1 = estourou */
         v = v * 10 + (s[i] - '0');
     }
     *out = neg ? -v : v;
@@ -2686,13 +2783,28 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "int", 1);
     Value v = args[0];
     if (v.t == V_INT)   { *out = v; return 0; }
+    if (EH_BIGINT(v))   { *out = v; return 0; }   /* bignum já é int */
     if (v.t == V_BOOL)  { *out = MK_INT(v.as.b ? 1 : 0); return 0; }
     /* trunca para zero, como o `int()` do Python — não arredonda */
     if (v.t == V_FLOAT) { *out = MK_INT((int64_t)v.as.d); return 0; }
     if (EH_STRING(v)) {
         PSString *s = COMO_STRING(v);
         int64_t r;
-        if (texto_para_int(s->chars, s->len, &r) != 0)
+        int rc = texto_para_int(s->chars, s->len, &r);
+        if (rc == 1) {   /* não cabe no int64 -> bignum, como o interpretador */
+            char buf[512];
+            int len = s->len < (int)sizeof(buf) - 1 ? s->len : (int)sizeof(buf) - 1;
+            memcpy(buf, s->chars, (size_t)len); buf[len] = '\0';
+            mpz_t z; mpz_init(z);
+            if (mpz_set_str(z, buf, 10) != 0) {
+                mpz_clear(z);
+                BERRO(vm, "SomeValueUnexpected", "valor invalido: nao da pra converter '%s' em int", s->chars);
+            }
+            *out = mk_from_mpz(vm, z);
+            mpz_clear(z);
+            return 0;
+        }
+        if (rc != 0)
             BERRO(vm, "SomeValueUnexpected", "valor invalido: nao da pra converter '%s' em int", s->chars);
         *out = MK_INT(r);
         return 0;
@@ -2722,6 +2834,7 @@ static int nativa_flo(VM *vm, Value *args, int n, Value *out)
     Value v = args[0];
     if (v.t == V_FLOAT) { *out = v; return 0; }
     if (v.t == V_INT)   { *out = MK_FLOAT((double)v.as.i); return 0; }
+    if (EH_BIGINT(v))   { *out = MK_FLOAT(mpz_get_d(COMO_BIGINT(v)->v)); return 0; }
     if (v.t == V_BOOL)  { *out = MK_FLOAT(v.as.b ? 1.0 : 0.0); return 0; }
     if (EH_STRING(v)) {
         PSString *s = COMO_STRING(v);
@@ -2833,8 +2946,26 @@ static int nativa_abs(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "abs", 1);
     Value v = args[0];
+    /* `-INT64_MIN` não cabe no int64: `abs(-9223372036854775808)` devolvia o
+     * MESMO número negativo. Vai pro bignum, como o interpretador. */
+    if (v.t == V_INT && v.as.i == INT64_MIN) {
+        mpz_t z; mpz_init(z);
+        mpz_set_si(z, (long)v.as.i);
+        mpz_neg(z, z);
+        *out = mk_from_mpz(vm, z);
+        mpz_clear(z);
+        return 0;
+    }
     if (v.t == V_INT)   { *out = MK_INT(v.as.i < 0 ? -v.as.i : v.as.i); return 0; }
     if (v.t == V_BOOL)  { *out = MK_INT(v.as.b ? 1 : 0); return 0; }
+    if (EH_BIGINT(v)) {   /* bignum é `int` pro type(): abs tem que aceitar */
+        mpz_t z; mpz_init(z);
+        mpz_set(z, COMO_BIGINT(v)->v);
+        if (mpz_sgn(z) < 0) mpz_neg(z, z);
+        *out = mk_from_mpz(vm, z);
+        mpz_clear(z);
+        return 0;
+    }
     if (v.t == V_FLOAT) { *out = MK_FLOAT(v.as.d < 0 ? -v.as.d : v.as.d); return 0; }
     BERRO(vm, "SomeValueUnexpected", "operacao invalida: abs() so aceita numero");
 }
@@ -2848,6 +2979,7 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
         *out = MK_INT(v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i);
         return 0;
     }
+    if (EH_BIGINT(v)) { *out = v; return 0; }   /* já é inteiro */
     if (v.t != V_FLOAT) BERRO(vm, "SomeValueUnexpected", "operacao invalida: round() so aceita numero");
     if (n == 1) {
         /* nearbyint no modo padrão = meio-para-o-par, que é o do Python:
@@ -2953,13 +3085,22 @@ static int nativa_chr(VM *vm, Value *args, int n, Value *out)
  * `[1,2]`. Sem isso, min/max com listas divergiriam do interpretador. */
 static int compara_valores(const Value *a, const Value *b)
 {
-    int an = (a->t == V_INT || a->t == V_FLOAT || a->t == V_BOOL);
-    int bn = (b->t == V_INT || b->t == V_FLOAT || b->t == V_BOOL);
+    /* bignum é número: sem isto, `sorted([grande, 1])` dizia "tipos
+     * incompativeis" para dois valores que o type() chama de `int`. */
+    if (EH_INTEIRO(*a) && EH_INTEIRO(*b) && (EH_BIGINT(*a) || EH_BIGINT(*b))) {
+        mpz_t za, zb; mpz_init(za); mpz_init(zb);
+        mpz_de_val(za, *a); mpz_de_val(zb, *b);
+        int c = mpz_cmp(za, zb);
+        mpz_clear(za); mpz_clear(zb);
+        return (c > 0) - (c < 0);
+    }
+    int an = (a->t == V_INT || a->t == V_FLOAT || a->t == V_BOOL || EH_BIGINT(*a));
+    int bn = (b->t == V_INT || b->t == V_FLOAT || b->t == V_BOOL || EH_BIGINT(*b));
     if (an && bn) {
         if (a->t == V_INT && b->t == V_INT)
             return (a->as.i > b->as.i) - (a->as.i < b->as.i);
-        double x = (a->t == V_FLOAT) ? a->as.d : (a->t == V_BOOL ? (a->as.b ? 1 : 0) : (double)a->as.i);
-        double y = (b->t == V_FLOAT) ? b->as.d : (b->t == V_BOOL ? (b->as.b ? 1 : 0) : (double)b->as.i);
+        double x = (a->t == V_FLOAT) ? a->as.d : (a->t == V_BOOL ? (a->as.b ? 1 : 0) : int_como_double(*a));
+        double y = (b->t == V_FLOAT) ? b->as.d : (b->t == V_BOOL ? (b->as.b ? 1 : 0) : int_como_double(*b));
         return (x > y) - (x < y);
     }
     if (EH_STRING(*a) && EH_STRING(*b)) {
@@ -3166,24 +3307,33 @@ static int nativa_sum(VM *vm, Value *args, int n, Value *out)
     if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "sum() espera 1 ou 2 argumentos");
     if (!EH_SEQ(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() espera lista");
     PSList *l = COMO_LIST(args[0]);
-    int64_t si = 0;
     double  sd = 0;
     int flutuou = 0;
-    if (n == 2) {                        /* valor inicial (start), como o sum() do interp */
+    /* Acumula em mpz: bignum é `int` pro type(), então sum() tem que somá-lo —
+     * e o total de int64 também pode estourar no meio do caminho. */
+    mpz_t si; mpz_init(si);
+    if (n == 2) {
         Value s = args[1];
-        if (s.t == V_INT)        si = s.as.i;
-        else if (s.t == V_BOOL)  si = s.as.b ? 1 : 0;
+        if (s.t == V_INT)        mpz_set_si(si, (long)s.as.i);
+        else if (s.t == V_BOOL)  mpz_set_si(si, s.as.b ? 1 : 0);
+        else if (EH_BIGINT(s))   mpz_set(si, COMO_BIGINT(s)->v);
         else if (s.t == V_FLOAT) { sd = s.as.d; flutuou = 1; }
-        else BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() start deve ser numero");
+        else { mpz_clear(si); BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() start deve ser numero"); }
     }
     for (int i = 0; i < l->len; i++) {
         Value v = l->itens[i];
-        if (v.t == V_INT)        { si += v.as.i; }
-        else if (v.t == V_BOOL)  { si += v.as.b ? 1 : 0; }
+        if (EH_INTEIRO(v) || v.t == V_BOOL) {
+            mpz_t z; mpz_init(z);
+            if (v.t == V_BOOL) mpz_set_si(z, v.as.b ? 1 : 0);
+            else               mpz_de_val(z, v);
+            mpz_add(si, si, z);
+            mpz_clear(z);
+        }
         else if (v.t == V_FLOAT) { sd += v.as.d; flutuou = 1; }
-        else BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() so soma numero");
+        else { mpz_clear(si); BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() so soma numero"); }
     }
-    *out = flutuou ? MK_FLOAT(sd + (double)si) : MK_INT(si);
+    *out = flutuou ? MK_FLOAT(sd + mpz_get_d(si)) : mk_from_mpz(vm, si);
+    mpz_clear(si);
     return 0;
 }
 
@@ -4200,6 +4350,13 @@ static int met_removesuffix(VM *v, Value a, Value *g, int n, Value *o) { return 
 
 /* ── preenchimento ──────────────────────────────────────────────────────── */
 /* A largura é contada em CODEPOINT: `"ção".ljust(5)` põe 2 espaços, não 0. */
+/* Teto de uma string construída por LARGURA (`zfill`, `ljust`, `rjust`,
+ * `center`). Sem isto, `"a".zfill(9223372036854775807)` saía alocando em laço
+ * e comia a RAM até o OOM killer derrubar a SESSÃO INTEIRA — o interpretador
+ * recusa na hora com MemoryError. 256 MB é maior que qualquer uso real e
+ * pequeno o bastante pra não matar a máquina. */
+#define PS_STR_MAX (256 * 1024 * 1024)
+
 static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
                         const char *quem, int modo)
 {
@@ -4217,6 +4374,9 @@ static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
         ench = f->chars; ench_len = f->len;
     }
     int atual = utf8_conta(s->chars, s->len);
+    if (larg > PS_STR_MAX / (ench_len > 0 ? ench_len : 1))
+        MERRO(vm, "MemoryError", "memória insuficiente: %s() pediu largura %lld",
+              quem, (long long)larg);
     int64_t falta = larg - atual;
     if (falta <= 0) {
         PSString *r = nova_string(vm, s->chars, s->len);
@@ -4255,6 +4415,9 @@ static int met_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "largura de zfill() precisa ser int");
     int64_t larg = args[0].as.i;
     int atual = utf8_conta(s->chars, s->len);
+    if (larg > PS_STR_MAX)
+        MERRO(vm, "MemoryError", "memória insuficiente: zfill() pediu largura %lld",
+              (long long)larg);
     int64_t falta = larg - atual;
     SBUF_AUTO b = {0};
     int sinal = (s->len > 0 && (s->chars[0] == '+' || s->chars[0] == '-')) ? 1 : 0;
@@ -4980,11 +5143,19 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
     SBUF_AUTO b = {0};
     char pedaco[4096];
     size_t lidos;
-    while ((lidos = fread(pedaco, 1, sizeof(pedaco), a->f)) > 0) {
-        int quer = (int)lidos;
-        if (limite >= 0 && b.n + quer > limite) quer = (int)(limite - b.n);
-        if (quer > 0 && sb_bytes(&b, pedaco, quer) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-        if (limite >= 0 && b.n >= limite) break;
+    /* Com limite, lê EXATAMENTE o que falta: o `fread` de 4096 sugava o
+     * arquivo todo e só descartava o excedente — o cursor ficava no fim e a
+     * leitura seguinte vinha vazia (`f.read(3)` e depois `f.read(2)` dava ""). */
+    for (;;) {
+        size_t quero = sizeof(pedaco);
+        if (limite >= 0) {
+            long falta = limite - b.n;
+            if (falta <= 0) break;
+            if ((size_t)falta < quero) quero = (size_t)falta;
+        }
+        lidos = fread(pedaco, 1, quero, a->f);
+        if (lidos == 0) break;
+        if (sb_bytes(&b, pedaco, (int)lidos) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     }
     return devolve_leitura(vm, &b, a->binario, out);
 }
@@ -6548,12 +6719,27 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
         if (j->i < j->n && (j->s[j->i] == 'e' || j->s[j->i] == 'E')) { flutua = 1; j->i++;
             if (j->i < j->n && (j->s[j->i] == '+' || j->s[j->i] == '-')) j->i++;
             while (j->i < j->n && j->s[j->i] >= '0' && j->s[j->i] <= '9') j->i++; }
-        char buf[64];
+        char buf[512];   /* inteiro de JSON pode ser bem maior que 64 dígitos */
         int len = j->i - ini;
         if (len <= 0 || len >= (int)sizeof(buf)) BERRO(vm, "SomeValueUnexpected", "json: numero invalido");
         memcpy(buf, j->s + ini, (size_t)len);
         buf[len] = '\0';
-        *out = flutua ? MK_FLOAT(strtod(buf, NULL)) : MK_INT(strtoll(buf, NULL, 10));
+        if (flutua) { *out = MK_FLOAT(strtod(buf, NULL)); return 0; }
+        /* `strtoll` SATURA em INT64_MAX quando não cabe: um id grande vindo de
+         * uma API virava 9223372036854775807 sem erro nenhum. Vai pro bignum. */
+        errno = 0;
+        long long li = strtoll(buf, NULL, 10);
+        if (errno == ERANGE) {
+            mpz_t z; mpz_init(z);
+            if (mpz_set_str(z, buf, 10) != 0) {
+                mpz_clear(z);
+                BERRO(vm, "SomeValueUnexpected", "json: numero invalido");
+            }
+            *out = mk_from_mpz(vm, z);
+            mpz_clear(z);
+            return 0;
+        }
+        *out = MK_INT((int64_t)li);
         return 0;
     }
     BERRO(vm, "SomeValueUnexpected", "json: valor invalido");
@@ -7237,6 +7423,60 @@ static const MembroMod MOD_DATE[] = {
 
 
 /* ── geradores ──────────────────────────────────────────────────────────── */
+/* `vm->protos` é REALOCADO quando um `import` traz um módulo novo. Toda
+ * função nativa pode ceder o controle (fib_offload) e todo `await` roda o
+ * escalonador — se outra fibra importar nesse meio, o `p` desta fibra vira
+ * ponteiro pendurado e a próxima instrução SEGFAULTA (era o crash do
+ * `import` dentro de `async action`). Guardar o ÍNDICE e reancorar depois
+ * custa nada e fecha a classe inteira. */
+#define REANCORA(expr) do { \
+    int _idx_p = (int)(p - vm->protos); \
+    expr; \
+    p = &vm->protos[_idx_p]; \
+} while (0)
+
+/* ── bitwise com bignum ─────────────────────────────────────────────────────
+ * Antes estes operadores exigiam `V_INT` puro e faziam a conta em int64 do C:
+ *   - `1 << 63` virava NEGATIVO e `1 << 64` virava 1 (deslocamento reduzido
+ *     módulo 64 — UB do C), sem erro nenhum;
+ *   - com um bignum do lado, cuspiam "'|' exige int" — contradizendo o próprio
+ *     motor, que responde `int` no `type()` desse valor.
+ * Agora vão pro mpz igual `+` e `*` já faziam, e voltam pro int64 quando cabe. */
+static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
+{
+    mpz_t za, zb, zr;
+    mpz_init(za); mpz_init(zb); mpz_init(zr);
+    mpz_de_val(za, a); mpz_de_val(zb, b);
+    int rc = 0;
+    switch (op) {
+        case '|': mpz_ior(zr, za, zb); break;
+        case '^': mpz_xor(zr, za, zb); break;
+        case '&': mpz_and(zr, za, zb); break;
+        case '<':
+        case '>': {
+            if (mpz_sgn(zb) < 0) {
+                snprintf(vm->erro, sizeof(vm->erro), "deslocamento negativo");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+                rc = -1; break;
+            }
+            /* teto de sanidade: `1 << 10000000000` pediria gigabytes */
+            if (!mpz_fits_ulong_p(zb) || mpz_get_ui(zb) > 1000000u) {
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "memória insuficiente: deslocamento grande demais");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+                rc = -1; break;
+            }
+            unsigned long d = mpz_get_ui(zb);
+            if (op == '<') mpz_mul_2exp(zr, za, d);
+            else           mpz_fdiv_q_2exp(zr, za, d);   /* aritmético, como Python */
+            break;
+        }
+    }
+    if (rc == 0) *out = mk_from_mpz(vm, zr);
+    mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
+    return rc;
+}
+
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            int fp0, int sp0, int locals0, Value *resultado);
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
@@ -16500,6 +16740,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (a.t == V_INT && b.t == V_INT) {
                 if (b.as.i == 0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: integer modulo by zero");
+                /* INT64_MIN % -1 é UB no C e o processador levanta SIGFPE —
+                 * o processo MORRIA (core dumped). Matematicamente o resto é
+                 * 0, que é o que o interpretador devolve. */
+                if (b.as.i == -1) { stack[sp - 1] = MK_INT(0); break; }
                 int64_t r = a.as.i % b.as.i;
                 if (r != 0 && ((r < 0) != (b.as.i < 0))) r += b.as.i;  /* sinal do divisor, como Python */
                 stack[sp - 1] = MK_INT(r);
@@ -16567,6 +16811,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 mpz_t za, zb; mpz_init(za); mpz_init(zb);                     \
                 mpz_de_val(za, a); mpz_de_val(zb, b);                         \
                 int c = mpz_cmp(za, zb); mpz_clear(za); mpz_clear(zb);        \
+                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+            } else if (EH_SEQ(a) && EH_SEQ(b)) {                              \
+                /* lista com lista (e tupla com tupla) compara elemento a      \
+                 * elemento, como o sorted() já fazia internamente — só o      \
+                 * OPERADOR recusava, dizendo "tipos incompativeis" pra dois   \
+                 * valores do MESMO tipo. */                                   \
+                int c = compara_valores(&a, &b);                              \
+                if (c == -2)                                                  \
+                    ERRO_T(vm, "SomeValueUnexpected", "comparacao entre tipos incompativeis");         \
                 stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
             } else {                                                          \
                 if (!(EH_INTEIRO(a) || a.t == V_FLOAT) ||                     \
@@ -16679,7 +16932,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     for (const char *q = lista_nomes; *q; idx_par++) {
                         const char *fim = strchr(q, ',');
                         size_t tam = fim ? (size_t)(fim - q) : strlen(q);
-                        if (strlen(alvo_nome) == tam && !strncmp(q, alvo_nome, tam)) { achou = idx_par; break; }
+                        size_t tnome = par_nome_tam(q, tam);   /* para no '=' do default */
+                        if (strlen(alvo_nome) == tnome && !strncmp(q, alvo_nome, tnome)) { achou = idx_par; break; }
                         q = fim ? fim + 1 : q + tam;
                     }
                     if (achou < 0 || achou >= 16) {
@@ -16693,7 +16947,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';
                 Value rv;
-                if (jf(vm, alvo_kw, pos, usados, &rv) != 0) {
+                int rc_jf; REANCORA(rc_jf = jf(vm, alvo_kw, pos, usados, &rv));
+                if (rc_jf != 0) {
                     if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
                 }
@@ -16739,7 +16994,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     for (const char *q = lista_nomes; *q; idx_par++) {
                         const char *fim = strchr(q, ',');
                         size_t tam = fim ? (size_t)(fim - q) : strlen(q);
-                        if (strlen(alvo_nome) == tam && !strncmp(q, alvo_nome, tam)) { achou = idx_par; break; }
+                        size_t tnome = par_nome_tam(q, tam);   /* para no '=' do default */
+                        if (strlen(alvo_nome) == tnome && !strncmp(q, alvo_nome, tnome)) { achou = idx_par; break; }
                         q = fim ? fim + 1 : q + tam;
                     }
                     if (achou < 0 || achou >= 16) {
@@ -16755,8 +17011,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';
                 Value rv;
-                int rc_nat = fn_nat ? fn_nat(vm, pos, usados, &rv)
-                                    : fn_met(vm, alvo_met, pos, usados, &rv);
+                int rc_nat; REANCORA(rc_nat = fn_nat ? fn_nat(vm, pos, usados, &rv)
+                                                     : fn_met(vm, alvo_met, pos, usados, &rv));
                 if (rc_nat != 0) {
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
@@ -16790,6 +17046,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * também anda um, mas o slot 0 fica UNSET — dropa o self pra o
              * posicional/nomeado cair no 1º parâmetro REAL. */
             int eh_static_self = (inst_kw.t == V_NULL && alvo_kw.t == V_FUNC
+                                  && pk->eh_static
                                   && pk->param_nomes && pk->param_nomes[0]
                                   && strcmp(pk->param_nomes[0], "self") == 0);
             int desloca = (inst_kw.t != V_NULL || eh_static_self) ? 1 : 0;
@@ -16823,6 +17080,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * que a linguagem. */
                 finais[achou] = stack[sp - nkw + k];
                 marcado[achou] = 1;
+            }
+
+            /* Parâmetro obrigatório (sem default) que ninguém preencheu é
+             * ERRO — antes o slot ficava UNSET e a action devolvia `null`
+             * calada, escondendo a chamada errada. Vale pra action, método e
+             * __init__; o slot do self (desloca) fica de fora. */
+            for (int k = desloca; k < pk->nparams - pk->ndefaults; k++) {
+                if (marcado[k]) continue;
+                ERRO_TF(vm, "RuntimeError", "action '%s' faltando argumento: '%s'",
+                        pk->nome ? pk->nome : "?",
+                        (pk->param_nomes && pk->param_nomes[k]) ? pk->param_nomes[k] : "?");
             }
 
             if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
@@ -16870,6 +17138,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* empurra self na frente dos argumentos */
                 Proto *np = &vm->protos[mp];
                 if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no __init__");
+                /* falta argumento obrigatório: erro, não `null` calado (o
+                 * self já ocupa o slot 0, por isso o `n + 1`) */
+                if (n + 1 < np->nparams - np->ndefaults)
+                    ERRO_TF(vm, "RuntimeError", "action '%s' faltando argumento: '%s'",
+                            np->nome ? np->nome : "?",
+                            (np->param_nomes && np->param_nomes[n + 1]) ? np->param_nomes[n + 1] : "?");
                 if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
                 if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
                 vm->frames[fp].proto = (int)(p - vm->protos);
@@ -16903,6 +17177,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                             "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
                 if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no metodo");
+                /* falta argumento obrigatório: erro, não `null` calado */
+                if (n + 1 < np->nparams - np->ndefaults)
+                    ERRO_TF(vm, "RuntimeError", "action '%s' faltando argumento: '%s'",
+                            np->nome ? np->nome : "?",
+                            (np->param_nomes && np->param_nomes[n + 1]) ? np->param_nomes[n + 1] : "?");
                 if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
                 if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
                 vm->frames[fp].proto = (int)(p - vm->protos);
@@ -16929,7 +17208,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * pra o argumento posicional cair no 1º parâmetro REAL, e o
                  * slot do self nasce UNSET (não bindável fora de instância).
                  * Mesma heurística do interpretador (`params[0] == "self"`). */
-                int desloca = (np->param_nomes && np->param_nomes[0]
+                int desloca = (np->eh_static && np->param_nomes && np->param_nomes[0]
                                && strcmp(np->param_nomes[0], "self") == 0) ? 1 : 0;
                 int maxpos = np->nparams - desloca;
                 /* Aceita MENOS argumentos: o prólogo do callee preenche os
@@ -17021,7 +17300,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';
                 Value rv;
-                if (f->fn(vm, &stack[sp - n], n, &rv) != 0) {
+                int rc_f; REANCORA(rc_f = f->fn(vm, &stack[sp - n], n, &rv));
+                if (rc_f != 0) {
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
@@ -17033,7 +17313,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';
                 Value rv;
-                if (TABELAS[m->tabela][m->idx].fn(vm, m->alvo, &stack[sp - n], n, &rv) != 0) {
+                int rc_m; REANCORA(rc_m = TABELAS[m->tabela][m->idx].fn(vm, m->alvo, &stack[sp - n], n, &rv));
+                if (rc_m != 0) {
                     if (!vm->erro_tipo[0])
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
@@ -17064,7 +17345,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                     vm->erro_tipo[0] = '\0';
                     Value rv;
-                    if (jf(vm, alvo, &stack[sp - n], n, &rv) != 0) {
+                    int rc_j2; REANCORA(rc_j2 = jf(vm, alvo, &stack[sp - n], n, &rv));
+                    if (rc_j2 != 0) {
                         if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                         goto erro_runtime;
                     }
@@ -17110,33 +17392,96 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
         case OP_BIT_OR: {
             Value b = stack[--sp], a = stack[sp - 1];
-            if (a.t != V_INT || b.t != V_INT) ERRO_T(vm, "SomeValueUnexpected", "'|' exige int");
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+            if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
+                ERRO_T(vm, "SomeValueUnexpected", "'|' exige int");
+            if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value r;
+                if (bit_bignum(vm, '|', a, b, &r) != 0) goto erro_runtime;
+                stack[sp - 1] = r;
+                break;
+            }
             stack[sp - 1] = MK_INT(a.as.i | b.as.i);
             break;
         }
         case OP_BIT_XOR: {
             Value b = stack[--sp], a = stack[sp - 1];
-            if (a.t != V_INT || b.t != V_INT) ERRO_T(vm, "SomeValueUnexpected", "'^' exige int");
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+            if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
+                ERRO_T(vm, "SomeValueUnexpected", "'^' exige int");
+            if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value r;
+                if (bit_bignum(vm, '^', a, b, &r) != 0) goto erro_runtime;
+                stack[sp - 1] = r;
+                break;
+            }
             stack[sp - 1] = MK_INT(a.as.i ^ b.as.i);
             break;
         }
         case OP_BIT_AND: {
             Value b = stack[--sp], a = stack[sp - 1];
-            if (a.t != V_INT || b.t != V_INT) ERRO_T(vm, "SomeValueUnexpected", "'&' exige int");
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+            if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
+                ERRO_T(vm, "SomeValueUnexpected", "'&' exige int");
+            if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value r;
+                if (bit_bignum(vm, '&', a, b, &r) != 0) goto erro_runtime;
+                stack[sp - 1] = r;
+                break;
+            }
             stack[sp - 1] = MK_INT(a.as.i & b.as.i);
             break;
         }
         case OP_LSHIFT: {
             Value b = stack[--sp], a = stack[sp - 1];
-            if (a.t != V_INT || b.t != V_INT) ERRO_T(vm, "SomeValueUnexpected", "'<<' exige int");
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+            if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
+                ERRO_T(vm, "SomeValueUnexpected", "'<<' exige int");
+            if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value r;
+                if (bit_bignum(vm, '<', a, b, &r) != 0) goto erro_runtime;
+                stack[sp - 1] = r;
+                break;
+            }
             if (b.as.i < 0) ERRO(vm, "deslocamento negativo");
+            /* estoura o int64? promove a bignum em vez de dar número errado:
+             * `1 << 63` virava NEGATIVO e `1 << 64` virava 1 (UB do C). */
+            if (b.as.i >= 63 || (a.as.i != 0
+                    && (a.as.i > (INT64_MAX >> b.as.i) || a.as.i < (INT64_MIN >> b.as.i)))) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value r;
+                if (bit_bignum(vm, '<', a, b, &r) != 0) goto erro_runtime;
+                stack[sp - 1] = r;
+                break;
+            }
             stack[sp - 1] = MK_INT(a.as.i << b.as.i);
             break;
         }
         case OP_RSHIFT: {
             Value b = stack[--sp], a = stack[sp - 1];
-            if (a.t != V_INT || b.t != V_INT) ERRO_T(vm, "SomeValueUnexpected", "'>>' exige int");
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+            if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
+                ERRO_T(vm, "SomeValueUnexpected", "'>>' exige int");
+            if (EH_BIGINT(a) || EH_BIGINT(b)) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                Value r;
+                if (bit_bignum(vm, '>', a, b, &r) != 0) goto erro_runtime;
+                stack[sp - 1] = r;
+                break;
+            }
             if (b.as.i < 0) ERRO(vm, "deslocamento negativo");
+            /* deslocar >= 64 é UB no C; o resultado matemático é 0 (ou -1
+             * pra negativo, que o shift aritmético preserva) */
+            if (b.as.i >= 64) { stack[sp - 1] = MK_INT(a.as.i < 0 ? -1 : 0); break; }
             stack[sp - 1] = MK_INT(a.as.i >> b.as.i);
             break;
         }
@@ -17171,7 +17516,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             for (int k = 0; k < arg; k++) {
                 Value *ck = &stack[sp - 2 * arg + 2 * k];
                 Value *cv = &stack[sp - 2 * arg + 2 * k + 1];
-                if (dict_set(vm, d, ck, cv) != 0) ERRO(vm, "sem memoria no dict");
+                /* dict_set já explica quando a chave é inválida (mutável);
+                 * só chama de "sem memoria" quando não veio mensagem. */
+                if (dict_set(vm, d, ck, cv) != 0) {
+                    if (vm->erro[0]) goto erro_runtime;
+                    ERRO(vm, "sem memoria no dict");
+                }
             }
             sp -= 2 * arg;
             stack[sp++] = MK_OBJ(d);
@@ -17265,8 +17615,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 l->itens[i] = valor;
             } else if (EH_DICT(alvo)) {
                 vm->sp = sp; vm->locals_top = locals_top;
-                if (dict_set(vm, COMO_DICT(alvo), &idx, &valor) != 0)
+                if (dict_set(vm, COMO_DICT(alvo), &idx, &valor) != 0) {
+                    if (vm->erro[0]) goto erro_runtime;
                     ERRO(vm, "sem memoria no dict");
+                }
             } else {
                 ERRO(vm, "tipo nao suporta atribuicao por indice");
             }
@@ -17378,6 +17730,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* string fatia em CARACTERES (codepoints), não em bytes — senão
              * "padrão"[0:5] cortava o "ã" no meio e divergia do interp */
             else if (EH_STRING(alvo)) n = utf8_conta(COMO_STRING(alvo)->chars, COMO_STRING(alvo)->len);
+            /* bytes fatia em BYTES (não tem codepoint): `b[1:3]` dava
+             * "tipo nao fatiavel" e o interp já fatiava */
+            else if (EH_BYTES(alvo))  n = COMO_BYTES(alvo)->len;
             else ERRO(vm, "tipo nao fatiavel");
 
             int64_t st = 1;
@@ -17410,7 +17765,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
 
             vm->sp = sp; vm->locals_top = locals_top;
-            if (EH_STRING(alvo)) {
+            if (EH_BYTES(alvo)) {
+                PSString *src = COMO_BYTES(alvo);
+                SBUF_AUTO bb = {0};
+                for (int64_t i = i0; (st > 0 ? i < i1 : i > i1); i += st)
+                    if (sb_bytes(&bb, src->chars + i, 1) != 0) { ERRO(vm, "sem memoria"); }
+                PSString *r = novo_bytes(vm, bb.b ? bb.b : "", bb.n);
+                if (!r) ERRO(vm, "sem memoria no slice");
+                stack[sp - 1] = MK_OBJ(r);
+            } else if (EH_STRING(alvo)) {
                 PSString *src = COMO_STRING(alvo);
                 TXTBUF_AUTO t = {0};
                 if (st == 1) {
@@ -17496,7 +17859,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_FUTURO(av)) {
                 PSFuturo *fu = COMO_FUTURO(av);
                 vm->sp = sp; vm->locals_top = locals_top;   /* GC vê a pilha viva */
-                if (fut_resolve(vm, fu) != 0) goto erro_runtime;
+                int rc_fu; REANCORA(rc_fu = fut_resolve(vm, fu));
+                if (rc_fu != 0) goto erro_runtime;
                 stack[sp - 1] = fu->valor;
             }
             break;
@@ -17737,6 +18101,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), nome);
                 if (mp < 0) ERRO_TF(vm, "RuntimeError", "membro inexistente: %s (na Entity %s)",
                                     nome, COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?");
+                /* Sem instância, só `@static` vale — é a regra do
+                 * interpretador (PoolEntityClass.__getattr__). Antes a VM
+                 * aceitava QUALQUER método aqui e dropava o `self` calada: o
+                 * erro saía no parâmetro seguinte ("faltando argumento:
+                 * 'var'") e escondia a causa real, que é a falta da instância.
+                 * `@static action f(self, a)` continua valendo — quem manda é
+                 * a marca do decorador, não o nome do 1º parâmetro. */
+                if (!vm->protos[mp].eh_static)
+                    ERRO_TF(vm, "RuntimeError",
+                            "Entity '%s' não tem método estático '%s' — instancie primeiro",
+                            COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?", nome);
                 stack[sp - 1] = MK_FUNC(mp);
                 break;
             }
@@ -18540,7 +18915,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * erro_linha/erro_col já foram gravados no topo do erro_runtime. */
             vm->sp = sp; vm->locals_top = locals_top;
             char msgbuf[1200];
-            if (vm->erro_linha > 0)
+            /* Não carimba a linha duas vezes: um erro que atravessa mais de um
+             * handler (ex.: `raise` dentro de catch com finally) já vem com o
+             * "(linha N)" colado pelo primeiro. */
+            size_t nerr = strlen(vm->erro);
+            int ja_tem_linha = (nerr > 0 && vm->erro[nerr - 1] == ')'
+                                && strstr(vm->erro, " (linha ") != NULL);
+            if (vm->erro_linha > 0 && !ja_tem_linha)
                 snprintf(msgbuf, sizeof(msgbuf), "%s (linha %d)",
                          vm->erro, vm->erro_linha);
             else
@@ -18728,6 +19109,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         p->ndefaults = o->ndefaults;
         p->eh_gerador = o->eh_gerador;
         p->eh_async = o->eh_async;
+        p->eh_static = o->eh_static;
         /* COPIA os nomes: o PSPrograma é liberado logo depois de carregar,
          * antes da execução. Guardar o ponteiro dele deixava `param_nomes`
          * pendurado e a primeira chamada nomeada segfaultava. */
@@ -18970,6 +19352,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         d->ndefaults = o->ndefaults;
         d->eh_gerador = o->eh_gerador;
         d->eh_async = o->eh_async;
+        d->eh_static = o->eh_static;
         d->nome = strdup(o->nome ? o->nome : "?");
         d->param_nomes = NULL;
         if (o->param_nomes && o->nparams > 0) {
@@ -19242,6 +19625,297 @@ void ps_set_argv(int argc, char **argv)
 {
     g_argv_user = argv;
     g_argc_user = argc;
+}
+
+/* ── modelo de tipos em JSON (pro editor e pra auditoria da doc) ─────────── */
+/* A fonte é o próprio motor: MODULOS[] (módulo -> membros -> nomes dos
+ * parâmetros) e TABELAS[] (tipo/objeto -> métodos). Antes o tooling
+ * introspectava a stdlib em Python, o que prendia o editor ao interpretador —
+ * e podia divergir do que a VM realmente aceita. */
+
+/* Tipo de RETORNO de cada membro que devolve um objeto — é o que faz o
+ * editor encadear `conn = psodbc.connect()` -> `conn.cursor()` ->
+ * `fetchall()`. Fica aqui, no motor, porque o tooling não pode depender
+ * de introspectar a stdlib do interpretador (que vai deixar de existir).
+ * Membro que não aparece nesta tabela devolve tipo primitivo ou desconhecido. */
+static const struct { const char *dono; const char *membro; const char *tipo; } RETORNOS[] = {
+    { "ChannelManager", "emit", "ChannelStatus" },
+    { "CorsConfig", "options", "list[str]" },
+    { "CorsConfig", "origins", "list[str]" },
+    { "CorsConfig", "permiser", "list[str]" },
+    { "DbConnection", "cursor", "DbCursor" },
+    { "JinkerResponse", "header", "JinkerResponse" },
+    { "JinkerResponse", "json", "JinkerResponse" },
+    { "JinkerResponse", "send", "JinkerResponse" },
+    { "JinkerResponse", "status", "JinkerResponse" },
+    { "ManpuFile", "save", "ManpuResult" },
+    { "ManpuFile", "write", "ManpuResult" },
+    { "MongoConnection", "collection", "MongoCollection" },
+    { "PoolConnection", "cursor", "PoolCursor" },
+    { "PoolConnection", "execute", "PoolCursor" },
+    { "PoolFile", "copy", "PoolFile" },
+    { "PoolFile", "move", "PoolFile" },
+    { "PoolFile", "save", "PoolFile" },
+    { "PoolFileUpload", "move", "PoolFileUpload" },
+    { "PoolFileUpload", "save", "PoolFileUpload" },
+    { "PoolQRCode", "make_image", "QRImage" },
+    { "QRImage", "resize", "QRImage" },
+    { "QRImage", "save", "QRImage" },
+    { "QRImage", "to_file", "QRPoolFile" },
+    { "Response", "content_type", "Response" },
+    { "SocketEmitter", "emit", "ChannelStatus" },
+    { "SocketEmitter", "status_send", "ChannelStatus" },
+    { "SocketNamespace", "emit", "ChannelStatus" },
+    { "SocketNamespace", "status_send", "ChannelStatus" },
+    { "UI", "button", "Button" },
+    { "UI", "window", "Window" },
+    { "db", "connect", "DbConnection" },
+    { "guzer", "UI", "UI" },
+    { "jinker", "Jinker", "Jinker" },
+    { "jinker", "JinkerRequest", "JinkerRequest" },
+    { "jinker", "JinkerResponse", "JinkerResponse" },
+    { "jinker", "cors", "CorsConfig" },
+    { "jinker", "jsonify", "JinkerResponse" },
+    { "jinker", "render", "JinkerResponse" },
+    { "mail", "MailMessage", "MailMessage" },
+    { "mail", "MailReader", "MailReader" },
+    { "mail", "MailServer", "MailServer" },
+    { "manpu", "open", "ManpuFile" },
+    { "manpu", "remove", "ManpuResult" },
+    { "manpu", "write", "ManpuResult" },
+    { "mp", "open", "ManpuFile" },
+    { "mp", "remove", "ManpuResult" },
+    { "mp", "write", "ManpuResult" },
+    { "os", "PoolFile", "PoolFile" },
+    { "os", "loadFile", "PoolFile" },
+    { "psodbc", "connect", "DbConnection" },
+    { "qr", "QRCode", "PoolQRCode" },
+    { "qr", "make", "QRImage" },
+    { "qrcode", "QRCode", "PoolQRCode" },
+    { "qrcode", "make", "QRImage" },
+    { "regex", "compile", "Pattern" },
+    { "regex", "escape", "PoolStr" },
+    { "regex", "sub", "PoolStr" },
+    { "request", "delete", "Response" },
+    { "request", "get", "Response" },
+    { "request", "head", "Response" },
+    { "request", "patch", "Response" },
+    { "request", "post", "Response" },
+    { "request", "put", "Response" },
+    { "request", "ws_connect", "WsConnection" },
+    { "requests", "delete", "Response" },
+    { "requests", "get", "Response" },
+    { "requests", "head", "Response" },
+    { "requests", "patch", "Response" },
+    { "requests", "post", "Response" },
+    { "requests", "put", "Response" },
+    { "requests", "ws_connect", "WsConnection" },
+    { "sockets", "create_connection", "PoolSocket" },
+    { "sockets", "create_server", "PoolSocket" },
+    { "sockets", "socket", "PoolSocket" },
+    { "sqlite3", "connect", "PoolConnection" },
+};
+#define N_RETORNOS ((int)(sizeof(RETORNOS) / sizeof(RETORNOS[0])))
+
+static const char *retorno_de(const char *dono, const char *membro)
+{
+    for (int i = 0; i < N_RETORNOS; i++)
+        if (!strcmp(RETORNOS[i].dono, dono) && !strcmp(RETORNOS[i].membro, membro))
+            return RETORNOS[i].tipo;
+    return NULL;
+}
+
+/* CAMPOS lidos sem parênteses (`cur.rowcount`, `resp.status`, `f.name`…).
+ * Não estão nas tabelas METODOS_* porque o OP_GET_MEMBER os resolve por
+ * strcmp direto; sem registrá-los aqui, o autocomplete do editor não os
+ * enxergava. Mesma ideia do RETORNOS: o motor é a fonte. */
+static const struct { const char *dono; const char *campo; const char *tipo; } CAMPOS[] = {
+    { "ChannelManager", "status", NULL },
+    { "DbCursor", "rowcount", "int" },
+    { "Jinker", "channel", NULL },
+    { "Jinker", "name", NULL },
+    { "Jinker", "route_prefix", NULL },
+    { "Jinker", "socket", NULL },
+    { "Jinker", "static_folder", NULL },
+    { "Jinker", "static_url", NULL },
+    { "JinkerResponse", "status_code", NULL },
+    { "MailMessage", "msg", NULL },
+    { "MailReader", "folder", NULL },
+    { "MailReader", "server", NULL },
+    { "MailReader", "user", NULL },
+    { "MailServer", "server", NULL },
+    { "MailServer", "user", NULL },
+    { "ManpuFile", "filepath", NULL },
+    { "Pattern", "pattern", "str" },
+    { "PoolCursor", "lastrowid", NULL },
+    { "PoolCursor", "rowcount", "int" },
+    { "PoolFile", "ext", NULL },
+    { "PoolFile", "name", NULL },
+    { "PoolFile", "size", NULL },
+    { "PoolFileUpload", "content_type", NULL },
+    { "PoolFileUpload", "ext", NULL },
+    { "PoolFileUpload", "name", NULL },
+    { "PoolFileUpload", "size", NULL },
+    { "QRImage", "name", NULL },
+    { "RequestProxy", "headers", NULL },
+    { "RequestProxy", "method", NULL },
+    { "RequestProxy", "path", NULL },
+    { "Response", "content", "bytes" },
+    { "Response", "filename", "str" },
+    { "Response", "ok", "bool" },
+    { "Response", "size", "int" },
+    { "Response", "status_code", "int" },
+    { "Response", "text", "str" },
+    { "UI", "POOLHTMLElements", "UI" },
+};
+#define N_CAMPOS ((int)(sizeof(CAMPOS) / sizeof(CAMPOS[0])))
+
+static void jm_txt(FILE *f, const char *s)
+{
+    fputc('"', f);
+    for (const char *p = s ? s : ""; *p; p++) {
+        if (*p == '"' || *p == '\\') { fputc('\\', f); fputc(*p, f); }
+        else if ((unsigned char)*p < 0x20) fprintf(f, "\\u%04x", (unsigned char)*p);
+        else fputc(*p, f);
+    }
+    fputc('"', f);
+}
+
+/* "url,timeout=30" -> [{"nome":"url","default":null},
+ *                       {"nome":"timeout","default":"30"}]
+ * O default é OPCIONAL na tabela: sem `=`, sai null (obrigatório). */
+static void jm_params(FILE *f, const char *lista)
+{
+    fputc('[', f);
+    if (lista && *lista) {
+        const char *ini = lista;
+        int primeiro = 1;
+        for (const char *p = lista;; p++) {
+            if (*p == ',' || *p == '\0') {
+                char seg[128];
+                size_t n = (size_t)(p - ini);
+                if (n >= sizeof(seg)) n = sizeof(seg) - 1;
+                memcpy(seg, ini, n); seg[n] = '\0';
+                size_t tn = par_nome_tam(seg, n);
+                char nome[64];
+                size_t nn = tn < sizeof(nome) ? tn : sizeof(nome) - 1;
+                memcpy(nome, seg, nn); nome[nn] = '\0';
+                if (!primeiro) fputc(',', f);
+                fprintf(f, "{\"nome\": ");
+                jm_txt(f, nome);
+                fprintf(f, ", \"default\": ");
+                if (tn < n) jm_txt(f, seg + tn + 1);   /* tem `=default` */
+                else        fprintf(f, "null");
+                fputc('}', f);
+                primeiro = 0;
+                if (*p == '\0') break;
+                ini = p + 1;
+            }
+        }
+    }
+    fputc(']', f);
+}
+
+/* rótulo de cada tabela de métodos — o nome que o editor mostra pro tipo */
+static const char *jm_rotulo_tabela(int t)
+{
+    switch (t) {
+        case T_MET_STR:       return "str";
+        case T_MET_LIST:      return "list";
+        case T_MET_DICT:      return "dict";
+        case T_MET_TUPLA:     return "tup";
+        case T_MET_UNIV:      return "__universal__";
+        case T_MET_ARQ:       return "Arquivo";
+        case T_MET_BYTES:     return "bytes";
+        case T_MET_PFILE:     return "PoolFile";
+        case T_MET_SQLCONN:   return "PoolConnection";
+        case T_MET_SQLCUR:    return "PoolCursor";
+        case T_MET_MAILSRV:   return "MailServer";
+        case T_MET_MAILMSG:   return "MailMessage";
+        case T_MET_MAILRD:    return "MailReader";
+        case T_MET_RESP:      return "Response";
+        case T_MET_QRFILE:    return "QRFile";
+        case T_MET_DBCONN:    return "DbConnection";
+        case T_MET_DBCUR:     return "DbCursor";
+        case T_MET_MONGOCONN: return "MongoConnection";
+        case T_MET_MONGOCOL:  return "MongoCollection";
+        case T_MET_JINKER:    return "Jinker";
+        case T_MET_JCORS:     return "CorsConfig";
+        case T_MET_JREG:      return "RouteRegistrar";
+        case T_MET_JRESP:     return "JinkerResponse";
+        case T_MET_JPROXY:    return "RequestProxy";
+        case T_MET_JUPLOAD:   return "PoolFileUpload";
+        case T_MET_JSOCKNS:   return "SocketNamespace";
+        case T_MET_JEMIT:     return "SocketEmitter";
+        case T_MET_JCHAN:     return "ChannelManager";
+        case T_MET_WSCONN:    return "WsConnection";
+        case T_MET_QRBUILD:   return "PoolQRCode";
+        case T_MET_QRIMAGE:   return "QRImage";
+        case T_MET_MPFILE:    return "ManpuFile";
+        case T_MET_GUZ_UI:    return "UI";
+        case T_MET_GUZ_WID:   return "Elemento";
+        case T_MET_SOCKET:    return "socket";
+        case T_MET_REGEX:     return "Pattern";
+        default:              return NULL;
+    }
+}
+
+void ps_metadata_json(FILE *saida)
+{
+    FILE *f = saida ? saida : stdout;
+    fprintf(f, "{\n \"modulos\": {");
+    for (int i = 0; i < N_MODULOS; i++) {
+        if (i) fputc(',', f);
+        fprintf(f, "\n  ");
+        jm_txt(f, MODULOS[i].nome);
+        fprintf(f, ": [");
+        for (int k = 0; k < MODULOS[i].n; k++) {
+            const MembroMod *m = &MODULOS[i].membros[k];
+            if (k) fputc(',', f);
+            fprintf(f, "\n   {\"nome\": ");
+            jm_txt(f, m->nome);
+            fprintf(f, ", \"kind\": \"%s\", \"params\": ",
+                    m->eh_valor ? "value" : "function");
+            jm_params(f, m->params);
+            const char *ret = retorno_de(MODULOS[i].nome, m->nome);
+            fprintf(f, ", \"retorna\": ");
+            if (ret) jm_txt(f, ret); else fprintf(f, "null");
+            fputc('}', f);
+        }
+        fprintf(f, "\n  ]");
+    }
+    fprintf(f, "\n },\n \"tipos\": {");
+    int primeiro = 1;
+    for (int t = 0; t < (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0])); t++) {
+        const char *rotulo = jm_rotulo_tabela(t);
+        if (!rotulo) continue;
+        if (!primeiro) fputc(',', f);
+        primeiro = 0;
+        fprintf(f, "\n  ");
+        jm_txt(f, rotulo);
+        fprintf(f, ": [");
+        for (int k = 0; k < TAM_TABELA[t]; k++) {
+            if (k) fputc(',', f);
+            fprintf(f, "\n   {\"nome\": ");
+            jm_txt(f, TABELAS[t][k].nome);
+            fprintf(f, ", \"params\": ");
+            jm_params(f, TABELAS[t][k].params);
+            const char *ret = retorno_de(rotulo, TABELAS[t][k].nome);
+            fprintf(f, ", \"retorna\": ");
+            if (ret) jm_txt(f, ret); else fprintf(f, "null");
+            fputc('}', f);
+        }
+        for (int k = 0; k < N_CAMPOS; k++) {
+            if (strcmp(CAMPOS[k].dono, rotulo) != 0) continue;
+            fprintf(f, ",\n   {\"nome\": ");
+            jm_txt(f, CAMPOS[k].campo);
+            fprintf(f, ", \"kind\": \"property\", \"params\": [], \"retorna\": ");
+            if (CAMPOS[k].tipo) jm_txt(f, CAMPOS[k].tipo); else fprintf(f, "null");
+            fputc('}', f);
+        }
+        fprintf(f, "\n  ]");
+    }
+    fprintf(f, "\n }\n}\n");
 }
 
 int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e)
