@@ -81,3 +81,5 @@ check: pool testar
 	./testar
 	@echo
 	@./pool teste/confere_metadata.ps
+	@echo
+	@./pool lsp/teste_lsp.ps

@@ -408,6 +408,18 @@ const Caso CASOS_LINGUAGEM[] = {
 { "continue fora de laco continua sendo erro",
   "continue\n", NULL, "'continue' fora de laco", -1 },
 
+/* ── input(): fim da entrada é `null`, linha vazia é `""` ───────────────────
+ * O runner roda todo caso com stdin em /dev/null, então aqui a entrada já
+ * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre
+ * quando o outro lado fechasse o cano — foi o que travou o servidor LSP. */
+{ "input() no fim da entrada devolve null",
+  "post(input())\n", "null", NULL, 0 },
+{ "input() no fim é null, não string vazia",
+  "post(input() == Null, input() == \"\")\n", "True False", NULL, 0 },
+{ "input() em laço termina no fim da entrada",
+  "n = 0\nwhile true:\n    l = input()\n    if l == Null:\n        break\n    n = n + 1\npost(\"linhas:\", n)\n",
+  "linhas: 0", NULL, 0 },
+
 /* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */
 { "membro inexistente nomeia modulo e membro",
   "import json\npost(json.naoexiste)\n", NULL,

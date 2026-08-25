@@ -138,6 +138,19 @@ incompatível a uma variável tipada é erro (`AtributtedValueError`, ou
 valor é convertido automaticamente (e falha com erro claro se não for
 conversível).
 
+No **fim da entrada** (EOF — o outro lado fechou, ou a entrada veio de um
+arquivo que acabou), `input()` devolve **`null`**, não `""`. Uma linha vazia de
+verdade continua devolvendo `""`, então dá pra distinguir as duas e um laço de
+leitura sabe onde parar:
+
+```ps
+while true:
+    linha = input()
+    if linha == Null:
+        break          // acabou a entrada
+    post("li:", linha)
+```
+
 ### Palavras reservadas não podem virar nome
 
 Como no Python, uma palavra reservada é recusada onde um nome seria **ligado** —

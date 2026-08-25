@@ -57,9 +57,9 @@ pool --version
 pool examples/01_hello.ps
 ```
 
-### Extensão de editor (opcional)
-VS Code / IntelliJ / Neovim — ver [`docs/lsp.md`](docs/lsp.md).
-VS Code direto: `code --install-extension psl-poolscript-vsix/*.vsix`.
+### Editor (opcional)
+Servidor LSP em PoolScript: `pool lsp/servidor.ps`. Vale pra VS Code, Neovim,
+Helix e JetBrains — como ligar em cada um está em [`docs/lsp.md`](docs/lsp.md).
 
 ---
 

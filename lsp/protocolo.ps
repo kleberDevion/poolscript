@@ -1,0 +1,64 @@
+# Transporte do LSP: JSON-RPC enquadrado por `Content-Length`, sobre stdin/stdout.
+#
+# O enquadramento é o do Language Server Protocol:
+#
+#     Content-Length: 42\r\n
+#     \r\n
+#     {"jsonrpc":"2.0", ...}
+#
+# Os cabeçalhos são lidos por LINHA (`sys.stdin.readline`, que já tira o
+# `\r\n` e devolve `null` no fim da entrada — é assim que o laço principal
+# sabe que o editor fechou o cano em vez de girar pra sempre).
+#
+# O corpo é lido por BYTE (`sys.stdin.read(n)`), nunca por linha: as mensagens
+# vêm coladas, sem `\n` entre elas, então ler por linha invadiria a mensagem
+# seguinte.
+import sys
+import json
+
+# Tudo que é diagnóstico do próprio servidor vai pro stderr: stdout é o canal
+# do protocolo e qualquer byte solto ali corrompe a conversa com o editor.
+action loga(msg):
+    sys.stderr.write("[poolscript-lsp] " + msg + "\n")
+
+
+# Lê uma mensagem. Devolve o dict, ou `null` quando a entrada acabou.
+action le_mensagem():
+    tamanho = -1
+    while true:
+        linha = sys.stdin.readline()
+        if linha == Null:
+            return Null                  # editor fechou o cano
+        if linha == "":
+            break                        # fim dos cabeçalhos
+        baixo = linha.lower()
+        if baixo.startswith("content-length:"):
+            tamanho = int(linha.split(":")[1].strip())
+        # qualquer outro cabeçalho (Content-Type) é ignorado, como manda o LSP
+
+    if tamanho < 0:
+        return Null
+
+    corpo = sys.stdin.read(tamanho)
+    if corpo == Null:
+        return Null
+    return json.parse(corpo)
+
+
+action manda(obj):
+    corpo = json.stringify(obj)
+    sys.stdout.write("Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo)
+    sys.stdout.flush()
+
+
+action responde(id, resultado):
+    manda({"jsonrpc": "2.0", "id": id, "result": resultado})
+
+
+action erro(id, codigo, mensagem):
+    manda({"jsonrpc": "2.0", "id": id, "error": {"code": codigo, "message": mensagem}})
+
+
+# Notificação: sem `id`, o editor não responde.
+action notifica(metodo, params):
+    manda({"jsonrpc": "2.0", "method": metodo, "params": params})

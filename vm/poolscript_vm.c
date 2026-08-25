@@ -9139,8 +9139,59 @@ static const MembroMod MOD_STDERR[] = {
     { "flush", mod_err_flush, 0, NULL },
 };
 
+/* `sys.stdin.read(n)` — lê EXATAMENTE n bytes (ou até o fim da entrada).
+ * `input()` só lê linha, e isso não serve pra protocolo enquadrado por
+ * tamanho (o LSP, por exemplo): as mensagens vêm coladas, sem `\n` entre
+ * elas, e ler por linha invade a mensagem seguinte.
+ * Sem argumento, lê a entrada TODA até o fim.
+ * Devolve `null` quando já não há mais nada — igual ao `input()`. */
+static int mod_in_read(VM *vm, Value *a, int n, Value *o)
+{
+    long quer = -1;
+    if (n > 1) BERRO(vm, "SomeValueUnexpected", "read() espera 0 ou 1 argumento");
+    if (n == 1) {
+        if (a[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "read() espera um inteiro");
+        quer = (long)a[0].as.i;
+        if (quer < 0) BERRO(vm, "SomeValueUnexpected", "read() nao aceita tamanho negativo");
+    }
+    SBUF_AUTO b = {0};
+    long lidos = 0;
+    while (quer < 0 || lidos < quer) {
+        int c = fgetc(stdin);
+        if (c == EOF) break;
+        char ch = (char)c;
+        if (sb_bytes(&b, &ch, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
+        lidos++;
+    }
+    if (lidos == 0 && quer != 0) { *o = MK_NULL(); return 0; }
+    return devolve_sbuf(vm, &b, o);
+}
+
+/* `sys.stdin.readline()` — uma linha, sem o `\n` (nem o `\r` do Windows).
+ * É o mesmo que `input()` sem prompt; existe aqui pra quem já está lendo por
+ * `sys.stdin.read` não ter que trocar de objeto no meio do caminho. */
+static int mod_in_readline(VM *vm, Value *a, int n, Value *o)
+{
+    (void)a; EXIGE_ARGS(vm, "readline", 0);
+    SBUF_AUTO b = {0};
+    int c, leu = 0;
+    while ((c = fgetc(stdin)) != EOF && c != '\n') {
+        leu = 1;
+        char ch = (char)c;
+        if (sb_bytes(&b, &ch, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
+    }
+    if (c == EOF && !leu) { *o = MK_NULL(); return 0; }
+    if (b.n > 0 && b.b[b.n - 1] == '\r') b.n--;
+    return devolve_sbuf(vm, &b, o);
+}
+
+static const MembroMod MOD_STDIN[] = {
+    { "read", mod_in_read, 0, "tamanho" },
+    { "readline", mod_in_readline, 0, NULL },
+};
+
 /* Índice na tabela MODULOS, preenchido no primeiro acesso. */
-static int idx_stdout = -1, idx_stderr = -1;
+static int idx_stdout = -1, idx_stderr = -1, idx_stdin = -1;
 
 static int faz_modulo(VM *vm, int idx, Value *out)
 {
@@ -9158,6 +9209,8 @@ static int mod_sys_stdout(VM *vm, Value *a, int n, Value *o)
 { (void)a; (void)n; return faz_modulo(vm, idx_stdout, o); }
 static int mod_sys_stderr(VM *vm, Value *a, int n, Value *o)
 { (void)a; (void)n; return faz_modulo(vm, idx_stderr, o); }
+static int mod_sys_stdin(VM *vm, Value *a, int n, Value *o)
+{ (void)a; (void)n; return faz_modulo(vm, idx_stdin, o); }
 
 static const MembroMod MOD_SYS[] = {
     { "argv", mod_sys_argv, 1, NULL },
@@ -9166,6 +9219,7 @@ static const MembroMod MOD_SYS[] = {
     { "RelativePath", mod_sys_relativepath, 0, NULL },
     { "stdout", mod_sys_stdout, 1, NULL },
     { "stderr", mod_sys_stderr, 1, NULL },
+    { "stdin", mod_sys_stdin, 1, NULL },
 };
 
 /* ── dotenv ─────────────────────────────────────────────────────────────── */
@@ -17101,6 +17155,7 @@ static const ModuloNat MODULOS[] = {
     { "dotenv", MOD_DOTENV, (int)(sizeof(MOD_DOTENV) / sizeof(MOD_DOTENV[0])) },
     { "_stdout", MOD_STDOUT, (int)(sizeof(MOD_STDOUT) / sizeof(MOD_STDOUT[0])) },
     { "_stderr", MOD_STDERR, (int)(sizeof(MOD_STDERR) / sizeof(MOD_STDERR[0])) },
+    { "_stdin",  MOD_STDIN,  (int)(sizeof(MOD_STDIN)  / sizeof(MOD_STDIN[0])) },
     { "jwt", MOD_JWT, (int)(sizeof(MOD_JWT) / sizeof(MOD_JWT[0])) },
     { "hash", MOD_HASH, (int)(sizeof(MOD_HASH) / sizeof(MOD_HASH[0])) },
     { "bytes", MOD_BYTES, (int)(sizeof(MOD_BYTES) / sizeof(MOD_BYTES[0])) },
@@ -17143,6 +17198,7 @@ static int acha_modulo(const char *nome)
         for (int i = 0; i < N_MODULOS; i++) {
             if (!strcmp(MODULOS[i].nome, "_stdout")) idx_stdout = i;
             if (!strcmp(MODULOS[i].nome, "_stderr")) idx_stderr = i;
+            if (!strcmp(MODULOS[i].nome, "_stdin"))  idx_stdin  = i;
         }
     if (nome[0] == '_') return -1;
     for (int i = 0; i < N_MODULOS; i++)
@@ -17284,10 +17340,17 @@ static int nativa_input(VM *vm, Value *args, int n, Value *out)
      * ou declara o tipo. */
     SBUF_AUTO b = {0};
     int c;
+    int leu = 0;
     while ((c = fgetc(stdin)) != EOF && c != '\n') {
+        leu = 1;
         char ch = (char)c;
         if (sb_bytes(&b, &ch, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     }
+    /* Fim da entrada devolve `null`, não `""`: sem isso não dá pra distinguir
+     * "acabou" de "linha vazia", e um laço `while true: input()` gira pra
+     * sempre queimando CPU depois que o outro lado fecha o cano. Linha vazia
+     * de verdade (só o `\n`) continua devolvendo `""`. */
+    if (c == EOF && !leu) { *out = MK_NULL(); return 0; }
     /* `\r\n` do Windows não pode virar parte do texto lido */
     if (b.n > 0 && b.b[b.n - 1] == '\r') b.n--;
     return devolve_sbuf(vm, &b, out);
@@ -21299,7 +21362,8 @@ void ps_metadata_json(FILE *saida)
         const char *nome_vis = MODULOS[i].nome;
         char buf_vis[64];
         if (nome_vis[0] == '_') {
-            if (!strcmp(nome_vis, "_stdout") || !strcmp(nome_vis, "_stderr")) {
+            if (!strcmp(nome_vis, "_stdout") || !strcmp(nome_vis, "_stderr")
+                    || !strcmp(nome_vis, "_stdin")) {
                 snprintf(buf_vis, sizeof(buf_vis), "sys.%s", nome_vis + 1);
                 nome_vis = buf_vis;
             } else {
@@ -21331,7 +21395,8 @@ void ps_metadata_json(FILE *saida)
         const char *acesso = "import";
         char buf_vis[64];
         if (nome_vis[0] == '_') {
-            if (!strcmp(nome_vis, "_stdout") || !strcmp(nome_vis, "_stderr")) {
+            if (!strcmp(nome_vis, "_stdout") || !strcmp(nome_vis, "_stderr")
+                    || !strcmp(nome_vis, "_stdin")) {
                 snprintf(buf_vis, sizeof(buf_vis), "sys.%s", nome_vis + 1);
                 nome_vis = buf_vis;
                 acesso = "atributo";

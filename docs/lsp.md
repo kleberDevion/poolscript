@@ -1,56 +1,103 @@
 # Editores — a PoolScript em VS Code, JetBrains e Neovim
 
-O suporte a editor da linguagem vive na extensão **psl-poolscript**
-(`psl-poolscript-vsix/`), que é **autossuficiente**: o realce vem de uma
-gramática TextMate e o completion vem de um modelo de tipos embutido
-(`bridge/metadata.json`). Não há serviço externo pra instalar nem processo
-extra pra subir.
+O suporte a editor é um **servidor LSP escrito em PoolScript**, rodado pelo
+próprio `pool`:
 
-O que a extensão entrega:
+```bash
+pool lsp/servidor.ps
+```
+
+Ele fala **Language Server Protocol** por stdin/stdout, então serve qualquer
+editor que seja cliente LSP — VS Code, Neovim, Helix, Emacs, JetBrains (via
+plugin LSP). Não há JavaScript no projeto e não existe extensão pra instalar:
+o que se configura é o comando acima.
+
+## O que ele entrega
 
 - **completion type-aware** — a cadeia `conn = psodbc.connect()` →
-  `DbConnection` → `conn.cursor().` → `fetchall/fetchone/...`; `self.` dentro
-  de `Entity`; o `request.` do jinker (proxy) vs a lib `request` (verbos);
-  argumento nomeado dentro da chamada; `from ._arquivo import <TAB>` com os
-  exports reais do arquivo — e tipo desconhecido **não sugere nada** (zero
-  método falso);
-- **hover** — assinatura + resumo + exemplo, da mesma fonte da doc;
-- **realce** completo da sintaxe (`syntaxes/poolscript.tmLanguage.json`).
+  `DbConnection` → `cur = conn.cursor()` → `cur.` → `fetchall/fetchone/…`;
+  membros de módulo (`regex.`); palavras da linguagem e as variáveis do
+  arquivo quando não há receptor. Tipo desconhecido **não sugere nada** — zero
+  método falso;
+- **hover** — a assinatura real do método e o tipo que ele devolve;
+- **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
+  e coluna do erro.
+
+O modelo de tipos vem do **próprio binário** (`pool --metadata`, lido das
+tabelas do VM). Nada é digitado à mão, então o completion não tem como
+divergir do motor.
 
 ## VS Code
 
-Instale o `.vsix` do repositório:
+O VS Code precisa de uma extensão pra saber falar com um servidor LSP, e uma
+extensão de VS Code é sempre JavaScript — é regra do editor. Como aqui não há
+JS, o caminho é uma extensão genérica de LSP: instale
+[Generic LSP Client](https://marketplace.visualstudio.com/search?term=generic%20lsp)
+(ou equivalente) e aponte pro comando:
 
-```bash
-code --install-extension psl-poolscript-vsix/psl-poolscript-1.5.22.vsix
+```json
+{
+  "languageServerExample.command": "pool",
+  "languageServerExample.args": ["/caminho/do/repo/lsp/servidor.ps"],
+  "files.associations": { "*.ps": "poolscript", "*.psl": "poolscript", "*.p": "poolscript" }
+}
 ```
-
-`.ps`, `.psl` e `.p` passam a ter realce, completion e hover.
-
-## IntelliJ IDEA (e demais IDEs JetBrains)
-
-As cores saem do **bundle TextMate** — o IDEA lê a gramática da extensão do
-VS Code como está:
-
-1. `Settings → Editor → TextMate Bundles` → `+`.
-2. Selecione a pasta `psl-poolscript-vsix/` do repositório (o IDEA lê o
-   `package.json` + `syntaxes/poolscript.tmLanguage.json`).
-3. `.ps`/`.psl`/`.p` ganham o realce completo da linguagem.
 
 ## Neovim
 
-Registrar o tipo de arquivo já dá o realce via TextMate/Treesitter externo:
+Nativo, sem plugin nenhum:
 
 ```lua
 vim.filetype.add({ extension = { ps = "poolscript", psl = "poolscript", p = "poolscript" } })
+
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "poolscript",
+  callback = function()
+    vim.lsp.start({
+      name = "poolscript",
+      cmd = { "pool", "/caminho/do/repo/lsp/servidor.ps" },
+      root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, { upward = true })[1]),
+    })
+  end,
+})
 ```
+
+## Helix
+
+Em `~/.config/helix/languages.toml`:
+
+```toml
+[language-server.poolscript]
+command = "pool"
+args = ["/caminho/do/repo/lsp/servidor.ps"]
+
+[[language]]
+name = "poolscript"
+file-types = ["ps", "psl", "p"]
+language-servers = ["poolscript"]
+```
+
+## JetBrains (IntelliJ, PyCharm, …)
+
+Pelo plugin **LSP4IJ**: `Settings → Languages & Frameworks → Language Servers`
+→ `+` → *New Language Server*, comando `pool /caminho/do/repo/lsp/servidor.ps`,
+extensões `ps;psl;p`.
 
 ## Por dentro (pra quem mexe no repositório)
 
-- O cérebro do completion é `psl-poolscript-vsix/extension.js`; o modelo de
-  tipos que ele consulta é `psl-poolscript-vsix/bridge/metadata.json`.
-- O binário expõe a mesma informação em JSON com `pool --metadata` (módulos,
-  membros, tipos e métodos, tudo lido das tabelas do próprio VM) — é a fonte
-  pra manter o `metadata.json` em dia sem escrever nada à mão.
-- O E2E da extensão (`psl-poolscript-vsix/test/runTest.js`) sobe o VS Code
-  REAL e exercita completion e hover num arquivo de verdade.
+| Arquivo | O que é |
+|---|---|
+| `lsp/protocolo.ps` | transporte: JSON-RPC enquadrado por `Content-Length`, sobre stdin/stdout |
+| `lsp/modelo.ps` | modelo de tipos (de `pool --metadata`) e a inferência da cadeia |
+| `lsp/servidor.ps` | os métodos do LSP: completion, hover, diagnóstico |
+| `lsp/teste_lsp.ps` | dirige o servidor como um editor faria e confere as respostas |
+
+O teste entra no `make check` — não é varredura à parte.
+
+Duas notas de implementação que valem pra quem for mexer:
+
+- o **corpo** de uma mensagem é lido com `sys.stdin.read(n)` (bytes exatos),
+  nunca por linha: as mensagens LSP vêm coladas, sem `\n` entre elas, e ler
+  por linha invade a mensagem seguinte;
+- todo log do servidor vai pro **stderr**. `stdout` é o canal do protocolo, e
+  um `post()` solto ali corrompe a conversa com o editor.

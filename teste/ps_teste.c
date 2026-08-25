@@ -128,6 +128,10 @@ static int roda(const Caso *c, Resultado *out)
     if (pid == 0) {
         dup2(po[1], STDOUT_FILENO); dup2(pe[1], STDERR_FILENO);
         close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
+        /* stdin fechado (= /dev/null): caso nenhum pode ler o terminal. Sem
+         * isso um `input()` num caso trava esperando quem roda a suíte. */
+        int nulo = open("/dev/null", O_RDONLY);
+        if (nulo >= 0) { dup2(nulo, STDIN_FILENO); if (nulo > 2) close(nulo); }
         alarm(TEMPO_MAX);                       /* trava = SIGALRM, não espera eterna */
         /* Nenhum caso pode abrir janela: `guzer.UI()` é exibido no fim do
          * script e ficaria esperando o usuário fechar — o caso "travava" por

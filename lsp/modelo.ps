@@ -1,0 +1,195 @@
+# O modelo de tipos do servidor LSP.
+#
+# A FONTE é o próprio binário: `pool --metadata` despeja módulos, tipos e
+# métodos lidos das tabelas do VM. Nada aqui é digitado à mão, então o
+# completion não tem como inventar método que o motor não tem — e quando o
+# tipo é desconhecido, a resposta é lista VAZIA, nunca um chute.
+import os
+import json
+import regex
+
+META = {}
+TMP = "/tmp/ps_lsp"
+
+# Palavras da linguagem, pra completar onde não há receptor.
+KEYWORDS = ["if", "else", "elif", "while", "for", "each", "in", "is", "and",
+            "or", "not", "action", "reaction", "return", "continue", "break",
+            "pass", "model", "enum", "async", "await", "try", "catch", "as",
+            "with", "using", "import", "from", "str", "int", "flo", "bool",
+            "char", "list", "dict", "json", "tup", "class", "Class", "Entity",
+            "self", "base", "private", "public", "match", "case", "yield",
+            "raise", "finally", "count", "global", "to", "post", "input",
+            "true", "false", "Null", "run_selfwith_"]
+
+
+action carrega():
+    os.mkdir(TMP, exist_ok=true)
+    alvo = TMP + "/meta.json"
+    os.cmd("pool --metadata > " + alvo + " 2>/dev/null")
+    bruto = open(alvo).read()
+    if bruto.strip() == "":
+        # o `pool` do PATH pode não existir; tenta o do diretório corrente
+        os.cmd("./pool --metadata > " + alvo + " 2>/dev/null")
+        bruto = open(alvo).read()
+    return json.parse(bruto)
+
+
+action inicia():
+    global META
+    META = carrega()
+
+
+action eh_modulo(nome):
+    return nome in META["modulos"]
+
+
+action eh_tipo(nome):
+    return nome in META["tipos"]
+
+
+# Os membros de um módulo ou de um tipo, no formato que o completion usa.
+action membros_de_modulo(nome):
+    if not eh_modulo(nome):
+        return []
+    return META["modulos"][nome]
+
+
+action membros_de_tipo(nome):
+    if not eh_tipo(nome):
+        return []
+    return META["tipos"][nome]
+
+
+# Acha um membro pelo nome dentro de uma lista de membros.
+action acha(membros, nome):
+    for each m in membros:
+        if m["nome"] == nome:
+            return m
+    return Null
+
+
+# Assinatura legível: `compile(pattern, flags=None)`.
+action assinatura(m):
+    ps = m.get("params")
+    if ps == Null:
+        ps = []
+    partes = []
+    for each p in ps:
+        d = p.get("default")
+        if d == Null:
+            partes.append(p["nome"])
+        else:
+            partes.append(p["nome"] + "=" + str(d))
+    return m["nome"] + "(" + ", ".join(partes) + ")"
+
+
+# ── inferência de tipo ──────────────────────────────────────────────────────
+
+# Tipo de um literal, ou "" se não for literal.
+action tipo_de_literal(e):
+    t = e.strip()
+    if t == "":
+        return ""
+    if t.startswith("\"") or t.startswith("'") or t.startswith("f\""):
+        return "str"
+    if t.startswith("["):
+        return "list"
+    if t.startswith("{"):
+        return "dict"
+    if t.startswith("("):
+        return "tup"
+    if t == "true" or t == "false":
+        return "bool"
+    if regex.fullmatch("-?\\d+", t) != Null:
+        return "int"
+    if regex.fullmatch("-?\\d+\\.\\d+", t) != Null:
+        return "flo"
+    return ""
+
+
+# Tipo do resultado de uma expressão como `psodbc.connect()` ou `conn.cursor()`.
+# `vars` é o mapa nome -> tipo já descoberto no documento.
+# Devolve "" quando não dá pra saber — e aí o completion NÃO sugere nada.
+action tipo_de_expressao(e, vars):
+    t = e.strip()
+    if t == "":
+        return ""
+
+    lit = tipo_de_literal(t)
+    if lit != "":
+        return lit
+
+    # tira a chamada final: `f(...)` -> `f`, guardando que houve chamada
+    chamou = false
+    if t.endswith(")"):
+        abre = t.rfind("(")
+        if abre >= 0:
+            t = t[0:abre]
+            chamou = true
+
+    # cadeia por ponto: `psodbc.connect` / `conn.cursor` / `regex.compile`
+    if t.count(".") > 0:
+        corte = t.rfind(".")
+        alvo = t[0:corte]
+        nome = t[corte + 1:]
+        # módulo?
+        if eh_modulo(alvo):
+            m = acha(membros_de_modulo(alvo), nome)
+            if m == Null:
+                return ""
+            r = m.get("retorna")
+            if r == Null:
+                return ""
+            return r
+        # recursivo: o tipo do alvo manda
+        talvo = tipo_de_expressao(alvo, vars)
+        if talvo == "":
+            return ""
+        m = acha(membros_de_tipo(talvo), nome)
+        if m == Null:
+            return ""
+        r = m.get("retorna")
+        if r == Null:
+            return ""
+        return r
+
+    # nome simples
+    if t in vars:
+        return vars[t]
+    if eh_modulo(t):
+        return "<modulo:" + t + ">"
+    return ""
+
+
+# Varre o documento e monta nome -> tipo pras variáveis atribuídas.
+# Duas passadas: a segunda resolve `cur = conn.cursor()` depois que `conn` já
+# é conhecido.
+action tipos_do_documento(texto):
+    vars = {}
+    linhas = texto.split("\n")
+    for each passada in range(2):
+        for each l in linhas:
+            corte = l.find("=")
+            if corte < 0:
+                continue
+            # `==`, `<=`, `>=`, `!=` e `+=` não são atribuição simples
+            if corte + 1 < len(l) and l[corte + 1] == "=":
+                continue
+            if corte > 0 and l[corte - 1] in "=<>!+-*/":
+                continue
+            alvo = l[0:corte].strip()
+            # declaração tipada: `int x = ...`
+            partes = alvo.split(" ")
+            alvo = partes[len(partes) - 1].strip()
+            if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", alvo) == Null:
+                continue
+            dir = l[corte + 1:].strip()
+            # tira comentário de fim de linha
+            for each marca in ["  #", "  //"]:
+                c = dir.find(marca)
+                if c >= 0:
+                    dir = dir[0:c].strip()
+            t = tipo_de_expressao(dir, vars)
+            if t != "" and not t.startswith("<modulo:"):
+                vars[alvo] = t
+    return vars
