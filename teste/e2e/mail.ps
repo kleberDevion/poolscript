@@ -1,0 +1,79 @@
+# mail: MailServer (6), MailMessage (7) e MailReader (9) contra SMTP/IMAP de
+# VERDADE — manda um e-mail pra si mesmo e lê de volta.
+#
+# A credencial NUNCA fica no arquivo: vem do ambiente.
+#
+#   MAIL_USER='voce@gmail.com' MAIL_PASS='senha de app' ./pool teste/e2e/mail.ps
+#
+# Sem as variáveis, o script diz PULOU e sai — não falha a suíte por ausência
+# de credencial, e também não passa calado fingindo que testou.
+import mail
+import os
+
+usuario = os.getenv("MAIL_USER")
+senha = os.getenv("MAIL_PASS")
+
+if usuario == Null or senha == Null:
+    post("PULOU mail -> defina MAIL_USER e MAIL_PASS no ambiente")
+else:
+    marca = "ps-e2e-" + str(len(usuario)) + "-teste"
+
+    # ── MailMessage: monta a mensagem ───────────────────────────────────────
+    msg = mail.MailMessage()
+    post("MailMessage ->", type(msg))
+    msg.from_address(usuario)
+    msg.to(usuario)
+    msg.subject(marca)
+    msg.body("corpo em texto puro do teste e2e")
+    post("get_as_string tem o assunto ->", msg.get_as_string().contains(marca))
+
+    # anexo
+    os.writeFile("/tmp/ps_anexo.txt", "conteudo do anexo")
+    msg.attach("/tmp/ps_anexo.txt")
+    post("attach ->", msg.get_as_string().contains("ps_anexo.txt"))
+
+    # ── MailServer: envia por SMTP ──────────────────────────────────────────
+    s = mail.MailServer()
+    post("MailServer ->", type(s))
+    s.conn("gmail.com")
+    s.login(usuario, senha)
+    post("login -> ok")
+    s.send(msg)
+    post("send -> ok")
+    s.quit()
+
+    # ── MailReader: lê de volta por IMAP ────────────────────────────────────
+    r = mail.MailReader()
+    post("MailReader ->", type(r))
+    r.conn("gmail.com")
+    r.login(usuario, senha)
+    post("login IMAP -> ok")
+    r.select("INBOX")
+
+    achados = r.search("SUBJECT", marca, limit=5)
+    post("search ->", len(achados), "resultado(s)")
+    if len(achados) > 0:
+        primeiro = achados[0]
+        post("campos ->", primeiro.keys())
+        post("assunto bate ->", primeiro["subject"].contains(marca))
+        corpo = r.body(primeiro["id"])
+        post("body ->", corpo.contains("corpo em texto puro"))
+
+    # search com include_body traz o corpo de uma vez
+    com_corpo = r.search("SUBJECT", marca, limit=1, include_body=true)
+    if len(com_corpo) > 0:
+        post("include_body ->", com_corpo[0].has("body"))
+
+    # ── critérios de busca ──────────────────────────────────────────────────
+    post("ALL limit=2 ->", len(r.search("ALL", Null, 2)))
+    post("UNSEEN ->", len(r.search("UNSEEN", Null, 3)) <= 3)
+    post("FROM ->", len(r.search("FROM", "github.com", 2)) <= 2)
+    # termo com acento vai como LITERAL do IMAP; entre aspas o servidor recusa
+    post("acentuado nao estoura ->", len(r.search("SUBJECT", "relatório", 2)) >= 0)
+    post("emoji nao estoura ->", len(r.search("SUBJECT", "😀", 2)) >= 0)
+    post("sem resultado ->", r.search("SUBJECT", "zzz-nao-existe-zzz"))
+
+    r.close()
+    post("mail -> ok")
+
+post("fim")

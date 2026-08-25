@@ -1,4 +1,4 @@
-# `s.rsplit(sep=Null, max=-1)`
+# `s.rsplit(sep=Null, maxsplit=-1)`
 
 Como split, mas conta as divisões da DIREITA.
 
@@ -7,7 +7,7 @@ Como split, mas conta as divisões da DIREITA.
 | nome | tipo | default | nota |
 |---|---|---|---|
 | `sep` | str | Null |  |
-| `max` | int | -1 |  |
+| `maxsplit` | int | -1 |  |
 
 ## Retorno
 

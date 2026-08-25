@@ -139,11 +139,27 @@ static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparam
 {
     PGresult *r;
     if (nparams > 0) {
-        /* troca cada `?` por $1,$2,... (o estilo do postgres) */
+        /* Troca cada `?` por $1,$2,... (o estilo do postgres). O comentário
+         * sempre disse `?` e a doc promete `?`, mas o código procurava `%s` —
+         * então `WHERE id = ?` chegava CRU no servidor e dava "syntax error at
+         * end of input". `%s` continua aceito por compatibilidade.
+         *
+         * Literal entre aspas simples é PULADO: um `?` dentro de texto
+         * (`WHERE s = 'e ai?'`) não é placeholder. `''` é aspa escapada. */
         char conv[8192]; int j = 0, k = 1;
+        int em_texto = 0;
         for (const char *p = sql; *p && j < (int)sizeof(conv) - 8; p++) {
-            if (p[0] == '%' && p[1] == 's') { j += snprintf(conv + j, sizeof(conv) - j, "$%d", k++); p++; }
-            else conv[j++] = *p;
+            if (*p == '\'') { em_texto = !em_texto; conv[j++] = *p; continue; }
+            if (!em_texto && *p == '?') {
+                j += snprintf(conv + j, sizeof(conv) - j, "$%d", k++);
+                continue;
+            }
+            if (!em_texto && p[0] == '%' && p[1] == 's') {
+                j += snprintf(conv + j, sizeof(conv) - j, "$%d", k++);
+                p++;
+                continue;
+            }
+            conv[j++] = *p;
         }
         conv[j] = 0;
         r = PQexecParams(c->pg, conv, nparams, NULL, params, NULL, NULL, 0);

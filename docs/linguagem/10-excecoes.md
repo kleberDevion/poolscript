@@ -43,6 +43,22 @@ finally:
 - **`finally:`** — opcional; roda **sempre**, tenha havido erro ou não (bom para
   fechar recursos). Roda tanto na saída normal quanto quando o erro vai propagar.
 
+> **`catch` é obrigatório.** Não existe `try:` seguido direto de `finally:` —
+> isso é `SyntaxError: esperado 'catch' apos bloco do try`. Para garantir
+> limpeza **sem** capturar o erro, use `catch (e)` que relança:
+>
+> ```ps
+> try:
+>     arriscado()
+> catch (e):
+>     raise Erro(e)
+> finally:
+>     limpa()
+> ```
+>
+> Para fechar arquivo/conexão, o caminho normal é o `using`, que fecha
+> sozinho na saída do bloco, com erro ou sem.
+
 Blocos `try` podem ser aninhados; um erro não capturado no `catch` interno sobe
 para o `try` externo.
 

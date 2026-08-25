@@ -127,7 +127,7 @@ function parsePoolSource(text) {
     if (en) sym.enums.push(en[1]);
 
     // atribuição de topo/local: [TIPO] nome = RHS  (guarda o RHS bruto p/ inferência)
-    const asg = semComentario.match(/^\s*(?:(str|int|flo|bool|list|json|dict)\s+)?([A-Za-z_]\w*)\s*=\s*(.+)$/);
+    const asg = semComentario.match(/^\s*(?:(str|int|flo|bool|char|list|json|dict)\s+)?([A-Za-z_]\w*)\s*=\s*(.+)$/);
     if (asg && !semComentario.match(/[=!<>]=/)) {
       sym.vars.push({ name: asg[2], declaredType: asg[1] || null, rhs: asg[3].trim(), line: i });
     }
@@ -365,7 +365,9 @@ function tipoDaVar(nome, doc, ateLinha) {
   if (!achada) return null;
   if (achada.declaredType) {
     const dt = achada.declaredType;
-    if (dt === 'str') return { scalar: 'str' };
+    // `char` é restrição da declaração: o valor em runtime é `str`, então os
+    // métodos oferecidos são os de string.
+    if (dt === 'str' || dt === 'char') return { scalar: 'str' };
     if (['int', 'flo', 'bool', 'list', 'dict'].includes(dt)) return { scalar: dt };
   }
   // infere do RHS: literal ou cadeia
@@ -767,7 +769,7 @@ function diagnosticosNaoUsados(doc) {
       continue;
     }
     // variável: [tipo] nome = ...  (não é comparação, não é self.x/obj.x)
-    const asg = semC.match(/^\s*(?:(?:str|int|flo|bool|list|json|dict)\s+)?([A-Za-z_]\w*)\s*=\s*\S.*$/);
+    const asg = semC.match(/^\s*(?:(?:str|int|flo|bool|char|list|json|dict)\s+)?([A-Za-z_]\w*)\s*=\s*\S.*$/);
     if (asg && !/[=!<>]=/.test(semC) && !/^\s*[A-Za-z_]\w*\./.test(semC)) {
       marca(asg[1], i, ln.indexOf(asg[1]), 'variável');
     }

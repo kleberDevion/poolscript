@@ -49,4 +49,9 @@ psl-poolscript-vsix/*.vsix
 
 # assinaturas introspectadas pra auditoria da doc (scripts/audita_doc_sigs.py)
 .audita_sigs.json
+teste/ultima_falha.txt
 
+# binarios de teste (gerados por make; nao versionar)
+testar
+pool-asan
+.vscode/

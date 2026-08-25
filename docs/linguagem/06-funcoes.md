@@ -218,13 +218,22 @@ post(await dobro(21))                          # 42
 post(gather(dobro(1), dobro(2), dobro(3)))     # [2, 4, 6] — os três em ~0.2s, não 0.6s
 ```
 
-`gather` também aceita uma **lista** de futures (`gather(fs)` → lista com os
-valores na mesma ordem). `await` de um valor comum (não-future) devolve o próprio
-valor.
+`await` também aceita uma **lista**: resolve os futures que estiverem dentro
+dela, no lugar, e item que não é future passa direto.
 
-Roda sobre a
-**VM em C** (sobre fibras/*green-threads* — cada `async action` vira uma fibra e o
-escalonador as revessa; `sleep`, banco e requisições de saída cedem sozinhos). O
+```ps
+fs = [dobro(1), dobro(2), dobro(3)]
+post(await fs)              # [2, 4, 6]
+post(await [dobro(1), 99])  # [2, 99]
+post(await 5)               # 5 — valor comum devolve ele mesmo
+```
+
+`gather(fs)` com uma lista devolve **lista dentro de lista** (`[[2, 4, 6]]`):
+cada argumento vira um elemento do resultado, e o argumento-lista vira a
+sub-lista dos valores dele. Pra achatar, use `await fs`.
+
+Roda sobre **fibras** (*green-threads*): cada `async action` vira uma fibra e o
+escalonador as revessa; `sleep`, banco e requisições de saída cedem sozinhos. O
 modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
 **centenas** de tasks concorrentes, onde ganha do Node em tempo e memória.
 
@@ -241,5 +250,5 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
   no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.
 - Funções são **valores** (first-class); há **recursão** e **geradores**
   (`yield`).
-- **`async`/`await`/`gather`** funcionam sobre fibras (
-  VM); as tasks correm concorrentes.
+- **`async`/`await`/`gather`** funcionam sobre fibras; as tasks correm
+  concorrentes. `await` de uma **lista** resolve os futures de dentro dela.

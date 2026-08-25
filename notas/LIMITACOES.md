@@ -409,6 +409,72 @@ comportamento certo escrito.
 - `import pacote.modulo`, documentado em `docs/linguagem/09-imports.md`, era
   `NotImplementedError`. Liga o último segmento, como a doc diz.
 
+### PostgreSQL: o `?` do parâmetro nunca virava `$1`
+
+**O que não funcionava:** `cursor.execute("... WHERE id = ?", (1,))` no driver
+`postgres` chegava CRU no servidor e dava `syntax error at end of input`. A doc
+promete `?` como placeholder em todos os drivers e o próprio comentário do
+código dizia "troca cada `?` por $1,$2" — mas o laço procurava `%s`. No MySQL
+funcionava, então passava por "problema do Postgres".
+
+Achado exercitando `psodbc` contra um PostgreSQL de verdade
+(`teste/e2e/db.ps`); nenhum teste de unidade pegaria, porque o erro só existe
+no servidor.
+
+**Como foi resolvido:** a conversão passou a trocar `?` (e `%s`, que continua
+aceito) por `$1,$2,...`, PULANDO o que está entre aspas simples — um `?` dentro
+de texto (`WHERE t = 'e ai?'`) não é placeholder.
+
+### `MailReader.search()` e `.body()` eram esqueleto que sempre levantava
+
+**O que não funcionava:** os dois. O corpo do método era literalmente
+
+```c
+MERRO(vm, "RuntimeError", "search() exige conexao IMAP ativa");
+```
+
+com o comentário "a implementação completa fica pro dia do servidor de teste".
+Conectar, logar e `select()` funcionavam — depois disso o leitor não fazia
+nada. As duas páginas de doc descreviam o retorno em detalhe (lista de dicts
+com `id`/`from`/`subject`/`date`, e `body` com `include_body=true`), então a
+doc prometia uma coisa que não existia.
+
+A camada C já estava pronta (`ps_imap_search`, `ps_imap_fetch`,
+`ps_mime_header`, `ps_mime_decodifica_header`, `ps_mime_corpo`) — só o método
+da linguagem nunca foi ligado nela.
+
+**Como foi resolvido:** `search()` faz o SEARCH, corta pelo `limit` pegando os
+MAIS RECENTES (o IMAP devolve em ordem crescente, então a lista é lida de trás
+pra frente), e um FETCH por id montando o dict; `From`/`Subject` passam pelo
+decodificador RFC 2047. `body(id)` faz o FETCH RFC822 e extrai o texto pelo
+parser MIME. A I/O dos dois cede a fibra (`fib_offload`), como o `select` já
+fazia.
+
+### IMAP: linha longa virava "conexao IMAP caiu"
+
+**O que não funcionava:** `search("ALL")` numa caixa real. O leitor de linha
+tinha buffer fixo e devolvia -1 quando a linha não cabia; quem chamava
+traduzia isso pra "conexao IMAP caiu". A conexão estava boa — a LINHA é que era
+grande: o `* SEARCH` de uma caixa com milhares de mensagens vem em UMA linha
+com todos os ids, dezenas de kB.
+
+Mensagem de erro apontando pro lugar errado é pior que erro nenhum: manda
+investigar rede quando o problema é buffer.
+
+**Como foi resolvido:** `le_linha_din` — buffer que cresce e ESCOA o que já
+chegou em vez de desistir. Linha de tamanho arbitrário.
+
+### IMAP: termo de busca acentuado dava "BAD Could not parse command"
+
+**O que não funcionava:** `search("SUBJECT", "relatório")`. O termo ia entre
+aspas, e o quoted-string do IMAP é 7-bit por definição (RFC 3501) — byte
+acima de 0x7F ali é sintaxe inválida. O `CHARSET UTF-8` no comando não
+conserta isso.
+
+**Como foi resolvido:** termo com byte não-ASCII vai como **literal**
+(`SUBJECT {12}` → o servidor responde `+` → os bytes crus seguem). Acento e
+emoji funcionam; o caminho com aspas continua para termo ASCII, que é o comum.
+
 ## Em aberto
 
 ### Sem list comprehension (design, não defeito)

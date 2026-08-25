@@ -1,4 +1,4 @@
-# `s.split(sep=Null, max=-1)`
+# `s.split(sep=Null, maxsplit=-1)`
 
 Divide em lista; sem separador, divide por espaços.
 
@@ -7,7 +7,7 @@ Divide em lista; sem separador, divide por espaços.
 | nome | tipo | default | nota |
 |---|---|---|---|
 | `sep` | str | Null | Null = qualquer branco, colapsando |
-| `max` | int | -1 | máximo de divisões |
+| `maxsplit` | int | -1 | máximo de divisões |
 
 ## Retorno
 

@@ -1,0 +1,58 @@
+# Cliente: bate no jinker que `jinker_srv.ps` subiu. Exercita a lib `request`,
+# o tipo `Response` (12 membros) e, do outro lado, o `RequestProxy` (11).
+import request
+
+U = "http://127.0.0.1:28840"
+
+r = request.get(U + "/oi")
+post("status_code ->", r.status_code)
+post("ok ->", r.ok)
+post("text ->", r.text)
+post("content ->", r.content)
+post("size ->", r.size)
+# content_type(esperado) AFIRMA o tipo e devolve a resposta pra encadear
+post("content_type ->", type(r.content_type("text/plain")))
+post("decode ->", r.decode())
+
+j = request.get(U + "/json")
+post("get_json ->", j.get_json())
+post("get(chave) ->", j.get("a"))
+post("json ->", j.json())
+
+# ── POST com corpo JSON: RequestProxy.get_json do outro lado ────────────────
+e = request.post(U + "/eco", body={"x": 42})
+post("eco ->", e.get_json())
+
+# ── path_param ──────────────────────────────────────────────────────────────
+post("path_param ->", request.get(U + "/param/ana").text)
+
+# ── header ──────────────────────────────────────────────────────────────────
+h = request.get(U + "/hdr", headers={"X-Teste": "valor"})
+post("header ->", h.get_json())
+
+# ── cada verbo chega como o método certo ────────────────────────────────────
+post("GET ->", request.get(U + "/metodo").text)
+post("POST ->", request.post(U + "/metodo").text)
+post("PUT ->", request.put(U + "/metodo").text)
+post("DELETE ->", request.delete(U + "/metodo").text)
+
+# ── HEAD: mesmos headers, sem corpo ─────────────────────────────────────────
+hd = request.head(U + "/oi")
+post("HEAD status ->", hd.status_code, "corpo vazio ->", len(hd.text) == 0)
+
+# ── JinkerResponse: status + header + json encadeados ───────────────────────
+s = request.get(U + "/status")
+post("status 418 ->", s.status_code, s.get_json())
+post("header da resposta ->", s.headers["X-Bule"])
+
+# ── formas de retorno que a rota converte sozinha ───────────────────────────
+t = request.get(U + "/tupla")
+post("tupla (corpo, status) ->", t.status_code, t.get_json())
+post("Null -> 204 ->", request.get(U + "/vazio").status_code)
+post("send ->", request.get(U + "/send").text)
+post("jsonify ->", request.get(U + "/jsonify").get_json())
+
+# ── rota inexistente ────────────────────────────────────────────────────────
+post("404 ->", request.get(U + "/nao-existe").status_code)
+
+post("fim")

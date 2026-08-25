@@ -12,6 +12,11 @@ r.search(criterion_type="ALL", term=None, limit=None, include_body=false) -> lis
 | `criterion_type` | `"ALL"` | o filtro (ver tabela abaixo) |
 | `term` | `None` | o termo de busca (exigido por alguns critérios) |
 | `limit` | `None` | máximo de e-mails a trazer (os mais recentes) |
+
+> **Use `limit`.** Cada e-mail do resultado custa um `FETCH` ao servidor (é de
+> lá que saem `from`, `subject` e `date`). Numa caixa com milhares de
+> mensagens, `search("ALL")` sem limite faz milhares de idas e vindas e
+> demora minutos. `search("ALL", limit=20)` traz os 20 mais recentes e pronto.
 | `include_body` | `false` | `true` = já traz o corpo de cada e-mail |
 
 ---

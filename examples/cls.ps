@@ -1,6 +1,19 @@
+# `char` — o tipo de UM caractere.
 
+char opa = 64            # inteiro converte pelo codepoint
+post(opa, type(opa))     # @ str   (em runtime o valor é uma str de tamanho 1)
 
+char a = "x"
+char acento = "ç"        # acento é UM caractere, não dois bytes
+char emoji = 128512
+post(a, acento, emoji, len(acento))
 
+# Declarar com mais de um caractere é erro, não corte silencioso.
+try:
+    char errado = "abc"
+catch(e):
+    post(e)
 
-char opa = 64;
-post(type(opa))
+# `char` também é a palavra que o `count` usa pra contar caracteres.
+frase = "poolscript"
+post(count each char in frase)

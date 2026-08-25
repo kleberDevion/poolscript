@@ -8,8 +8,13 @@ Resultado de operação da manpu.
 
 ## Métodos e propriedades
 
-| Acesso | O que faz |
+**Nenhum.** `ManpuResult` é um valor que se COMPARA e se TESTA, não um objeto que se
+navega — não existe `.status` (tentar acessar dá `membro inexistente`).
+
+| Uso | Resultado |
 |---|---|
-| `.status` | atributo |
+| `str(x)` / `post(x)` | o texto do status |
+| `x == "Success"` | compara direto com o texto |
+| `if x:` | verdadeiro quando deu certo |
 
 [← índice](objetos-internos.md)

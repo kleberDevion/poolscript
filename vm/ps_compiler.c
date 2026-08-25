@@ -66,7 +66,10 @@ enum {
     /* Variantes com o mesmo contrato do LOAD_NAME/STORE_NAME (slot na pilha,
      * índice do global no arg): valem pros nomes atribuídos sem tipo, que
      * ainda podem estar falando de uma global. */
-    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85
+    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85,
+    /* `for each i in range(...)` sem construir lista: a pilha carrega
+     * [ini, fim, passo, i] e o item sai por aritmética. */
+    OP_ITER_RANGE = 86
 };
 
 const char *ps_op_nome(int32_t op)
@@ -128,6 +131,7 @@ const char *ps_op_nome(int32_t op)
         case OP_MAKE_CLOSURE: return "MAKE_CLOSURE";
         case OP_CELL_GET_NAME: return "CELL_GET_NAME";
         case OP_CELL_SET_NAME: return "CELL_SET_NAME";
+        case OP_ITER_RANGE: return "ITER_RANGE";
         case OP_DUP2: return "DUP2";
         case OP_IMPORT_MOD: return "IMPORT_MOD";
         case OP_IS: return "IS_OP";
@@ -268,6 +272,10 @@ typedef struct {
      * instrução, pra o erro de runtime dizer ONDE aconteceu. */
     int32_t linha_atual;
     int32_t coluna_atual;
+    /* Raiz da AST do programa — a especialização do `for each ... in range`
+     * precisa varrer o arquivo INTEIRO pra saber se `range` foi redefinido
+     * em algum ponto (inclusive depois do laço). */
+    PSNode *raiz;
 } C;
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
@@ -519,6 +527,38 @@ static int eh_global_declarada(Unidade *u, const char *nome)
     return 0;
 }
 
+
+/* `range` é redefinível como qualquer nome (`range = 5`, `action range()`,
+ * `from x import range`). A especialização do `for each` só pode acontecer se
+ * o programa NÃO liga esse nome em lugar nenhum — senão a VM rodaria o range
+ * embutido no lugar do que o usuário escreveu, calada. */
+static int liga_o_nome(PSNode *n, const char *alvo)
+{
+    if (!n) return 0;
+    switch (n->kind) {
+        case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
+        case N_UNPACK_TARGET: case N_ACTION_DECL: case N_ENTITY_DECL:
+        case N_MODEL_DECL: case N_ENUM_DECL: case N_IMPORT_STMT:
+            if (n->texto && !strcmp(n->texto, alvo)) return 1;
+            for (int32_t i = 0; i < n->lista2.n; i++) {
+                PSNode *x = n->lista2.itens[i];
+                if (x && x->texto && !strcmp(x->texto, alvo)) return 1;
+            }
+            for (int32_t i = 0; i < n->lista2_alias.n; i++) {
+                PSNode *x = n->lista2_alias.itens[i];
+                if (x && x->texto && !strcmp(x->texto, alvo)) return 1;
+            }
+            break;
+        default: break;
+    }
+    if (liga_o_nome(n->a, alvo) || liga_o_nome(n->b, alvo)
+        || liga_o_nome(n->c, alvo) || liga_o_nome(n->e, alvo)) return 1;
+    for (int32_t i = 0; i < n->lista.n; i++)
+        if (liga_o_nome(n->lista.itens[i], alvo)) return 1;
+    for (int32_t i = 0; i < n->lista2.n; i++)
+        if (liga_o_nome(n->lista2.itens[i], alvo)) return 1;
+    return 0;
+}
 
 /* ── closure: captura de variável de fora ────────────────────────────────
  *
@@ -1463,14 +1503,18 @@ static void stmt(C *c, Unidade *u, PSNode *n)
         case N_VAR_DECL: {
             /* declaração tipada cria local, sempre — não sobe escopo */
             expr(c, u, n->a);
-            /* Só os quatro escalares são checados: `list x = (1,2)` guarda a
-             * tupla sem reclamar, no interpretador também. */
-            static const char *ESC[] = { "str", "int", "flo", "bool" };
-            for (int k = 0; k < 4; k++)
-                if (n->texto2 && !strcmp(n->texto2, ESC[k])) {
-                    /* Empacota nome+tipo num só operando: tipo nos 2 bits baixos
-                     * (0-3), índice do nome (const string) no resto. O VM usa o
-                     * nome pra dizer "variável X esperava T", igual ao interp. */
+            /* Só os escalares são checados: `list x = (1,2)` guarda a tupla
+             * sem reclamar. O código de cada um é o TIPO_* da VM — `char` é 8,
+             * por isso a lista é esparsa e não um índice de array. */
+            static const struct { const char *nome; int cod; } ESC[] = {
+                { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 }, { "char", 8 },
+            };
+            for (int e = 0; e < 5; e++)
+                if (n->texto2 && !strcmp(n->texto2, ESC[e].nome)) {
+                    int k = ESC[e].cod;
+                    /* Empacota nome+tipo num só operando: tipo nos 4 bits
+                     * baixos, índice do nome (const string) no resto. Eram 2
+                     * bits; `char` (8) não cabia. */
                     const char *vn = n->texto ? n->texto : "";
                     int32_t ni = idx_const(c, u, K_STR, 0, 0, vn, (int32_t)strlen(vn));
                     /* aponta o erro no INÍCIO do valor (RHS), não na sub-expressão
@@ -1480,7 +1524,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                         if (n->a->line) c->linha_atual  = n->a->line;
                         if (n->a->col)  c->coluna_atual = n->a->col;
                     }
-                    emite(c, u, OP_COERCE_DECL, (ni << 2) | k);
+                    emite(c, u, OP_COERCE_DECL, (ni << 4) | k);
                     break;
                 }
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
@@ -1591,13 +1635,44 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                 guarda_nome_modo(c, u, salvo, 1);
             }
             int32_t M = escopo_marca(u);        /* marca ANTES da var do laço */
+            /* `for each i in range(a, b, p)`: em vez de materializar a lista
+             * inteira (20 milhões de itens = 320 MB), empilha ini/fim/passo e
+             * conta. Só entra quando o nome `range` não é ligado em lugar
+             * nenhum do programa — senão o `range` do usuário é que vale. */
+            int usa_range = 0;
+            if (n->a && n->a->kind == N_CALL && n->a->a
+                    && n->a->a->kind == N_NAME && n->a->a->texto
+                    && !strcmp(n->a->a->texto, "range")
+                    && n->a->lista.n >= 1 && n->a->lista.n <= 3
+                    && !liga_o_nome(c->raiz, "range")) {
+                usa_range = 1;
+                for (int32_t k = 0; k < n->a->lista.n; k++)
+                    if (n->a->lista.itens[k]->texto) { usa_range = 0; break; }  /* nomeado: não */
+            }
+            int32_t topo, fim;
+            if (usa_range) {
+                int32_t na = n->a->lista.n;
+                if (na == 1) {                       /* range(fim) */
+                    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
+                    expr(c, u, n->a->lista.itens[0]->a);
+                } else {                             /* range(ini, fim[, passo]) */
+                    expr(c, u, n->a->lista.itens[0]->a);
+                    expr(c, u, n->a->lista.itens[1]->a);
+                }
+                if (na == 3) expr(c, u, n->a->lista.itens[2]->a);
+                else         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));  /* contador */
+                topo = UP(c, u)->ncode;
+                fim = emite(c, u, OP_ITER_RANGE, 0);
+            } else {
             expr(c, u, n->a);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
-            int32_t topo = UP(c, u)->ncode;
-            int32_t fim = emite(c, u, OP_ITER_NEXT, 0);
+            topo = UP(c, u)->ncode;
+            fim = emite(c, u, OP_ITER_NEXT, 0);
+            }
             /* variável do laço é local desta função, como o parâmetro */
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
-            abre_laco(c, topo, 2);      /* container + indice */
+            abre_laco(c, topo, usa_range ? 4 : 2);   /* estado do laço na pilha */
             /* a var do laço é re-atribuída no topo a cada volta, então limpá-la
              * por-iteração é inofensivo — corpo e var compartilham a marca */
             c->lacos[c->nlacos - 1].escopo_marca = M;
@@ -2573,6 +2648,7 @@ PSPrograma *ps_compila(PSNode *programa)
     C c;
     memset(&c, 0, sizeof(c));
     c.out = out;
+    c.raiz = programa;
 
     int32_t idx = novo_proto(&c, "<module>");
     if (idx < 0) return out;

@@ -1,4 +1,4 @@
-# `l.index(item)`
+# `l.index(item, inicio=0, fim=len)`
 
 Posição da primeira ocorrência do item.
 

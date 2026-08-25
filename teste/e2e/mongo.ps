@@ -1,0 +1,33 @@
+# MongoConnection (2) e MongoCollection (7) contra um mongod LOCAL.
+# Sobe com:  mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1
+import psodbc
+
+try:
+    con = psodbc.connect(driver="mongo", host="127.0.0.1", port=27099,
+                         database="ps_teste")
+    post("connect ->", type(con))
+
+    col = con.collection("t")
+    post("collection ->", type(col))
+
+    # limpa o que sobrou de uma execução anterior
+    col.remove({})
+
+    post("insert ->", col.insert({"nome": "ana", "n": 1}))
+    post("insert_many ->", col.insert_many([{"nome": "bia", "n": 2},
+                                            {"nome": "caio", "n": 3}]))
+    post("count ->", col.count({}))
+    post("find_one ->", col.find_one({"nome": "ana"}))
+    post("find ->", len(col.find({})))
+    post("find filtrado ->", col.find({"n": 2}))
+    post("update ->", col.update({"nome": "ana"}, {"n": 99}))
+    post("apos update ->", col.find_one({"nome": "ana"}))
+    post("remove ->", col.remove({"nome": "caio"}))
+    post("count final ->", col.count({}))
+
+    col.remove({})
+    con.close()
+    post("mongo -> ok")
+catch(e):
+    post("PULOU mongo ->", e)
+post("fim")

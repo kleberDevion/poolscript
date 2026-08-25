@@ -41,5 +41,8 @@ extern const Caso CASOS_INTEIROS[];     extern const int NC_INTEIROS;
 extern const Caso CASOS_ERROS[];        extern const int NC_ERROS;
 extern const Caso CASOS_LINGUAGEM[];    extern const int NC_LINGUAGEM;
 extern const Caso CASOS_PENDENTES[];    extern const int NC_PENDENTES;
+extern const Caso CASOS_COBERTURA[];    extern const int NC_COBERTURA;
+extern const Caso CASOS_DIFERENCIAL[];  extern const int NC_DIFERENCIAL;
+extern const Caso CASOS_EQUIVALENCIA[]; extern const int NC_EQUIVALENCIA;
 
 #endif /* PS_TESTE_H */

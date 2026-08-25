@@ -1,0 +1,54 @@
+# psodbc: DbConnection (3) e DbCursor (6) contra PostgreSQL e MySQL de VERDADE.
+#
+# Precisa do usuário/banco de teste (veja teste/e2e/LEIAME.md). Se o banco não
+# estiver de pé, o script diz e sai sem falhar a suíte — não é falso verde:
+# ele imprime PULOU e o motivo.
+import psodbc
+
+action exercita(nome, drv, porta):
+    post("=====", nome)
+    con = psodbc.connect(driver=drv, host="127.0.0.1", port=porta,
+                         user="ps_teste", password="ps_teste", database="ps_teste")
+    post("connect ->", type(con))
+
+    cur = con.cursor()
+    post("cursor ->", type(cur))
+
+    cur.execute("DROP TABLE IF EXISTS t")
+    cur.execute("CREATE TABLE t (id INT, nome VARCHAR(20))")
+    cur.execute("INSERT INTO t (id, nome) VALUES (1, 'ana')")
+    cur.execute("INSERT INTO t (id, nome) VALUES (2, 'bia')")
+    cur.execute("INSERT INTO t (id, nome) VALUES (3, 'caio')")
+    con.commit()
+
+    cur.execute("SELECT id, nome FROM t ORDER BY id")
+    post("fetchone ->", cur.fetchone())
+
+    cur.execute("SELECT nome FROM t ORDER BY id")
+    post("fetchmany(2) ->", cur.fetchmany(2))
+
+    cur.execute("SELECT id, nome FROM t ORDER BY id")
+    post("fetchall ->", cur.fetchall())
+    post("rowcount ->", cur.rowcount)
+
+    # parâmetro ligado (?) — o que protege de injeção
+    cur.execute("SELECT nome FROM t WHERE id = ?", (2,))
+    post("param ligado ->", cur.fetchall())
+
+    cur.execute("DROP TABLE t")
+    con.commit()
+    cur.close()
+    con.close()
+    post(nome, "-> ok")
+
+try:
+    exercita("postgres", "postgres", 5432)
+catch(e):
+    post("PULOU postgres ->", e)
+
+try:
+    exercita("mysql", "mysql", 3306)
+catch(e):
+    post("PULOU mysql ->", e)
+
+post("fim")

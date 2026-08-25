@@ -47,12 +47,36 @@ limpa:
 # (segfault/SIGFPE) vira falha relatada em vez de derrubar a bateria.
 TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_erros.c teste/casos_linguagem.c \
-                teste/casos_pendentes.c
+                teste/casos_pendentes.c teste/casos_cobertura.c \
+                teste/casos_diferencial.c teste/casos_equivalencia.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
 testar: $(TESTE_FONTES) teste/ps_teste.h
 	$(CC) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iteste -o $@ $(TESTE_FONTES)
 
 # `make check` = compila os dois e roda a suíte
+# ── ferramentas prontas: sanitizers e analisador estático ───────────────────
+# Não é caso escrito à mão: o ASan/UBSan instrumenta CADA acesso de memória e
+# CADA operação com comportamento indefinido, e para no ponto exato. Acha a
+# classe inteira (estouro de buffer, uso após liberar, shift inválido, overflow
+# de signed) sem ninguém adivinhar o caso.
+pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
+	$(CC) $(CFLAGS) -g -fsanitize=address,undefined -fno-omit-frame-pointer \
+	  -I$(VM) -o $@ $(FONTES) \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
+	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
+	  -l:libX11.so.6 -l:libgmp.so.10
+
+# Análise estática do gcc: caminho de execução simbólico, acha vazamento,
+# desreferência de NULL e uso de não-inicializado sem rodar o programa.
+analisa:
+	@$(CC) $(CFLAGS) -I$(VM) -fanalyzer -fsyntax-only $(FONTES) 2>&1 \
+	  | grep -E "warning|error" || echo "  -fanalyzer: nada"
+
+.PHONY: analisa
+
 check: pool testar
 	./testar
+	@echo
+	@./pool teste/confere_metadata.ps

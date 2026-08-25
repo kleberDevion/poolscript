@@ -27,6 +27,9 @@ static const Grupo GRUPOS[] = {
     { "erros",     CASOS_ERROS,     0 },
     { "linguagem", CASOS_LINGUAGEM, 0 },
     { "pendentes", CASOS_PENDENTES, 0 },
+    { "cobertura", CASOS_COBERTURA, 0 },
+    { "diferencial", CASOS_DIFERENCIAL, 0 },
+    { "equivalencia", CASOS_EQUIVALENCIA, 0 },
 };
 
 /* preenchido em tempo de execução (os `extern int` vivem nos casos_*.c) */
@@ -37,6 +40,9 @@ static int tamanho_do_grupo(const char *g)
     if (!strcmp(g, "erros"))     return NC_ERROS;
     if (!strcmp(g, "linguagem")) return NC_LINGUAGEM;
     if (!strcmp(g, "pendentes")) return NC_PENDENTES;
+    if (!strcmp(g, "cobertura")) return NC_COBERTURA;
+    if (!strcmp(g, "diferencial")) return NC_DIFERENCIAL;
+    if (!strcmp(g, "equivalencia")) return NC_EQUIVALENCIA;
     return 0;
 }
 
@@ -72,9 +78,34 @@ static int roda(const Caso *c, Resultado *out)
     memset(out, 0, sizeof(*out));
 
     char arquivo[256];
+    char fonte_ajustada[8192];
+    const char *fonte = c->fonte;
     int fd;
     if (c->arquivo) {
-        snprintf(arquivo, sizeof(arquivo), "/tmp/%s", c->arquivo);
+        /* Nome fixo colidia entre execuções concorrentes: uma apagava o
+         * arquivo enquanto a outra ainda rodava ("nao consegui abrir"), e o
+         * caso falhava de forma intermitente. O nome ganha o PID, e o MESMO
+         * sufixo é aplicado ao fonte — que precisa se importar pelo nome. */
+        char base[128];
+        snprintf(base, sizeof(base), "%s", c->arquivo);
+        char *ponto = strrchr(base, '.');
+        if (ponto) *ponto = '\0';
+        char unico[192];
+        snprintf(unico, sizeof(unico), "%s_%d", base, (int)getpid());
+        snprintf(arquivo, sizeof(arquivo), "/tmp/%s.ps", unico);
+        /* troca cada ocorrência do nome base pelo nome único, no fonte */
+        size_t nb = strlen(base), j = 0;
+        for (const char *q = c->fonte; *q && j < sizeof(fonte_ajustada) - 256; ) {
+            if (strncmp(q, base, nb) == 0) {
+                j += (size_t)snprintf(fonte_ajustada + j, sizeof(fonte_ajustada) - j,
+                                      "%s", unico);
+                q += nb;
+            } else {
+                fonte_ajustada[j++] = *q++;
+            }
+        }
+        fonte_ajustada[j] = '\0';
+        fonte = fonte_ajustada;
         fd = open(arquivo, O_WRONLY | O_CREAT | O_TRUNC, 0600);
         if (fd < 0) { perror("open"); return -1; }
     } else {
@@ -82,7 +113,7 @@ static int roda(const Caso *c, Resultado *out)
         fd = mkstemp(arquivo);
         if (fd < 0) { perror("mkstemp"); return -1; }
     }
-    if (write(fd, c->fonte, strlen(c->fonte)) < 0) { close(fd); unlink(arquivo); return -1; }
+    if (write(fd, fonte, strlen(fonte)) < 0) { close(fd); unlink(arquivo); return -1; }
     close(fd);
 
     int po[2], pe[2];
@@ -202,6 +233,18 @@ int main(int argc, char **argv)
             const char *motivo = confere(c, &r);
             if (motivo) {
                 printf("  FALHOU  %s\n     %s\n", c->nome, motivo);
+                /* Grava também em arquivo. Uma falha INTERMITENTE some da tela
+                 * na próxima execução e aí não dá pra investigar; aqui ela
+                 * fica, com o fonte e a saída completa. */
+                FILE *lg = fopen("teste/ultima_falha.txt", "a");
+                if (lg) {
+                    fprintf(lg, "=== %s\n--- motivo: %s\n--- fonte:\n%s"
+                                "--- rc: %d  sinal: %d\n--- saida:\n%s"
+                                "--- erro:\n%s\n\n",
+                            c->nome, motivo, c->fonte, r.rc, r.sinal,
+                            r.saida ? r.saida : "", r.erro ? r.erro : "");
+                    fclose(lg);
+                }
                 falhou++;
             } else {
                 passou++;

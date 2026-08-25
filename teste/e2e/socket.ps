@@ -1,0 +1,65 @@
+# socket — em LOOPBACK: a própria linguagem abre o servidor e se conecta nele.
+# Não precisa de rede externa nem de mock.
+#
+# Tudo num fluxo só, sem fibra: `listen` já enfileira a conexão na backlog,
+# então o `connect` do cliente completa ANTES do `accept` do servidor. Fibra
+# não serve aqui porque `async action` não roda até ser aguardada — o servidor
+# nem chegaria a fazer bind.
+import sockets
+
+PORTA = 28731
+
+srv = sockets.socket()
+post("socket ->", type(srv))
+srv.setsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 1)
+post("getsockopt ->", srv.getsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR) != 0)
+srv.bind(("127.0.0.1", PORTA))
+srv.listen(1)
+post("bind/listen ->", srv.getsockname())
+
+cli = sockets.socket()
+post("getblocking ->", cli.getblocking())
+cli.settimeout(5.0)
+post("gettimeout ->", cli.gettimeout())
+post("fileno ->", cli.fileno() > 0)
+post("connect_ex ->", cli.connect_ex(("127.0.0.1", PORTA)))
+post("getpeername ->", cli.getpeername())
+post("getsockname (porta > 0) ->", cli.getsockname()[1] > 0)
+
+par = srv.accept()
+conn = par[0]
+post("accept ->", type(conn), par[1][0])
+
+post("send ->", cli.send("oi".encode()))
+post("recv no servidor ->", conn.recv(64).decode())
+post("sendall ->", conn.sendall("eco".encode()))
+post("recv no cliente ->", cli.recv(64).decode())
+
+d = cli.dup()
+post("dup ->", d.fileno() > 0)
+d.close()
+
+cli.setblocking(false)
+post("setblocking(false) ->", cli.getblocking())
+
+cli.shutdown(sockets.SHUT_RDWR)
+cli.close()
+conn.close()
+
+# detach devolve o fd cru e desliga o objeto
+outro = sockets.socket()
+fd = outro.detach()
+post("detach ->", fd > 0)
+
+srv.close()
+
+# ── UDP: sendto / recvfrom ──────────────────────────────────────────────────
+u1 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
+u2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
+u1.bind(("127.0.0.1", PORTA + 1))
+u2.sendto("udp".encode(), ("127.0.0.1", PORTA + 1))
+r = u1.recvfrom(64)
+post("recvfrom ->", r[0].decode())
+u1.close()
+u2.close()
+post("fim")

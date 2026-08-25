@@ -1,0 +1,60 @@
+# Servidor de teste: sobe o jinker numa porta local. O cliente (jinker_cli.ps)
+# bate nele com a lib `request` — a linguagem servindo e consumindo a si
+# mesma, sem mock e sem rede externa.
+import jinker
+
+app = jinker.Jinker(name="e2e")
+
+@app.route("/oi")
+action oi():
+    return "alo"
+
+@app.route("/json")
+action js():
+    return {"a": 1, "b": [2, 3]}
+
+@app.route("/eco", methods=["POST"])
+action eco():
+    corpo = jinker.request.get_json()
+    return {"recebi": corpo["x"]}
+
+@app.route("/param/<nome>")
+action param():
+    return jinker.request.path_param("nome")
+
+@app.route("/hdr")
+action hdr():
+    return {"ua": jinker.request.header("X-Teste")}
+
+@app.route("/metodo", methods=["GET", "POST", "PUT", "DELETE"])
+action metodo():
+    return jinker.request.method
+
+@app.route("/status")
+action st():
+    # JinkerResponse montado em etapas: status + header + json
+    r = jinker.JinkerResponse()
+    return r.status(418).header("X-Bule", "sim").json({"cha": true})
+
+@app.route("/tupla")
+action tp():
+    # a rota também aceita (corpo, status) como tupla
+    return ({"t": 1}, 201)
+
+@app.route("/vazio")
+action vz():
+    return Null
+
+@app.route("/send")
+action sd():
+    r = jinker.JinkerResponse()
+    return r.send("cru")
+
+@app.route("/jsonify")
+action jf():
+    return jinker.jsonify({"via": "jsonify"})
+
+# a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)
+run_selfwith_("main") {
+    app(debug=false, host="127.0.0.1", port=28840)
+}

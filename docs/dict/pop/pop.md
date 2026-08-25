@@ -1,4 +1,4 @@
-# `d.pop(chave)`
+# `d.pop(chave, default=Null)`
 
 Remove a chave e DEVOLVE o valor dela (muta).
 

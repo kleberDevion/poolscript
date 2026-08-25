@@ -1,0 +1,52 @@
+# sqlite3 / PoolConnection (5) / PoolCursor (8) — banco LOCAL, então dá pra
+# exercitar tudo sem servidor. Cada método é chamado de verdade e o efeito é
+# conferido lendo de volta.
+import sqlite3
+import os
+
+arq = "/tmp/ps_e2e.db"
+if os.exists(arq):
+    _r = os.run(["rm", "-f", arq])
+
+con = sqlite3.connect(arq)
+post("connect ->", type(con))
+
+# ── PoolConnection.execute / cursor ─────────────────────────────────────────
+con.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, nome TEXT, n INT)")
+cur = con.cursor()
+post("cursor ->", type(cur))
+
+# ── PoolCursor.execute + lastrowid ──────────────────────────────────────────
+cur.execute("INSERT INTO t (nome, n) VALUES (?, ?)", ("ana", 1))
+post("lastrowid ->", cur.lastrowid)
+
+# ── executemany + rowcount ──────────────────────────────────────────────────
+cur.executemany("INSERT INTO t (nome, n) VALUES (?, ?)",
+                [("bia", 2), ("caio", 3), ("dan", 4)])
+post("rowcount ->", cur.rowcount)
+
+con.commit()
+
+# ── fetchone / fetchmany / fetchall ─────────────────────────────────────────
+cur.execute("SELECT nome, n FROM t ORDER BY id")
+post("fetchone ->", cur.fetchone())
+
+cur.execute("SELECT nome FROM t ORDER BY id")
+post("fetchmany(2) ->", cur.fetchmany(2))
+
+cur.execute("SELECT nome, n FROM t ORDER BY id")
+post("fetchall ->", cur.fetchall())
+
+# ── rollback desfaz o que não foi commitado ─────────────────────────────────
+cur.execute("INSERT INTO t (nome, n) VALUES ('temp', 9)")
+con.rollback()
+cur.execute("SELECT count(*) FROM t")
+post("apos rollback ->", cur.fetchone())
+
+# ── close ───────────────────────────────────────────────────────────────────
+cur.close()
+con.close()
+post("fechou ->", "ok")
+
+_r = os.run(["rm", "-f", arq])
+post("fim")

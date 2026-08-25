@@ -26,10 +26,34 @@ Além destes, existem **valores-objeto**: instâncias de `Entity`, funções
 (`action`/`reaction`), módulos importados, `enum`, `model` — descritos nas suas
 seções.
 
-`json` é apenas outro **nome** para `dict` (o mesmo tipo). `char` é um nome de
-tipo usado sobretudo com o operador `count` (ex.: `count each char in frase`) e
-representa um caractere isolado — **não** existe um valor `char` distinto de
-`str` em runtime nem um construtor `char()`.
+`json` é apenas outro **nome** para `dict` (o mesmo tipo).
+
+### `char` — um caractere
+
+`char` serve em dois lugares: no operador `count`
+(`count each char in frase`) e como **tipo de declaração**.
+
+```ps
+char a = "x"        // um caractere
+char opa = 64       // inteiro converte pelo codepoint -> "@"
+char c = "ç"        // acento conta como UM caractere
+char e = 128512     // 😀
+```
+
+O que ele garante é **um caractere só** — declarar com mais de um é erro, e
+`1.5` também:
+
+```ps
+char c = "abc"      // AtributtedValueError: esperava char (um caractere), recebeu 3
+char c = 1.5        // AtributtedValueError: esperava char
+char c = -1         // ConversionError: -1 nao e um caractere valido
+```
+
+`char` é a restrição da **declaração**, não um tipo separado em runtime: o
+valor guardado é uma `str` de comprimento 1, e `type()` responde `"str"`. Não
+existe construtor `char()` — pra converter um número use `chr(n)`.
+
+`char action` não existe: só `int action` e `bool action` têm tipo de retorno.
 
 ---
 

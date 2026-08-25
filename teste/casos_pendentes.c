@@ -110,5 +110,6 @@ const Caso CASOS_PENDENTES[] = {
   "import regex\npost(regex.split(r\"(,)\", \"a,b,c\"))\n", "['a', ',', 'b', ',', 'c']", NULL, 0 },
 { "split com padrão vazio separa caractere a caractere",
   "import regex\npost(regex.split(\"\", \"abc\"))\n", "['', 'a', 'b', 'c', '']", NULL, 0 },
+
 };
 const int NC_PENDENTES = N_CASOS(CASOS_PENDENTES);

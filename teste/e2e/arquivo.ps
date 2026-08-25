@@ -1,0 +1,72 @@
+# Arquivo (7 metodos) e PoolFile (9) — recurso LOCAL, entao da pra exercitar
+# de ponta a ponta sem rede nem banco. Cada metodo e chamado de verdade e o
+# efeito e conferido lendo de volta.
+import os
+
+dir = "/tmp/ps_e2e"
+if not os.exists(dir):
+    os.mkdir(dir)
+
+# ── Arquivo: write / writelines / read / readline / readlines / close ───────
+p = dir + "/a.txt"
+f = open(p, "w")
+post("write ->", f.write("linha1\n"))
+f.writelines(["linha2\n", "linha3\n"])
+f.close()
+
+using open(p) as g:
+    post("readline ->", g.readline().strip())
+    post("readlines ->", g.readlines())
+
+using open(p) as g:
+    post("read ->", len(g.read()))
+
+# read parcial nao consome o resto
+using open(p) as g:
+    post("read(3) ->", g.read(3))
+    post("resto ->", len(g.read()))
+
+# ── modo binario ────────────────────────────────────────────────────────────
+pb = dir + "/b.png"
+using open(pb, "wb") as f:
+    f.write("oi".encode())
+    f.writelines(["!".encode()])
+using open(pb, "rb") as f:
+    post("binario ->", f.read())
+
+# ── Arquivo.save ────────────────────────────────────────────────────────────
+using open(p) as g:
+    g.save(dir + "/copia.txt")
+post("save copiou ->", os.exists(dir + "/copia.txt"))
+
+# ── PoolFile: path/name/ext/size/bytes/save/copy/move/delete ────────────────
+# `loadFile` devolve str pra texto e PoolFile pra BINÁRIO (.png/.pdf/...).
+# `path` é MÉTODO; `name`, `ext` e `size` são CAMPOS (sem parênteses) — é o
+# que o `pool --metadata` declara ("kind": "property").
+pf = os.loadFile(pb)
+post("path ->", pf.path().endswith("b.png"))
+post("name ->", pf.name)
+post("ext ->", pf.ext)
+post("size ->", pf.size)
+post("bytes ->", len(pf.bytes()))
+
+pf.save(dir + "/salvo.png")
+post("PoolFile.save ->", os.exists(dir + "/salvo.png"))
+
+pf.copy(dir + "/copiado.png")
+post("copy ->", os.exists(dir + "/copiado.png"))
+
+pf2 = os.loadFile(dir + "/copiado.png")
+pf2.move(dir + "/movido.png")
+post("move ->", os.exists(dir + "/movido.png"), os.exists(dir + "/copiado.png"))
+
+pf3 = os.loadFile(dir + "/movido.png")
+pf3.delete()
+post("delete ->", os.exists(dir + "/movido.png"))
+
+# rmdir só remove diretório VAZIO: apaga o conteúdo antes.
+# `os.ls` devolve dicts {name, type, size}, não strings.
+for each ent in os.ls(dir):
+    _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+os.rmdir(dir)
+post("fim")

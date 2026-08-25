@@ -1,4 +1,4 @@
-# `s.get(chave)`
+# `s.get(chave=Null)`
 
 Interpreta como JSON de objeto e devolve o valor da chave.
 
@@ -6,7 +6,7 @@ Interpreta como JSON de objeto e devolve o valor da chave.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `chave` | str | — |  |
+| `chave` | str | Null | sem chave, devolve o JSON inteiro |
 
 ## Retorno
 

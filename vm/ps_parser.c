@@ -148,7 +148,16 @@ static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
 
 static void pula_separadores(P *p)
 {
-    while (checa(p, T_NEWLINE) || checa(p, T_SEMI)) p->pos++;
+    /* Dentro de um grupo (`{ }` de dicionário, `[ ]`, `( )`) a indentação não
+     * significa nada: o lexer agora emite INDENT/DEDENT dentro de `{ }`
+     * (porque `{` também abre BLOCO), então é aqui que eles são ignorados. */
+    for (;;) {
+        if (checa(p, T_NEWLINE) || checa(p, T_SEMI)) { p->pos++; continue; }
+        if (p->grupo_depth > 0 && (checa(p, T_INDENT) || checa(p, T_DEDENT))) {
+            p->pos++; continue;
+        }
+        break;
+    }
 }
 
 /* nome que vai ser LIGADO: recusa reservada, como parser.py faz */
@@ -976,6 +985,14 @@ static PSNode *expressao(P *p)
 }
 
 /* ── blocos ─────────────────────────────────────────────────────────────── */
+/* Separadores + indentação solta: só o bloco de CHAVES usa, porque nele a
+ * indentação não delimita nada. */
+static void pula_indent_solto(P *p)
+{
+    while (checa(p, T_NEWLINE) || checa(p, T_SEMI)
+           || checa(p, T_INDENT) || checa(p, T_DEDENT)) p->pos++;
+}
+
 static PSNode *bloco(P *p)
 {
     PSToken *t = atual(p);
@@ -984,14 +1001,18 @@ static PSNode *bloco(P *p)
         PSNode *b = ps_node_novo(p->arena, N_BLOCK, t->line, t->col);
         if (!b) return NULL;
         b->estilo = "brace";
-        pula_separadores(p);
+        /* Dentro de `{ }` a indentação é cosmética — o bloco acaba no `}`, não
+         * num DEDENT. Os INDENT/DEDENT que sobram entre um statement e outro
+         * são ignorados aqui; os que pertencem a um sub-bloco `:` são
+         * consumidos pela chamada aninhada de bloco(). */
+        pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             PSNode *s = statement(p);
             if (FALHOU(p)) return NULL;
             if (s && ps_vec_push(p->arena, &b->lista, s) != 0) {
                 perro(p, "sem memoria", t); return NULL;
             }
-            pula_separadores(p);
+            pula_indent_solto(p);
         }
         if (checa(p, T_EOF)) { perro(p, "bloco com '{' nao foi fechado com '}'", t); return NULL; }
         p->pos++;   /* } */
@@ -1531,6 +1552,15 @@ static int eh_tipo_kw(PSToken *t)
          || strcmp(t->texto, "flo") == 0 || strcmp(t->texto, "bool") == 0);
 }
 
+/* Tipos que abrem uma DECLARAÇÃO (`char c = "a"`). É maior que o
+ * `eh_tipo_kw`, que também guarda o tipo de RETORNO de action — e ali só
+ * `int action`/`bool action` existem. */
+static int eh_tipo_kw_decl(PSToken *t)
+{
+    return eh_tipo_kw(t)
+        || (t->type == T_KW && t->texto && strcmp(t->texto, "char") == 0);
+}
+
 static PSNode *statement(P *p)
 {
     pula_separadores(p);
@@ -1672,7 +1702,7 @@ static PSNode *statement(P *p)
             while (checa(p, T_NEWLINE)) p->pos++;   /* comentario/linha vazia apos ':' */
             if (!exige(p, T_INDENT, "faltou indentacao apos ':'")) return NULL;
         }
-        pula_separadores(p);
+        if (chaves) pula_indent_solto(p); else pula_separadores(p);
         while (!checa(p, chaves ? T_RBRACE : T_DEDENT) && !checa(p, T_EOF)) {
             PSToken *mt = atual(p);
             /* modificador de visibilidade opcional antes de campo/método.
@@ -1728,7 +1758,7 @@ static PSNode *statement(P *p)
                 perro(p, "dentro de Entity so sao permitidas declaracoes 'action', decoradores ou campos 'nome: tipo'", mt);
                 return NULL;
             }
-            pula_separadores(p);
+            if (chaves) pula_indent_solto(p); else pula_separadores(p);
         }
         if (chaves) {
             if (!exige_fecha(p, T_RBRACE, "corpo da Entity nao foi fechado", abre_ent)) return NULL;
@@ -1918,7 +1948,7 @@ static PSNode *statement(P *p)
         pula_separadores(p);
         PSToken *abre_model = exige(p, T_LBRACE, "esperado '{' para abrir o model");
         if (!abre_model) return NULL;
-        pula_separadores(p);
+        pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             PSToken *ft = atual(p);
             const char *campo = exige_nome(p, "campo");
@@ -1947,8 +1977,9 @@ static PSNode *statement(P *p)
                 if (!exige(p, T_RPAREN, "esperado ')' apos o valor de length")) return NULL;
             }
             if (ps_vec_push(p->arena, &n->lista, f) != 0) return NULL;
-            pula_separadores(p);
+            pula_indent_solto(p);
         }
+        pula_indent_solto(p);
         if (!exige_fecha(p, T_RBRACE, "faltou '}' no model", abre_model)) return NULL;
         return n;
     }
@@ -1964,7 +1995,7 @@ static PSNode *statement(P *p)
         pula_separadores(p);
         PSToken *abre_enum = exige(p, T_LBRACE, "esperado '{' para abrir o enum");
         if (!abre_enum) return NULL;
-        pula_separadores(p);
+        pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             PSToken *mt = atual(p);
             const char *nome_m = exige_nome(p, "membro");
@@ -1979,8 +2010,9 @@ static PSNode *statement(P *p)
             }
             if (ps_vec_push(p->arena, &n->lista, m) != 0) return NULL;
             aceita(p, T_COMMA);               /* vírgula opcional entre membros */
-            pula_separadores(p);
+            pula_indent_solto(p);
         }
+        pula_indent_solto(p);
         if (!exige_fecha(p, T_RBRACE, "faltou '}' no enum", abre_enum)) return NULL;
         return n;
     }
@@ -2025,7 +2057,9 @@ static PSNode *statement(P *p)
             pula_separadores(p);
             if (!exige(p, T_INDENT, "esperado indentacao apos 'match:'")) return NULL;
         }
-        pula_separadores(p);
+        /* No estilo de chaves o corpo do match é `{ }`: a indentação dentro
+         * dele é livre, então os INDENT/DEDENT soltos são ignorados aqui. */
+        if (estilo_chaves) pula_indent_solto(p); else pula_separadores(p);
 
         while (checa_kw(p, "case")) {
             PSToken *ct = atual(p);
@@ -2042,7 +2076,7 @@ static PSNode *statement(P *p)
             caso->a = pat;
 
             if (estilo_chaves) {
-                pula_separadores(p);
+                pula_indent_solto(p);
                 caso->b = bloco(p);
                 if (FALHOU(p)) return NULL;
             } else {
@@ -2070,7 +2104,7 @@ static PSNode *statement(P *p)
                 caso->b = b;
             }
             if (ps_vec_push(p->arena, &n->lista, caso) != 0) return NULL;
-            pula_separadores(p);
+            if (estilo_chaves) pula_indent_solto(p); else pula_separadores(p);
         }
 
         if (estilo_chaves) { if (!exige_fecha(p, T_RBRACE, "faltou '}' no match", abre_match)) return NULL; }
@@ -2192,10 +2226,16 @@ static PSNode *statement(P *p)
     }
 
     /* tipo de retorno antes de action: `int action f()` */
-    if (eh_tipo_kw(t)) {
+    if (eh_tipo_kw_decl(t)) {
         PSToken *nx = espia(p, 1);
         if (nx->type == T_KW && nx->texto
                 && (strcmp(nx->texto, "action") == 0 || strcmp(nx->texto, "reaction") == 0)) {
+            /* `char action` não existe: só `int action` e `bool action`.
+             * Aceitar calado deixaria o tipo de retorno ser ignorado. */
+            if (!eh_tipo_kw(t)) {
+                perro(p, "so 'int action' e 'bool action' existem", t);
+                return NULL;
+            }
             const char *tipo = dup_tok(p, t);
             p->pos++;
             return action_decl(p, 0, tipo);

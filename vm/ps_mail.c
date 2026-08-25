@@ -372,6 +372,55 @@ PSMailConn *ps_imap_conecta(const char *host, int porta, char *erro, size_t cap)
  * dados passam pelo callback (que pode ser NULL). */
 typedef void (*ImapDados)(const char *linha, void *ctx, PSMailConn *c);
 
+/* Lê uma linha de tamanho ARBITRÁRIO num buffer que cresce.
+ *
+ * O `le_linha` de buffer fixo devolvia -1 quando a linha não cabia, e quem
+ * chamava reportava "conexao IMAP caiu" — mentira: a conexão estava boa, a
+ * LINHA é que era grande. Um `SEARCH ALL` numa caixa real devolve milhares de
+ * ids numa linha só, dezenas de kB, então o `.search("ALL")` simplesmente não
+ * funcionava em caixa de verdade.
+ *
+ * Devolve o tamanho, ou -1 se a conexão morreu de fato. */
+static int le_linha_din(PSMailConn *c, char **out, size_t *cap)
+{
+    size_t n = 0;
+    for (;;) {
+        for (int i = 0; i < c->nbuf; i++) {
+            if (c->buf[i] != '\n') continue;
+            size_t fim = (size_t)i;
+            if (fim > 0 && c->buf[fim - 1] == '\r') fim--;
+            if (n + fim + 1 > *cap) {
+                size_t novo = (n + fim + 1) * 2;
+                char *nb = realloc(*out, novo);
+                if (!nb) return -1;
+                *out = nb; *cap = novo;
+            }
+            memcpy(*out + n, c->buf, fim);
+            n += fim;
+            (*out)[n] = '\0';
+            memmove(c->buf, c->buf + i + 1, (size_t)(c->nbuf - i - 1));
+            c->nbuf -= i + 1;
+            return (int)n;
+        }
+        /* sem '\n' no que chegou: ESCOA o buffer pro destino e continua lendo,
+         * em vez de desistir por "linha gigante" */
+        if (c->nbuf > 0) {
+            if (n + (size_t)c->nbuf + 1 > *cap) {
+                size_t novo = (n + (size_t)c->nbuf + 1) * 2;
+                char *nb = realloc(*out, novo);
+                if (!nb) return -1;
+                *out = nb; *cap = novo;
+            }
+            memcpy(*out + n, c->buf, (size_t)c->nbuf);
+            n += (size_t)c->nbuf;
+            c->nbuf = 0;
+        }
+        int k = cru_le(c, c->buf, (int)sizeof(c->buf));
+        if (k <= 0) return -1;
+        c->nbuf = k;
+    }
+}
+
 static int imap_cmd(PSMailConn *c, const char *cmd, ImapDados fn, void *ctx,
                     char *erro, size_t cap)
 {
@@ -381,14 +430,20 @@ static int imap_cmd(PSMailConn *c, const char *cmd, ImapDados fn, void *ctx,
     int n = snprintf(lin, sizeof(lin), "%s %s\r\n", tag, cmd);
     if (cru_escreve(c, lin, n) != 0) FALHA(erro, cap, "conexao IMAP caiu");
     size_t ntag = strlen(tag);
+    size_t cap_l = 4096;
+    char *l = malloc(cap_l);
+    if (!l) FALHA(erro, cap, "sem memoria");
     for (;;) {
-        int k = le_linha(c, lin, sizeof(lin));
-        if (k < 0) FALHA(erro, cap, "conexao IMAP caiu");
-        if ((size_t)k > ntag && strncmp(lin, tag, ntag) == 0 && lin[ntag] == ' ') {
-            if (strncmp(lin + ntag + 1, "OK", 2) == 0) return 0;
-            FALHA(erro, cap, "%s", lin + ntag + 1);
+        int k = le_linha_din(c, &l, &cap_l);
+        if (k < 0) { free(l); FALHA(erro, cap, "conexao IMAP caiu"); }
+        if ((size_t)k > ntag && strncmp(l, tag, ntag) == 0 && l[ntag] == ' ') {
+            if (strncmp(l + ntag + 1, "OK", 2) == 0) { free(l); return 0; }
+            char msg[220];
+            snprintf(msg, sizeof(msg), "%.200s", l + ntag + 1);
+            free(l);
+            FALHA(erro, cap, "%s", msg);
         }
-        if (lin[0] == '*' && fn) fn(lin, ctx, c);
+        if (l[0] == '*' && fn) fn(l, ctx, c);
     }
 }
 
@@ -435,10 +490,81 @@ static void pega_search(const char *linha, void *ctx, PSMailConn *c)
     *ids = strdup(resto);
 }
 
+/* SEARCH com termo em literal. Fluxo do IMAP:
+ *
+ *   C: A1 SEARCH CHARSET UTF-8 SUBJECT {12}
+ *   S: + ready
+ *   C: relatório<CRLF>
+ *   S: * SEARCH 3 7 12
+ *   S: A1 OK
+ *
+ * A continuação `+` é o que separa isto de um comando comum, por isso não dá
+ * pra reusar o `imap_cmd`. */
+static int imap_cmd_literal(PSMailConn *c, const char *criterio, const char *termo,
+                            char **ids, char *erro, size_t cap)
+{
+    char tag[16];
+    snprintf(tag, sizeof(tag), "A%d", ++c->tag);
+    size_t nt = strlen(termo);
+    char lin[900];
+    int n = snprintf(lin, sizeof(lin), "%s SEARCH CHARSET UTF-8 %s {%zu}\r\n",
+                     tag, criterio, nt);
+    if (cru_escreve(c, lin, n) != 0) FALHA(erro, cap, "conexao IMAP caiu");
+
+    size_t cap_l = 4096;
+    char *l = malloc(cap_l);
+    if (!l) FALHA(erro, cap, "sem memoria");
+    int k = le_linha_din(c, &l, &cap_l);
+    if (k < 0 || l[0] != '+') {
+        char msg[220];
+        snprintf(msg, sizeof(msg), "%.200s", k < 0 ? "conexao IMAP caiu" : l);
+        free(l);
+        FALHA(erro, cap, "%s", msg);
+    }
+    if (cru_escreve(c, termo, (int)nt) != 0 || cru_escreve(c, "\r\n", 2) != 0) {
+        free(l);
+        FALHA(erro, cap, "conexao IMAP caiu");
+    }
+    size_t ntag = strlen(tag);
+    for (;;) {
+        k = le_linha_din(c, &l, &cap_l);
+        if (k < 0) { free(l); FALHA(erro, cap, "conexao IMAP caiu"); }
+        if ((size_t)k > ntag && strncmp(l, tag, ntag) == 0 && l[ntag] == ' ') {
+            int ok = strncmp(l + ntag + 1, "OK", 2) == 0;
+            char msg[220];
+            snprintf(msg, sizeof(msg), "%.200s", l + ntag + 1);
+            free(l);
+            if (ok) return 0;
+            FALHA(erro, cap, "%s", msg);
+        }
+        if (l[0] == '*') pega_search(l, ids, c);
+    }
+}
+
+/* Tem byte fora do ASCII? Então o termo NÃO pode ir entre aspas: o
+ * quoted-string do IMAP é 7-bit (RFC 3501) e o servidor responde
+ * "BAD Could not parse command". O jeito certo é literal `{n}`. */
+static int tem_nao_ascii(const char *s)
+{
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++)
+        if (*p >= 0x80) return 1;
+    return 0;
+}
+
 int ps_imap_search(PSMailConn *c, const char *criterio, const char *termo,
                    char **ids, char *erro, size_t cap)
 {
     char cmd[1200];
+    if (termo && tem_nao_ascii(termo)) {
+        /* `SEARCH CHARSET UTF-8 SUBJECT {12}` -> servidor responde `+` ->
+         * mandamos os bytes crus. É o único jeito de buscar "relatório". */
+        *ids = strdup("");
+        if (!*ids) FALHA(erro, cap, "sem memoria");
+        if (imap_cmd_literal(c, criterio, termo, ids, erro, cap) != 0) {
+            free(*ids); *ids = NULL; return -1;
+        }
+        return 0;
+    }
     if (termo) {
         char t[600];
         imap_aspas(termo, t, sizeof(t));

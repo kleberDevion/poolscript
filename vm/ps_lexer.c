@@ -74,7 +74,12 @@ typedef struct {
     int32_t     indent[128];
     int         nindent;
 
-    int         brace_depth;
+    int         paren_depth;   /* só ( e [ — ver trata_newline */
+    /* `{` abertos. Dentro de um bloco de chaves a indentação é LIVRE (1
+     * espaço, 2, tab): quem delimita é o `}`. Os INDENT/DEDENT continuam
+     * sendo emitidos, porque um sub-bloco `:` lá dentro precisa deles — o que
+     * cai é só a validação de "múltiplo de 4" e "avançou exatamente 4". */
+    int         chave_depth;
 
     PSTokenList *out;
 } Lexer;
@@ -179,7 +184,13 @@ static void trata_newline(Lexer *lx)
     lx->linha++;
     lx->col = 1;
 
-    if (lx->brace_depth > 0) return;      /* dentro de ( [ { indent não conta */
+    /* Dentro de `(` e `[` a indentação não conta (expressão multilinha). Mas
+     * `{` NÃO entra aqui: ele também abre BLOCO, e um bloco pode ter um
+     * sub-bloco `:` dentro — suprimir o NEWLINE/INDENT fazia
+     * `if (x) { action f(): ... }` morrer com "faltou quebra de linha apos
+     * ':'". Dentro de dicionário literal quem ignora esses tokens é o parser
+     * (pula_separadores com grupo_depth > 0). */
+    if (lx->paren_depth > 0) return;
 
     /* Continuação com `.membro` na próxima linha: não emite NEWLINE nem
      * mexe na indentação, pra `obj()\n  .json()\n  .status()` funcionar. */
@@ -209,8 +220,11 @@ static void trata_newline(Lexer *lx)
     if (lx->src[lx->pos] == '/' && espia(lx, 1) == '/') return;
     if (lx->src[lx->pos] == '#') return;
 
-    if (viu_tab) { erro(lx, "indentacao com TAB nao e permitida; use 4 espacos"); return; }
-    if (indent % INDENT_UNIT != 0) {
+    /* Dentro de `{ }` a indentação é cosmética: nada de exigir múltiplo de 4
+     * nem avanço exato. Fora dela a regra continua estrita. */
+    int livre = lx->chave_depth > 0;
+    if (viu_tab && !livre) { erro(lx, "indentacao com TAB nao e permitida; use 4 espacos"); return; }
+    if (!livre && indent % INDENT_UNIT != 0) {
         char m[128];
         snprintf(m, sizeof(m), "indentacao deve ser multiplo de %d espacos (achou %d)",
                  INDENT_UNIT, indent);
@@ -220,7 +234,7 @@ static void trata_newline(Lexer *lx)
 
     int32_t topo = lx->indent[lx->nindent - 1];
     if (indent > topo) {
-        if (indent != topo + INDENT_UNIT) {
+        if (!livre && indent != topo + INDENT_UNIT) {
             char m[128];
             snprintf(m, sizeof(m), "indentacao avancou %d espacos; esperado exatamente %d",
                      indent - topo, INDENT_UNIT);
@@ -240,7 +254,7 @@ static void trata_newline(Lexer *lx)
             PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, 1);
             if (tk) tk->i = indent;
         }
-        if (indent != lx->indent[lx->nindent - 1]) {
+        if (!livre && indent != lx->indent[lx->nindent - 1]) {
             char m[128];
             snprintf(m, sizeof(m), "indentacao inconsistente (esperado %d, achou %d)",
                      lx->indent[lx->nindent - 1], indent);
@@ -599,10 +613,12 @@ static int le_punct(Lexer *lx)
     PSToken *tk = novo_token(lx, t, lx->linha, lx->col);
     if (tk) guarda_texto(lx, tk, &c, 1);
 
-    if (c == '{' || c == '(' || c == '[') lx->brace_depth++;
-    else if (c == '}' || c == ')' || c == ']') {
-        if (lx->brace_depth > 0) lx->brace_depth--;
+    if (c == '(' || c == '[') lx->paren_depth++;
+    else if (c == ')' || c == ']') {
+        if (lx->paren_depth > 0) lx->paren_depth--;
     }
+    else if (c == '{') lx->chave_depth++;
+    else if (c == '}') { if (lx->chave_depth > 0) lx->chave_depth--; }
     lx->pos++; lx->col++;
     return 1;
 }

@@ -8,8 +8,13 @@ Status de envio do channel.
 
 ## Métodos e propriedades
 
-| Acesso | O que faz |
+**Nenhum.** `ChannelStatus` é um valor que se COMPARA e se TESTA, não um objeto que se
+navega — não existe `.status` (tentar acessar dá `membro inexistente`).
+
+| Uso | Resultado |
 |---|---|
-| `.status` | atributo |
+| `str(x)` / `post(x)` | "Success"/"Error" |
+| `x == "Success"` | compara direto com o texto |
+| `if x:` | verdadeiro quando deu certo |
 
 [← índice](objetos-internos.md)

@@ -159,6 +159,165 @@ const Caso CASOS_LINGUAGEM[] = {
   "action f():\n    action g():\n        return z\n    r = g()\n    z = 1\n    return r\npost(f())\n",
   NULL, "'z'", -1 },
 
+/* ── `str(x)` tem que dizer o MESMO que `post(x)` ────────────────────────
+ * Eram dois caminhos independentes (`escreve_valor` imprime, `valor_para_texto`
+ * monta string) e o segundo não conhecia 33 tipos de objeto: `post(conn)`
+ * mostrava `<sqlite3.Connection>` e `str(conn)` devolvia STRING VAZIA. Agora
+ * os dois leem da mesma `descreve_obj`. */
+{ "str() de conexao sqlite",
+  "import sqlite3\nc = sqlite3.connect(\"/tmp/ps_str1.db\")\npost(\"[\" + str(c) + \"]\")\n",
+  "[<sqlite3.Connection>]", NULL, 0 },
+{ "str() de arquivo aberto",
+  "using open(\"/tmp/ps_str2.txt\", \"w\") as f:\n    post(\"[\" + str(f) + \"]\")\n",
+  "[<arquivo /tmp/ps_str2.txt>]", NULL, 0 },
+{ "str() de gerador",
+  "action g():\n    yield 1\npost(\"[\" + str(g()) + \"]\")\n",
+  "[<generator g>]", NULL, 0 },
+{ "str() de socket fechado",
+  "import sockets\ns = sockets.socket()\ns.close()\npost(\"[\" + str(s) + \"]\")\n",
+  "[<socket fechado>]", NULL, 0 },
+{ "str() e post() concordam no builtin",
+  "post(\"[\" + str(len) + \"]\")\n", "[<builtin>]", NULL, 0 },
+
+/* ── jinker: status e corpo vazio ────────────────────────────────────────
+ * Achados rodando o servidor da linguagem em loopback e batendo nele com o
+ * cliente dela (teste/e2e/). Nenhum caso escrito à mão pegaria: os dois só
+ * aparecem quando a requisição atravessa de verdade. */
+{ "status() nao e sobrescrito pelo json()",
+  "import jinker\nr = jinker.JinkerResponse()\npost(r.status(418).json({\"a\": 1}).status_code)\n",
+  "418", NULL, 0 },
+{ "status() nao e sobrescrito pelo send()",
+  "import jinker\nr = jinker.JinkerResponse()\npost(r.status(503).send(\"x\").status_code)\n",
+  "503", NULL, 0 },
+{ "json(dados, status) continua mandando no status",
+  "import jinker\nr = jinker.JinkerResponse()\npost(r.json({\"a\": 1}, 201).status_code)\n",
+  "201", NULL, 0 },
+{ "resposta nasce com 200",
+  "import jinker\npost(jinker.JinkerResponse().json({\"a\": 1}).status_code)\n",
+  "200", NULL, 0 },
+
+/* ── conferido contra o Python (oráculo) ─────────────────────────────────
+ * 4484 expressões rodadas no `pool` E no `python3`, comparando resultado. A
+ * doc diz "igual ao Python" em toda parte, então divergência é defeito até
+ * prova em contrário. Estes três eram defeito. */
+{ "repeticao de string",
+  "post(\"ab\" * 3, 3 * \"ab\", \"e\" * 3)\n", "ababab ababab eee", NULL, 0 },
+{ "repeticao de string com contagem <= 0",
+  "post(\"[\" + \"ab\" * 0 + \"]\", \"[\" + \"ab\" * -1 + \"]\")\n", "[] []", NULL, 0 },
+{ "repeticao de string conta CARACTERE, nao byte",
+  "post(\"é\" * 3, len(\"é\" * 3))\n", "ééé 3", NULL, 0 },
+{ "ss é letra minúscula (nao tem maiuscula de 1 caractere)",
+  "post(\"ß\".isalpha(), \"ß\".islower(), \"ß\".isalnum(), \"ß\".isupper())\n",
+  "True True True False", NULL, 0 },
+{ "isidentifier recusa sobrescrito e digito nao-decimal",
+  "post(\"²³\".isidentifier(), \"٣٤\".isidentifier(), \"a²\".isidentifier())\n",
+  "False False False", NULL, 0 },
+{ "isidentifier aceita acento, digito decimal depois do inicio e _",
+  "post(\"ção\".isidentifier(), \"a٣\".isidentifier(), \"_x1\".isidentifier(), \"1abc\".isidentifier())\n",
+  "True True True False", NULL, 0 },
+{ "preenchimento de string vazia",
+  "post(\"[\" + \"\".rjust(3) + \"]\", \"[\" + \"\".ljust(3) + \"]\", \"[\" + \"\".center(3) + \"]\")\n",
+  "[   ] [   ] [   ]", NULL, 0 },
+
+/* ── misturar os dois estilos de bloco ───────────────────────────────────
+ * A doc promete indentação **ou** chaves "à vontade e no mesmo arquivo", mas
+ * um bloco `:` DENTRO de `{ }` morria com "faltou quebra de linha apos ':'":
+ * o lexer não emitia NEWLINE/INDENT dentro de chaves. Emite agora, e a
+ * indentação dentro de `{ }` passou a ser LIVRE (o `}` é que fecha) — fora
+ * dela a regra dos 4 espaços continua valendo. */
+{ "action ':' dentro de bloco de chaves",
+  "if (true) {\n    action f():\n        return 1\n    post(f())\n}\n", "1", NULL, 0 },
+{ "if ':' dentro de bloco de chaves",
+  "if (true) {\n    if true:\n        post(\"x\")\n}\n", "x", NULL, 0 },
+{ "try/catch ':' dentro de bloco de chaves",
+  "if (true) {\n    try:\n        raise Boom(\"x\")\n    catch(e):\n        post(\"peguei\")\n}\n",
+  "peguei", NULL, 0 },
+{ "for each ':' dentro de bloco de chaves",
+  "if (true) {\n    for each i in range(2):\n        post(i)\n}\n", "0\n1", NULL, 0 },
+{ "bloco de chaves dentro de bloco ':'",
+  "if true:\n    action f() {\n        return 1\n    }\n    post(f())\n", "1", NULL, 0 },
+{ "metodo ':' dentro de Entity de chaves",
+  "Entity P() {\n    action m(self):\n        return 3\n}\npost(P().m())\n", "3", NULL, 0 },
+{ "metodo de chaves dentro de Entity ':'",
+  "Entity Q():\n    action m(self) {\n        return 4\n    }\npost(Q().m())\n", "4", NULL, 0 },
+{ "indentacao livre dentro de chaves",
+  "action r(n) {\n if (n < 1) {\n  return 0\n }\n return 1 + r(n - 1)\n}\npost(r(5))\n",
+  "5", NULL, 0 },
+{ "model de chaves continua valendo",
+  "model M() {\n    a: str(length=3)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
+{ "fora de chaves a regra dos 4 espacos vale",
+  "if true:\n  post(\"2 espacos\")\n", NULL, "multiplo de 4", -1 },
+{ "dicionario multilinha nao vira bloco",
+  "d = {\n    \"a\": 1,\n    \"b\": 2\n}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
+
+/* ── `for each` sobre range não materializa a lista ──────────────────────
+ * `range(20000000)` construía 20 milhões de itens (325 MB) só pra o laço
+ * jogar fora um a um; o `while` equivalente usava 13 MB. O laço agora conta
+ * por aritmética. Estes casos travam a SEMÂNTICA — a medida de memória está
+ * no notas/LIMITACOES.md. */
+{ "range de um argumento",
+  "for each i in range(3):\n    post(i)\n", "0\n1\n2", NULL, 0 },
+{ "range com inicio e fim",
+  "for each i in range(2, 5):\n    post(i)\n", "2\n3\n4", NULL, 0 },
+{ "range com passo negativo",
+  "for each i in range(10, 0, -3):\n    post(i)\n", "10\n7\n4\n1", NULL, 0 },
+{ "range vazio nao entra no laco",
+  "for each i in range(0):\n    post(\"NAO\")\npost(\"fim\")\n", "fim", NULL, 0 },
+{ "range aceita texto numerico",
+  "for each i in range(\"3\"):\n    post(i)\n", "0\n1\n2", NULL, 0 },
+{ "range com passo 0 e erro",
+  "for each i in range(1, 5, 0):\n    post(i)\n", NULL, "passo de range", -1 },
+{ "range com expressao nos limites",
+  "n = 4\nfor each i in range(n - 2):\n    post(i)\n", "0\n1", NULL, 0 },
+{ "break e continue dentro de range",
+  "for each i in range(10):\n    if i == 3:\n        break\n    if i == 1:\n        continue\n    post(i)\n",
+  "0\n2", NULL, 0 },
+{ "range aninhado",
+  "for each i in range(2):\n    for each j in range(2):\n        post(i, j)\n",
+  "0 0\n0 1\n1 0\n1 1", NULL, 0 },
+{ "range fora do laco continua sendo lista",
+  "r = range(4)\npost(type(r), len(r), r[2], r)\n", "list 4 2 [0, 1, 2, 3]", NULL, 0 },
+{ "range redefinido pelo usuario ganha do embutido",
+  "action range(n):\n    return [\"MEU\", n]\nfor each x in range(2):\n    post(x)\n",
+  "MEU\n2", NULL, 0 },
+
+/* ── `char` como tipo declarável ─────────────────────────────────────────
+ * `char c = 64` dava "variável não definida: char": o parser só abria
+ * declaração tipada pros quatro escalares. `char` é a restrição da DECLARAÇÃO
+ * (um caractere); o valor em runtime é `str`. */
+{ "char aceita um caractere",
+  "char a = \"x\"\npost(a, type(a))\n", "x str", NULL, 0 },
+{ "char converte inteiro pelo codepoint",
+  "char opa = 64\npost(opa)\n", "@", NULL, 0 },
+{ "char aceita caractere fora do ASCII",
+  "char c = \"ç\"\nchar e = 128512\npost(c, len(c), e)\n", "ç 1 😀", NULL, 0 },
+{ "char recusa mais de um caractere",
+  "char c = \"abc\"\n", NULL, "esperava char", -1 },
+{ "char recusa flutuante",
+  "char c = 1.5\n", NULL, "esperava char", -1 },
+{ "char recusa codepoint invalido",
+  "char c = -1\n", NULL, "nao e um caractere valido", -1 },
+{ "char action nao existe",
+  "char action f():\n    return 1\n", NULL, "int action", -1 },
+{ "as outras declaracoes tipadas continuam iguais",
+  "str a = \"oi\"\nint b = \"7\"\nflo c = 1\nbool d = true\npost(a, b, c, d)\n",
+  "oi 7 1.0 True", NULL, 0 },
+{ "int tipado ainda recusa texto invalido",
+  "int x = \"abc\"\n", NULL, "ConversionError", -1 },
+
+/* ── módulos sem `import` ────────────────────────────────────────────────
+ * `Parsing` é namespace pré-ligado e `sys.stdout`/`sys.stderr` são atributos:
+ * nenhum dos três se importa. O `--metadata` chegou a anunciá-los pelo nome de
+ * REGISTRO (`_Parsing`, `_stdout`), e aí o editor sugeria `import _stdout`, que
+ * só podia dar ImportError. */
+{ "Parsing existe sem import",
+  "post(type(Parsing), type(Parsing.integer))\n", "module action", NULL, 0 },
+{ "sys.stdout e sys.stderr são atributos de sys",
+  "import sys\npost(type(sys.stdout), type(sys.stderr), type(sys.stdout.write))\n",
+  "module module action", NULL, 0 },
+{ "import de nome interno é erro",
+  "import _stdout\n", NULL, "modulo nao encontrado", -1 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

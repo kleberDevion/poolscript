@@ -117,7 +117,8 @@ enum {
     OP_LOAD_BASE_INIT = 77,
     OP_MAKE_CELL = 78, OP_CELL_GET = 79, OP_CELL_SET = 80,
     OP_LOAD_UPVAL = 81, OP_STORE_UPVAL = 82, OP_MAKE_CLOSURE = 83,
-    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85
+    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85,
+    OP_ITER_RANGE = 86
 };
 
 /* ── objetos gerenciados pelo GC ────────────────────────────────────────── */
@@ -2369,11 +2370,88 @@ static int ps_em_ciclo(const void *o)
     return 0;
 }
 
+
+/* Descrição de UMA LINHA dos objetos "opacos" (os que não têm conteúdo
+ * navegável: arquivo, conexão, servidor, socket, registrar...).
+ *
+ * Existe pra `post(x)` e `str(x)` não divergirem. Eram dois caminhos
+ * independentes — `escreve_valor` (que imprime) e `valor_para_texto` (que
+ * monta string) — e o segundo não conhecia 33 dos tipos: `post(conn)` mostrava
+ * `<sqlite3.Connection>` e `str(conn)` devolvia STRING VAZIA. Agora os dois
+ * leem daqui, então não tem como um saber e o outro não.
+ *
+ * Devolve 1 se escreveu em `buf`, 0 se o tipo não é destes. */
+static int descreve_obj(const Value *v, char *buf, size_t cap)
+{
+    if (v->t != V_OBJ) return 0;
+    switch (v->as.obj->type) {
+        case OBJ_GERADOR:
+            snprintf(buf, cap, "<generator %s>",
+                     vm_corrente && ((PSGerador *)v->as.obj)->proto < vm_corrente->nprotos
+                     ? vm_corrente->protos[((PSGerador *)v->as.obj)->proto].nome : "?");
+            return 1;
+        case OBJ_ARQUIVO:
+            /* o caminho pode ser longo: %.200s pra não estourar o buffer */
+            snprintf(buf, cap, "<arquivo %.200s>", ((PSArquivo *)v->as.obj)->caminho);
+            return 1;
+        case OBJ_SQLCONN:   snprintf(buf, cap, "<sqlite3.Connection>"); return 1;
+        case OBJ_SQLCUR:    snprintf(buf, cap, "<sqlite3.Cursor>");     return 1;
+        case OBJ_MAILSRV:   snprintf(buf, cap, "<MailServer>");         return 1;
+        case OBJ_MAILRD:    snprintf(buf, cap, "<MailReader>");         return 1;
+        case OBJ_MAILMSG:   snprintf(buf, cap, "<MailMessage>");        return 1;
+        case OBJ_JCORS:     snprintf(buf, cap, "<CorsConfig>");         return 1;
+        case OBJ_JPROXY:    snprintf(buf, cap, "<jinker.request>");     return 1;
+        case OBJ_NATIVA:    snprintf(buf, cap, "<builtin>");            return 1;
+        case OBJ_METODO_NAT:snprintf(buf, cap, "<metodo>");             return 1;
+        case OBJ_MONGOCONN: snprintf(buf, cap, "<db.connection [mongo]>"); return 1;
+        case OBJ_MANPU_RES:
+            snprintf(buf, cap, "%s", ((PSManpuRes *)v->as.obj)->status);
+            return 1;
+        case OBJ_JCHST:
+            snprintf(buf, cap, "%s", ((PSJChSt *)v->as.obj)->sucesso ? "Success" : "Error");
+            return 1;
+        case OBJ_JINKER:
+            snprintf(buf, cap, "<Jinker '%s'>", ((PSJinker *)v->as.obj)->nome);
+            return 1;
+        case OBJ_QRIMAGE:
+            snprintf(buf, cap, "<QRImage '%s'>", ((PSQRImage *)v->as.obj)->nome);
+            return 1;
+        case OBJ_QRFILE: {
+            PSQRFile *q = (PSQRFile *)v->as.obj;
+            snprintf(buf, cap, "<QRCode '%s' %lld bytes>", q->nome, (long long)q->tamanho);
+            return 1;
+        }
+        case OBJ_DBCONN: {
+            static const char *DN[] = { "sqlite", "postgres", "mysql", "mssql" };
+            snprintf(buf, cap, "<db.connection [%s]>", DN[((PSDbConexao *)v->as.obj)->drv]);
+            return 1;
+        }
+        case OBJ_SOCKET: {
+            PSSocket *sk = (PSSocket *)v->as.obj;
+            if (sk->fd < 0) snprintf(buf, cap, "<socket fechado>");
+            else snprintf(buf, cap, "<socket family=%d type=%d proto=%d fd=%d>",
+                          sk->familia, sk->tipo, sk->proto, sk->fd);
+            return 1;
+        }
+        case OBJ_JSOCKNS: {
+            PSJSockNs *ns = (PSJSockNs *)v->as.obj;
+            snprintf(buf, cap, "<SocketNamespace %s>",
+                     EH_JINKER(ns->app) ? COMO_JINKER(ns->app)->nome : "?");
+            return 1;
+        }
+        default: return 0;
+    }
+}
+
 static void escreve_valor(const Value *v, int dentro);
 static int fut_resolve(VM *vm, PSFuturo *fu);   /* async: resolve o future (def. junto do jinker) */
 
 static void escreve_valor(const Value *v, int dentro)
 {
+    {   /* objetos opacos: mesma descrição que o `str()` usa */
+        char d[256];
+        if (descreve_obj(v, d, sizeof(d))) { fputs(d, stdout); return; }
+    }
     /* Mesma guarda de ciclo do valor_para_texto: `l.append(l)` descia até
      * estourar a pilha do C (segfault sem mensagem). Container que já está
      * sendo escrito vira `[...]`, como no Python. */
@@ -2566,6 +2644,10 @@ static void escreve_valor(const Value *v, int dentro)
                 }
             } else if (v->as.obj->type == OBJ_NATIVA) {
                 fputs("<builtin>", stdout);
+            } else if (v->as.obj->type == OBJ_FUTURO) {
+                /* Future não resolvido: sem este ramo ele caía no fim da
+                 * cadeia e imprimia NADA — `post([f1, f2])` saía `[, ]`. */
+                fputs("<future>", stdout);
             } else if (v->as.obj->type == OBJ_BOUND
                     || v->as.obj->type == OBJ_METODO_NAT) {
                 fputs("<metodo>", stdout);
@@ -2615,6 +2697,12 @@ static int txt_put(TxtBuf *t, const char *s, int n)
 
 static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
 {
+    {   /* objetos opacos: a MESMA descrição que o `post()` imprime. Sem isto,
+         * `str(conn)` devolvia string vazia enquanto `post(conn)` mostrava
+         * `<sqlite3.Connection>` — 33 tipos caíam nesse silêncio. */
+        char d[256];
+        if (descreve_obj(v, d, sizeof(d))) return txt_put(t, d, (int)strlen(d));
+    }
     char tmp[64];
     if (!dentro) ps_prof_texto = 0;   /* topo: zera a pilha de ciclo */
     switch (v->t) {
@@ -2699,6 +2787,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                 }
                 return txt_put(t, ">", 1);
             }
+            if (v->as.obj->type == OBJ_FUTURO) return txt_put(t, "<future>", 8);
             if (v->as.obj->type == OBJ_BOUND) return txt_put(t, "<metodo>", 8);
             if (v->as.obj->type == OBJ_BYTES) {
                 /* mesmo repr do `escreve_valor`; sem isto `str(b)` saía vazio */
@@ -3311,6 +3400,34 @@ static int lista_push(VM *vm, PSList *l, Value v)
     return 0;
 }
 
+/* Mesmas regras de conversão do `range()`: int, bool, flo truncado e texto
+ * numérico. Usado pelo `range()` e pelo laço especializado, pra os dois
+ * aceitarem exatamente a mesma coisa. */
+static int num_de_range(VM *vm, Value v, int64_t *out)
+{
+    if (v.t == V_INT)        { *out = v.as.i; return 0; }
+    if (v.t == V_BOOL)       { *out = v.as.b ? 1 : 0; return 0; }
+    if (v.t == V_FLOAT)      { *out = (int64_t)v.as.d; return 0; }
+    if (EH_STRING(v)) {
+        const char *s = COMO_STRING(v)->chars;
+        while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+        char *end = NULL;
+        long long val = strtoll(s, &end, 10);
+        while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') end++;
+        if (end == s || *end != '\0') {
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "operacao invalida: range() nao aceita esse texto");
+            return -1;
+        }
+        *out = (int64_t)val;
+        return 0;
+    }
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+    snprintf(vm->erro, sizeof(vm->erro), "operacao invalida: range() so aceita numero");
+    return -1;
+}
+
 static int nativa_range(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "range() espera de 1 a 3 argumentos");
@@ -3786,8 +3903,22 @@ static uint32_t cp_minuscula(uint32_t c)
     return c;
 }
 
+/* Letras que NÃO têm par de caixa de um codepoint só. `cp_eh_minuscula` é
+ * "trocar de caixa muda o caractere?" — critério que dá False pro ß (a
+ * maiúscula dele é "SS", duas letras) e pro ʼn/ﬀ. Sem esta lista, `"ß".isalpha()`
+ * respondia False, e `isalnum`/`islower` junto. */
+static int cp_min_sem_par(uint32_t c)
+{
+    return c == 0x00DF        /* ß  — maiúscula é "SS" */
+        || c == 0x0149        /* ŉ  */
+        || c == 0x01F0        /* ǰ  */
+        || c == 0x0390 || c == 0x03B0
+        || (c >= 0x1E96 && c <= 0x1E9A)
+        || c == 0x00B5;       /* µ (micro) */
+}
+
 static int cp_eh_maiuscula(uint32_t c) { return cp_minuscula(c) != c; }
-static int cp_eh_minuscula(uint32_t c) { return cp_maiuscula(c) != c; }
+static int cp_eh_minuscula(uint32_t c) { return cp_maiuscula(c) != c || cp_min_sem_par(c); }
 static int cp_eh_letra(uint32_t c)     { return cp_eh_maiuscula(c) || cp_eh_minuscula(c); }
 /* Dígito além do ASCII. `isdecimal` = dígito decimal de qualquer escrita
  * (árabe-índico ٣, devanágari ३…); `isdigit` inclui os sobrescritos (²³¹);
@@ -4860,9 +4991,13 @@ static int met_isidentifier(VM *vm, Value alvo, Value *args, int n, Value *out)
         uint32_t cp;
         int k = utf8_le(s->chars, s->len, i, &cp);
         if (!k) break;
-        /* letra, `_`, e fora do ASCII (o Python é Unicode-aware: `ção` vale) */
-        int letra = cp_eh_letra(cp) || cp == '_' || cp >= 128;
-        ok = primeiro ? letra : (letra || cp_eh_digito(cp));
+        /* Letra ou `_`. O atalho "cp >= 128 vale" fazia `"²³".isidentifier()`
+         * e `"٣٤".isidentifier()` responderem True: sobrescrito e dígito
+         * árabe não são identificador em lugar nenhum. Depois do primeiro,
+         * dígito DECIMAL entra (`a²` continua inválido, `a٣` vale, como no
+         * Python, que aceita Nd). */
+        int letra = cp_eh_letra(cp) || cp == '_';
+        ok = primeiro ? letra : (letra || cp_eh_decimal(cp));
         primeiro = 0;
         i += k;
     }
@@ -4937,27 +5072,27 @@ static int met_sub(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_STR[] = {
     { "upper", met_upper, NULL }, { "lower", met_lower, NULL }, { "title", met_title, NULL },
     { "capitalize", met_capitalize, NULL }, { "swapcase", met_swapcase, NULL }, { "casefold", met_casefold, NULL },
-    { "strip", met_strip, NULL }, { "lstrip", met_lstrip, NULL }, { "rstrip", met_rstrip, NULL },
-    { "startswith", met_startswith, NULL }, { "endswith", met_endswith, NULL },
-    { "contains", met_contains, NULL }, { "has", met_contains, NULL },
-    { "find", met_find, NULL }, { "rfind", met_rfind, NULL }, { "index", met_index, NULL }, { "rindex", met_rindex, NULL },
-    { "count", met_count, NULL }, { "len", met_len, NULL },
-    { "get_json", met_get_json, NULL }, { "get", met_get_json, NULL },
+    { "strip", met_strip, "chars=Null" }, { "lstrip", met_lstrip, "chars=Null" }, { "rstrip", met_rstrip, "chars=Null" },
+    { "startswith", met_startswith, "prefixo" }, { "endswith", met_endswith, "sufixo" },
+    { "contains", met_contains, "sub" }, { "has", met_contains, "sub" },
+    { "find", met_find, "sub, inicio=0, fim=null" }, { "rfind", met_rfind, "sub, inicio=0, fim=null" }, { "index", met_index, "sub, inicio=0, fim=null" }, { "rindex", met_rindex, "sub, inicio=0, fim=null" },
+    { "count", met_count, "sub, inicio=0, fim=null" }, { "len", met_len, NULL },
+    { "get_json", met_get_json, "chave=Null" }, { "get", met_get_json, "chave=Null" },
     { "isalpha", met_isalpha, NULL }, { "isdigit", met_isdigit, NULL }, { "isnumeric", met_isnumeric, NULL },
     { "isdecimal", met_isdecimal, NULL }, { "isalnum", met_isalnum, NULL }, { "isspace", met_isspace, NULL },
     { "isupper", met_isupper, NULL }, { "islower", met_islower, NULL }, { "isascii", met_isascii, NULL },
     { "istitle", met_istitle, NULL }, { "isprintable", met_isprintable, NULL },
-    { "split", met_split, "sep,maxsplit" }, { "rsplit", met_rsplit, "sep,maxsplit" }, { "splitlines", met_splitlines, NULL },
-    { "join", met_join, NULL }, { "replace", met_replace, "old,new,count" },
-    { "partition", met_partition, NULL }, { "rpartition", met_rpartition, NULL },
-    { "removeprefix", met_removeprefix, NULL }, { "removesuffix", met_removesuffix, NULL },
+    { "split", met_split, "sep=Null,maxsplit=-1" }, { "rsplit", met_rsplit, "sep=Null,maxsplit=-1" }, { "splitlines", met_splitlines, NULL },
+    { "join", met_join, "lista" }, { "replace", met_replace, "old,new,count" },
+    { "partition", met_partition, "sep" }, { "rpartition", met_rpartition, "sep" },
+    { "removeprefix", met_removeprefix, "p" }, { "removesuffix", met_removesuffix, "p" },
     { "ljust", met_ljust, "width,fillchar" }, { "rjust", met_rjust, "width,fillchar" }, { "center", met_center, "width,fillchar" },
-    { "zfill", met_zfill, NULL }, { "expandtabs", met_expandtabs, NULL },
-    { "match", met_match, NULL }, { "findall", met_findall, NULL }, { "sub", met_sub, "pattern,repl" },
-    { "format", met_format, NULL }, { "format_map", met_format_map, NULL },
+    { "zfill", met_zfill, "largura" }, { "expandtabs", met_expandtabs, "tabsize=8" },
+    { "match", met_match, "padrao" }, { "findall", met_findall, "padrao" }, { "sub", met_sub, "pattern,repl" },
+    { "format", met_format, "a=Null, b=Null, ..." }, { "format_map", met_format_map, "dict" },
     { "isidentifier", met_isidentifier, NULL },
-    { "maketrans", met_maketrans, NULL }, { "translate", met_translate, NULL },
-    { "encode", met_encode, "encoding,errors" },
+    { "maketrans", met_maketrans, "de, para" }, { "translate", met_translate, "tabela" },
+    { "encode", met_encode, "encoding=\"utf-8\",errors=\"strict\"" },
 };
 #define N_METODOS_STR ((int)(sizeof(METODOS_STR) / sizeof(METODOS_STR[0])))
 
@@ -5553,10 +5688,10 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 
 static const MetodoNat METODOS_ARQ[] = {
-    { "read", met_a_read, NULL }, { "readline", met_a_readline, NULL },
-    { "readlines", met_a_readlines, NULL }, { "write", met_a_write, NULL },
-    { "writelines", met_a_writelines, NULL }, { "close", met_a_close, NULL },
-    { "save", met_a_save, NULL },
+    { "read", met_a_read, "n=-1" }, { "readline", met_a_readline, NULL },
+    { "readlines", met_a_readlines, NULL }, { "write", met_a_write, "conteudo" },
+    { "writelines", met_a_writelines, "linhas" }, { "close", met_a_close, NULL },
+    { "save", met_a_save, "caminho=Null" },
 };
 
 static int nativa_open(VM *vm, Value *args, int n, Value *out)
@@ -5868,7 +6003,7 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* Sem `.len()`: `bytes` não tem esse método no interpretador (é da `PoolStr`),
  * e a VM não pode oferecer mais do que a linguagem tem. `len(b)` funciona. */
 static const MetodoNat METODOS_BYTES[] = {
-    { "decode", met_b_decode, "encoding,errors" }, { "hex", met_b_hex, NULL },
+    { "decode", met_b_decode, "encoding=\"utf-8\",errors=\"strict\"" }, { "hex", met_b_hex, NULL },
 };
 
 
@@ -6066,14 +6201,14 @@ static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 
 static const MetodoNat METODOS_PFILE[] = {
-    { "move", met_pf_move, NULL }, { "copy", met_pf_copy, NULL }, { "delete", met_pf_delete, NULL },
-    { "bytes", met_pf_bytes, NULL }, { "save", met_pf_save, NULL }, { "path", met_pf_path, NULL },
+    { "move", met_pf_move, "destino" }, { "copy", met_pf_copy, "destino" }, { "delete", met_pf_delete, NULL },
+    { "bytes", met_pf_bytes, NULL }, { "save", met_pf_save, "caminho=Null" }, { "path", met_pf_path, NULL },
 };
 
 static const MetodoNat METODOS_LIST[] = {
-    { "append", met_l_append, NULL }, { "extend", met_l_extend, NULL }, { "insert", met_l_insert, NULL },
-    { "pop", met_l_pop, NULL }, { "remove", met_l_remove, NULL }, { "index", met_l_index, NULL },
-    { "count", met_l_count, NULL }, { "contains", met_l_contains, NULL }, { "has", met_l_contains, NULL },
+    { "append", met_l_append, "item" }, { "extend", met_l_extend, "outra" }, { "insert", met_l_insert, "i, item" },
+    { "pop", met_l_pop, "i=-1" }, { "remove", met_l_remove, "item" }, { "index", met_l_index, "item,inicio=0,fim=len" },
+    { "count", met_l_count, "item" }, { "contains", met_l_contains, "item" }, { "has", met_l_contains, "item" },
     { "reverse", met_l_reverse, NULL }, { "sort", met_l_sort, NULL },
     { "clear", met_l_clear, NULL }, { "copy", met_l_copy, NULL }, { "len", met_l_len, NULL },
 };
@@ -6081,15 +6216,15 @@ static const MetodoNat METODOS_LIST[] = {
  * METODOS_LIST inteira (EH_SEQ) e `(1,2,3).append(9)` MUTAVA a tupla no VM,
  * enquanto o interpretador recusava — divergência que nenhum teste pegava. */
 static const MetodoNat METODOS_TUPLA[] = {
-    { "index", met_l_index, NULL }, { "count", met_l_count, NULL },
-    { "contains", met_l_contains, NULL }, { "has", met_l_contains, NULL },
+    { "index", met_l_index, "item,inicio=0,fim=len" }, { "count", met_l_count, "item" },
+    { "contains", met_l_contains, "item" }, { "has", met_l_contains, "item" },
     { "len", met_l_len, NULL },
 };
 static const MetodoNat METODOS_DICT[] = {
     { "keys", met_d_keys, NULL }, { "values", met_d_values, NULL }, { "value", met_d_value, NULL },
     { "items", met_d_items, NULL },
-    { "get", met_d_get, NULL }, { "has", met_d_has, NULL }, { "contains", met_d_has, NULL },
-    { "pop", met_d_pop, NULL }, { "update", met_d_update, NULL }, { "clear", met_d_clear, NULL },
+    { "get", met_d_get, "chave, default=Null" }, { "has", met_d_has, "chave" }, { "contains", met_d_has, "chave" },
+    { "pop", met_d_pop, "chave,default=Null" }, { "update", met_d_update, "outro" }, { "clear", met_d_clear, NULL },
     { "copy", met_d_copy, NULL }, { "len", met_d_len, NULL },
 };
 static const MetodoNat METODOS_UNIV[] = { { "type", met_type, NULL } };
@@ -6111,18 +6246,19 @@ static int met_mr_search(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MAILSRV[] = {
-    { "conn", met_ms_conn, NULL }, { "login", met_ms_login, NULL },
-    { "send", met_ms_send, NULL }, { "quit", met_ms_quit, NULL },
+    { "conn", met_ms_conn, "provedor_ou_host,porta=Null" }, { "login", met_ms_login, "usuario,senha" },
+    { "send", met_ms_send, "dados" }, { "quit", met_ms_quit, NULL },
 };
 static const MetodoNat METODOS_MAILMSG[] = {
-    { "from_address", met_mm_from, NULL }, { "to", met_mm_to, NULL },
-    { "subject", met_mm_subject, NULL }, { "body", met_mm_body, NULL },
-    { "attach", met_mm_attach, NULL }, { "get_as_string", met_mm_asstring, NULL },
+    { "from_address", met_mm_from, "endereco" }, { "to", met_mm_to, "endereco" },
+    { "subject", met_mm_subject, "titulo" }, { "body", met_mm_body, "conteudo,is_html=false" },
+    { "attach", met_mm_attach, "arquivo_ou_caminho" }, { "get_as_string", met_mm_asstring, NULL },
 };
 static const MetodoNat METODOS_MAILRD[] = {
-    { "conn", met_mr_conn, NULL }, { "login", met_mr_login, NULL },
-    { "select", met_mr_select, NULL }, { "search", met_mr_search, NULL },
-    { "body", met_mr_body, NULL }, { "close", met_mr_close, NULL },
+    { "conn", met_mr_conn, "provedor_ou_host,porta=Null" }, { "login", met_mr_login, "usuario,senha" },
+    { "select", met_mr_select, "folder=\"INBOX\",readonly=true" },
+    { "search", met_mr_search, "criterion_type=\"ALL\",term=Null,limit=Null,include_body=false" },
+    { "body", met_mr_body, "id" }, { "close", met_mr_close, NULL },
 };
 
 /* sqlite3: corpos definidos junto do módulo, mais abaixo. */
@@ -6138,14 +6274,14 @@ static int met_sqlcur_fetchone(VM *vm, Value alvo, Value *args, int n, Value *ou
 static int met_sqlcur_fetchmany(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_sqlcur_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_SQLCONN[] = {
-    { "cursor", met_sqlconn_cursor, NULL }, { "execute", met_sqlconn_execute, NULL },
+    { "cursor", met_sqlconn_cursor, NULL }, { "execute", met_sqlconn_execute, "sql,params=()" },
     { "commit", met_sqlconn_commit, NULL }, { "rollback", met_sqlconn_rollback, NULL },
     { "close", met_sqlconn_close, NULL },
 };
 static const MetodoNat METODOS_SQLCUR[] = {
-    { "execute", met_sqlcur_execute, NULL }, { "executemany", met_sqlcur_executemany, NULL },
+    { "execute", met_sqlcur_execute, "sql,params=()" }, { "executemany", met_sqlcur_executemany, "sql,params" },
     { "fetchall", met_sqlcur_fetchall, NULL }, { "fetchone", met_sqlcur_fetchone, NULL },
-    { "fetchmany", met_sqlcur_fetchmany, NULL }, { "close", met_sqlcur_close, NULL },
+    { "fetchmany", met_sqlcur_fetchmany, "size=1" }, { "close", met_sqlcur_close, NULL },
 };
 
 static int met_resp_text(VM *vm, Value alvo, Value *out);
@@ -6157,15 +6293,15 @@ static int met_resp_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_resp_json(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_RESP[] = {
-    { "decode", met_resp_decode, "encoding" }, { "content_type", met_resp_content_type, NULL },
-    { "get", met_resp_get, NULL }, { "get_json", met_resp_get_json, NULL },
-    { "json", met_resp_json, NULL }, { "save", met_resp_save, NULL },
+    { "decode", met_resp_decode, "encoding" }, { "content_type", met_resp_content_type, "esperado" },
+    { "get", met_resp_get, "chave" }, { "get_json", met_resp_get_json, "chave=Null" },
+    { "json", met_resp_json, NULL }, { "save", met_resp_save, "caminho=Null" },
 };
 
 static int met_qrf_bytes(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_qrf_save(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_QRFILE[] = {
-    { "bytes", met_qrf_bytes, NULL }, { "save", met_qrf_save, NULL },
+    { "bytes", met_qrf_bytes, NULL }, { "save", met_qrf_save, "caminho" },
 };
 static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_dbcur_fetchall(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -6176,8 +6312,8 @@ static int met_dbconn_cursor(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_dbconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_dbconn_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_DBCUR[] = {
-    { "execute", met_dbcur_execute, NULL }, { "fetchall", met_dbcur_fetchall, NULL },
-    { "fetchone", met_dbcur_fetchone, NULL }, { "fetchmany", met_dbcur_fetchmany, NULL },
+    { "execute", met_dbcur_execute, "sql,params=()" }, { "fetchall", met_dbcur_fetchall, NULL },
+    { "fetchone", met_dbcur_fetchone, NULL }, { "fetchmany", met_dbcur_fetchmany, "size=1" },
     { "close", met_dbcur_close, NULL },
 };
 static const MetodoNat METODOS_DBCONN[] = {
@@ -6195,13 +6331,13 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user, 
 static int met_mconn_collection(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mconn_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MONGOCOL[] = {
-    { "find", met_mcol_find, NULL }, { "find_one", met_mcol_find_one, NULL },
-    { "insert", met_mcol_insert, NULL }, { "insert_many", met_mcol_insert_many, NULL },
-    { "update", met_mcol_update, NULL }, { "remove", met_mcol_remove, NULL },
-    { "count", met_mcol_count, NULL },
+    { "find", met_mcol_find, "query" }, { "find_one", met_mcol_find_one, NULL },
+    { "insert", met_mcol_insert, NULL }, { "insert_many", met_mcol_insert_many, "documentos" },
+    { "update", met_mcol_update, "query,novo" }, { "remove", met_mcol_remove, "query" },
+    { "count", met_mcol_count, "query=Null" },
 };
 static const MetodoNat METODOS_MONGOCONN[] = {
-    { "collection", met_mconn_collection, NULL }, { "close", met_mconn_close, NULL },
+    { "collection", met_mconn_collection, "nome" }, { "close", met_mconn_close, NULL },
 };
 
 /* jinker — implementações mais adiante, junto do servidor */
@@ -6475,7 +6611,7 @@ static int met_guz_show(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* Elemento HTML genérico. Params (superset) = atributos do HTML, renomeados
  * quando batem com keyword (type->typeinp, for->forid, method->methd). Lê o
  * placeholder (slot 1) e o onclick (slot 13); os demais atributos são aceitos. */
-#define P_ELEM "typeinp,placeholder,value,name,href,src,alt,target,forid,action,methd,rows,cols,onclick"
+#define P_ELEM "typeinp=Null,placeholder=Null,value=Null,name=Null,href=Null,src=Null,alt=Null,target=Null,forid=Null,action=Null,methd=Null,rows=Null,cols=Null,onclick=Null"
 static int guz_elem(VM *vm, Value alvo, const char *tag, int kind, Value *args, int n, Value *out)
 {
     Value h = (n > 13 && args[13].t == V_OBJ) ? args[13] : MK_NULL();
@@ -6646,8 +6782,8 @@ static const MetodoNat METODOS_GUZ_UI[] = {
     { "dialog", gel_dialog, P_ELEM },
 };
 static const MetodoNat METODOS_GUZ_WID[] = {
-    { "stylesheet", met_guz_stylesheet, NULL },
-    { "text",       met_guz_text,       NULL },
+    { "stylesheet", met_guz_stylesheet, "css" },
+    { "text", met_guz_text, "conteudo" },
     /* a ÁRVORE do HTML: qualquer elemento-contêiner cria filhos DENTRO de si
      * (entry numa div, inputs num form...) — os mesmos métodos do app */
     { "button", met_guz_button, "onclick" },
@@ -6828,7 +6964,7 @@ static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_REGEX[] = {
     { "match", met_rx_match, NULL }, { "fullmatch", met_rx_match, NULL },
     { "search", met_rx_search, NULL }, { "findall", met_rx_findall, NULL },
-    { "sub", met_rx_sub, NULL }, { "split", met_rx_split, NULL },
+    { "sub", met_rx_sub, "repl,string" }, { "split", met_rx_split, "string,maxsplit=0" },
 };
 
 static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
@@ -11746,6 +11882,30 @@ static void imap_login_off(void *p){ SmtpLoginOff *o = (SmtpLoginOff *)p;
 typedef struct { PSMailConn *c; const char *pasta; int readonly; char *erro; size_t cap; int rc; } ImapSelOff;
 static void imap_sel_off(void *p){ ImapSelOff *o = (ImapSelOff *)p;
     o->rc = ps_imap_select(o->c, o->pasta, o->readonly, o->erro, o->cap); }
+/* Escreve `chave: valor` (os dois texto) num dict recém-criado. Existe pra o
+ * search() não repetir cinco vezes a criação das duas strings. */
+static int mail_poe_str(VM *vm, PSDict *d, const char *chave, const char *valor)
+{
+    PSString *ck = nova_string(vm, chave, (int)strlen(chave));
+    if (!ck) return -1;
+    Value cv = MK_OBJ(ck);
+    if (fixa_raiz(vm, cv) != 0) return -1;
+    PSString *vs = nova_string(vm, valor, (int)strlen(valor));
+    if (!vs) { vm->sp--; return -1; }
+    Value vv = MK_OBJ(vs);
+    int rc = dict_set(vm, d, &cv, &vv);
+    vm->sp--;
+    return rc;
+}
+
+typedef struct { PSMailConn *c; const char *crit; const char *termo;
+                 char **ids; char *erro; size_t cap; int rc; } ImapSearchOff;
+static void imap_search_off(void *p){ ImapSearchOff *o = (ImapSearchOff *)p;
+    o->rc = ps_imap_search(o->c, o->crit, o->termo, o->ids, o->erro, o->cap); }
+typedef struct { PSMailConn *c; const char *id; int corpo; char **msg; size_t *n;
+                 char *erro; size_t cap; int rc; } ImapFetchOff;
+static void imap_fetch_off(void *p){ ImapFetchOff *o = (ImapFetchOff *)p;
+    o->rc = ps_imap_fetch(o->c, o->id, o->corpo, o->msg, o->n, o->erro, o->cap); }
 
 static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -11896,11 +12056,84 @@ static int met_mr_search(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn || !m->teve_select)
         MERRO(vm, "RuntimeError", "erro de execução: chame .select() antes de .search()");
-    /* corpo do search só é alcançável com conexão real; o guard acima é o que
-     * o diferencial exercita. A implementação completa fica pro dia do
-     * servidor de teste. */
-    (void)args;
-    MERRO(vm, "RuntimeError", "search() exige conexao IMAP ativa");
+    const char *crit = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "ALL";
+    const char *termo = (n >= 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
+    int64_t limite = (n >= 3 && args[2].t == V_INT) ? args[2].as.i : -1;
+    int com_corpo = (n >= 4) ? val_truthy(&args[3]) : 0;
+
+    char e[220];
+    char *ids = NULL;
+    ImapSearchOff so = { m->conn, crit, termo, &ids, e, sizeof(e), 0 };
+    fib_offload(vm, imap_search_off, &so);
+    if (so.rc != 0) MAIL_ERRO_REDE(vm, e);
+
+    /* O SEARCH devolve os ids em ordem CRESCENTE (mais antigo primeiro) e o
+     * `limit` pede os MAIS RECENTES — então a lista é lida de trás pra frente
+     * e o resultado sai do mais novo pro mais velho. */
+    int cap_id = 16, nid = 0;
+    char **lista = malloc(sizeof(char *) * (size_t)cap_id);
+    if (!lista) { free(ids); MERRO(vm, "MemoryError", "sem memoria em search()"); }
+    for (char *tok = strtok(ids, " \t\r\n"); tok; tok = strtok(NULL, " \t\r\n")) {
+        if (nid >= cap_id) {
+            cap_id *= 2;
+            char **nl = realloc(lista, sizeof(char *) * (size_t)cap_id);
+            if (!nl) { free(lista); free(ids); MERRO(vm, "MemoryError", "sem memoria em search()"); }
+            lista = nl;
+        }
+        lista[nid++] = tok;
+    }
+
+    int quantos = nid;
+    if (limite >= 0 && limite < quantos) quantos = (int)limite;
+
+    vm->sp = vm->sp;   /* estado publicado: o laço abaixo aloca e pode coletar */
+    PSList *res = lista_com_cap(vm, quantos > 0 ? quantos : 1, OBJ_LIST);
+    if (!res) { free(lista); free(ids); MERRO(vm, "MemoryError", "sem memoria em search()"); }
+    if (fixa_raiz(vm, MK_OBJ(res)) != 0) { free(lista); free(ids);
+        MERRO(vm, "RuntimeError", "estouro da pilha em search()"); }
+
+    for (int k = 0; k < quantos; k++) {
+        const char *id = lista[nid - 1 - k];        /* do mais recente pro mais antigo */
+        char *msg = NULL; size_t nmsg = 0;
+        ImapFetchOff fo = { m->conn, id, com_corpo, &msg, &nmsg, e, sizeof(e), 0 };
+        fib_offload(vm, imap_fetch_off, &fo);
+        if (fo.rc != 0) { vm->sp--; free(lista); free(ids); MAIL_ERRO_REDE(vm, e); }
+
+        PSDict *d = novo_dict(vm, 8);
+        if (!d) { free(msg); vm->sp--; free(lista); free(ids);
+                  MERRO(vm, "MemoryError", "sem memoria em search()"); }
+        Value dv = MK_OBJ(d);
+        if (fixa_raiz(vm, dv) != 0) { free(msg); vm->sp--; free(lista); free(ids);
+            MERRO(vm, "RuntimeError", "estouro da pilha em search()"); }
+
+        mail_poe_str(vm, d, "id", id);
+        /* From/Subject podem vir codificados (RFC 2047) — decodifica pra UTF-8 */
+        static const char *CAMPO[3] = { "from", "subject", "date" };
+        static const char *HDR[3]   = { "From", "Subject", "Date" };
+        for (int q = 0; q < 3; q++) {
+            char *v = ps_mime_header(msg, nmsg, HDR[q]);
+            char *dec = v ? ps_mime_decodifica_header(v, strlen(v)) : NULL;
+            mail_poe_str(vm, d, CAMPO[q], dec ? dec : (v ? v : ""));
+            free(dec); free(v);
+        }
+        if (com_corpo) {
+            char *corpo = ps_mime_corpo(msg, nmsg);
+            mail_poe_str(vm, d, "body", corpo ? corpo : "");
+            free(corpo);
+        }
+        free(msg);
+        vm->sp--;                                    /* solta o dict */
+        if (res->len >= res->cap && cresce_lista(vm, res) != 0) {
+            vm->sp--; free(lista); free(ids);
+            MERRO(vm, "MemoryError", "sem memoria em search()");
+        }
+        res->itens[res->len++] = dv;
+    }
+    vm->sp--;
+    free(lista);
+    free(ids);
+    *out = MK_OBJ(res);
+    return 0;
 }
 static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -11908,8 +12141,24 @@ static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn || !m->teve_select)
         MERRO(vm, "RuntimeError", "erro de execução: chame .select() antes de .body()");
-    (void)args;
-    MERRO(vm, "RuntimeError", "body() exige conexao IMAP ativa");
+    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "body() espera o id como str");
+    const char *id = COMO_STRING(args[0])->chars;
+
+    char e[220];
+    char *msg = NULL; size_t nmsg = 0;
+    /* RFC822 inteiro (corpo=1): o `.search()` sem `include_body` traz só o
+     * header, então quem quer o texto vem aqui com o id daquele e-mail. */
+    ImapFetchOff fo = { m->conn, id, 1, &msg, &nmsg, e, sizeof(e), 0 };
+    fib_offload(vm, imap_fetch_off, &fo);
+    if (fo.rc != 0) MAIL_ERRO_REDE(vm, e);
+
+    char *corpo = ps_mime_corpo(msg, nmsg);
+    free(msg);
+    PSString *r = nova_string(vm, corpo ? corpo : "", corpo ? (int)strlen(corpo) : 0);
+    free(corpo);
+    if (!r) MERRO(vm, "MemoryError", "sem memoria em body()");
+    *out = MK_OBJ(r);
+    return 0;
 }
 static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -14550,7 +14799,10 @@ static int met_jresp_send(VM *vm, Value alvo, Value *args, int n, Value *out)
     TXTBUF_AUTO t = {0};
     if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
     r->corpo = jk_str_val(vm, t.b ? t.b : "");
-    r->status = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 200;
+    /* Só mexe no status se ele veio no argumento: `status(418).send(x)`
+     * perdia o 418 porque o send() reescrevia 200 por cima. O objeto já
+     * nasce com 200, então não pôr nada aqui mantém o padrão. */
+    if (n == 2 && args[1].t == V_INT) r->status = (int)args[1].as.i;
     snprintf(r->ctype, sizeof(r->ctype), "text/plain; charset=utf-8");
     *out = alvo;
     return 0;
@@ -14566,7 +14818,8 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
     if (!cs) MERRO(vm, "MemoryError", "sem memoria");
     r->corpo = MK_OBJ(cs);
-    r->status = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 200;
+    /* mesma coisa do send(): não reescrever o status que o status() pôs */
+    if (n == 2 && args[1].t == V_INT) r->status = (int)args[1].as.i;
     snprintf(r->ctype, sizeof(r->ctype), "application/json; charset=utf-8");
     *out = alvo;
     return 0;
@@ -15811,10 +16064,14 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         jk_erro_json(c, 500, "Erro interno do servidor", hr->keep_alive, "*");
         return hr->keep_alive;
     }
-    /* None -> 400 */
+    /* Handler que devolve Null = sucesso SEM CORPO -> 204, que é o que a doc
+     * promete e o que o HTTP quer dizer. Antes saía 400 "Requisição inválida",
+     * que culpa o CLIENTE por algo que foi decisão do handler. */
     if (ret.t == V_NULL || ret.t == V_UNSET) {
         vm->sp--;
-        jk_erro_json(c, 400, "Requisição inválida ou sem dados", hr->keep_alive, acao);
+        char extra204[600];
+        snprintf(extra204, sizeof(extra204), "Access-Control-Allow-Origin: %s\r\n", acao);
+        ps_jk_responde(c, 204, NULL, "", 0, extra204, hr->keep_alive);
         return hr->keep_alive;
     }
 
@@ -17042,12 +17299,49 @@ static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
  * A base vem de `vm->sp`/`vm->locals_top`, que o chamador publica antes de
  * entrar no builtin — por isso tudo que está vivo no frame de fora fica
  * abaixo da marca e continua visível pro GC. */
+/* Teto de aridade do método nativo, lido do PRÓPRIO `params` da tabela.
+ *
+ * A linguagem já recusa `f(1,2,3)` numa action de zero parâmetros e
+ * `"abc".upper(1)` — mas 95 métodos nativos não conferiam nada e engoliam
+ * argumento a mais em silêncio (os 81 elementos do guzer, quase todo o socket,
+ * mail, Jinker). Argumento sobrando é quase sempre erro de digitação ou de
+ * ordem; aceitar calado esconde o defeito de quem escreveu.
+ *
+ * `params` terminado em `...` marca variádico (o `format` da string), e aí
+ * não há teto. Devolve 0 se está bom, -1 se passou (com o erro já montado). */
+static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
+{
+    /* `params` vazio NÃO quer dizer zero argumentos: quer dizer NÃO DECLARADO.
+     * Tratar como zero quebrou `Pattern.match/search/findall`, que leem os
+     * argumentos por um helper (`rx_obj_str`) — a varredura que eu usei
+     * procurava `args[` no corpo e não via isso. Quem exige aridade aqui é a
+     * declaração; método sem declaração continua se defendendo sozinho. */
+    int max;
+    if (!mt->params || !*mt->params) return 0;
+    const char *p = mt->params;
+    if (strstr(p, "...")) return 0;                 /* variádico */
+    max = 1;
+    int prof = 0;
+    for (const char *q = p; *q; q++) {
+        if (*q == '(' || *q == '[' || *q == '{') prof++;
+        else if (*q == ')' || *q == ']' || *q == '}') prof--;
+        else if (*q == ',' && prof == 0) max++;
+    }
+    if (n <= max) return 0;
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+    snprintf(vm->erro, sizeof(vm->erro),
+             "%s() aceita ate %d argumento%s, recebeu %d",
+             mt->nome, max, max == 1 ? "" : "s", n);
+    return -1;
+}
+
 static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
 {
     if (fn.t == V_NATIVE) return BUILTINS[fn.as.nativa].fn(vm, args, n, out);
     if (EH_NATIVA(fn)) return COMO_NATIVA(fn)->fn(vm, args, n, out);
     if (EH_METNAT(fn)) {
         PSMetodoNat *m = COMO_METNAT(fn);
+        if (checa_aridade_nat(vm, &TABELAS[m->tabela][m->idx], n) != 0) return -1;
         return TABELAS[m->tabela][m->idx].fn(vm, m->alvo, args, n, out);
     }
     if (fn.t == V_TIPO) {
@@ -17327,6 +17621,26 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     for (int k = 0; k < x->len; k++) r->itens[c2 * x->len + k] = x->itens[k];
                 r->len = total;
                 stack[sp - 1] = MK_OBJ(r);
+            }
+            /* `"ab" * 3` e `3 * "ab"` — repetição de STRING, o mesmo que a
+             * lista já fazia. Faltava, e `"-" * 40` (a forma de desenhar uma
+             * régua) dava "'*' entre tipos incompativeis". */
+            else if ((EH_STRING(a) && b.t == V_INT) || (EH_STRING(b) && a.t == V_INT)) {
+                Value sv = (a.t == V_INT) ? b : a;
+                int64_t n64 = (a.t == V_INT) ? a.as.i : b.as.i;
+                PSString *x = COMO_STRING(sv);
+                if (n64 < 0) n64 = 0;
+                if (n64 > 0 && x->len > (int)(PS_STR_MAX / n64))
+                    ERRO_T(vm, "MemoryError", "string grande demais na repeticao");
+                int total = (int)(n64 * x->len);
+                vm->sp = sp; vm->locals_top = locals_top;
+                SBUF_AUTO sb = {0};
+                for (int c2 = 0; c2 < (int)n64; c2++)
+                    if (sb_bytes(&sb, x->chars, x->len) != 0)
+                        ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
+                PSString *rs = nova_string(vm, sb.b ? sb.b : "", total);
+                if (!rs) ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
+                stack[sp - 1] = MK_OBJ(rs);
             }
             else ERRO_T(vm, "SomeValueUnexpected", "'*' entre tipos incompativeis");
             break;
@@ -18041,6 +18355,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';
                 Value rv;
+                if (checa_aridade_nat(vm, &TABELAS[m->tabela][m->idx], n) != 0) goto erro_runtime;
                 int rc_m; REANCORA(rc_m = TABELAS[m->tabela][m->idx].fn(vm, m->alvo, &stack[sp - n], n, &rv));
                 if (rc_m != 0) {
                     if (!vm->erro_tipo[0])
@@ -18369,6 +18684,29 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             sp++;
             break;
 
+        case OP_ITER_RANGE: {
+            /* `for each i in range(...)` — a lista NUNCA é construída.
+             * Pilha: [.., ini, fim, passo, i]. Antes o range materializava
+             * tudo: 20 milhões de itens custavam 325 MB, contra 13 MB do
+             * `while` equivalente. Agora é aritmética e memória constante. */
+            Value vi = stack[sp - 4], vf = stack[sp - 3], vp = stack[sp - 2];
+            int64_t i = stack[sp - 1].as.i;
+            int64_t ini, fim, passo;
+            if (num_de_range(vm, vi, &ini) != 0
+                || num_de_range(vm, vf, &fim) != 0
+                || num_de_range(vm, vp, &passo) != 0) goto erro_runtime;
+            if (passo == 0)
+                ERRO_TF(vm, "SomeValueUnexpected",
+                        "valor invalido: passo de range() nao pode ser 0");
+            int64_t quant = (passo > 0)
+                ? (fim > ini ? (fim - ini + passo - 1) / passo : 0)
+                : (fim < ini ? (ini - fim - passo - 1) / (-passo) : 0);
+            if (i >= quant) { sp -= 4; ip = arg; break; }
+            stack[sp - 1] = MK_INT(i + 1);
+            stack[sp++] = MK_INT(ini + i * passo);
+            break;
+        }
+
         case OP_ITER_NEXT: {
             /* Pilha: [.., container, indice].
              * Sem objeto iterador: o par na pilha é o estado. Isso evita
@@ -18602,6 +18940,22 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int rc_fu; REANCORA(rc_fu = fut_resolve(vm, fu));
                 if (rc_fu != 0) goto erro_runtime;
                 stack[sp - 1] = fu->valor;
+            } else if (EH_SEQ(av)) {
+                /* `await [f1, f2]` resolve os futures DE DENTRO, no lugar.
+                 * Antes a lista voltava intacta e cada future sobrava
+                 * pendente — `post` disso saía `[, ]`. Item que não é future
+                 * passa direto, como no await de valor comum. */
+                PSList *l = COMO_LIST(av);
+                for (int k = 0; k < l->len; k++) {
+                    if (!EH_FUTURO(l->itens[k])) continue;
+                    PSFuturo *fu = COMO_FUTURO(l->itens[k]);
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    int rc_fu; REANCORA(rc_fu = fut_resolve(vm, fu));
+                    if (rc_fu != 0) goto erro_runtime;
+                    /* a lista pode ter sido realocada pela fibra que rodou */
+                    l = COMO_LIST(stack[sp - 1]);
+                    if (k < l->len) l->itens[k] = fu->valor;
+                }
             }
             break;
         }
@@ -18654,14 +19008,44 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* `int x = "7"` e `flo x = "1.5"` convertem — o tipo escrito é
              * uma ordem, não um comentário. `flo x = 5` também (int sobe pra
              * flo). O resto é violação: `int x = 5.9` não trunca em silêncio. */
-            /* operando empacotado: tipo nos 2 bits baixos, índice do nome da
+            /* operando empacotado: tipo nos 4 bits baixos, índice do nome da
              * variável (const string) no resto — ver ps_compiler.c. */
-            int tipo = arg & 3;
-            int nome_idx = (int)((unsigned)arg >> 2);
+            int tipo = arg & 15;
+            int nome_idx = (int)((unsigned)arg >> 4);
             Value v = stack[sp - 1];
             const char *decl_nome = "?";
             if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))
                 decl_nome = COMO_STRING(p->consts[nome_idx])->chars;
+            if (tipo == TIPO_CHAR) {
+                /* `char c = "a"` — um caractere, não uma string qualquer.
+                 * Inteiro converte pelo codepoint (`char c = 64` -> "@"), que
+                 * é o mesmo que `chr(64)`. O valor em runtime é `str` de
+                 * comprimento 1: `char` é a restrição da DECLARAÇÃO, não um
+                 * tipo separado (nenhum valor responde `char` ao `type()`). */
+                if (v.t == V_INT || v.t == V_BOOL) {
+                    int64_t cp = v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i;
+                    if (cp < 0 || cp > 0x10FFFF)
+                        ERRO_TF(vm, "ConversionError",
+                                "%lld nao e um caractere valido (declarado como 'char %s')",
+                                (long long)cp, decl_nome);
+                    char buf[4];
+                    int nb = utf8_escreve(buf, (uint32_t)cp);
+                    PSString *cs = nova_string(vm, buf, nb);
+                    if (!cs) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(cs);
+                    break;
+                }
+                if (EH_STRING(v)) {
+                    PSString *t = COMO_STRING(v);
+                    if (utf8_conta(t->chars, t->len) != 1)
+                        ERRO_TF(vm, "AtributtedValueError",
+                                "variável %s esperava char (um caractere), recebeu %d",
+                                decl_nome, utf8_conta(t->chars, t->len));
+                    break;
+                }
+                ERRO_TF(vm, "AtributtedValueError",
+                        "variável %s esperava char", decl_nome);
+            }
             if (tipo == TIPO_INT && EH_STRING(v)) {
                 PSString *t = COMO_STRING(v);
                 int64_t r;
@@ -20480,8 +20864,8 @@ static const struct { const char *dono; const char *membro; const char *tipo; } 
     { "qrcode", "QRCode", "PoolQRCode" },
     { "qrcode", "make", "QRImage" },
     { "regex", "compile", "Pattern" },
-    { "regex", "escape", "PoolStr" },
-    { "regex", "sub", "PoolStr" },
+    { "regex", "escape", "str" },
+    { "regex", "sub", "str" },
     { "request", "delete", "Response" },
     { "request", "get", "Response" },
     { "request", "head", "Response" },
@@ -20496,9 +20880,9 @@ static const struct { const char *dono; const char *membro; const char *tipo; } 
     { "requests", "post", "Response" },
     { "requests", "put", "Response" },
     { "requests", "ws_connect", "WsConnection" },
-    { "sockets", "create_connection", "PoolSocket" },
-    { "sockets", "create_server", "PoolSocket" },
-    { "sockets", "socket", "PoolSocket" },
+    { "sockets", "create_connection", "socket" },
+    { "sockets", "create_server", "socket" },
+    { "sockets", "socket", "socket" },
     { "sqlite3", "connect", "PoolConnection" },
 };
 #define N_RETORNOS ((int)(sizeof(RETORNOS) / sizeof(RETORNOS[0])))
@@ -20515,22 +20899,22 @@ static const char *retorno_de(const char *dono, const char *membro)
  * Não estão nas tabelas METODOS_* porque o OP_GET_MEMBER os resolve por
  * strcmp direto; sem registrá-los aqui, o autocomplete do editor não os
  * enxergava. Mesma ideia do RETORNOS: o motor é a fonte. */
+/* Campos (acesso SEM parênteses) que o metadata publica. Cada entrada aqui é
+ * uma PROMESSA ao editor: se o motor não serve o campo, o autocomplete oferece
+ * algo que estoura em "membro inexistente". Sete entradas fantasma já viveram
+ * aqui (MailMessage.msg, MailServer.server/user, MailReader.folder/server/user
+ * e Jinker.route_prefix — este último é argumento do CONSTRUTOR, não campo).
+ * O `teste/confere_metadata.ps` acessa cada um de verdade; entrada fantasma
+ * derruba a checagem. */
 static const struct { const char *dono; const char *campo; const char *tipo; } CAMPOS[] = {
     { "ChannelManager", "status", NULL },
     { "DbCursor", "rowcount", "int" },
     { "Jinker", "channel", NULL },
     { "Jinker", "name", NULL },
-    { "Jinker", "route_prefix", NULL },
     { "Jinker", "socket", NULL },
     { "Jinker", "static_folder", NULL },
     { "Jinker", "static_url", NULL },
     { "JinkerResponse", "status_code", NULL },
-    { "MailMessage", "msg", NULL },
-    { "MailReader", "folder", NULL },
-    { "MailReader", "server", NULL },
-    { "MailReader", "user", NULL },
-    { "MailServer", "server", NULL },
-    { "MailServer", "user", NULL },
     { "ManpuFile", "filepath", NULL },
     { "Pattern", "pattern", "str" },
     { "PoolCursor", "lastrowid", NULL },
@@ -20582,6 +20966,17 @@ static void jm_params(FILE *f, const char *lista)
                 size_t n = (size_t)(p - ini);
                 if (n >= sizeof(seg)) n = sizeof(seg) - 1;
                 memcpy(seg, ini, n); seg[n] = '\0';
+                /* `...` é o marcador de variádico (a checagem de aridade o
+                 * lê) — não é parâmetro, não sai no JSON. */
+                {
+                    const char *sl = seg;
+                    while (*sl == ' ') sl++;
+                    if (strcmp(sl, "...") == 0) {
+                        if (*p == '\0') break;
+                        ini = p + 1;
+                        continue;
+                    }
+                }
                 size_t tn = par_nome_tam(seg, n);
                 char nome[64];
                 size_t nn = tn < sizeof(nome) ? tn : sizeof(nome) - 1;
@@ -20620,7 +21015,9 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_MAILMSG:   return "MailMessage";
         case T_MET_MAILRD:    return "MailReader";
         case T_MET_RESP:      return "Response";
-        case T_MET_QRFILE:    return "QRFile";
+        /* o `type()` deste objeto responde "QRPoolFile" (ver escreve_valor):
+         * publicar "QRFile" fazia o editor nunca casar os dois. */
+        case T_MET_QRFILE:    return "QRPoolFile";
         case T_MET_DBCONN:    return "DbConnection";
         case T_MET_DBCUR:     return "DbCursor";
         case T_MET_MONGOCONN: return "MongoConnection";
@@ -20651,9 +21048,24 @@ void ps_metadata_json(FILE *saida)
     FILE *f = saida ? saida : stdout;
     fprintf(f, "{\n \"modulos\": {");
     for (int i = 0; i < N_MODULOS; i++) {
+        /* Módulo registrado com `_` na frente NÃO se importa: `_Parsing` é
+         * namespace pré-ligado (escreve-se `Parsing`, sem import) e
+         * `_stdout`/`_stderr` só existem como `sys.stdout`/`sys.stderr`.
+         * Publicar o nome de registro fazia o editor sugerir `import _stdout`,
+         * que só podia dar ImportError. Sai o nome que o usuário ESCREVE. */
+        const char *nome_vis = MODULOS[i].nome;
+        char buf_vis[64];
+        if (nome_vis[0] == '_') {
+            if (!strcmp(nome_vis, "_stdout") || !strcmp(nome_vis, "_stderr")) {
+                snprintf(buf_vis, sizeof(buf_vis), "sys.%s", nome_vis + 1);
+                nome_vis = buf_vis;
+            } else {
+                nome_vis = MODULOS[i].nome + 1;
+            }
+        }
         if (i) fputc(',', f);
         fprintf(f, "\n  ");
-        jm_txt(f, MODULOS[i].nome);
+        jm_txt(f, nome_vis);
         fprintf(f, ": [");
         for (int k = 0; k < MODULOS[i].n; k++) {
             const MembroMod *m = &MODULOS[i].membros[k];
@@ -20669,6 +21081,26 @@ void ps_metadata_json(FILE *saida)
             fputc('}', f);
         }
         fprintf(f, "\n  ]");
+    }
+    fprintf(f, "\n },\n \"acesso\": {");
+    for (int i = 0; i < N_MODULOS; i++) {
+        const char *nome_vis = MODULOS[i].nome;
+        const char *acesso = "import";
+        char buf_vis[64];
+        if (nome_vis[0] == '_') {
+            if (!strcmp(nome_vis, "_stdout") || !strcmp(nome_vis, "_stderr")) {
+                snprintf(buf_vis, sizeof(buf_vis), "sys.%s", nome_vis + 1);
+                nome_vis = buf_vis;
+                acesso = "atributo";
+            } else {
+                nome_vis = MODULOS[i].nome + 1;
+                acesso = "global";
+            }
+        }
+        if (i) fputc(',', f);
+        fprintf(f, "\n  ");
+        jm_txt(f, nome_vis);
+        fprintf(f, ": \"%s\"", acesso);
     }
     fprintf(f, "\n },\n \"tipos\": {");
     int primeiro = 1;
@@ -20700,6 +21132,45 @@ void ps_metadata_json(FILE *saida)
             fputc('}', f);
         }
         fprintf(f, "\n  ]");
+    }
+    /* `Button` e `Window` são o MESMO objeto de `Elemento` — só o `type()` os
+     * rotula diferente (é o que a doc de guzer/button e guzer/window diz). Sem
+     * publicá-los aqui, o editor resolvia `app.button()` pro tipo "Button",
+     * não achava nada e não oferecia membro nenhum. */
+    for (int t = 0; t < (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0])); t++) {
+        const char *rot = jm_rotulo_tabela(t);
+        if (!rot || strcmp(rot, "Elemento") != 0) continue;
+        const char *apelidos[] = { "Button", "Window" };
+        for (int q = 0; q < 2; q++) {
+            fprintf(f, ",\n  ");
+            jm_txt(f, apelidos[q]);
+            fprintf(f, ": [");
+            for (int k = 0; k < TAM_TABELA[t]; k++) {
+                if (k) fputc(',', f);
+                fprintf(f, "\n   {\"nome\": ");
+                jm_txt(f, TABELAS[t][k].nome);
+                fprintf(f, ", \"params\": ");
+                jm_params(f, TABELAS[t][k].params);
+                const char *ret = retorno_de(rot, TABELAS[t][k].nome);
+                fprintf(f, ", \"retorna\": ");
+                if (ret) jm_txt(f, ret); else fprintf(f, "null");
+                fputc('}', f);
+            }
+            fprintf(f, "\n  ]");
+        }
+    }
+    /* Tipos que EXISTEM em runtime (o `type()` devolve estes nomes) mas não têm
+     * tabela de método: são valores que se comparam (`== "Success"`) ou se
+     * testam como bool. Publicados VAZIOS de propósito — assim o editor resolve
+     * `retorna: "ChannelStatus"` e mostra corretamente que não há membro, em
+     * vez de não achar o tipo e ficar mudo. */
+    {
+        const char *sem_membro[] = { "ChannelStatus", "ManpuResult", "JinkerRequest" };
+        for (int q = 0; q < 3; q++) {
+            fprintf(f, ",\n  ");
+            jm_txt(f, sem_membro[q]);
+            fprintf(f, ": []");
+        }
     }
     fprintf(f, "\n }\n}\n");
 }
