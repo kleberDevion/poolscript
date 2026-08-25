@@ -44,7 +44,6 @@ static const char *KEYWORDS[] = {
     "POST", "PUT", "DELETE", "JSON", "json",
     /* `dict` é apelido de `json`; `tup` nomeia a tupla */
     "dict", "tup",
-    "full", "mei",
     NULL
 };
 /*as cores devem funcionar no hexadecimal tbm*/
@@ -80,6 +79,14 @@ typedef struct {
      * sendo emitidos, porque um sub-bloco `:` lá dentro precisa deles — o que
      * cai é só a validação de "múltiplo de 4" e "avançou exatamente 4". */
     int         chave_depth;
+    /* Que TIPO de `{` é cada um dos abertos: 1 = dicionário, 0 = bloco.
+     *
+     * Num dicionário a indentação não significa nada e não pode nem tocar a
+     * pilha de indentação — `{"a": 1,\n     "b": 2}` empurrava um nível que
+     * ninguém tirava, e a linha seguinte vinha com um DEDENT órfão
+     * ("expressao invalida"). Num BLOCO ela conta, porque pode haver um
+     * sub-bloco `:` dentro. O lexer decide pelo token ANTERIOR ao `{`. */
+    unsigned char chave_dict[64];
 
     PSTokenList *out;
 } Lexer;
@@ -191,6 +198,9 @@ static void trata_newline(Lexer *lx)
      * ':'". Dentro de dicionário literal quem ignora esses tokens é o parser
      * (pula_separadores com grupo_depth > 0). */
     if (lx->paren_depth > 0) return;
+    /* dentro de `{ }` de DICIONÁRIO a indentação também não conta */
+    if (lx->chave_depth > 0 && lx->chave_depth <= 64
+            && lx->chave_dict[lx->chave_depth - 1]) return;
 
     /* Continuação com `.membro` na próxima linha: não emite NEWLINE nem
      * mexe na indentação, pra `obj()\n  .json()\n  .status()` funcionar. */
@@ -617,7 +627,30 @@ static int le_punct(Lexer *lx)
     else if (c == ')' || c == ']') {
         if (lx->paren_depth > 0) lx->paren_depth--;
     }
-    else if (c == '{') lx->chave_depth++;
+    else if (c == '{') {
+        /* Dicionário quando o `{` vem DEPOIS de algo que espera um VALOR:
+         * operador, `(`, `[`, `,`, `:`, ou as palavras `return`/`yield`/
+         * `case` (o `case {a: 1}` casa um dict). Depois de `)`, de um nome ou
+         * de um literal, é BLOCO — `if (x) {`, `for each i in l {`,
+         * `match x {`, `case 1 {`. */
+        int dict = 1;                       /* início de arquivo abre valor */
+        PSTokenList *o = lx->out;
+        /* `n - 2`: o token do PRÓPRIO `{` já foi criado logo acima, então o
+         * anterior é o penúltimo. Ler `n - 1` classificava o `{` por ele
+         * mesmo e todo bloco virava dicionário. */
+        if (o->n > 1) {
+            PSToken *a = &o->tokens[o->n - 2];
+            if (a->type == T_OP || a->type == T_COMMA || a->type == T_COLON
+                    || a->type == T_LPAREN || a->type == T_LBRACK
+                    || a->type == T_LBRACE) dict = 1;
+            else if (a->type == T_KW && a->texto
+                     && (!strcmp(a->texto, "return") || !strcmp(a->texto, "yield")
+                      || !strcmp(a->texto, "case"))) dict = 1;
+            else dict = 0;
+        }
+        if (lx->chave_depth < 64) lx->chave_dict[lx->chave_depth] = (unsigned char)dict;
+        lx->chave_depth++;
+    }
     else if (c == '}') { if (lx->chave_depth > 0) lx->chave_depth--; }
     lx->pos++; lx->col++;
     return 1;

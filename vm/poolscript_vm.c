@@ -20931,7 +20931,6 @@ static const struct { const char *dono; const char *campo; const char *tipo; } C
     { "Jinker", "static_folder", NULL },
     { "Jinker", "static_url", NULL },
     { "JinkerResponse", "status_code", NULL },
-    { "ManpuFile", "filepath", NULL },
     { "Pattern", "pattern", "str" },
     { "PoolCursor", "lastrowid", NULL },
     { "PoolCursor", "rowcount", "int" },

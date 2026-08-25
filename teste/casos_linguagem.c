@@ -179,6 +179,47 @@ const Caso CASOS_LINGUAGEM[] = {
 { "str() e post() concordam no builtin",
   "post(\"[\" + str(len) + \"]\")\n", "[<builtin>]", NULL, 0 },
 
+/* ── dicionário multilinha x bloco de chaves ─────────────────────────────
+ * O `{` é as DUAS coisas na linguagem: abre bloco e abre dicionário. Quando
+ * o lexer passou a emitir indentação dentro de `{ }` (pra o bloco `:` aninhado
+ * funcionar), o dicionário com continuação INDENTADA passou a empurrar um
+ * nível que ninguém tirava, e a linha seguinte vinha com um DEDENT órfão:
+ * `{"a": 1,\n     "b": 2}` virava "expressao invalida".
+ *
+ * Agora o lexer classifica cada `{` pelo token ANTERIOR: depois de operador,
+ * `(`, `[`, `,`, `:`, `return`, `yield` ou `case` é DICIONÁRIO (indentação
+ * ignorada); depois de `)`, nome ou literal é BLOCO (indentação conta). */
+{ "dicionario multilinha com continuacao indentada",
+  "d = {\"a\": 1,\n     \"b\": 2}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
+{ "dicionario multilinha dentro de action",
+  "action f():\n    return {\"a\": 1,\n            \"b\": 2}\npost(f())\n",
+  "{'a': 1, 'b': 2}", NULL, 0 },
+{ "dicionario com a chave em linha propria",
+  "d = {\n    \"a\": 1,\n    \"b\": 2\n}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
+{ "lista multilinha indentada",
+  "action g():\n    return [1,\n            2]\npost(g())\n", "[1, 2]", NULL, 0 },
+{ "dicionario aninhado multilinha",
+  "d = {\"a\": {\"b\": 1,\n            \"c\": 2},\n     \"d\": 3}\npost(d)\n",
+  "{'a': {'b': 1, 'c': 2}, 'd': 3}", NULL, 0 },
+{ "dicionario como argumento multilinha",
+  "action f(x):\n    return x[\"a\"]\npost(f({\"a\": 1,\n        \"b\": 2}))\n", "1", NULL, 0 },
+{ "bloco de chaves continua sendo bloco depois de )",
+  "if (true) {\n    action f():\n        return 1\n    post(f())\n}\n", "1", NULL, 0 },
+{ "match usa bloco, e o padrao dict usa dicionario",
+  "d = {\"a\": 1}\nmatch d {\n case {a: 1} { post(\"casou\") }\n case _ { post(\"nao\") }\n}\n",
+  "casou", NULL, 0 },
+{ "for each com bloco de chaves",
+  "for each i in [1,2] {\n    post(i)\n}\n", "1\n2", NULL, 0 },
+
+/* ── `full` e `mei` não são palavras da linguagem ────────────────────────
+ * Estavam na lista de reservadas desde a criação do lexer em C, copiadas da
+ * tabela do interpretador — mas são valor de argumento de UMA lib (manpu), e
+ * o C sempre os comparou como STRING. Reservados serviam pra nada: não viravam
+ * valor (`post(full)` dava "variável não definida") e bloqueavam os dois nomes
+ * pro usuário. */
+{ "full e mei valem como nome de variavel",
+  "full = 1\nmei = \"x\"\npost(full, mei)\n", "1 x", NULL, 0 },
+
 /* ── aridade de método nativo ────────────────────────────────────────────
  * A linguagem sempre recusou `f(1,2,3)` numa action de zero parâmetros, mas
  * 95 métodos nativos engoliam argumento a mais em silêncio. O teto agora sai

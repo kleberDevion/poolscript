@@ -1,0 +1,70 @@
+# qrcode: PoolQRCode (4), QRImage (4) e QRPoolFile (2) — tudo LOCAL, o PNG é
+# gerado pelo próprio motor (libpng estático). Cada método é chamado de
+# verdade e o efeito conferido lendo o arquivo de volta.
+import qrcode
+import os
+
+dir = "/tmp/ps_qr"
+if not os.exists(dir):
+    os.mkdir(dir)
+
+# ── qrcode.make: o atalho ───────────────────────────────────────────────────
+img = qrcode.make("https://poolscript.dev")
+post("make ->", type(img), "| name ->", img.name)
+
+p1 = dir + "/atalho.png"
+img.save(p1)
+post("QRImage.save ->", os.exists(p1), os.size(p1) > 0)
+
+# ── QRImage.resize ──────────────────────────────────────────────────────────
+img.resize(120, 120)
+p2 = dir + "/redimensionado.png"
+img.save(p2)
+post("resize ->", os.exists(p2), os.size(p2) > 0)
+
+# ── QRImage.to_file -> QRPoolFile ───────────────────────────────────────────
+qf = img.to_file()
+post("to_file ->", type(qf))
+post("QRPoolFile.bytes ->", len(qf.bytes()) > 0)
+p3 = dir + "/pelo_poolfile.png"
+qf.save(p3)
+post("QRPoolFile.save ->", os.exists(p3))
+
+# ── PoolQRCode: o builder ───────────────────────────────────────────────────
+q = qrcode.QRCode()
+post("QRCode ->", type(q))
+q.add_data("primeiro pedaco ")
+q.add_data("segundo pedaco")
+q.make(true)
+im2 = q.make_image("#000000", "#FFFFFF", "montado.png")
+post("make_image ->", type(im2), "| name ->", im2.name)
+p4 = dir + "/montado.png"
+im2.save(p4)
+post("builder salvou ->", os.exists(p4), os.size(p4) > 0)
+
+# clear zera o conteúdo acumulado
+q.clear()
+q.add_data("depois do clear")
+q.make(true)
+im3 = q.make_image("#000000", "#FFFFFF", "limpo.png")
+p5 = dir + "/limpo.png"
+im3.save(p5)
+post("clear ->", os.exists(p5), os.size(p5) != os.size(p4))
+
+# ── qrcode.gen: grava direto ────────────────────────────────────────────────
+p6 = dir + "/gen.png"
+qrcode.gen("texto do gen", p6)
+post("gen ->", os.exists(p6), os.size(p6) > 0)
+
+# ── os níveis de correção existem ───────────────────────────────────────────
+post("niveis ->", qrcode.ERROR_CORRECT_L, qrcode.ERROR_CORRECT_M,
+     qrcode.ERROR_CORRECT_Q, qrcode.ERROR_CORRECT_H)
+
+# o PNG gerado é PNG de verdade (assinatura de 8 bytes)
+using open(p1, "rb") as f:
+    post("assinatura PNG ->", f.read(4))
+
+for each ent in os.ls(dir):
+    _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+os.rmdir(dir)
+post("fim")

@@ -114,6 +114,7 @@ import mail
 import regex
 import jinker
 import qrcode
+import manpu
 
 # a EXPRESSÃO que constrói cada amostra — o campo é acessado num `pool`
 # separado, então precisa do fonte, não do objeto.
@@ -125,6 +126,8 @@ amostras_fonte["Pattern"] = "regex.compile(\"a\")"
 amostras_fonte["Jinker"] = "jinker.Jinker(name=\"conf\")"
 amostras_fonte["JinkerResponse"] = "jinker.JinkerResponse()"
 amostras_fonte["QRImage"] = "qrcode.make(\"x\")"
+amostras_fonte["ManpuFile"] = "manpu.open(target=\"/tmp/ps_cm.txt\")"
+amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
 
 amostras_campo = {}
 amostras_campo["MailMessage"] = mail.MailMessage()
@@ -134,6 +137,8 @@ amostras_campo["Pattern"] = regex.compile("a")
 amostras_campo["Jinker"] = jinker.Jinker(name="conf")
 amostras_campo["JinkerResponse"] = jinker.JinkerResponse()
 amostras_campo["QRImage"] = qrcode.make("x")
+amostras_campo["ManpuFile"] = manpu.open(target="/tmp/ps_cm.txt")
+amostras_campo["PoolQRCode"] = qrcode.QRCode()
 
 fantasmas = []
 campos_conferidos = 0

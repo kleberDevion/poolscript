@@ -54,6 +54,32 @@ action sd():
 action jf():
     return jinker.jsonify({"via": "jsonify"})
 
+# ── upload multipart: PoolFileUpload (7 membros) ────────────────────────────
+@app.route("/upload", methods=["POST"])
+action up():
+    f = jinker.request.file("arq")
+    if f == Null:
+        return {"erro": "sem arquivo"}
+    f.save("/tmp/ps_upload_recebido.txt")
+    return {"name": f.name, "ext": f.ext, "size": f.size,
+            "content_type": f.content_type, "bytes": len(f.bytes())}
+
+@app.route("/uploads", methods=["POST"])
+action ups():
+    todos = jinker.request.files()
+    return {"quantos": len(todos)}
+
+# ── WebSocket: SocketNamespace / SocketEmitter / ChannelManager ─────────────
+@app.socket("/ws")
+action ws_handler():
+    # eco: devolve o que chegou
+    return jinker.request.text()
+
+@app.route("/emitir")
+action emitir():
+    st = app.channel.emit("aviso", {"n": 1})
+    return {"emit": str(st), "status": str(app.channel.status)}
+
 # a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)
 run_selfwith_("main") {
     app(debug=false, host="127.0.0.1", port=28840)

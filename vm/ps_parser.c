@@ -194,7 +194,7 @@ static int kw_abre_expr(const char *s)
 {
     static const char *NOMES[] = {
         "post", "input", "create", "clear", "space", "addEnd", "char", "list",
-        "json", "dict", "tup", "JSON", "full", "mei", "self",
+        "json", "dict", "tup", "JSON", "self",
         "upper", "lower", "replace", "split", "strip", "join", "startswith",
         "endswith", "find", "index", "format", "encode", "decode", "lstrip",
         "rstrip", "title", "capitalize", "not", "Not", NULL
