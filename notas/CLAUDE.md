@@ -18,17 +18,12 @@ A versão da **linguagem** tem uma fonte só, e é constante de C:
 - `docs/PoolScript.md` cita a mesma versão no título, no exemplo do
   `pool --version` e no banner do REPL — sobe junto, pra doc não defasar.
 
-A da **extensão VS Code** vive em `psl-poolscript-vsix/package.json` e é
-independente da versão da linguagem.
-
 Nunca edite na mão — use o script, que aplica o rollover e mantém tudo em
 sincronia:
 
 ```bash
-./bump_version.py            # só valida, não altera
-./bump_version.py lang       # +1 na linguagem
-./bump_version.py ext        # +1 na extensão
-./bump_version.py lang ext   # ambas
+./pool bump_version.ps        # só valida, não altera
+./pool bump_version.ps lang   # +1 na linguagem
 ```
 
 Mudar a versão **força o relink**: o alvo `pool` depende de `ps_versao.h`, senão
@@ -91,9 +86,14 @@ mudou):
 | Grupo | Gerador | O que trava |
 |---|---|---|
 | `diferencial` | — (colhido de um commit) | a saída de ontem, caso a caso |
-| `equivalencia` | `teste/geradores/gera_c_equivalencia.py` | formas redundantes têm que concordar entre si |
-| `oraculo` | `teste/geradores/gera_c_oraculo.py` | 4484 expressões contra o **Python** como oráculo |
-| `robustez` | `teste/geradores/gera_c_robustez.py` | ~11,9 mil chamadas com aridade/tipo errados |
+| `equivalencia` | `teste/geradores/equivalencia.ps` | formas redundantes têm que concordar entre si |
+| `oraculo` | `teste/geradores/oraculo.ps` | 4484 expressões contra o **Python** como oráculo |
+| `robustez` | `teste/geradores/robustez.ps` | ~11,9 mil chamadas com aridade/tipo errados |
+
+Os geradores são PoolScript rodando no `./pool` — não há Python nem JavaScript
+no projeto. O `oraculo` consulta o CPython como ferramenta **externa** (escreve
+um driver em `/tmp` na hora e o chama), do mesmo jeito que outro teste consulta
+um banco de dados: nenhum `.py` fica versionado aqui.
 
 O `oraculo` guarda o valor que a linguagem produz hoje e marca `DIVERGE` nos
 casos em que o Python daria outra coisa, com o valor dele no comentário — a
@@ -112,29 +112,17 @@ Automação, auditoria e smoke tests de apoio são escritos em `.ps` e rodados n
 `./pool`. Todo tropeço escrevendo `.ps` é bug ou limitação candidata — anotar em
 `notas/LIMITACOES.md` ou corrigir na hora.
 
-## Extensão VS Code
+## Editor: servidor LSP, em PoolScript
 
-O cérebro do completion é `psl-poolscript-vsix/extension.js` e o modelo de tipos
-que ele consulta é `psl-poolscript-vsix/bridge/metadata.json` (cada função de lib
-com seus PARÂMETROS, cada classe com seus MEMBROS e TIPO DE RETORNO). É o que faz
-o autocomplete ser type-aware — a cadeia `conn = psodbc.connect()` →
-`DbConnection` → `conn.cursor()` → `DbCursor` → `fetchall/fetchone/...` — e, se o
-tipo é desconhecido, NÃO sugere nada (nada de método falso).
+O suporte a editor é um **servidor LSP escrito em PoolScript** (`lsp/`), rodado
+pelo `pool`. Não há JavaScript no projeto, e não há extensão VS Code
+versionada aqui — qualquer editor que fale LSP conversa com esse servidor.
 
-O binário expõe a mesma informação com `pool --metadata` (módulos, membros,
-tipos e métodos, lidos das tabelas do próprio VM). É a fonte pra manter o
-`metadata.json` em dia sem escrever nada à mão.
-
-Testes (harness Node que dirige o `extension.js` real, sem VS Code):
-
-```bash
-node psl-poolscript-vsix/test/completion.test.js   # cenários (cadeia DB, arg nomeado)
-node psl-poolscript-vsix/test/coverage.test.js     # varre TODO o metadata (100%)
-node psl-poolscript-vsix/test/hover.test.js
-```
-
-Build do `.vsix`: `cd psl-poolscript-vsix && npx @vscode/vsce package
---allow-star-activation --skip-license`.
+O modelo de tipos vem do próprio binário: `pool --metadata` lista módulos,
+membros, tipos e métodos lidos das tabelas do VM. É o que faz o completion ser
+type-aware — a cadeia `conn = psodbc.connect()` → `DbConnection` →
+`conn.cursor()` → `DbCursor` → `fetchall/fetchone/...` — e, se o tipo é
+desconhecido, NÃO sugere nada (nada de método falso).
 
 ## Doc: assinatura vem do CÓDIGO, nunca digitada
 

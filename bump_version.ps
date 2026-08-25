@@ -1,0 +1,142 @@
+# Valida e incrementa a versão da linguagem seguindo a regra de rollover.
+#
+# Os dígitos 2 e 3 vão de 0 a 99. Ao chegar em 100 eles zeram e somam 1 no
+# dígito à esquerda (base 100, NÃO semver):
+#
+#     8.2.18  -> 8.2.19
+#     8.2.99  -> 8.3.0
+#     8.99.99 -> 9.0.0
+#
+# A versão tem UMA fonte: a constante `PS_VERSAO` em vm/ps_versao.h, que o
+# compilador embute no binário. A doc cita a mesma versão e sobe junto, pra
+# nunca defasar.
+#
+# Uso:
+#     ./pool bump_version.ps          # valida, não altera nada
+#     ./pool bump_version.ps lang     # +1 na versão
+import sys
+import os
+import regex
+
+MAX_DIGITO = 99
+
+# (arquivo, padrão com UM grupo capturando só a versão, prefixo literal).
+# O prefixo ancora a troca: sem ele, um `8.2.84` que aparecesse por outro
+# motivo no arquivo também seria trocado.
+ARQUIVOS = [
+    ["vm/ps_versao.h",     "#define PS_VERSAO \"(\\d+\\.\\d+\\.\\d+)\"", "#define PS_VERSAO \""],
+    ["docs/PoolScript.md", "PoolScript v(\\d+\\.\\d+\\.\\d+)",           "PoolScript v"]
+]
+
+
+action morre(msg):
+    post("[erro]", msg)
+    sys.exit(1)
+
+
+action parte(versao):
+    ps = versao.split(".")
+    return [int(ps[0]), int(ps[1]), int(ps[2])]
+
+
+# Devolve a mensagem do problema, ou "" se a versão respeita a regra.
+action valida(versao):
+    p = parte(versao)
+    if p[2] > MAX_DIGITO:
+        return "3º dígito " + str(p[2]) + " passou de " + str(MAX_DIGITO) + " (faltou o rollover)"
+    if p[1] > MAX_DIGITO:
+        return "2º dígito " + str(p[1]) + " passou de " + str(MAX_DIGITO) + " (faltou o rollover)"
+    return ""
+
+
+action sobe(versao):
+    p = parte(versao)
+    maior = p[0]
+    meio = p[1]
+    menor = p[2] + 1
+    if menor > MAX_DIGITO:
+        menor = 0
+        meio = meio + 1
+    if meio > MAX_DIGITO:
+        meio = 0
+        maior = maior + 1
+    return str(maior) + "." + str(meio) + "." + str(menor)
+
+
+# Lê a versão de um arquivo. Um arquivo pode citar a versão em vários lugares
+# (a doc mostra no título, no `pool --version` e no banner do REPL) — todas têm
+# que concordar, senão sincronizar não significa nada.
+action le_versao(caminho, padrao):
+    if not os.exists(caminho):
+        morre("não achei o arquivo " + caminho)
+    texto = open(caminho).read()
+    achados = regex.findall(padrao, texto)
+    if len(achados) == 0:
+        morre("não achei a versão em " + caminho)
+    distintas = []
+    for each v in achados:
+        if not v in distintas:
+            distintas.append(v)
+    if len(distintas) > 1:
+        morre(caminho + " tem versões divergentes dentro do próprio arquivo: " + str(distintas))
+    return achados[0]
+
+
+# Confere que TODOS os arquivos têm a mesma versão e que ela respeita a regra.
+action confere():
+    achadas = []
+    for each par in ARQUIVOS:
+        achadas.append(le_versao(par[0], par[1]))
+    distintas = []
+    for each v in achadas:
+        if not v in distintas:
+            distintas.append(v)
+    if len(distintas) > 1:
+        post("[erro] versões dessincronizadas entre os arquivos:")
+        i = 0
+        for each par in ARQUIVOS:
+            post("   ", par[0] + ":", achadas[i])
+            i = i + 1
+        sys.exit(1)
+    versao = distintas[0]
+    problema = valida(versao)
+    if problema != "":
+        morre("versão " + versao + " é inválida: " + problema)
+    post("lang:", versao, "(ok)")
+    return versao
+
+
+# Troca a versão em TODAS as ocorrências de todos os arquivos.
+action aplica(atual):
+    nova = sobe(atual)
+    for each par in ARQUIVOS:
+        caminho = par[0]
+        prefixo = par[2]
+        texto = open(caminho).read()
+        quantas = texto.count(prefixo + atual)
+        novo = texto.replace(prefixo + atual, prefixo + nova)
+        using open(caminho, "w") as f:
+            f.write(novo)
+        sufixo = ""
+        if quantas > 1:
+            sufixo = " (" + str(quantas) + "x)"
+        post("   ", caminho + ":", atual, "->", nova + sufixo)
+    post("lang:", atual, "->", nova)
+
+
+run_selfwith_("main"):
+    # `sys.argv` já vem SEM o nome do script (diferente do Python, onde argv[0]
+    # é o script) — o primeiro elemento já é o primeiro argumento do usuário.
+    alvos = sys.argv
+    for each a in alvos:
+        if a != "lang":
+            morre("alvo desconhecido: " + a + " (só existe 'lang')")
+
+    atual = confere()
+
+    if len(alvos) == 0:
+        post("")
+        post("nada alterado (rode com 'lang' para incrementar)")
+    else:
+        post("")
+        aplica(atual)

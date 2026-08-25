@@ -1,5 +1,5 @@
 /*
- * GERADO por teste/geradores/gera_c_robustez.py — nao edite na mao.
+ * GERADO por teste/geradores/robustez.ps — nao edite na mao.
  *
  * Chamada errada (aridade e tipo) em cada metodo de cada tipo. O caso
  * imprime as chamadas que passaram CALADAS; a saida esperada e a lista

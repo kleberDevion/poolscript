@@ -1,5 +1,5 @@
 /*
- * GERADO por teste/geradores/gera_c_oraculo.py — nao edite na mao.
+ * GERADO por teste/geradores/oraculo.ps — nao edite na mao.
  *
  * Cada caso e uma expressao rodada no ./pool, com o valor que a linguagem
  * produz hoje. O Python foi o oraculo na geracao: caso marcado DIVERGE tem

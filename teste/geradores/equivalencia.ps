@@ -1,0 +1,313 @@
+# EQUIVALÊNCIA INTERNA: a mesma computação escrita de N formas diferentes.
+#
+# Não precisa de oráculo externo. A linguagem oferece caminhos redundantes
+# (`for each` x `while`, bloco `:` x bloco `{}`, `match` x `if`, gerador x
+# lista, closure x parâmetro, método x action). Se duas formas da MESMA conta
+# dão resultados diferentes, uma das duas está quebrada — e não interessa o
+# que o Python faria.
+#
+# Cada FAMÍLIA é uma lista de programas que TEM que imprimir a mesma coisa.
+# Uma família só vira teste se TODAS as formas dela concordarem agora; família
+# divergente é RELATADA e fica de fora — teste não nasce verde escondendo
+# defeito. Sai com código 1 se houver divergente.
+#
+# Rodar:  ./pool teste/geradores/equivalencia.ps
+import os
+import sys
+
+SAIDA = "teste/casos_equivalencia.c"
+TMP = "/tmp/ps_equiv"
+
+fam = []
+
+action F(nome, progs):
+    fam.append({"nome": nome, "progs": progs})
+
+
+# ── laço: for each x while x gerador x recursão ─────────────────────────────
+for each n in [0, 1, 5, 17]:
+    F(f"soma 0..{n}", [
+      f"s = 0\nfor each i in range({n}):\n    s = s + i\npost(s)",
+      f"s = 0\nn = 0\nwhile n < {n}:\n    s = s + n\n    n = n + 1\npost(s)",
+      f"s = 0\nfor each i in range({n}) " + "{\n    s = s + i\n}" + "\npost(s)",
+      f"action g():\n    for each i in range({n}):\n        yield i\ns = 0\nfor each v in g():\n    s = s + v\npost(s)",
+      f"action r(i, acc):\n    if i >= {n}:\n        return acc\n    return r(i + 1, acc + i)\npost(r(0, 0))",
+      f"post(sum(range({n})))",
+      f"l = []\nfor each i in range({n}):\n    l.append(i)\npost(sum(l))"])
+
+# ── bloco `:` x bloco `{}` em cada construção ───────────────────────────────
+F("if", ['if true:\n    post("A")', 'if (true) {\n    post("A")\n}'])
+F("if/else", ['if false:\n    post("X")\nelse:\n    post("A")',
+              'if (false) {\n    post("X")\n} else {\n    post("A")\n}'])
+F("while", ['n = 0\nwhile n < 3:\n    n = n + 1\npost(n)',
+            'n = 0\nwhile (n < 3) {\n    n = n + 1\n}\npost(n)'])
+F("for each", ['for each i in [1,2]:\n    post(i)', 'for each i in [1,2] {\n    post(i)\n}'])
+F("action", ['action f():\n    return 7\npost(f())', 'action f() {\n    return 7\n}\npost(f())'])
+F("try", ['try:\n    raise B("x")\ncatch(e):\n    post("peguei")',
+          'try {\n    raise B("x")\n} catch (e) {\n    post("peguei")\n}'])
+F("Entity", ['Entity P():\n    action m(self):\n        return 3\npost(P().m())',
+             'Entity P() {\n    action m(self) {\n        return 3\n    }\n}\npost(P().m())',
+             'Entity P():\n    action m(self) {\n        return 3\n    }\npost(P().m())',
+             'Entity P() {\n    action m(self):\n        return 3\n}\npost(P().m())'])
+
+# ── match x if/elif x dict ──────────────────────────────────────────────────
+for each par in [["1", "um"], ["2", "dois"], ["9", "outro"]]:
+    v = par[0]
+    F(f"match {v}", [
+      f'x = {v}\nmatch x:\n    case 1:\n        post("um")\n    case 2:\n        post("dois")\n    case _:\n        post("outro")',
+      f'x = {v}\nmatch x ' + '{\n case 1 { post("um") }\n case 2 { post("dois") }\n case _ { post("outro") }\n}',
+      f'x = {v}\nif x == 1:\n    post("um")\nelif x == 2:\n    post("dois")\nelse:\n    post("outro")'])
+
+# ── closure x parâmetro explícito x Entity ──────────────────────────────────
+for each k in [0, 3, -2]:
+    F(f"captura {k}", [
+      f'action mult(k):\n    action f(x):\n        return x * k\n    return f\npost(mult({k})(7))',
+      f'action f(x, k):\n    return x * k\npost(f(7, {k}))',
+      f'Entity M():\n    action __init__(self, k):\n        self.k = k\n    action ap(self, x):\n        return x * self.k\npost(M({k}).ap(7))',
+      f'k = {k}\naction f(x):\n    return x * k\npost(f(7))'])
+
+# ── contador: closure x Entity x lista ──────────────────────────────────────
+F("contador 3x", [
+  'action faz():\n    n = 0\n    action inc():\n        n = n + 1\n        return n\n    return inc\nc = faz()\npost(c(), c(), c())',
+  'Entity C():\n    action __init__(self):\n        self.n = 0\n    action inc(self):\n        self.n = self.n + 1\n        return self.n\nc = C()\npost(c.inc(), c.inc(), c.inc())',
+  'l = [0]\naction inc():\n    l[0] = l[0] + 1\n    return l[0]\npost(inc(), inc(), inc())'])
+
+# ── gerador x lista x map ───────────────────────────────────────────────────
+F("dobro de 0..4", [
+  'action g():\n    for each i in range(5):\n        yield i * 2\npost(list(g()))',
+  'l = []\nfor each i in range(5):\n    l.append(i * 2)\npost(l)',
+  'action d(x):\n    return x * 2\npost(map(list(range(5)), d))',
+  'action d2(x):\n    return x * 2\npost(map(range(5), d2))'])
+
+# ── finally sempre roda ─────────────────────────────────────────────────────
+# `catch` é obrigatório: não existe try/finally puro (ver docs 10.2).
+F("finally com return", [
+  'action f():\n    try:\n        return "R"\n    catch(e):\n        post("C")\n    finally:\n        post("F")\npost(f())',
+  'action f() {\n try {\n  return "R"\n } catch (e) {\n  post("C")\n } finally {\n  post("F")\n }\n}\npost(f())'])
+F("finally com break", [
+  'for each i in [1,2,3]:\n    try:\n        if i == 2:\n            break\n    catch(e):\n        post("C")\n    finally:\n        post("F" + str(i))\npost("fim")',
+  'for each i in [1,2,3] {\n try {\n  if (i == 2) { break }\n } catch (e) {\n  post("C")\n } finally {\n  post("F" + str(i))\n }\n}\npost("fim")'])
+F("finally com continue", [
+  'for each i in [1,2]:\n    try:\n        continue\n    catch(e):\n        post("C")\n    finally:\n        post("F" + str(i))\npost("fim")',
+  'for each i in [1,2] {\n try {\n  continue\n } catch (e) {\n  post("C")\n } finally {\n  post("F" + str(i))\n }\n}\npost("fim")'])
+F("finally roda com erro propagando", [
+  'action f():\n    try:\n        raise B("x")\n    catch(e):\n        post("C")\n    finally:\n        post("F")\n    return "R"\npost(f())',
+  'action f() {\n try {\n  raise B("x")\n } catch (e) {\n  post("C")\n } finally {\n  post("F")\n }\n return "R"\n}\npost(f())'])
+
+# ── async x síncrono ────────────────────────────────────────────────────────
+F("async dobro", [
+  'async action d(n):\n    return n * 2\npost(await d(4))',
+  'action d(n):\n    return n * 2\npost(d(4))',
+  'async action d(n):\n    return n * 2\npost(gather(d(4))[0])'])
+F("async lista", [
+  'async action d(n):\n    return n * 2\npost(await [d(1), d(2), d(3)])',
+  'action d(n):\n    return n * 2\npost([d(1), d(2), d(3)])',
+  'async action d(n):\n    return n * 2\npost(gather(d(1), d(2), d(3)))'])
+
+# ── declaração tipada x conversão explícita ─────────────────────────────────
+for each par in [['"7"', "int", "int"], ["1", "flo", "flo"], ["64", "char", "chr"]]:
+    v = par[0]
+    t = par[1]
+    conv = par[2]
+    F(f"{t} de {v}", [f'{t} x = {v}\npost(x)', f'post({conv}({v}))'])
+
+# ── string: método x fatia x laço ───────────────────────────────────────────
+F("inverter texto", [
+  'post("abcdef"[::-1])',
+  's = ""\nfor each c in "abcdef":\n    s = c + s\npost(s)',
+  'post("".join(reversed(list("abcdef"))))'])
+F("contar caractere", [
+  'post("banana".count("a"))',
+  'n = 0\nfor each c in "banana":\n    if c == "a":\n        n = n + 1\npost(n)',
+  'post(count each char in "aaa"[0:3])'])
+
+# ── herança: base() x campo direto x método do pai ──────────────────────────
+for each v in [0, 5, -3]:
+    F(f"heranca {v}", [
+      f'Entity A():\n    action __init__(self, x):\n        self.x = x\n'
+      + f'Entity B(A):\n    action __init__(self, x):\n        base(x)\n'
+      + f'post(B({v}).x)',
+      f'Entity A():\n    action __init__(self, x):\n        self.x = x\npost(A({v}).x)',
+      f'Entity B():\n    action __init__(self, x):\n        self.x = x\n'
+      + f'    action pega(self):\n        return self.x\npost(B({v}).pega())'])
+
+# ── private: acesso de dentro x action solta ────────────────────────────────
+F("private lido de dentro", [
+  'Entity P():\n    private s: int\n    action ve(self):\n        return self.s\npost(P(9).ve())',
+  'Entity Q():\n    s: int\n    action ve(self):\n        return self.s\npost(Q(9).ve())',
+  'action ve(s):\n    return s\npost(ve(9))'])
+
+# ── @static x action solta ──────────────────────────────────────────────────
+F("static", [
+  'Entity K():\n    @static\n    action f(self, n):\n        return n + 1\npost(K.f(4))',
+  'action f(n):\n    return n + 1\npost(f(4))'])
+
+# ── unpacking x índice ──────────────────────────────────────────────────────
+F("desempacotar par", [
+  'a, b = 1, 2\npost(a, b)',
+  't = (1, 2)\npost(t[0], t[1])',
+  'l = [1, 2]\npost(l[0], l[1])'])
+F("desempacotar troca", [
+  'a = 1\nb = 2\na, b = b, a\npost(a, b)',
+  'a = 1\nb = 2\nt = a\na = b\nb = t\npost(a, b)'])
+
+# ── enum x dict x constante ─────────────────────────────────────────────────
+F("enum valor", [
+  'enum Cor { A, B }\npost(Cor.A, Cor.B)',
+  'd = {"A": 0, "B": 1}\npost(d["A"], d["B"])'])
+
+# ── count each x laço x len(filter) ─────────────────────────────────────────
+for each par in [["[1, 7, 7, 2, 7]", "7"], ["[1, 2, 3]", "9"]]:
+    lst = par[0]
+    alvo = par[1]
+    F(f"contar {alvo} em {lst}", [
+      f'l = {lst}\npost(count int({alvo}) in l)',
+      f'l = {lst}\nn = 0\nfor each x in l:\n    if x == {alvo}:\n        n = n + 1\npost(n)',
+      f'l = {lst}\npost(l.count({alvo}))'])
+
+# ── using x try/finally ─────────────────────────────────────────────────────
+# `catch` é obrigatório na linguagem (não existe try/finally puro), então a
+# forma equivalente ao `using` usa close() explícito.
+F("using fecha o arquivo", [
+  'using open("/tmp/ps_eq.txt", "w") as f:\n    f.write("x")\nusing open("/tmp/ps_eq.txt") as g:\n    post(g.read())',
+  'f = open("/tmp/ps_eq2.txt", "w")\nf.write("x")\nf.close()\ng = open("/tmp/ps_eq2.txt")\npost(g.read())\ng.close()'])
+
+# ── f-string x concatenação x format ────────────────────────────────────────
+for each par in [["1", '"x"'], ["-3", '"ção"']]:
+    a2 = par[0]
+    b2 = par[1]
+    F(f"montar texto {a2} {b2}", [
+      f'a = {a2}\nb = {b2}\npost(f"' + '{a}-{b}' + '")',
+      f'a = {a2}\nb = {b2}\npost(str(a) + "-" + b)',
+      f'a = {a2}\nb = {b2}\npost("' + '{}-{}' + '".format(a, b))'])
+
+# ── closure aninhada 2 níveis x parâmetro ───────────────────────────────────
+F("dois niveis", [
+  'action n1(a):\n    action n2(b):\n        action n3(c):\n            return a + b + c\n        return n3(3)\n    return n2(2)\npost(n1(1))',
+  'action f(a, b, c):\n    return a + b + c\npost(f(1, 2, 3))'])
+
+# ── dict: acesso por [] x .get x .chave ─────────────────────────────────────
+F("ler chave existente", [
+  'd = {"a": 1}\npost(d["a"])',
+  'd = {"a": 1}\npost(d.get("a"))',
+  'd = {"a": 1}\npost(d.a)'])
+
+# ── erro: raise x int action x try ──────────────────────────────────────────
+F("erro capturado vira valor", [
+  'action f():\n    try:\n        raise B("x")\n    catch(e):\n        return 0\npost(f())',
+  'int action g():\n    return null\npost(g())',
+  'post(0)'])
+
+# ── fatia x laço com índice ─────────────────────────────────────────────────
+for each par in [[0, 3], [1, 4], [2, 2]]:
+    ini = par[0]
+    fim = par[1]
+    F(f"fatia {ini}:{fim}", [
+      f'post("abcdef"[{ini}:{fim}])',
+      f's = ""\nfor each i in range({ini}, {fim}):\n    s = s + "abcdef"[i]\npost(s)'])
+
+# ── ordenar: sort x sorted x min/max ────────────────────────────────────────
+F("ordenar", [
+  'l = [3, 1, 2]\nl.sort()\npost(l)',
+  'post(sorted([3, 1, 2]))',
+  'post([min([3,1,2]), 2, max([3,1,2])])'])
+
+
+# ── rodar e gerar ───────────────────────────────────────────────────────────
+
+# `os.cmd` não captura a saída: manda pro terminal e devolve null. Então
+# redireciono os três canais pra arquivo e leio de volta.
+action roda(src, n):
+    fonte = TMP + "/p" + str(n) + ".ps"
+    fim = src
+    if not src.endswith("\n"):
+        fim = src + "\n"
+    using open(fonte, "w") as f:
+        f.write(fim)
+    os.cmd("./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
+    saida = open(TMP + "/out").read()
+    erro = open(TMP + "/err").read()
+    rc = int(open(TMP + "/rc").read().strip())
+    return [rc, saida, erro.split("\n")[0]]
+
+
+# Fonte .ps virando literal C: uma string por linha, com \n no fim.
+action cstr(s):
+    linhas = []
+    for each l in s.split("\n"):
+        e = l.replace("\\", "\\\\").replace("\"", "\\\"").replace("\t", "\\t")
+        linhas.append("\"" + e + "\\n\"")
+    return "\n  ".join(linhas)
+
+
+action esc(s):
+    return s.rstrip("\n").replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+
+
+run_selfwith_("main"):
+    os.mkdir(TMP, exist_ok=true)
+
+    out = ["/*",
+      " * EQUIVALENCIA INTERNA — a mesma computação escrita de várias formas.",
+      " *",
+      " * Onde o Python não serve de oráculo (Entity, closure, async, gerador,",
+      " * match, using, count each, herança, private, @static), a linguagem oferece",
+      " * caminhos REDUNDANTES pra dizer a mesma coisa: `for each` x `while` x",
+      " * gerador x recursão; bloco `:` x bloco `{}`; `match` x `if/elif`; closure x",
+      " * parâmetro x Entity; `using` x close() explícito.",
+      " *",
+      " * Se duas formas da mesma conta divergem, uma das duas está quebrada — e não",
+      " * interessa o que o Python faria. Foi assim que apareceu o bug de bloco `:`",
+      " * dentro de bloco `{}`: cada peça passava sozinha, a combinação é que quebrava.",
+      " *",
+      " * GERADO. Para adicionar uma família, edite teste/geradores/equivalencia.ps",
+      " * e rode o gerador de novo — não edite este arquivo.",
+      " */",
+      "#include \"ps_teste.h\"", "", "const Caso CASOS_EQUIVALENCIA[] = {"]
+
+    n = 0
+    fora = []
+    seq = 0
+    for each f in fam:
+        res = []
+        for each p in f["progs"]:
+            seq = seq + 1
+            res.append(roda(p, seq))
+        # todas as formas têm que dar o MESMO (código de saída, stdout)
+        chave0 = str(res[0][0]) + "\u0000" + res[0][1]
+        igual = true
+        for each r in res:
+            if str(r[0]) + "\u0000" + r[1] != chave0:
+                igual = false
+        if not igual:
+            fora.append(f["nome"])
+            continue
+        rc = res[0][0]
+        saida = res[0][1]
+        err = res[0][2]
+        k = 0
+        for each p in f["progs"]:
+            k = k + 1
+            nome = f["nome"].replace("\"", "'")
+            out.append("{ \"equiv: " + nome + " [" + str(k) + "/" + str(len(f["progs"])) + "]\",")
+            fonte = p
+            if not p.endswith("\n"):
+                fonte = p + "\n"
+            out.append("  " + cstr(fonte) + ",")
+            if rc == 0:
+                out.append("  \"" + esc(saida) + "\", NULL, 0 },")
+            else:
+                out.append("  NULL, \"" + esc(err)[0:80] + "\", -1 },")
+            n = n + 1
+
+    out.append("};")
+    out.append("const int NC_EQUIVALENCIA = N_CASOS(CASOS_EQUIVALENCIA);")
+
+    using open(SAIDA, "w") as f:
+        f.write("\n".join(out) + "\n")
+
+    post("casos gerados:", n, "  familias fora (divergentes):", len(fora))
+    for each x in fora:
+        post("   DIVERGENTE:", x)
+    if len(fora) > 0:
+        sys.exit(1)
