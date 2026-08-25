@@ -117,6 +117,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_RETURN_STMT:     return "ReturnStmt";
         case N_BREAK_STMT:      return "BreakStmt";
         case N_CONTINUE_STMT:   return "ContinueStmt";
+        case N_PASS_STMT:       return "PassStmt";
         case N_RAISE_STMT:      return "RaiseStmt";
         case N_YIELD_STMT:      return "YieldStmt";
         case N_GLOBAL_STMT:     return "GlobalStmt";

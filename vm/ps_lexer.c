@@ -26,7 +26,7 @@
 static const char *KEYWORDS[] = {
     "if", "else", "elif", "while", "for", "each", "in", "is",
     "and", "or", "not", "Not",
-    "action", "reaction", "return", "continue", "break", "model", "enum", "async", "await",
+    "action", "reaction", "return", "continue", "break", "pass", "model", "enum", "async", "await",
     "try", "catch", "as", "with", "of", "using",
     "import", "from", "PUSH", "GET",
     "str", "int", "flo", "bool",

@@ -15763,12 +15763,6 @@ static int jk_chama_handler(VM *vm, Value handler, PSJReq *req, Value *ret)
     vm->jk_req = MK_NULL();
     return rc;
 }
-/* variante com argumentos (usada pelo middleware: mw(req, res)) */
-static int jk_chama_handler2(VM *vm, Value fn, Value *args, int n, Value *ret)
-{
-    vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
-    return chama_valor(vm, fn, args, n, ret);
-}
 
 /* ── WebSocket: adiciona/remove conexão do canal ────────────────────────── */
 /* Registra uma conexão WS ativa (canal ou não — todas entram no poll; só as de
@@ -16010,8 +16004,20 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             else if (strncmp(hr->path, prefixo, pl) == 0 && hr->path[pl] == '/') rel = hr->path + pl + 1;
 
             char base[2048]; int achou_base = 0;
-            if (rel && vm->dir_script[0] && acha_em(vm->dir_script, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1;
-            else if (rel) { char cwd[512]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
+            /* caminho ABSOLUTO vale como está: `acha_em` sempre junta com uma
+             * raiz, e "/dir/x" + "/tmp/front" nunca existe — antes um
+             * static_folder absoluto caía calado no 404. */
+            if (rel && j->static_folder[0] == '/') {
+                struct stat sb;
+                if (stat(j->static_folder, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+                    snprintf(base, sizeof(base), "%s", j->static_folder);
+                    achou_base = 1;
+                }
+            }
+            if (!achou_base && rel) {
+                if (vm->dir_script[0] && acha_em(vm->dir_script, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1;
+                else { char cwd[512]; if (getcwd(cwd, sizeof(cwd)) && acha_em(cwd, j->static_folder, 1, base, sizeof(base), 0) == 0) achou_base = 1; }
+            }
             if (achou_base) {
                 char cam[3072]; snprintf(cam, sizeof(cam), "%s/%s", base, rel);
                 struct stat st;
@@ -16057,14 +16063,48 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     Value reqv = MK_OBJ(req);
     if (fixa_raiz(vm, reqv) != 0) { if (params) vm->sp--; return 0; }
 
-    /* middleware da rota, se houver: roda mw(req, res); JinkerResponse curto-
-     * circuita. Só o middleware EXPLÍCITO da rota roda (igual ao wrapper). */
-    if (rota->middleware.t != V_NULL && rota->middleware.t != V_UNSET
-        && !EH_JINKER(rota->middleware)) {
-        PSJResp *res0 = jk_novo_resp(vm);
-        Value margs[2] = { reqv, res0 ? MK_OBJ(res0) : MK_NULL() };
+    /* middleware da rota, se houver: roda mw(req, res); barra devolvendo um
+     * JinkerResponse ou a tupla (corpo, status). Deixa passar com `pass` (ou
+     * qualquer retorno que não seja resposta).
+     *
+     * `middleware=app.middleware` é a forma da doc, e ela chega aqui como o
+     * MÉTODO LIGADO `app.middleware` — chamar isso devolveria um registrador,
+     * não uma resposta, e o middleware nunca barrava nada. Resolve pro handler
+     * que o `@app.middleware()` guardou. */
+    Value mw = rota->middleware;
+    if (EH_METNAT(mw)) {
+        PSMetodoNat *bm = (PSMetodoNat *)mw.as.obj;
+        if (bm->tabela == T_MET_JINKER && EH_JINKER(bm->alvo)
+            && METODOS_JINKER[bm->idx].fn == met_jk_middleware)
+            mw = COMO_JINKER(bm->alvo)->mw_handler;
+    }
+    if (mw.t != V_NULL && mw.t != V_UNSET && !EH_JINKER(mw)) {
+        /* 0 args, igual à rota: o middleware lê `jinker.request` do contexto.
+         * Antes ele era chamado com (req, res) e a assinatura da doc não tem
+         * parâmetro — dava "argumentos demais" e o erro morria aqui, calado. */
         Value mret;
-        if (jk_chama_handler2(vm, rota->middleware, margs, 2, &mret) == 0 && EH_JRESP(mret)) {
+        int chamou = (jk_chama_handler(vm, mw, req, &mret) == 0);
+        if (!chamou && j->debug) {
+            fprintf(stderr, "[jinker] erro no middleware: %s\n", vm->erro);
+            fflush(stderr);
+        }
+        /* a doc promete `return jsonify(...), 401`: a tupla (corpo, status)
+         * barra igual à de uma rota. */
+        if (chamou && EH_TUPLA(mret) && COMO_LIST(mret)->len == 2) {
+            Value body = COMO_LIST(mret)->itens[0];
+            Value st   = COMO_LIST(mret)->itens[1];
+            int code = st.t == V_INT ? (int)st.as.i : 200;
+            if (EH_JRESP(body)) { COMO_JRESP(body)->status = code; mret = body; }
+            else {
+                PSJResp *rr = jk_novo_resp(vm);
+                if (rr) {
+                    Value a[2] = { body, MK_INT(code) }; Value o2;
+                    met_jresp_json(vm, MK_OBJ(rr), a, 2, &o2);
+                    mret = MK_OBJ(rr);
+                }
+            }
+        }
+        if (chamou && EH_JRESP(mret)) {
             PSJResp *r = COMO_JRESP(mret);
             const char *corpo = EH_STRING(r->corpo) ? COMO_STRING(r->corpo)->chars
                               : EH_BYTES(r->corpo) ? COMO_BYTES(r->corpo)->chars : "";
@@ -17377,6 +17417,46 @@ static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
  *
  * `params` terminado em `...` marca variádico (o `format` da string), e aí
  * não há teto. Devolve 0 se está bom, -1 se passou (com o erro já montado). */
+/* Distância de edição (Levenshtein) com teto: para de contar em `teto`, que é
+ * tudo que interessa pra "você quis dizer". Duas linhas rolantes, sem malloc. */
+static int dist_edicao(const char *a, const char *b, int teto)
+{
+    size_t la = strlen(a), lb = strlen(b);
+    if (la > 64 || lb > 64) return teto + 1;
+    if ((int)(la > lb ? la - lb : lb - la) > teto) return teto + 1;
+    int ant[65], cur[65];
+    for (size_t j = 0; j <= lb; j++) ant[j] = (int)j;
+    for (size_t i = 1; i <= la; i++) {
+        cur[0] = (int)i;
+        int melhor = cur[0];
+        for (size_t j = 1; j <= lb; j++) {
+            int troca = ant[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1);
+            int del = ant[j] + 1, ins = cur[j - 1] + 1;
+            int m = troca < del ? troca : del;
+            cur[j] = m < ins ? m : ins;
+            if (cur[j] < melhor) melhor = cur[j];
+        }
+        if (melhor > teto) return teto + 1;    /* linha toda estourou: sai */
+        memcpy(ant, cur, (lb + 1) * sizeof(int));
+    }
+    return ant[lb];
+}
+
+/* Acha o nome mais parecido numa lista, pra sugerir no erro. Devolve NULL se
+ * nada chega perto — sugestão errada atrapalha mais que a falta dela. */
+static const char *sugere_nome(const char *alvo, const char **nomes, int n)
+{
+    const char *melhor = NULL;
+    int md = 0;
+    int teto = (int)strlen(alvo) <= 4 ? 1 : 3;
+    for (int i = 0; i < n; i++) {
+        if (!nomes[i]) continue;
+        int d = dist_edicao(alvo, nomes[i], teto);
+        if (d <= teto && (!melhor || d < md)) { melhor = nomes[i]; md = d; }
+    }
+    return melhor;
+}
+
 static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
 {
     /* `params` vazio = método de ZERO argumentos.
@@ -19345,7 +19425,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = v;
                     goto membro_ok;
                 }
-                ERRO_T(vm, "RuntimeError", "modulo nao tem esse membro");
+                {
+                    const char *dica = sugere_nome(nome, (const char **)m->nomes, m->n);
+                    if (dica)
+                        ERRO_TF(vm, "RuntimeError", "módulo '%s' não tem membro '%s' — você quis dizer '%s'?",
+                                m->nome, nome, dica);
+                    ERRO_TF(vm, "RuntimeError", "módulo '%s' não tem membro '%s'", m->nome, nome);
+                }
             }
             if (EH_MODULO(alvo)) {
                 /* acha primeiro, aloca depois: `break` dentro do laço sairia
@@ -19354,7 +19440,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 const MembroMod *achado = NULL;
                 for (int k = 0; k < mn->n; k++)
                     if (strcmp(mn->membros[k].nome, nome) == 0) { achado = &mn->membros[k]; break; }
-                if (!achado) ERRO_T(vm, "RuntimeError", "modulo nao tem esse membro");
+                if (!achado) {
+                    const char *cands[256];
+                    int nc = mn->n < 256 ? mn->n : 256;
+                    for (int k = 0; k < nc; k++) cands[k] = mn->membros[k].nome;
+                    const char *dica = sugere_nome(nome, cands, nc);
+                    if (dica)
+                        ERRO_TF(vm, "RuntimeError", "módulo '%s' não tem membro '%s' — você quis dizer '%s'?",
+                                mn->nome, nome, dica);
+                    ERRO_TF(vm, "RuntimeError", "módulo '%s' não tem membro '%s'", mn->nome, nome);
+                }
                 if (achado->eh_valor) {
                     vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                     vm->erro_tipo[0] = '\0';

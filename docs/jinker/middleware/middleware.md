@@ -8,7 +8,7 @@ requisição para no middleware com a resposta que ele devolver.
 @app.middleware()
 action nome() {
     // request disponível aqui
-    // `continue` libera a rota; `return jsonify(...), 401` barra
+    // `pass` libera a rota; `return jsonify(...), 401` barra
 }
 ```
 
@@ -23,11 +23,11 @@ action verificar() {
     if (not token) {
         return jsonify({"msg": "sem permissão"}), 401   // BARRA
     }
-    continue                                             // LIBERA
+    pass                                                 // LIBERA
 }
 ```
 
-- **`continue`** — deixa a requisição seguir pra action da rota.
+- **`pass`** — deixa a requisição seguir pra action da rota.
 - **`return jsonify(...), <status>`** — para aqui e devolve isso ao cliente
   (a action da rota nem roda).
 
@@ -53,8 +53,24 @@ action dados() {
 ```
 
 Acessar `/api/dados` sem token → o middleware responde `401` e `dados()` nunca
-roda. Com token válido → o middleware faz `continue` e `dados()` executa
+roda. Com token válido → o middleware chega no `pass` e `dados()` executa
 normalmente.
+
+`middleware=` aceita duas formas, com o mesmo efeito:
+
+| Forma | Quando usar |
+|---|---|
+| `middleware=app.middleware` | o único middleware da app, o do `@app.middleware()` |
+| `middleware=nome_da_action` | uma action qualquer, quando você quer mais de um |
+
+Nos dois casos a action é chamada **sem argumentos** — a requisição vem do
+`request`, igual numa rota — e o que ela devolve decide:
+
+| Devolve | Efeito |
+|---|---|
+| `pass` / nada / `null` | libera: a rota roda |
+| `jsonify(...), <status>` (tupla) | barra: essa é a resposta |
+| `JinkerResponse` | barra: essa é a resposta |
 
 ---
 
@@ -68,7 +84,7 @@ action auth() {
         return jsonify({"erro": "não autorizado"}), 401
     }
     // aqui você validaria o token (jwt.check, consulta no banco, etc.)
-    continue
+    pass
 }
 ```
 

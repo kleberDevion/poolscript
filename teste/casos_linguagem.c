@@ -382,6 +382,39 @@ const Caso CASOS_LINGUAGEM[] = {
 { "import de nome interno é erro",
   "import _stdout\n", NULL, "modulo nao encontrado", -1 },
 
+/* ── `pass` — no-op igual ao Python ─────────────────────────────────────────
+ * Nasceu porque a doc do middleware do jinker mandava usar `continue` fora de
+ * laço, que não compila. `pass` vale em QUALQUER posição de statement. */
+{ "pass como corpo de action devolve null",
+  "action f():\n    pass\npost(f())\n", "null", NULL, 0 },
+{ "pass no if e no else",
+  "x = 0\nif x == 0:\n    pass\nelse:\n    post(\"nao\")\npost(\"ok\")\n", "ok", NULL, 0 },
+{ "pass em laco nao interrompe",
+  "for each n in range(3):\n    pass\npost(\"fim\")\n", "fim", NULL, 0 },
+{ "pass nao encerra o resto do bloco",
+  "action f():\n    pass\n    return 7\npost(f())\n", "7", NULL, 0 },
+{ "pass no while",
+  "n = 0\nwhile n < 3:\n    n += 1\n    pass\npost(n)\n", "3", NULL, 0 },
+{ "pass no catch engole o erro",
+  "try:\n    raise Boom(\"x\")\ncatch (e):\n    pass\npost(\"seguiu\")\n", "seguiu", NULL, 0 },
+{ "pass com chaves",
+  "action f() { pass }\npost(f())\n", "null", NULL, 0 },
+{ "pass e palavra reservada",
+  "pass = 1\n", NULL, "palavra reservada", -1 },
+{ "pass no corpo de classe",
+  "class Vazia():\n    pass\npost(type(Vazia))\n", "Entity", NULL, 0 },
+{ "pass fora de laco NAO e erro (ao contrario de continue)",
+  "pass\npost(\"ok\")\n", "ok", NULL, 0 },
+{ "continue fora de laco continua sendo erro",
+  "continue\n", NULL, "'continue' fora de laco", -1 },
+
+/* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */
+{ "membro inexistente nomeia modulo e membro",
+  "import json\npost(json.naoexiste)\n", NULL,
+  "módulo 'json' não tem membro 'naoexiste'", -1 },
+{ "membro parecido vira sugestao",
+  "import json\npost(json.parsee)\n", NULL, "você quis dizer 'parse'?", -1 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

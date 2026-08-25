@@ -55,6 +55,22 @@ post("jsonify ->", request.get(U + "/jsonify").get_json())
 # ── rota inexistente ────────────────────────────────────────────────────────
 post("404 ->", request.get(U + "/nao-existe").status_code)
 
+# ── middleware: barra sem a chave, libera com ela ───────────────────────────
+post("middleware barra ->", request.get(U + "/protegida").status_code)
+ok = request.get(U + "/protegida", headers={"X-Chave": "abre"})
+post("middleware libera ->", ok.status_code, ok.get_json())
+
+# ── CorsConfig: options/origins/permiser ────────────────────────────────────
+post("cors ->", request.get(U + "/cors-info").get_json())
+
+# ── static_folder: arquivo servido da pasta, sem rota declarada ─────────────
+est = request.get(U + "/pagina.txt")
+post("static ->", est.status_code, est.text)
+
+# ── Response.filename: vem do Content-Disposition ───────────────────────────
+b = request.get(U + "/baixar")
+post("filename ->", b.filename, "| corpo ->", b.text.strip())
+
 # ── upload: PoolFileUpload atravessando de verdade ──────────────────────────
 alvo = "/tmp/ps_e2e_envio.txt"
 using open(alvo, "w") as arq:
@@ -94,6 +110,7 @@ falante.send("oi da outra ponta")
 
 sleep(2)                      # tem que chegar DURANTE a espera, não no close
 post("ouvinte recebeu durante o sleep ->", recebidas)
+post("status_send do emissor ->", open("/tmp/ps_ws_status.txt").read())
 
 falante.close()
 ouvinte.close()

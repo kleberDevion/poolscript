@@ -2,7 +2,7 @@
 
 Statements que decidem **o que roda e quantas vezes**: condicionais (`if`),
 laços (`while`, `for each`, `count each`), o casamento de padrões (`match`), os
-desvios `break`/`continue` e o guard de entrada `run_selfwith_`.
+desvios `break`/`continue`/`pass` e o guard de entrada `run_selfwith_`.
 
 Os dois estilos de bloco da seção 1.3 valem em todos eles: `:` + indentação, ou
 `{ }`. Os exemplos usam o estilo `:`. Toda regra desta seção foi verificada
@@ -134,6 +134,38 @@ for each n in range(100):
 
 ---
 
+## 5.4.1. `pass` — o statement que não faz nada
+
+`pass` é um **no-op**, igual ao do Python: existe só pra ocupar o lugar de um
+statement onde a linguagem exige um corpo, mas você não tem nada a fazer ali.
+Não gera bytecode nenhum.
+
+```ps
+action ainda_nao():
+    pass                 // corpo vazio, sem erro
+
+if x < 0:
+    pass                 // esse caso é ignorado de propósito
+else:
+    post("positivo")
+
+for each n in range(3):
+    pass
+```
+
+Vale em **qualquer** posição de statement — corpo de `action`, `if`/`else`,
+`while`, `for each`, `try`/`catch`, corpo de classe. Diferente de `break` e
+`continue`, não depende de estar dentro de um laço.
+
+Uma action cujo corpo é só `pass` devolve `null`, igual a uma que termina sem
+`return` (seção 6.3).
+
+> Uso típico fora de corpo vazio: no **middleware** do `jinker`, chegar no
+> `pass` significa "não barrei" e a requisição segue pra rota
+> (`docs/jinker/middleware/middleware.md`).
+
+---
+
 ## 5.5. `match` / `case`
 
 Compara um valor (o *sujeito*) contra uma série de **padrões**, na ordem, e roda
@@ -233,6 +265,8 @@ dentro não vazam).
 - **`for each x in seq`** — lista/tupla/string (não dict direto: use `.keys()`
   etc.); uma variável só; `range(...)` pra contar.
 - **`break` / `continue`** — no laço mais interno.
+- **`pass`** — no-op; ocupa o lugar de um corpo vazio, em qualquer posição de
+  statement (não precisa de laço).
 - **`match` / `case`** — literal, captura, `_`, `|`, lista, guarda; sem casar =
   no-op; ligações são do case.
 - **`count each Tipo in c`** — laço sobre os elementos do tipo (`_match`,

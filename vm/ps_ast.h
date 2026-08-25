@@ -45,6 +45,7 @@ typedef enum {
     /* ── lote 1: statements e expressões simples ── */
     N_BREAK_STMT,
     N_CONTINUE_STMT,
+    N_PASS_STMT,       /* no-op, igual ao Python: ocupa o lugar de um corpo */
     N_RAISE_STMT,
     N_YIELD_STMT,
     N_GLOBAL_STMT,

@@ -2395,6 +2395,11 @@ static void stmt(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        /* `pass` não emite nada: é o statement que existe só pra ocupar lugar.
+         * Sem bytecode, sem efeito, sem custo. */
+        case N_PASS_STMT:
+            return;
+
         case N_CONTINUE_STMT: {
             if (c->nlacos == 0) { cerro(c, "'continue' fora de laco", n); return; }
             Laco *l = &c->lacos[c->nlacos - 1];

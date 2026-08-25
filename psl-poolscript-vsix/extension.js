@@ -26,7 +26,7 @@ const ESCALAR_CLASSE = { str: 'str', dict: 'dict', list: 'list', tup: 'tup' };
 // palavras-chave da linguagem (espelha o lexer) — pro completion de topo e hover.
 const KEYWORDS = [
   'if', 'else', 'elif', 'while', 'for', 'each', 'in', 'is', 'and', 'or', 'not',
-  'action', 'reaction', 'return', 'continue', 'break', 'model', 'enum', 'async',
+  'action', 'reaction', 'return', 'continue', 'break', 'pass', 'model', 'enum', 'async',
   'await', 'try', 'catch', 'as', 'with', 'using', 'import', 'from', 'str', 'int',
   'flo', 'bool', 'list', 'dict', 'json', 'tup', 'class', 'Class', 'Entity', 'self',
   'private', 'public', 'match', 'case', 'yield', 'raise', 'finally', 'count',

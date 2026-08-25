@@ -11025,7 +11025,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.naoexiste())\n"
   "\n",
-  NULL, "RuntimeError: modulo nao tem esse membro", -1 },
+  /* DECISAO 2026-08-25: a msg passou a nomear o modulo e o membro (e a sugerir
+   * o nome parecido, quando ha um perto). "nao tem esse membro" nao dizia qual. */
+  NULL, "RuntimeError: módulo 'json' não tem membro 'naoexiste'", -1 },
 { "dif #2115",
   "import json\n"
   "post(json.parse(\"  {\\\"a\\\" : [1, {\\\"b\\\": null}] }  \")[\"a\"][1][\"b\"])\n"

@@ -1589,6 +1589,12 @@ static PSNode *statement(P *p)
         p->pos++;
         return ps_node_novo(p->arena, N_BREAK_STMT, t->line, t->col);
     }
+    /* `pass` — no-op, igual ao Python: vale em qualquer lugar onde caberia um
+     * statement, e serve pra dar corpo a um bloco que não faz nada. */
+    if (checa_kw(p, "pass")) {
+        p->pos++;
+        return ps_node_novo(p->arena, N_PASS_STMT, t->line, t->col);
+    }
     if (checa_kw(p, "raise")) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_RAISE_STMT, t->line, t->col);
@@ -1714,6 +1720,14 @@ static PSNode *statement(P *p)
                 membro_priv = (strcmp(mt->texto, "private") == 0);
                 p->pos++;
                 mt = atual(p);
+            }
+            /* `pass` sozinho: corpo vazio de classe, como no Python. Não vira
+             * membro nenhum — só ocupa o lugar pra a Entity poder existir sem
+             * campo nem método. */
+            if (mt->type == T_KW && mt->texto && strcmp(mt->texto, "pass") == 0) {
+                p->pos++;
+                if (chaves) pula_indent_solto(p); else pula_separadores(p);
+                continue;
             }
             if (checa(p, T_AT)) {
                 int salvo_flag = p->dec_sem_captura;

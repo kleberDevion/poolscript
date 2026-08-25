@@ -2,8 +2,35 @@
 # bate nele com a lib `request` — a linguagem servindo e consumindo a si
 # mesma, sem mock e sem rede externa.
 import jinker
+import os
+from jinker import cors
 
-app = jinker.Jinker(name="e2e")
+# static_folder/static_url: pasta de front servida junto com as rotas
+PASTA = "/tmp/ps_e2e_static"
+os.mkdir(PASTA)
+using open(PASTA + "/pagina.txt", "w") as f:
+    f.write("sou estatico")
+
+app = jinker.Jinker(name="e2e", static_folder=PASTA, static_url="/")
+
+# CORS global: só estes métodos, só estas origens
+cors(options=["GET", "POST", "PUT", "DELETE"], origins=["http://permitido.test"])
+
+# middleware: roda ANTES da rota; `pass` libera, `return` barra
+@app.middleware()
+action confere():
+    if jinker.request.header("X-Chave") != "abre":
+        return jinker.jsonify({"msg": "sem permissao"}), 401
+    pass
+
+@app.route("/protegida", middleware=app.middleware)
+action protegida():
+    return {"entrou": true}
+
+@app.route("/cors-info")
+action cors_info():
+    return {"options": cors.options(), "origins": cors.origins(),
+            "subset": cors.options(["POST"]), "permiser": cors.permiser()}
 
 @app.route("/oi")
 action oi():
@@ -88,7 +115,16 @@ action ws_handler():
 # "dois terminais" — quem está só ouvindo tem que receber o que o outro manda.
 @app.socket("/sala", channel=true)
 reaction ws_sala():
-    app.channel.emit(jinker.request.text())
+    envia = app.socket()
+    envia.emit(jinker.request.text(), exclude_self=false)
+    using open("/tmp/ps_ws_status.txt", "w") as f:
+        f.write(str(envia.status_send()) + "|" + str(app.socket.status_send()))
+
+# Content-Disposition: é daí que o cliente tira o Response.filename
+@app.route("/baixar")
+action baixar():
+    r = jinker.JinkerResponse()
+    return r.header("Content-Disposition", "attachment; filename=relatorio.csv").send("a,b\n1,2\n")
 
 @app.route("/emitir")
 action emitir():

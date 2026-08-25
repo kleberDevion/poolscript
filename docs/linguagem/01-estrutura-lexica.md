@@ -138,7 +138,7 @@ Agrupadas por papel:
 
 | Grupo | Palavras |
 |---|---|
-| Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `return` |
+| Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `pass` `return` |
 | Lógicos | `and` `or` `not` `Not` |
 | Funções | `action` `reaction` `async` `await` `yield` |
 | Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` |
