@@ -19,9 +19,7 @@
 #include "ps_vm.h"
 #include "ps_pkg.h"
 
-#ifndef PS_VERSAO
-#define PS_VERSAO "0.0.0"
-#endif
+#include "ps_versao.h"
 
 #define SPEC_URL "https://github.com/kleberDevion/poolscript-lang"
 
