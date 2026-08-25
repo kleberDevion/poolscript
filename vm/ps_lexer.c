@@ -409,29 +409,94 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw)
 }
 
 /* ── números ────────────────────────────────────────────────────────────── */
+/* Avança enquanto for dígito da base pedida (ou `_`, que é só separador
+ * visual). Devolve quantos dígitos DE VERDADE consumiu. */
+static int corre_digitos(Lexer *lx, int base)
+{
+    int d = 0;
+    while (lx->pos < lx->len) {
+        char c = lx->src[lx->pos];
+        int vale;
+        if (c == '_') vale = -1;
+        else if (base == 16) vale = ehexdig(c);
+        else if (base == 8)  vale = (c >= '0' && c <= '7');
+        else if (base == 2)  vale = (c == '0' || c == '1');
+        else                 vale = eh_digito(c);
+        if (!vale) break;
+        if (vale > 0) d++;
+        lx->pos++; lx->col++;
+    }
+    return d;
+}
+
 static void le_numero(Lexer *lx)
 {
     int32_t c0 = lx->col;
     size_t ini = lx->pos;
-    while (lx->pos < lx->len && eh_digito(lx->src[lx->pos])) { lx->pos++; lx->col++; }
+
+    /* Bases: 0x1F, 0o17, 0b1010. Antes só existia decimal — `0x1F` lexava
+     * como `0` seguido do identificador `x1F` e explodia em "variável não
+     * definida". Sempre inteiro, nunca float. */
+    if (lx->src[lx->pos] == '0' && lx->pos + 1 < lx->len) {
+        char m = lx->src[lx->pos + 1];
+        int base = (m == 'x' || m == 'X') ? 16
+                 : (m == 'o' || m == 'O') ? 8
+                 : (m == 'b' || m == 'B') ? 2 : 0;
+        if (base) {
+            lx->pos += 2; lx->col += 2;
+            size_t d0 = lx->pos;
+            if (corre_digitos(lx, base) == 0) {
+                erro_em(lx, "numero sem digito depois da base", lx->linha, c0);
+                return;
+            }
+            char tmp[80];
+            int n = (int)(lx->pos - d0), j = 0;
+            for (int i = 0; i < n && j < (int)sizeof(tmp) - 1; i++)
+                if (lx->src[d0 + (size_t)i] != '_') tmp[j++] = lx->src[d0 + (size_t)i];
+            tmp[j] = '\0';
+            PSToken *tk = novo_token(lx, T_INT, lx->linha, c0);
+            if (!tk) return;
+            tk->i = (int64_t)strtoll(tmp, NULL, base);
+            guarda_texto(lx, tk, lx->src + ini, (int)(lx->pos - ini));
+            return;
+        }
+    }
+
+    corre_digitos(lx, 10);
     int flutuante = 0;
     if (lx->pos < lx->len && lx->src[lx->pos] == '.'
             && lx->pos + 1 < lx->len && eh_digito(lx->src[lx->pos + 1])) {
         flutuante = 1;
         lx->pos++; lx->col++;
-        while (lx->pos < lx->len && eh_digito(lx->src[lx->pos])) { lx->pos++; lx->col++; }
+        corre_digitos(lx, 10);
+    }
+    /* Expoente `1e30`, `2.5E-3`. Só consome o `e` se vier dígito depois
+     * (com sinal opcional), senão `1e` seria número seguido de nada. */
+    if (lx->pos < lx->len && (lx->src[lx->pos] == 'e' || lx->src[lx->pos] == 'E')) {
+        size_t j = lx->pos + 1;
+        if (j < lx->len && (lx->src[j] == '+' || lx->src[j] == '-')) j++;
+        if (j < lx->len && eh_digito(lx->src[j])) {
+            flutuante = 1;
+            lx->col += (int32_t)(j - lx->pos);
+            lx->pos = j;
+            corre_digitos(lx, 10);
+        }
     }
     int n = (int)(lx->pos - ini);
-    char tmp[64];
-    int copiar = n < (int)sizeof(tmp) - 1 ? n : (int)sizeof(tmp) - 1;
-    memcpy(tmp, lx->src + ini, (size_t)copiar);
-    tmp[copiar] = '\0';
+    /* Copia sem os `_`: o strtod/strtoll não conhece separador. */
+    char tmp[80];
+    int j = 0;
+    for (int i = 0; i < n && j < (int)sizeof(tmp) - 1; i++)
+        if (lx->src[ini + (size_t)i] != '_') tmp[j++] = lx->src[ini + (size_t)i];
+    tmp[j] = '\0';
 
     PSToken *tk = novo_token(lx, flutuante ? T_FLO : T_INT, lx->linha, c0);
     if (!tk) return;
     if (flutuante) tk->d = strtod(tmp, NULL);
     else           tk->i = (int64_t)strtoll(tmp, NULL, 10);
-    guarda_texto(lx, tk, lx->src + ini, n);
+    /* O texto guardado é o do FONTE (com `_`); o parser relê com strtoll pra
+     * detectar estouro e virar bignum, então tem que ser sem separador. */
+    guarda_texto(lx, tk, tmp, j);
 }
 
 /* ── identificadores / keywords ─────────────────────────────────────────── */

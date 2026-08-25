@@ -74,6 +74,9 @@ struct PSRegex {
     Alt *raiz;
     int  ngrupos;
     int  flags;      /* RX_I | RX_M | RX_S */
+    /* nomes[g] = nome do grupo g (1..ngrupos), ou NULL. Só nasce se o padrão
+     * tiver algum `(?P<nome>...)`. */
+    char *nomes[RX_MAX_GRUPOS];
 };
 
 /* ── construção ──────────────────────────────────────────────────────────── */
@@ -86,6 +89,7 @@ typedef struct {
     int         erro_cap;
     int         falhou;
     int         flags;       /* acumula as flags inline `(?i)` etc. */
+    char       *nomes[RX_MAX_GRUPOS];   /* nome de cada grupo, ou NULL */
 } Leitor;
 
 static void rerro(Leitor *l, const char *msg)
@@ -278,6 +282,7 @@ static int le_atomo(Leitor *l, Atomo *a)
         int captura = 1;
         int eh_look = 0, lk_neg = 0, lk_atras = 0;
         int flags_escopo = 0, restaura_flags = 0, flags_salvo = l->flags;
+        int nome_ini = -1, nome_len = 0;
         if (l->i + 1 < l->n && l->p[l->i] == '?') {
             char esp = l->p[l->i + 1];
             if (esp == 'i' || esp == 'm' || esp == 's') {
@@ -305,11 +310,18 @@ static int le_atomo(Leitor *l, Atomo *a)
             else if (esp == '<' && l->i + 2 < l->n && (l->p[l->i+2] == '=' || l->p[l->i+2] == '!')) {
                 eh_look = 1; lk_atras = 1; lk_neg = (l->p[l->i+2] == '!'); captura = 0; l->i += 3;
             }
-            else if (esp == 'P' && l->i + 2 < l->n && l->p[l->i + 2] == '<') {
-                /* grupo nomeado `(?P<nome>...)` — capturado como numerado */
-                l->i += 3;
+            else if ((esp == 'P' && l->i + 2 < l->n && l->p[l->i + 2] == '<')
+                     || (esp == '<' && l->i + 2 < l->n
+                         && l->p[l->i+2] != '=' && l->p[l->i+2] != '!')) {
+                /* grupo nomeado `(?P<nome>...)` — e também a forma curta
+                 * `(?<nome>...)`, que o `re` aceita desde o 3.12. O nome é
+                 * GUARDADO (era descartado), pra `\g<nome>` funcionar. */
+                l->i += (esp == 'P') ? 3 : 2;
+                int n0 = l->i;
                 while (l->i < l->n && l->p[l->i] != '>') l->i++;
                 if (l->i >= l->n) { rerro(l, "grupo nomeado sem '>'"); return 0; }
+                nome_ini = n0; nome_len = l->i - n0;
+                if (nome_len <= 0) { rerro(l, "grupo nomeado sem nome"); return 0; }
                 l->i++;
             }
             else { rerro(l, "grupo especial nao suportado (?:...) (?P<n>...) (?ims:) (?= ?! ?<= ?<!)"); return 0; }
@@ -320,6 +332,13 @@ static int le_atomo(Leitor *l, Atomo *a)
         if (captura) {
             if (l->ngrupos + 1 >= RX_MAX_GRUPOS) { rerro(l, "grupos demais"); return 0; }
             a->idx_grupo = ++l->ngrupos;
+            if (nome_ini >= 0) {
+                char *nm = malloc((size_t)nome_len + 1);
+                if (!nm) { rerro(l, "sem memoria"); return 0; }
+                memcpy(nm, l->p + nome_ini, (size_t)nome_len);
+                nm[nome_len] = '\0';
+                l->nomes[a->idx_grupo] = nm;
+            }
         }
         a->grupo = le_alt(l);
         if (restaura_flags) l->flags = flags_salvo;   /* flags de escopo saem do grupo */
@@ -511,18 +530,22 @@ static int larg_fixa_atomo(const Atomo *a)
 
 PSRegex *ps_regex_compila(const char *padrao, int len, char *erro, int erro_cap)
 {
-    Leitor l = { padrao, len, 0, 0, erro, erro_cap, 0, 0 };
+    Leitor l = { padrao, len, 0, 0, erro, erro_cap, 0, 0, { NULL } };
     Alt *raiz = le_alt(&l);
     if (!l.falhou && l.i != l.n) {
         /* sobrou ')' sem abrir, ou coisa parecida */
         rerro(&l, "caractere inesperado");
     }
-    if (l.falhou) { libera_alt(raiz); return NULL; }
-    PSRegex *r = malloc(sizeof(PSRegex));
-    if (!r) { libera_alt(raiz); return NULL; }
+    PSRegex *r = l.falhou ? NULL : malloc(sizeof(PSRegex));
+    if (!r) {
+        libera_alt(raiz);
+        for (int g = 0; g < RX_MAX_GRUPOS; g++) free(l.nomes[g]);
+        return NULL;
+    }
     r->raiz = raiz;
     r->ngrupos = l.ngrupos;
     r->flags = l.flags;
+    memcpy(r->nomes, l.nomes, sizeof(r->nomes));
     return r;
 }
 
@@ -530,10 +553,26 @@ void ps_regex_free(PSRegex *r)
 {
     if (!r) return;
     libera_alt(r->raiz);
+    for (int g = 0; g < RX_MAX_GRUPOS; g++) free(r->nomes[g]);
     free(r);
 }
 
 int ps_regex_ngrupos(const PSRegex *r) { return r ? r->ngrupos : 0; }
+
+int ps_regex_grupo_por_nome(const PSRegex *r, const char *nome, int len)
+{
+    if (!r || len <= 0) return -1;
+    for (int g = 1; g <= r->ngrupos && g < RX_MAX_GRUPOS; g++)
+        if (r->nomes[g] && (int)strlen(r->nomes[g]) == len && !memcmp(r->nomes[g], nome, (size_t)len))
+            return g;
+    return -1;
+}
+
+const char *ps_regex_nome_do_grupo(const PSRegex *r, int g)
+{
+    if (!r || g < 1 || g >= RX_MAX_GRUPOS) return NULL;
+    return r->nomes[g];
+}
 
 /* ── casamento ───────────────────────────────────────────────────────────
  *

@@ -111,7 +111,13 @@ enum {
     OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
     /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
      * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
-    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76
+    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76,
+    /* `base(nome=v)`: troca a classe pai no topo pelo `__init__` dela
+     * LIGADO ao self, pra a chamada seguir pelo OP_CALL_KW normal. */
+    OP_LOAD_BASE_INIT = 77,
+    OP_MAKE_CELL = 78, OP_CELL_GET = 79, OP_CELL_SET = 80,
+    OP_LOAD_UPVAL = 81, OP_STORE_UPVAL = 82, OP_MAKE_CLOSURE = 83,
+    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85
 };
 
 /* ── objetos gerenciados pelo GC ────────────────────────────────────────── */
@@ -165,9 +171,15 @@ typedef enum {
     OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
     OBJ_SOCKET,    /* lib sockets — espelho do socket.socket do Python */
     OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
+    OBJ_CELULA,    /* caixa de uma variável capturada por action aninhada */
+    OBJ_CLOSURE,   /* action aninhada + as células que ela capturou */
     OBJ__COUNT     /* sentinela: nº de tipos — tamanho da tabela de GC */
 } ObjType;
 
+
+/* Declarado cedo: o Frame e o gerador guardam um ponteiro pra closure, e os
+ * dois nascem antes da definição completa (lá embaixo, junto do GC). */
+typedef struct PSClosure_ PSClosure;
 
 typedef struct Obj {
     ObjType      type;
@@ -354,6 +366,9 @@ typedef struct {
     struct Handler_ *handlers;
     int       nh;
     int       cap_handlers;
+    /* Closure da action geradora, quando ela captura variável de fora — sem
+     * isto o `yield` dentro de action aninhada perderia as células. */
+    PSClosure *cl;
 } PSGerador;
 
 /* Módulo carregado de um `.ps`.
@@ -702,6 +717,13 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define EH_CLASS(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_CLASS)
 #define EH_INST(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_INSTANCE)
 #define EH_BOUND(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_BOUND)
+#define EH_CLOSURE(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_CLOSURE)
+#define COMO_CLOSURE(v) ((PSClosure*)(v).as.obj)
+#define EH_CELULA(v) ((v).t == V_OBJ && (v).as.obj->type == OBJ_CELULA)
+#define COMO_CELULA(v) ((PSCelula*)(v).as.obj)
+/* "isto é uma action da linguagem?" — V_FUNC (sem captura) ou closure. */
+#define EH_ACTION(v) ((v).t == V_FUNC || EH_CLOSURE(v))
+#define PROTO_DE(v)  ((v).t == V_FUNC ? (v).as.proto : COMO_CLOSURE(v)->proto)
 #define COMO_CLASS(v)  ((PSClass*)(v).as.obj)
 #define COMO_INST(v)   ((PSInstance*)(v).as.obj)
 #define COMO_BOUND(v)  ((PSBound*)(v).as.obj)
@@ -839,6 +861,11 @@ typedef struct {
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
     int       eh_async;    /* `async action` — chamar cria fibra+future */
     int       eh_static;   /* `@static` — chamável na Entity sem instância */
+    /* Variáveis de fora capturadas (closure). NULL na quase totalidade dos
+     * protos: só action DECLARADA DENTRO de outra tem. */
+    PSUpval  *upvals;
+    int       nupvals;
+    char    **upval_nomes;  /* nome de cada upvalue — só pra mensagem de erro */
 } Proto;
 
 typedef struct {
@@ -851,6 +878,9 @@ typedef struct {
      * `__init__` retornar (ele devolve Null). Sem esta marca, o RETURN
      * sobrescrevia o objeto recém-criado com Null. */
     int devolve_self;
+    /* Closure em execução, se a action captura algo. É por aqui que o
+     * LOAD_UPVAL acha as células. NULL numa action comum. */
+    PSClosure *cl;
 } Frame;
 
 /* Tamanhos modestos por padrão: antes eram 1<<20 slots cada, o que reservava
@@ -941,6 +971,10 @@ struct VM_ {
      * chamar builtin, pra um `vm_executa_base` aninhado saber onde começar
      * sem sobrescrever o frame de quem chamou. */
     int     frame_topo;
+    /* Publicado no ponto seguro do GC: quantos frames estão vivos e qual o
+     * closure do frame corrente. Só o coletor lê. */
+    int        gc_fp;
+    PSClosure *gc_cl;
 
     /* Teto de cada pool de execução. Normalmente = STACK_SIZE/LOCALS_SIZE/
      * MAX_FRAMES (a execução principal usa os arrays cheios). Uma FIBRA de
@@ -1409,6 +1443,20 @@ typedef enum { GC_UNSET = 0, GC_LEAF, GC_ONE, GC_FN } GcKind;
 typedef struct { GcKind kind; size_t off; void (*fn)(VM *, Obj *);
                  size_t tam; void (*fin)(VM *, Obj *); } GcInfo;
 
+/* Caixa de uma variável capturada. Quem declara e quem captura apontam pra
+ * MESMA célula, então uma escrita de dentro da action aninhada é vista de fora
+ * (e vice-versa) — é o que separa closure de cópia. */
+typedef struct { Obj obj; Value v; } PSCelula;
+
+/* Uma action que captura: o proto mais o vetor de células. Continua sendo
+ * "uma função" pra todo o resto da VM — os pontos de chamada aceitam os dois. */
+struct PSClosure_ {
+    Obj        obj;
+    int32_t    proto;
+    int32_t    nups;
+    PSCelula **ups;
+};
+
 /* `async action` — resultado pendente. A fibra que o produz vive no pool de
  * fibras (marcada por fib_marca_gc enquanto `usada`); aqui marcamos só o valor
  * final. */
@@ -1421,6 +1469,18 @@ typedef struct PSFuturo {
     char   erro_tipo[64];
     Value  valor;          /* resultado quando done */
 } PSFuturo;
+
+static void gct_closure(VM *vm, Obj *o) {
+    PSClosure *cl = (PSClosure *)o;
+    for (int32_t i = 0; i < cl->nups; i++)
+        if (cl->ups[i]) marca_obj(vm, (Obj *)cl->ups[i]);
+}
+static void fin_closure(VM *vm, Obj *o) {
+    PSClosure *cl = (PSClosure *)o;
+    vm->alocado -= sizeof(PSCelula *) * (size_t)cl->nups;
+    free(cl->ups);
+}
+static void gct_celula(VM *vm, Obj *o) { marca_valor(vm, &((PSCelula *)o)->v); }
 
 static void gct_seq(VM *vm, Obj *o) {
     PSList *l = (PSList *)o;
@@ -1441,6 +1501,7 @@ static void gct_gerador(VM *vm, Obj *o) {
     PSGerador *g = (PSGerador *)o;
     for (int32_t i = 0; i < g->nlocais; i++) marca_valor(vm, &g->locais[i]);
     for (int32_t i = 0; i < g->npilha; i++)  marca_valor(vm, &g->pilha[i]);
+    if (g->cl) marca_obj(vm, (Obj *)g->cl);   /* células que a geradora capturou */
 }
 static void gct_response(VM *vm, Obj *o) {
     PSResponse *rp = (PSResponse *)o;
@@ -1587,6 +1648,8 @@ static void fin_qrimage(VM *, Obj *);   static void fin_manpu_file(VM *, Obj *);
 
 /* A tabela: TODO tipo aparece aqui. Esquecer um => GC_UNSET => aborta no boot. */
 static const GcInfo GC_INFO[OBJ__COUNT] = {
+    [OBJ_CELULA]     = { GC_FN,   0, gct_celula, sizeof(PSCelula), NULL },
+    [OBJ_CLOSURE]    = { GC_FN,   0, gct_closure, sizeof(PSClosure), fin_closure },
     [OBJ_STRING]     = { GC_LEAF, 0, NULL, 0, fin_str },
     [OBJ_LIST]       = { GC_FN,   0, gct_seq, 0, fin_seq },
     [OBJ_TUPLE]      = { GC_FN,   0, gct_seq, 0, fin_seq },
@@ -1862,6 +1925,10 @@ static void gc_coleta(VM *vm)
     for (int i = 0; i < vm->nmods_ps; i++)   marca_valor(vm, &vm->mods_ps[i].valor);
     for (int i = 0; i < vm->sp; i++)         marca_valor(vm, &vm->stack[i]);
     for (int i = 0; i < vm->locals_top; i++) marca_valor(vm, &vm->locals[i]);
+    /* closures dos frames em execução (não aparecem na pilha de valores) */
+    if (vm->gc_cl) marca_obj(vm, (Obj *)vm->gc_cl);
+    for (int i = 0; i < vm->gc_fp && i < vm->frames_teto; i++)
+        if (vm->frames[i].cl) marca_obj(vm, (Obj *)vm->frames[i].cl);
     fib_marca_gc(vm);   /* MAIN salvo + fibras suspensas (contextos fora de vm->) */
     for (int i = 0; i < vm->nprotos; i++)
         for (int k = 0; k < vm->protos[i].nconsts; k++)
@@ -1963,23 +2030,34 @@ static const char *nome_do_global(VM *vm, int32_t arg)
  * E o protótipo em execução (`proto_atual`) NÃO é um método da classe que o
  * declara — isto é, acesso de FORA. 0 = liberado (público, ou private acessado
  * de dentro de um método da própria classe). Regra igual à do Java. */
+/* Regra do Java: um `private` é visível DENTRO da classe que o declara.
+ *
+ * A versão antiga parava na PRIMEIRA classe da hierarquia que declarasse o
+ * nome — em geral a filha — e, se o método em execução não fosse dela,
+ * barrava. Com `Entity P` declarando `private s` e `Entity F(P)` também,
+ * o `self.s` DENTRO de `P.mostra` era negado: o método é de P, que declara o
+ * campo, e ainda assim a checagem só olhava F. Agora a hierarquia inteira é
+ * varrida e a pergunta é outra: o proto que está rodando pertence a ALGUMA
+ * classe que declara este nome como private? Se pertence, passa. */
 static int priv_barrado(PSClass *cl, const char *nome, int32_t proto_atual)
 {
     PSClass *pilha[64]; int np = 0;
+    int achou = 0;
     if (cl) pilha[np++] = cl;
     while (np > 0) {
         PSClass *c = pilha[--np];
         for (int32_t i = 0; i < c->npriv; i++) {
             if (strcmp(c->priv_nomes[i], nome) == 0) {
+                achou = 1;
                 for (int32_t k = 0; k < c->nmetodos; k++)
                     if (c->met_protos[k] == proto_atual) return 0;  /* de dentro */
-                return 1;                                            /* de fora — barra */
+                break;
             }
         }
         for (int32_t i = 0; i < c->npais && np < 64; i++)
             if (c->pais[i]) pilha[np++] = c->pais[i];
     }
-    return 0;   /* não é private */
+    return achou;   /* private em algum ponto da hierarquia e não é de dentro */
 }
 
 /* ── conversões com o mundo Python ──────────────────────────────────────── */
@@ -2116,6 +2194,10 @@ static int val_iguais(const Value *a, const Value *b)
         if (b->t == V_NULL)  return 1;
         if (b->t == V_INT)   return b->as.i == 0;
         if (b->t == V_FLOAT) return b->as.d == 0.0;
+        /* `null == 0` já era True e `false == 0` também; sem esta linha
+         * `null == false` dava False e a igualdade perdia a transitividade
+         * dentro do próprio motor. */
+        if (b->t == V_BOOL)  return b->as.b == 0;
         return 0;
     }
     if (b->t == V_NULL) return val_iguais(b, a);
@@ -2786,7 +2868,24 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
     if (EH_BIGINT(v))   { *out = v; return 0; }   /* bignum já é int */
     if (v.t == V_BOOL)  { *out = MK_INT(v.as.b ? 1 : 0); return 0; }
     /* trunca para zero, como o `int()` do Python — não arredonda */
-    if (v.t == V_FLOAT) { *out = MK_INT((int64_t)v.as.d); return 0; }
+    if (v.t == V_FLOAT) {
+        /* inf/NaN não têm inteiro correspondente: o cast em C é comportamento
+         * indefinido e devolvia INT64_MIN calado. Erro, como no Python. */
+        if (isnan(v.as.d))
+            BERRO(vm, "SomeValueUnexpected", "valor invalido: int() nao converte NaN");
+        if (isinf(v.as.d))
+            BERRO(vm, "SomeValueUnexpected", "valor invalido: int() nao converte infinito");
+        /* Fora da faixa do int64 o cast também é UB: vai de bignum. */
+        if (v.as.d >= 9223372036854775808.0 || v.as.d <= -9223372036854775809.0) {
+            mpz_t z; mpz_init(z);
+            mpz_set_d(z, trunc(v.as.d));
+            *out = mk_from_mpz(vm, z);
+            mpz_clear(z);
+            return 0;
+        }
+        *out = MK_INT((int64_t)v.as.d);
+        return 0;
+    }
     if (EH_STRING(v)) {
         PSString *s = COMO_STRING(v);
         int64_t r;
@@ -2880,6 +2979,8 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_DICT:     t = "dict";   break;
                 case OBJ_CLASS:    t = "Entity"; break;
                 case OBJ_INSTANCE: t = COMO_INST(v)->classe->nome; break;
+                case OBJ_CELULA:   /* nunca escapa pro usuário; só pra tabela ficar completa */
+                case OBJ_CLOSURE:
                 case OBJ_BOUND:
                 case OBJ_NATIVA:
                 case OBJ_METODO_NAT: t = "action"; break;
@@ -2982,9 +3083,21 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
     if (EH_BIGINT(v)) { *out = v; return 0; }   /* já é inteiro */
     if (v.t != V_FLOAT) BERRO(vm, "SomeValueUnexpected", "operacao invalida: round() so aceita numero");
     if (n == 1) {
+        if (isnan(v.as.d))
+            BERRO(vm, "SomeValueUnexpected", "valor invalido: round() nao converte NaN");
+        if (isinf(v.as.d))
+            BERRO(vm, "SomeValueUnexpected", "valor invalido: round() nao converte infinito");
+        double r = nearbyint(v.as.d);
+        if (r >= 9223372036854775808.0 || r <= -9223372036854775809.0) {
+            mpz_t z; mpz_init(z);
+            mpz_set_d(z, r);
+            *out = mk_from_mpz(vm, z);
+            mpz_clear(z);
+            return 0;
+        }
         /* nearbyint no modo padrão = meio-para-o-par, que é o do Python:
          * round(2.5) dá 2, não 3. */
-        *out = MK_INT((int64_t)nearbyint(v.as.d));
+        *out = MK_INT((int64_t)r);
         return 0;
     }
     if (args[1].t != V_INT) BERRO(vm, "SomeValueUnexpected", "casas de round() precisam ser int");
@@ -3617,6 +3730,10 @@ static int utf8_conta(const char *s, int len)
 /* Maiúscula/minúscula cobrindo ASCII, Latin-1 Suplementar e Latin Estendido-A.
  * É a faixa que importa pro português (ç, ã, é, ô…). Fora dela o codepoint
  * passa intacto — divergiria do Python, e está anotado em LIMITACOES.md. */
+/* Caixa fora do Latin-1: a tabela cobria só ASCII + Latin-1/Ext-A, então
+ * grego e cirílico passavam INTACTOS por lower()/upper() e `isalpha` dizia
+ * False pra letra. Os blocos abaixo são contíguos e regulares, então cabem
+ * em aritmética — nada de tabela de milhares de entradas. */
 static uint32_t cp_maiuscula(uint32_t c)
 {
     if (c >= 'a' && c <= 'z') return c - 32;
@@ -3624,6 +3741,24 @@ static uint32_t cp_maiuscula(uint32_t c)
     if (c == 0xFF) return 0x178;                              /* ÿ -> Ÿ */
     if (c >= 0x100 && c <= 0x177) return (c & 1) ? c - 1 : c; /* pares Ā/ā … */
     if (c >= 0x179 && c <= 0x17E) return (c & 1) ? c : c - 1; /* Ź/ź … */
+    /* grego: α-ω (0x3B1-0x3C9) -> Α-Ω (0x391-0x3A9); ς (sigma final) -> Σ */
+    if (c == 0x3C2) return 0x3A3;
+    if (c >= 0x3B1 && c <= 0x3C9) return c - 32;
+    if (c >= 0x3AC && c <= 0x3AF) {                            /* acentuadas */
+        if (c == 0x3AC) return 0x386;
+        return c - 0x25;                                       /* έήί -> ΈΉΊ */
+    }
+    if (c == 0x3CC) return 0x38C;
+    if (c == 0x3CD) return 0x38E;
+    if (c == 0x3CE) return 0x38F;
+    /* cirílico: а-я (0x430-0x44F) -> А-Я (0x410-0x42F); ѐ-џ -> Ѐ-Џ */
+    if (c >= 0x430 && c <= 0x44F) return c - 32;
+    if (c >= 0x450 && c <= 0x45F) return c - 80;
+    if (c >= 0x460 && c <= 0x481) return (c & 1) ? c - 1 : c;
+    if (c >= 0x48A && c <= 0x4BF) return (c & 1) ? c - 1 : c;
+    if (c >= 0x4C1 && c <= 0x4CE) return (c & 1) ? c : c - 1;
+    if (c >= 0x4D0 && c <= 0x52F) return (c & 1) ? c - 1 : c;
+    /* İ (I com pingo) NÃO vira i sem pingo: é maiúscula, fica como está */
     return c;
 }
 
@@ -3632,15 +3767,60 @@ static uint32_t cp_minuscula(uint32_t c)
     if (c >= 'A' && c <= 'Z') return c + 32;
     if (c >= 0xC0 && c <= 0xDE && c != 0xD7) return c + 32;
     if (c == 0x178) return 0xFF;
+    if (c == 0x130) return 'i';        /* İ -> i; vem ANTES da faixa Ext-A,
+                                        * senão a regra dos pares dava ı */
     if (c >= 0x100 && c <= 0x177) return (c & 1) ? c : c + 1;
     if (c >= 0x179 && c <= 0x17E) return (c & 1) ? c + 1 : c;
+    if (c == 0x386) return 0x3AC;
+    if (c >= 0x388 && c <= 0x38A) return c + 0x25;
+    if (c == 0x38C) return 0x3CC;
+    if (c == 0x38E) return 0x3CD;
+    if (c == 0x38F) return 0x3CE;
+    if (c >= 0x391 && c <= 0x3A9 && c != 0x3A2) return c + 32;
+    if (c >= 0x410 && c <= 0x42F) return c + 32;
+    if (c >= 0x400 && c <= 0x40F) return c + 80;
+    if (c >= 0x460 && c <= 0x481) return (c & 1) ? c : c + 1;
+    if (c >= 0x48A && c <= 0x4BF) return (c & 1) ? c : c + 1;
+    if (c >= 0x4C1 && c <= 0x4CE) return (c & 1) ? c + 1 : c;
+    if (c >= 0x4D0 && c <= 0x52F) return (c & 1) ? c : c + 1;
     return c;
 }
 
 static int cp_eh_maiuscula(uint32_t c) { return cp_minuscula(c) != c; }
 static int cp_eh_minuscula(uint32_t c) { return cp_maiuscula(c) != c; }
 static int cp_eh_letra(uint32_t c)     { return cp_eh_maiuscula(c) || cp_eh_minuscula(c); }
-static int cp_eh_digito(uint32_t c)    { return c >= '0' && c <= '9'; }
+/* Dígito além do ASCII. `isdecimal` = dígito decimal de qualquer escrita
+ * (árabe-índico ٣, devanágari ३…); `isdigit` inclui os sobrescritos (²³¹);
+ * `isnumeric` inclui fração e numeral romano (½ Ⅷ). Antes tudo isso dava
+ * False e só 0-9 contava. */
+static int cp_eh_decimal(uint32_t c)
+{
+    if (c >= '0' && c <= '9') return 1;
+    if (c >= 0x660 && c <= 0x669) return 1;    /* árabe-índico */
+    if (c >= 0x6F0 && c <= 0x6F9) return 1;    /* árabe-índico estendido */
+    if (c >= 0x966 && c <= 0x96F) return 1;    /* devanágari */
+    if (c >= 0x9E6 && c <= 0x9EF) return 1;    /* bengali */
+    if (c >= 0xE50 && c <= 0xE59) return 1;    /* tailandês */
+    if (c >= 0xFF10 && c <= 0xFF19) return 1;  /* dígitos de largura plena */
+    return 0;
+}
+
+static int cp_eh_digito(uint32_t c)
+{
+    if (cp_eh_decimal(c)) return 1;
+    if (c == 0xB2 || c == 0xB3 || c == 0xB9) return 1;   /* ² ³ ¹ */
+    if (c >= 0x2070 && c <= 0x2079) return 1;            /* ⁰-⁹ sobrescrito */
+    if (c >= 0x2080 && c <= 0x2089) return 1;            /* ₀-₉ subscrito */
+    return 0;
+}
+
+static int cp_eh_numerico(uint32_t c)
+{
+    if (cp_eh_digito(c)) return 1;
+    if (c >= 0xBC && c <= 0xBE) return 1;                /* ¼ ½ ¾ */
+    if (c >= 0x2150 && c <= 0x218B) return 1;            /* frações e romanos */
+    return 0;
+}
 static int cp_eh_branco(uint32_t c)
 {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f'
@@ -3743,9 +3923,31 @@ static int met_caixa(VM *vm, Value alvo, int n, Value *out, const char *quem, in
         int k = utf8_le(s->chars, s->len, i, &cp);
         if (!k) break;
         uint32_t r = cp;
+        /* `sobe` = este caractere vai pra maiúscula neste modo. Serve pra
+         * decidir a expansão do ß, que não tem maiúscula de 1 codepoint. */
+        int sobe = (modo == 0) || (modo == 2 && inicio_palavra) || (modo == 3 && i == 0)
+                   || (modo == 4 && !cp_eh_maiuscula(cp));
+        if (cp == 0x00DF && sobe) {
+            /* ß não tem maiúscula única: vira "SS" (ou "Ss" quando só a
+             * inicial da palavra sobe, como no title/capitalize). */
+            const char *exp = (modo == 0 || modo == 4) ? "SS" : "Ss";
+            if (sb_bytes(&b, exp, 2) != 0) { MERRO(vm, "MemoryError", "sem memoria em %s()", quem); }
+            inicio_palavra = 0;
+            i += k;
+            continue;
+        }
         switch (modo) {
             case 0: r = cp_maiuscula(cp); break;                 /* upper */
-            case 1: r = cp_minuscula(cp); break;                 /* lower */
+            case 1: /* lower */
+                r = cp_minuscula(cp);
+                /* Σ no fim de palavra vira ς, não σ: depende do que vem
+                 * depois, então não cabe no cp_minuscula. */
+                if (cp == 0x03A3 && !inicio_palavra) {
+                    uint32_t prox;
+                    int k2 = utf8_le(s->chars, s->len, i + k, &prox);
+                    if (!k2 || !cp_eh_letra(prox)) r = 0x03C2;
+                }
+                break;
             case 2: r = inicio_palavra ? cp_maiuscula(cp) : cp_minuscula(cp); break;  /* title */
             case 3: r = (i == 0) ? cp_maiuscula(cp) : cp_minuscula(cp); break;        /* capitalize */
             case 4: r = cp_eh_maiuscula(cp) ? cp_minuscula(cp) : cp_maiuscula(cp); break; /* swapcase */
@@ -3844,23 +4046,43 @@ static int acha_bytes(const char *s, int slen, const char *ag, int alen, int de)
     return -1;
 }
 
+/* Um só teste pra `startswith`/`endswith`: o argumento pode ser uma string ou
+ * uma TUPLA/LISTA de opções ("bate com qualquer uma"), como no Python — antes
+ * a tupla dava erro de tipo e obrigava a escrever um `or` pra cada opção. */
+static int prefixo_bate(PSString *s, PSString *p, int fim)
+{
+    if (p->len > s->len) return 0;
+    const char *base = fim ? s->chars + s->len - p->len : s->chars;
+    return memcmp(base, p->chars, (size_t)p->len) == 0;
+}
+
+static int met_borda(VM *vm, Value alvo, Value *args, int n, Value *out,
+                     const char *quem, int fim)
+{
+    ARGS_MET(vm, quem, 1);
+    PSString *s = COMO_STRING(alvo), *p;
+    if (EH_SEQ(args[0])) {
+        PSList *l = COMO_LIST(args[0]);   /* tupla e lista têm o mesmo cabeçalho */
+        for (int i = 0; i < l->len; i++) {
+            if (exige_str(vm, l->itens[i], quem, &p) != 0) return -1;
+            if (prefixo_bate(s, p, fim)) { *out = MK_BOOL(1); return 0; }
+        }
+        *out = MK_BOOL(0);
+        return 0;
+    }
+    if (exige_str(vm, args[0], quem, &p) != 0) return -1;
+    *out = MK_BOOL(prefixo_bate(s, p, fim));
+    return 0;
+}
+
 static int met_startswith(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    ARGS_MET(vm, "startswith", 1);
-    PSString *s = COMO_STRING(alvo), *pre;
-    if (exige_str(vm, args[0], "startswith", &pre) != 0) return -1;
-    *out = MK_BOOL(pre->len <= s->len && memcmp(s->chars, pre->chars, (size_t)pre->len) == 0);
-    return 0;
+    return met_borda(vm, alvo, args, n, out, "startswith", 0);
 }
 
 static int met_endswith(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    ARGS_MET(vm, "endswith", 1);
-    PSString *s = COMO_STRING(alvo), *suf;
-    if (exige_str(vm, args[0], "endswith", &suf) != 0) return -1;
-    *out = MK_BOOL(suf->len <= s->len
-                   && memcmp(s->chars + s->len - suf->len, suf->chars, (size_t)suf->len) == 0);
-    return 0;
+    return met_borda(vm, alvo, args, n, out, "endswith", 1);
 }
 
 static int met_contains(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -3976,7 +4198,9 @@ static int met_teste(VM *vm, Value alvo, int n, Value *out, const char *quem, in
 {
     if (n != 0) MERRO(vm, "SomeValueUnexpected", "%s() nao aceita argumento", quem);
     PSString *s = COMO_STRING(alvo);
-    if (s->len == 0) { *out = MK_BOOL(0); return 0; }
+    /* Vazia: `isascii`/`isprintable` são True (nada viola a regra); os
+     * demais pedem "pelo menos um da classe", então dão False. */
+    if (s->len == 0) { *out = MK_BOOL(qual == 6 || qual == 8); return 0; }
     int ok = 1, viu_caixa = 0, inicio_palavra = 1;
     for (int i = 0; i < s->len && ok; ) {
         uint32_t cp;
@@ -4004,6 +4228,8 @@ static int met_teste(VM *vm, Value alvo, int n, Value *out, const char *quem, in
                 break;
             }
             case 8: ok = cp >= 32 && cp != 127; break;                            /* isprintable */
+            case 9:  ok = cp_eh_decimal(cp); break;                               /* isdecimal */
+            case 10: ok = cp_eh_numerico(cp); break;                              /* isnumeric */
         }
         i += k;
     }
@@ -4015,8 +4241,8 @@ static int met_teste(VM *vm, Value alvo, int n, Value *out, const char *quem, in
 
 static int met_isalpha(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; return met_teste(v, a, n, o, "isalpha", 0); }
 static int met_isdigit(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; return met_teste(v, a, n, o, "isdigit", 1); }
-static int met_isnumeric(VM *v, Value a, Value *g, int n, Value *o){ (void)g; return met_teste(v, a, n, o, "isnumeric", 1); }
-static int met_isdecimal(VM *v, Value a, Value *g, int n, Value *o){ (void)g; return met_teste(v, a, n, o, "isdecimal", 1); }
+static int met_isnumeric(VM *v, Value a, Value *g, int n, Value *o){ (void)g; return met_teste(v, a, n, o, "isnumeric", 10); }
+static int met_isdecimal(VM *v, Value a, Value *g, int n, Value *o){ (void)g; return met_teste(v, a, n, o, "isdecimal", 9); }
 static int met_isalnum(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; return met_teste(v, a, n, o, "isalnum", 2); }
 static int met_isspace(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; return met_teste(v, a, n, o, "isspace", 3); }
 static int met_isupper(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; return met_teste(v, a, n, o, "isupper", 4); }
@@ -4813,11 +5039,27 @@ static int met_l_remove(VM *vm, Value alvo, Value *args, int n, Value *out)
     MERRO(vm, "SomeValueUnexpected", "valor invalido: remove() nao achou o item");
 }
 
+/* `index(item, inicio=0, fim=len)` — a faixa é opcional, como no `.find` de
+ * string e no `list.index` do Python. Antes só aceitava 1 argumento. */
 static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    ARGS_MET(vm, "index", 1);
+    if (n < 1 || n > 3)
+        MERRO(vm, "SomeValueUnexpected", "index() espera de 1 a 3 argumentos (item, inicio, fim)");
     PSList *l = COMO_LIST(alvo);
-    for (int i = 0; i < l->len; i++)
+    int64_t de = 0, ate = l->len;
+    if (n >= 2) {
+        if (args[1].t != V_INT) MERRO(vm, "SomeValueUnexpected", "index(): inicio precisa ser int");
+        de = args[1].as.i;
+        if (de < 0) de += l->len;
+        if (de < 0) de = 0;
+    }
+    if (n >= 3) {
+        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "index(): fim precisa ser int");
+        ate = args[2].as.i;
+        if (ate < 0) ate += l->len;
+        if (ate > l->len) ate = l->len;
+    }
+    for (int64_t i = de; i < ate; i++)
         if (val_iguais(&l->itens[i], &args[0])) { *out = MK_INT(i); return 0; }
     MERRO(vm, "SomeValueUnexpected", "valor invalido: index() nao achou o item");
 }
@@ -5046,6 +5288,8 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_DICT:        t = "dict";  break;
                 case OBJ_CLASS:       t = "Entity"; break;
                 case OBJ_INSTANCE:    t = COMO_INST(alvo)->classe->nome; break;
+                case OBJ_CELULA:   /* nunca escapa pro usuário; só pra tabela ficar completa */
+                case OBJ_CLOSURE:
                 case OBJ_BOUND:
                 case OBJ_NATIVA:
                 case OBJ_METODO_NAT:  t = "action"; break;
@@ -5239,6 +5483,13 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "writelines() espera uma lista");
     PSList *l = COMO_LIST(args[0]);
     for (int i = 0; i < l->len; i++) {
+        /* bytes vão CRUS, como no write(): antes caíam no valor_para_texto e
+         * o arquivo recebia a representação `b'a'` em vez do byte. */
+        if (EH_BYTES(l->itens[i])) {
+            PSString *by = COMO_BYTES(l->itens[i]);
+            fwrite(by->chars, 1, (size_t)by->len, a->f);
+            continue;
+        }
         TXTBUF_AUTO t = {0};
         if (valor_para_texto(&t, &l->itens[i], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         fwrite(t.b ? t.b : "", 1, (size_t)t.n, a->f);
@@ -5344,6 +5595,13 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
     /* o 3º argumento é `encoding` no interpretador; aqui tudo é UTF-8 e o
      * valor é aceito e ignorado, pra o mesmo `.ps` rodar nos dois */
     PSString *cam = COMO_STRING(args[0]);
+    /* O fopen("r") do Linux ABRE um diretório sem reclamar; só o read()
+     * depois falha, e falhava calado (devolvia ""). Barra aqui. */
+    {
+        struct stat st;
+        if (stat(cam->chars, &st) == 0 && S_ISDIR(st.st_mode))
+            BERRO(vm, "IOError", "e um diretório, nao um arquivo: '%s'", cam->chars);
+    }
     FILE *f = fopen(cam->chars, cfmodo);
     if (!f) BERRO(vm, "IOError", "arquivo nao encontrado: '%s'", cam->chars);
 
@@ -5376,14 +5634,149 @@ static PSString *novo_bytes(VM *vm, const char *dados, int n)
     return b;
 }
 
+/* ── codecs de encode()/decode() ─────────────────────────────────────────
+ * Antes o argumento `encoding` era ACEITO E IGNORADO: `"café".encode("latin-1")`
+ * devolvia UTF-8 e `b.decode("naoexiste")` passava batido. Agora o nome é
+ * resolvido de verdade e o que não dá pra representar vira erro (ou some /
+ * vira '?' se o `errors` pedir). */
+enum { CODEC_UTF8, CODEC_LATIN1, CODEC_ASCII, CODEC_UTF16LE, CODEC_UTF16BE, CODEC_UTF32LE, CODEC_UTF32BE };
+
+/* Normaliza como o Python: caixa e os separadores `-`/`_`/espaço não contam. */
+static int codec_de_nome(const char *nome, int len)
+{
+    char n[32];
+    int j = 0;
+    for (int i = 0; i < len && j < (int)sizeof(n) - 1; i++) {
+        char c = nome[i];
+        if (c == '-' || c == '_' || c == ' ') continue;
+        n[j++] = (char)((c >= 'A' && c <= 'Z') ? c + 32 : c);
+    }
+    n[j] = '\0';
+    if (!strcmp(n, "utf8") || !strcmp(n, "u8") || !strcmp(n, "utf")) return CODEC_UTF8;
+    if (!strcmp(n, "latin1") || !strcmp(n, "iso88591") || !strcmp(n, "l1")
+        || !strcmp(n, "latin") || !strcmp(n, "8859") || !strcmp(n, "cp819")) return CODEC_LATIN1;
+    if (!strcmp(n, "ascii") || !strcmp(n, "usascii") || !strcmp(n, "646")) return CODEC_ASCII;
+    if (!strcmp(n, "utf16le") || !strcmp(n, "utf16")) return CODEC_UTF16LE;
+    if (!strcmp(n, "utf16be")) return CODEC_UTF16BE;
+    if (!strcmp(n, "utf32le") || !strcmp(n, "utf32")) return CODEC_UTF32LE;
+    if (!strcmp(n, "utf32be")) return CODEC_UTF32BE;
+    return -1;
+}
+
+enum { ERRO_STRICT, ERRO_IGNORE, ERRO_REPLACE };
+
+static int politica_erro(const char *nome, int len)
+{
+    if (len == 6 && !memcmp(nome, "strict", 6))  return ERRO_STRICT;
+    if (len == 6 && !memcmp(nome, "ignore", 6))  return ERRO_IGNORE;
+    if (len == 7 && !memcmp(nome, "replace", 7)) return ERRO_REPLACE;
+    return -1;
+}
+
+/* Lê os argumentos comuns de encode()/decode(): (encoding, errors). */
+static int codec_args(VM *vm, Value *args, int n, const char *quem, int *codec, int *pol)
+{
+    *codec = CODEC_UTF8; *pol = ERRO_STRICT;
+    if (n > 2) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+                 snprintf(vm->erro, sizeof(vm->erro), "%s() espera de 0 a 2 argumentos", quem); return -1; }
+    if (n >= 1 && args[0].t != V_NULL) {
+        if (!EH_STRING(args[0])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro, sizeof(vm->erro), "%s() espera o encoding como str", quem); return -1; }
+        PSString *e = COMO_STRING(args[0]);
+        *codec = codec_de_nome(e->chars, e->len);
+        if (*codec < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro, sizeof(vm->erro), "encoding desconhecido: '%s'", e->chars); return -1; }
+    }
+    if (n >= 2 && args[1].t != V_NULL) {
+        if (!EH_STRING(args[1])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro, sizeof(vm->erro), "%s() espera o errors como str", quem); return -1; }
+        PSString *e = COMO_STRING(args[1]);
+        *pol = politica_erro(e->chars, e->len);
+        if (*pol < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro, sizeof(vm->erro), "errors desconhecido: '%s' (use strict, ignore ou replace)", e->chars);
+            return -1; }
+    }
+    return 0;
+}
+
+/* Decodifica um caractere UTF-8 VALIDANDO (sequência curta, continuação
+ * errada, overlong, surrogate, acima de U+10FFFF). -1 se inválido. */
+static int utf8_le_estrito(const unsigned char *b, int len, int i, uint32_t *cp)
+{
+    if (i >= len) return -1;
+    unsigned char c = b[i];
+    int k;
+    uint32_t v;
+    if (c < 0x80)            { *cp = c; return 1; }
+    else if ((c & 0xE0) == 0xC0) { k = 2; v = c & 0x1F; }
+    else if ((c & 0xF0) == 0xE0) { k = 3; v = c & 0x0F; }
+    else if ((c & 0xF8) == 0xF0) { k = 4; v = c & 0x07; }
+    else return -1;                              /* 0x80-0xBF solto ou 0xF8+ */
+    if (i + k > len) return -1;
+    for (int t = 1; t < k; t++) {
+        if ((b[i + t] & 0xC0) != 0x80) return -1;
+        v = (v << 6) | (uint32_t)(b[i + t] & 0x3F);
+    }
+    if ((k == 2 && v < 0x80) || (k == 3 && v < 0x800) || (k == 4 && v < 0x10000))
+        return -1;                               /* overlong */
+    if (v >= 0xD800 && v <= 0xDFFF) return -1;   /* surrogate solto */
+    if (v > 0x10FFFF) return -1;
+    *cp = v;
+    return k;
+}
+
+static int codec_por_16(int codec) { return codec == CODEC_UTF16LE || codec == CODEC_UTF16BE; }
+static int codec_por_32(int codec) { return codec == CODEC_UTF32LE || codec == CODEC_UTF32BE; }
+
 static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "encode() espera 0 ou 1 argumento");
-    /* O `encoding` é aceito e ignorado: a linguagem é UTF-8 de ponta a ponta,
-     * e converter pra outro seria mudar o conteúdo sem o usuário pedir. */
-    if (n == 1 && !EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "encode() espera str");
+    int codec, pol;
+    if (codec_args(vm, args, n, "encode", &codec, &pol) != 0) return -1;
     PSString *s = COMO_STRING(alvo);
-    PSString *b = novo_bytes(vm, s->chars, s->len);
+    if (codec == CODEC_UTF8) {          /* a linguagem já é UTF-8: cópia crua */
+        PSString *b = novo_bytes(vm, s->chars, s->len);
+        if (!b) MERRO(vm, "MemoryError", "sem memoria");
+        *out = MK_OBJ(b);
+        return 0;
+    }
+    SBUF_AUTO sb = {0};
+    for (int i = 0; i < s->len; ) {
+        uint32_t cp;
+        int k = utf8_le(s->chars, s->len, i, &cp);
+        if (!k) break;
+        i += k;
+        uint32_t teto = codec == CODEC_ASCII ? 0x80 : (codec == CODEC_LATIN1 ? 0x100 : 0x110000);
+        if (cp >= teto) {
+            if (pol == ERRO_IGNORE) continue;
+            if (pol == ERRO_REPLACE) cp = '?';
+            else MERRO(vm, "SomeValueUnexpected",
+                       "encode(): U+%04X nao cabe no encoding pedido", cp);
+        }
+        char buf[4];
+        int nb;
+        if (codec_por_16(codec)) {
+            if (cp >= 0x10000) {        /* fora do BMP: par de surrogates */
+                uint32_t u = cp - 0x10000, hi = 0xD800 + (u >> 10), lo = 0xDC00 + (u & 0x3FF);
+                char q[4];
+                if (codec == CODEC_UTF16LE) { q[0]=(char)(hi&0xFF); q[1]=(char)(hi>>8); q[2]=(char)(lo&0xFF); q[3]=(char)(lo>>8); }
+                else                        { q[0]=(char)(hi>>8); q[1]=(char)(hi&0xFF); q[2]=(char)(lo>>8); q[3]=(char)(lo&0xFF); }
+                if (sb_bytes(&sb, q, 4) != 0) { MERRO(vm, "MemoryError", "sem memoria em encode()"); }
+                continue;
+            }
+            if (codec == CODEC_UTF16LE) { buf[0]=(char)(cp&0xFF); buf[1]=(char)((cp>>8)&0xFF); }
+            else                        { buf[0]=(char)((cp>>8)&0xFF); buf[1]=(char)(cp&0xFF); }
+            nb = 2;
+        } else if (codec_por_32(codec)) {
+            if (codec == CODEC_UTF32LE) { buf[0]=(char)(cp&0xFF); buf[1]=(char)((cp>>8)&0xFF); buf[2]=(char)((cp>>16)&0xFF); buf[3]=(char)((cp>>24)&0xFF); }
+            else                        { buf[0]=(char)((cp>>24)&0xFF); buf[1]=(char)((cp>>16)&0xFF); buf[2]=(char)((cp>>8)&0xFF); buf[3]=(char)(cp&0xFF); }
+            nb = 4;
+        } else {
+            buf[0] = (char)(unsigned char)cp;
+            nb = 1;
+        }
+        if (sb_bytes(&sb, buf, nb) != 0) { MERRO(vm, "MemoryError", "sem memoria em encode()"); }
+    }
+    PSString *b = novo_bytes(vm, sb.b ? sb.b : "", sb.n);
     if (!b) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(b);
     return 0;
@@ -5391,12 +5784,71 @@ static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "decode() espera 0 ou 1 argumento");
+    int codec, pol;
+    if (codec_args(vm, args, n, "decode", &codec, &pol) != 0) return -1;
     PSString *b = COMO_BYTES(alvo);
-    PSString *s = nova_string(vm, b->chars, b->len);
-    if (!s) MERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(s);
-    return 0;
+    const unsigned char *p = (const unsigned char *)b->chars;
+    SBUF_AUTO sb = {0};
+    if (codec == CODEC_UTF8) {
+        for (int i = 0; i < b->len; ) {
+            uint32_t cp;
+            int k = utf8_le_estrito(p, b->len, i, &cp);
+            if (k < 0) {
+                if (pol == ERRO_STRICT)
+                    MERRO(vm, "SomeValueUnexpected",
+                          "decode(): byte 0x%02X invalido em utf-8 na posicao %d", p[i], i);
+                if (pol == ERRO_REPLACE && sb_cp(&sb, 0xFFFD) != 0)
+                    MERRO(vm, "MemoryError", "sem memoria em decode()");
+                i++;
+                continue;
+            }
+            if (sb_bytes(&sb, (const char *)p + i, k) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
+            i += k;
+        }
+    } else if (codec_por_16(codec) || codec_por_32(codec)) {
+        int passo = codec_por_16(codec) ? 2 : 4;
+        for (int i = 0; i + passo <= b->len; i += passo) {
+            uint32_t cp;
+            if (passo == 2)
+                cp = codec == CODEC_UTF16LE ? (uint32_t)(p[i] | (p[i+1] << 8))
+                                            : (uint32_t)((p[i] << 8) | p[i+1]);
+            else
+                cp = codec == CODEC_UTF32LE
+                     ? ((uint32_t)p[i] | ((uint32_t)p[i+1] << 8) | ((uint32_t)p[i+2] << 16) | ((uint32_t)p[i+3] << 24))
+                     : (((uint32_t)p[i] << 24) | ((uint32_t)p[i+1] << 16) | ((uint32_t)p[i+2] << 8) | (uint32_t)p[i+3]);
+            if (passo == 2 && cp >= 0xD800 && cp <= 0xDBFF && i + 4 <= b->len) {
+                uint32_t lo = codec == CODEC_UTF16LE ? (uint32_t)(p[i+2] | (p[i+3] << 8))
+                                                     : (uint32_t)((p[i+2] << 8) | p[i+3]);
+                if (lo >= 0xDC00 && lo <= 0xDFFF) {
+                    cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                    i += 2;
+                }
+            }
+            if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+                if (pol == ERRO_STRICT)
+                    MERRO(vm, "SomeValueUnexpected", "decode(): U+%04X invalido", cp);
+                if (pol == ERRO_IGNORE) continue;
+                cp = 0xFFFD;
+            }
+            if (sb_cp(&sb, cp) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
+        }
+        if (b->len % passo != 0 && pol == ERRO_STRICT)
+            MERRO(vm, "SomeValueUnexpected", "decode(): sobrou byte solto no fim do utf-16/32");
+    } else {
+        /* latin-1 casa 1 byte = 1 codepoint (nunca falha); ascii recusa >127 */
+        for (int i = 0; i < b->len; i++) {
+            if (codec == CODEC_ASCII && p[i] >= 0x80) {
+                if (pol == ERRO_STRICT)
+                    MERRO(vm, "SomeValueUnexpected",
+                          "decode(): byte 0x%02X nao e ascii na posicao %d", p[i], i);
+                if (pol == ERRO_IGNORE) continue;
+                if (sb_cp(&sb, 0xFFFD) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
+                continue;
+            }
+            if (sb_cp(&sb, p[i]) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
+        }
+    }
+    return devolve_sbuf(vm, &sb, out);
 }
 
 static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -5416,7 +5868,7 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* Sem `.len()`: `bytes` não tem esse método no interpretador (é da `PoolStr`),
  * e a VM não pode oferecer mais do que a linguagem tem. `len(b)` funciona. */
 static const MetodoNat METODOS_BYTES[] = {
-    { "decode", met_b_decode, NULL }, { "hex", met_b_hex, NULL },
+    { "decode", met_b_decode, "encoding,errors" }, { "hex", met_b_hex, NULL },
 };
 
 
@@ -6626,6 +7078,28 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
                         cp = cp * 16 + (uint32_t)d;
                     }
                     j->i += 4;
+                    /* Fora do BMP o JSON escreve um PAR de surrogates
+                     * (`\ud83d\ude00` = 😀). Cada metade sozinha não é
+                     * caractere: emitir as duas dava 6 bytes de lixo. */
+                    if (cp >= 0xD800 && cp <= 0xDBFF) {
+                        if (j->i + 6 > j->n || j->s[j->i] != '\\' || j->s[j->i + 1] != 'u')
+                            BERRO(vm, "SomeValueUnexpected", "json: surrogate alto sem o par");
+                        uint32_t lo = 0;
+                        for (int k = 0; k < 4; k++) {
+                            char h = j->s[j->i + 2 + k];
+                            int d = (h >= '0' && h <= '9') ? h - '0'
+                                  : (h >= 'a' && h <= 'f') ? h - 'a' + 10
+                                  : (h >= 'A' && h <= 'F') ? h - 'A' + 10 : -1;
+                            if (d < 0) { BERRO(vm, "SomeValueUnexpected", "json: \\u invalido"); }
+                            lo = lo * 16 + (uint32_t)d;
+                        }
+                        if (lo < 0xDC00 || lo > 0xDFFF)
+                            BERRO(vm, "SomeValueUnexpected", "json: par de surrogates invalido");
+                        j->i += 6;
+                        cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                    } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
+                        BERRO(vm, "SomeValueUnexpected", "json: surrogate baixo sem o par");
+                    }
                     if (sb_cp(&b, cp) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
                     continue;
                 }
@@ -7095,21 +7569,84 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
 }
 
 /* `\1`..`\9` na substituição viram o grupo correspondente. */
-static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s, const RxCaptura *cap)
+/* Expande o replacement do sub(). O `re` do Python trata o texto de troca
+ * como uma mini-linguagem: `\1`, `\g<1>`, `\g<nome>` e os escapes de
+ * caractere (`\n`, `\t`, `\\`). Antes só `\1`-`\9` e `\\` eram
+ * entendidos: `r"\n"` saía como a barra mais o 'n' literal e `\g<1>` ia cru
+ * pro resultado. */
+static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
+                      const RxCaptura *cap, const PSRegex *r, char *erro, int erro_cap)
 {
     for (int i = 0; i < rlen; i++) {
-        if (rep[i] == '\\' && i + 1 < rlen) {
-            char e = rep[i + 1];
-            if (e >= '1' && e <= '9') {
-                int g = e - '0';
-                if (g <= cap->ngrupos && cap->inicio[g] >= 0)
-                    if (sb_bytes(b, s + cap->inicio[g], cap->fim[g] - cap->inicio[g]) != 0) return -1;
-                i++;
-                continue;
-            }
-            if (e == '\\') { if (sb_bytes(b, "\\", 1) != 0) return -1; i++; continue; }
+        if (rep[i] != '\\' || i + 1 >= rlen) {
+            if (sb_bytes(b, rep + i, 1) != 0) return -1;
+            continue;
         }
-        if (sb_bytes(b, rep + i, 1) != 0) return -1;
+        char e = rep[i + 1];
+        int g = -1;
+        if (e >= '0' && e <= '9') {
+            /* `\12` é o grupo 12 quando existe (o `re` lê até 2 dígitos) */
+            g = e - '0';
+            i++;
+            if (i + 1 < rlen && rep[i + 1] >= '0' && rep[i + 1] <= '9'
+                    && g * 10 + (rep[i + 1] - '0') <= cap->ngrupos) {
+                g = g * 10 + (rep[i + 1] - '0');
+                i++;
+            }
+        } else if (e == 'g' && i + 2 < rlen && rep[i + 2] == '<') {
+            int j = i + 3;
+            while (j < rlen && rep[j] != '>') j++;
+            if (j >= rlen) {
+                snprintf(erro, (size_t)erro_cap, "sub(): falta '>' em \\g<...>");
+                return -2;
+            }
+            int nlen = j - (i + 3);
+            const char *nome = rep + i + 3;
+            int so_digito = nlen > 0;
+            for (int t = 0; t < nlen; t++)
+                if (nome[t] < '0' || nome[t] > '9') { so_digito = 0; break; }
+            if (so_digito) {
+                g = 0;
+                for (int t = 0; t < nlen; t++) g = g * 10 + (nome[t] - '0');
+            } else {
+                g = ps_regex_grupo_por_nome(r, nome, nlen);
+                if (g < 0) {
+                    snprintf(erro, (size_t)erro_cap, "sub(): grupo '%.*s' nao existe no padrao",
+                             nlen, nome);
+                    return -2;
+                }
+            }
+            i = j;
+        } else {
+            /* escape de caractere: o mesmo conjunto do literal da linguagem */
+            char c;
+            switch (e) {
+                case 'n': c = '\n';  break;
+                case 't': c = '\t';  break;
+                case 'r': c = '\r';  break;
+                case 'f': c = '\f';  break;
+                case 'v': c = '\v';  break;
+                case 'a': c = '\a';  break;
+                case 'b': c = '\b';  break;
+                case '0': c = '\0';  break;
+                case '\\': c = '\\'; break;
+                default:
+                    /* desconhecido: mantém os dois bytes, como o `re` faz com
+                     * `\%` (não é escape, então a barra fica) */
+                    if (sb_bytes(b, rep + i, 2) != 0) return -1;
+                    i++;
+                    continue;
+            }
+            if (sb_bytes(b, &c, 1) != 0) return -1;
+            i++;
+            continue;
+        }
+        if (g > cap->ngrupos) {
+            snprintf(erro, (size_t)erro_cap, "sub(): grupo %d nao existe no padrao", g);
+            return -2;
+        }
+        if (cap->inicio[g] >= 0
+                && sb_bytes(b, s + cap->inicio[g], cap->fim[g] - cap->inicio[g]) != 0) return -1;
     }
     return 0;
 }
@@ -7130,7 +7667,12 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         if (achou < 0) BERRO(vm, "RuntimeError", "regex: backtracking demais");
         if (!achou) break;
         if (sb_bytes(&b, s + de, cap.inicio[0] - de) != 0) BERRO(vm, "MemoryError", "sem memoria");
-        if (rx_expande(&b, rep, rlen, s, &cap) != 0) BERRO(vm, "MemoryError", "sem memoria");
+        {
+            char msg[160] = {0};
+            int rc = rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg));
+            if (rc == -2) BERRO(vm, "SomeValueUnexpected", "%s", msg);
+            if (rc != 0)  BERRO(vm, "MemoryError", "sem memoria");
+        }
         feitos++;
         if (cap.fim[0] > cap.inicio[0]) {
             de = cap.fim[0];
@@ -7208,24 +7750,47 @@ static int mod_regex_sub(VM *vm, Value *args, int n, Value *out)
 
 /* corpo do split, compartilhado pelo módulo e pelo Pattern compilado (que NÃO
  * pode liberar o `r` — ele vive no objeto). */
-static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, Value *out)
+static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsplit, Value *out)
 {
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria");
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) BERRO(vm, "RuntimeError", "estouro");
     int de = 0, ini_campo = 0;
+    int64_t cortes = 0;
     while (de <= slen) {
         RxCaptura cap;
         int achou = ps_regex_busca(r, src, slen, de, &cap);
         if (achou < 0) { vm->sp--; BERRO(vm, "RuntimeError", "regex: backtracking demais"); }
         if (!achou) break;
-        /* separador vazio não divide — o `re` também pula */
-        if (cap.fim[0] == cap.inicio[0]) { de = cap.fim[0] + 1; continue; }
+        if (maxsplit > 0 && cortes >= maxsplit) break;
+        cortes++;
         PSString *campo = nova_string(vm, src + ini_campo, cap.inicio[0] - ini_campo);
         if (!campo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
         l->itens[l->len++] = MK_OBJ(campo);
-        ini_campo = de = cap.fim[0];
+        /* Grupos de captura do separador ENTRAM no resultado, como no `re`:
+         * `split(r"(,)", "a,b")` dá ['a', ',', 'b']. Antes sumiam. */
+        for (int g = 1; g <= cap.ngrupos; g++) {
+            Value v;
+            if (cap.inicio[g] < 0) v = MK_NULL();
+            else {
+                PSString *gs = nova_string(vm, src + cap.inicio[g], cap.fim[g] - cap.inicio[g]);
+                if (!gs) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+                v = MK_OBJ(gs);
+            }
+            if (l->len >= l->cap && cresce_lista(vm, l) != 0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+            l->itens[l->len++] = v;
+        }
+        if (cap.fim[0] == cap.inicio[0]) {
+            /* Separador VAZIO divide também (Python >= 3.7): `split("", "abc")`
+             * dá ['', 'a', 'b', 'c', '']. Antes a VM pulava e devolvia ['abc'].
+             * O campo seguinte começa aqui e a busca anda um byte, senão o
+             * mesmo ponto casaria pra sempre. */
+            ini_campo = cap.fim[0];
+            de = cap.fim[0] + 1;
+        } else {
+            ini_campo = de = cap.fim[0];
+        }
     }
     PSString *ultimo = nova_string(vm, src + ini_campo, slen - ini_campo);
     if (!ultimo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
@@ -7238,12 +7803,19 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, Value *out)
 
 static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
 {
-    EXIGE_ARGS(vm, "split", 2);
+    /* `maxsplit` já estava anunciado na assinatura do módulo (e na doc), mas o
+     * código só aceitava 2 argumentos: passar o 3º dava "espera 2". */
+    if (n < 2 || n > 3) BERRO(vm, "SomeValueUnexpected", "split() espera 2 ou 3 argumentos");
     if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "split() espera str");
+    int64_t maxsplit = 0;
+    if (n == 3) {
+        if (args[2].t != V_INT) BERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
+        maxsplit = args[2].as.i;
+    }
     PSRegex *r = rx_compila(vm, args[0], "split");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
-    int rc = rx_split(vm, r, s->chars, s->len, out);
+    int rc = rx_split(vm, r, s->chars, s->len, maxsplit, out);
     ps_regex_free(r);
     return rc;
 }
@@ -7295,10 +7867,16 @@ static int met_rx_findall(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSRegex *r; PSString *s;
-    if (n == 2 && args[1].t != V_INT)
-        MERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
-    if (rx_obj_str(vm, alvo, args, n > 1 ? 1 : n, "split", &r, &s) != 0) return -1;
-    return rx_split(vm, r, s->chars, s->len, out);
+    if (n > 2) MERRO(vm, "SomeValueUnexpected", "split() espera 1 ou 2 argumentos");
+    /* O maxsplit era VALIDADO e depois ignorado — `p.split(s, 1)` cortava tudo. */
+    int64_t maxsplit = 0;
+    if (n == 2) {
+        if (args[1].t != V_INT)
+            MERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
+        maxsplit = args[1].as.i;
+    }
+    if (rx_obj_str(vm, alvo, args, 1, "split", &r, &s) != 0) return -1;
+    return rx_split(vm, r, s->chars, s->len, maxsplit, out);
 }
 
 static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -7478,7 +8056,7 @@ static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
 }
 
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
-                           int fp0, int sp0, int locals0, Value *resultado);
+                           int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
 
 static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nargs_dados)
@@ -7497,6 +8075,7 @@ static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nar
     g->handlers = NULL;
     g->nh = 0;
     g->cap_handlers = 0;
+    g->cl = NULL;          /* preenchido pelo CALL quando a geradora captura */
     /* pilha do gerador dimensionada como a cota do CALL: cada instrução
      * empilha no máximo um valor */
     int32_t cap_pilha = pr->ncode / 2 + 8;
@@ -7550,7 +8129,7 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     g->rodando = 1;
 
     Value r;
-    int rc = vm_executa_base(vm, g->proto, NULL, -1, fp0, sp0, lb0, &r);
+    int rc = vm_executa_base(vm, g->proto, NULL, -1, fp0, sp0, lb0, g->cl, &r);
     int cedeu = vm->ger_cedeu;
     /* lê o estado ANTES de restaurar os campos de transporte */
     if (cedeu) {
@@ -15667,6 +16246,8 @@ static void fib_marca_gc(VM *vm)
         if (f == vm->fib_atual) continue;   /* a corrente é marcada via vm->stack */
         for (int k = 0; k < f->sp; k++)         marca_valor(vm, &f->stack[k]);
         for (int k = 0; k < f->locals_top; k++) marca_valor(vm, &f->locals[k]);
+        for (int k = 0; k < f->frame_topo && k < FIB_FRAMES; k++)
+            if (f->frames[k].cl) marca_obj(vm, (Obj *)f->frames[k].cl);
         marca_valor(vm, &f->jk_req);
     }
 }
@@ -16445,12 +17026,12 @@ static Builtin BUILTINS[] = {
  * ao prólogo de uma chamada normal. Termina quando o frame `fp0` retorna.
  */
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
-                           int fp0, int sp0, int locals0, Value *resultado);
+                           int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
 
 static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
 {
     vm_corrente = vm;
-    int r = vm_executa_base(vm, proto_inicial, NULL, 0, 0, 0, 0, resultado);
+    int r = vm_executa_base(vm, proto_inicial, NULL, 0, 0, 0, 0, NULL, resultado);
     vm_corrente = NULL;
     return r;
 }
@@ -16483,6 +17064,13 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
 
     int proto;
     Value reais[8];
+    PSClosure *cl_chamada = NULL;
+    if (EH_CLOSURE(fn)) {
+        /* action aninhada usada como valor (callback, map/filter, handler):
+         * o proto é o mesmo, o que muda é levar as células junto. */
+        cl_chamada = COMO_CLOSURE(fn);
+        fn = MK_FUNC(cl_chamada->proto);
+    }
     if (fn.t == V_FUNC) {
         proto = fn.as.proto;
         /* @static com `self` na assinatura, chamado como VALOR (map/filter/
@@ -16533,6 +17121,16 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "SomeValueUnexpected");
         return -1;
     }
+    /* Mesma checagem do OP_CALL: parâmetro obrigatório sem valor é ERRO.
+     * Faltava aqui, então `map(l, f)` com `f(x, y)` rodava com `y` UNSET e
+     * devolvia lixo em silêncio — o caminho de callback escapava da regra. */
+    if (n < pr->nparams - pr->ndefaults) {
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "RuntimeError");
+        snprintf(vm->erro, sizeof(vm->erro), "action '%s' faltando argumento: '%s'",
+                 pr->nome ? pr->nome : "?",
+                 (pr->param_nomes && pr->param_nomes[n]) ? pr->param_nomes[n] : "?");
+        return -1;
+    }
     if (vm->frame_topo + 1 >= vm->frames_teto) {
         snprintf(vm->erro, sizeof(vm->erro), "%s", "estouro de frames (recursao profunda demais)");
         return -1;
@@ -16543,13 +17141,13 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
     }
     int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
     int r = vm_executa_base(vm, proto, args, n,
-                            vm->frame_topo, vm->sp, vm->locals_top, out);
+                            vm->frame_topo, vm->sp, vm->locals_top, cl_chamada, out);
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     return r;
 }
 
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
-                           int fp0, int sp0, int locals0, Value *resultado)
+                           int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado)
 {
     int fp = fp0;
     vm->frames[fp0].proto       = proto_inicial;
@@ -16558,8 +17156,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     vm->frames[fp0].stack_base  = sp0;
     vm->frames[fp0].nargs       = nargs_in;
     vm->frames[fp0].devolve_self = 0;
+    vm->frames[fp0].cl           = cl0;
 
     Proto *p     = &vm->protos[proto_inicial];
+    PSClosure *cl = cl0;      /* closure do frame corrente (NULL se não captura) */
     int    ip    = 0;
     int    sp    = sp0;
     int    lbase = locals0;
@@ -16605,7 +17205,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         if (vm->alocado > vm->proximo_gc) {
             vm->sp = sp;
             vm->locals_top = locals_top;
+            /* O closure do frame em execução não está em lugar nenhum da
+             * pilha (o CALL já o consumiu): publicar `gc_fp`+`gc_cl` é o que
+             * impede o coletor de liberar as células debaixo da action. */
+            int fp_salvo = vm->gc_fp;
+            PSClosure *cl_salvo = vm->gc_cl;
+            vm->gc_fp = fp;
+            vm->gc_cl = cl;
             gc_coleta(vm);
+            vm->gc_fp = fp_salvo;
+            vm->gc_cl = cl_salvo;
         }
 
         int32_t o   = p->code[ip];
@@ -16772,6 +17381,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_NEG: {
             Value a = stack[sp - 1];
+            /* bool entra na aritmética como 0/1 em todo lugar (`true + 1` é 2);
+             * o menos unário era a única exceção e levantava erro. */
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
             if (a.t == V_INT && a.as.i != INT64_MIN) stack[sp - 1] = MK_INT(-a.as.i);
             else if (EH_INTEIRO(a)) {              /* bignum, ou -INT64_MIN que estoura */
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -16881,6 +17493,108 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_MAKE_FUNCTION:
             stack[sp++] = MK_FUNC(arg);
             break;
+
+        /* ── closure ────────────────────────────────────────────────────── */
+        case OP_MAKE_CELL: {
+            /* Põe uma célula no slot, guardando o que já estava lá (o
+             * argumento, quando o parâmetro é capturado). */
+            PSCelula *cel = malloc(sizeof(PSCelula));
+            if (!cel) ERRO(vm, "sem memoria na captura de variavel");
+            cel->obj.type = OBJ_CELULA; cel->obj.marked = 0;
+            cel->obj.next = vm->objetos; vm->objetos = (Obj *)cel;
+            vm->alocado += sizeof(PSCelula);
+            cel->v = vm->locals[lbase + arg];
+            vm->locals[lbase + arg] = MK_OBJ(cel);
+            break;
+        }
+
+        /* slot CERTO (parâmetro ou declaração tipada): a célula tem valor */
+        case OP_CELL_GET: {
+            Value c0 = vm->locals[lbase + arg];
+            if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
+            stack[sp++] = COMO_CELULA(c0)->v;
+            break;
+        }
+
+        case OP_CELL_SET: {
+            Value c0 = vm->locals[lbase + arg];
+            if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
+            COMO_CELULA(c0)->v = stack[--sp];
+            break;
+        }
+
+        /* nome sem tipo: mesma subida de escopo do LOAD_NAME/STORE_NAME */
+        case OP_CELL_GET_NAME: {
+            Value li = stack[--sp];
+            Value c0 = vm->locals[lbase + li.as.i];
+            if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
+            Value v0 = COMO_CELULA(c0)->v;
+            if (v0.t != V_UNSET) { stack[sp++] = v0; break; }
+            if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
+            Value g = vm->globals[arg];
+            if (g.t == V_UNSET)
+                ERRO_TF(vm, "RuntimeError", "variável não definida: %s",
+                        nome_do_global(vm, arg));
+            stack[sp++] = g;
+            break;
+        }
+
+        case OP_CELL_SET_NAME: {
+            /* Sempre grava na CÉLULA (e não na global, como o STORE_NAME):
+             * o compilador só cria célula pra nome que ESTA função liga, então
+             * ele é local daqui — e a action aninhada tem que enxergar. */
+            Value li = stack[--sp];
+            Value val = stack[--sp];
+            Value c0 = vm->locals[lbase + li.as.i];
+            if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
+            COMO_CELULA(c0)->v = val;
+            break;
+        }
+
+        case OP_LOAD_UPVAL: {
+            if (!cl || arg >= cl->nups || !cl->ups[arg])
+                ERRO(vm, "upvalue fora da faixa (bug do compilador)");
+            Value v0 = cl->ups[arg]->v;
+            if (v0.t == V_UNSET)
+                ERRO_TF(vm, "RuntimeError",
+                        "variável '%s' de fora usada antes de receber valor",
+                        (p->upval_nomes && p->upval_nomes[arg]) ? p->upval_nomes[arg] : "?");
+            stack[sp++] = v0;
+            break;
+        }
+
+        case OP_STORE_UPVAL: {
+            if (!cl || arg >= cl->nups || !cl->ups[arg])
+                ERRO(vm, "upvalue fora da faixa (bug do compilador)");
+            cl->ups[arg]->v = stack[--sp];
+            break;
+        }
+
+        case OP_MAKE_CLOSURE: {
+            Proto *np = &vm->protos[arg];
+            PSClosure *nc = malloc(sizeof(PSClosure));
+            if (!nc) ERRO(vm, "sem memoria no closure");
+            nc->obj.type = OBJ_CLOSURE; nc->obj.marked = 0;
+            nc->obj.next = vm->objetos; vm->objetos = (Obj *)nc;
+            nc->proto = arg;
+            nc->nups = np->nupvals;
+            nc->ups = np->nupvals > 0 ? calloc((size_t)np->nupvals, sizeof(PSCelula *)) : NULL;
+            if (np->nupvals > 0 && !nc->ups) ERRO(vm, "sem memoria no closure");
+            vm->alocado += sizeof(PSClosure) + sizeof(PSCelula *) * (size_t)np->nupvals;
+            for (int k = 0; k < np->nupvals; k++) {
+                if (np->upvals[k].em_local) {
+                    Value c0 = vm->locals[lbase + np->upvals[k].idx];
+                    if (!EH_CELULA(c0)) ERRO(vm, "captura de slot sem celula (bug do compilador)");
+                    nc->ups[k] = COMO_CELULA(c0);
+                } else {
+                    if (!cl || np->upvals[k].idx >= cl->nups)
+                        ERRO(vm, "captura em cadeia invalida (bug do compilador)");
+                    nc->ups[k] = cl->ups[np->upvals[k].idx];
+                }
+            }
+            stack[sp++] = MK_OBJ(nc);
+            break;
+        }
 
         case OP_CALL_KW: {
             /* Pilha: callee, v1..vN, tupla_de_nomes.
@@ -17102,6 +17816,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->frames[fp].locals_base = lbase;
             vm->frames[fp].stack_base  = sp - total - 1;
             vm->frames[fp].nargs       = nargs;
+            vm->frames[fp].cl          = cl;
             /* instanciação devolve a instância, não o retorno do __init__ */
             vm->frames[fp].devolve_self = EH_CLASS(alvo_kw);
 
@@ -17116,6 +17831,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             locals_top += pk->nlocals;
             sp    = sp - total - 1;
             p     = pk;
+            cl    = EH_CLOSURE(alvo_kw) ? COMO_CLOSURE(alvo_kw) : NULL;
             ip    = 0;
             lbase = novo_lb;
             nargs = pk->nparams;
@@ -17151,6 +17867,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->frames[fp].locals_base = lbase;
                 vm->frames[fp].stack_base = sp - n - 1;
                 vm->frames[fp].nargs = nargs;
+                vm->frames[fp].cl = cl;
                 vm->frames[fp].devolve_self = 1;    /* o valor da expressão é a instância */
                 int nb = locals_top;
                 vm->locals[nb] = iv;
@@ -17159,7 +17876,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 fp++;
                 locals_top += np->nlocals;
                 sp = sp - n - 1;
-                p = np; ip = 0; lbase = nb; nargs = n + 1;
+                p = np; cl = NULL; ip = 0; lbase = nb; nargs = n + 1;
                 break;
             }
 
@@ -17189,6 +17906,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->frames[fp].locals_base = lbase;
                 vm->frames[fp].stack_base = sp - n - 1;
                 vm->frames[fp].nargs = nargs;
+                vm->frames[fp].cl = cl;
                 vm->frames[fp].devolve_self = 0;
                 int nb = locals_top;
                 vm->locals[nb] = b->instancia;
@@ -17197,10 +17915,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 fp++;
                 locals_top += np->nlocals;
                 sp = sp - n - 1;
-                p = np; ip = 0; lbase = nb; nargs = n + 1;
+                p = np; cl = NULL; ip = 0; lbase = nb; nargs = n + 1;
                 break;
             }
 
+            /* Closure é uma action como outra qualquer: normaliza pra FUNC e
+             * guarda as células, que entram no frame logo abaixo. */
+            PSClosure *cl_alvo = NULL;
+            if (EH_CLOSURE(alvo)) {
+                cl_alvo = COMO_CLOSURE(alvo);
+                alvo = MK_FUNC(cl_alvo->proto);
+            }
             if (alvo.t == V_FUNC) {
                 Proto *np = &vm->protos[alvo.as.proto];
                 /* Método @static acessado direto na Entity (`Classe.metodo`)
@@ -17229,6 +17954,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     PSGerador *g = novo_gerador(vm, (int32_t)(np - vm->protos),
                                                 &stack[sp - n], n);
                     if (!g) ERRO(vm, "sem memoria no gerador");
+                    g->cl = cl_alvo;   /* gerador que captura mantém as células */
                     sp = sp - n - 1;
                     stack[sp++] = MK_OBJ(g);
                     break;
@@ -17259,6 +17985,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->frames[fp].locals_base = lbase;
                 vm->frames[fp].stack_base  = sp - n - 1;
                 vm->frames[fp].nargs       = nargs;
+                vm->frames[fp].cl          = cl;
                 vm->frames[fp].devolve_self = 0;
 
                 int novo_lbase = locals_top;
@@ -17275,6 +18002,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     vm->locals[novo_lbase + k] = MK_UNSET();
 
                 fp++;
+                cl = cl_alvo;
                 locals_top += np->nlocals;
                 sp    = sp - n - 1;
                 p     = np;
@@ -17377,6 +18105,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (vm->frames[fp - 1].devolve_self) r = vm->locals[lbase];
             fp--;
             p     = &vm->protos[vm->frames[fp].proto];
+            cl    = vm->frames[fp].cl;
             ip    = vm->frames[fp].ip;
             lbase = vm->frames[fp].locals_base;
             locals_top = vm->frames[fp].locals_base + p->nlocals;
@@ -17531,6 +18260,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_INDEX_GET: {
             Value idx = stack[--sp];
             Value alvo = stack[sp - 1];
+            /* `l[true]` é `l[1]`: bool é 0/1 na linguagem inteira, então
+             * recusar só aqui era incoerência. */
+            if (idx.t == V_BOOL) { idx.t = V_INT; idx.as.i = idx.as.b ? 1 : 0; }
             /* `b[i]` devolve o BYTE como int, não uma fatia de 1 — é o que o
              * Python faz, e é o que torna `b[0]` comparável com número. */
             if (EH_BYTES(alvo)) {
@@ -17605,6 +18337,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_INDEX_SET: {
             Value valor = stack[--sp];
             Value idx   = stack[--sp];
+            if (idx.t == V_BOOL) { idx.t = V_INT; idx.as.i = idx.as.b ? 1 : 0; }
             Value alvo  = stack[--sp];
             if (EH_LIST(alvo)) {
                 if (idx.t != V_INT) ERRO(vm, "indice de lista precisa ser int");
@@ -17735,6 +18468,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             else if (EH_BYTES(alvo))  n = COMO_BYTES(alvo)->len;
             else ERRO(vm, "tipo nao fatiavel");
 
+            /* Limite maior que o int64 chegava como BIGNUM e o `.as.i` lia
+             * lixo (virava 0): `s[999999999999999999999:]` devolvia a coleção
+             * inteira em vez de vazio. Satura nos extremos, como o Python. */
+            if (EH_BIGINT(ini)) { ini.t = V_INT; ini.as.i = mpz_sgn(COMO_BIGINT(ini)->v) < 0 ? INT64_MIN : INT64_MAX; }
+            if (EH_BIGINT(fim)) { fim.t = V_INT; fim.as.i = mpz_sgn(COMO_BIGINT(fim)->v) < 0 ? INT64_MIN : INT64_MAX; }
+            if (ini.t == V_BOOL) { ini.t = V_INT; ini.as.i = ini.as.b ? 1 : 0; }
+            if (fim.t == V_BOOL) { fim.t = V_INT; fim.as.i = fim.as.b ? 1 : 0; }
             int64_t st = 1;
             if (passo.t == V_INT) st = passo.as.i;
             else if (passo.t != V_NULL) ERRO(vm, "passo do slice precisa ser int");
@@ -18783,6 +19523,21 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
+        case OP_LOAD_BASE_INIT: {
+            Value paiv = stack[sp - 1];
+            if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
+            int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__");
+            if (mp < 0)
+                ERRO_TF(vm, "SomeValueUnexpected",
+                        "base(): a Entity pai '%s' nao tem __init__ pra receber argumento nomeado",
+                        COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
+            Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();
+            PSBound *b = novo_bound(vm, selfv, mp);
+            if (!b) ERRO(vm, "sem memoria em base()");
+            stack[sp - 1] = MK_OBJ(b);
+            break;
+        }
+
         case OP_CALL_BASE: {
             int n = arg;
             Value selfv = stack[sp - n - 1];
@@ -18800,6 +19555,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->frames[fp].locals_base = lbase;
             vm->frames[fp].stack_base = sp - n - 2;
             vm->frames[fp].nargs = nargs;
+            vm->frames[fp].cl = cl;
             vm->frames[fp].devolve_self = 0;
             int nb = locals_top;
             vm->locals[nb] = selfv;
@@ -18808,7 +19564,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             fp++;
             locals_top += np->nlocals;
             sp = sp - n - 2;
-            p = np; ip = 0; lbase = nb; nargs = n + 1;
+            p = np; cl = NULL; ip = 0; lbase = nb; nargs = n + 1;
             break;
         }
 
@@ -18907,6 +19663,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             locals_top = h->locals_top;
             sp = h->sp;
             p = &vm->protos[h->proto];
+            cl = (fp >= fp0) ? vm->frames[fp].cl : cl0;
             lbase = h->lbase;
             nargs = (fp > fp0) ? vm->frames[fp - 1].nargs : nargs_in;
 
@@ -19110,6 +19867,20 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         p->eh_gerador = o->eh_gerador;
         p->eh_async = o->eh_async;
         p->eh_static = o->eh_static;
+        /* upvalues: o PSPrograma some antes da execução, então copia */
+        p->nupvals = o->nupvals;
+        p->upvals = NULL;
+        p->upval_nomes = NULL;
+        if (o->nupvals > 0) {
+            p->upvals = malloc(sizeof(PSUpval) * (size_t)o->nupvals);
+            if (!p->upvals) return -1;
+            memcpy(p->upvals, o->upvals, sizeof(PSUpval) * (size_t)o->nupvals);
+            p->upval_nomes = calloc((size_t)o->nupvals, sizeof(char *));
+            if (!p->upval_nomes) return -1;
+            for (int32_t k = 0; k < o->nupvals; k++)
+                p->upval_nomes[k] = strdup(o->upval_nomes && o->upval_nomes[k]
+                                           ? o->upval_nomes[k] : "?");
+        }
         /* COPIA os nomes: o PSPrograma é liberado logo depois de carregar,
          * antes da execução. Guardar o ponteiro dele deixava `param_nomes`
          * pendurado e a primeira chamada nomeada segfaultava. */
@@ -19353,6 +20124,20 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         d->eh_gerador = o->eh_gerador;
         d->eh_async = o->eh_async;
         d->eh_static = o->eh_static;
+        /* upvalues: o PSPrograma some antes da execução, então copia */
+        d->nupvals = o->nupvals;
+        d->upvals = NULL;
+        d->upval_nomes = NULL;
+        if (o->nupvals > 0) {
+            d->upvals = malloc(sizeof(PSUpval) * (size_t)o->nupvals);
+            if (!d->upvals) return -1;
+            memcpy(d->upvals, o->upvals, sizeof(PSUpval) * (size_t)o->nupvals);
+            d->upval_nomes = calloc((size_t)o->nupvals, sizeof(char *));
+            if (!d->upval_nomes) return -1;
+            for (int32_t k = 0; k < o->nupvals; k++)
+                d->upval_nomes[k] = strdup(o->upval_nomes && o->upval_nomes[k]
+                                           ? o->upval_nomes[k] : "?");
+        }
         d->nome = strdup(o->nome ? o->nome : "?");
         d->param_nomes = NULL;
         if (o->param_nomes && o->nparams > 0) {
@@ -19512,7 +20297,8 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     ps_parse_free(r);
     if (!prog || !prog->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, prog ? prog->erro : "sem memoria");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "NotImplementedError");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
+                 (prog && prog->erro_do_programa) ? "SyntaxError" : "NotImplementedError");
         if (prog) ps_compila_free(prog);
         return -1;
     }
@@ -19598,7 +20384,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1;
     }
     vm->importando++;   /* corpo importado: run_selfwith_ é pulado (igual interp) */
-    int rc = vm_executa_base(vm, bp, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, &ignora);
+    int rc = vm_executa_base(vm, bp, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, NULL, &ignora);
     vm->importando--;
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);   /* volta o dir do importador */
@@ -19947,7 +20733,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {
-        e->tipo = PS_ERRO_NAO_SUPORTADO;
+        e->tipo = prog->erro_do_programa ? PS_ERRO_SINTAXE : PS_ERRO_NAO_SUPORTADO;
         snprintf(e->msg, sizeof(e->msg), "%s", prog->erro);
         e->linha = prog->erro_linha; e->col = prog->erro_col;
         ps_compila_free(prog);
@@ -19996,7 +20782,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {
-        e->tipo = PS_ERRO_NAO_SUPORTADO;
+        e->tipo = prog->erro_do_programa ? PS_ERRO_SINTAXE : PS_ERRO_NAO_SUPORTADO;
         snprintf(e->msg, sizeof(e->msg), "%s", prog->erro);
         e->linha = prog->erro_linha; e->col = prog->erro_col;
         ps_compila_free(prog);

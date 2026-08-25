@@ -111,6 +111,10 @@ struct PSNode {
     PSLitKind   lit;
     int64_t     i;
     double      d;
+    /* Bytes de `texto` num literal de string. O `\x00` é um byte válido no
+     * meio da string, então strlen() truncaria: o comprimento tem que viajar
+     * junto do ponteiro desde o lexer. 0 = não informado (usa strlen). */
+    int32_t     texto_len;
 
     /* filhos — o significado depende de `kind`:
      *   BINARY_OP        a=esq,   b=dir

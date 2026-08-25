@@ -28,6 +28,7 @@ typedef __mpz_struct       *mpz_ptr;
 typedef const __mpz_struct *mpz_srcptr;
 
 extern void   __gmpz_init(mpz_ptr);
+extern void   __gmpz_set_d(mpz_ptr, double);
 extern void   __gmpz_clear(mpz_ptr);
 extern void   __gmpz_set(mpz_ptr, mpz_srcptr);
 extern void   __gmpz_set_si(mpz_ptr, long);
@@ -58,6 +59,7 @@ extern int    __gmpz_fits_ulong_p(mpz_srcptr);
 extern unsigned long __gmpz_get_ui(mpz_srcptr);
 
 #define mpz_init         __gmpz_init
+#define mpz_set_d        __gmpz_set_d
 #define mpz_clear        __gmpz_clear
 #define mpz_set          __gmpz_set
 #define mpz_set_si       __gmpz_set_si

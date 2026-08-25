@@ -51,4 +51,11 @@ int ps_regex_casa_tudo(PSRegex *r, const char *s, int len, RxCaptura *cap);
 
 int ps_regex_ngrupos(const PSRegex *r);
 
+/* Índice do grupo nomeado `(?P<nome>...)`, ou -1 se não existe. O nome é
+ * guardado na compilação pra o `\g<nome>` do sub() e o `.group("nome")`
+ * poderem resolver — antes o nome era lido e jogado fora. */
+int ps_regex_grupo_por_nome(const PSRegex *r, const char *nome, int len);
+/* Nome do grupo `g` (1..ngrupos), ou NULL se o grupo não tem nome. */
+const char *ps_regex_nome_do_grupo(const PSRegex *r, int g);
+
 #endif /* PS_REGEX_H */

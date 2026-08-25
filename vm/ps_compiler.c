@@ -15,6 +15,8 @@
  */
 #include "ps_compiler.h"
 
+#include <stdarg.h>
+
 #include "ps_lexer.h"
 #include "ps_parser.h"
 
@@ -50,7 +52,21 @@ enum {
     OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
     /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
      * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
-    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76
+    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76,
+    /* `base(nome=v)`: troca a classe pai no topo pelo `__init__` dela
+     * LIGADO ao self, pra a chamada seguir pelo OP_CALL_KW normal. */
+    OP_LOAD_BASE_INIT = 77,
+    /* closure: variável de fora capturada por action aninhada.
+     * MAKE_CELL põe uma célula no slot local (guardando o que já estava lá,
+     * que pode ser o argumento); CELL_GET/CELL_SET acessam o valor DENTRO da
+     * célula; LOAD/STORE_UPVAL acessam a célula que veio de fora; MAKE_CLOSURE
+     * monta o valor de função já com as células capturadas. */
+    OP_MAKE_CELL = 78, OP_CELL_GET = 79, OP_CELL_SET = 80,
+    OP_LOAD_UPVAL = 81, OP_STORE_UPVAL = 82, OP_MAKE_CLOSURE = 83,
+    /* Variantes com o mesmo contrato do LOAD_NAME/STORE_NAME (slot na pilha,
+     * índice do global no arg): valem pros nomes atribuídos sem tipo, que
+     * ainda podem estar falando de uma global. */
+    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85
 };
 
 const char *ps_op_nome(int32_t op)
@@ -103,6 +119,15 @@ const char *ps_op_nome(int32_t op)
         case OP_SET_MEMBER: return "SET_MEMBER";
         case OP_LOAD_SELF: return "LOAD_SELF";
         case OP_CALL_BASE: return "CALL_BASE";
+        case OP_LOAD_BASE_INIT: return "LOAD_BASE_INIT";
+        case OP_MAKE_CELL: return "MAKE_CELL";
+        case OP_CELL_GET: return "CELL_GET";
+        case OP_CELL_SET: return "CELL_SET";
+        case OP_LOAD_UPVAL: return "LOAD_UPVAL";
+        case OP_STORE_UPVAL: return "STORE_UPVAL";
+        case OP_MAKE_CLOSURE: return "MAKE_CLOSURE";
+        case OP_CELL_GET_NAME: return "CELL_GET_NAME";
+        case OP_CELL_SET_NAME: return "CELL_SET_NAME";
         case OP_DUP2: return "DUP2";
         case OP_IMPORT_MOD: return "IMPORT_MOD";
         case OP_IS: return "IS_OP";
@@ -133,7 +158,25 @@ const char *ps_op_nome(int32_t op)
 /* Guarda o ÍNDICE do protótipo, não o ponteiro: uma action aninhada chama
  * `novo_proto`, que faz realloc do array — qualquer PSProto* guardado aqui
  * viraria ponteiro pendurado no meio da compilação. */
-typedef struct {
+typedef struct Unidade Unidade;
+/* Um upvalue enquanto compila: além do descritor que vai pro proto, guarda o
+ * NOME, que é a chave da busca no aninhamento. */
+typedef struct { char *nome; int32_t em_local; int32_t idx; } UpvalC;
+
+struct Unidade {
+    /* Função que ENVOLVE esta. NULL no módulo e nas actions de topo — é o que
+     * limita a captura: nome não achado aqui nem no pai vira global. */
+    Unidade *pai;
+    /* Slots que viram CÉLULA porque alguma action aninhada os usa. */
+    unsigned char celula[256];
+    /* Célula criada pelo `marca_celulas` que ainda não recebeu nada: o slot
+     * EXISTE mas o nome ainda não vale nada. Sem separar os dois, o `for each`
+     * achava que a variável dele já existia e tentava salvar o valor "de
+     * fora", lendo uma célula vazia. */
+    unsigned char celula_virgem[256];
+    UpvalC  *upvals;
+    int32_t  nupvals;
+    int32_t  cap_upvals;
     int32_t  idx;
     int32_t  cap_code;
     int32_t  cap_consts;
@@ -164,7 +207,7 @@ typedef struct {
     char   **mod_criados;
     int32_t  n_mod_criados;
     int32_t  cap_mod_criados;
-} Unidade;
+};
 
 /* `break`/`continue` precisam saber o laço em que estão. O endereço do fim
  * do laço só é conhecido DEPOIS de compilar o corpo, então os saltos ficam
@@ -232,6 +275,7 @@ typedef struct {
 
 #define CFALHOU(c) (!(c)->out->ok)
 
+/* Erro do COMPILADOR: o nó existe, mas a VM ainda não o emite. */
 static void cerro(C *c, const char *msg, PSNode *n)
 {
     if (!c->out->ok) return;
@@ -239,6 +283,21 @@ static void cerro(C *c, const char *msg, PSNode *n)
     snprintf(c->out->erro, sizeof(c->out->erro), "%s", msg);
     c->out->erro_linha = n ? n->line : 0;
     c->out->erro_col = n ? n->col : 0;
+    c->out->erro_do_programa = 0;
+}
+
+/* Erro do PROGRAMA: quem escreveu errou (SyntaxError), com formatação. */
+static void cerro_sx(C *c, PSNode *n, const char *fmt, ...)
+{
+    if (!c->out->ok) return;
+    c->out->ok = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(c->out->erro, sizeof(c->out->erro), fmt, ap);
+    va_end(ap);
+    c->out->erro_linha = n ? n->line : 0;
+    c->out->erro_col = n ? n->col : 0;
+    c->out->erro_do_programa = 1;
 }
 
 /* ── emissão ────────────────────────────────────────────────────────────── */
@@ -442,7 +501,7 @@ static int32_t op_binario(const char *s)
 static void expr(C *c, Unidade *u, PSNode *n);
 static void compila_fstring(C *c, Unidade *u, PSNode *n);
 static void stmt(C *c, Unidade *u, PSNode *n);
-static int32_t compila_action(C *c, PSNode *n);
+static int32_t compila_action(C *c, PSNode *n, Unidade *pai);
 
 /* `__init__` sintetizado a partir dos campos tipados (`nome: str`).
  *
@@ -460,6 +519,171 @@ static int eh_global_declarada(Unidade *u, const char *nome)
     return 0;
 }
 
+
+/* ── closure: captura de variável de fora ────────────────────────────────
+ *
+ * O modelo é o do CPython, não o do Lua: a variável capturada mora numa
+ * CÉLULA no heap, e tanto quem declara quanto quem captura mexem no valor de
+ * dentro dela. Célula em vez de ponteiro pro slot porque a VM move locais —
+ * gerador copia o frame pra dentro do objeto, fibra troca o array inteiro —
+ * e um ponteiro pra `vm->locals` ficaria pendurado.
+ *
+ * Quais slots viram célula é decidido ANTES de compilar o corpo, varrendo as
+ * actions aninhadas (`marca_celulas`): sem isso o `a = 1` já teria sido
+ * emitido como slot cru quando o `action dentro()` aparecesse depois. */
+
+static int32_t add_upval(C *c, Unidade *u, const char *nome, int32_t em_local, int32_t idx)
+{
+    for (int32_t i = 0; i < u->nupvals; i++)
+        if (strcmp(u->upvals[i].nome, nome) == 0) return i;
+    if (u->nupvals + 1 > u->cap_upvals) {
+        int32_t novo = u->cap_upvals < 4 ? 4 : u->cap_upvals * 2;
+        UpvalC *nu = realloc(u->upvals, sizeof(UpvalC) * (size_t)novo);
+        if (!nu) { cerro(c, "sem memoria", NULL); return -1; }
+        u->upvals = nu; u->cap_upvals = novo;
+    }
+    size_t n = strlen(nome);
+    char *copia = malloc(n + 1);
+    if (!copia) { cerro(c, "sem memoria", NULL); return -1; }
+    memcpy(copia, nome, n + 1);
+    u->upvals[u->nupvals].nome = copia;
+    u->upvals[u->nupvals].em_local = em_local;
+    u->upvals[u->nupvals].idx = idx;
+    return u->nupvals++;
+}
+
+/* Índice do upvalue `nome` nesta unidade, criando a cadeia de captura pelos
+ * pais se preciso. -1 = o nome não vem de nenhuma função de fora. */
+static int32_t resolve_upval(C *c, Unidade *u, const char *nome)
+{
+    if (!u->pai || u->pai->eh_modulo) return -1;
+    for (int32_t i = 0; i < u->nupvals; i++)
+        if (strcmp(u->upvals[i].nome, nome) == 0) return i;
+    for (int32_t i = 0; i < u->pai->nlocais; i++)
+        if (strcmp(u->pai->locais[i], nome) == 0 && i < 256 && u->pai->celula[i])
+            return add_upval(c, u, nome, 1, i);
+    int32_t k = resolve_upval(c, u->pai, nome);
+    if (k >= 0) return add_upval(c, u, nome, 0, k);
+    return -1;
+}
+
+/* Junta no vetor os nomes que APARECEM dentro de uma action aninhada. É
+ * conservador de propósito: se o nome bate com um local de fora, aquele slot
+ * vira célula mesmo que a aninhada só use um homônimo dela. Marcar a mais
+ * custa uma indireção; marcar a menos quebraria a captura. */
+static void junta_nomes(C *c, char ***v, int32_t *n, int32_t *cap, const char *nome)
+{
+    if (!nome || !*nome) return;
+    for (int32_t i = 0; i < *n; i++) if (!strcmp((*v)[i], nome)) return;
+    if (*n + 1 > *cap) {
+        int32_t novo = *cap < 8 ? 8 : *cap * 2;
+        char **nv = realloc(*v, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        *v = nv; *cap = novo;
+    }
+    size_t ln = strlen(nome);
+    char *copia = malloc(ln + 1);
+    if (!copia) { cerro(c, "sem memoria", NULL); return; }
+    memcpy(copia, nome, ln + 1);
+    (*v)[(*n)++] = copia;
+}
+
+static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
+{
+    if (!n) return;
+    switch (n->kind) {
+        case N_NAME: case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            break;
+        case N_ACTION_DECL:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            break;
+        default: break;
+    }
+    varre_nomes(c, n->a, v, cnt, cap);
+    varre_nomes(c, n->b, v, cnt, cap);
+    varre_nomes(c, n->c, v, cnt, cap);
+    varre_nomes(c, n->e, v, cnt, cap);
+    for (int32_t i = 0; i < n->lista.n; i++)  varre_nomes(c, n->lista.itens[i], v, cnt, cap);
+    for (int32_t i = 0; i < n->lista2.n; i++) varre_nomes(c, n->lista2.itens[i], v, cnt, cap);
+}
+
+/* Procura actions aninhadas dentro de `n` (sem entrar nelas duas vezes) e
+ * coleta os nomes que elas citam. */
+static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
+{
+    if (!n) return;
+    if (n->kind == N_ACTION_DECL) { varre_nomes(c, n, v, cnt, cap); return; }
+    acha_aninhadas(c, n->a, v, cnt, cap);
+    acha_aninhadas(c, n->b, v, cnt, cap);
+    acha_aninhadas(c, n->c, v, cnt, cap);
+    acha_aninhadas(c, n->e, v, cnt, cap);
+    for (int32_t i = 0; i < n->lista.n; i++)  acha_aninhadas(c, n->lista.itens[i], v, cnt, cap);
+    for (int32_t i = 0; i < n->lista2.n; i++) acha_aninhadas(c, n->lista2.itens[i], v, cnt, cap);
+}
+
+/* Nomes que ESTA função liga: parâmetro, atribuição, declaração tipada,
+ * variável de for-each, action aninhada e alvo de desempacotamento. Não entra
+ * nas actions aninhadas — o que elas ligam é escopo delas. */
+static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
+{
+    if (!n) return;
+    switch (n->kind) {
+        case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
+        case N_UNPACK_TARGET:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            break;
+        case N_ACTION_DECL:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            return;                 /* não desce: o corpo dela é outro escopo */
+        default: break;
+    }
+    binda_nomes(c, n->a, v, cnt, cap);
+    binda_nomes(c, n->b, v, cnt, cap);
+    binda_nomes(c, n->c, v, cnt, cap);
+    binda_nomes(c, n->e, v, cnt, cap);
+    for (int32_t i = 0; i < n->lista.n; i++)  binda_nomes(c, n->lista.itens[i], v, cnt, cap);
+    for (int32_t i = 0; i < n->lista2.n; i++) binda_nomes(c, n->lista2.itens[i], v, cnt, cap);
+}
+
+/* Reserva o slot e emite a célula das variáveis capturadas: as que ESTA função
+ * liga E que alguma action aninhada cita. A interseção é o que evita
+ * transformar uma GLOBAL lida lá dentro em célula vazia. Roda depois do
+ * prólogo dos defaults (que testa o slot cru com JUMP_IF_SET) e antes do
+ * corpo — os acessos precisam já saber que o slot virou célula. */
+static void marca_celulas(C *c, Unidade *u, PSNode *params, PSNode *corpo)
+{
+    char **usados = NULL; int32_t nu = 0, cu = 0;
+    char **ligados = NULL; int32_t nl = 0, cl = 0;
+    acha_aninhadas(c, corpo, &usados, &nu, &cu);
+    binda_nomes(c, corpo, &ligados, &nl, &cl);
+    if (params)
+        for (int32_t i = 0; i < params->lista.n; i++)
+            junta_nomes(c, &ligados, &nl, &cl, params->lista.itens[i]->texto);
+    for (int32_t i = 0; i < nu && !CFALHOU(c); i++) {
+        int liga = 0;
+        for (int32_t k = 0; k < nl; k++) if (!strcmp(ligados[k], usados[i])) { liga = 1; break; }
+        if (!liga) continue;
+        if (eh_global_declarada(u, usados[i])) continue;   /* `global x` manda */
+        int32_t slot = idx_local(c, u, usados[i]);
+        if (slot < 0 || slot >= 256 || u->celula[slot]) continue;
+        u->celula[slot] = 1;
+        u->celula_virgem[slot] = 1;
+        emite(c, u, OP_MAKE_CELL, slot);
+    }
+    for (int32_t i = 0; i < nu; i++) free(usados[i]);
+    free(usados);
+    for (int32_t i = 0; i < nl; i++) free(ligados[i]);
+    free(ligados);
+}
+
+/* MAKE_CLOSURE só quando a action realmente captura algo: sem upvalue ela
+ * continua sendo o valor barato de sempre (só o índice do proto). */
+static void emite_funcao(C *c, Unidade *u, int32_t proto)
+{
+    emite(c, u, c->out->protos[proto].nupvals > 0 ? OP_MAKE_CLOSURE : OP_MAKE_FUNCTION, proto);
+}
+
 static void carrega_nome(C *c, Unidade *u, const char *nome)
 {
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
@@ -468,12 +692,22 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
     }
     for (int32_t i = 0; i < u->nlocais; i++) {
         if (strcmp(u->locais[i], nome) != 0) continue;
-        if (i < 256 && u->certo[i]) emite(c, u, OP_LOAD_LOCAL, i);   /* param/tipada */
+        if (i < 256 && u->celula[i] && u->certo[i]) emite(c, u, OP_CELL_GET, i);
+        else if (i < 256 && u->celula[i]) {
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
+            emite(c, u, OP_CELL_GET_NAME, idx_global(c, nome));
+        }
+        else if (i < 256 && u->certo[i]) emite(c, u, OP_LOAD_LOCAL, i);   /* param/tipada */
         else {
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
             emite(c, u, OP_LOAD_NAME, idx_global(c, nome));
         }
         return;
+    }
+    /* nome de FORA: se é local de uma função que envolve esta, captura */
+    {
+        int32_t up = resolve_upval(c, u, nome);
+        if (up >= 0) { emite(c, u, OP_LOAD_UPVAL, up); return; }
     }
     /* nome nunca visto nesta função: reserva slot e resolve em runtime */
     {
@@ -497,7 +731,8 @@ static int nome_ja_existe(Unidade *u, const char *nome)
         return 0;
     }
     for (int32_t i = 0; i < u->nlocais; i++)
-        if (strcmp(u->locais[i], nome) == 0) return 1;
+        if (strcmp(u->locais[i], nome) == 0)
+            return !(i < 256 && u->celula_virgem[i]);
     return 0;
 }
 
@@ -508,8 +743,22 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
         return;
     }
+    /* Escrita num nome que vem de fora vai pra célula capturada — é o mesmo
+     * critério que a linguagem já usava pra global ("se já existe lá fora,
+     * escreve lá"), agora valendo também pro escopo da função que envolve. */
+    {
+        int32_t up = resolve_upval(c, u, nome);
+        if (up >= 0) { emite(c, u, OP_STORE_UPVAL, up); return; }
+    }
     int32_t i = idx_local(c, u, nome);
     if (certa && i < 256) u->certo[i] = 1;
+    if (i < 256) u->celula_virgem[i] = 0;
+    if (i < 256 && u->celula[i]) {
+        if (u->certo[i]) { emite(c, u, OP_CELL_SET, i); return; }
+        emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
+        emite(c, u, OP_CELL_SET_NAME, idx_global(c, nome));
+        return;
+    }
     if (i < 256 && u->certo[i]) { emite(c, u, OP_STORE_LOCAL, i); return; }
     emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
     emite(c, u, OP_STORE_NAME, idx_global(c, nome));
@@ -534,7 +783,9 @@ static void guarda_nome(C *c, Unidade *u, const char *nome)
 static void compila_fstring(C *c, Unidade *u, PSNode *n)
 {
     const char *t = n->texto ? n->texto : "";
-    int32_t len = (int32_t)strlen(t);
+    /* `texto_len`, não strlen: um `\x00` no meio da f-string é dado, não fim
+     * de string — com strlen o resto do texto sumia calado. */
+    int32_t len = n->texto_len > 0 ? n->texto_len : (int32_t)strlen(t);
     int32_t partes = 0;
 
     char *buf = malloc((size_t)len + 1);
@@ -656,9 +907,13 @@ static void expr(C *c, Unidade *u, PSNode *n)
                 case L_BOOL: emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, n->i, 0, NULL, 0)); break;
                 case L_NULL: emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0)); break;
                 case L_STR:
+                    /* `texto_len` e não strlen: `"a\x00b"` tem 3 bytes e o
+                     * NUL do meio não pode cortar a constante. */
                     emite(c, u, OP_LOAD_CONST,
                           idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
-                                    n->texto ? (int32_t)strlen(n->texto) : 0));
+                                    n->texto ? (n->texto_len > 0 ? n->texto_len
+                                                                 : (int32_t)strlen(n->texto))
+                                             : 0));
                     break;
                 case L_BIGINT:
                     emite(c, u, OP_LOAD_CONST,
@@ -752,7 +1007,7 @@ static void expr(C *c, Unidade *u, PSNode *n)
                 for (int32_t i = 0; i < n->lista.n; i++) {
                     if (n->lista.itens[i]->texto) viu_nome = 1;
                     else if (viu_nome) {
-                        cerro(c, "argumento posicional depois de nomeado", n);
+                        cerro_sx(c, n, "argumento posicional depois de nomeado");
                         return;
                     }
                 }
@@ -891,9 +1146,9 @@ static void expr(C *c, Unidade *u, PSNode *n)
         case N_LAMBDA_EXPR: {
             /* Mesma máquina da action nomeada: um protótipo e um
              * MAKE_FUNCTION. A diferença é só não ter nome pra guardar. */
-            int32_t pi = compila_action(c, n);
+            int32_t pi = compila_action(c, n, u);
             if (CFALHOU(c)) return;
-            emite(c, u, OP_MAKE_FUNCTION, pi);
+            emite_funcao(c, u, pi);
             return;
         }
 
@@ -938,27 +1193,43 @@ static void expr(C *c, Unidade *u, PSNode *n)
              * acharia o override da filha e recursaria pra sempre. */
             const char *pai = n->texto2 ? n->texto2 : c->entity_pai;
             if (!pai) {
-                /* Entity SEM herança chamando `base()`: não há o que
-                 * inicializar — no-op que avalia pra Null, como no
-                 * interpretador. Fora de Entity continua erro. */
-                if (c->dentro_entity) {
-                    for (int32_t i = 0; i < n->lista.n; i++)
-                        if (!n->lista.itens[i]->texto) expr(c, u, n->lista.itens[i]->a);
-                    for (int32_t i = 0; i < n->lista.n; i++)
-                        emite(c, u, OP_POP_TOP, 0);
-                    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
-                    return;
-                }
-                cerro(c, "base() fora de Entity com heranca", n);
+                /* `base()` numa Entity SEM herança era um no-op calado: quem
+                 * escreveu isso errou (não há pai pra inicializar) e o erro
+                 * ficava escondido. Agora fala. */
+                cerro_sx(c, n, "%s", c->dentro_entity
+                             ? "base() numa Entity sem heranca: nao ha pai pra inicializar"
+                             : "base() fora de Entity com heranca");
                 return;
             }
-            carrega_nome(c, u, pai);
-            emite(c, u, OP_LOAD_SELF, 0);
-            for (int32_t i = 0; i < n->lista.n; i++) {
-                if (n->lista.itens[i]->texto) { cerro(c, "base() nao aceita argumento nomeado", n); return; }
-                expr(c, u, n->lista.itens[i]->a);
+            int32_t nkw_b = 0;
+            for (int32_t i = 0; i < n->lista.n; i++)
+                if (n->lista.itens[i]->texto) nkw_b++;
+            if (nkw_b == 0) {
+                carrega_nome(c, u, pai);
+                emite(c, u, OP_LOAD_SELF, 0);
+                for (int32_t i = 0; i < n->lista.n; i++)
+                    expr(c, u, n->lista.itens[i]->a);
+                emite(c, u, OP_CALL_BASE, n->lista.n);
+                return;
             }
-            emite(c, u, OP_CALL_BASE, n->lista.n);
+            /* Com argumento NOMEADO (`base(x=5)`), em vez de repetir aqui toda
+             * a resolução de nome/default do OP_CALL_KW, o `__init__` do pai é
+             * carregado LIGADO ao self e a chamada segue o caminho normal. */
+            for (int32_t i = 0, viu = 0; i < n->lista.n; i++) {
+                if (n->lista.itens[i]->texto) viu = 1;
+                else if (viu) { cerro(c, "argumento posicional depois de nomeado", n); return; }
+            }
+            carrega_nome(c, u, pai);
+            emite(c, u, OP_LOAD_BASE_INIT, 0);
+            for (int32_t i = 0; i < n->lista.n; i++)
+                expr(c, u, n->lista.itens[i]->a);
+            for (int32_t i = n->lista.n - nkw_b; i < n->lista.n; i++) {
+                const char *nm = n->lista.itens[i]->texto;
+                emite(c, u, OP_LOAD_CONST,
+                      idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
+            }
+            emite(c, u, OP_BUILD_TUPLE, nkw_b);
+            emite(c, u, OP_CALL_KW, n->lista.n);
             return;
         }
 
@@ -966,7 +1237,7 @@ static void expr(C *c, Unidade *u, PSNode *n)
             /* `x++` devolve o valor ANTIGO e guarda o novo — por isso o DUP
              * antes de somar (é o que o interpretador faz). */
             if (!n->a || n->a->kind != N_NAME) {
-                cerro(c, "'++'/'--' so funcionam em variaveis", n);
+                cerro_sx(c, n, "'++'/'--' so funcionam em variaveis");
                 return;
             }
             const char *nome = n->a->texto ? n->a->texto : "";
@@ -1175,9 +1446,16 @@ static void stmt(C *c, Unidade *u, PSNode *n)
 
     switch (n->kind) {
         case N_ACTION_DECL: {
-            int32_t idx = compila_action(c, n);
+            /* O nome nasce ANTES do corpo compilar: sem isto uma action
+             * aninhada não conseguiria chamar a si mesma (o nome dela ainda
+             * não seria local da função de fora na hora da captura). */
+            if (!u->eh_modulo && n->texto) {
+                int32_t si = idx_local(c, u, n->texto);
+                if (si >= 0 && si < 256 && !u->celula[si]) u->certo[si] = 1;
+            }
+            int32_t idx = compila_action(c, n, u);
             if (CFALHOU(c)) return;
-            emite(c, u, OP_MAKE_FUNCTION, idx);
+            emite_funcao(c, u, idx);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -1700,7 +1978,7 @@ static void stmt(C *c, Unidade *u, PSNode *n)
                 if (m->kind != N_ACTION_DECL) continue;
                 c->pendente_static = static_pendente;
                 c->pendente_nonnull = nonnull_pendente;
-                int32_t pi = compila_action(c, m);
+                int32_t pi = compila_action(c, m, NULL);
                 c->pendente_static = 0;
                 c->pendente_nonnull = 0;
                 static_pendente = 0;
@@ -2093,7 +2371,7 @@ static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo)
         } else if (e->kind == N_NAME) {
             guarda_nome(c, u, e->texto ? e->texto : "");
         } else {
-            cerro(c, "alvo de desempacotamento precisa ser nome", e);
+            cerro_sx(c, e, "alvo de desempacotamento precisa ser nome");
             return;
         }
     }
@@ -2118,6 +2396,13 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
         int32_t pi = idx_local(c, &u, nome);
         if (pi < 256) u.certo[pi] = 1;
         if (campos->itens[i]->a) ndef++;
+        else if (ndef > 0) {
+            /* Mesma regra da action: com `a, b=2, c` o `ndefaults` (que conta
+             * só o SUFIXO) mentia, e a chamada `P(1)` acusava o parâmetro
+             * errado ('b', que tem padrão) em vez do 'c' que faltou. */
+            cerro_sx(c, campos->itens[i], "campo '%s' sem valor padrao vem depois de um com padrao", nome);
+            break;
+        }
     }
     c->out->protos[idx].nparams = campos->n + 1;
     c->out->protos[idx].ndefaults = ndef;
@@ -2159,13 +2444,14 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     return idx;
 }
 
-static int32_t compila_action(C *c, PSNode *n)
+static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
 {
     int32_t idx = novo_proto(c, n->texto ? n->texto : "<action>");
     if (idx < 0) return -1;
 
     Unidade u;
     memset(&u, 0, sizeof(u));
+    u.pai = (pai && !pai->eh_modulo) ? pai : NULL;
     u.idx = idx;
     u.eh_modulo = 0;
     if (n->texto2 && !strcmp(n->texto2, "int"))       u.tipo_ret = 1;
@@ -2180,7 +2466,7 @@ static int32_t compila_action(C *c, PSNode *n)
         }
         if (par->a) ndef++;
         else if (ndef > 0) {
-            cerro(c, "parametro sem valor padrao depois de um com padrao", n);
+            cerro_sx(c, n, "parametro sem valor padrao depois de um com padrao");
             break;
         }
     }
@@ -2214,6 +2500,10 @@ static int32_t compila_action(C *c, PSNode *n)
         if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
     }
 
+    /* Células das variáveis que as actions aninhadas capturam. Vem depois do
+     * prólogo (que testa o slot cru com JUMP_IF_SET) e antes do corpo. */
+    marca_celulas(c, &u, n, n->b);
+
     /* Depois do prólogo: um default que avalie pra Null também é violação. */
     if (c->pendente_nonnull) {
         c->pendente_nonnull = 0;
@@ -2242,6 +2532,26 @@ static int32_t compila_action(C *c, PSNode *n)
             emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_BOOL, 0, 0, NULL, 0));
         emite(c, &u, OP_RETURN, 0);
     }
+
+    /* Os upvalues descobertos durante o corpo viram tabela no proto: é o que
+     * o MAKE_CLOSURE lê pra montar as células. */
+    if (u.nupvals > 0) {
+        PSUpval *uv = calloc((size_t)u.nupvals, sizeof(PSUpval));
+        if (!uv) cerro(c, "sem memoria", n);
+        else {
+            char **nms = calloc((size_t)u.nupvals, sizeof(char *));
+            for (int32_t i = 0; i < u.nupvals; i++) {
+                uv[i].em_local = u.upvals[i].em_local;
+                uv[i].idx      = u.upvals[i].idx;
+                if (nms) nms[i] = strdup(u.upvals[i].nome);
+            }
+            c->out->protos[idx].upvals  = uv;
+            c->out->protos[idx].nupvals = u.nupvals;
+            c->out->protos[idx].upval_nomes = nms;
+        }
+    }
+    for (int32_t i = 0; i < u.nupvals; i++) free(u.upvals[i].nome);
+    free(u.upvals);
 
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
@@ -2304,6 +2614,12 @@ void ps_compila_free(PSPrograma *p)
         for (int32_t k = 0; k < p->protos[i].nconsts; k++)
             free(p->protos[i].consts[k].s);
         free(p->protos[i].consts);
+        free(p->protos[i].upvals);
+        if (p->protos[i].upval_nomes) {
+            for (int32_t k = 0; k < p->protos[i].nupvals; k++)
+                free(p->protos[i].upval_nomes[k]);
+            free(p->protos[i].upval_nomes);
+        }
     }
     free(p->protos);
     for (int32_t i = 0; i < p->nglobais; i++) free(p->globais[i]);

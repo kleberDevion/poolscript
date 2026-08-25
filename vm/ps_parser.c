@@ -279,6 +279,7 @@ static PSNode *primario(P *p)
             if (!lit) return NULL;
             lit->lit = L_STR;
             lit->texto = ps_arena_strdup(p->arena, t->texto ? t->texto : "", t->texto_len);
+            lit->texto_len = t->texto_len;
             /* `"texto" {expr} "mais"` — interpolação por chaves */
             if (!checa(p, T_LBRACE)) return lit;
             if (p->chave_abre_bloco && p->grupo_depth == 0) return lit;
@@ -298,6 +299,7 @@ static PSNode *primario(P *p)
                     if (!l2) return NULL;
                     l2->lit = L_STR;
                     l2->texto = ps_arena_strdup(p->arena, st->texto ? st->texto : "", st->texto_len);
+                    l2->texto_len = st->texto_len;
                     if (ps_vec_push(p->arena, &n->lista, l2) != 0) return NULL;
                 }
             }
@@ -312,6 +314,7 @@ static PSNode *primario(P *p)
             if (!n) return NULL;
             n->lit = L_FSTRING;
             n->texto = ps_arena_strdup(p->arena, t->texto ? t->texto : "", t->texto_len);
+            n->texto_len = t->texto_len;
             return n;
         }
         case T_BOOL: {
@@ -1103,7 +1106,8 @@ static PSNode *padrao(P *p)
         n->b = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
         if (!n->b) return NULL;
         switch (t->type) {
-            case T_STR:  n->b->lit = L_STR; n->b->texto = dup_tok(p, t); break;
+            case T_STR:  n->b->lit = L_STR; n->b->texto = dup_tok(p, t);
+                         n->b->texto_len = t->texto_len; break;
             case T_INT:  n->b->lit = L_INT; n->b->i = t->i; break;
             case T_FLO:  n->b->lit = L_FLO; n->b->d = t->d; break;
             case T_BOOL: n->b->lit = L_BOOL; n->b->i = t->i; break;

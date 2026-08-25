@@ -38,3 +38,18 @@ limpa:
 	rm -f pool
 
 .PHONY: verifica limpa
+
+# ── suíte de testes (em C, sem Python) ──────────────────────────────────────
+# Roda o `pool` de VERDADE em subprocesso, um por caso: caso que mata a VM
+# (segfault/SIGFPE) vira falha relatada em vez de derrubar a bateria.
+TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
+                teste/casos_erros.c teste/casos_linguagem.c \
+                teste/casos_pendentes.c
+
+# o binário se chama `testar` porque `teste` é a PASTA dos casos
+testar: $(TESTE_FONTES) teste/ps_teste.h
+	$(CC) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iteste -o $@ $(TESTE_FONTES)
+
+# `make check` = compila os dois e roda a suíte
+check: pool testar
+	./testar

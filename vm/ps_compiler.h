@@ -29,6 +29,15 @@ typedef struct {
     int32_t     slen;
 } PSConst;
 
+/* Uma variável capturada por uma action ANINHADA. `em_local` diz de onde ela
+ * vem quando o closure é montado: 1 = célula que está num slot local do frame
+ * de fora, 0 = célula que o closure de fora já tinha (captura em cadeia,
+ * quando o aninhamento tem mais de um nível). */
+typedef struct {
+    int32_t em_local;
+    int32_t idx;
+} PSUpval;
+
 typedef struct {
     char    *nome;
     int32_t *code;      /* pares [opcode, arg] */
@@ -52,6 +61,11 @@ typedef struct {
     /* Nome de cada parâmetro, na ordem. Só existe pra resolver argumento
      * nomeado em runtime — o call site não sabe qual função vai chamar. */
     char   **param_nomes;
+    /* Variáveis de fora que esta action captura (closure). Vazio na maioria
+     * das actions: só uma action DECLARADA DENTRO de outra tem upvalue. */
+    PSUpval *upvals;
+    int32_t  nupvals;
+    char   **upval_nomes;   /* nome de cada upvalue — só pra mensagem de erro */
 } PSProto;
 
 /* Descritor de Entity produzido pela compilação. Os PAIS não entram aqui:
@@ -118,6 +132,11 @@ typedef struct {
     char     erro[256];
     int32_t  erro_linha;
     int32_t  erro_col;
+    /* 1 = o PROGRAMA está errado (SyntaxError); 0 = o compilador é que ainda
+     * não emite este nó (NotImplementedError). Sem isto todo erro de compilação
+     * saía como "NotImplementedError", inclusive `base()` fora de lugar — o
+     * nome do erro não tinha nada a ver com o problema. */
+    int      erro_do_programa;
 } PSPrograma;
 
 /* Compila a AST. Sempre devolve algo que precisa de ps_compila_free,
