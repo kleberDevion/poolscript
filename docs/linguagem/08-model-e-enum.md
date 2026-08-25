@@ -4,7 +4,7 @@ Duas declarações pequenas e específicas: **`model`**, um *esquema* para valid
 a forma de um dict, e **`enum`**, um conjunto de constantes inteiras nomeadas.
 Nenhuma das duas cria instâncias como a `Entity` (seção 7) — são descritores.
 
-Verificado nos dois motores.
+Verificado na VM.
 
 ---
 

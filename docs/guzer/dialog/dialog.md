@@ -5,7 +5,7 @@ Elemento `dialog` — modal **centralizado** na janela (default 260×150, fundo 
 ## Como todo elemento do guzer
 
 - Vem do `app` (o `guzer.UI`): `app.dialog(...)`.
-- `type()` devolve `"dialog"` — igual nos dois motores.
+- `type()` devolve `"dialog"`.
 - `.stylesheet({...})` e `.text(...)` encadeiam (retornam o próprio).
 - Design default: caixa **200×28**, fundo `#F0F0F0`, texto `#101418`.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
@@ -14,7 +14,7 @@ Elemento `dialog` — modal **centralizado** na janela (default 260×150, fundo 
   assinatura.
 
 Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height`,
-`font-size` (esta só no interpretador; o backend X11 usa a fonte do sistema).
+`font-size` (ignorada: o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 

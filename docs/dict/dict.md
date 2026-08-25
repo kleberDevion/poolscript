@@ -2,7 +2,7 @@
 
 Chamados direto no valor: `d.metodo()`. Lembre: `x in d` testa a **chave**; para procurar um **valor**, `x in d.value()`.
 
-**12 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda nos DOIS motores pela suíte (`tests/test_docs_exemplos.py`): doc errada quebra o teste.
+**12 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make -f rebuild/Makefile check`): doc errada quebra o teste.
 
 | nome | assinatura | o que faz |
 |---|---|---|

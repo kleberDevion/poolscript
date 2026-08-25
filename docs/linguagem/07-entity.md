@@ -6,7 +6,7 @@ declaração, os campos e o construtor (sintetizado ou próprio), os métodos e 
 `self`, os métodos `@static`, a herança com `base`, e o encapsulamento
 `private`/`public`.
 
-Tudo verificado nos dois motores.
+Tudo verificado na VM.
 
 ---
 
@@ -187,7 +187,7 @@ qualquer da superclasse.
 
 Um campo ou método marcado **`private`** só é acessível **de dentro da própria
 Entity**. Acessá-lo de fora é erro (`acesso negado: 'x' é private de …`) — a
-regra é **imposta pelos dois motores**, não é só convenção.
+regra é **imposta pela VM**, não é só convenção.
 
 ```ps
 Entity Conta():
@@ -218,4 +218,4 @@ classe não é exportada).
   Entity.
 - Herança (inclusive múltipla) compartilha métodos; filho com campos gera o
   próprio construtor; `base(...)` chama o construtor do pai.
-- `private` é imposto pelos dois motores; `public` é o padrão.
+- `private` é imposto pela VM; `public` é o padrão.

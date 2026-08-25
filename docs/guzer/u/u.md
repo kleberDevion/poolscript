@@ -11,7 +11,7 @@ Elemento `u` — Sublinhado — anotação não-textual (ex.: marcar um erro ort
 - Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
   na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `type()` devolve `"u"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `type()` devolve `"u"` na janela nativa (X11).
 - `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
 ## Atributos
@@ -25,7 +25,7 @@ Elemento `u` — Sublinhado — anotação não-textual (ex.: marcar um erro ort
 | `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `u` |
 
 Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
-(esta só no interpretador; o backend X11 usa a fonte do sistema).
+(ignorada: o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 

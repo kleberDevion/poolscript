@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `PoolFileUpload`
 
 > **Objeto interno da linguagem** — você não cria `PoolFileUpload` na mão:

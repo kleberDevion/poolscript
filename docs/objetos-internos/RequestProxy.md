@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `RequestProxy`
 
 > **Objeto interno da linguagem** — você não cria `RequestProxy` na mão:
@@ -7,7 +6,7 @@
 
 Proxy do `request` para uso com `import request` na PoolScript.
 Os métodos delegam pro JinkerRequest atual injetado no escopo pela rota.
-O interpretador injeta o objeto real em _current antes de chamar a action.
+O motor injeta a requisição corrente antes de chamar a action.
 
 Usa threading.local() para garantir isolamento entre requisições concorrentes:
 cada thread tem seu próprio _current, evitando race condition quando rotas

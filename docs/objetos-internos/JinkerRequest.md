@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `JinkerRequest`
 
 > **Objeto interno da linguagem** — você não cria `JinkerRequest` na mão:

@@ -5,7 +5,7 @@ stdlib (embutida) ou instalada. Esta seção cobre as formas de import
 (`import`, `from … import`, `PUSH … GET`), o `as`, os imports relativos e a
 ordem em que um nome é resolvido.
 
-Verificado nos dois motores.
+Verificado na VM.
 
 ---
 

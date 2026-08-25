@@ -53,11 +53,11 @@ Entity Pessoa():
 ```
 
 Com `@dataentity`, você só declara os campos (`nome: str`) e o construtor é
-gerado. Ver [Entity no LANGUAGE.md](../../LANGUAGE.md) pra a sintaxe de classes.
+gerado. Ver [Entity no LANGUAGE.md](../LANGUAGE.md) pra a sintaxe de classes.
 
 ---
 
 ## Relacionados
 
 - [`@dataentity`](dataentity/dataentity.md) — o decorador em detalhe
-- `Entity` (classes) — ver `LANGUAGE.md`
+- `Entity` (classes) — ver `../LANGUAGE.md`

@@ -11,8 +11,7 @@ reaction nome() {
 }
 ```
 
-Precisa de `pip install websockets`. O servidor WebSocket sobe automaticamente
-na porta **HTTP + 1** (se o HTTP é `8080`, o WS é `8081`).
+O servidor WebSocket sobe automaticamente na porta **HTTP + 1** (se o HTTP é `8080`, o WS é `8081`).
 
 ---
 

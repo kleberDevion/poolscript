@@ -12,9 +12,8 @@ import psodbc
 // ou: import db   (alias)
 ```
 
-O interpretador só expõe o que está no dict `EXPORTS` de `psodbc_lib.py`.
-Qualquer outra coisa do arquivo **não existe** em `psodbc.*` dentro de um
-script.
+A tabela abaixo é a superfície INTEIRA de `psodbc.*`: o que não está aqui
+**não existe** dentro de um script.
 
 | Nome | Serve para | Retorno |
 |---|---|---|
@@ -235,14 +234,14 @@ frente) responde normalmente por `.`.
 
 ## Não acessível
 
-### Bloqueado pelo interpretador (nem aparece em `psodbc.*`)
+### Interno do motor (nem aparece em `psodbc.*`)
 
-Tudo em `psodbc_lib.py` que não está em `EXPORTS`:
+Fica em `vm/ps_db.c` e não é exposto ao script:
 
-- `_parse_dsn(dsn)` — parser de URL de conexão, uso interno de `connect()`
-- `_pick_mssql_odbc_driver(preferred)` — escolhe o driver ODBC do SQL Server instalado
-- `_DRIVER_ALIASES` — dict de apelidos de driver (`pg`→`postgres`, `mariadb`→`mysql`, etc.)
-- As classes `DbConnection`, `DbCursor`, `MongoConnection`, `MongoCollection` em si — só existem como retorno de `connect()`/`query()`, não dá pra importar/instanciar direto
+- o parser de URL de conexão (uso interno de `connect()`)
+- a escolha do driver ODBC do SQL Server instalado
+- os apelidos de driver (`pg`→`postgres`, `mariadb`→`mysql`, etc.)
+- as classes `DbConnection`, `DbCursor`, `MongoConnection`, `MongoCollection` em si — só existem como retorno de `connect()`/`query()`, não dá pra importar/instanciar direto
 
 ### Privado por convenção (tecnicamente alcançável, não é API)
 
@@ -259,10 +258,13 @@ real da lib de banco por trás (`sqlite3`, `psycopg2`, `mysql.connector`,
 
 ## Requisitos por driver
 
-| driver | pacote Python necessário |
+Os clientes de banco entram **estáticos** no binário `pool` — não há pacote
+pra instalar pra usar `sqlite`, `postgres` ou `mysql`.
+
+| driver | precisa de algo na máquina? |
 |---|---|
-| `sqlite` | nenhum (stdlib) |
-| `postgres` | `psycopg2-binary` |
-| `mysql`/`mariadb` | `mysql-connector-python` |
-| `mssql`/`sqlserver` | `pyodbc` + driver ODBC do SQL Server instalado no sistema |
-| `mongo` | `pymongo` |
+| `sqlite` | não — embutido |
+| `postgres` | não — embutido |
+| `mysql`/`mariadb` | não — embutido |
+| `mssql`/`sqlserver` | o **driver ODBC do SQL Server** instalado no sistema (o gerenciador ODBC é embutido; o driver do fabricante não) |
+| `mongo` | `libmongoc` no sistema |

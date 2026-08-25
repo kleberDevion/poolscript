@@ -1,7 +1,7 @@
 # jinker — Servidor HTTP + WebSocket
 
-Lib de servidor HTTP da PoolScript. Zero dependências externas para HTTP básico.
-Para WebSocket, instale: `pip install websockets`.
+Lib de servidor HTTP da PoolScript. **Zero dependências externas** — HTTP e
+WebSocket são do próprio motor.
 
 Esta é a **página de referência** da lib. Cada membro tem sua própria página
 detalhada (links na tabela abaixo). Se é sua primeira vez, leia primeiro as

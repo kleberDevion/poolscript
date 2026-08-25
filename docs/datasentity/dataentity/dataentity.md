@@ -63,4 +63,4 @@ post(asjson(p))     // '{"nome": "Ana", "idade": 30}'
 ## Relacionados
 
 - [`asdict()`](../asdict/asdict.md) · [`astuple()`](../astuple/astuple.md) · [`aslist()`](../aslist/aslist.md) · [`asjson()`](../asjson/asjson.md)
-- Entity/classes — ver `LANGUAGE.md`
+- Entity/classes — ver `../LANGUAGE.md`

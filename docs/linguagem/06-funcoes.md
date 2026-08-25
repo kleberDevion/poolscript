@@ -6,8 +6,7 @@ um valor. Na PoolScript ela se declara com **`action`** (ou o sinônimo
 formas tipadas (`int action`/`bool action`), funções como valores, recursão e
 geradores.
 
-Como sempre, cada comportamento foi verificado rodando o mesmo fonte nos dois
-motores.
+Como sempre, cada comportamento foi verificado rodando o fonte de verdade.
 
 ---
 
@@ -136,7 +135,7 @@ post(quebra())        // 500  (erro engolido)
 
 Os prefixos de uma action/reaction — tipo de retorno (`int`/`bool`/`str`/`flo`),
 `async` e visibilidade (`public`/`private`) — podem vir em **qualquer ordem**.
-Todos abaixo são equivalentes e válidos (nos dois motores):
+Todos abaixo são equivalentes e válidos:
 
 ```ps
 int async reaction f():   ...
@@ -223,7 +222,7 @@ post(gather(dobro(1), dobro(2), dobro(3)))     # [2, 4, 6] — os três em ~0.2s
 valores na mesma ordem). `await` de um valor comum (não-future) devolve o próprio
 valor.
 
-Roda **nos dois motores**: no interpretador (sobre um executor de threads) e na
+Roda sobre a
 **VM em C** (sobre fibras/*green-threads* — cada `async action` vira uma fibra e o
 escalonador as revessa; `sleep`, banco e requisições de saída cedem sozinhos). O
 modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
@@ -242,5 +241,5 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
   no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.
 - Funções são **valores** (first-class); há **recursão** e **geradores**
   (`yield`).
-- **`async`/`await`/`gather`** funcionam **nos dois motores** (interpretador e
+- **`async`/`await`/`gather`** funcionam sobre fibras (
   VM); as tasks correm concorrentes.

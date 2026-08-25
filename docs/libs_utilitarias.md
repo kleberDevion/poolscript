@@ -355,8 +355,6 @@ post(resp2.get_json())
 
 ### WebSocket — cliente
 
-Precisa instalar: `pip install websockets`
-
 ```
 import request
 

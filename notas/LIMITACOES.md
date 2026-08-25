@@ -1,40 +1,27 @@
 # Limitações da linguagem — achadas, corrigidas, e as que faltam
 
-Este arquivo é **só sobre defeitos**, não sobre a migração para C. A diferença
-importa: um nó que a VM ainda não compila é trabalho planejado e mora em
-[`MIGRACAO_C.md`](MIGRACAO_C.md). Aqui entram duas coisas que o plano não
-prevê:
+Este arquivo é **só sobre defeitos**: `.ps` que deveria funcionar e não
+funciona, ou que funciona errado em silêncio.
 
-- **buraco na linguagem** — `.ps` que deveria funcionar e não funciona em
-  lugar nenhum, nem no interpretador;
-- **divergência VM ↔ interpretador** que nenhum teste cobria, então o
-  diferencial passava sem ver.
-
-As duas aparecem quase sempre por acaso, escrevendo `.ps` de teste para outra
-coisa — por isso ficam agrupadas aqui em vez de espalhadas. Cada uma tem
-regressão em [`tests/test_limitacoes.py`](tests/test_limitacoes.py) ou
-[`tests/test_builtins_c.py`](tests/test_builtins_c.py), e o arquivo serve de
-fila de trabalho.
+Quase sempre aparecem por acaso, escrevendo `.ps` de teste para outra coisa —
+por isso ficam agrupadas aqui em vez de espalhadas. Cada uma tem regressão em
+`teste/` e o arquivo serve de fila de trabalho.
 
 ## Como corrigir uma
 
 Uma limitação atravessa a linguagem inteira, então o remendo em um só lugar
-deixa os dois lados divergentes. A ordem que funciona:
+deixa o resto inconsistente. A ordem que funciona:
 
-1. `src/poolscript/parser.py` — nó novo no AST e o reconhecimento
-2. `src/poolscript/interpreter.py` — a semântica (**é a autoridade**)
-3. `vm/ps_ast.h` / `.c` — `N_<NOME>` e o nome legível
-4. `vm/ps_parser.c` — o mesmo reconhecimento, em C
-5. `vm/ps_compiler.c` — emissão de bytecode
-6. `vm/poolscript_vm.c` — opcode novo, se precisar
-7. `vm/ps_parser_bind.c` — serialização, senão o diferencial
-   de AST compara texto incompleto e passa sem ver a diferença
-8. `tests/ast_sexp.py` — o lado Python da mesma serialização
-9. `tests/test_limitacoes.py` — a regressão
-10. `python psl-poolscript-vsix/bridge/sync_parser.py` — senão o editor
-    acusa erro de sintaxe em código válido
+1. `vm/ps_ast.h` / `.c` — `N_<NOME>` e o nome legível, se for nó novo
+2. `vm/ps_parser.c` — o reconhecimento
+3. `vm/ps_compiler.c` — emissão de bytecode
+4. `vm/poolscript_vm.c` — opcode novo, se precisar
+5. `teste/casos_*.c` — a regressão (o comportamento CERTO, escrito)
+6. `docs/` — a página do que mudou
+7. `psl-poolscript-vsix/` — senão o editor acusa erro de sintaxe em código
+   válido
 
-Depois: `./rebuild_vm.sh` e a suíte inteira.
+Depois: `make -f rebuild/Makefile check`.
 
 ---
 
@@ -51,13 +38,8 @@ começo, implementado e testado no papel — **mas nenhum caminho do compilador
 o emitia**, porque o parser nunca produzia o nó. Opcode morto.
 
 **Como foi resolvido:** o alvo é reconhecido *depois* de montar a expressão,
-não por lookahead:
-
-```python
-expr = self.parse_expression()
-if isinstance(expr, IndexAccess) and self.current().value in ASSIGN_OPS:
-    ...  # vira IndexAssignment
-```
+não por lookahead: se o que saiu do parser de expressão é um `IndexAccess` e o
+token seguinte é de atribuição, o nó vira `IndexAssignment`.
 
 Lookahead exigiria varrer colchetes balanceados à frente para achar o `=` —
 refazer o trabalho que o parser de expressão já faz. Como consequência,
@@ -75,41 +57,41 @@ silêncio.
 
 ### `lista + lista` e `lista * int` na VM
 
-**O que não funcionava:** só na VM. O interpretador concatena (`[1,2] + [3]`)
-e repete (`[1,2] * 3`); a VM levantava `'+' entre tipos incompatíveis`.
+**O que não funcionava:** `[1,2] + [3]` (concatenar) e `[1,2] * 3` (repetir)
+levantavam `'+' entre tipos incompatíveis`.
 
 Achado rodando o stress de AddressSanitizer do lote de objetos — um caso do
-próprio stress falhou, e o que parecia erro do script era divergência real.
+próprio stress falhou, e o que parecia erro do script era defeito real.
 
-A concatenação exige o **mesmo tipo**: `[1] + (2,)` é erro nos dois lados,
-igual ao Python. Repetição com contagem ≤ 0 dá sequência vazia.
+A concatenação exige o **mesmo tipo**: `[1] + (2,)` é erro, igual ao Python.
+Repetição com contagem ≤ 0 dá sequência vazia.
 
 ### Chave de dicionário só podia ser string ou identificador
 
 **O que não funcionava:** `{1: "a"}`, `{True: 1}`, `{1.5: "x"}` — todos
-`SyntaxError`, nos dois motores. Mas `d[1] = "a"` sempre funcionou. As duas
-formas de escrever a mesma coisa estavam em desacordo.
+`SyntaxError`. Mas `d[1] = "a"` sempre funcionou — as duas formas de escrever
+a mesma coisa estavam em desacordo.
 
-**Como foi resolvido:** a chave passou a ser uma expressão qualquer, nos dois
-parsers. `{1+1: "x"}` e `{(1,2): "t"}` saem de graça.
+**Como foi resolvido:** a chave passou a ser uma expressão qualquer.
+`{1+1: "x"}` e `{(1,2): "t"}` saem de graça.
 
 ### Ordem de inserção do dict na VM
 
-**O que não funcionava:** só na VM. `post({"b":1,"a":2})` saía
+**O que não funcionava:** `post({"b":1,"a":2})` saía
 `{'a': 2, 'b': 1}` — a tabela hash de endereçamento aberto guardava as
 entradas na ordem do hash, e a linguagem perdia a ordem de inserção.
 
 Não é detalhe estético: é o que faz a saída de um `.ps` ser reproduzível. E
 contaminava tudo que percorre dict — `post`, `str()`, `list(d)`, JSON.
 
-**Como foi resolvido:** o `PSDict` virou **dict compacto**, no formato do
-CPython — um array denso em ordem de inserção mais uma tabela `indices` que
+**Como foi resolvido:** o `PSDict` virou **dict compacto** — um array denso
+em ordem de inserção mais uma tabela `indices` que
 resolve o hash para a posição no denso. Sobrescrever uma chave existente não
 muda a posição dela na ordem.
 
 ### Erro de builtin escapava do `try`
 
-**O que não funcionava:** só na VM. `try { post(len(1)) } catch (e) { ... }`
+**O que não funcionava:** `try { post(len(1)) } catch (e) { ... }`
 não capturava — o caminho de chamada nativa saía por `return -1`, abortando a
 execução em vez de desviar para o desenrolamento.
 
@@ -123,9 +105,9 @@ apenas, quase nada falhava.
 
 ### Float impresso com um dígito de lixo
 
-**O que não funcionava:** só na VM. `post(1/3)` dava `0.33333333333333331`
-contra `0.3333333333333333` do interpretador — `%.17g` sempre volta ao mesmo
-double, mas não é a MENOR representação que volta.
+**O que não funcionava:** `post(1/3)` dava `0.33333333333333331` em vez de
+`0.3333333333333333` — `%.17g` sempre volta ao mesmo double, mas não é a MENOR
+representação que volta.
 
 **Como foi resolvido:** `float_para_texto()` tenta precisão 1 a 17 e para na
 primeira que faz `strtod` devolver o valor original; depois cola `.0` se não
@@ -134,18 +116,16 @@ cópias da formatação antiga.
 
 ### `Null` aninhado imprimia `None`
 
-**O que não funcionava:** o interpretador. `post(Null)` dava `null`, mas
-`post([Null])` dava `[None]` — ele delegava ao `repr` da list do Python, e o
-`None`, que não existe na PoolScript, vazava para o usuário.
+**O que não funcionava:** `post(Null)` dava `null`, mas `post([Null])` dava
+`[None]` — um nome que não existe na PoolScript vazava para o usuário.
 
-**Como foi resolvido:** do lado Python, que era o errado. `stringify()` passou
-a renderizar lista, tupla e dict sozinho, recursivamente, e `str()` deixou de
-ser o `str` do Python (senão `str(Null)` continuaria devolvendo `"None"`).
-A VM não copiou o vazamento.
+**Como foi resolvido:** a impressão de lista, tupla e dict passou a ser
+recursiva e própria da linguagem, em vez de delegar pra representação de outra
+runtime — `Null` sai `null` em qualquer profundidade.
 
 ### Métodos de list e dict não existiam na VM
 
-**O que não funcionava:** só na VM. `d.keys()`, `l.append(x)`, `.type()` —
+**O que não funcionava:** `d.keys()`, `l.append(x)`, `.type()` —
 nada disso rodava, porque `GET_MEMBER` só resolvia em instância de Entity.
 Passou despercebido porque a contagem de progresso olhava builtins e métodos
 de string, e métodos de coleção não estavam em nenhuma das duas listas.
@@ -159,13 +139,13 @@ não mudar.
 
 ### `map`/`filter` devolviam `[]` em silêncio
 
-**O que não funcionava:** o interpretador. `filter([1,2], 5)` devolvia `[]` em
-vez de erro — os dois ramos do laço (`UserFunction` e `callable`) não casavam
-com um não-chamável, nenhum item era adicionado, e o resultado saía vazio como
+**O que não funcionava:** `filter([1,2], 5)` devolvia `[]` em
+vez de erro — nenhum ramo do laço casava com um não-chamável, nenhum item era
+adicionado, e o resultado saía vazio como
 se a lista de entrada é que estivesse.
 
 O modo mais fácil de cair nisso é `map(l, str)`: nome nu de tipo resolve para
-`PoolTypeRef.STR` (é o que faz `x is str` funcionar), não para a função.
+a REFERÊNCIA de tipo (é o que faz `x is str` funcionar), não para a função.
 
 **Como foi resolvido:** o `else` que faltava, levantando `TypeError`.
 
@@ -173,45 +153,44 @@ O modo mais fácil de cair nisso é `map(l, str)`: nome nu de tipo resolve para
 
 ### `type(x)` e `x.type()` discordavam
 
-**O que não funcionava:** os dois motores, do mesmo jeito.
+**O que não funcionava:**
 
 ```
 type({"a": 1})  ->  "json"     {"a": 1}.type()  ->  "dict"
 type((1, 2))    ->  "tuple"    (1, 2).type()    ->  "tup"
 ```
 
-Duas implementações independentes no interpretador que ninguém tinha
-comparado. Os outros tipos batiam.
+Dois caminhos independentes que ninguém tinha comparado. Os outros tipos
+batiam.
 
-**Como foi resolvido:** padronizado em `dict` e `tup` nos dois. A palavra-chave
+**Como foi resolvido:** padronizado em `dict` e `tup`. A palavra-chave
 `json` continua existindo — `json d = {}` e `d is json` são sintaxe, não nome
 de tipo devolvido.
 
 ### `jwt.gen` mentia no header do token
 
-**O que não funcionava:** o interpretador. `jwt.gen(payload, chave, "RS256")`
-escrevia `"alg":"RS256"` no header e assinava com **HS256** mesmo assim.
+**O que não funcionava:** `jwt.gen(payload, chave, "RS256")` escrevia
+`"alg":"RS256"` no header e assinava com **HS256** mesmo assim.
 
 Quem verificasse confiando no `alg` tentaria verificação RS256 num token HMAC.
 É a classe de confusão de algoritmo que já rendeu CVE em várias bibliotecas de
-JWT — e achado só porque o lado C recusou e o diferencial acusou.
+JWT.
 
-**Como foi resolvido:** os dois recusam algoritmo que não seja HS256, em vez de
-aceitar e assinar com outro.
+**Como foi resolvido:** algoritmo que não seja HS256 é recusado, em vez de
+aceito e assinado com outro.
 
 ### `PoolFile` imprimia a classe do Python
 
-**O que não funcionava:** o interpretador. `post(PoolFile)` saía como
-`<class 'poolscript.stdlib.os_lib.PoolFile'>`, e `type(PoolFile)` respondia
-`action` — quando o irmão dele, `str`, imprime `str` e responde `type`.
+**O que não funcionava:** `post(PoolFile)` saía como um caminho de módulo
+interno, e `type(PoolFile)` respondia `action` — quando o irmão dele, `str`,
+imprime `str` e responde `type`.
 
-Além de inconsistente, o texto expõe o caminho do módulo Python que
-implementa a linguagem. Nada disso existe na PoolScript, e num binário sem
-CPython a frase é simplesmente mentira.
+Além de inconsistente, o texto expunha detalhe de implementação que não existe
+na linguagem.
 
 **Como foi resolvido:** referência de tipo sai pelo nome (`PoolFile`) e se
-declara `type` nos dois motores. Na VM ela é um `V_TIPO` como qualquer outro,
-o que faz `x is PoolFile` funcionar sem `import os`, igual ao interpretador.
+declara `type`. Ela é um `V_TIPO` como qualquer outro, o que faz
+`x is PoolFile` funcionar sem `import os`.
 
 ### `catch` com tipo engolia o erro que não casava
 
@@ -235,20 +214,20 @@ retornado, executando código fora de contexto.
 **Como foi resolvido:** o `RETURN` desarma todo handler registrado no frame
 que está morrendo (e nos de cima, no caso de retorno através de frames).
 
-### Os dois motores davam nomes diferentes ao mesmo erro
+### Nomes de erro que não eram os da linguagem
 
-`post(1/0)` era `SomeValueUnexpected` no interpretador e `ZeroDivisionError`
-na VM; `1 + "a"` era `AtributtedValueError` num e `TypeError` no outro. Não é
-estética: `catch (SomeValueUnexpected e)` **funcionava num motor e não no
+`post(1/0)` levantava `ZeroDivisionError` e `1 + "a"` levantava `TypeError` —
+nomes que não estão na tabela da linguagem. Não é estética:
+`catch (SomeValueUnexpected e)` **não pegava o
 outro** — o mesmo script tratava o erro aqui e abortava lá.
 
-**Como foi resolvido:** a VM adotou a tabela do interpretador, que é a
-documentada no LANGUAGE.md. Os nomes internos do Python (`TypeError`,
-`NameError`…) não existem na linguagem e não voltam a aparecer.
+**Como foi resolvido:** a VM passou a usar a tabela documentada no
+`docs/LANGUAGE.md`. Nome de erro fora dessa tabela não existe na linguagem e
+não volta a aparecer.
 
 ### Nome todo em maiúsculo não pode ser atribuído
 
-`PI = 3.14` é `SyntaxError` nos dois motores, mas `pi = 3.14` funciona. A
+`PI = 3.14` é `SyntaxError`, mas `pi = 3.14` funciona. A
 atribuição simples só reconhece `IDENT` no parser, não `IDENT_UPPER` — que
 existe para distinguir nome de Entity. Constante em caixa alta é convenção
 comum, e hoje a linguagem a proíbe sem dizer por quê.
@@ -257,8 +236,8 @@ comum, e hoje a linguagem a proíbe sem dizer por quê.
 
 ### Fatia e índice de string em BYTES na VM
 
-**O que não funcionava:** `"padrão"[0:5]` dava `padrã` na VM (`padrão` no
-interp); `"padrão: str"[5]` devolvia meio caractere (byte quebrado);
+**O que não funcionava:** `"padrão"[0:5]` dava `padrã` em vez de `padrão`;
+`"padrão: str"[5]` devolvia meio caractere (byte quebrado);
 `s[s.find("x"):len(s)]` perdia o fim da string sempre que havia acento antes.
 `len`/`find` já contavam CARACTERES, só `[]`/`[a:b]` contavam bytes — e a
 combinação (índice de `find` usado numa fatia) corrompia texto em silêncio.
@@ -269,24 +248,23 @@ Achado em 2026-08-24 escrevendo um script de apoio em PoolScript
 **Como foi resolvido:** `utf8_byte_de(s, len, cp)` (codepoint → byte) em
 `vm/poolscript_vm.c`; `OP_SLICE` e `OP_INDEX_GET` normalizam contra
 `utf8_conta` e copiam por codepoint (fatia com passo 1 vira uma faixa contígua
-de bytes). Regressão: `tests/test_str_utf8_e_busca.py`.
+de bytes). Regressão em `teste/`.
 
 ### `find`/`rfind`/`index`/`rindex`/`count` sem `inicio`/`fim` na VM
 
-**O que não funcionava:** a doc prometia `s.find(sub, inicio=0)`, o interp
-aceitava (delega pro `str` do Python: `"abcabc".find("c", 3)` → 5) e a VM
-recusava com `find() espera 1 argumento(s)`. Divergência que nenhum diferencial
+**O que não funcionava:** a doc prometia `s.find(sub, inicio=0)` e a VM
+recusava com `find() espera 1 argumento(s)`. Buraco que nenhum teste
 cobria porque nenhum teste passava o 2º argumento.
 
 **Como foi resolvido:** `faixa_busca()` converte `inicio`/`fim` (em caracteres,
 negativo conta do fim, satura; `inicio` além do tamanho → -1 como no Python)
-pra uma faixa de bytes; os cinco métodos aceitam de 1 a 3 argumentos. Spec
-(`scripts/doc_specs_string.py`) e seção 12 da referência atualizadas; doc viva
-com exemplos de faixa. Regressão: `tests/test_str_utf8_e_busca.py`.
+pra uma faixa de bytes; os cinco métodos aceitam de 1 a 3 argumentos. As
+páginas de `docs/string/` e a seção 12 da referência foram atualizadas, com
+exemplos de faixa. Regressão em `teste/`.
 
 ### Comentário (ou linha vazia) como 1ª linha de um bloco `:`
 
-**O que não funcionava:** nos DOIS motores,
+**O que não funcionava:**
 
 ```
 action f(x):
@@ -299,32 +277,27 @@ indentação em linha só-comentário (certo), mas já tinha emitido o `NEWLINE`
 dela — o parser via `: NEWLINE NEWLINE INDENT` e exigia `INDENT` logo após o
 primeiro `NEWLINE`.
 
-**Como foi resolvido:** nos dois parsers (`parser.py` e `ps_parser.c`, bloco
+**Como foi resolvido:** no parser (`ps_parser.c`, bloco
 comum e corpo de Entity), depois do `NEWLINE` obrigatório pulam-se os
 `NEWLINE` extras antes de exigir o `INDENT`. Regressão:
-`tests/test_str_utf8_e_busca.py` (action, if, for each, Entity, `#` e `//`).
+`teste/` (action, if, for each, Entity, `#` e `//`).
 
 ### HEAD não existia em lugar nenhum (cliente nem servidor)
 
 **O que não funcionava:** o método HTTP HEAD, nos três pontos onde ele aparece:
 
-- `request.head(url)` / `requests.head(url)` — **não existia** nos dois
-  motores (a lib tinha get/post/put/patch/delete e parou aí), embora o cliente
-  C já soubesse que HEAD não tem corpo (`ps_http.c`: `sem_corpo`);
-- **jinker servindo HEAD** — divergência dupla e silenciosa: o interpretador
-  respondia **501** (o `BaseHTTPRequestHandler` não tinha `do_HEAD`) e o VM
-  respondia **404** (o método não casava com a rota de GET no laço de
-  roteamento).
+- `request.head(url)` / `requests.head(url)` — **não existia** (a lib tinha
+  get/post/put/patch/delete e parou aí), embora o cliente HTTP já soubesse que
+  HEAD não tem corpo (`ps_http.c`: `sem_corpo`);
+- **jinker servindo HEAD** — respondia **404**, porque o método não casava com
+  a rota de GET no laço de roteamento.
 
-**Como foi resolvido:** cliente — `head(url, headers, timeout)` no
-`request_lib.py` e `mod_req_head` na tabela `MOD_REQUEST` do VM (remapeia pro
-`request_comum` com método "HEAD"); o alias `request`/`requests` exporta os
-dois. Servidor — uma rota que aceita GET responde HEAD com os MESMOS headers
-(Content-Length inclusive) e **sem corpo** (RFC 9110): no interp, `do_HEAD` +
-`_escreve()` (que pula o corpo em HEAD) e fallback de rota GET; no VM,
-`PSJkConn.sem_corpo` (ligado ao ler a requisição, checado no
-`ps_jk_responde`) + a mesma segunda tentativa de casamento com "GET".
-Regressões: `tests/test_request_multipart_head.py`, `tests/test_jinker_head.py`.
+**Como foi resolvido:** cliente — `mod_req_head` na tabela `MOD_REQUEST`
+(remapeia pro `request_comum` com método "HEAD"); o alias `request`/`requests`
+exporta os dois. Servidor — uma rota que aceita GET responde HEAD com os MESMOS
+headers (Content-Length inclusive) e **sem corpo** (RFC 9110):
+`PSJkConn.sem_corpo` (ligado ao ler a requisição, checado no `ps_jk_responde`)
+mais uma segunda tentativa de casamento com "GET".
 
 ### `multipart/form-data` não tinha como ser enviado
 
@@ -333,25 +306,20 @@ Regressões: `tests/test_request_multipart_head.py`, `tests/test_jinker_head.py`
 na mão em PoolScript não dá (precisa de boundary + bytes crus do arquivo).
 
 **Como foi resolvido:** `fields=` (campos do formulário) e `file=`
-(`{campo: {"name": caminho}}`) em get/post/put/patch/delete nos dois motores —
-a lib lê o arquivo (absoluto | pasta do script | cwd), monta as partes e põe o
-`Content-Type` com o boundary gerado (um `Content-Type` manual é descartado, se
-não o boundary não bateria). `body=` junto com `fields=`/`file=` é erro claro
-nos dois. Regressão: `tests/test_request_multipart_head.py` (confere sha256 do
-binário que atravessou).
+(`{campo: {"name": caminho}}`) em get/post/put/patch/delete — a lib lê o arquivo
+(absoluto | pasta do script | cwd), monta as partes e põe o `Content-Type` com o
+boundary gerado (um `Content-Type` manual é descartado, senão o boundary não
+bateria). `body=` junto com `fields=`/`file=` é erro claro.
 
-### `--check` existia só na VM
+### `--check`
 
-**O que não funcionava:** `pool --check arq.ps` (analisa sem executar — o que
-um editor/LSP consome) era só do binário C. No interpretador, `--check` caía no
-caminho de "rodar arquivo": erro `arquivo não encontrado: --check` e, se
-existisse um arquivo com esse nome, ele seria **executado**.
+`pool --check arq.ps` analisa sem executar — é o que um editor consome.
 
-**Como foi resolvido:** `_cmd_check` no `cli.py`, com o MESMO JSON de uma linha
-do `cmd_check` do `vm/main.c` (`{"ok":true}` /
+**Como foi resolvido:** `cmd_check` no `vm/main.c` responde um JSON de uma
+linha (`{"ok":true}` /
 `{"ok":false,"tipo":...,"msg":...,"linha":N,"coluna":N}`), lendo de arquivo ou
 da entrada padrão, e no `--help` dos dois. Regressão:
-`tests/test_check_paridade.py` (inclusive "não executa o script").
+`teste/casos_linguagem.c` (inclusive "não executa o script").
 
 ### Tupla podia ser MUTADA no VM
 
@@ -359,17 +327,16 @@ da entrada padrão, e no `--help` dos dois. Regressão:
 tabela de métodos da LISTA inteira (o `EH_SEQ` do `acha_metodo_valor` casa
 lista E tupla), então `(1,2,3).append(9)` devolvia `(1,2,3,9)`, e `sort`,
 `clear`, `pop`, `remove`, `insert`, `extend`, `reverse` mexiam na tupla do
-mesmo jeito; `.copy()` devolvia uma **lista**. O interpretador (autoridade)
-recusava os nove com "membro inexistente".
+mesmo jeito; `.copy()` devolvia uma **lista**. Os nove tinham que ser
+recusados com "membro inexistente".
 
 Achado em 2026-08-24 ligando o completion de dict/list/tup no editor: pra
 listar os métodos de `tup` eu fui ler a tabela do VM e ela era a da lista.
 
 **Como foi resolvido:** `METODOS_TUPLA` própria, só com os cinco de LEITURA
 (`index`, `count`, `contains`, `has`, `len`), e `EH_TUPLA` testado **antes** do
-`EH_SEQ` no `acha_metodo_valor`. Mensagem de erro já batia nos dois motores.
-Regressão: `tests/test_tupla_imutavel.py` (14 métodos × 2 motores + a lista
-intacta).
+`EH_SEQ` no `acha_metodo_valor`. Regressão: os 14 métodos, mais a lista
+intacta.
 
 ### `regex.compile` liberava o padrão que o objeto ainda usava
 
@@ -384,16 +351,16 @@ objeto, o primeiro uso liberava e o segundo lia ponteiro solto.
 Os helpers `rx_sub`/`rx_findall`/`rx_split` não liberam mais nada; cada
 `mod_regex_*` chama `ps_regex_free` depois de usar, e o `Pattern` mantém o
 seu vivo até o GC (finalizer `fin_regex`). Regressão:
-`tests/test_regex_compile.py` (inclui `sub` e `split` do mesmo objeto na mesma
+`teste/` (inclui `sub` e `split` do mesmo objeto na mesma
 linha, que era o repro, e 2000 compiles pro finalizer).
 
 ### Leva de 2026-08-25: o que a caça com agentes achou e foi corrigido
 
-77 achados confirmados (lista completa e repro em
-[`caca-bugs-2026-08-25.md`](caca-bugs-2026-08-25.md)). Esta seção registra o
-que já está FECHADO na VM em C — o resto continua na lista.
+77 achados confirmados. Esta seção registra o que já está FECHADO; o que
+falta vive em `teste/casos_pendentes.c`, cada caso falhando de propósito com o
+comportamento certo escrito.
 
-**Derrubavam o processo** (`tests/test_vm_crashes.py`):
+**Derrubavam o processo** (`teste/casos_crash.c`):
 
 - imprimir lista/dict que contém a si mesmo → SEGFAULT. A recursão da
   impressão descia até estourar a pilha do C. Agora detecta o CICLO e imprime
@@ -401,8 +368,8 @@ que já está FECHADO na VM em C — o resto continua na lista.
   `escreve_valor`/`valor_para_texto`, zerada a cada topo).
 - `==`/`contains` entre estruturas mutuamente recursivas → SEGFAULT. Teto de
   profundidade em `val_iguais`.
-- `-9223372036854775808 % -1` → **SIGFPE** (core dumped): é UB no C. O resto é
-  0, que é o que o interpretador devolve.
+- `-9223372036854775808 % -1` → **SIGFPE** (core dumped): é UB no C. O resto
+  correto é 0.
 - `"a".zfill(9223372036854775807)` → a VM alocava em laço até o OOM killer
   derrubar a SESSÃO da máquina. Teto de 256 MB (`PS_STR_MAX`) em
   zfill/ljust/rjust/center.
@@ -410,8 +377,7 @@ que já está FECHADO na VM em C — o resto continua na lista.
   realoca `vm->protos` e as OUTRAS fibras seguiam com o `p` pendurado. Agora
   toda chamada nativa e todo `await` reancoram o ponteiro (macro `REANCORA`).
 
-**Rodavam errado, calado** (`tests/test_vm_inteiros_grandes.py`,
-`tests/test_vm_finally_e_dict.py`):
+**Rodavam errado, calado** (`teste/casos_inteiros.c`, `teste/casos_erros.c`):
 
 - `1 << 63` virava NEGATIVO e `1 << 64` virava 1 (shift em int64 = UB). Agora
   `<<`, `>>`, `|`, `^`, `&` promovem a bignum como `+` e `*` já faziam.
@@ -424,7 +390,7 @@ que já está FECHADO na VM em C — o resto continua na lista.
 - a VM aceitava LISTA e DICT como chave de dicionário (valor mutável!).
   `dict_set` recusa, com mensagem própria.
 
-**Não funcionavam** (`tests/test_vm_features_faltando.py`):
+**Não funcionavam** (`teste/casos_linguagem.c`):
 
 - `finally` não rodava com `return`, `break`, `continue` nem com `raise`
   dentro do `catch` — o bloco só era emitido inline nas duas saídas "normais".
@@ -447,11 +413,11 @@ que já está FECHADO na VM em C — o resto continua na lista.
 
 ### Sem list comprehension (design, não defeito)
 
-`[f(x) for x in xs]` é `SyntaxError: faltou ']' na lista` nos dois motores —
-coerente, a doc nunca prometeu. Fica registrado porque é o tropeço imediato de
-quem vem do Python (junto com "variável criada dentro do `if` não existe
-depois", que é regra documentada na seção 4.6.1). Se um dia entrar, é feature
-da linguagem (parser + interp + VM + vsix), não conserto.
+`[f(x) for x in xs]` é `SyntaxError: faltou ']' na lista` — coerente, a doc
+nunca prometeu. Fica registrado porque é o tropeço imediato de quem vem do
+Python (junto com "variável criada dentro do `if` não existe depois", que é
+regra documentada na seção 4.6.1). Se um dia entrar, é feature da linguagem
+(parser + compilador + VM + vsix), não conserto.
 
 ### O motor de regex — CORRIGIDO (praticamente completo vs `re` do Python)
 
@@ -483,19 +449,17 @@ bate com o Python, verificado caso a caso.
 
 ### `str`/`int` como valor de primeira classe — CORRIGIDO
 
-**Era:** `f = str` não funcionava (nome nu de tipo virava `PoolTypeRef`/`V_TIPO`
+**Era:** `f = str` não funcionava (nome nu de tipo virava um `V_TIPO`
 não-chamável), então `map(l, str)` e `filter(l, bool)` falhavam.
 
 **Como foi resolvido:** o tipo, chamado, converte usando o MESMO conversor da
-chamada direta `str(...)`. Interp: `PoolTypeRef.__call__` delega a
-str/int/float/bool/list e `ps_type`. VM: `OP_CALL`/`chama_valor` em `V_TIPO`
-despacham via `tipo_conversor` pra `nativa_*`. `json`/`dict`/`tup` recusam com
-erro claro. Regressão diferencial em `tests/test_binario_c.py`.
+chamada direta `str(...)` — `OP_CALL`/`chama_valor` em `V_TIPO` despacham via
+`tipo_conversor` pra `nativa_*`. `json`/`dict`/`tup` recusam com erro claro.
+Regressão em `teste/`.
 
-Junto saiu um bug do `is` entre tipos: como `PoolTypeRef` é subclasse de `str`,
-`int is str` dava True e `int is int` dava False. Agora tipo-vs-tipo é
-IDENTIDADE nos dois motores (`str is str`/`int is int` True, cruzados False,
-`X is type` True, `json`==`dict`).
+Junto saiu um bug do `is` entre tipos: `int is str` dava True e `int is int`
+dava False. Agora tipo-vs-tipo é IDENTIDADE (`str is str`/`int is int` True,
+cruzados False, `X is type` True, `json`==`dict`).
 
 ### `jinker` e `ws_connect` na VM são single-thread
 
@@ -509,21 +473,12 @@ nao_bloqueia`). O que ainda vale: como é uma thread só, um **handler lento**
 múltiplos núcleos. Pro alvo (API/app pequeno-médio) atende; multi-core exigiria
 multi-processo (fork de workers) — trabalho futuro, não impedimento.
 
-O **`ws_connect`** (cliente WebSocket) está implementado no binário — mesmo
-framing do servidor, com a máscara obrigatória do lado cliente. A diferença
-pro interpretador é QUANDO o `on_message` dispara: lá uma thread entrega em
-background; aqui as mensagens pendentes são entregues nas operações da
-conexão (antes de cada `send` e no `close`). Num script que envia, espera e
-fecha, a saída é idêntica; um script que só dorme esperando mensagem sem
-nunca tocar a conexão não recebe callback — esse é o limite do modelo sem
-thread, catalogado de propósito.
-
-### `async`/`await` — fora de escopo, não pendente
-
-Continua no interpretador, que roda `async action` em thread de verdade. Na
-VM não entra: exigiria um modelo de concorrência convivendo com o GC de
-marcação, e essa escolha custa mais que a ausência. Não está na fila de
-trabalho — está fora dela.
+O **`ws_connect`** (cliente WebSocket) usa o mesmo framing do servidor, com a
+máscara obrigatória do lado cliente. O limite é QUANDO o `on_message` dispara:
+as mensagens pendentes são entregues nas operações da conexão (antes de cada
+`send` e no `close`). Num script que envia, espera e fecha, a saída é a
+esperada; um script que só dorme esperando mensagem sem nunca tocar a conexão
+não recebe callback — limite do modelo sem thread, catalogado de propósito.
 
 `yield` era o caso vizinho e **está pronto**: gerador não precisa de thread,
 só de frame suspensível.

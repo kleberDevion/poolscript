@@ -8,10 +8,9 @@ Regra: os dígitos 2 e 3 vão de 0 a 99. Ao chegar em 100 eles zeram e somam
     8.2.99  -> 8.3.0
     8.99.99 -> 9.0.0
 
-A versão da linguagem vive em TRÊS arquivos que precisam bater entre si
-(pyproject.toml, src/poolscript/__init__.py, installer/pool_installer.iss);
-a da extensão VS Code vive em psl-poolscript-vsix/package.json e é
-independente da linguagem.
+A versão da linguagem é UMA: a constante `PS_VERSAO` em vm/ps_versao.h, que o
+compilador embute no binário. A doc cita a mesma versão e sobe junto. A da
+extensão VS Code vive em psl-poolscript-vsix/package.json e é independente.
 
 Uso:
     python bump_version.py                # valida tudo, não altera nada
@@ -26,13 +25,13 @@ import sys
 from pathlib import Path
 
 MAX_DIGIT = 99
-ROOT = Path(__file__).parent
+# O script mora em rebuild/, os arquivos versionados estão na RAIZ.
+ROOT = Path(__file__).resolve().parent.parent
 
 # (arquivo, regex com um grupo capturando só a versão)
 LANG_FILES = [
-    (ROOT / "pyproject.toml", re.compile(r'^version\s*=\s*"(\d+\.\d+\.\d+)"', re.M)),
-    (ROOT / "src/poolscript/__init__.py", re.compile(r'^__version__\s*=\s*"(\d+\.\d+\.\d+)"', re.M)),
-    (ROOT / "installer/pool_installer.iss", re.compile(r'^#define MyAppVersion\s+"(\d+\.\d+\.\d+)"', re.M)),
+    # A FONTE da versão: o compilador lê daqui e embute no binário.
+    (ROOT / "vm/ps_versao.h", re.compile(r'^#define PS_VERSAO\s+"(\d+\.\d+\.\d+)"', re.M)),
     # a doc cita a versão no título, no exemplo do `pool --version` e no banner
     # do REPL — todas sobem juntas pra doc nunca ficar defasada (era um problema)
     (ROOT / "docs/PoolScript.md", re.compile(r'PoolScript\s+v(\d+\.\d+\.\d+)')),

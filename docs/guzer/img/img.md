@@ -1,11 +1,11 @@
 # `img(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Elemento `img` — **desenha a imagem** (`.png`) do `src=` na janela nativa, nos dois motores (tkinter no interpretador; libpng + X11 no binário `pool`).
+Elemento `img` — **desenha a imagem** (`.png`) do `src=` na janela nativa, (libpng + X11).
 
 ## Como todo elemento do guzer
 
 - Vem do `app` (o `guzer.UI`): `app.img(...)`.
-- `type()` devolve `"img"` — igual nos dois motores.
+- `type()` devolve `"img"`.
 - `.stylesheet({...})` e `.text(...)` encadeiam (retornam o próprio).
 - Design default: caixa **200×28**, fundo `#F0F0F0`, texto `#101418`.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
@@ -14,7 +14,7 @@ Elemento `img` — **desenha a imagem** (`.png`) do `src=` na janela nativa, nos
   assinatura.
 
 Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height`,
-`font-size` (esta só no interpretador; o backend X11 usa a fonte do sistema).
+`font-size` (ignorada: o backend X11 usa a fonte do sistema).
 
 ## O `src=` vem de onde você quiser
 

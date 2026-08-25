@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `MiddlewareRegistrar`
 
 > **Objeto interno da linguagem** — você não cria `MiddlewareRegistrar` na mão:

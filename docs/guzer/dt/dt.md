@@ -7,7 +7,7 @@ Elemento `dt` — Termo de uma lista de definições (`dl`).
 - Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
   na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `type()` devolve `"dt"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `type()` devolve `"dt"` na janela nativa (X11).
 - `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
 ## Atributos
@@ -21,7 +21,7 @@ Elemento `dt` — Termo de uma lista de definições (`dl`).
 | `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `dt` |
 
 Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
-(esta só no interpretador; o backend X11 usa a fonte do sistema).
+(ignorada: o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 

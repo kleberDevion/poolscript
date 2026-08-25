@@ -5,7 +5,7 @@ sobe até o topo e encerra o programa com a mensagem. Com `try`/`catch` você
 intercepta, e com `finally` garante uma limpeza. Você também levanta as suas com
 `raise`.
 
-Verificado nos dois motores.
+Verificado na VM.
 
 ---
 
@@ -79,7 +79,7 @@ catch (e):                 // qualquer outro
 
 ## 10.4. Tipos de erro embutidos
 
-Além dos tipos livres que você levanta, os motores usam estes nomes ao reportar
+Além dos tipos livres que você levanta, a VM usa estes nomes ao reportar
 erros — e você pode capturá-los por tipo:
 
 | Tipo | Quando ocorre |

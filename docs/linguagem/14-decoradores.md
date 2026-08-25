@@ -6,7 +6,7 @@ PoolScript tem alguns decoradores embutidos (`@static`, `@NonNull`,
 `@dataentity`) e uma forma geral `@objeto.metodo(...)` usada por bibliotecas
 para registrar handlers.
 
-Verificado nos dois motores.
+Verificado na VM.
 
 ---
 
@@ -144,7 +144,7 @@ action f():
 f()      // RuntimeError: variável não definida: f  (o @qualquer engoliu a action)
 ```
 
-É o mesmo comportamento nos dois motores: um decorador que a linguagem não
+Um decorador que a linguagem não
 entende descarta a declaração em vez de rodá-la sem o decorador.
 
 ---

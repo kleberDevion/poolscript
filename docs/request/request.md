@@ -2,8 +2,7 @@
 
 A lib `request` é o **lado cliente**: você usa pra *chamar* outras APIs
 (fazer `GET`/`POST` pra um servidor) e pra *conectar* como cliente num
-WebSocket. Zero dependências pra HTTP; WebSocket precisa de
-`pip install websockets`.
+WebSocket. **Zero dependências externas** nos dois casos.
 
 ```
 import request

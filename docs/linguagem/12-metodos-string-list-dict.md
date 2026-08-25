@@ -5,9 +5,9 @@ Estes métodos são **parte da linguagem** (não vêm de `import`): qualquer `st
 é a referência agrupada; cada método tem ainda uma **página detalhada** —
 [`docs/string/`](../string/string.md), [`docs/list/`](../list/list.md) e
 [`docs/dict/`](../dict/dict.md) — com parâmetros, retorno, erros, bordas e
-exemplos que **rodam nos dois motores** pela suíte.
+exemplos que **rodam de verdade** pela suíte.
 
-Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
+Tudo aqui foi verificado rodando o fonte na VM em C.
 
 ---
 
@@ -22,6 +22,17 @@ Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
 | `capitalize()` | só a primeira letra da string |
 | `swapcase()` | inverte a caixa de cada letra |
 | `casefold()` | minúsculo agressivo (comparação sem caixa) |
+
+A tabela de caixa cobre **ASCII, Latin-1/Ext-A, grego e cirílico**, com os dois
+casos que não são 1-pra-1:
+
+```ps
+post("ΣΟΦΟΣ".lower())   // σοφος  — Σ no fim de palavra vira ς, não σ
+post("ß".upper())       // SS     — ß não tem maiúscula de um caractere só
+post("ß".title())       // Ss     — só a inicial sobe
+post("Привет".upper())  // ПРИВЕТ
+post("İ".lower())       // i      — o I turco com pingo
+```
 
 ### Bordas e preenchimento
 
@@ -40,18 +51,39 @@ Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
 | `index(sub, inicio=0, fim=null)` / `rindex(...)` | como find/rfind, mas **erro** se não achar |
 | `count(sub, inicio=0, fim=null)` | quantas vezes `sub` aparece (na faixa) |
 | `contains(sub)` / `has(sub)` | `sub` está na string? (`bool`) |
-| `startswith(pre)` / `endswith(suf)` | começa / termina com? (`bool`) |
+| `startswith(pre)` / `endswith(suf)` | começa / termina com? (`bool`); `pre`/`suf` pode ser **uma** `str` ou uma **tupla/lista de opções** (basta uma bater) |
 
-> `startswith`/`endswith` recebem **um** prefixo/sufixo `str` — hoje **não**
-> aceitam os argumentos `start`/`end` nem lista de opções (mesma limitação nos
-> dois motores). Para testar só um trecho, **fatie antes**: `s[0:7].endswith("vo")`.
-> (O fatiamento `s[a:b]` — inclusive negativo e passo — existe e é descrito na
-> seção de tipos/coleções.)
+```ps
+post("relatorio.pdf".endswith((".pdf", ".doc")))   // True
+post("olá".startswith(("x", "o")))                 // True
+```
+
+> Não existem os argumentos `start`/`end`. Para testar só um trecho, **fatie
+> antes**: `s[0:7].endswith("vo")`. (O fatiamento `s[a:b]` — inclusive negativo
+> e passo — está na seção de tipos/coleções.)
 
 ### Testes de conteúdo (`is…`) — todos devolvem `bool`
 
 `isalpha`, `isdigit`, `isnumeric`, `isdecimal`, `isalnum`, `isspace`,
 `isupper`, `islower`, `isascii`, `istitle`, `isprintable`, `isidentifier`.
+
+Os três de número **não** são sinônimos, e nenhum deles para no ASCII:
+
+| Método | Aceita |
+|---|---|
+| `isdecimal()` | só dígito decimal, de qualquer escrita: `0-9`, `٣` (árabe), `३` (devanágari), `๓` (tailandês), `３` (largura plena) |
+| `isdigit()` | os decimais **mais** os sobrescritos/subscritos: `²`, `³`, `¹`, `⁷`, `₄` |
+| `isnumeric()` | os anteriores **mais** fração e numeral romano: `½`, `¾`, `Ⅷ` |
+
+```ps
+post("²".isdigit(), "²".isdecimal())     // True False
+post("½".isnumeric(), "½".isdigit())     // True False
+post("٣".isdecimal())                    // True
+```
+
+**String vazia:** `isascii()` e `isprintable()` dão **True** (não há caractere
+que viole a regra); todos os outros dão **False**, porque pedem pelo menos um
+caractere da classe.
 
 ### Divisão e junção
 
@@ -85,9 +117,38 @@ Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
 | Método | Faz |
 |---|---|
 | `len()` | nº de caracteres (igual a `len(s)`) |
-| `encode(enc="utf-8")` | string → `bytes` |
+| `encode(encoding="utf-8", errors="strict")` | string → `bytes` no encoding pedido |
 | `get_json(chave=null)` | interpreta a string como JSON e devolve os dados (ou a chave) |
 | `get(...)` | acessa dado dentro de uma string JSON |
+
+#### `encode` / `decode`: o encoding vale de verdade
+
+`s.encode(encoding, errors)` produz `bytes`; `b.decode(encoding, errors)` volta
+pra `str`. Encodings aceitos (o nome ignora caixa, `-`, `_` e espaço):
+
+`utf-8` (padrão) · `latin-1`/`iso-8859-1` · `ascii` · `utf-16-le`/`utf-16-be` ·
+`utf-32-le`/`utf-32-be`
+
+`errors` diz o que fazer com o que não cabe: `strict` (padrão, **levanta erro**),
+`ignore` (some) ou `replace` (`?` no encode, `\ufffd` no decode).
+
+```ps
+post("café".encode("latin-1"))            // b'caf\xe9'
+post("café".encode())                     // b'caf\xc3\xa9'
+post("café".encode("ascii", "replace"))   // b'caf?'
+post("café".encode("latin-1").decode("latin-1"))   // café
+```
+
+Erro é erro, não silêncio: encoding desconhecido, caractere que não cabe no
+encoding e byte inválido no decode **levantam**.
+
+```ps
+import bytes
+try:
+    post(bytes.new([255, 254]).decode())
+catch(e):
+    post(e)     // decode(): byte 0xFF invalido em utf-8 na posicao 0
+```
 
 ---
 
@@ -105,7 +166,7 @@ A maioria **altera a própria lista** (in-place) e devolve `null` — não encad
 | `reverse()` | inverte a lista no lugar | sim |
 | `sort()` | ordena no lugar (crescente) | sim |
 | `clear()` | esvazia | sim |
-| `index(item)` | posição da 1ª ocorrência (erro se não achar) | não |
+| `index(item, inicio=0, fim=len)` | posição da 1ª ocorrência **na faixa** (erro se não achar); posição negativa conta do fim | não |
 | `count(item)` | quantas vezes aparece | não |
 | `contains(item)` / `has(item)` | está na lista? (`bool`) | não |
 | `copy()` | cópia rasa (nova lista) | não |
@@ -117,6 +178,10 @@ l.append(4)          // l == [3, 1, 2, 4]
 l.sort()             // l == [1, 2, 3, 4]
 post(l.pop())        // 4   (e l == [1, 2, 3])
 post(l.index(2))     // 1
+
+l2 = [1, 2, 3, 2]
+post(l2.index(2))       // 1   — a primeira
+post(l2.index(2, 2))    // 3   — a primeira a partir da posição 2
 ```
 
 > Cópia é **rasa**: `l.copy()` cria uma lista nova, mas os itens são

@@ -1,13 +1,13 @@
 # `pre(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Elemento `pre` — Texto pré-formatado — em HTML, espaços e quebras de linha são preservados. A caixa do guzer mostra o texto como veio (uma linha por caixa; use `height` maior pra várias linhas no interpretador).
+Elemento `pre` — Texto pré-formatado — em HTML, espaços e quebras de linha são preservados. A caixa do guzer mostra o texto como veio (uma linha por caixa; use `height` maior pra várias linhas).
 
 ## O que o guzer faz com ele hoje
 
 - Renderiza uma **caixa** (default 200×28, fundo `#F0F0F0`, texto `#101418`) empilhada
   na janela — ou dentro do pai, se foi criado por um contêiner.
 - O texto mostrado é o `.text(...)`; sem ele, o `placeholder=`.
-- `type()` devolve `"pre"` nos dois motores (tkinter no interpretador, X11 no `pool`).
+- `type()` devolve `"pre"` na janela nativa (X11).
 - `.stylesheet({...})` e `.text(...)` encadeiam (devolvem o próprio elemento).
 
 ## Atributos
@@ -21,7 +21,7 @@ Elemento `pre` — Texto pré-formatado — em HTML, espaços e quebras de linha
 | `href=`, `src=`, `alt=`, `target=`, `forid=`, `action=`, `methd=`, `rows=`, `cols=`, `typeinp=` | aceitos e guardados no elemento; **sem efeito visual** em `pre` |
 
 Chaves de estilo: `background` (ou `bg`), `color`, `width`, `height` e `font-size`
-(esta só no interpretador; o backend X11 usa a fonte do sistema).
+(ignorada: o backend X11 usa a fonte do sistema).
 
 ## Exemplo
 

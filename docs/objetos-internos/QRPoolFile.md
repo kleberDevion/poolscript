@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `QRPoolFile`
 
 > **Objeto interno da linguagem** — você não cria `QRPoolFile` na mão:

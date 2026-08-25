@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `PoolIp`
 
 > **Objeto interno da linguagem** — você não cria `PoolIp` na mão:

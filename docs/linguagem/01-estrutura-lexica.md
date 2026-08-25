@@ -1,12 +1,12 @@
 # Referência da Linguagem — 1. Estrutura léxica
 
 Esta seção especifica como o **lexer** (o primeiro estágio do compilador/
-interpretador) transforma o texto-fonte de um `.ps`/`.psl`/`.p` numa sequência
+transforma o texto-fonte de um `.ps`/`.psl`/`.p` numa sequência
 de *tokens*. É o nível mais baixo da linguagem: o que conta como espaço,
 comentário, número, string, operador, e como blocos são delimitados. As seções
 seguintes (tipos, expressões, statements) assumem estas regras.
 
-O modelo é o mesmo dos dois motores (o interpretador em Python e a VM em C): o
+O
 mesmo fonte produz os mesmos tokens.
 
 ---
@@ -208,7 +208,7 @@ fechada antes da quebra de linha`), a menos que seja multi-linha.
 | `\xHH` | hex (2 díg.) | | `\uXXXX` / `\UXXXXXXXX` | Unicode |
 
 Um escape desconhecido mantém o caractere e solta a barra. O valor de `\033`,
-`\x1b` e `\e` é o **mesmo byte** ESC nos dois motores.
+`\x1b` e `\e` é o **mesmo byte** ESC.
 
 ```ps
 post("linha1\nlinha2")

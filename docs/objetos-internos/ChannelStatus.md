@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `ChannelStatus`
 
 > **Objeto interno da linguagem** — você não cria `ChannelStatus` na mão:

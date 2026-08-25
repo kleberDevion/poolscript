@@ -1,7 +1,7 @@
 # jinker — Servidor HTTP
 
-Lib de servidor HTTP da PoolScript. Zero dependências externas para HTTP básico.
-Para WebSocket instale: `pip install websockets`.
+Lib de servidor HTTP da PoolScript. **Zero dependências externas** — HTTP e
+WebSocket são do próprio motor.
 
 ## O que é e como funciona (leia isto primeiro)
 
@@ -422,8 +422,6 @@ meu_projeto/
 
 ## WebSocket
 
-Precisa instalar: `pip install websockets`
-
 O WebSocket sobe automaticamente na porta `HTTP + 1`. Se o servidor HTTP for na porta `7700`, o WebSocket fica na `7701`.
 
 ```
@@ -530,10 +528,7 @@ run_selfwith_("main") {
 
 ## Concorrência e escala
 
-Esta seção descreve o motor `pool` (binário em C). O interpretador
-(`python -m poolscript`) é o runtime de referência/dev e roda sempre em um
-processo com uma thread por requisição — o **observável** (o que a rota devolve)
-é idêntico; o que muda é a capacidade sob carga.
+Esta seção descreve como o `pool` serve as requisições.
 
 ### Como as requisições rodam
 

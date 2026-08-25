@@ -1,7 +1,7 @@
 # qrcode — Geração de QR Code
 
-Requer: `pip install qrcode[pil]`. Espelha a API da lib `qrcode` do
-Python — mesmos nomes sempre que possível.
+**Zero dependências externas** — a geração e o PNG são do próprio motor.
+Espelha a API da lib `qrcode` do Python: mesmos nomes sempre que possível.
 
 ```
 import qrcode

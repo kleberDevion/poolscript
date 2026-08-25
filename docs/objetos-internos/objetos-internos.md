@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # Objetos internos da linguagem
 
 Tipos que você **não cria na mão** — cada um é o que uma lib te

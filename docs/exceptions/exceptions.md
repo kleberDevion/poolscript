@@ -2,8 +2,7 @@
 
 Um erro na PoolScript tem um **tipo** (um nome) e uma **mensagem**. Você pode
 deixá-lo **propagar** (para o programa com uma mensagem limpa — `catch` é
-opcional) ou **capturar** com `try/catch`. Vale igual nos dois motores (INTERP
-e VM em C).
+opcional) ou **capturar** com `try/catch`.
 
 ---
 

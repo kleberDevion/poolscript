@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `QRCode`
 
 > **Objeto interno da linguagem** — você não cria `QRCode` na mão:

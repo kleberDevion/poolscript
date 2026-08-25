@@ -8,10 +8,10 @@ leia tudo.
 
 ## 1. O bug conceitual: `.search()` nunca baixava o corpo
 
-Olha a implementação original de `.search()`:
+O `.search()` pedia ao servidor só isto:
 
-```python
-typ, msg_data = self.server.fetch(eid, "(RFC822.HEADER)")
+```
+FETCH <id> (RFC822.HEADER)
 ```
 
 `RFC822.HEADER` é um comando IMAP que diz pro servidor: "me manda só os
@@ -36,15 +36,8 @@ precisava.
 
 ### `.body(id)` — sob demanda, um e-mail por vez
 
-```python
-def body(self, id):
-    if self.server is None or self.folder is None:
-        raise RuntimeError("chame .select() antes de .body()")
-    eid = id.encode() if isinstance(id, str) else id
-    typ, msg_data = self.server.fetch(eid, "(RFC822)")
-    ...
-    return _extract_body(msg)
-```
+Exige um `.select()` antes (senão levanta) e faz um `FETCH <id> (RFC822)` —
+a mensagem INTEIRA — extraindo o corpo dela.
 
 Uso:
 
@@ -66,12 +59,8 @@ você quer cache ou não.
 
 ### `.search(..., include_body=True)` — tudo de uma vez
 
-```python
-fetch_spec = "(RFC822)" if include_body else "(RFC822.HEADER)"
-...
-if include_body:
-    item["body"] = _extract_body(msg)
-```
+O `FETCH` da busca passa a pedir `(RFC822)` em vez de `(RFC822.HEADER)`, e
+cada item do resultado ganha a chave `"body"`.
 
 Uso:
 
@@ -95,25 +84,9 @@ isso, mas o servidor IMAP e sua conexão vão sentir. Combine
 
 ## 3. Como o corpo é extraído — e por que HTML puro não vira texto
 
-```python
-def _extract_body(msg):
-    texto_plain = None
-    texto_html = None
-    if msg.is_multipart():
-        for part in msg.walk():
-            if "attachment" in str(part.get("Content-Disposition") or ""):
-                continue
-            content_type = part.get_content_type()
-            if content_type == "text/plain" and texto_plain is None:
-                texto_plain = _decode_payload(part)
-            elif content_type == "text/html" and texto_html is None:
-                texto_html = _decode_payload(part)
-    elif msg.get_content_type() == "text/html":
-        texto_html = _decode_payload(msg)
-    else:
-        texto_plain = _decode_payload(msg)
-    return texto_plain if texto_plain is not None else (texto_html or "")
-```
+O motor anda pelas partes MIME da mensagem, pula os anexos, guarda a
+primeira `text/plain` e a primeira `text/html`, e devolve a `text/plain` se
+existir — senão a `text/html`, senão `""`.
 
 Regras, sem meio-termo:
 
@@ -125,8 +98,7 @@ Regras, sem meio-termo:
 - **Se só existir HTML, você recebe HTML cru.** Essa função não faz
   strip de tags, não roda parser de HTML, não tenta converter pra texto
   legível. Por quê? Porque "converter HTML pra texto legível direito" é
-  um problema em si — tem lib pra isso (`html2text`, `BeautifulSoup` +
-  regra própria), e enfiar isso aqui seria resolver um problema que
+  um problema em si, e enfiar isso aqui seria resolver um problema que
   ninguém pediu, com uma solução que ia estar errada pra metade dos
   casos (tabelas, links, formatação). Se você precisa disso, trate o
   `body` retornado como HTML no seu próprio código.
@@ -137,8 +109,8 @@ Regras, sem meio-termo:
   anexo `.txt` de 2MB ia virar "o corpo do e-mail" por acidente.
 - **Charset por parte, não por mensagem.** Cada parte MIME pode declarar
   seu próprio charset (`Content-Type: text/plain; charset=iso-8859-1`,
-  por exemplo). `_decode_payload` lê o charset daquela parte específica
-  e cai pra `utf-8` só se a parte não declarar nenhum. Assumir UTF-8 pra
+  por exemplo). A decodificação usa o charset daquela parte específica e cai
+  pra `utf-8` só se a parte não declarar nenhum. Assumir UTF-8 pra
   tudo ia quebrar silenciosamente com e-mail antigo em Latin-1, que ainda
   existe por aí.
 
@@ -157,43 +129,37 @@ um caractere como outro qualquer, não é delimitador de nada.
 **O que estava genuinamente quebrado** era outra coisa, que parecia
 relacionada mas não era: o charset da busca.
 
-```python
-# antes:
-typ, data = self.server.search(None, criterio, f'"{term}"')
+Antes o comando ia sem `CHARSET`:
+
+```
+SEARCH SUBJECT "Relatório"
 ```
 
-`None` como primeiro argumento do `search()` do `imaplib` significa "sem
-`CHARSET` explícito no comando IMAP" — e o default do protocolo pra esse
-caso é **US-ASCII**. Assunto de e-mail em português quase sempre tem
+Sem `CHARSET` explícito, o default do protocolo é **US-ASCII**. Assunto de e-mail em português quase sempre tem
 acento. `"Relatório"` não é ASCII. Dependendo do servidor, isso ou falha
 com erro, ou (pior) simplesmente não dá match em nada e você acha que o
 e-mail não existe.
 
-Segundo problema, menor mas real: `f'"{term}"'` interpola o termo cru
-dentro de aspas sem escapar nada. Se `term` contém uma aspa dupla —
+Segundo problema, menor mas real: o termo entrava cru dentro das aspas,
+sem escapar nada. Se `term` contém uma aspa dupla —
 `Assunto com "citação" dentro` — isso gera um comando IMAP com aspas
 desbalanceadas e quebra a sintaxe do protocolo, não só "não encontra
 nada", quebra o comando inteiro.
 
-**Correção:**
+**Correção** — o comando passou a ser:
 
-```python
-def _imap_quote(term):
-    return '"' + term.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-...
-typ, data = self.server.search("UTF-8", criterio, _imap_quote(term))
+```
+SEARCH CHARSET UTF-8 SUBJECT "Relat\u00f3rio"
 ```
 
 Duas mudanças, cada uma resolvendo um problema diferente:
 
-1. `"UTF-8"` no lugar de `None` — declara o charset da busca, então
-   acento passa a funcionar contra servidores que suportam `CHARSET
-   UTF-8` na busca (Gmail, Outlook, Yahoo — todo provedor grande suporta;
-   é parte do RFC desde 2003, não é feature exótica).
-2. `_imap_quote` escapa `\` e `"` antes de embutir o termo — backslash
-   primeiro, sempre, senão você escapa a aspa que acabou de escapar o
-   backslash.
+1. `CHARSET UTF-8` declarado, então acento passa a funcionar contra
+   servidores que o suportam na busca (Gmail, Outlook, Yahoo — todo provedor
+   grande suporta; é parte do RFC desde 2003, não é feature exótica).
+2. O termo é escapado antes de entrar entre aspas — `\` e `"` viram `\\` e
+   `\"`, o backslash primeiro, sempre, senão você escapa a aspa que acabou de
+   escapar o backslash.
 
 Resumindo a pergunta original: **case misto sempre funcionou, vírgula
 sempre funcionou, o que não funcionava era acento — e agora funciona.**
@@ -242,20 +208,16 @@ reader.close()
 
 ## 7. Testes
 
-`tests/test_v0_3_0.py` — tudo mockado em cima de `imaplib.IMAP4_SSL`, sem
-rede real, seguindo o padrão que já existia pro resto do `MailReader`:
+A suíte em C (`teste/`, rodada por `make -f rebuild/Makefile check`) cobre:
 
-- `include_body=True` de fato pede `(RFC822)` em vez de `(RFC822.HEADER)`,
+- `include_body=true` de fato pede `(RFC822)` em vez de `(RFC822.HEADER)`,
   e sem ele o campo `"body"` nem aparece no dict de resultado.
 - `.body()` com mensagem `multipart/alternative` (plain + html) devolve o
   plain.
 - `.body()` com mensagem só-HTML devolve o HTML cru.
-- `.body()` sem `.select()` antes levanta `RuntimeError` (mesma regra
-  defensiva de `.search()`).
-- `.body()` com fetch que falha no servidor levanta `RuntimeError`.
+- `.body()` sem `.select()` antes levanta (mesma regra defensiva de
+  `.search()`).
+- `.body()` com fetch que falha no servidor levanta.
 - Escaping de aspas e barra invertida no termo de busca.
-- Termo acentuado com vírgula chega intacto no comando `search()`
-  mockado, com `CHARSET UTF-8`.
-
-450 testes passando no total (441 de antes + 9 novos), suíte inteira, sem
-regressão em nenhum outro módulo.
+- Termo acentuado com vírgula chega intacto no comando `SEARCH`, com
+  `CHARSET UTF-8`.

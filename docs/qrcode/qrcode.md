@@ -1,7 +1,7 @@
 # qrcode — Gerar QR Codes
 
-Lib pra gerar imagens de **QR Code** a partir de um texto/URL. Precisa de
-`pip install qrcode[pil]`.
+Lib pra gerar imagens de **QR Code** a partir de um texto/URL.
+**Zero dependências externas.**
 
 ```
 import qrcode

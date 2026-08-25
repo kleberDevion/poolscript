@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `CorsConfig`
 
 > **Objeto interno da linguagem** — você não cria `CorsConfig` na mão:

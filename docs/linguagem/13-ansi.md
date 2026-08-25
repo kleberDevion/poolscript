@@ -5,7 +5,7 @@ embutido na linguagem (`<cor>"texto"`), que cobre a cor de **primeiro plano**
 (texto) de um jeito seguro e auto-fechado; e as **sequências ANSI manuais**
 (via o escape `\e`), para tudo o mais — negrito, sublinhado, fundo, 256 cores.
 
-Verificado nos dois motores (mesmos bytes de saída).
+Verificado na VM (bytes de saída conferidos).
 
 ---
 
@@ -71,7 +71,7 @@ Consequências práticas:
 
 Para o que o literal de cor não cobre (negrito, fundo, sublinhado, 256 cores…),
 escreva a sequência ANSI na mão. O byte ESC que abre toda sequência é o escape
-**`\e`** (equivalente a `\033` e a `\x1b` — o mesmo byte nos dois motores):
+**`\e`** (equivalente a `\033` e a `\x1b` — o mesmo byte):
 
 ```ps
 post("\e[1mnegrito\e[0m")

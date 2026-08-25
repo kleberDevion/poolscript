@@ -26,7 +26,7 @@ pool build          # roda todos os .ps da pasta atual
 
 `--check` analisa o arquivo (lexer + parser) e **não executa nada** — é o que
 um editor/LSP usa pra sublinhar erro enquanto você digita. A saída é um JSON
-de uma linha, igual nos dois motores:
+de uma linha:
 
 ```bash
 pool --check meu_arquivo.ps

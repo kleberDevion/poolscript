@@ -109,7 +109,7 @@ opções `SOL_SOCKET`, `SO_REUSEADDR`, `SO_REUSEPORT`, `SO_KEEPALIVE`,
 
 ## Exemplos
 
-Conversões e resolução (saída verificada nos dois motores):
+Conversões e resolução (saída verificada na VM):
 
 ```ps
 import sockets

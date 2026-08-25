@@ -6,7 +6,7 @@ desvios `break`/`continue` e o guard de entrada `run_selfwith_`.
 
 Os dois estilos de bloco da seção 1.3 valem em todos eles: `:` + indentação, ou
 `{ }`. Os exemplos usam o estilo `:`. Toda regra desta seção foi verificada
-rodando o mesmo fonte no interpretador e na VM em C.
+rodando o fonte na VM em C.
 
 Lembrete de escopo (seção 4): cada bloco aqui é um **escopo próprio** —
 variável nova dentro dele não vaza pra fora, e o corpo de um laço reinicia a

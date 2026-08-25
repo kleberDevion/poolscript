@@ -4,7 +4,6 @@ Monta telas de **app desktop** com os **elementos do HTML** — um método por
 tag — e estiliza cada um com `.stylesheet({...})`. Abre uma **janela
 nativa**, sem baixar nada:
 
-- **interpretador:** `tkinter` (já vem no Python);
 - **binário `pool`:** backend X11 próprio (libX11 do sistema).
 
 ```
@@ -52,8 +51,7 @@ nome = app.POOLHTMLElements.getitemByIdentify("nome").value
 
 - Cada elemento é uma **caixa empilhada** na janela (o `dialog` centraliza; o
   `img` desenha o arquivo; `video`/`audio` REPRODUZEM via ffmpeg do sistema).
-- `type()` de um elemento devolve a **tag** (`"div"`, `"h1"`, ...) — igual nos
-  dois motores.
+- `type()` de um elemento devolve a **tag** (`"div"`, `"h1"`, ...).
 - Handlers são **reactions por referência** (`onclick=scripts.Clicker`).
 - Atributos do HTML entram como argumentos nomeados: `placeholder=`, `src=`,
   `href=`, `name=`, `value=`... (`type`→`typeinp`, `for`→`forid`,
@@ -85,7 +83,7 @@ nome = app.POOLHTMLElements.getitemByIdentify("nome").value
 | [`dl`](dl/dl.md) | Lista de definições |
 | [`dt`](dt/dt.md) | Termo de uma lista de definições (`dl`) |
 | [`em`](em/em.md) | Ênfase — em HTML vira itálico |
-| [`entry`](entry/entry.md) | campo de UMA linha — editável no interpretador (tkinter); `.value` lê o digitado |
+| [`entry`](entry/entry.md) | campo de UMA linha — editável na janela X11; `.value` lê o digitado |
 | [`fieldset`](fieldset/fieldset.md) | Grupo de campos de um formulário, com um `legend` como título |
 | [`figcaption`](figcaption/figcaption.md) | Legenda de um `figure` |
 | [`figure`](figure/figure.md) | Conteúdo ilustrativo autocontido (imagem, gráfico, trecho de código) |
@@ -134,7 +132,7 @@ nome = app.POOLHTMLElements.getitemByIdentify("nome").value
 | [`table`](table/table.md) | Tabela — contêiner de `caption`, `thead`/`tbody`/`tfoot` e `tr` |
 | [`tbody`](tbody/tbody.md) | Grupo das linhas do corpo da tabela |
 | [`td`](td/td.md) | Célula de dados de uma linha (`tr`) |
-| [`textarea`](textarea/textarea.md) | campo de VÁRIAS linhas — editável no interpretador; `.value` lê o digitado |
+| [`textarea`](textarea/textarea.md) | campo de VÁRIAS linhas — editável na janela X11; `.value` lê o digitado |
 | [`tfoot`](tfoot/tfoot.md) | Grupo das linhas de rodapé da tabela (totais) |
 | [`th`](th/th.md) | Célula de cabeçalho de uma linha (`tr`) |
 | [`thead`](thead/thead.md) | Grupo das linhas de cabeçalho da tabela (as `tr` com `th`) |

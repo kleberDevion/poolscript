@@ -2,7 +2,7 @@
 
 Quantas linhas foram **afetadas** pelo último comando (INSERT, UPDATE,
 DELETE). É uma **propriedade** — lê-se **sem parênteses**; `cursor.rowcount()`
-dá erro (`tentativa de chamar algo que não é função`) nos dois motores.
+dá erro (`tentativa de chamar algo que não é função`).
 
 ```
 cursor.rowcount -> int

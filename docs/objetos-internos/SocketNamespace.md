@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `SocketNamespace`
 
 > **Objeto interno da linguagem** — você não cria `SocketNamespace` na mão:

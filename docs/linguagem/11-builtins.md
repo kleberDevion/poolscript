@@ -2,10 +2,10 @@
 
 Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **35**
 no total. Esta seção é a visão geral; cada builtin tem uma página detalhada em
-[`docs/builtins/`](../builtins/builtins.md), e os exemplos de lá **rodam nos dois
-motores** pela suíte (`tests/test_docs_exemplos.py`) — doc errada quebra o teste.
+[`docs/builtins/`](../builtins/builtins.md), e os exemplos de lá **rodam de
+verdade** na suíte em C (`make -f rebuild/Makefile check`) — doc errada quebra o teste.
 
-Tudo aqui foi verificado rodando o mesmo fonte no interpretador e na VM em C.
+Tudo aqui foi verificado rodando o fonte na VM em C.
 
 ---
 
@@ -108,9 +108,9 @@ post(removeStart(l))  // 1   (e l == [2, 3, 4])
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `gather` | `gather(a, b, …)` | espera vários `async action` **concorrentes** e devolve os valores numa lista (na ordem). Funciona **nos dois motores** (interpretador e VM); valor comum passa direto. Aceita lista de futures. |
+| `gather` | `gather(a, b, …)` | espera vários `async action` **concorrentes** e devolve os valores numa lista (na ordem). Valor comum passa direto. Aceita lista de futures. |
 | `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `null`. |
-| `id` | `id(x)` | identidade do valor como `int`. Para objetos, o endereço; para imediatos, o conteúdo bruto. (No interp usa o `id()` do Python — o valor exato do número difere entre motores; use só pra comparar identidade, não pro número em si.) |
+| `id` | `id(x)` | identidade do valor como `int`. Para objetos, o endereço; para imediatos, o conteúdo bruto. O número em si não é estável entre execuções — use só pra comparar identidade. |
 
 ---
 

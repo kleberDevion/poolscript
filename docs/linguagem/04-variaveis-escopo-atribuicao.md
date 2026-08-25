@@ -6,7 +6,7 @@ incremento, desempacotamento, atribuição a índice/membro) e — o ponto mais
 sutil — **onde** cada nome existe e por quanto tempo (escopo).
 
 Como no resto da linguagem, tudo aqui foi verificado rodando o mesmo fonte nos
-dois motores (interpretador e VM em C) e comparando a saída.
+VM e comparando a saída.
 
 ---
 
@@ -118,7 +118,7 @@ primeiro, *resto = [10, 20, 30, 40]   // primeiro=10, resto=[20,30,40]
 
 ## 4.6. Escopo
 
-O escopo é **léxico** e por **bloco** — igual ao interpretador. Cada `if`,
+O escopo é **léxico** e por **bloco**. Cada `if`,
 `elif`, `else`, `while`, `for each`, `count each`, `try`/`catch`/`finally`,
 `match`/`case` e `run_selfwith_` abre um escopo próprio.
 

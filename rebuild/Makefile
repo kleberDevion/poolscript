@@ -1,8 +1,7 @@
-# Binário standalone da PoolScript — zero CPython.
+# Binário standalone da PoolScript — tudo em C.
 #
-# O mesmo `poolscript_vm.c` também compila como extensão do CPython, com
-# -DPS_MODULO_PYTHON (ver setup_vm.py). Aqui a flag NÃO entra: nada de
-# Python.h, nada de libpython, nenhum símbolo do interpretador no binário.
+# Os clientes de banco (sqlite, libpq, mysqlclient, unixODBC), o TLS, o PNG e
+# o zlib entram ESTÁTICOS: o `pool` roda em máquina que não tem nenhum deles.
 CC      ?= gcc
 # A versão é constante de header (vm/ps_versao.h) — o compilador resolve, sem
 # shell nenhum no meio.
@@ -17,7 +16,11 @@ FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
 # Depende do header de versão e do Makefile: um bump (ou mudança de flag)
 # força o relink, senão o `pool --version` fica preso no valor antigo porque
 # as fontes .c não mudaram.
-pool: $(FONTES) $(VM)/ps_versao.h Makefile
+# O Makefile mora em rebuild/, mas as fontes e o binário são da RAIZ do
+# repositório: rode sempre `make -f rebuild/Makefile <alvo>` de lá.
+MK := $(lastword $(MAKEFILE_LIST))
+
+pool: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
 	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lmysqlclient -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libX11.so.6 -l:libgmp.so.10
 

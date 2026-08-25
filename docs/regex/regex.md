@@ -24,7 +24,7 @@ import regex
 ## A barra invertida: use `r"..."` ou `"\\"`
 
 O padrão chega como **string**, e a string já consome a barra: `"\d"` vira
-apenas `d` (verificado nos dois motores) — o padrão fica errado **em silêncio**,
+apenas `d` (verificado na VM) — o padrão fica errado **em silêncio**,
 achando nada.
 
 ```
@@ -72,4 +72,4 @@ regex.findall("\d+", texto)         // errado — vira "d+"
 
 ## Relacionados
 
-- Strings raw — ver a seção de strings em `LANGUAGE.md`
+- Strings raw — ver a seção de strings em `../LANGUAGE.md`

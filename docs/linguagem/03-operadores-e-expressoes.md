@@ -7,7 +7,7 @@ tipos, o que devolve, quando dá erro — e as regras que governam como uma
 expressão maior é montada a partir das menores: **precedência**,
 **associatividade** e **curto-circuito**.
 
-Tudo aqui vale igual nos dois motores (interpretador em Python e VM em C): cada
+Cada
 comportamento desta seção foi verificado rodando o mesmo fonte nos dois e
 comparando a saída.
 

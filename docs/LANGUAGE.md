@@ -7,10 +7,10 @@ erros, bibliotecas padrão e comportamentos/limitações conhecidas. Substitui
 não cobre `async`/`await`, `Entity`, `match`/`case`, `count`, decorators nem
 unpacking).
 
-> Arquitetura (para quem for mexer no código): lexer (`lexer.py`) → parser
-> recursive-descent que produz uma AST de nodes `@dataclass(slots=True)`
-> (`parser.py`) → interpretador tree-walking (`interpreter.py`). Sem bytecode,
-> sem VM — cada `Node` é executado diretamente andando na árvore.
+> Arquitetura (para quem for mexer no código): lexer (`vm/ps_lexer.c`) →
+> parser recursive-descent que produz uma AST (`vm/ps_parser.c`) → compilador
+> pra bytecode (`vm/ps_compiler.c`) → máquina virtual (`vm/poolscript_vm.c`).
+> Tudo em C, sem dependência de runtime externo.
 
 ---
 
@@ -48,7 +48,7 @@ unpacking).
 pool arquivo.ps       # roda um arquivo
 pool repl             # REPL interativo
 pool build            # roda todos os .ps da pasta atual
-pool --version        # versão + runtime (Python/PyPy)
+pool --version        # versão do binário
 pool --help           # ajuda
 ```
 
@@ -874,17 +874,17 @@ Referência completa de cada lib (todo membro acessível, com exemplos) em
 
 | Lib | Doc |
 |---|---|
-| `os`, `dotenv`, `mail`, `date`, `request`/`requests` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](docs/libs_utilitarias.md) |
-| `jinker` (HTTP + WebSocket com salas) | [`docs/jinker.md`](docs/jinker.md) |
-| `db` (SQLite/Postgres/MySQL/Mongo, alias de `psodbc`) + `sqlite3` (acesso direto) | [`docs/psodbc.md`](docs/psodbc.md) |
-| `hash`, `jwt` | [`docs/hash_jwt.md`](docs/hash_jwt.md) |
-| `manpu`/`mp` | [`docs/manpu.md`](docs/manpu.md) |
-| `json` | [`docs/json.md`](docs/json.md) |
-| `regex` | [`docs/regex.md`](docs/regex.md) |
-| `qrcode`/`qr` | [`docs/qrcode.md`](docs/qrcode.md) |
-| `sys` | [`docs/sys.md`](docs/sys.md) |
-| `datasentity`/`dataentity` | [`docs/datasentity.md`](docs/datasentity.md) |
-| `Parsing` (builtin global, sem import) | [`docs/parsing.md`](docs/parsing.md) |
+| `os`, `dotenv`, `mail`, `date`, `request`/`requests` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](libs_utilitarias.md) |
+| `jinker` (HTTP + WebSocket com salas) | [`docs/jinker.md`](jinker.md) |
+| `db` (SQLite/Postgres/MySQL/Mongo, alias de `psodbc`) + `sqlite3` (acesso direto) | [`docs/psodbc.md`](psodbc.md) |
+| `hash`, `jwt` | [`docs/hash_jwt.md`](hash_jwt.md) |
+| `manpu`/`mp` | [`docs/manpu.md`](manpu.md) |
+| `json` | [`docs/json.md`](json.md) |
+| `regex` | [`docs/regex.md`](regex.md) |
+| `qrcode`/`qr` | [`docs/qrcode.md`](qrcode.md) |
+| `sys` | [`docs/sys.md`](sys.md) |
+| `datasentity`/`dataentity` | [`docs/datasentity.md`](datasentity.md) |
+| `Parsing` (builtin global, sem import) | [`docs/parsing.md`](parsing.md) |
 
 `Parsing` (conversões de tipo seguras) é builtin global, não precisa de
 `import` — ver `docs/parsing.md`.
@@ -1059,9 +1059,8 @@ O que `open()` devolve. Fechar é responsabilidade de quem abriu — ou do
 
 ## Erros nomeados
 
-Os erros de runtime da PoolScript têm um `code` estável (usado por
-`catch (Tipo nome)` e disponível como `.code` no objeto de exceção Python
-`PoolRuntimeError`):
+Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
+`catch (Tipo nome)` filtra:
 
 | `code` | Quando ocorre |
 |---|---|
@@ -1071,13 +1070,9 @@ Os erros de runtime da PoolScript têm um `code` estável (usado por
 | `IndexOutOfBoundsWarning` | Índice fora do intervalo (não-fatal — vira warning + `Null`) |
 | `ConversionError` | Conversão automática de tipo falhou (ex.: `int x = "abc"`) |
 | `NotImplemented` | Lib "stub" chamada (existe mas função ainda não implementada) |
-| `KeyError` / `IndexError` / `TimeoutError` / `NetworkError` / `IOError` / etc. | Espelham exceções nativas do Python, "blindadas" (sem expor stack trace interno) |
+| `KeyError` / `IndexError` / `TimeoutError` / `NetworkError` / `IOError` / etc. | Erro de chave, índice, tempo esgotado, rede e I/O |
 
-Todo erro de runtime nativo do Python (`ZeroDivisionError`, `TypeError`,
-`FileNotFoundError`, ...) passa por um "shield" que o converte na mesma
-classe pública `PoolRuntimeError` — então `except PoolRuntimeError` (Python)
-ou `catch (e)` (PoolScript) sempre pegam qualquer erro de runtime,
-independente da causa interna.
+`catch (e)` sem tipo pega **qualquer** erro de runtime, independente da causa.
 
 ---
 

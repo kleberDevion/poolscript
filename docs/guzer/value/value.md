@@ -2,10 +2,9 @@
 
 O **valor atual** do elemento (sem parênteses):
 
-- no **interpretador**, com a janela aberta, `entry`/`textarea` devolvem o que
-  o usuário **digitou** (campo nativo);
-- fora disso, a ordem é `value=` → `.text(...)` → `placeholder=` → `""` —
-  igual nos dois motores.
+A ordem é `value=` → `.text(...)` → `placeholder=` → `""`. O backend X11
+ainda não edita por teclado, então `entry`/`textarea` devolvem o valor do
+modelo, não o que o usuário digitou.
 
 ```
 app.entry(name="nome", value="kleber")

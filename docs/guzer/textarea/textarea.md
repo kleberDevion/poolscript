@@ -1,9 +1,8 @@
 # `textarea(typeinp=, placeholder=, value=, name=, href=, src=, alt=, target=, forid=, action=, methd=, rows=, cols=, onclick=)`
 
-Campo de formulário — área de VÁRIAS linhas. No **interpretador** é um campo NATIVO editável
-(tkinter): o usuário digita e o seu handler lê com `.value`. No binário `pool`
-(X11) a caixa mostra o texto/placeholder; a edição por teclado ainda não existe
-lá — o `.value` devolve o estado do modelo.
+Campo de formulário — área de VÁRIAS linhas. A caixa mostra o texto/placeholder; a
+edição por teclado ainda **não existe** no backend X11, então o `.value`
+devolve o estado do modelo (o que foi passado em `value=`/`.text(...)`).
 
 - `name=` — a chave pro [getitemByIdentify](../getitemByIdentify/getitemByIdentify.md).
 - `value=` — valor inicial.

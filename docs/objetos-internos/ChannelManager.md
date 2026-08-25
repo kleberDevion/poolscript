@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `ChannelManager`
 
 > **Objeto interno da linguagem** — você não cria `ChannelManager` na mão:

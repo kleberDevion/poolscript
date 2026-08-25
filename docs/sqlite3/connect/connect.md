@@ -1,4 +1,3 @@
-<!-- gerado: gera_doc_gaps.py — pode regenerar -->
 # `sqlite3.connect(database)`
 
 Abre conexão com banco SQLite. Cria o arquivo se não existir.

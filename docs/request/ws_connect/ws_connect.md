@@ -8,7 +8,6 @@ você envia e recebe mensagens em tempo real.
 request.ws_connect(url: str) -> WsConnection
 ```
 
-Precisa de `pip install websockets`.
 
 | Parâmetro | O que é |
 |---|---|

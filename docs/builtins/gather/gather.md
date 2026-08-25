@@ -43,7 +43,7 @@ post(gather(fs))
 
 ## Bordas
 
-- Funciona **nos dois motores** (interpretador e VM em C): resolve os futures rodando as tasks concorrentes. Valor comum (não-future) volta como está.
+- Resolve os futures rodando as tasks concorrentes (fibras). Valor comum (não-future) volta como está.
 - `gather(fs)` com uma lista devolve **lista dentro de lista** (um resultado por argumento; o argumento-lista vira a sub-lista dos seus valores).
 
 [← índice](../builtins.md)

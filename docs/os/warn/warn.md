@@ -45,4 +45,4 @@ Use `os.warn` pra logs de aviso; use `post` com cor pra saída comum colorida.
 ## Relacionados
 
 - `post` — saída normal (aceita cor inline `<red>"..."`)
-- Cores da linguagem — ver a seção de strings coloridas em `LANGUAGE.md`
+- Cores da linguagem — ver a seção de strings coloridas em `../LANGUAGE.md`

@@ -58,7 +58,7 @@ post(type(g))         // int
 ## 2.3. Veracidade (*truthiness*)
 
 Em contexto booleano (`if`, `while`, `and`, `or`, `not`), o valor é convertido
-segundo estas regras — **iguais nos dois motores**:
+segundo estas regras:
 
 | Valor | Verdadeiro quando |
 |---|---|
