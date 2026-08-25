@@ -28,6 +28,16 @@ sleep 2
 pkill -f jinker_srv.ps
 ```
 
+Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
+(`file()`/`files(campo)`, `PoolFileUpload` inteiro) e **WebSocket**:
+
+- `/sala` (`channel=true`) — dois clientes, um só ouvindo num `sleep`. A
+  mensagem tem que chegar **durante** a espera; era aqui que o cliente fora de
+  fibra não drenava a conexão e só entregava no `close()`.
+- `/ws` (sem canal) — o handler roda, mas o `return` dele **não** volta pro
+  cliente: quem envia é o `emit`, e o `emit` só alcança conexão com
+  `channel=true`.
+
 ## guzer
 
 `GUZER_HEADLESS=1` monta a árvore inteira **sem abrir janela**. Sem essa

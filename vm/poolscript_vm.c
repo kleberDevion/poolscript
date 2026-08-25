@@ -612,7 +612,7 @@ typedef struct {
 
 /* request.ws_connect — cliente WebSocket. Sem thread: o `on_message` é
  * drenado nas operações da conexão (send/close), não em background. */
-typedef struct {
+typedef struct PSWsConn_ {
     Obj    obj;
     struct PSJkConn *conn;   /* NULL = desconectado */
     char  *url;
@@ -984,6 +984,13 @@ struct VM_ {
      * fibra em vez do global (senão a fibra escreveria fora do próprio array).*/
     int     stack_teto;
     int     locals_teto;
+    /* Conexões WebSocket de CLIENTE abertas. O `sleep()` percorre esta lista
+     * pra entregar o `on_message` enquanto o script espera — sem isso um
+     * processo que só escuta (o caso clássico de dois terminais) nunca recebe
+     * nada: a mensagem chegava no socket e ficava lá até o próximo `send` ou
+     * `close`. Ponteiro fraco: o finalizador tira a entrada. */
+    struct PSWsConn_ *ws_vivos[64];
+    int     n_ws_vivos;
     int     frames_teto;
 
     /* ── fibras (green-threads do jinker) ────────────────────────────────
@@ -1876,6 +1883,13 @@ static void fin_wsconn(VM *vm, Obj *o) {
     PSWsConn *w = (PSWsConn *)o;
     if (w->conn) ps_jk_close(w->conn);
     free(w->url);
+    /* tira da lista do `sleep()`: é ponteiro fraco, ficar lá seria uso após
+     * liberar na próxima espera */
+    for (int i = 0; i < vm->n_ws_vivos; i++)
+        if (vm->ws_vivos[i] == w) {
+            vm->ws_vivos[i] = vm->ws_vivos[--vm->n_ws_vivos];
+            break;
+        }
     vm->alocado -= sizeof(PSWsConn);
 }
 static void fin_qrbuild(VM *vm, Obj *o) {
@@ -12848,6 +12862,8 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     w->url = strdup(url);
     w->on_msg = MK_NULL();
     vm->alocado += sizeof(PSWsConn);
+    /* entra na lista que o `sleep()` bombeia */
+    if (vm->n_ws_vivos < 64) vm->ws_vivos[vm->n_ws_vivos++] = w;
     char erro[256];
     /* falha de conexão NÃO erra: o wrapper devolve o objeto desconectado e
      * o send avisa "Error: não conectado" — mesmo contrato aqui.
@@ -15144,6 +15160,14 @@ static int jk_emit_nucleo(VM *vm, PSJinker *j, Value payload, Value room,
         if (ps_jk_ws_envia_texto(j->ws[i].conn, msg, nmsg) == 0) enviados++;
     }
     free(livre);
+    /* armadilha comum: ha conexoes WS abertas, mas nenhuma entrou no canal
+     * (faltou `channel=true` no @app.socket) — o emit "da certo" alcancando
+     * ninguem. So avisa em debug; o status continua o mesmo. */
+    if (j->debug && alvos == 0 && j->nws > 0) {
+        fprintf(stderr, "[jinker-ws] emit sem alvo: %d conexao(oes) aberta(s), "
+                        "nenhuma no canal - falta channel=true no @app.socket\n", j->nws);
+        fflush(stderr);
+    }
     jk_ch_status(vm, j, enviados > 0 || alvos == 0);
     *out = j->ch_status;
     return 0;
@@ -17050,8 +17074,49 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
             f->status = FIB_SUSPENSA;
             ps_ctx_swap(&f->ctx, &vm->sched_ctx);   /* dorme; retoma aqui no timer */
             f->tem_timer = 0;
+        } else if (vm->n_ws_vivos > 0) {
+            /* Fora de fibra, mas com WebSocket de cliente aberto: em vez de
+             * um nanosleep cego, a espera é fatiada e cada fatia DRENA as
+             * conexões — é isso que faz o `on_message` disparar enquanto o
+             * script espera.
+             *
+             * Sem isto, um processo que só escuta (`ws_connect` + `on_message`
+             * + `sleep`) nunca recebia nada: a mensagem chegava no socket e
+             * ficava parada até o próximo `send` ou `close`. Dois terminais,
+             * um manda e o outro não vê. */
+            struct timespec ini, agora;
+            clock_gettime(CLOCK_MONOTONIC, &ini);
+            for (;;) {
+                clock_gettime(CLOCK_MONOTONIC, &agora);
+                double passou = (double)(agora.tv_sec - ini.tv_sec)
+                              + (double)(agora.tv_nsec - ini.tv_nsec) / 1e9;
+                double falta = seg - passou;
+                if (falta <= 0) break;
+                int fatia = falta > 0.05 ? 50 : (int)(falta * 1000) + 1;
+                /* cópia do vetor: o callback do usuário pode fechar a conexão
+                 * (e tirá-la da lista) no meio da varredura */
+                PSWsConn *inst[64];
+                int q = vm->n_ws_vivos;
+                for (int i = 0; i < q; i++) inst[i] = vm->ws_vivos[i];
+                int drenou = 0;
+                for (int i = 0; i < q; i++) {
+                    int vivo = 0;
+                    for (int k = 0; k < vm->n_ws_vivos; k++)
+                        if (vm->ws_vivos[k] == inst[i]) { vivo = 1; break; }
+                    if (!vivo || !inst[i]->conn) continue;
+                    if (ws_drena(vm, inst[i], drenou ? 0 : fatia) != 0) return -1;
+                    drenou = 1;
+                }
+                if (!drenou) {   /* nenhuma conexão viva: dorme o resto */
+                    struct timespec t;
+                    t.tv_sec  = (time_t)falta;
+                    t.tv_nsec = (long)((falta - (double)t.tv_sec) * 1e9);
+                    while (nanosleep(&t, &t) == -1 && errno == EINTR) { }
+                    break;
+                }
+            }
         } else {
-            /* fora de fibra (script comum): dorme bloqueante como sempre */
+            /* fora de fibra e sem WebSocket: dorme bloqueante como sempre */
             struct timespec t;
             t.tv_sec  = (time_t)seg;
             t.tv_nsec = (long)((seg - (double)t.tv_sec) * 1e9);

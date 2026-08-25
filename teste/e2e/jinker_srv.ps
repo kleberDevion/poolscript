@@ -66,14 +66,29 @@ action up():
 
 @app.route("/uploads", methods=["POST"])
 action ups():
-    todos = jinker.request.files()
-    return {"quantos": len(todos)}
+    # files() é POR CAMPO: vários arquivos mandados no mesmo nome de campo
+    fotos = jinker.request.files("fotos")
+    nomes = []
+    for each f in fotos:
+        nomes.append(f.name)
+    return {"quantos": len(fotos), "nomes": nomes,
+            "vazio": len(jinker.request.files("nao-existe"))}
 
 # ── WebSocket: SocketNamespace / SocketEmitter / ChannelManager ─────────────
+# socket SEM canal: o handler roda, mas o `return` dele NÃO volta pro cliente
+# (quem envia é o emit, e o emit só alcança quem tem channel=true). Aqui o
+# handler prova que rodou gravando em disco.
 @app.socket("/ws")
 action ws_handler():
-    # eco: devolve o que chegou
+    using open("/tmp/ps_ws_sem_canal.txt", "w") as f:
+        f.write(jinker.request.text())
     return jinker.request.text()
+
+# canal de verdade: `channel=true` põe a conexão no broadcast. É o caso dos
+# "dois terminais" — quem está só ouvindo tem que receber o que o outro manda.
+@app.socket("/sala", channel=true)
+reaction ws_sala():
+    app.channel.emit(jinker.request.text())
 
 @app.route("/emitir")
 action emitir():
