@@ -2460,6 +2460,42 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
 static void escreve_valor(const Value *v, int dentro);
 static int fut_resolve(VM *vm, PSFuturo *fu);   /* async: resolve o future (def. junto do jinker) */
 
+/* Repr de string ANINHADA (dentro de list/dict/tup), no formato do Python:
+ * aspas simples, `"` quando o texto tem `'` e não tem `"`, e controle escapado
+ * (`\n`, `\t`, `\\`, `\xNN`). Antes o caractere de controle saía CRU, e um
+ * `["a\tb"]` imprimia com uma tabulação de verdade no meio — diferente do
+ * Python, que mostra `['a\tb']`. Texto de topo (`post("a\tb")`) continua cru,
+ * como o `print` do Python.
+ *
+ * UTF-8 passa inteiro: só ASCII de controle (< 0x20 e 0x7f) vira escape.
+ * Devolve buffer malloc'd (NUL-terminado) ou NULL sem memória. */
+static char *repr_str_dup(const char *s, int len)
+{
+    int tem_simples = 0, tem_duplas = 0;
+    for (int i = 0; i < len; i++) {
+        if (s[i] == '\'') tem_simples = 1;
+        else if (s[i] == '"') tem_duplas = 1;
+    }
+    char aspa = (tem_simples && !tem_duplas) ? '"' : '\'';
+    /* pior caso: todo byte vira \xNN (4) + as duas aspas + NUL */
+    char *out = malloc((size_t)len * 4 + 3);
+    if (!out) return NULL;
+    int n = 0;
+    out[n++] = aspa;
+    for (int i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == (unsigned char)aspa || c == '\\') { out[n++] = '\\'; out[n++] = (char)c; }
+        else if (c == '\n') { out[n++] = '\\'; out[n++] = 'n'; }
+        else if (c == '\t') { out[n++] = '\\'; out[n++] = 't'; }
+        else if (c == '\r') { out[n++] = '\\'; out[n++] = 'r'; }
+        else if (c < 0x20 || c == 0x7f) n += sprintf(out + n, "\\x%02x", c);
+        else out[n++] = (char)c;
+    }
+    out[n++] = aspa;
+    out[n] = '\0';
+    return out;
+}
+
 static void escreve_valor(const Value *v, int dentro)
 {
     {   /* objetos opacos: mesma descrição que o `str()` usa */
@@ -2495,9 +2531,13 @@ static void escreve_valor(const Value *v, int dentro)
         case V_OBJ:
             if (v->as.obj->type == OBJ_STRING) {
                 PSString *s = (PSString *)v->as.obj;
-                if (dentro) putchar('\'');
-                fwrite(s->chars, 1, (size_t)s->len, stdout);
-                if (dentro) putchar('\'');
+                if (dentro) {
+                    char *r = repr_str_dup(s->chars, s->len);
+                    if (r) { fputs(r, stdout); free(r); }
+                    else { putchar('\''); fwrite(s->chars, 1, (size_t)s->len, stdout); putchar('\''); }
+                } else {
+                    fwrite(s->chars, 1, (size_t)s->len, stdout);
+                }
             } else if (v->as.obj->type == OBJ_BIGINT) {
                 char *bs = bigint_str(((PSBigInt *)v->as.obj)->v);
                 if (bs) { fputs(bs, stdout); free(bs); }
@@ -2758,10 +2798,12 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             }
             if (v->as.obj->type == OBJ_STRING) {
                 PSString *st = (PSString *)v->as.obj;
-                if (dentro && txt_put(t, "'", 1) != 0) return -1;
-                if (txt_put(t, st->chars, st->len) != 0) return -1;
-                if (dentro && txt_put(t, "'", 1) != 0) return -1;
-                return 0;
+                if (!dentro) return txt_put(t, st->chars, st->len);
+                char *r = repr_str_dup(st->chars, st->len);
+                if (!r) return -1;
+                int rc = txt_put(t, r, (int)strlen(r));
+                free(r);
+                return rc;
             }
             if (v->as.obj->type == OBJ_LIST || v->as.obj->type == OBJ_TUPLE) {
                 PSList *l = (PSList *)v->as.obj;
@@ -17868,6 +17910,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (y == 0.0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: float modulo");
                 double r = fmod(x, y);
                 if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
+                /* resto ZERO leva o sinal do divisor, como no Python:
+                 * `7 % -0.5` é -0.0, não 0.0. O `fmod` devolve o sinal do
+                 * DIVIDENDO, e o ajuste acima só mexe em resto não-zero. */
+                else if (r == 0.0 && signbit(r) != signbit(y)) r = -r;
                 stack[sp - 1] = MK_FLOAT(r);
             } else ERRO_T(vm, "SomeValueUnexpected", "'%' entre tipos incompativeis");
             break;

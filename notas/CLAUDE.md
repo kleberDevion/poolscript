@@ -78,10 +78,33 @@ make check    # tudo
 ```
 
 Grupos: `crash`, `inteiros`, `erros`, `linguagem`, `pendentes`, `cobertura`,
-`diferencial`, `equivalencia`. O grupo
+`diferencial`, `equivalencia`, `oraculo`, `robustez`. O grupo
 **`pendentes`** é a fila de trabalho: cada caso lá dentro codifica o
 comportamento CORRETO de algo que ainda não funciona — ele falha de propósito
 até a correção entrar. Nada de skip, nada de teste que passa escondendo erro.
+
+**Um número só.** Não existe varredura "por fora" que rode à parte e dê outro
+placar — tudo o que se mede entra em `make check`. Três grupos são **gerados**
+(não se edita na mão; se o comportamento mudou, regera e o diff mostra o que
+mudou):
+
+| Grupo | Gerador | O que trava |
+|---|---|---|
+| `diferencial` | — (colhido de um commit) | a saída de ontem, caso a caso |
+| `equivalencia` | `teste/geradores/gera_c_equivalencia.py` | formas redundantes têm que concordar entre si |
+| `oraculo` | `teste/geradores/gera_c_oraculo.py` | 4484 expressões contra o **Python** como oráculo |
+| `robustez` | `teste/geradores/gera_c_robustez.py` | ~11,9 mil chamadas com aridade/tipo errados |
+
+O `oraculo` guarda o valor que a linguagem produz hoje e marca `DIVERGE` nos
+casos em que o Python daria outra coisa, com o valor dele no comentário — a
+diferença fica no arquivo, visível, em vez de sumir. As 64 divergências de hoje
+são decisão de projeto (índice fora da faixa → `null`, `.len()` como método,
+`.keys()` devolvendo lista, `type()` com nome curto).
+
+O `robustez` é um caso por TIPO, não por chamada — 11,9 mil subprocessos
+levariam mais de um minuto. Cada programa roda as chamadas erradas do seu tipo
+em `try/catch` e imprime quantas passaram **caladas** e em quais métodos.
+Crash e trava viram falha pelo `WIFSIGNALED`/`SIGALRM` do runner.
 
 ## Scripts de apoio: em PoolScript
 

@@ -48,7 +48,8 @@ limpa:
 TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_erros.c teste/casos_linguagem.c \
                 teste/casos_pendentes.c teste/casos_cobertura.c \
-                teste/casos_diferencial.c teste/casos_equivalencia.c
+                teste/casos_diferencial.c teste/casos_equivalencia.c \
+                teste/casos_oraculo.c teste/casos_robustez.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
 testar: $(TESTE_FONTES) teste/ps_teste.h
