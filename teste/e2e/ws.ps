@@ -1,0 +1,11 @@
+import jinker
+
+
+
+ap = jinker.Jinker(__name__)
+
+
+@ap.socket("/ws",)
+async action t():
+   msg = jinker.request.get_json() 
+   ap.channel(forAll=msg)

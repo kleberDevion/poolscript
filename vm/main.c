@@ -17,6 +17,7 @@
 #include <unistd.h>   /* getcwd — encurta o caminho do traceback pro relativo */
 
 #include "ps_vm.h"
+#include "ps_lexer.h"   /* --contexto: o editor pergunta pro lexer, nao pro regex */
 #include "ps_pkg.h"
 
 #include "ps_versao.h"
@@ -35,6 +36,7 @@ static void ajuda(void)
 "  pool --check [arq.ps]     So analisa (nao roda); JSON com o erro. Sem\n"
 "                            arquivo, le da entrada padrao\n"
 "  pool //doc                Mostra a URL da especificacao\n"
+"  pool --contexto L:C       O que o cursor toca (pro editor); fonte no stdin\n"
 "  pool --version / -V       Mostra a versao\n"
 "  pool --help / -h          Mostra esta ajuda\n"
 "\n"
@@ -257,6 +259,202 @@ static int cmd_check(const char *arquivo)
     return 0;
 }
 
+/* ── `pool --contexto <linha>:<coluna>` ───────────────────────────────────
+ *
+ * O que o editor precisa saber pra completar: o que vem antes do cursor.
+ * Responde com o LEXER de verdade, não com regex.
+ *
+ * A extensão adivinhava isso com expressão regular sobre o texto da linha, e
+ * errava o previsível: regex não sabe o que é string (`"a.b".up`), não fecha
+ * parêntese aninhado (`f(a, b).x`) e quebrava com um nome parcial depois do
+ * ponto — `jinker.request.ge` deixava de casar, caía no completion de topo e
+ * oferecia módulo e builtin DEPOIS de um ponto.
+ *
+ * Lê o fonte do stdin (o editor manda o buffer não salvo, igual ao --check) e
+ * devolve JSON:
+ *
+ *   {"contexto":"membro","receptor":"jinker.request","parcial":"ge"}
+ *   {"contexto":"topo","parcial":"gath"}
+ *   {"contexto":"decorador","parcial":"rou","receptor":"app"}
+ *   {"contexto":"import","parcial":"os"}
+ *
+ * NUNCA executa o código — só tokeniza. */
+static char *le_stdin_todo(size_t *tam)
+{
+    size_t cap = 65536; *tam = 0;
+    char *b = malloc(cap);
+    if (!b) return NULL;
+    size_t r;
+    while ((r = fread(b + *tam, 1, cap - *tam, stdin)) > 0) {
+        *tam += r;
+        if (*tam == cap) {
+            cap *= 2;
+            char *nb = realloc(b, cap);
+            if (!nb) { free(b); return NULL; }
+            b = nb;
+        }
+    }
+    b[*tam] = '\0';
+    return b;
+}
+
+/* Índice do último token que TERMINA em ou antes de (linha, col). -1 se não há.
+ * O lexer dá o início do token; o fim sai do texto (ou de 1 pra pontuação). */
+static int tok_antes(const PSTokenList *tl, int linha, int col)
+{
+    int achado = -1;
+    for (int i = 0; i < tl->n; i++) {
+        const PSToken *t = &tl->tokens[i];
+        if (t->type == T_NEWLINE || t->type == T_INDENT
+            || t->type == T_DEDENT || t->type == T_EOF) continue;
+        if (t->line > linha) break;
+        if (t->line < linha) { achado = i; continue; }
+        int fim = t->col + (t->texto ? t->texto_len : 1);
+        if (fim <= col) achado = i;
+    }
+    return achado;
+}
+
+/* Anda pra trás montando a cadeia receptora a partir de `i` (que já é o token
+ * ANTES do ponto). Devolve a posição do primeiro token da cadeia, ou -1 se o
+ * receptor não é nomeável (literal, por exemplo). */
+static int inicio_da_cadeia(const PSTokenList *tl, int i)
+{
+    int ini = -1;
+    for (;;) {
+        if (i < 0) break;
+        PSTokType t = tl->tokens[i].type;
+        if (t == T_RPAREN || t == T_RBRACK) {
+            PSTokType abre = (t == T_RPAREN) ? T_LPAREN : T_LBRACK;
+            int d = 0;
+            for (i--; i >= 0; i--) {
+                if (tl->tokens[i].type == t) d++;
+                else if (tl->tokens[i].type == abre) { if (d == 0) { i--; break; } d--; }
+            }
+            continue;                     /* antes do grupo tem que vir o nome */
+        }
+        if (t == T_IDENT || t == T_IDENT_UPPER || t == T_KW) {
+            ini = i;
+            if (i >= 2 && tl->tokens[i - 1].type == T_DOT) { i -= 2; continue; }
+            break;
+        }
+        break;                            /* literal, operador: não é receptor */
+    }
+    return ini;
+}
+
+static void jsonf(const char *chave, const char *valor)
+{
+    printf(",\"%s\":", chave);
+    json_str(valor);
+}
+
+static int cmd_contexto(const char *pos)
+{
+    int linha = 0, col = 0;
+    if (!pos || sscanf(pos, "%d:%d", &linha, &col) != 2 || linha < 1 || col < 1) {
+        printf("{\"contexto\":\"erro\",\"msg\":\"uso: pool --contexto <linha>:<coluna>\"}\n");
+        return 1;
+    }
+    size_t tam = 0;
+    char *fonte = le_stdin_todo(&tam);
+    if (!fonte) { printf("{\"contexto\":\"erro\",\"msg\":\"sem memoria\"}\n"); return 1; }
+
+    PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
+    if (!tl) { free(fonte); printf("{\"contexto\":\"erro\",\"msg\":\"lexer falhou\"}\n"); return 1; }
+
+    /* nome parcial: só conta se ENCOSTA no cursor (`ge|`, não `ge |`) */
+    const char *parcial = "";
+    int i = tok_antes(tl, linha, col);
+    if (i >= 0) {
+        const PSToken *t = &tl->tokens[i];
+        if ((t->type == T_IDENT || t->type == T_IDENT_UPPER || t->type == T_KW)
+            && t->line == linha && t->col + t->texto_len == col) {
+            parcial = t->texto ? t->texto : "";
+            i--;
+        }
+    }
+
+    const char *ctx = "topo";
+    char *recv = NULL;
+
+    if (i >= 0 && tl->tokens[i].type == T_DOT) {
+        int ini = inicio_da_cadeia(tl, i - 1);
+        if (ini >= 0) {
+            /* fatia o fonte do início da cadeia até o ponto — preserva o texto
+             * original (`f(a, b)`), que é o que o resolvedor de tipo espera */
+            const PSToken *a = &tl->tokens[ini];
+            const PSToken *p = &tl->tokens[i];
+            size_t off_a = 0, off_p = 0, off = 0;
+            int ln = 1, cl = 1;
+            for (size_t k = 0; k <= tam; k++) {
+                if (ln == a->line && cl == a->col) off_a = k;
+                if (ln == p->line && cl == p->col) { off_p = k; break; }
+                if (k < tam && fonte[k] == '\n') { ln++; cl = 1; } else cl++;
+                off = k;
+            }
+            (void)off;
+            if (off_p > off_a) {
+                recv = malloc(off_p - off_a + 1);
+                if (recv) {
+                    memcpy(recv, fonte + off_a, off_p - off_a);
+                    recv[off_p - off_a] = '\0';
+                    /* apara espaço da direita (o `.` pode vir depois de espaço) */
+                    for (char *e = recv + strlen(recv); e > recv && (e[-1]==' '||e[-1]=='\t'); e--) e[-1] = '\0';
+                    ctx = "membro";
+                }
+            }
+        }
+        /* Receptor LITERAL (`"a.b".up`, `[1,2].so`): não tem nome pra resolver,
+         * mas tem tipo — e tipo tem método. O regex devolvia null aqui e o
+         * editor não oferecia nada. */
+        if (!recv && i >= 1) {
+            const char *tipo = NULL;
+            switch (tl->tokens[i - 1].type) {
+                case T_STR: case T_FSTRING: tipo = "str";  break;
+                case T_INT:                 tipo = "int";  break;
+                case T_FLO:                 tipo = "flo";  break;
+                case T_BOOL:                tipo = "bool"; break;
+                case T_RBRACK:              tipo = "list"; break;
+                case T_RBRACE:              tipo = "dict"; break;
+                default: break;
+            }
+            if (tipo) {
+                printf("{\"contexto\":\"membro\"");
+                jsonf("parcial", parcial);
+                jsonf("tipo", tipo);
+                printf("}\n");
+                ps_lexer_free(tl); free(fonte);
+                return 0;
+            }
+        }
+        /* nem nome nem tipo: NADA a oferecer — nunca cair no topo depois de um ponto */
+        if (!recv) ctx = "nenhum";
+    } else if (i >= 0 && tl->tokens[i].type == T_AT) {
+        ctx = "decorador";
+    } else {
+        /* `import x` / `from x import y` */
+        for (int k = i; k >= 0 && tl->tokens[k].line == linha; k--) {
+            const PSToken *t = &tl->tokens[k];
+            if (t->type == T_KW && t->texto
+                && (!strcmp(t->texto, "import") || !strcmp(t->texto, "from"))) {
+                ctx = "import";
+                break;
+            }
+        }
+    }
+
+    printf("{\"contexto\":\"%s\"", ctx);
+    jsonf("parcial", parcial);
+    if (recv) jsonf("receptor", recv);
+    printf("}\n");
+
+    free(recv);
+    ps_lexer_free(tl);
+    free(fonte);
+    return 0;
+}
+
 /* -asLib nos argumentos? (força instalar/remover como lib) */
 static int tem_flag(int argc, char **argv, int de, const char *flag)
 {
@@ -286,6 +484,9 @@ int main(int argc, char **argv)
         return cmd_check(argc >= 3 ? argv[2] : NULL);
     /* modelo de tipos direto do motor — o editor e a auditoria de doc leem
      * daqui em vez de introspectar a stdlib do interpretador */
+    /* o editor pergunta o contexto do cursor pro LEXER, nao pra um regex */
+    if (!strcmp(cmd, "--contexto") || !strcmp(cmd, "contexto"))
+        return cmd_contexto(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--metadata") || !strcmp(cmd, "metadata")) {
         ps_metadata_json(stdout);
         return 0;

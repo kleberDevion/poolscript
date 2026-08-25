@@ -21085,6 +21085,10 @@ static const struct { const char *dono; const char *membro; const char *tipo; } 
     { "jinker", "JinkerRequest", "JinkerRequest" },
     { "jinker", "JinkerResponse", "JinkerResponse" },
     { "jinker", "cors", "CorsConfig" },
+    /* `jinker.request` é o proxy da requisição corrente. Sem esta linha ele
+     * saía com `retorna: null` e o editor não sabia o que oferecer depois do
+     * ponto em `jinker.request.` */
+    { "jinker", "request", "RequestProxy" },
     { "jinker", "jsonify", "JinkerResponse" },
     { "jinker", "render", "JinkerResponse" },
     { "mail", "MailMessage", "MailMessage" },
