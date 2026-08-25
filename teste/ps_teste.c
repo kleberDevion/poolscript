@@ -125,6 +125,10 @@ static int roda(const Caso *c, Resultado *out)
         dup2(po[1], STDOUT_FILENO); dup2(pe[1], STDERR_FILENO);
         close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
         alarm(TEMPO_MAX);                       /* trava = SIGALRM, não espera eterna */
+        /* Nenhum caso pode abrir janela: `guzer.UI()` é exibido no fim do
+         * script e ficaria esperando o usuário fechar — o caso "travava" por
+         * 20s e virava falha. Headless monta a árvore e não exibe. */
+        setenv("GUZER_HEADLESS", "1", 1);
         execl(POOL, POOL, arquivo, (char *)NULL);
         _exit(127);
     }

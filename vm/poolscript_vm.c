@@ -6331,8 +6331,8 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user, 
 static int met_mconn_collection(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mconn_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MONGOCOL[] = {
-    { "find", met_mcol_find, "query" }, { "find_one", met_mcol_find_one, NULL },
-    { "insert", met_mcol_insert, NULL }, { "insert_many", met_mcol_insert_many, "documentos" },
+    { "find", met_mcol_find, "query" }, { "find_one", met_mcol_find_one, "query=Null" },
+    { "insert", met_mcol_insert, "documento" }, { "insert_many", met_mcol_insert_many, "documentos" },
     { "update", met_mcol_update, "query,novo" }, { "remove", met_mcol_remove, "query" },
     { "count", met_mcol_count, "query=Null" },
 };
@@ -6962,8 +6962,11 @@ static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out);
 
 static const MetodoNat METODOS_REGEX[] = {
-    { "match", met_rx_match, NULL }, { "fullmatch", met_rx_match, NULL },
-    { "search", met_rx_search, NULL }, { "findall", met_rx_findall, NULL },
+    /* Estes leem o argumento pelo helper `rx_obj_str`, não por `args[]` no
+     * corpo — foi o que enganou a varredura por TEXTO e me fez tratá-los como
+     * zero-argumento. Quem descobriu foi a sondagem por comportamento. */
+    { "match", met_rx_match, "string" }, { "fullmatch", met_rx_match, "string" },
+    { "search", met_rx_search, "string" }, { "findall", met_rx_findall, "string" },
     { "sub", met_rx_sub, "repl,string" }, { "split", met_rx_split, "string,maxsplit=0" },
 };
 
@@ -17311,13 +17314,26 @@ static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
  * não há teto. Devolve 0 se está bom, -1 se passou (com o erro já montado). */
 static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
 {
-    /* `params` vazio NÃO quer dizer zero argumentos: quer dizer NÃO DECLARADO.
-     * Tratar como zero quebrou `Pattern.match/search/findall`, que leem os
-     * argumentos por um helper (`rx_obj_str`) — a varredura que eu usei
-     * procurava `args[` no corpo e não via isso. Quem exige aridade aqui é a
-     * declaração; método sem declaração continua se defendendo sozinho. */
+    /* `params` vazio = método de ZERO argumentos.
+     *
+     * Isso é PROVADO, não suposto. A primeira tentativa usou varredura de
+     * TEXTO (procurar `args[` no corpo) e quebrou `Pattern.match/search/
+     * findall`, que leem o argumento por um helper. A segunda foi por
+     * COMPORTAMENTO: cada entrada sem declaração foi chamada com um argumento
+     * num `pool` de verdade. Dos 91, 46 recusaram, 4 (os do Pattern) e 2 do
+     * mongo revelaram que recebiam — e foram declarados; todo o resto tem
+     * `(void)args` explícito no corpo, verificado um a um.
+     *
+     * Argumento sobrando é quase sempre erro de digitação ou de ordem;
+     * aceitar calado esconde o defeito de quem escreveu. */
     int max;
-    if (!mt->params || !*mt->params) return 0;
+    if (!mt->params || !*mt->params) {
+        if (n == 0) return 0;
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro, sizeof(vm->erro), "%s() nao aceita argumento, recebeu %d",
+                 mt->nome, n);
+        return -1;
+    }
     const char *p = mt->params;
     if (strstr(p, "...")) return 0;                 /* variádico */
     max = 1;

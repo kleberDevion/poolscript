@@ -179,6 +179,29 @@ const Caso CASOS_LINGUAGEM[] = {
 { "str() e post() concordam no builtin",
   "post(\"[\" + str(len) + \"]\")\n", "[<builtin>]", NULL, 0 },
 
+/* ── aridade de método nativo ────────────────────────────────────────────
+ * A linguagem sempre recusou `f(1,2,3)` numa action de zero parâmetros, mas
+ * 95 métodos nativos engoliam argumento a mais em silêncio. O teto agora sai
+ * do próprio `params` da tabela, conferido no despacho.
+ *
+ * Chegar aqui custou dois erros meus: primeiro tratei "params vazio" como
+ * zero-argumento com base numa varredura de TEXTO, e quebrei
+ * `Pattern.match/search/findall`, que leem o argumento por um helper. A regra
+ * só voltou depois de sondar as 91 entradas por COMPORTAMENTO. */
+{ "metodo nativo recusa argumento demais",
+  "post([1,2].append(1,2,3))\n", NULL, "aceita ate 1 argumento, recebeu 3", -1 },
+{ "metodo de zero argumento recusa argumento",
+  "import sockets\ns = sockets.socket()\npost(s.fileno(1,2))\n",
+  NULL, "nao aceita argumento, recebeu 2", -1 },
+{ "format continua variadico",
+  "post(\"{} {}\".format(1,2,3,4,5))\n", "1 2", NULL, 0 },
+{ "Pattern le o argumento pelo helper e continua funcionando",
+  "import regex\np = regex.compile(\"\\\\d+\")\n"
+  "post(p.match(\"77\"), p.search(\"a9\"), p.findall(\"x9y8\"), p.fullmatch(\"12\"))\n",
+  "True True ['9', '8'] True", NULL, 0 },
+{ "elemento do guzer sem argumento continua valendo",
+  "import guzer\na = guzer.UI()\npost(type(a.p()), type(a.div()))\n", "p div", NULL, 0 },
+
 /* ── jinker: status e corpo vazio ────────────────────────────────────────
  * Achados rodando o servidor da linguagem em loopback e batendo nele com o
  * cliente dela (teste/e2e/). Nenhum caso escrito à mão pegaria: os dois só
