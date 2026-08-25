@@ -17,4 +17,7 @@ navega — não existe `.status` (tentar acessar dá `membro inexistente`).
 | `x == "Success"` | compara direto com o texto |
 | `if x:` | verdadeiro quando deu certo |
 
+`Success` = a mensagem chegou a **pelo menos uma** conexão. Sem alvo nenhum
+(nenhuma conexão aberta, ou nenhuma no canal) o resultado é `Error`.
+
 [← índice](objetos-internos.md)

@@ -27,6 +27,15 @@ if (app.channel.status == "Success") {
 }
 ```
 
+`Success` significa que a mensagem **chegou a pelo menos uma conexão**. Emit que
+não alcança ninguém é `Error` — inclusive quando não há nenhuma conexão aberta,
+ou quando as que existem não estão no canal.
+
+> **A armadilha mais comum:** `@app.socket("/chat")` **sem** `channel=true` não
+> põe a conexão no broadcast. O cliente conecta, o handler roda, e todo `emit`
+> devolve `Error` porque não há alvo. Com `debug=true` o servidor diz isso em
+> texto: `emit sem alvo: N conexao(oes) aberta(s), nenhuma no canal`.
+
 ---
 
 ## `app.channel` vs `app.socket()`

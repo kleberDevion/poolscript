@@ -15160,15 +15160,21 @@ static int jk_emit_nucleo(VM *vm, PSJinker *j, Value payload, Value room,
         if (ps_jk_ws_envia_texto(j->ws[i].conn, msg, nmsg) == 0) enviados++;
     }
     free(livre);
-    /* armadilha comum: ha conexoes WS abertas, mas nenhuma entrou no canal
-     * (faltou `channel=true` no @app.socket) — o emit "da certo" alcancando
-     * ninguem. So avisa em debug; o status continua o mesmo. */
-    if (j->debug && alvos == 0 && j->nws > 0) {
-        fprintf(stderr, "[jinker-ws] emit sem alvo: %d conexao(oes) aberta(s), "
-                        "nenhuma no canal - falta channel=true no @app.socket\n", j->nws);
+    /* Emit que não alcançou ninguém é `Error`, não `Success`. Antes o caso
+     * "nenhum alvo" contava como sucesso, e a armadilha mais comum do jinker —
+     * esquecer o `channel=true` no @app.socket — respondia Success mandando a
+     * mensagem pra lugar nenhum. Em debug, diz também o porquê. */
+    if (j->debug && enviados == 0) {
+        if (alvos == 0 && j->nws > 0)
+            fprintf(stderr, "[jinker-ws] emit sem alvo: %d conexao(oes) aberta(s), "
+                            "nenhuma no canal - falta channel=true no @app.socket\n", j->nws);
+        else if (alvos == 0)
+            fprintf(stderr, "[jinker-ws] emit sem alvo: nenhuma conexao WS aberta\n");
+        else
+            fprintf(stderr, "[jinker-ws] emit alcancou 0 de %d alvo(s): falha no envio\n", alvos);
         fflush(stderr);
     }
-    jk_ch_status(vm, j, enviados > 0 || alvos == 0);
+    jk_ch_status(vm, j, enviados > 0);
     *out = j->ch_status;
     return 0;
 }
@@ -15886,6 +15892,18 @@ static int jk_ws_processa(VM *vm, PSJinker *j, int i)
     if (jk_chama_handler(vm, j->socks[idx].handler, req, &ret) != 0) {
         if (j->debug) fprintf(stderr, "[jinker-ws] erro no handler: %s\n", vm->erro);
         vm->erro[0]='\0'; vm->erro_tipo[0]='\0';
+    } else if (ret.t != V_NULL && ret.t != V_UNSET) {
+        /* o que o handler DEVOLVE volta pro remetente daquela mensagem. Antes
+         * o retorno era descartado, e num socket sem canal não havia jeito
+         * nenhum de responder a quem mandou (o emit só alcança quem tem
+         * channel=true). String sai crua; o resto vira JSON, como no emit. */
+        if (EH_STRING(ret)) {
+            ps_jk_ws_envia_texto(c, COMO_STRING(ret)->chars, (size_t)COMO_STRING(ret)->len);
+        } else {
+            SBUF_AUTO rb = {0};
+            if (json_escreve(vm, &rb, &ret, 0, 0) == 0 && rb.b)
+                ps_jk_ws_envia_texto(c, rb.b, rb.n);
+        }
     }
     j->ws_atual = NULL;
     vm->sp--;

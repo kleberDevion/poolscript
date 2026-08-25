@@ -34,9 +34,9 @@ Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
 - `/sala` (`channel=true`) — dois clientes, um só ouvindo num `sleep`. A
   mensagem tem que chegar **durante** a espera; era aqui que o cliente fora de
   fibra não drenava a conexão e só entregava no `close()`.
-- `/ws` (sem canal) — o handler roda, mas o `return` dele **não** volta pro
-  cliente: quem envia é o `emit`, e o `emit` só alcança conexão com
-  `channel=true`.
+- `/ws` (sem canal) — o `return` do handler volta pro remetente daquela
+  mensagem, e só pra ele; é o único jeito de responder fora de um canal.
+- `emit` que não alcança ninguém devolve `Error`, não `Success`.
 
 ## guzer
 

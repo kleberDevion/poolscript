@@ -86,15 +86,18 @@ post("files(campo) ->", m.get_json())
 # ── emit sem ninguém no canal: alcança 0, mas não é falha ───────────────────
 post("emitir ->", request.get(U + "/emitir").get_json())
 
-# ── WebSocket sem canal: handler roda, mas nada volta pro cliente ───────────
+# ── WebSocket sem canal: o `return` do handler volta pro remetente ──────────
 eco = request.ws_connect("ws://127.0.0.1:28841/ws")
 vindas = []
 eco.on_message(action(m) { vindas.append(m) })
 eco.send("pingue")
 sleep(1)
-post("sem canal, cliente recebe ->", vindas)                       # []
-post("mas o handler rodou ->", open("/tmp/ps_ws_sem_canal.txt").read())
+post("return do handler volta ->", vindas)
+post("e o handler rodou ->", open("/tmp/ps_ws_sem_canal.txt").read())
 eco.close()
+
+# emit que não alcança ninguém é Error, não Success
+post("emit sem alvo ->", request.get(U + "/emitir").get_json())
 
 # ── WebSocket: dois clientes, um só ouvindo ─────────────────────────────────
 # O ouvinte fica parado num `sleep` — é aí que o defeito aparecia: fora de

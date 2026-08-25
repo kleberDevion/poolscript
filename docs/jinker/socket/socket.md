@@ -53,6 +53,27 @@ Também dá pra chamar direto: `app.socket.emit(payload=msg, room_id=sala)`.
 
 ---
 
+## Respondendo só a quem mandou: o `return` do handler
+
+O que o handler **devolve** volta pro remetente daquela mensagem — e só pra ele.
+String sai crua; dict/lista viram JSON.
+
+```
+@app.socket("/eco")
+reaction eco() {
+    return "recebi: " + request.text()      // volta só pra quem mandou
+}
+```
+
+É o único jeito de responder num socket **sem** `channel=true`, porque o `emit`
+só alcança conexão que está no canal. Devolver `Null` (ou não devolver nada)
+não manda coisa alguma.
+
+Cuidado com o eco dobrado: se o handler faz `emit(..., exclude_self=false)`
+**e** devolve algo, o remetente recebe as duas mensagens.
+
+---
+
 ## Sem "hook" de conectar/desconectar
 
 O handler só reage a **mensagem recebida** — não há callback separado de
