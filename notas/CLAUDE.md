@@ -25,10 +25,10 @@ Nunca edite na mão — use o script, que aplica o rollover e mantém tudo em
 sincronia:
 
 ```bash
-./rebuild/bump_version.py            # só valida, não altera
-./rebuild/bump_version.py lang       # +1 na linguagem
-./rebuild/bump_version.py ext        # +1 na extensão
-./rebuild/bump_version.py lang ext   # ambas
+./bump_version.py            # só valida, não altera
+./bump_version.py lang       # +1 na linguagem
+./bump_version.py ext        # +1 na extensão
+./bump_version.py lang ext   # ambas
 ```
 
 Mudar a versão **força o relink**: o alvo `pool` depende de `ps_versao.h`, senão
@@ -36,13 +36,13 @@ o `pool --version` ficaria preso no valor antigo (as fontes `.c` não mudaram).
 
 ## Build
 
-Tudo é C. O Makefile mora em `rebuild/`, mas as fontes e o binário são da RAIZ:
+Tudo é C. Makefile, fontes e binário na raiz:
 
 ```bash
-make -f rebuild/Makefile pool       # gera ./pool
-make -f rebuild/Makefile check      # compila o binário + a suíte e roda
-make -f rebuild/Makefile verifica   # ldd, símbolos de Python (tem que ser vazio), tamanho
-make -f rebuild/Makefile bundle     # dist/pool-portable/ (VPS sem apt install)
+make pool       # gera ./pool
+make check      # compila o binário + a suíte e roda
+make verifica   # ldd, símbolos de Python (tem que ser vazio), tamanho
+make bundle     # dist/pool-portable/ (VPS sem apt install)
 ```
 
 Precisa de `gcc` e das libs de dev: postgresql, mysql, mongoc, openssl.
@@ -53,7 +53,7 @@ a cauda de auth do libpq (ldap/gssapi/gnutls/krb5), libX11, libgmp e o glibc.
 
 ### Bundle portátil (rodar em VPS sem apt install)
 
-`make -f rebuild/Makefile bundle` roda o `build_bundle.sh` e monta
+`make bundle` roda o `build_bundle.sh` e monta
 `dist/pool-portable/` = `pool` (wrapper) + `pool.bin` + `lib/` com TODAS as
 `.so` (via `ldd`); o wrapper aponta `LD_LIBRARY_PATH` pra esse `lib/`. NÃO
 empacota o núcleo do glibc (libc/m/pthread/dl/rt/resolv + loader) — esse vem do
@@ -72,12 +72,13 @@ que morre junto não relata nada. Com subprocesso, morte vira resultado
 (`WIFSIGNALED`), e trava vira `SIGALRM`.
 
 ```bash
-make -f rebuild/Makefile check    # tudo
+make check    # tudo
 ./testar linguagem                # só um grupo
 ./testar -v "closure"             # filtra pelo nome do caso
 ```
 
-Grupos: `crash`, `inteiros`, `erros`, `linguagem`, `pendentes`. O grupo
+Grupos: `crash`, `inteiros`, `erros`, `linguagem`, `pendentes`, `cobertura`,
+`diferencial`, `equivalencia`. O grupo
 **`pendentes`** é a fila de trabalho: cada caso lá dentro codifica o
 comportamento CORRETO de algo que ainda não funciona — ele falha de propósito
 até a correção entrar. Nada de skip, nada de teste que passa escondendo erro.

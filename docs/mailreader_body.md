@@ -208,7 +208,7 @@ reader.close()
 
 ## 7. Testes
 
-A suíte em C (`teste/`, rodada por `make -f rebuild/Makefile check`) cobre:
+A suíte em C (`teste/`, rodada por `make check`) cobre:
 
 - `include_body=true` de fato pede `(RFC822)` em vez de `(RFC822.HEADER)`,
   e sem ele o campo `"body"` nem aparece no dict de resultado.

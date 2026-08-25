@@ -2,7 +2,7 @@
 
 Funções disponíveis em qualquer `.ps`, sem import.
 
-**35 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make -f rebuild/Makefile check`): doc errada quebra o teste.
+**35 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make check`): doc errada quebra o teste.
 
 | nome | assinatura | o que faz |
 |---|---|---|

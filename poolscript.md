@@ -24,7 +24,7 @@ bytecode → VM. Tudo vive em `vm/` e vira um binário só, o `pool`.
 A suíte de testes também é em C (`teste/`): cada caso roda o `pool` de VERDADE
 num subprocesso, então caso que mata a VM (segfault, SIGFPE) vira falha
 relatada em vez de derrubar a bateria. Roda com
-`make -f rebuild/Makefile check`.
+`make check`.
 
 Dois comandos, o **mesmo** binário/pacote:
 - **`pool`** — RODA (`pool arquivo.ps`, `pool build`, `pool repl`, `pool --version`)
@@ -46,9 +46,9 @@ sudo install -m755 dist/pool-linux /usr/local/bin/psl
 Precisa de `gcc` e das libs de dev: postgresql, mysql, mongoc, openssl.
 
 ```bash
-make -f rebuild/Makefile pool      # gera ./pool na raiz
-make -f rebuild/Makefile check     # compila e roda a suíte em C
-make -f rebuild/Makefile verifica  # dependências dinâmicas e tamanho do ELF
+make pool      # gera ./pool na raiz
+make check     # compila e roda a suíte em C
+make verifica  # dependências dinâmicas e tamanho do ELF
 ```
 
 ### Testar
@@ -85,7 +85,7 @@ sudo apt update && sudo apt install -y \
 ```
 Se faltar alguma: `ldd ./pool | grep "not found"` mostra o nome exato.
 
-**Alternativa sem instalar nada** — bundle portátil (`make -f rebuild/Makefile bundle`): gera
+**Alternativa sem instalar nada** — bundle portátil (`make bundle`): gera
 `dist/pool-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper
 carrega de lá. É só copiar a pasta pro VPS e rodar. Requisito único do alvo:
 glibc compatível (x86-64).

@@ -3,7 +3,7 @@
 Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **35**
 no total. Esta seção é a visão geral; cada builtin tem uma página detalhada em
 [`docs/builtins/`](../builtins/builtins.md), e os exemplos de lá **rodam de
-verdade** na suíte em C (`make -f rebuild/Makefile check`) — doc errada quebra o teste.
+verdade** na suíte em C (`make check`) — doc errada quebra o teste.
 
 Tudo aqui foi verificado rodando o fonte na VM em C.
 

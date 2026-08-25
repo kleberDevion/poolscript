@@ -24,6 +24,6 @@ pool examples/01_hello.ps
 Compilando do fonte (gcc + libs de dev: postgresql, mysql, mongoc, openssl):
 
 ```bash
-make -f rebuild/Makefile pool     # gera ./pool
-make -f rebuild/Makefile check    # compila e roda a suíte em C
+make pool     # gera ./pool
+make check    # compila e roda a suíte em C
 ```

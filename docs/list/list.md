@@ -2,7 +2,7 @@
 
 Chamados direto no valor: `l.metodo()`. A MAIORIA muta a lista no lugar e devolve `null` — não encadeia. Para uma cópia modificada, use os builtins `sorted(l)`/`reversed(l)`.
 
-**14 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make -f rebuild/Makefile check`): doc errada quebra o teste.
+**14 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make check`): doc errada quebra o teste.
 
 | nome | assinatura | o que faz |
 |---|---|---|

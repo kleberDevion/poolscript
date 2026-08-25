@@ -21,7 +21,7 @@ deixa o resto inconsistente. A ordem que funciona:
 7. `psl-poolscript-vsix/` — senão o editor acusa erro de sintaxe em código
    válido
 
-Depois: `make -f rebuild/Makefile check`.
+Depois: `make check`.
 
 ---
 
