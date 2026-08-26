@@ -37,6 +37,7 @@ static void ajuda(void)
 "                            arquivo, le da entrada padrao\n"
 "  pool //doc                Mostra a URL da especificacao\n"
 "  pool --contexto L:C       O que o cursor toca (pro editor); fonte no stdin\n"
+"  pool --tokens             Tokens do lexer em JSON (pro realce); fonte no stdin\n"
 "  pool --version / -V       Mostra a versao\n"
 "  pool --help / -h          Mostra esta ajuda\n"
 "\n"
@@ -349,6 +350,64 @@ static void jsonf(const char *chave, const char *valor)
     json_str(valor);
 }
 
+/* `pool --tokens` — o fonte vem pelo stdin e sai a lista de tokens do LEXER
+ * DE VERDADE, em JSON:
+ *
+ *   [{"t":"KW","l":1,"c":1,"n":6,"v":"action"}, ...]
+ *
+ * É o que dá realce ao editor sem existir uma segunda gramática pra divergir
+ * do motor. `n` é o comprimento em CARACTERES (o editor conta caractere, não
+ * byte). Comentário entra como "COMMENT" — o compilador descarta, o realce
+ * precisa. NUNCA executa o código: só tokeniza. */
+static int json_escapa(FILE *f, const char *s, int n)
+{
+    for (int i = 0; i < n; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == '"' || c == '\\') fprintf(f, "\\%c", c);
+        else if (c == '\n') fputs("\\n", f);
+        else if (c == '\r') fputs("\\r", f);
+        else if (c == '\t') fputs("\\t", f);
+        else if (c < 0x20) fprintf(f, "\\u%04x", c);
+        else fputc(c, f);
+    }
+    return 0;
+}
+
+static int cmd_tokens(void)
+{
+    size_t tam = 0;
+    char *fonte = le_stdin_todo(&tam);
+    if (!fonte) { printf("[]\n"); return 1; }
+    PSTokenList *tl = ps_lexer_tokenize_editor(fonte, tam);
+    if (!tl) { free(fonte); printf("[]\n"); return 1; }
+
+    fputc('[', stdout);
+    int primeiro = 1;
+    for (int32_t i = 0; i < tl->n; i++) {
+        const PSToken *t = &tl->tokens[i];
+        /* INDENT/DEDENT/NEWLINE não ocupam texto: não há o que pintar */
+        if (t->type == T_INDENT || t->type == T_DEDENT || t->type == T_NEWLINE
+            || t->type == T_EOF) continue;
+        /* quanto o token ocupa NO FONTE (com aspas, com prefixo `f`), em
+         * caracteres. Só cai no texto quando o lexer não mediu o span. */
+        int nch = t->nchars;
+        if (nch <= 0 && t->texto) {
+            for (int k = 0; k < t->texto_len; k++)
+                if (((unsigned char)t->texto[k] & 0xC0) != 0x80) nch++;
+        }
+        if (!primeiro) fputc(',', stdout);
+        primeiro = 0;
+        printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"v\":\"",
+               ps_tok_nome(t->type), t->line, t->col, nch);
+        if (t->texto) json_escapa(stdout, t->texto, t->texto_len);
+        fputs("\"}", stdout);
+    }
+    fputs("]\n", stdout);
+    ps_lexer_free(tl);
+    free(fonte);
+    return 0;
+}
+
 static int cmd_contexto(const char *pos)
 {
     int linha = 0, col = 0;
@@ -485,6 +544,8 @@ int main(int argc, char **argv)
     /* modelo de tipos direto do motor — o editor e a auditoria de doc leem
      * daqui em vez de introspectar a stdlib do interpretador */
     /* o editor pergunta o contexto do cursor pro LEXER, nao pra um regex */
+    if (!strcmp(cmd, "--tokens") || !strcmp(cmd, "tokens"))
+        return cmd_tokens();
     if (!strcmp(cmd, "--contexto") || !strcmp(cmd, "contexto"))
         return cmd_contexto(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--metadata") || !strcmp(cmd, "metadata")) {

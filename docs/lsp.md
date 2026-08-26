@@ -21,7 +21,11 @@ o que se configura é o comando acima.
   método falso;
 - **hover** — a assinatura real do método e o tipo que ele devolve;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
-  e coluna do erro.
+  e coluna do erro;
+- **realce** (*semantic tokens*) — palavra da linguagem, string, número,
+  comentário, tipo, identificador e operador, vindos do **lexer de verdade**
+  (`pool --tokens`). Não existe gramática paralela pra divergir do motor:
+  token novo na linguagem já nasce pintado.
 
 O modelo de tipos vem do **próprio binário** (`pool --metadata`, lido das
 tabelas do VM). Nada é digitado à mão, então o completion não tem como
@@ -89,15 +93,25 @@ extensões `ps;psl;p`.
 |---|---|
 | `lsp/protocolo.ps` | transporte: JSON-RPC enquadrado por `Content-Length`, sobre stdin/stdout |
 | `lsp/modelo.ps` | modelo de tipos (de `pool --metadata`) e a inferência da cadeia |
-| `lsp/servidor.ps` | os métodos do LSP: completion, hover, diagnóstico |
+| `lsp/servidor.ps` | os métodos do LSP: completion, hover, diagnóstico, realce |
 | `lsp/teste_lsp.ps` | dirige o servidor como um editor faria e confere as respostas |
 
 O teste entra no `make check` — não é varredura à parte.
 
-Duas notas de implementação que valem pra quem for mexer:
+Notas de implementação pra quem for mexer:
 
 - o **corpo** de uma mensagem é lido com `sys.stdin.read(n)` (bytes exatos),
   nunca por linha: as mensagens LSP vêm coladas, sem `\n` entre elas, e ler
   por linha invade a mensagem seguinte;
 - todo log do servidor vai pro **stderr**. `stdout` é o canal do protocolo, e
-  um `post()` solto ali corrompe a conversa com o editor.
+  um `post()` solto ali corrompe a conversa com o editor;
+- o modelo de tipos vem de `sys.executable --metadata`, ou seja, do binário que
+  está rodando o servidor — **não** do `pool` do PATH. Um `pool` instalado mais
+  velho descreveria um motor que não é o que o usuário está usando.
+
+Dois comandos do binário existem pra servir o editor:
+
+| Comando | Devolve |
+|---|---|
+| `pool --metadata` | módulos, tipos e métodos, das tabelas do VM |
+| `pool --tokens` | tokens do lexer (fonte pelo stdin), com posição e tamanho no fonte |

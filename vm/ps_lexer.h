@@ -18,7 +18,11 @@ typedef enum {
     T_OP,
     T_NEWLINE, T_INDENT, T_DEDENT,
     T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE, T_LBRACK, T_RBRACK,
-    T_COLON, T_SEMI, T_COMMA, T_DOT, T_AT
+    T_COLON, T_SEMI, T_COMMA, T_DOT, T_AT,
+    /* Só existe no modo do editor (`ps_lexer_tokenize_editor`): o lexer
+     * normal DESCARTA comentário, e o parser nunca vê este tipo. Fica por
+     * ultimo pra nao mexer no valor numerico de nenhum outro. */
+    T_COMMENT
 } PSTokType;
 
 typedef struct {
@@ -35,6 +39,10 @@ typedef struct {
     double    d;
     char     *texto;     /* dono da memória; NULL quando não se aplica */
     int32_t   texto_len;
+    /* Quantos CARACTERES o token ocupa NO FONTE. Não é o mesmo que
+     * `texto_len`: `"oi"` tem texto "oi" (2) e ocupa 4 no fonte. O realce do
+     * editor precisa do segundo. 0 = não medido (INDENT/DEDENT/NEWLINE). */
+    int32_t   nchars;
 } PSToken;
 
 typedef struct {
@@ -52,6 +60,9 @@ typedef struct {
 /* Analisa `fonte` (UTF-8, terminada em NUL). Sempre devolve uma lista que
  * precisa ser liberada com ps_lexer_free, mesmo em caso de erro. */
 PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len);
+/* Igual, mas guarda tambem os COMENTARIOS como T_COMMENT. Serve ao realce do
+ * editor, que precisa saber onde eles estao; o compilador usa a de cima. */
+PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len);
 void         ps_lexer_free(PSTokenList *lista);
 
 /* Nome do tipo de token — usado nas mensagens e no teste diferencial. */

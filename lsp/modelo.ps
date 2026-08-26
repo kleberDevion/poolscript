@@ -5,6 +5,7 @@
 # completion não tem como inventar método que o motor não tem — e quando o
 # tipo é desconhecido, a resposta é lista VAZIA, nunca um chute.
 import os
+import sys
 import json
 import regex
 
@@ -22,16 +23,16 @@ KEYWORDS = ["if", "else", "elif", "while", "for", "each", "in", "is", "and",
             "true", "false", "Null", "run_selfwith_"]
 
 
+# O modelo vem do binário que está rodando ESTE servidor (`sys.executable`),
+# nunca do `pool` que estiver no PATH: dá pra ter um instalado em
+# /usr/local/bin mais velho que o do repositório, e aí o completion descreve
+# um motor que não é o que o usuário está usando. Foi o que aconteceu — o
+# `jinker.request` aparecia sem tipo porque o binário do PATH era antigo.
 action carrega():
     os.mkdir(TMP, exist_ok=true)
     alvo = TMP + "/meta.json"
-    os.cmd("pool --metadata > " + alvo + " 2>/dev/null")
-    bruto = open(alvo).read()
-    if bruto.strip() == "":
-        # o `pool` do PATH pode não existir; tenta o do diretório corrente
-        os.cmd("./pool --metadata > " + alvo + " 2>/dev/null")
-        bruto = open(alvo).read()
-    return json.parse(bruto)
+    os.cmd("'" + sys.executable + "' --metadata > " + alvo + " 2>/dev/null")
+    return json.parse(open(alvo).read())
 
 
 action inicia():
@@ -159,6 +160,155 @@ action tipo_de_expressao(e, vars):
     if eh_modulo(t):
         return "<modulo:" + t + ">"
     return ""
+
+
+# ── Entity: o que `self.` oferece ───────────────────────────────────────────
+
+# A Entity que contém a linha `n` (base 0), ou "" se a linha está fora de
+# qualquer Entity. Vai pela INDENTAÇÃO: o corpo da Entity é o que está mais
+# indentado que o cabeçalho dela.
+action entity_da_linha(texto, n):
+    linhas = texto.split("\n")
+    if n >= len(linhas):
+        return ""
+    atual = ""
+    ind_ent = -1
+    i = 0
+    while i <= n and i < len(linhas):
+        l = linhas[i]
+        semindent = l.lstrip()
+        recuo = len(l) - len(semindent)
+        if semindent.startswith("Entity ") or semindent.startswith("class ") or semindent.startswith("Class "):
+            abre = semindent.find("(")
+            if abre > 0:
+                atual = semindent.split(" ")[1][0:abre - len(semindent.split(" ")[0]) - 1]
+                # mais simples e seguro: pega entre o espaço e o "("
+                cab = semindent[semindent.find(" ") + 1:]
+                atual = cab[0:cab.find("(")].strip()
+                ind_ent = recuo
+        elif semindent != "" and ind_ent >= 0 and recuo <= ind_ent:
+            atual = ""            # a Entity acabou
+            ind_ent = -1
+        i = i + 1
+    return atual
+
+
+# Membros que `self.` deve oferecer dentro da Entity `nome`: os métodos
+# declarados nela, os campos `nome: tipo` e o que for atribuído em
+# `self.algo = ...`.
+action membros_de_entity(texto, nome):
+    if nome == "":
+        return []
+    linhas = texto.split("\n")
+    dentro = false
+    ind_ent = -1
+    achados = []
+    vistos = {}
+
+    action poe(rotulo, detalhe):
+        if rotulo in vistos:
+            return
+        vistos[rotulo] = 1
+        achados.append({"nome": rotulo, "detalhe": detalhe})
+
+    for each l in linhas:
+        semindent = l.lstrip()
+        recuo = len(l) - len(semindent)
+        if semindent.startswith("Entity ") or semindent.startswith("class ") or semindent.startswith("Class "):
+            cab = semindent[semindent.find(" ") + 1:]
+            este = cab[0:cab.find("(")].strip()
+            dentro = (este == nome)
+            ind_ent = recuo
+            continue
+        if semindent == "":
+            continue
+        if ind_ent >= 0 and recuo <= ind_ent:
+            dentro = false
+        if not dentro:
+            # `self.x = ...` só conta dentro da Entity certa
+            continue
+        # método: `action m(self, ...)`, com modificadores antes
+        c = semindent.find("action ")
+        if c < 0:
+            c = semindent.find("reaction ")
+        if c >= 0:
+            resto = semindent[semindent.find(" ", c) + 1:]
+            fim = resto.find("(")
+            if fim > 0:
+                met = resto[0:fim].strip()
+                if met != "" and not met.startswith("__"):
+                    poe(met, "metodo de " + nome + resto[fim:].rstrip(":").rstrip(" {"))
+            continue
+        # campo declarado: `nome: tipo` (com `private`/`public` opcional)
+        dp = semindent.find(":")
+        if dp > 0 and semindent.find("(") < 0 and semindent.find("=") < 0:
+            campo = semindent[0:dp].strip()
+            ps = campo.split(" ")
+            campo = ps[len(ps) - 1]
+            if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", campo) != Null:
+                poe(campo, "campo: " + semindent[dp + 1:].strip())
+            continue
+        # atribuição a `self.x`
+        if semindent.startswith("self."):
+            ig = semindent.find("=")
+            if ig > 0:
+                campo = semindent[5:ig].strip()
+                if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", campo) != Null:
+                    poe(campo, "campo de " + nome)
+    return achados
+
+
+# ── argumento nomeado ───────────────────────────────────────────────────────
+
+# Se o cursor está DENTRO da lista de argumentos de uma chamada, devolve os
+# parâmetros da função chamada. Senão, lista vazia.
+# `prefixo` é o texto da linha até o cursor.
+action params_da_chamada(prefixo, vars):
+    # acha o `(` aberto mais próximo, ignorando os já fechados
+    i = len(prefixo)
+    profundidade = 0
+    abre = -1
+    while i > 0:
+        c = prefixo[i - 1]
+        if c == ")":
+            profundidade = profundidade + 1
+        elif c == "(":
+            if profundidade == 0:
+                abre = i - 1
+                break
+            profundidade = profundidade - 1
+        i = i - 1
+    if abre < 0:
+        return []
+
+    # o nome chamado é o que vem imediatamente antes do `(`
+    j = abre
+    while j > 0:
+        c = prefixo[j - 1]
+        if not (c.isalnum() or c == "_" or c == "."):
+            break
+        j = j - 1
+    chamado = prefixo[j:abre]
+    if chamado == "":
+        return []
+
+    m = Null
+    if chamado.count(".") > 0:
+        corte = chamado.rfind(".")
+        alvo = chamado[0:corte]
+        nome = chamado[corte + 1:]
+        if eh_modulo(alvo):
+            m = acha(membros_de_modulo(alvo), nome)
+        else:
+            t = tipo_de_expressao(alvo, vars)
+            if t != "" and not t.startswith("<modulo:"):
+                m = acha(membros_de_tipo(t), nome)
+    if m == Null:
+        return []
+    ps = m.get("params")
+    if ps == Null:
+        return []
+    return ps
 
 
 # Varre o documento e monta nome -> tipo pras variáveis atribuídas.

@@ -9047,6 +9047,27 @@ static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
     exit(codigo);
 }
 
+/* `sys.executable` — caminho absoluto do `pool` que está rodando ESTE script.
+ *
+ * Não é o mesmo que "o `pool` do PATH": dá pra ter um instalado em
+ * /usr/local/bin e outro recém-compilado no repositório, e um script que
+ * chama `pool` por nome fala com o errado calado. O servidor LSP tropeçou
+ * exatamente nisso — lia o modelo de tipos de um binário mais velho que o
+ * motor em uso. */
+static int mod_sys_executable(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args;
+    EXIGE_ARGS(vm, "executable", 0);
+    char cam[4096];
+    ssize_t k = readlink("/proc/self/exe", cam, sizeof(cam) - 1);
+    if (k > 0) {
+        cam[k] = '\0';
+        return devolve_texto(vm, out, cam, (int)k);
+    }
+    /* sem /proc (não-Linux): devolve o nome, que o PATH resolve */
+    return devolve_texto(vm, out, "pool", 4);
+}
+
 static int mod_sys_platform(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
@@ -9216,6 +9237,7 @@ static const MembroMod MOD_SYS[] = {
     { "argv", mod_sys_argv, 1, NULL },
     { "exit", mod_sys_exit, 0, NULL },
     { "platform", mod_sys_platform, 0, NULL },
+    { "executable", mod_sys_executable, 1, NULL },
     { "RelativePath", mod_sys_relativepath, 0, NULL },
     { "stdout", mod_sys_stdout, 1, NULL },
     { "stderr", mod_sys_stderr, 1, NULL },
@@ -20648,9 +20670,19 @@ static void reloca_codigo(int32_t *code, int ncode,
             case OP_LOAD_GLOBAL: case OP_STORE_GLOBAL:
             case OP_LOAD_NAME:   case OP_STORE_NAME:
             case OP_CLEAR_GLOBAL:
+            /* Estes dois também carregam índice de GLOBAL: são o caminho da
+             * célula quando o nome capturado não tem slot certo. Sem relocar,
+             * uma closure dentro de módulo importado lia/escrevia o global de
+             * OUTRO programa. */
+            case OP_CELL_GET_NAME: case OP_CELL_SET_NAME:
                 code[i + 1] += base_global;
                 break;
-            case OP_MAKE_FUNCTION:
+            /* MAKE_CLOSURE carrega índice de PROTO, igual ao MAKE_FUNCTION —
+             * a diferença é só ter upvalue. Ficar de fora daqui fazia a action
+             * aninhada de um módulo importado apontar pro protótipo de outra
+             * função qualquer: o `poe()` de dentro de `um()` virava `um()`, e
+             * o programa entrava em recursão infinita. */
+            case OP_MAKE_FUNCTION: case OP_MAKE_CLOSURE:
                 code[i + 1] += base_proto;
                 break;
             case OP_MAKE_CLASS:

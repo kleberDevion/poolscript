@@ -164,6 +164,43 @@ run_selfwith_("main"):
     r6 = resposta(msgs, 6)
     ok("shutdown responde", r6 != Null, str(r6))
 
+    # ── realce: semantic tokens vindos do lexer de verdade ──────────────────
+    fonte = "action f(a):   # soma\n    return a + \"oi\"\n"
+    msgsR = conversa([
+      pede(1, "initialize", {"processId": Null, "rootUri": Null, "capabilities": {}}),
+      abre(URI, fonte),
+      pede(2, "textDocument/semanticTokens/full", {"textDocument": {"uri": URI}}),
+      avisa("exit", {})
+    ])
+    rR = resposta(msgsR, 1)
+    ok("initialize anuncia o realce",
+       rR != Null and rR["result"]["capabilities"].get("semanticTokensProvider") != Null, str(rR))
+    r2R = resposta(msgsR, 2)
+    dados = []
+    if r2R != Null and r2R.get("result") != Null:
+        dados = r2R["result"]["data"]
+    ok("realce vem em grupos de 5", len(dados) > 0 and len(dados) % 5 == 0, str(len(dados)))
+    # o 1º token é `action` na linha 0, coluna 0, 6 chars, tipo 0 (keyword)
+    ok("primeiro token e a keyword `action`",
+       len(dados) >= 5 and dados[0] == 0 and dados[1] == 0 and dados[2] == 6 and dados[3] == 0,
+       str(dados[0:5]))
+    # o comentário tem que estar lá (tipo 3) — o lexer normal descarta
+    tem_comentario = false
+    i = 0
+    while i + 4 < len(dados):
+        if dados[i + 3] == 3:
+            tem_comentario = true
+        i = i + 5
+    ok("comentario entra no realce", tem_comentario, str(dados))
+    # a string `"oi"` ocupa 4 no fonte, não 2 (o texto decodificado)
+    tem_str4 = false
+    i = 0
+    while i + 4 < len(dados):
+        if dados[i + 3] == 1 and dados[i + 2] == 4:
+            tem_str4 = true
+        i = i + 5
+    ok("string mede o trecho do FONTE, com as aspas", tem_str4, str(dados))
+
     # ── diagnóstico: arquivo com erro de sintaxe ────────────────────────────
     ruim = "action f(:\n    return 1\n"
     msgs2 = conversa([

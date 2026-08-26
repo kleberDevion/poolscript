@@ -11,7 +11,9 @@
 #   - completion type-aware, com o modelo de tipos lido do PRÓPRIO binário
 #     (`pool --metadata`) — tipo desconhecido não sugere nada;
 #   - hover com a assinatura real do método;
-#   - diagnóstico: `pool --check` no arquivo, a cada save/abertura.
+#   - diagnóstico: `pool --check` no arquivo, a cada save/abertura;
+#   - realce (semantic tokens) vindo do LEXER de verdade (`pool --tokens`),
+#     pra não existir uma segunda gramática divergindo do motor.
 #
 # Ver docs/lsp.md.
 import os
@@ -74,11 +76,31 @@ action completa(texto, linha, coluna):
     prefixo = ate_o_cursor(texto, linha, coluna)
     trecho = pedaco_antes(prefixo)
     itens = []
+    vars = modelo.tipos_do_documento(texto)
+
+    # `self.` dentro de uma Entity: campos e métodos DELA, nada mais
+    if trecho == "self." or trecho.endswith(" self."):
+        ent = modelo.entity_da_linha(texto, linha)
+        for each m in modelo.membros_de_entity(texto, ent):
+            itens.append(item(m["nome"], 5, m["detalhe"]))
+        return itens
+
+    # dentro dos parênteses de uma chamada conhecida: os parâmetros dela.
+    # Só quando NÃO há um `.` pendente — `f(x.` é completion de membro.
+    if trecho.count(".") == 0:
+        ps = modelo.params_da_chamada(prefixo, vars)
+        if len(ps) > 0:
+            for each p in ps:
+                d = p.get("default")
+                detalhe = "parametro"
+                if d != Null:
+                    detalhe = "parametro (padrao " + str(d) + ")"
+                itens.append(item(p["nome"] + "=", 21, detalhe))
+            return itens
 
     if trecho.count(".") > 0:
         corte = trecho.rfind(".")
         alvo = trecho[0:corte]
-        vars = modelo.tipos_do_documento(texto)
 
         # `alvo` é um módulo? sugere os membros dele
         if modelo.eh_modulo(alvo):
@@ -102,7 +124,6 @@ action completa(texto, linha, coluna):
         itens.append(item(k, 14, "palavra da linguagem"))
     for each m in META_MODULOS():
         itens.append(item(m, 9, "modulo"))
-    vars = modelo.tipos_do_documento(texto)
     for each v in vars.keys():
         itens.append(item(v, 6, vars[v]))
     return itens
@@ -162,6 +183,79 @@ action passa_o_mouse(texto, linha, coluna):
     return Null
 
 
+# ── realce (semantic tokens) ────────────────────────────────────────────────
+#
+# A fonte é o LEXER DE VERDADE (`pool --tokens`), não uma segunda gramática:
+# gramática paralela diverge do motor no primeiro token novo que a linguagem
+# ganhar. O legend abaixo é a ordem que o editor recebe no `initialize`.
+LEGENDA = ["keyword", "string", "number", "comment", "function", "variable",
+           "type", "operator"]
+
+# tipo do lexer -> índice na LEGENDA. O que não está aqui não é pintado
+# (parêntese, vírgula, dois-pontos: o editor já dá conta, e pintar tudo só
+# polui).
+action indice_do_token(t):
+    if t == "KW":
+        return 0
+    if t == "STR" or t == "FSTRING" or t == "COLOR":
+        return 1
+    if t == "INT" or t == "FLO":
+        return 2
+    if t == "COMMENT":
+        return 3
+    if t == "BOOL" or t == "NULL":
+        return 0
+    if t == "IDENT_UPPER":
+        return 6
+    if t == "IDENT":
+        return 5
+    if t == "OP":
+        return 7
+    return -1
+
+
+# O LSP quer os tokens ACHATADOS em grupos de 5, e em DELTA: linha relativa ao
+# token anterior, coluna relativa ao anterior quando na mesma linha.
+action realce(texto):
+    os.mkdir(TMP, exist_ok=true)
+    alvo = TMP + "/tok.ps"
+    using open(alvo, "w") as f:
+        f.write(texto)
+    os.cmd("'" + sys.executable + "' --tokens < " + alvo + " > " + TMP + "/tok.json 2>/dev/null")
+    bruto = open(TMP + "/tok.json").read().strip()
+    if bruto == "":
+        return []
+    toks = json.parse(bruto)
+
+    dados = []
+    ultima_linha = 0
+    ultima_col = 0
+    for each t in toks:
+        idx = indice_do_token(t["t"])
+        if idx < 0:
+            continue
+        tam = t["n"]
+        if tam <= 0:
+            continue
+        linha = t["l"] - 1          # o lexer conta de 1, o LSP de 0
+        col = t["c"] - 1
+        dlinha = linha - ultima_linha
+        dcol = col
+        if dlinha == 0:
+            dcol = col - ultima_col
+        # token que volta pra trás na mesma linha quebraria o delta
+        if dlinha < 0 or (dlinha == 0 and dcol < 0):
+            continue
+        dados.append(dlinha)
+        dados.append(dcol)
+        dados.append(tam)
+        dados.append(idx)
+        dados.append(0)             # sem modificadores
+        ultima_linha = linha
+        ultima_col = col
+    return dados
+
+
 # ── diagnóstico ─────────────────────────────────────────────────────────────
 
 # Roda `pool --check` no arquivo e traduz o erro pro formato do LSP.
@@ -177,11 +271,8 @@ action diagnostica(uri, texto):
     alvo = TMP + "/check.ps"
     using open(alvo, "w") as f:
         f.write(texto)
-    os.cmd("pool --check " + alvo + " > " + TMP + "/c.out 2>/dev/null")
+    os.cmd("'" + sys.executable + "' --check " + alvo + " > " + TMP + "/c.out 2>/dev/null")
     bruto = open(TMP + "/c.out").read().strip()
-    if bruto == "":
-        os.cmd("./pool --check " + alvo + " > " + TMP + "/c.out 2>/dev/null")
-        bruto = open(TMP + "/c.out").read().strip()
     if bruto == "":
         return []
 
@@ -236,7 +327,11 @@ action trata(msg):
                 # 1 = full: o editor manda o documento inteiro a cada mudança
                 "textDocumentSync": 1,
                 "completionProvider": {"triggerCharacters": ["."]},
-                "hoverProvider": true
+                "hoverProvider": true,
+                "semanticTokensProvider": {
+                    "legend": {"tokenTypes": LEGENDA, "tokenModifiers": []},
+                    "full": true
+                }
             },
             "serverInfo": {"name": "poolscript-lsp"}
         })
@@ -287,6 +382,14 @@ action trata(msg):
         protocolo.responde(id, completa(texto, pos["line"], pos["character"]))
         return
 
+    if metodo == "textDocument/semanticTokens/full":
+        uri = params["textDocument"]["uri"]
+        texto = ""
+        if uri in docs:
+            texto = docs[uri]
+        protocolo.responde(id, {"data": realce(texto)})
+        return
+
     if metodo == "textDocument/hover":
         uri = params["textDocument"]["uri"]
         pos = params["position"]
@@ -295,7 +398,7 @@ action trata(msg):
             texto = docs[uri]
         protocolo.responde(id, passa_o_mouse(texto, pos["line"], pos["character"]))
         return
-
+        
     # método desconhecido: se tem id, o editor ESPERA resposta — calar trava o
     # cliente. Notificação (sem id) pode ser ignorada, como manda o protocolo.
     if id != Null:

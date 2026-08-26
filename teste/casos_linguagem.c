@@ -408,6 +408,36 @@ const Caso CASOS_LINGUAGEM[] = {
 { "continue fora de laco continua sendo erro",
   "continue\n", NULL, "'continue' fora de laco", -1 },
 
+/* ── closure DENTRO de módulo importado ─────────────────────────────────────
+ * O índice de proto do `OP_MAKE_CLOSURE` e o índice de global do
+ * `OP_CELL_GET_NAME`/`OP_CELL_SET_NAME` não eram relocados ao anexar um
+ * módulo: a action aninhada apontava pro protótipo de OUTRA função do
+ * programa principal. `poe()` dentro de `um()` virava `um()` — recursão
+ * infinita. Aqui o arquivo se importa, que é o caminho mais curto pra passar
+ * pela relocação. */
+{ "closure dentro de modulo importado",
+  "import ps_mod_clo\n"
+  "action com_closure():\n"
+  "    l = []\n"
+  "    action poe(r):\n"
+  "        l.append(r)\n"
+  "    poe(\"a\")\n"
+  "    poe(\"b\")\n"
+  "    return l\n"
+  "post(ps_mod_clo.com_closure())\n",
+  "['a', 'b']\n['a', 'b']", NULL, 0, "ps_mod_clo.ps" },
+{ "closure de modulo mantem estado proprio",
+  "import ps_mod_cnt\n"
+  "action contador():\n"
+  "    n = 0\n"
+  "    action inc():\n"
+  "        n = n + 1\n"
+  "        return n\n"
+  "    return inc\n"
+  "c = ps_mod_cnt.contador()\n"
+  "post(c(), c(), c())\n",
+  "1 2 3\n1 2 3", NULL, 0, "ps_mod_cnt.ps" },
+
 /* ── input(): fim da entrada é `null`, linha vazia é `""` ───────────────────
  * O runner roda todo caso com stdin em /dev/null, então aqui a entrada já
  * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre

@@ -88,6 +88,10 @@ typedef struct {
      * sub-bloco `:` dentro. O lexer decide pelo token ANTERIOR ao `{`. */
     unsigned char chave_dict[64];
 
+    /* 1 = guarda os comentários como T_COMMENT, pro realce do editor. O
+     * caminho do compilador roda com 0 e continua descartando. */
+    int         marca_comentarios;
+
     PSTokenList *out;
 } Lexer;
 
@@ -167,6 +171,15 @@ static int guarda_texto(Lexer *lx, PSToken *tk, const char *s, int n)
     tk->texto[n] = '\0';
     tk->texto_len = n;
     return 0;
+}
+
+/* Guarda o trecho do comentário como T_COMMENT. Só no modo do editor: o
+ * compilador nunca vê este token. */
+static void marca_comentario(Lexer *lx, int32_t l0, int32_t c0, size_t p0)
+{
+    PSToken *tk = novo_token(lx, T_COMMENT, l0, c0);
+    if (!tk) return;
+    guarda_texto(lx, tk, lx->src + p0, (int)(lx->pos - p0));
 }
 
 /* buffer dinâmico para montar strings com escapes */
@@ -276,16 +289,21 @@ static void trata_newline(Lexer *lx)
 /* ── comentários ────────────────────────────────────────────────────────── */
 static void pula_comentario_linha(Lexer *lx)
 {
+    int32_t l0 = lx->linha, c0 = lx->col;
+    size_t p0 = lx->pos;
     while (lx->pos < lx->len && lx->src[lx->pos] != '\n') avanca1(lx);
+    if (lx->marca_comentarios) marca_comentario(lx, l0, c0, p0);
 }
 
 static void pula_comentario_bloco(Lexer *lx)
 {
     int32_t l0 = lx->linha, c0 = lx->col;
+    size_t p0 = lx->pos;
     lx->pos += 3; lx->col += 3;
     while (lx->pos < lx->len) {
         if (lx->pos + 2 < lx->len && strncmp(lx->src + lx->pos, "\"\"\"", 3) == 0) {
             lx->pos += 3; lx->col += 3;
+            if (lx->marca_comentarios) marca_comentario(lx, l0, c0, p0);
             return;
         }
         if (lx->src[lx->pos] == '\n') { lx->pos++; lx->linha++; lx->col = 1; }
@@ -678,7 +696,15 @@ static int le_operador(Lexer *lx)
 }
 
 /* ── laço principal ─────────────────────────────────────────────────────── */
+static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios);
+
 PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len)
+{ return tokeniza(fonte, len, 0); }
+
+PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len)
+{ return tokeniza(fonte, len, 1); }
+
+static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
 {
     PSTokenList *out = calloc(1, sizeof(PSTokenList));
     if (!out) return NULL;
@@ -693,13 +719,28 @@ PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len)
     lx.indent[0] = 0;
     lx.nindent = 1;
     lx.out = out;
+    lx.marca_comentarios = com_comentarios;
 
     /* espaços iniciais da primeira linha não geram INDENT */
     while (lx.pos < lx.len && (lx.src[lx.pos] == ' ' || lx.src[lx.pos] == '\t')) {
         lx.pos++; lx.col++;
     }
 
+    /* Span do token no FONTE, medido num lugar só. Todo ramo do laço faz
+     * `continue`, então a medição acontece no TOPO da iteração seguinte (e uma
+     * última vez depois do laço): se desde a iteração anterior nasceu UM token
+     * na MESMA linha, o tamanho é a diferença de coluna. É o que o realce do
+     * editor precisa e o `texto` não dá — string decodificada não tem aspas. */
+    int32_t col0 = lx.col, lin0 = lx.linha, n0 = out->n;
+#define FECHA_SPAN()                                                          \
+    do {                                                                      \
+        if (out->n == n0 + 1 && lx.linha == lin0 && lx.col > col0)            \
+            out->tokens[n0].nchars = lx.col - col0;                           \
+        col0 = lx.col; lin0 = lx.linha; n0 = out->n;                          \
+    } while (0)
+
     while (lx.pos < lx.len && out->ok) {
+        FECHA_SPAN();
         char c = lx.src[lx.pos];
 
         if (c == '\n') { trata_newline(&lx); continue; }
@@ -730,6 +771,8 @@ PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len)
             erro(&lx, m);
         }
     }
+    FECHA_SPAN();
+#undef FECHA_SPAN
 
     if (out->ok) {
         while (lx.nindent > 1) {
@@ -753,6 +796,7 @@ void ps_lexer_free(PSTokenList *lista)
 const char *ps_tok_nome(PSTokType t)
 {
     switch (t) {
+        case T_COMMENT:     return "COMMENT";
         case T_EOF:         return "EOF";
         case T_KW:          return "KW";
         case T_IDENT:       return "IDENT";
