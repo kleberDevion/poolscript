@@ -18,7 +18,7 @@ unpacking).
 
 1. [Rodando código](#rodando-código)
 2. [Comentários](#comentários)
-3. [Indentação: `{}` vs `:`](#indentação--vs-)
+3. [Blocos: `{ }`](#blocos--)
 4. [Tipos e variáveis](#tipos-e-variáveis)
 5. [Null](#null)
 6. [Strings](#strings)
@@ -71,13 +71,25 @@ pode ter várias linhas
 
 ---
 
-## Indentação: `{}` vs `:`
+## Blocos: `{ }`
 
-PoolScript aceita dois estilos de bloco, e você pode misturá-los no mesmo
-arquivo (gera um aviso não-fatal no stderr, ver abaixo):
+O bloco da PoolScript é `{ }`. **Só.** Não existe bloco por indentação com `:`
+— tentar usar dá um erro que diz o que fazer:
 
-**Chaves** — sem regras de indentação, mas `elif`/`else` precisam ficar
-"colados" ao `}` anterior **na mesma linha**:
+```
+SyntaxError: bloco com ':' nao existe mais — use '{ }'
+```
+
+Isso já foi diferente: a linguagem aceitava os dois estilos e permitia
+misturá-los. A convivência custou caro — quase toda regressão de parser saía da
+interação entre indentação e chave — e o `:` saiu.
+
+Dentro de `{ }` a **indentação não tem significado**: quem delimita é a chave.
+Indente como quiser (o repositório usa 4 espaços por nível, por costume).
+
+A chave de abertura pode ficar **na mesma linha** ou **na linha seguinte**, e
+`elif`/`else`/`catch`/`finally` podem vir colados ao `}` ou numa linha nova —
+as quatro combinações valem:
 
 ```
 if (nota >= 9) {
@@ -89,36 +101,25 @@ if (nota >= 9) {
 }
 ```
 
-Colocar `elif`/`else` numa linha nova após o `}` **não funciona** — o parser
-não reconhece a continuação da cadeia e dá erro de sintaxe.
-
-**Dois-pontos, estilo Python** — regras estritas de indentação:
-
-- Só espaços; **TAB é proibido** (`SyntaxError`).
-- Cada nível deve ter **exatamente 4 espaços** (2, 3, 5... são erro).
-- Só se pode avançar **1 nível por vez** (+4 espaços). Pular de 0 para 8 é erro.
-- Dedent precisa bater exatamente com algum nível já aberto na pilha, senão é
-  "indentação inconsistente".
-
 ```
-if (nota >= 7) {
-    post("Aprovado")
-} else {
+if (nota >= 9)
+{
+    post("Excelente!")
+}
+else
+{
     post("Reprovado")
 }
 ```
 
-Misturar os dois estilos no mesmo arquivo emite (stderr, não interrompe a
-execução):
+O `:` continua sendo `:` onde ele **não** abre bloco — e essas formas não
+mudaram:
 
 ```
-[poolscript:warn] mistura blocos com chaves {} e dois-pontos (:) no mesmo arquivo — padronize um único estilo
+d = { "a": 1, "b": 2 }     // dicionário
+s = "abcdef"[1:3]          // fatia
+Entity P() { nome: str }   // campo tipado
 ```
-
-Dentro de um bloco `{}`, blocos filhos **também precisam usar `{}`**
-(indentação é ignorada enquanto há `{` aberto).
-
----
 
 ## Tipos e variáveis
 

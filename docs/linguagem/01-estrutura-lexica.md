@@ -53,13 +53,8 @@ pode ocupar várias linhas
 
 ## 1.3. Espaço em branco e delimitação de blocos
 
-A PoolScript aceita **dois estilos de bloco**, e eles podem coexistir no mesmo
-arquivo (embora misturar no mesmo trecho seja desencorajado):
-
-### 1.3.1. Blocos por chaves `{ }` — modo *brace*
-
-Dentro de `(`, `[` ou `{`, a **indentação é ignorada** e as quebras de linha não
-geram tokens estruturais. É o modo livre, estilo C/JS:
+O bloco da PoolScript é **`{ }`**, e só. Quem delimita é a chave; a
+**indentação não tem significado** nenhum pro compilador:
 
 ```ps
 action soma(a, b) {
@@ -67,36 +62,53 @@ action soma(a, b) {
 }
 ```
 
-### 1.3.2. Blocos por indentação — modo *colon*
-
-Um `:` no **fim lógico da linha** (só espaços/comentário depois dele) abre um
-bloco por indentação, estilo Python:
+A chave de abertura vale na mesma linha do cabeçalho ou na linha seguinte, e o
+`}` de fechamento pode vir colado à continuação (`} else {`) ou sozinho:
 
 ```ps
-action soma(a, b) {
+action soma(a, b)
+{
     return a + b
 }
 ```
 
-A política de indentação é **estrita**:
+### 1.3.1. Não existe bloco por `:`
 
-- **Apenas espaços.** TAB é proibido (`indentação com TAB não é permitida; use
-  4 espaços`).
-- Cada nível é **exatamente 4 espaços** (`INDENT_UNIT = 4`). Indentar com um
-  número que não seja múltiplo de 4 é erro; avançar mais de um nível de uma vez
-  (ex.: 8 espaços de uma vez) também é erro.
-- Ao desindentar, a coluna precisa bater com um nível aberto anteriormente
-  (`indentação inconsistente`).
+Um `:` no fim da linha **não** abre bloco. A tentativa é recusada com uma
+mensagem que diz o que usar:
 
-Linhas em branco e linhas só com comentário **não** alteram a pilha de
-indentação.
+```
+SyntaxError: bloco com ':' nao existe mais — use '{ }'
+```
+
+Já foi diferente: a linguagem aceitava `:` + indentação (estilo Python) e
+chaves, misturados no mesmo arquivo. Manter os dois saiu caro — praticamente
+toda regressão de parser vinha da interação entre indentação e chave — e o `:`
+saiu de vez.
+
+O `:` continua com os outros três papéis, que **não** abrem bloco:
+
+```ps
+d = { "a": 1 }              // separador de dicionário
+s = "abcdef"[1:3]           // fatia
+Entity P() { nome: str }    // tipo de campo
+```
+
+### 1.3.2. Indentação e quebra de linha
+
+Sem bloco por indentação, o recuo é só estética: indente como quiser (o
+repositório usa 4 espaços por nível, por costume). Dentro de `(`, `[` e `{` as
+quebras de linha também não geram token estrutural, então uma expressão pode
+se espalhar por várias linhas à vontade.
+
+Linhas em branco e linhas só com comentário não significam nada.
 
 ### 1.3.3. Continuação de linha por `.membro`
 
 Quando a próxima linha (ignorando espaços) começa com `.` seguido de letra ou
 `_`, ela é tratada como **continuação da expressão anterior** — não gera
 NEWLINE nem mexe na indentação. Isto habilita *method chaining* em várias
-linhas, inclusive no modo colon:
+linhas:
 
 ```ps
 resposta = request.get(url=u)

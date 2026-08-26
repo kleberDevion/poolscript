@@ -31,8 +31,7 @@ using mp.open(target="compras.xlsx") as arq {
 // aqui o arquivo já está salvo e fechado
 ```
 
-O `using` aceita os dois estilos de bloco — chaves `{ }` (acima) ou `:` com
-indentação:
+O `using` usa bloco de chaves `{ }` (acima), como todo bloco da linguagem:
 
 ```
 using mp.open(target="compras.xlsx") as arq {

@@ -28,6 +28,9 @@ typedef enum {
     N_CALL,
     N_CALL_ARG,
     N_LIST_LITERAL,
+    /* [<expr> for each <nome> in <iteravel> (if <cond>)?]
+     * a=iteravel, b=expr do item, c=condicao (ou NULL), texto=nome da var */
+    N_LIST_COMP,
     N_DICT_LITERAL,
     N_DICT_ENTRY,
     N_INDEX_ACCESS,

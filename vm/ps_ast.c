@@ -101,6 +101,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_CALL:            return "Call";
         case N_CALL_ARG:        return "CallArg";
         case N_LIST_LITERAL:    return "ListLiteral";
+        case N_LIST_COMP:       return "ListComp";
         case N_DICT_LITERAL:    return "DictLiteral";
         case N_DICT_ENTRY:      return "DictEntry";
         case N_INDEX_ACCESS:    return "IndexAccess";

@@ -52,9 +52,10 @@ post(u.nome, u.idade)      // ana 30
 - **Valor padrão** num campo torna o argumento opcional:
 
   ```ps
-  Entity Config():
+  Entity Config() {
       host: str = "localhost"
       porta: int = 8080
+  }
 
   c = Config()              // usa os padrões
   post(c.host, c.porta)     // localhost 8080
@@ -64,9 +65,11 @@ post(u.nome, u.idade)      // ana 30
   `self.x = ...` — ele passa a existir na instância:
 
   ```ps
-  Entity Bolsa():
-      action guarda(self, item):
+  Entity Bolsa() {
+      action guarda(self, item) {
           self.conteudo = item
+      }
+  }
   ```
 
 ### 7.2.1. Construtor próprio — `action __init__`

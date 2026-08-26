@@ -128,9 +128,8 @@ using mp.open(target="compras.xlsx") as arq {
 # arquivo salvo e fechado automaticamente
 ```
 
-`using` aceita bloco com chaves `{ }` (como acima) ou estilo Python com `:` e
-indentação — são a mesma sintaxe, `using` não é diferente de `if`/`while`/
-`action` nesse sentido:
+`using` aceita bloco com chaves `{ }`, como todo bloco da linguagem — não é
+diferente de `if`/`while`/`action` nesse sentido:
 
 ```
 using mp.open(target="compras.xlsx") as arq {

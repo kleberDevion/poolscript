@@ -31,7 +31,7 @@ reaction ao_clicar(x) {
 }
 ```
 
-Os dois estilos de bloco valem (`:` + indentação ou `{ }`).
+O corpo é um bloco `{ }`, como todo bloco da linguagem (seção 1.3).
 
 ---
 

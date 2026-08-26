@@ -243,6 +243,9 @@ typedef struct {
     int32_t     cap_globais;
     Laco        lacos[MAX_LACOS];
     int         nlacos;
+    /* contador de compreensões de lista, pra o nome do acumulador ser único
+     * quando uma está dentro da outra */
+    int         n_listcomp;
     int32_t     cap_classes;
     int32_t     cap_models;
     int32_t     cap_enums;
@@ -1072,6 +1075,74 @@ static void expr(C *c, Unidade *u, PSNode *n)
             for (int32_t i = 0; i < n->lista.n; i++) expr(c, u, n->lista.itens[i]);
             emite(c, u, OP_BUILD_LIST, n->lista.n);
             return;
+
+        case N_LIST_COMP: {
+            /* `[<expr> for each v in <it> (if <c>)?]`
+             *
+             * O acumulador NÃO pode ficar na pilha: o estado do iterador
+             * (container + índice) fica por cima dele, e não há opcode que
+             * anexe a uma lista N posições abaixo. Então ele mora num nome
+             * escondido — não digitável, e numerado pra compreensão aninhada
+             * não pisar na de fora.
+             *
+             *   BUILD_LIST 0 ; STORE acc
+             *   <it> ; LOAD_CONST 0
+             * topo:
+             *   ITER_NEXT fim ; STORE v
+             *   (<c> ; JUMP_IF_FALSE prox)
+             *   LOAD acc ; GET_MEMBER append ; <expr> ; CALL 1 ; POP_TOP
+             * prox:
+             *   JUMP topo
+             * fim:
+             *   LOAD acc                       ; o valor da expressão
+             */
+            char acc[64];
+            snprintf(acc, sizeof(acc), "  lc$%d", c->n_listcomp++);
+            const char *var = n->texto ? n->texto : "";
+
+            emite(c, u, OP_BUILD_LIST, 0);
+            guarda_nome_modo(c, u, acc, 1);
+
+            /* o nome da var da compreensão SOMBREIA, como no `for each` */
+            char salvo[128];
+            int sombreia = nome_ja_existe(u, var);
+            if (sombreia) {
+                snprintf(salvo, sizeof(salvo), "  lcv$%s", var);
+                carrega_nome(c, u, var);
+                guarda_nome_modo(c, u, salvo, 1);
+            }
+            int32_t M = escopo_marca(u);
+
+            expr(c, u, n->a);
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
+            int32_t topo = UP(c, u)->ncode;
+            int32_t fim = emite(c, u, OP_ITER_NEXT, 0);
+            guarda_nome_modo(c, u, var, 1);
+
+            int32_t pula_item = -1;
+            if (n->c) {
+                expr(c, u, n->c);
+                pula_item = emite(c, u, OP_JUMP_IF_FALSE, 0);
+            }
+            carrega_nome(c, u, acc);
+            emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "append", 6));
+            expr(c, u, n->b);
+            emite(c, u, OP_CALL, 1);
+            emite(c, u, OP_POP_TOP, 0);
+            if (pula_item >= 0) UP(c, u)->code[pula_item + 1] = UP(c, u)->ncode;
+
+            escopo_emite_clears(c, u, M);
+            emite(c, u, OP_JUMP, topo);
+            UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
+            escopo_emite_clears(c, u, M);
+            escopo_trunca(u, M);
+            if (sombreia) {
+                carrega_nome(c, u, salvo);
+                guarda_nome_modo(c, u, var, 1);
+            }
+            carrega_nome(c, u, acc);
+            return;
+        }
 
         case N_DICT_LITERAL:
             for (int32_t i = 0; i < n->lista.n; i++) {

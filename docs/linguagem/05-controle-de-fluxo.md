@@ -4,9 +4,8 @@ Statements que decidem **o que roda e quantas vezes**: condicionais (`if`),
 laços (`while`, `for each`, `count each`), o casamento de padrões (`match`), os
 desvios `break`/`continue`/`pass` e o guard de entrada `run_selfwith_`.
 
-Os dois estilos de bloco da seção 1.3 valem em todos eles: `:` + indentação, ou
-`{ }`. Os exemplos usam o estilo `:`. Toda regra desta seção foi verificada
-rodando o fonte na VM em C.
+O bloco da linguagem é `{ }` (seção 1.3) — e só. Toda regra desta seção foi
+verificada rodando o fonte na VM em C.
 
 Lembrete de escopo (seção 4): cada bloco aqui é um **escopo próprio** —
 variável nova dentro dele não vaza pra fora, e o corpo de um laço reinicia a
@@ -33,9 +32,9 @@ if nota >= 7 {
 - A palavra é **`elif`** — não existe `else if` (é erro de sintaxe).
 
 ```ps
-if 5:        post("entra")     // int não-zero é verdadeiro
-if []:       post("não entra") // lista vazia é falsa
-if "texto":  post("entra")     // string não-vazia é verdadeira
+if 5       { post("entra") }      // int não-zero é verdadeiro
+if []      { post("não entra") }  // lista vazia é falsa
+if "texto" { post("entra") }      // string não-vazia é verdadeira
 ```
 
 Para escolher um **valor** (em vez de statements), use a expressão condicional
@@ -85,8 +84,9 @@ Regras e limites (verificados):
 
   ```ps
   d = { "a": 1, "b": 2 }
-  for each k in d.keys():
+  for each k in d.keys() {
       post(k, d[k])
+  }
   ```
 
 - A variável do laço é **um único nome**. Não há forma com índice embutido nem
@@ -117,6 +117,55 @@ for each i in range(10, 0, -2) {  // 10 8 6 4 2
     post(i)
 }
 ```
+
+---
+
+### 5.3.2. Compreensão de lista
+
+Montar uma lista a partir de outra sem escrever o laço:
+
+```ps
+nums = [1, 2, 3, 4]
+post([n * 2 for each n in nums])        // [2, 4, 6, 8]
+```
+
+A forma é a do Python, escrita com o `for each` da linguagem:
+
+```
+[ <expressão> for each <nome> in <iterável> ]
+[ <expressão> for each <nome> in <iterável> if <condição> ]
+```
+
+Com filtro, só entra na lista o elemento cuja condição é verdadeira:
+
+```ps
+post([x for each x in [1, 2, 3, 4] if x % 2 == 0])   // [2, 4]
+```
+
+Vale sobre qualquer coisa que o `for each` aceita — lista, tupla, string e
+`range`:
+
+```ps
+post([c.upper() for each c in "abc"])   // ['A', 'B', 'C']
+post([i * i for each i in range(5)])    // [0, 1, 4, 9, 16]
+```
+
+E pode aninhar:
+
+```ps
+post([[y for each y in range(2)] for each z in range(3)])
+// [[0, 1], [0, 1], [0, 1]]
+```
+
+A variável da compreensão **sombreia**, como a do `for each`: uma de mesmo
+nome que exista fora continua valendo depois (seção 4.6.3).
+
+```ps
+n = "de fora"
+post([n for each n in [1, 2]], n)       // [1, 2] de fora
+```
+
+Só existe a de **lista**: não há compreensão de dict nem de conjunto.
 
 ---
 
@@ -202,12 +251,12 @@ Padrões suportados (verificados):
 
 | Padrão | Casa quando | Liga |
 |---|---|---|
-| Literal — `case 2:` / `case "x":` | o sujeito é igual àquele valor | — |
-| Captura — `case x:` | sempre (pega qualquer valor) | `x` = o sujeito |
-| Curinga — `case _:` | sempre (não liga nome) | — |
-| Alternativa — `case 1 \| 2 \| 3:` | casa com qualquer um dos valores | — |
-| Lista — `case [a, b]:` | o sujeito é uma lista com essa forma | `a`, `b` = os elementos |
-| Guarda — `case x if x > 5:` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
+| Literal — `case 2 { }` / `case "x" { }` | o sujeito é igual àquele valor | — |
+| Captura — `case x { }` | sempre (pega qualquer valor) | `x` = o sujeito |
+| Curinga — `case _ { }` | sempre (não liga nome) | — |
+| Alternativa — `case 1 \| 2 \| 3 { }` | casa com qualquer um dos valores | — |
+| Lista — `case [a, b] { }` | o sujeito é uma lista com essa forma | `a`, `b` = os elementos |
+| Guarda — `case x if x > 5 { }` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
 
 ```ps
 match ponto {
@@ -227,7 +276,7 @@ match ponto {
 ```
 
 - **Nenhum casou:** o `match` simplesmente não faz nada (não é erro). Um
-  `case _:` no fim funciona como "senão".
+  `case _ { }` no fim funciona como "senão".
 - Os nomes ligados por um `case` (`x`, `a`, `b`…) são **do bloco daquele case** —
   não existem depois do `match` (seção 4.6.1).
 
@@ -235,7 +284,7 @@ match ponto {
 
 ## 5.6. `count each` — laço sobre os elementos de um tipo
 
-`count each <Tipo> in <container>:` percorre **apenas os elementos daquele tipo**
+`count each <Tipo> in <container> { }` percorre **apenas os elementos daquele tipo**
 dentro do container, e já entrega a contagem total. Dentro do bloco:
 
 | Nome | Valor |
@@ -263,7 +312,7 @@ sem laço — `int(2) count in xs` e `int in xs count` — na seção 3.10.)
 
 ## 5.7. `run_selfwith_` — código só quando é o principal
 
-O bloco `run_selfwith_("main"):` roda **apenas quando o arquivo é executado
+O bloco `run_selfwith_("main") { }` roda **apenas quando o arquivo é executado
 direto**, e é pulado quando ele é **importado** por outro. É o
 `if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
 

@@ -735,6 +735,34 @@ const Caso CASOS_LINGUAGEM[] = {
   "if true {\n"
   "    post(\"A\")\n"
   "}\n", "A", NULL, 0 },
+/* ── compreensão de lista ───────────────────────────────────────────────────
+ * `[<expr> for each <v> in <it> (if <cond>)?]` — a forma do Python, escrita
+ * com o `for each` que a linguagem já tem. O acumulador vive num nome
+ * escondido e numerado, pra compreensão aninhada não pisar na de fora. */
+{ "compreensao de lista",
+  "nums = [1,2,3,4]\npost([n * 2 for each n in nums])\n", "[2, 4, 6, 8]", NULL, 0 },
+{ "compreensao com filtro",
+  "post([x for each x in [1,2,3,4] if x % 2 == 0])\n", "[2, 4]", NULL, 0 },
+{ "compreensao sobre string",
+  "post([c.upper() for each c in \"abc\"])\n", "['A', 'B', 'C']", NULL, 0 },
+{ "compreensao sobre range",
+  "post([i * i for each i in range(5)])\n", "[0, 1, 4, 9, 16]", NULL, 0 },
+{ "compreensao aninhada",
+  "post([[y for each y in range(2)] for each z in range(3)])\n",
+  "[[0, 1], [0, 1], [0, 1]]", NULL, 0 },
+{ "compreensao sobre vazio",
+  "post([1 for each q in []])\n", "[]", NULL, 0 },
+{ "variavel da compreensao SOMBREIA, nao destroi",
+  "n = \"de fora\"\npost([n for each n in [1,2]], n)\n", "[1, 2] de fora", NULL, 0 },
+{ "compreensao dentro de action",
+  "action f(l) {\n    return [v + 1 for each v in l]\n}\npost(f([1,2]))\n", "[2, 3]", NULL, 0 },
+{ "lista comum continua igual",
+  "post([1, 2, 3], [], [1])\n", "[1, 2, 3] [] [1]", NULL, 0 },
+{ "compreensao sem 'each' e erro claro",
+  "post([n for n in [1]])\n", NULL, "esperado 'each'", -1 },
+{ "compreensao sem 'in' e erro claro",
+  "post([n for each n [1]])\n", NULL, "esperado 'in'", -1 },
+
 /* ── o bloco `:` saiu da linguagem ──────────────────────────────────────────
  * DECISÃO: o bloco é `{ }`, e só. Conviver com os dois custou caro — as
  * regressões de parser desta linha do tempo saíram todas da interação entre

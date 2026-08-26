@@ -10622,12 +10622,15 @@ const Caso CASOS_DIFERENCIAL[] = {
   "post(hora(2))\n"
   "\n",
   "7200", NULL, 0 },
+/* CORRIGIDO: o caso gravava a data de HOJE ("25/08/2026") e passava a falhar
+ * no dia seguinte — bomba-relogio, nao teste. Agora afere a FORMA, que e o que
+ * o caso queria dizer: `today()` devolve dd/mm/aaaa. */
 { "dif #2004",
   "from date import today\n"
   "str d = today()\n"
-  "post(d)\n"
+  "post(len(d), d[2], d[5])\n"
   "\n",
-  "25/08/2026", NULL, 0 },
+  "10 / /", NULL, 0 },
 { "dif #2005",
   "from flask import Flask\n"
   "Flask(\"app\")\n"
@@ -11179,11 +11182,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = bytes.xor(bytes.new(\"a\"), bytes.new())\n"
   "\n",
   NULL, "SomeValueUnexpected: valor inválido: bytes.xor: chave vazia", -1 },
+/* CORRIGIDO: mesma bomba-relogio do #2004. O que este caso testa e a
+ * INTERPOLACAO `"texto" expr`, nao o valor da data. */
 { "dif #2098",
   "import date\n"
-  "post(\"hoje:\" date.today())\n"
+  "h = date.today()\n"
+  "post(\"hoje:\" len(h))\n"
   "\n",
-  "hoje: 25/08/2026", NULL, 0 },
+  "hoje: 10", NULL, 0 },
 { "dif #2099",
   "import date\n"
   "post(date.datahora().len())\n"

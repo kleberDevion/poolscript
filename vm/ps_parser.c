@@ -426,6 +426,37 @@ static PSNode *primario(P *p)
                     pula_separadores(p);
                     PSNode *item = expressao(p);
                     if (FALHOU(p)) return NULL;
+                    /* COMPREENSÃO: `[<expr> for each <n> in <it> (if <c>)?]`.
+                     * Só cabe depois do PRIMEIRO item e no lugar da vírgula —
+                     * `[a, b for each ...]` não é forma nenhuma. */
+                    if (n->lista.n == 0 && checa_kw(p, "for")) {
+                        p->pos++;
+                        if (!aceita_kw(p, "each")) {
+                            perro(p, "esperado 'each' depois de 'for' na compreensao", atual(p));
+                            return NULL;
+                        }
+                        const char *var = exige_nome(p, "variavel da compreensao");
+                        if (FALHOU(p)) return NULL;
+                        if (!aceita_kw(p, "in")) {
+                            perro(p, "esperado 'in' na compreensao de lista", atual(p));
+                            return NULL;
+                        }
+                        PSNode *lc = ps_node_novo(p->arena, N_LIST_COMP, t->line, t->col);
+                        if (!lc) return NULL;
+                        lc->texto = var;
+                        lc->b = item;
+                        lc->a = expressao(p);
+                        if (FALHOU(p)) return NULL;
+                        if (checa_kw(p, "if")) {
+                            p->pos++;
+                            lc->c = expressao(p);
+                            if (FALHOU(p)) return NULL;
+                        }
+                        pula_separadores(p);
+                        p->grupo_depth--;
+                        if (!exige_fecha(p, T_RBRACK, "faltou ']' na compreensao", t)) return NULL;
+                        return lc;
+                    }
                     if (ps_vec_push(p->arena, &n->lista, item) != 0) {
                         perro(p, "sem memoria", t); return NULL;
                     }

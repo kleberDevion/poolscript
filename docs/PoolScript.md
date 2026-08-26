@@ -505,7 +505,7 @@ count each int(7) in nums {
 ## using
 
 `using <expr> as <nome>` — igual `if`/`while`/`action`, aceita bloco com
-chaves `{ }` ou estilo Python com `:` e indentação (testado, os dois funcionam).
+chaves `{ }` — o único estilo de bloco da linguagem.
 
 Funciona com qualquer objeto que tenha `__enter__`/`__exit__` — o builtin
 global `open()` (sem import, sempre disponível) é o caso mais comum:
