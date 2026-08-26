@@ -61,7 +61,7 @@ install-mime:
 	install -m644 dados/icones/text-poolscript.svg \
 	        $(DADOS)/icons/hicolor/scalable/mimetypes/
 	-update-mime-database $(DADOS)/mime 2>/dev/null || true
-	-gtk-update-icon-cache -f -t $(DADOS)/icons/hicolor 2>/dev/null || true
+	@./dados/espalha_icone.sh "$(DADOS)" instalar
 
 .PHONY: install install-mime desinstala
 
@@ -69,9 +69,8 @@ desinstala:
 	rm -f $(PREFIXO)/bin/pool $(PREFIXO)/bin/psl $(PREFIXO)/bin/poolscript-lsp
 	rm -rf $(PREFIXO)/share/poolscript
 	rm -f $(DADOS)/mime/packages/zz-poolscript.xml
-	rm -f $(DADOS)/icons/hicolor/scalable/mimetypes/text-poolscript.svg
 	-update-mime-database $(DADOS)/mime 2>/dev/null || true
-	-gtk-update-icon-cache -f -t $(DADOS)/icons/hicolor 2>/dev/null || true
+	-./dados/espalha_icone.sh "$(DADOS)" remover
 
 # Confere que não sobrou nada de Python no binário.
 verifica: pool

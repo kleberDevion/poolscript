@@ -15,7 +15,11 @@
     <comment xml:lang="pt_BR">Código-fonte PoolScript</comment>
     <sub-class-of type="text/plain"/>
     <icon name="text-poolscript"/>
-    <generic-icon name="text-x-script"/>
+    <!-- SEM `generic-icon`: o nome genérico (`text-x-script`) existe no tema
+         do desktop (Mint-Y, Adwaita…), que vem ANTES do hicolor na herança —
+         e o GTK prefere um ícone achado num tema mais próximo a um nome mais
+         específico achado num tema mais distante. Com o genérico declarado, a
+         logo da linguagem nunca era escolhida. -->
 
     <glob pattern="*.ps" weight="80"/>
     <glob pattern="*.psl" weight="80"/>

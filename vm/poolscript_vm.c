@@ -31,9 +31,6 @@
 #define _GNU_SOURCE 1
 #endif
 #define PY_SSIZE_T_CLEAN
-#ifdef PS_MODULO_PYTHON
-#include <Python.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -1067,12 +1064,10 @@ struct VM_ {
 
     char    erro[256];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
-    int     erro_linha;      /* linha do fonte onde o erro de runtime caiu (0 = ?) */
     /* Traceback do erro não-capturado: do <module> (mais externo) ao frame que
      * falhou (mais interno), na ordem em que o Python imprime. */
     struct { int proto; int linha; int col; } tb[64];
     int     ntb;
-    int     erro_col;        /* coluna do fonte onde o erro caiu (0 = ?) */
     /* Traceback preservado de um import que estourou DENTRO do módulo: sem isto
      * o erro_runtime externo reconstruiria o tb só com o frame do `import` e a
      * linha de dentro do módulo (onde o erro está de verdade) se perderia. */
@@ -20294,15 +20289,20 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * que um `try` (nh>0) ou um erro posterior não a vejam pendurada. */
         int veio_de_import = vm->import_falhou;
         vm->import_falhou = 0;
-        /* Linha do fonte da instrução que falhou. `ip` já avançou 2 na busca,
-         * então a instrução é `ip-2`. Cada erro entra aqui UMA vez com o `p`
-         * do frame que falhou (frames aninhados são o mesmo laço), então isto
-         * grava a linha CERTA — inclusive sobrescrevendo a de um erro anterior
-         * já capturado. */
-        if (p && p->linhas && ip >= 2 && (ip - 2) < p->ncode)
-            vm->erro_linha = p->linhas[ip - 2];
-        if (p && p->colunas && ip >= 2 && (ip - 2) < p->ncode)
-            vm->erro_col = p->colunas[ip - 2];
+        /* Linha e coluna vêm SEMPRE da tabela de linhas, no `ip` corrente do
+         * frame que está executando — nunca de um campo guardado à parte.
+         *
+         * Havia um `vm->erro_linha`/`erro_col` paralelo, e ele era a fonte de
+         * uma classe inteira de traceback errado: quando o erro atravessava um
+         * `catch` que faz `raise`, o valor guardado ainda era o do erro
+         * ORIGINAL, não o do `raise` que estava de fato propagando. O campo
+         * saiu; o que existe é a tabela, que é o modelo do CPython
+         * (`co_linetable` + `f_lasti`). `ip` já avançou 2 na busca, então a
+         * instrução é a de `ip-2`. */
+        int linha_agora = (p && p->linhas && ip >= 2 && (ip - 2) < p->ncode)
+                          ? p->linhas[ip - 2] : 0;
+        int col_agora   = (p && p->colunas && ip >= 2 && (ip - 2) < p->ncode)
+                          ? p->colunas[ip - 2] : 0;
         /* Procura o `try` mais interno ainda ativo. Restaurar fp/sp/
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
@@ -20326,8 +20326,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
                 if (vm->ntb < 63) {   /* frame do `import` (chamou o módulo) */
                     vm->tb[vm->ntb].proto = (int)(p - vm->protos);
-                    vm->tb[vm->ntb].linha = vm->erro_linha;
-                    vm->tb[vm->ntb].col   = vm->erro_col;
+                    vm->tb[vm->ntb].linha = linha_agora;
+                    vm->tb[vm->ntb].col   = col_agora;
                     vm->ntb++;
                 }
                 for (int f = fp - 1; f >= fp0 && vm->ntb < 63; f--) {
@@ -20358,8 +20358,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
                 if (vm->ntb < 64) {
                     vm->tb[vm->ntb].proto = (int)(p - vm->protos);
-                    vm->tb[vm->ntb].linha = vm->erro_linha;
-                    vm->tb[vm->ntb].col   = vm->erro_col;
+                    vm->tb[vm->ntb].linha = linha_agora;
+                    vm->tb[vm->ntb].col   = col_agora;
                     vm->ntb++;
                 }
             }
@@ -20378,7 +20378,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             /* a mensagem + PONTO EXATO viram o valor ligado no `catch` — o
              * mesmo formato do interp: "mensagem\n  em linha N, coluna C".
-             * erro_linha/erro_col já foram gravados no topo do erro_runtime. */
+             * A linha vem de `linha_agora`, calculada da tabela no topo. */
             vm->sp = sp; vm->locals_top = locals_top;
             char msgbuf[1200];
             /* Não carimba a linha duas vezes: um erro que atravessa mais de um
@@ -20387,9 +20387,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             size_t nerr = strlen(vm->erro);
             int ja_tem_linha = (nerr > 0 && vm->erro[nerr - 1] == ')'
                                 && strstr(vm->erro, " (linha ") != NULL);
-            if (vm->erro_linha > 0 && !ja_tem_linha)
+            if (linha_agora > 0 && !ja_tem_linha)
                 snprintf(msgbuf, sizeof(msgbuf), "%s (linha %d)",
-                         vm->erro, vm->erro_linha);
+                         vm->erro, linha_agora);
             else
                 snprintf(msgbuf, sizeof(msgbuf), "%s", vm->erro);
             PSString *msg = nova_string(vm, msgbuf, (int)strlen(msgbuf));
@@ -21705,7 +21705,9 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         e->tipo = PS_ERRO_RUNTIME;
         snprintf(e->msg, sizeof(e->msg), "%s", vm.erro);
         snprintf(e->tipo_nome, sizeof(e->tipo_nome), "%s", vm.erro_tipo);
-        e->linha = vm.erro_linha;   /* linha do fonte onde caiu (0 = desconhecida) */
+        /* a linha do erro é a do ÚLTIMO quadro do traceback (o mais interno),
+         * que já veio da tabela de linhas — não há segunda fonte. */
+        e->linha = vm.ntb > 0 ? vm.tb[vm.ntb - 1].linha : 0;
         /* traduz o traceback (índices de proto -> nome/arquivo/linha) enquanto
          * a VM ainda está viva. */
         e->ntb = vm.ntb < 64 ? vm.ntb : 64;
