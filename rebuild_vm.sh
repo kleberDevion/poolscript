@@ -1,18 +1,38 @@
 #!/usr/bin/env bash
-# Rebuild LIMPO da extensão C.
+# Rebuild LIMPO do binário.
 #
-# `setup_vm.py build_ext` sozinho não basta: o setuptools decide recompilar
-# comparando timestamps com granularidade de SEGUNDO. Editar um .c e
-# recompilar dentro do mesmo segundo deixa o .so velho no lugar — e o teste
-# passa a medir código que não existe mais. Aconteceu duas vezes aqui, com
-# divergências fantasma que sumiam sozinhas.
+# Este script existia porque a VM também era compilada como extensão C do
+# Python (`setup_vm.py build_ext`), e havia dois alvos que podiam ficar
+# dessincronizados. Não existe mais extensão nem Python: o `pool` é o único
+# alvo, e o rebuild é `make`.
+#
+# Continua sendo LIMPO de propósito: apagar antes evita o caso de editar um
+# .c e o make decidir que não precisa recompilar por causa de timestamp com
+# granularidade de segundo. Já aconteceu aqui — divergência fantasma que sumia
+# sozinha porque o teste media código que não existia mais.
+#
+#   ./rebuild_vm.sh              # rebuild limpo
+#   ./rebuild_vm.sh --check      # rebuild + suíte
+#   ./rebuild_vm.sh --install    # rebuild + suíte + instala no sistema (sudo)
 set -e
 cd "$(dirname "$0")"
-rm -rf build/lib.linux-* build/temp.linux-* src/poolscript/vm/*.so
-python3 setup_vm.py build_ext --inplace "$@"
 
-# O binário standalone sai do MESMO .c, mas por outro caminho de build. Sem
-# refazer os dois, um fica velho e o teste passa medindo código que já mudou —
-# a mesma armadilha do .so desatualizado, só que com dois alvos agora.
-echo "--- binario standalone ---"
-make -s pool && echo "pool: ok"
+make -s limpa
+make -s pool
+echo "pool: ok  ($(./pool --version))"
+
+for arg in "$@"; do
+    case "$arg" in
+        --check)
+            make -s check
+            ;;
+        --install)
+            make -s check
+            sudo make -s install
+            ;;
+        *)
+            echo "argumento desconhecido: $arg (use --check ou --install)" >&2
+            exit 1
+            ;;
+    esac
+done

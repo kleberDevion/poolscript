@@ -165,6 +165,24 @@ n = "de fora"
 post([n for each n in [1, 2]], n)       // [1, 2] de fora
 ```
 
+Como **argumento único** de uma chamada, os colchetes são dispensáveis — é a
+forma curta do Python, e vale em qualquer função:
+
+```ps
+post(n * 2 for each n in nums)          // [2, 4, 6, 8]
+post(sum(v for each v in nums))         // 10
+post(max(v for each v in nums))         // 4
+```
+
+Com mais de um argumento fica ambíguo (não dá pra saber se a compreensão é um
+argumento ou se falta um `)`), então aí os colchetes voltam a ser obrigatórios
+— e o erro diz isso:
+
+```ps
+post("a", n for each n in [1])      // SyntaxError: ponha entre colchetes
+post("a", [n for each n in [1]])    // a [1]
+```
+
 Só existe a de **lista**: não há compreensão de dict nem de conjunto.
 
 ---

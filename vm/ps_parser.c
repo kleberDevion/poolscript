@@ -665,6 +665,43 @@ static PSNode *posfixo(P *p)
                     }
                     PSNode *valor = expressao(p);
                     if (FALHOU(p)) return NULL;
+                    /* COMPREENSÃO como argumento: `post(n * 2 for each n in l)`
+                     * — a forma do Python, sem os colchetes. Só vale como
+                     * argumento ÚNICO e sem nome, que é onde ela não é
+                     * ambígua com uma lista de argumentos. */
+                    if (c->lista.n == 0 && nome_arg == NULL && checa_kw(p, "for")) {
+                        p->pos++;
+                        if (!aceita_kw(p, "each")) {
+                            perro(p, "esperado 'each' depois de 'for' na compreensao", atual(p));
+                            return NULL;
+                        }
+                        const char *cvar = exige_nome(p, "variavel da compreensao");
+                        if (FALHOU(p)) return NULL;
+                        if (!aceita_kw(p, "in")) {
+                            perro(p, "esperado 'in' na compreensao", atual(p));
+                            return NULL;
+                        }
+                        PSNode *lc = ps_node_novo(p->arena, N_LIST_COMP, at->line, at->col);
+                        if (!lc) return NULL;
+                        lc->texto = cvar;
+                        lc->b = valor;
+                        lc->a = expressao(p);
+                        if (FALHOU(p)) return NULL;
+                        if (checa_kw(p, "if")) {
+                            p->pos++;
+                            lc->c = expressao(p);
+                            if (FALHOU(p)) return NULL;
+                        }
+                        valor = lc;
+                    }
+                    /* `f(a, x for each x in l)` — ambíguo: não dá pra saber se
+                     * a compreensão é um argumento ou se falta um `)`. Python
+                     * também recusa; a mensagem diz o conserto. */
+                    else if (checa_kw(p, "for")) {
+                        perro(p, "compreensao so vale como argumento unico — ponha entre colchetes: [x for each ...]",
+                              atual(p));
+                        return NULL;
+                    }
                     PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, at->line, at->col);
                     if (!arg) return NULL;
                     arg->a = valor;

@@ -1,4 +1,4 @@
-# PoolScript v8.2.84
+# PoolScript v8.3.3
 
 Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
 
@@ -51,7 +51,7 @@ pool repl
 ```
 
 ```
-PoolScript v8.2.84 — REPL
+PoolScript v8.3.3 — REPL
 Digite 'sair' ou Ctrl+C para sair.
 
 >>> str nome = "joao"

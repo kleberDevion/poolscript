@@ -30,6 +30,25 @@ pool: $(FONTES) $(VM)/ps_versao.h $(MK)
 bundle: pool
 	./build_bundle.sh
 
+# Instala no sistema: o binário (como `pool` e `psl`, que são o mesmo) e o
+# servidor LSP, que é PoolScript e por isso precisa dos .ps ao lado. O
+# `poolscript-lsp` é o atalho que o editor chama.
+PREFIXO ?= /usr/local
+install: pool
+	install -d $(PREFIXO)/bin $(PREFIXO)/share/poolscript/lsp
+	install -m755 pool $(PREFIXO)/bin/pool
+	install -m755 pool $(PREFIXO)/bin/psl
+	install -m644 lsp/protocolo.ps lsp/modelo.ps lsp/servidor.ps \
+	        $(PREFIXO)/share/poolscript/lsp/
+	printf '#!/bin/sh\n# Atalho do servidor LSP. O servidor e PoolScript; ver docs/lsp.md.\nexec %s/bin/pool %s/share/poolscript/lsp/servidor.ps "$$@"\n' \
+	        '$(PREFIXO)' '$(PREFIXO)' > $(PREFIXO)/bin/poolscript-lsp
+	chmod 755 $(PREFIXO)/bin/poolscript-lsp
+	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp"
+
+desinstala:
+	rm -f $(PREFIXO)/bin/pool $(PREFIXO)/bin/psl $(PREFIXO)/bin/poolscript-lsp
+	rm -rf $(PREFIXO)/share/poolscript
+
 # Confere que não sobrou nada de Python no binário.
 verifica: pool
 	@echo "== dependências dinâmicas =="; ldd ./pool
