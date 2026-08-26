@@ -83,7 +83,7 @@
 #include "ps_vm.h"
 #include "ps_hash.h"
 
-/* ── opcodes: precisam bater com opcodes.py ─────────────────────────────── */
+/* ── opcodes: precisam bater com ps_compiler.c ──────────────────────────── */
 enum {
     OP_LOAD_CONST = 0, OP_LOAD_LOCAL = 1, OP_STORE_LOCAL = 2,
     OP_LOAD_GLOBAL = 3, OP_STORE_GLOBAL = 4,
@@ -484,7 +484,7 @@ typedef struct { Obj obj; PSMongo *m; int fechado; } PSMongoConn;
 typedef struct { Obj obj; Value conexao; char *nome; } PSMongoCol;
 
 /* qrcode.gen sem save= — o PNG em memória. `nome`/`ext` viram os campos, e
- * `conteudo` (OBJ_BYTES) é o PNG. Espelha o QRPoolFile do qrcode_lib.py. */
+ * `conteudo` (OBJ_BYTES) é o PNG. */
 typedef struct {
     Obj    obj;
     char  *nome, *ext;
@@ -805,7 +805,7 @@ static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
 #define EH_QRBUILD(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_QRBUILD)
 #define COMO_QRBUILD(v) ((PSQRBuild*)(v).as.obj)
 
-/* ── guzer — UI desktop nativa (X11). Espelha o guzer_lib.py (tkinter). ──── */
+/* ── guzer — UI desktop nativa (X11), no modelo do tkinter. ─────────────── */
 enum { GUZ_WINDOW = 0, GUZ_BUTTON = 1, GUZ_DIALOG = 2, GUZ_BOX = 3 };
 typedef struct {
     Obj  obj;
@@ -6069,7 +6069,7 @@ static const MetodoNat METODOS_BYTES[] = {
 #include <arpa/inet.h>
 
 /* Extensões tratadas como binário pelo `loadFile`. Mesma lista do
- * `os_lib.py` — divergir faria o mesmo arquivo virar texto num motor e
+ * pelo conteúdo — adivinhar faria o mesmo arquivo virar texto numa leitura e
  * PoolFile no outro. */
 static int ext_binaria(const char *ext)
 {
@@ -6551,7 +6551,7 @@ static const MetodoNat METODOS_MPFILE[] = {
     { "save", met_mpf_save, NULL },
 };
 
-/* ── guzer — objetos da UI desktop (X11). Espelha guzer_lib.py (tkinter). ── */
+/* ── guzer — objetos da UI desktop (X11), no modelo do tkinter. ─────────── */
 /* Primeira medida de um Value ("500" / "8px 14px" / número) -> px. */
 static int guz_px_val(Value v, int def)
 {
@@ -6658,7 +6658,7 @@ static int met_guz_button(VM *vm, Value alvo, Value *args, int n, Value *out)
 static void guz_mostra(VM *vm);
 /* app.show() — abre a janela nativa explicitamente (bloqueante). Idempotente:
  * se já abriu (por show() ou pelo auto-show do fim do script), não reabre.
- * Paridade com o .show() do interp (guzer_lib.py). */
+ */
 static int met_guz_show(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n;
   if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
@@ -7417,7 +7417,7 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
 static int mod_json_parse(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "parse", 1);
-    /* já estruturado passa reto — é o que o json_lib.py faz */
+    /* já estruturado passa reto */
     if (EH_DICT(args[0]) || EH_SEQ(args[0])) { *out = args[0]; return 0; }
     if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "parse() espera str");
     PSString *s = COMO_STRING(args[0]);
@@ -8439,7 +8439,7 @@ static const MembroMod MOD_DATASENTITY[] = {
 
 /* ── hash ───────────────────────────────────────────────────────────────── */
 /* Formato: base64(sal[32] || pbkdf2(senha, sal, 310000)[32]). É o mesmo do
- * `hash_lib.py`, byte a byte — hash gerado num motor precisa validar no
+ * os padrões, byte a byte — hash gerado aqui precisa validar em
  * outro, senão trocar de runtime derruba login de usuário. */
 #define HASH_ITER  310000
 #define HASH_SAL   32
@@ -8468,7 +8468,7 @@ static int mod_hash_check(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "check", 2);
     /* Entrada inválida devolve `False`, não erro: `check` é uma pergunta, e
-     * quem chama trata `False`, não exceção. É o que o `hash_lib.py` faz. */
+     * quem chama trata `False`, não exceção. */
     if (!EH_STRING(args[0])) { *out = MK_BOOL(0); return 0; }
     PSString *hs = COMO_STRING(args[0]);
 
@@ -8485,7 +8485,7 @@ static int mod_hash_check(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-/* Estes três não estão no `hash_lib.py`, mas o `jwt` precisa deles e ficariam
+/* Estes três não são de hash, mas o `jwt` precisa deles e ficariam
  * duplicados lá. Expor é melhor que esconder. */
 static int mod_hash_sha256(VM *vm, Value *args, int n, Value *out)
 {
@@ -8535,7 +8535,7 @@ static const MembroMod MOD_HASH[] = {
 
 
 /* ── bytes (módulo) ────────────────────────────────────────────────────────
- * Criar e converter sequências de bytes — espelha stdlib/bytes_lib.py. O tipo
+ * Criar e converter sequências de bytes. O tipo
  * `bytes` já existe (OBJ_BYTES); este módulo é o que permite CRIAR do zero
  * (lista de ints, hex, base64, inteiro) e CONVERTER de volta. As mensagens de
  * erro batem com o interp: um TypeError vira "operação inválida entre os
@@ -8546,7 +8546,7 @@ static const MembroMod MOD_HASH[] = {
 #define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "SomeValueUnexpected", "operação inválida entre os tipos: " __VA_ARGS__)
 #define BY_ERRO_VALOR(vm, ...) BERRO(vm, "SomeValueUnexpected", "valor inválido: " __VA_ARGS__)
 
-/* nome do tipo como o `_nome` do bytes_lib.py (dict = "json") */
+/* nome do tipo como a linguagem o chama (dict = "json") */
 static const char *by_nome(Value v)
 {
     switch (v.t) {
@@ -8939,7 +8939,7 @@ static int mod_jwt_check(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "check", 2);
     /* Token ruim devolve Null, não erro: `check` é uma pergunta, e quem chama
-     * trata a ausência. É o que o `jwt_lib.py` faz. */
+     * trata a ausência. */
     *out = MK_NULL();
     if (!EH_STRING(args[0]) || !EH_STRING(args[1])) return 0;
     PSString *tk = COMO_STRING(args[0]), *chave = COMO_STRING(args[1]);
@@ -9017,7 +9017,7 @@ static const MembroMod MOD_JWT[] = {
 /* ── sys ────────────────────────────────────────────────────────────────── */
 /* `sys.argv` são os argumentos DO USUÁRIO: `pool arquivo.ps a b` dá
  * {"a","b"}. O nome do programa e o do script ficam de fora — é o que o
- * `sys_lib.py` faz com `_sys.argv[2:]`. */
+ * o script não entra em `argv`. */
 static int mod_sys_argv(VM *vm, Value *args, int n, Value *out)
 {
     (void)args; (void)n;
@@ -9319,7 +9319,7 @@ static const MembroMod MOD_DOTENV[] = { { "load", mod_dotenv_load, 0, "path" } }
 
 /* ── Parsing ────────────────────────────────────────────────────────────── */
 /*
- * O `parsing_lib.py` devolve `TransientValue`, um embrulho que guarda o tipo
+ * A forma antiga devolvia `TransientValue`, um embrulho que guardava o tipo
  * de origem. Testado caso a caso: esse tipo SEMPRE coincide com o tipo real
  * do valor, inclusive depois de aritmética (`x / 3` marca "flo" e o valor é
  * float). O embrulho só aparecia em `type(x)`, devolvendo o nome da classe
@@ -9743,7 +9743,7 @@ static int mod_os_pathfile(VM *v, Value *a, int n, Value *o)   { return os_procu
 static int mod_os_pathfolder(VM *v, Value *a, int n, Value *o) { return os_procura(v, a, n, o, 1, "pathFolder"); }
 
 /* Decide texto ou binário pela EXTENSÃO, não pelo conteúdo — é o contrato do
- * `os_lib.py`, e adivinhar pelo conteúdo daria resultado diferente. */
+ * a extensão, e adivinhar pelo conteúdo daria resultado diferente. */
 static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "loadFile() espera 1 ou 2 argumentos");
@@ -10056,7 +10056,7 @@ static int mod_os_getenv(VM *vm, Value *args, int n, Value *out)
     if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getenv() espera 1 ou 2 argumentos");
     PSString *k;
     if (os_str(vm, args[0], "getenv", &k) != 0) return -1;
-    /* carrega o .env antes, como o `os_lib.py` faz — variável de arquivo tem
+    /* carrega o .env antes — variável de arquivo tem
      * que estar visível sem o usuário chamar `dotenv.load()` na mão */
     Value ignora;
     mod_dotenv_load(vm, NULL, 0, &ignora);
@@ -10134,7 +10134,7 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
 }
 
 /* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`, que é o
- * que o `os_lib.py` faz — comando que falhou tem a mensagem no stderr. */
+ * comando que falhou tem a mensagem no stderr. */
 static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
                          int capturar, Value *out)
 {
@@ -10722,7 +10722,7 @@ static const MembroMod MOD_SQLITE3[] = {
 
 /* ── módulo mail ────────────────────────────────────────────────────────── */
 /* SMTP/IMAP/MIME em C (ps_mail.c). O provedor conhecido vira host+porta, como
- * o HOSTS_CONFIG do mail_lib.py. */
+ * a tabela de hosts conhecidos. */
 
 typedef struct { const char *provedor, *host; int porta; } MailProv;
 static const MailProv SMTP_PROV[] = {
@@ -10755,7 +10755,7 @@ static void resolve_provedor(const MailProv *tab, int n, const char *entrada,
 }
 
 /* Erro de rede vira OSError; erro de uso (ordem errada de chamada) vira
- * RuntimeError — é a divisão que o mail_lib.py faz. */
+ * RuntimeError — é a divisão entre erro de rede e erro de uso. */
 #define MAIL_ERRO_REDE(vm, msg) do { \
     snprintf((vm)->erro, sizeof((vm)->erro), "erro de sistema/arquivo: %s", msg); \
     snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "OSError"); \
@@ -12353,7 +12353,7 @@ static const MembroMod MOD_MAIL[] = {
 /* ── módulo request ─────────────────────────────────────────────────────── */
 /* HTTP/HTTPS por ps_http.c (socket + OpenSSL, sem libcurl). O Response guarda
  * status/headers/corpo; text/content/size/ok/filename são CAMPOS (sem
- * parêntese), como as @property do request_lib.py. */
+ * parêntese), como uma propriedade. */
 
 static const char *REQ_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -12629,7 +12629,7 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     if (stream && n > 5 && args[5].t == V_INT) teto = args[5].as.i;
 
     /* multipart/form-data: fields= (campos simples) e file= ({campo: {"name":
-     * caminho}}) — a MESMA API do request_lib.py. Quando presentes, o corpo é
+     * caminho}}). Quando presentes, o corpo é
      * montado aqui e o Content-Type (com o boundary gerado) é da lib. */
     Value fields = n > 6 ? args[6] : MK_NULL();
     Value vfile  = n > 7 ? args[7] : MK_NULL();
@@ -14749,7 +14749,7 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user,
 }
 
 /* ── jinker — servidor HTTP/WebSocket ───────────────────────────────────── */
-/* Espelha o jinker_lib.py. O transporte (socket/HTTP/WS/TLS/multipart) mora
+/* O transporte (socket/HTTP/WS/TLS/multipart) mora
  * em ps_jinker.c; aqui ficam os objetos da VM, o roteamento, a ponte com os
  * handlers via chama_valor e a montagem das respostas. Single-thread: o loop
  * roda na thread da VM, então o handler `.ps` reentra sem corrida nem GC
@@ -21722,7 +21722,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         return -1;
     }
     /* guzer: se o script montou uma UI, abre a janela nativa agora (bloqueante,
-     * como o auto-show do guzer_lib.py). GUZER_HEADLESS pula (testes/CI). */
+     * auto-show da UI). GUZER_HEADLESS pula (testes/CI). */
     guz_mostra(&vm);
     libera_vm(&vm);
     return 0;

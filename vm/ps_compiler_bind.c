@@ -2,7 +2,7 @@
  * Binding TEMPORÁRIO do compilador em C — só para o teste diferencial.
  *
  * Desmonta o bytecode num texto canônico. O lado Python gera o mesmo formato
- * a partir de `vm/compiler.py` + `vm/flatten.py`, e o teste exige igualdade:
+ * a partir do compilador, e o teste exige igualdade:
  * qualquer diferença de opcode, argumento, ordem de constante ou índice de
  * local aparece como diff legível.
  *

@@ -1,7 +1,7 @@
 /*
  * Parser recursivo-descendente da PoolScript em C puro.
  *
- * Espelha parser.py no subconjunto que a VM já compila, incluindo a cadeia
+ * Recursive-descent sobre o subconjunto que a VM compila, incluindo a cadeia
  * de precedência inteira (do mais fraco pro mais forte):
  *
  *   or → and → not → comparação → | → ^ → & → << >> → + - → * / % → unário
@@ -137,7 +137,7 @@ static PSToken *exige(P *p, PSTokType t, const char *msg)
 /* Fechamento de estrutura aberta — '(' '[' '{'. Token inesperado em OUTRA
  * linha: a culpa é do ABRIDOR (o "faltou ')'" marca a chamada aberta, não o
  * `if` da linha de baixo). Na mesma linha, aponta o token estranho. Espelha
- * o expect_fecha do parser.py. */
+ * o fecha-com-origem. */
 static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
 {
     if (checa(p, t)) return &p->toks[p->pos++];
@@ -160,7 +160,7 @@ static void pula_separadores(P *p)
     }
 }
 
-/* nome que vai ser LIGADO: recusa reservada, como parser.py faz */
+/* nome que vai ser LIGADO: recusa palavra reservada */
 static const char *exige_nome(P *p, const char *contexto)
 {
     PSToken *t = atual(p);
@@ -187,7 +187,7 @@ static const char *exige_nome(P *p, const char *contexto)
  * argumentos. É a justaposição da linguagem, e o parser Python a implementa
  * continuando o laço quando o token seguinte puder iniciar expressão. */
 /* keywords que valem como NOME em expressão (post, self, list...) — espelho
- * do EXPR_NAME_KEYWORDS do parser.py. `if`/`return`/`while` etc. NÃO abrem
+ * reservadas que ABREM expressão. `if`/`return`/`while` etc. NÃO abrem
  * expressão: sem isso, `f(x` esquecido aberto engolia o `if` da linha de
  * baixo como argumento e o erro saía no lugar errado. */
 static int kw_abre_expr(const char *s)
@@ -216,7 +216,7 @@ static int pode_iniciar_expr(PSToken *t)
         case T_KW:
             return kw_abre_expr(t->texto);
         case T_OP:
-            /* mesmo conjunto do parser.py: unários que abrem expressão */
+            /* unários que abrem expressão */
             return t->texto && (strcmp(t->texto, "-") == 0 || strcmp(t->texto, "+") == 0
                              || strcmp(t->texto, "!") == 0);
         default:
@@ -317,7 +317,7 @@ static PSNode *primario(P *p)
         case T_FSTRING: {
             /* f-string continua sendo Literal, com kind FSTRING: a
              * interpolação é resolvida em tempo de execução, não aqui —
-             * é o que parser.py faz. */
+             * é a regra. */
             p->pos++;
             PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
             if (!n) return NULL;
@@ -491,7 +491,7 @@ static PSNode *primario(P *p)
                                                        kt->texto_len);
                     } else if (kt->type == T_IDENT || kt->type == T_IDENT_UPPER) {
                         /* Chave sem aspas (`{nome: 1}`) fica como Name, NÃO
-                         * como string: é o que parser.py faz — quem converte
+                         * como string — quem converte
                          * pra string é o compilador. Emitir Literal aqui
                          * geraria uma AST diferente da de referência. */
                         p->pos++;
@@ -539,7 +539,7 @@ static PSNode *primario(P *p)
         case T_KW: {
             /* `to <tipo>` — açúcar do Parsing: vira a STRING com o nome do tipo
              * (ex: `Parsing.string(x, to int)` == `Parsing.string(x, "int")`).
-             * Igual ao interpretador (parser.py). */
+             */
             if (strcmp(t->texto, "to") == 0) {
                 PSToken *tt = espia(p, 1);
                 static const char *TIPOS[] = {"int","float","str","flo","bool","json","list","tup","dict"};

@@ -1,7 +1,7 @@
 /*
  * Compilador AST → bytecode, em C puro.
  *
- * Porte de compiler.py + flatten.py. Duas coisas que ele resolve em tempo de
+ * Duas coisas que o compilador resolve em tempo de
  * compilação e por isso somem do caminho quente:
  *
  *   - Nome vira ÍNDICE. `n` dentro de `fib` deixa de ser busca por string
@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ── opcodes: precisam bater com opcodes.py e poolscript_vm.c ───────────── */
+/* ── opcodes: precisam bater com poolscript_vm.c ────────────────────────── */
 enum {
     OP_LOAD_CONST = 0, OP_LOAD_LOCAL = 1, OP_STORE_LOCAL = 2,
     OP_LOAD_GLOBAL = 3, OP_STORE_GLOBAL = 4,

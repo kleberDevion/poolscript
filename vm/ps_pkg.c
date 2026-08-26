@@ -485,7 +485,7 @@ int ps_pkg_uninstall(const char *nome, int categoria)
     if (tem_cmd && tem_lib) {
         fprintf(stderr, "Erro: '%s' esta instalado como comando E como lib. "
                         "Desambigue: `-asLib` remove a lib; sem flag, o comando.\n", nome);
-        /* segue e remove o comando (sem flag = comando, como o pkgmgr.py) */
+        /* segue e remove o comando (sem flag = comando) */
     }
     if (tem_cmd) { remove_categoria(home, nome, 0); printf("comando '%s' removido\n", nome); }
     else         { remove_categoria(home, nome, 1); printf("lib '%s' removida\n", nome); }

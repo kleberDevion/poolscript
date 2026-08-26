@@ -1,8 +1,7 @@
 /*
  * Lexer da PoolScript em C puro.
  *
- * Porte fiel de lexer.py, incluindo as regras que não são óbvias e que os
- * testes diferenciais cobrem:
+ * As regras que não são óbvias, e que os testes diferenciais cobrem:
  *
  *   - Indentação ESTRITA: só espaços (TAB é erro), múltiplo de 4, e sobe
  *     no máximo um nível por vez.
@@ -339,7 +338,7 @@ static int buf_push_utf8(Buf *bf, unsigned long cp)
 
 /* Processa o escape que começa no '\\' em lx->pos, empurra o resultado (UTF-8)
  * em bf e avança lx->pos/col pelos chars consumidos. Espelha o _decode_escape
- * do lexer.py (a autoridade): \n \t \r \a \b \f \v \e, \\ \" \', octal \033,
+ * reconhecidos: \n \t \r \a \b \f \v \e, \\ \" \', octal \033,
  * hex \x1b, unicode \uXXXX/\UXXXXXXXX. Desconhecido solta a barra. 0 ok, -1 mem. */
 static int decode_escape(Lexer *lx, Buf *bf)
 {

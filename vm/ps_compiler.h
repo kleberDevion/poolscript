@@ -7,7 +7,7 @@
  * precisaria alocar objetos sob o coletor antes de existir uma VM — e
  * strings de constante nasceriam como lixo coletável no meio da compilação.
  *
- * A tabela de protótipos já sai PLANA (o achatamento que flatten.py fazia em
+ * A tabela de protótipos já sai PLANA (o achatamento acontece em
  * Python acontece aqui direto): `MAKE_FUNCTION` carrega índice de protótipo,
  * não índice de constante.
  */

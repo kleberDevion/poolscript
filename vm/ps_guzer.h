@@ -8,7 +8,7 @@
  * objetos guzer da linguagem pra esta lista, e quem chama a `reaction` no
  * clique (via chama_valor), é a camada guzer dentro da VM.
  *
- * O espelho semântico é o guzer_lib.py (tkinter): os mesmos objetos, o mesmo
+ * O modelo semântico é o do tkinter: os mesmos objetos, o mesmo
  * design default, o mesmo disparo de handler no clique.
  *
  * X11 já vem no sistema (libX11). Zero dependência de runtime nova.

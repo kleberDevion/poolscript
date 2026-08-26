@@ -1,7 +1,7 @@
 /*
  * Versão da linguagem — FONTE ÚNICA.
  *
- * Vivia em `src/poolscript/__init__.py` e o Makefile a extraía com `sed`.
+ * Já foi um arquivo de texto que o Makefile raspava com `sed`.
  * Com o interpretador fora, isso virou o que sempre deveria ter sido num
  * projeto C: uma constante de header, que o compilador enxerga e o `pool`
  * carrega. Nada de arquivo de texto raspado por shell.

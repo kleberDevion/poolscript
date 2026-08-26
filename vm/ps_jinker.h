@@ -8,7 +8,7 @@
  * dona do loop (single-thread: o handler roda na thread da VM, então não
  * existe questão de reentrância nem de GC concorrente).
  *
- * O espelho semântico é o jinker_lib.py (http.server + websockets): o que o
+ * O modelo semântico é o de http.server + websockets: o que o
  * cliente HTTP observa — status, corpo, headers de CORS — tem que bater.
  */
 #ifndef PS_JINKER_H

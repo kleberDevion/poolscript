@@ -160,8 +160,7 @@ static int reporta(const PSErroExec *e, const char *origem)
     }
 }
 
-/* `build`: roda todos os .ps da pasta atual, em ordem, e conta OK/erro.
- * Espelha o `_cmd_build` da cli.py. */
+/* `build`: roda todos os .ps da pasta atual, em ordem, e conta OK/erro. */
 static int cmd_build(void)
 {
     DIR *d = opendir(".");

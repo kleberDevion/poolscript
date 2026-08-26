@@ -1,10 +1,10 @@
 /*
  * Gerenciador de pacotes pool-native em C — só lib/comando `.ps`, ZERO pip.
  *
- * Porta a parte não-Python do pkgmgr.py: instala `.ps` como comando global
+ * Gerência de pacotes: instala `.ps` como comando global
  * (com shim em ~/.poolscript/bin) ou como lib importável (~/.poolscript/libs,
  * onde o `import` da VM já procura). Estado em ~/.poolscript/ (ou
- * $POOLSCRIPT_HOME), no MESMO layout do pkgmgr.py pra `psl` e `pool`
+ * $POOLSCRIPT_HOME), no layout compartilhado por `psl` e `pool`
  * concordarem. Origem pode ser arquivo local (`nome.ps`) ou o registry
  * configurado (baixa por HTTPS via ps_http, com verificação sha256 opcional).
  */
@@ -17,7 +17,7 @@
 #define PS_PKG_LIB  1
 
 /* Todos imprimem a mensagem (stdout em sucesso, stderr em erro) e devolvem
- * 0 em sucesso, !=0 em erro — igual aos _cmd_* da cli.py. */
+ * 0 em sucesso, !=0 em erro. */
 int ps_pkg_install(const char *target, int modo);
 int ps_pkg_uninstall(const char *nome, int categoria);
 int ps_pkg_list(void);

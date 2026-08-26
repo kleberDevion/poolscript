@@ -16,8 +16,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* Espelha os nomes das classes em parser.py — o teste diferencial compara a
- * serialização dos dois lados, então os nomes precisam bater. */
+/* O teste diferencial compara a serialização da AST entre execuções, então
+ * estes nomes fazem parte do contrato: mudar um muda o diff. */
 typedef enum {
     N_PROGRAM = 0,
     N_LITERAL,        /* int, flo, str, bool, null */
