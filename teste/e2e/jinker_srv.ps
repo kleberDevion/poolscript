@@ -7,7 +7,11 @@ from jinker import cors
 
 # static_folder/static_url: pasta de front servida junto com as rotas
 PASTA = "/tmp/ps_e2e_static"
-os.mkdir(PASTA)
+# `exist_ok` porque o teste tem que ser RE-EXECUTÁVEL: a pasta sobra da rodada
+# anterior e um `os.mkdir` cru falhava já na primeira linha. É a mesma classe
+# do E1 (teste não hermético) que a suíte principal fechou com mkdtemp+chdir e
+# que não tinha alcançado os e2e.
+os.mkdir(PASTA, exist_ok=true)
 using open(PASTA + "/pagina.txt", "w") as f {
     f.write("sou estatico")
 }

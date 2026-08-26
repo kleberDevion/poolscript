@@ -1,0 +1,202 @@
+# Roda os testes de ponta a ponta, respeitando o PAPEL de cada script.
+#
+# POR QUE ISTO EXISTE: o alvo antigo era um `for s in teste/e2e/*.ps`, e o
+# shell ordena alfabeticamente — `jinker_cli.ps` rodava ANTES de
+# `jinker_srv.ps`. O cliente subia sem servidor e morria com "Connection
+# refused"; depois o servidor ficava servindo até o `timeout` matá-lo, e o
+# alvo inteiro reprovava. A orquestração certa existia só no LEIAME, em prosa,
+# fora de qualquer coisa que roda.
+#
+# Papel não se adivinha por nome de arquivo, então está declarado aqui:
+#
+#   PARES      servidor + cliente. Sobe o servidor destacado, ESPERA a porta
+#              aceitar conexão (não `sleep` no escuro), roda o cliente, e mata
+#              o servidor aconteça o que acontecer.
+#   SOZINHOS   fluxo único, roda direto.
+#   SEM_PAR    servidor que não tem cliente: bloquearia até o timeout. É
+#              RELATADO, não rodado — e relatado em voz alta, porque pular
+#              calado é o mesmo que não ter o teste.
+#
+# Script que não acha o serviço externo imprime PULOU e sai 0; isso é
+# resultado, não falha, e aparece no resumo.
+#
+#     ./pool teste/e2e_roda.ps               # tudo
+#     ./pool teste/e2e_roda.ps jinker        # só o que casa com o filtro
+import os
+import sys
+
+PASTA = "teste/e2e"
+TEMPO = 120        # segundos por script
+
+# [servidor, cliente, porta que o servidor abre]
+PARES = [
+    ["jinker_srv.ps", "jinker_cli.ps", 28840]
+]
+
+# Servidor sem cliente: rodar seria travar até o timeout.
+SEM_PAR = {
+    "ws.ps": "servidor de WebSocket sem cliente — bloqueia pra sempre; o par coberto e jinker_srv+jinker_cli"
+}
+
+
+# Espera a porta aceitar conexão. Devolve 1 se subiu, 0 se estourou o prazo.
+# Melhor que `sleep 2`: numa máquina carregada 2s não bastam, e numa rápida
+# são 2s jogados fora por execução.
+action espera_porta(porta, prazo) {
+    i = 0
+    while i < prazo * 10 {
+        r = os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(porta) + "' 2>/dev/null")
+        if r == 0 {
+            return 1
+        }
+        os.cmd("sleep 0.1")
+        i = i + 1
+    }
+    return 0
+}
+
+
+# Roda um script e devolve [rc, saida_junta].
+action roda(caminho) {
+    os.cmd("GUZER_HEADLESS=1 timeout " + str(TEMPO) + " '" + sys.executable + "' " +
+           caminho + " > /tmp/ps_e2e_out.txt 2>&1 < /dev/null; echo $? > /tmp/ps_e2e_rc.txt")
+    rc = int(open("/tmp/ps_e2e_rc.txt").read().strip())
+    return [rc, open("/tmp/ps_e2e_out.txt").read()]
+}
+
+
+action mostra(saida) {
+    for each l in saida.split("\n") {
+        if l.strip() != "" {
+            post("     ", l)
+        }
+    }
+}
+
+
+if __name__ == "main" {
+    filtro = ""
+    if len(sys.argv) > 0 {
+        filtro = sys.argv[0]
+    }
+
+    # Nomes que já têm papel declarado não entram na lista de "sozinhos".
+    com_papel = {}
+    for each p in PARES {
+        com_papel[p[0]] = 1
+        com_papel[p[1]] = 1
+    }
+    for each k in SEM_PAR.keys() {
+        com_papel[k] = 1
+    }
+
+    falhou = []
+    pulou = []
+    okey = []
+    naorodou = []
+
+    # ── 1) os pares ─────────────────────────────────────────────────────────
+    for each p in PARES {
+        srv = p[0]
+        cli = p[1]
+        porta = p[2]
+        if filtro != "" and not filtro in srv and not filtro in cli {
+            continue
+        }
+        post("── " + srv + " + " + cli)
+
+        # `setsid` destaca o servidor do grupo de processos deste script: sem
+        # isso, matá-lo depois derruba junto quem o iniciou.
+        os.cmd("setsid env GUZER_HEADLESS=1 '" + sys.executable + "' " + PASTA + "/" + srv +
+               " > /tmp/ps_e2e_srv.log 2>&1 < /dev/null &")
+
+        if espera_porta(porta, 20) == 0 {
+            post("      servidor nao abriu a porta", str(porta), "em 20s")
+            mostra(open("/tmp/ps_e2e_srv.log").read())
+            os.cmd("pkill -f '" + srv + "' 2>/dev/null")
+            falhou.append(srv)
+            continue
+        }
+
+        r = roda(PASTA + "/" + cli)
+
+        # O servidor morre AQUI, sempre — mesmo com o cliente falhando. Deixar
+        # servidor vivo faz a próxima execução falhar por porta ocupada, que é
+        # a mesma família de não-hermético do E1.
+        os.cmd("pkill -f '" + srv + "' 2>/dev/null")
+
+        mostra(r[1])
+        if r[0] != 0 {
+            falhou.append(cli + " (rc " + str(r[0]) + ")")
+        }
+        elif "PULOU" in r[1] {
+            pulou.append(cli)
+        }
+        else {
+            okey.append(srv + "+" + cli)
+        }
+    }
+
+    # ── 2) os que rodam sozinhos ────────────────────────────────────────────
+    nomes = []
+    for each e in os.ls(PASTA) {
+        n = e["name"]
+        if n.endswith(".ps") and not n in com_papel {
+            nomes.append(n)
+        }
+    }
+    nomes.sort()
+
+    for each n in nomes {
+        if filtro != "" and not filtro in n {
+            continue
+        }
+        post("── " + n)
+        r = roda(PASTA + "/" + n)
+        mostra(r[1])
+        if r[0] != 0 {
+            falhou.append(n + " (rc " + str(r[0]) + ")")
+        }
+        elif "PULOU" in r[1] {
+            pulou.append(n)
+        }
+        else {
+            okey.append(n)
+        }
+    }
+
+    # ── 3) os que não dá pra rodar sem alguém do outro lado ─────────────────
+    for each n in SEM_PAR.keys() {
+        if filtro != "" and not filtro in n {
+            continue
+        }
+        naorodou.append(n + " — " + SEM_PAR[n])
+    }
+
+    post("")
+    post("passaram:", len(okey))
+    for each x in okey {
+        post("   ", x)
+    }
+    if len(pulou) > 0 {
+        post("PULARAM (servico externo fora do ar):", len(pulou))
+        for each x in pulou {
+            post("   ", x)
+        }
+    }
+    if len(naorodou) > 0 {
+        post("NAO RODADOS (sem par):", len(naorodou))
+        for each x in naorodou {
+            post("   ", x)
+        }
+    }
+    if len(falhou) > 0 {
+        post("FALHARAM:", len(falhou))
+        for each x in falhou {
+            post("   ", x)
+        }
+        sys.exit(1)
+    }
+    post("")
+    post("e2e: ok")
+}

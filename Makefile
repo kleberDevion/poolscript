@@ -205,21 +205,20 @@ check: pool testar
 
 # E2E: cada script sobe o que precisa e checa de ponta a ponta. Fica fora do
 # `check` porque depende de serviço externo (Postgres, MySQL, mongod, SMTP) e
-# porque é pesado — nesta máquina, um de cada vez. Script sem o serviço no ar
-# imprime PULOU e sai 0; PULOU é relatado no fim, não some.
+# porque é pesado.
+#
+# A ORDEM IMPORTA, e por isso não é mais um `for` sobre `*.ps`: o shell ordena
+# alfabeticamente e `jinker_cli.ps` vinha ANTES de `jinker_srv.ps` — o cliente
+# subia sem servidor, morria com "Connection refused", e o servidor ficava
+# servindo até o timeout. O driver conhece o papel de cada script (par,
+# sozinho, servidor sem cliente), espera a porta ABRIR em vez de dormir no
+# escuro, e mata o servidor aconteça o que acontecer.
+#
+#     make check-e2e            # tudo
+#     make check-e2e E2E=jinker # só o que casa com o filtro
+E2E ?=
 check-e2e: pool
-	@falhou=0; pulou=""; \
-	for s in teste/e2e/*.ps; do \
-	  printf '── %s\n' "$$s"; \
-	  saida=$$(GUZER_HEADLESS=1 nice -n 19 timeout 120 ./pool "$$s" 2>&1); rc=$$?; \
-	  printf '%s\n' "$$saida"; \
-	  if [ $$rc -ne 0 ]; then falhou=1; fi; \
-	  case "$$saida" in *PULOU*) pulou="$$pulou $$s";; esac; \
-	done; \
-	echo; \
-	if [ -n "$$pulou" ]; then echo "PULARAM (servico fora do ar):$$pulou"; fi; \
-	if [ $$falhou -ne 0 ]; then echo "e2e: FALHOU"; exit 1; fi; \
-	echo "e2e: ok"
+	@./pool teste/e2e_roda.ps $(E2E)
 
 .PHONY: check-e2e
 

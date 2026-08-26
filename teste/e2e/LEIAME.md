@@ -19,7 +19,36 @@ virava `$1` no PostgreSQL.
 Script que não encontra o recurso imprime `PULOU` e o motivo — **não** passa
 calado nem falha a suíte por ausência de servidor.
 
-## jinker (servidor + cliente)
+## Rodar tudo
+
+```bash
+make check-e2e                 # todos
+make check-e2e E2E=jinker      # só o que casa com o filtro
+```
+
+O driver é `teste/e2e_roda.ps`, e ele conhece o PAPEL de cada script. Isso não
+é detalhe: o alvo antigo era um `for` sobre `*.ps`, o shell ordena
+alfabeticamente, e `jinker_cli.ps` rodava ANTES de `jinker_srv.ps` — cliente
+sem servidor morria com "Connection refused" e o servidor ficava servindo até
+o timeout. A orquestração certa existia aqui embaixo, em prosa, fora de tudo
+que roda; agora está no código.
+
+Três papéis, declarados no topo do driver:
+
+| papel | o que o driver faz |
+|---|---|
+| **par** (servidor + cliente) | sobe o servidor com `setsid`, **espera a porta aceitar conexão** (não dorme no escuro), roda o cliente, e mata o servidor aconteça o que acontecer |
+| **sozinho** | roda direto |
+| **sem par** | servidor sem cliente — bloquearia até o timeout. É RELATADO, não rodado |
+
+Todo script tem que ser **re-executável**: `jinker_srv.ps` falhava na primeira
+linha porque `os.mkdir` da pasta estática não aceitava a pasta que sobrou da
+rodada anterior. É a mesma família do E1 (teste que suja o ambiente) que a
+suíte principal fechou com `mkdtemp`+`chdir`.
+
+## jinker (servidor + cliente), na mão
+
+Se quiser rodar fora do driver — pra depurar o servidor, por exemplo:
 
 ```bash
 setsid ./pool teste/e2e/jinker_srv.ps > /tmp/ps_srv.log 2>&1 < /dev/null &
