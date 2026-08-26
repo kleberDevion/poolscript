@@ -5,7 +5,20 @@
 CC      ?= gcc
 # A versão é constante de header (vm/ps_versao.h) — o compilador resolve, sem
 # shell nenhum no meio.
-CFLAGS  ?= -O2 -Wall -Wextra -Wno-unused-parameter -I/usr/include/postgresql -I/usr/include/mysql -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
+# `-Wduplicated-branches` não vem no `-Wall -Wextra` e pegou dois defeitos
+# reais de uma vez: um `if` com os dois ramos iguais no lexer e um ternário
+# escolhendo entre dois nomes de tipo IDÊNTICOS no desempacotamento — este
+# último parecia distinguir "valores demais" de "insuficientes" pra quem faz
+# `catch (Tipo e)`, e não distinguia. Zero falso positivo aqui, então entra no
+# build de todo dia.
+#
+# `-Wlogical-op` e `-Wformat-truncation=2` NÃO entram: o primeiro acusa
+# `errno == EAGAIN || errno == EWOULDBLOCK` (que no Linux são o mesmo valor, e
+# escrever os dois é o idioma portável), e o segundo acusa ~20 truncamentos
+# deliberados (`%.200s`). Ruído nesse volume esconde o aviso de verdade. Os
+# dois ficam no alvo `avisos`, pra revisão de propósito.
+CFLAGS  ?= -O2 -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
+           -I/usr/include/postgresql -I/usr/include/mysql -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
            $(VM)/ps_compiler.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_guzer.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
@@ -16,8 +29,8 @@ FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
 # Depende do header de versão e do Makefile: um bump (ou mudança de flag)
 # força o relink, senão o `pool --version` fica preso no valor antigo porque
 # as fontes .c não mudaram.
-# O Makefile mora em rebuild/, mas as fontes e o binário são da RAIZ do
-# repositório: rode sempre `make -f rebuild/Makefile <alvo>` de lá.
+# Makefile, fontes e binário ficam todos na RAIZ do repositório: `make <alvo>`
+# de lá, sem `-f`.
 MK := $(lastword $(MAKEFILE_LIST))
 
 pool: $(FONTES) $(VM)/ps_versao.h $(MK)
@@ -113,9 +126,64 @@ pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
 
 # Análise estática do gcc: caminho de execução simbólico, acha vazamento,
 # desreferência de NULL e uso de não-inicializado sem rodar o programa.
+#
+# `-fsyntax-only` NÃO serve aqui: o gcc para antes do GIMPLE e o analisador
+# nunca chega a rodar — o alvo imprimia "nada" acontecesse o que acontecesse.
+# Tem que compilar de verdade, jogando o objeto fora.
+#
+# Um arquivo por invocação, e não todos de uma vez: o `poolscript_vm.c` sozinho
+# esgota a memória desta máquina quando analisado junto com os outros.
+# TETO DE MEMÓRIA, e ele não é opcional. Esta máquina tem 7,7 GB e costuma
+# estar com ~3,5 GB livres; o `-fanalyzer` num fonte grande passa de 6 GB
+# sozinho e o OOM killer derruba a sessão inteira, não só o gcc. O `ulimit -v`
+# faz o GCC desistir e reportar, em vez de levar a máquina junto.
+#
+# `poolscript_vm.c` (21.908 linhas) fica FORA por padrão pelo mesmo motivo: ele
+# nunca terminou aqui. Ele é relatado como não coberto — em voz alta, porque
+# omitir isso seria dizer "limpo" sobre metade do motor. Pra rodar mesmo assim,
+# numa máquina que aguente:
+#
+#     make analisa ANALISA_TUDO=1 ANALISA_MB=12000
+ANALISA_MB   ?= 2000
+ANALISA_TUDO ?=
+ANALISA_FORA := $(VM)/poolscript_vm.c
+ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FONTES)))
+
 analisa:
-	@$(CC) $(CFLAGS) -I$(VM) -fanalyzer -fsyntax-only $(FONTES) 2>&1 \
-	  | grep -E "warning|error" || echo "  -fanalyzer: nada"
+	@achou=0; faltou=""; \
+	for f in $(ANALISA_ALVO); do \
+	  saida=$$( (ulimit -v $$(($(ANALISA_MB) * 1024)); \
+	             nice -n 19 $(CC) $(CFLAGS) -I$(VM) -fanalyzer -c -o /dev/null $$f) 2>&1 ); \
+	  rc=$$?; \
+	  aviso=$$(printf '%s\n' "$$saida" | grep -E "warning:|error:" | grep -v "^cc1"); \
+	  if [ -n "$$aviso" ]; then achou=1; printf '%s\n' "$$aviso"; fi; \
+	  if [ $$rc -ne 0 ] && [ -z "$$aviso" ]; then faltou="$$faltou $$f"; fi; \
+	done; \
+	if [ $$achou -eq 0 ]; then echo "  -fanalyzer: nada nos analisados"; fi; \
+	if [ -n "$$faltou" ]; then \
+	  echo "  NAO TERMINARAM (teto de $(ANALISA_MB) MB):$$faltou"; fi; \
+	$(if $(ANALISA_TUDO),,echo "  FORA por padrao (grande demais p/ esta maquina): $(ANALISA_FORA)")
+
+# Valgrind: o que o ASan não pega — leitura de não-inicializado e o mapa de
+# vazamento com a pilha de quem alocou. Roda UM script por vez; é ~30x mais
+# lento que nativo, então não entra no `check`.
+#
+#     make memcheck PS=teste/e2e/ws.ps
+PS ?= /dev/null
+memcheck: pool
+	valgrind --leak-check=full --show-leak-kinds=definite,indirect \
+	         --track-origins=yes --error-exitcode=1 ./pool $(PS)
+
+.PHONY: memcheck
+
+# Avisos barulhentos, pra revisão deliberada — não entram no build de todo dia
+# porque o volume de truncamento intencional esconderia o achado de verdade.
+# Só compila (`-fsyntax-only` basta: aqui não há analisador envolvido).
+avisos:
+	@$(CC) $(CFLAGS) -Wlogical-op -Wformat-truncation=2 -Wshadow \
+	  -I$(VM) -fsyntax-only $(FONTES) 2>&1 | grep -E "warning:" | sort -u
+
+.PHONY: avisos
 
 .PHONY: analisa
 
@@ -125,3 +193,28 @@ check: pool testar
 	@./pool teste/confere_metadata.ps
 	@echo
 	@./pool lsp/teste_lsp.ps
+	@echo
+	@$(MAKE) --no-print-directory analisa
+	@echo
+	@echo "FORA deste portao: teste/e2e/ (banco, mail, socket, jinker, guzer,"
+	@echo "mongo, qrcode) — precisam de servico externo no ar. Rode:  make check-e2e"
+
+# E2E: cada script sobe o que precisa e checa de ponta a ponta. Fica fora do
+# `check` porque depende de serviço externo (Postgres, MySQL, mongod, SMTP) e
+# porque é pesado — nesta máquina, um de cada vez. Script sem o serviço no ar
+# imprime PULOU e sai 0; PULOU é relatado no fim, não some.
+check-e2e: pool
+	@falhou=0; pulou=""; \
+	for s in teste/e2e/*.ps; do \
+	  printf '── %s\n' "$$s"; \
+	  saida=$$(GUZER_HEADLESS=1 nice -n 19 timeout 120 ./pool "$$s" 2>&1); rc=$$?; \
+	  printf '%s\n' "$$saida"; \
+	  if [ $$rc -ne 0 ]; then falhou=1; fi; \
+	  case "$$saida" in *PULOU*) pulou="$$pulou $$s";; esac; \
+	done; \
+	echo; \
+	if [ -n "$$pulou" ]; then echo "PULARAM (servico fora do ar):$$pulou"; fi; \
+	if [ $$falhou -ne 0 ]; then echo "e2e: FALHOU"; exit 1; fi; \
+	echo "e2e: ok"
+
+.PHONY: check-e2e

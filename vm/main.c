@@ -176,7 +176,20 @@ static int cmd_build(void)
               || (l > 4 && strcmp(nm + l - 4, ".psl") == 0)
               || (l > 2 && strcmp(nm + l - 2, ".p")   == 0);
         if (!eh) continue;
-        if (n == cap) { cap = cap ? cap * 2 : 16; nomes = realloc(nomes, sizeof(char *) * (size_t)cap); }
+        if (n == cap) {
+            cap = cap ? cap * 2 : 16;
+            /* Por temporária: `x = realloc(x, …)` que falha devolve NULL SEM
+             * liberar o bloco antigo — perde-se a única referência a ele, e a
+             * linha seguinte escreve em NULL. */
+            char **novo = realloc(nomes, sizeof(char *) * (size_t)cap);
+            if (!novo) {
+                for (int i = 0; i < n; i++) free(nomes[i]);
+                free(nomes); closedir(d);
+                fprintf(stderr, "sem memoria listando a pasta\n");
+                return 1;
+            }
+            nomes = novo;
+        }
         nomes[n++] = strdup(ent->d_name);
     }
     closedir(d);

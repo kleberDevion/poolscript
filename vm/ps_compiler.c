@@ -2206,10 +2206,18 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     int32_t pi = sintetiza_init(c, n);
                     if (CFALHOU(c)) return;
                     def = &c->out->classes[ci];
+                    /* Cada campo é PUBLICADO assim que o realloc dele dá certo.
+                     * Guardar os dois pra publicar no fim parecia mais limpo e
+                     * era liberação dupla: o realloc que dá certo já soltou o
+                     * bloco antigo, então `free(mn)` no erro do SEGUNDO deixava
+                     * `def->met_nomes` apontando pra memória morta — e o
+                     * destrutor da classe passa lá liberando de novo. */
                     char **mn = realloc(def->met_nomes, sizeof(char *) * (size_t)(def->nmetodos + 1));
+                    if (!mn) { cerro(c, "sem memoria", n); return; }
+                    def->met_nomes = mn;
                     int32_t *mp = realloc(def->met_protos, sizeof(int32_t) * (size_t)(def->nmetodos + 1));
-                    if (!mn || !mp) { free(mn); free(mp); cerro(c, "sem memoria", n); return; }
-                    def->met_nomes = mn; def->met_protos = mp;
+                    if (!mp) { cerro(c, "sem memoria", n); return; }
+                    def->met_protos = mp;
                     def->met_nomes[def->nmetodos] = strdup("__init__");
                     def->met_protos[def->nmetodos] = pi;
                     def->nmetodos++;

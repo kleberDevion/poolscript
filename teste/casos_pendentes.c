@@ -1,7 +1,17 @@
 /*
- * Fila de trabalho: os achados da caça de 2026-08-25 que AINDA não foram
- * corrigidos. Cada caso descreve o comportamento CERTO — então falha até o
- * motor fazer certo. É de propósito: a suíte é a lista de tarefas.
+ * Fila de trabalho, e hoje ela está VAZIA: os 29 achados da caça de
+ * 2026-08-25 foram todos corrigidos. Eles continuam aqui como regressão —
+ * cada um trava um comportamento que já é o certo.
+ *
+ * O cabeçalho antigo dizia "falha até o motor fazer certo" enquanto os 29
+ * passavam. A fila tinha esvaziado sozinha e o arquivo continuava anunciando
+ * dívida que não existia; pior, um caso que quebrasse de verdade ficaria
+ * indistinguível de pendência velha.
+ *
+ * COMO ADICIONAR UMA PENDÊNCIA: escreva o caso com o comportamento CERTO e
+ * ponha `1` no último campo (`pendente`). Aí ele TEM que falhar — e no dia em
+ * que o motor acertar, o runner acusa "JA FUNCIONA" e manda tirar daqui. Não
+ * dá pra esquecer nem pra esvaziar em silêncio.
  *
  * Onde o interpretador (que não existe mais) e a VM discordavam, a decisão
  * está no comentário de cada bloco.

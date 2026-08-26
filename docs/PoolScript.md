@@ -1,4 +1,4 @@
-# PoolScript v8.3.45
+# PoolScript v8.3.54
 
 Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
 
@@ -8,7 +8,7 @@ Verificando:
 
 ```bash
 pool --version
-# PoolScript  v8.2.84
+# PoolScript 8.3.54 [PSVM]
 ```
 
 ---
@@ -51,7 +51,7 @@ pool repl
 ```
 
 ```
-PoolScript v8.3.45 — REPL
+PoolScript v8.3.54 — REPL
 Digite 'sair' ou Ctrl+C para sair.
 
 >>> str nome = "joao"
@@ -261,12 +261,16 @@ if (nota >= 9) {
 }
 ```
 
-Estilo Python com `:` também funciona:
+Bloco é sempre `{ }` — `:` não abre bloco na linguagem. A chave pode ficar na
+linha seguinte (estilo Allman), e dá no mesmo:
 
 ```
-if (nota >= 7) {
+if (nota >= 7)
+{
     post("Aprovado")
-} else {
+}
+else
+{
     post("Reprovado")
 }
 ```
@@ -601,9 +605,61 @@ post(VERSAO)       # 1.0
 | `input(msg)` | Lê entrada do usuário |
 | `len(x)` | Tamanho de lista, string ou dict |
 | `range(n)` | Lista de 0 até n-1 |
-| `type(x)` | Tipo do valor |
+| `type(x)` | Nome do tipo do valor, em texto — ver [Testar o tipo](#testar-o-tipo) |
 | `open(path, mode="r", encoding="utf-8")` | Abre arquivo — devolve `FileHandle` (`.read()`, `.readlines()`, `.readline()`, `.write(texto)`, `.writelines(lista)`, `.close()`). Use com `using` pra fechar automático |
 | `load()` | Carrega o .env |
+
+### Testar o tipo
+
+A forma canônica é o operador **`is`**, o mesmo que se usa pra testar nulo:
+
+```poolscript
+if x is int {
+    post("é inteiro")
+}
+if x not is none {
+    post("tem valor")
+}
+```
+
+`type(x)` devolve o **nome** do tipo em texto — serve pra mostrar e pra
+registrar, não é o tipo em si:
+
+```poolscript
+post(type(200))     # int
+post(type("a"))     # str
+post(type(none))    # Null
+post(type(1.5))     # flo
+```
+
+Os nomes são `str`, `int`, `flo`, `bool`, `list`, `dict`, `tup`, `Null`,
+`type`, `module` e, pra instância, o nome da Entity. Não existe nome `char` em
+tempo de execução: `chr(65)` é `str`.
+
+Comparar o resultado funciona das duas maneiras — com o nome em texto ou com a
+referência de tipo:
+
+```poolscript
+post(type(200) == "int")   # True
+post(type(200) == int)     # True
+```
+
+> As duas escrevem `int` na tela, então elas se comparam pelo nome. Sem isso,
+> `type(200) == int` daria **falso calado**: o `if` nunca entrava e ninguém era
+> avisado.
+
+Para instância de Entity, `is` compara a **classe exata** — ele não sobe pela
+herança:
+
+```poolscript
+Entity Animal() { }
+Entity Gato(Animal) { }
+g = Gato()
+
+post(type(g))            # Gato
+post(g is Gato)          # True
+post(g is Animal)        # False — classe exata, herança não conta
+```
 
 ### post.flush()
 

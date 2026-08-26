@@ -26,6 +26,12 @@ typedef struct {
      * precisa saber como se chama — é o caso do `import` de si mesmo. NULL =
      * nome aleatório do mkstemp, que é o normal. */
     const char *arquivo;
+    /* 1 = PENDENTE: o caso descreve o comportamento certo de algo que o motor
+     * ainda NÃO faz, então tem que falhar. Se ele passar, a falha é a de
+     * inverter: "isto já funciona, tire da fila". Sem isso, a fila esvazia
+     * sozinha e ninguém percebe — foi o que aconteceu com os 29 achados de
+     * 2026-08-25, todos corrigidos, com o cabeçalho ainda dizendo o contrário. */
+    int         pendente;
 } Caso;
 
 typedef struct {

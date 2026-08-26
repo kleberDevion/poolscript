@@ -26,6 +26,10 @@ MAX_DIGITO = 99
 ARQUIVOS = [
     ["vm/ps_versao.h",     "#define PS_VERSAO \"(\\d+\\.\\d+\\.\\d+)\"", "#define PS_VERSAO \""],
     ["docs/PoolScript.md", "PoolScript v(\\d+\\.\\d+\\.\\d+)",           "PoolScript v"],
+    # A doc mostra a saída LITERAL do `pool --version`, que não tem o "v" e tem
+    # o sufixo [PSVM]. Sem esta entrada essa linha não subia junto e ficava
+    # anunciando uma versão velha dentro do próprio arquivo da versão nova.
+    ["docs/PoolScript.md", "PoolScript (\\d+\\.\\d+\\.\\d+) \\[PSVM\\]",  "PoolScript "],
     ["poolscript.md",      "Versão mais recente — \\*\\*(\\d+\\.\\d+\\.\\d+)\\*\\*", "Versão mais recente — **"]
 ]
 

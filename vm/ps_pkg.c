@@ -227,10 +227,23 @@ static void ensure_bin_no_path(const char *home)
 
 static void write_shim(const char *home, const char *name, const char *ps_path)
 {
+    /* O `snprintf` devolve o que TERIA escrito, não o que escreveu. Passar esse
+     * número adiante num caso truncado fazia o `escrever_txt` ler ALÉM do
+     * buffer — e o shim gravado apontaria pra um caminho cortado, que é um
+     * comando quebrado em silêncio. Os dois são recusados. */
     char shim[1200];
-    snprintf(shim, sizeof(shim), "%s/bin/%s", home, name);
+    int ns = snprintf(shim, sizeof(shim), "%s/bin/%s", home, name);
+    if (ns < 0 || (size_t)ns >= sizeof(shim)) {
+        fprintf(stderr, "caminho do comando '%s' longo demais — nao instalei\n", name);
+        return;
+    }
     char corpo[1400];
     int n = snprintf(corpo, sizeof(corpo), "#!/bin/sh\nexec pool \"%s\" \"$@\"\n", ps_path);
+    if (n < 0 || (size_t)n >= sizeof(corpo)) {
+        fprintf(stderr, "caminho '%s' longo demais para o comando '%s' — nao instalei\n",
+                ps_path, name);
+        return;
+    }
     if (escrever_txt(shim, corpo, (size_t)n) == 0) chmod(shim, 0755);
 }
 

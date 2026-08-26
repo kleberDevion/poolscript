@@ -15,10 +15,40 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/wait.h>
+#include <poll.h>
+#include <dirent.h>
+#include <limits.h>
 
 #include "ps_teste.h"
 
 #define POOL "./pool"
+
+/* Caminho ABSOLUTO do binário, resolvido uma vez. O filho faz `chdir` pra um
+ * diretório próprio antes do exec (ver `roda`), e daí `./pool` não existe
+ * mais. */
+static char POOL_ABS[4096];
+static void resolve_pool(void)
+{
+    if (POOL_ABS[0]) return;
+    if (!realpath(POOL, POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", POOL);
+}
+
+/* Apaga o diretório do caso. Um nível de recursão basta: caso que cria
+ * subpasta (`__DIR__/sub/`) não passa de dois. */
+static void apaga_arvore(const char *dir)
+{
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
+        char p[4096];
+        snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
+        if (unlink(p) != 0) apaga_arvore(p);   /* era diretório */
+    }
+    closedir(d);
+    rmdir(dir);
+}
 #define TEMPO_MAX 20        /* segundos por caso: caso que trava é FALHA */
 
 static const Grupo GRUPOS[] = {
@@ -60,19 +90,50 @@ typedef struct {
     int   estourou;   /* 1 = passou do TEMPO_MAX */
 } Resultado;
 
-static char *le_tudo(int fd)
+/* Lê os DOIS canos ao mesmo tempo.
+ *
+ * Ler um até o fim e só então o outro é o impasse clássico: cada cano guarda
+ * 64 KB, então um caso que despeje mais que isso no stderr enche o cano, o
+ * filho bloqueia escrevendo, e o pai fica esperando um stdout que nunca chega.
+ * O `alarm(20)` quebrava o abraço e o caso era relatado como "TRAVOU" — falha
+ * que não existia. Com `poll` nos dois, nenhum dos lados espera o outro. */
+typedef struct { char *b; size_t n, cap; int aberto; } Cano;
+
+static int cano_le(Cano *c, int fd)
 {
-    size_t cap = 4096, n = 0;
-    char *b = malloc(cap);
-    if (!b) return NULL;
-    for (;;) {
-        if (n + 1024 > cap) { cap *= 2; char *nb = realloc(b, cap); if (!nb) { free(b); return NULL; } b = nb; }
-        ssize_t r = read(fd, b + n, cap - n - 1);
-        if (r <= 0) break;
-        n += (size_t)r;
+    if (c->n + 4096 > c->cap) {
+        size_t nc = c->cap ? c->cap * 2 : 8192;
+        while (nc < c->n + 4096) nc *= 2;
+        char *nb = realloc(c->b, nc);
+        if (!nb) return -1;
+        c->b = nb; c->cap = nc;
     }
-    b[n] = '\0';
-    return b;
+    ssize_t r = read(fd, c->b + c->n, c->cap - c->n - 1);
+    if (r <= 0) { c->aberto = 0; return 0; }
+    c->n += (size_t)r;
+    return 0;
+}
+
+static int le_os_dois(int fo, int fe, char **saida, char **erro)
+{
+    Cano so = {0}, se = {0};
+    so.aberto = se.aberto = 1;
+    while (so.aberto || se.aberto) {
+        struct pollfd pf[2];
+        int np = 0;
+        int io = -1, ie = -1;
+        if (so.aberto) { io = np; pf[np].fd = fo; pf[np].events = POLLIN; np++; }
+        if (se.aberto) { ie = np; pf[np].fd = fe; pf[np].events = POLLIN; np++; }
+        if (poll(pf, (nfds_t)np, -1) < 0) { if (errno == EINTR) continue; break; }
+        if (io >= 0 && (pf[io].revents & (POLLIN | POLLHUP)) && cano_le(&so, fo) != 0) break;
+        if (ie >= 0 && (pf[ie].revents & (POLLIN | POLLHUP)) && cano_le(&se, fe) != 0) break;
+    }
+    if (!so.b) { so.b = malloc(1); so.cap = 1; }
+    if (!se.b) { se.b = malloc(1); se.cap = 1; }
+    if (!so.b || !se.b) { free(so.b); free(se.b); return -1; }
+    so.b[so.n] = '\0'; se.b[se.n] = '\0';
+    *saida = so.b; *erro = se.b;
+    return 0;
 }
 
 static void solta(Resultado *r) { free(r->saida); free(r->erro); r->saida = r->erro = NULL; }
@@ -98,6 +159,14 @@ static int roda(const Caso *c, Resultado *out)
         snprintf(unico, sizeof(unico), "%s_%d", base, (int)getpid());
         snprintf(arquivo, sizeof(arquivo), "/tmp/%s.ps", unico);
         /* troca cada ocorrência do nome base pelo nome único, no fonte */
+        /* Se o fonte não couber, o caso roda um programa PELA METADE e a
+         * comparação vale nada — falha calada, do pior tipo. Melhor recusar. */
+        if (strlen(c->fonte) + 64 >= sizeof(fonte_ajustada)) {
+            fprintf(stderr, "caso '%s': fonte de %zu bytes nao cabe em %zu — "
+                            "aumente fonte_ajustada[] em ps_teste.c\n",
+                    c->nome, strlen(c->fonte), sizeof(fonte_ajustada));
+            return -1;
+        }
         size_t nb = strlen(base), j = 0;
         for (const char *q = c->fonte; *q && j < sizeof(fonte_ajustada) - 256; ) {
             if (strncmp(q, base, nb) == 0) {
@@ -123,9 +192,19 @@ static int roda(const Caso *c, Resultado *out)
     int po[2], pe[2];
     if (pipe(po) != 0 || pipe(pe) != 0) { unlink(arquivo); return -1; }
 
+    /* Cada caso roda num diretório SÓ DELE. Sem isso, um caso com caminho
+     * relativo (`os.writeFile("__DIR__/sub/nota.txt")`) grava na pasta de onde
+     * a suíte foi chamada — a raiz do repositório — e o arquivo acaba
+     * versionado. Aconteceu: `__DIR__/` e `__DOCS__/` estavam no git.
+     * Com o `chdir`, a classe inteira fica impossível, não só os dois casos. */
+    resolve_pool();
+    char dir_caso[] = "/tmp/ps_caso_XXXXXX";
+    const char *dir_ok = mkdtemp(dir_caso);
+
     pid_t pid = fork();
-    if (pid < 0) { unlink(arquivo); return -1; }
+    if (pid < 0) { unlink(arquivo); if (dir_ok) apaga_arvore(dir_caso); return -1; }
     if (pid == 0) {
+        if (dir_ok) { if (chdir(dir_caso) != 0) _exit(126); }
         dup2(po[1], STDOUT_FILENO); dup2(pe[1], STDERR_FILENO);
         close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
         /* stdin fechado (= /dev/null): caso nenhum pode ler o terminal. Sem
@@ -137,17 +216,21 @@ static int roda(const Caso *c, Resultado *out)
          * script e ficaria esperando o usuário fechar — o caso "travava" por
          * 20s e virava falha. Headless monta a árvore e não exibe. */
         setenv("GUZER_HEADLESS", "1", 1);
-        execl(POOL, POOL, arquivo, (char *)NULL);
+        execl(POOL_ABS, POOL_ABS, arquivo, (char *)NULL);
         _exit(127);
     }
     close(po[1]); close(pe[1]);
-    out->saida = le_tudo(po[0]);
-    out->erro  = le_tudo(pe[0]);
+    if (le_os_dois(po[0], pe[0], &out->saida, &out->erro) != 0) {
+        close(po[0]); close(pe[0]); waitpid(pid, NULL, 0);
+        unlink(arquivo); if (dir_ok) apaga_arvore(dir_caso);
+        return -1;
+    }
     close(po[0]); close(pe[0]);
 
     int st = 0;
     waitpid(pid, &st, 0);
     unlink(arquivo);
+    if (dir_ok) apaga_arvore(dir_caso);
     if (WIFSIGNALED(st)) {
         out->sinal = WTERMSIG(st);
         out->estourou = (out->sinal == SIGALRM);
@@ -243,6 +326,21 @@ int main(int argc, char **argv)
                 continue;
             }
             const char *motivo = confere(c, &r);
+            /* Caso pendente TEM que falhar: ele descreve o que o motor ainda
+             * não faz. Passar significa que já foi corrigido, e aí o veredito
+             * se inverte — senão a fila esvazia sem ninguém saber. */
+            if (c->pendente) {
+                if (motivo) {
+                    passou++;
+                    if (verboso) printf("  pendente (falha esperada)  %s\n", c->nome);
+                } else {
+                    printf("  JA FUNCIONA  %s\n     tire de casos_pendentes.c e "
+                           "mova pro grupo de regressao a que pertence\n", c->nome);
+                    falhou++;
+                }
+                solta(&r);
+                continue;
+            }
             if (motivo) {
                 printf("  FALHOU  %s\n     %s\n", c->nome, motivo);
                 /* Grava também em arquivo. Uma falha INTERMITENTE some da tela

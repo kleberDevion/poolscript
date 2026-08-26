@@ -64,6 +64,11 @@ int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
     /* monta um array JSON com os docs */
     size_t cap = 256, n = 1;
     char *out = malloc(cap);
+    if (!out) {
+        mongoc_cursor_destroy(cur); mongoc_collection_destroy(c); bson_destroy(q);
+        snprintf(erro, ecap, "sem memoria");
+        return -1;
+    }
     out[0] = '['; out[1] = 0;
     const bson_t *doc;
     int primeiro = 1;
@@ -71,7 +76,20 @@ int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
         size_t jlen;
         char *dj = bson_as_relaxed_extended_json(doc, &jlen);
         if (!dj) continue;
-        if (n + jlen + 4 > cap) { while (n + jlen + 4 > cap) cap *= 2; out = realloc(out, cap); }
+        if (n + jlen + 4 > cap) {
+            while (n + jlen + 4 > cap) cap *= 2;
+            /* Por temporária: o realloc que falha devolve NULL sem liberar o
+             * antigo, e `out = NULL` perdia o buffer inteiro montado até aqui
+             * — mais o `memcpy` em NULL logo abaixo. */
+            char *novo = realloc(out, cap);
+            if (!novo) {
+                bson_free(dj); free(out);
+                mongoc_cursor_destroy(cur); mongoc_collection_destroy(c); bson_destroy(q);
+                snprintf(erro, ecap, "sem memoria");
+                return -1;
+            }
+            out = novo;
+        }
         if (!primeiro) out[n++] = ',';
         memcpy(out + n, dj, jlen); n += jlen; out[n] = 0;
         bson_free(dj);

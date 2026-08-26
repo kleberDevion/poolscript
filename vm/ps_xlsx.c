@@ -150,11 +150,22 @@ static unsigned char *le_arquivo_todo(const char *caminho, size_t *n)
 
 /* ── parse do XML (expat) ───────────────────────────────────────────────── */
 /* pequeno buffer de string */
-typedef struct { char *b; size_t n, cap; } Buf;
+/* `falhou` existe porque estes acumuladores são usados dentro dos callbacks do
+ * expat, que não têm como devolver erro. O realloc que falha marca a flag e
+ * para de escrever; quem montou o Buf confere a flag no fim. Sem isso, o
+ * `x = realloc(x, …)` perdia o bloco antigo e o memcpy seguinte escrevia em
+ * NULL. */
+typedef struct { char *b; size_t n, cap; int falhou; } Buf;
 
 /* sharedStrings.xml: <si><t>texto</t></si>. Coletamos o texto de cada <si>. */
 static void buf_add(Buf *b, const char *s, int n) {
-    if (b->n + (size_t)n + 1 > b->cap) { size_t c=b->cap<64?64:b->cap; while(c<b->n+n+1)c*=2; b->b=realloc(b->b,c); b->cap=c; }
+    if (b->falhou) return;
+    if (b->n + (size_t)n + 1 > b->cap) {
+        size_t c=b->cap<64?64:b->cap; while(c<b->n+n+1)c*=2;
+        char *nb = realloc(b->b, c);
+        if (!nb) { b->falhou = 1; return; }
+        b->b=nb; b->cap=c;
+    }
     memcpy(b->b + b->n, s, (size_t)n); b->n += n; b->b[b->n]=0;
 }
 
@@ -175,7 +186,15 @@ static void XMLCALL sst_fim(void *u, const XML_Char *nome) {
     SSTCtx *c = u;
     if (strcmp(nome,"t")==0) c->em_t=0;
     else if (strcmp(nome,"si")==0) {
-        if (c->nstrs+1 > c->cap) { c->cap=c->cap<16?16:c->cap*2; c->strs=realloc(c->strs,sizeof(char*)*c->cap); }
+        if (c->nstrs+1 > c->cap) {
+            size_t nc = c->cap<16?16:c->cap*2;
+            char **ns = realloc(c->strs, sizeof(char*)*nc);
+            /* Callback do expat não devolve erro; marca no `cur` e para, como
+             * o `buf_add`. Sem isso, `c->strs = NULL` perdia a tabela inteira
+             * de strings e a linha seguinte escrevia em NULL. */
+            if (!ns) { c->cur.falhou = 1; return; }
+            c->strs = ns; c->cap = nc;
+        }
         c->strs[c->nstrs++] = strdup(c->cur.b ? c->cur.b : "");
     }
 }
@@ -254,6 +273,17 @@ int ps_xlsx_le(const char *caminho, PSGrade *g, char *erro, size_t ecap)
         XML_Parse(p, ss, (int)nss, 1);
         XML_ParserFree(p);
         free(ss);
+        /* Os callbacks do expat não devolvem erro, então uma falha de memória
+         * lá dentro só chega aqui pela flag. Sem conferir, a tabela de textos
+         * viria PELA METADE e a planilha abriria com célula em branco no lugar
+         * do dado — flag que ninguém lê é o mesmo silêncio de não ter flag. */
+        if (sc.cur.falhou) {
+            free(zip);
+            for (int i = 0; i < sc.nstrs; i++) free(sc.strs[i]);
+            free(sc.strs); free(sc.cur.b);
+            snprintf(erro, ecap, "sem memoria lendo os textos de '%s'", caminho);
+            return -1;
+        }
     }
 
     /* a primeira planilha */
@@ -286,9 +316,17 @@ int ps_xlsx_le(const char *caminho, PSGrade *g, char *erro, size_t ecap)
 }
 
 /* ── ZIP: escrita ───────────────────────────────────────────────────────── */
-typedef struct { unsigned char *b; size_t n, cap; } Out;
+/* Mesmo desenho do `Buf`: `out_add` é chamado dezenas de vezes seguidas pra
+ * montar o ZIP e não tem como devolver erro em cada uma. Marca e para. */
+typedef struct { unsigned char *b; size_t n, cap; int falhou; } Out;
 static void out_add(Out *o, const void *d, size_t n) {
-    if (o->n + n > o->cap) { size_t c=o->cap<4096?4096:o->cap; while(c<o->n+n)c*=2; o->b=realloc(o->b,c); o->cap=c; }
+    if (o->falhou) return;
+    if (o->n + n > o->cap) {
+        size_t c=o->cap<4096?4096:o->cap; while(c<o->n+n)c*=2;
+        unsigned char *nb = realloc(o->b, c);
+        if (!nb) { o->falhou = 1; return; }
+        o->b=nb; o->cap=c;
+    }
     memcpy(o->b + o->n, d, n); o->n += n;
 }
 static void out32(Out *o, uint32_t v) { unsigned char b[4]={v&255,(v>>8)&255,(v>>16)&255,(v>>24)&255}; out_add(o,b,4); }
@@ -299,13 +337,18 @@ typedef struct { char *nome; unsigned char *comp; size_t ncomp, norig; uint32_t 
 
 static int zip_add(Out *zip, ZEntry *e, const char *nome, const char *dados, size_t n)
 {
+    /* Em falha esta função tem que deixar `e` VAZIO: quem chama libera de 0 a
+     * i-1 e não toca na entrada que falhou, então o que ficar aqui não é
+     * liberado por ninguém. */
+    e->nome = NULL; e->comp = NULL; e->ncomp = 0;
     e->nome = strdup(nome);
+    if (!e->nome) return -1;
     e->norig = n;
     e->crc = crc32(0, (const Bytef *)dados, (uInt)n);
     /* raw deflate */
     uLongf cap = compressBound((uLong)n) + 16;
     unsigned char *comp = malloc(cap);
-    if (!comp) return -1;
+    if (!comp) { free(e->nome); e->nome = NULL; return -1; }
     z_stream zs; memset(&zs,0,sizeof(zs));
     deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY);
     zs.next_in=(Bytef*)dados; zs.avail_in=(uInt)n;
@@ -434,9 +477,25 @@ int ps_xlsx_escreve(const char *caminho, const PSGrade *g, char *erro, size_t ec
     out32(&zip,cd_tam); out32(&zip,cd_ini); out16(&zip,0);
 
     int rc = 0;
-    FILE *f = fopen(caminho, "wb");
-    if (!f) { snprintf(erro, ecap, "nao consegui escrever '%s'", caminho); rc=-1; }
-    else { fwrite(zip.b, 1, zip.n, f); fclose(f); }
+    if (zip.falhou || sheet.falhou) {
+        snprintf(erro, ecap, "sem memoria montando '%s'", caminho);
+        rc = -1;
+    } else {
+        FILE *f = fopen(caminho, "wb");
+        if (!f) { snprintf(erro, ecap, "nao consegui escrever '%s'", caminho); rc=-1; }
+        else {
+            /* Os três têm que ser conferidos. O `fwrite` só enche o buffer da
+             * libc; o disco cheio costuma aparecer no flush, e o flush é o
+             * `fclose`. Descartar o retorno dele é gravar, fechar, e o arquivo
+             * estar truncado sem ninguém saber. */
+            size_t esc = fwrite(zip.b, 1, zip.n, f);
+            int erro_fluxo = ferror(f);
+            if (fclose(f) != 0 || erro_fluxo || esc != zip.n) {
+                snprintf(erro, ecap, "falha gravando '%s' (disco cheio?)", caminho);
+                rc = -1;
+            }
+        }
+    }
 
     free(sheet.b); free(zip.b);
     for (int i=0;i<np;i++){free(ents[i].nome);free(ents[i].comp);}

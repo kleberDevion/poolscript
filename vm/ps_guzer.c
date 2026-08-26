@@ -213,7 +213,13 @@ static int guz_video_abre(GuzVideo *v, const PSGuzWidget *w)
     v->tam = (size_t)(w->w > 0 ? w->w : 320) * (size_t)(w->h > 0 ? w->h : 240) * 3;
     v->acc = malloc(v->tam);
     v->px  = malloc(sizeof(unsigned) * (v->tam / 3));
-    if (!v->acc || !v->px) { free(v->acc); free(v->px); close(v->fd); v->fd = -1; }
+    /* Zerar os dois é obrigatório, não asseio: `guz_video_fecha` libera os
+     * mesmos campos, e ponteiro pendurado aqui vira liberação dupla lá. */
+    if (!v->acc || !v->px) {
+        free(v->acc); v->acc = NULL;
+        free(v->px);  v->px  = NULL;
+        close(v->fd); v->fd = -1;
+    }
     return v->fd >= 0 ? 0 : -1;
 }
 
@@ -294,8 +300,11 @@ int ps_guz_run(const char *titulo, const char *icone,
     /* mídia: vídeo(s) por pipe de frames; áudio (e trilha do vídeo) no ffplay */
     int tem_ffmpeg = guz_tem_cmd("ffmpeg");
     int tem_ffplay = guz_tem_cmd("ffplay");
-    GuzVideo vids[8]; int nvids = 0;
-    pid_t auds[16]; int nauds = 0;
+    /* Zerados na declaração: os limites abaixo (`nvids < 8`) já impedem o
+     * estouro, mas lixo de pilha num `fd` é a diferença entre não usar e
+     * fechar o descritor de outra pessoa se um caminho novo esquecer o limite. */
+    GuzVideo vids[8] = {0}; int nvids = 0;
+    pid_t auds[16] = {0}; int nauds = 0;
     for (int i = 0; i < n; i++) {
         const PSGuzWidget *w = &widgets[i];
         if (!w->src || (w->kind != PSGUZ_VIDEO && w->kind != PSGUZ_AUDIO)) continue;

@@ -730,7 +730,14 @@ int ps_jk_multipart(const char *corpo, size_t n, const char *boundary,
                     out[np].ctype = dup_faixa(ct, ce);
                 }
                 out[np].dados = malloc(nd + 1);
-                if (!out[np].dados) { free(cabs); ps_jk_partes_solta(out, np); return -1; }
+                if (!out[np].dados) {
+                    /* `np` ainda não avançou, então o `solta` abaixo varre só
+                     * até a parte ANTERIOR — os três campos desta parte já
+                     * estão alocados e ficariam para trás. O jinker é processo
+                     * longo: vazamento aqui acumula requisição após requisição. */
+                    free(out[np].campo); free(out[np].filename); free(out[np].ctype);
+                    free(cabs); ps_jk_partes_solta(out, np); return -1;
+                }
                 memcpy(out[np].dados, db, nd);
                 out[np].dados[nd] = '\0';
                 out[np].ndados = nd;

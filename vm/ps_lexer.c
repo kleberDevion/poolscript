@@ -586,8 +586,7 @@ static void le_ident(Lexer *lx)
     PSToken *tk = novo_token(lx, tipo, lx->linha, c0);
     if (!tk) return;
     if (tipo == T_BOOL) tk->i = valor_bool;
-    if (tipo != T_NULL) guarda_texto(lx, tk, txt, n);
-    else                guarda_texto(lx, tk, txt, n);
+    guarda_texto(lx, tk, txt, n);
 }
 
 /* ── cor: <hex> ou <nome> ───────────────────────────────────────────────── */

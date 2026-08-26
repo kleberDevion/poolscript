@@ -2253,6 +2253,19 @@ static int val_iguais(const Value *a, const Value *b)
     if (EH_MODEL(*a)) return model_valida(COMO_MODEL(*a), b);
     /* duas referências ao mesmo tipo são o mesmo valor — `str == str` */
     if (a->t == V_TIPO && b->t == V_TIPO) return a->as.i == b->as.i;
+    /* `type(x)` devolve o NOME do tipo em texto, e a referência de tipo IMPRIME
+     * esse mesmo nome. Sem esta ponte, `type(200) == int` seria falso enquanto
+     * os dois lados escrevem "int" na tela — mentira calada, do tipo que faz o
+     * `if` inteiro nunca entrar sem dar erro nenhum. Aqui os dois se encontram
+     * pelo nome. (A forma canônica de testar tipo continua sendo `x is int`.) */
+    if (a->t == V_TIPO && EH_STRING(*b)) {
+        PSString *s = COMO_STRING(*b);
+        return strcmp(s->chars, NOME_TIPO[a->as.i]) == 0;
+    }
+    if (b->t == V_TIPO && EH_STRING(*a)) {
+        PSString *s = COMO_STRING(*a);
+        return strcmp(s->chars, NOME_TIPO[b->as.i]) == 0;
+    }
     if (a->t == V_TIPO || b->t == V_TIPO) return 0;
     /* int/float/bool se comparam por valor numérico — bool é subtipo de int
      * (true==1, false==0), como no interpretador. int==int e bool==bool já
@@ -5636,6 +5649,23 @@ static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+/* Grava e CONFERE. O `fwrite` devolve quantos itens saíram, e menor que o
+ * pedido é erro; `ferror` acumula a falha do fluxo, que às vezes só aparece
+ * depois. Sem estes dois, "disco cheio" virava um número menor no retorno que
+ * nenhum script confere — grava, fecha, e o arquivo está truncado.
+ * Devolve 0, ou -1 já com a mensagem posta em `porque`. */
+static int arq_grava(FILE *f, const void *dados, size_t n, const char **porque)
+{
+    if (n == 0) return 0;
+    size_t w = fwrite(dados, 1, n, f);
+    if (w != n || ferror(f)) {
+        *porque = (w != n) ? "gravacao incompleta (disco cheio?)"
+                           : "falha no fluxo durante a gravacao";
+        return -1;
+    }
+    return 0;
+}
+
 static int met_a_write(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "write", 1);
@@ -5643,21 +5673,25 @@ static int met_a_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (arq_exige(vm, alvo, "write", &a) != 0) return -1;
     /* não-string vira texto, como o FileHandle do interpretador faz */
     TXTBUF_AUTO t = {0};
+    const char *porque = NULL;
     if (EH_STRING(args[0])) {
         PSString *ss = COMO_STRING(args[0]);
-        size_t w = fwrite(ss->chars, 1, (size_t)ss->len, a->f);
-        *out = MK_INT((int64_t)w);
+        if (arq_grava(a->f, ss->chars, (size_t)ss->len, &porque) != 0)
+            MERRO(vm, "IOError", "write() em '%.180s': %s", a->caminho, porque);
+        *out = MK_INT((int64_t)ss->len);
         return 0;
     }
     if (EH_BYTES(args[0])) {                 /* bytes crus (ex.: req.content) */
         PSString *by = COMO_BYTES(args[0]);
-        size_t w = fwrite(by->chars, 1, (size_t)by->len, a->f);
-        *out = MK_INT((int64_t)w);
+        if (arq_grava(a->f, by->chars, (size_t)by->len, &porque) != 0)
+            MERRO(vm, "IOError", "write() em '%.180s': %s", a->caminho, porque);
+        *out = MK_INT((int64_t)by->len);
         return 0;
     }
     if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-    size_t w = fwrite(t.b ? t.b : "", 1, (size_t)t.n, a->f);
-    *out = MK_INT((int64_t)w);
+    if (arq_grava(a->f, t.b ? t.b : "", (size_t)t.n, &porque) != 0)
+        MERRO(vm, "IOError", "write() em '%.180s': %s", a->caminho, porque);
+    *out = MK_INT((int64_t)t.n);
     return 0;
 }
 
@@ -5671,14 +5705,19 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
     for (int i = 0; i < l->len; i++) {
         /* bytes vão CRUS, como no write(): antes caíam no valor_para_texto e
          * o arquivo recebia a representação `b'a'` em vez do byte. */
+        const char *porque = NULL;
         if (EH_BYTES(l->itens[i])) {
             PSString *by = COMO_BYTES(l->itens[i]);
-            fwrite(by->chars, 1, (size_t)by->len, a->f);
+            if (arq_grava(a->f, by->chars, (size_t)by->len, &porque) != 0)
+                MERRO(vm, "IOError", "writelines() em '%.180s', linha %d: %s",
+                      a->caminho, i, porque);
             continue;
         }
         TXTBUF_AUTO t = {0};
         if (valor_para_texto(&t, &l->itens[i], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-        fwrite(t.b ? t.b : "", 1, (size_t)t.n, a->f);
+        if (arq_grava(a->f, t.b ? t.b : "", (size_t)t.n, &porque) != 0)
+            MERRO(vm, "IOError", "writelines() em '%.180s', linha %d: %s",
+                  a->caminho, i, porque);
     }
     *out = MK_NULL();
     return 0;
@@ -5690,7 +5729,18 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n != 0) MERRO(vm, "SomeValueUnexpected", "close() nao aceita argumento");
     if (!EH_ARQUIVO(alvo)) MERRO(vm, "SomeValueUnexpected", "close() espera um arquivo");
     PSArquivo *a = COMO_ARQ(alvo);
-    if (!a->fechado && a->f) { fclose(a->f); a->f = NULL; a->fechado = 1; }
+    /* O `fclose` faz o flush final, e é ali que o disco cheio costuma aparecer
+     * — o `fwrite` só encheu o buffer da libc. Descartar este retorno é fechar
+     * um arquivo truncado dizendo que deu certo. O `fechado` é marcado ANTES
+     * de o erro subir: o descritor já foi embora de qualquer jeito, e deixar o
+     * objeto "aberto" faria o finalizador do GC fechar de novo. */
+    if (!a->fechado && a->f) {
+        FILE *f = a->f;
+        a->f = NULL; a->fechado = 1;
+        if (fclose(f) != 0)
+            MERRO(vm, "IOError", "close() em '%.180s': falha gravando o que faltava "
+                                 "(disco cheio?)", a->caminho);
+    }
     *out = MK_NULL();
     return 0;
 }
@@ -5728,9 +5778,22 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!src) MERRO(vm, "IOError", "nao consegui ler '%.180s'", a->caminho);
         FILE *dst = fopen(caminho, "wb");
         if (!dst) { fclose(src); MERRO(vm, "IOError", "nao consegui escrever '%.180s'", caminho); }
+        /* Os TRÊS pontos são conferidos, e cada um pega uma falha diferente:
+         * o `fwrite` curto (disco cheio na hora), o `ferror(src)` (leitura que
+         * parou por erro e não por fim de arquivo — indistinguíveis pelo
+         * `fread`), e o `fclose(dst)` (o flush final). Sem eles, cópia
+         * truncada voltava como sucesso, devolvendo o caminho do destino. */
         char buf[8192]; size_t r;
-        while ((r = fread(buf, 1, sizeof(buf), src)) > 0) fwrite(buf, 1, r, dst);
-        fclose(src); fclose(dst);
+        const char *porque = NULL;
+        while ((r = fread(buf, 1, sizeof(buf), src)) > 0)
+            if (arq_grava(dst, buf, r, &porque) != 0) break;
+        if (!porque && ferror(src)) porque = "falha lendo a origem";
+        fclose(src);
+        if (fclose(dst) != 0 && !porque) porque = "falha gravando o que faltava (disco cheio?)";
+        if (porque) {
+            remove(caminho);   /* não deixa meia cópia no lugar do arquivo bom */
+            MERRO(vm, "IOError", "copy() para '%.180s': %s", caminho, porque);
+        }
     }
     PSString *s = nova_string(vm, caminho, (int)strlen(caminho));
     if (!s) MERRO(vm, "MemoryError", "sem memoria");
@@ -13462,7 +13525,15 @@ static void XMLCALL mp_xml_ini(void *u, const XML_Char *nome, const XML_Char **a
     if (c->prof == 0) c->raiz = no;
     else {
         MpXmlNo *pai = c->pilha[c->prof - 1];
-        if (pai->nf >= pai->cap) { pai->cap = pai->cap < 4 ? 4 : pai->cap * 2; pai->filhos = realloc(pai->filhos, sizeof(MpXmlNo*) * pai->cap); }
+        if (pai->nf >= pai->cap) {
+            int nc = pai->cap < 4 ? 4 : pai->cap * 2;
+            MpXmlNo **nf = realloc(pai->filhos, sizeof(MpXmlNo*) * (size_t)nc);
+            /* Callback do parser: não há a quem levantar. Sem a temporária,
+             * `pai->filhos = NULL` soltava a subárvore inteira e o índice
+             * seguinte escrevia em NULL. Falhando, o nó não ganha o filho. */
+            if (!nf) return;
+            pai->filhos = nf; pai->cap = nc;
+        }
         pai->filhos[pai->nf++] = no;
     }
     c->pilha[c->prof++] = no;
@@ -13940,7 +14011,19 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (size > 0) {
         for (int i = 0; i < ntexto; i += (int)size) {
             int fim = i + (int)size > ntexto ? ntexto : i + (int)size;
-            if (nprt == cap) { cap *= 2; partes = realloc(partes, sizeof(char *) * (size_t)cap); }
+            if (nprt == cap) {
+                cap *= 2;
+                /* Por temporária: sem ela o realloc que falha zerava `partes`
+                 * e o `partes[nprt] = malloc(...)` abaixo escrevia em NULL,
+                 * levando junto todos os pedaços já separados. */
+                char **np2 = realloc(partes, sizeof(char *) * (size_t)cap);
+                if (!np2) {
+                    for (int k = 0; k < nprt; k++) free(partes[k]);
+                    free(partes);
+                    MERRO(vm, "MemoryError", "sem memoria");
+                }
+                partes = np2;
+            }
             partes[nprt] = malloc((size_t)(fim - i) + 1);
             memcpy(partes[nprt], texto + i, (size_t)(fim - i));
             partes[nprt][fim - i] = '\0';
@@ -13953,7 +14036,19 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
         for (;;) {
             const char *ache = nsep ? memmem(p, (size_t)(fim_t - p), sep, nsep) : NULL;
             const char *fimp = ache ? ache : fim_t;
-            if (nprt == cap) { cap *= 2; partes = realloc(partes, sizeof(char *) * (size_t)cap); }
+            if (nprt == cap) {
+                cap *= 2;
+                /* Por temporária: sem ela o realloc que falha zerava `partes`
+                 * e o `partes[nprt] = malloc(...)` abaixo escrevia em NULL,
+                 * levando junto todos os pedaços já separados. */
+                char **np2 = realloc(partes, sizeof(char *) * (size_t)cap);
+                if (!np2) {
+                    for (int k = 0; k < nprt; k++) free(partes[k]);
+                    free(partes);
+                    MERRO(vm, "MemoryError", "sem memoria");
+                }
+                partes = np2;
+            }
             partes[nprt] = malloc((size_t)(fimp - p) + 1);
             memcpy(partes[nprt], p, (size_t)(fimp - p));
             partes[nprt][fimp - p] = '\0';
@@ -20031,7 +20126,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             PSList *l = COMO_LIST(seq);
             int fixos = star >= 0 ? n_alvos - 1 : n_alvos;
             if (star < 0 && l->len != n_alvos) {
-                ERRO_T(vm, l->len > n_alvos ? "OutputUnexpectedValues" : "OutputUnexpectedValues",
+                /* Um tipo só, como na linha de baixo — quem distingue é a
+                 * mensagem. O ternário no NOME do tipo escolhia entre dois
+                 * literais iguais: parecia separar "demais" de "insuficientes"
+                 * pra quem faz `catch (Tipo e)`, e não separava. */
+                ERRO_T(vm, "OutputUnexpectedValues",
                        l->len > n_alvos ? "valores demais para desempacotar"
                                         : "valores insuficientes para desempacotar");
             }

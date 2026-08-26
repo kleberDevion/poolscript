@@ -950,6 +950,72 @@ const Caso CASOS_LINGUAGEM[] = {
 { "membro parecido vira sugestao",
   "import json\npost(json.parsee)\n", NULL, "você quis dizer 'parse'?", -1 },
 
+/* ── tipo: `type(x)` é o NOME do tipo, `int` é a referência ─────────────────
+ * Os dois escrevem "int" na tela. Antes disso, compará-los dava falso calado:
+ * um `if type(x) == int` nunca entrava e ninguém era avisado. */
+{ "type(x) compara igual a referencia de tipo",
+  "post(type(200) == int)\n", "True", NULL, 0 },
+{ "type(x) compara igual ao nome em texto",
+  "post(type(200) == \"int\")\n", "True", NULL, 0 },
+{ "tipo errado continua falso",
+  "post(type(\"a\") == int)\n", "False", NULL, 0 },
+{ "referencia de tipo dos dois lados",
+  "post(int == type(200), type(1.5) == flo, type([1]) == list)\n",
+  "True True True", NULL, 0 },
+{ "referencia de tipo nao vira igual a texto qualquer",
+  "post(int == \"inteiro\", int == 1, int == none)\n", "False False False", NULL, 0 },
+{ "tipo com tipo continua por identidade",
+  "post(int == int, int == str)\n", "True False", NULL, 0 },
+{ "o idioma canonico continua o `is`",
+  "post(200 is int, \"a\" is int, 200 not is str)\n", "True False True", NULL, 0 },
+{ "o `if` que antes nunca entrava agora entra",
+  "action f(x) {\n"
+  "    if type(x) == int {\n"
+  "        return \"inteiro\"\n"
+  "    }\n"
+  "    return \"outro\"\n"
+  "}\n"
+  "post(f(200), f(\"a\"))\n", "inteiro outro", NULL, 0 },
+
+/* ── I/O que falha tem que AVISAR ───────────────────────────────────────────
+ * `/dev/full` é o disco cheio do Linux: aceita o open e recusa toda gravação
+ * com ENOSPC. Antes disso, os três casos abaixo terminavam com sucesso e o
+ * dado sumia — o `fwrite` só enche o buffer da libc, e o erro só aparece no
+ * flush, que é o `fclose`. */
+{ "close() acusa o que nao conseguiu gravar",
+  "f = open(\"/dev/full\", \"w\")\n"
+  "f.write(\"abc\")\n"
+  "f.close()\n"
+  "post(\"NAO DEVIA CHEGAR\")\n", NULL, "IOError", -1 },
+{ "write() grande acusa gravacao incompleta",
+  "f = open(\"/dev/full\", \"w\")\n"
+  "f.write(\"x\" * 200000)\n", NULL, "gravacao incompleta", -1 },
+{ "writelines() acusa e diz qual linha",
+  "f = open(\"/dev/full\", \"w\")\n"
+  "f.writelines([\"x\" * 200000])\n", NULL, "linha 0", -1 },
+{ "write() continua devolvendo quantos bytes gravou",
+  "using open(\"/tmp/ps_t_w.txt\", \"w\") as f {\n"
+  "    post(f.write(\"abcde\"), f.write(\"xy\"))\n"
+  "}\n", "5 2", NULL, 0 },
+{ "close() em arquivo bom nao levanta nada",
+  "f = open(\"/tmp/ps_t_c.txt\", \"w\")\n"
+  "f.write(\"ok\")\n"
+  "f.close()\n"
+  "f.close()\n"
+  "post(open(\"/tmp/ps_t_c.txt\").read())\n", "ok", NULL, 0 },
+
+/* ── o runner nao pode travar com muita saida ───────────────────────────────
+ * Cada cano guarda 64 KB. O runner lia o stdout ATÉ O FIM e só então o stderr:
+ * com mais de 64 KB no stderr o filho bloqueava escrevendo, o pai esperava um
+ * stdout que não vinha, e o `alarm` relatava "TRAVOU" — uma falha inventada.
+ * Este caso despeja ~200 KB no stderr; se o runner regredir, ele trava. */
+{ "stderr maior que o cano nao trava o runner",
+  "import sys\n"
+  "for each i in range(4000) {\n"
+  "    sys.stderr.write(\"linha de erro bem comprida pra encher o cano \" + str(i) + \"\\n\")\n"
+  "}\n"
+  "post(\"stdout chegou inteiro\")\n", "stdout chegou inteiro", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

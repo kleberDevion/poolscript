@@ -53,6 +53,29 @@ static int res_nova_linha(PSDbRes *r, PSCel **out)
     return 0;
 }
 
+/* Reserva o vetor de nomes de coluna e grava um nome.
+ *
+ * Os quatro drivers (sqlite, postgres, mysql, odbc) faziam
+ * `res->cols = calloc(...)` seguido de `res->cols[i] = strdup(...)` sem olhar
+ * nenhum dos dois. Com memória curta o `calloc` devolve NULL e a linha
+ * seguinte escreve nele — o processo morre em vez de o erro subir como "sem
+ * memoria", e o `strdup` que já tinha dado certo vaza junto. Passa tudo por
+ * aqui pra que seja um lugar só. */
+static int res_cols_reserva(PSDbRes *res, int ncol, char *erro, size_t ecap)
+{
+    res->cols = calloc((size_t)ncol, sizeof(char *));
+    if (!res->cols) { snprintf(erro, ecap, "sem memoria"); return -1; }
+    return 0;
+}
+
+/* `nome` NULL vira string vazia: coluna sem nome é caso do banco, não erro. */
+static int res_col_nome(PSDbRes *res, int i, const char *nome, char *erro, size_t ecap)
+{
+    res->cols[i] = strdup(nome ? nome : "");
+    if (!res->cols[i]) { snprintf(erro, ecap, "sem memoria"); return -1; }
+    return 0;
+}
+
 static void cel_texto(PSCel *cel, const char *s, int n)
 {
     cel->tipo = PS_CEL_STR;
@@ -92,8 +115,11 @@ static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, int np
     res->tem_result = 1;
     res->rowcount = -1;   /* sqlite3 DBAPI: rowcount de SELECT é -1 (igual interp) */
     res->ncols = ncol;
-    res->cols = calloc((size_t)ncol, sizeof(char *));
-    for (int i = 0; i < ncol; i++) res->cols[i] = strdup(sqlite3_column_name(st, i));
+    if (res_cols_reserva(res, ncol, erro, ecap) != 0) { sqlite3_finalize(st); return -1; }
+    for (int i = 0; i < ncol; i++)
+        if (res_col_nome(res, i, sqlite3_column_name(st, i), erro, ecap) != 0) {
+            sqlite3_finalize(st); return -1;
+        }
     int rc;
     while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
         PSCel *lin;
@@ -172,8 +198,9 @@ static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparam
         res->tem_result = 1;
         res->rowcount = nrow;   /* psycopg2: rowcount de SELECT = nº de linhas */
         res->ncols = ncol;
-        res->cols = calloc((size_t)ncol, sizeof(char *));
-        for (int i = 0; i < ncol; i++) res->cols[i] = strdup(PQfname(r, i));
+        if (res_cols_reserva(res, ncol, erro, ecap) != 0) { PQclear(r); return -1; }
+        for (int i = 0; i < ncol; i++)
+            if (res_col_nome(res, i, PQfname(r, i), erro, ecap) != 0) { PQclear(r); return -1; }
         for (int row = 0; row < nrow; row++) {
             PSCel *lin;
             if (res_nova_linha(res, &lin) != 0) { PQclear(r); snprintf(erro,ecap,"sem memoria"); return -1; }
@@ -262,8 +289,11 @@ static int mysql_exec(PSDbConn *c, const char *sql, const char **params, int npa
     res->tem_result = 1;
     res->rowcount = (int64_t)mysql_num_rows(r);   /* SELECT bufferizado: nº de linhas */
     res->ncols = ncol;
-    res->cols = calloc((size_t)ncol, sizeof(char *));
-    for (int i = 0; i < ncol; i++) res->cols[i] = strdup(campos[i].name);
+    if (res_cols_reserva(res, ncol, erro, ecap) != 0) { mysql_free_result(r); return -1; }
+    for (int i = 0; i < ncol; i++)
+        if (res_col_nome(res, i, campos[i].name, erro, ecap) != 0) {
+            mysql_free_result(r); return -1;
+        }
     MYSQL_ROW row;
     while ((row = mysql_fetch_row(r))) {
         unsigned long *lens = mysql_fetch_lengths(r);
@@ -315,12 +345,22 @@ static int odbc_exec(PSDbConn *c, const char *sql, const char **params, int npar
         return 0;
     }
     res->tem_result = 1; res->ncols = ncol;
-    res->cols = calloc((size_t)ncol, sizeof(char *));
+    if (res_cols_reserva(res, ncol, erro, ecap) != 0) { SQLFreeHandle(SQL_HANDLE_STMT, st); return -1; }
     SQLSMALLINT *ctipo = calloc((size_t)ncol, sizeof(SQLSMALLINT));
+    if (!ctipo) { SQLFreeHandle(SQL_HANDLE_STMT, st); snprintf(erro, ecap, "sem memoria"); return -1; }
     for (int i = 0; i < ncol; i++) {
-        SQLCHAR nome[128]; SQLSMALLINT nl, dt, dd, nul; SQLULEN tam;
-        SQLDescribeCol(st, (SQLUSMALLINT)(i+1), nome, sizeof(nome), &nl, &dt, &tam, &dd, &nul);
-        res->cols[i] = strdup((char *)nome);
+        /* `nome` e `dt` são inicializados ANTES da chamada porque o
+         * SQLDescribeCol só promete tê-los escrito quando devolve sucesso. Sem
+         * isso, um SQL_ERROR mandava 128 bytes de pilha pro `strdup` — nome de
+         * coluna formado por lixo, sem terminador garantido. */
+        SQLCHAR nome[128] = {0}; SQLSMALLINT nl = 0, dt = SQL_UNKNOWN_TYPE, dd = 0, nul = 0;
+        SQLULEN tam = 0;
+        SQLRETURN dr = SQLDescribeCol(st, (SQLUSMALLINT)(i+1), nome, sizeof(nome),
+                                      &nl, &dt, &tam, &dd, &nul);
+        if (!SQL_SUCCEEDED(dr)) { nome[0] = 0; dt = SQL_UNKNOWN_TYPE; }
+        if (res_col_nome(res, i, (char *)nome, erro, ecap) != 0) {
+            free(ctipo); SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
+        }
         ctipo[i] = dt;
     }
     while (SQL_SUCCEEDED(SQLFetch(st))) {
