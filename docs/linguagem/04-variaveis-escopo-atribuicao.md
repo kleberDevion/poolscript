@@ -120,7 +120,7 @@ primeiro, *resto = [10, 20, 30, 40]   // primeiro=10, resto=[20,30,40]
 
 O escopo é **léxico** e por **bloco**. Cada `if`,
 `elif`, `else`, `while`, `for each`, `count each`, `try`/`catch`/`finally`,
-`match`/`case` e `run_selfwith_` abre um escopo próprio.
+`match`/`case` e o guard `if __name__ == "main"` abre um escopo próprio.
 
 ### 4.6.1. Variável de bloco não vaza
 

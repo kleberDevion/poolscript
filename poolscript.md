@@ -1,8 +1,8 @@
 # PoolScript
 
 Linguagem de programação **híbrida (dinâmica/estática)** — a legibilidade do
-Python com a estrutura de blocos do JS/C: indentação **ou** chaves, `:` **ou**
-`{}`, à vontade e no mesmo arquivo.
+Python com a estrutura de blocos do JS/C. O bloco é `{ }`; a indentação é
+estética, não sintaxe.
 
 Extensões reconhecidas em tudo (rodar, importar, `psl install`, `pool build`,
 editor): **`.ps`**, **`.psl`**, **`.p`**.
@@ -34,12 +34,19 @@ Dois comandos, o **mesmo** binário/pacote:
 
 ## Instalação
 
-### Binário pronto
+Um comando instala tudo — o binário (como `pool` e `psl`), o servidor LSP, e o
+tipo MIME + o ícone do `.ps`:
 
 ```bash
-sudo install -m755 dist/pool-linux /usr/local/bin/pool
-sudo install -m755 dist/pool-linux /usr/local/bin/psl
+sudo ./instalar.sh              # não precisa de make nem de compilador
+sudo ./instalar.sh --remover
 ```
+
+Do repositório com o fonte, `sudo make install` faz o mesmo.
+
+Depois disso o `.ps` é **`text/poolscript`** e aparece com a logo da linguagem
+no gerenciador de arquivos. (O `.ps` era do PostScript; aqui ele é da
+linguagem. `.eps` e `.ai` continuam do PostScript.)
 
 ### Compilando do fonte
 
@@ -118,5 +125,5 @@ propósito). Import de arquivo local do projeto usa caminho pontuado
 
 ## Versionamento
 
-Versão mais recente — **8.2.83** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **8.3.45** (a fonte é `vm/ps_versao.h`; `pool --version`
 mostra a do binário).

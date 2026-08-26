@@ -2,7 +2,7 @@
 
 Statements que decidem **o que roda e quantas vezes**: condicionais (`if`),
 laços (`while`, `for each`, `count each`), o casamento de padrões (`match`), os
-desvios `break`/`continue`/`pass` e o guard de entrada `run_selfwith_`.
+desvios `break`/`continue`/`pass` e o guard de entrada `if __name__ == "main"`.
 
 O bloco da linguagem é `{ }` (seção 1.3) — e só. Toda regra desta seção foi
 verificada rodando o fonte na VM em C.
@@ -328,11 +328,24 @@ sem laço — `int(2) count in xs` e `int in xs count` — na seção 3.10.)
 
 ---
 
-## 5.7. `run_selfwith_` — código só quando é o principal
+## 5.7. `if __name__ == "main"` — código só quando é o principal
 
-O bloco `if __name__ == "main" { }` roda **apenas quando o arquivo é executado
+O bloco `if __name__ == "main"` roda **apenas quando o arquivo é executado
 direto**, e é pulado quando ele é **importado** por outro. É o
 `if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
+
+Ele é reconhecido pela **forma**, não avaliando a condição: `__name__` vale o
+caminho do arquivo (é o que se passa pro `Jinker`, por exemplo), então comparar
+com `"main"` nunca daria verdadeiro por conta própria. O compilador vê o
+desenho e emite o guard.
+
+É também o **único** lugar da linguagem onde `:` ainda abre bloco — `{ }` vale
+igual, e a chave pode ficar na linha seguinte:
+
+```ps
+if __name__ == "main":
+    principal()
+```
 
 ```ps
 action principal() {

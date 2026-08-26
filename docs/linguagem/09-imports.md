@@ -106,7 +106,7 @@ Um nome que não casa com nenhum dos três é `ImportError`.
 
 ---
 
-## 9.6. Import não roda o `run_selfwith_`
+## 9.6. Import não roda o guard de entrada
 
 Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não
 executa** (só roda quando o arquivo é o principal — seção 5.7). Assim, importar
@@ -123,7 +123,7 @@ if __name__ == "main" {
 }
 
 // outro.ps
-import mymod                 // NÃO imprime a linha do run_selfwith_
+import mymod                 // NÃO imprime a linha do guard
 post(mymod.saudar("ana"))
 ```
 
@@ -138,4 +138,4 @@ post(mymod.saudar("ana"))
 - **`from .mod` / `from ..pkg.mod`** — relativo ao arquivo atual.
 - Resolução (sem pontos): **stdlib → lib global → arquivo do projeto**;
   senão `ImportError`.
-- **Importar não dispara** o `run_selfwith_` do módulo.
+- **Importar não dispara** o guard `if __name__ == "main"` do módulo.

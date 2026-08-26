@@ -17,13 +17,14 @@ está em **[`poolscript.md`](poolscript.md)**.
 ## Começo rápido
 
 ```bash
-sudo install -m755 dist/pool-linux /usr/local/bin/pool   # binário pronto
+sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .ps
 pool examples/01_hello.ps
 ```
 
 Compilando do fonte (gcc + libs de dev: postgresql, mysql, mongoc, openssl):
 
 ```bash
-make pool     # gera ./pool
-make check    # compila e roda a suíte em C
+make pool       # gera ./pool
+make check      # compila e roda a suíte em C
+sudo make install
 ```

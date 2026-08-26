@@ -33,19 +33,34 @@ divergir do motor.
 
 ## VS Code
 
-O VS Code precisa de uma extensão pra saber falar com um servidor LSP, e uma
-extensão de VS Code é sempre JavaScript — é regra do editor. Como aqui não há
-JS, o caminho é uma extensão genérica de LSP: instale
-[Generic LSP Client](https://marketplace.visualstudio.com/search?term=generic%20lsp)
-(ou equivalente) e aponte pro comando:
+A extensão **psl-poolscript** é o cliente. Ela não tem cérebro nenhum: são ~70
+linhas de JavaScript cuja única função é levantar o `poolscript-lsp` e falar
+LSP com ele — o VS Code só carrega extensão com ponto de entrada JS, e essa é
+a regra do editor, não uma escolha do projeto. Completion, hover, diagnóstico
+e realce vêm todos do servidor em PoolScript.
+
+Com o `make install` (ou o `instalar.sh`) feito, não há o que configurar: a
+extensão acha o `poolscript-lsp` no PATH sozinha.
+
+Duas configurações existem, pra quando se está mexendo no servidor:
 
 ```json
 {
-  "languageServerExample.command": "pool",
-  "languageServerExample.args": ["/caminho/do/repo/lsp/servidor.ps"],
-  "files.associations": { "*.ps": "poolscript", "*.psl": "poolscript", "*.p": "poolscript" }
+  // roda o servidor direto do repositório, sem instalar
+  "poolscript.lsp.comando": ["pool", "/caminho/do/repo/lsp/servidor.ps"],
+
+  // desliga o servidor; sobra o realce da gramática, que é declarativo
+  "poolscript.lsp.ativo": false
 }
 ```
+
+> Depois de trocar o `extension.js`, o VS Code **precisa recarregar a janela**
+> (`Ctrl+Shift+P` → *Developer: Reload Window*) — ele mantém a extensão antiga
+> em memória. Enquanto não recarrega, o que aparece no completion é a sugestão
+> genérica do editor (nomes de arquivo da pasta), não a do servidor.
+
+O painel **Saída → PoolScript** mostra a conversa com o servidor; é o primeiro
+lugar a olhar quando o completion não vem.
 
 ## Neovim
 
