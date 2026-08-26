@@ -7,7 +7,7 @@ Ligar HTTPS é uma linha:
 
 ```ps
 app = Jinker(__name__, oauth={tls: true})
-run_selfwith_("main") { app(debug=false, host="0.0.0.0", port=2000) }
+if __name__ == "main" { app(debug=false, host="0.0.0.0", port=2000) }
 ```
 
 Com `tls: true` e nenhum certificado, o jinker **gera um self-signed** na hora
@@ -104,7 +104,7 @@ app = Jinker(__name__, oauth={
     cert: "/etc/letsencrypt/live/api.seusite.com/fullchain.pem",
     key:  "/etc/letsencrypt/live/api.seusite.com/privkey.pem"
 })
-run_selfwith_("main") { app(debug=false, host="0.0.0.0", port=443) }
+if __name__ == "main" { app(debug=false, host="0.0.0.0", port=443) }
 ```
 
 **Renovação** (o cert dura 90 dias): `sudo certbot renew` renova; agende num

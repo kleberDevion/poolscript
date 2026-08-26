@@ -34,7 +34,7 @@ action escapa_c(s) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     if len(sys.argv) < 2 {
         post("uso: pool scripts/regrava_dif.ps <casos.c> <nome> ... [--grava]")
         sys.exit(1)

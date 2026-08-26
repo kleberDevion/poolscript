@@ -10,3 +10,7 @@ async action t() {
     msg = jinker.request.get_json()
     ap.channel(forAll=msg)
 }
+
+if __name__ == "main":
+    ap(debug=true, host="127.0.0.0.1", port=2001)
+    

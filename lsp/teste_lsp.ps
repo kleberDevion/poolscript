@@ -125,7 +125,7 @@ action posicao(uri, linha, col) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     URI = "file:///tmp/ps_lsp_teste/a.ps"
 
     # ── handshake, completion e hover numa conversa só ──────────────────────

@@ -84,7 +84,7 @@ action escreve_literais(texto, recuo)
     return ("\n" + recuo).join(partes)
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     if len(sys.argv) < 1 {
         post("uso: pool scripts/casos_para_chaves.ps <casos_x.c> [--grava]")
         sys.exit(1)

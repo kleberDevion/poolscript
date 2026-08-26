@@ -41,7 +41,7 @@ action junta_ps(alvo, acc) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     os.mkdir(TMP, exist_ok=true)
     grava = false
     alvos = []

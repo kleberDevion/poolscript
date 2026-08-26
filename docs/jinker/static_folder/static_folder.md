@@ -73,7 +73,7 @@ action usuarios() {
 // qualquer outra URL (/, /perfil, /app.js, /style.css) é servida
 // do frontend/dist automaticamente — não precisa de rota pra cada uma
 
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=false, host="0.0.0.0", port=8080)
 }
 ```

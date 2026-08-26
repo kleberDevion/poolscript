@@ -256,6 +256,7 @@ static int eh_tipo_nome(const char *s);
 static int count_esquerda(P *p, PSNode *no, PSToken *tok, const char **tipo, PSNode **valor);
 static PSNode *statement(P *p);
 static PSNode *bloco(P *p);
+static PSNode *bloco_entrada(P *p);
 
 /* ── primário ───────────────────────────────────────────────────────────── */
 static PSNode *primario(P *p)
@@ -1061,6 +1062,37 @@ static void pula_indent_solto(P *p)
            || checa(p, T_INDENT) || checa(p, T_DEDENT)) p->pos++;
 }
 
+/* Bloco do `run_selfwith_` — o ÚNICO lugar da linguagem onde `:` + indentação
+ * ainda abre bloco. Todo o resto usa `{ }` (ver `bloco`).
+ *
+ * A exceção é deliberada: `run_selfwith_("main"):` é a última linha de quase
+ * todo programa e a forma com dois-pontos é a que se escreve. As chaves
+ * continuam valendo aqui também. */
+static PSNode *bloco_entrada(P *p)
+{
+    PSToken *t = atual(p);
+    if (!checa(p, T_COLON)) return bloco(p);
+    p->pos++;
+    if (!exige(p, T_NEWLINE, "faltou quebra de linha apos ':'")) return NULL;
+    while (checa(p, T_NEWLINE)) p->pos++;   /* comentário/linha vazia depois do ':' */
+    if (!exige(p, T_INDENT, "faltou indentacao apos ':'")) return NULL;
+    PSNode *b = ps_node_novo(p->arena, N_BLOCK, t->line, t->col);
+    if (!b) return NULL;
+    b->estilo = "colon";
+    pula_separadores(p);
+    while (!checa(p, T_DEDENT) && !checa(p, T_EOF)) {
+        PSNode *st = statement(p);
+        if (FALHOU(p)) return NULL;
+        if (st && ps_vec_push(p->arena, &b->lista, st) != 0) {
+            perro(p, "sem memoria", t); return NULL;
+        }
+        pula_separadores(p);
+    }
+    if (checa(p, T_EOF)) { perro(p, "bloco indentado nao foi fechado corretamente", t); return NULL; }
+    p->pos++;   /* DEDENT */
+    return b;
+}
+
 static PSNode *bloco(P *p)
 {
     PSToken *t = atual(p);
@@ -1318,14 +1350,29 @@ static const char *nome_livre(P *p, const char *msg)
 /* caminho pontilhado: a.b.c — cada parte vira um Name na lista */
 static int caminho_modulo(P *p, PSNodeVec *v)
 {
+    PSToken *ponto = NULL;      /* o `.` que exigiu esta parte, se houve */
     for (;;) {
         PSToken *t = atual(p);
-        const char *n = nome_livre(p, "esperado caminho de modulo");
+        /* `import jinker.` — o ponto sem nome depois. A mensagem genérica
+         * ("esperado caminho de modulo") apontava pro `import`, no começo da
+         * linha, e não dizia o que faltava: quem escreveu o ponto (muitas
+         * vezes só pra chamar o completion do editor) ficava sem pista. */
+        /* `nome_livre` aceita até palavra reservada (`@app.route`), então a
+         * recusa aqui só vale pro que NÃO pode ser nome em hipótese nenhuma:
+         * fim de linha, fim de arquivo, mudança de indentação. Exigir IDENT
+         * quebrava todo decorador cujo membro é keyword. */
+        if (ponto && (t->type == T_NEWLINE || t->type == T_EOF
+                      || t->type == T_INDENT || t->type == T_DEDENT)) {
+            perro(p, "faltou o nome do submodulo depois do '.'", ponto);
+            return -1;
+        }
+        const char *n = nome_livre(p, "esperado nome de modulo depois de 'import'");
         if (FALHOU(p)) return -1;
         PSNode *no = ps_node_novo(p->arena, N_NAME, t->line, t->col);
         if (!no) return -1;
         no->texto = n;
         if (ps_vec_push(p->arena, v, no) != 0) return -1;
+        ponto = atual(p);
         if (!aceita(p, T_DOT)) break;
     }
     return 0;
@@ -1736,21 +1783,12 @@ static PSNode *statement(P *p)
         }
         return n;
     }
-    /* `run_selfwith_("main") { ... }` — ponto de entrada */
+    /* `run_selfwith_` SAIU: o ponto de entrada agora é `if __name__ == "main"`,
+     * a forma do Python. A recusa diz o conserto em vez de virar
+     * "variável não definida: run_selfwith_" lá na frente. */
     if (t->type == T_IDENT && t->texto && strcmp(t->texto, "run_selfwith_") == 0) {
-        p->pos++;
-        PSNode *n = ps_node_novo(p->arena, N_RUN_SELFWITH_STMT, t->line, t->col);
-        if (!n) return NULL;
-        if (!exige(p, T_LPAREN, "faltou '(' em run_selfwith_")) return NULL;
-        PSToken *lt = atual(p);
-        if (lt->type != T_STR) { perro(p, "run_selfwith_ espera um rotulo string", lt); return NULL; }
-        p->pos++;
-        n->texto = dup_tok(p, lt);
-        if (!exige(p, T_RPAREN, "faltou ')' em run_selfwith_")) return NULL;
-        while (checa(p, T_NEWLINE)) p->pos++;
-        n->b = bloco(p);
-        if (FALHOU(p)) return NULL;
-        return n;
+        perro(p, "run_selfwith_ nao existe mais — use: if __name__ == \"main\"", t);
+        return NULL;
     }
 
     /* `public class Nome()` / `private class Nome()` — modificador de visibilidade
@@ -2145,7 +2183,12 @@ static PSNode *statement(P *p)
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_MATCH_STMT, t->line, t->col);
         if (!n) return NULL;
-        n->a = expressao(p);
+        {   /* `match s {` — o `{` abre bloco, não interpola o sujeito */
+            int salvo = p->chave_abre_bloco;
+            p->chave_abre_bloco = 1;
+            n->a = expressao(p);
+            p->chave_abre_bloco = salvo;
+        }
         if (FALHOU(p)) return NULL;
         pula_separadores(p);
 
@@ -2167,7 +2210,13 @@ static PSNode *statement(P *p)
             if (FALHOU(p)) return NULL;
             if (checa_kw(p, "if")) {          /* guarda: case X if cond */
                 p->pos++;
+                /* `case x if m == 'GET' {` — sem isto o `{` do bloco era lido
+                 * como interpolação da string que fecha a guarda, e o `case`
+                 * ficava sem corpo. Mesmo tratamento do `if` e do `for each`. */
+                int salvo = p->chave_abre_bloco;
+                p->chave_abre_bloco = 1;
                 pat->a = expressao(p);
+                p->chave_abre_bloco = salvo;
                 if (FALHOU(p)) return NULL;
             }
             PSNode *caso = ps_node_novo(p->arena, N_MATCH_CASE, ct->line, ct->col);
@@ -2286,7 +2335,46 @@ static PSNode *statement(P *p)
         return n;
     }
 
-    if (checa_kw(p, "if"))    return if_stmt(p);
+    /* Ponto de entrada: `if __name__ == "main":` — o bloco roda quando o
+     * arquivo é executado direto e é PULADO quando ele é importado.
+     *
+     * É reconhecido pela FORMA, não avaliando a condição: `__name__` vale o
+     * caminho do arquivo (é o que se passa pro `Jinker`), então compará-lo com
+     * "main" nunca daria verdadeiro. O parser vê o desenho e emite o guard.
+     *
+     * É também o único lugar onde `:` ainda abre bloco (ver `bloco_entrada`);
+     * `{ }` vale igual.
+     */
+    if (checa_kw(p, "if")) {
+        int32_t k = p->pos + 1;
+        int paren = 0;
+        if (k < p->n && p->toks[k].type == T_LPAREN) { paren = 1; k++; }
+        if (k + 2 < p->n
+            && p->toks[k].type == T_IDENT && p->toks[k].texto
+            && strcmp(p->toks[k].texto, "__name__") == 0
+            && p->toks[k + 1].type == T_OP && p->toks[k + 1].texto
+            && strcmp(p->toks[k + 1].texto, "==") == 0
+            && p->toks[k + 2].type == T_STR) {
+            PSToken *rot = &p->toks[k + 2];
+            int32_t depois = k + 3;
+            if (paren) {
+                if (depois >= p->n || p->toks[depois].type != T_RPAREN) goto if_normal;
+                depois++;
+            }
+            if (depois >= p->n
+                || (p->toks[depois].type != T_COLON && p->toks[depois].type != T_LBRACE))
+                goto if_normal;
+            PSNode *n = ps_node_novo(p->arena, N_RUN_SELFWITH_STMT, t->line, t->col);
+            if (!n) return NULL;
+            n->texto = dup_tok(p, rot);
+            p->pos = depois;
+            n->b = bloco_entrada(p);
+            if (FALHOU(p)) return NULL;
+            return n;
+        }
+        if_normal:
+        return if_stmt(p);
+    }
     if (checa_kw(p, "while")) return while_stmt(p);
     if (checa_kw(p, "for"))   return for_stmt(p);
     if (checa_kw(p, "return")) return return_stmt(p);

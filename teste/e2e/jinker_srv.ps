@@ -158,6 +158,6 @@ action emitir() {
 }
 
 # a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=false, host="127.0.0.1", port=28840)
 }

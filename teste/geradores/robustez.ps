@@ -137,7 +137,7 @@ action cstr(s) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     os.mkdir(TMP, exist_ok=true)
     os.cmd("./pool --metadata > " + TMP + "/meta.json")
     meta = json.parse(open(TMP + "/meta.json").read())

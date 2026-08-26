@@ -495,7 +495,7 @@ action trata(msg) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     modelo.inicia()
     protocolo.loga("pronto — " + str(len(modelo.META["modulos"].keys())) + " modulos, "
                    + str(len(modelo.META["tipos"].keys())) + " tipos")

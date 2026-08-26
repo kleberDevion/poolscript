@@ -149,7 +149,7 @@ action aplica(atual) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     # `sys.argv` já vem SEM o nome do script (diferente do Python, onde argv[0]
     # é o script) — o primeiro elemento já é o primeiro argumento do usuário.
     alvos = sys.argv

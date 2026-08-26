@@ -56,7 +56,7 @@ action somar() {
 }
 
 // 4. sobe o servidor quando o arquivo é executado direto
-run_selfwith_("main") {
+if __name__ == "main" {
     porta = int(os.getenv("PORT", "8080"))
     app(debug=true, host="0.0.0.0", port=porta)
 }
@@ -71,7 +71,7 @@ o JSON. Entendendo cada bloco:
    a URL é acessada.
 3. Dentro da action, **`request`** já existe. `return jsonify(...)` vira a
    resposta HTTP (mais sobre retornos adiante).
-4. **`run_selfwith_("main")`** é o ponto de entrada (só roda quando você
+4. **`if __name__ == "main"`** é o ponto de entrada (só roda quando você
    executa o arquivo direto, não quando ele é importado). `app(...)` liga o
    servidor de verdade.
 
@@ -512,7 +512,7 @@ sujeito ao `exclude_self`).
 ## Iniciando o servidor
 
 ```
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=True, host="0.0.0.0", port=2000)
 }
 ```
@@ -692,7 +692,7 @@ action mensagem() {
     app.channel(forAll=msg)
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=False, host="0.0.0.0", port=7700)
 }
 ```

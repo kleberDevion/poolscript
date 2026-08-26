@@ -2377,7 +2377,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "action f() {\n"
   "    return \"oi\"\n"
   "}\n"
-  "run_selfwith_(\"main\") {\n"
+  "if __name__ == \"main\" {\n"
   "    post(\"NAO\")\n"
   "}\n"
   "\n",
@@ -7156,17 +7156,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "[(0, 10), (1, 20)]", NULL, 0 },
 { "dif #1473",
-  "run_selfwith_(\"main\") {\n"
+  "if __name__ == \"main\" {\n"
   " post(1)\n"
   "}\n"
   "\n",
   "1", NULL, 0 },
 { "dif #1474",
-  "run_selfwith_(\"main\") { post(\"NAO DEVIA RODAR NO IMPORT\") }\n"
+  "if __name__ == \"main\" { post(\"NAO DEVIA RODAR NO IMPORT\") }\n"
   "\n",
   "NAO DEVIA RODAR NO IMPORT", NULL, 0 },
 { "dif #1475",
-  "run_selfwith_(\"main\") {\n"
+  "if __name__ == \"main\" {\n"
   "    post(\"sim\")\n"
   "}\n"
   "\n",

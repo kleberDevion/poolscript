@@ -554,7 +554,7 @@ action iniciar() {
     post("Servidor iniciando...")
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     iniciar()
 }
 ```
@@ -727,7 +727,7 @@ action dados() {
     return jsonify({"msg": "área protegida"}), 200
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=False, host="0.0.0.0", port=7700, reload=true)
 }
 ```

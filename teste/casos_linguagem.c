@@ -849,6 +849,20 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(\"linhas:\", n)\n",
   "linhas: 0", NULL, 0 },
 
+/* ── import malformado: a mensagem tem que dizer O QUE falta ────────────────
+ * `import jinker.` acontece o tempo todo: digita-se o ponto pra chamar o
+ * completion do editor e o arquivo fica salvo assim. A mensagem antiga era
+ * "esperado caminho de modulo" com o cursor no `import`, no começo da linha —
+ * não dizia nada. */
+{ "import com ponto solto no fim",
+  "import jinker.\n", NULL, "faltou o nome do submodulo depois do '.'", -1 },
+{ "import sem nome nenhum",
+  "import\n", NULL, "esperado nome de modulo depois de 'import'", -1 },
+{ "import valido continua valendo",
+  "import sys\npost(type(sys))\n", "module", NULL, 0 },
+{ "from ... import continua valendo",
+  "from jinker import cors\npost(type(cors))\n", "CorsConfig", NULL, 0 },
+
 /* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */
 { "membro inexistente nomeia modulo e membro",
   "import json\npost(json.naoexiste)\n", NULL,

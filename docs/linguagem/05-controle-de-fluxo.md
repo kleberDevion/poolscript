@@ -330,7 +330,7 @@ sem laço — `int(2) count in xs` e `int in xs count` — na seção 3.10.)
 
 ## 5.7. `run_selfwith_` — código só quando é o principal
 
-O bloco `run_selfwith_("main") { }` roda **apenas quando o arquivo é executado
+O bloco `if __name__ == "main" { }` roda **apenas quando o arquivo é executado
 direto**, e é pulado quando ele é **importado** por outro. É o
 `if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
 
@@ -339,7 +339,7 @@ action principal() {
     post("rodando o app")
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     principal()
 }
 ```
@@ -363,4 +363,4 @@ dentro não vazam).
   no-op; ligações são do case.
 - **`count each Tipo in c`** — laço sobre os elementos do tipo (`_match`,
   `_index`, `self`/`_count`).
-- **`run_selfwith_("main")`** — só quando principal, pulado no import.
+- **`if __name__ == "main"`** — só quando principal, pulado no import.

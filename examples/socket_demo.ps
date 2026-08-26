@@ -30,6 +30,6 @@ cors(options=["POST", "GET"], origins=["https://nome.com"])
     }
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     sk(debug=True, host='0.0.0.0', port=2000)
 }

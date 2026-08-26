@@ -108,7 +108,7 @@ Um nome que não casa com nenhum dos três é `ImportError`.
 
 ## 9.6. Import não roda o `run_selfwith_`
 
-Quando um arquivo é **importado**, o bloco `run_selfwith_("main"):` dele **não
+Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não
 executa** (só roda quando o arquivo é o principal — seção 5.7). Assim, importar
 um módulo traz as definições (actions, Entities, constantes) sem disparar o
 ponto de entrada:
@@ -118,7 +118,7 @@ ponto de entrada:
 action saudar(nome) {
     return "ola " + nome
 }
-run_selfwith_("main") {
+if __name__ == "main" {
     post("só quando rodo o mymod direto")
 }
 

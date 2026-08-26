@@ -202,7 +202,7 @@ action perfil() {
     return jsonify({"msg": "área protegida — token válido!"}), 200
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=False, host="0.0.0.0", port=7700)
 }
 ```

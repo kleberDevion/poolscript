@@ -59,7 +59,7 @@ action somar() {
     return jsonify({"resultado": a + b})
 }
 
-run_selfwith_("main") {                   // 4. sobe o servidor
+if __name__ == "main" {                   // 4. sobe o servidor
     porta = int(os.getenv("PORT", "8080"))
     app(debug=true, host="0.0.0.0", port=porta)
 }
@@ -71,7 +71,7 @@ Rode `pool app.ps` e abra `http://localhost:8080/`. Cada bloco:
 2. **`@app.route("/", ...)`** registra a action de baixo como resposta a
    `GET /`. Você não chama `inicio()` — o jinker chama quando a URL é acessada.
 3. `request` já existe dentro da action; `return jsonify(...)` vira a resposta.
-4. **`run_selfwith_("main")`** liga o servidor (só quando o arquivo roda direto).
+4. **`if __name__ == "main"`** liga o servidor (só quando o arquivo roda direto).
 
 Repare que não teve `cors(...)` nem `auth=` — sem configurar, tudo é liberado.
 Restrições são opcionais (ver [`cors`](cors/cors.md)).

@@ -23,10 +23,10 @@ app = Jinker(__name__)
 ## Subindo o servidor
 
 O objeto `app` é **chamável** — chamá-lo liga o servidor de verdade. Faça isso
-dentro do ponto de entrada `run_selfwith_("main")`:
+dentro do ponto de entrada `if __name__ == "main"`:
 
 ```
-run_selfwith_("main") {
+if __name__ == "main" {
     app(debug=false, host="0.0.0.0", port=8080)
 }
 ```
@@ -120,7 +120,7 @@ action status() {
     return jsonify({"online": true})
 }
 
-run_selfwith_("main") {
+if __name__ == "main" {
     porta = int(os.getenv("PORT", "8080"))
     app(debug=false, host="0.0.0.0", port=porta)
 }

@@ -270,7 +270,7 @@ action esc(s) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     os.mkdir(TMP, exist_ok=true)
 
     out = ["/*",

@@ -221,7 +221,7 @@ action junta_continuacoes(linhas) {
 }
 
 
-run_selfwith_("main") {
+if __name__ == "main" {
     if len(sys.argv) < 1 {
         post("uso: pool scripts/para_chaves.ps <arquivo.ps> [--grava]")
         sys.exit(1)
