@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Tipo MIME da PoolScript pro freedesktop (GNOME, KDE, XFCE, Cinnamon…).
+
+  O `.ps` era `application/postscript`. Aqui ele é da LINGUAGEM, por decisão
+  do dono: peso 80 no glob (o padrão é 50) faz o `.ps` resolver pra cá.
+
+  O nome do arquivo começa com `zz-` de propósito: o `update-mime-database`
+  processa os pacotes em ordem, e o `glob-deleteall` abaixo só apaga o que foi
+  registrado ANTES dele.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="text/poolscript">
+    <comment>PoolScript source</comment>
+    <comment xml:lang="pt_BR">Código-fonte PoolScript</comment>
+    <sub-class-of type="text/plain"/>
+    <icon name="text-poolscript"/>
+    <generic-icon name="text-x-script"/>
+
+    <glob pattern="*.ps" weight="80"/>
+    <glob pattern="*.psl" weight="80"/>
+    <glob pattern="*.p" weight="80"/>
+
+    <!-- Marcas de pacote da própria linguagem: decidem pelo CONTEÚDO, sem
+         depender da extensão. -->
+    <magic priority="60">
+      <match type="string" value="#!lib" offset="0"/>
+      <match type="string" value="#!cmd" offset="0"/>
+      <match type="string" value="#!/usr/bin/env pool" offset="0"/>
+      <match type="string" value="#!/usr/local/bin/pool" offset="0"/>
+    </magic>
+  </mime-type>
+
+  <!-- PostScript deixa de reivindicar o `.ps`. `.eps` e `.ai` continuam dele. -->
+  <mime-type type="application/postscript">
+    <glob-deleteall/>
+    <glob pattern="*.eps"/>
+    <glob pattern="*.ai"/>
+  </mime-type>
+</mime-info>

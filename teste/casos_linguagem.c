@@ -849,6 +849,48 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(\"linhas:\", n)\n",
   "linhas: 0", NULL, 0 },
 
+/* ── ponto de entrada: `if __name__ == "main"` ──────────────────────────────
+ * Substituiu o `run_selfwith_`. É a forma do Python e é reconhecida pela
+ * FORMA, não avaliando a condição: `__name__` vale o caminho do arquivo (é o
+ * que se passa pro `Jinker`), então a comparação nunca daria verdadeiro.
+ * É o único lugar onde `:` ainda abre bloco; `{ }` vale igual. */
+{ "guard com dois-pontos",
+  "if __name__ == \"main\":\n    post(\"direto\")\n", "direto", NULL, 0 },
+{ "guard com chaves",
+  "if __name__ == \"main\" {\n    post(\"direto\")\n}\n", "direto", NULL, 0 },
+{ "guard com parenteses",
+  "if (__name__ == \"main\") {\n    post(\"direto\")\n}\n", "direto", NULL, 0 },
+/* O arquivo importa a SI MESMO: o corpo do módulo roda (imprime "corpo") mas
+ * o guard dele NÃO — por isso "guard" aparece UMA vez só, no fim, quando o
+ * arquivo roda como principal. */
+{ "guard NAO roda quando o arquivo e importado",
+  "import ps_guard\n"
+  "post(\"corpo\")\n"
+  "if __name__ == \"main\" {\n"
+  "    post(\"guard\")\n"
+  "}\n",
+  "corpo\ncorpo\nguard", NULL, 0, "ps_guard.ps" },
+{ "run_selfwith_ saiu, e a recusa ensina",
+  "run_selfwith_(\"main\") {\n    post(1)\n}\n", NULL,
+  "use: if __name__ == \"main\"", -1 },
+{ "if normal continua sem aceitar dois-pontos",
+  "if 1 == 1:\n    post(1)\n", NULL, "bloco com ':' nao existe mais", -1 },
+{ "if com __name__ mas comparando outra coisa e if normal",
+  "x = 1\nif __name__ == x {\n    post(\"nao\")\n} else {\n    post(\"if normal\")\n}\n",
+  "if normal", NULL, 0 },
+
+/* ── `{` depois de string NAO interpola quando abre bloco ───────────────────
+ * `case c if m == 'GET' {` lia o `{` como interpolação da string e o case
+ * ficava sem corpo. Já valia pro `for each`; agora vale pro `if`, `while`,
+ * `match` e a guarda do `case`. */
+{ "case com guarda terminada em string",
+  "m = \"GET\"\nmatch m {\n    case c if c == \"GET\" {\n        post(\"pegou\")\n    }\n}\n",
+  "pegou", NULL, 0 },
+{ "match com sujeito terminado em string",
+  "match \"a\" {\n    case \"a\" {\n        post(\"casou\")\n    }\n}\n", "casou", NULL, 0 },
+{ "interpolacao de string continua valendo",
+  "n = 7\npost(\"vale: \" {n})\n", "vale: 7", NULL, 0 },
+
 /* ── import malformado: a mensagem tem que dizer O QUE falta ────────────────
  * `import jinker.` acontece o tempo todo: digita-se o ponto pra chamar o
  * completion do editor e o arquivo fica salvo assim. A mensagem antiga era
@@ -856,6 +898,11 @@ const Caso CASOS_LINGUAGEM[] = {
  * não dizia nada. */
 { "import com ponto solto no fim",
   "import jinker.\n", NULL, "faltou o nome do submodulo depois do '.'", -1 },
+/* `route` é palavra reservada: exigir IDENT depois do ponto quebrava TODO
+ * decorador cujo membro é keyword. A recusa só vale pro que não pode ser
+ * nome de jeito nenhum (fim de linha, fim de arquivo). */
+{ "decorador com membro que e palavra reservada",
+  "@app.route(\"/x\")\naction h() { return 1 }\n", NULL, "não definida: app", -1 },
 { "import sem nome nenhum",
   "import\n", NULL, "esperado nome de modulo depois de 'import'", -1 },
 { "import valido continua valendo",
