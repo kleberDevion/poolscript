@@ -73,8 +73,9 @@ post("filename ->", b.filename, "| corpo ->", b.text.strip())
 
 # ── upload: PoolFileUpload atravessando de verdade ──────────────────────────
 alvo = "/tmp/ps_e2e_envio.txt"
-using open(alvo, "w") as arq:
+using open(alvo, "w") as arq {
     arq.write("conteudo enviado")
+}
 
 u = request.post(U + "/upload", file={"arq": alvo})
 post("upload ->", u.get_json())

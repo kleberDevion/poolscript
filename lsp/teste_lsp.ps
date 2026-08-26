@@ -18,92 +18,114 @@ FONTE = FONTE + "s = \"texto\"\n"
 FONTE = FONTE + "n = 42\n"
 
 
-action enquadra(obj):
+action enquadra(obj) {
     corpo = json.stringify(obj)
     return "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo
+}
 
 
-action pede(id, metodo, params):
+action pede(id, metodo, params) {
     return enquadra({"jsonrpc": "2.0", "id": id, "method": metodo, "params": params})
+}
 
 
-action avisa(metodo, params):
+action avisa(metodo, params) {
     return enquadra({"jsonrpc": "2.0", "method": metodo, "params": params})
+}
 
 
 # Manda o roteiro inteiro pro servidor e devolve a lista de respostas (cada
 # uma um dict já parseado).
-action conversa(roteiro):
+action conversa(roteiro) {
     os.mkdir(TMP, exist_ok=true)
-    using open(TMP + "/entrada", "w") as f:
+    using open(TMP + "/entrada", "w") as f {
         f.write("".join(roteiro))
+    }
     os.cmd("./pool lsp/servidor.ps < " + TMP + "/entrada > " + TMP + "/saida 2> " + TMP + "/log")
     bruto = open(TMP + "/saida").read()
     msgs = []
     resto = bruto
-    while true:
+    while true {
         c = resto.find("Content-Length: ")
-        if c < 0:
+        if c < 0 {
             break
+        }
         resto = resto[c + 16:]
         fim = resto.find("\r\n\r\n")
-        if fim < 0:
+        if fim < 0 {
             break
+        }
         tam = int(resto[0:fim].strip())
         corpo = resto[fim + 4:fim + 4 + tam]
         msgs.append(json.parse(corpo))
         resto = resto[fim + 4 + tam:]
+    }
     return msgs
+}
 
 
-action ok(nome, condicao, detalhe):
+action ok(nome, condicao, detalhe) {
     global falhas
     global feitos
     feitos = feitos + 1
-    if condicao:
+    if condicao {
         post("  ok   ", nome)
-    else:
+    }
+    else {
         falhas = falhas + 1
         post("  FALHOU", nome, "->", detalhe)
+    }
+}
 
 
 # Acha a resposta de um id.
-action resposta(msgs, id):
-    for each m in msgs:
-        if m.get("id") == id:
+action resposta(msgs, id) {
+    for each m in msgs {
+        if m.get("id") == id {
             return m
+        }
+    }
     return Null
+}
 
 
-action notificacoes(msgs, metodo):
+action notificacoes(msgs, metodo) {
     r = []
-    for each m in msgs:
-        if m.get("method") == metodo:
+    for each m in msgs {
+        if m.get("method") == metodo {
             r.append(m)
+        }
+    }
     return r
+}
 
 
-action rotulos(resp):
+action rotulos(resp) {
     r = []
     res = resp.get("result")
-    if res == Null:
+    if res == Null {
         return r
-    for each it in res:
+    }
+    for each it in res {
         r.append(it["label"])
+    }
     return r
+}
 
 
-action abre(uri, texto):
+action abre(uri, texto) {
     return avisa("textDocument/didOpen",
                  {"textDocument": {"uri": uri, "languageId": "poolscript",
                                    "version": 1, "text": texto}})
+}
 
 
-action posicao(uri, linha, col):
+action posicao(uri, linha, col) {
     return {"textDocument": {"uri": uri}, "position": {"line": linha, "character": col}}
+}
 
 
-run_selfwith_("main"):
+run_selfwith_("main") {
     URI = "file:///tmp/ps_lsp_teste/a.ps"
 
     # ── handshake, completion e hover numa conversa só ──────────────────────
@@ -135,8 +157,9 @@ run_selfwith_("main"):
 
     r2 = resposta(msgs, 2)
     labs = []
-    if r2 != Null:
+    if r2 != Null {
         labs = rotulos(r2)
+    }
     ok("cadeia conn.cursor() -> DbCursor sugere fetchall",
        "fetchall" in labs, str(len(labs)) + " itens: " + str(labs[0:6]))
     ok("cadeia NAO sugere metodo de outro tipo",
@@ -144,8 +167,9 @@ run_selfwith_("main"):
 
     r3 = resposta(msgs, 3)
     labs3 = []
-    if r3 != Null:
+    if r3 != Null {
         labs3 = rotulos(r3)
+    }
     ok("sem receptor sugere palavra da linguagem",
        "action" in labs3 and "Entity" in labs3, str(len(labs3)) + " itens")
     ok("sem receptor sugere as variaveis do arquivo",
@@ -153,8 +177,9 @@ run_selfwith_("main"):
 
     r4 = resposta(msgs, 4)
     txt = ""
-    if r4 != Null and r4.get("result") != Null:
+    if r4 != Null and r4.get("result") != Null {
         txt = r4["result"]["contents"]["value"]
+    }
     ok("hover mostra a assinatura real", txt.count("cursor(") > 0, "[" + txt + "]")
 
     r5 = resposta(msgs, 5)
@@ -177,8 +202,9 @@ run_selfwith_("main"):
        rR != Null and rR["result"]["capabilities"].get("semanticTokensProvider") != Null, str(rR))
     r2R = resposta(msgsR, 2)
     dados = []
-    if r2R != Null and r2R.get("result") != Null:
+    if r2R != Null and r2R.get("result") != Null {
         dados = r2R["result"]["data"]
+    }
     ok("realce vem em grupos de 5", len(dados) > 0 and len(dados) % 5 == 0, str(len(dados)))
     # o 1º token é `action` na linha 0, coluna 0, 6 chars, tipo 0 (keyword)
     ok("primeiro token e a keyword `action`",
@@ -187,18 +213,22 @@ run_selfwith_("main"):
     # o comentário tem que estar lá (tipo 3) — o lexer normal descarta
     tem_comentario = false
     i = 0
-    while i + 4 < len(dados):
-        if dados[i + 3] == 3:
+    while i + 4 < len(dados) {
+        if dados[i + 3] == 3 {
             tem_comentario = true
+        }
         i = i + 5
+    }
     ok("comentario entra no realce", tem_comentario, str(dados))
     # a string `"oi"` ocupa 4 no fonte, não 2 (o texto decodificado)
     tem_str4 = false
     i = 0
-    while i + 4 < len(dados):
-        if dados[i + 3] == 1 and dados[i + 2] == 4:
+    while i + 4 < len(dados) {
+        if dados[i + 3] == 1 and dados[i + 2] == 4 {
             tem_str4 = true
+        }
         i = i + 5
+    }
     ok("string mede o trecho do FONTE, com as aspas", tem_str4, str(dados))
 
     # ── diagnóstico: arquivo com erro de sintaxe ────────────────────────────
@@ -210,9 +240,11 @@ run_selfwith_("main"):
     ])
     diags = notificacoes(msgs2, "textDocument/publishDiagnostics")
     achou = false
-    for each d in diags:
-        if len(d["params"]["diagnostics"]) > 0:
+    for each d in diags {
+        if len(d["params"]["diagnostics"]) > 0 {
             achou = true
+        }
+    }
     ok("erro de sintaxe vira diagnostico", achou, str(len(diags)) + " notificacoes")
 
     # arquivo bom não pode gerar diagnóstico
@@ -223,14 +255,18 @@ run_selfwith_("main"):
     ])
     d3 = notificacoes(msgs3, "textDocument/publishDiagnostics")
     limpo = true
-    for each d in d3:
-        if len(d["params"]["diagnostics"]) > 0:
+    for each d in d3 {
+        if len(d["params"]["diagnostics"]) > 0 {
             limpo = false
+        }
+    }
     ok("arquivo valido nao gera diagnostico", limpo, str(d3))
 
     post("")
     post(str(feitos - falhas) + "/" + str(feitos), "checagens passaram")
-    if falhas > 0:
+    if falhas > 0 {
         post("log do servidor:")
         post(open(TMP + "/log").read())
         sys.exit(1)
+    }
+}

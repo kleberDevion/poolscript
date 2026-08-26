@@ -1,0 +1,136 @@
+# Regrava a expectativa de casos NOMEADOS de um `teste/casos_*.c`, rodando o
+# fonte e anotando o que o motor responde HOJE.
+#
+#     ./pool scripts/regrava_dif.ps teste/casos_diferencial.c "dif #64" "dif #66" ... --grava
+#
+# Isto é o oposto do que a suíte normalmente permite: regravar expectativa é
+# apagar memória. Só se usa quando o comportamento mudou POR DECISÃO — aqui, a
+# saída do bloco `:` da linguagem — e mesmo assim caso a caso, com o antes e o
+# depois impressos pra conferência.
+import os
+import sys
+import para_chaves
+
+TMP = "/tmp/ps_regrava"
+
+
+action roda(fonte) {
+    os.mkdir(TMP, exist_ok=true)
+    alvo = TMP + "/c.ps"
+    using open(alvo, "w") as f {
+        f.write(fonte)
+    }
+    os.cmd("cd " + TMP + " && GUZER_HEADLESS=1 timeout 20 '" + sys.executable +
+           "' c.ps > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
+    rc = int(open(TMP + "/rc.txt").read().strip())
+    so = open(TMP + "/o.txt").read()
+    erro = open(TMP + "/e.txt").read().split("\n")[0]
+    return [rc, so, erro]
+}
+
+
+action escapa_c(s) {
+    return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\t", "\\t")
+}
+
+
+run_selfwith_("main") {
+    if len(sys.argv) < 2 {
+        post("uso: pool scripts/regrava_dif.ps <casos.c> <nome> ... [--grava]")
+        sys.exit(1)
+    }
+    caminho = sys.argv[0]
+    grava = false
+    nomes = []
+    i = 0
+    for each a in sys.argv {
+        i = i + 1
+        if i == 1 {
+            continue
+        }
+        if a == "--grava" {
+            grava = true
+        } else {
+            nomes.append(a)
+        }
+    }
+
+    linhas = open(caminho).read().split("\n")
+    saida = []
+    trocados = 0
+    n = 0
+    alvo_ativo = ""
+    fonte_atual = ""
+
+    while n < len(linhas) {
+        l = linhas[n]
+        # cabeçalho de caso: { "nome",
+        achou = ""
+        for each nome in nomes {
+            if l.startswith("{ \"" + nome + "\",") {
+                achou = nome
+            }
+        }
+        if achou == "" {
+            saida.append(l)
+            n = n + 1
+            continue
+        }
+
+        # junta o corpo do caso até a linha que fecha com `},`
+        bloco = [l]
+        n = n + 1
+        while n < len(linhas) and not linhas[n].rstrip().endswith("},") {
+            bloco.append(linhas[n])
+            n = n + 1
+        }
+        if n < len(linhas) {
+            bloco.append(linhas[n])
+            n = n + 1
+        }
+
+        # a ÚLTIMA linha do bloco tem a expectativa; reconstrói o fonte das
+        # linhas do meio (literais C) só pra rodar
+        fonte = ""
+        k = 1
+        while k < len(bloco) {
+            t = bloco[k].strip()
+            if t.startswith("\"") {
+                # tira as aspas e desescapa o mínimo
+                corpo = t
+                if corpo.endswith(",") {
+                    corpo = corpo[0:len(corpo) - 1]
+                }
+                corpo = corpo.strip()
+                if corpo.startswith("\"") and corpo.endswith("\"") {
+                    corpo = corpo[1:len(corpo) - 1]
+                }
+                fonte = fonte + corpo.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
+            }
+            k = k + 1
+        }
+
+        r = roda(fonte)
+        ultima = bloco[len(bloco) - 1]
+        nova = "  NULL, \"" + escapa_c(r[2]) + "\", -1 },"
+        post("REGRAVA " + achou)
+        post("   antes: " + ultima.strip())
+        post("   agora: " + nova.strip())
+        trocados = trocados + 1
+        k = 0
+        while k < len(bloco) - 1 {
+            saida.append(bloco[k])
+            k = k + 1
+        }
+        saida.append(nova)
+    }
+
+    post("")
+    post("casos regravados:", trocados)
+    if grava {
+        using open(caminho, "w") as f {
+            f.write("\n".join(saida))
+        }
+        post("gravado.")
+    }
+}

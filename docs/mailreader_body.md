@@ -43,9 +43,11 @@ Uso:
 
 ```
 emails = reader.select("INBOX").search("SUBJECT", "fatura")
-for each e in emails:
-    if "urgente" in e["subject"]:
+for each e in emails {
+    if "urgente" in e["subject"] {
         corpo = reader.body(e["id"])   // só busca o corpo do que interessa
+    }
+}
 ```
 
 Isso é o caminho certo quando a busca pode trazer muita coisa e você só
@@ -66,8 +68,9 @@ Uso:
 
 ```
 emails = reader.select("INBOX").search("UNSEEN", include_body=true)
-for each e in emails:
+for each e in emails {
     post(e["subject"] ": " e["body"])
+}
 ```
 
 Isso é o caminho certo quando você já sabe, antes de rodar a busca, que

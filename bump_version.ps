@@ -29,114 +29,144 @@ ARQUIVOS = [
 ]
 
 
-action morre(msg):
+action morre(msg) {
     post("[erro]", msg)
     sys.exit(1)
+}
 
 
-action parte(versao):
+action parte(versao) {
     ps = versao.split(".")
     return [int(ps[0]), int(ps[1]), int(ps[2])]
+}
 
 
 # Devolve a mensagem do problema, ou "" se a versão respeita a regra.
-action valida(versao):
+action valida(versao) {
     p = parte(versao)
-    if p[2] > MAX_DIGITO:
+    if p[2] > MAX_DIGITO {
         return "3º dígito " + str(p[2]) + " passou de " + str(MAX_DIGITO) + " (faltou o rollover)"
-    if p[1] > MAX_DIGITO:
+    }
+    if p[1] > MAX_DIGITO {
         return "2º dígito " + str(p[1]) + " passou de " + str(MAX_DIGITO) + " (faltou o rollover)"
+    }
     return ""
+}
 
 
-action sobe(versao):
+action sobe(versao) {
     p = parte(versao)
     maior = p[0]
     meio = p[1]
     menor = p[2] + 1
-    if menor > MAX_DIGITO:
+    if menor > MAX_DIGITO {
         menor = 0
         meio = meio + 1
-    if meio > MAX_DIGITO:
+    }
+    if meio > MAX_DIGITO {
         meio = 0
         maior = maior + 1
+    }
     return str(maior) + "." + str(meio) + "." + str(menor)
+}
 
 
 # Lê a versão de um arquivo. Um arquivo pode citar a versão em vários lugares
 # (a doc mostra no título, no `pool --version` e no banner do REPL) — todas têm
 # que concordar, senão sincronizar não significa nada.
-action le_versao(caminho, padrao):
-    if not os.exists(caminho):
+action le_versao(caminho, padrao) {
+    if not os.exists(caminho) {
         morre("não achei o arquivo " + caminho)
+    }
     texto = open(caminho).read()
     achados = regex.findall(padrao, texto)
-    if len(achados) == 0:
+    if len(achados) == 0 {
         morre("não achei a versão em " + caminho)
+    }
     distintas = []
-    for each v in achados:
-        if not v in distintas:
+    for each v in achados {
+        if not v in distintas {
             distintas.append(v)
-    if len(distintas) > 1:
+        }
+    }
+    if len(distintas) > 1 {
         morre(caminho + " tem versões divergentes dentro do próprio arquivo: " + str(distintas))
+    }
     return achados[0]
+}
 
 
 # Confere que TODOS os arquivos têm a mesma versão e que ela respeita a regra.
-action confere():
+action confere() {
     achadas = []
-    for each par in ARQUIVOS:
+    for each par in ARQUIVOS {
         achadas.append(le_versao(par[0], par[1]))
+    }
     distintas = []
-    for each v in achadas:
-        if not v in distintas:
+    for each v in achadas {
+        if not v in distintas {
             distintas.append(v)
-    if len(distintas) > 1:
+        }
+    }
+    if len(distintas) > 1 {
         post("[erro] versões dessincronizadas entre os arquivos:")
         i = 0
-        for each par in ARQUIVOS:
+        for each par in ARQUIVOS {
             post("   ", par[0] + ":", achadas[i])
             i = i + 1
+        }
         sys.exit(1)
+    }
     versao = distintas[0]
     problema = valida(versao)
-    if problema != "":
+    if problema != "" {
         morre("versão " + versao + " é inválida: " + problema)
+    }
     post("lang:", versao, "(ok)")
     return versao
+}
 
 
 # Troca a versão em TODAS as ocorrências de todos os arquivos.
-action aplica(atual):
+action aplica(atual) {
     nova = sobe(atual)
-    for each par in ARQUIVOS:
+    for each par in ARQUIVOS {
         caminho = par[0]
         prefixo = par[2]
         texto = open(caminho).read()
         quantas = texto.count(prefixo + atual)
         novo = texto.replace(prefixo + atual, prefixo + nova)
-        using open(caminho, "w") as f:
+        using open(caminho, "w") as f {
             f.write(novo)
+        }
         sufixo = ""
-        if quantas > 1:
+        if quantas > 1 {
             sufixo = " (" + str(quantas) + "x)"
+        }
         post("   ", caminho + ":", atual, "->", nova + sufixo)
+    }
     post("lang:", atual, "->", nova)
+}
 
 
-run_selfwith_("main"):
+run_selfwith_("main") {
     # `sys.argv` já vem SEM o nome do script (diferente do Python, onde argv[0]
     # é o script) — o primeiro elemento já é o primeiro argumento do usuário.
     alvos = sys.argv
-    for each a in alvos:
-        if a != "lang":
+    for each a in alvos {
+        if a != "lang" {
             morre("alvo desconhecido: " + a + " (só existe 'lang')")
+        }
+    }
 
     atual = confere()
 
-    if len(alvos) == 0:
+    if len(alvos) == 0 {
         post("")
         post("nada alterado (rode com 'lang' para incrementar)")
-    else:
+    }
+    else {
         post("")
         aplica(atual)
+    }
+}

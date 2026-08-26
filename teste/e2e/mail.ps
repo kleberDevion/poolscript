@@ -13,9 +13,10 @@ import os
 usuario = os.getenv("MAIL_USER")
 senha = os.getenv("MAIL_PASS")
 
-if usuario == Null or senha == Null:
+if usuario == Null or senha == Null {
     post("PULOU mail -> defina MAIL_USER e MAIL_PASS no ambiente")
-else:
+}
+else {
     marca = "ps-e2e-" + str(len(usuario)) + "-teste"
 
     # ── MailMessage: monta a mensagem ───────────────────────────────────────
@@ -52,17 +53,19 @@ else:
 
     achados = r.search("SUBJECT", marca, limit=5)
     post("search ->", len(achados), "resultado(s)")
-    if len(achados) > 0:
+    if len(achados) > 0 {
         primeiro = achados[0]
         post("campos ->", primeiro.keys())
         post("assunto bate ->", primeiro["subject"].contains(marca))
         corpo = r.body(primeiro["id"])
         post("body ->", corpo.contains("corpo em texto puro"))
+    }
 
     # search com include_body traz o corpo de uma vez
     com_corpo = r.search("SUBJECT", marca, limit=1, include_body=true)
-    if len(com_corpo) > 0:
+    if len(com_corpo) > 0 {
         post("include_body ->", com_corpo[0].has("body"))
+    }
 
     # ── critérios de busca ──────────────────────────────────────────────────
     post("ALL limit=2 ->", len(r.search("ALL", Null, 2)))
@@ -75,5 +78,6 @@ else:
 
     r.close()
     post("mail -> ok")
+}
 
 post("fim")

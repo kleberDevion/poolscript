@@ -13,9 +13,10 @@ Tudo verificado na VM.
 ## 7.1. Declaração
 
 ```ps
-Entity Usuario():
+Entity Usuario() {
     nome: str
     idade: int
+}
 ```
 
 - O nome da Entity começa com **maiúscula** (é `IDENT_UPPER`, seção 1.4).
@@ -24,9 +25,10 @@ Entity Usuario():
 - **`class` e `Class` são sinônimos de `Entity`** — mesma semântica.
 
 ```ps
-class Ponto():          // idêntico a Entity Ponto()
+class Ponto() {          // idêntico a Entity Ponto()
     x: int
     y: int
+}
 ```
 
 ---
@@ -38,9 +40,10 @@ Campos são declarados com **tipo** (`nome: tipo`). A partir deles a linguagem
 ordem declarada:
 
 ```ps
-Entity Usuario():
+Entity Usuario() {
     nome: str
     idade: int
+}
 
 u = Usuario("ana", 30)
 post(u.nome, u.idade)      // ana 30
@@ -72,11 +75,13 @@ Para um construtor com lógica própria (validação, campos derivados), defina
 `action __init__(self, …)`. Isso **substitui** o construtor sintetizado:
 
 ```ps
-Entity Retangulo():
-    action __init__(self, largura, altura):
+Entity Retangulo() {
+    action __init__(self, largura, altura) {
         self.largura = largura
         self.altura  = altura
         self.area    = largura * altura
+    }
+}
 
 r = Retangulo(3, 4)
 post(r.area)              // 12
@@ -90,13 +95,16 @@ Um método é uma `action` cujo **primeiro parâmetro é `self`** (a instância)
 Sem `self`, é erro (a não ser que seja `@static`, 7.4).
 
 ```ps
-Entity Contador():
+Entity Contador() {
     valor: int
-    action inc(self):
+    action inc(self) {
         self.valor += 1
         return self.valor
-    action zera(self):
+    }
+    action zera(self) {
         self.valor = 0
+    }
+}
 
 c = Contador(0)
 post(c.inc(), c.inc())   // 1 2
@@ -113,10 +121,12 @@ Prefixado com `@static`, o método **não recebe `self`** e é chamado **na
 própria Entity** (não numa instância):
 
 ```ps
-Entity Mat():
+Entity Mat() {
     @static
-    action soma(a, b):
+    action soma(a, b) {
         return a + b
+    }
+}
 
 post(Mat.soma(2, 3))     // 5
 ```
@@ -134,21 +144,26 @@ Uma Entity pode herdar de uma ou mais outras, listadas entre os parênteses. Os
 **sobrescreve** o do pai.
 
 ```ps
-Entity Animal():
+Entity Animal() {
     nome: str
-    action fala(self):
+    action fala(self) {
         return "..."
+    }
+}
 
-Entity Cao(Animal):
-    action fala(self):
+Entity Cao(Animal) {
+    action fala(self) {
         return "au"      // sobrescreve
+    }
+}
 
 c = Cao("rex")
 post(c.nome, c.fala())   // rex au
 
 // herança múltipla:
-Entity C(A, B):          // herda métodos de A e de B
+Entity C(A, B) {          // herda métodos de A e de B
     x: int
+}
 ```
 
 ### 7.5.1. Construtor e herança
@@ -165,14 +180,18 @@ Dentro de um `__init__` próprio, `base(args)` chama o **construtor da
 superclasse**:
 
 ```ps
-Entity A():
-    action __init__(self, x):
+Entity A() {
+    action __init__(self, x) {
         self.x = x
+    }
+}
 
-Entity B(A):
-    action __init__(self, x, y):
+Entity B(A) {
+    action __init__(self, x, y) {
         base(x)          // roda o __init__ de A
         self.y = y
+    }
+}
 
 b = B(1, 2)
 post(b.x, b.y)           // 1 2
@@ -190,12 +209,15 @@ Entity**. Acessá-lo de fora é erro (`acesso negado: 'x' é private de …`) �
 regra é **imposta pela VM**, não é só convenção.
 
 ```ps
-Entity Conta():
+Entity Conta() {
     private saldo: int
-    public action ver(self):
+    public action ver(self) {
         return self.saldo
-    private action log(self):
+    }
+    private action log(self) {
         return "..."
+    }
+}
 
 c = Conta(100)
 post(c.ver())            // 100  (acessa saldo de dentro)

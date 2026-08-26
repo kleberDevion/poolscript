@@ -1,0 +1,104 @@
+# Converte os blocos de código PoolScript de um `.md` do estilo `:` pro `{ }`.
+#
+#     ./pool scripts/docs_para_chaves.ps docs/LANGUAGE.md          # confere
+#     ./pool scripts/docs_para_chaves.ps docs/LANGUAGE.md --grava
+#
+# Só toca no que está dentro de uma cerca ``` de código. Texto em prosa não é
+# tocado — a prosa que EXPLICA o bloco `:` tem que ser reescrita a mão, porque
+# não é tradução, é mudança do que se diz.
+#
+# Bloco cujo conteúdo não é PoolScript válido (saída de terminal, JSON, shell)
+# é deixado como está: o conversor só mexe onde o lexer reconhece um `:` de
+# bloco.
+import os
+import sys
+import para_chaves
+
+# Linguagens de cerca que são PoolScript. Cerca sem linguagem também entra:
+# a doc usa ``` puro pra exemplo da linguagem em vários lugares.
+PS_LANGS = ["ps", "poolscript", "psl", ""]
+
+
+action converte_md(texto) {
+    linhas = texto.split("\n")
+    saida = []
+    i = 0
+    n = len(linhas)
+    mexidos = 0
+    while i < n {
+        l = linhas[i]
+        if not l.strip().startswith("```") {
+            saida.append(l)
+            i = i + 1
+            continue
+        }
+        # abre cerca
+        lang = l.strip()[3:].strip().lower()
+        saida.append(l)
+        i = i + 1
+        corpo = []
+        while i < n and not linhas[i].strip().startswith("```") {
+            corpo.append(linhas[i])
+            i = i + 1
+        }
+        fim = ""
+        if i < n {
+            fim = linhas[i]
+            i = i + 1
+        }
+        bruto = "\n".join(corpo)
+        if lang in PS_LANGS and bruto.strip() != "" {
+            novo = para_chaves.converte(bruto)
+            if novo != bruto {
+                mexidos = mexidos + 1
+                bruto = novo
+            }
+        }
+        if bruto != "" {
+            for each c in bruto.split("\n") {
+                saida.append(c)
+            }
+        }
+        if fim != "" {
+            saida.append(fim)
+        }
+    }
+    return [("\n").join(saida), mexidos]
+}
+
+
+run_selfwith_("main") {
+    if len(sys.argv) < 1 {
+        post("uso: pool scripts/docs_para_chaves.ps <arquivo.md> [--grava]")
+        sys.exit(1)
+    }
+    grava = false
+    alvos = []
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+        else {
+            alvos.append(a)
+        }
+    }
+
+    total = 0
+    for each caminho in alvos {
+        texto = open(caminho).read()
+        par = converte_md(texto)
+        novo = par[0]
+        mexidos = par[1]
+        if mexidos == 0 {
+            continue
+        }
+        total = total + mexidos
+        post(caminho + ":", mexidos, "blocos")
+        if grava {
+            using open(caminho, "w") as f {
+                f.write(novo)
+            }
+        }
+    }
+    post("total:", total, "blocos de codigo")
+}

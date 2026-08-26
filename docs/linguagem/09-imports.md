@@ -115,10 +115,12 @@ ponto de entrada:
 
 ```ps
 // mymod.ps
-action saudar(nome):
+action saudar(nome) {
     return "ola " + nome
-run_selfwith_("main"):
+}
+run_selfwith_("main") {
     post("só quando rodo o mymod direto")
+}
 
 // outro.ps
 import mymod                 // NÃO imprime a linha do run_selfwith_

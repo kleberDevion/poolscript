@@ -35,8 +35,9 @@ O `using` aceita os dois estilos de bloco — chaves `{ }` (acima) ou `:` com
 indentação:
 
 ```
-using mp.open(target="compras.xlsx") as arq:
+using mp.open(target="compras.xlsx") as arq {
     arq.write(column=0, cell=full, content=lista)
+}
 ```
 
 ---
@@ -46,9 +47,10 @@ using mp.open(target="compras.xlsx") as arq:
 O padrão `utf-8` cobre a maioria. Pra CSVs/textos antigos noutro charset:
 
 ```
-using mp.open(target="legado.csv", encoding="latin-1") as arq:
+using mp.open(target="legado.csv", encoding="latin-1") as arq {
     dados = arq.read()
     post(dados)
+}
 ```
 
 O `encoding` vale pra **CSV e texto puro**; em `.xlsx`/`.xls` é ignorado (o

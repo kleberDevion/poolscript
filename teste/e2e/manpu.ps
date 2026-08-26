@@ -8,14 +8,16 @@ import manpu as mp
 import os
 
 dir = "/tmp/ps_mp"
-if not os.exists(dir):
+if not os.exists(dir) {
     os.mkdir(dir)
+}
 
 txt = dir + "/lista.txt"
 # começa limpo: execução anterior que abortou deixaria conteúdo pra trás e a
 # semântica de escrita (acrescenta x sobrescreve) ficaria ilegível
-if os.exists(txt):
+if os.exists(txt) {
     _r = os.run(["rm", "-f", txt])
+}
 
 # ── manpu.write: grava direto ───────────────────────────────────────────────
 r = mp.write(content="ana", column=0, celula=0, target=txt)
@@ -28,17 +30,19 @@ post("load ->", mp.load(txt))
 post("src ->", mp.src(txt).endswith("lista.txt"))
 
 # ── manpu.open -> ManpuFile: filepath / write / read / save ─────────────────
-using mp.open(target=txt) as arq:
+using mp.open(target=txt) as arq {
     post("open ->", type(arq))
     post("ManpuFile.read ->", arq.read())
     arq.write(content=["um", "dois", "tres"], column=0, cell="full")
     post("ManpuFile.write -> ok")
+}
 
 post("depois do bloco ->", mp.read(txt))
 
-using mp.open(target=txt) as arq:
+using mp.open(target=txt) as arq {
     arq.write(content="so isso", column=0, celula=0)
     post("ManpuFile.save ->", type(arq.save()))
+}
 
 # ── xlsx: planilha de verdade ───────────────────────────────────────────────
 xls = dir + "/plan.xlsx"
@@ -50,7 +54,8 @@ post("xlsx lido ->", mp.read(xls))
 # ── manpu.remove ────────────────────────────────────────────────────────────
 post("remove ->", mp.remove(target=xls, value="cabecalho"))
 
-for each ent in os.ls(dir):
+for each ent in os.ls(dir) {
     _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+}
 os.rmdir(dir)
 post("fim")

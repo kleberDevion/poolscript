@@ -8,19 +8,43 @@
 const Caso CASOS_LINGUAGEM[] = {
 /* ── escopo ── */
 { "for each sombreia variável de fora",
-  "i = \"importante\"\nfor each i in [1, 2]:\n    post(i)\npost(i)\n",
+  "i = \"importante\"\n"
+  "for each i in [1, 2] {\n"
+  "    post(i)\n"
+  "}\n"
+  "post(i)\n",
   "1\n2\nimportante", NULL, 0 },
 { "for each não apaga action de mesmo nome",
-  "action f():\n    return \"sou action\"\nfor each f in [1, 2]:\n    post(f)\npost(f())\n",
+  "action f() {\n"
+  "    return \"sou action\"\n"
+  "}\n"
+  "for each f in [1, 2] {\n"
+  "    post(f)\n"
+  "}\n"
+  "post(f())\n",
   "1\n2\nsou action", NULL, 0 },
 { "variável do laço não vaza",
-  "for each z in [1]:\n    post(z)\npost(z)\n", NULL, "não definida", -1 },
+  "for each z in [1] {\n"
+  "    post(z)\n"
+  "}\n"
+  "post(z)\n", NULL, "não definida", -1 },
 { "variável de bloco não vaza",
-  "if true:\n    dentro = 5\npost(dentro)\n", NULL, "não definida", -1 },
+  "if true {\n"
+  "    dentro = 5\n"
+  "}\n"
+  "post(dentro)\n", NULL, "não definida", -1 },
 { "atribuir nome de fora dentro do bloco altera o de fora",
-  "x = 1\nif true:\n    x = 2\npost(x)\n", "2", NULL, 0 },
+  "x = 1\n"
+  "if true {\n"
+  "    x = 2\n"
+  "}\n"
+  "post(x)\n", "2", NULL, 0 },
 { "acumulador em laço",
-  "total = 0\nfor each i in [1, 2, 3]:\n    total = total + i\npost(total)\n", "6", NULL, 0 },
+  "total = 0\n"
+  "for each i in [1, 2, 3] {\n"
+  "    total = total + i\n"
+  "}\n"
+  "post(total)\n", "6", NULL, 0 },
 
 /* ── UTF-8: fatia e busca em CARACTERES, não bytes ── */
 { "fatia com acento",
@@ -79,9 +103,13 @@ const Caso CASOS_LINGUAGEM[] = {
 
 /* ── arquivo ── */
 { "read(n) não consome o arquivo",
-  "import os\nos.writeFile(\"/tmp/ps_teste_leitura.txt\", \"abcdef\")\n"
-  "using open(\"/tmp/ps_teste_leitura.txt\") as f:\n"
-  "    post(f.read(3))\n    post(f.read(2))\n    post(f.read())\n",
+  "import os\n"
+  "os.writeFile(\"/tmp/ps_teste_leitura.txt\", \"abcdef\")\n"
+  "using open(\"/tmp/ps_teste_leitura.txt\") as f {\n"
+  "    post(f.read(3))\n"
+  "    post(f.read(2))\n"
+  "    post(f.read())\n"
+  "}\n",
   "abc\nde\nf", NULL, 0 },
 
 /* ── request: head e multipart ── */
@@ -95,68 +123,212 @@ const Caso CASOS_LINGUAGEM[] = {
  * A captura é por CÉLULA (o modelo do CPython): quem declara e quem captura
  * mexem no mesmo valor, então a aninhada VÊ e MUTA a variável de fora. */
 { "aninhada lê local de fora",
-  "action fora():\n    a = 1\n    action dentro():\n        post(a)\n    dentro()\nfora()\n",
+  "action fora() {\n"
+  "    a = 1\n"
+  "    action dentro() {\n"
+  "        post(a)\n"
+  "    }\n"
+  "    dentro()\n"
+  "}\n"
+  "fora()\n",
   "1", NULL, 0 },
 { "aninhada chama a si mesma (recursão)",
-  "action fora():\n    action rec(n):\n        if n <= 0:\n            return 0\n        return rec(n - 1)\n"
-  "    return rec(3)\npost(fora())\n",
+  "action fora() {\n"
+  "    action rec(n) {\n"
+  "        if n <= 0 {\n"
+  "            return 0\n"
+  "        }\n"
+  "        return rec(n - 1)\n"
+  "    }\n"
+  "    return rec(3)\n"
+  "}\n"
+  "post(fora())\n",
   "0", NULL, 0 },
 { "aninhada dentro de método enxerga self",
-  "Entity C():\n    action __init__(self):\n        self.v = 3\n    action m(self):\n"
-  "        action inner():\n            return self.v\n        return inner()\nc = C()\npost(c.m())\n",
+  "Entity C() {\n"
+  "    action __init__(self) {\n"
+  "        self.v = 3\n"
+  "    }\n"
+  "    action m(self) {\n"
+  "        action inner() {\n"
+  "            return self.v\n"
+  "        }\n"
+  "        return inner()\n"
+  "    }\n"
+  "}\n"
+  "c = C()\n"
+  "post(c.m())\n",
   "3", NULL, 0 },
 { "contador: a aninhada MUTA a variável de fora",
-  "action faz():\n    n = 0\n    action inc():\n        n = n + 1\n        return n\n    return inc\n"
-  "c = faz()\npost(c(), c(), c())\n",
+  "action faz() {\n"
+  "    n = 0\n"
+  "    action inc() {\n"
+  "        n = n + 1\n"
+  "        return n\n"
+  "    }\n"
+  "    return inc\n"
+  "}\n"
+  "c = faz()\n"
+  "post(c(), c(), c())\n",
   "1 2 3", NULL, 0 },
 { "cada closure tem o próprio estado",
-  "action faz():\n    n = 0\n    action inc():\n        n = n + 1\n        return n\n    return inc\n"
-  "a = faz()\nb = faz()\npost(a(), a(), b())\n",
+  "action faz() {\n"
+  "    n = 0\n"
+  "    action inc() {\n"
+  "        n = n + 1\n"
+  "        return n\n"
+  "    }\n"
+  "    return inc\n"
+  "}\n"
+  "a = faz()\n"
+  "b = faz()\n"
+  "post(a(), a(), b())\n",
   "1 2 1", NULL, 0 },
 { "captura em cadeia (três níveis)",
-  "action n1():\n    a = 10\n    action n2():\n        action n3():\n            return a * 2\n"
-  "        return n3()\n    return n2()\npost(n1())\n",
+  "action n1() {\n"
+  "    a = 10\n"
+  "    action n2() {\n"
+  "        action n3() {\n"
+  "            return a * 2\n"
+  "        }\n"
+  "        return n3()\n"
+  "    }\n"
+  "    return n2()\n"
+  "}\n"
+  "post(n1())\n",
   "20", NULL, 0 },
 { "closure como callback do map",
-  "action mult(k):\n    action f(x):\n        return x * k\n    return f\n"
+  "action mult(k) {\n"
+  "    action f(x) {\n"
+  "        return x * k\n"
+  "    }\n"
+  "    return f\n"
+  "}\n"
   "post(map([1, 2, 3], mult(10)))\n",
   "[10, 20, 30]", NULL, 0 },
 { "parâmetro capturado",
-  "action soma(a):\n    action mais(b):\n        return a + b\n    return mais\npost(soma(3)(4))\n",
+  "action soma(a) {\n"
+  "    action mais(b) {\n"
+  "        return a + b\n"
+  "    }\n"
+  "    return mais\n"
+  "}\n"
+  "post(soma(3)(4))\n",
   "7", NULL, 0 },
 { "closures do laço compartilham a variável",
-  "action junta():\n    fs = []\n    for each i in range(3):\n        action g():\n            return i\n"
-  "        fs.append(g)\n    return fs\nfs = junta()\npost(fs[0](), fs[1](), fs[2]())\n",
+  "action junta() {\n"
+  "    fs = []\n"
+  "    for each i in range(3) {\n"
+  "        action g() {\n"
+  "            return i\n"
+  "        }\n"
+  "        fs.append(g)\n"
+  "    }\n"
+  "    return fs\n"
+  "}\n"
+  "fs = junta()\n"
+  "post(fs[0](), fs[1](), fs[2]())\n",
   "2 2 2", NULL, 0 },
 { "recursão mútua entre aninhadas",
-  "action mutuo(n):\n    action par(k):\n        if k == 0:\n            return true\n"
-  "        return impar(k - 1)\n    action impar(k):\n        if k == 0:\n            return false\n"
-  "        return par(k - 1)\n    return par(n)\npost(mutuo(4), mutuo(7))\n",
+  "action mutuo(n) {\n"
+  "    action par(k) {\n"
+  "        if k == 0 {\n"
+  "            return true\n"
+  "        }\n"
+  "        return impar(k - 1)\n"
+  "    }\n"
+  "    action impar(k) {\n"
+  "        if k == 0 {\n"
+  "            return false\n"
+  "        }\n"
+  "        return par(k - 1)\n"
+  "    }\n"
+  "    return par(n)\n"
+  "}\n"
+  "post(mutuo(4), mutuo(7))\n",
   "True False", NULL, 0 },
 { "global continua visível de dentro da aninhada",
-  "G = 99\naction f():\n    action dentro():\n        return G\n    return dentro()\npost(f())\n",
+  "G = 99\n"
+  "action f() {\n"
+  "    action dentro() {\n"
+  "        return G\n"
+  "    }\n"
+  "    return dentro()\n"
+  "}\n"
+  "post(f())\n",
   "99", NULL, 0 },
 { "gerador aninhado mantém a captura",
-  "action faz(k):\n    action g():\n        for each i in range(3):\n            yield i * k\n    return g\n"
-  "s = 0\nfor each v in faz(10)():\n    s = s + v\npost(s)\n",
+  "action faz(k) {\n"
+  "    action g() {\n"
+  "        for each i in range(3) {\n"
+  "            yield i * k\n"
+  "        }\n"
+  "    }\n"
+  "    return g\n"
+  "}\n"
+  "s = 0\n"
+  "for each v in faz(10)() {\n"
+  "    s = s + v\n"
+  "}\n"
+  "post(s)\n",
   "30", NULL, 0 },
 { "closure em async action (fibra)",
-  "async action t(k):\n    action calc():\n        return k * 3\n    return calc()\n"
+  "async action t(k) {\n"
+  "    action calc() {\n"
+  "        return k * 3\n"
+  "    }\n"
+  "    return calc()\n"
+  "}\n"
   "post(gather(t(1), t(2)))\n",
   "[3, 6]", NULL, 0 },
 { "closure sobrevive ao GC e continua mutando",
-  "action cont():\n    n = 0\n    action inc():\n        n = n + 1\n        return n\n    return inc\n"
-  "c = cont()\nfor each i in range(50000):\n    lixo = [i, i, i]\npost(c(), c())\n",
+  "action cont() {\n"
+  "    n = 0\n"
+  "    action inc() {\n"
+  "        n = n + 1\n"
+  "        return n\n"
+  "    }\n"
+  "    return inc\n"
+  "}\n"
+  "c = cont()\n"
+  "for each i in range(50000) {\n"
+  "    lixo = [i, i, i]\n"
+  "}\n"
+  "post(c(), c())\n",
   "1 2", NULL, 0 },
 { "muitas closures vivas ao mesmo tempo",
-  "action cria(n):\n    action f():\n        return n\n    return f\n"
-  "l = []\nfor each i in range(20000):\n    l.append(cria(i))\npost(len(l), l[0](), l[19999]())\n",
+  "action cria(n) {\n"
+  "    action f() {\n"
+  "        return n\n"
+  "    }\n"
+  "    return f\n"
+  "}\n"
+  "l = []\n"
+  "for each i in range(20000) {\n"
+  "    l.append(cria(i))\n"
+  "}\n"
+  "post(len(l), l[0](), l[19999]())\n",
   "20000 0 19999", NULL, 0 },
 { "type() de closure é action",
-  "action f():\n    a = 1\n    action g():\n        return a\n    return g\npost(type(f()))\n",
+  "action f() {\n"
+  "    a = 1\n"
+  "    action g() {\n"
+  "        return a\n"
+  "    }\n"
+  "    return g\n"
+  "}\n"
+  "post(type(f()))\n",
   "action", NULL, 0 },
 { "variável capturada usada antes de receber valor é erro",
-  "action f():\n    action g():\n        return z\n    r = g()\n    z = 1\n    return r\npost(f())\n",
+  "action f() {\n"
+  "    action g() {\n"
+  "        return z\n"
+  "    }\n"
+  "    r = g()\n"
+  "    z = 1\n"
+  "    return r\n"
+  "}\n"
+  "post(f())\n",
   NULL, "'z'", -1 },
 
 /* ── `str(x)` tem que dizer o MESMO que `post(x)` ────────────────────────
@@ -168,10 +340,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "import sqlite3\nc = sqlite3.connect(\"/tmp/ps_str1.db\")\npost(\"[\" + str(c) + \"]\")\n",
   "[<sqlite3.Connection>]", NULL, 0 },
 { "str() de arquivo aberto",
-  "using open(\"/tmp/ps_str2.txt\", \"w\") as f:\n    post(\"[\" + str(f) + \"]\")\n",
+  "using open(\"/tmp/ps_str2.txt\", \"w\") as f {\n"
+  "    post(\"[\" + str(f) + \"]\")\n"
+  "}\n",
   "[<arquivo /tmp/ps_str2.txt>]", NULL, 0 },
 { "str() de gerador",
-  "action g():\n    yield 1\npost(\"[\" + str(g()) + \"]\")\n",
+  "action g() {\n"
+  "    yield 1\n"
+  "}\n"
+  "post(\"[\" + str(g()) + \"]\")\n",
   "[<generator g>]", NULL, 0 },
 { "str() de socket fechado",
   "import sockets\ns = sockets.socket()\ns.close()\npost(\"[\" + str(s) + \"]\")\n",
@@ -192,19 +369,36 @@ const Caso CASOS_LINGUAGEM[] = {
 { "dicionario multilinha com continuacao indentada",
   "d = {\"a\": 1,\n     \"b\": 2}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
 { "dicionario multilinha dentro de action",
-  "action f():\n    return {\"a\": 1,\n            \"b\": 2}\npost(f())\n",
+  "action f() {\n"
+  "    return {\"a\": 1,\n"
+  "            \"b\": 2}\n"
+  "}\n"
+  "post(f())\n",
   "{'a': 1, 'b': 2}", NULL, 0 },
 { "dicionario com a chave em linha propria",
   "d = {\n    \"a\": 1,\n    \"b\": 2\n}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
 { "lista multilinha indentada",
-  "action g():\n    return [1,\n            2]\npost(g())\n", "[1, 2]", NULL, 0 },
+  "action g() {\n"
+  "    return [1,\n"
+  "            2]\n"
+  "}\n"
+  "post(g())\n", "[1, 2]", NULL, 0 },
 { "dicionario aninhado multilinha",
   "d = {\"a\": {\"b\": 1,\n            \"c\": 2},\n     \"d\": 3}\npost(d)\n",
   "{'a': {'b': 1, 'c': 2}, 'd': 3}", NULL, 0 },
 { "dicionario como argumento multilinha",
-  "action f(x):\n    return x[\"a\"]\npost(f({\"a\": 1,\n        \"b\": 2}))\n", "1", NULL, 0 },
+  "action f(x) {\n"
+  "    return x[\"a\"]\n"
+  "}\n"
+  "post(f({\"a\": 1,\n"
+  "        \"b\": 2}))\n", "1", NULL, 0 },
 { "bloco de chaves continua sendo bloco depois de )",
-  "if (true) {\n    action f():\n        return 1\n    post(f())\n}\n", "1", NULL, 0 },
+  "if (true) {\n"
+  "    action f() {\n"
+  "        return 1\n"
+  "    }\n"
+  "    post(f())\n"
+  "}\n", "1", NULL, 0 },
 { "match usa bloco, e o padrao dict usa dicionario",
   "d = {\"a\": 1}\nmatch d {\n case {a: 1} { post(\"casou\") }\n case _ { post(\"nao\") }\n}\n",
   "casou", NULL, 0 },
@@ -290,20 +484,54 @@ const Caso CASOS_LINGUAGEM[] = {
  * indentação dentro de `{ }` passou a ser LIVRE (o `}` é que fecha) — fora
  * dela a regra dos 4 espaços continua valendo. */
 { "action ':' dentro de bloco de chaves",
-  "if (true) {\n    action f():\n        return 1\n    post(f())\n}\n", "1", NULL, 0 },
+  "if (true) {\n"
+  "    action f() {\n"
+  "        return 1\n"
+  "    }\n"
+  "    post(f())\n"
+  "}\n", "1", NULL, 0 },
 { "if ':' dentro de bloco de chaves",
-  "if (true) {\n    if true:\n        post(\"x\")\n}\n", "x", NULL, 0 },
+  "if (true) {\n"
+  "    if true {\n"
+  "        post(\"x\")\n"
+  "    }\n"
+  "}\n", "x", NULL, 0 },
 { "try/catch ':' dentro de bloco de chaves",
-  "if (true) {\n    try:\n        raise Boom(\"x\")\n    catch(e):\n        post(\"peguei\")\n}\n",
+  "if (true) {\n"
+  "    try {\n"
+  "        raise Boom(\"x\")\n"
+  "    } catch(e) {\n"
+  "        post(\"peguei\")\n"
+  "    }\n"
+  "}\n",
   "peguei", NULL, 0 },
 { "for each ':' dentro de bloco de chaves",
-  "if (true) {\n    for each i in range(2):\n        post(i)\n}\n", "0\n1", NULL, 0 },
+  "if (true) {\n"
+  "    for each i in range(2) {\n"
+  "        post(i)\n"
+  "    }\n"
+  "}\n", "0\n1", NULL, 0 },
 { "bloco de chaves dentro de bloco ':'",
-  "if true:\n    action f() {\n        return 1\n    }\n    post(f())\n", "1", NULL, 0 },
+  "if true {\n"
+  "    action f() {\n"
+  "        return 1\n"
+  "    }\n"
+  "    post(f())\n"
+  "}\n", "1", NULL, 0 },
 { "metodo ':' dentro de Entity de chaves",
-  "Entity P() {\n    action m(self):\n        return 3\n}\npost(P().m())\n", "3", NULL, 0 },
+  "Entity P() {\n"
+  "    action m(self) {\n"
+  "        return 3\n"
+  "    }\n"
+  "}\n"
+  "post(P().m())\n", "3", NULL, 0 },
 { "metodo de chaves dentro de Entity ':'",
-  "Entity Q():\n    action m(self) {\n        return 4\n    }\npost(Q().m())\n", "4", NULL, 0 },
+  "Entity Q() {\n"
+  "    action m(self) {\n"
+  "        return 4\n"
+  "    }\n"
+  "}\n"
+  "post(Q().m())\n", "4", NULL, 0 },
 { "indentacao livre dentro de chaves",
   "action r(n) {\n if (n < 1) {\n  return 0\n }\n return 1 + r(n - 1)\n}\npost(r(5))\n",
   "5", NULL, 0 },
@@ -320,29 +548,62 @@ const Caso CASOS_LINGUAGEM[] = {
  * por aritmética. Estes casos travam a SEMÂNTICA — a medida de memória está
  * no notas/LIMITACOES.md. */
 { "range de um argumento",
-  "for each i in range(3):\n    post(i)\n", "0\n1\n2", NULL, 0 },
+  "for each i in range(3) {\n"
+  "    post(i)\n"
+  "}\n", "0\n1\n2", NULL, 0 },
 { "range com inicio e fim",
-  "for each i in range(2, 5):\n    post(i)\n", "2\n3\n4", NULL, 0 },
+  "for each i in range(2, 5) {\n"
+  "    post(i)\n"
+  "}\n", "2\n3\n4", NULL, 0 },
 { "range com passo negativo",
-  "for each i in range(10, 0, -3):\n    post(i)\n", "10\n7\n4\n1", NULL, 0 },
+  "for each i in range(10, 0, -3) {\n"
+  "    post(i)\n"
+  "}\n", "10\n7\n4\n1", NULL, 0 },
 { "range vazio nao entra no laco",
-  "for each i in range(0):\n    post(\"NAO\")\npost(\"fim\")\n", "fim", NULL, 0 },
+  "for each i in range(0) {\n"
+  "    post(\"NAO\")\n"
+  "}\n"
+  "post(\"fim\")\n", "fim", NULL, 0 },
 { "range aceita texto numerico",
-  "for each i in range(\"3\"):\n    post(i)\n", "0\n1\n2", NULL, 0 },
+  "for each i in range(\"3\") {\n"
+  "    post(i)\n"
+  "}\n", "0\n1\n2", NULL, 0 },
 { "range com passo 0 e erro",
-  "for each i in range(1, 5, 0):\n    post(i)\n", NULL, "passo de range", -1 },
+  "for each i in range(1, 5, 0) {\n"
+  "    post(i)\n"
+  "}\n", NULL, "passo de range", -1 },
 { "range com expressao nos limites",
-  "n = 4\nfor each i in range(n - 2):\n    post(i)\n", "0\n1", NULL, 0 },
+  "n = 4\n"
+  "for each i in range(n - 2) {\n"
+  "    post(i)\n"
+  "}\n", "0\n1", NULL, 0 },
 { "break e continue dentro de range",
-  "for each i in range(10):\n    if i == 3:\n        break\n    if i == 1:\n        continue\n    post(i)\n",
+  "for each i in range(10) {\n"
+  "    if i == 3 {\n"
+  "        break\n"
+  "    }\n"
+  "    if i == 1 {\n"
+  "        continue\n"
+  "    }\n"
+  "    post(i)\n"
+  "}\n",
   "0\n2", NULL, 0 },
 { "range aninhado",
-  "for each i in range(2):\n    for each j in range(2):\n        post(i, j)\n",
+  "for each i in range(2) {\n"
+  "    for each j in range(2) {\n"
+  "        post(i, j)\n"
+  "    }\n"
+  "}\n",
   "0 0\n0 1\n1 0\n1 1", NULL, 0 },
 { "range fora do laco continua sendo lista",
   "r = range(4)\npost(type(r), len(r), r[2], r)\n", "list 4 2 [0, 1, 2, 3]", NULL, 0 },
 { "range redefinido pelo usuario ganha do embutido",
-  "action range(n):\n    return [\"MEU\", n]\nfor each x in range(2):\n    post(x)\n",
+  "action range(n) {\n"
+  "    return [\"MEU\", n]\n"
+  "}\n"
+  "for each x in range(2) {\n"
+  "    post(x)\n"
+  "}\n",
   "MEU\n2", NULL, 0 },
 
 /* ── `char` como tipo declarável ─────────────────────────────────────────
@@ -362,7 +623,9 @@ const Caso CASOS_LINGUAGEM[] = {
 { "char recusa codepoint invalido",
   "char c = -1\n", NULL, "nao e um caractere valido", -1 },
 { "char action nao existe",
-  "char action f():\n    return 1\n", NULL, "int action", -1 },
+  "char action f() {\n"
+  "    return 1\n"
+  "}\n", NULL, "int action", -1 },
 { "as outras declaracoes tipadas continuam iguais",
   "str a = \"oi\"\nint b = \"7\"\nflo c = 1\nbool d = true\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
@@ -386,23 +649,52 @@ const Caso CASOS_LINGUAGEM[] = {
  * Nasceu porque a doc do middleware do jinker mandava usar `continue` fora de
  * laço, que não compila. `pass` vale em QUALQUER posição de statement. */
 { "pass como corpo de action devolve null",
-  "action f():\n    pass\npost(f())\n", "null", NULL, 0 },
+  "action f() {\n"
+  "    pass\n"
+  "}\n"
+  "post(f())\n", "null", NULL, 0 },
 { "pass no if e no else",
-  "x = 0\nif x == 0:\n    pass\nelse:\n    post(\"nao\")\npost(\"ok\")\n", "ok", NULL, 0 },
+  "x = 0\n"
+  "if x == 0 {\n"
+  "    pass\n"
+  "} else {\n"
+  "    post(\"nao\")\n"
+  "}\n"
+  "post(\"ok\")\n", "ok", NULL, 0 },
 { "pass em laco nao interrompe",
-  "for each n in range(3):\n    pass\npost(\"fim\")\n", "fim", NULL, 0 },
+  "for each n in range(3) {\n"
+  "    pass\n"
+  "}\n"
+  "post(\"fim\")\n", "fim", NULL, 0 },
 { "pass nao encerra o resto do bloco",
-  "action f():\n    pass\n    return 7\npost(f())\n", "7", NULL, 0 },
+  "action f() {\n"
+  "    pass\n"
+  "    return 7\n"
+  "}\n"
+  "post(f())\n", "7", NULL, 0 },
 { "pass no while",
-  "n = 0\nwhile n < 3:\n    n += 1\n    pass\npost(n)\n", "3", NULL, 0 },
+  "n = 0\n"
+  "while n < 3 {\n"
+  "    n += 1\n"
+  "    pass\n"
+  "}\n"
+  "post(n)\n", "3", NULL, 0 },
 { "pass no catch engole o erro",
-  "try:\n    raise Boom(\"x\")\ncatch (e):\n    pass\npost(\"seguiu\")\n", "seguiu", NULL, 0 },
+  "try {\n"
+  "    raise Boom(\"x\")\n"
+  "} catch (e) {\n"
+  "    pass\n"
+  "}\n"
+  "post(\"seguiu\")\n", "seguiu", NULL, 0 },
 { "pass com chaves",
   "action f() { pass }\npost(f())\n", "null", NULL, 0 },
 { "pass e palavra reservada",
   "pass = 1\n", NULL, "palavra reservada", -1 },
 { "pass no corpo de classe",
-  "class Vazia():\n    pass\npost(type(Vazia))\n", "Entity", NULL, 0 },
+  "class Vazia() {\n"
+  "    pass\n"
+  "}\n"
+  "post(type(Vazia))\n", "Entity", NULL, 0 },
 { "pass fora de laco NAO e erro (ao contrario de continue)",
   "pass\npost(\"ok\")\n", "ok", NULL, 0 },
 { "continue fora de laco continua sendo erro",
@@ -417,19 +709,50 @@ const Caso CASOS_LINGUAGEM[] = {
 { "if com chave na linha seguinte",
   "if (true)\n{\n    post(\"A\")\n}\n", "A", NULL, 0 },
 { "if/else com chave na linha seguinte",
-  "x = 2\nif (x == 1)\n{\n    post(\"A\")\n}\nelse\n{\n    post(\"B\")\n}\n", "B", NULL, 0 },
+  "x = 2\n"
+  "if (x == 1)\n"
+  "{\n"
+  "    post(\"A\")\n"
+  "} else\n"
+  "{\n"
+  "    post(\"B\")\n"
+  "}\n", "B", NULL, 0 },
 { "while com chave na linha seguinte",
   "n = 0\nwhile (n < 2)\n{\n    n = n + 1\n}\npost(n)\n", "2", NULL, 0 },
 { "for each com chave na linha seguinte",
   "for each i in [1,2]\n{\n    post(i)\n}\n", "1\n2", NULL, 0 },
 { "try/catch com chave na linha seguinte",
-  "try\n{\n    raise B(\"x\")\n}\ncatch (e)\n{\n    post(\"peguei\")\n}\n", "peguei", NULL, 0 },
+  "try\n"
+  "{\n"
+  "    raise B(\"x\")\n"
+  "} catch (e)\n"
+  "{\n"
+  "    post(\"peguei\")\n"
+  "}\n", "peguei", NULL, 0 },
 { "action com chave na linha seguinte continua valendo",
   "action f()\n{\n    return 7\n}\npost(f())\n", "7", NULL, 0 },
 { "chave na linha seguinte nao estraga bloco de dois-pontos",
-  "if true:\n    post(\"A\")\n", "A", NULL, 0 },
-{ "bloco de dois-pontos ainda exige quebra de linha",
-  "if true: post(\"A\")\n", NULL, "faltou quebra de linha", -1 },
+  "if true {\n"
+  "    post(\"A\")\n"
+  "}\n", "A", NULL, 0 },
+/* ── o bloco `:` saiu da linguagem ──────────────────────────────────────────
+ * DECISÃO: o bloco é `{ }`, e só. Conviver com os dois custou caro — as
+ * regressões de parser desta linha do tempo saíram todas da interação entre
+ * indentação e chave. A mensagem tem que ENSINAR, não só recusar. */
+{ "bloco com ':' e recusado",
+  "if true:\n    post(\"A\")\n", NULL, "bloco com ':' nao existe mais", -1 },
+{ "bloco com ':' numa linha so tambem e recusado",
+  "if true: post(\"A\")\n", NULL, "bloco com ':' nao existe mais", -1 },
+{ "Entity com ':' e recusada",
+  "Entity A():\n    action m(self) { return 1 }\n", NULL, "bloco com ':' nao existe mais", -1 },
+{ "a mensagem diz o que usar no lugar",
+  "while true:\n    break\n", NULL, "use '{ }'", -1 },
+{ "dicionario com ':' continua valendo",
+  "d = { \"a\": 1, \"b\": 2 }\npost(d[\"a\"], d[\"b\"])\n", "1 2", NULL, 0 },
+{ "fatia com ':' continua valendo",
+  "post(\"abcdef\"[1:3], [1,2,3][0:2])\n", "bc [1, 2]", NULL, 0 },
+{ "campo tipado de Entity com ':' continua valendo",
+  "Entity P() {\n    nome: str\n}\np = P(\"ana\")\npost(p.nome)\n", "ana", NULL, 0 },
 
 /* ── closure DENTRO de módulo importado ─────────────────────────────────────
  * O índice de proto do `OP_MAKE_CLOSURE` e o índice de global do
@@ -440,23 +763,27 @@ const Caso CASOS_LINGUAGEM[] = {
  * pela relocação. */
 { "closure dentro de modulo importado",
   "import ps_mod_clo\n"
-  "action com_closure():\n"
+  "action com_closure() {\n"
   "    l = []\n"
-  "    action poe(r):\n"
+  "    action poe(r) {\n"
   "        l.append(r)\n"
+  "    }\n"
   "    poe(\"a\")\n"
   "    poe(\"b\")\n"
   "    return l\n"
+  "}\n"
   "post(ps_mod_clo.com_closure())\n",
   "['a', 'b']\n['a', 'b']", NULL, 0, "ps_mod_clo.ps" },
 { "closure de modulo mantem estado proprio",
   "import ps_mod_cnt\n"
-  "action contador():\n"
+  "action contador() {\n"
   "    n = 0\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        n = n + 1\n"
   "        return n\n"
+  "    }\n"
   "    return inc\n"
+  "}\n"
   "c = ps_mod_cnt.contador()\n"
   "post(c(), c(), c())\n",
   "1 2 3\n1 2 3", NULL, 0, "ps_mod_cnt.ps" },
@@ -470,7 +797,15 @@ const Caso CASOS_LINGUAGEM[] = {
 { "input() no fim é null, não string vazia",
   "post(input() == Null, input() == \"\")\n", "True False", NULL, 0 },
 { "input() em laço termina no fim da entrada",
-  "n = 0\nwhile true:\n    l = input()\n    if l == Null:\n        break\n    n = n + 1\npost(\"linhas:\", n)\n",
+  "n = 0\n"
+  "while true {\n"
+  "    l = input()\n"
+  "    if l == Null {\n"
+  "        break\n"
+  "    }\n"
+  "    n = n + 1\n"
+  "}\n"
+  "post(\"linhas:\", n)\n",
   "linhas: 0", NULL, 0 },
 
 /* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */

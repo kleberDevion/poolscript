@@ -131,10 +131,11 @@ capturável com `try`/`catch` (os nomes dos tipos de erro estão na seção de
 exceptions):
 
 ```ps
-try:
+try {
     x = 1 / 0
-catch (e):
+} catch (e) {
     post("erro:", e)     // erro: divisão por zero: division by zero
+}
 ```
 
 ---
@@ -220,9 +221,10 @@ Precedência: `not` (4) é mais forte que `and` (3), que é mais forte que
 Isso vale para efeitos colaterais: no exemplo, `f()` só roda no último caso.
 
 ```ps
-action f():
+action f() {
     post("  f() rodou")
     return true
+}
 
 r1 = true or f()      // f() NÃO roda
 r2 = false and f()    // f() NÃO roda

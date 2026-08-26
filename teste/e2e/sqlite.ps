@@ -5,8 +5,9 @@ import sqlite3
 import os
 
 arq = "/tmp/ps_e2e.db"
-if os.exists(arq):
+if os.exists(arq) {
     _r = os.run(["rm", "-f", arq])
+}
 
 con = sqlite3.connect(arq)
 post("connect ->", type(con))

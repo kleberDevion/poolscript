@@ -15,9 +15,10 @@ list — os valores resolvidos, na ordem dos argumentos.
 ## Exemplos
 
 ```ps
-async action dobro(n):
+async action dobro(n) {
     sleep(0.2)
     return n * 2
+}
 
 post(gather(dobro(1), dobro(2), dobro(3)))
 ```
@@ -27,13 +28,15 @@ post(gather(dobro(1), dobro(2), dobro(3)))
 ```
 
 ```ps
-async action dobro(n):
+async action dobro(n) {
     sleep(0.2)
     return n * 2
+}
 
 fs = []
-for each i in range(3):
+for each i in range(3) {
     addEnd(fs, dobro(i))
+}
 post(gather(fs))
 ```
 

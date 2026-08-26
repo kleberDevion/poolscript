@@ -153,8 +153,9 @@ um prefixo comum, sem repetir em cada `@app.route`:
 app = Jinker(route_prefix="api")     // "api" | "/api/" -> "/api"
 
 @app.route("/hello", methods=["GET"])   // servida em  /api/hello
-action hello():
+action hello() {
     return {"ok": true}
+}
 ```
 
 `GET /api/hello` → `200`; `GET /hello` → `404`. A `/` da raiz vira o próprio

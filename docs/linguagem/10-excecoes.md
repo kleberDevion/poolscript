@@ -28,12 +28,13 @@ erro — dá pra usar `raise` sozinho, como uma parada com mensagem.
 ## 10.2. `try` / `catch` / `finally`
 
 ```ps
-try:
+try {
     n = int(entrada)
-catch (ConversionError e):
+} catch (ConversionError e) {
     post("não é um número:", e)
-finally:
+} finally {
     post("terminei a tentativa")
+}
 ```
 
 - **`try:`** — o bloco que pode falhar.
@@ -76,12 +77,13 @@ O `catch` tem quatro formas, do mais específico ao mais geral:
 | `catch ()` | **qualquer** erro | — |
 
 ```ps
-try:
+try {
     risco()
-catch (KeyError e):        // só KeyError
+} catch (KeyError e) {        // só KeyError
     post("faltou uma chave:", e)
-catch (e):                 // qualquer outro
+} catch (e) {                 // qualquer outro
     post("outro erro:", e)
+}
 ```
 
 - Um `catch` com **tipo** só pega erros **daquele tipo**; um erro de tipo
@@ -109,10 +111,11 @@ erros — e você pode capturá-los por tipo:
 | `MemoryError` | sem memória |
 
 ```ps
-try:
+try {
     x = 1 / 0
-catch (SomeValueUnexpected e):
+} catch (SomeValueUnexpected e) {
     post("erro de valor:", e)
+}
 ```
 
 Observações:

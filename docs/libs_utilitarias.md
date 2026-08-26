@@ -101,8 +101,9 @@ Cada mensagem volta como `{"id": ..., "from": ..., "subject": ..., "date": ...}`
 
 ```
 emails = r.select("INBOX").search("SUBJECT", "fatura", limit=5)
-for each e in emails:
+for each e in emails {
     post(e["from"] " - " e["subject"] " (" e["date"] ")")
+}
 
 r.close()
 ```
@@ -140,8 +141,9 @@ action verificar_caixa() {
     nao_lidos = r.select("INBOX", true).search("UNSEEN")
     post(f"{len(nao_lidos)} email(s) não lido(s)")
 
-    for each e in nao_lidos:
+    for each e in nao_lidos {
         post(f'De: {e["from"]} | Assunto: {e["subject"]} | {e["date"]}')
+    }
 
     r.close()
 }
@@ -271,8 +273,9 @@ if (os.isfile("uploads/antigo.txt")) {
     os.rename("uploads/antigo.txt", "uploads/backup.txt")
 }
 
-for each item in os.ls("uploads"):
+for each item in os.ls("uploads") {
     post(item["name"] " - " item["type"])
+}
 
 versao = os.cmd("python --version", capture=true)
 post(versao)

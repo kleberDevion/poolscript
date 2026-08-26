@@ -73,8 +73,9 @@ Um `:` no **fim lógico da linha** (só espaços/comentário depois dele) abre u
 bloco por indentação, estilo Python:
 
 ```ps
-action soma(a, b):
+action soma(a, b) {
     return a + b
+}
 ```
 
 A política de indentação é **estrita**:

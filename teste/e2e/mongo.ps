@@ -2,7 +2,7 @@
 # Sobe com:  mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1
 import psodbc
 
-try:
+try {
     con = psodbc.connect(driver="mongo", host="127.0.0.1", port=27099,
                          database="ps_teste")
     post("connect ->", type(con))
@@ -28,6 +28,8 @@ try:
     col.remove({})
     con.close()
     post("mongo -> ok")
-catch(e):
+}
+catch(e) {
     post("PULOU mongo ->", e)
+}
 post("fim")

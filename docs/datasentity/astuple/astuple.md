@@ -15,9 +15,10 @@ astuple(instance) -> tup
 from datasentity import dataentity, astuple
 
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int
+}
 
 p = Pessoa(nome="Ana", idade=30)
 post(astuple(p))     // ("Ana", 30)

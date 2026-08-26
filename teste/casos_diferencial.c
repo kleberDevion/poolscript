@@ -79,16 +79,22 @@ const Caso CASOS_DIFERENCIAL[] = {
   NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
 { "dif #8",
   "\n"
-  "Entity Animal():\n"
-  "    action __init__(self, nome):\n"
+  "Entity Animal() {\n"
+  "    action __init__(self, nome) {\n"
   "        self.nome = nome\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity Cachorro(Animal):\n"
-  "    action __init__(self, nome):\n"
+  "    }\n"
+  "}\n"
+  "Entity Cachorro(Animal) {\n"
+  "    action __init__(self, nome) {\n"
   "        base(nome)\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"Au!\"\n"
+  "    }\n"
+  "}\n"
   "c = Cachorro(\"Rex\")\n"
   "post(c.nome)\n"
   "post(c.falar())\n"
@@ -96,32 +102,40 @@ const Caso CASOS_DIFERENCIAL[] = {
   "Rex\nAu!", NULL, 0 },
 { "dif #9",
   "\n"
-  "Entity C():\n"
-  "    action __init__(self):\n"
+  "Entity C() {\n"
+  "    action __init__(self) {\n"
   "        self.v = 10\n"
-  "    reaction dobro(self):\n"
+  "    }\n"
+  "    reaction dobro(self) {\n"
   "        return self.v * 2\n"
+  "    }\n"
+  "}\n"
   "c = C()\n"
   "post(c.dobro())\n"
   "\n",
   "20", NULL, 0 },
 { "dif #10",
   "\n"
-  "Entity C():\n"
-  "    action __init__(self, n):\n"
+  "Entity C() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
-  "    async action fetch(self):\n"
+  "    }\n"
+  "    async action fetch(self) {\n"
   "        return self.n * 10\n"
+  "    }\n"
+  "}\n"
   "c = C(5)\n"
   "post(await c.fetch())\n"
   "\n",
   "50", NULL, 0 },
 { "dif #11",
   "\n"
-  "Entity U():\n"
+  "Entity U() {\n"
   "    @static\n"
-  "    action dobrar(n):\n"
+  "    action dobrar(n) {\n"
   "        return n * 2\n"
+  "    }\n"
+  "}\n"
   "post(U.dobrar(5))\n"
   "\n",
   "10", NULL, 0 },
@@ -137,11 +151,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   "all-comparisons-ok", NULL, 0 },
 { "dif #13",
   "\n"
-  "action contar(n):\n"
+  "action contar(n) {\n"
   "    i = 0\n"
-  "    while i < n:\n"
+  "    while i < n {\n"
   "        yield i\n"
   "        i += 1\n"
+  "    }\n"
+  "}\n"
   "resultado = []\n"
   "for each v in contar(3) {\n"
   "    addEnd(resultado, v)\n"
@@ -151,29 +167,36 @@ const Caso CASOS_DIFERENCIAL[] = {
   "[0, 1, 2]", NULL, 0 },
 { "dif #14",
   "\n"
-  "action f(x):\n"
+  "action f(x) {\n"
   "    // comentário na primeira linha do bloco\n"
   "    return x + 1\n"
+  "}\n"
   "\n"
-  "action g(x):\n"
+  "action g(x) {\n"
   "\n"
   "    return x * 2\n"
+  "}\n"
   "\n"
-  "Entity E():\n"
+  "Entity E() {\n"
   "    // comentário\n"
-  "    action __init__(self, v):\n"
+  "    action __init__(self, v) {\n"
   "        // outro\n"
   "        self.v = v\n"
-  "    action dobro(self):\n"
+  "    }\n"
+  "    action dobro(self) {\n"
   "        return self.v * 2\n"
+  "    }\n"
+  "}\n"
   "\n"
   "n = 3\n"
-  "if n > 2:\n"
+  "if n > 2 {\n"
   "    // só comentário aqui\n"
   "    post(\"maior\")\n"
-  "for each i in range(2):\n"
+  "}\n"
+  "for each i in range(2) {\n"
   "    # comentário com cerquilha\n"
   "    post(i)\n"
+  "}\n"
   "post(f(1), g(2), E(5).dobro())\n"
   "\n",
   "maior\n0\n1\n2 4 10", NULL, 0 },
@@ -199,17 +222,24 @@ const Caso CASOS_DIFERENCIAL[] = {
   "[2, 4, 6]", NULL, 0 },
 { "dif #17",
   "\n"
-  "class Animal():\n"
-  "    action __init__(self, nome):\n"
+  "class Animal() {\n"
+  "    action __init__(self, nome) {\n"
   "        self.nome = nome\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity Gato(Animal):\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "}\n"
+  "Entity Gato(Animal) {\n"
+  "    action falar(self) {\n"
   "        return f\"{self.nome}: miau\"\n"
-  "Class Cao(Animal):\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "}\n"
+  "Class Cao(Animal) {\n"
+  "    action falar(self) {\n"
   "        return f\"{self.nome}: au\"\n"
+  "    }\n"
+  "}\n"
   "g = Gato(\"Felix\")\n"
   "c = Cao(\"Rex\")\n"
   "post(g.falar())\n"
@@ -248,10 +278,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "from datasentity import dataentity\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
-  "    action upper(self):\n"
+  "    action upper(self) {\n"
   "        return self.nome.upper()\n"
+  "    }\n"
+  "}\n"
   "p = P(nome=\"kleber\")\n"
   "post(p.upper())\n"
   "\n",
@@ -260,9 +292,10 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "from datasentity import dataentity, asdict\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p = P(nome=\"Kleber\", idade=17)\n"
   "post(p.nome)\n"
   "post(p.idade)\n"
@@ -272,9 +305,10 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "from datasentity import dataentity, asdict\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    x: int\n"
   "    y: int\n"
+  "}\n"
   "p = P(x=1, y=2)\n"
   "d = asdict(p)\n"
   "post(d[\"x\"])\n"
@@ -285,8 +319,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from datasentity import dataentity, asjson\n"
   "import json as _j\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
+  "}\n"
   "p = P(nome=\"Ana\")\n"
   "d = _j.parse(asjson(p))\n"
   "post(d[\"nome\"])\n"
@@ -296,8 +331,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "from datasentity import dataentity, aslist\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    x: int\n"
+  "}\n"
   "p = P(x=5)\n"
   "l = aslist(p)\n"
   "post(l[0])\n"
@@ -307,9 +343,10 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "from datasentity import dataentity, astuple\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: str\n"
   "    b: int\n"
+  "}\n"
   "p = P(a=\"ok\", b=9)\n"
   "t = astuple(p)\n"
   "post(t[0])\n"
@@ -338,9 +375,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "if (x == 1) {\n"
   "    post(\"a\")\n"
-  "} elif x == 2:\n"
+  "} elif x == 2 {\n"
   "    post(\"b\")\n"
-  "else {\n"
+  "} else {\n"
   "    post(\"c\")\n"
   "}\n"
   "\n",
@@ -466,11 +503,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "ok", NULL, 0 },
 { "dif #43",
   "\n"
-  "match 2:\n"
-  "    case 1 | 2 | 3:\n"
+  "match 2 {\n"
+  "    case 1 | 2 | 3 {\n"
   "        post(\"bateu\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"nao bateu\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "bateu", NULL, 0 },
 { "dif #44",
@@ -578,14 +618,16 @@ const Caso CASOS_DIFERENCIAL[] = {
   NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
 { "dif #60",
   "    @static\n"
-  "    action m(a):\n"
+  "    action m(a) {\n"
   "        return a\n"
+  "    }\n"
   "\n",
   NULL, "SyntaxError: expressao invalida", -1 },
 { "dif #61",
   "    @static\n"
-  "    action m(self, a):\n"
+  "    action m(self, a) {\n"
   "        return a\n"
+  "    }\n"
   "\n",
   NULL, "SyntaxError: expressao invalida", -1 },
 { "dif #62",
@@ -599,7 +641,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #64",
   "    action __init__(self):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #65",
   "    action __init__(self, v) { self.v = v }\n"
   "\n",
@@ -607,11 +649,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #66",
   "    action close(self):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #67",
   "    action f():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #68",
   "    action faz(self, n) {\n"
   "\n",
@@ -619,7 +661,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #69",
   "    action m(self):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #70",
   "    action m(self, a):\n"
   "        return a\n"
@@ -628,7 +670,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #71",
   "    action qualquerNome(self):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #72",
   "    action register(self, fn) { fn() }\n"
   "\n",
@@ -636,7 +678,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #73",
   "    action register(self, fn):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #74",
   "    action rota(self, p) { self.p = p\n"
   "\n",
@@ -644,11 +686,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #75",
   "    action rota(self, path):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #76",
   "    action semself():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #77",
   "    action ver(self) {\n"
   "\n",
@@ -668,11 +710,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #81",
   "    if i % 1000 == 0:\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #82",
   "    if i == 2:\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #83",
   "    if s == Cor.RED { return \"vermelho\" }\n"
   "\n",
@@ -1010,8 +1052,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   NULL, "RuntimeError: variável não definida: app", -1 },
 { "dif #149",
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
+  "}\n"
   "p=P(nome=\"k\")\n"
   "post(p.nome)\n"
   "\n",
@@ -1038,125 +1081,170 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #153",
   "Entity A():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #154",
-  "Entity A():\n"
-  "    action __init__(self):\n"
+  "Entity A() {\n"
+  "    action __init__(self) {\n"
   "        base()\n"
+  "    }\n"
+  "}\n"
   "post(1)\n"
   "\n",
   NULL, "SyntaxError: base() numa Entity sem heranca: nao ha pai pra inicializar", -1 },
 { "dif #155",
-  "Entity A():\n"
-  "    action __init__(self, n):\n"
+  "Entity A() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity M(A):\n"
-  "    action __init__(self, n):\n"
+  "    }\n"
+  "}\n"
+  "Entity M(A) {\n"
+  "    action __init__(self, n) {\n"
   "        base(n)\n"
-  "Entity C(M):\n"
-  "    action __init__(self, n):\n"
+  "    }\n"
+  "}\n"
+  "Entity C(M) {\n"
+  "    action __init__(self, n) {\n"
   "        base(n)\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"Au!\"\n"
+  "    }\n"
+  "}\n"
   "c = C(\"Rex\")\n"
   "post(c.n)\n"
   "post(c.falar())\n"
   "\n",
   "Rex\nAu!", NULL, 0 },
 { "dif #156",
-  "Entity A():\n"
-  "    action __init__(self, v):\n"
+  "Entity A() {\n"
+  "    action __init__(self, v) {\n"
   "        self.v = v\n"
-  "Entity B(A):\n"
-  "    action __init__(self, a, b):\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self, a, b) {\n"
   "        base(a + b)\n"
+  "    }\n"
+  "}\n"
   "post(B(3, 4).v)\n"
   "\n",
   "7", NULL, 0 },
 { "dif #157",
-  "Entity A():\n"
-  "    action __init__(self, x):\n"
+  "Entity A() {\n"
+  "    action __init__(self, x) {\n"
   "        self.x = x\n"
-  "Entity B(A):\n"
-  "    action __init__(self, x, y):\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self, x, y) {\n"
   "        base(x)\n"
   "        self.y = y\n"
+  "    }\n"
+  "}\n"
   "b = B(1, 2)\n"
   "post(b.x)\n"
   "post(b.y)\n"
   "\n",
   "1\n2", NULL, 0 },
 { "dif #158",
-  "Entity A():\n"
-  "    action f(self):\n"
+  "Entity A() {\n"
+  "    action f(self) {\n"
   "        return \"A\"\n"
-  "Entity B(A):\n"
-  "    action f(self):\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action f(self) {\n"
   "        return \"B\"\n"
+  "    }\n"
+  "}\n"
   "post(A().f())\n"
   "post(B().f())\n"
   "\n",
   "A\nB", NULL, 0 },
 { "dif #159",
-  "Entity A():\n"
-  "    action oi(self):\n"
+  "Entity A() {\n"
+  "    action oi(self) {\n"
   "        return \"oi\"\n"
-  "Entity B(A):\n"
-  "    action __init__(self):\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self) {\n"
   "        base()\n"
   "        self.v = 5\n"
+  "    }\n"
+  "}\n"
   "b = B()\n"
   "post(b.oi())\n"
   "post(b.v)\n"
   "\n",
   "oi\n5", NULL, 0 },
 { "dif #160",
-  "Entity A():\n"
-  "    action oi(self):\n"
+  "Entity A() {\n"
+  "    action oi(self) {\n"
   "        return \"oi\"\n"
-  "Entity B(A):\n"
-  "    action __init__(self, v):\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self, v) {\n"
   "        self.v = v\n"
+  "    }\n"
+  "}\n"
   "b = B(1)\n"
   "post(b.oi())\n"
   "post(b.v)\n"
   "\n",
   "oi\n1", NULL, 0 },
 { "dif #161",
-  "Entity A():\n"
-  "    action ver(self):\n"
+  "Entity A() {\n"
+  "    action ver(self) {\n"
   "        return self.z\n"
-  "Entity B(A):\n"
-  "    action __init__(self):\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self) {\n"
   "        self.z = 11\n"
+  "    }\n"
+  "}\n"
   "post(B().ver())\n"
   "\n",
   "11", NULL, 0 },
 { "dif #162",
-  "Entity A():\n"
+  "Entity A() {\n"
   "    x: int\n"
-  "Entity B(A):\n"
-  "    action __init__(self, x):\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self, x) {\n"
   "        base(x)\n"
+  "    }\n"
+  "}\n"
   "post(B(7).x)\n"
   "\n",
   "7", NULL, 0 },
 { "dif #163",
-  "Entity Animal():\n"
-  "    action __init__(self, nome):\n"
+  "Entity Animal() {\n"
+  "    action __init__(self, nome) {\n"
   "        self.nome = nome\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity Mamifero(Animal):\n"
-  "    action __init__(self, nome):\n"
+  "    }\n"
+  "}\n"
+  "Entity Mamifero(Animal) {\n"
+  "    action __init__(self, nome) {\n"
   "        base(nome)\n"
-  "Entity Cachorro(Mamifero):\n"
-  "    action __init__(self, nome):\n"
+  "    }\n"
+  "}\n"
+  "Entity Cachorro(Mamifero) {\n"
+  "    action __init__(self, nome) {\n"
   "        base(nome)\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"Au!\"\n"
+  "    }\n"
+  "}\n"
   "c = Cachorro(\"Rex\")\n"
   "post(c.nome)\n"
   "post(c.falar())\n"
@@ -1165,7 +1253,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #164",
   "Entity App():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #165",
   "Entity C() {\n"
   "  n: int = 10\n"
@@ -1187,7 +1275,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #167",
   "Entity Cliente():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #168",
   "Entity Conta() {\n"
   "\n",
@@ -1202,24 +1290,30 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #170",
-  "Entity Conta():\n"
-  "    action __init__(self, saldo):\n"
+  "Entity Conta() {\n"
+  "    action __init__(self, saldo) {\n"
   "        self.saldo = saldo\n"
-  "    async action depositar(self, valor):\n"
+  "    }\n"
+  "    async action depositar(self, valor) {\n"
   "        self.saldo = self.saldo + valor\n"
   "        return self.saldo\n"
+  "    }\n"
+  "}\n"
   "c = Conta(100)\n"
   "post(await c.depositar(50))\n"
   "post(c.saldo)\n"
   "\n",
   "150\n150", NULL, 0 },
 { "dif #171",
-  "Entity Contador():\n"
-  "    action __init__(self, inicio):\n"
+  "Entity Contador() {\n"
+  "    action __init__(self, inicio) {\n"
   "        self.n = inicio\n"
-  "    async action inc(self):\n"
+  "    }\n"
+  "    async action inc(self) {\n"
   "        self.n = self.n + 1\n"
   "        return self.n\n"
+  "    }\n"
+  "}\n"
   "a = Contador(0)\n"
   "b = Contador(100)\n"
   "post(await a.inc())\n"
@@ -1275,7 +1369,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #179",
   "Entity M():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #180",
   "Entity P() {\n"
   " @static\n"
@@ -1305,35 +1399,39 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #184",
   "Entity P():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #185",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: int\n"
   "    b: int\n"
+  "}\n"
   "p=P(1, b=2)\n"
   "post(p.b)\n"
   "\n",
   "2", NULL, 0 },
 { "dif #186",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: int\n"
   "    b: int = 2\n"
+  "}\n"
   "p=P(1)\n"
   "post(p.a)\n"
   "post(p.b)\n"
   "\n",
   "1\n2", NULL, 0 },
 { "dif #187",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: int\n"
   "    b: int = 9\n"
+  "}\n"
   "p=P(a=1)\n"
   "post(p.b)\n"
   "\n",
   "9", NULL, 0 },
 { "dif #188",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: int\n"
+  "}\n"
   "action g() {\n"
   " yield P(1)\n"
   " yield P(2)\n"
@@ -1344,74 +1442,93 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "1\n2", NULL, 0 },
 { "dif #189",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: int\n"
+  "}\n"
   "p=P(z=1)\n"
   "post(p.a)\n"
   "\n",
   NULL, "RuntimeError: action '__init__' faltando argumento: 'a'", -1 },
 { "dif #190",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: int\n"
+  "}\n"
   "p=P(z=1)\n"
   "post(p.z)\n"
   "\n",
   NULL, "RuntimeError: action '__init__' faltando argumento: 'a'", -1 },
 { "dif #191",
-  "Entity P():\n"
-  "    action __init__(self):\n"
+  "Entity P() {\n"
+  "    action __init__(self) {\n"
   "        self.a = 1\n"
+  "    }\n"
+  "}\n"
   "post(P().b)\n"
   "\n",
   NULL, "RuntimeError: membro inexistente: b (em P)", -1 },
 { "dif #192",
-  "Entity P():\n"
-  "    action __init__(self):\n"
+  "Entity P() {\n"
+  "    action __init__(self) {\n"
   "        self.a=1\n"
+  "    }\n"
+  "}\n"
   "p=P()\n"
   "post(p.type())\n"
   "\n",
   "P", NULL, 0 },
 { "dif #193",
-  "Entity P():\n"
-  "    action __init__(self):\n"
+  "Entity P() {\n"
+  "    action __init__(self) {\n"
   "        self.a=1\n"
+  "    }\n"
+  "}\n"
   "post(type(P()))\n"
   "\n",
   "P", NULL, 0 },
 { "dif #194",
-  "Entity P():\n"
-  "    action __init__(self):\n"
+  "Entity P() {\n"
+  "    action __init__(self) {\n"
   "        self.l = [1,2]\n"
+  "    }\n"
+  "}\n"
   "p = P()\n"
   "p.l[0] = 9\n"
   "post(p.l[0])\n"
   "\n",
   "9", NULL, 0 },
 { "dif #195",
-  "Entity P():\n"
-  "    action __init__(self):\n"
+  "Entity P() {\n"
+  "    action __init__(self) {\n"
   "        self.v = 2\n"
-  "    action dobro(self):\n"
+  "    }\n"
+  "    action dobro(self) {\n"
   "        return self.v * 2\n"
-  "    action quadruplo(self):\n"
+  "    }\n"
+  "    action quadruplo(self) {\n"
   "        return self.dobro() * 2\n"
+  "    }\n"
+  "}\n"
   "post(P().quadruplo())\n"
   "\n",
   "8", NULL, 0 },
 { "dif #196",
-  "Entity P():\n"
-  "    action __init__(self, n):\n"
+  "Entity P() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
-  "    action soma(self, k):\n"
+  "    }\n"
+  "    action soma(self, k) {\n"
   "        return self.n + k\n"
+  "    }\n"
+  "}\n"
   "post(P(7).soma(3))\n"
   "\n",
   "10", NULL, 0 },
 { "dif #197",
-  "Entity P():\n"
-  "    action __init__(self, n):\n"
+  "Entity P() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
+  "    }\n"
+  "}\n"
   "a = P(1)\n"
   "b = P(2)\n"
   "a.n = 50\n"
@@ -1420,9 +1537,11 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "50\n2", NULL, 0 },
 { "dif #198",
-  "Entity P():\n"
-  "    action __init__(self, n):\n"
+  "Entity P() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
+  "    }\n"
+  "}\n"
   "l = [P(1), P(2)]\n"
   "for each p in l {\n"
   " post(p.n)\n"
@@ -1430,79 +1549,95 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "1\n2", NULL, 0 },
 { "dif #199",
-  "Entity P():\n"
-  "    action __init__(self, n):\n"
+  "Entity P() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
+  "    }\n"
+  "}\n"
   "p = P(1)\n"
   "p.n = 9\n"
   "post(p.n)\n"
   "\n",
   "9", NULL, 0 },
 { "dif #200",
-  "Entity P():\n"
-  "    action __init__(self, n):\n"
+  "Entity P() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
+  "    }\n"
+  "}\n"
   "post(P(7).n)\n"
   "\n",
   "7", NULL, 0 },
 { "dif #201",
-  "Entity P():\n"
-  "    action __init__(self, x, y):\n"
+  "Entity P() {\n"
+  "    action __init__(self, x, y) {\n"
   "        self.x = x\n"
   "        self.y = y\n"
+  "    }\n"
+  "}\n"
   "p=P(1, y=2)\n"
   "post(p.y)\n"
   "\n",
   "2", NULL, 0 },
 { "dif #202",
-  "Entity P():\n"
-  "    action m(self):\n"
+  "Entity P() {\n"
+  "    action m(self) {\n"
   "        return 1\n"
+  "    }\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "dif #203",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    n: str\n"
-  "    action __init__(self):\n"
+  "    action __init__(self) {\n"
   "        self.n = \"proprio\"\n"
+  "    }\n"
+  "}\n"
   "post(P().n)\n"
   "\n",
   "proprio", NULL, 0 },
 { "dif #204",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    n: str\n"
-  "    action oi(self):\n"
+  "    action oi(self) {\n"
   "        return self.n\n"
+  "    }\n"
+  "}\n"
   "post(P(\"z\").oi())\n"
   "\n",
   "z", NULL, 0 },
 { "dif #205",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(\"k\",1)\n"
   "post(p.nome)\n"
   "post(p.idade)\n"
   "\n",
   "k\n1", NULL, 0 },
 { "dif #206",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(nome=\"k\",idade=1)\n"
   "post(p.nome)\n"
   "\n",
   "k", NULL, 0 },
 { "dif #207",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str = \"x\"\n"
+  "}\n"
   "p=P(\"y\")\n"
   "post(p.nome)\n"
   "\n",
   "y", NULL, 0 },
 { "dif #208",
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str = \"x\"\n"
+  "}\n"
   "p=P()\n"
   "post(p.nome)\n"
   "\n",
@@ -1528,15 +1663,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #211",
   "Entity Ponto():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #212",
   "Entity R():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #213",
   "Entity Reg():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #214",
   "Entity T() {\n"
   "    action __init__(self) { self.x = 1 }\n"
@@ -1546,20 +1681,24 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #215",
   "Entity U():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #216",
-  "Entity U():\n"
+  "Entity U() {\n"
   "    @static\n"
-  "    action tri(n):\n"
+  "    action tri(n) {\n"
   "        return n*3\n"
+  "    }\n"
+  "}\n"
   "post(U.tri(4))\n"
   "\n",
   "12", NULL, 0 },
 { "dif #217",
-  "Entity Util():\n"
+  "Entity Util() {\n"
   "    @static\n"
-  "    action triplo(n):\n"
+  "    action triplo(n) {\n"
   "        return n * 3\n"
+  "    }\n"
+  "}\n"
   "post(Util.triplo(4))\n"
   "\n",
   "12", NULL, 0 },
@@ -1837,10 +1976,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "pego", NULL, 0 },
 { "dif #257",
-  "action a():\n"
+  "action a() {\n"
   "    return 1 / 0\n"
-  "action b():\n"
+  "}\n"
+  "action b() {\n"
   "    return a()\n"
+  "}\n"
   "post(b())\n"
   "\n",
   NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
@@ -2233,35 +2374,42 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #312",
-  "action f():\n"
+  "action f() {\n"
   "    return \"oi\"\n"
-  "run_selfwith_(\"main\"):\n"
+  "}\n"
+  "run_selfwith_(\"main\") {\n"
   "    post(\"NAO\")\n"
+  "}\n"
   "\n",
   "NAO", NULL, 0 },
 { "dif #313",
-  "action f():\n"
+  "action f() {\n"
   "    return \"sou action\"\n"
-  "for each f in [1, 2]:\n"
+  "}\n"
+  "for each f in [1, 2] {\n"
   "    post(f)\n"
+  "}\n"
   "post(f())\n"
   "\n",
   "1\n2\nsou action", NULL, 0 },
 { "dif #314",
-  "action f():\n"
+  "action f() {\n"
   "    return 1 / 0\n"
+  "}\n"
   "post(f())\n"
   "\n",
   NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
 { "dif #315",
-  "action f():\n"
+  "action f() {\n"
   "    return self\n"
+  "}\n"
   "post(f())\n"
   "\n",
   NULL, "RuntimeError: variável não definida: self", -1 },
 { "dif #316",
-  "action f():\n"
+  "action f() {\n"
   "    return zzz\n"
+  "}\n"
   "post(f())\n"
   "\n",
   NULL, "RuntimeError: variável não definida: zzz", -1 },
@@ -2309,7 +2457,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #323",
   "action f(a):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #324",
   "oi = \"ola\"\n"
   "post(f\"v: \n"
@@ -6803,8 +6951,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SomeValueUnexpected: '~' exige int", -1 },
 { "dif #1441",
-  "private async reaction foo():\n"
+  "private async reaction foo() {\n"
   "    return 9\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "9", NULL, 0 },
@@ -6813,14 +6962,16 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #1443",
-  "public action foo():\n"
+  "public action foo() {\n"
   "    return 12\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "12", NULL, 0 },
 { "dif #1444",
-  "public async reaction foo():\n"
+  "public async reaction foo() {\n"
   "    return 8\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "8", NULL, 0 },
@@ -6918,8 +7069,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "1", NULL, 0 },
 { "dif #1459",
-  "reaction f():\n"
+  "reaction f() {\n"
   "    return 42\n"
+  "}\n"
   "post(f())\n"
   "\n",
   "42", NULL, 0 },
@@ -6991,8 +7143,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "500500", NULL, 0 },
 { "dif #1471",
   "resultado = []\n"
-  "for each c in \"abc\":\n"
+  "for each c in \"abc\" {\n"
   "    addEnd(resultado, c)\n"
+  "}\n"
   "post(resultado)\n"
   "\n",
   "['a', 'b', 'c']", NULL, 0 },
@@ -7013,8 +7166,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "NAO DEVIA RODAR NO IMPORT", NULL, 0 },
 { "dif #1475",
-  "run_selfwith_(\"main\"):\n"
+  "run_selfwith_(\"main\") {\n"
   "    post(\"sim\")\n"
+  "}\n"
   "\n",
   "sim", NULL, 0 },
 { "dif #1476",
@@ -7616,77 +7770,87 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "s", NULL, 0 },
 { "dif #1566",
-  "try:\n"
+  "try {\n"
   "    int x = 1 / 0\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(\"pego\")\n"
+  "}\n"
   "\n",
   "pego", NULL, 0 },
 { "dif #1567",
-  "try:\n"
+  "try {\n"
   "    post(1)\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(2)\n"
+  "}\n"
   "\n",
   "1", NULL, 0 },
 { "dif #1568",
-  "try:\n"
+  "try {\n"
   "    raise \"ops\"\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(\"catch\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"finally\")\n"
+  "}\n"
   "\n",
   "catch\nfinally", NULL, 0 },
 { "dif #1569",
-  "try:\n"
+  "try {\n"
   "    raise ValueError(\"x\")\n"
-  "catch (KeyError e):\n"
+  "} catch (KeyError e) {\n"
   "    post(\"pegou\")\n"
+  "}\n"
   "\n",
   NULL, "ValueError: x (linha 2)", -1 },
 { "dif #1570",
-  "try:\n"
+  "try {\n"
   "    raise ValueError(\"x\")\n"
-  "catch (ValueError e):\n"
+  "} catch (ValueError e) {\n"
   "    post(\"pegou\")\n"
+  "}\n"
   "\n",
   "pegou", NULL, 0 },
 { "dif #1571",
-  "try:\n"
+  "try {\n"
   "    raise ValueError(\"x\")\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(1)\n"
+  "}\n"
   "post(e)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: e", -1 },
 { "dif #1572",
-  "try:\n"
+  "try {\n"
   "    raise ValueError(\"x\")\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(e)\n"
+  "}\n"
   "\n",
   "x (linha 2)", NULL, 0 },
 { "dif #1573",
-  "try:\n"
+  "try {\n"
   "    raise ValueError(\"x\")\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    raise ValueError(f\"Erro: {e}\")\n"
+  "}\n"
   "\n",
   NULL, "ValueError: Erro: x (linha 2)", -1 },
 { "dif #1574",
-  "try:\n"
+  "try {\n"
   "    t = 1\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    t = 2\n"
+  "}\n"
   "post(t)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: t", -1 },
 { "dif #1575",
-  "try:\n"
+  "try {\n"
   "    x=1/0\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(\"err\")\n"
+  "}\n"
   "\n",
   "err", NULL, 0 },
 { "dif #1576",
@@ -7700,11 +7864,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1578",
   "using R() as r:\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1579",
   "using open(\"saida.txt\", mode=\"w\") as arq:\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1580",
   "using open(\"x\") as f {\n"
   " post(1)\n"
@@ -7712,21 +7876,23 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "IOError: arquivo nao encontrado: 'x'", -1 },
 { "dif #1581",
-  "using open(\"x\") as f:\n"
+  "using open(\"x\") as f {\n"
   "    post(1)\n"
+  "}\n"
   "\n",
   NULL, "IOError: arquivo nao encontrado: 'x'", -1 },
 { "dif #1582",
-  "using open(\"x.txt\") as f:\n"
+  "using open(\"x.txt\") as f {\n"
   "    post(f.read(3))\n"
   "    post(f.read(2))\n"
   "    post(f.read())\n"
+  "}\n"
   "\n",
   NULL, "IOError: arquivo nao encontrado: 'x.txt'", -1 },
 { "dif #1583",
   "using open(\"x.txt\", argento=\"w\") as f:\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1584",
   "using open(r\"\n"
   "\n",
@@ -7877,11 +8043,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "um", NULL, 0 },
 { "dif #1605",
   "x = 1\n"
-  "match x:\n"
-  "    case 1:\n"
+  "match x {\n"
+  "    case 1 {\n"
   "        post(\"um\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"outro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "um", NULL, 0 },
 { "dif #1606",
@@ -7906,13 +8075,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "10", NULL, 0 },
 { "dif #1609",
   "x = 15\n"
-  "match x:\n"
-  "    case v if v < 10:\n"
+  "match x {\n"
+  "    case v if v < 10 {\n"
   "        post(\"pequeno\")\n"
-  "    case v if v < 20:\n"
+  "    }\n"
+  "    case v if v < 20 {\n"
   "        post(\"medio\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"grande\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "medio", NULL, 0 },
 { "dif #1610",
@@ -8115,11 +8288,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "False", NULL, 0 },
 { "dif #1644",
   "x=30\n"
-  "match x:\n"
-  "    case p if p<50:\n"
+  "match x {\n"
+  "    case p if p<50 {\n"
   "        post(\"barato\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"caro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "barato", NULL, 0 },
 { "dif #1645",
@@ -8224,8 +8400,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: expressao invalida", -1 },
 { "dif #1666",
-  "action f(a):\n"
+  "action f(a) {\n"
   "    return a\n"
+  "}\n"
   "post(f(a=zzz))\n"
   "\n",
   NULL, "RuntimeError: variável não definida: zzz", -1 },
@@ -8277,7 +8454,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1674",
   "action f(a, b):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1675",
   "action f(a, b,) { return a }\n"
   "\n",
@@ -8314,8 +8491,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "101\n3", NULL, 0 },
 { "dif #1680",
-  "action f(a, b=2):\n"
+  "action f(a, b=2) {\n"
   "    return a\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "dif #1681",
@@ -8453,8 +8631,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "[6]", NULL, 0 },
 { "dif #1701",
-  "action f(x):\n"
+  "action f(x) {\n"
   "    return x + 1\n"
+  "}\n"
   "post(f(1))\n"
   "\n",
   "2", NULL, 0 },
@@ -8493,11 +8672,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "2584", NULL, 0 },
 { "dif #1706",
-  "action fora():\n"
+  "action fora() {\n"
   "    a = 1\n"
-  "    action dentro():\n"
+  "    action dentro() {\n"
   "        return a\n"
+  "    }\n"
   "    return dentro()\n"
+  "}\n"
   "post(fora())\n"
   "\n",
   "1", NULL, 0 },
@@ -8765,11 +8946,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #1737",
-  "action greet(name):\n"
-  "    if name == \"oi\":\n"
+  "action greet(name) {\n"
+  "    if name == \"oi\" {\n"
   "        post(\"hello\")\n"
-  "    else:\n"
+  "    } else {\n"
   "        post(\"bye\")\n"
+  "    }\n"
+  "}\n"
   "greet(\"oi\")\n"
   "greet(\"x\")\n"
   "\n",
@@ -8781,7 +8964,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1739",
   "action handler():\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1740",
   "action logger() { return \"logIn do nivel acima\" }\n"
   "\n",
@@ -8823,8 +9006,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
 { "dif #1747",
-  "action oi():\n"
+  "action oi() {\n"
   "    return \"do sub\"\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "dif #1748",
@@ -9185,8 +9369,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "21", NULL, 0 },
 { "dif #1804",
-  "async int reaction foo():\n"
+  "async int reaction foo() {\n"
   "    return 7\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "7", NULL, 0 },
@@ -9208,8 +9393,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #1808",
-  "async reaction foo():\n"
+  "async reaction foo() {\n"
   "    return 3\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "3", NULL, 0 },
@@ -9482,26 +9668,32 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "7", NULL, 0 },
 { "dif #1858",
-  "class C():\n"
+  "class C() {\n"
   "    @NonNull\n"
-  "    action f(self, a):\n"
+  "    action f(self, a) {\n"
   "        return a\n"
+  "    }\n"
+  "}\n"
   "post(C().f(7))\n"
   "\n",
   "7", NULL, 0 },
 { "dif #1859",
-  "class C():\n"
+  "class C() {\n"
   "    @NonNull\n"
-  "    action f(self, a):\n"
+  "    action f(self, a) {\n"
   "        return a\n"
+  "    }\n"
+  "}\n"
   "post(C().f(null))\n"
   "\n",
   NULL, "RuntimeError: @NonNull: parametro 'a' em 'f' nao pode ser Null", -1 },
 { "dif #1860",
-  "class C():\n"
+  "class C() {\n"
   "    @static\n"
-  "    action m():\n"
+  "    action m() {\n"
   "        return self.x\n"
+  "    }\n"
+  "}\n"
   "post(C.m())\n"
   "\n",
   NULL, "RuntimeError: variável não definida: self", -1 },
@@ -9580,8 +9772,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "RuntimeError: variável não definida: nums", -1 },
 { "dif #1871",
-  "count each int(7) in nums:\n"
+  "count each int(7) in nums {\n"
   "    post(1)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: nums", -1 },
 { "dif #1872",
@@ -9608,8 +9801,9 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1876",
   "d = { \"a\": 1, \"b\": 2, \"c\": 3 }\n"
   "soma = 0\n"
-  "for each v in d.value():\n"
+  "for each v in d.value() {\n"
   "    soma = soma + v\n"
+  "}\n"
   "post(soma)\n"
   "\n",
   "6", NULL, 0 },
@@ -9922,22 +10116,29 @@ const Caso CASOS_DIFERENCIAL[] = {
   "0", NULL, 0 },
 { "dif #1926",
   "dia = \"Terca\"\n"
-  "match dia:\n"
-  "    case \"Sabado\" | \"Domingo\":\n"
+  "match dia {\n"
+  "    case \"Sabado\" | \"Domingo\" {\n"
   "        post(\"fim\")\n"
-  "    case \"Segunda\" | \"Terca\" | \"Quarta\":\n"
+  "    }\n"
+  "    case \"Segunda\" | \"Terca\" | \"Quarta\" {\n"
   "        post(\"inicio\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"outro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "inicio", NULL, 0 },
 { "dif #1927",
   "dia=\"Sabado\"\n"
-  "match dia:\n"
-  "    case \"Sabado\" | \"Domingo\":\n"
+  "match dia {\n"
+  "    case \"Sabado\" | \"Domingo\" {\n"
   "        post(\"fim\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"semana\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "fim", NULL, 0 },
 { "dif #1928",
@@ -10070,8 +10271,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "a\nb\nc", NULL, 0 },
 { "dif #1954",
-  "for each c in \"abc\":\n"
+  "for each c in \"abc\" {\n"
   "    post(c)\n"
+  "}\n"
   "\n",
   "a\nb\nc", NULL, 0 },
 { "dif #1955",
@@ -10079,8 +10281,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
 { "dif #1956",
-  "for each i in [\"a\",\"b\",\"c\"]:\n"
+  "for each i in [\"a\",\"b\",\"c\"] {\n"
   "    post(i)\n"
+  "}\n"
   "\n",
   "a\nb\nc", NULL, 0 },
 { "dif #1957",
@@ -10098,8 +10301,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "corpo 1\nfinally 1\nfinally 2\nfim", NULL, 0 },
 { "dif #1958",
-  "for each i in [1, 2, 3]:\n"
+  "for each i in [1, 2, 3] {\n"
   "    post(i)\n"
+  "}\n"
   "\n",
   "1\n2\n3", NULL, 0 },
 { "dif #1959",
@@ -10115,14 +10319,16 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "finally 1\nfinally 2", NULL, 0 },
 { "dif #1960",
-  "for each i in [1, 2]:\n"
+  "for each i in [1, 2] {\n"
   "    post(i)\n"
+  "}\n"
   "post(i)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: i", -1 },
 { "dif #1961",
-  "for each i in [1, 2]:\n"
+  "for each i in [1, 2] {\n"
   "    y = i\n"
+  "}\n"
   "post(y)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: y", -1 },
@@ -10168,7 +10374,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1967",
   "for each i in [1,2,3]:\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1968",
   "for each i in [1,2] {\n"
   " for each j in [1,2,3] {\n"
@@ -10211,8 +10417,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "1\n2", NULL, 0 },
 { "dif #1972",
-  "for each i in [1,2]:\n"
+  "for each i in [1,2] {\n"
   "    post(i)\n"
+  "}\n"
   "\n",
   "1\n2", NULL, 0 },
 { "dif #1973",
@@ -10231,7 +10438,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1975",
   "for each i in range(120000):\n"
   "\n",
-  NULL, "SyntaxError: faltou indentacao apos ':'", -1 },
+  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
 { "dif #1976",
   "for each i in range(25) { b = 1103515245 * b + 12345 }\n"
   "\n",
@@ -10241,8 +10448,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "RuntimeError: variável não definida: a", -1 },
 { "dif #1978",
-  "for each i in zzz:\n"
+  "for each i in zzz {\n"
   "    post(i)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: zzz", -1 },
 { "dif #1979",
@@ -10269,8 +10477,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "1\n2\n3\n0\n1\n2", NULL, 0 },
 { "dif #1983",
-  "for each x in [1, 2, 3]:\n"
+  "for each x in [1, 2, 3] {\n"
   "    post(x)\n"
+  "}\n"
   "\n",
   "1\n2\n3", NULL, 0 },
 { "dif #1984",
@@ -10284,8 +10493,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "RuntimeError: variável não definida: f", -1 },
 { "dif #1986",
-  "for each z in [1]:\n"
+  "for each z in [1] {\n"
   "    post(z)\n"
+  "}\n"
   "post(z)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: z", -1 },
@@ -10327,9 +10537,10 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1994",
   "from datasentity import dataentity, asdict, astuple, aslist\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p = P(nome=\"Ana\", idade=30)\n"
   "post(asdict(p)[\"nome\"])\n"
   "post(astuple(p)[1])\n"
@@ -10339,9 +10550,10 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1995",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(nome=\"k\",idade=1)\n"
   "post(asdict(p))\n"
   "\n",
@@ -10349,9 +10561,10 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1996",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(nome=\"k\",idade=1)\n"
   "post(asjson(p))\n"
   "\n",
@@ -10359,9 +10572,10 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1997",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(nome=\"k\",idade=1)\n"
   "post(aslist(p))\n"
   "\n",
@@ -10369,9 +10583,10 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1998",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(nome=\"k\",idade=1)\n"
   "post(astuple(p))\n"
   "\n",
@@ -10379,9 +10594,10 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1999",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p=P(nome=\"k\",idade=1)\n"
   "post(p.nome)\n"
   "\n",
@@ -10559,16 +10775,18 @@ const Caso CASOS_DIFERENCIAL[] = {
   NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
 { "dif #2032",
   "g = 1\n"
-  "action f():\n"
+  "action f() {\n"
   "    g = 2\n"
+  "}\n"
   "f()\n"
   "post(g)\n"
   "\n",
   "2", NULL, 0 },
 { "dif #2033",
   "g = 1\n"
-  "action f():\n"
+  "action f() {\n"
   "    return g\n"
+  "}\n"
   "post(f())\n"
   "\n",
   "1", NULL, 0 },
@@ -10604,8 +10822,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "Clima: 25 graus", NULL, 0 },
 { "dif #2040",
   "i = \"importante\"\n"
-  "for each i in [1, 2]:\n"
+  "for each i in [1, 2] {\n"
   "    post(i)\n"
+  "}\n"
   "post(i)\n"
   "\n",
   "1\n2\nimportante", NULL, 0 },
@@ -10631,8 +10850,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "0\n1\n2", NULL, 0 },
 { "dif #2043",
   "if (1 == 1) { post(\"a\") }\n"
-  "if (2 == 2):\n"
+  "if (2 == 2) {\n"
   "    post(\"b\")\n"
+  "}\n"
   "\n",
   "a\nb", NULL, 0 },
 { "dif #2044",
@@ -10654,8 +10874,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 6)", -1 },
 { "dif #2047",
-  "if (1 == 1):\n"
+  "if (1 == 1) {\n"
   "    post(\"ok\")\n"
+  "}\n"
   "\n",
   "ok", NULL, 0 },
 { "dif #2048",
@@ -10705,21 +10926,25 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", -1 },
 { "dif #2055",
-  "if (x):\n"
+  "if (x) {\n"
   "    post(1)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2056",
-  "if (x):\n"
+  "if (x) {\n"
   "    post(1)\n"
-  "    if (y):\n"
+  "    if (y) {\n"
   "        post(2)\n"
+  "    }\n"
+  "}\n"
   "post(3)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2057",
-  "if (x):\n"
+  "if (x) {\n"
   "    post(1)\n"
+  "}\n"
   "post(2)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
@@ -10740,8 +10965,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "a", NULL, 0 },
 { "dif #2061",
   "if 1 == 1 { post(\"a\") }\n"
-  "if 1 == 1:\n"
+  "if 1 == 1 {\n"
   "    post(\"b\")\n"
+  "}\n"
   "\n",
   "a\nb", NULL, 0 },
 { "dif #2062",
@@ -10755,13 +10981,15 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
 { "dif #2064",
-  "if 1 == 1:\n"
+  "if 1 == 1 {\n"
   "    if 2 == 2 { post(\"misto2\") }\n"
+  "}\n"
   "\n",
   "misto2", NULL, 0 },
 { "dif #2065",
-  "if 1 == 1:\n"
+  "if 1 == 1 {\n"
   "    post(\"a\")\n"
+  "}\n"
   "\n",
   "a", NULL, 0 },
 { "dif #2066",
@@ -10779,15 +11007,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: 'if' e palavra reservada da linguagem e nao pode ser usada como nom", -1 },
 { "dif #2069",
-  "if Null == 0:\n"
+  "if Null == 0 {\n"
   "    post(\"yes\")\n"
+  "}\n"
   "\n",
   "yes", NULL, 0 },
 { "dif #2070",
-  "if Null > 0:\n"
+  "if Null > 0 {\n"
   "    post(\"not\")\n"
-  "else:\n"
+  "} else {\n"
   "    post(\"ok\")\n"
+  "}\n"
   "\n",
   "ok", NULL, 0 },
 { "dif #2071",
@@ -10802,14 +11032,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   NULL, "RuntimeError: variável não definida: a", -1 },
 { "dif #2073",
   "if a { post(1) }\n"
-  "if b:\n"
+  "if b {\n"
   "    post(2)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: a", -1 },
 { "dif #2074",
-  "if a:\n"
-  "    if b:\n"
+  "if a {\n"
+  "    if b {\n"
   "        post(1)\n"
+  "    }\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: a", -1 },
 { "dif #2075",
@@ -10820,30 +11053,34 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 6)", -1 },
 { "dif #2076",
-  "if a:\n"
+  "if a {\n"
   "    post(1)\n"
   "\n"
   "    post(2)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: a", -1 },
 { "dif #2077",
-  "if a:\n"
+  "if a {\n"
   "    post(1)\n"
   "    // comentario\n"
   "    post(2)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: a", -1 },
 { "dif #2078",
-  "if false:\n"
+  "if false {\n"
   "    x = 1\n"
-  "else:\n"
+  "} else {\n"
   "    x = 2\n"
+  "}\n"
   "post(x)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2079",
-  "if true:\n"
+  "if true {\n"
   "    dentro = 5\n"
+  "}\n"
   "post(dentro)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: dentro", -1 },
@@ -10862,19 +11099,22 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
 { "dif #2083",
-  "if x:\n"
+  "if x {\n"
   "    post(1)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2084",
-  "if x:\n"
+  "if x {\n"
   "    post(1)\n"
+  "}\n"
   "post(2)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2085",
-  "if x:\n"
+  "if x {\n"
   "    post(1)\n"
+  "}\n"
   "post(2)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
@@ -10889,15 +11129,16 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", -1 },
 { "dif #2088",
-  "if zzz:\n"
+  "if zzz {\n"
   "    post(1)\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: zzz", -1 },
 { "dif #2089",
   "if {\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: esperado inicio de bloco com '{' ou ':'", -1 },
+  NULL, "SyntaxError: esperado inicio de bloco com '{'", -1 },
 { "dif #2090",
   "import bytes\n"
   "post(\n"
@@ -11188,10 +11429,12 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2146",
   "import regex\n"
   "n = 0\n"
-  "for each i in range(2000):\n"
+  "for each i in range(2000) {\n"
   "    p = regex.compile(\"a\" + str(i) + \"\\\\d+\")\n"
-  "    if p.search(\"a\" + str(i) + \"77\"):\n"
+  "    if p.search(\"a\" + str(i) + \"77\") {\n"
   "        n = n + 1\n"
+  "    }\n"
+  "}\n"
   "post(n)\n"
   "\n",
   "2000", NULL, 0 },
@@ -11222,11 +11465,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "p = regex.compile(\"\\\\d+\")\n"
   "saida = []\n"
-  "for each i in range(5):\n"
+  "for each i in range(5) {\n"
   "    saida.append(p.sub(\"#\", \"a1b22\"))\n"
   "    saida.append(str(p.findall(\"x9y8\")))\n"
   "    saida.append(str(p.split(\"a1b2\")))\n"
   "    saida.append(str(p.match(\"77\")))\n"
+  "}\n"
   "post(len(saida))\n"
   "post(saida[0], saida[1], saida[2], saida[3])\n"
   "post(saida[16], saida[17], saida[18], saida[19])\n"
@@ -11491,8 +11735,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #2201",
-  "int async reaction foo():\n"
+  "int async reaction foo() {\n"
   "    return 7\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "7", NULL, 0 },
@@ -11560,9 +11805,10 @@ const Caso CASOS_DIFERENCIAL[] = {
   "1", NULL, 0 },
 { "dif #2209",
   "int i = 0\n"
-  "while i < 3:\n"
+  "while i < 3 {\n"
   "    post(i)\n"
   "    i = i + 1\n"
+  "}\n"
   "\n",
   "0\n1\n2", NULL, 0 },
 { "dif #2210",
@@ -11616,8 +11862,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "0", NULL, 0 },
 { "dif #2219",
-  "int reaction foo():\n"
+  "int reaction foo() {\n"
   "    return 11\n"
+  "}\n"
   "post(foo())\n"
   "\n",
   "11", NULL, 0 },
@@ -11695,8 +11942,9 @@ const Caso CASOS_DIFERENCIAL[] = {
   "", NULL, 0 },
 { "dif #2232",
   "int x = 10\n"
-  "if x > 5:\n"
+  "if x > 5 {\n"
   "    post(\"big\")\n"
+  "}\n"
   "\n",
   "big", NULL, 0 },
 { "dif #2233",
@@ -12422,27 +12670,36 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "10\n30", NULL, 0 },
 { "dif #2353",
-  "match 200:\n"
-  "    case 200:\n"
+  "match 200 {\n"
+  "    case 200 {\n"
   "        post(\"ok\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"nao\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok", NULL, 0 },
 { "dif #2354",
-  "match 5:\n"
-  "    case 1:\n"
+  "match 5 {\n"
+  "    case 1 {\n"
   "        post(\"a\")\n"
-  "    case 2:\n"
+  "    }\n"
+  "    case 2 {\n"
   "        post(\"b\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "dif #2355",
-  "match 999:\n"
-  "    case 1:\n"
+  "match 999 {\n"
+  "    case 1 {\n"
   "        post(\"um\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"outro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "outro", NULL, 0 },
 { "dif #2356",
@@ -12508,11 +12765,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2366",
-  "match x:\n"
-  "    case 1:\n"
+  "match x {\n"
+  "    case 1 {\n"
   "        post(\"um\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"outro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   NULL, "RuntimeError: variável não definida: x", -1 },
 { "dif #2367",
@@ -12808,9 +13068,10 @@ const Caso CASOS_DIFERENCIAL[] = {
   "", NULL, 0 },
 { "dif #2398",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    z = 9\n"
+  "}\n"
   "post(z)\n"
   "\n",
   NULL, "RuntimeError: variável não definida: z", -1 },

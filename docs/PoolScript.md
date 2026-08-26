@@ -264,10 +264,11 @@ if (nota >= 9) {
 Estilo Python com `:` também funciona:
 
 ```
-if (nota >= 7):
+if (nota >= 7) {
     post("Aprovado")
-else:
+} else {
     post("Reprovado")
+}
 ```
 
 ### Condicional inline (ternário)
@@ -510,8 +511,9 @@ Funciona com qualquer objeto que tenha `__enter__`/`__exit__` — o builtin
 global `open()` (sem import, sempre disponível) é o caso mais comum:
 
 ```
-using open("log.txt", "a", encoding="utf-8") as f:
+using open("log.txt", "a", encoding="utf-8") as f {
     f.write("nova linha\n")
+}
 # arquivo fechado automaticamente, mesmo se f.write() der erro
 ```
 
@@ -534,8 +536,9 @@ using mp.open(target="planilha.xlsx") as arq {
 ```
 
 ```
-using mp.open(target="planilha.xlsx", encoding="latin-1") as arq:
+using mp.open(target="planilha.xlsx", encoding="latin-1") as arq {
     arq.write(column=0, cell=full, content=lista)
+}
 # arquivo salvo e fechado automaticamente
 ```
 

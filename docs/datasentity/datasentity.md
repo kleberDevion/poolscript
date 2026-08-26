@@ -25,9 +25,10 @@ from datasentity import dataentity, asdict, astuple, aslist, asjson
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int = 18          // default opcional
+}
 
 p = Pessoa(nome="Ana", idade=30)     // __init__ gerado — aceita kwargs
 q = Pessoa(nome="Léo")                // idade cai no default 18
@@ -46,10 +47,12 @@ post(q.idade)       // 18
 Sem ele, você escreveria o `__init__` na mão:
 
 ```
-Entity Pessoa():
-    action __init__(self, nome, idade):
+Entity Pessoa() {
+    action __init__(self, nome, idade) {
         self.nome = nome
         self.idade = idade
+    }
+}
 ```
 
 Com `@dataentity`, você só declara os campos (`nome: str`) e o construtor é

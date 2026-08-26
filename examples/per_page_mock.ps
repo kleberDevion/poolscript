@@ -1,9 +1,9 @@
-reaction SearchInbox(self, data):
-    try:
+reaction SearchInbox(self, data) {
+    try {
         connDatabase()
         mouse = conn.cursor()
 
-        if data:
+        if data {
             mouse.execute('''
             SELECT * FROM emails WHERE id_user = ?
             ''', (data["id"],))
@@ -12,24 +12,30 @@ reaction SearchInbox(self, data):
                 "status_code": 209,
                 "infos": resultado
             }), 209
-        else:
+        }
+        else {
             page = 1
             per_page = 20
-            if data:
+            if data {
                 p = data.get("page")
-                if p:
+                if p {
                     page = int(p)
                     pp = data.get("per_page")
-                if pp:
+                }
+                if pp {
                     per_page = int(pp)
-                if page < 1:
+                }
+                if page < 1 {
                     page = 1
-                if per_page < 1:
+                }
+                if per_page < 1 {
                     per_page = 20
-                if per_page > 100:
+                }
+                if per_page > 100 {
                     per_page = 100
 
                     offset = (page - 1) * per_page
+                }
             
                 mouse.execute("SELECT * FROM emails LIMIT ? OFFSET ?", (per_page, offset))
                 resultado_2 = mouse.fetchall()
@@ -48,16 +54,22 @@ reaction SearchInbox(self, data):
                     "has_prev": page > 1,
                     "infos": resultado_2
                 }), 200
+            }
+        }
+    }
 
-    catch (ConnectionError e):
+    catch (ConnectionError e) {
         post(<red>f"Erro interno em SmtpControl.SearchInbox(): {e}")
         return jinker.jsonify({
             "status_code": 500,
             "message": "Connection Error!"
         }), 500
-    catch (e):
+    }
+    catch (e) {
         post(<red>f"Erro interno em SmtpControl.SearchInbox(): {e}")
         return jinker.jsonify({
             "status_code": 500,
             "message": "Server Internal Error!"
         }), 500
+    }
+}

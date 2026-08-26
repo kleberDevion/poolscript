@@ -101,10 +101,11 @@ não reconhece a continuação da cadeia e dá erro de sintaxe.
   "indentação inconsistente".
 
 ```
-if (nota >= 7):
+if (nota >= 7) {
     post("Aprovado")
-else:
+} else {
     post("Reprovado")
+}
 ```
 
 Misturar os dois estilos no mesmo arquivo emite (stderr, não interrompe a
@@ -144,11 +145,13 @@ verdade continua devolvendo `""`, então dá pra distinguir as duas e um laço d
 leitura sabe onde parar:
 
 ```ps
-while true:
+while true {
     linha = input()
-    if linha == Null:
+    if linha == Null {
         break          // acabou a entrada
+    }
     post("li:", linha)
+}
 ```
 
 ### Palavras reservadas não podem virar nome
@@ -540,15 +543,20 @@ try {
 ## `match` / `case`
 
 ```
-match valor:
-    case 200:
+match valor {
+    case 200 {
         post("ok")
-    case "Sabado" | "Domingo":
+    }
+    case "Sabado" | "Domingo" {
         post("fim de semana")
-    case v if v < 50:
+    }
+    case v if v < 50 {
         post("barato")
-    case _:
+    }
+    case _ {
         post("outro")
+    }
+}
 ```
 
 - `case A | B | C:` casa qualquer um dos valores.
@@ -593,11 +601,14 @@ Daqui pra frente o texto usa `class`, mas tudo vale igual para os três.
 ### Declaração e instância
 
 ```
-class Animal():
-    action __init__(self, nome):
+class Animal() {
+    action __init__(self, nome) {
         self.nome = nome
-    action falar(self):
+    }
+    action falar(self) {
         return f"{self.nome} faz um som"
+    }
+}
 
 a = Animal("Bicho")     // chama __init__ automaticamente
 post(a.nome)            // Bicho
@@ -660,12 +671,15 @@ c.saldo = 9             // ERRO: escrita em private de fora
 __init__ de Entity").
 
 ```
-class Cachorro(Animal):
-    action __init__(self, nome, raca):
+class Cachorro(Animal) {
+    action __init__(self, nome, raca) {
         base(nome)          // executa Animal.__init__(self, nome)
         self.raca = raca    // e aí adiciona o atributo próprio
-    action falar(self):     // sobrescreve o falar do pai
+    }
+    action falar(self) {     // sobrescreve o falar do pai
         return f"{self.nome} ({self.raca}) late"
+    }
+}
 
 c = Cachorro("Rex", "vira-lata")
 post(c.falar())     // Rex (vira-lata) late
@@ -676,9 +690,11 @@ Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
 `falar`, então usa o do `Animal`:
 
 ```
-class Gato(Animal):
-    action __init__(self, nome):
+class Gato(Animal) {
+    action __init__(self, nome) {
         base(nome)
+    }
+}
 
 post(Gato("Felix").falar())   // Felix faz um som   (veio de Animal)
 ```
@@ -687,17 +703,23 @@ Cadeia de qualquer profundidade funciona; cada nível chama o `base()` do seu
 pai imediato:
 
 ```
-class Base():
-    action __init__(self, x):
+class Base() {
+    action __init__(self, x) {
         self.x = x
-class Meio(Base):
-    action __init__(self, x, y):
+    }
+}
+class Meio(Base) {
+    action __init__(self, x, y) {
         base(x)          // Base.__init__
         self.y = y
-class Topo(Meio):
-    action __init__(self, x, y, z):
+    }
+}
+class Topo(Meio) {
+    action __init__(self, x, y, z) {
         base(x, y)       // Meio.__init__
         self.z = z
+    }
+}
 
 t = Topo(1, 2, 3)
 post(t.x, t.y, t.z)      // 1 2 3
@@ -710,18 +732,24 @@ Para escolher um pai específico, passe o nome dele como primeiro argumento:
 `base(NomePai, args...)`.
 
 ```
-class Motor():
-    action __init__(self, cavalos):
+class Motor() {
+    action __init__(self, cavalos) {
         self.cavalos = cavalos
-class Roda():
-    action __init__(self, qtd):
+    }
+}
+class Roda() {
+    action __init__(self, qtd) {
         self.qtd_rodas = qtd
+    }
+}
 
-class Carro(Motor, Roda):
-    action __init__(self):
+class Carro(Motor, Roda) {
+    action __init__(self) {
         base(Motor, 300)     // mira Motor, passa 300
         base(Roda, 4)        // mira Roda, passa 4
         self.tipo = "esportivo"
+    }
+}
 
 c = Carro()
 post(c.cavalos, c.qtd_rodas, c.tipo)   // 300 4 esportivo
@@ -756,10 +784,12 @@ Método marcado com `@static` é chamado direto na classe, sem criar objeto e
 sem `self`:
 
 ```
-class Util():
+class Util() {
     @static
-    action dobro(n):
+    action dobro(n) {
         return n * 2
+    }
+}
 
 post(Util.dobro(21))    // 42   — sem instanciar Util
 ```
@@ -770,13 +800,16 @@ Aplicado a um método, faz a chamada falhar (erro `@NonNull: parâmetro '...' n�
 pode ser Null`) se qualquer argumento recebido for `Null`/`None`.
 
 ```
-class Calc():
-    action __init__(self):
+class Calc() {
+    action __init__(self) {
         self.total = 0
+    }
     @NonNull
-    action somar(self, valor):
+    action somar(self, valor) {
         self.total = self.total + valor
         return self.total
+    }
+}
 
 c = Calc()
 c.somar(5)        // ok
@@ -802,9 +835,10 @@ de `datasentity`:
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-class Pessoa():
+class Pessoa() {
     nome: str
     idade: int = 18        // default opcional
+}
 
 p = Pessoa(nome="Ana", idade=30)    // __init__ gerado — aceita kwargs
 q = Pessoa(nome="Léo")               // idade cai no default 18

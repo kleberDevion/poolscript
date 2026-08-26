@@ -1,0 +1,161 @@
+# Converte o FONTE de cada caso dentro de um `teste/casos_*.c` do estilo `:`
+# pro estilo `{ }`, MANTENDO a saída esperada intacta.
+#
+#     ./pool scripts/casos_para_chaves.ps teste/casos_linguagem.c          # confere
+#     ./pool scripts/casos_para_chaves.ps teste/casos_linguagem.c --grava
+#
+# Por que manter a saída: o corpus diferencial é a memória do que a linguagem
+# fazia. Se eu regravasse as saídas rodando o motor de hoje, a expectativa
+# passaria a ser derivada do próprio motor que ela deveria vigiar — e a rede
+# que vem pegando os meus erros deixaria de existir. Mesmo programa, mesma
+# expectativa, sintaxe nova.
+#
+# O arquivo é lido como TEXTO, respeitando literal de C: só o 2º campo de cada
+# `{ "nome", <fonte>, ... }` é tocado.
+import os
+import sys
+import para_chaves
+
+
+# Decodifica uma sequência de literais C adjacentes ("a\n" "b\n") no texto que
+# eles representam. Devolve [texto, posicao_depois].
+action le_literais(s, i)
+{
+    texto = ""
+    n = len(s)
+    while (i < n) {
+        # pula branco e quebra de linha entre literais adjacentes
+        while (i < n and (s[i] == " " or s[i] == "\n" or s[i] == "\t" or s[i] == "\r")) {
+            i = i + 1
+        }
+        if (i >= n or s[i] != "\"") {
+            break
+        }
+        i = i + 1
+        while (i < n and s[i] != "\"") {
+            c = s[i]
+            if c == "\\" and i + 1 < n {
+                e = s[i + 1]
+                if e == "n" {
+                    texto = texto + "\n"
+                } elif e == "t" {
+                    texto = texto + "\t"
+                } elif e == "r" {
+                    texto = texto + "\r"
+                } elif e == "\\" {
+                    texto = texto + "\\"
+                } elif e == "\"" {
+                    texto = texto + "\""
+                } elif e == "'" {
+                    texto = texto + "'"
+                } elif e == "0" {
+                    texto = texto + chr(0)
+                } else {
+                    texto = texto + "\\" + e
+                }
+                i = i + 2
+                continue
+            }
+            texto = texto + c
+            i = i + 1
+        }
+        i = i + 1 
+    }       # fecha aspas
+    return [texto, i]
+}
+
+# Volta o texto pro formato do arquivo: uma linha de literal C por linha do
+# fonte, indentada com 2 espaços, como o resto do arquivo já é.
+action escreve_literais(texto, recuo)
+{
+    linhas = texto.split("\n")
+    # a última entrada depois de um "\n" final é vazia e não vira literal
+    if (len(linhas) > 0 and linhas[len(linhas) - 1] == "") {
+        linhas.pop()
+    }
+    partes = []
+    for each l in linhas {
+        e = l.replace("\\", "\\\\").replace("\"", "\\\"").replace("\t", "\\t")
+        partes.append("\"" + e + "\\n\"")
+    }
+    if (len(partes) == 0) {
+        return "\"\""
+    }
+    return ("\n" + recuo).join(partes)
+}
+
+run_selfwith_("main") {
+    if len(sys.argv) < 1 {
+        post("uso: pool scripts/casos_para_chaves.ps <casos_x.c> [--grava]")
+        sys.exit(1)
+    }
+    caminho = sys.argv[0]
+    grava = false
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+    }
+
+    s = open(caminho).read()
+    saida = ""
+    i = 0
+    n = len(s)
+    convertidos = 0
+    intactos = 0
+
+    while i < n {
+        # início de caso: uma linha que começa com `{ "`
+        if s[i] == "{" and i + 2 < n and s[i + 1] == " " and s[i + 2] == "\"" {
+            # 1º campo: o nome
+            par = le_literais(s, i + 1)
+            nome = par[0]
+            j = par[1]
+            # vírgula depois do nome
+            while j < n and (s[j] == " " or s[j] == "\n") {
+                j = j + 1
+            }
+            if j >= n or s[j] != "," {
+                saida = saida + s[i]
+                i = i + 1
+                continue
+            }
+            j = j + 1
+            # espaço/quebra antes do fonte — preservado como está
+            k = j
+            while k < n and (s[k] == " " or s[k] == "\n" or s[k] == "\t") {
+                k = k + 1
+            }
+            if k >= n or s[k] != "\"" {
+                # fonte NULL ou algo que não é literal: não mexe
+                saida = saida + s[i:j]
+                i = j
+                continue
+            }
+            par2 = le_literais(s, k)
+            fonte = par2[0]
+            fim = par2[1]
+
+            novo = para_chaves.converte(fonte)
+            if novo == fonte {
+                intactos = intactos + 1
+                saida = saida + s[i:fim]
+            } else {
+                convertidos = convertidos + 1
+                saida = saida + s[i:j] + "\n  " + escreve_literais(novo, "  ")
+            }
+            i = fim
+            continue
+        }
+        saida = saida + s[i]
+        i = i + 1
+    }
+
+    post(caminho + ":", convertidos, "casos convertidos,", intactos, "ja em chaves")
+    if grava {
+        using open(caminho, "w") as f {
+            f.write(saida)
+        }
+        post("gravado.")
+    }
+}

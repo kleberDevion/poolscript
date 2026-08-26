@@ -65,24 +65,30 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "120", NULL, 0 },
 { "git: test_async_deep #5",
-  "Entity Conta():\n"
-  "    action __init__(self, saldo):\n"
+  "Entity Conta() {\n"
+  "    action __init__(self, saldo) {\n"
   "        self.saldo = saldo\n"
-  "    async action depositar(self, valor):\n"
+  "    }\n"
+  "    async action depositar(self, valor) {\n"
   "        self.saldo = self.saldo + valor\n"
   "        return self.saldo\n"
+  "    }\n"
+  "}\n"
   "c = Conta(100)\n"
   "post(await c.depositar(50))\n"
   "post(c.saldo)\n"
   "\n",
   "150\n150", NULL, 0 },
 { "git: test_async_deep #6",
-  "Entity Contador():\n"
-  "    action __init__(self, inicio):\n"
+  "Entity Contador() {\n"
+  "    action __init__(self, inicio) {\n"
   "        self.n = inicio\n"
-  "    async action inc(self):\n"
+  "    }\n"
+  "    async action inc(self) {\n"
   "        self.n = self.n + 1\n"
   "        return self.n\n"
+  "    }\n"
+  "}\n"
   "a = Contador(0)\n"
   "b = Contador(100)\n"
   "post(await a.inc())\n"
@@ -208,11 +214,14 @@ const Caso CASOS_COBERTURA[] = {
   "8", NULL, 0 },
 { "git: test_bitwise_ops #30",
   "\n"
-  "match 2:\n"
-  "    case 1 | 2 | 3:\n"
+  "match 2 {\n"
+  "    case 1 | 2 | 3 {\n"
   "        post(\"bateu\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"nao bateu\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "bateu", NULL, 0 },
 { "git: test_bitwise_ops #31",
@@ -382,8 +391,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "Pool", NULL, 0 },
 { "git: test_interpreter #60",
-  "if Null == 0:\n"
+  "if Null == 0 {\n"
   "    post(\"yes\")\n"
+  "}\n"
   "\n",
   "yes", NULL, 0 },
 { "git: test_interpreter #61",
@@ -398,8 +408,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "null", NULL, 0 },
 { "git: test_interpreter #63",
-  "for each i in [\"a\",\"b\",\"c\"]:\n"
+  "for each i in [\"a\",\"b\",\"c\"] {\n"
   "    post(i)\n"
+  "}\n"
   "\n",
   "a\nb\nc", NULL, 0 },
 { "git: test_interpreter #64",
@@ -499,8 +510,9 @@ const Caso CASOS_COBERTURA[] = {
   "[11, 21, 31]", NULL, 0 },
 { "git: test_language_deep #77",
   "resultado = []\n"
-  "for each c in \"abc\":\n"
+  "for each c in \"abc\" {\n"
   "    addEnd(resultado, c)\n"
+  "}\n"
   "post(resultado)\n"
   "\n",
   "['a', 'b', 'c']", NULL, 0 },
@@ -547,33 +559,44 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "certo", NULL, 0 },
 { "git: test_language_deep #82",
-  "match 999:\n"
-  "    case 1:\n"
+  "match 999 {\n"
+  "    case 1 {\n"
   "        post(\"um\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"outro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "outro", NULL, 0 },
 { "git: test_language_deep #83",
   "dia = \"Terca\"\n"
-  "match dia:\n"
-  "    case \"Sabado\" | \"Domingo\":\n"
+  "match dia {\n"
+  "    case \"Sabado\" | \"Domingo\" {\n"
   "        post(\"fim\")\n"
-  "    case \"Segunda\" | \"Terca\" | \"Quarta\":\n"
+  "    }\n"
+  "    case \"Segunda\" | \"Terca\" | \"Quarta\" {\n"
   "        post(\"inicio\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"outro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "inicio", NULL, 0 },
 { "git: test_language_deep #84",
   "x = 15\n"
-  "match x:\n"
-  "    case v if v < 10:\n"
+  "match x {\n"
+  "    case v if v < 10 {\n"
   "        post(\"pequeno\")\n"
-  "    case v if v < 20:\n"
+  "    }\n"
+  "    case v if v < 20 {\n"
   "        post(\"medio\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"grande\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "medio", NULL, 0 },
 { "git: test_language_deep #85",
@@ -628,38 +651,49 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "invalido", NULL, 0 },
 { "git: test_language_deep #89",
-  "Entity Animal():\n"
-  "    action __init__(self, nome):\n"
+  "Entity Animal() {\n"
+  "    action __init__(self, nome) {\n"
   "        self.nome = nome\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity Mamifero(Animal):\n"
-  "    action __init__(self, nome):\n"
+  "    }\n"
+  "}\n"
+  "Entity Mamifero(Animal) {\n"
+  "    action __init__(self, nome) {\n"
   "        base(nome)\n"
-  "Entity Cachorro(Mamifero):\n"
-  "    action __init__(self, nome):\n"
+  "    }\n"
+  "}\n"
+  "Entity Cachorro(Mamifero) {\n"
+  "    action __init__(self, nome) {\n"
   "        base(nome)\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"Au!\"\n"
+  "    }\n"
+  "}\n"
   "c = Cachorro(\"Rex\")\n"
   "post(c.nome)\n"
   "post(c.falar())\n"
   "\n",
   "Rex\nAu!", NULL, 0 },
 { "git: test_language_deep #90",
-  "Entity Util():\n"
+  "Entity Util() {\n"
   "    @static\n"
-  "    action triplo(n):\n"
+  "    action triplo(n) {\n"
   "        return n * 3\n"
+  "    }\n"
+  "}\n"
   "post(Util.triplo(4))\n"
   "\n",
   "12", NULL, 0 },
 { "git: test_language_deep #91",
   "from datasentity import dataentity, asdict, astuple, aslist\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p = P(nome=\"Ana\", idade=30)\n"
   "post(asdict(p)[\"nome\"])\n"
   "post(astuple(p)[1])\n"
@@ -817,14 +851,16 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "C:\\Users\\test", NULL, 0 },
 { "git: test_language_deep #111",
-  "if (1 == 1):\n"
+  "if (1 == 1) {\n"
   "    post(\"ok\")\n"
+  "}\n"
   "\n",
   "ok", NULL, 0 },
 { "git: test_language_deep #112",
   "if (1 == 1) { post(\"a\") }\n"
-  "if (2 == 2):\n"
+  "if (2 == 2) {\n"
   "    post(\"b\")\n"
+  "}\n"
   "\n",
   "a\nb", NULL, 0 },
 { "git: test_language_deep #113",
@@ -1121,8 +1157,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "1\n2", NULL, 0 },
 { "git: test_unpacking #150",
-  "for each i in [1, 2, 3]:\n"
+  "for each i in [1, 2, 3] {\n"
   "    post(i)\n"
+  "}\n"
   "\n",
   "1\n2\n3", NULL, 0 },
 { "git: test_unpacking #151",
@@ -1145,23 +1182,27 @@ const Caso CASOS_COBERTURA[] = {
   "(1, 2)", NULL, 0 },
 { "git: test_v0_4_0_indent #153",
   "int x = 10\n"
-  "if x > 5:\n"
+  "if x > 5 {\n"
   "    post(\"big\")\n"
+  "}\n"
   "\n",
   "big", NULL, 0 },
 { "git: test_v0_4_0_indent #154",
   "int i = 0\n"
-  "while i < 3:\n"
+  "while i < 3 {\n"
   "    post(i)\n"
   "    i = i + 1\n"
+  "}\n"
   "\n",
   "0\n1\n2", NULL, 0 },
 { "git: test_v0_4_0_indent #155",
-  "action greet(name):\n"
-  "    if name == \"oi\":\n"
+  "action greet(name) {\n"
+  "    if name == \"oi\" {\n"
   "        post(\"hello\")\n"
-  "    else:\n"
+  "    } else {\n"
   "        post(\"bye\")\n"
+  "    }\n"
+  "}\n"
   "greet(\"oi\")\n"
   "greet(\"x\")\n"
   "\n",
@@ -1173,20 +1214,23 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "misto", NULL, 0 },
 { "git: test_v0_4_0_indent #157",
-  "if 1 == 1:\n"
+  "if 1 == 1 {\n"
   "    if 2 == 2 { post(\"misto2\") }\n"
+  "}\n"
   "\n",
   "misto2", NULL, 0 },
 { "git: test_v0_4_0_indent #158",
-  "for each x in [1, 2, 3]:\n"
+  "for each x in [1, 2, 3] {\n"
   "    post(x)\n"
+  "}\n"
   "\n",
   "1\n2\n3", NULL, 0 },
 { "git: test_v0_4_0_indent #159",
-  "try:\n"
+  "try {\n"
   "    int x = 1 / 0\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(\"pego\")\n"
+  "}\n"
   "\n",
   "pego", NULL, 0 },
 { "git: test_v0_5_1_type_checks #160",
@@ -1302,18 +1346,22 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "7", NULL, 0 },
 { "git: test_v5_features #175",
-  "reaction f():\n"
+  "reaction f() {\n"
   "    return 42\n"
+  "}\n"
   "post(f())\n"
   "\n",
   "42", NULL, 0 },
 { "git: test_v5_features #176",
   "\n"
-  "Entity C():\n"
-  "    action __init__(self):\n"
+  "Entity C() {\n"
+  "    action __init__(self) {\n"
   "        self.v = 10\n"
-  "    reaction dobro(self):\n"
+  "    }\n"
+  "    reaction dobro(self) {\n"
   "        return self.v * 2\n"
+  "    }\n"
+  "}\n"
   "c = C()\n"
   "post(c.dobro())\n"
   "\n",
@@ -1383,11 +1431,14 @@ const Caso CASOS_COBERTURA[] = {
   "55", NULL, 0 },
 { "git: test_v5_features #188",
   "\n"
-  "Entity C():\n"
-  "    action __init__(self, n):\n"
+  "Entity C() {\n"
+  "    action __init__(self, n) {\n"
   "        self.n = n\n"
-  "    async action fetch(self):\n"
+  "    }\n"
+  "    async action fetch(self) {\n"
   "        return self.n * 10\n"
+  "    }\n"
+  "}\n"
   "c = C(5)\n"
   "post(await c.fetch())\n"
   "\n",
@@ -1396,9 +1447,10 @@ const Caso CASOS_COBERTURA[] = {
   "\n"
   "from datasentity import dataentity, asdict\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
   "    idade: int\n"
+  "}\n"
   "p = P(nome=\"Kleber\", idade=17)\n"
   "post(p.nome)\n"
   "post(p.idade)\n"
@@ -1408,9 +1460,10 @@ const Caso CASOS_COBERTURA[] = {
   "\n"
   "from datasentity import dataentity, asdict\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    x: int\n"
   "    y: int\n"
+  "}\n"
   "p = P(x=1, y=2)\n"
   "d = asdict(p)\n"
   "post(d[\"x\"])\n"
@@ -1420,9 +1473,10 @@ const Caso CASOS_COBERTURA[] = {
   "\n"
   "from datasentity import dataentity, astuple\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    a: str\n"
   "    b: int\n"
+  "}\n"
   "p = P(a=\"ok\", b=9)\n"
   "t = astuple(p)\n"
   "post(t[0])\n"
@@ -1432,8 +1486,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n"
   "from datasentity import dataentity, aslist\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    x: int\n"
+  "}\n"
   "p = P(x=5)\n"
   "l = aslist(p)\n"
   "post(l[0])\n"
@@ -1444,8 +1499,9 @@ const Caso CASOS_COBERTURA[] = {
   "from datasentity import dataentity, asjson\n"
   "import json as _j\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
+  "}\n"
   "p = P(nome=\"Ana\")\n"
   "d = _j.parse(asjson(p))\n"
   "post(d[\"nome\"])\n"
@@ -1455,10 +1511,12 @@ const Caso CASOS_COBERTURA[] = {
   "\n"
   "from datasentity import dataentity\n"
   "@dataentity\n"
-  "Entity P():\n"
+  "Entity P() {\n"
   "    nome: str\n"
-  "    action upper(self):\n"
+  "    action upper(self) {\n"
   "        return self.nome.upper()\n"
+  "    }\n"
+  "}\n"
   "p = P(nome=\"kleber\")\n"
   "post(p.upper())\n"
   "\n",
@@ -1579,38 +1637,49 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "4", NULL, 0 },
 { "git: test_v5_features #220",
-  "match 200:\n"
-  "    case 200:\n"
+  "match 200 {\n"
+  "    case 200 {\n"
   "        post(\"ok\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"nao\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok", NULL, 0 },
 { "git: test_v5_features #221",
   "x=30\n"
-  "match x:\n"
-  "    case p if p<50:\n"
+  "match x {\n"
+  "    case p if p<50 {\n"
   "        post(\"barato\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"caro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "barato", NULL, 0 },
 { "git: test_v5_features #222",
   "dia=\"Sabado\"\n"
-  "match dia:\n"
-  "    case \"Sabado\" | \"Domingo\":\n"
+  "match dia {\n"
+  "    case \"Sabado\" | \"Domingo\" {\n"
   "        post(\"fim\")\n"
-  "    case _:\n"
+  "    }\n"
+  "    case _ {\n"
   "        post(\"semana\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "fim", NULL, 0 },
 { "git: test_v5_features #223",
   "\n"
-  "action contar(n):\n"
+  "action contar(n) {\n"
   "    i = 0\n"
-  "    while i < n:\n"
+  "    while i < n {\n"
   "        yield i\n"
   "        i += 1\n"
+  "    }\n"
+  "}\n"
   "resultado = []\n"
   "for each v in contar(3) {\n"
   "    addEnd(resultado, v)\n"
@@ -1620,16 +1689,22 @@ const Caso CASOS_COBERTURA[] = {
   "[0, 1, 2]", NULL, 0 },
 { "git: test_v5_features #224",
   "\n"
-  "Entity Animal():\n"
-  "    action __init__(self, nome):\n"
+  "Entity Animal() {\n"
+  "    action __init__(self, nome) {\n"
   "        self.nome = nome\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity Cachorro(Animal):\n"
-  "    action __init__(self, nome):\n"
+  "    }\n"
+  "}\n"
+  "Entity Cachorro(Animal) {\n"
+  "    action __init__(self, nome) {\n"
   "        base(nome)\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"Au!\"\n"
+  "    }\n"
+  "}\n"
   "c = Cachorro(\"Rex\")\n"
   "post(c.nome)\n"
   "post(c.falar())\n"
@@ -1637,10 +1712,12 @@ const Caso CASOS_COBERTURA[] = {
   "Rex\nAu!", NULL, 0 },
 { "git: test_v5_features #225",
   "\n"
-  "Entity U():\n"
+  "Entity U() {\n"
   "    @static\n"
-  "    action dobrar(n):\n"
+  "    action dobrar(n) {\n"
   "        return n * 2\n"
+  "    }\n"
+  "}\n"
   "post(U.dobrar(5))\n"
   "\n",
   "10", NULL, 0 },
@@ -1657,17 +1734,24 @@ const Caso CASOS_COBERTURA[] = {
   "{\"ok\": true}\nTrue\nTrue", NULL, 0 },
 { "git: test_v5_features #227",
   "\n"
-  "class Animal():\n"
-  "    action __init__(self, nome):\n"
+  "class Animal() {\n"
+  "    action __init__(self, nome) {\n"
   "        self.nome = nome\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "    action falar(self) {\n"
   "        return \"...\"\n"
-  "Entity Gato(Animal):\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "}\n"
+  "Entity Gato(Animal) {\n"
+  "    action falar(self) {\n"
   "        return f\"{self.nome}: miau\"\n"
-  "Class Cao(Animal):\n"
-  "    action falar(self):\n"
+  "    }\n"
+  "}\n"
+  "Class Cao(Animal) {\n"
+  "    action falar(self) {\n"
   "        return f\"{self.nome}: au\"\n"
+  "    }\n"
+  "}\n"
   "g = Gato(\"Felix\")\n"
   "c = Cao(\"Rex\")\n"
   "post(g.falar())\n"
@@ -1675,19 +1759,21 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "Felix: miau\nRex: au", NULL, 0 },
 { "git: test_v5_features #228",
-  "try:\n"
+  "try {\n"
   "    x=1/0\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(\"err\")\n"
+  "}\n"
   "\n",
   "err", NULL, 0 },
 { "git: test_v5_features #229",
-  "try:\n"
+  "try {\n"
   "    raise \"ops\"\n"
-  "catch (e):\n"
+  "} catch (e) {\n"
   "    post(\"catch\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"finally\")\n"
+  "}\n"
   "\n",
   "catch\nfinally", NULL, 0 },
 { "git: test_vm_c #230",
@@ -1728,16 +1814,18 @@ const Caso CASOS_COBERTURA[] = {
   "ç 1", NULL, 0 },
 { "matriz: closure em topo",
   "a = 1\n"
-  "action inc():\n"
+  "action inc() {\n"
   "    a = a + 1\n"
   "    return a\n"
+  "}\n"
   "post(inc(), inc())\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em topo",
   "x = 5\n"
-  "action le():\n"
+  "action le() {\n"
   "    return x\n"
+  "}\n"
   "post(le())\n"
   "\n",
   "5", NULL, 0 },
@@ -1786,16 +1874,18 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em topo",
-  "async action d(n):\n"
+  "async action d(n) {\n"
   "    return n * 2\n"
+  "}\n"
   "post(await [d(1), d(2)])\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em topo",
-  "try:\n"
+  "try {\n"
   "    post(int(flo(\"inf\")))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"ok-erro\")\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em topo",
@@ -1807,237 +1897,281 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "", NULL, 0 },
 { "matriz: char em action",
-  "action f():\n"
+  "action f() {\n"
   "    char c = 64\n"
   "    post(c)\n"
+  "}\n"
   "f()\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em action",
-  "action f():\n"
+  "action f() {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
+  "}\n"
   "f()\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em action",
-  "action f():\n"
+  "action f() {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
+  "}\n"
   "f()\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em action",
-  "action f():\n"
+  "action f() {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
+  "}\n"
   "f()\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "}\n"
   "f()\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em action",
-  "action f():\n"
+  "action f() {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
+  "}\n"
   "f()\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
+  "}\n"
   "f()\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "}\n"
   "f()\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
+  "}\n"
   "f()\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
+  "}\n"
   "f()\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "}\n"
   "f()\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em action",
-  "action f():\n"
+  "action f() {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "}\n"
   "f()\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em action",
-  "action f():\n"
+  "action f() {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "}\n"
   "f()\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em action",
-  "action f():\n"
+  "action f() {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "}\n"
   "f()\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em action",
-  "action f():\n"
-  "    async action d(n):\n"
+  "action f() {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
+  "}\n"
   "f()\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em action",
-  "action f():\n"
-  "    try:\n"
+  "action f() {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
+  "}\n"
   "f()\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(len(\"a\\x00b\"))\n"
+  "}\n"
   "f()\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em action",
-  "action f():\n"
+  "action f() {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
+  "}\n"
   "f()\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    char c = 64\n"
   "    post(c)\n"
+  "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
+  "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
+  "}\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
+  "}\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
+  "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "}\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em bloco_if",
-  "if true:\n"
-  "    async action d(n):\n"
+  "if true {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
+  "}\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em bloco_if",
-  "if true:\n"
-  "    try:\n"
+  "if true {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(len(\"a\\x00b\"))\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em bloco_if",
-  "if true:\n"
+  "if true {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em bloco_chaves",
@@ -2131,1425 +2265,1717 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "", NULL, 0 },
 { "matriz: char em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    char c = 64\n"
   "    post(c)\n"
+  "}\n"
   "\n",
   "@\n@", NULL, 0 },
 { "matriz: char_texto em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
+  "}\n"
   "\n",
   "ç 1\nç 1", NULL, 0 },
 { "matriz: closure em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
+  "}\n"
   "\n",
   "2 3\n2 3", NULL, 0 },
 { "matriz: closure_self em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
+  "}\n"
   "\n",
   "5\n5", NULL, 0 },
 { "matriz: startswith em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "}\n"
   "\n",
   "True\nTrue", NULL, 0 },
 { "matriz: index_faixa em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
+  "}\n"
   "\n",
   "3\n3", NULL, 0 },
 { "matriz: encode em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'\nb'caf\\xe9'", NULL, 0 },
 { "matriz: decode em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "café\ncafé", NULL, 0 },
 { "matriz: num_base em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0\n31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
+  "}\n"
   "\n",
   "ω SS\nω SS", NULL, 0 },
 { "matriz: isdigit em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "}\n"
   "\n",
   "True False\nTrue False", NULL, 0 },
 { "matriz: regex_split em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']\n['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "}\n"
   "\n",
   "a[1]\na[1]", NULL, 0 },
 { "matriz: json_emoji em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "}\n"
   "\n",
   "{'a': '😀'}\n{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em for_each",
-  "for each _i in range(2):\n"
-  "    async action d(n):\n"
+  "for each _i in range(2) {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
+  "}\n"
   "\n",
   "[2, 4]\n[2, 4]", NULL, 0 },
 { "matriz: int_inf em for_each",
-  "for each _i in range(2):\n"
-  "    try:\n"
+  "for each _i in range(2) {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok-erro\nok-erro", NULL, 0 },
 { "matriz: nul em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(len(\"a\\x00b\"))\n"
+  "}\n"
   "\n",
   "3\n3", NULL, 0 },
 { "matriz: fatia em for_each",
-  "for each _i in range(2):\n"
+  "for each _i in range(2) {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    char c = 64\n"
   "    post(c)\n"
+  "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
+  "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
+  "}\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
+  "}\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
+  "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "}\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
-  "    async action d(n):\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
+  "}\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
-  "    try:\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(len(\"a\\x00b\"))\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em while",
   "n = 0\n"
-  "while n < 1:\n"
+  "while n < 1 {\n"
   "    n = n + 1\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em try",
-  "try:\n"
+  "try {\n"
   "    char c = 64\n"
   "    post(c)\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em try",
-  "try:\n"
+  "try {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em try",
-  "try:\n"
+  "try {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em try",
-  "try:\n"
+  "try {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em try",
-  "try:\n"
+  "try {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em try",
-  "try:\n"
+  "try {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em try",
-  "try:\n"
+  "try {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em try",
-  "try:\n"
+  "try {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em try",
-  "try:\n"
+  "try {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em try",
-  "try:\n"
+  "try {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em try",
-  "try:\n"
+  "try {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em try",
-  "try:\n"
+  "try {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em try",
-  "try:\n"
+  "try {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em try",
-  "try:\n"
+  "try {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em try",
-  "try:\n"
-  "    async action d(n):\n"
+  "try {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em try",
-  "try:\n"
-  "    try:\n"
+  "try {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
-  "catch(e):\n"
+  "    }\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em try",
-  "try:\n"
+  "try {\n"
   "    post(len(\"a\\x00b\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em try",
-  "try:\n"
+  "try {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em finally",
-  "try:\n"
+  "try {\n"
   "    char c = 64\n"
   "    post(c)\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "@\nfim", NULL, 0 },
 { "matriz: char_texto em finally",
-  "try:\n"
+  "try {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "ç 1\nfim", NULL, 0 },
 { "matriz: closure em finally",
-  "try:\n"
+  "try {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "2 3\nfim", NULL, 0 },
 { "matriz: closure_self em finally",
-  "try:\n"
+  "try {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "5\nfim", NULL, 0 },
 { "matriz: startswith em finally",
-  "try:\n"
+  "try {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "True\nfim", NULL, 0 },
 { "matriz: index_faixa em finally",
-  "try:\n"
+  "try {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "3\nfim", NULL, 0 },
 { "matriz: encode em finally",
-  "try:\n"
+  "try {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'\nfim", NULL, 0 },
 { "matriz: decode em finally",
-  "try:\n"
+  "try {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "café\nfim", NULL, 0 },
 { "matriz: num_base em finally",
-  "try:\n"
+  "try {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0\nfim", NULL, 0 },
 { "matriz: unicode em finally",
-  "try:\n"
+  "try {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "ω SS\nfim", NULL, 0 },
 { "matriz: isdigit em finally",
-  "try:\n"
+  "try {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "True False\nfim", NULL, 0 },
 { "matriz: regex_split em finally",
-  "try:\n"
+  "try {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']\nfim", NULL, 0 },
 { "matriz: regex_sub em finally",
-  "try:\n"
+  "try {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "a[1]\nfim", NULL, 0 },
 { "matriz: json_emoji em finally",
-  "try:\n"
+  "try {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "{'a': '😀'}\nfim", NULL, 0 },
 { "matriz: await_lista em finally",
-  "try:\n"
-  "    async action d(n):\n"
+  "try {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "[2, 4]\nfim", NULL, 0 },
 { "matriz: int_inf em finally",
-  "try:\n"
-  "    try:\n"
+  "try {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
-  "catch(e):\n"
+  "    }\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "ok-erro\nfim", NULL, 0 },
 { "matriz: nul em finally",
-  "try:\n"
+  "try {\n"
   "    post(len(\"a\\x00b\"))\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "3\nfim", NULL, 0 },
 { "matriz: fatia em finally",
-  "try:\n"
+  "try {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
-  "catch(e):\n"
+  "} catch(e) {\n"
   "    post(\"C\")\n"
-  "finally:\n"
+  "} finally {\n"
   "    post(\"fim\")\n"
+  "}\n"
   "\n",
   "\nfim", NULL, 0 },
 { "matriz: char em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        char c = 64\n"
   "        post(c)\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        char c = \"ç\"\n"
   "        post(c, len(c))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        a = 1\n"
-  "        action inc():\n"
+  "        action inc() {\n"
   "            a = a + 1\n"
   "            return a\n"
+  "        }\n"
   "        post(inc(), inc())\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        x = 5\n"
-  "        action le():\n"
+  "        action le() {\n"
   "            return x\n"
+  "        }\n"
   "        post(le())\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        l = [1, 2, 3, 2]\n"
   "        post(l.index(2, 2))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(\"café\".encode(\"latin-1\"))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(0x1F, 0b101, 1_000, 1e3)\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(\"Ω\".lower(), \"ß\".upper())\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        import regex\n"
   "        post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        import regex\n"
   "        post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        import json\n"
   "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
-  "        async action d(n):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
+  "        async action d(n) {\n"
   "            return n * 2\n"
+  "        }\n"
   "        post(await [d(1), d(2)])\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
-  "        try:\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
+  "        try {\n"
   "            post(int(flo(\"inf\")))\n"
-  "        catch(e):\n"
+  "        } catch(e) {\n"
   "            post(\"ok-erro\")\n"
+  "        }\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(len(\"a\\x00b\"))\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em metodo",
-  "Entity K():\n"
-  "    action m(self):\n"
+  "Entity K() {\n"
+  "    action m(self) {\n"
   "        post(\"abcdef\"[999999999999999999999:])\n"
+  "    }\n"
+  "}\n"
   "K().m()\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        char c = 64\n"
   "        post(c)\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        char c = \"ç\"\n"
   "        post(c, len(c))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        a = 1\n"
-  "        action inc():\n"
+  "        action inc() {\n"
   "            a = a + 1\n"
   "            return a\n"
+  "        }\n"
   "        post(inc(), inc())\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        x = 5\n"
-  "        action le():\n"
+  "        action le() {\n"
   "            return x\n"
+  "        }\n"
   "        post(le())\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        l = [1, 2, 3, 2]\n"
   "        post(l.index(2, 2))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(\"café\".encode(\"latin-1\"))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(0x1F, 0b101, 1_000, 1e3)\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(\"Ω\".lower(), \"ß\".upper())\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        import regex\n"
   "        post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        import regex\n"
   "        post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        import json\n"
   "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
-  "        async action d(n):\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
+  "        async action d(n) {\n"
   "            return n * 2\n"
+  "        }\n"
   "        post(await [d(1), d(2)])\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
-  "        try:\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
+  "        try {\n"
   "            post(int(flo(\"inf\")))\n"
-  "        catch(e):\n"
+  "        } catch(e) {\n"
   "            post(\"ok-erro\")\n"
+  "        }\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(len(\"a\\x00b\"))\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em aninhada",
-  "action fora():\n"
-  "    action dentro():\n"
+  "action fora() {\n"
+  "    action dentro() {\n"
   "        post(\"abcdef\"[999999999999999999999:])\n"
+  "    }\n"
   "    dentro()\n"
+  "}\n"
   "fora()\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em gerador",
-  "action g():\n"
-  "    async action d(n):\n"
+  "action g() {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em gerador",
-  "action g():\n"
-  "    try:\n"
+  "action g() {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(len(\"a\\x00b\"))\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em gerador",
-  "action g():\n"
+  "action g() {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "    yield 1\n"
-  "for each _v in g():\n"
+  "}\n"
+  "for each _v in g() {\n"
   "    _u = _v\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "@\n1", NULL, 0 },
 { "matriz: char_texto em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "ç 1\n1", NULL, 0 },
 { "matriz: closure em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "2 3\n1", NULL, 0 },
 { "matriz: closure_self em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "5\n1", NULL, 0 },
 { "matriz: startswith em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "True\n1", NULL, 0 },
 { "matriz: index_faixa em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "3\n1", NULL, 0 },
 { "matriz: encode em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "b'caf\\xe9'\n1", NULL, 0 },
 { "matriz: decode em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "café\n1", NULL, 0 },
 { "matriz: num_base em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "31 5 1000 1000.0\n1", NULL, 0 },
 { "matriz: unicode em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "ω SS\n1", NULL, 0 },
 { "matriz: isdigit em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "True False\n1", NULL, 0 },
 { "matriz: regex_split em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "['a', ',', 'b']\n1", NULL, 0 },
 { "matriz: regex_sub em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "a[1]\n1", NULL, 0 },
 { "matriz: json_emoji em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "{'a': '😀'}\n1", NULL, 0 },
 { "matriz: await_lista em async",
-  "async action a():\n"
-  "    async action d(n):\n"
+  "async action a() {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "[2, 4]\n1", NULL, 0 },
 { "matriz: int_inf em async",
-  "async action a():\n"
-  "    try:\n"
+  "async action a() {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "ok-erro\n1", NULL, 0 },
 { "matriz: nul em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(len(\"a\\x00b\"))\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "3\n1", NULL, 0 },
 { "matriz: fatia em async",
-  "async action a():\n"
+  "async action a() {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "    return 1\n"
+  "}\n"
   "post(await a())\n"
   "\n",
   "\n1", NULL, 0 },
 { "matriz: char em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    char c = 64\n"
   "    post(c)\n"
+  "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
+  "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    a = 1\n"
-  "    action inc():\n"
+  "    action inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
+  "    }\n"
   "    post(inc(), inc())\n"
+  "}\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    x = 5\n"
-  "    action le():\n"
+  "    action le() {\n"
   "        return x\n"
+  "    }\n"
   "    post(le())\n"
+  "}\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
+  "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "}\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
-  "    async action d(n):\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "    async action d(n) {\n"
   "        return n * 2\n"
+  "    }\n"
   "    post(await [d(1), d(2)])\n"
+  "}\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
-  "    try:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
+  "    try {\n"
   "        post(int(flo(\"inf\")))\n"
-  "    catch(e):\n"
+  "    } catch(e) {\n"
   "        post(\"ok-erro\")\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(len(\"a\\x00b\"))\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em using",
-  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f:\n"
+  "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 { "matriz: char em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        char c = 64\n"
   "        post(c)\n"
+  "    }\n"
+  "}\n"
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        char c = \"ç\"\n"
   "        post(c, len(c))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        a = 1\n"
-  "        action inc():\n"
+  "        action inc() {\n"
   "            a = a + 1\n"
   "            return a\n"
+  "        }\n"
   "        post(inc(), inc())\n"
+  "    }\n"
+  "}\n"
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        x = 5\n"
-  "        action le():\n"
+  "        action le() {\n"
   "            return x\n"
+  "        }\n"
   "        post(le())\n"
+  "    }\n"
+  "}\n"
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(\"abc\".startswith((\"z\", \"a\")))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        l = [1, 2, 3, 2]\n"
   "        post(l.index(2, 2))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(\"café\".encode(\"latin-1\"))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(0x1F, 0b101, 1_000, 1e3)\n"
+  "    }\n"
+  "}\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(\"Ω\".lower(), \"ß\".upper())\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(\"²\".isdigit(), \"²\".isdecimal())\n"
+  "    }\n"
+  "}\n"
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        import regex\n"
   "        post(regex.split(r\"(,)\", \"a,b\"))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        import regex\n"
   "        post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        import json\n"
   "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em match",
-  "match 1:\n"
-  "    case 1:\n"
-  "        async action d(n):\n"
+  "match 1 {\n"
+  "    case 1 {\n"
+  "        async action d(n) {\n"
   "            return n * 2\n"
+  "        }\n"
   "        post(await [d(1), d(2)])\n"
+  "    }\n"
+  "}\n"
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em match",
-  "match 1:\n"
-  "    case 1:\n"
-  "        try:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
+  "        try {\n"
   "            post(int(flo(\"inf\")))\n"
-  "        catch(e):\n"
+  "        } catch(e) {\n"
   "            post(\"ok-erro\")\n"
+  "        }\n"
+  "    }\n"
+  "}\n"
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(len(\"a\\x00b\"))\n"
+  "    }\n"
+  "}\n"
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em match",
-  "match 1:\n"
-  "    case 1:\n"
+  "match 1 {\n"
+  "    case 1 {\n"
   "        post(\"abcdef\"[999999999999999999999:])\n"
+  "    }\n"
+  "}\n"
   "\n",
   "", NULL, 0 },
 };

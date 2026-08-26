@@ -267,9 +267,10 @@ exemplos de faixa. Regressão em `teste/`.
 **O que não funcionava:**
 
 ```
-action f(x):
+action f(x) {
     // comentário
     return x
+}
 ```
 
 dava `SyntaxError: faltou indentação após ':'`. O lexer não mexe na pilha de

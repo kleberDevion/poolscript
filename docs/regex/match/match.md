@@ -57,8 +57,9 @@ Num laço, [`regex.compile()`](../compile/compile.md) compila uma vez só:
 
 ```
 p = regex.compile("\\d{3}-\\d{4}")
-for each t in telefones:
+for each t in telefones {
     if (p.match(t)) { post(t) }
+}
 ```
 
 ---

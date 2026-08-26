@@ -19,10 +19,12 @@ import json
 # O `pool` do PATH pode ser um build antigo — conferir metadata contra ele
 # mediria a versão errada.
 POOL = "./pool"
-if not os.exists(POOL):
+if not os.exists(POOL) {
     POOL = "../pool"
-if not os.exists(POOL):
+}
+if not os.exists(POOL) {
     POOL = "pool"
+}
 
 # valor de amostra por tipo: só os que dá pra construir numa expressão
 amostras = {
@@ -35,25 +37,29 @@ amostras = {
 
 bruto = os.run([POOL, "--metadata"], true)
 meta = bruto.get_json()
-if meta == Null:
+if meta == Null {
     post("FALHA — o binario nao devolveu o metadata em JSON. Resposta:")
     post(bruto)
     raise MetadataIlegivel("pool --metadata ilegivel — binario antigo no PATH?")
+}
 tipos = meta["tipos"]
 
 divergencias = []
 conferidos = 0
 
-for each tipo in tipos.keys():
-    if not amostras.contains(tipo):
+for each tipo in tipos.keys() {
+    if not amostras.contains(tipo) {
         continue
+    }
     alvo = amostras[tipo]
-    for each m in tipos[tipo]:
+    for each m in tipos[tipo] {
         metodo = m["nome"]
         obrigatorios = 0
-        for each p in m["params"]:
-            if p["default"] == Null:
+        for each p in m["params"] {
+            if p["default"] == Null {
                 obrigatorios = obrigatorios + 1
+            }
+        }
         conferidos = conferidos + 1
 
         # chama SEM argumento; o motor diz quantos esperava
@@ -61,22 +67,29 @@ for each tipo in tipos.keys():
         saida = os.run([POOL, "-e", fonte], true)
         exigiu = saida.contains("espera") and saida.contains("argumento")
 
-        if exigiu and obrigatorios == 0:
+        if exigiu and obrigatorios == 0 {
             divergencias.append(tipo + "." + metodo
                 + " -> metadata diz SEM parametro, motor exige: "
                 + saida.split("\n")[0])
-        if not exigiu and obrigatorios > 0:
+        }
+        if not exigiu and obrigatorios > 0 {
             divergencias.append(tipo + "." + metodo
                 + " -> metadata exige " + str(obrigatorios)
                 + " parametro(s), motor aceita sem nenhum")
+        }
+    }
+}
 
 post("metodos conferidos:", conferidos)
-if len(divergencias) == 0:
+if len(divergencias) == 0 {
     post("OK — metadata bate com o motor")
-else:
+}
+else {
     post("FALHA —", len(divergencias), "divergencia(s):")
-    for each d in divergencias:
+    for each d in divergencias {
         post("  ", d)
+    }
+}
 
 # ── metadata que declara TIPO DE RETORNO inexistente ────────────────────────
 # `retorna: "Button"` sem `Button` em `tipos` faz o editor resolver a cadeia
@@ -88,23 +101,32 @@ escalares = ["str", "int", "flo", "bool", "list", "dict", "tup", "bytes",
              "list[str]", "list[dict]", "list[int]"]
 tipos_conhecidos = tipos.keys() + escalares
 retornos_orfaos = []
-for each t in tipos.keys():
-    for each m in tipos[t]:
+for each t in tipos.keys() {
+    for each m in tipos[t] {
         r = m["retorna"]
-        if r != Null and not tipos_conhecidos.contains(r):
+        if r != Null and not tipos_conhecidos.contains(r) {
             retornos_orfaos.append(t + "." + m["nome"] + " -> " + r)
-for each mod in meta["modulos"].keys():
-    for each m in meta["modulos"][mod]:
+        }
+    }
+}
+for each mod in meta["modulos"].keys() {
+    for each m in meta["modulos"][mod] {
         r = m["retorna"]
-        if r != Null and not tipos_conhecidos.contains(r):
+        if r != Null and not tipos_conhecidos.contains(r) {
             retornos_orfaos.append(mod + "." + m["nome"] + " -> " + r)
+        }
+    }
+}
 
-if len(retornos_orfaos) == 0:
+if len(retornos_orfaos) == 0 {
     post("OK — todo tipo de retorno declarado existe em `tipos`")
-else:
+}
+else {
     post("FALHA —", len(retornos_orfaos), "retorno(s) apontando pra tipo inexistente:")
-    for each r in retornos_orfaos:
+    for each r in retornos_orfaos {
         post("  ", r)
+    }
+}
 
 # ── campo declarado que o motor NÃO serve ───────────────────────────────────
 # Cada entrada da tabela CAMPOS é uma promessa ao editor. Aqui o campo é
@@ -142,27 +164,36 @@ amostras_campo["PoolQRCode"] = qrcode.QRCode()
 
 fantasmas = []
 campos_conferidos = 0
-for each tipo in tipos.keys():
-    if not amostras_campo.has(tipo):
+for each tipo in tipos.keys() {
+    if not amostras_campo.has(tipo) {
         continue
+    }
     alvo = amostras_campo[tipo]
-    for each m in tipos[tipo]:
+    for each m in tipos[tipo] {
         # método comum não traz a chave "kind"; só propriedade traz
-        if not m.has("kind"):
+        if not m.has("kind") {
             continue
-        if m["kind"] != "property":
+        }
+        if m["kind"] != "property" {
             continue
+        }
         campos_conferidos = campos_conferidos + 1
         fonte = "import mail\nimport regex\nimport jinker\nimport qrcode\n"
         fonte = fonte + "_v = " + amostras_fonte[tipo] + "\npost(_v." + m["nome"] + ")"
         saida = os.run([POOL, "-e", fonte], true)
-        if saida.contains("membro inexistente"):
+        if saida.contains("membro inexistente") {
             fantasmas.append(tipo + "." + m["nome"] + " -> declarado, mas o motor nao tem")
+        }
+    }
+}
 
 post("campos conferidos:", campos_conferidos)
-if len(fantasmas) == 0:
+if len(fantasmas) == 0 {
     post("OK — todo campo declarado existe no motor")
-else:
+}
+else {
     post("FALHA —", len(fantasmas), "campo(s) fantasma:")
-    for each f in fantasmas:
+    for each f in fantasmas {
         post("  ", f)
+    }
+}

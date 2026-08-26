@@ -133,8 +133,9 @@ indentação — são a mesma sintaxe, `using` não é diferente de `if`/`while`
 `action` nesse sentido:
 
 ```
-using mp.open(target="compras.xlsx") as arq:
+using mp.open(target="compras.xlsx") as arq {
     arq.write(column=0, cell=full, content=lista)
+}
 # arquivo salvo e fechado automaticamente
 ```
 
@@ -146,9 +147,10 @@ using mp.open(target="compras.xlsx") as arq:
 | `encoding` | Charset pra ler/escrever CSV e texto puro (default `"utf-8"`; ignorado em xlsx/xls). Use `"latin-1"`, `"cp1252"` etc. pra arquivos legados que não são utf-8 |
 
 ```
-using mp.open(target="legado.csv", encoding="latin-1") as arq:
+using mp.open(target="legado.csv", encoding="latin-1") as arq {
     dados = arq.read()
     post(dados)
+}
 ```
 
 ### arq.write()

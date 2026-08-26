@@ -10,38 +10,82 @@
 const Caso CASOS_ERROS[] = {
 /* ── argumento faltando: TEM que reclamar em toda forma de chamada ── */
 { "action: nomeado sem cobrir obrigatório",
-  "action f(a, b=2):\n    return a\npost(f(b=1))\n",
+  "action f(a, b=2) {\n"
+  "    return a\n"
+  "}\n"
+  "post(f(b=1))\n",
   NULL, "faltando argumento: 'a'", -1 },
 { "método de instância sem argumento",
-  "class C():\n    action m(self, a):\n        return a\npost(C().m())\n",
+  "class C() {\n"
+  "    action m(self, a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C().m())\n",
   NULL, "faltando argumento: 'a'", -1 },
 { "__init__ sem argumento",
-  "class C():\n    action __init__(self, a):\n        self.a = a\nx = C()\n",
+  "class C() {\n"
+  "    action __init__(self, a) {\n"
+  "        self.a = a\n"
+  "    }\n"
+  "}\n"
+  "x = C()\n",
   NULL, "faltando argumento: 'a'", -1 },
 { "action solta sem argumento",
-  "action f(a):\n    return a\npost(f())\n",
+  "action f(a) {\n"
+  "    return a\n"
+  "}\n"
+  "post(f())\n",
   NULL, "faltando argumento: 'a'", -1 },
 { "argumentos demais",
-  "action f(a, b=2):\n    return a\npost(f(1, 2, 3))\n",
+  "action f(a, b=2) {\n"
+  "    return a\n"
+  "}\n"
+  "post(f(1, 2, 3))\n",
   NULL, "esperava até 2 argumentos, recebeu 3", -1 },
 
 /* ── argumento nomeado que não existe ── */
 { "nomeado inexistente em action",
-  "action f(a):\n    return a\npost(f(1, c=2))\n",
+  "action f(a) {\n"
+  "    return a\n"
+  "}\n"
+  "post(f(1, c=2))\n",
   NULL, "nao corresponde a nenhum parametro", -1 },
 { "nomeado inexistente em método",
-  "class C():\n    action m(self, a):\n        return a\npost(C().m(1, c=2))\n",
+  "class C() {\n"
+  "    action m(self, a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C().m(1, c=2))\n",
   NULL, "nao corresponde a nenhum parametro", -1 },
 
 /* ── @static: sem ele, não dá pra chamar na classe ── */
 { "método normal chamado na classe",
-  "class C():\n    action m(self, a):\n        return a\npost(C.m(5))\n",
+  "class C() {\n"
+  "    action m(self, a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C.m(5))\n",
   NULL, "não tem método estático", -1 },
 { "@static com self na assinatura",
-  "class C():\n    @static\n    action m(self, a, b=10):\n        return a + b\npost(C.m(5))\n",
+  "class C() {\n"
+  "    @static\n"
+  "    action m(self, a, b=10) {\n"
+  "        return a + b\n"
+  "    }\n"
+  "}\n"
+  "post(C.m(5))\n",
   "15", NULL, 0 },
 { "@static sem self",
-  "class C():\n    @static\n    action m(a):\n        return a\npost(C.m(5))\n",
+  "class C() {\n"
+  "    @static\n"
+  "    action m(a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C.m(5))\n",
   "5", NULL, 0 },
 
 /* ── f-string: erro no trecho SOBE, não vira texto cru ── */
@@ -92,16 +136,36 @@ const Caso CASOS_ERROS[] = {
 
 /* ── @NonNull ── */
 { "@NonNull dentro de Entity",
-  "class C():\n    @NonNull\n    action f(self, a):\n        return a\npost(C().f(null))\n",
+  "class C() {\n"
+  "    @NonNull\n"
+  "    action f(self, a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C().f(null))\n",
   NULL, "NonNull", -1 },
 { "@NonNull com valor válido passa",
-  "class C():\n    @NonNull\n    action f(self, a):\n        return a\npost(C().f(7))\n",
+  "class C() {\n"
+  "    @NonNull\n"
+  "    action f(self, a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C().f(7))\n",
   "7", NULL, 0 },
 
 /* ── comentário e linha vazia abrindo bloco ── */
 { "comentário como 1ª linha do bloco",
-  "action f(x):\n    // comentário\n    return x + 1\npost(f(1))\n", "2", NULL, 0 },
+  "action f(x) {\n"
+  "    // comentário\n"
+  "    return x + 1\n"
+  "}\n"
+  "post(f(1))\n", "2", NULL, 0 },
 { "linha vazia como 1ª linha do bloco",
-  "action g(x):\n\n    return x * 2\npost(g(3))\n", "6", NULL, 0 },
+  "action g(x) {\n"
+  "\n"
+  "    return x * 2\n"
+  "}\n"
+  "post(g(3))\n", "6", NULL, 0 },
 };
 const int NC_ERROS = N_CASOS(CASOS_ERROS);

@@ -5,7 +5,7 @@
 # ele imprime PULOU e o motivo.
 import psodbc
 
-action exercita(nome, drv, porta):
+action exercita(nome, drv, porta) {
     post("=====", nome)
     con = psodbc.connect(driver=drv, host="127.0.0.1", port=porta,
                          user="ps_teste", password="ps_teste", database="ps_teste")
@@ -40,15 +40,20 @@ action exercita(nome, drv, porta):
     cur.close()
     con.close()
     post(nome, "-> ok")
+}
 
-try:
+try {
     exercita("postgres", "postgres", 5432)
-catch(e):
+}
+catch(e) {
     post("PULOU postgres ->", e)
+}
 
-try:
+try {
     exercita("mysql", "mysql", 3306)
-catch(e):
+}
+catch(e) {
     post("PULOU mysql ->", e)
+}
 
 post("fim")

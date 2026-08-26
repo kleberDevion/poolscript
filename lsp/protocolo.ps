@@ -18,47 +18,59 @@ import json
 
 # Tudo que é diagnóstico do próprio servidor vai pro stderr: stdout é o canal
 # do protocolo e qualquer byte solto ali corrompe a conversa com o editor.
-action loga(msg):
+action loga(msg) {
     sys.stderr.write("[poolscript-lsp] " + msg + "\n")
+}
 
 
 # Lê uma mensagem. Devolve o dict, ou `null` quando a entrada acabou.
-action le_mensagem():
+action le_mensagem() {
     tamanho = -1
-    while true:
+    while true {
         linha = sys.stdin.readline()
-        if linha == Null:
+        if linha == Null {
             return Null                  # editor fechou o cano
-        if linha == "":
+        }
+        if linha == "" {
             break                        # fim dos cabeçalhos
+        }
         baixo = linha.lower()
-        if baixo.startswith("content-length:"):
+        if baixo.startswith("content-length:") {
             tamanho = int(linha.split(":")[1].strip())
+        }
+    }
         # qualquer outro cabeçalho (Content-Type) é ignorado, como manda o LSP
 
-    if tamanho < 0:
+    if tamanho < 0 {
         return Null
+    }
 
     corpo = sys.stdin.read(tamanho)
-    if corpo == Null:
+    if corpo == Null {
         return Null
+    }
     return json.parse(corpo)
+}
 
 
-action manda(obj):
+action manda(obj) {
     corpo = json.stringify(obj)
     sys.stdout.write("Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo)
     sys.stdout.flush()
+}
 
 
-action responde(id, resultado):
+action responde(id, resultado) {
     manda({"jsonrpc": "2.0", "id": id, "result": resultado})
+}
 
 
-action erro(id, codigo, mensagem):
+action erro(id, codigo, mensagem) {
     manda({"jsonrpc": "2.0", "id": id, "error": {"code": codigo, "message": mensagem}})
+}
 
 
 # Notificação: sem `id`, o editor não responde.
-action notifica(metodo, params):
+action notifica(metodo, params) {
     manda({"jsonrpc": "2.0", "method": metodo, "params": params})
+}

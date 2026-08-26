@@ -144,10 +144,11 @@ encoding e byte inválido no decode **levantam**.
 
 ```ps
 import bytes
-try:
+try {
     post(bytes.new([255, 254]).decode())
-catch(e):
+} catch(e) {
     post(e)     // decode(): byte 0xFF invalido em utf-8 na posicao 0
+}
 ```
 
 ---
@@ -210,8 +211,9 @@ d = { "nome": "ana", "idade": 30 }
 post(d.get("nome"))          // ana
 post(d.get("cidade", "?"))   // ?    (default; não dá erro)
 post(d.has("idade"))         // True
-for each k in d.keys():
+for each k in d.keys() {
     post(k, d[k])
+}
 ```
 
 ### `in` olha a CHAVE; pro VALOR, use `value()`

@@ -13,8 +13,9 @@ Como sempre, cada comportamento foi verificado rodando o fonte de verdade.
 ## 6.1. Definição — `action` e `reaction`
 
 ```ps
-action soma(a, b):
+action soma(a, b) {
     return a + b
+}
 
 post(soma(2, 3))     // 5
 ```
@@ -25,8 +26,9 @@ duas é só de intenção na leitura (por exemplo, `action` para um procedimento
 `reaction` para um callback/handler); mecanicamente não há diferença.
 
 ```ps
-reaction ao_clicar(x):
+reaction ao_clicar(x) {
     post("clicou em", x)
+}
 ```
 
 Os dois estilos de bloco valem (`:` + indentação ou `{ }`).
@@ -41,8 +43,9 @@ Parâmetros podem ter **valor padrão** (uma expressão, avaliada quando falta o
 argumento):
 
 ```ps
-action g(a, b = 10):
+action g(a, b = 10) {
     return a + b
+}
 
 post(g(5))       // 15   (b usa o padrão)
 post(g(5, 1))    // 6
@@ -56,8 +59,9 @@ Na chamada, um argumento pode ser passado pelo nome do parâmetro, em qualquer
 ordem, e misturado com posicionais:
 
 ```ps
-action f(a, b, c):
+action f(a, b, c) {
     return str(a) + str(b) + str(c)
+}
 
 post(f(c=3, a=1, b=2))    // "123"
 post(f(1, c=3, b=2))      // "123"  (posicional + nomeado)
@@ -86,12 +90,14 @@ mais** é erro em tempo de execução.
 ou uma função que **termina sem `return`**, devolve `null`:
 
 ```ps
-action nada():
+action nada() {
     return
+}
 post(nada())     // null
 
-action semret():
+action semret() {
     x = 1
+}
 post(semret())   // null
 ```
 
@@ -114,12 +120,14 @@ devolver algo (por exemplo, um status).
 | `return <outro tipo>` | passa como está (não é coagido) |
 
 ```ps
-int action status():
+int action status() {
     return null
+}
 post(status())        // 0
 
-int action quebra():
+int action quebra() {
     raise Boom("x")
+}
 post(quebra())        // 500  (erro engolido)
 ```
 
@@ -152,14 +160,16 @@ Uma action pode ser guardada em variável, passada como argumento e devolvida �
 sem os parênteses, o nome é a própria função:
 
 ```ps
-action dobro(n):
+action dobro(n) {
     return n * 2
+}
 
 g = dobro
 post(g(21))          // 42
 
-action aplica(fn, x):
+action aplica(fn, x) {
     return fn(x)
+}
 post(aplica(dobro, 21))   // 42
 ```
 
@@ -172,10 +182,12 @@ post(aplica(dobro, 21))   // 42
 Uma action pode chamar a si mesma:
 
 ```ps
-action fatorial(n):
-    if n <= 1:
+action fatorial(n) {
+    if n <= 1 {
         return 1
+    }
     return n * fatorial(n - 1)
+}
 
 post(fatorial(5))    // 120
 ```
@@ -189,13 +201,15 @@ entrega um valor e a execução pausa ali até o próximo pedido. O resultado é
 sequência preguiçosa, consumível por `for each` ou materializável com `list(...)`:
 
 ```ps
-action conta():
+action conta() {
     yield 1
     yield 2
     yield 3
+}
 
-for each v in conta():
+for each v in conta() {
     post(v)          // 1, 2, 3
+}
 
 post(list(conta()))  // [1, 2, 3]
 ```
@@ -210,9 +224,10 @@ chamada**: devolve um **future** (uma promessa do resultado). O valor sai com
 **concorrentes** — enquanto uma espera I/O, as outras andam.
 
 ```ps
-async action dobro(n):
+async action dobro(n) {
     sleep(0.2)
     return n * 2
+}
 
 post(await dobro(21))                          # 42
 post(gather(dobro(1), dobro(2), dobro(3)))     # [2, 4, 6] — os três em ~0.2s, não 0.6s

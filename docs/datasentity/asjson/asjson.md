@@ -14,9 +14,10 @@ asjson(instance) -> str
 from datasentity import dataentity, asjson
 
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int
+}
 
 p = Pessoa(nome="Ana", idade=30)
 post(asjson(p))     // '{"nome": "Ana", "idade": 30}'

@@ -17,10 +17,11 @@ com valor padrão são opcionais.
 
 ```
 @dataentity
-Entity Person:
+Entity Person {
     nome:  str
     idade: int
     email: str
+}
 
 user = Person(nome="Kleber", idade=17, email="k@mail.com")
 post(user.nome)   // "Kleber"
@@ -79,9 +80,10 @@ from datasentity import dataentity, asdict
 from jinker import Jinker, cors, jsonify
 
 @dataentity
-Entity Produto:
+Entity Produto {
     nome:  str
     preco: flo
+}
 
 app = Jinker(__name__)
 

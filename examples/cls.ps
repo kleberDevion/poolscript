@@ -9,10 +9,12 @@ char emoji = 128512
 post(a, acento, emoji, len(acento))
 
 # Declarar com mais de um caractere é erro, não corte silencioso.
-try:
+try {
     char errado = "abc"
-catch(e):
+}
+catch(e) {
     post(e)
+}
 
 # `char` também é a palavra que o `count` usa pra contar caracteres.
 frase = "poolscript"

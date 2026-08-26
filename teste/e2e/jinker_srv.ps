@@ -8,8 +8,9 @@ from jinker import cors
 # static_folder/static_url: pasta de front servida junto com as rotas
 PASTA = "/tmp/ps_e2e_static"
 os.mkdir(PASTA)
-using open(PASTA + "/pagina.txt", "w") as f:
+using open(PASTA + "/pagina.txt", "w") as f {
     f.write("sou estatico")
+}
 
 app = jinker.Jinker(name="e2e", static_folder=PASTA, static_url="/")
 
@@ -18,118 +19,143 @@ cors(options=["GET", "POST", "PUT", "DELETE"], origins=["http://permitido.test"]
 
 # middleware: roda ANTES da rota; `pass` libera, `return` barra
 @app.middleware()
-action confere():
-    if jinker.request.header("X-Chave") != "abre":
+action confere() {
+    if jinker.request.header("X-Chave") != "abre" {
         return jinker.jsonify({"msg": "sem permissao"}), 401
+    }
     pass
+}
 
 @app.route("/protegida", middleware=app.middleware)
-action protegida():
+action protegida() {
     return {"entrou": true}
+}
 
 @app.route("/cors-info")
-action cors_info():
+action cors_info() {
     return {"options": cors.options(), "origins": cors.origins(),
             "subset": cors.options(["POST"]), "permiser": cors.permiser()}
+}
 
 @app.route("/oi")
-action oi():
+action oi() {
     return "alo"
+}
 
 @app.route("/json")
-action js():
+action js() {
     return {"a": 1, "b": [2, 3]}
+}
 
 @app.route("/eco", methods=["POST"])
-action eco():
+action eco() {
     corpo = jinker.request.get_json()
     return {"recebi": corpo["x"]}
+}
 
 @app.route("/param/<nome>")
-action param():
+action param() {
     return jinker.request.path_param("nome")
+}
 
 @app.route("/hdr")
-action hdr():
+action hdr() {
     return {"ua": jinker.request.header("X-Teste")}
+}
 
 @app.route("/metodo", methods=["GET", "POST", "PUT", "DELETE"])
-action metodo():
+action metodo() {
     return jinker.request.method
+}
 
 @app.route("/status")
-action st():
+action st() {
     # JinkerResponse montado em etapas: status + header + json
     r = jinker.JinkerResponse()
     return r.status(418).header("X-Bule", "sim").json({"cha": true})
+}
 
 @app.route("/tupla")
-action tp():
+action tp() {
     # a rota também aceita (corpo, status) como tupla
     return ({"t": 1}, 201)
+}
 
 @app.route("/vazio")
-action vz():
+action vz() {
     return Null
+}
 
 @app.route("/send")
-action sd():
+action sd() {
     r = jinker.JinkerResponse()
     return r.send("cru")
+}
 
 @app.route("/jsonify")
-action jf():
+action jf() {
     return jinker.jsonify({"via": "jsonify"})
+}
 
 # ── upload multipart: PoolFileUpload (7 membros) ────────────────────────────
 @app.route("/upload", methods=["POST"])
-action up():
+action up() {
     f = jinker.request.file("arq")
-    if f == Null:
+    if f == Null {
         return {"erro": "sem arquivo"}
+    }
     f.save("/tmp/ps_upload_recebido.txt")
     return {"name": f.name, "ext": f.ext, "size": f.size,
             "content_type": f.content_type, "bytes": len(f.bytes())}
+}
 
 @app.route("/uploads", methods=["POST"])
-action ups():
+action ups() {
     # files() é POR CAMPO: vários arquivos mandados no mesmo nome de campo
     fotos = jinker.request.files("fotos")
     nomes = []
-    for each f in fotos:
+    for each f in fotos {
         nomes.append(f.name)
+    }
     return {"quantos": len(fotos), "nomes": nomes,
             "vazio": len(jinker.request.files("nao-existe"))}
+}
 
 # ── WebSocket: SocketNamespace / SocketEmitter / ChannelManager ─────────────
 # socket SEM canal: o `return` do handler volta pro REMETENTE daquela mensagem.
 # É o único jeito de responder a quem mandou sem estar num canal (o emit só
 # alcança conexão com channel=true).
 @app.socket("/ws")
-action ws_handler():
-    using open("/tmp/ps_ws_sem_canal.txt", "w") as f:
+action ws_handler() {
+    using open("/tmp/ps_ws_sem_canal.txt", "w") as f {
         f.write(jinker.request.text())
+    }
     return "eco: " + jinker.request.text()
+}
 
 # canal de verdade: `channel=true` põe a conexão no broadcast. É o caso dos
 # "dois terminais" — quem está só ouvindo tem que receber o que o outro manda.
 @app.socket("/sala", channel=true)
-reaction ws_sala():
+reaction ws_sala() {
     envia = app.socket()
     envia.emit(jinker.request.text(), exclude_self=false)
-    using open("/tmp/ps_ws_status.txt", "w") as f:
+    using open("/tmp/ps_ws_status.txt", "w") as f {
         f.write(str(envia.status_send()) + "|" + str(app.socket.status_send()))
+    }
+}
 
 # Content-Disposition: é daí que o cliente tira o Response.filename
 @app.route("/baixar")
-action baixar():
+action baixar() {
     r = jinker.JinkerResponse()
     return r.header("Content-Disposition", "attachment; filename=relatorio.csv").send("a,b\n1,2\n")
+}
 
 @app.route("/emitir")
-action emitir():
+action emitir() {
     st = app.channel.emit("aviso", {"n": 1})
     return {"emit": str(st), "status": str(app.channel.status)}
+}
 
 # a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)
 run_selfwith_("main") {

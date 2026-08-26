@@ -17,12 +17,13 @@ cada iteração.
 ## 5.1. Condicional — `if` / `elif` / `else`
 
 ```ps
-if nota >= 7:
+if nota >= 7 {
     post("aprovado")
-elif nota >= 5:
+} elif nota >= 5 {
     post("recuperação")
-else:
+} else {
     post("reprovado")
+}
 ```
 
 - A condição é avaliada pela **verdade** do valor (*truthiness*, seção 2.3), não
@@ -49,9 +50,10 @@ Repete o corpo enquanto a condição for verdadeira (mesma regra de verdade do
 
 ```ps
 n = 0
-while n < 3:
+while n < 3 {
     post(n)
     n += 1
+}
 ```
 
 Não existe `while ... else` (é erro de sintaxe). A variável de controle
@@ -66,11 +68,13 @@ Itera sobre os elementos de uma sequência, ligando **uma** variável por
 elemento:
 
 ```ps
-for each x in [10, 20, 30]:
+for each x in [10, 20, 30] {
     post(x)
+}
 
-for each ch in "abc":       // string: um caractere por vez
+for each ch in "abc" {       // string: um caractere por vez
     post(ch)
+}
 ```
 
 Regras e limites (verificados):
@@ -103,12 +107,15 @@ do Python; o fim é **exclusivo**):
 | `range(início, fim, passo)` | de `passo` em `passo`; `passo` negativo conta pra trás |
 
 ```ps
-for each i in range(3):          // 0 1 2
+for each i in range(3) {          // 0 1 2
     post(i)
-for each i in range(2, 5):       // 2 3 4
+}
+for each i in range(2, 5) {       // 2 3 4
     post(i)
-for each i in range(10, 0, -2):  // 10 8 6 4 2
+}
+for each i in range(10, 0, -2) {  // 10 8 6 4 2
     post(i)
+}
 ```
 
 ---
@@ -124,12 +131,15 @@ Ambos agem sobre o laço **mais interno**. Fora de um laço são erro de
 compilação (`'break' fora de laco`).
 
 ```ps
-for each n in range(100):
-    if n == 5:
+for each n in range(100) {
+    if n == 5 {
         break            // para no 5
-    if n % 2 == 0:
+    }
+    if n % 2 == 0 {
         continue         // pula os pares
+    }
     post(n)              // 1 3
+}
 ```
 
 ---
@@ -141,16 +151,19 @@ statement onde a linguagem exige um corpo, mas você não tem nada a fazer ali.
 Não gera bytecode nenhum.
 
 ```ps
-action ainda_nao():
+action ainda_nao() {
     pass                 // corpo vazio, sem erro
+}
 
-if x < 0:
+if x < 0 {
     pass                 // esse caso é ignorado de propósito
-else:
+} else {
     post("positivo")
+}
 
-for each n in range(3):
+for each n in range(3) {
     pass
+}
 ```
 
 Vale em **qualquer** posição de statement — corpo de `action`, `if`/`else`,
@@ -172,13 +185,17 @@ Compara um valor (o *sujeito*) contra uma série de **padrões**, na ordem, e ro
 o bloco do primeiro que casar.
 
 ```ps
-match comando:
-    case "oi":
+match comando {
+    case "oi" {
         post("olá")
-    case "sair":
+    }
+    case "sair" {
         post("tchau")
-    case _:
+    }
+    case _ {
         post("comando desconhecido:", comando)
+    }
+}
 ```
 
 Padrões suportados (verificados):
@@ -193,15 +210,20 @@ Padrões suportados (verificados):
 | Guarda — `case x if x > 5:` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
 
 ```ps
-match ponto:
-    case [0, 0]:
+match ponto {
+    case [0, 0] {
         post("origem")
-    case [x, 0]:
+    }
+    case [x, 0] {
         post("no eixo X, em", x)
-    case [x, y] if x == y:
+    }
+    case [x, y] if x == y {
         post("na diagonal")
-    case _:
+    }
+    case _ {
         post("outro lugar")
+    }
+}
 ```
 
 - **Nenhum casou:** o `match` simplesmente não faz nada (não é erro). Um
@@ -223,8 +245,9 @@ dentro do container, e já entrega a contagem total. Dentro do bloco:
 | `self` / `_count` | o total de elementos daquele tipo (não muda durante o laço) |
 
 ```ps
-count each int in [10, "x", 20, 30]:
+count each int in [10, "x", 20, 30] {
     post("achei", _match, "na posição", _index, "de", _count)
+}
 // achei 10 na posição 0 de 3
 // achei 20 na posição 2 de 3
 // achei 30 na posição 3 de 3
@@ -245,11 +268,13 @@ direto**, e é pulado quando ele é **importado** por outro. É o
 `if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
 
 ```ps
-action principal():
+action principal() {
     post("rodando o app")
+}
 
-run_selfwith_("main"):
+run_selfwith_("main") {
     principal()
+}
 ```
 
 Assim, `import` desse arquivo traz a `action principal` sem disparar o

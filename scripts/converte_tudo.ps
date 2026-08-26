@@ -1,0 +1,131 @@
+# Converte `.ps` do estilo `:` pro estilo `{ }` e PROVA que não mudou nada:
+# roda o original e o convertido e exige saída e código de saída idênticos.
+# Arquivo cuja saída muda NÃO é gravado — é relatado.
+#
+#     ./pool scripts/converte_tudo.ps <arquivo|pasta> ...          # só confere
+#     ./pool scripts/converte_tudo.ps <arquivo|pasta> ... --grava  # grava os que passam
+import os
+import sys
+import regex
+import para_chaves
+
+TMP = "/tmp/ps_conv"
+
+
+# Roda um fonte e devolve [codigo, stdout, primeira linha do stderr].
+action roda(fonte, tag) {
+    alvo = TMP + "/" + tag + ".ps"
+    using open(alvo, "w") as f {
+        f.write(fonte)
+    }
+    os.cmd("cd " + TMP + " && GUZER_HEADLESS=1 timeout 20 '" + sys.executable + "' " + alvo +
+           " > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
+    rc = int(open(TMP + "/rc.txt").read().strip())
+    saida = open(TMP + "/o.txt").read()
+    erro = open(TMP + "/e.txt").read().split("\n")[0]
+    return [rc, saida, erro]
+}
+
+
+action junta_ps(alvo, acc) {
+    if os.isdir(alvo) {
+        # `os.ls` devolve dict por entrada: {name, type, size}
+        for each e in os.ls(alvo) {
+            junta_ps(alvo + "/" + e["name"], acc)
+        }
+    }
+    elif alvo.endswith(".ps") {
+        acc.append(alvo)
+    }
+    return acc
+}
+
+
+run_selfwith_("main") {
+    os.mkdir(TMP, exist_ok=true)
+    grava = false
+    alvos = []
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+        else {
+            alvos.append(a)
+        }
+    }
+    if len(alvos) == 0 {
+        post("uso: pool scripts/converte_tudo.ps <arquivo|pasta> ... [--grava]")
+        sys.exit(1)
+    }
+
+    arquivos = []
+    for each a in alvos {
+        junta_ps(a, arquivos)
+    }
+    arquivos.sort()
+
+    iguais = 0
+    sem_dois_pontos = 0
+    so_linha = []
+    difere = []
+    quebrou = []
+
+    for each caminho in arquivos {
+        fonte = open(caminho).read()
+        novo = para_chaves.converte(fonte)
+        if novo == fonte {
+            sem_dois_pontos = sem_dois_pontos + 1
+            continue
+        }
+
+        a = roda(fonte, "orig")
+        b = roda(novo, "novo")
+        # A conversão acrescenta linhas, então `(linha N)` dentro de uma
+        # mensagem de erro muda por construção. Isso NÃO é mudança de
+        # comportamento — mas é relatado à parte, não engolido.
+        na = regex.sub("\\(linha \\d+\\)", "(linha ?)", a[1])
+        nb = regex.sub("\\(linha \\d+\\)", "(linha ?)", b[1])
+        if a[0] == b[0] and a[1] == b[1] {
+            iguais = iguais + 1
+            if grava {
+                using open(caminho, "w") as f {
+                    f.write(novo)
+                }
+            }
+        }
+        elif a[0] == b[0] and na == nb {
+            iguais = iguais + 1
+            so_linha.append(caminho)
+            if grava {
+                using open(caminho, "w") as f {
+                    f.write(novo)
+                }
+            }
+        }
+        elif b[0] != 0 and a[0] == 0 {
+            quebrou.append([caminho, b[2]])
+        }
+        else {
+            difere.append([caminho, str(a[0]) + "/" + str(b[0])])
+        }
+    }
+
+    post("")
+    post("ja em chaves (nada a fazer):", sem_dois_pontos)
+    post("convertidos com saida IDENTICA:", iguais)
+    post("  destes, so o numero de linha do erro mudou:", len(so_linha))
+    for each x in so_linha {
+        post("     ", x)
+    }
+    post("quebraram na conversao:", len(quebrou))
+    for each q in quebrou {
+        post("   ", q[0], "->", q[1])
+    }
+    post("saida diferente:", len(difere))
+    for each d in difere {
+        post("   ", d[0], "rc", d[1])
+    }
+    if len(quebrou) > 0 or len(difere) > 0 {
+        sys.exit(1)
+    }
+}

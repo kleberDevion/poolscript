@@ -45,18 +45,49 @@ const Caso CASOS_PENDENTES[] = {
 
 /* ── herança / Entity ───────────────────────────────────────────────────── */
 { "base() em Entity sem pai é erro",
-  "Entity B():\n    action __init__(self):\n        base()\n        self.m = 2\nb = B()\n",
+  "Entity B() {\n"
+  "    action __init__(self) {\n"
+  "        base()\n"
+  "        self.m = 2\n"
+  "    }\n"
+  "}\n"
+  "b = B()\n",
   NULL, "base()", -1 },
 { "base() com argumento nomeado",
-  "Entity A():\n    action __init__(self, x):\n        self.x = x\n"
-  "Entity B(A):\n    action __init__(self):\n        base(x=5)\nb = B()\npost(b.x)\n",
+  "Entity A() {\n"
+  "    action __init__(self, x) {\n"
+  "        self.x = x\n"
+  "    }\n"
+  "}\n"
+  "Entity B(A) {\n"
+  "    action __init__(self) {\n"
+  "        base(x=5)\n"
+  "    }\n"
+  "}\n"
+  "b = B()\n"
+  "post(b.x)\n",
   "5", NULL, 0 },
 { "campo private do pai visível no método do pai",
-  "Entity P():\n    private s: int\n    action mostra(self):\n        return self.s\n"
-  "Entity F(P):\n    private s: int\nf = F(7)\npost(f.mostra())\n",
+  "Entity P() {\n"
+  "    private s: int\n"
+  "    action mostra(self) {\n"
+  "        return self.s\n"
+  "    }\n"
+  "}\n"
+  "Entity F(P) {\n"
+  "    private s: int\n"
+  "}\n"
+  "f = F(7)\n"
+  "post(f.mostra())\n",
   "7", NULL, 0 },
 { "@dataentity aponta o parâmetro certo que falta",
-  "@dataentity\nEntity P():\n    a: int\n    b: int = 2\n    c: int\np = P(1)\n",
+  "@dataentity\n"
+  "Entity P() {\n"
+  "    a: int\n"
+  "    b: int = 2\n"
+  "    c: int\n"
+  "}\n"
+  "p = P(1)\n",
   NULL, "'c'", -1 },
 
 /* ── string com byte NUL ─────────────────────────────────────────────────
@@ -72,7 +103,10 @@ const Caso CASOS_PENDENTES[] = {
 
 /* ── funções de ordem superior e arquivo ─────────────────────────────────── */
 { "map confere a aridade da action",
-  "action f(x, y):\n    return x\npost(map([1, 2], f))\n", NULL, "faltando argumento", -1 },
+  "action f(x, y) {\n"
+  "    return x\n"
+  "}\n"
+  "post(map([1, 2], f))\n", NULL, "faltando argumento", -1 },
 { "open() de diretório é erro",
   "f = open(\"/tmp\")\npost(f.read())\n", NULL, "diretório", -1 },
 { "writelines com bytes grava os bytes",

@@ -357,7 +357,9 @@ static void jsonf(const char *chave, const char *valor)
  *
  * É o que dá realce ao editor sem existir uma segunda gramática pra divergir
  * do motor. `n` é o comprimento em CARACTERES (o editor conta caractere, não
- * byte). Comentário entra como "COMMENT" — o compilador descarta, o realce
+ * byte); INDENT/DEDENT/NEWLINE saem com `n` 0, porque não ocupam texto — quem
+ * pinta ignora, quem precisa da ESTRUTURA (converter de bloco, por exemplo)
+ * usa. Comentário entra como "COMMENT" — o compilador descarta, o realce
  * precisa. NUNCA executa o código: só tokeniza. */
 static int json_escapa(FILE *f, const char *s, int n)
 {
@@ -380,14 +382,23 @@ static int cmd_tokens(void)
     if (!fonte) { printf("[]\n"); return 1; }
     PSTokenList *tl = ps_lexer_tokenize_editor(fonte, tam);
     if (!tl) { free(fonte); printf("[]\n"); return 1; }
+    /* Lexer que ERROU não entrega lista confiável: os tokens param no ponto do
+     * erro e quem consome (o realce, o conversor de bloco) acabaria decidindo
+     * com dado pela metade. Vazio + código 1 diz "não dá", em vez de mentir. */
+    if (!tl->ok) {
+        fprintf(stderr, "pool --tokens: %s (linha %d, coluna %d)\n",
+                tl->erro, tl->erro_linha, tl->erro_col);
+        printf("[]\n");
+        ps_lexer_free(tl);
+        free(fonte);
+        return 1;
+    }
 
     fputc('[', stdout);
     int primeiro = 1;
     for (int32_t i = 0; i < tl->n; i++) {
         const PSToken *t = &tl->tokens[i];
-        /* INDENT/DEDENT/NEWLINE não ocupam texto: não há o que pintar */
-        if (t->type == T_INDENT || t->type == T_DEDENT || t->type == T_NEWLINE
-            || t->type == T_EOF) continue;
+        if (t->type == T_EOF) continue;
         /* quanto o token ocupa NO FONTE (com aspas, com prefixo `f`), em
          * caracteres. Só cai no texto quando o lexer não mediu o span. */
         int nch = t->nchars;

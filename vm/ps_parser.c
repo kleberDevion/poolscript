@@ -1042,30 +1042,17 @@ static PSNode *bloco(P *p)
         return b;
     }
 
-    if (aceita(p, T_COLON)) {
-        if (!exige(p, T_NEWLINE, "faltou quebra de linha apos ':'")) return NULL;
-        /* linha em branco ou so-comentario logo apos o ':' gera NEWLINE extra
-         * antes do INDENT — pula (Python aceita; parser.py faz o mesmo) */
-        while (checa(p, T_NEWLINE)) p->pos++;
-        if (!exige(p, T_INDENT, "faltou indentacao apos ':'")) return NULL;
-        PSNode *b = ps_node_novo(p->arena, N_BLOCK, t->line, t->col);
-        if (!b) return NULL;
-        b->estilo = "colon";
-        pula_separadores(p);
-        while (!checa(p, T_DEDENT) && !checa(p, T_EOF)) {
-            PSNode *s = statement(p);
-            if (FALHOU(p)) return NULL;
-            if (s && ps_vec_push(p->arena, &b->lista, s) != 0) {
-                perro(p, "sem memoria", t); return NULL;
-            }
-            pula_separadores(p);
-        }
-        if (checa(p, T_EOF)) { perro(p, "bloco indentado nao foi fechado corretamente", t); return NULL; }
-        p->pos++;   /* DEDENT */
-        return b;
+    /* Bloco por `:` + indentação NÃO existe mais: o bloco da linguagem é
+     * `{ }`, e só. Conviver com os dois custou caro — toda regressão de
+     * parser desta linha do tempo saiu da interação entre indentação e chave
+     * (INDENT dentro de `{}`, `match` com chave, chave na linha seguinte).
+     * A mensagem diz o que fazer em vez de deixar "expressao invalida". */
+    if (checa(p, T_COLON)) {
+        perro(p, "bloco com ':' nao existe mais — use '{ }'", t);
+        return NULL;
     }
 
-    perro(p, "esperado inicio de bloco com '{' ou ':'", t);
+    perro(p, "esperado inicio de bloco com '{'", t);
     return NULL;
 }
 
@@ -1413,7 +1400,14 @@ static PSNode *if_stmt(P *p)
             if (FALHOU(p)) return NULL;
             if (!exige(p, T_RPAREN, "faltou ')' na condicao")) return NULL;
         } else {
+            /* `if x == "" {` — o `{` ali ABRE BLOCO, não interpola a string.
+             * Sem isto, uma condição terminada em literal de texto engolia o
+             * `{` do bloco como interpolação (`"txt" {x}`) e o `if` ficava sem
+             * corpo. Mesmo tratamento que o `for each` já tinha. */
+            int salvo = p->chave_abre_bloco;
+            p->chave_abre_bloco = 1;
             cond = expressao(p);
+            p->chave_abre_bloco = salvo;
             if (FALHOU(p)) return NULL;
         }
         PSNode *b = bloco(p);
@@ -1456,7 +1450,11 @@ static PSNode *while_stmt(P *p)
         if (FALHOU(p)) return NULL;
         if (!exige(p, T_RPAREN, "faltou ')' na condicao")) return NULL;
     } else {
+        /* idem `if`: `while s != "" {` abre bloco, não interpola */
+        int salvo = p->chave_abre_bloco;
+        p->chave_abre_bloco = 1;
         n->a = expressao(p);
+        p->chave_abre_bloco = salvo;
         if (FALHOU(p)) return NULL;
     }
     n->b = bloco(p);
@@ -1723,16 +1721,16 @@ static PSNode *statement(P *p)
         if (!exige(p, T_RPAREN, "esperado ')' apos heranca da Entity")) return NULL;
         pula_separadores(p);
 
+        /* corpo da Entity/class: só `{ }`, como todo bloco da linguagem.
+         * O `pula_separadores` acima já deixou a chave na linha de baixo valer. */
         PSToken *abre_ent = atual(p);
-        int chaves = aceita(p, T_LBRACE);
-        if (!chaves) {
-            if (!exige(p, T_COLON, "esperado '{' ou ':' para abrir o corpo da Entity")) return NULL;
-            if (!exige(p, T_NEWLINE, "faltou quebra de linha apos ':'")) return NULL;
-            while (checa(p, T_NEWLINE)) p->pos++;   /* comentario/linha vazia apos ':' */
-            if (!exige(p, T_INDENT, "faltou indentacao apos ':'")) return NULL;
+        if (checa(p, T_COLON)) {
+            perro(p, "bloco com ':' nao existe mais — use '{ }'", abre_ent);
+            return NULL;
         }
-        if (chaves) pula_indent_solto(p); else pula_separadores(p);
-        while (!checa(p, chaves ? T_RBRACE : T_DEDENT) && !checa(p, T_EOF)) {
+        if (!exige(p, T_LBRACE, "esperado '{' para abrir o corpo da Entity")) return NULL;
+        pula_indent_solto(p);
+        while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
             PSToken *mt = atual(p);
             /* modificador de visibilidade opcional antes de campo/método.
              * `is_private` não entra na serialização do AST (não é código), então
@@ -1749,7 +1747,7 @@ static PSNode *statement(P *p)
              * campo nem método. */
             if (mt->type == T_KW && mt->texto && strcmp(mt->texto, "pass") == 0) {
                 p->pos++;
-                if (chaves) pula_indent_solto(p); else pula_separadores(p);
+                pula_indent_solto(p);
                 continue;
             }
             if (checa(p, T_AT)) {
@@ -1795,13 +1793,9 @@ static PSNode *statement(P *p)
                 perro(p, "dentro de Entity so sao permitidas declaracoes 'action', decoradores ou campos 'nome: tipo'", mt);
                 return NULL;
             }
-            if (chaves) pula_indent_solto(p); else pula_separadores(p);
+            pula_indent_solto(p);
         }
-        if (chaves) {
-            if (!exige_fecha(p, T_RBRACE, "corpo da Entity nao foi fechado", abre_ent)) return NULL;
-        } else {
-            if (!exige(p, T_DEDENT, "corpo da Entity nao foi fechado")) return NULL;
-        }
+        if (!exige_fecha(p, T_RBRACE, "corpo da Entity nao foi fechado", abre_ent)) return NULL;
         return n;
     }
 

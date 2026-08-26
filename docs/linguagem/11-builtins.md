@@ -74,10 +74,12 @@ tipada, estão na seção 2.)
 | `filter` | `filter(lista, fn)` | nova lista só com os itens em que `fn` é verdadeiro. **A lista vem primeiro.** |
 
 ```ps
-action dobro(x):
+action dobro(x) {
     return x * 2
-action par(x):
+}
+action par(x) {
     return x % 2 == 0
+}
 
 post(map([1, 2, 3], dobro))        // [2, 4, 6]
 post(filter([1, 2, 3, 4], par))    // [2, 4]

@@ -47,10 +47,12 @@ arq = resp.save(".")                 # PoolFile
 post("salvo:", arq.name, "-", arq.size, "bytes")
 
 # validar o tipo antes de salvar (erra se não for PDF)
-try:
+try {
     request.get(url).content_type("application/pdf").save("doc.pdf")
-except SomeError as e:
+}
+except SomeError as e {
     post("não é PDF:", e)
+}
 
 # binário na mão, sem salvar
 bruto = request.get(url).content    # bytes

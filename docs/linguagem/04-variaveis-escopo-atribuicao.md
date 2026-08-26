@@ -128,8 +128,9 @@ Um nome **criado** dentro de um bloco só existe ali. Depois do bloco, ele não 
 mais visível:
 
 ```ps
-if true:
+if true {
     dentro = 5
+}
 post(dentro)        // ERRO — variável não definida: dentro
 ```
 
@@ -139,10 +140,11 @@ o nome **antes** do bloco (aí a atribuição dentro dele é write-through, 4.6.
 
 ```ps
 novo = linha            // declarada FORA
-if em_codigo:
+if em_codigo {
     novo = troca(linha)
-else:
+} else {
     novo = ajusta(linha)
+}
 post(novo)              // ok
 ```
 
@@ -153,13 +155,15 @@ essa variável** (não cria uma nova):
 
 ```ps
 x = 1
-if true:
+if true {
     x = 2           // mesma x de fora
+}
 post(x)             // 2
 
 total = 0
-for each i in [1, 2, 3]:
+for each i in [1, 2, 3] {
     total = total + i   // acumula na total externa
+}
 post(total)             // 6
 ```
 
@@ -173,13 +177,16 @@ não sobrevive para a próxima (a menos que exista fora do laço). A variável d
 `for each` também não vaza depois do laço:
 
 ```ps
-for each i in [1, 2, 3]:
-    if i > 1:
+for each i in [1, 2, 3] {
+    if i > 1 {
         post(prev)   // ERRO na 2ª volta: prev da volta anterior não existe
+    }
     prev = i
+}
 
-for each i in [1, 2, 3]:
+for each i in [1, 2, 3] {
     ultimo = i
+}
 post(i)              // ERRO — i não existe fora do for
 ```
 
@@ -206,8 +213,9 @@ post(type(s))       // int
   variável **local** à função — ela some quando a função retorna:
 
 ```ps
-action f():
+action f() {
     local = 5       // local à função
+}
 f()
 post(local)         // ERRO — local não existe aqui
 ```
@@ -223,9 +231,10 @@ dentro de uma função:
 ```ps
 contador = 0
 
-action bump():
+action bump() {
     global contador
     contador = contador + 1
+}
 
 bump()
 bump()
@@ -249,9 +258,10 @@ Python: garante a liberação mesmo se o bloco estourar. Para um valor que não 
 um desses recursos, o `using` só executa o bloco (não há o que fechar).
 
 ```ps
-using conexao as db:        // db é fechada/comitada ao sair, mesmo com erro
+using conexao as db {        // db é fechada/comitada ao sair, mesmo com erro
     // ... usa db aqui dentro ...
     resultado = 42
+}
 post(resultado)             // resultado ainda existe aqui (ver nota abaixo)
 ```
 

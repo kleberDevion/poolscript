@@ -5,8 +5,9 @@ import qrcode
 import os
 
 dir = "/tmp/ps_qr"
-if not os.exists(dir):
+if not os.exists(dir) {
     os.mkdir(dir)
+}
 
 # ── qrcode.make: o atalho ───────────────────────────────────────────────────
 img = qrcode.make("https://poolscript.dev")
@@ -61,10 +62,12 @@ post("niveis ->", qrcode.ERROR_CORRECT_L, qrcode.ERROR_CORRECT_M,
      qrcode.ERROR_CORRECT_Q, qrcode.ERROR_CORRECT_H)
 
 # o PNG gerado é PNG de verdade (assinatura de 8 bytes)
-using open(p1, "rb") as f:
+using open(p1, "rb") as f {
     post("assinatura PNG ->", f.read(4))
+}
 
-for each ent in os.ls(dir):
+for each ent in os.ls(dir) {
     _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+}
 os.rmdir(dir)
 post("fim")

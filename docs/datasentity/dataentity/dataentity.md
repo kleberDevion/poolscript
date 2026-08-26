@@ -7,9 +7,10 @@ partir dos campos tipados declarados no corpo.
 from datasentity import dataentity
 
 @dataentity
-Entity Nome():
+Entity Nome() {
     campo: tipo
     campo: tipo = default
+}
 ```
 
 ---
@@ -20,9 +21,10 @@ Entity Nome():
 from datasentity import dataentity
 
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int = 18          // com default
+}
 
 p = Pessoa(nome="Ana", idade=30)   // construtor gerado, aceita kwargs
 q = Pessoa(nome="Léo")              // idade usa o default 18
@@ -49,9 +51,10 @@ Com o `@dataentity`, a instância vira facilmente dict/tupla/lista/JSON:
 from datasentity import dataentity, asdict, asjson
 
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int
+}
 
 p = Pessoa(nome="Ana", idade=30)
 post(asdict(p))     // {"nome": "Ana", "idade": 30}

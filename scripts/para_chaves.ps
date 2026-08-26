@@ -1,0 +1,248 @@
+# Converte um fonte PoolScript do estilo `:` + indentação pro estilo `{ }`.
+#
+#     ./pool scripts/para_chaves.ps arquivo.ps          # mostra o resultado
+#     ./pool scripts/para_chaves.ps arquivo.ps --grava  # sobrescreve
+#
+# Quem decide o que é bloco é o LEXER DO MOTOR (`pool --tokens`), não um regex:
+# `:` de dicionário (`{"a": 1}`), de fatia (`s[1:3]`) e de campo de Entity
+# (`nome: int`) NÃO abrem bloco, e só o lexer sabe distinguir sem errar. A
+# marca de um `:` de bloco é única: vem NEWLINE e depois INDENT.
+#
+# O que sai é verificado por quem chama: o programa convertido tem que dar a
+# MESMA saída do original. Conversão que muda comportamento não serve.
+import os
+import sys
+import json
+
+TMP = "/tmp/ps_para_chaves"
+
+
+# Tokens do lexer do motor, na ordem.
+action tokens_de(fonte) {
+    os.mkdir(TMP, exist_ok=true)
+    alvo = TMP + "/e.ps"
+    using open(alvo, "w") as f {
+        f.write(fonte)
+    }
+    # Apaga a saída ANTES: sem isto, um subprocesso que falhasse deixava o
+    # JSON da chamada ANTERIOR no lugar, e as posições de um programa eram
+    # aplicadas em outro — o conversor corrompia o fonte em silêncio.
+    os.cmd("rm -f " + TMP + "/t.json")
+    os.cmd("'" + sys.executable + "' --tokens < " + alvo + " > " + TMP + "/t.json 2>/dev/null")
+    if not os.exists(TMP + "/t.json") {
+        sys.stderr.write("[para_chaves] AVISO: --tokens nao rodou; fonte deixado como esta\n")
+        return []
+    }
+    bruto = open(TMP + "/t.json").read().strip()
+    if bruto == "" {
+        # O corpus tem programas que MATAM o lexer de propósito. Aí não há o
+        # que converter — mas o fonte volta INTACTO e o aviso sai no stderr:
+        # devolver calado foi o que fez um lote inteiro sair meio convertido
+        # sem ninguém notar.
+        sys.stderr.write("[para_chaves] AVISO: --tokens vazio; fonte deixado como esta\n")
+        return []
+    }
+    return json.parse(bruto)
+}
+
+
+# Acha os `:` que ABREM BLOCO e, pra cada um, em que linha o bloco termina.
+# Devolve dois mapas: linha do `:` -> coluna do `:`, e linha do `:` -> linha
+# ANTES da qual o `}` entra.
+action acha_blocos(toks) {
+    abre = {}
+    fecha = {}
+    pilha = []
+    # Linha do último token que é CÓDIGO. O `}` entra logo DEPOIS dela.
+    #
+    # Usar a linha do DEDENT não serve: no fim do arquivo sem quebra de linha
+    # final o lexer reporta o DEDENT na MESMA linha do último statement, e o
+    # `}` acabava entrando antes dele (o statement caía pra fora do bloco).
+    # Linha em branco e comentário entre o fim do bloco e o próximo statement
+    # dariam o mesmo problema ao contrário.
+    ultima = 0
+    i = 0
+    while i < len(toks) {
+        t = toks[i]
+        tipo = t["t"]
+        if tipo == "COLON" {
+            # `:` de bloco = COLON, NEWLINE (um ou mais), INDENT.
+            # Comentário entra no meio quando o corpo começa com um: a linha
+            # só-comentário não mexe na pilha de indentação, então o INDENT vem
+            # DEPOIS dela. Sem pular o COMMENT aqui, o bloco não era
+            # registrado e o DEDENT dele fechava o bloco errado.
+            j = i + 1
+            while j < len(toks) and (toks[j]["t"] == "NEWLINE" or toks[j]["t"] == "COMMENT") {
+                j = j + 1
+            }
+            if j < len(toks) and toks[j]["t"] == "INDENT" {
+                abre[t["l"]] = t["c"]
+                pilha.append(t["l"])
+                ultima = t["l"]
+                i = j + 1
+                continue
+            }
+        }
+        # INDENT que NÃO veio de um `:` — é o de dentro de um bloco `{ }`, que
+        # o lexer também emite. Entra na pilha como "sem dono" pra que o DEDENT
+        # correspondente não feche o bloco `:` de fora. Sem isto, um `{ }`
+        # aninhado num bloco `:` fazia as chaves saírem trocadas de lugar.
+        if tipo == "INDENT" {
+            pilha.append(-1)
+            i = i + 1
+            continue
+        }
+        if tipo == "DEDENT" {
+            if len(pilha) > 0 {
+                dono = pilha.pop()
+                if dono >= 0 {
+                    fecha[dono] = ultima + 1
+                }
+            }
+            i = i + 1
+            continue
+        }
+        if tipo != "NEWLINE" and tipo != "INDENT" and tipo != "COMMENT" {
+            ultima = t["l"]
+        }
+        i = i + 1
+    }
+    # bloco aberto até o fim do arquivo
+    while len(pilha) > 0 {
+        dono = pilha.pop()
+        if dono >= 0 {
+            fecha[dono] = ultima + 1
+        }
+    }
+    return [abre, fecha]
+}
+
+
+action linhas_de(fonte) {
+    return fonte.split("\n")
+}
+
+
+action converte(fonte) {
+    linhas = fonte.split("\n")
+    toks = tokens_de(fonte)
+    if len(toks) == 0 {
+        return fonte          # fonte vazio: nada a converter
+    }
+    par = acha_blocos(toks)
+    abre = par[0]
+    fecha = par[1]
+
+    # linha (1-based) -> lista de indentações de `}` que entram ANTES dela
+    antes = {}
+    for each dono in abre.keys() {
+        onde = fecha[dono]
+        recuo = abre[dono] - 1        # coluna do `:` não serve; o recuo é o da linha
+        chave = str(onde)
+        if not chave in antes {
+            antes[chave] = []
+        }
+        antes[chave].append(dono)
+    }
+
+    saida = []
+    n = 0
+    for each l in linhas {
+        n = n + 1
+        # fecha os blocos que terminam aqui, do mais interno pro mais externo
+        chave = str(n)
+        if chave in antes {
+            donos = antes[chave]
+            k = len(donos) - 1
+            while k >= 0 {
+                d = donos[k]
+                orig = linhas[d - 1]
+                recuo = len(orig) - len(orig.lstrip())
+                saida.append(" " * recuo + "}")
+                k = k - 1
+            }
+        }
+        # troca o `:` final desta linha por ` {`
+        if n in abre {
+            corte = abre[n] - 1       # coluna 1-based do `:`
+            saida.append(l[0:corte] + " {" + l[corte + 1:])
+        }
+        else {
+            saida.append(l)
+        }
+    }
+
+    # blocos cujo fechamento cai DEPOIS da última linha do arquivo
+    n = n + 1
+    while true {
+        chave = str(n)
+        if not chave in antes {
+            break
+        }
+        donos = antes[chave]
+        k = len(donos) - 1
+        while k >= 0 {
+            orig = linhas[donos[k] - 1]
+            recuo = len(orig) - len(orig.lstrip())
+            saida.append(" " * recuo + "}")
+            k = k - 1
+        }
+        n = n + 1
+    }
+
+    # `}` sozinho seguido de `else`/`elif`/`catch`/`finally` vira `} else {`:
+    # as duas formas valem, mas a segunda é a que se escreve, e a doc ensina
+    # pelo exemplo.
+    return "\n".join(junta_continuacoes(saida))
+}
+
+
+action junta_continuacoes(linhas) {
+    CONT = ["else", "elif", "catch", "finally"]
+    r = []
+    for each l in linhas {
+        alvo = l.strip()
+        eh_cont = false
+        for each c in CONT {
+            if alvo == c or alvo.startswith(c + " ") or alvo.startswith(c + "(") {
+                eh_cont = true
+            }
+        }
+        if eh_cont and len(r) > 0 and r[len(r) - 1].strip() == "}" {
+            anterior = r.pop()
+            recuo = len(anterior) - len(anterior.lstrip())
+            r.append(" " * recuo + "} " + alvo)
+        }
+        else {
+            r.append(l)
+        }
+    }
+    return r
+}
+
+
+run_selfwith_("main") {
+    if len(sys.argv) < 1 {
+        post("uso: pool scripts/para_chaves.ps <arquivo.ps> [--grava]")
+        sys.exit(1)
+    }
+    caminho = sys.argv[0]
+    grava = false
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+    }
+
+    fonte = open(caminho).read()
+    novo = converte(fonte)
+    if grava {
+        using open(caminho, "w") as f {
+            f.write(novo)
+        }
+        post("convertido:", caminho)
+    }
+    else {
+        post(novo)
+    }
+}

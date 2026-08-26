@@ -16,10 +16,12 @@ Dentro de uma `Entity`, marca um método que **não recebe `self`** e é chamado
 **na própria Entity**, não numa instância (ver seção 7.4):
 
 ```ps
-Entity Mat():
+Entity Mat() {
     @static
-    action soma(a, b):
+    action soma(a, b) {
         return a + b
+    }
+}
 
 post(Mat.soma(2, 3))     // 5
 ```
@@ -36,10 +38,12 @@ Você pode escrever `self` num método `@static` — útil quando o **mesmo** m�
 `self`.
 
 ```ps
-Entity C():
+Entity C() {
     @static
-    reaction f(self, a, b=10):
+    reaction f(self, a, b=10) {
         return a + b
+    }
+}
 
 post(C.f(5))        // 15  — o 5 vai pro `a`, NÃO pro self
 post(C.f(a=7))      // 17
@@ -59,8 +63,9 @@ parâmetro levanta erro antes do corpo rodar:
 
 ```ps
 @NonNull
-action saudar(nome):
+action saudar(nome) {
     return "olá, " + nome
+}
 
 post(saudar("ana"))      // olá, ana
 saudar(null)             // RuntimeError: @NonNull: parâmetro 'nome' em 'saudar' não pode ser Null
@@ -79,9 +84,10 @@ intenção**, deixando claro que aquela Entity é um registro de dados.
 
 ```ps
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int = 18
+}
 
 p = Pessoa(nome="Ana", idade=30)     // construtor aceita posicional e nomeado
 q = Pessoa(nome="Léo")               // idade cai no default 18
@@ -97,9 +103,10 @@ São **funções** (recebem a instância), não métodos:
 from datasentity import dataentity, asdict, astuple, aslist, asjson
 
 @dataentity
-Entity Pessoa():
+Entity Pessoa() {
     nome: str
     idade: int
+}
 
 p = Pessoa("Ana", 30)
 post(asdict(p))     // {'nome': 'Ana', 'idade': 30}
@@ -120,8 +127,9 @@ mais comum é registrar rotas de servidor com o **jinker**:
 
 ```ps
 @app.route("/usuarios", methods=["GET"])
-action listar():
+action listar() {
     return { "ok": true }
+}
 ```
 
 O protocolo é: a expressão do decorador (`app.route(...)`) é avaliada, a `action`
@@ -138,8 +146,9 @@ decorada **não é registrada** — ela simplesmente não passa a existir:
 
 ```ps
 @qualquer
-action f():
+action f() {
     return 1
+}
 
 f()      // RuntimeError: variável não definida: f  (o @qualquer engoliu a action)
 ```
