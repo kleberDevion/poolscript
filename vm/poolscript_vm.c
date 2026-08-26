@@ -1127,7 +1127,7 @@ static PSString *nova_string(VM *vm, const char *chars, int len)
 /* ── bignum (GMP) ───────────────────────────────────────────────────────── */
 static PSBigInt *novo_bigint(VM *vm)
 {
-    PSBigInt *b = malloc(sizeof(PSBigInt));
+    PSBigInt *b = calloc(1, sizeof(PSBigInt));
     if (!b) return NULL;
     b->obj.type = OBJ_BIGINT; b->obj.marked = 0;
     b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
@@ -1194,7 +1194,7 @@ static Value int_arit(VM *vm, Value a, Value b, char op)
 
 static PSList *nova_seq(VM *vm, int cap, ObjType tipo)
 {
-    PSList *l = malloc(sizeof(PSList));
+    PSList *l = calloc(1, sizeof(PSList));
     if (!l) return NULL;
     l->obj.type = tipo;
     l->obj.marked = 0;
@@ -1213,7 +1213,7 @@ static PSList *nova_seq(VM *vm, int cap, ObjType tipo)
 
 static PSDict *novo_dict(VM *vm, int cap)
 {
-    PSDict *d = malloc(sizeof(PSDict));
+    PSDict *d = calloc(1, sizeof(PSDict));
     if (!d) return NULL;
     d->obj.type = OBJ_DICT;
     d->obj.marked = 0;
@@ -1983,7 +1983,7 @@ static void libera_objetos(VM *vm)
 /* ── Entity ─────────────────────────────────────────────────────────────── */
 static PSInstance *nova_instancia(VM *vm, PSClass *cl)
 {
-    PSInstance *o = malloc(sizeof(PSInstance));
+    PSInstance *o = calloc(1, sizeof(PSInstance));
     if (!o) return NULL;
     o->obj.type = OBJ_INSTANCE; o->obj.marked = 0;
     o->obj.next = vm->objetos; vm->objetos = (Obj *)o;
@@ -1995,7 +1995,7 @@ static PSInstance *nova_instancia(VM *vm, PSClass *cl)
 
 static PSBound *novo_bound(VM *vm, Value inst, int32_t proto)
 {
-    PSBound *b = malloc(sizeof(PSBound));
+    PSBound *b = calloc(1, sizeof(PSBound));
     if (!b) return NULL;
     b->obj.type = OBJ_BOUND; b->obj.marked = 0;
     b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
@@ -2009,9 +2009,12 @@ static PSBound *novo_bound(VM *vm, Value inst, int32_t proto)
  * é o `find_method` do interpretador. */
 static int32_t acha_metodo(PSClass *cl, const char *nome)
 {
-    if (!cl) return -1;
+    if (!cl || !cl->met_nomes) return -1;
     for (int32_t i = 0; i < cl->nmetodos; i++)
-        if (strcmp(cl->met_nomes[i], nome) == 0) return cl->met_protos[i];
+        /* `met_nomes[i]` NULL não pode derrubar a busca: quem monta a classe já
+         * mantém o contador coerente, mas esta função é chamada de todo lugar
+         * e é barato não confiar. */
+        if (cl->met_nomes[i] && strcmp(cl->met_nomes[i], nome) == 0) return cl->met_protos[i];
     for (int32_t i = 0; i < cl->npais; i++) {
         int32_t r = acha_metodo(cl->pais[i], nome);
         if (r >= 0) return r;
@@ -3839,7 +3842,7 @@ static int cresce_lista(VM *vm, PSList *l);
 
 static PSMetodoNat *novo_metnat(VM *vm, Value alvo, int tabela, int idx)
 {
-    PSMetodoNat *m = malloc(sizeof(PSMetodoNat));
+    PSMetodoNat *m = calloc(1, sizeof(PSMetodoNat));
     if (!m) return NULL;
     m->obj.type = OBJ_METODO_NAT;
     m->obj.marked = 0;
@@ -5854,7 +5857,7 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
     FILE *f = fopen(cam->chars, cfmodo);
     if (!f) BERRO(vm, "IOError", "arquivo nao encontrado: '%s'", cam->chars);
 
-    PSArquivo *a = malloc(sizeof(PSArquivo));
+    PSArquivo *a = calloc(1, sizeof(PSArquivo));
     if (!a) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
     a->obj.type = OBJ_ARQUIVO; a->obj.marked = 0;
     a->obj.next = vm->objetos; vm->objetos = (Obj *)a;
@@ -6169,7 +6172,7 @@ static PSPoolFile *novo_poolfile(VM *vm, const char *caminho)
     free(buf);
     if (!b) return NULL;
 
-    PSPoolFile *pf = malloc(sizeof(PSPoolFile));
+    PSPoolFile *pf = calloc(1, sizeof(PSPoolFile));
     if (!pf) return NULL;
     pf->obj.type = OBJ_POOLFILE; pf->obj.marked = 0;
     pf->obj.next = vm->objetos; vm->objetos = (Obj *)pf;
@@ -6647,7 +6650,7 @@ static int guz_dict_get(Value dv, const char *chave, Value *out)
 }
 static PSGuzWid *novo_guz_wid(VM *vm, int kind, const char *tag)
 {
-    PSGuzWid *w = malloc(sizeof(PSGuzWid));
+    PSGuzWid *w = calloc(1, sizeof(PSGuzWid));
     if (!w) return NULL;
     w->obj.type = OBJ_GUZ_WID; w->obj.marked = 0;
     w->obj.next = vm->objetos; vm->objetos = (Obj *)w;
@@ -6835,7 +6838,7 @@ static int met_guz_text(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* guzer.UI(title="PoolScript") — cria o app; o último criado abre no fim. */
 static int mod_guz_UI(VM *vm, Value *args, int n, Value *out)
 {
-    PSGuzUI *u = malloc(sizeof(PSGuzUI));
+    PSGuzUI *u = calloc(1, sizeof(PSGuzUI));
     if (!u) BERRO(vm, "MemoryError", "sem memoria");
     u->obj.type = OBJ_GUZ_UI; u->obj.marked = 0;
     u->obj.next = vm->objetos; vm->objetos = (Obj *)u;
@@ -8153,7 +8156,7 @@ static int mod_regex_compile(VM *vm, Value *args, int n, Value *out)
     PSRegex *r = rx_compila(vm, args[0], "compile");
     if (!r) return -1;
     PSString *p = COMO_STRING(args[0]);
-    PSRegexObj *o = malloc(sizeof(PSRegexObj));
+    PSRegexObj *o = calloc(1, sizeof(PSRegexObj));
     char *pat = malloc((size_t)p->len + 1);
     if (!o || !pat) { free(o); free(pat); ps_regex_free(r); BERRO(vm, "MemoryError", "sem memoria"); }
     memcpy(pat, p->chars, (size_t)p->len); pat[p->len] = '\0';
@@ -8315,7 +8318,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
 static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nargs_dados)
 {
     Proto *pr = &vm->protos[proto];
-    PSGerador *g = malloc(sizeof(PSGerador));
+    PSGerador *g = calloc(1, sizeof(PSGerador));
     if (!g) return NULL;
     g->obj.type = OBJ_GERADOR; g->obj.marked = 0;
     g->obj.next = vm->objetos; vm->objetos = (Obj *)g;
@@ -8334,7 +8337,18 @@ static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nar
     int32_t cap_pilha = pr->ncode / 2 + 8;
     g->locais = calloc((size_t)g->nlocais, sizeof(Value));
     g->pilha  = calloc((size_t)cap_pilha, sizeof(Value));
-    if (!g->locais || !g->pilha) { free(g->locais); free(g->pilha); return NULL; }
+    /* O gerador JÁ entrou em `vm->objetos` lá em cima, então o finalizador vai
+     * passar por ele mesmo com a construção falhando. Liberar sem zerar deixa
+     * ponteiro pendurado que o `fin_gerador` libera de novo — liberação dupla
+     * confirmada pela varredura de falha de alocação (`make oom`, gerador,
+     * alocações 83 e 84). Zerar o tamanho também: é o que o finalizador usa
+     * pra descontar de `vm->alocado`. */
+    if (!g->locais || !g->pilha) {
+        free(g->locais); g->locais = NULL;
+        free(g->pilha);  g->pilha  = NULL;
+        g->nlocais = 0;  g->npilha = 0;
+        return NULL;
+    }
     /* argumentos entram como locais iniciais; o resto nasce UNSET */
     for (int32_t k = 0; k < g->nlocais; k++)
         g->locais[k] = (k < nargs_dados) ? args[k] : MK_UNSET();
@@ -9274,7 +9288,7 @@ static int idx_stdout = -1, idx_stderr = -1, idx_stdin = -1;
 
 static int faz_modulo(VM *vm, int idx, Value *out)
 {
-    PSModulo *m = malloc(sizeof(PSModulo));
+    PSModulo *m = calloc(1, sizeof(PSModulo));
     if (!m) BERRO(vm, "MemoryError", "sem memoria");
     m->obj.type = OBJ_MODULO; m->obj.marked = 0;
     m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
@@ -10562,7 +10576,7 @@ static int sql_executa(VM *vm, PSSqlCur *cur, const char *sql, int sql_len,
 
 static PSSqlCur *novo_sqlcur(VM *vm, Value conn)
 {
-    PSSqlCur *cu = malloc(sizeof(PSSqlCur));
+    PSSqlCur *cu = calloc(1, sizeof(PSSqlCur));
     if (!cu) return NULL;
     cu->obj.type = OBJ_SQLCUR; cu->obj.marked = 0;
     cu->obj.next = vm->objetos; vm->objetos = (Obj *)cu;
@@ -10762,7 +10776,7 @@ static int mod_sqlite3_connect(VM *vm, Value *args, int n, Value *out)
         if (db) sqlite3_close(db);
         return -1;
     }
-    PSSqlConn *cn = malloc(sizeof(PSSqlConn));
+    PSSqlConn *cn = calloc(1, sizeof(PSSqlConn));
     if (!cn) { sqlite3_close(db); BERRO(vm, "MemoryError", "sem memoria"); }
     cn->obj.type = OBJ_SQLCONN; cn->obj.marked = 0;
     cn->obj.next = vm->objetos; vm->objetos = (Obj *)cn;
@@ -11041,7 +11055,7 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto 
 
 static PSSocket *novo_socket(VM *vm, int fd, int familia, int tipo, int proto)
 {
-    PSSocket *s = malloc(sizeof(PSSocket));
+    PSSocket *s = calloc(1, sizeof(PSSocket));
     if (!s) return NULL;
     s->obj.type = OBJ_SOCKET; s->obj.marked = 0;
     s->obj.next = vm->objetos; vm->objetos = (Obj *)s;
@@ -12610,7 +12624,7 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* Constrói o Response a partir do que o ps_http devolveu. */
 static int monta_response(VM *vm, PSHttpResp *hr, Value *out)
 {
-    PSResponse *rp = malloc(sizeof(PSResponse));
+    PSResponse *rp = calloc(1, sizeof(PSResponse));
     if (!rp) BERRO(vm, "MemoryError", "sem memoria");
     rp->obj.type = OBJ_RESPONSE; rp->obj.marked = 0;
     rp->obj.next = vm->objetos; vm->objetos = (Obj *)rp;
@@ -13031,7 +13045,7 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     if (*p == ':') { p++; porta = 0; while (*p >= '0' && *p <= '9') porta = porta * 10 + (*p++ - '0'); }
     const char *path = *p ? p : "/";
 
-    PSWsConn *w = malloc(sizeof(PSWsConn));
+    PSWsConn *w = calloc(1, sizeof(PSWsConn));
     if (!w) BERRO(vm, "MemoryError", "sem memoria");
     w->obj.type = OBJ_WSCONN; w->obj.marked = 0;
     w->obj.next = vm->objetos; vm->objetos = (Obj *)w;
@@ -13091,7 +13105,7 @@ static PSQRFile *novo_qrfile(VM *vm, const char *nome, const unsigned char *png,
     if (!b) return NULL;
     Value bv = MK_OBJ(b);
     if (fixa_raiz(vm, bv) != 0) return NULL;
-    PSQRFile *q = malloc(sizeof(PSQRFile));
+    PSQRFile *q = calloc(1, sizeof(PSQRFile));
     if (!q) { vm->sp--; return NULL; }
     q->obj.type = OBJ_QRFILE; q->obj.marked = 0;
     q->obj.next = vm->objetos; vm->objetos = (Obj *)q;
@@ -13235,7 +13249,7 @@ static PSQRImage *novo_qrimage(VM *vm, const char *dados, int nd, char nivel,
                                int box, int border, const char *cor,
                                const char *fundo, const char *nome)
 {
-    PSQRImage *q = malloc(sizeof(PSQRImage));
+    PSQRImage *q = calloc(1, sizeof(PSQRImage));
     if (!q) return NULL;
     q->obj.type = OBJ_QRIMAGE; q->obj.marked = 0;
     q->obj.next = vm->objetos; vm->objetos = (Obj *)q;
@@ -13299,7 +13313,7 @@ static int mod_qr_QRCode(VM *vm, Value *args, int n, Value *out)
     /* QRCode(version=None, error_correction="L", box_size=10, border=4) —
      * `version` é aceito e ignorado (fit=True re-seleciona sempre) */
     (void)args;
-    PSQRBuild *b = malloc(sizeof(PSQRBuild));
+    PSQRBuild *b = calloc(1, sizeof(PSQRBuild));
     if (!b) BERRO(vm, "MemoryError", "sem memoria");
     b->obj.type = OBJ_QRBUILD; b->obj.marked = 0;
     b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
@@ -13426,7 +13440,7 @@ static void mp_ext(const char *caminho, char *out, size_t cap)
 /* ── ManpuResult ────────────────────────────────────────────────────────── */
 static PSManpuRes *novo_manpures(VM *vm, int sucesso, const char *status)
 {
-    PSManpuRes *r = malloc(sizeof(PSManpuRes));
+    PSManpuRes *r = calloc(1, sizeof(PSManpuRes));
     if (!r) return NULL;
     r->obj.type = OBJ_MANPU_RES; r->obj.marked = 0;
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
@@ -13936,7 +13950,7 @@ static int mod_mp_open(VM *vm, Value *args, int n, Value *out)
     const char *caminho = COMO_STRING(args[0])->chars;
     char ext[32]; mp_ext(caminho, ext, sizeof(ext));
 
-    PSManpuFile *m = malloc(sizeof(PSManpuFile));
+    PSManpuFile *m = calloc(1, sizeof(PSManpuFile));
     if (!m) BERRO(vm, "MemoryError", "sem memoria");
     m->obj.type = OBJ_MANPU_FILE; m->obj.marked = 0;
     m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
@@ -14025,6 +14039,13 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
                 partes = np2;
             }
             partes[nprt] = malloc((size_t)(fim - i) + 1);
+            /* Sem esta checagem o `memcpy` abaixo escreve em NULL — segfault
+             * achado pela varredura (`make oom`, xlsx, alocação 132). */
+            if (!partes[nprt]) {
+                for (int k = 0; k < nprt; k++) free(partes[k]);
+                free(partes);
+                MERRO(vm, "MemoryError", "sem memoria");
+            }
             memcpy(partes[nprt], texto + i, (size_t)(fim - i));
             partes[nprt][fim - i] = '\0';
             nprt++;
@@ -14050,6 +14071,11 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
                 partes = np2;
             }
             partes[nprt] = malloc((size_t)(fimp - p) + 1);
+            if (!partes[nprt]) {
+                for (int k = 0; k < nprt; k++) free(partes[k]);
+                free(partes);
+                MERRO(vm, "MemoryError", "sem memoria");
+            }
             memcpy(partes[nprt], p, (size_t)(fimp - p));
             partes[nprt][fimp - p] = '\0';
             nprt++;
@@ -14075,10 +14101,17 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     } else if (m->modo == 2) {
         int max_row = m->grade.nlin;
         if (cel_full && col_full) {
-            int max_col = 1;
+            /* O limite é a largura que a planilha JÁ tem. Numa planilha vazia
+             * não existe largura pra estourar — é a primeira linha que a
+             * define. Antes, `max_col` começava em 1 e era comparado mesmo com
+             * `nlin == 0`: qualquer primeira linha de duas colunas num .xlsx
+             * novo era recusada com "colunas insuficientes", e não havia
+             * ordem de chamadas que contornasse. */
+            int max_col = 0;
             for (int r = 0; r < m->grade.nlin; r++)
                 if (m->grade.ncols[r] > max_col) max_col = m->grade.ncols[r];
-            if (np > max_col) status = "Error: Arquivo xlsx tem colunas insuficientes";
+            if (m->grade.nlin > 0 && np > max_col)
+                status = "Error: Arquivo xlsx tem colunas insuficientes";
             else for (int i = 0; i < np; i++) ps_grade_set(&m->grade, max_row, i, prt[i], 's');
         } else if (cel_full) {
             for (int i = 0; i < np; i++) ps_grade_set(&m->grade, max_row + i, col, prt[i], 's');
@@ -14207,7 +14240,7 @@ static int db_resolve_driver(const char *nome, PSDbDriver *out)
 
 static PSDbConexao *novo_dbconn(VM *vm, PSDbConn *c, int drv)
 {
-    PSDbConexao *o = malloc(sizeof(PSDbConexao));
+    PSDbConexao *o = calloc(1, sizeof(PSDbConexao));
     if (!o) return NULL;
     o->obj.type = OBJ_DBCONN; o->obj.marked = 0;
     o->obj.next = vm->objetos; vm->objetos = (Obj *)o;
@@ -14251,7 +14284,7 @@ static int db_linha_dict(VM *vm, PSDbRes *res, int lin, Value *out)
 /* ── DbCursor ───────────────────────────────────────────────────────────── */
 static PSDbCursor *novo_dbcursor(VM *vm, Value conexao, int drv)
 {
-    PSDbCursor *cu = malloc(sizeof(PSDbCursor));
+    PSDbCursor *cu = calloc(1, sizeof(PSDbCursor));
     if (!cu) return NULL;
     cu->obj.type = OBJ_DBCUR; cu->obj.marked = 0;
     cu->obj.next = vm->objetos; vm->objetos = (Obj *)cu;
@@ -14611,7 +14644,7 @@ static const MembroMod MOD_PSODBC[] = {
 
 static PSMongoConn *novo_mongoconn(VM *vm, PSMongo *m)
 {
-    PSMongoConn *o = malloc(sizeof(PSMongoConn));
+    PSMongoConn *o = calloc(1, sizeof(PSMongoConn));
     if (!o) return NULL;
     o->obj.type = OBJ_MONGOCONN; o->obj.marked = 0;
     o->obj.next = vm->objetos; vm->objetos = (Obj *)o;
@@ -14798,7 +14831,7 @@ static int met_mconn_collection(VM *vm, Value alvo, Value *args, int n, Value *o
     if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "collection() espera str");
     PSMongoConn *cn = COMO_MONGOCONN(alvo);
     if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
-    PSMongoCol *mc = malloc(sizeof(PSMongoCol));
+    PSMongoCol *mc = calloc(1, sizeof(PSMongoCol));
     if (!mc) MERRO(vm, "MemoryError", "sem memoria");
     mc->obj.type = OBJ_MONGOCOL; mc->obj.marked = 0;
     mc->obj.next = vm->objetos; vm->objetos = (Obj *)mc;
@@ -14887,7 +14920,7 @@ static char **jk_strvec(Value v, int upper, int *nout)
 static Value jk_cors_singleton(VM *vm)
 {
     if (EH_JCORS(vm->jk_cors)) return vm->jk_cors;
-    PSJCors *c = malloc(sizeof(PSJCors));
+    PSJCors *c = calloc(1, sizeof(PSJCors));
     if (!c) return MK_NULL();
     c->obj.type = OBJ_JCORS; c->obj.marked = 0;
     c->obj.next = vm->objetos; vm->objetos = (Obj *)c;
@@ -14904,7 +14937,7 @@ static Value jk_cors_singleton(VM *vm)
 static Value jk_proxy_singleton(VM *vm)
 {
     if (EH_JPROXY(vm->jk_proxy)) return vm->jk_proxy;
-    PSJProxy *p = malloc(sizeof(PSJProxy));
+    PSJProxy *p = calloc(1, sizeof(PSJProxy));
     if (!p) return MK_NULL();
     p->obj.type = OBJ_JPROXY; p->obj.marked = 0;
     p->obj.next = vm->objetos; vm->objetos = (Obj *)p;
@@ -15000,7 +15033,7 @@ static int met_jcors_permiser(VM *vm, Value alvo, Value *args, int n, Value *out
 /* ── JinkerResponse ─────────────────────────────────────────────────────── */
 static PSJResp *jk_novo_resp(VM *vm)
 {
-    PSJResp *r = malloc(sizeof(PSJResp));
+    PSJResp *r = calloc(1, sizeof(PSJResp));
     if (!r) return NULL;
     r->obj.type = OBJ_JRESP; r->obj.marked = 0;
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
@@ -15169,7 +15202,7 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
 /* ── registrar do decorador (@app.route / .socket / .middleware) ─────────── */
 static PSJReg *jk_novo_reg(VM *vm, Value app, int kind)
 {
-    PSJReg *r = malloc(sizeof(PSJReg));
+    PSJReg *r = calloc(1, sizeof(PSJReg));
     if (!r) return NULL;
     r->obj.type = OBJ_JREG; r->obj.marked = 0;
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
@@ -15301,7 +15334,7 @@ static int jsockns_call(VM *vm, Value alvo, Value *args, int n, Value *out)
         *out = MK_OBJ(r);
         return 0;
     }
-    PSJEmit *e = malloc(sizeof(PSJEmit));
+    PSJEmit *e = calloc(1, sizeof(PSJEmit));
     if (!e) MERRO(vm, "MemoryError", "sem memoria");
     e->obj.type = OBJ_JEMIT; e->obj.marked = 0;
     e->obj.next = vm->objetos; vm->objetos = (Obj *)e;
@@ -15315,7 +15348,7 @@ static int jsockns_call(VM *vm, Value alvo, Value *args, int n, Value *out)
 static void jk_ch_status(VM *vm, PSJinker *j, int sucesso)
 {
     if (EH_JCHST(j->ch_status)) { COMO_JCHST(j->ch_status)->sucesso = sucesso; return; }
-    PSJChSt *s = malloc(sizeof(PSJChSt));
+    PSJChSt *s = calloc(1, sizeof(PSJChSt));
     if (!s) return;
     s->obj.type = OBJ_JCHST; s->obj.marked = 0;
     s->obj.next = vm->objetos; vm->objetos = (Obj *)s;
@@ -15538,7 +15571,7 @@ static int jk_ext_bloqueada(const char *ext)
 static PSJUpload *jk_novo_upload(VM *vm, const char *nome, const char *ctype,
                                  const char *dados, size_t ndados)
 {
-    PSJUpload *u = malloc(sizeof(PSJUpload));
+    PSJUpload *u = calloc(1, sizeof(PSJUpload));
     if (!u) return NULL;
     u->obj.type = OBJ_JUPLOAD; u->obj.marked = 0;
     u->obj.next = vm->objetos; vm->objetos = (Obj *)u;
@@ -15863,7 +15896,7 @@ static Value jk_parse_query(VM *vm, const char *query)
 /* monta o PSJReq da requisição corrente */
 static PSJReq *jk_monta_req(VM *vm, const PSJkReq *hr, PSDict *params)
 {
-    PSJReq *r = malloc(sizeof(PSJReq));
+    PSJReq *r = calloc(1, sizeof(PSJReq));
     if (!r) return NULL;
     r->obj.type = OBJ_JREQ; r->obj.marked = 0;
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
@@ -16077,7 +16110,7 @@ static int jk_ws_processa(VM *vm, PSJinker *j, int i)
         if (j->debug) { printf("[jinker-ws] cliente desconectou (%d total)\n", j->nws); fflush(stdout); }
         return 0;
     }
-    PSJReq *req = malloc(sizeof(PSJReq));
+    PSJReq *req = calloc(1, sizeof(PSJReq));
     if (!req) { free(raw); return 1; }
     req->obj.type = OBJ_JREQ; req->obj.marked = 0;
     req->obj.next = vm->objetos; vm->objetos = (Obj *)req;
@@ -16561,7 +16594,7 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
 /* aloca um future novo (heap gerenciado pelo GC) */
 static PSFuturo *novo_futuro(VM *vm)
 {
-    PSFuturo *fu = malloc(sizeof(PSFuturo));
+    PSFuturo *fu = calloc(1, sizeof(PSFuturo));
     if (!fu) return NULL;
     fu->obj.type = OBJ_FUTURO; fu->obj.marked = 0;
     fu->obj.next = vm->objetos; vm->objetos = (Obj *)fu;
@@ -16998,7 +17031,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     int slot_chan = jk_slot_global(vm, "channel");
     if (slot_req >= 0) vm->globals[slot_req] = jk_proxy_singleton(vm);
     if (slot_chan >= 0) {
-        PSJChan *ch = malloc(sizeof(PSJChan));
+        PSJChan *ch = calloc(1, sizeof(PSJChan));
         if (ch) {
             ch->obj.type = OBJ_JCHAN; ch->obj.marked = 0;
             ch->obj.next = vm->objetos; vm->objetos = (Obj *)ch;
@@ -17200,7 +17233,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int mod_jk_new_request(VM *vm, Value *args, int n, Value *out)
 {
     (void)args; (void)n;
-    PSJReq *r = malloc(sizeof(PSJReq));
+    PSJReq *r = calloc(1, sizeof(PSJReq));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     r->obj.type = OBJ_JREQ; r->obj.marked = 0;
     r->obj.next = vm->objetos; vm->objetos = (Obj *)r;
@@ -18212,7 +18245,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_MAKE_CELL: {
             /* Põe uma célula no slot, guardando o que já estava lá (o
              * argumento, quando o parâmetro é capturado). */
-            PSCelula *cel = malloc(sizeof(PSCelula));
+            PSCelula *cel = calloc(1, sizeof(PSCelula));
             if (!cel) ERRO(vm, "sem memoria na captura de variavel");
             cel->obj.type = OBJ_CELULA; cel->obj.marked = 0;
             cel->obj.next = vm->objetos; vm->objetos = (Obj *)cel;
@@ -18286,7 +18319,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
         case OP_MAKE_CLOSURE: {
             Proto *np = &vm->protos[arg];
-            PSClosure *nc = malloc(sizeof(PSClosure));
+            PSClosure *nc = calloc(1, sizeof(PSClosure));
             if (!nc) ERRO(vm, "sem memoria no closure");
             nc->obj.type = OBJ_CLOSURE; nc->obj.marked = 0;
             nc->obj.next = vm->objetos; vm->objetos = (Obj *)nc;
@@ -19543,19 +19576,39 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             PSClassDefC *def = &vm->classes[arg];
             vm->sp = sp; vm->locals_top = locals_top;
 
-            PSClass *cl = malloc(sizeof(PSClass));
+            /* `calloc`, e não `malloc`, em TODO objeto que entra em
+             * `vm->objetos` — a regra vale pros 49 do arquivo.
+             *
+             * O objeto é ligado na lista do GC na linha seguinte, antes de os
+             * campos existirem. Com `malloc`, uma alocação que falhe no meio
+             * da construção deixa o resto com lixo de pilha, e o finalizador
+             * passa por ele liberando ponteiro inventado: a varredura de falha
+             * de alocação pegou `free(0x600000006)` aqui. Nascendo zerado,
+             * objeto pela metade é seguro em qualquer ponto onde a construção
+             * pare — `free(NULL)` não faz nada e contador zero não percorre
+             * vetor nenhum. */
+            PSClass *cl = calloc(1, sizeof(PSClass));
             if (!cl) ERRO(vm, "sem memoria ao criar Entity");
             cl->obj.type = OBJ_CLASS; cl->obj.marked = 0;
             cl->obj.next = vm->objetos; vm->objetos = (Obj *)cl;
             vm->alocado += sizeof(PSClass);
             cl->nome = strdup(def->nome ? def->nome : "?");
-            cl->nmetodos = def->nmetodos;
             cl->met_nomes = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(char *));
             cl->met_protos = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(int32_t));
             if (!cl->nome || !cl->met_nomes || !cl->met_protos) ERRO(vm, "sem memoria");
             for (int32_t i = 0; i < def->nmetodos; i++) {
-                cl->met_nomes[i] = strdup(def->met_nomes[i]);
+                /* `def->met_nomes[i]` pode ser NULL: a cópia que montou a `def`
+                 * grava NULL quando o strdup dela falha. `strdup(NULL)` é
+                 * segfault, não erro — achado pela varredura (`make oom`,
+                 * entity, alocação 106). */
+                cl->met_nomes[i] = strdup(def->met_nomes[i] ? def->met_nomes[i] : "?");
+                /* O contador precisa refletir o que DE FATO entrou. Publicar
+                 * `def->nmetodos` inteiro com uma entrada NULL no meio fazia o
+                 * `acha_metodo` chamar strcmp(NULL, ...) — segfault achado pela
+                 * varredura (`make oom`, entity, alocação 141). */
+                if (!cl->met_nomes[i]) { cl->nmetodos = i; ERRO(vm, "sem memoria"); }
                 cl->met_protos[i] = def->met_protos[i];
+                cl->nmetodos = i + 1;
             }
             /* membros private (encapsulamento) — copiados da def */
             cl->classe_privada = def->classe_privada;   /* `private class` */
@@ -19702,7 +19755,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     break;
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
-                PSNativa *f = malloc(sizeof(PSNativa));
+                PSNativa *f = calloc(1, sizeof(PSNativa));
                 if (!f) ERRO(vm, "sem memoria");
                 f->obj.type = OBJ_NATIVA; f->obj.marked = 0;
                 f->obj.next = vm->objetos; vm->objetos = (Obj *)f;
@@ -19829,7 +19882,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 PSJinker *jj = COMO_JINKER(alvo);
                 if (strcmp(nome, "socket") == 0) {
                     vm->sp = sp; vm->locals_top = locals_top;
-                    PSJSockNs *ns = malloc(sizeof(PSJSockNs));
+                    PSJSockNs *ns = calloc(1, sizeof(PSJSockNs));
                     if (!ns) ERRO(vm, "sem memoria");
                     ns->obj.type = OBJ_JSOCKNS; ns->obj.marked = 0;
                     ns->obj.next = vm->objetos; vm->objetos = (Obj *)ns;
@@ -19839,7 +19892,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 }
                 if (strcmp(nome, "channel") == 0) {
                     vm->sp = sp; vm->locals_top = locals_top;
-                    PSJChan *ch = malloc(sizeof(PSJChan));
+                    PSJChan *ch = calloc(1, sizeof(PSJChan));
                     if (!ch) ERRO(vm, "sem memoria");
                     ch->obj.type = OBJ_JCHAN; ch->obj.marked = 0;
                     ch->obj.next = vm->objetos; vm->objetos = (Obj *)ch;
@@ -20161,7 +20214,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
         case OP_MAKE_MODEL: {
             vm->sp = sp; vm->locals_top = locals_top;
-            PSModel *m = malloc(sizeof(PSModel));
+            PSModel *m = calloc(1, sizeof(PSModel));
             if (!m) ERRO(vm, "sem memoria no model");
             m->obj.type = OBJ_MODEL; m->obj.marked = 0;
             m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
@@ -20316,7 +20369,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
             vm->sp = sp; vm->locals_top = locals_top;
-            PSModulo *m = malloc(sizeof(PSModulo));
+            PSModulo *m = calloc(1, sizeof(PSModulo));
             if (!m) ERRO(vm, "sem memoria no import");
             m->obj.type = OBJ_MODULO; m->obj.marked = 0;
             m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
@@ -20594,19 +20647,27 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
             PSClassDef *o = &prog->classes[i];
             PSClassDefC *d = &vm->classes[i];
             d->nome = strdup(o->nome ? o->nome : "?");
-            d->nmetodos = o->nmetodos;
             d->npais = o->npais;
+            /* O CONTADOR SÓ EXISTE DEPOIS DO VETOR.
+             *
+             * `d->nmetodos = o->nmetodos` antes do calloc parecia inofensivo e
+             * era segfault: com o calloc falhando, o `return -1` deixava o
+             * descritor com nmetodos=2 e met_nomes=NULL, e o `libera_vm`
+             * percorre `k < nmetodos` liberando met_nomes[k]. A varredura de
+             * falha de alocação achou isso (`make oom`, entity, alocação 104).
+             * Mesma forma do C1: publicar estado pela metade. */
             if (o->nmetodos > 0) {
                 d->met_nomes = calloc((size_t)o->nmetodos, sizeof(char *));
                 d->met_protos = calloc((size_t)o->nmetodos, sizeof(int32_t));
                 if (!d->met_nomes || !d->met_protos) return -1;
                 for (int32_t k = 0; k < o->nmetodos; k++) {
                     d->met_nomes[k] = strdup(o->met_nomes[k] ? o->met_nomes[k] : "?");
+                    if (!d->met_nomes[k]) { d->nmetodos = k; return -1; }
                     d->met_protos[k] = o->met_protos[k];
                 }
             }
+            d->nmetodos = o->nmetodos;
             /* nomes private (encapsulamento) */
-            d->npriv = o->npriv;
             d->classe_privada = o->classe_privada;
             if (o->npriv > 0) {
                 d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
@@ -20614,11 +20675,12 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                 for (int32_t k = 0; k < o->npriv; k++)
                     d->priv_nomes[k] = strdup(o->priv_nomes[k] ? o->priv_nomes[k] : "?");
             }
+            d->npriv = o->npriv;
         }
     }
 
-    /* modelos: mesma cópia, mesmo motivo */
-    vm->nmodels = prog->nmodels;
+    /* modelos: mesma cópia, mesmo motivo — e o contador também só depois dos
+     * vetores, senão o destrutor percorre `i < nmodels` sobre NULL. */
     if (prog->nmodels > 0) {
         vm->model_nomes = calloc((size_t)prog->nmodels, sizeof(char *));
         vm->model_campos = calloc((size_t)prog->nmodels, sizeof(PSModelCampo *));
@@ -20627,19 +20689,20 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         for (int32_t i = 0; i < prog->nmodels; i++) {
             PSModelDef *o = &prog->models[i];
             vm->model_nomes[i] = strdup(o->nome ? o->nome : "?");
-            vm->model_ncampos[i] = o->ncampos;
             vm->model_campos[i] = o->ncampos > 0
                                 ? calloc((size_t)o->ncampos, sizeof(PSModelCampo)) : NULL;
+            if (o->ncampos > 0 && !vm->model_campos[i]) return -1;
             for (int32_t k = 0; k < o->ncampos; k++) {
                 vm->model_campos[i][k].nome = strdup(o->campos[k].nome ? o->campos[k].nome : "?");
                 vm->model_campos[i][k].tipo = o->campos[k].tipo;
                 vm->model_campos[i][k].length = o->campos[k].length;
             }
+            vm->model_ncampos[i] = o->ncampos;   /* só depois do vetor existir */
         }
+        vm->nmodels = prog->nmodels;
     }
 
     /* enums: mesma cópia — nome do enum, nomes dos membros, flag auto/expl */
-    vm->nenums = prog->nenums;
     if (prog->nenums > 0) {
         vm->enum_nomes        = calloc((size_t)prog->nenums, sizeof(char *));
         vm->enum_membro_nomes = calloc((size_t)prog->nenums, sizeof(char **));
@@ -20650,16 +20713,18 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         for (int32_t i = 0; i < prog->nenums; i++) {
             PSEnumDef *o = &prog->enums[i];
             vm->enum_nomes[i] = strdup(o->nome ? o->nome : "?");
-            vm->enum_nmembros[i] = o->nmembros;
             vm->enum_membro_nomes[i] = o->nmembros > 0
                                      ? calloc((size_t)o->nmembros, sizeof(char *)) : NULL;
             vm->enum_auto[i] = o->nmembros > 0
                              ? calloc((size_t)o->nmembros, sizeof(int8_t)) : NULL;
+            if (o->nmembros > 0 && (!vm->enum_membro_nomes[i] || !vm->enum_auto[i])) return -1;
             for (int32_t k = 0; k < o->nmembros; k++) {
                 vm->enum_membro_nomes[i][k] = strdup(o->membros[k].nome ? o->membros[k].nome : "?");
                 vm->enum_auto[i][k] = (int8_t)(o->membros[k].tem_valor ? 0 : 1);
             }
+            vm->enum_nmembros[i] = o->nmembros;   /* só depois dos vetores */
         }
+        vm->nenums = prog->nenums;
     }
 
     for (int32_t i = 0; i < prog->nprotos; i++) {
@@ -21145,7 +21210,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         if (strcmp(prog->globais[i], "Parsing") == 0) {
             int mi = acha_modulo_oculto("_Parsing");
             if (mi >= 0) {
-                PSModulo *pm = malloc(sizeof(PSModulo));
+                PSModulo *pm = calloc(1, sizeof(PSModulo));
                 if (pm) {
                     pm->obj.type = OBJ_MODULO; pm->obj.marked = 0;
                     pm->obj.next = vm->objetos; vm->objetos = (Obj *)pm;
@@ -21157,7 +21222,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         }
     }
 
-    PSModuloPS *m = malloc(sizeof(PSModuloPS));
+    PSModuloPS *m = calloc(1, sizeof(PSModuloPS));
     if (!m) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
     m->obj.type = OBJ_MODULO_PS; m->obj.marked = 0;
     m->obj.next = vm->objetos; vm->objetos = (Obj *)m;

@@ -30,7 +30,13 @@ static char POOL_ABS[4096];
 static void resolve_pool(void)
 {
     if (POOL_ABS[0]) return;
-    if (!realpath(POOL, POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", POOL);
+    /* `PS_POOL` troca o binário sob teste sem tocar no runner — é o que deixa
+     * `make cobertura` rodar a MESMA suíte contra a build instrumentada, e
+     * `make check-asan` contra a com sanitizer. Sem isso não havia como medir
+     * cobertura, que foi o buraco apontado pela auditoria de testes. */
+    const char *alt = getenv("PS_POOL");
+    const char *bin = (alt && alt[0]) ? alt : POOL;
+    if (!realpath(bin, POOL_ABS)) snprintf(POOL_ABS, sizeof POOL_ABS, "%s", bin);
 }
 
 /* Apaga o diretório do caso. Um nível de recursão basta: caso que cria

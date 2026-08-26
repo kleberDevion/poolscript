@@ -1,0 +1,178 @@
+# Teste de PROPRIEDADE (metamorphic testing), com entrada nova a cada execução.
+#
+# POR QUE: `casos_equivalencia` é a melhor ideia da suíte — a mesma computação
+# escrita de N formas que TÊM que concordar — e estava parada em 148 exemplos
+# congelados. Congelado não acha nada novo; a técnica só rende quando a entrada
+# muda. É a razão de existirem 4.483 casos de `oraculo` que, medidos, somam 10
+# linhas de cobertura: produto cartesiano repassa o mesmo caminho.
+#
+# Aqui a entrada é SORTEADA. Cada rodada monta uma computação aleatória e a
+# escreve de várias formas equivalentes; se duas formas discordam, uma das duas
+# está quebrada — e não interessa o que o Python faria. Não precisa de oráculo
+# externo, que é o ponto do metamorphic testing.
+#
+#     ./pool teste/propriedade.ps            # 200 rodadas
+#     ./pool teste/propriedade.ps 2000       # mais fundo
+#     ./pool teste/propriedade.ps 200 12345  # semente fixa (pra repetir um achado)
+#
+# Achado é impresso com a semente e o programa exato — o caso de regressão sai
+# pronto pra colar em teste/casos_linguagem.c.
+import os
+import sys
+
+TMP = "/tmp/ps_prop"
+
+# Gerador congruente linear. Semente explícita porque um achado tem que ser
+# REPETÍVEL: sem isso, property test vira boato.
+semente = 1
+
+
+action rnd(n) {
+    semente = (semente * 1103515245 + 12345) % 2147483648
+    return semente % n
+}
+
+
+action escolhe(l) {
+    return l[rnd(len(l))]
+}
+
+
+# ── uma expressão inteira aleatória ─────────────────────────────────────────
+action gera_expr(prof) {
+    if prof <= 0 or rnd(3) == 0 {
+        return str(rnd(50) - 20)
+    }
+    a = gera_expr(prof - 1)
+    b = gera_expr(prof - 1)
+    op = escolhe(["+", "-", "*"])
+    return "(" + a + " " + op + " " + b + ")"
+}
+
+
+# Formas equivalentes de imprimir a soma de 0..n-1.
+action fam_soma(n) {
+    return [
+        "s = 0\nfor each i in range(" + str(n) + ") {\n    s = s + i\n}\npost(s)",
+        "s = 0\ni = 0\nwhile i < " + str(n) + " {\n    s = s + i\n    i = i + 1\n}\npost(s)",
+        "post(sum(range(" + str(n) + ")))",
+        "post(sum([i for each i in range(" + str(n) + ")]))",
+        "action g() {\n    for each i in range(" + str(n) + ") {\n        yield i\n    }\n}\npost(sum(list(g())))"
+    ]
+}
+
+
+# A mesma expressão aritmética por caminhos diferentes do motor.
+action fam_expr(e) {
+    return [
+        "post(" + e + ")",
+        "x = " + e + "\npost(x)",
+        "action f() {\n    return " + e + "\n}\npost(f())",
+        "action f(v) {\n    return v\n}\npost(f(" + e + "))",
+        "post([" + e + "][0])",
+        "post({\"k\": " + e + "}[\"k\"])",
+        "post((" + e + ",)[0])"
+    ]
+}
+
+
+# A mesma fatia de texto por caminhos diferentes.
+action fam_fatia(s, i) {
+    return [
+        "post(\"" + s + "\"[" + str(i) + "])",
+        "t = \"" + s + "\"\npost(t[" + str(i) + "])",
+        "post(list(\"" + s + "\")[" + str(i) + "])",
+        "post(\"" + s + "\"[" + str(i) + ":" + str(i + 1) + "])"
+    ]
+}
+
+
+action roda(fonte, tag) {
+    alvo = TMP + "/" + tag + ".ps"
+    using open(alvo, "w") as f {
+        f.write(fonte)
+    }
+    os.cmd("cd " + TMP + " && GUZER_HEADLESS=1 timeout 15 '" + sys.executable + "' " +
+           tag + ".ps > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
+    rc = int(open(TMP + "/rc.txt").read().strip())
+    return [rc, open(TMP + "/o.txt").read(), open(TMP + "/e.txt").read().split("\n")[0]]
+}
+
+
+if __name__ == "main" {
+    os.mkdir(TMP, exist_ok=true)
+
+    rodadas = 200
+    if len(sys.argv) > 0 {
+        rodadas = int(sys.argv[0])
+    }
+    if len(sys.argv) > 1 {
+        semente = int(sys.argv[1])
+    }
+    semente_inicial = semente
+
+    divergentes = []
+    formas = 0
+
+    r = 0
+    while r < rodadas {
+        r = r + 1
+        qual = rnd(3)
+        # Declarados ANTES: variável criada dentro de bloco não vaza (é regra
+        # da linguagem); atribuir a uma que já existe fora, sim, altera a de
+        # fora. Sem isto, `fam` não existiria depois do `if`.
+        fam = []
+        nome = ""
+        if qual == 0 {
+            fam = fam_soma(rnd(40))
+            nome = "soma"
+        }
+        elif qual == 1 {
+            fam = fam_expr(gera_expr(2 + rnd(2)))
+            nome = "expr"
+        }
+        else {
+            palavras = ["banana", "ação", "poolscript", "über", "日本語"]
+            p = escolhe(palavras)
+            fam = fam_fatia(p, rnd(len(p)))
+            nome = "fatia"
+        }
+
+        ref = roda(fam[0], "f0")
+        formas = formas + len(fam)
+        k = 1
+        while k < len(fam) {
+            outra = roda(fam[k], "f" + str(k))
+            if outra[0] != ref[0] or outra[1] != ref[1] {
+                divergentes.append([nome, fam[0], ref, fam[k], outra])
+            }
+            k = k + 1
+        }
+    }
+
+    post("")
+    post("rodadas:", rodadas, " formas executadas:", formas, " semente:", semente_inicial)
+    if len(divergentes) == 0 {
+        post("nenhuma divergencia: todas as formas da mesma conta concordaram.")
+        sys.exit(0)
+    }
+    post("DIVERGENCIAS:", len(divergentes))
+    n = 0
+    for each d in divergentes {
+        n = n + 1
+        if n > 5 {
+            post("   (…e mais", str(len(divergentes) - 5) + ")")
+            break
+        }
+        post("")
+        post("  [" + d[0] + "] forma A (rc " + str(d[2][0]) + "):")
+        post(d[1])
+        post("  -> " + d[2][1].strip() + "  " + d[2][2])
+        post("  forma B (rc " + str(d[4][0]) + "):")
+        post(d[3])
+        post("  -> " + d[4][1].strip() + "  " + d[4][2])
+    }
+    post("")
+    post("repita exatamente com:  ./pool teste/propriedade.ps", str(rodadas), str(semente_inicial))
+    sys.exit(1)
+}

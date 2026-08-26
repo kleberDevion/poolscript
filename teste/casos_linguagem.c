@@ -1016,6 +1016,60 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(\"stdout chegou inteiro\")\n", "stdout chegou inteiro", NULL, 0 },
 
+/* ── xlsx: escrever e ler de volta ──────────────────────────────────────────
+ * A primeira linha de uma planilha NOVA era recusada com "colunas
+ * insuficientes": o limite era calculado varrendo as linhas existentes, e numa
+ * planilha vazia isso dava 1. Não havia ordem de chamadas que contornasse — o
+ * arquivo saía com uma célula só e `mp.read` devolvia []. */
+{ "xlsx ida e volta",
+  "import manpu as mp\n"
+  "using mp.open(target=\"p.xlsx\") as a {\n"
+  "    a.write(column=\"full\", cell=\"full\", content=\"nome,idade\", sep=\",\")\n"
+  "    a.write(column=\"full\", cell=\"full\", content=\"ana,30\", sep=\",\")\n"
+  "}\n"
+  "post(mp.read(\"p.xlsx\"))\n",
+  "[{'nome': 'ana', 'idade': '30'}]", NULL, 0 },
+{ "xlsx: primeira linha define a largura",
+  "import manpu as mp\n"
+  "using mp.open(target=\"q.xlsx\") as a {\n"
+  "    post(a.write(column=\"full\", cell=\"full\", content=\"a,b,c\", sep=\",\"))\n"
+  "}\n", "Success", NULL, 0 },
+{ "xlsx: linha mais larga que a planilha continua recusada",
+  "import manpu as mp\n"
+  "using mp.open(target=\"r.xlsx\") as a {\n"
+  "    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n"
+  "    post(a.write(column=\"full\", cell=\"full\", content=\"1,2,3,4\", sep=\",\"))\n"
+  "}\n", "Error: Arquivo xlsx tem colunas insuficientes", NULL, 0 },
+/* `copy()` é método de PoolFile, que vem de `os.loadFile` num binário — não
+ * do FileHandle do `open()`. O caminho inteiro do copy() nunca tinha sido
+ * exercitado por caso nenhum da suíte (gcov: linha ##### na função). */
+{ "PoolFile.copy() copia o conteudo",
+  "import os\n"
+  "using open(\"o.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\nDADOS\") }\n"
+  "a = os.loadFile(\"o.png\")\n"
+  "a.copy(\"d.png\")\n"
+  "using open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n", "14", NULL, 0 },
+
+/* ── regex: recursao profunda vira ERRO, nao segfault ───────────────────────
+ * O casador é recursivo e gasta um quadro de pilha C por caractere. O teto de
+ * PASSOS (2 milhões) não protegia disso: a pilha de 8 MB acaba muito antes, e
+ * o processo morria de SIGSEGV, sem mensagem. Achado escrevendo o semeador do
+ * fuzzer em PoolScript — o `pool` inteiro caiu casando
+ * `"((?:[^"\\]|\\.)*)"` contra um trecho de 29 mil caracteres. */
+{ "regex profundo demais e erro, nao morte",
+  "import regex\n"
+  "alvo = \"x\" * 60000\n"
+  "post(regex.findall(\"(?:a|(x))*\", alvo))\n", NULL, "backtracking demais", -1 },
+{ "regex normal continua valendo",
+  "import regex\n"
+  "post(regex.findall(\"\\\\d+\", \"a1b22c333\"))\n"
+  "post(regex.sub(\"(\\\\w)(\\\\d)\", \"\\\\2\\\\1\", \"a1 b2\"))\n"
+  "post(regex.split(\"[,;]\", \"a,b;c\"))\n",
+  "['1', '22', '333']\n1a 2b\n['a', 'b', 'c']", NULL, 0 },
+{ "grupo repetido em texto medio ainda casa",
+  "import regex\n"
+  "post(len(regex.findall(\"(?:ab)+\", \"ab\" * 400)))\n", "1", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

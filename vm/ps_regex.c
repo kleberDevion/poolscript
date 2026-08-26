@@ -582,6 +582,21 @@ const char *ps_regex_nome_do_grupo(const PSRegex *r, int g)
 
 #define RX_MAX_PASSOS 2000000
 
+/* TETO DE PROFUNDIDADE, e ele é obrigatório junto com o de passos.
+ *
+ * O casador é recursivo: `m_seq -> m_pos_grupo -> m_rep_grupo -> m_alt ->
+ * m_seq` gasta um quadro de pilha C por caractere consumido. O teto de PASSOS
+ * (2 milhões) não protege disso — a pilha de 8 MB acaba muito antes, e o
+ * processo morre de SIGSEGV sem mensagem nenhuma.
+ *
+ * Aconteceu de verdade: `"((?:[^"\\]|\\.)*)"` sobre um trecho de 29 mil
+ * caracteres derrubou o `pool` inteiro. Um padrão vindo do usuário não pode
+ * matar o processo — tem que virar erro, como qualquer outro limite.
+ *
+ * 6000 quadros cabem com folga nos 8 MB padrão e ainda dão conta de qualquer
+ * padrão de uso real. */
+#define RX_MAX_PROF 6000
+
 typedef struct Cont { const Seq *seq; int i; const struct Cont *prox; } Cont;
 
 typedef struct {
@@ -592,6 +607,7 @@ typedef struct {
     int         estourou;
     int         exigir_fim;    /* fullmatch: só aceita terminando em n */
     int         flags;         /* RX_I | RX_M | RX_S */
+    int         prof;          /* profundidade de recursão do casador */
 } Estado;
 
 /* Folding pro IGNORECASE: ASCII + Latin-1 Supplement (À-Þ<->à-þ), que cobre o
@@ -631,6 +647,7 @@ static int rx_cp_antes(const char *s, int pos, unsigned int *cp)
 }
 
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k);
+static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k);
 static int m_pos_grupo(Estado *e, int pos, const Cont *k);
 
 static int m_cont(Estado *e, int pos, const Cont *k)
@@ -829,7 +846,19 @@ static int m_rep_grupo(RepGrupo *rg, int feitos, int pos)
     return 0;
 }
 
+/* Casca que conta a profundidade. O corpo tem muitos `return`, e um contador
+ * espalhado por todos eles é convite a esquecer um — a casca garante que
+ * entrar e sair sempre fecham. */
 static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
+{
+    if (e->prof >= RX_MAX_PROF) { e->estourou = 1; return 0; }
+    e->prof++;
+    int r = m_seq_corpo(e, s, i, pos, k);
+    e->prof--;
+    return r;
+}
+
+static int m_seq_corpo(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 {
     if (++e->passos > RX_MAX_PASSOS) { e->estourou = 1; return 0; }
     if (i >= s->n) return m_cont(e, pos, k);
@@ -883,7 +912,7 @@ static int m_seq(Estado *e, const Seq *s, int i, int pos, const Cont *k)
 int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
 {
     for (int inicio = de; inicio <= len; inicio++) {
-        Estado e = { s, len, cap, 0, 0, 0, r->flags };
+        Estado e = { s, len, cap, 0, 0, 0, r->flags, 0 };
         for (int g = 0; g < RX_MAX_GRUPOS; g++) { cap->inicio[g] = -1; cap->fim[g] = -1; }
         cap->ngrupos = r->ngrupos;
         cap->inicio[0] = inicio;
@@ -895,7 +924,7 @@ int ps_regex_busca(PSRegex *r, const char *s, int len, int de, RxCaptura *cap)
 
 int ps_regex_casa_tudo(PSRegex *r, const char *s, int len, RxCaptura *cap)
 {
-    Estado e = { s, len, cap, 0, 0, 1, r->flags };
+    Estado e = { s, len, cap, 0, 0, 1, r->flags, 0 };
     for (int g = 0; g < RX_MAX_GRUPOS; g++) { cap->inicio[g] = -1; cap->fim[g] = -1; }
     cap->ngrupos = r->ngrupos;
     cap->inicio[0] = 0;

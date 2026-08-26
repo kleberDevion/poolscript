@@ -10,6 +10,58 @@ biblioteca padrão quase não está.
 
 ---
 
+## Estado em 2026-08-26 (depois de atacar a lista)
+
+Os seis problemas estruturais foram atacados, e a "ordem de retorno" do fim
+deste documento foi seguida na sequência proposta. Cada um virou **alvo do
+Makefile**, porque ferramenta que não tem alvo ninguém roda:
+
+| Item | Virou | O que já achou |
+|---|---|---|
+| **1. Fuzzer no front-end** | `make fuzz` — libFuzzer (clang) sobre `ps_verifica_fonte`, corpus semeado com os 16.461 programas que a suíte já tinha (`make semeia`) | 480.512 execuções em 3 min, **zero crash e zero vazamento**, 4.932 entradas novas de cobertura |
+| **2. Injeção de falha de malloc** | `make oom` — `pool-oom` ligado com `-Wl,--wrap=malloc,calloc,realloc,strdup`; nenhuma linha do motor muda | **55 mortes violentas em 2.766 pontos**, todas corrigidas: liberação dupla no gerador, `free()` de ponteiro-lixo na Entity, `strdup(NULL)`, `memcpy` em NULL no `split`, e o realloc duplo do `ps_grade_set` |
+| **3. Suíte sob ASan+UBSan** | `make check-asan` — a MESMA suíte, `PS_POOL` troca o binário | o `pool-asan` existia e nada o rodava; agora roda |
+| **4. Cobertura com meta em ramos** | `make cobertura` — gcov+lcov, relatório HTML por arquivo | primeiro número de RAMO que existiu: **42,1%** (contra 55,3% de linha — a linha superestimava mesmo) |
+| **5. e2e no portão** | `make check-e2e`, e o `make check` **anuncia** o que ficou de fora | gap declarado em voz alta, não escondido |
+| **6. `equivalencia` como property test** | `make propriedade` — entrada SORTEADA a cada execução, semente impressa pra repetir o achado | 2.392 formas em 3 sementes, zero divergência |
+
+**O que a injeção de malloc provou na prática:** era mesmo o item de maior
+retorno. As correções da classe C eram 80% código não exercitado; hoje todos
+os 2.766 pontos de alocação passam, e o contrato é explícito — *ou o programa
+termina, ou levanta erro; segfault, liberação dupla e trava reprovam*.
+
+**Defeito achado escrevendo o próprio semeador**, e este é o melhor argumento
+do documento a favor de dogfooding: o casador de regex é recursivo, um quadro
+de pilha C por caractere. O teto de PASSOS (2 milhões) não protegia disso — a
+pilha de 8 MB acaba antes, e o `pool` **morria de SIGSEGV sem mensagem**
+casando `"((?:[^"\\]|\\.)*)"` contra um trecho de 29 mil caracteres. Agora há
+teto de PROFUNDIDADE (`RX_MAX_PROF`), e o mesmo caso vira
+`RuntimeError: regex: backtracking demais`, com linha e coluna. Três casos de
+regressão entraram na suíte.
+
+**O que continua verdade e não foi resolvido:**
+
+- **problema 1 (um único método de teste)** — continua não havendo teste de
+  unidade em C. O dict compacto, o bignum, a arena e o `utf8_byte_de` seguem
+  sem teste direto. O caminho é o do CPython (`_testcapi`): um módulo que
+  exponha as internas só para teste;
+- **problema 2 (88% snapshot)** — `diferencial` e `oraculo` continuam
+  congelando o comportamento de hoje. O `propriedade` é o começo da saída, não
+  a saída;
+- **problema 3 (sete módulos a 0%)** — `check-e2e` existe, mas os módulos só
+  sobem com serviço externo no ar; a cobertura deles continua zero numa
+  máquina sem banco;
+- **o `oraculo` não parou de crescer** — a recomendação de congelá-lo e
+  investir no `equivalencia` é decisão de projeto, não foi tomada aqui.
+
+**Limitação que o teto de profundidade expõe:** o casador não dá conta de
+`(?:...)*` sobre alguns milhares de caracteres, coisa que o Python faz. Hoje
+isso é erro claro em vez de morte, mas continua sendo limite real — anotado em
+`notas/LIMITACOES.md`. A saída definitiva é tornar a repetição de grupo
+iterativa em vez de recursiva.
+
+---
+
 ## 1. Como reproduzir a medição
 
 ```bash

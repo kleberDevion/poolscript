@@ -196,8 +196,12 @@ check: pool testar
 	@echo
 	@$(MAKE) --no-print-directory analisa
 	@echo
-	@echo "FORA deste portao: teste/e2e/ (banco, mail, socket, jinker, guzer,"
-	@echo "mongo, qrcode) — precisam de servico externo no ar. Rode:  make check-e2e"
+	@echo "FORA deste portao, e cada um tem alvo proprio porque e caro:"
+	@echo "  make check-e2e   banco/mail/socket/jinker/guzer/mongo/qr (servico externo)"
+	@echo "  make check-asan  a MESMA suite sob ASan+UBSan (~4 min)"
+	@echo "  make oom         falha de alocacao ponto a ponto (~5 min)"
+	@echo "  make fuzz        fuzzer no front-end (FUZZ_T=<segundos>)"
+	@echo "  make cobertura   linha E RAMO, por arquivo"
 
 # E2E: cada script sobe o que precisa e checa de ponta a ponta. Fica fora do
 # `check` porque depende de serviço externo (Postgres, MySQL, mongod, SMTP) e
@@ -218,3 +222,107 @@ check-e2e: pool
 	echo "e2e: ok"
 
 .PHONY: check-e2e
+
+# ── injeção de falha de alocação (a técnica do SQLite) ──────────────────────
+# Toda correção da classe C da auditoria é um caminho de falta de memória, e
+# NENHUM jamais executou: o gcov mostrava `if (!mn)` avaliado 42x com o ramo
+# verdadeiro nunca tomado. O Linux dá /dev/full de graça e por isso o I/O pôde
+# ser testado; memória não tem equivalente, então a gente fabrica.
+#
+# `--wrap` é do linker: nenhuma linha do motor muda, o código testado é o
+# código de produção. Ver teste/ps_oom.c.
+pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
+	$(CC) $(CFLAGS) -g -I$(VM) -o $@ $(FONTES) teste/ps_oom.c \
+	  -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
+	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon \
+	  -lpgport -lmysqlclient -lodbc -lssl -lcrypto -lpng -lexpat -lz \
+	  -Wl,-Bdynamic -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 \
+	  -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
+	  -l:libX11.so.6 -l:libgmp.so.10
+
+# Falha a i-ésima alocação de cada programa de teste/oom_varre.ps. Passar não é
+# "não deu erro": é "morreu limpo" — segfault, liberação dupla e trava reprovam.
+oom: pool-oom
+	@./pool teste/oom_varre.ps
+
+.PHONY: oom
+
+# ── fuzzer no front-end (libFuzzer, clang) ──────────────────────────────────
+# A suíte é 100% de entradas FIXAS: nada gera entrada nova. A libFuzzer muta
+# guiada por COBERTURA — vê que ramos cada entrada alcançou e prioriza as que
+# abrem caminho novo. Roda só o `--check` (lexer+parser+compilador), sem
+# executar bytecode: é o caminho onde entrada torta faz estrago.
+#
+# Achado vira arquivo `crash-*`, que JÁ É o caso de regressão (modelo do Go).
+FUZZ_FONTES := $(filter-out $(VM)/main.c,$(FONTES))
+FUZZ_T ?= 120
+FUZZ_CORPUS := teste/fuzz_corpus
+
+pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
+	clang -O1 -g -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer \
+	  -Wno-everything -I$(VM) -I/usr/include/postgresql -I/usr/include/mysql \
+	  -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0 \
+	  -o $@ $(FUZZ_FONTES) teste/ps_fuzz.c \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
+	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
+	  -l:libX11.so.6 -l:libgmp.so.10
+
+# Semeia o corpus com os programas que a suíte já tem: o fuzzer parte de
+# entrada VÁLIDA e muta a partir dela, em vez de descobrir a sintaxe do zero.
+semeia: pool
+	@./pool teste/fuzz_semeia.ps
+
+fuzz: pool-fuzz semeia
+	@mkdir -p teste/fuzz_achados
+	@echo "fuzzando por $(FUZZ_T)s (ajuste com FUZZ_T=<segundos>)"
+	@ASAN_OPTIONS=detect_leaks=1 ./pool-fuzz $(FUZZ_CORPUS) \
+	  -max_total_time=$(FUZZ_T) -max_len=65536 -timeout=10 \
+	  -artifact_prefix=teste/fuzz_achados/ -print_final_stats=1
+
+.PHONY: fuzz semeia
+
+# ── teste de propriedade (metamorphic), com entrada NOVA a cada execução ────
+# `casos_equivalencia` é a melhor ideia da suíte e estava congelada em 148
+# exemplos. Congelado não acha nada novo.
+PROP_N ?= 200
+PROP_SEMENTE ?= 1
+propriedade: pool
+	@./pool teste/propriedade.ps $(PROP_N) $(PROP_SEMENTE)
+
+.PHONY: propriedade
+
+# ── a MESMA suíte, sob ASan+UBSan ───────────────────────────────────────────
+# A suíte roda o binário -O2, que é exatamente o que ESCONDE a classe de
+# defeito de memória: leitura fora de faixa em -O2 costuma "funcionar". O
+# `pool-asan` já existia e nada o rodava — este alvo é a ligação que faltava.
+check-asan: pool-asan testar
+	@echo "suite inteira sob AddressSanitizer + UBSan…"
+	@PS_POOL=pool-asan ASAN_OPTIONS=detect_leaks=0:abort_on_error=0 \
+	  UBSAN_OPTIONS=print_stacktrace=1 nice -n 19 ./testar
+
+.PHONY: check-asan
+
+# ── cobertura ───────────────────────────────────────────────────────────────
+# A auditoria de testes apontou que cobertura NUNCA tinha sido medida. E a
+# métrica que importa é RAMO TOMADO, não linha: 93% de linha no parser eram 67%
+# de ramos. Linha superestima — é a razão de o SQLite medir MC-DC.
+cobertura: testar
+	@rm -rf cob && mkdir -p cob
+	$(CC) -O0 -g --coverage $(CFLAGS) -I$(VM) -o cob/pool $(FONTES) \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
+	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
+	  -l:libX11.so.6 -l:libgmp.so.10
+	@echo "rodando a suite contra o binario instrumentado…"
+	@PS_POOL=cob/pool nice -n 19 ./testar 2>&1 | tail -2
+	@lcov --capture --directory . --output-file cob/bruto.info \
+	  --rc branch_coverage=1 --ignore-errors mismatch,source,empty >/dev/null 2>&1
+	@lcov --extract cob/bruto.info "*/vm/*" --output-file cob/vm.info \
+	  --rc branch_coverage=1 --ignore-errors empty >/dev/null 2>&1
+	@genhtml cob/vm.info --output-directory cob/html --branch-coverage \
+	  >/dev/null 2>&1 || true
+	@echo; lcov --summary cob/vm.info --rc branch_coverage=1 2>/dev/null | tail -6
+	@echo; echo "detalhe por arquivo:  cob/html/index.html"
+
+.PHONY: cobertura

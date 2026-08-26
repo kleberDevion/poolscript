@@ -549,3 +549,30 @@ não recebe callback — limite do modelo sem thread, catalogado de propósito.
 
 `yield` era o caso vizinho e **está pronto**: gerador não precisa de thread,
 só de frame suspensível.
+
+### Regex: repetição de grupo é recursiva (teto de ~6.000 caracteres)
+
+O casador de `vm/ps_regex.c` é backtracking com continuação explícita, e a
+recursão é o ciclo `m_seq → m_pos_grupo → m_rep_grupo → m_alt → m_seq`: **um
+quadro de pilha C por caractere consumido**. Um padrão com repetição de grupo
+— `(?:[^"\\]|\\.)*` é o caso típico — sobre alguns milhares de caracteres
+esgota a pilha de 8 MB.
+
+**O que já foi feito:** existia teto de PASSOS (`RX_MAX_PASSOS`, 2 milhões) e
+ele não protegia disso, porque a pilha acaba muito antes de 2 milhões de
+passos. O processo morria de SIGSEGV, sem mensagem nenhuma — achado escrevendo
+o semeador do fuzzer em PoolScript, casando `"((?:[^"\\]|\\.)*)"` contra um
+trecho de 29 mil caracteres de `teste/casos_diferencial.c`. Entrou
+`RX_MAX_PROF` (6.000 quadros, folgado nos 8 MB) e agora o mesmo caso é
+`RuntimeError: regex: backtracking demais`, com linha e coluna. Três casos de
+regressão em `teste/casos_linguagem.c`.
+
+**O que continua limitado:** o Python casa esse padrão sobre texto arbitrário;
+aqui, acima de ~6.000 caracteres consumidos por uma repetição de grupo, o
+resultado é erro em vez de resposta. Quem precisa varrer arquivo grande divide
+por linha antes (é o que `teste/fuzz_semeia.ps` faz, e o comentário lá explica
+por quê).
+
+**Saída definitiva:** tornar a repetição de grupo ITERATIVA. O `*` de um átomo
+simples já é um laço; é a repetição de GRUPO que recursa. Enquanto isso não
+existir, o teto fica — e teto que avisa é melhor que morte calada.

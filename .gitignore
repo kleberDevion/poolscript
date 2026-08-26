@@ -55,3 +55,13 @@ teste/ultima_falha.txt
 testar
 pool-asan
 .vscode/
+
+# artefatos de teste que não são fonte
+cob/
+pool-oom
+pool-fuzz
+pool-asan
+teste/fuzz_corpus/
+teste/fuzz_achados/
+*.gcda
+*.gcno

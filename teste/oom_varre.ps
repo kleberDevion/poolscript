@@ -1,0 +1,181 @@
+# Varredura de falha de alocação — a técnica do SQLite, aplicada aqui.
+#
+# POR QUE ISTO EXISTE: toda correção da classe C da auditoria de 2026-08-26 é
+# um caminho de falta de memória. O gcov provou que nenhum deles jamais
+# executou — `if (!mn)` era avaliado 42x com o ramo verdadeiro NUNCA tomado.
+# O I/O pôde ser testado porque o Linux dá `/dev/full`; memória não tem
+# equivalente, então `pool-oom` fabrica a falha (ver teste/ps_oom.c).
+#
+# COMO: pra cada programa, conta quantas alocações ele faz; depois roda uma vez
+# por alocação, fazendo A i-ÉSIMA falhar. O contrato é simples e duro:
+#
+#     ou o programa termina, ou morre com MENSAGEM DE ERRO.
+#     segfault, liberação dupla, abort e trava são FALHA.
+#
+# Um `MemoryError` é aprovação, não reprovação — é o motor dizendo o que
+# aconteceu em vez de estourar. O que se caça é o silêncio violento.
+#
+# ATENÇÃO: o índice da alocação vale SÓ pro binário que o produziu. Qualquer
+# mudança no motor desloca a numeração — reproduza sempre com o `pool-oom`
+# recém-construído.
+#
+#     ./pool teste/oom_varre.ps            # todos os programas
+#     ./pool teste/oom_varre.ps 1          # só o primeiro (depurando)
+#     ./pool teste/oom_varre.ps 0 999999   # exaustivo, sem teto
+import os
+import sys
+
+BIN = "./pool-oom"
+TMP = "/tmp/ps_oom"
+
+# Teto de pontos por programa. A varredura exaustiva é o ideal (é o que o
+# SQLite faz), mas portão que ninguém roda não protege nada. Acima do teto os
+# pontos são AMOSTRADOS com passo constante, cobrindo o programa inteiro em vez
+# de só o começo — e quantos ficaram de fora é IMPRESSO: limite calado passa a
+# impressão de "varri tudo" sem ter varrido.
+PONTOS_MAX = 1200
+
+# Cada entrada exercita uma FAMÍLIA de alocação. Não adianta variar sintaxe: o
+# que interessa é passar por caminhos de alocação diferentes.
+PROGRAMAS = [
+    ["basico",      "post(\"oi\")\n"],
+    ["string",      "s = \"a\" * 500\npost(len(s), s[10:20], s.upper()[:5])\n"],
+    ["lista",       "l = []\nfor each i in range(200) {\n    l.append(i * 2)\n}\npost(sum(l), len(l))\n"],
+    ["dict",        "d = {}\nfor each i in range(200) {\n    d[str(i)] = i\n}\npost(len(d), d[\"77\"])\n"],
+    ["closure",     "action faz() {\n    n = 0\n    action inc() {\n        n = n + 1\n        return n\n    }\n    return inc\n}\nc = faz()\npost(c(), c())\n"],
+    ["entity",      "Entity P() {\n    action __init__(self, x) {\n        self.x = x\n    }\n    action d(self) {\n        return self.x * 2\n    }\n}\npost(P(21).d())\n"],
+    # Entity SEM __init__: passa pelo sintetiza_init, que é o realloc duplo do
+    # achado C1 da auditoria — o que deixava ponteiro pendurado no descritor.
+    ["entity_init", "Entity S() {\n    action m(self) {\n        return 1\n    }\n}\npost(S().m())\n"],
+    ["fstring",     "n = \"ana\"\nfor each i in range(50) {\n    x = f\"{n} tem {i} anos e {i * 2} meses\"\n}\npost(x)\n"],
+    ["json",        "import json\nd = {\"a\": [1, 2, 3], \"b\": {\"c\": \"d\"}}\ns = json.stringify(d)\npost(json.parse(s)[\"b\"][\"c\"])\n"],
+    ["regex",       "import regex\np = regex.compile(\"(\\\\d+)-(\\\\w+)\")\npost(p.findall(\"1-a 22-bb 333-ccc\"))\n"],
+    ["arquivo",     "using open(\"a.txt\", \"w\") as f {\n    f.write(\"linha1\\nlinha2\\n\")\n}\npost(open(\"a.txt\").read().split(\"\\n\")[0])\n"],
+    ["split",       "s = (\",\").join([str(i) for each i in range(100)])\npost(len(s.split(\",\")))\n"],
+    ["gerador",     "action g() {\n    for each i in range(100) {\n        yield i * i\n    }\n}\npost(sum(list(g())))\n"],
+    ["import",      "import os\nimport sys\nimport json\npost(type(os), type(sys), type(json))\n"],
+    ["xlsx",        "import manpu as mp\nusing mp.open(target=\"p.xlsx\") as a {\n    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n}\npost(len(mp.read(\"p.xlsx\")))\n"],
+    ["traceback",   "action f() {\n    raise ValueError(\"x\")\n}\ntry {\n    f()\n} catch (e) {\n    post(\"peguei\")\n}\n"],
+]
+
+
+# Roda o binário com a i-ésima alocação falhando (0 = nenhuma, só conta).
+# Devolve [rc, saida, erro].
+action roda(caminho, falha_em, contando) {
+    # Cada execução parte do MESMO estado. Sem isto, um programa que grava
+    # arquivo (o de xlsx grava `p.xlsx`) deixa o resto pra próxima rodada: uma
+    # falha no meio da escrita produz um arquivo truncado, e a rodada seguinte
+    # morre LENDO ele. Foram 3 "achados" que eram sujeira do harness — e um
+    # harness que inventa defeito é tão ruim quanto um que esconde.
+    os.cmd("cd '" + TMP + "' && ls | grep -v '\\.ps$' | xargs -r rm -rf")
+    env = ""
+    if contando {
+        env = "PS_OOM_CONTA=1 "
+    }
+    if falha_em > 0 {
+        env = env + "PS_OOM_FALHA=" + str(falha_em) + " "
+    }
+    os.cmd("cd '" + TMP + "' && " + env + "GUZER_HEADLESS=1 timeout 20 " +
+           BASE + "/" + BIN + " " + caminho +
+           " > o.txt 2> e.txt 3> n.txt < /dev/null; echo $? > rc.txt")
+    rc = int(open(TMP + "/rc.txt").read().strip())
+    return [rc, open(TMP + "/o.txt").read(), open(TMP + "/e.txt").read()]
+}
+
+
+BASE = os.cwd()
+
+if __name__ == "main" {
+    os.mkdir(TMP, exist_ok=true)
+
+    so_um = -1
+    if len(sys.argv) > 0 {
+        so_um = int(sys.argv[0])
+    }
+    if len(sys.argv) > 1 {
+        PONTOS_MAX = int(sys.argv[1])
+    }
+
+    total_pontos = 0
+    pulados = 0
+    achados = []
+
+    i = 0
+    for each par in PROGRAMAS {
+        i = i + 1
+        if so_um > 0 and i != so_um {
+            continue
+        }
+        nome = par[0]
+        alvo = TMP + "/" + nome + ".ps"
+        using open(alvo, "w") as f {
+            f.write(par[1])
+        }
+
+        # 1) quantas alocações NOSSAS este programa faz?
+        roda(nome + ".ps", 0, true)
+        bruto = open(TMP + "/n.txt").read().strip()
+        if bruto == "" {
+            post("  ", nome, "-> nao consegui contar as alocacoes (pulei)")
+            continue
+        }
+        n = int(bruto)
+
+        # 2) uma execução por ponto amostrado, falhando aquela alocação
+        mortes = 0
+        passo = 1
+        if n > PONTOS_MAX {
+            passo = int(n / PONTOS_MAX)
+        }
+        visitados = 0
+        k = 1
+        while k <= n {
+            visitados = visitados + 1
+            r = roda(nome + ".ps", k, false)
+            rc = r[0]
+            # >128 = morreu de sinal; 124 = o `timeout` matou (travou)
+            if rc > 128 or rc == 124 {
+                sinal = "sinal " + str(rc - 128)
+                if rc == 124 {
+                    sinal = "TRAVOU"
+                }
+                mortes = mortes + 1
+                if mortes <= 3 {
+                    achados.append([nome, k, sinal, r[2].split("\n")[0]])
+                }
+            }
+            k = k + passo
+        }
+        total_pontos = total_pontos + visitados
+        pulados = pulados + (n - visitados)
+        marca = "ok"
+        if mortes > 0 {
+            marca = "FALHOU (" + str(mortes) + ")"
+        }
+        detalhe = str(visitados) + " pontos"
+        if passo > 1 {
+            detalhe = detalhe + " (de " + str(n) + ", passo " + str(passo) + ")"
+        }
+        post("  ", nome, "->", detalhe + ",", marca)
+    }
+
+    post("")
+    post("pontos de alocacao varridos:", total_pontos)
+    if pulados > 0 {
+        post("pontos NAO varridos (acima do teto de", str(PONTOS_MAX) + " por programa):", pulados)
+        post("  exaustivo:  ./pool teste/oom_varre.ps 0 999999")
+    }
+    if len(achados) == 0 {
+        post("nenhuma morte violenta: em todo ponto o motor terminou ou")
+        post("levantou erro — que e o contrato.")
+        sys.exit(0)
+    }
+    post("MORTES VIOLENTAS (segfault / abort / trava):")
+    for each a in achados {
+        post("   ", a[0], "alocacao", str(a[1]), "->", a[2], "|", a[3])
+    }
+    post("")
+    post("reproduza com:  PS_OOM_FALHA=<n> ./pool-oom " + TMP + "/<nome>.ps")
+    post("(o indice so vale pro binario que o produziu)")
+    sys.exit(1)
+}

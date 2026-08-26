@@ -1,0 +1,113 @@
+# Semeia o corpus do fuzzer com os programas que a suíte JÁ tem.
+#
+# Fuzzer que parte de bytes aleatórios gasta as primeiras horas descobrindo que
+# a linguagem tem `action` e `{`. Partindo de programas VÁLIDOS, cada mutação
+# nasce a um passo de algo que compila — que é onde moram os defeitos de
+# parser. É o mesmo motivo de o Fuzzilli mutar uma IR em vez de texto cru.
+#
+# As fontes: todo `.ps` do repositório e os fontes embutidos nos casos em C.
+# A libFuzzer depois reduz o corpus sozinha, mantendo só o que abre ramo novo.
+#
+#     ./pool teste/fuzz_semeia.ps
+import os
+import sys
+
+DESTINO = "teste/fuzz_corpus"
+ACHADOS = "teste/fuzz_achados"
+
+# Pastas sem fonte da linguagem, que só custam tempo — `.git` sozinha tem
+# milhares de arquivos.
+FORA = [".git", ".vscode", ".claude", "fuzz_corpus", "fuzz_achados", "cob",
+        "dist", "node_modules"]
+
+
+action junta_ps(alvo, acc) {
+    for each x in FORA {
+        if alvo.endswith("/" + x) or alvo == "./" + x {
+            return acc
+        }
+    }
+    if os.isdir(alvo) {
+        for each e in os.ls(alvo) {
+            junta_ps(alvo + "/" + e["name"], acc)
+        }
+    }
+    elif alvo.endswith(".ps") {
+        acc.append(alvo)
+    }
+    return acc
+}
+
+
+# Extrai os fontes dos casos em C. Cada caso é uma sequência de literais
+# adjacentes ("linha1\n" "linha2\n"): partindo a linha na aspa, os pedaços de
+# índice ÍMPAR são o que estava dentro das aspas.
+#
+# Por `split`, e as duas outras formas foram descartadas com motivo:
+#   - regex: o casador é recursivo (um quadro de pilha C por caractere) e
+#     estoura em literal de alguns milhares de caracteres — há linhas assim
+#     nestes arquivos. Ver notas/LIMITACOES.md;
+#   - varrer com `linha[i]`: indexar caractere a caractere é O(i) em UTF-8,
+#     então o laço vira quadrático. Medido: não terminou em 10 minutos.
+# `split` é linear e resolve em milésimos. Perder um literal que contenha aspa
+# escapada não faz diferença aqui: o que importa é volume de entrada válida.
+action fontes_dos_casos(caminho) {
+    saida = []
+    for each linha in open(caminho).read().split("\n") {
+        pedacos = linha.split("\"")
+        i = 1
+        while i < len(pedacos) {
+            bruto = pedacos[i]
+            if "\\n" in bruto and len(bruto) > 4 {
+                s = bruto.replace("\\n", "\n").replace("\\t", "\t")
+                s = s.replace("\\\\", "\\")
+                saida.append(s)
+            }
+            i = i + 2
+        }
+    }
+    return saida
+}
+
+
+if __name__ == "main" {
+    os.mkdir(DESTINO, exist_ok=true)
+    os.mkdir(ACHADOS, exist_ok=true)
+
+    sementes = []
+
+    # 1) os .ps de verdade
+    for each caminho in junta_ps(".", []) {
+        sementes.append(open(caminho).read())
+    }
+    de_ps = len(sementes)
+
+    # 2) os fontes embutidos nos casos em C
+    for each e in os.ls("teste") {
+        nome = e["name"]
+        if nome.startswith("casos_") and nome.endswith(".c") {
+            for each s in fontes_dos_casos("teste/" + nome) {
+                sementes.append(s)
+            }
+        }
+    }
+
+    # Sem repetir: conteúdo repetido só faria a libFuzzer descartar depois.
+    vistos = {}
+    n = 0
+    for each s in sementes {
+        if s in vistos {
+            continue
+        }
+        vistos[s] = 1
+        using open(DESTINO + "/s" + str(n) + ".ps", "w") as f {
+            f.write(s)
+        }
+        n = n + 1
+    }
+
+    post("corpus semeado em", DESTINO)
+    post("  de arquivos .ps:", de_ps)
+    post("  de casos em C: ", len(sementes) - de_ps)
+    post("  gravados (sem repetir):", n)
+}

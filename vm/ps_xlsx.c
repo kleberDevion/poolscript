@@ -34,11 +34,23 @@ static int grade_garante_linha(PSGrade *g, int lin)
     if (lin + 1 > g->cap) {
         int nc = g->cap < 8 ? 8 : g->cap;
         while (nc < lin + 1) nc *= 2;
+        /* Cada campo é PUBLICADO assim que o realloc dele dá certo.
+         *
+         * Guardar os três pra publicar no fim parecia mais limpo e era
+         * ponteiro pendurado: o realloc que dá certo JÁ liberou o bloco
+         * antigo, então o `free` no erro de um dos outros deixava
+         * `g->celulas` apontando pra memória morta — e o destrutor passa lá
+         * liberando de novo. Mesma forma do C1 no compilador. */
         char ***nce = realloc(g->celulas, sizeof(char **) * (size_t)nc);
+        if (!nce) return -1;
+        g->celulas = nce;
         char **nt = realloc(g->tipos, sizeof(char *) * (size_t)nc);
+        if (!nt) return -1;
+        g->tipos = nt;
         int *nnc = realloc(g->ncols, sizeof(int) * (size_t)nc);
-        if (!nce || !nt || !nnc) { free(nce); free(nt); free(nnc); return -1; }
-        g->celulas = nce; g->tipos = nt; g->ncols = nnc; g->cap = nc;
+        if (!nnc) return -1;
+        g->ncols = nnc;
+        g->cap = nc;
     }
     for (int r = g->nlin; r <= lin; r++) { g->celulas[r] = NULL; g->tipos[r] = NULL; g->ncols[r] = 0; }
     g->nlin = lin + 1;
@@ -49,10 +61,16 @@ int ps_grade_set(PSGrade *g, int lin, int col, const char *valor, char tipo)
 {
     if (grade_garante_linha(g, lin) != 0) return -1;
     if (col >= g->ncols[lin]) {
+        /* Publica cada um na hora — ver `grade_garante_linha` acima. Este
+         * ponto foi o que a varredura de falha de alocação pegou: leitura de
+         * bloco já liberado em `ps_xlsx_escreve` e liberação inválida no
+         * finalizador (`make oom`, xlsx, alocação 140). */
         char **nn = realloc(g->celulas[lin], sizeof(char *) * (size_t)(col + 1));
+        if (!nn) return -1;
+        g->celulas[lin] = nn;
         char *nt = realloc(g->tipos[lin], sizeof(char) * (size_t)(col + 1));
-        if (!nn || !nt) { free(nn); free(nt); return -1; }
-        g->celulas[lin] = nn; g->tipos[lin] = nt;
+        if (!nt) return -1;
+        g->tipos[lin] = nt;
         for (int c = g->ncols[lin]; c <= col; c++) { g->celulas[lin][c] = NULL; g->tipos[lin][c] = 0; }
         g->ncols[lin] = col + 1;
     }
