@@ -997,6 +997,29 @@ static PSNode *bloco(P *p)
 {
     PSToken *t = atual(p);
 
+    /* Estilo Allman — a chave na LINHA SEGUINTE:
+     *
+     *     if (x)
+     *     {
+     *         ...
+     *     }
+     *
+     * `Entity`/`class`/`action` sempre aceitaram (o cabeçalho deles pula
+     * separadores antes de procurar o `{`); `if`/`while`/`for` não, e a
+     * diferença era acidental — o mesmo arquivo passava numa construção e
+     * falhava na outra. Só pula os separadores quando o que vem depois deles
+     * é MESMO um `{`: senão um bloco `:` perderia a quebra de linha que ele
+     * exige. */
+    if (checa(p, T_NEWLINE) || checa(p, T_INDENT)) {
+        int32_t k = p->pos;
+        while (k < p->n && (p->toks[k].type == T_NEWLINE
+                            || p->toks[k].type == T_INDENT)) k++;
+        if (k < p->n && p->toks[k].type == T_LBRACE) {
+            p->pos = k;
+            t = atual(p);
+        }
+    }
+
     if (aceita(p, T_LBRACE)) {
         PSNode *b = ps_node_novo(p->arena, N_BLOCK, t->line, t->col);
         if (!b) return NULL;

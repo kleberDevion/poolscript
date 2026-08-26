@@ -408,6 +408,29 @@ const Caso CASOS_LINGUAGEM[] = {
 { "continue fora de laco continua sendo erro",
   "continue\n", NULL, "'continue' fora de laco", -1 },
 
+/* ── estilo Allman: a chave na LINHA SEGUINTE ───────────────────────────────
+ * FALTAVA NO PORTE (nunca esteve no parser em C, conferido até a 8.2.30):
+ * `Entity`/`class`/`action` aceitavam, porque o cabeçalho deles pula
+ * separadores antes de procurar o `{`; `if`/`while`/`for`/`try` não. O MESMO
+ * arquivo passava numa construção e falhava na outra — foi o que impedia uma
+ * lib real de carregar. */
+{ "if com chave na linha seguinte",
+  "if (true)\n{\n    post(\"A\")\n}\n", "A", NULL, 0 },
+{ "if/else com chave na linha seguinte",
+  "x = 2\nif (x == 1)\n{\n    post(\"A\")\n}\nelse\n{\n    post(\"B\")\n}\n", "B", NULL, 0 },
+{ "while com chave na linha seguinte",
+  "n = 0\nwhile (n < 2)\n{\n    n = n + 1\n}\npost(n)\n", "2", NULL, 0 },
+{ "for each com chave na linha seguinte",
+  "for each i in [1,2]\n{\n    post(i)\n}\n", "1\n2", NULL, 0 },
+{ "try/catch com chave na linha seguinte",
+  "try\n{\n    raise B(\"x\")\n}\ncatch (e)\n{\n    post(\"peguei\")\n}\n", "peguei", NULL, 0 },
+{ "action com chave na linha seguinte continua valendo",
+  "action f()\n{\n    return 7\n}\npost(f())\n", "7", NULL, 0 },
+{ "chave na linha seguinte nao estraga bloco de dois-pontos",
+  "if true:\n    post(\"A\")\n", "A", NULL, 0 },
+{ "bloco de dois-pontos ainda exige quebra de linha",
+  "if true: post(\"A\")\n", NULL, "faltou quebra de linha", -1 },
+
 /* ── closure DENTRO de módulo importado ─────────────────────────────────────
  * O índice de proto do `OP_MAKE_CLOSURE` e o índice de global do
  * `OP_CELL_GET_NAME`/`OP_CELL_SET_NAME` não eram relocados ao anexar um
