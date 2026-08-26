@@ -823,6 +823,31 @@ static void guarda_nome(C *c, Unidade *u, const char *nome)
  * Regras herdadas: chaves aninhadas contam profundidade; `{{` e `}}`
  * escapam para chave literal.
  */
+/* Carimba linha/coluna em TODA a sub-árvore.
+ *
+ * O trecho `{...}` é re-lexado a partir de uma string isolada, então os nós
+ * dele nascem na linha 1. O escopo do `expr` impede que esse 1 vaze pra fora,
+ * mas DENTRO da interpolação ele continuaria errado: `post(f"{1 / x}")` na
+ * linha 4 reportaria linha 1 na divisão por zero.
+ *
+ * É o mesmo ajuste que o CPython faz desde a PEP 498
+ * (`fstring_fix_node_location`), e pelo mesmo motivo: ele também re-parseia o
+ * interior. A coluna não é a exata dentro do trecho; a linha é a certa, e é
+ * ela que o traceback mostra. */
+static void carimba_pos(PSNode *n, int32_t linha, int32_t col)
+{
+    if (!n) return;
+    n->line = linha;
+    n->col  = col;
+    carimba_pos(n->a, linha, col);
+    carimba_pos(n->b, linha, col);
+    carimba_pos(n->c, linha, col);
+    carimba_pos(n->e, linha, col);
+    for (int32_t i = 0; i < n->lista.n; i++)        carimba_pos(n->lista.itens[i], linha, col);
+    for (int32_t i = 0; i < n->lista2.n; i++)       carimba_pos(n->lista2.itens[i], linha, col);
+    for (int32_t i = 0; i < n->lista2_alias.n; i++) carimba_pos(n->lista2_alias.itens[i], linha, col);
+}
+
 static void compila_fstring(C *c, Unidade *u, PSNode *n)
 {
     const char *t = n->texto ? n->texto : "";
@@ -878,6 +903,7 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
             }
             PSNode *st = r->programa->lista.itens[0];
             PSNode *alvo = (st->kind == N_EXPRESSION_STMT) ? st->a : st;
+            carimba_pos(alvo, n->line, n->col);
             /* O trecho é compilado como expressão NORMAL: se estourar (nome
              * fora de escopo, método inexistente...), o erro SOBE. Antes cada
              * trecho tinha um `try` que devolvia o texto cru — `f"oi {nome}"`
@@ -936,7 +962,29 @@ static void count_operandos(C *c, Unidade *u, PSNode *n)
 }
 
 /* ── expressões ─────────────────────────────────────────────────────────── */
+/* A posição do fonte é ESCOPADA, não global.
+ *
+ * `c->linha_atual` é o que o `emite` grava na tabela de linhas. Entrar num nó
+ * escrevia nela e ninguém devolvia — então compilar qualquer coisa ANINHADA
+ * deixava a linha dela no lugar, e tudo que fosse emitido depois no mesmo
+ * statement herdava. `raise Boom(f"erro: {e}")` na linha 3 era gravado como
+ * linha 1: o interior da f-string é re-parseado a partir de uma string
+ * isolada, e ali tudo é linha 1.
+ *
+ * O modelo de compilador é a posição ser ARGUMENTO, não estado pendurado (no
+ * CPython o gerador usa a posição do nó, e é dela que sai o `co_linetable`).
+ * Salvar e restaurar em volta de cada nó dá o mesmo efeito sem passar a
+ * posição nas ~1000 chamadas de `emite`: nada aninhado alcança quem o contém. */
+static void expr_no(C *c, Unidade *u, PSNode *n);
+
 static void expr(C *c, Unidade *u, PSNode *n)
+{
+    int32_t l = c->linha_atual, co = c->coluna_atual;
+    expr_no(c, u, n);
+    c->linha_atual = l; c->coluna_atual = co;
+}
+
+static void expr_no(C *c, Unidade *u, PSNode *n)
 {
     if (n && n->line) c->linha_atual = n->line;
     if (n && n->col)  c->coluna_atual = n->col;
@@ -1549,7 +1597,17 @@ static void emite_finallys(C *c, Unidade *u, int ate_laco)
     }
 }
 
+static void stmt_no(C *c, Unidade *u, PSNode *n);
+
+/* mesma regra do `expr` */
 static void stmt(C *c, Unidade *u, PSNode *n)
+{
+    int32_t l = c->linha_atual, co = c->coluna_atual;
+    stmt_no(c, u, n);
+    c->linha_atual = l; c->coluna_atual = co;
+}
+
+static void stmt_no(C *c, Unidade *u, PSNode *n)
 {
     if (CFALHOU(c) || !n) return;
     if (n->line) c->linha_atual = n->line;

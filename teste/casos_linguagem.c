@@ -829,6 +829,39 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(c(), c(), c())\n",
   "1 2 3\n1 2 3", NULL, 0, "ps_mod_cnt.ps" },
 
+/* ── posição do fonte: nada aninhado vaza pra quem o contém ─────────────────
+ * O interior de uma f-string é re-lexado a partir de uma string isolada, então
+ * lá tudo é linha 1. Como o compilador guardava a "linha atual" numa variável
+ * global que ninguém restaurava, esse 1 escapava e era gravado nas instruções
+ * emitidas DEPOIS — `raise` na linha 3 aparecia como linha 1 no traceback.
+ * Um erro de posição de uma construção alcançando outra é o defeito; estes
+ * casos travam as duas pontas. */
+{ "f-string nao muda a linha do statement que a contem",
+  "action f() {\n"
+  "    e = \"x\"\n"
+  "    raise Boom(f\"erro: {e}\")\n"
+  "}\n"
+  "f()\n", NULL, "linha 3", -1 },
+{ "erro DENTRO da f-string aponta a linha da f-string",
+  "action f() {\n"
+  "    x = 0\n"
+  "\n"
+  "    post(f\"v: {1 / x}\")\n"
+  "}\n"
+  "f()\n", NULL, "linha 4", -1 },
+{ "f-string no meio nao desloca o que vem depois",
+  "action f() {\n"
+  "    e = 1\n"
+  "    post(f\"a {e}\")\n"
+  "    raise Boom(\"y\")\n"
+  "}\n"
+  "f()\n", NULL, "linha 4", -1 },
+{ "f-string continua interpolando",
+  "n = 7\ns = \"ana\"\npost(f\"{s} tem {n}\", f\"{n * 2}\")\n", "ana tem 7 14", NULL, 0 },
+{ "f-string aninhada em chamada aninhada",
+  "action g(x) {\n    return x\n}\n"
+  "v = 3\npost(g(f\"v={v}\"))\n", "v=3", NULL, 0 },
+
 /* ── input(): fim da entrada é `null`, linha vazia é `""` ───────────────────
  * O runner roda todo caso com stdin em /dev/null, então aqui a entrada já
  * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre
