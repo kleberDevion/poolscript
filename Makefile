@@ -78,6 +78,32 @@ instala-vsix: vsix
 
 .PHONY: vsix instala-vsix
 
+# ── Neovim ──────────────────────────────────────────────────────────────────
+# Cliente LSP NATIVO: sem extensão, sem empacotamento, sem cliente de terceiro
+# no meio. É por isso que ele serve de controle — se o completion funciona aqui
+# e não no VS Code, o servidor está certo e o defeito é do outro lado.
+#
+# O tema `ariake-dark` NÃO é uma imitação: as cores saíram do mesmo tema que ele
+# usa no VS Code (`wart.ariake-dark`), escopo por escopo, do color-theme.json
+# (interface) e do tmTheme (código).
+#
+#     make nvim     instala em ~/.config/nvim
+NVIM_CFG ?= $(HOME)/.config/nvim
+
+nvim:
+	@install -d $(NVIM_CFG)/colors
+	install -m644 editor/nvim/colors/ariake-dark.lua $(NVIM_CFG)/colors/
+	@if [ -f $(NVIM_CFG)/init.lua ] && ! cmp -s editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua; then \
+	  echo "  ja existe $(NVIM_CFG)/init.lua e ele DIFERE — nao vou sobrescrever."; \
+	  echo "  o conteudo a acrescentar esta em editor/nvim/poolscript.lua"; \
+	else \
+	  install -m644 editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua; \
+	  echo "  init.lua instalado"; \
+	fi
+	@echo "  tema + LSP em $(NVIM_CFG)"
+
+.PHONY: nvim
+
 # Instala no sistema: o binário (como `pool` e `psl`, que são o mesmo) e o
 # servidor LSP, que é PoolScript e por isso precisa dos .ps ao lado. O
 # `poolscript-lsp` é o atalho que o editor chama.
