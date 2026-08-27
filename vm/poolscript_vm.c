@@ -40,6 +40,7 @@
 #include <errno.h>
 #include <time.h>
 #include <sqlite3.h>
+#include "ps_assert.h"
 #include "ps_mail.h"
 #include "ps_http.h"
 #include "ps_qr.h"
@@ -56,6 +57,7 @@
 #include <pthread.h>
 #include <ucontext.h>
 /* lib sockets (espelho do módulo socket do Python) */
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
@@ -1097,10 +1099,40 @@ typedef struct VM_ VM;
 
 /* ── alocação e coleta ──────────────────────────────────────────────────── */
 
+/* SEMENTE DO HASH, sorteada uma vez por processo.
+ *
+ * Sem ela, o FNV-1a com as constantes públicas é totalmente pré-computável:
+ * quem quiser monta offline um conjunto de N chaves que colidem em 32 bits, e
+ * como o dict resolve colisão por sondagem linear, inserir as N custa O(N²).
+ *
+ * Isso importa porque este runtime SERVE HTTP: header, query, formulário e
+ * JSON do cliente viram dict. É o ataque de 2011 (n.runs SA-2011.004), que
+ * rendeu CVE-2011-4885 no PHP e CVE-2012-1150 no Python — e a resposta de
+ * todos eles, Ruby, Java e V8 inclusive, foi randomizar a semente por
+ * processo. Custa uma leitura de /dev/urandom no boot.
+ *
+ * `PS_HASH_SEED=<n>` fixa a semente. Existe pro caso em que a saída precisa
+ * ser reproduzível entre execuções (depurar ordem de dict, comparar despejo);
+ * o padrão é sorteada. */
+static uint32_t ps_hash_seed = 2166136261u;
+
+static void ps_hash_semeia(void)
+{
+    const char *fixa = getenv("PS_HASH_SEED");
+    if (fixa && fixa[0]) { ps_hash_seed = (uint32_t)strtoul(fixa, NULL, 10); return; }
+    unsigned char b[4];
+    if (ps_random_bytes(b, sizeof b) == 0)
+        ps_hash_seed = ((uint32_t)b[0] << 24) | ((uint32_t)b[1] << 16)
+                     | ((uint32_t)b[2] << 8)  |  (uint32_t)b[3];
+    /* sem entropia, fica a constante do FNV: pior que sorteada, melhor que
+     * abortar o interpretador inteiro por causa disso */
+}
+
 static uint32_t hash_str(const char *chars, int len)
 {
-    /* FNV-1a — barato e bom o suficiente pra chave de dict */
-    uint32_t h = 2166136261u;
+    /* FNV-1a com a semente do processo no estado inicial (é onde ela tem
+     * efeito: o FNV depende do sufixo, então semear no fim não adiantaria) */
+    uint32_t h = ps_hash_seed;
     for (int i = 0; i < len; i++) {
         h ^= (unsigned char)chars[i];
         h *= 16777619u;
@@ -1419,6 +1451,12 @@ static void empilha_cinza(VM *vm, Obj *o)
 static void marca_obj(VM *vm, Obj *o)
 {
     if (!o || o->marked) return;
+    /* `type` fora da tabela é ponteiro que não aponta pra objeto: raiz podre,
+     * uso após liberar, ou campo lido de memória já devolvida. Sem isto, o
+     * `GC_INFO[o->type]` logo adiante indexa fora do vetor e o efeito só
+     * aparece bem longe daqui. */
+    PS_ASSERT_MSG(o->type >= 0 && o->type < OBJ__COUNT,
+                  "ObjType=%d fora da tabela (objeto %p)", (int)o->type, (void *)o);
     o->marked = 1;
     if (o->type != OBJ_STRING) empilha_cinza(vm, o);  /* string é folha */
 }
@@ -1919,6 +1957,17 @@ static void fib_marca_gc(VM *vm);   /* marca contextos de fibra (def. junto do j
 static void gc_coleta(VM *vm)
 {
     gc_valida_tabela();   /* rede de segurança: aborta se algum tipo não declarou tracer */
+
+    /* O GC lê `sp` e `locals_top` como TAMANHO das raízes. Se algum caminho os
+     * deixou fora de faixa, a varredura lê lixo e marca objeto que não existe
+     * — e o efeito aparece muito depois, num free de ponteiro inventado. Aqui
+     * é o ponto exato em que dá pra dizer que estava errado. */
+    PS_ASSERT_MSG(vm->sp >= 0 && vm->sp <= vm->stack_teto,
+                  "sp=%d fora de [0, %d]", vm->sp, vm->stack_teto);
+    PS_ASSERT_MSG(vm->locals_top >= 0 && vm->locals_top <= vm->locals_teto,
+                  "locals_top=%d fora de [0, %d]", vm->locals_top, vm->locals_teto);
+    PS_ASSERT_MSG(vm->gc_fp >= 0, "gc_fp=%d negativo", vm->gc_fp);
+
     vm->ncinzas = 0;
 
     /* raízes: globais, pilha viva, locais vivos e constantes dos protótipos */
@@ -16510,12 +16559,47 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
 #define FIB_FRAMES  512           /* frames de chamada */
 #define FIB_CSTACK  (128 * 1024)  /* pilha do C da fibra (ucontext) */
 
+/* PILHA DE FIBRA COM PÁGINA DE GUARDA.
+ *
+ * Era `malloc(FIB_CSTACK)`: memória de heap comum, com os blocos do allocator
+ * logo ABAIXO dela. Pilha cresce pra baixo, então estourar não dava SIGSEGV —
+ * dava escrita silenciosa em cima do que estivesse ali. O pior caso deixa de
+ * ser "o servidor morre" e vira "o servidor continua com o heap corrompido",
+ * que é bem pior de diagnosticar.
+ *
+ * Com `mmap` + uma página `PROT_NONE` no fim (o endereço BAIXO, que é onde a
+ * pilha chega ao estourar), o estouro vira fault no ponto exato. É o que
+ * Boost.Context, o runtime do Go e a libmill fazem, e pela mesma razão.
+ *
+ * Custa uma página de endereçamento por fibra — sem RSS, porque `PROT_NONE`
+ * nunca é tocada. */
+static void *fib_pilha_nova(void)
+{
+    long pg = sysconf(_SC_PAGESIZE);
+    if (pg <= 0) pg = 4096;
+    size_t total = FIB_CSTACK + (size_t)pg;          /* guarda + pilha */
+    void *base = mmap(NULL, total, PROT_READ | PROT_WRITE,
+                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    if (base == MAP_FAILED) return NULL;
+    /* a guarda vai no começo do mapeamento: é pra lá que a pilha desce */
+    if (mprotect(base, (size_t)pg, PROT_NONE) != 0) { munmap(base, total); return NULL; }
+    return (char *)base + pg;                        /* o utilizável começa depois */
+}
+
+static void fib_pilha_solta(void *p)
+{
+    if (!p) return;
+    long pg = sysconf(_SC_PAGESIZE);
+    if (pg <= 0) pg = 4096;
+    munmap((char *)p - pg, FIB_CSTACK + (size_t)pg);
+}
+
 typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
 enum { FIB_HTTP = 0, FIB_ASYNC = 1 };   /* o que a fibra roda */
 
 typedef struct Fiber {
     PS_CTX ctx;                   /* contexto do C desta fibra */
-    void      *cstack;            /* pilha do C (malloc, reusada no pool) */
+    void      *cstack;            /* pilha do C (mmap + guarda, reusada no pool) */
     Value     *stack;  Value *locals;  Frame *frames;   /* arrays próprios */
     /* estado da VM salvo enquanto a fibra NÃO está corrente */
     int        sp, locals_top, frame_topo;
@@ -16549,6 +16633,23 @@ typedef struct Fiber {
 static Fiber **g_fibs = NULL;    /* vetor DINÂMICO de ponteiros p/ fibras */
 static int     g_nfibs = 0, g_cap_fibs = 0;
 static VM   *g_fib_vm;            /* makecontext não passa args: a fibra lê daqui */
+
+/* Devolve o pool inteiro ao sistema. O pool nunca era desmontado — as pilhas
+ * viviam até o processo morrer, o que "funcionava" porque `malloc` some junto.
+ * Com `mmap` isso vira mapeamento pendurado, e o valgrind/ASan passam a
+ * apontá-lo. Chamado no fim de `libera_vm`. */
+static void fib_pool_solta(void)
+{
+    for (int i = 0; i < g_nfibs; i++) {
+        Fiber *f = g_fibs[i];
+        if (!f) continue;
+        fib_pilha_solta(f->cstack);
+        free(f->stack); free(f->locals); free(f->frames);
+        free(f);
+    }
+    free(g_fibs);
+    g_fibs = NULL; g_nfibs = 0; g_cap_fibs = 0;
+}
 
 /* devolve um slot de fibra livre (reusa) ou cria um novo (cresce o pool). NULL
  * só no teto de segurança / falta de memória. */
@@ -16652,7 +16753,7 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
     if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
     if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
-    if (!f->cstack) f->cstack = malloc(FIB_CSTACK);
+    if (!f->cstack) f->cstack = fib_pilha_nova();
     if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_HTTP;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
@@ -16685,7 +16786,7 @@ static PSFuturo *fib_pega_async(VM *vm, int proto, Value *args, int nargs)
     if (!f->stack)  f->stack  = calloc(FIB_STACK,  sizeof(Value));
     if (!f->locals) f->locals = calloc(FIB_LOCALS, sizeof(Value));
     if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
-    if (!f->cstack) f->cstack = malloc(FIB_CSTACK);
+    if (!f->cstack) f->cstack = fib_pilha_nova();
     if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
     PSFuturo *fu = novo_futuro(vm);
     if (!fu) return NULL;
@@ -20661,6 +20762,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 static void libera_vm(VM *vm)
 {
     libera_objetos(vm);
+    fib_pool_solta();      /* pilhas de fibra são mmap: devolvem ao sistema */
     if (vm->nomes_globais) {
         for (int i = 0; i < vm->n_nomes_globais; i++) free(vm->nomes_globais[i]);
         free(vm->nomes_globais);
@@ -21838,6 +21940,11 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * pipe quebrado matar o processo com SIGPIPE, silenciosamente. Sem isto o
      * servidor jinker HTTPS "parava do nada" ao ser acessado no navegador. */
     signal(SIGPIPE, SIG_IGN);
+
+    /* Semente do hash de dict, uma vez por processo — ver `ps_hash_semeia`.
+     * Aqui, antes de qualquer string nascer: a string guarda o hash calculado
+     * na criação, então semear depois deixaria hashes de duas gerações. */
+    ps_hash_semeia();
 
     e->tipo = PS_ERRO_NENHUM;
     e->msg[0] = '\0';

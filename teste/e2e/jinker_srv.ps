@@ -62,6 +62,22 @@ action param() {
     return jinker.request.path_param("nome")
 }
 
+# Profundidade vinda do CLIENTE. Antes: 300 níveis matavam o processo inteiro
+# do servidor — `str()` recorria sem teto e a fibra roda numa pilha de C de
+# 128 KB, ~64x menor que a do processo. O cliente seguinte tomava "Connection
+# refused". Hoje o `str` trunca em 256 e a pilha da fibra tem página de guarda.
+@app.route("/fundo/<prof>")
+action fundo() {
+    p = int(jinker.request.path_param("prof"))
+    x = []
+    i = 0
+    while (i < p) {
+        x = [x]
+        i = i + 1
+    }
+    return {"tam": len(str(x))}
+}
+
 @app.route("/hdr")
 action hdr() {
     return {"ua": jinker.request.header("X-Teste")}

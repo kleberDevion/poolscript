@@ -1,0 +1,84 @@
+# Replay dos achados do fuzzer — cada crash vira caso de regressão.
+#
+# POR QUE ISTO EXISTE: um `crash-*` achado às 3h da manhã virava artefato do
+# GitHub e nada mais. Ninguém reprovava amanhã se ele voltasse, e o corpus era
+# jogado fora a cada noite. Trinta minutos de mutação guiada por cobertura, no
+# lixo, todo dia.
+#
+# É o modelo do Go (`testdata/fuzz/` com o reproducer versionado) e do OSS-Fuzz
+# (crash replayado como regressão): o arquivo que derrubou uma vez fica no
+# repositório e passa a ser conferido em todo portão.
+#
+#     ./pool teste/fuzz_replay.ps
+#
+# O contrato é o mesmo do fuzzer: entrada nenhuma, por mais torta, pode causar
+# segfault, abort ou trava. Erro de sintaxe é RESPOSTA CERTA. O que reprova é a
+# morte violenta.
+import os
+import sys
+
+ACHADOS = "teste/fuzz_achados"
+TEMPO = 20
+
+
+action arquivos() {
+    if not os.isdir(ACHADOS) {
+        return []
+    }
+    saida = []
+    for each e in os.ls(ACHADOS) {
+        n = e["name"]
+        # a libFuzzer nomeia crash-<sha>, leak-<sha>, timeout-<sha>, oom-<sha>.
+        # O prefixo é conferido por lista: fora de parênteses, o `or` no fim da
+        # linha NÃO continua a expressão (a quebra encerra o statement), e uma
+        # condição de quatro termos numa linha só fica ilegível.
+        eh = false
+        for each pre in ["crash-", "leak-", "timeout-", "oom-"] {
+            if n.startswith(pre) {
+                eh = true
+            }
+        }
+        if eh {
+            saida.append(ACHADOS + "/" + n)
+        }
+    }
+    saida.sort()
+    return saida
+}
+
+
+if __name__ == "main" {
+    lista = arquivos()
+    if len(lista) == 0 {
+        post("nenhum achado guardado em " + ACHADOS + "/ — nada a replayar.")
+        post("(o fuzzer noturno grava aqui; o que ele achar fica versionado)")
+        sys.exit(0)
+    }
+
+    mortes = []
+    for each caminho in lista {
+        # o mesmo caminho do fuzzer: `--check` analisa sem executar
+        os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' --check " +
+               caminho + " > /dev/null 2>&1; echo $? > /tmp/ps_replay_rc")
+        rc = int(open("/tmp/ps_replay_rc").read().strip())
+        if rc > 128 or rc == 124 {
+            motivo = "sinal " + str(rc - 128)
+            if rc == 124 {
+                motivo = "TRAVOU"
+            }
+            mortes.append([caminho, motivo])
+        }
+    }
+
+    post("")
+    post("achados replayados:", len(lista))
+    if len(mortes) == 0 {
+        post("nenhum voltou a matar o motor.")
+        sys.exit(0)
+    }
+    post("VOLTARAM A MATAR:")
+    for each m in mortes {
+        post("   ", m[0], "->", m[1])
+    }
+    sys.exit(1)
+}

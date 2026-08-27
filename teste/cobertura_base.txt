@@ -1,0 +1,23 @@
+# Cobertura de referência, por arquivo: <arquivo> <linha%> <ramo%>
+#
+# Gerado por `./pool teste/cobertura_portao.ps --grava` a partir de
+# cob/vm.info. NÃO é meta: é o piso do que já está coberto. Cair abaixo
+# dele (fora da folga) reprova; subir é livre e regrava.
+
+main.c 22.7 16.6
+poolscript_vm.c 53.3 39.8
+ps_ast.c 44.0 21.2
+ps_compiler.c 91.5 70.5
+ps_db.c 0.0 0.0
+ps_guzer.c 0.0 0.0
+ps_hash.c 41.5 37.7
+ps_http.c 13.3 6.4
+ps_jinker.c 0.0 0.0
+ps_lexer.c 75.6 67.5
+ps_mail.c 2.8 0.6
+ps_mongo.c 0.0 0.0
+ps_parser.c 93.6 67.1
+ps_pkg.c 0.0 0.0
+ps_qr.c 86.0 69.0
+ps_regex.c 62.2 45.0
+ps_xlsx.c 81.1 53.2

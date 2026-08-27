@@ -146,10 +146,10 @@ Os prefixos de uma action/reaction — tipo de retorno (`int`/`bool`/`str`/`flo`
 Todos abaixo são equivalentes e válidos:
 
 ```ps
-int async reaction f():   ...
-async int reaction f():   ...
-public async reaction f(): ...
-private int action f():   ...
+int async reaction f() { }
+async int reaction f() { }
+public async reaction f() { }
+private int action f() { }
 ```
 
 ---

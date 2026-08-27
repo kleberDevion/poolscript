@@ -96,6 +96,46 @@ vim.diagnostic.config({
   severity_sort = true,
 })
 
+-- ── edição direta: Ctrl+S salva, o arquivo abre pronto pra digitar ──────────
+--
+-- O padrão do Vim é o que confunde: o arquivo abre em modo normal, onde as
+-- teclas são comandos e não texto, e gravar é `:w`. Aqui o arquivo já abre em
+-- inserção e o Ctrl+S grava, como em qualquer outro editor.
+--
+-- Os comandos do Vim continuam todos lá: `<Esc>` sai da inserção e devolve o
+-- modo normal (`:q` pra sair, `u` pra desfazer, `dd` pra apagar a linha).
+
+local function salvar()
+  -- Buffer sem nome não pode ser gravado — em vez de estourar o `E32: Nenhum
+  -- nome de arquivo`, pergunta o caminho.
+  if vim.api.nvim_buf_get_name(0) == "" then
+    local nome = vim.fn.input("Salvar como: ", vim.fn.getcwd() .. "/", "file")
+    if nome == "" then
+      return
+    end
+    vim.cmd("write " .. vim.fn.fnameescape(nome))
+    return
+  end
+  vim.cmd("write")
+end
+
+-- O mapeamento é a função direto: nada de trocar de modo, o Ctrl+S grava no
+-- meio da digitação e o cursor fica onde estava.
+vim.keymap.set({ "n", "i", "v" }, "<C-s>", salvar, { desc = "salva o arquivo (Ctrl+S)" })
+
+-- Abre digitando. Fica de fora o que não é arquivo de texto — ajuda, quickfix,
+-- lista de arquivos, terminal, buffer só-leitura: neles as teclas são atalhos,
+-- e entrar em inserção só atrapalharia.
+vim.api.nvim_create_autocmd("BufWinEnter", {
+  desc = "abre o arquivo já em modo de edição",
+  callback = function(args)
+    local bo = vim.bo[args.buf]
+    if bo.buftype == "" and bo.modifiable and not bo.readonly then
+      vim.cmd("startinsert")
+    end
+  end,
+})
+
 -- ── fechamento automático de ( ) [ ] { } ────────────────────────────────────
 --
 -- O Neovim não fecha delimitador sozinho e aqui não há gerenciador de plugin,

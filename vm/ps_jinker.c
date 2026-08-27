@@ -629,9 +629,12 @@ PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,
     c->fd = fd;
 
     /* chave aleatória de 16 bytes em base64 */
+    /* Mesma razão da máscara: sem entropia, não sobe a conexão. */
     unsigned char cru[16];
-    if (ps_random_bytes(cru, sizeof(cru)) != 0)
-        for (int i = 0; i < 16; i++) cru[i] = (unsigned char)(rand() & 0xff);
+    if (ps_random_bytes(cru, sizeof(cru)) != 0) {
+        snprintf(erro, ecap, "sem fonte de entropia (/dev/urandom)");
+        close(fd); free(c); return NULL;
+    }
     char chave[32];
     size_t nk = ps_base64_encode(cru, sizeof(cru), chave);
     chave[nk] = '\0';
@@ -685,9 +688,15 @@ int ps_jk_ws_envia_texto_cli(PSJkConn *c, const char *msg, size_t n)
     unsigned char cab[14];
     size_t nc;
     cab[0] = 0x81;   /* FIN + texto */
+    /* A chave de máscara TEM que ser imprevisível — RFC 6455 §5.3. Ela é a
+     * defesa contra envenenamento de cache num intermediário que não entende
+     * WebSocket: sem entropia, o atacante escolhe os bytes que o proxy vê.
+     *
+     * O fallback aqui era `rand()` sem `srand()` em lugar nenhum do projeto,
+     * ou seja, a MESMA sequência em todo processo. Falhar abrindo, com chave
+     * previsível, é pior que falhar: agora a operação falha. */
     unsigned char masc[4];
-    if (ps_random_bytes(masc, 4) != 0)
-        for (int i = 0; i < 4; i++) masc[i] = (unsigned char)(rand() & 0xff);
+    if (ps_random_bytes(masc, 4) != 0) return -1;
     if (n < 126) { cab[1] = (unsigned char)(0x80 | n); nc = 2; }
     else if (n < 65536) {
         cab[1] = 0x80 | 126;

@@ -283,6 +283,10 @@ check: pool testar
 	@echo
 	@./pool scripts/audita_c.ps
 	@echo
+	@./pool scripts/audita_exemplos_doc.ps
+	@echo
+	@./pool teste/fuzz_replay.ps
+	@echo
 	@./pool lsp/teste_lsp.ps
 	@echo
 	@$(MAKE) --no-print-directory analisa
@@ -311,7 +315,22 @@ E2E ?=
 check-e2e: pool
 	@./pool teste/e2e_roda.ps $(E2E)
 
-.PHONY: check-e2e
+# E2E que NÃO precisa de serviço externo: arquivo, sqlite (embutida), socket
+# (loopback), guzer (headless) e o par jinker (loopback). São cinco scripts que
+# rodam em qualquer máquina, e são o caminho mais barato pra tirar
+# `ps_jinker.c`, `ps_db.c` e `ps_guzer.c` dos 0% de cobertura — eles estão em
+# zero não por serem código morto, mas porque só o e2e os toca e o e2e não
+# entrava em portão nenhum.
+E2E_SEM_SERVICO := arquivo sqlite socket guzer jinker manpu qrcode c d f
+check-e2e-local: pool
+	@falhou=0; \
+	for alvo in $(E2E_SEM_SERVICO); do \
+	  ./pool teste/e2e_roda.ps $$alvo || falhou=1; \
+	done; \
+	if [ $$falhou -ne 0 ]; then echo "e2e local: FALHOU"; exit 1; fi; \
+	echo "e2e local: ok"
+
+.PHONY: check-e2e check-e2e-local
 
 # ── injeção de falha de alocação (a técnica do SQLite) ──────────────────────
 # Toda correção da classe C da auditoria é um caminho de falta de memória, e
@@ -363,6 +382,9 @@ pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
 semeia: pool
 	@./pool teste/fuzz_semeia.ps
 
+# Depois de fuzzar, o que foi achado FICA: `teste/fuzz_achados/` é versionado
+# (ver .gitignore) e o `make check` replaya tudo em todo portão. Sem isso, o
+# crash de hoje é redescoberto amanhã.
 fuzz: pool-fuzz semeia
 	@mkdir -p teste/fuzz_achados
 	@echo "fuzzando por $(FUZZ_T)s (ajuste com FUZZ_T=<segundos>)"
@@ -393,6 +415,28 @@ check-asan: pool-asan testar
 
 .PHONY: check-asan
 
+# ── build de asserção: a MESMA suíte com as invariantes valendo ─────────────
+# Sem isto, ASan, fuzzer e injeção de falha só acham MORTE, nunca ESTADO
+# ERRADO: um `sp` desequilibrado ou um ObjType impossível só viram falha
+# quando viram segfault, e com 41% de ramo coberto há muito caminho onde não
+# viram. É o `--with-pydebug` do CPython, o `DCHECK` do V8, o `SQLITE_DEBUG`.
+#
+# Roda a suíte inteira contra o binário com `-DPS_DEBUG`. Invariante quebrada
+# vira `abort()`, e o runner (subprocesso por caso) reporta como morte por
+# sinal em vez de derrubar a bateria.
+pool-debug: $(FONTES) $(VM)/ps_versao.h $(MK)
+	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
+	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
+	  -l:libX11.so.6 -l:libgmp.so.10
+
+check-debug: pool-debug testar
+	@echo "suite inteira com as invariantes do motor ligadas…"
+	@PS_POOL=pool-debug nice -n 19 ./testar
+
+.PHONY: check-debug
+
 # ── cobertura ───────────────────────────────────────────────────────────────
 # A auditoria de testes apontou que cobertura NUNCA tinha sido medida. E a
 # métrica que importa é RAMO TOMADO, não linha: 93% de linha no parser eram 67%
@@ -414,5 +458,11 @@ cobertura: testar
 	  >/dev/null 2>&1 || true
 	@echo; lcov --summary cob/vm.info --rc branch_coverage=1 2>/dev/null | tail -6
 	@echo; echo "detalhe por arquivo:  cob/html/index.html"
+	@echo
+	# PORTÃO: compara ARQUIVO POR ARQUIVO com o baseline versionado. Percentual
+	# agregado não decide nada — queda de 10 pontos num arquivo some na média de
+	# 17, e foi assim que a mesma cobertura reapareceu em três auditorias
+	# seguidas sem ninguém saber quando piorou.
+	@./pool teste/cobertura_portao.ps
 
 .PHONY: cobertura

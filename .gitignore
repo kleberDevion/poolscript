@@ -62,11 +62,18 @@ cob/
 pool-oom
 pool-fuzz
 pool-asan
+# O CORPUS é gerado (`make semeia` o reconstrói dos .ps e dos casos em C) e não
+# entra. Os ACHADOS entram: um `crash-*` é o caso de regressão, e jogá-lo fora
+# é descobrir o mesmo defeito toda noite.
 teste/fuzz_corpus/
-teste/fuzz_achados/
+!teste/fuzz_achados/
+!teste/fuzz_achados/**
 *.gcda
 *.gcno
 
 # extensão do VS Code: o vsix e as dependências são GERADOS
 editor/vscode/node_modules/
 editor/vscode/*.vsix
+
+# binario da suite com invariantes ligadas (make check-debug o gera)
+pool-debug

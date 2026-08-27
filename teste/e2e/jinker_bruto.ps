@@ -149,6 +149,17 @@ if __name__ == "main" {
         ruins = ruins + 1
     }
 
+    # ── profundidade vinda do cliente NÃO derruba o servidor ────────────────
+    # Antes: `/fundo/300` matava o processo (recursão sem teto no `str`, sobre
+    # a pilha de 128 KB da fibra), e o pedido seguinte tomava "Connection
+    # refused". O que se exige aqui é justamente o PEDIDO SEGUINTE responder.
+    ruins = ruins + confere("profundidade 300 do cliente nao mata o servidor",
+        "GET /fundo/300 HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+    ruins = ruins + confere("profundidade 5000 tambem nao",
+        "GET /fundo/5000 HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+    ruins = ruins + confere("e o servidor CONTINUA atendendo depois",
+        "GET /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+
     post("")
     if ruins > 0 {
         post("FALHARAM:", ruins)

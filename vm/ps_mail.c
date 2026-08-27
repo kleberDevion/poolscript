@@ -133,19 +133,52 @@ static int le_bytes(PSMailConn *c, char *out, size_t n)
     return 0;
 }
 
+/* 1 = pular a verificação do certificado, ligado por `PS_MAIL_TLS_INSEGURO=1`.
+ *
+ * Existe pro servidor de teste com certificado autoassinado, e é a ÚNICA forma
+ * de desligar: variável de ambiente explícita, não o padrão. */
+static int mail_tls_inseguro(void)
+{
+    const char *v = getenv("PS_MAIL_TLS_INSEGURO");
+    return v && v[0] == '1';
+}
+
 static int liga_tls(PSMailConn *c, const char *host, char *erro, size_t cap)
 {
     c->ctx = SSL_CTX_new(TLS_client_method());
     if (!c->ctx) FALHA(erro, cap, "sem memoria para o TLS");
-    /* Sem verificação: é o contexto stdlib do Python, e é o que faz
-     * certificado self-signed (e o do teste) funcionar igual nos dois. */
-    SSL_CTX_set_verify(c->ctx, SSL_VERIFY_NONE, NULL);
+
+    /* VERIFICA a cadeia E o hostname.
+     *
+     * Estava `SSL_VERIFY_NONE`, e o comentário justificava dizendo ser "o
+     * contexto stdlib do Python". É o contrário: `smtplib.SMTP_SSL` e
+     * `starttls()` usam `ssl.create_default_context()` desde o Python 3.6
+     * (PEP 476 / bpo-25008), que verifica cadeia e hostname.
+     *
+     * Não é detalhe de conformidade. Logo abaixo, `ps_smtp_login` manda
+     * `AUTH PLAIN`/`AUTH LOGIN` (usuário e senha em base64) e `ps_imap_login`
+     * manda `LOGIN user senha`. Sem verificação, qualquer intermediário no
+     * caminho apresenta o certificado dele, o handshake "funciona", e recebe
+     * as credenciais. O cliente HTTP deste mesmo projeto já fazia o certo
+     * (`ps_http.c`: `SSL_CTX_set_verify` + `SSL_set1_host`) — faltava aplicar
+     * aqui. */
+    if (mail_tls_inseguro()) {
+        SSL_CTX_set_verify(c->ctx, SSL_VERIFY_NONE, NULL);
+    } else {
+        SSL_CTX_set_default_verify_paths(c->ctx);      /* CAs do sistema */
+        SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER, NULL);
+    }
+
     c->ssl = SSL_new(c->ctx);
     if (!c->ssl) FALHA(erro, cap, "sem memoria para o TLS");
     SSL_set_tlsext_host_name(c->ssl, host);
+    /* casa o hostname contra o CN/SAN — sem isto, certificado VÁLIDO de outro
+     * domínio passa, que é metade do ataque */
+    if (!mail_tls_inseguro()) SSL_set1_host(c->ssl, host);
     SSL_set_fd(c->ssl, c->fd);
     if (SSL_connect(c->ssl) != 1)
-        FALHA(erro, cap, "handshake TLS falhou com %s", host);
+        FALHA(erro, cap, "certificado TLS invalido para %s "
+                         "(self-signed? PS_MAIL_TLS_INSEGURO=1 pula a verificacao)", host);
     return 0;
 }
 

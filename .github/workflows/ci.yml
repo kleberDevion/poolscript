@@ -38,8 +38,15 @@ jobs:
             libmongoc-dev libbson-dev
       - run: make pool testar
       # `make check` já encadeia suíte + metadata + audita_doc + audita_c +
-      # LSP + analisador, e cada um deles sai != 0 quando acha algo.
+      # exemplos da doc + LSP + analisador, e cada um sai != 0 quando acha algo.
       - run: make check
+      # A MESMA suíte com as invariantes do motor ligadas (-DPS_DEBUG). Sem
+      # isto, tudo que o portão acha é MORTE; com isto, acha estado errado.
+      - run: make check-debug
+      # E2E que não precisa de serviço externo. É o que tira ps_jinker.c,
+      # ps_db.c(sqlite) e ps_guzer.c dos 0% de cobertura — eles estavam em zero
+      # porque só o e2e os toca e o e2e não entrava em portão nenhum.
+      - run: make check-e2e-local
 
   # ── todo push e todo PR: o barato de robustez ──────────────────────────────
   propriedade:
@@ -88,6 +95,8 @@ jobs:
       # aqui o analisador roda TAMBÉM no arquivo grande, que fica de fora lá.
       - run: make analisa ANALISA_TUDO=1 ANALISA_MB=12000
       - run: make fuzz FUZZ_T=1800
+      # Replaya o que já estava guardado: crash de ontem que voltar reprova.
+      - run: ./pool teste/fuzz_replay.ps
       - name: guardar o que o fuzzer achou
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,6 +121,9 @@ jobs:
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
             libmongoc-dev libbson-dev
+      # `make cobertura` termina no PORTÃO (teste/cobertura_portao.ps): compara
+      # arquivo por arquivo com teste/cobertura_base.txt e sai != 0 se algum
+      # perdeu cobertura de RAMO. Subir é livre.
       - run: make cobertura
       # O relatório vai como artefato porque um percentual agregado esconde
       # regressão num arquivo só — o que interessa é o detalhe por arquivo.

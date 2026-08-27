@@ -1,0 +1,203 @@
+# Cobertura como PORTÃO, com baseline POR ARQUIVO.
+#
+# POR QUE ISTO EXISTE: `make cobertura` media e subia HTML como artefato.
+# Percentual agregado não decide nada — uma queda de 10 pontos num arquivo some
+# na média de 17. Sem baseline versionado, a próxima auditoria acha exatamente
+# os mesmos números, e ninguém consegue apontar QUANDO piorou.
+#
+# O que ele faz: lê o `cob/vm.info` que o `make cobertura` produziu, compara
+# arquivo por arquivo com `teste/cobertura_base.txt` e REPROVA se algum caiu
+# mais que a folga. Subir é livre e o baseline se atualiza com `--grava`.
+#
+#     make cobertura                              mede
+#     ./pool teste/cobertura_portao.ps            compara e reprova
+#     ./pool teste/cobertura_portao.ps --grava    adota a medição atual
+#
+# NÃO é meta de percentual. Meta global vira número que se persegue enchendo
+# teste fácil; o que este portão garante é só isto: **o que já era coberto
+# continua coberto**. Subir o piso é decisão de quem escreve teste, não de um
+# número no Makefile.
+#
+# A FOLGA existe porque a contagem de ramos oscila com o compilador e com o
+# ambiente (um `if` a mais numa macro do sistema muda o denominador). Sem ela o
+# portão vira alarme falso, e portão que grita à toa é portão desligado.
+import os
+import sys
+
+INFO = "cob/vm.info"
+BASE = "teste/cobertura_base.txt"
+FOLGA = 1.5        # pontos percentuais
+
+
+# Lê o .info do lcov e devolve {arquivo: [linha%, ramo%]}.
+#
+# Formato (LTP): SF:<arquivo> abre; LF/LH = linhas total/atingidas;
+# BRF/BRH = ramos total/atingidos; `end_of_record` fecha.
+action le_info(caminho) {
+    if not os.exists(caminho) {
+        return {}
+    }
+    saida = {}
+    arq = ""
+    lf = 0
+    lh = 0
+    brf = 0
+    brh = 0
+    for each l in open(caminho).read().split("\n") {
+        t = l.strip()
+        if t.startswith("SF:") {
+            arq = t[3:]
+            lf = 0
+            lh = 0
+            brf = 0
+            brh = 0
+        }
+        elif t.startswith("LF:") {
+            lf = int(t[3:])
+        }
+        elif t.startswith("LH:") {
+            lh = int(t[3:])
+        }
+        elif t.startswith("BRF:") {
+            brf = int(t[4:])
+        }
+        elif t.startswith("BRH:") {
+            brh = int(t[4:])
+        }
+        elif t == "end_of_record" {
+            if arq != "" {
+                nome = arq.split("/")[-1]
+                pl = 0.0
+                pr = 0.0
+                if lf > 0 {
+                    pl = (lh * 100.0) / lf
+                }
+                if brf > 0 {
+                    pr = (brh * 100.0) / brf
+                }
+                saida[nome] = [pl, pr]
+            }
+            arq = ""
+        }
+    }
+    return saida
+}
+
+
+action le_base() {
+    if not os.exists(BASE) {
+        return {}
+    }
+    saida = {}
+    for each l in open(BASE).read().split("\n") {
+        t = l.strip()
+        if t == "" or t.startswith("#") {
+            continue
+        }
+        p = t.split()
+        if len(p) >= 3 {
+            saida[p[0]] = [flo(p[1]), flo(p[2])]
+        }
+    }
+    return saida
+}
+
+
+action grava_base(atual) {
+    nomes = atual.keys()
+    nomes.sort()
+    linhas = ["# Cobertura de referência, por arquivo: <arquivo> <linha%> <ramo%>",
+              "#",
+              "# Gerado por `./pool teste/cobertura_portao.ps --grava` a partir de",
+              "# cob/vm.info. NÃO é meta: é o piso do que já está coberto. Cair abaixo",
+              "# dele (fora da folga) reprova; subir é livre e regrava.",
+              ""]
+    for each n in nomes {
+        v = atual[n]
+        linhas.append(n + " " + str(round(v[0], 1)) + " " + str(round(v[1], 1)))
+    }
+    using open(BASE, "w") as f {
+        f.write(("\n").join(linhas) + "\n")
+    }
+}
+
+
+if __name__ == "main" {
+    grava = false
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+    }
+
+    atual = le_info(INFO)
+    if len(atual) == 0 {
+        post("nao achei", INFO, "— rode `make cobertura` antes")
+        sys.exit(1)
+    }
+
+    if grava {
+        grava_base(atual)
+        post("baseline gravado em", BASE, "com", str(len(atual)), "arquivos")
+        sys.exit(0)
+    }
+
+    piso = le_base()
+    if len(piso) == 0 {
+        post("nao ha baseline em", BASE)
+        post("rode: ./pool teste/cobertura_portao.ps --grava")
+        sys.exit(1)
+    }
+
+    caiu = []
+    subiu = []
+    novos = []
+    nomes = atual.keys()
+    nomes.sort()
+    for each n in nomes {
+        if not n in piso {
+            novos.append(n)
+            continue
+        }
+        a = atual[n]
+        b = piso[n]
+        # o RAMO é o que decide; linha superestima (93% de linha no parser eram
+        # 67% de ramo), então o portão olha o número que não engana
+        if a[1] < b[1] - FOLGA {
+            caiu.append([n, b[1], a[1]])
+        }
+        elif a[1] > b[1] + FOLGA {
+            subiu.append([n, b[1], a[1]])
+        }
+    }
+
+    post("")
+    post("arquivos medidos:", len(atual), " no baseline:", len(piso))
+    if len(novos) > 0 {
+        post("SEM baseline (arquivo novo — rode --grava depois de conferir):")
+        for each n in novos {
+            post("   ", n, "ramo", str(round(atual[n][1], 1)) + "%")
+        }
+    }
+    if len(subiu) > 0 {
+        post("subiram:")
+        for each s in subiu {
+            post("   ", s[0], str(round(s[1], 1)) + "% ->", str(round(s[2], 1)) + "%")
+        }
+    }
+    if len(caiu) == 0 {
+        post("")
+        post("nenhum arquivo perdeu cobertura de ramo (folga de", str(FOLGA) + " pontos).")
+        sys.exit(0)
+    }
+    post("")
+    post("COBERTURA DE RAMO CAIU:")
+    for each c in caiu {
+        post("   ", c[0], str(round(c[1], 1)) + "% ->", str(round(c[2], 1)) + "%")
+    }
+    post("")
+    post("Codigo novo sem teste, ou teste removido. Se a queda for legitima")
+    post("(codigo deletado, por exemplo), regrave com --grava — mas regrave")
+    post("de propósito, nao por reflexo.")
+    sys.exit(1)
+}
