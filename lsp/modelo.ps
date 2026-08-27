@@ -100,6 +100,90 @@ action assinatura(m) {
 }
 
 
+# ── prosa: o resumo vem da DOC, não da memória de ninguém ───────────────────
+#
+# A sugestão de antigamente não era um rótulo: cada membro vinha com
+# assinatura, tipo de retorno E uma frase explicando o que faz. Sem isso o
+# completion vira o que ele tinha virado — uma lista de nomes com "palavra da
+# linguagem" do lado, que atrapalha mais do que ajuda.
+#
+# A prosa sai de `docs/<escopo>/<nome>/<nome>.md`, que é a MESMA página que o
+# `scripts/audita_doc.ps` confere contra o motor: 87 títulos batendo. Nada é
+# digitado aqui — se a doc muda, a sugestão muda junto; se a página não
+# existe, a sugestão vem SEM prosa em vez de vir com invenção.
+#
+# Lido sob demanda e memorizado: completar `regex.` toca ~10 arquivos, não 353.
+RAIZ_DOC = ""
+RESUMOS = {}
+
+
+action raiz_doc() {
+    if RAIZ_DOC != "" {
+        return RAIZ_DOC
+    }
+    # `docs/` fica ao lado do binário instalado, ou na raiz do repositório
+    # quando se roda o servidor direto de lá.
+    # Não há `os.dirname`; a pasta sai do próprio caminho do binário.
+    exe = sys.executable
+    corte = exe.rfind("/")
+    onde = "."
+    if corte > 0 {
+        onde = exe[0:corte]
+    }
+    for each c in [onde + "/../share/poolscript/docs", onde + "/docs", "docs"] {
+        if os.isdir(c) {
+            RAIZ_DOC = c
+            return RAIZ_DOC
+        }
+    }
+    RAIZ_DOC = "-"
+    return RAIZ_DOC
+}
+
+
+# Primeiro parágrafo de prosa da página, ou "" se não houver página.
+action resumo_de(escopo, nome) {
+    chave = escopo + "/" + nome
+    if chave in RESUMOS {
+        return RESUMOS[chave]
+    }
+    RESUMOS[chave] = ""
+    raiz = raiz_doc()
+    if raiz == "-" {
+        return ""
+    }
+    caminho = raiz + "/" + escopo + "/" + nome + "/" + nome + ".md"
+    if not os.exists(caminho) {
+        return ""
+    }
+    # pula o título e pega o primeiro bloco corrido, parando no primeiro
+    # cabeçalho, tabela ou bloco de código.
+    passou = false
+    partes = []
+    for each l in open(caminho).read().split("\n") {
+        t = l.strip()
+        if not passou {
+            if t.startswith("# ") {
+                passou = true
+            }
+            continue
+        }
+        if t == "" {
+            if len(partes) > 0 {
+                break
+            }
+            continue
+        }
+        if t.startswith("#") or t.startswith("|") or t.startswith("```") {
+            break
+        }
+        partes.append(t)
+    }
+    RESUMOS[chave] = (" ").join(partes)
+    return RESUMOS[chave]
+}
+
+
 # ── inferência de tipo ──────────────────────────────────────────────────────
 
 # Tipo de um literal, ou "" se não for literal.

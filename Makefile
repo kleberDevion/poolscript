@@ -60,6 +60,12 @@ install: pool
 	install -m755 pool $(PREFIXO)/bin/psl
 	install -m644 lsp/protocolo.ps lsp/modelo.ps lsp/servidor.ps \
 	        $(PREFIXO)/share/poolscript/lsp/
+	# A DOC vai junto: a prosa das sugestões e do hover sai de
+	# `docs/<escopo>/<nome>/<nome>.md`. Sem ela instalada, o servidor funciona
+	# mas responde sem explicação nenhuma — que é justamente o que o completion
+	# não pode voltar a ser. Só as páginas, não o resto do repositório.
+	@cd docs && find . -name '*.md' -exec install -Dm644 {} \
+	        $(PREFIXO)/share/poolscript/docs/{} \;
 	printf '#!/bin/sh\n# Atalho do servidor LSP. O servidor e PoolScript; ver docs/lsp.md.\nexec %s/bin/pool %s/share/poolscript/lsp/servidor.ps "$$@"\n' \
 	        '$(PREFIXO)' '$(PREFIXO)' > $(PREFIXO)/bin/poolscript-lsp
 	chmod 755 $(PREFIXO)/bin/poolscript-lsp

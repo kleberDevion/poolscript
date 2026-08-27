@@ -188,13 +188,49 @@ if __name__ == "main" {
     ok("initialize responde capabilities",
        r1 != Null and r1["result"]["capabilities"]["hoverProvider"] == true, str(r1))
 
-    # COMPLETION FOI REMOVIDO do servidor: a capacidade não é mais anunciada,
-    # então o editor nem pergunta. O que se confere agora é justamente isso —
-    # que ela NÃO aparece no `initialize`. Deixar as checagens antigas
-    # falhando, ou apagá-las sem pôr nada no lugar, seria perder a garantia de
-    # que a remoção foi feita no protocolo e não só no handler.
-    ok("completion NAO e mais anunciado",
-       not "completionProvider" in str(r1["result"]["capabilities"]), str(r1["result"]["capabilities"]))
+    # ── completion: o que se exige dele ─────────────────────────────────────
+    # Não basta "veio uma lista". A sugestão vale pelos TRÊS campos — nome,
+    # assinatura com o tipo de retorno, e a prosa da doc. Foi degradar isso
+    # pra `label` + "palavra da linguagem" que fez o completion virar ruído.
+    r2 = resposta(msgs, 2)
+    labs = []
+    itens = []
+    if r2 != Null {
+        labs = rotulos(r2)
+        itens = r2["result"]
+    }
+    ok("cadeia conn.cursor() -> DbCursor sugere fetchall",
+       "fetchall" in labs, str(len(labs)) + " itens: " + str(labs[0:6]))
+    ok("cadeia NAO sugere metodo de outro tipo",
+       not "upper" in labs, str(labs[0:8]))
+
+    # o detalhe tem que ser a assinatura REAL, com o receptor na frente
+    det = ""
+    for each it in itens {
+        if it["label"] == "execute" {
+            det = it["detail"]
+        }
+    }
+    ok("detalhe traz a assinatura real, nao um rotulo",
+       det.startswith("DbCursor.execute(") and "sql" in det, det)
+
+    r3 = resposta(msgs, 3)
+    labs3 = []
+    itens3 = []
+    if r3 != Null {
+        labs3 = rotulos(r3)
+        itens3 = r3["result"]
+    }
+    ok("sem receptor sugere modulo e variavel do arquivo",
+       "regex" in labs3 and "conn" in labs3, str(len(labs3)) + " itens")
+    # o ruído que motivou tudo: palavra da linguagem NÃO entra
+    tem_ruido = false
+    for each it in itens3 {
+        if it["detail"] == "palavra da linguagem" {
+            tem_ruido = true
+        }
+    }
+    ok("sem receptor NAO despeja palavra da linguagem", not tem_ruido, str(labs3[0:8]))
 
     r4 = resposta(msgs, 4)
     txt = ""

@@ -122,9 +122,10 @@ O modelo de tipos vem do próprio binário: `pool --metadata` lista módulos,
 membros, tipos e métodos lidos das tabelas do VM. É o que alimenta o hover —
 a assinatura real e o tipo de retorno, sem nada digitado à mão.
 
-**Não há completion**, por decisão de projeto: o que ele oferecia sem receptor
-era a lista de palavras da linguagem, cada uma rotulada "palavra da
-linguagem". O servidor não anuncia `completionProvider`.
+O completion é type-aware pela mesma fonte, e cada sugestão carrega nome,
+assinatura com tipo de retorno e a **prosa de `docs/`** — a mesma página que o
+`scripts/audita_doc.ps` confere. Palavra da linguagem NÃO entra: sugestão sem
+conteúdo empurra a útil pra baixo.
 
 ## Doc: assinatura vem do CÓDIGO, nunca digitada
 

@@ -39,6 +39,21 @@ action uri_pra_caminho(uri) {
 
 
 # O texto até o cursor (linha/coluna em base 0, como o LSP manda).
+# Texto da linha ATÉ o cursor. É o que o completion e o hover olham: o que vem
+# depois não influencia o que se sugere.
+action ate_o_cursor(texto, linha, coluna) {
+    ls = texto.split("\n")
+    if linha >= len(ls) {
+        return ""
+    }
+    l = ls[linha]
+    if coluna > len(l) {
+        coluna = len(l)
+    }
+    return l[0:coluna]
+}
+
+
 action pedaco_antes(s) {
     i = len(s)
     profundidade = 0
@@ -64,16 +79,122 @@ action pedaco_antes(s) {
 }
 
 
-# COMPLETION REMOVIDO.
+# ── completion ──────────────────────────────────────────────────────────────
 #
-# O que ele oferecia sem receptor era a lista de palavras da linguagem, cada
-# uma rotulada "palavra da linguagem" — ruído que atrapalha mais do que ajuda:
-# quem digita `for` não precisa que o editor lhe informe que `for` existe.
-# Enquanto for isso, é melhor não ter.
+# A sugestão carrega TRÊS coisas, e é isso que a faz valer:
 #
-# O servidor deixou de ANUNCIAR `completionProvider`, então o editor nem
-# pergunta — não é um handler que responde vazio, é a capacidade fora do
-# protocolo. Hover, diagnóstico e realce continuam.
+#     label          o nome
+#     detail         a assinatura real + o tipo que devolve
+#     documentation  a frase da doc explicando o que faz
+#
+# É a estrutura que existia antes de eu degradá-la. O que tinha sobrado era
+# `label` + "palavra da linguagem" no detalhe — quem digita `for` não precisa
+# que o editor lhe informe que `for` existe. Por isso PALAVRA DA LINGUAGEM NÃO
+# ENTRA: o editor já completa palavra do próprio buffer, e sugestão sem
+# conteúdo é ruído que empurra a útil pra baixo.
+#
+# Nada é digitado aqui: nome e parâmetros vêm de `pool --metadata` (as tabelas
+# do VM), a prosa vem de `docs/`, que o `scripts/audita_doc.ps` confere contra
+# o motor. Tipo desconhecido devolve lista VAZIA — nunca um chute.
+
+# kind do LSP: 2 = Method, 3 = Function, 5 = Field, 9 = Module,
+#              6 = Variable, 21 = Constant
+action item(rotulo, kind, detalhe, prosa) {
+    it = {"label": rotulo, "kind": kind, "detail": detalhe}
+    if prosa != "" {
+        it["documentation"] = {"kind": "markdown", "value": prosa}
+    }
+    return it
+}
+
+
+# Um membro de módulo ou de tipo, com assinatura, retorno e prosa.
+action item_membro(escopo, m, kind) {
+    sig = modelo.assinatura(m)
+    detalhe = escopo + "." + sig
+    r = m.get("retorna")
+    if r != Null {
+        detalhe = detalhe + " -> " + r
+    }
+    prosa = modelo.resumo_de(escopo, m["nome"])
+    if prosa != "" {
+        prosa = "```ps\n" + detalhe + "\n```\n\n" + prosa
+    }
+    return item(m["nome"], kind, detalhe, prosa)
+}
+
+
+action completa(texto, linha, coluna) {
+    prefixo = ate_o_cursor(texto, linha, coluna)
+    trecho = pedaco_antes(prefixo)
+    itens = []
+    vars = modelo.tipos_do_documento(texto)
+
+    # `self.` dentro de uma Entity: campos e métodos DELA, nada mais
+    if trecho == "self." or trecho.endswith(" self.") {
+        ent = modelo.entity_da_linha(texto, linha)
+        for each m in modelo.membros_de_entity(texto, ent) {
+            itens.append(item(m["nome"], 5, m["detalhe"], ""))
+        }
+        return itens
+    }
+
+    # dentro dos parênteses de uma chamada conhecida: os parâmetros dela.
+    # Só quando NÃO há um `.` pendente — `f(x.` é completion de membro.
+    if trecho.count(".") == 0 {
+        ps = modelo.params_da_chamada(prefixo, vars)
+        if len(ps) > 0 {
+            for each p in ps {
+                d = p.get("default")
+                detalhe = "parametro"
+                if d != Null {
+                    detalhe = "parametro (padrao " + str(d) + ")"
+                }
+                itens.append(item(p["nome"] + "=", 21, detalhe, ""))
+            }
+            return itens
+        }
+    }
+
+    if trecho.count(".") > 0 {
+        corte = trecho.rfind(".")
+        alvo = trecho[0:corte]
+
+        # `alvo` é um módulo? sugere os membros dele
+        if modelo.eh_modulo(alvo) {
+            for each m in modelo.membros_de_modulo(alvo) {
+                itens.append(item_membro(alvo, m, 3))
+            }
+            return itens
+        }
+
+        # senão, o TIPO do alvo é quem manda
+        t = modelo.tipo_de_expressao(alvo, vars)
+        if t == "" or t.startswith("<modulo:") {
+            return []                     # tipo desconhecido: nada de chute
+        }
+        for each m in modelo.membros_de_tipo(t) {
+            itens.append(item_membro(t, m, 2))
+        }
+        # o que todo objeto tem
+        for each m in modelo.membros_de_tipo("__universal__") {
+            itens.append(item(m["nome"], 2, modelo.assinatura(m), ""))
+        }
+        return itens
+    }
+
+    # SEM RECEPTOR: só o que tem conteúdo. Módulos (com a contagem de membros)
+    # e as variáveis do arquivo (com o tipo inferido). Palavra da linguagem
+    # fica FORA — ver o cabeçalho.
+    for each mo in META_MODULOS() {
+        itens.append(item(mo, 9, "modulo — " + str(len(modelo.membros_de_modulo(mo))) + " membros", ""))
+    }
+    for each v in vars.keys() {
+        itens.append(item(v, 6, vars[v], ""))
+    }
+    return itens
+}
+
 
 action META_MODULOS() {
     return modelo.META["modulos"].keys()
@@ -125,6 +246,11 @@ action passa_o_mouse(texto, linha, coluna) {
             if r != Null {
                 corpo = corpo + "\n\ndevolve **" + r + "**"
             }
+            # a MESMA prosa que o completion mostra, da mesma doc
+            prosa = modelo.resumo_de(onde, nome)
+            if prosa != "" {
+                corpo = corpo + "\n\n" + prosa
+            }
             return {"contents": {"kind": "markdown", "value": corpo}}
         }
         return Null
@@ -136,8 +262,10 @@ action passa_o_mouse(texto, linha, coluna) {
                 "value": "modulo **" + nome + "** — " + str(qtd) + " membros"}}
     }
     if nome in modelo.KEYWORDS {
-        return {"contents": {"kind": "markdown",
-                "value": "`" + nome + "` — palavra da linguagem"}}
+        # "`for` — palavra da linguagem" não informa nada a quem já escreveu
+        # `for`. Sem prosa pra mostrar, o hover fica CALADO: caixinha vazia
+        # cobre o código e não entrega nada.
+        return Null
     }
     return Null
 }
@@ -315,6 +443,7 @@ action trata(msg) {
             "capabilities": {
                 # 1 = full: o editor manda o documento inteiro a cada mudança
                 "textDocumentSync": 1,
+                "completionProvider": {"triggerCharacters": ["."]},
                 "hoverProvider": true,
                 "semanticTokensProvider": {
                     "legend": {"tokenTypes": LEGENDA, "tokenModifiers": []},
@@ -369,6 +498,17 @@ action trata(msg) {
         if uri in docs {
             docs.pop(uri)
         }
+        return
+    }
+
+    if metodo == "textDocument/completion" {
+        uri = params["textDocument"]["uri"]
+        pos = params["position"]
+        texto = ""
+        if uri in docs {
+            texto = docs[uri]
+        }
+        protocolo.responde(id, completa(texto, pos["line"], pos["character"]))
         return
     }
 

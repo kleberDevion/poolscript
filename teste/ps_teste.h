@@ -1,5 +1,5 @@
 /*
- * Suíte de testes da PoolScript — em C, sem Python.
+ * Suíte de testes da PoolScript — em C
  *
  * Cada caso é um programa `.ps` + o que se espera dele. O runner NÃO executa
  * o programa dentro deste processo: ele faz fork/exec do `./pool`. Isso é
