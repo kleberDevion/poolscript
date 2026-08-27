@@ -1116,6 +1116,20 @@ const Caso CASOS_LINGUAGEM[] = {
 { "um caractere solto e erro (6 bits nao formam byte)",
   "import hash\npost(hash.b64decode(\"Z\"))\n", NULL, "base64", -1 },
 
+/* ── mensagem de erro nao pode conter UTF-8 QUEBRADO ────────────────────────
+ * O lexer imprimia o caractere com `%c`, ou seja o PRIMEIRO BYTE dele: `ç` é
+ * 0xC3 0xA7 e saia so o 0xC3. Nao e cosmetico — o LSP serializa a mensagem em
+ * JSON, e byte invalido quebra o JSON: o editor recusava a resposta
+ * ("Expected ',' or '}' ... in JSON") e DERRUBAVA o servidor. Um acento fora
+ * do lugar matava o suporte a editor inteiro. */
+/* Os literais sao SEPARADOS de proposito: em C, `"\xc3\xa7ao"` faz o escape
+ * hexadecimal engolir o `a` e o `o` como digitos, e o fonte do caso sai
+ * corrompido. Literal adjacente encerra o escape. */
+{ "caractere inesperado sai INTEIRO, nao meio byte",
+  "x = fun" "\xc3\xa7" "ao(\n", NULL, "caractere inesperado: 'ç'", -1 },
+{ "o --check devolve JSON valido com acento no erro",
+  "x = \xc3\xa7\n", NULL, "'ç'", -1 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

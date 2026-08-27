@@ -22,7 +22,7 @@
 
 #include "ps_versao.h"
 
-#define SPEC_URL "https://github.com/kleberDevion/poolscript-lang"
+#define SPEC_URL "https://github.com/kleberDevion/poolscript"
 
 static void ajuda(void)
 {

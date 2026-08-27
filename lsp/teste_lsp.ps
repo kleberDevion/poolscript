@@ -4,6 +4,9 @@
 #     ./pool lsp/teste_lsp.ps
 import os
 import sys
+
+# preenchido por `conversa`: bytes que sobraram sem enquadramento (0 = ok)
+sobra_bytes = 0
 import json
 
 TMP = "/tmp/ps_lsp_teste"
@@ -20,7 +23,9 @@ FONTE = FONTE + "n = 42\n"
 
 action enquadra(obj) {
     corpo = json.stringify(obj)
-    return "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo
+    # BYTES, como o editor de verdade manda. Contando caractere, uma mensagem
+    # com acento chegava truncada no servidor — o mesmo defeito do outro lado.
+    return "Content-Length: " + str(len(corpo.encode())) + "\r\n\r\n" + corpo
 }
 
 
@@ -42,9 +47,15 @@ action conversa(roteiro) {
         f.write("".join(roteiro))
     }
     os.cmd("./pool lsp/servidor.ps < " + TMP + "/entrada > " + TMP + "/saida 2> " + TMP + "/log")
+    # EM BYTES, e isso não é detalhe: o `Content-Length` do LSP conta bytes, e
+    # o cliente de verdade fatia bytes. Este harness fatiava CARACTERES, então
+    # combinava com o mesmo engano do servidor (que declarava caracteres) e os
+    # 15 testes passavam enquanto o VS Code recusava a resposta. Dois erros que
+    # se cancelavam — e um teste que se cancela com o defeito não é teste.
     bruto = open(TMP + "/saida").read()
     msgs = []
     resto = bruto
+    sobra_bytes = 0
     while true {
         c = resto.find("Content-Length: ")
         if c < 0 {
@@ -56,9 +67,31 @@ action conversa(roteiro) {
             break
         }
         tam = int(resto[0:fim].strip())
-        corpo = resto[fim + 4:fim + 4 + tam]
-        msgs.append(json.parse(corpo))
-        resto = resto[fim + 4 + tam:]
+        # O CORPO É FATIADO EM BYTES. O `Content-Length` do LSP conta bytes, e
+        # o cliente de verdade fatia bytes. Este harness fatiava CARACTERES,
+        # então combinava com o mesmo engano do servidor (que declarava
+        # caracteres) e os 15 testes passavam enquanto o VS Code recusava a
+        # resposta. Dois erros que se cancelavam — e teste que se cancela com o
+        # defeito não é teste.
+        depois = resto[fim + 4:].encode()
+        if len(depois) < tam {
+            sobra_bytes = -1               # declarou mais do que veio
+            break
+        }
+        corpo = depois[0:tam].decode()
+        # JSON que não fecha aqui é ENQUADRAMENTO errado, não JSON ruim: o
+        # corpo foi cortado no tamanho declarado. Relata em vez de estourar,
+        # pra a falha apontar a causa.
+        try {
+            msgs.append(json.parse(corpo))
+        } catch (e) {
+            sobra_bytes = -1
+            break
+        }
+        resto = depois[tam:].decode()
+    }
+    if sobra_bytes == 0 {
+        sobra_bytes = len(resto.strip())   # >0 = enquadramento desalinhado
     }
     return msgs
 }
@@ -261,6 +294,30 @@ if __name__ == "main" {
         }
     }
     ok("arquivo valido nao gera diagnostico", limpo, str(d3))
+
+    # ── ACENTO: o buraco que deixou os 15 anteriores passarem ───────────────
+    # O servidor declarava o Content-Length em CARACTERES; toda resposta com
+    # acento saía curta e o rabo virava o "cabeçalho" seguinte. O erro que o
+    # VS Code mostrava era o lixo colado: {"}}content-length":"43"}
+    msgs4 = conversa([
+      pede(1, "initialize", {"processId": 1, "capabilities": {}}),
+      avisa("initialized", {}),
+      abre(URI, "x = fun" + chr(231) + "ao(\n"),
+      avisa("exit", {})
+    ])
+    ok("mensagem com acento nao desalinha o enquadramento", sobra_bytes == 0,
+       "sobra de " + str(sobra_bytes) + " bytes no fluxo")
+
+    d4 = notificacoes(msgs4, "textDocument/publishDiagnostics")
+    tem_acento = false
+    for each d in d4 {
+        for each diag in d["params"]["diagnostics"] {
+            if chr(231) in diag["message"] {
+                tem_acento = true
+            }
+        }
+    }
+    ok("diagnostico com acento chega inteiro", tem_acento, str(d4))
 
     post("")
     post(str(feitos - falhas) + "/" + str(feitos), "checagens passaram")

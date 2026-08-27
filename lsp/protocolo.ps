@@ -55,7 +55,18 @@ action le_mensagem() {
 
 action manda(obj) {
     corpo = json.stringify(obj)
-    sys.stdout.write("Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo)
+    # BYTES, não caracteres. O LSP conta o corpo em bytes, e o `read(n)` do
+    # outro lado também — só a escrita contava caractere, e a assimetria
+    # quebrava a conversa inteira na PRIMEIRA resposta com acento.
+    #
+    # Como falhava: "função não encontrada" tem 32 caracteres e 35 bytes.
+    # Declarando 32, o editor lia 32 bytes e os 3 do rabo ficavam no cano —
+    # e viravam o começo do "cabeçalho" seguinte. O erro que o VS Code mostra
+    # é justamente o lixo colado:  {"}}content-length":"43"}
+    #
+    # Escapou dos testes porque nenhuma mensagem de teste tinha acento, e o
+    # completion de verdade é cheio deles ("não", "função", "código").
+    sys.stdout.write("Content-Length: " + str(len(corpo.encode())) + "\r\n\r\n" + corpo)
     sys.stdout.flush()
 }
 

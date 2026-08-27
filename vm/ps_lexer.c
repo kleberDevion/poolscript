@@ -764,8 +764,29 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
         if (le_operador(&lx)) continue;
 
         {
-            char m[64];
-            snprintf(m, sizeof(m), "caractere inesperado: '%c'", c);
+            /* O caractere sai INTEIRO, não o primeiro byte dele.
+             *
+             * Com `%c` a mensagem levava meio caractere: `ç` é 0xC3 0xA7, e
+             * imprimir só o 0xC3 produz UTF-8 INVÁLIDO dentro da mensagem de
+             * erro. Isso não é cosmético — o LSP serializa a mensagem em JSON,
+             * e byte inválido quebra o JSON: o editor recusava a resposta
+             * ("Expected ',' or '}' ... in JSON") e derrubava o servidor. Um
+             * acento fora do lugar matava o suporte a editor inteiro.
+             *
+             * Um byte de continuação (10xxxxxx) sozinho não forma caractere;
+             * nesse caso mostra o valor numérico, que é a informação útil. */
+            char m[80];
+            unsigned char b0 = (unsigned char)c;
+            int nb = b0 < 0x80 ? 1 : (b0 & 0xE0) == 0xC0 ? 2
+                   : (b0 & 0xF0) == 0xE0 ? 3 : (b0 & 0xF8) == 0xF0 ? 4 : 0;
+            if (nb > 0 && lx.pos + (size_t)nb <= lx.len) {
+                char ch[5];
+                memcpy(ch, lx.src + lx.pos, (size_t)nb);
+                ch[nb] = '\0';
+                snprintf(m, sizeof(m), "caractere inesperado: '%s'", ch);
+            } else {
+                snprintf(m, sizeof(m), "byte inesperado: 0x%02X", b0);
+            }
             erro(&lx, m);
         }
     }
