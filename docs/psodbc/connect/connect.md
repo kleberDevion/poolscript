@@ -1,11 +1,11 @@
-# `psodbc.connect(driver="sqlite", host="localhost", port=0, user="", password="", database="", base="", url="", odbc_driver="", trust_server_cert=true)`
+# `psodbc.connect(driver="sqlite", host="localhost", port=0, user="", password="", database="", base="", url="")`
 
 Conecta a um banco de dados. O mesmo `connect` serve pra todos os bancos —
 muda só o `driver` e os parâmetros que cada um usa.
 
 ```
 connect(driver="sqlite", host="localhost", port=0, user="", password="",
-        database="", base="", url="", odbc_driver="", trust_server_cert=true)
+        database="", base="", url="")
 ```
 
 Devolve um [`DbConnection`](../DbConnection/DbConnection.md) (bancos SQL) ou um
@@ -80,11 +80,13 @@ conn = psodbc.connect(url="mongodb://localhost:27017/loja")
   Server local logado na sua conta.
 - **Host com instância nomeada:** escreva `r"localhost\SQLEXPRESS"` (string
   **raw**) — numa string normal o `\S` some.
-- **`odbc_driver`:** vazio auto-detecta o driver ODBC instalado (18 → 17 → …).
-  Passe o nome exato só pra forçar um.
-- **`trust_server_cert`** (padrão `true`): manda `TrustServerCertificate=yes` —
-  necessário porque o ODBC Driver 18+ valida o certificado e derruba conexão
-  local com certificado autoassinado. Use `false` só com certificado de CA real.
+- **Driver ODBC:** o instalado é auto-detectado (18 → 17 → …). Não há parâmetro
+  pra forçar um: `odbc_driver=` estava documentado e **não existe no motor** —
+  passá-lo dá `argumento nomeado desconhecido`.
+- **Certificado:** a conexão sempre manda `TrustServerCertificate=yes`, porque o
+  ODBC Driver 18+ valida o certificado e derrubaria conexão local com
+  certificado autoassinado. É fixo, não configurável: `trust_server_cert=`
+  também estava documentado e **não existe no motor**.
 - **Automático:** a conexão abre com `autocommit=true` (senão `CREATE
   DATABASE`/`DROP DATABASE` são rejeitados).
 

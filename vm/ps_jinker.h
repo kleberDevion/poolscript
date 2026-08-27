@@ -54,6 +54,21 @@ typedef struct {
 
 /* Lê UMA requisição completa da conexão (bloqueante com timeout curto).
  * 0 = ok; -1 = conexão fechada/erro/timeout (fechar e seguir). */
+/* Lê UMA requisição. Devolve:
+ *    0  ok
+ *   -1  conexão acabou / incompleta -> fechar calado
+ *   -2  requisição MALFORMADA -> responder 400 e fechar
+ *   -3  algo que não implementamos (Transfer-Encoding) -> 501 e fechar
+ *
+ * Os dois últimos existem porque "fechar calado" diante de requisição torta é
+ * o que abre *request smuggling*: um intermediário na frente interpreta o que
+ * mandaram de um jeito, nós de outro, e ninguém reclama. A RFC 9112 manda
+ * RECUSAR, com resposta. */
+#define PSJK_OK        0
+#define PSJK_FECHA    (-1)
+#define PSJK_MALFORM  (-2)
+#define PSJK_NAOIMPL  (-3)
+
 int  ps_jk_le_request(PSJkConn *c, PSJkReq *r);
 void ps_jk_req_solta(PSJkReq *r);
 
@@ -90,6 +105,7 @@ PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,
 int ps_jk_ws_envia_texto_cli(PSJkConn *c, const char *msg, size_t n);
 
 /* 1 se há bytes prontos pra ler (buffer ou socket) em até `timeout_ms`. */
+int ps_jk_conn_pendente(const PSJkConn *c);   /* bytes já lidos e não consumidos */
 int ps_jk_ws_tem_dados(PSJkConn *c, int timeout_ms);
 
 /* ── multipart/form-data ────────────────────────────────────────────────── */

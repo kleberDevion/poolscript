@@ -28,9 +28,12 @@ import sys
 PASTA = "teste/e2e"
 TEMPO = 120        # segundos por script
 
-# [servidor, cliente, porta que o servidor abre]
+# [servidor, [clientes...], porta que o servidor abre]
+# Vários clientes contra o MESMO servidor: subir e derrubar o jinker uma vez
+# por cliente seria desperdício, e o estado que um deixa (upload gravado, canal
+# aberto) é justamente o que o próximo pode precisar.
 PARES = [
-    ["jinker_srv.ps", "jinker_cli.ps", 28840]
+    ["jinker_srv.ps", ["jinker_cli.ps", "jinker_bruto.ps"], 28840]
 ]
 
 # Servidor sem cliente: rodar seria travar até o timeout.
@@ -84,7 +87,9 @@ if __name__ == "main" {
     com_papel = {}
     for each p in PARES {
         com_papel[p[0]] = 1
-        com_papel[p[1]] = 1
+        for each cl in p[1] {
+            com_papel[cl] = 1
+        }
     }
     for each k in SEM_PAR.keys() {
         com_papel[k] = 1
@@ -98,12 +103,18 @@ if __name__ == "main" {
     # ── 1) os pares ─────────────────────────────────────────────────────────
     for each p in PARES {
         srv = p[0]
-        cli = p[1]
+        clientes = p[1]
         porta = p[2]
-        if filtro != "" and not filtro in srv and not filtro in cli {
+        casa = filtro == "" or filtro in srv
+        for each cl in clientes {
+            if filtro in cl {
+                casa = true
+            }
+        }
+        if not casa {
             continue
         }
-        post("── " + srv + " + " + cli)
+        post("── " + srv + " + " + (", ").join(clientes))
 
         # `setsid` destaca o servidor do grupo de processos deste script: sem
         # isso, matá-lo depois derruba junto quem o iniciou.
@@ -118,22 +129,30 @@ if __name__ == "main" {
             continue
         }
 
-        r = roda(PASTA + "/" + cli)
+        resultados = []
+        for each cl in clientes {
+            resultados.append([cl, roda(PASTA + "/" + cl)])
+        }
 
-        # O servidor morre AQUI, sempre — mesmo com o cliente falhando. Deixar
+        # O servidor morre AQUI, sempre — mesmo com cliente falhando. Deixar
         # servidor vivo faz a próxima execução falhar por porta ocupada, que é
         # a mesma família de não-hermético do E1.
         os.cmd("pkill -f '" + srv + "' 2>/dev/null")
 
-        mostra(r[1])
-        if r[0] != 0 {
-            falhou.append(cli + " (rc " + str(r[0]) + ")")
-        }
-        elif "PULOU" in r[1] {
-            pulou.append(cli)
-        }
-        else {
-            okey.append(srv + "+" + cli)
+        for each par in resultados {
+            cl = par[0]
+            r = par[1]
+            post("   · " + cl)
+            mostra(r[1])
+            if r[0] != 0 {
+                falhou.append(cl + " (rc " + str(r[0]) + ")")
+            }
+            elif "PULOU" in r[1] {
+                pulou.append(cl)
+            }
+            else {
+                okey.append(srv + "+" + cl)
+            }
         }
     }
 

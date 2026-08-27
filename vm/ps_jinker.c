@@ -204,6 +204,30 @@ const char *ps_jk_header(const PSJkReq *r, const char *nome)
     return NULL;
 }
 
+/* Content-Length, tratando a REPETIÇÃO.
+ *
+ * `ps_jk_header` devolve o primeiro que achar, e era isso que acontecia com
+ * dois `Content-Length` na mesma requisição: o servidor usava um, o
+ * intermediário na frente podia usar o outro, e o pedaço entre os dois
+ * tamanhos vira uma requisição que só um dos dois enxerga. É o smuggling
+ * clássico (RFC 9112 §6.3): valores DIFERENTES têm que ser recusados;
+ * repetição do MESMO valor é aceita e colapsa em um.
+ *
+ * Devolve o valor, NULL se não houver, ou JK_CL_INVALIDO se discordarem. */
+#define JK_CL_INVALIDO ((const char *)-1)
+
+static const char *jk_content_length(const PSJkReq *r)
+{
+    const char *achado = NULL;
+    for (int i = 0; i < r->ncabs; i++) {
+        if (strcasecmp(r->cabs[i].nome, "Content-Length") != 0) continue;
+        const char *v = r->cabs[i].valor;
+        if (!achado) { achado = v; continue; }
+        if (strcmp(achado, v) != 0) return JK_CL_INVALIDO;
+    }
+    return achado;
+}
+
 static char *dup_faixa(const char *a, const char *b)
 {
     size_t n = (size_t)(b - a);
@@ -297,7 +321,18 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
         char *e2 = memmem(p, nhead - (size_t)(p - c->buf), "\r\n", 2);
         if (!e2 || e2 == p) break;
         char *dois = memchr(p, ':', (size_t)(e2 - p));
-        if (dois) {
+        /* Linha de header SEM `:` não é header — é lixo, e ignorar em silêncio
+         * deixa o intermediário da frente enxergar uma requisição diferente da
+         * nossa. RFC 9112 §2.2. */
+        if (!dois) { ps_jk_req_solta(r); return PSJK_MALFORM; }
+        /* ESPAÇO ANTES DO `:` é citado nominalmente pela RFC 9112 §5.1 como
+         * vetor de smuggling, e ela manda responder 400. Antes, `Content-Length
+         * : 5` virava um header de nome "Content-Length " (com o espaço), que
+         * nenhuma busca acha — o header sumia e o corpo era descartado. */
+        if (dois > p && (dois[-1] == ' ' || dois[-1] == '\t')) {
+            ps_jk_req_solta(r); return PSJK_MALFORM;
+        }
+        {
             if (r->ncabs == cap_c) {
                 /* bump não realloca: pega vetor maior da arena e copia; o
                  * antigo fica abandonado no bloco (o reset recolhe tudo) */
@@ -324,12 +359,41 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
     const char *upg = ps_jk_header(r, "Upgrade");
     if (upg && strcasecmp(upg, "websocket") == 0) r->eh_ws = 1;
 
+    /* Transfer-Encoding não é implementado, e "não implementado" tem que ser
+     * DITO. Antes, um POST `chunked` era servido com 200 e corpo VAZIO: o
+     * cliente acha que mandou, o servidor acha que não veio nada, e a
+     * diferença entre os dois é exatamente o que o smuggling explora. RFC 9112
+     * §6.3 e §7.1: quem não entende a codificação responde 501.
+     *
+     * Content-Length JUNTO com Transfer-Encoding é pior — os dois dizem onde o
+     * corpo acaba, e discordar é o ataque clássico. Aí é 400. */
+    const char *te = ps_jk_header(r, "Transfer-Encoding");
+    if (te) {
+        /* A consulta vem ANTES do `solta`: depois dele a arena já morreu e o
+         * header não existe mais — era o que fazia TE+CL responder 501 em vez
+         * do 400 que o par exige. */
+        int com_cl = ps_jk_header(r, "Content-Length") != NULL;
+        ps_jk_req_solta(r);
+        return com_cl ? PSJK_MALFORM : PSJK_NAOIMPL;
+    }
+
     /* corpo por Content-Length */
     size_t ncorpo = 0;
-    const char *cl = ps_jk_header(r, "Content-Length");
+    const char *cl = jk_content_length(r);
+    if (cl == JK_CL_INVALIDO) { ps_jk_req_solta(r); return PSJK_MALFORM; }
     if (cl) {
-        long v = atol(cl);
-        if (v < 0 || (unsigned long)v > JK_CORPO_MAX) { ps_jk_req_solta(r); return -1; }
+        /* `atol` engolia tudo: "abc" virava 0 e o corpo sumia. O valor tem que
+         * ser dígito do começo ao fim — RFC 9112 §6.2 não admite sinal, espaço
+         * nem sufixo. */
+        const char *d = cl;
+        if (!*d) { ps_jk_req_solta(r); return PSJK_MALFORM; }
+        for (; *d; d++)
+            if (*d < '0' || *d > '9') { ps_jk_req_solta(r); return PSJK_MALFORM; }
+        errno = 0;
+        long v = strtol(cl, NULL, 10);
+        if (errno || v < 0 || (unsigned long)v > JK_CORPO_MAX) {
+            ps_jk_req_solta(r); return PSJK_MALFORM;
+        }
         ncorpo = (size_t)v;
     }
     while (c->n < nhead + ncorpo)
@@ -373,6 +437,7 @@ static const char *frase(int status)
         case 404: return "Not Found";
         case 405: return "Method Not Allowed";
         case 429: return "Too Many Requests";
+        case 501: return "Not Implemented";
         case 500: return "Internal Server Error";
         default:  return "OK";
     }
@@ -644,6 +709,13 @@ int ps_jk_ws_envia_texto_cli(PSJkConn *c, const char *msg, size_t n)
     if (tmp != pilha) free(tmp);
     return rc;
 }
+
+/* 1 = ainda há bytes NO BUFFER, já lidos do socket e não consumidos.
+ *
+ * É o que o pipelining precisa: duas requisições no mesmo `write` chegam
+ * juntas, `ps_jk_le_request` consome a primeira e a segunda fica aqui. Quem
+ * espera o epoll disparar espera pra sempre — o dado já saiu do socket. */
+int ps_jk_conn_pendente(const PSJkConn *c) { return c && c->n > 0; }
 
 int ps_jk_ws_tem_dados(PSJkConn *c, int timeout_ms)
 {

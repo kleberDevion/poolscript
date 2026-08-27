@@ -1,4 +1,4 @@
-# `regex.escape(string)`
+# `regex.escape(pattern)`
 
 Escapa os caracteres especiais de regex num texto, pra ele ser usado como
 **texto literal** dentro de um padrão. Devolve a versão escapada.

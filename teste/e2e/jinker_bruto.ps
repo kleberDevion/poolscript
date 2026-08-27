@@ -1,0 +1,158 @@
+# Requisições HTTP CRUAS contra o jinker — o que a lib `request` nunca manda.
+#
+# POR QUE: a auditoria profunda de 2026-08-26 foi para onde a cobertura era
+# zero e achou seis defeitos que nenhum cliente educado provoca. Todos da mesma
+# família: requisição TORTA aceita com 200 em vez de recusada. Isso é
+# *request smuggling* — um intermediário na frente interpreta o que mandaram de
+# um jeito, nós de outro, e a diferença vira uma requisição que só um dos dois
+# enxerga.
+#
+# Aqui os bytes são montados na mão e enviados por socket, porque é a única
+# forma de escrever `Content-Length : 5` com espaço antes dos dois-pontos.
+#
+# Sobe com o servidor do par (ver teste/e2e_roda.ps).
+import sockets
+import sys
+
+HOST = "127.0.0.1"
+PORTA = 28840
+
+
+# Manda os bytes exatos e devolve a primeira linha da resposta ("HTTP/1.1 400
+# Bad Request"), ou "" se o servidor fechou sem responder.
+action bate(cru) {
+    s = sockets.socket()
+    s.settimeout(5)
+    if s.connect_ex((HOST, PORTA)) != 0 {
+        return "SEM-CONEXAO"
+    }
+    s.send(cru.encode())
+    resp = ""
+    try {
+        resp = s.recv(4096).decode()
+    } catch (e) {
+        resp = ""
+    }
+    s.close()
+    if resp == "" {
+        return "FECHOU-CALADO"
+    }
+    return resp.split("\r\n")[0]
+}
+
+
+action confere(nome, cru, esperado) {
+    obtido = bate(cru)
+    if esperado in obtido {
+        post("  ok    ", nome, "->", obtido)
+        return 0
+    }
+    post("  FALHOU", nome)
+    post("          esperado conter:", esperado)
+    post("          obtido         :", obtido)
+    return 1
+}
+
+
+if __name__ == "main" {
+    if bate("GET /oi HTTP/1.1\r\nHost: x\r\n\r\n") == "SEM-CONEXAO" {
+        post("PULOU: nada escutando em", HOST + ":" + str(PORTA))
+        sys.exit(0)
+    }
+
+    ruins = 0
+
+    # ── requisição sã continua funcionando ──────────────────────────────────
+    ruins = ruins + confere("GET normal",
+        "GET /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+    ruins = ruins + confere("POST com Content-Length correto",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 8\r\n\r\n{\"x\": 1}", "HTTP/1.1 200")
+
+    # ── Transfer-Encoding: não implementamos, então tem que DIZER ───────────
+    # Antes: 200 OK com corpo VAZIO. O cliente achava que mandou, o servidor
+    # achava que não veio nada. RFC 9112 §6.3/§7.1 manda 501.
+    ruins = ruins + confere("chunked -> 501, nao 200 de corpo vazio",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n" +
+        "5\r\nOLAAA\r\n0\r\n\r\n", "HTTP/1.1 501")
+
+    # Os dois juntos dizem onde o corpo acaba, e discordar É o ataque.
+    ruins = ruins + confere("Transfer-Encoding + Content-Length -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 5\r\n" +
+        "Transfer-Encoding: chunked\r\n\r\nOLAAA", "HTTP/1.1 400")
+
+    # ── Content-Length duplicado ────────────────────────────────────────────
+    # Antes: usava o primeiro, calado. O que estivesse na frente podia usar o
+    # segundo — e o pedaço entre os dois tamanhos vira requisição fantasma.
+    ruins = ruins + confere("Content-Length duplicado e diferente -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 8\r\n" +
+        "Content-Length: 6\r\n\r\n{\"x\": 1}", "HTTP/1.1 400")
+    # Repetido com o MESMO valor é legal e colapsa em um.
+    ruins = ruins + confere("Content-Length repetido igual -> 200",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 8\r\n" +
+        "Content-Length: 8\r\n\r\n{\"x\": 1}", "HTTP/1.1 200")
+
+    # ── Content-Length que não é número ─────────────────────────────────────
+    # Antes: `atol("abc")` = 0, corpo descartado em silêncio.
+    ruins = ruins + confere("Content-Length: abc -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\nOLAAA", "HTTP/1.1 400")
+    ruins = ruins + confere("Content-Length: 5x -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 5x\r\n\r\nOLAAA", "HTTP/1.1 400")
+
+    # ── espaço antes dos dois-pontos ────────────────────────────────────────
+    # Citado NOMINALMENTE pela RFC 9112 §5.1 como vetor de smuggling. Antes, o
+    # header virava um de nome "Content-Length " (com espaço), que nenhuma
+    # busca acha: o header sumia e o corpo era descartado.
+    ruins = ruins + confere("espaco antes do ':' -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length : 5\r\n\r\nOLAAA", "HTTP/1.1 400")
+
+    # ── linha de header sem ':' ─────────────────────────────────────────────
+    ruins = ruins + confere("header sem ':' -> 400",
+        "GET /oi HTTP/1.1\r\nHost: x\r\nlixo sem dois pontos\r\n\r\n", "HTTP/1.1 400")
+
+    # ── pipelining: duas requisicoes num UNICO write ────────────────────────
+    # Antes: 1 resposta. As mesmas duas em writes separados davam 2 — ou seja,
+    # keep-alive funcionava e pipelining nao. O `conn_consome` guardava o resto
+    # no buffer, mas o laco so reagia a dado NOVO no socket, e esse ja tinha
+    # saido de la.
+    # Numa linha só: fora de parênteses, o `+` no fim da linha NÃO continua a
+    # expressão — a quebra encerra o statement.
+    uma = "GET /oi HTTP/1.1\r\nHost: x\r\n\r\n"
+    duas = uma + uma
+    s = sockets.socket()
+    s.settimeout(5)
+    s.connect_ex((HOST, PORTA))
+    s.send(duas.encode())
+    tudo = ""
+    try {
+        i = 0
+        while i < 4 {
+            pedaco = s.recv(4096).decode()
+            if pedaco == "" {
+                break
+            }
+            tudo = tudo + pedaco
+            if tudo.count("HTTP/1.1") >= 2 {
+                break
+            }
+            i = i + 1
+        }
+    } catch (e) {
+        tudo = tudo
+    }
+    s.close()
+    quantas = tudo.count("HTTP/1.1")
+    if quantas >= 2 {
+        post("  ok     pipelining: 2 requisicoes num write ->", str(quantas), "respostas")
+    }
+    else {
+        post("  FALHOU pipelining: 2 requisicoes num write ->", str(quantas), "resposta(s)")
+        ruins = ruins + 1
+    }
+
+    post("")
+    if ruins > 0 {
+        post("FALHARAM:", ruins)
+        sys.exit(1)
+    }
+    post("bruto: ok")
+}

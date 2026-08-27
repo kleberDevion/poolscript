@@ -1,0 +1,10 @@
+HTTP/1.1 200 OK
+Server: Jinker
+Date: Wed, 26 Aug 2026 19:45:20 GMT
+Content-Type: application/json; charset=utf-8
+Content-Length: 23
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: POST, GET
+Access-Control-Allow-Headers: Content-Type, Authorization
+
+{"len": 0, "corpo": ""}

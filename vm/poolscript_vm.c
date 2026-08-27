@@ -8600,7 +8600,7 @@ static int mod_hash_b64decode(VM *vm, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_HASH[] = {
-    { "crypt", mod_hash_crypt, 0, NULL }, { "check", mod_hash_check, 0, NULL },
+    { "crypt", mod_hash_crypt, 0, "senha" }, { "check", mod_hash_check, 0, "senha_hash,senha_digitada" },
     { "sha256", mod_hash_sha256, 0, NULL },
     { "b64encode", mod_hash_b64encode, 0, NULL }, { "b64decode", mod_hash_b64decode, 0, NULL },
 };
@@ -8919,18 +8919,18 @@ static int mod_bytes_xor(VM *vm, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_BYTES[] = {
-    { "new", mod_bytes_new, 0, NULL },
-    { "fromhex", mod_bytes_fromhex, 0, NULL },
-    { "hex", mod_bytes_hex, 0, NULL },
-    { "base64", mod_bytes_base64, 0, NULL },
-    { "frombase64", mod_bytes_frombase64, 0, NULL },
+    { "new", mod_bytes_new, 0, "x" },
+    { "fromhex", mod_bytes_fromhex, 0, "s" },
+    { "hex", mod_bytes_hex, 0, "b" },
+    { "base64", mod_bytes_base64, 0, "b" },
+    { "frombase64", mod_bytes_frombase64, 0, "s" },
     { "fromint", mod_bytes_fromint, 0, "n,length,byteorder" },
     { "toint", mod_bytes_toint, 0, "b,byteorder" },
-    { "tolist", mod_bytes_tolist, 0, NULL },
-    { "concat", mod_bytes_concat, 0, NULL },
+    { "tolist", mod_bytes_tolist, 0, "b" },
+    { "concat", mod_bytes_concat, 0, "lista" },
     { "slice", mod_bytes_slice, 0, "b,ini,fim" },
-    { "get", mod_bytes_get, 0, NULL },
-    { "xor", mod_bytes_xor, 0, NULL },
+    { "get", mod_bytes_get, 0, "b,i" },
+    { "xor", mod_bytes_xor, 0, "dados,chave" },
 };
 
 
@@ -9026,15 +9026,39 @@ static int mod_jwt_check(VM *vm, Value *args, int n, Value *out)
     /* O alg vem do header, mas NÃO é confiado cegamente: só a família HMAC é
      * aceita. Token dizendo "alg":"none" ou "RS256" é recusado — confiar no
      * header é exatamente o buraco que derrubou várias bibliotecas de JWT. */
-    unsigned char hdr[256];
-    long nhdr = ps_base64_decode(tk->chars, (size_t)(p1 - tk->chars), hdr, sizeof(hdr) - 1);
-    if (nhdr <= 0) return 0;
-    hdr[nhdr] = '\0';
+    /* O buffer é dimensionado pelo header REAL, não por um número redondo.
+     *
+     * Era `unsigned char hdr[256]`, e header de 256 bytes acontece o tempo
+     * todo: `kid`, `jku` e `x5c` são campos normais de emissor de verdade e
+     * passam disso sozinhos. O que acontecia era pior que truncar — o decode
+     * não cabia, devolvia <= 0, e o token VÁLIDO era rejeitado. Medido: `kid`
+     * de 219 caracteres passava, de 220 falhava.
+     *
+     * Base64 encolhe 4 pra 3, então o tamanho decodificado é conhecido antes
+     * de decodificar. O teto de 64 KB é sanidade contra abuso, não contrato. */
+    size_t nb64 = (size_t)(p1 - tk->chars);
+    if (nb64 == 0 || nb64 > 64u * 1024u) return 0;
+    unsigned char pilha[512];               /* cobre o header comum sem malloc */
+    unsigned char *hdr = pilha;
+    size_t cap = sizeof(pilha);
+    size_t precisa = nb64 / 4 * 3 + 8;
+    if (precisa > cap) {
+        hdr = malloc(precisa);
+        if (!hdr) return 0;
+        cap = precisa;
+    }
+    long nhdr = ps_base64_decode(tk->chars, nb64, hdr, cap - 1);
     int tam = 0;
-    if      (strstr((char *)hdr, "\"HS256\"")) tam = PS_SHA256_TAM;
-    else if (strstr((char *)hdr, "\"HS384\"")) tam = PS_SHA384_TAM;
-    else if (strstr((char *)hdr, "\"HS512\"")) tam = PS_SHA512_TAM;
-    else return 0;
+    if (nhdr > 0) {
+        hdr[nhdr] = '\0';
+        /* O alg vem do header, mas NÃO é confiado cegamente: só a família HMAC
+         * é aceita. Token dizendo "alg":"none" ou "RS256" é recusado. */
+        if      (strstr((char *)hdr, "\"HS256\"")) tam = PS_SHA256_TAM;
+        else if (strstr((char *)hdr, "\"HS384\"")) tam = PS_SHA384_TAM;
+        else if (strstr((char *)hdr, "\"HS512\"")) tam = PS_SHA512_TAM;
+    }
+    if (hdr != pilha) free(hdr);            /* o header só servia pro alg */
+    if (tam == 0) return 0;
 
     size_t nmsg = (size_t)(p2 - tk->chars);
     unsigned char esperada[PS_HASH_MAX];
@@ -9307,10 +9331,10 @@ static int mod_sys_stdin(VM *vm, Value *a, int n, Value *o)
 
 static const MembroMod MOD_SYS[] = {
     { "argv", mod_sys_argv, 1, NULL },
-    { "exit", mod_sys_exit, 0, NULL },
+    { "exit", mod_sys_exit, 0, "code" },
     { "platform", mod_sys_platform, 0, NULL },
     { "executable", mod_sys_executable, 1, NULL },
-    { "RelativePath", mod_sys_relativepath, 0, NULL },
+    { "RelativePath", mod_sys_relativepath, 0, "name" },
     { "stdout", mod_sys_stdout, 1, NULL },
     { "stderr", mod_sys_stderr, 1, NULL },
     { "stdin", mod_sys_stdin, 1, NULL },
@@ -9629,11 +9653,15 @@ static int par_tupla(VM *vm, Value *args, int n, Value *out)
 }
 
 static const MembroMod MOD_PARSING[] = {
-    { "string", par_string, 0, NULL }, { "integer", par_integer, 0, NULL },
-    { "floating", par_floating, 0, NULL }, { "boolean", par_boolean, 0, NULL },
-    { "TransientValue", par_transient, 0, NULL },
-    { "JSONformatt", par_json, 0, NULL }, { "Arrayformatt", par_array, 0, NULL },
-    { "Tuplasformatt", par_tupla, 0, NULL },
+    /* Os nomes dos parâmetros estavam NULL, e o `--metadata` mentia por
+      * omissão: dizia `Parsing.integer()` sem argumento nenhum. Quem sofre não
+      * é só a auditoria de doc — o LSP lê ESTA MESMA tabela pro completion e
+      * pro hover, então oferecia a assinatura vazia. */
+    { "string", par_string, 0, "value,to_type" }, { "integer", par_integer, 0, "value,to_type" },
+    { "floating", par_floating, 0, "value,to_type" }, { "boolean", par_boolean, 0, "value,to_type" },
+    { "TransientValue", par_transient, 0, "value,to_type" },
+    { "JSONformatt", par_json, 0, "value,to_type" }, { "Arrayformatt", par_array, 0, "value,to_type" },
+    { "Tuplasformatt", par_tupla, 0, "value,to_type" },
 };
 
 
@@ -16561,8 +16589,18 @@ static void fib_trampolim(void)
         ps_ctx_swap(&f->ctx, &vm->sched_ctx);
         return;
     }
-    if (ps_jk_le_request(f->conn, &f->hr) != 0) {
-        f->leu = 0; f->rc = 0;   /* falha na leitura -> fechar conexão */
+    int lido = ps_jk_le_request(f->conn, &f->hr);
+    if (lido != PSJK_OK) {
+        /* Requisição TORTA tem que ser recusada com resposta, não com silêncio:
+         * fechar calado é o que deixa um intermediário na frente enxergar uma
+         * requisição diferente da nossa (request smuggling). RFC 9112 §5.1,
+         * §6.3 e §7.1. `PSJK_FECHA` é o caso legítimo — conexão que acabou —
+         * e esse continua fechando sem dizer nada. */
+        if (lido == PSJK_MALFORM)
+            ps_jk_responde(f->conn, 400, "text/plain", "requisicao malformada\n", 22, NULL, 0);
+        else if (lido == PSJK_NAOIMPL)
+            ps_jk_responde(f->conn, 501, "text/plain", "Transfer-Encoding nao suportado\n", 32, NULL, 0);
+        f->leu = 0; f->rc = 0;   /* de qualquer forma, fecha a conexão */
     } else {
         f->leu = 1;
         f->rc = jk_serve_uma(vm, f->j, f->conn, &f->hr, f->ip);
@@ -16881,6 +16919,21 @@ static void http_remove(SrvLoop *s, HttpConn *h)
     free(h);
 }
 
+/* Põe a conexão na fila dos que esperam vez. Devolve 0, ou -1 se a fila não
+ * cabe. A fila é drenada a cada volta do laço (`http_drena_fila`). */
+static int http_enfileira(SrvLoop *s, HttpConn *h)
+{
+    if (h->na_fila) return 0;
+    if (s->nfila + 1 > s->cap_fila) {
+        int nc = s->cap_fila ? s->cap_fila * 2 : 32;
+        HttpConn **nf = realloc(s->fila, sizeof(HttpConn *) * (size_t)nc);
+        if (nf) { s->fila = nf; s->cap_fila = nc; }
+    }
+    if (s->nfila >= s->cap_fila) return -1;
+    s->fila[s->nfila++] = h; h->na_fila = 1;
+    return 0;
+}
+
 /* depois de rodar/retomar a fibra `f` (dona = h): se terminou, re-arma
  * (keep-alive) ou fecha; se cedeu (sleep), segue ocupada. */
 static void http_pos_fibra(SrvLoop *s, HttpConn *h, Fiber *f)
@@ -16888,8 +16941,24 @@ static void http_pos_fibra(SrvLoop *s, HttpConn *h, Fiber *f)
     if (f->status != FIB_PRONTA) return;      /* cedeu: segue ocupada */
     int fechar = (!f->leu) || (!f->rc) || (!f->keep_alive);
     h->fib = NULL; fib_libera(f);
-    if (fechar) http_remove(s, h);
-    else { h->visto = time(NULL); ps_jk_conn_solta_buf(h->c); http_arma(s, h, 1); }   /* ociosa: solta o buffer de 16KB */
+    if (fechar) { http_remove(s, h); return; }
+
+    h->visto = time(NULL);
+    /* PIPELINING: duas requisições num único `write` chegam juntas; a primeira
+     * foi consumida e a segunda está NO BUFFER. Re-armar no epoll e esperar
+     * dados novos é esperar pra sempre — o dado já saiu do socket. Era isso
+     * que fazia duas requisições coladas renderem UMA resposta, enquanto as
+     * mesmas duas em writes separados rendiam as duas.
+     *
+     * Vai pra fila em vez de servir aqui: a fila é drenada nesta mesma volta
+     * do laço e não empilha quadro de pilha por requisição do pipeline. */
+    if (ps_jk_conn_pendente(h->c)) {
+        http_arma(s, h, 0);                   /* desarma: não depende do epoll */
+        if (http_enfileira(s, h) != 0) http_remove(s, h);   /* fila cheia: fecha */
+        return;
+    }
+    ps_jk_conn_solta_buf(h->c);               /* ociosa: solta o buffer de 16KB */
+    http_arma(s, h, 1);
 }
 
 /* serve UMA requisição de `h` numa fibra. Pool cheio -> enfileira (back-pressure). */
@@ -16898,14 +16967,7 @@ static void http_serve(VM *vm, SrvLoop *s, HttpConn *h)
     Fiber *f = fib_pega(vm, s->j, h->c, h->ip);
     if (!f) {
         http_arma(s, h, 0);       /* desarma: não re-dispara enquanto espera slot */
-        if (!h->na_fila) {
-            if (s->nfila + 1 > s->cap_fila) {
-                int nc = s->cap_fila ? s->cap_fila * 2 : 32;
-                HttpConn **nf = realloc(s->fila, sizeof(HttpConn *) * (size_t)nc);
-                if (nf) { s->fila = nf; s->cap_fila = nc; }
-            }
-            if (s->nfila < s->cap_fila) { s->fila[s->nfila++] = h; h->na_fila = 1; }
-        }
+        http_enfileira(s, h);
         return;
     }
     h->fib = f; f->dono = h; http_arma(s, h, 0);   /* ocupada: desarma durante o serve */
@@ -17151,8 +17213,15 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
                 if (c) {
                     PSJkReq hr;
-                    if (ps_jk_le_request(c, &hr) == 0) { jk_ws_aceita(vm, j, c, &hr); ps_jk_req_solta(&hr); }
-                    else ps_jk_close(c);
+                    int lido = ps_jk_le_request(c, &hr);
+                    if (lido == PSJK_OK) { jk_ws_aceita(vm, j, c, &hr); ps_jk_req_solta(&hr); }
+                    else {
+                        if (lido == PSJK_MALFORM)
+                            ps_jk_responde(c, 400, "text/plain", "requisicao malformada\n", 22, NULL, 0);
+                        else if (lido == PSJK_NAOIMPL)
+                            ps_jk_responde(c, 501, "text/plain", "Transfer-Encoding nao suportado\n", 32, NULL, 0);
+                        ps_jk_close(c);
+                    }
                 }
             } else if (tipo == EPW_WS) {
                 EpWs *w = (EpWs *)evs[e].data.ptr;

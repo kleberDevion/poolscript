@@ -1,0 +1,191 @@
+# Auditoria doc ↔ motor: o título de cada página tem que bater com a
+# assinatura REAL que o motor expõe.
+#
+# A regra do projeto (notas/CLAUDE.md) é que assinatura de doc nunca é digitada
+# de memória. Este script existia, dependia de um `audita_doc_sigs.py` e de um
+# `.audita_sigs.json` que não existem mais desde o porte pra C, e sumiu do
+# repositório junto — a auditoria deixou de existir sem ninguém notar. Agora a
+# fonte é `pool --metadata`, lida das tabelas do próprio VM.
+#
+#     ./pool scripts/audita_doc.ps           # relata
+#     ./pool scripts/audita_doc.ps --tudo    # lista também as páginas OK
+#
+# O QUE ELE NÃO CONFERE, e isso é dito de propósito: `--metadata` devolve os
+# NOMES dos parâmetros, mas nenhum default — 309 parâmetros, zero defaults. O
+# motor não sabe os defaults das nativas, que estão escritos no corpo em C de
+# cada uma. Então `flags=0` na doc não é verificável hoje; só a existência e a
+# ordem de `flags`. Limitação declarada em vez de disfarçada — dizer "263/263
+# OK" conferindo metade seria pior que não conferir.
+import os
+import sys
+import json
+import regex
+
+DOCS = "docs"
+
+
+# Todas as páginas .md, recursivamente.
+action junta_md(alvo, acc) {
+    if os.isdir(alvo) {
+        for each e in os.ls(alvo) {
+            junta_md(alvo + "/" + e["name"], acc)
+        }
+    }
+    elif alvo.endswith(".md") {
+        acc.append(alvo)
+    }
+    return acc
+}
+
+
+# "# `regex.sub(pattern, repl, string, count=0)`" -> ["regex.sub", [nomes...]]
+# Devolve [] quando a primeira linha não é um título de assinatura.
+action le_titulo(caminho) {
+    linha = ""
+    for each l in open(caminho).read().split("\n") {
+        if l.strip() != "" {
+            linha = l.strip()
+            break
+        }
+    }
+    m = regex.findall("^# `([A-Za-z_][A-Za-z0-9_.]*)\\(([^`]*)\\)`$", linha)
+    if len(m) == 0 {
+        return []
+    }
+    nome = m[0][0]
+    dentro = m[0][1].strip()
+    params = []
+    if dentro != "" {
+        for each p in dentro.split(",") {
+            p = p.strip()
+            if p == "" {
+                continue
+            }
+            # o default fica de fora: o motor não sabe qual é (ver cabeçalho)
+            params.append(p.split("=")[0].strip())
+        }
+    }
+    return [nome, params]
+}
+
+
+if __name__ == "main" {
+    tudo = false
+    for each a in sys.argv {
+        if a == "--tudo" {
+            tudo = true
+        }
+    }
+
+    # `os.cmd` devolve o código de saída, não a saída — daí o arquivo no meio.
+    tmp = "/tmp/ps_meta.json"
+    os.cmd("'" + sys.executable + "' --metadata > " + tmp)
+    meta = json.parse(open(tmp).read())
+
+    # índice: "modulo.funcao" -> lista de nomes de parâmetro
+    real = {}
+    for each mod in meta["modulos"].keys() {
+        for each f in meta["modulos"][mod] {
+            nomes = []
+            for each p in f["params"] {
+                nomes.append(p["nome"])
+            }
+            real[mod + "." + f["nome"]] = nomes
+        }
+    }
+
+    paginas = 0
+    sem_titulo = []
+    fora_do_motor = []
+    divergentes = []
+    motor_mudo = []
+    okey = 0
+
+    for each caminho in junta_md(DOCS, []) {
+        t = le_titulo(caminho)
+        if len(t) == 0 {
+            sem_titulo.append(caminho)
+            continue
+        }
+        paginas = paginas + 1
+        nome = t[0]
+        docp = t[1]
+
+        # O CAMINHO diz o namespace. `docs/jinker/request/get/get.md` documenta
+        # `jinker.request.get`, não o módulo `request` de HTTP — sem esta
+        # checagem os dois colidem no índice e a página aparece como
+        # divergente sem ser. Só compara quando a primeira pasta sob `docs/`
+        # é o próprio módulo do título.
+        raiz_doc = caminho.split("/")[1]
+        if nome.split(".")[0] != raiz_doc {
+            fora_do_motor.append(caminho + "  (" + nome + ", sob docs/" + raiz_doc + ")")
+            continue
+        }
+        if not nome in real {
+            # Método de objeto e página de conceito não estão em `modulos`;
+            # não é divergência, é fora do alcance desta conferência.
+            fora_do_motor.append(caminho + "  (" + nome + ")")
+            continue
+        }
+        motorp = real[nome]
+        # O motor declarar ZERO parâmetro pra uma função que evidentemente
+        # recebe algum não é erro da doc — é lacuna do `--metadata`, que lê
+        # essas listas de tabelas escritas à mão ao lado de cada nativa. Culpar
+        # a doc aqui faria "corrigir" páginas certas pra bater com uma fonte
+        # incompleta. Vai pra uma pilha separada, e o LSP sofre do mesmo mal:
+        # ele oferece completion a partir desta mesma tabela.
+        if len(motorp) == 0 and len(docp) > 0 {
+            motor_mudo.append([caminho, nome, docp])
+            continue
+        }
+        if docp == motorp {
+            okey = okey + 1
+            if tudo {
+                post("  ok    ", nome)
+            }
+        }
+        else {
+            divergentes.append([caminho, nome, docp, motorp])
+        }
+    }
+
+    post("")
+    post("páginas com título de assinatura:", paginas)
+    post("  conferidas contra o motor:", okey + len(divergentes))
+    post("  batem:", okey)
+    post("  fora do alcance (método de objeto / conceito):", len(fora_do_motor))
+    post("arquivos .md sem título de assinatura:", len(sem_titulo))
+    post("  motor nao declara os parametros (lacuna do --metadata):", len(motor_mudo))
+    post("")
+    post("NAO CONFERIDO: valores default. `pool --metadata` nao os expoe (309")
+    post("parametros, zero defaults) porque cada nativa resolve o dela no corpo")
+    post("em C. `flags=0` na doc continua sem verificacao — so a existencia e a")
+    post("ordem de `flags`.")
+
+    if len(motor_mudo) > 0 {
+        post("")
+        post("MOTOR SEM PARAMETROS DECLARADOS (a doc esta certa; o --metadata e")
+        post("que nao sabe, e o LSP tambem nao):")
+        for each d in motor_mudo {
+            post("   ", d[1] + "(" + (", ").join(d[2]) + ")", " ->  motor diz", d[1] + "()")
+        }
+    }
+    if len(divergentes) == 0 {
+        post("")
+        post("nenhuma divergencia de nome/ordem entre doc e motor.")
+        # `exit` exige int: bool não converte sozinho (e o motor está certo em
+        # não adivinhar). Lacuna do motor também reprova — é achado, não aviso.
+        if len(motor_mudo) > 0 {
+            sys.exit(1)
+        }
+        sys.exit(0)
+    }
+    post("")
+    post("DIVERGENTES:", len(divergentes))
+    for each d in divergentes {
+        post("  ", d[0])
+        post("      doc  :", d[1] + "(" + (", ").join(d[2]) + ")")
+        post("      motor:", d[1] + "(" + (", ").join(d[3]) + ")")
+    }
+    sys.exit(1)
+}

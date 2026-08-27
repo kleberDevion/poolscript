@@ -192,6 +192,8 @@ check: pool testar
 	@echo
 	@./pool teste/confere_metadata.ps
 	@echo
+	@./pool scripts/audita_doc.ps
+	@echo
 	@./pool lsp/teste_lsp.ps
 	@echo
 	@$(MAKE) --no-print-directory analisa

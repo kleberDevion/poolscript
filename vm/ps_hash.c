@@ -397,17 +397,34 @@ static int b64_valor(char c)
     return -1;
 }
 
+/* Decodifica base64 / base64url. Devolve quantos bytes saíram, ou -1.
+ *
+ * O PADDING é opcional — JWT usa base64url SEM padding, e recusar isso
+ * quebraria todo token. Mas quando ele existe tem que estar no FIM e na
+ * quantidade exata. Antes, um `=` simplesmente encerrava o laço e a função
+ * devolvia o que tinha decodificado até ali: `Zg=`, `Zg===`, `=Zm9v` e
+ * `Zm==9v` todos entregavam DADO PARCIAL como se fossem válidos. Não fura o
+ * JWT (a verificação exige tamanho exato de assinatura), mas os outros
+ * consumidores ficavam com um contrato que não recusa nada.
+ *
+ * A regra: `n % 4 == 1` não existe em base64 nenhum — 6 bits não formam byte.
+ * Com padding, o total tem que fechar múltiplo de 4. */
 long ps_base64_decode(const char *texto, size_t n, unsigned char *saida, size_t cap)
 {
     uint32_t acc = 0;
     int bits = 0;
     size_t o = 0;
+    size_t nsig = 0;      /* caracteres de dado (sem padding nem espaço) */
+    size_t npad = 0;
     for (size_t i = 0; i < n; i++) {
         char c = texto[i];
-        if (c == '=' ) break;
         if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        if (c == '=') { npad++; continue; }
+        /* dado DEPOIS do padding é o `Zm==9v`: o `=` não é separador, é fim */
+        if (npad) return -1;
         int v = b64_valor(c);
         if (v < 0) return -1;
+        nsig++;
         acc = (acc << 6) | (uint32_t)v;
         bits += 6;
         if (bits >= 8) {
@@ -415,6 +432,11 @@ long ps_base64_decode(const char *texto, size_t n, unsigned char *saida, size_t 
             if (o >= cap) return -1;
             saida[o++] = (unsigned char)((acc >> bits) & 0xFF);
         }
+    }
+    if (nsig % 4 == 1) return -1;            /* 6 bits soltos: impossível */
+    if (npad) {
+        size_t esperado = (4 - nsig % 4) % 4;
+        if (npad != esperado) return -1;     /* `Zg=`, `Zg===`, `=Zm9v` */
     }
     return (long)o;
 }
