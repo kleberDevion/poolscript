@@ -1,0 +1,95 @@
+{
+  "name": "psl-poolscript",
+  "displayName": "PoolScript Pro",
+  "description": "Suporte à linguagem PoolScript: syntax highlighting e autocomplete type-aware (métodos por tipo, argumentos nomeados, libs instaladas).",
+  "version": "1.5.22",
+  "publisher": "KleberSantanadeOliveira",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "icon": "images/icon.png",
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:poolscript",
+    "onLanguage:poolscript-psl"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "poolscript",
+        "aliases": [
+          "PoolScript",
+          "poolscript",
+          "ps"
+        ],
+        "extensions": [
+          ".ps",
+          ".p"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/poolscript-p.svg",
+          "dark": "./images/poolscript-p.svg"
+        }
+      },
+      {
+        "id": "poolscript-psl",
+        "aliases": [
+          "PoolScript",
+          "psl"
+        ],
+        "extensions": [
+          ".psl"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/poolscript-psl.svg",
+          "dark": "./images/poolscript-psl.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "poolscript",
+        "scopeName": "source.poolscript",
+        "path": "./syntaxes/poolscript.tmLanguage.json"
+      },
+      {
+        "language": "poolscript-psl",
+        "scopeName": "source.poolscript",
+        "path": "./syntaxes/poolscript.tmLanguage.json"
+      }
+    ],
+    "themes": [
+      {
+        "label": "PoolScript One Dark",
+        "uiTheme": "vs-dark",
+        "path": "./themes/poolscript-one-dark.json"
+      }
+    ],
+    "configuration": {
+      "title": "PoolScript",
+      "properties": {
+        "poolscript.lsp.ativo": {
+          "type": "boolean",
+          "default": true,
+          "description": "Liga o servidor LSP da linguagem (escrito em PoolScript). Desligado, a extensão fica só com o realce da gramática — não há mais cérebro embutido."
+        },
+        "poolscript.lsp.comando": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Comando do servidor LSP. Vazio = usa `poolscript-lsp` do PATH. Pra rodar direto do repositório: [\"pool\", \"/caminho/do/repo/lsp/servidor.ps\"]."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

@@ -50,6 +50,34 @@ pool: $(FONTES) $(VM)/ps_versao.h $(MK)
 bundle: pool
 	./build_bundle.sh
 
+# ── extensão do VS Code ─────────────────────────────────────────────────────
+# Ela vivia SÓ em ~/.vscode/extensions, sem estar no repositório e sem forma de
+# reconstruir: não havia `.vsix` em lugar nenhum da máquina. Editar a cópia
+# instalada funciona até a hora de levar pra outro PC, e aí não há o que levar.
+#
+# `node_modules` NÃO é versionado — o `npm install` o traz a partir do
+# package.json, e é ele que garante a mesma versão do cliente LSP em qualquer
+# máquina.
+#
+#     make vsix           gera editor/vscode/psl-poolscript-<versao>.vsix
+#     make instala-vsix   gera e instala no VS Code local
+EXT := editor/vscode
+
+$(EXT)/node_modules:
+	cd $(EXT) && npm install --omit=dev --no-audit --no-fund
+
+vsix: $(EXT)/node_modules
+	cd $(EXT) && npx --yes @vscode/vsce package --allow-missing-repository --skip-license
+	@ls -1 $(EXT)/*.vsix
+
+instala-vsix: vsix
+	code --install-extension $$(ls -t $(EXT)/*.vsix | head -1) --force
+	@echo
+	@echo "Recarregue a janela: Ctrl+Shift+P -> Developer: Reload Window"
+	@echo "O VS Code mantem o processo antigo do servidor ate isso."
+
+.PHONY: vsix instala-vsix
+
 # Instala no sistema: o binário (como `pool` e `psl`, que são o mesmo) e o
 # servidor LSP, que é PoolScript e por isso precisa dos .ps ao lado. O
 # `poolscript-lsp` é o atalho que o editor chama.

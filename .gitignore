@@ -66,3 +66,7 @@ teste/fuzz_corpus/
 teste/fuzz_achados/
 *.gcda
 *.gcno
+
+# extensão do VS Code: o vsix e as dependências são GERADOS
+editor/vscode/node_modules/
+editor/vscode/*.vsix
