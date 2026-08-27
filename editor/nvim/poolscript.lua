@@ -95,3 +95,60 @@ vim.diagnostic.config({
   virtual_text = { prefix = "●" },
   severity_sort = true,
 })
+
+-- ── fechamento automático de ( ) [ ] { } ────────────────────────────────────
+--
+-- O Neovim não fecha delimitador sozinho e aqui não há gerenciador de plugin,
+-- então o comportamento é escrito na mão. É o mesmo que a extensão do VS Code
+-- já dá pela `autoClosingPairs` do `language-configuration.json`.
+--
+--   `(`   insere `()` com o cursor no meio — mas só quando depois do cursor vem
+--         fim de linha, espaço ou um fechamento. Antes de texto (`|foo`) digita
+--         só `(`, senão envolver um trecho existente ficaria impossível.
+--   `)`   se o próximo caractere JÁ é `)`, o cursor anda por cima em vez de
+--         duplicar o fechamento.
+--   BS    dentro de um par vazio `(|)`, apaga os dois de uma vez.
+--   CR    dentro de um par vazio, abre o bloco: o fechamento desce e o cursor
+--         fica numa linha indentada no meio.
+
+local pares = { ["("] = ")", ["["] = "]", ["{"] = "}" }
+
+-- Caracteres imediatamente antes e depois do cursor. `col` vem 0-based (é a
+-- contagem de bytes à esquerda), então o anterior é `col` e o próximo `col+1`
+-- na indexação 1-based do Lua.
+local function ao_redor()
+  local linha = vim.api.nvim_get_current_line()
+  local col = vim.api.nvim_win_get_cursor(0)[2]
+  return linha:sub(col, col), linha:sub(col + 1, col + 1)
+end
+
+local function par_vazio()
+  local ant, prox = ao_redor()
+  return prox ~= "" and pares[ant] == prox
+end
+
+for abre, fecha in pairs(pares) do
+  vim.keymap.set("i", abre, function()
+    local _, prox = ao_redor()
+    if prox == "" or prox:match("[%s%)%]%},;]") then
+      return abre .. fecha .. "<Left>"
+    end
+    return abre
+  end, { expr = true, desc = "fecha " .. abre .. fecha .. " sozinho" })
+
+  vim.keymap.set("i", fecha, function()
+    local _, prox = ao_redor()
+    return prox == fecha and "<Right>" or fecha
+  end, { expr = true, desc = "anda por cima do " .. fecha .. " já fechado" })
+end
+
+vim.keymap.set("i", "<BS>", function()
+  return par_vazio() and "<BS><Del>" or "<BS>"
+end, { expr = true, desc = "apaga o par vazio inteiro" })
+
+-- Com o menu de completion aberto o <CR> é dele: mexer aqui trocaria o aceite
+-- do item por uma quebra de linha.
+vim.keymap.set("i", "<CR>", function()
+  if vim.fn.pumvisible() == 1 then return "<CR>" end
+  return par_vazio() and "<CR><Esc>O" or "<CR>"
+end, { expr = true, desc = "abre bloco ao dar enter dentro do par" })

@@ -38,8 +38,7 @@ amostras = {
 bruto = os.run([POOL, "--metadata"], true)
 meta = bruto.get_json()
 if meta == Null {
-    post("FALHA — o binario nao devolveu o metadata em JSON. Resposta:")
-    post(bruto)
+    post(f"FALHA — o binario nao devolveu o metadata em JSON. Resposta:\n {bruto}")
     raise MetadataIlegivel("pool --metadata ilegivel — binario antigo no PATH?")
 }
 tipos = meta["tipos"]

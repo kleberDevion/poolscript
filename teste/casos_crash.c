@@ -9,6 +9,53 @@
 #include "ps_teste.h"
 
 const Caso CASOS_CRASH[] = {
+/* ── recursão sem teto: três SIGSEGV da auditoria de engenharia (27/08) ──────
+ * Os três eram descida recursiva sem limite. O detector de CICLO existia e não
+ * bastava: ele pega `l.append(l)`, e não pega profundidade sem ciclo nem ciclo
+ * que fecha acima do vetor de 256 níveis que ele registra. */
+{ "parser: 30 mil parenteses aninhados é erro, nao SIGSEGV",
+  /* o gerador do caso é o próprio motor: 30 mil `(` na mão não cabe aqui */
+  "import os\n"
+  "import sys\n"
+  "fundo = 30000\n"
+  "src = \"post(\" + (\"(\" * fundo) + \"1\" + (\")\" * fundo) + \")\"\n"
+  "using open(\"p.ps\", \"w\") as f { f.write(src) }\n"
+  "os.cmd(\"'\" + sys.executable + \"' --check p.ps > o.txt 2>&1\")\n"
+  "post(\"aninhada demais\" in open(\"o.txt\").read())\n",
+  "True", NULL, 0 },
+{ "str() de estrutura profunda trunca, nao mata",
+  "x = []\n"
+  "i = 0\n"
+  "while (i < 100000) {\n"
+  "    x = [x]\n"
+  "    i = i + 1\n"
+  "}\n"
+  "post(len(str(x)) > 0)\n", "True", NULL, 0 },
+{ "ciclo que fecha ACIMA de 256 niveis nao mata",
+  /* O detector só registrava os 256 primeiros níveis, mas o contador seguia
+   * subindo: um ciclo fechando em 300 não existia pra ele. */
+  "raiz = []\n"
+  "x = raiz\n"
+  "alvo = Null\n"
+  "i = 0\n"
+  "while (i < 400) {\n"
+  "    novo = []\n"
+  "    addEnd(x, novo)\n"
+  "    x = novo\n"
+  "    if (i == 300) {\n"
+  "        alvo = novo\n"
+  "    }\n"
+  "    i = i + 1\n"
+  "}\n"
+  "addEnd(x, alvo)\n"
+  "post(len(str(raiz)) > 0)\n", "True", NULL, 0 },
+{ "aninhamento LEGITIMO continua passando",
+  /* o teto não pode virar limite de uso real: 60 blocos e 500 parênteses */
+  "x = 0\n"
+  "if (x == 0) { if (x == 0) { if (x == 0) { if (x == 0) {\n"
+  "    post(\"fundo\")\n"
+  "} } } }\n", "fundo", NULL, 0 },
+
 { "imprime lista que contém a si mesma",
   "l = [1, 2]\nl.append(l)\npost(l)\n",
   "[1, 2, [...]]", NULL, 0 },

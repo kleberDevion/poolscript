@@ -40,7 +40,29 @@ typedef struct {
      * porque dentro de um agrupamento não há bloco pra abrir. */
     int        chave_abre_bloco;
     int        grupo_depth;
+    /* Profundidade da descida recursiva. Ver PS_PARSE_PROF_MAX. */
+    int        prof;
 } P;
+
+/* TETO DE PROFUNDIDADE do parser.
+ *
+ * A descida é recursiva e não tinha limite: `post(((((…1…)))))` com 20 mil
+ * parênteses esgotava a pilha do C e o processo morria de SIGSEGV, sem
+ * mensagem. Medido: 10.000 níveis passavam, 20.000 matavam.
+ *
+ * Isso não é caso de laboratório — é o caminho de ENTRADA NÃO CONFIÁVEL por
+ * definição: `--check` é o que o editor roda a cada tecla (e o LSP junto),
+ * `psl install` compila pacote de terceiro, e a CI roda `--check` em arquivo
+ * que veio de fora. Dentro do jinker é pior: a fibra tem pilha de 128 KB, ~64x
+ * menor que os 8 MB do processo.
+ *
+ * 2000 é folgado pra código humano (o mais aninhado do repositório inteiro não
+ * passa de dezenas) e cabe com sobra até na pilha da fibra. Estourar vira erro
+ * de sintaxe com linha e coluna, como qualquer outro.
+ *
+ * É o que CPython faz com `MAXSTACK`/`RecursionError`, o Go com `maxNestLev` e
+ * o Clang com `MaxDepth` no parser de expressão. */
+#define PS_PARSE_PROF_MAX 2000
 
 /* ── reservadas que também não podem virar nome ─────────────────────────── */
 /* `=`, `+=`, `-=`, `*=`, `/=`, `%=` — os operadores que abrem atribuição. */
@@ -1025,7 +1047,25 @@ static PSNode *e_ou(P *p)
 /* Topo da expressão: nível `or` + condicional inline (ternário Python)
  * `A if cond else B`. `if` só é ternário DEPOIS de uma expressão — no início
  * de statement ele já foi despachado como `if` statement, sem ambiguidade. */
+/* Corpo real; a casca `expressao` conta a profundidade. */
+static PSNode *expressao_no(P *p);
+
+/* Casca que conta a descida. O corpo tem muitos `return`, e um contador
+ * espalhado por todos eles é convite a esquecer um — aqui entrar e sair sempre
+ * fecham. Ver PS_PARSE_PROF_MAX. */
 static PSNode *expressao(P *p)
+{
+    if (p->prof >= PS_PARSE_PROF_MAX) {
+        perro(p, "expressao aninhada demais", atual(p));
+        return NULL;
+    }
+    p->prof++;
+    PSNode *r = expressao_no(p);
+    p->prof--;
+    return r;
+}
+
+static PSNode *expressao_no(P *p)
 {
     PSNode *no = e_ou(p);
     if (FALHOU(p)) return NULL;
@@ -1093,7 +1133,24 @@ static PSNode *bloco_entrada(P *p)
     return b;
 }
 
+static PSNode *bloco_no(P *p);
+
+/* Mesma casca do `expressao`: bloco dentro de bloco é o OUTRO caminho de
+ * recursão do parser (`if { if { if { …`), e sem teto ele estoura a pilha do
+ * mesmo jeito que o parêntese aninhado. */
 static PSNode *bloco(P *p)
+{
+    if (p->prof >= PS_PARSE_PROF_MAX) {
+        perro(p, "bloco aninhado demais", atual(p));
+        return NULL;
+    }
+    p->prof++;
+    PSNode *r = bloco_no(p);
+    p->prof--;
+    return r;
+}
+
+static PSNode *bloco_no(P *p)
 {
     PSToken *t = atual(p);
 
@@ -2531,12 +2588,13 @@ PSParseResult *ps_parse(PSToken *toks, int32_t n)
     r->ok = 1;
     ps_arena_init(&r->arena);
 
-    P p;
-    p.toks = toks; p.n = n; p.pos = 0;
+    /* ZERADO de uma vez, e não campo a campo. Ao acrescentar `prof` eu esqueci
+     * de inicializá-lo aqui: ele nasceu com lixo de pilha, o teto disparou de
+     * cara e 3968 casos da suíte falharam. Campo novo em struct inicializada à
+     * mão é convite a exatamente isso. */
+    P p = {0};
+    p.toks = toks; p.n = n;
     p.arena = &r->arena; p.out = r;
-    p.dec_sem_captura = 0;
-    p.chave_abre_bloco = 0;
-    p.grupo_depth = 0;
 
     PSNode *prog = ps_node_novo(&r->arena, N_PROGRAM, 1, 1);
     if (!prog) { r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); return r; }

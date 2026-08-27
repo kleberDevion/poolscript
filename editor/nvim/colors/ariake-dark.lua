@@ -198,3 +198,27 @@ hi("DiffText",    { fg = c.funcao, bg = c.bg_linha })
 hi("Added",       { fg = c.add })
 hi("Removed",     { fg = c.del })
 hi("Changed",     { fg = c.keyword })
+
+-- ── fundo transparente ──────────────────────────────────────────────────────
+-- Tira o fundo dos grupos que pintam a "chapa" do editor, pro fundo do terminal
+-- aparecer atrás do texto. Mexe SÓ no fundo: cada grupo é relido e regravado com
+-- a MESMA cor de frente e os mesmos atributos, então nenhuma cor de sintaxe muda.
+--
+-- Popup, hover e a linha do cursor continuam opacos de propósito — sem fundo eles
+-- se misturam com o texto de baixo e ficam ilegíveis.
+--
+-- Para voltar ao fundo sólido: `vim.g.ariake_transparente = false` ANTES do
+-- `colorscheme("ariake-dark")` no init.lua.
+if vim.g.ariake_transparente ~= false then
+  local sem_fundo = {
+    "Normal", "NormalNC", "SignColumn", "FoldColumn", "EndOfBuffer",
+    "MsgArea", "MsgSeparator", "LineNr", "CursorLineNr", "Folded",
+    "StatusLine", "StatusLineNC", "TabLine", "TabLineSel", "TabLineFill",
+  }
+  for _, grupo in ipairs(sem_fundo) do
+    local atual = vim.api.nvim_get_hl(0, { name = grupo })
+    atual.bg = nil
+    atual.ctermbg = nil
+    vim.api.nvim_set_hl(0, grupo, atual)
+  end
+end

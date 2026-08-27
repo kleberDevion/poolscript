@@ -2382,15 +2382,39 @@ static const ModuloNat MODULOS[];
 static VM *vm_corrente = NULL;
 
 /* Estrutura que se contém (`l.append(l)`) fazia a recursão descer até estourar
- * a pilha do C — SEGFAULT, sem mensagem nenhuma. Em vez de um teto de
- * profundidade (que ainda cospe uma saída gigante), detecta o CICLO: o
- * container que já está sendo impresso vira `[...]`, igual ao Python. */
+ * a pilha do C — SEGFAULT, sem mensagem nenhuma. O container que já está sendo
+ * impresso vira `[...]`, igual ao Python.
+ *
+ * O CICLO SOZINHO NÃO BASTA, e a versão anterior deste comentário dizia
+ * escolher detectá-lo "em vez de um teto de profundidade". Isso deixava dois
+ * alçapões, os dois com repro:
+ *
+ *   1. profundidade sem ciclo — `x = [x]` cem mil vezes e `str(x)` mata o
+ *      processo. Não há ciclo pra detectar: a estrutura é uma corrente;
+ *   2. ciclo que fecha ACIMA de 256 — o vetor só registra os 256 primeiros
+ *      níveis (`if (ps_prof_texto < PS_CICLO_MAX)`), mas o contador continua
+ *      subindo. Um ciclo fechando na profundidade 300 simplesmente não existe
+ *      para o detector.
+ *
+ * Os dois somem com o TETO no mesmo lugar: passou de `PS_CICLO_MAX` níveis,
+ * para de descer e imprime `[...]`, exatamente como faria num ciclo. Como os
+ * três pontos de recursão já consultavam esta função antes de descer, o teto
+ * vale em todos sem tocar em nenhum.
+ *
+ * Por que 256 e não mais: dentro do jinker a fibra roda numa pilha de C de
+ * 128 KB (`FIB_CSTACK`), então o limiar de estouro lá é ~64x menor que os 8 MB
+ * do processo — 300 níveis bastavam pra derrubar o servidor inteiro por uma
+ * rota. Estrutura real não passa de algumas dezenas de níveis; o JSON já
+ * recusa acima de 64. */
 #define PS_CICLO_MAX 256
 static const void *ps_pilha_texto[PS_CICLO_MAX];
 static int ps_prof_texto = 0;
 
+/* 1 = PARE de descer aqui: ou este objeto já está no caminho (ciclo), ou a
+ * profundidade chegou no teto. Quem chama imprime `[...]` nos dois casos. */
 static int ps_em_ciclo(const void *o)
 {
+    if (ps_prof_texto >= PS_CICLO_MAX) return 1;
     for (int i = 0; i < ps_prof_texto; i++) if (ps_pilha_texto[i] == o) return 1;
     return 0;
 }

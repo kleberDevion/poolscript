@@ -1,0 +1,166 @@
+# Roda TODO bloco ```ps da documentação pelo `pool --check`.
+#
+# POR QUE ESTE ARQUIVO EXISTE: o `audita_doc.ps` confere a ASSINATURA do título
+# de cada página contra o `--metadata`. Ninguém conferia o CÓDIGO dentro das
+# páginas. O resultado é que `docs/linguagem/06-funcoes.md` ainda apresenta
+#
+#     int async reaction f():   ...
+#
+# como "válido", e o motor responde "bloco com ':' nao existe mais — use '{ }'".
+# Exemplo que não roda é doc errada com cara de doc certa; Python (doctest),
+# Rust (`cargo test --doc`) e Go (Example) executam os exemplos por isso.
+#
+#     ./pool scripts/audita_exemplos_doc.ps          # relata e reprova
+#     ./pool scripts/audita_exemplos_doc.ps --lista  # mostra o bloco inteiro
+#
+# ESCOPO: só as cercas marcadas ```ps / ```poolscript. As cercas SEM marcação
+# misturam saída de terminal, JSON e shell — incluir tudo daria achado inventado,
+# que é pior que achado nenhum. Marcar as cercas restantes é trabalho separado,
+# e este auditor passa a cobri-las de graça no dia em que forem marcadas.
+import os
+import sys
+
+RAIZ = "docs"
+TMP = "/tmp/ps_audita_doc"
+
+# Bloco que é FRAGMENTO de propósito (continuação com "...") ou que MOSTRA um
+# erro de propósito (`// SyntaxError: ...`) não é defeito. A lista é por
+# CONTEÚDO, não por número de linha — linha anda no primeiro commit.
+IGNORA_SE_TEM = ["...", "SyntaxError"]
+
+
+action lista_md(dir) {
+    saida = []
+    for each item in os.ls(dir) {
+        caminho = dir + "/" + item["name"]
+        if item["type"] == "dir" {
+            for each f in lista_md(caminho) {
+                addEnd(saida, f)
+            }
+        }
+        elif item["name"].endswith(".md") {
+            addEnd(saida, caminho)
+        }
+    }
+    return saida
+}
+
+
+# A cerca pode estar INDENTADA (bloco dentro de item de lista do markdown).
+# Essa indentação é do markdown, não do código: mantê-la faria o auditor acusar
+# "indentacao deve ser multiplo de 4" num exemplo correto — achado inventado.
+action recuo(linha) {
+    n = 0
+    while n < linha.len() and linha[n] == " " {
+        n = n + 1
+    }
+    return n
+}
+
+
+action blocos_ps(txt) {
+    blocos = []
+    dentro = false
+    atual = []
+    ini = 0
+    margem = 0
+    n = 0
+    for each linha in txt.splitlines() {
+        n = n + 1
+        limpa = linha.strip()
+        if dentro {
+            if limpa == "```" {
+                addEnd(blocos, {"linha": ini, "codigo": "\n".join(atual)})
+                dentro = false
+                atual = []
+            }
+            else {
+                if recuo(linha) >= margem {
+                    addEnd(atual, linha[margem:linha.len()])
+                }
+                else {
+                    addEnd(atual, limpa)
+                }
+            }
+        }
+        elif limpa == "```ps" or limpa == "```poolscript" {
+            dentro = true
+            ini = n
+            margem = recuo(linha)
+            atual = []
+        }
+    }
+    return blocos
+}
+
+
+action ignora(codigo) {
+    for each marca in IGNORA_SE_TEM {
+        if marca in codigo {
+            return true
+        }
+    }
+    return false
+}
+
+
+action confere(codigo) {
+    alvo = TMP + "/bloco.ps"
+    using open(alvo, "w") as f {
+        f.write(codigo + "\n")
+    }
+    os.cmd("'" + sys.executable + "' --check " + alvo + " > " + TMP + "/saida.json 2>&1")
+    return os.readFile(TMP + "/saida.json").strip()
+}
+
+
+os.mkdir(TMP, exist_ok=true)
+lista = "--lista" in sys.argv
+
+total = 0
+pulados = []
+achados = []
+
+for each md in lista_md(RAIZ) {
+    for each b in blocos_ps(os.readFile(md)) {
+        if ignora(b["codigo"]) {
+            addEnd(pulados, md + ":" + str(b["linha"]))
+            continue
+        }
+        total = total + 1
+        resposta = confere(b["codigo"])
+        if "\"ok\":false" in resposta {
+            addEnd(achados, {"arq": md, "linha": b["linha"], "msg": resposta, "codigo": b["codigo"]})
+        }
+    }
+}
+
+post("blocos ```ps conferidos:", total)
+# Nada de corte silencioso: o que ficou de fora sai NOMEADO, pra revisão humana.
+post("blocos pulados (fragmento com '...' ou erro mostrado de propósito — confira à mão):", pulados.len())
+for each p in pulados {
+    post("  " + p)
+}
+
+if achados.len() == 0 {
+    post("  todos analisam sem erro de sintaxe")
+    sys.exit(0)
+}
+
+post("")
+post("BLOCOS QUE O MOTOR RECUSA:", achados.len())
+for each a in achados {
+    post("  " + a["arq"] + ":" + str(a["linha"]))
+    post("    " + a["msg"])
+    if lista {
+        post("    ----")
+        for each l in a["codigo"].splitlines() {
+            post("    | " + l)
+        }
+    }
+}
+post("")
+post("Exemplo que o motor recusa é doc errada. Corrija a página — ou, se o")
+post("bloco é fragmento de propósito, marque-o de um jeito que este auditor")
+post("reconheça, com o motivo escrito.")
+sys.exit(1)
