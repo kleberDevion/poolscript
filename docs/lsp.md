@@ -14,11 +14,6 @@ o que se configura é o comando acima.
 
 ## O que ele entrega
 
-- **completion type-aware** — a cadeia `conn = psodbc.connect()` →
-  `DbConnection` → `cur = conn.cursor()` → `cur.` → `fetchall/fetchone/…`;
-  membros de módulo (`regex.`); palavras da linguagem e as variáveis do
-  arquivo quando não há receptor. Tipo desconhecido **não sugere nada** — zero
-  método falso;
 - **hover** — a assinatura real do método e o tipo que ele devolve;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;
@@ -28,8 +23,14 @@ o que se configura é o comando acima.
   token novo na linguagem já nasce pintado.
 
 O modelo de tipos vem do **próprio binário** (`pool --metadata`, lido das
-tabelas do VM). Nada é digitado à mão, então o completion não tem como
-divergir do motor.
+tabelas do VM). Nada é digitado à mão, então o hover não tem como divergir do
+motor.
+
+**Não há completion**, e é decisão de projeto. O que ele oferecia sem receptor
+era a lista de palavras da linguagem, cada uma rotulada "palavra da
+linguagem" — ruído: quem digita `for` não precisa que o editor lhe informe que
+`for` existe. O servidor deixou de **anunciar** `completionProvider`, então o
+editor nem pergunta; não é um handler respondendo vazio.
 
 ## VS Code
 
@@ -56,11 +57,11 @@ Duas configurações existem, pra quando se está mexendo no servidor:
 
 > Depois de trocar o `extension.js`, o VS Code **precisa recarregar a janela**
 > (`Ctrl+Shift+P` → *Developer: Reload Window*) — ele mantém a extensão antiga
-> em memória. Enquanto não recarrega, o que aparece no completion é a sugestão
-> genérica do editor (nomes de arquivo da pasta), não a do servidor.
+> em memória — o processo antigo do servidor continua rodando até isso.
 
 O painel **Saída → PoolScript** mostra a conversa com o servidor; é o primeiro
-lugar a olhar quando o completion não vem.
+lugar a olhar quando algo não vem — foi ele que mostrou o enquadramento
+quebrado que derrubava o servidor a cada acento.
 
 ## Neovim
 
@@ -108,7 +109,7 @@ extensões `ps;psl;p`.
 |---|---|
 | `lsp/protocolo.ps` | transporte: JSON-RPC enquadrado por `Content-Length`, sobre stdin/stdout |
 | `lsp/modelo.ps` | modelo de tipos (de `pool --metadata`) e a inferência da cadeia |
-| `lsp/servidor.ps` | os métodos do LSP: completion, hover, diagnóstico, realce |
+| `lsp/servidor.ps` | os métodos do LSP: hover, diagnóstico, realce |
 | `lsp/teste_lsp.ps` | dirige o servidor como um editor faria e confere as respostas |
 
 O teste entra no `make check` — não é varredura à parte.

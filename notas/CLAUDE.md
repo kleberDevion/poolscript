@@ -119,10 +119,12 @@ pelo `pool`. Não há JavaScript no projeto, e não há extensão VS Code
 versionada aqui — qualquer editor que fale LSP conversa com esse servidor.
 
 O modelo de tipos vem do próprio binário: `pool --metadata` lista módulos,
-membros, tipos e métodos lidos das tabelas do VM. É o que faz o completion ser
-type-aware — a cadeia `conn = psodbc.connect()` → `DbConnection` →
-`conn.cursor()` → `DbCursor` → `fetchall/fetchone/...` — e, se o tipo é
-desconhecido, NÃO sugere nada (nada de método falso).
+membros, tipos e métodos lidos das tabelas do VM. É o que alimenta o hover —
+a assinatura real e o tipo de retorno, sem nada digitado à mão.
+
+**Não há completion**, por decisão de projeto: o que ele oferecia sem receptor
+era a lista de palavras da linguagem, cada uma rotulada "palavra da
+linguagem". O servidor não anuncia `completionProvider`.
 
 ## Doc: assinatura vem do CÓDIGO, nunca digitada
 

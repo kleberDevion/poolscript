@@ -188,25 +188,13 @@ if __name__ == "main" {
     ok("initialize responde capabilities",
        r1 != Null and r1["result"]["capabilities"]["hoverProvider"] == true, str(r1))
 
-    r2 = resposta(msgs, 2)
-    labs = []
-    if r2 != Null {
-        labs = rotulos(r2)
-    }
-    ok("cadeia conn.cursor() -> DbCursor sugere fetchall",
-       "fetchall" in labs, str(len(labs)) + " itens: " + str(labs[0:6]))
-    ok("cadeia NAO sugere metodo de outro tipo",
-       not "upper" in labs, str(labs[0:8]))
-
-    r3 = resposta(msgs, 3)
-    labs3 = []
-    if r3 != Null {
-        labs3 = rotulos(r3)
-    }
-    ok("sem receptor sugere palavra da linguagem",
-       "action" in labs3 and "Entity" in labs3, str(len(labs3)) + " itens")
-    ok("sem receptor sugere as variaveis do arquivo",
-       "conn" in labs3 and "cur" in labs3, str(len(labs3)) + " itens")
+    # COMPLETION FOI REMOVIDO do servidor: a capacidade não é mais anunciada,
+    # então o editor nem pergunta. O que se confere agora é justamente isso —
+    # que ela NÃO aparece no `initialize`. Deixar as checagens antigas
+    # falhando, ou apagá-las sem pôr nada no lugar, seria perder a garantia de
+    # que a remoção foi feita no protocolo e não só no handler.
+    ok("completion NAO e mais anunciado",
+       not "completionProvider" in str(r1["result"]["capabilities"]), str(r1["result"]["capabilities"]))
 
     r4 = resposta(msgs, 4)
     txt = ""

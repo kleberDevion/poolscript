@@ -8,7 +8,6 @@
 #
 # O que entrega:
 #
-#   - completion type-aware, com o modelo de tipos lido do PRÓPRIO binário
 #     (`pool --metadata`) — tipo desconhecido não sugere nada;
 #   - hover com a assinatura real do método;
 #   - diagnóstico: `pool --check` no arquivo, a cada save/abertura;
@@ -40,17 +39,6 @@ action uri_pra_caminho(uri) {
 
 
 # O texto até o cursor (linha/coluna em base 0, como o LSP manda).
-action ate_o_cursor(texto, linha, coluna) {
-    ls = texto.split("\n")
-    if linha >= len(ls) {
-        return ""
-    }
-    return ls[linha][0:coluna]
-}
-
-
-# A parte da expressão imediatamente antes do cursor: em
-# `x = conn.cursor().fetch` devolve `conn.cursor().fetch`.
 action pedaco_antes(s) {
     i = len(s)
     profundidade = 0
@@ -76,86 +64,16 @@ action pedaco_antes(s) {
 }
 
 
-# ── completion ──────────────────────────────────────────────────────────────
-
-# kind do LSP: 2 = Method, 3 = Function, 9 = Module, 14 = Keyword, 6 = Variable
-action item(rotulo, kind, detalhe) {
-    return {"label": rotulo, "kind": kind, "detail": detalhe}
-}
-
-
-action completa(texto, linha, coluna) {
-    prefixo = ate_o_cursor(texto, linha, coluna)
-    trecho = pedaco_antes(prefixo)
-    itens = []
-    vars = modelo.tipos_do_documento(texto)
-
-    # `self.` dentro de uma Entity: campos e métodos DELA, nada mais
-    if trecho == "self." or trecho.endswith(" self.") {
-        ent = modelo.entity_da_linha(texto, linha)
-        for each m in modelo.membros_de_entity(texto, ent) {
-            itens.append(item(m["nome"], 5, m["detalhe"]))
-        }
-        return itens
-    }
-
-    # dentro dos parênteses de uma chamada conhecida: os parâmetros dela.
-    # Só quando NÃO há um `.` pendente — `f(x.` é completion de membro.
-    if trecho.count(".") == 0 {
-        ps = modelo.params_da_chamada(prefixo, vars)
-        if len(ps) > 0 {
-            for each p in ps {
-                d = p.get("default")
-                detalhe = "parametro"
-                if d != Null {
-                    detalhe = "parametro (padrao " + str(d) + ")"
-                }
-                itens.append(item(p["nome"] + "=", 21, detalhe))
-            }
-            return itens
-        }
-    }
-
-    if trecho.count(".") > 0 {
-        corte = trecho.rfind(".")
-        alvo = trecho[0:corte]
-
-        # `alvo` é um módulo? sugere os membros dele
-        if modelo.eh_modulo(alvo) {
-            for each m in modelo.membros_de_modulo(alvo) {
-                itens.append(item(m["nome"], 3, modelo.assinatura(m)))
-            }
-            return itens
-        }
-
-        # senão, o TIPO do alvo é quem manda
-        t = modelo.tipo_de_expressao(alvo, vars)
-        if t == "" or t.startswith("<modulo:") {
-            return []                     # tipo desconhecido: nada de chute
-        }
-        for each m in modelo.membros_de_tipo(t) {
-            itens.append(item(m["nome"], 2, t + "." + modelo.assinatura(m)))
-        }
-        # o que todo objeto tem
-        for each m in modelo.membros_de_tipo("__universal__") {
-            itens.append(item(m["nome"], 2, modelo.assinatura(m)))
-        }
-        return itens
-    }
-
-    # sem receptor: palavras da linguagem, módulos e variáveis do arquivo
-    for each k in modelo.KEYWORDS {
-        itens.append(item(k, 14, "palavra da linguagem"))
-    }
-    for each m in META_MODULOS() {
-        itens.append(item(m, 9, "modulo"))
-    }
-    for each v in vars.keys() {
-        itens.append(item(v, 6, vars[v]))
-    }
-    return itens
-}
-
+# COMPLETION REMOVIDO.
+#
+# O que ele oferecia sem receptor era a lista de palavras da linguagem, cada
+# uma rotulada "palavra da linguagem" — ruído que atrapalha mais do que ajuda:
+# quem digita `for` não precisa que o editor lhe informe que `for` existe.
+# Enquanto for isso, é melhor não ter.
+#
+# O servidor deixou de ANUNCIAR `completionProvider`, então o editor nem
+# pergunta — não é um handler que responde vazio, é a capacidade fora do
+# protocolo. Hover, diagnóstico e realce continuam.
 
 action META_MODULOS() {
     return modelo.META["modulos"].keys()
@@ -397,7 +315,6 @@ action trata(msg) {
             "capabilities": {
                 # 1 = full: o editor manda o documento inteiro a cada mudança
                 "textDocumentSync": 1,
-                "completionProvider": {"triggerCharacters": ["."]},
                 "hoverProvider": true,
                 "semanticTokensProvider": {
                     "legend": {"tokenTypes": LEGENDA, "tokenModifiers": []},
@@ -452,17 +369,6 @@ action trata(msg) {
         if uri in docs {
             docs.pop(uri)
         }
-        return
-    }
-
-    if metodo == "textDocument/completion" {
-        uri = params["textDocument"]["uri"]
-        pos = params["position"]
-        texto = ""
-        if uri in docs {
-            texto = docs[uri]
-        }
-        protocolo.responde(id, completa(texto, pos["line"], pos["character"]))
         return
     }
 
