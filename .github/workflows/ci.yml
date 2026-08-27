@@ -1,0 +1,121 @@
+# CI da PoolScript.
+#
+# A auditoria de 2026-08-27 apontou o buraco central: as ferramentas existem
+# (OOM, fuzz, ASan, cobertura, e2e, auditoria de doc e de padrões em C) e
+# NENHUMA era obrigatória. Ferramenta que ninguém roda não protege nada, e
+# "verde" que não inclui robustez é verde de mentira.
+#
+# A divisão segue o que compilador e VM sérios fazem: o PR paga o barato, a
+# noite paga o caro. O que NÃO existe aqui é etapa opcional — cada job ou
+# reprova ou não está no arquivo.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # 03:00 UTC — o caro roda quando ninguém está esperando
+    - cron: '0 3 * * *'
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+
+jobs:
+  # ── todo push e todo PR ────────────────────────────────────────────────────
+  portao:
+    name: portão (suíte, doc, padrões em C, analisador)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
+            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
+            libmongoc-dev libbson-dev
+      - run: make pool testar
+      # `make check` já encadeia suíte + metadata + audita_doc + audita_c +
+      # LSP + analisador, e cada um deles sai != 0 quando acha algo.
+      - run: make check
+
+  # ── todo push e todo PR: o barato de robustez ──────────────────────────────
+  propriedade:
+    name: teste de propriedade (semente do dia)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
+            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
+            libmongoc-dev libbson-dev
+      - run: make pool
+      # A SEMENTE MUDA a cada dia, de propósito: teste de propriedade com
+      # semente fixa vira exemplo congelado, que é o que ele veio substituir.
+      # O número aparece no log, então um achado é sempre repetível.
+      - run: make propriedade PROP_N=400 PROP_SEMENTE=$(date +%j)
+
+  # ── só de madrugada: o que é caro demais pra cada push ─────────────────────
+  robustez:
+    name: ASan/UBSan, falha de alocação e fuzz
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc clang libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
+            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
+            libmongoc-dev libbson-dev
+      - run: make pool testar
+      # A MESMA suíte sob sanitizer: o binário -O2 é justamente o que esconde
+      # leitura fora de faixa.
+      - run: make check-asan
+      # Falha de alocação ponto a ponto. O contrato é: ou termina, ou levanta
+      # erro — segfault, liberação dupla e trava reprovam.
+      - run: make oom
+      # O runner de CI tem mais memória que a máquina de desenvolvimento, então
+      # aqui o analisador roda TAMBÉM no arquivo grande, que fica de fora lá.
+      - run: make analisa ANALISA_TUDO=1 ANALISA_MB=12000
+      - run: make fuzz FUZZ_T=1800
+      - name: guardar o que o fuzzer achou
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-achados
+          path: teste/fuzz_achados/
+          if-no-files-found: ignore
+
+  # ── cobertura: número por arquivo, guardado como artefato ──────────────────
+  cobertura:
+    name: cobertura (linha E ramo)
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: dependências
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc lcov libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
+            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
+            libmongoc-dev libbson-dev
+      - run: make cobertura
+      # O relatório vai como artefato porque um percentual agregado esconde
+      # regressão num arquivo só — o que interessa é o detalhe por arquivo.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-html
+          path: cob/html/

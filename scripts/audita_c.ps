@@ -1,0 +1,227 @@
+# Auditoria de PADRÕES de C que o compilador e o `-fanalyzer` não pegam.
+#
+# POR QUE ESTE ARQUIVO EXISTE: os defeitos mais graves de 2026-08-26 não foram
+# achados pelo gcc nem pelo analisador — foram achados por varreduras de padrão
+# escritas na hora, que rodaram num heredoc de shell e evaporaram. Elas acharam
+# a liberação dupla do gerador, os 49 objetos nascendo com lixo de malloc na
+# lista do GC, e o descritor de classe com contador publicado antes do vetor.
+# Ferramenta que acha defeito e não fica versionada é trabalho jogado fora, e
+# na próxima varredura tudo teria que ser redescoberto.
+#
+#     ./pool scripts/audita_c.ps            # relata e reprova se achar
+#     ./pool scripts/audita_c.ps --lista    # mostra a linha de cada achado
+#
+# O que ele procura, e por que cada um é defeito:
+#
+#   1. `x = realloc(x, n)`         o realloc que falha devolve NULL SEM liberar
+#                                  o bloco antigo; a atribuição perde a única
+#                                  referência a ele e a linha seguinte escreve
+#                                  em NULL. Sempre por temporária.
+#   2. objeto do GC de `malloc`    objeto ligado em `vm->objetos` nasce ANTES
+#                                  de os campos existirem; com lixo de pilha, o
+#                                  finalizador libera ponteiro inventado se a
+#                                  construção falhar no meio. Tem que ser
+#                                  `calloc`.
+#   3. `free(x->campo)` sem zerar  depois de o objeto já estar na lista do GC,
+#                                  o finalizador libera de novo.
+#   4. contador antes do vetor     `d->n = k` antes do `calloc` do vetor: se o
+#                                  calloc falha, o destrutor percorre `k`
+#                                  posições de um ponteiro NULL.
+#
+# Todos os quatro são a MESMA família: estado publicado pela metade.
+import os
+import sys
+import regex
+
+FONTES = "vm"
+
+# Exceção CONFERIDA, com o motivo. Objeto de tamanho variável (`PSString` tem
+# vetor flexível no fim) preenche TODOS os campos logo depois de entrar na
+# lista, sem nenhuma alocação no meio que possa falhar — não há ponto onde o
+# finalizador pegue lixo. Trocar por `calloc` zeraria o buffer inteiro em toda
+# concatenação de string, que é caminho quente.
+#
+# A lista é por PADRÃO DE CÓDIGO, não por número de linha: linha se desloca no
+# primeiro commit e a exceção passaria a acobertar outra coisa.
+ACEITOS = ["malloc(sizeof(PSString) +"]
+
+
+action aceito(linha) {
+    for each a in ACEITOS {
+        if a in linha {
+            return true
+        }
+    }
+    return false
+}
+
+
+action arquivos_c() {
+    saida = []
+    for each e in os.ls(FONTES) {
+        n = e["name"]
+        if n.endswith(".c") {
+            saida.append(FONTES + "/" + n)
+        }
+    }
+    saida.sort()
+    return saida
+}
+
+
+# ── 1) realloc que se auto-atribui ──────────────────────────────────────────
+action acha_realloc(caminho, linhas, achados) {
+    i = 0
+    for each l in linhas {
+        i = i + 1
+        # Comentário não é código: o padrão aparece EXPLICADO em comentário de
+        # conserto ("o `x = realloc(x, …)` perdia o bloco antigo"), e acusar
+        # isso é o detector brigando com a documentação do próprio conserto.
+        t = l.strip()
+        if t.startswith("*") or t.startswith("/*") or t.startswith("//") or t.startswith("#") {
+            continue
+        }
+        m = regex.findall("([A-Za-z_][A-Za-z0-9_>.\\[\\]-]*)\\s*=\\s*realloc\\(\\s*([A-Za-z_][A-Za-z0-9_>.\\[\\]-]*)", l)
+        for each par in m {
+            if par[0] == par[1] {
+                achados.append([caminho, i, "realloc se auto-atribui: " + par[0], l.strip()])
+            }
+        }
+    }
+}
+
+
+# ── 2, 3) objeto do GC ──────────────────────────────────────────────────────
+# Um objeto entra na lista com `vm->objetos = (Obj *)x;`. Olhamos pra trás
+# (nasceu de malloc?) e pra frente (libera campo sem zerar?).
+action acha_gc(caminho, linhas, achados) {
+    n = len(linhas)
+    i = 0
+    while i < n {
+        l = linhas[i]
+        m = regex.findall("vm->objetos = \\(Obj \\*\\)([A-Za-z_][A-Za-z0-9_]*)", l)
+        if len(m) == 0 {
+            i = i + 1
+            continue
+        }
+        var = m[0]
+
+        # 2) nasceu de malloc? (procura a declaração nas 8 linhas anteriores)
+        j = i - 8
+        if j < 0 {
+            j = 0
+        }
+        while j < i {
+            if regex.fullmatch(".*[^A-Za-z0-9_]" + var + "\\s*=\\s*malloc\\(sizeof\\(.*", linhas[j].strip()) and not aceito(linhas[j]) {
+                achados.append([caminho, j + 1,
+                                "objeto do GC nasce de malloc (lixo de pilha): " + var,
+                                linhas[j].strip()])
+            }
+            j = j + 1
+        }
+
+        # 3) libera campo sem zerar, depois de já estar na lista
+        k = i + 1
+        fim = i + 25
+        if fim > n {
+            fim = n
+        }
+        while k < fim {
+            lk = linhas[k]
+            fs = regex.findall("free\\(" + var + "->([A-Za-z0-9_]+)\\)", lk)
+            for each campo in fs {
+                # zerado na MESMA linha (free(x->c); x->c = NULL) ou reatribuído?
+                if not regex.fullmatch(".*" + var + "->" + campo + "\\s*=\\s*.*", lk) {
+                    achados.append([caminho, k + 1,
+                                    "libera " + var + "->" + campo + " sem zerar (objeto ja no GC)",
+                                    lk.strip()])
+                }
+            }
+            k = k + 1
+        }
+        i = i + 1
+    }
+}
+
+
+# ── 4) contador publicado antes do vetor ────────────────────────────────────
+# `d->nX = ...` numa linha, e o `calloc` que preenche `d->X` DEPOIS.
+action acha_contador(caminho, linhas, achados) {
+    n = len(linhas)
+    i = 0
+    while i < n {
+        # `->nome` começa com "n" e NÃO é contador — sem esta exceção o
+        # detector acusa toda atribuição de nome seguida de um calloc.
+        m = regex.findall("([A-Za-z_][A-Za-z0-9_]*)->(n[A-Za-z0-9_]+)\\s*=\\s*[^=]", linhas[i])
+        if len(m) > 0 and m[0][1] == "nome" {
+            m = []
+        }
+        if len(m) == 0 {
+            i = i + 1
+            continue
+        }
+        obj = m[0][0]
+        # O campo alocado tem que SE RELACIONAR com o contador, senão o
+        # detector acusa `d->npais` só porque um `calloc` de `met_nomes` vem
+        # depois. Tirando o `n` da frente, os três primeiros caracteres bastam:
+        # nmetodos -> met_nomes, npriv -> priv_nomes, nconsts -> consts.
+        raiz = m[0][1][1:4]
+        k = i + 1
+        fim = i + 6
+        if fim > n {
+            fim = n
+        }
+        while k < fim {
+            if regex.fullmatch(".*" + obj + "->" + raiz + "[A-Za-z0-9_]*\\s*=\\s*c?alloc\\(.*", linhas[k]) {
+                achados.append([caminho, i + 1,
+                                "contador " + obj + "->" + m[0][1] + " publicado ANTES do vetor",
+                                linhas[i].strip()])
+                break
+            }
+            k = k + 1
+        }
+        i = i + 1
+    }
+}
+
+
+if __name__ == "main" {
+    lista = false
+    for each a in sys.argv {
+        if a == "--lista" {
+            lista = true
+        }
+    }
+
+    achados = []
+    nlinhas = 0
+    for each caminho in arquivos_c() {
+        linhas = open(caminho).read().split("\n")
+        nlinhas = nlinhas + len(linhas)
+        acha_realloc(caminho, linhas, achados)
+        acha_gc(caminho, linhas, achados)
+        acha_contador(caminho, linhas, achados)
+    }
+
+    post("")
+    post("linhas de C varridas:", nlinhas)
+    post("achados:", len(achados))
+    if len(achados) == 0 {
+        post("")
+        post("nenhum estado publicado pela metade.")
+        sys.exit(0)
+    }
+    post("")
+    for each a in achados {
+        post("  " + a[0] + ":" + str(a[1]))
+        post("      " + a[2])
+        if lista {
+            post("      | " + a[3])
+        }
+    }
+    post("")
+    post("Os quatro padroes sao a MESMA familia: estado publicado pela metade.")
+    post("Se algum for falso positivo, o conserto e deixar o codigo obvio pro")
+    post("detector — nao silenciar o detector.")
+    sys.exit(1)
+}

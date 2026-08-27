@@ -17,8 +17,15 @@ CC      ?= gcc
 # escrever os dois é o idioma portável), e o segundo acusa ~20 truncamentos
 # deliberados (`%.200s`). Ruído nesse volume esconde o aviso de verdade. Os
 # dois ficam no alvo `avisos`, pra revisão de propósito.
-CFLAGS  ?= -O2 -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
+# As flags são separadas do NÍVEL DE OTIMIZAÇÃO de propósito.
+#
+# O alvo `cobertura` fazia `-O0 -g --coverage $(CFLAGS)`, e o `-O2` de dentro do
+# CFLAGS vinha DEPOIS: o gcc obedece o último, então a medição inteira rodava
+# otimizada. Instrumentação em -O2 embaralha atribuição de linha e ramo — o
+# número saía, mas não era o que o alvo dizia estar medindo.
+CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -I/usr/include/postgresql -I/usr/include/mysql -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
+CFLAGS  ?= -O2 $(CFLAGS_BASE)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
            $(VM)/ps_compiler.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_guzer.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
@@ -147,6 +154,16 @@ pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
 ANALISA_MB   ?= 2000
 ANALISA_TUDO ?=
 ANALISA_FORA := $(VM)/poolscript_vm.c
+
+# Falso positivo CONFERIDO, um por linha, com o motivo. O `-fanalyzer` não
+# segue posse através de struct nem de parâmetro de saída, então acusa como
+# vazamento o ponteiro que o dono libera em outro lugar. Cada entrada aqui foi
+# verificada lendo o código; a alternativa (sair 0 pra tudo) é o portão que não
+# reprova, que foi o que este alvo já era uma vez.
+#
+#   ps_xlsx.c:345   `o->b` do Out — liberado por quem monta o ZIP (free(zip.b))
+#   ps_db.c:75      `res->cols[i]` — liberado em ps_db_res_libera:31
+ANALISA_ACEITOS := ps_xlsx.c:345 ps_db.c:75
 ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FONTES)))
 
 analisa:
@@ -156,13 +173,23 @@ analisa:
 	             nice -n 19 $(CC) $(CFLAGS) -I$(VM) -fanalyzer -c -o /dev/null $$f) 2>&1 ); \
 	  rc=$$?; \
 	  aviso=$$(printf '%s\n' "$$saida" | grep -E "warning:|error:" | grep -v "^cc1"); \
+	  for ac in $(ANALISA_ACEITOS); do \
+	    aviso=$$(printf '%s\n' "$$aviso" | grep -v "$$ac" || true); \
+	  done; \
+	  aviso=$$(printf '%s\n' "$$aviso" | grep -v '^$$' || true); \
 	  if [ -n "$$aviso" ]; then achou=1; printf '%s\n' "$$aviso"; fi; \
 	  if [ $$rc -ne 0 ] && [ -z "$$aviso" ]; then faltou="$$faltou $$f"; fi; \
 	done; \
 	if [ $$achou -eq 0 ]; then echo "  -fanalyzer: nada nos analisados"; fi; \
 	if [ -n "$$faltou" ]; then \
 	  echo "  NAO TERMINARAM (teto de $(ANALISA_MB) MB):$$faltou"; fi; \
-	$(if $(ANALISA_TUDO),,echo "  FORA por padrao (grande demais p/ esta maquina): $(ANALISA_FORA)")
+	$(if $(ANALISA_TUDO),,echo "  FORA por padrao (grande demais p/ esta maquina): $(ANALISA_FORA)"); \
+	if [ $$achou -ne 0 ]; then \
+	  echo; \
+	  echo "  Achado do analisador REPROVA. Falso positivo conferido vai pra"; \
+	  echo "  ANALISA_ACEITOS (com o motivo escrito), nunca ignorado no silencio."; \
+	  exit 1; \
+	fi
 
 # Valgrind: o que o ASan não pega — leitura de não-inicializado e o mapa de
 # vazamento com a pilha de quem alocou. Roda UM script por vez; é ~30x mais
@@ -193,6 +220,8 @@ check: pool testar
 	@./pool teste/confere_metadata.ps
 	@echo
 	@./pool scripts/audita_doc.ps
+	@echo
+	@./pool scripts/audita_c.ps
 	@echo
 	@./pool lsp/teste_lsp.ps
 	@echo
@@ -310,7 +339,7 @@ check-asan: pool-asan testar
 # de ramos. Linha superestima — é a razão de o SQLite medir MC-DC.
 cobertura: testar
 	@rm -rf cob && mkdir -p cob
-	$(CC) -O0 -g --coverage $(CFLAGS) -I$(VM) -o cob/pool $(FONTES) \
+	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) \
 	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \

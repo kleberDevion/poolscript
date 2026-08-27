@@ -14954,9 +14954,14 @@ static Value jk_cors_singleton(VM *vm)
     c->obj.next = vm->objetos; vm->objetos = (Obj *)c;
     /* default: GET/POST/PUT/PATCH/DELETE; origens vazias = permite tudo */
     static const char *DEF[] = { "GET","POST","PUT","PATCH","DELETE" };
-    c->nmetodos = 5;
+    /* O contador só existe se o vetor existir. Com o `calloc` falhando, o
+      * `if (c->metodos)` seguia em frente deixando `nmetodos = 5` e `metodos`
+      * NULL — e quem estoura é o finalizador, longe daqui. */
     c->metodos = calloc(5, sizeof(char *));
-    if (c->metodos) for (int i = 0; i < 5; i++) c->metodos[i] = strdup(DEF[i]);
+    if (c->metodos) {
+        for (int i = 0; i < 5; i++) c->metodos[i] = strdup(DEF[i]);
+        c->nmetodos = 5;
+    }
     c->origens = NULL; c->norigens = 0;
     vm->alocado += sizeof(PSJCors);
     vm->jk_cors = MK_OBJ(c);
@@ -15255,19 +15260,23 @@ static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
         r->metodos = jk_strvec(args[1], 1, &r->nmetodos);
     else if (EH_JCORS(cors)) {
         PSJCors *c = COMO_JCORS(cors);
-        r->nmetodos = c->nmetodos;
         r->metodos = calloc((size_t)(c->nmetodos > 0 ? c->nmetodos : 1), sizeof(char *));
-        if (r->metodos) for (int i = 0; i < c->nmetodos; i++) r->metodos[i] = strdup(c->metodos[i]);
+        if (r->metodos) {
+            for (int i = 0; i < c->nmetodos; i++) r->metodos[i] = strdup(c->metodos[i]);
+            r->nmetodos = c->nmetodos;   /* contador só com o vetor de pé */
+        }
     }
     /* auth: dado ou cors.permiser() (= origens) */
     if (n >= 3 && EH_SEQ(args[2]))
         r->auth = jk_strvec(args[2], 0, &r->nauth);
     else if (EH_JCORS(cors)) {
         PSJCors *c = COMO_JCORS(cors);
-        r->nauth = c->norigens;
         if (c->norigens) {
             r->auth = calloc((size_t)c->norigens, sizeof(char *));
-            if (r->auth) for (int i = 0; i < c->norigens; i++) r->auth[i] = strdup(c->origens[i]);
+            if (r->auth) {
+                for (int i = 0; i < c->norigens; i++) r->auth[i] = strdup(c->origens[i]);
+                r->nauth = c->norigens;   /* contador só com o vetor de pé */
+            }
         }
     }
     /* middleware posicional (4º) — função ou app */
@@ -19681,14 +19690,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             /* membros private (encapsulamento) — copiados da def */
             cl->classe_privada = def->classe_privada;   /* `private class` */
-            cl->npriv = def->npriv;
             cl->priv_nomes = NULL;
             if (def->npriv > 0) {
                 cl->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
+                /* o ERRO salta daqui; com `npriv` já publicado, o `fin_class`
+                 * percorreria um vetor que não existe */
                 if (!cl->priv_nomes) ERRO(vm, "sem memoria");
                 for (int32_t i = 0; i < def->npriv; i++)
                     cl->priv_nomes[i] = strdup(def->priv_nomes[i]);
             }
+            cl->npriv = def->npriv;
             cl->npais = def->npais;
             cl->pais = def->npais > 0 ? calloc((size_t)def->npais, sizeof(PSClass *)) : NULL;
             for (int32_t i = def->npais - 1; i >= 0; i--) {
@@ -20702,13 +20713,12 @@ static void libera_vm(VM *vm)
  */
 static int carrega_protos(VM *vm, PSPrograma *prog)
 {
-    vm->nprotos = prog->nprotos;
-    vm->protos = calloc((size_t)(vm->nprotos > 0 ? vm->nprotos : 1), sizeof(Proto));
+    vm->protos = calloc((size_t)(prog->nprotos > 0 ? prog->nprotos : 1), sizeof(Proto));
     if (!vm->protos) return -1;
+    vm->nprotos = prog->nprotos;   /* contador só depois do vetor */
 
     /* COPIA os descritores de classe: o PSPrograma morre antes da execução.
      * Mesma lição do param_nomes — "emprestado" aqui vira ponteiro solto. */
-    vm->nclasses = prog->nclasses;
     if (prog->nclasses > 0) {
         vm->classes = calloc((size_t)prog->nclasses, sizeof(PSClassDefC));
         if (!vm->classes) return -1;
@@ -20747,6 +20757,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
             d->npriv = o->npriv;
         }
     }
+    vm->nclasses = prog->nclasses;   /* contador só depois do vetor */
 
     /* modelos: mesma cópia, mesmo motivo — e o contador também só depois dos
      * vetores, senão o destrutor percorre `i < nmodels` sobre NULL. */
@@ -20965,8 +20976,14 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
     for (int32_t i = 0; i < prog->nclasses; i++) {
         PSClassDef  *o = &prog->classes[i];
         PSClassDefC *d = &vm->classes[*base_classe + i];
+        /* O CONTADOR SÓ DEPOIS DO VETOR — o mesmo do caminho do programa
+         * principal, que estava corrigido enquanto ESTE, o de módulo
+         * IMPORTADO, continuava publicando `nmetodos` antes do calloc. Com o
+         * calloc falhando, o `return -1` deixava o descritor com contador
+         * cheio e vetor NULL, e o `libera_vm` percorre `k < nmetodos`.
+         * Achado pelo `scripts/audita_c.ps`, que não existia quando o outro
+         * foi corrigido. */
         d->nome = strdup(o->nome ? o->nome : "?");
-        d->nmetodos = o->nmetodos;
         d->npais = o->npais;
         if (o->nmetodos > 0) {
             d->met_nomes  = calloc((size_t)o->nmetodos, sizeof(char *));
@@ -20974,10 +20991,11 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
             if (!d->met_nomes || !d->met_protos) return -1;
             for (int32_t k = 0; k < o->nmetodos; k++) {
                 d->met_nomes[k]  = strdup(o->met_nomes[k] ? o->met_nomes[k] : "?");
+                if (!d->met_nomes[k]) { d->nmetodos = k; return -1; }
                 d->met_protos[k] = o->met_protos[k] + *base_proto;   /* desloca */
             }
         }
-        d->npriv = o->npriv;   /* private de classe em módulo importado */
+        d->nmetodos = o->nmetodos;
         d->classe_privada = o->classe_privada;
         if (o->npriv > 0) {
             d->priv_nomes = calloc((size_t)o->npriv, sizeof(char *));
@@ -20985,6 +21003,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
             for (int32_t k = 0; k < o->npriv; k++)
                 d->priv_nomes[k] = strdup(o->priv_nomes[k] ? o->priv_nomes[k] : "?");
         }
+        d->npriv = o->npriv;   /* private de classe em módulo importado */
     }
     vm->nclasses = nc;
 
@@ -21099,9 +21118,9 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
                 d->param_nomes[k] = strdup(o->param_nomes[k] ? o->param_nomes[k] : "");
         }
 
-        d->nconsts = o->nconsts;
         d->consts = calloc((size_t)(o->nconsts > 0 ? o->nconsts : 1), sizeof(Value));
         if (!d->consts) return -1;
+        d->nconsts = o->nconsts;   /* contador só depois do vetor */
         for (int32_t k = 0; k < o->nconsts; k++) {
             PSConst *cc = &o->consts[k];
             switch (cc->kind) {
