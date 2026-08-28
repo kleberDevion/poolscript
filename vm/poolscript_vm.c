@@ -451,7 +451,12 @@ typedef struct {
 /* psodbc: conexão e cursor unificados (sqlite/postgres/mysql/mssql). O cursor
  * bufferiza o result de um SELECT e os fetch* leem dele com `pos`. */
 typedef struct { Obj obj; PSDbConn *conn; int fechado; int drv; int em_transacao; } PSDbConexao;
-typedef struct { Obj obj; Value conexao; PSDbRes res; int pos; int drv; } PSDbCursor;
+/* `fechado`: depois de `close()` o cursor não volta a servir. Sem essa marca,
+ * `cur.close()` liberava o resultado e um `execute()` seguinte simplesmente
+ * preparava outro e funcionava — o `close()` não fechava nada. O DB-API (PEP
+ * 249) exige erro, e é o que o `sqlite3` do Python faz ("Cannot operate on a
+ * closed cursor"). */
+typedef struct { Obj obj; Value conexao; PSDbRes res; int pos; int drv; int fechado; } PSDbCursor;
 typedef struct { Obj obj; PSMongo *m; int fechado; } PSMongoConn;
 typedef struct { Obj obj; Value conexao; char *nome; } PSMongoCol;
 
@@ -14549,11 +14554,20 @@ static void db_conn_offload(void *p)
                            a->db, a->base, a->erro, a->ecap);
 }
 
+/* Toda operação de dado passa por aqui. `close()` é o único método que
+ * continua valendo depois de fechado, e vale como no-op — fechar duas vezes
+ * não é erro em DB-API nenhum. */
+#define CUR_ABERTO(vm, cu) do { \
+    if ((cu)->fechado) MERRO(vm, "DatabaseError", \
+        "cursor fechado: nao da pra operar depois de close()"); \
+} while (0)
+
 static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "execute() espera 1 ou 2 argumentos");
     if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "execute() espera str no SQL");
     PSDbCursor *cu = COMO_DBCUR(alvo);
+    CUR_ABERTO(vm, cu);
     PSDbConexao *cn = COMO_DBCONN(cu->conexao);
     if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
     /* param solto (não-sequência) era descartado em silêncio -> o `%s` vazava
@@ -14617,11 +14631,13 @@ static int db_busca(VM *vm, PSDbCursor *cu, int quantos, Value *out)
 static int met_dbcur_fetchall(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "fetchall() nao aceita argumento");
+    CUR_ABERTO(vm, COMO_DBCUR(alvo));
     return db_busca(vm, COMO_DBCUR(alvo), -1, out);
 }
 static int met_dbcur_fetchmany(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) MERRO(vm, "SomeValueUnexpected", "fetchmany() espera 0 ou 1 argumento");
+    CUR_ABERTO(vm, COMO_DBCUR(alvo));
     int q = (n == 1 && args[0].t == V_INT) ? (int)args[0].as.i : 1;
     return db_busca(vm, COMO_DBCUR(alvo), q < 0 ? 0 : q, out);
 }
@@ -14629,6 +14645,7 @@ static int met_dbcur_fetchone(VM *vm, Value alvo, Value *args, int n, Value *out
 {
     (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "fetchone() nao aceita argumento");
     PSDbCursor *cu = COMO_DBCUR(alvo);
+    CUR_ABERTO(vm, cu);
     if (cu->pos >= cu->res.nlinhas) { *out = MK_NULL(); return 0; }
     Value dv;
     if (db_linha_dict(vm, &cu->res, cu->pos, &dv) != 0) MERRO(vm, "MemoryError", "sem memoria");
@@ -14641,6 +14658,8 @@ static int met_dbcur_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)vm; (void)args; (void)n;
     PSDbCursor *cu = COMO_DBCUR(alvo);
     ps_db_res_libera(&cu->res);
+    cu->pos = 0;
+    cu->fechado = 1;      /* daqui pra frente, operar é erro */
     *out = MK_NULL();
     return 0;
 }
