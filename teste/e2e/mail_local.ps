@@ -68,8 +68,15 @@ action sobe_servidor() {
 # O mesmo, escolhendo o script: `smtp_falso.py` ou `imap_falso.py`. Os dois
 # falam o mesmo protocolo de arranque (porta 0, anuncia na 1ª linha da caixa).
 action sobe(script) {
+    return sobe_com(script, "")
+}
+
+
+# O mesmo, com variáveis de ambiente pro servidor falso (ex.: anunciar só
+# `AUTH LOGIN` em vez de `PLAIN`).
+action sobe_com(script, env) {
     os.cmd("rm -f " + CAIXA)
-    os.cmd("setsid python3 " + script + " 0 " + CERT + " " + CHAVE
+    os.cmd(env + " setsid python3 " + script + " 0 " + CERT + " " + CHAVE
            + " " + CAIXA + " > /tmp/ps_smtp_srv.log 2>&1 &")
     i = 0
     while i < 100 {
@@ -186,6 +193,72 @@ if __name__ == "main" {
              + "post(\"CONECTOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("host inexistente falha limpo", r[0] != 0 and not "CONECTOU" in r[1], r[1])
 
+    # ── 5b. AUTH LOGIN: o outro ramo da autenticação ────────────────────────
+    #
+    # O motor usa `AUTH PLAIN` quando o EHLO o anuncia e `AUTH LOGIN` quando
+    # não. Todos os casos acima passam pelo PLAIN; o LOGIN — três trocas, com
+    # usuário e senha em base64 em linhas separadas — nunca tinha rodado.
+    porta = sobe_com("teste/smtp_falso.py", "SMTP_FALSO_AUTH=login")
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"segredo123\")\n"
+             + "m = mail.MailMessage()\n"
+             + "m.from_address(\"teste@local\")\n"
+             + "m.to(\"destino@local\")\n"
+             + "m.subject(\"por login\")\n"
+             + "m.body(\"corpo\")\n"
+             + "s.send(m)\n"
+             + "s.quit()\n"
+             + "post(\"ENVIOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("AUTH LOGIN completa o envio", r[0] == 0 and "ENVIOU" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("usou AUTH LOGIN, nao PLAIN",
+                         "SEGURO AUTH LOGIN" in caixa and not "AUTH PLAIN" in caixa, caixa)
+    erros = erros + conf("autenticou pelo caminho do LOGIN", "LOGIN_OK" in caixa, caixa)
+
+    # senha errada pelo caminho do LOGIN é um 535 em OUTRO ponto do código
+    porta = sobe_com("teste/smtp_falso.py", "SMTP_FALSO_AUTH=login")
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"ERRADA\")\n"
+             + "post(\"LOGOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("AUTH LOGIN com senha errada falha",
+                         r[0] != 0 and not "LOGOU" in r[1], r[1])
+
+    # ── 5c. anexo: outra montagem de MIME ───────────────────────────────────
+    porta = sobe_servidor()
+    using open("/tmp/ps_mail_anexo.txt", "w") as f {
+        f.write("conteudo do anexo")
+    }
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"segredo123\")\n"
+             + "m = mail.MailMessage()\n"
+             + "m.from_address(\"teste@local\")\n"
+             + "m.to(\"destino@local\")\n"
+             + "m.subject(\"com anexo\")\n"
+             + "m.body(\"olha o anexo\")\n"
+             + "m.attach(\"/tmp/ps_mail_anexo.txt\")\n"
+             + "s.send(m)\n"
+             + "s.quit()\n"
+             + "post(\"ENVIOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("envio com anexo completa", r[0] == 0 and "ENVIOU" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("o anexo entra como parte MIME própria",
+                         "ps_mail_anexo.txt" in caixa, caixa)
+    # "conteudo do anexo" em base64 — o anexo vai codificado, não cru
+    erros = erros + conf("anexo vai em base64",
+                         "Y29udGV1ZG8gZG8gYW5leG8=" in caixa, caixa)
+
     # ── 6. IMAP: a metade LEITORA, que nunca tinha rodado ───────────────────
     #
     # `ps_mail.c` são duas metades. A de enviar (SMTP) já está coberta acima; a
@@ -223,9 +296,11 @@ if __name__ == "main" {
              + "post(\"CORPO\", r.body(\"2\").strip())\n"
              + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("IMAP: fluxo completo roda", r[0] == 0, r[1])
-    erros = erros + conf("IMAP: search devolve as duas mensagens", "N 2" in r[1], r[1])
+    # 6 mensagens na caixa falsa, uma por caminho de decodificação
+    erros = erros + conf("IMAP: search devolve a caixa inteira", "N 6" in r[1], r[1])
+    # o search faz um FETCH do CABEÇALHO por id, e é de lá que sai o assunto
     erros = erros + conf("IMAP: o assunto vem do FETCH do cabecalho",
-                         "ASSUNTO acentuada" in r[1], r[1])
+                         "ASSUNTO b64" in r[1], r[1])
     # o corpo tem acento de propósito: o literal `{n}` do IMAP conta BYTES, e
     # cortar por caractere entregaria a mensagem partida no meio de um UTF-8
     erros = erros + conf("IMAP: corpo com acento chega inteiro",
@@ -282,7 +357,7 @@ if __name__ == "main" {
     erros = erros + conf("IMAP: termo ASCII vai entre aspas, sem literal",
                          "SEARCH CHARSET UTF-8 SUBJECT \"acentuada\"" in caixa
                          and not "SEARCH_LITERAL" in caixa, caixa)
-    erros = erros + conf("IMAP: busca com termo ASCII acha as 2", "ASCII 2" in r[1], r[1])
+    erros = erros + conf("IMAP: busca com termo ASCII acha a caixa", "ASCII 6" in r[1], r[1])
 
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
@@ -302,6 +377,41 @@ if __name__ == "main" {
     erros = erros + conf("IMAP: o literal declara 10 BYTES, nao 9 caracteres",
                          "{10}" in caixa, caixa)
     erros = erros + conf("IMAP: busca com acento acha 1", "ACENTO 1" in r[1], r[1])
+
+    # ── decodificação de cabeçalho e corpo (RFC 2047 / RFC 2045) ────────────
+    #
+    # É a maior região descoberta de `ps_mail.c` — 90 ramos — e é a que decide
+    # se o assunto chega legível. Cada caso aciona um caminho diferente, e os
+    # esperados foram conferidos contra o que o Python entrega
+    # (`email.header.decode_header`).
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "for each m in r.search(\"ALL\") {\n"
+             + "    post(\"S\", m[\"id\"], m[\"subject\"])\n"
+             + "}\n"
+             + "post(\"C5\", r.body(\"5\").strip())\n"
+             + "post(\"C6\", r.body(\"6\").strip())\n"
+             + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("decodifica assunto rodou", r[0] == 0, r[1])
+    # `=?UTF-8?B?...?=` — base64 no cabeçalho
+    erros = erros + conf("assunto em base64 UTF-8 vira texto",
+                         "S 3 relatório de vendas" in r[1], r[1])
+    # `=?ISO-8859-1?Q?n=E3o_=E9_f=E1cil?=` — dois ramos numa linha só: o `_`
+    # que vira espaço (regra do RFC 2047, não do quoted-printable comum) e o
+    # latin-1, que exige reexpandir cada byte pra UTF-8
+    erros = erros + conf("assunto quoted-printable latin-1 vira texto",
+                         "S 4 não é fácil" in r[1], r[1])
+    # corpo MULTIPART: tem que entregar a parte de TEXTO, não o boundary cru
+    erros = erros + conf("corpo multipart entrega a parte de texto",
+                         "C5 parte de texto" in r[1], r[1])
+    erros = erros + conf("e não vaza o boundary", not "LIMITE" in r[1], r[1])
+    # `Content-Transfer-Encoding: base64` no corpo
+    erros = erros + conf("corpo em base64 é decodificado",
+                         "C6 corpo em base64" in r[1], r[1])
 
     # senha errada e mensagem inexistente: os dois viram erro na linguagem
     porta = sobe("teste/imap_falso.py")

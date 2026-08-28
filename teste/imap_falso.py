@@ -40,11 +40,47 @@ SENHA = "segredo123"
 # Duas mensagens na caixa. A segunda tem acento pra o FETCH provar que o
 # literal `{n}` conta BYTES e não caracteres — cortar por caractere aqui
 # entregaria a mensagem truncada no meio de um UTF-8.
+# A caixa é escolhida pra exercitar o DECODIFICADOR de cabeçalho e de corpo do
+# `ps_mail.c`, que é a maior região descoberta do arquivo (90 ramos). Cada
+# mensagem aciona um caminho diferente do RFC 2047 / RFC 2045:
+#
+#   1  cabeçalho ASCII puro, corpo em texto — o caso base
+#   2  corpo com acento em UTF-8 — o literal `{n}` tem que contar BYTES
+#   3  assunto em `=?UTF-8?B?...?=` (base64) — o ramo b64_decode do cabeçalho
+#   4  assunto em `=?ISO-8859-1?Q?...?=` (quoted-printable + latin-1) — dois
+#      ramos de uma vez: o `_` que vira espaço e o `charset_eh_latin1`, que
+#      precisa reexpandir cada byte pra UTF-8
+#   5  corpo MULTIPART com uma parte texto e uma anexada — o parser de corpo
+#   6  corpo em base64 declarado por `Content-Transfer-Encoding`
 CAIXA = {
     "1": ("From: um@local\r\nTo: teste@local\r\nSubject: primeiro\r\n"
           "\r\ncorpo do primeiro\r\n"),
     "2": ("From: dois@local\r\nTo: teste@local\r\nSubject: acentuada\r\n"
           "\r\ncorpo com ção e ê\r\n"),
+    # "relatório de vendas" em base64 UTF-8
+    "3": ("From: tres@local\r\nTo: teste@local\r\n"
+          "Subject: =?UTF-8?B?cmVsYXTDs3JpbyBkZSB2ZW5kYXM=?=\r\n"
+          "\r\ncorpo do terceiro\r\n"),
+    # "não é fácil" em quoted-printable latin-1; `_` é espaço no cabeçalho
+    "4": ("From: quatro@local\r\nTo: teste@local\r\n"
+          "Subject: =?ISO-8859-1?Q?n=E3o_=E9_f=E1cil?=\r\n"
+          "\r\ncorpo do quarto\r\n"),
+    "5": ("From: cinco@local\r\nTo: teste@local\r\nSubject: com anexo\r\n"
+          "MIME-Version: 1.0\r\n"
+          "Content-Type: multipart/mixed; boundary=\"LIMITE\"\r\n"
+          "\r\n--LIMITE\r\n"
+          "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+          "parte de texto\r\n"
+          "--LIMITE\r\n"
+          "Content-Type: application/octet-stream\r\n"
+          "Content-Disposition: attachment; filename=\"a.bin\"\r\n\r\n"
+          "dados anexos\r\n"
+          "--LIMITE--\r\n"),
+    # "corpo em base64" com Content-Transfer-Encoding
+    "6": ("From: seis@local\r\nTo: teste@local\r\nSubject: b64\r\n"
+          "Content-Type: text/plain; charset=utf-8\r\n"
+          "Content-Transfer-Encoding: base64\r\n"
+          "\r\nY29ycG8gZW0gYmFzZTY0\r\n"),
 }
 
 
@@ -90,7 +126,7 @@ def atende(sock, ev):
 
         elif cmd in ("SELECT", "EXAMINE"):
             ev.append(cmd + " " + arg)
-            manda("* 2 EXISTS\r\n* 0 RECENT\r\n")
+            manda("* %d EXISTS\r\n* 0 RECENT\r\n" % len(CAIXA))
             manda("* OK [UIDVALIDITY 1] ok\r\n")
             # EXAMINE é o modo somente-leitura; o motor escolhe pelo `readonly`
             modo = "READ-ONLY" if cmd == "EXAMINE" else "READ-WRITE"
@@ -107,7 +143,7 @@ def atende(sock, ev):
                 manda("* SEARCH 2\r\n")
             else:
                 ev.append("SEARCH " + arg)
-                manda("* SEARCH 1 2\r\n")
+                manda("* SEARCH " + " ".join(sorted(CAIXA)) + "\r\n")
             manda(tag + " OK busca feita\r\n")
 
         elif cmd == "FETCH":

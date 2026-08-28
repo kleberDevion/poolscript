@@ -99,7 +99,14 @@ def atende(bruto, ctx, caixa):
         ev.append("SEGURO " + cmd)
         alto = cmd.upper()
         if alto.startswith("EHLO"):
-            sock.sendall(b"250-local.invalido\r\n250 AUTH LOGIN PLAIN\r\n")
+            # `SMTP_FALSO_AUTH=login` anuncia SÓ o LOGIN. Serve pra alcançar o
+            # outro ramo do `ps_smtp_login`: o motor usa PLAIN quando o EHLO o
+            # anuncia e LOGIN quando não — e o caminho do LOGIN (três trocas,
+            # usuário e senha em base64 separados) nunca rodava.
+            if os.environ.get("SMTP_FALSO_AUTH") == "login":
+                sock.sendall(b"250-local.invalido\r\n250 AUTH LOGIN\r\n")
+            else:
+                sock.sendall(b"250-local.invalido\r\n250 AUTH LOGIN PLAIN\r\n")
         elif alto.startswith("AUTH PLAIN"):
             # RFC 4616: um blob base64 com \0usuario\0senha. O cliente manda
             # junto do comando quando o EHLO anuncia PLAIN.
