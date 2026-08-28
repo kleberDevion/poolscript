@@ -29,10 +29,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include "ps_hash.h"
 #include "ps_regex.h"
 #include "ps_ast.h"
+#include "ps_pilha.h"
 
 static int falhas = 0;
 static int total = 0;
@@ -355,6 +357,100 @@ static void teste_regex(void)
     CONF(1, "free(NULL) sobreviveu");
 }
 
+/* Desce `n` quadros e devolve a DISTÂNCIA (com sinal) entre a base marcada e o
+ * quadro do fundo. `volatile` e o retorno usado impedem o compilador de achatar
+ * a recursão.
+ *
+ * Com sinal de propósito: a primeira versão devolvia `size_t`, e no quadro 0 a
+ * base marcada fica praticamente na mesma altura do quadro — a subtração dava
+ * NEGATIVA e virava um número gigante ao converter. O teste reprovava por causa
+ * da própria medição, não do módulo. É a mesma classe de erro que o
+ * `ps_pilha_apertada` trata com o `usado < 0`. */
+static ptrdiff_t fundo_gasta(int n)
+{
+    volatile char bloco[64];
+    bloco[0] = (char)n;
+    if (n > 0) return fundo_gasta(n - 1) + (ptrdiff_t)(bloco[0] == 0);
+    const char *base = NULL;
+    size_t tam = 0;
+    ps_pilha_le(&base, &tam);
+    ptrdiff_t d = base - (const char *)__builtin_frame_address(0);
+    return d < 0 ? -d : d;
+}
+/* ── ps_pilha.c ──────────────────────────────────────────────────────────────
+ *
+ * O módulo que substituiu os tetos por contagem. Ele é medido em USO pela suíte
+ * (estrutura funda, parser), mas os ramos de BORDA — ninguém marcou, margem no
+ * mínimo, margem no máximo, pilha minúscula — só se alcançam chamando direto.
+ *
+ * Vale lembrar por que ele existe: a primeira versão guardava `&local` de uma
+ * função que retornava. Compilava, não avisava nada em execução, e como é UB o
+ * compilador tinha licença pra descartar a comparação — a proteção
+ * simplesmente NÃO EXISTIA e nenhum teste de uso percebeu. Ramo de borda
+ * testado direto é o que pega esse tipo de coisa. */
+static void teste_pilha(void)
+{
+    grupo("pilha");
+
+    /* 1. Sem marcação nenhuma: tem que responder "pode continuar". Responder
+     *    "apertada" aqui pararia toda recursão de quem esquecesse de marcar. */
+    ps_pilha_repoe(NULL, 0);
+    CONF(ps_pilha_apertada() == 0, "sem base marcada devia ser 0");
+
+    /* 2. Base marcada e tamanho zero: mesma coisa — não há o que medir. */
+    char aqui;
+    ps_pilha_repoe(&aqui, 0);
+    CONF(ps_pilha_apertada() == 0, "tam=0 devia ser 0");
+
+    /* 3. Pilha GRANDE e recém-marcada: sobra tudo, não está apertada. */
+    ps_pilha_marca(8u * 1024 * 1024);
+    CONF(ps_pilha_apertada() == 0, "8 MB recem-marcados nao podem estar apertados");
+
+    /* 4. Pilha MINÚSCULA: o consumido já passa da margem mínima de 16 KB, então
+     *    tem que acusar na hora. É o caso da fibra levada ao limite. */
+    ps_pilha_marca(1024);
+    CONF(ps_pilha_apertada() == 1, "pilha de 1 KB devia estar apertada");
+
+    /* 5. `ps_pilha_le` devolve o que foi posto — é o que o troca-contexto usa
+     *    pra salvar e repor ao entrar e sair de uma fibra. */
+    ps_pilha_repoe(&aqui, 12345);
+    const char *b = NULL;
+    size_t t = 0;
+    ps_pilha_le(&b, &t);
+    CONF(b == &aqui, "ps_pilha_le devolveu outra base");
+    CONF(t == 12345, "ps_pilha_le devolveu tam %zu", t);
+
+    /* 6. A MARGEM é proporcional e limitada nas duas pontas. Margem fixa foi o
+     *    defeito da segunda versão: 24 KB não bastavam numa pilha de 8 MB,
+     *    porque o utilizável abaixo da base é menor que o `ulimit`.
+     *
+     *    Sem expor `ps_pilha_margem`, dá pra medir o efeito dela: numa pilha de
+     *    tamanho T, marcar T e perguntar tem que dar 0 (sobra tudo); marcar
+     *    algo menor que a margem mínima tem que dar 1. */
+    ps_pilha_marca(64u * 1024);          /* margem = 16 KB (o mínimo) */
+    CONF(ps_pilha_apertada() == 0, "64 KB recem-marcados nao estao apertados");
+    ps_pilha_marca(16u * 1024);          /* tudo é margem */
+    CONF(ps_pilha_apertada() == 1, "pilha do tamanho da margem devia acusar");
+
+    /* 7. `ps_pilha_marca_processo` descobre o tamanho sozinho e deixa folga. */
+    ps_pilha_marca_processo();
+    CONF(ps_pilha_apertada() == 0, "pilha do processo recem-marcada esta apertada?");
+
+    /* 8. E a medição tem que ser MONOTÔNICA: descer um quadro consome mais.
+     *    Se isto falhar, a base está sendo remarcada por engano no meio da
+     *    descida — que é exatamente o bug que fazia `[3, 6]` virar `[...]`. */
+    ps_pilha_marca(8u * 1024 * 1024);
+    {
+        ptrdiff_t raso = fundo_gasta(0);
+        ptrdiff_t fundo = fundo_gasta(40);
+        CONF(fundo > raso, "descer 40 quadros nao consumiu mais pilha (%ld -> %ld)",
+             (long)raso, (long)fundo);
+    }
+
+    /* deixa marcado como o processo, pro resto da bateria */
+    ps_pilha_marca_processo();
+}
+
 /* ── ps_ast.c ────────────────────────────────────────────────────────────── */
 
 static void teste_ast(void)
@@ -586,6 +682,7 @@ int main(int argc, char **argv)
     teste_regex();
     teste_regex_fundo();
     teste_ast();
+    teste_pilha();
 
     printf("\nunidade: %d checagens, %d falharam\n", total, falhas);
     /* Filtro que não casa nada = 0 checagens = "passou"? Não: é erro de quem

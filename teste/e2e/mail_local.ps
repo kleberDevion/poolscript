@@ -61,8 +61,15 @@ action roda(fonte, env) {
 #
 # A espera é por SINAL (o arquivo aparecer), não por `sleep` no escuro.
 action sobe_servidor() {
+    return sobe(SRV)
+}
+
+
+# O mesmo, escolhendo o script: `smtp_falso.py` ou `imap_falso.py`. Os dois
+# falam o mesmo protocolo de arranque (porta 0, anuncia na 1ª linha da caixa).
+action sobe(script) {
     os.cmd("rm -f " + CAIXA)
-    os.cmd("setsid python3 " + SRV + " 0 " + CERT + " " + CHAVE
+    os.cmd("setsid python3 " + script + " 0 " + CERT + " " + CHAVE
            + " " + CAIXA + " > /tmp/ps_smtp_srv.log 2>&1 &")
     i = 0
     while i < 100 {
@@ -178,6 +185,142 @@ if __name__ == "main" {
              + "s.conn(\"nao.existe.mesmo.invalido\", 587)\n"
              + "post(\"CONECTOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("host inexistente falha limpo", r[0] != 0 and not "CONECTOU" in r[1], r[1])
+
+    # ── 6. IMAP: a metade LEITORA, que nunca tinha rodado ───────────────────
+    #
+    # `ps_mail.c` são duas metades. A de enviar (SMTP) já está coberta acima; a
+    # de ler (`MailReader`) estava INTEIRA sem teste — conectar, login, select,
+    # search, fetch e close nunca tinham executado, porque o único teste de
+    # leitura fala com o Gmail e diz PULOU sem credencial.
+    #
+    # Diferença de protocolo que importa: o IMAP aqui usa TLS IMPLÍCITO
+    # (`ps_imap_conecta` chama `liga_tls` logo depois do `connect`, sem
+    # STARTTLS), então a verificação de certificado acontece em outro ponto do
+    # código — e por isso é testada de novo, não é repetição do caso 1.
+    porta = sobe("teste/imap_falso.py")
+    if porta == 0 {
+        post("ERRO: o IMAP falso nao subiu —", open("/tmp/ps_smtp_srv.log").read())
+        sys.exit(1)
+    }
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "post(\"CONECTOU\")\n", "")
+    erros = erros + conf("IMAP: cert auto-assinado é RECUSADO", r[0] != 0, r[1])
+    erros = erros + conf("IMAP: o erro diz o motivo",
+                         "certificado TLS invalido" in r[1], r[1])
+
+    # fluxo completo com o escape
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "ids = r.search(\"ALL\")\n"
+             + "post(\"N\", len(ids))\n"
+             + "post(\"ASSUNTO\", ids[0][\"subject\"])\n"
+             + "post(\"CORPO\", r.body(\"2\").strip())\n"
+             + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("IMAP: fluxo completo roda", r[0] == 0, r[1])
+    erros = erros + conf("IMAP: search devolve as duas mensagens", "N 2" in r[1], r[1])
+    erros = erros + conf("IMAP: o assunto vem do FETCH do cabecalho",
+                         "ASSUNTO acentuada" in r[1], r[1])
+    # o corpo tem acento de propósito: o literal `{n}` do IMAP conta BYTES, e
+    # cortar por caractere entregaria a mensagem partida no meio de um UTF-8
+    erros = erros + conf("IMAP: corpo com acento chega inteiro",
+                         "corpo com ção e ê" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("IMAP: autenticou", "LOGIN_OK" in caixa, caixa)
+    # `select(readonly=true)` é o padrão e vira EXAMINE, não SELECT
+    erros = erros + conf("IMAP: readonly padrao manda EXAMINE",
+                         "EXAMINE" in caixa, caixa)
+    erros = erros + conf("IMAP: encerrou com CLOSE e LOGOUT",
+                         "CLOSE" in caixa and "LOGOUT" in caixa, caixa)
+
+    # readonly=false tem que mandar SELECT
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\", readonly=false)\n"
+             + "r.close()\n"
+             + "post(\"OK\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("IMAP: readonly=false manda SELECT",
+                         "C A2 SELECT" in caixa, caixa)
+
+    # Busca com TERMO tem DOIS caminhos no motor, e quem escolhe é
+    # `tem_nao_ascii(termo)`:
+    #
+    #   termo ASCII   -> `SEARCH CHARSET UTF-8 SUBJECT "acentuada"` (entre aspas)
+    #   termo com acento -> `SEARCH CHARSET UTF-8 SUBJECT {n}`, o servidor
+    #                       responde `+`, e os BYTES crus vão na linha seguinte
+    #
+    # O segundo é o único jeito de procurar por "relatório", e é um caminho de
+    # código inteiro à parte (`imap_cmd_literal`). Testar só o primeiro deixaria
+    # ele descoberto — foi o que aconteceu no primeiro rascunho deste teste.
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "post(\"ASCII\", len(r.search(\"SUBJECT\", \"acentuada\")))\n"
+             + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("IMAP: termo ASCII vai entre aspas, sem literal",
+                         "SEARCH CHARSET UTF-8 SUBJECT \"acentuada\"" in caixa
+                         and not "SEARCH_LITERAL" in caixa, caixa)
+    erros = erros + conf("IMAP: busca com termo ASCII acha as 2", "ASCII 2" in r[1], r[1])
+
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "post(\"ACENTO\", len(r.search(\"SUBJECT\", \"relatório\")))\n"
+             + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("IMAP: termo com acento usa LITERAL", "SEARCH_LITERAL" in caixa, caixa)
+    # o literal conta BYTES: "relatório" tem 9 caracteres e 10 bytes em UTF-8.
+    # Contar caractere aqui manda `{9}` e o servidor lê a mensagem cortada.
+    erros = erros + conf("IMAP: o literal declara 10 BYTES, nao 9 caracteres",
+                         "{10}" in caixa, caixa)
+    erros = erros + conf("IMAP: busca com acento acha 1", "ACENTO 1" in r[1], r[1])
+
+    # senha errada e mensagem inexistente: os dois viram erro na linguagem
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"ERRADA\")\n"
+             + "post(\"LOGOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("IMAP: senha errada falha", r[0] != 0 and not "LOGOU" in r[1], r[1])
+
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "post(r.body(\"999\"))\n"
+             + "post(\"LEU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("IMAP: mensagem inexistente falha", r[0] != 0 and not "LEU" in r[1], r[1])
 
     os.cmd("rm -f " + CERT + " " + CHAVE + " " + CAIXA)
     post("")
