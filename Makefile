@@ -291,6 +291,17 @@ memcheck: pool
 #   make bench            mede e compara com teste/bench_base.txt
 #   make bench BENCH=--grava     adota a medição atual como referência
 #   make bench BENCH=--portao    sai != 0 se piorou além da folga (CI noturna)
+# LEIS da linguagem: regra, não exemplo. Cada lei vale pra TODO valor sorteado,
+# e a semente muda a cada execução — o oposto do caso congelado.
+#
+# Entra no `make check` com poucas rodadas (é barato: 15 mil checagens em 3 s) e
+# roda FUNDO no noturno, com a semente do dia. Achado vem com o contraexemplo
+# encolhido e a semente pra repetir.
+LEIS_N ?= 200
+LEIS_SEMENTE ?=
+leis: pool
+	@nice -n 19 ./pool teste/leis.ps $(LEIS_N) $(LEIS_SEMENTE)
+
 BENCH ?=
 bench: pool
 	@nice -n 19 ./pool teste/bench.ps $(BENCH)
@@ -329,6 +340,10 @@ check: pool testar
 	@./pool scripts/audita_exemplos_doc.ps
 	@echo
 	@./pool teste/fuzz_replay.ps
+	@echo
+	# LEIS: o que vale pra TODO valor, não pra um exemplo. Barato o bastante
+	# pro portão; o noturno roda fundo com a semente do dia.
+	@$(MAKE) --no-print-directory leis
 	@echo
 	# Drivers de LOOPBACK: CLI+psl, sockets e o jinker a fundo. Ficavam fora de
 	# qualquer alvo — escritos, passando, e sem ninguém rodando.
@@ -555,7 +570,14 @@ cobertura: testar
 	          teste/jinker_roda.ps teste/mongo_roda.ps; do \
 	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
 	done
-	@for alvo in $(E2E_SEM_SERVICO); do \
+	# E os que PRECISAM de serviço também, quando ele existe: `db` (PostgreSQL,
+	# MySQL) e `mongo` cobrem os drivers de `ps_db.c` e `ps_mongo.c` que o
+	# sqlite não alcança — pg_exec, a conversão de `?` pra `$1`, o mapa de
+	# SQLSTATE. Cada um imprime PULOU e sai 0 quando o serviço não está de pé,
+	# então isto é seguro: na máquina com banco a medição sobe, na CI sem banco
+	# ela fica igual. O `|| true` não esconde falha de teste — quem cobra esses
+	# scripts é o `make check-e2e`; aqui eles só MEDEM.
+	@for alvo in $(E2E_SEM_SERVICO) db mongo mail ws; do \
 	  nice -n 19 ./cob/pool teste/e2e_roda.ps $$alvo >/dev/null 2>&1 || true; \
 	done
 	@lcov --capture --directory . --output-file cob/bruto.info \
