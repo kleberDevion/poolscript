@@ -100,8 +100,99 @@ confere("--check lê da entrada padrão", "\"ok\":true" in r["saida"])
 r = roda("echo 'x = 1' | '" + POOL + "' --tokens")
 confere("--tokens devolve JSON de tokens", "\"t\":\"IDENT\"" in r["saida"] and "\"l\":1" in r["saida"])
 
+# ── `--contexto`: o que o editor chama a cada tecla ─────────────────────────
+#
+# É a maior região descoberta do `main.c` (59 ramos) e o caminho mais quente do
+# LSP: a cada tecla o editor pergunta "o que o cursor toca aqui". Um só caso
+# ("responde algo") deixava os cinco contextos e todos os erros sem teste.
+#
+# O contrato tem cinco respostas — `topo`, `membro`, `nenhum`, `decorador`,
+# `import` — mais o NOME PARCIAL, que só conta quando encosta no cursor.
 r = roda("echo 'post(1)' | '" + POOL + "' --contexto 1:1")
-confere("--contexto responde algo pro editor", r["saida"].strip().len() > 0)
+confere("--contexto no topo diz `topo`", "\"contexto\":\"topo\"" in r["saida"])
+
+# depois de um ponto, o contexto é MEMBRO e o receptor vem junto — é o que faz
+# o editor listar os métodos de `str` e não a linguagem inteira
+r = roda("printf 'x = \"ab\"\\nx.' | '" + POOL + "' --contexto 2:3")
+confere("--contexto depois do ponto diz `membro`", "\"contexto\":\"membro\"" in r["saida"])
+confere("--contexto membro diz de QUEM é o membro", "x" in r["saida"])
+
+# nome PARCIAL: `ge|` conta, `ge |` não. Sem essa distinção o editor completa
+# em cima de espaço em branco.
+r = roda("printf 'po' | '" + POOL + "' --contexto 1:3")
+confere("--contexto pega o nome parcial encostado no cursor", "\"parcial\":\"po\"" in r["saida"])
+r = roda("printf 'po ' | '" + POOL + "' --contexto 1:4")
+confere("--contexto NÃO pega parcial separado por espaço",
+        not "\"parcial\":\"po\"" in r["saida"])
+
+# decorador e import são contextos próprios: o editor oferece listas diferentes
+r = roda("printf '@' | '" + POOL + "' --contexto 1:2")
+confere("--contexto depois de `@` diz `decorador`", "\"decorador\"" in r["saida"])
+r = roda("printf 'import ' | '" + POOL + "' --contexto 1:8")
+confere("--contexto depois de `import` diz `import`", "\"import\"" in r["saida"])
+
+# ARGUMENTO TORTO: tem que ser erro com mensagem, não lixo nem crash. É entrada
+# não confiável — quem chama é o editor, com o cursor onde o usuário deixou.
+r = roda("echo 'post(1)' | '" + POOL + "' --contexto")
+confere("--contexto sem posição é erro", "\"erro\"" in r["saida"] and r["rc"] != 0)
+r = roda("echo 'post(1)' | '" + POOL + "' --contexto abc")
+confere("--contexto com posição não numérica é erro", "\"erro\"" in r["saida"])
+r = roda("echo 'post(1)' | '" + POOL + "' --contexto 0:0")
+confere("--contexto com linha/coluna zero é erro", "\"erro\"" in r["saida"])
+r = roda("echo 'post(1)' | '" + POOL + "' --contexto -1:5")
+confere("--contexto com linha negativa é erro", "\"erro\"" in r["saida"])
+# posição MUITO além do fim do arquivo: não pode ler fora
+r = roda("echo 'post(1)' | '" + POOL + "' --contexto 9999:9999")
+confere("--contexto além do fim não quebra", r["rc"] == 0 or "\"contexto\"" in r["saida"])
+# entrada vazia
+r = roda("printf '' | '" + POOL + "' --contexto 1:1")
+confere("--contexto de arquivo vazio não quebra", "\"contexto\"" in r["saida"])
+
+# ── `build`: roda todos os .ps da pasta, em ordem ───────────────────────────
+#
+# `cmd_build` varre o diretório, filtra por extensão (`.ps`, `.psl`, `.p`),
+# ORDENA e roda um por um. Nada disso tinha teste: 26 ramos, incluindo a pasta
+# sem nada pra rodar e o arquivo que falha no meio.
+os.mkdir(PASTA + "/obra", exist_ok=true)
+os.writeFile(PASTA + "/obra/b_segundo.ps", "post(\"SEGUNDO\")\n")
+os.writeFile(PASTA + "/obra/a_primeiro.ps", "post(\"PRIMEIRO\")\n")
+os.writeFile(PASTA + "/obra/nao_e_fonte.txt", "isto nao roda\n")
+r = roda("cd obra && '" + POOL + "' build")
+confere("build roda os .ps da pasta", "PRIMEIRO" in r["saida"] and "SEGUNDO" in r["saida"])
+# a ORDEM é parte do contrato: `build` de resultado imprevisível é inútil
+# quando um arquivo depende do que o anterior deixou pronto
+confere("build roda em ordem alfabética",
+        r["saida"].find("PRIMEIRO") < r["saida"].find("SEGUNDO"))
+confere("build ignora quem não é fonte", not "isto nao roda" in r["saida"])
+confere("build sai 0 quando tudo passa", r["rc"] == 0)
+
+# arquivo que FALHA no meio: o `build` não pode engolir e sair 0
+os.writeFile(PASTA + "/obra/c_quebra.ps", "post(nao_existe_essa_variavel)\n")
+r = roda("cd obra && '" + POOL + "' build")
+confere("build reprova quando um arquivo falha", r["rc"] != 0)
+os.cmd("rm -f " + PASTA + "/obra/c_quebra.ps")
+
+# pasta sem nenhum fonte: caso de borda do coletor
+os.mkdir(PASTA + "/vazia", exist_ok=true)
+r = roda("cd vazia && '" + POOL + "' build")
+confere("build em pasta vazia não quebra", r["rc"] == 0 or r["saida"].strip().len() > 0)
+
+# ── entradas tortas da CLI ──────────────────────────────────────────────────
+r = roda("'" + POOL + "' arquivo_que_nao_existe.ps")
+confere("arquivo inexistente é erro com mensagem",
+        r["rc"] != 0 and "nao consegui abrir" in r["saida"])
+r = roda("'" + POOL + "' -e 'post(1 + 1)'")
+confere("-e roda código inline", "2" in r["saida"] and r["rc"] == 0)
+r = roda("'" + POOL + "' -e 'post(nao_existe)'")
+confere("-e com erro sai != 0", r["rc"] != 0)
+r = roda("'" + POOL + "' -e")
+confere("-e sem código é erro", r["rc"] != 0)
+r = roda("'" + POOL + "'")
+confere("sem argumento nenhum mostra a ajuda", "Uso:" in r["saida"])
+r = roda("'" + POOL + "' --version")
+confere("--version diz a versão", "PoolScript" in r["saida"] and r["rc"] == 0)
+r = roda("'" + POOL + "' --help")
+confere("--help lista os comandos", "Uso:" in r["saida"] and r["rc"] == 0)
 
 r = roda("'" + POOL + "' --metadata")
 confere("--metadata expõe os módulos", "\"modulos\"" in r["saida"] and r["rc"] == 0)
