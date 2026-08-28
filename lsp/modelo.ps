@@ -10,7 +10,37 @@ import json
 import regex
 
 META = {}
-TMP = "/tmp/ps_lsp"
+# Pasta de trabalho do servidor: onde ele grava o FONTE DO USUÁRIO pra passar
+# ao `pool --check`/`--tokens`.
+#
+# Era `/tmp/ps_lsp`, fixo. Dois problemas, e o primeiro é o que importa:
+#
+# 1. `/tmp` é gravável por todo mundo e o nome era o MESMO pra qualquer usuário.
+#    Outro usuário da máquina podia criar `/tmp/ps_lsp` antes, com permissão de
+#    leitura pra si, e passar a ler o código-fonte privado de quem edita — ou
+#    trocar o caminho por link simbólico e escolher onde a escrita cai.
+# 2. Dois usuários editando ao mesmo tempo pisavam no arquivo um do outro.
+#
+# `XDG_RUNTIME_DIR` (`/run/user/<uid>`) é a resposta padrão do sistema: já nasce
+# 0700 do dono, o systemd limpa no logout, e é por usuário. Sem ele (container,
+# sessão sem systemd), cai pro `/tmp` com o UID no nome — não é tão bom, mas
+# deixa de ser um caminho que dois usuários disputam.
+action lsp_pasta_tmp() {
+    raiz = os.getenv("XDG_RUNTIME_DIR")
+    if raiz != Null and raiz != "" {
+        return raiz + "/poolscript-lsp"
+    }
+    quem = os.getenv("UID")
+    if quem == Null or quem == "" {
+        quem = os.getenv("USER")
+    }
+    if quem == Null or quem == "" {
+        quem = "anon"
+    }
+    return "/tmp/ps_lsp-" + str(quem)
+}
+
+TMP = lsp_pasta_tmp()
 
 # Palavras da linguagem, pra completar onde não há receptor.
 KEYWORDS = ["if", "else", "elif", "while", "for", "each", "in", "is", "and",

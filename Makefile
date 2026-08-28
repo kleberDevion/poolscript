@@ -267,9 +267,36 @@ memcheck: pool
 # Avisos barulhentos, pra revisão deliberada — não entram no build de todo dia
 # porque o volume de truncamento intencional esconderia o achado de verdade.
 # Só compila (`-fsyntax-only` basta: aqui não há analisador envolvido).
+# Avisos EXTRA que o build normal não liga. Reprova se achar algum.
+#
+# Duas correções que valem lembrar:
+#
+# 1. Era `-fsyntax-only`, que PULA a geração de código — e metade dos avisos
+#    úteis (`-Wformat-truncation` inteiro) só nasce depois dela. O alvo mostrava
+#    2 avisos onde uma compilação de verdade mostra 34. É o mesmo defeito que já
+#    tinha sido corrigido no `analisa` e que ficou aqui.
+# 2. Era `| grep`, então o alvo saía 0 sempre: nada reprovava. Agora sai != 0.
+#
+# `-Wformat-truncation` fica no nível 1, não no 2: o nível 2 acusa `snprintf`
+# com precisão EXPLÍCITA (`%.200s`, `%.*s`), que é justamente o jeito certo de
+# escrever, e os 31 avisos que ele dá aqui são todos desses. Portão que grita à
+# toa é portão desligado. O nível 2 continua acessível pra revisão:
+#
+#     make avisos AVISOS_NIVEL=2
+AVISOS_NIVEL ?= 1
 avisos:
-	@$(CC) $(CFLAGS) -Wlogical-op -Wformat-truncation=2 -Wshadow \
-	  -I$(VM) -fsyntax-only $(FONTES) 2>&1 | grep -E "warning:" | sort -u
+	@saida=$$(for f in $(FONTES); do \
+	    nice -n 19 $(CC) $(CFLAGS) -Wlogical-op -Wshadow \
+	      -Wformat-truncation=$(AVISOS_NIVEL) \
+	      -I$(VM) -c -o /dev/null $$f 2>&1; \
+	  done | grep -E "warning:" | sort -u); \
+	if [ -n "$$saida" ]; then \
+	  printf '%s\n' "$$saida"; \
+	  echo; \
+	  echo "avisos: $$(printf '%s\n' "$$saida" | wc -l) achado(s) — reprovando."; \
+	  exit 1; \
+	fi; \
+	echo "  avisos extra (nivel $(AVISOS_NIVEL)): nenhum"
 
 .PHONY: avisos
 
@@ -305,6 +332,10 @@ check: pool testar
 	@./pool lsp/teste_lsp.ps
 	@echo
 	@$(MAKE) --no-print-directory analisa
+	@echo
+	# Avisos extra (-Wlogical-op, -Wshadow, -Wformat-truncation) que o build
+	# normal nao liga. Barato: e so recompilar com mais flags.
+	@$(MAKE) --no-print-directory avisos
 	@echo
 	# A MESMA suite com as invariantes do motor ligadas. Sem isto o portao so
 	# acha MORTE; com isto acha estado errado antes de virar morte.

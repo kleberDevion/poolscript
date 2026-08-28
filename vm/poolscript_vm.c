@@ -19814,49 +19814,49 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * objeto pela metade é seguro em qualquer ponto onde a construção
              * pare — `free(NULL)` não faz nada e contador zero não percorre
              * vetor nenhum. */
-            PSClass *cl = calloc(1, sizeof(PSClass));
-            if (!cl) ERRO(vm, "sem memoria ao criar Entity");
-            cl->obj.type = OBJ_CLASS; cl->obj.marked = 0;
-            cl->obj.next = vm->objetos; vm->objetos = (Obj *)cl;
+            PSClass *nova = calloc(1, sizeof(PSClass));
+            if (!nova) ERRO(vm, "sem memoria ao criar Entity");
+            nova->obj.type = OBJ_CLASS; nova->obj.marked = 0;
+            nova->obj.next = vm->objetos; vm->objetos = (Obj *)nova;
             vm->alocado += sizeof(PSClass);
-            cl->nome = strdup(def->nome ? def->nome : "?");
-            cl->met_nomes = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(char *));
-            cl->met_protos = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(int32_t));
-            if (!cl->nome || !cl->met_nomes || !cl->met_protos) ERRO(vm, "sem memoria");
+            nova->nome = strdup(def->nome ? def->nome : "?");
+            nova->met_nomes = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(char *));
+            nova->met_protos = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(int32_t));
+            if (!nova->nome || !nova->met_nomes || !nova->met_protos) ERRO(vm, "sem memoria");
             for (int32_t i = 0; i < def->nmetodos; i++) {
                 /* `def->met_nomes[i]` pode ser NULL: a cópia que montou a `def`
                  * grava NULL quando o strdup dela falha. `strdup(NULL)` é
                  * segfault, não erro — achado pela varredura (`make oom`,
                  * entity, alocação 106). */
-                cl->met_nomes[i] = strdup(def->met_nomes[i] ? def->met_nomes[i] : "?");
+                nova->met_nomes[i] = strdup(def->met_nomes[i] ? def->met_nomes[i] : "?");
                 /* O contador precisa refletir o que DE FATO entrou. Publicar
                  * `def->nmetodos` inteiro com uma entrada NULL no meio fazia o
                  * `acha_metodo` chamar strcmp(NULL, ...) — segfault achado pela
                  * varredura (`make oom`, entity, alocação 141). */
-                if (!cl->met_nomes[i]) { cl->nmetodos = i; ERRO(vm, "sem memoria"); }
-                cl->met_protos[i] = def->met_protos[i];
-                cl->nmetodos = i + 1;
+                if (!nova->met_nomes[i]) { nova->nmetodos = i; ERRO(vm, "sem memoria"); }
+                nova->met_protos[i] = def->met_protos[i];
+                nova->nmetodos = i + 1;
             }
             /* membros private (encapsulamento) — copiados da def */
-            cl->classe_privada = def->classe_privada;   /* `private class` */
-            cl->priv_nomes = NULL;
+            nova->classe_privada = def->classe_privada;   /* `private class` */
+            nova->priv_nomes = NULL;
             if (def->npriv > 0) {
-                cl->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
+                nova->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
                 /* o ERRO salta daqui; com `npriv` já publicado, o `fin_class`
                  * percorreria um vetor que não existe */
-                if (!cl->priv_nomes) ERRO(vm, "sem memoria");
+                if (!nova->priv_nomes) ERRO(vm, "sem memoria");
                 for (int32_t i = 0; i < def->npriv; i++)
-                    cl->priv_nomes[i] = strdup(def->priv_nomes[i]);
+                    nova->priv_nomes[i] = strdup(def->priv_nomes[i]);
             }
-            cl->npriv = def->npriv;
-            cl->npais = def->npais;
-            cl->pais = def->npais > 0 ? calloc((size_t)def->npais, sizeof(PSClass *)) : NULL;
+            nova->npriv = def->npriv;
+            nova->npais = def->npais;
+            nova->pais = def->npais > 0 ? calloc((size_t)def->npais, sizeof(PSClass *)) : NULL;
             for (int32_t i = def->npais - 1; i >= 0; i--) {
                 Value pv = stack[--sp];
                 if (!EH_CLASS(pv)) ERRO(vm, "pai de Entity precisa ser outra Entity");
-                cl->pais[i] = COMO_CLASS(pv);
+                nova->pais[i] = COMO_CLASS(pv);
             }
-            stack[sp++] = MK_OBJ(cl);
+            stack[sp++] = MK_OBJ(nova);
             break;
         }
 

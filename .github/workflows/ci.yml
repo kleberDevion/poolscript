@@ -90,6 +90,9 @@ jobs:
       # O runner de CI tem mais memória que a máquina de desenvolvimento, então
       # aqui o analisador roda TAMBÉM no arquivo grande, que fica de fora lá.
       - run: make analisa ANALISA_TUDO=1 ANALISA_MB=12000
+      # Nivel 2 do format-truncation: ruidoso demais pro portao (acusa
+      # snprintf com precisao explicita), mas util pra revisao noturna.
+      - run: make avisos AVISOS_NIVEL=2 || true
       - run: make fuzz FUZZ_T=1800
       # Replaya o que já estava guardado: crash de ontem que voltar reprova.
       - run: ./pool teste/fuzz_replay.ps

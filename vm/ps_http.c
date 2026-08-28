@@ -125,8 +125,17 @@ static int cru_le(Conn *c, char *out, int cap)
     errno = 0;
     int k = c->ssl ? SSL_read(c->ssl, out, cap) : (int)read(c->fd, out, (size_t)cap);
     /* SO_RCVTIMEO estourado sai como EAGAIN — marca pra virar TimeoutError,
-     * como no interp (no TLS o SSL_read propaga o errno do fd por baixo) */
-    if (k <= 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) c->expirou = 1;
+     * como no interp (no TLS o SSL_read propaga o errno do fd por baixo).
+     *
+     * `EAGAIN || EWOULDBLOCK` é o idioma portável, mas no Linux os dois são o
+     * MESMO valor e o `-Wlogical-op` acusa "or de expressões iguais" — aviso
+     * legítimo, porque a segunda metade nunca é avaliada com resultado
+     * diferente. O `#if` mantém a portabilidade sem a redundância. */
+    if (k <= 0 && (errno == EAGAIN
+#if EWOULDBLOCK != EAGAIN
+                   || errno == EWOULDBLOCK
+#endif
+                  )) c->expirou = 1;
     return k;
 }
 static int cru_escreve(Conn *c, const char *d, int n)
