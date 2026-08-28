@@ -160,6 +160,128 @@ if __name__ == "main" {
     ruins = ruins + confere("e o servidor CONTINUA atendendo depois",
         "GET /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
 
+    # ── linha de pedido TORTA ───────────────────────────────────────────────
+    # O parser de requisição tinha 54 ramos em zero. Nenhum cliente educado
+    # manda nada disto; um atacante manda todos.
+    ruins = ruins + confere("sem espaco entre metodo e alvo",
+        "GET/oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 400")
+    ruins = ruins + confere("linha de pedido so com o metodo",
+        "GET\r\nHost: x\r\n\r\n", "HTTP/1.1 400")
+    ruins = ruins + confere("metodo gigante (estoura o campo)",
+        ("M" * 300) + " /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 400")
+    ruins = ruins + confere("alvo gigante",
+        "GET /" + ("a" * 9000) + " HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1")
+    ruins = ruins + confere("metodo que nao existe",
+        "BREW /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 4")
+    ruins = ruins + confere("versao HTTP estranha nao derruba",
+        "GET /oi HTTP/9.9\r\nHost: x\r\n\r\n", "HTTP/1.1")
+    # LF puro (`\n` sem `\r`) é RECUSADO com 400, não aceito e não esperado até
+    # o timeout. Aceitar seria vetor de request smuggling; ficar esperando era
+    # conexão presa por lixo. Reconhecer só pra recusar não aceita nada a mais.
+    ruins = ruins + confere("LF puro -> 400, sem segurar a conexao",
+        "GET /oi HTTP/1.1\nHost: x\n\n", "HTTP/1.1 400")
+    # e o corpo legítimo que CONTÉM `\n\n` continua passando: a busca por LF
+    # puro só roda quando o `\r\n\r\n` não foi achado
+    # o `/eco` espera JSON, e o JSON aqui CONTÉM `\n\n` no valor
+    corpo_nn = "{\"x\": \"a\\n\\nb\"}"
+    ruins = ruins + confere("corpo com \\n\\n dentro continua valido",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+        + "Content-Length: " + str(len(corpo_nn)) + "\r\n\r\n" + corpo_nn,
+        "HTTP/1.1 200")
+    ruins = ruins + confere("header sem valor",
+        "GET /oi HTTP/1.1\r\nHost: x\r\nX-Vazio:\r\n\r\n", "HTTP/1.1 200")
+    ruins = ruins + confere("muitos headers repetidos",
+        "GET /hdr HTTP/1.1\r\nHost: x\r\n" + ("X-Rep: 1\r\n" * 60) + "\r\n", "HTTP/1.1")
+    ruins = ruins + confere("Content-Length negativo -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: -1\r\n\r\nabc", "HTTP/1.1 400")
+    ruins = ruins + confere("Content-Length com sinal de mais -> 400",
+        "POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: +5\r\n\r\nabcde", "HTTP/1.1 400")
+    ruins = ruins + confere("query string vazia",
+        "GET /oi? HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+    ruins = ruins + confere("query com chave sem valor",
+        "GET /oi?a HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+    ruins = ruins + confere("percent-encoding invalido no alvo",
+        "GET /oi?a=%zz HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1")
+    ruins = ruins + confere("percent-encoding truncado",
+        "GET /oi?a=%4 HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1")
+
+    # ── multipart: 40 ramos em zero no parser de upload ─────────────────────
+    # `--` de fecho, parte sem `name`, header com `\n\n` em vez de `\r\n\r\n`,
+    # varias partes no mesmo campo (forca o realloc do vetor), e boundary que
+    # nao aparece no corpo.
+    SEP = "----ps"
+    corpo = ("--" + SEP + "\r\n"
+             + "Content-Disposition: form-data; name=\"arq\"; filename=\"a.txt\"\r\n"
+             + "Content-Type: text/plain\r\n\r\n"
+             + "conteudo\r\n"
+             + "--" + SEP + "--\r\n")
+    ruins = ruins + confere("multipart normal",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=" + SEP + "\r\n"
+        + "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo, "HTTP/1.1 200")
+
+    # parte SEM `name`: tem que ser ignorada, nao virar arquivo sem nome
+    corpo = ("--" + SEP + "\r\n"
+             + "Content-Disposition: form-data; filename=\"x.txt\"\r\n\r\n"
+             + "sem nome\r\n"
+             + "--" + SEP + "--\r\n")
+    ruins = ruins + confere("parte multipart sem name",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=" + SEP + "\r\n"
+        + "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo, "HTTP/1.1 200")
+
+    # headers da parte separados por \n\n (cliente relaxado) — o parser tem
+    # ramo pros dois separadores
+    corpo = ("--" + SEP + "\r\n"
+             + "Content-Disposition: form-data; name=\"arq\"; filename=\"b.txt\"\n\n"
+             + "corpo relaxado\r\n"
+             + "--" + SEP + "--\r\n")
+    ruins = ruins + confere("multipart com \\n\\n entre header e corpo",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=" + SEP + "\r\n"
+        + "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo, "HTTP/1.1 200")
+
+    # SEIS partes no mesmo campo: o vetor comeca com 4 e tem que crescer
+    corpo = ""
+    i = 0
+    while i < 6 {
+        corpo = (corpo + "--" + SEP + "\r\n"
+                 + "Content-Disposition: form-data; name=\"fotos\"; filename=\"f"
+                 + str(i) + ".png\"\r\n\r\n" + "dados" + str(i) + "\r\n")
+        i = i + 1
+    }
+    corpo = corpo + "--" + SEP + "--\r\n"
+    ruins = ruins + confere("seis partes no mesmo campo (cresce o vetor)",
+        "POST /uploads HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=" + SEP + "\r\n"
+        + "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo, "HTTP/1.1 200")
+
+    # boundary declarado que NAO aparece no corpo
+    corpo = "nada de boundary aqui\r\n"
+    ruins = ruins + confere("boundary ausente do corpo",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=" + SEP + "\r\n"
+        + "Content-Length: " + str(len(corpo)) + "\r\n\r\n" + corpo, "HTTP/1.1 200")
+
+    # multipart SEM boundary no Content-Type
+    ruins = ruins + confere("multipart sem boundary declarado",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data\r\n"
+        + "Content-Length: 5\r\n\r\nabcde", "HTTP/1.1")
+
+    # boundary vazio, e boundary gigante (estoura o `sep[256]`)
+    ruins = ruins + confere("boundary vazio",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=\r\n"
+        + "Content-Length: 5\r\n\r\nabcde", "HTTP/1.1")
+    ruins = ruins + confere("boundary gigante",
+        "POST /upload HTTP/1.1\r\nHost: x\r\n"
+        + "Content-Type: multipart/form-data; boundary=" + ("b" * 400) + "\r\n"
+        + "Content-Length: 5\r\n\r\nabcde", "HTTP/1.1")
+
+    ruins = ruins + confere("e o servidor continua vivo depois de tudo isso",
+        "GET /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")
+
     post("")
     if ruins > 0 {
         post("FALHARAM:", ruins)

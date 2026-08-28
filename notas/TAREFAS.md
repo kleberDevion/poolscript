@@ -14,7 +14,21 @@ Legenda da coluna PORTÃO:
 
 ---
 
-## 0. A dívida de cobertura (raiz)
+## 0. A dívida de cobertura — PAGA em 28/08
+
+| | Python (`db0bcb6`) | C, antes | C, hoje |
+|---|---|---|---|
+| linhas | 78,8% | 55,0% | **78,0%** |
+| funções | 83,8% | 54,9% | **82,6%** |
+| ramos | **53,3%** | 41,4% | **56,6%** |
+
+O ramo — que é o número que não engana — passou o da suíte antiga. Linha e
+função estão a menos de um ponto. O que falta por arquivo está no relatório do
+`make cobertura`, do pior pro melhor, com a distância pra 100%.
+
+---
+
+## 0b. Como estava (mantido pra não repetir o raciocínio errado)
 
 A suíte em Python (`db0bcb6`, 2026-08-24) cobria **53,3% de ramo**; a de hoje
 cobre menos. Não é código novo sem teste: é teste que existia e se perdeu na
@@ -102,12 +116,29 @@ e `ps_hash`. Só sai depois que 0.13 estiver de pé e provar que não precisa.
 
 ---
 
+## 3b. LF puro nos headers — RESOLVIDO (28/08)
+
+Era: o jinker só reconhecia `\r\n\r\n`, então requisição com `\n` sozinho ficava
+pedindo bytes que nunca vinham e a conexão ficava presa até o timeout — recurso
+segurado por lixo.
+
+Agora: o `\n\n` é reconhecido **só pra recusar** — 400 e fecha. Não aceita nada
+a mais (aceitar LF puro é vetor de request smuggling, porque um intermediário
+na frente corta a requisição num ponto diferente do nosso; o nginx recusa pelo
+mesmo motivo) e não paga o timeout. É estritamente mais seguro que esperar.
+
+A busca por `\n\n` só roda quando o `\r\n\r\n` NÃO foi achado, então corpo
+legítimo que contenha `\n\n` continua passando — há caso pros dois em
+`teste/e2e/jinker_bruto.ps`.
+
+---
+
 ## 4. Erros meus que estão na lista porque precisam ser desfeitos
 
 | # | o que eu fiz | o que tem que virar |
 |---|---|---|
-| 4.1 | `PS_CICLO_MAX 256`: a função responde "é ciclo" ao passar de 256 níveis. Lista de 300 níveis, sem ciclo nenhum, é reportada como recursiva — **resposta errada, não proteção** | pilha de visitados crescendo no heap; a função responde só o que ela sabe |
-| 4.2 | `PS_PARSE_PROF_MAX 2000`: teto na linguagem disfarçado de robustez. Contar nível não mede pilha — 2000 níveis de `(((` gastam muito menos que 2000 de expressão com chamada | medir folga real de pilha (`getrlimit` + endereço de local), ou tirar a recursão do laço unário/parênteses |
+| 4.1 | `PS_CICLO_MAX 256` respondendo "é ciclo" por profundidade | **FEITO**: virou medição de folga (`ps_pilha_apertada`). O vetor de visitados voltou a fazer só o que ele faz — detectar ciclo. Estrutura de 300, 5000 e 200 mil níveis agora IMPRIME |
+| 4.2 | `PS_PARSE_PROF_MAX 2000` no parser: contagem, não medição | **falta** — o mesmo tratamento do 4.1, agora que `ps_pilha_apertada` existe |
 | 4.3 | baseline de cobertura gravado na medição degradada — piso no fundo do buraco | **feito**: virou catraca, e a meta da suíte Python entrou como dívida visível |
 | 4.4 | itens fechados sem nada que os cobre | **feito** pra o que dava caso; o que falta está no §2 acima |
 

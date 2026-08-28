@@ -65,4 +65,10 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
  * Python, o que amarrava o tooling ao interpretador. */
 void ps_metadata_json(FILE *saida);
 
+/* Marca a base da pilha do processo. É a referência da medição de folga que
+ * impede a recursão profunda de estourar a pilha (ver `ps_pilha_apertada` em
+ * poolscript_vm.c). Tem que ser chamada no início do `main`, com a pilha ainda
+ * praticamente intocada. */
+void ps_pilha_marca_processo(void);
+
 #endif /* PS_VM_H */

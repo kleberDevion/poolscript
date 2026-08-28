@@ -80,6 +80,7 @@
 #include "ps_compiler.h"
 #include "ps_regex.h"
 #include "ps_vm.h"
+#include <sys/resource.h>   /* getrlimit: tamanho real da pilha do processo */
 #include "ps_hash.h"
 
 /* ── opcodes ─────────────────────────────────────────────────────────────
@@ -2422,21 +2423,97 @@ static VM *vm_corrente = NULL;
  * três pontos de recursão já consultavam esta função antes de descer, o teto
  * vale em todos sem tocar em nenhum.
  *
- * Por que 256 e não mais: dentro do jinker a fibra roda numa pilha de C de
- * 128 KB (`FIB_CSTACK`), então o limiar de estouro lá é ~64x menor que os 8 MB
- * do processo — 300 níveis bastavam pra derrubar o servidor inteiro por uma
- * rota. Estrutura real não passa de algumas dezenas de níveis; o JSON já
- * recusa acima de 64. */
+ * CONTAR NÍVEL NÃO MEDE PILHA, e isto aqui é a prova: com `-O0 --coverage` o
+ * quadro de `escreve_valor` fica várias vezes maior que no `-O2`, e a MESMA
+ * profundidade de 300 que sobra folgada no binário de release estourava a
+ * pilha da fibra no binário instrumentado — o servidor morria e a medição de
+ * cobertura ficava travada em 14,9% sem ninguém entender por quê.
+ *
+ * Um número fixo ou está apertado demais pra um build ou frouxo demais pro
+ * outro. O que decide é a FOLGA QUE SOBRA, então é isso que se mede:
+ * `ps_pilha_apertada()` compara o endereço de um local com a base registrada
+ * na entrada (`ps_pilha_marca`) e para quando falta menos que a margem.
+ *
+ * O vetor de visitados continua existindo pelo que ele faz de verdade —
+ * detectar CICLO (`l.append(l)` vira `[...]`, igual ao Python). Ele não é mais
+ * teto: um ciclo que fecha acima de `PS_CICLO_MAX` níveis é pego pela folga de
+ * pilha, não por uma contagem que responde "é ciclo" pra estrutura que não é.
+ *
+ * Estrutura legítima de 300, 1000 ou 5000 níveis agora IMPRIME. */
 #define PS_CICLO_MAX 256
 static const void *ps_pilha_texto[PS_CICLO_MAX];
 static int ps_prof_texto = 0;
 
-/* 1 = PARE de descer aqui: ou este objeto já está no caminho (ciclo), ou a
- * profundidade chegou no teto. Quem chama imprime `[...]` nos dois casos. */
+/* Base da pilha da execução corrente e quanto ela tem. Por thread porque o
+ * pool de fibras e o jinker multi-processo rodam em contextos diferentes, cada
+ * um com a sua pilha. Zero = ninguém marcou; aí não há o que medir. */
+static __thread const char *ps_pilha_base = NULL;
+static __thread size_t ps_pilha_tam = 0;
+
+/* Margem: o que tem que sobrar embaixo, PROPORCIONAL ao tamanho da pilha.
+ *
+ * Margem fixa não serve, e custou uma rodada aqui: com 24 KB fixos a recursão
+ * ainda estourava numa pilha de 8 MB. O motivo é que o espaço utilizável
+ * abaixo da base marcada é MENOR que o `ulimit` — o bloco de ambiente, o argv
+ * e a inicialização da libc ficam acima dela, e o kernel ainda reserva um
+ * pedaço. A conta errava por umas dezenas de KB, que é justamente a ordem de
+ * grandeza de uma margem apertada.
+ *
+ * Um oitavo, limitado entre 16 KB e 512 KB: 512 KB numa pilha de 8 MB (6%, que
+ * não faz falta) e 16 KB nos 128 KB da fibra — uns 40 quadros de folga, com a
+ * checagem rodando a cada quadro. */
+static size_t ps_pilha_margem(size_t tam)
+{
+    size_t m = tam / 8;
+    if (m < 16u * 1024)  m = 16u * 1024;
+    if (m > 512u * 1024) m = 512u * 1024;
+    return m;
+}
+
+/* Registra onde a pilha desta execução começa. Chamado na entrada do processo
+ * e no trampolim de cada fibra — sem isso a medição não tem referência. */
+void ps_pilha_marca_processo(void);
+static void ps_pilha_marca(size_t tam)
+{
+    /* `__builtin_frame_address(0)`, e NÃO o endereço de um local: guardar
+     * `&local` de uma função que já retornou é ponteiro pendurado — o gcc
+     * avisa (`-Wdangling-pointer`) e, por ser UB, tem licença pra descartar a
+     * comparação que o usa. Foi exatamente o que aconteceu: a medição
+     * compilava, não avisava nada em execução, e simplesmente NÃO PROTEGIA. */
+    ps_pilha_base = (const char *)__builtin_frame_address(0);
+    ps_pilha_tam = tam;
+}
+
+/* Entrada do processo: a pilha é a do sistema. `getrlimit` dá o tamanho real
+ * (8 MB no padrão do Linux, mas `ulimit -s` muda, e o `make oom` roda com
+ * limite apertado de propósito). */
+void ps_pilha_marca_processo(void)
+{
+    struct rlimit rl;
+    size_t tam = 8u * 1024 * 1024;
+    if (getrlimit(RLIMIT_STACK, &rl) == 0 && rl.rlim_cur != RLIM_INFINITY
+            && rl.rlim_cur > 64u * 1024)
+        tam = (size_t)rl.rlim_cur;
+    ps_pilha_marca(tam);
+}
+
+/* 1 = está perto do fim da pilha. A pilha cresce PARA BAIXO em toda plataforma
+ * que este motor roda, então o consumido é `base - atual`. */
+static int ps_pilha_apertada(void)
+{
+    if (!ps_pilha_base || ps_pilha_tam == 0) return 0;
+    ptrdiff_t usado = ps_pilha_base - (const char *)__builtin_frame_address(0);
+    if (usado < 0) usado = -usado;          /* pilha que cresce pra cima */
+    return (size_t)usado + ps_pilha_margem(ps_pilha_tam) >= ps_pilha_tam;
+}
+
+/* 1 = PARE de descer aqui: ou este objeto já está no caminho (CICLO), ou a
+ * pilha está no fim. Quem chama imprime `[...]` nos dois casos. */
 static int ps_em_ciclo(const void *o)
 {
-    if (ps_prof_texto >= PS_CICLO_MAX) return 1;
-    for (int i = 0; i < ps_prof_texto; i++) if (ps_pilha_texto[i] == o) return 1;
+    if (ps_pilha_apertada()) return 1;
+    int n = ps_prof_texto < PS_CICLO_MAX ? ps_prof_texto : PS_CICLO_MAX;
+    for (int i = 0; i < n; i++) if (ps_pilha_texto[i] == o) return 1;
     return 0;
 }
 
@@ -16581,6 +16658,14 @@ enum { FIB_HTTP = 0, FIB_ASYNC = 1 };   /* o que a fibra roda */
 typedef struct Fiber {
     PS_CTX ctx;                   /* contexto do C desta fibra */
     void      *cstack;            /* pilha do C (mmap + guarda, reusada no pool) */
+    /* Base da pilha DESTA fibra, pra medição de folga (`ps_pilha_apertada`).
+     * Fica aqui e não numa variável de thread porque o trampolim só roda na
+     * PRIMEIRA entrada: nas retomadas seguintes a execução volta pro meio da
+     * fibra, e sem guardar a base aqui ninguém a remarca — a medição passava a
+     * comparar um endereço da pilha da fibra com a base do processo e dava
+     * lixo, respondendo "pilha no fim" no primeiro nível. */
+    const char *pilha_base;
+    size_t      pilha_tam;
     Value     *stack;  Value *locals;  Frame *frames;   /* arrays próprios */
     /* estado da VM salvo enquanto a fibra NÃO está corrente */
     int        sp, locals_top, frame_topo;
@@ -16683,8 +16768,14 @@ static void fib_troca_sai(VM *vm, Fiber *f)
  * não aqui. */
 static void fib_trampolim(void)
 {
+    /* A fibra tem pilha PRÓPRIA e pequena (FIB_CSTACK, 128 KB) — 64x menor que
+     * os 8 MB do processo. A base tem que ser remarcada aqui, senão a medição
+     * de folga compara com a pilha do processo e não protege nada. */
+    ps_pilha_marca(FIB_CSTACK);
     VM *vm = g_fib_vm;
     Fiber *f = vm->fib_atual;
+    f->pilha_base = ps_pilha_base;      /* pras retomadas seguintes */
+    f->pilha_tam  = ps_pilha_tam;
     if (f->kind == FIB_ASYNC) {
         /* roda a async action no corpo da fibra; ao ceder num sleep/DB, o
          * escalonador atende outras; ao terminar, resolve o future. */
@@ -16736,6 +16827,7 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
     if (!f->cstack) f->cstack = fib_pilha_nova();
     if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
+    f->pilha_base = NULL; f->pilha_tam = 0;   /* o trampolim remarca */
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_HTTP;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
@@ -16771,6 +16863,7 @@ static PSFuturo *fib_pega_async(VM *vm, int proto, Value *args, int nargs)
     if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
     PSFuturo *fu = novo_futuro(vm);
     if (!fu) return NULL;
+    f->pilha_base = NULL; f->pilha_tam = 0;   /* o trampolim remarca */
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_ASYNC;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL; f->conn = NULL;
@@ -16793,7 +16886,22 @@ static void fib_resume(VM *vm, Fiber *f)
 {
     g_fib_vm = vm;
     fib_troca_entra(vm, f);
+    /* A pilha TROCA junto com o contexto, então a referência da medição de
+     * folga tem que trocar também. Sem isto, depois que a primeira fibra roda,
+     * `ps_pilha_base` fica apontando pro `mmap` dela; de volta na pilha
+     * principal a subtração compara endereços de regiões sem relação nenhuma e
+     * responde qualquer coisa — na prática dava "pilha no fim" logo no primeiro
+     * nível, e `[3, 6]` virava `[...]`.
+     *
+     * Este é o único ponto que ENTRA numa fibra; todas as cedências voltam por
+     * aqui, então salvar/restaurar aqui cobre todas. A marcação de dentro fica
+     * no `fib_trampolim`, que é onde a pilha nova de fato começa. */
+    const char *base_fora = ps_pilha_base;
+    size_t tam_fora = ps_pilha_tam;
+    if (f->pilha_base) { ps_pilha_base = f->pilha_base; ps_pilha_tam = f->pilha_tam; }
     ps_ctx_swap(&vm->sched_ctx, &f->ctx);
+    ps_pilha_base = base_fora;
+    ps_pilha_tam = tam_fora;
     fib_troca_sai(vm, f);
 }
 

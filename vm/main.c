@@ -546,6 +546,10 @@ static int tem_flag(int argc, char **argv, int de, const char *flag)
 
 int main(int argc, char **argv)
 {
+    /* Marca a base da pilha ANTES de tudo: é a referência da medição de folga
+     * que impede a recursão de estourar (ver `ps_pilha_apertada`). Feito no
+     * main porque aqui a pilha ainda está praticamente intocada. */
+    ps_pilha_marca_processo();
     if (argc < 2) { ajuda(); return 0; }
 
     const char *cmd = argv[1];

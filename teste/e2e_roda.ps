@@ -69,6 +69,70 @@ action espera_porta(porta, prazo) {
 COM_JANELA = ["guzer_janela.ps"]
 
 
+PIDFILE = "/tmp/ps_e2e_srv.pid"
+
+
+# Sobe o servidor e devolve o PID EXATO dele (0 = não consegui).
+#
+# Duas coisas que parecem detalhe e não são:
+#
+# `exec` no `sh -c` faz o shell VIRAR o pool, então o `$!` é o pid do pool. Sem
+# ele o pid guardado é de um shell que sai logo em seguida.
+#
+# E NADA de `setsid`: ele forka e o pai sai, então o `$!` vira o pid do setsid,
+# que já morreu — o sinal não chega em ninguém e o servidor fica órfão. Ele
+# estava aqui pra proteger de `pkill -f`, que matava o próprio script; matando
+# por pid exato o problema não existe.
+action sobe(srv) {
+    os.cmd("rm -f " + PIDFILE)
+    os.cmd("sh -c 'exec env GUZER_HEADLESS=1 \"" + sys.executable + "\" "
+           + PASTA + "/" + srv + " > /tmp/ps_e2e_srv.log 2>&1 < /dev/null' &"
+           + " echo $! > " + PIDFILE)
+    i = 0
+    while i < 50 {
+        if os.exists(PIDFILE) {
+            t = open(PIDFILE).read().strip()
+            if t != "" {
+                return int(t)
+            }
+        }
+        os.cmd("sleep 0.05")
+        i = i + 1
+    }
+    return 0
+}
+
+
+# Derruba o servidor pelo PID, SEM shell e SEM padrão.
+#
+# POR QUE NÃO `pkill -f <nome>`: o padrão casa a LINHA DE COMANDO, e a linha de
+# comando de quem está rodando o `pkill` também contém o nome — o script se
+# matava junto (aconteceu duas vezes aqui). E casar por padrão pega qualquer
+# processo alheio que tenha o nome no argv.
+#
+# POR QUE SIGTERM primeiro, e por que ESPERAR: o jinker tem desligamento
+# gracioso (SIGTERM -> `g_jk_parar` -> o laço sai e o processo RETORNA). Matar
+# com SIGKILL pula a saída limpa, e processo morto por sinal **não grava o
+# `.gcda`** — foi por isso que 24 casos novos de HTTP cru não mexeram um ponto
+# na cobertura de `ps_jinker.c`. O KILL fica só como último recurso.
+action derruba(pid) {
+    if pid <= 0 {
+        return
+    }
+    os.run(["kill", "-TERM", str(pid)])
+    i = 0
+    while i < 60 {
+        os.cmd("kill -0 " + str(pid) + " 2>/dev/null; echo $? > /tmp/ps_e2e_vivo")
+        if int(open("/tmp/ps_e2e_vivo").read().strip()) != 0 {
+            return
+        }
+        os.cmd("sleep 0.1")
+        i = i + 1
+    }
+    os.run(["kill", "-KILL", str(pid)])
+}
+
+
 # Roda um script e devolve [rc, saida_junta].
 action roda(caminho) {
     env = "GUZER_HEADLESS=1 "
@@ -134,13 +198,12 @@ if __name__ == "main" {
 
         # `setsid` destaca o servidor do grupo de processos deste script: sem
         # isso, matá-lo depois derruba junto quem o iniciou.
-        os.cmd("setsid env GUZER_HEADLESS=1 '" + sys.executable + "' " + PASTA + "/" + srv +
-               " > /tmp/ps_e2e_srv.log 2>&1 < /dev/null &")
+        pid_srv = sobe(srv)
 
         if espera_porta(porta, 20) == 0 {
             post("      servidor nao abriu a porta", str(porta), "em 20s")
             mostra(open("/tmp/ps_e2e_srv.log").read())
-            os.cmd("pkill -f '" + srv + "' 2>/dev/null")
+            derruba(pid_srv)
             falhou.append(srv)
             continue
         }
@@ -152,8 +215,9 @@ if __name__ == "main" {
 
         # O servidor morre AQUI, sempre — mesmo com cliente falhando. Deixar
         # servidor vivo faz a próxima execução falhar por porta ocupada, que é
-        # a mesma família de não-hermético do E1.
-        os.cmd("pkill -f '" + srv + "' 2>/dev/null")
+        # a mesma família de não-hermético do E1. E morre com SIGTERM, esperando
+        # ele sair sozinho: ver o comentário de `derruba`.
+        derruba(pid_srv)
 
         for each par in resultados {
             cl = par[0]

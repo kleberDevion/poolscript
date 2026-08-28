@@ -282,8 +282,26 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
             c->buf[c->n < c->cap ? c->n : c->cap - 1] = '\0';
             fim = memmem(c->buf, c->n, "\r\n\r\n", 4);
             if (fim) break;
+            /* LF PURO: `\n\n` sem `\r` termina cabeçalho em cliente relaxado, e
+             * aqui NÃO termina — aceitar LF puro é vetor de request smuggling,
+             * porque um intermediário na frente corta a requisição num ponto
+             * diferente do nosso. O nginx recusa pelo mesmo motivo.
+             *
+             * O que se ganha reconhecendo o `\n\n` é só ISTO: responder 400 e
+             * fechar. Antes o parser seguia pedindo mais bytes que nunca vinham
+             * e a conexão ficava presa até o timeout — recurso segurado por
+             * lixo. Reconhecer pra RECUSAR é estritamente mais seguro que
+             * esperar: não aceita nada a mais e não paga o timeout.
+             *
+             * A busca só acontece quando o `\r\n\r\n` NÃO foi achado, então um
+             * corpo legítimo com `\n\n` dentro nunca chega aqui: naquele caso o
+             * fim de cabeçalho já foi encontrado e o laço saiu acima. */
+            if (memmem(c->buf, c->n, "\n\n", 2)) return PSJK_MALFORM;
         }
-        if (c->n > 64 * 1024) return -1;   /* headers gigantes = lixo */
+        /* MALFORM, nao FECHA: 64 KB de header e lixo mandado por alguem, e
+         * lixo se recusa COM RESPOSTA. Fechar calado e o que deixa um
+         * intermediario na frente ver uma requisicao diferente da nossa. */
+        if (c->n > 64 * 1024) return PSJK_MALFORM;
         if (conn_enche(c) != 0) return -1;
     }
     size_t nhead = (size_t)(fim - c->buf) + 4;
@@ -291,16 +309,20 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
     /* linha de pedido: METODO alvo HTTP/1.x */
     char *p = c->buf;
     char *eol = memmem(p, nhead, "\r\n", 2);
-    if (!eol) return -1;
+    /* Daqui ate o fim da linha de pedido, todo erro e SINTAXE do cliente e
+     * sai como PSJK_MALFORM -> 400. Antes saiam como -1, que e PSJK_FECHA,
+     * e o servidor fechava calado — o mesmo defeito que 0f54f28 corrigiu nos
+     * headers e nao tocou aqui. */
+    if (!eol) return PSJK_MALFORM;
     char *sp1 = memchr(p, ' ', (size_t)(eol - p));
-    if (!sp1) return -1;
+    if (!sp1) return PSJK_MALFORM;
     size_t nm = (size_t)(sp1 - p);
-    if (nm >= sizeof(r->metodo)) return -1;
+    if (nm >= sizeof(r->metodo)) return PSJK_MALFORM;
     memcpy(r->metodo, p, nm); r->metodo[nm] = '\0';
     /* HEAD: mesma resposta do GET, sem o corpo (ver PSJkConn.sem_corpo) */
     c->sem_corpo = (strcmp(r->metodo, "HEAD") == 0);
     char *sp2 = memchr(sp1 + 1, ' ', (size_t)(eol - sp1 - 1));
-    if (!sp2) return -1;
+    if (!sp2) return PSJK_MALFORM;
     char *alvo = jk_ar_faixa(r, sp1 + 1, sp2);
     if (!alvo) { ps_jk_req_solta(r); return -1; }
 
