@@ -1,0 +1,190 @@
+# mail contra um SMTP local — sem Gmail, sem credencial, sem rede.
+#
+# POR QUE ISTO EXISTE: `vm/ps_mail.c` são 943 linhas em **0,6% de cobertura**.
+# O outro teste (`teste/e2e/mail.ps`) fala com o Gmail de verdade e diz PULOU
+# quando não há `MAIL_USER`/`MAIL_PASS` — ou seja, na máquina de quem
+# desenvolve ele nunca roda. O SMTP inteiro nunca tinha sido exercitado.
+#
+# O servidor é `teste/smtp_falso.py`: STARTTLS de verdade, com certificado
+# auto-assinado. Isso é o que permite o teste que mais importa e que nenhum
+# outro alcança — **conectar SEM `PS_MAIL_TLS_INSEGURO=1` tem que FALHAR**,
+# porque o certificado não é confiável. É a única prova executável de que o
+# `SSL_VERIFY_PEER` + `SSL_set1_host` do §3.4 fazem efeito; até aqui a
+# evidência era o diff.
+#
+# Precisa de `openssl` e `python3`. Sem eles, PULOU — nunca falso verde.
+import os
+import sys
+
+CERT = "/tmp/ps_smtp_cert.pem"
+CHAVE = "/tmp/ps_smtp_key.pem"
+CAIXA = "/tmp/ps_smtp_caixa.txt"
+SRV = "teste/smtp_falso.py"
+
+erros = 0
+
+
+action tem(cmd) {
+    os.cmd("command -v " + cmd + " > /dev/null 2>&1; echo $? > /tmp/ps_tem.txt")
+    return int(open("/tmp/ps_tem.txt").read().strip()) == 0
+}
+
+
+action conf(nome, cond, detalhe) {
+    if cond {
+        post("   ok  " + nome)
+        return 0
+    }
+    post("   ERRO " + nome + " — " + detalhe)
+    return 1
+}
+
+
+# Roda um .ps com o ambiente dado e devolve [rc, saida].
+action roda(fonte, env) {
+    using open("/tmp/ps_mail_caso.ps", "w") as f {
+        f.write(fonte)
+    }
+    os.cmd(env + " timeout 25 '" + sys.executable + "' /tmp/ps_mail_caso.ps"
+           + " > /tmp/ps_mail_out.txt 2>&1; echo $? > /tmp/ps_mail_rc.txt")
+    return [int(open("/tmp/ps_mail_rc.txt").read().strip()),
+            open("/tmp/ps_mail_out.txt").read()]
+}
+
+
+# Sobe o servidor e devolve a PORTA que ele pegou (0 = não subiu).
+#
+# A porta é escolhida pelo sistema (`bind(0)`) e o servidor a anuncia na
+# primeira linha da caixa. Porta fixa colide com a sobra da rodada anterior —
+# o servidor anterior fica até 60 s no ar, e o teste reprovava por "não subiu"
+# sem ter nada a ver com mail.
+#
+# A espera é por SINAL (o arquivo aparecer), não por `sleep` no escuro.
+action sobe_servidor() {
+    os.cmd("rm -f " + CAIXA)
+    os.cmd("setsid python3 " + SRV + " 0 " + CERT + " " + CHAVE
+           + " " + CAIXA + " > /tmp/ps_smtp_srv.log 2>&1 &")
+    i = 0
+    while i < 100 {
+        if os.exists(CAIXA) {
+            prim = open(CAIXA).read().split("\n")[0].split()
+            if len(prim) > 1 {
+                return int(prim[1])
+            }
+        }
+        os.cmd("sleep 0.1")
+        i = i + 1
+    }
+    return 0
+}
+
+
+if __name__ == "main" {
+    if not tem("openssl") or not tem("python3") {
+        post("PULOU — falta openssl ou python3")
+        sys.exit(0)
+    }
+
+    # certificado auto-assinado, válido por 2 dias. É de propósito que ele NÃO
+    # seja confiável: metade deste teste é o cliente recusá-lo.
+    os.cmd("openssl req -x509 -newkey rsa:2048 -keyout " + CHAVE + " -out " + CERT
+           + " -days 2 -nodes -subj '/CN=localhost' > /dev/null 2>&1")
+    if not os.exists(CERT) {
+        post("PULOU — openssl nao gerou o certificado")
+        sys.exit(0)
+    }
+
+    # ── 1. certificado nao confiavel: TEM que ser recusado ──────────────────
+    porta = sobe_servidor()
+    if porta == 0 {
+        post("ERRO: o SMTP falso nao subiu —", open("/tmp/ps_smtp_srv.log").read())
+        sys.exit(1)
+    }
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "post(\"CONECTOU\")\n", "")
+    erros = erros + conf("cert auto-assinado é RECUSADO", r[0] != 0, r[1])
+    erros = erros + conf("e o erro diz o motivo e a saida",
+                         "certificado TLS invalido" in r[1] and "PS_MAIL_TLS_INSEGURO" in r[1],
+                         r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("o servidor viu o handshake ser recusado",
+                         "HANDSHAKE_RECUSADO" in caixa, caixa)
+    erros = erros + conf("STARTTLS foi negociado antes do TLS",
+                         "CLARO STARTTLS" in caixa, caixa)
+
+    # ── 2. com o escape explicito: fluxo completo ───────────────────────────
+    porta = sobe_servidor()
+    if porta == 0 {
+        post("ERRO: o SMTP falso nao subiu (2)")
+        sys.exit(1)
+    }
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"segredo123\")\n"
+             + "m = mail.MailMessage()\n"
+             + "m.from_address(\"teste@local\")\n"
+             + "m.to(\"destino@local\")\n"
+             + "m.subject(\"assunto do teste\")\n"
+             + "m.body(\"corpo da mensagem\")\n"
+             + "s.send(m)\n"
+             + "s.quit()\n"
+             + "post(\"ENVIOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("com o escape, o envio completa", r[0] == 0 and "ENVIOU" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("TLS estabelecido", "TLS_OK" in caixa, caixa)
+    erros = erros + conf("autenticou", "LOGIN_OK teste@local" in caixa, caixa)
+    erros = erros + conf("mandou MAIL FROM", "MAIL FROM:<teste@local>" in caixa, caixa)
+    erros = erros + conf("mandou RCPT TO", "RCPT TO:<destino@local>" in caixa, caixa)
+    erros = erros + conf("o corpo chegou com o assunto",
+                         "Subject: assunto do teste" in caixa, caixa)
+    # o corpo vai em base64 dentro de multipart — conferir o MIME é conferir
+    # que a montagem da mensagem está certa, não só que "algo" chegou
+    erros = erros + conf("montou MIME multipart", "multipart/mixed" in caixa, caixa)
+    erros = erros + conf("corpo em base64", "Y29ycG8gZGEgbWVuc2FnZW0=" in caixa, caixa)
+    erros = erros + conf("encerrou com QUIT", "SEGURO QUIT" in caixa, caixa)
+
+    # ── 3. senha errada: o 535 tem que virar erro na linguagem ──────────────
+    porta = sobe_servidor()
+    if porta == 0 {
+        post("ERRO: o SMTP falso nao subiu (3)")
+        sys.exit(1)
+    }
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"senha ERRADA\")\n"
+             + "post(\"LOGOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("senha errada falha", r[0] != 0 and not "LOGOU" in r[1], r[1])
+
+    # ── 4. porta fechada: erro de conexao, nao trava nem crash ──────────────
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", 1)\n"
+             + "post(\"CONECTOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("porta fechada falha limpo", r[0] != 0 and not "CONECTOU" in r[1], r[1])
+
+    # ── 5. host que nao resolve ─────────────────────────────────────────────
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"nao.existe.mesmo.invalido\", 587)\n"
+             + "post(\"CONECTOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("host inexistente falha limpo", r[0] != 0 and not "CONECTOU" in r[1], r[1])
+
+    os.cmd("rm -f " + CERT + " " + CHAVE + " " + CAIXA)
+    post("")
+    if erros > 0 {
+        post("mail local: FALHOU em", erros, "checagens")
+        sys.exit(1)
+    }
+    post("OK — SMTP completo offline, e o certificado invalido é recusado")
+    sys.exit(0)
+}

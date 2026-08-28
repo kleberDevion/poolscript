@@ -1,0 +1,146 @@
+# `psl` de ponta a ponta, sem rede e sem tocar no ~/.poolscript de verdade.
+#
+# POR QUE ISTO EXISTE: `vm/ps_pkg.c` estava em **0,0% de cobertura** — 570
+# linhas, o gerenciador de pacotes inteiro, sem um único teste. Não por ser
+# difícil: `psl install arquivo.ps` é 100% local, não precisa de rede nem de
+# serviço. Simplesmente ninguém tinha escrito.
+#
+# O isolamento é `POOLSCRIPT_HOME`, que o próprio `pkg_home` respeita antes do
+# `$HOME`. Sem isso o teste instalaria pacote de mentira na máquina de quem
+# roda — que é o tipo de teste que a gente aprende a não rodar.
+#
+# Cobre os dois modos (comando e lib), o shim gerado, o registro de instalados,
+# a desinstalação, o registry, e os caminhos de ERRO — que é onde mora metade
+# dos ramos e onde nenhum teste de caminho feliz chega.
+import os
+import sys
+
+RAIZ = "/tmp/ps_pkg_teste"
+
+
+# `os.cmd` devolve a SAÍDA (ou Null), nunca o código de saída — não há API na
+# linguagem pra isso, então o código vem pelo `echo $?` num arquivo. É o mesmo
+# contorno de `teste/fuzz_replay.ps`; está anotado em notas/LIMITACOES.md.
+#
+# Cuidado que custou caro aqui: `Null == 0` é **True** neste motor (é
+# deliberado, `val_iguais` documenta o porquê). Então `os.cmd(...) != 0` é
+# sempre False e um teste escrito assim aprova qualquer coisa — falso verde
+# perfeito, do tipo que passa por revisão.
+action psl(args) {
+    cmd = ("POOLSCRIPT_HOME='" + RAIZ + "' '" + sys.executable + "' " + args
+           + " > /tmp/ps_pkg_out.txt 2>&1; echo $? > /tmp/ps_pkg_rc.txt")
+    os.cmd(cmd)
+    rc = int(open("/tmp/ps_pkg_rc.txt").read().strip())
+    return [rc, open("/tmp/ps_pkg_out.txt").read()]
+}
+
+
+erros = 0
+
+action conf(nome, cond, detalhe) {
+    if cond {
+        post("   ok  " + nome)
+        return 0
+    }
+    post("   ERRO " + nome + " — " + detalhe)
+    return 1
+}
+
+
+if __name__ == "main" {
+    os.cmd("rm -rf " + RAIZ)
+    os.mkdir(RAIZ, exist_ok=true)
+
+    # ── um pacote de mentira, mas .ps de verdade ────────────────────────────
+    using open("/tmp/ps_pkg_ola.ps", "w") as f {
+        f.write("action saudacao(nome) {\n    return \"ola \" + nome\n}\n")
+    }
+    using open("/tmp/ps_pkg_cmd.ps", "w") as f {
+        f.write("post(\"rodei como comando\")\n")
+    }
+
+    # ── install como LIB ────────────────────────────────────────────────────
+    r = psl("install /tmp/ps_pkg_ola.ps -asLib")
+    erros = erros + conf("install -asLib sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
+    erros = erros + conf("gravou em libs/", os.exists(RAIZ + "/libs/ps_pkg_ola.ps"),
+                         "nao achei o .ps em libs/")
+
+    # ── install como COMANDO ────────────────────────────────────────────────
+    r = psl("install /tmp/ps_pkg_cmd.ps")
+    erros = erros + conf("install comando sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
+    erros = erros + conf("gravou em commands/", os.exists(RAIZ + "/commands/ps_pkg_cmd.ps"),
+                         "nao achei o .ps em commands/")
+    # o shim é o que faz o comando ser chamável pelo nome
+    erros = erros + conf("gerou o shim em bin/", os.exists(RAIZ + "/bin/ps_pkg_cmd"),
+                         "nao achei o shim")
+
+    # ── list mostra os dois ─────────────────────────────────────────────────
+    r = psl("list")
+    erros = erros + conf("list sai 0", r[0] == 0, "rc=" + str(r[0]))
+    erros = erros + conf("list cita a lib", "ps_pkg_ola" in r[1], r[1])
+    erros = erros + conf("list cita o comando", "ps_pkg_cmd" in r[1], r[1])
+
+    # ── o registro de instalados é regravado a cada operação ────────────────
+    erros = erros + conf("escreveu installed.json", os.exists(RAIZ + "/installed.json"),
+                         "nao achei installed.json")
+    if os.exists(RAIZ + "/installed.json") {
+        reg = open(RAIZ + "/installed.json").read()
+        erros = erros + conf("installed.json tem as duas secoes",
+                             "commands" in reg and "libs" in reg, reg)
+    }
+
+    # ── registry ────────────────────────────────────────────────────────────
+    r = psl("registry set-url https://exemplo.invalido/reg.json")
+    erros = erros + conf("registry set-url sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
+    r = psl("registry show")
+    erros = erros + conf("registry show devolve a url",
+                         "exemplo.invalido" in r[1], r[1])
+    # HTTP é GRAVÁVEL mas não é USÁVEL, e isso é de propósito: a checagem mora
+    # em `https_ok`, chamada na busca no índice e no download — o ponto de uso,
+    # que é onde a garantia importa. Guardar uma string não baixa nada; o que
+    # não pode é pacote entrar por canal sem autenticação.
+    r = psl("registry set-url http://inseguro.invalido/reg.json")
+    erros = erros + conf("registry set-url aceita gravar http", r[0] == 0, r[1])
+    r = psl("install um_pacote_qualquer")
+    erros = erros + conf("mas INSTALAR por http é recusado",
+                         r[0] != 0 and "https" in r[1],
+                         "deixou passar: rc=" + str(r[0]) + " " + r[1])
+    # e volta pra https, pra o resto do teste não herdar registry quebrado
+    psl("registry set-url https://exemplo.invalido/reg.json")
+
+    # ── caminhos de ERRO ────────────────────────────────────────────────────
+    r = psl("install /tmp/nao_existe_mesmo.ps")
+    erros = erros + conf("install de arquivo inexistente falha", r[0] != 0, r[1])
+    r = psl("install /etc/hostname")
+    erros = erros + conf("install de nao-.ps falha", r[0] != 0, "aceitou: " + r[1])
+    r = psl("uninstall nao_instalado_nenhum")
+    erros = erros + conf("uninstall do que nao existe falha", r[0] != 0, r[1])
+    r = psl("install")
+    erros = erros + conf("install sem argumento falha", r[0] != 0, r[1])
+    r = psl("uninstall")
+    erros = erros + conf("uninstall sem argumento falha", r[0] != 0, r[1])
+
+    # ── uninstall de verdade, nos dois modos ────────────────────────────────
+    r = psl("uninstall ps_pkg_ola -asLib")
+    erros = erros + conf("uninstall -asLib sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
+    erros = erros + conf("sumiu de libs/", not os.exists(RAIZ + "/libs/ps_pkg_ola.ps"),
+                         "o .ps continua la")
+    r = psl("uninstall ps_pkg_cmd")
+    erros = erros + conf("uninstall comando sai 0", r[0] == 0, "rc=" + str(r[0]) + " " + r[1])
+    erros = erros + conf("sumiu o shim", not os.exists(RAIZ + "/bin/ps_pkg_cmd"),
+                         "o shim continua la")
+
+    # ── list vazio depois de tudo ───────────────────────────────────────────
+    r = psl("list")
+    erros = erros + conf("list depois de limpar sai 0", r[0] == 0, "rc=" + str(r[0]))
+    erros = erros + conf("nao cita mais a lib", not "ps_pkg_ola" in r[1], r[1])
+
+    os.cmd("rm -rf " + RAIZ)
+    post("")
+    if erros > 0 {
+        post("psl: FALHOU em", erros, "checagens")
+        sys.exit(1)
+    }
+    post("OK — psl instala, lista, desinstala e recusa o que tem que recusar")
+    sys.exit(0)
+}

@@ -576,3 +576,50 @@ por quê).
 **Saída definitiva:** tornar a repetição de grupo ITERATIVA. O `*` de um átomo
 simples já é um laço; é a repetição de GRUPO que recursa. Enquanto isso não
 existir, o teto fica — e teto que avisa é melhor que morte calada.
+
+---
+
+## Não dá pra saber se um comando externo deu certo
+
+**Onde bate:** `os.cmd()` e `os.run()` devolvem a **saída** (com
+`capture=true`) ou `Null`. O **código de saída não é acessível** de lugar
+nenhum da linguagem.
+
+```
+os.cmd("git push")            # devolve Null — deu certo? deu errado? não dá pra saber
+os.run(["make", "check"])     # idem
+```
+
+Em Python é `subprocess.run(...).returncode`; em shell é `$?`; em Go é o
+`error` do `cmd.Run()`. Aqui não existe equivalente.
+
+**O contorno, que está espalhado pela suíte inteira:**
+
+```
+os.cmd("o comando aqui > /tmp/saida.txt 2>&1; echo $? > /tmp/rc.txt")
+rc = int(open("/tmp/rc.txt").read().strip())
+```
+
+`teste/fuzz_replay.ps`, `teste/e2e/pkg.ps` e `teste/e2e_roda.ps` fazem
+exatamente isso. É feio, escreve em `/tmp`, e obriga a passar por shell mesmo
+quando o certo seria `os.run` (que existe justamente pra NÃO passar por shell).
+
+**A armadilha que vem junto:** `Null == 0` é **True** neste motor — é
+deliberado, o `val_iguais` documenta o porquê. Então quem escreve o teste
+óbvio:
+
+```
+if os.cmd("comando") != 0 {      # NUNCA é verdade: Null != 0 é False
+    post("falhou")
+}
+```
+
+…escreve um teste que aprova qualquer coisa. Falso verde perfeito: parece
+certo, passa na revisão, e não testa nada. Aconteceu aqui, no primeiro
+rascunho do `teste/e2e/pkg.ps`.
+
+**Saída:** é decisão de API dele. As formas usuais são um terceiro retorno
+(`os.run(args, capture=true, check=false)` devolvendo `[rc, saida]`), um
+`os.run(...).code`, ou um `check=true` que levanta exceção quando o comando
+falha — que é o que o `subprocess.run(check=True)` faz e cobre a maioria dos
+usos sem mudar assinatura.
