@@ -94,6 +94,23 @@ faltam duas coisas:
 | 2.3 | §3.6 semente de hash por processo | teste em C: dois processos, `hash_str` da mesma chave, valores diferentes |
 | 2.4 | §4.11 nada impede a lista de opcodes de se duplicar de novo | regra no `scripts/audita_c.ps`: `OP_X = <número>` fora do `.def` reprova |
 
+## 2b. Lacuna de API esperando decisão dele
+
+**`bytes` é o único tipo embutido sem `.len()`.** `str`, `list`, `dict` e `tup`
+têm; `bytes` só responde ao `len(x)` builtin. Nada em `docs/bytes/` diz que a
+ausência é proposital, e a divergência que ESTÁ documentada é o contrário —
+`.len()` como método é decisão de projeto da linguagem.
+
+Custou seis testes: `teste/jinker_roda.ps` escrevia `pedaco.len()` sobre o que
+o `recv` devolve, o `catch` engolia o "membro inexistente", e toda checagem de
+protocolo cru voltava string vazia. Seis falhas com a causa invisível.
+
+Não mexi porque método de tipo embutido é API, e API é dele. Se `.len()` entrar
+em `bytes`, entra na tabela `METODOS_BYTES` do `poolscript_vm.c` e ganha página
+em `docs/bytes/len/len.md` — o `audita_doc.ps` cobra as duas coisas.
+
+---
+
 ## 3. Aberto, do original
 
 | # | item | origem | portão hoje |

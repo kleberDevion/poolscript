@@ -291,6 +291,14 @@ check: pool testar
 	@echo
 	@./pool teste/fuzz_replay.ps
 	@echo
+	# Drivers de LOOPBACK: CLI+psl, sockets e o jinker a fundo. Ficavam fora de
+	# qualquer alvo — escritos, passando, e sem ninguém rodando.
+	@./pool teste/cli_roda.ps
+	@echo
+	@./pool teste/sockets_roda.ps
+	@echo
+	@./pool teste/jinker_roda.ps
+	@echo
 	@./pool lsp/teste_lsp.ps
 	@echo
 	@$(MAKE) --no-print-directory analisa
@@ -486,7 +494,8 @@ cobertura: testar
 	@echo "rodando os drivers .ps e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \
 	          scripts/audita_exemplos_doc.ps lsp/teste_lsp.ps \
-	          teste/fuzz_replay.ps; do \
+	          teste/fuzz_replay.ps teste/cli_roda.ps teste/sockets_roda.ps \
+	          teste/jinker_roda.ps; do \
 	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
 	done
 	@for alvo in $(E2E_SEM_SERVICO); do \

@@ -57,12 +57,18 @@ action cru(bytes_pedido)
     s.connect(("127.0.0.1", PORTA))
     s.sendall(bytes_pedido.encode())
     resposta = ""
+    erro = ""
     try
     {
         while true
         {
             pedaco = s.recv(4096)
-            if pedaco.len() == 0
+            # `len(x)`, não `x.len()`: `bytes` é o único tipo embutido SEM o
+            # método `.len()` (str, list, dict e tup têm). A versão anterior
+            # usava `pedaco.len()`, o `catch` engolia o "membro inexistente", e
+            # TODA checagem crua voltava string vazia — seis testes reprovando
+            # por um erro que ninguém via. Está anotado em notas/TAREFAS.md.
+            if len(pedaco) == 0
             {
                 break
             }
@@ -71,7 +77,14 @@ action cru(bytes_pedido)
     }
     catch (e)
     {
-        pass
+        # Timeout de leitura é ESPERADO em conexão keep-alive: o servidor
+        # respondeu e não fecha. Qualquer outro erro é defeito do teste e tem
+        # que aparecer — engolir calado foi o que escondeu o problema acima.
+        erro = str(e)
+        if not "timeout" in erro and not "Timeout" in erro
+        {
+            post("      (cru) erro lendo a resposta:", erro)
+        }
     }
     s.close()
     return resposta
@@ -185,17 +198,28 @@ confere("canal emite sem cliente e diz o status", r.status_code == 200)
 # ── rota e método inexistentes ──────────────────────────────────────────────
 r = get(RAIZ + "/rota-que-nao-existe")
 confere("rota inexistente é 404", r.status_code == 404)
+# Rota SEM `methods=` aceita todos os métodos — é o contrato documentado
+# (`methods` vazio = todos os do cors), então POST em `/ok` é 200 mesmo.
 r = http_post(RAIZ + "/ok", body="x")
-confere("método não permitido não vira 200", r.status_code != 200)
+confere("rota sem methods= aceita POST (contrato)", r.status_code == 200)
+# Já `/json` declara `methods=["POST"]`: GET nela tem que ser recusado.
+r = get(RAIZ + "/json")
+confere("método fora do methods= declarado não vira 200", r.status_code != 200)
 
 # ── WebSocket ───────────────────────────────────────────────────────────────
 eco = ""
 try
 {
     # o jinker abre o WebSocket na porta SEGUINTE à do HTTP
+    # `on_message` REGISTRA um callback e devolve Null — não é um `recv` que
+    # bloqueia. Quem lê a mensagem é o callback, e por isso precisa do `sleep`:
+    # a mensagem tem que chegar DURANTE a espera, não no `close`.
     ws = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    vindas = []
+    ws.on_message(action(m) { vindas.append(m) })
     ws.send("alo")
-    eco = str(ws.on_message())
+    sleep(1)
+    eco = str(vindas)
     ws.close()
 }
 catch (e)

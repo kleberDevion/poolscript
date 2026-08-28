@@ -50,7 +50,11 @@ action eco()
 @app.route("/json", methods=["POST"])
 action recebe_json()
 {
-    return jinker.jsonify({"veio": request.get_json("nome"), "todo": request.json()})
+    # `request.get_json()` NAO recebe campo: devolve o corpo inteiro. Quem
+    # recebe nome de campo e o `get_json()` do lado CLIENTE, da lib request —
+    # os dois se chamam igual e fazem coisas diferentes.
+    corpo = request.get_json()
+    return jinker.jsonify({"veio": corpo["nome"], "todo": corpo})
 }
 
 @app.route("/consulta")
@@ -86,7 +90,8 @@ action subir()
     f.save(destino)
     return {"nome": f.name, "tamanho": f.size, "tipo": f.content_type,
             "ext": f.ext, "salvou": os.exists(destino),
-            "conteudo": f.bytes().decode(), "quantos": request.files().len()}
+            # `files()` e POR CAMPO — exige o nome; sem ele levanta.
+            "conteudo": f.bytes().decode(), "quantos": request.files("arquivo").len()}
 }
 
 
@@ -124,11 +129,14 @@ action emitir()
     return {"emit": str(st), "status": str(app.channel.status)}
 }
 
+# Socket SEM canal: o `return` do handler volta pro REMETENTE da mensagem.
+# `app.socket().emit(...)` é pro caso de CANAL (`channel=true`), onde a mensagem
+# vai pra todo mundo inscrito — sem canal não há a quem emitir, e o cliente
+# ficava esperando um eco que nunca vinha.
 @app.socket("/ws")
-reaction ws_sala()
+action ws_sala()
 {
-    envia = app.socket()
-    envia.emit(request.text(), exclude_self=false)
+    return "eco: " + request.text()
 }
 
 
