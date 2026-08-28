@@ -13,11 +13,11 @@
 
 main.c 32.7 23.6
 poolscript_vm.c 70.2 50.4
-ps_ast.c 44.0 21.2
+ps_ast.c 100.0 95.3
 ps_compiler.c 96.0 70.8
 ps_db.c 64.4 45.7
 ps_guzer.c 37.1 22.3
-ps_hash.c 70.0 64.3
+ps_hash.c 99.2 87.0
 ps_http.c 78.6 55.5
 ps_jinker.c 24.3 15.0
 ps_lexer.c 78.9 69.2
@@ -26,5 +26,5 @@ ps_mongo.c 0.0 0.0
 ps_parser.c 94.1 67.6
 ps_pkg.c 66.5 42.6
 ps_qr.c 93.3 83.0
-ps_regex.c 67.2 49.0
+ps_regex.c 72.0 54.7
 ps_xlsx.c 81.1 53.2

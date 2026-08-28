@@ -77,3 +77,6 @@ editor/vscode/*.vsix
 
 # binario da suite com invariantes ligadas (make check-debug o gera)
 pool-debug
+
+# binario dos testes de unidade em C (make unidade o gera)
+unidade

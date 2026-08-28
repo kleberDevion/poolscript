@@ -278,6 +278,9 @@ avisos:
 check: pool testar
 	./testar
 	@echo
+	# Unidade em C: os ramos de erro dos modulos puros, que fonte .ps nao alcanca.
+	@$(MAKE) --no-print-directory unidade
+	@echo
 	@./pool teste/confere_metadata.ps
 	@echo
 	@./pool scripts/audita_doc.ps
@@ -350,6 +353,15 @@ check-e2e-local: pool
 #
 # `--wrap` é do linker: nenhuma linha do motor muda, o código testado é o
 # código de produção. Ver teste/ps_oom.c.
+# Testes de UNIDADE em C: linka SÓ os módulos puros (hash, regex, ast) e chama
+# as funções direto. É o que fura o teto de ~60% de ramo da suíte `.ps`, que
+# por construção não alcança tratamento de erro — não existe programa PoolScript
+# que faça um `malloc` falhar ou passe um buffer curto pro base64.
+unidade: teste/unidade.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(MK)
+	$(CC) $(CFLAGS) -g -I$(VM) -o $@ teste/unidade.c \
+	  $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm
+	@./$@
+
 pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ $(FONTES) teste/ps_oom.c \
 	  -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
@@ -465,6 +477,12 @@ cobertura: testar
 	# apareciam em 0% — não por falta de teste, mas porque o teste que os cobre
 	# (e2e local, drivers .ps) rodava FORA da medição. Número que ignora metade
 	# do portão manda corrigir o que já está coberto.
+	# A unidade em C tem que entrar na MEDIÇÃO, senão os ramos que só ela
+	# alcança continuam contando como descobertos.
+	@echo "rodando os testes de unidade instrumentados…"
+	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
+	  $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm 2>/dev/null
+	@./cob/unidade > /dev/null 2>&1 || true
 	@echo "rodando os drivers .ps e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \
 	          scripts/audita_exemplos_doc.ps lsp/teste_lsp.ps \
