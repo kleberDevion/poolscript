@@ -1,0 +1,172 @@
+# MongoDB de ponta a ponta, subindo o `mongod` sozinho.
+#
+# POR QUE ESTE ARQUIVO EXISTE: `vm/ps_mongo.c` estava em **0,0% de cobertura** —
+# o driver inteiro, sem uma linha executada. O e2e que existia
+# (`teste/e2e/mongo.ps`) supõe um `mongod` já rodando numa porta fixa e diz
+# PULOU quando não acha: na prática, nunca rodava.
+#
+# Aqui o teste sobe o próprio `mongod` num diretório efêmero de `/tmp`, numa
+# porta escolhida por ele, e derruba no fim. Não toca em serviço do sistema, não
+# usa o banco de ninguém, e roda em qualquer máquina que tenha o binário — sem
+# ele, PULOU, nunca falso verde.
+#
+# Cobre os 9 membros dos dois objetos e, principalmente, os caminhos de ERRO:
+# porta fechada, coleção que não existe, filtro que não casa, update do que não
+# está lá. É onde mora metade dos ramos.
+#
+#     ./pool teste/mongo_roda.ps
+import os
+import sys
+import psodbc
+
+RAIZ = "/tmp/ps_mongo_teste"
+PORTA = 28961
+
+ok = 0
+falhas = []
+
+
+action confere(nome, cond) {
+    if cond {
+        ok = ok + 1
+    }
+    else {
+        addEnd(falhas, nome)
+    }
+}
+
+
+action tem(cmd) {
+    os.cmd("command -v " + cmd + " > /dev/null 2>&1; echo $? > /tmp/ps_m_tem")
+    return int(open("/tmp/ps_m_tem").read().strip()) == 0
+}
+
+
+# Sobe o mongod e espera a porta ACEITAR conexão — não `sleep` no escuro.
+action sobe() {
+    os.cmd("rm -rf " + RAIZ + "; mkdir -p " + RAIZ + "/db")
+    os.cmd("mongod --dbpath " + RAIZ + "/db --port " + str(PORTA)
+           + " --bind_ip 127.0.0.1 --logpath " + RAIZ + "/mongod.log --fork"
+           + " > " + RAIZ + "/subida.log 2>&1")
+    i = 0
+    while i < 100 {
+        os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(PORTA)
+               + "' 2>/dev/null; echo $? > /tmp/ps_m_porta")
+        if int(open("/tmp/ps_m_porta").read().strip()) == 0 {
+            return true
+        }
+        os.cmd("sleep 0.1")
+        i = i + 1
+    }
+    return false
+}
+
+
+action derruba() {
+    os.cmd("mongod --dbpath " + RAIZ + "/db --shutdown > /dev/null 2>&1")
+    os.cmd("rm -rf " + RAIZ)
+}
+
+
+if __name__ == "main" {
+    if not tem("mongod") {
+        post("PULOU mongo — `mongod` nao esta instalado")
+        sys.exit(0)
+    }
+    if not sobe() {
+        post("PULOU mongo — o mongod nao subiu:")
+        if os.exists(RAIZ + "/mongod.log") {
+            post(open(RAIZ + "/mongod.log").read()[-400:])
+        }
+        derruba()
+        sys.exit(0)
+    }
+
+    # ── conexao ─────────────────────────────────────────────────────────────
+    con = psodbc.connect(driver="mongo", host="127.0.0.1", port=PORTA,
+                         database="ps_teste")
+    confere("connect devolve MongoConnection", type(con) == "MongoConnection")
+    col = con.collection("t")
+    confere("collection devolve MongoCollection", type(col) == "MongoCollection")
+
+    col.remove({})
+    confere("colecao comeca vazia", col.count({}) == 0)
+
+    # ── insercao ────────────────────────────────────────────────────────────
+    # `insert` devolve None por contrato (docs/psodbc/MongoCollection/insert):
+    # quem prova que inseriu é o `count`, não o retorno.
+    col.insert({"nome": "ana", "n": 1})
+    confere("count vê o inserido", col.count({}) == 1)
+    col.insert_many([{"nome": "bia", "n": 2}, {"nome": "caio", "n": 3}])
+    confere("insert_many insere os dois", col.count({}) == 3)
+
+    # ── consulta ────────────────────────────────────────────────────────────
+    um = col.find_one({"nome": "ana"})
+    confere("find_one acha pelo campo", um["nome"] == "ana")
+    confere("find_one traz o outro campo junto", um["n"] == 1)
+    confere("find sem filtro traz todos", len(col.find({})) == 3)
+    confere("find com filtro traz só o que casa", len(col.find({"n": 2})) == 1)
+    confere("count com filtro", col.count({"n": 3}) == 1)
+
+    # ── o que NÃO acha: o ramo que teste de caminho feliz nunca pega ────────
+    confere("find_one do que nao existe é Null", col.find_one({"nome": "zzz"}) == Null)
+    confere("find sem casar devolve lista vazia", len(col.find({"nome": "zzz"})) == 0)
+    confere("count sem casar é 0", col.count({"nome": "zzz"}) == 0)
+
+    # ── update e remove ─────────────────────────────────────────────────────
+    col.update({"nome": "ana"}, {"n": 99})
+    confere("update mudou o campo", col.find_one({"nome": "ana"})["n"] == 99)
+    confere("update nao criou documento novo", col.count({}) == 3)
+    col.update({"nome": "nao_existe"}, {"n": 1})
+    confere("update do que nao existe nao insere", col.count({}) == 3)
+
+    col.remove({"nome": "caio"})
+    confere("remove tira só o que casa", col.count({}) == 2)
+    col.remove({"nome": "zzz"})
+    confere("remove do que nao existe nao apaga nada", col.count({}) == 2)
+    col.remove({})
+    confere("remove com filtro vazio limpa tudo", col.count({}) == 0)
+
+    # ── coleção nova nasce vazia, sem erro ──────────────────────────────────
+    outra = con.collection("nunca_usada")
+    confere("colecao inexistente responde 0 em vez de falhar", outra.count({}) == 0)
+    confere("e find nela devolve vazio", len(outra.find({})) == 0)
+
+    # ── tipos variados no documento ─────────────────────────────────────────
+    col.insert({"txt": "acentuação ção", "int": -7, "flo": 1.5, "bool": true,
+                "nulo": Null, "lista": [1, 2, 3], "dict": {"a": 1}})
+    d = col.find_one({"int": -7})
+    confere("texto com acento volta igual", d["txt"] == "acentuação ção")
+    confere("inteiro negativo volta igual", d["int"] == -7)
+    confere("float volta igual", d["flo"] == 1.5)
+    confere("bool volta igual", d["bool"] == true)
+    confere("lista volta igual", d["lista"] == [1, 2, 3])
+    confere("dict aninhado volta igual", d["dict"]["a"] == 1)
+    col.remove({})
+
+    con.close()
+
+    # ── depois do close, e com a porta fechada ──────────────────────────────
+    derruba()
+    caiu = false
+    try {
+        c2 = psodbc.connect(driver="mongo", host="127.0.0.1", port=PORTA,
+                            database="ps_teste")
+        c2.collection("t").count({})
+    }
+    catch (e) {
+        caiu = true
+    }
+    confere("conectar em porta fechada falha em vez de travar", caiu)
+
+    post("")
+    post("mongo:", str(ok), "checagens passaram")
+    if len(falhas) > 0 {
+        post("FALHARAM:", str(len(falhas)))
+        for each f in falhas {
+            post("  " + f)
+        }
+        sys.exit(1)
+    }
+    sys.exit(0)
+}

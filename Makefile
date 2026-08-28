@@ -299,6 +299,9 @@ check: pool testar
 	@echo
 	@./pool teste/jinker_roda.ps
 	@echo
+	# Mongo: sobe o proprio mongod em /tmp e derruba. PULA se nao houver binario.
+	@./pool teste/mongo_roda.ps
+	@echo
 	@./pool lsp/teste_lsp.ps
 	@echo
 	@$(MAKE) --no-print-directory analisa
@@ -495,7 +498,7 @@ cobertura: testar
 	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \
 	          scripts/audita_exemplos_doc.ps lsp/teste_lsp.ps \
 	          teste/fuzz_replay.ps teste/cli_roda.ps teste/sockets_roda.ps \
-	          teste/jinker_roda.ps; do \
+	          teste/jinker_roda.ps teste/mongo_roda.ps; do \
 	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
 	done
 	@for alvo in $(E2E_SEM_SERVICO); do \
