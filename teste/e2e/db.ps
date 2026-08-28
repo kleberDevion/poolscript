@@ -65,10 +65,101 @@ action exercita(nome, drv, porta) {
     confere(nome + ": parâmetro ligado filtra de verdade",
             len(r) == 1 and r[0]["nome"] == "bia")
 
+    # ── ERRO: o caminho que decide se o defeito aparece ou some ─────────────
+    #
+    # Todo o exercício acima é caminho feliz, e por isso `odbc_erro`
+    # (`SQLGetDiagRec`, 64 ramos — a maior região descoberta de `ps_db.c`) nunca
+    # rodava: ele só executa quando uma chamada FALHA. O que se exige aqui não é
+    # "dá erro": é que o erro chegue na linguagem como EXCEÇÃO, com mensagem
+    # dizendo o que houve. Erro de banco engolido vira dado errado em silêncio.
+    erro_msg = ""
+    try {
+        cur.execute("SELECT * FROM tabela_que_nao_existe_mesmo")
+        erro_msg = "NAO LEVANTOU"
+    }
+    catch (e) {
+        erro_msg = str(e)
+    }
+    confere(nome + ": tabela inexistente levanta", erro_msg != "NAO LEVANTOU")
+    confere(nome + ": e a mensagem diz o nome da tabela",
+            "tabela_que_nao_existe_mesmo" in erro_msg)
+
+    erro_msg = ""
+    try {
+        cur.execute("ISTO NAO E SQL DE JEITO NENHUM")
+        erro_msg = "NAO LEVANTOU"
+    }
+    catch (e) {
+        erro_msg = str(e)
+    }
+    confere(nome + ": sintaxe SQL inválida levanta", erro_msg != "NAO LEVANTOU")
+
+    # coluna que não existe, e tipo errado no parâmetro
+    erro_msg = ""
+    try {
+        cur.execute("SELECT coluna_inexistente FROM t")
+        erro_msg = "NAO LEVANTOU"
+    }
+    catch (e) {
+        erro_msg = str(e)
+    }
+    confere(nome + ": coluna inexistente levanta", erro_msg != "NAO LEVANTOU")
+
+    # a conexão SOBREVIVE ao erro: depois de levantar, ainda dá pra consultar.
+    # Driver que fica inutilizável depois de um SQL torto obriga o usuário a
+    # reconectar a cada erro — e isso não está em contrato nenhum.
+    cur.execute("SELECT id FROM t ORDER BY id")
+    confere(nome + ": a conexão continua usável depois do erro",
+            len(cur.fetchall()) == 3)
+
+    # fetch ANTES de qualquer execute, e depois de esgotar o resultado
+    cur.execute("SELECT id FROM t WHERE id = 999")
+    confere(nome + ": fetchone sem linhas devolve Null", cur.fetchone() == Null)
+    confere(nome + ": fetchall sem linhas devolve lista vazia", len(cur.fetchall()) == 0)
+
+    # número de parâmetros ligados diferente do número de `?`
+    erro_msg = ""
+    try {
+        cur.execute("SELECT nome FROM t WHERE id = ? AND nome = ?", (2,))
+        erro_msg = "NAO LEVANTOU"
+    }
+    catch (e) {
+        erro_msg = str(e)
+    }
+    confere(nome + ": parâmetros a menos levanta", erro_msg != "NAO LEVANTOU")
+
     cur.execute("DROP TABLE t")
     con.commit()
+
+    # CURSOR FECHADO — divergência do DB-API, registrada em notas/TAREFAS.md.
+    #
+    # Aqui `close()` libera o statement e um `execute()` seguinte simplesmente
+    # prepara outro e funciona. No DB-API (PEP 249, e é o que o `sqlite3` do
+    # Python faz) usar cursor fechado levanta `ProgrammingError`.
+    #
+    # Não é corrupção: conferido, não há ponteiro solto — o cursor reabre. É
+    # decisão de contrato, e contrato é dele.
+    #
+    # O teste trava o comportamento ATUAL de propósito. Assim ele não é falso
+    # verde (não finge que levanta) e vira armadilha: no dia em que alguém
+    # implementar o erro do DB-API, esta linha reprova e obriga a atualizar a
+    # doc junto.
     cur.close()
+    reabriu = false
+    try {
+        cur.execute("SELECT 1")
+        reabriu = true
+    }
+    catch (e) {
+        reabriu = false
+    }
+    confere(nome + ": cursor fechado REABRE (diverge do DB-API — ver TAREFAS)",
+            reabriu)
+
     con.close()
+    # e a conexão fechada duas vezes não pode quebrar
+    con.close()
+    confere(nome + ": fechar a conexão duas vezes é inofensivo", true)
     post(nome, "-> ok")
 }
 
