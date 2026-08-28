@@ -41,24 +41,71 @@ if __name__ == "main" {
 
     # O app roda num arquivo à parte porque `show()` BLOQUEIA: quem clica e
     # fecha tem que ser outro processo, agindo de fora, como um usuário.
+    # PNG de verdade pra `img` e pro ícone da janela: o próprio `qrcode` da
+    # linguagem gera um. Sem imagem, `desenha_png` e `guz_set_icon` (24 + 14
+    # ramos) nunca rodam — são a maior região descoberta de `ps_guzer.c`.
+    using open("/tmp/ps_guzer_png.ps", "w") as f {
+        f.write("import qrcode\n"
+                + "q = qrcode.make(\"ps\")\n"
+                + "q.save(\"/tmp/ps_guzer_img.png\")\n")
+    }
+    os.cmd("'" + sys.executable + "' /tmp/ps_guzer_png.ps > /dev/null 2>&1")
+    tem_png = os.exists("/tmp/ps_guzer_img.png")
+
+    # Vídeo e áudio minúsculos, feitos com ffmpeg. O guzer abre o vídeo por
+    # PIPE DE FRAMES (`guz_video_abre`/`le`/`desenha`, 30 ramos) e o áudio por
+    # `ffplay` em outro processo — nada disso tinha rodado nunca.
+    tem_ff = tem("ffmpeg") and tem("ffplay")
+    if tem_ff {
+        os.cmd("ffmpeg -y -f lavfi -i testsrc=size=64x48:rate=10:duration=1"
+               + " /tmp/ps_guzer_v.mp4 > /dev/null 2>&1")
+        os.cmd("ffmpeg -y -f lavfi -i sine=frequency=440:duration=1"
+               + " /tmp/ps_guzer_a.wav > /dev/null 2>&1")
+        tem_ff = os.exists("/tmp/ps_guzer_v.mp4") and os.exists("/tmp/ps_guzer_a.wav")
+    }
+
     # A API é dele: `guzer.UI(title, icon)`, geometria por `.stylesheet({...})`,
     # `button(onclick=)`. O botão ganha 400x300 pra o clique do xdotool acertar
     # sem depender de onde o layout o pôs.
+    icone = ""
+    if tem_png {
+        icone = ", \"/tmp/ps_guzer_img.png\""
+    }
+    midia = ""
+    if tem_png {
+        midia = (midia
+                 + "im = app.img(src=\"/tmp/ps_guzer_img.png\")\n"
+                 + "im.stylesheet({ \"width\": \"80\", \"height\": \"80\" })\n")
+    }
+    if tem_ff {
+        midia = (midia
+                 + "vd = app.video(src=\"/tmp/ps_guzer_v.mp4\")\n"
+                 + "vd.stylesheet({ \"width\": \"64\", \"height\": \"48\" })\n"
+                 + "au = app.audio(src=\"/tmp/ps_guzer_a.wav\")\n")
+    }
+    # `src` que NAO existe: `desenha_png` tem que desistir sem quebrar a janela
+    midia = midia + "faltando = app.img(src=\"/tmp/ps_nao_existe_mesmo.png\")\n"
+
     app = ("import guzer\n"
            + "action clicou() {\n"
            + "    using open(\"" + MARCA + "\", \"w\") as f {\n"
            + "        f.write(\"sim\")\n"
            + "    }\n"
            + "}\n"
-           + "app = guzer.UI(\"PS_JANELA_TESTE\")\n"
+           + "app = guzer.UI(\"PS_JANELA_TESTE\"" + icone + ")\n"
            + "w = app.window()\n"
            + "w.stylesheet({ \"width\": \"400\", \"height\": \"300\", \"bg\": \"#204080\" })\n"
            + "p = app.p()\n"
            + "p.text(\"texto desenhado\")\n"
            + "p.stylesheet({ \"color\": \"#ffffff\" })\n"
+           # O BOTÃO VEM ANTES DA MÍDIA de propósito: o layout empilha na
+           # ordem de criação, e com img/vídeo/áudio na frente ele descia pra
+           # longe do ponto fixo onde o xdotool clica. O teste passava a
+           # reprovar por causa do layout, não do despacho de clique.
            + "b = app.button(clicou)\n"
            + "b.text(\"clica\")\n"
-           + "b.stylesheet({ \"width\": \"400\", \"height\": \"300\", \"bg\": \"#c02020\" })\n"
+           + "b.stylesheet({ \"width\": \"400\", \"height\": \"120\", \"bg\": \"#c02020\" })\n"
+           + midia
            + "app.show()\n"
            + "post(\"fechou limpo\")\n")
     using open("/tmp/ps_guzer_app.ps", "w") as f {
@@ -90,7 +137,7 @@ if __name__ == "main" {
                + "sleep 1\n"
                + "eval $(xdotool getwindowgeometry --shell $W)\n"
                + "xdotool mousemove $((X+150)) $((Y+30)) click 1\n"
-               + "sleep 0.5\n"
+               + "sleep 2\n"
                + "wmctrl -i -c $W\n"
                + "sleep 1\n"
                + "wait $APP 2>/dev/null || true\n")
