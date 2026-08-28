@@ -12,11 +12,11 @@
 # legítima (código deletado), rode `--grava` de propósito.
 
 main.c 30.2 19.7
-poolscript_vm.c 69.0 49.6
+poolscript_vm.c 69.6 50.1
 ps_ast.c 44.0 21.2
 ps_compiler.c 96.0 70.8
 ps_db.c 64.4 45.7
-ps_guzer.c 0.0 0.0
+ps_guzer.c 37.1 22.3
 ps_hash.c 70.0 63.6
 ps_http.c 78.2 53.6
 ps_jinker.c 24.3 15.0

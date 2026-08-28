@@ -331,7 +331,7 @@ check-e2e: pool
 # `ps_jinker.c`, `ps_db.c` e `ps_guzer.c` dos 0% de cobertura — eles estão em
 # zero não por serem código morto, mas porque só o e2e os toca e o e2e não
 # entrava em portão nenhum.
-E2E_SEM_SERVICO := arquivo sqlite socket guzer jinker manpu qrcode c d f
+E2E_SEM_SERVICO := arquivo sqlite socket guzer guzer_janela jinker manpu qrcode c d f
 check-e2e-local: pool
 	@falhou=0; \
 	for alvo in $(E2E_SEM_SERVICO); do \

@@ -6746,7 +6746,11 @@ static int guz_cria(VM *vm, Value alvo, int kind, const char *tag, Value handler
     if (!EH_GUZ_UI(app)) MERRO(vm, "RuntimeError", "elemento sem app dono");
     PSGuzWid *w = novo_guz_wid(vm, kind, tag);
     if (!w) MERRO(vm, "MemoryError", "sem memoria");
-    if (handler.t == V_OBJ) w->handler = handler;
+    /* Guardar SÓ se for action: EH_ACTION pega V_FUNC (action simples) e a
+     * closure (que é V_OBJ). O `== V_OBJ` de antes DESCARTAVA a action simples
+     * na entrada, então `app.button(minha_action)` nascia sem handler e o
+     * clique não tinha o que chamar. */
+    if (EH_ACTION(handler)) w->handler = handler;
     w->app = app;
     Value wv = MK_OBJ(w);
     if (EH_GUZ_WID(alvo)) {
@@ -6999,7 +7003,12 @@ static void guz_click(int id, void *ud)
     PSGuzUI *u = COMO_GUZ_UI(vm->guz_app);
     if (id < 0 || id >= u->nfilhos) return;
     PSGuzWid *w = COMO_GUZ_WID(u->filhos[id]);
-    if (w->handler.t != V_OBJ) return;
+    /* EH_ACTION, nao `== V_OBJ`: uma `action` simples e V_FUNC, e so a action
+     * que CAPTURA variavel vira closure (que e V_OBJ). O teste antigo descartava
+     * exatamente o caso comum — `app.button(minha_action)` montava o botao,
+     * desenhava, recebia o clique e nao chamava nada. Ninguem tinha visto porque
+     * o unico teste de guzer roda com GUZER_HEADLESS=1, onde clique nao existe. */
+    if (!EH_ACTION(w->handler)) return;
     Value ret;
     if (chama_valor(vm, w->handler, NULL, 0, &ret) != 0) {
         fprintf(stderr, "[guzer] erro no handler: %s\n", vm->erro);
@@ -7089,7 +7098,7 @@ static void guz_mostra(VM *vm)
         arr[m].bg       = w->bg; arr[m].fg = w->fg;
         arr[m].text     = w->text ? w->text : (w->placeholder ? w->placeholder : "");
         arr[m].src      = srcs[i];
-        arr[m].clicavel = (w->handler.t == V_OBJ);
+        arr[m].clicavel = EH_ACTION(w->handler);
         arr[m].id       = i;
         idx_de[m] = i;
         m++;

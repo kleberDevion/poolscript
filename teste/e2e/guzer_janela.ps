@@ -1,0 +1,142 @@
+# guzer com JANELA DE VERDADE — o único jeito de cobrir `vm/ps_guzer.c`.
+#
+# POR QUE ISTO EXISTE: `teste/e2e/guzer.ps` roda com `GUZER_HEADLESS=1`, e o
+# headless retorna de `guz_mostra` na primeira linha. Resultado: 171 membros
+# exercitados, o e2e passando, e `ps_guzer.c` em **0,0% de cobertura**. Todo o
+# desenho — alocação de cor, texto, PNG, ícone, despacho de clique, o laço de
+# eventos e o caminho de fechamento — nunca rodou uma vez sequer.
+#
+# Aqui a janela abre. O servidor X é o Xvfb (display virtual, sem hardware e
+# sem ninguém olhando), e quem age no lugar do usuário é o `xdotool`:
+#
+#   1. abre a UI e entra no laço de eventos (bloqueante, como em uso real)
+#   2. o Expose chega e `desenha()` roda de verdade
+#   3. o xdotool CLICA no botão -> ButtonPress -> despacho -> callback do onclick
+#   4. o xdotool FECHA a janela -> WM_DELETE_WINDOW -> o laço sai limpo
+#
+# O passo 4 não é detalhe: saída limpa é o que faz o `.gcda` ser gravado. Morto
+# por `timeout`, o processo não grava cobertura nenhuma — foi por isso que a
+# primeira tentativa de medir isto deu zero mesmo com a janela abrindo.
+#
+# Precisa de `xvfb-run` e `xdotool`. Sem eles, PULOU — nunca falso verde.
+import os
+import sys
+
+MARCA = "/tmp/ps_guzer_clicou.txt"
+
+
+action tem(cmd) {
+    return os.cmd("command -v " + cmd + " > /dev/null 2>&1") == 0
+}
+
+
+if __name__ == "main" {
+    if not tem("xvfb-run") or not tem("xdotool") or not tem("metacity") {
+        post("PULOU — falta xvfb-run, xdotool ou metacity")
+        post("   (apt install xvfb xdotool metacity wmctrl)")
+        sys.exit(0)
+    }
+
+    os.cmd("rm -f " + MARCA)
+
+    # O app roda num arquivo à parte porque `show()` BLOQUEIA: quem clica e
+    # fecha tem que ser outro processo, agindo de fora, como um usuário.
+    # A API é dele: `guzer.UI(title, icon)`, geometria por `.stylesheet({...})`,
+    # `button(onclick=)`. O botão ganha 400x300 pra o clique do xdotool acertar
+    # sem depender de onde o layout o pôs.
+    app = ("import guzer\n"
+           + "action clicou() {\n"
+           + "    using open(\"" + MARCA + "\", \"w\") as f {\n"
+           + "        f.write(\"sim\")\n"
+           + "    }\n"
+           + "}\n"
+           + "app = guzer.UI(\"PS_JANELA_TESTE\")\n"
+           + "w = app.window()\n"
+           + "w.stylesheet({ \"width\": \"400\", \"height\": \"300\", \"bg\": \"#204080\" })\n"
+           + "p = app.p()\n"
+           + "p.text(\"texto desenhado\")\n"
+           + "p.stylesheet({ \"color\": \"#ffffff\" })\n"
+           + "b = app.button(clicou)\n"
+           + "b.text(\"clica\")\n"
+           + "b.stylesheet({ \"width\": \"400\", \"height\": \"300\", \"bg\": \"#c02020\" })\n"
+           + "app.show()\n"
+           + "post(\"fechou limpo\")\n")
+    using open("/tmp/ps_guzer_app.ps", "w") as f {
+        f.write(app)
+    }
+
+    # O roteiro do "usuário": espera a janela existir, clica no botão, espera,
+    # e fecha pelo gerenciador. `--sync` no search evita corrida com o mapeamento.
+    # O roteiro do "usuário", de fora do processo:
+    #
+    # - o `metacity` sobe porque SEM gerenciador de janelas o fechamento não
+    #   existe: `wmctrl -c` manda _NET_CLOSE_WINDOW pra raiz e é o WM quem
+    #   traduz pra WM_DELETE_WINDOW, que é a única coisa que faz o laço sair.
+    #   Matar com `windowkill` derruba a conexão X, o processo morre sujo e o
+    #   `.gcda` NÃO é gravado — a medição dava zero mesmo com a janela abrindo.
+    # - `windowactivate` antes do clique: o ponteiro tem que estar sobre a
+    #   janela certa, e sem WM a pilha de janelas é indefinida.
+    roteiro = ("#!/bin/bash\n"
+               + "metacity --sm-disable --replace > /dev/null 2>&1 &\n"
+               + "sleep 1\n"
+               + "'" + sys.executable + "' /tmp/ps_guzer_app.ps > /tmp/ps_guzer_saida.txt 2>&1 &\n"
+               + "APP=$!\n"
+               + "for i in $(seq 1 100); do\n"
+               + "  xdotool search --name PS_JANELA_TESTE > /dev/null 2>&1 && break\n"
+               + "  sleep 0.1\n"
+               + "done\n"
+               + "W=$(xdotool search --name PS_JANELA_TESTE | head -1)\n"
+               + "xdotool windowactivate --sync $W 2>/dev/null || true\n"
+               + "sleep 1\n"
+               + "eval $(xdotool getwindowgeometry --shell $W)\n"
+               + "xdotool mousemove $((X+150)) $((Y+30)) click 1\n"
+               + "sleep 0.5\n"
+               + "wmctrl -i -c $W\n"
+               + "sleep 1\n"
+               + "wait $APP 2>/dev/null || true\n")
+    using open("/tmp/ps_guzer_roteiro.sh", "w") as f {
+        f.write(roteiro)
+    }
+    os.cmd("chmod +x /tmp/ps_guzer_roteiro.sh")
+
+    rc = os.cmd("timeout 60 xvfb-run -a /tmp/ps_guzer_roteiro.sh > /tmp/ps_guzer_xvfb.txt 2>&1")
+
+    saida = ""
+    if os.exists("/tmp/ps_guzer_saida.txt") {
+        saida = open("/tmp/ps_guzer_saida.txt").read()
+    }
+    erros = 0
+
+    # 1. a janela abriu de fato — sem servidor X o motor diz isso e desiste
+    if "sem servidor X" in saida {
+        post("ERRO: o Xvfb nao serviu —", saida.strip())
+        erros = erros + 1
+    }
+    # 2. o clique chegou no callback: prova que ButtonPress achou o widget
+    if os.exists(MARCA) {
+        post("OK — clique despachado pro onclick")
+    }
+    else {
+        post("ERRO: cliquei no botao e o onclick nao rodou")
+        post("   saida do app:", saida.strip())
+        erros = erros + 1
+    }
+
+    # 3. saiu LIMPO pelo WM_DELETE_WINDOW. Não é preciosismo: processo morto
+    #    por sinal não grava `.gcda`, e a cobertura de ps_guzer.c volta a zero
+    #    sem ninguém entender por quê.
+    if "fechou limpo" in saida {
+        post("OK — laco de eventos saiu pelo WM_DELETE_WINDOW")
+    }
+    else {
+        post("ERRO: nao saiu limpo — sem isso nao ha cobertura gravada")
+        post("   saida:", saida.strip())
+        erros = erros + 1
+    }
+
+    if erros > 0 {
+        sys.exit(1)
+    }
+    post("OK — janela abriu, desenhou, despachou clique e fechou")
+    sys.exit(0)
+}
