@@ -171,7 +171,8 @@ TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_erros.c teste/casos_linguagem.c \
                 teste/casos_pendentes.c teste/casos_cobertura.c \
                 teste/casos_diferencial.c teste/casos_equivalencia.c \
-                teste/casos_oraculo.c teste/casos_robustez.c
+                teste/casos_oraculo.c teste/casos_robustez.c \
+                teste/casos_libs.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
 testar: $(TESTE_FONTES) teste/ps_teste.h
@@ -291,12 +292,21 @@ check: pool testar
 	@echo
 	@$(MAKE) --no-print-directory analisa
 	@echo
+	# A MESMA suite com as invariantes do motor ligadas. Sem isto o portao so
+	# acha MORTE; com isto acha estado errado antes de virar morte.
+	@$(MAKE) --no-print-directory check-debug
+	@echo
+	# E2E que nao precisa de servico externo. Ficou FORA do portao por um tempo,
+	# e o preco foi ps_jinker.c, ps_db.c e ps_guzer.c em 0% de cobertura: nao por
+	# falta de teste, mas porque o teste que os cobre nao entrava em portao nenhum.
+	@$(MAKE) --no-print-directory check-e2e-local
+	@echo
 	@echo "FORA deste portao, e cada um tem alvo proprio porque e caro:"
-	@echo "  make check-e2e   banco/mail/socket/jinker/guzer/mongo/qr (servico externo)"
+	@echo "  make check-e2e   banco/mail/socket/mongo (servico externo de verdade)"
 	@echo "  make check-asan  a MESMA suite sob ASan+UBSan (~4 min)"
 	@echo "  make oom         falha de alocacao ponto a ponto (~5 min)"
 	@echo "  make fuzz        fuzzer no front-end (FUZZ_T=<segundos>)"
-	@echo "  make cobertura   linha E RAMO, por arquivo"
+	@echo "  make cobertura   linha E RAMO, por arquivo, com catraca"
 
 # E2E: cada script sobe o que precisa e checa de ponta a ponta. Fica fora do
 # `check` porque depende de serviço externo (Postgres, MySQL, mongod, SMTP) e
@@ -450,6 +460,20 @@ cobertura: testar
 	  -l:libX11.so.6 -l:libgmp.so.10
 	@echo "rodando a suite contra o binario instrumentado…"
 	@PS_POOL=cob/pool nice -n 19 ./testar 2>&1 | tail -2
+	# O PORTÃO INTEIRO, não só o `testar`. Enquanto a medição rodava apenas a
+	# suíte, `ps_jinker.c`, `ps_db.c`, `ps_guzer.c` e os 113 nativos de socket
+	# apareciam em 0% — não por falta de teste, mas porque o teste que os cobre
+	# (e2e local, drivers .ps) rodava FORA da medição. Número que ignora metade
+	# do portão manda corrigir o que já está coberto.
+	@echo "rodando os drivers .ps e o e2e local contra o mesmo binario…"
+	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \
+	          scripts/audita_exemplos_doc.ps lsp/teste_lsp.ps \
+	          teste/fuzz_replay.ps; do \
+	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
+	done
+	@for alvo in $(E2E_SEM_SERVICO); do \
+	  nice -n 19 ./cob/pool teste/e2e_roda.ps $$alvo >/dev/null 2>&1 || true; \
+	done
 	@lcov --capture --directory . --output-file cob/bruto.info \
 	  --rc branch_coverage=1 --ignore-errors mismatch,source,empty >/dev/null 2>&1
 	@lcov --extract cob/bruto.info "*/vm/*" --output-file cob/vm.info \

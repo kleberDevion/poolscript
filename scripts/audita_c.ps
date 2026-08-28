@@ -24,6 +24,10 @@
 #                                  `calloc`.
 #   3. `free(x->campo)` sem zerar  depois de o objeto já estar na lista do GC,
 #                                  o finalizador libera de novo.
+#   5. opcode fora do `.def`       lista de opcode escrita à mão duplica a de
+#                                  `vm/ps_opcodes.def`; número trocado num dos
+#                                  lados não dá erro de compilação, dá bytecode
+#                                  que executa outra instrução.
 #   4. contador antes do vetor     `d->n = k` antes do `calloc` do vetor: se o
 #                                  calloc falha, o destrutor percorre `k`
 #                                  posições de um ponteiro NULL.
@@ -185,6 +189,33 @@ action acha_contador(caminho, linhas, achados) {
 }
 
 
+# 5. Lista de opcode escrita à mão fora do `.def`.
+#
+# Os 87 opcodes já estiveram declarados TRÊS vezes: um enum em `ps_compiler.c`,
+# um enum idêntico em `poolscript_vm.c` e o switch de nomes do desmontador.
+# Nada no build conferia que batiam, e o modo de falhar é o pior que existe:
+# número trocado num dos lados NÃO dá erro de compilação, dá bytecode que
+# executa outra instrução, com o defeito aparecendo longe da causa.
+#
+# Agora a lista vive em `vm/ps_opcodes.def` e os dois `.c` a incluem. Esta regra
+# é o que impede a duplicação de voltar — sem ela, o próximo opcode novo entra
+# escrito à mão em algum lugar e a árvore volta ao estado anterior sem aviso.
+action acha_opcode_solto(caminho, linhas, achados) {
+    if caminho.endswith("ps_opcodes.def") {
+        return
+    }
+    i = 0
+    while i < len(linhas) {
+        if regex.fullmatch(".*\\bOP_[A-Z0-9_]+\\s*=\\s*[0-9]+.*", linhas[i]) {
+            achados.append([caminho, i + 1,
+                            "opcode com numero escrito fora de vm/ps_opcodes.def",
+                            linhas[i].strip()])
+        }
+        i = i + 1
+    }
+}
+
+
 if __name__ == "main" {
     lista = false
     for each a in sys.argv {
@@ -201,6 +232,7 @@ if __name__ == "main" {
         acha_realloc(caminho, linhas, achados)
         acha_gc(caminho, linhas, achados)
         acha_contador(caminho, linhas, achados)
+        acha_opcode_solto(caminho, linhas, achados)
     }
 
     post("")

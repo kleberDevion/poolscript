@@ -1,0 +1,245 @@
+# A LINHA DE COMANDO e o gerenciador de pacotes — `pool` e `psl`.
+#
+# POR QUE ESTE ARQUIVO EXISTE: `vm/main.c` estava em 19,7% de ramo e
+# `vm/ps_pkg.c` em 0,0% — 26 de 26 funções nunca executadas. Não é código
+# morto: é a porta de entrada do usuário (`pool arquivo.ps`, `psl install`) e o
+# único lugar do projeto que BAIXA E INSTALA CÓDIGO DE TERCEIRO. A suíte em C
+# só sabia rodar `pool <arquivo>`; argumento, variável de ambiente e código de
+# saída ficavam fora, e com eles a CLI inteira.
+#
+# O registry é servido pelo PRÓPRIO jinker em loopback — a linguagem servindo o
+# pacote que ela mesma instala. Nada de rede externa, nada de mock.
+#
+#     ./pool teste/cli_roda.ps
+#
+# Reprova com rc != 0 e a lista do que falhou.
+import os
+import sys
+
+PASTA = "/tmp/ps_cli_teste"
+HOME  = PASTA + "/home"
+PORTA = 28951
+
+falhas = []
+ok = 0
+
+action confere(nome, cond)
+{
+    global ok
+    if cond
+    {
+        ok = ok + 1
+    }
+    else
+    {
+        addEnd(falhas, nome)
+    }
+}
+
+# Roda um comando e devolve {"saida": <stdout+stderr>, "rc": <int>}. O `os.cmd`
+# não devolve código de saída (só a saída), então ele vai pro arquivo — sem
+# isso metade dos casos da CLI seria "não deu erro", que não é asserção.
+action roda(cmd)
+{
+    os.cmd("cd " + PASTA + " && { " + cmd + " ; } > " + PASTA + "/.out 2>&1; echo $? > " + PASTA + "/.rc")
+    return {"saida": os.readFile(PASTA + "/.out"), "rc": int(os.readFile(PASTA + "/.rc").strip())}
+}
+
+action com_home(cmd)
+{
+    return roda("POOLSCRIPT_HOME=" + HOME + " " + cmd)
+}
+
+if os.exists(PASTA)
+{
+    os.rmdir(PASTA, force=true)
+}
+os.mkdir(PASTA, exist_ok=true)
+os.mkdir(HOME, exist_ok=true)
+POOL = sys.executable
+
+# ── superfície da CLI (vm/main.c) ───────────────────────────────────────────
+r = roda("'" + POOL + "' --version")
+confere("--version imprime a versão", "PoolScript" in r["saida"] and r["rc"] == 0)
+r = roda("'" + POOL + "' -V")
+confere("-V é o mesmo que --version", "PoolScript" in r["saida"] and r["rc"] == 0)
+
+r = roda("'" + POOL + "' --help")
+confere("--help lista os modos", "pool arquivo.ps" in r["saida"] and r["rc"] == 0)
+r = roda("'" + POOL + "' -h")
+confere("-h é o mesmo que --help", "pool arquivo.ps" in r["saida"])
+
+r = roda("'" + POOL + "' //doc")
+confere("//doc aponta a especificação", "http" in r["saida"])
+
+r = roda("'" + POOL + "' -e 'post(2 + 3)'")
+confere("-e roda código inline", r["saida"].strip() == "5" and r["rc"] == 0)
+
+r = roda("'" + POOL + "' -e 'post(1/0)'")
+confere("-e propaga erro com rc != 0", r["rc"] != 0 and "zero" in r["saida"])
+
+os.writeFile(PASTA + "/bom.ps", "post(\"rodou\")\n")
+r = roda("'" + POOL + "' bom.ps")
+confere("roda arquivo", r["saida"].strip() == "rodou" and r["rc"] == 0)
+
+os.writeFile(PASTA + "/torto.ps", "x = (1 +\n")
+r = roda("'" + POOL + "' torto.ps")
+confere("arquivo com sintaxe torta sai != 0", r["rc"] != 0 and "SyntaxError" in r["saida"])
+
+r = roda("'" + POOL + "' nao_existe.ps")
+confere("arquivo inexistente sai != 0", r["rc"] != 0)
+
+r = roda("'" + POOL + "' --check bom.ps")
+confere("--check aprova fonte válido", "\"ok\":true" in r["saida"])
+r = roda("'" + POOL + "' --check torto.ps")
+confere("--check reprova fonte torto com linha e coluna",
+        "\"ok\":false" in r["saida"] and "\"linha\":" in r["saida"] and "\"coluna\":" in r["saida"])
+r = roda("echo 'post(1)' | '" + POOL + "' --check")
+confere("--check lê da entrada padrão", "\"ok\":true" in r["saida"])
+
+r = roda("echo 'x = 1' | '" + POOL + "' --tokens")
+confere("--tokens devolve JSON de tokens", "\"t\":\"IDENT\"" in r["saida"] and "\"l\":1" in r["saida"])
+
+r = roda("echo 'post(1)' | '" + POOL + "' --contexto 1:1")
+confere("--contexto responde algo pro editor", r["saida"].strip().len() > 0)
+
+r = roda("'" + POOL + "' --metadata")
+confere("--metadata expõe os módulos", "\"modulos\"" in r["saida"] and r["rc"] == 0)
+
+r = roda("'" + POOL + "' --opcao-que-nao-existe")
+confere("opção desconhecida não é ignorada em silêncio", r["rc"] != 0 or r["saida"].strip().len() > 0)
+
+# `build` roda todos os .ps da pasta — inclusive os que já criamos
+os.mkdir(PASTA + "/b", exist_ok=true)
+os.writeFile(PASTA + "/b/um.ps", "post(\"um\")\n")
+r = roda("cd b && '" + POOL + "' build")
+confere("build roda os .ps da pasta", "um" in r["saida"])
+
+# ── gerenciador de pacotes: instalar do disco (vm/ps_pkg.c) ─────────────────
+os.writeFile(PASTA + "/hello.ps", "#!cmd\naction main() {\n    post(\"oi do pacote\")\n}\nmain()\n")
+
+r = com_home("'" + POOL + "' install hello.ps")
+confere("psl install cria o comando", "instalado" in r["saida"] and r["rc"] == 0)
+confere("psl install grava o .ps e o atalho",
+        os.isfile(HOME + "/commands/hello.ps") and os.isfile(HOME + "/bin/hello"))
+confere("psl install registra em installed.json", os.isfile(HOME + "/installed.json"))
+
+r = com_home("'" + POOL + "' list")
+confere("psl list mostra o comando instalado", "hello" in r["saida"])
+
+r = com_home("sh " + HOME + "/bin/hello")
+confere("o atalho instalado executa o pacote", "oi do pacote" in r["saida"])
+
+r = com_home("'" + POOL + "' uninstall hello")
+confere("psl uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.ps") == false)
+
+os.writeFile(PASTA + "/minhalib.ps", "#!lib\naction dobro(x) {\n    return x * 2\n}\n")
+r = com_home("'" + POOL + "' install minhalib.ps -asLib")
+confere("psl install -asLib instala como biblioteca", r["rc"] == 0)
+confere("a lib vai pra pasta de libs", os.isfile(HOME + "/libs/minhalib.ps"))
+
+os.writeFile(PASTA + "/usa.ps", "import minhalib\npost(minhalib.dobro(21))\n")
+r = com_home("'" + POOL + "' usa.ps")
+confere("a lib instalada é importável", r["saida"].strip() == "42")
+
+r = com_home("'" + POOL + "' uninstall minhalib -asLib")
+confere("psl uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.ps") == false)
+
+r = com_home("'" + POOL + "' uninstall nao_instalado")
+confere("uninstall do que não existe não finge sucesso", r["rc"] != 0 or "nao" in r["saida"].lower())
+
+# ── registry: configuração e recusa de HTTP inseguro ────────────────────────
+r = com_home("'" + POOL + "' registry show")
+confere("registry show sem configuração avisa", r["saida"].strip().len() > 0)
+
+r = com_home("'" + POOL + "' registry set-url https://exemplo.test/index.json")
+confere("registry set-url grava", r["rc"] == 0)
+r = com_home("'" + POOL + "' registry show")
+confere("registry show devolve o que foi gravado", "exemplo.test" in r["saida"])
+
+r = com_home("'" + POOL + "' registry set-url http://exemplo-inseguro.test/i.json")
+saiu = com_home("'" + POOL + "' install qualquer")
+confere("registry em http inseguro é recusado",
+        "https" in saiu["saida"] or saiu["rc"] != 0)
+
+# ── registry DE VERDADE, servido pelo próprio jinker em loopback ────────────
+os.writeFile(PASTA + "/estatico/pacote.ps", "")
+os.mkdir(PASTA + "/estatico", exist_ok=true)
+os.writeFile(PASTA + "/estatico/pacote.ps",
+             "#!cmd\naction main() {\n    post(\"vim do registry\")\n}\nmain()\n")
+
+import hash
+fonte = os.readFile(PASTA + "/estatico/pacote.ps")
+sha = hash.sha256(fonte)
+raiz_url = "http://127.0.0.1:" + str(PORTA)
+indice = "{\"pacote\": {\"url\": \"" + raiz_url + "/pacote.ps\", \"sha256\": \"" + sha + "\"},\n"
+indice = indice + " \"torto\": {\"url\": \"" + raiz_url + "/pacote.ps\", \"sha256\": \"" + ("0" * 64) + "\"},\n"
+indice = indice + " \"simples\": \"" + raiz_url + "/pacote.ps\"}\n"
+os.writeFile(PASTA + "/estatico/index.json", indice)
+
+srv_src = "import jinker\n"
+srv_src = srv_src + "app = jinker.Jinker(name=\"registry\", static_folder=\"" + PASTA + "/estatico\", static_url=\"/\")\n"
+srv_src = srv_src + "if __name__ == \"main\" {\n"
+srv_src = srv_src + "    app(debug=false, host=\"127.0.0.1\", port=" + str(PORTA) + ")\n"
+srv_src = srv_src + "}\n"
+os.writeFile(PASTA + "/registry_srv.ps", srv_src)
+
+os.cmd("'" + POOL + "' " + PASTA + "/registry_srv.ps > " + PASTA + "/srv.log 2>&1 & echo $! > " + PASTA + "/srv.pid")
+
+# espera a porta ABRIR, em vez de dormir no escuro
+import sockets
+subiu = false
+tentativa = 0
+while (tentativa < 50 and subiu == false)
+{
+    s = sockets.socket()
+    s.settimeout(0.2)
+    if s.connect_ex(("127.0.0.1", PORTA)) == 0
+    {
+        subiu = true
+    }
+    s.close()
+    tentativa = tentativa + 1
+    sleep(0.1)
+}
+confere("o registry local subiu", subiu)
+
+if subiu
+{
+    com_home("'" + POOL + "' registry set-url " + raiz_url + "/index.json")
+
+    r = com_home("'" + POOL + "' install pacote")
+    confere("psl install <nome> baixa do registry e confere o sha256",
+            r["rc"] == 0 and os.isfile(HOME + "/commands/pacote.ps"))
+
+    r = com_home("sh " + HOME + "/bin/pacote")
+    confere("o pacote baixado executa", "vim do registry" in r["saida"])
+
+    r = com_home("'" + POOL + "' install torto")
+    confere("sha256 que não confere ABORTA a instalação",
+            r["rc"] != 0 and os.exists(HOME + "/commands/torto.ps") == false)
+
+    r = com_home("'" + POOL + "' install simples")
+    confere("entrada sem sha256 instala (integridade é OPCIONAL — ver auditoria)",
+            r["rc"] == 0)
+
+    r = com_home("'" + POOL + "' install nao_esta_no_indice")
+    confere("nome fora do índice é erro, não silêncio", r["rc"] != 0)
+
+    # mata pelo PID gravado — `pkill -f <padrao>` casa com qualquer linha de
+    # comando que contenha o padrao, inclusive a de quem esta rodando o teste.
+    os.cmd("kill $(cat " + PASTA + "/srv.pid) 2>/dev/null; true")
+}
+
+# ── relatório ───────────────────────────────────────────────────────────────
+post("")
+post("cli/psl:", ok, "checagens passaram")
+if falhas.len() > 0
+{
+    post("FALHARAM:", falhas.len())
+    for each f in falhas
+    {
+        post("  " + f)
+    }
+    sys.exit(1)
+}

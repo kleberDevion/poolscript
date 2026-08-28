@@ -1,0 +1,265 @@
+# O SERVIDOR jinker a fundo — loopback, sem serviço externo.
+#
+# POR QUE ESTE ARQUIVO EXISTE, e por que ele não é "mais um e2e":
+#
+# 1. `ps_jinker.c` aparecia em 0% de cobertura, e depois de o e2e entrar no
+#    portão subiu só pra 15% de ramo. O motivo não era falta de teste: o driver
+#    de e2e mata o servidor com sinal, e processo morto por SINAL não grava o
+#    `.gcda` do gcov — a metade servidor sumia da medição inteira. Por isso o
+#    alvo tem `/__parar`: o servidor sai por `sys.exit(0)` e a cobertura conta.
+# 2. A suíte em pytest cobria 74% de linha / 52% de ramo do jinker testando em
+#    processo. Este arquivo devolve esse alcance sem voltar pro Python.
+#
+# Cobre, do lado do cliente e do protocolo cru: métodos, status, cabeçalho,
+# query, path param, JSON, multipart, middleware, CORS, estático, canal,
+# WebSocket, 404/405 e requisição TORTA (Content-Length inválido, TE+CL,
+# chunked, cabeçalho sem ':').
+#
+#     ./pool teste/jinker_roda.ps
+import os
+import sys
+import sockets
+from request import get
+from request import post as http_post
+from request import put
+from request import patch
+from request import delete
+from request import head
+from request import ws_connect
+
+PASTA = "/tmp/ps_jinker_teste"
+PORTA = 28952
+RAIZ  = "http://127.0.0.1:" + str(PORTA)
+
+falhas = []
+ok = 0
+
+action confere(nome, cond)
+{
+    global ok
+    if cond
+    {
+        ok = ok + 1
+    }
+    else
+    {
+        addEnd(falhas, nome)
+    }
+}
+
+# Requisição CRUA: abre o socket, escreve os bytes exatos e lê a resposta. É o
+# único jeito de testar requisição torta — nenhum cliente HTTP decente deixa
+# você mandar `Content-Length: abc`.
+action cru(bytes_pedido)
+{
+    s = sockets.socket()
+    s.settimeout(5.0)
+    s.connect(("127.0.0.1", PORTA))
+    s.sendall(bytes_pedido.encode())
+    resposta = ""
+    try
+    {
+        while true
+        {
+            pedaco = s.recv(4096)
+            if pedaco.len() == 0
+            {
+                break
+            }
+            resposta = resposta + pedaco.decode()
+        }
+    }
+    catch (e)
+    {
+        pass
+    }
+    s.close()
+    return resposta
+}
+
+action espera_porta(prazo_decimos)
+{
+    i = 0
+    while i < prazo_decimos
+    {
+        s = sockets.socket()
+        s.settimeout(0.2)
+        r = s.connect_ex(("127.0.0.1", PORTA))
+        s.close()
+        if r == 0
+        {
+            return true
+        }
+        sleep(0.1)
+        i = i + 1
+    }
+    return false
+}
+
+os.mkdir(PASTA, exist_ok=true)
+os.cmd("'" + sys.executable + "' teste/jinker_alvo.ps > " + PASTA + "/alvo.log 2>&1 & echo $! > " + PASTA + "/alvo.pid")
+
+if espera_porta(100) == false
+{
+    post("o servidor-alvo nao abriu a porta " + str(PORTA))
+    post(os.readFile(PASTA + "/alvo.log"))
+    sys.exit(1)
+}
+
+# ── métodos e corpo ─────────────────────────────────────────────────────────
+r = get(RAIZ + "/ok")
+confere("GET responde 200 com JSON", r.status_code == 200 and r.get_json("ok") == true)
+confere("o servidor enxerga o método", r.get_json("metodo") == "GET")
+
+r = http_post(RAIZ + "/eco", body="corpo-do-post")
+confere("POST entrega o corpo", r.get_json("corpo") == "corpo-do-post" and r.get_json("metodo") == "POST")
+
+r = put(RAIZ + "/eco", body="p")
+confere("PUT chega como PUT", r.get_json("metodo") == "PUT")
+r = patch(RAIZ + "/eco", body="p")
+confere("PATCH chega como PATCH", r.get_json("metodo") == "PATCH")
+r = delete(RAIZ + "/eco")
+confere("DELETE chega como DELETE", r.get_json("metodo") == "DELETE")
+
+r = head(RAIZ + "/ok")
+confere("HEAD responde sem corpo", r.status_code == 200 and r.text.len() == 0)
+
+# ── status, cabeçalho e texto puro ──────────────────────────────────────────
+r = get(RAIZ + "/texto")
+confere("resposta de texto puro", r.text == "texto puro")
+r = get(RAIZ + "/status")
+confere("status customizado chega inteiro", r.status_code == 418)
+
+# ── query, path param e cabeçalho ───────────────────────────────────────────
+r = get(RAIZ + "/consulta?q=abc")
+confere("query string chega", r.get_json("q") == "abc")
+confere("parâmetro ausente vira null", r.get_json("faltando") == null)
+
+r = get(RAIZ + "/consulta?q=a%20b%2Bc")
+confere("query percent-encoded é decodificada", r.get_json("q") == "a b+c")
+
+r = get(RAIZ + "/param/42")
+confere("path param chega", r.get_json("id") == "42")
+
+r = get(RAIZ + "/cabecalho", headers={"X-Chave": "valor"})
+confere("cabeçalho do cliente chega", r.get_json("chave") == "valor")
+confere("a lista de cabeçalhos não vem vazia", r.get_json("todos") == true)
+
+# ── JSON ────────────────────────────────────────────────────────────────────
+r = http_post(RAIZ + "/json", body={"nome": "ana", "n": 2})
+confere("JSON do cliente é lido campo a campo", r.get_json("veio") == "ana")
+
+# ── multipart: upload de arquivo ────────────────────────────────────────────
+os.writeFile(PASTA + "/enviar.txt", "conteudo enviado")
+r = http_post(RAIZ + "/subir", file={"arquivo": {"name": PASTA + "/enviar.txt"}}, fields={"quem": "teste"})
+confere("upload chega com nome, tamanho e conteúdo",
+        r.get_json("nome") == "enviar.txt" and r.get_json("tamanho") == 16
+        and r.get_json("conteudo") == "conteudo enviado")
+confere("upload é gravado no disco pelo save()", r.get_json("salvou") == true)
+confere("files() enxerga o arquivo", r.get_json("quantos") >= 1)
+
+r = http_post(RAIZ + "/subir", body="sem arquivo nenhum")
+confere("POST sem arquivo devolve 400, não 500", r.status_code == 400)
+
+# ── middleware ──────────────────────────────────────────────────────────────
+r = get(RAIZ + "/protegida")
+confere("middleware barra sem a chave (401)", r.status_code == 401)
+r = get(RAIZ + "/protegida", headers={"X-Chave": "abre"})
+confere("middleware libera com a chave", r.status_code == 200 and r.get_json("entrou") == true)
+
+# ── CORS ────────────────────────────────────────────────────────────────────
+r = get(RAIZ + "/cors-info")
+confere("cors.options() devolve o configurado", "GET" in r.get_json("options"))
+confere("cors.origins() devolve o configurado", "http://permitido.test" in r.get_json("origins"))
+
+# ── estático ────────────────────────────────────────────────────────────────
+r = get(RAIZ + "/estatico/pagina.txt")
+confere("arquivo estático é servido", r.text.strip() == "sou estatico")
+r = get(RAIZ + "/estatico/nao_existe.txt")
+confere("estático inexistente é 404", r.status_code == 404)
+
+# ── canal ───────────────────────────────────────────────────────────────────
+r = get(RAIZ + "/emitir")
+confere("canal emite sem cliente e diz o status", r.status_code == 200)
+
+# ── rota e método inexistentes ──────────────────────────────────────────────
+r = get(RAIZ + "/rota-que-nao-existe")
+confere("rota inexistente é 404", r.status_code == 404)
+r = http_post(RAIZ + "/ok", body="x")
+confere("método não permitido não vira 200", r.status_code != 200)
+
+# ── WebSocket ───────────────────────────────────────────────────────────────
+eco = ""
+try
+{
+    # o jinker abre o WebSocket na porta SEGUINTE à do HTTP
+    ws = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    ws.send("alo")
+    eco = str(ws.on_message())
+    ws.close()
+}
+catch (e)
+{
+    eco = "ERRO: " + str(e)
+}
+confere("WebSocket faz handshake e ecoa a mensagem", "alo" in eco)
+
+# ── protocolo CRU: requisição torta é recusada COM resposta ─────────────────
+r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
+confere("Content-Length não numérico vira 400", "400" in r)
+
+r = cru("POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\nx")
+confere("Transfer-Encoding junto com Content-Length vira 400", "400" in r)
+
+r = cru("POST /eco HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
+confere("chunked é recusado com 501, não com 200 e corpo vazio", "501" in r)
+
+r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nLinhaSemDoisPontos\r\n\r\n")
+confere("cabeçalho sem ':' vira 400", "400" in r)
+
+r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nx")
+confere("Content-Length duplicado e diferente vira 400", "400" in r)
+
+r = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("pipelining responde as DUAS requisições", r.count("HTTP/1.1") >= 2)
+
+# ── parada limpa (é o que faz o gcov do servidor existir) ───────────────────
+parou = false
+try
+{
+    get(RAIZ + "/__parar")
+}
+catch (e)
+{
+    parou = true
+}
+i = 0
+while i < 50
+{
+    s = sockets.socket()
+    s.settimeout(0.2)
+    fechou = s.connect_ex(("127.0.0.1", PORTA)) != 0
+    s.close()
+    if fechou
+    {
+        parou = true
+        break
+    }
+    sleep(0.1)
+    i = i + 1
+}
+confere("o servidor para limpo quando pedido (sem isso o gcov dele não existe)", parou)
+os.cmd("kill $(cat " + PASTA + "/alvo.pid) 2>/dev/null; true")
+
+# ── relatório ───────────────────────────────────────────────────────────────
+post("")
+post("jinker:", ok, "checagens passaram")
+if falhas.len() > 0
+{
+    post("FALHARAM:", falhas.len())
+    for each f in falhas
+    {
+        post("  " + f)
+    }
+    sys.exit(1)
+}

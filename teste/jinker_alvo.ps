@@ -1,0 +1,148 @@
+# Servidor-alvo do `teste/jinker_roda.ps` — em LOOPBACK, sem serviço externo.
+#
+# Ele existe pra exercitar o SERVIDOR, que é a metade que a medição de
+# cobertura não via: `ps_jinker.c` marcava 24% porque o processo do servidor
+# era morto com sinal, e processo morto por sinal NÃO grava o `.gcda` do gcov.
+# Por isso a rota `/__parar`: o driver pede a parada, o servidor sai por
+# `sys.exit(0)`, e aí a cobertura dele conta.
+import jinker
+import sys
+import os
+from jinker import request
+from jinker import cors
+
+PASTA = "/tmp/ps_jinker_teste"
+os.mkdir(PASTA + "/estatico", exist_ok=true)
+os.writeFile(PASTA + "/estatico/pagina.txt", "sou estatico")
+
+app = jinker.Jinker(name="alvo", static_folder=PASTA + "/estatico", static_url="/estatico")
+
+cors(options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://permitido.test"])
+
+
+# ── básico: método, status, cabeçalho, corpo ────────────────────────────────
+@app.route("/ok")
+action ok()
+{
+    return {"ok": true, "metodo": request.method}
+}
+
+@app.route("/texto")
+action texto()
+{
+    r = jinker.JinkerResponse()
+    return r.header("X-Marca", "poolscript").send("texto puro")
+}
+
+@app.route("/status")
+action com_status()
+{
+    r = jinker.JinkerResponse()
+    return r.status(418).json({"cha": true})
+}
+
+@app.route("/eco", methods=["POST", "PUT", "PATCH", "DELETE"])
+action eco()
+{
+    return {"metodo": request.method, "corpo": request.text(), "caminho": request.path}
+}
+
+@app.route("/json", methods=["POST"])
+action recebe_json()
+{
+    return jinker.jsonify({"veio": request.get_json("nome"), "todo": request.json()})
+}
+
+@app.route("/consulta")
+action consulta()
+{
+    return {"q": request.get("q"), "faltando": request.get("nao_existe")}
+}
+
+@app.route("/cabecalho")
+action cabecalho()
+{
+    return {"chave": request.header("X-Chave"), "todos": request.headers.len() > 0}
+}
+
+@app.route("/param/<id>")
+action param()
+{
+    return {"id": request.path_param("id")}
+}
+
+
+# ── upload multipart ────────────────────────────────────────────────────────
+@app.route("/subir", methods=["POST"])
+action subir()
+{
+    f = request.file("arquivo")
+    if f == null
+    {
+        r = jinker.JinkerResponse()
+        return r.status(400).json({"erro": "sem arquivo"})
+    }
+    destino = PASTA + "/recebido.txt"
+    f.save(destino)
+    return {"nome": f.name, "tamanho": f.size, "tipo": f.content_type,
+            "ext": f.ext, "salvou": os.exists(destino),
+            "conteudo": f.bytes().decode(), "quantos": request.files().len()}
+}
+
+
+# ── middleware: barra sem a chave, libera com ela ───────────────────────────
+@app.middleware()
+action confere_chave()
+{
+    if request.header("X-Chave") != "abre"
+    {
+        return jinker.jsonify({"msg": "sem permissao"}), 401
+    }
+    pass
+}
+
+@app.route("/protegida", middleware=app.middleware)
+action protegida()
+{
+    return {"entrou": true}
+}
+
+
+# ── CORS: o que foi configurado aparece ─────────────────────────────────────
+@app.route("/cors-info")
+action cors_info()
+{
+    return {"options": cors.options(), "origins": cors.origins(), "permiser": cors.permiser()}
+}
+
+
+# ── canal e websocket ───────────────────────────────────────────────────────
+@app.route("/emitir")
+action emitir()
+{
+    st = app.channel.emit("aviso", {"n": 1})
+    return {"emit": str(st), "status": str(app.channel.status)}
+}
+
+@app.socket("/ws")
+reaction ws_sala()
+{
+    envia = app.socket()
+    envia.emit(request.text(), exclude_self=false)
+}
+
+
+# ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
+@app.route("/__parar")
+action parar()
+{
+    post("servidor-alvo: parando a pedido do driver")
+    sys.exit(0)
+}
+
+
+# A chave FICA NA MESMA LINHA de propósito: no estilo Allman o motor pula o
+# bloco em silêncio (ver `casos_pendentes.c`, "if __name__ no estilo Allman").
+if __name__ == "main" {
+    app(debug=false, host="127.0.0.1", port=28952)
+}

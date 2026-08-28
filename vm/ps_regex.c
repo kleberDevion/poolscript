@@ -158,10 +158,9 @@ static int cp_le(const char *s, int n, int pos, unsigned int *cp)
 
 /* `\d \w \s` e as maiúsculas negadas. Devolve 0 se a letra não é classe.
  *
- * Só serve pro escape usado SOZINHO (`\d+`), onde a negação do `\D` vira o
- * `negado` da própria classe. Dentro de `[...]` a negação não composta é
- * possível — `[\D]` funciona, mas `[a\D]` sairia errado; o `re` também
- * trata esse caso como raro e aqui ele é recusado na leitura da classe. */
+ * A negação chega como o conjunto POSITIVO com `negado` ligado. Usado sozinho
+ * (`\D+`), esse `negado` é o da própria classe e resolve. Dentro de `[...]` ele
+ * precisa ser MATERIALIZADO antes da união — ver `classe_uniao_negada`. */
 static int classe_escape(unsigned char e, Classe *cl)
 {
     unsigned char letra = e;
@@ -183,6 +182,59 @@ static int classe_escape(unsigned char e, Classe *cl)
         return 0;
     }
     return 1;
+}
+
+static int cmp_faixa(const void *a, const void *b)
+{
+    unsigned int x = ((const unsigned int *)a)[0], y = ((const unsigned int *)b)[0];
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
+
+/* Une em `cl` o COMPLEMENTO de `sub`.
+ *
+ * É o que faz `[\s\S]` (o "qualquer coisa, inclusive \n" de todo mundo),
+ * `[a\D]` e `[^\S]` casarem em vez de virarem erro de sintaxe. Antes isto era
+ * recusado na leitura: um `negado` dentro de `[...]` não compõe com os outros
+ * itens, porque o `negado` da classe vale pro conjunto INTEIRO — `[a\D]` não é
+ * "não (a ou dígito)", é "a ou não-dígito".
+ *
+ * Materializar é resolver a negação ali mesmo: no ASCII, bit a bit; acima de
+ * 127, andando pelos BURACOS entre as faixas de `sub` (que precisam estar
+ * ordenadas pra isso, daí o qsort — `\w` traz [128,0x10FFFF], `\d` e `\s` não
+ * trazem nenhuma, mas o cálculo aqui é geral). */
+static int classe_uniao_negada(Classe *cl, const Classe *sub)
+{
+    for (unsigned int c = 0; c < 128; c++)
+        if (!tem_bit(sub->mapa, c)) mapa_bit(cl->mapa, c);
+
+    unsigned int *f = NULL;
+    int nf = 0;
+    if (sub->nfaixas > 0) {
+        f = malloc(sizeof(unsigned int) * 2 * (size_t)sub->nfaixas);
+        if (!f) return -1;
+        for (int i = 0; i < sub->nfaixas; i++) {
+            unsigned int lo = sub->faixas[i * 2], hi = sub->faixas[i * 2 + 1];
+            if (hi < 128) continue;              /* já resolvido no bitmap */
+            if (lo < 128) lo = 128;
+            f[nf * 2] = lo;
+            f[nf * 2 + 1] = hi;
+            nf++;
+        }
+        qsort(f, (size_t)nf, sizeof(unsigned int) * 2, cmp_faixa);
+    }
+
+    unsigned int prox = 128;
+    int erro = 0;
+    for (int i = 0; i < nf && !erro; i++) {
+        unsigned int lo = f[i * 2], hi = f[i * 2 + 1];
+        if (lo > prox) erro = faixa_add(cl, prox, lo - 1);
+        if (hi >= 0x10FFFF) { prox = 0x110000; break; }
+        if (hi + 1 > prox) prox = hi + 1;
+    }
+    free(f);
+    if (erro) return -1;
+    if (prox <= 0x10FFFF) return faixa_add(cl, prox, 0x10FFFF);
+    return 0;
 }
 
 static unsigned char escape_simples(unsigned char e, int *ok)
@@ -225,11 +277,12 @@ static void le_classe(Leitor *l, Atomo *a)
             memset(&sub, 0, sizeof(sub));
             if (classe_escape(e, &sub)) {
                 if (sub.negado) {
-                    /* `[a\D]` precisaria de união com um conjunto negado —
-                     * recusa em vez de casar errado em silêncio. */
+                    /* `[a\D]` é "a ou não-dígito": a negação se resolve AQUI,
+                     * porque o `negado` da classe vale pro conjunto inteiro. */
+                    int r = classe_uniao_negada(cl, &sub);
                     free(sub.faixas);
-                    rerro(l, "classe negada (\\D \\W \\S) dentro de [] nao suportada");
-                    return;
+                    if (r != 0) { rerro(l, "sem memoria na classe"); return; }
+                    continue;
                 }
                 for (int k = 0; k < 16; k++) cl->mapa[k] |= sub.mapa[k];
                 for (int k = 0; k < sub.nfaixas; k++)

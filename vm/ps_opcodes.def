@@ -1,0 +1,135 @@
+/* ── opcodes da VM: a ÚNICA lista ────────────────────────────────────────
+ *
+ * Este arquivo é incluído por `ps_compiler.c` (que EMITE) e por
+ * `poolscript_vm.c` (que EXECUTA), cada um definindo PS_OP do seu jeito.
+ * Antes ele era escrito à mão nos dois, mais um terceiro switch com os
+ * nomes do desmontador — três listas que nada no build conferia. Número
+ * trocado num dos lados não dá erro de compilação: dá bytecode que executa
+ * outra instrução, e o defeito aparece longe da causa.
+ *
+ *     PS_OP(NOME, NUMERO, "TEXTO DO DESMONTADOR")
+ *
+ * O NÚMERO é explícito de propósito: ele está gravado em todo bytecode já
+ * emitido, então renumerar não é refatorar, é quebrar. Opcode novo entra
+ * no FIM, com o próximo número livre. Nenhum número se reaproveita.
+ *
+ * `scripts/audita_c.ps` reprova qualquer `OP_X = <número>` escrito fora
+ * daqui, que é o que impede a lista de se duplicar de novo.
+ */
+#ifndef PS_OP
+#error "inclua ps_opcodes.def com PS_OP(nome, numero, texto) definido"
+#endif
+
+PS_OP(LOAD_CONST, 0, "LOAD_CONST")
+PS_OP(LOAD_LOCAL, 1, "LOAD_LOCAL")
+PS_OP(STORE_LOCAL, 2, "STORE_LOCAL")
+PS_OP(LOAD_GLOBAL, 3, "LOAD_GLOBAL")
+PS_OP(STORE_GLOBAL, 4, "STORE_GLOBAL")
+PS_OP(ADD, 5, "ADD")
+PS_OP(SUB, 6, "SUB")
+PS_OP(MUL, 7, "MUL")
+PS_OP(DIV, 8, "DIV")
+PS_OP(MOD, 9, "MOD")
+PS_OP(NEG, 10, "NEG")
+PS_OP(LT, 11, "LT")
+PS_OP(GT, 12, "GT")
+PS_OP(LE, 13, "LE")
+PS_OP(GE, 14, "GE")
+PS_OP(EQ, 15, "EQ")
+PS_OP(NE, 16, "NE")
+PS_OP(JUMP, 17, "JUMP")
+PS_OP(JUMP_IF_FALSE, 18, "JUMP_IF_FALSE")
+PS_OP(POP_TOP, 19, "POP_TOP")
+PS_OP(CALL, 20, "CALL")
+PS_OP(RETURN, 21, "RETURN")
+PS_OP(MAKE_FUNCTION, 22, "MAKE_FUNCTION")
+PS_OP(BIT_OR, 23, "BIT_OR")
+PS_OP(BIT_XOR, 24, "BIT_XOR")
+PS_OP(BIT_AND, 25, "BIT_AND")
+PS_OP(LSHIFT, 26, "LSHIFT")
+PS_OP(RSHIFT, 27, "RSHIFT")
+PS_OP(BIT_NOT, 28, "BIT_NOT")
+PS_OP(HALT, 29, "HALT")
+PS_OP(BUILD_LIST, 30, "BUILD_LIST")
+PS_OP(BUILD_DICT, 31, "BUILD_DICT")
+PS_OP(INDEX_GET, 32, "INDEX_GET")
+PS_OP(INDEX_SET, 33, "INDEX_SET")
+PS_OP(ITER_NEXT, 34, "ITER_NEXT")
+PS_OP(DUP, 35, "DUP")
+PS_OP(BUILD_STR, 36, "BUILD_STR")
+PS_OP(BUILD_TUPLE, 37, "BUILD_TUPLE")
+PS_OP(SLICE, 38, "SLICE")
+PS_OP(JUMP_IF_SET, 39, "JUMP_IF_SET")
+PS_OP(LOAD_NAME, 40, "LOAD_NAME")
+PS_OP(STORE_NAME, 41, "STORE_NAME")
+PS_OP(CALL_KW, 42, "CALL_KW")
+PS_OP(SETUP_TRY, 43, "SETUP_TRY")
+PS_OP(POP_TRY, 44, "POP_TRY")
+PS_OP(RAISE, 45, "RAISE")
+PS_OP(PUSH_ERR_TYPE, 46, "PUSH_ERR_TYPE")
+PS_OP(JUMP_IF_TRUE, 47, "JUMP_IF_TRUE")
+PS_OP(LEN, 48, "LEN")
+PS_OP(HAS_KEY, 49, "HAS_KEY")
+PS_OP(MAKE_CLASS, 50, "MAKE_CLASS")
+PS_OP(GET_MEMBER, 51, "GET_MEMBER")
+PS_OP(SET_MEMBER, 52, "SET_MEMBER")
+PS_OP(LOAD_SELF, 53, "LOAD_SELF")
+PS_OP(CALL_BASE, 54, "CALL_BASE")
+PS_OP(DUP2, 55, "DUP2")
+PS_OP(IMPORT_MOD, 56, "IMPORT_MOD")
+
+/* IS/IN saem no desmontador como IS_OP/IN_OP: "IS" e "IN" sozinhos leriam
+ * como palavra solta no meio da listagem. */
+PS_OP(IS, 57, "IS_OP")
+PS_OP(IN, 58, "IN_OP")
+PS_OP(LOAD_TIPO, 59, "LOAD_TIPO")
+PS_OP(COUNT, 60, "COUNT")
+PS_OP(COUNT_PARES, 61, "COUNT_PARES")
+PS_OP(CHECK_NONNULL, 62, "CHECK_NONNULL")
+PS_OP(MAKE_MODEL, 63, "MAKE_MODEL")
+PS_OP(UNPACK, 64, "UNPACK")
+PS_OP(YIELD, 65, "YIELD")
+PS_OP(CLOSE_SE_TEM, 66, "CLOSE_SE_TEM")
+PS_OP(NOT, 67, "NOT")
+PS_OP(TO_BOOL, 68, "TO_BOOL")
+PS_OP(COERCE_DECL, 69, "COERCE_DECL")
+PS_OP(COERCE_RET, 70, "COERCE_RET")
+PS_OP(RERAISE, 71, "RERAISE")
+
+/* pula o bloco de run_selfwith_ quando importando */
+PS_OP(SKIP_IF_IMPORT, 72, "SKIP_IF_IMPORT")
+
+/* `enum Nome { ... }` — descritor em vm->enum_* */
+PS_OP(MAKE_ENUM, 73, "MAKE_ENUM")
+
+/* Fim de bloco: apaga (V_UNSET) os locais/globais nascidos DENTRO do bloco,
+ * pra variável de bloco não vazar pro escopo de fora (paridade com o interp). */
+PS_OP(CLEAR_LOCAL, 74, "CLEAR_LOCAL")
+PS_OP(CLEAR_GLOBAL, 75, "CLEAR_GLOBAL")
+PS_OP(AWAIT, 76, "AWAIT")
+
+/* `base(nome=v)`: troca a classe pai no topo pelo `__init__` dela LIGADO ao
+ * self, pra a chamada seguir pelo OP_CALL_KW normal. */
+PS_OP(LOAD_BASE_INIT, 77, "LOAD_BASE_INIT")
+
+/* Closure: variável de fora capturada por action aninhada.
+ * MAKE_CELL põe uma célula no slot local (guardando o que já estava lá, que
+ * pode ser o argumento); CELL_GET/CELL_SET acessam o valor DENTRO da célula;
+ * LOAD/STORE_UPVAL acessam a célula que veio de fora; MAKE_CLOSURE monta o
+ * valor de função já com as células capturadas. */
+PS_OP(MAKE_CELL, 78, "MAKE_CELL")
+PS_OP(CELL_GET, 79, "CELL_GET")
+PS_OP(CELL_SET, 80, "CELL_SET")
+PS_OP(LOAD_UPVAL, 81, "LOAD_UPVAL")
+PS_OP(STORE_UPVAL, 82, "STORE_UPVAL")
+PS_OP(MAKE_CLOSURE, 83, "MAKE_CLOSURE")
+
+/* Variantes com o mesmo contrato do LOAD_NAME/STORE_NAME (slot na pilha,
+ * índice do global no arg): valem pros nomes atribuídos sem tipo, que ainda
+ * podem estar falando de uma global. */
+PS_OP(CELL_GET_NAME, 84, "CELL_GET_NAME")
+PS_OP(CELL_SET_NAME, 85, "CELL_SET_NAME")
+
+/* `for each i in range(...)` sem construir lista: a pilha carrega
+ * [ini, fim, passo, i] e o item sai por aritmética. */
+PS_OP(ITER_RANGE, 86, "ITER_RANGE")

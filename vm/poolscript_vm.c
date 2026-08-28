@@ -82,42 +82,14 @@
 #include "ps_vm.h"
 #include "ps_hash.h"
 
-/* ── opcodes: precisam bater com ps_compiler.c ──────────────────────────── */
+/* ── opcodes ─────────────────────────────────────────────────────────────
+ * A lista vive em `ps_opcodes.def` e é a MESMA que o compilador inclui. Antes eram
+ * dois enums escritos à mão, e nada no build conferia que batiam. */
 enum {
-    OP_LOAD_CONST = 0, OP_LOAD_LOCAL = 1, OP_STORE_LOCAL = 2,
-    OP_LOAD_GLOBAL = 3, OP_STORE_GLOBAL = 4,
-    OP_ADD = 5, OP_SUB = 6, OP_MUL = 7, OP_DIV = 8, OP_MOD = 9, OP_NEG = 10,
-    OP_LT = 11, OP_GT = 12, OP_LE = 13, OP_GE = 14, OP_EQ = 15, OP_NE = 16,
-    OP_JUMP = 17, OP_JUMP_IF_FALSE = 18, OP_POP_TOP = 19,
-    OP_CALL = 20, OP_RETURN = 21, OP_MAKE_FUNCTION = 22,
-    OP_BIT_OR = 23, OP_BIT_XOR = 24, OP_BIT_AND = 25,
-    OP_LSHIFT = 26, OP_RSHIFT = 27, OP_BIT_NOT = 28,
-    OP_HALT = 29,
-    OP_BUILD_LIST = 30, OP_BUILD_DICT = 31,
-    OP_INDEX_GET = 32, OP_INDEX_SET = 33,
-    OP_ITER_NEXT = 34, OP_DUP = 35,
-    OP_BUILD_STR = 36, OP_BUILD_TUPLE = 37, OP_SLICE = 38,
-    OP_JUMP_IF_SET = 39,
-    OP_LOAD_NAME = 40, OP_STORE_NAME = 41, OP_CALL_KW = 42,
-    OP_SETUP_TRY = 43, OP_POP_TRY = 44, OP_RAISE = 45, OP_PUSH_ERR_TYPE = 46,
-    OP_JUMP_IF_TRUE = 47, OP_LEN = 48, OP_HAS_KEY = 49,
-    OP_MAKE_CLASS = 50, OP_GET_MEMBER = 51, OP_SET_MEMBER = 52, OP_LOAD_SELF = 53, OP_CALL_BASE = 54, OP_DUP2 = 55, OP_IMPORT_MOD = 56,
-    OP_NOT = 67, OP_TO_BOOL = 68, OP_COERCE_DECL = 69, OP_COERCE_RET = 70, OP_RERAISE = 71,
-    OP_SKIP_IF_IMPORT = 72,   /* pula o bloco de run_selfwith_ quando importando */
-    OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
-    OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
-    OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66,
-    OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
-    /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
-     * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
-    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76,
-    /* `base(nome=v)`: troca a classe pai no topo pelo `__init__` dela
-     * LIGADO ao self, pra a chamada seguir pelo OP_CALL_KW normal. */
-    OP_LOAD_BASE_INIT = 77,
-    OP_MAKE_CELL = 78, OP_CELL_GET = 79, OP_CELL_SET = 80,
-    OP_LOAD_UPVAL = 81, OP_STORE_UPVAL = 82, OP_MAKE_CLOSURE = 83,
-    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85,
-    OP_ITER_RANGE = 86
+#define PS_OP(nome, num, texto) OP_##nome = (num),
+#include "ps_opcodes.def"
+#undef PS_OP
+    OP__ULTIMO
 };
 
 /* ── objetos gerenciados pelo GC ────────────────────────────────────────── */

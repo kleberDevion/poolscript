@@ -155,5 +155,64 @@ const Caso CASOS_PENDENTES[] = {
 { "split com padrão vazio separa caractere a caractere",
   "import regex\npost(regex.split(\"\", \"abc\"))\n", "['', 'a', 'b', 'c', '']", NULL, 0 },
 
+/* ── aridade: TRÊS nativas aceitam argumento a mais em silêncio ──────────────
+ * Achado escrevendo `teste/cli_roda.ps`: `os.writeFile(p, c, "utf-8", "SOBRA", 9)`
+ * grava e não reclama. A regra do projeto já é a oposta — `sha256()`,
+ * `exists()`, `len()`, `upper()` e toda action de usuário recusam o argumento
+ * sobrando ("espera N argumento(s)"), e o commit 347dd10 fez disso contrato.
+ *
+ * A causa é mecânica, e a varredura do fonte dá a lista COMPLETA: das 425
+ * nativas, só três checam o piso e não o teto (`if (n < 2)` sem `n > 2`):
+ * `mod_os_readfile`, `mod_os_writefile` e `mod_mp_open`. Argumento que some
+ * calado é erro de digitação que vira comportamento errado sem aviso —
+ * exatamente o que a aridade estrita evita no resto da linguagem. */
+{ "os.writeFile recusa argumento sobrando",
+  "import os\nos.writeFile(\"f.txt\", \"a\", \"utf-8\", \"SOBRA\")\n",
+  NULL, "writeFile", -1, NULL, 1 },
+{ "os.readFile recusa argumento sobrando",
+  "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\n",
+  NULL, "readFile", -1, NULL, 1 },
+/* ── `if __name__ == "main"` só vale com a chave na MESMA linha ──────────────
+ * Achado escrevendo `teste/jinker_alvo.ps`: o servidor subia, não abria porta
+ * nenhuma e saía com rc=0, sem uma linha de erro. A causa é que o bloco de
+ * entrada NUNCA rodou.
+ *
+ *     if __name__ == "main" {      ->  entra          (forma de mesma linha)
+ *     if __name__ == "main"        ->  NÃO entra      (Allman, que o projeto
+ *     {                                                adotou em 88ae542 e
+ *         ...                                          documenta)
+ *     }
+ *     if (__name__ == "main")      ->  NÃO entra      (Allman com parênteses)
+ *
+ * O reconhecimento é sintático (vira `OP_SKIP_IF_IMPORT`) e só casa com uma
+ * das formas. Nas outras não sobra nem erro nem aviso: o `main` do programa
+ * simplesmente não acontece — o pior tipo de defeito, o que passa calado.
+ *
+ * A forma com `:` (a ÚNICA da linguagem onde `:` ainda abre bloco) funciona:
+ *
+ *     if __name__ == "main":
+ *         principal()
+ *
+ * E o contrato está escrito, não é dedução: `docs/linguagem/05-controle-de-fluxo.md`
+ * diz, sobre esse mesmo `if`, "`{ }` vale igual, e a chave pode ficar na linha
+ * seguinte". A doc promete exatamente a forma que o motor pula. */
+{ "if __name__ == \"main\" com chave na mesma linha",
+  "if __name__ == \"main\" {\n    post(\"entrou\")\n}\n", "entrou", NULL, 0 },
+{ "if __name__ == \"main\" no estilo Allman",
+  "if __name__ == \"main\"\n{\n    post(\"entrou\")\n}\n", "entrou", NULL, 0, NULL, 1 },
+{ "if (__name__ == \"main\") com parenteses",
+  "if (__name__ == \"main\")\n{\n    post(\"entrou\")\n}\n", "entrou", NULL, 0, NULL, 1 },
+
+/* O mesmo reconhecimento faz a condição MENTIR como expressão: dentro do `if`
+ * ela é verdadeira, avaliada sozinha ela é falsa. Uma das duas está errada, e
+ * quem lê o programa não tem como saber qual. */
+{ "__name__ == \"main\" vale o mesmo dentro e fora do if",
+  "post(__name__ == \"main\")\nif __name__ == \"main\" {\n    post(\"entrou\")\n}\n",
+  "True\nentrou", NULL, 0, NULL, 1 },
+
+{ "manpu.open recusa argumento sobrando",
+  "import manpu\ntry {\n    manpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n}\ncatch (e) {\n    post(str(e))\n}\n",
+  NULL, "open", -1, NULL, 1 },
+
 };
 const int NC_PENDENTES = N_CASOS(CASOS_PENDENTES);

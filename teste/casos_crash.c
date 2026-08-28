@@ -100,5 +100,65 @@ const Caso CASOS_CRASH[] = {
   "post(\"a\".zfill(5))\npost(\"ab\".ljust(5, \"-\"))\n"
   "post(\"ab\".center(6, \".\"))\npost(\"7\".rjust(3, \"0\"))\n",
   "0000a\nab---\n..ab..\n007", NULL, 0 },
+
+/* ── pilha de FIBRA: a página de guarda, cobrada sem subir servidor ──────────
+ * A pilha C da fibra virou `mmap` com uma página `PROT_NONE` embaixo. Antes era
+ * `malloc`, e recursão funda dentro de uma fibra passava por cima do heap
+ * vizinho — corrupção silenciosa, que só aparecia longe dali.
+ *
+ * O caso não precisa do jinker: `fib_pega_async` usa exatamente a mesma pilha,
+ * então uma `async action` alcança o mesmo código. Sem estes dois casos a
+ * guarda não é cobrada por portão nenhum, porque o e2e do jinker é alvo
+ * separado e não roda em todo push. */
+{ "recursao funda DENTRO de fibra async é erro, nao corrupcao",
+  "action fundo(n) {\n"
+  "    if n <= 0 {\n"
+  "        return 0\n"
+  "    }\n"
+  "    return 1 + fundo(n - 1)\n"
+  "}\n"
+  "async action dentro() {\n"
+  "    return fundo(100000)\n"
+  "}\n"
+  "try {\n"
+  "    f = dentro()\n"
+  "    _r = await f\n"
+  "    post(\"passou sem reclamar\")\n"
+  "} catch (e) {\n"
+  "    post(\"recusou\")\n"
+  "}\n", "recusou", NULL, 0 },
+{ "pool de fibra cheio é erro limpo, nao morte",
+  /* 200 mil `await` encadeados esgotam o pool; o contrato é levantar, não cair */
+  "async action fundo(n) {\n"
+  "    if n <= 0 {\n"
+  "        return 0\n"
+  "    }\n"
+  "    return await fundo(n - 1)\n"
+  "}\n"
+  "try {\n"
+  "    post(fundo(200000))\n"
+  "} catch (e) {\n"
+  "    post(\"recusou\")\n"
+  "}\n", NULL, NULL, 0 },
+
+/* ── aninhamento LEGÍTIMO: o teto não pode virar limite de uso ───────────────
+ * Contrapeso dos casos de teto acima. Se alguém apertar `PS_PARSE_PROF_MAX` pra
+ * calar um fuzzer, estes reprovam — que é a única defesa contra o conserto
+ * preguiçoso de pôr um número menor. */
+{ "500 parenteses aninhados sao LEGITIMOS",
+  "import os\n"
+  "import sys\n"
+  "src = \"post(\" + (\"(\" * 500) + \"1\" + (\")\" * 500) + \")\"\n"
+  "using open(\"leg.ps\", \"w\") as f { f.write(src) }\n"
+  "os.cmd(\"'\" + sys.executable + \"' leg.ps > o.txt 2>&1\")\n"
+  "post(open(\"o.txt\").read().strip())\n", "1", NULL, 0 },
+{ "estrutura 200 niveis funda imprime inteira",
+  "x = [\"fundo\"]\n"
+  "i = 0\n"
+  "while (i < 200) {\n"
+  "    x = [x]\n"
+  "    i = i + 1\n"
+  "}\n"
+  "post(\"fundo\" in str(x))\n", "True", NULL, 0 },
 };
 const int NC_CRASH = N_CASOS(CASOS_CRASH);

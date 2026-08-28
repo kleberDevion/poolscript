@@ -1,0 +1,186 @@
+# Gera `vm/ps_opcodes.def` a partir do que HOJE está escrito à mão.
+#
+# POR QUE ISTO EXISTE: os 87 opcodes estavam declarados TRÊS vezes — o enum em
+# `ps_compiler.c`, o enum idêntico em `poolscript_vm.c` e o switch de nomes do
+# desmontador. Nada no build conferia que as três listas batiam. Um opcode novo
+# com número errado num dos lados não dá erro de compilação: dá bytecode que
+# executa a instrução ERRADA, e o defeito aparece longe da causa.
+#
+# O que este script faz é a MIGRAÇÃO, uma vez: lê as duas listas, PROVA que
+# batem número por número (se não baterem, reprova e mostra onde) e escreve o
+# `.def` que passa a ser a única fonte. Depois disso quem guarda a porta é o
+# `scripts/audita_c.ps`, que reprova qualquer `OP_X = <número>` novo fora do
+# `.def`.
+#
+#     ./pool scripts/gera_opcodes.ps            confere e mostra
+#     ./pool scripts/gera_opcodes.ps --grava    escreve vm/ps_opcodes.def
+import os
+import regex
+import sys
+
+COMPILADOR = "vm/ps_compiler.c"
+MAQUINA = "vm/poolscript_vm.c"
+DESTINO = "vm/ps_opcodes.def"
+
+
+# Recorta o corpo do enum de opcodes: do `enum {` que vem depois do comentário
+# "opcodes:" até o `};` da coluna 0.
+action corpo_do_enum(caminho) {
+    fonte = open(caminho).read()
+    i = fonte.find("/* ── opcodes:")
+    if i < 0 {
+        post("nao achei o enum de opcodes em", caminho)
+        sys.exit(1)
+    }
+    ini = fonte.find("enum {", i)
+    fim = fonte.find("\n};", ini)
+    return fonte[ini + 6:fim]
+}
+
+
+# Tira comentários /* ... */ e devolve {NOME: valor} pros pares `OP_X = <n>`.
+action pares(texto) {
+    limpo = regex.sub("/\\*[\\s\\S]*?\\*/", " ", texto)
+    saida = {}
+    for each m in regex.findall("OP_([A-Z0-9_]+)\\s*=\\s*(\\d+)", limpo) {
+        saida[m[0]] = int(m[1])
+    }
+    return saida
+}
+
+
+# O nome que o desmontador imprime nem sempre é o sufixo do enum: OP_IS sai
+# como "IS_OP" e OP_IN como "IN_OP" (IS/IN sozinhos leriam como palavra solta).
+# Por isso o `.def` carrega o texto numa coluna própria, lida daqui.
+action textos_do_desmontador() {
+    fonte = open(COMPILADOR).read()
+    i = fonte.find("const char *ps_op_nome")
+    fim = fonte.find("\n}", i)
+    trecho = fonte[i:fim]
+    saida = {}
+    for each m in regex.findall("case OP_([A-Z0-9_]+):\\s*return \"([A-Z0-9_]+)\"", trecho) {
+        saida[m[0]] = m[1]
+    }
+    return saida
+}
+
+
+if __name__ == "main" {
+    a = pares(corpo_do_enum(COMPILADOR))
+    b = pares(corpo_do_enum(MAQUINA))
+    txt = textos_do_desmontador()
+
+    # 1. as duas listas têm que bater — nome por nome, número por número
+    problemas = []
+    for each n in a.keys() {
+        if not n in b {
+            problemas.append("OP_" + n + " só existe no compilador")
+        }
+        elif a[n] != b[n] {
+            problemas.append("OP_" + n + ": compilador=" + str(a[n]) +
+                             " maquina=" + str(b[n]))
+        }
+    }
+    for each n in b.keys() {
+        if not n in a {
+            problemas.append("OP_" + n + " só existe na maquina")
+        }
+    }
+    # 2. nenhum número repetido
+    vistos = {}
+    for each n in a.keys() {
+        v = str(a[n])
+        if v in vistos {
+            problemas.append("numero " + v + " em OP_" + vistos[v] + " e OP_" + n)
+        }
+        vistos[v] = n
+    }
+    # 3. todo opcode sabe se imprimir
+    for each n in a.keys() {
+        if not n in txt {
+            problemas.append("OP_" + n + " nao aparece em ps_op_nome")
+        }
+    }
+
+    if len(problemas) > 0 {
+        post("as listas NAO batem:")
+        for each p in problemas {
+            post("   ", p)
+        }
+        sys.exit(1)
+    }
+
+    # Ordena por NÚMERO, que é o que o `.def` documenta. `l.sort()` ordena por
+    # valor e não recebe chave (é o contrato dele), então a ordem sai do índice
+    # inverso — que de quebra já aponta os números não usados.
+    maior = 0
+    por_num = {}
+    for each n in a.keys() {
+        por_num[str(a[n])] = n
+        if a[n] > maior {
+            maior = a[n]
+        }
+    }
+    nomes = []
+    buracos = []
+    for each i in range(0, maior + 1) {
+        if str(i) in por_num {
+            nomes.append(por_num[str(i)])
+        }
+        else {
+            buracos.append(str(i))
+        }
+    }
+
+    post("opcodes:", len(nomes), " faixa: 0..", str(maior))
+    if len(buracos) > 0 {
+        post("numeros nao usados:", (", ").join(buracos))
+    }
+    post("as duas listas batem, e todo opcode tem nome no desmontador.")
+
+    # A geração é de MIGRAÇÃO, uma vez só. Depois dela o `.def` é a fonte e é
+    # editado à mão (opcode novo entra no fim, com o próximo número livre), e
+    # regerar por reflexo apagaria os comentários que explicam cada família.
+    if os.exists(DESTINO) and not "--forca" in sys.argv {
+        post(DESTINO, "ja existe — ele é a fonte agora, edite-o à mão.")
+        post("(--forca regera do zero, PERDENDO os comentários de lá)")
+        sys.exit(0)
+    }
+
+    if not "--grava" in sys.argv {
+        post("(rode com --grava pra escrever " + DESTINO + ")")
+        sys.exit(0)
+    }
+
+    linhas = [
+        "/* ── opcodes da VM: a ÚNICA lista ────────────────────────────────────────",
+        " *",
+        " * Este arquivo é incluído por `ps_compiler.c` (que EMITE) e por",
+        " * `poolscript_vm.c` (que EXECUTA), cada um definindo PS_OP do seu jeito.",
+        " * Antes ele era escrito à mão nos dois, mais um terceiro switch com os",
+        " * nomes do desmontador — três listas que nada no build conferia. Número",
+        " * trocado num dos lados não dá erro de compilação: dá bytecode que executa",
+        " * outra instrução, e o defeito aparece longe da causa.",
+        " *",
+        " *     PS_OP(NOME, NUMERO, \"TEXTO DO DESMONTADOR\")",
+        " *",
+        " * O NÚMERO é explícito de propósito: ele está gravado em todo bytecode já",
+        " * emitido, então renumerar não é refatorar, é quebrar. Opcode novo entra",
+        " * no FIM, com o próximo número livre. Nenhum número se reaproveita.",
+        " *",
+        " * `scripts/audita_c.ps` reprova qualquer `OP_X = <número>` escrito fora",
+        " * daqui, que é o que impede a lista de se duplicar de novo.",
+        " */",
+        "#ifndef PS_OP",
+        "#error \"inclua ps_opcodes.def com PS_OP(nome, numero, texto) definido\"",
+        "#endif",
+        "",
+    ]
+    for each n in nomes {
+        linhas.append("PS_OP(" + n + ", " + str(a[n]) + ", \"" + txt[n] + "\")")
+    }
+    using open(DESTINO, "w") as f {
+        f.write(("\n").join(linhas) + "\n")
+    }
+    post("escrito:", DESTINO)
+}

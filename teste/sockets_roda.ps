@@ -1,0 +1,152 @@
+# Sockets a fundo — em LOOPBACK, sem serviço externo.
+#
+# POR QUE ESTE ARQUIVO EXISTE: dos 261 nativos do motor que nenhum caso
+# chamava, 85 eram de socket — o maior bloco isolado, e o mais barato de
+# fechar, porque socket em loopback não precisa de servidor nenhum. O
+# `teste/e2e/socket.ps` cobria o par TCP básico; o resto da lib (conversão de
+# ordem de byte, resolução de nome, UDP, socketpair, opções) nunca rodou.
+#
+#     ./pool teste/sockets_roda.ps
+#
+# Reprova com rc != 0 e a lista do que falhou. Nada de skip: o que depende de
+# rede externa não está aqui.
+import sockets
+import sys
+
+falhas = []
+ok = 0
+
+action confere(nome, cond)
+{
+    global ok
+    if cond
+    {
+        ok = ok + 1
+    }
+    else
+    {
+        addEnd(falhas, nome)
+    }
+}
+
+# ── ordem de byte: htons/htonl e a volta ────────────────────────────────────
+confere("htons/ntohs ida e volta", sockets.ntohs(sockets.htons(4660)) == 4660)
+confere("htonl/ntohl ida e volta", sockets.ntohl(sockets.htonl(305419896)) == 305419896)
+
+# ── endereço IPv4: aton/ntoa e pton/ntop ────────────────────────────────────
+confere("inet_aton + inet_ntoa", sockets.inet_ntoa(sockets.inet_aton("127.0.0.1")) == "127.0.0.1")
+confere("inet_pton + inet_ntop v4",
+        sockets.inet_ntop(sockets.AF_INET, sockets.inet_pton(sockets.AF_INET, "10.0.0.1")) == "10.0.0.1")
+confere("inet_ntop v6 normaliza",
+        sockets.inet_ntop(sockets.AF_INET6, sockets.inet_pton(sockets.AF_INET6, "::1")) == "::1")
+
+# ── resolução: só nomes que existem sem rede ────────────────────────────────
+confere("gethostbyname(localhost)", sockets.gethostbyname("localhost").startswith("127."))
+confere("gethostname devolve algo", sockets.gethostname().len() > 0)
+confere("getfqdn devolve algo", sockets.getfqdn().len() > 0)
+
+info = sockets.getaddrinfo("127.0.0.1", 80)
+confere("getaddrinfo devolve lista", info.len() > 0)
+confere("getnameinfo numérico",
+        sockets.getnameinfo(("127.0.0.1", 80), sockets.NI_NUMERICHOST | sockets.NI_NUMERICSERV)[0] == "127.0.0.1")
+
+confere("getservbyname(http) == 80", sockets.getservbyname("http") == 80)
+confere("getservbyport(80) == http", sockets.getservbyport(80) == "http")
+confere("getprotobyname(tcp) == 6", sockets.getprotobyname("tcp") == 6)
+
+# ── timeout padrão do módulo ────────────────────────────────────────────────
+sockets.setdefaulttimeout(5.0)
+confere("setdefaulttimeout/getdefaulttimeout", sockets.getdefaulttimeout() == 5.0)
+sockets.setdefaulttimeout(null)
+
+# ── interfaces de rede ──────────────────────────────────────────────────────
+ifs = sockets.if_nameindex()
+confere("if_nameindex lista interfaces", ifs.len() > 0)
+confere("if_nametoindex/if_indextoname (lo)", sockets.if_indextoname(sockets.if_nametoindex("lo")) == "lo")
+
+# ── socketpair: dois descritores ligados, sem porta ─────────────────────────
+par = sockets.socketpair()
+a = par[0]
+b = par[1]
+a.sendall("ping".encode())
+confere("socketpair entrega o dado", b.recv(16).decode() == "ping")
+b.sendall("pong".encode())
+confere("socketpair é bidirecional", a.recv(16).decode() == "pong")
+a.close()
+b.close()
+
+# ── TCP: create_server + create_connection ──────────────────────────────────
+srv = sockets.create_server(("127.0.0.1", 0))
+porta = srv.getsockname()[1]
+confere("create_server escolhe porta livre", porta > 0)
+
+cli = sockets.create_connection(("127.0.0.1", porta), timeout=5.0)
+conn = srv.accept()[0]
+cli.sendall("oi".encode())
+confere("create_connection fala com create_server", conn.recv(16).decode() == "oi")
+
+# MSG_PEEK: olha sem consumir
+conn.sendall("dado".encode())
+espiado = cli.recv(16, sockets.MSG_PEEK).decode()
+confere("recv com MSG_PEEK não consome", espiado == "dado" and cli.recv(16).decode() == "dado")
+
+# opções de socket
+cli.setsockopt(sockets.IPPROTO_TCP, sockets.TCP_NODELAY, 1)
+confere("setsockopt/getsockopt TCP_NODELAY", cli.getsockopt(sockets.IPPROTO_TCP, sockets.TCP_NODELAY) != 0)
+confere("getsockopt SO_TYPE == SOCK_STREAM", cli.getsockopt(sockets.SOL_SOCKET, sockets.SO_TYPE) == sockets.SOCK_STREAM)
+confere("getsockopt SO_ERROR limpo", cli.getsockopt(sockets.SOL_SOCKET, sockets.SO_ERROR) == 0)
+
+# shutdown de escrita: o outro lado lê fim de arquivo
+cli.shutdown(sockets.SHUT_WR)
+confere("shutdown(SHUT_WR) fecha o fluxo", conn.recv(16).decode() == "")
+
+cli.close()
+conn.close()
+srv.close()
+
+# ── UDP: sendto/recvfrom ────────────────────────────────────────────────────
+u1 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
+u2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
+u1.bind(("127.0.0.1", 0))
+alvo = u1.getsockname()
+u2.sendto("dgram".encode(), alvo)
+u1.settimeout(5.0)
+r = u1.recvfrom(64)
+confere("UDP sendto/recvfrom entrega", r[0].decode() == "dgram")
+confere("UDP recvfrom diz de onde veio", r[1][0] == "127.0.0.1")
+u1.close()
+u2.close()
+
+# ── erro de conexão é erro, não silêncio ────────────────────────────────────
+morto = sockets.socket()
+morto.settimeout(2.0)
+rc = morto.connect_ex(("127.0.0.1", 1))
+confere("connect_ex em porta fechada devolve errno", rc != 0)
+morto.close()
+
+recusou = false
+s2 = sockets.socket()
+s2.settimeout(2.0)
+try
+{
+    s2.connect(("127.0.0.1", 1))
+}
+catch (e)
+{
+    recusou = true
+}
+confere("connect em porta fechada levanta", recusou)
+s2.close()
+
+# ── relatório ───────────────────────────────────────────────────────────────
+post("")
+post("sockets:", ok, "checagens passaram")
+if falhas.len() > 0
+{
+    post("FALHARAM:", falhas.len())
+    for each f in falhas
+    {
+        post("  " + f)
+    }
+    sys.exit(1)
+}

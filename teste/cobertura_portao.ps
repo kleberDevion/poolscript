@@ -1,22 +1,29 @@
-# Cobertura como PORTÃO, com baseline POR ARQUIVO.
+# Cobertura como CATRACA, por arquivo. Só sobe.
 #
 # POR QUE ISTO EXISTE: `make cobertura` media e subia HTML como artefato.
 # Percentual agregado não decide nada — uma queda de 10 pontos num arquivo some
 # na média de 17. Sem baseline versionado, a próxima auditoria acha exatamente
 # os mesmos números, e ninguém consegue apontar QUANDO piorou.
 #
-# O que ele faz: lê o `cob/vm.info` que o `make cobertura` produziu, compara
-# arquivo por arquivo com `teste/cobertura_base.txt` e REPROVA se algum caiu
-# mais que a folga. Subir é livre e o baseline se atualiza com `--grava`.
+# E teve um erro pior, que este arquivo existe pra não repetir: a primeira
+# versão gravou como piso a MEDIÇÃO DO DIA, que já era o número degradado. Piso
+# no fundo do buraco não é portão, é carimbo no buraco.
 #
-#     make cobertura                              mede
-#     ./pool teste/cobertura_portao.ps            compara e reprova
-#     ./pool teste/cobertura_portao.ps --grava    adota a medição atual
+# Por isso são DUAS colunas por arquivo:
 #
-# NÃO é meta de percentual. Meta global vira número que se persegue enchendo
-# teste fácil; o que este portão garante é só isto: **o que já era coberto
-# continua coberto**. Subir o piso é decisão de quem escreve teste, não de um
-# número no Makefile.
+#   PISO  — o que já está coberto. Cair abaixo dele reprova.
+#   META  — o que a suíte em Python cobria (medida em `db0bcb6`, 2026-08-24,
+#           mesmo método). É o que se perdeu na migração pra fork/exec, e é
+#           dívida, não ambição. Não reprova; aparece em todo relatório até
+#           zerar, pra ninguém esquecer que existe.
+#
+# CATRACA: quando um arquivo SOBE, o piso é regravado na hora, sozinho. Ganho de
+# cobertura vira piso no mesmo instante em que acontece — não depende de alguém
+# lembrar de rodar `--grava`, e não dá pra subir hoje e perder amanhã.
+#
+#     make cobertura                              mede e cobra
+#     ./pool teste/cobertura_portao.ps            compara, cobra e cataca
+#     ./pool teste/cobertura_portao.ps --grava    adota tudo (piso E meta)
 #
 # A FOLGA existe porque a contagem de ramos oscila com o compilador e com o
 # ambiente (um `if` a mais numa macro do sistema muda o denominador). Sem ela o
@@ -27,6 +34,25 @@ import sys
 INFO = "cob/vm.info"
 BASE = "teste/cobertura_base.txt"
 FOLGA = 1.5        # pontos percentuais
+
+# Meta por arquivo: linha%/ramo% que a suíte em Python alcançava em `db0bcb6`.
+# Fonte: notas/AUDITORIA-ENGENHARIA.md §9, medido com o mesmo lcov.
+META = {
+    "poolscript_vm.c": [82.0, 53.4],
+    "ps_db.c":         [71.5, 48.9],
+    "ps_jinker.c":     [74.0, 52.1],
+    "ps_mongo.c":      [81.7, 40.8],
+    "ps_pkg.c":        [61.2, 41.8],
+    "ps_http.c":       [80.5, 64.2],
+    "ps_hash.c":       [95.4, 76.9],
+    "ps_regex.c":      [85.3, 64.9],
+    "main.c":          [70.8, 52.6],
+    "ps_qr.c":         [90.7, 69.0],
+    "ps_xlsx.c":       [84.3, 55.0],
+    "ps_compiler.c":   [93.3, 72.5],
+    "ps_parser.c":     [93.6, 67.1],
+    "ps_lexer.c":      [75.6, 67.5],
+}
 
 
 # Lê o .info do lcov e devolve {arquivo: [linha%, ramo%]}.
@@ -67,6 +93,13 @@ action le_info(caminho) {
         elif t == "end_of_record" {
             if arq != "" {
                 nome = arq.split("/")[-1]
+                # `.def` e `.h` entram no relatório do lcov com 0 linha
+                # executável e poluiriam o piso com um 0.0 permanente que nunca
+                # sobe. O portão é sobre unidade de compilação.
+                if not nome.endswith(".c") {
+                    arq = ""
+                    continue
+                }
                 pl = 0.0
                 pr = 0.0
                 if lf > 0 {
@@ -106,11 +139,18 @@ action le_base() {
 action grava_base(atual) {
     nomes = atual.keys()
     nomes.sort()
-    linhas = ["# Cobertura de referência, por arquivo: <arquivo> <linha%> <ramo%>",
+    linhas = ["# PISO de cobertura, por arquivo: <arquivo> <linha%> <ramo%>",
               "#",
-              "# Gerado por `./pool teste/cobertura_portao.ps --grava` a partir de",
-              "# cob/vm.info. NÃO é meta: é o piso do que já está coberto. Cair abaixo",
-              "# dele (fora da folga) reprova; subir é livre e regrava.",
+              "# CATRACA: o `teste/cobertura_portao.ps` regrava este arquivo SOZINHO",
+              "# toda vez que um arquivo sobe. Cair abaixo do que está aqui reprova o",
+              "# portão, com o nome do arquivo que caiu.",
+              "#",
+              "# Não confunda com META (a coluna da direita no relatório): meta é o que",
+              "# a suíte em Python cobria antes da migração, e está no próprio script.",
+              "# Este arquivo é só o piso do que existe hoje.",
+              "#",
+              "# Editar na mão pra BAIXAR um número é desligar o portão. Se a queda for",
+              "# legítima (código deletado), rode `--grava` de propósito.",
               ""]
     for each n in nomes {
         v = atual[n]
@@ -119,6 +159,34 @@ action grava_base(atual) {
     using open(BASE, "w") as f {
         f.write(("\n").join(linhas) + "\n")
     }
+}
+
+
+# Devolve a linha de dívida de um arquivo. O alvo é 100% de RAMO, pra TODOS os
+# arquivos — não só pros que têm número histórico.
+#
+# A primeira versão só listava quem estava em META, e com isso `ps_ast.c`,
+# `ps_guzer.c` e `ps_mail.c` sumiam do relatório: eles não tinham coluna na
+# medição do Python (estavam em zero lá também), então a ausência de meta os
+# tornava invisíveis justamente por serem os PIORES. Relatório que esconde o
+# pior arquivo é relatório que ensina a ignorá-lo.
+#
+# META continua aparecendo quando existe, como marco intermediário: é o ponto
+# onde a dívida da migração está paga. Não é o destino.
+action divida(nome, ramo_hoje) {
+    if ramo_hoje >= 100.0 - FOLGA {
+        return ""
+    }
+    falta = str(round(100.0 - ramo_hoje, 1))
+    marco = ""
+    if nome in META {
+        alvo = META[nome][1]
+        if ramo_hoje < alvo - FOLGA {
+            marco = "  [migracao: " + str(alvo) + "%]"
+        }
+    }
+    return ("   " + nome.ljust(18) + " ramo " + str(round(ramo_hoje, 1)).rjust(5)
+            + "%   faltam " + falta.rjust(5) + marco)
 }
 
 
@@ -180,14 +248,47 @@ if __name__ == "main" {
         }
     }
     if len(subiu) > 0 {
-        post("subiram:")
+        post("SUBIRAM (a catraca ja gravou o piso novo):")
         for each s in subiu {
             post("   ", s[0], str(round(s[1], 1)) + "% ->", str(round(s[2], 1)) + "%")
         }
     }
+
+    # A dívida da migração, arquivo por arquivo. Não reprova — aparece SEMPRE,
+    # até zerar. Enquanto esta lista existir, "cobertura ok" quer dizer só que
+    # não piorou hoje, não que está coberto.
+    # Do PIOR pro melhor: a ordem alfabética punha `main.c` (o segundo pior) no
+    # topo e `ps_pkg.c` (zero absoluto) no meio da lista, onde ninguém olha.
+    faltando = []
+    ordem = []
+    for each n in nomes {
+        ordem.append([atual[n][1], n])
+    }
+    ordem.sort()
+    for each par in ordem {
+        d = divida(par[1], par[0])
+        if d != "" {
+            faltando.append(d)
+        }
+    }
+    if len(faltando) > 0 {
+        post("")
+        post("FALTA PRA 100% DE RAMO — todos os arquivos, do pior pro melhor:")
+        post("(o marco [migracao] e onde a suite em Python ja estava)")
+        for each d in faltando {
+            post(d)
+        }
+    }
+
     if len(caiu) == 0 {
         post("")
         post("nenhum arquivo perdeu cobertura de ramo (folga de", str(FOLGA) + " pontos).")
+        # CATRACA: o que subiu vira piso AGORA. Se ficar pra depois, alguém
+        # perde o ganho no commit seguinte e o portão não tem como saber.
+        if len(subiu) > 0 or len(novos) > 0 {
+            grava_base(atual)
+            post("piso regravado em", BASE)
+        }
         sys.exit(0)
     }
     post("")

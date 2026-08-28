@@ -588,5 +588,106 @@ Por retorno sobre esforço, não por gravidade nominal:
 
 ---
 
-*Auditoria feita sem alterar o motor. O único arquivo criado foi
-`scripts/audita_exemplos_doc.ps` (auditor de exemplos da doc), não commitado.*
+## 9. A suíte em Python cobria MAIS que a de hoje
+
+Pergunta levantada depois da auditoria: entre a suíte antiga (pytest, apagada em
+`f90845d`) e a de hoje (C, `./testar`), qual cobre mais? Não havia resposta no
+repositório — `AUDITORIA-TESTES.md` registra que **cobertura nunca havia sido
+medida** antes de 2026-08-26, e o primeiro número (42,1% de ramo) já é da suíte
+em C. Então medi as duas, com o mesmo método.
+
+**Método** [V]: worktree em `db0bcb6` (2026-08-24 — último commit com
+`src/poolscript/` E `tests/`: 87 arquivos, 1300 funções de teste, 3066 casos
+coletados). Compilei o `pool` e a extensão CPython com `-O0 -g --coverage`,
+rodei `pytest tests/`, capturei com `lcov --rc branch_coverage=1`. Do lado de
+hoje, o mesmo `cob/vm.info` do §2. Os `*_bind.c` (que não existem no build de
+hoje) ficaram fora do total das duas colunas.
+
+| | suíte em **Python** (db0bcb6) | suíte em **C** (hoje) |
+|---|---|---|
+| casos | 3066 testes, **113 s** | 7852 casos, **73 s** |
+| linhas | **78,8%** (15669/19886) | 55,0% (11772/21388) |
+| funções | **83,8%** (1102/1315) | 54,9% (761/1385) |
+| **ramos** | **53,3%** (11774/22079) | **41,4%** (9987/24146) |
+
+Resultado: `3062 passed, 4 failed` (as 4 são `test_cli` de `git update` e
+`test_swagger`, que já batia no `SyntaxError` do bloco `:`).
+
+Por arquivo, é onde a diferença mora:
+
+| arquivo | Python linha/ramo | C hoje linha/ramo |
+|---|---|---|
+| `poolscript_vm.c` | **82,0 / 53,4** | 53,3 / 39,8 |
+| `ps_db.c` | **71,5 / 48,9** | 0 / 0 |
+| `ps_jinker.c` | **74,0 / 52,1** | 0 / 0 |
+| `ps_mongo.c` | **81,7 / 40,8** | 0 / 0 |
+| `ps_pkg.c` | **61,2 / 41,8** | 0 / 0 |
+| `ps_http.c` | **80,5 / 64,2** | 13,3 / 6,4 |
+| `ps_hash.c` | **95,4 / 76,9** | 41,5 / 37,7 |
+| `ps_regex.c` | **85,3 / 64,9** | 62,2 / 45,0 |
+| `main.c` | **70,8 / 52,6** | 22,7 / 16,6 |
+| `ps_qr.c` | 90,7 / 65,9 | 86,0 / **69,0** |
+| `ps_xlsx.c` | 84,3 / 55,0 | 81,1 / 53,2 |
+| `ps_compiler.c` | 93,3 / 72,5 | 91,5 / **70,5** |
+| `ps_parser.c` | 81,4 / 54,4 | **93,6 / 67,1** |
+| `ps_lexer.c` | 68,2 / 59,3 | **75,6 / 67,5** |
+| `ps_mail.c` | 0 / 0 | **2,8 / 0,6** |
+| `ps_guzer.c` | 0 / 0 | 0 / 0 |
+
+**Por que a antiga cobria mais, e o que isso quer dizer**
+
+- Ela testava **em processo**: `from poolscript import ...` alcançava banco,
+  jinker, http, pkgmgr e mongo com mock e loopback. A de hoje é 100%
+  fork/exec do `./pool`, e tudo que precisa de serviço foi empurrado pro
+  `teste/e2e/`, que até hoje não entrava em portão nenhum. Os cinco 0% do §2
+  **não são código novo sem teste — são teste que existia e foi perdido**.
+- Front-end é o contrário: `ps_parser.c` e `ps_lexer.c` estão melhor hoje
+  (93,6 vs 81,4 de linha), efeito dos geradores (`oraculo`, `robustez`,
+  `diferencial`). Ressalva honesta: nesse ponto o número do Python está
+  **subestimado** — os `.gcda` de `ps_parser/ps_lexer/ps_ast` da extensão
+  colidiram com os do bind e foram descartados, então esses três só contam o
+  caminho do binário.
+- **Quantidade de caso não é cobertura.** 7852 casos fixos cobrem menos que
+  3066 testes, porque 6891 deles (`oraculo` + `diferencial`) são snapshot de
+  expressão, que passam pelo mesmo caminho de código.
+
+Não é argumento para voltar ao Python: é a conta do que a migração custou em
+alcance, e a lista exata do que precisa ser reconstruído em `.ps`/C — começando
+pelos cinco arquivos em zero.
+
+---
+
+## 10. Estado dos achados em `6ca7def` (verificado)
+
+Depois desta auditoria entraram `febff9d` e `6ca7def`. Conferido rodando, não
+lendo o diff:
+
+**Fechado** — §3.1 parser com `PS_PARSE_PROF_MAX` (30 mil parênteses → erro de
+sintaxe limpo; 1500 níveis ainda passam) · §3.2 teto no texto **e** página de
+guarda `mmap`+`PROT_NONE` na fibra (`/fundo/300`, `/fundo/5000` e `/fundo/50000`
+respondem 200; o servidor sobrevive) · §3.3 ciclo profundo · §3.4 mail com
+`SSL_VERIFY_PEER` + `SSL_set1_host` e escape `PS_MAIL_TLS_INSEGURO=1` ·
+§3.5 `ps_random_bytes` na máscara WS · §3.6 semente de hash por processo
+(`PS_HASH_SEED` fixa) · §4.1 `vm/ps_assert.h` + `make check-debug`
+(**7852/7852 sob `-DPS_DEBUG`**) · §4.3 `make check-e2e-local` (**rc=0**) ·
+§4.9 auditor de exemplos no `make check` (**276 blocos, 0 recusados**) ·
+§2.2 `teste/cobertura_portao.ps` com baseline por arquivo (**rc=0**) ·
+replay de achado de fuzz versionado (`teste/fuzz_achados/crash-parser-profundo`).
+
+**Aberto** — §3.7 `/tmp/ps_lsp` 0755 · §3.8 pacotes sem versão/lockfile ·
+§4.4 clang-tidy/CodeQL · §4.5 `detect_leaks=0`, sem TSan, sem
+`__sanitizer_start_switch_fiber` (agora mais relevante: a pilha virou `mmap`) ·
+§4.6 zero benchmark (a era Python tinha `bench_async.sh`/`bench_webhook.sh`) ·
+§4.7 matriz de CI e `_Static_assert` no GMP · §4.8 `avisos` ainda com
+`-fsyntax-only`, sem `-Werror` · §4.10 ferramenta de usuário, `math`, `random`,
+CSPRNG · §4.11 opcode duplicado · §4.12 LICENSE/SECURITY/tags/SBOM ·
+§4.13 código morto de CPython · catálogo §5 inteiro menos I17.
+
+**Novo, pequeno:** `pool-debug` (3,2 MB, artefato de build) está *staged* e não
+está no `.gitignore`, ao lado de `pool-oom`/`pool-fuzz`/`pool-asan` que estão.
+
+---
+
+*Auditoria feita sem alterar o motor. Os arquivos criados foram
+`scripts/audita_exemplos_doc.ps` (auditor de exemplos da doc, já commitado em
+`febff9d`) e este relatório.*

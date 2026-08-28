@@ -1070,6 +1070,39 @@ const Caso CASOS_LINGUAGEM[] = {
   "import regex\n"
   "post(len(regex.findall(\"(?:ab)+\", \"ab\" * 400)))\n", "1", NULL, 0 },
 
+/* ── classe negada DENTRO de `[]`: `[\s\S]`, `[a\D]`, `[^\S]` ────────────────
+ * O motor RECUSAVA isso com "classe negada (\D \W \S) dentro de [] nao
+ * suportada". `[\s\S]` é o "qualquer coisa, inclusive \n" que todo mundo
+ * escreve — o buraco apareceu escrevendo ferramenta EM PoolScript, que é onde
+ * a linguagem deixa de ser hipótese.
+ *
+ * A negação não podia ser o flag da classe inteira: `[a\D]` não é
+ * "não (a ou dígito)", é "a ou não-dígito". Agora ela é materializada na hora
+ * da união. Os três esperados abaixo foram conferidos contra o `re` do Python. */
+{ "[\\s\\S] casa tudo, inclusive quebra de linha",
+  "import regex\n"
+  "post(regex.sub(\"/\\\\*[\\\\s\\\\S]*?\\\\*/\", \"-\", \"a/* x\\ny */b\"))\n",
+  "a-b", NULL, 0 },
+{ "[a\\D] é uniao com o complemento, nao negacao do conjunto",
+  "import regex\n"
+  "post(regex.findall(\"[a\\\\D]+\", \"ab12cd\"))\n",
+  "['ab', 'cd']", NULL, 0 },
+{ "[^\\S] é a dupla negacao — volta a ser \\s",
+  "import regex\n"
+  "post(regex.findall(\"[^\\\\S]\", \"a b\"))\n",
+  "[' ']", NULL, 0 },
+{ "[\\w\\S] e [\\d\\W] continuam unindo certo",
+  "import regex\n"
+  "post(regex.findall(\"[\\\\d\\\\W]+\", \"ab 12 cd\"))\n"
+  "post(len(regex.findall(\"[\\\\w\\\\S]\", \"ab!\")))\n",
+  "[' 12 ']\n3", NULL, 0 },
+{ "classe negada nao vaza pro proximo item da classe",
+  /* `[\Dx]` tem que ser o mesmo conjunto que `[x\D]`: a ordem não pode importar */
+  "import regex\n"
+  "post(regex.findall(\"[\\\\D5]+\", \"a1b5c\"))\n"
+  "post(regex.findall(\"[5\\\\D]+\", \"a1b5c\"))\n",
+  "['a', 'b5c']\n['a', 'b5c']", NULL, 0 },
+
 /* ── JWT: header grande nao pode invalidar token bom ────────────────────────
  * O header era decodificado num `unsigned char hdr[256]` fixo, e header de 256
  * bytes e' rotina: `kid`, `jku` e `x5c` sao campos normais de emissor de

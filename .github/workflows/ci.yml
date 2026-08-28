@@ -37,16 +37,12 @@ jobs:
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
             libmongoc-dev libbson-dev
       - run: make pool testar
-      # `make check` já encadeia suíte + metadata + audita_doc + audita_c +
-      # exemplos da doc + LSP + analisador, e cada um sai != 0 quando acha algo.
+      # `make check` é o portão INTEIRO e é o mesmo comando que roda na máquina:
+      # suíte + metadata + audita_doc + audita_c + exemplos da doc + replay de
+      # fuzz + LSP + analisador + check-debug (invariantes ligadas) + e2e local.
+      # Nada aqui é etapa à parte de propósito — CI que cobra menos que o gate
+      # local é CI que ensina a rodar menos.
       - run: make check
-      # A MESMA suíte com as invariantes do motor ligadas (-DPS_DEBUG). Sem
-      # isto, tudo que o portão acha é MORTE; com isto, acha estado errado.
-      - run: make check-debug
-      # E2E que não precisa de serviço externo. É o que tira ps_jinker.c,
-      # ps_db.c(sqlite) e ps_guzer.c dos 0% de cobertura — eles estavam em zero
-      # porque só o e2e os toca e o e2e não entrava em portão nenhum.
-      - run: make check-e2e-local
 
   # ── todo push e todo PR: o barato de robustez ──────────────────────────────
   propriedade:
@@ -105,10 +101,12 @@ jobs:
           path: teste/fuzz_achados/
           if-no-files-found: ignore
 
-  # ── cobertura: número por arquivo, guardado como artefato ──────────────────
+  # ── cobertura: CATRACA, em todo push ───────────────────────────────────────
+  # Estava só de madrugada, e o preço foi este: a cobertura caiu de 53,3% de
+  # ramo (suíte em Python) pra 41,4% sem ninguém ver, porque nada cobrava.
+  # Agora roda em todo push e o portão só deixa SUBIR.
   cobertura:
-    name: cobertura (linha E ramo)
-    if: github.event_name == 'schedule'
+    name: cobertura (catraca por arquivo)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

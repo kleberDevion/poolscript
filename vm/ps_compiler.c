@@ -24,136 +24,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* ── opcodes: precisam bater com poolscript_vm.c ────────────────────────── */
+/* ── opcodes ─────────────────────────────────────────────────────────────
+ * A lista vive em `ps_opcodes.def` e é a MESMA que a VM inclui. Antes eram
+ * dois enums escritos à mão, e nada no build conferia que batiam. */
 enum {
-    OP_LOAD_CONST = 0, OP_LOAD_LOCAL = 1, OP_STORE_LOCAL = 2,
-    OP_LOAD_GLOBAL = 3, OP_STORE_GLOBAL = 4,
-    OP_ADD = 5, OP_SUB = 6, OP_MUL = 7, OP_DIV = 8, OP_MOD = 9, OP_NEG = 10,
-    OP_LT = 11, OP_GT = 12, OP_LE = 13, OP_GE = 14, OP_EQ = 15, OP_NE = 16,
-    OP_JUMP = 17, OP_JUMP_IF_FALSE = 18, OP_POP_TOP = 19,
-    OP_CALL = 20, OP_RETURN = 21, OP_MAKE_FUNCTION = 22,
-    OP_BIT_OR = 23, OP_BIT_XOR = 24, OP_BIT_AND = 25,
-    OP_LSHIFT = 26, OP_RSHIFT = 27, OP_BIT_NOT = 28,
-    OP_HALT = 29,
-    OP_BUILD_LIST = 30, OP_BUILD_DICT = 31,
-    OP_INDEX_GET = 32, OP_INDEX_SET = 33,
-    OP_ITER_NEXT = 34, OP_DUP = 35,
-    OP_BUILD_STR = 36, OP_BUILD_TUPLE = 37, OP_SLICE = 38,
-    OP_JUMP_IF_SET = 39,
-    OP_LOAD_NAME = 40, OP_STORE_NAME = 41, OP_CALL_KW = 42,
-    OP_SETUP_TRY = 43, OP_POP_TRY = 44, OP_RAISE = 45, OP_PUSH_ERR_TYPE = 46,
-    OP_JUMP_IF_TRUE = 47, OP_LEN = 48, OP_HAS_KEY = 49,
-    OP_MAKE_CLASS = 50, OP_GET_MEMBER = 51, OP_SET_MEMBER = 52, OP_LOAD_SELF = 53, OP_CALL_BASE = 54, OP_DUP2 = 55, OP_IMPORT_MOD = 56,
-    OP_NOT = 67, OP_TO_BOOL = 68, OP_COERCE_DECL = 69, OP_COERCE_RET = 70, OP_RERAISE = 71,
-    OP_SKIP_IF_IMPORT = 72,   /* pula o bloco de run_selfwith_ quando importando */
-    OP_IS = 57, OP_IN = 58, OP_LOAD_TIPO = 59,
-    OP_COUNT = 60, OP_COUNT_PARES = 61, OP_CHECK_NONNULL = 62,
-    OP_MAKE_MODEL = 63, OP_UNPACK = 64, OP_YIELD = 65, OP_CLOSE_SE_TEM = 66,
-    OP_MAKE_ENUM = 73,  /* enum Nome { ... } — descritor em vm->enum_* */
-    /* fim de bloco: apaga (V_UNSET) os locais/globais nascidos dentro do bloco,
-     * pra variável de bloco não vazar pro escopo de fora (paridade com o interp) */
-    OP_CLEAR_LOCAL = 74, OP_CLEAR_GLOBAL = 75, OP_AWAIT = 76,
-    /* `base(nome=v)`: troca a classe pai no topo pelo `__init__` dela
-     * LIGADO ao self, pra a chamada seguir pelo OP_CALL_KW normal. */
-    OP_LOAD_BASE_INIT = 77,
-    /* closure: variável de fora capturada por action aninhada.
-     * MAKE_CELL põe uma célula no slot local (guardando o que já estava lá,
-     * que pode ser o argumento); CELL_GET/CELL_SET acessam o valor DENTRO da
-     * célula; LOAD/STORE_UPVAL acessam a célula que veio de fora; MAKE_CLOSURE
-     * monta o valor de função já com as células capturadas. */
-    OP_MAKE_CELL = 78, OP_CELL_GET = 79, OP_CELL_SET = 80,
-    OP_LOAD_UPVAL = 81, OP_STORE_UPVAL = 82, OP_MAKE_CLOSURE = 83,
-    /* Variantes com o mesmo contrato do LOAD_NAME/STORE_NAME (slot na pilha,
-     * índice do global no arg): valem pros nomes atribuídos sem tipo, que
-     * ainda podem estar falando de uma global. */
-    OP_CELL_GET_NAME = 84, OP_CELL_SET_NAME = 85,
-    /* `for each i in range(...)` sem construir lista: a pilha carrega
-     * [ini, fim, passo, i] e o item sai por aritmética. */
-    OP_ITER_RANGE = 86
+#define PS_OP(nome, num, texto) OP_##nome = (num),
+#include "ps_opcodes.def"
+#undef PS_OP
+    OP__ULTIMO
 };
 
+/* Nome pro desmontador. O texto vem da terceira coluna do `.def` porque nem
+ * todo opcode se imprime com o próprio sufixo: OP_IS sai como "IS_OP". */
 const char *ps_op_nome(int32_t op)
 {
     switch (op) {
-        case OP_LOAD_CONST: return "LOAD_CONST";
-        case OP_LOAD_LOCAL: return "LOAD_LOCAL";
-        case OP_STORE_LOCAL: return "STORE_LOCAL";
-        case OP_LOAD_GLOBAL: return "LOAD_GLOBAL";
-        case OP_STORE_GLOBAL: return "STORE_GLOBAL";
-        case OP_ADD: return "ADD";  case OP_SUB: return "SUB";
-        case OP_MUL: return "MUL";  case OP_DIV: return "DIV";
-        case OP_MOD: return "MOD";  case OP_NEG: return "NEG";
-        case OP_LT: return "LT";    case OP_GT: return "GT";
-        case OP_LE: return "LE";    case OP_GE: return "GE";
-        case OP_EQ: return "EQ";    case OP_NE: return "NE";
-        case OP_JUMP: return "JUMP";
-        case OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
-        case OP_POP_TOP: return "POP_TOP";
-        case OP_CALL: return "CALL";
-        case OP_RETURN: return "RETURN";
-        case OP_MAKE_FUNCTION: return "MAKE_FUNCTION";
-        case OP_BIT_OR: return "BIT_OR"; case OP_BIT_XOR: return "BIT_XOR";
-        case OP_BIT_AND: return "BIT_AND";
-        case OP_LSHIFT: return "LSHIFT"; case OP_RSHIFT: return "RSHIFT";
-        case OP_BIT_NOT: return "BIT_NOT";
-        case OP_HALT: return "HALT";
-        case OP_BUILD_LIST: return "BUILD_LIST";
-        case OP_BUILD_DICT: return "BUILD_DICT";
-        case OP_INDEX_GET: return "INDEX_GET";
-        case OP_INDEX_SET: return "INDEX_SET";
-        case OP_ITER_NEXT: return "ITER_NEXT";
-        case OP_DUP: return "DUP";
-        case OP_BUILD_STR: return "BUILD_STR";
-        case OP_BUILD_TUPLE: return "BUILD_TUPLE";
-        case OP_SLICE: return "SLICE";
-        case OP_JUMP_IF_SET: return "JUMP_IF_SET";
-        case OP_LOAD_NAME: return "LOAD_NAME";
-        case OP_STORE_NAME: return "STORE_NAME";
-        case OP_CALL_KW: return "CALL_KW";
-        case OP_SETUP_TRY: return "SETUP_TRY";
-        case OP_POP_TRY: return "POP_TRY";
-        case OP_RAISE: return "RAISE";
-        case OP_PUSH_ERR_TYPE: return "PUSH_ERR_TYPE";
-        case OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
-        case OP_LEN: return "LEN";
-        case OP_HAS_KEY: return "HAS_KEY";
-        case OP_MAKE_CLASS: return "MAKE_CLASS";
-        case OP_GET_MEMBER: return "GET_MEMBER";
-        case OP_SET_MEMBER: return "SET_MEMBER";
-        case OP_LOAD_SELF: return "LOAD_SELF";
-        case OP_CALL_BASE: return "CALL_BASE";
-        case OP_LOAD_BASE_INIT: return "LOAD_BASE_INIT";
-        case OP_MAKE_CELL: return "MAKE_CELL";
-        case OP_CELL_GET: return "CELL_GET";
-        case OP_CELL_SET: return "CELL_SET";
-        case OP_LOAD_UPVAL: return "LOAD_UPVAL";
-        case OP_STORE_UPVAL: return "STORE_UPVAL";
-        case OP_MAKE_CLOSURE: return "MAKE_CLOSURE";
-        case OP_CELL_GET_NAME: return "CELL_GET_NAME";
-        case OP_CELL_SET_NAME: return "CELL_SET_NAME";
-        case OP_ITER_RANGE: return "ITER_RANGE";
-        case OP_DUP2: return "DUP2";
-        case OP_IMPORT_MOD: return "IMPORT_MOD";
-        case OP_IS: return "IS_OP";
-        case OP_IN: return "IN_OP";
-        case OP_LOAD_TIPO: return "LOAD_TIPO";
-        case OP_NOT: return "NOT";
-        case OP_COERCE_DECL: return "COERCE_DECL";
-        case OP_COERCE_RET: return "COERCE_RET";
-        case OP_RERAISE: return "RERAISE";
-        case OP_SKIP_IF_IMPORT: return "SKIP_IF_IMPORT";
-        case OP_TO_BOOL: return "TO_BOOL";
-        case OP_COUNT: return "COUNT";
-        case OP_COUNT_PARES: return "COUNT_PARES";
-        case OP_CHECK_NONNULL: return "CHECK_NONNULL";
-        case OP_MAKE_MODEL: return "MAKE_MODEL";
-        case OP_MAKE_ENUM: return "MAKE_ENUM";
-        case OP_UNPACK: return "UNPACK";
-        case OP_YIELD: return "YIELD";
-        case OP_CLOSE_SE_TEM: return "CLOSE_SE_TEM";
-        case OP_CLEAR_LOCAL: return "CLEAR_LOCAL";
-        case OP_CLEAR_GLOBAL: return "CLEAR_GLOBAL";
-        case OP_AWAIT: return "AWAIT";
+#define PS_OP(nome, num, texto) case OP_##nome: return texto;
+#include "ps_opcodes.def"
+#undef PS_OP
+        default: break;
     }
     return "?";
 }

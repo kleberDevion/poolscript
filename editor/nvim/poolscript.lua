@@ -96,14 +96,29 @@ vim.diagnostic.config({
   severity_sort = true,
 })
 
--- ── edição direta: Ctrl+S salva, o arquivo abre pronto pra digitar ──────────
+-- ── modo de edição permanente ───────────────────────────────────────────────
 --
--- O padrão do Vim é o que confunde: o arquivo abre em modo normal, onde as
--- teclas são comandos e não texto, e gravar é `:w`. Aqui o arquivo já abre em
--- inserção e o Ctrl+S grava, como em qualquer outro editor.
+-- O editor fica SEMPRE em modo de edição: toda tecla escreve texto, nenhuma
+-- vira comando. É daí que vinha o conflito — no Vim padrão, uma tecla solta no
+-- modo normal apaga a linha, cola, desfaz, e sem avisar que fez isso.
 --
--- Os comandos do Vim continuam todos lá: `<Esc>` sai da inserção e devolve o
--- modo normal (`:q` pra sair, `u` pra desfazer, `dd` pra apagar a linha).
+--   Ctrl+S   salva
+--   Ctrl+Z   sai do modo de edição; outro Ctrl+Z volta pra ele
+--
+-- Nenhuma outra tecla tira você da edição: o próprio `<Esc>` devolve o cursor
+-- pra digitação. Os comandos do Vim não foram apagados — eles ficam do outro
+-- lado do Ctrl+Z, onde você só chega de propósito. Lá valem `:w`, `:q`, `u`,
+-- `dd` e o resto, como sempre.
+
+-- Sair da inserção recua o cursor um caractere. Como aqui a saída acontece e se
+-- desfaz sozinha, sem isso cada <Esc> esbarrado andaria com o ponto de
+-- digitação pra trás. `onemore` deixa o cursor parar depois do último caractere.
+vim.opt.virtualedit = "onemore"
+
+local function editavel(buf)
+  local bo = vim.bo[buf]
+  return bo.buftype == "" and bo.modifiable and not bo.readonly
+end
 
 local function salvar()
   -- Buffer sem nome não pode ser gravado — em vez de estourar o `E32: Nenhum
@@ -129,9 +144,70 @@ vim.keymap.set({ "n", "i", "v" }, "<C-s>", salvar, { desc = "salva o arquivo (Ct
 vim.api.nvim_create_autocmd("BufWinEnter", {
   desc = "abre o arquivo já em modo de edição",
   callback = function(args)
-    local bo = vim.bo[args.buf]
-    if bo.buftype == "" and bo.modifiable and not bo.readonly then
+    if editavel(args.buf) then
       vim.cmd("startinsert")
+    end
+  end,
+})
+
+-- O Ctrl+Z é a ÚNICA porta de saída da edição. A bandeira distingue a saída que
+-- ele pediu daquela que aconteceu sozinha (um <Esc> esbarrado, um comando que
+-- terminou); só a primeira é respeitada.
+local saindo_de_proposito = false
+
+-- As teclas que saíam da edição sem querer ficam inertes AQUI, antes de sair —
+-- deixar sair e voltar depois abre uma fresta em que o Vim recua o cursor e
+-- ainda processa a tecla seguinte como comando.
+-- Com o menu de completion aberto o <Esc> ainda serve pra fechá-lo.
+vim.keymap.set("i", "<Esc>", function()
+  return vim.fn.pumvisible() == 1 and "<C-e>" or ""
+end, { expr = true, desc = "não sai da edição (fecha o completion, se houver)" })
+vim.keymap.set("i", "<C-c>", "<Nop>", { desc = "não sai da edição" })
+
+vim.keymap.set("i", "<C-z>", function()
+  saindo_de_proposito = true
+  vim.cmd("stopinsert")
+end, { desc = "sai do modo de edição" })
+
+-- Voltar pra edição tem um detalhe: no modo normal o cursor fica SOBRE um
+-- caractere, não entre dois, então um `startinsert` seco começaria a digitar uma
+-- posição à esquerda de onde você parou. O `a` insere DEPOIS do caractere sob o
+-- cursor, que é exatamente o ponto de onde a edição saiu — mas só quando o
+-- cursor continua lá; se você andou pelo modo normal, quem manda é a posição
+-- nova, e aí é `i` mesmo.
+--
+-- As teclas vão pela fila (`feedkeys`) de propósito: um `:normal! gi` fecharia a
+-- inserção ao terminar o comando, o InsertLeave chamaria esta função de novo e o
+-- editor travava em laço — foi o que aconteceu no primeiro teste.
+local function entra_na_edicao()
+  local marca = vim.api.nvim_buf_get_mark(0, "^")
+  local atual = vim.api.nvim_win_get_cursor(0)
+  local tecla = (marca[1] == atual[1] and marca[2] == atual[2] + 1) and "a" or "i"
+  vim.api.nvim_feedkeys(tecla, "n", false)
+end
+
+-- No modo normal o Ctrl+Z do Vim suspende o processo e o editor "some" da tela.
+-- Aqui ele faz o contrário do de cima: devolve a digitação.
+vim.keymap.set("n", "<C-z>", function()
+  if editavel(0) then
+    entra_na_edicao()
+  end
+end, { desc = "volta pro modo de edição" })
+
+vim.api.nvim_create_autocmd("InsertLeave", {
+  desc = "só o Ctrl+Z tira do modo de edição; o resto volta pra ele",
+  callback = function(args)
+    if saindo_de_proposito then
+      saindo_de_proposito = false
+      return
+    end
+    if editavel(args.buf) then
+      -- agendado: dentro do próprio InsertLeave o `startinsert` seria descartado
+      vim.schedule(function()
+        if vim.api.nvim_get_mode().mode == "n" and editavel(0) then
+          entra_na_edicao()
+        end
+      end)
     end
   end,
 })

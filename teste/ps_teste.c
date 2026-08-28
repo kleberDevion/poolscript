@@ -68,6 +68,7 @@ static const Grupo GRUPOS[] = {
     { "equivalencia", CASOS_EQUIVALENCIA, 0 },
     { "oraculo",   CASOS_ORACULO,   0 },
     { "robustez",  CASOS_ROBUSTEZ,  0 },
+    { "libs",      CASOS_LIBS,      0 },
 };
 
 /* preenchido em tempo de execução (os `extern int` vivem nos casos_*.c) */
@@ -83,6 +84,7 @@ static int tamanho_do_grupo(const char *g)
     if (!strcmp(g, "equivalencia")) return NC_EQUIVALENCIA;
     if (!strcmp(g, "oraculo"))   return NC_ORACULO;
     if (!strcmp(g, "robustez"))  return NC_ROBUSTEZ;
+    if (!strcmp(g, "libs"))      return NC_LIBS;
     return 0;
 }
 
