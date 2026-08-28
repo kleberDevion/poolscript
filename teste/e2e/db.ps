@@ -131,30 +131,49 @@ action exercita(nome, drv, porta) {
     cur.execute("DROP TABLE t")
     con.commit()
 
-    # CURSOR FECHADO — divergência do DB-API, registrada em notas/TAREFAS.md.
+    # CURSOR FECHADO — contrato decidido em 28/08: `close()` fecha de verdade.
     #
-    # Aqui `close()` libera o statement e um `execute()` seguinte simplesmente
-    # prepara outro e funciona. No DB-API (PEP 249, e é o que o `sqlite3` do
-    # Python faz) usar cursor fechado levanta `ProgrammingError`.
+    # Antes, `close()` só liberava o statement e um `execute()` seguinte
+    # preparava outro e funcionava. Este teste travou aquele comportamento como
+    # ARMADILHA — não fingia que levantava (nada de falso verde), e reprovaria
+    # no dia em que alguém implementasse o erro. Foi o que aconteceu: disparou,
+    # e esta é a atualização que ele obrigou.
     #
-    # Não é corrupção: conferido, não há ponteiro solto — o cursor reabre. É
-    # decisão de contrato, e contrato é dele.
+    # O tipo é `DatabaseError` e não `ProgrammingError`: o PEP 249 pede o
+    # segundo, mas ele não existe nesta linguagem, e criar tipo de exceção novo
+    # é decisão de API.
     #
-    # O teste trava o comportamento ATUAL de propósito. Assim ele não é falso
-    # verde (não finge que levanta) e vira armadilha: no dia em que alguém
-    # implementar o erro do DB-API, esta linha reprova e obriga a atualizar a
-    # doc junto.
+    # As QUATRO operações têm que recusar, não só o `execute` — um `fetchall`
+    # depois do `close()` lendo o resultado velho é dado obsoleto entregue como
+    # atual, que é pior que erro.
     cur.close()
-    reabriu = false
-    try {
-        cur.execute("SELECT 1")
-        reabriu = true
+    for each op in ["execute", "fetchall", "fetchone", "fetchmany"] {
+        levantou = false
+        tipo = ""
+        try {
+            if op == "execute" {
+                cur.execute("SELECT 1")
+            }
+            elif op == "fetchall" {
+                cur.fetchall()
+            }
+            elif op == "fetchone" {
+                cur.fetchone()
+            }
+            else {
+                cur.fetchmany(1)
+            }
+        }
+        catch (e) {
+            levantou = true
+            tipo = str(e)
+        }
+        confere(nome + ": " + op + "() depois de close() recusa", levantou)
+        confere(nome + ": e o erro cita o cursor fechado", "fechado" in tipo)
     }
-    catch (e) {
-        reabriu = false
-    }
-    confere(nome + ": cursor fechado REABRE (diverge do DB-API — ver TAREFAS)",
-            reabriu)
+    # fechar duas vezes continua válido: nenhum DB-API trata isso como erro
+    cur.close()
+    confere(nome + ": close() duas vezes é inofensivo", true)
 
     con.close()
     # e a conexão fechada duas vezes não pode quebrar

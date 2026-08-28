@@ -297,11 +297,6 @@ memcheck: pool
 # Entra no `make check` com poucas rodadas (é barato: 15 mil checagens em 3 s) e
 # roda FUNDO no noturno, com a semente do dia. Achado vem com o contraexemplo
 # encolhido e a semente pra repetir.
-LEIS_N ?= 200
-LEIS_SEMENTE ?=
-leis: pool
-	@nice -n 19 ./pool teste/leis.ps $(LEIS_N) $(LEIS_SEMENTE)
-
 BENCH ?=
 bench: pool
 	@nice -n 19 ./pool teste/bench.ps $(BENCH)
@@ -499,10 +494,12 @@ propriedade: pool
 # A única família de teste onde não existe valor esperado gravado: cada lei
 # vale pra QUALQUER valor sorteado, então ela não encoda a saída de ontem —
 # que é o defeito estrutural do oráculo e do diferencial (fotografia).
+# `nice -n 19` porque a máquina de desenvolvimento trava com carga, e este
+# alvo entrou no `make check`, que roda o tempo todo.
 LEIS_N ?= 300
 LEIS_SEMENTE ?= 1
 leis: pool
-	@./pool teste/leis.ps $(LEIS_N) $(LEIS_SEMENTE)
+	@nice -n 19 ./pool teste/leis.ps $(LEIS_N) $(LEIS_SEMENTE)
 
 .PHONY: leis
 

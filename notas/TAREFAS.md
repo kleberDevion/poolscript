@@ -94,25 +94,29 @@ faltam duas coisas:
 | 2.3 | §3.6 semente de hash por processo | teste em C: dois processos, `hash_str` da mesma chave, valores diferentes |
 | 2.4 | §4.11 nada impede a lista de opcodes de se duplicar de novo | regra no `scripts/audita_c.ps`: `OP_X = <número>` fora do `.def` reprova |
 
-## 2c. Cursor de banco fechado REABRE — decisão de contrato dele
+## 2c. Cursor de banco fechado — DECIDIDO (28/08)
 
-`cur.close()` libera o statement, e um `cur.execute(...)` seguinte prepara
-outro e funciona normalmente. Conferido nos dois drivers (postgres e mysql).
+Era: `cur.close()` só liberava o statement, e um `execute()` seguinte preparava
+outro e funcionava. Divergia do DB-API (PEP 249), onde operar cursor fechado é
+`ProgrammingError`.
 
-No DB-API (PEP 249) isso é `ProgrammingError`, e é o que o `sqlite3` do Python
-faz: *"Cannot operate on a closed cursor."*
+Decisão do dono: **fechado é fechado**. `execute`, `fetchall`, `fetchone` e
+`fetchmany` recusam depois do `close()`. `close()` duas vezes continua válido —
+nenhum DB-API trata isso como erro.
 
-**Não é corrupção** — não há ponteiro solto, o cursor simplesmente reabre. É
-contrato, e contrato é dele. As duas saídas:
+O tipo é `DatabaseError`, não `ProgrammingError`: o segundo não existe nesta
+linguagem, e criar tipo de exceção novo é decisão de API à parte.
 
-1. como está (fechar é só liberar recurso; reusar reabre) — precisa de UMA
-   frase em `docs/psodbc/DbCursor/close/close.md` dizendo isso, porque hoje
-   quem vem do Python assume o contrário;
-2. levantar como o DB-API — marca o cursor como fechado e recusa.
+As quatro operações, e não só o `execute`: um `fetchall` depois do `close()`
+lendo o resultado velho entrega dado obsoleto como se fosse atual, que é pior
+que erro.
 
-`teste/e2e/db.ps` trava o comportamento ATUAL de propósito: não finge que
-levanta (não é falso verde) e vira armadilha — no dia em que alguém
-implementar o erro, o teste reprova e obriga a atualizar a doc junto.
+**Como isto foi pego, que é o ponto:** o teste anterior travava o comportamento
+ANTIGO com o nome explícito "cursor fechado REABRE (diverge do DB-API)". Não
+era falso verde — não fingia que levantava — e virou armadilha: quando o motor
+mudou, ele reprovou e obrigou a atualizar teste e registro juntos. Travar
+comportamento conhecido-como-errado, com o nome dizendo isso, é melhor que
+deixar o caso de fora.
 
 ---
 
