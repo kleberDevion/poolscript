@@ -63,6 +63,9 @@ jobs:
       # semente fixa vira exemplo congelado, que é o que ele veio substituir.
       # O número aparece no log, então um achado é sempre repetível.
       - run: make propriedade PROP_N=400 PROP_SEMENTE=$(date +%j)
+      # As LEIS, fundo e com semente do DIA — mesma razão do propriedade: lei
+      # com semente fixa vira exemplo congelado, que é o que ela veio substituir.
+      - run: make leis LEIS_N=5000 LEIS_SEMENTE=$(date +%j)
       # As LEIS: a única suíte sem valor esperado gravado. Mesma regra de
       # semente; o comando de repetição sai no log do próprio script.
       - run: make leis LEIS_N=300 LEIS_SEMENTE=$(date +%j)

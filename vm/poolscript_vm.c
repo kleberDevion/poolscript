@@ -3615,6 +3615,93 @@ static int drena_gerador(VM *vm, Value g, Value *out)
     return 0;
 }
 
+/* `tup(x)` — o mesmo que `list(x)`, mas o resultado é TUPLA.
+ *
+ * POR QUE ELE PASSOU A EXISTIR: `NOME_TIPO` declara dez tipos e `type((1,2))`
+ * responde `"tup"`, mas só CINCO deles eram chamáveis como conversão (`str`,
+ * `int`, `flo`, `bool`, `list`). `tup(...)` e `dict(...)` davam "variável não
+ * definida" — o nome que o próprio motor imprime não existia como global.
+ *
+ * Achado escrevendo a LEI "lista vira tupla e volta" (`list(tup(l)) == l`) em
+ * `teste/leis.ps`: enunciar a regra obrigou a nomear a conversão, e aí a falta
+ * apareceu. Nenhum dos 7903 casos fixos tinha topado com isso. */
+static int nativa_tup(VM *vm, Value *args, int n, Value *out)
+{
+    if (n > 1) BERRO(vm, "SomeValueUnexpected", "tup() espera 0 ou 1 argumento");
+    PSList *l;
+    if (n == 0) {
+        l = lista_com_cap(vm, 0, OBJ_TUPLE);
+        if (!l) BERRO(vm, "MemoryError", "sem memoria em tup()");
+        *out = MK_OBJ(l);
+        return 0;
+    }
+    if (EH_GERADOR(args[0])) {
+        /* dreno como lista e converto: o gerador só pode ser consumido uma vez */
+        Value tmp;
+        if (drena_gerador(vm, args[0], &tmp) != 0) return -1;
+        PSList *src = (PSList *)tmp.as.obj;
+        src->obj.type = OBJ_TUPLE;
+        *out = tmp;
+        return 0;
+    }
+    int tam = iteravel_tam(&args[0]);
+    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: tup() nao itera este tipo");
+    l = lista_com_cap(vm, tam, OBJ_TUPLE);
+    if (!l) BERRO(vm, "MemoryError", "sem memoria em tup()");
+    /* no `out` ANTES do laço: se alocar um item disparar o GC, ela precisa
+     * estar alcançável ou vira lixo no meio do caminho (mesma razão do list) */
+    *out = MK_OBJ(l);
+    for (int i = 0; i < tam; i++) {
+        Value item;
+        if (iteravel_item(vm, &args[0], i, &item) != 0) BERRO(vm, "MemoryError", "sem memoria em tup()");
+        l->itens[i] = item;
+        l->len = i + 1;
+    }
+    return 0;
+}
+
+/* `dict(x)` — mesma lacuna do `tup()`.
+ *
+ * Sem argumento: dict vazio. Com um dict: CÓPIA rasa. Com uma sequência de
+ * pares (`[[k, v], ...]`): monta a partir deles. Não invento terceira forma —
+ * essas três são as únicas sem ambiguidade, e são as do Python. */
+static int nativa_dict(VM *vm, Value *args, int n, Value *out)
+{
+    if (n > 1) BERRO(vm, "SomeValueUnexpected", "dict() espera 0 ou 1 argumento");
+    PSDict *d = novo_dict(vm, 8);
+    if (!d) BERRO(vm, "MemoryError", "sem memoria em dict()");
+    *out = MK_OBJ(d);                     /* alcançável antes de qualquer alocação */
+    if (n == 0) return 0;
+
+    if (EH_DICT(args[0])) {
+        PSDict *o = COMO_DICT(args[0]);
+        /* `usados` percorre o denso INTEIRO (vivas + removidas) e `estado != 1`
+         * pula as removidas — é o mesmo laço do coletor (`gct_dict`). Usar
+         * `count` aqui pararia cedo e a cópia sairia furada num dict que já
+         * sofreu remoção. */
+        for (int i = 0; i < o->usados; i++) {
+            if (o->entradas[i].estado != 1) continue;
+            if (dict_set(vm, d, &o->entradas[i].chave, &o->entradas[i].valor) != 0)
+                BERRO(vm, "MemoryError", "sem memoria em dict()");
+        }
+        return 0;
+    }
+
+    int tam = iteravel_tam(&args[0]);
+    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: dict() nao itera este tipo");
+    for (int i = 0; i < tam; i++) {
+        Value par;
+        if (iteravel_item(vm, &args[0], i, &par) != 0) BERRO(vm, "MemoryError", "sem memoria em dict()");
+        if (!EH_SEQ(par) || iteravel_tam(&par) != 2)
+            BERRO(vm, "SomeValueUnexpected", "dict() espera pares [chave, valor]");
+        Value k, v;
+        if (iteravel_item(vm, &par, 0, &k) != 0 || iteravel_item(vm, &par, 1, &v) != 0)
+            BERRO(vm, "MemoryError", "sem memoria em dict()");
+        if (dict_set(vm, d, &k, &v) != 0) BERRO(vm, "MemoryError", "sem memoria em dict()");
+    }
+    return 0;
+}
+
 static int nativa_list(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 1) BERRO(vm, "SomeValueUnexpected", "list() espera 0 ou 1 argumento");
@@ -17853,6 +17940,8 @@ static Builtin BUILTINS[] = {
     { "chr", nativa_chr, NULL },
     { "range", nativa_range, NULL },
     { "list", nativa_list, NULL },
+    { "tup", nativa_tup, NULL },
+    { "dict", nativa_dict, NULL },
     { "sum", nativa_sum, NULL },
     { "min", nativa_min, NULL },
     { "max", nativa_max, NULL },

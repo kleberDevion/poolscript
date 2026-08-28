@@ -47,7 +47,7 @@ semente = 1
 # `semente % 2` não sorteava nada, decidia por turnos.
 action rnd(n) {
     semente = (semente * 1103515245 + 12345) % 2147483648
-    if n <= 0 {
+    if (n <= 0) {
         return 0
     }
     return int(semente / 65536) % n
@@ -264,7 +264,31 @@ LEIS = [
      "A > 9007199254740992 or A < (-9007199254740992) or int(flo(A)) == A"],
     ["i", "converter para o próprio tipo não muda", "int(A) == A"],
     ["t", "texto vira lista de caracteres e volta", "(\"\").join(list(A)) == A"],
+    # Esta lei achou que `tup()` e `dict()` NÃO EXISTIAM como conversão: dos dez
+    # nomes de `NOME_TIPO`, só cinco eram chamáveis, e `type((1,2))` respondia
+    # "tup" pra um nome que dava "variável não definida". Enunciar a regra
+    # obrigou a nomear a conversão; nenhum dos 7903 casos fixos tinha topado.
     ["l", "lista vira tupla e volta", "list(tup(A)) == A"],
+    # O TIPO do resultado é lei separada, e a lição custou uma rodada: com um
+    # defeito plantado que fazia `tup(l)` devolver a PRÓPRIA lista, nenhuma das
+    # leis de conteúdo reprovou — `list(tup(A)) == A` e o tamanho continuavam
+    # valendo. Conversão que não converte passava batido. Lei de conteúdo não
+    # substitui lei de tipo.
+    ["l", "tup produz tupla, não a lista de entrada", "type(tup(A)) == \"tup\""],
+    ["l", "list produz lista", "type(list(A)) == \"list\""],
+    ["l", "dict produz dict", "type(dict(pares(A))) == \"dict\""],
+    ["i", "str produz str e int produz int",
+     "type(str(A)) == \"str\" and type(int(A)) == \"int\""],
+    ["i", "flo produz flo e bool produz bool",
+     "type(flo(A)) == \"flo\" and type(bool(A)) == \"bool\""],
+    ["l", "tupla é imutável", "tupla_recusa_escrita(A)"],
+    ["l", "tupla preserva o tamanho", "len(tup(A)) == len(A)"],
+    ["l", "tupla é igual item a item", "iguais_item_a_item(A, tup(A))"],
+    ["l", "dict de pares e volta preserva as chaves", "dict_ida_volta(A)"],
+    ["l", "copiar dict preserva o conteúdo", "dict(monta(A)) == monta(A)"],
+    ["l", "copiar dict com remoção no meio não vaza o removido", "copia_apos_remocao(A)"],
+    ["i", "converter pro próprio tipo é idempotente",
+     "tup([A]) == tup(tup([A]))"],
 
     # ── booleano ────────────────────────────────────────────────────────────
     ["i", "negar duas vezes é a verdade do valor", "(not (not A)) == bool(A)"],
@@ -340,6 +364,78 @@ PREAMBULO = ("action ordena(l) {\n"
     + "        d[str(v)] = v\n"
     + "    }\n"
     + "    return d.keys() == vistos\n"
+    + "}\n"
+    + "action iguais_item_a_item(l, t) {\n"
+    + "    if len(l) != len(t) {\n"
+    + "        return false\n"
+    + "    }\n"
+    + "    i = 0\n"
+    + "    while i < len(l) {\n"
+    + "        if l[i] != t[i] {\n"
+    + "            return false\n"
+    + "        }\n"
+    + "        i = i + 1\n"
+    + "    }\n"
+    + "    return true\n"
+    + "}\n"
+    + "action monta(l) {\n"
+    + "    d = {}\n"
+    + "    for each v in l {\n"
+    + "        d[str(v)] = v\n"
+    + "    }\n"
+    + "    return d\n"
+    + "}\n"
+    + "action dict_ida_volta(l) {\n"
+    + "    pares = []\n"
+    + "    for each v in l {\n"
+    + "        addEnd(pares, [str(v), v])\n"
+    + "    }\n"
+    + "    d = dict(pares)\n"
+    + "    for each v in l {\n"
+    + "        if d[str(v)] != v {\n"
+    + "            return false\n"
+    + "        }\n"
+    + "    }\n"
+    + "    return true\n"
+    + "}\n"
+    # O denso do dict tem BURACOS depois de remover. Copiar varrendo `count` em
+    # vez de `usados` lê as posições erradas e entrega dict furado EM SILÊNCIO —
+    # esta lei é o que pega isso.
+    + "action copia_apos_remocao(l) {\n"
+    + "    d = monta(l)\n"
+    + "    if len(d) < 2 {\n"
+    + "        return true\n"
+    + "    }\n"
+    + "    ks = d.keys()\n"
+    + "    d.pop(ks[0])\n"
+    + "    c = dict(d)\n"
+    + "    if len(c) != len(d) {\n"
+    + "        return false\n"
+    + "    }\n"
+    + "    if ks[0] in c {\n"
+    + "        return false\n"
+    + "    }\n"
+    + "    return c == d\n"
+    + "}\n"
+    + "action pares(l) {\n"
+    + "    p = []\n"
+    + "    for each v in l {\n"
+    + "        addEnd(p, [str(v), v])\n"
+    + "    }\n"
+    + "    return p\n"
+    + "}\n"
+    + "action tupla_recusa_escrita(l) {\n"
+    + "    t = tup(l)\n"
+    + "    if len(t) == 0 {\n"
+    + "        return true\n"
+    + "    }\n"
+    + "    try {\n"
+    + "        t[0] = 999\n"
+    + "    }\n"
+    + "    catch (e) {\n"
+    + "        return true\n"
+    + "    }\n"
+    + "    return false\n"
     + "}\n"
     + "action closure_soma(n) {\n"
     + "    x = n\n"
