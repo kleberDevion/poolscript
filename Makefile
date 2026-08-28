@@ -28,7 +28,7 @@ CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_guzer.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_guzer.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -357,9 +357,9 @@ check-e2e-local: pool
 # as funções direto. É o que fura o teto de ~60% de ramo da suíte `.ps`, que
 # por construção não alcança tratamento de erro — não existe programa PoolScript
 # que faça um `malloc` falhar ou passe um buffer curto pro base64.
-unidade: teste/unidade.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(MK)
+unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ teste/unidade.c \
-	  $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm
 	@./$@
 
 pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
@@ -481,7 +481,7 @@ cobertura: testar
 	# alcança continuam contando como descobertos.
 	@echo "rodando os testes de unidade instrumentados…"
 	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
-	  $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm 2>/dev/null
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm 2>/dev/null
 	@./cob/unidade > /dev/null 2>&1 || true
 	@echo "rodando os drivers .ps e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \

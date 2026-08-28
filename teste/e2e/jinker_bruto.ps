@@ -26,7 +26,11 @@ action bate(cru) {
     if s.connect_ex((HOST, PORTA)) != 0 {
         return "SEM-CONEXAO"
     }
-    s.send(cru.encode())
+    # `sendall`, não `send`: `send` pode mandar PARCIAL, e com o alvo de 9 KB
+    # isso deixava o servidor esperando o resto que nunca vinha — o caso
+    # reprovava com "FECHOU-CALADO" em uma execução a cada duas. Teste que
+    # falha alternado é pior que teste que não existe: ensina a ignorar.
+    s.sendall(cru.encode())
     resp = ""
     try {
         resp = s.recv(4096).decode()

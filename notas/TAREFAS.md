@@ -138,10 +138,10 @@ legítimo que contenha `\n\n` continua passando — há caso pros dois em
 | # | o que eu fiz | o que tem que virar |
 |---|---|---|
 | 4.1 | `PS_CICLO_MAX 256` respondendo "é ciclo" por profundidade | **FEITO**: virou medição de folga (`ps_pilha_apertada`). O vetor de visitados voltou a fazer só o que ele faz — detectar ciclo. Estrutura de 300, 5000 e 200 mil níveis agora IMPRIME |
-| 4.2 | `PS_PARSE_PROF_MAX 2000` no parser: contagem, não medição | **falta** — o mesmo tratamento do 4.1, agora que `ps_pilha_apertada` existe |
+| 4.2 | `PS_PARSE_PROF_MAX 2000` no parser: contagem, não medição | **FEITO**: quem decide é `ps_pilha_apertada()`. Expressão de 5000 níveis, que o teto de 2000 recusava, agora COMPILA; o limite real medido fica por volta de 9600 e se adapta ao `ulimit -s`. O contador ficou como cinto de segurança (100 mil), pro caso de alguém esquecer de marcar a base |
 | 4.3 | baseline de cobertura gravado na medição degradada — piso no fundo do buraco | **feito**: virou catraca, e a meta da suíte Python entrou como dívida visível |
 | 4.4 | itens fechados sem nada que os cobre | **feito** pra o que dava caso; o que falta está no §2 acima |
 
-Os dois primeiros são decisão de design da linguagem e são dele. Eu pus os dois
-sem perguntar, e cada um veio com um comentário explicando por que era sensato —
+Os dois primeiros eram decisão de design da linguagem, e eu os pus sem
+perguntar, cada um com um comentário explicando por que era sensato —
 que é o que fez passarem.

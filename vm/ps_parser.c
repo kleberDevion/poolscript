@@ -17,6 +17,7 @@
  * em silêncio.
  */
 #include "ps_parser.h"
+#include "ps_pilha.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,13 +57,21 @@ typedef struct {
  * que veio de fora. Dentro do jinker é pior: a fibra tem pilha de 128 KB, ~64x
  * menor que os 8 MB do processo.
  *
- * 2000 é folgado pra código humano (o mais aninhado do repositório inteiro não
- * passa de dezenas) e cabe com sobra até na pilha da fibra. Estourar vira erro
- * de sintaxe com linha e coluna, como qualquer outro.
+ * QUEM DECIDE É A FOLGA DE PILHA, não a contagem. Contar nível não mede nada:
+ * 2000 níveis de `(((...)))` gastam muito menos que 2000 níveis de expressão
+ * com chamada, e o mesmo número que sobra folgado no `-O2` estoura no `-O0`,
+ * onde o quadro é várias vezes maior. Número fixo ou aperta um build ou afrouxa
+ * o outro, e o critério pra escolher acaba sendo "o valor que faz o teste
+ * calar". `ps_pilha_apertada()` (ver `ps_pilha.h`) mede o que sobra de
+ * verdade, e se adapta sozinha ao `ulimit -s` e à pilha pequena da fibra.
  *
- * É o que CPython faz com `MAXSTACK`/`RecursionError`, o Go com `maxNestLev` e
- * o Clang com `MaxDepth` no parser de expressão. */
-#define PS_PARSE_PROF_MAX 2000
+ * O CONTADOR CONTINUA, com teto alto (100 mil), e por um motivo só: a medição
+ * de folga depende de a base ter sido marcada, e um chamador que esqueça de
+ * marcar deixaria a descida sem freio nenhum. O contador é o cinto de
+ * segurança do freio — nunca é ele que dispara em uso real.
+ *
+ * É o que CPython faz com `PyOS_CheckStack`, e o SQLite no parser dele. */
+#define PS_PARSE_PROF_MAX 100000
 
 /* ── reservadas que também não podem virar nome ─────────────────────────── */
 /* `=`, `+=`, `-=`, `*=`, `/=`, `%=` — os operadores que abrem atribuição. */
@@ -1055,7 +1064,7 @@ static PSNode *expressao_no(P *p);
  * fecham. Ver PS_PARSE_PROF_MAX. */
 static PSNode *expressao(P *p)
 {
-    if (p->prof >= PS_PARSE_PROF_MAX) {
+    if (p->prof >= PS_PARSE_PROF_MAX || ps_pilha_apertada()) {
         perro(p, "expressao aninhada demais", atual(p));
         return NULL;
     }
@@ -1140,7 +1149,7 @@ static PSNode *bloco_no(P *p);
  * mesmo jeito que o parêntese aninhado. */
 static PSNode *bloco(P *p)
 {
-    if (p->prof >= PS_PARSE_PROF_MAX) {
+    if (p->prof >= PS_PARSE_PROF_MAX || ps_pilha_apertada()) {
         perro(p, "bloco aninhado demais", atual(p));
         return NULL;
     }
