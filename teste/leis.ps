@@ -36,6 +36,15 @@ import sys
 
 TMP = "/tmp/ps_leis"
 
+# Contraexemplo achado com semente VARIÁVEL (o noturno usa a do dia) some quando
+# a execução acaba: amanhã a semente é outra e o mesmo defeito só reaparece por
+# sorte. Aqui ele vira ARQUIVO, e o próximo `make check` replaya todos —
+# exatamente o desenho do `teste/fuzz_achados/`, pelo mesmo motivo.
+#
+# Um achado guardado é uma lei que JÁ falhou uma vez: ele não substitui o
+# sorteio, ele garante que aquele valor específico nunca mais passe batido.
+ACHADOS = "teste/leis_achados"
+
 semente = 1
 
 
@@ -677,6 +686,39 @@ if __name__ == "main" {
     }
     semente_inicial = semente
 
+    # ── replay: o que JÁ falhou uma vez roda SEMPRE, antes de qualquer sorteio.
+    #
+    # Sem isto, contraexemplo achado pelo noturno com a semente do dia
+    # desaparece — amanhã a semente é outra e o mesmo defeito só reaparece por
+    # sorte. Custa quase nada: são todos num processo só.
+    replay_falhou = []
+    if os.isdir(ACHADOS) {
+        for each e in os.ls(ACHADOS) {
+            n = e["name"]
+            if not n.endswith(".ps") {
+                continue
+            }
+            os.cmd("cd " + ACHADOS + " && timeout 30 '" + sys.executable + "' " + n
+                   + " > /tmp/ps_leis_rep.txt 2>&1; echo $? > /tmp/ps_leis_rep_rc")
+            rc = int(open("/tmp/ps_leis_rep_rc").read().strip())
+            saida = open("/tmp/ps_leis_rep.txt").read()
+            if rc != 0 or "AINDA FALHA" in saida or not "FIM" in saida {
+                addEnd(replay_falhou, [n, "rc=" + str(rc) + " " + saida.split("\n")[0]])
+            }
+        }
+    }
+    if len(replay_falhou) > 0 {
+        post("")
+        post("CONTRAEXEMPLO GUARDADO VOLTOU A FALHAR:", str(len(replay_falhou)))
+        for each r in replay_falhou {
+            post("   " + r[0] + "  ->  " + r[1])
+        }
+        post("")
+        post("Estes ja falharam uma vez e foram guardados em " + ACHADOS + "/.")
+        post("Voltar a falhar e regressao, nao achado novo.")
+        sys.exit(1)
+    }
+
     achados = []
     checagens = 0
     mortes = 0
@@ -739,6 +781,48 @@ if __name__ == "main" {
     # e juntar reconstrói" existe pra texto E pra lista) — só o enunciado
     # engoliria a segunda.
     vistas = []
+    # GRAVA cada lei que caiu, uma por arquivo, com a forma exata. O nome sai do
+    # id da lei; regravar o mesmo arquivo é de propósito — o valor mais recente
+    # que falhou é tão bom quanto o primeiro, e assim a pasta não cresce sem fim.
+    os.mkdir(ACHADOS, exist_ok=true)
+    gravados = 0
+    for each a in achados {
+        nome = ""
+        for each c in a[0] {
+            if c == " " or c == "/" or c == ":" {
+                nome = nome + "_"
+            }
+            else {
+                nome = nome + c
+            }
+        }
+        alvo = ACHADOS + "/" + nome[0:60] + ".ps"
+        if not os.exists(alvo) {
+            using open(alvo, "w") as f {
+                f.write("# Contraexemplo GUARDADO de uma lei que caiu.\n")
+                f.write("#\n")
+                f.write("# lei:      " + a[0] + "\n")
+                f.write("# dominio:  " + a[1] + "\n")
+                f.write("# sorteado: " + a[3] + "\n")
+                f.write("# como:     " + a[4] + "\n")
+                f.write("#\n")
+                f.write("# Ele roda em TODO `make leis`, antes do sorteio: semente muda, este\n")
+                f.write("# valor não. Apagar o arquivo é decidir que o defeito pode voltar.\n")
+                f.write(PREAMBULO)
+                f.write("if not (" + a[2] + ") {\n")
+                f.write("    post(\"AINDA FALHA\")\n")
+                f.write("}\n")
+                f.write("post(\"FIM\")\n")
+            }
+            gravados = gravados + 1
+        }
+    }
+    if gravados > 0 {
+        post("")
+        post("guardados", str(gravados), "contraexemplo(s) em", ACHADOS + "/")
+        post("— eles passam a rodar em TODO `make leis`, antes do sorteio.")
+    }
+
     post("")
     post("CONTRAEXEMPLOS:", str(len(achados)))
     for each a in achados {

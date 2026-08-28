@@ -80,3 +80,12 @@ pool-debug
 
 # binario dos testes de unidade em C (make unidade o gera)
 unidade
+
+# Os contraexemplos das LEIS entram, pelo mesmo motivo dos achados do fuzz:
+# o sorteio muda a cada execução, e o valor que já quebrou uma vez tem que
+# ficar. Ver teste/leis_achados/LEIAME.md
+!teste/leis_achados/
+!teste/leis_achados/**
+
+# saida do swagger gerada por teste (jinker/cli) — artefato, nao fonte
+__DOCS__/
