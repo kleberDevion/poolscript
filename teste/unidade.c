@@ -414,6 +414,166 @@ static void teste_ast(void)
     CONF(!strcmp(ps_node_nome((PSNodeKind)9999), "?"), "kind invalido nao virou \"?\"");
 }
 
+/* Compila, casa contra `alvo` e confere o TRECHO casado. `espera` NULL = tem
+ * que não casar. Devolve 1 se o teste passou. */
+static int casa(const char *padrao, const char *alvo, const char *espera)
+{
+    char erro[256] = {0};
+    PSRegex *r = ps_regex_compila(padrao, (int)strlen(padrao), erro, sizeof(erro));
+    if (!r) {
+        printf("  FALHOU [regex] \"%s\" nao compilou: %s\n", padrao, erro);
+        return 0;
+    }
+    RxCaptura cap;
+    int achou = ps_regex_busca(r, alvo, (int)strlen(alvo), 0, &cap);
+    int ok;
+    if (!espera) {
+        ok = (achou == 0);
+        if (!ok) printf("  FALHOU [regex] \"%s\" casou \"%s\" e nao devia\n", padrao, alvo);
+    } else if (achou != 1) {
+        ok = 0;
+        printf("  FALHOU [regex] \"%s\" nao casou \"%s\"\n", padrao, alvo);
+    } else {
+        int n = cap.fim[0] - cap.inicio[0];
+        ok = (n == (int)strlen(espera) && !memcmp(alvo + cap.inicio[0], espera, (size_t)n));
+        if (!ok)
+            printf("  FALHOU [regex] \"%s\" em \"%s\": casou \"%.*s\", esperado \"%s\"\n",
+                   padrao, alvo, n, alvo + cap.inicio[0], espera);
+    }
+    ps_regex_free(r);
+    return ok;
+}
+
+/* Como `casa`, mas confere o conteúdo de um GRUPO. */
+static int grupo_e(const char *padrao, const char *alvo, int g, const char *espera)
+{
+    char erro[256] = {0};
+    PSRegex *r = ps_regex_compila(padrao, (int)strlen(padrao), erro, sizeof(erro));
+    if (!r) { printf("  FALHOU [regex] \"%s\" nao compilou: %s\n", padrao, erro); return 0; }
+    RxCaptura cap;
+    int ok = 0;
+    if (ps_regex_busca(r, alvo, (int)strlen(alvo), 0, &cap) == 1 && g <= cap.ngrupos
+            && cap.inicio[g] >= 0) {
+        int n = cap.fim[g] - cap.inicio[g];
+        ok = (n == (int)strlen(espera) && !memcmp(alvo + cap.inicio[g], espera, (size_t)n));
+        if (!ok) printf("  FALHOU [regex] \"%s\" grupo %d = \"%.*s\", esperado \"%s\"\n",
+                        padrao, g, n, alvo + cap.inicio[g], espera);
+    } else {
+        printf("  FALHOU [regex] \"%s\" nao casou/nao capturou grupo %d em \"%s\"\n",
+               padrao, g, alvo);
+    }
+    ps_regex_free(r);
+    return ok;
+}
+
+/* Famílias inteiras do motor de regex que a linguagem exercita de raspão.
+ * Cada bloco aqui vale por uma região de dezenas de ramos que estava em zero:
+ * flags inline, âncoras de palavra, retrovisor, lookaround, quantificador
+ * contado, case-insensitive e UTF-8. */
+static void teste_regex_fundo(void)
+{
+    grupo("regex/flags");
+    /* (?i) ligada no padrão inteiro, e com escopo `(?i:...)` */
+    CONF(casa("(?i)abc", "xxABCxx", "ABC"), "(?i) nao ignorou caixa");
+    CONF(casa("(?i)[a-z]+", "XYZ", "XYZ"), "(?i) nao valeu na classe");
+    CONF(casa("(?i:ab)c", "ABc", "ABc"), "(?i:...) com escopo falhou");
+    CONF(casa("(?i:ab)c", "ABC", NULL), "(?i:...) vazou pro resto do padrao");
+    /* (?s): o ponto passa a casar \n */
+    CONF(casa("a.b", "a\nb", NULL), "ponto casou \\n sem (?s)");
+    CONF(casa("(?s)a.b", "a\nb", "a\nb"), "(?s) nao fez o ponto casar \\n");
+    /* (?m): ^ e $ por linha */
+    CONF(casa("^b", "a\nb", NULL), "^ casou no meio sem (?m)");
+    CONF(casa("(?m)^b", "a\nb", "b"), "(?m) nao fez ^ valer por linha");
+    CONF(casa("(?m)a$", "a\nb", "a"), "(?m) nao fez $ valer por linha");
+
+    grupo("regex/ancoras");
+    CONF(casa("\\bfoo\\b", "um foo aqui", "foo"), "\\b nao achou palavra isolada");
+    CONF(casa("\\bfoo\\b", "umfooaqui", NULL), "\\b casou dentro de palavra");
+    CONF(casa("\\Boo", "foo", "oo"), "\\B nao casou dentro de palavra");
+    CONF(casa("\\Bfoo", "foo bar", NULL), "\\B casou no comeco");
+    CONF(casa("\\Aabc", "abc", "abc"), "\\A nao casou no inicio");
+    CONF(casa("(?m)\\Ab", "a\nb", NULL), "\\A cedeu ao MULTILINE (nao devia)");
+    CONF(casa("abc\\Z", "xabc", "abc"), "\\Z nao casou no fim");
+    CONF(casa("a\\Z", "a\nb", NULL), "\\Z casou antes do fim");
+
+    grupo("regex/retrovisor");
+    CONF(casa("(ab)\\1", "abab", "abab"), "retrovisor \\1 nao casou");
+    CONF(casa("(ab)\\1", "abcd", NULL), "retrovisor casou coisa diferente");
+    CONF(casa("(a)(b)\\2\\1", "abba", "abba"), "\\1 e \\2 juntos falharam");
+    CONF(casa("(?i)(ab)\\1", "abAB", "abAB"), "retrovisor nao respeitou (?i)");
+
+    grupo("regex/lookaround");
+    CONF(casa("foo(?=bar)", "foobar", "foo"), "lookahead positivo falhou");
+    CONF(casa("foo(?=bar)", "foobaz", NULL), "lookahead positivo casou errado");
+    CONF(casa("foo(?!bar)", "foobaz", "foo"), "lookahead negativo falhou");
+    CONF(casa("foo(?!bar)", "foobar", NULL), "lookahead negativo casou errado");
+    CONF(casa("(?<=R\\$)\\d+", "R$42", "42"), "lookbehind positivo falhou");
+    CONF(casa("(?<=R\\$)\\d+", "US42", NULL), "lookbehind positivo casou errado");
+    CONF(casa("(?<!R\\$)\\d+", "US42", "42"), "lookbehind negativo falhou");
+    /* lookbehind de largura variável não é suportado — tem que RECUSAR na
+     * compilação, não casar errado em silêncio */
+    {
+        char erro[256] = {0};
+        PSRegex *r = ps_regex_compila("(?<=a+)b", 8, erro, sizeof(erro));
+        CONF(r == NULL, "lookbehind de largura variavel foi aceito");
+        if (r) ps_regex_free(r);
+    }
+
+    grupo("regex/quantificador");
+    CONF(casa("a{3}", "aaaa", "aaa"), "{3} exato falhou");
+    CONF(casa("a{2,}", "aaaa", "aaaa"), "{2,} sem teto falhou");
+    CONF(casa("a{2,3}", "aaaa", "aaa"), "{2,3} falhou");
+    CONF(casa("a{4}", "aaa", NULL), "{4} casou com 3");
+    CONF(casa("a{0,2}b", "b", "b"), "{0,2} com zero falhou");
+    /* preguiçoso: `+?` e `{n,m}?` param no primeiro que serve */
+    CONF(casa("a+?", "aaa", "a"), "+? nao foi preguicoso");
+    CONF(casa("<.+?>", "<a><b>", "<a>"), ".+? pegou demais");
+    CONF(casa("a{2,3}?", "aaa", "aa"), "{2,3}? nao foi preguicoso");
+    CONF(casa("a??b", "ab", "ab"), "?? falhou");
+
+    grupo("regex/utf8");
+    /* codepoint de 2, 3 e 4 bytes: o `.` tem que consumir o caractere
+     * INTEIRO, senão o casamento parte um UTF-8 no meio */
+    CONF(casa(".", "\xc3\xa7", "\xc3\xa7"), "ponto partiu um 2-bytes");
+    CONF(casa(".", "\xe2\x82\xac", "\xe2\x82\xac"), "ponto partiu um 3-bytes");
+    CONF(casa(".", "\xf0\x9f\x98\x80", "\xf0\x9f\x98\x80"), "ponto partiu um 4-bytes");
+    CONF(casa("[^x]", "\xc3\xa7", "\xc3\xa7"), "classe negada partiu um 2-bytes");
+    CONF(casa("\\w+", "a\xc3\xa7\x61o", "a\xc3\xa7\x61o"), "\\w nao pegou acento");
+    CONF(casa("[\xc3\xa1-\xc3\xba]", "\xc3\xa7", "\xc3\xa7"), "faixa fora do ASCII falhou");
+
+    grupo("regex/grupos");
+    CONF(grupo_e("(\\d+)-(\\d+)", "ab 12-34", 1, "12"), "grupo 1");
+    CONF(grupo_e("(\\d+)-(\\d+)", "ab 12-34", 2, "34"), "grupo 2");
+    CONF(grupo_e("(?P<ano>\\d{4})", "em 2026", 1, "2026"), "grupo nomeado");
+    /* grupo não capturante NÃO conta */
+    {
+        char erro[256] = {0};
+        PSRegex *r = ps_regex_compila("(?:a)(b)", 8, erro, sizeof(erro));
+        CONF(r != NULL, "(?:...) nao compilou: %s", erro);
+        if (r) { CONF(ps_regex_ngrupos(r) == 1, "(?:...) contou como capturante"); ps_regex_free(r); }
+    }
+    /* alternância com grupo que não participa: o grupo fica sem posição */
+    {
+        char erro[256] = {0};
+        PSRegex *r = ps_regex_compila("(a)|(b)", 7, erro, sizeof(erro));
+        CONF(r != NULL, "alternancia nao compilou");
+        if (r) {
+            RxCaptura cap;
+            CONF(ps_regex_busca(r, "b", 1, 0, &cap) == 1, "alternancia nao casou");
+            CONF(cap.inicio[1] < 0, "grupo que nao participou veio com posicao");
+            CONF(cap.inicio[2] == 0, "grupo que participou veio sem posicao");
+            ps_regex_free(r);
+        }
+    }
+
+    grupo("regex/vazio");
+    /* padrão que casa vazio é a fonte clássica de laço infinito em findall */
+    CONF(casa("a*", "bbb", ""), "a* nao casou vazio");
+    CONF(casa("", "abc", ""), "padrao vazio nao casou vazio");
+    CONF(casa("()", "abc", ""), "grupo vazio nao casou vazio");
+    CONF(casa("(a*)*b", "b", "b"), "estrela sobre estrela travou ou nao casou");
+}
+
 int main(int argc, char **argv)
 {
     if (argc > 1) filtro = argv[1];
@@ -424,6 +584,7 @@ int main(int argc, char **argv)
     teste_base64();
     teste_util();
     teste_regex();
+    teste_regex_fundo();
     teste_ast();
 
     printf("\nunidade: %d checagens, %d falharam\n", total, falhas);
