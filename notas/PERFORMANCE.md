@@ -16,6 +16,61 @@ intuição é o mesmo erro dos tetos por contagem, com outra roupa.
 
 ---
 
+## ACHADO Nº 1, e ele não estava na pesquisa: concatenação de texto é O(n²)
+
+O benchmark achou isto na primeira execução, e é **60× maior que qualquer coisa
+do laço de despacho**:
+
+```
+s = ""
+i = 0
+while (i < N) { s = s + "abc"; i = i + 1 }
+```
+
+| N | PoolScript | Python |
+|---|---|---|
+| 15.000 | 0,35 s | |
+| 30.000 | 1,37 s | |
+| 60.000 | **5,63 s** | **0,34 s** |
+
+Dobrar o N quadruplica o tempo — é quadrático, sem dúvida. Cada `+` aloca uma
+string nova e COPIA a anterior inteira; em 60 mil iterações isso são ~5,4 GB de
+memcpy pra produzir 180 KB de texto.
+
+Pra comparar dentro da própria linguagem: o mesmo resultado por `join` leva
+**0,00 s**.
+
+| forma | PoolScript | Python |
+|---|---|---|
+| `s = s + x` em laço | 5,63 s | 0,34 s |
+| `join` de uma lista | 0,00 s | 0,01 s |
+
+O `join` já é rápido. O problema é só o `+` em laço — que é exatamente o jeito
+que qualquer um escreve primeiro.
+
+**Por que o Python não sofre:** o CPython tem contagem de referência, e quando
+o operando da esquerda tem refcount 1 ele REDIMENSIONA A STRING NO LUGAR em vez
+de copiar. Aqui o coletor é mark-sweep, sem refcount, então esse truque exato
+não existe.
+
+**Os caminhos, em ordem de custo:**
+
+1. **Capacidade na `PSString`** — guardar `cap` além de `len` e crescer por
+   dobra quando a string é destino de concatenação. `PSString` tem vetor
+   flexível no fim, então mudar isso mexe em como toda string é alocada. É a
+   solução completa e é a mais invasiva.
+2. **Enxergar o padrão no compilador** — `x = x + expr` sobre o MESMO slot
+   local vira um opcode `CONCAT_INPLACE`, que só copia se o alvo estiver
+   compartilhado. Precisa saber se está compartilhado, e sem refcount isso não
+   é barato de saber.
+3. **Não fazer nada no motor e documentar `join`** — é honesto e é grátis, mas
+   deixa a armadilha de pé pra quem escreve o óbvio.
+
+**Não escolhi nenhum**: representação de string é design do núcleo, e design é
+dele. O que este arquivo garante é que a decisão agora tem número.
+
+---
+
 ## 0. Medir antes (pré-requisito de tudo)
 
 ```
@@ -33,10 +88,27 @@ O que o perfil decide:
 | tempo em `gc_coleta`/`marca_obj` | GC | §5 |
 | tempo em `malloc`/`free` | alocação por instrução | §6 |
 
-**Não existe benchmark no projeto** (é o §4.6 da AUDITORIA-ENGENHARIA, ainda
-aberto). A era Python tinha `bench_async.sh` e `bench_webhook.sh`; hoje não há
-nada, então nem dá pra dizer se uma mudança melhorou. Isso vem ANTES de
-qualquer item desta lista.
+**Existe agora**: `teste/bench.ps` (alvo `make bench`). Dez casos escolhidos
+pra isolar o laço de despacho — aritmética, chamada, índice de lista, dict,
+texto, método nativo, closure, entity e GC — mais o `partida`, que mede o custo
+fixo do processo e é descontado dos outros. Cada caso roda em processo próprio,
+cronometrado por fora com precisão de nanossegundo, repetido 5 vezes, ficando
+com o MENOR (o que está acima do mínimo é ruído de escalonamento).
+
+O governor vai gravado junto com a referência: em `powersave` o número varia
+com a temperatura, e comparar duas medições sem saber o governor é chutar.
+
+Não entra no `make check` — tempo é ruidoso, e portão que reprova por causa de
+outro processo na máquina é portão que se aprende a ignorar.
+
+Primeira medição (i3-1115G4, `powersave`), em milissegundos:
+
+```
+partida         5,8      aritmetica    179,9      chamada        40,6
+lista_indice   74,2      dict           90,6      texto        5629,9
+metodo        121,0      closure        33,3      objeto         56,7
+gc             74,7
+```
 
 ---
 

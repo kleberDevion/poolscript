@@ -283,6 +283,18 @@ memcheck: pool
 # toa é portão desligado. O nível 2 continua acessível pra revisão:
 #
 #     make avisos AVISOS_NIVEL=2
+# Benchmark do motor. FORA do `make check` de propósito: tempo é ruidoso, e
+# portão que reprova porque outro processo estava rodando é portão que se
+# aprende a ignorar. Existe pra que otimização no motor tenha número — sem ele,
+# "ficou mais rápido" é palpite (ver notas/PERFORMANCE.md).
+#
+#   make bench            mede e compara com teste/bench_base.txt
+#   make bench BENCH=--grava     adota a medição atual como referência
+#   make bench BENCH=--portao    sai != 0 se piorou além da folga (CI noturna)
+BENCH ?=
+bench: pool
+	@nice -n 19 ./pool teste/bench.ps $(BENCH)
+
 AVISOS_NIVEL ?= 1
 avisos:
 	@saida=$$(for f in $(FONTES); do \

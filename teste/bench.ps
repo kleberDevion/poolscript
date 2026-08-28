@@ -1,0 +1,288 @@
+# Benchmark do motor — o número que faltava pra qualquer otimização ser honesta.
+#
+# POR QUE ESTE ARQUIVO EXISTE: `notas/PERFORMANCE.md` lista o que dá pra ganhar
+# na VM (computed goto, encolher o laço quente, JIT). Nada disso é verificável
+# sem medida: "ficou mais rápido" sem número é palpite, e otimização escolhida
+# por palpite é o mesmo erro dos tetos por contagem com outra roupa. O projeto
+# teve `bench_async.sh`/`bench_webhook.sh` na era Python e ficou sem nenhum.
+#
+# O QUE ELE MEDE, e por quê cada um: os casos são escolhidos pra isolar o LAÇO
+# DE DESPACHO, que é o alvo da otimização. Cada caso martela um punhado de
+# opcodes num laço apertado, pra o tempo ser dominado pelo despacho e não pelo
+# trabalho útil.
+#
+# COMO ELE MEDE: cada caso roda num processo próprio, cronometrado por fora com
+# precisão de nanossegundo, REPETIDO e ficando com o MENOR tempo — a mediana
+# ainda carrega o ruído de escalonamento, o mínimo é o mais próximo do custo
+# real. `partida` mede um script vazio, pra dar o custo fixo de subir o
+# processo; os outros já vêm com ele descontado.
+#
+#     ./pool teste/bench.ps                  mede e mostra
+#     ./pool teste/bench.ps --grava          adota como referência
+#     ./pool teste/bench.ps --portao         reprova se piorou além da folga
+#
+# NÃO ENTRA NO `make check`: tempo é ruidoso, e portão que reprova por causa de
+# outro processo na máquina é portão que se aprende a ignorar. Roda no alvo
+# `make bench` e no noturno da CI.
+import os
+import sys
+
+BASE = "teste/bench_base.txt"
+REPETE = 5
+FOLGA = 20.0        # % de piora tolerada na RAZÃO (ver abaixo)
+
+# O que o portão compara é RAZÃO, não milissegundo.
+#
+# POR QUE: em `powersave` (e em qualquer notebook que esquenta), duas execuções
+# do MESMO binário diferem 27%. Medido aqui: `chamada` deu 46,3 ms e 58,8 ms
+# seguidas, sem nada ter mudado. Tempo absoluto não serve de portão nessa
+# máquina — reprovaria por causa da temperatura, e portão que grita à toa é
+# portão desligado.
+#
+# A razão contra um caso de referência cancela isso: se a CPU inteira ficou 30%
+# mais lenta, TODOS os casos ficam, e a razão entre eles não se mexe. O que
+# muda a razão é o motor ter piorado NAQUELE caminho — que é o que se quer ver.
+#
+# `aritmetica` é a régua: é o laço mais puro daqui (LOAD/ADD/MUL/STORE/LT/JUMP e
+# nada mais), sem alocação, sem I/O, sem tabela de hash. Se ELE piorar, a razão
+# de todos os outros melhora artificialmente — por isso o milissegundo dele
+# aparece no relatório e fica gravado junto.
+REGUA = "aritmetica"
+
+
+# [nome, fonte, o que o caso isola]
+CASOS = [
+    ["partida", "post(1)\n",
+     "custo fixo de subir o processo: lexer+parser+compilador de um script de 1 linha"],
+
+    ["aritmetica", "s = 0\ni = 0\nwhile (i < 3000000) {\n    s = s + i * 2 - 1\n    i = i + 1\n}\npost(s)\n",
+     "LOAD_LOCAL/ADD/MUL/SUB/STORE_LOCAL/LT/JUMP — o caminho mais quente que existe"],
+
+    ["chamada", "action f(a, b) {\n    return a + b\n}\ns = 0\ni = 0\nwhile (i < 600000) {\n    s = f(s, i)\n    i = i + 1\n}\npost(s)\n",
+     "CALL/RETURN e a montagem de quadro — o segundo mais quente"],
+
+    ["lista_indice", "l = []\ni = 0\nwhile (i < 200000) {\n    addEnd(l, i)\n    i = i + 1\n}\ns = 0\ni = 0\nwhile (i < 1000000) {\n    s = s + l[i % 200000]\n    i = i + 1\n}\npost(s)\n",
+     "INDEX_GET e a checagem de faixa"],
+
+    ["dict", "d = {}\ni = 0\nwhile (i < 100000) {\n    d[str(i)] = i\n    i = i + 1\n}\ns = 0\ni = 0\nwhile (i < 300000) {\n    s = s + d[str(i % 100000)]\n    i = i + 1\n}\npost(s)\n",
+     "hash de string e sondagem da tabela — mede também a semente por processo"],
+
+    ["texto", "s = \"\"\ni = 0\nwhile (i < 60000) {\n    s = s + \"abc\"\n    i = i + 1\n}\npost(len(s))\n",
+     "concatenação: alocação por iteração, é o que um pool de strings atacaria"],
+
+    ["metodo", "s = \"abcdefghij\"\nn = 0\ni = 0\nwhile (i < 400000) {\n    n = n + len(s.upper())\n    i = i + 1\n}\npost(n)\n",
+     "despacho de método nativo: busca na tabela METODOS_STR + alocação do resultado"],
+
+    ["closure", "action fora() {\n    x = 0\n    action dentro() {\n        x = x + 1\n        return x\n    }\n    return dentro\n}\nf = fora()\ni = 0\nwhile (i < 400000) {\n    f()\n    i = i + 1\n}\npost(f())\n",
+     "CELL_GET/CELL_SET e MAKE_CLOSURE — o caminho que a captura de variável usa"],
+
+    ["objeto", "Entity P() {\n    action __init__(self, n) {\n        self.n = n\n    }\n    action mais(self) {\n        self.n = self.n + 1\n        return self.n\n    }\n}\np = P(0)\ni = 0\nwhile (i < 300000) {\n    p.mais()\n    i = i + 1\n}\npost(p.n)\n",
+     "GET_MEMBER/SET_MEMBER e chamada de método de entity"],
+
+    ["gc", "i = 0\nwhile (i < 300000) {\n    l = [i, i + 1, [i]]\n    d = {\"a\": l}\n    i = i + 1\n}\npost(\"fim\")\n",
+     "lixo por iteração: é o custo do coletor, não do despacho"],
+]
+
+
+action agora_ns() {
+    os.cmd("date +%s%N > /tmp/ps_bench_t")
+    return int(open("/tmp/ps_bench_t").read().strip())
+}
+
+
+# Roda o fonte uma vez e devolve o tempo de parede em MILISSEGUNDOS.
+action mede_uma(caminho) {
+    t0 = agora_ns()
+    os.cmd("'" + sys.executable + "' " + caminho + " > /dev/null 2>&1")
+    t1 = agora_ns()
+    return (t1 - t0) / 1000000.0
+}
+
+
+# Menor de REPETE execuções. O mínimo é o mais próximo do custo real: o que
+# está ACIMA dele é ruído de escalonamento, não trabalho do motor.
+action mede(caminho) {
+    melhor = -1.0
+    i = 0
+    while i < REPETE {
+        t = mede_uma(caminho)
+        if melhor < 0.0 or t < melhor {
+            melhor = t
+        }
+        i = i + 1
+    }
+    return melhor
+}
+
+
+action le_base() {
+    saida = {}
+    if not os.exists(BASE) {
+        return saida
+    }
+    for each l in open(BASE).read().split("\n") {
+        t = l.strip()
+        if t == "" or t.startswith("#") {
+            continue
+        }
+        p = t.split()
+        if len(p) >= 2 {
+            saida[p[0]] = flo(p[1])
+        }
+    }
+    return saida
+}
+
+
+# O governor da CPU muda o resultado em dezenas por cento. Guardar junto é o
+# que faz duas medições serem comparáveis — sem isso, comparar é chutar.
+# `sys` não expõe a versão; vem do próprio binário, que é a fonte única
+# (`PS_VERSAO` embutido em `vm/ps_versao.h`).
+action versao_do_binario() {
+    os.cmd("'" + sys.executable + "' --version > /tmp/ps_bench_v 2>&1")
+    return open("/tmp/ps_bench_v").read().strip()
+}
+
+
+action governor() {
+    os.cmd("cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor > /tmp/ps_bench_g 2>/dev/null || echo desconhecido > /tmp/ps_bench_g")
+    return open("/tmp/ps_bench_g").read().strip()
+}
+
+
+if __name__ == "main" {
+    grava = "--grava" in sys.argv
+    portao = "--portao" in sys.argv
+
+    gov = governor()
+    post("")
+    post("benchmark — governor:", gov, " repetições:", str(REPETE), " (o menor vale)")
+    if gov == "powersave" {
+        post("   AVISO: em `powersave` o número varia com a temperatura.")
+        post("   Pra comparar: sudo cpupower frequency-set -g performance")
+    }
+    post("")
+
+    piso = le_base()
+    tempos = {}
+    piores = []
+
+    # a partida entra descontada dos outros, então mede primeiro
+    using open("/tmp/ps_bench_caso.ps", "w") as f {
+        f.write(CASOS[0][1])
+    }
+    partida = mede("/tmp/ps_bench_caso.ps")
+    tempos["partida"] = partida
+    post("   partida".ljust(20), str(round(partida, 1)).rjust(9) + " ms   (custo fixo do processo)")
+
+    for each c in CASOS {
+        if c[0] == "partida" {
+            continue
+        }
+        using open("/tmp/ps_bench_caso.ps", "w") as f {
+            f.write(c[1])
+        }
+        t = mede("/tmp/ps_bench_caso.ps") - partida
+        if t < 0.0 {
+            t = 0.0
+        }
+        tempos[c[0]] = t
+
+        post("   " + c[0].ljust(17), str(round(t, 1)).rjust(9) + " ms")
+    }
+
+    # ── a comparação, em RAZÃO contra a régua ───────────────────────────────
+    regua = tempos[REGUA]
+    if regua <= 0.0 {
+        post("")
+        post("a régua (" + REGUA + ") mediu zero — medição invalida")
+        sys.exit(1)
+    }
+    razoes = {}
+    for each n in tempos.keys() {
+        razoes[n] = tempos[n] / regua
+    }
+
+    if len(piso) > 0 {
+        post("")
+        post("razão contra `" + REGUA + "` — é o que o portão compara:")
+        ordem = tempos.keys()
+        ordem.sort()
+        for each n in ordem {
+            if not n in piso {
+                continue
+            }
+            antes = piso[n]
+            agora = razoes[n]
+            linha = "   " + n.ljust(17) + str(round(agora, 3)).rjust(8)
+            if antes > 0.0 {
+                d = ((agora - antes) / antes) * 100.0
+                linha = linha + "   (" + str(round(d, 1)) + "%)"
+                if d > FOLGA {
+                    linha = linha + "   PIOROU"
+                    addEnd(piores, [n, antes, agora, d])
+                }
+            }
+            post(linha)
+        }
+    }
+
+    if grava {
+        nomes = razoes.keys()
+        nomes.sort()
+        linhas = ["# Referência do benchmark: <caso> <razão contra `" + REGUA + "`>",
+                  "#",
+                  "# Gerado por `./pool teste/bench.ps --grava`: o MENOR de "
+                  + str(REPETE) + " execuções, com a partida descontada.",
+                  "#",
+                  "# É RAZÃO, não milissegundo. Tempo absoluto varia 27% entre duas",
+                  "# execuções do MESMO binário nesta máquina (powersave, temperatura),",
+                  "# e um portão sobre isso reprovaria por causa do ventilador. A razão",
+                  "# contra `" + REGUA + "` cancela: CPU mais lenta desacelera tudo junto.",
+                  "#",
+                  "# governor na medição: " + gov,
+                  "# binário: " + versao_do_binario(),
+                  "#",
+                  "# NÃO entra no `make check` — roda em `make bench` e no noturno.",
+                  "# Piora acima de " + str(FOLGA) + "% na razão é o que se cobra.",
+                  ""]
+        for each n in nomes {
+            addEnd(linhas, n + " " + str(round(razoes[n], 3)))
+        }
+        addEnd(linhas, "")
+        addEnd(linhas, "# ms desta gravação — informativo, NÃO é o que se compara:")
+        for each n in nomes {
+            addEnd(linhas, "#   " + n.ljust(17) + str(round(tempos[n], 1)) + " ms")
+        }
+        using open(BASE, "w") as f {
+            f.write(("\n").join(linhas) + "\n")
+        }
+        post("")
+        post("referência gravada em", BASE)
+        sys.exit(0)
+    }
+
+    post("")
+    if len(piores) == 0 {
+        if len(piso) == 0 {
+            post("sem referência ainda — rode `./pool teste/bench.ps --grava`")
+        }
+        else {
+            post("nenhum caso piorou mais que", str(FOLGA) + "%.")
+        }
+        sys.exit(0)
+    }
+
+    post("PIORARAM:")
+    for each p in piores {
+        post("   " + p[0].ljust(17), str(round(p[1], 1)) + " ms ->",
+             str(round(p[2], 1)) + " ms   (+" + str(round(p[3], 1)) + "%)")
+    }
+    post("")
+    post("Se a piora for esperada (funcionalidade nova no caminho quente),")
+    post("regrave com --grava. De propósito, não por reflexo.")
+    if portao {
+        sys.exit(1)
+    }
+    sys.exit(0)
+}

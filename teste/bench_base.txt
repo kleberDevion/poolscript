@@ -1,0 +1,37 @@
+# Referência do benchmark: <caso> <razão contra `aritmetica`>
+#
+# Gerado por `./pool teste/bench.ps --grava`: o MENOR de 5 execuções, com a partida descontada.
+#
+# É RAZÃO, não milissegundo. Tempo absoluto varia 27% entre duas
+# execuções do MESMO binário nesta máquina (powersave, temperatura),
+# e um portão sobre isso reprovaria por causa do ventilador. A razão
+# contra `aritmetica` cancela: CPU mais lenta desacelera tudo junto.
+#
+# governor na medição: powersave
+# binário: PoolScript 8.3.84 [PSVM]
+#
+# NÃO entra no `make check` — roda em `make bench` e no noturno.
+# Piora acima de 20.0% na razão é o que se cobra.
+
+aritmetica 1.0
+chamada 0.198
+closure 0.181
+dict 0.557
+gc 0.38
+lista_indice 0.404
+metodo 0.635
+objeto 0.283
+partida 0.038
+texto 27.977
+
+# ms desta gravação — informativo, NÃO é o que se compara:
+#   aritmetica       200.9 ms
+#   chamada          39.8 ms
+#   closure          36.3 ms
+#   dict             111.9 ms
+#   gc               76.3 ms
+#   lista_indice     81.3 ms
+#   metodo           127.7 ms
+#   objeto           56.8 ms
+#   partida          7.7 ms
+#   texto            5620.7 ms

@@ -94,6 +94,9 @@ jobs:
       # snprintf com precisao explicita), mas util pra revisao noturna.
       - run: make avisos AVISOS_NIVEL=2 || true
       - run: make fuzz FUZZ_T=1800
+      # Benchmark: reprova se algum caso piorou mais que a folga. O runner é
+      # mais estável que uma máquina de trabalho, então aqui o --portao vale.
+      - run: make bench BENCH=--portao
       # Replaya o que já estava guardado: crash de ontem que voltar reprova.
       - run: ./pool teste/fuzz_replay.ps
       - name: guardar o que o fuzzer achou
