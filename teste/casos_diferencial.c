@@ -2945,9 +2945,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "True", NULL, 0 },
 { "dif #441",
+  /* Este caso guardava o comportamento de quando `bytes` era o ÚNICO tipo
+   * embutido SEM `.len()`: a chamada levantava "membro inexistente". O método
+   * entrou em 28/08 e o esperado passou a ser o tamanho. A mudança é
+   * deliberada, e o diferencial fez o trabalho dele — avisou. */
   "post(\"ab\".encode().len())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: len (em bytes)", -1 },
+  "2", NULL, 0 },
 { "dif #442",
   "post(\"ab\".isascii())\n"
   "\n",

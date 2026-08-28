@@ -99,6 +99,11 @@ if __name__ == "main" {
     total_pontos = 0
     pulados = 0
     achados = []
+    # Programa cujas alocações não deu pra contar. Isso NÃO é "ok": se a
+    # instrumentação do pool-oom quebrar (--wrap fora, fd 3 não chega), TODOS
+    # caem aqui e a varredura viraria "nenhuma morte violenta" sem ter varrido
+    # nada. Não contado = reprova, com a lista de quem foi.
+    sem_contagem = []
 
     i = 0
     for each par in PROGRAMAS {
@@ -116,7 +121,8 @@ if __name__ == "main" {
         roda(nome + ".ps", 0, true)
         bruto = open(TMP + "/n.txt").read().strip()
         if bruto == "" {
-            post("  ", nome, "-> nao consegui contar as alocacoes (pulei)")
+            post("  ", nome, "-> nao consegui contar as alocacoes")
+            addEnd(sem_contagem, nome)
             continue
         }
         n = int(bruto)
@@ -164,6 +170,12 @@ if __name__ == "main" {
     if pulados > 0 {
         post("pontos NAO varridos (acima do teto de", str(PONTOS_MAX) + " por programa):", pulados)
         post("  exaustivo:  ./pool teste/oom_varre.ps 0 999999")
+    }
+    if len(sem_contagem) > 0 {
+        post("INSTRUMENTACAO QUEBRADA —", str(len(sem_contagem)),
+             "programa(s) sem contagem de alocacoes:", sem_contagem)
+        post("verifique o build do pool-oom (--wrap / fd 3) e rode de novo.")
+        sys.exit(1)
     }
     if len(achados) == 0 {
         post("nenhuma morte violenta: em todo ponto o motor terminou ou")

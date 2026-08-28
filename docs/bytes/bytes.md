@@ -28,6 +28,28 @@ entre formatos.
 | `bytes.get(b, i)` | o valor inteiro do byte na posição `i` | [get/get.md](get/get.md) |
 | `bytes.xor(dados, chave)` | XOR byte a byte (chave repetida) | [xor/xor.md](xor/xor.md) |
 
+## Métodos do próprio valor
+
+Estes se chamam NO valor, não na lib — `b.metodo()`, não `bytes.metodo(b)`:
+
+| Método | O que faz |
+|---|---|
+| `b.decode(encoding="utf-8", errors="strict")` | volta pra texto |
+| `b.hex()` | os bytes como string hex |
+| `b.len()` | **quantos BYTES** — não caracteres |
+
+`b.len()` conta byte, e a diferença importa:
+
+```
+b = "ção".encode()
+post(b.len())        // 5  — em UTF-8, "ç" e "ã" ocupam 2 bytes cada
+post("ção".len())    // 3  — caracteres
+```
+
+É o mesmo número que o builtin `len(b)` devolve; existe como método porque
+`str`, `list`, `dict` e `tup` também têm `.len()`, e `bytes` era o único de
+fora — quem escrevia `b.len()` por analogia tomava erro em tempo de execução.
+
 ---
 
 ## Exemplos rápidos

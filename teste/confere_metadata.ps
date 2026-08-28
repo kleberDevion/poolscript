@@ -14,6 +14,11 @@
 
 import os
 import json
+import sys
+
+# Cada bloco de checagem soma aqui; no fim, qualquer falha = rc 1. Sem isso o
+# script imprimia "FALHA" e saía 0 — portão que não reprova não é portão.
+falhas = 0
 
 # Acha o binário do REPOSITÓRIO onde quer que o script rode (raiz, teste/).
 # O `pool` do PATH pode ser um build antigo — conferir metadata contra ele
@@ -88,6 +93,7 @@ else {
     for each d in divergencias {
         post("  ", d)
     }
+    falhas = falhas + 1
 }
 
 # ── metadata que declara TIPO DE RETORNO inexistente ────────────────────────
@@ -125,6 +131,7 @@ else {
     for each r in retornos_orfaos {
         post("  ", r)
     }
+    falhas = falhas + 1
 }
 
 # ── campo declarado que o motor NÃO serve ───────────────────────────────────
@@ -195,4 +202,9 @@ else {
     for each f in fantasmas {
         post("  ", f)
     }
+    falhas = falhas + 1
+}
+
+if falhas > 0 {
+    sys.exit(1)
 }

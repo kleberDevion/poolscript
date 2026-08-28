@@ -102,6 +102,71 @@ const Caso CASOS_LIBS[] = {
   "post(bytes.hex(bytes.xor(a, k)), bytes.hex(bytes.slice(a, 0, 1)), bytes.get(a, 1))\n"
   "post(bytes.hex(bytes.concat([a, k])))\n",
   "f00f 0f 15\n0f0fff00", NULL, 0 },
+/* `.len()` de bytes — entrou em 28/08 porque era o ÚNICO tipo embutido sem ele.
+ *
+ * A regra que estes casos travam: `b.len()` tem que devolver EXATAMENTE o que
+ * `len(b)` devolve, em toda origem de bytes que a VM tem. Dois números
+ * diferentes pra mesma pergunta seria pior que não ter o método. */
+{ "bytes.len() conta BYTE, nao codepoint",
+  /* o contraste com str é o ponto: bytes não sabem o que é caractere */
+  "b = \"ção\".encode()\n"
+  "post(b.len(), len(b))\n"
+  "post(\"ção\".len(), len(\"ção\"))\n",
+  "5 5\n3 3", NULL, 0 },
+{ "bytes.len() bate com len() em TODA origem de bytes",
+  /* Cada linha é um jeito DIFERENTE de a VM produzir bytes. Se algum caminho
+   * devolver um objeto que não é bytes de verdade, o método some e o caso
+   * falha aqui em vez de falhar num `try` de alguém. */
+  "import bytes\n"
+  "import hash\n"
+  "casos = [\n"
+  "    \"\".encode(),\n"
+  "    \"abc\".encode(),\n"
+  "    \"ção\".encode(),\n"
+  "    (\"x\" * 1000).encode(),\n"
+  "    bytes.fromhex(\"48656c6c6f\"),\n"
+  "    bytes.fromint(258, 4, \"big\"),\n"
+  "    bytes.frombase64(\"Dw8=\"),\n"
+  "    bytes.slice(\"abcdef\".encode(), 1, 4),\n"
+  "    bytes.concat([\"ab\".encode(), \"cd\".encode()]),\n"
+  "    bytes.xor(\"ab\".encode(), \"cd\".encode()),\n"
+  "    bytes.new(7),\n"
+  "]\n"
+  "difere = []\n"
+  "tam = []\n"
+  "for each b in casos {\n"
+  "    addEnd(tam, b.len())\n"
+  "    if b.len() != len(b) {\n"
+  "        addEnd(difere, str(b.len()) + \"!=\" + str(len(b)))\n"
+  "    }\n"
+  "}\n"
+  "post(tam)\n"
+  "post(\"divergiram:\", difere)\n",
+  "[0, 3, 5, 1000, 5, 4, 2, 3, 4, 2, 7]\ndivergiram: []", NULL, 0 },
+{ "bytes.len() recusa argumento, como os outros len()",
+  "try {\n"
+  "    post(\"ab\".encode().len(1))\n"
+  "} catch (e) {\n"
+  "    post(\"recusou\")\n"
+  "}\n",
+  "recusou", NULL, 0 },
+{ "os cinco tipos embutidos respondem .len()",
+  /* O caso existe pra a lacuna nao voltar: se alguem criar um tipo novo e
+   * esquecer o .len(), esta lista e onde se ve. */
+  "post(\"ab\".len(), [1, 2, 3].len(), {\"a\": 1}.len(), (1, 2).len(),\n"
+  "     \"abcd\".encode().len())\n",
+  "2 3 1 2 4", NULL, 0 },
+{ "bytes.len() de um arquivo lido em binario",
+  /* PoolFile/loadFile é outra origem de bytes, por caminho diferente */
+  "import os\n"
+  "using open(\"/tmp/ps_blen.bin\", \"wb\") as f {\n"
+  "    f.write(\"abcde\".encode())\n"
+  "}\n"
+  "b = open(\"/tmp/ps_blen.bin\", \"rb\").read()\n"
+  "post(b.len(), len(b), b.len() == len(b))\n"
+  "os.cmd(\"rm -f /tmp/ps_blen.bin\")\n",
+  "5 5 True", NULL, 0 },
+
 { "bytes base64 ida e volta",
   "import bytes\n"
   "a = bytes.fromhex(\"0f0f\")\n"

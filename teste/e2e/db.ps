@@ -1,18 +1,37 @@
 # psodbc: DbConnection (3) e DbCursor (6) contra PostgreSQL e MySQL de VERDADE.
 #
-# Precisa do usuário/banco de teste (veja teste/e2e/LEIAME.md). Se o banco não
-# estiver de pé, o script diz e sai sem falhar a suíte — não é falso verde:
-# ele imprime PULOU e o motivo.
+# Precisa do usuário/banco de teste (veja teste/e2e/LEIAME.md). SÓ a conexão
+# fica dentro de `try`: banco fora do ar é PULOU, com o motivo. Todo o resto
+# roda FORA de catch — erro depois de conectar é bug do driver e derruba o
+# script com rc != 0. A versão antiga envolvia o exercício inteiro no try, e
+# aí bug real e serviço ausente eram o mesmo "PULOU": falso verde.
 import psodbc
+import sys
+
+falhas = []
+ok = 0
+
+action confere(nome, cond) {
+    global ok
+    if cond {
+        ok = ok + 1
+    }
+    else {
+        addEnd(falhas, nome)
+        post("  FALHOU:", nome)
+    }
+}
+
+action conecta(drv, porta) {
+    return psodbc.connect(driver=drv, host="127.0.0.1", port=porta,
+                          user="ps_teste", password="ps_teste",
+                          database="ps_teste")
+}
 
 action exercita(nome, drv, porta) {
     post("=====", nome)
-    con = psodbc.connect(driver=drv, host="127.0.0.1", port=porta,
-                         user="ps_teste", password="ps_teste", database="ps_teste")
-    post("connect ->", type(con))
-
+    con = conecta(drv, porta)
     cur = con.cursor()
-    post("cursor ->", type(cur))
 
     cur.execute("DROP TABLE IF EXISTS t")
     cur.execute("CREATE TABLE t (id INT, nome VARCHAR(20))")
@@ -22,18 +41,29 @@ action exercita(nome, drv, porta) {
     con.commit()
 
     cur.execute("SELECT id, nome FROM t ORDER BY id")
-    post("fetchone ->", cur.fetchone())
+    r = cur.fetchone()
+    confere(nome + ": fetchone devolve a primeira linha",
+            r != Null and r["id"] == 1 and r["nome"] == "ana")
 
     cur.execute("SELECT nome FROM t ORDER BY id")
-    post("fetchmany(2) ->", cur.fetchmany(2))
+    r = cur.fetchmany(2)
+    confere(nome + ": fetchmany(2) devolve as duas primeiras",
+            len(r) == 2 and r[0]["nome"] == "ana" and r[1]["nome"] == "bia")
 
     cur.execute("SELECT id, nome FROM t ORDER BY id")
-    post("fetchall ->", cur.fetchall())
-    post("rowcount ->", cur.rowcount)
+    r = cur.fetchall()
+    confere(nome + ": fetchall devolve as 3 linhas em ordem",
+            len(r) == 3 and r[2]["id"] == 3 and r[2]["nome"] == "caio")
+    # SQLRowCount pra SELECT é definido pelo driver (pode ser -1); o que não
+    # pode é inventar um número errado.
+    confere(nome + ": rowcount é 3 ou o -1 que o ODBC permite",
+            cur.rowcount == 3 or cur.rowcount == -1)
 
     # parâmetro ligado (?) — o que protege de injeção
     cur.execute("SELECT nome FROM t WHERE id = ?", (2,))
-    post("param ligado ->", cur.fetchall())
+    r = cur.fetchall()
+    confere(nome + ": parâmetro ligado filtra de verdade",
+            len(r) == 1 and r[0]["nome"] == "bia")
 
     cur.execute("DROP TABLE t")
     con.commit()
@@ -42,18 +72,23 @@ action exercita(nome, drv, porta) {
     post(nome, "-> ok")
 }
 
-try {
-    exercita("postgres", "postgres", 5432)
-}
-catch(e) {
-    post("PULOU postgres ->", e)
-}
-
-try {
-    exercita("mysql", "mysql", 3306)
-}
-catch(e) {
-    post("PULOU mysql ->", e)
+for each alvo in [["postgres", "postgres", 5432], ["mysql", "mysql", 3306]] {
+    de_pe = false
+    try {
+        c = conecta(alvo[1], alvo[2])
+        c.close()
+        de_pe = true
+    }
+    catch (e) {
+        post("PULOU", alvo[0], "->", e)
+    }
+    if de_pe {
+        exercita(alvo[0], alvo[1], alvo[2])
+    }
 }
 
 post("fim")
+if len(falhas) > 0 {
+    post("FALHARAM:", len(falhas))
+    sys.exit(1)
+}

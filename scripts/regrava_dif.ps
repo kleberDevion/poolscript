@@ -112,7 +112,44 @@ if __name__ == "main" {
 
         r = roda(fonte)
         ultima = bloco[len(bloco) - 1]
-        nova = "  NULL, \"" + escapa_c(r[2]) + "\", -1 },"
+        # A expectativa nova tem que ser TÃO FORTE quanto o runner permite.
+        # A versão antiga gravava sempre `NULL, "<erro>", -1` — regravar um
+        # caso de sucesso jogava fora a conferência de stdout E de rc, e um
+        # caso que passasse limpo virava `erro=""`, que o strstr() do runner
+        # casa com qualquer coisa: caso que não verifica nada.
+        if r[0] == 124 {
+            post("RECUSADO " + achou + " — o fonte TRAVOU (timeout). Isso nao")
+            post("   se regrava; se investiga.")
+            sys.exit(1)
+        }
+        if r[0] == 0 {
+            # sucesso: stdout exato + rc 0 (o runner tira o \n final)
+            so = r[1]
+            while so.endswith("\n") {
+                so = so[0:len(so) - 1]
+            }
+            nova = "  \"" + escapa_c(so) + "\", NULL, 0 },"
+        }
+        else {
+            linha_erro = r[2]
+            if linha_erro.strip() == "" {
+                post("RECUSADO " + achou + " — rc=" + str(r[0])
+                     + " sem mensagem no stderr. Expectativa vazia casa com")
+                post("   qualquer coisa; nao ha o que gravar aqui.")
+                sys.exit(1)
+            }
+            # erro: mantém o stdout que saiu ANTES do erro (se houve), a
+            # primeira linha do stderr, e nao amarra o rc (convencao da suite)
+            campo_saida = "NULL"
+            if r[1] != "" {
+                so = r[1]
+                while so.endswith("\n") {
+                    so = so[0:len(so) - 1]
+                }
+                campo_saida = "\"" + escapa_c(so) + "\""
+            }
+            nova = "  " + campo_saida + ", \"" + escapa_c(linha_erro) + "\", -1 },"
+        }
         post("REGRAVA " + achou)
         post("   antes: " + ultima.strip())
         post("   agora: " + nova.strip())

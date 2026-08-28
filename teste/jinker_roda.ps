@@ -248,6 +248,11 @@ r = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nCo
 confere("pipelining responde as DUAS requisições", r.count("HTTP/1.1") >= 2)
 
 # ── parada limpa (é o que faz o gcov do servidor existir) ───────────────────
+# O pedido de parada pode errar (o servidor já estava caindo quando a resposta
+# viria) e isso é aceitável — mas NÃO é prova de parada. Quem decide `parou` é
+# só o laço abaixo, vendo a porta recusar conexão. A versão antiga marcava
+# `parou = true` no catch: qualquer erro (DNS, timeout, bug do cliente HTTP)
+# aprovava a checagem sem o servidor ter parado.
 parou = false
 try
 {
@@ -255,7 +260,7 @@ try
 }
 catch (e)
 {
-    parou = true
+    pass
 }
 i = 0
 while i < 50

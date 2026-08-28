@@ -1,35 +1,64 @@
 # MongoConnection (2) e MongoCollection (7) contra um mongod LOCAL.
 # Sobe com:  mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1
+#
+# SÓ a conexão fica no `try` (mongod fora do ar = PULOU). O exercício roda
+# fora de catch e cada resposta é CONFERIDA — erro ou valor errado derruba o
+# script com rc != 0. Antes, o try cobria tudo e qualquer bug virava "PULOU".
 import psodbc
+import sys
 
+falhas = []
+
+action confere(nome, cond) {
+    if not cond {
+        addEnd(falhas, nome)
+        post("  FALHOU:", nome)
+    }
+}
+
+con = Null
 try {
     con = psodbc.connect(driver="mongo", host="127.0.0.1", port=27099,
                          database="ps_teste")
-    post("connect ->", type(con))
+}
+catch (e) {
+    post("PULOU mongo ->", e)
+}
 
+if con != Null {
     col = con.collection("t")
-    post("collection ->", type(col))
 
     # limpa o que sobrou de uma execução anterior
     col.remove({})
+    confere("coleção começa vazia", col.count({}) == 0)
 
-    post("insert ->", col.insert({"nome": "ana", "n": 1}))
-    post("insert_many ->", col.insert_many([{"nome": "bia", "n": 2},
-                                            {"nome": "caio", "n": 3}]))
-    post("count ->", col.count({}))
-    post("find_one ->", col.find_one({"nome": "ana"}))
-    post("find ->", len(col.find({})))
-    post("find filtrado ->", col.find({"n": 2}))
-    post("update ->", col.update({"nome": "ana"}, {"n": 99}))
-    post("apos update ->", col.find_one({"nome": "ana"}))
-    post("remove ->", col.remove({"nome": "caio"}))
-    post("count final ->", col.count({}))
+    col.insert({"nome": "ana", "n": 1})
+    col.insert_many([{"nome": "bia", "n": 2}, {"nome": "caio", "n": 3}])
+    confere("insert + insert_many somam 3 documentos", col.count({}) == 3)
+
+    r = col.find_one({"nome": "ana"})
+    confere("find_one acha o documento certo", r != Null and r["n"] == 1)
+
+    confere("find sem filtro devolve os 3", len(col.find({})) == 3)
+
+    r = col.find({"n": 2})
+    confere("find filtrado devolve só o que casa",
+            len(r) == 1 and r[0]["nome"] == "bia")
+
+    col.update({"nome": "ana"}, {"n": 99})
+    r = col.find_one({"nome": "ana"})
+    confere("update altera o campo", r != Null and r["n"] == 99)
+
+    col.remove({"nome": "caio"})
+    confere("remove tira só o que casa", col.count({}) == 2)
 
     col.remove({})
     con.close()
     post("mongo -> ok")
 }
-catch(e) {
-    post("PULOU mongo ->", e)
-}
+
 post("fim")
+if len(falhas) > 0 {
+    post("FALHARAM:", len(falhas))
+    sys.exit(1)
+}

@@ -480,6 +480,17 @@ propriedade: pool
 
 .PHONY: propriedade
 
+# ── LEIS da linguagem (property testing com shrinking) ──────────────────────
+# A única família de teste onde não existe valor esperado gravado: cada lei
+# vale pra QUALQUER valor sorteado, então ela não encoda a saída de ontem —
+# que é o defeito estrutural do oráculo e do diferencial (fotografia).
+LEIS_N ?= 300
+LEIS_SEMENTE ?= 1
+leis: pool
+	@./pool teste/leis.ps $(LEIS_N) $(LEIS_SEMENTE)
+
+.PHONY: leis
+
 # ── a MESMA suíte, sob ASan+UBSan ───────────────────────────────────────────
 # A suíte roda o binário -O2, que é exatamente o que ESCONDE a classe de
 # defeito de memória: leitura fora de faixa em -O2 costuma "funcionar". O

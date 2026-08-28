@@ -6162,6 +6162,27 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
     return devolve_sbuf(vm, &sb, out);
 }
 
+/* `b.len()` — quantidade de BYTES.
+ *
+ * Conta byte, não codepoint, e isso é o ponto: `"ção".encode().len()` é 5,
+ * enquanto `"ção".len()` é 3. Bytes não sabem o que é caractere; quem decide
+ * isso é o `decode()`. O método tem que devolver EXATAMENTE o que o builtin
+ * `len(b)` devolve — dois números diferentes pra mesma pergunta seria pior que
+ * não ter o método.
+ *
+ * POR QUE ELE PASSOU A EXISTIR: `bytes` era o único tipo embutido sem `.len()`
+ * (str, list, dict e tup têm). Quem escreve `pedaco.len()` depois de usar o
+ * mesmo em str tomava "membro inexistente" em tempo de execução — e num `try`
+ * isso vira falha silenciosa. Custou seis testes de protocolo cru reprovando
+ * com a causa invisível em `teste/jinker_roda.ps`. */
+static int met_b_len(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) MERRO(vm, "SomeValueUnexpected", "len() nao aceita argumento");
+    *out = MK_INT(COMO_BYTES(alvo)->len);
+    return 0;
+}
+
 static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
@@ -6180,6 +6201,7 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
  * e a VM não pode oferecer mais do que a linguagem tem. `len(b)` funciona. */
 static const MetodoNat METODOS_BYTES[] = {
     { "decode", met_b_decode, "encoding=\"utf-8\",errors=\"strict\"" }, { "hex", met_b_hex, NULL },
+    { "len", met_b_len, NULL },
 };
 
 

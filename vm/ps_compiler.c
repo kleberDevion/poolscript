@@ -492,7 +492,13 @@ static int32_t resolve_upval(C *c, Unidade *u, const char *nome)
     for (int32_t i = 0; i < u->nupvals; i++)
         if (strcmp(u->upvals[i].nome, nome) == 0) return i;
     for (int32_t i = 0; i < u->pai->nlocais; i++)
-        if (strcmp(u->pai->locais[i], nome) == 0 && i < 256 && u->pai->celula[i])
+        /* `i < 256` PRIMEIRO: o índice é do `celula[256]`, não do `locais`
+         * (que é heap dimensionado por `nlocais`). Na ordem antiga o
+         * `arrayIndexThenCheck` do cppcheck acusava, e ele estava certo em
+         * apontar — quem lê não tem como saber qual dos dois vetores o 256
+         * limita. Conserto é deixar o código óbvio pro detector, não silenciar
+         * o detector. */
+        if (i < 256 && u->pai->celula[i] && strcmp(u->pai->locais[i], nome) == 0)
             return add_upval(c, u, nome, 1, i);
     int32_t k = resolve_upval(c, u->pai, nome);
     if (k >= 0) return add_upval(c, u, nome, 0, k);

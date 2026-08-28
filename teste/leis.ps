@@ -1,0 +1,669 @@
+# As LEIS da linguagem — regra, não exemplo.
+#
+# POR QUE ESTE ARQUIVO EXISTE, e por que ele não é "mais um teste":
+#
+# A suíte tinha 7903 casos e 3 famílias de regra. Os 6891 do oráculo e do
+# diferencial são FOTOGRAFIA: alguém rodou uma expressão, gravou o que saiu, e
+# aquilo virou o esperado. Isso encoda uma premissa falsa — que a saída de
+# ontem estava certa. Ela inclui os bugs e as FALTAS de ontem: o caso `dif #441`
+# congelava `bytes` NÃO ter `.len()`, e reclamou quando a falta foi consertada.
+# Havia até um script (`scripts/regrava_dif.ps`) só pra regravar fotografia em
+# lote, o que torna "regravar" a resposta natural ao vermelho.
+#
+# Aqui não há valor esperado escrito em lugar nenhum. Há LEI:
+#
+#     pra QUALQUER a e b inteiros:   a + b == b + a
+#     pra QUALQUER texto s:          s[:i] + s[i:] == s
+#     pra QUALQUER lista l:          ordenar duas vezes == ordenar uma
+#
+# O valor vem de sorteio, e muda a cada execução. Uma lei que passa não diz
+# "este exemplo funciona": diz "não achei contraexemplo em N tentativas". E
+# quando acha, ela ENCOLHE o contraexemplo até o menor que ainda falha, que é a
+# diferença entre um achado utilizável e um despejo de dados.
+#
+#     ./pool teste/leis.ps                 300 rodadas
+#     ./pool teste/leis.ps 5000            mais fundo
+#     ./pool teste/leis.ps 300 12345       semente fixa (repete um achado)
+#     ./pool teste/leis.ps --listar        só enuncia as leis, não roda
+#
+# COMO ELE RODA: as leis de uma rodada vão TODAS num programa só, e o programa
+# imprime apenas as que falharam. Um processo por lei seria ~6 ms cada e o
+# arquivo inteiro levaria minutos; assim uma rodada com 60 leis custa um
+# processo. Se o programa MORRE (crash, trava), o lote é re-executado lei por
+# lei pra achar a culpada — morte também é achado, e dos bons.
+import os
+import sys
+
+TMP = "/tmp/ps_leis"
+
+semente = 1
+
+
+# Congruente linear. A semente é explícita porque achado que não se repete não
+# é achado — é boato.
+#
+# O resto sai dos bits ALTOS (`/ 65536`): num LCG com módulo potência de 2 os
+# bits baixos têm período curto — o último bit alterna 0,1,0,1 sempre, então
+# `semente % 2` não sorteava nada, decidia por turnos.
+action rnd(n) {
+    semente = (semente * 1103515245 + 12345) % 2147483648
+    if n <= 0 {
+        return 0
+    }
+    return int(semente / 65536) % n
+}
+
+
+action escolhe(l) {
+    return l[rnd(len(l))]
+}
+
+
+# ── geração de VALORES ──────────────────────────────────────────────────────
+#
+# Os extremos entram de propósito e com peso: 0, 1, -1, e os limites do int64
+# são onde a aritmética quebra, e sorteio uniforme quase nunca os alcança.
+INT_BORDA = [0, 1, -1, 2, -2, 10, 255, 256, 65535, 65536,
+             2147483647, -2147483648, 4611686018427387904,
+             9223372036854775807, -9223372036854775808]
+
+# Texto com o que costuma quebrar: vazio, ASCII, acento (2 bytes), CJK (3),
+# emoji (4), aspas, barra invertida, controle.
+TXT_BORDA = ["", "a", "ab", "abc", "ção", "über", "日本語", "🙂",
+             "a'b", "a\"b", "a\\b", "a\tb", "a\nb", " ", "  a  ",
+             "aAbB", "123", "0", "-1"]
+
+
+action gera_int() {
+    if rnd(3) == 0 {
+        return escolhe(INT_BORDA)
+    }
+    return rnd(2000) - 1000
+}
+
+
+action gera_txt() {
+    if rnd(2) == 0 {
+        return escolhe(TXT_BORDA)
+    }
+    n = rnd(6)
+    s = ""
+    i = 0
+    while i < n {
+        s = s + escolhe(["a", "b", "Z", "ç", "日", "1", " ", "_"])
+        i = i + 1
+    }
+    return s
+}
+
+
+action gera_lista_int() {
+    n = rnd(7)
+    l = []
+    i = 0
+    while i < n {
+        addEnd(l, gera_int())
+        i = i + 1
+    }
+    return l
+}
+
+
+# ── o valor vira FONTE ──────────────────────────────────────────────────────
+#
+# Uma lei é montada como texto de programa, então todo valor precisa virar
+# literal. Escapar aqui é obrigatório: sem isso, um texto com aspas ou barra
+# gera programa que nem compila, e a lei "falha" por motivo que não é dela.
+action lit_txt(s) {
+    fora = "\""
+    for each c in s {
+        if c == "\\" {
+            fora = fora + "\\\\"
+        }
+        elif c == "\"" {
+            fora = fora + "\\\""
+        }
+        elif c == "\n" {
+            fora = fora + "\\n"
+        }
+        elif c == "\t" {
+            fora = fora + "\\t"
+        }
+        elif c == "\r" {
+            fora = fora + "\\r"
+        }
+        else {
+            fora = fora + c
+        }
+    }
+    return fora + "\""
+}
+
+
+action lit_int(n) {
+    # Literal negativo em posição de expressão pode colar no operador
+    # anterior (`a - -1`); o parêntese resolve sem depender da precedência.
+    if n < 0 {
+        return "(" + str(n) + ")"
+    }
+    return str(n)
+}
+
+
+action lit_lista(l) {
+    partes = []
+    for each v in l {
+        addEnd(partes, lit_int(v))
+    }
+    return "[" + (", ").join(partes) + "]"
+}
+
+
+# ── AS LEIS ─────────────────────────────────────────────────────────────────
+#
+# Cada uma: [dominio, enunciado, forma]. A `forma` é uma EXPRESSÃO que tem que
+# ser verdadeira pra todo valor; `A`, `B` e `C` são trocados pelos literais
+# sorteados do domínio.
+#
+# Domínios: "ii" = dois inteiros; "iii" = três; "i" = um; "tt" = dois textos;
+# "ti" = texto e inteiro; "t" = um texto; "l" = uma lista de inteiros;
+# "li" = lista e inteiro.
+#
+# O que NÃO entra: lei que dependa de o resultado ser um valor específico. Se
+# precisa do valor, é exemplo, e exemplo é o que este arquivo existe pra
+# substituir.
+LEIS = [
+    # ── aritmética de inteiro ───────────────────────────────────────────────
+    ["ii", "soma comuta", "(A + B) == (B + A)"],
+    ["ii", "produto comuta", "(A * B) == (B * A)"],
+    ["iii", "soma associa", "((A + B) + C) == (A + (B + C))"],
+    ["iii", "produto distribui sobre a soma", "(A * (B + C)) == ((A * B) + (A * C))"],
+    ["i", "zero é neutro da soma", "(A + 0) == A"],
+    ["i", "um é neutro do produto", "(A * 1) == A"],
+    ["i", "zero anula o produto", "(A * 0) == 0"],
+    ["i", "dobrar é somar consigo", "(A + A) == (A * 2)"],
+    ["i", "negar duas vezes volta", "(-(-A)) == A"],
+    ["ii", "subtrair é somar o oposto", "(A - B) == (A + (-B))"],
+    ["ii", "inverter a subtração troca o sinal", "(A - B) == (-(B - A))"],
+    ["i", "somar e subtrair o mesmo não muda", "((A + 7) - 7) == A"],
+
+    # ── resto: as leis fundamentais ─────────────────────────────────────────
+    # A linguagem NÃO tem divisão inteira (`//` nem existe; `/` devolve flo,
+    # que perde precisão nos limites do int64) — então as leis do quociente
+    # são escritas só com `%`, que é exato.
+    ["ii", "tirar o resto deixa um múltiplo do divisor",
+     "B == 0 or ((A - (A % B)) % B) == 0"],
+    ["ii", "o resto cabe no divisor",
+     "B == 0 or (abs(A % B) < abs(B))"],
+    ["ii", "o resto tem o sinal do divisor (regra documentada)",
+     "B == 0 or (A % B) == 0 or (((A % B) > 0) == (B > 0))"],
+    ["i", "resto de dividir por um é zero", "(A % 1) == 0"],
+
+    # ── comparação ──────────────────────────────────────────────────────────
+    ["i", "todo valor é igual a si mesmo", "A == A"],
+    ["ii", "igualdade é simétrica", "(A == B) == (B == A)"],
+    ["ii", "menor e maior são opostos e excludentes",
+     "((A < B) and not (A > B)) or ((A > B) and not (A < B)) or (A == B)"],
+    ["ii", "menor-ou-igual é menor ou igual", "(A <= B) == ((A < B) or (A == B))"],
+    ["ii", "negar a igualdade é a diferença", "(A != B) == (not (A == B))"],
+
+    # ── bit a bit ───────────────────────────────────────────────────────────
+    ["i", "xor consigo zera", "(A ^ A) == 0"],
+    ["i", "xor com zero não muda", "(A ^ 0) == A"],
+    ["ii", "xor duas vezes volta", "((A ^ B) ^ B) == A"],
+    ["i", "and consigo não muda", "(A & A) == A"],
+    ["i", "or consigo não muda", "(A | A) == A"],
+    ["ii", "and e or comutam", "((A & B) == (B & A)) and ((A | B) == (B | A))"],
+
+    # ── texto ───────────────────────────────────────────────────────────────
+    ["tt", "concatenar soma os tamanhos", "len(A + B) == (len(A) + len(B))"],
+    ["t", "concatenar com vazio não muda", "(A + \"\") == A"],
+    ["t", "o método len bate com o builtin", "A.len() == len(A)"],
+    ["ti", "cortar e juntar reconstrói", "(A[:B] + A[B:]) == A"],
+    ["t", "fatia inteira é o próprio texto", "A[:] == A"],
+    ["t", "inverter duas vezes volta", "A[::-1][::-1] == A"],
+    ["t", "maiúscula é idempotente", "A.upper().upper() == A.upper()"],
+    ["t", "minúscula é idempotente", "A.lower().lower() == A.lower()"],
+    ["t", "tirar espaço é idempotente", "A.strip().strip() == A.strip()"],
+    ["t", "ida e volta por bytes preserva", "A.encode().decode() == A"],
+    ["t", "encode em bytes nunca encolhe", "len(A.encode()) >= len(A)"],
+    ["t", "texto está contido em si", "A in A"],
+    ["t", "vazio está contido em tudo", "\"\" in A"],
+    ["tt", "concatenação contém as duas partes", "(A in (A + B)) and (B in (A + B))"],
+    ["t", "dividir e juntar pelo mesmo separador volta",
+     "(\"|\").join(A.split(\"|\")) == A"],
+    ["t", "repetir uma vez não muda", "(A * 1) == A"],
+    ["t", "repetir zero vezes esvazia", "(A * 0) == \"\""],
+    ["ti", "repetir multiplica o tamanho",
+     "B < 0 or B > 20 or len(A * B) == (len(A) * B)"],
+    ["t", "trocar por si mesmo não muda", "A.replace(\"a\", \"a\") == A"],
+
+    # ── lista ───────────────────────────────────────────────────────────────
+    ["l", "ordenar é idempotente", "ordena(ordena(A)) == ordena(A)"],
+    ["l", "ordenar preserva o tamanho", "len(ordena(A)) == len(A)"],
+    ["l", "ordenar produz sequência não decrescente", "nao_decresce(ordena(A))"],
+    ["l", "ordenar é permutação: mesma soma", "sum(ordena(A)) == sum(A)"],
+    ["l", "inverter duas vezes volta", "inverte(inverte(A)) == A"],
+    ["l", "inverter preserva o tamanho", "len(inverte(A)) == len(A)"],
+    ["l", "concatenar com vazia não muda", "(A + []) == A"],
+    ["l", "cópia é igual e independente", "ehcopia(A)"],
+    ["l", "todo item está na lista", "todos_dentro(A)"],
+    ["li", "cortar e juntar reconstrói", "(A[:B] + A[B:]) == A"],
+    ["l", "fatia inteira é a própria lista", "A[:] == A"],
+    ["l", "somar item aumenta o tamanho em um", "tamanho_apos_append(A) == (len(A) + 1)"],
+
+    # ── dict ────────────────────────────────────────────────────────────────
+    ["ti", "guardar e ler devolve o mesmo", "guarda_le(A, B) == B"],
+    ["t", "chave guardada é encontrada", "tem_chave(A)"],
+    ["t", "chave ausente não é encontrada", "not (\"\\u0001nao existe\\u0001\" in {A: 1})"],
+    ["l", "dict preserva a ordem de inserção", "ordem_preservada(A)"],
+
+    # ── conversão ───────────────────────────────────────────────────────────
+    ["i", "inteiro vira texto e volta", "int(str(A)) == A"],
+    ["i", "inteiro vira float e volta se couber",
+     "A > 9007199254740992 or A < (-9007199254740992) or int(flo(A)) == A"],
+    ["i", "converter para o próprio tipo não muda", "int(A) == A"],
+    ["t", "texto vira lista de caracteres e volta", "(\"\").join(list(A)) == A"],
+    ["l", "lista vira tupla e volta", "list(tup(A)) == A"],
+
+    # ── booleano ────────────────────────────────────────────────────────────
+    ["i", "negar duas vezes é a verdade do valor", "(not (not A)) == bool(A)"],
+    ["i", "zero é falso, o resto é verdadeiro", "bool(A) == (A != 0)"],
+
+    # ── escopo e closure ────────────────────────────────────────────────────
+    ["i", "closure enxerga e altera o de fora", "closure_soma(A) == (A + 3)"],
+    ["i", "argumento não vaza pro chamador", "nao_vaza(A)"],
+]
+
+
+# Preâmbulo: as ajudantes que as leis usam. Ficam aqui, uma vez por programa,
+# porque lei tem que caber numa expressão — o que precisa de statement mora
+# numa ajudante com nome que diz o que ela responde.
+PREAMBULO = ("action ordena(l) {\n"
+    + "    c = l.copy()\n"
+    + "    c.sort()\n"
+    + "    return c\n"
+    + "}\n"
+    + "action inverte(l) {\n"
+    + "    c = l.copy()\n"
+    + "    c.reverse()\n"
+    + "    return c\n"
+    + "}\n"
+    + "action nao_decresce(l) {\n"
+    + "    i = 1\n"
+    + "    while i < len(l) {\n"
+    + "        if l[i - 1] > l[i] {\n"
+    + "            return false\n"
+    + "        }\n"
+    + "        i = i + 1\n"
+    + "    }\n"
+    + "    return true\n"
+    + "}\n"
+    + "action ehcopia(l) {\n"
+    + "    c = l.copy()\n"
+    + "    if c != l {\n"
+    + "        return false\n"
+    + "    }\n"
+    + "    addEnd(c, 12345)\n"
+    + "    return len(c) == (len(l) + 1)\n"
+    + "}\n"
+    + "action todos_dentro(l) {\n"
+    + "    for each v in l {\n"
+    + "        if not l.contains(v) {\n"
+    + "            return false\n"
+    + "        }\n"
+    + "    }\n"
+    + "    return true\n"
+    + "}\n"
+    + "action tamanho_apos_append(l) {\n"
+    + "    c = l.copy()\n"
+    + "    addEnd(c, 1)\n"
+    + "    return len(c)\n"
+    + "}\n"
+    + "action guarda_le(k, v) {\n"
+    + "    d = {}\n"
+    + "    d[k] = v\n"
+    + "    return d[k]\n"
+    + "}\n"
+    + "action tem_chave(k) {\n"
+    + "    d = {}\n"
+    + "    d[k] = 1\n"
+    + "    return k in d\n"
+    + "}\n"
+    + "action ordem_preservada(l) {\n"
+    + "    d = {}\n"
+    + "    vistos = []\n"
+    + "    for each v in l {\n"
+    + "        if not vistos.contains(str(v)) {\n"
+    + "            addEnd(vistos, str(v))\n"
+    + "        }\n"
+    + "        d[str(v)] = v\n"
+    + "    }\n"
+    + "    return d.keys() == vistos\n"
+    + "}\n"
+    + "action closure_soma(n) {\n"
+    + "    x = n\n"
+    + "    action mais() {\n"
+    + "        x = x + 3\n"
+    + "    }\n"
+    + "    mais()\n"
+    + "    return x\n"
+    + "}\n"
+    + "action nao_vaza(n) {\n"
+    + "    action muda(v) {\n"
+    + "        v = v + 1\n"
+    + "        return v\n"
+    + "    }\n"
+    + "    antes = n\n"
+    + "    muda(n)\n"
+    + "    return n == antes\n"
+    + "}\n")
+
+
+# Troca os marcadores A/B/C pelos literais NUMA PASSADA SÓ, caractere a
+# caractere. Encadear `.replace("A", ...).replace("B", ...)` reescrevia dentro
+# do literal já inserido: com A = "aAbB" (que está na borda de texto de
+# propósito), o replace de B corrompia o literal de A e a "falha" era do
+# gerador, não da lei.
+action preenche(forma, subs) {
+    fora = ""
+    for each c in forma {
+        if subs.has(c) {
+            fora = fora + subs[c]
+        }
+        else {
+            fora = fora + c
+        }
+    }
+    return fora
+}
+
+
+# Sorteia os literais do domínio e devolve [forma_preenchida, descricao].
+action instancia(dominio, forma) {
+    if dominio == "i" {
+        a = gera_int()
+        return [preenche(forma, {"A": lit_int(a)}), "A=" + str(a)]
+    }
+    if dominio == "ii" {
+        a = gera_int()
+        b = gera_int()
+        f = preenche(forma, {"A": lit_int(a), "B": lit_int(b)})
+        return [f, "A=" + str(a) + " B=" + str(b)]
+    }
+    if dominio == "iii" {
+        a = gera_int()
+        b = gera_int()
+        c = gera_int()
+        f = preenche(forma, {"A": lit_int(a), "B": lit_int(b), "C": lit_int(c)})
+        return [f, "A=" + str(a) + " B=" + str(b) + " C=" + str(c)]
+    }
+    if dominio == "t" {
+        a = gera_txt()
+        return [preenche(forma, {"A": lit_txt(a)}), "A=" + lit_txt(a)]
+    }
+    if dominio == "tt" {
+        a = gera_txt()
+        b = gera_txt()
+        f = preenche(forma, {"A": lit_txt(a), "B": lit_txt(b)})
+        return [f, "A=" + lit_txt(a) + " B=" + lit_txt(b)]
+    }
+    if dominio == "ti" {
+        a = gera_txt()
+        b = rnd(len(a) + 3) - 1
+        f = preenche(forma, {"A": lit_txt(a), "B": lit_int(b)})
+        return [f, "A=" + lit_txt(a) + " B=" + str(b)]
+    }
+    if dominio == "l" {
+        a = gera_lista_int()
+        return [preenche(forma, {"A": lit_lista(a)}), "A=" + lit_lista(a)]
+    }
+    # "li"
+    a = gera_lista_int()
+    b = rnd(len(a) + 3) - 1
+    f = preenche(forma, {"A": lit_lista(a), "B": lit_int(b)})
+    return [f, "A=" + lit_lista(a) + " B=" + str(b)]
+}
+
+
+# Monta um programa com várias leis e devolve a saída. Cada lei que falha
+# imprime o índice; o resto fica calado.
+action roda_lote(itens, tag) {
+    corpo = PREAMBULO
+    i = 0
+    while i < len(itens) {
+        corpo = corpo + "if not (" + itens[i][0] + ") {\n"
+        corpo = corpo + "    post(\"FALHOU " + str(i) + "\")\n"
+        corpo = corpo + "}\n"
+        i = i + 1
+    }
+    corpo = corpo + "post(\"FIM\")\n"
+
+    alvo = TMP + "/" + tag + ".ps"
+    using open(alvo, "w") as f {
+        f.write(corpo)
+    }
+    os.cmd("cd " + TMP + " && timeout 30 '" + sys.executable + "' " + tag
+           + ".ps > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
+    return [int(open(TMP + "/rc.txt").read().strip()),
+            open(TMP + "/o.txt").read(),
+            open(TMP + "/e.txt").read()]
+}
+
+
+# ENCOLHER: um contraexemplo com A=-8340283 não ensina nada; A=-1 ensina. Tenta
+# os candidatos pequenos e fica com o PRIMEIRO que ainda falha. É o que separa
+# achado utilizável de despejo de dados.
+CANDIDATOS_I = [0, 1, -1, 2, -2, 10, 255, 2147483647, -2147483648]
+CANDIDATOS_T = ["", "a", "ab", "ç", "日", "\n", " "]
+CANDIDATOS_L = [[], [0], [1], [1, 0], [0, 0], [-1, 1]]
+
+
+action ainda_falha(forma) {
+    r = roda_lote([[forma, ""]], "shrink")
+    if r[0] != 0 {
+        return true
+    }
+    return "FALHOU 0" in r[1]
+}
+
+
+# Recebe o TEMPLATE da lei (com A/B/C por preencher), nunca a forma já
+# instanciada — nesta os marcadores já viraram literal e o replace seria no-op:
+# o "encolhido" sairia igual ao sorteado, com o rótulo mentindo "A=0".
+action encolhe(dominio, forma) {
+    if dominio == "i" {
+        for each c in CANDIDATOS_I {
+            f = preenche(forma, {"A": lit_int(c)})
+            if ainda_falha(f) {
+                return [f, "A=" + str(c)]
+            }
+        }
+    }
+    elif dominio == "t" {
+        for each c in CANDIDATOS_T {
+            f = preenche(forma, {"A": lit_txt(c)})
+            if ainda_falha(f) {
+                return [f, "A=" + lit_txt(c)]
+            }
+        }
+    }
+    elif dominio == "l" {
+        for each c in CANDIDATOS_L {
+            f = preenche(forma, {"A": lit_lista(c)})
+            if ainda_falha(f) {
+                return [f, "A=" + lit_lista(c)]
+            }
+        }
+    }
+    elif dominio == "ii" {
+        for each a in CANDIDATOS_I {
+            for each b in CANDIDATOS_I {
+                f = preenche(forma, {"A": lit_int(a), "B": lit_int(b)})
+                if ainda_falha(f) {
+                    return [f, "A=" + str(a) + " B=" + str(b)]
+                }
+            }
+        }
+    }
+    elif dominio == "iii" {
+        # só os 5 primeiros candidatos: 5^3 = 125 execuções já é o teto do
+        # que vale pagar num encolhimento
+        for each a in CANDIDATOS_I[:5] {
+            for each b in CANDIDATOS_I[:5] {
+                for each c in CANDIDATOS_I[:5] {
+                    f = preenche(forma, {"A": lit_int(a), "B": lit_int(b),
+                                         "C": lit_int(c)})
+                    if ainda_falha(f) {
+                        return [f, "A=" + str(a) + " B=" + str(b) + " C=" + str(c)]
+                    }
+                }
+            }
+        }
+    }
+    elif dominio == "tt" {
+        for each a in CANDIDATOS_T {
+            for each b in CANDIDATOS_T {
+                f = preenche(forma, {"A": lit_txt(a), "B": lit_txt(b)})
+                if ainda_falha(f) {
+                    return [f, "A=" + lit_txt(a) + " B=" + lit_txt(b)]
+                }
+            }
+        }
+    }
+    elif dominio == "ti" {
+        for each a in CANDIDATOS_T {
+            for each b in CANDIDATOS_I[:5] {
+                f = preenche(forma, {"A": lit_txt(a), "B": lit_int(b)})
+                if ainda_falha(f) {
+                    return [f, "A=" + lit_txt(a) + " B=" + str(b)]
+                }
+            }
+        }
+    }
+    elif dominio == "li" {
+        for each a in CANDIDATOS_L {
+            for each b in CANDIDATOS_I[:5] {
+                f = preenche(forma, {"A": lit_lista(a), "B": lit_int(b)})
+                if ainda_falha(f) {
+                    return [f, "A=" + lit_lista(a) + " B=" + str(b)]
+                }
+            }
+        }
+    }
+    return ["", ""]
+}
+
+
+if __name__ == "main" {
+    if "--listar" in sys.argv {
+        post("")
+        post("LEIS DA LINGUAGEM —", str(len(LEIS)), "regras")
+        post("")
+        dom_ant = ""
+        for each L in LEIS {
+            post("   [" + L[0].ljust(3) + "] " + L[1])
+        }
+        post("")
+        post("Cada uma vale pra TODO valor do domínio, não pra um exemplo.")
+        sys.exit(0)
+    }
+
+    os.cmd("rm -rf " + TMP)
+    os.mkdir(TMP, exist_ok=true)
+
+    rodadas = 300
+    if len(sys.argv) > 0 {
+        rodadas = int(sys.argv[0])
+    }
+    if len(sys.argv) > 1 {
+        semente = int(sys.argv[1])
+    }
+    semente_inicial = semente
+
+    achados = []
+    checagens = 0
+    mortes = 0
+
+    r = 0
+    while r < rodadas {
+        r = r + 1
+        itens = []
+        for each L in LEIS {
+            addEnd(itens, instancia(L[0], L[2]))
+        }
+        checagens = checagens + len(itens)
+        saida = roda_lote(itens, "lote")
+
+        if saida[0] != 0 or not "FIM" in saida[1] {
+            # O lote MORREU. Não dá pra saber qual lei foi pela saída, então
+            # roda uma por uma — morte é o achado mais grave que existe aqui.
+            mortes = mortes + 1
+            i = 0
+            while i < len(itens) {
+                um = roda_lote([itens[i]], "solo")
+                if um[0] != 0 or not "FIM" in um[1] {
+                    addEnd(achados, [LEIS[i][1], LEIS[i][0], itens[i][0],
+                                     itens[i][1], "MORREU rc=" + str(um[0])
+                                     + " " + um[2].split("\n")[0], LEIS[i][2]])
+                }
+                i = i + 1
+            }
+            continue
+        }
+
+        for each linha in saida[1].split("\n") {
+            if not linha.startswith("FALHOU ") {
+                continue
+            }
+            i = int(linha[7:])
+            # o TEMPLATE (LEIS[i][2]) vai junto: é ele que o encolhedor precisa
+            addEnd(achados, [LEIS[i][1], LEIS[i][0], itens[i][0], itens[i][1],
+                             "falsa", LEIS[i][2]])
+        }
+    }
+
+    post("")
+    post("leis:", str(len(LEIS)), " rodadas:", str(rodadas),
+         " checagens:", str(checagens), " semente:", str(semente_inicial))
+    if mortes > 0 {
+        post("lotes que MORRERAM:", str(mortes))
+    }
+
+    if len(achados) == 0 {
+        post("")
+        post("nenhum contraexemplo. Isso NAO prova que as leis valem —")
+        post("prova que", str(checagens), "sorteios nao acharam onde elas quebram.")
+        sys.exit(0)
+    }
+
+    # Uma lei que falha costuma falhar muitas vezes; agrupa pra o relatório
+    # mostrar LEI, não repetição.
+    # A chave é enunciado + domínio: há leis distintas de mesmo nome ("cortar
+    # e juntar reconstrói" existe pra texto E pra lista) — só o enunciado
+    # engoliria a segunda.
+    vistas = []
+    post("")
+    post("CONTRAEXEMPLOS:", str(len(achados)))
+    for each a in achados {
+        chave = a[0] + "|" + a[1]
+        if vistas.contains(chave) {
+            continue
+        }
+        addEnd(vistas, chave)
+        post("")
+        post("  lei:", a[0], " (" + a[4] + ")")
+        post("  sorteado:", a[3])
+        curto = encolhe(a[1], a[5])
+        if curto[0] != "" {
+            post("  MENOR contraexemplo:", curto[1])
+            post("     " + curto[0])
+        }
+        else {
+            post("     " + a[2])
+        }
+    }
+    post("")
+    post("repita com:  ./pool teste/leis.ps", str(rodadas), str(semente_inicial))
+    sys.exit(1)
+}

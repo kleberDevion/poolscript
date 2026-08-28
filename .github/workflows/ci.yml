@@ -63,6 +63,9 @@ jobs:
       # semente fixa vira exemplo congelado, que é o que ele veio substituir.
       # O número aparece no log, então um achado é sempre repetível.
       - run: make propriedade PROP_N=400 PROP_SEMENTE=$(date +%j)
+      # As LEIS: a única suíte sem valor esperado gravado. Mesma regra de
+      # semente; o comando de repetição sai no log do próprio script.
+      - run: make leis LEIS_N=300 LEIS_SEMENTE=$(date +%j)
 
   # ── só de madrugada: o que é caro demais pra cada push ─────────────────────
   robustez:
@@ -92,7 +95,12 @@ jobs:
       - run: make analisa ANALISA_TUDO=1 ANALISA_MB=12000
       # Nivel 2 do format-truncation: ruidoso demais pro portao (acusa
       # snprintf com precisao explicita), mas util pra revisao noturna.
-      - run: make avisos AVISOS_NIVEL=2 || true
+      # `continue-on-error` em vez de `|| true`: o step aparece VERMELHO no
+      # painel quando acusa algo (dá pra revisar), sem derrubar o noturno.
+      # Com `|| true` o resultado sumia — verde sempre, revisão nunca.
+      - name: avisos nivel 2 (informativo, ver no painel)
+        run: make avisos AVISOS_NIVEL=2
+        continue-on-error: true
       - run: make fuzz FUZZ_T=1800
       # Benchmark: reprova se algum caso piorou mais que a folga. O runner é
       # mais estável que uma máquina de trabalho, então aqui o --portao vale.

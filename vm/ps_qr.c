@@ -464,8 +464,16 @@ typedef struct { unsigned char *b; size_t n, cap; } PngBuf;
  * enxerga o `minusculo` do poolscript_vm.c */
 static void qr_minusculo(const char *s, char *out, size_t cap)
 {
+    /* `cap == 0` ANTES de qualquer coisa: `cap` é `size_t`, então `cap - 1`
+     * vira SIZE_MAX e o laço só pararia no NUL de `s` — com o `out[i] = 0` do
+     * fim escrevendo num buffer de tamanho zero. */
+    if (cap == 0) return;
     size_t i = 0;
-    for (; s[i] && i < cap - 1; i++)
+    /* limite ANTES da leitura: `s[i] && i < cap - 1` lê `s[i]` pra só depois
+     * conferir se `i` cabe. Funciona enquanto `s` estiver terminado em NUL, e
+     * é justamente o tipo de coisa que deixa de funcionar quando alguém passa
+     * um buffer que não está. */
+    for (; i < cap - 1 && s[i]; i++)
         out[i] = (s[i] >= 'A' && s[i] <= 'Z') ? (char)(s[i] + 32) : s[i];
     out[i] = '\0';
 }

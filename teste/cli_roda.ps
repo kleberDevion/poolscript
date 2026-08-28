@@ -107,7 +107,10 @@ r = roda("'" + POOL + "' --metadata")
 confere("--metadata expõe os módulos", "\"modulos\"" in r["saida"] and r["rc"] == 0)
 
 r = roda("'" + POOL + "' --opcao-que-nao-existe")
-confere("opção desconhecida não é ignorada em silêncio", r["rc"] != 0 or r["saida"].strip().len() > 0)
+# `rc != 0 OU qualquer saída` aprovava um pool que imprimisse lixo e saísse 0.
+# O contrato de verdade: recusa (rc != 0) E diz O QUE recusou.
+confere("opção desconhecida é recusada citando a opção",
+        r["rc"] != 0 and "opcao-que-nao-existe" in r["saida"])
 
 # `build` roda todos os .ps da pasta — inclusive os que já criamos
 os.mkdir(PASTA + "/b", exist_ok=true)
@@ -146,7 +149,8 @@ r = com_home("'" + POOL + "' uninstall minhalib -asLib")
 confere("psl uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.ps") == false)
 
 r = com_home("'" + POOL + "' uninstall nao_instalado")
-confere("uninstall do que não existe não finge sucesso", r["rc"] != 0 or "nao" in r["saida"].lower())
+confere("uninstall do que não existe não finge sucesso",
+        r["rc"] != 0 and "nao esta instalado" in r["saida"])
 
 # ── registry: configuração e recusa de HTTP inseguro ────────────────────────
 r = com_home("'" + POOL + "' registry show")

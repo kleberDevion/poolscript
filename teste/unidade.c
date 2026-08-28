@@ -588,5 +588,12 @@ int main(int argc, char **argv)
     teste_ast();
 
     printf("\nunidade: %d checagens, %d falharam\n", total, falhas);
+    /* Filtro que não casa nada = 0 checagens = "passou"? Não: é erro de quem
+     * chamou (typo no filtro), e verde aqui seria mentira. O ps_teste.c já
+     * devolve 2 nesse caso; este runner fazia diferente sem motivo. */
+    if (total == 0) {
+        printf("nenhuma checagem casou com o filtro — isso é falha, não sucesso\n");
+        return 2;
+    }
     return falhas ? 1 : 0;
 }

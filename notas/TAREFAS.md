@@ -115,13 +115,13 @@ em `docs/bytes/len/len.md` — o `audita_doc.ps` cobra as duas coisas.
 
 | # | item | origem | portão hoje |
 |---|---|---|---|
-| 3.1 | `/tmp/ps_lsp` criado 0755 | ENG §3.7 | nada |
+| ~~3.1~~ | **FEITO** — LSP passou a usar `XDG_RUNTIME_DIR` (`drwx------`); sem ele, `/tmp/ps_lsp-<uid>` | ENG §3.7 | `check` (18/18) |
 | 3.2 | pacotes sem versão nem lockfile | ENG §3.8 | nada |
 | 3.3 | clang-tidy / CodeQL | ENG §4.4 | nada |
 | 3.4 | `detect_leaks=0` no `check-asan`; sem TSan; sem `__sanitizer_start_switch_fiber` (mais grave agora que a pilha virou `mmap`) | ENG §4.5 | noite |
-| 3.5 | zero benchmark (a era Python tinha `bench_async.sh`) | ENG §4.6 | nada |
+| ~~3.5~~ | **FEITO** — `teste/bench.ps` + `make bench`; compara RAZÃO, não ms. Achou o O(n²) da concatenação | ENG §4.6 | noturno (`--portao`) |
 | 3.6 | matriz de CI (um SO só) e `_Static_assert` no GMP | ENG §4.7 | nada |
-| 3.7 | `avisos` ainda com `-fsyntax-only` e sem `-Werror` — mesmo defeito que já foi corrigido no `analisa` | ENG §4.8 | nada |
+| ~~3.7~~ | **FEITO** — compila de verdade e reprova; 2 avisos reais corrigidos (`EAGAIN\|\|EWOULDBLOCK`, `cl` sombreando o closure) | ENG §4.8 | `check` |
 | 3.8 | `math`, `random`, CSPRNG: ferramenta de usuário | ENG §4.10 | nada |
 | 3.9 | LICENSE (libmysqlclient é GPLv2 e entra ESTÁTICO — contamina a distribuição, decisão dele), SECURITY.md, CONTRIBUTING.md, tags coerentes, SBOM | ENG §4.12 | nada |
 | 3.10 | código morto da era CPython (`ps_*_bind.c`, `#ifdef PS_MODULO_PYTHON`) | ENG §4.13 | — |
