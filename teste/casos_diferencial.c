@@ -2446,14 +2446,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f(z=1))\n"
   "\n",
-  NULL, "TypeError: argumento nomeado 'z' nao corresponde a nenhum parametro de", -1 },
+  NULL, "TypeError: f() got an unexpected keyword argument 'z'", -1 },
 { "dif #322",
   "action f(a) {\n"
   " return a\n"
   "}\n"
   "post(f(zzz=1))\n"
   "\n",
-  NULL, "TypeError: argumento nomeado 'zzz' nao corresponde a nenhum parametro ", -1 },
+  NULL, "TypeError: f() got an unexpected keyword argument 'zzz'", -1 },
 { "dif #323",
   "action f(a):\n"
   "\n",
@@ -2917,7 +2917,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #434",
   "post(\"aaa\".replace(\"a\", \"b\", conta=2))\n"
   "\n",
-  NULL, "TypeError: argumento nomeado desconhecido: conta", -1 },
+  NULL, "TypeError: 'conta' is an invalid keyword argument for replace()", -1 },
 { "dif #435",
   "post(\"aaa\".replace(old=\"a\", new=\"b\", count=1))\n"
   "\n",
@@ -5064,7 +5064,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #968",
   "post(filter([1], 5))\n"
   "\n",
-  NULL, "TypeError: tentativa de chamar algo que nao e funcao", -1 },
+  NULL, "TypeError: 'int' object is not callable", -1 },
 { "dif #969",
   "post(flo(\"1.5\"))\n"
   "\n",
@@ -5560,7 +5560,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1092",
   "post(len(x=[1,2]))\n"
   "\n",
-  NULL, "TypeError: esta funcao nao aceita argumento nomeado", -1 },
+  NULL, "TypeError: len() takes no keyword arguments", -1 },
 { "dif #1093",
   "post(len(zzz))\n"
   "\n",
@@ -5681,7 +5681,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1122",
   "post(map([1], 5))\n"
   "\n",
-  NULL, "TypeError: tentativa de chamar algo que nao e funcao", -1 },
+  NULL, "TypeError: 'int' object is not callable", -1 },
 { "dif #1123",
   "post(mat.dobro(21))\n"
   "\n",
@@ -5749,7 +5749,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1139",
   "post(min([], default=0))\n"
   "\n",
-  NULL, "TypeError: esta funcao nao aceita argumento nomeado", -1 },
+  NULL, "TypeError: min() takes no keyword arguments", -1 },
 { "dif #1140",
   "post(minhalib.quem())\n"
   "\n",
@@ -9417,7 +9417,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(x)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: for each exige lista, tupla ou string", -1 },
+  NULL, "TypeError: 'bytes' object is not iterable", -1 },
 { "dif #1812",
   "b = \"ab\".encode()\n"
   "post(b == \"ab\")\n"
@@ -9872,7 +9872,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(k)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: for each exige lista, tupla ou string", -1 },
+  NULL, "TypeError: 'dict' object is not iterable", -1 },
 { "dif #1887",
   "d = {\"a\": 1}\n"
   "match d {\n"
@@ -11158,37 +11158,37 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import bytes\n"
   "x = bytes.concat([bytes.new(\"a\"), 5])\n"
   "\n",
-  NULL, "TypeError: operação inválida entre os tipos: bytes.concat: item 1 n", -1 },
+  NULL, "TypeError: sequence item 1: expected a bytes-like object, int found", -1 },
 { "dif #2092",
   "import bytes\n"
   "x = bytes.fromhex(\"zz\")\n"
   "\n",
-  NULL, "ValueError: valor inválido: bytes.fromhex: hex inválido: 'zz'", -1 },
+  NULL, "ValueError: non-hexadecimal number found in fromhex() arg at position 0", -1 },
 { "dif #2093",
   "import bytes\n"
   "x = bytes.fromint(70000, 1)\n"
   "\n",
-  NULL, "ValueError: valor inválido: bytes.fromint: 70000 não cabe em 1 byte(s", -1 },
+  NULL, "OverflowError: int too big to convert", -1 },
 { "dif #2094",
   "import bytes\n"
   "x = bytes.get(bytes.new(\"ab\"), 9)\n"
   "\n",
-  NULL, "ValueError: valor inválido: bytes.get: índice 9 fora do range (0..1)", -1 },
+  NULL, "IndexError: index out of range", -1 },
 { "dif #2095",
   "import bytes\n"
   "x = bytes.new(3.5)\n"
   "\n",
-  NULL, "TypeError: operação inválida entre os tipos: bytes.new: não sei cr", -1 },
+  NULL, "TypeError: cannot convert 'flo' object to bytes", -1 },
 { "dif #2096",
   "import bytes\n"
   "x = bytes.new([300])\n"
   "\n",
-  NULL, "ValueError: valor inválido: bytes.new: a lista precisa conter inteiros", -1 },
+  NULL, "ValueError: bytes must be in range(0, 256)", -1 },
 { "dif #2097",
   "import bytes\n"
   "x = bytes.xor(bytes.new(\"a\"), bytes.new())\n"
   "\n",
-  NULL, "ValueError: valor inválido: bytes.xor: chave vazia", -1 },
+  NULL, "ValueError: empty key", -1 },
 /* CORRIGIDO: mesma bomba-relogio do #2004. O que este caso testa e a
  * INTERPOLACAO `"texto" expr`, nao o valor da data. */
 { "dif #2098",

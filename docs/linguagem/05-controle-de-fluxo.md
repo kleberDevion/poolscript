@@ -79,7 +79,7 @@ for each ch in "abc" {       // string: um caractere por vez
 Regras e limites (verificados):
 
 - Aceita **lista, tupla e string**. **Não** itera `dict` diretamente
-  (erro `for each exige lista, tupla ou string`) — para percorrer um dict, use
+  (`TypeError: 'dict' object is not iterable`) — para percorrer um dict, use
   `d.keys()`, `d.values()` ou `d.items()`:
 
   ```ps

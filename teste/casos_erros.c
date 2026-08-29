@@ -50,7 +50,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(1, c=2))\n",
-  NULL, "nao corresponde a nenhum parametro", -1 },
+  NULL, "TypeError: f() got an unexpected keyword argument 'c'", -1 },
 { "nomeado inexistente em método",
   "class C() {\n"
   "    action m(self, a) {\n"
@@ -58,7 +58,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().m(1, c=2))\n",
-  NULL, "nao corresponde a nenhum parametro", -1 },
+  NULL, "TypeError: m() got an unexpected keyword argument 'c'", -1 },
 
 /* ── @static: sem ele, não dá pra chamar na classe ── */
 { "método normal chamado na classe",

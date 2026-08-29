@@ -8944,8 +8944,8 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
 {
     if (g->estado == GER_FIM) return 0;
     if (g->rodando) {
-        snprintf(vm->erro, sizeof(vm->erro), "gerador ja esta rodando");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+        snprintf(vm->erro, sizeof(vm->erro), "generator already executing");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
         return -1;
     }
     Proto *pr = &vm->protos[g->proto];
@@ -9168,6 +9168,29 @@ static int mod_hash_b64encode(VM *vm, Value *args, int n, Value *out)
     return r;
 }
 
+/* POR QUE o base64 não decodifica. `ps_base64_decode` só devolve -1; refazer
+ * a varredura aqui é o que separa "caractere fora do alfabeto" de "padding
+ * errado" — e cada caso tem o SEU texto no binascii do CPython (que é
+ * subclasse de ValueError, por isso o tipo aqui é ValueError). */
+static int erro_base64(VM *vm, const char *s, int n)
+{
+    int nsig = 0, npad = 0;
+    for (int i = 0; i < n; i++) {
+        char c = s[i];
+        if (c == '\n' || c == '\r' || c == ' ' || c == '\t') continue;
+        if (c == '=') { npad++; continue; }
+        if (npad) BERRO(vm, "ValueError", "Excess data after padding");
+        if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+              (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '-' || c == '_'))
+            BERRO(vm, "ValueError", "Only base64 data is allowed");
+        nsig++;
+    }
+    if (nsig % 4 == 1)
+        BERRO(vm, "ValueError", "Invalid base64-encoded string: number of data "
+                                "characters (%d) cannot be 1 more than a multiple of 4", nsig);
+    BERRO(vm, "ValueError", "Incorrect padding");
+}
+
 static int mod_hash_b64decode(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "b64decode", 1);
@@ -9177,7 +9200,7 @@ static int mod_hash_b64decode(VM *vm, Value *args, int n, Value *out)
     unsigned char *b = malloc((size_t)s->len + 4);
     if (!b) BERRO(vm, "MemoryError", "sem memoria");
     long nb = ps_base64_decode(s->chars, (size_t)s->len, b, (size_t)s->len + 4);
-    if (nb < 0) { free(b); BERRO(vm, "ValueError", "base64 invalido"); }
+    if (nb < 0) { free(b); return erro_base64(vm, s->chars, s->len); }
     int r = devolve_texto(vm, out, (const char *)b, (int)nb);
     free(b);
     return r;
@@ -9202,31 +9225,19 @@ static const MembroMod MOD_HASH[] = {
  * `catch (TypeError e)` era inútil: divisão por zero, chave mutável,
  * comparação incompatível e falha de I/O caíam todas no mesmo balde. */
 
-/* prefixos dos erros */
-#define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "TypeError", "operação inválida entre os tipos: " __VA_ARGS__)
-#define BY_ERRO_VALOR(vm, ...) BERRO(vm, "ValueError", "valor inválido: " __VA_ARGS__)
+/* TypeError/ValueError com o texto do CPython — sem prefixo inventado. Os
+ * dois prefixos ("operação inválida entre os tipos: ", "valor inválido: ")
+ * eram cola em português colada na frente de TODA mensagem do módulo. */
+#define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "TypeError", __VA_ARGS__)
+#define BY_ERRO_VALOR(vm, ...) BERRO(vm, "ValueError", __VA_ARGS__)
 
-/* nome do tipo como a linguagem o chama (dict = "json") */
+/* Nome do tipo — o MESMO que `type()` devolve. Esta era uma segunda tabela,
+ * e divergia da oficial em três pontos: tuple saía "tuple" (a linguagem
+ * chama de "tup"), dict saía "json" e todo o resto (action, module, Entity,
+ * FileHandle…) caía num "objeto" em português. */
 static const char *by_nome(Value v)
 {
-    switch (v.t) {
-        case V_NULL: case V_UNSET: return "Null";
-        case V_BOOL:  return "bool";
-        case V_INT:   return "int";
-        case V_FLOAT: return "flo";
-        case V_OBJ:
-            switch (v.as.obj->type) {
-                case OBJ_STRING: return "str";
-                case OBJ_LIST:   return "list";
-                case OBJ_TUPLE:  return "tuple";
-                case OBJ_DICT:   return "json";
-                case OBJ_BYTES:  return "bytes";
-                default: break;
-            }
-            break;
-        default: break;
-    }
-    return "objeto";
+    return nome_do_tipo_valor(v);
 }
 
 static int by_hexval(int c)
@@ -9264,9 +9275,12 @@ static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
         PSString *s = COMO_STRING(x);
         return by_devolve(vm, out, s->chars, s->len);
     }
-    if (x.t == V_BOOL) BY_ERRO_TIPO(vm, "bytes.new: bool não é um tamanho válido");
+    /* O Python aceita `bytes(True)` (bool é int lá) e devolve b'\x00'; aqui é
+     * recusa deliberada. Sem par no CPython, fica o texto do MESMO TypeError
+     * que o resto de bytes.new levanta. */
+    if (x.t == V_BOOL) BY_ERRO_TIPO(vm, "cannot convert 'bool' object to bytes");
     if (x.t == V_INT) {
-        if (x.as.i < 0) BY_ERRO_VALOR(vm, "bytes.new: tamanho negativo");
+        if (x.as.i < 0) BY_ERRO_VALOR(vm, "negative count");
         int64_t sz = x.as.i;
         char *buf = calloc((size_t)(sz > 0 ? sz : 1), 1);
         if (!buf) BERRO(vm, "MemoryError", "sem memoria");
@@ -9282,40 +9296,44 @@ static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
             Value it = l->itens[i];
             int64_t bv;
             if (it.t == V_INT || it.t == V_BOOL) bv = it.as.i;  /* True/False = 1/0, igual Python */
-            else { free(buf); BY_ERRO_VALOR(vm, "bytes.new: a lista precisa conter inteiros de 0 a 255"); }
-            if (bv < 0 || bv > 255) { free(buf); BY_ERRO_VALOR(vm, "bytes.new: a lista precisa conter inteiros de 0 a 255"); }
+            else { free(buf); BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(it)); }
+            if (bv < 0 || bv > 255) { free(buf); BY_ERRO_VALOR(vm, "bytes must be in range(0, 256)"); }
             buf[i] = (char)(unsigned char)bv;
         }
         int r = by_devolve(vm, out, buf, l->len);
         free(buf);
         return r;
     }
-    BY_ERRO_TIPO(vm, "bytes.new: não sei criar bytes de %s", by_nome(x));
+    BY_ERRO_TIPO(vm, "cannot convert '%s' object to bytes", by_nome(x));
 }
 
 static int mod_bytes_fromhex(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "fromhex", 1);
-    if (!EH_STRING(args[0])) BY_ERRO_TIPO(vm, "bytes.fromhex: esperava str");
+    if (!EH_STRING(args[0])) BY_ERRO_TIPO(vm, "fromhex() argument must be str, not %s", by_nome(args[0]));
     PSString *s = COMO_STRING(args[0]);
-    char *limpo = malloc((size_t)s->len + 1);
-    if (!limpo) BERRO(vm, "MemoryError", "sem memoria");
+    char *buf = malloc((size_t)(s->len / 2 + 1));
+    if (!buf) BERRO(vm, "MemoryError", "sem memoria");
     int m = 0;
-    for (int i = 0; i < s->len; i++) {   /* tira todo espaço em branco, como "".join(s.split()) */
+    /* Mesmo laço do CPython (bytes_fromhex_impl): o branco separa PARES, não
+     * dígitos — por isso "ab cd" passa e "a b" NÃO. Antes daqui o motor fazia
+     * "".join(s.split()), aceitava "a b", e a mensagem citava a string INTEIRA
+     * em vez da POSIÇÃO do dígito ruim, que é a informação que o CPython dá.
+     * A posição é `i + 1` quando o primeiro dígito do par estava bom. */
+    for (int i = 0; i < s->len; ) {
         unsigned char c = (unsigned char)s->chars[i];
-        if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v') continue;
-        limpo[m++] = (char)c;
+        if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v') { i++; continue; }
+        int hi = by_hexval(c);
+        int lo = (i + 1 < s->len) ? by_hexval((unsigned char)s->chars[i + 1]) : -1;
+        if (hi < 0 || lo < 0) {
+            free(buf);
+            BY_ERRO_VALOR(vm, "non-hexadecimal number found in fromhex() arg at position %d",
+                          i + (hi >= 0 ? 1 : 0));
+        }
+        buf[m++] = (char)((hi << 4) | lo);
+        i += 2;
     }
-    if (m % 2 != 0) { free(limpo); BY_ERRO_VALOR(vm, "bytes.fromhex: hex inválido: '%.*s'", s->len, s->chars); }
-    char *buf = malloc((size_t)(m / 2 > 0 ? m / 2 : 1));
-    if (!buf) { free(limpo); BERRO(vm, "MemoryError", "sem memoria"); }
-    for (int i = 0; i < m; i += 2) {
-        int hi = by_hexval((unsigned char)limpo[i]), lo = by_hexval((unsigned char)limpo[i + 1]);
-        if (hi < 0 || lo < 0) { free(limpo); free(buf); BY_ERRO_VALOR(vm, "bytes.fromhex: hex inválido: '%.*s'", s->len, s->chars); }
-        buf[i / 2] = (char)((hi << 4) | lo);
-    }
-    free(limpo);
-    int r = by_devolve(vm, out, buf, m / 2);
+    int r = by_devolve(vm, out, buf, m);
     free(buf);
     return r;
 }
@@ -9323,7 +9341,7 @@ static int mod_bytes_fromhex(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_hex(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "hex", 1);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.hex: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "hex() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     char *buf = malloc((size_t)b->len * 2 + 1);
     if (!buf) BERRO(vm, "MemoryError", "sem memoria");
@@ -9336,7 +9354,7 @@ static int mod_bytes_hex(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_base64(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "base64", 1);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.base64: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "base64() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     size_t cap = 4 * (((size_t)b->len + 2) / 3) + 4;
     char *buf = malloc(cap);
@@ -9350,12 +9368,12 @@ static int mod_bytes_base64(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_frombase64(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "frombase64", 1);
-    if (!EH_STRING(args[0])) BY_ERRO_TIPO(vm, "bytes.frombase64: esperava str");
+    if (!EH_STRING(args[0])) BY_ERRO_TIPO(vm, "frombase64() argument 1 must be str, not %s", by_nome(args[0]));
     PSString *s = COMO_STRING(args[0]);
     unsigned char *buf = malloc((size_t)s->len + 4);
     if (!buf) BERRO(vm, "MemoryError", "sem memoria");
     long nb = ps_base64_decode(s->chars, (size_t)s->len, buf, (size_t)s->len + 4);
-    if (nb < 0) { free(buf); BY_ERRO_VALOR(vm, "bytes.frombase64: base64 inválido"); }
+    if (nb < 0) { free(buf); return erro_base64(vm, s->chars, s->len); }
     int r = by_devolve(vm, out, (const char *)buf, (int)nb);
     free(buf);
     return r;
@@ -9364,23 +9382,27 @@ static int mod_bytes_frombase64(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_fromint(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3) return erro_aridade(vm, "fromint", 1, 3, n);
-    if (args[0].t == V_BOOL || args[0].t != V_INT) BY_ERRO_TIPO(vm, "bytes.fromint: esperava um inteiro");
+    if (args[0].t == V_BOOL || args[0].t != V_INT)
+        BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(args[0]));
     int64_t v = args[0].as.i;
-    if (v < 0) BY_ERRO_VALOR(vm, "bytes.fromint: negativo não suportado");
+    if (v < 0) BERRO(vm, "OverflowError", "can't convert negative int to unsigned");
     int big = 1;   /* byteorder checado antes de length, como no interp */
     if (n > 2 && args[2].t != V_UNSET) {
+        if (!EH_STRING(args[2]))
+            BY_ERRO_TIPO(vm, "fromint() argument 'byteorder' must be str, not %s", by_nome(args[2]));
         big = by_ordem(args[2]);
-        if (big < 0) BY_ERRO_VALOR(vm, "bytes.fromint: byteorder deve ser 'big' ou 'little'");
+        if (big < 0) BY_ERRO_VALOR(vm, "byteorder must be either 'little' or 'big'");
     }
     int64_t length = 0;
     if (n > 1 && args[1].t != V_UNSET) {
-        if (args[1].t == V_BOOL || args[1].t != V_INT) BY_ERRO_TIPO(vm, "bytes.fromint: length deve ser inteiro");
+        if (args[1].t == V_BOOL || args[1].t != V_INT)
+            BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(args[1]));
         length = args[1].as.i;
     }
     int bits = 0; uint64_t u = (uint64_t)v; while (u) { bits++; u >>= 1; }
     int minimo = (bits + 7) / 8; if (minimo == 0) minimo = 1;
     int largura = length > 0 ? (int)length : minimo;
-    if (largura < minimo) BY_ERRO_VALOR(vm, "bytes.fromint: %lld não cabe em %d byte(s)", (long long)v, largura);
+    if (largura < minimo) BERRO(vm, "OverflowError", "int too big to convert");
     unsigned char *buf = calloc((size_t)(largura > 0 ? largura : 1), 1);
     if (!buf) BERRO(vm, "MemoryError", "sem memoria");
     u = (uint64_t)v;
@@ -9399,10 +9421,12 @@ static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
     if (n < 1 || n > 2) return erro_aridade(vm, "toint", 1, 2, n);
     int big = 1;   /* byteorder checado antes do tipo dos bytes, como no interp */
     if (n > 1 && args[1].t != V_UNSET) {
+        if (!EH_STRING(args[1]))
+            BY_ERRO_TIPO(vm, "toint() argument 'byteorder' must be str, not %s", by_nome(args[1]));
         big = by_ordem(args[1]);
-        if (big < 0) BY_ERRO_VALOR(vm, "bytes.toint: byteorder deve ser 'big' ou 'little'");
+        if (big < 0) BY_ERRO_VALOR(vm, "byteorder must be either 'little' or 'big'");
     }
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.toint: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "cannot convert '%s' object to bytes", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     uint64_t acc = 0;
     for (int i = 0; i < b->len; i++) {
@@ -9416,7 +9440,7 @@ static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_tolist(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "tolist", 1);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.tolist: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "tolist() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     PSList *l = lista_com_cap(vm, b->len, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria");
@@ -9429,11 +9453,12 @@ static int mod_bytes_tolist(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "concat", 1);
-    if (!EH_SEQ(args[0])) BY_ERRO_TIPO(vm, "bytes.concat: esperava uma lista de bytes");
+    if (!EH_SEQ(args[0])) BY_ERRO_TIPO(vm, "can only join an iterable");
     PSList *l = COMO_LIST(args[0]);
     int64_t total = 0;
     for (int i = 0; i < l->len; i++) {
-        if (!EH_BYTES(l->itens[i])) BY_ERRO_TIPO(vm, "bytes.concat: item %d não é bytes (%s)", i, by_nome(l->itens[i]));
+        if (!EH_BYTES(l->itens[i]))
+            BY_ERRO_TIPO(vm, "sequence item %d: expected a bytes-like object, %s found", i, by_nome(l->itens[i]));
         total += COMO_BYTES(l->itens[i])->len;
     }
     char *buf = malloc((size_t)(total > 0 ? total : 1));
@@ -9452,17 +9477,19 @@ static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3) return erro_aridade(vm, "slice", 1, 3, n);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.slice: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "slice() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     int len = b->len;
     int64_t ini = 0;
     if (n > 1 && args[1].t != V_UNSET) {
-        if (args[1].t == V_BOOL || args[1].t != V_INT) BY_ERRO_TIPO(vm, "bytes.slice: ini deve ser inteiro");
+        if (args[1].t == V_BOOL || args[1].t != V_INT)
+            BY_ERRO_TIPO(vm, "slice indices must be integers or None or have an __index__ method");
         ini = args[1].as.i;
     }
     int64_t fim = len;
     if (n > 2 && args[2].t != V_UNSET) {
-        if (args[2].t == V_BOOL || args[2].t != V_INT) BY_ERRO_TIPO(vm, "bytes.slice: fim deve ser inteiro");
+        if (args[2].t == V_BOOL || args[2].t != V_INT)
+            BY_ERRO_TIPO(vm, "slice indices must be integers or None or have an __index__ method");
         fim = args[2].as.i;
     }
     if (ini < 0) ini += len;
@@ -9478,12 +9505,15 @@ static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "get", 2);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.get: esperava bytes, recebeu %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "get() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
-    if (args[1].t == V_BOOL || args[1].t != V_INT) BY_ERRO_TIPO(vm, "bytes.get: índice deve ser inteiro");
+    if (args[1].t == V_BOOL || args[1].t != V_INT)
+        BY_ERRO_TIPO(vm, "byte indices must be integers or slices, not %s", by_nome(args[1]));
     int64_t i = args[1].as.i;
+    /* IndexError, o mesmo texto de `b[i]` — é o mesmo erro, e o CPython não
+     * põe o nome do tipo na frente quando o alvo é bytes. */
     if (i < -(int64_t)b->len || i >= b->len)
-        BY_ERRO_VALOR(vm, "bytes.get: índice %lld fora do range (0..%d)", (long long)i, b->len - 1);
+        BERRO(vm, "IndexError", "index out of range");
     if (i < 0) i += b->len;
     *out = MK_INT((unsigned char)b->chars[i]);
     return 0;
@@ -9492,11 +9522,11 @@ static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_xor(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "xor", 2);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.xor: esperava bytes, recebeu %s", by_nome(args[0]));
-    if (!EH_BYTES(args[1])) BY_ERRO_TIPO(vm, "bytes.xor: esperava bytes, recebeu %s", by_nome(args[1]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "xor() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[1])) BY_ERRO_TIPO(vm, "xor() argument 2 must be bytes, not %s", by_nome(args[1]));
     PSString *d = COMO_BYTES(args[0]);
     PSString *k = COMO_BYTES(args[1]);
-    if (k->len == 0) BY_ERRO_VALOR(vm, "bytes.xor: chave vazia");
+    if (k->len == 0) BY_ERRO_VALOR(vm, "empty key");
     char *buf = malloc((size_t)(d->len > 0 ? d->len : 1));
     if (!buf) BERRO(vm, "MemoryError", "sem memoria");
     for (int i = 0; i < d->len; i++)
@@ -11724,7 +11754,7 @@ static PSSocket *novo_socket(VM *vm, int fd, int familia, int tipo, int proto)
 static int sk_exige(VM *vm, Value alvo, const char *quem, PSSocket **out)
 {
     PSSocket *s = COMO_SOCKET(alvo);
-    if (s->fd < 0) MERRO(vm, "RuntimeError", "%s: socket fechado", quem);
+    if (s->fd < 0) { (void)quem; return erro_sistema(vm, EBADF, NULL, NULL); }
     *out = s;
     return 0;
 }
@@ -18697,15 +18727,24 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         args = reais;
         n = n + 1;
     } else {
-        snprintf(vm->erro, sizeof(vm->erro), "%s", "tentativa de chamar algo que nao e funcao");
+        snprintf(vm->erro, sizeof(vm->erro), "'%s' object is not callable", nome_do_tipo_valor(fn));
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
         return -1;
     }
 
     Proto *pr = &vm->protos[proto];
     if (n > pr->nparams) {
-        snprintf(vm->erro, sizeof(vm->erro), "%s", "argumentos demais na chamada");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
+        if (pr->ndefaults > 0)
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "%s() takes from %d to %d positional arguments but %d %s given",
+                     pr->nome ? pr->nome : "?", pr->nparams - pr->ndefaults,
+                     pr->nparams, n, n == 1 ? "was" : "were");
+        else
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "%s() takes %d positional argument%s but %d %s given",
+                     pr->nome ? pr->nome : "?", pr->nparams,
+                     pr->nparams == 1 ? "" : "s", n, n == 1 ? "was" : "were");
         return -1;
     }
     /* Mesma checagem do OP_CALL: parâmetro obrigatório sem valor é ERRO.
@@ -19239,8 +19278,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO(vm, "upvalue fora da faixa (bug do compilador)");
             Value v0 = cl->ups[arg]->v;
             if (v0.t == V_UNSET)
-                ERRO_TF(vm, "RuntimeError",
-                        "variável '%s' de fora usada antes de receber valor",
+                ERRO_TF(vm, "NameError",
+                        "cannot access free variable '%s' where it is not"
+                        " associated with a value in enclosing scope",
                         (p->upval_nomes && p->upval_nomes[arg]) ? p->upval_nomes[arg] : "?");
             stack[sp++] = v0;
             break;
@@ -19300,7 +19340,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int32_t proto_kw;
             if (EH_CLASS(alvo_kw)) {
                 int32_t mp = acha_metodo(COMO_CLASS(alvo_kw), "__init__");
-                if (mp < 0) ERRO_T(vm, "TypeError", "Entity sem __init__ nao aceita argumento nomeado");
+                if (mp < 0) ERRO_TF(vm, "TypeError", "%s() takes no arguments",
+                                    COMO_CLASS(alvo_kw)->nome ? COMO_CLASS(alvo_kw)->nome : "?");
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSInstance *ni = nova_instancia(vm, COMO_CLASS(alvo_kw));
                 if (!ni) ERRO(vm, "sem memoria");
@@ -19334,7 +19375,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         q = fim ? fim + 1 : q + tam;
                     }
                     if (achou < 0 || achou >= 16) {
-                        snprintf(vm->erro, sizeof(vm->erro), "argumento nomeado desconhecido: %s", alvo_nome);
+                        snprintf(vm->erro, sizeof(vm->erro),
+                                 "%s.__call__() got an unexpected keyword argument '%s'",
+                                 nome_do_tipo_valor(alvo_kw), alvo_nome);
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
@@ -19363,20 +19406,34 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 FnNativa fn_nat = NULL;
                 FnMetodo fn_met = NULL;
                 Value alvo_met = MK_NULL();
+                /* O nome (e, pra metodo, o tipo dono) precisa sobreviver ate a
+                 * mensagem de erro: o CPython diz `str.upper() takes no keyword
+                 * arguments` / `len() takes no keyword arguments`, nunca um
+                 * texto generico sobre "esta funcao". */
+                const char *nome_nat = "?";
+                const char *dono_nat = NULL;
                 if (alvo_kw.t == V_NATIVE) {
                     lista_nomes = BUILTINS[alvo_kw.as.nativa].params;
                     fn_nat = BUILTINS[alvo_kw.as.nativa].fn;
+                    nome_nat = BUILTINS[alvo_kw.as.nativa].nome;
                 } else if (EH_NATIVA(alvo_kw)) {
                     lista_nomes = COMO_NATIVA(alvo_kw)->params;
                     fn_nat = COMO_NATIVA(alvo_kw)->fn;
+                    nome_nat = COMO_NATIVA(alvo_kw)->nome;
                 } else {
                     PSMetodoNat *mn = COMO_METNAT(alvo_kw);
                     lista_nomes = TABELAS[mn->tabela][mn->idx].params;
                     fn_met = TABELAS[mn->tabela][mn->idx].fn;
                     alvo_met = mn->alvo;
+                    nome_nat = TABELAS[mn->tabela][mn->idx].nome;
+                    dono_nat = nome_do_tipo_valor(mn->alvo);
                 }
-                if (!lista_nomes)
-                    ERRO_T(vm, "TypeError", "esta funcao nao aceita argumento nomeado");
+                if (!lista_nomes) {
+                    if (dono_nat)
+                        ERRO_TF(vm, "TypeError", "%s.%s() takes no keyword arguments",
+                                dono_nat, nome_nat);
+                    ERRO_TF(vm, "TypeError", "%s() takes no keyword arguments", nome_nat);
+                }
 
                 Value pos[16];
                 int usados = npos;
@@ -19397,7 +19454,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                     if (achou < 0 || achou >= 16) {
                         snprintf(vm->erro, sizeof(vm->erro),
-                                 "argumento nomeado desconhecido: %s", alvo_nome);
+                                 "'%s' is an invalid keyword argument for %s()",
+                                 alvo_nome, nome_nat);
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
@@ -19418,8 +19476,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 sp = sp - total - 1;
                 stack[sp++] = rv;
                 break;
+            } else if (alvo_kw.t == V_TIPO) {
+                /* `f = list; f(a=1)`: o tipo E chamavel, so nao aceita nome —
+                 * dizer "not callable" aqui seria mentira. E o que o CPython
+                 * responde pra `list(a=1)`. */
+                ERRO_TF(vm, "TypeError", "%s() takes no keyword arguments",
+                        (alvo_kw.as.i >= 0 && alvo_kw.as.i <= TIPO_TYPE)
+                            ? NOME_TIPO[alvo_kw.as.i] : "?");
             } else {
-                ERRO(vm, "argumento nomeado so vale em action");
+                ERRO_TF(vm, "TypeError", "'%s' object is not callable",
+                        nome_do_tipo_valor(alvo_kw));
             }
 
             Proto *pk = &vm->protos[proto_kw];
@@ -19448,7 +19514,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                                   && strcmp(pk->param_nomes[0], "self") == 0);
             int desloca = (inst_kw.t != V_NULL || eh_static_self) ? 1 : 0;
             if (inst_kw.t != V_NULL) { finais[0] = inst_kw; marcado[0] = 1; }
-            if (npos + desloca > pk->nparams) ERRO(vm, "argumentos demais na chamada");
+            if (npos + desloca > pk->nparams) {
+                if (pk->ndefaults > 0)
+                    ERRO_TF(vm, "TypeError",
+                            "%s() takes from %d to %d positional arguments but %d %s given",
+                            pk->nome ? pk->nome : "?", pk->nparams - pk->ndefaults,
+                            pk->nparams, npos + desloca,
+                            npos + desloca == 1 ? "was" : "were");
+                ERRO_TF(vm, "TypeError",
+                        "%s() takes %d positional argument%s but %d %s given",
+                        pk->nome ? pk->nome : "?", pk->nparams,
+                        pk->nparams == 1 ? "" : "s", npos + desloca,
+                        npos + desloca == 1 ? "was" : "were");
+            }
             for (int k = 0; k < npos; k++) {
                 finais[k + desloca] = stack[sp - total + k];
                 marcado[k + desloca] = 1;
@@ -19469,8 +19547,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                      * assimétrico, mas é o que o interpretador faz. */
                     if (EH_CLASS(alvo_kw)) continue;
                     ERRO_TF(vm, "TypeError",
-                            "argumento nomeado '%s' nao corresponde a nenhum parametro de %s()",
-                            ns->chars, pk->nome ? pk->nome : "?");
+                            "%s() got an unexpected keyword argument '%s'",
+                            pk->nome ? pk->nome : "?", ns->chars);
                 }
                 /* Nomeado SOBRESCREVE posicional — `f(1, a=2)` devolve 2, é
                  * o que o interpretador faz. Recusar seria mais restritivo
@@ -19537,7 +19615,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (mp < 0) { sp = sp - n - 1; stack[sp++] = iv; break; }
                 /* empurra self na frente dos argumentos */
                 Proto *np = &vm->protos[mp];
-                if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no __init__");
+                if (n + 1 > np->nparams) {
+                    if (np->ndefaults > 0)
+                        ERRO_TF(vm, "TypeError",
+                                "%s() takes from %d to %d positional arguments but %d %s given",
+                                np->nome ? np->nome : "?", np->nparams - np->ndefaults,
+                                np->nparams, n + 1, n + 1 == 1 ? "was" : "were");
+                    ERRO_TF(vm, "TypeError",
+                            "%s() takes %d positional argument%s but %d %s given",
+                            np->nome ? np->nome : "?", np->nparams,
+                            np->nparams == 1 ? "" : "s", n + 1, n + 1 == 1 ? "was" : "were");
+                }
                 /* falta argumento obrigatório: erro, não `null` calado (o
                  * self já ocupa o slot 0, por isso o `n + 1`) */
                 if (n + 1 < np->nparams - np->ndefaults)
@@ -19579,7 +19667,12 @@ ERRO_TF(vm, "TypeError",
                     ERRO_TF(vm, "RuntimeError",
                             "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
-                if (n + 1 > np->nparams) ERRO(vm, "argumentos demais no metodo");
+                if (n + 1 > np->nparams)
+                    ERRO_TF(vm, "TypeError",
+                            "%s() takes %d positional argument%s but %d %s given",
+                            np->nome ? np->nome : "?", np->nparams,
+                            np->nparams == 1 ? "" : "s", n + 1,
+                            n + 1 == 1 ? "was" : "were");
                 /* falta argumento obrigatório: erro, não `null` calado */
                 if (n + 1 < np->nparams - np->ndefaults)
 ERRO_TF(vm, "TypeError",
@@ -19773,7 +19866,8 @@ ERRO_TF(vm, "TypeError",
                     sp = sp - n - 1;
                     stack[sp++] = rv;
                 } else {
-                    ERRO(vm, "tentativa de chamar algo que nao e funcao");
+                    ERRO_TF(vm, "TypeError", "'%s' object is not callable",
+                            nome_do_tipo_valor(alvo));
                 }
             }
             break;
@@ -20152,7 +20246,8 @@ ERRO_TF(vm, "TypeError",
             }
             if (EH_SEQ(cont))         n = COMO_LIST(cont)->len;
             else if (EH_STRING(cont)) n = COMO_STRING(cont)->len;
-            else ERRO(vm, "for each exige lista, tupla ou string");
+            else ERRO_TF(vm, "TypeError", "'%s' object is not iterable",
+                         nome_do_tipo_valor(cont));
 
             if (i >= n) { sp -= 2; ip = arg; break; }
             stack[sp - 1] = MK_INT(i + 1);
@@ -20689,7 +20784,8 @@ ERRO_TF(vm, "TypeError",
                 /* `.type` é universal: deixa cair no dispatch geral lá embaixo.
                  * Qualquer outro nome é membro inexistente do enum. */
                 if (strcmp(nome, "type") != 0)
-                    ERRO_TF(vm, "RuntimeError", "enum '%s' não tem membro '%s'",
+                    ERRO_TF(vm, "AttributeError",
+                            "type object '%s' has no attribute '%s'",
                             e->nome ? e->nome : "?", nome);
             }
             if (EH_MODPS(alvo)) {
@@ -21421,7 +21517,17 @@ ERRO_TF(vm, "TypeError",
             if (mp < 0) { sp = sp - n - 2; stack[sp++] = MK_NULL(); break; }
 
             Proto *np = &vm->protos[mp];
-            if (n + 1 > np->nparams) ERRO(vm, "argumentos demais em base()");
+            if (n + 1 > np->nparams) {
+                if (np->ndefaults > 0)
+                    ERRO_TF(vm, "TypeError",
+                            "%s() takes from %d to %d positional arguments but %d %s given",
+                            np->nome ? np->nome : "?", np->nparams - np->ndefaults,
+                            np->nparams, n + 1, n + 1 == 1 ? "was" : "were");
+                ERRO_TF(vm, "TypeError",
+                        "%s() takes %d positional argument%s but %d %s given",
+                        np->nome ? np->nome : "?", np->nparams,
+                        np->nparams == 1 ? "" : "s", n + 1, n + 1 == 1 ? "was" : "were");
+            }
             if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
             if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
             vm->frames[fp].proto = (int)(p - vm->protos);
