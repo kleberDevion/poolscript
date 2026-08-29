@@ -114,7 +114,7 @@ const Caso CASOS_PENDENTES[] = {
 
 /* ── números ────────────────────────────────────────────────────────────── */
 { "int() de infinito é erro, não INT64_MIN",
-  "post(int(flo(\"inf\")))\n", NULL, "cannot convert float infinity to integer", -1 },
+  "post(int(flo(\"inf\")))\n", NULL, "OverflowError: cannot convert flo infinity to integer", -1 },
 { "int() de NaN é erro",
   "post(int(flo(\"nan\")))\n", NULL, "NaN", -1 },
 

@@ -91,10 +91,18 @@ if __name__ == "main" {
         }
         # Serviço ausente é PULOU, e só pra quem depende dele. Erro de
         # linguagem (Syntax/Type/Index/Name) é FALHA em qualquer exemplo.
+        # A lista tem que ser dos tipos que o motor levanta HOJE. Ela citava
+        # "RuntimeError: variável não definida", que virou NameError — e a
+        # cláusula morta transformava erro de linguagem em "faltou serviço"
+        # nos 4 exemplos de PODE_FALTAR: rc 0, verde, com o exemplo quebrado.
+        # NameError, AttributeError, KeyError e ZeroDivisionError não estavam
+        # aqui em forma nenhuma.
         so_servico = PODE_FALTAR.contains(n)
         parece_lingua = ("SyntaxError" in r[1] or "TypeError" in r[1]
                          or "IndexError" in r[1] or "ValueError" in r[1]
-                         or "RuntimeError: variável não definida" in r[1])
+                         or "NameError" in r[1] or "AttributeError" in r[1]
+                         or "KeyError" in r[1] or "ZeroDivisionError" in r[1]
+                         or "OverflowError" in r[1])
         if so_servico and not parece_lingua {
             addEnd(pulou, n)
             continue

@@ -3167,9 +3167,9 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
         /* inf/NaN não têm inteiro correspondente: o cast em C é comportamento
          * indefinido e devolvia INT64_MIN calado. Erro, como no Python. */
         if (isnan(v.as.d))
-            BERRO(vm, "ValueError", "cannot convert float NaN to integer");
+            BERRO(vm, "ValueError", "cannot convert flo NaN to integer");
         if (isinf(v.as.d))
-            BERRO(vm, "OverflowError", "cannot convert float infinity to integer");
+            BERRO(vm, "OverflowError", "cannot convert flo infinity to integer");
         /* Fora da faixa do int64 o cast também é UB: vai de bignum. */
         if (v.as.d >= 9223372036854775808.0 || v.as.d <= -9223372036854775809.0) {
             mpz_t z; mpz_init(z);
@@ -3243,7 +3243,7 @@ static int nativa_flo(VM *vm, Value *args, int n, Value *out)
         while (fim && *fim && isspace((unsigned char)*fim)) fim++;
         if (!fim || fim == s->chars || *fim)
             BERRO(vm, "ValueError",
-                  "could not convert string to float: '%s'", s->chars);
+                  "could not convert string to flo: '%s'", s->chars);
         *out = MK_FLOAT(d);
         return 0;
     }
@@ -3404,9 +3404,9 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
               nome_do_tipo_valor(v));
     if (n == 1) {
         if (isnan(v.as.d))
-            BERRO(vm, "ValueError", "cannot convert float NaN to integer");
+            BERRO(vm, "ValueError", "cannot convert flo NaN to integer");
         if (isinf(v.as.d))
-            BERRO(vm, "OverflowError", "cannot convert float infinity to integer");
+            BERRO(vm, "OverflowError", "cannot convert flo infinity to integer");
         double r = nearbyint(v.as.d);
         if (r >= 9223372036854775808.0 || r <= -9223372036854775809.0) {
             mpz_t z; mpz_init(z);
@@ -4623,14 +4623,20 @@ static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem
     int64_t total = utf8_conta(s->chars, s->len);
     int64_t i0 = 0, i1 = total;
     if (n >= 2 && args[1].t != V_NULL) {
-        if (args[1].t != V_INT) MERRO(vm, "TypeError", "%s(): inicio precisa ser int", quem);
+        if (args[1].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "slice indices must be integers or None"
+                  " or have an __index__ method");
         i0 = args[1].as.i;
         if (i0 < 0) i0 += total;
         if (i0 < 0) i0 = 0;
         if (i0 > total) { *b0 = s->len; *b1 = s->len - 1; return 0; }
     }
     if (n >= 3 && args[2].t != V_NULL) {
-        if (args[2].t != V_INT) MERRO(vm, "TypeError", "%s(): fim precisa ser int", quem);
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "slice indices must be integers or None"
+                  " or have an __index__ method");
         i1 = args[2].as.i;
         if (i1 < 0) i1 += total;
         if (i1 < 0) i1 = 0;
@@ -4780,7 +4786,10 @@ static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     int64_t limite = -1;
     if (n == 2) {
-        if (args[1].t != V_INT) MERRO(vm, "TypeError", "maxsplit de split() precisa ser int");
+        if (args[1].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[1]));
         limite = args[1].as.i;
     }
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
@@ -4985,7 +4994,10 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n >= 2 && exige_str(vm, args[1], "replace", &novo) != 0) return -1;
     int64_t limite = -1;
     if (n == 3) {
-        if (args[2].t != V_INT) MERRO(vm, "TypeError", "count de replace() precisa ser int");
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[2]));
         limite = args[2].as.i;
     }
     int64_t feitos_vazio = 0;
@@ -5103,7 +5115,10 @@ static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
 {
     if (n < 1 || n > 2) return erro_aridade(vm, quem, 1, 2, n);
     PSString *s = COMO_STRING(alvo);
-    if (args[0].t != V_INT) MERRO(vm, "TypeError", "largura de %s() precisa ser int", quem);
+    if (args[0].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[0]));
     int64_t larg = args[0].as.i;
     const char *ench = " ";
     int ench_len = 1;
@@ -5153,7 +5168,10 @@ static int met_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "zfill", 1);
     PSString *s = COMO_STRING(alvo);
-    if (args[0].t != V_INT) MERRO(vm, "TypeError", "largura de zfill() precisa ser int");
+    if (args[0].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[0]));
     int64_t larg = args[0].as.i;
     int atual = utf8_conta(s->chars, s->len);
     if (larg > PS_STR_MAX)
@@ -5577,14 +5595,23 @@ static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
         return erro_aridade(vm, "index", 1, 3, n);
     PSList *l = COMO_LIST(alvo);
     int64_t de = 0, ate = l->len;
+    /* Sem o "or None" que o `str.find` tem: o `list.index` do CPython escreve
+     * essa frase mais curta, porque ele não aceita None na faixa. Verbatim é
+     * verbatim, inclusive na diferença entre as duas. */
     if (n >= 2) {
-        if (args[1].t != V_INT) MERRO(vm, "TypeError", "index(): inicio precisa ser int");
+        if (args[1].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "slice indices must be integers"
+                  " or have an __index__ method");
         de = args[1].as.i;
         if (de < 0) de += l->len;
         if (de < 0) de = 0;
     }
     if (n >= 3) {
-        if (args[2].t != V_INT) MERRO(vm, "TypeError", "index(): fim precisa ser int");
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "slice indices must be integers"
+                  " or have an __index__ method");
         ate = args[2].as.i;
         if (ate < 0) ate += l->len;
         if (ate > l->len) ate = l->len;
@@ -5738,15 +5765,13 @@ static int met_d_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (dict_del(COMO_DICT(alvo), &args[0], out) != 0) {
         if (n == 2) { *out = args[1]; return 0; }
         /* Mesmo texto do `d["z"]` e do `d.z`: as tres respondem a mesma
-         * pergunta, e ter tres redacoes pra isso era metade do I4. */
+         * pergunta, e ter tres redacoes pra isso era metade do I4. Hoje a
+         * redacao unica e a do CPython — a mensagem do KeyError e a CHAVE, e
+         * so ela. */
         {
             TXTBUF_AUTO kb = {0};
             valor_para_texto(&kb, &args[0], 1);
-            char em[256];
-            snprintf(em, sizeof(em), "chave %s nao existe no dict (%d %s)",
-                     kb.b ? kb.b : "", COMO_DICT(alvo)->count,
-                     COMO_DICT(alvo)->count == 1 ? "chave" : "chaves");
-            MERRO(vm, "KeyError", "%s", em);
+            MERRO(vm, "KeyError", "%s", kb.b ? kb.b : "");
         }
     }
     return 0;
@@ -8417,7 +8442,10 @@ static int mod_regex_sub(VM *vm, Value *args, int n, Value *out)
               nome_do_tipo_valor(EH_STRING(args[1]) ? args[2] : args[1]));
     int64_t limite = 0;
     if (n == 4) {
-        if (args[3].t != V_INT) BERRO(vm, "TypeError", "count de sub() precisa ser int");
+        if (args[3].t != V_INT)
+            BERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[3]));
         limite = args[3].as.i;
     }
     PSRegex *r = rx_compila(vm, args[0], "sub");
@@ -8490,7 +8518,10 @@ static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
                                   nome_do_tipo_valor(args[1]));
     int64_t maxsplit = 0;
     if (n == 3) {
-        if (args[2].t != V_INT) BERRO(vm, "TypeError", "maxsplit de split() precisa ser int");
+        if (args[2].t != V_INT)
+            BERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[2]));
         maxsplit = args[2].as.i;
     }
     PSRegex *r = rx_compila(vm, args[0], "split");
@@ -8555,7 +8586,9 @@ static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
     int64_t maxsplit = 0;
     if (n == 2) {
         if (args[1].t != V_INT)
-            MERRO(vm, "TypeError", "maxsplit de split() precisa ser int");
+            MERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[1]));
         maxsplit = args[1].as.i;
     }
     if (rx_obj_str(vm, alvo, args, 1, "split", &r, &s) != 0) return -1;
@@ -8570,7 +8603,10 @@ static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
                   nome_do_tipo_valor(args[0]));
     int64_t limite = 0;
     if (n == 3) {
-        if (args[2].t != V_INT) MERRO(vm, "TypeError", "count de sub() precisa ser int");
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[2]));
         limite = args[2].as.i;
     }
     PSString *rep = COMO_STRING(args[0]), *s = COMO_STRING(args[1]);
@@ -18816,11 +18852,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
             double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
             /* O CPython separa pelo tipo dos OPERANDOS, não pelo do resultado:
-             * `1/0` é "division by zero" e `1.0/0` é "float division by zero",
+             * `1/0` é "division by zero" e `1.0/0` é "flo division by zero",
              * embora os dois devolvam float. */
             if (y == 0.0) {
                 if (a.t == V_FLOAT || b.t == V_FLOAT)
-                    ERRO_T(vm, "ZeroDivisionError", "float division by zero");
+                    ERRO_T(vm, "ZeroDivisionError", "flo division by zero");
                 ERRO_T(vm, "ZeroDivisionError", "division by zero");
             }
             stack[sp - 1] = MK_FLOAT(x / y);
@@ -18856,7 +18892,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * sinal do DIVISOR — `-1.0 % 3` é 2.0, não -1.0. */
                 double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
                 double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
-                if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "float modulo");
+                if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "flo modulo");
                 double r = fmod(x, y);
                 if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
                 /* resto ZERO leva o sinal do divisor, como no Python:
@@ -20058,10 +20094,9 @@ ERRO_TF(vm, "TypeError",
             int64_t st = 1;
             if (passo.t == V_INT) st = passo.as.i;
             else if (passo.t != V_NULL)
-                ERRO_TF(vm, "TypeError",
-                        "slice indices must be integers or None"
-                        " or have an __index__ method (%s)",
-                        nome_do_tipo_valor(passo));
+                ERRO_T(vm, "TypeError",
+                       "slice indices must be integers or None"
+                       " or have an __index__ method");
             if (st == 0) ERRO_T(vm, "ValueError", "slice step cannot be zero");
 
             /* mesma normalização do Python: negativo conta do fim, e os
@@ -20828,10 +20863,9 @@ ERRO_TF(vm, "TypeError",
                     if (EH_DICT(alvo)) {
                         Value dv;
                         if (dict_get(COMO_DICT(alvo), &nomev, &dv) == 0) { stack[sp - 1] = dv; break; }
-                        ERRO_TF(vm, "KeyError",
-                                "chave '%s' nao existe no dict (%d %s)", nome,
-                                COMO_DICT(alvo)->count,
-                                COMO_DICT(alvo)->count == 1 ? "chave" : "chaves");
+                        /* mesma redacao do `d["z"]` e do `d.pop("z")`: a
+                         * mensagem do KeyError e a chave, entre aspas */
+                        ERRO_TF(vm, "KeyError", "'%s'", nome);
                     }
                     ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
                             nome_do_tipo_valor(alvo), nome);
@@ -21027,8 +21061,17 @@ ERRO_TF(vm, "TypeError",
                         "not enough values to unpack (expected %d, got %d)",
                         n_alvos, l->len);
             }
+            /* O caminho COM estrela ficou pra trás na renomeação: `a, b = [1]`
+             * já era ValueError com o texto do CPython, e `a, b, *c = [1]`
+             * continuava OutputUnexpectedValues em português. Dois caminhos do
+             * mesmo erro discordando no tipo E no idioma.
+             *
+             * O CPython diz "at least" aqui, porque com estrela o mínimo é o
+             * número de alvos FIXOS — a estrela aceita zero. */
             if (star >= 0 && l->len < fixos)
-                ERRO_T(vm, "OutputUnexpectedValues", "valores insuficientes para desempacotar");
+                ERRO_TF(vm, "ValueError",
+                        "not enough values to unpack (expected at least %d, got %d)",
+                        fixos, l->len);
 
             if (sp + n_alvos + 1 >= vm->stack_teto) ERRO(vm, "estouro da pilha no desempacotamento");
             /* empurra em ordem INVERSA: stores subsequentes saem na ordem

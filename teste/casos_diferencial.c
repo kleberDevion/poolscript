@@ -2770,7 +2770,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #398",
   "post(\"a\".ljust(\"x\"))\n"
   "\n",
-  NULL, "TypeError: largura de ljust() precisa ser int", -1 },
+  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
 { "dif #399",
   "post(\"a\".ljust(9223372036854775807))\n"
   "\n",
@@ -3597,7 +3597,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #602",
   "post(1.0 / 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: float division by zero", -1 },
+  NULL, "ZeroDivisionError: flo division by zero", -1 },
 { "dif #603",
   "post(1.0)\n"
   "\n",
@@ -3605,7 +3605,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #604",
   "post(1.5 % 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: float modulo", -1 },
+  NULL, "ZeroDivisionError: flo modulo", -1 },
 { "dif #605",
   "post(1.5 * 2)\n"
   "\n",
@@ -5072,11 +5072,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #970",
   "post(flo(\"1.5abc\"))\n"
   "\n",
-  NULL, "ValueError: could not convert string to float: '1.5abc'", -1 },
+  NULL, "ValueError: could not convert string to flo: '1.5abc'", -1 },
 { "dif #971",
   "post(flo(\"abc\"))\n"
   "\n",
-  NULL, "ValueError: could not convert string to float: 'abc'", -1 },
+  NULL, "ValueError: could not convert string to flo: 'abc'", -1 },
 { "dif #972",
   "post(flo(1.5))\n"
   "\n",
@@ -6897,11 +6897,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1426",
   "post({\"a\":1}.append(1))\n"
   "\n",
-  NULL, "KeyError: chave 'append'", -1 },
+  NULL, "KeyError: 'append'", -1 },
 { "dif #1427",
   "post({\"a\":1}.pop(\"z\"))\n"
   "\n",
-  NULL, "KeyError: chave 'z' nao existe no dict", -1 },
+  NULL, "KeyError: 'z'", -1 },
 { "dif #1428",
   "post({\"a\":1}.type())\n"
   "\n",
@@ -9796,7 +9796,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d.z)\n"
   "\n",
-  NULL, "KeyError: chave 'z'", -1 },
+  NULL, "KeyError: 'z'", -1 },
 { "dif #1875",
   "d = { \"a\": 1 }\n"
   "post(d[\"z\"])\n"

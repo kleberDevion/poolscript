@@ -67,9 +67,20 @@ for each tipo in tipos.keys() {
         conferidos = conferidos + 1
 
         # chama SEM argumento; o motor diz quantos esperava
+        #
+        # O predicado NAO pode casar palavra solta. Ele casava "espera" e
+        # "argumento", e as mensagens de erro viraram as do CPython — as duas
+        # palavras sumiram de uma vez, os 89 metodos deixaram de casar, e o
+        # portao passou a cuspir 42 divergencias falsas. O ramo de baixo
+        # (`not exigiu and obrigatorios > 0`) e o espelho disso: com o
+        # predicado sempre falso ele acusa todo mundo.
+        #
+        # Agora o que se procura e o que a mensagem de aridade SEMPRE tem, nas
+        # duas grafias: um tipo de erro, e a palavra argumento em pt ou en.
         fonte = "post(" + alvo + "." + metodo + "())"
         saida = os.run([POOL, "-e", fonte], true)
-        exigiu = saida.contains("espera") and saida.contains("argumento")
+        exigiu = (saida.contains("Error")
+                  and (saida.contains("argument") or saida.contains("argumento")))
 
         if exigiu and obrigatorios == 0 {
             divergencias.append(tipo + "." + metodo
@@ -144,6 +155,11 @@ import jinker
 import qrcode
 import manpu
 
+# PNG de verdade pra construir o PoolFile — o motor só o cria a partir de
+# arquivo com extensão binária.
+PNG = "/tmp/ps_cm_amostra.png"
+qrcode.make("x").save(PNG)
+
 # a EXPRESSÃO que constrói cada amostra — o campo é acessado num `pool`
 # separado, então precisa do fonte, não do objeto.
 amostras_fonte = {}
@@ -156,6 +172,10 @@ amostras_fonte["JinkerResponse"] = "jinker.JinkerResponse()"
 amostras_fonte["QRImage"] = "qrcode.make(\"x\")"
 amostras_fonte["ManpuFile"] = "manpu.open(target=\"/tmp/ps_cm.txt\")"
 amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
+# PoolFile só nasce de arquivo com extensão binária (`ext_binaria` no motor),
+# e o próprio qrcode da linguagem gera um PNG de verdade — sem isso as 3
+# propriedades dele nunca foram conferidas.
+amostras_fonte["PoolFile"] = ("os.loadFile(\"" + PNG + "\", \"rb\")")
 
 amostras_campo = {}
 amostras_campo["MailMessage"] = mail.MailMessage()
@@ -167,11 +187,42 @@ amostras_campo["JinkerResponse"] = jinker.JinkerResponse()
 amostras_campo["QRImage"] = qrcode.make("x")
 amostras_campo["ManpuFile"] = manpu.open(target="/tmp/ps_cm.txt")
 amostras_campo["PoolQRCode"] = qrcode.QRCode()
+amostras_campo["PoolFile"] = os.loadFile(PNG, "rb")
 
+# Tipo que NÃO dá pra construir aqui, e o porquê. Ele existe pra que o
+# `continue` de baixo deixe de ser silencioso: sem esta lista, tipo novo com
+# propriedade some da checagem sem ninguém saber. Foi o que aconteceu — oito
+# tipos e vinte e uma propriedades nunca foram conferidos, e o script imprimia
+# "OK — todo campo declarado existe no motor".
+SEM_AMOSTRA = {}
+SEM_AMOSTRA["Response"] = "só nasce de uma chamada HTTP concluída"
+SEM_AMOSTRA["PoolCursor"] = "precisa de conexão de banco viva"
+SEM_AMOSTRA["DbCursor"] = "precisa de conexão de banco viva"
+SEM_AMOSTRA["RequestProxy"] = "só existe dentro de um handler do jinker atendendo"
+SEM_AMOSTRA["PoolFileUpload"] = "só existe dentro de um handler recebendo multipart"
+SEM_AMOSTRA["ChannelManager"] = "só existe com o servidor do jinker de pé"
+# `guzer.UI(...)` marca a janela pra ABRIR SOZINHA no fim do script (auto-show,
+# `guz_mostra` lê `vm->guz_app`). Construir uma aqui faz este processo parar no
+# exit esperando alguém fechar a janela — o portão trava, não falha.
+SEM_AMOSTRA["UI"] = "construir uma UI faz o script abrir janela no fim (auto-show) e travar"
+
+nao_conferidos = []
 fantasmas = []
 campos_conferidos = 0
 for each tipo in tipos.keys() {
     if not amostras_campo.has(tipo) {
+        # tem propriedade e ninguém declarou o motivo de não conferir? falha.
+        props = 0
+        for each mm in tipos[tipo] {
+            if mm.has("kind") and mm["kind"] == "property" {
+                props = props + 1
+            }
+        }
+        if props > 0 and not SEM_AMOSTRA.has(tipo) {
+            addEnd(nao_conferidos, tipo + " (" + str(props)
+                   + " propriedade(s)) -> sem amostra e sem motivo declarado"
+                   + " em SEM_AMOSTRA")
+        }
         continue
     }
     alvo = amostras_campo[tipo]
@@ -187,13 +238,21 @@ for each tipo in tipos.keys() {
         fonte = "import mail\nimport regex\nimport jinker\nimport qrcode\n"
         fonte = fonte + "_v = " + amostras_fonte[tipo] + "\npost(_v." + m["nome"] + ")"
         saida = os.run([POOL, "-e", fonte], true)
-        if saida.contains("membro inexistente") {
+        # O motor diz "'T' object has no attribute 'x'" (AttributeError) — a
+        # frase antiga era "membro inexistente". Enquanto casou a antiga, esta
+        # checagem ficou VERDE PARA SEMPRE: campo fantasma declarado no
+        # metadata nunca mais foi pego, e o script imprimia "OK — todo campo
+        # declarado existe no motor" com fantasma dentro.
+        if saida.contains("has no attribute") {
             fantasmas.append(tipo + "." + m["nome"] + " -> declarado, mas o motor nao tem")
         }
     }
 }
 
 post("campos conferidos:", campos_conferidos)
+for each t in SEM_AMOSTRA.keys() {
+    post("   (nao conferido:", t, "—", SEM_AMOSTRA[t] + ")")
+}
 if len(fantasmas) == 0 {
     post("OK — todo campo declarado existe no motor")
 }
@@ -201,6 +260,17 @@ else {
     post("FALHA —", len(fantasmas), "campo(s) fantasma:")
     for each f in fantasmas {
         post("  ", f)
+    }
+    falhas = falhas + 1
+}
+
+# Pular não pode ser sucesso: tipo novo com propriedade, sem amostra e sem
+# motivo declarado, reprova. Ou alguém escreve a amostra, ou escreve por que
+# não dá — as duas resolvem, ficar calado não.
+if len(nao_conferidos) > 0 {
+    post("FALHA —", len(nao_conferidos), "tipo(s) com propriedade fora da checagem:")
+    for each t in nao_conferidos {
+        post("  ", t)
     }
     falhas = falhas + 1
 }
