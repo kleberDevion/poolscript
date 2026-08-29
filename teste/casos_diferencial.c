@@ -370,7 +370,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(3)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: n", -1 },
+  NULL, "NameError: name 'n' is not defined", -1 },
 { "dif #28",
   "\n"
   "if (x == 1) {\n"
@@ -381,7 +381,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"c\")\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #29",
   "\n"
   "import json\n"
@@ -520,7 +520,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " case _ { post(\"b\") }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #45",
   "\n"
   "match x {\n"
@@ -528,7 +528,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " case _ { post(\"menor\") }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #46",
   "\n"
   "post(\n"
@@ -538,7 +538,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n"
   "post(x())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #48",
   "\n"
   "post(x.\n"
@@ -595,19 +595,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #54",
   "        post(\"ok:\", fn())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: fn", -1 },
+  NULL, "NameError: name 'fn' is not defined", -1 },
 { "dif #55",
   "        post(\"preparando\", path)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: path", -1 },
+  NULL, "NameError: name 'path' is not defined", -1 },
 { "dif #56",
   "        post(\"registrou:\", fn())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: fn", -1 },
+  NULL, "NameError: name 'fn' is not defined", -1 },
 { "dif #57",
   "        post(prev)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: prev", -1 },
+  NULL, "NameError: name 'prev' is not defined", -1 },
 { "dif #58",
   "        post(self.\n"
   "\n",
@@ -706,7 +706,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #80",
   "    d = { \"a\": i, \"b\": [i, i + 1], \"s\": str(i), \"t\": (i, i) }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: i", -1 },
+  NULL, "NameError: name 'i' is not defined", -1 },
 { "dif #81",
   "    if i % 1000 == 0:\n"
   "\n",
@@ -718,11 +718,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #83",
   "    if s == Cor.RED { return \"vermelho\" }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #84",
   "    if v > 0 { r = \"pos\" }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: v", -1 },
+  NULL, "NameError: name 'v' is not defined", -1 },
 { "dif #85",
   "    int reaction m(self, name=none) { return 1 }\n"
   "\n",
@@ -730,7 +730,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #86",
   "    l = [d, d[\"b\"], \"x\" + str(i)]\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #87",
   "    post(\"ok\")\n"
   "\n",
@@ -746,7 +746,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #90",
   "   post(1/0)\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #91",
   "  post(\"IOError\")\n"
   "\n",
@@ -762,15 +762,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #94",
   "  post(1/0)\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #95",
   "  post(os.run([\"prog_inexistente_zzz_123\"], true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #96",
   "  post(z[\"boom\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: z", -1 },
+  NULL, "NameError: name 'z' is not defined", -1 },
 { "dif #97",
   "  try {\n"
   "\n",
@@ -783,7 +783,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " 3\n"
   "post(x)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #100",
   " e) { post(\"pego\") }\n"
   "\n",
@@ -795,7 +795,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #102",
   " post(\"DatabaseError: \" + e)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: e", -1 },
+  NULL, "NameError: name 'e' is not defined", -1 },
 { "dif #103",
   " post(\"caro\")\n"
   "\n",
@@ -815,7 +815,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #107",
   " post(\"pego: \" + e)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: e", -1 },
+  NULL, "NameError: name 'e' is not defined", -1 },
 { "dif #108",
   " post(1)\n"
   "\n",
@@ -823,19 +823,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #109",
   " post(_match)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: _match", -1 },
+  NULL, "NameError: name '_match' is not defined", -1 },
 { "dif #110",
   " post(c)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #111",
   " post(x)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #112",
   " return \"n=\" + str(n)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: n", -1 },
+  NULL, "NameError: name 'n' is not defined", -1 },
 { "dif #113",
   " try {\n"
   "\n",
@@ -843,7 +843,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #114",
   " try { x = 1/0 } catch (KeyError e) { post(\"k\") }\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero (linha 1)", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #115",
   " while i < 3 {\n"
   "\n",
@@ -1044,12 +1044,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "@app.route(\"/x\")\n"
   "action h() { return 1 }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #148",
   "@app.route(\"/x\", methods=[\"GET\"])\n"
   "action h() { return 1 }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #149",
   "@dataentity\n"
   "Entity P() {\n"
@@ -1064,7 +1064,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " action handler() { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: server", -1 },
+  NULL, "NameError: name 'server' is not defined", -1 },
 { "dif #151",
   "@static\n"
   "action f() {\n"
@@ -1329,7 +1329,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " action m(self) { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: A", -1 },
+  NULL, "NameError: name 'A' is not defined", -1 },
 { "dif #174",
   "Entity F(P) {\n"
   "    action __init__(self, v) {\n"
@@ -1337,7 +1337,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: P", -1 },
+  NULL, "NameError: name 'P' is not defined", -1 },
 { "dif #175",
   "Entity F(P) {\n"
   " action __init__(self) {\n"
@@ -1345,7 +1345,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: P", -1 },
+  NULL, "NameError: name 'P' is not defined", -1 },
 { "dif #176",
   "Entity F(P) {\n"
   " action __init__(self, v) {\n"
@@ -1353,13 +1353,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   " }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: P", -1 },
+  NULL, "NameError: name 'P' is not defined", -1 },
 { "dif #177",
   "Entity Filho(Pai) {\n"
   " action m(self) { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Pai", -1 },
+  NULL, "NameError: name 'Pai' is not defined", -1 },
 { "dif #178",
   "Entity Foo() {\n"
   " action m(self) { return 1 }\n"
@@ -1448,7 +1448,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "p=P(z=1)\n"
   "post(p.a)\n"
   "\n",
-  NULL, "RuntimeError: action '__init__' faltando argumento: 'a'", -1 },
+  NULL, "TypeError: __init__() missing 1 required positional argument: 'a'", -1 },
 { "dif #190",
   "Entity P() {\n"
   "    a: int\n"
@@ -1456,7 +1456,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "p=P(z=1)\n"
   "post(p.z)\n"
   "\n",
-  NULL, "RuntimeError: action '__init__' faltando argumento: 'a'", -1 },
+  NULL, "TypeError: __init__() missing 1 required positional argument: 'a'", -1 },
 { "dif #191",
   "Entity P() {\n"
   "    action __init__(self) {\n"
@@ -1465,7 +1465,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(P().b)\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: b (em P)", -1 },
+  NULL, "AttributeError: 'P' object has no attribute 'b'", -1 },
 { "dif #192",
   "Entity P() {\n"
   "    action __init__(self) {\n"
@@ -1984,7 +1984,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(b())\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #258",
   "action a(n) {\n"
   "\n",
@@ -2029,7 +2029,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "tipo nao indexavel: int (linha 3)", NULL, 0 },
+  "'int' object is not subscriptable (linha 3)", NULL, 0 },
 { "dif #265",
   "action c(x) {\n"
   "\n",
@@ -2350,7 +2350,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f()\n"
   "post(y)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: y", -1 },
+  NULL, "NameError: name 'y' is not defined", -1 },
 { "dif #308",
   "action f() {\n"
   " z = 5\n"
@@ -2398,21 +2398,21 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #315",
   "action f() {\n"
   "    return self\n"
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: self", -1 },
+  NULL, "NameError: name 'self' is not defined", -1 },
 { "dif #316",
   "action f() {\n"
   "    return zzz\n"
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #317",
   "action f(){ return 1 }\n"
   "\n",
@@ -2638,11 +2638,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #365",
   "post(\"Clima: \" {grau} \"°\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: grau", -1 },
+  NULL, "NameError: name 'grau' is not defined", -1 },
 { "dif #366",
   "post(\"Clima: \" {g} \"C\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #367",
   "post(\"NAO DEVE APARECER\")\n"
   "\n",
@@ -2690,7 +2690,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #378",
   "post(\"a\" * \"b\")\n"
   "\n",
-  NULL, "TypeError: '*' entre tipos incompativeis", -1 },
+  NULL, "TypeError: can't multiply sequence by non-int of type 'str'", -1 },
 { "dif #379",
   "post(\"a\" + \"b\")\n"
   "\n",
@@ -2698,11 +2698,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #380",
   "post(\"a\" + 1)\n"
   "\n",
-  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "TypeError: can only concatenate str (not \"int\") to str", -1 },
 { "dif #381",
   "post(\"a\" - 1)\n"
   "\n",
-  NULL, "TypeError: '-' entre tipos incompativeis", -1 },
+  NULL, "TypeError: unsupported operand type(s) for -: 'str' and 'int'", -1 },
 { "dif #382",
   "post(\"a\" <= \"a\")\n"
   "\n",
@@ -2710,11 +2710,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #383",
   "post(\"a\" > 1)\n"
   "\n",
-  NULL, "TypeError: comparacao entre tipos incompativeis", -1 },
+  NULL, "TypeError: '>' not supported between instances of 'str' and 'int'", -1 },
 { "dif #384",
   "post(\"a\" ^ 1)\n"
   "\n",
-  NULL, "TypeError: '^' exige int", -1 },
+  NULL, "TypeError: unsupported operand type(s) for ^: 'str' and 'int'", -1 },
 { "dif #385",
   "post(\"a\" in \"cab\")\n"
   "\n",
@@ -2730,7 +2730,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #388",
   "post(\"a\".append(1))\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: append (em str)", -1 },
+  NULL, "AttributeError: 'str' object has no attribute 'append'", -1 },
 { "dif #389",
   "post(\"a\".center(3,\"xy\"))\n"
   "\n",
@@ -2746,7 +2746,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #392",
   "post(\"a\".count())\n"
   "\n",
-  NULL, "TypeError: count() espera de 1 a 3 argumentos (sub, inicio, fim)", -1 },
+  NULL, "TypeError: count expected at least 1 argument, got 0", -1 },
 { "dif #393",
   "post(\"a\".encode(\"utf-8\"))\n"
   "\n",
@@ -2754,7 +2754,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #394",
   "post(\"a\".encode() + \"b\")\n"
   "\n",
-  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "TypeError: can't concat str to bytes", -1 },
 { "dif #395",
   "post(\"a\".index(\"z\"))\n"
   "\n",
@@ -2778,11 +2778,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #400",
   "post(\"a\".match())\n"
   "\n",
-  NULL, "TypeError: match() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: match expected 1 argument, got 0", -1 },
 { "dif #401",
   "post(\"a\".naoexiste())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: naoexiste (em str)", -1 },
+  NULL, "AttributeError: 'str' object has no attribute 'naoexiste'", -1 },
 { "dif #402",
   "post(\"a\".partition(\"\"))\n"
   "\n",
@@ -2806,11 +2806,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #407",
   "post(\"a\".startswith(1))\n"
   "\n",
-  NULL, "TypeError: startswith() espera str", -1 },
+  NULL, "TypeError: startswith() argument 1 must be str, not int", -1 },
 { "dif #408",
   "post(\"a\".sub(\"a\"))\n"
   "\n",
-  NULL, "TypeError: sub() espera 2 argumento(s)", -1 },
+  NULL, "TypeError: sub expected 2 arguments, got 1", -1 },
 { "dif #409",
   "post(\"a\".type())\n"
   "\n",
@@ -2818,7 +2818,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #410",
   "post(\"a\".upper(1))\n"
   "\n",
-  NULL, "TypeError: upper() nao aceita argumento", -1 },
+  NULL, "TypeError: upper expected 0 arguments, got 1", -1 },
 { "dif #411",
   "post(\"a\".zfill(5))\n"
   "post(\"ab\".ljust(5, \"-\"))\n"
@@ -2983,7 +2983,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #449",
   "post(\"ab\"[9])\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "IndexError: string index out of range", -1 },
 { "dif #450",
   "post(\"abc\" < \"abd\")\n"
   "\n",
@@ -3205,7 +3205,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #504",
   "post(\"um\" if n == 1 else \"dois\" if n == 2 else \"outro\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: n", -1 },
+  NULL, "NameError: name 'n' is not defined", -1 },
 { "dif #505",
   "post(\"x  \".rstrip())\n"
   "\n",
@@ -3393,7 +3393,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #551",
   "post((1).keys())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: keys (em int)", -1 },
+  NULL, "AttributeError: 'int' object has no attribute 'keys'", -1 },
 { "dif #552",
   "post((1).type())\n"
   "\n",
@@ -3405,7 +3405,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #554",
   "post((1, zzz))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #555",
   "post((1,) is list)\n"
   "\n",
@@ -3433,7 +3433,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #561",
   "post((12).len())\n"
   "\n",
-  NULL, "RuntimeError: len() nao se aplica a numero", -1 },
+  NULL, "TypeError: object of type 'int' has no len()", -1 },
 { "dif #562",
   "post((123).zfill(5))\n"
   "\n",
@@ -3457,7 +3457,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #567",
   "post(-1 < Null)\n"
   "\n",
-  NULL, "'<' nao se aplica a Null", -1 },
+  NULL, "TypeError: '<' not supported between instances of 'int' and 'Null'", -1 },
 { "dif #568",
   "post(-1.0 % 3)\n"
   "\n",
@@ -3477,7 +3477,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #572",
   "post(-a)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #573",
   "post(0 - 5)\n"
   "\n",
@@ -3509,7 +3509,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #580",
   "post(1 % 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: resto de divisao por zero", -1 },
+  NULL, "ZeroDivisionError: integer modulo by zero", -1 },
 { "dif #581",
   "post(1 && 2)\n"
   "\n",
@@ -3517,7 +3517,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #582",
   "post(1 + \"a\")\n"
   "\n",
-  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "TypeError: unsupported operand type(s) for +: 'int' and 'str'", -1 },
 { "dif #583",
   "post(1 + 1)\n"
   "\n",
@@ -3525,11 +3525,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #584",
   "post(1 + zzz)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #585",
   "post(1 / 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #586",
   "post(1 < 2, 2 <= 2, 3 > 4, 5 == 5, 5 != 6)\n"
   "\n",
@@ -3557,7 +3557,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #592",
   "post(1 > Null)\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '>' not supported between instances of 'int' and 'Null'", -1 },
 { "dif #593",
   "post(1 >> -1)\n"
   "\n",
@@ -3565,7 +3565,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #594",
   "post(1 if x > 0 else x / 0)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #595",
   "post(1 in (1,2))\n"
   "\n",
@@ -3577,11 +3577,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #597",
   "post(1 in zzz)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #598",
   "post(1%0)\n"
   "\n",
-  NULL, "ZeroDivisionError: resto de divisao por zero", -1 },
+  NULL, "ZeroDivisionError: integer modulo by zero", -1 },
 { "dif #599",
   "post(1)\n"
   "\n",
@@ -3597,7 +3597,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #602",
   "post(1.0 / 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: float division by zero", -1 },
 { "dif #603",
   "post(1.0)\n"
   "\n",
@@ -3605,7 +3605,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #604",
   "post(1.5 % 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: resto de divisao por zero (float)", -1 },
+  NULL, "ZeroDivisionError: float modulo", -1 },
 { "dif #605",
   "post(1.5 * 2)\n"
   "\n",
@@ -3621,11 +3621,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #608",
   "post(1.5 | 1)\n"
   "\n",
-  NULL, "TypeError: '|' exige int", -1 },
+  NULL, "TypeError: unsupported operand type(s) for |: 'flo' and 'int'", -1 },
 { "dif #609",
   "post(1/0)\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #610",
   "post(1/3)\n"
   "\n",
@@ -3805,7 +3805,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #654",
   "post(<green>x)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #655",
   "post(<red>\"alerta\")\n"
   "\n",
@@ -3829,131 +3829,131 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #660",
   "post(<red>f)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #661",
   "post(A().n)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: A", -1 },
+  NULL, "NameError: name 'A' is not defined", -1 },
 { "dif #662",
   "post(Aberta(7).ver())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Aberta", -1 },
+  NULL, "NameError: name 'Aberta' is not defined", -1 },
 { "dif #663",
   "post(B().n)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: B", -1 },
+  NULL, "NameError: name 'B' is not defined", -1 },
 { "dif #664",
   "post(C().campo)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #665",
   "post(C().f(5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #666",
   "post(C().f(a=7))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #667",
   "post(C().m())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #668",
   "post(C().m(5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #669",
   "post(C.f())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #670",
   "post(C.f(1, 2, 3))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #671",
   "post(C.f(5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #672",
   "post(C.f(5, 20))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #673",
   "post(C.f(a=7))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #674",
   "post(C.f(a=7, b=1))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #675",
   "post(C.m())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #676",
   "post(C.m(5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #677",
   "post(C.naoexiste())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: C", -1 },
+  NULL, "NameError: name 'C' is not defined", -1 },
 { "dif #678",
   "post(Cor)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Cor", -1 },
+  NULL, "NameError: name 'Cor' is not defined", -1 },
 { "dif #679",
   "post(Cor.BLUE)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Cor", -1 },
+  NULL, "NameError: name 'Cor' is not defined", -1 },
 { "dif #680",
   "post(Cor.RED)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Cor", -1 },
+  NULL, "NameError: name 'Cor' is not defined", -1 },
 { "dif #681",
   "post(Cor.ROXO)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Cor", -1 },
+  NULL, "NameError: name 'Cor' is not defined", -1 },
 { "dif #682",
   "post(Cor.type())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Cor", -1 },
+  NULL, "NameError: name 'Cor' is not defined", -1 },
 { "dif #683",
   "post(Hex.RED)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Hex", -1 },
+  NULL, "NameError: name 'Hex' is not defined", -1 },
 { "dif #684",
   "post(M().f())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: M", -1 },
+  NULL, "NameError: name 'M' is not defined", -1 },
 { "dif #685",
   "post(MAX)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: MAX", -1 },
+  NULL, "NameError: name 'MAX' is not defined", -1 },
 { "dif #686",
   "post(Mix.A)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Mix", -1 },
+  NULL, "NameError: name 'Mix' is not defined", -1 },
 { "dif #687",
   "post(Mix.C)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Mix", -1 },
+  NULL, "NameError: name 'Mix' is not defined", -1 },
 { "dif #688",
   "post(Mix.E)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Mix", -1 },
+  NULL, "NameError: name 'Mix' is not defined", -1 },
 { "dif #689",
   "post(NOME)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: NOME", -1 },
+  NULL, "NameError: name 'NOME' is not defined", -1 },
 { "dif #690",
   "post(Null < 0)\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '<' not supported between instances of 'Null' and 'int'", -1 },
 { "dif #691",
   "post(Null <= 0)\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '<=' not supported between instances of 'Null' and 'int'", -1 },
 { "dif #692",
   "post(Null == 0)\n"
   "\n",
@@ -3965,19 +3965,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #694",
   "post(Null > \"a\")\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '>' not supported between instances of 'Null' and 'str'", -1 },
 { "dif #695",
   "post(Null > 0)\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '>' not supported between instances of 'Null' and 'int'", -1 },
 { "dif #696",
   "post(Null >= 0)\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '>=' not supported between instances of 'Null' and 'int'", -1 },
 { "dif #697",
   "post(Null >= Null)\n"
   "\n",
-  NULL, "nao se aplica a Null", -1 },
+  NULL, "TypeError: '>=' not supported between instances of 'Null' and 'Null'", -1 },
 { "dif #698",
   "post(Null)\n"
   "\n",
@@ -3985,7 +3985,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #699",
   "post(Null.keys())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: keys (em Null)", -1 },
+  NULL, "AttributeError: 'Null' object has no attribute 'keys'", -1 },
 { "dif #700",
   "post(Null.type())\n"
   "\n",
@@ -3993,7 +3993,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #701",
   "post(P().n)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: P", -1 },
+  NULL, "NameError: name 'P' is not defined", -1 },
 { "dif #702",
   "post(Parsing)\n"
   "\n",
@@ -4185,11 +4185,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #749",
   "post(R())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: R", -1 },
+  NULL, "NameError: name 'R' is not defined", -1 },
 { "dif #750",
   "post(Secreta())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Secreta", -1 },
+  NULL, "NameError: name 'Secreta' is not defined", -1 },
 { "dif #751",
   "post(True & 1)\n"
   "\n",
@@ -4201,7 +4201,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #753",
   "post(True.isdigit())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: isdigit (em bool)", -1 },
+  NULL, "AttributeError: 'bool' object has no attribute 'isdigit'", -1 },
 { "dif #754",
   "post(True.type())\n"
   "\n",
@@ -4209,7 +4209,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #755",
   "post(U(\"ana\", 30))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: U", -1 },
+  NULL, "NameError: name 'U' is not defined", -1 },
 { "dif #756",
   "post([\"a\", \"b\"])\n"
   "\n",
@@ -4248,19 +4248,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #764",
   "post([1, 2][\"x\"])\n"
   "\n",
-  NULL, "TypeError: indice de list precisa ser int, veio", -1 },
+  NULL, "TypeError: list indices must be integers or slices, not str", -1 },
 { "dif #765",
   "post([1, 2][9])\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "IndexError: list index out of range", -1 },
 { "dif #766",
   "post([1, 2][zzz])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #767",
   "post([1, zzz])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #768",
   "post([1,2,3][-1])\n"
   "\n",
@@ -4272,7 +4272,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #770",
   "post([1,2,3][::0])\n"
   "\n",
-  NULL, "RuntimeError: passo do slice nao pode ser zero", -1 },
+  NULL, "ValueError: slice step cannot be zero", -1 },
 { "dif #771",
   "post([1,2].contains(2))\n"
   "\n",
@@ -4296,11 +4296,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #776",
   "post([1,2][-9])\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "IndexError: list index out of range", -1 },
 { "dif #777",
   "post([1,2][9])\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "IndexError: list index out of range", -1 },
 { "dif #778",
   "post([1] < [2], [1,2] >= [1,2], (1,2) < (1,3))\n"
   "\n",
@@ -4312,11 +4312,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #780",
   "post([1].append())\n"
   "\n",
-  NULL, "TypeError: append() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: append expected 1 argument, got 0", -1 },
 { "dif #781",
   "post([1].extend(1))\n"
   "\n",
-  NULL, "TypeError: extend() espera uma lista", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #782",
   "post([1].index(9))\n"
   "\n",
@@ -4324,11 +4324,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #783",
   "post([1].insert(\"a\",1))\n"
   "\n",
-  NULL, "TypeError: insert() espera int como posicao", -1 },
+  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
 { "dif #784",
   "post([1].keys())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: keys (em list)", -1 },
+  NULL, "AttributeError: 'list' object has no attribute 'keys'", -1 },
 { "dif #785",
   "post([1].pop(9))\n"
   "\n",
@@ -4340,15 +4340,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #787",
   "post([1].sort(1))\n"
   "\n",
-  NULL, "TypeError: sort() nao aceita argumento", -1 },
+  NULL, "TypeError: sort expected 0 arguments, got 1", -1 },
 { "dif #788",
   "post([1].type(1))\n"
   "\n",
-  NULL, "TypeError: type() nao aceita argumento", -1 },
+  NULL, "TypeError: type expected 0 arguments, got 1", -1 },
 { "dif #789",
   "post([1].upper())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: upper (em list)", -1 },
+  NULL, "AttributeError: 'list' object has no attribute 'upper'", -1 },
 { "dif #790",
   "post([3,1,2])\n"
   "\n",
@@ -4388,59 +4388,59 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #799",
   "post(a % 7)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #800",
   "post(a / 0)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #801",
   "post(a == a)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #802",
   "post(a == b)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #803",
   "post(a > 999999999999999999)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #804",
   "post(a is str and not (a is int))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #805",
   "post(a(10), b(10))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #806",
   "post(a)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #807",
   "post(a, b)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #808",
   "post(a, b, c)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #809",
   "post(a, r)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #810",
   "post(a.b.c)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #811",
   "post(a.b[0].c)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #812",
   "post(abs(\"a\"))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: abs() so aceita numero", -1 },
+  NULL, "TypeError: bad operand type for abs(): 'str'", -1 },
 { "dif #813",
   "post(abs(-3))\n"
   "\n",
@@ -4472,31 +4472,31 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #820",
   "post(achou)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: achou", -1 },
+  NULL, "NameError: name 'achou' is not defined", -1 },
 { "dif #821",
   "post(addEnd(1,2))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: addEnd() espera lista", -1 },
+  NULL, "TypeError: addEnd() argument 1 must be list, not int", -1 },
 { "dif #822",
   "post(app.POOLHTMLElements.getitemByIdentify(\"email\").value == \"\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #823",
   "post(app.POOLHTMLElements.getitemByIdentify(\"email\").value)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #824",
   "post(app.POOLHTMLElements.getitemByIdentify(\"nome\").value)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #825",
   "post(app.POOLHTMLElements.getitemByIdentify(\"x\") == null)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #826",
   "post(app.div().stylesheet({\"width\": \"300\"}).text(\"x\") is null == false)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #827",
   "post(await \"texto\")\n"
   "\n",
@@ -4512,27 +4512,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #830",
   "post(b % 26)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #831",
   "post(b(1))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #832",
   "post(b)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #833",
   "post(b[0], b[1], b[2], b[3])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #834",
   "post(big * big)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: big", -1 },
+  NULL, "NameError: name 'big' is not defined", -1 },
 { "dif #835",
   "post(big + 1)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: big", -1 },
+  NULL, "NameError: name 'big' is not defined", -1 },
 { "dif #836",
   "post(bin(\"a\"))\n"
   "\n",
@@ -4584,119 +4584,119 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #848",
   "post(bytes.base64(bytes.new(\"Hello\")))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #849",
   "post(bytes.concat([bytes.new(\"Hi\"), bytes.new(\"!!\")]))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #850",
   "post(bytes.frombase64(\"SGVsbG8=\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #851",
   "post(bytes.get(bytes.new(\"ABC\"), -1))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #852",
   "post(bytes.hex(bytes.fromhex(\"48 65 6c 6c 6f\")))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #853",
   "post(bytes.hex(bytes.fromint(258, 4)))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #854",
   "post(bytes.hex(bytes.fromint(258, 4, \"little\")))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #855",
   "post(bytes.hex(bytes.xor(bytes.xor(bytes.new(\"secret\"), bytes.new(\"KEY\")), bytes.new(\"KEY\"))))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #856",
   "post(bytes.new(\"Oi\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #857",
   "post(bytes.new())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #858",
   "post(bytes.new(3))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #859",
   "post(bytes.new(3.5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #860",
   "post(bytes.new([72, 105]))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #861",
   "post(bytes.slice(bytes.new(\"Hello\"), 1, 3))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #862",
   "post(bytes.toint(bytes.fromint(70000, 4)))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #863",
   "post(bytes.tolist(bytes.new(\"ABC\")))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: bytes", -1 },
+  NULL, "NameError: name 'bytes' is not defined", -1 },
 { "dif #864",
   "post(c)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #865",
   "post(c.cursor().execute(\"CREATE TABLE a (x)\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #866",
   "post(c.cursor().execute(\"SELECT nota FROM u ORDER BY id\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #867",
   "post(c.execute(\"SELECT * FROM x\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #868",
   "post(c.execute(\"SELECT 1 + 1 AS soma, ?\", (\"oi\",)).fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #869",
   "post(c2.cursor().execute(\"SELECT * FROM u\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c2", -1 },
+  NULL, "NameError: name 'c2' is not defined", -1 },
 { "dif #870",
   "post(c2.cursor().execute(\"SELECT count(*) AS n FROM u WHERE nome = '__rb__'\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c2", -1 },
+  NULL, "NameError: name 'c2' is not defined", -1 },
 { "dif #871",
   "post(c2.execute(\"SELECT * FROM t\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c2", -1 },
+  NULL, "NameError: name 'c2' is not defined", -1 },
 { "dif #872",
   "post(c2.execute(\"SELECT * FROM z\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c2", -1 },
+  NULL, "NameError: name 'c2' is not defined", -1 },
 { "dif #873",
   "post(chamadas)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: chamadas", -1 },
+  NULL, "NameError: name 'chamadas' is not defined", -1 },
 { "dif #874",
   "post(check(crypt(\"z\"), \"z\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: check", -1 },
+  NULL, "NameError: name 'check' is not defined", -1 },
 { "dif #875",
   "post(chr(-1))\n"
   "\n",
-  NULL, "ValueError: valor invalido: chr() fora do intervalo Unicode", -1 },
+  NULL, "ValueError: chr() arg not in range(0x110000)", -1 },
 { "dif #876",
   "post(chr(1114112))\n"
   "\n",
-  NULL, "ValueError: valor invalido: chr() fora do intervalo Unicode", -1 },
+  NULL, "ValueError: chr() arg not in range(0x110000)", -1 },
 { "dif #877",
   "post(chr(128512))\n"
   "\n",
@@ -4716,31 +4716,31 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #881",
   "post(classifica(7))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: classifica", -1 },
+  NULL, "NameError: name 'classifica' is not defined", -1 },
 { "dif #882",
   "post(col.count())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: col", -1 },
+  NULL, "NameError: name 'col' is not defined", -1 },
 { "dif #883",
   "post(col.find({\"nome\":\"ana\"}))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: col", -1 },
+  NULL, "NameError: name 'col' is not defined", -1 },
 { "dif #884",
   "post(col.find_one({\"nome\":\"ana\"}))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: col", -1 },
+  NULL, "NameError: name 'col' is not defined", -1 },
 { "dif #885",
   "post(col.find_one({\"nome\":\"leo\"}))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: col", -1 },
+  NULL, "NameError: name 'col' is not defined", -1 },
 { "dif #886",
   "post(col.find_one({\"nome\":\"zzz\"}))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: col", -1 },
+  NULL, "NameError: name 'col' is not defined", -1 },
 { "dif #887",
   "post(count char in s)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #888",
   "post(count dict in [{}, {}, 1])\n"
   "\n",
@@ -4780,7 +4780,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #897",
   "post(count int in nums)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nums", -1 },
+  NULL, "NameError: name 'nums' is not defined", -1 },
 { "dif #898",
   "post(count int in post)\n"
   "\n",
@@ -4788,7 +4788,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #899",
   "post(count int() in nums)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nums", -1 },
+  NULL, "NameError: name 'nums' is not defined", -1 },
 { "dif #900",
   "post(count int(1) in 112211)\n"
   "\n",
@@ -4804,7 +4804,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #903",
   "post(count int(7) in nums)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nums", -1 },
+  NULL, "NameError: name 'nums' is not defined", -1 },
 { "dif #904",
   "post(count json in [{}, 1])\n"
   "\n",
@@ -4836,7 +4836,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #911",
   "post(count str(\"oi\") in frase)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: frase", -1 },
+  NULL, "NameError: name 'frase' is not defined", -1 },
 { "dif #912",
   "post(count str(\"z\") in \"banana\")\n"
   "\n",
@@ -4852,67 +4852,67 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #915",
   "post(d is dict)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #916",
   "post(d is json)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #917",
   "post(d is tup)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #918",
   "post(d not is tup)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #919",
   "post(d)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #920",
   "post(d.get(\"nome\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #921",
   "post(d.n)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #922",
   "post(d.nome)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #923",
   "post(d[\"nome\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #924",
   "post(d[\"tag\"], d[\"attrs\"][\"a\"], d[\"children\"].len())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #925",
   "post(d[0][\"id\"], d[0][\"nota\"], d[0][\"nome\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #926",
   "post(d[0][\"idade\"], d[0][\"nota\"], d[1][\"nota\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #927",
   "post(dentro)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: dentro", -1 },
+  NULL, "NameError: name 'dentro' is not defined", -1 },
 { "dif #928",
   "post(dotenv.load())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: dotenv", -1 },
+  NULL, "NameError: name 'dotenv' is not defined", -1 },
 { "dif #929",
   "post(e)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: e", -1 },
+  NULL, "NameError: name 'e' is not defined", -1 },
 { "dif #930",
   "post(ef.f())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: ef", -1 },
+  NULL, "NameError: name 'ef' is not defined", -1 },
 { "dif #931",
   "post(enumerate(\"çá\"))\n"
   "\n",
@@ -4920,7 +4920,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #932",
   "post(enumerate(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: enumerate() nao itera este tipo", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #933",
   "post(enumerate([\"a\",\"b\"]))\n"
   "\n",
@@ -4936,7 +4936,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #936",
   "post(f is PoolFile)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #937",
   "post(f\"\")\n"
   "\n",
@@ -4944,11 +4944,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #938",
   "post(f\"Ola, {nome}!\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nome", -1 },
+  NULL, "NameError: name 'nome' is not defined", -1 },
 { "dif #939",
   "post(f\"oi {x}\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #940",
   "post(f\"texto puro\")\n"
   "\n",
@@ -4956,23 +4956,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #941",
   "post(f\"v: {zzz + 1}\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #942",
   "post(f\"v: {zzz}\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #943",
   "post(f\"x {1/0} y\")\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #944",
   "post(f\"{a} {a + 1}\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #945",
   "post(f\"{a} {b} {a+1}\")\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #946",
   "post(f\"{{literal}} e {1 + 1}\")\n"
   "\n",
@@ -4984,67 +4984,67 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #948",
   "post(f(\"5\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #949",
   "post(f())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #950",
   "post(f(1))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #951",
   "post(f(1, 2))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #952",
   "post(f(3))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #953",
   "post(f(Cor.RED))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #954",
   "post(f(a=1, zzz=2))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #955",
   "post(f.delete(), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #956",
   "post(f.name, f.ext)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #957",
   "post(f.name, f.ext, f.size)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #958",
   "post(f.name, f.size, f is PoolFile)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #959",
   "post(f.name.upper())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #960",
   "post(f.naoexiste)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #961",
   "post(f.path().endswith(\"img.png\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #962",
   "post(f.size + 1)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #963",
   "post(f.size > 0)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #964",
   "post(false < true)\n"
   "\n",
@@ -5072,11 +5072,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #970",
   "post(flo(\"1.5abc\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter '1.5abc' em flo", -1 },
+  NULL, "ValueError: could not convert string to float: '1.5abc'", -1 },
 { "dif #971",
   "post(flo(\"abc\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter 'abc' em flo", -1 },
+  NULL, "ValueError: could not convert string to float: 'abc'", -1 },
 { "dif #972",
   "post(flo(1.5))\n"
   "\n",
@@ -5088,7 +5088,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #974",
   "post(flo(Null))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: flo() nao aceita este tipo", -1 },
+  NULL, "TypeError: flo() argument must be a string or a real number, not 'Null'", -1 },
 { "dif #975",
   "post(flo(True))\n"
   "\n",
@@ -5096,63 +5096,63 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #976",
   "post(fv)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: fv", -1 },
+  NULL, "NameError: name 'fv' is not defined", -1 },
 { "dif #977",
   "post(g(\"42\") + 1)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #978",
   "post(g())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #979",
   "post(g.name, os.exists(\"dup.png\"), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #980",
   "post(g.name, os.exists(\"img.png\"), g.size)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #981",
   "post(g.name, os.exists(\"outro.png\"), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #982",
   "post(g.name, os.exists(\"sub/nova/c.png\"), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #983",
   "post(g.size, f.size, len(g.bytes()))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #984",
   "post(getenv(\"POOL_TEST_VAR\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: getenv", -1 },
+  NULL, "NameError: name 'getenv' is not defined", -1 },
 { "dif #985",
   "post(getenv(\"POOL_TEST_VAR\"), cwd() is str)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: getenv", -1 },
+  NULL, "NameError: name 'getenv' is not defined", -1 },
 { "dif #986",
   "post(glob.oi())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: glob", -1 },
+  NULL, "NameError: name 'glob' is not defined", -1 },
 { "dif #987",
   "post(hash.b64decode(\"!!!\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #988",
   "post(hash.b64decode(\"UG9vbFNjcmlwdA==\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #989",
   "post(hash.b64encode(\"PoolScript\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #990",
   "post(hash.b64encode(\"ção\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #991",
   "post(hash.check(\"\n"
   "\n",
@@ -5160,43 +5160,43 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #992",
   "post(hash.check(\"\", \"abc\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #993",
   "post(hash.check(\"lixo\", \"abc\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #994",
   "post(hash.check(123, \"abc\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #995",
   "post(hash.check(a, \"x\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #996",
   "post(hash.check(b, \"x\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #997",
   "post(hash.check(h, \"abc\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #998",
   "post(hash.check(h, \"abd\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #999",
   "post(hash.crypt(\"minhasenha\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #1000",
   "post(hash.sha256(\"\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #1001",
   "post(hash.sha256(\"abc\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: hash", -1 },
+  NULL, "NameError: name 'hash' is not defined", -1 },
 { "dif #1002",
   "post(hex(-255))\n"
   "\n",
@@ -5216,7 +5216,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1006",
   "post(i)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: i", -1 },
+  NULL, "NameError: name 'i' is not defined", -1 },
 { "dif #1007",
   "post(int is int)\n"
   "\n",
@@ -5232,7 +5232,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1010",
   "post(int(\"\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter '' em int", -1 },
+  NULL, "ValueError: invalid literal for int() with base 10: ''", -1 },
 { "dif #1011",
   "post(int(\"+5\"))\n"
   "\n",
@@ -5244,7 +5244,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1013",
   "post(int(\"0x1f\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter '0x1f' em int", -1 },
+  NULL, "ValueError: invalid literal for int() with base 10: '0x1f'", -1 },
 { "dif #1014",
   "post(int(\"12345678901234567890123456789012\"))\n"
   "\n",
@@ -5260,15 +5260,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1017",
   "post(int(\"a\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter 'a' em int", -1 },
+  NULL, "ValueError: invalid literal for int() with base 10: 'a'", -1 },
 { "dif #1018",
   "post(int(\"abc\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter 'abc' em int", -1 },
+  NULL, "ValueError: invalid literal for int() with base 10: 'abc'", -1 },
 { "dif #1019",
   "post(int(\"x\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: nao da pra converter 'x' em int", -1 },
+  NULL, "ValueError: invalid literal for int() with base 10: 'x'", -1 },
 { "dif #1020",
   "post(int())\n"
   "\n",
@@ -5288,7 +5288,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1024",
   "post(int(Null))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: int() nao aceita este tipo", -1 },
+  NULL, "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Null'", -1 },
 { "dif #1025",
   "post(int(True))\n"
   "\n",
@@ -5296,15 +5296,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1026",
   "post(int(null))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: int() nao aceita este tipo", -1 },
+  NULL, "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Null'", -1 },
 { "dif #1027",
   "post(ip.count(\".\") == 3)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: ip", -1 },
+  NULL, "NameError: name 'ip' is not defined", -1 },
 { "dif #1028",
   "post(j)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: j", -1 },
+  NULL, "NameError: name 'j' is not defined", -1 },
 { "dif #1029",
   "post(json is dict)\n"
   "\n",
@@ -5316,19 +5316,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1031",
   "post(json.parse(text=\"[1,2]\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: json", -1 },
+  NULL, "NameError: name 'json' is not defined", -1 },
 { "dif #1032",
   "post(json.stringify([1]))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: json", -1 },
+  NULL, "NameError: name 'json' is not defined", -1 },
 { "dif #1033",
   "post(json.stringify({\"a\":1,\"b\":[2,3]}))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: json", -1 },
+  NULL, "NameError: name 'json' is not defined", -1 },
 { "dif #1034",
   "post(json.stringify({\"a\":1,\"b\":[2,3]}, True))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: json", -1 },
+  NULL, "NameError: name 'json' is not defined", -1 },
 { "dif #1035",
   "post(jwt.check(\"\n"
   "\n",
@@ -5336,35 +5336,35 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1036",
   "post(jwt.check(\"a.b\", \"k\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1037",
   "post(jwt.check(\"a.b.c\", \"k\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1038",
   "post(jwt.check(\"a.b.c.d\", \"k\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1039",
   "post(jwt.check(\"abc\", \"k\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1040",
   "post(jwt.check(1, \"k\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1041",
   "post(jwt.check(v, \"k\") is Null)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1042",
   "post(jwt.check(x, \"k\") is Null)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1043",
   "post(jwt.gen({\"a\":1}, \"k\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1044",
   "post(jwt.gen({\"a\":1}, \"k\", \"\n"
   "\n",
@@ -5372,7 +5372,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1045",
   "post(jwt.gen({\"id\": 9}, \"s\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: jwt", -1 },
+  NULL, "NameError: name 'jwt' is not defined", -1 },
 { "dif #1046",
   "post(jwt.gen({\"u\": 9}, \"s\", \"\n"
   "\n",
@@ -5380,107 +5380,107 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1047",
   "post(k)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1048",
   "post(k.execute(\"PRAGMA user_version\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1049",
   "post(k.execute(\"SELECT * FROM m\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1050",
   "post(k.execute(\"SELECT * FROM n\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1051",
   "post(k.execute(\"SELECT * FROM p\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1052",
   "post(k.execute(\"SELECT * FROM r\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1053",
   "post(k.execute(\"SELECT * FROM u ORDER BY id\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1054",
   "post(k.execute(\"SELECT * FROM u WHERE id = 99\").fetchone())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1055",
   "post(k.execute(\"SELECT * FROM u WHERE id=99\").fetchone())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1056",
   "post(k.execute(\"SELECT * FROM u\").fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1057",
   "post(k.execute(\"SELECT * FROM u\").fetchmany(1))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1058",
   "post(k.execute(\"SELECT d FROM b\").fetchone())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1059",
   "post(k.execute(\"SELECT nome FROM u WHERE id = ?\", (2,)).fetchone())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1060",
   "post(k.execute(\"SELECT nome FROM u WHERE nota > %s\", (8,)).fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1061",
   "post(k.execute(\"SELECT nome FROM u\").fetchone())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1062",
   "post(k.fetchall())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1063",
   "post(k.fetchmany(9))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1064",
   "post(k.fetchone())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1065",
   "post(k.lastrowid)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1066",
   "post(k.rowcount)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1067",
   "post(k.rowcount, k.lastrowid)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1068",
   "post(l is dict)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: l", -1 },
+  NULL, "NameError: name 'l' is not defined", -1 },
 { "dif #1069",
   "post(l)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: l", -1 },
+  NULL, "NameError: name 'l' is not defined", -1 },
 { "dif #1070",
   "post(l[0])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: l", -1 },
+  NULL, "NameError: name 'l' is not defined", -1 },
 { "dif #1071",
   "post(l[0].keys())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: l", -1 },
+  NULL, "NameError: name 'l' is not defined", -1 },
 { "dif #1072",
   "post(l[0][1])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: l", -1 },
+  NULL, "NameError: name 'l' is not defined", -1 },
 { "dif #1073",
   "post(len(\"ab\".encode()))\n"
   "\n",
@@ -5504,11 +5504,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1078",
   "post(len(1))\n"
   "\n",
-  NULL, "TypeError: len() nao se aplica a este tipo", -1 },
+  NULL, "TypeError: object of type 'int' has no len()", -1 },
 { "dif #1079",
   "post(len(5))\n"
   "\n",
-  NULL, "TypeError: len() nao se aplica a este tipo", -1 },
+  NULL, "TypeError: object of type 'int' has no len()", -1 },
 { "dif #1080",
   "post(len([1, 2, 3, 4]))\n"
   "\n",
@@ -5528,15 +5528,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1084",
   "post(len(d), d[1])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d", -1 },
+  NULL, "NameError: name 'd' is not defined", -1 },
 { "dif #1085",
   "post(len(d2))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: d2", -1 },
+  NULL, "NameError: name 'd2' is not defined", -1 },
 { "dif #1086",
   "post(len(f.bytes()), f.bytes()[0])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #1087",
   "post(len(null))\n"
   "\n",
@@ -5544,11 +5544,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1088",
   "post(len(os.environ()) > 3)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1089",
   "post(len(os.ls(\".\")) > 0)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1090",
   "post(len(range(100)))\n"
   "\n",
@@ -5556,7 +5556,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1091",
   "post(len(sys.argv))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sys", -1 },
+  NULL, "NameError: name 'sys' is not defined", -1 },
 { "dif #1092",
   "post(len(x=[1,2]))\n"
   "\n",
@@ -5564,7 +5564,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1093",
   "post(len(zzz))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1094",
   "post(len({\"a\": 1, \"b\": 2, \"c\": 3}))\n"
   "\n",
@@ -5576,11 +5576,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1096",
   "post(ler(\"POOL_TEST_VAR\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: ler", -1 },
+  NULL, "NameError: name 'ler' is not defined", -1 },
 { "dif #1097",
   "post(lib.rotulo(7))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: lib", -1 },
+  NULL, "NameError: name 'lib' is not defined", -1 },
 { "dif #1098",
   "post(list is list)\n"
   "\n",
@@ -5608,7 +5608,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1104",
   "post(list(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: list() nao itera este tipo", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #1105",
   "post(list([1,2]))\n"
   "\n",
@@ -5616,15 +5616,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1106",
   "post(list(b))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #1107",
   "post(list(g()))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: g", -1 },
+  NULL, "NameError: name 'g' is not defined", -1 },
 { "dif #1108",
   "post(list(lib.conta(3)))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: lib", -1 },
+  NULL, "NameError: name 'lib' is not defined", -1 },
 { "dif #1109",
   "post(list(zip(\"çã\", [1,2])))\n"
   "\n",
@@ -5640,19 +5640,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1112",
   "post(m.from_address(\"a@b.c\").to(\"d@e.f\").subject(\"s\") == m)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: m", -1 },
+  NULL, "NameError: name 'm' is not defined", -1 },
 { "dif #1113",
   "post(m.get_as_string())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: m", -1 },
+  NULL, "NameError: name 'm' is not defined", -1 },
 { "dif #1114",
   "post(m.q())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: m", -1 },
+  NULL, "NameError: name 'm' is not defined", -1 },
 { "dif #1115",
   "post(map(1, str))\n"
   "\n",
-  NULL, "TypeError: map() espera uma lista como primeiro argumento", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #1116",
   "post(map([\"1\",\"2\"], int))\n"
   "\n",
@@ -5677,7 +5677,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1121",
   "post(map([1]))\n"
   "\n",
-  NULL, "TypeError: map() espera 2 argumento(s)", -1 },
+  NULL, "TypeError: map expected 2 arguments, got 1", -1 },
 { "dif #1122",
   "post(map([1], 5))\n"
   "\n",
@@ -5685,7 +5685,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1123",
   "post(mat.dobro(21))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: mat", -1 },
+  NULL, "NameError: name 'mat' is not defined", -1 },
 { "dif #1124",
   "post(max(\"a\",\"b\"))\n"
   "\n",
@@ -5709,7 +5709,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1129",
   "post(max([]))\n"
   "\n",
-  NULL, "ValueError: valor invalido: max() de sequencia vazia", -1 },
+  NULL, "ValueError: max() iterable argument is empty", -1 },
 { "dif #1130",
   "post(min(\"çab\"), max(\"çab\"))\n"
   "\n",
@@ -5745,7 +5745,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1138",
   "post(min([]))\n"
   "\n",
-  NULL, "ValueError: valor invalido: min() de sequencia vazia", -1 },
+  NULL, "ValueError: min() iterable argument is empty", -1 },
 { "dif #1139",
   "post(min([], default=0))\n"
   "\n",
@@ -5753,7 +5753,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1140",
   "post(minhalib.quem())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: minhalib", -1 },
+  NULL, "NameError: name 'minhalib' is not defined", -1 },
 { "dif #1141",
   "post(not \"\")\n"
   "\n",
@@ -5773,11 +5773,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1145",
   "post(not zzz)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1146",
   "post(o.base)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: o", -1 },
+  NULL, "NameError: name 'o' is not defined", -1 },
 { "dif #1147",
   "post(oct(0))\n"
   "\n",
@@ -5793,11 +5793,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1150",
   "post(ok())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: ok", -1 },
+  NULL, "NameError: name 'ok' is not defined", -1 },
 { "dif #1151",
   "post(ord(\"\"))\n"
   "\n",
-  NULL, "TypeError: ord() espera um caractere", -1 },
+  NULL, "TypeError: ord() expected a character, but string of length 0 found", -1 },
 { "dif #1152",
   "post(ord(\"A\"))\n"
   "\n",
@@ -5805,7 +5805,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1153",
   "post(ord(\"ab\"))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: ord() espera UM caractere", -1 },
+  NULL, "TypeError: ord() expected a character, but string of length 2 found", -1 },
 { "dif #1154",
   "post(ord(\"ç\"))\n"
   "\n",
@@ -5817,303 +5817,303 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1156",
   "post(ord(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: ord() espera str", -1 },
+  NULL, "TypeError: ord() expected string of length 1, but int found", -1 },
 { "dif #1157",
   "post(os.cmd(\"cmd_inexistente_zzz 2>/dev/null\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1158",
   "post(os.cmd(\"echo    varios   espacos\", true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1159",
   "post(os.cmd(\"echo a; echo b\", true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1160",
   "post(os.cmd(\"echo ola\", true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1161",
   "post(os.cmd(\"echo silencio\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1162",
   "post(os.cmd(\"exit 3\", true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1163",
   "post(os.cmd(\"ls naoexistezzz 2>&1\", true).contains(\"No such\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1164",
   "post(os.cwd() is str)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1165",
   "post(os.cwd())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1166",
   "post(os.cwd().endswith(\"caixa\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1167",
   "post(os.cwd().endswith(\"sub\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1168",
   "post(os.environ(\"PS_NAO_EXISTE_ZZZ\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1169",
   "post(os.environ(\"PS_TESTE_X\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1170",
   "post(os.environ()[\"PS_TESTE_X\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1171",
   "post(os.exists(\"dados.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1172",
   "post(os.exists(\"dados.txt\"), os.exists(\"r.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1173",
   "post(os.exists(\"dados.txt\"), os.loadFile(\"m.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1174",
   "post(os.exists(\"dentro.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1175",
   "post(os.exists(\"nada.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1176",
   "post(os.exists(\"sub\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1177",
   "post(os.exists(\"sub/fundo\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1178",
   "post(os.exists(\"sub/nova/x.png\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1179",
   "post(os.exists(\"vazia\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1180",
   "post(os.exists(5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1181",
   "post(os.isdir(\"a/b/c\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1182",
   "post(os.isdir(\"nova\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1183",
   "post(os.isdir(\"sub\"), os.isfile(\"sub\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1184",
   "post(os.isfile(\"dados.txt\"), os.isdir(\"dados.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1185",
   "post(os.isfile(\"sub/dentro.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1186",
   "post(os.loadFile(\"asp.csv\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1187",
   "post(os.loadFile(\"c.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1188",
   "post(os.loadFile(\"cfg.json\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1189",
   "post(os.loadFile(\"cfg.json\")[\"a\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1190",
   "post(os.loadFile(\"cru.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1191",
   "post(os.loadFile(\"dados.txt\") is PoolFile)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1192",
   "post(os.loadFile(\"dados.txt\") is str)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1193",
   "post(os.loadFile(\"dados.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1194",
   "post(os.loadFile(\"dados.txt\", \"rb\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1195",
   "post(os.loadFile(\"dados.txt\", \"utf-8\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1196",
   "post(os.loadFile(\"fundo.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1197",
   "post(os.loadFile(\"img.png\") is PoolFile)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1198",
   "post(os.loadFile(\"img.png\") is os.PoolFile)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1199",
   "post(os.loadFile(\"img.png\", \"rb\").name)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1200",
   "post(os.loadFile(\"img.png\", \"utf-8\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1201",
   "post(os.loadFile(\"nada.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1202",
   "post(os.loadFile(\"quebrado.json\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1203",
   "post(os.loadFile(\"rag.csv\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1204",
   "post(os.loadFile(\"sub/fundo/fundo.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1205",
   "post(os.loadFile(\"tab.csv\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1206",
   "post(os.loadFile(\"tab.csv\")[0][\"nome\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1207",
   "post(os.ls(\"naoexiste\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1208",
   "post(os.ls(\"sub\")[0][\"type\"])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1209",
   "post(os.mkdir(5))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1210",
   "post(os.pathFile(\"dados.txt\").endswith(\"dados.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1211",
   "post(os.pathFile(\"fundo.txt\").endswith(\"fundo.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1212",
   "post(os.pathFile(\"naoexiste.zzz\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1213",
   "post(os.pathFile(\"sub\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1214",
   "post(os.pathFolder(\"fundo\").endswith(\"fundo\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1215",
   "post(os.pathFolder(\"naoexiste\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1216",
   "post(os.pathFolder(\"sub\").endswith(\"sub\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1217",
   "post(os.run(\"echo oi\", true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1218",
   "post(os.run([\"echo\", \"a b\"], true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1219",
   "post(os.run([\"echo\", \"a; b | c\"], true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1220",
   "post(os.run([\"echo\", \"oi\"], true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1221",
   "post(os.run([\"echo\", \"ok\"], true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1222",
   "post(os.run([\"sh\", \"-c\", \"echo x\"], true))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1223",
   "post(os.size(\"dados.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1224",
   "post(os.size(\"nada.txt\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1225",
   "post(p.x + p.y)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: p", -1 },
+  NULL, "NameError: name 'p' is not defined", -1 },
 { "dif #1226",
   "post(p.x)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: p", -1 },
+  NULL, "NameError: name 'p' is not defined", -1 },
 { "dif #1227",
   "post(platform())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: platform", -1 },
+  NULL, "NameError: name 'platform' is not defined", -1 },
 { "dif #1228",
   "post(qrcode.ERROR_CORRECT_L, qrcode.ERROR_CORRECT_M, qrcode.ERROR_CORRECT_Q, qrcode.ERROR_CORRECT_H)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: qrcode", -1 },
+  NULL, "NameError: name 'qrcode' is not defined", -1 },
 { "dif #1229",
   "post(quebra())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: quebra", -1 },
+  NULL, "NameError: name 'quebra' is not defined", -1 },
 { "dif #1230",
   "post(r == true)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1231",
   "post(r\"C:\\Users\\test\")\n"
   "\n",
@@ -6121,95 +6121,95 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1232",
   "post(r)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1233",
   "post(r, r == true)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1234",
   "post(r.close())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1235",
   "post(r.content_type(\"application/json\").status)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1236",
   "post(r.decode())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1237",
   "post(r.filename, r.size, type(r.content))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1238",
   "post(r.get(\"Content-Type\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1239",
   "post(r.get(\"a\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1240",
   "post(r.get_json(\"a\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1241",
   "post(r.get_json(\"b\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1242",
   "post(r.get_json(\"body\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1243",
   "post(r.get_json(\"ctype\"), r.get_json(\"body\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1244",
   "post(r.get_json(\"method\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1245",
   "post(r.get_json(\"ua\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1246",
   "post(r.get_json(\"ua\").contains(\"PoolScript\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1247",
   "post(r.json())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1248",
   "post(r.size)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1249",
   "post(r.status == r.status_code)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1250",
   "post(r.status, r.get_json(\"a\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1251",
   "post(r.status, r.ok)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1252",
   "post(r.status, r.ok, r.text)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1253",
   "post(r.status_code)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1254",
   "post(r.text)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1255",
   "post(range(\"2\", \"5\"))\n"
   "\n",
@@ -6221,7 +6221,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1257",
   "post(range())\n"
   "\n",
-  NULL, "TypeError: range() espera de 1 a 3 argumentos", -1 },
+  NULL, "TypeError: range expected at least 1 argument, got 0", -1 },
 { "dif #1258",
   "post(range(-3))\n"
   "\n",
@@ -6237,7 +6237,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1261",
   "post(range(1,2,0))\n"
   "\n",
-  NULL, "ValueError: valor invalido: passo de range() nao pode ser 0", -1 },
+  NULL, "ValueError: range() arg 3 must not be zero", -1 },
 { "dif #1262",
   "post(range(1,4))\n"
   "\n",
@@ -6281,7 +6281,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1272",
   "post(regex.findall(\"(?i)ab\", \"AB ab Ab aB\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1273",
   "post(regex.findall(\"(?m)^\n"
   "\n",
@@ -6293,7 +6293,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1275",
   "post(regex.match(\"(?>a)b\", \"ab\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1276",
   "post(regex.match(\"(a+)+b\", \"\n"
   "\n",
@@ -6313,11 +6313,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1280",
   "post(regex.search(\"(?#coment)abc\", \"xabc\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1281",
   "post(regex.search(\"(?<![a-z])cat\", \"bobcat\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1282",
   "post(regex.search(\"(?i)caf\n"
   "\n",
@@ -6325,11 +6325,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1283",
   "post(regex.search(\"(?i:hello) world\", \"HELLO WORLD\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1284",
   "post(regex.search(\"(?i:hello) world\", \"HELLO world\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1285",
   "post(regex.search(\"(?s)a.b\", \"a\n"
   "\n",
@@ -6345,11 +6345,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1288",
   "post(regex.sub(\"a\", \"b\", \"aaa\", count=2))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: regex", -1 },
+  NULL, "NameError: name 'regex' is not defined", -1 },
 { "dif #1289",
   "post(removeEnd(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: removeEnd() espera lista", -1 },
+  NULL, "TypeError: removeEnd() argument 1 must be list, not int", -1 },
 { "dif #1290",
   "post(reversed(\"ab\"))\n"
   "\n",
@@ -6361,7 +6361,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1292",
   "post(reversed(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: reversed() nao itera este tipo", -1 },
+  NULL, "TypeError: 'int' object is not reversible", -1 },
 { "dif #1293",
   "post(reversed([1,2,3]))\n"
   "\n",
@@ -6373,7 +6373,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1295",
   "post(round(\"a\"))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: round() so aceita numero", -1 },
+  NULL, "TypeError: type str doesn't define __round__ method", -1 },
 { "dif #1296",
   "post(round(-2.5))\n"
   "\n",
@@ -6421,35 +6421,35 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1307",
   "post(s.get_json(\"x\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #1308",
   "post(s.get_json())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #1309",
   "post(s.quit())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #1310",
   "post(s.replace(\"a\", \"b\", count=2))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #1311",
   "post(self)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: self", -1 },
+  NULL, "NameError: name 'self' is not defined", -1 },
 { "dif #1312",
   "post(sis.cwd() is str)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sis", -1 },
+  NULL, "NameError: name 'sis' is not defined", -1 },
 { "dif #1313",
   "post(soma(1, 2))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: soma", -1 },
+  NULL, "NameError: name 'soma' is not defined", -1 },
 { "dif #1314",
   "post(somax.soma(2, 3))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: somax", -1 },
+  NULL, "NameError: name 'somax' is not defined", -1 },
 { "dif #1315",
   "post(sorted(\"bça\"))\n"
   "\n",
@@ -6461,7 +6461,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1317",
   "post(sorted(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: sorted() nao itera este tipo", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #1318",
   "post(sorted([\"b\",\"a\"]))\n"
   "\n",
@@ -6469,7 +6469,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1319",
   "post(sorted([1,\"a\"]))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: sorted() entre tipos incompativeis", -1 },
+  NULL, "TypeError: '<' not supported between instances of 'str' and 'int'", -1 },
 { "dif #1320",
   "post(sorted([2.5,1]))\n"
   "\n",
@@ -6513,7 +6513,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1330",
   "post(str())\n"
   "\n",
-  NULL, "TypeError: str() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: str expected 1 argument, got 0", -1 },
 { "dif #1331",
   "post(str(1) + \"x\")\n"
   "\n",
@@ -6525,7 +6525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1333",
   "post(str(1,2))\n"
   "\n",
-  NULL, "TypeError: str() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: str expected 1 argument, got 2", -1 },
 { "dif #1334",
   "post(str(1.5))\n"
   "\n",
@@ -6557,7 +6557,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1341",
   "post(sum(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: sum() espera lista", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #1342",
   "post(sum([1, 2, 3]))\n"
   "\n",
@@ -6569,7 +6569,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1344",
   "post(sum([1,\"a\"]))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: sum() so soma numero", -1 },
+  NULL, "TypeError: unsupported operand type(s) for +: 'int' and 'str'", -1 },
 { "dif #1345",
   "post(sum([1,2,3,4,5]))\n"
   "\n",
@@ -6605,35 +6605,35 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1353",
   "post(sys.RelativePath(\"nao_existe_xyz_123\"))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sys", -1 },
+  NULL, "NameError: name 'sys' is not defined", -1 },
 { "dif #1354",
   "post(sys.argv[0])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sys", -1 },
+  NULL, "NameError: name 'sys' is not defined", -1 },
 { "dif #1355",
   "post(sys.argv[1])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sys", -1 },
+  NULL, "NameError: name 'sys' is not defined", -1 },
 { "dif #1356",
   "post(sys.argv[99])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sys", -1 },
+  NULL, "NameError: name 'sys' is not defined", -1 },
 { "dif #1357",
   "post(sys.platform())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: sys", -1 },
+  NULL, "NameError: name 'sys' is not defined", -1 },
 { "dif #1358",
   "post(t is dict)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: t", -1 },
+  NULL, "NameError: name 't' is not defined", -1 },
 { "dif #1359",
   "post(t is tup)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: t", -1 },
+  NULL, "NameError: name 't' is not defined", -1 },
 { "dif #1360",
   "post(t)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: t", -1 },
+  NULL, "NameError: name 't' is not defined", -1 },
 { "dif #1361",
   "post(to int)\n"
   "\n",
@@ -6645,11 +6645,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1363",
   "post(total())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: total", -1 },
+  NULL, "NameError: name 'total' is not defined", -1 },
 { "dif #1364",
   "post(total, len(guardados))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: total", -1 },
+  NULL, "NameError: name 'total' is not defined", -1 },
 { "dif #1365",
   "post(true * 5, false * 5)\n"
   "\n",
@@ -6685,7 +6685,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1373",
   "post(true.isdigit())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: isdigit (em bool)", -1 },
+  NULL, "AttributeError: 'bool' object has no attribute 'isdigit'", -1 },
 { "dif #1374",
   "post(type(\n"
   "\n",
@@ -6709,7 +6709,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1379",
   "post(type(Cliente()))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Cliente", -1 },
+  NULL, "NameError: name 'Cliente' is not defined", -1 },
 { "dif #1380",
   "post(type(Null))\n"
   "\n",
@@ -6733,7 +6733,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1385",
   "post(type(a))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1386",
   "post(type(abs))\n"
   "\n",
@@ -6741,7 +6741,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1387",
   "post(type(app))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: app", -1 },
+  NULL, "NameError: name 'app' is not defined", -1 },
 { "dif #1388",
   "post(type(app.\n"
   "\n",
@@ -6749,51 +6749,51 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1389",
   "post(type(b))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #1390",
   "post(type(c))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: c", -1 },
+  NULL, "NameError: name 'c' is not defined", -1 },
 { "dif #1391",
   "post(type(e))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: e", -1 },
+  NULL, "NameError: name 'e' is not defined", -1 },
 { "dif #1392",
   "post(type(f), f.name, f.ext, f.size > 0)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #1393",
   "post(type(f), f.name, f.size > 0)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #1394",
   "post(type(form), type(e1), type(bt))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: form", -1 },
+  NULL, "NameError: name 'form' is not defined", -1 },
 { "dif #1395",
   "post(type(i))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: i", -1 },
+  NULL, "NameError: name 'i' is not defined", -1 },
 { "dif #1396",
   "post(type(k))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: k", -1 },
+  NULL, "NameError: name 'k' is not defined", -1 },
 { "dif #1397",
   "post(type(os.environ()))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1398",
   "post(type(os.loadFile(\"cfg.json\")))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1399",
   "post(type(os.loadFile(\"img.png\")))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: os", -1 },
+  NULL, "NameError: name 'os' is not defined", -1 },
 { "dif #1400",
   "post(type(r))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: r", -1 },
+  NULL, "NameError: name 'r' is not defined", -1 },
 { "dif #1401",
   "post(type(str))\n"
   "\n",
@@ -6805,27 +6805,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1403",
   "post(util())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: util", -1 },
+  NULL, "NameError: name 'util' is not defined", -1 },
 { "dif #1404",
   "post(viveu)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: viveu", -1 },
+  NULL, "NameError: name 'viveu' is not defined", -1 },
 { "dif #1405",
   "post(x is int)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #1406",
   "post(x)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #1407",
   "post(x, type(x))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #1408",
   "post(y)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: y", -1 },
+  NULL, "NameError: name 'y' is not defined", -1 },
 { "dif #1409",
   "post(zip())\n"
   "\n",
@@ -6833,7 +6833,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1410",
   "post(zip(1))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: zip() nao itera este tipo", -1 },
+  NULL, "TypeError: 'int' object is not iterable", -1 },
 { "dif #1411",
   "post(zip([1,2,3],[\"a\"]))\n"
   "\n",
@@ -6853,27 +6853,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1415",
   "post(zzz)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1416",
   "post(zzz.campo)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1417",
   "post(zzz.metodo())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1418",
   "post(zzz[0])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1419",
   "post({ \"a\": zzz })\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1420",
   "post({\"a\": 1}[\"z\"])\n"
   "\n",
-  NULL, "KeyError: chave 'z'", -1 },
+  NULL, "KeyError: 'z'", -1 },
 { "dif #1421",
   "post({\"a\": Null})\n"
   "\n",
@@ -6909,11 +6909,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1429",
   "post({\"a\":1}.update([1]))\n"
   "\n",
-  NULL, "TypeError: update() espera um dict", -1 },
+  NULL, "TypeError: 'list' object is not iterable", -1 },
 { "dif #1430",
   "post({\"a\":1}[\"z\"])\n"
   "\n",
-  NULL, "KeyError: chave 'z'", -1 },
+  NULL, "KeyError: 'z'", -1 },
 { "dif #1431",
   "post({\"b\":1,\"a\":2})\n"
   "\n",
@@ -6941,7 +6941,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1437",
   "post(~\"x\")\n"
   "\n",
-  NULL, "TypeError: '~' exige int", -1 },
+  NULL, "TypeError: bad operand type for unary ~: 'str'", -1 },
 { "dif #1438",
   "post(~0)\n"
   "\n",
@@ -6953,7 +6953,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1440",
   "post(~True)\n"
   "\n",
-  NULL, "TypeError: '~' exige int", -1 },
+  NULL, "TypeError: bad operand type for unary ~: 'bool'", -1 },
 { "dif #1441",
   "private async reaction foo() {\n"
   "    return 9\n"
@@ -7039,7 +7039,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1453",
   "raise ValueError(zzz)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1454",
   "reaction conta(n) {\n"
   "    int i = 0\n"
@@ -7515,7 +7515,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero (linha 2)", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1527",
   "try {\n"
   "    x = 1/0\n"
@@ -7525,7 +7525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero (linha 2)", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1528",
   "try {\n"
   "    x = 10 / 0\n"
@@ -7533,7 +7533,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"err: \" {e})\n"
   "}\n"
   "\n",
-  "err: divisao por zero (linha 2)", NULL, 0 },
+  "err: division by zero (linha 2)", NULL, 0 },
 { "dif #1529",
   "try {\n"
   "  using open(r\"\n"
@@ -7616,7 +7616,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "divisao por zero (linha 2)", NULL, 0 },
+  "division by zero (linha 2)", NULL, 0 },
 { "dif #1539",
   "try {\n"
   " post(5 % 0)\n"
@@ -7624,7 +7624,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "resto de divisao por zero (linha 2)", NULL, 0 },
+  "integer modulo by zero (linha 2)", NULL, 0 },
 { "dif #1540",
   "try {\n"
   " post(int(\"x\"))\n"
@@ -7664,7 +7664,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "variável não definida: zzz (linha 2)", NULL, 0 },
+  "name 'zzz' is not defined (linha 2)", NULL, 0 },
 { "dif #1545",
   "try {\n"
   " post({\"a\":1}[\"z\"])\n"
@@ -7680,7 +7680,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "chave 'z' nao existe no dict (1 chave) (linha 2)", NULL, 0 },
+  "'z' (linha 2)", NULL, 0 },
 { "dif #1547",
   "try {\n"
   " raise \"meu erro\"\n"
@@ -7724,7 +7724,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1553",
   "try { r.select() } catch (e) { post(\"pego: \" + e) }\n"
   "\n",
-  "pego: variável não definida: r (linha 1)", NULL, 0 },
+  "pego: name 'r' is not defined (linha 1)", NULL, 0 },
 { "dif #1554",
   "try { raise \"algo\" } catch (TypeError e) { post(\"s\") } catch (e) { post(\"g\") }\n"
   "\n",
@@ -7764,11 +7764,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1563",
   "try { s.login(\"a\", \"b\") } catch (e) { post(\"pego: \" + e) }\n"
   "\n",
-  "pego: variável não definida: s (linha 1)", NULL, 0 },
+  "pego: name 's' is not defined (linha 1)", NULL, 0 },
 { "dif #1564",
   "try { x = 1/0 } catch (KeyError e) { post(\"k\") }\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero (linha 1)", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1565",
   "try { x = 1/0 } catch (ZeroDivisionError e) { post(\"s\") } catch (e) { post(\"g\") }\n"
   "\n",
@@ -7823,7 +7823,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(e)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: e", -1 },
+  NULL, "NameError: name 'e' is not defined", -1 },
 { "dif #1572",
   "try {\n"
   "    raise ValueError(\"x\")\n"
@@ -7848,7 +7848,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(t)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: t", -1 },
+  NULL, "NameError: name 't' is not defined", -1 },
 { "dif #1575",
   "try {\n"
   "    x=1/0\n"
@@ -7926,19 +7926,19 @@ const Caso CASOS_DIFERENCIAL[] = {
   " break\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #1589",
   "while (x) {\n"
   " continue\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #1590",
   "while (x) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #1591",
   "while += 1\n"
   "\n",
@@ -8206,7 +8206,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = Null > 0\n"
   "post(x)\n"
   "\n",
-  NULL, "'>' nao se aplica a Null", -1 },
+  NULL, "TypeError: '>' not supported between instances of 'Null' and 'int'", -1 },
 { "dif #1628",
   "x = Parsing.floating(\"1,5\")\n"
   "post(x * 2)\n"
@@ -8231,27 +8231,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1631",
   "x = a is bool\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1632",
   "x = a is flo\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1633",
   "x = a is int\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1634",
   "x = a is str\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1635",
   "x = count each int(7) in nums\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nums", -1 },
+  NULL, "NameError: name 'nums' is not defined", -1 },
 { "dif #1636",
   "x = int(y)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: y", -1 },
+  NULL, "NameError: name 'y' is not defined", -1 },
 { "dif #1637",
   "x=\"a\"\n"
   "post(x is str)\n"
@@ -8374,7 +8374,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1658",
   "y = 1 if a else 2 if b else 3\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1659",
   "} catch (NetworkError e) { post(\"rede\") }\n"
   "\n",
@@ -8409,14 +8409,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f(a=zzz))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1667",
   "action f(a, b) {\n"
   " return a\n"
   "}\n"
   "post(f(1))\n"
   "\n",
-  NULL, "RuntimeError: action 'f' faltando argumento: 'b'", -1 },
+  NULL, "TypeError: f() missing 1 required positional argument: 'b'", -1 },
 { "dif #1668",
   "action f(a, b) {\n"
   " return a + b\n"
@@ -8852,14 +8852,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x=g()\n"
   "post(x + 1)\n"
   "\n",
-  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "TypeError: unsupported operand type(s) for +: 'generator' and 'int'", -1 },
 { "dif #1725",
   "action g() {\n"
   " yield 1/0\n"
   "}\n"
   "post(list(g()))\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1726",
   "action g() {\n"
   " yield [1,2]\n"
@@ -9273,7 +9273,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "await falha()\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1789",
   "async action falha() {\n"
   "    return 1 / 0\n"
@@ -9281,7 +9281,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f = falha()\n"
   "await f\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1790",
   "async action fat(n) {\n"
   "    if (n <= 1) {\n"
@@ -9310,7 +9310,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "fs = [ok(1), falha(), ok(3)]\n"
   "await fs\n"
   "\n",
-  NULL, "ZeroDivisionError: divisao por zero", -1 },
+  NULL, "ZeroDivisionError: division by zero", -1 },
 { "dif #1793",
   "async action precisa(v) { return v }\n"
   "\n",
@@ -9329,7 +9329,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f = valor()\n"
   "post(f.result())\n"
   "\n",
-  NULL, "RuntimeError: membro inexistente: result (em future)", -1 },
+  NULL, "AttributeError: 'future' object has no attribute 'result'", -1 },
 { "dif #1796",
   "async action vazio() {\n"
   "    return\n"
@@ -9452,7 +9452,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = \"ab\".encode()\n"
   "post(b[-9])\n"
   "\n",
-  NULL, "IndexError: indice", -1 },
+  NULL, "IndexError: index out of range", -1 },
 { "dif #1819",
   "b = \"ab\".encode()\n"
   "post(b[0])\n"
@@ -9462,7 +9462,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = \"ab\".encode()\n"
   "post(b[9])\n"
   "\n",
-  NULL, "IndexError: indice", -1 },
+  NULL, "IndexError: index out of range", -1 },
 { "dif #1821",
   "b = \"ab\".encode()\n"
   "post(len(b))\n"
@@ -9579,28 +9579,28 @@ const Caso CASOS_DIFERENCIAL[] = {
   "c = Conta()\n"
   "post(c._log())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Conta", -1 },
+  NULL, "NameError: name 'Conta' is not defined", -1 },
 { "dif #1845",
   "c = Conta()\n"
   "post(c.deposita(100))\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Conta", -1 },
+  NULL, "NameError: name 'Conta' is not defined", -1 },
 { "dif #1846",
   "c = Conta()\n"
   "post(c.deposita(100))\n"
   "post(c.dono)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Conta", -1 },
+  NULL, "NameError: name 'Conta' is not defined", -1 },
 { "dif #1847",
   "c = Conta()\n"
   "post(c.dono)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Conta", -1 },
+  NULL, "NameError: name 'Conta' is not defined", -1 },
 { "dif #1848",
   "c = Conta()\n"
   "post(c.saldo)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: Conta", -1 },
+  NULL, "NameError: name 'Conta' is not defined", -1 },
 { "dif #1849",
   "chamadas = 0\n"
   "action f() {\n"
@@ -9700,7 +9700,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(C.m())\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: self", -1 },
+  NULL, "NameError: name 'self' is not defined", -1 },
 { "dif #1861",
   "class P() {\n"
   " action __init__(self, n) {\n"
@@ -9774,13 +9774,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nums", -1 },
+  NULL, "NameError: name 'nums' is not defined", -1 },
 { "dif #1871",
   "count each int(7) in nums {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: nums", -1 },
+  NULL, "NameError: name 'nums' is not defined", -1 },
 { "dif #1872",
   "d = { \"a\": 1 }\n"
   "d[\"eu\"] = d\n"
@@ -9791,7 +9791,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d.value(\"a\"))\n"
   "\n",
-  NULL, "TypeError: value() nao aceita argumento", -1 },
+  NULL, "TypeError: value expected 0 arguments, got 1", -1 },
 { "dif #1874",
   "d = { \"a\": 1 }\n"
   "post(d.z)\n"
@@ -9801,7 +9801,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d[\"z\"])\n"
   "\n",
-  NULL, "KeyError: chave 'z'", -1 },
+  NULL, "KeyError: 'z'", -1 },
 { "dif #1876",
   "d = { \"a\": 1, \"b\": 2, \"c\": 3 }\n"
   "soma = 0\n"
@@ -10328,14 +10328,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(i)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: i", -1 },
+  NULL, "NameError: name 'i' is not defined", -1 },
 { "dif #1961",
   "for each i in [1, 2] {\n"
   "    y = i\n"
   "}\n"
   "post(y)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: y", -1 },
+  NULL, "NameError: name 'y' is not defined", -1 },
 { "dif #1962",
   "for each i in [1,2,3,4] {\n"
   " if (i == 2) {\n"
@@ -10438,7 +10438,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(i)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: l", -1 },
+  NULL, "NameError: name 'l' is not defined", -1 },
 { "dif #1975",
   "for each i in range(120000):\n"
   "\n",
@@ -10446,17 +10446,17 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1976",
   "for each i in range(25) { b = 1103515245 * b + 12345 }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: b", -1 },
+  NULL, "NameError: name 'b' is not defined", -1 },
 { "dif #1977",
   "for each i in range(40) { a = a * 10 }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #1978",
   "for each i in zzz {\n"
   "    post(i)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #1979",
   "for each par in [[1,2],[3,4]] {\n"
   " post(par[0])\n"
@@ -10495,14 +10495,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(x)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: f", -1 },
+  NULL, "NameError: name 'f' is not defined", -1 },
 { "dif #1986",
   "for each z in [1] {\n"
   "    post(z)\n"
   "}\n"
   "post(z)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: z", -1 },
+  NULL, "NameError: name 'z' is not defined", -1 },
 { "dif #1987",
   "from ..logIn import chave\n"
   "action run() { return chave }\n"
@@ -10610,17 +10610,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict())\n"
   "\n",
-  NULL, "TypeError: asdict() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: asdict expected 1 argument, got 0", -1 },
 { "dif #2001",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict(1))\n"
   "\n",
-  NULL, "TypeError: asdict() espera uma instancia de Entity", -1 },
+  NULL, "TypeError: asdict() argument 1 must be Entity, not int", -1 },
 { "dif #2002",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(astuple(\"x\"))\n"
   "\n",
-  NULL, "TypeError: astuple() espera uma instancia de Entity", -1 },
+  NULL, "TypeError: astuple() argument 1 must be Entity, not str", -1 },
 { "dif #2003",
   "from date import hora\n"
   "post(hora(2))\n"
@@ -10896,19 +10896,19 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2050",
   "if (x == 1) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2051",
   "if (x) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2052",
   "if (x) {\n"
   " post(1)\n"
@@ -10918,7 +10918,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(3)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2053",
   "if (x) {\n"
   " post(1)\n"
@@ -10926,7 +10926,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(2)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2054",
   "if (x):\n"
   "\tpost(1)\n"
@@ -10937,7 +10937,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2056",
   "if (x) {\n"
   "    post(1)\n"
@@ -10947,14 +10947,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(3)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2057",
   "if (x) {\n"
   "    post(1)\n"
   "}\n"
   "post(2)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2058",
   "if (x):\n"
   "  post(1)\n"
@@ -11029,24 +11029,24 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"ok\")\n"
   "}\n"
   "\n",
-  NULL, "'>' nao se aplica a Null", -1 },
+  NULL, "TypeError: '>' not supported between instances of 'Null' and 'int'", -1 },
 { "dif #2071",
   "if a { post(1)\n"
   "      post(2)\n"
   "  post(3) }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2072",
   "if a { post(1) }\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2073",
   "if a { post(1) }\n"
   "if b {\n"
   "    post(2)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2074",
   "if a {\n"
   "    if b {\n"
@@ -11054,7 +11054,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2075",
   "if a:\n"
   "    if b:\n"
@@ -11069,7 +11069,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(2)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2077",
   "if a {\n"
   "    post(1)\n"
@@ -11077,7 +11077,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(2)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: a", -1 },
+  NULL, "NameError: name 'a' is not defined", -1 },
 { "dif #2078",
   "if false {\n"
   "    x = 1\n"
@@ -11086,14 +11086,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(x)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2079",
   "if true {\n"
   "    dentro = 5\n"
   "}\n"
   "post(dentro)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: dentro", -1 },
+  NULL, "NameError: name 'dentro' is not defined", -1 },
 { "dif #2080",
   "if v > 40 {\n"
   "\n",
@@ -11113,21 +11113,21 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2084",
   "if x {\n"
   "    post(1)\n"
   "}\n"
   "post(2)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2085",
   "if x {\n"
   "    post(1)\n"
   "}\n"
   "post(2)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2086",
   "if x:\n"
   "   post(1)\n"
@@ -11143,7 +11143,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: zzz", -1 },
+  NULL, "NameError: name 'zzz' is not defined", -1 },
 { "dif #2089",
   "if {\n"
   "}\n"
@@ -11206,7 +11206,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.hora(\"a\"))\n"
   "\n",
-  NULL, "TypeError: hora() espera numero", -1 },
+  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
 { "dif #2101",
   "import date\n"
   "post(date.hora())\n"
@@ -11246,7 +11246,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.today(1))\n"
   "\n",
-  NULL, "TypeError: today() espera 0 argumento(s)", -1 },
+  NULL, "TypeError: today expected 0 arguments, got 1", -1 },
 { "dif #2109",
   "import flask\n"
   "post(\"ok\")\n"
@@ -11281,7 +11281,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   /* DECISAO 2026-08-25: a msg passou a nomear o modulo e o membro (e a sugerir
    * o nome parecido, quando ha um perto). "nao tem esse membro" nao dizia qual. */
-  NULL, "RuntimeError: módulo 'json' não tem membro 'naoexiste'", -1 },
+  NULL, "AttributeError: module 'json' has no attribute 'naoexiste'", -1 },
 { "dif #2115",
   "import json\n"
   "post(json.parse(\"  {\\\"a\\\" : [1, {\\\"b\\\": null}] }  \")[\"a\"][1][\"b\"])\n"
@@ -11291,12 +11291,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"\"))\n"
   "\n",
-  NULL, "TypeError: json: fim inesperado", -1 },
+  NULL, "ValueError: Expecting value: line 1 column 1 (char 0)", -1 },
 { "dif #2117",
   "import json\n"
   "post(json.parse(\"1 2\"))\n"
   "\n",
-  NULL, "TypeError: json: lixo depois do valor", -1 },
+  NULL, "ValueError: Extra data: line 1 column 3 (char 2)", -1 },
 { "dif #2118",
   "import json\n"
   "post(json.parse(\"1.5\"))\n"
@@ -11311,12 +11311,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"[1,\"))\n"
   "\n",
-  NULL, "TypeError: json: fim inesperado", -1 },
+  NULL, "ValueError: Expecting value: line 1 column 4 (char 3)", -1 },
 { "dif #2121",
   "import json\n"
   "post(json.parse(\"[1] x\"))\n"
   "\n",
-  NULL, "TypeError: json: lixo depois do valor", -1 },
+  NULL, "ValueError: Extra data: line 1 column 5 (char 4)", -1 },
 { "dif #2122",
   "import json\n"
   "post(json.parse(\"[]\"))\n"
@@ -11331,7 +11331,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"lixo\"))\n"
   "\n",
-  NULL, "TypeError: json: valor invalido", -1 },
+  NULL, "ValueError: Expecting value: line 1 column 1 (char 0)", -1 },
 { "dif #2125",
   "import json\n"
   "post(json.parse(\"null\"))\n"
@@ -11346,12 +11346,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"{\"))\n"
   "\n",
-  NULL, "TypeError: json: chave precisa ser string", -1 },
+  NULL, "ValueError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)", -1 },
 { "dif #2128",
   "import json\n"
   "post(json.parse(\"{1: 2}\"))\n"
   "\n",
-  NULL, "TypeError: json: chave precisa ser string", -1 },
+  NULL, "ValueError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)", -1 },
 { "dif #2129",
   "import json\n"
   "post(json.parse(\"{\\\"n\\\": -1.5e2}\")[\"n\"])\n"
@@ -11361,12 +11361,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse())\n"
   "\n",
-  NULL, "TypeError: parse() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: parse expected 1 argument, got 0", -1 },
 { "dif #2131",
   "import json\n"
   "post(json.parse(1))\n"
   "\n",
-  NULL, "TypeError: parse() espera str", -1 },
+  NULL, "TypeError: parse() argument 1 must be str, not int", -1 },
 { "dif #2132",
   "import json\n"
   "post(json.parse([1,2]))\n"
@@ -11589,7 +11589,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"a\", 1))\n"
   "\n",
-  NULL, "TypeError: match() espera str", -1 },
+  NULL, "TypeError: match() argument 2 must be str, not int", -1 },
 { "dif #2171",
   "import regex\n"
   "post(regex.match(\"a\\\\1\", \"a\"))\n"
@@ -11659,7 +11659,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.sub(\"a\"))\n"
   "\n",
-  NULL, "TypeError: sub() espera 3 ou 4 argumentos", -1 },
+  NULL, "TypeError: sub expected at least 3 arguments, got 1", -1 },
 { "dif #2184",
   "import regex\n"
   "post(regex.sub(\"a\", \"b\", \"aaa\", count=2))\n"
@@ -11717,7 +11717,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2194",
   "import sys; print(sys.argv[1])\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: print", -1 },
+  NULL, "NameError: name 'print' is not defined", -1 },
 { "dif #2195",
   "int a = 12\n"
   "int b = 10\n"
@@ -12669,7 +12669,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = lista[99]\n"
   "post(x)\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "IndexError: list index out of range", -1 },
 { "dif #2351",
   "lista = [10, 20, 30]\n"
   "post(lista[-1])\n"
@@ -12720,63 +12720,63 @@ const Caso CASOS_DIFERENCIAL[] = {
   " case \"abc\" { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: s", -1 },
+  NULL, "NameError: name 's' is not defined", -1 },
 { "dif #2357",
   "match x {\n"
   " case -10 { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2358",
   "match x {\n"
   " case 1 { post(\"um\") }\n"
   " case _ { post(\"outro\") }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2359",
   "match x {\n"
   " case 1 | 2 | 3 { post(\"a\") }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2360",
   "match x {\n"
   " case True { post(1) }\n"
   " case Null { post(2) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2361",
   "match x {\n"
   " case [1, 2] { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2362",
   "match x {\n"
   " case [1, [2, 3]] { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2363",
   "match x {\n"
   " case v if v > 5 { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2364",
   "match x {\n"
   " case v { post(v) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2365",
   "match x {\n"
   " case {a: 1} { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2366",
   "match x {\n"
   "    case 1 {\n"
@@ -12787,7 +12787,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    }\n"
   "}\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: x", -1 },
+  NULL, "NameError: name 'x' is not defined", -1 },
 { "dif #2367",
   "model Cliente() {\n"
   "    id: int\n"
@@ -13087,7 +13087,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(z)\n"
   "\n",
-  NULL, "RuntimeError: variável não definida: z", -1 },
+  NULL, "NameError: name 'z' is not defined", -1 },
 { "dif #2399",
   "n = 25\n"
   "post(<00ff00>f\"grau {n}\")\n"

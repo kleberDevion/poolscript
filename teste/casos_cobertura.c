@@ -400,13 +400,13 @@ const Caso CASOS_COBERTURA[] = {
   "x = Null > 0\n"
   "post(x)\n"
   "\n",
-  NULL, "'>' nao se aplica a Null", -1 },
+  NULL, "'>' not supported between instances of 'Null' and 'int'", -1 },
 { "git: test_interpreter #62",
   "lista = [1, 2, 3]\n"
   "x = lista[99]\n"
   "post(x)\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "list index out of range", -1 },
 { "git: test_interpreter #63",
   "for each i in [\"a\",\"b\",\"c\"] {\n"
   "    post(i)\n"
@@ -1789,11 +1789,11 @@ const Caso CASOS_COBERTURA[] = {
 { "git: test_vm_c #231",
   "post([1, 2][9])\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "list index out of range", -1 },
 { "git: test_vm_c #232",
   "post(\"ab\"[9])\n"
   "\n",
-  NULL, "fora do tamanho de", -1 },
+  NULL, "string index out of range", -1 },
 { "git: test_vm_c #233",
   "post([Null])\n"
   "\n",

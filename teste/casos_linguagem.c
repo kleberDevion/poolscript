@@ -27,12 +27,12 @@ const Caso CASOS_LINGUAGEM[] = {
   "for each z in [1] {\n"
   "    post(z)\n"
   "}\n"
-  "post(z)\n", NULL, "não definida", -1 },
+  "post(z)\n", NULL, "name 'z' is not defined", -1 },
 { "variável de bloco não vaza",
   "if true {\n"
   "    dentro = 5\n"
   "}\n"
-  "post(dentro)\n", NULL, "não definida", -1 },
+  "post(dentro)\n", NULL, "name 'dentro' is not defined", -1 },
 { "atribuir nome de fora dentro do bloco altera o de fora",
   "x = 1\n"
   "if true {\n"
@@ -75,11 +75,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "value() e values() são o mesmo",
   "d = { \"a\": 1, \"b\": 2 }\npost(d.value() == d.values())\n", "True", NULL, 0 },
 { "tupla é imutável: append",
-  "t = (1, 2, 3)\nt.append(9)\n", NULL, "membro inexistente", -1 },
+  "t = (1, 2, 3)\nt.append(9)\n", NULL, "'tup' object has no attribute 'append'", -1 },
 { "tupla é imutável: sort",
-  "t = (1, 2, 3)\nt.sort()\n", NULL, "membro inexistente", -1 },
+  "t = (1, 2, 3)\nt.sort()\n", NULL, "'tup' object has no attribute 'sort'", -1 },
 { "tupla é imutável: copy",
-  "t = (1, 2, 3)\nt.copy()\n", NULL, "membro inexistente", -1 },
+  "t = (1, 2, 3)\nt.copy()\n", NULL, "'tup' object has no attribute 'copy'", -1 },
 { "tupla lê normal",
   "t = (1, 2, 3)\npost(t.len(), t.count(1), t.index(2), t.contains(2))\n", "3 1 1 True", NULL, 0 },
 { "lista continua com tudo",
@@ -424,10 +424,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * `Pattern.match/search/findall`, que leem o argumento por um helper. A regra
  * só voltou depois de sondar as 91 entradas por COMPORTAMENTO. */
 { "metodo nativo recusa argumento demais",
-  "post([1,2].append(1,2,3))\n", NULL, "aceita ate 1 argumento, recebeu 3", -1 },
+  "post([1,2].append(1,2,3))\n", NULL, "append expected at most 1 argument, got 3", -1 },
 { "metodo de zero argumento recusa argumento",
   "import sockets\ns = sockets.socket()\npost(s.fileno(1,2))\n",
-  NULL, "nao aceita argumento, recebeu 2", -1 },
+  NULL, "fileno expected 0 arguments, got 2", -1 },
 { "format continua variadico",
   "post(\"{} {}\".format(1,2,3,4,5))\n", "1 2", NULL, 0 },
 { "Pattern le o argumento pelo helper e continua funcionando",
@@ -571,7 +571,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "range com passo 0 e erro",
   "for each i in range(1, 5, 0) {\n"
   "    post(i)\n"
-  "}\n", NULL, "passo de range", -1 },
+  "}\n", NULL, "range() arg 3 must not be zero", -1 },
 { "range com expressao nos limites",
   "n = 4\n"
   "for each i in range(n - 2) {\n"
@@ -935,7 +935,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * decorador cujo membro é keyword. A recusa só vale pro que não pode ser
  * nome de jeito nenhum (fim de linha, fim de arquivo). */
 { "decorador com membro que e palavra reservada",
-  "@app.route(\"/x\")\naction h() { return 1 }\n", NULL, "não definida: app", -1 },
+  "@app.route(\"/x\")\naction h() { return 1 }\n", NULL, "name 'app' is not defined", -1 },
 { "import sem nome nenhum",
   "import\n", NULL, "esperado nome de modulo depois de 'import'", -1 },
 { "import valido continua valendo",
@@ -946,9 +946,9 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */
 { "membro inexistente nomeia modulo e membro",
   "import json\npost(json.naoexiste)\n", NULL,
-  "módulo 'json' não tem membro 'naoexiste'", -1 },
+  "module 'json' has no attribute 'naoexiste'", -1 },
 { "membro parecido vira sugestao",
-  "import json\npost(json.parsee)\n", NULL, "você quis dizer 'parse'?", -1 },
+  "import json\npost(json.parsee)\n", NULL, "Did you mean: 'parse'?", -1 },
 
 /* ── tipo: `type(x)` é o NOME do tipo, `int` é a referência ─────────────────
  * Os dois escrevem "int" na tela. Antes disso, compará-los dava falso calado:

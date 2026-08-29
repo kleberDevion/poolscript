@@ -14,7 +14,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(b=1))\n",
-  NULL, "faltando argumento: 'a'", -1 },
+  NULL, "f() missing 1 required positional argument: 'a'", -1 },
 { "método de instância sem argumento",
   "class C() {\n"
   "    action m(self, a) {\n"
@@ -22,7 +22,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().m())\n",
-  NULL, "faltando argumento: 'a'", -1 },
+  NULL, "m() missing 1 required positional argument: 'a'", -1 },
 { "__init__ sem argumento",
   "class C() {\n"
   "    action __init__(self, a) {\n"
@@ -30,19 +30,19 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "x = C()\n",
-  NULL, "faltando argumento: 'a'", -1 },
+  NULL, "__init__() missing 1 required positional argument: 'a'", -1 },
 { "action solta sem argumento",
   "action f(a) {\n"
   "    return a\n"
   "}\n"
   "post(f())\n",
-  NULL, "faltando argumento: 'a'", -1 },
+  NULL, "f() missing 1 required positional argument: 'a'", -1 },
 { "argumentos demais",
   "action f(a, b=2) {\n"
   "    return a\n"
   "}\n"
   "post(f(1, 2, 3))\n",
-  NULL, "esperava até 2 argumentos, recebeu 3", -1 },
+  NULL, "f() takes 2 positional arguments but 3 were given", -1 },
 
 /* ── argumento nomeado que não existe ── */
 { "nomeado inexistente em action",
@@ -90,9 +90,9 @@ const Caso CASOS_ERROS[] = {
 
 /* ── f-string: erro no trecho SOBE, não vira texto cru ── */
 { "f-string com nome fora de escopo",
-  "post(f\"v: {zzz}\")\n", NULL, "variável não definida: zzz", -1 },
+  "post(f\"v: {zzz}\")\n", NULL, "name 'zzz' is not defined", -1 },
 { "f-string com divisão por zero",
-  "post(f\"x {1/0} y\")\n", NULL, "divisao por zero", -1 },
+  "post(f\"x {1/0} y\")\n", NULL, "division by zero", -1 },
 { "f-string válida continua interpolando",
   "oi = \"ola\"\npost(f\"{oi} mundo\")\n", "ola mundo", NULL, 0 },
 { "f-string escapa chave dobrada",

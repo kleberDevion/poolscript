@@ -109,25 +109,42 @@ const Caso CASOS_LIBS[] = {
   "post(n)\n", "3", NULL, 0 },
 { "a mensagem de tipo incompativel diz QUAIS tipos",
   /* I14: era só "'+' entre tipos incompativeis" — o usuário tinha que adivinhar
-   * qual dos dois lados estava errado. */
+   * qual dos dois lados estava errado. Hoje o texto é o do CPython, que ainda
+   * nomeia os dois e ainda diz qual é o estranho: `can only concatenate str
+   * (not "int") to str`. */
   "try {\n"
   "    post(\"a\" + 1)\n"
   "} catch (e) {\n"
-  "    post(\"str + int\" in str(e))\n"
+  "    post(\"can only concatenate str (not \\\"int\\\") to str\" in str(e))\n"
   "}\n", "True", NULL, 0 },
 { "os cinco operadores nomeiam os tipos",
+  /* O texto virou o do CPython, e ele não é um só: sequência à esquerda tem
+   * frase própria em `+` e em `*`. O que este caso cobra continua sendo o
+   * mesmo — que os DOIS tipos apareçam, com o nome que o `type()` devolve. */
   "n = 0\n"
-  "try { post(\"a\" + 1) } catch (e) { if \"str + int\" in str(e) { n = n + 1 } }\n"
-  "try { post(1 - \"a\") } catch (e) { if \"int - str\" in str(e) { n = n + 1 } }\n"
-  "try { post([1] * \"a\") } catch (e) { if \"list * str\" in str(e) { n = n + 1 } }\n"
-  "try { post(\"a\" / 2) } catch (e) { if \"str / int\" in str(e) { n = n + 1 } }\n"
-  "try { post(\"a\" % []) } catch (e) { if \"str % list\" in str(e) { n = n + 1 } }\n"
+  "try { post(\"a\" + 1) } catch (e) { if \"str\" in str(e) and \"int\" in str(e) { n = n + 1 } }\n"
+  "try { post(1 - \"a\") } catch (e) { if \"'int' and 'str'\" in str(e) { n = n + 1 } }\n"
+  "try { post([1] * \"a\") } catch (e) { if \"non-int of type 'str'\" in str(e) { n = n + 1 } }\n"
+  "try { post(\"a\" / 2) } catch (e) { if \"'str' and 'int'\" in str(e) { n = n + 1 } }\n"
+  "try { post(\"a\" % []) } catch (e) { if \"'str' and 'list'\" in str(e) { n = n + 1 } }\n"
   "post(n)\n", "5", NULL, 0 },
 { "AttributedValueError escrito certo",
-  /* I7: o tipo era publicado com a grafia errada (`Atributted`). */
+  /* I7: o tipo era publicado com a grafia errada (`Atributted`).
+   *
+   * O caso mudou de EXPRESSÃO, não de intenção: `"a" + 1` levantava
+   * AttributedValueError, e não devia — somar tipos que não somam é TypeError,
+   * como no Python. AttributedValueError ficou com o que lhe cabe, que é
+   * atribuir valor incompatível a variável TIPADA. É isso que ele prova
+   * agora, e a grafia continua cobrada. */
+  "try {\n"
+  "    str x = 10\n"
+  "} catch (AttributedValueError e) {\n"
+  "    post(\"pegou\")\n"
+  "}\n", "pegou", NULL, 0 },
+{ "'+' entre tipos que nao somam e TypeError, nao AttributedValueError",
   "try {\n"
   "    post(\"a\" + 1)\n"
-  "} catch (AttributedValueError e) {\n"
+  "} catch (TypeError e) {\n"
   "    post(\"pegou\")\n"
   "}\n", "pegou", NULL, 0 },
 { "pool --check sai != 0 quando o arquivo nao compila",

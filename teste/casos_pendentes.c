@@ -114,7 +114,7 @@ const Caso CASOS_PENDENTES[] = {
 
 /* ── números ────────────────────────────────────────────────────────────── */
 { "int() de infinito é erro, não INT64_MIN",
-  "post(int(flo(\"inf\")))\n", NULL, "infinito", -1 },
+  "post(int(flo(\"inf\")))\n", NULL, "cannot convert float infinity to integer", -1 },
 { "int() de NaN é erro",
   "post(int(flo(\"nan\")))\n", NULL, "NaN", -1 },
 
@@ -123,7 +123,7 @@ const Caso CASOS_PENDENTES[] = {
   "action f(x, y) {\n"
   "    return x\n"
   "}\n"
-  "post(map([1, 2], f))\n", NULL, "faltando argumento", -1 },
+  "post(map([1, 2], f))\n", NULL, "f() missing 1 required positional argument: 'y'", -1 },
 { "open() de diretório é erro",
   "f = open(\"/tmp\")\npost(f.read())\n", NULL, "diretório", -1 },
 { "writelines com bytes grava os bytes",
