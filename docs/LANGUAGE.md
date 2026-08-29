@@ -334,7 +334,8 @@ unpacking em declaração tipada (`str a, b = ...`); unpacking no `for each`
 += -= *= /= %=          # atribuição composta
 ++  --                  # incremento/decremento (só em variáveis)
 
-==  !=  ===  !==        # igualdade (=== é comparação "estrita")
+==  !=                  # igualdade (`===`/`!==` foram REMOVIDOS: nunca foram
+                        #  estritos, compilavam pro mesmo opcode do `==`)
 <  >  <=  >=            # magnitude
 
 and  or  not            # lógicos (também aceitam && / || como sinônimos)

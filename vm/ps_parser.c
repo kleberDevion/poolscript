@@ -940,9 +940,29 @@ static PSNode *comparacao(P *p)
             continue;
         }
 
+        /* `===` e `!==` SAÍRAM da linguagem (29/08).
+         *
+         * Eles nunca foram igualdade estrita: compilavam pro MESMO opcode do
+         * `==`, então `false === Null` dava True junto com `false == Null`.
+         * Quem escrevia `x === Null` acreditando estar protegido do valor
+         * coagido estava rodando exatamente a comparação frouxa — nome de uma
+         * coisa, comportamento de outra.
+         *
+         * O lexer ainda RECONHECE os dois, e é de propósito: sem isso,
+         * `a === b` viraria `a == (= b)` e o erro sairia falando de outra
+         * coisa. Reconhecer pra recusar dizendo o motivo é o que ensina. */
+        if (t->type == T_OP && t->texto
+                && (strcmp(t->texto, "===") == 0 || strcmp(t->texto, "!==") == 0)) {
+            char m[96];
+            snprintf(m, sizeof(m),
+                     "`%s` nao existe nesta linguagem; use `%s`",
+                     t->texto, t->texto[0] == '=' ? "==" : "!=");
+            perro(p, m, t);
+            return NULL;
+        }
+
         if (t->type == T_OP && t->texto
                 && (strcmp(t->texto, "==") == 0 || strcmp(t->texto, "!=") == 0
-                 || strcmp(t->texto, "===") == 0 || strcmp(t->texto, "!==") == 0
                  || strcmp(t->texto, "<") == 0 || strcmp(t->texto, ">") == 0
                  || strcmp(t->texto, "<=") == 0 || strcmp(t->texto, ">=") == 0)) {
             p->pos++;

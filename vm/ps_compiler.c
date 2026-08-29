@@ -387,8 +387,8 @@ static int32_t op_binario(const char *s)
     if (!strcmp(s, ">"))  return OP_GT;
     if (!strcmp(s, "<=")) return OP_LE;
     if (!strcmp(s, ">=")) return OP_GE;
-    if (!strcmp(s, "==") || !strcmp(s, "===")) return OP_EQ;
-    if (!strcmp(s, "!=") || !strcmp(s, "!==")) return OP_NE;
+    if (!strcmp(s, "==")) return OP_EQ;
+    if (!strcmp(s, "!=")) return OP_NE;
     if (!strcmp(s, "|"))  return OP_BIT_OR;
     if (!strcmp(s, "^"))  return OP_BIT_XOR;
     if (!strcmp(s, "&"))  return OP_BIT_AND;

@@ -267,7 +267,7 @@ tupla = (1, 2, 3)                 // tup (imutável)
 ## 1.7. Operadores e pontuação
 
 **Operadores de múltiplos caracteres** (reconhecidos do mais longo para o mais
-curto): `===` `!==` `==` `!=` `<=` `>=` `&&` `||` `<<` `>>` `+=` `-=` `*=` `/=`
+curto): `==` `!=` `<=` `>=` `&&` `||` `<<` `>>` `+=` `-=` `*=` `/=`
 `%=` `++` `--`.
 
 **Operadores de um caractere:** `+ - * / % = < > ! . , @ | ^ & ~`.

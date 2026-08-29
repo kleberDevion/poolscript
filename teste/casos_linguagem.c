@@ -1163,6 +1163,27 @@ const Caso CASOS_LINGUAGEM[] = {
 { "o --check devolve JSON valido com acento no erro",
   "x = \xc3\xa7\n", NULL, "'ç'", -1 },
 
+/* ── `===` e `!==` foram REMOVIDOS (29/08) ──────────────────────────────────
+ *
+ * Eles nunca foram igualdade estrita: compilavam pro MESMO opcode do `==`, e
+ * `false === Null` respondia igual a `false == Null`. Quem escrevia
+ * `x === Null` acreditando estar protegido da comparação frouxa estava rodando
+ * exatamente ela — nome de uma coisa, comportamento de outra. O dono usou isso
+ * por meses achando que protegia.
+ *
+ * O lexer ainda RECONHECE os dois, de propósito: sem isso `a === b` viraria
+ * `a == (= b)` e o erro falaria de outra coisa. */
+{ "`===` é erro de sintaxe, dizendo o que usar",
+  "post(1 === 1)\n", NULL, "`===` nao existe nesta linguagem; use `==`", -1 },
+{ "`!==` é erro de sintaxe, dizendo o que usar",
+  "post(1 !== 2)\n", NULL, "`!==` nao existe nesta linguagem; use `!=`", -1 },
+{ "`==` e `!=` seguem valendo",
+  "post(1 == 1, 1 != 2, \"a\" == \"a\", [1] == [1])\n",
+  "True True True True", NULL, 0 },
+{ "o erro do `===` aponta a coluna certa",
+  /* o lexer casa o token de 3 chars inteiro, entao a coluna e a do operador */
+  "x = 1\npost(x === 1)\n", NULL, "nao existe nesta linguagem", -1 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

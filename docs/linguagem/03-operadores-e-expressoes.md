@@ -25,7 +25,7 @@ precedência e são resolvidos pela associatividade indicada.
 | 2 | OU lógico | `or` &nbsp; `\|\|` | à esquerda |
 | 3 | E lógico | `and` &nbsp; `&&` | à esquerda |
 | 4 | Negação lógica | `not` &nbsp; `Not` &nbsp; `!` | prefixa (à direita) |
-| 5 | Comparação, pertinência, tipo, contagem | `==` `!=` `===` `!==` `<` `>` `<=` `>=` &nbsp; `is` `is not` &nbsp; `in` `not in` &nbsp; `count` | à esquerda |
+| 5 | Comparação, pertinência, tipo, contagem | `==` `!=` `<` `>` `<=` `>=` &nbsp; `is` `is not` &nbsp; `in` `not in` &nbsp; `count` | à esquerda |
 | 6 | OU bit a bit | `\|` | à esquerda |
 | 7 | XOR bit a bit | `^` | à esquerda |
 | 8 | E bit a bit | `&` | à esquerda |
@@ -146,16 +146,33 @@ Devolvem sempre `bool`.
 
 | Op | Significado |
 |---|---|
-| `==` &nbsp; `===` | igual |
-| `!=` &nbsp; `!==` | diferente |
+| `==` | igual |
+| `!=` | diferente |
 | `<` `>` `<=` `>=` | ordem (magnitude) |
 
-### 3.3.1. `===` é apelido de `==` (não é "igualdade estrita")
+### 3.3.1. `===` e `!==` NÃO existem
 
-Ao contrário do JavaScript, **`===` e `==` são idênticos** aqui — mesma
-semântica. `!==` idem a `!=`. As formas com três caracteres existem só por
-conforto visual de quem vem de outra linguagem; não há diferença de
-comportamento.
+Foram removidos em 29/08. Escrever qualquer um dos dois é erro de sintaxe, com
+a mensagem dizendo o que usar no lugar:
+
+```
+SyntaxError: `===` nao existe nesta linguagem; use `==`
+```
+
+**Por que saíram:** eles nunca foram igualdade estrita. Compilavam para o
+**mesmo opcode** do `==`, então `false === Null` respondia igualzinho a
+`false == Null`. Quem escrevia `x === Null` acreditando estar protegido da
+comparação frouxa estava rodando exatamente a comparação frouxa — o operador
+tinha nome de uma coisa e comportamento de outra, e isso custou tempo de
+depuração real.
+
+Se você quer comparar **valor e tipo**, compare o tipo junto:
+
+```ps
+if x == 0 and type(x) == "int" {
+    // só entra com int 0, não com 0.0 nem false
+}
+```
 
 ### 3.3.2. Igualdade compara VALOR, entre tipos numéricos e por estrutura
 
@@ -403,9 +420,9 @@ mesmas regras de `x + 1`.
 - **`/` é sempre real** (dá `flo`); não há `//` nem `**`/`pow`.
 - **`%`** segue o sinal do divisor.
 - **`+` concatena mas não coage** — `str` + número é erro; use `str()`/f-string.
-- **`==`/`===`** são iguais; comparam por valor (numérico entre tipos) e por
-  estrutura (list/tup/dict). Comparações são **associativas à esquerda**, não
-  encadeiam.
+- **`==`** compara por valor (numérico entre tipos) e por estrutura
+  (list/tup/dict). Comparações são **associativas à esquerda**, não encadeiam.
+  `===` e `!==` **não existem** — ver §3.3.1.
 - **`and`/`or`** curto-circuitam e devolvem **`bool`** (não o operando).
 - **`is`** é verificação de **tipo**; **`in`** é pertinência (substring em
   `str`, chave em `dict`).
