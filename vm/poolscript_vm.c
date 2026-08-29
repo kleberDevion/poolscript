@@ -18368,7 +18368,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 r->len = x->len + y->len;
                 stack[sp - 1] = MK_OBJ(r);
             }
-            else ERRO_T(vm, "AtributtedValueError", "'+' entre tipos incompativeis");
+            /* Diz QUAIS tipos. "'+' entre tipos incompativeis" não dizia, e o
+             * usuário tinha que adivinhar qual dos dois lados estava errado —
+             * compare com o CPython: "can only concatenate str (not \"int\") to
+             * str". O helper `nome_do_tipo_valor` já existe e devolve
+             * exatamente o que o `type()` devolve. */
+            else ERRO_TF(vm, "AtributtedValueError",
+                         "'+' entre tipos incompativeis: %s + %s",
+                         nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
         }
         case OP_SUB: {
@@ -18379,7 +18386,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d - b.as.d);
             else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) - b.as.d);
             else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d - int_como_double(b));
-            else ERRO_T(vm, "SomeValueUnexpected", "'-' entre tipos incompativeis");
+            else ERRO_TF(vm, "SomeValueUnexpected",
+                         "'-' entre tipos incompativeis: %s - %s",
+                         nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
         }
         case OP_MUL: {
@@ -18428,7 +18437,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!rs) ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
                 stack[sp - 1] = MK_OBJ(rs);
             }
-            else ERRO_T(vm, "SomeValueUnexpected", "'*' entre tipos incompativeis");
+            else ERRO_TF(vm, "SomeValueUnexpected",
+                         "'*' entre tipos incompativeis: %s * %s",
+                         nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
         }
         case OP_DIV: {
@@ -18436,7 +18447,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if ((!EH_INTEIRO(a) && a.t != V_FLOAT) || (!EH_INTEIRO(b) && b.t != V_FLOAT))
-                ERRO_T(vm, "SomeValueUnexpected", "'/' entre tipos incompativeis");
+                ERRO_TF(vm, "SomeValueUnexpected",
+                        "'/' entre tipos incompativeis: %s / %s",
+                        nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
             double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
             if (y == 0.0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: division by zero");
@@ -18480,7 +18493,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * DIVIDENDO, e o ajuste acima só mexe em resto não-zero. */
                 else if (r == 0.0 && signbit(r) != signbit(y)) r = -r;
                 stack[sp - 1] = MK_FLOAT(r);
-            } else ERRO_T(vm, "SomeValueUnexpected", "'%' entre tipos incompativeis");
+            } else ERRO_TF(vm, "SomeValueUnexpected",
+                           "'%%' entre tipos incompativeis: %s %% %s",
+                           nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
         }
         case OP_NEG: {
