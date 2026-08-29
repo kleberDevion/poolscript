@@ -2446,14 +2446,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f(z=1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: argumento nomeado 'z' nao corresponde a nenhum parametro de", -1 },
+  NULL, "TypeError: argumento nomeado 'z' nao corresponde a nenhum parametro de", -1 },
 { "dif #322",
   "action f(a) {\n"
   " return a\n"
   "}\n"
   "post(f(zzz=1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: argumento nomeado 'zzz' nao corresponde a nenhum parametro ", -1 },
+  NULL, "TypeError: argumento nomeado 'zzz' nao corresponde a nenhum parametro ", -1 },
 { "dif #323",
   "action f(a):\n"
   "\n",
@@ -2550,7 +2550,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #343",
   "post(\"\".maketrans(\"ab\",\"x\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: maketrans() exige os dois com o mesmo tamanho", -1 },
+  NULL, "TypeError: maketrans() exige os dois com o mesmo tamanho", -1 },
 { "dif #344",
   "post(\"\".maketrans(\"ab\",\"xy\"))\n"
   "\n",
@@ -2690,7 +2690,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #378",
   "post(\"a\" * \"b\")\n"
   "\n",
-  NULL, "SomeValueUnexpected: '*' entre tipos incompativeis", -1 },
+  NULL, "TypeError: '*' entre tipos incompativeis", -1 },
 { "dif #379",
   "post(\"a\" + \"b\")\n"
   "\n",
@@ -2702,7 +2702,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #381",
   "post(\"a\" - 1)\n"
   "\n",
-  NULL, "SomeValueUnexpected: '-' entre tipos incompativeis", -1 },
+  NULL, "TypeError: '-' entre tipos incompativeis", -1 },
 { "dif #382",
   "post(\"a\" <= \"a\")\n"
   "\n",
@@ -2710,11 +2710,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #383",
   "post(\"a\" > 1)\n"
   "\n",
-  NULL, "SomeValueUnexpected: comparacao entre tipos incompativeis", -1 },
+  NULL, "TypeError: comparacao entre tipos incompativeis", -1 },
 { "dif #384",
   "post(\"a\" ^ 1)\n"
   "\n",
-  NULL, "SomeValueUnexpected: '^' exige int", -1 },
+  NULL, "TypeError: '^' exige int", -1 },
 { "dif #385",
   "post(\"a\" in \"cab\")\n"
   "\n",
@@ -2734,7 +2734,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #389",
   "post(\"a\".center(3,\"xy\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: center() espera um unico caractere de preenchimento", -1 },
+  NULL, "TypeError: center() espera um unico caractere de preenchimento", -1 },
 { "dif #390",
   "post(\"a\".center(4))\n"
   "\n",
@@ -2746,7 +2746,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #392",
   "post(\"a\".count())\n"
   "\n",
-  NULL, "SomeValueUnexpected: count() espera de 1 a 3 argumentos (sub, inicio, fim)", -1 },
+  NULL, "TypeError: count() espera de 1 a 3 argumentos (sub, inicio, fim)", -1 },
 { "dif #393",
   "post(\"a\".encode(\"utf-8\"))\n"
   "\n",
@@ -2758,7 +2758,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #395",
   "post(\"a\".index(\"z\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: subcadeia nao encontrada", -1 },
+  NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
 { "dif #396",
   "post(\"a\".isprintable())\n"
   "\n",
@@ -2766,11 +2766,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #397",
   "post(\"a\".join([1]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: join() so junta str", -1 },
+  NULL, "TypeError: join() so junta str", -1 },
 { "dif #398",
   "post(\"a\".ljust(\"x\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: largura de ljust() precisa ser int", -1 },
+  NULL, "TypeError: largura de ljust() precisa ser int", -1 },
 { "dif #399",
   "post(\"a\".ljust(9223372036854775807))\n"
   "\n",
@@ -2778,7 +2778,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #400",
   "post(\"a\".match())\n"
   "\n",
-  NULL, "SomeValueUnexpected: match() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: match() espera 1 argumento(s)", -1 },
 { "dif #401",
   "post(\"a\".naoexiste())\n"
   "\n",
@@ -2786,7 +2786,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #402",
   "post(\"a\".partition(\"\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: separador vazio em partition()", -1 },
+  NULL, "ValueError: valor invalido: separador vazio em partition()", -1 },
 { "dif #403",
   "post(\"a\".replace(\"\",\"x\"))\n"
   "\n",
@@ -2794,7 +2794,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #404",
   "post(\"a\".rindex(\"z\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: subcadeia nao encontrada", -1 },
+  NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
 { "dif #405",
   "post(\"a\".rjust(9223372036854775807))\n"
   "\n",
@@ -2802,15 +2802,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #406",
   "post(\"a\".split(\"\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: separador vazio em split()", -1 },
+  NULL, "ValueError: valor invalido: separador vazio em split()", -1 },
 { "dif #407",
   "post(\"a\".startswith(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: startswith() espera str", -1 },
+  NULL, "TypeError: startswith() espera str", -1 },
 { "dif #408",
   "post(\"a\".sub(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: sub() espera 2 argumento(s)", -1 },
+  NULL, "TypeError: sub() espera 2 argumento(s)", -1 },
 { "dif #409",
   "post(\"a\".type())\n"
   "\n",
@@ -2818,7 +2818,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #410",
   "post(\"a\".upper(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: upper() nao aceita argumento", -1 },
+  NULL, "TypeError: upper() nao aceita argumento", -1 },
 { "dif #411",
   "post(\"a\".zfill(5))\n"
   "post(\"ab\".ljust(5, \"-\"))\n"
@@ -2917,7 +2917,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #434",
   "post(\"aaa\".replace(\"a\", \"b\", conta=2))\n"
   "\n",
-  NULL, "SomeValueUnexpected: argumento nomeado desconhecido: conta", -1 },
+  NULL, "TypeError: argumento nomeado desconhecido: conta", -1 },
 { "dif #435",
   "post(\"aaa\".replace(old=\"a\", new=\"b\", count=1))\n"
   "\n",
@@ -3124,7 +3124,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #484",
   "post(\"banana\".index(\"na\", 0, 3))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: subcadeia nao encontrada", -1 },
+  NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
 { "dif #485",
   "post(\"corpo\")\n"
   "\n",
@@ -3249,7 +3249,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #515",
   "post(\"{:!!}\".format(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: format: spec invalido", -1 },
+  NULL, "TypeError: format: spec invalido", -1 },
 { "dif #516",
   "post(\"{:*^7}|\".format(\"ab\"))\n"
   "\n",
@@ -3325,7 +3325,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #534",
   "post(\"{} {}\".format(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: format: campo '' sem valor", -1 },
+  NULL, "TypeError: format: campo '' sem valor", -1 },
 { "dif #535",
   "post(\"{}\".format(Null))\n"
   "\n",
@@ -3621,7 +3621,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #608",
   "post(1.5 | 1)\n"
   "\n",
-  NULL, "SomeValueUnexpected: '|' exige int", -1 },
+  NULL, "TypeError: '|' exige int", -1 },
 { "dif #609",
   "post(1/0)\n"
   "\n",
@@ -4244,7 +4244,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #763",
   "post([1, 2].index(9))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: index() nao achou o item", -1 },
+  NULL, "ValueError: valor invalido: index() nao achou o item", -1 },
 { "dif #764",
   "post([1, 2][\"x\"])\n"
   "\n",
@@ -4312,19 +4312,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #780",
   "post([1].append())\n"
   "\n",
-  NULL, "SomeValueUnexpected: append() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: append() espera 1 argumento(s)", -1 },
 { "dif #781",
   "post([1].extend(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: extend() espera uma lista", -1 },
+  NULL, "TypeError: extend() espera uma lista", -1 },
 { "dif #782",
   "post([1].index(9))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: index() nao achou o item", -1 },
+  NULL, "ValueError: valor invalido: index() nao achou o item", -1 },
 { "dif #783",
   "post([1].insert(\"a\",1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: insert() espera int como posicao", -1 },
+  NULL, "TypeError: insert() espera int como posicao", -1 },
 { "dif #784",
   "post([1].keys())\n"
   "\n",
@@ -4336,15 +4336,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #786",
   "post([1].remove(9))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: remove() nao achou o item", -1 },
+  NULL, "ValueError: valor invalido: remove() nao achou o item", -1 },
 { "dif #787",
   "post([1].sort(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: sort() nao aceita argumento", -1 },
+  NULL, "TypeError: sort() nao aceita argumento", -1 },
 { "dif #788",
   "post([1].type(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: type() nao aceita argumento", -1 },
+  NULL, "TypeError: type() nao aceita argumento", -1 },
 { "dif #789",
   "post([1].upper())\n"
   "\n",
@@ -4440,7 +4440,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #812",
   "post(abs(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: abs() so aceita numero", -1 },
+  NULL, "TypeError: operacao invalida: abs() so aceita numero", -1 },
 { "dif #813",
   "post(abs(-3))\n"
   "\n",
@@ -4476,7 +4476,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #821",
   "post(addEnd(1,2))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: addEnd() espera lista", -1 },
+  NULL, "TypeError: operacao invalida: addEnd() espera lista", -1 },
 { "dif #822",
   "post(app.POOLHTMLElements.getitemByIdentify(\"email\").value == \"\")\n"
   "\n",
@@ -4536,7 +4536,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #836",
   "post(bin(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: bin() so aceita int", -1 },
+  NULL, "TypeError: operacao invalida: bin() so aceita int", -1 },
 { "dif #837",
   "post(bin(-5))\n"
   "\n",
@@ -4692,11 +4692,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #875",
   "post(chr(-1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: chr() fora do intervalo Unicode", -1 },
+  NULL, "ValueError: valor invalido: chr() fora do intervalo Unicode", -1 },
 { "dif #876",
   "post(chr(1114112))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: chr() fora do intervalo Unicode", -1 },
+  NULL, "ValueError: valor invalido: chr() fora do intervalo Unicode", -1 },
 { "dif #877",
   "post(chr(128512))\n"
   "\n",
@@ -4920,7 +4920,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #932",
   "post(enumerate(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: enumerate() nao itera este tipo", -1 },
+  NULL, "TypeError: operacao invalida: enumerate() nao itera este tipo", -1 },
 { "dif #933",
   "post(enumerate([\"a\",\"b\"]))\n"
   "\n",
@@ -5064,7 +5064,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #968",
   "post(filter([1], 5))\n"
   "\n",
-  NULL, "SomeValueUnexpected: tentativa de chamar algo que nao e funcao", -1 },
+  NULL, "TypeError: tentativa de chamar algo que nao e funcao", -1 },
 { "dif #969",
   "post(flo(\"1.5\"))\n"
   "\n",
@@ -5072,11 +5072,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #970",
   "post(flo(\"1.5abc\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter '1.5abc' em flo", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter '1.5abc' em flo", -1 },
 { "dif #971",
   "post(flo(\"abc\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter 'abc' em flo", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter 'abc' em flo", -1 },
 { "dif #972",
   "post(flo(1.5))\n"
   "\n",
@@ -5088,7 +5088,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #974",
   "post(flo(Null))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: flo() nao aceita este tipo", -1 },
+  NULL, "TypeError: operacao invalida: flo() nao aceita este tipo", -1 },
 { "dif #975",
   "post(flo(True))\n"
   "\n",
@@ -5208,7 +5208,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1004",
   "post(hex(1.5))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: hex() so aceita int", -1 },
+  NULL, "TypeError: operacao invalida: hex() so aceita int", -1 },
 { "dif #1005",
   "post(hex(255))\n"
   "\n",
@@ -5232,7 +5232,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1010",
   "post(int(\"\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter '' em int", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter '' em int", -1 },
 { "dif #1011",
   "post(int(\"+5\"))\n"
   "\n",
@@ -5244,7 +5244,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1013",
   "post(int(\"0x1f\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter '0x1f' em int", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter '0x1f' em int", -1 },
 { "dif #1014",
   "post(int(\"12345678901234567890123456789012\"))\n"
   "\n",
@@ -5260,15 +5260,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1017",
   "post(int(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter 'a' em int", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter 'a' em int", -1 },
 { "dif #1018",
   "post(int(\"abc\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter 'abc' em int", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter 'abc' em int", -1 },
 { "dif #1019",
   "post(int(\"x\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: nao da pra converter 'x' em int", -1 },
+  NULL, "ValueError: valor invalido: nao da pra converter 'x' em int", -1 },
 { "dif #1020",
   "post(int())\n"
   "\n",
@@ -5288,7 +5288,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1024",
   "post(int(Null))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: int() nao aceita este tipo", -1 },
+  NULL, "TypeError: operacao invalida: int() nao aceita este tipo", -1 },
 { "dif #1025",
   "post(int(True))\n"
   "\n",
@@ -5296,7 +5296,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1026",
   "post(int(null))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: int() nao aceita este tipo", -1 },
+  NULL, "TypeError: operacao invalida: int() nao aceita este tipo", -1 },
 { "dif #1027",
   "post(ip.count(\".\") == 3)\n"
   "\n",
@@ -5504,11 +5504,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1078",
   "post(len(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: len() nao se aplica a este tipo", -1 },
+  NULL, "TypeError: len() nao se aplica a este tipo", -1 },
 { "dif #1079",
   "post(len(5))\n"
   "\n",
-  NULL, "SomeValueUnexpected: len() nao se aplica a este tipo", -1 },
+  NULL, "TypeError: len() nao se aplica a este tipo", -1 },
 { "dif #1080",
   "post(len([1, 2, 3, 4]))\n"
   "\n",
@@ -5560,7 +5560,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1092",
   "post(len(x=[1,2]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: esta funcao nao aceita argumento nomeado", -1 },
+  NULL, "TypeError: esta funcao nao aceita argumento nomeado", -1 },
 { "dif #1093",
   "post(len(zzz))\n"
   "\n",
@@ -5608,7 +5608,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1104",
   "post(list(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: list() nao itera este tipo", -1 },
+  NULL, "TypeError: operacao invalida: list() nao itera este tipo", -1 },
 { "dif #1105",
   "post(list([1,2]))\n"
   "\n",
@@ -5652,7 +5652,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1115",
   "post(map(1, str))\n"
   "\n",
-  NULL, "SomeValueUnexpected: map() espera uma lista como primeiro argumento", -1 },
+  NULL, "TypeError: map() espera uma lista como primeiro argumento", -1 },
 { "dif #1116",
   "post(map([\"1\",\"2\"], int))\n"
   "\n",
@@ -5677,11 +5677,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1121",
   "post(map([1]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: map() espera 2 argumento(s)", -1 },
+  NULL, "TypeError: map() espera 2 argumento(s)", -1 },
 { "dif #1122",
   "post(map([1], 5))\n"
   "\n",
-  NULL, "SomeValueUnexpected: tentativa de chamar algo que nao e funcao", -1 },
+  NULL, "TypeError: tentativa de chamar algo que nao e funcao", -1 },
 { "dif #1123",
   "post(mat.dobro(21))\n"
   "\n",
@@ -5709,7 +5709,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1129",
   "post(max([]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: max() de sequencia vazia", -1 },
+  NULL, "ValueError: valor invalido: max() de sequencia vazia", -1 },
 { "dif #1130",
   "post(min(\"çab\"), max(\"çab\"))\n"
   "\n",
@@ -5745,11 +5745,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1138",
   "post(min([]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: min() de sequencia vazia", -1 },
+  NULL, "ValueError: valor invalido: min() de sequencia vazia", -1 },
 { "dif #1139",
   "post(min([], default=0))\n"
   "\n",
-  NULL, "SomeValueUnexpected: esta funcao nao aceita argumento nomeado", -1 },
+  NULL, "TypeError: esta funcao nao aceita argumento nomeado", -1 },
 { "dif #1140",
   "post(minhalib.quem())\n"
   "\n",
@@ -5797,7 +5797,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1151",
   "post(ord(\"\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: ord() espera um caractere", -1 },
+  NULL, "TypeError: ord() espera um caractere", -1 },
 { "dif #1152",
   "post(ord(\"A\"))\n"
   "\n",
@@ -5805,7 +5805,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1153",
   "post(ord(\"ab\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: ord() espera UM caractere", -1 },
+  NULL, "TypeError: operacao invalida: ord() espera UM caractere", -1 },
 { "dif #1154",
   "post(ord(\"ç\"))\n"
   "\n",
@@ -5817,7 +5817,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1156",
   "post(ord(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: ord() espera str", -1 },
+  NULL, "TypeError: operacao invalida: ord() espera str", -1 },
 { "dif #1157",
   "post(os.cmd(\"cmd_inexistente_zzz 2>/dev/null\"))\n"
   "\n",
@@ -6221,7 +6221,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1257",
   "post(range())\n"
   "\n",
-  NULL, "SomeValueUnexpected: range() espera de 1 a 3 argumentos", -1 },
+  NULL, "TypeError: range() espera de 1 a 3 argumentos", -1 },
 { "dif #1258",
   "post(range(-3))\n"
   "\n",
@@ -6237,7 +6237,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1261",
   "post(range(1,2,0))\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor invalido: passo de range() nao pode ser 0", -1 },
+  NULL, "ValueError: valor invalido: passo de range() nao pode ser 0", -1 },
 { "dif #1262",
   "post(range(1,4))\n"
   "\n",
@@ -6349,7 +6349,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1289",
   "post(removeEnd(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: removeEnd() espera lista", -1 },
+  NULL, "TypeError: operacao invalida: removeEnd() espera lista", -1 },
 { "dif #1290",
   "post(reversed(\"ab\"))\n"
   "\n",
@@ -6361,7 +6361,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1292",
   "post(reversed(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: reversed() nao itera este tipo", -1 },
+  NULL, "TypeError: operacao invalida: reversed() nao itera este tipo", -1 },
 { "dif #1293",
   "post(reversed([1,2,3]))\n"
   "\n",
@@ -6373,7 +6373,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1295",
   "post(round(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: round() so aceita numero", -1 },
+  NULL, "TypeError: operacao invalida: round() so aceita numero", -1 },
 { "dif #1296",
   "post(round(-2.5))\n"
   "\n",
@@ -6461,7 +6461,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1317",
   "post(sorted(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: sorted() nao itera este tipo", -1 },
+  NULL, "TypeError: operacao invalida: sorted() nao itera este tipo", -1 },
 { "dif #1318",
   "post(sorted([\"b\",\"a\"]))\n"
   "\n",
@@ -6469,7 +6469,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1319",
   "post(sorted([1,\"a\"]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: sorted() entre tipos incompativeis", -1 },
+  NULL, "TypeError: operacao invalida: sorted() entre tipos incompativeis", -1 },
 { "dif #1320",
   "post(sorted([2.5,1]))\n"
   "\n",
@@ -6513,7 +6513,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1330",
   "post(str())\n"
   "\n",
-  NULL, "SomeValueUnexpected: str() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: str() espera 1 argumento(s)", -1 },
 { "dif #1331",
   "post(str(1) + \"x\")\n"
   "\n",
@@ -6525,7 +6525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1333",
   "post(str(1,2))\n"
   "\n",
-  NULL, "SomeValueUnexpected: str() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: str() espera 1 argumento(s)", -1 },
 { "dif #1334",
   "post(str(1.5))\n"
   "\n",
@@ -6557,7 +6557,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1341",
   "post(sum(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: sum() espera lista", -1 },
+  NULL, "TypeError: operacao invalida: sum() espera lista", -1 },
 { "dif #1342",
   "post(sum([1, 2, 3]))\n"
   "\n",
@@ -6569,7 +6569,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1344",
   "post(sum([1,\"a\"]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: sum() so soma numero", -1 },
+  NULL, "TypeError: operacao invalida: sum() so soma numero", -1 },
 { "dif #1345",
   "post(sum([1,2,3,4,5]))\n"
   "\n",
@@ -6833,7 +6833,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1410",
   "post(zip(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: operacao invalida: zip() nao itera este tipo", -1 },
+  NULL, "TypeError: operacao invalida: zip() nao itera este tipo", -1 },
 { "dif #1411",
   "post(zip([1,2,3],[\"a\"]))\n"
   "\n",
@@ -6909,7 +6909,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1429",
   "post({\"a\":1}.update([1]))\n"
   "\n",
-  NULL, "SomeValueUnexpected: update() espera um dict", -1 },
+  NULL, "TypeError: update() espera um dict", -1 },
 { "dif #1430",
   "post({\"a\":1}[\"z\"])\n"
   "\n",
@@ -6941,7 +6941,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1437",
   "post(~\"x\")\n"
   "\n",
-  NULL, "SomeValueUnexpected: '~' exige int", -1 },
+  NULL, "TypeError: '~' exige int", -1 },
 { "dif #1438",
   "post(~0)\n"
   "\n",
@@ -6953,7 +6953,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1440",
   "post(~True)\n"
   "\n",
-  NULL, "SomeValueUnexpected: '~' exige int", -1 },
+  NULL, "TypeError: '~' exige int", -1 },
 { "dif #1441",
   "private async reaction foo() {\n"
   "    return 9\n"
@@ -7445,7 +7445,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1520",
   "try {\n"
   "    raise \"algo\"\n"
-  "} catch (SomeValueUnexpected e) {\n"
+  "} catch (TypeError e) {\n"
   "    post(\"tipo_certo\")\n"
   "} catch (e) {\n"
   "    post(\"generico:\" e)\n"
@@ -7726,7 +7726,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "pego: variável não definida: r (linha 1)", NULL, 0 },
 { "dif #1554",
-  "try { raise \"algo\" } catch (SomeValueUnexpected e) { post(\"s\") } catch (e) { post(\"g\") }\n"
+  "try { raise \"algo\" } catch (TypeError e) { post(\"s\") } catch (e) { post(\"g\") }\n"
   "\n",
   "g", NULL, 0 },
 { "dif #1555",
@@ -8380,7 +8380,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   NULL, "SyntaxError: expressao invalida", -1 },
 { "dif #1660",
-  "} catch (SomeValueUnexpected e) { post(\"tipo certo\") }\n"
+  "} catch (TypeError e) { post(\"tipo certo\") }\n"
   "\n",
   NULL, "SyntaxError: expressao invalida", -1 },
 { "dif #1661",
@@ -9791,7 +9791,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d.value(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: value() nao aceita argumento", -1 },
+  NULL, "TypeError: value() nao aceita argumento", -1 },
 { "dif #1874",
   "d = { \"a\": 1 }\n"
   "post(d.z)\n"
@@ -10610,17 +10610,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict())\n"
   "\n",
-  NULL, "SomeValueUnexpected: asdict() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: asdict() espera 1 argumento(s)", -1 },
 { "dif #2001",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: asdict() espera uma instancia de Entity", -1 },
+  NULL, "TypeError: asdict() espera uma instancia de Entity", -1 },
 { "dif #2002",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(astuple(\"x\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: astuple() espera uma instancia de Entity", -1 },
+  NULL, "TypeError: astuple() espera uma instancia de Entity", -1 },
 { "dif #2003",
   "from date import hora\n"
   "post(hora(2))\n"
@@ -11158,37 +11158,37 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import bytes\n"
   "x = bytes.concat([bytes.new(\"a\"), 5])\n"
   "\n",
-  NULL, "SomeValueUnexpected: operação inválida entre os tipos: bytes.concat: item 1 n", -1 },
+  NULL, "TypeError: operação inválida entre os tipos: bytes.concat: item 1 n", -1 },
 { "dif #2092",
   "import bytes\n"
   "x = bytes.fromhex(\"zz\")\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor inválido: bytes.fromhex: hex inválido: 'zz'", -1 },
+  NULL, "ValueError: valor inválido: bytes.fromhex: hex inválido: 'zz'", -1 },
 { "dif #2093",
   "import bytes\n"
   "x = bytes.fromint(70000, 1)\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor inválido: bytes.fromint: 70000 não cabe em 1 byte(s", -1 },
+  NULL, "ValueError: valor inválido: bytes.fromint: 70000 não cabe em 1 byte(s", -1 },
 { "dif #2094",
   "import bytes\n"
   "x = bytes.get(bytes.new(\"ab\"), 9)\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor inválido: bytes.get: índice 9 fora do range (0..1)", -1 },
+  NULL, "ValueError: valor inválido: bytes.get: índice 9 fora do range (0..1)", -1 },
 { "dif #2095",
   "import bytes\n"
   "x = bytes.new(3.5)\n"
   "\n",
-  NULL, "SomeValueUnexpected: operação inválida entre os tipos: bytes.new: não sei cr", -1 },
+  NULL, "TypeError: operação inválida entre os tipos: bytes.new: não sei cr", -1 },
 { "dif #2096",
   "import bytes\n"
   "x = bytes.new([300])\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor inválido: bytes.new: a lista precisa conter inteiros", -1 },
+  NULL, "ValueError: valor inválido: bytes.new: a lista precisa conter inteiros", -1 },
 { "dif #2097",
   "import bytes\n"
   "x = bytes.xor(bytes.new(\"a\"), bytes.new())\n"
   "\n",
-  NULL, "SomeValueUnexpected: valor inválido: bytes.xor: chave vazia", -1 },
+  NULL, "ValueError: valor inválido: bytes.xor: chave vazia", -1 },
 /* CORRIGIDO: mesma bomba-relogio do #2004. O que este caso testa e a
  * INTERPOLACAO `"texto" expr`, nao o valor da data. */
 { "dif #2098",
@@ -11206,7 +11206,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.hora(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: hora() espera numero", -1 },
+  NULL, "TypeError: hora() espera numero", -1 },
 { "dif #2101",
   "import date\n"
   "post(date.hora())\n"
@@ -11246,7 +11246,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.today(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: today() espera 0 argumento(s)", -1 },
+  NULL, "TypeError: today() espera 0 argumento(s)", -1 },
 { "dif #2109",
   "import flask\n"
   "post(\"ok\")\n"
@@ -11291,12 +11291,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: fim inesperado", -1 },
+  NULL, "TypeError: json: fim inesperado", -1 },
 { "dif #2117",
   "import json\n"
   "post(json.parse(\"1 2\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: lixo depois do valor", -1 },
+  NULL, "TypeError: json: lixo depois do valor", -1 },
 { "dif #2118",
   "import json\n"
   "post(json.parse(\"1.5\"))\n"
@@ -11311,12 +11311,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"[1,\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: fim inesperado", -1 },
+  NULL, "TypeError: json: fim inesperado", -1 },
 { "dif #2121",
   "import json\n"
   "post(json.parse(\"[1] x\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: lixo depois do valor", -1 },
+  NULL, "TypeError: json: lixo depois do valor", -1 },
 { "dif #2122",
   "import json\n"
   "post(json.parse(\"[]\"))\n"
@@ -11331,7 +11331,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"lixo\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: valor invalido", -1 },
+  NULL, "TypeError: json: valor invalido", -1 },
 { "dif #2125",
   "import json\n"
   "post(json.parse(\"null\"))\n"
@@ -11346,12 +11346,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"{\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: chave precisa ser string", -1 },
+  NULL, "TypeError: json: chave precisa ser string", -1 },
 { "dif #2128",
   "import json\n"
   "post(json.parse(\"{1: 2}\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: json: chave precisa ser string", -1 },
+  NULL, "TypeError: json: chave precisa ser string", -1 },
 { "dif #2129",
   "import json\n"
   "post(json.parse(\"{\\\"n\\\": -1.5e2}\")[\"n\"])\n"
@@ -11361,12 +11361,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse())\n"
   "\n",
-  NULL, "SomeValueUnexpected: parse() espera 1 argumento(s)", -1 },
+  NULL, "TypeError: parse() espera 1 argumento(s)", -1 },
 { "dif #2131",
   "import json\n"
   "post(json.parse(1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: parse() espera str", -1 },
+  NULL, "TypeError: parse() espera str", -1 },
 { "dif #2132",
   "import json\n"
   "post(json.parse([1,2]))\n"
@@ -11548,7 +11548,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.findall(1, \"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: findall() espera str como padrao", -1 },
+  NULL, "TypeError: findall() espera str como padrao", -1 },
 { "dif #2163",
   "import regex\n"
   "post(regex.fullmatch(\"\\\\d+\", \"123\"), regex.fullmatch(\"\\\\d+\", \"a123\"))\n"
@@ -11559,17 +11559,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"(\", \"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: regex: faltou ')' (posicao 1)", -1 },
+  NULL, "TypeError: regex: faltou ')' (posicao 1)", -1 },
 { "dif #2165",
   "import regex\n"
   "post(regex.match(\"*a\", \"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: regex: quantificador sem alvo (posicao 0)", -1 },
+  NULL, "TypeError: regex: quantificador sem alvo (posicao 0)", -1 },
 { "dif #2166",
   "import regex\n"
   "post(regex.match(\"[a\", \"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: regex: classe nao fechada (posicao 2)", -1 },
+  NULL, "TypeError: regex: classe nao fechada (posicao 2)", -1 },
 { "dif #2167",
   "import regex\n"
   "post(regex.match(\"[a-z]+\", \"abC\"))\n"
@@ -11589,17 +11589,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"a\", 1))\n"
   "\n",
-  NULL, "SomeValueUnexpected: match() espera str", -1 },
+  NULL, "TypeError: match() espera str", -1 },
 { "dif #2171",
   "import regex\n"
   "post(regex.match(\"a\\\\1\", \"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: regex: referencia a grupo inexistente (posicao 3)", -1 },
+  NULL, "TypeError: regex: referencia a grupo inexistente (posicao 3)", -1 },
 { "dif #2172",
   "import regex\n"
   "post(regex.match(\"a{2,1}\", \"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: regex: {n,m} com m < n (posicao 6)", -1 },
+  NULL, "TypeError: regex: {n,m} com m < n (posicao 6)", -1 },
 { "dif #2173",
   "import regex\n"
   "post(regex.search(\"ção\", \"a ção b\"))\n"
@@ -11659,7 +11659,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.sub(\"a\"))\n"
   "\n",
-  NULL, "SomeValueUnexpected: sub() espera 3 ou 4 argumentos", -1 },
+  NULL, "TypeError: sub() espera 3 ou 4 argumentos", -1 },
 { "dif #2184",
   "import regex\n"
   "post(regex.sub(\"a\", \"b\", \"aaa\", count=2))\n"
@@ -11669,7 +11669,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "regex.compile(\"[a-\")\n"
   "\n",
-  NULL, "SomeValueUnexpected: regex: classe nao fechada (posicao 3)", -1 },
+  NULL, "TypeError: regex: classe nao fechada (posicao 3)", -1 },
 { "dif #2186",
   "import regex as rx\n"
   "post(rx.match(\"a+\", \"aaa\"))\n"

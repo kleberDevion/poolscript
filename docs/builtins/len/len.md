@@ -14,7 +14,7 @@ int
 
 ## Erros
 
-- **SomeValueUnexpected** — tipo sem tamanho (int, float, bool, Null)
+- **TypeError** — `int`, `flo`, `bool` e `Null` não têm tamanho
 
 ## Exemplos
 

@@ -89,7 +89,7 @@ const Caso CASOS_LIBS[] = {
  * Três decisões de API tomadas em 28/08 (notas/DECISOES-API.md), travadas aqui
  * porque o TIPO do erro é contrato: quem escreve `catch (X e)` depende dele. */
 { "divisao por zero tem tipo proprio, nao o balde geral",
-  /* I8: era `SomeValueUnexpected: divisão por zero: division by zero` — tipo que
+  /* I8: era `TypeError: divisão por zero: division by zero` — tipo que
    * não dizia nada sobre divisão, e mensagem duplicada em dois idiomas. */
   "try {\n"
   "    post(1 / 0)\n"

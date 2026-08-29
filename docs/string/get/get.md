@@ -14,7 +14,7 @@ valor | Null
 
 ## Erros
 
-- **SomeValueUnexpected** — JSON inválido
+- **TypeError** — a `str` não contém um JSON válido
 
 ## Exemplos
 

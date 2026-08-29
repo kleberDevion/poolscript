@@ -16,7 +16,7 @@ int
 
 ## Erros
 
-- **SomeValueUnexpected** — substring ausente (na faixa dada)
+- **ValueError** — a subcadeia não aparece no trecho pedido
 
 ## Exemplos
 

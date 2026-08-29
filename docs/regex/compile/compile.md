@@ -73,7 +73,7 @@ Erra **na hora do `compile`** (e não em cada uso), o que é a vantagem de
 compilar cedo:
 
 ```
-p = regex.compile("[a-")    // SomeValueUnexpected: classe [ ] nao fechada
+p = regex.compile("[a-")    // TypeError: classe [ ] nao fechada
 ```
 
 ---

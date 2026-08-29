@@ -14,7 +14,7 @@ str
 
 ## Erros
 
-- **SomeValueUnexpected** — chave/índice ausente
+- **TypeError** — a chave ou o índice citado no formato não existe
 
 ## Exemplos
 

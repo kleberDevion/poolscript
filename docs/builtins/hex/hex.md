@@ -14,7 +14,7 @@ str
 
 ## Erros
 
-- **SomeValueUnexpected** — não-inteiro
+- **TypeError** — o argumento não é `int`
 
 ## Exemplos
 

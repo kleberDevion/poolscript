@@ -14,7 +14,7 @@ int — a posição
 
 ## Erros
 
-- **SomeValueUnexpected** — o item não está na lista
+- **ValueError** — o item não está na lista
 
 ## Exemplos
 

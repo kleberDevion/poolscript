@@ -27,7 +27,7 @@ bytes.fromint(258, 4, "little") // b'\x02\x01\x00\x00'  — little-endian
 ## Erros
 
 - **AttributedValueError** — `n` não é inteiro, ou `length` não é inteiro.
-- **SomeValueUnexpected** — `n` negativo, `byteorder` inválido, ou `n` não cabe em `length` bytes.
+- **ValueError** — `n` negativo, `byteorder` inválido, ou `n` não cabe em `length` bytes.
 
 ```
 bytes.fromint(70000, 1)   // erro: 70000 não cabe em 1 byte(s)

@@ -35,7 +35,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `str` | `str(x)` | qualquer valor → texto de renderização (o mesmo que `post` imprime): `null`→`"null"`, `true`→`"True"`; listas/dicts recursivos. |
-| `int` | `int(x)` | → inteiro: string decimal, `flo` (**trunca** pra zero: `int(3.9)`→3), `bool`. `int()` sem argumento → `0`. String não-numérica → `SomeValueUnexpected`. |
+| `int` | `int(x)` | → inteiro: string decimal, `flo` (**trunca** pra zero: `int(3.9)`→3), `bool`. `int()` sem argumento → `0`. String não-numérica → `TypeError`. |
 | `flo` | `flo(x)` | → ponto flutuante: string numérica, `int` (`3`→`3.0`), `bool`. Lixo no fim da string é recusado (não converte "meio"). |
 | `bool` | `bool(x)` | verdade do valor: `0`, `0.0`, `""`, `[]`, `{}`, `null` são `False`; o resto `True`. |
 | `list` | `list(x)` | materializa em lista: `str`→caracteres (por codepoint), `dict`→chaves, `tup`→lista, `range`/gerador→drenados. `list()` sem arg → `[]`. |

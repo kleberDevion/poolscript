@@ -374,13 +374,12 @@ Tipos disponíveis:
 
 | Tipo | Quando ocorre |
 |---|---|
-| `SomeValueUnexpected` | o erro **geral** de valor/tipo — de longe o mais comum |
+| `TypeError` | o **tipo** está errado: `"a" - 1`, `len(5)`, aridade errada. O mais comum |
+| `ValueError` | o tipo está certo e o **valor** não serve: `int("abc")`, `max([])` |
 | `ZeroDivisionError` | divisão ou resto por zero |
 | `AttributedValueError` | `+` entre tipos que não somam (`"a" + 1`) |
 | `KeyError` | chave não existe no dict |
 | `IndexError` | índice inválido ao **escrever** (`l[99] = x`) |
-| `TypeError` | tipo errado, onde o motor consegue nomear o esperado |
-| `ValueError` | valor fora do domínio |
 | `FileNotFoundError` | arquivo não encontrado |
 | `IOError` / `OSError` | arquivo / sistema |
 | `NetworkError` | falha de conexão |

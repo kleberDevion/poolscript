@@ -27,7 +27,7 @@ bytes.get(b, -1)    // 67   — o último
 ## Erros
 
 - **AttributedValueError** — `b` não é bytes, ou `i` não é inteiro.
-- **SomeValueUnexpected** — índice fora do range.
+- **ValueError** — o índice está fora da faixa.
 
 ```
 bytes.get(bytes.new("ab"), 9)   // erro: índice 9 fora do range (0..1)

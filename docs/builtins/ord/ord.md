@@ -14,7 +14,7 @@ int
 
 ## Erros
 
-- **SomeValueUnexpected** — string com tamanho diferente de 1
+- **TypeError** — a `str` não tem exatamente 1 caractere
 
 ## Exemplos
 

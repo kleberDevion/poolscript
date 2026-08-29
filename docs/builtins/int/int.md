@@ -14,7 +14,7 @@ int
 
 ## Erros
 
-- **SomeValueUnexpected** — string que não é número
+- **ValueError** — a `str` não contém um número válido: `int("abc")`
 
 ## Exemplos
 

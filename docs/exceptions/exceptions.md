@@ -61,13 +61,22 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 
 ## Os tipos que o motor levanta
 
+> **Mudou em 29/08.** Havia um tipo chamado `SomeValueUnexpected` que cobria
+> **468** dos sítios de erro do motor, contra 3 de `TypeError`. Na prática
+> `catch (TypeError e)` era inútil: operação entre tipos, valor inválido,
+> divisão por zero e falha de conversão caíam todos no mesmo balde, e não dava
+> pra tratar um sem tratar os outros.
+>
+> Ele não existe mais. A divisão agora é a do Python: **`TypeError`** quando o
+> TIPO está errado, **`ValueError`** quando o tipo está certo e o VALOR não
+> serve.
+
 | tipo | quando acontece |
 |---|---|
-| `SomeValueUnexpected` | operação inválida de **valor/tipo**: `"a" - 1`, `int("a")`, argumento errado de builtin. É o erro **geral** de valor, e de longe o mais comum (468 pontos no motor). |
+| `TypeError` | **o tipo está errado**: `"a" - 1`, `sum(["a"])`, `len(5)`, `[1,2]["x"]`, aridade errada de método. É o mais comum. |
+| `ValueError` | **o tipo está certo e o valor não serve**: `int("abc")`, `"banana".index("zz")`, `max([])`, `chr(99999999)`. A divisão é a mesma do Python. |
 | `ZeroDivisionError` | divisão ou resto por zero: `1 / 0`, `1 % 0`, `1.5 % 0.0` |
 | `AttributedValueError` | `+` entre tipos que não somam: `"a" + 1`. A mensagem diz quais são: `'+' entre tipos incompativeis: str + int` |
-| `TypeError` | tipo errado onde o motor consegue nomear o esperado |
-| `ValueError` | valor fora do domínio da operação |
 | `IndexError` | índice inválido ao **escrever**: `l[99] = x`. Ler fora da faixa é outra coisa — ver a nota abaixo |
 | `NotImplementedError` | construção que o motor reconhece e ainda não executa |
 | `FileNotFoundError` | arquivo que não existe, quando o motor consegue distinguir de outra falha de I/O |

@@ -15,7 +15,7 @@ Null
 
 ## Erros
 
-- **SomeValueUnexpected** — primeiro argumento não é lista
+- **TypeError** — o primeiro argumento não é `list`
 
 ## Exemplos
 

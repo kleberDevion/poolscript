@@ -16,7 +16,7 @@ list
 
 ## Erros
 
-- **SomeValueUnexpected** — argumento não-inteiro
+- **TypeError** — o argumento não é `int`
 
 ## Exemplos
 

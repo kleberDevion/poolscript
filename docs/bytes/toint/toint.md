@@ -26,7 +26,7 @@ bytes.toint(bytes.fromint(258, 4, "little"), "little")   // 258
 ## Erros
 
 - **AttributedValueError** — o argumento não é bytes.
-- **SomeValueUnexpected** — `byteorder` inválido.
+- **TypeError** — `byteorder` inválido.
 
 > Nota: o inteiro da PoolScript é de 64 bits — use pra sequências de até 8 bytes.
 

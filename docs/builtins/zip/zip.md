@@ -14,7 +14,7 @@ list de tup
 
 ## Erros
 
-- **SomeValueUnexpected** — tipo não-iterável
+- **TypeError** — o valor não é percorrível (`int`, `flo`, `bool` e `Null` não são)
 
 ## Exemplos
 

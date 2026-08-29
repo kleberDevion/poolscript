@@ -14,7 +14,7 @@ str
 
 ## Erros
 
-- **SomeValueUnexpected** — fora da faixa unicode
+- **TypeError** — o número está fora da faixa Unicode (0 a 0x10FFFF)
 
 ## Exemplos
 

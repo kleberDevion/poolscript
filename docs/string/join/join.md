@@ -14,7 +14,7 @@ str
 
 ## Erros
 
-- **SomeValueUnexpected** — item não-string
+- **TypeError** — algum item da lista não é `str`
 
 ## Exemplos
 

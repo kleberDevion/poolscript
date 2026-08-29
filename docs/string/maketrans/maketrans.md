@@ -15,7 +15,7 @@ dict
 
 ## Erros
 
-- **SomeValueUnexpected** — tamanhos diferentes
+- **TypeError** — os dois argumentos têm tamanhos diferentes
 
 ## Exemplos
 

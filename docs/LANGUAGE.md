@@ -317,7 +317,7 @@ Regras (idênticas ao Python):
   `OutputUnexpectedValues`, com mensagem estilo Python ("valores
   insuficientes"/"valores demais para desempacotar").
 - Lado direito que não é lista/tupla/string (`a, b = 5`) levanta
-  `SomeValueUnexpected`.
+  `TypeError`.
 - Cada alvo (novo ou já existente no escopo) segue a mesma semântica da
   atribuição simples: cria se não existir, sobrescreve se já existir.
 
@@ -524,10 +524,12 @@ nenhum `catch` **não é sintaxe válida** (diferente do Python).
 ```
 try {
     x = 1 / 0
-} catch (SomeValueUnexpected e) {
-    post("erro tipado: " e)
+} catch (ZeroDivisionError e) {
+    post("divisao por zero:", e)
+} catch (TypeError e) {
+    post("tipo errado:", e)
 } catch (e) {
-    post("qualquer outro erro: " e)
+    post("qualquer outro erro:", e)
 } finally {
     post("sempre roda")
 }
@@ -1118,7 +1120,9 @@ Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
 |---|---|
 | `AttributedValueError` | Valor incompatível atribuído a variável tipada (ex.: `str x = 10`) |
 | `OutputUnexpectedValues` | Redeclaração no mesmo escopo; aridade errada em unpacking |
-| `SomeValueUnexpected` | Operação inválida entre tipos, divisão por zero, valor inválido, RHS não-iterável em unpacking |
+| `TypeError` | Tipo errado: operação entre tipos incompatíveis, aridade errada, RHS não-iterável em unpacking |
+| `ValueError` | Tipo certo, valor que não serve: `int("abc")`, `max([])`, item ausente na lista |
+| `ZeroDivisionError` | Divisão ou resto por zero |
 | `IndexError` | Índice fora do intervalo, ao ler OU escrever |
 | `KeyError` | Chave que não existe no dict |
 | `ConversionError` | Conversão automática de tipo falhou (ex.: `int x = "abc"`) |

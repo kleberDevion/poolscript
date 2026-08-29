@@ -15,7 +15,7 @@ list
 
 ## Erros
 
-- **SomeValueUnexpected** — fn não é chamável
+- **TypeError** — fn não é chamável
 
 ## Exemplos
 

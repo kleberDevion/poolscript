@@ -14,7 +14,7 @@ Null
 
 ## Erros
 
-- **SomeValueUnexpected** — não-número
+- **TypeError** — o argumento não é `int` nem `flo`
 
 ## Bordas
 

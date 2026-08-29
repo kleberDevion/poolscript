@@ -14,7 +14,7 @@ int | flo
 
 ## Erros
 
-- **SomeValueUnexpected** — item não-numérico
+- **TypeError** — algum item da lista não é `int` nem `flo`
 
 ## Exemplos
 

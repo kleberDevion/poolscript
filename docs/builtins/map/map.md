@@ -15,7 +15,7 @@ list
 
 ## Erros
 
-- **SomeValueUnexpected** — fn não é chamável (ex.: `map(l, str)` — nome nu de tipo não é função)
+- **TypeError** — fn não é chamável (ex.: `map(l, str)` — nome nu de tipo não é função)
 
 ## Exemplos
 

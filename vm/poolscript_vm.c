@@ -1358,7 +1358,7 @@ static int chave_hashavel(VM *vm, const Value *k)
         snprintf(vm->erro, sizeof(vm->erro),
                  "tipo nao pode ser chave de dict (é mutável): %s",
                  k->as.obj->type == OBJ_LIST ? "list" : "dict");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     return 0;
@@ -3011,7 +3011,7 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
 {
     if (n != 1) {
         snprintf(vm->erro, sizeof(vm->erro), "len() espera 1 argumento");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     Value v = args[0];
@@ -3023,7 +3023,7 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
     if (EH_SEQ(v))    { *out = MK_INT(COMO_LIST(v)->len);   return 0; }
     if (EH_DICT(v))   { *out = MK_INT(COMO_DICT(v)->count); return 0; }
     snprintf(vm->erro, sizeof(vm->erro), "len() nao se aplica a este tipo");
-    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
     return -1;
 }
 
@@ -3036,7 +3036,7 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
 } while (0)
 
 #define EXIGE_ARGS(vm, nome, quant) do { \
-    if (n != (quant)) BERRO(vm, "SomeValueUnexpected", "%s() espera %d argumento(s)", nome, quant); \
+    if (n != (quant)) BERRO(vm, "TypeError", "%s() espera %d argumento(s)", nome, quant); \
 } while (0)
 
 /* Constrói uma PSString a partir de um buffer C. Centraliza o "sem memória",
@@ -3095,9 +3095,9 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
         /* inf/NaN não têm inteiro correspondente: o cast em C é comportamento
          * indefinido e devolvia INT64_MIN calado. Erro, como no Python. */
         if (isnan(v.as.d))
-            BERRO(vm, "SomeValueUnexpected", "valor invalido: int() nao converte NaN");
+            BERRO(vm, "ValueError", "valor invalido: int() nao converte NaN");
         if (isinf(v.as.d))
-            BERRO(vm, "SomeValueUnexpected", "valor invalido: int() nao converte infinito");
+            BERRO(vm, "ValueError", "valor invalido: int() nao converte infinito");
         /* Fora da faixa do int64 o cast também é UB: vai de bignum. */
         if (v.as.d >= 9223372036854775808.0 || v.as.d <= -9223372036854775809.0) {
             mpz_t z; mpz_init(z);
@@ -3120,18 +3120,18 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
             mpz_t z; mpz_init(z);
             if (mpz_set_str(z, buf, 10) != 0) {
                 mpz_clear(z);
-                BERRO(vm, "SomeValueUnexpected", "valor invalido: nao da pra converter '%s' em int", s->chars);
+                BERRO(vm, "ValueError", "valor invalido: nao da pra converter '%s' em int", s->chars);
             }
             *out = mk_from_mpz(vm, z);
             mpz_clear(z);
             return 0;
         }
         if (rc != 0)
-            BERRO(vm, "SomeValueUnexpected", "valor invalido: nao da pra converter '%s' em int", s->chars);
+            BERRO(vm, "ValueError", "valor invalido: nao da pra converter '%s' em int", s->chars);
         *out = MK_INT(r);
         return 0;
     }
-    BERRO(vm, "SomeValueUnexpected", "operacao invalida: int() nao aceita este tipo");
+    BERRO(vm, "TypeError", "operacao invalida: int() nao aceita este tipo");
 }
 
 /* Texto -> double, com espaço em volta permitido e lixo no fim recusado.
@@ -3166,11 +3166,11 @@ static int nativa_flo(VM *vm, Value *args, int n, Value *out)
          * for espaço, senão "1.5abc" viraria 1.5 em silêncio. */
         while (fim && *fim && isspace((unsigned char)*fim)) fim++;
         if (!fim || fim == s->chars || *fim)
-            BERRO(vm, "SomeValueUnexpected", "valor invalido: nao da pra converter '%s' em flo", s->chars);
+            BERRO(vm, "ValueError", "valor invalido: nao da pra converter '%s' em flo", s->chars);
         *out = MK_FLOAT(d);
         return 0;
     }
-    BERRO(vm, "SomeValueUnexpected", "operacao invalida: flo() nao aceita este tipo");
+    BERRO(vm, "TypeError", "operacao invalida: flo() nao aceita este tipo");
 }
 
 static int nativa_bool(VM *vm, Value *args, int n, Value *out)
@@ -3291,12 +3291,12 @@ static int nativa_abs(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     if (v.t == V_FLOAT) { *out = MK_FLOAT(v.as.d < 0 ? -v.as.d : v.as.d); return 0; }
-    BERRO(vm, "SomeValueUnexpected", "operacao invalida: abs() so aceita numero");
+    BERRO(vm, "TypeError", "operacao invalida: abs() so aceita numero");
 }
 
 static int nativa_round(VM *vm, Value *args, int n, Value *out)
 {
-    if (n != 1 && n != 2) BERRO(vm, "SomeValueUnexpected", "round() espera 1 ou 2 argumentos");
+    if (n != 1 && n != 2) BERRO(vm, "TypeError", "round() espera 1 ou 2 argumentos");
     Value v = args[0];
     if (v.t == V_INT || v.t == V_BOOL) {
         /* int já está arredondado; com casas, continua int (igual ao Python) */
@@ -3304,12 +3304,12 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     if (EH_BIGINT(v)) { *out = v; return 0; }   /* já é inteiro */
-    if (v.t != V_FLOAT) BERRO(vm, "SomeValueUnexpected", "operacao invalida: round() so aceita numero");
+    if (v.t != V_FLOAT) BERRO(vm, "TypeError", "operacao invalida: round() so aceita numero");
     if (n == 1) {
         if (isnan(v.as.d))
-            BERRO(vm, "SomeValueUnexpected", "valor invalido: round() nao converte NaN");
+            BERRO(vm, "ValueError", "valor invalido: round() nao converte NaN");
         if (isinf(v.as.d))
-            BERRO(vm, "SomeValueUnexpected", "valor invalido: round() nao converte infinito");
+            BERRO(vm, "ValueError", "valor invalido: round() nao converte infinito");
         double r = nearbyint(v.as.d);
         if (r >= 9223372036854775808.0 || r <= -9223372036854775809.0) {
             mpz_t z; mpz_init(z);
@@ -3323,7 +3323,7 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
         *out = MK_INT((int64_t)r);
         return 0;
     }
-    if (args[1].t != V_INT) BERRO(vm, "SomeValueUnexpected", "casas de round() precisam ser int");
+    if (args[1].t != V_INT) BERRO(vm, "TypeError", "casas de round() precisam ser int");
     int64_t casas = args[1].as.i;
     if (casas < 0)  casas = 0;
     if (casas > 30) casas = 30;
@@ -3342,7 +3342,7 @@ static int base_para_texto(VM *vm, Value *args, int n, Value *out,
     EXIGE_ARGS(vm, nome, 1);
     Value v = args[0];
     if (v.t != V_INT && v.t != V_BOOL)
-        BERRO(vm, "SomeValueUnexpected", "operacao invalida: %s() so aceita int", nome);
+        BERRO(vm, "TypeError", "operacao invalida: %s() so aceita int", nome);
     int64_t x = (v.t == V_BOOL) ? (v.as.b ? 1 : 0) : v.as.i;
     int neg = x < 0;
     uint64_t u = neg ? (uint64_t)(-(x + 1)) + 1 : (uint64_t)x;   /* sem estourar em INT64_MIN */
@@ -3367,7 +3367,7 @@ static int nativa_oct(VM *vm, Value *a, int n, Value *o) { return base_para_text
 static int nativa_ord(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "ord", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: ord() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "operacao invalida: ord() espera str");
     PSString *s = COMO_STRING(args[0]);
     const unsigned char *b = (const unsigned char *)s->chars;
     int len = s->len, usados = 0;
@@ -3376,12 +3376,12 @@ static int nativa_ord(VM *vm, Value *args, int n, Value *out)
     else if (len >= 2 && (b[0] & 0xE0) == 0xC0)         { cp = b[0] & 0x1F;        usados = 2; }
     else if (len >= 3 && (b[0] & 0xF0) == 0xE0)         { cp = b[0] & 0x0F;        usados = 3; }
     else if (len >= 4 && (b[0] & 0xF8) == 0xF0)         { cp = b[0] & 0x07;        usados = 4; }
-    else BERRO(vm, "SomeValueUnexpected", "ord() espera um caractere");
+    else BERRO(vm, "TypeError", "ord() espera um caractere");
     for (int i = 1; i < usados; i++) {
-        if ((b[i] & 0xC0) != 0x80) BERRO(vm, "SomeValueUnexpected", "ord() recebeu UTF-8 invalido");
+        if ((b[i] & 0xC0) != 0x80) BERRO(vm, "TypeError", "ord() recebeu UTF-8 invalido");
         cp = (cp << 6) | (b[i] & 0x3F);
     }
-    if (usados != len) BERRO(vm, "SomeValueUnexpected", "operacao invalida: ord() espera UM caractere");
+    if (usados != len) BERRO(vm, "TypeError", "operacao invalida: ord() espera UM caractere");
     *out = MK_INT(cp);
     return 0;
 }
@@ -3391,9 +3391,9 @@ static int nativa_chr(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "chr", 1);
     /* aceita bool como int (true->1, false->0), como o interp */
     if (args[0].t != V_INT && args[0].t != V_BOOL)
-        BERRO(vm, "SomeValueUnexpected", "operacao invalida: chr() espera int");
+        BERRO(vm, "TypeError", "operacao invalida: chr() espera int");
     int64_t cp = (args[0].t == V_BOOL) ? (args[0].as.b ? 1 : 0) : args[0].as.i;
-    if (cp < 0 || cp > 0x10FFFF) BERRO(vm, "SomeValueUnexpected", "valor invalido: chr() fora do intervalo Unicode");
+    if (cp < 0 || cp > 0x10FFFF) BERRO(vm, "ValueError", "valor invalido: chr() fora do intervalo Unicode");
     char b[4];
     int k = 0;
     if (cp < 0x80) b[k++] = (char)cp;
@@ -3549,7 +3549,7 @@ static int num_de_range(VM *vm, Value v, int64_t *out)
         long long val = strtoll(s, &end, 10);
         while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') end++;
         if (end == s || *end != '\0') {
-            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             snprintf(vm->erro, sizeof(vm->erro),
                      "operacao invalida: range() nao aceita esse texto");
             return -1;
@@ -3557,14 +3557,14 @@ static int num_de_range(VM *vm, Value v, int64_t *out)
         *out = (int64_t)val;
         return 0;
     }
-    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
     snprintf(vm->erro, sizeof(vm->erro), "operacao invalida: range() so aceita numero");
     return -1;
 }
 
 static int nativa_range(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "range() espera de 1 a 3 argumentos");
+    if (n < 1 || n > 3) BERRO(vm, "TypeError", "range() espera de 1 a 3 argumentos");
     int64_t lim[3] = { 0, 0, 1 };
     for (int i = 0; i < n; i++) {
         if (args[i].t == V_INT)       lim[i] = args[i].as.i;
@@ -3578,15 +3578,15 @@ static int nativa_range(VM *vm, Value *args, int n, Value *out)
             long long val = strtoll(s, &end, 10);
             while (*end == ' ' || *end == '\t' || *end == '\n' || *end == '\r') end++;
             if (end == s || *end != '\0')
-                BERRO(vm, "SomeValueUnexpected", "operacao invalida: range() nao aceita esse texto");
+                BERRO(vm, "TypeError", "operacao invalida: range() nao aceita esse texto");
             lim[i] = (int64_t)val;
         }
-        else BERRO(vm, "SomeValueUnexpected", "operacao invalida: range() so aceita numero");
+        else BERRO(vm, "TypeError", "operacao invalida: range() so aceita numero");
     }
     int64_t ini = (n == 1) ? 0 : lim[0];
     int64_t fim = (n == 1) ? lim[0] : lim[1];
     int64_t passo = (n == 3) ? lim[2] : 1;
-    if (passo == 0) BERRO(vm, "SomeValueUnexpected", "valor invalido: passo de range() nao pode ser 0");
+    if (passo == 0) BERRO(vm, "ValueError", "valor invalido: passo de range() nao pode ser 0");
     int64_t quant = (passo > 0)
         ? (fim > ini ? (fim - ini + passo - 1) / passo : 0)
         : (fim < ini ? (ini - fim - passo - 1) / (-passo) : 0);
@@ -3635,7 +3635,7 @@ static int drena_gerador(VM *vm, Value g, Value *out)
  * apareceu. Nenhum dos 7903 casos fixos tinha topado com isso. */
 static int nativa_tup(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "tup() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "tup() espera 0 ou 1 argumento");
     PSList *l;
     if (n == 0) {
         l = lista_com_cap(vm, 0, OBJ_TUPLE);
@@ -3653,7 +3653,7 @@ static int nativa_tup(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     int tam = iteravel_tam(&args[0]);
-    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: tup() nao itera este tipo");
+    if (tam < 0) BERRO(vm, "TypeError", "operacao invalida: tup() nao itera este tipo");
     l = lista_com_cap(vm, tam, OBJ_TUPLE);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em tup()");
     /* no `out` ANTES do laço: se alocar um item disparar o GC, ela precisa
@@ -3675,7 +3675,7 @@ static int nativa_tup(VM *vm, Value *args, int n, Value *out)
  * essas três são as únicas sem ambiguidade, e são as do Python. */
 static int nativa_dict(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "dict() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "dict() espera 0 ou 1 argumento");
     PSDict *d = novo_dict(vm, 8);
     if (!d) BERRO(vm, "MemoryError", "sem memoria em dict()");
     *out = MK_OBJ(d);                     /* alcançável antes de qualquer alocação */
@@ -3696,12 +3696,12 @@ static int nativa_dict(VM *vm, Value *args, int n, Value *out)
     }
 
     int tam = iteravel_tam(&args[0]);
-    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: dict() nao itera este tipo");
+    if (tam < 0) BERRO(vm, "TypeError", "operacao invalida: dict() nao itera este tipo");
     for (int i = 0; i < tam; i++) {
         Value par;
         if (iteravel_item(vm, &args[0], i, &par) != 0) BERRO(vm, "MemoryError", "sem memoria em dict()");
         if (!EH_SEQ(par) || iteravel_tam(&par) != 2)
-            BERRO(vm, "SomeValueUnexpected", "dict() espera pares [chave, valor]");
+            BERRO(vm, "TypeError", "dict() espera pares [chave, valor]");
         Value k, v;
         if (iteravel_item(vm, &par, 0, &k) != 0 || iteravel_item(vm, &par, 1, &v) != 0)
             BERRO(vm, "MemoryError", "sem memoria em dict()");
@@ -3712,7 +3712,7 @@ static int nativa_dict(VM *vm, Value *args, int n, Value *out)
 
 static int nativa_list(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "list() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "list() espera 0 ou 1 argumento");
     if (n == 1 && EH_GERADOR(args[0])) return drena_gerador(vm, args[0], out);
     PSList *l;
     if (n == 0) {
@@ -3722,7 +3722,7 @@ static int nativa_list(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     int tam = iteravel_tam(&args[0]);
-    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: list() nao itera este tipo");
+    if (tam < 0) BERRO(vm, "TypeError", "operacao invalida: list() nao itera este tipo");
     l = lista_com_cap(vm, tam, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em list()");
     /* a lista entra no `out` antes do laço: se alocar um caractere disparar
@@ -3755,8 +3755,8 @@ static FnNativa tipo_conversor(int32_t idx)
 
 static int nativa_sum(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "sum() espera 1 ou 2 argumentos");
-    if (!EH_SEQ(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() espera lista");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "sum() espera 1 ou 2 argumentos");
+    if (!EH_SEQ(args[0])) BERRO(vm, "TypeError", "operacao invalida: sum() espera lista");
     PSList *l = COMO_LIST(args[0]);
     double  sd = 0;
     int flutuou = 0;
@@ -3769,7 +3769,7 @@ static int nativa_sum(VM *vm, Value *args, int n, Value *out)
         else if (s.t == V_BOOL)  mpz_set_si(si, s.as.b ? 1 : 0);
         else if (EH_BIGINT(s))   mpz_set(si, COMO_BIGINT(s)->v);
         else if (s.t == V_FLOAT) { sd = s.as.d; flutuou = 1; }
-        else { mpz_clear(si); BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() start deve ser numero"); }
+        else { mpz_clear(si); BERRO(vm, "TypeError", "operacao invalida: sum() start deve ser numero"); }
     }
     for (int i = 0; i < l->len; i++) {
         Value v = l->itens[i];
@@ -3781,7 +3781,7 @@ static int nativa_sum(VM *vm, Value *args, int n, Value *out)
             mpz_clear(z);
         }
         else if (v.t == V_FLOAT) { sd += v.as.d; flutuou = 1; }
-        else { mpz_clear(si); BERRO(vm, "SomeValueUnexpected", "operacao invalida: sum() so soma numero"); }
+        else { mpz_clear(si); BERRO(vm, "TypeError", "operacao invalida: sum() so soma numero"); }
     }
     *out = flutuou ? MK_FLOAT(sd + mpz_get_d(si)) : mk_from_mpz(vm, si);
     mpz_clear(si);
@@ -3791,20 +3791,20 @@ static int nativa_sum(VM *vm, Value *args, int n, Value *out)
 /* min/max: com um argumento itera; com vários compara os próprios. */
 static int extremo(VM *vm, Value *args, int n, Value *out, const char *nome, int maior)
 {
-    if (n < 1) BERRO(vm, "SomeValueUnexpected", "%s() espera pelo menos 1 argumento", nome);
+    if (n < 1) BERRO(vm, "TypeError", "%s() espera pelo menos 1 argumento", nome);
     if (n == 1) {
         /* um argumento: itera. Vale string e dict, não só lista. */
         int tam = iteravel_tam(&args[0]);
         if (tam < 0)
-            BERRO(vm, "SomeValueUnexpected", "operacao invalida: %s() espera iteravel ou varios valores", nome);
-        if (tam == 0) BERRO(vm, "SomeValueUnexpected", "valor invalido: %s() de sequencia vazia", nome);
+            BERRO(vm, "TypeError", "operacao invalida: %s() espera iteravel ou varios valores", nome);
+        if (tam == 0) BERRO(vm, "ValueError", "valor invalido: %s() de sequencia vazia", nome);
         Value melhor;
         if (iteravel_item(vm, &args[0], 0, &melhor) != 0) BERRO(vm, "MemoryError", "sem memoria");
         for (int i = 1; i < tam; i++) {
             Value item;
             if (iteravel_item(vm, &args[0], i, &item) != 0) BERRO(vm, "MemoryError", "sem memoria");
             int c = compara_valores(&item, &melhor);
-            if (c == -2) BERRO(vm, "SomeValueUnexpected", "operacao invalida: %s() entre tipos incompativeis", nome);
+            if (c == -2) BERRO(vm, "TypeError", "operacao invalida: %s() entre tipos incompativeis", nome);
             if (maior ? (c > 0) : (c < 0)) melhor = item;
         }
         *out = melhor;
@@ -3813,7 +3813,7 @@ static int extremo(VM *vm, Value *args, int n, Value *out, const char *nome, int
     Value melhor = args[0];
     for (int i = 1; i < n; i++) {
         int c = compara_valores(&args[i], &melhor);
-        if (c == -2) BERRO(vm, "SomeValueUnexpected", "operacao invalida: %s() entre tipos incompativeis", nome);
+        if (c == -2) BERRO(vm, "TypeError", "operacao invalida: %s() entre tipos incompativeis", nome);
         if (maior ? (c > 0) : (c < 0)) melhor = args[i];
     }
     *out = melhor;
@@ -3827,7 +3827,7 @@ static int nativa_sorted(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "sorted", 1);
     int tam = iteravel_tam(&args[0]);
-    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: sorted() nao itera este tipo");
+    if (tam < 0) BERRO(vm, "TypeError", "operacao invalida: sorted() nao itera este tipo");
     PSList *l = lista_com_cap(vm, tam, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em sorted()");
     *out = MK_OBJ(l);
@@ -3844,7 +3844,7 @@ static int nativa_sorted(VM *vm, Value *args, int n, Value *out)
         int j = i - 1;
         while (j >= 0) {
             int c = compara_valores(&l->itens[j], &chave);
-            if (c == -2) BERRO(vm, "SomeValueUnexpected", "operacao invalida: sorted() entre tipos incompativeis");
+            if (c == -2) BERRO(vm, "TypeError", "operacao invalida: sorted() entre tipos incompativeis");
             if (c <= 0) break;
             l->itens[j + 1] = l->itens[j];
             j--;
@@ -3858,7 +3858,7 @@ static int nativa_reversed(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "reversed", 1);
     int tam = iteravel_tam(&args[0]);
-    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: reversed() nao itera este tipo");
+    if (tam < 0) BERRO(vm, "TypeError", "operacao invalida: reversed() nao itera este tipo");
     PSList *l = lista_com_cap(vm, tam, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em reversed()");
     *out = MK_OBJ(l);
@@ -3875,7 +3875,7 @@ static int nativa_enumerate(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "enumerate", 1);
     int tam = iteravel_tam(&args[0]);
-    if (tam < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: enumerate() nao itera este tipo");
+    if (tam < 0) BERRO(vm, "TypeError", "operacao invalida: enumerate() nao itera este tipo");
     PSList *l = lista_com_cap(vm, tam, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em enumerate()");
     *out = MK_OBJ(l);
@@ -3899,7 +3899,7 @@ static int nativa_zip(VM *vm, Value *args, int n, Value *out)
     int menor = 0;
     for (int i = 0; i < n; i++) {
         int t = iteravel_tam(&args[i]);
-        if (t < 0) BERRO(vm, "SomeValueUnexpected", "operacao invalida: zip() nao itera este tipo");
+        if (t < 0) BERRO(vm, "TypeError", "operacao invalida: zip() nao itera este tipo");
         if (i == 0 || t < menor) menor = t;
     }
     PSList *l = lista_com_cap(vm, menor, OBJ_LIST);
@@ -3937,7 +3937,7 @@ static int cresce_lista(VM *vm, PSList *l)
 static int nativa_add_end(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "addEnd", 2);
-    if (!EH_LIST(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: addEnd() espera lista");
+    if (!EH_LIST(args[0])) BERRO(vm, "TypeError", "operacao invalida: addEnd() espera lista");
     PSList *l = COMO_LIST(args[0]);
     if (cresce_lista(vm, l) != 0) BERRO(vm, "MemoryError", "sem memoria em addEnd()");
     l->itens[l->len++] = args[1];
@@ -3948,7 +3948,7 @@ static int nativa_add_end(VM *vm, Value *args, int n, Value *out)
 static int nativa_add_start(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "addStart", 2);
-    if (!EH_LIST(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: addStart() espera lista");
+    if (!EH_LIST(args[0])) BERRO(vm, "TypeError", "operacao invalida: addStart() espera lista");
     PSList *l = COMO_LIST(args[0]);
     if (cresce_lista(vm, l) != 0) BERRO(vm, "MemoryError", "sem memoria em addStart()");
     memmove(l->itens + 1, l->itens, sizeof(Value) * (size_t)l->len);
@@ -3961,7 +3961,7 @@ static int nativa_add_start(VM *vm, Value *args, int n, Value *out)
 static int nativa_remove_end(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "removeEnd", 1);
-    if (!EH_LIST(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: removeEnd() espera lista");
+    if (!EH_LIST(args[0])) BERRO(vm, "TypeError", "operacao invalida: removeEnd() espera lista");
     PSList *l = COMO_LIST(args[0]);
     if (l->len == 0) { *out = MK_NULL(); return 0; }
     *out = l->itens[--l->len];
@@ -3971,7 +3971,7 @@ static int nativa_remove_end(VM *vm, Value *args, int n, Value *out)
 static int nativa_remove_start(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "removeStart", 1);
-    if (!EH_LIST(args[0])) BERRO(vm, "SomeValueUnexpected", "operacao invalida: removeStart() espera lista");
+    if (!EH_LIST(args[0])) BERRO(vm, "TypeError", "operacao invalida: removeStart() espera lista");
     PSList *l = COMO_LIST(args[0]);
     if (l->len == 0) { *out = MK_NULL(); return 0; }
     *out = l->itens[0];
@@ -4240,7 +4240,7 @@ typedef struct { const char *nome; FnMetodo fn; const char *params; } MetodoNat;
 } while (0)
 
 #define ARGS_MET(vm, nome, quant) do { \
-    if (n != (quant)) MERRO(vm, "SomeValueUnexpected", "%s() espera %d argumento(s)", nome, quant); \
+    if (n != (quant)) MERRO(vm, "TypeError", "%s() espera %d argumento(s)", nome, quant); \
 } while (0)
 
 /* Entrega o SBuf como PSString, sempre liberando o buffer. */
@@ -4258,7 +4258,7 @@ static int devolve_sbuf(VM *vm, SBuf *s, Value *out)
 
 static int exige_str(VM *vm, Value v, const char *quem, PSString **out)
 {
-    if (!EH_STRING(v)) MERRO(vm, "SomeValueUnexpected", "%s() espera str", quem);
+    if (!EH_STRING(v)) MERRO(vm, "TypeError", "%s() espera str", quem);
     *out = COMO_STRING(v);
     return 0;
 }
@@ -4266,7 +4266,7 @@ static int exige_str(VM *vm, Value v, const char *quem, PSString **out)
 /* ── caixa ──────────────────────────────────────────────────────────────── */
 static int met_caixa(VM *vm, Value alvo, int n, Value *out, const char *quem, int modo)
 {
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "%s() nao aceita argumento", quem);
+    if (n != 0) MERRO(vm, "TypeError", "%s() nao aceita argumento", quem);
     PSString *s = COMO_STRING(alvo);
     SBUF_AUTO b = {0};
     int inicio_palavra = 1;
@@ -4348,7 +4348,7 @@ static int no_conjunto(const char *set, int slen, uint32_t cp)
 static int met_apara(VM *vm, Value alvo, Value *args, int n, Value *out,
                      const char *quem, int esq, int dir)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "%s() espera 0 ou 1 argumento", quem);
+    if (n > 1) MERRO(vm, "TypeError", "%s() espera 0 ou 1 argumento", quem);
     PSString *s = COMO_STRING(alvo);
     const char *set = NULL;
     int slen = 0;
@@ -4462,14 +4462,14 @@ static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem
     int64_t total = utf8_conta(s->chars, s->len);
     int64_t i0 = 0, i1 = total;
     if (n >= 2 && args[1].t != V_NULL) {
-        if (args[1].t != V_INT) MERRO(vm, "SomeValueUnexpected", "%s(): inicio precisa ser int", quem);
+        if (args[1].t != V_INT) MERRO(vm, "TypeError", "%s(): inicio precisa ser int", quem);
         i0 = args[1].as.i;
         if (i0 < 0) i0 += total;
         if (i0 < 0) i0 = 0;
         if (i0 > total) { *b0 = s->len; *b1 = s->len - 1; return 0; }
     }
     if (n >= 3 && args[2].t != V_NULL) {
-        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "%s(): fim precisa ser int", quem);
+        if (args[2].t != V_INT) MERRO(vm, "TypeError", "%s(): fim precisa ser int", quem);
         i1 = args[2].as.i;
         if (i1 < 0) i1 += total;
         if (i1 < 0) i1 = 0;
@@ -4484,7 +4484,7 @@ static int met_busca(VM *vm, Value alvo, Value *args, int n, Value *out,
                      const char *quem, int reverso, int levanta)
 {
     if (n < 1 || n > 3)
-        MERRO(vm, "SomeValueUnexpected", "%s() espera de 1 a 3 argumentos (sub, inicio, fim)", quem);
+        MERRO(vm, "TypeError", "%s() espera de 1 a 3 argumentos (sub, inicio, fim)", quem);
     PSString *s = COMO_STRING(alvo), *sub;
     if (exige_str(vm, args[0], quem, &sub) != 0) return -1;
     int b0 = 0, b1 = s->len;
@@ -4503,7 +4503,7 @@ static int met_busca(VM *vm, Value alvo, Value *args, int n, Value *out,
         if (achou >= 0) achou += b0;
     }
     if (achou < 0) {
-        if (levanta) MERRO(vm, "SomeValueUnexpected", "valor invalido: subcadeia nao encontrada");
+        if (levanta) MERRO(vm, "ValueError", "valor invalido: subcadeia nao encontrada");
         *out = MK_INT(-1);
         return 0;
     }
@@ -4519,7 +4519,7 @@ static int met_rindex(VM *v, Value a, Value *g, int n, Value *o) { return met_bu
 static int met_count(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3)
-        MERRO(vm, "SomeValueUnexpected", "count() espera de 1 a 3 argumentos (sub, inicio, fim)");
+        MERRO(vm, "TypeError", "count() espera de 1 a 3 argumentos (sub, inicio, fim)");
     PSString *s = COMO_STRING(alvo), *sub;
     if (exige_str(vm, args[0], "count", &sub) != 0) return -1;
     int b0 = 0, b1 = s->len;
@@ -4539,7 +4539,7 @@ static int met_count(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "len() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "len() nao aceita argumento");
     PSString *s = COMO_STRING(alvo);
     *out = MK_INT(utf8_conta(s->chars, s->len));
     return 0;
@@ -4548,7 +4548,7 @@ static int met_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* ── testes de conteúdo ─────────────────────────────────────────────────── */
 static int met_teste(VM *vm, Value alvo, int n, Value *out, const char *quem, int qual)
 {
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "%s() nao aceita argumento", quem);
+    if (n != 0) MERRO(vm, "TypeError", "%s() nao aceita argumento", quem);
     PSString *s = COMO_STRING(alvo);
     /* Vazia: `isascii`/`isprintable` são True (nada viola a regra); os
      * demais pedem "pelo menos um da classe", então dão False. */
@@ -4610,16 +4610,16 @@ static int met_isprintable(VM *v, Value a, Value *g, int n, Value *o){ (void)g; 
  * vazio. São regras diferentes de propósito — é o que o Python faz. */
 static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 2) MERRO(vm, "SomeValueUnexpected", "split() espera ate 2 argumentos");
+    if (n > 2) MERRO(vm, "TypeError", "split() espera ate 2 argumentos");
     PSString *s = COMO_STRING(alvo);
     PSString *sep = NULL;
     if (n >= 1 && args[0].t != V_NULL) {
         if (exige_str(vm, args[0], "split", &sep) != 0) return -1;
-        if (sep->len == 0) MERRO(vm, "SomeValueUnexpected", "valor invalido: separador vazio em split()");
+        if (sep->len == 0) MERRO(vm, "ValueError", "valor invalido: separador vazio em split()");
     }
     int64_t limite = -1;
     if (n == 2) {
-        if (args[1].t != V_INT) MERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
+        if (args[1].t != V_INT) MERRO(vm, "TypeError", "maxsplit de split() precisa ser int");
         limite = args[1].as.i;
     }
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
@@ -4671,16 +4671,16 @@ static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
  * DIREITA — `"a,b,c".rsplit(",", 1)` = ["a,b", "c"]. */
 static int met_rsplit(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 2) MERRO(vm, "SomeValueUnexpected", "rsplit() espera ate 2 argumentos");
+    if (n > 2) MERRO(vm, "TypeError", "rsplit() espera ate 2 argumentos");
     int64_t limite = (n == 2 && args[1].t == V_INT) ? args[1].as.i : -1;
     /* sem limite (ou negativo) a direção não importa — delega ao split */
     if (limite < 0) return met_split(vm, alvo, args, n, out);
     if (n >= 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
-        MERRO(vm, "SomeValueUnexpected", "rsplit() espera str no separador");
+        MERRO(vm, "TypeError", "rsplit() espera str no separador");
 
     PSString *s = COMO_STRING(alvo);
     PSString *sep = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0]) : NULL;
-    if (sep && sep->len == 0) MERRO(vm, "SomeValueUnexpected", "valor invalido: separador vazio em rsplit()");
+    if (sep && sep->len == 0) MERRO(vm, "ValueError", "valor invalido: separador vazio em rsplit()");
 
     /* acha os cortes da direita pra esquerda, no máximo `limite` */
     int cortes[256]; int nc = 0;
@@ -4743,7 +4743,7 @@ static int met_rsplit(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_splitlines(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "splitlines() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "splitlines() nao aceita argumento");
     PSString *s = COMO_STRING(alvo);
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) MERRO(vm, "MemoryError", "sem memoria em splitlines()");
@@ -4771,11 +4771,11 @@ static int met_join(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "join", 1);
     PSString *sep = COMO_STRING(alvo);
-    if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "join() espera uma lista");
+    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "join() espera uma lista");
     PSList *l = COMO_LIST(args[0]);
     SBUF_AUTO b = {0};
     for (int i = 0; i < l->len; i++) {
-        if (!EH_STRING(l->itens[i])) { MERRO(vm, "SomeValueUnexpected", "join() so junta str"); }
+        if (!EH_STRING(l->itens[i])) { MERRO(vm, "TypeError", "join() so junta str"); }
         if (i && sb_bytes(&b, sep->chars, sep->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
         PSString *x = COMO_STRING(l->itens[i]);
         if (sb_bytes(&b, x->chars, x->len) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
@@ -4796,7 +4796,7 @@ static int met_replace_lista(VM *vm, Value alvo, PSList *alvos, Value novo, Valu
     Value atual = alvo;
     if (fixa_raiz(vm, atual) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
     for (int i = 0; i < alvos->len; i++) {
-        if (!EH_STRING(alvos->itens[i])) { vm->sp--; MERRO(vm, "SomeValueUnexpected", "replace() espera str na lista de alvos"); }
+        if (!EH_STRING(alvos->itens[i])) { vm->sp--; MERRO(vm, "TypeError", "replace() espera str na lista de alvos"); }
         Value nv;
         if (novo_lista) { if (i >= novos->len) break; nv = novos->itens[i]; }  /* zip para no menor */
         else nv = novo;
@@ -4813,7 +4813,7 @@ static int met_replace_lista(VM *vm, Value alvo, PSList *alvos, Value novo, Valu
 
 static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) MERRO(vm, "SomeValueUnexpected", "replace() espera de 1 a 3 argumentos");
+    if (n < 1 || n > 3) MERRO(vm, "TypeError", "replace() espera de 1 a 3 argumentos");
     /* alvo em lista: `.replace(["-", "_"], ".")` */
     if (n >= 1 && EH_SEQ(args[0]))
         return met_replace_lista(vm, alvo, COMO_LIST(args[0]), n >= 2 ? args[1] : jk_str_val(vm, ""), out);
@@ -4822,7 +4822,7 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n >= 2 && exige_str(vm, args[1], "replace", &novo) != 0) return -1;
     int64_t limite = -1;
     if (n == 3) {
-        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "count de replace() precisa ser int");
+        if (args[2].t != V_INT) MERRO(vm, "TypeError", "count de replace() precisa ser int");
         limite = args[2].as.i;
     }
     int64_t feitos_vazio = 0;
@@ -4866,7 +4866,7 @@ static int met_particiona(VM *vm, Value alvo, Value *args, int n, Value *out,
     ARGS_MET(vm, quem, 1);
     PSString *s = COMO_STRING(alvo), *sep;
     if (exige_str(vm, args[0], quem, &sep) != 0) return -1;
-    if (sep->len == 0) MERRO(vm, "SomeValueUnexpected", "valor invalido: separador vazio em %s()", quem);
+    if (sep->len == 0) MERRO(vm, "ValueError", "valor invalido: separador vazio em %s()", quem);
     int achou = -1;
     if (pelo_fim) {
         for (int i = s->len - sep->len; i >= 0; i--)
@@ -4938,9 +4938,9 @@ static int met_removesuffix(VM *v, Value a, Value *g, int n, Value *o) { return 
 static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
                         const char *quem, int modo)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 ou 2 argumentos", quem);
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "%s() espera 1 ou 2 argumentos", quem);
     PSString *s = COMO_STRING(alvo);
-    if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "largura de %s() precisa ser int", quem);
+    if (args[0].t != V_INT) MERRO(vm, "TypeError", "largura de %s() precisa ser int", quem);
     int64_t larg = args[0].as.i;
     const char *ench = " ";
     int ench_len = 1;
@@ -4948,7 +4948,7 @@ static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
         PSString *f;
         if (exige_str(vm, args[1], quem, &f) != 0) return -1;
         if (utf8_conta(f->chars, f->len) != 1)
-            MERRO(vm, "SomeValueUnexpected", "%s() espera um unico caractere de preenchimento", quem);
+            MERRO(vm, "TypeError", "%s() espera um unico caractere de preenchimento", quem);
         ench = f->chars; ench_len = f->len;
     }
     int atual = utf8_conta(s->chars, s->len);
@@ -4990,7 +4990,7 @@ static int met_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "zfill", 1);
     PSString *s = COMO_STRING(alvo);
-    if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "largura de zfill() precisa ser int");
+    if (args[0].t != V_INT) MERRO(vm, "TypeError", "largura de zfill() precisa ser int");
     int64_t larg = args[0].as.i;
     int atual = utf8_conta(s->chars, s->len);
     if (larg > PS_STR_MAX)
@@ -5012,11 +5012,11 @@ static int met_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "expandtabs() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "expandtabs() espera 0 ou 1 argumento");
     PSString *s = COMO_STRING(alvo);
     int64_t passo = 8;
     if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "expandtabs() espera int");
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "expandtabs() espera int");
         passo = args[0].as.i;
     }
     SBUF_AUTO b = {0};
@@ -5147,7 +5147,7 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
         /* campo: {campo[:spec]} */
         int fim = i + 1;
         while (fim < s->len && s->chars[fim] != '}') fim++;
-        if (fim >= s->len) { MERRO(vm, "SomeValueUnexpected", "format: '{' sem fechar"); }
+        if (fim >= s->len) { MERRO(vm, "TypeError", "format: '{' sem fechar"); }
         int corte = i + 1;
         while (corte < fim && s->chars[corte] != ':') corte++;
         const char *campo = s->chars + i + 1;
@@ -5175,10 +5175,10 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
             }
         }
         if (!achou) {
-            MERRO(vm, "SomeValueUnexpected", "format: campo '%.*s' sem valor", ncampo, campo);
+            MERRO(vm, "TypeError", "format: campo '%.*s' sem valor", ncampo, campo);
         }
         if (formata_um(vm, &b, &v, spec, nspec) != 0) {
-            if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             return -1;
         }
         i = fim + 1;
@@ -5197,14 +5197,14 @@ static int met_format(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_format_map(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "format_map", 1);
-    if (!EH_DICT(args[0])) MERRO(vm, "SomeValueUnexpected", "format_map() espera um dict");
+    if (!EH_DICT(args[0])) MERRO(vm, "TypeError", "format_map() espera um dict");
     return met_format_geral(vm, alvo, NULL, 0, out, args[0]);
 }
 
 static int met_isidentifier(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "isidentifier() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "isidentifier() nao aceita argumento");
     PSString *s = COMO_STRING(alvo);
     if (s->len == 0) { *out = MK_BOOL(0); return 0; }
     int ok = 1, primeiro = 1;
@@ -5232,10 +5232,10 @@ static int met_maketrans(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
     ARGS_MET(vm, "maketrans", 2);
-    if (!EH_STRING(args[0]) || !EH_STRING(args[1])) MERRO(vm, "SomeValueUnexpected", "maketrans() espera str");
+    if (!EH_STRING(args[0]) || !EH_STRING(args[1])) MERRO(vm, "TypeError", "maketrans() espera str");
     PSString *de = COMO_STRING(args[0]), *para = COMO_STRING(args[1]);
     if (utf8_conta(de->chars, de->len) != utf8_conta(para->chars, para->len))
-        MERRO(vm, "SomeValueUnexpected", "maketrans() exige os dois com o mesmo tamanho");
+        MERRO(vm, "TypeError", "maketrans() exige os dois com o mesmo tamanho");
     PSDict *d = novo_dict(vm, 8);
     if (!d) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(d);
@@ -5257,7 +5257,7 @@ static int met_maketrans(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "translate", 1);
-    if (!EH_DICT(args[0])) MERRO(vm, "SomeValueUnexpected", "translate() espera um dict");
+    if (!EH_DICT(args[0])) MERRO(vm, "TypeError", "translate() espera um dict");
     PSString *s = COMO_STRING(alvo);
     SBUF_AUTO b = {0};
     for (int i = 0; i < s->len; ) {
@@ -5333,7 +5333,7 @@ static int met_l_append(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_extend(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "extend", 1);
-    if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "extend() espera uma lista");
+    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "extend() espera uma lista");
     PSList *l = COMO_LIST(alvo), *o = COMO_LIST(args[0]);
     /* `l.extend(l)` duplica a própria lista: fixa o tamanho antes do laço,
      * senão a condição de parada anda junto e o loop não termina. */
@@ -5349,7 +5349,7 @@ static int met_l_extend(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "insert", 2);
-    if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "insert() espera int como posicao");
+    if (args[0].t != V_INT) MERRO(vm, "TypeError", "insert() espera int como posicao");
     PSList *l = COMO_LIST(alvo);
     int64_t i = args[0].as.i;
     if (i < 0) i += l->len;
@@ -5365,12 +5365,12 @@ static int met_l_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_l_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "pop() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "pop() espera 0 ou 1 argumento");
     PSList *l = COMO_LIST(alvo);
     if (l->len == 0) MERRO(vm, "IndexError", "pop() de lista vazia");
     int64_t i = l->len - 1;
     if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "pop() espera int");
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "pop() espera int");
         i = args[0].as.i;
         if (i < 0) i += l->len;
         if (i < 0 || i >= l->len) MERRO(vm, "IndexError", "indice fora do intervalo em pop()");
@@ -5392,7 +5392,7 @@ static int met_l_remove(VM *vm, Value alvo, Value *args, int n, Value *out)
         *out = MK_NULL();
         return 0;
     }
-    MERRO(vm, "SomeValueUnexpected", "valor invalido: remove() nao achou o item");
+    MERRO(vm, "ValueError", "valor invalido: remove() nao achou o item");
 }
 
 /* `index(item, inicio=0, fim=len)` — a faixa é opcional, como no `.find` de
@@ -5400,24 +5400,24 @@ static int met_l_remove(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3)
-        MERRO(vm, "SomeValueUnexpected", "index() espera de 1 a 3 argumentos (item, inicio, fim)");
+        MERRO(vm, "TypeError", "index() espera de 1 a 3 argumentos (item, inicio, fim)");
     PSList *l = COMO_LIST(alvo);
     int64_t de = 0, ate = l->len;
     if (n >= 2) {
-        if (args[1].t != V_INT) MERRO(vm, "SomeValueUnexpected", "index(): inicio precisa ser int");
+        if (args[1].t != V_INT) MERRO(vm, "TypeError", "index(): inicio precisa ser int");
         de = args[1].as.i;
         if (de < 0) de += l->len;
         if (de < 0) de = 0;
     }
     if (n >= 3) {
-        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "index(): fim precisa ser int");
+        if (args[2].t != V_INT) MERRO(vm, "TypeError", "index(): fim precisa ser int");
         ate = args[2].as.i;
         if (ate < 0) ate += l->len;
         if (ate > l->len) ate = l->len;
     }
     for (int64_t i = de; i < ate; i++)
         if (val_iguais(&l->itens[i], &args[0])) { *out = MK_INT(i); return 0; }
-    MERRO(vm, "SomeValueUnexpected", "valor invalido: index() nao achou o item");
+    MERRO(vm, "ValueError", "valor invalido: index() nao achou o item");
 }
 
 static int met_l_count(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -5443,7 +5443,7 @@ static int met_l_contains(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_reverse(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "reverse() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "reverse() nao aceita argumento");
     PSList *l = COMO_LIST(alvo);
     for (int i = 0, j = l->len - 1; i < j; i++, j--) {
         Value t = l->itens[i]; l->itens[i] = l->itens[j]; l->itens[j] = t;
@@ -5455,14 +5455,14 @@ static int met_l_reverse(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_sort(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "sort() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "sort() nao aceita argumento");
     PSList *l = COMO_LIST(alvo);
     for (int i = 1; i < l->len; i++) {          /* inserção: estável, igual ao sorted() */
         Value chave = l->itens[i];
         int j = i - 1;
         while (j >= 0) {
             int c = compara_valores(&l->itens[j], &chave);
-            if (c == -2) MERRO(vm, "SomeValueUnexpected", "operacao invalida: sort() entre tipos incompativeis");
+            if (c == -2) MERRO(vm, "TypeError", "operacao invalida: sort() entre tipos incompativeis");
             if (c <= 0) break;
             l->itens[j + 1] = l->itens[j];
             j--;
@@ -5476,7 +5476,7 @@ static int met_l_sort(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "clear() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "clear() nao aceita argumento");
     COMO_LIST(alvo)->len = 0;
     *out = MK_NULL();
     return 0;
@@ -5485,7 +5485,7 @@ static int met_l_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "copy() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "copy() nao aceita argumento");
     PSList *l = COMO_LIST(alvo);
     PSList *r = lista_com_cap(vm, l->len, OBJ_LIST);
     if (!r) MERRO(vm, "MemoryError", "sem memoria em copy()");
@@ -5498,7 +5498,7 @@ static int met_l_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "len() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "len() nao aceita argumento");
     *out = MK_INT(COMO_LIST(alvo)->len);
     return 0;
 }
@@ -5532,15 +5532,15 @@ static int dict_extrai(VM *vm, Value alvo, Value *out, int o_que)
     return 0;
 }
 
-static int met_d_keys(VM *v, Value a, Value *g, int n, Value *o)   { (void)g; if (n) MERRO(v,"SomeValueUnexpected","keys() nao aceita argumento"); return dict_extrai(v, a, o, 0); }
-static int met_d_values(VM *v, Value a, Value *g, int n, Value *o) { (void)g; if (n) MERRO(v,"SomeValueUnexpected","values() nao aceita argumento"); return dict_extrai(v, a, o, 1); }
+static int met_d_keys(VM *v, Value a, Value *g, int n, Value *o)   { (void)g; if (n) MERRO(v,"TypeError","keys() nao aceita argumento"); return dict_extrai(v, a, o, 0); }
+static int met_d_values(VM *v, Value a, Value *g, int n, Value *o) { (void)g; if (n) MERRO(v,"TypeError","values() nao aceita argumento"); return dict_extrai(v, a, o, 1); }
 /* value() == values(): existe pro `in` olhar os VALORES (`x in d` testa a CHAVE) */
-static int met_d_value(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; if (n) MERRO(v,"SomeValueUnexpected","value() nao aceita argumento"); return dict_extrai(v, a, o, 1); }
-static int met_d_items(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; if (n) MERRO(v,"SomeValueUnexpected","items() nao aceita argumento"); return dict_extrai(v, a, o, 2); }
+static int met_d_value(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; if (n) MERRO(v,"TypeError","value() nao aceita argumento"); return dict_extrai(v, a, o, 1); }
+static int met_d_items(VM *v, Value a, Value *g, int n, Value *o)  { (void)g; if (n) MERRO(v,"TypeError","items() nao aceita argumento"); return dict_extrai(v, a, o, 2); }
 
 static int met_d_get(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "get() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "get() espera 1 ou 2 argumentos");
     if (dict_get(COMO_DICT(alvo), &args[0], out) != 0)
         *out = (n == 2) ? args[1] : MK_NULL();     /* ausente devolve Null, não erro */
     return 0;
@@ -5556,7 +5556,7 @@ static int met_d_has(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_d_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "pop() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "pop() espera 1 ou 2 argumentos");
     if (dict_del(COMO_DICT(alvo), &args[0], out) != 0) {
         if (n == 2) { *out = args[1]; return 0; }
         /* Mesmo texto do `d["z"]` e do `d.z`: as tres respondem a mesma
@@ -5577,7 +5577,7 @@ static int met_d_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_d_update(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "update", 1);
-    if (!EH_DICT(args[0])) MERRO(vm, "SomeValueUnexpected", "update() espera um dict");
+    if (!EH_DICT(args[0])) MERRO(vm, "TypeError", "update() espera um dict");
     PSDict *d = COMO_DICT(alvo), *o = COMO_DICT(args[0]);
     if (d == o) { *out = MK_NULL(); return 0; }    /* `d.update(d)` é no-op */
     for (int i = 0; i < o->usados; i++) {
@@ -5592,7 +5592,7 @@ static int met_d_update(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_d_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "clear() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "clear() nao aceita argumento");
     PSDict *d = COMO_DICT(alvo);
     d->count = 0;
     d->usados = 0;
@@ -5604,7 +5604,7 @@ static int met_d_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_d_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "copy() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "copy() nao aceita argumento");
     PSDict *d = COMO_DICT(alvo);
     PSDict *r = novo_dict(vm, d->count > 0 ? d->count : 1);
     if (!r) MERRO(vm, "MemoryError", "sem memoria em copy()");
@@ -5623,7 +5623,7 @@ static int met_d_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_d_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "len() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "len() nao aceita argumento");
     *out = MK_INT(COMO_DICT(alvo)->count);
     return 0;
 }
@@ -5635,7 +5635,7 @@ static int met_d_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "type() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "type() nao aceita argumento");
     const char *t = "object";
     switch (alvo.t) {
         case V_NULL: case V_UNSET:  t = "Null";   break;
@@ -5718,9 +5718,9 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* ── arquivo ────────────────────────────────────────────────────────────── */
 static int arq_exige(VM *vm, Value v, const char *quem, PSArquivo **out)
 {
-    if (!EH_ARQUIVO(v)) MERRO(vm, "SomeValueUnexpected", "%s() espera um arquivo", quem);
+    if (!EH_ARQUIVO(v)) MERRO(vm, "TypeError", "%s() espera um arquivo", quem);
     *out = COMO_ARQ(v);
-    if ((*out)->fechado) MERRO(vm, "SomeValueUnexpected", "arquivo ja fechado");
+    if ((*out)->fechado) MERRO(vm, "TypeError", "arquivo ja fechado");
     return 0;
 }
 
@@ -5742,12 +5742,12 @@ static int devolve_leitura(VM *vm, SBuf *b, int binario, Value *out)
 static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "read() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "read() espera 0 ou 1 argumento");
     PSArquivo *a;
     if (arq_exige(vm, alvo, "read", &a) != 0) return -1;
     long limite = -1;
     if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "read() espera int");
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "read() espera int");
         limite = (long)args[0].as.i;
     }
     SBUF_AUTO b = {0};
@@ -5773,7 +5773,7 @@ static int met_a_read(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_a_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "readline() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "readline() nao aceita argumento");
     PSArquivo *a;
     if (arq_exige(vm, alvo, "readline", &a) != 0) return -1;
     SBUF_AUTO b = {0};
@@ -5789,7 +5789,7 @@ static int met_a_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "readlines() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "readlines() nao aceita argumento");
     PSArquivo *a;
     if (arq_exige(vm, alvo, "readlines", &a) != 0) return -1;
     PSList *l = lista_com_cap(vm, 8, OBJ_LIST);
@@ -5867,7 +5867,7 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "writelines", 1);
     PSArquivo *a;
     if (arq_exige(vm, alvo, "writelines", &a) != 0) return -1;
-    if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "writelines() espera uma lista");
+    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "writelines() espera uma lista");
     PSList *l = COMO_LIST(args[0]);
     for (int i = 0; i < l->len; i++) {
         /* bytes vão CRUS, como no write(): antes caíam no valor_para_texto e
@@ -5893,8 +5893,8 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "close() nao aceita argumento");
-    if (!EH_ARQUIVO(alvo)) MERRO(vm, "SomeValueUnexpected", "close() espera um arquivo");
+    if (n != 0) MERRO(vm, "TypeError", "close() nao aceita argumento");
+    if (!EH_ARQUIVO(alvo)) MERRO(vm, "TypeError", "close() espera um arquivo");
     PSArquivo *a = COMO_ARQ(alvo);
     /* O `fclose` faz o flush final, e é ali que o disco cheio costuma aparecer
      * — o `fwrite` só encheu o buffer da libc. Descartar este retorno é fechar
@@ -5918,8 +5918,8 @@ static int cria_pais(const char *caminho);   /* definido mais abaixo */
  * pasta -> deriva o nome do próprio arquivo). Devolve o caminho final. */
 static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "save() espera 0 ou 1 argumento");
-    if (n == 1 && !EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera o destino como str");
+    if (n > 1) MERRO(vm, "TypeError", "save() espera 0 ou 1 argumento");
+    if (n == 1 && !EH_STRING(args[0])) MERRO(vm, "TypeError", "save() espera o destino como str");
     PSArquivo *a;
     if (arq_exige(vm, alvo, "save", &a) != 0) return -1;
     if (a->f) fflush(a->f);
@@ -5977,11 +5977,11 @@ static const MetodoNat METODOS_ARQ[] = {
 
 static int nativa_open(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "open() espera de 1 a 3 argumentos");
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "open() espera o caminho como str");
+    if (n < 1 || n > 3) BERRO(vm, "TypeError", "open() espera de 1 a 3 argumentos");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "open() espera o caminho como str");
     const char *modo = "r";
     if (n >= 2) {
-        if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "open() espera o modo como str");
+        if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "open() espera o modo como str");
         modo = COMO_STRING(args[1])->chars;
     }
     /* Valida o modo como o Python faz — senão um modo inválido ("Rb", "wz")
@@ -5992,16 +5992,16 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
         for (const char *m = modo; *m; m++) {
             unsigned char ch = (unsigned char)*m;
             if (ch >= 128 || !strchr("xrwabt+", (int)*m) || seen[ch])
-                BERRO(vm, "SomeValueUnexpected", "valor inválido: invalid mode: '%s'", modo);
+                BERRO(vm, "ValueError", "valor inválido: invalid mode: '%s'", modo);
             seen[ch] = 1;
             if (*m == 'r' || *m == 'w' || *m == 'a' || *m == 'x') prim++;
             if (*m == 't' || *m == 'b') tb++;
         }
         if (prim != 1)
-            BERRO(vm, "SomeValueUnexpected", "valor inválido: Must have exactly one of "
+            BERRO(vm, "ValueError", "valor inválido: Must have exactly one of "
                   "create/read/write/append mode and at most one plus");
         if (tb > 1)
-            BERRO(vm, "SomeValueUnexpected", "valor inválido: can't have text and binary mode at once");
+            BERRO(vm, "ValueError", "valor inválido: can't have text and binary mode at once");
     }
     /* fopen do C não entende 't'; tira (modo texto já é o padrão) */
     char cfmodo[8]; int ci = 0;
@@ -6093,22 +6093,22 @@ static int politica_erro(const char *nome, int len)
 static int codec_args(VM *vm, Value *args, int n, const char *quem, int *codec, int *pol)
 {
     *codec = CODEC_UTF8; *pol = ERRO_STRICT;
-    if (n > 2) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+    if (n > 2) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                  snprintf(vm->erro, sizeof(vm->erro), "%s() espera de 0 a 2 argumentos", quem); return -1; }
     if (n >= 1 && args[0].t != V_NULL) {
-        if (!EH_STRING(args[0])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        if (!EH_STRING(args[0])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             snprintf(vm->erro, sizeof(vm->erro), "%s() espera o encoding como str", quem); return -1; }
         PSString *e = COMO_STRING(args[0]);
         *codec = codec_de_nome(e->chars, e->len);
-        if (*codec < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        if (*codec < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             snprintf(vm->erro, sizeof(vm->erro), "encoding desconhecido: '%s'", e->chars); return -1; }
     }
     if (n >= 2 && args[1].t != V_NULL) {
-        if (!EH_STRING(args[1])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        if (!EH_STRING(args[1])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             snprintf(vm->erro, sizeof(vm->erro), "%s() espera o errors como str", quem); return -1; }
         PSString *e = COMO_STRING(args[1]);
         *pol = politica_erro(e->chars, e->len);
-        if (*pol < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        if (*pol < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             snprintf(vm->erro, sizeof(vm->erro), "errors desconhecido: '%s' (use strict, ignore ou replace)", e->chars);
             return -1; }
     }
@@ -6165,7 +6165,7 @@ static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (cp >= teto) {
             if (pol == ERRO_IGNORE) continue;
             if (pol == ERRO_REPLACE) cp = '?';
-            else MERRO(vm, "SomeValueUnexpected",
+            else MERRO(vm, "TypeError",
                        "encode(): U+%04X nao cabe no encoding pedido", cp);
         }
         char buf[4];
@@ -6211,7 +6211,7 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
             int k = utf8_le_estrito(p, b->len, i, &cp);
             if (k < 0) {
                 if (pol == ERRO_STRICT)
-                    MERRO(vm, "SomeValueUnexpected",
+                    MERRO(vm, "TypeError",
                           "decode(): byte 0x%02X invalido em utf-8 na posicao %d", p[i], i);
                 if (pol == ERRO_REPLACE && sb_cp(&sb, 0xFFFD) != 0)
                     MERRO(vm, "MemoryError", "sem memoria em decode()");
@@ -6242,20 +6242,20 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
             }
             if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
                 if (pol == ERRO_STRICT)
-                    MERRO(vm, "SomeValueUnexpected", "decode(): U+%04X invalido", cp);
+                    MERRO(vm, "TypeError", "decode(): U+%04X invalido", cp);
                 if (pol == ERRO_IGNORE) continue;
                 cp = 0xFFFD;
             }
             if (sb_cp(&sb, cp) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
         }
         if (b->len % passo != 0 && pol == ERRO_STRICT)
-            MERRO(vm, "SomeValueUnexpected", "decode(): sobrou byte solto no fim do utf-16/32");
+            MERRO(vm, "TypeError", "decode(): sobrou byte solto no fim do utf-16/32");
     } else {
         /* latin-1 casa 1 byte = 1 codepoint (nunca falha); ascii recusa >127 */
         for (int i = 0; i < b->len; i++) {
             if (codec == CODEC_ASCII && p[i] >= 0x80) {
                 if (pol == ERRO_STRICT)
-                    MERRO(vm, "SomeValueUnexpected",
+                    MERRO(vm, "TypeError",
                           "decode(): byte 0x%02X nao e ascii na posicao %d", p[i], i);
                 if (pol == ERRO_IGNORE) continue;
                 if (sb_cp(&sb, 0xFFFD) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
@@ -6283,7 +6283,7 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_b_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "len() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "len() nao aceita argumento");
     *out = MK_INT(COMO_BYTES(alvo)->len);
     return 0;
 }
@@ -6291,7 +6291,7 @@ static int met_b_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "hex() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "hex() nao aceita argumento");
     PSString *b = COMO_BYTES(alvo);
     SBUF_AUTO sb = {0};
     for (int i = 0; i < b->len; i++) {
@@ -6415,18 +6415,18 @@ static int copia_arquivo(const char *de, const char *para)
 static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "move", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "move() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "move() espera str");
     PSPoolFile *f = COMO_PFILE(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     cria_pais(dest);
     /* rename falha entre sistemas de arquivo; aí copia e apaga */
     if (rename(f->caminho, dest) != 0) {
         if (copia_arquivo(f->caminho, dest) != 0)
-            MERRO(vm, "SomeValueUnexpected", "nao consegui mover para '%s'", dest);
+            MERRO(vm, "TypeError", "nao consegui mover para '%s'", dest);
         unlink(f->caminho);
     }
     PSPoolFile *novo = novo_poolfile(vm, dest);
-    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%.200s'", dest);
+    if (!novo) MERRO(vm, "TypeError", "nao consegui reabrir '%.200s'", dest);
     free(f->caminho);
     f->caminho = strdup(dest);
     *out = MK_OBJ(novo);
@@ -6436,14 +6436,14 @@ static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "copy", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "copy() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "copy() espera str");
     PSPoolFile *f = COMO_PFILE(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     cria_pais(dest);
     if (copia_arquivo(f->caminho, dest) != 0)
-        MERRO(vm, "SomeValueUnexpected", "nao consegui copiar para '%s'", dest);
+        MERRO(vm, "TypeError", "nao consegui copiar para '%s'", dest);
     PSPoolFile *novo = novo_poolfile(vm, dest);
-    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%.200s'", dest);
+    if (!novo) MERRO(vm, "TypeError", "nao consegui reabrir '%.200s'", dest);
     *out = MK_OBJ(novo);
     return 0;
 }
@@ -6451,7 +6451,7 @@ static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_pf_delete(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "delete() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "delete() nao aceita argumento");
     unlink(COMO_PFILE(alvo)->caminho);   /* já apagado não é erro */
     *out = MK_BOOL(1);
     return 0;
@@ -6460,7 +6460,7 @@ static int met_pf_delete(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_pf_bytes(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "bytes() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "bytes() nao aceita argumento");
     *out = COMO_PFILE(alvo)->conteudo;
     return 0;
 }
@@ -6469,11 +6469,11 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     /* save() ou save(path): grava o conteúdo em disco. Sem path, salva na
      * pasta do script em execução com o nome do próprio arquivo. */
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "save() aceita no maximo 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "save() aceita no maximo 1 argumento");
     PSPoolFile *f = COMO_PFILE(alvo);
     char dest[2048];
     if (n == 1) {
-        if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera str");
+        if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() espera str");
         snprintf(dest, sizeof(dest), "%s", COMO_STRING(args[0])->chars);
     } else {
         const char *base = vm->dir_script[0] ? vm->dir_script : ".";
@@ -6481,12 +6481,12 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     cria_pais(dest);
     FILE *fp = fopen(dest, "wb");
-    if (!fp) MERRO(vm, "SomeValueUnexpected", "nao consegui salvar em '%.200s'", dest);
+    if (!fp) MERRO(vm, "TypeError", "nao consegui salvar em '%.200s'", dest);
     PSString *b = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo) : NULL;
     if (b && b->len > 0) fwrite(b->chars, 1, (size_t)b->len, fp);
     fclose(fp);
     PSPoolFile *novo = novo_poolfile(vm, dest);
-    if (!novo) MERRO(vm, "SomeValueUnexpected", "nao consegui reabrir '%.200s'", dest);
+    if (!novo) MERRO(vm, "TypeError", "nao consegui reabrir '%.200s'", dest);
     free(f->caminho);
     f->caminho = strdup(dest);
     *out = MK_OBJ(novo);
@@ -6496,7 +6496,7 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "path() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "path() nao aceita argumento");
     PSPoolFile *f = COMO_PFILE(alvo);
     char abs[2048];
     caminho_abs(f->caminho, abs, sizeof(abs));
@@ -6883,7 +6883,7 @@ static int guz_cria(VM *vm, Value alvo, int kind, const char *tag, Value handler
     Value app;
     if (EH_GUZ_UI(alvo)) app = alvo;
     else if (EH_GUZ_WID(alvo)) app = COMO_GUZ_WID(alvo)->app;
-    else MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI ou de um elemento");
+    else MERRO(vm, "TypeError", "metodo de guzer.UI ou de um elemento");
     if (!EH_GUZ_UI(app)) MERRO(vm, "RuntimeError", "elemento sem app dono");
     PSGuzWid *w = novo_guz_wid(vm, kind, tag);
     if (!w) MERRO(vm, "MemoryError", "sem memoria");
@@ -6912,7 +6912,7 @@ static void guz_mostra(VM *vm);
  */
 static int met_guz_show(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n;
-  if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
+  if (!EH_GUZ_UI(alvo)) MERRO(vm, "TypeError", "metodo de guzer.UI");
   vm->guz_app = alvo; guz_mostra(vm); *out = MK_NULL(); return 0; }
 
 /* Elemento HTML genérico. Params (superset) = atributos do HTML, renomeados
@@ -6988,8 +6988,8 @@ GUZ_ELEM(gel_dialog,"dialog",GUZ_DIALOG)
 static int met_guz_getitem(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "getitemByIdentify", 1);
-    if (!EH_GUZ_UI(alvo)) MERRO(vm, "SomeValueUnexpected", "metodo de guzer.UI");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "getitemByIdentify: espera str");
+    if (!EH_GUZ_UI(alvo)) MERRO(vm, "TypeError", "metodo de guzer.UI");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "getitemByIdentify: espera str");
     PSGuzUI *u = COMO_GUZ_UI(alvo);
     const char *chave = COMO_STRING(args[0])->chars;
     for (int i = 0; i < u->nfilhos; i++) {
@@ -7003,7 +7003,7 @@ static int met_guz_getitem(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_guz_stylesheet(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "stylesheet", 1);
-    if (!EH_GUZ_WID(alvo)) MERRO(vm, "SomeValueUnexpected", "stylesheet() em objeto guzer");
+    if (!EH_GUZ_WID(alvo)) MERRO(vm, "TypeError", "stylesheet() em objeto guzer");
     PSGuzWid *w = COMO_GUZ_WID(alvo);
     Value v;
     if (guz_dict_get(args[0], "background", &v) || guz_dict_get(args[0], "bg", &v))
@@ -7017,7 +7017,7 @@ static int met_guz_stylesheet(VM *vm, Value alvo, Value *args, int n, Value *out
 static int met_guz_text(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "text", 1);
-    if (!EH_GUZ_WID(alvo)) MERRO(vm, "SomeValueUnexpected", "text() em objeto guzer");
+    if (!EH_GUZ_WID(alvo)) MERRO(vm, "TypeError", "text() em objeto guzer");
     PSGuzWid *w = COMO_GUZ_WID(alvo);
     free(w->text); w->text = NULL;
     if (EH_STRING(args[0])) w->text = strdup(COMO_STRING(args[0])->chars);
@@ -7475,12 +7475,12 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
 
 static int mod_json_stringify(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "stringify() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "stringify() espera 1 ou 2 argumentos");
     /* 2º argumento liga o modo compacto: `json.stringify(x, True)` */
     int compacto = (n == 2) && val_truthy(&args[1]);
     SBUF_AUTO b = {0};
     if (json_escreve(vm, &b, &args[0], 0, compacto) != 0) {
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
@@ -7509,7 +7509,7 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
         char c = j->s[j->i];
         if (c == '\\') {
             j->i++;
-            if (j->i >= j->n) { BERRO(vm, "SomeValueUnexpected", "json: escape incompleto"); }
+            if (j->i >= j->n) { BERRO(vm, "TypeError", "json: escape incompleto"); }
             char e = j->s[j->i++];
             char saida = 0;
             switch (e) {
@@ -7518,14 +7518,14 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
                 case 't': saida = '\t'; break;   case 'r':  saida = '\r'; break;
                 case 'b': saida = '\b'; break;   case 'f':  saida = '\f'; break;
                 case 'u': {
-                    if (j->i + 4 > j->n) { BERRO(vm, "SomeValueUnexpected", "json: \\u incompleto"); }
+                    if (j->i + 4 > j->n) { BERRO(vm, "TypeError", "json: \\u incompleto"); }
                     uint32_t cp = 0;
                     for (int k = 0; k < 4; k++) {
                         char h = j->s[j->i + k];
                         int d = (h >= '0' && h <= '9') ? h - '0'
                               : (h >= 'a' && h <= 'f') ? h - 'a' + 10
                               : (h >= 'A' && h <= 'F') ? h - 'A' + 10 : -1;
-                        if (d < 0) { BERRO(vm, "SomeValueUnexpected", "json: \\u invalido"); }
+                        if (d < 0) { BERRO(vm, "TypeError", "json: \\u invalido"); }
                         cp = cp * 16 + (uint32_t)d;
                     }
                     j->i += 4;
@@ -7534,27 +7534,27 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
                      * caractere: emitir as duas dava 6 bytes de lixo. */
                     if (cp >= 0xD800 && cp <= 0xDBFF) {
                         if (j->i + 6 > j->n || j->s[j->i] != '\\' || j->s[j->i + 1] != 'u')
-                            BERRO(vm, "SomeValueUnexpected", "json: surrogate alto sem o par");
+                            BERRO(vm, "TypeError", "json: surrogate alto sem o par");
                         uint32_t lo = 0;
                         for (int k = 0; k < 4; k++) {
                             char h = j->s[j->i + 2 + k];
                             int d = (h >= '0' && h <= '9') ? h - '0'
                                   : (h >= 'a' && h <= 'f') ? h - 'a' + 10
                                   : (h >= 'A' && h <= 'F') ? h - 'A' + 10 : -1;
-                            if (d < 0) { BERRO(vm, "SomeValueUnexpected", "json: \\u invalido"); }
+                            if (d < 0) { BERRO(vm, "TypeError", "json: \\u invalido"); }
                             lo = lo * 16 + (uint32_t)d;
                         }
                         if (lo < 0xDC00 || lo > 0xDFFF)
-                            BERRO(vm, "SomeValueUnexpected", "json: par de surrogates invalido");
+                            BERRO(vm, "TypeError", "json: par de surrogates invalido");
                         j->i += 6;
                         cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
                     } else if (cp >= 0xDC00 && cp <= 0xDFFF) {
-                        BERRO(vm, "SomeValueUnexpected", "json: surrogate baixo sem o par");
+                        BERRO(vm, "TypeError", "json: surrogate baixo sem o par");
                     }
                     if (sb_cp(&b, cp) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
                     continue;
                 }
-                default: BERRO(vm, "SomeValueUnexpected", "json: escape desconhecido");
+                default: BERRO(vm, "TypeError", "json: escape desconhecido");
             }
             if (sb_bytes(&b, &saida, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         } else {
@@ -7562,13 +7562,13 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
              * o modo do `json.loads` — sem isso o parser aceitaria um texto
              * que o interpretador recusa. */
             if ((unsigned char)c < 0x20) {
-                BERRO(vm, "SomeValueUnexpected", "json: caractere de controle invalido na string");
+                BERRO(vm, "TypeError", "json: caractere de controle invalido na string");
             }
             if (sb_bytes(&b, &c, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
             j->i++;
         }
     }
-    if (j->i >= j->n) { BERRO(vm, "SomeValueUnexpected", "json: string nao fechada"); }
+    if (j->i >= j->n) { BERRO(vm, "TypeError", "json: string nao fechada"); }
     j->i++;                                   /* aspa de fechamento */
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
@@ -7578,9 +7578,9 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
 
 static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
 {
-    if (prof > 64) BERRO(vm, "SomeValueUnexpected", "json aninhado demais");
+    if (prof > 64) BERRO(vm, "TypeError", "json aninhado demais");
     j_espaco(j);
-    if (j->i >= j->n) BERRO(vm, "SomeValueUnexpected", "json: fim inesperado");
+    if (j->i >= j->n) BERRO(vm, "TypeError", "json: fim inesperado");
     char c = j->s[j->i];
     if (c == '"') return j_texto(vm, j, out);
     if (c == '{' || c == '[') {
@@ -7605,12 +7605,12 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
         for (;;) {
             j_espaco(j);
             if (eh_obj) {
-                if (j->i >= j->n || j->s[j->i] != '"') { vm->sp--; BERRO(vm, "SomeValueUnexpected", "json: chave precisa ser string"); }
+                if (j->i >= j->n || j->s[j->i] != '"') { vm->sp--; BERRO(vm, "TypeError", "json: chave precisa ser string"); }
                 Value k, v;
                 if (j_texto(vm, j, &k) != 0) { vm->sp--; return -1; }
                 if (fixa_raiz(vm, k) != 0) { vm->sp--; BERRO(vm, "RuntimeError", "estouro da pilha"); }
                 j_espaco(j);
-                if (j->i >= j->n || j->s[j->i] != ':') { vm->sp -= 2; BERRO(vm, "SomeValueUnexpected", "json: faltou ':'"); }
+                if (j->i >= j->n || j->s[j->i] != ':') { vm->sp -= 2; BERRO(vm, "TypeError", "json: faltou ':'"); }
                 j->i++;
                 if (j_valor(vm, j, &v, prof + 1) != 0) { vm->sp -= 2; return -1; }
                 if (dict_set(vm, COMO_DICT(cont), &k, &v) != 0) { vm->sp -= 2; BERRO(vm, "MemoryError", "sem memoria"); }
@@ -7626,7 +7626,7 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
             if (j->i < j->n && j->s[j->i] == ',') { j->i++; continue; }
             if (j->i < j->n && j->s[j->i] == fecha) { j->i++; break; }
             vm->sp--;
-            BERRO(vm, "SomeValueUnexpected", "json: esperado ',' ou fechamento");
+            BERRO(vm, "TypeError", "json: esperado ',' ou fechamento");
         }
         vm->sp--;
         *out = cont;
@@ -7646,7 +7646,7 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
             while (j->i < j->n && j->s[j->i] >= '0' && j->s[j->i] <= '9') j->i++; }
         char buf[512];   /* inteiro de JSON pode ser bem maior que 64 dígitos */
         int len = j->i - ini;
-        if (len <= 0 || len >= (int)sizeof(buf)) BERRO(vm, "SomeValueUnexpected", "json: numero invalido");
+        if (len <= 0 || len >= (int)sizeof(buf)) BERRO(vm, "TypeError", "json: numero invalido");
         memcpy(buf, j->s + ini, (size_t)len);
         buf[len] = '\0';
         if (flutua) { *out = MK_FLOAT(strtod(buf, NULL)); return 0; }
@@ -7658,7 +7658,7 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
             mpz_t z; mpz_init(z);
             if (mpz_set_str(z, buf, 10) != 0) {
                 mpz_clear(z);
-                BERRO(vm, "SomeValueUnexpected", "json: numero invalido");
+                BERRO(vm, "TypeError", "json: numero invalido");
             }
             *out = mk_from_mpz(vm, z);
             mpz_clear(z);
@@ -7667,7 +7667,7 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
         *out = MK_INT((int64_t)li);
         return 0;
     }
-    BERRO(vm, "SomeValueUnexpected", "json: valor invalido");
+    BERRO(vm, "TypeError", "json: valor invalido");
 }
 
 static int mod_json_parse(VM *vm, Value *args, int n, Value *out)
@@ -7675,12 +7675,12 @@ static int mod_json_parse(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "parse", 1);
     /* já estruturado passa reto */
     if (EH_DICT(args[0]) || EH_SEQ(args[0])) { *out = args[0]; return 0; }
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "parse() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "parse() espera str");
     PSString *s = COMO_STRING(args[0]);
     JLeitor j = { s->chars, s->len, 0 };
     if (j_valor(vm, &j, out, 0) != 0) return -1;
     j_espaco(&j);
-    if (j.i != j.n) BERRO(vm, "SomeValueUnexpected", "json: lixo depois do valor");
+    if (j.i != j.n) BERRO(vm, "TypeError", "json: lixo depois do valor");
     return 0;
 }
 
@@ -7715,7 +7715,7 @@ static int mod_date_timestamp(VM *vm, Value *args, int n, Value *out)
 /* `hora(hours, minutes, days)` devolve SEGUNDOS — some com timestamp(). */
 static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 3) BERRO(vm, "SomeValueUnexpected", "hora() espera ate 3 argumentos");
+    if (n > 3) BERRO(vm, "TypeError", "hora() espera ate 3 argumentos");
     int64_t v[3] = { 0, 0, 0 };
     for (int i = 0; i < n && i < 3; i++) {
         /* buraco de arg nomeado ausente = 0 (o mapeador preenche com NULL/UNSET) */
@@ -7723,7 +7723,7 @@ static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
         if (args[i].t == V_INT)        v[i] = args[i].as.i;
         else if (args[i].t == V_FLOAT) v[i] = (int64_t)args[i].as.d;
         else if (args[i].t == V_BOOL)  v[i] = args[i].as.b ? 1 : 0;
-        else BERRO(vm, "SomeValueUnexpected", "hora() espera numero");
+        else BERRO(vm, "TypeError", "hora() espera numero");
     }
     *out = MK_INT(v[0] * 3600 + v[1] * 60 + v[2] * 86400);
     return 0;
@@ -7955,7 +7955,7 @@ static PSRegex *rx_compila(VM *vm, Value v, const char *quem)
 {
     if (!EH_STRING(v)) {
         snprintf(vm->erro, sizeof(vm->erro), "%s() espera str como padrao", quem);
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return NULL;
     }
     PSString *p = COMO_STRING(v);
@@ -7963,7 +7963,7 @@ static PSRegex *rx_compila(VM *vm, Value v, const char *quem)
     PSRegex *r = ps_regex_compila(p->chars, p->len, e, sizeof(e));
     if (!r) {
         snprintf(vm->erro, sizeof(vm->erro), "%s", e[0] ? e : "regex invalida");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
     }
     return r;
 }
@@ -8121,7 +8121,7 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         {
             char msg[160] = {0};
             int rc = rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg));
-            if (rc == -2) BERRO(vm, "SomeValueUnexpected", "%s", msg);
+            if (rc == -2) BERRO(vm, "TypeError", "%s", msg);
             if (rc != 0)  BERRO(vm, "MemoryError", "sem memoria");
         }
         feitos++;
@@ -8143,7 +8143,7 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
 static int mod_regex_match(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "match", 2);
-    if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "match() espera str");
+    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "match() espera str");
     PSRegex *r = rx_compila(vm, args[0], "match");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
@@ -8158,7 +8158,7 @@ static int mod_regex_match(VM *vm, Value *args, int n, Value *out)
 static int mod_regex_search(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "search", 2);
-    if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "search() espera str");
+    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "search() espera str");
     PSRegex *r = rx_compila(vm, args[0], "search");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
@@ -8173,7 +8173,7 @@ static int mod_regex_search(VM *vm, Value *args, int n, Value *out)
 static int mod_regex_findall(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "findall", 2);
-    if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "findall() espera str");
+    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "findall() espera str");
     PSRegex *r = rx_compila(vm, args[0], "findall");
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
@@ -8184,11 +8184,11 @@ static int mod_regex_findall(VM *vm, Value *args, int n, Value *out)
 
 static int mod_regex_sub(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 3 || n > 4) BERRO(vm, "SomeValueUnexpected", "sub() espera 3 ou 4 argumentos");
-    if (!EH_STRING(args[1]) || !EH_STRING(args[2])) BERRO(vm, "SomeValueUnexpected", "sub() espera str");
+    if (n < 3 || n > 4) BERRO(vm, "TypeError", "sub() espera 3 ou 4 argumentos");
+    if (!EH_STRING(args[1]) || !EH_STRING(args[2])) BERRO(vm, "TypeError", "sub() espera str");
     int64_t limite = 0;
     if (n == 4) {
-        if (args[3].t != V_INT) BERRO(vm, "SomeValueUnexpected", "count de sub() precisa ser int");
+        if (args[3].t != V_INT) BERRO(vm, "TypeError", "count de sub() precisa ser int");
         limite = args[3].as.i;
     }
     PSRegex *r = rx_compila(vm, args[0], "sub");
@@ -8256,11 +8256,11 @@ static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
 {
     /* `maxsplit` já estava anunciado na assinatura do módulo (e na doc), mas o
      * código só aceitava 2 argumentos: passar o 3º dava "espera 2". */
-    if (n < 2 || n > 3) BERRO(vm, "SomeValueUnexpected", "split() espera 2 ou 3 argumentos");
-    if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "split() espera str");
+    if (n < 2 || n > 3) BERRO(vm, "TypeError", "split() espera 2 ou 3 argumentos");
+    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "split() espera str");
     int64_t maxsplit = 0;
     if (n == 3) {
-        if (args[2].t != V_INT) BERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
+        if (args[2].t != V_INT) BERRO(vm, "TypeError", "maxsplit de split() precisa ser int");
         maxsplit = args[2].as.i;
     }
     PSRegex *r = rx_compila(vm, args[0], "split");
@@ -8279,8 +8279,8 @@ static int mod_regex_split(VM *vm, Value *args, int n, Value *out)
 static int rx_obj_str(VM *vm, Value alvo, Value *args, int n, const char *quem,
                       PSRegex **r, PSString **s)
 {
-    if (n != 1) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 argumento", quem);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "%s() espera str", quem);
+    if (n != 1) MERRO(vm, "TypeError", "%s() espera 1 argumento", quem);
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "%s() espera str", quem);
     *r = COMO_REGEX(alvo)->rx;
     *s = COMO_STRING(args[0]);
     return 0;
@@ -8318,12 +8318,12 @@ static int met_rx_findall(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSRegex *r; PSString *s;
-    if (n > 2) MERRO(vm, "SomeValueUnexpected", "split() espera 1 ou 2 argumentos");
+    if (n > 2) MERRO(vm, "TypeError", "split() espera 1 ou 2 argumentos");
     /* O maxsplit era VALIDADO e depois ignorado — `p.split(s, 1)` cortava tudo. */
     int64_t maxsplit = 0;
     if (n == 2) {
         if (args[1].t != V_INT)
-            MERRO(vm, "SomeValueUnexpected", "maxsplit de split() precisa ser int");
+            MERRO(vm, "TypeError", "maxsplit de split() precisa ser int");
         maxsplit = args[1].as.i;
     }
     if (rx_obj_str(vm, alvo, args, 1, "split", &r, &s) != 0) return -1;
@@ -8332,12 +8332,12 @@ static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 2 || n > 3) MERRO(vm, "SomeValueUnexpected", "sub() espera 2 ou 3 argumentos");
+    if (n < 2 || n > 3) MERRO(vm, "TypeError", "sub() espera 2 ou 3 argumentos");
     if (!EH_STRING(args[0]) || !EH_STRING(args[1]))
-        MERRO(vm, "SomeValueUnexpected", "sub() espera str");
+        MERRO(vm, "TypeError", "sub() espera str");
     int64_t limite = 0;
     if (n == 3) {
-        if (args[2].t != V_INT) MERRO(vm, "SomeValueUnexpected", "count de sub() precisa ser int");
+        if (args[2].t != V_INT) MERRO(vm, "TypeError", "count de sub() precisa ser int");
         limite = args[2].as.i;
     }
     PSString *rep = COMO_STRING(args[0]), *s = COMO_STRING(args[1]);
@@ -8347,7 +8347,7 @@ static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int mod_regex_compile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "compile() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "compile() espera 1 ou 2 argumentos");
     PSRegex *r = rx_compila(vm, args[0], "compile");
     if (!r) return -1;
     PSString *p = COMO_STRING(args[0]);
@@ -8366,7 +8366,7 @@ static int mod_regex_compile(VM *vm, Value *args, int n, Value *out)
 static int mod_regex_escape(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "escape", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "escape() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "escape() espera str");
     PSString *s = COMO_STRING(args[0]);
     SBUF_AUTO b = {0};
     for (int i = 0; i < s->len; i++) {
@@ -8423,7 +8423,7 @@ static const MembroMod MOD_REGEX[] = {
  * ler resposta de rede, onde corpo inválido é rotina. */
 static int met_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "get_json() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "get_json() espera 0 ou 1 argumento");
     Value um[1] = { alvo };
     Value dados;
     char erro_antes[sizeof(vm->erro)];
@@ -8485,7 +8485,7 @@ static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
         case '>': {
             if (mpz_sgn(zb) < 0) {
                 snprintf(vm->erro, sizeof(vm->erro), "deslocamento negativo");
-                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                 rc = -1; break;
             }
             /* teto de sanidade: `1 << 10000000000` pediria gigabytes */
@@ -8631,7 +8631,7 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
 static int ds_campos(VM *vm, Value v, const char *quem, PSDict **out)
 {
     if (!EH_INST(v))
-        BERRO(vm, "SomeValueUnexpected", "%s() espera uma instancia de Entity", quem);
+        BERRO(vm, "TypeError", "%s() espera uma instancia de Entity", quem);
     *out = COMO_INST(v)->campos;
     return 0;
 }
@@ -8783,12 +8783,12 @@ static int mod_hash_b64encode(VM *vm, Value *args, int n, Value *out)
 static int mod_hash_b64decode(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "b64decode", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "b64decode() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "b64decode() espera str");
     PSString *s = COMO_STRING(args[0]);
     unsigned char *b = malloc((size_t)s->len + 4);
     if (!b) BERRO(vm, "MemoryError", "sem memoria");
     long nb = ps_base64_decode(s->chars, (size_t)s->len, b, (size_t)s->len + 4);
-    if (nb < 0) { free(b); BERRO(vm, "SomeValueUnexpected", "base64 invalido"); }
+    if (nb < 0) { free(b); BERRO(vm, "TypeError", "base64 invalido"); }
     int r = devolve_texto(vm, out, (const char *)b, (int)nb);
     free(b);
     return r;
@@ -8805,13 +8805,17 @@ static const MembroMod MOD_HASH[] = {
  * Criar e converter sequências de bytes. O tipo
  * `bytes` já existe (OBJ_BYTES); este módulo é o que permite CRIAR do zero
  * (lista de ints, hex, base64, inteiro) e CONVERTER de volta. As mensagens de
- * erro batem com o interp: um TypeError vira "operação inválida entre os
- * tipos: " + msg e um ValueError vira "valor inválido: " + msg, ambos com o
- * código SomeValueUnexpected. */
+ * erro seguem a taxonomia do Python: TIPO errado é `TypeError`, VALOR errado
+ * (tipo certo, conteúdo que não serve) é `ValueError`.
+ *
+ * Até 29/08 os dois caíam num código só, `SomeValueUnexpected` — um nome
+ * inventado que cobria 468 sítios do motor, contra 3 de TypeError. Na prática
+ * `catch (TypeError e)` era inútil: divisão por zero, chave mutável,
+ * comparação incompatível e falha de I/O caíam todas no mesmo balde. */
 
-/* prefixos dos erros — batem com o wrap de TypeError/ValueError do interp */
-#define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "SomeValueUnexpected", "operação inválida entre os tipos: " __VA_ARGS__)
-#define BY_ERRO_VALOR(vm, ...) BERRO(vm, "SomeValueUnexpected", "valor inválido: " __VA_ARGS__)
+/* prefixos dos erros */
+#define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "TypeError", "operação inválida entre os tipos: " __VA_ARGS__)
+#define BY_ERRO_VALOR(vm, ...) BERRO(vm, "ValueError", "valor inválido: " __VA_ARGS__)
 
 /* nome do tipo como a linguagem o chama (dict = "json") */
 static const char *by_nome(Value v)
@@ -8864,7 +8868,7 @@ static int by_devolve(VM *vm, Value *out, const char *dados, int n)
 
 static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "new() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "new() espera 0 ou 1 argumento");
     if (n == 0 || args[0].t == V_UNSET) return by_devolve(vm, out, "", 0);
     Value x = args[0];
     if (EH_BYTES(x) || EH_STRING(x)) {   /* bytes e str têm o mesmo layout */
@@ -8970,7 +8974,7 @@ static int mod_bytes_frombase64(VM *vm, Value *args, int n, Value *out)
 
 static int mod_bytes_fromint(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "fromint() espera de 1 a 3 argumentos");
+    if (n < 1 || n > 3) BERRO(vm, "TypeError", "fromint() espera de 1 a 3 argumentos");
     if (args[0].t == V_BOOL || args[0].t != V_INT) BY_ERRO_TIPO(vm, "bytes.fromint: esperava um inteiro");
     int64_t v = args[0].as.i;
     if (v < 0) BY_ERRO_VALOR(vm, "bytes.fromint: negativo não suportado");
@@ -9003,7 +9007,7 @@ static int mod_bytes_fromint(VM *vm, Value *args, int n, Value *out)
 
 static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "toint() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "toint() espera 1 ou 2 argumentos");
     int big = 1;   /* byteorder checado antes do tipo dos bytes, como no interp */
     if (n > 1 && args[1].t != V_UNSET) {
         big = by_ordem(args[1]);
@@ -9058,7 +9062,7 @@ static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
 
 static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "slice() espera de 1 a 3 argumentos");
+    if (n < 1 || n > 3) BERRO(vm, "TypeError", "slice() espera de 1 a 3 argumentos");
     if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "bytes.slice: esperava bytes, recebeu %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     int len = b->len;
@@ -9150,22 +9154,22 @@ static int jwt_parte(VM *vm, const Value *v, char **saida, size_t *nsaida)
 
 static int mod_jwt_gen(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 2 || n > 3) BERRO(vm, "SomeValueUnexpected", "gen() espera 2 ou 3 argumentos");
-    if (!EH_DICT(args[0])) BERRO(vm, "SomeValueUnexpected", "gen() espera um dict como payload");
-    if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "gen() espera a chave como str");
+    if (n < 2 || n > 3) BERRO(vm, "TypeError", "gen() espera 2 ou 3 argumentos");
+    if (!EH_DICT(args[0])) BERRO(vm, "TypeError", "gen() espera um dict como payload");
+    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "gen() espera a chave como str");
     /* Família HMAC inteira. RS/PS/ES são assimétricos e precisam de RSA ou
      * curva elíptica — recusados por nome, não ignorados: aceitar e assinar
      * com HMAC é a confusão de algoritmo que já rendeu CVE. */
     const char *alg = "HS256";
     if (n == 3) {
-        if (!EH_STRING(args[2])) BERRO(vm, "SomeValueUnexpected", "gen() espera o algoritmo como str");
+        if (!EH_STRING(args[2])) BERRO(vm, "TypeError", "gen() espera o algoritmo como str");
         alg = COMO_STRING(args[2])->chars;
     }
     int tam = 0;
     if      (!strcmp(alg, "HS256")) tam = PS_SHA256_TAM;
     else if (!strcmp(alg, "HS384")) tam = PS_SHA384_TAM;
     else if (!strcmp(alg, "HS512")) tam = PS_SHA512_TAM;
-    else BERRO(vm, "SomeValueUnexpected",
+    else BERRO(vm, "TypeError",
                "jwt: algoritmo '%s' nao suportado (so HS256, HS384, HS512)", alg);
 
     /* Header pré-codificado: a ORDEM das chaves entra na assinatura, e montar
@@ -9328,11 +9332,11 @@ static int mod_sys_argv(VM *vm, Value *args, int n, Value *out)
 static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
 {
     (void)out;
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "exit() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "exit() espera 0 ou 1 argumento");
     int codigo = 0;
     if (n == 1) {
         if (args[0].t == V_INT) codigo = (int)args[0].as.i;
-        else if (args[0].t != V_NULL) BERRO(vm, "SomeValueUnexpected", "exit() espera int");
+        else if (args[0].t != V_NULL) BERRO(vm, "TypeError", "exit() espera int");
     }
     fflush(stdout);
     exit(codigo);
@@ -9407,7 +9411,7 @@ static int busca_recursiva(const char *base, const char *nome, char *saida, size
 static int mod_sys_relativepath(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "RelativePath", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "RelativePath() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "RelativePath() espera str");
     char base[1024];
     if (!getcwd(base, sizeof(base))) BERRO(vm, "RuntimeError", "nao consegui ler o diretorio atual");
     char achado[2048];
@@ -9421,7 +9425,7 @@ static int mod_sys_relativepath(VM *vm, Value *args, int n, Value *out)
 /* stdout/stderr são namespaces, não funções — daí serem módulos aninhados. */
 static int escreve_em(VM *vm, FILE *f, Value *args, int n, Value *out, int sempre_quebra)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "write() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "write() espera 1 ou 2 argumentos");
     TXTBUF_AUTO t = {0};
     if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     fwrite(t.b ? t.b : "", 1, (size_t)t.n, f);
@@ -9460,11 +9464,11 @@ static const MembroMod MOD_STDERR[] = {
 static int mod_in_read(VM *vm, Value *a, int n, Value *o)
 {
     long quer = -1;
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "read() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "read() espera 0 ou 1 argumento");
     if (n == 1) {
-        if (a[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "read() espera um inteiro");
+        if (a[0].t != V_INT) BERRO(vm, "TypeError", "read() espera um inteiro");
         quer = (long)a[0].as.i;
-        if (quer < 0) BERRO(vm, "SomeValueUnexpected", "read() nao aceita tamanho negativo");
+        if (quer < 0) BERRO(vm, "TypeError", "read() nao aceita tamanho negativo");
     }
     SBUF_AUTO b = {0};
     long lidos = 0;
@@ -9541,10 +9545,10 @@ static const MembroMod MOD_SYS[] = {
  * ambiente de verdade tem que ganhar do arquivo. */
 static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "load() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "load() espera 0 ou 1 argumento");
     char caminho[2048] = {0};
     if (n == 1 && args[0].t != V_NULL) {
-        if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "load() espera str");
+        if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "load() espera str");
         snprintf(caminho, sizeof(caminho), "%s", COMO_STRING(args[0])->chars);
     } else {
         char dir[1024];
@@ -9678,7 +9682,7 @@ static int texto_do_arg(VM *vm, Value v, char *saida, size_t cap, int *n)
 
 static int par_integer(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "integer() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "integer() espera 1 ou 2 argumentos");
     /* número já é número: float TRUNCA, não vira os dígitos concatenados —
      * `123.7` dá 123, não 1237. */
     if (args[0].t == V_INT)   { *out = args[0]; return 0; }
@@ -9693,7 +9697,7 @@ static int par_integer(VM *vm, Value *args, int n, Value *out)
 
 static int par_floating(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "floating() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "floating() espera 1 ou 2 argumentos");
     if (args[0].t == V_INT)   { *out = MK_FLOAT((double)args[0].as.i); return 0; }
     if (args[0].t == V_FLOAT) { *out = args[0]; return 0; }
     char txt[256], limpo[256];
@@ -9706,10 +9710,10 @@ static int par_floating(VM *vm, Value *args, int n, Value *out)
 
 static int par_string(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "string() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "string() espera 1 ou 2 argumentos");
     const char *para = "str";
     if (n == 2) {
-        if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "string() espera str no 2o argumento");
+        if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "string() espera str no 2o argumento");
         para = COMO_STRING(args[1])->chars;
     }
     if (!strcmp(para, "int")) return par_integer(vm, args, 1, out);
@@ -9750,7 +9754,7 @@ static int par_string(VM *vm, Value *args, int n, Value *out)
 
 static int par_boolean(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "boolean() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "boolean() espera 1 ou 2 argumentos");
     /* Texto tem regra PRÓPRIA: `"false"` e `"0"` são falsos, embora string
      * não-vazia seja verdadeira em todo o resto da linguagem. */
     if (EH_STRING(args[0])) {
@@ -9771,10 +9775,10 @@ static int par_boolean(VM *vm, Value *args, int n, Value *out)
 
 static int par_transient(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "TransientValue() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "TransientValue() espera 1 ou 2 argumentos");
     const char *para = "str";
     if (n == 2) {
-        if (!EH_STRING(args[1])) BERRO(vm, "SomeValueUnexpected", "TransientValue() espera str no 2o argumento");
+        if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "TransientValue() espera str no 2o argumento");
         para = COMO_STRING(args[1])->chars;
     }
     if (!strcmp(para, "int")) return par_integer(vm, args, 1, out);
@@ -9791,7 +9795,7 @@ static int par_transient(VM *vm, Value *args, int n, Value *out)
 
 static int par_json(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "JSONformatt() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "JSONformatt() espera 1 ou 2 argumentos");
     if (EH_DICT(args[0]) || EH_SEQ(args[0])) { *out = args[0]; return 0; }
     if (EH_STRING(args[0])) {
         Value um[1] = { args[0] };
@@ -9807,7 +9811,7 @@ static int par_json(VM *vm, Value *args, int n, Value *out)
 
 static int par_array(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "Arrayformatt() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "Arrayformatt() espera 1 ou 2 argumentos");
     if (EH_LIST(args[0])) { *out = args[0]; return 0; }
     if (EH_TUPLA(args[0]) || EH_STRING(args[0]) || EH_DICT(args[0])) {
         Value um[1] = { args[0] };
@@ -9823,7 +9827,7 @@ static int par_array(VM *vm, Value *args, int n, Value *out)
 
 static int par_tupla(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "Tuplasformatt() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "Tuplasformatt() espera 1 ou 2 argumentos");
     if (EH_TUPLA(args[0])) { *out = args[0]; return 0; }
     if (EH_LIST(args[0]) || EH_STRING(args[0])) {
         Value lista;
@@ -9973,7 +9977,7 @@ sem_memoria:
 /* ── módulo os ──────────────────────────────────────────────────────────── */
 static int os_str(VM *vm, Value v, const char *quem, PSString **out)
 {
-    if (!EH_STRING(v)) BERRO(vm, "SomeValueUnexpected", "%s() espera str", quem);
+    if (!EH_STRING(v)) BERRO(vm, "TypeError", "%s() espera str", quem);
     *out = COMO_STRING(v);
     return 0;
 }
@@ -10020,7 +10024,7 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
         if (stat(nome->chars, &st) == 0
             && (quer_dir ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode)))
             return devolve_texto(vm, out, nome->chars, nome->len);
-        BERRO(vm, "SomeValueUnexpected", "%s nao encontrado: %s",
+        BERRO(vm, "TypeError", "%s nao encontrado: %s",
               quer_dir ? "pasta" : "arquivo", nome->chars);
     }
     if (vm_corrente && vm_corrente->dir_script[0]
@@ -10030,7 +10034,7 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
     if (getcwd(cwd_, sizeof(cwd_))
             && acha_em(cwd_, nome->chars, quer_dir, achado, sizeof(achado), 0) == 0)
         return devolve_texto(vm, out, achado, (int)strlen(achado));
-    BERRO(vm, "SomeValueUnexpected", "%s nao encontrado: %s",
+    BERRO(vm, "TypeError", "%s nao encontrado: %s",
           quer_dir ? "pasta" : "arquivo", nome->chars);
 }
 
@@ -10041,7 +10045,7 @@ static int mod_os_pathfolder(VM *v, Value *a, int n, Value *o) { return os_procu
  * a extensão, e adivinhar pelo conteúdo daria resultado diferente. */
 static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "loadFile() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "loadFile() espera 1 ou 2 argumentos");
     Value cam;
     if (os_procura(vm, args, 1, &cam, 0, "loadFile") != 0) return -1;
     if (fixa_raiz(vm, cam) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
@@ -10052,27 +10056,27 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 
     const char *modo = NULL;
     if (n == 2 && args[1].t != V_NULL) {
-        if (!EH_STRING(args[1])) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "loadFile() espera str no modo"); }
+        if (!EH_STRING(args[1])) { vm->sp--; BERRO(vm, "TypeError", "loadFile() espera str no modo"); }
         modo = COMO_STRING(args[1])->chars;
     }
     int bin = ext_binaria(ext);
     if (modo && !strcmp(modo, "rb")) {
-        if (!bin) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "loadFile: mode='rb' nao aceita extensao '%s'", ext); }
+        if (!bin) { vm->sp--; BERRO(vm, "TypeError", "loadFile: mode='rb' nao aceita extensao '%s'", ext); }
     } else if (modo && bin) {
         vm->sp--;
-        BERRO(vm, "SomeValueUnexpected", "loadFile: mode='%s' nao aceita extensao '%s' — use 'rb'", modo, ext);
+        BERRO(vm, "TypeError", "loadFile: mode='%s' nao aceita extensao '%s' — use 'rb'", modo, ext);
     }
 
     if (bin) {
         PSPoolFile *pf = novo_poolfile(vm, caminho);
         vm->sp--;
-        if (!pf) BERRO(vm, "SomeValueUnexpected", "nao consegui ler o arquivo");
+        if (!pf) BERRO(vm, "TypeError", "nao consegui ler o arquivo");
         *out = MK_OBJ(pf);
         return 0;
     }
 
     FILE *f = fopen(caminho, "rb");
-    if (!f) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "nao consegui abrir o arquivo"); }
+    if (!f) { vm->sp--; BERRO(vm, "TypeError", "nao consegui abrir o arquivo"); }
     SBUF_AUTO b = {0};
     char pedaco[4096];
     size_t lidos;
@@ -10096,11 +10100,11 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1) BERRO(vm, "SomeValueUnexpected", "readFile() espera o caminho");
+    if (n < 1) BERRO(vm, "TypeError", "readFile() espera o caminho");
     PSString *p;
     if (os_str(vm, args[0], "readFile", &p) != 0) return -1;
     FILE *f = fopen(p->chars, "rb");
-    if (!f) BERRO(vm, "SomeValueUnexpected", "nao consegui abrir '%s'", p->chars);
+    if (!f) BERRO(vm, "TypeError", "nao consegui abrir '%s'", p->chars);
     fseek(f, 0, SEEK_END); long t = ftell(f); if (t < 0) t = 0; fseek(f, 0, SEEK_SET);
     char *buf = malloc((size_t)t + 1);
     if (!buf) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
@@ -10115,18 +10119,18 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 2) BERRO(vm, "SomeValueUnexpected", "writeFile() espera caminho e conteudo");
+    if (n < 2) BERRO(vm, "TypeError", "writeFile() espera caminho e conteudo");
     PSString *p;
     if (os_str(vm, args[0], "writeFile", &p) != 0) return -1;
     const char *dados; int ndados;
     if (EH_STRING(args[1]))      { PSString *c = COMO_STRING(args[1]); dados = c->chars; ndados = c->len; }
     else if (EH_BYTES(args[1]))  { PSString *c = COMO_BYTES(args[1]);  dados = c->chars; ndados = c->len; }
-    else BERRO(vm, "SomeValueUnexpected", "writeFile() espera str ou bytes no conteudo");
+    else BERRO(vm, "TypeError", "writeFile() espera str ou bytes no conteudo");
     /* cria a pasta pai (como makedirs) */
     char tmp[2048]; snprintf(tmp, sizeof(tmp), "%s", p->chars);
     for (char *q = tmp + 1; *q; q++) { if (*q == '/') { *q = '\0'; mkdir(tmp, 0755); *q = '/'; } }
     FILE *f = fopen(p->chars, "wb");
-    if (!f) BERRO(vm, "SomeValueUnexpected", "nao consegui escrever '%s'", p->chars);
+    if (!f) BERRO(vm, "TypeError", "nao consegui escrever '%s'", p->chars);
     if (ndados > 0) fwrite(dados, 1, (size_t)ndados, f);
     fclose(f);
     PSString *rp = nova_string(vm, p->chars, p->len);
@@ -10137,7 +10141,7 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "mkdir() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "mkdir() espera 1 ou 2 argumentos");
     PSString *p;
     if (os_str(vm, args[0], "mkdir", &p) != 0) return -1;
     int ok_existir = (n == 2) && val_truthy(&args[1]);
@@ -10149,7 +10153,7 @@ static int mod_os_mkdir(VM *vm, Value *args, int n, Value *out)
         *q = '\0'; mkdir(tmp, 0755); *q = '/';
     }
     if (mkdir(tmp, 0755) != 0 && !(errno == EEXIST && ok_existir))
-        BERRO(vm, "SomeValueUnexpected", "nao consegui criar '%s'", p->chars);
+        BERRO(vm, "TypeError", "nao consegui criar '%s'", p->chars);
     *out = MK_NULL();
     return 0;
 }
@@ -10174,21 +10178,21 @@ static int apaga_arvore(const char *caminho, int prof)
 
 static int mod_os_rmdir(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "rmdir() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "rmdir() espera 1 ou 2 argumentos");
     PSString *p;
     if (os_str(vm, args[0], "rmdir", &p) != 0) return -1;
     int forca = (n == 2) && val_truthy(&args[1]);
     /* Sem `force`, só remove diretório VAZIO — apagar conteúdo sem o usuário
      * pedir é destrutivo demais pra ser o padrão. */
     int rc = forca ? apaga_arvore(p->chars, 0) : rmdir(p->chars);
-    if (rc != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui remover '%s'", p->chars);
+    if (rc != 0) BERRO(vm, "TypeError", "nao consegui remover '%s'", p->chars);
     *out = MK_NULL();
     return 0;
 }
 
 static int mod_os_ls(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "ls() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "ls() espera 0 ou 1 argumento");
     const char *dir = ".";
     if (n == 1) {
         PSString *p;
@@ -10196,7 +10200,7 @@ static int mod_os_ls(VM *vm, Value *args, int n, Value *out)
         dir = p->chars;
     }
     DIR *d = opendir(dir);
-    if (!d) BERRO(vm, "SomeValueUnexpected", "nao consegui listar '%s'", dir);
+    if (!d) BERRO(vm, "TypeError", "nao consegui listar '%s'", dir);
     PSList *l = lista_com_cap(vm, 8, OBJ_LIST);
     if (!l) { closedir(d); BERRO(vm, "MemoryError", "sem memoria"); }
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) { closedir(d); BERRO(vm, "RuntimeError", "estouro"); }
@@ -10257,7 +10261,7 @@ static int mod_os_rename(VM *vm, Value *args, int n, Value *out)
     PSString *a, *b;
     if (os_str(vm, args[0], "rename", &a) != 0 || os_str(vm, args[1], "rename", &b) != 0) return -1;
     if (rename(a->chars, b->chars) != 0)
-        BERRO(vm, "SomeValueUnexpected", "nao consegui renomear '%s'", a->chars);
+        BERRO(vm, "TypeError", "nao consegui renomear '%s'", a->chars);
     *out = MK_NULL();
     return 0;
 }
@@ -10268,7 +10272,7 @@ static int mod_os_copy(VM *vm, Value *args, int n, Value *out)
     PSString *a, *b;
     if (os_str(vm, args[0], "copy", &a) != 0 || os_str(vm, args[1], "copy", &b) != 0) return -1;
     if (copia_arquivo(a->chars, b->chars) != 0)
-        BERRO(vm, "SomeValueUnexpected", "nao consegui copiar '%s'", a->chars);
+        BERRO(vm, "TypeError", "nao consegui copiar '%s'", a->chars);
     *out = MK_NULL();
     return 0;
 }
@@ -10280,7 +10284,7 @@ static int mod_os_move(VM *vm, Value *args, int n, Value *out)
     if (os_str(vm, args[0], "move", &a) != 0 || os_str(vm, args[1], "move", &b) != 0) return -1;
     if (rename(a->chars, b->chars) != 0) {
         if (copia_arquivo(a->chars, b->chars) != 0)
-            BERRO(vm, "SomeValueUnexpected", "nao consegui mover '%s'", a->chars);
+            BERRO(vm, "TypeError", "nao consegui mover '%s'", a->chars);
         unlink(a->chars);
     }
     *out = MK_NULL();
@@ -10293,7 +10297,7 @@ static int mod_os_size(VM *vm, Value *args, int n, Value *out)
     PSString *p;
     if (os_str(vm, args[0], "size", &p) != 0) return -1;
     struct stat st;
-    if (stat(p->chars, &st) != 0) BERRO(vm, "SomeValueUnexpected", "nao achei '%s'", p->chars);
+    if (stat(p->chars, &st) != 0) BERRO(vm, "TypeError", "nao achei '%s'", p->chars);
     *out = MK_INT((int64_t)st.st_size);
     return 0;
 }
@@ -10312,7 +10316,7 @@ static int mod_os_chdir(VM *vm, Value *args, int n, Value *out)
     EXIGE_ARGS(vm, "chdir", 1);
     PSString *p;
     if (os_str(vm, args[0], "chdir", &p) != 0) return -1;
-    if (chdir(p->chars) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui entrar em '%s'", p->chars);
+    if (chdir(p->chars) != 0) BERRO(vm, "TypeError", "nao consegui entrar em '%s'", p->chars);
     *out = MK_NULL();
     return 0;
 }
@@ -10321,7 +10325,7 @@ extern char **environ;
 
 static int mod_os_environ(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "environ() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "environ() espera 0 ou 1 argumento");
     if (n == 1 && args[0].t != V_NULL) {
         PSString *k;
         if (os_str(vm, args[0], "environ", &k) != 0) return -1;
@@ -10348,7 +10352,7 @@ static int mod_os_environ(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_getenv(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getenv() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "getenv() espera 1 ou 2 argumentos");
     PSString *k;
     if (os_str(vm, args[0], "getenv", &k) != 0) return -1;
     /* carrega o .env antes — variável de arquivo tem
@@ -10362,7 +10366,7 @@ static int mod_os_getenv(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_warn(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 2) BERRO(vm, "SomeValueUnexpected", "warn() espera ate 2 argumentos");
+    if (n > 2) BERRO(vm, "TypeError", "warn() espera ate 2 argumentos");
     static const struct { const char *nome, *cod; } CORES[] = {
         {"red","\033[91m"},{"green","\033[92m"},{"yellow","\033[93m"},
         {"blue","\033[94m"},{"magenta","\033[95m"},{"cyan","\033[96m"},{"white","\033[97m"},
@@ -10508,7 +10512,7 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
 
 static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "cmd() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "cmd() espera 1 ou 2 argumentos");
     PSString *c;
     if (os_str(vm, args[0], "cmd", &c) != 0) return -1;
     /* COM shell: `;` `|` `$` são interpretados. Dado de usuário aqui é
@@ -10518,7 +10522,7 @@ static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_run(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "run() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "run() espera 1 ou 2 argumentos");
     int capturar = (n == 2) && val_truthy(&args[1]);
     char *vetor[64];
     int q = 0;
@@ -10526,9 +10530,9 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
 
     if (EH_SEQ(args[0])) {
         PSList *l = COMO_LIST(args[0]);
-        if (l->len >= 63) BERRO(vm, "SomeValueUnexpected", "run() com argumentos demais");
+        if (l->len >= 63) BERRO(vm, "TypeError", "run() com argumentos demais");
         for (int i = 0; i < l->len; i++) {
-            if (!EH_STRING(l->itens[i])) BERRO(vm, "SomeValueUnexpected", "run() espera lista de str");
+            if (!EH_STRING(l->itens[i])) BERRO(vm, "TypeError", "run() espera lista de str");
             vetor[q++] = COMO_STRING(l->itens[i])->chars;
         }
     } else if (EH_STRING(args[0])) {
@@ -10546,16 +10550,16 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
             if (*p) { *p = '\0'; p++; }
         }
     } else {
-        BERRO(vm, "SomeValueUnexpected", "run() espera lista ou str");
+        BERRO(vm, "TypeError", "run() espera lista ou str");
     }
-    if (q == 0) BERRO(vm, "SomeValueUnexpected", "run() sem comando");
+    if (q == 0) BERRO(vm, "TypeError", "run() sem comando");
     vetor[q] = NULL;
     return roda_processo(vm, NULL, vetor, capturar, out);
 }
 
 static int mod_os_code(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "code() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "code() espera 0 ou 1 argumento");
     const char *alvo = ".";
     if (n == 1) {
         PSString *p;
@@ -10662,7 +10666,7 @@ static int sql_liga_params(VM *vm, sqlite3 *db, sqlite3_stmt *stmt, Value pars)
     if (pars.t == V_NULL || pars.t == V_UNSET) return 0;
     if (!EH_SEQ(pars)) {
         snprintf(vm->erro, sizeof(vm->erro), "execute() espera tupla ou lista de parametros");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     PSList *l = COMO_LIST(pars);
@@ -10815,8 +10819,8 @@ static PSSqlCur *novo_sqlcur(VM *vm, Value conn)
 
 static int met_sqlcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "execute() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "execute() espera str no SQL");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "execute() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "execute() espera str no SQL");
     int nulo = 0;
     if (sql_executa(vm, COMO_SQLCUR(alvo), COMO_STRING(args[0])->chars,
                     COMO_STRING(args[0])->len, n == 2 ? args[1] : MK_NULL(), &nulo) != 0)
@@ -10827,9 +10831,9 @@ static int met_sqlcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out
 
 static int met_sqlcur_executemany(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n != 2) MERRO(vm, "SomeValueUnexpected", "executemany() espera SQL e lista");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "executemany() espera str no SQL");
-    if (!EH_SEQ(args[1])) MERRO(vm, "SomeValueUnexpected", "executemany() espera lista de tuplas");
+    if (n != 2) MERRO(vm, "TypeError", "executemany() espera SQL e lista");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "executemany() espera str no SQL");
+    if (!EH_SEQ(args[1])) MERRO(vm, "TypeError", "executemany() espera lista de tuplas");
     PSSqlCur *cur = COMO_SQLCUR(alvo);
     PSList *seq = COMO_LIST(args[1]);
     /* rowcount acumula o total das repetições — é o que o Python devolve */
@@ -10880,16 +10884,16 @@ static int sql_busca(VM *vm, Value alvo, int64_t quantos, Value *out)
 static int met_sqlcur_fetchall(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "fetchall() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "fetchall() nao aceita argumento");
     return sql_busca(vm, alvo, -1, out);
 }
 
 static int met_sqlcur_fetchmany(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "fetchmany() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "fetchmany() espera 0 ou 1 argumento");
     int64_t quantos = 1;
     if (n == 1) {
-        if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "fetchmany() espera int");
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "fetchmany() espera int");
         quantos = args[0].as.i;
     }
     return sql_busca(vm, alvo, quantos < 0 ? 0 : quantos, out);
@@ -10898,7 +10902,7 @@ static int met_sqlcur_fetchmany(VM *vm, Value alvo, Value *args, int n, Value *o
 static int met_sqlcur_fetchone(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "fetchone() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "fetchone() nao aceita argumento");
     Value lista;
     if (sql_busca(vm, alvo, 1, &lista) != 0) return -1;
     PSList *l = COMO_LIST(lista);
@@ -10920,7 +10924,7 @@ static int met_sqlcur_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_sqlconn_cursor(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "cursor() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "cursor() nao aceita argumento");
     if (sql_conn_aberta(vm, COMO_SQLCONN(alvo)) != 0) return -1;
     vm->sp = vm->sp;   /* estado já publicado pelo chamador */
     PSSqlCur *cu = novo_sqlcur(vm, alvo);
@@ -10933,8 +10937,8 @@ static int met_sqlconn_cursor(VM *vm, Value alvo, Value *args, int n, Value *out
  * o wrapper da conexão não faz o desvio de DDL do cursor. */
 static int met_sqlconn_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "execute() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "execute() espera str no SQL");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "execute() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "execute() espera str no SQL");
     if (sql_conn_aberta(vm, COMO_SQLCONN(alvo)) != 0) return -1;
     PSSqlCur *cu = novo_sqlcur(vm, alvo);
     if (!cu) MERRO(vm, "MemoryError", "sem memoria");
@@ -10949,7 +10953,7 @@ static int met_sqlconn_execute(VM *vm, Value alvo, Value *args, int n, Value *ou
 static int met_sqlconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "commit() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "commit() nao aceita argumento");
     PSSqlConn *cn = COMO_SQLCONN(alvo);
     if (sql_conn_aberta(vm, cn) != 0) return -1;
     /* fora de transação é no-op, como no Python */
@@ -10963,7 +10967,7 @@ static int met_sqlconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out
 static int met_sqlconn_rollback(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "rollback() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "rollback() nao aceita argumento");
     PSSqlConn *cn = COMO_SQLCONN(alvo);
     if (sql_conn_aberta(vm, cn) != 0) return -1;
     if (!sqlite3_get_autocommit(cn->db)
@@ -10990,7 +10994,7 @@ static int met_sqlconn_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int mod_sqlite3_connect(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "connect", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "connect() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "connect() espera str");
     sqlite3 *db = NULL;
     if (sqlite3_open(COMO_STRING(args[0])->chars, &db) != SQLITE_OK) {
         snprintf(vm->erro, sizeof(vm->erro), "erro de banco de dados: %s",
@@ -11181,7 +11185,7 @@ static int mailmsg_monta(VM *vm, PSMailMsg *m, SBuf *b)
 static int met_mm_from(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "from_address", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "from_address() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "from_address() espera str");
     if (mailmsg_add_cab(vm, COMO_MAILMSG(alvo), "From", COMO_STRING(args[0])->chars) != 0) return -1;
     *out = alvo;
     return 0;
@@ -11189,7 +11193,7 @@ static int met_mm_from(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_mm_to(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "to", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "to() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "to() espera str");
     if (mailmsg_add_cab(vm, COMO_MAILMSG(alvo), "To", COMO_STRING(args[0])->chars) != 0) return -1;
     *out = alvo;
     return 0;
@@ -11197,15 +11201,15 @@ static int met_mm_to(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_mm_subject(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "subject", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "subject() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "subject() espera str");
     if (mailmsg_add_cab(vm, COMO_MAILMSG(alvo), "Subject", COMO_STRING(args[0])->chars) != 0) return -1;
     *out = alvo;
     return 0;
 }
 static int met_mm_body(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "body() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "body() espera str");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "body() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "body() espera str");
     int html = (n == 2) && val_truthy(&args[1]);
     PSString *c = COMO_STRING(args[0]);
     if (mailmsg_add_parte(vm, COMO_MAILMSG(alvo), 0, html ? "text/html" : "text/plain",
@@ -11242,12 +11246,12 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         *out = MK_BOOL(1);
         return 0;
     }
-    MERRO(vm, "SomeValueUnexpected", "tipo não suportado para anexo");
+    MERRO(vm, "TypeError", "tipo não suportado para anexo");
 }
 static int met_mm_asstring(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "get_as_string() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "get_as_string() nao aceita argumento");
     SBUF_AUTO b = {0};
     if (mailmsg_monta(vm, COMO_MAILMSG(alvo), &b) != 0) { return -1; }
     PSString *s = nova_string(vm, b.b ? b.b : "", b.n);
@@ -11326,7 +11330,7 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
 {
     memset(sa, 0, sizeof(*sa));
     if (familia == AF_UNIX) {
-        if (!EH_STRING(addr)) MERRO(vm, "SomeValueUnexpected", "%s: AF_UNIX espera caminho str", quem);
+        if (!EH_STRING(addr)) MERRO(vm, "TypeError", "%s: AF_UNIX espera caminho str", quem);
         struct sockaddr_un *un = (struct sockaddr_un *)sa;
         un->sun_family = AF_UNIX;
         snprintf(un->sun_path, sizeof(un->sun_path), "%s", COMO_STRING(addr)->chars);
@@ -11334,10 +11338,10 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
         return 0;
     }
     if (!EH_TUPLA(addr) && !EH_LIST(addr))
-        MERRO(vm, "SomeValueUnexpected", "%s: endereço deve ser (host, porta)", quem);
+        MERRO(vm, "TypeError", "%s: endereço deve ser (host, porta)", quem);
     PSList *t = COMO_LIST(addr);
     if (t->len < 2 || !EH_STRING(t->itens[0]) || t->itens[1].t != V_INT)
-        MERRO(vm, "SomeValueUnexpected", "%s: endereço deve ser (host str, porta int)", quem);
+        MERRO(vm, "TypeError", "%s: endereço deve ser (host str, porta int)", quem);
     const char *host = COMO_STRING(t->itens[0])->chars;
     char porta[16];
     snprintf(porta, sizeof(porta), "%lld", (long long)t->itens[1].as.i);
@@ -11399,7 +11403,7 @@ static int sk_addr_valor(VM *vm, const struct sockaddr_storage *sa, Value *out)
 /* dados de um send: str vira UTF-8, bytes vai cru (chars/len servem pros dois) */
 static int sk_dados(VM *vm, Value v, const char *quem, const char **p, size_t *n)
 {
-    if (!EH_STRING(v) && !EH_BYTES(v)) MERRO(vm, "SomeValueUnexpected", "%s: esperava str ou bytes", quem);
+    if (!EH_STRING(v) && !EH_BYTES(v)) MERRO(vm, "TypeError", "%s: esperava str ou bytes", quem);
     *p = COMO_STRING(v)->chars;
     *n = (size_t)COMO_STRING(v)->len;
     return 0;
@@ -11499,7 +11503,7 @@ static int met_sk_bind(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_sk_listen(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "listen() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "listen() espera 0 ou 1 argumento");
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "listen", &s) != 0) return -1;
     int backlog = (n == 1 && args[0].t == V_INT) ? (int)args[0].as.i : SOMAXCONN;
     if (listen(s->fd, backlog) != 0) SK_ERRNO(vm, "listen", errno);
@@ -11510,7 +11514,7 @@ static int met_sk_listen(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_sk_accept(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "accept() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "accept() nao aceita argumento");
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "accept", &s) != 0) return -1;
     SkAccOff o = { s->fd, -1, {0}, 0, 0 };
     fib_offload(vm, sk_acc_off, &o);
@@ -11561,7 +11565,7 @@ static int met_sk_connect_ex(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int sk_send_nucleo(VM *vm, Value alvo, Value *args, int n, const char *quem,
                           int tudo, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 ou 2 argumentos", quem);
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "%s() espera 1 ou 2 argumentos", quem);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
     const char *p = NULL; size_t tam = 0;
     if (sk_dados(vm, args[0], quem, &p, &tam) != 0) return -1;
@@ -11581,7 +11585,7 @@ static int met_sk_sendall(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_sk_sendto(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 2 || n > 3) MERRO(vm, "SomeValueUnexpected", "sendto() espera 2 ou 3 argumentos");
+    if (n < 2 || n > 3) MERRO(vm, "TypeError", "sendto() espera 2 ou 3 argumentos");
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "sendto", &s) != 0) return -1;
     const char *p = NULL; size_t tam = 0;
     if (sk_dados(vm, args[0], "sendto", &p, &tam) != 0) return -1;
@@ -11600,9 +11604,9 @@ static int met_sk_sendto(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int sk_recv_nucleo(VM *vm, Value alvo, Value *args, int n, const char *quem,
                           int com_addr, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "%s() espera 1 ou 2 argumentos", quem);
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "%s() espera 1 ou 2 argumentos", quem);
     if (args[0].t != V_INT || args[0].as.i <= 0)
-        MERRO(vm, "SomeValueUnexpected", "%s: bufsize deve ser int positivo", quem);
+        MERRO(vm, "TypeError", "%s: bufsize deve ser int positivo", quem);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
     size_t cap = (size_t)args[0].as.i;
     int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
@@ -11643,7 +11647,7 @@ static int met_sk_shutdown(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "shutdown", 1);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "shutdown", &s) != 0) return -1;
-    if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "shutdown: how deve ser int");
+    if (args[0].t != V_INT) MERRO(vm, "TypeError", "shutdown: how deve ser int");
     if (shutdown(s->fd, (int)args[0].as.i) != 0) SK_ERRNO(vm, "shutdown", errno);
     *out = MK_NULL();
     return 0;
@@ -11654,7 +11658,7 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "setsockopt", 3);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "setsockopt", &s) != 0) return -1;
     if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "SomeValueUnexpected", "setsockopt: level/optname devem ser int");
+        MERRO(vm, "TypeError", "setsockopt: level/optname devem ser int");
     int rc;
     if (EH_BYTES(args[2]) || EH_STRING(args[2]))
         rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i,
@@ -11663,7 +11667,7 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
         int v = args[2].t == V_INT ? (int)args[2].as.i : (args[2].as.b ? 1 : 0);
         rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, sizeof(v));
     } else
-        MERRO(vm, "SomeValueUnexpected", "setsockopt: value deve ser int ou bytes");
+        MERRO(vm, "TypeError", "setsockopt: value deve ser int ou bytes");
     if (rc != 0) SK_ERRNO(vm, "setsockopt", errno);
     *out = MK_NULL();
     return 0;
@@ -11671,13 +11675,13 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 2 || n > 3) MERRO(vm, "SomeValueUnexpected", "getsockopt() espera 2 ou 3 argumentos");
+    if (n < 2 || n > 3) MERRO(vm, "TypeError", "getsockopt() espera 2 ou 3 argumentos");
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "getsockopt", &s) != 0) return -1;
     if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "SomeValueUnexpected", "getsockopt: level/optname devem ser int");
+        MERRO(vm, "TypeError", "getsockopt: level/optname devem ser int");
     if (n == 3) {   /* com buflen -> bytes, igual ao Python */
         if (args[2].t != V_INT || args[2].as.i <= 0 || args[2].as.i > 1024)
-            MERRO(vm, "SomeValueUnexpected", "getsockopt: buflen invalido");
+            MERRO(vm, "TypeError", "getsockopt: buflen invalido");
         char buf[1024]; socklen_t sl = (socklen_t)args[2].as.i;
         if (getsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, buf, &sl) != 0)
             SK_ERRNO(vm, "getsockopt", errno);
@@ -11700,9 +11704,9 @@ static int met_sk_settimeout(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (args[0].t == V_NULL) s->timeout = -1.0;
     else if (args[0].t == V_INT) s->timeout = (double)args[0].as.i;
     else if (args[0].t == V_FLOAT) s->timeout = args[0].as.d;
-    else MERRO(vm, "SomeValueUnexpected", "settimeout: espera numero ou null");
+    else MERRO(vm, "TypeError", "settimeout: espera numero ou null");
     if (s->timeout < 0 && args[0].t != V_NULL)
-        MERRO(vm, "SomeValueUnexpected", "settimeout: prazo negativo");
+        MERRO(vm, "TypeError", "settimeout: prazo negativo");
     sk_aplica_timeout(s);
     *out = MK_NULL();
     return 0;
@@ -11783,7 +11787,7 @@ static int met_sk_dup(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* ── funções do módulo ── */
 static int mod_sk_socket(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 3) BERRO(vm, "SomeValueUnexpected", "socket() espera ate 3 argumentos");
+    if (n > 3) BERRO(vm, "TypeError", "socket() espera ate 3 argumentos");
     int familia = (n >= 1 && args[0].t == V_INT) ? (int)args[0].as.i : AF_INET;
     int tipo    = (n >= 2 && args[1].t == V_INT) ? (int)args[1].as.i : SOCK_STREAM;
     int proto   = (n >= 3 && args[2].t == V_INT) ? (int)args[2].as.i : 0;
@@ -11798,7 +11802,7 @@ static int mod_sk_socket(VM *vm, Value *args, int n, Value *out)
 
 static int mod_sk_create_connection(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "create_connection() espera 1 a 3 argumentos");
+    if (n < 1 || n > 3) BERRO(vm, "TypeError", "create_connection() espera 1 a 3 argumentos");
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) BERRO(vm, "RuntimeError", "create_connection: %s", strerror(errno));
     PSSocket *s = novo_socket(vm, fd, AF_INET, SOCK_STREAM, 0);
@@ -11821,7 +11825,7 @@ static int mod_sk_create_connection(VM *vm, Value *args, int n, Value *out)
 
 static int mod_sk_create_server(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 3) BERRO(vm, "SomeValueUnexpected", "create_server() espera 1 a 3 argumentos");
+    if (n < 1 || n > 3) BERRO(vm, "TypeError", "create_server() espera 1 a 3 argumentos");
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) BERRO(vm, "RuntimeError", "create_server: %s", strerror(errno));
     PSSocket *s = novo_socket(vm, fd, AF_INET, SOCK_STREAM, 0);
@@ -11841,7 +11845,7 @@ static int mod_sk_create_server(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_socketpair(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) BERRO(vm, "SomeValueUnexpected", "socketpair() nao aceita argumento");
+    if (n != 0) BERRO(vm, "TypeError", "socketpair() nao aceita argumento");
     int par[2];
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, par) != 0)
         BERRO(vm, "RuntimeError", "socketpair: %s", strerror(errno));
@@ -11888,7 +11892,7 @@ static void sk_dns_off(void *p)
 static int mod_sk_gethostbyname(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "gethostbyname", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "gethostbyname: espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "gethostbyname: espera str");
     SkDnsOff o = { COMO_STRING(args[0])->chars, "", AF_INET, 0 };
     fib_offload(vm, sk_dns_off, &o);
     if (o.rc != 0) BERRO(vm, "RuntimeError", "gethostbyname: %s", gai_strerror(o.rc));
@@ -11955,18 +11959,18 @@ static int sk_host_ex(VM *vm, const char *nome_of, const char *host, Value *out)
 static int mod_sk_gethostbyname_ex(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "gethostbyname_ex", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "gethostbyname_ex: espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "gethostbyname_ex: espera str");
     return sk_host_ex(vm, "gethostbyname_ex", COMO_STRING(args[0])->chars, out);
 }
 
 static int mod_sk_gethostbyaddr(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "gethostbyaddr", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "gethostbyaddr: espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "gethostbyaddr: espera str");
     const char *ip = COMO_STRING(args[0])->chars;
     struct in_addr v4;
     if (inet_pton(AF_INET, ip, &v4) != 1)
-        BERRO(vm, "SomeValueUnexpected", "gethostbyaddr: endereco invalido: %s", ip);
+        BERRO(vm, "TypeError", "gethostbyaddr: endereco invalido: %s", ip);
     struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
     if (gethostbyaddr_r(&v4, sizeof(v4), AF_INET, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe)
         BERRO(vm, "RuntimeError", "gethostbyaddr: host nao encontrado: %s", ip);
@@ -11975,7 +11979,7 @@ static int mod_sk_gethostbyaddr(VM *vm, Value *args, int n, Value *out)
 
 static int mod_sk_getaddrinfo(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 2 || n > 6) BERRO(vm, "SomeValueUnexpected", "getaddrinfo() espera 2 a 6 argumentos");
+    if (n < 2 || n > 6) BERRO(vm, "TypeError", "getaddrinfo() espera 2 a 6 argumentos");
     const char *host = EH_STRING(args[0]) && COMO_STRING(args[0])->len ? COMO_STRING(args[0])->chars : NULL;
     char porta[64] = "";
     if (args[1].t == V_INT) snprintf(porta, sizeof(porta), "%lld", (long long)args[1].as.i);
@@ -12015,7 +12019,7 @@ static int mod_sk_getaddrinfo(VM *vm, Value *args, int n, Value *out)
 
 static int mod_sk_getnameinfo(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getnameinfo() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "getnameinfo() espera 1 ou 2 argumentos");
     struct sockaddr_storage sa; socklen_t sl;
     if (sk_monta_addr(vm, AF_UNSPEC, 0, args[0], "getnameinfo", &sa, &sl, 0) != 0) return -1;
     int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
@@ -12037,8 +12041,8 @@ static int mod_sk_getnameinfo(VM *vm, Value *args, int n, Value *out)
 
 static int mod_sk_getservbyname(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getservbyname() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "getservbyname: espera str");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "getservbyname() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "getservbyname: espera str");
     const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
     struct servent *se = getservbyname(COMO_STRING(args[0])->chars, proto);
     if (!se) BERRO(vm, "RuntimeError", "getservbyname: servico nao encontrado: %s", COMO_STRING(args[0])->chars);
@@ -12048,8 +12052,8 @@ static int mod_sk_getservbyname(VM *vm, Value *args, int n, Value *out)
 
 static int mod_sk_getservbyport(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "getservbyport() espera 1 ou 2 argumentos");
-    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "getservbyport: espera int");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "getservbyport() espera 1 ou 2 argumentos");
+    if (args[0].t != V_INT) BERRO(vm, "TypeError", "getservbyport: espera int");
     const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
     struct servent *se = getservbyport(htons((uint16_t)args[0].as.i), proto);
     if (!se) BERRO(vm, "RuntimeError", "getservbyport: porta sem servico: %lld", (long long)args[0].as.i);
@@ -12062,7 +12066,7 @@ static int mod_sk_getservbyport(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_getprotobyname(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "getprotobyname", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "getprotobyname: espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "getprotobyname: espera str");
     struct protoent *pe = getprotobyname(COMO_STRING(args[0])->chars);
     if (!pe) BERRO(vm, "RuntimeError", "getprotobyname: protocolo nao encontrado: %s", COMO_STRING(args[0])->chars);
     *out = MK_INT(pe->p_proto);
@@ -12073,7 +12077,7 @@ static int mod_sk_getprotobyname(VM *vm, Value *args, int n, Value *out)
 static int nome_fn(VM *vm, Value *args, int n, Value *out) \
 { \
     EXIGE_ARGS(vm, quem, 1); \
-    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", quem ": espera int"); \
+    if (args[0].t != V_INT) BERRO(vm, "TypeError", quem ": espera int"); \
     int64_t x = args[0].as.i; (void)x; \
     *out = MK_INT((int64_t)(expr)); \
     return 0; \
@@ -12086,10 +12090,10 @@ SK_CONV(mod_sk_ntohl, "ntohl", ntohl((uint32_t)x))
 static int mod_sk_inet_aton(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_aton", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "inet_aton: espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "inet_aton: espera str");
     struct in_addr a;
     if (inet_aton(COMO_STRING(args[0])->chars, &a) == 0)
-        BERRO(vm, "SomeValueUnexpected", "inet_aton: endereco invalido: %s", COMO_STRING(args[0])->chars);
+        BERRO(vm, "TypeError", "inet_aton: endereco invalido: %s", COMO_STRING(args[0])->chars);
     PSString *by = novo_bytes(vm, (const char *)&a, 4);
     if (!by) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(by);
@@ -12100,7 +12104,7 @@ static int mod_sk_inet_ntoa(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_ntoa", 1);
     if ((!EH_BYTES(args[0]) && !EH_STRING(args[0])) || COMO_STRING(args[0])->len != 4)
-        BERRO(vm, "SomeValueUnexpected", "inet_ntoa: espera 4 bytes");
+        BERRO(vm, "TypeError", "inet_ntoa: espera 4 bytes");
     struct in_addr a;
     memcpy(&a, COMO_STRING(args[0])->chars, 4);
     const char *ip = inet_ntoa(a);
@@ -12114,11 +12118,11 @@ static int mod_sk_inet_pton(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_pton", 2);
     if (args[0].t != V_INT || !EH_STRING(args[1]))
-        BERRO(vm, "SomeValueUnexpected", "inet_pton: espera (family, str)");
+        BERRO(vm, "TypeError", "inet_pton: espera (family, str)");
     unsigned char buf[16];
     int fam = (int)args[0].as.i;
     int rc = inet_pton(fam, COMO_STRING(args[1])->chars, buf);
-    if (rc != 1) BERRO(vm, "SomeValueUnexpected", "inet_pton: endereco invalido: %s", COMO_STRING(args[1])->chars);
+    if (rc != 1) BERRO(vm, "TypeError", "inet_pton: endereco invalido: %s", COMO_STRING(args[1])->chars);
     PSString *by = novo_bytes(vm, (const char *)buf, fam == AF_INET6 ? 16 : 4);
     if (!by) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(by);
@@ -12129,10 +12133,10 @@ static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_ntop", 2);
     if (args[0].t != V_INT || (!EH_BYTES(args[1]) && !EH_STRING(args[1])))
-        BERRO(vm, "SomeValueUnexpected", "inet_ntop: espera (family, bytes)");
+        BERRO(vm, "TypeError", "inet_ntop: espera (family, bytes)");
     char ip[INET6_ADDRSTRLEN];
     if (!inet_ntop((int)args[0].as.i, COMO_STRING(args[1])->chars, ip, sizeof(ip)))
-        BERRO(vm, "SomeValueUnexpected", "inet_ntop: bytes invalidos");
+        BERRO(vm, "TypeError", "inet_ntop: bytes invalidos");
     PSString *r = nova_string(vm, ip, (int)strlen(ip));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
@@ -12145,7 +12149,7 @@ static int mod_sk_setdefaulttimeout(VM *vm, Value *args, int n, Value *out)
     if (args[0].t == V_NULL) g_sk_def_timeout = -1.0;
     else if (args[0].t == V_INT) g_sk_def_timeout = (double)args[0].as.i;
     else if (args[0].t == V_FLOAT) g_sk_def_timeout = args[0].as.d;
-    else BERRO(vm, "SomeValueUnexpected", "setdefaulttimeout: espera numero ou null");
+    else BERRO(vm, "TypeError", "setdefaulttimeout: espera numero ou null");
     *out = MK_NULL();
     return 0;
 }
@@ -12172,7 +12176,7 @@ static int mod_sk_has_dualstack_ipv6(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_if_nameindex(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) BERRO(vm, "SomeValueUnexpected", "if_nameindex() nao aceita argumento");
+    if (n != 0) BERRO(vm, "TypeError", "if_nameindex() nao aceita argumento");
     struct if_nameindex *ifs = if_nameindex();
     if (!ifs) BERRO(vm, "RuntimeError", "if_nameindex: %s", strerror(errno));
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
@@ -12194,7 +12198,7 @@ static int mod_sk_if_nameindex(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_if_nametoindex(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "if_nametoindex", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "if_nametoindex: espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "if_nametoindex: espera str");
     unsigned idx = if_nametoindex(COMO_STRING(args[0])->chars);
     if (idx == 0) BERRO(vm, "RuntimeError", "if_nametoindex: interface nao encontrada: %s", COMO_STRING(args[0])->chars);
     *out = MK_INT(idx);
@@ -12204,7 +12208,7 @@ static int mod_sk_if_nametoindex(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_if_indextoname(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "if_indextoname", 1);
-    if (args[0].t != V_INT) BERRO(vm, "SomeValueUnexpected", "if_indextoname: espera int");
+    if (args[0].t != V_INT) BERRO(vm, "TypeError", "if_indextoname: espera int");
     char nome[IF_NAMESIZE];
     if (!if_indextoname((unsigned)args[0].as.i, nome))
         BERRO(vm, "RuntimeError", "if_indextoname: indice invalido: %lld", (long long)args[0].as.i);
@@ -12339,8 +12343,8 @@ static void imap_fetch_off(void *p){ ImapFetchOff *o = (ImapFetchOff *)p;
 
 static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "conn() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "conn() espera str");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "conn() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "conn() espera str");
     int porta_in = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
     char host[256];
     int porta;
@@ -12360,7 +12364,7 @@ static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_ms_login(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "login", 2);
-    if (!EH_STRING(args[0]) || !EH_STRING(args[1])) MERRO(vm, "SomeValueUnexpected", "login() espera str");
+    if (!EH_STRING(args[0]) || !EH_STRING(args[1])) MERRO(vm, "TypeError", "login() espera str");
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() antes de .login()");
     char e[180];
@@ -12375,7 +12379,7 @@ static int met_ms_login(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 4) MERRO(vm, "SomeValueUnexpected", "send() espera de 1 a 4 argumentos");
+    if (n < 1 || n > 4) MERRO(vm, "TypeError", "send() espera de 1 a 4 argumentos");
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() antes de .send()");
 
@@ -12392,7 +12396,7 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (strcmp(msg->cabs[i].nome, "To") == 0) para = msg->cabs[i].valor;
         if (mailmsg_monta(vm, msg, &b) != 0) { return -1; }
     } else {
-        if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "send() espera destino str ou MailMessage");
+        if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "send() espera destino str ou MailMessage");
         const char *dest = COMO_STRING(args[0])->chars;
         const char *subj = (n >= 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : "";
         const char *corpo = (n >= 3 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "";
@@ -12432,8 +12436,8 @@ static int met_ms_quit(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_mr_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "conn() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "conn() espera str");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "conn() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "conn() espera str");
     int porta_in = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
     char host[256];
     int porta;
@@ -12453,7 +12457,7 @@ static int met_mr_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_mr_login(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "login", 2);
-    if (!EH_STRING(args[0]) || !EH_STRING(args[1])) MERRO(vm, "SomeValueUnexpected", "login() espera str");
+    if (!EH_STRING(args[0]) || !EH_STRING(args[1])) MERRO(vm, "TypeError", "login() espera str");
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() antes de .login()");
     char e[180];
@@ -12466,7 +12470,7 @@ static int met_mr_login(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_mr_select(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 2) MERRO(vm, "SomeValueUnexpected", "select() espera ate 2 argumentos");
+    if (n > 2) MERRO(vm, "TypeError", "select() espera ate 2 argumentos");
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() e .login() antes de .select()");
     const char *pasta = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "INBOX";
@@ -12482,7 +12486,7 @@ static int met_mr_select(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_mr_search(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 4) MERRO(vm, "SomeValueUnexpected", "search() espera ate 4 argumentos");
+    if (n > 4) MERRO(vm, "TypeError", "search() espera ate 4 argumentos");
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn || !m->teve_select)
         MERRO(vm, "RuntimeError", "erro de execução: chame .select() antes de .search()");
@@ -12571,7 +12575,7 @@ static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (!m->conn || !m->teve_select)
         MERRO(vm, "RuntimeError", "erro de execução: chame .select() antes de .body()");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "body() espera o id como str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "body() espera o id como str");
     const char *id = COMO_STRING(args[0])->chars;
 
     char e[220];
@@ -12604,7 +12608,7 @@ static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int mod_mail_server(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) BERRO(vm, "SomeValueUnexpected", "MailServer() nao aceita argumento");
+    if (n != 0) BERRO(vm, "TypeError", "MailServer() nao aceita argumento");
     PSMailSrv *m = calloc(1, sizeof(PSMailSrv));
     if (!m) BERRO(vm, "MemoryError", "sem memoria");
     m->obj.type = OBJ_MAILSRV; m->obj.marked = 0;
@@ -12616,7 +12620,7 @@ static int mod_mail_server(VM *vm, Value *args, int n, Value *out)
 static int mod_mail_message(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) BERRO(vm, "SomeValueUnexpected", "MailMessage() nao aceita argumento");
+    if (n != 0) BERRO(vm, "TypeError", "MailMessage() nao aceita argumento");
     PSMailMsg *m = calloc(1, sizeof(PSMailMsg));
     if (!m) BERRO(vm, "MemoryError", "sem memoria");
     m->obj.type = OBJ_MAILMSG; m->obj.marked = 0;
@@ -12628,7 +12632,7 @@ static int mod_mail_message(VM *vm, Value *args, int n, Value *out)
 static int mod_mail_reader(VM *vm, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) BERRO(vm, "SomeValueUnexpected", "MailReader() nao aceita argumento");
+    if (n != 0) BERRO(vm, "TypeError", "MailReader() nao aceita argumento");
     PSMailMsg_reader *m = calloc(1, sizeof(PSMailMsg_reader));
     if (!m) BERRO(vm, "MemoryError", "sem memoria");
     m->obj.type = OBJ_MAILRD; m->obj.marked = 0;
@@ -12709,7 +12713,7 @@ static int met_resp_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     /* o encoding é aceito e ignorado — a linguagem é UTF-8; devolver outro
      * seria mudar os bytes. Mesmo contrato do `.encode()` de string. */
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "decode() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "decode() espera 0 ou 1 argumento");
     if (met_resp_text(vm, alvo, out) != 0) MERRO(vm, "MemoryError", "sem memoria");
     return 0;
 }
@@ -12717,7 +12721,7 @@ static int met_resp_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_resp_content_type(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "content_type", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "content_type() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "content_type() espera str");
     PSResponse *rp = COMO_RESP(alvo);
     char atual[256] = "";
     if (EH_DICT(rp->headers)) {
@@ -12743,7 +12747,7 @@ static int met_resp_content_type(VM *vm, Value alvo, Value *args, int n, Value *
     char *ini2 = e; while (*ini2 == ' ') ini2++;
     char *fim2 = ini2 + strlen(ini2); while (fim2 > ini2 && fim2[-1] == ' ') *--fim2 = '\0';
     if (strcmp(ini, ini2) != 0)
-        MERRO(vm, "SomeValueUnexpected", "Content-Type inesperado — esperado '%s', veio '%s'",
+        MERRO(vm, "TypeError", "Content-Type inesperado — esperado '%s', veio '%s'",
               COMO_STRING(args[0])->chars, atual[0] ? atual : "(vazio)");
     *out = alvo;
     return 0;
@@ -12752,7 +12756,7 @@ static int met_resp_content_type(VM *vm, Value alvo, Value *args, int n, Value *
 static int met_resp_get(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "get", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "get() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "get() espera str");
     PSResponse *rp = COMO_RESP(alvo);
     char alvo_k[128];
     minusculo(COMO_STRING(args[0])->chars, alvo_k, sizeof(alvo_k));
@@ -12790,7 +12794,7 @@ static int met_resp_get(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int met_resp_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "get_json() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "get_json() espera 0 ou 1 argumento");
     Value txt;
     if (met_resp_text(vm, alvo, &txt) != 0) MERRO(vm, "MemoryError", "sem memoria");
     if (fixa_raiz(vm, txt) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
@@ -12810,13 +12814,13 @@ static int met_resp_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_resp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "json() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "json() nao aceita argumento");
     return met_resp_get_json(vm, alvo, NULL, 0, out);
 }
 
 static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "save() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "save() espera 0 ou 1 argumento");
     PSResponse *rp = COMO_RESP(alvo);
     const char *destino = (n == 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : ".";
     char caminho[2048];
@@ -12911,8 +12915,8 @@ static void req_http_offload(void *p)
 
 static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *out)
 {
-    if (n < 1) BERRO(vm, "SomeValueUnexpected", "%s() espera ao menos a URL", metodo);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "%s() espera str na URL", metodo);
+    if (n < 1) BERRO(vm, "TypeError", "%s() espera ao menos a URL", metodo);
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "%s() espera str na URL", metodo);
     Value headers = n > 1 ? args[1] : MK_NULL();
     Value body    = n > 2 ? args[2] : MK_NULL();
     int timeout   = (n > 3 && args[3].t == V_INT) ? (int)args[3].as.i : 30;
@@ -12975,7 +12979,7 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     if (body.t != V_NULL && body.t != V_UNSET) {
         if (EH_DICT(body) || EH_LIST(body) || EH_TUPLA(body)) {
             SBuf jb = {0};
-            if (json_escreve(vm, &jb, &body, 0, 0) != 0) { free(jb.b); BERRO(vm, "SomeValueUnexpected", "corpo nao serializavel em json"); }
+            if (json_escreve(vm, &jb, &body, 0, 0) != 0) { free(jb.b); BERRO(vm, "TypeError", "corpo nao serializavel em json"); }
             corpo = jb.b; ncorpo = (size_t)jb.n; corpo_livre = 1;
             if (!tem_ct) { sb_bytes(&cabs, "Content-Type: application/json\r\n", 32); }
         } else if (EH_STRING(body) || EH_BYTES(body)) {
@@ -13204,7 +13208,7 @@ static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         rc = wo.rc;
     } else {
         SBUF_AUTO b = {0};
-        if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "SomeValueUnexpected"); }
+        if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "TypeError"); }
         WsSendOff wo = { w->conn, b.b ? b.b : "null", b.b ? (size_t)b.n : 4, 0 };
         fib_offload(vm, ws_send_off, &wo);
         rc = wo.rc;
@@ -13254,7 +13258,7 @@ static void ws_conn_offload(void *p)
 static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "ws_connect", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "ws_connect() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "ws_connect() espera str");
     const char *url = COMO_STRING(args[0])->chars;
 
     /* parse ws://host[:porta][/path] — wss não suportado (o wrapper também
@@ -13365,14 +13369,14 @@ static int qr_salva_em(VM *vm, const char *destino, const char *nome,
 static int met_qrf_bytes(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "bytes() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "bytes() nao aceita argumento");
     *out = COMO_QRFILE(alvo)->conteudo;
     return 0;
 }
 static int met_qrf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "save", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() espera str");
     PSQRFile *q = COMO_QRFILE(alvo);
     PSString *b = EH_BYTES(q->conteudo) ? COMO_BYTES(q->conteudo) : NULL;
     char caminho[2048];
@@ -13423,7 +13427,7 @@ static int qr_dado_texto(VM *vm, Value v, char **out, int *nout, int *livre)
 
 static int mod_qr_gen(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1) BERRO(vm, "SomeValueUnexpected", "gen() espera ao menos os dados");
+    if (n < 1) BERRO(vm, "TypeError", "gen() espera ao menos os dados");
     /* gen(data, save=, size=10, border=4, color="black", bg="white", name=,
      *     error_correction="L", qr32=) — posicional/nomeado */
     const char *save = (n > 1 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
@@ -13493,7 +13497,7 @@ static int qri_png(VM *vm, PSQRImage *q, unsigned char **png, size_t *npng)
 static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "save", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() espera str");
     PSQRImage *q = COMO_QRIMAGE(alvo);
     unsigned char *png; size_t npng;
     if (qri_png(vm, q, &png, &npng) != 0) return -1;
@@ -13509,7 +13513,7 @@ static int met_qri_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "resize", 2);
     if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "SomeValueUnexpected", "resize() espera (int, int)");
+        MERRO(vm, "TypeError", "resize() espera (int, int)");
     PSQRImage *q = COMO_QRIMAGE(alvo);
     q->tw = (int)args[0].as.i;
     q->th = (int)args[1].as.i;
@@ -13519,7 +13523,7 @@ static int met_qri_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_qri_to_file(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "to_file() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "to_file() nao aceita argumento");
     PSQRImage *q = COMO_QRIMAGE(alvo);
     unsigned char *png; size_t npng;
     if (qri_png(vm, q, &png, &npng) != 0) return -1;
@@ -13605,7 +13609,7 @@ static int met_qrb_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
  * como o wrapper. */
 static int mod_qr_make(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1) BERRO(vm, "SomeValueUnexpected", "make() espera os dados");
+    if (n < 1) BERRO(vm, "TypeError", "make() espera os dados");
     char nivel = (n > 1) ? qr_nivel_arg(args[1]) : 'L';
     int box   = (n > 2 && args[2].t == V_INT) ? (int)args[2].as.i : 10;
     int border= (n > 3 && args[3].t == V_INT) ? (int)args[3].as.i : 4;
@@ -13899,7 +13903,7 @@ static int existe_arquivo(const char *caminho)
 static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "read", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "read() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "read() espera str");
     const char *caminho = COMO_STRING(args[0])->chars;
     if (!existe_arquivo(caminho)) {
         char msg[600]; snprintf(msg, sizeof(msg), "Error: arquivo não encontrado: %.400s", caminho);
@@ -13909,21 +13913,21 @@ static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
 
     if (!strcmp(ext, "csv")) {
         char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui ler");
+        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "TypeError", "nao consegui ler");
         int rc = csv_para_lista(vm, b, nb, out);
         free(b);
         return rc;
     }
     if (!strcmp(ext, "xlsx") || !strcmp(ext, "xls")) {
         PSGrade g; char erro[256];
-        if (ps_xlsx_le(caminho, &g, erro, sizeof(erro)) != 0) BERRO(vm, "SomeValueUnexpected", "%s", erro);
+        if (ps_xlsx_le(caminho, &g, erro, sizeof(erro)) != 0) BERRO(vm, "TypeError", "%s", erro);
         int rc = mp_grade_para_lista(vm, &g, out);
         ps_grade_libera(&g);
         return rc;
     }
     if (!strcmp(ext, "json")) {
         char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui ler");
+        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "TypeError", "nao consegui ler");
         PSString *s = nova_string(vm, b, nb); free(b);
         if (!s) BERRO(vm, "MemoryError", "sem memoria");
         Value um[1] = { MK_OBJ(s) };
@@ -13931,7 +13935,7 @@ static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
     }
     if (!strcmp(ext, "xml")) {
         char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui ler");
+        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "TypeError", "nao consegui ler");
         MpXmlCtx ctx; memset(&ctx, 0, sizeof(ctx));
         XML_Parser p = XML_ParserCreate(NULL);
         XML_SetUserData(p, &ctx);
@@ -13950,14 +13954,14 @@ static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
     }
     if (!strcmp(ext, "html") || !strcmp(ext, "htm")) {
         char *b; int nb;
-        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui ler");
+        if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "TypeError", "nao consegui ler");
         int rc = mp_html_limpo(vm, b, nb, out);
         free(b);
         return rc;
     }
     /* texto puro */
     char *b; int nb;
-    if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui ler");
+    if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "TypeError", "nao consegui ler");
     int rc = devolve_texto(vm, out, b, nb);
     free(b);
     return rc;
@@ -13966,14 +13970,14 @@ static int mod_mp_read(VM *vm, Value *args, int n, Value *out)
 static int mod_mp_load(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "load", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "load() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "load() espera str");
     const char *caminho = COMO_STRING(args[0])->chars;
     if (!existe_arquivo(caminho)) {
         char msg[600]; snprintf(msg, sizeof(msg), "Error: arquivo não encontrado: %.400s", caminho);
         return devolve_texto(vm, out, msg, (int)strlen(msg));
     }
     char *b; int nb;
-    if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "SomeValueUnexpected", "nao consegui ler");
+    if (mp_le_arquivo(caminho, &b, &nb) != 0) BERRO(vm, "TypeError", "nao consegui ler");
     PSString *by = novo_bytes(vm, b, nb); free(b);
     if (!by) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(by);
@@ -13983,7 +13987,7 @@ static int mod_mp_load(VM *vm, Value *args, int n, Value *out)
 static int mod_mp_src(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "src", 1);
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "src() espera str");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "src() espera str");
     char abs[2048];
     caminho_abs(COMO_STRING(args[0])->chars, abs, sizeof(abs));
     return devolve_texto(vm, out, abs, (int)strlen(abs));
@@ -14169,7 +14173,7 @@ static int mp_grade_para_csv(const PSGrade *g, SBuf *saida)
 static int mod_mp_open(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || !EH_STRING(args[0]))
-        BERRO(vm, "SomeValueUnexpected", "open() espera o target como str");
+        BERRO(vm, "TypeError", "open() espera o target como str");
     const char *caminho = COMO_STRING(args[0])->chars;
     char ext[32]; mp_ext(caminho, ext, sizeof(ext));
 
@@ -14368,7 +14372,7 @@ static int met_mpf_write(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_mpf_read(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
-    if (n != 0) MERRO(vm, "SomeValueUnexpected", "read() nao aceita argumento");
+    if (n != 0) MERRO(vm, "TypeError", "read() nao aceita argumento");
     PSManpuFile *m = COMO_MPFILE(alvo);
     if (m->modo == 1) {
         /* csv: zip(header, row) com valores CRUS (strings), truncando no
@@ -14577,16 +14581,16 @@ static void db_conn_offload(void *p)
 
 static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "execute() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "execute() espera str no SQL");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "execute() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "execute() espera str no SQL");
     PSDbCursor *cu = COMO_DBCUR(alvo);
     CUR_ABERTO(vm, cu);
     PSDbConexao *cn = COMO_DBCONN(cu->conexao);
-    if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
+    if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
     /* param solto (não-sequência) era descartado em silêncio -> o `%s` vazava
      * cru pro banco. Erra claro, igual ao caminho do sqlite. */
     if (n == 2 && args[1].t != V_NULL && args[1].t != V_UNSET && !EH_SEQ(args[1]))
-        MERRO(vm, "SomeValueUnexpected", "execute() espera tupla ou lista de parametros");
+        MERRO(vm, "TypeError", "execute() espera tupla ou lista de parametros");
     ps_db_res_libera(&cu->res);
     cu->pos = 0;
     /* Transação implícita antes de DML — igual ao psycopg2/sqlite3 do interp:
@@ -14643,20 +14647,20 @@ static int db_busca(VM *vm, PSDbCursor *cu, int quantos, Value *out)
 
 static int met_dbcur_fetchall(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "fetchall() nao aceita argumento");
+    (void)args; if (n != 0) MERRO(vm, "TypeError", "fetchall() nao aceita argumento");
     CUR_ABERTO(vm, COMO_DBCUR(alvo));
     return db_busca(vm, COMO_DBCUR(alvo), -1, out);
 }
 static int met_dbcur_fetchmany(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "fetchmany() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "fetchmany() espera 0 ou 1 argumento");
     CUR_ABERTO(vm, COMO_DBCUR(alvo));
     int q = (n == 1 && args[0].t == V_INT) ? (int)args[0].as.i : 1;
     return db_busca(vm, COMO_DBCUR(alvo), q < 0 ? 0 : q, out);
 }
 static int met_dbcur_fetchone(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "fetchone() nao aceita argumento");
+    (void)args; if (n != 0) MERRO(vm, "TypeError", "fetchone() nao aceita argumento");
     PSDbCursor *cu = COMO_DBCUR(alvo);
     CUR_ABERTO(vm, cu);
     if (cu->pos >= cu->res.nlinhas) { *out = MK_NULL(); return 0; }
@@ -14681,9 +14685,9 @@ static int met_dbcur_close(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* ── DbConnection ───────────────────────────────────────────────────────── */
 static int met_dbconn_cursor(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "cursor() nao aceita argumento");
+    (void)args; if (n != 0) MERRO(vm, "TypeError", "cursor() nao aceita argumento");
     PSDbConexao *cn = COMO_DBCONN(alvo);
-    if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
+    if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
     PSDbCursor *cu = novo_dbcursor(vm, alvo, cn->drv);
     if (!cu) MERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(cu);
@@ -14691,9 +14695,9 @@ static int met_dbconn_cursor(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_dbconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)args; if (n != 0) MERRO(vm, "SomeValueUnexpected", "commit() nao aceita argumento");
+    (void)args; if (n != 0) MERRO(vm, "TypeError", "commit() nao aceita argumento");
     PSDbConexao *cn = COMO_DBCONN(alvo);
-    if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
+    if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
     /* fecha a transação implícita aberta no primeiro DML (BEGIN). Sem tx aberta
      * é no-op seguro, igual ao wrapper. Todos os drivers usam COMMIT — inclusive
      * sqlite, que só tem `em_transacao` quando o BEGIN de fato rodou. */
@@ -14776,7 +14780,7 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
 
     PSDbDriver drv;
     if (db_resolve_driver(driver, &drv) != 0)
-        BERRO(vm, "SomeValueUnexpected", "driver desconhecido: %s", driver);
+        BERRO(vm, "TypeError", "driver desconhecido: %s", driver);
 
     char odbc_cs[1024];
     if (drv == PS_DB_MSSQL) {
@@ -14831,7 +14835,7 @@ static int mod_db_query(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     /* cmd = str; substitui @t por table */
-    if (!EH_STRING(args[1])) { ps_db_solta(c); BERRO(vm, "SomeValueUnexpected", "query() espera str em cmd"); }
+    if (!EH_STRING(args[1])) { ps_db_solta(c); BERRO(vm, "TypeError", "query() espera str em cmd"); }
     const char *tabela = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "";
     char sql[4096];
     const char *cmd = COMO_STRING(args[1])->chars;
@@ -14952,10 +14956,10 @@ static void mg_conn_off(void *p){ MgConnOff *o = (MgConnOff *)p;
 /* núcleo do find/find_one */
 static int mongo_faz_find(VM *vm, Value alvo, Value *args, int n, int um_so, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "find() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "find() espera 0 ou 1 argumento");
     PSMongoCol *mc = COMO_MONGOCOL(alvo);
     PSMongoConn *cn = COMO_MONGOCONN(mc->conexao);
-    if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
+    if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
     char *qj = mongo_json_de_valor(vm, n == 1 ? args[0] : MK_NULL());
     if (!qj) MERRO(vm, "MemoryError", "sem memoria");
     char *rj = NULL, erro[512];
@@ -14998,7 +15002,7 @@ static int met_mcol_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_mcol_insert_many(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "insert_many", 1);
-    if (!EH_SEQ(args[0])) MERRO(vm, "SomeValueUnexpected", "insert_many() espera lista");
+    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "insert_many() espera lista");
     PSMongoCol *mc = COMO_MONGOCOL(alvo);
     PSMongoConn *cn = COMO_MONGOCONN(mc->conexao);
     char *dj = mongo_json_de_valor(vm, args[0]);
@@ -15047,7 +15051,7 @@ static int met_mcol_remove(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_mcol_count(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "count() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "count() espera 0 ou 1 argumento");
     PSMongoCol *mc = COMO_MONGOCOL(alvo);
     PSMongoConn *cn = COMO_MONGOCONN(mc->conexao);
     char *qj = mongo_json_de_valor(vm, n == 1 ? args[0] : MK_NULL());
@@ -15065,9 +15069,9 @@ static int met_mcol_count(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_mconn_collection(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "collection", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "collection() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "collection() espera str");
     PSMongoConn *cn = COMO_MONGOCONN(alvo);
-    if (cn->fechado) MERRO(vm, "SomeValueUnexpected", "conexao fechada");
+    if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
     PSMongoCol *mc = calloc(1, sizeof(PSMongoCol));
     if (!mc) MERRO(vm, "MemoryError", "sem memoria");
     mc->obj.type = OBJ_MONGOCOL; mc->obj.marked = 0;
@@ -15227,7 +15231,7 @@ static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jcors_options(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSJCors *c = COMO_JCORS(alvo);
-    if (n > 1) MERRO(vm, "SomeValueUnexpected", "options() espera 0 ou 1 argumento");
+    if (n > 1) MERRO(vm, "TypeError", "options() espera 0 ou 1 argumento");
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) MERRO(vm, "MemoryError", "sem memoria");
     Value lv = MK_OBJ(l);
@@ -15296,7 +15300,7 @@ static int mod_jk_new_response(VM *vm, Value *args, int n, Value *out)
 }
 static int met_jresp_send(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "send() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "send() espera 1 ou 2 argumentos");
     PSJResp *r = COMO_JRESP(alvo);
     TXTBUF_AUTO t = {0};
     if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
@@ -15311,10 +15315,10 @@ static int met_jresp_send(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "json() espera 1 ou 2 argumentos");
+    if (n < 1 || n > 2) MERRO(vm, "TypeError", "json() espera 1 ou 2 argumentos");
     PSJResp *r = COMO_JRESP(alvo);
     SBUF_AUTO b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "SomeValueUnexpected"); }
+    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { REERRO(vm, "TypeError"); }
     /* SBuf NÃO é NUL-terminado — sempre entregar com o TAMANHO, nunca como
      * C-string (mesma lição do bson do mongo) */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
@@ -15329,7 +15333,7 @@ static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jresp_status(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "status", 1);
-    if (args[0].t != V_INT) MERRO(vm, "SomeValueUnexpected", "status() espera int");
+    if (args[0].t != V_INT) MERRO(vm, "TypeError", "status() espera int");
     COMO_JRESP(alvo)->status = (int)args[0].as.i;
     *out = alvo;
     return 0;
@@ -15338,7 +15342,7 @@ static int met_jresp_header(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "header", 2);
     if (!EH_STRING(args[0]) || !EH_STRING(args[1]))
-        MERRO(vm, "SomeValueUnexpected", "header() espera (str, str)");
+        MERRO(vm, "TypeError", "header() espera (str, str)");
     PSJResp *r = COMO_JRESP(alvo);
     if (!EH_DICT(r->headers)) {
         PSDict *d = novo_dict(vm, 4);
@@ -15360,7 +15364,7 @@ static int mod_jk_jsonify(VM *vm, Value *args, int n, Value *out)
     Value rv = MK_OBJ(r);
     if (fixa_raiz(vm, rv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
     SBUF_AUTO b = {0};
-    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { vm->sp--; REERRO(vm, "SomeValueUnexpected"); }
+    if (json_escreve(vm, &b, &args[0], 0, 0) != 0) { vm->sp--; REERRO(vm, "TypeError"); }
     /* SBuf sem NUL: entrega por tamanho */
     PSString *cs = nova_string(vm, b.b ? b.b : "null", b.b ? b.n : 4);
     if (!cs) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
@@ -15374,8 +15378,8 @@ static int mod_jk_jsonify(VM *vm, Value *args, int n, Value *out)
 /* render(folder_or_file, file=None) — serve arquivo estático com MIME */
 static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) BERRO(vm, "SomeValueUnexpected", "render() espera 1 ou 2 argumentos");
-    if (!EH_STRING(args[0])) BERRO(vm, "SomeValueUnexpected", "render() espera str");
+    if (n < 1 || n > 2) BERRO(vm, "TypeError", "render() espera 1 ou 2 argumentos");
+    if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "render() espera str");
     PSJResp *r = jk_novo_resp(vm);
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     Value rv = MK_OBJ(r);
@@ -15421,7 +15425,7 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
     }
 
     FILE *f = fopen(achado, "rb");
-    if (!f) { vm->sp--; BERRO(vm, "SomeValueUnexpected", "render: nao abriu %.200s", achado); }
+    if (!f) { vm->sp--; BERRO(vm, "TypeError", "render: nao abriu %.200s", achado); }
     fseek(f, 0, SEEK_END); long tam = ftell(f); fseek(f, 0, SEEK_SET);
     if (tam < 0) tam = 0;
     char *buf = malloc((size_t)tam + 1);
@@ -15459,7 +15463,7 @@ static PSJReg *jk_novo_reg(VM *vm, Value app, int kind)
 static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || !EH_STRING(args[0]))
-        MERRO(vm, "SomeValueUnexpected", "route() espera o path como str");
+        MERRO(vm, "TypeError", "route() espera o path como str");
     Value cors = jk_cors_singleton(vm);
     PSJReg *r = jk_novo_reg(vm, alvo, JREG_ROUTE);
     if (!r) MERRO(vm, "MemoryError", "sem memoria");
@@ -15747,7 +15751,7 @@ static int met_jpx_get(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
     ARGS_MET(vm, "get", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "get() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "get() espera str");
     PSJReq *r = jk_req_corrente(vm);
     if (!r) { *out = MK_NULL(); return 0; }
     /* query primeiro */
@@ -15774,7 +15778,7 @@ static int met_jpx_path_param(VM *vm, Value alvo, Value *args, int n, Value *out
 {
     (void)alvo;
     ARGS_MET(vm, "path_param", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "path_param() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "path_param() espera str");
     PSJReq *r = jk_req_corrente(vm);
     if (!r || !EH_DICT(r->params)) { *out = MK_NULL(); return 0; }
     Value v;
@@ -15787,7 +15791,7 @@ static int met_jpx_header(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
     ARGS_MET(vm, "header", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "header() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "header() espera str");
     PSJReq *r = jk_req_corrente(vm);
     if (!r || !EH_DICT(r->headers)) { *out = MK_NULL(); return 0; }
     /* headers HTTP são case-insensitive: varre comparando sem caixa */
@@ -15868,7 +15872,7 @@ static int jk_coleta_uploads(VM *vm, PSJReq *r, const char *campo, Value allowed
         if (jk_ext_bloqueada(u->ext)) {
             if (lista) vm->sp--;
             ps_jk_partes_solta(partes, np);
-            MERRO(vm, "SomeValueUnexpected", "extensão bloqueada por segurança: %s", u->ext);
+            MERRO(vm, "TypeError", "extensão bloqueada por segurança: %s", u->ext);
         }
         if (EH_SEQ(allowed)) {
             PSList *al = COMO_LIST(allowed);
@@ -15878,7 +15882,7 @@ static int jk_coleta_uploads(VM *vm, PSJReq *r, const char *campo, Value allowed
             if (!ok) {
                 if (lista) vm->sp--;
                 ps_jk_partes_solta(partes, np);
-                MERRO(vm, "SomeValueUnexpected", "extensão '%s' não permitida", u->ext);
+                MERRO(vm, "TypeError", "extensão '%s' não permitida", u->ext);
             }
         }
         achou++;
@@ -15895,28 +15899,28 @@ static int jk_coleta_uploads(VM *vm, PSJReq *r, const char *campo, Value allowed
 static int met_jpx_file(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
-    if (n < 1 || !EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "file() espera o campo como str");
+    if (n < 1 || !EH_STRING(args[0])) MERRO(vm, "TypeError", "file() espera o campo como str");
     Value allowed = n >= 2 ? args[1] : MK_NULL();
     return jk_coleta_uploads(vm, jk_req_corrente(vm), COMO_STRING(args[0])->chars, allowed, 1, out);
 }
 static int met_jpx_files(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)alvo;
-    if (n < 1 || !EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "files() espera o campo como str");
+    if (n < 1 || !EH_STRING(args[0])) MERRO(vm, "TypeError", "files() espera o campo como str");
     Value allowed = n >= 2 ? args[1] : MK_NULL();
     return jk_coleta_uploads(vm, jk_req_corrente(vm), COMO_STRING(args[0])->chars, allowed, 0, out);
 }
 static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "save", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "SomeValueUnexpected", "save() espera str");
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() espera str");
     PSJUpload *u = COMO_JUPLOAD(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     /* cria pastas pai */
     char tmp[1024]; snprintf(tmp, sizeof(tmp), "%s", dest);
     for (char *p = tmp + 1; *p; p++) if (*p == '/') { *p = '\0'; mkdir(tmp, 0777); *p = '/'; }
     FILE *f = fopen(dest, "wb");
-    if (!f) MERRO(vm, "SomeValueUnexpected", "save: nao criou %s", dest);
+    if (!f) MERRO(vm, "TypeError", "save: nao criou %s", dest);
     if (EH_BYTES(u->dados)) fwrite(COMO_BYTES(u->dados)->chars, 1, (size_t)COMO_BYTES(u->dados)->len, f);
     fclose(f);
     *out = alvo;
@@ -17728,7 +17732,7 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
     double seg;
     if (args[0].t == V_INT)        seg = (double)args[0].as.i;
     else if (args[0].t == V_FLOAT) seg = args[0].as.d;
-    else BERRO(vm, "SomeValueUnexpected", "sleep() espera numero");
+    else BERRO(vm, "TypeError", "sleep() espera numero");
     if (seg > 0) {
         if (vm->fib_atual) {
             /* dentro de um handler-fibra: em vez de bloquear o worker inteiro,
@@ -17842,7 +17846,7 @@ static int nativa_gather(VM *vm, Value *args, int n, Value *out)
 
 static int nativa_input(VM *vm, Value *args, int n, Value *out)
 {
-    if (n > 1) BERRO(vm, "SomeValueUnexpected", "input() espera 0 ou 1 argumento");
+    if (n > 1) BERRO(vm, "TypeError", "input() espera 0 ou 1 argumento");
     if (n == 1) {
         TXTBUF_AUTO t = {0};
         if (valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
@@ -17907,7 +17911,7 @@ static int fixa_raiz(VM *vm, Value v)
 static int nativa_map(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "map", 2);
-    if (!EH_SEQ(args[0])) BERRO(vm, "SomeValueUnexpected", "map() espera uma lista como primeiro argumento");
+    if (!EH_SEQ(args[0])) BERRO(vm, "TypeError", "map() espera uma lista como primeiro argumento");
     PSList *src = COMO_LIST(args[0]);
     PSList *l = lista_com_cap(vm, src->len, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em map()");
@@ -17932,7 +17936,7 @@ static int nativa_map(VM *vm, Value *args, int n, Value *out)
 static int nativa_filter(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "filter", 2);
-    if (!EH_SEQ(args[0])) BERRO(vm, "SomeValueUnexpected", "filter() espera uma lista como primeiro argumento");
+    if (!EH_SEQ(args[0])) BERRO(vm, "TypeError", "filter() espera uma lista como primeiro argumento");
     PSList *src = COMO_LIST(args[0]);
     PSList *l = lista_com_cap(vm, src->len, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em filter()");
@@ -18112,7 +18116,7 @@ static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
     int max;
     if (!mt->params || !*mt->params) {
         if (n == 0) return 0;
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         snprintf(vm->erro, sizeof(vm->erro), "%s() nao aceita argumento, recebeu %d",
                  mt->nome, n);
         return -1;
@@ -18127,7 +18131,7 @@ static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
         else if (*q == ',' && prof == 0) max++;
     }
     if (n <= max) return 0;
-    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
     snprintf(vm->erro, sizeof(vm->erro),
              "%s() aceita ate %d argumento%s, recebeu %d",
              mt->nome, max, max == 1 ? "" : "s", n);
@@ -18149,7 +18153,7 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         if (!conv) {
             snprintf(vm->erro, sizeof(vm->erro), "tipo '%s' não pode ser usado como conversor",
                      (fn.as.i >= 0 && fn.as.i <= TIPO_TYPE) ? NOME_TIPO[fn.as.i] : "?");
-            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             return -1;
         }
         return conv(vm, args, n, out);
@@ -18204,14 +18208,14 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         n = n + 1;
     } else {
         snprintf(vm->erro, sizeof(vm->erro), "%s", "tentativa de chamar algo que nao e funcao");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
         return -1;
     }
 
     Proto *pr = &vm->protos[proto];
     if (n > pr->nparams) {
         snprintf(vm->erro, sizeof(vm->erro), "%s", "argumentos demais na chamada");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "SomeValueUnexpected");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
         return -1;
     }
     /* Mesma checagem do OP_CALL: parâmetro obrigatório sem valor é ERRO.
@@ -18399,7 +18403,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             else if (a.t == V_FLOAT && b.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(a.as.d - b.as.d);
             else if (EH_INTEIRO(a) && b.t == V_FLOAT)  stack[sp - 1] = MK_FLOAT(int_como_double(a) - b.as.d);
             else if (a.t == V_FLOAT && EH_INTEIRO(b))  stack[sp - 1] = MK_FLOAT(a.as.d - int_como_double(b));
-            else ERRO_TF(vm, "SomeValueUnexpected",
+            else ERRO_TF(vm, "TypeError",
                          "'-' entre tipos incompativeis: %s - %s",
                          nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
@@ -18450,7 +18454,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!rs) ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
                 stack[sp - 1] = MK_OBJ(rs);
             }
-            else ERRO_TF(vm, "SomeValueUnexpected",
+            else ERRO_TF(vm, "TypeError",
                          "'*' entre tipos incompativeis: %s * %s",
                          nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
@@ -18460,7 +18464,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if ((!EH_INTEIRO(a) && a.t != V_FLOAT) || (!EH_INTEIRO(b) && b.t != V_FLOAT))
-                ERRO_TF(vm, "SomeValueUnexpected",
+                ERRO_TF(vm, "TypeError",
                         "'/' entre tipos incompativeis: %s / %s",
                         nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
@@ -18506,7 +18510,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * DIVIDENDO, e o ajuste acima só mexe em resto não-zero. */
                 else if (r == 0.0 && signbit(r) != signbit(y)) r = -r;
                 stack[sp - 1] = MK_FLOAT(r);
-            } else ERRO_TF(vm, "SomeValueUnexpected",
+            } else ERRO_TF(vm, "TypeError",
                            "'%%' entre tipos incompativeis: %s %% %s",
                            nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
@@ -18523,7 +18527,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp - 1] = mk_from_mpz(vm, z); mpz_clear(z);
             }
             else if (a.t == V_FLOAT) stack[sp - 1] = MK_FLOAT(-a.as.d);
-            else ERRO_T(vm, "SomeValueUnexpected", "'-' unario em tipo invalido");
+            else ERRO_T(vm, "TypeError", "'-' unario em tipo invalido");
             break;
         }
 
@@ -18572,12 +18576,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * valores do MESMO tipo. */                                   \
                 int c = compara_valores(&a, &b);                              \
                 if (c == -2)                                                  \
-                    ERRO_T(vm, "SomeValueUnexpected", "comparacao entre tipos incompativeis");         \
+                    ERRO_T(vm, "TypeError", "comparacao entre tipos incompativeis");         \
                 stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
             } else {                                                          \
                 if (!(EH_INTEIRO(a) || a.t == V_FLOAT) ||                     \
                     !(EH_INTEIRO(b) || b.t == V_FLOAT))                       \
-                    ERRO_T(vm, "SomeValueUnexpected", "comparacao entre tipos incompativeis");         \
+                    ERRO_T(vm, "TypeError", "comparacao entre tipos incompativeis");         \
                 double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);    \
                 double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);    \
                 stack[sp - 1] = MK_BOOL(x C_OP y);                            \
@@ -18758,7 +18762,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int32_t proto_kw;
             if (EH_CLASS(alvo_kw)) {
                 int32_t mp = acha_metodo(COMO_CLASS(alvo_kw), "__init__");
-                if (mp < 0) ERRO_T(vm, "SomeValueUnexpected", "Entity sem __init__ nao aceita argumento nomeado");
+                if (mp < 0) ERRO_T(vm, "TypeError", "Entity sem __init__ nao aceita argumento nomeado");
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSInstance *ni = nova_instancia(vm, COMO_CLASS(alvo_kw));
                 if (!ni) ERRO(vm, "sem memoria");
@@ -18793,7 +18797,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                     if (achou < 0 || achou >= 16) {
                         snprintf(vm->erro, sizeof(vm->erro), "argumento nomeado desconhecido: %s", alvo_nome);
-                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
                     pos[achou] = stack[sp - nkw + k];
@@ -18834,7 +18838,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     alvo_met = mn->alvo;
                 }
                 if (!lista_nomes)
-                    ERRO_T(vm, "SomeValueUnexpected", "esta funcao nao aceita argumento nomeado");
+                    ERRO_T(vm, "TypeError", "esta funcao nao aceita argumento nomeado");
 
                 Value pos[16];
                 int usados = npos;
@@ -18856,7 +18860,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (achou < 0 || achou >= 16) {
                         snprintf(vm->erro, sizeof(vm->erro),
                                  "argumento nomeado desconhecido: %s", alvo_nome);
-                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SomeValueUnexpected");
+                        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
                     pos[achou] = stack[sp - nkw + k];
@@ -18926,7 +18930,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                      * o campo real em Null e segue. Em action é erro. É
                      * assimétrico, mas é o que o interpretador faz. */
                     if (EH_CLASS(alvo_kw)) continue;
-                    ERRO_TF(vm, "SomeValueUnexpected",
+                    ERRO_TF(vm, "TypeError",
                             "argumento nomeado '%s' nao corresponde a nenhum parametro de %s()",
                             ns->chars, pk->nome ? pk->nome : "?");
                 }
@@ -19197,7 +19201,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * `str(...)`. json/dict/tup não têm conversor -> recusam. */
                 FnNativa conv = tipo_conversor(alvo.as.i);
                 if (!conv)
-                    ERRO_TF(vm, "SomeValueUnexpected",
+                    ERRO_TF(vm, "TypeError",
                             "tipo '%s' não pode ser usado como conversor",
                             (alvo.as.i >= 0 && alvo.as.i <= TIPO_TYPE) ? NOME_TIPO[alvo.as.i] : "?");
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
@@ -19266,7 +19270,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
-                ERRO_T(vm, "SomeValueUnexpected", "'|' exige int");
+                ERRO_T(vm, "TypeError", "'|' exige int");
             if (EH_BIGINT(a) || EH_BIGINT(b)) {
                 vm->sp = sp; vm->locals_top = locals_top;
                 Value r;
@@ -19282,7 +19286,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
-                ERRO_T(vm, "SomeValueUnexpected", "'^' exige int");
+                ERRO_T(vm, "TypeError", "'^' exige int");
             if (EH_BIGINT(a) || EH_BIGINT(b)) {
                 vm->sp = sp; vm->locals_top = locals_top;
                 Value r;
@@ -19298,7 +19302,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
-                ERRO_T(vm, "SomeValueUnexpected", "'&' exige int");
+                ERRO_T(vm, "TypeError", "'&' exige int");
             if (EH_BIGINT(a) || EH_BIGINT(b)) {
                 vm->sp = sp; vm->locals_top = locals_top;
                 Value r;
@@ -19314,7 +19318,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
-                ERRO_T(vm, "SomeValueUnexpected", "'<<' exige int");
+                ERRO_T(vm, "TypeError", "'<<' exige int");
             if (EH_BIGINT(a) || EH_BIGINT(b)) {
                 vm->sp = sp; vm->locals_top = locals_top;
                 Value r;
@@ -19341,7 +19345,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (!EH_INTEIRO(a) || !EH_INTEIRO(b))
-                ERRO_T(vm, "SomeValueUnexpected", "'>>' exige int");
+                ERRO_T(vm, "TypeError", "'>>' exige int");
             if (EH_BIGINT(a) || EH_BIGINT(b)) {
                 vm->sp = sp; vm->locals_top = locals_top;
                 Value r;
@@ -19358,7 +19362,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
         case OP_BIT_NOT: {
             Value a = stack[sp - 1];
-            if (a.t != V_INT) ERRO_T(vm, "SomeValueUnexpected", "'~' exige int");
+            if (a.t != V_INT) ERRO_T(vm, "TypeError", "'~' exige int");
             stack[sp - 1] = MK_INT(~a.as.i);
             break;
         }
@@ -19495,7 +19499,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!c) ERRO(vm, "sem memoria");
                 stack[sp - 1] = MK_OBJ(c);
             } else {
-                ERRO_TF(vm, "SomeValueUnexpected", "tipo nao indexavel: %s",
+                ERRO_TF(vm, "TypeError", "tipo nao indexavel: %s",
                         nome_do_tipo_valor(alvo));
             }
             break;
@@ -19556,7 +19560,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 || num_de_range(vm, vf, &fim) != 0
                 || num_de_range(vm, vp, &passo) != 0) goto erro_runtime;
             if (passo == 0)
-                ERRO_TF(vm, "SomeValueUnexpected",
+                ERRO_TF(vm, "TypeError",
                         "valor invalido: passo de range() nao pode ser 0");
             int64_t quant = (passo > 0)
                 ? (fim > ini ? (fim - ini + passo - 1) / passo : 0)
@@ -20609,7 +20613,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 sp--;
                 seq = lista;
             }
-            if (!EH_SEQ(seq)) ERRO_T(vm, "SomeValueUnexpected", "desempacotamento espera lista ou tupla");
+            if (!EH_SEQ(seq)) ERRO_T(vm, "TypeError", "desempacotamento espera lista ou tupla");
             PSList *l = COMO_LIST(seq);
             int fixos = star >= 0 ? n_alvos - 1 : n_alvos;
             if (star < 0 && l->len != n_alvos) {
@@ -20751,11 +20755,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 Value tmp;
                 r = dict_get(COMO_DICT(cont), &alvo, &tmp) == 0;
             } else if (EH_STRING(cont)) {
-                if (!EH_STRING(alvo)) ERRO_T(vm, "SomeValueUnexpected", "'in' em str espera str");
+                if (!EH_STRING(alvo)) ERRO_T(vm, "TypeError", "'in' em str espera str");
                 PSString *h = COMO_STRING(cont), *n2 = COMO_STRING(alvo);
                 r = acha_bytes(h->chars, h->len, n2->chars, n2->len, 0) >= 0;
             } else {
-                ERRO_T(vm, "SomeValueUnexpected", "'in' nao se aplica a este tipo");
+                ERRO_T(vm, "TypeError", "'in' nao se aplica a este tipo");
             }
             stack[sp - 1] = MK_BOOL(arg ? !r : r);
             break;
@@ -20818,7 +20822,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
             int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__");
             if (mp < 0)
-                ERRO_TF(vm, "SomeValueUnexpected",
+                ERRO_TF(vm, "TypeError",
                         "base(): a Entity pai '%s' nao tem __init__ pra receber argumento nomeado",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
             Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();

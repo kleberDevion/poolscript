@@ -14,7 +14,7 @@ valor
 
 ## Erros
 
-- **SomeValueUnexpected** — lista vazia ou tipos não comparáveis
+- **ValueError** — a lista está vazia, ou os itens não se comparam entre si
 
 ## Exemplos
 

@@ -14,7 +14,7 @@ list
 
 ## Erros
 
-- **SomeValueUnexpected** — padrão inválido
+- **TypeError** — o padrão não é uma expressão regular válida
 
 ## Exemplos
 

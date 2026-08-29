@@ -14,7 +14,7 @@ list
 
 ## Erros
 
-- **SomeValueUnexpected** — tipos não comparáveis entre si
+- **TypeError** — os itens não se comparam entre si (ex.: `int` com `str`)
 
 ## Exemplos
 

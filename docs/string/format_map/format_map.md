@@ -14,7 +14,7 @@ str
 
 ## Erros
 
-- **SomeValueUnexpected** — chave ausente
+- **TypeError** — a chave citada no formato não existe
 
 ## Exemplos
 

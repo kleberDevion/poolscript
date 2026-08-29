@@ -14,7 +14,7 @@ o item removido
 
 ## Erros
 
-- **SomeValueUnexpected** — lista vazia ou não-lista
+- **ValueError** — a lista está vazia, ou o argumento não é `list`
 
 ## Exemplos
 

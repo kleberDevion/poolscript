@@ -14,7 +14,7 @@ list
 
 ## Erros
 
-- **SomeValueUnexpected** — tipo não-sequência
+- **TypeError** — o valor não é sequência (`str`, `list`, `tup` ou `bytes`)
 
 ## Exemplos
 

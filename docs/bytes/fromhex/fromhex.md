@@ -23,7 +23,7 @@ bytes.fromhex("deadbeef")         // b'\xde\xad\xbe\xef'
 
 ## Erros
 
-- **SomeValueUnexpected** — hex inválido: dígito fora de `0-9a-f` ou quantidade ímpar de dígitos.
+- **ValueError** — hex inválido: dígito fora de `0-9a-f` ou quantidade ímpar de dígitos.
 
 ```
 bytes.fromhex("zz")    // erro: hex inválido: 'zz'
