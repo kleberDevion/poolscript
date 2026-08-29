@@ -103,15 +103,28 @@ action tipos_do_motor() {
         # MERRO, REDE, BY_ERRO_TIPO, CMP_RECUSA...). O que todos tem em comum e
         # a LINHA: ela cita `ERRO`, `REDE` ou `erro_tipo`. Duas linhas de
         # tolerancia porque a chamada as vezes quebra.
+        #
+        # E ha um segundo caminho: funcao que DEVOLVE o nome do tipo, como o
+        # `tipo_do_errno` que traduz errno em FileNotFoundError/PermissionError.
+        # Ali a linha do `case` nao cita marcador nenhum — quem marca e a
+        # assinatura, la em cima. Por isso o estado `dentro`: enquanto se esta
+        # no corpo de uma funcao cujo NOME fala de erro, todo nome de tipo
+        # devolvido conta.
         linhas = fonte.split("\n")
         i = 0
+        dentro = false
         while i < len(linhas) {
-            achou = regex.findall("\"([A-Z][A-Za-z]*(?:Error|Exception|Warning|Unexpected|UnexpectedValues|Implemented))\"", linhas[i])
+            L = linhas[i]
+            # assinatura de funcao no nivel de arquivo (nao indentada)
+            if L.startswith("static ") or L.startswith("int ") or L.startswith("void ") {
+                dentro = ("erro" in L or "errno" in L or "ERRO" in L)
+            }
+            achou = regex.findall("\"([A-Z][A-Za-z]*(?:Error|Exception|Warning|Unexpected|UnexpectedValues|Implemented))\"", L)
             if len(achou) > 0 {
-                janela = linhas[i]
+                janela = L
                 if i > 0 { janela = linhas[i - 1] + "\n" + janela }
                 if i > 1 { janela = linhas[i - 2] + "\n" + janela }
-                if "ERRO" in janela or "REDE" in janela or "erro_tipo" in janela {
+                if dentro or "ERRO" in janela or "REDE" in janela or "erro_tipo" in janela {
                     for each m in achou {
                         vistos[m] = 1
                     }

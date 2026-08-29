@@ -58,7 +58,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "count com faixa",
   "s = \"banana\"\npost(s.count(\"na\"), s.count(\"na\", 3), s.count(\"a\", 1, 4))\n", "2 1 2", NULL, 0 },
 { "index erra quando não acha na faixa",
-  "post(\"banana\".index(\"na\", 0, 3))\n", NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
+  "post(\"banana\".index(\"na\", 0, 3))\n", NULL, "ValueError: substring not found", -1 },
 { "len conta caracteres",
   "post(len(\"ação\"), len(\"abc\"))\n", "4 3", NULL, 0 },
 
@@ -99,7 +99,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "import regex\npost(regex.fullmatch(\"\\\\d+\", \"123\"), regex.fullmatch(\"\\\\d+\", \"a123\"))\n",
   "True False", NULL, 0 },
 { "regex.compile de padrão inválido erra cedo",
-  "import regex\np = regex.compile(\"[a-\")\n", NULL, "TypeError", -1 },
+  /* ValueError, nao TypeError: o argumento E uma str (o tipo esta certo) — o
+   * que nao serve e o VALOR dela. O CPython usa `re.error`, que a linguagem
+   * nao tem; ValueError e o parente mais proximo, e e a mesma divisao que o
+   * resto do motor segue. */
+  "import regex\np = regex.compile(\"[a-\")\n", NULL, "ValueError", -1 },
 
 /* ── arquivo ── */
 { "read(n) não consome o arquivo",

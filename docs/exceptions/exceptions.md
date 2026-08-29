@@ -91,7 +91,22 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `NetworkError` | falha de rede/conexão (`request`, http) |
 | `DatabaseError` | erro de banco (`psodbc`) |
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |
-| `IOError` / `OSError` | arquivo / sistema (`os`) |
+| `IOError` | falha de I/O que o motor não conseguiu classificar melhor |
+| `OSError` | erro do sistema sem tipo próprio. A mensagem é a do sistema, no formato do Python: `[Errno 39] Directory not empty: '/tmp/x'` |
+| `FileNotFoundError` | o caminho não existe: `os.readFile("sumiu.txt")` → `[Errno 2] No such file or directory: 'sumiu.txt'` |
+| `FileExistsError` | já existe: `os.mkdir` de pasta que está lá → `[Errno 17] File exists: '…'` |
+| `PermissionError` | sem permissão: `[Errno 13] Permission denied: '…'` |
+| `IsADirectoryError` | esperava arquivo, veio pasta: `os.writeFile(pasta, "x")` → `[Errno 21] Is a directory: '…'` |
+| `NotADirectoryError` | esperava pasta, veio arquivo: `[Errno 20] Not a directory: '…'` |
+| `LookupError` | nome de codec ou de handler que não existe: `"a".encode("xyz")` → `unknown encoding: xyz` |
+| `UnicodeEncodeError` | caractere que não cabe no encoding pedido: `"é".encode("ascii")` |
+| `UnicodeDecodeError` | bytes que não formam texto válido no encoding pedido |
+
+> **Não há hierarquia.** `catch (OSError e)` **não** pega `FileNotFoundError`,
+> nem `PermissionError`, nem os outros — o motor compara o nome do tipo, não uma
+> árvore de herança. No Python todos esses descendem de `OSError` e um `catch`
+> só bastaria; aqui é preciso um `catch` por tipo, ou o `catch (e)` sem tipo.
+> Isso vale para toda a taxonomia, não só a de I/O.
 | `MemoryError` | sem memória |
 | `RuntimeError` | `raise "texto"`; e o que é só desta linguagem e não tem par no Python: `acesso negado: … private`, `@NonNull`, `for each` sobre tipo que não itera |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |

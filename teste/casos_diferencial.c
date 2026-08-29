@@ -2550,7 +2550,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #343",
   "post(\"\".maketrans(\"ab\",\"x\"))\n"
   "\n",
-  NULL, "TypeError: maketrans() exige os dois com o mesmo tamanho", -1 },
+  NULL, "ValueError: the first two maketrans arguments must have equal length", -1 },
 { "dif #344",
   "post(\"\".maketrans(\"ab\",\"xy\"))\n"
   "\n",
@@ -2734,7 +2734,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #389",
   "post(\"a\".center(3,\"xy\"))\n"
   "\n",
-  NULL, "TypeError: center() espera um unico caractere de preenchimento", -1 },
+  NULL, "TypeError: The fill character must be exactly one character long", -1 },
 { "dif #390",
   "post(\"a\".center(4))\n"
   "\n",
@@ -2758,7 +2758,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #395",
   "post(\"a\".index(\"z\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
+  NULL, "ValueError: substring not found", -1 },
 { "dif #396",
   "post(\"a\".isprintable())\n"
   "\n",
@@ -2766,7 +2766,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #397",
   "post(\"a\".join([1]))\n"
   "\n",
-  NULL, "TypeError: join() so junta str", -1 },
+  NULL, "TypeError: sequence item 0: expected str instance, int found", -1 },
 { "dif #398",
   "post(\"a\".ljust(\"x\"))\n"
   "\n",
@@ -2794,7 +2794,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #404",
   "post(\"a\".rindex(\"z\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
+  NULL, "ValueError: substring not found", -1 },
 { "dif #405",
   "post(\"a\".rjust(9223372036854775807))\n"
   "\n",
@@ -2802,7 +2802,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #406",
   "post(\"a\".split(\"\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: separador vazio em split()", -1 },
+  NULL, "ValueError: empty separator", -1 },
 { "dif #407",
   "post(\"a\".startswith(1))\n"
   "\n",
@@ -3124,7 +3124,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #484",
   "post(\"banana\".index(\"na\", 0, 3))\n"
   "\n",
-  NULL, "ValueError: valor invalido: subcadeia nao encontrada", -1 },
+  NULL, "ValueError: substring not found", -1 },
 { "dif #485",
   "post(\"corpo\")\n"
   "\n",
@@ -3325,7 +3325,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #534",
   "post(\"{} {}\".format(1))\n"
   "\n",
-  NULL, "TypeError: format: campo '' sem valor", -1 },
+  NULL, "IndexError: Replacement index 1 out of range for positional args tuple", -1 },
 { "dif #535",
   "post(\"{}\".format(Null))\n"
   "\n",
@@ -4244,7 +4244,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #763",
   "post([1, 2].index(9))\n"
   "\n",
-  NULL, "ValueError: valor invalido: index() nao achou o item", -1 },
+  NULL, "ValueError: 9 is not in list", -1 },
 { "dif #764",
   "post([1, 2][\"x\"])\n"
   "\n",
@@ -4320,7 +4320,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #782",
   "post([1].index(9))\n"
   "\n",
-  NULL, "ValueError: valor invalido: index() nao achou o item", -1 },
+  NULL, "ValueError: 9 is not in list", -1 },
 { "dif #783",
   "post([1].insert(\"a\",1))\n"
   "\n",
@@ -4336,7 +4336,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #786",
   "post([1].remove(9))\n"
   "\n",
-  NULL, "ValueError: valor invalido: remove() nao achou o item", -1 },
+  NULL, "ValueError: list.remove(x): x not in list", -1 },
 { "dif #787",
   "post([1].sort(1))\n"
   "\n",
@@ -4536,7 +4536,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #836",
   "post(bin(\"a\"))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: bin() so aceita int", -1 },
+  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
 { "dif #837",
   "post(bin(-5))\n"
   "\n",
@@ -5208,7 +5208,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1004",
   "post(hex(1.5))\n"
   "\n",
-  NULL, "TypeError: operacao invalida: hex() so aceita int", -1 },
+  NULL, "TypeError: 'flo' object cannot be interpreted as an integer", -1 },
 { "dif #1005",
   "post(hex(255))\n"
   "\n",
@@ -11559,17 +11559,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"(\", \"a\"))\n"
   "\n",
-  NULL, "TypeError: regex: faltou ')' (posicao 1)", -1 },
+  NULL, "ValueError: regex: faltou ')' (posicao 1)", -1 },
 { "dif #2165",
   "import regex\n"
   "post(regex.match(\"*a\", \"a\"))\n"
   "\n",
-  NULL, "TypeError: regex: quantificador sem alvo (posicao 0)", -1 },
+  NULL, "ValueError: regex: quantificador sem alvo (posicao 0)", -1 },
 { "dif #2166",
   "import regex\n"
   "post(regex.match(\"[a\", \"a\"))\n"
   "\n",
-  NULL, "TypeError: regex: classe nao fechada (posicao 2)", -1 },
+  NULL, "ValueError: regex: classe nao fechada (posicao 2)", -1 },
 { "dif #2167",
   "import regex\n"
   "post(regex.match(\"[a-z]+\", \"abC\"))\n"
@@ -11594,12 +11594,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"a\\\\1\", \"a\"))\n"
   "\n",
-  NULL, "TypeError: regex: referencia a grupo inexistente (posicao 3)", -1 },
+  NULL, "ValueError: regex: referencia a grupo inexistente (posicao 3)", -1 },
 { "dif #2172",
   "import regex\n"
   "post(regex.match(\"a{2,1}\", \"a\"))\n"
   "\n",
-  NULL, "TypeError: regex: {n,m} com m < n (posicao 6)", -1 },
+  NULL, "ValueError: regex: {n,m} com m < n (posicao 6)", -1 },
 { "dif #2173",
   "import regex\n"
   "post(regex.search(\"ção\", \"a ção b\"))\n"
@@ -11669,7 +11669,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "regex.compile(\"[a-\")\n"
   "\n",
-  NULL, "TypeError: regex: classe nao fechada (posicao 3)", -1 },
+  NULL, "ValueError: regex: classe nao fechada (posicao 3)", -1 },
 { "dif #2186",
   "import regex as rx\n"
   "post(rx.match(\"a+\", \"aaa\"))\n"
