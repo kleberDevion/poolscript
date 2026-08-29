@@ -44,8 +44,8 @@ O que ele garante é **um caractere só** — declarar com mais de um é erro, e
 `1.5` também:
 
 ```ps
-char c = "abc"      // AtributtedValueError: esperava char (um caractere), recebeu 3
-char c = 1.5        // AtributtedValueError: esperava char
+char c = "abc"      // AttributedValueError: esperava char (um caractere), recebeu 3
+char c = 1.5        // AttributedValueError: esperava char
 char c = -1         // ConversionError: -1 nao e um caractere valido
 ```
 
@@ -157,7 +157,7 @@ Ou seja: a linguagem faz só as conversões que não perdem nem adivinham
 informação — **int→flo** (alargamento) e **string numérica→número** (parsing).
 O resto é erro, e há dois erros distintos:
 
-- **`AtributtedValueError`** — tipo incompatível que não se coage
+- **`AttributedValueError`** — tipo incompatível que não se coage
   (`int x = 5.0`, `str s = 42`, `bool b = 1`).
 - **`ConversionError`** — o valor é uma string que não representa o número
   pedido (`int x = "abc"`).
@@ -165,8 +165,8 @@ O resto é erro, e há dois erros distintos:
 ```ps
 int  x = "7"      // 7    (parsing de string numérica)
 flo  f = 5        // 5.0  (alargamento int→flo)
-int  y = 5.0      // AtributtedValueError — não trunca nem aceita float
-str  s = 42       // AtributtedValueError — não "stringifica" sozinho
+int  y = 5.0      // AttributedValueError — não trunca nem aceita float
+str  s = 42       // AttributedValueError — não "stringifica" sozinho
 int  z = "abc"    // ConversionError — string não vira int
 ```
 

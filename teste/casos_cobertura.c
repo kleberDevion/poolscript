@@ -519,7 +519,7 @@ const Caso CASOS_COBERTURA[] = {
 { "git: test_language_deep #78",
   "try {\n"
   "    x = 1 / 0\n"
-  "} catch (SomeValueUnexpected e) {\n"
+  "} catch (ZeroDivisionError e) {\n"
   "    post(\"tipo_certo\")\n"
   "} catch (e) {\n"
   "    post(\"generico\")\n"
@@ -553,7 +553,7 @@ const Caso CASOS_COBERTURA[] = {
   "    } catch (KeyError e) {\n"
   "        post(\"errado\")\n"
   "    }\n"
-  "} catch (SomeValueUnexpected e) {\n"
+  "} catch (ZeroDivisionError e) {\n"
   "    post(\"certo\")\n"
   "}\n"
   "\n",

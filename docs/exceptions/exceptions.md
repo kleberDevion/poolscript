@@ -63,7 +63,15 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 
 | tipo | quando acontece |
 |---|---|
-| `SomeValueUnexpected` | operação inválida de **valor/tipo**: `1/0`, `1%0`, `"a" - 1`, `int("a")`, argumento errado de builtin. É o erro **geral** de valor. |
+| `SomeValueUnexpected` | operação inválida de **valor/tipo**: `"a" - 1`, `int("a")`, argumento errado de builtin. É o erro **geral** de valor, e de longe o mais comum (468 pontos no motor). |
+| `ZeroDivisionError` | divisão ou resto por zero: `1 / 0`, `1 % 0`, `1.5 % 0.0` |
+| `AttributedValueError` | `+` entre tipos que não somam: `"a" + 1`. A mensagem diz quais são: `'+' entre tipos incompativeis: str + int` |
+| `TypeError` | tipo errado onde o motor consegue nomear o esperado |
+| `ValueError` | valor fora do domínio da operação |
+| `IndexError` | índice inválido ao **escrever**: `l[99] = x`. Ler fora da faixa é outra coisa — ver a nota abaixo |
+| `NotImplementedError` | construção que o motor reconhece e ainda não executa |
+| `FileNotFoundError` | arquivo que não existe, quando o motor consegue distinguir de outra falha de I/O |
+| `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `pool --check` relata |
 | `KeyError` | chave inexistente num dict: `d["naoexiste"]` |
 | `ImportError` | módulo não encontrado: `import naoexiste` |
 | `ConversionError` | falha de conversão (`Parsing`) |
@@ -71,12 +79,19 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `DatabaseError` | erro de banco (`psodbc`) |
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |
 | `IOError` / `OSError` | arquivo / sistema (`os`) |
+| `IndexOutOfBoundsWarning` | **não é exceção** — ver a nota abaixo |
 | `MemoryError` | sem memória |
 | `RuntimeError` | variável não definida; `raise "texto"`; erro genérico de runtime |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
 > **Nota — índice fora da lista:** `lista[999]` **não** levanta erro; devolve
-> `null` e emite um `IndexOutOfBoundsWarning` no terminal (é aviso, não exceção).
+> `null` e emite um `IndexOutOfBoundsWarning` no terminal.
+>
+> E "aviso, não exceção" é literal: ele é escrito direto no stderr, então
+> `try { post(lista[999]) } catch (e) { … }` **não pega nada**, e o aviso não
+> tem linha nem coluna. Escrever fora da faixa (`lista[999] = x`) levanta
+> `IndexError`, e chave ausente levanta `KeyError` — três comportamentos
+> diferentes para "não existe".
 
 ---
 

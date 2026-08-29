@@ -41,7 +41,7 @@ a cada tecla, o que a CI roda em arquivo que veio de fora, e o que o
   mas cria superfície nova e mantém a armadilha como padrão.
 
 **DECISÃO:**
-
+B
 ---
 
 ## I4 e I5 — três políticas para "índice/chave que não existe"
@@ -73,7 +73,8 @@ da suíte** têm `null` como saída esperada.
   aviso, que hoje sai sem endereço nenhum.
 
 **DECISÃO:**
-
+Caso 1 levantar os seguintes erros - 'l[99] - não existindo 'Indice fora do tamanho de {nome_obj}''
+Os seguintes devem apontar o mesmo padrão, dizendo que tal item/valor não existe no objeto que esta sendo acessado
 ---
 
 ## I1, I2, I3 — `Null` compara sem ordem coerente
@@ -106,7 +107,7 @@ todos em `casos_diferencial.c` e `casos_cobertura.c`.
 - **D** — não mexer, e documentar as três juntas num lugar só.
 
 **DECISÃO:**
-
+O null ser o mesmo como em Python, os casos devem levantar erros exlicitos e não Null
 ---
 
 ## I6 — `SomeValueUnexpected` é 466 dos erros; `TypeError` são 2
@@ -119,7 +120,7 @@ atacar, o caminho é escolher as famílias (tipo / valor / índice / chave / I/O
 eu reclassifico as 466 ocorrências por família, em lotes por arquivo.
 
 **DECISÃO:**
-
+Boa - esta e a melhor ideia, e bom que não tem incoerencia de tipo erronico, mantem so um!
 ---
 
 ## I7 — `AtributtedValueError` está escrito errado
@@ -134,7 +135,7 @@ e **30 vezes** em doc e testes.
 - **C** — manter a grafia e documentá-la (o nome vira parte da API).
 
 **DECISÃO:**
-
+Corrija a ortografia e documente, ele e os outro que não tiverem (obs.: caso tenha mas algum!)
 ---
 
 ## I8 — `1 / 0` diz "divisão por zero: division by zero"
@@ -148,7 +149,7 @@ distingue o caso. A parte da mensagem eu conserto (é motor); o que é seu é o
 - **B** — criar/usar `ZeroDivisionError`, como Python.
 
 **DECISÃO:**
-
+B
 ---
 
 ## I10 — `is` é documentado como operador de TIPO, mas `5 is 5` dá True
@@ -162,7 +163,7 @@ Com lado direito que não é tipo, `is` cai em igualdade de valor sem avisar. Um
 - **C** — só doc: escrever a escada inteira que o motor executa.
 
 **DECISÃO:**
-
+Mesmo que no python
 ---
 
 ## I11 — não existe `//`, nem `**`, nem `pow()`
@@ -185,7 +186,7 @@ com `%`, porque não há operador exato pra dividir.
   não deve ser dividido.
 
 **DECISÃO:**
-
+C - e remova-o como comentario, deixe so o # com essa função.
 ---
 
 ## I18 — módulos com nome de ecossistema alheio e semântica diferente
@@ -201,7 +202,7 @@ Flask.
   parâmetro da action, por exemplo).
 
 **DECISÃO:**
-
+Opcional, poder injetar o valor no arg da action se o Dev quiser.
 ---
 
 ## I19 — apelidos duplicados sem canônico anunciado
@@ -217,7 +218,7 @@ completion.
 - **C** — remover os apelidos curtos.
 
 **DECISÃO:**
-
+REmover os apelidos, a lib db deve ser removida, mantenha o sqlite3, manpu, psodbc, e qrcode, e request, os outros remova - na época eu tinha um problema que eu nao tinha capacidade de tratar.
 ---
 
 ## I22 — três convenções de caixa no mesmo sistema de valores
@@ -237,7 +238,7 @@ jeito.
 - **D** — não mexer; documentar a tabela.
 
 **DECISÃO:**
-
+Todos em maiusculo - sobre a tipagem - como booleanos são 2 - True, False - o type() ou .type() levantar como 'bool' e o certo.
 ---
 
 ## O que eu faço sem esperar

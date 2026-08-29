@@ -26,7 +26,7 @@ bytes.get(b, -1)    // 67   — o último
 
 ## Erros
 
-- **AtributtedValueError** — `b` não é bytes, ou `i` não é inteiro.
+- **AttributedValueError** — `b` não é bytes, ou `i` não é inteiro.
 - **SomeValueUnexpected** — índice fora do range.
 
 ```

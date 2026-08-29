@@ -21,7 +21,7 @@ bytes.hex(bytes.new([222, 173, 190, 239]))   // "deadbeef"
 
 ## Erros
 
-- **AtributtedValueError** — o argumento não é bytes.
+- **AttributedValueError** — o argumento não é bytes.
 
 ---
 

@@ -236,6 +236,21 @@ static void json_str(const char *s)
     putchar('"');
 }
 
+/* CÓDIGO DE SAÍDA do `--check`: 0 quando compila, 1 quando não.
+ *
+ * Ele saía 0 SEMPRE, inclusive imprimindo `{"ok":false}`. Isso torna
+ * `pool --check f.ps || exit 1` e `set -e` falso verde — e o `--check` é o que
+ * o editor roda a cada tecla, o que a CI roda em arquivo que veio de fora, e o
+ * que o `psl install` roda em pacote de TERCEIRO.
+ *
+ * É a convenção de todo conferidor: `node --check`, `python -m py_compile`,
+ * `ruby -c`, `tsc --noEmit`, `gofmt -e`. O JSON no stdout não muda — quem lê o
+ * JSON continua lendo igual; quem lê o rc passa a poder confiar nele.
+ *
+ * Erro de LEITURA (arquivo que não abre, sem memória) também sai != 0: não
+ * conseguir conferir não é conferir e aprovar. */
+#define CHECK_RC_FALHA 1
+
 /* `pool --check [arquivo.ps]` — lexer/parser/compilador da VM, SEM rodar, com
  * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
  * manda o conteúdo não salvo). NUNCA executa o código. */
@@ -245,15 +260,15 @@ static int cmd_check(const char *arquivo)
     char *fonte = NULL;
     if (arquivo) {
         fonte = le_arquivo(arquivo, &tam);
-        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"IOError\",\"msg\":\"nao consegui abrir o arquivo\",\"linha\":1,\"coluna\":1}\n"); return 0; }
+        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"IOError\",\"msg\":\"nao consegui abrir o arquivo\",\"linha\":1,\"coluna\":1}\n"); return CHECK_RC_FALHA; }
     } else {
         size_t cap = 65536; tam = 0;
         fonte = malloc(cap);
-        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return 0; }
+        if (!fonte) { printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return CHECK_RC_FALHA; }
         size_t r;
         while ((r = fread(fonte + tam, 1, cap - tam, stdin)) > 0) {
             tam += r;
-            if (tam == cap) { cap *= 2; char *nb = realloc(fonte, cap); if (!nb) { free(fonte); printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return 0; } fonte = nb; }
+            if (tam == cap) { cap *= 2; char *nb = realloc(fonte, cap); if (!nb) { free(fonte); printf("{\"ok\":false,\"tipo\":\"MemoryError\",\"msg\":\"sem memoria\",\"linha\":1,\"coluna\":1}\n"); return CHECK_RC_FALHA; } fonte = nb; }
         }
         fonte[tam] = '\0';
     }
@@ -269,7 +284,7 @@ static int cmd_check(const char *arquivo)
     printf("{\"ok\":false,\"tipo\":\"%s\",\"msg\":", tipo);
     json_str(e.msg);
     printf(",\"linha\":%d,\"coluna\":%d}\n", e.linha, e.col);
-    return 0;
+    return CHECK_RC_FALHA;
 }
 
 /* ── `pool --contexto <linha>:<coluna>` ───────────────────────────────────

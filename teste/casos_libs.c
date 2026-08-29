@@ -84,6 +84,69 @@ const Caso CASOS_LIBS[] = {
   "post(jwt.check(p[0] + \".\" + outro + \".\" + p[2], \"k\"))\n",
   "null", NULL, 0 },
 
+/* ── taxonomia de erro: os tipos que o motor levanta ─────────────────────────
+ *
+ * Três decisões de API tomadas em 28/08 (notas/DECISOES-API.md), travadas aqui
+ * porque o TIPO do erro é contrato: quem escreve `catch (X e)` depende dele. */
+{ "divisao por zero tem tipo proprio, nao o balde geral",
+  /* I8: era `SomeValueUnexpected: divisão por zero: division by zero` — tipo que
+   * não dizia nada sobre divisão, e mensagem duplicada em dois idiomas. */
+  "try {\n"
+  "    post(1 / 0)\n"
+  "} catch (ZeroDivisionError e) {\n"
+  "    post(\"pegou pelo tipo\")\n"
+  "} catch (e) {\n"
+  "    post(\"caiu no generico\")\n"
+  "}\n", "pegou pelo tipo", NULL, 0 },
+{ "resto por zero tambem, inteiro e float",
+  "n = 0\n"
+  "for each e in [\"1 % 0\", \"1.5 % 0.0\", \"1 / 0\", \"7 / 0.0\"] {\n"
+  "    pass\n"
+  "}\n"
+  "try { post(1 % 0) } catch (ZeroDivisionError e) { n = n + 1 }\n"
+  "try { post(1.5 % 0.0) } catch (ZeroDivisionError e) { n = n + 1 }\n"
+  "try { post(7 / 0.0) } catch (ZeroDivisionError e) { n = n + 1 }\n"
+  "post(n)\n", "3", NULL, 0 },
+{ "a mensagem de tipo incompativel diz QUAIS tipos",
+  /* I14: era só "'+' entre tipos incompativeis" — o usuário tinha que adivinhar
+   * qual dos dois lados estava errado. */
+  "try {\n"
+  "    post(\"a\" + 1)\n"
+  "} catch (e) {\n"
+  "    post(\"str + int\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+{ "os cinco operadores nomeiam os tipos",
+  "n = 0\n"
+  "try { post(\"a\" + 1) } catch (e) { if \"str + int\" in str(e) { n = n + 1 } }\n"
+  "try { post(1 - \"a\") } catch (e) { if \"int - str\" in str(e) { n = n + 1 } }\n"
+  "try { post([1] * \"a\") } catch (e) { if \"list * str\" in str(e) { n = n + 1 } }\n"
+  "try { post(\"a\" / 2) } catch (e) { if \"str / int\" in str(e) { n = n + 1 } }\n"
+  "try { post(\"a\" % []) } catch (e) { if \"str % list\" in str(e) { n = n + 1 } }\n"
+  "post(n)\n", "5", NULL, 0 },
+{ "AttributedValueError escrito certo",
+  /* I7: o tipo era publicado com a grafia errada (`Atributted`). */
+  "try {\n"
+  "    post(\"a\" + 1)\n"
+  "} catch (AttributedValueError e) {\n"
+  "    post(\"pegou\")\n"
+  "}\n", "pegou", NULL, 0 },
+{ "pool --check sai != 0 quando o arquivo nao compila",
+  /* I16: saía 0 SEMPRE, então `pool --check f.ps || exit 1` nunca disparava —
+   * e o --check roda no editor a cada tecla e no `psl install` de pacote de
+   * terceiro. */
+  "import os\n"
+  "import sys\n"
+  "using open(\"quebrado.ps\", \"w\") as f {\n"
+  "    f.write(\"post(\\n\")\n"
+  "}\n"
+  "using open(\"bom.ps\", \"w\") as f {\n"
+  "    f.write(\"post(1)\\n\")\n"
+  "}\n"
+  "os.cmd(\"'\" + sys.executable + \"' --check quebrado.ps > /dev/null 2>&1; echo $? > rq\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' --check bom.ps > /dev/null 2>&1; echo $? > rb\")\n"
+  "post(int(open(\"rq\").read().strip()) != 0, int(open(\"rb\").read().strip()) == 0)\n",
+  "True True", NULL, 0 },
+
 /* ── bytes: a API inteira, offline ───────────────────────────────────────── */
 { "bytes hex ida e volta",
   "import bytes\n"

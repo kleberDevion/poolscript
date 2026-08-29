@@ -30,7 +30,7 @@ bytes.xor(cifrado, chave)     // b'mensagem'  — de volta ao original
 
 ## Erros
 
-- **AtributtedValueError** — `dados` ou `chave` não são bytes.
+- **AttributedValueError** — `dados` ou `chave` não são bytes.
 - **SomeValueUnexpected** — chave vazia.
 
 ---

@@ -22,7 +22,7 @@ bytes.tolist(bytes.fromhex("deadbeef"))   // [222, 173, 190, 239]
 
 ## Erros
 
-- **AtributtedValueError** — o argumento não é bytes.
+- **AttributedValueError** — o argumento não é bytes.
 
 ---
 

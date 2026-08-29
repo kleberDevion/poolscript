@@ -133,7 +133,7 @@ bool ativo = true
 
 Tipos primitivos: `str`, `int`, `flo`, `bool`. Redeclarar uma variável **já
 tipada** no mesmo escopo é erro (`OutputUnexpectedValues`). Atribuir um valor
-incompatível a uma variável tipada é erro (`AtributtedValueError`, ou
+incompatível a uma variável tipada é erro (`AttributedValueError`, ou
 `ConversionError` quando a conversão automática — ex.: string → int — falha).
 
 `input()` sempre devolve `str`; ao declarar com tipo (`int n = input()`) o
@@ -1112,7 +1112,7 @@ Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
 
 | `code` | Quando ocorre |
 |---|---|
-| `AtributtedValueError` | Valor incompatível atribuído a variável tipada (ex.: `str x = 10`) |
+| `AttributedValueError` | Valor incompatível atribuído a variável tipada (ex.: `str x = 10`) |
 | `OutputUnexpectedValues` | Redeclaração no mesmo escopo; aridade errada em unpacking |
 | `SomeValueUnexpected` | Operação inválida entre tipos, divisão por zero, valor inválido, RHS não-iterável em unpacking |
 | `IndexOutOfBoundsWarning` | Índice fora do intervalo (não-fatal — vira warning + `Null`) |

@@ -25,7 +25,7 @@ bytes.concat([cab, corpo])          // b'\x00\x02oi'
 
 ## Erros
 
-- **AtributtedValueError** — o argumento não é lista, ou algum item não é bytes.
+- **AttributedValueError** — o argumento não é lista, ou algum item não é bytes.
 
 ```
 bytes.concat([bytes.new("a"), 5])   // erro: item 1 não é bytes (int)

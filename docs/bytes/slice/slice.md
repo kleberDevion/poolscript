@@ -27,7 +27,7 @@ bytes.slice(b, 0, -1)   // b'Hell'  — tudo menos o último
 
 ## Erros
 
-- **AtributtedValueError** — `b` não é bytes, ou `ini`/`fim` não são inteiros.
+- **AttributedValueError** — `b` não é bytes, ou `ini`/`fim` não são inteiros.
 
 ---
 

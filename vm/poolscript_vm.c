@@ -18373,7 +18373,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * compare com o CPython: "can only concatenate str (not \"int\") to
              * str". O helper `nome_do_tipo_valor` já existe e devolve
              * exatamente o que o `type()` devolve. */
-            else ERRO_TF(vm, "AtributtedValueError",
+            else ERRO_TF(vm, "AttributedValueError",
                          "'+' entre tipos incompativeis: %s + %s",
                          nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             break;
@@ -18452,7 +18452,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         nome_do_tipo_valor(a), nome_do_tipo_valor(b));
             double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
             double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
-            if (y == 0.0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: division by zero");
+            if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "divisao por zero");
             stack[sp - 1] = MK_FLOAT(x / y);
             break;
         }
@@ -18461,7 +18461,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
             if (a.t == V_INT && b.t == V_INT) {
-                if (b.as.i == 0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: integer modulo by zero");
+                if (b.as.i == 0) ERRO_T(vm, "ZeroDivisionError", "resto de divisao por zero");
                 /* INT64_MIN % -1 é UB no C e o processador levanta SIGFPE —
                  * o processo MORRIA (core dumped). Matematicamente o resto é
                  * 0, que é o que o interpretador devolve. */
@@ -18474,7 +18474,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 mpz_de_val(za, a); mpz_de_val(zb, b);
                 if (mpz_cmp_si(zb, 0) == 0) {
                     mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
-                    ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: integer modulo by zero");
+                    ERRO_T(vm, "ZeroDivisionError", "resto de divisao por zero");
                 }
                 mpz_fdiv_r(zr, za, zb);   /* resto com sinal do divisor, como Python */
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -18485,7 +18485,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * sinal do DIVISOR — `-1.0 % 3` é 2.0, não -1.0. */
                 double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
                 double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
-                if (y == 0.0) ERRO_T(vm, "SomeValueUnexpected", "divisão por zero: float modulo");
+                if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "resto de divisao por zero (float)");
                 double r = fmod(x, y);
                 if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
                 /* resto ZERO leva o sinal do divisor, como no Python:
@@ -19843,12 +19843,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (EH_STRING(v)) {
                     PSString *t = COMO_STRING(v);
                     if (utf8_conta(t->chars, t->len) != 1)
-                        ERRO_TF(vm, "AtributtedValueError",
+                        ERRO_TF(vm, "AttributedValueError",
                                 "variável %s esperava char (um caractere), recebeu %d",
                                 decl_nome, utf8_conta(t->chars, t->len));
                     break;
                 }
-                ERRO_TF(vm, "AtributtedValueError",
+                ERRO_TF(vm, "AttributedValueError",
                         "variável %s esperava char", decl_nome);
             }
             if (tipo == TIPO_INT && EH_STRING(v)) {
@@ -19886,7 +19886,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))
                     vn = COMO_STRING(p->consts[nome_idx])->chars;
                 snprintf(vm->erro, sizeof(vm->erro), "variável %s esperava %s", vn, NOME_TIPO[tipo]);
-                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AtributtedValueError");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError");
                 goto erro_runtime;
             }
             break;

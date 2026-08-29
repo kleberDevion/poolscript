@@ -104,7 +104,7 @@ erros — e você pode capturá-los por tipo:
 |---|---|
 | `RuntimeError` | erro genérico (ex.: variável não definida, aridade errada) |
 | `KeyError` | chave ausente num dict (`d["x"]` / `d.x` sem a chave) |
-| `AtributtedValueError` | valor incompatível com o tipo declarado (`int x = 5.0`) |
+| `AttributedValueError` | valor incompatível com o tipo declarado (`int x = 5.0`) |
 | `ConversionError` | conversão impossível (`int("abc")`, `int z = "abc"`) |
 | `SomeValueUnexpected` | valor inválido numa operação (divisão por zero, `str` em conta, …) |
 | `ImportError` | módulo não encontrado no `import` |
@@ -138,7 +138,7 @@ Observações:
   roda sempre.
 - **Formas de `catch`**: `(Tipo e)`, `(Tipo)`, `(e)`, `()` — com tipo só pega
   aquele tipo (senão propaga); `e` é o texto do erro, local ao bloco.
-- **Tipos embutidos**: `RuntimeError`, `KeyError`, `AtributtedValueError`,
+- **Tipos embutidos**: `RuntimeError`, `KeyError`, `AttributedValueError`,
   `ConversionError`, `SomeValueUnexpected`, `ImportError`, `MemoryError`.
   `SyntaxError` não é capturável (é de compilação); índice fora do range é aviso
   não-fatal (→ `null`).

@@ -92,7 +92,7 @@ const Caso CASOS_ERROS[] = {
 { "f-string com nome fora de escopo",
   "post(f\"v: {zzz}\")\n", NULL, "variável não definida: zzz", -1 },
 { "f-string com divisão por zero",
-  "post(f\"x {1/0} y\")\n", NULL, "divisão por zero", -1 },
+  "post(f\"x {1/0} y\")\n", NULL, "divisao por zero", -1 },
 { "f-string válida continua interpolando",
   "oi = \"ola\"\npost(f\"{oi} mundo\")\n", "ola mundo", NULL, 0 },
 { "f-string escapa chave dobrada",

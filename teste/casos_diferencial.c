@@ -746,7 +746,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #90",
   "   post(1/0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #91",
   "  post(\"IOError\")\n"
   "\n",
@@ -762,7 +762,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #94",
   "  post(1/0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #95",
   "  post(os.run([\"prog_inexistente_zzz_123\"], true))\n"
   "\n",
@@ -791,7 +791,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #101",
   " int x = 5.9\n"
   "\n",
-  NULL, "AtributtedValueError: variável x esperava int", -1 },
+  NULL, "AttributedValueError: variável x esperava int", -1 },
 { "dif #102",
   " post(\"DatabaseError: \" + e)\n"
   "\n",
@@ -843,7 +843,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #114",
   " try { x = 1/0 } catch (KeyError e) { post(\"k\") }\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero (linha 1)", -1 },
+  NULL, "ZeroDivisionError: divisao por zero (linha 1)", -1 },
 { "dif #115",
   " while i < 3 {\n"
   "\n",
@@ -1984,7 +1984,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(b())\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #258",
   "action a(n) {\n"
   "\n",
@@ -2398,7 +2398,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #315",
   "action f() {\n"
   "    return self\n"
@@ -2698,7 +2698,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #380",
   "post(\"a\" + 1)\n"
   "\n",
-  NULL, "AtributtedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
 { "dif #381",
   "post(\"a\" - 1)\n"
   "\n",
@@ -2754,7 +2754,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #394",
   "post(\"a\".encode() + \"b\")\n"
   "\n",
-  NULL, "AtributtedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
 { "dif #395",
   "post(\"a\".index(\"z\"))\n"
   "\n",
@@ -3509,7 +3509,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #580",
   "post(1 % 0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: integer modulo by zero", -1 },
+  NULL, "ZeroDivisionError: resto de divisao por zero", -1 },
 { "dif #581",
   "post(1 && 2)\n"
   "\n",
@@ -3517,7 +3517,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #582",
   "post(1 + \"a\")\n"
   "\n",
-  NULL, "AtributtedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
 { "dif #583",
   "post(1 + 1)\n"
   "\n",
@@ -3529,7 +3529,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #585",
   "post(1 / 0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #586",
   "post(1 < 2, 2 <= 2, 3 > 4, 5 == 5, 5 != 6)\n"
   "\n",
@@ -3581,7 +3581,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #598",
   "post(1%0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: integer modulo by zero", -1 },
+  NULL, "ZeroDivisionError: resto de divisao por zero", -1 },
 { "dif #599",
   "post(1)\n"
   "\n",
@@ -3597,7 +3597,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #602",
   "post(1.0 / 0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #603",
   "post(1.0)\n"
   "\n",
@@ -3605,7 +3605,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #604",
   "post(1.5 % 0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: float modulo", -1 },
+  NULL, "ZeroDivisionError: resto de divisao por zero (float)", -1 },
 { "dif #605",
   "post(1.5 * 2)\n"
   "\n",
@@ -3625,7 +3625,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #609",
   "post(1/0)\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #610",
   "post(1/3)\n"
   "\n",
@@ -4964,7 +4964,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #943",
   "post(f\"x {1/0} y\")\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #944",
   "post(f\"{a} {a + 1}\")\n"
   "\n",
@@ -7265,7 +7265,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1491",
   "str nome = 10\n"
   "\n",
-  NULL, "AtributtedValueError: variável nome esperava str", -1 },
+  NULL, "AttributedValueError: variável nome esperava str", -1 },
 { "dif #1492",
   "str reaction precisa(v) { return v }\n"
   "\n",
@@ -7273,7 +7273,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1493",
   "str ruim = 123\n"
   "\n",
-  NULL, "AtributtedValueError: variável ruim esperava str", -1 },
+  NULL, "AttributedValueError: variável ruim esperava str", -1 },
 { "dif #1494",
   "str s = \"\"\n"
   "for each i in range(2000) { s = s + \"ab\" }\n"
@@ -7324,7 +7324,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1502",
   "str x = 5\n"
   "\n",
-  NULL, "AtributtedValueError: variável x esperava str", -1 },
+  NULL, "AttributedValueError: variável x esperava str", -1 },
 { "dif #1503",
   "t = \"\".maketrans(\"ab\",\"xy\")\n"
   "post(\"abc\".translate(t))\n"
@@ -7483,7 +7483,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    } catch (KeyError e) {\n"
   "        post(\"errado\")\n"
   "    }\n"
-  "} catch (SomeValueUnexpected e) {\n"
+  "} catch (ZeroDivisionError e) {\n"
   "    post(\"certo\")\n"
   "}\n"
   "\n",
@@ -7499,7 +7499,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1525",
   "try {\n"
   "    x = 1 / 0\n"
-  "} catch (SomeValueUnexpected e) {\n"
+  "} catch (ZeroDivisionError e) {\n"
   "    post(\"tipo_certo\")\n"
   "} catch (e) {\n"
   "    post(\"generico\")\n"
@@ -7515,7 +7515,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero (linha 2)", -1 },
+  NULL, "ZeroDivisionError: divisao por zero (linha 2)", -1 },
 { "dif #1527",
   "try {\n"
   "    x = 1/0\n"
@@ -7525,7 +7525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero (linha 2)", -1 },
+  NULL, "ZeroDivisionError: divisao por zero (linha 2)", -1 },
 { "dif #1528",
   "try {\n"
   "    x = 10 / 0\n"
@@ -7533,7 +7533,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"err: \" {e})\n"
   "}\n"
   "\n",
-  "err: divisão por zero: division by zero (linha 2)", NULL, 0 },
+  "err: divisao por zero (linha 2)", NULL, 0 },
 { "dif #1529",
   "try {\n"
   "  using open(r\"\n"
@@ -7616,7 +7616,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "divisão por zero: division by zero (linha 2)", NULL, 0 },
+  "divisao por zero (linha 2)", NULL, 0 },
 { "dif #1539",
   "try {\n"
   " post(5 % 0)\n"
@@ -7624,7 +7624,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "divisão por zero: integer modulo by zero (linha 2)", NULL, 0 },
+  "resto de divisao por zero (linha 2)", NULL, 0 },
 { "dif #1540",
   "try {\n"
   " post(int(\"x\"))\n"
@@ -7768,9 +7768,9 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1564",
   "try { x = 1/0 } catch (KeyError e) { post(\"k\") }\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero (linha 1)", -1 },
+  NULL, "ZeroDivisionError: divisao por zero (linha 1)", -1 },
 { "dif #1565",
-  "try { x = 1/0 } catch (SomeValueUnexpected e) { post(\"s\") } catch (e) { post(\"g\") }\n"
+  "try { x = 1/0 } catch (ZeroDivisionError e) { post(\"s\") } catch (e) { post(\"g\") }\n"
   "\n",
   "s", NULL, 0 },
 { "dif #1566",
@@ -8852,14 +8852,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x=g()\n"
   "post(x + 1)\n"
   "\n",
-  NULL, "AtributtedValueError: '+' entre tipos incompativeis", -1 },
+  NULL, "AttributedValueError: '+' entre tipos incompativeis", -1 },
 { "dif #1725",
   "action g() {\n"
   " yield 1/0\n"
   "}\n"
   "post(list(g()))\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #1726",
   "action g() {\n"
   " yield [1,2]\n"
@@ -9273,7 +9273,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "await falha()\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #1789",
   "async action falha() {\n"
   "    return 1 / 0\n"
@@ -9281,7 +9281,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f = falha()\n"
   "await f\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #1790",
   "async action fat(n) {\n"
   "    if (n <= 1) {\n"
@@ -9310,7 +9310,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "fs = [ok(1), falha(), ok(3)]\n"
   "await fs\n"
   "\n",
-  NULL, "SomeValueUnexpected: divisão por zero: division by zero", -1 },
+  NULL, "ZeroDivisionError: divisao por zero", -1 },
 { "dif #1793",
   "async action precisa(v) { return v }\n"
   "\n",
@@ -9546,11 +9546,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1838",
   "bool x = 1\n"
   "\n",
-  NULL, "AtributtedValueError: variável x esperava bool", -1 },
+  NULL, "AttributedValueError: variável x esperava bool", -1 },
 { "dif #1839",
   "bool x = 5\n"
   "\n",
-  NULL, "AtributtedValueError: variável x esperava bool", -1 },
+  NULL, "AttributedValueError: variável x esperava bool", -1 },
 { "dif #1840",
   "bool x = true\n"
   "\n",
@@ -11997,7 +11997,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2240",
   "int x = 5.9\n"
   "\n",
-  NULL, "AtributtedValueError: variável x esperava int", -1 },
+  NULL, "AttributedValueError: variável x esperava int", -1 },
 { "dif #2241",
   "io = \"ola\"\n"
   "post(<red>\"cuuuuu {io}\")\n"
