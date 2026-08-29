@@ -2230,17 +2230,20 @@ static int ps_prof_cmp = 0;
 static int val_iguais(const Value *a, const Value *b)
 {
     if (ps_prof_cmp > PS_CMP_MAX) return 0;
-    if (a->t == V_NULL) {
-        if (b->t == V_NULL)  return 1;
-        if (b->t == V_INT)   return b->as.i == 0;
-        if (b->t == V_FLOAT) return b->as.d == 0.0;
-        /* `null == 0` já era True e `false == 0` também; sem esta linha
-         * `null == false` dava False e a igualdade perdia a transitividade
-         * dentro do próprio motor. */
-        if (b->t == V_BOOL)  return b->as.b == 0;
-        return 0;
-    }
-    if (b->t == V_NULL) return val_iguais(b, a);
+    /* Null só é igual a Null — como o `None` do Python.
+     *
+     * Até 28/08 `null == 0`, `null == 0.0` e `null == false` eram TRUE, e o
+     * comentário aqui defendia isso pela transitividade interna. O custo real
+     * era outro: `if x == 0` entrava com `x` valendo Null, e todo teste escrito
+     * como `if os.cmd(...) != 0` virava falso verde permanente — porque
+     * `Null != 0` era False e a condição nunca disparava. Isso já escondeu
+     * defeito na própria suíte deste repositório.
+     *
+     * `V_UNSET` (slot declarado e nunca escrito) conta como Null, que é o que o
+     * `type()` já dizia. */
+    int a_nulo = (a->t == V_NULL || a->t == V_UNSET);
+    int b_nulo = (b->t == V_NULL || b->t == V_UNSET);
+    if (a_nulo || b_nulo) return a_nulo && b_nulo;
     if (EH_STRING(*a) && EH_STRING(*b))
         return strings_iguais(COMO_STRING(*a), COMO_STRING(*b));
     /* bytes só é igual a bytes: `"ab" == "ab".encode()` é falso, como no
@@ -18521,14 +18524,23 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * então `true < 3`, `false < true` valem, igual ao interp. */    \
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }      \
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }      \
-            /* Null não se ordena: qualquer `<`, `>`, `<=`, `>=` com Null de  \
-             * um dos lados é False — inclusive `Null >= Null`. É o que o     \
-             * interpretador faz, e é melhor que erro: `if x > 0` com `x`     \
-             * ainda não preenchido apenas não entra. */                      \
+            /* Null NÃO SE ORDENA, e agora isso é ERRO, não `False` calado.  \
+             *                                                                \
+             * Antes qualquer `<`, `>`, `<=`, `>=` com Null devolvia False —  \
+             * inclusive `Null >= Null` — e a justificativa era "melhor que    \
+             * erro". Na prática era o pior dos mundos: `if x > 0` com `x`     \
+             * Null caía no `else` SEM AVISAR, e ainda convivia com            \
+             * `"abc" < 5` levantando. Duas políticas para o mesmo erro.       \
+             *                                                                \
+             * Agora é a regra do Python: comparar Null levanta, e quem quer   \
+             * o teste sem erro escreve `x != Null` antes. `sorted` com Null   \
+             * já levantava — agora o operador concorda com a biblioteca que   \
+             * o usa. */                                                       \
             if (a.t == V_NULL || a.t == V_UNSET                               \
                     || b.t == V_NULL || b.t == V_UNSET) {                     \
-                stack[sp - 1] = MK_BOOL(0);                                   \
-                break;                                                        \
+                ERRO_TF(vm, "TypeError",                                      \
+                        "'%s' nao se aplica a Null: %s %s %s", #C_OP,         \
+                        nome_do_tipo_valor(a), #C_OP, nome_do_tipo_valor(b)); \
             }                                                                 \
             if (a.t == V_INT && b.t == V_INT)                                 \
                 stack[sp - 1] = MK_BOOL(a.as.i C_OP b.as.i);                  \

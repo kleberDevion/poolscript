@@ -3457,7 +3457,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #567",
   "post(-1 < Null)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "'<' nao se aplica a Null", -1 },
 { "dif #568",
   "post(-1.0 % 3)\n"
   "\n",
@@ -3557,7 +3557,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #592",
   "post(1 > Null)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #593",
   "post(1 >> -1)\n"
   "\n",
@@ -3949,15 +3949,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #690",
   "post(Null < 0)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #691",
   "post(Null <= 0)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #692",
   "post(Null == 0)\n"
   "\n",
-  "True", NULL, 0 },
+  "False", NULL, 0 },
 { "dif #693",
   "post(Null == Null)\n"
   "\n",
@@ -3965,19 +3965,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #694",
   "post(Null > \"a\")\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #695",
   "post(Null > 0)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #696",
   "post(Null >= 0)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #697",
   "post(Null >= Null)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "nao se aplica a Null", -1 },
 { "dif #698",
   "post(Null)\n"
   "\n",
@@ -8206,7 +8206,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = Null > 0\n"
   "post(x)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "'>' nao se aplica a Null", -1 },
 { "dif #1628",
   "x = Parsing.floating(\"1,5\")\n"
   "post(x * 2)\n"
@@ -11018,15 +11018,18 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"yes\")\n"
   "}\n"
   "\n",
-  "yes", NULL, 0 },
+  "", NULL, 0 },
 { "dif #2070",
+  /* Antes: `Null > 0` era False, entao caia no else e imprimia "ok". Agora
+   * comparar Null LEVANTA — o `if` nem chega a decidir. O corpo do caso e o
+   * mesmo; so a expectativa mudou. */
   "if Null > 0 {\n"
   "    post(\"not\")\n"
   "} else {\n"
   "    post(\"ok\")\n"
   "}\n"
   "\n",
-  "ok", NULL, 0 },
+  NULL, "'>' nao se aplica a Null", -1 },
 { "dif #2071",
   "if a { post(1)\n"
   "      post(2)\n"

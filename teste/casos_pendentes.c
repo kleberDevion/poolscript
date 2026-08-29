@@ -20,11 +20,18 @@
 
 const Caso CASOS_PENDENTES[] = {
 /* ── igualdade e unário ──────────────────────────────────────────────────
- * A linguagem já trata `null == 0` como True (igualdade "nullish"). Como
- * `false == 0` também é True, `null == false` TEM que ser True, senão a
- * igualdade perde a transitividade dentro do próprio motor. */
-{ "null == false é True",
-  "post(false == null, null == false, true == null)\n", "True True False", NULL, 0 },
+ * Este caso afirmava a igualdade "nullish": `null == 0` True, e portanto
+ * `null == false` também, senão a transitividade quebrava DENTRO do motor.
+ * O raciocínio estava certo e a PREMISSA é que caiu — em 28/08 o dono decidiu
+ * que Null é igual só a Null, como o `None` do Python (I1/I2/I3).
+ *
+ * O que derrubou a premissa foi o custo prático: `if x == 0` entrava com x
+ * valendo Null, e todo teste escrito como `if os.cmd(...) != 0` virava falso
+ * verde PERMANENTE, porque `Null != 0` era False. Isso já escondeu defeito
+ * nesta suíte. */
+{ "Null é igual só a Null",
+  "post(false == null, null == false, true == null, null == null)\n",
+  "False False False True", NULL, 0 },
 
 /* bool participa da aritmética em todo lugar (`true + 1` == 2); o menos
  * unário não podia ser a exceção. */

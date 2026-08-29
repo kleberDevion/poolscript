@@ -395,12 +395,12 @@ const Caso CASOS_COBERTURA[] = {
   "    post(\"yes\")\n"
   "}\n"
   "\n",
-  "yes", NULL, 0 },
+  "", NULL, 0 },
 { "git: test_interpreter #61",
   "x = Null > 0\n"
   "post(x)\n"
   "\n",
-  "False", NULL, 0 },
+  NULL, "'>' nao se aplica a Null", -1 },
 { "git: test_interpreter #62",
   "lista = [1, 2, 3]\n"
   "x = lista[99]\n"
@@ -471,7 +471,7 @@ const Caso CASOS_COBERTURA[] = {
 { "git: test_language_deep #73",
   "post(Null == 0)\n"
   "\n",
-  "True", NULL, 0 },
+  "False", NULL, 0 },
 { "git: test_language_deep #74",
   "int nota = 6\n"
   "if (nota >= 9) {\n"

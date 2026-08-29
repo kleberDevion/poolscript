@@ -362,7 +362,11 @@ const Caso CASOS_LIBS[] = {
 { "regex compile, fullmatch e findall",
   "import regex\n"
   "p = regex.compile(\"[0-9]+\")\n"
-  "post(p.fullmatch(\"123\") != null, p.fullmatch(\"12a\") != null, p.findall(\"a1b22c333\"))\n",
+  /* `fullmatch` devolve BOOL, nao objeto de match. Este caso comparava
+   * `bool != null` e passava porque `false == null` era True — passava por
+   * ACIDENTE, e so apareceu quando Null virou igual so a Null. Agora confere
+   * o booleano direto, que e o contrato de verdade. */
+  "post(p.fullmatch(\"123\"), p.fullmatch(\"12a\"), p.findall(\"a1b22c333\"))\n",
   "True False ['1', '22', '333']", NULL, 0 },
 { "regex sub e split",
   "import regex\n"
