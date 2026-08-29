@@ -5559,7 +5559,17 @@ static int met_d_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n < 1 || n > 2) MERRO(vm, "SomeValueUnexpected", "pop() espera 1 ou 2 argumentos");
     if (dict_del(COMO_DICT(alvo), &args[0], out) != 0) {
         if (n == 2) { *out = args[1]; return 0; }
-        MERRO(vm, "KeyError", "chave nao encontrada");
+        /* Mesmo texto do `d["z"]` e do `d.z`: as tres respondem a mesma
+         * pergunta, e ter tres redacoes pra isso era metade do I4. */
+        {
+            TXTBUF_AUTO kb = {0};
+            valor_para_texto(&kb, &args[0], 1);
+            char em[256];
+            snprintf(em, sizeof(em), "chave %s nao existe no dict (%d %s)",
+                     kb.b ? kb.b : "", COMO_DICT(alvo)->count,
+                     COMO_DICT(alvo)->count == 1 ? "chave" : "chaves");
+            MERRO(vm, "KeyError", "%s", em);
+        }
     }
     return 0;
 }
@@ -19398,29 +19408,47 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* `b[i]` devolve o BYTE como int, não uma fatia de 1 — é o que o
              * Python faz, e é o que torna `b[0]` comparável com número. */
             if (EH_BYTES(alvo)) {
-                if (idx.t != V_INT) ERRO(vm, "indice de bytes precisa ser int");
+                /* Diz O QUE veio, e usa TypeError. Antes era `RuntimeError:
+                 * indice de bytes precisa ser int`, sem dizer o que foi
+                 * passado — o CPython diz `not str`, que e a metade util. */
+                if (idx.t != V_INT)
+                    ERRO_TF(vm, "TypeError", "indice de bytes precisa ser int, veio %s",
+                            nome_do_tipo_valor(idx));
                 PSString *b = COMO_BYTES(alvo);
                 int64_t i = idx.as.i;
                 if (i < 0) i += b->len;
                 /* Erro, não aviso: a regra de "avisa e devolve Null" vale
                  * pra lista e string; bytes levanta, como no interpretador. */
                 if (i < 0 || i >= b->len)
-                    ERRO_T(vm, "IndexError", "indice fora do intervalo em bytes");
+                    ERRO_TF(vm, "IndexError",
+                            "indice %lld fora do tamanho de bytes (%d %s)",
+                            (long long)idx.as.i, b->len,
+                            b->len == 1 ? "byte" : "bytes");
                 stack[sp - 1] = MK_INT((unsigned char)b->chars[i]);
                 break;
             }
             if (EH_SEQ(alvo)) {
-                if (idx.t != V_INT) ERRO(vm, "indice de lista precisa ser int");
+                if (idx.t != V_INT)
+                    ERRO_TF(vm, "TypeError", "indice de %s precisa ser int, veio %s",
+                            nome_do_tipo_valor(alvo), nome_do_tipo_valor(idx));
                 PSList *l = COMO_LIST(alvo);
                 int64_t i = idx.as.i;
-                /* Spec da linguagem: índice fora do intervalo NÃO trava —
-                 * emite IndexOutOfBoundsWarning no stderr e devolve Null.
-                 * Levantar erro aqui seria mais restritivo que a linguagem. */
+                /* Ler fora da faixa LEVANTA, desde 28/08.
+                 *
+                 * Antes escrevia `IndexOutOfBoundsWarning` no stderr e devolvia
+                 * Null com rc=0 — e o aviso era `fprintf` cru, então
+                 * `try { post(l[99]) } catch (e)` NÃO PEGAVA nada. Das três
+                 * formas de "não existe", esta era a única que seguia adiante:
+                 * o Null entrava no pipeline e o erro aparecia longe da causa.
+                 * Escrever (`l[99] = x`) e chave ausente já levantavam.
+                 *
+                 * A mensagem nomeia O QUE foi acessado e o tamanho dele, que é
+                 * o que falta pra achar o erro sem depurar. */
                 if (idx.as.i < -l->len || idx.as.i >= l->len) {
-                    fprintf(stderr, "IndexOutOfBoundsWarning: índice %lld fora do tamanho %d\n",
-                            (long long)idx.as.i, l->len);
-                    stack[sp - 1] = MK_NULL();
-                    break;
+                    ERRO_TF(vm, "IndexError",
+                            "indice %lld fora do tamanho de %s (%d %s)",
+                            (long long)idx.as.i, nome_do_tipo_valor(alvo), l->len,
+                            l->len == 1 ? "item" : "itens");
                 }
                 if (i < 0) i += l->len;                 /* índice negativo, como Python */
                 stack[sp - 1] = l->itens[i];
@@ -19431,24 +19459,31 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     TXTBUF_AUTO kb = {0};
                     valor_para_texto(&kb, &idx, 1);
                     char em[256];   /* cabe em vm->erro sem truncar */
-                    snprintf(em, sizeof(em), "chave não encontrada: %s", kb.b ? kb.b : "");
+                    /* Mesmo padrão das outras duas: o que faltou, e em quê.
+                     * `chave X nao existe no dict (N chaves)` responde a mesma
+                     * pergunta que `indice N fora do tamanho de list (M itens)`. */
+                    snprintf(em, sizeof(em), "chave %s nao existe no dict (%d %s)",
+                             kb.b ? kb.b : "", COMO_DICT(alvo)->count,
+                             COMO_DICT(alvo)->count == 1 ? "chave" : "chaves");
                     ERRO_T(vm, "KeyError", em);
                 }
                 stack[sp - 1] = v;
             } else if (EH_STRING(alvo)) {
-                if (idx.t != V_INT) ERRO(vm, "indice de string precisa ser int");
+                if (idx.t != V_INT)
+                    ERRO_TF(vm, "TypeError", "indice de str precisa ser int, veio %s",
+                            nome_do_tipo_valor(idx));
                 PSString *s = COMO_STRING(alvo);
                 int64_t i = idx.as.i;
                 /* índice em CARACTERES (codepoints), não em bytes — "pão"[1]
                  * é "ã" inteiro, igual ao interp */
                 int64_t ncp = utf8_conta(s->chars, s->len);
-                /* mesma regra da lista: fora do intervalo avisa e devolve
-                 * Null, não trava (IndexOutOfBoundsWarning do spec) */
+                /* mesma regra da lista: LEVANTA, e diz o tamanho em
+                 * CARACTERES — que é a unidade do índice aqui, não bytes. */
                 if (i < -ncp || i >= ncp) {
-                    fprintf(stderr, "IndexOutOfBoundsWarning: índice %lld fora do tamanho %lld\n",
-                            (long long)i, (long long)ncp);
-                    stack[sp - 1] = MK_NULL();
-                    break;
+                    ERRO_TF(vm, "IndexError",
+                            "indice %lld fora do tamanho de str (%lld %s)",
+                            (long long)i, (long long)ncp,
+                            ncp == 1 ? "caractere" : "caracteres");
                 }
                 if (i < 0) i += ncp;
                 int b = utf8_byte_de(s->chars, s->len, i);
@@ -19472,11 +19507,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (idx.t == V_BOOL) { idx.t = V_INT; idx.as.i = idx.as.b ? 1 : 0; }
             Value alvo  = stack[--sp];
             if (EH_LIST(alvo)) {
-                if (idx.t != V_INT) ERRO(vm, "indice de lista precisa ser int");
+                if (idx.t != V_INT)
+                    ERRO_TF(vm, "TypeError", "indice de %s precisa ser int, veio %s",
+                            nome_do_tipo_valor(alvo), nome_do_tipo_valor(idx));
                 PSList *l = COMO_LIST(alvo);
                 int64_t i = idx.as.i;
                 if (i < 0) i += l->len;
-                if (i < 0 || i >= l->len) ERRO_T(vm, "IndexError", "indice fora do intervalo");
+                /* Mesma mensagem da LEITURA: as duas respondem a mesma
+                 * pergunta, e ter dois textos pra isso era metade do I4. */
+                if (i < 0 || i >= l->len)
+                    ERRO_TF(vm, "IndexError",
+                            "indice %lld fora do tamanho de %s (%d %s)",
+                            (long long)idx.as.i, nome_do_tipo_valor(alvo), l->len,
+                            l->len == 1 ? "item" : "itens");
                 l->itens[i] = valor;
             } else if (EH_DICT(alvo)) {
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -19632,7 +19675,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (fim.t == V_BOOL) { fim.t = V_INT; fim.as.i = fim.as.b ? 1 : 0; }
             int64_t st = 1;
             if (passo.t == V_INT) st = passo.as.i;
-            else if (passo.t != V_NULL) ERRO(vm, "passo do slice precisa ser int");
+            else if (passo.t != V_NULL)
+                ERRO_TF(vm, "TypeError", "passo do slice precisa ser int, veio %s",
+                        nome_do_tipo_valor(passo));
             if (st == 0) ERRO(vm, "passo do slice nao pode ser zero");
 
             /* mesma normalização do Python: negativo conta do fim, e os
@@ -20390,7 +20435,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (EH_DICT(alvo)) {
                         Value dv;
                         if (dict_get(COMO_DICT(alvo), &nomev, &dv) == 0) { stack[sp - 1] = dv; break; }
-                        ERRO_TF(vm, "KeyError", "chave não encontrada: '%s'", nome);
+                        ERRO_TF(vm, "KeyError",
+                                "chave '%s' nao existe no dict (%d %s)", nome,
+                                COMO_DICT(alvo)->count,
+                                COMO_DICT(alvo)->count == 1 ? "chave" : "chaves");
                     }
                     ERRO_TF(vm, "RuntimeError", "membro inexistente: %s (em %s)", nome, nome_do_tipo_valor(alvo));
                 }

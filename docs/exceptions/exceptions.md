@@ -80,19 +80,26 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |
 | `IOError` / `OSError` | arquivo / sistema (`os`) |
 | `OutputUnexpectedValues` | desempacotar com aridade errada: `a, b = [1, 2, 3]` |
-| `IndexOutOfBoundsWarning` | **não é exceção** — ver a nota abaixo |
 | `MemoryError` | sem memória |
 | `RuntimeError` | variável não definida; `raise "texto"`; erro genérico de runtime |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
-> **Nota — índice fora da lista:** `lista[999]` **não** levanta erro; devolve
-> `null` e emite um `IndexOutOfBoundsWarning` no terminal.
+> **Nota — "não existe" tem UMA resposta só, desde 28/08.** Ler índice fora da
+> faixa, escrever fora da faixa e pedir chave ausente levantam, e as mensagens
+> dizem a mesma coisa do mesmo jeito:
 >
-> E "aviso, não exceção" é literal: ele é escrito direto no stderr, então
-> `try { post(lista[999]) } catch (e) { … }` **não pega nada**, e o aviso não
-> tem linha nem coluna. Escrever fora da faixa (`lista[999] = x`) levanta
-> `IndexError`, e chave ausente levanta `KeyError` — três comportamentos
-> diferentes para "não existe".
+> ```
+> IndexError: indice 99 fora do tamanho de list (3 itens)
+> IndexError: indice 9 fora do tamanho de str (3 caracteres)
+> IndexError: indice 9 fora do tamanho de bytes (2 bytes)
+> KeyError: chave 'z' nao existe no dict (1 chave)
+> ```
+>
+> Antes eram TRÊS comportamentos: LER devolvia `null` com rc=0 e escrevia
+> `IndexOutOfBoundsWarning` direto no stderr — que não era exceção, então
+> `try { post(l[99]) } catch (e)` **não pegava nada** e o `null` seguia adiante
+> no pipeline, com o erro aparecendo longe da causa. Escrever e chave ausente
+> já levantavam. Era o ilogismo I4/I5 do catálogo.
 
 ---
 

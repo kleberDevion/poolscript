@@ -398,9 +398,9 @@ Tipos disponíveis:
 > erro escapa e o programa morre com rc=1. Hoje `scripts/audita_doc.ps` confere
 > cada nome desta lista contra o motor e reprova se algum não existir.
 >
-> **Ler índice fora da faixa é a exceção da lista:** `l[99]` **não** levanta —
-> devolve `null` e escreve `IndexOutOfBoundsWarning` no stderr, que não é
-> capturável. Ver `docs/exceptions/exceptions.md`.
+> **"Não existe" tem uma resposta só:** ler ou escrever índice fora da faixa
+> levanta `IndexError`, e chave ausente levanta `KeyError`, as duas dizendo o
+> que faltou e em quê. Ver `docs/exceptions/exceptions.md`.
 
 ---
 

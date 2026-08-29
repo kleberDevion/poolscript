@@ -4404,47 +4404,53 @@ const Caso CASOS_ORACULO[] = {
 { "oraculo #4390", "post(\"ab\" * 3)\n", "ababab", NULL, 0 },
 { "oraculo #4391", "post(\"ab\" * 10)\n", "abababababababababab", NULL, 0 },
 
-/* ── divergem do Python: comportamento da PoolScript, travado ───────── */
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4392 (DIVERGE)", "post(\"\"[0])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4393 (DIVERGE)", "post(\"\"[1])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4394 (DIVERGE)", "post(\"\"[-1])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4395 (DIVERGE)", "post(\"\"[2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4396 (DIVERGE)", "post(\"\"[-2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4397 (DIVERGE)", "post(\"a\"[1])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4398 (DIVERGE)", "post(\"a\"[2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4399 (DIVERGE)", "post(\"a\"[-2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4400 (DIVERGE)", "post(\"Ω\"[1])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4401 (DIVERGE)", "post(\"Ω\"[2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4402 (DIVERGE)", "post(\"Ω\"[-2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4403 (DIVERGE)", "post(\"ß\"[1])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4404 (DIVERGE)", "post(\"ß\"[2])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4405 (DIVERGE)", "post(\"ß\"[-2])\n", "null", NULL, 0 },
+/* ── divergem do Python: comportamento da PoolScript, travado ─────────
+ *
+ * 28/08: DEZOITO destes deixaram de divergir. Eram os `""[0]`, `[][0]`,
+ * `[1][1]` e parentes, que devolviam `null` onde o Python levanta. Com a
+ * decisão do I4/I5 (ler índice fora da faixa LEVANTA), o motor passou a
+ * concordar com o oráculo, e os casos foram reescritos pra esperar o erro.
+ * De 65 divergências conhecidas, sobraram 47. */
+{ "oraculo #4392", "post(\"\"[0])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4393", "post(\"\"[1])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4394", "post(\"\"[-1])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4395", "post(\"\"[2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4396", "post(\"\"[-2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4397", "post(\"a\"[1])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4398", "post(\"a\"[2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4399", "post(\"a\"[-2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4400", "post(\"Ω\"[1])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4401", "post(\"Ω\"[2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4402", "post(\"Ω\"[-2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4403", "post(\"ß\"[1])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4404", "post(\"ß\"[2])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4405", "post(\"ß\"[-2])\n",
+  NULL, "fora do tamanho de", -1 },
 /* Python daria: '<<ERRO>>' */
 { "oraculo #4406 (DIVERGE)", "post([].len())\n", "0", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4407 (DIVERGE)", "post([][0])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4408 (DIVERGE)", "post([][1])\n", "null", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4409 (DIVERGE)", "post([][-1])\n", "null", NULL, 0 },
+{ "oraculo #4407", "post([][0])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4408", "post([][1])\n",
+  NULL, "fora do tamanho de", -1 },
+{ "oraculo #4409", "post([][-1])\n",
+  NULL, "fora do tamanho de", -1 },
 /* Python daria: '<<ERRO>>' */
 { "oraculo #4410 (DIVERGE)", "post([1].len())\n", "1", NULL, 0 },
-/* Python daria: '<<ERRO>>' */
-{ "oraculo #4411 (DIVERGE)", "post([1][1])\n", "null", NULL, 0 },
+{ "oraculo #4411", "post([1][1])\n",
+  NULL, "fora do tamanho de", -1 },
 /* Python daria: '<<ERRO>>' */
 { "oraculo #4412 (DIVERGE)", "post([1, 2, 3].len())\n", "3", NULL, 0 },
 /* Python daria: '<<ERRO>>' */

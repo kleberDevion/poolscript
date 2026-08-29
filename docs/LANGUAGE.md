@@ -274,8 +274,10 @@ tupla = (1, 2, 3)            # imutável (implementada como tuple do Python)
 dicionario = {"a": 1, "b": 2}
 ```
 
-Slices: `lista[1:3]`, `lista[::-1]`, etc. Índice fora do intervalo **não
-quebra** — emite `IndexOutOfBoundsWarning` no stderr e o valor vira `Null`.
+Slices: `lista[1:3]`, `lista[::-1]`, etc. Índice fora do intervalo **levanta**
+`IndexError`, dizendo o índice e o tamanho:
+`indice 99 fora do tamanho de list (3 itens)`. (Até 28/08 ele devolvia `Null`
+com um aviso não capturável — ver `docs/exceptions/exceptions.md`.)
 
 Builtins de lista: `addEnd(l, v)`, `removeEnd(l)`, `addStart(l, v)`,
 `removeStart(l)` (em lista vazia, `removeEnd`/`removeStart` retornam `Null`).
@@ -1116,7 +1118,8 @@ Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
 | `AttributedValueError` | Valor incompatível atribuído a variável tipada (ex.: `str x = 10`) |
 | `OutputUnexpectedValues` | Redeclaração no mesmo escopo; aridade errada em unpacking |
 | `SomeValueUnexpected` | Operação inválida entre tipos, divisão por zero, valor inválido, RHS não-iterável em unpacking |
-| `IndexOutOfBoundsWarning` | Índice fora do intervalo (não-fatal — vira warning + `Null`) |
+| `IndexError` | Índice fora do intervalo, ao ler OU escrever |
+| `KeyError` | Chave que não existe no dict |
 | `ConversionError` | Conversão automática de tipo falhou (ex.: `int x = "abc"`) |
 | `NotImplemented` | Lib "stub" chamada (existe mas função ainda não implementada) |
 | `KeyError` / `IndexError` / `TimeoutError` / `NetworkError` / `IOError` / etc. | Erro de chave, índice, tempo esgotado, rede e I/O |

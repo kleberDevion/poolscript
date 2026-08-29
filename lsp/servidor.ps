@@ -239,6 +239,19 @@ action passa_o_mouse(texto, linha, coluna) {
         return Null
     }
     l = ls[linha]
+    # A COLUNA vem do editor e pode passar do fim da linha — depois de apagar
+    # texto, o cursor chega numa posição que a linha não tem mais. Sem prender
+    # aqui, o `l[i - 1]` do laço abaixo lê fora e derruba o hover inteiro.
+    #
+    # Isso já era bug antes; ficava escondido porque ler fora da faixa devolvia
+    # `null` em silêncio. Quando a leitura passou a levantar (I4/I5), o hover
+    # parou de responder e o defeito apareceu.
+    if coluna > len(l) {
+        coluna = len(l)
+    }
+    if coluna < 0 {
+        coluna = 0
+    }
     # estende o nome sob o cursor pros dois lados
     i = coluna
     while i > 0 and (l[i - 1].isalnum() or l[i - 1] == "_") {

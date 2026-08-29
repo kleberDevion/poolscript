@@ -26,7 +26,11 @@ MARCA = "/tmp/ps_guzer_clicou.txt"
 
 
 action tem(cmd) {
-    return os.cmd("command -v " + cmd + " > /dev/null 2>&1") == 0
+    # `os.cmd` devolve a saída ou Null, NUNCA o rc — e `Null == 0` era True,
+    # então esta função dizia "tem" pra qualquer comando, inclusive os que não
+    # existem. O PULOU nunca disparava; o teste ia adiante e falhava adiante.
+    os.cmd("command -v " + cmd + " > /dev/null 2>&1; echo $? > /tmp/ps_gz_tem")
+    return int(open("/tmp/ps_gz_tem").read().strip()) == 0
 }
 
 
@@ -146,7 +150,9 @@ if __name__ == "main" {
     }
     os.cmd("chmod +x /tmp/ps_guzer_roteiro.sh")
 
-    rc = os.cmd("timeout 60 xvfb-run -a /tmp/ps_guzer_roteiro.sh > /tmp/ps_guzer_xvfb.txt 2>&1")
+    os.cmd("timeout 60 xvfb-run -a /tmp/ps_guzer_roteiro.sh > /tmp/ps_guzer_xvfb.txt 2>&1"
+           + "; echo $? > /tmp/ps_gz_rc")
+    rc = int(open("/tmp/ps_gz_rc").read().strip())
 
     saida = ""
     if os.exists("/tmp/ps_guzer_saida.txt") {

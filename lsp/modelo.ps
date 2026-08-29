@@ -217,6 +217,13 @@ action resumo_de(escopo, nome) {
 # ── inferência de tipo ──────────────────────────────────────────────────────
 
 # Tipo de um literal, ou "" se não for literal.
+# ATENÇÃO ao usar `regex.fullmatch`/`match`/`search`: eles devolvem **bool**,
+# não objeto de match (está em docs/regex/fullmatch). Escrever
+# `fullmatch(...) != Null` parece certo pra quem vem do Python e FUNCIONAVA
+# aqui por acidente, porque `false == Null` era True. Quando Null passou a ser
+# igual só a Null (I1/I2/I3), os cinco usos deste arquivo inverteram de uma vez
+# e o completion parou de resolver tipo — o hover e a cadeia `conn.cursor()`
+# morreram juntos.
 action tipo_de_literal(e) {
     t = e.strip()
     if t == "" {
@@ -237,10 +244,10 @@ action tipo_de_literal(e) {
     if t == "true" or t == "false" {
         return "bool"
     }
-    if regex.fullmatch("-?\\d+", t) != Null {
+    if regex.fullmatch("-?\\d+", t) {
         return "int"
     }
-    if regex.fullmatch("-?\\d+\\.\\d+", t) != Null {
+    if regex.fullmatch("-?\\d+\\.\\d+", t) {
         return "flo"
     }
     return ""
@@ -415,7 +422,7 @@ action membros_de_entity(texto, nome) {
             campo = semindent[0:dp].strip()
             ps = campo.split(" ")
             campo = ps[len(ps) - 1]
-            if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", campo) != Null {
+            if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", campo) {
                 poe(campo, "campo: " + semindent[dp + 1:].strip())
             }
             continue
@@ -425,7 +432,7 @@ action membros_de_entity(texto, nome) {
             ig = semindent.find("=")
             if ig > 0 {
                 campo = semindent[5:ig].strip()
-                if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", campo) != Null {
+                if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", campo) {
                     poe(campo, "campo de " + nome)
                 }
             }
@@ -526,7 +533,7 @@ action tipos_do_documento(texto) {
             # declaração tipada: `int x = ...`
             partes = alvo.split(" ")
             alvo = partes[len(partes) - 1].strip()
-            if regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", alvo) == Null {
+            if not regex.fullmatch("[A-Za-z_][A-Za-z0-9_]*", alvo) {
                 continue
             }
             dir = l[corte + 1:].strip()

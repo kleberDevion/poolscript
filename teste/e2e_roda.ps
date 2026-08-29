@@ -45,11 +45,25 @@ SEM_PAR = {
 # Espera a porta aceitar conexão. Devolve 1 se subiu, 0 se estourou o prazo.
 # Melhor que `sleep 2`: numa máquina carregada 2s não bastam, e numa rápida
 # são 2s jogados fora por execução.
+# Espera a porta ACEITAR conexão. O código de saída vem por ARQUIVO.
+#
+# A versão anterior fazia `r = os.cmd(...)` e testava `r == 0`. Duas coisas
+# erradas na mesma linha, e elas se cancelavam:
+#
+#   1. `os.cmd` devolve a SAÍDA (ou Null), nunca o código de saída;
+#   2. `Null == 0` era True neste motor.
+#
+# Resultado: a função voltava 1 na PRIMEIRA volta, sempre — nunca esperou porta
+# nenhuma. O que fazia o e2e funcionar era o servidor ser rápido o bastante, e
+# a "espera de 20 s" era decorativa. Quando `Null == 0` virou False (I1/I2/I3),
+# ela passou a nunca dar certo e o jinker reprovou dizendo que a porta não
+# abriu — com o log do servidor logo abaixo dizendo que abriu.
 action espera_porta(porta, prazo) {
     i = 0
     while i < prazo * 10 {
-        r = os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(porta) + "' 2>/dev/null")
-        if r == 0 {
+        os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(porta)
+               + "' 2>/dev/null; echo $? > /tmp/ps_e2e_porta")
+        if int(open("/tmp/ps_e2e_porta").read().strip()) == 0 {
             return 1
         }
         os.cmd("sleep 0.1")

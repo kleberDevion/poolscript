@@ -122,9 +122,10 @@ Observações:
 
 - **`SyntaxError`** acontece **antes** de rodar (na análise do código), então não
   é capturável por `try`/`catch` — é erro de escrita, não de execução.
-- **`IndexOutOfBoundsWarning`** é um **aviso não-fatal**: acessar uma lista fora
-  do intervalo (`l[99]`) **não** levanta erro — devolve `null` e segue (com um
-  aviso). Portanto não é algo que você captura.
+- **`IndexError`** é levantado ao acessar fora do intervalo, tanto lendo
+  (`l[99]`) quanto escrevendo (`l[99] = x`), em `list`, `tup`, `str` e `bytes`.
+  A mensagem diz o índice e o tamanho. Até 28/08 a LEITURA era um aviso
+  não-fatal que devolvia `null` e não podia ser capturado.
 - As **bibliotecas** (banco, rede, e-mail, …) levantam os próprios tipos
   (ex.: `DatabaseError`, `NetworkError`), documentados na parte de bibliotecas.
 

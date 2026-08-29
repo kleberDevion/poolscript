@@ -128,18 +128,28 @@ const Caso CASOS_CRASH[] = {
   "    post(\"recusou\")\n"
   "}\n", "recusou", NULL, 0 },
 { "pool de fibra cheio é erro limpo, nao morte",
-  /* 200 mil `await` encadeados esgotam o pool; o contrato é levantar, não cair */
-  "async action fundo(n) {\n"
-  "    if n <= 0 {\n"
-  "        return 0\n"
-  "    }\n"
-  "    return await fundo(n - 1)\n"
+  /* O pool é `FIB_HARD` = 8192 fibras concorrentes; passar disso tem que
+   * LEVANTAR, não cair.
+   *
+   * A forma importa: com `await` ENCADEADO o caso levava 27 s (e estourava o
+   * timeout de 20 s do runner), porque cada nível cria uma fibra e espera. Com
+   * as fibras criadas de uma vez, o mesmo estouro sai em 0,76 s — 20x mais
+   * rápido pra provar exatamente a mesma coisa. Teste lento é teste que alguém
+   * acaba desligando. */
+  "async action f(n) {\n"
+  "    return n\n"
   "}\n"
+  "fs = []\n"
+  "i = 0\n"
   "try {\n"
-  "    post(fundo(200000))\n"
+  "    while i < 9000 {\n"
+  "        addEnd(fs, f(i))\n"
+  "        i = i + 1\n"
+  "    }\n"
+  "    post(len(gather(fs)))\n"
   "} catch (e) {\n"
   "    post(\"recusou\")\n"
-  "}\n", NULL, NULL, 0 },
+  "}\n", "recusou", NULL, 0 },
 
 /* ── aninhamento LEGÍTIMO: o teto não pode virar limite de uso ───────────────
  * Contrapeso dos casos de teto acima. Se alguém apertar `PS_PARSE_PROF_MAX` pra

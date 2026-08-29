@@ -2983,7 +2983,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #449",
   "post(\"ab\"[9])\n"
   "\n",
-  "null", NULL, 0 },
+  NULL, "fora do tamanho de", -1 },
 { "dif #450",
   "post(\"abc\" < \"abd\")\n"
   "\n",
@@ -4248,11 +4248,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #764",
   "post([1, 2][\"x\"])\n"
   "\n",
-  NULL, "RuntimeError: indice de lista precisa ser int", -1 },
+  NULL, "TypeError: indice de list precisa ser int, veio", -1 },
 { "dif #765",
   "post([1, 2][9])\n"
   "\n",
-  "null", NULL, 0 },
+  NULL, "fora do tamanho de", -1 },
 { "dif #766",
   "post([1, 2][zzz])\n"
   "\n",
@@ -4296,11 +4296,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #776",
   "post([1,2][-9])\n"
   "\n",
-  "null", NULL, 0 },
+  NULL, "fora do tamanho de", -1 },
 { "dif #777",
   "post([1,2][9])\n"
   "\n",
-  "null", NULL, 0 },
+  NULL, "fora do tamanho de", -1 },
 { "dif #778",
   "post([1] < [2], [1,2] >= [1,2], (1,2) < (1,3))\n"
   "\n",
@@ -6873,7 +6873,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1420",
   "post({\"a\": 1}[\"z\"])\n"
   "\n",
-  NULL, "KeyError: chave não encontrada: 'z'", -1 },
+  NULL, "KeyError: chave 'z'", -1 },
 { "dif #1421",
   "post({\"a\": Null})\n"
   "\n",
@@ -6897,11 +6897,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1426",
   "post({\"a\":1}.append(1))\n"
   "\n",
-  NULL, "KeyError: chave não encontrada: 'append'", -1 },
+  NULL, "KeyError: chave 'append'", -1 },
 { "dif #1427",
   "post({\"a\":1}.pop(\"z\"))\n"
   "\n",
-  NULL, "KeyError: chave nao encontrada", -1 },
+  NULL, "KeyError: chave 'z' nao existe no dict", -1 },
 { "dif #1428",
   "post({\"a\":1}.type())\n"
   "\n",
@@ -6913,7 +6913,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1430",
   "post({\"a\":1}[\"z\"])\n"
   "\n",
-  NULL, "KeyError: chave não encontrada: 'z'", -1 },
+  NULL, "KeyError: chave 'z'", -1 },
 { "dif #1431",
   "post({\"b\":1,\"a\":2})\n"
   "\n",
@@ -7680,7 +7680,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(e)\n"
   "}\n"
   "\n",
-  "chave não encontrada: 'z' (linha 2)", NULL, 0 },
+  "chave 'z' nao existe no dict (1 chave) (linha 2)", NULL, 0 },
 { "dif #1547",
   "try {\n"
   " raise \"meu erro\"\n"
@@ -9452,7 +9452,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = \"ab\".encode()\n"
   "post(b[-9])\n"
   "\n",
-  NULL, "IndexError: indice fora do intervalo em bytes", -1 },
+  NULL, "IndexError: indice", -1 },
 { "dif #1819",
   "b = \"ab\".encode()\n"
   "post(b[0])\n"
@@ -9462,7 +9462,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = \"ab\".encode()\n"
   "post(b[9])\n"
   "\n",
-  NULL, "IndexError: indice fora do intervalo em bytes", -1 },
+  NULL, "IndexError: indice", -1 },
 { "dif #1821",
   "b = \"ab\".encode()\n"
   "post(len(b))\n"
@@ -9796,12 +9796,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d.z)\n"
   "\n",
-  NULL, "KeyError: chave não encontrada: 'z'", -1 },
+  NULL, "KeyError: chave 'z'", -1 },
 { "dif #1875",
   "d = { \"a\": 1 }\n"
   "post(d[\"z\"])\n"
   "\n",
-  NULL, "KeyError: chave não encontrada: 'z'", -1 },
+  NULL, "KeyError: chave 'z'", -1 },
 { "dif #1876",
   "d = { \"a\": 1, \"b\": 2, \"c\": 3 }\n"
   "soma = 0\n"
@@ -12669,7 +12669,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = lista[99]\n"
   "post(x)\n"
   "\n",
-  "null", NULL, 0 },
+  NULL, "fora do tamanho de", -1 },
 { "dif #2351",
   "lista = [10, 20, 30]\n"
   "post(lista[-1])\n"
