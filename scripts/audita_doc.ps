@@ -69,6 +69,85 @@ action le_titulo(caminho) {
 }
 
 
+# ── tipo de erro citado na doc TEM que existir no motor ─────────────────────
+#
+# POR QUE: `docs/PoolScript.md` listava `PermissionError` e `ConnectionError`
+# numa tabela de "tipos disponiveis". O motor NUNCA levanta nenhum dos dois —
+# zero ponto no `vm/`. Quem seguisse a doc escrevia `catch (PermissionError e)`,
+# o handler jamais disparava, o erro escapava e o programa morria com rc=1.
+#
+# A tabela derivou porque `PoolScript.md` e `LANGUAGE.md` nao estavam no escopo
+# de nenhum auditor: o `audita_doc` conferia assinatura de metodo, nao taxonomia
+# de erro. Deriva sem detector e so questao de tempo.
+#
+# A regra e simples: todo `NomeError` citado em qualquer .md precisa aparecer
+# como string no motor. Nome levantado pelo USUARIO (`raise MinhaCoisa("x")`) e
+# exceção legitima e sai da conta — por isso o filtro pega so o que o motor
+# poderia emitir.
+action tipos_do_motor() {
+    vistos = {}
+    for each nome in os.ls("vm") {
+        n = nome["name"]
+        if not n.endswith(".c") {
+            continue
+        }
+        fonte = open("vm/" + n).read()
+        # Entre ASPAS: e assim que o tipo chega no `vm->erro_tipo`.
+        for each m in regex.findall("\"([A-Z][A-Za-z]*(?:Error|Exception|Warning|Unexpected|UnexpectedValues))\"", fonte) {
+            vistos[m] = 1
+        }
+        # E os que o motor escreve DIRETO no stderr, sem passar pelo campo de
+        # tipo — o `IndexOutOfBoundsWarning` e o caso, e e justamente o que a
+        # doc precisa citar pra avisar que ele NAO e capturavel.
+        for each m in regex.findall("\"([A-Z][A-Za-z]*(?:Error|Warning)): ", fonte) {
+            vistos[m] = 1
+        }
+    }
+    return vistos
+}
+
+
+action confere_tipos_de_erro(paginas) {
+    motor = tipos_do_motor()
+    # Levantados pelo usuario nos exemplos da doc: sao ilustracao de `raise`,
+    # nao promessa de que o motor emite.
+    do_usuario = ["MeuErro", "MinhaExcecao", "ErroDeNegocio", "SaldoInsuficiente",
+                  "MetadataIlegivel", "ValidationError", "AppError"]
+    fantasmas = []
+    for each pag in paginas {
+        texto = open(pag).read()
+        # Linha de CITACAO (`> ` do markdown) fala SOBRE o tipo, nao promete
+        # que ele existe — e onde se registra "esta tabela ja teve X, que o
+        # motor nunca levanta". Sem esta exclusao, documentar o defeito vira o
+        # defeito.
+        limpo = []
+        for each l in texto.split("\n") {
+            if not l.strip().startswith(">") {
+                addEnd(limpo, l)
+            }
+        }
+        texto = ("\n").join(limpo)
+        # `Error` nao basta: `OutputUnexpectedValues` e um tipo real e nao
+        # termina assim. O padrao pega o formato de nome de tipo de erro.
+        for each m in regex.findall("`([A-Z][A-Za-z]*(?:Error|Exception|Warning|Unexpected|UnexpectedValues))`", texto) {
+            if m in motor or do_usuario.contains(m) {
+                continue
+            }
+            achou = false
+            for each f in fantasmas {
+                if f[0] == m and f[1] == pag {
+                    achou = true
+                }
+            }
+            if not achou {
+                addEnd(fantasmas, [m, pag])
+            }
+        }
+    }
+    return fantasmas
+}
+
+
 if __name__ == "main" {
     tudo = false
     for each a in sys.argv {
@@ -93,6 +172,22 @@ if __name__ == "main" {
             real[mod + "." + f["nome"]] = nomes
         }
     }
+
+    # ── taxonomia de erro: antes de qualquer coisa, porque um `catch` que nao
+    # dispara e pior que doc faltando — ele MATA o programa de quem seguiu.
+    fantasmas = confere_tipos_de_erro(junta_md(DOCS, []))
+    if len(fantasmas) > 0 {
+        post("")
+        post("TIPO DE ERRO citado na doc que o motor NUNCA levanta:", str(len(fantasmas)))
+        for each f in fantasmas {
+            post("   " + f[0].ljust(24) + f[1])
+        }
+        post("")
+        post("Quem escrever `catch (" + fantasmas[0][0] + " e)` seguindo a doc tem um")
+        post("handler que jamais dispara: o erro escapa e o programa morre com rc=1.")
+        sys.exit(1)
+    }
+    post("tipos de erro citados na doc: todos existem no motor")
 
     paginas = 0
     sem_titulo = []

@@ -374,16 +374,33 @@ Tipos disponíveis:
 
 | Tipo | Quando ocorre |
 |---|---|
-| `ZeroDivisionError` | Divisão por zero |
-| `KeyError` | Chave não existe no dict |
-| `TypeError` | Tipo errado |
-| `ValueError` | Valor inválido |
-| `IndexError` | Índice fora do tamanho |
-| `FileNotFoundError` | Arquivo não encontrado |
-| `PermissionError` | Sem permissão de acesso |
-| `ConnectionError` | Falha de conexão |
-| `TimeoutError` | Timeout |
-| `e` (sem tipo) | Qualquer erro |
+| `SomeValueUnexpected` | o erro **geral** de valor/tipo — de longe o mais comum |
+| `ZeroDivisionError` | divisão ou resto por zero |
+| `AttributedValueError` | `+` entre tipos que não somam (`"a" + 1`) |
+| `KeyError` | chave não existe no dict |
+| `IndexError` | índice inválido ao **escrever** (`l[99] = x`) |
+| `TypeError` | tipo errado, onde o motor consegue nomear o esperado |
+| `ValueError` | valor fora do domínio |
+| `FileNotFoundError` | arquivo não encontrado |
+| `IOError` / `OSError` | arquivo / sistema |
+| `NetworkError` | falha de conexão |
+| `TimeoutError` | tempo esgotado |
+| `DatabaseError` | erro de banco |
+| `ImportError` | módulo não encontrado |
+| `ConversionError` | falha de conversão |
+| `NotImplementedError` | construção reconhecida e ainda não executada |
+| `MemoryError` | sem memória |
+| `RuntimeError` | variável não definida, `raise "texto"`, erro genérico |
+| `e` (sem tipo) | qualquer erro |
+
+> Esta tabela já teve `PermissionError` e `ConnectionError`, que o motor **nunca
+> levanta**. Quem seguisse a doc escrevia um `catch` que jamais dispara — e aí o
+> erro escapa e o programa morre com rc=1. Hoje `scripts/audita_doc.ps` confere
+> cada nome desta lista contra o motor e reprova se algum não existir.
+>
+> **Ler índice fora da faixa é a exceção da lista:** `l[99]` **não** levanta —
+> devolve `null` e escreve `IndexOutOfBoundsWarning` no stderr, que não é
+> capturável. Ver `docs/exceptions/exceptions.md`.
 
 ---
 

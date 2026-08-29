@@ -79,6 +79,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `DatabaseError` | erro de banco (`psodbc`) |
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |
 | `IOError` / `OSError` | arquivo / sistema (`os`) |
+| `OutputUnexpectedValues` | desempacotar com aridade errada: `a, b = [1, 2, 3]` |
 | `IndexOutOfBoundsWarning` | **não é exceção** — ver a nota abaixo |
 | `MemoryError` | sem memória |
 | `RuntimeError` | variável não definida; `raise "texto"`; erro genérico de runtime |

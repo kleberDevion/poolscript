@@ -312,8 +312,8 @@ Regras (idênticas ao Python):
 - `*resto = [...]` **sem vírgula nenhuma** é erro de sintaxe — precisa de
   `*resto, = [...]`.
 - Aridade errada sem `*` (`a, b = [1, 2, 3]` ou `a, b, c = [1, 2]`) levanta
-  `PoolRuntimeError` (`OutputUnexpectedValues`) com mensagem estilo Python
-  ("valores insuficientes"/"valores demais para desempacotar").
+  `OutputUnexpectedValues`, com mensagem estilo Python ("valores
+  insuficientes"/"valores demais para desempacotar").
 - Lado direito que não é lista/tupla/string (`a, b = 5`) levanta
   `SomeValueUnexpected`.
 - Cada alvo (novo ou já existente no escopo) segue a mesma semântica da
@@ -467,9 +467,10 @@ testes de concorrência por tempo de parede):
 
 - Duas ou mais chamadas `async` disparadas antes de qualquer `await` rodam
   **em paralelo** (não seriado).
-- Exceção dentro de uma `async action` **não aparece na chamada** — só
-  aparece quando você dá `await` (ou `.result()`), convertida em
-  `PoolRuntimeError`.
+- Exceção dentro de uma `async action` **não aparece na chamada** — só aparece
+  quando você dá `await`. O tipo original é PRESERVADO: um `raise
+  ValueError(...)` dentro da action chega como `ValueError` no `catch`, não
+  convertido em outra coisa.
 - `await` numa **lista** funciona como um `gather`: aguarda todos os
   futures da lista (misturados com valores já prontos) e devolve a lista de
   resultados; se algum tiver dado erro, o erro propaga no `await`.
@@ -479,9 +480,9 @@ testes de concorrência por tempo de parede):
   normalmente.
 - `await valor_comum` (não-future) é pass-through — devolve o valor como
   está, não é erro.
-- API de baixo nível do future: `f.done()` (bool), `f.result(timeout=None)`
-  (mesmo que `await`, mas você escolhe o timeout — estoura
-  `PoolRuntimeError` se não terminar a tempo).
+- O future **não tem** API de baixo nível: `f.done()` e `f.result(timeout=)`
+  não existem (`membro inexistente: result (em future)`). A única forma de
+  pegar o valor é `await`.
 - `async int reaction`/`async bool reaction` aplicam a mesma conversão de
   erro→sentinela (500/False) que a versão síncrona, só que dentro da thread.
 
