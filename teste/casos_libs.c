@@ -484,11 +484,12 @@ const Caso CASOS_LIBS[] = {
 
 { "erro de aridade diz QUANTOS vieram",
   /* \"espera 1 ou 2 argumentos\" obrigava a contar na mao justamente quem
-   * acabou de errar a conta */
+   * acabou de errar a conta. O CPython tem duas redacoes pra isto; a
+   * escolhida e a que 97 dos 131 nomes medidos usam. */
   "try {\n"
   "    post(round(1, 2, 3))\n"
   "} catch (e) {\n"
-  "    post(\"got 3\" in str(e))\n"
+  "    post(\"(3 given)\" in str(e))\n"
   "}\n", "True", NULL, 0 },
 
 { "erro de json diz onde",

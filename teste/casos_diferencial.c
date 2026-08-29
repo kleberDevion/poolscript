@@ -2746,7 +2746,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #392",
   "post(\"a\".count())\n"
   "\n",
-  NULL, "TypeError: count expected at least 1 argument, got 0", -1 },
+  NULL, "TypeError: count() takes at least 1 argument (0 given)", -1 },
 { "dif #393",
   "post(\"a\".encode(\"utf-8\"))\n"
   "\n",
@@ -2778,7 +2778,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #400",
   "post(\"a\".match())\n"
   "\n",
-  NULL, "TypeError: match expected 1 argument, got 0", -1 },
+  NULL, "TypeError: match() takes exactly one argument (0 given)", -1 },
 { "dif #401",
   "post(\"a\".naoexiste())\n"
   "\n",
@@ -2810,7 +2810,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #408",
   "post(\"a\".sub(\"a\"))\n"
   "\n",
-  NULL, "TypeError: sub expected 2 arguments, got 1", -1 },
+  NULL, "TypeError: sub() takes exactly 2 arguments (1 given)", -1 },
 { "dif #409",
   "post(\"a\".type())\n"
   "\n",
@@ -2818,7 +2818,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #410",
   "post(\"a\".upper(1))\n"
   "\n",
-  NULL, "TypeError: upper expected 0 arguments, got 1", -1 },
+  NULL, "TypeError: upper() takes no arguments (1 given)", -1 },
 { "dif #411",
   "post(\"a\".zfill(5))\n"
   "post(\"ab\".ljust(5, \"-\"))\n"
@@ -4312,7 +4312,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #780",
   "post([1].append())\n"
   "\n",
-  NULL, "TypeError: append expected 1 argument, got 0", -1 },
+  NULL, "TypeError: append() takes exactly one argument (0 given)", -1 },
 { "dif #781",
   "post([1].extend(1))\n"
   "\n",
@@ -4340,11 +4340,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #787",
   "post([1].sort(1))\n"
   "\n",
-  NULL, "TypeError: sort expected 0 arguments, got 1", -1 },
+  NULL, "TypeError: sort() takes no arguments (1 given)", -1 },
 { "dif #788",
   "post([1].type(1))\n"
   "\n",
-  NULL, "TypeError: type expected 0 arguments, got 1", -1 },
+  NULL, "TypeError: type() takes no arguments (1 given)", -1 },
 { "dif #789",
   "post([1].upper())\n"
   "\n",
@@ -5677,7 +5677,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1121",
   "post(map([1]))\n"
   "\n",
-  NULL, "TypeError: map expected 2 arguments, got 1", -1 },
+  NULL, "TypeError: map() takes exactly 2 arguments (1 given)", -1 },
 { "dif #1122",
   "post(map([1], 5))\n"
   "\n",
@@ -6221,7 +6221,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1257",
   "post(range())\n"
   "\n",
-  NULL, "TypeError: range expected at least 1 argument, got 0", -1 },
+  NULL, "TypeError: range() takes at least 1 argument (0 given)", -1 },
 { "dif #1258",
   "post(range(-3))\n"
   "\n",
@@ -6513,7 +6513,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1330",
   "post(str())\n"
   "\n",
-  NULL, "TypeError: str expected 1 argument, got 0", -1 },
+  NULL, "TypeError: str() takes exactly one argument (0 given)", -1 },
 { "dif #1331",
   "post(str(1) + \"x\")\n"
   "\n",
@@ -6525,7 +6525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1333",
   "post(str(1,2))\n"
   "\n",
-  NULL, "TypeError: str expected 1 argument, got 2", -1 },
+  NULL, "TypeError: str() takes exactly one argument (2 given)", -1 },
 { "dif #1334",
   "post(str(1.5))\n"
   "\n",
@@ -9791,7 +9791,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d.value(\"a\"))\n"
   "\n",
-  NULL, "TypeError: value expected 0 arguments, got 1", -1 },
+  NULL, "TypeError: value() takes no arguments (1 given)", -1 },
 { "dif #1874",
   "d = { \"a\": 1 }\n"
   "post(d.z)\n"
@@ -10610,7 +10610,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict())\n"
   "\n",
-  NULL, "TypeError: asdict expected 1 argument, got 0", -1 },
+  NULL, "TypeError: asdict() takes exactly one argument (0 given)", -1 },
 { "dif #2001",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict(1))\n"
@@ -11246,7 +11246,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.today(1))\n"
   "\n",
-  NULL, "TypeError: today expected 0 arguments, got 1", -1 },
+  NULL, "TypeError: today() takes no arguments (1 given)", -1 },
 { "dif #2109",
   "import flask\n"
   "post(\"ok\")\n"
@@ -11361,7 +11361,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse())\n"
   "\n",
-  NULL, "TypeError: parse expected 1 argument, got 0", -1 },
+  NULL, "TypeError: parse() takes exactly one argument (0 given)", -1 },
 { "dif #2131",
   "import json\n"
   "post(json.parse(1))\n"
@@ -11659,7 +11659,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.sub(\"a\"))\n"
   "\n",
-  NULL, "TypeError: sub expected at least 3 arguments, got 1", -1 },
+  NULL, "TypeError: sub() takes at least 3 arguments (1 given)", -1 },
 { "dif #2184",
   "import regex\n"
   "post(regex.sub(\"a\", \"b\", \"aaa\", count=2))\n"

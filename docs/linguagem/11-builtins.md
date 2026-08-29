@@ -35,7 +35,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `str` | `str(x)` | qualquer valor → texto de renderização (o mesmo que `post` imprime): `null`→`"null"`, `true`→`"True"`; listas/dicts recursivos. |
-| `int` | `int(x)` | → inteiro: string decimal, `flo` (**trunca** pra zero: `int(3.9)`→3), `bool`. `int()` sem argumento → `0`. String não-numérica → `TypeError`. |
+| `int` | `int(x)` | → inteiro: string decimal, `flo` (**trunca** pra zero: `int(3.9)`→3), `bool`. `int()` sem argumento → `0`. String não-numérica → **`ValueError`** (`invalid literal for int() with base 10: 'abc'`) — o tipo está certo, o valor é que não serve; o `TypeError` que esta linha dizia nunca aconteceu. Não confundir com o `ConversionError` da **declaração** (`int z = "abc"`), que é outro caminho. |
 | `flo` | `flo(x)` | → ponto flutuante: string numérica, `int` (`3`→`3.0`), `bool`. Lixo no fim da string é recusado (não converte "meio"). |
 | `bool` | `bool(x)` | verdade do valor: `0`, `0.0`, `""`, `[]`, `{}`, `null` são `False`; o resto `True`. |
 | `list` | `list(x)` | materializa em lista: `str`→caracteres (por codepoint), `dict`→chaves, `tup`→lista, `range`/gerador→drenados. `list()` sem arg → `[]`. |

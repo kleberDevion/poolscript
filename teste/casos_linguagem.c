@@ -428,10 +428,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * `Pattern.match/search/findall`, que leem o argumento por um helper. A regra
  * só voltou depois de sondar as 91 entradas por COMPORTAMENTO. */
 { "metodo nativo recusa argumento demais",
-  "post([1,2].append(1,2,3))\n", NULL, "append expected at most 1 argument, got 3", -1 },
+  "post([1,2].append(1,2,3))\n", NULL, "TypeError: append() takes at most 1 argument (3 given)", -1 },
 { "metodo de zero argumento recusa argumento",
   "import sockets\ns = sockets.socket()\npost(s.fileno(1,2))\n",
-  NULL, "fileno expected 0 arguments, got 2", -1 },
+  NULL, "TypeError: fileno() takes no arguments (2 given)", -1 },
 { "format continua variadico",
   "post(\"{} {}\".format(1,2,3,4,5))\n", "1 2", NULL, 0 },
 { "Pattern le o argumento pelo helper e continua funcionando",
