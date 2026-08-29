@@ -1,0 +1,128 @@
+# Roda os exemplos de `examples/` — porque ninguém os rodava.
+#
+# POR QUE ESTE ARQUIVO EXISTE: `examples/` tem 16 programas, e nenhum alvo do
+# Makefile, nenhum job de CI e nenhum script os executava. Eles são a primeira
+# coisa que alguém lê pra aprender a linguagem, e ficavam apodrecendo em
+# silêncio: o `make check` inteiro ficava verde com exemplo que nem roda.
+#
+# Achado por varredura em 29/08, quando a mudança do índice (I4/I5) quebrou
+# DOIS de uma vez — e um deles, `lista_index.ps`, existia exatamente pra
+# demonstrar o comportamento que a mudança removeu. O cabeçalho dele ainda
+# dizia "não trava" enquanto ele travava.
+#
+# O que este script exige de cada exemplo: rodar até o fim com rc=0. Não confere
+# saída — exemplo é feito pra ensinar, não pra ter saída congelada, e prender a
+# saída deles seria a fotografia que a suíte já tem demais. O que se cobra é o
+# mínimo que não pode faltar: o exemplo da doc funciona.
+#
+#     ./pool teste/exemplos_roda.ps
+import os
+import sys
+
+PASTA = "examples"
+TEMPO = 20
+
+# Exemplos que BLOQUEIAM de propósito (sobem servidor e esperam conexão). Rodar
+# significaria esperar o timeout, e o timeout viraria "falha" — então eles são
+# só CONFERIDOS na sintaxe, e isso é dito em voz alta no resumo.
+SERVIDOR = ["socket_demo.ps"]
+
+# Exemplos que precisam de coisa que a máquina pode não ter (rede, credencial).
+# Eles rodam; se falharem por ausência do serviço, contam como PULOU, nunca
+# como sucesso calado.
+PODE_FALTAR = ["mail_demo.ps", "request.ps", "push_get.ps", "swagger.ps"]
+
+
+action roda(caminho) {
+    os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' " + caminho
+           + " > /tmp/ps_ex_out.txt 2>&1 < /dev/null; echo $? > /tmp/ps_ex_rc.txt")
+    return [int(open("/tmp/ps_ex_rc.txt").read().strip()),
+            open("/tmp/ps_ex_out.txt").read()]
+}
+
+
+action confere_sintaxe(caminho) {
+    os.cmd("'" + sys.executable + "' --check " + caminho
+           + " > /tmp/ps_ex_chk.txt 2>&1; echo $? > /tmp/ps_ex_rc.txt")
+    return [int(open("/tmp/ps_ex_rc.txt").read().strip()),
+            open("/tmp/ps_ex_chk.txt").read()]
+}
+
+
+if __name__ == "main" {
+    if not os.isdir(PASTA) {
+        post("nao achei", PASTA + "/")
+        sys.exit(1)
+    }
+
+    okey = []
+    falhou = []
+    pulou = []
+    so_sintaxe = []
+
+    nomes = []
+    for each e in os.ls(PASTA) {
+        if e["name"].endswith(".ps") {
+            addEnd(nomes, e["name"])
+        }
+    }
+    nomes.sort()
+
+    for each n in nomes {
+        caminho = PASTA + "/" + n
+
+        if SERVIDOR.contains(n) {
+            r = confere_sintaxe(caminho)
+            if r[0] != 0 {
+                post("  SINTAXE  " + n)
+                post("      " + r[1].strip())
+                addEnd(falhou, n)
+            }
+            else {
+                addEnd(so_sintaxe, n)
+            }
+            continue
+        }
+
+        r = roda(caminho)
+        if r[0] == 0 {
+            addEnd(okey, n)
+            continue
+        }
+        # Serviço ausente é PULOU, e só pra quem depende dele. Erro de
+        # linguagem (Syntax/Type/Index/Name) é FALHA em qualquer exemplo.
+        so_servico = PODE_FALTAR.contains(n)
+        parece_lingua = ("SyntaxError" in r[1] or "TypeError" in r[1]
+                         or "IndexError" in r[1] or "ValueError" in r[1]
+                         or "RuntimeError: variável não definida" in r[1])
+        if so_servico and not parece_lingua {
+            addEnd(pulou, n)
+            continue
+        }
+        post("  FALHOU   " + n + "  (rc " + str(r[0]) + ")")
+        for each l in r[1].strip().split("\n") {
+            post("      " + l)
+        }
+        addEnd(falhou, n)
+    }
+
+    post("")
+    post("exemplos:", str(len(nomes)), " rodaram:", str(len(okey)),
+         " so sintaxe:", str(len(so_sintaxe)), " pularam:", str(len(pulou)))
+    if len(so_sintaxe) > 0 {
+        post("   (servidor, nao executados:", (", ").join(so_sintaxe) + ")")
+    }
+    if len(pulou) > 0 {
+        post("   (PULARAM por falta de servico:", (", ").join(pulou) + ")")
+    }
+    if len(falhou) > 0 {
+        post("")
+        post("FALHARAM:", str(len(falhou)))
+        for each f in falhou {
+            post("   " + f)
+        }
+        sys.exit(1)
+    }
+    post("todos os exemplos rodam.")
+    sys.exit(0)
+}

@@ -1,8 +1,28 @@
-// lista_index.ps — demonstra IndexOutOfBoundsWarning (não trava)
+// lista_index.ps — indice fora da faixa LEVANTA, e da pra pegar
+//
+// Ate 28/08 este exemplo demonstrava o contrario: `minha_lista[99]` devolvia
+// Null, escrevia um aviso no stderr e o programa seguia. O aviso nao era
+// excecao, entao `catch` nao pegava — e o Null seguia adiante no programa, com
+// o erro aparecendo longe da causa.
 minha_lista = ["A", "B", "C"]
 
-valor = minha_lista[99]
-post("valor fora do range:")
-post(valor)
+try {
+    valor = minha_lista[99]
+    post("nao chega aqui:", valor)
+} catch (IndexError e) {
+    post("indice invalido ->", e)
+}
+
+// FATIA continua tolerante: recortar fora da faixa devolve o que existe.
+post("fatia fora da faixa ->", minha_lista[99:])
+post("fatia parcial      ->", minha_lista[1:99])
+
+// E o jeito de perguntar antes, quando nao se quer o erro:
+i = 99
+if i < len(minha_lista) {
+    post(minha_lista[i])
+} else {
+    post("a lista tem so", len(minha_lista), "itens")
+}
 
 post("programa continuou rodando!")

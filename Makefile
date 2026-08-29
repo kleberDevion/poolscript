@@ -336,6 +336,11 @@ check: pool testar
 	@echo
 	@./pool teste/fuzz_replay.ps
 	@echo
+	# Os EXEMPLOS de `examples/` — 16 programas que ninguem rodava. Sao a
+	# primeira coisa que se le pra aprender a linguagem, e apodreciam em
+	# silencio: a mudanca do indice quebrou dois de uma vez sem o gate ver.
+	@./pool teste/exemplos_roda.ps
+	@echo
 	# LEIS: o que vale pra TODO valor, não pra um exemplo. Barato o bastante
 	# pro portão; o noturno roda fundo com a semente do dia.
 	@$(MAKE) --no-print-directory leis

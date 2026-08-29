@@ -2,8 +2,19 @@
 import sys
 import os
 
-target = sys.argv[0]
-target_2 = sys.argv[1]
+// Ler `sys.argv` sem conferir o tamanho quebra quando o script roda sem
+// argumento. Antes isso passava calado — indice fora da faixa devolvia Null, e
+// os `if (target and ...)` abaixo simplesmente nao entravam. Hoje levanta
+// IndexError, e a leitura precisa ser guardada. O valor vazio preserva o
+// mesmo comportamento falsy que esses `if` ja esperavam.
+target = ""
+target_2 = ""
+if len(sys.argv) > 0 {
+    target = sys.argv[0]
+}
+if len(sys.argv) > 1 {
+    target_2 = sys.argv[1]
+}
 
 
 
