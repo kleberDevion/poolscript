@@ -216,6 +216,42 @@ action acha_opcode_solto(caminho, linhas, achados) {
 }
 
 
+# 6. Assinatura de método/módulo com ESPAÇO depois da vírgula, ou default `null`
+#    em minúscula.
+#
+# A terceira coluna das tabelas (`METODOS_STR`, `MembroMod`, ...) é a assinatura
+# que o `pool --metadata` publica, e o `jm_params` a copia VERBATIM: ele parte
+# em `,` e não faz `strip`. Um `"sub, inicio=0"` vira um parâmetro chamado
+# `" inicio"`, COM O ESPAÇO NO NOME — e é assim que ele aparece no hover do
+# editor e em qualquer doc gerada dela. Eram 14 parâmetros assim (I21b).
+#
+# E `fim=null` contra `fim=Null` é a mesma tabela discordando de si mesma sobre
+# como se escreve nulo: 4562 maiúsculos contra 5 minúsculos (I23).
+#
+# Os dois são dado, não lógica: o compilador nunca vai reclamar, e só aparece
+# pra quem lê o metadata. Por isso precisam de detector.
+action acha_assinatura_torta(caminho, linhas, achados) {
+    i = 0
+    while i < len(linhas) {
+        # só as linhas de TABELA: `{ "nome", funcao, "assinatura" }`
+        for each m in regex.findall("\\{\\s*\"[a-zA-Z_][a-zA-Z_0-9]*\",\\s*[a-zA-Z_][a-zA-Z_0-9]*,\\s*\"([^\"]*)\"", linhas[i]) {
+            ass = m
+            if ", " in ass {
+                achados.append([caminho, i + 1,
+                                "assinatura com ESPACO depois da virgula (vira nome de parametro com espaco)",
+                                ass])
+            }
+            if "=null" in ass {
+                achados.append([caminho, i + 1,
+                                "default grafado `null` minusculo (o resto da tabela usa `Null`)",
+                                ass])
+            }
+        }
+        i = i + 1
+    }
+}
+
+
 if __name__ == "main" {
     lista = false
     for each a in sys.argv {
@@ -233,6 +269,7 @@ if __name__ == "main" {
         acha_gc(caminho, linhas, achados)
         acha_contador(caminho, linhas, achados)
         acha_opcode_solto(caminho, linhas, achados)
+        acha_assinatura_torta(caminho, linhas, achados)
     }
 
     post("")

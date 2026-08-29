@@ -5293,8 +5293,8 @@ static const MetodoNat METODOS_STR[] = {
     { "strip", met_strip, "chars=Null" }, { "lstrip", met_lstrip, "chars=Null" }, { "rstrip", met_rstrip, "chars=Null" },
     { "startswith", met_startswith, "prefixo" }, { "endswith", met_endswith, "sufixo" },
     { "contains", met_contains, "sub" }, { "has", met_contains, "sub" },
-    { "find", met_find, "sub, inicio=0, fim=null" }, { "rfind", met_rfind, "sub, inicio=0, fim=null" }, { "index", met_index, "sub, inicio=0, fim=null" }, { "rindex", met_rindex, "sub, inicio=0, fim=null" },
-    { "count", met_count, "sub, inicio=0, fim=null" }, { "len", met_len, NULL },
+    { "find", met_find, "sub,inicio=0,fim=Null" }, { "rfind", met_rfind, "sub,inicio=0,fim=Null" }, { "index", met_index, "sub,inicio=0,fim=Null" }, { "rindex", met_rindex, "sub,inicio=0,fim=Null" },
+    { "count", met_count, "sub,inicio=0,fim=Null" }, { "len", met_len, NULL },
     { "get_json", met_get_json, "chave=Null" }, { "get", met_get_json, "chave=Null" },
     { "isalpha", met_isalpha, NULL }, { "isdigit", met_isdigit, NULL }, { "isnumeric", met_isnumeric, NULL },
     { "isdecimal", met_isdecimal, NULL }, { "isalnum", met_isalnum, NULL }, { "isspace", met_isspace, NULL },
@@ -5307,9 +5307,9 @@ static const MetodoNat METODOS_STR[] = {
     { "ljust", met_ljust, "width,fillchar" }, { "rjust", met_rjust, "width,fillchar" }, { "center", met_center, "width,fillchar" },
     { "zfill", met_zfill, "largura" }, { "expandtabs", met_expandtabs, "tabsize=8" },
     { "match", met_match, "padrao" }, { "findall", met_findall, "padrao" }, { "sub", met_sub, "pattern,repl" },
-    { "format", met_format, "a=Null, b=Null, ..." }, { "format_map", met_format_map, "dict" },
+    { "format", met_format, "a=Null,b=Null,..." }, { "format_map", met_format_map, "dict" },
     { "isidentifier", met_isidentifier, NULL },
-    { "maketrans", met_maketrans, "de, para" }, { "translate", met_translate, "tabela" },
+    { "maketrans", met_maketrans, "de,para" }, { "translate", met_translate, "tabela" },
     { "encode", met_encode, "encoding=\"utf-8\",errors=\"strict\"" },
 };
 #define N_METODOS_STR ((int)(sizeof(METODOS_STR) / sizeof(METODOS_STR[0])))
@@ -6496,7 +6496,7 @@ static const MetodoNat METODOS_PFILE[] = {
 };
 
 static const MetodoNat METODOS_LIST[] = {
-    { "append", met_l_append, "item" }, { "extend", met_l_extend, "outra" }, { "insert", met_l_insert, "i, item" },
+    { "append", met_l_append, "item" }, { "extend", met_l_extend, "outra" }, { "insert", met_l_insert, "i,item" },
     { "pop", met_l_pop, "i=-1" }, { "remove", met_l_remove, "item" }, { "index", met_l_index, "item,inicio=0,fim=len" },
     { "count", met_l_count, "item" }, { "contains", met_l_contains, "item" }, { "has", met_l_contains, "item" },
     { "reverse", met_l_reverse, NULL }, { "sort", met_l_sort, NULL },
@@ -6513,7 +6513,7 @@ static const MetodoNat METODOS_TUPLA[] = {
 static const MetodoNat METODOS_DICT[] = {
     { "keys", met_d_keys, NULL }, { "values", met_d_values, NULL }, { "value", met_d_value, NULL },
     { "items", met_d_items, NULL },
-    { "get", met_d_get, "chave, default=Null" }, { "has", met_d_has, "chave" }, { "contains", met_d_has, "chave" },
+    { "get", met_d_get, "chave,default=Null" }, { "has", met_d_has, "chave" }, { "contains", met_d_has, "chave" },
     { "pop", met_d_pop, "chave,default=Null" }, { "update", met_d_update, "outro" }, { "clear", met_d_clear, NULL },
     { "copy", met_d_copy, NULL }, { "len", met_d_len, NULL },
 };
