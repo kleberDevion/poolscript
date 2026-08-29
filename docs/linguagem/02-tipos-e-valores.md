@@ -119,11 +119,14 @@ post([10, 20][True])  // 20  (índice 1)
 
 `Null` (e os sinônimos `null`/`None`/`none`) representa "sem valor". Regras:
 
-- **Não se ordena.** Qualquer `<`, `>`, `<=`, `>=` com `Null` de um dos lados é
-  `False` — inclusive `Null >= Null`. Isso é proposital: `if x > 0` com `x`
-  ainda não preenchido simplesmente não entra, em vez de estourar.
-- Em igualdade, `Null == Null` é `True`; `Null == 0` e `Null == 0.0` são `True`
-  (compatibilidade numérica); com o resto é `False`.
+- **Não se ordena.** Qualquer `<`, `>`, `<=`, `>=` com `Null` de um dos lados
+  **levanta** `TypeError: '<' not supported between instances of 'Null' and
+  'int'` — inclusive `Null >= Null`. Antes devolvia `False`, e a justificativa
+  era "melhor que erro"; na prática `if x > 0` com `x` nulo caía no `else`
+  **sem avisar**, enquanto `"abc" < 5` levantava. Eram duas políticas para o
+  mesmo erro. Quem quer o teste sem levantar escreve `x != Null` antes.
+- Em igualdade, `Null == Null` é `True`; com **qualquer** outra coisa é
+  `False`, inclusive `Null == 0`, `Null == false` e `Null == ""`.
 - Imprime como `null`.
 
 ---

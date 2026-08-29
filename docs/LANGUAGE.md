@@ -174,8 +174,8 @@ for each return in xs { }    // erro: 'return' é palavra reservada
 
 `base` entra na lista mesmo não sendo keyword: é a chamada da superclasse
 dentro de `__init__`, então ligá-la a um nome quebrava `base(...)` — antes
-`base = 5` era aceito calado e só estourava depois, como "variável não
-definida".
+`base = 5` era aceito calado e só estourava depois, como
+`NameError: name 'base' is not defined`.
 
 Duas coisas que **continuam** válidas, porque não ligam nome nenhum:
 
@@ -198,10 +198,13 @@ Quatro grafias equivalentes, todas o mesmo valor:
 Null   null   None   none
 ```
 
-`Null == 0` é `True` (igualdade "nullish", só para `==`; comparações de
-magnitude `<`/`>` com `Null` são sempre `False`). `post(Null)` imprime `null`
-— igual a qualquer valor `None`/ausente vindo de índice fora do limite, de
-builtins sem resultado, ou de `return` explícito/implícito.
+`Null` só é igual a `Null`: `Null == 0` é **`False`**, e o mesmo vale para
+`false` e `""`. Comparação de magnitude (`<`, `>`, `<=`, `>=`) com `Null`
+**levanta** `TypeError` — devolver `False` calado fazia `if x > 0` com `x` nulo
+cair no `else` sem avisar. `post(Null)` imprime `null`.
+
+> Esta seção dizia que `Null == 0` é `True` e que magnitude com `Null` é sempre
+> `False`. As duas mudaram.
 
 ---
 
@@ -533,7 +536,7 @@ nenhum `catch` **não é sintaxe válida** (diferente do Python).
 try {
     x = 1 / 0
 } catch (ZeroDivisionError e) {
-    post("divisao por zero:", e)
+    post("division by zero:", e)
 } catch (TypeError e) {
     post("tipo errado:", e)
 } catch (e) {

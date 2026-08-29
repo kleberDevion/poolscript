@@ -51,7 +51,7 @@ post(C().f(5))      // 15  — via instância, self = a instância
 ```
 
 Passar argumento demais, ou faltar um obrigatório, dá erro claro
-(`esperava até N argumentos` / `faltando argumento: 'a'`) — nunca um erro
+(`f() takes N positional arguments but M were given` / `f() missing 1 required positional argument: 'a'`) — nunca um erro
 obscuro lá adentro.
 
 ---

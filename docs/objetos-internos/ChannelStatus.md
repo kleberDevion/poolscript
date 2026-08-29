@@ -9,7 +9,7 @@ Status de envio do channel.
 ## Métodos e propriedades
 
 **Nenhum.** `ChannelStatus` é um valor que se COMPARA e se TESTA, não um objeto que se
-navega — não existe `.status` (tentar acessar dá `membro inexistente`).
+navega — não existe `.status` (tentar acessar dá `AttributeError: 'ChannelStatus' object has no attribute 'status'`).
 
 | Uso | Resultado |
 |---|---|
