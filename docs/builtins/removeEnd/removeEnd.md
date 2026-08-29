@@ -14,7 +14,9 @@ o item removido
 
 ## Erros
 
-- **ValueError** — a lista está vazia, ou o argumento não é `list`
+- **TypeError** — o argumento não é `list`: `removeEnd() argument 1 must be list, not int`
+
+Lista vazia **não** é erro: devolve `null`.
 
 ## Exemplos
 

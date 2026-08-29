@@ -75,34 +75,42 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 |---|---|
 | `TypeError` | **o tipo está errado**: `"a" - 1`, `sum(["a"])`, `len(5)`, `[1,2]["x"]`, aridade errada de método. É o mais comum. |
 | `ValueError` | **o tipo está certo e o valor não serve**: `int("abc")`, `"banana".index("zz")`, `max([])`, `chr(99999999)`. A divisão é a mesma do Python. |
-| `ZeroDivisionError` | divisão ou resto por zero: `1 / 0`, `1 % 0`, `1.5 % 0.0` |
-| `AttributedValueError` | `+` entre tipos que não somam: `"a" + 1`. A mensagem diz quais são: `'+' entre tipos incompativeis: str + int` |
-| `IndexError` | índice inválido ao **escrever**: `l[99] = x`. Ler fora da faixa é outra coisa — ver a nota abaixo |
-| `NotImplementedError` | construção que o motor reconhece e ainda não executa |
+| `ZeroDivisionError` | divisão ou resto por zero. O texto separa quatro casos, como no Python: `1/0` → `division by zero`; `1.0/0` → `flo division by zero`; `1%0` → `integer modulo by zero`; `1.5%0.0` → `flo modulo` |
+| `NameError` | nome que não existe no escopo: `post(x)` → `name 'x' is not defined` |
+| `AttributeError` | membro que o objeto não tem: `"abc".m` → `'str' object has no attribute 'm'`; também `module 'json' has no attribute 'x'` |
+| `OverflowError` | número que não cabe no destino: `int(flo("inf"))` → `cannot convert flo infinity to integer` |
+| `AttributedValueError` | valor incompatível atribuído a variável **tipada**: `str x = 10`. **Não** cobre o `+` — somar tipos que não somam é `TypeError` |
+| `IndexError` | índice fora da faixa, lendo **ou** escrevendo. O texto diz qual: `list index out of range`, `string index out of range`, `tup index out of range`, `index out of range` (bytes), e `list assignment index out of range` na escrita |
+| `NotImplemented` | função de lib "stub": existe, e ainda não faz nada. O nome é esse mesmo, **sem** o `Error` no fim — `catch (NotImplementedError e)` não pega esta |
+| `NotImplementedError` | módulo importado que **não compila** por motivo que não é sintaxe. É outro erro, apesar do nome parecido — não confunda com o de cima |
 | `FileNotFoundError` | arquivo que não existe, quando o motor consegue distinguir de outra falha de I/O |
 | `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `pool --check` relata |
-| `KeyError` | chave inexistente num dict: `d["naoexiste"]` |
+| `KeyError` | chave inexistente num dict: `d["naoexiste"]`. A mensagem é a **chave**, e só ela: `KeyError: 'naoexiste'`. Vale igual em `d.chave` e `d.pop("chave")` |
 | `ImportError` | módulo não encontrado: `import naoexiste` |
-| `ConversionError` | falha de conversão (`Parsing`) |
+| `ConversionError` | coerção de **declaração tipada** que não dá: `int z = "abc"`, `char c = -1`. A lib `Parsing` **não** levanta — ela é best-effort e devolve `0`/`0.0`/`{}` |
 | `NetworkError` | falha de rede/conexão (`request`, http) |
 | `DatabaseError` | erro de banco (`psodbc`) |
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |
 | `IOError` / `OSError` | arquivo / sistema (`os`) |
-| `OutputUnexpectedValues` | desempacotar com aridade errada: `a, b = [1, 2, 3]` |
 | `MemoryError` | sem memória |
-| `RuntimeError` | variável não definida; `raise "texto"`; erro genérico de runtime |
+| `RuntimeError` | `raise "texto"`; e o que é só desta linguagem e não tem par no Python: `acesso negado: … private`, `@NonNull`, `for each` sobre tipo que não itera |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
-> **Nota — "não existe" tem UMA resposta só, desde 28/08.** Ler índice fora da
-> faixa, escrever fora da faixa e pedir chave ausente levantam, e as mensagens
-> dizem a mesma coisa do mesmo jeito:
+> **Nota — "não existe" sempre LEVANTA, desde 28/08.** Ler índice fora da
+> faixa, escrever fora da faixa e pedir chave ausente levantam, e cada um diz o
+> nome do seu tipo:
 >
 > ```
-> IndexError: indice 99 fora do tamanho de list (3 itens)
-> IndexError: indice 9 fora do tamanho de str (3 caracteres)
-> IndexError: indice 9 fora do tamanho de bytes (2 bytes)
-> KeyError: chave 'z' nao existe no dict (1 chave)
+> IndexError: list index out of range
+> IndexError: string index out of range
+> IndexError: tup index out of range
+> IndexError: index out of range              (bytes — o Python também não põe o tipo aqui)
+> IndexError: list assignment index out of range     (escrevendo: l[99] = x)
+> KeyError: 'z'
 > ```
+>
+> As frases são as do CPython, palavra por palavra. A única diferença é o nome
+> do tipo, que é o que o `type()` desta linguagem devolve: `tup`, não `tuple`.
 >
 > Antes eram TRÊS comportamentos: LER devolvia `null` com rc=0 e escrevia
 > `IndexOutOfBoundsWarning` direto no stderr — que não era exceção, então

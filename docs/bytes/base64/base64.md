@@ -22,7 +22,7 @@ bytes.base64(bytes.fromhex("deadbeef"))   // "3q2+7w=="
 
 ## Erros
 
-- **AttributedValueError** — o argumento não é bytes.
+- **TypeError** — o argumento não é bytes.
 
 ---
 

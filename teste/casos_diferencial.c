@@ -4332,7 +4332,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #785",
   "post([1].pop(9))\n"
   "\n",
-  NULL, "IndexError: indice fora do intervalo em pop()", -1 },
+  NULL, "IndexError: pop index out of range", -1 },
 { "dif #786",
   "post([1].remove(9))\n"
   "\n",
@@ -4380,7 +4380,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #797",
   "post([].pop())\n"
   "\n",
-  NULL, "IndexError: pop() de lista vazia", -1 },
+  NULL, "IndexError: pop from empty list", -1 },
 { "dif #798",
   "post([str, int])\n"
   "\n",

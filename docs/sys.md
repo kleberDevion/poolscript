@@ -17,7 +17,9 @@ nome    = sys.argv[1]   // "joao"
 len(sys.argv)            // quantidade de args
 ```
 
-Fora do intervalo devolve `Null`, não erro.
+Fora do intervalo **levanta** `IndexError: list index out of range` — guarde
+com `len(sys.argv)` antes de indexar. (Até 28/08 devolvia `Null`; a mudança é a
+mesma que fez `l[99]` levantar.)
 
 ---
 

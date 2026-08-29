@@ -228,7 +228,8 @@ if (x == 1 or y == 2) { ... }
 if (not x) { ... }
 ```
 
-Bitwise (só entre `int` — `bool`, `flo` e `str` são recusados com erro):
+Bitwise (só entre `int`; `bool` entra como 0/1, como no Python — `flo` e `str`
+são recusados com `TypeError: unsupported operand type(s) for &: 'flo' and 'int'`):
 
 ```
 post(5 ^ 3)     # 6   — xor
@@ -377,19 +378,22 @@ Tipos disponíveis:
 | `TypeError` | o **tipo** está errado: `"a" - 1`, `len(5)`, aridade errada. O mais comum |
 | `ValueError` | o tipo está certo e o **valor** não serve: `int("abc")`, `max([])` |
 | `ZeroDivisionError` | divisão ou resto por zero |
-| `AttributedValueError` | `+` entre tipos que não somam (`"a" + 1`) |
-| `KeyError` | chave não existe no dict |
-| `IndexError` | índice inválido ao **escrever** (`l[99] = x`) |
+| `NameError` | nome que não existe no escopo (`post(x)`) |
+| `AttributeError` | membro que o objeto não tem (`"abc".m`, `json.naoexiste`) |
+| `OverflowError` | número que não cabe no destino (`int(flo("inf"))`) |
+| `AttributedValueError` | valor incompatível em variável **tipada** (`str x = 10`) — não cobre o `+` |
+| `KeyError` | chave não existe no dict. A mensagem é só a chave: `'z'` |
+| `IndexError` | índice fora da faixa, lendo ou escrevendo (`l[99]`, `l[99] = x`) |
 | `FileNotFoundError` | arquivo não encontrado |
 | `IOError` / `OSError` | arquivo / sistema |
 | `NetworkError` | falha de conexão |
 | `TimeoutError` | tempo esgotado |
 | `DatabaseError` | erro de banco |
 | `ImportError` | módulo não encontrado |
-| `ConversionError` | falha de conversão |
-| `NotImplementedError` | construção reconhecida e ainda não executada |
+| `ConversionError` | coerção de declaração tipada (`int z = "abc"`) |
+| `NotImplemented` | construção reconhecida e ainda não executada — o nome é sem `Error` |
 | `MemoryError` | sem memória |
-| `RuntimeError` | variável não definida, `raise "texto"`, erro genérico |
+| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private`, `@NonNull`, `for each` sobre tipo que não itera |
 | `e` (sem tipo) | qualquer erro |
 
 > Esta tabela já teve `PermissionError` e `ConnectionError`, que o motor **nunca

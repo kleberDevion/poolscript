@@ -49,7 +49,7 @@ p = Ponto(1, 2)
 ```
 
 Pedir um nome que o módulo não exporta é erro
-(`módulo '…' não exporta '…'`).
+(`AttributeError: module '…' has no attribute '…' (existe, mas é private)`).
 
 ---
 
@@ -82,7 +82,7 @@ from ..pacote.modulo import y   // um nível acima
 ```
 
 Cada `.` extra sobe um diretório. Um relativo não encontrado é
-`ImportError` (`módulo relativo não encontrado: …`).
+`ImportError` — a mesma mensagem do import absoluto (`modulo nao encontrado: .x`); não há texto próprio pro relativo.
 
 ---
 

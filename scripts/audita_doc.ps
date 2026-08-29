@@ -92,9 +92,32 @@ action tipos_do_motor() {
             continue
         }
         fonte = open("vm/" + n).read()
-        # Entre ASPAS: e assim que o tipo chega no `vm->erro_tipo`.
-        for each m in regex.findall("\"([A-Z][A-Za-z]*(?:Error|Exception|Warning|Unexpected|UnexpectedValues))\"", fonte) {
-            vistos[m] = 1
+        # SO onde a string de fato vira TIPO DE ERRO.
+        #
+        # O padrao antigo era a string entre aspas em QUALQUER lugar do .c, e
+        # isso deixava passar fantasma. Foi assim que `NotImplementedError`
+        # passou a "existir": ele aparece tambem no JSON do `pool --check` e num
+        # PyErr_Format do embed Python — nenhum dos dois e excecao de runtime.
+        #
+        # Enumerar os macros nao serve (sao muitos: ERRO_T, ERRO_TF, BERRO,
+        # MERRO, REDE, BY_ERRO_TIPO, CMP_RECUSA...). O que todos tem em comum e
+        # a LINHA: ela cita `ERRO`, `REDE` ou `erro_tipo`. Duas linhas de
+        # tolerancia porque a chamada as vezes quebra.
+        linhas = fonte.split("\n")
+        i = 0
+        while i < len(linhas) {
+            achou = regex.findall("\"([A-Z][A-Za-z]*(?:Error|Exception|Warning|Unexpected|UnexpectedValues|Implemented))\"", linhas[i])
+            if len(achou) > 0 {
+                janela = linhas[i]
+                if i > 0 { janela = linhas[i - 1] + "\n" + janela }
+                if i > 1 { janela = linhas[i - 2] + "\n" + janela }
+                if "ERRO" in janela or "REDE" in janela or "erro_tipo" in janela {
+                    for each m in achou {
+                        vistos[m] = 1
+                    }
+                }
+            }
+            i = i + 1
         }
         # E os que o motor escreve DIRETO no stderr, sem passar pelo campo de
         # tipo — o `IndexOutOfBoundsWarning` e o caso, e e justamente o que a
@@ -148,6 +171,30 @@ action confere_tipos_de_erro(paginas) {
 }
 
 
+# O SENTIDO CONTRARIO, que faltava.
+#
+# A checagem de cima pergunta "todo tipo citado na doc existe no motor?". Ela
+# nunca perguntou o inverso — e por isso `NameError`, `AttributeError` e
+# `OverflowError` nasceram capturaveis, publicos, e sem aparecer em UM .md
+# sequer. O usuario nao tinha como descobrir que existiam.
+#
+# A pagina de referencia e `docs/exceptions/exceptions.md`: e a tabela que a
+# doc inteira aponta. Tipo que o motor levanta e nao esta la, reprova.
+CATALOGO = "docs/exceptions/exceptions.md"
+
+action confere_motor_na_doc() {
+    motor = tipos_do_motor()
+    texto = open(CATALOGO).read()
+    faltando = []
+    for each t in sorted(motor.keys()) {
+        if not ("`" + t + "`") in texto {
+            addEnd(faltando, t)
+        }
+    }
+    return faltando
+}
+
+
 if __name__ == "main" {
     tudo = false
     for each a in sys.argv {
@@ -188,6 +235,20 @@ if __name__ == "main" {
         sys.exit(1)
     }
     post("tipos de erro citados na doc: todos existem no motor")
+
+    faltando = confere_motor_na_doc()
+    if len(faltando) > 0 {
+        post("")
+        post("TIPO DE ERRO que o motor levanta e a doc NAO lista:", str(len(faltando)))
+        for each t in faltando {
+            post("   " + t)
+        }
+        post("")
+        post("Estao em " + CATALOGO + " — sao capturaveis, o usuario precisa saber")
+        post("que existem. Tipo publico fora do catalogo e feature invisivel.")
+        sys.exit(1)
+    }
+    post("tipos de erro do motor: todos aparecem em " + CATALOGO)
 
     paginas = 0
     sem_titulo = []

@@ -46,7 +46,7 @@ pode ocupar várias linhas
 > **Atenção — `"""` é comentário, não string.** Aspas duplas triplas iniciam um
 > **comentário de bloco**, nunca uma string multi-linha. Para uma string que
 > ocupa várias linhas, use **aspas simples triplas** `''' ... '''` (ver 1.6.3).
-> Um `"""` que nunca fecha é erro de sintaxe (`bloco de comentário """ não foi
+> Um `"""` que nunca fecha é erro de sintaxe (`bloco de comentario """ nao foi
 > fechado`).
 
 ---
@@ -198,7 +198,7 @@ pi = 3.14159
 ### 1.6.3. Strings
 
 Aspas **simples e duplas são equivalentes** — escolha uma; não há diferença de
-semântica. Uma string não pode cruzar a quebra de linha (erro `string não
+semântica. Uma string não pode cruzar a quebra de linha (erro `string nao
 fechada antes da quebra de linha`), a menos que seja multi-linha.
 
 | Forma | Exemplo | Observação |

@@ -27,7 +27,7 @@ str nome = "ana"      // declaração com tipo (checada/coagida na criação)
   criação** — ver 4.5.4.
 
 A declaração tipada **exige** um valor: `int x` sozinho é erro de sintaxe
-(`declaração de variável exige '='`).
+(`declaracao de variavel exige '='`).
 
 Não existe **atribuição encadeada**: `a = b = 5` é erro de sintaxe. Atribua uma
 por linha (ou use desempacotamento, 4.4).
@@ -131,7 +131,7 @@ mais visível:
 if true {
     dentro = 5
 }
-post(dentro)        // ERRO — variável não definida: dentro
+post(dentro)        // NameError: name 'dentro' is not defined
 ```
 
 O tropeço mais comum de quem vem do Python é criar a variável **nos dois ramos**
@@ -179,7 +179,7 @@ não sobrevive para a próxima (a menos que exista fora do laço). A variável d
 ```ps
 for each i in [1, 2, 3] {
     if i > 1 {
-        post(prev)   // ERRO na 2ª volta: prev da volta anterior não existe
+        post(prev)   // NameError na 2ª volta: name 'prev' is not defined
     }
     prev = i
 }
@@ -187,7 +187,7 @@ for each i in [1, 2, 3] {
 for each i in [1, 2, 3] {
     ultimo = i
 }
-post(i)              // ERRO — i não existe fora do for
+post(i)              // NameError: name 'i' is not defined (i não vaza do for)
 ```
 
 `break` e `continue` respeitam isso: ao sair (ou reiniciar), o que nasceu no
@@ -217,7 +217,7 @@ action f() {
     local = 5       // local à função
 }
 f()
-post(local)         // ERRO — local não existe aqui
+post(local)         // NameError: name 'local' is not defined
 ```
 
 ---

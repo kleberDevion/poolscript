@@ -14,7 +14,9 @@ int
 
 ## Erros
 
-- **TypeError** — `int`, `flo`, `bool` e `Null` não têm tamanho
+- **TypeError** — `int`, `flo` e `bool` não têm tamanho: `object of type 'int' has no len()`
+
+`len(null)` **não** é erro: devolve `0`.
 
 ## Exemplos
 

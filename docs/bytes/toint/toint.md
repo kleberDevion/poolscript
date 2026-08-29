@@ -25,8 +25,8 @@ bytes.toint(bytes.fromint(258, 4, "little"), "little")   // 258
 
 ## Erros
 
-- **AttributedValueError** — o argumento não é bytes.
-- **TypeError** — `byteorder` inválido.
+- **TypeError** — o argumento não é bytes.
+- **ValueError** — `byteorder` inválido (o tipo está certo, o valor não serve): `bytes.toint: byteorder deve ser 'big' ou 'little'`.
 
 > Nota: o inteiro da PoolScript é de 64 bits — use pra sequências de até 8 bytes.
 

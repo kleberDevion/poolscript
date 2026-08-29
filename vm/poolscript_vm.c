@@ -5558,14 +5558,14 @@ static int met_l_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "pop", 0, 1, n);
     PSList *l = COMO_LIST(alvo);
-    if (l->len == 0) MERRO(vm, "IndexError", "pop() de lista vazia");
+    if (l->len == 0) MERRO(vm, "IndexError", "pop from empty list");
     int64_t i = l->len - 1;
     if (n == 1) {
         if (args[0].t != V_INT) MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
                                      nome_do_tipo_valor(args[0]));
         i = args[0].as.i;
         if (i < 0) i += l->len;
-        if (i < 0 || i >= l->len) MERRO(vm, "IndexError", "indice fora do intervalo em pop()");
+        if (i < 0 || i >= l->len) MERRO(vm, "IndexError", "pop index out of range");
     }
     *out = l->itens[i];
     memmove(l->itens + i, l->itens + i + 1, sizeof(Value) * (size_t)(l->len - i - 1));

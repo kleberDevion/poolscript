@@ -16,7 +16,8 @@ list
 
 ## Erros
 
-- **TypeError** — o argumento não é `int`
+- **TypeError** — o argumento não é `int`: `'str' object cannot be interpreted as an integer`
+- **ValueError** — o passo é zero: `range() arg 3 must not be zero`
 
 ## Exemplos
 

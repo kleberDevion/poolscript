@@ -32,6 +32,12 @@ post(l.pop(0), l)
 1 [2, 3]
 ```
 
+## Erros
+
+- **IndexError** — a lista está vazia: `pop from empty list`
+- **IndexError** — o índice está fora da faixa: `pop index out of range`
+- **TypeError** — o índice não é inteiro: `'str' object cannot be interpreted as an integer`
+
 ## Bordas
 
 - é o único mutador que devolve algo útil

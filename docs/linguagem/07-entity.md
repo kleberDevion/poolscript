@@ -208,7 +208,7 @@ qualquer da superclasse.
 ## 7.6. Encapsulamento — `private` e `public`
 
 Um campo ou método marcado **`private`** só é acessível **de dentro da própria
-Entity**. Acessá-lo de fora é erro (`acesso negado: 'x' é private de …`) — a
+Entity**. Acessá-lo de fora é erro (`acesso negado: 'x' e private de … (so acessivel de dentro da classe)`) — a
 regra é **imposta pela VM**, não é só convenção.
 
 ```ps

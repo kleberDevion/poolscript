@@ -179,7 +179,7 @@ argumento ou se falta um `)`), então aí os colchetes voltam a ser obrigatório
 — e o erro diz isso:
 
 ```ps
-post("a", n for each n in [1])      // SyntaxError: ponha entre colchetes
+post("a", n for each n in [1])      // SyntaxError: compreensao so vale como argumento unico — ponha entre colchetes: [x for each ...]
 post("a", [n for each n in [1]])    // a [1]
 ```
 

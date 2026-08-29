@@ -22,7 +22,7 @@ bytes.frombase64("3q2+7w==")   // b'\xde\xad\xbe\xef'
 
 ## Erros
 
-- **TypeError** — a `str` não é base64 válido.
+- **ValueError** — a `str` não é base64 válido.
 
 ---
 

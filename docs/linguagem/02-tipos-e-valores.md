@@ -44,8 +44,8 @@ O que ele garante é **um caractere só** — declarar com mais de um é erro, e
 `1.5` também:
 
 ```ps
-char c = "abc"      // AttributedValueError: esperava char (um caractere), recebeu 3
-char c = 1.5        // AttributedValueError: esperava char
+char c = "abc"      // AttributedValueError: variável c esperava char (um caractere), recebeu 3
+char c = 1.5        // AttributedValueError: variável c esperava char
 char c = -1         // ConversionError: -1 nao e um caractere valido
 ```
 

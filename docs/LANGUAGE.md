@@ -131,10 +131,15 @@ flo altura = 1.75
 bool ativo = true
 ```
 
-Tipos primitivos: `str`, `int`, `flo`, `bool`. Redeclarar uma variável **já
-tipada** no mesmo escopo é erro (`OutputUnexpectedValues`). Atribuir um valor
-incompatível a uma variável tipada é erro (`AttributedValueError`, ou
-`ConversionError` quando a conversão automática — ex.: string → int — falha).
+Tipos primitivos: `str`, `int`, `flo`, `bool`. Atribuir um valor incompatível a
+uma variável tipada é erro (`AttributedValueError`, ou `ConversionError` quando
+a conversão automática — ex.: string → int — falha).
+
+> Esta seção dizia que **redeclarar** uma variável já tipada no mesmo escopo é
+> erro. Não é: `int x = 1` seguido de `int x = 2` roda com rc=0, e
+> `int x = 1` seguido de `str x = "a"` troca o tipo em silêncio. Não existe
+> checagem de redeclaração no motor (`grep -rn redeclar vm/*.c` não acha nada).
+> A frase prometia uma proteção que nunca houve.
 
 `input()` sempre devolve `str`; ao declarar com tipo (`int n = input()`) o
 valor é convertido automaticamente (e falha com erro claro se não for
@@ -275,9 +280,9 @@ dicionario = {"a": 1, "b": 2}
 ```
 
 Slices: `lista[1:3]`, `lista[::-1]`, etc. Índice fora do intervalo **levanta**
-`IndexError`, dizendo o índice e o tamanho:
-`indice 99 fora do tamanho de list (3 itens)`. (Até 28/08 ele devolvia `Null`
-com um aviso não capturável — ver `docs/exceptions/exceptions.md`.)
+`IndexError`, nomeando o tipo: `list index out of range`. (Até 28/08 ele
+devolvia `Null` com um aviso não capturável — ver
+`docs/exceptions/exceptions.md`.)
 
 Builtins de lista: `addEnd(l, v)`, `removeEnd(l)`, `addStart(l, v)`,
 `removeStart(l)` (em lista vazia, `removeEnd`/`removeStart` retornam `Null`).
@@ -313,9 +318,12 @@ Regras (idênticas ao Python):
   é erro de sintaxe.
 - `*resto = [...]` **sem vírgula nenhuma** é erro de sintaxe — precisa de
   `*resto, = [...]`.
-- Aridade errada sem `*` (`a, b = [1, 2, 3]` ou `a, b, c = [1, 2]`) levanta
-  `OutputUnexpectedValues`, com mensagem estilo Python ("valores
-  insuficientes"/"valores demais para desempacotar").
+- Aridade errada levanta `ValueError`, com a mensagem do CPython — que diz os
+  DOIS números, e por isso resolve sozinha:
+  `a, b = [1, 2, 3]` → `too many values to unpack (expected 2)`;
+  `a, b, c = [1, 2]` → `not enough values to unpack (expected 3, got 2)`;
+  com estrela, `a, b, *c = [1]` → `not enough values to unpack (expected at
+  least 2, got 1)`.
 - Lado direito que não é lista/tupla/string (`a, b = 5`) levanta
   `TypeError`.
 - Cada alvo (novo ou já existente no escopo) segue a mesma semântica da
@@ -484,8 +492,8 @@ testes de concorrência por tempo de parede):
 - `await valor_comum` (não-future) é pass-through — devolve o valor como
   está, não é erro.
 - O future **não tem** API de baixo nível: `f.done()` e `f.result(timeout=)`
-  não existem (`membro inexistente: result (em future)`). A única forma de
-  pegar o valor é `await`.
+  não existem (`AttributeError: 'future' object has no attribute 'result'`).
+  A única forma de pegar o valor é `await`.
 - `async int reaction`/`async bool reaction` aplicam a mesma conversão de
   erro→sentinela (500/False) que a versão síncrona, só que dentro da thread.
 
@@ -1119,9 +1127,11 @@ Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
 | `code` | Quando ocorre |
 |---|---|
 | `AttributedValueError` | Valor incompatível atribuído a variável tipada (ex.: `str x = 10`) |
-| `OutputUnexpectedValues` | Redeclaração no mesmo escopo; aridade errada em unpacking |
 | `TypeError` | Tipo errado: operação entre tipos incompatíveis, aridade errada, RHS não-iterável em unpacking |
-| `ValueError` | Tipo certo, valor que não serve: `int("abc")`, `max([])`, item ausente na lista |
+| `ValueError` | Tipo certo, valor que não serve: `int("abc")`, `max([])`, item ausente na lista, aridade errada em unpacking |
+| `NameError` | Nome que não existe no escopo (`post(x)`) |
+| `AttributeError` | Membro que o objeto não tem (`"abc".m`, `json.naoexiste`, `f.result`) |
+| `OverflowError` | Número que não cabe no destino (`int(flo("inf"))`) |
 | `ZeroDivisionError` | Divisão ou resto por zero |
 | `IndexError` | Índice fora do intervalo, ao ler OU escrever |
 | `KeyError` | Chave que não existe no dict |

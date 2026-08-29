@@ -15,7 +15,10 @@ list
 
 ## Erros
 
-- **TypeError** — fn não é chamável (ex.: `map(l, str)` — nome nu de tipo não é função)
+- **TypeError** — `fn` não é chamável: `'int' object is not callable`
+- **TypeError** — o 1º argumento não itera: `'int' object is not iterable`
+
+`map(l, str)` **funciona** — `str` é chamável. O exemplo anterior citava isso como erro.
 
 ## Exemplos
 

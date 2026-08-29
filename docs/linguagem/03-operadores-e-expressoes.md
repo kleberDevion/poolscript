@@ -65,7 +65,7 @@ bits).
 |---|---|---|
 | `+` | soma / concatenação | números; **também** `str`+`str`, `list`+`list`, `tup`+`tup` |
 | `-` | subtração | números |
-| `*` | multiplicação / repetição | números; **também** `list`*`int` |
+| `*` | multiplicação / repetição | números; **também** sequência*`int` (`list`, `tup`, `str`) |
 | `/` | divisão | números — **sempre** verdadeira (resultado `flo`) |
 | `%` | módulo (resto) | números |
 
@@ -99,13 +99,25 @@ multiplicação/laço ou use a lib de matemática (quando aplicável).
 
 ### 3.2.4. Repetição de sequência
 
-`*` entre uma **lista** e um **int** repete a lista. `list` * `int` funciona;
-`str` * `int` **não** (é erro — para repetir texto use a lib de string):
+`*` entre uma **sequência** e um **int** repete a sequência — vale para `list`,
+`tup` e `str`, igual ao Python:
 
 ```ps
 post([0] * 3)        // [0, 0, 0]
-post("ab" * 3)       // ERRO — operação matemática inválida entre str e int
+post("ab" * 3)       // ababab
+post("-" * 40)       // uma régua de 40 traços
 ```
+
+Multiplicar sequência por algo que não é `int` é erro, e a mensagem nomeia o
+lado errado:
+
+```ps
+post("ab" * 1.5)     // TypeError: can't multiply sequence by non-int of type 'flo'
+```
+
+> Esta seção dizia que `str * int` **não** funciona e mandava usar a lib de
+> string. Funciona desde que a repetição de string entrou no motor — o exemplo
+> ensinava exatamente o contrário do que a linguagem faz.
 
 ### 3.2.5. `+` concatena, mas NÃO faz coerção
 
@@ -117,12 +129,19 @@ Para montar texto com números, converta com `str()` (ou use uma f-string).
 post("a" + "b")          // "ab"
 post([1] + [2])          // [1, 2]
 post((1, 2) + (3, 4))    // (1, 2, 3, 4)
-post("a" + 1)            // ERRO — operação matemática inválida entre str e int
+post("a" + 1)            // TypeError: can only concatenate str (not "int") to str
+post(1 + "a")            // TypeError: unsupported operand type(s) for +: 'int' and 'str'
 post("n = " + str(5))    // "n = 5"   
 post(f"n = {5}")         // "n = 5"    (idiomático)
 ```
 
-`-`, `*`, `/`, `%` com qualquer `str` envolvida também são erro.
+O texto muda conforme quem está à **esquerda**: com sequência à esquerda o erro
+diz qual dos dois lados é o estranho (`not "int"`); nos outros casos ele lista
+os dois. É a mesma distinção do CPython.
+
+`-`, `/`, `%` com qualquer `str` envolvida também são erro
+(`unsupported operand type(s) for -: 'str' and 'int'`). `*` é a exceção: com
+`int` do outro lado ele **repete** — ver 3.2.4.
 
 ### 3.2.6. Divisão / módulo por zero
 
@@ -134,7 +153,7 @@ exceptions):
 try {
     x = 1 / 0
 } catch (e) {
-    post("erro:", e)     // erro: divisão por zero: division by zero
+    post("erro:", e)     // erro: division by zero (linha 3)
 }
 ```
 
@@ -194,16 +213,31 @@ Tipos diferentes que não sejam numéricos nunca são iguais: `5 == "5"` é `Fal
 
 ### 3.3.3. `null` na comparação
 
-`null == null` é `True`. Na **igualdade**, `null` equivale a zero numérico
-(`null == 0` é `True`). Nas comparações de **ordem** (`<`, `>`, `<=`, `>=`),
-qualquer lado `null` resulta sempre `False` — `null` não tem magnitude.
+`null` só é igual a `null`. Na **igualdade** ele não equivale a zero, a `false`
+nem a string vazia — `null == 0` é `False`. Nas comparações de **ordem** (`<`,
+`>`, `<=`, `>=`), qualquer lado `null` **levanta** `TypeError`: `null` não tem
+magnitude, e devolver `False` calado escondia o erro.
 
 ```ps
 post(null == null)   // True
-post(null == 0)      // True
-post(null < 5)       // False
-post(null >= 0)      // False
+post(null == 0)      // False
+post(null < 5)       // TypeError: '<' not supported between instances of 'Null' and 'int'
+post(null >= 0)      // TypeError: '>=' not supported between instances of 'Null' and 'int'
 ```
+
+Para testar sem levantar, compare com `null` antes:
+
+```ps
+x = null
+if x != null and x > 0 {
+    post("positivo")
+}
+```
+
+> Esta seção dizia que `null == 0` é `True` e que ordem com `null` devolve
+> `False`. As duas coisas mudaram: comparar `null` com `<` era o pior caso —
+> `if x > 0` com `x` nulo caía no `else` **sem avisar**, enquanto `"abc" < 5`
+> levantava. Duas políticas para o mesmo erro.
 
 ### 3.3.4. Comparações são associativas à ESQUERDA (não encadeiam)
 

@@ -68,7 +68,7 @@ action saudar(nome) {
 }
 
 post(saudar("ana"))      // olá, ana
-saudar(null)             // RuntimeError: @NonNull: parâmetro 'nome' em 'saudar' não pode ser Null
+saudar(null)             // RuntimeError: @NonNull: parametro 'nome' em 'saudar' nao pode ser Null
 ```
 
 A checagem é sobre os **parâmetros** (a entrada), não sobre o valor de retorno.
@@ -150,7 +150,7 @@ action f() {
     return 1
 }
 
-f()      // RuntimeError: variável não definida: f  (o @qualquer engoliu a action)
+f()      // NameError: name 'f' is not defined  (o @qualquer engoliu a action)
 ```
 
 Um decorador que a linguagem não

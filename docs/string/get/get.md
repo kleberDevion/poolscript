@@ -14,7 +14,8 @@ valor | Null
 
 ## Erros
 
-- **TypeError** — a `str` não contém um JSON válido
+Nenhum. `str` que não contém JSON válido devolve `null`, com rc 0 — não
+levanta. A seção dizia `TypeError`, e nunca houve.
 
 ## Exemplos
 

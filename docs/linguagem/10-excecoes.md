@@ -30,7 +30,7 @@ erro — dá pra usar `raise` sozinho, como uma parada com mensagem.
 ```ps
 try {
     n = int(entrada)
-} catch (ConversionError e) {
+} catch (ValueError e) {
     post("não é um número:", e)
 } finally {
     post("terminei a tentativa")
@@ -100,23 +100,38 @@ try {
 Além dos tipos livres que você levanta, a VM usa estes nomes ao reportar
 erros — e você pode capturá-los por tipo:
 
+A divisão entre eles é a do Python: **`TypeError`** quando o TIPO está errado,
+**`ValueError`** quando o tipo está certo e o VALOR não serve.
+
 | Tipo | Quando ocorre |
 |---|---|
-| `RuntimeError` | erro genérico (ex.: variável não definida, aridade errada) |
-| `KeyError` | chave ausente num dict (`d["x"]` / `d.x` sem a chave) |
-| `AttributedValueError` | valor incompatível com o tipo declarado (`int x = 5.0`) |
-| `ConversionError` | conversão impossível (`int("abc")`, `int z = "abc"`) |
-| `TypeError` | valor inválido numa operação (divisão por zero, `str` em conta, …) |
+| `TypeError` | o **tipo** está errado: `"a" - 1`, `len(5)`, aridade errada de action ou método |
+| `ValueError` | o tipo está certo e o **valor** não serve: `int("abc")`, `max([])`, `chr(99999999)` |
+| `NameError` | nome que não existe no escopo: `post(x)` |
+| `AttributeError` | membro que o objeto não tem: `"abc".m`, `json.naoexiste` |
+| `IndexError` | índice fora da faixa, lendo ou escrevendo |
+| `KeyError` | chave ausente num dict (`d["x"]` / `d.x` / `d.pop("x")`) |
+| `ZeroDivisionError` | divisão ou resto por zero: `1 / 0` |
+| `OverflowError` | número que não cabe no destino: `int(flo("inf"))` |
+| `AttributedValueError` | valor incompatível com o tipo declarado (`str x = 10`) |
+| `ConversionError` | coerção de declaração tipada que não dá (`int z = "abc"`) |
 | `ImportError` | módulo não encontrado no `import` |
 | `MemoryError` | sem memória |
+| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private`, `@NonNull`, `for each` sobre tipo que não itera |
 
 ```ps
 try {
     x = 1 / 0
-} catch (TypeError e) {
-    post("erro de valor:", e)
+} catch (ZeroDivisionError e) {
+    post("dividiu por zero:", e)
 }
 ```
+
+> Este exemplo dizia `catch (TypeError e)`, e o `catch` **nunca disparava** —
+> divisão por zero é `ZeroDivisionError`. Quem copiasse escrevia um handler
+> morto e o erro escapava assim mesmo. Nem `audita_doc.ps` nem
+> `audita_exemplos_doc.ps` pegavam: o primeiro só confere que o nome do tipo
+> existe, o segundo só roda `--check`, que é sintaxe.
 
 Observações:
 
@@ -124,8 +139,9 @@ Observações:
   é capturável por `try`/`catch` — é erro de escrita, não de execução.
 - **`IndexError`** é levantado ao acessar fora do intervalo, tanto lendo
   (`l[99]`) quanto escrevendo (`l[99] = x`), em `list`, `tup`, `str` e `bytes`.
-  A mensagem diz o índice e o tamanho. Até 28/08 a LEITURA era um aviso
-  não-fatal que devolvia `null` e não podia ser capturado.
+  A mensagem nomeia o tipo (`list index out of range`) e, na escrita, diz que
+  foi escrevendo (`list assignment index out of range`). Até 28/08 a LEITURA
+  era um aviso não-fatal que devolvia `null` e não podia ser capturado.
 - As **bibliotecas** (banco, rede, e-mail, …) levantam os próprios tipos
   (ex.: `DatabaseError`, `NetworkError`), documentados na parte de bibliotecas.
 
@@ -139,7 +155,10 @@ Observações:
   roda sempre.
 - **Formas de `catch`**: `(Tipo e)`, `(Tipo)`, `(e)`, `()` — com tipo só pega
   aquele tipo (senão propaga); `e` é o texto do erro, local ao bloco.
-- **Tipos embutidos**: `RuntimeError`, `KeyError`, `AttributedValueError`,
-  `ConversionError`, `TypeError`, `ImportError`, `MemoryError`.
-  `SyntaxError` não é capturável (é de compilação); índice fora do range é aviso
-  não-fatal (→ `null`).
+- **Tipos embutidos**: `TypeError`, `ValueError`, `NameError`,
+  `AttributeError`, `IndexError`, `KeyError`, `ZeroDivisionError`,
+  `OverflowError`, `AttributedValueError`, `ConversionError`, `ImportError`,
+  `MemoryError`, `RuntimeError`. `SyntaxError` não é capturável (é de
+  compilação). Índice fora da faixa **levanta** `IndexError` — a linha que
+  dizia "aviso não-fatal (→ `null`)" contradizia a seção 10.4 desta mesma
+  página e era resto do comportamento anterior a 28/08.

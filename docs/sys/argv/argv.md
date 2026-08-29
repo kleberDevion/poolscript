@@ -16,17 +16,24 @@ Se você rodar `pool app.ps entrada.txt saida.txt`:
 ```
 import sys
 
-post(sys.argv)        // ["app.ps", "entrada.txt", "saida.txt"]
+post(sys.argv)        // ["entrada.txt", "saida.txt"]
 
 // pegar um argumento (checando se existe)
-if (len(sys.argv) > 1) {
-    arquivo = sys.argv[1]      // "entrada.txt"
+if (len(sys.argv) > 0) {
+    arquivo = sys.argv[0]      // "entrada.txt"
     post("processando:", arquivo)
 }
 ```
 
-O primeiro item (`argv[0]`) é o nome do script; os seguintes são o que você
-passou depois.
+`argv[0]` é o **primeiro argumento seu**, não o nome do script — diferente do
+Python. O nome do script não entra na lista.
+
+> Esta página dizia o contrário, e o exemplo (`len(sys.argv) > 1` / `argv[1]`)
+> ensinava a pular o primeiro argumento de verdade. `docs/sys.md` sempre esteve
+> certa; as duas se contradiziam.
+
+Indexar fora do intervalo **levanta** `IndexError: list index out of range`, por
+isso a guarda com `len()`.
 
 ---
 

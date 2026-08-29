@@ -26,7 +26,7 @@ bytes.new(bytes.new("ok"))  // b'ok'   — cópia
 
 ## Erros
 
-- **AttributedValueError** — tipo que não dá pra virar bytes (ex: `flo`), ou `bool` como tamanho.
+- **TypeError** — tipo que não dá pra virar bytes (ex: `flo`), ou `bool` como tamanho.
 - **ValueError** — lista com item fora de 0-255, ou tamanho negativo.
 
 ```

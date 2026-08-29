@@ -14,7 +14,9 @@ list
 
 ## Erros
 
-- **TypeError** — o valor não é sequência (`str`, `list`, `tup` ou `bytes`)
+- **TypeError** — o valor não é reversível: `'int' object is not reversible`
+
+Aceita `str`, `list`, `tup`, `bytes` e também `dict` (itera as chaves).
 
 ## Exemplos
 

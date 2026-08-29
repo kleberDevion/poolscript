@@ -50,7 +50,7 @@ post("salvo:", arq.name, "-", arq.size, "bytes")
 try {
     request.get(url).content_type("application/pdf").save("doc.pdf")
 }
-except SomeError as e {
+catch (e) {
     post("não é PDF:", e)
 }
 
