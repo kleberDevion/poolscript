@@ -393,6 +393,120 @@ const Caso CASOS_LIBS[] = {
   "import regex\n"
   "post(regex.match(\"(a+)+$\", \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\"))\n",
   NULL, "backtracking", -1 },
+
+/* ── as mensagens sao as do CPython, e os caminhos CONCORDAM ─────────────────
+ *
+ * Estes casos nao guardam a saida de ontem: cada um trava uma INVARIANTE que
+ * ja foi violada de verdade. O que eles cobram:
+ *
+ *   1. o erro acusa o tipo que o usuario ESCREVEU (nao o que a VM coagiu);
+ *   2. tipo de excecao novo e capturavel pelo nome;
+ *   3. caminhos diferentes do mesmo erro dao a MESMA resposta.
+ *
+ * O item 3 e o que mais reincidiu: o `range` discordava de si mesmo entre o
+ * builtin e o `for each`; o `KeyError` tinha tres redacoes; o desempacotamento
+ * com estrela e sem estrela usavam tipos de excecao diferentes. */
+
+{ "o operador acusa o tipo ESCRITO, nao o coagido",
+  /* `true - "a"` respondia `int - str`. O bool vira int antes da mensagem, e
+   * quem lia procurava um int que nao existe no codigo. */
+  "try {\n"
+  "    post(true - \"a\")\n"
+  "} catch (e) {\n"
+  "    post(\"bool\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "comparar lista aninhada culpa o par de DENTRO",
+  /* dizia \"tipos incompativeis\" das duas LISTAS, que se comparam muito bem */
+  "try {\n"
+  "    post([1] < [\"a\"])\n"
+  "} catch (e) {\n"
+  "    post(\"'int' and 'str'\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "NameError e capturavel pelo nome",
+  "try {\n"
+  "    post(nao_existe_mesmo)\n"
+  "} catch (NameError e) {\n"
+  "    post(str(e).startswith(\"name 'nao_existe_mesmo' is not defined\"))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "AttributeError e capturavel pelo nome",
+  "try {\n"
+  "    post(\"abc\".nao_existe_mesmo())\n"
+  "} catch (AttributeError e) {\n"
+  "    post(\"'str' object has no attribute 'nao_existe_mesmo'\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "OverflowError e capturavel pelo nome",
+  "try {\n"
+  "    post(int(flo(\"inf\")))\n"
+  "} catch (OverflowError e) {\n"
+  "    post(\"cannot convert flo infinity to integer\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "os TRES caminhos de chave ausente dao a mesma resposta",
+  /* `d[\"z\"]`, `d.z` e `d.pop(\"z\")`: um dia foram tres redacoes diferentes */
+  "d = { \"a\": 1 }\n"
+  "vistos = []\n"
+  "try { post(d[\"z\"]) } catch (e) { addEnd(vistos, str(e).split(\" (\")[0]) }\n"
+  "try { post(d.z) } catch (e) { addEnd(vistos, str(e).split(\" (\")[0]) }\n"
+  "try { post(d.pop(\"z\")) } catch (e) { addEnd(vistos, str(e).split(\" (\")[0]) }\n"
+  "post(len(vistos), vistos[0] == vistos[1] and vistos[1] == vistos[2], vistos[0])\n",
+  "3 True 'z'", NULL, 0 },
+
+{ "range com passo 0 e o MESMO erro no builtin e no for each",
+  /* saia TypeError num caminho e ValueError no outro */
+  "a = \"\"\n"
+  "b = \"\"\n"
+  "try { post(range(1, 5, 0)) } catch (ValueError e) { a = \"V\" }\n"
+  "try { for each i in range(1, 5, 0) { post(i) } } catch (ValueError e) { b = \"V\" }\n"
+  "post(a + b)\n", "VV", NULL, 0 },
+
+{ "desempacotar com e sem estrela levanta o MESMO tipo",
+  /* sem estrela ja era ValueError; com estrela ficou OutputUnexpectedValues */
+  "a = \"\"\n"
+  "b = \"\"\n"
+  "try { x, y = [1] } catch (ValueError e) { a = \"V\" }\n"
+  "try { p, q, *r = [1] } catch (ValueError e) { b = \"V\" }\n"
+  "post(a + b)\n", "VV", NULL, 0 },
+
+{ "faltar argumento lista TODOS os que faltam",
+  /* citava so o primeiro: quem esquecia tres consertava um por vez */
+  "action f(x, y, z) {\n"
+  "    return x\n"
+  "}\n"
+  "try {\n"
+  "    f(1)\n"
+  "} catch (e) {\n"
+  "    post(\"'y' and 'z'\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "erro de aridade diz QUANTOS vieram",
+  /* \"espera 1 ou 2 argumentos\" obrigava a contar na mao justamente quem
+   * acabou de errar a conta */
+  "try {\n"
+  "    post(round(1, 2, 3))\n"
+  "} catch (e) {\n"
+  "    post(\"got 3\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "erro de json diz onde",
+  "import json\n"
+  "try {\n"
+  "    post(json.parse(\"{\\\"a\\\":1 \\\"b\\\":2}\"))\n"
+  "} catch (ValueError e) {\n"
+  "    post(\"line 1 column 8 (char 7)\" in str(e))\n"
+  "}\n", "True", NULL, 0 },
+
+{ "o nome do tipo na mensagem e o que o type() devolve",
+  /* nao adianta copiar o CPython e dizer 'float'/'tuple'/'NoneType': esses
+   * tipos nao existem aqui, e citar um deles seria mentira nova */
+  "n = 0\n"
+  "try { post(1.0 / 0) } catch (e) { if \"flo\" in str(e) { n = n + 1 } }\n"
+  "try { post((1,2)[9]) } catch (e) { if \"tup\" in str(e) { n = n + 1 } }\n"
+  "try { post(Null + 1) } catch (e) { if \"Null\" in str(e) { n = n + 1 } }\n"
+  "post(n)\n", "3", NULL, 0 },
 };
 
 const int NC_LIBS = N_CASOS(CASOS_LIBS);
