@@ -5419,10 +5419,36 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
         align = spec[0]; i = 1;
     }
     if (i < nspec && spec[i] == '0') { preenche = '0'; if (!align) align = '>'; i++; }
-    while (i < nspec && spec[i] >= '0' && spec[i] <= '9') largura = largura * 10 + (spec[i++] - '0');
+    /* COM TETO. `largura = largura * 10 + digito` transbordava o `int` em
+     * silencio: `"{:99999999999d}".format(1)` dava um valor lixo, o laco de
+     * preenchimento la embaixo escrevia byte a byte, e o processo TRAVAVA
+     * comendo memoria ate morrer. O CPython responde MemoryError.
+     *
+     * O teto e o mesmo limite de string do resto do motor — acima dele nao ha
+     * o que produzir de qualquer forma. */
+    while (i < nspec && spec[i] >= '0' && spec[i] <= '9') {
+        if (largura > PS_STR_MAX / 10) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria na largura do format");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+            return -1;
+        }
+        largura = largura * 10 + (spec[i++] - '0');
+    }
+    if (largura > PS_STR_MAX) {
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria na largura do format");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+        return -1;
+    }
     if (i < nspec && spec[i] == '.') {
         i++; prec = 0;
-        while (i < nspec && spec[i] >= '0' && spec[i] <= '9') prec = prec * 10 + (spec[i++] - '0');
+        while (i < nspec && spec[i] >= '0' && spec[i] <= '9') {
+            if (prec > PS_STR_MAX / 10) {
+                snprintf(vm->erro, sizeof(vm->erro), "sem memoria na precisao do format");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+                return -1;
+            }
+            prec = prec * 10 + (spec[i++] - '0');
+        }
     }
     if (i < nspec) tipo = spec[i++];
     if (i != nspec) { snprintf(vm->erro, sizeof(vm->erro), "format: spec invalido"); return -1; }
@@ -6836,10 +6862,36 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
     if (culpa) *culpa = para;
     FILE *b = fopen(para, "wb");
     if (!b) { int e = errno; fclose(a); errno = e; return -1; }
+    /* A GRAVACAO E CONFERIDA. Sem isto o `fwrite` que falha era ignorado, a
+     * funcao devolvia 0 ("copiou") e o `os.move` seguia em frente e dava
+     * `unlink` na ORIGEM: perda de dado em silencio, sem erro nenhum.
+     * Reproduzido copiando pra /dev/full — o pool dizia que tinha dado certo e
+     * o arquivo de origem sumia; o shutil.move do Python levanta
+     * `OSError: [Errno 28] No space left on device` e mantem a origem.
+     *
+     * Os tres pontos que podem falhar, e todos os tres importam:
+     *   fread  + ferror  — erro de leitura no meio (EIO)
+     *   fwrite curto     — o destino nao aceitou tudo (ENOSPC, EDQUOT)
+     *   fclose do destino— e AQUI que o ENOSPC costuma aparecer, porque o
+     *                      buffer da libc so vai pro disco no flush
+     *
+     * `errno` e salvo antes de qualquer fclose de limpeza: fechar o outro
+     * arquivo sobrescreveria o motivo real. */
     char buf[8192];
     size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), a)) > 0) fwrite(buf, 1, n, b);
-    fclose(a); fclose(b);
+    int falhou = 0, err = 0;
+    while ((n = fread(buf, 1, sizeof(buf), a)) > 0) {
+        if (fwrite(buf, 1, n, b) != n) { falhou = 1; err = errno ? errno : EIO; break; }
+    }
+    if (!falhou && ferror(a)) { falhou = 1; err = errno ? errno : EIO; if (culpa) *culpa = de; }
+    fclose(a);
+    if (fclose(b) != 0 && !falhou) { falhou = 1; err = errno ? errno : EIO; }
+    if (falhou) {
+        /* destino incompleto nao fica pra tras fingindo que serve */
+        unlink(para);
+        errno = err;
+        return -1;
+    }
     return 0;
 }
 

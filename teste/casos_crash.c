@@ -155,6 +155,38 @@ const Caso CASOS_CRASH[] = {
  * Contrapeso dos casos de teto acima. Se alguém apertar `PS_PARSE_PROF_MAX` pra
  * calar um fuzzer, estes reprovam — que é a única defesa contra o conserto
  * preguiçoso de pôr um número menor. */
+/* ── largura de format sem teto: TRAVAVA o processo ─────────────────────────
+ * `largura = largura * 10 + digito` transbordava o int em silencio, e o laco
+ * de preenchimento escrevia byte a byte ate a memoria acabar. O processo nao
+ * morria: ficava comendo RAM. O CPython responde MemoryError. */
+{ "largura absurda em format nao trava",
+  "post(\"{:99999999999d}\".format(1))\n", NULL, "MemoryError", -1 },
+{ "precisao absurda em format nao trava",
+  "post(\"{:.99999999999f}\".format(1.5))\n", NULL, "MemoryError", -1 },
+{ "format normal continua funcionando",
+  "post(\"{:>8d}\".format(42))\n"
+  "post(\"{:.2f}\".format(3.14159))\n"
+  "post(\"{:08.3f}\".format(3.14159))\n",
+  "      42\n3.14\n0003.142", NULL, 0 },
+
+/* ── copia que falha NAO pode apagar a origem ───────────────────────────────
+ * `copia_arquivo` nao conferia `fwrite` nem `fclose`: gravacao que falhava era
+ * ignorada, a funcao dizia "copiou" e o `os.move` dava unlink na ORIGEM.
+ * Perda de dado em silencio, sem erro nenhum. /dev/full sempre aceita o
+ * `fopen` e sempre recusa a escrita, entao ele e o caso. */
+{ "os.move que falha mantem a origem",
+  "import os\n"
+  "using open(\"o.txt\", \"w\") as f { f.write(\"dado\") }\n"
+  "houve_erro = false\n"
+  "try { os.move(\"o.txt\", \"/dev/full\") } catch (e) { houve_erro = true }\n"
+  "post(houve_erro, os.exists(\"o.txt\"))\n", "True True", NULL, 0 },
+{ "os.copy que falha nao deixa destino pela metade",
+  "import os\n"
+  "using open(\"o2.txt\", \"w\") as f { f.write(\"dado\") }\n"
+  "houve_erro = false\n"
+  "try { os.copy(\"o2.txt\", \"/dev/full\") } catch (e) { houve_erro = true }\n"
+  "post(houve_erro, os.exists(\"o2.txt\"))\n", "True True", NULL, 0 },
+
 { "500 parenteses aninhados sao LEGITIMOS",
   "import os\n"
   "import sys\n"
