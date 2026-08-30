@@ -647,7 +647,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "import sys\npost(type(sys.stdout), type(sys.stderr), type(sys.stdout.write))\n",
   "module module action", NULL, 0 },
 { "import de nome interno é erro",
-  "import _stdout\n", NULL, "modulo nao encontrado", -1 },
+  "import _stdout\n", NULL, "ImportError: No module named '_stdout'", -1 },
 
 /* ── `pass` — no-op igual ao Python ─────────────────────────────────────────
  * Nasceu porque a doc do middleware do jinker mandava usar `continue` fora de

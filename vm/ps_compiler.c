@@ -2192,7 +2192,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
                                         ? n->lista2_alias.itens[i]->texto : membro;
                     emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
-                    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
+                    emite(c, u, OP_IMPORT_FROM, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
                     guarda_nome(c, u, apelido);
                 }
                 return;
@@ -2210,7 +2210,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
                                     ? n->lista2_alias.itens[i]->texto : membro;
                 emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
-                emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
+                emite(c, u, OP_IMPORT_FROM, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
                 guarda_nome(c, u, apelido);
             }
             return;

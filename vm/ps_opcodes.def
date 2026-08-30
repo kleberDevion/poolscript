@@ -133,3 +133,9 @@ PS_OP(CELL_SET_NAME, 85, "CELL_SET_NAME")
 /* `for each i in range(...)` sem construir lista: a pilha carrega
  * [ini, fim, passo, i] e o item sai por aritmética. */
 PS_OP(ITER_RANGE, 86, "ITER_RANGE")
+
+/* `from mod import x`: MESMA busca do GET_MEMBER, erro diferente. O Python
+ * separa os dois — `mod.x` inexistente e AttributeError "module 'mod' has no
+ * attribute 'x'"; `from mod import x` e ImportError "cannot import name 'x'
+ * from 'mod' (arquivo)". Sem opcode proprio a VM nao sabe qual dos dois. */
+PS_OP(IMPORT_FROM, 87, "IMPORT_FROM")

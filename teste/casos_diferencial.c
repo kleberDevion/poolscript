@@ -9242,7 +9242,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(await f())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: mymod", -1 },
+  NULL, "ImportError: No module named 'mymod'", -1 },
 { "dif #1784",
   "async action f() {\n"
   " return 1\n"
@@ -10507,37 +10507,37 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from ..logIn import chave\n"
   "action run() { return chave }\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: ..logIn", -1 },
+  NULL, "ImportError: No module named '..logIn'", -1 },
 { "dif #1988",
   "from ..logIn import logger\n"
   "action run() { return logger() }\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: ..logIn", -1 },
+  NULL, "ImportError: No module named '..logIn'", -1 },
 { "dif #1989",
   "from .classes.user_struct import person_data\n"
   "action logger() { return person_data }\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: .classes.user_struct", -1 },
+  NULL, "ImportError: No module named '.classes.user_struct'", -1 },
 { "dif #1990",
   "from .nao_existe import x\n"
   "post(x)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: .nao_existe", -1 },
+  NULL, "ImportError: No module named '.nao_existe'", -1 },
 { "dif #1991",
   "from .sibling import valor\n"
   "action pega() { return valor }\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: .sibling", -1 },
+  NULL, "ImportError: No module named '.sibling'", -1 },
 { "dif #1992",
   "from .sibling import valor\n"
   "post(valor)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: .sibling", -1 },
+  NULL, "ImportError: No module named '.sibling'", -1 },
 { "dif #1993",
   "from controll_api.logIn import logger\n"
   "post(logger())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: controll_api.logIn", -1 },
+  NULL, "ImportError: No module named 'controll_api.logIn'", -1 },
 { "dif #1994",
   "from datasentity import dataentity, asdict, astuple, aslist\n"
   "@dataentity\n"
@@ -10666,23 +10666,23 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from lib import f\n"
   "post(f())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: lib", -1 },
+  NULL, "ImportError: No module named 'lib'", -1 },
 { "dif #2011",
   "from pkg.deep.worker import run\n"
   "post(run())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: pkg.deep.worker", -1 },
+  NULL, "ImportError: No module named 'pkg.deep.worker'", -1 },
 { "dif #2012",
   "from pkg.mod import pega\n"
   "from pkg.deep.worker import run\n"
   "post(pega(), run())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: pkg.mod", -1 },
+  NULL, "ImportError: No module named 'pkg.mod'", -1 },
 { "dif #2013",
   "from pkg.mod import valor\n"
   "post(valor)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: pkg.mod", -1 },
+  NULL, "ImportError: No module named 'pkg.mod'", -1 },
 { "dif #2014",
   "from regex import match, findall, sub, split, escape\n"
   "post(findall(\"\\\\d\", \"a1\"))\n"
@@ -10720,66 +10720,66 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from services.controllSmtp import enviar\n"
   "post(enviar())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: services.controllSmtp", -1 },
+  NULL, "ImportError: No module named 'services.controllSmtp'", -1 },
 { "dif #2021",
   "from sub.mod import oi\n"
   "post(oi())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: sub.mod", -1 },
+  NULL, "ImportError: No module named 'sub.mod'", -1 },
 { "dif #2022",
   "from zza import checa\n"
   "post(checa({\"v\": 7}))\n"
   "post(checa({\"v\": \"x\"}))\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zza", -1 },
+  NULL, "ImportError: No module named 'zza'", -1 },
 { "dif #2023",
   "from zzb import Interno\n"
   "reaction checa(d) { return d == Interno }\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzb", -1 },
+  NULL, "ImportError: No module named 'zzb'", -1 },
 { "dif #2024",
   "from zzlib import B\n"
   "post(B().nome())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2025",
   "from zzlib import Contador\n"
   "post(Contador(9).get())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2026",
   "from zzlib import M1, M2, M3, E1, E2\n"
   "post({\"a\": 1} == M1, {\"b\": \"x\"} == M2, {\"c\": true} == M3)\n"
   "post(E1.X, E1.Y, E2.P, E2.Q)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2027",
   "from zzlib import Mat\n"
   "post(Mat.soma(2, 3))\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2028",
   "from zzlib import Produto, Cor\n"
   "post({\"nome\": \"x\", \"preco\": 3} == Produto)\n"
   "post(Cor.R, Cor.G, Cor.B)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2029",
   "from zzlib import Status\n"
   "post(Status.ATIVO, Status.INATIVO)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2030",
   "from zzlib import Usuario\n"
   "post({\"nome\": \"a\", \"idade\": 5} == Usuario)\n"
   "post({\"nome\": \"a\"} == Usuario)\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2031",
   "from zzlib import dobro\n"
   "post(dobro(21))\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2032",
   "g = 1\n"
   "action f() {\n"
@@ -11256,7 +11256,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import greetlib\n"
   "post(greetlib.greet())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: greetlib", -1 },
+  NULL, "ImportError: No module named 'greetlib'", -1 },
 { "dif #2111",
   "import json\n"
   "d = json.parse(\"{\\\"a\\\": 42, \\\"b\\\": -7, \\\"c\\\": 2.5}\")\n"
@@ -11684,17 +11684,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import saud\n"
   "post(saud.ola(\"ana\"))\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: saud", -1 },
+  NULL, "ImportError: No module named 'saud'", -1 },
 { "dif #2189",
   "import sub.mod\n"
   "post(mod.oi())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: sub.mod", -1 },
+  NULL, "ImportError: No module named 'sub.mod'", -1 },
 { "dif #2190",
   "import sub.mod as sm\n"
   "post(sm.oi())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: sub.mod", -1 },
+  NULL, "ImportError: No module named 'sub.mod'", -1 },
 { "dif #2191",
   "import swagger\n"
   "d = swagger.infos(target=\"__APP__\").title(\"API X\").description(\"d\").version(\"2.0.0\").authorContact().email(\"e@x.com\").name(\"K\").number(\"(27)0\")\n"
@@ -12805,7 +12805,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "post(Local.A, Status.ON, Status.OFF)\n"
   "post(Meu().oi(), Helper().oi())\n"
   "\n",
-  NULL, "ImportError: modulo nao encontrado: zzlib", -1 },
+  NULL, "ImportError: No module named 'zzlib'", -1 },
 { "dif #2368",
   "model D() {\n"
   "    cpf: str(length=3)\n"

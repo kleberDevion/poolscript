@@ -353,6 +353,8 @@ typedef struct {
 typedef struct {
     Obj      obj;
     char    *nome;
+    char    *caminho;    /* arquivo de origem — o Python cita no ImportError
+                          * de `from mod import x` */
     int32_t  base;       /* primeira global do módulo em vm->globals */
     int32_t  n;
     char   **nomes;      /* nome de cada global, na ordem */
@@ -1622,6 +1624,7 @@ static void fin_moduleps(VM *vm, Obj *o) {
     for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
     free(m->nomes);
     free(m->nome);
+    free(m->caminho);
 }
 static void fin_bigint(VM *vm, Obj *o) {
     (void)vm;
@@ -20711,7 +20714,12 @@ ERRO_TF(vm, "TypeError",
             break;
         }
 
+        case OP_IMPORT_FROM:
         case OP_GET_MEMBER: {
+            /* IMPORT_FROM e o GET_MEMBER do `from mod import x`: mesma busca,
+             * outro erro quando o nome nao existe. O Python distingue os dois
+             * e a linguagem tem que distinguir tambem. */
+            int de_import = (o == OP_IMPORT_FROM);
             Value alvo = stack[sp - 1];
             Value nomev = p->consts[arg];
             if (!EH_STRING(nomev)) ERRO(vm, "nome de membro invalido");
@@ -20802,6 +20810,14 @@ ERRO_TF(vm, "TypeError",
                     goto membro_ok;
                 }
                 {
+                    /* `from mod import x` com x ausente. O Python NAO sugere
+                     * nome aqui (a sugestao so sai no AttributeError de
+                     * `mod.x`) e cita o arquivo do modulo entre parenteses. */
+                    if (de_import)
+                        ERRO_TF(vm, "ImportError",
+                                "cannot import name '%s' from '%s' (%s)",
+                                nome, m->nome,
+                                m->caminho ? m->caminho : "unknown location");
                     const char *dica = sugere_nome(nome, (const char **)m->nomes, m->n);
                     if (dica)
                         ERRO_TF(vm, "AttributeError",
@@ -20820,6 +20836,12 @@ ERRO_TF(vm, "TypeError",
                 for (int k = 0; k < mn->n; k++)
                     if (strcmp(mn->membros[k].nome, nome) == 0) { achado = &mn->membros[k]; break; }
                 if (!achado) {
+                    /* modulo nativo nao tem arquivo: o Python escreve
+                     * "(unknown location)" no lugar do caminho. */
+                    if (de_import)
+                        ERRO_TF(vm, "ImportError",
+                                "cannot import name '%s' from '%s' (unknown location)",
+                                nome, mn->nome);
                     const char *cands[256];
                     int nc = mn->n < 256 ? mn->n : 256;
                     for (int k = 0; k < nc; k++) cands[k] = mn->membros[k].nome;
@@ -22270,7 +22292,12 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
      * o CAMINHO ABSOLUTO, não o nome. */
     char caminho[1024];
     if (acha_modulo_ps(vm, nome, caminho, sizeof(caminho)) != 0) {
-        snprintf(vm->erro, sizeof(vm->erro), "modulo nao encontrado: %.200s", nome);
+        /* Texto do CPython. O TIPO fica `ImportError` de propósito: lá o nome é
+         * `ModuleNotFoundError`, que é SUBCLASSE de ImportError, então um
+         * `except ImportError` continua pegando. Aqui não há hierarquia — o
+         * catch compara o nome — e adotar o nome novo quebraria em silêncio
+         * todo `catch (ImportError e)` que hoje pega módulo ausente. */
+        snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", nome);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
     }
@@ -22360,10 +22387,11 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     m->obj.type = OBJ_MODULO_PS; m->obj.marked = 0;
     m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
     m->nome = strdup(nome);
+    m->caminho = strdup(abspath);   /* realpath: o `__file__` do Python tambem e absoluto */
     m->base = bg;
     m->n = prog->nglobais;
     m->nomes = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), sizeof(char *));
-    if (!m->nome || !m->nomes) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
+    if (!m->nome || !m->caminho || !m->nomes) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
     for (int32_t i = 0; i < prog->nglobais; i++) m->nomes[i] = strdup(prog->globais[i]);
     vm->alocado += sizeof(PSModuloPS);
 
