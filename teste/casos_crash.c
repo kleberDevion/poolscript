@@ -155,6 +155,36 @@ const Caso CASOS_CRASH[] = {
  * Contrapeso dos casos de teto acima. Se alguém apertar `PS_PARSE_PROF_MAX` pra
  * calar um fuzzer, estes reprovam — que é a única defesa contra o conserto
  * preguiçoso de pôr um número menor. */
+/* ── gravacao que falha NAO pode virar sucesso ──────────────────────────────
+ * Sete sitios do motor faziam `fwrite(...); fclose(f);` sem olhar nenhum dos
+ * dois retornos. `os.writeFile("/dev/full", ...)` devolvia o caminho com rc=0;
+ * `PoolFile.save`, `Response.save`, `qrcode.save`, `manpu.write` e
+ * `upload.save` faziam o mesmo. /dev/full sempre aceita o `fopen` e sempre
+ * recusa a escrita, entao ele e o caso.
+ *
+ * O `fclose` importa tanto quanto o `fwrite`: o buffer da libc so vai pro disco
+ * no flush, entao ENOSPC costuma aparecer AO FECHAR. */
+{ "os.writeFile que falha levanta",
+  "import os\n"
+  "try {\n"
+  "    os.writeFile(\"/dev/full\", \"x\" * 200000)\n"
+  "    post(\"nao levantou\")\n"
+  "} catch (e) {\n"
+  "    post(\"levantou\")\n"
+  "}\n", "levantou", NULL, 0 },
+{ "qrcode.save que falha levanta",
+  "import qrcode\n"
+  "try {\n"
+  "    qrcode.make(\"x\").save(\"/dev/full\")\n"
+  "    post(\"nao levantou\")\n"
+  "} catch (e) {\n"
+  "    post(\"levantou\")\n"
+  "}\n", "levantou", NULL, 0 },
+{ "gravacao normal continua funcionando",
+  "import os\n"
+  "os.writeFile(\"n.txt\", \"dado\")\n"
+  "post(os.readFile(\"n.txt\"))\n", "dado", NULL, 0 },
+
 /* ── largura de format sem teto: TRAVAVA o processo ─────────────────────────
  * `largura = largura * 10 + digito` transbordava o int em silencio, e o laco
  * de preenchimento escrevia byte a byte ate a memoria acabar. O processo nao

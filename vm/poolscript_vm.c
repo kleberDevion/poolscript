@@ -6847,6 +6847,27 @@ static int cria_pais(const char *caminho)
 /* `culpa` recebe QUAL dos dois caminhos falhou. O CPython nomeia o arquivo que
  * deu erro, não sempre a origem — sem isto, destino sem permissão sairia
  * apontando a origem, que está perfeita. */
+/* Grava tudo e FECHA conferindo. Devolve 0, ou -1 com `errno` no motivo.
+ *
+ * Existe porque o motor repetia o par `fwrite(...); fclose(f);` sem olhar
+ * nenhum dos dois retornos, em varios lugares. Gravacao que falhava era
+ * ignorada e a funcao dizia que tinha dado certo — foi assim que
+ * `os.move` chegou a APAGAR o arquivo de origem depois de uma copia que nao
+ * aconteceu, e que `os.writeFile("/dev/full", ...)` devolvia o caminho com
+ * rc=0.
+ *
+ * O `fclose` importa tanto quanto o `fwrite`: o buffer da libc so vai pro
+ * disco no flush, entao ENOSPC costuma aparecer AO FECHAR, nao ao escrever.
+ */
+static int grava_e_fecha(FILE *f, const void *dados, size_t n)
+{
+    int err = 0;
+    if (n > 0 && fwrite(dados, 1, n, f) != n) err = errno ? errno : EIO;
+    if (fclose(f) != 0 && !err) err = errno ? errno : EIO;
+    if (err) { errno = err; return -1; }
+    return 0;
+}
+
 static int copia_arquivo(const char *de, const char *para, const char **culpa)
 {
     /* `fopen` de diretório abre no Linux e só falha no `read` — sem este
@@ -6971,8 +6992,8 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     FILE *fp = fopen(dest, "wb");
     if (!fp) return erro_sistema(vm, errno, dest, NULL);
     PSString *b = EH_BYTES(f->conteudo) ? COMO_BYTES(f->conteudo) : NULL;
-    if (b && b->len > 0) fwrite(b->chars, 1, (size_t)b->len, fp);
-    fclose(fp);
+    if (grava_e_fecha(fp, b ? b->chars : "", b ? (size_t)b->len : 0) != 0)
+        return erro_sistema(vm, errno, dest, NULL);
     PSPoolFile *novo = novo_poolfile(vm, dest);
     if (!novo) return erro_sistema(vm, errno, dest, NULL);
     free(f->caminho);
@@ -10743,8 +10764,8 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
     for (char *q = tmp + 1; *q; q++) { if (*q == '/') { *q = '\0'; mkdir(tmp, 0755); *q = '/'; } }
     FILE *f = fopen(p->chars, "wb");
     if (!f) return erro_sistema(vm, errno, p->chars, NULL);
-    if (ndados > 0) fwrite(dados, 1, (size_t)ndados, f);
-    fclose(f);
+    if (grava_e_fecha(f, dados, (size_t)ndados) != 0)
+        return erro_sistema(vm, errno, p->chars, NULL);
     PSString *rp = nova_string(vm, p->chars, p->len);
     if (!rp) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(rp);
@@ -13501,8 +13522,8 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     FILE *f = fopen(caminho, "wb");
     if (!f) BERRO(vm, "IOError", "nao consegui escrever '%.200s'", caminho);
     PSString *b = EH_BYTES(rp->corpo) ? COMO_BYTES(rp->corpo) : NULL;
-    if (b && b->len > 0) fwrite(b->chars, 1, (size_t)b->len, f);
-    fclose(f);
+    if (grava_e_fecha(f, b ? b->chars : "", b ? (size_t)b->len : 0) != 0)
+        return erro_sistema(vm, errno, caminho, NULL);
     PSPoolFile *pf = novo_poolfile(vm, caminho);
     if (!pf) BERRO(vm, "IOError", "nao consegui reler '%.200s'", caminho);
     *out = MK_OBJ(pf);
@@ -14028,9 +14049,7 @@ static int qr_salva_em(VM *vm, const char *destino, const char *nome,
      * e erram se o diretório não existe — alinhar com a autoridade */
     FILE *f = fopen(caminho, "wb");
     if (!f) return -1;
-    if (n > 0) fwrite(dados, 1, n, f);
-    fclose(f);
-    return 0;
+    return grava_e_fecha(f, dados, (size_t)n);
 }
 
 /* ── QRFile (gen sem save) ──────────────────────────────────────────────── */
@@ -14774,9 +14793,9 @@ static int mod_mp_remove(VM *vm, Value *args, int n, Value *out)
         } else { sb_bytes(&saida, b + i, 1); i++; }
     }
     free(b);
+    /* `ok` so olhava o fopen: gravacao que falhava virava "Success". */
     FILE *f = fopen(target, "wb");
-    int ok = f != NULL;
-    if (f) { if (saida.n) fwrite(saida.b, 1, (size_t)saida.n, f); fclose(f); }
+    int ok = (f != NULL) && grava_e_fecha(f, saida.b ? saida.b : "", (size_t)saida.n) == 0;
     PSManpuRes *r = novo_manpures(vm, ok, ok ? "Success" : "Error");
     *out = MK_OBJ(r);
     return 0;
@@ -15087,9 +15106,7 @@ static int mpf_salva(PSManpuFile *m)
         if (mp_grade_para_csv(&m->grade, &b) != 0) { return -1; }
         FILE *f = fopen(m->caminho, "wb");
         if (!f) { return -1; }
-        if (b.n) fwrite(b.b, 1, (size_t)b.n, f);
-        fclose(f);
-        return 0;
+        return grava_e_fecha(f, b.b, (size_t)b.n);
     }
     if (m->modo == 2) {
         char erro[256];
@@ -15097,8 +15114,7 @@ static int mpf_salva(PSManpuFile *m)
     }
     FILE *f = fopen(m->caminho, "wb");
     if (!f) return -1;
-    if (m->ntexto) fwrite(m->texto, 1, m->ntexto, f);
-    fclose(f);
+    if (grava_e_fecha(f, m->texto, (size_t)m->ntexto) != 0) return -1;
     return 0;
 }
 static int met_mpf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
