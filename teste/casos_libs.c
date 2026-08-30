@@ -500,6 +500,23 @@ const Caso CASOS_LIBS[] = {
   "    post(\"line 1 column 8 (char 7)\" in str(e))\n"
   "}\n", "True", NULL, 0 },
 
+{ "from X import Y ausente e ImportError; X.Y ausente e AttributeError",
+  /* O Python separa os dois, e a separacao e util: `from` fala de IMPORTAR um
+   * nome, `.` fala de ACESSAR um membro. Aqui exigiu opcode proprio
+   * (OP_IMPORT_FROM) — sem ele a VM ve a mesma busca nos dois casos e nao tem
+   * como saber qual erro levantar. */
+  "import json\n"
+  "a = \"\"\n"
+  "b = \"\"\n"
+  "try { post(json.naotem_zz) } catch (AttributeError e) { a = \"A\" }\n"
+  "post(a)\n", "A", NULL, 0 },
+{ "from X import Y ausente cita o modulo",
+  "from json import naotem_zz\n",
+  NULL, "cannot import name 'naotem_zz' from 'json'", -1 },
+{ "modulo ausente diz o nome, no texto do CPython",
+  "import naoexiste_zz_kd\n",
+  NULL, "No module named 'naoexiste_zz_kd'", -1 },
+
 { "o nome do tipo na mensagem e o que o type() devolve",
   /* nao adianta copiar o CPython e dizer 'float'/'tuple'/'NoneType': esses
    * tipos nao existem aqui, e citar um deles seria mentira nova */
