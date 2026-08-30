@@ -81,8 +81,8 @@ action par(x) {
     return x % 2 == 0
 }
 
-post(map([1, 2, 3], dobro))        // [2, 4, 6]
-post(filter([1, 2, 3, 4], par))    // [2, 4]
+post(map([1, 2, 3], dobro))        # [2, 4, 6]
+post(filter([1, 2, 3, 4], par))    # [2, 4]
 ```
 
 ---
@@ -100,8 +100,8 @@ Estes **alteram a própria lista** e por isso não encadeiam (devolvem o item ou
 
 ```ps
 l = [1, 2, 3]
-addEnd(l, 4)          // l == [1, 2, 3, 4]
-post(removeStart(l))  // 1   (e l == [2, 3, 4])
+addEnd(l, 4)          # l == [1, 2, 3, 4]
+post(removeStart(l))  # 1   (e l == [2, 3, 4])
 ```
 
 ---

@@ -3477,6 +3477,80 @@ static int nativa_abs(VM *vm, Value *args, int n, Value *out)
           nome_do_tipo_valor(v));
 }
 
+
+/* `pow(base, expo)` e `pow(base, expo, mod)` — I11.
+ *
+ * O de dois argumentos e o MESMO caminho do `**` (o compilador emite OP_POW),
+ * entao este builtin so existe pra quem escreve `pow(...)` por costume e pro
+ * terceiro argumento, que o operador nao tem: `pow(b, e, m)` calcula
+ * `(b ** e) % m` SEM materializar a potencia inteira, que e o unico jeito de
+ * fazer isso com expoente grande.
+ */
+static int nativa_pow(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 3) return erro_aridade(vm, "pow", 2, 3, n);
+    Value a = args[0], b = args[1];
+    if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+    if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+
+    if (n == 3) {
+        Value m = args[2];
+        if (m.t == V_BOOL) { m.t = V_INT; m.as.i = m.as.b ? 1 : 0; }
+        if (!EH_INTEIRO(a) || !EH_INTEIRO(b) || !EH_INTEIRO(m))
+            BERRO(vm, "TypeError",
+                  "pow() 3rd argument not allowed unless all arguments are integers");
+        int bneg = (b.t == V_INT) ? (b.as.i < 0) : (mpz_sgn(COMO_BIGINT(b)->v) < 0);
+        if (bneg)
+            BERRO(vm, "ValueError",
+                  "pow() 2nd argument cannot be negative when 3rd argument specified");
+        mpz_t za, zb, zm, zr;
+        mpz_init(za); mpz_init(zb); mpz_init(zm); mpz_init(zr);
+        mpz_de_val(za, a); mpz_de_val(zb, b); mpz_de_val(zm, m);
+        if (mpz_cmp_si(zm, 0) == 0) {
+            mpz_clear(za); mpz_clear(zb); mpz_clear(zm); mpz_clear(zr);
+            BERRO(vm, "ValueError", "pow() 3rd argument cannot be 0");
+        }
+        mpz_powm(zr, za, zb, zm);
+        /* mpz_powm devolve no intervalo [0, |m|); o Python segue o SINAL do
+         * modulo, como o `%` dele. */
+        if (mpz_sgn(zm) < 0 && mpz_sgn(zr) != 0) mpz_add(zr, zr, zm);
+        *out = mk_from_mpz(vm, zr);
+        mpz_clear(za); mpz_clear(zb); mpz_clear(zm); mpz_clear(zr);
+        return 0;
+    }
+
+    if (EH_INTEIRO(a) && EH_INTEIRO(b)) {
+        int neg = (b.t == V_INT) ? (b.as.i < 0) : (mpz_sgn(COMO_BIGINT(b)->v) < 0);
+        if (neg) {
+            double base = int_como_double(a);
+            if (base == 0.0)
+                BERRO(vm, "ZeroDivisionError",
+                      "0.0 cannot be raised to a negative power");
+            *out = MK_FLOAT(pow(base, int_como_double(b)));
+            return 0;
+        }
+        if (b.t != V_INT || b.as.i > 1000000)
+            BERRO(vm, "MemoryError", "expoente grande demais em pow()");
+        mpz_t za, zr; mpz_init(za); mpz_init(zr);
+        mpz_de_val(za, a);
+        mpz_pow_ui(zr, za, (unsigned long)b.as.i);
+        *out = mk_from_mpz(vm, zr);
+        mpz_clear(za); mpz_clear(zr);
+        return 0;
+    }
+    if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
+        double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
+        double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
+        if (x == 0.0 && y < 0.0)
+            BERRO(vm, "ZeroDivisionError", "0.0 cannot be raised to a negative power");
+        *out = MK_FLOAT(pow(x, y));
+        return 0;
+    }
+    BERRO(vm, "TypeError",
+          "unsupported operand type(s) for ** or pow(): '%s' and '%s'",
+          nome_do_tipo_valor(args[0]), nome_do_tipo_valor(args[1]));
+}
+
 static int nativa_round(VM *vm, Value *args, int n, Value *out)
 {
     if (n != 1 && n != 2) return erro_aridade(vm, "round", 1, 2, n);
@@ -18537,6 +18611,7 @@ static Builtin BUILTINS[] = {
     { "bool", nativa_bool, NULL },
     { "type", nativa_type, NULL },
     { "abs", nativa_abs, NULL },
+    { "pow", nativa_pow, "base,expo,mod=Null" },
     { "round", nativa_round, NULL },
     { "hex", nativa_hex, NULL },
     { "bin", nativa_bin, NULL },
@@ -19096,6 +19171,112 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             stack[sp - 1] = MK_FLOAT(x / y);
             break;
         }
+        /* ── I11: `**` (potencia) e `//` (divisao inteira) ────────────────
+         *
+         * A linguagem nao tinha nenhum dos dois. `/` e sempre real, entao o
+         * unico jeito de tirar quociente inteiro era `int(a / b)` — que passa
+         * por double e PERDE PRECISAO justamente onde a linguagem se orgulha
+         * de nao perder: `int(10000000000000001 / 1)` dava 10000000000000000.
+         *
+         * Semantica do Python nos dois:
+         *   2 ** 10   -> 1024   (int; promove a bignum se estourar)
+         *   2 ** -1   -> 0.5    (expoente negativo cai pra flo)
+         *   0 ** -1   -> ZeroDivisionError
+         *   7 // 2    -> 3      e  -7 // 2 -> -4  (piso, nao truncamento)
+         *   7 // 0    -> ZeroDivisionError
+         */
+        case OP_POW: {
+            Value b = stack[--sp], a = stack[sp - 1];
+            VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+
+            if (EH_INTEIRO(a) && EH_INTEIRO(b)) {
+                /* expoente negativo: o resultado nao e inteiro, entao vira
+                 * flo — igual ao Python. Base zero ai e divisao por zero. */
+                int neg = (b.t == V_INT) ? (b.as.i < 0)
+                                         : (mpz_sgn(COMO_BIGINT(b)->v) < 0);
+                if (neg) {
+                    double base = int_como_double(a);
+                    if (base == 0.0)
+                        ERRO_T(vm, "ZeroDivisionError",
+                               "0.0 cannot be raised to a negative power");
+                    double e = int_como_double(b);
+                    stack[sp - 1] = MK_FLOAT(pow(base, e));
+                    break;
+                }
+                /* expoente tem que caber em unsigned long pro mpz_pow_ui; um
+                 * expoente maior que isso nao tem memoria no mundo. */
+                if (b.t != V_INT || b.as.i > 1000000)
+                    ERRO_T(vm, "MemoryError", "expoente grande demais em '**'");
+                vm->sp = sp; vm->locals_top = locals_top;
+                mpz_t za, zr; mpz_init(za); mpz_init(zr);
+                mpz_de_val(za, a);
+                mpz_pow_ui(zr, za, (unsigned long)b.as.i);
+                stack[sp - 1] = mk_from_mpz(vm, zr);
+                mpz_clear(za); mpz_clear(zr);
+                break;
+            }
+            if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
+                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
+                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
+                if (x == 0.0 && y < 0.0)
+                    ERRO_T(vm, "ZeroDivisionError",
+                           "0.0 cannot be raised to a negative power");
+                stack[sp - 1] = MK_FLOAT(pow(x, y));
+                break;
+            }
+            ERRO_TF(vm, "TypeError",
+                    "unsupported operand type(s) for ** or pow(): '%s' and '%s'",
+                    TIPO0(a, ta0), TIPO0(b, tb0));
+        }
+
+        case OP_FLOORDIV: {
+            Value b = stack[--sp], a = stack[sp - 1];
+            VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
+            if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
+            if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }
+
+            if (a.t == V_INT && b.t == V_INT) {
+                if (b.as.i == 0)
+                    ERRO_T(vm, "ZeroDivisionError", "integer division or modulo by zero");
+                /* INT64_MIN / -1 estoura e o processador levanta SIGFPE. O
+                 * resultado matematico nao cabe no int64: vai de bignum. */
+                if (!(a.as.i == INT64_MIN && b.as.i == -1)) {
+                    int64_t q = a.as.i / b.as.i;
+                    /* C trunca pra zero; o piso do Python arredonda pra baixo
+                     * quando os sinais divergem e sobra resto. */
+                    if ((a.as.i % b.as.i != 0) && ((a.as.i < 0) != (b.as.i < 0))) q--;
+                    stack[sp - 1] = MK_INT(q);
+                    break;
+                }
+            }
+            if (EH_INTEIRO(a) && EH_INTEIRO(b)) {
+                mpz_t za, zb, zq; mpz_init(za); mpz_init(zb); mpz_init(zq);
+                mpz_de_val(za, a); mpz_de_val(zb, b);
+                if (mpz_cmp_si(zb, 0) == 0) {
+                    mpz_clear(za); mpz_clear(zb); mpz_clear(zq);
+                    ERRO_T(vm, "ZeroDivisionError", "integer division or modulo by zero");
+                }
+                mpz_fdiv_q(zq, za, zb);          /* piso, como o Python */
+                vm->sp = sp; vm->locals_top = locals_top;
+                stack[sp - 1] = mk_from_mpz(vm, zq);
+                mpz_clear(za); mpz_clear(zb); mpz_clear(zq);
+                break;
+            }
+            if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
+                double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
+                double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
+                if (y == 0.0)
+                    ERRO_T(vm, "ZeroDivisionError", "float floor division by zero");
+                stack[sp - 1] = MK_FLOAT(floor(x / y));
+                break;
+            }
+            ERRO_TF(vm, "TypeError",
+                    "unsupported operand type(s) for //: '%s' and '%s'",
+                    TIPO0(a, ta0), TIPO0(b, tb0));
+        }
+
         case OP_MOD: {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */

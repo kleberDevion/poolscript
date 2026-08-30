@@ -35,10 +35,10 @@ Um cert real vem em **dois arquivos**: o certificado e a chave privada. O
 jinker aceita os dois modos:
 
 ```ps
-// separados (o normal — Let's Encrypt, mkcert)
+# separados (o normal — Let's Encrypt, mkcert)
 app = Jinker(__name__, oauth={tls: true, cert: "fullchain.pem", key: "privkey.pem"})
 
-// juntos, num PEM só (cert + chave concatenados)
+# juntos, num PEM só (cert + chave concatenados)
 app = Jinker(__name__, oauth={tls: true, cert: "tudo.pem"})
 ```
 

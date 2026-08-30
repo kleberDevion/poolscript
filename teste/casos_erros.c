@@ -157,7 +157,7 @@ const Caso CASOS_ERROS[] = {
 /* ── comentário e linha vazia abrindo bloco ── */
 { "comentário como 1ª linha do bloco",
   "action f(x) {\n"
-  "    // comentário\n"
+  "    # comentário\n"
   "    return x + 1\n"
   "}\n"
   "post(f(1))\n", "2", NULL, 0 },

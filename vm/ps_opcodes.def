@@ -139,3 +139,10 @@ PS_OP(ITER_RANGE, 86, "ITER_RANGE")
  * attribute 'x'"; `from mod import x` e ImportError "cannot import name 'x'
  * from 'mod' (arquivo)". Sem opcode proprio a VM nao sabe qual dos dois. */
 PS_OP(IMPORT_FROM, 87, "IMPORT_FROM")
+
+/* I11 — potencia e divisao inteira. A linguagem tinha `/` sempre real e nada
+ * pra quociente inteiro nem pra potencia: num idioma com inteiro de precisao
+ * arbitraria, isso perdia precisao calado na unica divisao que existia
+ * (`int(10000000000000001 / 1)` dava 10000000000000000). */
+PS_OP(POW, 88, "POW")
+PS_OP(FLOORDIV, 89, "FLOORDIV")

@@ -17,7 +17,7 @@ action soma(a, b) {
     return a + b
 }
 
-post(soma(2, 3))     // 5
+post(soma(2, 3))     # 5
 ```
 
 `reaction` é **sinônimo exato** de `action` — mesma sintaxe, mesmo
@@ -47,8 +47,8 @@ action g(a, b = 10) {
     return a + b
 }
 
-post(g(5))       // 15   (b usa o padrão)
-post(g(5, 1))    // 6
+post(g(5))       # 15   (b usa o padrão)
+post(g(5, 1))    # 6
 ```
 
 O padrão pode ser qualquer expressão: `action f(a, b = 5 * 2)` → `b` vale `10`.
@@ -63,8 +63,8 @@ action f(a, b, c) {
     return str(a) + str(b) + str(c)
 }
 
-post(f(c=3, a=1, b=2))    // "123"
-post(f(1, c=3, b=2))      // "123"  (posicional + nomeado)
+post(f(c=3, a=1, b=2))    # "123"
+post(f(1, c=3, b=2))      # "123"  (posicional + nomeado)
 ```
 
 ### 6.2.3. Parâmetros não têm tipo
@@ -93,12 +93,12 @@ ou uma função que **termina sem `return`**, devolve `null`:
 action nada() {
     return
 }
-post(nada())     // null
+post(nada())     # null
 
 action semret() {
     x = 1
 }
-post(semret())   // null
+post(semret())   # null
 ```
 
 ---
@@ -123,12 +123,12 @@ devolver algo (por exemplo, um status).
 int action status() {
     return null
 }
-post(status())        // 0
+post(status())        # 0
 
 int action quebra() {
     raise Boom("x")
 }
-post(quebra())        // 500  (erro engolido)
+post(quebra())        # 500  (erro engolido)
 ```
 
 `bool action`: o retorno vira `bool` por *truthiness* — `return 0` → `False`,
@@ -165,12 +165,12 @@ action dobro(n) {
 }
 
 g = dobro
-post(g(21))          // 42
+post(g(21))          # 42
 
 action aplica(fn, x) {
     return fn(x)
 }
-post(aplica(dobro, 21))   // 42
+post(aplica(dobro, 21))   # 42
 ```
 
 `type()` de uma função é `"action"`.
@@ -189,7 +189,7 @@ action fatorial(n) {
     return n * fatorial(n - 1)
 }
 
-post(fatorial(5))    // 120
+post(fatorial(5))    # 120
 ```
 
 ---
@@ -208,10 +208,10 @@ action conta() {
 }
 
 for each v in conta() {
-    post(v)          // 1, 2, 3
+    post(v)          # 1, 2, 3
 }
 
-post(list(conta()))  // [1, 2, 3]
+post(list(conta()))  # [1, 2, 3]
 ```
 
 ---

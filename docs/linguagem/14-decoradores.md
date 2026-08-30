@@ -23,7 +23,7 @@ Entity Mat() {
     }
 }
 
-post(Mat.soma(2, 3))     // 5
+post(Mat.soma(2, 3))     # 5
 ```
 
 Sem `@static`, um método precisa de `self`; com ele, é uma função ligada ao
@@ -45,9 +45,9 @@ Entity C() {
     }
 }
 
-post(C.f(5))        // 15  — o 5 vai pro `a`, NÃO pro self
-post(C.f(a=7))      // 17
-post(C().f(5))      // 15  — via instância, self = a instância
+post(C.f(5))        # 15  — o 5 vai pro `a`, NÃO pro self
+post(C.f(a=7))      # 17
+post(C().f(5))      # 15  — via instância, self = a instância
 ```
 
 Passar argumento demais, ou faltar um obrigatório, dá erro claro
@@ -67,8 +67,8 @@ action saudar(nome) {
     return "olá, " + nome
 }
 
-post(saudar("ana"))      // olá, ana
-saudar(null)             // RuntimeError: @NonNull: parametro 'nome' em 'saudar' nao pode ser Null
+post(saudar("ana"))      # olá, ana
+saudar(null)             # RuntimeError: @NonNull: parametro 'nome' em 'saudar' nao pode ser Null
 ```
 
 A checagem é sobre os **parâmetros** (a entrada), não sobre o valor de retorno.
@@ -89,8 +89,8 @@ Entity Pessoa() {
     idade: int = 18
 }
 
-p = Pessoa(nome="Ana", idade=30)     // construtor aceita posicional e nomeado
-q = Pessoa(nome="Léo")               // idade cai no default 18
+p = Pessoa(nome="Ana", idade=30)     # construtor aceita posicional e nomeado
+q = Pessoa(nome="Léo")               # idade cai no default 18
 ```
 
 ### Conversões — a lib `datasentity`
@@ -109,10 +109,10 @@ Entity Pessoa() {
 }
 
 p = Pessoa("Ana", 30)
-post(asdict(p))     // {'nome': 'Ana', 'idade': 30}
-post(astuple(p))    // ('Ana', 30)
-post(aslist(p))     // ['Ana', 30]
-post(asjson(p))     // {"nome": "Ana", "idade": 30}
+post(asdict(p))     # {'nome': 'Ana', 'idade': 30}
+post(astuple(p))    # ('Ana', 30)
+post(aslist(p))     # ['Ana', 30]
+post(asjson(p))     # {"nome": "Ana", "idade": 30}
 ```
 
 (Detalhe de cada função na parte de bibliotecas.)
@@ -150,7 +150,7 @@ action f() {
     return 1
 }
 
-f()      // NameError: name 'f' is not defined  (o @qualquer engoliu a action)
+f()      # NameError: name 'f' is not defined  (o @qualquer engoliu a action)
 ```
 
 Um decorador que a linguagem não

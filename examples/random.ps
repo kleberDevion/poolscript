@@ -12,7 +12,7 @@ public class asterisco()
         list ix = []
         valores = list(str(baseinit).replace(".", ""))
         for each i in valores {
-            // 127.970.195
+            # 127.970.195
             addEnd(ix, Parsing.integer(i, to int))
         }
             
@@ -42,8 +42,8 @@ public class asterisco()
         """
         Números aleatorios:
         """
-        //var = 6565576
-        //semente = int(id(var))
+        #var = 6565576
+        #semente = int(id(var))
         resultado_bruto = (1103515245 * seed) + 12345
                 
         coding = resultado_bruto % limit_digits
@@ -98,7 +98,7 @@ public class asterisco()
     
 }
 
-// teste da classe
+# teste da classe
 if __name__ == "main" {
     teste = (asterisco().randint(limit_digits=1234567, seed=1000000000000000000), asterisco().letter(limit_letters=30, tup_division=40), asterisco().idSession(webToken="xrcfvghuubiyvtcrxertv7c654x3z4wxecr6gt7h8j9k09n8b7v6c5x46c4v78b7n98b7v6c5v7b8798m9n7bv6r7b8n798"))
     post(teste)

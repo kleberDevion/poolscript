@@ -71,8 +71,7 @@ Até mais!
 ## Comentários
 
 ```
-# comentário de linha
-// comentário de linha também
+# comentário de linha  (era `//` também; o `//` virou divisão inteira)
 
 """
 comentário

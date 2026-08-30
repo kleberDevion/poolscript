@@ -19,9 +19,9 @@ model Usuario() {
     idade: int
 }
 
-post({ "nome": "ana", "idade": 30 } == Usuario)     // True
-post({ "nome": "ana", "idade": "x" } == Usuario)    // False (idade não é int)
-post({ "nome": "ana" } == Usuario)                  // False (falta idade)
+post({ "nome": "ana", "idade": 30 } == Usuario)     # True
+post({ "nome": "ana", "idade": "x" } == Usuario)    # False (idade não é int)
+post({ "nome": "ana" } == Usuario)                  # False (falta idade)
 ```
 
 Sintaxe:
@@ -41,9 +41,9 @@ model Documento() {
     cpf: str(length=11)
 }
 
-post({ "cpf": "12345678901" } == Documento)   // True  (11 caracteres)
-post({ "cpf": "123" } == Documento)           // True  (menos que 11 — ok)
-post({ "cpf": "123456789012" } == Documento)  // False (12 > 11)
+post({ "cpf": "12345678901" } == Documento)   # True  (11 caracteres)
+post({ "cpf": "123" } == Documento)           # True  (menos que 11 — ok)
+post({ "cpf": "123456789012" } == Documento)  # False (12 > 11)
 ```
 
 `length` é um **máximo**, não um valor exato: strings mais curtas passam.
@@ -59,7 +59,7 @@ Chaves **a mais** no dict são ignoradas (não invalidam):
 
 ```ps
 model P() { x: int }
-post({ "x": 1, "extra": 9 } == P)     // True — 'extra' é ignorado
+post({ "x": 1, "extra": 9 } == P)     # True — 'extra' é ignorado
 ```
 
 Faltar um campo, ou um campo com o tipo errado / longo demais, torna a
@@ -79,7 +79,7 @@ enum Cor {
     BLUE
 }
 
-post(Cor.RED, Cor.GREEN, Cor.BLUE)    // 0 1 2
+post(Cor.RED, Cor.GREEN, Cor.BLUE)    # 0 1 2
 ```
 
 Sintaxe:
@@ -99,14 +99,14 @@ enum Status {
     OK = 200,
     NOT_FOUND = 404
 }
-post(Status.OK, Status.NOT_FOUND)     // 200 404
+post(Status.OK, Status.NOT_FOUND)     # 200 404
 
 enum E {
     A = 10,
     B,
     C
 }
-post(E.A, E.B, E.C)                   // 10 11 12   (B e C continuam de 10)
+post(E.A, E.B, E.C)                   # 10 11 12   (B e C continuam de 10)
 ```
 
 ### 8.2.2. Uso

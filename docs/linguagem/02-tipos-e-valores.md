@@ -34,19 +34,19 @@ seções.
 (`count each char in frase`) e como **tipo de declaração**.
 
 ```ps
-char a = "x"        // um caractere
-char opa = 64       // inteiro converte pelo codepoint -> "@"
-char c = "ç"        // acento conta como UM caractere
-char e = 128512     // 😀
+char a = "x"        # um caractere
+char opa = 64       # inteiro converte pelo codepoint -> "@"
+char c = "ç"        # acento conta como UM caractere
+char e = 128512     # 😀
 ```
 
 O que ele garante é **um caractere só** — declarar com mais de um é erro, e
 `1.5` também:
 
 ```ps
-char c = "abc"      // AttributedValueError: variável c esperava char (um caractere), recebeu 3
-char c = 1.5        // AttributedValueError: variável c esperava char
-char c = -1         // ConversionError: -1 nao e um caractere valido
+char c = "abc"      # AttributedValueError: variável c esperava char (um caractere), recebeu 3
+char c = 1.5        # AttributedValueError: variável c esperava char
+char c = -1         # ConversionError: -1 nao e um caractere valido
 ```
 
 `char` é a restrição da **declaração**, não um tipo separado em runtime: o
@@ -63,18 +63,18 @@ O builtin `type(x)` devolve o **nome** do tipo como string, e todo valor também
 expõe o método `.type()` (equivalente):
 
 ```ps
-post(type(42))        // int
-post(type(3.14))      // flo
-post(type("oi"))      // str
-post(type([1,2]))     // list
-post((1,2).type())    // tup
+post(type(42))        # int
+post(type(3.14))      # flo
+post(type("oi"))      # str
+post(type([1,2]))     # list
+post((1,2).type())    # tup
 ```
 
 Um número gigante (bignum) continua sendo `"int"` — a promoção é transparente:
 
 ```ps
 g = 99999999999999999999999999999999999999
-post(type(g))         // int
+post(type(g))         # int
 ```
 
 ---
@@ -95,9 +95,9 @@ segundo estas regras:
 | Entity/instância/função | **sempre verdadeiro** |
 
 ```ps
-if ([]) { post("não entra") }      // lista vazia é falsa
-if ("x") { post("entra") }         // string não vazia é verdadeira
-if (Null) { post("não entra") }    // Null é falso
+if ([]) { post("não entra") }      # lista vazia é falsa
+if ("x") { post("entra") }         # string não vazia é verdadeira
+if (Null) { post("não entra") }    # Null é falso
 ```
 
 ---
@@ -108,9 +108,9 @@ Como no Python, `bool` é subtipo de `int`: `True` vale `1` e `False` vale `0` e
 qualquer operação aritmética ou de comparação.
 
 ```ps
-post(True + True)     // 2
-post(False < 3)       // True
-post([10, 20][True])  // 20  (índice 1)
+post(True + True)     # 2
+post(False < 3)       # True
+post([10, 20][True])  # 20  (índice 1)
 ```
 
 ---
@@ -170,11 +170,11 @@ O resto é erro, e há dois erros distintos:
   pedido (`int x = "abc"`).
 
 ```ps
-int  x = "7"      // 7    (parsing de string numérica)
-flo  f = 5        // 5.0  (alargamento int→flo)
-int  y = 5.0      // AttributedValueError — não trunca nem aceita float
-str  s = 42       // AttributedValueError — não "stringifica" sozinho
-int  z = "abc"    // ConversionError — string não vira int
+int  x = "7"      # 7    (parsing de string numérica)
+flo  f = 5        # 5.0  (alargamento int→flo)
+int  y = 5.0      # AttributedValueError — não trunca nem aceita float
+str  s = 42       # AttributedValueError — não "stringifica" sozinho
+int  z = "abc"    # ConversionError — string não vira int
 ```
 
 ---
@@ -187,9 +187,9 @@ Há três mecanismos, do mais direto ao mais tolerante:
    `list(x)`. Convertem ou estouram se impossível:
 
    ```ps
-   n = int("42")        // 42
-   s = str(3.14)        // "3.14"
-   l = list("abc")      // ["a", "b", "c"]
+   n = int("42")        # 42
+   s = str(3.14)        # "3.14"
+   l = list("abc")      # ["a", "b", "c"]
    ```
 
 2. **Lib `Parsing` com alvo `to <tipo>`** — conversão *tolerante* (não estoura;
@@ -212,9 +212,9 @@ Em operação mista, a linguagem promove seguindo a regra do Python:
 - `bool` participa como `int` (0/1).
 
 ```ps
-post(2 + 3)          // 5      (int)
-post(2 + 3.0)        // 5.0    (flo)
-post(9223372036854775807 + 1)   // 9223372036854775808  (bignum, sem estourar)
+post(2 + 3)          # 5      (int)
+post(2 + 3.0)        # 5.0    (flo)
+post(9223372036854775807 + 1)   # 9223372036854775808  (bignum, sem estourar)
 ```
 
 A divisão `/` é **sempre real** (resultado `flo`), inclusive entre inteiros:
@@ -231,8 +231,8 @@ A divisão `/` é **sempre real** (resultado `flo`), inclusive entre inteiros:
 
 ```ps
 l = [1, 2]
-addEnd(l, 3)         // l vira [1, 2, 3] (mesma lista)
+addEnd(l, 3)         # l vira [1, 2, 3] (mesma lista)
 
 t = (1, 2)
-// t[0] = 9         // erro — tupla é imutável
+# t[0] = 9         # erro — tupla é imutável
 ```

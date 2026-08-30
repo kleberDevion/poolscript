@@ -24,17 +24,23 @@ mesmo fonte produz os mesmos tokens.
 
 ## 1.2. Comentários
 
-Há três formas de comentário, todas **descartadas** na tokenização (não viram
-tokens, não afetam o programa):
+Há **duas** formas de comentário, ambas **descartadas** na tokenização (não
+viram tokens, não afetam o programa):
 
 | Forma | Sintaxe | Alcance |
 |---|---|---|
-| Linha (`//`) | `// texto` | do `//` até o fim da linha |
-| Linha (`#`) | `# texto` | do `#` até o fim da linha |
+| Linha | `# texto` | do `#` até o fim da linha |
 | Bloco | `""" ... """` | de `"""` até o próximo `"""`, podendo cruzar linhas |
 
+> **`//` NÃO é mais comentário.** Ele virou o operador de **divisão inteira**
+> (seção 3.2.3). Eram três formas; hoje são duas. Não dava pra ter as duas
+> coisas: `x = a // b` teria que ser divisão num contexto e comentário no
+> outro, e nenhuma regra de desambiguação sobrevive a `a //b` contra `a  // b`.
+>
+> Código antigo com `// comentário` agora é erro de sintaxe. A troca é `#`.
+
 ```ps
-// isto é um comentário de linha
+# isto é um comentário de linha
 x = 10   # também é comentário de linha
 
 """
@@ -89,9 +95,9 @@ saiu de vez.
 O `:` continua com os outros três papéis, que **não** abrem bloco:
 
 ```ps
-d = { "a": 1 }              // separador de dicionário
-s = "abcdef"[1:3]           // fatia
-Entity P() { nome: str }    // tipo de campo
+d = { "a": 1 }              # separador de dicionário
+s = "abcdef"[1:3]           # fatia
+Entity P() { nome: str }    # tipo de campo
 ```
 
 ### 1.3.2. Indentação e quebra de linha
@@ -137,9 +143,9 @@ Um identificador nomeia variáveis, funções, campos, parâmetros, etc.
     com maiúscula (ver a seção de exceptions).
 
 ```ps
-nome      = "ana"     // IDENT
-_cache    = []        // IDENT
-Usuario   = ...       // IDENT_UPPER (uma Entity/classe)
+nome      = "ana"     # IDENT
+_cache    = []        # IDENT
+Usuario   = ...       # IDENT_UPPER (uma Entity/classe)
 ```
 
 ---
@@ -183,7 +189,7 @@ que 64 bits é promovido automaticamente a **inteiro de precisão arbitrária**
 
 ```ps
 x = 42
-gigante = 99999999999999999999999999999999999999   // ainda é int
+gigante = 99999999999999999999999999999999999999   # ainda é int
 ```
 
 ### 1.6.2. Ponto flutuante (`flo`)
@@ -225,10 +231,10 @@ Um escape desconhecido mantém o caractere e solta a barra. O valor de `\033`,
 
 ```ps
 post("linha1\nlinha2")
-post("\e[1mnegrito\e[0m")        // ANSI
-post(r"C:\temp\nome")            // raw: a \n fica literal
+post("\e[1mnegrito\e[0m")        # ANSI
+post(r"C:\temp\nome")            # raw: a \n fica literal
 nome = "mundo"
-post(f"olá, {nome}!")            // f-string
+post(f"olá, {nome}!")            # f-string
 ```
 
 ### 1.6.4. Booleanos e nulo
@@ -258,9 +264,9 @@ post(<2196F3>"azul")
 Sintaxe reconhecida no parser (detalhada na seção de tipos):
 
 ```ps
-lista = [1, 2, 3]                 // list
-mapa  = { "a": 1, "b": 2 }        // dict/json
-tupla = (1, 2, 3)                 // tup (imutável)
+lista = [1, 2, 3]                 # list
+mapa  = { "a": 1, "b": 2 }        # dict/json
+tupla = (1, 2, 3)                 # tup (imutável)
 ```
 
 ---

@@ -15,8 +15,8 @@ VM e comparando a saída.
 Há duas formas de introduzir uma variável:
 
 ```ps
-nome = "ana"          // atribuição simples (dinâmica)
-str nome = "ana"      // declaração com tipo (checada/coagida na criação)
+nome = "ana"          # atribuição simples (dinâmica)
+str nome = "ana"      # declaração com tipo (checada/coagida na criação)
 ```
 
 - **Simples** (`nome = valor`): o nome recebe o valor e passa a existir; o tipo
@@ -49,11 +49,11 @@ exatamente as regras de tipo do operador binário correspondente (seção 3).
 
 ```ps
 n = 10
-n += 5           // 15
+n += 5           # 15
 s = "a"
-s += "b"         // "ab"  (+ concatena str; ver 3.2.5)
+s += "b"         # "ab"  (+ concatena str; ver 3.2.5)
 l = [1]
-l += [2]         // [1, 2]
+l += [2]         # [1, 2]
 ```
 
 Funcionam também sobre índice, membro e chave de dict (4.3):
@@ -68,8 +68,8 @@ devolvem o valor **anterior** (pós-incremento):
 
 ```ps
 x = 5
-x++              // agora x é 6
-y = x++          // y = 6 (valor antes), x = 7
+x++              # agora x é 6
+y = x++          # y = 6 (valor antes), x = 7
 ```
 
 Não há forma **prefixa**: `++x` é erro de sintaxe.
@@ -82,13 +82,13 @@ O lado esquerdo pode ser um elemento, um membro ou uma chave:
 
 ```ps
 l = [1, 2, 3]
-l[0] = 99            // índice de lista
+l[0] = 99            # índice de lista
 
-obj.campo = 10       // membro de Entity (self.x dentro dela)
+obj.campo = 10       # membro de Entity (self.x dentro dela)
 
 d = { "nome": "ana" }
-d["idade"] = 30      // chave de dict por colchete
-d.cidade = "SP"      // chave de dict por atributo (equivalente; ver seção de dict)
+d["idade"] = 30      # chave de dict por colchete
+d.cidade = "SP"      # chave de dict por atributo (equivalente; ver seção de dict)
 ```
 
 Não há **atribuição por fatia**: `l[1:3] = [...]` é erro de sintaxe. Para
@@ -102,12 +102,12 @@ Vários alvos de uma vez, no estilo Python. O lado direito é distribuído pelos
 nomes à esquerda.
 
 ```ps
-a, b = 1, 2                 // a=1, b=2
-a, b = b, a                 // troca (swap) sem variável temporária
+a, b = 1, 2                 # a=1, b=2
+a, b = b, a                 # troca (swap) sem variável temporária
 
-primeiro, *resto = [10, 20, 30, 40]   // primeiro=10, resto=[20,30,40]
+primeiro, *resto = [10, 20, 30, 40]   # primeiro=10, resto=[20,30,40]
 
-(x, y), z = (1, 2), 3       // aninhado: x=1, y=2, z=3
+(x, y), z = (1, 2), 3       # aninhado: x=1, y=2, z=3
 ```
 
 - Um único alvo pode ter `*` (recebe uma lista com o que sobrar); só um `*` por
@@ -131,7 +131,7 @@ mais visível:
 if true {
     dentro = 5
 }
-post(dentro)        // NameError: name 'dentro' is not defined
+post(dentro)        # NameError: name 'dentro' is not defined
 ```
 
 O tropeço mais comum de quem vem do Python é criar a variável **nos dois ramos**
@@ -139,13 +139,13 @@ de um `if`/`else` e usá-la depois — na PoolScript isso é o mesmo erro. Decla
 o nome **antes** do bloco (aí a atribuição dentro dele é write-through, 4.6.2):
 
 ```ps
-novo = linha            // declarada FORA
+novo = linha            # declarada FORA
 if em_codigo {
     novo = troca(linha)
 } else {
     novo = ajusta(linha)
 }
-post(novo)              // ok
+post(novo)              # ok
 ```
 
 ### 4.6.2. Reatribuir uma variável de fora (write-through)
@@ -156,15 +156,15 @@ essa variável** (não cria uma nova):
 ```ps
 x = 1
 if true {
-    x = 2           // mesma x de fora
+    x = 2           # mesma x de fora
 }
-post(x)             // 2
+post(x)             # 2
 
 total = 0
 for each i in [1, 2, 3] {
-    total = total + i   // acumula na total externa
+    total = total + i   # acumula na total externa
 }
-post(total)             // 6
+post(total)             # 6
 ```
 
 Ou seja: **atribuir a um nome existente lá fora → atualiza; atribuir a um nome
@@ -179,7 +179,7 @@ não sobrevive para a próxima (a menos que exista fora do laço). A variável d
 ```ps
 for each i in [1, 2, 3] {
     if i > 1 {
-        post(prev)   // NameError na 2ª volta: name 'prev' is not defined
+        post(prev)   # NameError na 2ª volta: name 'prev' is not defined
     }
     prev = i
 }
@@ -187,7 +187,7 @@ for each i in [1, 2, 3] {
 for each i in [1, 2, 3] {
     ultimo = i
 }
-post(i)              // NameError: name 'i' is not defined (i não vaza do for)
+post(i)              # NameError: name 'i' is not defined (i não vaza do for)
 ```
 
 `break` e `continue` respeitam isso: ao sair (ou reiniciar), o que nasceu no
@@ -200,8 +200,8 @@ pode trocar o tipo à vontade. O `Tipo` na frente vale só no momento da criaç�
 
 ```ps
 str s = "oi"
-s = 42              // ok — agora s é o int 42
-post(type(s))       // int
+s = 42              # ok — agora s é o int 42
+post(type(s))       # int
 ```
 
 ### 4.6.5. Funções e o escopo de módulo
@@ -214,10 +214,10 @@ post(type(s))       // int
 
 ```ps
 action f() {
-    local = 5       // local à função
+    local = 5       # local à função
 }
 f()
-post(local)         // NameError: name 'local' is not defined
+post(local)         # NameError: name 'local' is not defined
 ```
 
 ---
@@ -238,7 +238,7 @@ action bump() {
 
 bump()
 bump()
-post(contador)      // 2
+post(contador)      # 2
 ```
 
 Sem o `global`, `contador = ...` dentro de `bump` criaria uma local e a de fora
@@ -258,11 +258,11 @@ Python: garante a liberação mesmo se o bloco estourar. Para um valor que não 
 um desses recursos, o `using` só executa o bloco (não há o que fechar).
 
 ```ps
-using conexao as db {        // db é fechada/comitada ao sair, mesmo com erro
-    // ... usa db aqui dentro ...
+using conexao as db {        # db é fechada/comitada ao sair, mesmo com erro
+    # ... usa db aqui dentro ...
     resultado = 42
 }
-post(resultado)             // resultado ainda existe aqui (ver nota abaixo)
+post(resultado)             # resultado ainda existe aqui (ver nota abaixo)
 ```
 
 > **`using` é a exceção ao escopo de bloco.** Diferente dos outros blocos, a

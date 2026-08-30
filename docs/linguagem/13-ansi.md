@@ -104,7 +104,7 @@ literal `<cor>` usa por baixo. Dá pra combinar códigos: `\e[1;38;2;255;0;0m` �
 negrito + vermelho vivo.
 
 ```ps
-// negrito + fundo azul + texto branco
+# negrito + fundo azul + texto branco
 post("\e[1;44;97m  título  \e[0m")
 ```
 

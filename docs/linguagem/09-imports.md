@@ -14,7 +14,7 @@ Verificado na VM.
 ```ps
 import mymod
 
-post(mymod.saudar("ana"))    // acesso por ponto
+post(mymod.saudar("ana"))    # acesso por ponto
 post(mymod.valor)
 ```
 
@@ -41,10 +41,10 @@ Traz **nomes soltos** do módulo direto pro escopo (sem o prefixo):
 from mymod import saudar, valor
 post(saudar("bia"), valor)
 
-from mymod import saudar as oi      // com apelido
+from mymod import saudar as oi      # com apelido
 post(oi("ze"))
 
-from mymod import Ponto             // funções, Entities, constantes — tudo que o módulo exporta
+from mymod import Ponto             # funções, Entities, constantes — tudo que o módulo exporta
 p = Ponto(1, 2)
 ```
 
@@ -52,10 +52,10 @@ Pedir um nome que o módulo não exporta é erro, e o **tipo depende de como voc
 pediu** — a mesma separação do Python:
 
 ```ps
-from json import naotem      // ImportError: cannot import name 'naotem' from 'json' (unknown location)
+from json import naotem      # ImportError: cannot import name 'naotem' from 'json' (unknown location)
 
 import json
-post(json.naotem)            // AttributeError: module 'json' has no attribute 'naotem'
+post(json.naotem)            # AttributeError: module 'json' has no attribute 'naotem'
 ```
 
 O `ImportError` cita o **arquivo** do módulo entre parênteses; módulo nativo,
@@ -75,10 +75,10 @@ não sugere, como no Python. Nome que existe mas é `private` sai como
   (liga só os nomes listados).
 
 ```ps
-PUSH mymod                 // == import mymod
+PUSH mymod                 # == import mymod
 post(mymod.valor)
 
-PUSH mymod GET valor       // == from mymod import valor
+PUSH mymod GET valor       # == from mymod import valor
 post(valor)
 ```
 
@@ -90,8 +90,8 @@ Prefixar o módulo com pontos importa **relativo à pasta do arquivo atual** (co
 no Python), sem passar pela stdlib:
 
 ```ps
-from .modulo import x        // mesma pasta
-from ..pacote.modulo import y   // um nível acima
+from .modulo import x        # mesma pasta
+from ..pacote.modulo import y   # um nível acima
 ```
 
 Cada `.` extra sobe um diretório. Um relativo não encontrado é `ImportError` —
@@ -133,7 +133,7 @@ um módulo traz as definições (actions, Entities, constantes) sem disparar o
 ponto de entrada:
 
 ```ps
-// mymod.ps
+# mymod.ps
 action saudar(nome) {
     return "ola " + nome
 }
@@ -141,8 +141,8 @@ if __name__ == "main" {
     post("só quando rodo o mymod direto")
 }
 
-// outro.ps
-import mymod                 // NÃO imprime a linha do guard
+# outro.ps
+import mymod                 # NÃO imprime a linha do guard
 post(mymod.saudar("ana"))
 ```
 

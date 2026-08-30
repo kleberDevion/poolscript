@@ -60,8 +60,7 @@ sem argumentos) — não imprime a ajuda.
 ## Comentários
 
 ```
-// comentário de linha
-# comentário de linha (alternativa)
+# comentário de linha  (o `//` virou divisão inteira — ver Operadores)
 
 """
 comentário de bloco,
@@ -154,7 +153,7 @@ leitura sabe onde parar:
 while true {
     linha = input()
     if linha == Null {
-        break          // acabou a entrada
+        break          # acabou a entrada
     }
     post("li:", linha)
 }

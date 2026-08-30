@@ -33,16 +33,17 @@ precedência e são resolvidos pela associatividade indicada.
 | 10 | Adição / subtração | `+` &nbsp; `-` | à esquerda |
 | 11 | Multiplicação / divisão / módulo | `*` &nbsp; `/` &nbsp; `%` | à esquerda |
 | 12 | Unários | `+` &nbsp; `-` &nbsp; `~` &nbsp; `await` | prefixa (à direita) |
-| 13 | Pós-fixados | chamada `()` &nbsp; membro `.x` &nbsp; índice/fatia `[…]` &nbsp; `++` `--` | à esquerda |
-| 14 | Primários | literais, nomes, `(…)`, `[…]`, `{…}` | — |
+| 13 | Potência | `**` | **à direita** |
+| 14 | Pós-fixados | chamada `()` &nbsp; membro `.x` &nbsp; índice/fatia `[…]` &nbsp; `++` `--` | à esquerda |
+| 15 | Primários | literais, nomes, `(…)`, `[…]`, `{…}` | — |
 
 Exemplos verificados:
 
 ```ps
-post(2 + 3 * 4)      // 14   — `*` (11) antes de `+` (10)
-post(1 | 2 & 3)      // 3    — `&` (8) antes de `|` (6): 1 | (2 & 3)
-post(1 + 2 << 3)     // 24   — `+` (10) antes de `<<` (9): (1 + 2) << 3
-post(not 1 == 1)     // False — `==` (5) antes de `not` (4): not (1 == 1)
+post(2 + 3 * 4)      # 14   — `*` (11) antes de `+` (10)
+post(1 | 2 & 3)      # 3    — `&` (8) antes de `|` (6): 1 | (2 & 3)
+post(1 + 2 << 3)     # 24   — `+` (10) antes de `<<` (9): (1 + 2) << 3
+post(not 1 == 1)     # False — `==` (5) antes de `not` (4): not (1 == 1)
 ```
 
 > **`not`/`!` é mais fraco que a comparação** (nível 4 < nível 5), como no
@@ -50,7 +51,7 @@ post(not 1 == 1)     // False — `==` (5) antes de `not` (4): not (1 == 1)
 > operando, use parênteses: `(not a) == b`.
 
 Use **parênteses** `(…)` sempre que quiser forçar uma ordem diferente da tabela
-— eles são o nível primário (14) e vencem tudo.
+— eles são o nível primário (15) e vencem tudo.
 
 ---
 
@@ -67,19 +68,20 @@ bits).
 | `-` | subtração | números |
 | `*` | multiplicação / repetição | números; **também** sequência*`int` (`list`, `tup`, `str`) |
 | `/` | divisão | números — **sempre** verdadeira (resultado `flo`) |
+| `//` | divisão inteira | números — quociente com **piso** (resultado `int` entre inteiros) |
 | `%` | módulo (resto) | números |
+| `**` | potência | números — associa à **direita** |
 
 ### 3.2.1. Divisão é sempre real
 
 `/` **nunca** trunca: o resultado é `flo`, mesmo quando divide exato.
 
 ```ps
-post(7 / 2)     // 3.5
-post(10 / 5)    // 2.0   — não é 2 (int); é flo
+post(7 / 2)     # 3.5
+post(10 / 5)    # 2.0   — não é 2 (int); é flo
 ```
 
-Não existe operador de **divisão inteira** (`//` do Python não existe aqui).
-Para o quociente inteiro, converta: `int(10 / 3)` → `3`.
+Para o quociente **inteiro** existe `//` — ver 3.2.3.
 
 ### 3.2.2. Módulo segue o sinal do divisor
 
@@ -87,15 +89,68 @@ Para o quociente inteiro, converta: `int(10 / 3)` → `3`.
 divisor**, não o do dividendo.
 
 ```ps
-post(-7 % 3)    // 2    (não -1)
-post(7 % -3)    // -2
+post(-7 % 3)    # 2    (não -1)
+post(7 % -3)    # -2
 ```
 
-### 3.2.3. Não há exponenciação
+### 3.2.3. `//` — divisão inteira
 
-A linguagem **não tem operador de potência** — `**` não existe (é erro de
-sintaxe) e **não há builtin `pow`**. Se precisar de potência, implemente com
-multiplicação/laço ou use a lib de matemática (quando aplicável).
+`//` devolve o quociente com **piso** (arredonda para baixo, não trunca para
+zero), como no Python. Entre inteiros o resultado é `int`; com qualquer `flo`
+envolvido é `flo`.
+
+```ps
+post(7 // 2)      # 3
+post(-7 // 2)     # -4    piso, não -3
+post(7 // -2)     # -4
+post(7.0 // 2)    # 3.0
+```
+
+**Por que ele existe.** `/` é sempre real, então o único jeito de tirar
+quociente inteiro era `int(a / b)` — que passa por `double` e perde precisão
+exatamente onde a linguagem não deveria perder, já que o `int` dela é de
+precisão arbitrária:
+
+```ps
+post(int(10000000000000001 / 1))   # 10000000000000000   ← perdeu 1
+post(10000000000000001 // 1)       # 10000000000000001   ← exato
+```
+
+`//` por zero levanta `ZeroDivisionError: integer division or modulo by zero`.
+
+> **`//` não é mais comentário.** Era comentário de linha até esta mudança. O
+> comentário de linha é `#`, que a linguagem sempre aceitou. Não dava pra ter
+> os dois: `x = a // b` teria que ser divisão num contexto e comentário no
+> outro, e nenhuma regra de desambiguação sobrevive a `a //b` contra `a  // b`.
+
+### 3.2.3b. `**` — potência
+
+```ps
+post(2 ** 10)        # 1024
+post(2 ** 0)         # 1
+post(2 ** -1)        # 0.5     expoente negativo cai pra flo
+post(2 ** 100)       # 1267650600228229401496703205376   (bignum)
+post(1.5 ** 2)       # 2.25
+```
+
+A precedência dele tem três regras, todas as do Python:
+
+```ps
+post(-2 ** 2)        # -4      liga mais FORTE que o unário à esquerda
+post(2 ** -1)        # 0.5     e mais FRACO à direita
+post(2 ** 3 ** 2)    # 512     associa à DIREITA: 2 ** (3 ** 2)
+```
+
+`0 ** -1` levanta `ZeroDivisionError: 0.0 cannot be raised to a negative power`.
+
+O builtin **`pow(base, expo)`** faz o mesmo, e tem um terceiro argumento que o
+operador não tem: `pow(base, expo, mod)` calcula `(base ** expo) % mod` **sem
+materializar a potência inteira** — o único jeito viável com expoente grande.
+
+```ps
+post(pow(2, 10))          # 1024
+post(pow(3, 200, 1000))   # 1
+```
 
 ### 3.2.4. Repetição de sequência
 
@@ -103,16 +158,16 @@ multiplicação/laço ou use a lib de matemática (quando aplicável).
 `tup` e `str`, igual ao Python:
 
 ```ps
-post([0] * 3)        // [0, 0, 0]
-post("ab" * 3)       // ababab
-post("-" * 40)       // uma régua de 40 traços
+post([0] * 3)        # [0, 0, 0]
+post("ab" * 3)       # ababab
+post("-" * 40)       # uma régua de 40 traços
 ```
 
 Multiplicar sequência por algo que não é `int` é erro, e a mensagem nomeia o
 lado errado:
 
 ```ps
-post("ab" * 1.5)     // TypeError: can't multiply sequence by non-int of type 'flo'
+post("ab" * 1.5)     # TypeError: can't multiply sequence by non-int of type 'flo'
 ```
 
 > Esta seção dizia que `str * int` **não** funciona e mandava usar a lib de
@@ -126,13 +181,13 @@ post("ab" * 1.5)     // TypeError: can't multiply sequence by non-int of type 'f
 Para montar texto com números, converta com `str()` (ou use uma f-string).
 
 ```ps
-post("a" + "b")          // "ab"
-post([1] + [2])          // [1, 2]
-post((1, 2) + (3, 4))    // (1, 2, 3, 4)
-post("a" + 1)            // TypeError: can only concatenate str (not "int") to str
-post(1 + "a")            // TypeError: unsupported operand type(s) for +: 'int' and 'str'
-post("n = " + str(5))    // "n = 5"   
-post(f"n = {5}")         // "n = 5"    (idiomático)
+post("a" + "b")          # "ab"
+post([1] + [2])          # [1, 2]
+post((1, 2) + (3, 4))    # (1, 2, 3, 4)
+post("a" + 1)            # TypeError: can only concatenate str (not "int") to str
+post(1 + "a")            # TypeError: unsupported operand type(s) for +: 'int' and 'str'
+post("n = " + str(5))    # "n = 5"   
+post(f"n = {5}")         # "n = 5"    (idiomático)
 ```
 
 O texto muda conforme quem está à **esquerda**: com sequência à esquerda o erro
@@ -153,7 +208,7 @@ exceptions):
 try {
     x = 1 / 0
 } catch (e) {
-    post("erro:", e)     // erro: division by zero (linha 3)
+    post("erro:", e)     # erro: division by zero (linha 3)
 }
 ```
 
@@ -189,7 +244,7 @@ Se você quer comparar **valor e tipo**, compare o tipo junto:
 
 ```ps
 if x == 0 and type(x) == "int" {
-    // só entra com int 0, não com 0.0 nem false
+    # só entra com int 0, não com 0.0 nem false
 }
 ```
 
@@ -202,11 +257,11 @@ if x == 0 and type(x) == "int" {
   não por identidade. Em dict a ordem das chaves não importa.
 
 ```ps
-post(1 == 1.0)                          // True
-post(1 == true)                         // True
-post([1, 2] == [1, 2])                  // True
-post({"a": 1, "b": 2} == {"b": 2, "a": 1})   // True
-post({"a": 1} == {"a": 2})              // False
+post(1 == 1.0)                          # True
+post(1 == true)                         # True
+post([1, 2] == [1, 2])                  # True
+post({"a": 1, "b": 2} == {"b": 2, "a": 1})   # True
+post({"a": 1} == {"a": 2})              # False
 ```
 
 Tipos diferentes que não sejam numéricos nunca são iguais: `5 == "5"` é `False`.
@@ -219,10 +274,10 @@ nem a string vazia — `null == 0` é `False`. Nas comparações de **ordem** (`
 magnitude, e devolver `False` calado escondia o erro.
 
 ```ps
-post(null == null)   // True
-post(null == 0)      // False
-post(null < 5)       // TypeError: '<' not supported between instances of 'Null' and 'int'
-post(null >= 0)      // TypeError: '>=' not supported between instances of 'Null' and 'int'
+post(null == null)   # True
+post(null == 0)      # False
+post(null < 5)       # TypeError: '<' not supported between instances of 'Null' and 'int'
+post(null >= 0)      # TypeError: '>=' not supported between instances of 'Null' and 'int'
 ```
 
 Para testar sem levantar, compare com `null` antes:
@@ -247,8 +302,8 @@ encadeamento matemático `(a < b) and (b < c)`; é a avaliação normal à esque
 bool com `c`.
 
 ```ps
-post(1 < 2 < 3)   // True   → (1<2)=True, True<3 → 1<3 → True  (coincidência)
-post(3 > 2 > 1)   // False  → (3>2)=True, True>1 → 1>1 → False
+post(1 < 2 < 3)   # True   → (1<2)=True, True<3 → 1<3 → True  (coincidência)
+post(3 > 2 > 1)   # False  → (3>2)=True, True>1 → 1>1 → False
 ```
 
 Para a intenção de "está no intervalo", escreva explicitamente:
@@ -277,9 +332,9 @@ action f() {
     return true
 }
 
-r1 = true or f()      // f() NÃO roda
-r2 = false and f()    // f() NÃO roda
-r3 = false or f()     // f() roda
+r1 = true or f()      # f() NÃO roda
+r2 = false and f()    # f() NÃO roda
+r3 = false or f()     # f() roda
 ```
 
 ### 3.4.2. Resultado é sempre `bool` (diferente do Python)
@@ -289,10 +344,10 @@ lógicos sempre devolvem um `bool`, resultado da avaliação de verdade dos
 operandos (ver *truthiness* na seção 2).
 
 ```ps
-post(0 or "x")       // True    (não "x")
-post("a" and "b")    // True    (não "b")
-post(1 and 0)        // False
-post(not 0)          // True
+post(0 or "x")       # True    (não "x")
+post("a" and "b")    # True    (não "b")
+post(1 and 0)        # False
+post(not 0)          # True
 ```
 
 > Consequência prática: o idioma "valor padrão" do Python
@@ -309,13 +364,13 @@ verificação de tipo**: `valor is Tipo` pergunta se `valor` é daquele tipo, e
 (`int`, `str`, `flo`, `bool`, `list`, `dict`, `tup`, `json`).
 
 ```ps
-post(5 is int)        // True
-post("x" is str)      // True
-post(5 is str)        // False
-post(3.0 is flo)      // True
+post(5 is int)        # True
+post("x" is str)      # True
+post(5 is str)        # False
+post(3.0 is flo)      # True
 x = [1, 2]
-post(x is list)       // True
-post(x is not dict)   // True
+post(x is list)       # True
+post(x is not dict)   # True
 ```
 
 `json` e `dict` são o mesmo tipo, então `d is json` e `d is dict` coincidem
@@ -332,11 +387,11 @@ post(x is not dict)   // True
 - **dict / json:** se `x` é uma **chave** (comparada por tipo exato).
 
 ```ps
-post(2 in [1, 2, 3])        // True
-post("ab" in "xabz")        // True    (substring)
-post("k" in {"k": 1})       // True    (chave)
-post(5 in {"5": 1})         // False   (a chave é o texto "5", não o int 5)
-post(9 not in [1, 2, 3])    // True
+post(2 in [1, 2, 3])        # True
+post("ab" in "xabz")        # True    (substring)
+post("k" in {"k": 1})       # True    (chave)
+post(5 in {"5": 1})         # False   (a chave é o texto "5", não o int 5)
+post(9 not in [1, 2, 3])    # True
 ```
 
 ---
@@ -349,12 +404,12 @@ sendo 0/1) — o operando precisa ser `int` de verdade; `flo`/`str` também são
 erro. Deslocamento por valor negativo é erro.
 
 ```ps
-post(5 & 3)     // 1
-post(5 | 2)     // 7
-post(5 ^ 1)     // 4
-post(1 << 4)    // 16
-post(~5)        // -6      (~x == -x-1)
-post(true & 1)  // ERRO — bitwise só entre int
+post(5 & 3)     # 1
+post(5 | 2)     # 7
+post(5 ^ 1)     # 4
+post(1 << 4)    # 16
+post(~5)        # -6      (~x == -x-1)
+post(true & 1)  # ERRO — bitwise só entre int
 ```
 
 Precedência entre eles (do mais forte pro mais fraco): `<<`/`>>` (9), `&` (8),
@@ -376,9 +431,9 @@ Prefixos, nível 12:
 | `await` | aguarda uma corotina (ver seção de assíncrono) |
 
 ```ps
-post(-5)    // -5
-post(+5)    // 5
-post(~0)    // -1
+post(-5)    # -5
+post(+5)    # 5
+post(~0)    # -1
 ```
 
 ---
@@ -393,7 +448,7 @@ encadear:
 sinal = "positivo" if n > 0 else "não-positivo"
 
 faixa = "alto" if n > 100 else "médio" if n > 10 else "baixo"
-// lê-se: "alto" if n>100 else ("médio" if n>10 else "baixo")
+# lê-se: "alto" if n>100 else ("médio" if n>10 else "baixo")
 ```
 
 O ramo não escolhido **não** é avaliado (curto-circuito, como o `and`/`or`).
@@ -411,8 +466,8 @@ significados diferentes:
   elementos são daquele tipo.
 
 ```ps
-post(int(2) count in [2, 2, 3, 2])   // 3   (quantas vezes o valor 2 aparece)
-post(int in [2, 2, 3, 2] count)      // 4   (quantos elementos são int)
+post(int(2) count in [2, 2, 3, 2])   # 3   (quantas vezes o valor 2 aparece)
+post(int in [2, 2, 3, 2] count)      # 4   (quantos elementos são int)
 ```
 
 ---

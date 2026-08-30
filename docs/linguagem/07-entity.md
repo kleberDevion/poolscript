@@ -25,7 +25,7 @@ Entity Usuario() {
 - **`class` e `Class` são sinônimos de `Entity`** — mesma semântica.
 
 ```ps
-class Ponto() {          // idêntico a Entity Ponto()
+class Ponto() {          # idêntico a Entity Ponto()
     x: int
     y: int
 }
@@ -46,7 +46,7 @@ Entity Usuario() {
 }
 
 u = Usuario("ana", 30)
-post(u.nome, u.idade)      // ana 30
+post(u.nome, u.idade)      # ana 30
 ```
 
 - **Valor padrão** num campo torna o argumento opcional:
@@ -57,8 +57,8 @@ post(u.nome, u.idade)      // ana 30
       porta: int = 8080
   }
 
-  c = Config()              // usa os padrões
-  post(c.host, c.porta)     // localhost 8080
+  c = Config()              # usa os padrões
+  post(c.host, c.porta)     # localhost 8080
   ```
 
 - **Campos dinâmicos:** um método pode criar um campo não declarado com
@@ -87,7 +87,7 @@ Entity Retangulo() {
 }
 
 r = Retangulo(3, 4)
-post(r.area)              // 12
+post(r.area)              # 12
 ```
 
 ---
@@ -110,7 +110,7 @@ Entity Contador() {
 }
 
 c = Contador(0)
-post(c.inc(), c.inc())   // 1 2
+post(c.inc(), c.inc())   # 1 2
 ```
 
 Dentro de um método, `self.campo` acessa/atribui campos e `self.outro(...)`
@@ -131,7 +131,7 @@ Entity Mat() {
     }
 }
 
-post(Mat.soma(2, 3))     // 5
+post(Mat.soma(2, 3))     # 5
 ```
 
 Chamar um `@static` por uma instância (`m.soma(...)`) é erro — ele pertence ao
@@ -156,15 +156,15 @@ Entity Animal() {
 
 Entity Cao(Animal) {
     action fala(self) {
-        return "au"      // sobrescreve
+        return "au"      # sobrescreve
     }
 }
 
 c = Cao("rex")
-post(c.nome, c.fala())   // rex au
+post(c.nome, c.fala())   # rex au
 
-// herança múltipla:
-Entity C(A, B) {          // herda métodos de A e de B
+# herança múltipla:
+Entity C(A, B) {          # herda métodos de A e de B
     x: int
 }
 ```
@@ -191,13 +191,13 @@ Entity A() {
 
 Entity B(A) {
     action __init__(self, x, y) {
-        base(x)          // roda o __init__ de A
+        base(x)          # roda o __init__ de A
         self.y = y
     }
 }
 
 b = B(1, 2)
-post(b.x, b.y)           // 1 2
+post(b.x, b.y)           # 1 2
 ```
 
 `base` serve para o **construtor** do pai; não é a forma de chamar um método
@@ -223,8 +223,8 @@ Entity Conta() {
 }
 
 c = Conta(100)
-post(c.ver())            // 100  (acessa saldo de dentro)
-post(c.saldo)            // ERRO — saldo é private
+post(c.ver())            # 100  (acessa saldo de dentro)
+post(c.saldo)            # ERRO — saldo é private
 ```
 
 `public` é o padrão (tudo é público se não disser nada); a palavra existe para

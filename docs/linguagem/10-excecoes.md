@@ -79,9 +79,9 @@ O `catch` tem quatro formas, do mais específico ao mais geral:
 ```ps
 try {
     risco()
-} catch (KeyError e) {        // só KeyError
+} catch (KeyError e) {        # só KeyError
     post("faltou uma chave:", e)
-} catch (e) {                 // qualquer outro
+} catch (e) {                 # qualquer outro
     post("outro erro:", e)
 }
 ```

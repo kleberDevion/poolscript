@@ -32,9 +32,9 @@ if nota >= 7 {
 - A palavra é **`elif`** — não existe `else if` (é erro de sintaxe).
 
 ```ps
-if 5       { post("entra") }      // int não-zero é verdadeiro
-if []      { post("não entra") }  // lista vazia é falsa
-if "texto" { post("entra") }      // string não-vazia é verdadeira
+if 5       { post("entra") }      # int não-zero é verdadeiro
+if []      { post("não entra") }  # lista vazia é falsa
+if "texto" { post("entra") }      # string não-vazia é verdadeira
 ```
 
 Para escolher um **valor** (em vez de statements), use a expressão condicional
@@ -71,7 +71,7 @@ for each x in [10, 20, 30] {
     post(x)
 }
 
-for each ch in "abc" {       // string: um caractere por vez
+for each ch in "abc" {       # string: um caractere por vez
     post(ch)
 }
 ```
@@ -107,13 +107,13 @@ do Python; o fim é **exclusivo**):
 | `range(início, fim, passo)` | de `passo` em `passo`; `passo` negativo conta pra trás |
 
 ```ps
-for each i in range(3) {          // 0 1 2
+for each i in range(3) {          # 0 1 2
     post(i)
 }
-for each i in range(2, 5) {       // 2 3 4
+for each i in range(2, 5) {       # 2 3 4
     post(i)
 }
-for each i in range(10, 0, -2) {  // 10 8 6 4 2
+for each i in range(10, 0, -2) {  # 10 8 6 4 2
     post(i)
 }
 ```
@@ -126,7 +126,7 @@ Montar uma lista a partir de outra sem escrever o laço:
 
 ```ps
 nums = [1, 2, 3, 4]
-post([n * 2 for each n in nums])        // [2, 4, 6, 8]
+post([n * 2 for each n in nums])        # [2, 4, 6, 8]
 ```
 
 A forma é a do Python, escrita com o `for each` da linguagem:
@@ -139,22 +139,22 @@ A forma é a do Python, escrita com o `for each` da linguagem:
 Com filtro, só entra na lista o elemento cuja condição é verdadeira:
 
 ```ps
-post([x for each x in [1, 2, 3, 4] if x % 2 == 0])   // [2, 4]
+post([x for each x in [1, 2, 3, 4] if x % 2 == 0])   # [2, 4]
 ```
 
 Vale sobre qualquer coisa que o `for each` aceita — lista, tupla, string e
 `range`:
 
 ```ps
-post([c.upper() for each c in "abc"])   // ['A', 'B', 'C']
-post([i * i for each i in range(5)])    // [0, 1, 4, 9, 16]
+post([c.upper() for each c in "abc"])   # ['A', 'B', 'C']
+post([i * i for each i in range(5)])    # [0, 1, 4, 9, 16]
 ```
 
 E pode aninhar:
 
 ```ps
 post([[y for each y in range(2)] for each z in range(3)])
-// [[0, 1], [0, 1], [0, 1]]
+# [[0, 1], [0, 1], [0, 1]]
 ```
 
 A variável da compreensão **sombreia**, como a do `for each`: uma de mesmo
@@ -162,16 +162,16 @@ nome que exista fora continua valendo depois (seção 4.6.3).
 
 ```ps
 n = "de fora"
-post([n for each n in [1, 2]], n)       // [1, 2] de fora
+post([n for each n in [1, 2]], n)       # [1, 2] de fora
 ```
 
 Como **argumento único** de uma chamada, os colchetes são dispensáveis — é a
 forma curta do Python, e vale em qualquer função:
 
 ```ps
-post(n * 2 for each n in nums)          // [2, 4, 6, 8]
-post(sum(v for each v in nums))         // 10
-post(max(v for each v in nums))         // 4
+post(n * 2 for each n in nums)          # [2, 4, 6, 8]
+post(sum(v for each v in nums))         # 10
+post(max(v for each v in nums))         # 4
 ```
 
 Com mais de um argumento fica ambíguo (não dá pra saber se a compreensão é um
@@ -179,8 +179,8 @@ argumento ou se falta um `)`), então aí os colchetes voltam a ser obrigatório
 — e o erro diz isso:
 
 ```ps
-post("a", n for each n in [1])      // SyntaxError: compreensao so vale como argumento unico — ponha entre colchetes: [x for each ...]
-post("a", [n for each n in [1]])    // a [1]
+post("a", n for each n in [1])      # SyntaxError: compreensao so vale como argumento unico — ponha entre colchetes: [x for each ...]
+post("a", [n for each n in [1]])    # a [1]
 ```
 
 Só existe a de **lista**: não há compreensão de dict nem de conjunto.
@@ -200,12 +200,12 @@ compilação (`'break' fora de laco`).
 ```ps
 for each n in range(100) {
     if n == 5 {
-        break            // para no 5
+        break            # para no 5
     }
     if n % 2 == 0 {
-        continue         // pula os pares
+        continue         # pula os pares
     }
-    post(n)              // 1 3
+    post(n)              # 1 3
 }
 ```
 
@@ -219,11 +219,11 @@ Não gera bytecode nenhum.
 
 ```ps
 action ainda_nao() {
-    pass                 // corpo vazio, sem erro
+    pass                 # corpo vazio, sem erro
 }
 
 if x < 0 {
-    pass                 // esse caso é ignorado de propósito
+    pass                 # esse caso é ignorado de propósito
 } else {
     post("positivo")
 }
@@ -315,9 +315,9 @@ dentro do container, e já entrega a contagem total. Dentro do bloco:
 count each int in [10, "x", 20, 30] {
     post("achei", _match, "na posição", _index, "de", _count)
 }
-// achei 10 na posição 0 de 3
-// achei 20 na posição 2 de 3
-// achei 30 na posição 3 de 3
+# achei 10 na posição 0 de 3
+# achei 20 na posição 2 de 3
+# achei 30 na posição 3 de 3
 ```
 
 Os elementos que não são do tipo (o `"x"` acima) são pulados. `self`, `_count`,

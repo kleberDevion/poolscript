@@ -137,14 +137,14 @@ do `listen`, então dá pra testar sem thread):
 import sockets
 srv = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)
 srv.setsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 1)
-srv.bind(("127.0.0.1", 0))          // porta 0 = o sistema escolhe
+srv.bind(("127.0.0.1", 0))          # porta 0 = o sistema escolhe
 srv.listen(4)
 porta = srv.getsockname()[1]
 
 cli = sockets.socket()
 cli.settimeout(5)
 cli.connect(("127.0.0.1", porta))
-par = srv.accept()                  // (conexao, endereco)
+par = srv.accept()                  # (conexao, endereco)
 conn = par[0]
 
 cli.sendall("ola servidor")
@@ -169,7 +169,7 @@ porta = u1.getsockname()[1]
 
 u2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
 post(u2.sendto("datagrama", ("127.0.0.1", porta)))
-r = u1.recvfrom(64)                 // (bytes, endereco)
+r = u1.recvfrom(64)                 # (bytes, endereco)
 post(str(r[0].decode()), r[1][0])
 u1.close(); u2.close()
 ```
@@ -187,7 +187,7 @@ u = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
 u.bind(("127.0.0.1", 0))
 u.settimeout(0.2)
 try {
-    u.recv(16)                      // ninguém manda nada -> estoura o prazo
+    u.recv(16)                      # ninguém manda nada -> estoura o prazo
 } catch (e) {
     post("timed out" in str(e))
 }
@@ -206,6 +206,6 @@ import sockets
 s = sockets.create_connection(("example.com", 80), 10)
 s.sendall("GET / HTTP/1.0\r\nHost: example.com\r\n\r\n")
 resposta = s.recv(4096)
-post(str(resposta.decode())[0:15])   // "HTTP/1.0 200 OK"
+post(str(resposta.decode())[0:15])   # "HTTP/1.0 200 OK"
 s.close()
 ```

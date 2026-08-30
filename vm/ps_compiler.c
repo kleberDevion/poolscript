@@ -383,6 +383,8 @@ static int32_t op_binario(const char *s)
     if (!strcmp(s, "*"))  return OP_MUL;
     if (!strcmp(s, "/"))  return OP_DIV;
     if (!strcmp(s, "%"))  return OP_MOD;
+    if (!strcmp(s, "**")) return OP_POW;
+    if (!strcmp(s, "//")) return OP_FLOORDIV;
     if (!strcmp(s, "<"))  return OP_LT;
     if (!strcmp(s, ">"))  return OP_GT;
     if (!strcmp(s, "<=")) return OP_LE;

@@ -54,6 +54,10 @@ static const char *CORES[] = {
 /* mais longos primeiro — a ordem decide `<=` vs `<` */
 static const char *MULTI_OPS[] = {
     "===", "!==", "==", "!=", "<=", ">=", "&&", "||", "<<", ">>",
+    /* `**` ANTES de `*=` e de `*`: mais longo primeiro, senao `2 ** 3` seria
+     * lido como `2 * (*3)`. Potencia — I11. E `//` (divisao inteira), que
+     * ate hoje era comentario de linha. */
+    "**", "//",
     "+=", "-=", "*=", "/=", "%=", "++", "--", NULL
 };
 
@@ -239,7 +243,8 @@ static void trata_newline(Lexer *lx)
 
     /* linha vazia ou só comentário não mexe na pilha */
     if (lx->pos >= lx->len || lx->src[lx->pos] == '\n' || lx->src[lx->pos] == '\r') return;
-    if (lx->src[lx->pos] == '/' && espia(lx, 1) == '/') return;
+    /* `//` NAO e mais comentario — virou divisao inteira (I11). O comentario
+     * de linha e `#`, e so. */
     if (lx->src[lx->pos] == '#') return;
 
     /* Dentro de `{ }` a indentação é cosmética: nada de exigir múltiplo de 4
@@ -745,7 +750,13 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
         if (c == '\r') { lx.pos++; continue; }
         if (c == ' ' || c == '\t') { lx.pos++; lx.col++; continue; }
 
-        if (c == '/' && espia(&lx, 1) == '/') { pula_comentario_linha(&lx); continue; }
+        /* `//` era COMENTARIO DE LINHA e agora e o operador de divisao
+         * inteira (I11). Nao da pra ter os dois: `a // b` teria que ser
+         * divisao num contexto e comentario no outro, e nenhuma regra de
+         * desambiguacao sobrevive a `x = a //b` contra `x = a  // b`.
+         *
+         * O comentario de linha continua sendo `#`, que a linguagem sempre
+         * aceitou e que a maior parte do repositorio ja usava. */
         if (c == '#') { pula_comentario_linha(&lx); continue; }
 
         if (c == '"' && espia(&lx, 1) == '"' && espia(&lx, 2) == '"') {

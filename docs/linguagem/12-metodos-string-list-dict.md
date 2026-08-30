@@ -27,11 +27,11 @@ A tabela de caixa cobre **ASCII, Latin-1/Ext-A, grego e cirílico**, com os dois
 casos que não são 1-pra-1:
 
 ```ps
-post("ΣΟΦΟΣ".lower())   // σοφος  — Σ no fim de palavra vira ς, não σ
-post("ß".upper())       // SS     — ß não tem maiúscula de um caractere só
-post("ß".title())       // Ss     — só a inicial sobe
-post("Привет".upper())  // ПРИВЕТ
-post("İ".lower())       // i      — o I turco com pingo
+post("ΣΟΦΟΣ".lower())   # σοφος  — Σ no fim de palavra vira ς, não σ
+post("ß".upper())       # SS     — ß não tem maiúscula de um caractere só
+post("ß".title())       # Ss     — só a inicial sobe
+post("Привет".upper())  # ПРИВЕТ
+post("İ".lower())       # i      — o I turco com pingo
 ```
 
 ### Bordas e preenchimento
@@ -54,8 +54,8 @@ post("İ".lower())       // i      — o I turco com pingo
 | `startswith(pre)` / `endswith(suf)` | começa / termina com? (`bool`); `pre`/`suf` pode ser **uma** `str` ou uma **tupla/lista de opções** (basta uma bater) |
 
 ```ps
-post("relatorio.pdf".endswith((".pdf", ".doc")))   // True
-post("olá".startswith(("x", "o")))                 // True
+post("relatorio.pdf".endswith((".pdf", ".doc")))   # True
+post("olá".startswith(("x", "o")))                 # True
 ```
 
 > Não existem os argumentos `start`/`end`. Para testar só um trecho, **fatie
@@ -76,9 +76,9 @@ Os três de número **não** são sinônimos, e nenhum deles para no ASCII:
 | `isnumeric()` | os anteriores **mais** fração e numeral romano: `½`, `¾`, `Ⅷ` |
 
 ```ps
-post("²".isdigit(), "²".isdecimal())     // True False
-post("½".isnumeric(), "½".isdigit())     // True False
-post("٣".isdecimal())                    // True
+post("²".isdigit(), "²".isdecimal())     # True False
+post("½".isnumeric(), "½".isdigit())     # True False
+post("٣".isdecimal())                    # True
 ```
 
 **String vazia:** `isascii()` e `isprintable()` dão **True** (não há caractere
@@ -133,10 +133,10 @@ pra `str`. Encodings aceitos (o nome ignora caixa, `-`, `_` e espaço):
 `ignore` (some) ou `replace` (`?` no encode, `\ufffd` no decode).
 
 ```ps
-post("café".encode("latin-1"))            // b'caf\xe9'
-post("café".encode())                     // b'caf\xc3\xa9'
-post("café".encode("ascii", "replace"))   // b'caf?'
-post("café".encode("latin-1").decode("latin-1"))   // café
+post("café".encode("latin-1"))            # b'caf\xe9'
+post("café".encode())                     # b'caf\xc3\xa9'
+post("café".encode("ascii", "replace"))   # b'caf?'
+post("café".encode("latin-1").decode("latin-1"))   # café
 ```
 
 Erro é erro, não silêncio: encoding desconhecido, caractere que não cabe no
@@ -147,7 +147,7 @@ import bytes
 try {
     post(bytes.new([255, 254]).decode())
 } catch(e) {
-    post(e)     // decode(): byte 0xFF invalido em utf-8 na posicao 0
+    post(e)     # decode(): byte 0xFF invalido em utf-8 na posicao 0
 }
 ```
 
@@ -175,14 +175,14 @@ A maioria **altera a própria lista** (in-place) e devolve `null` — não encad
 
 ```ps
 l = [3, 1, 2]
-l.append(4)          // l == [3, 1, 2, 4]
-l.sort()             // l == [1, 2, 3, 4]
-post(l.pop())        // 4   (e l == [1, 2, 3])
-post(l.index(2))     // 1
+l.append(4)          # l == [3, 1, 2, 4]
+l.sort()             # l == [1, 2, 3, 4]
+post(l.pop())        # 4   (e l == [1, 2, 3])
+post(l.index(2))     # 1
 
 l2 = [1, 2, 3, 2]
-post(l2.index(2))       // 1   — a primeira
-post(l2.index(2, 2))    // 3   — a primeira a partir da posição 2
+post(l2.index(2))       # 1   — a primeira
+post(l2.index(2, 2))    # 3   — a primeira a partir da posição 2
 ```
 
 > Cópia é **rasa**: `l.copy()` cria uma lista nova, mas os itens são
@@ -208,9 +208,9 @@ post(l2.index(2, 2))    // 3   — a primeira a partir da posição 2
 
 ```ps
 d = { "nome": "ana", "idade": 30 }
-post(d.get("nome"))          // ana
-post(d.get("cidade", "?"))   // ?    (default; não dá erro)
-post(d.has("idade"))         // True
+post(d.get("nome"))          # ana
+post(d.get("cidade", "?"))   # ?    (default; não dá erro)
+post(d.has("idade"))         # True
 for each k in d.keys() {
     post(k, d[k])
 }
@@ -224,12 +224,12 @@ valor ali dá `false` sempre, seja ele str, int, flo, list ou tup:
 ```ps
 d = { "nome": "ana", "idade": 30, "tags": [1, 2] }
 
-post("nome" in d)            // True   (é chave)
-post("ana" in d)             // False  (é VALOR — `in` não olha valor)
+post("nome" in d)            # True   (é chave)
+post("ana" in d)             # False  (é VALOR — `in` não olha valor)
 
-post("ana" in d.value())     // True
-post(30 in d.value())        // True
-post([1, 2] in d.value())    // True
+post("ana" in d.value())     # True
+post(30 in d.value())        # True
+post([1, 2] in d.value())    # True
 ```
 
 `value()` e `values()` devolvem a mesma lista; o nome curto existe justamente
@@ -242,8 +242,8 @@ Além dos métodos, uma chave é lida/escrita por colchete **ou por atributo**
 
 ```ps
 d = { "nome": "ana" }
-post(d["nome"], d.nome)      // ana ana
-d.idade = 30                 // == d["idade"] = 30
+post(d["nome"], d.nome)      # ana ana
+d.idade = 30                 # == d["idade"] = 30
 ```
 
 Uma chave inexistente por `[]`/`.chave` dá `KeyError`; para um acesso que não

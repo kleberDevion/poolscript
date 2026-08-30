@@ -42,7 +42,7 @@ reaction SearchInbox(self, data) {
 
                 mouse.execute("SELECT COUNT(*) as total FROM emails")
                 total = mouse.fetchone()["total"]
-                total_pages = int((total + per_page - 1) / per_page)   // arredonda pra cima
+                total_pages = int((total + per_page - 1) / per_page)   # arredonda pra cima
 
                 return jinker.jsonify({
                     "status_code": 200,

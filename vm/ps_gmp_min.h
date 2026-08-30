@@ -46,6 +46,10 @@ extern int    __gmpz_fits_slong_p(mpz_srcptr);
 extern long   __gmpz_get_si(mpz_srcptr);
 extern void   __gmpz_neg(mpz_ptr, mpz_srcptr);
 extern void   __gmpz_pow_ui(mpz_ptr, mpz_srcptr, unsigned long);
+/* potencia modular: `pow(b, e, m)` do I11. Sem ela o unico jeito seria
+ * materializar `b ** e` inteiro antes do resto — inviavel com expoente
+ * grande, que e justamente o caso de uso (cripto). */
+extern void   __gmpz_powm(mpz_ptr, mpz_srcptr, mpz_srcptr, mpz_srcptr);
 extern size_t __gmpz_sizeinbase(mpz_srcptr, int);
 /* bitwise e deslocamento — o `|`, `^`, `&`, `<<` e `>>` da linguagem passam
  * por aqui quando um dos lados não cabe no int64 (ou quando o `<<` estouraria) */
@@ -77,6 +81,7 @@ extern unsigned long __gmpz_get_ui(mpz_srcptr);
 #define mpz_get_si       __gmpz_get_si
 #define mpz_neg          __gmpz_neg
 #define mpz_pow_ui       __gmpz_pow_ui
+#define mpz_powm         __gmpz_powm
 #define mpz_sizeinbase   __gmpz_sizeinbase
 #define mpz_ior          __gmpz_ior
 #define mpz_xor          __gmpz_xor

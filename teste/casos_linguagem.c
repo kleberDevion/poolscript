@@ -98,6 +98,42 @@ const Caso CASOS_LINGUAGEM[] = {
 { "regex.fullmatch é o match",
   "import regex\npost(regex.fullmatch(\"\\\\d+\", \"123\"), regex.fullmatch(\"\\\\d+\", \"a123\"))\n",
   "True False", NULL, 0 },
+/* ── I11: `//`, `**` e `pow()` ───────────────────────────────────────────────
+ * A linguagem tinha `/` sempre real e nada pra quociente inteiro nem pra
+ * potencia. Num idioma com int de precisao arbitraria isso perdia precisao
+ * calado na unica divisao que existia. */
+{ "// e divisao inteira com piso, nao truncamento",
+  "post(7 // 2, -7 // 2, 7 // -2, -7 // -2)\n", "3 -4 -4 3", NULL, 0 },
+{ "// entre inteiros da int; com flo da flo",
+  "post(7 // 2, 7.0 // 2, 7 // 2.0)\n", "3 3.0 3.0", NULL, 0 },
+{ "// nao perde precisao onde int(a / b) perdia",
+  /* o caso que motivou o item: `/` passa por double */
+  "post(int(10000000000000001 / 1))\n"
+  "post(10000000000000001 // 1)\n",
+  "10000000000000000\n10000000000000001", NULL, 0 },
+{ "// por zero levanta",
+  "post(7 // 0)\n", NULL, "integer division or modulo by zero", -1 },
+{ "// deixou de ser comentario",
+  /* era comentario de linha ate esta mudanca; hoje o comentario e `#` */
+  "x = 10 // 3\npost(x)\n", "3", NULL, 0 },
+{ "** com as tres regras de precedencia do Python",
+  "post(-2 ** 2)\n"      /* mais forte que o unario a ESQUERDA  */
+  "post(2 ** -1)\n"      /* mais fraco a DIREITA                */
+  "post(2 ** 3 ** 2)\n", /* associa a DIREITA                   */
+  "-4\n0.5\n512", NULL, 0 },
+{ "** promove a bignum",
+  "post(2 ** 100)\n", "1267650600228229401496703205376", NULL, 0 },
+{ "0 ** negativo levanta",
+  "post(0 ** -1)\n", NULL, "cannot be raised to a negative power", -1 },
+{ "pow() de 2 e de 3 argumentos",
+  /* o 3o argumento e o que o operador nao tem: potencia modular, sem
+   * materializar a potencia inteira */
+  "post(pow(2, 10), pow(2, -1), pow(2.0, 3))\n"
+  "post(pow(3, 200, 1000), pow(7, 128, 13))\n",
+  "1024 0.5 8.0\n1 3", NULL, 0 },
+{ "pow() com 3 argumentos exige inteiros",
+  "post(pow(2.0, 3, 5))\n", NULL, "3rd argument not allowed", -1 },
+
 { "regex.compile de padrão inválido erra cedo",
   /* ValueError, nao TypeError: o argumento E uma str (o tipo esta certo) — o
    * que nao serve e o VALOR dela. O CPython usa `re.error`, que a linguagem

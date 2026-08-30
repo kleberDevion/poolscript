@@ -314,6 +314,7 @@ static int eh_tipo_kw_expr(PSToken *t)
 static PSNode *expressao(P *p);
 static PSNode *e_ou(P *p);
 static PSNode *unario(P *p);
+static PSNode *potencia(P *p);
 static PSNode *primario(P *p);
 static PSNode *soma(P *p);
 static int count_tipo_valor(P *p, const char **tipo, PSNode **valor);
@@ -910,7 +911,35 @@ static PSNode *unario(P *p)
         n->a = operando;
         return n;
     }
-    return posfixo(p);
+    return potencia(p);
+}
+
+/* `**` — I11. A precedencia dele nao cabe na cadeia normal, e a regra e a do
+ * Python:
+ *
+ *   - liga mais FORTE que o unario a ESQUERDA:  -2 ** 2  ==  -(2 ** 2)  == -4
+ *   - liga mais FRACO que o unario a DIREITA:    2 ** -1  ==  2 ** (-1)
+ *   - e associa a DIREITA:                    2 ** 3 ** 2 == 2 ** (3 ** 2)
+ *
+ * Por isso ele fica ENTRE o unario e o posfixo, e o operando da direita volta
+ * pelo `unario`: e isso que produz os tres comportamentos de uma vez.
+ */
+static PSNode *potencia(P *p)
+{
+    PSNode *base = posfixo(p);
+    if (FALHOU(p)) return NULL;
+    PSToken *t = atual(p);
+    if (t->type == T_OP && t->texto && strcmp(t->texto, "**") == 0) {
+        p->pos++;
+        PSNode *expo = unario(p);          /* direita: pega o unario junto */
+        if (FALHOU(p)) return NULL;
+        PSNode *n = ps_node_novo(p->arena, N_BINARY_OP, t->line, t->col);
+        if (!n) return NULL;
+        n->texto = dup_tok(p, t);
+        n->a = base; n->b = expo;
+        return n;
+    }
+    return base;
 }
 
 /* ── cadeia binária, do mais forte pro mais fraco ───────────────────────── */
@@ -944,7 +973,10 @@ static int op_eh(PSToken *t, const char *s)
     return t->type == T_OP && t->texto && strcmp(t->texto, s) == 0;
 }
 
-NIVEL_BIN(mul,    unario, op_eh(t, "*") || op_eh(t, "/") || op_eh(t, "%"))
+/* `//` (divisao inteira) tem a MESMA precedencia de `/` e `%`, como no
+ * Python — I11. */
+NIVEL_BIN(mul,    unario, op_eh(t, "*") || op_eh(t, "/") || op_eh(t, "%")
+                       || op_eh(t, "//"))
 NIVEL_BIN(soma,   mul,    op_eh(t, "+") || op_eh(t, "-"))
 NIVEL_BIN(shift,  soma,   op_eh(t, "<<") || op_eh(t, ">>"))
 NIVEL_BIN(bitand_, shift, op_eh(t, "&"))
