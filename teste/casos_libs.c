@@ -520,16 +520,16 @@ const Caso CASOS_LIBS[] = {
   "import naoexiste_zz_kd\n",
   NULL, "No module named 'naoexiste_zz_kd'", -1 },
 
-/* I19: os apelidos sairam. Canonicos: request, qrcode, manpu, psodbc, sqlite3. */
-{ "apelido removido diz qual usar no lugar",
-  "import db\n", NULL, "O apelido saiu; use 'psodbc'", -1 },
+/* I19: os apelidos sairam. Canonicos: request, qrcode, manpu, psodbc, sqlite3.
+ * Modulo que nao existe responde como qualquer outro que nao existe — nao ha
+ * caso especial pra apelido morto. */
 { "os cinco apelidos sairam",
   "import os\n"
   "import sys\n"
   "n = 0\n"
   "for each m in [\"db\", \"qr\", \"mp\", \"requests\", \"sqlite\"] {\n"
   "    r = os.run([sys.executable, \"-e\", \"import \" + m], true)\n"
-  "    if \"O apelido saiu\" in r { n = n + 1 }\n"
+  "    if \"No module named\" in r { n = n + 1 }\n"
   "}\n"
   "post(n)\n", "5", NULL, 0 },
 { "os cinco canonicos continuam",

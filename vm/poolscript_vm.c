@@ -22535,26 +22535,6 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
          * `except ImportError` continua pegando. Aqui não há hierarquia — o
          * catch compara o nome — e adotar o nome novo quebraria em silêncio
          * todo `catch (ImportError e)` que hoje pega módulo ausente. */
-        /* I19: os cinco apelidos removidos ganham resposta propria. Sem isso,
-         * codigo antigo (e a memoria de quem escreveu) recebe so
-         * "No module named 'db'" e fica sem saber que o modulo continua ali,
-         * com outro nome. */
-        static const struct { const char *velho, *novo; } APELIDO_SAIU[] = {
-            { "db",       "psodbc"  },
-            { "qr",       "qrcode"  },
-            { "mp",       "manpu"   },
-            { "requests", "request" },
-            { "sqlite",   "sqlite3" },
-        };
-        for (size_t i = 0; i < sizeof(APELIDO_SAIU)/sizeof(APELIDO_SAIU[0]); i++) {
-            if (strcmp(nome, APELIDO_SAIU[i].velho) == 0) {
-                snprintf(vm->erro, sizeof(vm->erro),
-                         "No module named '%s'. O apelido saiu; use '%s'",
-                         APELIDO_SAIU[i].velho, APELIDO_SAIU[i].novo);
-                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
-                return -1;
-            }
-        }
         snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", nome);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
