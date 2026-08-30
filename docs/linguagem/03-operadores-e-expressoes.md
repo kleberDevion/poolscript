@@ -376,6 +376,30 @@ post(x is not dict)   # True
 `json` e `dict` são o mesmo tipo, então `d is json` e `d is dict` coincidem
 (ver seção 2). Para obter o nome do tipo como texto, use `type(x)`.
 
+**`x is Null`** vale, e é o idioma pro teste de ausência — o equivalente do
+`x is None` do Python. `type(null)` é literalmente `"Null"`, então ali o nome
+ocupa a posição de tipo com sentido.
+
+### `is` com literal à direita é erro
+
+Qualquer **outro** literal do lado direito é `SyntaxError`:
+
+```ps
+x is 5        # SyntaxError: 'is' com literal 'int' a direita — para comparar valor use '=='
+x is "abc"    # idem, 'str'
+x is 5 is int # o literal continua sendo o da direita do primeiro `is`
+```
+
+**Por quê.** Antes, lado direito que não era tipo caía em **igualdade de valor
+sem avisar**: `x is 0` digitado no lugar de `x == 0` virava comparação, dava o
+resultado "certo" e nunca reclamava — até o dia em que não desse. O CPython não
+deixa passar tampouco; ele emite `SyntaxWarning: "is" with 'int' literal. Did
+you mean "=="?`. Aqui é erro, porque a linguagem não tem canal de aviso e foi
+justamente o silêncio que criou o problema.
+
+O erro é de **compilação**, então o `pool --check` do editor já o mostra.
+`x is y` com dois nomes continua valendo: `y` pode guardar um tipo.
+
 ---
 
 ## 3.6. Pertinência — `in`, `not in`

@@ -98,6 +98,25 @@ const Caso CASOS_LINGUAGEM[] = {
 { "regex.fullmatch é o match",
   "import regex\npost(regex.fullmatch(\"\\\\d+\", \"123\"), regex.fullmatch(\"\\\\d+\", \"a123\"))\n",
   "True False", NULL, 0 },
+/* ── I10: `is` com literal a direita ────────────────────────────────────────
+ * `is` e o operador de TIPO. Com literal a direita ele caia em igualdade de
+ * valor CALADO: `x is 0` no lugar de `x == 0` dava o resultado "certo" e nunca
+ * reclamava. */
+{ "is com literal a direita e erro de compilacao",
+  "x = 5\npost(x is 5)\n", NULL, "para comparar valor use '=='", -1 },
+{ "is com str a direita tambem",
+  "post(\"a\" is \"a\")\n", NULL, "literal 'str' a direita", -1 },
+{ "is com TIPO a direita continua valendo",
+  "post(5 is int, \"x\" is str, 3.0 is flo)\n"
+  "x = [1, 2]\n"
+  "post(x is list, x is not dict)\n", "True True True\nTrue True", NULL, 0 },
+{ "is Null e o idioma de ausencia, e fica",
+  /* equivale ao `x is None` do Python; `type(null)` e literalmente "Null" */
+  "x = Null\npost(x is Null)\n", "True", NULL, 0 },
+{ "is com NOME a direita continua valendo",
+  /* o nome pode guardar um tipo — so o literal e recusado */
+  "x = 5\nt = int\npost(x is t)\n", "True", NULL, 0 },
+
 /* ── I11: `//`, `**` e `pow()` ───────────────────────────────────────────────
  * A linguagem tinha `/` sempre real e nada pra quociente inteiro nem pra
  * potencia. Num idioma com int de precisao arbitraria isso perdia precisao

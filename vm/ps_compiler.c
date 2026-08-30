@@ -938,6 +938,44 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             if (n->texto) {
                 if (!strcmp(n->texto, "is") || !strcmp(n->texto, "is not")
                         || !strcmp(n->texto, "not is")) {
+                    /* I10 — `is` com LITERAL de um dos lados e erro.
+                     *
+                     * Aqui `is` e o operador de TIPO (`5 is int`), nao a
+                     * identidade do Python — esta na doc e ha 77 usos no
+                     * repositorio. O defeito era outro: quando o outro lado
+                     * NAO era um tipo, ele caia em igualdade de valor SEM
+                     * AVISAR. `x is 0` digitado no lugar de `x == 0` virava
+                     * comparacao, dava o resultado "certo" e nunca reclamava.
+                     *
+                     * O CPython tambem nao deixa passar: emite
+                     * `SyntaxWarning: "is" with 'int' literal. Did you mean
+                     * "=="?` em tempo de compilacao. Aqui e ERRO — a linguagem
+                     * nao tem canal de aviso, e silencio foi o que criou o
+                     * problema.
+                     *
+                     * So o LITERAL: `x is y` com dois nomes continua valendo,
+                     * porque `y` pode perfeitamente guardar um tipo. */
+                    /* So o lado DIREITO: `5 is int` tem literal a esquerda
+                     * e e o uso correto — o tipo e que vai a direita. Nome de
+                     * tipo chega como N_TYPE_NAME, nunca N_LITERAL, entao a
+                     * checagem separa os dois sozinha. */
+                    /* `x is Null` FICA: e o idioma da linguagem pro teste
+                     * de ausencia (o `x is None` do Python), e `type(null)` e
+                     * literalmente "Null" — ali o literal ocupa a posicao de
+                     * tipo com sentido. Os outros literais nao tem essa
+                     * leitura. */
+                    if (n->b && n->b->kind == N_LITERAL && n->b->lit != L_NULL) {
+                        static const char *NOME_LIT[] = {
+                            "int", "flo", "str", "bool", "Null", "str", "int"
+                        };
+                        const char *tn = (n->b->lit >= 0 && n->b->lit <= L_BIGINT)
+                                         ? NOME_LIT[n->b->lit] : "?";
+                        cerro_sx(c, n,
+                                 "'is' com literal '%s' a direita — 'is' compara"
+                                 " TIPO (`x is int`); para comparar valor use '=='",
+                                 tn);
+                        return;
+                    }
                     expr(c, u, n->a);
                     expr(c, u, n->b);
                     emite(c, u, OP_IS, strcmp(n->texto, "is") != 0);
