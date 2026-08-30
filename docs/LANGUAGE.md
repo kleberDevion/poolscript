@@ -201,7 +201,8 @@ Null   null   None   none
 `Null` só é igual a `Null`: `Null == 0` é **`False`**, e o mesmo vale para
 `false` e `""`. Comparação de magnitude (`<`, `>`, `<=`, `>=`) com `Null`
 **levanta** `TypeError` — devolver `False` calado fazia `if x > 0` com `x` nulo
-cair no `else` sem avisar. `post(Null)` imprime `null`.
+cair no `else` sem avisar. `post(Null)` imprime **`Null`**, com inicial
+maiúscula — igual a `True` e `False`.
 
 > Esta seção dizia que `Null == 0` é `True` e que magnitude com `Null` é sempre
 > `False`. As duas mudaram.

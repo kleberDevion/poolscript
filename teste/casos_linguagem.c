@@ -656,7 +656,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "action f() {\n"
   "    pass\n"
   "}\n"
-  "post(f())\n", "null", NULL, 0 },
+  "post(f())\n", "Null", NULL, 0 },
 { "pass no if e no else",
   "x = 0\n"
   "if x == 0 {\n"
@@ -691,7 +691,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(\"seguiu\")\n", "seguiu", NULL, 0 },
 { "pass com chaves",
-  "action f() { pass }\npost(f())\n", "null", NULL, 0 },
+  "action f() { pass }\npost(f())\n", "Null", NULL, 0 },
 { "pass e palavra reservada",
   "pass = 1\n", NULL, "palavra reservada", -1 },
 { "pass no corpo de classe",
@@ -871,7 +871,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre
  * quando o outro lado fechasse o cano — foi o que travou o servidor LSP. */
 { "input() no fim da entrada devolve null",
-  "post(input())\n", "null", NULL, 0 },
+  "post(input())\n", "Null", NULL, 0 },
 { "input() no fim é null, não string vazia",
   "post(input() == Null, input() == \"\")\n", "True False", NULL, 0 },
 { "input() em laço termina no fim da entrada",
@@ -1149,10 +1149,10 @@ const Caso CASOS_LINGUAGEM[] = {
 /* O header maior NAO pode afrouxar a verificacao: */
 { "JWT com header grande e assinatura errada continua recusado",
   "import jwt\n"
-  "post(jwt.check(\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imtra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2sifQ.eyJzdWIiOiJhbmEifQ.GUXDhT7Cr4UIbhDLNYAtP9iqswpvr9pbmu7_uQRrUUg\", \"segredo\"))\n", "null", NULL, 0 },
+  "post(jwt.check(\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Imtra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2sifQ.eyJzdWIiOiJhbmEifQ.GUXDhT7Cr4UIbhDLNYAtP9iqswpvr9pbmu7_uQRrUUg\", \"segredo\"))\n", "Null", NULL, 0 },
 { "JWT com header grande e alg none continua recusado",
   "import jwt\n"
-  "post(jwt.check(\"eyJhbGciOiJub25lIiwidHlwIjoiSldUIiwia2lkIjoia2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2trayJ9.eyJzdWIiOiJhbmEifQ.ol1xhouZIoiUzxMELnPs4OEtVdsQY3-FUbV_EjzCuz8\", \"segredo\"))\n", "null", NULL, 0 },
+  "post(jwt.check(\"eyJhbGciOiJub25lIiwidHlwIjoiSldUIiwia2lkIjoia2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2tra2trayJ9.eyJzdWIiOiJhbmEifQ.ol1xhouZIoiUzxMELnPs4OEtVdsQY3-FUbV_EjzCuz8\", \"segredo\"))\n", "Null", NULL, 0 },
 
 /* ── base64: padding invalido e ERRO, nao dado parcial ──────────────────────
  * O laco parava no primeiro `=` e devolvia o que tinha decodificado ate ali.

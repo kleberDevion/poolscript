@@ -211,7 +211,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "post(\"v3:\" f3())\n"
   "post(\"v4:\" f4())\n"
   "\n",
-  "v1: null\nv2: null\nv3: null\nv4: null", NULL, 0 },
+  "v1: Null\nv2: Null\nv3: Null\nv4: Null", NULL, 0 },
 { "dif #16",
   "\n"
   "async action t(n) { return n * 2 }\n"
@@ -1720,7 +1720,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "PUSH os GET getenv\n"
   "post(getenv(\"POOL_TEST_VAR\"))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #222",
   "PUSH os GET getenv as ler_env\n"
   "post(\"ok\")\n"
@@ -3148,11 +3148,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #490",
   "post(\"nao json\".get(\"k\"))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #491",
   "post(\"nao json\".get_json())\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #492",
   "post(\"oi\")\n"
   "\n",
@@ -3313,7 +3313,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #531",
   "post(\"{x}\".format_map({\"x\":Null}))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #532",
   "post(\"{{}}\".format())\n"
   "\n",
@@ -3329,7 +3329,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #535",
   "post(\"{}\".format(Null))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #536",
   "post(\"{}\".format([1,2]))\n"
   "\n",
@@ -3337,7 +3337,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #537",
   "post(\"{}\".format([Null]))\n"
   "\n",
-  "[null]", NULL, 0 },
+  "[Null]", NULL, 0 },
 { "dif #538",
   "post(\"ÇÃO\".lower())\n"
   "\n",
@@ -3593,7 +3593,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #601",
   "post(1, 2.5, \"x\", true, false, null)\n"
   "\n",
-  "1 2.5 x True False null", NULL, 0 },
+  "1 2.5 x True False Null", NULL, 0 },
 { "dif #602",
   "post(1.0 / 0)\n"
   "\n",
@@ -3981,7 +3981,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #698",
   "post(Null)\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #699",
   "post(Null.keys())\n"
   "\n",
@@ -4356,7 +4356,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #791",
   "post([Null])\n"
   "\n",
-  "[null]", NULL, 0 },
+  "[Null]", NULL, 0 },
 { "dif #792",
   "post([[1, 2], [3, 4]])\n"
   "\n",
@@ -4368,7 +4368,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #794",
   "post([[Null]])\n"
   "\n",
-  "[[null]]", NULL, 0 },
+  "[[Null]]", NULL, 0 },
 { "dif #795",
   "post([] and 1)\n"
   "\n",
@@ -4508,7 +4508,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #829",
   "post(await Null)\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #830",
   "post(b % 26)\n"
   "\n",
@@ -6533,7 +6533,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1335",
   "post(str(Null))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #1336",
   "post(str(True))\n"
   "\n",
@@ -6877,7 +6877,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1421",
   "post({\"a\": Null})\n"
   "\n",
-  "{'a': null}", NULL, 0 },
+  "{'a': Null}", NULL, 0 },
 { "dif #1422",
   "post({\"a\":1,\"b\":2,\"c\":3,\"d\":4,\"e\":5})\n"
   "\n",
@@ -8196,12 +8196,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = Null\n"
   "post(\"v=\" {x})\n"
   "\n",
-  "v=null", NULL, 0 },
+  "v=Null", NULL, 0 },
 { "dif #1626",
   "x = Null\n"
   "post(f\"v={x}\")\n"
   "\n",
-  "v=null", NULL, 0 },
+  "v=Null", NULL, 0 },
 { "dif #1627",
   "x = Null > 0\n"
   "post(x)\n"
@@ -8536,7 +8536,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f(a=Null))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #1686",
   "action f(a=Null) {\n"
   " return a\n"
@@ -8544,7 +8544,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "post(f())\n"
   "post(f(5))\n"
   "\n",
-  "null\n5", NULL, 0 },
+  "Null\n5", NULL, 0 },
 { "dif #1687",
   "action f(base) {\n"
   " return 1\n"
@@ -8991,7 +8991,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(map([1,2], n))\n"
   "\n",
-  "[null, null]", NULL, 0 },
+  "[Null, Null]", NULL, 0 },
 { "dif #1744",
   "action nada() {\n"
   " int x = 1\n"
@@ -9004,7 +9004,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(nada())\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #1746",
   "action oi() {\n"
   "\n",
@@ -9321,7 +9321,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(await semRetorno())\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #1795",
   "async action valor() {\n"
   "    return 42\n"
@@ -9336,7 +9336,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(await vazio())\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #1797",
   "async bool reaction f() {\n"
   "    return 1 / 0\n"
@@ -9842,7 +9842,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = {\"a\": 1, \"b\": 2}\n"
   "post(d.keys(), d.values(), d.has(\"a\"), d.get(\"z\"))\n"
   "\n",
-  "['a', 'b'] [1, 2] True null", NULL, 0 },
+  "['a', 'b'] [1, 2] True Null", NULL, 0 },
 { "dif #1882",
   "d = {\"a\": 1, \"b\": 2}\n"
   "post(d[\"a\"])\n"
@@ -10072,7 +10072,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d={\"a\":1}\n"
   "post(d.get(\"z\"))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #1917",
   "d={\"a\":1}\n"
   "post(d.get(\"z\",9))\n"
@@ -11286,7 +11286,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"  {\\\"a\\\" : [1, {\\\"b\\\": null}] }  \")[\"a\"][1][\"b\"])\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #2116",
   "import json\n"
   "post(json.parse(\"\"))\n"
@@ -11336,7 +11336,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"null\"))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #2126",
   "import json\n"
   "post(json.parse(\"true\"))\n"
@@ -12318,12 +12318,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "l = []\n"
   "post(removeEnd(l))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #2292",
   "l = []\n"
   "post(removeStart(l))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #2293",
   "l = [] + []\n"
   "post(len(l))\n"
@@ -12616,12 +12616,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "l=[]\n"
   "post(removeEnd(l))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #2341",
   "l=[]\n"
   "post(removeStart(l))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "dif #2342",
   "l=[{},{}]\n"
   "post(count dict in l)\n"

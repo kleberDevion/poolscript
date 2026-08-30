@@ -234,8 +234,9 @@ post(f"olá, {nome}!")            // f-string
 ### 1.6.4. Booleanos e nulo
 
 - **Booleano:** `True`/`true` e `False`/`false` (as quatro formas valem).
-- **Nulo:** `Null`/`null`/`None`/`none` (as quatro valem; o valor imprime como
-  `null`).
+- **Nulo:** `Null`/`null`/`None`/`none` (as quatro grafias valem na escrita; o
+  valor **imprime** como `Null`, com inicial maiúscula, igual a `True` e
+  `False`).
 
 ### 1.6.5. Literal de cor — `<cor>"texto"`
 

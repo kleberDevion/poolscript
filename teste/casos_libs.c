@@ -69,20 +69,20 @@ const Caso CASOS_LIBS[] = {
   "import jwt\n"
   "t = jwt.gen({\"a\": 1}, \"certa\", \"HS256\")\n"
   "post(jwt.check(t, \"errada\"))\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "jwt com assinatura adulterada e recusado",
   "import jwt\n"
   "t = jwt.gen({\"a\": 1}, \"k\", \"HS256\")\n"
   "p = t.split(\".\")\n"
   "post(jwt.check(p[0] + \".\" + p[1] + \".xxxxxxxx\", \"k\"))\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "jwt com payload trocado e recusado",
   "import jwt\nimport hash\n"
   "t = jwt.gen({\"admin\": false}, \"k\", \"HS256\")\n"
   "p = t.split(\".\")\n"
   "outro = hash.b64encode(\"{\\\"admin\\\": true}\").replace(\"=\", \"\")\n"
   "post(jwt.check(p[0] + \".\" + outro + \".\" + p[2], \"k\"))\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 
 /* ── taxonomia de erro: os tipos que o motor levanta ─────────────────────────
  *
@@ -305,7 +305,7 @@ const Caso CASOS_LIBS[] = {
   "cur.execute(\"select a, b from t\")\n"
   "post(cur.fetchall())\n"
   "c.close()\n",
-  "[{'a': 1, 'b': null}]", NULL, 0 },
+  "[{'a': 1, 'b': Null}]", NULL, 0 },
 
 /* ── sqlite3: o outro caminho (nativo, dentro do poolscript_vm.c) ────────── */
 { "sqlite3: cria, insere e le",
@@ -359,7 +359,10 @@ const Caso CASOS_LIBS[] = {
   "import json\n"
   "post(json.stringify({\"a\": [1, 2], \"b\": null}))\n"
   "post(json.parse(\"{\\\"a\\\": [1, 2], \\\"b\\\": null}\"))\n",
-  "{\"a\": [1, 2], \"b\": null}\n{'a': [1, 2], 'b': null}", NULL, 0 },
+  /* A primeira linha e JSON e mantem `null` minusculo — e a especificacao do
+   * formato. A segunda e o `post` da LINGUAGEM, que imprime `Null`. Este caso
+   * e o que trava a distincao: se alguem uniformizar os dois, ele reprova. */
+  "{\"a\": [1, 2], \"b\": null}\n{'a': [1, 2], 'b': Null}", NULL, 0 },
 { "json aninhado demais e recusado na leitura",
   "import json\n"
   "post(json.parse(\"[\" * 200 + \"]\" * 200))\n",

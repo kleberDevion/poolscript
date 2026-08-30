@@ -204,7 +204,7 @@ static void pula_separadores(P *p)
          * Statement nenhum comeca com DEDENT: dentro de `{ }` a indentacao nao
          * significa nada (esta escrito em docs/linguagem/01, secao 1.3). O
          * INDENT continua guardado pelo `grupo_depth` porque o bloco `:` do
-         * `run_selfwith_` — o unico que sobrou — depende dele. */
+         * `if __name__ == "main":` — o unico que sobrou — depende dele. */
         if (checa(p, T_DEDENT)) { p->pos++; continue; }
         break;
     }
@@ -1167,12 +1167,17 @@ static void pula_indent_solto(P *p)
            || checa(p, T_INDENT) || checa(p, T_DEDENT)) p->pos++;
 }
 
-/* Bloco do `run_selfwith_` — o ÚNICO lugar da linguagem onde `:` + indentação
- * ainda abre bloco. Todo o resto usa `{ }` (ver `bloco`).
+/* Bloco do GUARD (`if __name__ == "main":`) — o ÚNICO lugar da linguagem onde
+ * `:` + indentação ainda abre bloco. Todo o resto usa `{ }` (ver `bloco`).
  *
- * A exceção é deliberada: `run_selfwith_("main"):` é a última linha de quase
- * todo programa e a forma com dois-pontos é a que se escreve. As chaves
- * continuam valendo aqui também. */
+ * A exceção é deliberada: o guard é a última linha de quase todo programa e a
+ * forma com dois-pontos é a que se escreve. As chaves continuam valendo aqui
+ * também.
+ *
+ * Este comentário dizia `run_selfwith_("main"):`, que NÃO EXISTE MAIS na
+ * linguagem — o próprio motor responde "run_selfwith_ nao existe mais — use:
+ * if __name__ == \"main\"". A doc do parser apontava pra uma construção
+ * removida. */
 static PSNode *bloco_entrada(P *p)
 {
     PSToken *t = atual(p);
@@ -1825,6 +1830,28 @@ static PSNode *statement(P *p)
     PSToken *t = atual(p);
 
     if (t->type == T_EOF) return NULL;
+
+    /* `def f(x) { ... }` — quem vem do Python escreve isto, e a linguagem
+     * respondia "faltou ':' no dicionario" apontando pra DENTRO do corpo.
+     *
+     * O motivo: `def` nao e palavra da linguagem. Entao `def` vira um nome
+     * solto, `f(x)` vira uma chamada, e o `{` que vinha depois era lido como
+     * LITERAL DE DICIONARIO. O erro falava de dicionario porque, pro parser,
+     * era um dicionario mesmo — e nada na mensagem sugeria `action`.
+     *
+     * A forma `def <nome> (` no comeco de um statement nao tem outra leitura
+     * possivel nesta linguagem. Vale a pena dize-lo. */
+    if ((t->type == T_IDENT || t->type == T_IDENT_UPPER)
+            && t->texto && t->texto_len == 3 && strncmp(t->texto, "def", 3) == 0) {
+        PSToken *n1 = espia(p, 1);
+        PSToken *n2 = espia(p, 2);
+        if ((n1->type == T_IDENT || n1->type == T_IDENT_UPPER)
+                && n2->type == T_LPAREN) {
+            perro(p, "'def' nao existe nesta linguagem; a funcao se declara com"
+                     " 'action' (ou 'reaction'): action nome(args) { ... }", t);
+            return NULL;
+        }
+    }
 
     /* reservada seguida de '=' é tentativa de usá-la como variável */
     if (t->type == T_KW) {

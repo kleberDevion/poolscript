@@ -127,7 +127,11 @@ post([10, 20][True])  // 20  (índice 1)
   mesmo erro. Quem quer o teste sem levantar escreve `x != Null` antes.
 - Em igualdade, `Null == Null` é `True`; com **qualquer** outra coisa é
   `False`, inclusive `Null == 0`, `Null == false` e `Null == ""`.
-- Imprime como `null`.
+- **Imprime como `Null`**, com inicial maiúscula, igual a `True` e `False`.
+  As quatro grafias (`Null`/`null`/`None`/`none`) valem na ESCRITA; a saída é
+  uma só. Em **JSON** continua `null` minúsculo, porque ali é a especificação
+  do formato, não a da linguagem: `json.stringify({"a": Null})` dá
+  `{"a": null}`.
 
 ---
 

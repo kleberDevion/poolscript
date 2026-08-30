@@ -1924,7 +1924,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t s = emite(c, u, OP_SKIP_IF_IMPORT, 0);
             int32_t Mr = escopo_marca(u);
             bloco_stmts(c, u, n->b ? n->b : n->a);
-            escopo_fecha(c, u, Mr);            /* vars do run_selfwith_ não vazam */
+            escopo_fecha(c, u, Mr);            /* vars do guard não vazam */
             if (s >= 0) UP(c, u)->code[s + 1] = UP(c, u)->ncode;   /* alvo = pós-bloco */
             return;
         }

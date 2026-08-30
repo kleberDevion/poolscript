@@ -1056,7 +1056,7 @@ struct VM_ {
     struct { int proto; int linha; int col; } tb_mod[64];
     int     ntb_mod;
     int     import_falhou;   /* 1 = o erro atual veio de dentro de um módulo importado */
-    int     importando;      /* >0 = rodando o corpo de um módulo importado (run_selfwith_ pula) */
+    int     importando;      /* >0 = rodando o corpo de um módulo importado (o guard pula) */
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -2596,7 +2596,11 @@ static void escreve_valor(const Value *v, int dentro)
         if (ps_prof_texto < PS_CICLO_MAX) ps_pilha_texto[ps_prof_texto] = v->as.obj;
     }
     switch (v->t) {
-        case V_NULL:   fputs("null", stdout); break;
+        /* I22: `Null` com inicial maiuscula, como `True` e `False`. O
+         * literal ja se escrevia assim e a impressao discordava dele. NAO
+         * vale pro JSON: la `null` minusculo e a especificacao do formato,
+         * e o serializador tem o caminho dele. */
+        case V_NULL:   fputs("Null", stdout); break;
         case V_BOOL:   fputs(v->as.b ? "True" : "False", stdout); break;
         case V_INT:    printf("%lld", (long long)v->as.i); break;
         case V_FLOAT: {
@@ -2608,7 +2612,7 @@ static void escreve_valor(const Value *v, int dentro)
         case V_FUNC:   printf("<action #%d>", v->as.proto); break;
         case V_NATIVE: fputs("<builtin>", stdout); break;
         case V_TIPO:   fputs(NOME_TIPO[v->as.i], stdout); break;
-        case V_UNSET:  fputs("null", stdout); break;
+        case V_UNSET:  fputs("Null", stdout); break;
         case V_OBJ:
             if (v->as.obj->type == OBJ_STRING) {
                 PSString *s = (PSString *)v->as.obj;
@@ -2841,7 +2845,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
     char tmp[64];
     if (!dentro) ps_prof_texto = 0;   /* topo: zera a pilha de ciclo */
     switch (v->t) {
-        case V_NULL:   return txt_put(t, "null", 4);
+        case V_NULL:   return txt_put(t, "Null", 4);
         case V_BOOL:   return v->as.b ? txt_put(t, "True", 4) : txt_put(t, "False", 5);
         case V_INT:    return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "%lld", (long long)v->as.i));
         case V_FLOAT:
@@ -2849,7 +2853,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
         case V_FUNC:   return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<action #%d>", v->as.proto));
         case V_NATIVE: return txt_put(t, "<builtin>", 9);
         case V_TIPO:   return txt_put(t, NOME_TIPO[v->as.i], (int)strlen(NOME_TIPO[v->as.i]));
-        case V_UNSET:  return txt_put(t, "null", 4);
+        case V_UNSET:  return txt_put(t, "Null", 4);
         case V_OBJ:
             if (v->as.obj->type == OBJ_BIGINT) {
                 char *bs = bigint_str(((PSBigInt *)v->as.obj)->v);
@@ -19248,7 +19252,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
 
         case OP_SKIP_IF_IMPORT:
-            /* run_selfwith_: pula o bloco quando o arquivo está sendo importado
+            /* guard `if __name__ == "main"`: pula o bloco quando o arquivo está sendo importado
              * (só roda como principal) — mesma regra do interp. */
             if (vm->importando > 0) ip = arg;
             break;
@@ -22480,7 +22484,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);
         snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1;
     }
-    vm->importando++;   /* corpo importado: run_selfwith_ é pulado (igual interp) */
+    vm->importando++;   /* corpo importado: o guard é pulado (igual interp) */
     int rc = vm_executa_base(vm, bp, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, NULL, &ignora);
     vm->importando--;
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;

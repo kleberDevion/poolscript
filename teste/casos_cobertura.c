@@ -114,14 +114,14 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "post(await semRetorno())\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "git: test_async_deep #9",
   "async action vazio() {\n"
   "    return\n"
   "}\n"
   "post(await vazio())\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "git: test_async_deep #10",
   "post(await 42)\n"
   "\n",
@@ -133,7 +133,7 @@ const Caso CASOS_COBERTURA[] = {
 { "git: test_async_deep #12",
   "post(await Null)\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "git: test_async_deep #13",
   "async int reaction f() {\n"
   "    return 1 / 0\n"
@@ -306,7 +306,7 @@ const Caso CASOS_COBERTURA[] = {
 { "git: test_builtins_c #47",
   "post(\"{}\".format([Null]))\n"
   "\n",
-  "[null]", NULL, 0 },
+  "[Null]", NULL, 0 },
 { "git: test_builtins_c #48",
   "post(\"\".maketrans(\"ab\",\"xy\"))\n"
   "\n",
@@ -1551,12 +1551,12 @@ const Caso CASOS_COBERTURA[] = {
   "l=[]\n"
   "post(removeEnd(l))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "git: test_v5_features #200",
   "l=[]\n"
   "post(removeStart(l))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "git: test_v5_features #201",
   "post(hex(255))\n"
   "\n",
@@ -1797,11 +1797,11 @@ const Caso CASOS_COBERTURA[] = {
 { "git: test_vm_c #233",
   "post([Null])\n"
   "\n",
-  "[null]", NULL, 0 },
+  "[Null]", NULL, 0 },
 { "git: test_vm_c #234",
   "post(str(Null))\n"
   "\n",
-  "null", NULL, 0 },
+  "Null", NULL, 0 },
 { "matriz: char em topo",
   "char c = 64\n"
   "post(c)\n"
