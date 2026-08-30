@@ -3036,6 +3036,20 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
 }
 
 
+/* AS MENSAGENS DE `sem memoria` FICAM EM PORTUGUÊS, E É DE PROPÓSITO.
+ *
+ * A regra desta base é copiar o texto do CPython verbatim. O `MemoryError` é a
+ * exceção, e a razão é simples: no CPython ele não tem texto nenhum —
+ * `MemoryError:` e mais nada. As 79 daqui dizem ONDE a memória acabou
+ * (`sem memoria em sorted()`, `sem memoria na concatenacao`), e num processo
+ * que morreu de memória essa é a única pista que sobra.
+ *
+ * Copiar o CPython aqui trocaria informação real por uma linha vazia. Se uma
+ * varredura futura apontar estas 79 como "ainda em português", ela está
+ * medindo a coisa errada — a pergunta não é se o texto é igual ao do Python, é
+ * se ele ajuda quem lê.
+ */
+
 /* Erro de builtin: mensagem + tipo, no mesmo formato do resto da VM. */
 #define BERRO(vm, tipo, ...) do { \
     snprintf((vm)->erro, sizeof((vm)->erro), __VA_ARGS__); \
@@ -8953,10 +8967,13 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     }
     Proto *pr = &vm->protos[g->proto];
     int fp0 = vm->frame_topo, sp0 = vm->sp, lb0 = vm->locals_top;
-    if (fp0 + 1 >= vm->frames_teto) { snprintf(vm->erro, sizeof(vm->erro), "estouro de frames"); return -1; }
-    if (lb0 + pr->nlocals >= vm->locals_teto) { snprintf(vm->erro, sizeof(vm->erro), "estouro do pool de locais"); return -1; }
+    if (fp0 + 1 >= vm->frames_teto) { snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1; }
+    if (lb0 + pr->nlocals >= vm->locals_teto) { snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1; }
     if (sp0 + g->npilha + pr->ncode / 2 + 8 >= vm->stack_teto) {
-        snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha de valores"); return -1;
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1;
     }
 
     /* descongela: locais e pilha voltam pros pools da VM */
@@ -18764,11 +18781,13 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         return -1;
     }
     if (vm->frame_topo + 1 >= vm->frames_teto) {
-        snprintf(vm->erro, sizeof(vm->erro), "%s", "estouro de frames (recursao profunda demais)");
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
         return -1;
     }
     if (vm->locals_top + pr->nlocals >= vm->locals_teto) {
-        snprintf(vm->erro, sizeof(vm->erro), "%s", "estouro do pool de locais");
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
         return -1;
     }
     int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
@@ -19572,9 +19591,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         conta_faltantes(desloca, pk->nparams - pk->ndefaults, marcado) == 1 ? "" : "s",
                         lista_faltantes(pk, desloca, pk->nparams - pk->ndefaults, marcado));
 
-            if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
-            if (locals_top + pk->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
-            if (sp + pk->ncode / 2 + 8 >= vm->stack_teto) ERRO(vm, "estouro da pilha de valores");
+            if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            if (locals_top + pk->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            if (sp + pk->ncode / 2 + 8 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
 
             vm->frames[fp].proto       = (int)(p - vm->protos);
             vm->frames[fp].ip          = ip;
@@ -19637,8 +19656,8 @@ ERRO_TF(vm, "TypeError",
                         np->nome ? np->nome : "?", conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL),
                         conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL) == 1 ? "" : "s",
                         lista_faltantes(np, n + 1, np->nparams - np->ndefaults, NULL));
-                if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
+                if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 vm->frames[fp].proto = (int)(p - vm->protos);
                 vm->frames[fp].ip = ip;
                 vm->frames[fp].locals_base = lbase;
@@ -19683,8 +19702,8 @@ ERRO_TF(vm, "TypeError",
                         np->nome ? np->nome : "?", conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL),
                         conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL) == 1 ? "" : "s",
                         lista_faltantes(np, n + 1, np->nparams - np->ndefaults, NULL));
-                if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
+                if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 vm->frames[fp].proto = (int)(p - vm->protos);
                 vm->frames[fp].ip = ip;
                 vm->frames[fp].locals_base = lbase;
@@ -19758,14 +19777,14 @@ ERRO_TF(vm, "TypeError",
                     stack[sp++] = MK_OBJ(fu);
                     break;
                 }
-                if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames (recursao profunda demais)");
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
+                if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 /* Cota da pilha do chamado: cada instrução empilha no máximo
                  * um valor, então ncode/2 é teto seguro. Sem esta checagem,
                  * recursão profunda escrevia fora do array — corrupção de
                  * memória silenciosa em vez de erro. */
                 if (sp + np->ncode / 2 + 8 >= vm->stack_teto)
-                    ERRO(vm, "estouro da pilha de valores (expressao ou recursao profunda demais)");
+                    ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
 
                 vm->frames[fp].proto       = (int)(p - vm->protos);
                 vm->frames[fp].ip          = ip;
@@ -21550,8 +21569,8 @@ ERRO_TF(vm, "TypeError",
                         np->nome ? np->nome : "?", np->nparams,
                         np->nparams == 1 ? "" : "s", n + 1, n + 1 == 1 ? "was" : "were");
             }
-            if (fp + 1 >= vm->frames_teto) ERRO(vm, "estouro de frames");
-            if (locals_top + np->nlocals >= vm->locals_teto) ERRO(vm, "estouro do pool de locais");
+            if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
             vm->frames[fp].proto = (int)(p - vm->protos);
             vm->frames[fp].ip = ip;
             vm->frames[fp].locals_base = lbase;

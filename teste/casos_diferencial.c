@@ -9113,7 +9113,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(r(1))\n"
   "\n",
-  NULL, "RuntimeError: estouro de frames (recursao profunda demais)", -1 },
+  NULL, "RecursionError: maximum recursion depth exceeded", -1 },
 { "dif #1764",
   "action r(x) {\n"
   " if x <= 1 {\n"

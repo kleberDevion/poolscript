@@ -79,11 +79,12 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `NameError` | nome que não existe no escopo: `post(x)` → `name 'x' is not defined` |
 | `AttributeError` | membro que o objeto não tem: `"abc".m` → `'str' object has no attribute 'm'`; também `module 'json' has no attribute 'x'` |
 | `OverflowError` | número que não cabe no destino: `int(flo("inf"))` → `cannot convert flo infinity to integer` |
+| `RecursionError` | recursão ou expressão funda demais: `maximum recursion depth exceeded`. Antes era `RuntimeError`, e por isso só dava pra pegar junto com todo o resto |
+| `MemoryError` | sem memória. **Único caso em que a mensagem não é a do CPython**, e de propósito: lá ela é vazia (`MemoryError:` e nada mais), aqui ela diz onde acabou — `sem memoria em sorted()`. Num processo que morreu de memória essa é a única pista que sobra |
 | `AttributedValueError` | valor incompatível atribuído a variável **tipada**: `str x = 10`. **Não** cobre o `+` — somar tipos que não somam é `TypeError` |
 | `IndexError` | índice fora da faixa, lendo **ou** escrevendo. O texto diz qual: `list index out of range`, `string index out of range`, `tup index out of range`, `index out of range` (bytes), e `list assignment index out of range` na escrita |
 | `NotImplemented` | função de lib "stub": existe, e ainda não faz nada. O nome é esse mesmo, **sem** o `Error` no fim — `catch (NotImplementedError e)` não pega esta |
 | `NotImplementedError` | módulo importado que **não compila** por motivo que não é sintaxe. É outro erro, apesar do nome parecido — não confunda com o de cima |
-| `FileNotFoundError` | arquivo que não existe, quando o motor consegue distinguir de outra falha de I/O |
 | `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `pool --check` relata |
 | `KeyError` | chave inexistente num dict: `d["naoexiste"]`. A mensagem é a **chave**, e só ela: `KeyError: 'naoexiste'`. Vale igual em `d.chave` e `d.pop("chave")` |
 | `ImportError` | módulo não encontrado: `import naoexiste` |
@@ -101,6 +102,8 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `LookupError` | nome de codec ou de handler que não existe: `"a".encode("xyz")` → `unknown encoding: xyz` |
 | `UnicodeEncodeError` | caractere que não cabe no encoding pedido: `"é".encode("ascii")` |
 | `UnicodeDecodeError` | bytes que não formam texto válido no encoding pedido |
+| `RuntimeError` | `raise "texto"`; e o que é só desta linguagem e não tem par no Python: `acesso negado: … private`, `@NonNull`, `for each` sobre tipo que não itera |
+| *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
 > **`catch` casa o NOME do tipo, não uma árvore.** Vindo do Python, a
 > armadilha é escrever `catch (OSError e)` esperando que ele pegue
@@ -121,9 +124,6 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 > curto e vale quando tanto faz o motivo; o encadeado é o que você quer quando
 > cada motivo pede uma resposta diferente — ou quando não quer engolir junto um
 > `NameError` de digitação sua.
-| `MemoryError` | sem memória |
-| `RuntimeError` | `raise "texto"`; e o que é só desta linguagem e não tem par no Python: `acesso negado: … private`, `@NonNull`, `for each` sobre tipo que não itera |
-| *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
 > **Nota — "não existe" sempre LEVANTA, desde 28/08.** Ler índice fora da
 > faixa, escrever fora da faixa e pedir chave ausente levantam, e cada um diz o
