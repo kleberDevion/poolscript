@@ -610,7 +610,7 @@ fibras. (WebSocket com salas/broadcast roda só no worker 0.)
 ## Exemplo completo com WebSocket e rotas
 
 ```
-import db
+import psodbc
 import hash
 import jwt
 import date
@@ -653,7 +653,7 @@ action login() {
     email = data.get("email")
     senha = data.get("senha")
 
-    result = db.query(
+    result = psodbc.query(
         base=DB_PATH,
         cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
         table="usuarios"
@@ -679,7 +679,7 @@ action mensagem() {
     content = msg.get("body_msg")
 
     try {
-        db.query(
+        psodbc.query(
             base=DB_PATH,
             cmd=("INSERT INTO @t (author, corpo, data) VALUES (?, ?, ?)",
                  (author, content, date.datahora())),

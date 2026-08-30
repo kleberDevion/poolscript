@@ -5,7 +5,7 @@ Lib pra gerar imagens de **QR Code** a partir de um texto/URL.
 
 ```
 import qrcode
-// ou: import qr   (apelido)
+// ou: import qrcode   (apelido)
 ```
 
 | Membro | O que faz | Página |

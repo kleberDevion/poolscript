@@ -5,7 +5,7 @@ Lib pra conectar e consultar bancos de dados. Um único `connect()` cobre
 
 ```
 import psodbc
-// ou: import db   (apelido)
+// ou: import psodbc   (apelido)
 ```
 
 ---

@@ -11676,8 +11676,8 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "True", NULL, 0 },
 { "dif #2187",
-  "import requests\n"
-  "post(type(requests.head))\n"
+  "import request\n"
+  "post(type(request.head))\n"
   "\n",
   "action", NULL, 0 },
 { "dif #2188",

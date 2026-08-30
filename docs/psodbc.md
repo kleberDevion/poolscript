@@ -9,7 +9,7 @@ o que é interno/privado do módulo Python (não aparece do lado de fora).
 
 ```
 import psodbc
-// ou: import db   (alias)
+// ou: import psodbc   (alias)
 ```
 
 A tabela abaixo é a superfície INTEIRA de `psodbc.*`: o que não está aqui

@@ -5,7 +5,7 @@ Espelha a API da lib `qrcode` do Python: mesmos nomes sempre que possível.
 
 ```
 import qrcode
-// ou: import qr   (alias)
+// ou: import qrcode   (alias)
 ```
 
 ---
@@ -67,12 +67,12 @@ Mesma API da classe `QRCode` do Python original:
 
 ```
 qr = qrcode.QRCode(version=None, error_correction="L", box_size=10, border=4)
-qr.add_data("dados")
-qr.make(fit=true)
-img = qr.make_image(fill_color="black", back_color="white")
+qrcode.add_data("dados")
+qrcode.make(fit=true)
+img = qrcode.make_image(fill_color="black", back_color="white")
 img.save("qr.png")
 
-qr.clear()   // limpa pra reusar o mesmo objeto
+qrcode.clear()   // limpa pra reusar o mesmo objeto
 ```
 
 `add_data()` aceita `dict`/`list` também — vira JSON automaticamente.

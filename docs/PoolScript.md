@@ -550,22 +550,22 @@ E `manpu.open()` (lib separada, pensada pra CSV/XLSX estruturado — ver
 ```
 import manpu as mp
 
-lista = mp.load("compras.txt")
+lista = manpu.load("compras.txt")
 
-using mp.open(target="planilha.xlsx") as arq {
+using manpu.open(target="planilha.xlsx") as arq {
     arq.write(column=0, cell=full, content=lista)
 }
 # arquivo salvo e fechado automaticamente
 ```
 
 ```
-using mp.open(target="planilha.xlsx", encoding="latin-1") as arq {
+using manpu.open(target="planilha.xlsx", encoding="latin-1") as arq {
     arq.write(column=0, cell=full, content=lista)
 }
 # arquivo salvo e fechado automaticamente
 ```
 
-`mp.open()` aceita `encoding=` (default `"utf-8"`) pra CSV/texto puro —
+`manpu.open()` aceita `encoding=` (default `"utf-8"`) pra CSV/texto puro —
 veja [manpu.md](manpu.md).
 
 ---
@@ -588,7 +588,7 @@ if __name__ == "main" {
 
 ```
 import os
-import db
+import psodbc
 import hash
 import jwt
 import date
@@ -696,7 +696,7 @@ post.flush("Pronto!", delay=0.08)
 | `os` | `import os` | Sistema operacional |
 | `dotenv` | `from dotenv import load` | Arquivo .env |
 | `date` | `import date` | Data e hora |
-| `db` | `import db` | SQLite, PostgreSQL, MySQL, MongoDB |
+| `db` | `import psodbc` | SQLite, PostgreSQL, MySQL, MongoDB |
 | `mail` | `import mail` | Envio (`MailServer`/`MailMessage`) e leitura (`MailReader`, IMAP) de email |
 | `request` | `import request` | Requisições HTTP |
 | `hash` | `import hash` | Hash de senhas |
@@ -709,7 +709,7 @@ post.flush("Pronto!", delay=0.08)
 ## Exemplo completo — Backend com auth
 
 ```
-import db
+import psodbc
 import hash
 import jwt
 import date
@@ -760,7 +760,7 @@ action cadastrar() {
     senha_hash = hash.crypt(senha)
 
     try {
-        db.query(
+        psodbc.query(
             base=DB_PATH,
             cmd=("INSERT INTO @t (nome, email, senha) VALUES (?, ?, ?)",
                  (nome, email, senha_hash)),
@@ -778,7 +778,7 @@ action logar() {
     email = data.get("email")
     senha = data.get("senha")
 
-    result = db.query(
+    result = psodbc.query(
         base=DB_PATH,
         cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
         table="usuarios"

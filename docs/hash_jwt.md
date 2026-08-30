@@ -36,13 +36,13 @@ post(errado)  # False
 ### Exemplo — cadastro e login
 
 ```
-import db
+import psodbc
 import hash
 
 action cadastrar(nome, email, senha) {
     str senha_hash = hash.crypt(senha)
 
-    db.query(
+    psodbc.query(
         base="banco.db",
         cmd=("INSERT INTO @t (nome, email, senha) VALUES (?, ?, ?)",
              (nome, email, senha_hash)),
@@ -51,7 +51,7 @@ action cadastrar(nome, email, senha) {
 }
 
 action logar(email, senha) {
-    result = db.query(
+    result = psodbc.query(
         base="banco.db",
         cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
         table="users"
@@ -141,7 +141,7 @@ exp = date.timestamp() + date.hora(days=7)
 ```
 import jwt
 import hash
-import db
+import psodbc
 import date
 import os
 from dotenv import load
@@ -174,7 +174,7 @@ action login() {
     email = data.get("email")
     senha = data.get("senha")
 
-    result = db.query(
+    result = psodbc.query(
         base=DB,
         cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
         table="users"

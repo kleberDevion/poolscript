@@ -18288,9 +18288,9 @@ static int stub_chamada(VM *vm, Value *args, int n, Value *out)
 }
 
 #define STUB(nome) { nome, stub_chamada, 0, NULL }
-static const MembroMod MOD_SQLITE_STUB[] = {
-    STUB("connect"), STUB("execute"), STUB("fetchall"), STUB("fetchone"), STUB("close"),
-};
+/* MOD_SQLITE_STUB saiu junto com o apelido `sqlite` (I19): era um modulo de
+ * FACHADA, cujos cinco membros so levantavam NotImplemented. Quem quer sqlite
+ * usa `sqlite3`, que e o de verdade. */
 static const MembroMod MOD_SMTPLIB_STUB[] = {
     STUB("SMTP"), STUB("SMTP_SSL"), STUB("send"),
 };
@@ -18319,17 +18319,17 @@ static const ModuloNat MODULOS[] = {
     { "sqlite3", MOD_SQLITE3, (int)(sizeof(MOD_SQLITE3) / sizeof(MOD_SQLITE3[0])) },
     { "mail", MOD_MAIL, (int)(sizeof(MOD_MAIL) / sizeof(MOD_MAIL[0])) },
     { "request", MOD_REQUEST, (int)(sizeof(MOD_REQUEST) / sizeof(MOD_REQUEST[0])) },
-    { "requests", MOD_REQUEST, (int)(sizeof(MOD_REQUEST) / sizeof(MOD_REQUEST[0])) },
     { "qrcode", MOD_QRCODE, (int)(sizeof(MOD_QRCODE) / sizeof(MOD_QRCODE[0])) },
-    { "qr", MOD_QRCODE, (int)(sizeof(MOD_QRCODE) / sizeof(MOD_QRCODE[0])) },
     { "manpu", MOD_MANPU, (int)(sizeof(MOD_MANPU) / sizeof(MOD_MANPU[0])) },
-    { "mp", MOD_MANPU, (int)(sizeof(MOD_MANPU) / sizeof(MOD_MANPU[0])) },
     { "psodbc", MOD_PSODBC, (int)(sizeof(MOD_PSODBC) / sizeof(MOD_PSODBC[0])) },
-    { "db", MOD_PSODBC, (int)(sizeof(MOD_PSODBC) / sizeof(MOD_PSODBC[0])) },
+    /* I19: os apelidos SAIRAM. Eram `requests`, `qr`, `mp`, `db` e `sqlite`,
+     * cada um um segundo nome pro mesmo modulo — e dois nomes pra mesma coisa
+     * multiplicam doc, teste e completion sem dar nada em troca. Os canonicos
+     * sao `request`, `qrcode`, `manpu`, `psodbc` e `sqlite3`.
+     * Quem importar o nome antigo recebe ImportError dizendo qual usar. */
     { "jinker", MOD_JINKER, (int)(sizeof(MOD_JINKER) / sizeof(MOD_JINKER[0])) },
     { "guzer", MOD_GUZER, (int)(sizeof(MOD_GUZER) / sizeof(MOD_GUZER[0])) },
     { "sockets", MOD_SOCKETS, (int)(sizeof(MOD_SOCKETS) / sizeof(MOD_SOCKETS[0])) },
-    { "sqlite", MOD_SQLITE_STUB, (int)(sizeof(MOD_SQLITE_STUB) / sizeof(MOD_SQLITE_STUB[0])) },
     { "smtplib", MOD_SMTPLIB_STUB, (int)(sizeof(MOD_SMTPLIB_STUB) / sizeof(MOD_SMTPLIB_STUB[0])) },
     { "mimetext", MOD_MIMETEXT_STUB, (int)(sizeof(MOD_MIMETEXT_STUB) / sizeof(MOD_MIMETEXT_STUB[0])) },
     { "multipart", MOD_MULTIPART_STUB, (int)(sizeof(MOD_MULTIPART_STUB) / sizeof(MOD_MULTIPART_STUB[0])) },
@@ -22535,6 +22535,26 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
          * `except ImportError` continua pegando. Aqui não há hierarquia — o
          * catch compara o nome — e adotar o nome novo quebraria em silêncio
          * todo `catch (ImportError e)` que hoje pega módulo ausente. */
+        /* I19: os cinco apelidos removidos ganham resposta propria. Sem isso,
+         * codigo antigo (e a memoria de quem escreveu) recebe so
+         * "No module named 'db'" e fica sem saber que o modulo continua ali,
+         * com outro nome. */
+        static const struct { const char *velho, *novo; } APELIDO_SAIU[] = {
+            { "db",       "psodbc"  },
+            { "qr",       "qrcode"  },
+            { "mp",       "manpu"   },
+            { "requests", "request" },
+            { "sqlite",   "sqlite3" },
+        };
+        for (size_t i = 0; i < sizeof(APELIDO_SAIU)/sizeof(APELIDO_SAIU[0]); i++) {
+            if (strcmp(nome, APELIDO_SAIU[i].velho) == 0) {
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "No module named '%s'. O apelido saiu; use '%s'",
+                         APELIDO_SAIU[i].velho, APELIDO_SAIU[i].novo);
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
+                return -1;
+            }
+        }
         snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", nome);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
@@ -22737,7 +22757,6 @@ static const struct { const char *dono; const char *membro; const char *tipo; } 
     { "SocketNamespace", "status_send", "ChannelStatus" },
     { "UI", "button", "Button" },
     { "UI", "window", "Window" },
-    { "db", "connect", "DbConnection" },
     { "guzer", "UI", "UI" },
     { "jinker", "Jinker", "Jinker" },
     { "jinker", "JinkerRequest", "JinkerRequest" },
@@ -22755,14 +22774,12 @@ static const struct { const char *dono; const char *membro; const char *tipo; } 
     { "manpu", "open", "ManpuFile" },
     { "manpu", "remove", "ManpuResult" },
     { "manpu", "write", "ManpuResult" },
-    { "mp", "open", "ManpuFile" },
-    { "mp", "remove", "ManpuResult" },
-    { "mp", "write", "ManpuResult" },
     { "os", "PoolFile", "PoolFile" },
     { "os", "loadFile", "PoolFile" },
+    /* I19: as 13 entradas de `db`, `mp`, `qr` e `requests` sairam junto com
+     * os apelidos — eram tipo de retorno declarado pra modulo que nao
+     * existe mais, e iam direto pro hover do editor. */
     { "psodbc", "connect", "DbConnection" },
-    { "qr", "QRCode", "PoolQRCode" },
-    { "qr", "make", "QRImage" },
     { "qrcode", "QRCode", "PoolQRCode" },
     { "qrcode", "make", "QRImage" },
     { "regex", "compile", "Pattern" },
@@ -22775,13 +22792,6 @@ static const struct { const char *dono; const char *membro; const char *tipo; } 
     { "request", "post", "Response" },
     { "request", "put", "Response" },
     { "request", "ws_connect", "WsConnection" },
-    { "requests", "delete", "Response" },
-    { "requests", "get", "Response" },
-    { "requests", "head", "Response" },
-    { "requests", "patch", "Response" },
-    { "requests", "post", "Response" },
-    { "requests", "put", "Response" },
-    { "requests", "ws_connect", "WsConnection" },
     { "sockets", "create_connection", "socket" },
     { "sockets", "create_server", "socket" },
     { "sockets", "socket", "socket" },
