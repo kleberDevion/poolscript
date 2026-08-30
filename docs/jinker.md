@@ -181,7 +181,23 @@ action receber() {
 ```
 
 Em rotas ou sockets com parâmetro dinâmico no path (`/user:id`, `/user/<id>`),
-pegue o valor com `request.path_param()`:
+há **duas** formas de pegar o valor. A action escolhe.
+
+**1. Declarando o parâmetro** — o valor chega no argumento, casado pelo **nome**:
+
+```ps
+@app.route("/user:id")
+action perfil(id) {
+    return jsonify({"user_id": id}), 200
+}
+```
+
+O casamento é por nome, não por posição: numa rota `/x:a/sub:b`, uma action
+`(b, a)` recebe cada um corretamente. Parâmetro declarado que **não** é path
+param não é preenchido — fica com o default, ou dá o erro de argumento faltando
+de sempre.
+
+**2. Pedindo pelo nome** — `request.path_param()`, que continua valendo igual:
 
 ```
 @app.route("/user:id", auth=cors.origins(), methods=cors.options(["GET"]))

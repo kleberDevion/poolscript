@@ -76,6 +76,26 @@ action param()
 }
 
 
+# I18 — o path param chega no ARGUMENTO da action, se ela pedir.
+#
+# A rota `/param/<id>` acima continua usando `request.path_param("id")` e nada
+# mudou pra ela: as duas formas convivem, que é o ponto da decisão ("opcional,
+# poder injetar o valor no arg da action se o Dev quiser").
+@app.route("/injeta:id")
+action injeta(id)
+{
+    return {"id": id}
+}
+
+# Casa por NOME, não por posição: aqui os parâmetros estão na ordem INVERSA da
+# rota, e cada um recebe o seu.
+@app.route("/inverte:a/sub:b")
+action inverte(b, a)
+{
+    return {"a": a, "b": b}
+}
+
+
 # ── upload multipart ────────────────────────────────────────────────────────
 @app.route("/subir", methods=["POST"])
 action subir()

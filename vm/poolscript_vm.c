@@ -16892,11 +16892,47 @@ static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep
 
 /* Chama o handler `.ps` (0 args) com a requisição corrente montada. Devolve
  * 0 e o retorno em *ret; -1 se o handler levantou erro (mensagem em vm->erro). */
+/* I18 — o path param chega no ARGUMENTO da action, se ela pedir.
+ *
+ * `@app.route("/user/<id>")` com `action perfil()` nunca injetava nada: o `id`
+ * so saia de `request.path_param("id")`. Quem vem do Flask le o nome do modulo,
+ * escreve `action perfil(id)` e recebe `id` faltando — o nome prometia uma
+ * semantica que o motor nao tinha.
+ *
+ * A regra e OPCIONAL e por NOME, decisao dele: "poder injetar o valor no arg da
+ * action se o Dev quiser". Quem declara `action perfil(id)` recebe; quem
+ * declara `action perfil()` continua usando `request.path_param("id")`, e nada
+ * muda. Parametro declarado que NAO e path param fica com o default (ou UNSET,
+ * e ai o erro de argumento faltando e o de sempre) — nao inventamos valor.
+ */
 static int jk_chama_handler(VM *vm, Value handler, PSJReq *req, Value *ret)
 {
     vm->jk_req = MK_OBJ(req);
     vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
-    int rc = chama_valor(vm, handler, NULL, 0, ret);
+
+    /* Monta os posicionais a partir dos nomes que o handler declara. */
+    Value args[8];
+    int nargs = 0;
+    if (req && EH_DICT(req->params) && COMO_DICT(req->params)->count > 0) {
+        Value f = handler;
+        if (EH_CLOSURE(f)) f = MK_FUNC(COMO_CLOSURE(f)->proto);
+        if (f.t == V_FUNC && f.as.proto >= 0 && f.as.proto < vm->nprotos) {
+            Proto *pr = &vm->protos[f.as.proto];
+            int lim = pr->nparams < 8 ? pr->nparams : 8;
+            for (int i = 0; i < lim; i++) {
+                const char *nm = (pr->param_nomes && pr->param_nomes[i])
+                                 ? pr->param_nomes[i] : NULL;
+                if (!nm) break;
+                PSString *k = nova_string(vm, nm, (int)strlen(nm));
+                if (!k) break;
+                Value chave = MK_OBJ(k), v;
+                if (dict_get(COMO_DICT(req->params), &chave, &v) != 0) break;
+                args[nargs++] = v;
+            }
+        }
+    }
+
+    int rc = chama_valor(vm, handler, nargs ? args : NULL, nargs, ret);
     vm->jk_req = MK_NULL();
     return rc;
 }

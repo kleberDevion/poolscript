@@ -154,6 +154,15 @@ confere("query percent-encoded é decodificada", r.get_json("q") == "a b+c")
 r = get(RAIZ + "/param/42")
 confere("path param chega", r.get_json("id") == "42")
 
+# I18: o path param no argumento da action, sem tocar em request.path_param
+r = get(RAIZ + "/injeta7")
+confere("path param injetado no argumento", r.get_json("id") == "7")
+r = get(RAIZ + "/inverteX/subY")
+confere("injeta por NOME, nao por posicao",
+        r.get_json("a") == "X" and r.get_json("b") == "Y")
+r = get(RAIZ + "/param/ana")
+confere("request.path_param continua valendo", "ana" in r.text)
+
 r = get(RAIZ + "/cabecalho", headers={"X-Chave": "valor"})
 confere("cabeçalho do cliente chega", r.get_json("chave") == "valor")
 confere("a lista de cabeçalhos não vem vazia", r.get_json("todos") == true)
