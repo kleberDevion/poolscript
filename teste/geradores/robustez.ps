@@ -1,18 +1,17 @@
 # Gera `teste/casos_robustez.c`: cada método do motor chamado com ARIDADE
-# errada e TIPO errado em cada posição.
+# errada — argumento a mais, e obrigatório a menos.
 #
-# O contrato não precisa de oráculo — "chamada errada tem que reclamar" é
+# O contrato não precisa de oráculo — "aridade errada tem que reclamar" é
 # invariante:
 #
 #   - erro capturável por try/catch (não crash, não silêncio)
 #   - a VM NÃO morre (o runner faz fork/exec, então sinal vira falha)
 #   - a VM NÃO trava (o runner tem alarm)
 #
-# Um caso por TIPO, não por chamada: são ~11 mil chamadas erradas, e uma por
-# subprocesso levaria mais de um minuto. Cada programa roda as chamadas do seu
-# tipo dentro de try/catch e imprime a lista das que passaram CALADAS. A saída
-# esperada é essa lista como ela é hoje — aceitação silenciosa nova, crash ou
-# trava mudam o resultado e o caso falha.
+# Um caso por TIPO, não por chamada: uma por subprocesso levaria minutos. Cada
+# programa roda as chamadas do seu tipo dentro de try/catch e imprime só o que
+# REGREDIU — método que hoje levanta e passou a aceitar calado. Consertar um
+# método da dívida não muda a saída: fica verde.
 #
 # Rodar:  ./pool teste/geradores/robustez.ps
 import os
@@ -35,9 +34,6 @@ ALVO = [
 
 IMPORTS = "import os\nimport regex\nimport mail\nimport jinker\nimport qrcode\nimport guzer\nimport sockets\n"
 
-LIXO = ["Null", "42", "-1", "3.5", "true", "\"texto\"", "[1]", "{\"k\": 1}", "(1,)"]
-
-
 # Chamada errada com efeito colateral EXISTE: um QRImage que recebeu a string
 # "texto" como caminho salvou um PNG na raiz do repo. Cada tipo roda numa pasta
 # própria e VAZIA — se sobrar arquivo de uma rodada anterior, um
@@ -52,7 +48,27 @@ action prologo(tipo) {
 }
 
 
-# (rótulo, expressão) de toda chamada ERRADA daquele tipo.
+# (rótulo, expressão) de toda chamada errada por ARIDADE daquele tipo.
+#
+# SÓ ARIDADE, e isto é a correção de um erro de medição que custou meses de
+# número inflado.
+#
+# A versão anterior também enfiava LIXO (`42`, `"texto"`, `[1]`, `Null`…) em
+# cada posição declarada e chamava tudo isso de "chamada errada". Não é. Medi
+# os 63 métodos que sobraram e rodei cada um no CPython: `[1,2].count(42)`,
+# `[1,2].append("texto")`, `"abc".find("texto")`, `d.get(42)`,
+# `"abc".strip(Null)`, `p.match("texto")`, `m.body("texto")`, `s.listen(42)` —
+# **todos legais**, nos dois. 17 de 17 dos que confirmei no Python passam lá
+# também.
+#
+# O motor estava certo e o teste é que acusava. Era daí que saía o número de
+# ~10,5 mil "aceitações silenciosas": um parâmetro que legitimamente aceita
+# qualquer tipo aparecia como 9 defeitos, um por item do LIXO.
+#
+# Aridade é decidível sem oráculo — argumento a mais ou obrigatório a menos é
+# erro em qualquer linguagem. Tipo NÃO é: depende do que cada parâmetro aceita,
+# e isso o metadata não expõe. Enquanto não houver oráculo por parâmetro, o
+# gerador não inventa: mede o que dá pra medir.
 action chamadas(meta, tipo, recv) {
     fora = []
     metodos = []
@@ -84,22 +100,6 @@ action chamadas(meta, tipo, recv) {
             demais.append("1")
         }
         fora.append([nome, recv + "." + nome + "(" + ", ".join(demais) + ")"])
-        # lixo em CADA posição declarada — opcional inclusive: parâmetro que o
-        # motor nem checa aceita qualquer coisa calado, e é isso que se quer ver
-        for each i in range(len(ps)) {
-            for each lixo in LIXO {
-                args = []
-                for each k in range(len(ps)) {
-                    if k == i {
-                        args.append(lixo)
-                    }
-                    else {
-                        args.append("1")
-                    }
-                }
-                fora.append([nome, recv + "." + nome + "(" + ", ".join(args) + ")"])
-            }
-        }
     }
     return fora
 }
@@ -181,9 +181,14 @@ if __name__ == "main" {
     out = ["/*",
            " * GERADO por teste/geradores/robustez.ps — nao edite na mao.",
            " *",
-           " * Chamada errada (aridade e tipo) em cada metodo de cada tipo. O caso",
-           " * imprime as chamadas que passaram CALADAS; a saida esperada e a lista",
-           " * de hoje. Aceitacao silenciosa nova, crash ou trava fazem o caso falhar.",
+           " * Aridade errada (argumento a mais, obrigatorio a menos) em cada metodo",
+           " * de cada tipo. O caso imprime so o que REGREDIU: metodo que levantava e",
+           " * passou a aceitar calado. Consertar a divida NAO muda a saida.",
+           " *",
+           " * So aridade, e de proposito: enfiar lixo em cada posicao e chamar de",
+           " * erro media errado. `[1,2].count(42)`, `d.get(42)`, `p.match(\"x\")` sao",
+           " * chamadas CERTAS, e o CPython aceita todas. Era dai que saia o numero",
+           " * inflado de ~10,5 mil \"aceitacoes silenciosas\".",
            " */",
            "#include \"ps_teste.h\"", "", "const Caso CASOS_ROBUSTEZ[] = {"]
 

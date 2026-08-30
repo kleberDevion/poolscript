@@ -8725,7 +8725,15 @@ static int met_rx_findall(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSRegex *r; PSString *s;
-    if (n > 2) return erro_aridade(vm, "split", 1, 2, n);
+    /* `n < 1` FALTAVA, e nao era so mensagem: sem ele, `p.split()` caia no
+     * `rx_obj_str(..., 1, ...)` logo abaixo — que recebe o literal 1 no lugar
+     * do `n` real, entao a guarda `n != 1` de la nunca disparava — e lia
+     * `args[0]` FORA DO ARRAY. Leitura fora de limites, com resultado
+     * dependendo do lixo que estivesse na pilha: com o receptor numa variavel
+     * saia `TypeError: argument 1 must be str, not Null`, e inline
+     * (`regex.compile("a").split()`) saia `['', '']` calado. Duas respostas
+     * pra mesma chamada, nenhuma delas de verdade. */
+    if (n < 1 || n > 2) return erro_aridade(vm, "split", 1, 2, n);
     /* O maxsplit era VALIDADO e depois ignorado — `p.split(s, 1)` cortava tudo. */
     int64_t maxsplit = 0;
     if (n == 2) {
