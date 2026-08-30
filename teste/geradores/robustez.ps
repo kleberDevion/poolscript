@@ -107,14 +107,27 @@ action chamadas(meta, tipo, recv) {
 
 # Granularidade de MÉTODO, não de chamada: uma lista com 9 mil combinações de
 # argumento não dá sinal nenhum num diff. O que importa é "este método deixou
-# de reclamar" — e o total, pra o placar não mudar sem aparecer.
-action programa(tipo, fora) {
-    L = [IMPORTS + prologo(tipo), "CAL = []", "N = []",
+# de reclamar".
+#
+# A ASSERÇÃO É DE UM LADO SÓ, e essa é a diferença que importa.
+#
+# A versão anterior gravava a CONTAGEM do dia como saída esperada:
+# `"10217 caladas em 83 metodos: [...]"`. Isso transformava ~10,5 mil aceitações
+# silenciosas — defeitos — no resultado que o teste EXIGE. Consertar qualquer
+# método quebrava a suíte, então o caso empurrava na direção de não consertar
+# nada. O cabeçalho prometia "erro capturável, não silêncio" e o caso travava o
+# silêncio.
+#
+# Agora o programa só imprime o que REGREDIU: método que hoje levanta e amanhã
+# passar a aceitar calado. A dívida conhecida vai numa lista embutida, e método
+# que sai dela não muda a saída — consertar deixa VERDE. É a mesma forma da
+# catraca de cobertura: só piora reprova.
+action programa(tipo, fora, divida) {
+    L = [IMPORTS + prologo(tipo), "CAL = []",
          "action calou_(nome) {",
          "    if not CAL.contains(nome) {",
          "        CAL.append(nome)",
          "    }",
-         "    N.append(1)",
          "}", ""]
     for each par in fora {
         L.append("try {")
@@ -125,9 +138,32 @@ action programa(tipo, fora) {
         L.append("}")
     }
     L.append("")
-    L.append("CAL.sort()")
-    L.append("post(len(N), \"caladas em\", len(CAL), \"metodos:\", CAL)")
+    L.append("# dívida conhecida: estes já aceitavam calados quando o caso foi")
+    L.append("# gerado. Encolher esta lista é progresso e NÃO muda a saída.")
+    L.append("DIVIDA = " + lit_lista(divida))
+    L.append("regrediu = []")
+    L.append("for each m in CAL {")
+    L.append("    if not DIVIDA.contains(m) {")
+    L.append("        regrediu.append(m)")
+    L.append("    }")
+    L.append("}")
+    L.append("regrediu.sort()")
+    L.append("if len(regrediu) > 0 {")
+    L.append("    post(\"REGREDIU — passaram a aceitar calado:\", regrediu)")
+    L.append("}")
+    L.append("else {")
+    L.append("    post(\"ok\")")
+    L.append("}")
     return "\n".join(L) + "\n"
+}
+
+
+action lit_lista(l) {
+    partes = []
+    for each s in l {
+        partes.append("\"" + s + "\"")
+    }
+    return "[" + ", ".join(partes) + "]"
 }
 
 
@@ -161,25 +197,51 @@ if __name__ == "main" {
             post("  ", tipo, "sem metodo — pulado")
             continue
         }
-        src = programa(tipo, fora)
-        fonte = TMP + "/" + tipo + ".ps"
+        # 1ª passada: SONDA. Roda com a dívida vazia só pra colher quem aceita
+        # calado hoje — é essa lista que vira a dívida embutida no caso.
+        sonda = programa(tipo, fora, [])
+        fonte = TMP + "/" + tipo + "_sonda.ps"
         using open(fonte, "w") as f {
-            f.write(src)
+            f.write(sonda)
         }
         os.cmd("GUZER_HEADLESS=1 ./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
         saida = open(TMP + "/out").read().strip()
         rc = int(open(TMP + "/rc").read().strip())
-        if rc != 0 or not " caladas em " in saida {
+        if rc != 0 {
             post("ERRO gerando", tipo, "rc =", rc)
             post(open(TMP + "/err").read()[0:600])
             sys.exit(1)
         }
-        mudos = int(saida.split(" ")[0])
+        divida = []
+        if saida.startswith("REGREDIU") {
+            miolo = saida.split("[")[1].split("]")[0]
+            for each pedaco in miolo.split(",") {
+                nm = pedaco.strip().strip("'").strip("\"")
+                if nm != "" {
+                    divida.append(nm)
+                }
+            }
+        }
+
+        # 2ª passada: o caso de verdade, com a dívida embutida. Saída esperada
+        # é "ok" — encolher a dívida mantém "ok", crescer imprime REGREDIU.
+        src = programa(tipo, fora, divida)
+        fonte = TMP + "/" + tipo + ".ps"
+        using open(fonte, "w") as f {
+            f.write(src)
+        }
+        os.cmd("GUZER_HEADLESS=1 ./pool " + fonte + " > " + TMP + "/out2 2> " + TMP + "/err2; echo $? > " + TMP + "/rc2")
+        conf = open(TMP + "/out2").read().strip()
+        if conf != "ok" {
+            post("ERRO: o caso de", tipo, "nao ficou verde com a propria divida:", conf)
+            sys.exit(1)
+        }
         total = total + len(fora)
-        mudos_total = mudos_total + mudos
-        post("  ", tipo, len(fora), "chamadas erradas,", mudos, "passaram caladas")
-        out.append("/* " + tipo + ": " + str(len(fora)) + " chamadas erradas */")
-        out.append("{ \"robustez: " + tipo + "\", " + cstr(src) + ", " + cstr(saida) + ", NULL, 0 },")
+        mudos_total = mudos_total + len(divida)
+        post("  ", tipo, len(fora), "chamadas erradas,", len(divida), "metodos ainda calam")
+        out.append("/* " + tipo + ": " + str(len(fora)) + " chamadas erradas, "
+                   + str(len(divida)) + " metodos ainda aceitam calado */")
+        out.append("{ \"robustez: " + tipo + "\", " + cstr(src) + ", \"ok\", NULL, 0 },")
     }
 
     out.append("};")

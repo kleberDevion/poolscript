@@ -3050,6 +3050,16 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
  * se ele ajuda quem lê.
  */
 
+/* Argumento POSICIONAL onde o método só aceita nomeado. Texto do CPython pra
+ * parâmetro keyword-only. */
+#define ERRO_ARIDADE_POS(vm, nome, n) do { \
+    snprintf((vm)->erro, sizeof((vm)->erro), \
+             "%s() takes 0 positional arguments but %d %s given", \
+             (nome), (n), (n) == 1 ? "was" : "were"); \
+    snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "TypeError"); \
+    return -1; \
+} while (0)
+
 /* Erro de builtin: mensagem + tipo, no mesmo formato do resto da VM. */
 #define BERRO(vm, tipo, ...) do { \
     snprintf((vm)->erro, sizeof((vm)->erro), __VA_ARGS__); \
@@ -18667,6 +18677,22 @@ static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
     }
     const char *p = mt->params;
     if (strstr(p, "...")) return 0;                 /* variádico */
+
+    /* ELEMENTO DE GUZER: os 14 parâmetros são ATRIBUTOS, e só fazem sentido
+     * por nome (`app.img(src="logo.png")`) — é assim que a doc inteira os usa,
+     * e não há uma chamada posicional em lugar nenhum do repositório.
+     *
+     * Sem esta regra a checagem genérica só recusava mais de 14 posicionais, e
+     * `app.div(1, 1, 1, 1)` passava CALADO, jogando os quatro valores fora.
+     * Eram 10.311 das 11.893 chamadas erradas da suíte de robustez — 87% do
+     * total — concentradas nos 83 métodos de elemento, que compartilham este
+     * mesmo `P_ELEM`. Um buraco só, não oitenta e três.
+     *
+     * Posicional aqui vira erro com o texto do CPython pra parâmetro
+     * keyword-only. */
+    if (strcmp(p, P_ELEM) == 0 && n > 0)
+        ERRO_ARIDADE_POS(vm, mt->nome, n);
+
     max = 1;
     int prof = 0;
     for (const char *q = p; *q; q++) {
