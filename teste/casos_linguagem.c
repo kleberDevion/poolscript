@@ -897,6 +897,31 @@ const Caso CASOS_LINGUAGEM[] = {
   "if __name__ == \"main\" {\n    post(\"direto\")\n}\n", "direto", NULL, 0 },
 { "guard com parenteses",
   "if (__name__ == \"main\") {\n    post(\"direto\")\n}\n", "direto", NULL, 0 },
+/* I12: fechar o bloco na linha do ULTIMO comando era SyntaxError, enquanto
+ * `{ x }` numa linha e o `}` sozinho na linha de baixo funcionavam. A regra da
+ * chave mudava conforme a FORMA do bloco, e o erro ainda apontava a linha
+ * SEGUINTE — porque quem estourava era um DEDENT solto, que carrega a posicao
+ * do proximo token. */
+{ "fecha o bloco na linha do ultimo comando: while",
+  "i = 0\n"
+  "while (i < 3) {\n"
+  "    i = i + 1 }\n"
+  "post(i)\n", "3", NULL, 0 },
+{ "fecha o bloco na linha do ultimo comando: if",
+  "x = 1\n"
+  "if (x == 1) {\n"
+  "    post(\"a\") }\n"
+  "post(\"b\")\n", "a\nb", NULL, 0 },
+{ "fecha o bloco na linha do ultimo comando: action",
+  "action f() {\n"
+  "    return 1 }\n"
+  "post(f())\n", "1", NULL, 0 },
+{ "fecha DOIS blocos na mesma linha",
+  "x = 0\n"
+  "if (x == 0) {\n"
+  "    while (x < 2) {\n"
+  "        x = x + 1 } }\n"
+  "post(x)\n", "2", NULL, 0 },
 /* O arquivo importa a SI MESMO: o corpo do módulo roda (imprime "corpo") mas
  * o guard dele NÃO — por isso "guard" aparece UMA vez só, no fim, quando o
  * arquivo roda como principal. */

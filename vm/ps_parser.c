@@ -187,6 +187,42 @@ static void pula_separadores(P *p)
         if (p->grupo_depth > 0 && (checa(p, T_INDENT) || checa(p, T_DEDENT))) {
             p->pos++; continue;
         }
+        /* DEDENT SOLTO entre statements — sempre, nao so dentro de grupo.
+         *
+         * Fechar o bloco na linha do ULTIMO comando (`i = i + 1 }`) era erro
+         * de sintaxe, enquanto `{ i = i + 1 }` numa linha e o `}` sozinho na
+         * linha de baixo funcionavam. A regra da chave mudava conforme a forma
+         * do bloco, e nada na linguagem justifica isso.
+         *
+         * A causa: o lexer abre nivel de indentacao pro corpo e fecha na
+         * quebra de linha SEGUINTE. Com o `}` sozinho, o DEDENT chega ANTES
+         * dele e o laco do bloco o come; com o `}` colado, chega DEPOIS — o
+         * bloco ja fechou, e o DEDENT vaza pro nivel de cima. Ali ele nao era
+         * pulado, virava `primario()` e dava "expressao invalida" apontando a
+         * linha do PROXIMO comando, porque o DEDENT carrega a posicao dela.
+         *
+         * Statement nenhum comeca com DEDENT: dentro de `{ }` a indentacao nao
+         * significa nada (esta escrito em docs/linguagem/01, secao 1.3). O
+         * INDENT continua guardado pelo `grupo_depth` porque o bloco `:` do
+         * `run_selfwith_` — o unico que sobrou — depende dele. */
+        if (checa(p, T_DEDENT)) { p->pos++; continue; }
+        break;
+    }
+}
+
+/* Igual ao `pula_separadores`, mas DEIXA o DEDENT.
+ *
+ * O bloco por `:` (o guard `if __name__ == "main":`) e o unico da linguagem
+ * que ainda fecha por indentacao — ele TERMINA quando ve o DEDENT. Se o
+ * pulador comer o DEDENT, o laco corre ate o EOF e da "bloco indentado nao foi
+ * fechado corretamente". */
+static void pula_separadores_com_dedent(P *p)
+{
+    for (;;) {
+        if (checa(p, T_NEWLINE) || checa(p, T_SEMI)) { p->pos++; continue; }
+        if (p->grupo_depth > 0 && (checa(p, T_INDENT) || checa(p, T_DEDENT))) {
+            p->pos++; continue;
+        }
         break;
     }
 }
@@ -1148,14 +1184,14 @@ static PSNode *bloco_entrada(P *p)
     PSNode *b = ps_node_novo(p->arena, N_BLOCK, t->line, t->col);
     if (!b) return NULL;
     b->estilo = "colon";
-    pula_separadores(p);
+    pula_separadores_com_dedent(p);
     while (!checa(p, T_DEDENT) && !checa(p, T_EOF)) {
         PSNode *st = statement(p);
         if (FALHOU(p)) return NULL;
         if (st && ps_vec_push(p->arena, &b->lista, st) != 0) {
             perro(p, "sem memoria", t); return NULL;
         }
-        pula_separadores(p);
+        pula_separadores_com_dedent(p);
     }
     if (checa(p, T_EOF)) { perro(p, "bloco indentado nao foi fechado corretamente", t); return NULL; }
     p->pos++;   /* DEDENT */
