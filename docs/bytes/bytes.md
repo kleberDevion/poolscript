@@ -30,13 +30,91 @@ entre formatos.
 
 ## Métodos do próprio valor
 
-Estes se chamam NO valor, não na lib — `b.metodo()`, não `bytes.metodo(b)`:
+Estes se chamam NO valor, não na lib — `b.metodo()`, não `bytes.metodo(b)`. A
+referência é o `bytes` do Python, método por método; cada página tem a
+assinatura tirada do motor e a saída de um exemplo que foi RODADO.
+
+As páginas ficam sob [`metodos/`](metodos/) porque os dois espaços de nome se
+cruzam: `bytes.hex(b)` é função da lib e `b.hex()` é método do valor.
+
+**Buscar**
 
 | Método | O que faz |
 |---|---|
-| `b.decode(encoding="utf-8", errors="strict")` | volta pra texto |
-| `b.hex()` | os bytes como string hex |
-| `b.len()` | **quantos BYTES** — não caracteres |
+| [`b.find(sub, inicio=0, fim=Null)`](metodos/find/find.md) | posição da primeira ocorrência, ou -1 |
+| [`b.rfind(sub, inicio=0, fim=Null)`](metodos/rfind/rfind.md) | posição da última ocorrência, ou -1 |
+| [`b.index(sub, inicio=0, fim=Null)`](metodos/index/index.md) | como `find`, mas levanta se não achar |
+| [`b.rindex(sub, inicio=0, fim=Null)`](metodos/rindex/rindex.md) | como `rfind`, mas levanta se não achar |
+| [`b.count(sub, inicio=0, fim=Null)`](metodos/count/count.md) | quantas vezes aparece |
+| [`b.contains(sub)`](metodos/contains/contains.md) | True se contém |
+| [`b.has(sub)`](metodos/has/has.md) | o mesmo que `contains` |
+| [`b.startswith(prefixo, inicio=0, fim=Null)`](metodos/startswith/startswith.md) | começa com? aceita tupla de opções |
+| [`b.endswith(sufixo, inicio=0, fim=Null)`](metodos/endswith/endswith.md) | termina com? aceita tupla de opções |
+
+**Caixa** — todos mexem SÓ no ASCII
+
+| Método | O que faz |
+|---|---|
+| [`b.upper()`](metodos/upper/upper.md) | maiúsculas |
+| [`b.lower()`](metodos/lower/lower.md) | minúsculas |
+| [`b.title()`](metodos/title/title.md) | inicial de cada palavra em maiúscula |
+| [`b.capitalize()`](metodos/capitalize/capitalize.md) | só a primeira em maiúscula |
+| [`b.swapcase()`](metodos/swapcase/swapcase.md) | troca maiúscula por minúscula |
+
+**Perguntar**
+
+| Método | O que faz |
+|---|---|
+| [`b.isalpha()`](metodos/isalpha/isalpha.md) | só letras ASCII? |
+| [`b.isdigit()`](metodos/isdigit/isdigit.md) | só dígitos? |
+| [`b.isalnum()`](metodos/isalnum/isalnum.md) | só letra ou dígito? |
+| [`b.isspace()`](metodos/isspace/isspace.md) | só branco? |
+| [`b.isupper()`](metodos/isupper/isupper.md) | tem letra e nenhuma minúscula? |
+| [`b.islower()`](metodos/islower/islower.md) | tem letra e nenhuma maiúscula? |
+| [`b.istitle()`](metodos/istitle/istitle.md) | está em formato de título? |
+| [`b.isascii()`](metodos/isascii/isascii.md) | todo byte < 0x80? (vazio é True) |
+
+**Aparar e trocar**
+
+| Método | O que faz |
+|---|---|
+| [`b.strip(chars=Null)`](metodos/strip/strip.md) | tira das duas pontas; `chars` é CONJUNTO |
+| [`b.lstrip(chars=Null)`](metodos/lstrip/lstrip.md) | só da esquerda |
+| [`b.rstrip(chars=Null)`](metodos/rstrip/rstrip.md) | só da direita |
+| [`b.removeprefix(p)`](metodos/removeprefix/removeprefix.md) | tira o prefixo, se estiver lá |
+| [`b.removesuffix(p)`](metodos/removesuffix/removesuffix.md) | tira o sufixo, se estiver lá |
+| [`b.replace(old, new, count=-1)`](metodos/replace/replace.md) | troca ocorrências |
+| [`b.translate(tabela, delete=Null)`](metodos/translate/translate.md) | traduz byte a byte |
+| [`b.maketrans(de, para)`](metodos/maketrans/maketrans.md) | monta a tabela do `translate` |
+
+**Partir e juntar**
+
+| Método | O que faz |
+|---|---|
+| [`b.split(sep=Null, maxsplit=-1)`](metodos/split/split.md) | parte no separador, ou em branco |
+| [`b.rsplit(sep=Null, maxsplit=-1)`](metodos/rsplit/rsplit.md) | o mesmo, contando do fim |
+| [`b.splitlines(keepends=false)`](metodos/splitlines/splitlines.md) | parte em linhas (`\n`, `\r`, `\r\n`) |
+| [`b.partition(sep)`](metodos/partition/partition.md) | `(antes, sep, depois)` na primeira |
+| [`b.rpartition(sep)`](metodos/rpartition/rpartition.md) | o mesmo, na última |
+| [`b.join(lista)`](metodos/join/join.md) | junta usando este valor como separador |
+
+**Preencher**
+
+| Método | O que faz |
+|---|---|
+| [`b.ljust(width, fillbyte)`](metodos/ljust/ljust.md) | enche à direita |
+| [`b.rjust(width, fillbyte)`](metodos/rjust/rjust.md) | enche à esquerda |
+| [`b.center(width, fillbyte)`](metodos/center/center.md) | centraliza |
+| [`b.zfill(largura)`](metodos/zfill/zfill.md) | zeros à esquerda, respeitando o sinal |
+| [`b.expandtabs(tabsize=8)`](metodos/expandtabs/expandtabs.md) | tabulação vira espaços |
+
+**Converter**
+
+| Método | O que faz |
+|---|---|
+| [`b.decode(encoding="utf-8", errors="strict")`](metodos/decode/decode.md) | volta pra texto |
+| [`b.hex(sep=Null, bytes_per_sep=1)`](metodos/hex/hex.md) | texto hexadecimal, com separador opcional |
+| [`b.len()`](metodos/len/len.md) | **quantos BYTES** — não caracteres |
 
 `b.len()` conta byte, e a diferença importa:
 
@@ -49,6 +127,37 @@ post("ção".len())    // 3  — caracteres
 É o mesmo número que o builtin `len(b)` devolve; existe como método porque
 `str`, `list`, `dict` e `tup` também têm `.len()`, e `bytes` era o único de
 fora — quem escrevia `b.len()` por analogia tomava erro em tempo de execução.
+
+---
+
+## Operadores
+
+`bytes` responde aos mesmos operadores de sequência que `str` e `list`:
+
+```
+import bytes
+
+b = "Hello".encode()
+
+post(len(b))                 // 5
+post(b[0])                   // 72     — indexar dá o INTEIRO do byte
+post(b[0:2])                 // b'He'  — fatiar dá bytes
+post(b + " ali".encode())    // b'Hello ali'
+post(b * 2)                  // b'HelloHello'
+post("ell".encode() in b)    // True   — subsequência
+post(101 in b)               // True   — esse BYTE aparece?
+post("abc".encode() < "abd".encode())   // True — ordem lexicográfica por byte
+
+for each x in "abc".encode() {
+    post(x)                  // 97, 98, 99 — itera em INTEIROS
+}
+```
+
+Duas diferenças que valem lembrar, e as duas são as do Python:
+
+- **Indexar dá inteiro, fatiar dá bytes.** `b[0]` é `72`; `b[0:1]` é `b'H'`.
+- **Iterar dá inteiro.** `for each x in b` entrega `int`, não pedaços de um
+  byte. É o que faz `if x == 0` funcionar direto pra procurar byte NUL.
 
 ---
 

@@ -155,6 +155,91 @@ for each t in ["()", "(1,)", "(1, 2, 3)", "(\"a\", \"b\")"] {
     }
 }
 
+# ── bytes ───────────────────────────────────────────────────────────────────
+#
+# O `bytes` ficou FORA desta matriz até 31/08 porque o `sem_oraculo_expr`
+# pulava toda expressão com `.encode()`, alegando que "o repr de bytes difere
+# por design". Não difere — `post(b)` e `print(b)` dão a mesma coisa, incluindo
+# a troca de aspa quando o conteúdo tem `'`. O que havia era um DEFEITO no
+# nosso repr (três cópias, todas sem a regra da aspa), escondido justamente
+# pela regra que dispensava a conferência. Excluir do oráculo o que se acha
+# que é diferente é o jeito mais eficiente de nunca descobrir que não era.
+#
+# `.len()` fica de fora porque é método SÓ da PoolScript: `bytes` do Python não
+# tem, então ali não há oráculo de verdade. Ele é conferido em casos_libs.c.
+BYT = ["\"\".encode()", "\"a\".encode()", "\"abc\".encode()", "\"Hello, World\".encode()",
+       "\"aaa\".encode()", "\"  a b  \".encode()", "\"a-b-c\".encode()", "\"ABC\".encode()",
+       "\"abc123\".encode()", "\"café\".encode()"]
+BSUB = ["\"\".encode()", "\"a\".encode()", "\"-\".encode()", "\"abc\".encode()"]
+BINT = ["0", "97", "255"]
+
+BSEM = ["upper", "lower", "title", "capitalize", "swapcase", "strip", "lstrip",
+        "rstrip", "splitlines", "isalpha", "isdigit", "isalnum", "isspace",
+        "isupper", "islower", "istitle", "isascii", "hex", "decode"]
+for each b in BYT {
+    for each n in BSEM {
+        met(n, b, [])
+    }
+    add("len(" + b + ")")
+    add("list(" + b + ")")
+    add("sorted(" + b + ")")
+}
+
+BUM = ["count", "find", "rfind", "index", "rindex", "contains", "has",
+       "startswith", "endswith", "partition", "rpartition", "removeprefix",
+       "removesuffix", "split", "rsplit", "join"]
+for each b in BYT {
+    for each a in BSUB {
+        for each n in BUM {
+            met(n, b, [a])
+        }
+    }
+    for each a in BINT {
+        for each n in ["count", "find", "rfind", "index", "contains"] {
+            met(n, b, [a])
+        }
+    }
+}
+
+# preenchimento, tradução e os dois argumentos
+for each b in BYT {
+    for each w in ["0", "3", "8"] {
+        met("zfill", b, [w])
+        met("ljust", b, [w])
+        met("rjust", b, [w])
+        met("center", b, [w])
+        met("ljust", b, [w, "\".\".encode()"])
+        met("center", b, [w, "\"*\".encode()"])
+    }
+    met("expandtabs", b, ["4"])
+    met("replace", b, ["\"a\".encode()", "\"X\".encode()"])
+    met("replace", b, ["\"a\".encode()", "\"X\".encode()", "1"])
+    met("replace", b, ["\"\".encode()", "\"-\".encode()"])
+    met("splitlines", b, ["true"])
+    met("split", b, ["\"-\".encode()", "1"])
+    met("rsplit", b, ["\"-\".encode()", "1"])
+    met("strip", b, ["\"a \".encode()"])
+    met("find", b, ["\"a\".encode()", "1"])
+    met("find", b, ["\"a\".encode()", "0", "2"])
+    met("startswith", b, ["\"a\".encode()", "1"])
+    met("hex", b, ["\"-\""])
+    met("hex", b, ["\"-\"", "2"])
+    met("translate", b, ["Null", "\"a\".encode()"])
+}
+
+# operadores
+for each b in BYT {
+    add(b + " * 2")
+    add("2 * " + b)
+    add(b + " + " + "\"!\".encode()")
+    add(b + " == " + "\"abc\".encode()")
+    add(b + " < " + "\"abc\".encode()")
+    add(b + " > " + "\"abc\".encode()")
+    add("\"a\".encode() in " + b)
+    add("97 in " + b)
+    add("0 in " + b)
+}
+
 # ── builtins numéricos e de conversão ───────────────────────────────────────
 VAL = ["0", "1", "-1", "2", "255", "1000", "3.14", "-2.5", "0.0", "True", "False",
        "\"7\"", "\"-3\"", "\"abc\"", "\"\"", "[1,2]", "{}"]
@@ -209,8 +294,15 @@ action pra_python(e) {
 }
 
 
+# `reversed` da PoolScript devolve LISTA e o do Python devolve um iterador cujo
+# repr é `<list_reverseiterator ...>`: aí a diferença é real e de desenho.
+#
+# `.encode()` ESTAVA nesta lista e não devia: o repr de bytes é igual ao do
+# Python. A exclusão escondia um defeito nosso — ver o comentário da seção
+# BYTES lá em cima. `.len()` de bytes sai porque o Python não tem esse método,
+# não porque diverge.
 action sem_oraculo_expr(e) {
-    return e.count(".encode()") > 0 or e.count("reversed(") > 0
+    return e.count("reversed(") > 0
 }
 
 
@@ -312,7 +404,16 @@ if __name__ == "main" {
     drv.append("    if isinstance(v, str):   return v")
     drv.append("    if isinstance(v, float): return repr(v)")
     drv.append("    if isinstance(v, (list, tuple, dict, int)): return repr(v)")
-    drv.append("    if v is None: return 'null'")
+    # `None`, com N maiúsculo, porque é o que o `print` do Python imprime.
+    #
+    # Estava `'null'`, que não é o que NENHUM dos dois imprime: a PoolScript
+    # diz `Null` (I22, inicial maiúscula) e o Python diz `None`. Com o oráculo
+    # inventando uma terceira grafia, o comentário `DIVERGE` de todo caso que
+    # devolve nulo citava um valor que o Python nunca produziu — e o número de
+    # divergências ficava errado nos dois sentidos, dependendo de quando o
+    # arquivo tinha sido regerado. Divergência de NOME (Null x None) é desenho
+    # da linguagem e continua marcada; o que muda é o comentário dizer a verdade.
+    drv.append("    if v is None: return 'None'")
     drv.append("    return repr(v)")
     drv.append("for linha in open(sys.argv[1], encoding='utf-8').read().split('\\n'):")
     drv.append("    if linha == '': continue")

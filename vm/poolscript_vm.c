@@ -2577,6 +2577,46 @@ static char *repr_str_dup(const char *s, int len)
     return out;
 }
 
+/* O repr de `bytes`, no formato do Python: `b'...'`, com `\xNN` pra tudo que
+ * não é ASCII imprimível.
+ *
+ * ESTAVA EM TRÊS CÓPIAS (escreve_valor, valor_para_texto e o ramo de dentro),
+ * e as três erravam a mesma coisa: o Python troca a aspa quando o conteúdo tem
+ * `'` e não tem `"` — `b"a'b"`, não `b'a\'b'`. O repr de STRING deste mesmo
+ * arquivo já fazia a regra certa (`repr_str_dup`, logo acima); o de bytes não,
+ * e ninguém tinha percebido porque o gerador de oráculo pulava toda expressão
+ * com `.encode()` alegando que "o repr de bytes difere por design". Não
+ * difere: divergia por defeito.
+ *
+ * Uma cópia só, e o chamador libera. */
+static char *repr_bytes_dup(const char *s, int len)
+{
+    int tem_simples = 0, tem_duplas = 0;
+    for (int i = 0; i < len; i++) {
+        if (s[i] == '\'') tem_simples = 1;
+        else if (s[i] == '"') tem_duplas = 1;
+    }
+    char aspa = (tem_simples && !tem_duplas) ? '"' : '\'';
+    /* pior caso: todo byte vira \xNN (4) + `b` + as duas aspas + NUL */
+    char *out = malloc((size_t)len * 4 + 4);
+    if (!out) return NULL;
+    int n = 0;
+    out[n++] = 'b';
+    out[n++] = aspa;
+    for (int i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (c == (unsigned char)aspa || c == '\\') { out[n++] = '\\'; out[n++] = (char)c; }
+        else if (c == '\n') { out[n++] = '\\'; out[n++] = 'n'; }
+        else if (c == '\r') { out[n++] = '\\'; out[n++] = 'r'; }
+        else if (c == '\t') { out[n++] = '\\'; out[n++] = 't'; }
+        else if (c >= 32 && c < 127) out[n++] = (char)c;
+        else n += sprintf(out + n, "\\x%02x", c);
+    }
+    out[n++] = aspa;
+    out[n] = '\0';
+    return out;
+}
+
 static void escreve_valor(const Value *v, int dentro)
 {
     {   /* objetos opacos: mesma descrição que o `str()` usa */
@@ -2753,18 +2793,8 @@ static void escreve_valor(const Value *v, int dentro)
                 printf("<db.collection [%s]>", ((PSMongoCol *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_BYTES) {
                 PSString *b = (PSString *)v->as.obj;
-                fputs("b'", stdout);
-                for (int i = 0; i < b->len; i++) {
-                    unsigned char c = (unsigned char)b->chars[i];
-                    if (c == '\\')      fputs("\\\\", stdout);
-                    else if (c == '\'')  fputs("\\'", stdout);
-                    else if (c == '\n')  fputs("\\n", stdout);
-                    else if (c == '\r')  fputs("\\r", stdout);
-                    else if (c == '\t')  fputs("\\t", stdout);
-                    else if (c >= 32 && c < 127) putchar(c);
-                    else printf("\\x%02x", c);
-                }
-                putchar('\'');
+                char *r = repr_bytes_dup(b->chars, b->len);
+                if (r) { fputs(r, stdout); free(r); }
             } else if (v->as.obj->type == OBJ_MODULO_PS) {
                 printf("<modulo %s>", ((PSModuloPS *)v->as.obj)->nome);
             } else if (v->as.obj->type == OBJ_ARQUIVO) {
@@ -2865,21 +2895,11 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             if (v->as.obj->type == OBJ_BYTES) {
                 /* mesmo repr do `escreve_valor`; sem isto `str(b)` saía vazio */
                 PSString *b = (PSString *)v->as.obj;
-                char e[8];
-                if (txt_put(t, "b'", 2) != 0) return -1;
-                for (int i = 0; i < b->len; i++) {
-                    unsigned char c = (unsigned char)b->chars[i];
-                    const char *esc = NULL;
-                    if (c == '\\')     esc = "\\\\";
-                    else if (c == '\'') esc = "\\'";
-                    else if (c == '\n') esc = "\\n";
-                    else if (c == '\r') esc = "\\r";
-                    else if (c == '\t') esc = "\\t";
-                    else if (c < 32 || c >= 127) { snprintf(e, sizeof(e), "\\x%02x", c); esc = e; }
-                    if (esc) { if (txt_put(t, esc, (int)strlen(esc)) != 0) return -1; }
-                    else     { if (txt_put(t, (const char *)&c, 1) != 0) return -1; }
-                }
-                return txt_put(t, "'", 1);
+                char *r = repr_bytes_dup(b->chars, b->len);
+                if (!r) return -1;
+                int rc = txt_put(t, r, (int)strlen(r));
+                free(r);
+                return rc;
             }
             if (v->as.obj->type == OBJ_STRING) {
                 PSString *st = (PSString *)v->as.obj;
@@ -2933,21 +2953,11 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             if (v->as.obj->type == OBJ_BYTES) {
                 /* mesmo repr do `escreve_valor`; sem isto `str(b)` saía vazio */
                 PSString *b = (PSString *)v->as.obj;
-                char e[8];
-                if (txt_put(t, "b'", 2) != 0) return -1;
-                for (int i = 0; i < b->len; i++) {
-                    unsigned char c = (unsigned char)b->chars[i];
-                    const char *esc = NULL;
-                    if (c == '\\')     esc = "\\\\";
-                    else if (c == '\'') esc = "\\'";
-                    else if (c == '\n') esc = "\\n";
-                    else if (c == '\r') esc = "\\r";
-                    else if (c == '\t') esc = "\\t";
-                    else if (c < 32 || c >= 127) { snprintf(e, sizeof(e), "\\x%02x", c); esc = e; }
-                    if (esc) { if (txt_put(t, esc, (int)strlen(esc)) != 0) return -1; }
-                    else     { if (txt_put(t, (const char *)&c, 1) != 0) return -1; }
-                }
-                return txt_put(t, "'", 1);
+                char *r = repr_bytes_dup(b->chars, b->len);
+                if (!r) return -1;
+                int rc = txt_put(t, r, (int)strlen(r));
+                free(r);
+                return rc;
             }
             if (v->as.obj->type == OBJ_DICT) {
                 PSDict *d = (PSDict *)v->as.obj;
@@ -3732,6 +3742,16 @@ static int compara_valores_par(const Value *a, const Value *b,
         if (c) return c < 0 ? -1 : 1;
         return (x->len > y->len) - (x->len < y->len);
     }
+    /* bytes com bytes: lexicográfico POR BYTE, sem UTF-8 no meio. É o que
+     * ordena hash, chave binária e resposta de protocolo — e sem isto
+     * `sorted` de uma lista de bytes dizia que os tipos não se comparam. */
+    if (EH_BYTES(*a) && EH_BYTES(*b)) {
+        PSString *x = COMO_BYTES(*a), *y = COMO_BYTES(*b);
+        int m = x->len < y->len ? x->len : y->len;
+        int c = m > 0 ? memcmp(x->chars, y->chars, (size_t)m) : 0;
+        if (c) return c < 0 ? -1 : 1;
+        return (x->len > y->len) - (x->len < y->len);
+    }
     if (EH_SEQ(*a) && EH_SEQ(*b)) {
         PSList *x = COMO_LIST(*a), *y = COMO_LIST(*b);
         int m = x->len < y->len ? x->len : y->len;
@@ -3756,6 +3776,10 @@ static int iteravel_tam(const Value *v)
     /* CODEPOINTS, não bytes: `list("ção")` tem 3 itens, não 5. Iterar por
      * byte parte o UTF-8 no meio e devolve lixo. */
     if (EH_STRING(*v)) return utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len);
+    /* bytes itera em BYTES e cada item é um INTEIRO 0..255 — não um pedaço de
+     * bytes de tamanho 1, e não codepoint. É o que o Python faz, e é o que
+     * torna `for each b in dados` útil pra dado binário. */
+    if (EH_BYTES(*v))  return COMO_BYTES(*v)->len;
     if (EH_DICT(*v))   return COMO_DICT(*v)->count;
     return -1;
 }
@@ -3778,6 +3802,7 @@ static int dict_pos_viva(const PSDict *d, int i)
 static int iteravel_item(VM *vm, const Value *v, int i, Value *out)
 {
     if (EH_SEQ(*v))  { *out = COMO_LIST(*v)->itens[i]; return 0; }
+    if (EH_BYTES(*v)) { *out = MK_INT((unsigned char)COMO_BYTES(*v)->chars[i]); return 0; }
     if (EH_DICT(*v)) {
         int pos = dict_pos_viva(COMO_DICT(*v), i);
         if (pos < 0) return -1;
@@ -6832,13 +6857,41 @@ static int met_b_len(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+/* `b.hex()`, `b.hex(sep)`, `b.hex(sep, n_por_grupo)`.
+ *
+ * O separador entra a cada `n` bytes. `n` POSITIVO agrupa da direita pra
+ * esquerda e NEGATIVO da esquerda pra direita — é a regra do Python, e ela
+ * existe porque número em hexadecimal se lê do fim (`hex("_", 4)` de um MAC ou
+ * de um inteiro dá os grupos alinhados pelo dígito menos significativo). */
 static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    (void)args;
-    if (n != 0) return erro_aridade(vm, "hex", 0, 0, n);
+    if (n > 2) return erro_aridade(vm, "hex", 0, 2, n);
     PSString *b = COMO_BYTES(alvo);
+    char sep = 0;
+    if (n >= 1 && args[0].t != V_NULL) {
+        if (!EH_STRING(args[0]) && !EH_BYTES(args[0]))
+            MERRO(vm, "TypeError", "sep must be str or bytes, not %s",
+                  nome_do_tipo_valor(args[0]));
+        /* str e bytes têm o mesmo cabeçalho PSString; o que muda é o obj.type */
+        PSString *sp = (PSString *)args[0].as.obj;
+        if (sp->len != 1) MERRO(vm, "ValueError", "sep must be length 1.");
+        sep = sp->chars[0];
+    }
+    int64_t grupo = 1;
+    if (n == 2 && args[1].t != V_NULL) {
+        if (args[1].t != V_INT)
+            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[1]));
+        grupo = args[1].as.i;
+    }
+    if (!sep) grupo = 0;                 /* sem separador, não há o que agrupar */
     SBUF_AUTO sb = {0};
     for (int i = 0; i < b->len; i++) {
+        if (grupo > 0 && i > 0 && (b->len - i) % grupo == 0) {
+            if (sb_bytes(&sb, &sep, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+        } else if (grupo < 0 && i > 0 && i % (-grupo) == 0) {
+            if (sb_bytes(&sb, &sep, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+        }
         char par[3];
         snprintf(par, sizeof(par), "%02x", (unsigned char)b->chars[i]);
         if (sb_bytes(&sb, par, 2) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
@@ -6846,11 +6899,847 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
     return devolve_sbuf(vm, &sb, out);
 }
 
-/* Sem `.len()`: `bytes` não tem esse método no interpretador (é da `PoolStr`),
- * e a VM não pode oferecer mais do que a linguagem tem. `len(b)` funciona. */
+/* ── bytes: a superfície completa ────────────────────────────────────────
+ *
+ * POR QUE ISTO EXISTE: `bytes` tinha três métodos — `decode`, `hex` e `len`.
+ * Faltava tudo o que serve pra CONFERIR o conteúdo: `find`, `startswith`,
+ * `split`, `count`, `in`. O efeito prático apareceu escrevendo o teste do
+ * vazamento do jinker: pra provar que a resposta não tinha byte NUL foi
+ * preciso converter tudo pra hexadecimal e varrer a string em passos de dois,
+ * porque `\x00 in resposta` não existia. Conferência que precisa de rodeio é
+ * conferência que ninguém escreve.
+ *
+ * A referência é o `bytes` do Python, método por método, incluindo as
+ * diferenças que ele tem em relação ao `str` e que é fácil errar copiando:
+ *
+ *   - `upper`/`lower`/`title` mexem só no ASCII. `b"\xc0".lower()` é `b"\xc0"`.
+ *   - `splitlines` quebra em `\n`, `\r` e `\r\n` e MAIS NADA — o `\x0b` e o
+ *     `\x0c`, que no `str` quebram, aqui ficam dentro da linha.
+ *   - `find`/`count`/`index` aceitam um INTEIRO (0..255) além de bytes.
+ *   - `strip(chars)` é CONJUNTO de bytes, não prefixo.
+ *
+ * As mensagens de erro são as do CPython, palavra por palavra, colhidas
+ * rodando cada caso — não reescritas.
+ */
+
+/* Bytes prontos pra devolver. O `(dados && n > 0) ? dados : ""` é porque
+ * `memcpy(NULL, 0)` é comportamento indefinido, mesmo copiando zero byte.
+ *
+ * Esta função já existia mais abaixo, servindo o módulo `bytes`; subiu pra cá
+ * porque os métodos precisam dela antes. Ordem dos argumentos preservada — dois
+ * helpers iguais com ordens diferentes é armadilha. */
+static int by_devolve(VM *vm, Value *out, const char *dados, int n)
+{
+    PSString *b = novo_bytes(vm, (dados && n > 0) ? dados : "", n);
+    if (!b) MERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(b);
+    return 0;
+}
+
+static int by_devolve_sbuf(VM *vm, SBuf *s, Value *out)
+{
+    PSString *r = novo_bytes(vm, s->b ? s->b : "", s->n);
+    free(s->b);
+    s->b = NULL; s->n = 0; s->cap = 0;
+    if (!r) MERRO(vm, "MemoryError", "sem memoria");
+    *out = MK_OBJ(r);
+    return 0;
+}
+
+/* O alvo, sempre. */
+#define BY_EU(alvo, p, n) \
+    const unsigned char *p = (const unsigned char *)COMO_BYTES(alvo)->chars; \
+    int n = COMO_BYTES(alvo)->len
+
+/* Argumento "bytes-like". A frase é a do CPython. */
+static int by_like(VM *vm, Value v, const unsigned char **p, int *n)
+{
+    if (!EH_BYTES(v))
+        MERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+              nome_do_tipo_valor(v));
+    PSString *b = COMO_BYTES(v);
+    *p = (const unsigned char *)b->chars;
+    *n = b->len;
+    return 0;
+}
+
+/* Agulha de `find`/`rfind`/`index`/`rindex`/`count`: bytes OU inteiro 0..255.
+ * `um` é onde o byte solto fica guardado — o chamador passa um char da pilha
+ * dele, porque o ponteiro devolvido tem que sobreviver à volta. */
+static int by_agulha(VM *vm, Value v, const unsigned char **p, int *n,
+                     unsigned char *um)
+{
+    if (EH_BYTES(v)) {
+        PSString *b = COMO_BYTES(v);
+        *p = (const unsigned char *)b->chars;
+        *n = b->len;
+        return 0;
+    }
+    if (v.t == V_INT || (v.t == V_OBJ && v.as.obj->type == OBJ_BIGINT)) {
+        /* bigint nunca cabe num byte, e o CPython responde a mesma coisa */
+        if (v.t != V_INT || v.as.i < 0 || v.as.i > 255)
+            MERRO(vm, "ValueError", "byte must be in range(0, 256)");
+        *um = (unsigned char)v.as.i;
+        *p = um;
+        *n = 1;
+        return 0;
+    }
+    MERRO(vm, "TypeError",
+          "argument should be integer or bytes-like object, not '%s'",
+          nome_do_tipo_valor(v));
+}
+
+/* `inicio`/`fim` do jeito de fatia: negativo conta do fim, estouro grampeia.
+ * Aqui é ÍNDICE DE BYTE direto — sem a conversão de codepoint que o `str`
+ * precisa fazer, e é justamente essa a diferença entre os dois tipos. */
+static int by_faixa(VM *vm, int total, Value *args, int n, int *b0, int *b1)
+{
+    int64_t i0 = 0, i1 = total;
+    if (n >= 2 && args[1].t != V_NULL) {
+        if (args[1].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "slice indices must be integers or None"
+                  " or have an __index__ method");
+        i0 = args[1].as.i;
+        if (i0 < 0) i0 += total;
+        if (i0 < 0) i0 = 0;
+        if (i0 > total) i0 = total;
+    }
+    if (n >= 3 && args[2].t != V_NULL) {
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError",
+                  "slice indices must be integers or None"
+                  " or have an __index__ method");
+        i1 = args[2].as.i;
+        if (i1 < 0) i1 += total;
+        if (i1 < 0) i1 = 0;
+        if (i1 > total) i1 = total;
+    }
+    *b0 = (int)i0;
+    *b1 = (int)i1;
+    return 0;
+}
+
+/* ASCII e só ASCII: é o que o `bytes` do Python faz. */
+static int by_up(int c)   { return (c >= 'a' && c <= 'z') ? c - 32 : c; }
+static int by_low(int c)  { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
+static int by_eh_up(int c)  { return c >= 'A' && c <= 'Z'; }
+static int by_eh_low(int c) { return c >= 'a' && c <= 'z'; }
+static int by_eh_alpha(int c) { return by_eh_up(c) || by_eh_low(c); }
+static int by_eh_dig(int c) { return c >= '0' && c <= '9'; }
+static int by_eh_ws(int c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
+static int by_acha(const unsigned char *s, int slen,
+                   const unsigned char *ag, int alen, int de)
+{
+    if (alen == 0) return de <= slen ? de : -1;
+    for (int i = de; i + alen <= slen; i++)
+        if (memcmp(s + i, ag, (size_t)alen) == 0) return i;
+    return -1;
+}
+
+static int by_racha(const unsigned char *s, int slen,
+                    const unsigned char *ag, int alen)
+{
+    if (alen == 0) return slen;
+    for (int i = slen - alen; i >= 0; i--)
+        if (memcmp(s + i, ag, (size_t)alen) == 0) return i;
+    return -1;
+}
+
+/* ── busca ──────────────────────────────────────────────────────────────── */
+
+static int by_busca(VM *vm, Value alvo, Value *args, int n, Value *out,
+                    const char *quem, int reverso, int levanta)
+{
+    if (n < 1 || n > 3) return erro_aridade(vm, quem, 1, 3, n);
+    BY_EU(alvo, s, slen);
+    unsigned char um;
+    const unsigned char *ag;
+    int alen;
+    if (by_agulha(vm, args[0], &ag, &alen, &um) != 0) return -1;
+    int b0 = 0, b1 = slen;
+    if (by_faixa(vm, slen, args, n, &b0, &b1) != 0) return -1;
+    int achou = -1;
+    if (b1 >= b0) {
+        achou = reverso ? by_racha(s + b0, b1 - b0, ag, alen)
+                        : by_acha(s + b0, b1 - b0, ag, alen, 0);
+        if (achou >= 0) achou += b0;
+    }
+    if (achou < 0) {
+        /* `index`/`rindex` levantam, e a frase do bytes NÃO é a do str:
+         * "subsection not found", não "substring not found" */
+        if (levanta) MERRO(vm, "ValueError", "subsection not found");
+        *out = MK_INT(-1);
+        return 0;
+    }
+    *out = MK_INT(achou);
+    return 0;
+}
+
+static int met_b_find(VM *v, Value a, Value *g, int n, Value *o)   { return by_busca(v, a, g, n, o, "find", 0, 0); }
+static int met_b_rfind(VM *v, Value a, Value *g, int n, Value *o)  { return by_busca(v, a, g, n, o, "rfind", 1, 0); }
+static int met_b_index(VM *v, Value a, Value *g, int n, Value *o)  { return by_busca(v, a, g, n, o, "index", 0, 1); }
+static int met_b_rindex(VM *v, Value a, Value *g, int n, Value *o) { return by_busca(v, a, g, n, o, "rindex", 1, 1); }
+
+static int met_b_count(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 3) return erro_aridade(vm, "count", 1, 3, n);
+    BY_EU(alvo, s, slen);
+    unsigned char um;
+    const unsigned char *ag;
+    int alen;
+    if (by_agulha(vm, args[0], &ag, &alen, &um) != 0) return -1;
+    int b0 = 0, b1 = slen;
+    if (by_faixa(vm, slen, args, n, &b0, &b1) != 0) return -1;
+    if (b1 < b0) { *out = MK_INT(0); return 0; }
+    int janela = b1 - b0;
+    /* agulha vazia: o Python conta as POSIÇÕES, que são len+1 */
+    if (alen == 0) { *out = MK_INT(janela + 1); return 0; }
+    int64_t c = 0;
+    for (int i = 0; i + alen <= janela; ) {
+        if (memcmp(s + b0 + i, ag, (size_t)alen) == 0) { c++; i += alen; }
+        else i++;
+    }
+    *out = MK_INT(c);
+    return 0;
+}
+
+static int met_b_contains(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "contains", 1);
+    BY_EU(alvo, s, slen);
+    unsigned char um;
+    const unsigned char *ag;
+    int alen;
+    if (by_agulha(vm, args[0], &ag, &alen, &um) != 0) return -1;
+    *out = MK_BOOL(by_acha(s, slen, ag, alen, 0) >= 0);
+    return 0;
+}
+
+/* `startswith`/`endswith`: bytes, ou tupla/lista de bytes ("bate com qualquer
+ * uma"), com `inicio`/`fim` opcionais como no Python. */
+static int by_borda(VM *vm, Value alvo, Value *args, int n, Value *out,
+                    const char *quem, int fim)
+{
+    if (n < 1 || n > 3) return erro_aridade(vm, quem, 1, 3, n);
+    BY_EU(alvo, s, slen);
+    int b0 = 0, b1 = slen;
+    if (by_faixa(vm, slen, args, n, &b0, &b1) != 0) return -1;
+    if (b1 < b0) b1 = b0;
+    int janela = b1 - b0;
+
+    Value *opcoes = &args[0];
+    int nopc = 1;
+    if (EH_SEQ(args[0])) {
+        PSList *l = COMO_LIST(args[0]);   /* tupla e lista têm o mesmo cabeçalho */
+        opcoes = l->itens;
+        nopc = l->len;
+    }
+    for (int i = 0; i < nopc; i++) {
+        if (!EH_BYTES(opcoes[i]))
+            MERRO(vm, "TypeError",
+                  "%s first arg must be bytes or a tuple of bytes, not %s",
+                  quem, nome_do_tipo_valor(opcoes[i]));
+        PSString *p = COMO_BYTES(opcoes[i]);
+        if (p->len > janela) continue;
+        const unsigned char *base = fim ? s + b1 - p->len : s + b0;
+        if (memcmp(base, p->chars, (size_t)p->len) == 0) { *out = MK_BOOL(1); return 0; }
+    }
+    *out = MK_BOOL(0);
+    return 0;
+}
+
+static int met_b_startswith(VM *v, Value a, Value *g, int n, Value *o) { return by_borda(v, a, g, n, o, "startswith", 0); }
+static int met_b_endswith(VM *v, Value a, Value *g, int n, Value *o)   { return by_borda(v, a, g, n, o, "endswith", 1); }
+
+/* ── caixa ──────────────────────────────────────────────────────────────── */
+
+static int by_mapa(VM *vm, Value alvo, Value *out, const char *quem, int n, int modo)
+{
+    if (n != 0) return erro_aridade(vm, quem, 0, 0, n);
+    BY_EU(alvo, s, slen);
+    SBUF_AUTO b = {0};
+    int anterior_cased = 0;
+    for (int i = 0; i < slen; i++) {
+        int c = s[i];
+        switch (modo) {
+            case 0: c = by_up(c); break;                     /* upper */
+            case 1: c = by_low(c); break;                    /* lower */
+            case 2: c = by_eh_up(c) ? by_low(c) : by_up(c); break;  /* swapcase */
+            case 3: c = i == 0 ? by_up(c) : by_low(c); break;       /* capitalize */
+            case 4:                                          /* title */
+                c = anterior_cased ? by_low(c) : by_up(c);
+                anterior_cased = by_eh_alpha(s[i]);
+                break;
+        }
+        char ch = (char)c;
+        if (sb_bytes(&b, &ch, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    }
+    return by_devolve_sbuf(vm, &b, out);
+}
+
+static int met_b_upper(VM *v, Value a, Value *g, int n, Value *o)      { (void)g; return by_mapa(v, a, o, "upper", n, 0); }
+static int met_b_lower(VM *v, Value a, Value *g, int n, Value *o)      { (void)g; return by_mapa(v, a, o, "lower", n, 1); }
+static int met_b_swapcase(VM *v, Value a, Value *g, int n, Value *o)   { (void)g; return by_mapa(v, a, o, "swapcase", n, 2); }
+static int met_b_capitalize(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_mapa(v, a, o, "capitalize", n, 3); }
+static int met_b_title(VM *v, Value a, Value *g, int n, Value *o)      { (void)g; return by_mapa(v, a, o, "title", n, 4); }
+
+/* ── predicados ─────────────────────────────────────────────────────────── */
+
+/* Vazio é FALSO em todos, menos no `isascii` — é assim no Python, e é o tipo
+ * de detalhe que só aparece quando alguém passa uma resposta vazia. */
+static int by_pred(VM *vm, Value alvo, Value *out, const char *quem, int n, int qual)
+{
+    if (n != 0) return erro_aridade(vm, quem, 0, 0, n);
+    BY_EU(alvo, s, slen);
+    if (qual == 7) {                       /* isascii: vazio é True */
+        for (int i = 0; i < slen; i++) if (s[i] > 0x7f) { *out = MK_BOOL(0); return 0; }
+        *out = MK_BOOL(1);
+        return 0;
+    }
+    if (slen == 0) { *out = MK_BOOL(0); return 0; }
+    int viu_cased = 0, ok = 1, anterior_cased = 0;
+    for (int i = 0; i < slen && ok; i++) {
+        int c = s[i];
+        switch (qual) {
+            case 0: ok = by_eh_alpha(c); break;                     /* isalpha */
+            case 1: ok = by_eh_dig(c); break;                       /* isdigit */
+            case 2: ok = by_eh_alpha(c) || by_eh_dig(c); break;     /* isalnum */
+            case 3: ok = by_eh_ws(c); break;                        /* isspace */
+            case 4:                                                 /* isupper */
+                if (by_eh_low(c)) ok = 0;
+                if (by_eh_alpha(c)) viu_cased = 1;
+                break;
+            case 5:                                                 /* islower */
+                if (by_eh_up(c)) ok = 0;
+                if (by_eh_alpha(c)) viu_cased = 1;
+                break;
+            case 6:                                                 /* istitle */
+                if (by_eh_alpha(c)) {
+                    if (anterior_cased) { if (by_eh_up(c)) ok = 0; }
+                    else                { if (by_eh_low(c)) ok = 0; }
+                    viu_cased = 1;
+                }
+                anterior_cased = by_eh_alpha(c);
+                break;
+        }
+    }
+    if (qual >= 4 && qual <= 6 && !viu_cased) ok = 0;   /* sem letra, é falso */
+    *out = MK_BOOL(ok);
+    return 0;
+}
+
+static int met_b_isalpha(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "isalpha", n, 0); }
+static int met_b_isdigit(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "isdigit", n, 1); }
+static int met_b_isalnum(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "isalnum", n, 2); }
+static int met_b_isspace(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "isspace", n, 3); }
+static int met_b_isupper(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "isupper", n, 4); }
+static int met_b_islower(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "islower", n, 5); }
+static int met_b_istitle(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "istitle", n, 6); }
+static int met_b_isascii(VM *v, Value a, Value *g, int n, Value *o) { (void)g; return by_pred(v, a, o, "isascii", n, 7); }
+
+/* ── aparar ─────────────────────────────────────────────────────────────── */
+
+/* `chars` é CONJUNTO de bytes, não prefixo — `b"xyaXbyx".strip(b"xy")` é
+ * `b"aXb"`. Sem argumento, o conjunto é o branco ASCII. */
+static int by_apara(VM *vm, Value alvo, Value *args, int n, Value *out,
+                    const char *quem, int esq, int dir)
+{
+    if (n > 1) return erro_aridade(vm, quem, 0, 1, n);
+    BY_EU(alvo, s, slen);
+    const unsigned char *set = NULL;
+    int nset = 0;
+    if (n == 1 && args[0].t != V_NULL) {
+        if (by_like(vm, args[0], &set, &nset) != 0) return -1;
+    }
+    int a = 0, b = slen;
+    if (esq) {
+        while (a < b) {
+            int c = s[a];
+            int bate = set ? (memchr(set, c, (size_t)nset) != NULL) : by_eh_ws(c);
+            if (!bate) break;
+            a++;
+        }
+    }
+    if (dir) {
+        while (b > a) {
+            int c = s[b - 1];
+            int bate = set ? (memchr(set, c, (size_t)nset) != NULL) : by_eh_ws(c);
+            if (!bate) break;
+            b--;
+        }
+    }
+    return by_devolve(vm, out, (const char *)s + a, b - a);
+}
+
+static int met_b_strip(VM *v, Value a, Value *g, int n, Value *o)  { return by_apara(v, a, g, n, o, "strip", 1, 1); }
+static int met_b_lstrip(VM *v, Value a, Value *g, int n, Value *o) { return by_apara(v, a, g, n, o, "lstrip", 1, 0); }
+static int met_b_rstrip(VM *v, Value a, Value *g, int n, Value *o) { return by_apara(v, a, g, n, o, "rstrip", 0, 1); }
+
+static int met_b_removeprefix(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "removeprefix", 1);
+    BY_EU(alvo, s, slen);
+    const unsigned char *p;
+    int np;
+    if (by_like(vm, args[0], &p, &np) != 0) return -1;
+    if (np <= slen && np > 0 && memcmp(s, p, (size_t)np) == 0)
+        return by_devolve(vm, out, (const char *)s + np, slen - np);
+    return by_devolve(vm, out, (const char *)s, slen);
+}
+
+static int met_b_removesuffix(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "removesuffix", 1);
+    BY_EU(alvo, s, slen);
+    const unsigned char *p;
+    int np;
+    if (by_like(vm, args[0], &p, &np) != 0) return -1;
+    if (np <= slen && np > 0 && memcmp(s + slen - np, p, (size_t)np) == 0)
+        return by_devolve(vm, out, (const char *)s, slen - np);
+    return by_devolve(vm, out, (const char *)s, slen);
+}
+
+/* ── partir e juntar ────────────────────────────────────────────────────── */
+
+/* Empurra um pedaço na lista. Devolve -1 SEM mexer no erro da VM quando o
+ * chamador ainda precisa tirar a raiz da pilha antes de voltar. */
+static int by_push(VM *vm, PSList *l, const unsigned char *p, int n)
+{
+    PSString *b = novo_bytes(vm, n > 0 ? (const char *)p : "", n);
+    if (!b) return -1;
+    if (l->len >= l->cap && cresce_lista(vm, l) != 0) return -1;
+    l->itens[l->len++] = MK_OBJ(b);
+    return 0;
+}
+
+static int by_split(VM *vm, Value alvo, Value *args, int n, Value *out,
+                    const char *quem, int reverso)
+{
+    if (n > 2) return erro_aridade(vm, quem, 0, 2, n);
+    BY_EU(alvo, s, slen);
+    int64_t maxs = -1;
+    if (n >= 2 && args[1].t != V_NULL) {
+        if (args[1].t != V_INT)
+            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[1]));
+        maxs = args[1].as.i;
+    }
+    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!l) MERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+    if (fixa_raiz(vm, MK_OBJ(l)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
+
+    int rc = 0;
+    if (n == 0 || args[0].t == V_NULL) {
+        /* sem separador: corta em RUNS de branco e descarta os das pontas */
+        if (!reverso) {
+            int i = 0, feitos = 0;
+            while (i < slen) {
+                while (i < slen && by_eh_ws(s[i])) i++;
+                if (i >= slen) break;
+                if (maxs >= 0 && feitos == maxs) {
+                    rc = by_push(vm, l, s + i, slen - i);
+                    i = slen;
+                    break;
+                }
+                int j = i;
+                while (j < slen && !by_eh_ws(s[j])) j++;
+                if ((rc = by_push(vm, l, s + i, j - i)) != 0) break;
+                feitos++;
+                i = j;
+            }
+        } else {
+            /* de trás pra frente, e no fim a lista é invertida */
+            int i = slen, feitos = 0;
+            while (i > 0) {
+                while (i > 0 && by_eh_ws(s[i - 1])) i--;
+                if (i <= 0) break;
+                if (maxs >= 0 && feitos == maxs) {
+                    rc = by_push(vm, l, s, i);
+                    i = 0;
+                    break;
+                }
+                int j = i;
+                while (j > 0 && !by_eh_ws(s[j - 1])) j--;
+                if ((rc = by_push(vm, l, s + j, i - j)) != 0) break;
+                feitos++;
+                i = j;
+            }
+            for (int a = 0, b = l->len - 1; a < b; a++, b--) {
+                Value t = l->itens[a]; l->itens[a] = l->itens[b]; l->itens[b] = t;
+            }
+        }
+    } else {
+        const unsigned char *sep;
+        int nsep;
+        if (by_like(vm, args[0], &sep, &nsep) != 0) { vm->sp--; return -1; }
+        if (nsep == 0) { vm->sp--; MERRO(vm, "ValueError", "empty separator"); }
+        if (!reverso) {
+            int i = 0, feitos = 0;
+            for (;;) {
+                if (maxs >= 0 && feitos == maxs) { rc = by_push(vm, l, s + i, slen - i); break; }
+                int k = by_acha(s, slen, sep, nsep, i);
+                if (k < 0) { rc = by_push(vm, l, s + i, slen - i); break; }
+                if ((rc = by_push(vm, l, s + i, k - i)) != 0) break;
+                feitos++;
+                i = k + nsep;
+            }
+        } else {
+            int fim = slen, feitos = 0;
+            for (;;) {
+                if (maxs >= 0 && feitos == maxs) { rc = by_push(vm, l, s, fim); break; }
+                int k = by_racha(s, fim, sep, nsep);
+                if (k < 0) { rc = by_push(vm, l, s, fim); break; }
+                if ((rc = by_push(vm, l, s + k + nsep, fim - k - nsep)) != 0) break;
+                feitos++;
+                fim = k;
+            }
+            for (int a = 0, b = l->len - 1; a < b; a++, b--) {
+                Value t = l->itens[a]; l->itens[a] = l->itens[b]; l->itens[b] = t;
+            }
+        }
+    }
+    vm->sp--;
+    if (rc != 0) MERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+    *out = MK_OBJ(l);
+    return 0;
+}
+
+static int met_b_split(VM *v, Value a, Value *g, int n, Value *o)  { return by_split(v, a, g, n, o, "split", 0); }
+static int met_b_rsplit(VM *v, Value a, Value *g, int n, Value *o) { return by_split(v, a, g, n, o, "rsplit", 1); }
+
+/* Só `\n`, `\r` e `\r\n`. O `str` também quebra em `\v`, `\f`, `\x1c`… — o
+ * `bytes` NÃO, e copiar o do str aqui daria linha a mais em dado binário. */
+static int met_b_splitlines(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n > 1) return erro_aridade(vm, "splitlines", 0, 1, n);
+    BY_EU(alvo, s, slen);
+    int guarda = n == 1 && val_truthy(&args[0]);
+    PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
+    if (!l) MERRO(vm, "MemoryError", "sem memoria em splitlines()");
+    if (fixa_raiz(vm, MK_OBJ(l)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
+    int rc = 0, i = 0;
+    while (i < slen) {
+        int ini = i;
+        while (i < slen && s[i] != '\n' && s[i] != '\r') i++;
+        int fim_texto = i;
+        if (i < slen) {
+            if (s[i] == '\r' && i + 1 < slen && s[i + 1] == '\n') i += 2;
+            else i += 1;
+        }
+        int fim = guarda ? i : fim_texto;
+        if ((rc = by_push(vm, l, s + ini, fim - ini)) != 0) break;
+    }
+    vm->sp--;
+    if (rc != 0) MERRO(vm, "MemoryError", "sem memoria em splitlines()");
+    *out = MK_OBJ(l);
+    return 0;
+}
+
+static int by_parte(VM *vm, Value alvo, Value *args, int n, Value *out,
+                    const char *quem, int reverso)
+{
+    ARGS_MET(vm, quem, 1);
+    BY_EU(alvo, s, slen);
+    const unsigned char *sep;
+    int nsep;
+    if (by_like(vm, args[0], &sep, &nsep) != 0) return -1;
+    if (nsep == 0) MERRO(vm, "ValueError", "empty separator");
+    int k = reverso ? by_racha(s, slen, sep, nsep) : by_acha(s, slen, sep, nsep, 0);
+
+    PSList *t = nova_seq(vm, 3, OBJ_TUPLE);
+    if (!t) MERRO(vm, "MemoryError", "sem memoria em %s()", quem);
+    t->len = 0;
+    if (fixa_raiz(vm, MK_OBJ(t)) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
+    Value a = MK_NULL(), b = MK_NULL(), c = MK_NULL();
+    int rc = 0;
+    if (k < 0) {
+        /* não achou: `partition` põe tudo na PRIMEIRA, `rpartition` na ÚLTIMA */
+        if (reverso) {
+            rc = by_devolve(vm, &a, "", 0);
+            if (!rc) rc = by_devolve(vm, &b, "", 0);
+            if (!rc) rc = by_devolve(vm, &c, (const char *)s, slen);
+        } else {
+            rc = by_devolve(vm, &a, (const char *)s, slen);
+            if (!rc) rc = by_devolve(vm, &b, "", 0);
+            if (!rc) rc = by_devolve(vm, &c, "", 0);
+        }
+    } else {
+        rc = by_devolve(vm, &a, (const char *)s, k);
+        if (!rc) rc = by_devolve(vm, &b, (const char *)sep, nsep);
+        if (!rc) rc = by_devolve(vm, &c, (const char *)s + k + nsep, slen - k - nsep);
+    }
+    vm->sp--;
+    if (rc != 0) return -1;
+    t->itens[0] = a; t->itens[1] = b; t->itens[2] = c;
+    t->len = 3;
+    *out = MK_OBJ(t);
+    return 0;
+}
+
+static int met_b_partition(VM *v, Value a, Value *g, int n, Value *o)  { return by_parte(v, a, g, n, o, "partition", 0); }
+static int met_b_rpartition(VM *v, Value a, Value *g, int n, Value *o) { return by_parte(v, a, g, n, o, "rpartition", 1); }
+
+/* `b".".join([...])` — o alvo é o separador, como no Python.
+ *
+ * O argumento é QUALQUER iterável, e desde que `bytes` passou a ser iterável
+ * ele entra aqui também: `b"".join(b"")` é `b''` (nada pra juntar) e
+ * `b"-".join(b"abc")` é TypeError, porque iterar bytes dá INTEIROS e inteiro
+ * não é bytes-like. Os dois casos saíram da matriz do oráculo: com a lista
+ * como único iterável aceito, o primeiro levantava "can only join an
+ * iterable" onde o Python devolve vazio. */
+static int met_b_join(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "join", 1);
+    BY_EU(alvo, sep, nsep);
+    int quantos = iteravel_tam(&args[0]);
+    if (quantos < 0 || EH_DICT(args[0]))
+        MERRO(vm, "TypeError", "can only join an iterable");
+    SBUF_AUTO b = {0};
+    for (int i = 0; i < quantos; i++) {
+        Value item;
+        if (iteravel_item(vm, &args[0], i, &item) != 0)
+            MERRO(vm, "MemoryError", "sem memoria em join()");
+        if (!EH_BYTES(item))
+            MERRO(vm, "TypeError",
+                  "sequence item %d: expected a bytes-like object, %s found",
+                  i, nome_do_tipo_valor(item));
+        if (i > 0 && nsep > 0 && sb_bytes(&b, (const char *)sep, nsep) != 0)
+            MERRO(vm, "MemoryError", "sem memoria");
+        PSString *p = COMO_BYTES(item);
+        if (p->len > 0 && sb_bytes(&b, p->chars, p->len) != 0)
+            MERRO(vm, "MemoryError", "sem memoria");
+    }
+    return by_devolve_sbuf(vm, &b, out);
+}
+
+/* ── trocar ─────────────────────────────────────────────────────────────── */
+
+static int met_b_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 3) return erro_aridade(vm, "replace", 2, 3, n);
+    BY_EU(alvo, s, slen);
+    const unsigned char *velho, *novo;
+    int nv, nn;
+    if (by_like(vm, args[0], &velho, &nv) != 0) return -1;
+    if (by_like(vm, args[1], &novo, &nn) != 0) return -1;
+    int64_t conta = -1;
+    if (n == 3 && args[2].t != V_NULL) {
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[2]));
+        conta = args[2].as.i;
+    }
+    SBUF_AUTO b = {0};
+    int64_t feitas = 0;
+    int i = 0;
+    /* agulha VAZIA: o Python enfia a troca entre cada byte e nas duas pontas */
+    if (nv == 0) {
+        for (;;) {
+            if (conta < 0 || feitas < conta) {
+                if (nn > 0 && sb_bytes(&b, (const char *)novo, nn) != 0)
+                    MERRO(vm, "MemoryError", "sem memoria");
+                feitas++;
+            }
+            if (i >= slen) break;
+            if (sb_bytes(&b, (const char *)s + i, 1) != 0)
+                MERRO(vm, "MemoryError", "sem memoria");
+            i++;
+        }
+        return by_devolve_sbuf(vm, &b, out);
+    }
+    while (i < slen) {
+        if ((conta < 0 || feitas < conta) && i + nv <= slen
+                && memcmp(s + i, velho, (size_t)nv) == 0) {
+            if (nn > 0 && sb_bytes(&b, (const char *)novo, nn) != 0)
+                MERRO(vm, "MemoryError", "sem memoria");
+            i += nv;
+            feitas++;
+            continue;
+        }
+        if (sb_bytes(&b, (const char *)s + i, 1) != 0)
+            MERRO(vm, "MemoryError", "sem memoria");
+        i++;
+    }
+    return by_devolve_sbuf(vm, &b, out);
+}
+
+/* ── preencher ──────────────────────────────────────────────────────────── */
+
+static int by_larg(VM *vm, Value v, int64_t *w)
+{
+    if (v.t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(v));
+    *w = v.as.i;
+    if (*w > PS_STR_MAX) *w = PS_STR_MAX;   /* largura absurda não come a RAM */
+    return 0;
+}
+
+static int by_enche(VM *vm, Value v, const char *quem, unsigned char *ch)
+{
+    if (!EH_BYTES(v) || COMO_BYTES(v)->len != 1)
+        MERRO(vm, "TypeError",
+              "%s() argument 2 must be a byte string of length 1, not %s",
+              quem, nome_do_tipo_valor(v));
+    *ch = (unsigned char)COMO_BYTES(v)->chars[0];
+    return 0;
+}
+
+static int by_just(VM *vm, Value alvo, Value *args, int n, Value *out,
+                   const char *quem, int lado)
+{
+    if (n < 1 || n > 2) return erro_aridade(vm, quem, 1, 2, n);
+    BY_EU(alvo, s, slen);
+    int64_t w;
+    if (by_larg(vm, args[0], &w) != 0) return -1;
+    unsigned char ch = ' ';
+    if (n == 2 && by_enche(vm, args[1], quem, &ch) != 0) return -1;
+    if (w <= slen) return by_devolve(vm, out, (const char *)s, slen);
+    int falta = (int)(w - slen);
+    /* `center`: com sobra ímpar o Python põe o byte a mais na ESQUERDA quando
+     * a largura também é ímpar — `b"ab".center(7,b"*")` é `b"***ab**"`, não
+     * `b"**ab***"`. É `marg/2 + (marg & width & 1)`, do CPython. */
+    int esq = lado == 0 ? 0
+            : (lado == 1 ? falta : falta / 2 + (falta & (int)w & 1));
+    int dir = falta - esq;
+    SBUF_AUTO b = {0};
+    for (int i = 0; i < esq; i++)
+        if (sb_bytes(&b, (const char *)&ch, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    if (slen > 0 && sb_bytes(&b, (const char *)s, slen) != 0)
+        MERRO(vm, "MemoryError", "sem memoria");
+    for (int i = 0; i < dir; i++)
+        if (sb_bytes(&b, (const char *)&ch, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    return by_devolve_sbuf(vm, &b, out);
+}
+
+static int met_b_ljust(VM *v, Value a, Value *g, int n, Value *o)  { return by_just(v, a, g, n, o, "ljust", 0); }
+static int met_b_rjust(VM *v, Value a, Value *g, int n, Value *o)  { return by_just(v, a, g, n, o, "rjust", 1); }
+static int met_b_center(VM *v, Value a, Value *g, int n, Value *o) { return by_just(v, a, g, n, o, "center", 2); }
+
+static int met_b_zfill(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    ARGS_MET(vm, "zfill", 1);
+    BY_EU(alvo, s, slen);
+    int64_t w;
+    if (by_larg(vm, args[0], &w) != 0) return -1;
+    if (w <= slen) return by_devolve(vm, out, (const char *)s, slen);
+    SBUF_AUTO b = {0};
+    /* o sinal fica NA FRENTE dos zeros: `b"-42".zfill(8)` é `b"-0000042"` */
+    int i = 0;
+    if (slen > 0 && (s[0] == '+' || s[0] == '-')) {
+        if (sb_bytes(&b, (const char *)s, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+        i = 1;
+    }
+    for (int k = 0; k < (int)(w - slen); k++)
+        if (sb_bytes(&b, "0", 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    if (slen - i > 0 && sb_bytes(&b, (const char *)s + i, slen - i) != 0)
+        MERRO(vm, "MemoryError", "sem memoria");
+    return by_devolve_sbuf(vm, &b, out);
+}
+
+static int met_b_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n > 1) return erro_aridade(vm, "expandtabs", 0, 1, n);
+    BY_EU(alvo, s, slen);
+    int64_t tam = 8;
+    if (n == 1 && args[0].t != V_NULL) {
+        if (args[0].t != V_INT)
+            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[0]));
+        tam = args[0].as.i;
+    }
+    SBUF_AUTO b = {0};
+    int col = 0;
+    for (int i = 0; i < slen; i++) {
+        if (s[i] == '\t') {
+            int quantos = tam > 0 ? (int)(tam - col % tam) : 0;
+            for (int k = 0; k < quantos; k++)
+                if (sb_bytes(&b, " ", 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+            col += quantos;
+            continue;
+        }
+        if (sb_bytes(&b, (const char *)s + i, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+        if (s[i] == '\n' || s[i] == '\r') col = 0;
+        else col++;
+    }
+    return by_devolve_sbuf(vm, &b, out);
+}
+
+/* ── traduzir ───────────────────────────────────────────────────────────── */
+
+static int met_b_maketrans(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)alvo;
+    ARGS_MET(vm, "maketrans", 2);
+    const unsigned char *de, *para;
+    int nde, npara;
+    if (by_like(vm, args[0], &de, &nde) != 0) return -1;
+    if (by_like(vm, args[1], &para, &npara) != 0) return -1;
+    if (nde != npara)
+        MERRO(vm, "ValueError", "maketrans arguments must have same length");
+    unsigned char tab[256];
+    for (int i = 0; i < 256; i++) tab[i] = (unsigned char)i;
+    for (int i = 0; i < nde; i++) tab[de[i]] = para[i];
+    return by_devolve(vm, out, (const char *)tab, 256);
+}
+
+static int met_b_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) return erro_aridade(vm, "translate", 1, 2, n);
+    BY_EU(alvo, s, slen);
+    const unsigned char *tab = NULL;
+    if (args[0].t != V_NULL) {
+        int ntab;
+        if (by_like(vm, args[0], &tab, &ntab) != 0) return -1;
+        if (ntab != 256)
+            MERRO(vm, "ValueError", "translation table must be 256 characters long");
+    }
+    const unsigned char *del = NULL;
+    int ndel = 0;
+    if (n == 2 && args[1].t != V_NULL) {
+        if (by_like(vm, args[1], &del, &ndel) != 0) return -1;
+    }
+    SBUF_AUTO b = {0};
+    for (int i = 0; i < slen; i++) {
+        if (del && memchr(del, s[i], (size_t)ndel)) continue;
+        char c = (char)(tab ? tab[s[i]] : s[i]);
+        if (sb_bytes(&b, &c, 1) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    }
+    return by_devolve_sbuf(vm, &b, out);
+}
+
 static const MetodoNat METODOS_BYTES[] = {
-    { "decode", met_b_decode, "encoding=\"utf-8\",errors=\"strict\"" }, { "hex", met_b_hex, NULL },
-    { "len", met_b_len, NULL },
+    { "decode", met_b_decode, "encoding=\"utf-8\",errors=\"strict\"" },
+    { "hex", met_b_hex, "sep=Null,bytes_per_sep=1" }, { "len", met_b_len, NULL },
+    { "find", met_b_find, "sub,inicio=0,fim=Null" }, { "rfind", met_b_rfind, "sub,inicio=0,fim=Null" },
+    { "index", met_b_index, "sub,inicio=0,fim=Null" }, { "rindex", met_b_rindex, "sub,inicio=0,fim=Null" },
+    { "count", met_b_count, "sub,inicio=0,fim=Null" },
+    { "contains", met_b_contains, "sub" }, { "has", met_b_contains, "sub" },
+    { "startswith", met_b_startswith, "prefixo,inicio=0,fim=Null" },
+    { "endswith", met_b_endswith, "sufixo,inicio=0,fim=Null" },
+    { "upper", met_b_upper, NULL }, { "lower", met_b_lower, NULL },
+    { "title", met_b_title, NULL }, { "capitalize", met_b_capitalize, NULL },
+    { "swapcase", met_b_swapcase, NULL },
+    { "isalpha", met_b_isalpha, NULL }, { "isdigit", met_b_isdigit, NULL },
+    { "isalnum", met_b_isalnum, NULL }, { "isspace", met_b_isspace, NULL },
+    { "isupper", met_b_isupper, NULL }, { "islower", met_b_islower, NULL },
+    { "istitle", met_b_istitle, NULL }, { "isascii", met_b_isascii, NULL },
+    { "strip", met_b_strip, "chars=Null" }, { "lstrip", met_b_lstrip, "chars=Null" },
+    { "rstrip", met_b_rstrip, "chars=Null" },
+    { "removeprefix", met_b_removeprefix, "p" }, { "removesuffix", met_b_removesuffix, "p" },
+    { "split", met_b_split, "sep=Null,maxsplit=-1" }, { "rsplit", met_b_rsplit, "sep=Null,maxsplit=-1" },
+    { "splitlines", met_b_splitlines, "keepends=false" },
+    { "partition", met_b_partition, "sep" }, { "rpartition", met_b_rpartition, "sep" },
+    { "join", met_b_join, "lista" }, { "replace", met_b_replace, "old,new,count=-1" },
+    { "ljust", met_b_ljust, "width,fillbyte" }, { "rjust", met_b_rjust, "width,fillbyte" },
+    { "center", met_b_center, "width,fillbyte" },
+    { "zfill", met_b_zfill, "largura" }, { "expandtabs", met_b_expandtabs, "tabsize=8" },
+    { "maketrans", met_b_maketrans, "de,para" }, { "translate", met_b_translate, "tabela,delete=Null" },
 };
 
 
@@ -9595,14 +10484,6 @@ static int by_ordem(Value v)
     if (s->len == 3 && memcmp(s->chars, "big", 3) == 0) return 1;
     if (s->len == 6 && memcmp(s->chars, "little", 6) == 0) return 0;
     return -1;
-}
-
-static int by_devolve(VM *vm, Value *out, const char *dados, int n)
-{
-    PSString *b = novo_bytes(vm, (dados && n > 0) ? dados : "", n);
-    if (!b) BERRO(vm, "MemoryError", "sem memoria");
-    *out = MK_OBJ(b);
-    return 0;
 }
 
 static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
@@ -19509,15 +20390,35 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!rs) ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
                 stack[sp - 1] = MK_OBJ(rs);
             }
+            /* `b"ab" * 3` e `3 * b"ab"`. Lista e string já repetiam; bytes
+             * ficou de fora e `b"\0" * 16` — a forma de montar um bloco
+             * zerado — reprovava por tipo incompatível. */
+            else if ((EH_BYTES(a) && b.t == V_INT) || (EH_BYTES(b) && a.t == V_INT)) {
+                Value sv = (a.t == V_INT) ? b : a;
+                int64_t n64 = (a.t == V_INT) ? a.as.i : b.as.i;
+                PSString *x = COMO_BYTES(sv);
+                if (n64 < 0) n64 = 0;
+                if (n64 > 0 && x->len > (int)(PS_STR_MAX / n64))
+                    ERRO_T(vm, "MemoryError", "bytes grande demais na repeticao");
+                int total = (int)(n64 * x->len);
+                vm->sp = sp; vm->locals_top = locals_top;
+                SBUF_AUTO sb = {0};
+                for (int c2 = 0; c2 < (int)n64; c2++)
+                    if (x->len > 0 && sb_bytes(&sb, x->chars, x->len) != 0)
+                        ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
+                PSString *rb = novo_bytes(vm, sb.b ? sb.b : "", total);
+                if (!rb) ERRO_T(vm, "MemoryError", "sem memoria na repeticao");
+                stack[sp - 1] = MK_OBJ(rb);
+            }
             else {
                 /* Sequência vezes algo que não é int tem mensagem própria no
                  * CPython, e ela é melhor: nomeia o lado que está errado em
                  * vez de listar os dois. */
                 const char *na = TIPO0(a, ta0), *nb = TIPO0(b, tb0);
-                if (EH_STRING(a) || EH_SEQ(a))
+                if (EH_STRING(a) || EH_SEQ(a) || EH_BYTES(a))
                     ERRO_TF(vm, "TypeError",
                             "can't multiply sequence by non-int of type '%s'", nb);
-                if (EH_STRING(b) || EH_SEQ(b))
+                if (EH_STRING(b) || EH_SEQ(b) || EH_BYTES(b))
                     ERRO_TF(vm, "TypeError",
                             "can't multiply sequence by non-int of type '%s'", na);
                 ERRO_TF(vm, "TypeError",
@@ -19753,6 +20654,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 PSString *x = COMO_STRING(a), *y = COMO_STRING(b);            \
                 int m = x->len < y->len ? x->len : y->len;                    \
                 int c = memcmp(x->chars, y->chars, (size_t)m);                \
+                if (c == 0) c = (x->len > y->len) - (x->len < y->len);        \
+                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+            /* bytes com bytes: lexicográfico POR BYTE. `sorted` já sabia    \
+             * comparar os dois (compara_valores_par), mas o OPERADOR não —   \
+             * `a < b` levantava e `sorted([a,b])` funcionava, para o mesmo   \
+             * par. Duas respostas pra mesma pergunta. */                     \
+            } else if (EH_BYTES(a) && EH_BYTES(b)) {                          \
+                PSString *x = COMO_BYTES(a), *y = COMO_BYTES(b);              \
+                int m = x->len < y->len ? x->len : y->len;                    \
+                int c = m > 0 ? memcmp(x->chars, y->chars, (size_t)m) : 0;    \
                 if (c == 0) c = (x->len > y->len) - (x->len < y->len);        \
                 stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
             } else if (EH_INTEIRO(a) && EH_INTEIRO(b)) {                      \
@@ -20863,6 +21774,7 @@ ERRO_TF(vm, "TypeError",
             }
             if (EH_SEQ(cont))         n = COMO_LIST(cont)->len;
             else if (EH_STRING(cont)) n = COMO_STRING(cont)->len;
+            else if (EH_BYTES(cont))  n = COMO_BYTES(cont)->len;
             else ERRO_TF(vm, "TypeError", "'%s' object is not iterable",
                          nome_do_tipo_valor(cont));
 
@@ -20870,6 +21782,14 @@ ERRO_TF(vm, "TypeError",
             stack[sp - 1] = MK_INT(i + 1);
             if (EH_SEQ(cont)) {
                 stack[sp++] = COMO_LIST(cont)->itens[i];
+            } else if (EH_BYTES(cont)) {
+                /* Cada item é um INTEIRO 0..255, não um pedaço de bytes de
+                 * tamanho 1 — é o que o Python faz, e é o que deixa escrever
+                 * `for each byte in dados { if byte == 0 { ... } }`. Não aloca
+                 * nada, ao contrário da string. O `list(b)` já entregava
+                 * inteiros pelo `iteravel_item`; o `for each` levantava "not
+                 * iterable". As duas formas de percorrer discordavam. */
+                stack[sp++] = MK_INT((unsigned char)COMO_BYTES(cont)->chars[i]);
             } else {
                 /* String itera por CODEPOINT. O índice na pilha é a posição
                  * em BYTES — avança pelo tamanho do caractere lido, então a
@@ -22073,6 +22993,26 @@ ERRO_TF(vm, "TypeError",
                             nome_do_tipo_valor(alvo));
                 PSString *h = COMO_STRING(cont), *n2 = COMO_STRING(alvo);
                 r = acha_bytes(h->chars, h->len, n2->chars, n2->len, 0) >= 0;
+            } else if (EH_BYTES(cont)) {
+                /* `x in b` aceita as DUAS coisas que o Python aceita: outra
+                 * sequência de bytes (é subsequência?) e um INTEIRO 0..255
+                 * (esse byte aparece?). O segundo é o que faltava pra escrever
+                 * `0 in resposta` — sem ele, conferir se um corpo tem byte NUL
+                 * exigia converter tudo pra hexadecimal e varrer de dois em
+                 * dois, e foi exatamente o rodeio do teste do jinker. */
+                PSString *h = COMO_BYTES(cont);
+                if (EH_BYTES(alvo)) {
+                    PSString *n2 = COMO_BYTES(alvo);
+                    r = acha_bytes(h->chars, h->len, n2->chars, n2->len, 0) >= 0;
+                } else if (alvo.t == V_INT
+                           || (alvo.t == V_OBJ && alvo.as.obj->type == OBJ_BIGINT)) {
+                    if (alvo.t != V_INT || alvo.as.i < 0 || alvo.as.i > 255)
+                        ERRO_TF(vm, "ValueError", "byte must be in range(0, 256)");
+                    r = memchr(h->chars, (int)alvo.as.i, (size_t)h->len) != NULL;
+                } else {
+                    ERRO_TF(vm, "TypeError", "a bytes-like object is required, not '%s'",
+                            nome_do_tipo_valor(alvo));
+                }
             } else {
                 ERRO_TF(vm, "TypeError", "argument of type '%s' is not iterable",
                         nome_do_tipo_valor(cont));

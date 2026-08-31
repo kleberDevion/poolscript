@@ -1,10 +1,11 @@
-# Referência da Linguagem — 12. Métodos de string, list e dict
+# Referência da Linguagem — 12. Métodos de string, list, dict e bytes
 
 Estes métodos são **parte da linguagem** (não vêm de `import`): qualquer `str`,
-`list` ou `dict` os expõe direto, com a sintaxe `valor.metodo(...)`. Esta seção
-é a referência agrupada; cada método tem ainda uma **página detalhada** —
-[`docs/string/`](../string/string.md), [`docs/list/`](../list/list.md) e
-[`docs/dict/`](../dict/dict.md) — com parâmetros, retorno, erros, bordas e
+`list`, `dict` ou `bytes` os expõe direto, com a sintaxe `valor.metodo(...)`.
+Esta seção é a referência agrupada; cada método tem ainda uma **página
+detalhada** — [`docs/string/`](../string/string.md),
+[`docs/list/`](../list/list.md), [`docs/dict/`](../dict/dict.md) e
+[`docs/bytes/`](../bytes/bytes.md) — com parâmetros, retorno, erros, bordas e
 exemplos que **rodam de verdade** pela suíte.
 
 Tudo aqui foi verificado rodando o fonte na VM em C.
@@ -147,7 +148,7 @@ import bytes
 try {
     post(bytes.new([255, 254]).decode())
 } catch(e) {
-    post(e)     # decode(): byte 0xFF invalido em utf-8 na posicao 0
+    post(e)     # 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte
 }
 ```
 
@@ -252,7 +253,58 @@ etc. — tem prioridade sobre o acesso por atributo.)
 
 ---
 
-## 12.4. Resumo
+## 12.4. Métodos de `bytes` (42)
+
+`bytes` é o tipo de **dado binário** — o que sai de `"texto".encode()`, de
+`open(..., "rb").read()`, do corpo de uma resposta HTTP. Ele tem a mesma
+superfície do `bytes` do Python, e as páginas por método estão em
+[`docs/bytes/`](../bytes/bytes.md).
+
+Os nomes são os mesmos do `str`, e é justamente por isso que vale ler as
+**quatro diferenças** — são as que se erra por analogia:
+
+| Onde | `str` | `bytes` |
+|---|---|---|
+| caixa (`upper`, `lower`, `title`…) | Unicode inteiro | **só ASCII**: `b"\xc0".lower()` é `b"\xc0"` |
+| `splitlines` | quebra também em `\v`, `\f`, `\x1c`… | **só** `\n`, `\r` e `\r\n` |
+| `find`/`count`/`index` | só substring | aceitam também um **inteiro** de 0 a 255 |
+| `strip(x)` | conjunto de caracteres | conjunto de **bytes** |
+
+| Grupo | Métodos |
+|---|---|
+| busca | `find` `rfind` `index` `rindex` `count` `contains` `has` `startswith` `endswith` |
+| caixa | `upper` `lower` `title` `capitalize` `swapcase` |
+| testes | `isalpha` `isdigit` `isalnum` `isspace` `isupper` `islower` `istitle` `isascii` |
+| aparar | `strip` `lstrip` `rstrip` `removeprefix` `removesuffix` |
+| partir/juntar | `split` `rsplit` `splitlines` `partition` `rpartition` `join` |
+| trocar | `replace` `translate` `maketrans` |
+| preencher | `ljust` `rjust` `center` `zfill` `expandtabs` |
+| converter | `decode` `hex` `len` |
+
+E os operadores de sequência:
+
+```ps
+b = "Hello".encode()
+
+post(len(b))                 # 5
+post(b[0])                   # 72     — indexar dá o INTEIRO do byte
+post(b[0:2])                 # b'He'  — fatiar dá bytes
+post(b + "!".encode())       # b'Hello!'
+post(b * 2)                  # b'HelloHello'
+post("ell".encode() in b)    # True   — subsequência
+post(101 in b)               # True   — esse BYTE aparece?
+
+for each x in "abc".encode() {
+    post(x)                  # 97, 98, 99 — itera em INTEIROS
+}
+```
+
+**Indexar dá inteiro, fatiar dá bytes, iterar dá inteiro.** É o que faz
+`if x == 0` procurar byte NUL direto, sem passar por hexadecimal.
+
+---
+
+## 12.5. Resumo
 
 - Os métodos são chamados por `valor.metodo(...)` e são parte da linguagem
   (sem `import`).
@@ -263,3 +315,6 @@ etc. — tem prioridade sobre o acesso por atributo.)
   `reversed` (builtins) devolvem cópia.
 - **`dict`**: 12 — `keys`/`values` (ou `value`)/`items`, `get` (com default, sem erro),
   `has`, `pop`, `update`, `copy`… mais acesso por `[]` e por `.chave`.
+- **`bytes`**: 42 — os mesmos nomes do `str`, com semântica de BYTE: caixa só
+  em ASCII, `splitlines` só em `\n`/`\r`/`\r\n`, busca aceitando inteiro.
+  Detalhe por método em `docs/bytes/`.

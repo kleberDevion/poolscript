@@ -9412,12 +9412,16 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   "", NULL, 0 },
 { "dif #1811",
+  /* Era `TypeError: 'bytes' object is not iterable`. Passou a iterar em 31/08,
+   * entregando um INTEIRO por byte — o que o Python faz (`for x in b"ab"` dá
+   * 97 e 98). O esperado novo veio de RODAR no python3, não do nosso motor:
+   * regravar um diferencial contra a própria saída não prova nada. */
   "b = \"ab\".encode()\n"
   "for each x in b {\n"
   " post(x)\n"
   "}\n"
   "\n",
-  NULL, "TypeError: 'bytes' object is not iterable", -1 },
+  "97\n98", NULL, 0 },
 { "dif #1812",
   "b = \"ab\".encode()\n"
   "post(b == \"ab\")\n"

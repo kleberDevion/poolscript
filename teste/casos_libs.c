@@ -164,6 +164,264 @@ const Caso CASOS_LIBS[] = {
   "post(int(open(\"rq\").read().strip()) != 0, int(open(\"rb\").read().strip()) == 0)\n",
   "True True", NULL, 0 },
 
+/* ── bytes: os 42 métodos do VALOR, conferidos contra o CPython ───────────
+ *
+ * `str(e).split(" (linha ")[0]` aparece em todo catch daqui: `catch (e)` liga
+ * `e` a uma STRING que já traz " (linha N)" no fim. O que se compara com o
+ * CPython é a MENSAGEM; prender o número da linha no esperado faria o caso
+ * reprovar por alguém ter inserido um comentário acima dele.
+ *
+ * POR QUE ESTES CASOS EXISTEM: `bytes` tinha três métodos — `decode`, `hex` e
+ * `len`. Faltava tudo o que serve pra CONFERIR conteúdo binário: `find`,
+ * `startswith`, `split`, `count`, e o `in`. Escrevendo o teste do vazamento
+ * de pilha do jinker foi preciso converter a resposta inteira pra hexadecimal
+ * e varrer a string de dois em dois bytes, porque `0 in resposta` não existia.
+ * Conferência que precisa de rodeio é conferência que ninguém escreve.
+ *
+ * O ORÁCULO É O CPYTHON, não a nossa implementação. Cada esperado abaixo foi
+ * colhido rodando o mesmo caso no `python3` — os 114 casos da varredura saíram
+ * byte a byte iguais. Comparar a saída com ela mesma não prova nada.
+ *
+ * As diferenças entre `bytes` e `str` que estes casos travam, porque são as
+ * que se erra copiando o método do str:
+ *
+ *   - caixa (`upper`/`lower`/`title`) mexe SÓ no ASCII;
+ *   - `splitlines` quebra em \n, \r e \r\n e MAIS NADA;
+ *   - `find`/`count`/`index` aceitam um INTEIRO de 0 a 255;
+ *   - `strip(chars)` é CONJUNTO de bytes, não prefixo;
+ *   - indexar dá inteiro, fatiar dá bytes, iterar dá inteiro.
+ */
+{ "bytes: find/rfind/index/count, com bytes e com inteiro",
+  "b = \"Hello, World\".encode()\n"
+  "post(b.find(\"o\".encode()), b.find(111), b.find(\"zz\".encode()))\n"
+  "post(b.find(\"o\".encode(), 5), b.find(\"o\".encode(), 0, 5), b.rfind(\"o\".encode()))\n"
+  "post(b.index(\"o\".encode()), b.count(108), \"aaaa\".encode().count(\"aa\".encode()))\n"
+  /* agulha vazia conta POSIÇÕES, que são len+1 — é o que o Python faz */
+  "post(\"aaaa\".encode().count(\"\".encode()), \"\".encode().count(\"\".encode()))\n",
+  "4 4 -1\n8 4 8\n4 3 2\n5 1", NULL, 0 },
+{ "bytes: index sem achar levanta com a frase do CPython",
+  /* a frase do bytes NÃO é a do str: "subsection not found", não "substring" */
+  "try {\n"
+  "    \"abc\".encode().index(\"zz\".encode())\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n"
+  "try {\n"
+  "    \"abc\".encode().find(\"z\")\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n"
+  "try {\n"
+  "    \"abc\".encode().find(300)\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "subsection not found\n"
+  "argument should be integer or bytes-like object, not 'str'\n"
+  "byte must be in range(0, 256)", NULL, 0 },
+{ "bytes: startswith/endswith com tupla e com faixa",
+  "b = \"abcdef\".encode()\n"
+  "post(b.startswith(\"abc\".encode()), b.endswith(\"def\".encode()))\n"
+  "post(b.startswith((\"x\".encode(), \"ab\".encode())))\n"
+  "post(b.startswith(\"cd\".encode(), 2), b.endswith(\"cd\".encode(), 0, 4))\n"
+  "try {\n"
+  "    b.startswith(\"a\")\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "True True\nTrue\nTrue True\n"
+  "startswith first arg must be bytes or a tuple of bytes, not str", NULL, 0 },
+{ "bytes: caixa mexe SO no ASCII",
+  /* 0xc0/0xe0 são À/à em latin-1 e o `str` do Python os trocaria; o `bytes`
+   * NÃO, e copiar o método do str aqui corromperia dado binário */
+  "import bytes\n"
+  "post(\"hello\".encode().upper(), \"HELLO\".encode().lower())\n"
+  "post(\"hello wOrld 3ab\".encode().title())\n"
+  "post(\"hELLO\".encode().capitalize(), \"Hello\".encode().swapcase())\n"
+  "post(bytes.fromhex(\"c0e0\").upper() == bytes.fromhex(\"c0e0\"))\n",
+  "b'HELLO' b'hello'\nb'Hello World 3Ab'\nb'Hello' b'hELLO'\nTrue", NULL, 0 },
+{ "bytes: predicados, e o vazio",
+  /* vazio é False em todos MENOS no isascii — detalhe do Python que só
+   * aparece quando alguém passa uma resposta vazia */
+  "import bytes\n"
+  "v = \"\".encode()\n"
+  "post(\"abc\".encode().isalpha(), \"123\".encode().isdigit(), \"a1\".encode().isalnum())\n"
+  "post(\" \\t\".encode().isspace(), \"ABC\".encode().isupper(), \"abc\".encode().islower())\n"
+  "post(\"123\".encode().isupper(), \"Hello World\".encode().istitle(), \"A1b\".encode().istitle())\n"
+  "post(v.isalpha(), v.isdigit(), v.isupper(), v.istitle())\n"
+  "post(v.isascii(), \"abc\".encode().isascii(), bytes.fromhex(\"80\").isascii())\n",
+  "True True True\nTrue True True\nFalse True False\n"
+  "False False False False\nTrue True False", NULL, 0 },
+{ "bytes: strip e o CONJUNTO de bytes",
+  /* `chars` é conjunto, não prefixo: b\"xyaXbyx\".strip(b\"xy\") é b\"aXb\" */
+  "post(\"  \\t a b \\n \".encode().strip())\n"
+  "post(\"xyaXbyx\".encode().strip(\"xy\".encode()))\n"
+  "post(\"xyaXbyx\".encode().lstrip(\"xy\".encode()), \"xyaXbyx\".encode().rstrip(\"xy\".encode()))\n"
+  "post(\"abc\".encode().strip(\"\".encode()))\n"
+  "post(\"Hello\".encode().removeprefix(\"He\".encode()), \"Hello\".encode().removeprefix(\"zz\".encode()))\n",
+  "b'a b'\nb'aXb'\nb'aXbyx' b'xyaXb'\nb'abc'\nb'llo' b'Hello'", NULL, 0 },
+{ "bytes: split, rsplit e o separador vazio",
+  "post(\"a-b-c\".encode().split(\"-\".encode()))\n"
+  "post(\"a-b-c\".encode().split(\"-\".encode(), 1), \"a-b-c\".encode().rsplit(\"-\".encode(), 1))\n"
+  "post(\"  a  b \\t c \\n \".encode().split())\n"
+  "post(\" a b c \".encode().split(Null, 1), \" a b c \".encode().rsplit(Null, 1))\n"
+  "try {\n"
+  "    \"abc\".encode().split(\"\".encode())\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "[b'a', b'b', b'c']\n"
+  "[b'a', b'b-c'] [b'a-b', b'c']\n"
+  "[b'a', b'b', b'c']\n"
+  "[b'a', b'b c '] [b' a b', b'c']\n"
+  "empty separator", NULL, 0 },
+{ "bytes: splitlines quebra so em \\n, \\r e \\r\\n",
+  /* o `str` também quebra em \\v e \\f; o `bytes` NÃO, e copiar o do str daria
+   * linha a mais em dado binário */
+  "import bytes\n"
+  "post(\"a\\nb\\r\\nc\".encode().splitlines())\n"
+  "post(\"a\\nb\".encode().splitlines(true))\n"
+  "post(bytes.fromhex(\"610b620c63\").splitlines())\n",
+  "[b'a', b'b', b'c']\n[b'a\\n', b'b']\n[b'a\\x0bb\\x0cc']", NULL, 0 },
+{ "bytes: partition, rpartition e o lado em que sobra",
+  /* sem achar, `partition` põe tudo no PRIMEIRO e `rpartition` no ÚLTIMO */
+  "post(\"a=b=c\".encode().partition(\"=\".encode()))\n"
+  "post(\"a=b=c\".encode().rpartition(\"=\".encode()))\n"
+  "post(\"abc\".encode().partition(\"=\".encode()))\n"
+  "post(\"abc\".encode().rpartition(\"=\".encode()))\n",
+  "(b'a', b'=', b'b=c')\n(b'a=b', b'=', b'c')\n"
+  "(b'abc', b'', b'')\n(b'', b'', b'abc')", NULL, 0 },
+{ "bytes: join e replace, inclusive com agulha vazia",
+  /* agulha vazia no replace enfia a troca entre cada byte E nas duas pontas */
+  "post(\"-\".encode().join([\"a\".encode(), \"b\".encode(), \"c\".encode()]))\n"
+  "post(\"\".encode().join([\"a\".encode(), \"b\".encode()]))\n"
+  "post(\"aaa\".encode().replace(\"a\".encode(), \"b\".encode()))\n"
+  "post(\"aaa\".encode().replace(\"a\".encode(), \"b\".encode(), 2))\n"
+  "post(\"abc\".encode().replace(\"\".encode(), \"-\".encode()))\n"
+  "try {\n"
+  "    \"\".encode().join([\"a\".encode(), 1])\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "b'a-b-c'\nb'ab'\nb'bbb'\nb'bba'\nb'-a-b-c-'\n"
+  "sequence item 1: expected a bytes-like object, int found", NULL, 0 },
+{ "bytes: ljust, rjust, center, zfill e expandtabs",
+  /* no `center`, com sobra ímpar E largura ímpar, o byte a mais fica na
+   * ESQUERDA — b\"ab\".center(7) é b\"***ab**\", não b\"**ab***\" */
+  "post(\"ab\".encode().ljust(5, \".\".encode()), \"ab\".encode().rjust(5, \".\".encode()))\n"
+  "post(\"ab\".encode().center(7, \"*\".encode()))\n"
+  "post(\"abcdef\".encode().ljust(3))\n"
+  "post(\"42\".encode().zfill(8), \"-42\".encode().zfill(8), \"abc\".encode().zfill(2))\n"
+  "post(\"a\\tbc\\td\".encode().expandtabs(4))\n"
+  "try {\n"
+  "    \"ab\".encode().center(20, \"xy\".encode())\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "b'ab...' b'...ab'\nb'***ab**'\nb'abcdef'\n"
+  "b'00000042' b'-0000042' b'abc'\nb'a   bc  d'\n"
+  "center() argument 2 must be a byte string of length 1, not bytes", NULL, 0 },
+{ "bytes: maketrans e translate, com e sem delete",
+  "t = \"\".encode().maketrans(\"abc\".encode(), \"xyz\".encode())\n"
+  "post(t.len(), \"abcabc\".encode().translate(t))\n"
+  "post(\"abcabc\".encode().translate(Null, \"b\".encode()))\n"
+  "try {\n"
+  "    \"abc\".encode().translate(\"ab\".encode())\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n"
+  "try {\n"
+  "    \"\".encode().maketrans(\"a\".encode(), \"bc\".encode())\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "256 b'xyzxyz'\nb'acac'\n"
+  "translation table must be 256 characters long\n"
+  "maketrans arguments must have same length", NULL, 0 },
+{ "bytes: hex com separador e agrupamento",
+  /* `n` positivo agrupa da DIREITA, negativo da ESQUERDA — a regra do Python,
+   * porque número em hexadecimal se alinha pelo dígito menos significativo */
+  "import bytes\n"
+  "b = bytes.fromhex(\"01020304050607\")\n"
+  "post(b.hex())\n"
+  "post(b.hex(\"_\", 3))\n"
+  "post(b.hex(\"_\", -3))\n"
+  "post(bytes.fromhex(\"deadbeef\").hex(\"-\"))\n"
+  "try {\n"
+  "    b.hex(\"--\")\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "01020304050607\n01_020304_050607\n010203_040506_07\nde-ad-be-ef\n"
+  "sep must be length 1.", NULL, 0 },
+{ "bytes: os operadores de sequencia",
+  /* Indexar dá INTEIRO e fatiar dá bytes; iterar dá INTEIRO. É o que faz
+   * `if x == 0` funcionar direto pra procurar byte NUL num corpo de resposta —
+   * antes disso a única saída era converter tudo pra hexadecimal. */
+  "b = \"Hello\".encode()\n"
+  "post(len(b), b[0], b[0:2], b[0:1], b[-1])\n"
+  "post(b + \"!\".encode(), b * 2, 2 * \"ab\".encode(), \"ab\".encode() * 0)\n"
+  "post(\"ell\".encode() in b, 101 in b, 1 in b)\n"
+  "post(\"abc\".encode() < \"abd\".encode(), \"ab\".encode() < \"abc\".encode())\n"
+  "post(sorted([\"b\".encode(), \"a\".encode()]))\n"
+  "vs = []\n"
+  "for each x in \"abc\".encode() {\n"
+  "    addEnd(vs, x)\n"
+  "}\n"
+  "post(vs, list(\"abc\".encode()))\n",
+  "5 72 b'He' b'H' 111\n"
+  "b'Hello!' b'HelloHello' b'abab' b''\n"
+  "True True False\nTrue True\n[b'a', b'b']\n"
+  "[97, 98, 99] [97, 98, 99]", NULL, 0 },
+{ "bytes: os operadores recusam com a frase do CPython",
+  "b = \"ab\".encode()\n"
+  "try {\n"
+  "    post(b * \"x\")\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n"
+  "try {\n"
+  "    post(b < \"x\")\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n"
+  "try {\n"
+  "    post(\"x\" in b)\n"
+  "} catch (TypeError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n"
+  "try {\n"
+  "    post(300 in b)\n"
+  "} catch (ValueError e) {\n"
+  "    post(str(e).split(\" (linha \")[0])\n"
+  "}\n",
+  "can't multiply sequence by non-int of type 'str'\n"
+  "'<' not supported between instances of 'bytes' and 'str'\n"
+  "a bytes-like object is required, not 'str'\n"
+  "byte must be in range(0, 256)", NULL, 0 },
+{ "bytes: procurar byte NUL sem rodeio",
+  /* O caso de uso que fez tudo isto existir: conferir se um corpo de resposta
+   * tem byte de memória vazada. Antes só dava pra fazer em hexadecimal, de
+   * dois em dois caracteres. As três formas abaixo têm que concordar. */
+  "import bytes\n"
+  "resp = \"ok\".encode() + bytes.fromhex(\"00\") + \"lixo\".encode()\n"
+  "limpa = \"ok, sem nada estranho\".encode()\n"
+  "porin = [0 in resp, 0 in limpa]\n"
+  "porfind = [resp.find(0) >= 0, limpa.find(0) >= 0]\n"
+  "porlaco = []\n"
+  "for each alvo in [resp, limpa] {\n"
+  "    achou = false\n"
+  "    for each x in alvo {\n"
+  "        if x == 0 {\n"
+  "            achou = true\n"
+  "        }\n"
+  "    }\n"
+  "    addEnd(porlaco, achou)\n"
+  "}\n"
+  "post(porin, porfind, porlaco)\n"
+  "post(porin == porfind and porfind == porlaco)\n",
+  "[True, False] [True, False] [True, False]\nTrue", NULL, 0 },
+
 /* ── bytes: a API inteira, offline ───────────────────────────────────────── */
 { "bytes hex ida e volta",
   "import bytes\n"

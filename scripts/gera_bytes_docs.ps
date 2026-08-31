@@ -1,0 +1,311 @@
+# Gera as páginas de método do tipo `bytes`, em docs/bytes/metodos/<m>/<m>.md.
+#
+# POR QUE UM GERADOR, E NÃO 42 ARQUIVOS ESCRITOS À MÃO:
+#
+#   1. A ASSINATURA sai de `pool --metadata`, ou seja, da tabela do próprio VM.
+#      A regra do projeto é que assinatura de doc nunca é digitada de memória —
+#      e com 42 métodos, digitar de memória é garantia de divergência.
+#   2. A SAÍDA de cada exemplo é obtida RODANDO o exemplo. O bloco ```saida
+#      não é o que eu acho que sai: é o que saiu. Exemplo de doc que mente é
+#      pior que exemplo faltando, porque quem copia confia.
+#
+# O que é escrito à mão aqui é só o que máquina nenhuma sabe: a frase que
+# explica o método e o exemplo que vale a pena mostrar.
+#
+#     ./pool scripts/gera_bytes_docs.ps            # gera
+#     ./pool scripts/gera_bytes_docs.ps --confere  # só avisa se algo mudou
+import os
+import sys
+import json
+
+# As páginas de MÉTODO ficam sob `metodos/`, e não soltas em `docs/bytes/`,
+# porque os dois espaços de nome colidem: `bytes.hex(b)` é função da lib e
+# `b.hex()` é método do valor. Sem a pasta, a primeira geração passou por cima
+# de `docs/bytes/hex/hex.md` e apagou a página da função — o tipo de estrago
+# que um gerador faz calado.
+DEST = "docs/bytes/metodos"
+
+# metodo -> [frase, retorno, codigo do exemplo]
+#
+# O exemplo é um programa COMPLETO menos o `import bytes`, que o gerador põe.
+# Cada um é escolhido pra mostrar o que o método tem de próprio, não pra
+# repetir o óbvio: o `strip` mostra que `chars` é CONJUNTO, o `splitlines`
+# mostra que `\x0b` não quebra linha, o `find` mostra a forma com inteiro.
+CASOS = {
+    "decode": ["Volta pra texto, decodificando com o codec pedido.", "str",
+        "b = \"ção\".encode()\npost(b.decode())\npost(b.len(), \"bytes ->\", len(b.decode()), \"caracteres\")"],
+    "hex": ["Os bytes como texto hexadecimal minúsculo. Com `sep`, um separador a cada `bytes_per_sep` bytes — positivo agrupa da direita, negativo da esquerda.", "str",
+        "b = bytes.fromhex(\"deadbeef\")\npost(b.hex())\npost(b.hex(\"-\"))\npost(b.hex(\"_\", 2))"],
+    "len": ["Quantos BYTES. Não caracteres — o mesmo número que `len(b)`.", "int",
+        "b = \"ção\".encode()\npost(b.len())"],
+
+    "find": ["A posição da primeira ocorrência, ou -1. A agulha pode ser bytes OU um inteiro de 0 a 255.", "int",
+        "b = \"Hello, World\".encode()\npost(b.find(\"o\".encode()))\npost(b.find(111))\npost(b.find(\"zz\".encode()))"],
+    "rfind": ["Como `find`, mas a ÚLTIMA ocorrência.", "int",
+        "b = \"Hello, World\".encode()\npost(b.rfind(\"o\".encode()))"],
+    "index": ["Como `find`, mas levanta `ValueError` quando não acha, em vez de devolver -1.", "int",
+        "b = \"Hello\".encode()\npost(b.index(\"l\".encode()))\ntry { b.index(\"z\".encode()) } catch (e) { post(e) }"],
+    "rindex": ["Como `rfind`, mas levanta `ValueError` quando não acha.", "int",
+        "b = \"Hello\".encode()\npost(b.rindex(\"l\".encode()))"],
+    "count": ["Quantas vezes aparece, sem sobreposição. Agulha vazia conta as POSIÇÕES.", "int",
+        "b = \"aaaa\".encode()\npost(b.count(\"aa\".encode()))\npost(b.count(97))\npost(b.count(\"\".encode()))"],
+    "contains": ["True se contém. É `find(...) >= 0` com nome.", "bool",
+        "b = \"Hello\".encode()\npost(b.contains(\"ell\".encode()))\npost(b.contains(0))"],
+    "has": ["O mesmo que `contains` — as duas grafias existem na linguagem.", "bool",
+        "post(\"Hello\".encode().has(\"He\".encode()))"],
+    "startswith": ["True se começa com o prefixo. Aceita uma tupla/lista de prefixos (\"bate com qualquer um\") e `inicio`/`fim`.", "bool",
+        "b = \"abcdef\".encode()\npost(b.startswith(\"abc\".encode()))\npost(b.startswith((\"x\".encode(), \"ab\".encode())))\npost(b.startswith(\"cd\".encode(), 2))"],
+    "endswith": ["True se termina com o sufixo. Mesmas regras do `startswith`.", "bool",
+        "b = \"abcdef\".encode()\npost(b.endswith(\"def\".encode()))\npost(b.endswith(\"cd\".encode(), 0, 4))"],
+
+    "upper": ["Maiúsculas — SÓ ASCII. Byte fora de ASCII fica como está.", "bytes",
+        "post(\"hello\".encode().upper())\npost(bytes.fromhex(\"c0e0\").upper())"],
+    "lower": ["Minúsculas — só ASCII.", "bytes",
+        "post(\"HELLO\".encode().lower())"],
+    "title": ["Primeira letra de cada palavra em maiúscula, resto em minúscula. Só ASCII; dígito não é letra e por isso separa palavra.", "bytes",
+        "post(\"hello wOrld 3ab\".encode().title())"],
+    "capitalize": ["Primeiro byte maiúsculo, resto minúsculo.", "bytes",
+        "post(\"hELLO\".encode().capitalize())"],
+    "swapcase": ["Troca maiúscula por minúscula e vice-versa. Só ASCII.", "bytes",
+        "post(\"Hello\".encode().swapcase())"],
+
+    "isalpha": ["True se tem pelo menos um byte e TODOS são letras ASCII.", "bool",
+        "post(\"abc\".encode().isalpha())\npost(\"a1\".encode().isalpha())\npost(\"\".encode().isalpha())"],
+    "isdigit": ["True se tem pelo menos um byte e todos são dígitos ASCII.", "bool",
+        "post(\"123\".encode().isdigit())"],
+    "isalnum": ["True se tem pelo menos um byte e todos são letra ou dígito ASCII.", "bool",
+        "post(\"a1\".encode().isalnum())"],
+    "isspace": ["True se tem pelo menos um byte e todos são branco ASCII (espaço, `\\t`, `\\n`, `\\r`, `\\v`, `\\f`).", "bool",
+        "post(\" \\t\\n\".encode().isspace())"],
+    "isupper": ["True se há alguma letra e nenhuma é minúscula.", "bool",
+        "post(\"ABC\".encode().isupper())\npost(\"123\".encode().isupper())"],
+    "islower": ["True se há alguma letra e nenhuma é maiúscula.", "bool",
+        "post(\"abc\".encode().islower())"],
+    "istitle": ["True se está no formato de título: cada letra depois de uma não-letra é maiúscula, o resto minúscula.", "bool",
+        "post(\"Hello World\".encode().istitle())\npost(\"HELLO\".encode().istitle())"],
+    "isascii": ["True se todo byte é menor que 0x80. Diferente dos outros predicados, o VAZIO é True.", "bool",
+        "post(\"abc\".encode().isascii())\npost(bytes.fromhex(\"80\").isascii())\npost(\"\".encode().isascii())"],
+
+    "strip": ["Tira das duas pontas. `chars` é um CONJUNTO de bytes, não um prefixo. Sem argumento, tira branco ASCII.", "bytes",
+        "post(\"  a b \\n\".encode().strip())\npost(\"xyaXbyx\".encode().strip(\"xy\".encode()))"],
+    "lstrip": ["Como `strip`, só da esquerda.", "bytes",
+        "post(\"xyaXbyx\".encode().lstrip(\"xy\".encode()))"],
+    "rstrip": ["Como `strip`, só da direita.", "bytes",
+        "post(\"xyaXbyx\".encode().rstrip(\"xy\".encode()))"],
+    "removeprefix": ["Tira o prefixo se ele estiver lá; senão devolve igual. Não é conjunto: é o prefixo inteiro.", "bytes",
+        "b = \"Hello\".encode()\npost(b.removeprefix(\"He\".encode()))\npost(b.removeprefix(\"zz\".encode()))"],
+    "removesuffix": ["Tira o sufixo se ele estiver lá; senão devolve igual.", "bytes",
+        "post(\"Hello\".encode().removesuffix(\"lo\".encode()))"],
+
+    "split": ["Parte no separador. Sem separador (ou com `Null`), parte em RUNS de branco e descarta os das pontas.", "list",
+        "post(\"a-b-c\".encode().split(\"-\".encode()))\npost(\"a-b-c\".encode().split(\"-\".encode(), 1))\npost(\"  a  b \\t c \".encode().split())"],
+    "rsplit": ["Como `split`, mas contando do fim quando há `maxsplit`.", "list",
+        "post(\"a-b-c\".encode().rsplit(\"-\".encode(), 1))"],
+    "splitlines": ["Parte em linhas. Quebra em `\\n`, `\\r` e `\\r\\n` — e SÓ. O `\\v` e o `\\f`, que no `str` quebram, aqui ficam dentro da linha.", "list",
+        "post(\"a\\nb\\r\\nc\".encode().splitlines())\npost(\"a\\nb\".encode().splitlines(true))\npost(bytes.fromhex(\"610b62\").splitlines())"],
+    "partition": ["Corta na PRIMEIRA ocorrência e devolve `(antes, separador, depois)`. Sem ocorrência, tudo vai no primeiro.", "tup",
+        "post(\"a=b=c\".encode().partition(\"=\".encode()))\npost(\"abc\".encode().partition(\"=\".encode()))"],
+    "rpartition": ["Corta na ÚLTIMA ocorrência. Sem ocorrência, tudo vai no ÚLTIMO — ao contrário do `partition`.", "tup",
+        "post(\"a=b=c\".encode().rpartition(\"=\".encode()))\npost(\"abc\".encode().rpartition(\"=\".encode()))"],
+    "join": ["Junta uma lista de bytes usando ESTE valor como separador.", "bytes",
+        "post(\"-\".encode().join([\"a\".encode(), \"b\".encode(), \"c\".encode()]))"],
+    "replace": ["Troca ocorrências. `count` limita quantas; -1 (o padrão) troca todas.", "bytes",
+        "b = \"aaa\".encode()\npost(b.replace(\"a\".encode(), \"b\".encode()))\npost(b.replace(\"a\".encode(), \"b\".encode(), 2))"],
+
+    "ljust": ["Enche à direita até a largura. `fillbyte` tem que ter exatamente um byte.", "bytes",
+        "post(\"ab\".encode().ljust(5, \".\".encode()))"],
+    "rjust": ["Enche à esquerda até a largura.", "bytes",
+        "post(\"ab\".encode().rjust(5, \".\".encode()))"],
+    "center": ["Centraliza na largura. Com sobra ímpar e largura ímpar, o byte a mais fica à esquerda.", "bytes",
+        "post(\"ab\".encode().center(7, \"*\".encode()))"],
+    "zfill": ["Enche com zeros à esquerda. Um `+` ou `-` inicial fica NA FRENTE dos zeros.", "bytes",
+        "post(\"42\".encode().zfill(8))\npost(\"-42\".encode().zfill(8))"],
+    "expandtabs": ["Troca cada tabulação pelos espaços que faltam até a próxima parada.", "bytes",
+        "post(\"a\\tbc\\td\".encode().expandtabs(4))"],
+
+    "maketrans": ["Monta a tabela de 256 bytes que o `translate` usa. Os dois argumentos precisam ter o mesmo tamanho.", "bytes",
+        "t = \"\".encode().maketrans(\"abc\".encode(), \"xyz\".encode())\npost(\"abcabc\".encode().translate(t))"],
+    "translate": ["Traduz byte a byte pela tabela de 256 bytes. `Null` no lugar da tabela só apaga; `delete` diz quais bytes somem.", "bytes",
+        "t = \"\".encode().maketrans(\"abc\".encode(), \"xyz\".encode())\npost(\"abcabc\".encode().translate(t))\npost(\"abcabc\".encode().translate(Null, \"b\".encode()))"],
+}
+
+
+# Assinatura REAL, lida do motor. Devolve {metodo: "nome(a, b=1)"}.
+action assinaturas_do_motor() {
+    tmp = "/tmp/ps_meta_bytes.json"
+    os.cmd("'" + sys.executable + "' --metadata > " + tmp)
+    meta = json.parse(open(tmp).read())
+    out = {}
+    for each m in meta["tipos"]["bytes"] {
+        ps = []
+        for each p in m["params"] {
+            if p["default"] == Null {
+                ps.append(p["nome"])
+            }
+            else {
+                ps.append(p["nome"] + "=" + p["default"])
+            }
+        }
+        out[m["nome"]] = m["nome"] + "(" + (", ").join(ps) + ")"
+    }
+    return out
+}
+
+
+# Roda o exemplo e devolve o que ele imprimiu. Erro de execução vira falha
+# ALTA — exemplo de doc que não roda é o defeito que este gerador existe pra
+# não deixar acontecer.
+action roda_exemplo(codigo) {
+    fonte = "import bytes\n" + codigo + "\n"
+    using open("/tmp/ps_doc_bytes.ps", "w") as f {
+        f.write(fonte)
+    }
+    os.cmd("'" + sys.executable + "' /tmp/ps_doc_bytes.ps > /tmp/ps_doc_bytes.out 2>&1"
+           + "; echo $? > /tmp/ps_doc_bytes.rc")
+    rc = int(open("/tmp/ps_doc_bytes.rc").read().strip())
+    saida = open("/tmp/ps_doc_bytes.out").read()
+    if rc != 0 {
+        post("EXEMPLO QUEBRADO (rc " + str(rc) + "):")
+        post(fonte)
+        post(saida)
+        sys.exit(1)
+    }
+    return saida.rstrip("\n")
+}
+
+
+action pagina(metodo, sig, frase, retorno, exemplo, saida, params) {
+    L = []
+    L.append("# `b." + sig + "`")
+    L.append("")
+    L.append(frase)
+    L.append("")
+    L.append("## Parâmetros")
+    L.append("")
+    if len(params) == 0 {
+        L.append("Nenhum.")
+    }
+    else {
+        L.append("| nome | default |")
+        L.append("|---|---|")
+        for each p in params {
+            d = "—"
+            if p["default"] != Null {
+                d = "`" + p["default"] + "`"
+            }
+            L.append("| `" + p["nome"] + "` | " + d + " |")
+        }
+    }
+    L.append("")
+    L.append("## Retorno")
+    L.append("")
+    L.append(retorno)
+    L.append("")
+    L.append("## Exemplos")
+    L.append("")
+    L.append("```ps")
+    L.append("import bytes")
+    L.append(exemplo)
+    L.append("```")
+    L.append("")
+    L.append("```saida")
+    L.append(saida)
+    L.append("```")
+    L.append("")
+    L.append("[← índice](../../bytes.md)")
+    return ("\n").join(L) + "\n"
+}
+
+
+if __name__ == "main" {
+    confere = false
+    for each a in sys.argv {
+        if a == "--confere" {
+            confere = true
+        }
+    }
+
+    tmp = "/tmp/ps_meta_bytes.json"
+    os.cmd("'" + sys.executable + "' --metadata > " + tmp)
+    meta = json.parse(open(tmp).read())
+
+    # todo método do motor tem que ter caso escrito aqui: método novo sem
+    # entrada em CASOS reprova, senão a doc silenciosamente fica pra trás
+    sem_caso = []
+    for each m in meta["tipos"]["bytes"] {
+        if not m["nome"] in CASOS {
+            sem_caso.append(m["nome"])
+        }
+    }
+    if len(sem_caso) > 0 {
+        post("MÉTODO no motor sem caso em CASOS:", (", ").join(sem_caso))
+        post("Acrescente a frase e o exemplo — doc que fica pra trás é doc que mente.")
+        sys.exit(1)
+    }
+    # e o contrário: caso escrito pra método que não existe mais
+    nomes_motor = {}
+    for each m in meta["tipos"]["bytes"] {
+        nomes_motor[m["nome"]] = 1
+    }
+    sobrando = []
+    for each k in CASOS.keys() {
+        if not k in nomes_motor {
+            sobrando.append(k)
+        }
+    }
+    if len(sobrando) > 0 {
+        post("CASO escrito pra método que o motor não tem:", (", ").join(sobrando))
+        sys.exit(1)
+    }
+
+    mudou = 0
+    for each m in meta["tipos"]["bytes"] {
+        nome = m["nome"]
+        ps = []
+        for each p in m["params"] {
+            if p["default"] == Null {
+                ps.append(p["nome"])
+            }
+            else {
+                ps.append(p["nome"] + "=" + p["default"])
+            }
+        }
+        sig = nome + "(" + (", ").join(ps) + ")"
+        c = CASOS[nome]
+        saida = roda_exemplo(c[2])
+        texto = pagina(nome, sig, c[0], c[1], c[2], saida, m["params"])
+
+        pasta = DEST + "/" + nome
+        arq = pasta + "/" + nome + ".md"
+        antes = ""
+        if os.exists(arq) {
+            antes = open(arq).read()
+        }
+        if antes == texto {
+            continue
+        }
+        mudou = mudou + 1
+        if confere {
+            post("mudou:", arq)
+            continue
+        }
+        if not os.exists(pasta) {
+            os.mkdir(pasta, true)
+        }
+        using open(arq, "w") as f {
+            f.write(texto)
+        }
+    }
+
+    if confere {
+        if mudou > 0 {
+            post("")
+            post(str(mudou), "pagina(s) fora de dia — rode `./pool scripts/gera_bytes_docs.ps`")
+            sys.exit(1)
+        }
+        post("as", str(len(CASOS)), "paginas de metodo do bytes estao em dia")
+        sys.exit(0)
+    }
+    post("gerei/atualizei", str(mudou), "de", str(len(CASOS)), "paginas em", DEST)
+    sys.exit(0)
+}
