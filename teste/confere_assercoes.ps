@@ -1,0 +1,173 @@
+# Portão das ASSERÇÕES FRACAS: nenhum caso da suíte pode conferir menos do que
+# o runner sabe conferir.
+#
+# POR QUE ISTO EXISTE: 1577 casos estavam gravados como
+#
+#     { "nome", "<fonte>", NULL, "<trecho do stderr>", -1 },
+#
+# `NULL` manda não conferir o stdout e `-1` manda não conferir o código de
+# saída. Um programa que imprimisse lixo e só depois errasse com a mensagem
+# certa passava; um que errasse certo e saísse com o código errado, também.
+# Eram 1577 — a maior parte de tudo que a suíte tinha de caminho de erro, e
+# ninguém sabia porque nada media.
+#
+# `scripts/fortalece_casos.ps` mediu e reforçou os 1577. Este portão é o que
+# impede a volta: caso novo entra forte, ou reprova aqui.
+#
+# TRÊS FORMAS FRACAS, e as três são pegas — a terceira existe porque duas
+# escaparam das duas primeiras na primeira passada:
+#
+#     NULL, "msg", -1 },                  a expectativa sozinha na linha
+#     "<fonte>", NULL, "msg", -1 },       colada no fonte
+#     "<fonte>", NULL,  +  "msg", -1 },   partida em duas linhas
+import os
+import sys
+import regex
+
+PASTA = "teste"
+
+
+# Os literais de uma linha, varridos À MÃO. Com regex
+# (`"((?:[^"\\]|\\.)*)"`) o motor estoura com "backtracking demais" nas
+# linhas longas do `casos_oraculo.c`: alternância dentro de grupo repetido é o
+# padrão que explode. Varredura linear não tem esse problema.
+action literais(L) {
+    out = []
+    i = 0
+    while i < len(L) {
+        if L[i] != "\"" {
+            i = i + 1
+            continue
+        }
+        j = i + 1
+        atual = ""
+        while j < len(L) {
+            if L[j] == "\\" and j + 1 < len(L) {
+                atual = atual + L[j] + L[j + 1]
+                j = j + 2
+                continue
+            }
+            if L[j] == "\"" {
+                break
+            }
+            atual = atual + L[j]
+            j = j + 1
+        }
+        addEnd(out, atual)
+        i = j + 1
+    }
+    return out
+}
+
+
+if __name__ == "main" {
+    fracos = []
+    for each e in os.ls(PASTA) {
+        n = e["name"]
+        if not n.startswith("casos_") or not n.endswith(".c") {
+            continue
+        }
+        caminho = PASTA + "/" + n
+        linhas = open(caminho).read().split("\n")
+        i = 0
+        while i < len(linhas) {
+            L = linhas[i]
+            # forma 1 e 2: o `-1` e o `NULL` na mesma linha
+            if regex.findall("NULL,\\s*\"(?:[^\"\\\\]|\\\\.)*\",\\s*-1\\s*\\},\\s*$", L) != [] {
+                fracos.append(caminho + ":" + str(i + 1) + "  " + L.strip()[0:70])
+            }
+            # forma 3: `NULL,` no fim de uma linha e a mensagem na seguinte
+            elif L.rstrip().endswith("NULL,") and i + 1 < len(linhas) {
+                if regex.findall("^\\s*\"(?:[^\"\\\\]|\\\\.)*\",\\s*-1\\s*\\},\\s*$", linhas[i + 1]) != [] {
+                    fracos.append(caminho + ":" + str(i + 1) + "  (expectativa partida em duas linhas)")
+                }
+            }
+            i = i + 1
+        }
+    }
+
+    # ── segunda conferência: a mensagem DISCRIMINA? ─────────────────────────
+    #
+    # O runner casa o stderr por SUBSTRING. Uma expectativa que é prefixo de
+    # outra mensagem do motor aprova o erro errado: `variável não definida: j`
+    # casa com `: json`, e `MemoryError` casava com qualquer um dos seis
+    # MemoryError diferentes que o motor tem. Eram 13 casos assim.
+    #
+    # Dois textos que só diferem pelo `(linha N)` do fim são a MESMA mensagem —
+    # esses não contam como ambíguos.
+    msgs = {}
+    for each e in os.ls(PASTA) {
+        n = e["name"]
+        if not n.startswith("casos_") or not n.endswith(".c") {
+            continue
+        }
+        for each L in open(PASTA + "/" + n).read().split("\n") {
+            # o rabo da linha é curto: aqui o regex não tem como explodir
+            # Só o campo `erro`, que é o comparado por SUBSTRING. O campo
+            # `saida` é comparado EXATO, então prefixo ali não engana ninguém —
+            # sem esta aspa antes da vírgula, o último literal de um caso de
+            # sucesso (o stdout) entrava na conta e a checagem acusava
+            # "ambiguidade" onde não há.
+            cauda = L[len(L) - 24:len(L)]
+            if regex.findall("\",\\s*-?\\d+\\s*\\},\\s*$", cauda) == [] {
+                continue
+            }
+            lits = literais(L)
+            if len(lits) == 0 {
+                continue
+            }
+            t = lits[len(lits) - 1]
+            if t != "" {
+                msgs[t] = n
+            }
+        }
+    }
+    ambiguas = []
+    for each a1 in msgs.keys() {
+        for each a2 in msgs.keys() {
+            if a1 == a2 or not a2.startswith(a1) {
+                continue
+            }
+            resto = a2[len(a1):len(a2)]
+            if regex.findall("^ \\(linha \\d+\\)$", resto) != [] {
+                continue
+            }
+            ambiguas.append([a1, msgs[a1], a2])
+            break
+        }
+    }
+
+    if len(fracos) == 0 and len(ambiguas) == 0 {
+        post("assercoes: nenhuma confere so o stderr, nenhuma e prefixo de outra")
+        sys.exit(0)
+    }
+    if len(ambiguas) > 0 {
+        post("")
+        post("ASSERCAO AMBIGUA em", str(len(ambiguas)), "mensagem(ns): e PREFIXO de outra")
+        post("mensagem do motor. O runner casa por substring, entao ela aprova o erro")
+        post("errado — o caso passa com um defeito diferente do que ele testa.")
+        post("")
+        for each x in ambiguas {
+            post("   " + x[1] + ": \"" + x[0] + "\"")
+            post("      tambem casa com: \"" + x[2][0:70] + "\"")
+        }
+        post("")
+        post("Conserto: alongue a expectativa ate ela so casar com o erro certo.")
+    }
+    if len(fracos) == 0 {
+        sys.exit(1)
+    }
+    post("")
+    post("ASSERCAO FRACA em", str(len(fracos)), "caso(s): confere o stderr e mais nada.")
+    post("O stdout e o codigo de saida ficam sem conferencia — programa que")
+    post("imprime lixo e depois erra certo passa.")
+    post("")
+    for each f in fracos {
+        post("   " + f)
+    }
+    post("")
+    post("Conserto: ./pool scripts/fortalece_casos.ps --grava")
+    post("(ele MEDE o stdout e o rc reais; nao inventa, e recusa gravar se o")
+    post(" caso deixou de bater com a mensagem que ja estava la)")
+    sys.exit(1)
+}

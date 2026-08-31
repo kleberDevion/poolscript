@@ -137,6 +137,40 @@ ninguém.
 Todo método de `str`/`list`/`dict`/`tup` do motor precisa ter página: as tabelas
 `METODOS_*` de `vm/poolscript_vm.c` são a lista de verdade.
 
+## Mudou o comportamento? Atualiza TUDO na mesma mudança
+
+O que descreve o comportamento faz parte do comportamento. Trocar o motor e
+deixar a descrição pra trás não é "faltou doc": é criar um documento que MENTE,
+e depois acreditar nele.
+
+Já custou caro duas vezes, e as duas nesta ordem:
+
+- **I11** tirou o `//` de comentário e ninguém tocou em `examples/`. Os 16
+  exemplos — a primeira coisa que se lê pra aprender a linguagem — quebraram
+  com `SyntaxError: caractere inesperado: 'ê'` num comentário, e quatro dias
+  depois isso foi investigado como se fosse defeito novo do lexer.
+- **`notas/ROTA.md`** listava como abertas as fases 0, 1 e 3, todas fechadas no
+  código. A lista foi lida e repassada como pendência real.
+
+Então, no MESMO commit que muda comportamento:
+
+| mudou | atualiza também |
+|---|---|
+| tabela `METODOS_*`, nativa, operador | `docs/<tipo>/…`, `docs/linguagem/12`, e o gerador de doc quando houver |
+| mensagem de erro | os casos que a esperam, e `docs/exceptions/` |
+| sintaxe (o `//` é o caso-tipo) | `examples/`, `docs/linguagem/01…`, realce do editor |
+| qualquer item de `notas/ROTA.md` ou `TAREFAS.md` | a linha correspondente, ou apaga |
+
+E NÚMERO MEDIDO NÃO SE ESCREVE EM PROSA. Cobertura, contagem de caso, contagem
+de divergência: ou sai de um comando (`make cobertura`, `./testar`), ou não
+entra no texto. Número em prosa envelhece calado e depois é citado como fato —
+foi o que fez a ROTA dizer `ps_mail.c 16,9%` quando eram 56,9%.
+
+Quem cobra: `make check` roda `audita_doc`, `audita_exemplos_doc`,
+`exemplos_roda`, `confere_metadata`, `confere_assercoes` e `confere_duplicados`.
+Rode o PORTÃO INTEIRO antes de dizer que terminou — rodar só `./testar` é como
+a quebra dos exemplos passou.
+
 ## Regra que não se negocia
 
 Nada de falso verde. Skip, `try` que engole erro, teste ajustado pro bug —

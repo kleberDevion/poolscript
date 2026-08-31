@@ -1,39 +1,39 @@
-// Lib `mail` — envio (SMTP) e leitura (IMAP) de email
-// Para rodar de verdade, descomente e use credenciais reais (gmail exige senha de app).
+# Lib `mail` — envio (SMTP) e leitura (IMAP) de email
+# Para rodar de verdade, descomente e use credenciais reais (gmail exige senha de app).
 import mail
 
 post("== Lib mail carregada ==")
 post("Provedores auto (envio): gmail.com, yahoo.com, outlook.com, hotmail.com, proton.me")
 post("Provedores auto (leitura): gmail.com, yahoo.com, outlook.com, hotmail.com, live.com")
 
-// Exemplo — envio (não executa de verdade):
-//
-// server = mail.MailServer()
-// server.conn("gmail.com")
-// server.login("user@gmail.com", "senha-de-app")
-//
-// msg = mail.MailMessage()
-// msg.from_address("user@gmail.com")
-// msg.to("destino@site.com")
-// msg.subject("Teste")
-// msg.body("Olá <b>mundo</b>", true)
-// msg.attach("/tmp/relatorio.pdf")
-//
-// server.send(msg)
-// server.quit()
+# Exemplo — envio (não executa de verdade):
+#
+# server = mail.MailServer()
+# server.conn("gmail.com")
+# server.login("user@gmail.com", "senha-de-app")
+#
+# msg = mail.MailMessage()
+# msg.from_address("user@gmail.com")
+# msg.to("destino@site.com")
+# msg.subject("Teste")
+# msg.body("Olá <b>mundo</b>", true)
+# msg.attach("/tmp/relatorio.pdf")
+#
+# server.send(msg)
+# server.quit()
 
-// Exemplo — leitura (não executa de verdade):
-//
-// reader = mail.MailReader()
-// reader.conn("gmail.com")
-// reader.login("user@gmail.com", "senha-de-app")
-//
-// nao_lidos = reader.select("INBOX", true).search("UNSEEN")
-// for each e in nao_lidos:
-//     post(e["from"] " - " e["subject"] " (" e["date"] ")")
-//
-// // corpo do e-mail — sob demanda pelo id, ou embutido na busca:
-// corpo = reader.body(nao_lidos[0]["id"])
-// com_corpo = reader.select().search("UNSEEN", include_body=true)
-//
-// reader.close()
+# Exemplo — leitura (não executa de verdade):
+#
+# reader = mail.MailReader()
+# reader.conn("gmail.com")
+# reader.login("user@gmail.com", "senha-de-app")
+#
+# nao_lidos = reader.select("INBOX", true).search("UNSEEN")
+# for each e in nao_lidos:
+#     post(e["from"] " - " e["subject"] " (" e["date"] ")")
+#
+# corpo do e-mail — sob demanda pelo id, ou embutido na busca:
+# corpo = reader.body(nao_lidos[0]["id"])
+# com_corpo = reader.select().search("UNSEEN", include_body=true)
+#
+# reader.close()

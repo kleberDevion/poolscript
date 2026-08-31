@@ -624,7 +624,7 @@ const Caso CASOS_LIBS[] = {
 { "json aninhado demais e recusado na leitura",
   "import json\n"
   "post(json.parse(\"[\" * 200 + \"]\" * 200))\n",
-  NULL, "aninhado demais", -1 },
+  "", "aninhado demais", 1 },
 { "json invalido levanta",
   "import json\n"
   "try {\n"
@@ -653,7 +653,7 @@ const Caso CASOS_LIBS[] = {
 { "regex com backtracking explosivo para, nao trava",
   "import regex\n"
   "post(regex.match(\"(a+)+$\", \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\"))\n",
-  NULL, "backtracking", -1 },
+  "", "RuntimeError: regex: backtracking demais", 1 },
 
 /* ── as mensagens sao as do CPython, e os caminhos CONCORDAM ─────────────────
  *
@@ -773,10 +773,10 @@ const Caso CASOS_LIBS[] = {
   "post(a)\n", "A", NULL, 0 },
 { "from X import Y ausente cita o modulo",
   "from json import naotem_zz\n",
-  NULL, "cannot import name 'naotem_zz' from 'json'", -1 },
+  "", "cannot import name 'naotem_zz' from 'json'", 1 },
 { "modulo ausente diz o nome, no texto do CPython",
   "import naoexiste_zz_kd\n",
-  NULL, "No module named 'naoexiste_zz_kd'", -1 },
+  "", "No module named 'naoexiste_zz_kd'", 1 },
 
 /* I19: os apelidos sairam. Canonicos: request, qrcode, manpu, psodbc, sqlite3.
  * Modulo que nao existe responde como qualquer outro que nao existe — nao ha

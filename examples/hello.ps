@@ -1,4 +1,4 @@
-// hello.ps — exemplo principal coberto pelos checks
+# hello.ps — exemplo principal coberto pelos checks
 grau = 25
 post("Clima: " {grau} "°")
 post(f"Clima: {grau}°")
@@ -41,10 +41,10 @@ try {
     post("Erro detectado: " {e})
 }
 
-// Imports estilo Pool
+# Imports estilo Pool
 PUSH os GET getenv
 
-// Null nullish equality
+# Null nullish equality
 post("kleber")
 if Null == 0 {
     post("Null == 0 é True")

@@ -351,7 +351,18 @@ action monta_caso(nome, expr, saida) {
         # o texto do erro traz " (linha N)" do programa em LOTE — inútil aqui
         msg = saida[len("<<ERRO>> "):]
         msg = regex.sub(" \\(linha \\d+\\)$", "", msg).strip()
-        return "{ \"" + nome + "\", " + fonte + ", NULL, " + cstr(msg) + ", -1 },"
+        # STDOUT E RC entram junto, não só o stderr.
+        #
+        # Estava `NULL, msg, -1`: NULL manda o runner NÃO conferir a saída e -1
+        # manda NÃO conferir o código de saída. Um programa que imprimisse lixo
+        # e só depois errasse com a mensagem certa passava — e eram 577 casos
+        # só neste arquivo, 1577 na suíte inteira.
+        #
+        # Aqui os dois valores são CERTOS por construção, não medidos: o caso é
+        # sempre `post(<expr>)`, a expressão é avaliada ANTES de imprimir, então
+        # quem levanta não imprime nada (stdout vazio); e erro não capturado na
+        # PoolScript sai com 1.
+        return "{ \"" + nome + "\", " + fonte + ", \"\", " + cstr(msg) + ", 1 },"
     }
     return "{ \"" + nome + "\", " + fonte + ", " + cstr(saida) + ", NULL, 0 },"
 }

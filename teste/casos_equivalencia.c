@@ -17,7 +17,7 @@
 #include "ps_teste.h"
 
 const Caso CASOS_EQUIVALENCIA[] = {
-{ "equiv: soma 0..0 [1/7]",
+{ "equiv: soma 0..0 [1/6]",
   "s = 0\n"
   "for each i in range(0) {\n"
   "    s = s + i\n"
@@ -25,7 +25,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..0 [2/7]",
+{ "equiv: soma 0..0 [2/6]",
   "s = 0\n"
   "n = 0\n"
   "while n < 0 {\n"
@@ -35,15 +35,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..0 [3/7]",
-  "s = 0\n"
-  "for each i in range(0) {\n"
-  "    s = s + i\n"
-  "}\n"
-  "post(s)\n"
-  "\n",
-  "0", NULL, 0 },
-{ "equiv: soma 0..0 [4/7]",
+{ "equiv: soma 0..0 [3/6]",
   "action g() {\n"
   "    for each i in range(0) {\n"
   "        yield i\n"
@@ -56,7 +48,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..0 [5/7]",
+{ "equiv: soma 0..0 [4/6]",
   "action r(i, acc) {\n"
   "    if i >= 0 {\n"
   "        return acc\n"
@@ -66,11 +58,11 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(r(0, 0))\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..0 [6/7]",
+{ "equiv: soma 0..0 [5/6]",
   "post(sum(range(0)))\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..0 [7/7]",
+{ "equiv: soma 0..0 [6/6]",
   "l = []\n"
   "for each i in range(0) {\n"
   "    l.append(i)\n"
@@ -78,7 +70,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(sum(l))\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..1 [1/7]",
+{ "equiv: soma 0..1 [1/6]",
   "s = 0\n"
   "for each i in range(1) {\n"
   "    s = s + i\n"
@@ -86,7 +78,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..1 [2/7]",
+{ "equiv: soma 0..1 [2/6]",
   "s = 0\n"
   "n = 0\n"
   "while n < 1 {\n"
@@ -96,15 +88,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..1 [3/7]",
-  "s = 0\n"
-  "for each i in range(1) {\n"
-  "    s = s + i\n"
-  "}\n"
-  "post(s)\n"
-  "\n",
-  "0", NULL, 0 },
-{ "equiv: soma 0..1 [4/7]",
+{ "equiv: soma 0..1 [3/6]",
   "action g() {\n"
   "    for each i in range(1) {\n"
   "        yield i\n"
@@ -117,7 +101,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..1 [5/7]",
+{ "equiv: soma 0..1 [4/6]",
   "action r(i, acc) {\n"
   "    if i >= 1 {\n"
   "        return acc\n"
@@ -127,11 +111,11 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(r(0, 0))\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..1 [6/7]",
+{ "equiv: soma 0..1 [5/6]",
   "post(sum(range(1)))\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..1 [7/7]",
+{ "equiv: soma 0..1 [6/6]",
   "l = []\n"
   "for each i in range(1) {\n"
   "    l.append(i)\n"
@@ -139,7 +123,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(sum(l))\n"
   "\n",
   "0", NULL, 0 },
-{ "equiv: soma 0..5 [1/7]",
+{ "equiv: soma 0..5 [1/6]",
   "s = 0\n"
   "for each i in range(5) {\n"
   "    s = s + i\n"
@@ -147,7 +131,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "10", NULL, 0 },
-{ "equiv: soma 0..5 [2/7]",
+{ "equiv: soma 0..5 [2/6]",
   "s = 0\n"
   "n = 0\n"
   "while n < 5 {\n"
@@ -157,15 +141,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "10", NULL, 0 },
-{ "equiv: soma 0..5 [3/7]",
-  "s = 0\n"
-  "for each i in range(5) {\n"
-  "    s = s + i\n"
-  "}\n"
-  "post(s)\n"
-  "\n",
-  "10", NULL, 0 },
-{ "equiv: soma 0..5 [4/7]",
+{ "equiv: soma 0..5 [3/6]",
   "action g() {\n"
   "    for each i in range(5) {\n"
   "        yield i\n"
@@ -178,7 +154,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "10", NULL, 0 },
-{ "equiv: soma 0..5 [5/7]",
+{ "equiv: soma 0..5 [4/6]",
   "action r(i, acc) {\n"
   "    if i >= 5 {\n"
   "        return acc\n"
@@ -188,11 +164,11 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(r(0, 0))\n"
   "\n",
   "10", NULL, 0 },
-{ "equiv: soma 0..5 [6/7]",
+{ "equiv: soma 0..5 [5/6]",
   "post(sum(range(5)))\n"
   "\n",
   "10", NULL, 0 },
-{ "equiv: soma 0..5 [7/7]",
+{ "equiv: soma 0..5 [6/6]",
   "l = []\n"
   "for each i in range(5) {\n"
   "    l.append(i)\n"
@@ -200,7 +176,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(sum(l))\n"
   "\n",
   "10", NULL, 0 },
-{ "equiv: soma 0..17 [1/7]",
+{ "equiv: soma 0..17 [1/6]",
   "s = 0\n"
   "for each i in range(17) {\n"
   "    s = s + i\n"
@@ -208,7 +184,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "136", NULL, 0 },
-{ "equiv: soma 0..17 [2/7]",
+{ "equiv: soma 0..17 [2/6]",
   "s = 0\n"
   "n = 0\n"
   "while n < 17 {\n"
@@ -218,15 +194,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "136", NULL, 0 },
-{ "equiv: soma 0..17 [3/7]",
-  "s = 0\n"
-  "for each i in range(17) {\n"
-  "    s = s + i\n"
-  "}\n"
-  "post(s)\n"
-  "\n",
-  "136", NULL, 0 },
-{ "equiv: soma 0..17 [4/7]",
+{ "equiv: soma 0..17 [3/6]",
   "action g() {\n"
   "    for each i in range(17) {\n"
   "        yield i\n"
@@ -239,7 +207,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(s)\n"
   "\n",
   "136", NULL, 0 },
-{ "equiv: soma 0..17 [5/7]",
+{ "equiv: soma 0..17 [4/6]",
   "action r(i, acc) {\n"
   "    if i >= 17 {\n"
   "        return acc\n"
@@ -249,11 +217,11 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(r(0, 0))\n"
   "\n",
   "136", NULL, 0 },
-{ "equiv: soma 0..17 [6/7]",
+{ "equiv: soma 0..17 [5/6]",
   "post(sum(range(17)))\n"
   "\n",
   "136", NULL, 0 },
-{ "equiv: soma 0..17 [7/7]",
+{ "equiv: soma 0..17 [6/6]",
   "l = []\n"
   "for each i in range(17) {\n"
   "    l.append(i)\n"
@@ -286,8 +254,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "if (false)\n"
   "{\n"
   "    post(\"X\")\n"
-  "}\n"
-  "else\n"
+  "} else\n"
   "{\n"
   "    post(\"A\")\n"
   "}\n"
@@ -310,12 +277,6 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(n)\n"
   "\n",
   "3", NULL, 0 },
-{ "equiv: for each [1/2]",
-  "for each i in [1,2] {\n"
-  "    post(i)\n"
-  "}\n"
-  "\n",
-  "1\n2", NULL, 0 },
 { "equiv: for each [2/2]",
   "for each i in [1,2]\n"
   "{\n"
@@ -350,8 +311,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "try\n"
   "{\n"
   "    raise B(\"x\")\n"
-  "}\n"
-  "catch (e)\n"
+  "} catch (e)\n"
   "{\n"
   "    post(\"peguei\")\n"
   "}\n"
@@ -405,11 +365,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "x = 1\n"
   "if x == 1 {\n"
   "    post(\"um\")\n"
-  "}\n"
-  "elif x == 2 {\n"
+  "} elif x == 2 {\n"
   "    post(\"dois\")\n"
-  "}\n"
-  "else {\n"
+  "} else {\n"
   "    post(\"outro\")\n"
   "}\n"
   "\n",
@@ -442,11 +400,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "x = 2\n"
   "if x == 1 {\n"
   "    post(\"um\")\n"
-  "}\n"
-  "elif x == 2 {\n"
+  "} elif x == 2 {\n"
   "    post(\"dois\")\n"
-  "}\n"
-  "else {\n"
+  "} else {\n"
   "    post(\"outro\")\n"
   "}\n"
   "\n",
@@ -479,11 +435,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "x = 9\n"
   "if x == 1 {\n"
   "    post(\"um\")\n"
-  "}\n"
-  "elif x == 2 {\n"
+  "} elif x == 2 {\n"
   "    post(\"dois\")\n"
-  "}\n"
-  "else {\n"
+  "} else {\n"
   "    post(\"outro\")\n"
   "}\n"
   "\n",
@@ -670,11 +624,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "action f() {\n"
   "    try {\n"
   "        return \"R\"\n"
-  "    }\n"
-  "    catch(e) {\n"
+  "    } catch(e) {\n"
   "        post(\"C\")\n"
-  "    }\n"
-  "    finally {\n"
+  "    } finally {\n"
   "        post(\"F\")\n"
   "    }\n"
   "}\n"
@@ -700,11 +652,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "        if i == 2 {\n"
   "            break\n"
   "        }\n"
-  "    }\n"
-  "    catch(e) {\n"
+  "    } catch(e) {\n"
   "        post(\"C\")\n"
-  "    }\n"
-  "    finally {\n"
+  "    } finally {\n"
   "        post(\"F\" + str(i))\n"
   "    }\n"
   "}\n"
@@ -728,11 +678,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "for each i in [1,2] {\n"
   "    try {\n"
   "        continue\n"
-  "    }\n"
-  "    catch(e) {\n"
+  "    } catch(e) {\n"
   "        post(\"C\")\n"
-  "    }\n"
-  "    finally {\n"
+  "    } finally {\n"
   "        post(\"F\" + str(i))\n"
   "    }\n"
   "}\n"
@@ -756,11 +704,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "action f() {\n"
   "    try {\n"
   "        raise B(\"x\")\n"
-  "    }\n"
-  "    catch(e) {\n"
+  "    } catch(e) {\n"
   "        post(\"C\")\n"
-  "    }\n"
-  "    finally {\n"
+  "    } finally {\n"
   "        post(\"F\")\n"
   "    }\n"
   "    return \"R\"\n"
@@ -1210,8 +1156,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "action f() {\n"
   "    try {\n"
   "        raise B(\"x\")\n"
-  "    }\n"
-  "    catch(e) {\n"
+  "    } catch(e) {\n"
   "        return 0\n"
   "    }\n"
   "}\n"

@@ -30,7 +30,25 @@ action F(nome, progs) {
     for each p in progs {
         emchaves.append(para_chaves.converte(p))
     }
-    fam.append({"nome": nome, "progs": emchaves})
+    # FORMA REPETIDA SAI FORA.
+    #
+    # A conversão pra chaves é o que revela: duas escritas diferentes na fonte
+    # (uma com bloco `:`, outra com `{}`) viram o MESMO programa depois de
+    # convertidas. Guardar as duas dá um "teste" que compara um programa com
+    # ele mesmo — sempre verde, nunca informa. Estavam assim 4 famílias
+    # (`soma 0..0`, `0..1`, `0..5`, `0..17`): 7 formas, 6 distintas.
+    unicas = []
+    for each p in emchaves {
+        if not p in unicas {
+            unicas.append(p)
+        }
+    }
+    if len(unicas) < 2 {
+        post("FAMILIA DESCARTADA:", nome, "— sobrou", str(len(unicas)),
+             "forma distinta; comparar exige DUAS")
+        return
+    }
+    fam.append({"nome": nome, "progs": unicas})
 }
 
 

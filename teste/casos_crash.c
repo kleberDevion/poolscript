@@ -82,19 +82,19 @@ const Caso CASOS_CRASH[] = {
 
 { "zfill com largura de 64 bits (era OOM da máquina)",
   "post(\"a\".zfill(9223372036854775807))\n",
-  NULL, "MemoryError", -1 },
+  "", "memória insuficiente: zfill() pediu largura", 1 },
 
 { "ljust com largura absurda",
   "post(\"a\".ljust(9223372036854775807))\n",
-  NULL, "MemoryError", -1 },
+  "", "memória insuficiente: ljust() pediu largura", 1 },
 
 { "rjust com largura absurda",
   "post(\"a\".rjust(9223372036854775807))\n",
-  NULL, "MemoryError", -1 },
+  "", "memória insuficiente: rjust() pediu largura", 1 },
 
 { "center com largura absurda",
   "post(\"a\".center(9223372036854775807))\n",
-  NULL, "MemoryError", -1 },
+  "", "memória insuficiente: center() pediu largura", 1 },
 
 { "largura normal continua funcionando",
   "post(\"a\".zfill(5))\npost(\"ab\".ljust(5, \"-\"))\n"
@@ -190,9 +190,11 @@ const Caso CASOS_CRASH[] = {
  * de preenchimento escrevia byte a byte ate a memoria acabar. O processo nao
  * morria: ficava comendo RAM. O CPython responde MemoryError. */
 { "largura absurda em format nao trava",
-  "post(\"{:99999999999d}\".format(1))\n", NULL, "MemoryError", -1 },
+  "post(\"{:99999999999d}\".format(1))\n", "",
+  "sem memoria na largura do format", 1 },
 { "precisao absurda em format nao trava",
-  "post(\"{:.99999999999f}\".format(1.5))\n", NULL, "MemoryError", -1 },
+  "post(\"{:.99999999999f}\".format(1.5))\n", "",
+  "sem memoria na precisao do format", 1 },
 { "format normal continua funcionando",
   "post(\"{:>8d}\".format(42))\n"
   "post(\"{:.2f}\".format(3.14159))\n"

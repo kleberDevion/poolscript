@@ -16,23 +16,28 @@ Legenda da coluna PORTÃO:
 
 ## 0. A dívida de cobertura — PAGA em 28/08
 
-| | Python (`db0bcb6`) | C, antes | C, hoje |
-|---|---|---|---|
-| linhas | 78,8% | 55,0% | **78,0%** |
-| funções | 83,8% | 54,9% | **82,6%** |
-| ramos | **53,3%** | 41,4% | **56,6%** |
+O ramo — que é o número que não engana — passou o da suíte em Python; linha e
+função ficaram a menos de um ponto dela. A referência histórica está em
+`AUDITORIA-ENGENHARIA.md` §9 (medida em `db0bcb6`, 2026-08-24).
 
-O ramo — que é o número que não engana — passou o da suíte antiga. Linha e
-função estão a menos de um ponto. O que falta por arquivo está no relatório do
-`make cobertura`, do pior pro melhor, com a distância pra 100%.
+**O número de HOJE não está escrito aqui, de propósito.** Ele sai de
+`make cobertura`, arquivo por arquivo, do pior pro melhor, com a distância pra
+100% — e com catraca que reprova quem cair.
+
+Estava escrito, e envelheceu: a tabela que ficava neste ponto dizia
+`ps_mail.c 16,9%` e `ps_guzer.c 22,3%` muito depois de serem 56,9% e 70,4%, e
+esses números velhos foram citados como se fossem o estado atual. Número medido
+em prosa não tem quem o atualize; comando tem.
 
 ---
 
 ## 0b. Como estava (mantido pra não repetir o raciocínio errado)
 
-A suíte em Python (`db0bcb6`, 2026-08-24) cobria **53,3% de ramo**; a de hoje
-cobre menos. Não é código novo sem teste: é teste que existia e se perdeu na
-migração de in-process pra fork/exec. Medição e método em
+A suíte em Python (`db0bcb6`, 2026-08-24) cobria 53,3% de ramo e a de C, na
+época, 41,4% — e a diferença não era código novo sem teste: era teste que
+existia e se perdeu na migração de in-process pra fork/exec. (Esses dois são
+números HISTÓRICOS, de uma medição datada; o estado de hoje sai do
+`make cobertura`.) Medição e método em
 `AUDITORIA-ENGENHARIA.md` §9.
 
 O que já mudou: `make cobertura` agora mede o portão INTEIRO (suíte + drivers

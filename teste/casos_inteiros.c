@@ -17,7 +17,7 @@ const Caso CASOS_INTEIROS[] = {
 { "shift direito de bignum",       "post(9223372036854775808 >> 1)\n", "4611686018427387904", NULL, 0 },
 { "shift direito preserva sinal",  "post(-8 >> 1)\n", "-4", NULL, 0 },
 { "shift direito além de 64 bits", "post(1 >> 100, -1 >> 100)\n", "0 -1", NULL, 0 },
-{ "deslocamento negativo é erro",  "post(1 << -1)\n", NULL, "deslocamento negativo", -1 },
+{ "deslocamento negativo é erro",  "post(1 << -1)\n", "", "deslocamento negativo", 1 },
 
 { "bitwise OR com bignum",  "post(18446744073709551616 | 1)\n", "18446744073709551617", NULL, 0 },
 { "bitwise AND com bignum", "post(18446744073709551617 & 1)\n", "1", NULL, 0 },

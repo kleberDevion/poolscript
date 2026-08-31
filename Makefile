@@ -328,6 +328,14 @@ check: pool testar
 	@echo
 	@./pool teste/confere_metadata.ps
 	@echo
+	# ASSERCOES: nenhum caso pode conferir menos do que o runner sabe conferir.
+	# Eram 1577 gravados como `NULL, "<stderr>", -1` — sem stdout e sem rc.
+	@./pool teste/confere_assercoes.ps
+	@echo
+	# DUPLICADOS: dois casos com o mesmo fonte sao um teste e uma copia. Eram
+	# 232 — o contador de casos mentindo sobre o alcance da suite.
+	@./pool teste/confere_duplicados.ps
+	@echo
 	@./pool scripts/audita_doc.ps
 	@echo
 	@./pool scripts/audita_c.ps

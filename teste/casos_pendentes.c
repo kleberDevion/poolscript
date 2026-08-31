@@ -43,8 +43,6 @@ const Caso CASOS_PENDENTES[] = {
  * passavam intactos, e `isalpha` dizia False pra letra. */
 { "lower/upper em grego e cirílico",
   "post(\"Ω\".lower(), \"б\".upper(), \"б\".isalpha())\n", "ω Б True", NULL, 0 },
-{ "ß maiúsculo expande para SS",
-  "post(\"ß\".upper())\n", "SS", NULL, 0 },
 { "dígitos não-ASCII",
   "post(\"²\".isdigit(), \"٣\".isdecimal(), \"½\".isnumeric())\n", "True True True", NULL, 0 },
 { "string vazia é ascii e imprimível",
@@ -69,7 +67,7 @@ const Caso CASOS_PENDENTES[] = {
   "    }\n"
   "}\n"
   "b = B()\n",
-  NULL, "base()", -1 },
+  "", "base()", 2 },
 { "base() com argumento nomeado",
   "Entity A() {\n"
   "    action __init__(self, x) {\n"
@@ -105,7 +103,7 @@ const Caso CASOS_PENDENTES[] = {
   "    c: int\n"
   "}\n"
   "p = P(1)\n",
-  NULL, "'c'", -1 },
+  "", "'c'", 2 },
 
 /* ── string com byte NUL ─────────────────────────────────────────────────
  * `\x00` truncava tudo depois dele: perda silenciosa de dado. */
@@ -114,18 +112,18 @@ const Caso CASOS_PENDENTES[] = {
 
 /* ── números ────────────────────────────────────────────────────────────── */
 { "int() de infinito é erro, não INT64_MIN",
-  "post(int(flo(\"inf\")))\n", NULL, "OverflowError: cannot convert flo infinity to integer", -1 },
+  "post(int(flo(\"inf\")))\n", "", "OverflowError: cannot convert flo infinity to integer", 1 },
 { "int() de NaN é erro",
-  "post(int(flo(\"nan\")))\n", NULL, "NaN", -1 },
+  "post(int(flo(\"nan\")))\n", "", "NaN", 1 },
 
 /* ── funções de ordem superior e arquivo ─────────────────────────────────── */
 { "map confere a aridade da action",
   "action f(x, y) {\n"
   "    return x\n"
   "}\n"
-  "post(map([1, 2], f))\n", NULL, "f() missing 1 required positional argument: 'y'", -1 },
+  "post(map([1, 2], f))\n", "", "f() missing 1 required positional argument: 'y'", 1 },
 { "open() de diretório é erro",
-  "f = open(\"/tmp\")\npost(f.read())\n", NULL, "[Errno 21] Is a directory", -1 },
+  "f = open(\"/tmp\")\npost(f.read())\n", "", "[Errno 21] Is a directory", 1 },
 { "writelines com bytes grava os bytes",
   "p = \"/tmp/ps_teste_wl.bin\"\nusing open(p, \"wb\") as f { f.writelines([\"a\".encode()]) }\n"
   "using open(p, \"rb\") as f { post(f.read()) }\n",
@@ -135,9 +133,9 @@ const Caso CASOS_PENDENTES[] = {
 { "encode respeita o encoding pedido",
   "post(\"café\".encode(\"latin-1\"))\n", "b'caf\\xe9'", NULL, 0 },
 { "decode de bytes inválidos é erro",
-  "import bytes\nb = bytes.new([255, 254])\npost(b.decode())\n", NULL, "decode", -1 },
+  "import bytes\nb = bytes.new([255, 254])\npost(b.decode())\n", "", "decode", 1 },
 { "decode com encoding inexistente é erro",
-  "b = \"abc\".encode()\npost(b.decode(\"naoexiste\"))\n", NULL, "encoding", -1 },
+  "b = \"abc\".encode()\npost(b.decode(\"naoexiste\"))\n", "", "encoding", 1 },
 
 /* ── import ─────────────────────────────────────────────────────────────── */
 /* Um arquivo que importa a si mesmo NÃO pode entrar em recursão infinita.

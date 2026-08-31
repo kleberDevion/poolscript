@@ -1,0 +1,217 @@
+# Portão dos CASOS DUPLICADOS: dois casos com o mesmo fonte não são dois
+# testes, são um teste e uma cópia.
+#
+# POR QUE ISTO EXISTE: 227 dos 483 casos de `casos_cobertura.c` — 47% do
+# arquivo — tinham fonte byte a byte igual a um caso de `casos_diferencial.c`,
+# com a MESMA expectativa. Isso não é redundância defensiva: é o contador de
+# casos mentindo sobre o alcance da suíte, e 227 execuções de processo por
+# rodada que não perguntam nada de novo.
+#
+# A cópia sai do arquivo MAIS NOVO (`cobertura`), porque o mais antigo é o que
+# outras referências apontam.
+#
+# A conferência é do FONTE, não do nome: nome diferente pro mesmo programa é
+# exatamente como a duplicata passou despercebida.
+#
+#     ./pool teste/confere_duplicados.ps            # relata; reprova se houver
+#     ./pool teste/confere_duplicados.ps --remove   # tira as cópias
+import os
+import sys
+import regex
+
+PASTA = "teste"
+
+# Ordem de precedência: quem aparece ANTES manda; a cópia sai de quem vem
+# depois. `diferencial` é o mais antigo e o mais referenciado.
+ORDEM = ["casos_diferencial.c", "casos_linguagem.c", "casos_erros.c",
+         "casos_inteiros.c", "casos_crash.c", "casos_oraculo.c",
+         "casos_equivalencia.c", "casos_libs.c", "casos_robustez.c",
+         "casos_pendentes.c", "casos_cobertura.c"]
+
+
+# Quebra um arquivo em [ [nome, linhas...], ... ] e o resto (cabeçalho/rodapé).
+action fatia(caminho) {
+    linhas = open(caminho).read().split("\n")
+    blocos = []
+    i = 0
+    while i < len(linhas) {
+        m = regex.findall("^\\{ \"((?:[^\"\\\\]|\\\\.)*)\",", linhas[i])
+        if len(m) == 0 {
+            blocos.append(["", [linhas[i]]])
+            i = i + 1
+            continue
+        }
+        corpo = []
+        j = i
+        while j < len(linhas) {
+            corpo.append(linhas[j])
+            if linhas[j].rstrip().endswith("}," ) {
+                break
+            }
+            j = j + 1
+        }
+        blocos.append([m[0], corpo])
+        i = j + 1
+    }
+    return blocos
+}
+
+
+# Os literais de uma linha, varridos À MÃO.
+#
+# Com regex (`"((?:[^"\\]|\\.)*)"`) o motor estourava com "backtracking
+# demais" numa das linhas longas do `casos_oraculo.c`: a alternância dentro do
+# grupo repetido é justamente o padrão que explode. Varredura linear não tem
+# esse problema e ainda é mais rápida.
+action literais(L) {
+    out = []
+    i = 0
+    while i < len(L) {
+        if L[i] != "\"" {
+            i = i + 1
+            continue
+        }
+        j = i + 1
+        atual = ""
+        while j < len(L) {
+            if L[j] == "\\" and j + 1 < len(L) {
+                atual = atual + L[j] + L[j + 1]
+                j = j + 2
+                continue
+            }
+            if L[j] == "\"" {
+                break
+            }
+            atual = atual + L[j]
+            j = j + 1
+        }
+        addEnd(out, atual)
+        i = j + 1
+    }
+    return out
+}
+
+
+# A "impressão digital" de um caso: todos os literais do bloco MENOS o nome.
+# Comentário de C sai fora — ele cita o programa entre aspas e envenenaria a
+# comparação (foi o que aconteceu no `fortalece_casos.ps`).
+action digital(nome, corpo) {
+    tudo = ""
+    em_com = false
+    for each L in corpo {
+        limpa = ""
+        z = 0
+        while z < len(L) {
+            if em_com {
+                if L[z:z+2] == "*/" {
+                    em_com = false
+                    z = z + 2
+                    continue
+                }
+                z = z + 1
+                continue
+            }
+            if L[z:z+2] == "/*" {
+                em_com = true
+                z = z + 2
+                continue
+            }
+            limpa = limpa + L[z]
+            z = z + 1
+        }
+        for each lit in literais(limpa) {
+            if tudo == "" and lit == nome {
+                continue
+            }
+            tudo = tudo + "" + lit
+        }
+    }
+    return tudo
+}
+
+
+if __name__ == "main" {
+    remove = false
+    for each a in sys.argv {
+        if a == "--remove" {
+            remove = true
+        }
+    }
+
+    presentes = []
+    for each n in ORDEM {
+        if os.exists(PASTA + "/" + n) {
+            presentes.append(n)
+        }
+    }
+    # arquivo que existe e não está na ORDEM entra no fim, pra nunca ficar
+    # fora da conferência por esquecimento
+    for each e in os.ls(PASTA) {
+        n = e["name"]
+        if n.startswith("casos_") and n.endswith(".c") and not n in presentes {
+            presentes.append(n)
+        }
+    }
+
+    vistos = {}
+    copias = []
+    for each n in presentes {
+        caminho = PASTA + "/" + n
+        blocos = fatia(caminho)
+        mantidos = []
+        mudou = false
+        for each b in blocos {
+            if b[0] == "" {
+                mantidos.append(b)
+                continue
+            }
+            d = digital(b[0], b[1])
+            if d in vistos {
+                copias.append([caminho, b[0], vistos[d]])
+                mudou = true
+                continue
+            }
+            vistos[d] = n + ": " + b[0]
+            mantidos.append(b)
+        }
+        if remove and mudou {
+            saida = []
+            for each b in mantidos {
+                for each L in b[1] {
+                    saida.append(L)
+                }
+            }
+            using open(caminho, "w") as f {
+                f.write("\n".join(saida))
+            }
+        }
+    }
+
+    if len(copias) == 0 {
+        post("duplicados: nenhum caso repete o fonte de outro")
+        sys.exit(0)
+    }
+    post("")
+    post("CASO DUPLICADO —", str(len(copias)), "com o fonte de outro caso.")
+    post("Contador de casos alto sem pergunta nova: a suite parece maior do que e.")
+    post("")
+    i = 0
+    for each c in copias {
+        if i < 12 {
+            post("   " + c[0] + ": " + c[1])
+            post("      copia de " + c[2])
+        }
+        i = i + 1
+    }
+    if len(copias) > 12 {
+        post("   ... e mais " + str(len(copias) - 12))
+    }
+    if remove {
+        post("")
+        post("removidos.")
+        sys.exit(0)
+    }
+    post("")
+    post("Conserto: ./pool teste/confere_duplicados.ps --remove")
+    sys.exit(1)
+}

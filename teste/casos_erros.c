@@ -14,7 +14,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(b=1))\n",
-  NULL, "f() missing 1 required positional argument: 'a'", -1 },
+  "", "f() missing 1 required positional argument: 'a'", 1 },
 { "método de instância sem argumento",
   "class C() {\n"
   "    action m(self, a) {\n"
@@ -22,7 +22,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().m())\n",
-  NULL, "m() missing 1 required positional argument: 'a'", -1 },
+  "", "m() missing 1 required positional argument: 'a'", 1 },
 { "__init__ sem argumento",
   "class C() {\n"
   "    action __init__(self, a) {\n"
@@ -30,19 +30,19 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "x = C()\n",
-  NULL, "__init__() missing 1 required positional argument: 'a'", -1 },
+  "", "__init__() missing 1 required positional argument: 'a'", 1 },
 { "action solta sem argumento",
   "action f(a) {\n"
   "    return a\n"
   "}\n"
   "post(f())\n",
-  NULL, "f() missing 1 required positional argument: 'a'", -1 },
+  "", "f() missing 1 required positional argument: 'a'", 1 },
 { "argumentos demais",
   "action f(a, b=2) {\n"
   "    return a\n"
   "}\n"
   "post(f(1, 2, 3))\n",
-  NULL, "f() takes 2 positional arguments but 3 were given", -1 },
+  "", "f() takes 2 positional arguments but 3 were given", 1 },
 
 /* ── argumento nomeado que não existe ── */
 { "nomeado inexistente em action",
@@ -50,7 +50,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(1, c=2))\n",
-  NULL, "TypeError: f() got an unexpected keyword argument 'c'", -1 },
+  "", "TypeError: f() got an unexpected keyword argument 'c'", 1 },
 { "nomeado inexistente em método",
   "class C() {\n"
   "    action m(self, a) {\n"
@@ -58,7 +58,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().m(1, c=2))\n",
-  NULL, "TypeError: m() got an unexpected keyword argument 'c'", -1 },
+  "", "TypeError: m() got an unexpected keyword argument 'c'", 1 },
 
 /* ── @static: sem ele, não dá pra chamar na classe ── */
 { "método normal chamado na classe",
@@ -68,7 +68,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C.m(5))\n",
-  NULL, "não tem método estático", -1 },
+  "", "não tem método estático", 1 },
 { "@static com self na assinatura",
   "class C() {\n"
   "    @static\n"
@@ -90,9 +90,9 @@ const Caso CASOS_ERROS[] = {
 
 /* ── f-string: erro no trecho SOBE, não vira texto cru ── */
 { "f-string com nome fora de escopo",
-  "post(f\"v: {zzz}\")\n", NULL, "name 'zzz' is not defined", -1 },
+  "post(f\"v: {zzz}\")\n", "", "name 'zzz' is not defined", 1 },
 { "f-string com divisão por zero",
-  "post(f\"x {1/0} y\")\n", NULL, "division by zero", -1 },
+  "post(f\"x {1/0} y\")\n", "", "division by zero", 1 },
 { "f-string válida continua interpolando",
   "oi = \"ola\"\npost(f\"{oi} mundo\")\n", "ola mundo", NULL, 0 },
 { "f-string escapa chave dobrada",
@@ -104,9 +104,9 @@ const Caso CASOS_ERROS[] = {
 
 /* ── chave de dict tem que ser imutável ── */
 { "lista como chave de dict",
-  "d = {}\nd[[1,2]] = \"a\"\n", NULL, "unhashable type: 'list'", -1 },
+  "d = {}\nd[[1,2]] = \"a\"\n", "", "unhashable type: 'list'", 1 },
 { "dict como chave de dict",
-  "d = {}\nd[{ \"x\": 1 }] = \"b\"\n", NULL, "unhashable type: 'dict'", -1 },
+  "d = {}\nd[{ \"x\": 1 }] = \"b\"\n", "", "unhashable type: 'dict'", 1 },
 { "chaves imutáveis seguem valendo",
   "d = {}\nd[\"s\"] = 1\nd[2] = \"b\"\nd[2.5] = \"c\"\nd[true] = \"d\"\nd[(1, 2)] = \"tup\"\n"
   "post(len(d), d[\"s\"], d[2], d[(1, 2)])\n",
@@ -143,7 +143,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().f(null))\n",
-  NULL, "NonNull", -1 },
+  "", "NonNull", 1 },
 { "@NonNull com valor válido passa",
   "class C() {\n"
   "    @NonNull\n"

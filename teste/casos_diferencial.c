@@ -25,7 +25,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(g())\n"
   "\n",
-  NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
+  "", "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", 2 },
 { "dif #1",
   "\n"
   "        i += 1\n"
@@ -34,49 +34,49 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(trabalha(\"LOCAL\"))\n"
   "\n",
-  NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
+  "", "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", 2 },
 { "dif #2",
   "\n"
   " i += 1\n"
   "}\n"
   "post(\"CONSTANTE\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", 2 },
 { "dif #3",
   "\n"
   " i += 1\n"
   "}\n"
   "post(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", 2 },
 { "dif #4",
   "\n"
   " i += 1\n"
   "}\n"
   "post(d[\"n\"][\"n\"][\"n\"][1][1][1][0])\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", 2 },
 { "dif #5",
   "\n"
   " i += 1\n"
   "}\n"
   "post(guardada)\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", 2 },
 { "dif #6",
   "\n"
   " i += 1\n"
   "}\n"
   "post(viva[2])\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", 2 },
 { "dif #7",
   "\n"
   " i += 1\n"
   "}\n"
   "post(vivo[\"chave\"])\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 1)", 2 },
 { "dif #8",
   "\n"
   "Entity Animal() {\n"
@@ -359,7 +359,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "texto = \"so um texto\"\n"
   "arq = loadFile(r\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #27",
   "\n"
   "if (n > 10) {\n"
@@ -370,7 +370,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(3)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'n' is not defined", -1 },
+  "", "NameError: name 'n' is not defined", 1 },
 { "dif #28",
   "\n"
   "if (x == 1) {\n"
@@ -381,7 +381,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"c\")\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #29",
   "\n"
   "import json\n"
@@ -520,7 +520,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " case _ { post(\"b\") }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #45",
   "\n"
   "match x {\n"
@@ -528,27 +528,27 @@ const Caso CASOS_DIFERENCIAL[] = {
   " case _ { post(\"menor\") }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #46",
   "\n"
   "post(\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #47",
   "\n"
   "post(x())\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #48",
   "\n"
   "post(x.\n"
   "\n",
-  NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
+  "", "SyntaxError: esperado nome do membro apos '.'", 2 },
 { "dif #49",
   "\n"
   "post(x[\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #50",
   "\n"
   "s = \"banana\"\n"
@@ -595,45 +595,45 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #54",
   "        post(\"ok:\", fn())\n"
   "\n",
-  NULL, "NameError: name 'fn' is not defined", -1 },
+  "", "NameError: name 'fn' is not defined", 1 },
 { "dif #55",
   "        post(\"preparando\", path)\n"
   "\n",
-  NULL, "NameError: name 'path' is not defined", -1 },
+  "", "NameError: name 'path' is not defined", 1 },
 { "dif #56",
   "        post(\"registrou:\", fn())\n"
   "\n",
-  NULL, "NameError: name 'fn' is not defined", -1 },
+  "", "NameError: name 'fn' is not defined", 1 },
 { "dif #57",
   "        post(prev)\n"
   "\n",
-  NULL, "NameError: name 'prev' is not defined", -1 },
+  "", "NameError: name 'prev' is not defined", 1 },
 { "dif #58",
   "        post(self.\n"
   "\n",
-  NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
+  "", "SyntaxError: esperado nome do membro apos '.'", 2 },
 { "dif #59",
   "        post(self.)\n"
   "\n",
-  NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
+  "", "SyntaxError: esperado nome do membro apos '.'", 2 },
 { "dif #60",
   "    @static\n"
   "    action m(a) {\n"
   "        return a\n"
   "    }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #61",
   "    @static\n"
   "    action m(self, a) {\n"
   "        return a\n"
   "    }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #62",
   "    action __init__(self) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #63",
   "    action __init__(self) { self.x = 99 }\n"
   "\n",
@@ -641,7 +641,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #64",
   "    action __init__(self):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #65",
   "    action __init__(self, v) { self.v = v }\n"
   "\n",
@@ -649,28 +649,28 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #66",
   "    action close(self):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #67",
   "    action f():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #68",
   "    action faz(self, n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #69",
   "    action m(self):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #70",
   "    action m(self, a):\n"
   "        return a\n"
   "\n",
-  NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
+  "", "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", 2 },
 { "dif #71",
   "    action qualquerNome(self):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #72",
   "    action register(self, fn) { fn() }\n"
   "\n",
@@ -678,23 +678,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #73",
   "    action register(self, fn):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #74",
   "    action rota(self, p) { self.p = p\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #75",
   "    action rota(self, path):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #76",
   "    action semself():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #77",
   "    action ver(self) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #78",
   "    action ver(self) { return self.v }\n"
   "\n",
@@ -702,27 +702,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #79",
   "    count each int(7) in xs {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #80",
   "    d = { \"a\": i, \"b\": [i, i + 1], \"s\": str(i), \"t\": (i, i) }\n"
   "\n",
-  NULL, "NameError: name 'i' is not defined", -1 },
+  "", "NameError: name 'i' is not defined", 1 },
 { "dif #81",
   "    if i % 1000 == 0:\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #82",
   "    if i == 2:\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #83",
   "    if s == Cor.RED { return \"vermelho\" }\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #84",
   "    if v > 0 { r = \"pos\" }\n"
   "\n",
-  NULL, "NameError: name 'v' is not defined", -1 },
+  "", "NameError: name 'v' is not defined", 1 },
 { "dif #85",
   "    int reaction m(self, name=none) { return 1 }\n"
   "\n",
@@ -730,7 +730,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #86",
   "    l = [d, d[\"b\"], \"x\" + str(i)]\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #87",
   "    post(\"ok\")\n"
   "\n",
@@ -738,7 +738,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #88",
   "    raise Erro(\"x\")\n"
   "\n",
-  NULL, "Erro: x", -1 },
+  "", "Erro: x", 1 },
 { "dif #89",
   "   post(\"interno\")\n"
   "\n",
@@ -746,7 +746,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #90",
   "   post(1/0)\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #91",
   "  post(\"IOError\")\n"
   "\n",
@@ -762,40 +762,40 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #94",
   "  post(1/0)\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #95",
   "  post(os.run([\"prog_inexistente_zzz_123\"], true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #96",
   "  post(z[\"boom\"])\n"
   "\n",
-  NULL, "NameError: name 'z' is not defined", -1 },
+  "", "NameError: name 'z' is not defined", 1 },
 { "dif #97",
   "  try {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #98",
   "  | str ruim = \n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #99",
   " 3\n"
   "post(x)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #100",
   " e) { post(\"pego\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #101",
   " int x = 5.9\n"
   "\n",
-  NULL, "AttributedValueError: variável x esperava int", -1 },
+  "", "AttributedValueError: variável x esperava int", 1 },
 { "dif #102",
   " post(\"DatabaseError: \" + e)\n"
   "\n",
-  NULL, "NameError: name 'e' is not defined", -1 },
+  "", "NameError: name 'e' is not defined", 1 },
 { "dif #103",
   " post(\"caro\")\n"
   "\n",
@@ -815,7 +815,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #107",
   " post(\"pego: \" + e)\n"
   "\n",
-  NULL, "NameError: name 'e' is not defined", -1 },
+  "", "NameError: name 'e' is not defined", 1 },
 { "dif #108",
   " post(1)\n"
   "\n",
@@ -823,50 +823,50 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #109",
   " post(_match)\n"
   "\n",
-  NULL, "NameError: name '_match' is not defined", -1 },
+  "", "NameError: name '_match' is not defined", 1 },
 { "dif #110",
   " post(c)\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #111",
   " post(x)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #112",
   " return \"n=\" + str(n)\n"
   "\n",
-  NULL, "NameError: name 'n' is not defined", -1 },
+  "", "NameError: name 'n' is not defined", 1 },
 { "dif #113",
   " try {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #114",
   " try { x = 1/0 } catch (KeyError e) { post(\"k\") }\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #115",
   " while i < 3 {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #116",
   " while i < n {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #117",
   " } catch (e) { post(\"c\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #118",
   " } catch (e) { post(\"catch de f\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #119",
   "\")\n"
   "\n"
   "if (arq is PoolFile) { post(\"arquivo-e-poolfile\") }\n"
   "if (texto not is PoolFile) { post(\"texto-nao-e-poolfile\") }\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #120",
   "\", \"r\") as f {\n"
   "    str x = f.read()\n"
@@ -877,14 +877,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "  post(\"pegou:\" e)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #121",
   "\", \"r\") as f {\n"
   "  str c = f.read()\n"
   "  post(c)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #122",
   "\", \"w\") as f {\n"
   "  f.write(\"linha um\\n\")\n"
@@ -892,14 +892,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "using open(r\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #123",
   "\"}})\n"
   "d = r.get_json()\n"
   "post(d[\"campos\"][\"model\"], d[\"campos\"][\"language\"], d[\"campos\"][\"n\"])\n"
   "post(d[\"arquivos\"][\"file\"])\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #124",
   "#!cmd\n"
   "action main() {\n"
@@ -928,19 +928,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #128",
   "(Literal bool \n"
   "\n",
-  NULL, "SyntaxError: faltou ')'", -1 },
+  "", "SyntaxError: faltou ')'\n", 2 },
 { "dif #129",
   "(Literal flo \n"
   "\n",
-  NULL, "SyntaxError: faltou ')'", -1 },
+  "", "SyntaxError: faltou ')'\n", 2 },
 { "dif #130",
   "(Literal int \n"
   "\n",
-  NULL, "SyntaxError: faltou ')'", -1 },
+  "", "SyntaxError: faltou ')'\n", 2 },
 { "dif #131",
   "(Literal str \"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #132",
   "*inicio, z = [1, 2, 3, 4]\n"
   "post(inicio)\n"
@@ -958,12 +958,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    fields={\"model\": \"whisper-large-v3\", \"language\": \"pt\", \"n\": 3},\n"
   "    file={\"file\": {\"name\": \"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #135",
   "/x\")\n"
   "post(g.status, len(g.content))\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #136",
   "@NonNull\n"
   "action f(x) { return x }\n"
@@ -984,7 +984,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(g(Null))\n"
   "\n",
-  NULL, "RuntimeError: @NonNull: parametro 'a' em 'g' nao pode ser Null", -1 },
+  "", "RuntimeError: @NonNull: parametro 'a' em 'g' nao pode ser Null", 1 },
 { "dif #139",
   "@NonNull\n"
   "action g(a, b) {\n"
@@ -992,7 +992,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(g(1, Null))\n"
   "\n",
-  NULL, "RuntimeError: @NonNull: parametro 'b' em 'g' nao pode ser Null", -1 },
+  "", "RuntimeError: @NonNull: parametro 'b' em 'g' nao pode ser Null", 1 },
 { "dif #140",
   "@NonNull\n"
   "action g(a, b=2) {\n"
@@ -1008,7 +1008,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(g(1))\n"
   "\n",
-  NULL, "RuntimeError: @NonNull: parametro 'b' em 'g' nao pode ser Null", -1 },
+  "", "RuntimeError: @NonNull: parametro 'b' em 'g' nao pode ser Null", 1 },
 { "dif #142",
   "@NonNull\n"
   "action precisa(v) {\n"
@@ -1024,7 +1024,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "precisa(Null)\n"
   "\n",
-  NULL, "RuntimeError: @NonNull: parametro 'v' em 'precisa' nao pode ser Null", -1 },
+  "", "RuntimeError: @NonNull: parametro 'v' em 'precisa' nao pode ser Null", 1 },
 { "dif #144",
   "@NonNull\n"
   "async action f() { return 1 }\n"
@@ -1044,12 +1044,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "@app.route(\"/x\")\n"
   "action h() { return 1 }\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #148",
   "@app.route(\"/x\", methods=[\"GET\"])\n"
   "action h() { return 1 }\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #149",
   "@dataentity\n"
   "Entity P() {\n"
@@ -1064,7 +1064,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " action handler() { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'server' is not defined", -1 },
+  "", "NameError: name 'server' is not defined", 1 },
 { "dif #151",
   "@static\n"
   "action f() {\n"
@@ -1081,7 +1081,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #153",
   "Entity A():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #154",
   "Entity A() {\n"
   "    action __init__(self) {\n"
@@ -1090,7 +1090,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(1)\n"
   "\n",
-  NULL, "SyntaxError: base() numa Entity sem heranca: nao ha pai pra inicializar", -1 },
+  "", "SyntaxError: base() numa Entity sem heranca: nao ha pai pra inicializar", 2 },
 { "dif #155",
   "Entity A() {\n"
   "    action __init__(self, n) {\n"
@@ -1253,7 +1253,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #164",
   "Entity App():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #165",
   "Entity C() {\n"
   "  n: int = 10\n"
@@ -1275,11 +1275,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #167",
   "Entity Cliente():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #168",
   "Entity Conta() {\n"
   "\n",
-  NULL, "SyntaxError: corpo da Entity nao foi fechado", -1 },
+  "", "SyntaxError: corpo da Entity nao foi fechado", 2 },
 { "dif #169",
   "Entity Conta() {\n"
   "    private saldo: int = 0\n"
@@ -1323,13 +1323,13 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #172",
   "Entity Ctrl() {\n"
   "\n",
-  NULL, "SyntaxError: corpo da Entity nao foi fechado", -1 },
+  "", "SyntaxError: corpo da Entity nao foi fechado", 2 },
 { "dif #173",
   "Entity F(A, B) {\n"
   " action m(self) { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'A' is not defined", -1 },
+  "", "NameError: name 'A' is not defined", 1 },
 { "dif #174",
   "Entity F(P) {\n"
   "    action __init__(self, v) {\n"
@@ -1337,7 +1337,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'P' is not defined", -1 },
+  "", "NameError: name 'P' is not defined", 1 },
 { "dif #175",
   "Entity F(P) {\n"
   " action __init__(self) {\n"
@@ -1345,7 +1345,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'P' is not defined", -1 },
+  "", "NameError: name 'P' is not defined", 1 },
 { "dif #176",
   "Entity F(P) {\n"
   " action __init__(self, v) {\n"
@@ -1353,13 +1353,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   " }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'P' is not defined", -1 },
+  "", "NameError: name 'P' is not defined", 1 },
 { "dif #177",
   "Entity Filho(Pai) {\n"
   " action m(self) { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'Pai' is not defined", -1 },
+  "", "NameError: name 'Pai' is not defined", 1 },
 { "dif #178",
   "Entity Foo() {\n"
   " action m(self) { return 1 }\n"
@@ -1369,7 +1369,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #179",
   "Entity M():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #180",
   "Entity P() {\n"
   " @static\n"
@@ -1399,7 +1399,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #184",
   "Entity P():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #185",
   "Entity P() {\n"
   "    a: int\n"
@@ -1448,7 +1448,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "p=P(z=1)\n"
   "post(p.a)\n"
   "\n",
-  NULL, "TypeError: __init__() missing 1 required positional argument: 'a'", -1 },
+  "", "TypeError: __init__() missing 1 required positional argument: 'a'", 1 },
 { "dif #190",
   "Entity P() {\n"
   "    a: int\n"
@@ -1456,7 +1456,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "p=P(z=1)\n"
   "post(p.z)\n"
   "\n",
-  NULL, "TypeError: __init__() missing 1 required positional argument: 'a'", -1 },
+  "", "TypeError: __init__() missing 1 required positional argument: 'a'", 1 },
 { "dif #191",
   "Entity P() {\n"
   "    action __init__(self) {\n"
@@ -1465,7 +1465,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(P().b)\n"
   "\n",
-  NULL, "AttributeError: 'P' object has no attribute 'b'", -1 },
+  "", "AttributeError: 'P' object has no attribute 'b'", 1 },
 { "dif #192",
   "Entity P() {\n"
   "    action __init__(self) {\n"
@@ -1663,15 +1663,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #211",
   "Entity Ponto():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #212",
   "Entity R():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #213",
   "Entity Reg():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #214",
   "Entity T() {\n"
   "    action __init__(self) { self.x = 1 }\n"
@@ -1681,7 +1681,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #215",
   "Entity U():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #216",
   "Entity U() {\n"
   "    @static\n"
@@ -1707,15 +1707,15 @@ const Caso CASOS_DIFERENCIAL[] = {
   " action m(self) { return 1 }\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #219",
   "Entity gerador() {\n"
   "\n",
-  NULL, "SyntaxError: corpo da Entity nao foi fechado", -1 },
+  "", "SyntaxError: corpo da Entity nao foi fechado", 2 },
 { "dif #220",
   "Entity tup() {\n"
   "\n",
-  NULL, "SyntaxError: 'tup' e palavra reservada da linguagem e nao pode ser usada como no", -1 },
+  "", "SyntaxError: 'tup' e palavra reservada da linguagem e nao pode ser usada como no", 2 },
 { "dif #221",
   "PUSH os GET getenv\n"
   "post(getenv(\"POOL_TEST_VAR\"))\n"
@@ -1984,19 +1984,19 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(b())\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #258",
   "action a(n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #259",
   "action b(n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #260",
   "action b(x) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #261",
   "action bad(x) {\n"
   " return x / 0\n"
@@ -2013,11 +2013,11 @@ const Caso CASOS_DIFERENCIAL[] = {
   " return 1\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #263",
   "action base() { return 1 }\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #264",
   "action c() {\n"
   " x = 5\n"
@@ -2033,11 +2033,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #265",
   "action c(x) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #266",
   "action classifica(v) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #267",
   "action conectar() { return 1 }\n"
   "\n",
@@ -2045,7 +2045,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #268",
   "action conta(n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #269",
   "action contar(n) {\n"
   "    i = 0\n"
@@ -2133,11 +2133,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #278",
   "action dict() {\n"
   "\n",
-  NULL, "SyntaxError: 'dict' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'dict' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #279",
   "action dobro(n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #280",
   "action dobro(n) {\n"
   " return n * 2\n"
@@ -2171,11 +2171,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #284",
   "action f(\n"
   "\n",
-  NULL, "SyntaxError: esperado nome de parametro", -1 },
+  "", "SyntaxError: esperado nome de parametro", 2 },
 { "dif #285",
   "action f( {\n"
   "\n",
-  NULL, "SyntaxError: esperado nome de parametro", -1 },
+  "", "SyntaxError: esperado nome de parametro", 2 },
 { "dif #286",
   "action f()\n"
   "{\n"
@@ -2187,7 +2187,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #287",
   "action f() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #288",
   "action f() {\n"
   "    a, b = 1, 2\n"
@@ -2234,7 +2234,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " global base\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #293",
   "action f() {\n"
   " global x\n"
@@ -2350,7 +2350,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f()\n"
   "post(y)\n"
   "\n",
-  NULL, "NameError: name 'y' is not defined", -1 },
+  "", "NameError: name 'y' is not defined", 1 },
 { "dif #308",
   "action f() {\n"
   " z = 5\n"
@@ -2398,21 +2398,21 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #315",
   "action f() {\n"
   "    return self\n"
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "NameError: name 'self' is not defined", -1 },
+  "", "NameError: name 'self' is not defined", 1 },
 { "dif #316",
   "action f() {\n"
   "    return zzz\n"
   "}\n"
   "post(f())\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #317",
   "action f(){ return 1 }\n"
   "\n",
@@ -2446,23 +2446,23 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(f(z=1))\n"
   "\n",
-  NULL, "TypeError: f() got an unexpected keyword argument 'z'", -1 },
+  "", "TypeError: f() got an unexpected keyword argument 'z'", 1 },
 { "dif #322",
   "action f(a) {\n"
   " return a\n"
   "}\n"
   "post(f(zzz=1))\n"
   "\n",
-  NULL, "TypeError: f() got an unexpected keyword argument 'zzz'", -1 },
+  "", "TypeError: f() got an unexpected keyword argument 'zzz'", 1 },
 { "dif #323",
   "action f(a):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #324",
   "oi = \"ola\"\n"
   "post(f\"v: \n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #325",
   "out = []\n"
   "for each i in [1, 2, 3] {\n"
@@ -2486,7 +2486,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #327",
   "post(\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #328",
   "post(!0)\n"
   "\n",
@@ -2550,7 +2550,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #343",
   "post(\"\".maketrans(\"ab\",\"x\"))\n"
   "\n",
-  NULL, "ValueError: the first two maketrans arguments must have equal length", -1 },
+  "", "ValueError: the first two maketrans arguments must have equal length", 1 },
 { "dif #344",
   "post(\"\".maketrans(\"ab\",\"xy\"))\n"
   "\n",
@@ -2638,11 +2638,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #365",
   "post(\"Clima: \" {grau} \"°\")\n"
   "\n",
-  NULL, "NameError: name 'grau' is not defined", -1 },
+  "", "NameError: name 'grau' is not defined", 1 },
 { "dif #366",
   "post(\"Clima: \" {g} \"C\")\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #367",
   "post(\"NAO DEVE APARECER\")\n"
   "\n",
@@ -2690,7 +2690,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #378",
   "post(\"a\" * \"b\")\n"
   "\n",
-  NULL, "TypeError: can't multiply sequence by non-int of type 'str'", -1 },
+  "", "TypeError: can't multiply sequence by non-int of type 'str'", 1 },
 { "dif #379",
   "post(\"a\" + \"b\")\n"
   "\n",
@@ -2698,11 +2698,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #380",
   "post(\"a\" + 1)\n"
   "\n",
-  NULL, "TypeError: can only concatenate str (not \"int\") to str", -1 },
+  "", "TypeError: can only concatenate str (not \"int\") to str", 1 },
 { "dif #381",
   "post(\"a\" - 1)\n"
   "\n",
-  NULL, "TypeError: unsupported operand type(s) for -: 'str' and 'int'", -1 },
+  "", "TypeError: unsupported operand type(s) for -: 'str' and 'int'", 1 },
 { "dif #382",
   "post(\"a\" <= \"a\")\n"
   "\n",
@@ -2710,11 +2710,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #383",
   "post(\"a\" > 1)\n"
   "\n",
-  NULL, "TypeError: '>' not supported between instances of 'str' and 'int'", -1 },
+  "", "TypeError: '>' not supported between instances of 'str' and 'int'", 1 },
 { "dif #384",
   "post(\"a\" ^ 1)\n"
   "\n",
-  NULL, "TypeError: unsupported operand type(s) for ^: 'str' and 'int'", -1 },
+  "", "TypeError: unsupported operand type(s) for ^: 'str' and 'int'", 1 },
 { "dif #385",
   "post(\"a\" in \"cab\")\n"
   "\n",
@@ -2730,11 +2730,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #388",
   "post(\"a\".append(1))\n"
   "\n",
-  NULL, "AttributeError: 'str' object has no attribute 'append'", -1 },
+  "", "AttributeError: 'str' object has no attribute 'append'", 1 },
 { "dif #389",
   "post(\"a\".center(3,\"xy\"))\n"
   "\n",
-  NULL, "TypeError: The fill character must be exactly one character long", -1 },
+  "", "TypeError: The fill character must be exactly one character long", 1 },
 { "dif #390",
   "post(\"a\".center(4))\n"
   "\n",
@@ -2742,11 +2742,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #391",
   "post(\"a\".center(9223372036854775807))\n"
   "\n",
-  NULL, "MemoryError: memória insuficiente: center() pediu largura 9223372036854775807", -1 },
+  "", "MemoryError: memória insuficiente: center() pediu largura 9223372036854775807", 1 },
 { "dif #392",
   "post(\"a\".count())\n"
   "\n",
-  NULL, "TypeError: count() takes at least 1 argument (0 given)", -1 },
+  "", "TypeError: count() takes at least 1 argument (0 given)", 1 },
 { "dif #393",
   "post(\"a\".encode(\"utf-8\"))\n"
   "\n",
@@ -2754,11 +2754,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #394",
   "post(\"a\".encode() + \"b\")\n"
   "\n",
-  NULL, "TypeError: can't concat str to bytes", -1 },
+  "", "TypeError: can't concat str to bytes", 1 },
 { "dif #395",
   "post(\"a\".index(\"z\"))\n"
   "\n",
-  NULL, "ValueError: substring not found", -1 },
+  "", "ValueError: substring not found", 1 },
 { "dif #396",
   "post(\"a\".isprintable())\n"
   "\n",
@@ -2766,27 +2766,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #397",
   "post(\"a\".join([1]))\n"
   "\n",
-  NULL, "TypeError: sequence item 0: expected str instance, int found", -1 },
+  "", "TypeError: sequence item 0: expected str instance, int found", 1 },
 { "dif #398",
   "post(\"a\".ljust(\"x\"))\n"
   "\n",
-  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
+  "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
 { "dif #399",
   "post(\"a\".ljust(9223372036854775807))\n"
   "\n",
-  NULL, "MemoryError: memória insuficiente: ljust() pediu largura 9223372036854775807", -1 },
+  "", "MemoryError: memória insuficiente: ljust() pediu largura 9223372036854775807", 1 },
 { "dif #400",
   "post(\"a\".match())\n"
   "\n",
-  NULL, "TypeError: match() takes exactly one argument (0 given)", -1 },
+  "", "TypeError: match() takes exactly one argument (0 given)", 1 },
 { "dif #401",
   "post(\"a\".naoexiste())\n"
   "\n",
-  NULL, "AttributeError: 'str' object has no attribute 'naoexiste'", -1 },
+  "", "AttributeError: 'str' object has no attribute 'naoexiste'", 1 },
 { "dif #402",
   "post(\"a\".partition(\"\"))\n"
   "\n",
-  NULL, "ValueError: valor invalido: separador vazio em partition()", -1 },
+  "", "ValueError: valor invalido: separador vazio em partition()", 1 },
 { "dif #403",
   "post(\"a\".replace(\"\",\"x\"))\n"
   "\n",
@@ -2794,23 +2794,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #404",
   "post(\"a\".rindex(\"z\"))\n"
   "\n",
-  NULL, "ValueError: substring not found", -1 },
+  "", "ValueError: substring not found", 1 },
 { "dif #405",
   "post(\"a\".rjust(9223372036854775807))\n"
   "\n",
-  NULL, "MemoryError: memória insuficiente: rjust() pediu largura 9223372036854775807", -1 },
+  "", "MemoryError: memória insuficiente: rjust() pediu largura 9223372036854775807", 1 },
 { "dif #406",
   "post(\"a\".split(\"\"))\n"
   "\n",
-  NULL, "ValueError: empty separator", -1 },
+  "", "ValueError: empty separator", 1 },
 { "dif #407",
   "post(\"a\".startswith(1))\n"
   "\n",
-  NULL, "TypeError: startswith() argument 1 must be str, not int", -1 },
+  "", "TypeError: startswith() argument 1 must be str, not int", 1 },
 { "dif #408",
   "post(\"a\".sub(\"a\"))\n"
   "\n",
-  NULL, "TypeError: sub() takes exactly 2 arguments (1 given)", -1 },
+  "", "TypeError: sub() takes exactly 2 arguments (1 given)", 1 },
 { "dif #409",
   "post(\"a\".type())\n"
   "\n",
@@ -2818,7 +2818,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #410",
   "post(\"a\".upper(1))\n"
   "\n",
-  NULL, "TypeError: upper() takes no arguments (1 given)", -1 },
+  "", "TypeError: upper() takes no arguments (1 given)", 1 },
 { "dif #411",
   "post(\"a\".zfill(5))\n"
   "post(\"ab\".ljust(5, \"-\"))\n"
@@ -2829,7 +2829,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #412",
   "post(\"a\".zfill(9223372036854775807))\n"
   "\n",
-  NULL, "MemoryError: memória insuficiente: zfill() pediu largura 9223372036854775807", -1 },
+  "", "MemoryError: memória insuficiente: zfill() pediu largura 9223372036854775807", 1 },
 { "dif #413",
   "post(\"a,b,c\".split(\",\"))\n"
   "\n",
@@ -2917,7 +2917,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #434",
   "post(\"aaa\".replace(\"a\", \"b\", conta=2))\n"
   "\n",
-  NULL, "TypeError: 'conta' is an invalid keyword argument for replace()", -1 },
+  "", "TypeError: 'conta' is an invalid keyword argument for replace()", 1 },
 { "dif #435",
   "post(\"aaa\".replace(old=\"a\", new=\"b\", count=1))\n"
   "\n",
@@ -2983,7 +2983,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #449",
   "post(\"ab\"[9])\n"
   "\n",
-  NULL, "IndexError: string index out of range", -1 },
+  "", "IndexError: string index out of range", 1 },
 { "dif #450",
   "post(\"abc\" < \"abd\")\n"
   "\n",
@@ -2999,7 +2999,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #453",
   "post(\"abc\".\n"
   "\n",
-  NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
+  "", "SyntaxError: esperado nome do membro apos '.'", 2 },
 { "dif #454",
   "post(\"abc\".center(7))\n"
   "\n",
@@ -3124,7 +3124,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #484",
   "post(\"banana\".index(\"na\", 0, 3))\n"
   "\n",
-  NULL, "ValueError: substring not found", -1 },
+  "", "ValueError: substring not found", 1 },
 { "dif #485",
   "post(\"corpo\")\n"
   "\n",
@@ -3205,7 +3205,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #504",
   "post(\"um\" if n == 1 else \"dois\" if n == 2 else \"outro\")\n"
   "\n",
-  NULL, "NameError: name 'n' is not defined", -1 },
+  "", "NameError: name 'n' is not defined", 1 },
 { "dif #505",
   "post(\"x  \".rstrip())\n"
   "\n",
@@ -3249,7 +3249,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #515",
   "post(\"{:!!}\".format(1))\n"
   "\n",
-  NULL, "TypeError: format: spec invalido", -1 },
+  "", "TypeError: format: spec invalido", 1 },
 { "dif #516",
   "post(\"{:*^7}|\".format(\"ab\"))\n"
   "\n",
@@ -3325,7 +3325,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #534",
   "post(\"{} {}\".format(1))\n"
   "\n",
-  NULL, "IndexError: Replacement index 1 out of range for positional args tuple", -1 },
+  "", "IndexError: Replacement index 1 out of range for positional args tuple", 1 },
 { "dif #535",
   "post(\"{}\".format(Null))\n"
   "\n",
@@ -3393,7 +3393,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #551",
   "post((1).keys())\n"
   "\n",
-  NULL, "AttributeError: 'int' object has no attribute 'keys'", -1 },
+  "", "AttributeError: 'int' object has no attribute 'keys'", 1 },
 { "dif #552",
   "post((1).type())\n"
   "\n",
@@ -3405,7 +3405,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #554",
   "post((1, zzz))\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #555",
   "post((1,) is list)\n"
   "\n",
@@ -3433,7 +3433,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #561",
   "post((12).len())\n"
   "\n",
-  NULL, "TypeError: object of type 'int' has no len()", -1 },
+  "", "TypeError: object of type 'int' has no len()", 1 },
 { "dif #562",
   "post((123).zfill(5))\n"
   "\n",
@@ -3457,7 +3457,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #567",
   "post(-1 < Null)\n"
   "\n",
-  NULL, "TypeError: '<' not supported between instances of 'int' and 'Null'", -1 },
+  "", "TypeError: '<' not supported between instances of 'int' and 'Null'", 1 },
 { "dif #568",
   "post(-1.0 % 3)\n"
   "\n",
@@ -3477,7 +3477,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #572",
   "post(-a)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #573",
   "post(0 - 5)\n"
   "\n",
@@ -3509,7 +3509,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #580",
   "post(1 % 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: integer modulo by zero", -1 },
+  "", "ZeroDivisionError: integer modulo by zero", 1 },
 { "dif #581",
   "post(1 && 2)\n"
   "\n",
@@ -3517,7 +3517,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #582",
   "post(1 + \"a\")\n"
   "\n",
-  NULL, "TypeError: unsupported operand type(s) for +: 'int' and 'str'", -1 },
+  "", "TypeError: unsupported operand type(s) for +: 'int' and 'str'", 1 },
 { "dif #583",
   "post(1 + 1)\n"
   "\n",
@@ -3525,11 +3525,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #584",
   "post(1 + zzz)\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #585",
   "post(1 / 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #586",
   "post(1 < 2, 2 <= 2, 3 > 4, 5 == 5, 5 != 6)\n"
   "\n",
@@ -3537,7 +3537,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #587",
   "post(1 << -1)\n"
   "\n",
-  NULL, "RuntimeError: deslocamento negativo", -1 },
+  "", "RuntimeError: deslocamento negativo", 1 },
 { "dif #588",
   "post(1 << 2 & 6)\n"
   "\n",
@@ -3557,15 +3557,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #592",
   "post(1 > Null)\n"
   "\n",
-  NULL, "TypeError: '>' not supported between instances of 'int' and 'Null'", -1 },
+  "", "TypeError: '>' not supported between instances of 'int' and 'Null'", 1 },
 { "dif #593",
   "post(1 >> -1)\n"
   "\n",
-  NULL, "RuntimeError: deslocamento negativo", -1 },
+  "", "RuntimeError: deslocamento negativo", 1 },
 { "dif #594",
   "post(1 if x > 0 else x / 0)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #595",
   "post(1 in (1,2))\n"
   "\n",
@@ -3577,11 +3577,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #597",
   "post(1 in zzz)\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #598",
   "post(1%0)\n"
   "\n",
-  NULL, "ZeroDivisionError: integer modulo by zero", -1 },
+  "", "ZeroDivisionError: integer modulo by zero", 1 },
 { "dif #599",
   "post(1)\n"
   "\n",
@@ -3597,7 +3597,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #602",
   "post(1.0 / 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: flo division by zero", -1 },
+  "", "ZeroDivisionError: flo division by zero", 1 },
 { "dif #603",
   "post(1.0)\n"
   "\n",
@@ -3605,7 +3605,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #604",
   "post(1.5 % 0)\n"
   "\n",
-  NULL, "ZeroDivisionError: flo modulo", -1 },
+  "", "ZeroDivisionError: flo modulo", 1 },
 { "dif #605",
   "post(1.5 * 2)\n"
   "\n",
@@ -3621,11 +3621,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #608",
   "post(1.5 | 1)\n"
   "\n",
-  NULL, "TypeError: unsupported operand type(s) for |: 'flo' and 'int'", -1 },
+  "", "TypeError: unsupported operand type(s) for |: 'flo' and 'int'", 1 },
 { "dif #609",
   "post(1/0)\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #610",
   "post(1/3)\n"
   "\n",
@@ -3781,7 +3781,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #648",
   "post(<\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #649",
   "post(<2196f3>\"azul\")\n"
   "\n",
@@ -3805,7 +3805,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #654",
   "post(<green>x)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #655",
   "post(<red>\"alerta\")\n"
   "\n",
@@ -3829,131 +3829,131 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #660",
   "post(<red>f)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #661",
   "post(A().n)\n"
   "\n",
-  NULL, "NameError: name 'A' is not defined", -1 },
+  "", "NameError: name 'A' is not defined", 1 },
 { "dif #662",
   "post(Aberta(7).ver())\n"
   "\n",
-  NULL, "NameError: name 'Aberta' is not defined", -1 },
+  "", "NameError: name 'Aberta' is not defined", 1 },
 { "dif #663",
   "post(B().n)\n"
   "\n",
-  NULL, "NameError: name 'B' is not defined", -1 },
+  "", "NameError: name 'B' is not defined", 1 },
 { "dif #664",
   "post(C().campo)\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #665",
   "post(C().f(5))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #666",
   "post(C().f(a=7))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #667",
   "post(C().m())\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #668",
   "post(C().m(5))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #669",
   "post(C.f())\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #670",
   "post(C.f(1, 2, 3))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #671",
   "post(C.f(5))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #672",
   "post(C.f(5, 20))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #673",
   "post(C.f(a=7))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #674",
   "post(C.f(a=7, b=1))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #675",
   "post(C.m())\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #676",
   "post(C.m(5))\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #677",
   "post(C.naoexiste())\n"
   "\n",
-  NULL, "NameError: name 'C' is not defined", -1 },
+  "", "NameError: name 'C' is not defined", 1 },
 { "dif #678",
   "post(Cor)\n"
   "\n",
-  NULL, "NameError: name 'Cor' is not defined", -1 },
+  "", "NameError: name 'Cor' is not defined", 1 },
 { "dif #679",
   "post(Cor.BLUE)\n"
   "\n",
-  NULL, "NameError: name 'Cor' is not defined", -1 },
+  "", "NameError: name 'Cor' is not defined", 1 },
 { "dif #680",
   "post(Cor.RED)\n"
   "\n",
-  NULL, "NameError: name 'Cor' is not defined", -1 },
+  "", "NameError: name 'Cor' is not defined", 1 },
 { "dif #681",
   "post(Cor.ROXO)\n"
   "\n",
-  NULL, "NameError: name 'Cor' is not defined", -1 },
+  "", "NameError: name 'Cor' is not defined", 1 },
 { "dif #682",
   "post(Cor.type())\n"
   "\n",
-  NULL, "NameError: name 'Cor' is not defined", -1 },
+  "", "NameError: name 'Cor' is not defined", 1 },
 { "dif #683",
   "post(Hex.RED)\n"
   "\n",
-  NULL, "NameError: name 'Hex' is not defined", -1 },
+  "", "NameError: name 'Hex' is not defined", 1 },
 { "dif #684",
   "post(M().f())\n"
   "\n",
-  NULL, "NameError: name 'M' is not defined", -1 },
+  "", "NameError: name 'M' is not defined", 1 },
 { "dif #685",
   "post(MAX)\n"
   "\n",
-  NULL, "NameError: name 'MAX' is not defined", -1 },
+  "", "NameError: name 'MAX' is not defined", 1 },
 { "dif #686",
   "post(Mix.A)\n"
   "\n",
-  NULL, "NameError: name 'Mix' is not defined", -1 },
+  "", "NameError: name 'Mix' is not defined", 1 },
 { "dif #687",
   "post(Mix.C)\n"
   "\n",
-  NULL, "NameError: name 'Mix' is not defined", -1 },
+  "", "NameError: name 'Mix' is not defined", 1 },
 { "dif #688",
   "post(Mix.E)\n"
   "\n",
-  NULL, "NameError: name 'Mix' is not defined", -1 },
+  "", "NameError: name 'Mix' is not defined", 1 },
 { "dif #689",
   "post(NOME)\n"
   "\n",
-  NULL, "NameError: name 'NOME' is not defined", -1 },
+  "", "NameError: name 'NOME' is not defined", 1 },
 { "dif #690",
   "post(Null < 0)\n"
   "\n",
-  NULL, "TypeError: '<' not supported between instances of 'Null' and 'int'", -1 },
+  "", "TypeError: '<' not supported between instances of 'Null' and 'int'", 1 },
 { "dif #691",
   "post(Null <= 0)\n"
   "\n",
-  NULL, "TypeError: '<=' not supported between instances of 'Null' and 'int'", -1 },
+  "", "TypeError: '<=' not supported between instances of 'Null' and 'int'", 1 },
 { "dif #692",
   "post(Null == 0)\n"
   "\n",
@@ -3965,19 +3965,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #694",
   "post(Null > \"a\")\n"
   "\n",
-  NULL, "TypeError: '>' not supported between instances of 'Null' and 'str'", -1 },
+  "", "TypeError: '>' not supported between instances of 'Null' and 'str'", 1 },
 { "dif #695",
   "post(Null > 0)\n"
   "\n",
-  NULL, "TypeError: '>' not supported between instances of 'Null' and 'int'", -1 },
+  "", "TypeError: '>' not supported between instances of 'Null' and 'int'", 1 },
 { "dif #696",
   "post(Null >= 0)\n"
   "\n",
-  NULL, "TypeError: '>=' not supported between instances of 'Null' and 'int'", -1 },
+  "", "TypeError: '>=' not supported between instances of 'Null' and 'int'", 1 },
 { "dif #697",
   "post(Null >= Null)\n"
   "\n",
-  NULL, "TypeError: '>=' not supported between instances of 'Null' and 'Null'", -1 },
+  "", "TypeError: '>=' not supported between instances of 'Null' and 'Null'", 1 },
 { "dif #698",
   "post(Null)\n"
   "\n",
@@ -3985,7 +3985,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #699",
   "post(Null.keys())\n"
   "\n",
-  NULL, "AttributeError: 'Null' object has no attribute 'keys'", -1 },
+  "", "AttributeError: 'Null' object has no attribute 'keys'", 1 },
 { "dif #700",
   "post(Null.type())\n"
   "\n",
@@ -3993,7 +3993,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #701",
   "post(P().n)\n"
   "\n",
-  NULL, "NameError: name 'P' is not defined", -1 },
+  "", "NameError: name 'P' is not defined", 1 },
 { "dif #702",
   "post(Parsing)\n"
   "\n",
@@ -4185,11 +4185,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #749",
   "post(R())\n"
   "\n",
-  NULL, "NameError: name 'R' is not defined", -1 },
+  "", "NameError: name 'R' is not defined", 1 },
 { "dif #750",
   "post(Secreta())\n"
   "\n",
-  NULL, "NameError: name 'Secreta' is not defined", -1 },
+  "", "NameError: name 'Secreta' is not defined", 1 },
 { "dif #751",
   "post(True & 1)\n"
   "\n",
@@ -4201,7 +4201,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #753",
   "post(True.isdigit())\n"
   "\n",
-  NULL, "AttributeError: 'bool' object has no attribute 'isdigit'", -1 },
+  "", "AttributeError: 'bool' object has no attribute 'isdigit'", 1 },
 { "dif #754",
   "post(True.type())\n"
   "\n",
@@ -4209,7 +4209,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #755",
   "post(U(\"ana\", 30))\n"
   "\n",
-  NULL, "NameError: name 'U' is not defined", -1 },
+  "", "NameError: name 'U' is not defined", 1 },
 { "dif #756",
   "post([\"a\", \"b\"])\n"
   "\n",
@@ -4244,23 +4244,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #763",
   "post([1, 2].index(9))\n"
   "\n",
-  NULL, "ValueError: 9 is not in list", -1 },
+  "", "ValueError: 9 is not in list", 1 },
 { "dif #764",
   "post([1, 2][\"x\"])\n"
   "\n",
-  NULL, "TypeError: list indices must be integers or slices, not str", -1 },
+  "", "TypeError: list indices must be integers or slices, not str", 1 },
 { "dif #765",
   "post([1, 2][9])\n"
   "\n",
-  NULL, "IndexError: list index out of range", -1 },
+  "", "IndexError: list index out of range", 1 },
 { "dif #766",
   "post([1, 2][zzz])\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #767",
   "post([1, zzz])\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #768",
   "post([1,2,3][-1])\n"
   "\n",
@@ -4272,7 +4272,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #770",
   "post([1,2,3][::0])\n"
   "\n",
-  NULL, "ValueError: slice step cannot be zero", -1 },
+  "", "ValueError: slice step cannot be zero", 1 },
 { "dif #771",
   "post([1,2].contains(2))\n"
   "\n",
@@ -4296,11 +4296,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #776",
   "post([1,2][-9])\n"
   "\n",
-  NULL, "IndexError: list index out of range", -1 },
+  "", "IndexError: list index out of range", 1 },
 { "dif #777",
   "post([1,2][9])\n"
   "\n",
-  NULL, "IndexError: list index out of range", -1 },
+  "", "IndexError: list index out of range", 1 },
 { "dif #778",
   "post([1] < [2], [1,2] >= [1,2], (1,2) < (1,3))\n"
   "\n",
@@ -4312,43 +4312,43 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #780",
   "post([1].append())\n"
   "\n",
-  NULL, "TypeError: append() takes exactly one argument (0 given)", -1 },
+  "", "TypeError: append() takes exactly one argument (0 given)", 1 },
 { "dif #781",
   "post([1].extend(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #782",
   "post([1].index(9))\n"
   "\n",
-  NULL, "ValueError: 9 is not in list", -1 },
+  "", "ValueError: 9 is not in list", 1 },
 { "dif #783",
   "post([1].insert(\"a\",1))\n"
   "\n",
-  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
+  "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
 { "dif #784",
   "post([1].keys())\n"
   "\n",
-  NULL, "AttributeError: 'list' object has no attribute 'keys'", -1 },
+  "", "AttributeError: 'list' object has no attribute 'keys'", 1 },
 { "dif #785",
   "post([1].pop(9))\n"
   "\n",
-  NULL, "IndexError: pop index out of range", -1 },
+  "", "IndexError: pop index out of range", 1 },
 { "dif #786",
   "post([1].remove(9))\n"
   "\n",
-  NULL, "ValueError: list.remove(x): x not in list", -1 },
+  "", "ValueError: list.remove(x): x not in list", 1 },
 { "dif #787",
   "post([1].sort(1))\n"
   "\n",
-  NULL, "TypeError: sort() takes no arguments (1 given)", -1 },
+  "", "TypeError: sort() takes no arguments (1 given)", 1 },
 { "dif #788",
   "post([1].type(1))\n"
   "\n",
-  NULL, "TypeError: type() takes no arguments (1 given)", -1 },
+  "", "TypeError: type() takes no arguments (1 given)", 1 },
 { "dif #789",
   "post([1].upper())\n"
   "\n",
-  NULL, "AttributeError: 'list' object has no attribute 'upper'", -1 },
+  "", "AttributeError: 'list' object has no attribute 'upper'", 1 },
 { "dif #790",
   "post([3,1,2])\n"
   "\n",
@@ -4380,7 +4380,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #797",
   "post([].pop())\n"
   "\n",
-  NULL, "IndexError: pop from empty list", -1 },
+  "", "IndexError: pop from empty list", 1 },
 { "dif #798",
   "post([str, int])\n"
   "\n",
@@ -4388,59 +4388,59 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #799",
   "post(a % 7)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #800",
   "post(a / 0)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #801",
   "post(a == a)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #802",
   "post(a == b)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #803",
   "post(a > 999999999999999999)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #804",
   "post(a is str and not (a is int))\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #805",
   "post(a(10), b(10))\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #806",
   "post(a)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #807",
   "post(a, b)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #808",
   "post(a, b, c)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #809",
   "post(a, r)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #810",
   "post(a.b.c)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #811",
   "post(a.b[0].c)\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #812",
   "post(abs(\"a\"))\n"
   "\n",
-  NULL, "TypeError: bad operand type for abs(): 'str'", -1 },
+  "", "TypeError: bad operand type for abs(): 'str'", 1 },
 { "dif #813",
   "post(abs(-3))\n"
   "\n",
@@ -4472,31 +4472,31 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #820",
   "post(achou)\n"
   "\n",
-  NULL, "NameError: name 'achou' is not defined", -1 },
+  "", "NameError: name 'achou' is not defined", 1 },
 { "dif #821",
   "post(addEnd(1,2))\n"
   "\n",
-  NULL, "TypeError: addEnd() argument 1 must be list, not int", -1 },
+  "", "TypeError: addEnd() argument 1 must be list, not int", 1 },
 { "dif #822",
   "post(app.POOLHTMLElements.getitemByIdentify(\"email\").value == \"\")\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #823",
   "post(app.POOLHTMLElements.getitemByIdentify(\"email\").value)\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #824",
   "post(app.POOLHTMLElements.getitemByIdentify(\"nome\").value)\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #825",
   "post(app.POOLHTMLElements.getitemByIdentify(\"x\") == null)\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #826",
   "post(app.div().stylesheet({\"width\": \"300\"}).text(\"x\") is null == false)\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #827",
   "post(await \"texto\")\n"
   "\n",
@@ -4512,31 +4512,31 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #830",
   "post(b % 26)\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #831",
   "post(b(1))\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #832",
   "post(b)\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #833",
   "post(b[0], b[1], b[2], b[3])\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #834",
   "post(big * big)\n"
   "\n",
-  NULL, "NameError: name 'big' is not defined", -1 },
+  "", "NameError: name 'big' is not defined", 1 },
 { "dif #835",
   "post(big + 1)\n"
   "\n",
-  NULL, "NameError: name 'big' is not defined", -1 },
+  "", "NameError: name 'big' is not defined", 1 },
 { "dif #836",
   "post(bin(\"a\"))\n"
   "\n",
-  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
+  "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
 { "dif #837",
   "post(bin(-5))\n"
   "\n",
@@ -4584,119 +4584,119 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #848",
   "post(bytes.base64(bytes.new(\"Hello\")))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #849",
   "post(bytes.concat([bytes.new(\"Hi\"), bytes.new(\"!!\")]))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #850",
   "post(bytes.frombase64(\"SGVsbG8=\"))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #851",
   "post(bytes.get(bytes.new(\"ABC\"), -1))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #852",
   "post(bytes.hex(bytes.fromhex(\"48 65 6c 6c 6f\")))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #853",
   "post(bytes.hex(bytes.fromint(258, 4)))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #854",
   "post(bytes.hex(bytes.fromint(258, 4, \"little\")))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #855",
   "post(bytes.hex(bytes.xor(bytes.xor(bytes.new(\"secret\"), bytes.new(\"KEY\")), bytes.new(\"KEY\"))))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #856",
   "post(bytes.new(\"Oi\"))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #857",
   "post(bytes.new())\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #858",
   "post(bytes.new(3))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #859",
   "post(bytes.new(3.5))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #860",
   "post(bytes.new([72, 105]))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #861",
   "post(bytes.slice(bytes.new(\"Hello\"), 1, 3))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #862",
   "post(bytes.toint(bytes.fromint(70000, 4)))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #863",
   "post(bytes.tolist(bytes.new(\"ABC\")))\n"
   "\n",
-  NULL, "NameError: name 'bytes' is not defined", -1 },
+  "", "NameError: name 'bytes' is not defined", 1 },
 { "dif #864",
   "post(c)\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #865",
   "post(c.cursor().execute(\"CREATE TABLE a (x)\"))\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #866",
   "post(c.cursor().execute(\"SELECT nota FROM u ORDER BY id\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #867",
   "post(c.execute(\"SELECT * FROM x\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #868",
   "post(c.execute(\"SELECT 1 + 1 AS soma, ?\", (\"oi\",)).fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #869",
   "post(c2.cursor().execute(\"SELECT * FROM u\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c2' is not defined", -1 },
+  "", "NameError: name 'c2' is not defined", 1 },
 { "dif #870",
   "post(c2.cursor().execute(\"SELECT count(*) AS n FROM u WHERE nome = '__rb__'\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c2' is not defined", -1 },
+  "", "NameError: name 'c2' is not defined", 1 },
 { "dif #871",
   "post(c2.execute(\"SELECT * FROM t\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c2' is not defined", -1 },
+  "", "NameError: name 'c2' is not defined", 1 },
 { "dif #872",
   "post(c2.execute(\"SELECT * FROM z\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'c2' is not defined", -1 },
+  "", "NameError: name 'c2' is not defined", 1 },
 { "dif #873",
   "post(chamadas)\n"
   "\n",
-  NULL, "NameError: name 'chamadas' is not defined", -1 },
+  "", "NameError: name 'chamadas' is not defined", 1 },
 { "dif #874",
   "post(check(crypt(\"z\"), \"z\"))\n"
   "\n",
-  NULL, "NameError: name 'check' is not defined", -1 },
+  "", "NameError: name 'check' is not defined", 1 },
 { "dif #875",
   "post(chr(-1))\n"
   "\n",
-  NULL, "ValueError: chr() arg not in range(0x110000)", -1 },
+  "", "ValueError: chr() arg not in range(0x110000)", 1 },
 { "dif #876",
   "post(chr(1114112))\n"
   "\n",
-  NULL, "ValueError: chr() arg not in range(0x110000)", -1 },
+  "", "ValueError: chr() arg not in range(0x110000)", 1 },
 { "dif #877",
   "post(chr(128512))\n"
   "\n",
@@ -4716,31 +4716,31 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #881",
   "post(classifica(7))\n"
   "\n",
-  NULL, "NameError: name 'classifica' is not defined", -1 },
+  "", "NameError: name 'classifica' is not defined", 1 },
 { "dif #882",
   "post(col.count())\n"
   "\n",
-  NULL, "NameError: name 'col' is not defined", -1 },
+  "", "NameError: name 'col' is not defined", 1 },
 { "dif #883",
   "post(col.find({\"nome\":\"ana\"}))\n"
   "\n",
-  NULL, "NameError: name 'col' is not defined", -1 },
+  "", "NameError: name 'col' is not defined", 1 },
 { "dif #884",
   "post(col.find_one({\"nome\":\"ana\"}))\n"
   "\n",
-  NULL, "NameError: name 'col' is not defined", -1 },
+  "", "NameError: name 'col' is not defined", 1 },
 { "dif #885",
   "post(col.find_one({\"nome\":\"leo\"}))\n"
   "\n",
-  NULL, "NameError: name 'col' is not defined", -1 },
+  "", "NameError: name 'col' is not defined", 1 },
 { "dif #886",
   "post(col.find_one({\"nome\":\"zzz\"}))\n"
   "\n",
-  NULL, "NameError: name 'col' is not defined", -1 },
+  "", "NameError: name 'col' is not defined", 1 },
 { "dif #887",
   "post(count char in s)\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #888",
   "post(count dict in [{}, {}, 1])\n"
   "\n",
@@ -4780,7 +4780,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #897",
   "post(count int in nums)\n"
   "\n",
-  NULL, "NameError: name 'nums' is not defined", -1 },
+  "", "NameError: name 'nums' is not defined", 1 },
 { "dif #898",
   "post(count int in post)\n"
   "\n",
@@ -4788,7 +4788,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #899",
   "post(count int() in nums)\n"
   "\n",
-  NULL, "NameError: name 'nums' is not defined", -1 },
+  "", "NameError: name 'nums' is not defined", 1 },
 { "dif #900",
   "post(count int(1) in 112211)\n"
   "\n",
@@ -4804,7 +4804,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #903",
   "post(count int(7) in nums)\n"
   "\n",
-  NULL, "NameError: name 'nums' is not defined", -1 },
+  "", "NameError: name 'nums' is not defined", 1 },
 { "dif #904",
   "post(count json in [{}, 1])\n"
   "\n",
@@ -4836,7 +4836,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #911",
   "post(count str(\"oi\") in frase)\n"
   "\n",
-  NULL, "NameError: name 'frase' is not defined", -1 },
+  "", "NameError: name 'frase' is not defined", 1 },
 { "dif #912",
   "post(count str(\"z\") in \"banana\")\n"
   "\n",
@@ -4852,67 +4852,67 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #915",
   "post(d is dict)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #916",
   "post(d is json)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #917",
   "post(d is tup)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #918",
   "post(d not is tup)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #919",
   "post(d)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #920",
   "post(d.get(\"nome\"))\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #921",
   "post(d.n)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #922",
   "post(d.nome)\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #923",
   "post(d[\"nome\"])\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #924",
   "post(d[\"tag\"], d[\"attrs\"][\"a\"], d[\"children\"].len())\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #925",
   "post(d[0][\"id\"], d[0][\"nota\"], d[0][\"nome\"])\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #926",
   "post(d[0][\"idade\"], d[0][\"nota\"], d[1][\"nota\"])\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #927",
   "post(dentro)\n"
   "\n",
-  NULL, "NameError: name 'dentro' is not defined", -1 },
+  "", "NameError: name 'dentro' is not defined", 1 },
 { "dif #928",
   "post(dotenv.load())\n"
   "\n",
-  NULL, "NameError: name 'dotenv' is not defined", -1 },
+  "", "NameError: name 'dotenv' is not defined", 1 },
 { "dif #929",
   "post(e)\n"
   "\n",
-  NULL, "NameError: name 'e' is not defined", -1 },
+  "", "NameError: name 'e' is not defined", 1 },
 { "dif #930",
   "post(ef.f())\n"
   "\n",
-  NULL, "NameError: name 'ef' is not defined", -1 },
+  "", "NameError: name 'ef' is not defined", 1 },
 { "dif #931",
   "post(enumerate(\"çá\"))\n"
   "\n",
@@ -4920,7 +4920,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #932",
   "post(enumerate(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #933",
   "post(enumerate([\"a\",\"b\"]))\n"
   "\n",
@@ -4936,7 +4936,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #936",
   "post(f is PoolFile)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #937",
   "post(f\"\")\n"
   "\n",
@@ -4944,11 +4944,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #938",
   "post(f\"Ola, {nome}!\")\n"
   "\n",
-  NULL, "NameError: name 'nome' is not defined", -1 },
+  "", "NameError: name 'nome' is not defined", 1 },
 { "dif #939",
   "post(f\"oi {x}\")\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #940",
   "post(f\"texto puro\")\n"
   "\n",
@@ -4956,23 +4956,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #941",
   "post(f\"v: {zzz + 1}\")\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #942",
   "post(f\"v: {zzz}\")\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #943",
   "post(f\"x {1/0} y\")\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #944",
   "post(f\"{a} {a + 1}\")\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #945",
   "post(f\"{a} {b} {a+1}\")\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #946",
   "post(f\"{{literal}} e {1 + 1}\")\n"
   "\n",
@@ -4984,67 +4984,67 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #948",
   "post(f(\"5\"))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #949",
   "post(f())\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #950",
   "post(f(1))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #951",
   "post(f(1, 2))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #952",
   "post(f(3))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #953",
   "post(f(Cor.RED))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #954",
   "post(f(a=1, zzz=2))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #955",
   "post(f.delete(), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #956",
   "post(f.name, f.ext)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #957",
   "post(f.name, f.ext, f.size)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #958",
   "post(f.name, f.size, f is PoolFile)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #959",
   "post(f.name.upper())\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #960",
   "post(f.naoexiste)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #961",
   "post(f.path().endswith(\"img.png\"))\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #962",
   "post(f.size + 1)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #963",
   "post(f.size > 0)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #964",
   "post(false < true)\n"
   "\n",
@@ -5064,7 +5064,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #968",
   "post(filter([1], 5))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not callable", -1 },
+  "", "TypeError: 'int' object is not callable", 1 },
 { "dif #969",
   "post(flo(\"1.5\"))\n"
   "\n",
@@ -5072,11 +5072,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #970",
   "post(flo(\"1.5abc\"))\n"
   "\n",
-  NULL, "ValueError: could not convert string to flo: '1.5abc'", -1 },
+  "", "ValueError: could not convert string to flo: '1.5abc'", 1 },
 { "dif #971",
   "post(flo(\"abc\"))\n"
   "\n",
-  NULL, "ValueError: could not convert string to flo: 'abc'", -1 },
+  "", "ValueError: could not convert string to flo: 'abc'", 1 },
 { "dif #972",
   "post(flo(1.5))\n"
   "\n",
@@ -5088,7 +5088,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #974",
   "post(flo(Null))\n"
   "\n",
-  NULL, "TypeError: flo() argument must be a string or a real number, not 'Null'", -1 },
+  "", "TypeError: flo() argument must be a string or a real number, not 'Null'", 1 },
 { "dif #975",
   "post(flo(True))\n"
   "\n",
@@ -5096,107 +5096,107 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #976",
   "post(fv)\n"
   "\n",
-  NULL, "NameError: name 'fv' is not defined", -1 },
+  "", "NameError: name 'fv' is not defined", 1 },
 { "dif #977",
   "post(g(\"42\") + 1)\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #978",
   "post(g())\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #979",
   "post(g.name, os.exists(\"dup.png\"), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #980",
   "post(g.name, os.exists(\"img.png\"), g.size)\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #981",
   "post(g.name, os.exists(\"outro.png\"), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #982",
   "post(g.name, os.exists(\"sub/nova/c.png\"), os.exists(\"img.png\"))\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #983",
   "post(g.size, f.size, len(g.bytes()))\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #984",
   "post(getenv(\"POOL_TEST_VAR\"))\n"
   "\n",
-  NULL, "NameError: name 'getenv' is not defined", -1 },
+  "", "NameError: name 'getenv' is not defined", 1 },
 { "dif #985",
   "post(getenv(\"POOL_TEST_VAR\"), cwd() is str)\n"
   "\n",
-  NULL, "NameError: name 'getenv' is not defined", -1 },
+  "", "NameError: name 'getenv' is not defined", 1 },
 { "dif #986",
   "post(glob.oi())\n"
   "\n",
-  NULL, "NameError: name 'glob' is not defined", -1 },
+  "", "NameError: name 'glob' is not defined", 1 },
 { "dif #987",
   "post(hash.b64decode(\"!!!\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #988",
   "post(hash.b64decode(\"UG9vbFNjcmlwdA==\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #989",
   "post(hash.b64encode(\"PoolScript\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #990",
   "post(hash.b64encode(\"ção\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #991",
   "post(hash.check(\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #992",
   "post(hash.check(\"\", \"abc\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #993",
   "post(hash.check(\"lixo\", \"abc\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #994",
   "post(hash.check(123, \"abc\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #995",
   "post(hash.check(a, \"x\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #996",
   "post(hash.check(b, \"x\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #997",
   "post(hash.check(h, \"abc\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #998",
   "post(hash.check(h, \"abd\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #999",
   "post(hash.crypt(\"minhasenha\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #1000",
   "post(hash.sha256(\"\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #1001",
   "post(hash.sha256(\"abc\"))\n"
   "\n",
-  NULL, "NameError: name 'hash' is not defined", -1 },
+  "", "NameError: name 'hash' is not defined", 1 },
 { "dif #1002",
   "post(hex(-255))\n"
   "\n",
@@ -5208,7 +5208,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1004",
   "post(hex(1.5))\n"
   "\n",
-  NULL, "TypeError: 'flo' object cannot be interpreted as an integer", -1 },
+  "", "TypeError: 'flo' object cannot be interpreted as an integer", 1 },
 { "dif #1005",
   "post(hex(255))\n"
   "\n",
@@ -5216,7 +5216,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1006",
   "post(i)\n"
   "\n",
-  NULL, "NameError: name 'i' is not defined", -1 },
+  "", "NameError: name 'i' is not defined", 1 },
 { "dif #1007",
   "post(int is int)\n"
   "\n",
@@ -5232,7 +5232,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1010",
   "post(int(\"\"))\n"
   "\n",
-  NULL, "ValueError: invalid literal for int() with base 10: ''", -1 },
+  "", "ValueError: invalid literal for int() with base 10: ''", 1 },
 { "dif #1011",
   "post(int(\"+5\"))\n"
   "\n",
@@ -5244,7 +5244,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1013",
   "post(int(\"0x1f\"))\n"
   "\n",
-  NULL, "ValueError: invalid literal for int() with base 10: '0x1f'", -1 },
+  "", "ValueError: invalid literal for int() with base 10: '0x1f'", 1 },
 { "dif #1014",
   "post(int(\"12345678901234567890123456789012\"))\n"
   "\n",
@@ -5260,15 +5260,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1017",
   "post(int(\"a\"))\n"
   "\n",
-  NULL, "ValueError: invalid literal for int() with base 10: 'a'", -1 },
+  "", "ValueError: invalid literal for int() with base 10: 'a'", 1 },
 { "dif #1018",
   "post(int(\"abc\"))\n"
   "\n",
-  NULL, "ValueError: invalid literal for int() with base 10: 'abc'", -1 },
+  "", "ValueError: invalid literal for int() with base 10: 'abc'", 1 },
 { "dif #1019",
   "post(int(\"x\"))\n"
   "\n",
-  NULL, "ValueError: invalid literal for int() with base 10: 'x'", -1 },
+  "", "ValueError: invalid literal for int() with base 10: 'x'", 1 },
 { "dif #1020",
   "post(int())\n"
   "\n",
@@ -5288,7 +5288,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1024",
   "post(int(Null))\n"
   "\n",
-  NULL, "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Null'", -1 },
+  "", "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Null'", 1 },
 { "dif #1025",
   "post(int(True))\n"
   "\n",
@@ -5296,15 +5296,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1026",
   "post(int(null))\n"
   "\n",
-  NULL, "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Null'", -1 },
+  "", "TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Null'", 1 },
 { "dif #1027",
   "post(ip.count(\".\") == 3)\n"
   "\n",
-  NULL, "NameError: name 'ip' is not defined", -1 },
+  "", "NameError: name 'ip' is not defined", 1 },
 { "dif #1028",
   "post(j)\n"
   "\n",
-  NULL, "NameError: name 'j' is not defined", -1 },
+  "", "NameError: name 'j' is not defined", 1 },
 { "dif #1029",
   "post(json is dict)\n"
   "\n",
@@ -5312,175 +5312,175 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1030",
   "post(json.parse(\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1031",
   "post(json.parse(text=\"[1,2]\"))\n"
   "\n",
-  NULL, "NameError: name 'json' is not defined", -1 },
+  "", "NameError: name 'json' is not defined", 1 },
 { "dif #1032",
   "post(json.stringify([1]))\n"
   "\n",
-  NULL, "NameError: name 'json' is not defined", -1 },
+  "", "NameError: name 'json' is not defined", 1 },
 { "dif #1033",
   "post(json.stringify({\"a\":1,\"b\":[2,3]}))\n"
   "\n",
-  NULL, "NameError: name 'json' is not defined", -1 },
+  "", "NameError: name 'json' is not defined", 1 },
 { "dif #1034",
   "post(json.stringify({\"a\":1,\"b\":[2,3]}, True))\n"
   "\n",
-  NULL, "NameError: name 'json' is not defined", -1 },
+  "", "NameError: name 'json' is not defined", 1 },
 { "dif #1035",
   "post(jwt.check(\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1036",
   "post(jwt.check(\"a.b\", \"k\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1037",
   "post(jwt.check(\"a.b.c\", \"k\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1038",
   "post(jwt.check(\"a.b.c.d\", \"k\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1039",
   "post(jwt.check(\"abc\", \"k\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1040",
   "post(jwt.check(1, \"k\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1041",
   "post(jwt.check(v, \"k\") is Null)\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1042",
   "post(jwt.check(x, \"k\") is Null)\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1043",
   "post(jwt.gen({\"a\":1}, \"k\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1044",
   "post(jwt.gen({\"a\":1}, \"k\", \"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1045",
   "post(jwt.gen({\"id\": 9}, \"s\"))\n"
   "\n",
-  NULL, "NameError: name 'jwt' is not defined", -1 },
+  "", "NameError: name 'jwt' is not defined", 1 },
 { "dif #1046",
   "post(jwt.gen({\"u\": 9}, \"s\", \"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1047",
   "post(k)\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1048",
   "post(k.execute(\"PRAGMA user_version\"))\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1049",
   "post(k.execute(\"SELECT * FROM m\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1050",
   "post(k.execute(\"SELECT * FROM n\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1051",
   "post(k.execute(\"SELECT * FROM p\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1052",
   "post(k.execute(\"SELECT * FROM r\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1053",
   "post(k.execute(\"SELECT * FROM u ORDER BY id\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1054",
   "post(k.execute(\"SELECT * FROM u WHERE id = 99\").fetchone())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1055",
   "post(k.execute(\"SELECT * FROM u WHERE id=99\").fetchone())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1056",
   "post(k.execute(\"SELECT * FROM u\").fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1057",
   "post(k.execute(\"SELECT * FROM u\").fetchmany(1))\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1058",
   "post(k.execute(\"SELECT d FROM b\").fetchone())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1059",
   "post(k.execute(\"SELECT nome FROM u WHERE id = ?\", (2,)).fetchone())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1060",
   "post(k.execute(\"SELECT nome FROM u WHERE nota > %s\", (8,)).fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1061",
   "post(k.execute(\"SELECT nome FROM u\").fetchone())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1062",
   "post(k.fetchall())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1063",
   "post(k.fetchmany(9))\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1064",
   "post(k.fetchone())\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1065",
   "post(k.lastrowid)\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1066",
   "post(k.rowcount)\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1067",
   "post(k.rowcount, k.lastrowid)\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1068",
   "post(l is dict)\n"
   "\n",
-  NULL, "NameError: name 'l' is not defined", -1 },
+  "", "NameError: name 'l' is not defined", 1 },
 { "dif #1069",
   "post(l)\n"
   "\n",
-  NULL, "NameError: name 'l' is not defined", -1 },
+  "", "NameError: name 'l' is not defined", 1 },
 { "dif #1070",
   "post(l[0])\n"
   "\n",
-  NULL, "NameError: name 'l' is not defined", -1 },
+  "", "NameError: name 'l' is not defined", 1 },
 { "dif #1071",
   "post(l[0].keys())\n"
   "\n",
-  NULL, "NameError: name 'l' is not defined", -1 },
+  "", "NameError: name 'l' is not defined", 1 },
 { "dif #1072",
   "post(l[0][1])\n"
   "\n",
-  NULL, "NameError: name 'l' is not defined", -1 },
+  "", "NameError: name 'l' is not defined", 1 },
 { "dif #1073",
   "post(len(\"ab\".encode()))\n"
   "\n",
@@ -5504,11 +5504,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1078",
   "post(len(1))\n"
   "\n",
-  NULL, "TypeError: object of type 'int' has no len()", -1 },
+  "", "TypeError: object of type 'int' has no len()", 1 },
 { "dif #1079",
   "post(len(5))\n"
   "\n",
-  NULL, "TypeError: object of type 'int' has no len()", -1 },
+  "", "TypeError: object of type 'int' has no len()", 1 },
 { "dif #1080",
   "post(len([1, 2, 3, 4]))\n"
   "\n",
@@ -5528,15 +5528,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1084",
   "post(len(d), d[1])\n"
   "\n",
-  NULL, "NameError: name 'd' is not defined", -1 },
+  "", "NameError: name 'd' is not defined", 1 },
 { "dif #1085",
   "post(len(d2))\n"
   "\n",
-  NULL, "NameError: name 'd2' is not defined", -1 },
+  "", "NameError: name 'd2' is not defined", 1 },
 { "dif #1086",
   "post(len(f.bytes()), f.bytes()[0])\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #1087",
   "post(len(null))\n"
   "\n",
@@ -5544,11 +5544,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1088",
   "post(len(os.environ()) > 3)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1089",
   "post(len(os.ls(\".\")) > 0)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1090",
   "post(len(range(100)))\n"
   "\n",
@@ -5556,15 +5556,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1091",
   "post(len(sys.argv))\n"
   "\n",
-  NULL, "NameError: name 'sys' is not defined", -1 },
+  "", "NameError: name 'sys' is not defined", 1 },
 { "dif #1092",
   "post(len(x=[1,2]))\n"
   "\n",
-  NULL, "TypeError: len() takes no keyword arguments", -1 },
+  "", "TypeError: len() takes no keyword arguments", 1 },
 { "dif #1093",
   "post(len(zzz))\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1094",
   "post(len({\"a\": 1, \"b\": 2, \"c\": 3}))\n"
   "\n",
@@ -5576,11 +5576,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1096",
   "post(ler(\"POOL_TEST_VAR\"))\n"
   "\n",
-  NULL, "NameError: name 'ler' is not defined", -1 },
+  "", "NameError: name 'ler' is not defined", 1 },
 { "dif #1097",
   "post(lib.rotulo(7))\n"
   "\n",
-  NULL, "NameError: name 'lib' is not defined", -1 },
+  "", "NameError: name 'lib' is not defined", 1 },
 { "dif #1098",
   "post(list is list)\n"
   "\n",
@@ -5608,7 +5608,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1104",
   "post(list(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #1105",
   "post(list([1,2]))\n"
   "\n",
@@ -5616,15 +5616,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1106",
   "post(list(b))\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #1107",
   "post(list(g()))\n"
   "\n",
-  NULL, "NameError: name 'g' is not defined", -1 },
+  "", "NameError: name 'g' is not defined", 1 },
 { "dif #1108",
   "post(list(lib.conta(3)))\n"
   "\n",
-  NULL, "NameError: name 'lib' is not defined", -1 },
+  "", "NameError: name 'lib' is not defined", 1 },
 { "dif #1109",
   "post(list(zip(\"çã\", [1,2])))\n"
   "\n",
@@ -5640,19 +5640,19 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1112",
   "post(m.from_address(\"a@b.c\").to(\"d@e.f\").subject(\"s\") == m)\n"
   "\n",
-  NULL, "NameError: name 'm' is not defined", -1 },
+  "", "NameError: name 'm' is not defined", 1 },
 { "dif #1113",
   "post(m.get_as_string())\n"
   "\n",
-  NULL, "NameError: name 'm' is not defined", -1 },
+  "", "NameError: name 'm' is not defined", 1 },
 { "dif #1114",
   "post(m.q())\n"
   "\n",
-  NULL, "NameError: name 'm' is not defined", -1 },
+  "", "NameError: name 'm' is not defined", 1 },
 { "dif #1115",
   "post(map(1, str))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #1116",
   "post(map([\"1\",\"2\"], int))\n"
   "\n",
@@ -5677,15 +5677,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1121",
   "post(map([1]))\n"
   "\n",
-  NULL, "TypeError: map() takes exactly 2 arguments (1 given)", -1 },
+  "", "TypeError: map() takes exactly 2 arguments (1 given)", 1 },
 { "dif #1122",
   "post(map([1], 5))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not callable", -1 },
+  "", "TypeError: 'int' object is not callable", 1 },
 { "dif #1123",
   "post(mat.dobro(21))\n"
   "\n",
-  NULL, "NameError: name 'mat' is not defined", -1 },
+  "", "NameError: name 'mat' is not defined", 1 },
 { "dif #1124",
   "post(max(\"a\",\"b\"))\n"
   "\n",
@@ -5709,7 +5709,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1129",
   "post(max([]))\n"
   "\n",
-  NULL, "ValueError: max() iterable argument is empty", -1 },
+  "", "ValueError: max() iterable argument is empty", 1 },
 { "dif #1130",
   "post(min(\"çab\"), max(\"çab\"))\n"
   "\n",
@@ -5745,15 +5745,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1138",
   "post(min([]))\n"
   "\n",
-  NULL, "ValueError: min() iterable argument is empty", -1 },
+  "", "ValueError: min() iterable argument is empty", 1 },
 { "dif #1139",
   "post(min([], default=0))\n"
   "\n",
-  NULL, "TypeError: min() takes no keyword arguments", -1 },
+  "", "TypeError: min() takes no keyword arguments", 1 },
 { "dif #1140",
   "post(minhalib.quem())\n"
   "\n",
-  NULL, "NameError: name 'minhalib' is not defined", -1 },
+  "", "NameError: name 'minhalib' is not defined", 1 },
 { "dif #1141",
   "post(not \"\")\n"
   "\n",
@@ -5773,11 +5773,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1145",
   "post(not zzz)\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1146",
   "post(o.base)\n"
   "\n",
-  NULL, "NameError: name 'o' is not defined", -1 },
+  "", "NameError: name 'o' is not defined", 1 },
 { "dif #1147",
   "post(oct(0))\n"
   "\n",
@@ -5793,11 +5793,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1150",
   "post(ok())\n"
   "\n",
-  NULL, "NameError: name 'ok' is not defined", -1 },
+  "", "NameError: name 'ok' is not defined", 1 },
 { "dif #1151",
   "post(ord(\"\"))\n"
   "\n",
-  NULL, "TypeError: ord() expected a character, but string of length 0 found", -1 },
+  "", "TypeError: ord() expected a character, but string of length 0 found", 1 },
 { "dif #1152",
   "post(ord(\"A\"))\n"
   "\n",
@@ -5805,7 +5805,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1153",
   "post(ord(\"ab\"))\n"
   "\n",
-  NULL, "TypeError: ord() expected a character, but string of length 2 found", -1 },
+  "", "TypeError: ord() expected a character, but string of length 2 found", 1 },
 { "dif #1154",
   "post(ord(\"ç\"))\n"
   "\n",
@@ -5817,303 +5817,303 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1156",
   "post(ord(1))\n"
   "\n",
-  NULL, "TypeError: ord() expected string of length 1, but int found", -1 },
+  "", "TypeError: ord() expected string of length 1, but int found", 1 },
 { "dif #1157",
   "post(os.cmd(\"cmd_inexistente_zzz 2>/dev/null\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1158",
   "post(os.cmd(\"echo    varios   espacos\", true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1159",
   "post(os.cmd(\"echo a; echo b\", true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1160",
   "post(os.cmd(\"echo ola\", true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1161",
   "post(os.cmd(\"echo silencio\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1162",
   "post(os.cmd(\"exit 3\", true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1163",
   "post(os.cmd(\"ls naoexistezzz 2>&1\", true).contains(\"No such\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1164",
   "post(os.cwd() is str)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1165",
   "post(os.cwd())\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1166",
   "post(os.cwd().endswith(\"caixa\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1167",
   "post(os.cwd().endswith(\"sub\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1168",
   "post(os.environ(\"PS_NAO_EXISTE_ZZZ\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1169",
   "post(os.environ(\"PS_TESTE_X\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1170",
   "post(os.environ()[\"PS_TESTE_X\"])\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1171",
   "post(os.exists(\"dados.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1172",
   "post(os.exists(\"dados.txt\"), os.exists(\"r.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1173",
   "post(os.exists(\"dados.txt\"), os.loadFile(\"m.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1174",
   "post(os.exists(\"dentro.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1175",
   "post(os.exists(\"nada.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1176",
   "post(os.exists(\"sub\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1177",
   "post(os.exists(\"sub/fundo\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1178",
   "post(os.exists(\"sub/nova/x.png\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1179",
   "post(os.exists(\"vazia\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1180",
   "post(os.exists(5))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1181",
   "post(os.isdir(\"a/b/c\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1182",
   "post(os.isdir(\"nova\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1183",
   "post(os.isdir(\"sub\"), os.isfile(\"sub\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1184",
   "post(os.isfile(\"dados.txt\"), os.isdir(\"dados.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1185",
   "post(os.isfile(\"sub/dentro.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1186",
   "post(os.loadFile(\"asp.csv\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1187",
   "post(os.loadFile(\"c.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1188",
   "post(os.loadFile(\"cfg.json\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1189",
   "post(os.loadFile(\"cfg.json\")[\"a\"])\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1190",
   "post(os.loadFile(\"cru.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1191",
   "post(os.loadFile(\"dados.txt\") is PoolFile)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1192",
   "post(os.loadFile(\"dados.txt\") is str)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1193",
   "post(os.loadFile(\"dados.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1194",
   "post(os.loadFile(\"dados.txt\", \"rb\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1195",
   "post(os.loadFile(\"dados.txt\", \"utf-8\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1196",
   "post(os.loadFile(\"fundo.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1197",
   "post(os.loadFile(\"img.png\") is PoolFile)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1198",
   "post(os.loadFile(\"img.png\") is os.PoolFile)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1199",
   "post(os.loadFile(\"img.png\", \"rb\").name)\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1200",
   "post(os.loadFile(\"img.png\", \"utf-8\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1201",
   "post(os.loadFile(\"nada.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1202",
   "post(os.loadFile(\"quebrado.json\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1203",
   "post(os.loadFile(\"rag.csv\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1204",
   "post(os.loadFile(\"sub/fundo/fundo.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1205",
   "post(os.loadFile(\"tab.csv\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1206",
   "post(os.loadFile(\"tab.csv\")[0][\"nome\"])\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1207",
   "post(os.ls(\"naoexiste\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1208",
   "post(os.ls(\"sub\")[0][\"type\"])\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1209",
   "post(os.mkdir(5))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1210",
   "post(os.pathFile(\"dados.txt\").endswith(\"dados.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1211",
   "post(os.pathFile(\"fundo.txt\").endswith(\"fundo.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1212",
   "post(os.pathFile(\"naoexiste.zzz\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1213",
   "post(os.pathFile(\"sub\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1214",
   "post(os.pathFolder(\"fundo\").endswith(\"fundo\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1215",
   "post(os.pathFolder(\"naoexiste\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1216",
   "post(os.pathFolder(\"sub\").endswith(\"sub\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1217",
   "post(os.run(\"echo oi\", true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1218",
   "post(os.run([\"echo\", \"a b\"], true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1219",
   "post(os.run([\"echo\", \"a; b | c\"], true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1220",
   "post(os.run([\"echo\", \"oi\"], true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1221",
   "post(os.run([\"echo\", \"ok\"], true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1222",
   "post(os.run([\"sh\", \"-c\", \"echo x\"], true))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1223",
   "post(os.size(\"dados.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1224",
   "post(os.size(\"nada.txt\"))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1225",
   "post(p.x + p.y)\n"
   "\n",
-  NULL, "NameError: name 'p' is not defined", -1 },
+  "", "NameError: name 'p' is not defined", 1 },
 { "dif #1226",
   "post(p.x)\n"
   "\n",
-  NULL, "NameError: name 'p' is not defined", -1 },
+  "", "NameError: name 'p' is not defined", 1 },
 { "dif #1227",
   "post(platform())\n"
   "\n",
-  NULL, "NameError: name 'platform' is not defined", -1 },
+  "", "NameError: name 'platform' is not defined", 1 },
 { "dif #1228",
   "post(qrcode.ERROR_CORRECT_L, qrcode.ERROR_CORRECT_M, qrcode.ERROR_CORRECT_Q, qrcode.ERROR_CORRECT_H)\n"
   "\n",
-  NULL, "NameError: name 'qrcode' is not defined", -1 },
+  "", "NameError: name 'qrcode' is not defined", 1 },
 { "dif #1229",
   "post(quebra())\n"
   "\n",
-  NULL, "NameError: name 'quebra' is not defined", -1 },
+  "", "NameError: name 'quebra' is not defined", 1 },
 { "dif #1230",
   "post(r == true)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1231",
   "post(r\"C:\\Users\\test\")\n"
   "\n",
@@ -6121,95 +6121,95 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1232",
   "post(r)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1233",
   "post(r, r == true)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1234",
   "post(r.close())\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1235",
   "post(r.content_type(\"application/json\").status)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1236",
   "post(r.decode())\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1237",
   "post(r.filename, r.size, type(r.content))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1238",
   "post(r.get(\"Content-Type\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1239",
   "post(r.get(\"a\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1240",
   "post(r.get_json(\"a\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1241",
   "post(r.get_json(\"b\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1242",
   "post(r.get_json(\"body\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1243",
   "post(r.get_json(\"ctype\"), r.get_json(\"body\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1244",
   "post(r.get_json(\"method\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1245",
   "post(r.get_json(\"ua\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1246",
   "post(r.get_json(\"ua\").contains(\"PoolScript\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1247",
   "post(r.json())\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1248",
   "post(r.size)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1249",
   "post(r.status == r.status_code)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1250",
   "post(r.status, r.get_json(\"a\"))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1251",
   "post(r.status, r.ok)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1252",
   "post(r.status, r.ok, r.text)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1253",
   "post(r.status_code)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1254",
   "post(r.text)\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1255",
   "post(range(\"2\", \"5\"))\n"
   "\n",
@@ -6221,7 +6221,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1257",
   "post(range())\n"
   "\n",
-  NULL, "TypeError: range() takes at least 1 argument (0 given)", -1 },
+  "", "TypeError: range() takes at least 1 argument (0 given)", 1 },
 { "dif #1258",
   "post(range(-3))\n"
   "\n",
@@ -6237,7 +6237,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1261",
   "post(range(1,2,0))\n"
   "\n",
-  NULL, "ValueError: range() arg 3 must not be zero", -1 },
+  "", "ValueError: range() arg 3 must not be zero", 1 },
 { "dif #1262",
   "post(range(1,4))\n"
   "\n",
@@ -6265,91 +6265,91 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1268",
   "post(regex.findall(\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1269",
   "post(regex.findall(\"(?<=\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1270",
   "post(regex.findall(\"(?<=@)\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1271",
   "post(regex.findall(\"(?P<n>\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1272",
   "post(regex.findall(\"(?i)ab\", \"AB ab Ab aB\"))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1273",
   "post(regex.findall(\"(?m)^\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1274",
   "post(regex.findall(\"(a)(b)\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1275",
   "post(regex.match(\"(?>a)b\", \"ab\"))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1276",
   "post(regex.match(\"(a+)+b\", \"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1277",
   "post(regex.match(\"[a\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1278",
   "post(regex.search(\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1279",
   "post(regex.search(\"(\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1280",
   "post(regex.search(\"(?#coment)abc\", \"xabc\"))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1281",
   "post(regex.search(\"(?<![a-z])cat\", \"bobcat\"))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1282",
   "post(regex.search(\"(?i)caf\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1283",
   "post(regex.search(\"(?i:hello) world\", \"HELLO WORLD\"))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1284",
   "post(regex.search(\"(?i:hello) world\", \"HELLO world\"))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1285",
   "post(regex.search(\"(?s)a.b\", \"a\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1286",
   "post(regex.search(\"end\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1287",
   "post(regex.sub(\"(\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1288",
   "post(regex.sub(\"a\", \"b\", \"aaa\", count=2))\n"
   "\n",
-  NULL, "NameError: name 'regex' is not defined", -1 },
+  "", "NameError: name 'regex' is not defined", 1 },
 { "dif #1289",
   "post(removeEnd(1))\n"
   "\n",
-  NULL, "TypeError: removeEnd() argument 1 must be list, not int", -1 },
+  "", "TypeError: removeEnd() argument 1 must be list, not int", 1 },
 { "dif #1290",
   "post(reversed(\"ab\"))\n"
   "\n",
@@ -6361,7 +6361,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1292",
   "post(reversed(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not reversible", -1 },
+  "", "TypeError: 'int' object is not reversible", 1 },
 { "dif #1293",
   "post(reversed([1,2,3]))\n"
   "\n",
@@ -6373,7 +6373,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1295",
   "post(round(\"a\"))\n"
   "\n",
-  NULL, "TypeError: type str doesn't define __round__ method", -1 },
+  "", "TypeError: type str doesn't define __round__ method", 1 },
 { "dif #1296",
   "post(round(-2.5))\n"
   "\n",
@@ -6421,35 +6421,35 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1307",
   "post(s.get_json(\"x\"))\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #1308",
   "post(s.get_json())\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #1309",
   "post(s.quit())\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #1310",
   "post(s.replace(\"a\", \"b\", count=2))\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #1311",
   "post(self)\n"
   "\n",
-  NULL, "NameError: name 'self' is not defined", -1 },
+  "", "NameError: name 'self' is not defined", 1 },
 { "dif #1312",
   "post(sis.cwd() is str)\n"
   "\n",
-  NULL, "NameError: name 'sis' is not defined", -1 },
+  "", "NameError: name 'sis' is not defined", 1 },
 { "dif #1313",
   "post(soma(1, 2))\n"
   "\n",
-  NULL, "NameError: name 'soma' is not defined", -1 },
+  "", "NameError: name 'soma' is not defined", 1 },
 { "dif #1314",
   "post(somax.soma(2, 3))\n"
   "\n",
-  NULL, "NameError: name 'somax' is not defined", -1 },
+  "", "NameError: name 'somax' is not defined", 1 },
 { "dif #1315",
   "post(sorted(\"bça\"))\n"
   "\n",
@@ -6461,7 +6461,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1317",
   "post(sorted(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #1318",
   "post(sorted([\"b\",\"a\"]))\n"
   "\n",
@@ -6469,7 +6469,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1319",
   "post(sorted([1,\"a\"]))\n"
   "\n",
-  NULL, "TypeError: '<' not supported between instances of 'str' and 'int'", -1 },
+  "", "TypeError: '<' not supported between instances of 'str' and 'int'", 1 },
 { "dif #1320",
   "post(sorted([2.5,1]))\n"
   "\n",
@@ -6513,7 +6513,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1330",
   "post(str())\n"
   "\n",
-  NULL, "TypeError: str() takes exactly one argument (0 given)", -1 },
+  "", "TypeError: str() takes exactly one argument (0 given)", 1 },
 { "dif #1331",
   "post(str(1) + \"x\")\n"
   "\n",
@@ -6525,7 +6525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1333",
   "post(str(1,2))\n"
   "\n",
-  NULL, "TypeError: str() takes exactly one argument (2 given)", -1 },
+  "", "TypeError: str() takes exactly one argument (2 given)", 1 },
 { "dif #1334",
   "post(str(1.5))\n"
   "\n",
@@ -6557,7 +6557,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1341",
   "post(sum(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #1342",
   "post(sum([1, 2, 3]))\n"
   "\n",
@@ -6569,7 +6569,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1344",
   "post(sum([1,\"a\"]))\n"
   "\n",
-  NULL, "TypeError: unsupported operand type(s) for +: 'int' and 'str'", -1 },
+  "", "TypeError: unsupported operand type(s) for +: 'int' and 'str'", 1 },
 { "dif #1345",
   "post(sum([1,2,3,4,5]))\n"
   "\n",
@@ -6605,35 +6605,35 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1353",
   "post(sys.RelativePath(\"nao_existe_xyz_123\"))\n"
   "\n",
-  NULL, "NameError: name 'sys' is not defined", -1 },
+  "", "NameError: name 'sys' is not defined", 1 },
 { "dif #1354",
   "post(sys.argv[0])\n"
   "\n",
-  NULL, "NameError: name 'sys' is not defined", -1 },
+  "", "NameError: name 'sys' is not defined", 1 },
 { "dif #1355",
   "post(sys.argv[1])\n"
   "\n",
-  NULL, "NameError: name 'sys' is not defined", -1 },
+  "", "NameError: name 'sys' is not defined", 1 },
 { "dif #1356",
   "post(sys.argv[99])\n"
   "\n",
-  NULL, "NameError: name 'sys' is not defined", -1 },
+  "", "NameError: name 'sys' is not defined", 1 },
 { "dif #1357",
   "post(sys.platform())\n"
   "\n",
-  NULL, "NameError: name 'sys' is not defined", -1 },
+  "", "NameError: name 'sys' is not defined", 1 },
 { "dif #1358",
   "post(t is dict)\n"
   "\n",
-  NULL, "NameError: name 't' is not defined", -1 },
+  "", "NameError: name 't' is not defined", 1 },
 { "dif #1359",
   "post(t is tup)\n"
   "\n",
-  NULL, "NameError: name 't' is not defined", -1 },
+  "", "NameError: name 't' is not defined", 1 },
 { "dif #1360",
   "post(t)\n"
   "\n",
-  NULL, "NameError: name 't' is not defined", -1 },
+  "", "NameError: name 't' is not defined", 1 },
 { "dif #1361",
   "post(to int)\n"
   "\n",
@@ -6645,11 +6645,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1363",
   "post(total())\n"
   "\n",
-  NULL, "NameError: name 'total' is not defined", -1 },
+  "", "NameError: name 'total' is not defined", 1 },
 { "dif #1364",
   "post(total, len(guardados))\n"
   "\n",
-  NULL, "NameError: name 'total' is not defined", -1 },
+  "", "NameError: name 'total' is not defined", 1 },
 { "dif #1365",
   "post(true * 5, false * 5)\n"
   "\n",
@@ -6685,11 +6685,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1373",
   "post(true.isdigit())\n"
   "\n",
-  NULL, "AttributeError: 'bool' object has no attribute 'isdigit'", -1 },
+  "", "AttributeError: 'bool' object has no attribute 'isdigit'", 1 },
 { "dif #1374",
   "post(type(\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1375",
   "post(type(\"a\"))\n"
   "\n",
@@ -6709,7 +6709,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1379",
   "post(type(Cliente()))\n"
   "\n",
-  NULL, "NameError: name 'Cliente' is not defined", -1 },
+  "", "NameError: name 'Cliente' is not defined", 1 },
 { "dif #1380",
   "post(type(Null))\n"
   "\n",
@@ -6733,7 +6733,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1385",
   "post(type(a))\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1386",
   "post(type(abs))\n"
   "\n",
@@ -6741,59 +6741,59 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1387",
   "post(type(app))\n"
   "\n",
-  NULL, "NameError: name 'app' is not defined", -1 },
+  "", "NameError: name 'app' is not defined", 1 },
 { "dif #1388",
   "post(type(app.\n"
   "\n",
-  NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
+  "", "SyntaxError: esperado nome do membro apos '.'", 2 },
 { "dif #1389",
   "post(type(b))\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #1390",
   "post(type(c))\n"
   "\n",
-  NULL, "NameError: name 'c' is not defined", -1 },
+  "", "NameError: name 'c' is not defined", 1 },
 { "dif #1391",
   "post(type(e))\n"
   "\n",
-  NULL, "NameError: name 'e' is not defined", -1 },
+  "", "NameError: name 'e' is not defined", 1 },
 { "dif #1392",
   "post(type(f), f.name, f.ext, f.size > 0)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #1393",
   "post(type(f), f.name, f.size > 0)\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #1394",
   "post(type(form), type(e1), type(bt))\n"
   "\n",
-  NULL, "NameError: name 'form' is not defined", -1 },
+  "", "NameError: name 'form' is not defined", 1 },
 { "dif #1395",
   "post(type(i))\n"
   "\n",
-  NULL, "NameError: name 'i' is not defined", -1 },
+  "", "NameError: name 'i' is not defined", 1 },
 { "dif #1396",
   "post(type(k))\n"
   "\n",
-  NULL, "NameError: name 'k' is not defined", -1 },
+  "", "NameError: name 'k' is not defined", 1 },
 { "dif #1397",
   "post(type(os.environ()))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1398",
   "post(type(os.loadFile(\"cfg.json\")))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1399",
   "post(type(os.loadFile(\"img.png\")))\n"
   "\n",
-  NULL, "NameError: name 'os' is not defined", -1 },
+  "", "NameError: name 'os' is not defined", 1 },
 { "dif #1400",
   "post(type(r))\n"
   "\n",
-  NULL, "NameError: name 'r' is not defined", -1 },
+  "", "NameError: name 'r' is not defined", 1 },
 { "dif #1401",
   "post(type(str))\n"
   "\n",
@@ -6805,27 +6805,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1403",
   "post(util())\n"
   "\n",
-  NULL, "NameError: name 'util' is not defined", -1 },
+  "", "NameError: name 'util' is not defined", 1 },
 { "dif #1404",
   "post(viveu)\n"
   "\n",
-  NULL, "NameError: name 'viveu' is not defined", -1 },
+  "", "NameError: name 'viveu' is not defined", 1 },
 { "dif #1405",
   "post(x is int)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #1406",
   "post(x)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #1407",
   "post(x, type(x))\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #1408",
   "post(y)\n"
   "\n",
-  NULL, "NameError: name 'y' is not defined", -1 },
+  "", "NameError: name 'y' is not defined", 1 },
 { "dif #1409",
   "post(zip())\n"
   "\n",
@@ -6833,7 +6833,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1410",
   "post(zip(1))\n"
   "\n",
-  NULL, "TypeError: 'int' object is not iterable", -1 },
+  "", "TypeError: 'int' object is not iterable", 1 },
 { "dif #1411",
   "post(zip([1,2,3],[\"a\"]))\n"
   "\n",
@@ -6853,27 +6853,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1415",
   "post(zzz)\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1416",
   "post(zzz.campo)\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1417",
   "post(zzz.metodo())\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1418",
   "post(zzz[0])\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1419",
   "post({ \"a\": zzz })\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1420",
   "post({\"a\": 1}[\"z\"])\n"
   "\n",
-  NULL, "KeyError: 'z'", -1 },
+  "", "KeyError: 'z'", 1 },
 { "dif #1421",
   "post({\"a\": Null})\n"
   "\n",
@@ -6897,11 +6897,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1426",
   "post({\"a\":1}.append(1))\n"
   "\n",
-  NULL, "KeyError: 'append'", -1 },
+  "", "KeyError: 'append'", 1 },
 { "dif #1427",
   "post({\"a\":1}.pop(\"z\"))\n"
   "\n",
-  NULL, "KeyError: 'z'", -1 },
+  "", "KeyError: 'z'", 1 },
 { "dif #1428",
   "post({\"a\":1}.type())\n"
   "\n",
@@ -6909,11 +6909,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1429",
   "post({\"a\":1}.update([1]))\n"
   "\n",
-  NULL, "TypeError: 'list' object is not iterable", -1 },
+  "", "TypeError: 'list' object is not iterable", 1 },
 { "dif #1430",
   "post({\"a\":1}[\"z\"])\n"
   "\n",
-  NULL, "KeyError: 'z'", -1 },
+  "", "KeyError: 'z'", 1 },
 { "dif #1431",
   "post({\"b\":1,\"a\":2})\n"
   "\n",
@@ -6941,7 +6941,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1437",
   "post(~\"x\")\n"
   "\n",
-  NULL, "TypeError: bad operand type for unary ~: 'str'", -1 },
+  "", "TypeError: bad operand type for unary ~: 'str'", 1 },
 { "dif #1438",
   "post(~0)\n"
   "\n",
@@ -6953,7 +6953,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1440",
   "post(~True)\n"
   "\n",
-  NULL, "TypeError: bad operand type for unary ~: 'bool'", -1 },
+  "", "TypeError: bad operand type for unary ~: 'bool'", 1 },
 { "dif #1441",
   "private async reaction foo() {\n"
   "    return 9\n"
@@ -7031,15 +7031,15 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1451",
   "raise NetworkError(\"propaga limpo\")\n"
   "\n",
-  NULL, "NetworkError: propaga limpo", -1 },
+  "", "NetworkError: propaga limpo", 1 },
 { "dif #1452",
   "raise ValueError(\"x\")\n"
   "\n",
-  NULL, "ValueError: x", -1 },
+  "", "ValueError: x", 1 },
 { "dif #1453",
   "raise ValueError(zzz)\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1454",
   "reaction conta(n) {\n"
   "    int i = 0\n"
@@ -7088,7 +7088,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "reaction f(a, b=0) { return a }\n"
   "post(f({\"a\": 1} {\"b\": 2}, b=9))\n"
   "\n",
-  NULL, "SyntaxError: faltou ',' antes do dicionario '{' — cada argumento precisa de vi", -1 },
+  "", "SyntaxError: faltou ',' antes do dicionario '{' — cada argumento precisa de vi", 2 },
 { "dif #1462",
   "reaction f(a, b=10, c=20) { return (a, b, c) }\n"
   "post(f(1))\n"
@@ -7105,7 +7105,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "reaction f(x) { return x }\n"
   "post(f({\"a\": 1} {\"b\": 2}))\n"
   "\n",
-  NULL, "SyntaxError: faltou ',' antes do dicionario '{' — cada argumento precisa de vi", -1 },
+  "", "SyntaxError: faltou ',' antes do dicionario '{' — cada argumento precisa de vi", 2 },
 { "dif #1465",
   "reaction f(x) { return x }\n"
   "post(f({\"nome\": \"valor\"}))\n"
@@ -7238,21 +7238,21 @@ const Caso CASOS_DIFERENCIAL[] = {
   "while (i < 120000) {\n"
   " \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1487",
   "str lixo = \"\"\n"
   "int i = 0\n"
   "while (i < 120000) {\n"
   " \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1488",
   "str lixo = \"\"\n"
   "int i = 0\n"
   "while (i < 150000) {\n"
   " \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1489",
   "str nome = \"Pool\"\n"
   "\n",
@@ -7265,7 +7265,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1491",
   "str nome = 10\n"
   "\n",
-  NULL, "AttributedValueError: variável nome esperava str", -1 },
+  "", "AttributedValueError: variável nome esperava str", 1 },
 { "dif #1492",
   "str reaction precisa(v) { return v }\n"
   "\n",
@@ -7273,7 +7273,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1493",
   "str ruim = 123\n"
   "\n",
-  NULL, "AttributedValueError: variável ruim esperava str", -1 },
+  "", "AttributedValueError: variável ruim esperava str", 1 },
 { "dif #1494",
   "str s = \"\"\n"
   "for each i in range(2000) { s = s + \"ab\" }\n"
@@ -7324,7 +7324,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1502",
   "str x = 5\n"
   "\n",
-  NULL, "AttributedValueError: variável x esperava str", -1 },
+  "", "AttributedValueError: variável x esperava str", 1 },
 { "dif #1503",
   "t = \"\".maketrans(\"ab\",\"xy\")\n"
   "post(\"abc\".translate(t))\n"
@@ -7352,7 +7352,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "t = (1, 2, 3)\n"
   "post(t.\n"
   "\n",
-  NULL, "SyntaxError: esperado nome do membro apos '.'", -1 },
+  "", "SyntaxError: esperado nome do membro apos '.'", 2 },
 { "dif #1508",
   "t = (1, 2, 3)\n"
   "try { t.append(9) } catch (e) { post(\"recusou\") }\n"
@@ -7414,7 +7414,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1517",
   "try {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1518",
   "try {\n"
   "    post(\"a\")\n"
@@ -7515,7 +7515,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "fim", "ZeroDivisionError: division by zero", 1 },
 { "dif #1527",
   "try {\n"
   "    x = 1/0\n"
@@ -7525,7 +7525,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "fim", "ZeroDivisionError: division by zero", 1 },
 { "dif #1528",
   "try {\n"
   "    x = 10 / 0\n"
@@ -7538,7 +7538,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "try {\n"
   "  using open(r\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1530",
   "try {\n"
   " post(1)\n"
@@ -7564,7 +7564,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(2)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #1533",
   "try {\n"
   " post(1)\n"
@@ -7590,7 +7590,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(2)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'return' e palavra reservada da linguagem e nao pode ser usada como", -1 },
+  "", "SyntaxError: 'return' e palavra reservada da linguagem e nao pode ser usada como", 2 },
 { "dif #1536",
   "try {\n"
   " post(1/0)\n"
@@ -7712,7 +7712,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1550",
   "try { c.cursor().execute(\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1551",
   "try { f.save(\"naoexiste/x.png\") } catch (e) { post(\"erro\") }\n"
   "\n",
@@ -7768,7 +7768,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1564",
   "try { x = 1/0 } catch (KeyError e) { post(\"k\") }\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #1565",
   "try { x = 1/0 } catch (ZeroDivisionError e) { post(\"s\") } catch (e) { post(\"g\") }\n"
   "\n",
@@ -7806,7 +7806,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"pegou\")\n"
   "}\n"
   "\n",
-  NULL, "ValueError: x (linha 2)", -1 },
+  "", "ValueError: x (linha 2)", 1 },
 { "dif #1570",
   "try {\n"
   "    raise ValueError(\"x\")\n"
@@ -7823,7 +7823,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(e)\n"
   "\n",
-  NULL, "NameError: name 'e' is not defined", -1 },
+  "1", "NameError: name 'e' is not defined", 1 },
 { "dif #1572",
   "try {\n"
   "    raise ValueError(\"x\")\n"
@@ -7839,7 +7839,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    raise ValueError(f\"Erro: {e}\")\n"
   "}\n"
   "\n",
-  NULL, "ValueError: Erro: x (linha 2)", -1 },
+  "", "ValueError: Erro: x (linha 2)", 1 },
 { "dif #1574",
   "try {\n"
   "    t = 1\n"
@@ -7848,7 +7848,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(t)\n"
   "\n",
-  NULL, "NameError: name 't' is not defined", -1 },
+  "", "NameError: name 't' is not defined", 1 },
 { "dif #1575",
   "try {\n"
   "    x=1/0\n"
@@ -7860,7 +7860,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1576",
   "tup = 5\n"
   "\n",
-  NULL, "SyntaxError: 'tup' e palavra reservada da linguagem e nao pode ser usada como no", -1 },
+  "", "SyntaxError: 'tup' e palavra reservada da linguagem e nao pode ser usada como no", 2 },
 { "dif #1577",
   "tup t = (1, 2)\n"
   "\n",
@@ -7868,23 +7868,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1578",
   "using R() as r:\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1579",
   "using open(\"saida.txt\", mode=\"w\") as arq:\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1580",
   "using open(\"x\") as f {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "FileNotFoundError: [Errno 2] No such file or directory: 'x'", -1 },
+  "", "FileNotFoundError: [Errno 2] No such file or directory: 'x'", 1 },
 { "dif #1581",
   "using open(\"x\") as f {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "FileNotFoundError: [Errno 2] No such file or directory: 'x'", -1 },
+  "", "FileNotFoundError: [Errno 2] No such file or directory: 'x'", 1 },
 { "dif #1582",
   "using open(\"x.txt\") as f {\n"
   "    post(f.read(3))\n"
@@ -7892,19 +7892,19 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(f.read())\n"
   "}\n"
   "\n",
-  NULL, "FileNotFoundError: [Errno 2] No such file or directory: 'x.txt'", -1 },
+  "", "FileNotFoundError: [Errno 2] No such file or directory: 'x.txt'", 1 },
 { "dif #1583",
   "using open(\"x.txt\", argento=\"w\") as f:\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1584",
   "using open(r\"\n"
   "\n",
-  NULL, "SyntaxError: string nao fechada antes da quebra de linha", -1 },
+  "", "SyntaxError: string nao fechada antes da quebra de linha", 2 },
 { "dif #1585",
   "using sqlite3.connect(\"u.db\") as c {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1586",
   "viva = [111, 222, 333]\n"
   "str lixo = \"\"\n"
@@ -7912,7 +7912,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "while (i < 120000) {\n"
   " \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1587",
   "vivo = {\"chave\": \"VALOR_INTACTO\"}\n"
   "str lixo = \"\"\n"
@@ -7920,37 +7920,37 @@ const Caso CASOS_DIFERENCIAL[] = {
   "while (i < 120000) {\n"
   " \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1588",
   "while (x) {\n"
   " break\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #1589",
   "while (x) {\n"
   " continue\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #1590",
   "while (x) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #1591",
   "while += 1\n"
   "\n",
-  NULL, "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", -1 },
+  "", "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", 2 },
 { "dif #1592",
   "while = 1\n"
   "\n",
-  NULL, "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", -1 },
+  "", "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", 2 },
 { "dif #1593",
   "while = 5\n"
   "\n",
-  NULL, "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", -1 },
+  "", "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", 2 },
 { "dif #1594",
   "x = \"sim\" if 5 > 3 else \"nao\"\n"
   "\n",
@@ -8206,7 +8206,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = Null > 0\n"
   "post(x)\n"
   "\n",
-  NULL, "TypeError: '>' not supported between instances of 'Null' and 'int'", -1 },
+  "", "TypeError: '>' not supported between instances of 'Null' and 'int'", 1 },
 { "dif #1628",
   "x = Parsing.floating(\"1,5\")\n"
   "post(x * 2)\n"
@@ -8231,27 +8231,27 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1631",
   "x = a is bool\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1632",
   "x = a is flo\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1633",
   "x = a is int\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1634",
   "x = a is str\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1635",
   "x = count each int(7) in nums\n"
   "\n",
-  NULL, "NameError: name 'nums' is not defined", -1 },
+  "", "NameError: name 'nums' is not defined", 1 },
 { "dif #1636",
   "x = int(y)\n"
   "\n",
-  NULL, "NameError: name 'y' is not defined", -1 },
+  "", "NameError: name 'y' is not defined", 1 },
 { "dif #1637",
   "x=\"a\"\n"
   "post(x is str)\n"
@@ -8370,53 +8370,53 @@ const Caso CASOS_DIFERENCIAL[] = {
   "xlsx volta tipado (int/float/null), csv tudo string, xml aninhado,\n"
   "    html limpo, json decodificado.\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1658",
   "y = 1 if a else 2 if b else 3\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1659",
   "} catch (NetworkError e) { post(\"rede\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1660",
   "} catch (TypeError e) { post(\"tipo certo\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1661",
   "} catch (TimeoutError e) { post(\"expirou:\", e) }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1662",
   "} catch (e) { post(\"erro sem commit\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1663",
   "} catch (e) { post(\"estourou\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1664",
   "} catch (e) { post(\"fora\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1665",
   "} catch (e) { post(\"sem servidor\") }\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1666",
   "action f(a) {\n"
   "    return a\n"
   "}\n"
   "post(f(a=zzz))\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1667",
   "action f(a, b) {\n"
   " return a\n"
   "}\n"
   "post(f(1))\n"
   "\n",
-  NULL, "TypeError: f() missing 1 required positional argument: 'b'", -1 },
+  "", "TypeError: f() missing 1 required positional argument: 'b'", 1 },
 { "dif #1668",
   "action f(a, b) {\n"
   " return a + b\n"
@@ -8458,7 +8458,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1674",
   "action f(a, b):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1675",
   "action f(a, b,) { return a }\n"
   "\n",
@@ -8550,21 +8550,21 @@ const Caso CASOS_DIFERENCIAL[] = {
   " return 1\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #1688",
   "action f(base) { return 1 }\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #1689",
   "action f(if) {\n"
   " return 1\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'if' e palavra reservada da linguagem e nao pode ser usada como nom", -1 },
+  "", "SyntaxError: 'if' e palavra reservada da linguagem e nao pode ser usada como nom", 2 },
 { "dif #1690",
   "action f(n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1691",
   "action f(n) {\n"
   " if (n < 2) {\n"
@@ -8598,7 +8598,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1695",
   "action f(s) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1696",
   "action f(s=\"oi\") {\n"
   " return s\n"
@@ -8616,7 +8616,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1698",
   "action f(x) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1699",
   "action f(x) {\n"
   " return x\n"
@@ -8645,7 +8645,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "action f(x:\n"
   "    return x\n"
   "\n",
-  NULL, "SyntaxError: faltou ')' na declaracao da action", -1 },
+  "", "SyntaxError: faltou ')' na declaracao da action", 2 },
 { "dif #1703",
   "action fib(n) {\n"
   " if (n < 2) {\n"
@@ -8689,7 +8689,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1707",
   "action g() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1708",
   "action g() {\n"
   "    str a = \"PRIMEIRA\"\n"
@@ -8698,7 +8698,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    while (i < 120000) {\n"
   "        \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1709",
   "action g() {\n"
   " a = 10\n"
@@ -8852,14 +8852,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x=g()\n"
   "post(x + 1)\n"
   "\n",
-  NULL, "TypeError: unsupported operand type(s) for +: 'generator' and 'int'", -1 },
+  "", "TypeError: unsupported operand type(s) for +: 'generator' and 'int'", 1 },
 { "dif #1725",
   "action g() {\n"
   " yield 1/0\n"
   "}\n"
   "post(list(g()))\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #1726",
   "action g() {\n"
   " yield [1,2]\n"
@@ -8871,7 +8871,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1727",
   "action g(a = Null) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1728",
   "action g(n) {\n"
   " i=0\n"
@@ -8907,7 +8907,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1732",
   "action g(x) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1733",
   "action gen() {\n"
   "    yield 1\n"
@@ -8968,7 +8968,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1739",
   "action handler():\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1740",
   "action logger() { return \"logIn do nivel acima\" }\n"
   "\n",
@@ -9008,7 +9008,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1746",
   "action oi() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1747",
   "action oi() {\n"
   "    return \"do sub\"\n"
@@ -9018,7 +9018,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1748",
   "action ok() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1749",
   "action p(x) {\n"
   " return False\n"
@@ -9078,11 +9078,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1757",
   "action q() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1758",
   "action quebra() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1759",
   "action quem() { return \"ARQUIVO_LOCAL\" }\n"
   "\n",
@@ -9113,7 +9113,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(r(1))\n"
   "\n",
-  NULL, "RecursionError: maximum recursion depth exceeded", -1 },
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
 { "dif #1764",
   "action r(x) {\n"
   " if x <= 1 {\n"
@@ -9136,7 +9136,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1766",
   "action rotulo(n) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1767",
   "action s(x) {\n"
   " return x + 1\n"
@@ -9155,7 +9155,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1769",
   "action soma(a, b) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1770",
   "action soma(a, b) {\n"
   "    return a + b\n"
@@ -9179,7 +9179,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1773",
   "action stringify(x) {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1774",
   "action sum(a, b) { return a + b }\n"
   "\n",
@@ -9192,7 +9192,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1776",
   "action total() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1777",
   "action total() {\n"
   "    nums = [7, 1, 7, 2, 7]\n"
@@ -9210,7 +9210,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    while (i < 120000) {\n"
   "        \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1779",
   "action u(x) {\n"
   " return x.upper()\n"
@@ -9225,7 +9225,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1781",
   "action while() { return 1 }\n"
   "\n",
-  NULL, "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", -1 },
+  "", "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", 2 },
 { "dif #1782",
   "async action dobra(n) {\n"
   "    return n * 2\n"
@@ -9242,7 +9242,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(await f())\n"
   "\n",
-  NULL, "ImportError: No module named 'mymod'", -1 },
+  "", "ImportError: No module named 'mymod'", 1 },
 { "dif #1784",
   "async action f() {\n"
   " return 1\n"
@@ -9273,7 +9273,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "await falha()\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #1789",
   "async action falha() {\n"
   "    return 1 / 0\n"
@@ -9281,7 +9281,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f = falha()\n"
   "await f\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #1790",
   "async action fat(n) {\n"
   "    if (n <= 1) {\n"
@@ -9310,7 +9310,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "fs = [ok(1), falha(), ok(3)]\n"
   "await fs\n"
   "\n",
-  NULL, "ZeroDivisionError: division by zero", -1 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #1793",
   "async action precisa(v) { return v }\n"
   "\n",
@@ -9329,7 +9329,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "f = valor()\n"
   "post(f.result())\n"
   "\n",
-  NULL, "AttributeError: 'future' object has no attribute 'result'", -1 },
+  "", "AttributeError: 'future' object has no attribute 'result'", 1 },
 { "dif #1796",
   "async action vazio() {\n"
   "    return\n"
@@ -9456,7 +9456,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = \"ab\".encode()\n"
   "post(b[-9])\n"
   "\n",
-  NULL, "IndexError: index out of range", -1 },
+  "", "IndexError: index out of range", 1 },
 { "dif #1819",
   "b = \"ab\".encode()\n"
   "post(b[0])\n"
@@ -9466,7 +9466,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = \"ab\".encode()\n"
   "post(b[9])\n"
   "\n",
-  NULL, "IndexError: index out of range", -1 },
+  "", "IndexError: index out of range", 1 },
 { "dif #1821",
   "b = \"ab\".encode()\n"
   "post(len(b))\n"
@@ -9550,11 +9550,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1838",
   "bool x = 1\n"
   "\n",
-  NULL, "AttributedValueError: variável x esperava bool", -1 },
+  "", "AttributedValueError: variável x esperava bool", 1 },
 { "dif #1839",
   "bool x = 5\n"
   "\n",
-  NULL, "AttributedValueError: variável x esperava bool", -1 },
+  "", "AttributedValueError: variável x esperava bool", 1 },
 { "dif #1840",
   "bool x = true\n"
   "\n",
@@ -9562,7 +9562,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1841",
   "builtin post vazou: \n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #1842",
   "c = \"ola\".encode()\n"
   "post(c[0:2], c[-1:], len(c[:]))\n"
@@ -9583,28 +9583,28 @@ const Caso CASOS_DIFERENCIAL[] = {
   "c = Conta()\n"
   "post(c._log())\n"
   "\n",
-  NULL, "NameError: name 'Conta' is not defined", -1 },
+  "", "NameError: name 'Conta' is not defined", 1 },
 { "dif #1845",
   "c = Conta()\n"
   "post(c.deposita(100))\n"
   "\n",
-  NULL, "NameError: name 'Conta' is not defined", -1 },
+  "", "NameError: name 'Conta' is not defined", 1 },
 { "dif #1846",
   "c = Conta()\n"
   "post(c.deposita(100))\n"
   "post(c.dono)\n"
   "\n",
-  NULL, "NameError: name 'Conta' is not defined", -1 },
+  "", "NameError: name 'Conta' is not defined", 1 },
 { "dif #1847",
   "c = Conta()\n"
   "post(c.dono)\n"
   "\n",
-  NULL, "NameError: name 'Conta' is not defined", -1 },
+  "", "NameError: name 'Conta' is not defined", 1 },
 { "dif #1848",
   "c = Conta()\n"
   "post(c.saldo)\n"
   "\n",
-  NULL, "NameError: name 'Conta' is not defined", -1 },
+  "", "NameError: name 'Conta' is not defined", 1 },
 { "dif #1849",
   "chamadas = 0\n"
   "action f() {\n"
@@ -9640,17 +9640,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "b = B()\n"
   "post(map([1, 2, 3], b.m))\n"
   "\n",
-  NULL, "RuntimeError: action 'm' dentro de Entity deve ter 'self' como primeiro parâmet", -1 },
+  "", "RuntimeError: action 'm' dentro de Entity deve ter 'self' como primeiro parâmet", 1 },
 { "dif #1853",
   "class B() { reaction m(x) { return x } }\n"
   "post(B().m(x={\"nome\": \"valor\"}))\n"
   "\n",
-  NULL, "RuntimeError: action 'm' dentro de Entity deve ter 'self' como primeiro parâmet", -1 },
+  "", "RuntimeError: action 'm' dentro de Entity deve ter 'self' como primeiro parâmet", 1 },
 { "dif #1854",
   "class B() { reaction m(x) { return x } }\n"
   "post(B().m({\"nome\": \"valor\"}))\n"
   "\n",
-  NULL, "RuntimeError: action 'm' dentro de Entity deve ter 'self' como primeiro parâmet", -1 },
+  "", "RuntimeError: action 'm' dentro de Entity deve ter 'self' como primeiro parâmet", 1 },
 { "dif #1855",
   "class C() {\n"
   "    @static\n"
@@ -9694,7 +9694,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(C().f(null))\n"
   "\n",
-  NULL, "RuntimeError: @NonNull: parametro 'a' em 'f' nao pode ser Null", -1 },
+  "", "RuntimeError: @NonNull: parametro 'a' em 'f' nao pode ser Null", 1 },
 { "dif #1860",
   "class C() {\n"
   "    @static\n"
@@ -9704,7 +9704,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(C.m())\n"
   "\n",
-  NULL, "NameError: name 'self' is not defined", -1 },
+  "", "NameError: name 'self' is not defined", 1 },
 { "dif #1861",
   "class P() {\n"
   " action __init__(self, n) {\n"
@@ -9768,23 +9768,23 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1868",
   "count each int in f() {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1869",
   "count each int in post {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1870",
   "count each int(7) in nums {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'nums' is not defined", -1 },
+  "", "NameError: name 'nums' is not defined", 1 },
 { "dif #1871",
   "count each int(7) in nums {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'nums' is not defined", -1 },
+  "", "NameError: name 'nums' is not defined", 1 },
 { "dif #1872",
   "d = { \"a\": 1 }\n"
   "d[\"eu\"] = d\n"
@@ -9795,17 +9795,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "d = { \"a\": 1 }\n"
   "post(d.value(\"a\"))\n"
   "\n",
-  NULL, "TypeError: value() takes no arguments (1 given)", -1 },
+  "", "TypeError: value() takes no arguments (1 given)", 1 },
 { "dif #1874",
   "d = { \"a\": 1 }\n"
   "post(d.z)\n"
   "\n",
-  NULL, "KeyError: 'z'", -1 },
+  "", "KeyError: 'z'", 1 },
 { "dif #1875",
   "d = { \"a\": 1 }\n"
   "post(d[\"z\"])\n"
   "\n",
-  NULL, "KeyError: 'z'", -1 },
+  "", "KeyError: 'z'", 1 },
 { "dif #1876",
   "d = { \"a\": 1, \"b\": 2, \"c\": 3 }\n"
   "soma = 0\n"
@@ -9876,7 +9876,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(k)\n"
   "}\n"
   "\n",
-  NULL, "TypeError: 'dict' object is not iterable", -1 },
+  "", "TypeError: 'dict' object is not iterable", 1 },
 { "dif #1887",
   "d = {\"a\": 1}\n"
   "match d {\n"
@@ -9911,7 +9911,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "while (i < 120000) {\n"
   " \n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1892",
   "d = {\"x\": [1, 2], \"y\": {\"z\": 9}}\n"
   "post(d[\"x\"][1])\n"
@@ -10152,7 +10152,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1928",
   "dict = 5\n"
   "\n",
-  NULL, "SyntaxError: 'dict' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'dict' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #1929",
   "dict d = {\"a\": 1}\n"
   "\n",
@@ -10250,7 +10250,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1948",
   "flo x = \"abc\"\n"
   "\n",
-  NULL, "ConversionError: não foi possível converter 'abc' para flo (declarado como 'fl", -1 },
+  "", "ConversionError: não foi possível converter 'abc' para flo (declarado como 'flo x')", 1 },
 { "dif #1949",
   "flo x = 5\n"
   "\n",
@@ -10265,13 +10265,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #1952",
   "for each base in l {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #1953",
   "for each c in \"abc\" {\n"
   " post(c)\n"
@@ -10287,7 +10287,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1955",
   "for each c in \"ção\" {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1956",
   "for each i in [\"a\",\"b\",\"c\"] {\n"
   "    post(i)\n"
@@ -10332,14 +10332,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(i)\n"
   "\n",
-  NULL, "NameError: name 'i' is not defined", -1 },
+  "1\n2", "NameError: name 'i' is not defined", 1 },
 { "dif #1961",
   "for each i in [1, 2] {\n"
   "    y = i\n"
   "}\n"
   "post(y)\n"
   "\n",
-  NULL, "NameError: name 'y' is not defined", -1 },
+  "", "NameError: name 'y' is not defined", 1 },
 { "dif #1962",
   "for each i in [1,2,3,4] {\n"
   " if (i == 2) {\n"
@@ -10382,7 +10382,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1967",
   "for each i in [1,2,3]:\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1968",
   "for each i in [1,2] {\n"
   " for each j in [1,2,3] {\n"
@@ -10442,25 +10442,25 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(i)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'l' is not defined", -1 },
+  "", "NameError: name 'l' is not defined", 1 },
 { "dif #1975",
   "for each i in range(120000):\n"
   "\n",
-  NULL, "SyntaxError: bloco com ':' nao existe mais", -1 },
+  "", "SyntaxError: bloco com ':' nao existe mais", 2 },
 { "dif #1976",
   "for each i in range(25) { b = 1103515245 * b + 12345 }\n"
   "\n",
-  NULL, "NameError: name 'b' is not defined", -1 },
+  "", "NameError: name 'b' is not defined", 1 },
 { "dif #1977",
   "for each i in range(40) { a = a * 10 }\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #1978",
   "for each i in zzz {\n"
   "    post(i)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #1979",
   "for each par in [[1,2],[3,4]] {\n"
   " post(par[0])\n"
@@ -10472,7 +10472,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", -1 },
+  "", "SyntaxError: 'while' e palavra reservada da linguagem e nao pode ser usada como ", 2 },
 { "dif #1981",
   "for each x in (1,2,3) {\n"
   " post(x)\n"
@@ -10493,55 +10493,55 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #1984",
   "for each x in a {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #1985",
   "for each x in f(\"a\" {b}) {\n"
   " post(x)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'f' is not defined", -1 },
+  "", "NameError: name 'f' is not defined", 1 },
 { "dif #1986",
   "for each z in [1] {\n"
   "    post(z)\n"
   "}\n"
   "post(z)\n"
   "\n",
-  NULL, "NameError: name 'z' is not defined", -1 },
+  "1", "NameError: name 'z' is not defined", 1 },
 { "dif #1987",
   "from ..logIn import chave\n"
   "action run() { return chave }\n"
   "\n",
-  NULL, "ImportError: No module named '..logIn'", -1 },
+  "", "ImportError: No module named '..logIn'", 1 },
 { "dif #1988",
   "from ..logIn import logger\n"
   "action run() { return logger() }\n"
   "\n",
-  NULL, "ImportError: No module named '..logIn'", -1 },
+  "", "ImportError: No module named '..logIn'", 1 },
 { "dif #1989",
   "from .classes.user_struct import person_data\n"
   "action logger() { return person_data }\n"
   "\n",
-  NULL, "ImportError: No module named '.classes.user_struct'", -1 },
+  "", "ImportError: No module named '.classes.user_struct'", 1 },
 { "dif #1990",
   "from .nao_existe import x\n"
   "post(x)\n"
   "\n",
-  NULL, "ImportError: No module named '.nao_existe'", -1 },
+  "", "ImportError: No module named '.nao_existe'", 1 },
 { "dif #1991",
   "from .sibling import valor\n"
   "action pega() { return valor }\n"
   "\n",
-  NULL, "ImportError: No module named '.sibling'", -1 },
+  "", "ImportError: No module named '.sibling'", 1 },
 { "dif #1992",
   "from .sibling import valor\n"
   "post(valor)\n"
   "\n",
-  NULL, "ImportError: No module named '.sibling'", -1 },
+  "", "ImportError: No module named '.sibling'", 1 },
 { "dif #1993",
   "from controll_api.logIn import logger\n"
   "post(logger())\n"
   "\n",
-  NULL, "ImportError: No module named 'controll_api.logIn'", -1 },
+  "", "ImportError: No module named 'controll_api.logIn'", 1 },
 { "dif #1994",
   "from datasentity import dataentity, asdict, astuple, aslist\n"
   "@dataentity\n"
@@ -10614,17 +10614,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict())\n"
   "\n",
-  NULL, "TypeError: asdict() takes exactly one argument (0 given)", -1 },
+  "", "TypeError: asdict() takes exactly one argument (0 given)", 1 },
 { "dif #2001",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(asdict(1))\n"
   "\n",
-  NULL, "TypeError: asdict() argument 1 must be Entity, not int", -1 },
+  "", "TypeError: asdict() argument 1 must be Entity, not int", 1 },
 { "dif #2002",
   "from datasentity import dataentity, asdict, astuple, aslist, asjson\n"
   "post(astuple(\"x\"))\n"
   "\n",
-  NULL, "TypeError: astuple() argument 1 must be Entity, not str", -1 },
+  "", "TypeError: astuple() argument 1 must be Entity, not str", 1 },
 { "dif #2003",
   "from date import hora\n"
   "post(hora(2))\n"
@@ -10643,7 +10643,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from flask import Flask\n"
   "Flask(\"app\")\n"
   "\n",
-  NULL, "NotImplemented: esta funcao ainda nao esta implementada nesta versao da PoolScri", -1 },
+  "", "NotImplemented: esta funcao ainda nao esta implementada nesta versao da PoolScri", 1 },
 { "dif #2006",
   "from json import parse\n"
   "data = parse(\"{\\\"name\\\": \\\"Pool\\\"}\")\n"
@@ -10670,23 +10670,23 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from lib import f\n"
   "post(f())\n"
   "\n",
-  NULL, "ImportError: No module named 'lib'", -1 },
+  "", "ImportError: No module named 'lib'", 1 },
 { "dif #2011",
   "from pkg.deep.worker import run\n"
   "post(run())\n"
   "\n",
-  NULL, "ImportError: No module named 'pkg.deep.worker'", -1 },
+  "", "ImportError: No module named 'pkg.deep.worker'", 1 },
 { "dif #2012",
   "from pkg.mod import pega\n"
   "from pkg.deep.worker import run\n"
   "post(pega(), run())\n"
   "\n",
-  NULL, "ImportError: No module named 'pkg.mod'", -1 },
+  "", "ImportError: No module named 'pkg.mod'", 1 },
 { "dif #2013",
   "from pkg.mod import valor\n"
   "post(valor)\n"
   "\n",
-  NULL, "ImportError: No module named 'pkg.mod'", -1 },
+  "", "ImportError: No module named 'pkg.mod'", 1 },
 { "dif #2014",
   "from regex import match, findall, sub, split, escape\n"
   "post(findall(\"\\\\d\", \"a1\"))\n"
@@ -10724,66 +10724,66 @@ const Caso CASOS_DIFERENCIAL[] = {
   "from services.controllSmtp import enviar\n"
   "post(enviar())\n"
   "\n",
-  NULL, "ImportError: No module named 'services.controllSmtp'", -1 },
+  "", "ImportError: No module named 'services.controllSmtp'", 1 },
 { "dif #2021",
   "from sub.mod import oi\n"
   "post(oi())\n"
   "\n",
-  NULL, "ImportError: No module named 'sub.mod'", -1 },
+  "", "ImportError: No module named 'sub.mod'", 1 },
 { "dif #2022",
   "from zza import checa\n"
   "post(checa({\"v\": 7}))\n"
   "post(checa({\"v\": \"x\"}))\n"
   "\n",
-  NULL, "ImportError: No module named 'zza'", -1 },
+  "", "ImportError: No module named 'zza'", 1 },
 { "dif #2023",
   "from zzb import Interno\n"
   "reaction checa(d) { return d == Interno }\n"
   "\n",
-  NULL, "ImportError: No module named 'zzb'", -1 },
+  "", "ImportError: No module named 'zzb'", 1 },
 { "dif #2024",
   "from zzlib import B\n"
   "post(B().nome())\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2025",
   "from zzlib import Contador\n"
   "post(Contador(9).get())\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2026",
   "from zzlib import M1, M2, M3, E1, E2\n"
   "post({\"a\": 1} == M1, {\"b\": \"x\"} == M2, {\"c\": true} == M3)\n"
   "post(E1.X, E1.Y, E2.P, E2.Q)\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2027",
   "from zzlib import Mat\n"
   "post(Mat.soma(2, 3))\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2028",
   "from zzlib import Produto, Cor\n"
   "post({\"nome\": \"x\", \"preco\": 3} == Produto)\n"
   "post(Cor.R, Cor.G, Cor.B)\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2029",
   "from zzlib import Status\n"
   "post(Status.ATIVO, Status.INATIVO)\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2030",
   "from zzlib import Usuario\n"
   "post({\"nome\": \"a\", \"idade\": 5} == Usuario)\n"
   "post({\"nome\": \"a\"} == Usuario)\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2031",
   "from zzlib import dobro\n"
   "post(dobro(21))\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2032",
   "g = 1\n"
   "action f() {\n"
@@ -10870,20 +10870,20 @@ const Caso CASOS_DIFERENCIAL[] = {
   "if (1 == 1):\n"
   "\tpost(\"x\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", -1 },
+  "", "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", 2 },
 { "dif #2045",
   "if (1 == 1):\n"
   "    if (2 == 2):\n"
   "            post(\"x\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
+  "", "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", 2 },
 { "dif #2046",
   "if (1 == 1):\n"
   "    if (2 == 2):\n"
   "        post(\"x\")\n"
   "      post(\"y\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 6)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 6)", 2 },
 { "dif #2047",
   "if (1 == 1) {\n"
   "    post(\"ok\")\n"
@@ -10894,25 +10894,25 @@ const Caso CASOS_DIFERENCIAL[] = {
   "if (1 == 1):\n"
   "  post(\"x\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", 2 },
 { "dif #2049",
   "if (count int(1) in a) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2050",
   "if (x == 1) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2051",
   "if (x) {\n"
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2052",
   "if (x) {\n"
   " post(1)\n"
@@ -10922,7 +10922,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(3)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2053",
   "if (x) {\n"
   " post(1)\n"
@@ -10930,18 +10930,18 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(2)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2054",
   "if (x):\n"
   "\tpost(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", -1 },
+  "", "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", 2 },
 { "dif #2055",
   "if (x) {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2056",
   "if (x) {\n"
   "    post(1)\n"
@@ -10951,19 +10951,19 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(3)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2057",
   "if (x) {\n"
   "    post(1)\n"
   "}\n"
   "post(2)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2058",
   "if (x):\n"
   "  post(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", 2 },
 { "dif #2059",
   "if 1 == 1 {\n"
   "    if 2 == 2 { post(\"misto\") }\n"
@@ -10985,12 +10985,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "if 1 == 1:\n"
   "\tpost(\"ruim\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", -1 },
+  "", "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", 2 },
 { "dif #2063",
   "if 1 == 1:\n"
   "        post(\"pulou nivel\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
+  "", "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", 2 },
 { "dif #2064",
   "if 1 == 1 {\n"
   "    if 2 == 2 { post(\"misto2\") }\n"
@@ -11007,16 +11007,16 @@ const Caso CASOS_DIFERENCIAL[] = {
   "if 1 == 1:\n"
   "   post(\"ruim\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 3)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 3)", 2 },
 { "dif #2067",
   "if 1 == 1:\n"
   "  post(\"ruim\")\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", 2 },
 { "dif #2068",
   "if = 5\n"
   "\n",
-  NULL, "SyntaxError: 'if' e palavra reservada da linguagem e nao pode ser usada como nom", -1 },
+  "", "SyntaxError: 'if' e palavra reservada da linguagem e nao pode ser usada como nom", 2 },
 { "dif #2069",
   "if Null == 0 {\n"
   "    post(\"yes\")\n"
@@ -11033,24 +11033,24 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(\"ok\")\n"
   "}\n"
   "\n",
-  NULL, "TypeError: '>' not supported between instances of 'Null' and 'int'", -1 },
+  "", "TypeError: '>' not supported between instances of 'Null' and 'int'", 1 },
 { "dif #2071",
   "if a { post(1)\n"
   "      post(2)\n"
   "  post(3) }\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2072",
   "if a { post(1) }\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2073",
   "if a { post(1) }\n"
   "if b {\n"
   "    post(2)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2074",
   "if a {\n"
   "    if b {\n"
@@ -11058,14 +11058,14 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2075",
   "if a:\n"
   "    if b:\n"
   "        post(1)\n"
   "      post(2)\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 6)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 6)", 2 },
 { "dif #2076",
   "if a {\n"
   "    post(1)\n"
@@ -11073,7 +11073,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(2)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2077",
   "if a {\n"
   "    post(1)\n"
@@ -11081,7 +11081,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(2)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'a' is not defined", -1 },
+  "", "NameError: name 'a' is not defined", 1 },
 { "dif #2078",
   "if false {\n"
   "    x = 1\n"
@@ -11090,109 +11090,102 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(x)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2079",
   "if true {\n"
   "    dentro = 5\n"
   "}\n"
   "post(dentro)\n"
   "\n",
-  NULL, "NameError: name 'dentro' is not defined", -1 },
+  "", "NameError: name 'dentro' is not defined", 1 },
 { "dif #2080",
   "if v > 40 {\n"
   "\n",
-  NULL, "SyntaxError: bloco com '{' nao foi fechado com '}'", -1 },
+  "", "SyntaxError: bloco com '{' nao foi fechado com '}'", 2 },
 { "dif #2081",
   "if x:\n"
   "\tpost(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", -1 },
+  "", "SyntaxError: indentacao com TAB nao e permitida; use 4 espacos", 2 },
 { "dif #2082",
   "if x:\n"
   "        post(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", -1 },
+  "", "SyntaxError: indentacao avancou 8 espacos; esperado exatamente 4", 2 },
 { "dif #2083",
   "if x {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2084",
   "if x {\n"
   "    post(1)\n"
   "}\n"
   "post(2)\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
-{ "dif #2085",
-  "if x {\n"
-  "    post(1)\n"
-  "}\n"
-  "post(2)\n"
-  "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2086",
   "if x:\n"
   "   post(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 3)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 3)", 2 },
 { "dif #2087",
   "if x:\n"
   "  post(1)\n"
   "\n",
-  NULL, "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", -1 },
+  "", "SyntaxError: indentacao deve ser multiplo de 4 espacos (achou 2)", 2 },
 { "dif #2088",
   "if zzz {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'zzz' is not defined", -1 },
+  "", "NameError: name 'zzz' is not defined", 1 },
 { "dif #2089",
   "if {\n"
   "}\n"
   "\n",
-  NULL, "SyntaxError: esperado inicio de bloco com '{'", -1 },
+  "", "SyntaxError: esperado inicio de bloco com '{'", 2 },
 { "dif #2090",
   "import bytes\n"
   "post(\n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #2091",
   "import bytes\n"
   "x = bytes.concat([bytes.new(\"a\"), 5])\n"
   "\n",
-  NULL, "TypeError: sequence item 1: expected a bytes-like object, int found", -1 },
+  "", "TypeError: sequence item 1: expected a bytes-like object, int found", 1 },
 { "dif #2092",
   "import bytes\n"
   "x = bytes.fromhex(\"zz\")\n"
   "\n",
-  NULL, "ValueError: non-hexadecimal number found in fromhex() arg at position 0", -1 },
+  "", "ValueError: non-hexadecimal number found in fromhex() arg at position 0", 1 },
 { "dif #2093",
   "import bytes\n"
   "x = bytes.fromint(70000, 1)\n"
   "\n",
-  NULL, "OverflowError: int too big to convert", -1 },
+  "", "OverflowError: int too big to convert", 1 },
 { "dif #2094",
   "import bytes\n"
   "x = bytes.get(bytes.new(\"ab\"), 9)\n"
   "\n",
-  NULL, "IndexError: index out of range", -1 },
+  "", "IndexError: index out of range", 1 },
 { "dif #2095",
   "import bytes\n"
   "x = bytes.new(3.5)\n"
   "\n",
-  NULL, "TypeError: cannot convert 'flo' object to bytes", -1 },
+  "", "TypeError: cannot convert 'flo' object to bytes", 1 },
 { "dif #2096",
   "import bytes\n"
   "x = bytes.new([300])\n"
   "\n",
-  NULL, "ValueError: bytes must be in range(0, 256)", -1 },
+  "", "ValueError: bytes must be in range(0, 256)", 1 },
 { "dif #2097",
   "import bytes\n"
   "x = bytes.xor(bytes.new(\"a\"), bytes.new())\n"
   "\n",
-  NULL, "ValueError: empty key", -1 },
+  "", "ValueError: empty key", 1 },
 /* CORRIGIDO: mesma bomba-relogio do #2004. O que este caso testa e a
  * INTERPOLACAO `"texto" expr`, nao o valor da data. */
 { "dif #2098",
@@ -11210,7 +11203,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.hora(\"a\"))\n"
   "\n",
-  NULL, "TypeError: 'str' object cannot be interpreted as an integer", -1 },
+  "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
 { "dif #2101",
   "import date\n"
   "post(date.hora())\n"
@@ -11250,7 +11243,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import date\n"
   "post(date.today(1))\n"
   "\n",
-  NULL, "TypeError: today() takes no arguments (1 given)", -1 },
+  "", "TypeError: today() takes no arguments (1 given)", 1 },
 { "dif #2109",
   "import flask\n"
   "post(\"ok\")\n"
@@ -11260,7 +11253,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import greetlib\n"
   "post(greetlib.greet())\n"
   "\n",
-  NULL, "ImportError: No module named 'greetlib'", -1 },
+  "", "ImportError: No module named 'greetlib'", 1 },
 { "dif #2111",
   "import json\n"
   "d = json.parse(\"{\\\"a\\\": 42, \\\"b\\\": -7, \\\"c\\\": 2.5}\")\n"
@@ -11285,7 +11278,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "\n",
   /* DECISAO 2026-08-25: a msg passou a nomear o modulo e o membro (e a sugerir
    * o nome parecido, quando ha um perto). "nao tem esse membro" nao dizia qual. */
-  NULL, "AttributeError: module 'json' has no attribute 'naoexiste'", -1 },
+  "", "AttributeError: module 'json' has no attribute 'naoexiste'", 1 },
 { "dif #2115",
   "import json\n"
   "post(json.parse(\"  {\\\"a\\\" : [1, {\\\"b\\\": null}] }  \")[\"a\"][1][\"b\"])\n"
@@ -11295,12 +11288,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"\"))\n"
   "\n",
-  NULL, "ValueError: Expecting value: line 1 column 1 (char 0)", -1 },
+  "", "ValueError: Expecting value: line 1 column 1 (char 0)", 1 },
 { "dif #2117",
   "import json\n"
   "post(json.parse(\"1 2\"))\n"
   "\n",
-  NULL, "ValueError: Extra data: line 1 column 3 (char 2)", -1 },
+  "", "ValueError: Extra data: line 1 column 3 (char 2)", 1 },
 { "dif #2118",
   "import json\n"
   "post(json.parse(\"1.5\"))\n"
@@ -11315,12 +11308,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"[1,\"))\n"
   "\n",
-  NULL, "ValueError: Expecting value: line 1 column 4 (char 3)", -1 },
+  "", "ValueError: Expecting value: line 1 column 4 (char 3)", 1 },
 { "dif #2121",
   "import json\n"
   "post(json.parse(\"[1] x\"))\n"
   "\n",
-  NULL, "ValueError: Extra data: line 1 column 5 (char 4)", -1 },
+  "", "ValueError: Extra data: line 1 column 5 (char 4)", 1 },
 { "dif #2122",
   "import json\n"
   "post(json.parse(\"[]\"))\n"
@@ -11335,7 +11328,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"lixo\"))\n"
   "\n",
-  NULL, "ValueError: Expecting value: line 1 column 1 (char 0)", -1 },
+  "", "ValueError: Expecting value: line 1 column 1 (char 0)", 1 },
 { "dif #2125",
   "import json\n"
   "post(json.parse(\"null\"))\n"
@@ -11350,12 +11343,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse(\"{\"))\n"
   "\n",
-  NULL, "ValueError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)", -1 },
+  "", "ValueError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)", 1 },
 { "dif #2128",
   "import json\n"
   "post(json.parse(\"{1: 2}\"))\n"
   "\n",
-  NULL, "ValueError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)", -1 },
+  "", "ValueError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)", 1 },
 { "dif #2129",
   "import json\n"
   "post(json.parse(\"{\\\"n\\\": -1.5e2}\")[\"n\"])\n"
@@ -11365,12 +11358,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import json\n"
   "post(json.parse())\n"
   "\n",
-  NULL, "TypeError: parse() takes exactly one argument (0 given)", -1 },
+  "", "TypeError: parse() takes exactly one argument (0 given)", 1 },
 { "dif #2131",
   "import json\n"
   "post(json.parse(1))\n"
   "\n",
-  NULL, "TypeError: parse() argument 1 must be str, not int", -1 },
+  "", "TypeError: parse() argument 1 must be str, not int", 1 },
 { "dif #2132",
   "import json\n"
   "post(json.parse([1,2]))\n"
@@ -11552,7 +11545,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.findall(1, \"a\"))\n"
   "\n",
-  NULL, "TypeError: findall() argument 1 must be str, not int", -1 },
+  "", "TypeError: findall() argument 1 must be str, not int", 1 },
 { "dif #2163",
   "import regex\n"
   "post(regex.fullmatch(\"\\\\d+\", \"123\"), regex.fullmatch(\"\\\\d+\", \"a123\"))\n"
@@ -11563,17 +11556,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"(\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: missing ), unterminated subpattern at position 0", -1 },
+  "", "ValueError: missing ), unterminated subpattern at position 0", 1 },
 { "dif #2165",
   "import regex\n"
   "post(regex.match(\"*a\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: nothing to repeat at position 0", -1 },
+  "", "ValueError: nothing to repeat at position 0", 1 },
 { "dif #2166",
   "import regex\n"
   "post(regex.match(\"[a\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: unterminated character set at position 0", -1 },
+  "", "ValueError: unterminated character set at position 0", 1 },
 { "dif #2167",
   "import regex\n"
   "post(regex.match(\"[a-z]+\", \"abC\"))\n"
@@ -11593,17 +11586,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"a\", 1))\n"
   "\n",
-  NULL, "TypeError: match() argument 2 must be str, not int", -1 },
+  "", "TypeError: match() argument 2 must be str, not int", 1 },
 { "dif #2171",
   "import regex\n"
   "post(regex.match(\"a\\\\1\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: invalid group reference 1 at position 2", -1 },
+  "", "ValueError: invalid group reference 1 at position 2", 1 },
 { "dif #2172",
   "import regex\n"
   "post(regex.match(\"a{2,1}\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: min repeat greater than max repeat at position 2", -1 },
+  "", "ValueError: min repeat greater than max repeat at position 2", 1 },
 { "dif #2173",
   "import regex\n"
   "post(regex.search(\"ção\", \"a ção b\"))\n"
@@ -11663,7 +11656,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.sub(\"a\"))\n"
   "\n",
-  NULL, "TypeError: sub() takes at least 3 arguments (1 given)", -1 },
+  "", "TypeError: sub() takes at least 3 arguments (1 given)", 1 },
 { "dif #2184",
   "import regex\n"
   "post(regex.sub(\"a\", \"b\", \"aaa\", count=2))\n"
@@ -11673,7 +11666,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "regex.compile(\"[a-\")\n"
   "\n",
-  NULL, "ValueError: unterminated character set at position 0", -1 },
+  "", "ValueError: unterminated character set at position 0", 1 },
 { "dif #2186",
   "import regex as rx\n"
   "post(rx.match(\"a+\", \"aaa\"))\n"
@@ -11688,17 +11681,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import saud\n"
   "post(saud.ola(\"ana\"))\n"
   "\n",
-  NULL, "ImportError: No module named 'saud'", -1 },
+  "", "ImportError: No module named 'saud'", 1 },
 { "dif #2189",
   "import sub.mod\n"
   "post(mod.oi())\n"
   "\n",
-  NULL, "ImportError: No module named 'sub.mod'", -1 },
+  "", "ImportError: No module named 'sub.mod'", 1 },
 { "dif #2190",
   "import sub.mod as sm\n"
   "post(sm.oi())\n"
   "\n",
-  NULL, "ImportError: No module named 'sub.mod'", -1 },
+  "", "ImportError: No module named 'sub.mod'", 1 },
 { "dif #2191",
   "import swagger\n"
   "d = swagger.infos(target=\"__APP__\").title(\"API X\").description(\"d\").version(\"2.0.0\").authorContact().email(\"e@x.com\").name(\"K\").number(\"(27)0\")\n"
@@ -11721,7 +11714,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2194",
   "import sys; print(sys.argv[1])\n"
   "\n",
-  NULL, "NameError: name 'print' is not defined", -1 },
+  "", "NameError: name 'print' is not defined", 1 },
 { "dif #2195",
   "int a = 12\n"
   "int b = 10\n"
@@ -11761,7 +11754,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2202",
   "int base = 5\n"
   "\n",
-  NULL, "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", -1 },
+  "", "SyntaxError: 'base' e palavra reservada da linguagem e nao pode ser usada como n", 2 },
 { "dif #2203",
   "int i = 0\n"
   "int s = 0\n"
@@ -11831,7 +11824,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2210",
   "int n = \n"
   "\n",
-  NULL, "SyntaxError: expressao invalida", -1 },
+  "", "SyntaxError: expressao invalida", 2 },
 { "dif #2211",
   "int n = 1\n"
   "int k = 3\n"
@@ -11922,11 +11915,11 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2225",
   "int x = \"a\"\n"
   "\n",
-  NULL, "ConversionError: não foi possível converter 'a' para int (declarado como 'int ", -1 },
+  "", "ConversionError: não foi possível converter 'a' para int (declarado como 'int x')", 1 },
 { "dif #2226",
   "int x = \"abc\"\n"
   "\n",
-  NULL, "ConversionError: não foi possível converter 'abc' para int (declarado como 'in", -1 },
+  "", "ConversionError: não foi possível converter 'abc' para int (declarado como 'int x')", 1 },
 { "dif #2227",
   "int x = 0\n"
   "while (x < 3) {\n"
@@ -12004,7 +11997,7 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #2240",
   "int x = 5.9\n"
   "\n",
-  NULL, "AttributedValueError: variável x esperava int", -1 },
+  "", "AttributedValueError: variável x esperava int", 1 },
 { "dif #2241",
   "io = \"ola\"\n"
   "post(<red>\"cuuuuu {io}\")\n"
@@ -12673,7 +12666,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "x = lista[99]\n"
   "post(x)\n"
   "\n",
-  NULL, "IndexError: list index out of range", -1 },
+  "", "IndexError: list index out of range", 1 },
 { "dif #2351",
   "lista = [10, 20, 30]\n"
   "post(lista[-1])\n"
@@ -12724,63 +12717,63 @@ const Caso CASOS_DIFERENCIAL[] = {
   " case \"abc\" { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 's' is not defined", -1 },
+  "", "NameError: name 's' is not defined", 1 },
 { "dif #2357",
   "match x {\n"
   " case -10 { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2358",
   "match x {\n"
   " case 1 { post(\"um\") }\n"
   " case _ { post(\"outro\") }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2359",
   "match x {\n"
   " case 1 | 2 | 3 { post(\"a\") }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2360",
   "match x {\n"
   " case True { post(1) }\n"
   " case Null { post(2) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2361",
   "match x {\n"
   " case [1, 2] { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2362",
   "match x {\n"
   " case [1, [2, 3]] { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2363",
   "match x {\n"
   " case v if v > 5 { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2364",
   "match x {\n"
   " case v { post(v) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2365",
   "match x {\n"
   " case {a: 1} { post(1) }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2366",
   "match x {\n"
   "    case 1 {\n"
@@ -12791,7 +12784,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    }\n"
   "}\n"
   "\n",
-  NULL, "NameError: name 'x' is not defined", -1 },
+  "", "NameError: name 'x' is not defined", 1 },
 { "dif #2367",
   "model Cliente() {\n"
   "    id: int\n"
@@ -12809,7 +12802,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "post(Local.A, Status.ON, Status.OFF)\n"
   "post(Meu().oi(), Helper().oi())\n"
   "\n",
-  NULL, "ImportError: No module named 'zzlib'", -1 },
+  "", "ImportError: No module named 'zzlib'", 1 },
 { "dif #2368",
   "model D() {\n"
   "    cpf: str(length=3)\n"
@@ -13091,7 +13084,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "}\n"
   "post(z)\n"
   "\n",
-  NULL, "NameError: name 'z' is not defined", -1 },
+  "", "NameError: name 'z' is not defined", 1 },
 { "dif #2399",
   "n = 25\n"
   "post(<00ff00>f\"grau {n}\")\n"

@@ -1,0 +1,342 @@
+# Reforça as expectativas fracas da suíte em C: caso de erro que confere só o
+# stderr passa a conferir TAMBÉM o stdout e o código de saída.
+#
+# O PROBLEMA, medido: 1577 casos da suíte estavam gravados como
+#
+#     { "nome", "<fonte>", NULL, "<trecho do stderr>", -1 },
+#                          ^^^^                        ^^
+#                          nao confere stdout          nao confere rc
+#
+# Um programa que imprimisse lixo e SÓ DEPOIS errasse com a mensagem certa
+# passava. Um que errasse certo mas saísse com o código errado, também. Em
+# 1577 casos — a maioria de tudo que a suíte tem de caminho de erro.
+#
+# O QUE ESTE SCRIPT FAZ, e o que ele NÃO faz:
+#
+#   FAZ    roda cada caso, mede o stdout e o rc REAIS, e grava os dois.
+#   NÃO    não toca no trecho de stderr esperado. Ele continua sendo o que
+#          alguém escreveu de propósito; o script só acrescenta o que faltava.
+#   NÃO    não grava nada se o caso deixou de bater com a expectativa que já
+#          tinha. Isso é REGRESSÃO, e regressão se investiga, não se regrava —
+#          é a diferença entre reforçar uma asserção e apagá-la.
+#
+# A distinção importa porque a ferramenta oposta já existiu aqui e foi o
+# problema: `regrava_dif.ps` gravava a saída do dia por cima do esperado, o que
+# transforma qualquer defeito novo em "comportamento atual".
+#
+#     ./pool scripts/fortalece_casos.ps            # relata, não escreve
+#     ./pool scripts/fortalece_casos.ps --grava    # escreve
+import os
+import sys
+import regex
+import bytes
+
+ARQS = ["teste/casos_diferencial.c", "teste/casos_linguagem.c",
+        "teste/casos_erros.c", "teste/casos_crash.c",
+        "teste/casos_pendentes.c", "teste/casos_cobertura.c",
+        "teste/casos_libs.c", "teste/casos_inteiros.c"]
+
+TMP = "/tmp/ps_fortalece"
+
+
+# Desfaz o escape de C e devolve a LISTA DE BYTES do texto original.
+#
+# Bytes, e não string, porque `\xc3\xa7` (o "ç" de um caso) tem que voltar como
+# os dois bytes que eram. Montar com `chr(0xc3) + chr(0xa7)` daria dois
+# CODEPOINTS, que em UTF-8 ocupam quatro bytes — outro programa.
+action des_c(s) {
+    out = []
+    i = 0
+    while i < len(s) {
+        c = s[i]
+        if c == "\\" and i + 1 < len(s) {
+            d = s[i + 1]
+            if d == "n" { addEnd(out, 10) i = i + 2 continue }
+            if d == "t" { addEnd(out, 9) i = i + 2 continue }
+            if d == "r" { addEnd(out, 13) i = i + 2 continue }
+            if d == "0" { addEnd(out, 0) i = i + 2 continue }
+            if d == "\\" { addEnd(out, 92) i = i + 2 continue }
+            if d == "\"" { addEnd(out, 34) i = i + 2 continue }
+            if d == "x" and i + 3 < len(s) {
+                addEnd(out, hex2(s[i+2]) * 16 + hex2(s[i+3]))
+                i = i + 4
+                continue
+            }
+            for each b in c.encode() { addEnd(out, b) }
+            i = i + 1
+            continue
+        }
+        for each b in c.encode() { addEnd(out, b) }
+        i = i + 1
+    }
+    return out
+}
+
+
+# Um dígito hexadecimal -> valor. O `int()` da linguagem não recebe base.
+action hex2(c) {
+    d = "0123456789abcdef".find(c.lower())
+    if d < 0 {
+        return 0
+    }
+    return d
+}
+
+
+action esc_c(s) {
+    return (s.replace("\\", "\\\\").replace("\"", "\\\"")
+             .replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r"))
+}
+
+
+# Roda o fonte e devolve [rc, stdout, stderr].
+action roda(fonte) {
+    using open(TMP + "/caso.ps", "wb") as f {
+        f.write(bytes.new(fonte))
+    }
+    os.cmd("timeout 20 '" + sys.executable + "' " + TMP + "/caso.ps"
+           + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
+    return [int(open(TMP + "/rc").read().strip()),
+            open(TMP + "/out").read(),
+            open(TMP + "/err").read()]
+}
+
+
+if __name__ == "main" {
+    grava = false
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+    }
+    os.mkdir(TMP, exist_ok=true)
+
+    total = 0
+    fortalecidos = 0
+    regressoes = []
+    pulados = []
+
+    for each arq in ARQS {
+        texto = open(arq).read()
+        linhas = texto.split("\n")
+        saida = []
+        # Estado: junta o fonte do caso enquanto ele não fecha. Um caso vai de
+        # `{ "nome",` até a linha que termina com `},`.
+        i = 0
+        while i < len(linhas) {
+            L = linhas[i]
+            m = regex.findall("^\\{ \"((?:[^\"\\\\]|\\\\.)*)\",", L)
+            if len(m) == 0 {
+                saida.append(L)
+                i = i + 1
+                continue
+            }
+            # junta o bloco inteiro do caso
+            bloco = []
+            j = i
+            while j < len(linhas) {
+                bloco.append(linhas[j])
+                if linhas[j].rstrip().endswith("}," ) {
+                    break
+                }
+                j = j + 1
+            }
+            if j >= len(linhas) {
+                for each b in bloco { saida.append(b) }
+                i = j + 1
+                continue
+            }
+            ultima = bloco[len(bloco) - 1]
+            # A expectativa fraca aparece em DUAS formas, e a segunda é a
+            # maioria dos que sobraram na primeira passada:
+            #
+            #   "  NULL, \"msg\", -1 },"                    sozinha na linha
+            #   "  \"post(z)\\n\", NULL, \"msg\", -1 },"    colada no fonte
+            #
+            # No segundo caso o que vem ANTES do `NULL` ainda é fonte e tem que
+            # entrar no programa; só o rabo é reescrito.
+            fraca = regex.findall("^\\s*NULL,\\s*\"((?:[^\"\\\\]|\\\\.)*)\",\\s*-1\\s*\\},\\s*$", ultima)
+            cabeca = ""
+            if len(fraca) == 0 {
+                colada = regex.findall("^(.*\")\\s*,\\s*NULL,\\s*\"((?:[^\"\\\\]|\\\\.)*)\",\\s*-1\\s*\\},\\s*$", ultima)
+                if len(colada) > 0 {
+                    cabeca = colada[0][0]
+                    fraca = [colada[0][1]]
+                }
+            }
+            # Terceira forma: o `NULL,` fica no fim da linha ANTERIOR e a
+            # mensagem sozinha na última.
+            #
+            #   "  \"<fonte>\", NULL,"
+            #   "  \"msg\", -1 },"
+            #
+            # Sem este ramo sobravam dois casos que nenhum passo pegava — e
+            # dois é o suficiente pra o portão nunca chegar a zero.
+            partida = false
+            if len(fraca) == 0 and len(bloco) >= 2 {
+                so_msg = regex.findall("^\\s*\"((?:[^\"\\\\]|\\\\.)*)\",\\s*-1\\s*\\},\\s*$", ultima)
+                anterior = bloco[len(bloco) - 2]
+                if len(so_msg) > 0 and anterior.rstrip().endswith("NULL,") {
+                    fraca = so_msg
+                    partida = true
+                }
+            }
+            if len(fraca) == 0 {
+                for each b in bloco { saida.append(b) }
+                i = j + 1
+                continue
+            }
+            total = total + 1
+            # o fonte são todos os literais de string do bloco menos o nome e
+            # menos a última linha (que é a expectativa).
+            #
+            # COMENTÁRIO DE C SAI ANTES. Muitos casos têm um `/* ... */`
+            # explicando o porquê, e comentário costuma CITAR o programa entre
+            # aspas — `imprimia "ok"`. Sem tirar o comentário, esse "ok" entrava
+            # no fonte reconstruído e o caso virava outro programa: o `dif
+            # #2070` reconstruído dava `SyntaxError: faltou ':' no dicionario` e
+            # o script o denunciou como regressão. Era o extrator, não o motor.
+            fonte = []
+            k = 0
+            em_com = false
+            while k < len(bloco) - 1 {
+                L2 = bloco[k]
+                limpa = ""
+                z = 0
+                while z < len(L2) {
+                    if em_com {
+                        if L2[z:z+2] == "*/" {
+                            em_com = false
+                            z = z + 2
+                            continue
+                        }
+                        z = z + 1
+                        continue
+                    }
+                    if L2[z:z+2] == "/*" {
+                        em_com = true
+                        z = z + 2
+                        continue
+                    }
+                    limpa = limpa + L2[z]
+                    z = z + 1
+                }
+                for each lit in regex.findall("\"((?:[^\"\\\\]|\\\\.)*)\"", limpa) {
+                    if k == 0 and len(fonte) == 0 and lit == m[0] {
+                        continue
+                    }
+                    for each by in des_c(lit) { addEnd(fonte, by) }
+                }
+                k = k + 1
+            }
+            if cabeca != "" {
+                lim = ""
+                z = 0
+                emc = false
+                while z < len(cabeca) {
+                    if emc {
+                        if cabeca[z:z+2] == "*/" { emc = false z = z + 2 continue }
+                        z = z + 1
+                        continue
+                    }
+                    if cabeca[z:z+2] == "/*" { emc = true z = z + 2 continue }
+                    lim = lim + cabeca[z]
+                    z = z + 1
+                }
+                # O NOME do caso sai daqui também. Num caso de UMA LINHA o
+                # bloco tem só essa linha, então o laço de cima nem roda e é
+                # este trecho que monta o fonte inteiro — inclusive o nome, se
+                # ninguém tirar. Foi assim que `deslocamento negativo é erro`
+                # virou o programa `deslocamento negativo é erropost(1 << -1)`,
+                # um erro de sintaxe, e o script gravou o rc DELE (2) no lugar
+                # do rc do caso (1).
+                for each lit in regex.findall("\"((?:[^\"\\\\]|\\\\.)*)\"", lim) {
+                    if len(fonte) == 0 and lit == m[0] {
+                        continue
+                    }
+                    for each by in des_c(lit) { addEnd(fonte, by) }
+                }
+            }
+            if len(fonte) == 0 {
+                pulados.append(arq + ": " + m[0] + " (fonte vazio)")
+                for each b in bloco { saida.append(b) }
+                i = j + 1
+                continue
+            }
+
+            esperado = bytes.new(des_c(fraca[0])).decode("utf-8", "replace")
+            r = roda(fonte)
+            # A expectativa que JÁ existia continua valendo? Se não, é
+            # regressão: relata e não escreve nada neste caso.
+            if not esperado in r[2] {
+                regressoes.append([arq, m[0], esperado, r[2].strip()])
+                for each b in bloco { saida.append(b) }
+                i = j + 1
+                continue
+            }
+            if r[0] == 124 {
+                pulados.append(arq + ": " + m[0] + " (travou)")
+                for each b in bloco { saida.append(b) }
+                i = j + 1
+                continue
+            }
+            so = r[1]
+            while so.endswith("\n") {
+                so = so[0:len(so) - 1]
+            }
+            nova = "  \"" + esc_c(so) + "\", \"" + fraca[0] + "\", " + str(r[0]) + " },"
+            if cabeca != "" {
+                nova = cabeca + ", \"" + esc_c(so) + "\", \"" + fraca[0] + "\", " + str(r[0]) + " },"
+            }
+            k = 0
+            while k < len(bloco) - 1 {
+                L3 = bloco[k]
+                if partida and k == len(bloco) - 2 {
+                    # Tira SÓ o `NULL,` e deixa a vírgula do fonte no lugar.
+                    # Tirando `, NULL,` inteiro, a linha ficava `"<fonte>"` sem
+                    # vírgula e o C CONCATENAVA com o literal seguinte: os
+                    # campos andavam um pra esquerda e o caso passava a
+                    # comparar a coisa errada, compilando limpo.
+                    corte = L3.rstrip()
+                    L3 = corte[0:len(corte) - len("NULL,")].rstrip()
+                }
+                saida.append(L3)
+                k = k + 1
+            }
+            saida.append(nova)
+            fortalecidos = fortalecidos + 1
+            i = j + 1
+        }
+        if grava {
+            using open(arq, "w") as f {
+                f.write("\n".join(saida))
+            }
+        }
+    }
+
+    post("")
+    post("casos que conferiam SO o stderr:", str(total))
+    post("reforcados com stdout + rc      :", str(fortalecidos))
+    if len(pulados) > 0 {
+        post("pulados                        :", str(len(pulados)))
+        for each p in pulados {
+            post("   ", p)
+        }
+    }
+    if len(regressoes) > 0 {
+        post("")
+        post("REGRESSAO — o caso deixou de bater com o que ja estava gravado.")
+        post("Nada foi escrito nesses; isto se investiga, nao se regrava.")
+        for each r in regressoes {
+            post("   " + r[0] + ": " + r[1])
+            post("      esperava conter: " + r[2])
+            post("      stderr de agora: " + r[3][0:160])
+        }
+        sys.exit(1)
+    }
+    if not grava {
+        post("")
+        post("nada foi escrito — rode com --grava")
+    }
+    sys.exit(0)
+}

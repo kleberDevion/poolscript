@@ -27,12 +27,12 @@ const Caso CASOS_LINGUAGEM[] = {
   "for each z in [1] {\n"
   "    post(z)\n"
   "}\n"
-  "post(z)\n", NULL, "name 'z' is not defined", -1 },
+  "post(z)\n", "1", "name 'z' is not defined", 1 },
 { "variável de bloco não vaza",
   "if true {\n"
   "    dentro = 5\n"
   "}\n"
-  "post(dentro)\n", NULL, "name 'dentro' is not defined", -1 },
+  "post(dentro)\n", "", "name 'dentro' is not defined", 1 },
 { "atribuir nome de fora dentro do bloco altera o de fora",
   "x = 1\n"
   "if true {\n"
@@ -58,7 +58,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "count com faixa",
   "s = \"banana\"\npost(s.count(\"na\"), s.count(\"na\", 3), s.count(\"a\", 1, 4))\n", "2 1 2", NULL, 0 },
 { "index erra quando não acha na faixa",
-  "post(\"banana\".index(\"na\", 0, 3))\n", NULL, "ValueError: substring not found", -1 },
+  "post(\"banana\".index(\"na\", 0, 3))\n", "", "ValueError: substring not found", 1 },
 { "len conta caracteres",
   "post(len(\"ação\"), len(\"abc\"))\n", "4 3", NULL, 0 },
 
@@ -75,11 +75,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "value() e values() são o mesmo",
   "d = { \"a\": 1, \"b\": 2 }\npost(d.value() == d.values())\n", "True", NULL, 0 },
 { "tupla é imutável: append",
-  "t = (1, 2, 3)\nt.append(9)\n", NULL, "'tup' object has no attribute 'append'", -1 },
+  "t = (1, 2, 3)\nt.append(9)\n", "", "'tup' object has no attribute 'append'", 1 },
 { "tupla é imutável: sort",
-  "t = (1, 2, 3)\nt.sort()\n", NULL, "'tup' object has no attribute 'sort'", -1 },
+  "t = (1, 2, 3)\nt.sort()\n", "", "'tup' object has no attribute 'sort'", 1 },
 { "tupla é imutável: copy",
-  "t = (1, 2, 3)\nt.copy()\n", NULL, "'tup' object has no attribute 'copy'", -1 },
+  "t = (1, 2, 3)\nt.copy()\n", "", "'tup' object has no attribute 'copy'", 1 },
 { "tupla lê normal",
   "t = (1, 2, 3)\npost(t.len(), t.count(1), t.index(2), t.contains(2))\n", "3 1 1 True", NULL, 0 },
 { "lista continua com tudo",
@@ -103,9 +103,9 @@ const Caso CASOS_LINGUAGEM[] = {
  * valor CALADO: `x is 0` no lugar de `x == 0` dava o resultado "certo" e nunca
  * reclamava. */
 { "is com literal a direita e erro de compilacao",
-  "x = 5\npost(x is 5)\n", NULL, "para comparar valor use '=='", -1 },
+  "x = 5\npost(x is 5)\n", "", "para comparar valor use '=='", 2 },
 { "is com str a direita tambem",
-  "post(\"a\" is \"a\")\n", NULL, "literal 'str' a direita", -1 },
+  "post(\"a\" is \"a\")\n", "", "literal 'str' a direita", 2 },
 { "is com TIPO a direita continua valendo",
   "post(5 is int, \"x\" is str, 3.0 is flo)\n"
   "x = [1, 2]\n"
@@ -131,7 +131,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(10000000000000001 // 1)\n",
   "10000000000000000\n10000000000000001", NULL, 0 },
 { "// por zero levanta",
-  "post(7 // 0)\n", NULL, "integer division or modulo by zero", -1 },
+  "post(7 // 0)\n", "", "integer division or modulo by zero", 1 },
 { "// deixou de ser comentario",
   /* era comentario de linha ate esta mudanca; hoje o comentario e `#` */
   "x = 10 // 3\npost(x)\n", "3", NULL, 0 },
@@ -143,7 +143,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "** promove a bignum",
   "post(2 ** 100)\n", "1267650600228229401496703205376", NULL, 0 },
 { "0 ** negativo levanta",
-  "post(0 ** -1)\n", NULL, "cannot be raised to a negative power", -1 },
+  "post(0 ** -1)\n", "", "cannot be raised to a negative power", 1 },
 { "pow() de 2 e de 3 argumentos",
   /* o 3o argumento e o que o operador nao tem: potencia modular, sem
    * materializar a potencia inteira */
@@ -151,14 +151,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(pow(3, 200, 1000), pow(7, 128, 13))\n",
   "1024 0.5 8.0\n1 3", NULL, 0 },
 { "pow() com 3 argumentos exige inteiros",
-  "post(pow(2.0, 3, 5))\n", NULL, "3rd argument not allowed", -1 },
+  "post(pow(2.0, 3, 5))\n", "", "3rd argument not allowed", 1 },
 
 { "regex.compile de padrão inválido erra cedo",
   /* ValueError, nao TypeError: o argumento E uma str (o tipo esta certo) — o
    * que nao serve e o VALOR dela. O CPython usa `re.error`, que a linguagem
    * nao tem; ValueError e o parente mais proximo, e e a mesma divisao que o
    * resto do motor segue. */
-  "import regex\np = regex.compile(\"[a-\")\n", NULL, "ValueError", -1 },
+  "import regex\np = regex.compile(\"[a-\")\n", "",
+  "ValueError: unterminated character set at position 0", 1 },
 
 /* ── arquivo ── */
 { "read(n) não consome o arquivo",
@@ -388,7 +389,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return r\n"
   "}\n"
   "post(f())\n",
-  NULL, "'z'", -1 },
+  "", "'z'", 1 },
 
 /* ── `str(x)` tem que dizer o MESMO que `post(x)` ────────────────────────
  * Eram dois caminhos independentes (`escreve_valor` imprime, `valor_para_texto`
@@ -483,10 +484,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * `Pattern.match/search/findall`, que leem o argumento por um helper. A regra
  * só voltou depois de sondar as 91 entradas por COMPORTAMENTO. */
 { "metodo nativo recusa argumento demais",
-  "post([1,2].append(1,2,3))\n", NULL, "TypeError: append() takes at most 1 argument (3 given)", -1 },
+  "post([1,2].append(1,2,3))\n", "", "TypeError: append() takes at most 1 argument (3 given)", 1 },
 { "metodo de zero argumento recusa argumento",
   "import sockets\ns = sockets.socket()\npost(s.fileno(1,2))\n",
-  NULL, "TypeError: fileno() takes no arguments (2 given)", -1 },
+  "", "TypeError: fileno() takes no arguments (2 given)", 1 },
 { "format continua variadico",
   "post(\"{} {}\".format(1,2,3,4,5))\n", "1 2", NULL, 0 },
 { "Pattern le o argumento pelo helper e continua funcionando",
@@ -542,13 +543,6 @@ const Caso CASOS_LINGUAGEM[] = {
  * o lexer não emitia NEWLINE/INDENT dentro de chaves. Emite agora, e a
  * indentação dentro de `{ }` passou a ser LIVRE (o `}` é que fecha) — fora
  * dela a regra dos 4 espaços continua valendo. */
-{ "action ':' dentro de bloco de chaves",
-  "if (true) {\n"
-  "    action f() {\n"
-  "        return 1\n"
-  "    }\n"
-  "    post(f())\n"
-  "}\n", "1", NULL, 0 },
 { "if ':' dentro de bloco de chaves",
   "if (true) {\n"
   "    if true {\n"
@@ -597,9 +591,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "model de chaves continua valendo",
   "model M() {\n    a: str(length=3)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
 { "fora de chaves a regra dos 4 espacos vale",
-  "if true:\n  post(\"2 espacos\")\n", NULL, "multiplo de 4", -1 },
-{ "dicionario multilinha nao vira bloco",
-  "d = {\n    \"a\": 1,\n    \"b\": 2\n}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
+  "if true:\n  post(\"2 espacos\")\n", "", "multiplo de 4", 2 },
 
 /* ── `for each` sobre range não materializa a lista ──────────────────────
  * `range(20000000)` construía 20 milhões de itens (325 MB) só pra o laço
@@ -630,7 +622,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "range com passo 0 e erro",
   "for each i in range(1, 5, 0) {\n"
   "    post(i)\n"
-  "}\n", NULL, "range() arg 3 must not be zero", -1 },
+  "}\n", "", "range() arg 3 must not be zero", 1 },
 { "range com expressao nos limites",
   "n = 4\n"
   "for each i in range(n - 2) {\n"
@@ -676,20 +668,21 @@ const Caso CASOS_LINGUAGEM[] = {
 { "char aceita caractere fora do ASCII",
   "char c = \"ç\"\nchar e = 128512\npost(c, len(c), e)\n", "ç 1 😀", NULL, 0 },
 { "char recusa mais de um caractere",
-  "char c = \"abc\"\n", NULL, "esperava char", -1 },
+  "char c = \"abc\"\n", "", "esperava char", 1 },
 { "char recusa flutuante",
-  "char c = 1.5\n", NULL, "esperava char", -1 },
+  "char c = 1.5\n", "", "esperava char", 1 },
 { "char recusa codepoint invalido",
-  "char c = -1\n", NULL, "nao e um caractere valido", -1 },
+  "char c = -1\n", "", "nao e um caractere valido", 1 },
 { "char action nao existe",
   "char action f() {\n"
   "    return 1\n"
-  "}\n", NULL, "int action", -1 },
+  "}\n", "", "int action", 2 },
 { "as outras declaracoes tipadas continuam iguais",
   "str a = \"oi\"\nint b = \"7\"\nflo c = 1\nbool d = true\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
 { "int tipado ainda recusa texto invalido",
-  "int x = \"abc\"\n", NULL, "ConversionError", -1 },
+  "int x = \"abc\"\n", "",
+  "ConversionError: não foi possível converter 'abc' para int (declarado como 'int x')", 1 },
 
 /* ── módulos sem `import` ────────────────────────────────────────────────
  * `Parsing` é namespace pré-ligado e `sys.stdout`/`sys.stderr` são atributos:
@@ -702,7 +695,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "import sys\npost(type(sys.stdout), type(sys.stderr), type(sys.stdout.write))\n",
   "module module action", NULL, 0 },
 { "import de nome interno é erro",
-  "import _stdout\n", NULL, "ImportError: No module named '_stdout'", -1 },
+  "import _stdout\n", "", "ImportError: No module named '_stdout'", 1 },
 
 /* ── `pass` — no-op igual ao Python ─────────────────────────────────────────
  * Nasceu porque a doc do middleware do jinker mandava usar `continue` fora de
@@ -748,7 +741,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "pass com chaves",
   "action f() { pass }\npost(f())\n", "Null", NULL, 0 },
 { "pass e palavra reservada",
-  "pass = 1\n", NULL, "palavra reservada", -1 },
+  "pass = 1\n", "", "palavra reservada", 2 },
 { "pass no corpo de classe",
   "class Vazia() {\n"
   "    pass\n"
@@ -757,7 +750,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "pass fora de laco NAO e erro (ao contrario de continue)",
   "pass\npost(\"ok\")\n", "ok", NULL, 0 },
 { "continue fora de laco continua sendo erro",
-  "continue\n", NULL, "'continue' fora de laco", -1 },
+  "continue\n", "", "'continue' fora de laco", 3 },
 
 /* ── estilo Allman: a chave na LINHA SEGUINTE ───────────────────────────────
  * FALTAVA NO PORTE (nunca esteve no parser em C, conferido até a 8.2.30):
@@ -827,26 +820,26 @@ const Caso CASOS_LINGUAGEM[] = {
   "n = [1,2,3]\npost(sum(v for each v in n), len(c for each c in \"abc\"), max(v for each v in n))\n",
   "6 3 3", NULL, 0 },
 { "compreensao com mais de um argumento e recusada com o conserto",
-  "post(\"a\", n for each n in [1])\n", NULL, "ponha entre colchetes", -1 },
+  "post(\"a\", n for each n in [1])\n", "", "ponha entre colchetes", 2 },
 { "com os colchetes, mais de um argumento vale",
   "post(\"a\", [n for each n in [1]])\n", "a [1]", NULL, 0 },
 { "compreensao sem 'each' e erro claro",
-  "post([n for n in [1]])\n", NULL, "esperado 'each'", -1 },
+  "post([n for n in [1]])\n", "", "esperado 'each'", 2 },
 { "compreensao sem 'in' e erro claro",
-  "post([n for each n [1]])\n", NULL, "esperado 'in'", -1 },
+  "post([n for each n [1]])\n", "", "esperado 'in'", 2 },
 
 /* ── o bloco `:` saiu da linguagem ──────────────────────────────────────────
  * DECISÃO: o bloco é `{ }`, e só. Conviver com os dois custou caro — as
  * regressões de parser desta linha do tempo saíram todas da interação entre
  * indentação e chave. A mensagem tem que ENSINAR, não só recusar. */
 { "bloco com ':' e recusado",
-  "if true:\n    post(\"A\")\n", NULL, "bloco com ':' nao existe mais", -1 },
+  "if true:\n    post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
 { "bloco com ':' numa linha so tambem e recusado",
-  "if true: post(\"A\")\n", NULL, "bloco com ':' nao existe mais", -1 },
+  "if true: post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
 { "Entity com ':' e recusada",
-  "Entity A():\n    action m(self) { return 1 }\n", NULL, "bloco com ':' nao existe mais", -1 },
+  "Entity A():\n    action m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
 { "a mensagem diz o que usar no lugar",
-  "while true:\n    break\n", NULL, "use '{ }'", -1 },
+  "while true:\n    break\n", "", "use '{ }'", 2 },
 { "dicionario com ':' continua valendo",
   "d = { \"a\": 1, \"b\": 2 }\npost(d[\"a\"], d[\"b\"])\n", "1 2", NULL, 0 },
 { "fatia com ':' continua valendo",
@@ -900,21 +893,21 @@ const Caso CASOS_LINGUAGEM[] = {
   "    e = \"x\"\n"
   "    raise Boom(f\"erro: {e}\")\n"
   "}\n"
-  "f()\n", NULL, "linha 3", -1 },
+  "f()\n", "", "linha 3", 1 },
 { "erro DENTRO da f-string aponta a linha da f-string",
   "action f() {\n"
   "    x = 0\n"
   "\n"
   "    post(f\"v: {1 / x}\")\n"
   "}\n"
-  "f()\n", NULL, "linha 4", -1 },
+  "f()\n", "", "linha 4", 1 },
 { "f-string no meio nao desloca o que vem depois",
   "action f() {\n"
   "    e = 1\n"
   "    post(f\"a {e}\")\n"
   "    raise Boom(\"y\")\n"
   "}\n"
-  "f()\n", NULL, "linha 4", -1 },
+  "f()\n", "a 1", "linha 4", 1 },
 { "f-string continua interpolando",
   "n = 7\ns = \"ana\"\npost(f\"{s} tem {n}\", f\"{n * 2}\")\n", "ana tem 7 14", NULL, 0 },
 { "f-string aninhada em chamada aninhada",
@@ -988,10 +981,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "corpo\ncorpo\nguard", NULL, 0, "ps_guard.ps" },
 { "run_selfwith_ saiu, e a recusa ensina",
-  "run_selfwith_(\"main\") {\n    post(1)\n}\n", NULL,
-  "use: if __name__ == \"main\"", -1 },
+  "run_selfwith_(\"main\") {\n    post(1)\n}\n",
+  "", "use: if __name__ == \"main\"", 2 },
 { "if normal continua sem aceitar dois-pontos",
-  "if 1 == 1:\n    post(1)\n", NULL, "bloco com ':' nao existe mais", -1 },
+  "if 1 == 1:\n    post(1)\n", "", "bloco com ':' nao existe mais", 2 },
 { "if com __name__ mas comparando outra coisa e if normal",
   "x = 1\nif __name__ == x {\n    post(\"nao\")\n} else {\n    post(\"if normal\")\n}\n",
   "if normal", NULL, 0 },
@@ -1014,14 +1007,14 @@ const Caso CASOS_LINGUAGEM[] = {
  * "esperado caminho de modulo" com o cursor no `import`, no começo da linha —
  * não dizia nada. */
 { "import com ponto solto no fim",
-  "import jinker.\n", NULL, "faltou o nome do submodulo depois do '.'", -1 },
+  "import jinker.\n", "", "faltou o nome do submodulo depois do '.'", 2 },
 /* `route` é palavra reservada: exigir IDENT depois do ponto quebrava TODO
  * decorador cujo membro é keyword. A recusa só vale pro que não pode ser
  * nome de jeito nenhum (fim de linha, fim de arquivo). */
 { "decorador com membro que e palavra reservada",
-  "@app.route(\"/x\")\naction h() { return 1 }\n", NULL, "name 'app' is not defined", -1 },
+  "@app.route(\"/x\")\naction h() { return 1 }\n", "", "name 'app' is not defined", 1 },
 { "import sem nome nenhum",
-  "import\n", NULL, "esperado nome de modulo depois de 'import'", -1 },
+  "import\n", "", "esperado nome de modulo depois de 'import'", 2 },
 { "import valido continua valendo",
   "import sys\npost(type(sys))\n", "module", NULL, 0 },
 { "from ... import continua valendo",
@@ -1029,10 +1022,10 @@ const Caso CASOS_LINGUAGEM[] = {
 
 /* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */
 { "membro inexistente nomeia modulo e membro",
-  "import json\npost(json.naoexiste)\n", NULL,
-  "module 'json' has no attribute 'naoexiste'", -1 },
+  "import json\npost(json.naoexiste)\n",
+  "", "module 'json' has no attribute 'naoexiste'", 1 },
 { "membro parecido vira sugestao",
-  "import json\npost(json.parsee)\n", NULL, "Did you mean: 'parse'?", -1 },
+  "import json\npost(json.parsee)\n", "", "Did you mean: 'parse'?", 1 },
 
 /* ── tipo: `type(x)` é o NOME do tipo, `int` é a referência ─────────────────
  * Os dois escrevem "int" na tela. Antes disso, compará-los dava falso calado:
@@ -1070,13 +1063,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = open(\"/dev/full\", \"w\")\n"
   "f.write(\"abc\")\n"
   "f.close()\n"
-  "post(\"NAO DEVIA CHEGAR\")\n", NULL, "OSError: [Errno 28] No space left on device", -1 },
+  "post(\"NAO DEVIA CHEGAR\")\n", "", "OSError: [Errno 28] No space left on device", 1 },
 { "write() grande acusa gravacao incompleta",
   "f = open(\"/dev/full\", \"w\")\n"
-  "f.write(\"x\" * 200000)\n", NULL, "[Errno 28]", -1 },
+  "f.write(\"x\" * 200000)\n", "", "[Errno 28]", 1 },
 { "writelines() acusa e diz qual linha",
   "f = open(\"/dev/full\", \"w\")\n"
-  "f.writelines([\"x\" * 200000])\n", NULL, "OSError: [Errno 28] No space left on device", -1 },
+  "f.writelines([\"x\" * 200000])\n", "", "OSError: [Errno 28] No space left on device", 1 },
 { "write() continua devolvendo quantos bytes gravou",
   "using open(\"/tmp/ps_t_w.txt\", \"w\") as f {\n"
   "    post(f.write(\"abcde\"), f.write(\"xy\"))\n"
@@ -1143,7 +1136,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "regex profundo demais e erro, nao morte",
   "import regex\n"
   "alvo = \"x\" * 60000\n"
-  "post(regex.findall(\"(?:a|(x))*\", alvo))\n", NULL, "backtracking demais", -1 },
+  "post(regex.findall(\"(?:a|(x))*\", alvo))\n", "", "backtracking demais", 1 },
 { "regex normal continua valendo",
   "import regex\n"
   "post(regex.findall(\"\\\\d+\", \"a1b22c333\"))\n"
@@ -1223,15 +1216,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(hash.b64decode(\"Zg\"), hash.b64decode(\"Zm9\"), hash.b64decode(\"Zm9vYmFy\"))\n",
   "f fo foobar", NULL, 0 },
 { "padding curto demais e erro",
-  "import hash\npost(hash.b64decode(\"Zg=\"))\n", NULL, "ValueError: Incorrect padding", -1 },
+  "import hash\npost(hash.b64decode(\"Zg=\"))\n", "", "ValueError: Incorrect padding", 1 },
 { "padding demais e erro",
-  "import hash\npost(hash.b64decode(\"Zg===\"))\n", NULL, "ValueError: Incorrect padding", -1 },
+  "import hash\npost(hash.b64decode(\"Zg===\"))\n", "", "ValueError: Incorrect padding", 1 },
 { "padding no comeco e erro",
-  "import hash\npost(hash.b64decode(\"=Zm9v\"))\n", NULL, "ValueError: Excess data after padding", -1 },
+  "import hash\npost(hash.b64decode(\"=Zm9v\"))\n", "", "ValueError: Excess data after padding", 1 },
 { "dado depois do padding e erro",
-  "import hash\npost(hash.b64decode(\"Zm==9v\"))\n", NULL, "ValueError: Excess data after padding", -1 },
+  "import hash\npost(hash.b64decode(\"Zm==9v\"))\n", "", "ValueError: Excess data after padding", 1 },
 { "um caractere solto e erro (6 bits nao formam byte)",
-  "import hash\npost(hash.b64decode(\"Z\"))\n", NULL, "base64", -1 },
+  "import hash\npost(hash.b64decode(\"Z\"))\n", "", "base64", 1 },
 
 /* ── mensagem de erro nao pode conter UTF-8 QUEBRADO ────────────────────────
  * O lexer imprimia o caractere com `%c`, ou seja o PRIMEIRO BYTE dele: `ç` é
@@ -1243,9 +1236,9 @@ const Caso CASOS_LINGUAGEM[] = {
  * hexadecimal engolir o `a` e o `o` como digitos, e o fonte do caso sai
  * corrompido. Literal adjacente encerra o escape. */
 { "caractere inesperado sai INTEIRO, nao meio byte",
-  "x = fun" "\xc3\xa7" "ao(\n", NULL, "caractere inesperado: 'ç'", -1 },
+  "x = fun" "\xc3\xa7" "ao(\n", "", "caractere inesperado: 'ç'", 2 },
 { "o --check devolve JSON valido com acento no erro",
-  "x = \xc3\xa7\n", NULL, "'ç'", -1 },
+  "x = \xc3\xa7\n", "", "'ç'", 2 },
 
 /* ── `===` e `!==` foram REMOVIDOS (29/08) ──────────────────────────────────
  *
@@ -1258,15 +1251,15 @@ const Caso CASOS_LINGUAGEM[] = {
  * O lexer ainda RECONHECE os dois, de propósito: sem isso `a === b` viraria
  * `a == (= b)` e o erro falaria de outra coisa. */
 { "`===` é erro de sintaxe, dizendo o que usar",
-  "post(1 === 1)\n", NULL, "`===` nao existe nesta linguagem; use `==`", -1 },
+  "post(1 === 1)\n", "", "`===` nao existe nesta linguagem; use `==`", 2 },
 { "`!==` é erro de sintaxe, dizendo o que usar",
-  "post(1 !== 2)\n", NULL, "`!==` nao existe nesta linguagem; use `!=`", -1 },
+  "post(1 !== 2)\n", "", "`!==` nao existe nesta linguagem; use `!=`", 2 },
 { "`==` e `!=` seguem valendo",
   "post(1 == 1, 1 != 2, \"a\" == \"a\", [1] == [1])\n",
   "True True True True", NULL, 0 },
 { "o erro do `===` aponta a coluna certa",
   /* o lexer casa o token de 3 chars inteiro, entao a coluna e a do operador */
-  "x = 1\npost(x === 1)\n", NULL, "nao existe nesta linguagem", -1 },
+  "x = 1\npost(x === 1)\n", "", "nao existe nesta linguagem", 2 },
 
 /* ── CLI ── */
 { "--check não executa o script",
