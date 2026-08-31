@@ -40,9 +40,10 @@ make verifica   # ldd, símbolos de Python (tem que ser vazio), tamanho
 make bundle     # dist/pool-portable/ (VPS sem apt install)
 ```
 
-Precisa de `gcc` e das libs de dev: postgresql, mysql, mongoc, openssl.
+Precisa de `gcc` e das libs de dev: postgresql, mariadb (`libmariadb-dev`),
+mongoc, openssl.
 
-Entram **estáticos** no ELF: sqlite, libpq, mysqlclient, odbc, openssl, png,
+Entram **estáticos** no ELF: sqlite, libpq, odbc, openssl, png,
 expat, z. Ficam **dinâmicos**: `libmongoc`/`libbson` (não têm `.a` no sistema),
 a cauda de auth do libpq (ldap/gssapi/gnutls/krb5), libX11, libgmp e o glibc.
 
@@ -87,8 +88,8 @@ mudou):
 |---|---|---|
 | `diferencial` | — (colhido de um commit) | a saída de ontem, caso a caso |
 | `equivalencia` | `teste/geradores/equivalencia.ps` | formas redundantes têm que concordar entre si |
-| `oraculo` | `teste/geradores/oraculo.ps` | 4484 expressões contra o **Python** como oráculo |
-| `robustez` | `teste/geradores/robustez.ps` | ~11,9 mil chamadas com aridade/tipo errados |
+| `oraculo` | `teste/geradores/oraculo.ps` | o produto (receptor × método × argumento) contra o **Python** como oráculo |
+| `robustez` | `teste/geradores/robustez.ps` | chamadas com aridade errada, uma por tipo |
 
 Os geradores são PoolScript rodando no `./pool` — não há Python nem JavaScript
 no projeto. O `oraculo` consulta o CPython como ferramenta **externa** (escreve
@@ -97,14 +98,16 @@ um banco de dados: nenhum `.py` fica versionado aqui.
 
 O `oraculo` guarda o valor que a linguagem produz hoje e marca `DIVERGE` nos
 casos em que o Python daria outra coisa, com o valor dele no comentário — a
-diferença fica no arquivo, visível, em vez de sumir. As 64 divergências de hoje
-são decisão de projeto (índice fora da faixa → `null`, `.len()` como método,
-`.keys()` devolvendo lista, `type()` com nome curto).
+diferença fica no arquivo, visível, em vez de sumir. As divergências que
+sobram são decisão de projeto (índice fora da faixa → `Null`, `.len()` como
+método, `.keys()` devolvendo lista, `type()` com nome curto, `Null` no lugar de
+`None`). Quantas são, hoje: o cabeçalho de `teste/casos_oraculo.c` diz — ele é
+reescrito pelo gerador.
 
-O `robustez` é um caso por TIPO, não por chamada — 11,9 mil subprocessos
-levariam mais de um minuto. Cada programa roda as chamadas erradas do seu tipo
-em `try/catch` e imprime quantas passaram **caladas** e em quais métodos.
-Crash e trava viram falha pelo `WIFSIGNALED`/`SIGALRM` do runner.
+O `robustez` é um caso por TIPO, não por chamada — um subprocesso por chamada
+levaria mais de um minuto. Cada programa roda as chamadas erradas do seu tipo
+em `try/catch` e relata as que passaram **caladas**, com o método. Crash e trava
+viram falha pelo `WIFSIGNALED`/`SIGALRM` do runner.
 
 ## Scripts de apoio: em PoolScript
 

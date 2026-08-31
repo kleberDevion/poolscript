@@ -21,7 +21,7 @@ sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .ps
 pool examples/01_hello.ps
 ```
 
-Compilando do fonte (gcc + libs de dev: postgresql, mysql, mongoc, openssl):
+Compilando do fonte (gcc + libs de dev: postgresql, mariadb, mongoc, openssl):
 
 ```bash
 make pool       # gera ./pool

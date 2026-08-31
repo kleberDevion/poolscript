@@ -154,7 +154,7 @@ em `docs/bytes/len/len.md` — o `audita_doc.ps` cobra as duas coisas.
 | 3.6 | matriz de CI (um SO só) e `_Static_assert` no GMP | ENG §4.7 | nada |
 | ~~3.7~~ | **FEITO** — compila de verdade e reprova; 2 avisos reais corrigidos (`EAGAIN\|\|EWOULDBLOCK`, `cl` sombreando o closure) | ENG §4.8 | `check` |
 | 3.8 | `math`, `random`, CSPRNG: ferramenta de usuário | ENG §4.10 | nada |
-| 3.9 | LICENSE (libmysqlclient é GPLv2 e entra ESTÁTICO — contamina a distribuição, decisão dele), SECURITY.md, CONTRIBUTING.md, tags coerentes, SBOM | ENG §4.12 | nada |
+| 3.9 | LICENSE, SECURITY.md, CONTRIBUTING.md, tags coerentes, SBOM. O nó do `libmysqlclient` GPLv2 estático foi desfeito em 31/08: agora é MariaDB Connector/C (LGPL 2.1) dinâmico, e o driver `mysql` do `psodbc` continua passando contra um MySQL de verdade. Sobra escolher a licença | ENG §4.12 | nada |
 | 3.10 | código morto da era CPython (`ps_*_bind.c`, `#ifdef PS_MODULO_PYTHON`) | ENG §4.13 | — |
 | 3.11 | catálogo de ilogismos I1..I23 (só I17 fechado) | ENG §5 | nada |
 

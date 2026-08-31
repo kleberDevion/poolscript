@@ -150,7 +150,8 @@ construção.
 - 1..7, 9 — **feitos** (nos dois commits).
 - 8 — **metade**: opcodes unificados (falta a regra no `audita_c.ps`); a
   remoção da era Python está DESFEITA de propósito, ver acima.
-- 10 — **não começado**: LICENSE (libmysqlclient é GPLv2 e entra estático — isso
+- 10 — LICENSE: o impedimento do `libmysqlclient` GPLv2 estático saiu em 31/08
+  (MariaDB Connector/C, LGPL 2.1, dinâmico). Falta só escolher a licença. (isso
   contamina a distribuição do binário e precisa de decisão dele), SECURITY.md,
   CONTRIBUTING.md, tags coerentes, SBOM.
 - §5, os ilogismos I1..I23 — **não começados**.

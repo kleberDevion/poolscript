@@ -457,11 +457,23 @@ param em `v8.2.54` (e `v8_2_17`, `Linux_standalone_ELF_8_2_31` — três padrõe
 diferentes) enquanto a versão é **8.3.78**: não há release rastreável nem forma
 de alguém dizer "estou na 8.3.7x".
 
-E há um item legal concreto: o `pool` entra em produção com **`libmysqlclient`
-estático** (`-Wl,-Bstatic ... -lmysqlclient`), que é GPLv2 (com FOSS Exception
-condicionada). Sem `LICENSE` no repositório, o binário distribuído em
-`dist/pool-portable.tar.gz` fica numa posição indefensável se alguém perguntar.
-Uma SBOM (`syft`/CycloneDX) do bundle resolveria a parte técnica.
+E havia um item legal concreto: o `pool` entrava em produção com
+**`libmysqlclient` estático** (`-Wl,-Bstatic ... -lmysqlclient`), que é GPLv2
+(com FOSS Exception condicionada) — ligar estático faz do binário inteiro obra
+derivada, e o `dist/pool-portable.tar.gz` ficava numa posição indefensável.
+
+**RESOLVIDO em 2026-08-31**, e a troca foi de uma linha: `-lmysqlclient` virou
+`-lmariadb`. O MariaDB Connector/C é LGPL 2.1, fala o mesmo protocolo, expõe as
+mesmas funções `mysql_*` e o mesmo `mysql.h` — `vm/ps_db.c` não mudou um
+caractere. Ele entra **dinâmico** (`ldd pool` mostra `libmariadb.so.3`), e
+LGPL ligada dinamicamente não pede nada além do aviso; o bundle continua
+funcionando porque o `build_bundle.sh` copia toda `.so` do `ldd`.
+
+Conferido contra um MySQL de verdade, não só compilando: `teste/e2e/db.ps`
+passa nos dois drivers.
+
+O que sobra é escolher a licença da PoolScript — decisão dele, sem impedimento
+técnico. Uma SBOM (`syft`/CycloneDX) do bundle continua valendo.
 
 ### 4.13. Código morto da era CPython dentro do motor
 

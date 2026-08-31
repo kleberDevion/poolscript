@@ -1,6 +1,6 @@
 # Binário standalone da PoolScript — tudo em C.
 #
-# Os clientes de banco (sqlite, libpq, mysqlclient, unixODBC), o TLS, o PNG e
+# Os clientes de banco (sqlite, libpq, MariaDB Connector/C, unixODBC), o TLS, o PNG e
 # o zlib entram ESTÁTICOS: o `pool` roda em máquina que não tem nenhum deles.
 CC      ?= gcc
 # A versão é constante de header (vm/ps_versao.h) — o compilador resolve, sem
@@ -24,7 +24,7 @@ CC      ?= gcc
 # otimizada. Instrumentação em -O2 embaralha atribuição de linha e ramo — o
 # número saía, mas não era o que o alvo dizia estar medindo.
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
-           -I/usr/include/postgresql -I/usr/include/mysql -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
+           -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
@@ -42,7 +42,7 @@ MK := $(lastword $(MAKEFILE_LIST))
 
 pool: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lmysqlclient -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libX11.so.6 -l:libgmp.so.10
+	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libX11.so.6 -l:libgmp.so.10
 
 # Bundle PORTÁTIL: pool + todas as .so numa pasta lib/, com wrapper. Roda em
 # qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls, krb5,
@@ -187,7 +187,7 @@ testar: $(TESTE_FONTES) teste/ps_teste.h
 pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -fsanitize=address,undefined -fno-omit-frame-pointer \
 	  -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libX11.so.6 -l:libgmp.so.10
@@ -443,8 +443,8 @@ pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ $(FONTES) teste/ps_oom.c \
 	  -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
 	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon \
-	  -lpgport -lmysqlclient -lodbc -lssl -lcrypto -lpng -lexpat -lz \
-	  -Wl,-Bdynamic -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 \
+	  -lpgport -lmariadb -lodbc -lssl -lcrypto -lpng -lexpat -lz \
+	  -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 \
 	  -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libX11.so.6 -l:libgmp.so.10
 
@@ -468,10 +468,10 @@ FUZZ_CORPUS := teste/fuzz_corpus
 
 pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
 	clang -O1 -g -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer \
-	  -Wno-everything -I$(VM) -I/usr/include/postgresql -I/usr/include/mysql \
+	  -Wno-everything -I$(VM) -I/usr/include/postgresql -I/usr/include/mariadb \
 	  -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0 \
 	  -o $@ $(FUZZ_FONTES) teste/ps_fuzz.c \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libX11.so.6 -l:libgmp.so.10
@@ -538,7 +538,7 @@ check-asan: pool-asan testar
 # sinal em vez de derrubar a bateria.
 pool-debug: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libX11.so.6 -l:libgmp.so.10
@@ -556,7 +556,7 @@ check-debug: pool-debug testar
 cobertura: testar
 	@rm -rf cob && mkdir -p cob
 	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmysqlclient -lodbc -lssl \
+	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libX11.so.6 -l:libgmp.so.10

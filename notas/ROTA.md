@@ -73,7 +73,7 @@ nenhum os toma.
 
 | item | por quê |
 |---|---|
-| LICENSE / SECURITY.md / SBOM | `libmysqlclient` é GPLv2 e entra estático no binário — a decisão de licença é sua |
+| LICENSE / SECURITY.md / SBOM | escolher a licença da PoolScript. O impedimento técnico saiu: era o `libmysqlclient` (GPLv2) entrando ESTÁTICO, que contaminaria a distribuição inteira. Trocado pelo MariaDB Connector/C (LGPL 2.1), ligado DINAMICAMENTE — nessa forma a LGPL não pede nada além do aviso, e a licença do PoolScript volta a ser escolha livre |
 | versão e lockfile de pacote | design do `psl` |
 | `math`, `random`, CSPRNG | feature, sua |
 
