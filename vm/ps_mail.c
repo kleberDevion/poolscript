@@ -223,6 +223,9 @@ static int smtp_manda(PSMailConn *c, const char *cmd)
 {
     char lin[1100];
     int n = snprintf(lin, sizeof(lin), "%s\r\n", cmd);
+    /* o retorno é o tamanho que TERIA: mandar `n` bytes de um lin[1100]
+     * truncado põe pilha na conexão SMTP */
+    if (n < 0 || (size_t)n >= sizeof(lin)) return -1;
     return cru_escreve(c, lin, n);
 }
 

@@ -20,8 +20,17 @@ con = Null
 try {
     con = psodbc.connect(driver="mongo", host="127.0.0.1", port=27099,
                          database="ps_teste")
+    # O `connect` do mongo é PREGUIÇOSO: ele monta o cliente e volta com
+    # sucesso mesmo sem mongod nenhum no ar — quem descobre é a primeira
+    # operação. Sem esta chamada de sondagem aqui DENTRO do try, o script
+    # seguia com `con != Null`, estourava lá embaixo no `col.remove({})` e o
+    # e2e inteiro reprovava com "No suitable servers found" — que é máquina
+    # sem banco, não defeito da linguagem. Vermelho que não quer dizer nada
+    # ensina a ignorar vermelho.
+    con.collection("t").count({})
 }
 catch (e) {
+    con = Null
     post("PULOU mongo ->", e)
 }
 

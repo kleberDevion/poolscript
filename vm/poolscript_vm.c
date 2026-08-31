@@ -2981,6 +2981,10 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
                 char buf[300];
                 const char *nm = ((PSEnum *)v->as.obj)->nome;
                 int nn = snprintf(buf, sizeof(buf), "<enum %s>", nm ? nm : "?");
+                /* o retorno é o que TERIA cabido: com nome gigante, o txt_put
+                 * leria além do buf */
+                if (nn < 0) nn = 0;
+                if (nn >= (int)sizeof(buf)) nn = (int)sizeof(buf) - 1;
                 return txt_put(t, buf, nn);
             }
             return 0;
@@ -17170,13 +17174,51 @@ static int jk_slot_global(VM *vm, const char *nome)
     return -1;
 }
 
-/* responde erro em JSON no formato do wrapper */
+/* Mensagem pronta pra entrar entre aspas num JSON: escapa o que precisa e
+ * CORTA no que cabe, sem partir um caractere UTF-8 no meio. */
+static void jk_json_seg(const char *msg, char *out, size_t cap)
+{
+    size_t j = 0;
+    for (const unsigned char *p = (const unsigned char *)(msg ? msg : ""); *p; p++) {
+        if (j + 8 >= cap) break;
+        if (*p == '"' || *p == '\\')  { out[j++] = '\\'; out[j++] = (char)*p; }
+        else if (*p == '\n')          { out[j++] = '\\'; out[j++] = 'n'; }
+        else if (*p == '\r')          { out[j++] = '\\'; out[j++] = 'r'; }
+        else if (*p == '\t')          { out[j++] = '\\'; out[j++] = 't'; }
+        else if (*p < 0x20)           j += (size_t)snprintf(out + j, cap - j, "\\u%04x", *p);
+        else                          out[j++] = (char)*p;
+    }
+    /* cortou no meio de um UTF-8? volta até o começo do caractere */
+    while (j > 0 && ((unsigned char)out[j - 1] & 0xC0) == 0x80) j--;
+    if (j > 0 && ((unsigned char)out[j - 1] & 0x80)) j--;
+    out[j] = '\0';
+}
+
+/* Responde erro em JSON no formato do wrapper.
+ *
+ * O `snprintf` DEVOLVE o tamanho que a string TERIA, não o que coube (C99
+ * 7.21.6.5). Este corpo era montado num `corpo[512]` e mandado com esse
+ * retorno como tamanho: um 404 com URL de 9 KB saía com `Content-Length: 642`
+ * e 130 bytes de PILHA — ponteiros crus, adeus ASLR — indo pro cliente. Sem
+ * autenticação nenhuma, só uma URL comprida.
+ *
+ * Quem apontou foi o `jinker_bruto.ps`, que reprovava uma vez a cada seis
+ * dizendo "FECHOU-CALADO". Não era conexão fechada: era o `.decode()` do teste
+ * engasgando no lixo binário do fim da resposta. Vermelho intermitente escondeu
+ * isso por dias — é a razão de a suíte não poder ter teste que oscila.
+ *
+ * Agora a mensagem entra escapada e cortada, e o tamanho enviado é o que
+ * REALMENTE está no buffer. */
 static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep,
                          const char *acao_origin)
 {
+    char seg[380];
+    jk_json_seg(msg, seg, sizeof(seg));
     char corpo[512];
     int nc = snprintf(corpo, sizeof(corpo),
-                      "{\"error\": true, \"code\": %d, \"message\": \"%s\"}", code, msg);
+                      "{\"error\": true, \"code\": %d, \"message\": \"%s\"}", code, seg);
+    if (nc < 0) nc = 0;
+    if ((size_t)nc >= sizeof(corpo)) nc = (int)sizeof(corpo) - 1;
     char extra[256];
     snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: %s\r\n", acao_origin ? acao_origin : "*");
     ps_jk_responde(c, code, "application/json; charset=utf-8", corpo, (size_t)nc, extra, keep);
@@ -17377,9 +17419,15 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     if (j->poolip_on) {
         char motivo[128];
         if (!jk_poolip_check(j, ip, motivo, sizeof(motivo))) {
+            char seg[180];
+            jk_json_seg(motivo, seg, sizeof(seg));
             char corpo[256];
+            /* mesmo cuidado do jk_erro_json: o retorno do snprintf é o que a
+             * string TERIA, não o que coube */
             int nc = snprintf(corpo, sizeof(corpo),
-                              "{\"error\": true, \"code\": 429, \"message\": \"%s\"}", motivo);
+                              "{\"error\": true, \"code\": 429, \"message\": \"%s\"}", seg);
+            if (nc < 0) nc = 0;
+            if ((size_t)nc >= sizeof(corpo)) nc = (int)sizeof(corpo) - 1;
             char extra[64];
             snprintf(extra, sizeof(extra), "Retry-After: %ld\r\n", j->ip_bloq * 86400);
             ps_jk_responde(c, 429, "application/json; charset=utf-8", corpo, (size_t)nc, extra, hr->keep_alive);

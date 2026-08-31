@@ -11,6 +11,7 @@
 # forma de escrever `Content-Length : 5` com espaço antes dos dois-pontos.
 #
 # Sobe com o servidor do par (ver teste/e2e_roda.ps).
+import bytes
 import sockets
 import sys
 
@@ -42,6 +43,38 @@ action bate(cru) {
         return "FECHOU-CALADO"
     }
     return resp.split("\r\n")[0]
+}
+
+
+# Igual ao `bate`, mas devolve os BYTES CRUS inteiros — sem `.decode()`.
+#
+# O `bate` decodifica em UTF-8 e engole a exceção: quando a resposta vinha com
+# lixo binário no fim, o `decode` estourava, a saída virava "" e o teste dizia
+# "FECHOU-CALADO". Diagnóstico errado por dias — parecia conexão fechada e era
+# vazamento de memória do servidor. Pra ver isso é preciso olhar os bytes.
+action bate_cru(cru) {
+    s = sockets.socket()
+    s.settimeout(5)
+    if s.connect_ex((HOST, PORTA)) != 0 {
+        return "".encode()
+    }
+    s.sendall(cru.encode())
+    resp = "".encode()
+    try {
+        i = 0
+        while i < 8 {
+            ped = s.recv(8192)
+            if len(ped) == 0 {
+                break
+            }
+            resp = resp + ped
+            i = i + 1
+        }
+    } catch (e) {
+        resp = resp
+    }
+    s.close()
+    return resp
 }
 
 
@@ -282,6 +315,85 @@ if __name__ == "main" {
         "POST /upload HTTP/1.1\r\nHost: x\r\n"
         + "Content-Type: multipart/form-data; boundary=" + ("b" * 400) + "\r\n"
         + "Content-Length: 5\r\n\r\nabcde", "HTTP/1.1")
+
+    # ── o CORPO da resposta de erro, byte a byte ────────────────────────────
+    #
+    # `jk_erro_json` montava o JSON num `corpo[512]` com `snprintf` e mandava o
+    # RETORNO dele como tamanho. O snprintf devolve o que a string TERIA (C99
+    # 7.21.6.5), não o que coube: um 404 com URL de 9 KB saía com
+    # `Content-Length: 642` e 130 bytes de PILHA — ponteiros crus — indo pro
+    # cliente. Sem autenticação nenhuma, só uma URL comprida.
+    #
+    # O caso "alvo gigante" acima JÁ passava por aqui e não pegava, porque só
+    # olha a primeira linha. Reprovava uma vez a cada seis com "FECHOU-CALADO"
+    # e era descartado como intermitência. Vermelho que oscila esconde defeito.
+    #
+    # A conferência é em HEXADECIMAL porque `bytes` na linguagem tem `decode`,
+    # `hex` e `len` — não tem `find` nem `in`. Decodificar seria justamente
+    # perder a evidência: o lixo binário não é UTF-8 válido.
+    h = bate_cru("GET /" + ("a" * 9000) + " HTTP/1.1\r\nHost: x\r\n\r\n").hex()
+    corte = h.find("0d0a0d0a")
+    if corte < 0 {
+        post("  FALHOU corpo do 404: resposta sem fim de cabecalho")
+        ruins = ruins + 1
+    }
+    else {
+        hcab = h[0:corte]
+        hcorpo = h[corte+8:len(h)]
+        ncorpo = len(hcorpo) // 2
+        # 1) nenhum byte NUL: o lixo vinha logo depois do \0 do snprintf
+        temnul = false
+        i = 0
+        while i < len(hcorpo) {
+            if hcorpo[i:i+2] == "00" {
+                temnul = true
+                break
+            }
+            i = i + 2
+        }
+        if temnul {
+            post("  FALHOU corpo do 404 tem byte NUL — memoria vazada")
+            ruins = ruins + 1
+        }
+        else {
+            post("  ok     corpo do 404 nao tem byte NUL")
+        }
+        # 2) o Content-Length declarado bate com o que foi mandado
+        cab = bytes.fromhex(hcab).decode("utf-8", "replace")
+        decl = -1
+        for each l in cab.split("\r\n") {
+            if l.lower().startswith("content-length:") {
+                decl = int(l.split(":")[1].strip())
+            }
+        }
+        if decl == ncorpo {
+            post("  ok     Content-Length bate com o corpo (" + str(decl) + ")")
+        }
+        else {
+            post("  FALHOU Content-Length diz", str(decl), "e o corpo tem", str(ncorpo))
+            ruins = ruins + 1
+        }
+        # 3) o JSON fecha com `"}` (hex 227d)
+        if hcorpo.endswith("227d") {
+            post("  ok     o JSON de erro fecha certo")
+        }
+        else {
+            post("  FALHOU o JSON de erro nao fecha; ultimos bytes:", hcorpo[len(hcorpo)-24:len(hcorpo)])
+            ruins = ruins + 1
+        }
+    }
+
+    # o mesmo corpo, com aspas e barra invertida no caminho: sem escapar, o
+    # JSON sai quebrado e quem consome do outro lado estoura.
+    # hex: 5c22 = \"   5c5c = \\
+    h = bate_cru("GET /a%22b%5Cc HTTP/1.1\r\nHost: x\r\n\r\n").hex()
+    if "5c2262" in h and "5c5c63" in h {
+        post("  ok     aspas e barra no caminho saem ESCAPADAS no JSON")
+    }
+    else {
+        post("  FALHOU aspas/barra no caminho nao escapadas")
+        ruins = ruins + 1
+    }
 
     ruins = ruins + confere("e o servidor continua vivo depois de tudo isso",
         "GET /oi HTTP/1.1\r\nHost: x\r\n\r\n", "HTTP/1.1 200")

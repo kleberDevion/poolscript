@@ -277,6 +277,12 @@ static int registry_set(const char *home, const char *url)
     snprintf(caminho, sizeof(caminho), "%s/config.json", home);
     char corpo[2048];
     int n = snprintf(corpo, sizeof(corpo), "{\n  \"registry_url\": \"%s\"\n}\n", url);
+    /* o retorno é o tamanho que TERIA: gravar `n` bytes de um corpo truncado
+     * põe pilha dentro do config.json */
+    if (n < 0 || (size_t)n >= sizeof(corpo)) {
+        fprintf(stderr, "url do registry longa demais — nao gravei\n");
+        return -1;
+    }
     return escrever_txt(caminho, corpo, (size_t)n);
 }
 

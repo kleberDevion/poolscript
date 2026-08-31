@@ -670,6 +670,13 @@ PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,
                      "Sec-WebSocket-Key: %s\r\n"
                      "Sec-WebSocket-Version: 13\r\n\r\n",
                      path && path[0] ? path : "/", host, porta, chave);
+    /* o retorno é o tamanho que TERIA, não o que coube: com path ou host
+     * longos isso mandava pilha nossa pro servidor. Mesmo defeito que vazava a
+     * pilha do jinker num 404 com URL grande. */
+    if (n < 0 || (size_t)n >= sizeof(req)) {
+        snprintf(erro, ecap, "endereco do websocket longo demais");
+        ps_jk_close(c); return NULL;
+    }
     if (conn_escreve(c, req, (size_t)n) != 0) {
         snprintf(erro, ecap, "falha ao enviar handshake");
         ps_jk_close(c); return NULL;

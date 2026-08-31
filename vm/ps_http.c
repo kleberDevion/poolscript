@@ -292,6 +292,14 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
     char lin[2400];
     int n = snprintf(lin, sizeof(lin), "%s %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n",
                      metodo, caminho, host);
+    /* snprintf devolve o tamanho que a linha TERIA, não o que coube: com uma
+     * URL de mais de 2350 chars isso mandava pilha nossa pro servidor do outro
+     * lado. É o mesmo defeito que vazava a pilha do jinker num 404. */
+    if (n < 0 || (size_t)n >= sizeof(lin)) {
+        free(req.b);
+        conn_fecha(&c);
+        REDE(r, "OSError", "URL longa demais para a linha de pedido");
+    }
     acc_add(&req, lin, (size_t)n, 0);
     if (cabs) acc_add(&req, cabs, strlen(cabs), 0);   /* já em "Nome: v\r\n" */
     if (corpo && ncorpo > 0) {
