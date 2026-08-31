@@ -29,6 +29,7 @@ O diálogo segue o que o motor realmente manda (ver `vm/ps_mail.c`):
 Porta 0 = o sistema escolhe uma livre e a primeira linha da caixa vira
 `PRONTO <porta>` — porta fixa colide com a sobra da rodada anterior.
 """
+import os
 import socket
 import ssl
 import sys
@@ -52,6 +53,10 @@ SENHA = "segredo123"
 #      precisa reexpandir cada byte pra UTF-8
 #   5  corpo MULTIPART com uma parte texto e uma anexada — o parser de corpo
 #   6  corpo em base64 declarado por `Content-Transfer-Encoding`
+#   7  corpo em base64 SUJO (um byte fora do alfabeto). O `ps_base64_decode` é
+#      estrito e devolvia -1, que virava `ncru = 0`: o corpo INTEIRO sumia, sem
+#      erro e sem aviso. O Python (`b64decode` com validate=False) descarta o
+#      byte inválido e decodifica o resto — é o que o motor faz agora.
 CAIXA = {
     "1": ("From: um@local\r\nTo: teste@local\r\nSubject: primeiro\r\n"
           "\r\ncorpo do primeiro\r\n"),
@@ -81,7 +86,19 @@ CAIXA = {
           "Content-Type: text/plain; charset=utf-8\r\n"
           "Content-Transfer-Encoding: base64\r\n"
           "\r\nY29ycG8gZW0gYmFzZTY0\r\n"),
+    # o mesmo "corpo em base64", com um `#` enfiado no meio
+    "7": ("From: sete@local\r\nTo: teste@local\r\nSubject: b64 sujo\r\n"
+          "Content-Type: text/plain; charset=utf-8\r\n"
+          "Content-Transfer-Encoding: base64\r\n"
+          "\r\nY29ycG8g#ZW0gYmFzZTY0\r\n"),
 }
+
+# Modo HOSTIL: o servidor responde coisas que um servidor honesto não responde.
+# Serve pra provar que o cliente aguenta — o tamanho do literal `{n}` vem do
+# SERVIDOR, e com `{-1}` o motor fazia `(size_t)-1`, `malloc(0)` e escrevia sem
+# limite: heap corrompido, SIGABRT, o processo inteiro no chão (num jinker,
+# todas as requisições junto). O imaplib do Python só casa `{` 1*DIGIT `}`.
+HOSTIL = os.environ.get("IMAP_FALSO_HOSTIL", "")
 
 
 def atende(sock, ev):
@@ -158,6 +175,21 @@ def atende(sock, ev):
             if item.upper().startswith("RFC822.HEADER"):
                 msg = msg.split("\r\n\r\n")[0] + "\r\n\r\n"
             bruto = msg.encode("utf-8")
+            if HOSTIL == "literal_negativo":
+                # Tamanho NEGATIVO no literal, e o dilúvio atrás NUMA ESCRITA
+                # SÓ. O "numa escrita só" não é detalhe: o `le_bytes` do motor
+                # primeiro esvazia o buffer que já tem (`memcpy` pro bloco de
+                # zero byte que o `malloc(0)` devolveu — é AÍ que o heap
+                # arrebenta) e só depois chama o read, que com tamanho
+                # negativo falha na hora e sai limpo. Mandando em duas
+                # escritas, o cliente lê a linha com o buffer vazio, o read
+                # falha, e o defeito NÃO aparece: o teste passa verde com o
+                # bug no lugar. Foi o que aconteceu no primeiro rascunho.
+                ev.append("FETCH_HOSTIL " + ident + " literal={-1}")
+                cabeca = ("* %s FETCH (%s {-1}\r\n" % (ident, item)).encode()
+                sock.sendall(cabeca + b"A" * 200000 + b")\r\n"
+                             + (tag + " OK entregue\r\n").encode())
+                continue
             ev.append("FETCH " + ident + " " + item + " " + str(len(bruto)) + "B")
             manda("* %s FETCH (%s {%d}\r\n" % (ident, item, len(bruto)))
             sock.sendall(bruto)

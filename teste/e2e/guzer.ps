@@ -1026,6 +1026,27 @@ if raiz.value != "conteudo" {
     erros = erros + 1
 }
 n = n + 2
+
+# `.text()` com FLOAT. O método libera o texto antigo logo na entrada e só
+# reescreve se o argumento for string ou inteiro: com float ele caía fora sem
+# escrever nada — o elemento PERDIA o texto que já tinha, `.value` virava ""
+# e a chamada devolvia o próprio elemento, encadeável, como se tivesse dado
+# certo. `text(42)` funcionava e `text(3.14)` apagava, sendo os dois "número".
+quebrado = app.p()
+quebrado.text("tinha texto")
+quebrado.text(3.14)
+if quebrado.value != "3.14" {
+    post("ERRO Elemento.text(float) ->", "[" + quebrado.value + "]")
+    erros = erros + 1
+}
+inteiro = app.p()
+inteiro.text("tinha texto")
+inteiro.text(42)
+if inteiro.value != "42" {
+    post("ERRO Elemento.text(int) ->", "[" + inteiro.value + "]")
+    erros = erros + 1
+}
+n = n + 2
 app.show()
 n = n + 1
 

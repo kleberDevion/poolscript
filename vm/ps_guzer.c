@@ -230,7 +230,21 @@ static int guz_video_le(GuzVideo *v)
     int pronto = 0;
     for (;;) {
         ssize_t r = read(v->fd, v->acc + v->cheio, v->tam - v->cheio);
-        if (r <= 0) break;
+        if (r == 0) {
+            /* Fim do vídeo. Sem FECHAR aqui, o fd continua no poll dando
+             * POLLHUP na hora, sempre: o laço vira poll -> read 0 -> poll
+             * sem dormir, e o processo queima 100% de um núcleo pelo resto
+             * da vida da janela — por um vídeo de 1 segundo que já acabou.
+             * (guz_video_fecha já testa `fd >= 0`, e o poll ignora negativo.)
+             * E colhe o ffmpeg aqui: ele já terminou (foi ele quem fechou o
+             * cano), e esperar o fechamento da janela pra colher deixava um
+             * zumbi ocupando PID por todo o resto da sessão. */
+            close(v->fd);
+            v->fd = -1;
+            if (v->pid > 0) { waitpid(v->pid, NULL, 0); v->pid = -1; }
+            break;
+        }
+        if (r < 0) break;
         v->cheio += (size_t)r;
         if (v->cheio == v->tam) {
             size_t n = v->tam / 3;
@@ -282,6 +296,14 @@ int ps_guz_run(const char *titulo, const char *icone,
     Window   root = XRootWindow(dpy, scr);
     Colormap cmap = XDefaultColormap(dpy, scr);
 
+    /* O X11 só aceita 1..32767 de largura e altura. Com 0 o servidor responde
+     * BadValue e o tratador padrão do Xlib despeja o texto em stderr e chama
+     * exit(1) — a VM nem fica sabendo, não levanta exceção, e tudo que vinha
+     * depois do show() some. Fora da faixa, volta pro default, que é o que já
+     * acontecia com valor negativo: três jeitos de escrever a mesma bobagem,
+     * e só um matava o processo. */
+    if (win_w < 1 || win_w > 32767) win_w = 480;
+    if (win_h < 1 || win_h > 32767) win_h = 320;
     Window win = XCreateSimpleWindow(
         dpy, root, 0, 0, (unsigned)win_w, (unsigned)win_h, 0,
         XBlackPixel(dpy, scr), aloca_cor(dpy, cmap, win_bg));
@@ -321,8 +343,24 @@ int ps_guz_run(const char *titulo, const char *icone,
         while (!XPending(dpy)) {
             struct pollfd pf[9];
             pf[0].fd = xfd; pf[0].events = POLLIN;
-            for (int v = 0; v < nvids; v++) { pf[1 + v].fd = vids[v].fd; pf[1 + v].events = POLLIN; }
-            int pr = poll(pf, (nfds_t)(1 + nvids), nvids ? 33 : -1);
+            int vivos = 0;
+            for (int v = 0; v < nvids; v++) {
+                pf[1 + v].fd = vids[v].fd; pf[1 + v].events = POLLIN;
+                if (vids[v].fd >= 0) vivos++;
+            }
+            /* Colhe o ffplay que já acabou. Sem isto ele fica zumbi segurando
+             * um PID até a janela fechar — que pode ser a sessão inteira, por
+             * um áudio de um segundo. WNOHANG: nunca espera por quem toca. */
+            int pend = 0;
+            for (int a = 0; a < nauds; a++) {
+                if (auds[a] <= 0) continue;
+                if (waitpid(auds[a], NULL, WNOHANG) > 0) auds[a] = 0;
+                else pend++;
+            }
+            /* 33ms só enquanto algum vídeo AINDA corre; meio segundo enquanto
+             * sobrar filho pra colher (não há evento que avise); sem nada
+             * disso o poll volta a dormir de verdade, e não 30x/s à toa. */
+            int pr = poll(pf, (nfds_t)(1 + nvids), vivos ? 33 : (pend ? 500 : -1));
             if (pr < 0) break;
             for (int v = 0; v < nvids; v++)
                 if (guz_video_le(&vids[v]))

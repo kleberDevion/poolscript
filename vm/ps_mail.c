@@ -278,6 +278,13 @@ int ps_smtp_login(PSMailConn *c, const char *user, const char *senha,
     /* PLAIN quando anunciado, senão LOGIN — a ordem do smtplib sem CRAM. */
     int plain = strstr(c->auth, "PLAIN") != NULL || c->auth[0] == '\0';
     char cru[512], b64[1024], cmd[1100];
+    /* o snprintf TRUNCA em cru[512] mas DEVOLVE o tamanho que a string TERIA
+     * (C99 7.21.6.5). Usar esse retorno fazia o base64 ler fora de `cru` e
+     * escrever fora de `b64`: com usuario de 4000 chars, stack smashing;
+     * com 1500, a pilha adjacente saia codificada pro servidor. */
+    size_t nu = strlen(user), ns = strlen(senha);
+    if (nu + ns + 2 > sizeof(cru) || ((nu + ns + 4) / 3) * 4 + 1 > sizeof(b64))
+        FALHA(erro, cap, "usuario ou senha longos demais para o AUTH");
     if (plain) {
         int n = snprintf(cru, sizeof(cru), "%c%s%c%s", 0, user, 0, senha);
         size_t nb = ps_base64_encode((const unsigned char *)cru, (size_t)n, b64);
@@ -299,6 +306,17 @@ int ps_smtp_login(PSMailConn *c, const char *user, const char *senha,
     return 0;
 }
 
+/* Byte de controle no endereço vira COMANDO SMTP novo: um `to()` com \r\n no
+ * meio saia como dois `RCPT TO:` — destinatário oculto plantado por quem
+ * controla o endereço. Some com eles. */
+static void tira_controle(char *s)
+{
+    size_t j = 0;
+    for (size_t i = 0; s[i]; i++)
+        if ((unsigned char)s[i] >= 0x20 && (unsigned char)s[i] != 0x7f) s[j++] = s[i];
+    s[j] = '\0';
+}
+
 /* "Nome <a@b>" → a@b. Sem <>, o próprio texto sem espaços das pontas. */
 static void extrai_endereco(const char *txt, size_t n, char *out, size_t cap)
 {
@@ -310,6 +328,7 @@ static void extrai_endereco(const char *txt, size_t n, char *out, size_t cap)
             if (tam > cap - 1) tam = cap - 1;
             memcpy(out, abre + 1, tam);
             out[tam] = '\0';
+            tira_controle(out);
             return;
         }
     }
@@ -318,6 +337,7 @@ static void extrai_endereco(const char *txt, size_t n, char *out, size_t cap)
     if (n > cap - 1) n = cap - 1;
     memcpy(out, txt, n);
     out[n] = '\0';
+    tira_controle(out);
 }
 
 int ps_smtp_envia(PSMailConn *c, const char *de, const char *para,
@@ -457,10 +477,16 @@ static int le_linha_din(PSMailConn *c, char **out, size_t *cap)
 static int imap_cmd(PSMailConn *c, const char *cmd, ImapDados fn, void *ctx,
                     char *erro, size_t cap)
 {
+    /* CR/LF no argumento vira OUTRO comando pro servidor: um `select(pasta)`
+     * ou `body(id)` com \r\n no meio virava DELETE/CREATE na caixa. O
+     * imap_aspas cuidava de `"` e `\\` e ignorava justo esses dois bytes. */
+    if (strpbrk(cmd, "\r\n"))
+        FALHA(erro, cap, "comando IMAP com CR ou LF no argumento");
     char tag[16];
     snprintf(tag, sizeof(tag), "A%d", ++c->tag);
     char lin[2100];
     int n = snprintf(lin, sizeof(lin), "%s %s\r\n", tag, cmd);
+    if (n < 0 || (size_t)n >= sizeof(lin)) FALHA(erro, cap, "comando IMAP longo demais");
     if (cru_escreve(c, lin, n) != 0) FALHA(erro, cap, "conexao IMAP caiu");
     size_t ntag = strlen(tag);
     size_t cap_l = 4096;
@@ -540,8 +566,14 @@ static int imap_cmd_literal(PSMailConn *c, const char *criterio, const char *ter
     snprintf(tag, sizeof(tag), "A%d", ++c->tag);
     size_t nt = strlen(termo);
     char lin[900];
+    if (strpbrk(criterio, "\r\n"))
+        FALHA(erro, cap, "criterio de busca com CR ou LF");
     int n = snprintf(lin, sizeof(lin), "%s SEARCH CHARSET UTF-8 %s {%zu}\r\n",
                      tag, criterio, nt);
+    /* snprintf devolve o tamanho que TERIA: mandar `n` bytes de um lin[900]
+     * truncado punha 2 KB de pilha (ponteiros crus) na conexao */
+    if (n < 0 || (size_t)n >= sizeof(lin))
+        FALHA(erro, cap, "criterio de busca longo demais");
     if (cru_escreve(c, lin, n) != 0) FALHA(erro, cap, "conexao IMAP caiu");
 
     size_t cap_l = 4096;
@@ -624,7 +656,11 @@ static void pega_fetch(const char *linha, void *ctx, PSMailConn *c)
     FetchCtx *f = ctx;
     const char *abre = strrchr(linha, '{');
     if (!abre || f->msg) return;
-    size_t n = (size_t)atol(abre + 1);
+    /* `{-1}` virava (size_t)-1: malloc(0) e le_bytes escrevendo sem fim.
+     * O imaplib do Python so casa `{` 1*DIGIT `}` — negativo nao e literal. */
+    long ln = atol(abre + 1);
+    if (ln < 0 || ln > 256L * 1024 * 1024) return;
+    size_t n = (size_t)ln;
     char *m = malloc(n + 1);
     if (!m) return;
     if (le_bytes(c, m, n) != 0) { free(m); return; }
@@ -859,6 +895,23 @@ static char *decodifica_parte(const char *parte, size_t n)
     size_t ncru;
     if (cte && strncasecmp(cte, "base64", 6) == 0) {
         long r = ps_base64_decode(parte + c0, nc, cru, nc + 4);
+        if (r < 0) {
+            /* base64 sujo: o Python (validate=False) joga fora o byte invalido
+             * e decodifica o resto. Perder o CORPO INTEIRO por um byte de um
+             * mailer velho e perda de dado calada. */
+            char *lp = malloc(nc + 1);
+            if (lp) {
+                size_t lj = 0;
+                for (size_t z = 0; z < nc; z++) {
+                    char cz = parte[c0 + z];
+                    if ((cz >= 'A' && cz <= 'Z') || (cz >= 'a' && cz <= 'z')
+                        || (cz >= '0' && cz <= '9') || cz == '+' || cz == '/' || cz == '=')
+                        lp[lj++] = cz;
+                }
+                r = ps_base64_decode(lp, lj, cru, nc + 4);
+                free(lp);
+            }
+        }
         ncru = r < 0 ? 0 : (size_t)r;
     } else if (cte && strncasecmp(cte, "quoted-printable", 16) == 0) {
         ncru = qp_decode(parte + c0, nc, (char *)cru, 0);

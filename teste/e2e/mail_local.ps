@@ -297,7 +297,7 @@ if __name__ == "main" {
              + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("IMAP: fluxo completo roda", r[0] == 0, r[1])
     # 6 mensagens na caixa falsa, uma por caminho de decodificação
-    erros = erros + conf("IMAP: search devolve a caixa inteira", "N 6" in r[1], r[1])
+    erros = erros + conf("IMAP: search devolve a caixa inteira", "N 7" in r[1], r[1])
     # o search faz um FETCH do CABEÇALHO por id, e é de lá que sai o assunto
     erros = erros + conf("IMAP: o assunto vem do FETCH do cabecalho",
                          "ASSUNTO b64" in r[1], r[1])
@@ -357,7 +357,7 @@ if __name__ == "main" {
     erros = erros + conf("IMAP: termo ASCII vai entre aspas, sem literal",
                          "SEARCH CHARSET UTF-8 SUBJECT \"acentuada\"" in caixa
                          and not "SEARCH_LITERAL" in caixa, caixa)
-    erros = erros + conf("IMAP: busca com termo ASCII acha a caixa", "ASCII 6" in r[1], r[1])
+    erros = erros + conf("IMAP: busca com termo ASCII acha a caixa", "ASCII 7" in r[1], r[1])
 
     porta = sobe("teste/imap_falso.py")
     r = roda("import mail\n"
@@ -432,6 +432,140 @@ if __name__ == "main" {
              + "post(\"LEU\")\n", "PS_MAIL_TLS_INSEGURO=1")
     erros = erros + conf("IMAP: mensagem inexistente falha", r[0] != 0 and not "LEU" in r[1], r[1])
 
+    # ── 7. os caminhos ESCUROS: entrada hostil e erro engolido ──────────────
+    #
+    # Tudo daqui pra baixo é regressão de defeito ACHADO, não teste de feature.
+    # Cada caso abaixo derrubava o processo, mandava dado pro fio que ninguém
+    # pediu, ou perdia dado calado. Nenhum deles aparecia lendo o código: só
+    # rodando o caminho de falha.
+
+    # 7.1 CR/LF em header vira header NOVO. `subject("Oi\r\nBcc: x@y")` saía
+    #     com um Bcc de verdade — e os dois ramos do sb_header discordavam: o
+    #     valor com acento ia blindado em RFC 2047 e o ASCII puro saía cru.
+    #     Não precisa de servidor: a mensagem se monta sozinha.
+    r = roda("import mail\n"
+             + "m = mail.MailMessage()\n"
+             + "m.subject(\"Oi\\r\\nBcc: oculto@atacante.com\")\n"
+             + "post(m.get_as_string())\n", "")
+    erros = erros + conf("header com CR/LF é RECUSADO", r[0] != 0, r[1])
+    # a mensagem nem chega a ser montada — o `Bcc: oculto` aparece na saída,
+    # sim, mas DENTRO do texto do erro (que cita o valor recusado, como o
+    # CPython faz); o que não pode existir é a mensagem MIME
+    erros = erros + conf("e a mensagem nem chega a ser montada",
+                         not "multipart/mixed" in r[1], r[1])
+    # a mensagem é a do CPython (email/header.py), palavra por palavra
+    erros = erros + conf("com a mensagem do CPython",
+                         "header value appears to contain an embedded header" in r[1], r[1])
+    # o mesmo vale pro destinatário, que vira `RCPT TO:` no fio
+    r = roda("import mail\n"
+             + "m = mail.MailMessage()\n"
+             + "m.to(\"dest@x.com\\r\\nRCPT TO:vitima@oculta.com\")\n"
+             + "post(\"PASSOU\")\n", "")
+    erros = erros + conf("destinatário com CR/LF é RECUSADO",
+                         r[0] != 0 and not "PASSOU" in r[1], r[1])
+
+    # 7.2 `attach` de uma PASTA: no Linux o fopen SUCEDE e quem falha é o
+    #     fread (EISDIR). Ninguém olhava o ferror: o anexo saía com ZERO byte
+    #     e o método devolvia True. Relatório em anexo que ninguém confere
+    #     depois é exatamente onde isso passa despercebido.
+    os.cmd("mkdir -p /tmp/ps_mail_pasta")
+    r = roda("import mail\n"
+             + "m = mail.MailMessage()\n"
+             + "post(\"attach:\", m.attach(\"/tmp/ps_mail_pasta\"))\n", "")
+    erros = erros + conf("attach de pasta FALHA, não anexa vazio",
+                         r[0] != 0 and not "attach: True" in r[1], r[1])
+    erros = erros + conf("e diz o errno, como o CPython",
+                         "Errno 21" in r[1] and "Is a directory" in r[1], r[1])
+
+    # 7.3 A tabela de métodos declarava `send` com UM argumento, e o corpo
+    #     implementava `send(to, subject, body, html)` — código inalcançável.
+    #     A doc documenta as duas formas. Três lugares, três respostas.
+    porta = sobe_servidor()
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "s.login(\"teste@local\", \"segredo123\")\n"
+             + "s.send(\"destino@local\", \"assunto curto\", \"corpo curto\")\n"
+             + "s.quit()\n"
+             + "post(\"ENVIOU\")\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("send(to, assunto, corpo) — a forma da doc — envia",
+                         r[0] == 0 and "ENVIOU" in r[1], r[1])
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("e o assunto do atalho chega",
+                         "Subject: assunto curto" in caixa, caixa)
+
+    # 7.4 AUTH com credencial longa: o `snprintf` truncava em cru[512] mas
+    #     DEVOLVIA o tamanho que a string TERIA, e esse número ia como tamanho
+    #     pro base64 — que lia fora de `cru` e escrevia fora de `b64`. Com
+    #     4000 chars, *** stack smashing detected ***, SIGABRT (rc=134). Com
+    #     1500, pior: não estourava o canário, só mandava pilha pro servidor.
+    #     Usuário longo vem de .env errado ou de campo de formulário.
+    porta = sobe_servidor()
+    r = roda("import mail\n"
+             + "s = mail.MailServer()\n"
+             + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "try { s.login(\"a\"*4000 + \"@x.com\", \"senha\") }\n"
+             + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("AUTH com usuário de 4000 chars não estoura a pilha",
+                         r[0] != 134 and not "stack smashing" in r[1], r[1])
+    erros = erros + conf("e vira erro na linguagem", "LEVANTOU" in r[1], r[1])
+
+    # 7.5 Literal IMAP com tamanho NEGATIVO. O `{n}` vem do SERVIDOR e entrava
+    #     sem validação: `{-1}` virava (size_t)-1, `malloc(0)` devolvia bloco
+    #     válido de tamanho zero, e o `le_bytes` escrevia nele sem parar. Heap
+    #     corrompido, SIGABRT. Servidor hostil (ou MITM, ou servidor com bug)
+    #     derrubava o processo inteiro — num jinker, todas as requisições.
+    porta = sobe_com("teste/imap_falso.py", "IMAP_FALSO_HOSTIL=literal_negativo")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "try { post(r.body(\"1\")) }\n"
+             + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("literal IMAP negativo não corrompe o heap",
+                         r[0] != 134 and not "buffer overflow" in r[1], r[1])
+    erros = erros + conf("literal negativo vira erro, não crash", "LEVANTOU" in r[1], r[1])
+
+    # 7.6 Corpo em base64 com UM byte fora do alfabeto: o decodificador é
+    #     estrito, devolvia -1, e o -1 virava `ncru = 0` — o corpo INTEIRO
+    #     sumia, sem erro e sem aviso. O Python descarta o byte inválido e
+    #     decodifica o resto; o esperado abaixo é o que ele entrega.
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "r.select(\"INBOX\")\n"
+             + "post(\"C7 [\" + r.body(\"7\").strip() + \"]\")\n"
+             + "r.close()\n", "PS_MAIL_TLS_INSEGURO=1")
+    erros = erros + conf("base64 sujo não apaga o corpo inteiro",
+                         not "C7 []" in r[1], r[1])
+    erros = erros + conf("e decodifica o resto igual ao Python",
+                         "C7 [corpo em base64]" in r[1], r[1])
+
+    # 7.7 CR/LF no argumento de um comando IMAP vira OUTRO comando: o
+    #     `imap_aspas` escapava `"` e `\` e ignorava justo os dois bytes que
+    #     quebram a linha. Uma pasta vinda de dado de usuário virava DELETE.
+    porta = sobe("teste/imap_falso.py")
+    r = roda("import mail\n"
+             + "r = mail.MailReader()\n"
+             + "r.conn(\"127.0.0.1\", " + str(porta) + ")\n"
+             + "r.login(\"teste@local\", \"segredo123\")\n"
+             + "try { r.select(\"INBOX\\r\\nA99 DELETE INBOX\") }\n"
+             + "catch (e) { post(\"LEVANTOU\", e) }\n", "PS_MAIL_TLS_INSEGURO=1")
+    caixa = ""
+    if os.exists(CAIXA) {
+        caixa = open(CAIXA).read()
+    }
+    erros = erros + conf("CR/LF no argumento IMAP é recusado", "LEVANTOU" in r[1], r[1])
+    erros = erros + conf("e o DELETE nunca chega no servidor",
+                         not "DELETE" in caixa, caixa)
+
+    os.cmd("rm -rf /tmp/ps_mail_pasta")
     os.cmd("rm -f " + CERT + " " + CHAVE + " " + CAIXA)
     post("")
     if erros > 0 {

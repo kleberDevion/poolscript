@@ -7150,7 +7150,7 @@ static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MAILSRV[] = {
     { "conn", met_ms_conn, "provedor_ou_host,porta=Null" }, { "login", met_ms_login, "usuario,senha" },
-    { "send", met_ms_send, "dados" }, { "quit", met_ms_quit, NULL },
+    { "send", met_ms_send, "to_or_msg,subject=Null,body=Null,html=false" }, { "quit", met_ms_quit, NULL },
 };
 static const MetodoNat METODOS_MAILMSG[] = {
     { "from_address", met_mm_from, "endereco" }, { "to", met_mm_to, "endereco" },
@@ -7417,8 +7417,19 @@ static unsigned long guz_cor_val(Value v, unsigned long def)
     if (!EH_STRING(v)) return def;
     const char *s = COMO_STRING(v)->chars;
     if (*s == '#') s++;
-    if (strlen(s) < 6) return def;
-    return (unsigned long)strtoul(s, NULL, 16);
+    size_t n = strlen(s);
+    /* Sem validar, o strtoul devolvia 0 pra "yellow"/"salmon" e o elemento
+     * ficava PRETO — cor que ninguém pediu. E o mesmo erro escrito curto
+     * ("red") ou o atalho "#fff" caíam no `< 6` e viravam o default, sendo
+     * que "#fff" é o exemplo da própria doc (guzer/stylesheet). */
+    for (size_t i = 0; i < n; i++)
+        if (!isxdigit((unsigned char)s[i])) return def;
+    if (n == 3) {                       /* #RGB, o atalho do CSS */
+        char e[7] = { s[0], s[0], s[1], s[1], s[2], s[2], 0 };
+        return (unsigned long)strtoul(e, NULL, 16);
+    }
+    if (n != 6) return def;
+    return (unsigned long)strtoul(s, NULL, 16) & 0xFFFFFFul;
 }
 /* Busca uma chave string no dict; 1 e escreve *out se achou. */
 static int guz_dict_get(Value dv, const char *chave, Value *out)
@@ -7521,7 +7532,12 @@ static int met_guz_show(VM *vm, Value alvo, Value *args, int n, Value *out)
 #define P_ELEM "typeinp=Null,placeholder=Null,value=Null,name=Null,href=Null,src=Null,alt=Null,target=Null,forid=Null,action=Null,methd=Null,rows=Null,cols=Null,onclick=Null"
 static int guz_elem(VM *vm, Value alvo, const char *tag, int kind, Value *args, int n, Value *out)
 {
-    Value h = (n > 13 && args[13].t == V_OBJ) ? args[13] : MK_NULL();
+    /* EH_ACTION, não `== V_OBJ`: action simples é V_FUNC, e só a que captura
+     * variável de fora vira closure (V_OBJ). Com o teste de tipo cru, todo
+     * `div(onclick=minha_action)` nascia SEM handler e o clique não chamava
+     * nada — o mesmo bug que já tinha sido corrigido no `button` e não no
+     * irmão que atende os outros 81 elementos. */
+    Value h = (n > 13 && EH_ACTION(args[13])) ? args[13] : MK_NULL();
     int rc = guz_cria(vm, alvo, kind, tag, h, out);
     if (rc != 0) return rc;
     if (n > 1 && EH_STRING(args[1])) {                 /* placeholder */
@@ -7623,6 +7639,11 @@ static int met_guz_text(VM *vm, Value alvo, Value *args, int n, Value *out)
     free(w->text); w->text = NULL;
     if (EH_STRING(args[0])) w->text = strdup(COMO_STRING(args[0])->chars);
     else if (args[0].t == V_INT) { char b[32]; snprintf(b, sizeof b, "%lld", (long long)args[0].as.i); w->text = strdup(b); }
+    /* float também é número no `.text()`. Sem este ramo, `text(3.14)` caía no
+     * vazio DEPOIS do free() ali em cima: apagava o texto que já existia,
+     * `.value` virava "" e o método devolvia o elemento como se tivesse dado
+     * certo. `text(42)` funcionava e `text(3.14)` apagava. */
+    else if (args[0].t == V_FLOAT) { char b[40]; float_para_texto(b, sizeof b, args[0].as.d); w->text = strdup(b); }
     *out = alvo;
     return 0;
 }
@@ -7773,11 +7794,18 @@ static void guz_mostra(VM *vm)
     int nf = u->nfilhos > 0 ? u->nfilhos : 1;
     PSGuzWidget *arr = malloc(sizeof(PSGuzWidget) * (size_t)nf);
     char **srcs = calloc((size_t)nf, sizeof(char *));
+    /* CÓPIA do texto de cada elemento, e não o ponteiro dele: o handler do
+     * clique roda DENTRO do laço de eventos, e `.text(...)` faz free() no
+     * buffer antigo. O ponteiro emprestado ficava pendurado, e o Expose
+     * seguinte (redimensionar, desocultar, mover) desenhava memória já
+     * liberada — heap-use-after-free em desenha(), ps_guzer.c:64. Trocar o
+     * rótulo no clique é a coisa mais comum que um app de UI faz. */
+    char **txts = calloc((size_t)nf, sizeof(char *));
     int *eff_w = calloc((size_t)nf, sizeof(int));
     int *eff_h = calloc((size_t)nf, sizeof(int));
     int *idx_de = calloc((size_t)nf, sizeof(int));   /* índice do widget no flat do UI */
-    if (!arr || !srcs || !eff_w || !eff_h || !idx_de) {
-        free(arr); free(srcs); free(eff_w); free(eff_h); free(idx_de);
+    if (!arr || !srcs || !txts || !eff_w || !eff_h || !idx_de) {
+        free(arr); free(srcs); free(txts); free(eff_w); free(eff_h); free(idx_de);
         return;
     }
     /* pré-passo: resolve src (de onde o usuário quiser) e o tamanho efetivo */
@@ -7838,7 +7866,8 @@ static void guz_mostra(VM *vm)
         arr[m].x        = fila[q].x; arr[m].y = fila[q].y;
         arr[m].w        = eff_w[i]; arr[m].h = eff_h[i];
         arr[m].bg       = w->bg; arr[m].fg = w->fg;
-        arr[m].text     = w->text ? w->text : (w->placeholder ? w->placeholder : "");
+        txts[i]         = strdup(w->text ? w->text : (w->placeholder ? w->placeholder : ""));
+        arr[m].text     = txts[i] ? txts[i] : "";
         arr[m].src      = srcs[i];
         arr[m].clicavel = EH_ACTION(w->handler);
         arr[m].id       = i;
@@ -7861,8 +7890,8 @@ static void guz_mostra(VM *vm)
     char erro[128] = {0};
     if (ps_guz_run(u->titulo, u->icon, win_w, win_h, win_bg, arr, m, guz_click, vm, erro, sizeof erro) != 0)
         fprintf(stderr, "%s\n", erro);
-    for (int i = 0; i < u->nfilhos; i++) free(srcs[i]);
-    free(srcs); free(eff_w); free(eff_h); free(idx_de);
+    for (int i = 0; i < u->nfilhos; i++) { free(srcs[i]); free(txts[i]); }
+    free(srcs); free(txts); free(eff_w); free(eff_h); free(idx_de);
     free(arr);
 }
 
@@ -11831,6 +11860,17 @@ static int sb_txt(SBuf *b, const char *txt)
 
 static int mailmsg_add_cab(VM *vm, PSMailMsg *m, const char *nome, const char *valor)
 {
+    /* CR/LF num header abre um header NOVO: `subject("Oi\r\nBcc: x@y")` saia
+     * com um Bcc de verdade. O sb_header ja blindava o caso nao-ASCII via RFC
+     * 2047 — so o ASCII puro passava cru, e os dois ramos discordavam. */
+    if (strpbrk(valor, "\r\n")) {
+        char *r = repr_str_dup(valor, (int)strlen(valor));
+        char v[180];
+        snprintf(v, sizeof(v), "%s", r ? r : "");
+        free(r);
+        MERRO(vm, "ValueError",
+              "header value appears to contain an embedded header: %s", v);
+    }
     if (m->ncabs >= m->cap_cabs) {
         int nc = m->cap_cabs < 4 ? 4 : m->cap_cabs * 2;
         MailCab *nn = realloc(m->cabs, sizeof(MailCab) * (size_t)nc);
@@ -11922,11 +11962,19 @@ static int mailmsg_monta(VM *vm, PSMailMsg *m, SBuf *b)
         if (sb_txt(b, "--" MAIL_BOUNDARY "\n") != 0) MERRO(vm, "MemoryError", "sem memoria");
         if (p->anexo) {
             char cd[512];
+            /* nome de arquivo com \r\n injetava header MIME na parte; sem
+             * aspas, nome com espaco ja saia quebrado. Nome de anexo vem de
+             * upload (request.file) ou de diretorio de terceiro. */
+            char nomeseg[300];
+            size_t nj = 0;
+            for (const char *q = p->ct; *q && nj + 1 < sizeof(nomeseg); q++)
+                if (*q != '\r' && *q != '\n' && *q != '"' && *q != '\\') nomeseg[nj++] = *q;
+            nomeseg[nj] = '\0';
             snprintf(cd, sizeof(cd),
                      "Content-Type: application/octet-stream\n"
                      "MIME-Version: 1.0\n"
                      "Content-Transfer-Encoding: base64\n"
-                     "Content-Disposition: attachment; filename=%s\n\n", p->ct);
+                     "Content-Disposition: attachment; filename=\"%s\"\n\n", nomeseg);
             if (sb_txt(b, cd) != 0) MERRO(vm, "MemoryError", "sem memoria");
         } else {
             char ph[128];
@@ -12003,6 +12051,13 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         size_t k;
         while ((k = fread(ped, 1, sizeof(ped), f)) > 0)
             if (sb_bytes(&b, ped, (int)k) != 0) { fclose(f); MERRO(vm, "MemoryError", "sem memoria"); }
+        if (ferror(f)) {
+            /* fopen de PASTA sucede no Linux, quem falha e o fread (EISDIR):
+             * o anexo saia com ZERO byte e o attach devolvia True */
+            int er = errno;
+            fclose(f);
+            BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", er, strerror(er), caminho);
+        }
         fclose(f);
         const char *base = strrchr(caminho, '/');
         base = base ? base + 1 : caminho;
@@ -13223,7 +13278,7 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         int tem_from = 0;
         for (int i = 0; i < msg->ncabs; i++)
             if (strcmp(msg->cabs[i].nome, "From") == 0) tem_from = 1;
-        if (!tem_from && m->user) mailmsg_add_cab(vm, msg, "From", m->user);
+        if (!tem_from && m->user && mailmsg_add_cab(vm, msg, "From", m->user) != 0) return -1;
         for (int i = 0; i < msg->ncabs; i++)
             if (strcmp(msg->cabs[i].nome, "To") == 0) para = msg->cabs[i].valor;
         if (mailmsg_monta(vm, msg, &b) != 0) { return -1; }
@@ -13235,11 +13290,14 @@ static int met_ms_send(VM *vm, Value alvo, Value *args, int n, Value *out)
         const char *corpo = (n >= 3 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "";
         int html = (n >= 4) && val_truthy(&args[3]);
         PSMailMsg tmp = {0};
-        if (m->user) mailmsg_add_cab(vm, &tmp, "From", m->user);
-        mailmsg_add_cab(vm, &tmp, "To", dest);
-        mailmsg_add_cab(vm, &tmp, "Subject", subj);
-        mailmsg_add_parte(vm, &tmp, 0, html ? "text/html" : "text/plain", corpo, strlen(corpo));
-        int rc = mailmsg_monta(vm, &tmp, &b);
+        /* o retorno era jogado fora: header recusado seguia pro envio */
+        int rc = 0;
+        if (m->user) rc = mailmsg_add_cab(vm, &tmp, "From", m->user);
+        if (rc == 0) rc = mailmsg_add_cab(vm, &tmp, "To", dest);
+        if (rc == 0) rc = mailmsg_add_cab(vm, &tmp, "Subject", subj);
+        if (rc == 0) rc = mailmsg_add_parte(vm, &tmp, 0, html ? "text/html" : "text/plain",
+                                            corpo, strlen(corpo));
+        if (rc == 0) rc = mailmsg_monta(vm, &tmp, &b);
         para = dest;
         for (int k = 0; k < tmp.ncabs; k++) { free(tmp.cabs[k].nome); free(tmp.cabs[k].valor); }
         free(tmp.cabs);

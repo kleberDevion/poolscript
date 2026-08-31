@@ -291,11 +291,16 @@ static void teste_regex(void)
     char erro[256];
 
     /* PADRÃO INVÁLIDO: cada mensagem é um ramo, e a linguagem só alcança
-     * alguns deles porque o lexer barra antes. */
+     * alguns deles porque o lexer barra antes.
+     *
+     * O esperado é a frase do CPython, palavra por palavra — as duas abaixo
+     * saem iguais de `re.compile`. Estavam aqui as antigas ("classe nao
+     * fechada", "faixa invertida"): o motor foi trocado e a expectativa não,
+     * então este teste reprovava por estar desatualizado, não por defeito. */
     struct { const char *p; const char *diz; } ruins[] = {
-        { "[",        "classe nao fechada"  },
+        { "[",        "unterminated character set" },
         { "[a-",      NULL                  },
-        { "[z-a]",    "faixa invertida"     },
+        { "[z-a]",    "bad character range" },
         { "(",        NULL                  },
         { ")",        NULL                  },
         { "a{2,1}",   NULL                  },
