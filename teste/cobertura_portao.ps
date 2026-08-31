@@ -108,7 +108,9 @@ action le_info(caminho) {
                 if brf > 0 {
                     pr = (brh * 100.0) / brf
                 }
-                saida[nome] = [pl, pr]
+                # os ABSOLUTOS vao junto: percentual sozinho nao distingue
+                # "perdi cobertura" de "escrevi codigo novo"
+                saida[nome] = [pl, pr, brh, brf]
             }
             arq = ""
         }
@@ -128,8 +130,13 @@ action le_base() {
             continue
         }
         p = t.split()
-        if len(p) >= 3 {
-            saida[p[0]] = [flo(p[1]), flo(p[2])]
+        if len(p) >= 5 {
+            saida[p[0]] = [flo(p[1]), flo(p[2]), int(p[3]), int(p[4])]
+        }
+        elif len(p) >= 3 {
+            # formato antigo, so percentual: os absolutos ficam desconhecidos
+            # (-1) e a comparacao cai no percentual, como era
+            saida[p[0]] = [flo(p[1]), flo(p[2]), -1, -1]
         }
     }
     return saida
@@ -139,7 +146,17 @@ action le_base() {
 action grava_base(atual) {
     nomes = atual.keys()
     nomes.sort()
-    linhas = ["# PISO de cobertura, por arquivo: <arquivo> <linha%> <ramo%>",
+    linhas = ["# PISO de cobertura, por arquivo:",
+              "#   <arquivo> <linha%> <ramo%> <ramos cobertos> <ramos totais>",
+              "#",
+              "# Os DOIS ULTIMOS numeros existem porque percentual sozinho mente. Em",
+              "# 31/08 o portao acusou `poolscript_vm.c 57.3% -> 55.2%` e a conclusao",
+              "# obvia (perdi teste) estava ERRADA: os ramos COBERTOS eram os mesmos",
+              "# 9167 dos dois lados. O que mudou foi o denominador, 15998 -> 16620,",
+              "# porque entraram 622 ramos de codigo novo — guardas de erro, na",
+              "# maioria. Percentual caindo por codigo novo e DILUICAO; percentual",
+              "# caindo por teste que sumiu e REGRESSAO. So a contagem absoluta",
+              "# separa as duas, e so uma delas e para o trabalho.",
               "#",
               "# CATRACA: o `teste/cobertura_portao.ps` regrava este arquivo SOZINHO",
               "# toda vez que um arquivo sobe. Cair abaixo do que está aqui reprova o",
@@ -154,7 +171,8 @@ action grava_base(atual) {
               ""]
     for each n in nomes {
         v = atual[n]
-        linhas.append(n + " " + str(round(v[0], 1)) + " " + str(round(v[1], 1)))
+        linhas.append(n + " " + str(round(v[0], 1)) + " " + str(round(v[1], 1))
+                      + " " + str(v[2]) + " " + str(v[3]))
     }
     using open(BASE, "w") as f {
         f.write(("\n").join(linhas) + "\n")
@@ -218,6 +236,7 @@ if __name__ == "main" {
     }
 
     caiu = []
+    diluiu = []
     subiu = []
     novos = []
     nomes = atual.keys()
@@ -230,9 +249,20 @@ if __name__ == "main" {
         a = atual[n]
         b = piso[n]
         # o RAMO é o que decide; linha superestima (93% de linha no parser eram
-        # 67% de ramo), então o portão olha o número que não engana
+        # 67% de ramo), então o portão olha o número que não engana.
+        #
+        # E o que decide MESMO é a contagem ABSOLUTA de ramos cobertos, quando
+        # o piso a tem: percentual cai sozinho quando entra código novo, e
+        # tratar isso como regressão faz o portão gritar à toa — portão que
+        # grita à toa é portão desligado. Cobertos que DIMINUEM é teste que
+        # sumiu; cobertos iguais com o total maior é só diluição.
         if a[1] < b[1] - FOLGA {
-            caiu.append([n, b[1], a[1]])
+            if b[2] >= 0 and a[2] >= b[2] {
+                diluiu.append([n, b[1], a[1], b[2], a[2], b[3], a[3]])
+            }
+            else {
+                caiu.append([n, b[1], a[1], b[2], a[2]])
+            }
         }
         elif a[1] > b[1] + FOLGA {
             subiu.append([n, b[1], a[1]])
@@ -280,25 +310,39 @@ if __name__ == "main" {
         }
     }
 
+    if len(diluiu) > 0 {
+        post("")
+        post("DILUIU (percentual caiu, ramo coberto NAO — entrou codigo novo):")
+        for each d in diluiu {
+            post("   ", d[0], str(round(d[1], 1)) + "% ->", str(round(d[2], 1)) + "%",
+                 "| cobertos", str(d[3]), "->", str(d[4]),
+                 "| ramos", str(d[5]), "->", str(d[6]),
+                 "|", str(d[6] - d[5]), "ramos novos, nenhum coberto")
+        }
+        post("   Nao reprova: nada deixou de ser testado. Mas os ramos novos")
+        post("   estao sem teste, e e por isso que a razao cai.")
+    }
+
     if len(caiu) == 0 {
         post("")
         post("nenhum arquivo perdeu cobertura de ramo (folga de", str(FOLGA) + " pontos).")
         # CATRACA: o que subiu vira piso AGORA. Se ficar pra depois, alguém
         # perde o ganho no commit seguinte e o portão não tem como saber.
-        if len(subiu) > 0 or len(novos) > 0 {
+        if len(subiu) > 0 or len(novos) > 0 or len(diluiu) > 0 {
             grava_base(atual)
             post("piso regravado em", BASE)
         }
         sys.exit(0)
     }
     post("")
-    post("COBERTURA DE RAMO CAIU:")
+    post("COBERTURA DE RAMO CAIU — ramo COBERTO diminuiu, nao e diluicao:")
     for each c in caiu {
-        post("   ", c[0], str(round(c[1], 1)) + "% ->", str(round(c[2], 1)) + "%")
+        post("   ", c[0], str(round(c[1], 1)) + "% ->", str(round(c[2], 1)) + "%",
+             "| cobertos", str(c[3]), "->", str(c[4]))
     }
     post("")
-    post("Codigo novo sem teste, ou teste removido. Se a queda for legitima")
-    post("(codigo deletado, por exemplo), regrave com --grava — mas regrave")
-    post("de propósito, nao por reflexo.")
+    post("Teste removido, ou teste que parou de rodar (servico fora do ar,")
+    post("timeout, PULOU novo). Se a queda for legitima — codigo deletado —")
+    post("regrave com --grava, mas de propósito, nao por reflexo.")
     sys.exit(1)
 }

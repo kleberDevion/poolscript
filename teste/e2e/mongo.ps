@@ -30,6 +30,18 @@ try {
     con.collection("t").count({})
 }
 catch (e) {
+    # PULOU só quando o motivo é NÃO TER SERVIDOR. Qualquer outro erro é
+    # defeito e tem que reprovar: um `catch` que engole tudo transforma bug em
+    # silêncio, e foi assim que a cobertura de `ps_mongo.c` caiu 2,5 pontos
+    # numa medição sem ninguém entender por quê — o teste tinha pulado.
+    msg = str(e)
+    sem_servidor = ("No suitable servers" in msg or "connection refused" in msg
+                    or "Name or service not known" in msg
+                    or "server selection timeout" in msg)
+    if not sem_servidor {
+        post("ERRO na sondagem do mongo (nao e falta de servidor):", msg)
+        sys.exit(1)
+    }
     con = Null
     post("PULOU mongo ->", e)
 }
