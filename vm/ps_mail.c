@@ -244,7 +244,7 @@ PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap)
         goto falha;
     }
     if (smtp_manda(c, "STARTTLS") != 0 || smtp_resposta(c, NULL, 0) != 220) {
-        if (erro) snprintf(erro, cap, "servidor nao aceita STARTTLS");
+        if (erro) snprintf(erro, cap, "STARTTLS extension not supported by server.");
         goto falha;
     }
     c->nbuf = 0;                       /* nada legível atravessa o handshake */

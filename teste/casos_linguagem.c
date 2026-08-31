@@ -1070,13 +1070,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = open(\"/dev/full\", \"w\")\n"
   "f.write(\"abc\")\n"
   "f.close()\n"
-  "post(\"NAO DEVIA CHEGAR\")\n", NULL, "IOError", -1 },
+  "post(\"NAO DEVIA CHEGAR\")\n", NULL, "OSError: [Errno 28] No space left on device", -1 },
 { "write() grande acusa gravacao incompleta",
   "f = open(\"/dev/full\", \"w\")\n"
-  "f.write(\"x\" * 200000)\n", NULL, "gravacao incompleta", -1 },
+  "f.write(\"x\" * 200000)\n", NULL, "[Errno 28]", -1 },
 { "writelines() acusa e diz qual linha",
   "f = open(\"/dev/full\", \"w\")\n"
-  "f.writelines([\"x\" * 200000])\n", NULL, "linha 0", -1 },
+  "f.writelines([\"x\" * 200000])\n", NULL, "OSError: [Errno 28] No space left on device", -1 },
 { "write() continua devolvendo quantos bytes gravou",
   "using open(\"/tmp/ps_t_w.txt\", \"w\") as f {\n"
   "    post(f.write(\"abcde\"), f.write(\"xy\"))\n"

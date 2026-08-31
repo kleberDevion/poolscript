@@ -92,10 +92,30 @@ typedef struct {
     char       *nomes[RX_MAX_GRUPOS];   /* nome de cada grupo, ou NULL */
 } Leitor;
 
+/* Falha interna, sem par no `re` (so as de memoria usam esta): mantem o
+ * formato antigo, porque nao ha texto do CPython pra copiar. */
 static void rerro(Leitor *l, const char *msg)
 {
     if (!l->falhou && l->erro && l->erro_cap > 0)
         snprintf(l->erro, (size_t)l->erro_cap, "regex: %s (posicao %d)", msg, l->i);
+    l->falhou = 1;
+}
+
+/* Erro de sintaxe do padrao. O texto e o do `re` do CPython, VERBATIM,
+ * inclusive o sufixo " at position N" — e a posicao e a que ELE acusa: o
+ * INICIO do construto culpado, nao onde o cursor parou. */
+static void rerro_em(Leitor *l, int pos, const char *msg)
+{
+    if (!l->falhou && l->erro && l->erro_cap > 0)
+        snprintf(l->erro, (size_t)l->erro_cap, "%s at position %d", msg, pos);
+    l->falhou = 1;
+}
+
+/* As poucas mensagens do `re` que NAO trazem posicao. */
+static void rerro_txt(Leitor *l, const char *msg)
+{
+    if (!l->falhou && l->erro && l->erro_cap > 0)
+        snprintf(l->erro, (size_t)l->erro_cap, "%s", msg);
     l->falhou = 1;
 }
 
@@ -263,15 +283,17 @@ static void le_classe(Leitor *l, Atomo *a)
     a->tipo = A_CLASSE;
     memset(&a->classe, 0, sizeof(a->classe));
     Classe *cl = &a->classe;
+    int p_abre = l->i;                        /* posicao do '[': e AQUI que o `re` acusa */
     l->i++;                                   /* passa '[' */
     if (l->i < l->n && l->p[l->i] == '^') { cl->negado = 1; l->i++; }
     int primeiro = 1;
     while (l->i < l->n && (l->p[l->i] != ']' || primeiro)) {
         primeiro = 0;
+        int c_ini = l->i;   /* inicio deste item: o `re` acusa a FAIXA a partir daqui */
         unsigned int c;
         if (l->p[l->i] == '\\') {
             l->i++;
-            if (l->i >= l->n) { rerro(l, "escape incompleto na classe"); return; }
+            if (l->i >= l->n) { rerro_em(l, l->i - 1, "bad escape (end of pattern)"); return; }
             unsigned char e = (unsigned char)l->p[l->i++];
             Classe sub;
             memset(&sub, 0, sizeof(sub));
@@ -302,21 +324,27 @@ static void le_classe(Leitor *l, Atomo *a)
             unsigned int fim;
             if (l->p[l->i] == '\\') {
                 l->i++;
-                if (l->i >= l->n) { rerro(l, "escape incompleto na classe"); return; }
+                if (l->i >= l->n) { rerro_em(l, l->i - 1, "bad escape (end of pattern)"); return; }
                 int ok;
                 fim = escape_simples((unsigned char)l->p[l->i++], &ok);
             } else {
                 int usados = cp_le(l->p, l->n, l->i, &fim);
                 l->i += usados ? usados : 1;
             }
-            if (fim < c) { rerro(l, "faixa invertida na classe"); return; }
+            if (fim < c) {
+                char msgb[80];
+                snprintf(msgb, sizeof(msgb), "bad character range %.*s",
+                         l->i - c_ini, l->p + c_ini);
+                rerro_em(l, c_ini, msgb);
+                return;
+            }
             if (c < 128 && fim < 128) for (unsigned k = c; k <= fim; k++) mapa_bit(cl->mapa, k);
             else faixa_add(cl, c, fim);
         } else {
             classe_add(cl, c);
         }
     }
-    if (l->i >= l->n) { rerro(l, "classe nao fechada"); return; }
+    if (l->i >= l->n) { rerro_em(l, p_abre, "unterminated character set"); return; }
     l->i++;                                   /* passa ']' */
 }
 
@@ -331,6 +359,7 @@ static int le_atomo(Leitor *l, Atomo *a)
     a->flags = l->flags;          /* carimba as flags efetivas neste átomo */
     a->look_neg = a->look_atras = a->look_larg = 0;
     if (c == '(') {
+        int p_abre = l->i;                /* posicao do '(': e AQUI que o `re` acusa */
         l->i++;
         int captura = 1;
         int eh_look = 0, lk_neg = 0, lk_atras = 0;
@@ -355,7 +384,8 @@ static int le_atomo(Leitor *l, Atomo *a)
                 if (j < l->n && l->p[j] == ':') {          /* escopo */
                     captura = 0; flags_escopo = fl; restaura_flags = 1;
                     l->flags |= fl; l->i = j + 1;
-                } else { rerro(l, "flag inline invalida (so (?i)/(?m)/(?s) e (?i:...))"); return 0; }
+                } else { rerro_em(l, j, j < l->n ? "unknown flag"
+                                                 : "missing -, : or )"); return 0; }
             }
             else if (esp == ':') { captura = 0; l->i += 2; }
             else if (esp == '=') { eh_look = 1; lk_neg = 0; lk_atras = 0; captura = 0; l->i += 2; }
@@ -372,12 +402,21 @@ static int le_atomo(Leitor *l, Atomo *a)
                 l->i += (esp == 'P') ? 3 : 2;
                 int n0 = l->i;
                 while (l->i < l->n && l->p[l->i] != '>') l->i++;
-                if (l->i >= l->n) { rerro(l, "grupo nomeado sem '>'"); return 0; }
+                if (l->i >= l->n) { rerro_em(l, n0, "missing >, unterminated name"); return 0; }
                 nome_ini = n0; nome_len = l->i - n0;
-                if (nome_len <= 0) { rerro(l, "grupo nomeado sem nome"); return 0; }
+                if (nome_len <= 0) { rerro_em(l, n0, "missing group name"); return 0; }
                 l->i++;
             }
-            else { rerro(l, "grupo especial nao suportado (?:...) (?P<n>...) (?ims:) (?= ?! ?<= ?<!)"); return 0; }
+            else {
+                /* o `re` cita a extensao que ele nao conhece: `?y`, `?Pz`, ... */
+                char msgb[48];
+                if (esp == 'P' && l->i + 2 < l->n)
+                    snprintf(msgb, sizeof(msgb), "unknown extension ?P%c", l->p[l->i + 2]);
+                else
+                    snprintf(msgb, sizeof(msgb), "unknown extension ?%c", esp);
+                rerro_em(l, l->i, msgb);
+                return 0;
+            }
         }
         a->tipo = eh_look ? A_LOOK : A_GRUPO;
         a->look_neg = lk_neg; a->look_atras = lk_atras;
@@ -397,7 +436,7 @@ static int le_atomo(Leitor *l, Atomo *a)
         if (restaura_flags) l->flags = flags_salvo;   /* flags de escopo saem do grupo */
         if (l->falhou) { libera_alt(a->grupo); a->grupo = NULL; return 0; }
         if (l->i >= l->n || l->p[l->i] != ')') {
-            rerro(l, "faltou ')'");
+            rerro_em(l, p_abre, "missing ), unterminated subpattern");
             libera_alt(a->grupo); a->grupo = NULL;
             return 0;
         }
@@ -405,7 +444,7 @@ static int le_atomo(Leitor *l, Atomo *a)
         if (eh_look && lk_atras) {
             a->look_larg = larg_fixa_alt(a->grupo);
             if (a->look_larg < 0) {
-                rerro(l, "lookbehind precisa de largura fixa");
+                rerro_txt(l, "look-behind requires fixed-width pattern");
                 libera_alt(a->grupo); a->grupo = NULL; return 0;
             }
         }
@@ -421,12 +460,17 @@ static int le_atomo(Leitor *l, Atomo *a)
     if (c == '$') { l->i++; a->tipo = A_EOL; return 1; }
     if (c == '\\') {
         l->i++;
-        if (l->i >= l->n) { rerro(l, "escape incompleto"); return 0; }
+        if (l->i >= l->n) { rerro_em(l, l->i - 1, "bad escape (end of pattern)"); return 0; }
         unsigned char e = (unsigned char)l->p[l->i++];
         memset(&a->classe, 0, sizeof(a->classe));
         if (classe_escape(e, &a->classe)) { a->tipo = A_CLASSE; return 1; }
         if (e >= '1' && e <= '9') {           /* retrovisor `\1`..`\9` */
-            if (e - '0' > l->ngrupos) { rerro(l, "referencia a grupo inexistente"); return 0; }
+            if (e - '0' > l->ngrupos) {
+                char msgb[48];
+                snprintf(msgb, sizeof(msgb), "invalid group reference %c", e);
+                rerro_em(l, l->i - 1, msgb);   /* o `re` aponta o DIGITO, nao a barra */
+                return 0;
+            }
             a->tipo = A_BACKREF;
             a->idx_grupo = e - '0';
             return 1;
@@ -436,12 +480,26 @@ static int le_atomo(Leitor *l, Atomo *a)
         if (e == 'Z') { a->tipo = A_ENDZ;   return 1; }
         int ok;
         unsigned char v = escape_simples(e, &ok);
-        if (!ok) { rerro(l, "escape desconhecido"); return 0; }
+        if (!ok) {
+            char msgb[48];
+            snprintf(msgb, sizeof(msgb), "bad escape \\%c", e);
+            rerro_em(l, l->i - 2, msgb);       /* o `re` aponta a BARRA */
+            return 0;
+        }
         a->tipo = A_CHAR; a->cp = v;
         return 1;
     }
     if (c == ')' || c == '|') return 0;        /* fim deste Seq */
-    if (c == '*' || c == '+' || c == '?') { rerro(l, "quantificador sem alvo"); return 0; }
+    if (c == '*' || c == '+' || c == '?') {
+        /* O `re` separa os dois casos: quantificador sem alvo nenhum e
+         * quantificador EM CIMA de outro. O que distingue e o caractere
+         * anterior — se ele fecha um quantificador ja consumido pelo
+         * `le_seq`, entao e repeticao de repeticao. */
+        char ant = l->i > 0 ? l->p[l->i - 1] : '\0';
+        int repetido = (ant == '*' || ant == '+' || ant == '?' || ant == '}');
+        rerro_em(l, l->i, repetido ? "multiple repeat" : "nothing to repeat");
+        return 0;
+    }
     /* literal: lê o CODEPOINT inteiro (não um byte), pra `é`/`ção` casarem
      * como um caractere só — inclusive com quantificador (`é+`) e folding. */
     {
@@ -494,7 +552,10 @@ static void le_seq(Leitor *l, Seq *s)
                 }
                 if (temlo && j < l->n && l->p[j] == '}') {
                     q.min = lo; q.max = hi; l->i = j + 1;
-                    if (hi >= 0 && hi < lo) { rerro(l, "{n,m} com m < n"); return; }
+                    if (hi >= 0 && hi < lo) {
+                        rerro_em(l, salvo + 1, "min repeat greater than max repeat");
+                        return;
+                    }
                 } else {
                     l->i = salvo;              /* trata como literal '{' */
                 }
@@ -587,7 +648,7 @@ PSRegex *ps_regex_compila(const char *padrao, int len, char *erro, int erro_cap)
     Alt *raiz = le_alt(&l);
     if (!l.falhou && l.i != l.n) {
         /* sobrou ')' sem abrir, ou coisa parecida */
-        rerro(&l, "caractere inesperado");
+        rerro_em(&l, l.i, "unbalanced parenthesis");
     }
     PSRegex *r = l.falhou ? NULL : malloc(sizeof(PSRegex));
     if (!r) {

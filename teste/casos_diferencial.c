@@ -7878,13 +7878,13 @@ const Caso CASOS_DIFERENCIAL[] = {
   " post(1)\n"
   "}\n"
   "\n",
-  NULL, "IOError: arquivo nao encontrado: 'x'", -1 },
+  NULL, "FileNotFoundError: [Errno 2] No such file or directory: 'x'", -1 },
 { "dif #1581",
   "using open(\"x\") as f {\n"
   "    post(1)\n"
   "}\n"
   "\n",
-  NULL, "IOError: arquivo nao encontrado: 'x'", -1 },
+  NULL, "FileNotFoundError: [Errno 2] No such file or directory: 'x'", -1 },
 { "dif #1582",
   "using open(\"x.txt\") as f {\n"
   "    post(f.read(3))\n"
@@ -7892,7 +7892,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "    post(f.read())\n"
   "}\n"
   "\n",
-  NULL, "IOError: arquivo nao encontrado: 'x.txt'", -1 },
+  NULL, "FileNotFoundError: [Errno 2] No such file or directory: 'x.txt'", -1 },
 { "dif #1583",
   "using open(\"x.txt\", argento=\"w\") as f:\n"
   "\n",
@@ -11548,7 +11548,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.findall(1, \"a\"))\n"
   "\n",
-  NULL, "TypeError: findall() espera str como padrao", -1 },
+  NULL, "TypeError: findall() argument 1 must be str, not int", -1 },
 { "dif #2163",
   "import regex\n"
   "post(regex.fullmatch(\"\\\\d+\", \"123\"), regex.fullmatch(\"\\\\d+\", \"a123\"))\n"
@@ -11559,17 +11559,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"(\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: regex: faltou ')' (posicao 1)", -1 },
+  NULL, "ValueError: missing ), unterminated subpattern at position 0", -1 },
 { "dif #2165",
   "import regex\n"
   "post(regex.match(\"*a\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: regex: quantificador sem alvo (posicao 0)", -1 },
+  NULL, "ValueError: nothing to repeat at position 0", -1 },
 { "dif #2166",
   "import regex\n"
   "post(regex.match(\"[a\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: regex: classe nao fechada (posicao 2)", -1 },
+  NULL, "ValueError: unterminated character set at position 0", -1 },
 { "dif #2167",
   "import regex\n"
   "post(regex.match(\"[a-z]+\", \"abC\"))\n"
@@ -11594,12 +11594,12 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "post(regex.match(\"a\\\\1\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: regex: referencia a grupo inexistente (posicao 3)", -1 },
+  NULL, "ValueError: invalid group reference 1 at position 2", -1 },
 { "dif #2172",
   "import regex\n"
   "post(regex.match(\"a{2,1}\", \"a\"))\n"
   "\n",
-  NULL, "ValueError: regex: {n,m} com m < n (posicao 6)", -1 },
+  NULL, "ValueError: min repeat greater than max repeat at position 2", -1 },
 { "dif #2173",
   "import regex\n"
   "post(regex.search(\"ção\", \"a ção b\"))\n"
@@ -11669,7 +11669,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "import regex\n"
   "regex.compile(\"[a-\")\n"
   "\n",
-  NULL, "ValueError: regex: classe nao fechada (posicao 3)", -1 },
+  NULL, "ValueError: unterminated character set at position 0", -1 },
 { "dif #2186",
   "import regex as rx\n"
   "post(rx.match(\"a+\", \"aaa\"))\n"

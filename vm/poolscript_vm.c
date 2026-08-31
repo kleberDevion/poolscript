@@ -1358,7 +1358,7 @@ static int chave_hashavel(VM *vm, const Value *k)
     if (k->t != V_OBJ) return 0;
     if (k->as.obj->type == OBJ_LIST || k->as.obj->type == OBJ_DICT) {
         snprintf(vm->erro, sizeof(vm->erro),
-                 "tipo nao pode ser chave de dict (é mutável): %s",
+                 "unhashable type: '%s'",
                  k->as.obj->type == OBJ_LIST ? "list" : "dict");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
@@ -5163,7 +5163,12 @@ static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
         return met_replace_lista(vm, alvo, COMO_LIST(args[0]), n >= 2 ? args[1] : jk_str_val(vm, ""), out);
     PSString *s = COMO_STRING(alvo), *velho, *novo = NULL;
     if (exige_str(vm, args[0], "replace", &velho) != 0) return -1;
-    if (n >= 2 && exige_str(vm, args[1], "replace", &novo) != 0) return -1;
+    if (n >= 2) {
+        if (!EH_STRING(args[1]))
+            MERRO(vm, "TypeError", "replace() argument 2 must be str, not %s",
+                  nome_do_tipo_valor(args[1]));
+        novo = COMO_STRING(args[1]);
+    }
     int64_t limite = -1;
     if (n == 3) {
         if (args[2].t != V_INT)
@@ -6262,14 +6267,17 @@ static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
  * pedido é erro; `ferror` acumula a falha do fluxo, que às vezes só aparece
  * depois. Sem estes dois, "disco cheio" virava um número menor no retorno que
  * nenhum script confere — grava, fecha, e o arquivo está truncado.
- * Devolve 0, ou -1 já com a mensagem posta em `porque`. */
-static int arq_grava(FILE *f, const void *dados, size_t n, const char **porque)
+ * Devolve 0, ou -1 com o `errno` da falha em `*pe` — quem chama monta a
+ * frase com `erro_sistema`, que sai `[Errno N] <strerror>` igual ao CPython.
+ * O palpite antigo ("disco cheio?") mentia: `write()` em arquivo aberto em
+ * "r" da EBADF e cano quebrado da EPIPE, e os dois liam "disco cheio". */
+static int arq_grava(FILE *f, const void *dados, size_t n, int *pe)
 {
     if (n == 0) return 0;
+    errno = 0;
     size_t w = fwrite(dados, 1, n, f);
     if (w != n || ferror(f)) {
-        *porque = (w != n) ? "gravacao incompleta (disco cheio?)"
-                           : "falha no fluxo durante a gravacao";
+        *pe = errno ? errno : EIO;
         return -1;
     }
     return 0;
@@ -6282,24 +6290,24 @@ static int met_a_write(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (arq_exige(vm, alvo, "write", &a) != 0) return -1;
     /* não-string vira texto, como o FileHandle do interpretador faz */
     TXTBUF_AUTO t = {0};
-    const char *porque = NULL;
+    int e = 0;
     if (EH_STRING(args[0])) {
         PSString *ss = COMO_STRING(args[0]);
-        if (arq_grava(a->f, ss->chars, (size_t)ss->len, &porque) != 0)
-            MERRO(vm, "IOError", "write() em '%.180s': %s", a->caminho, porque);
+        if (arq_grava(a->f, ss->chars, (size_t)ss->len, &e) != 0)
+            return erro_sistema(vm, e, NULL, NULL);
         *out = MK_INT((int64_t)ss->len);
         return 0;
     }
     if (EH_BYTES(args[0])) {                 /* bytes crus (ex.: req.content) */
         PSString *by = COMO_BYTES(args[0]);
-        if (arq_grava(a->f, by->chars, (size_t)by->len, &porque) != 0)
-            MERRO(vm, "IOError", "write() em '%.180s': %s", a->caminho, porque);
+        if (arq_grava(a->f, by->chars, (size_t)by->len, &e) != 0)
+            return erro_sistema(vm, e, NULL, NULL);
         *out = MK_INT((int64_t)by->len);
         return 0;
     }
     if (valor_para_texto(&t, &args[0], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-    if (arq_grava(a->f, t.b ? t.b : "", (size_t)t.n, &porque) != 0)
-        MERRO(vm, "IOError", "write() em '%.180s': %s", a->caminho, porque);
+    if (arq_grava(a->f, t.b ? t.b : "", (size_t)t.n, &e) != 0)
+        return erro_sistema(vm, e, NULL, NULL);
     *out = MK_INT((int64_t)t.n);
     return 0;
 }
@@ -6315,19 +6323,17 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
     for (int i = 0; i < l->len; i++) {
         /* bytes vão CRUS, como no write(): antes caíam no valor_para_texto e
          * o arquivo recebia a representação `b'a'` em vez do byte. */
-        const char *porque = NULL;
+        int e = 0;
         if (EH_BYTES(l->itens[i])) {
             PSString *by = COMO_BYTES(l->itens[i]);
-            if (arq_grava(a->f, by->chars, (size_t)by->len, &porque) != 0)
-                MERRO(vm, "IOError", "writelines() em '%.180s', linha %d: %s",
-                      a->caminho, i, porque);
+            if (arq_grava(a->f, by->chars, (size_t)by->len, &e) != 0)
+                return erro_sistema(vm, e, NULL, NULL);
             continue;
         }
         TXTBUF_AUTO t = {0};
         if (valor_para_texto(&t, &l->itens[i], 0) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-        if (arq_grava(a->f, t.b ? t.b : "", (size_t)t.n, &porque) != 0)
-            MERRO(vm, "IOError", "writelines() em '%.180s', linha %d: %s",
-                  a->caminho, i, porque);
+        if (arq_grava(a->f, t.b ? t.b : "", (size_t)t.n, &e) != 0)
+            return erro_sistema(vm, e, NULL, NULL);
     }
     *out = MK_NULL();
     return 0;
@@ -6349,9 +6355,9 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!a->fechado && a->f) {
         FILE *f = a->f;
         a->f = NULL; a->fechado = 1;
+        errno = 0;
         if (fclose(f) != 0)
-            MERRO(vm, "IOError", "close() em '%.180s': falha gravando o que faltava "
-                                 "(disco cheio?)", a->caminho);
+            return erro_sistema(vm, errno ? errno : EIO, NULL, NULL);
     }
     *out = MK_NULL();
     return 0;
@@ -6389,24 +6395,25 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (!mesmo) {
         cria_pais(caminho);
         FILE *src = fopen(a->caminho, "rb");
-        if (!src) MERRO(vm, "IOError", "nao consegui ler '%.180s'", a->caminho);
+        if (!src) return erro_sistema(vm, errno, a->caminho, NULL);
         FILE *dst = fopen(caminho, "wb");
-        if (!dst) { fclose(src); MERRO(vm, "IOError", "nao consegui escrever '%.180s'", caminho); }
+        if (!dst) { int e = errno; fclose(src); return erro_sistema(vm, e, caminho, NULL); }
         /* Os TRÊS pontos são conferidos, e cada um pega uma falha diferente:
          * o `fwrite` curto (disco cheio na hora), o `ferror(src)` (leitura que
          * parou por erro e não por fim de arquivo — indistinguíveis pelo
          * `fread`), e o `fclose(dst)` (o flush final). Sem eles, cópia
          * truncada voltava como sucesso, devolvendo o caminho do destino. */
         char buf[8192]; size_t r;
-        const char *porque = NULL;
+        int e = 0;
         while ((r = fread(buf, 1, sizeof(buf), src)) > 0)
-            if (arq_grava(dst, buf, r, &porque) != 0) break;
-        if (!porque && ferror(src)) porque = "falha lendo a origem";
+            if (arq_grava(dst, buf, r, &e) != 0) break;
+        if (!e && ferror(src)) e = EIO;
         fclose(src);
-        if (fclose(dst) != 0 && !porque) porque = "falha gravando o que faltava (disco cheio?)";
-        if (porque) {
+        errno = 0;
+        if (fclose(dst) != 0 && !e) e = errno ? errno : EIO;
+        if (e) {
             remove(caminho);   /* não deixa meia cópia no lugar do arquivo bom */
-            MERRO(vm, "IOError", "copy() para '%.180s': %s", caminho, porque);
+            return erro_sistema(vm, e, NULL, NULL);
         }
     }
     PSString *s = nova_string(vm, caminho, (int)strlen(caminho));
@@ -6441,16 +6448,21 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
         for (const char *m = modo; *m; m++) {
             unsigned char ch = (unsigned char)*m;
             if (ch >= 128 || !strchr("xrwabt+", (int)*m) || seen[ch])
-                BERRO(vm, "ValueError", "valor inválido: invalid mode: '%s'", modo);
+                BERRO(vm, "ValueError", "invalid mode: '%s'", modo);
             seen[ch] = 1;
             if (*m == 'r' || *m == 'w' || *m == 'a' || *m == 'x') prim++;
             if (*m == 't' || *m == 'b') tb++;
         }
-        if (prim != 1)
-            BERRO(vm, "ValueError", "valor inválido: Must have exactly one of "
+        /* O CPython tem DUAS frases aqui, e a diferenca nao e cosmetica: com
+         * modo demais ("rw") ele erra minusculo e sem a parte do "plus"; sem
+         * nenhum ("", "+") e a frase longa, com maiuscula. */
+        if (prim > 1)
+            BERRO(vm, "ValueError", "must have exactly one of create/read/write/append mode");
+        if (prim == 0)
+            BERRO(vm, "ValueError", "Must have exactly one of "
                   "create/read/write/append mode and at most one plus");
         if (tb > 1)
-            BERRO(vm, "ValueError", "valor inválido: can't have text and binary mode at once");
+            BERRO(vm, "ValueError", "can't have text and binary mode at once");
     }
     /* fopen do C não entende 't'; tira (modo texto já é o padrão) */
     char cfmodo[8]; int ci = 0;
@@ -6465,10 +6477,10 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
     {
         struct stat st;
         if (stat(cam->chars, &st) == 0 && S_ISDIR(st.st_mode))
-            BERRO(vm, "IOError", "e um diretório, nao um arquivo: '%s'", cam->chars);
+            return erro_sistema(vm, EISDIR, cam->chars, NULL);
     }
     FILE *f = fopen(cam->chars, cfmodo);
-    if (!f) BERRO(vm, "IOError", "arquivo nao encontrado: '%s'", cam->chars);
+    if (!f) return erro_sistema(vm, errno, cam->chars, NULL);
 
     PSArquivo *a = calloc(1, sizeof(PSArquivo));
     if (!a) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
@@ -6546,7 +6558,8 @@ static int codec_args(VM *vm, Value *args, int n, const char *quem, int *codec, 
                  return erro_aridade(vm, quem, 0, 2, n); }
     if (n >= 1 && args[0].t != V_NULL) {
         if (!EH_STRING(args[0])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-            snprintf(vm->erro, sizeof(vm->erro), "%s() espera o encoding como str", quem); return -1; }
+            snprintf(vm->erro, sizeof(vm->erro), "%s() argument 'encoding' must be str, not %s",
+                     quem, nome_do_tipo_valor(args[0])); return -1; }
         PSString *e = COMO_STRING(args[0]);
         *codec = codec_de_nome(e->chars, e->len);
         if (*codec < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "LookupError");
@@ -6554,7 +6567,8 @@ static int codec_args(VM *vm, Value *args, int n, const char *quem, int *codec, 
     }
     if (n >= 2 && args[1].t != V_NULL) {
         if (!EH_STRING(args[1])) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-            snprintf(vm->erro, sizeof(vm->erro), "%s() espera o errors como str", quem); return -1; }
+            snprintf(vm->erro, sizeof(vm->erro), "%s() argument 'errors' must be str, not %s",
+                     quem, nome_do_tipo_valor(args[1])); return -1; }
         PSString *e = COMO_STRING(args[1]);
         *pol = politica_erro(e->chars, e->len);
         if (*pol < 0) { snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "LookupError");
@@ -6593,6 +6607,43 @@ static int utf8_le_estrito(const unsigned char *b, int len, int i, uint32_t *cp)
 static int codec_por_16(int codec) { return codec == CODEC_UTF16LE || codec == CODEC_UTF16BE; }
 static int codec_por_32(int codec) { return codec == CODEC_UTF32LE || codec == CODEC_UTF32BE; }
 
+/* O nome que o CPython poe na mensagem do codec: `'ascii' codec can't ...`.
+ * Nao e o nome que o usuario escreveu (`"utf16"`), e o canonico do codec. */
+static const char *nome_do_codec(int c)
+{
+    switch (c) {
+        case CODEC_LATIN1:  return "latin-1";
+        case CODEC_ASCII:   return "ascii";
+        case CODEC_UTF16LE: return "utf-16-le";
+        case CODEC_UTF16BE: return "utf-16-be";
+        case CODEC_UTF32LE: return "utf-32-le";
+        case CODEC_UTF32BE: return "utf-32-be";
+        default:            return "utf-8";
+    }
+}
+
+/* POR QUE o UTF-8 falhou, no texto do CPython. O `utf8_le_estrito` so devolve
+ * -1; sem esta classificacao a mensagem teria que chutar um dos tres motivos,
+ * e chutar errado e trocar um portugues honesto por um ingles mentiroso. */
+static const char *utf8_porque(const unsigned char *b, int len, int i)
+{
+    unsigned char c = b[i];
+    if (c < 0xC2 || c > 0xF4) return "invalid start byte";
+    int n = c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4);
+    for (int j = 1; j < n; j++) {
+        unsigned char lo = 0x80, hi = 0xBF;
+        if (j == 1) {
+            if (c == 0xE0)      lo = 0xA0;   /* overlong */
+            else if (c == 0xED) hi = 0x9F;   /* surrogate */
+            else if (c == 0xF0) lo = 0x90;   /* overlong */
+            else if (c == 0xF4) hi = 0x8F;   /* acima de U+10FFFF */
+        }
+        if (i + j >= len) return "unexpected end of data";
+        if (b[i + j] < lo || b[i + j] > hi) return "invalid continuation byte";
+    }
+    return "invalid start byte";
+}
+
 static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     int codec, pol;
@@ -6614,8 +6665,31 @@ static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (cp >= teto) {
             if (pol == ERRO_IGNORE) continue;
             if (pol == ERRO_REPLACE) cp = '?';
-            else MERRO(vm, "UnicodeEncodeError",
-                       "encode(): U+%04X nao cabe no encoding pedido", cp);
+            else {
+                /* O CPython agrupa os caracteres SEGUIDOS que nao cabem numa
+                 * faixa (`characters in position 1-2`) e so cita o caractere
+                 * quando e um so. A posicao e em CARACTERES, nao em bytes. */
+                int ini = utf8_conta(s->chars, i - k), corre = 1;
+                for (int j = i; j < s->len; ) {
+                    uint32_t c2;
+                    int k2 = utf8_le(s->chars, s->len, j, &c2);
+                    if (!k2 || c2 < teto) break;
+                    corre++; j += k2;
+                }
+                if (corre > 1)
+                    MERRO(vm, "UnicodeEncodeError",
+                          "'%s' codec can't encode characters in position %d-%d: "
+                          "ordinal not in range(%u)",
+                          nome_do_codec(codec), ini, ini + corre - 1, (unsigned)teto);
+                char esc[16];
+                if (cp < 0x100)        snprintf(esc, sizeof(esc), "\\x%02x", (unsigned)cp);
+                else if (cp < 0x10000) snprintf(esc, sizeof(esc), "\\u%04x", (unsigned)cp);
+                else                   snprintf(esc, sizeof(esc), "\\U%08x", (unsigned)cp);
+                MERRO(vm, "UnicodeEncodeError",
+                      "'%s' codec can't encode character '%s' in position %d: "
+                      "ordinal not in range(%u)",
+                      nome_do_codec(codec), esc, ini, (unsigned)teto);
+            }
         }
         char buf[4];
         int nb;
@@ -6661,7 +6735,8 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (k < 0) {
                 if (pol == ERRO_STRICT)
                     MERRO(vm, "UnicodeDecodeError",
-                          "decode(): byte 0x%02X invalido em utf-8 na posicao %d", p[i], i);
+                          "'%s' codec can't decode byte 0x%02x in position %d: %s",
+                          nome_do_codec(codec), p[i], i, utf8_porque(p, b->len, i));
                 if (pol == ERRO_REPLACE && sb_cp(&sb, 0xFFFD) != 0)
                     MERRO(vm, "MemoryError", "sem memoria em decode()");
                 i++;
@@ -6691,21 +6766,37 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
             }
             if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
                 if (pol == ERRO_STRICT)
-                    MERRO(vm, "UnicodeDecodeError", "decode(): U+%04X invalido", cp);
+                {
+                    const char *porque =
+                        codec_por_16(codec)
+                            ? (cp >= 0xD800 && cp <= 0xDBFF && i + 4 > b->len
+                                   ? "unexpected end of data" : "illegal UTF-16 surrogate")
+                            : (cp > 0x10FFFF
+                                   ? "code point not in range(0x110000)"
+                                   : "code point in surrogate code point range(0xd800, 0xe000)");
+                    MERRO(vm, "UnicodeDecodeError",
+                          "'%s' codec can't decode bytes in position %d-%d: %s",
+                          nome_do_codec(codec), i, i + passo - 1, porque);
+                }
                 if (pol == ERRO_IGNORE) continue;
                 cp = 0xFFFD;
             }
             if (sb_cp(&sb, cp) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
         }
-        if (b->len % passo != 0 && pol == ERRO_STRICT)
-            MERRO(vm, "UnicodeDecodeError", "decode(): sobrou byte solto no fim do utf-16/32");
+        if (b->len % passo != 0 && pol == ERRO_STRICT) {
+            int resto = b->len - b->len % passo;
+            MERRO(vm, "UnicodeDecodeError",
+                  "'%s' codec can't decode byte 0x%02x in position %d: truncated data",
+                  nome_do_codec(codec), p[resto], resto);
+        }
     } else {
         /* latin-1 casa 1 byte = 1 codepoint (nunca falha); ascii recusa >127 */
         for (int i = 0; i < b->len; i++) {
             if (codec == CODEC_ASCII && p[i] >= 0x80) {
                 if (pol == ERRO_STRICT)
                     MERRO(vm, "UnicodeDecodeError",
-                          "decode(): byte 0x%02X nao e ascii na posicao %d", p[i], i);
+                          "'%s' codec can't decode byte 0x%02x in position %d: "
+                          "ordinal not in range(128)", nome_do_codec(codec), p[i], i);
                 if (pol == ERRO_IGNORE) continue;
                 if (sb_cp(&sb, 0xFFFD) != 0) { MERRO(vm, "MemoryError", "sem memoria em decode()"); }
                 continue;
@@ -7940,7 +8031,9 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
         case V_FLOAT: return sb_bytes(b, tmp, float_para_texto(tmp, sizeof(tmp), v->as.d));
         case V_OBJ: break;
         default:
-            snprintf(vm->erro, sizeof(vm->erro), "tipo nao serializavel em json");
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "Object of type %s is not JSON serializable",
+                     nome_do_tipo_valor(*v));
             return -1;
     }
     if (EH_BIGINT(*v)) { char *s = bigint_str(COMO_BIGINT(*v)->v);
@@ -7968,6 +8061,12 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
             if (EH_STRING(k)) {
                 PSString *ks = COMO_STRING(k);
                 if (json_texto(b, ks->chars, ks->len) != 0) return -1;
+            } else if (k.t == V_BOOL) {
+                /* JSON nao tem `True`: chave booleana sai minuscula, como no
+                 * CPython (`{True: 1}` -> `{"true": 1}`) e como este mesmo
+                 * serializador ja escreve um bool em posicao de VALOR. */
+                if (json_texto(b, k.as.b ? "true" : "false", k.as.b ? 4 : 5) != 0)
+                    return -1;
             } else {
                 TXTBUF_AUTO t = {0};
                 if (valor_para_texto(&t, &k, 0) != 0) { return -1; }
@@ -7979,7 +8078,9 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
         }
         return sb_bytes(b, "}", 1);
     }
-    snprintf(vm->erro, sizeof(vm->erro), "tipo nao serializavel em json");
+    snprintf(vm->erro, sizeof(vm->erro),
+             "Object of type %s is not JSON serializable",
+             nome_do_tipo_valor(*v));
     return -1;
 }
 
@@ -7990,7 +8091,10 @@ static int mod_json_stringify(VM *vm, Value *args, int n, Value *out)
     int compacto = (n == 2) && val_truthy(&args[1]);
     SBUF_AUTO b = {0};
     if (json_escreve(vm, &b, &args[0], 0, compacto) != 0) {
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        /* O json_escreve ja escolhe o tipo (TypeError no valor que nao serializa,
+         * RecursionError na profundidade); o TypeError aqui e so a rede pra quem
+         * falhou sem escolher (o sb_bytes sem memoria, por exemplo). */
+        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     PSString *r = nova_string(vm, b.b ? b.b : "", b.n);
@@ -8494,7 +8598,8 @@ static int count_percorre(VM *vm, Value cont, int64_t tipo, const Value *val, in
 static PSRegex *rx_compila(VM *vm, Value v, const char *quem)
 {
     if (!EH_STRING(v)) {
-        snprintf(vm->erro, sizeof(vm->erro), "%s() espera str como padrao", quem);
+        snprintf(vm->erro, sizeof(vm->erro), "%s() argument 1 must be str, not %s",
+                 quem, nome_do_tipo_valor(v));
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return NULL;
     }
@@ -8578,6 +8683,8 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
         }
         char e = rep[i + 1];
         int g = -1;
+        int p_ref = i + 1;   /* posicao que o `re` acusa: o digito de `\5`, ou
+                              * o inicio do nome em `\g<...>` (ajustado abaixo) */
         if (e >= '0' && e <= '9') {
             /* `\12` é o grupo 12 quando existe (o `re` lê até 2 dígitos) */
             g = e - '0';
@@ -8591,12 +8698,18 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
             int j = i + 3;
             while (j < rlen && rep[j] != '>') j++;
             if (j >= rlen) {
-                snprintf(erro, (size_t)erro_cap, "sub(): falta '>' em \\g<...>");
+                snprintf(erro, (size_t)erro_cap,
+                         "missing >, unterminated name at position %d", i + 3);
                 return -2;
             }
             int nlen = j - (i + 3);
             const char *nome = rep + i + 3;
-            int so_digito = nlen > 0;
+            if (nlen <= 0) {
+                snprintf(erro, (size_t)erro_cap,
+                         "missing group name at position %d", i + 3);
+                return -2;
+            }
+            int so_digito = 1;
             for (int t = 0; t < nlen; t++)
                 if (nome[t] < '0' || nome[t] > '9') { so_digito = 0; break; }
             if (so_digito) {
@@ -8605,11 +8718,14 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
             } else {
                 g = ps_regex_grupo_por_nome(r, nome, nlen);
                 if (g < 0) {
-                    snprintf(erro, (size_t)erro_cap, "sub(): grupo '%.*s' nao existe no padrao",
+                    /* O `re` levanta IndexError aqui (nao re.error) e a
+                     * mensagem NAO tem posicao. */
+                    snprintf(erro, (size_t)erro_cap, "unknown group name '%.*s'",
                              nlen, nome);
                     return -2;
                 }
             }
+            p_ref = i + 3;   /* o `re` aponta o nome, nao a barra */
             i = j;
         } else {
             /* escape de caractere: o mesmo conjunto do literal da linguagem */
@@ -8636,7 +8752,8 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
             continue;
         }
         if (g > cap->ngrupos) {
-            snprintf(erro, (size_t)erro_cap, "sub(): grupo %d nao existe no padrao", g);
+            snprintf(erro, (size_t)erro_cap,
+                     "invalid group reference %d at position %d", g, p_ref);
             return -2;
         }
         if (cap->inicio[g] >= 0
@@ -11058,9 +11175,10 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
     ssize_t r = read(rfd, &err, sizeof(err));
     close(rfd);
     if (r == (ssize_t)sizeof(err) && err != 0) {
-        snprintf(vm->erro, sizeof(vm->erro),
-                 "arquivo não encontrado: [Errno %d] %s: '%.120s'",
-                 err, strerror(err), prog ? prog : "");
+        /* o texto vira o do CPython; o TIPO fica `IOError` porque
+         * docs/os/run/run.md:73 fixa ("`os.run` **levanta `IOError`**") e o
+         * exemplo de la e um `catch (IOError e)` */
+        erro_sistema(vm, err, prog ? prog : "", NULL);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "IOError");
         return -1;
     }
@@ -11256,8 +11374,7 @@ static const MembroMod MOD_OS[] = {
  * `catch (DatabaseError e)` compara. */
 
 #define SQL_ERRO(vm, db) do { \
-    snprintf((vm)->erro, sizeof((vm)->erro), "erro de banco de dados: %s", \
-             sqlite3_errmsg(db)); \
+    snprintf((vm)->erro, sizeof((vm)->erro), "%s", sqlite3_errmsg(db)); \
     snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "DatabaseError"); \
     return -1; \
 } while (0)
@@ -11265,8 +11382,7 @@ static const MembroMod MOD_OS[] = {
 static int sql_conn_aberta(VM *vm, PSSqlConn *cn)
 {
     if (!cn->fechado && cn->db) return 0;
-    snprintf(vm->erro, sizeof(vm->erro),
-             "erro de banco de dados: Cannot operate on a closed database.");
+    snprintf(vm->erro, sizeof(vm->erro), "Cannot operate on a closed database.");
     snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "DatabaseError");
     return -1;
 }
@@ -11303,14 +11419,14 @@ static int sql_liga_params(VM *vm, sqlite3 *db, sqlite3_stmt *stmt, Value pars)
 {
     if (pars.t == V_NULL || pars.t == V_UNSET) return 0;
     if (!EH_SEQ(pars)) {
-        snprintf(vm->erro, sizeof(vm->erro), "execute() espera tupla ou lista de parametros");
+        snprintf(vm->erro, sizeof(vm->erro), "parameters are of unsupported type");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
         return -1;
     }
     PSList *l = COMO_LIST(pars);
     if (sqlite3_bind_parameter_count(stmt) != l->len) {
         snprintf(vm->erro, sizeof(vm->erro),
-                 "erro de banco de dados: esperava %d parametros, recebeu %d",
+                 "Incorrect number of bindings supplied. The current statement uses %d, and there are %d supplied.",
                  sqlite3_bind_parameter_count(stmt), l->len);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "DatabaseError");
         return -1;
@@ -11330,7 +11446,8 @@ static int sql_liga_params(VM *vm, sqlite3 *db, sqlite3_stmt *stmt, Value pars)
                                    COMO_BYTES(v)->len, SQLITE_TRANSIENT);
         else {
             snprintf(vm->erro, sizeof(vm->erro),
-                     "erro de banco de dados: tipo de parametro nao suportado");
+                     "Error binding parameter %d: type '%s' is not supported",
+                     i + 1, nome_do_tipo_valor(v));
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "DatabaseError");
             return -1;
         }
@@ -11700,7 +11817,7 @@ static void resolve_provedor(const MailProv *tab, int n, const char *entrada,
 /* Erro de rede vira OSError; erro de uso (ordem errada de chamada) vira
  * RuntimeError — é a divisão entre erro de rede e erro de uso. */
 #define MAIL_ERRO_REDE(vm, msg) do { \
-    snprintf((vm)->erro, sizeof((vm)->erro), "erro de sistema/arquivo: %s", msg); \
+    snprintf((vm)->erro, sizeof((vm)->erro), "%s", msg); \
     snprintf((vm)->erro_tipo, sizeof((vm)->erro_tipo), "OSError"); \
     return -1; \
 } while (0)
@@ -11880,7 +11997,7 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (EH_STRING(args[0])) {
         const char *caminho = COMO_STRING(args[0])->chars;
         FILE *f = fopen(caminho, "rb");
-        if (!f) BERRO(vm, "IOError", "arquivo não encontrado: arquivo não encontrado: %s", caminho);
+        if (!f) BERRO(vm, "IOError", "[Errno %d] %s: '%.190s'", errno, strerror(errno), caminho);
         SBUF_AUTO b = {0};
         char ped[4096];
         size_t k;
@@ -11894,7 +12011,8 @@ static int met_mm_attach(VM *vm, Value alvo, Value *args, int n, Value *out)
         *out = MK_BOOL(1);
         return 0;
     }
-    MERRO(vm, "TypeError", "tipo não suportado para anexo");
+    MERRO(vm, "TypeError", "attach() argument 1 must be str, not %s",
+          nome_do_tipo_valor(args[0]));
 }
 static int met_mm_asstring(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -11966,9 +12084,10 @@ static void sk_aplica_timeout(PSSocket *s)
 
 /* erro de socket com a cara do Python: timeout vira "timed out" */
 #define SK_ERRNO(vm, quem, e) do { \
+    (void)(quem); \
     if ((e) == EAGAIN || (e) == EWOULDBLOCK || (e) == EINPROGRESS || (e) == ETIMEDOUT) \
-        MERRO(vm, "RuntimeError", "%s: timed out", (quem)); \
-    MERRO(vm, "RuntimeError", "%s: %s", (quem), strerror(e)); \
+        MERRO(vm, "RuntimeError", "timed out"); \
+    MERRO(vm, "RuntimeError", "[Errno %d] %s", (e), strerror(e)); \
 } while (0)
 
 /* Value (tup/list (host, porta) | str caminho AF_UNIX) -> sockaddr.
@@ -11987,11 +12106,26 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
         *sl = (socklen_t)sizeof(*un);
         return 0;
     }
-    if (!EH_TUPLA(addr) && !EH_LIST(addr))
-        MERRO(vm, "TypeError", "%s: endereço deve ser (host, porta)", quem);
+    /* getnameinfo tem frase propria no CPython; os outros citam a familia */
+    const char *afn = familia == AF_INET6 ? "AF_INET6" : "AF_INET";
+    if (!EH_TUPLA(addr) && !EH_LIST(addr)) {
+        if (familia == AF_UNSPEC)
+            MERRO(vm, "TypeError", "%s() argument 1 must be a tuple", quem);
+        MERRO(vm, "TypeError", "%s(): %s address must be tuple, not %s",
+              quem, afn, nome_do_tipo_valor(addr));
+    }
     PSList *t = COMO_LIST(addr);
-    if (t->len < 2 || !EH_STRING(t->itens[0]) || t->itens[1].t != V_INT)
-        MERRO(vm, "TypeError", "%s: endereço deve ser (host str, porta int)", quem);
+    if (t->len < 2) {
+        if (familia == AF_UNSPEC)
+            MERRO(vm, "TypeError", "%s(): illegal sockaddr argument", quem);
+        MERRO(vm, "TypeError", "%s address must be a pair (host, port)", afn);
+    }
+    if (!EH_STRING(t->itens[0]))
+        MERRO(vm, "TypeError", "str, bytes or bytearray expected, not %s",
+              nome_do_tipo_valor(t->itens[0]));
+    if (t->itens[1].t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(t->itens[1]));
     const char *host = COMO_STRING(t->itens[0])->chars;
     char porta[16];
     snprintf(porta, sizeof(porta), "%lld", (long long)t->itens[1].as.i);
@@ -12001,7 +12135,7 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
     hints.ai_socktype = tipo;
     if (passivo) hints.ai_flags = AI_PASSIVE;
     int rc = getaddrinfo(host[0] ? host : NULL, porta, &hints, &res);
-    if (rc != 0) MERRO(vm, "RuntimeError", "%s: %s", quem, gai_strerror(rc));
+    if (rc != 0) MERRO(vm, "RuntimeError", "[Errno %d] %s", rc, gai_strerror(rc));
     memcpy(sa, res->ai_addr, res->ai_addrlen);
     *sl = (socklen_t)res->ai_addrlen;
     freeaddrinfo(res);
@@ -12054,8 +12188,8 @@ static int sk_addr_valor(VM *vm, const struct sockaddr_storage *sa, Value *out)
 static int sk_dados(VM *vm, Value v, const char *quem, const char **p, size_t *n)
 {
     if (!EH_STRING(v) && !EH_BYTES(v))
-        MERRO(vm, "TypeError", "%s() argument 1 must be str or bytes, not %s",
-              quem, nome_do_tipo_valor(v));
+        MERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+              nome_do_tipo_valor(v));
     *p = COMO_STRING(v)->chars;
     *n = (size_t)COMO_STRING(v)->len;
     return 0;
@@ -12257,12 +12391,15 @@ static int sk_recv_nucleo(VM *vm, Value alvo, Value *args, int n, const char *qu
                           int com_addr, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, quem, 1, 2, n);
-    if (args[0].t != V_INT || args[0].as.i <= 0)
+    if (args[0].t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0]));
+    if (args[0].as.i <= 0)
         MERRO(vm, "TypeError", "%s: bufsize deve ser int positivo", quem);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
     size_t cap = (size_t)args[0].as.i;
     int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
-    char *buf = malloc(cap);
+    char *buf = malloc(cap ? cap : 1);   /* cap 0 e legal: recv(0) da b"" */
     if (!buf) MERRO(vm, "MemoryError", "sem memoria");
     SkRecvOff o = { s->fd, buf, cap, flags, 0, 0, com_addr, {0}, 0 };
     fib_offload(vm, sk_recv_off, &o);
@@ -12299,7 +12436,9 @@ static int met_sk_shutdown(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "shutdown", 1);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "shutdown", &s) != 0) return -1;
-    if (args[0].t != V_INT) MERRO(vm, "TypeError", "shutdown: how deve ser int");
+    if (args[0].t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0]));
     if (shutdown(s->fd, (int)args[0].as.i) != 0) SK_ERRNO(vm, "shutdown", errno);
     *out = MK_NULL();
     return 0;
@@ -12310,7 +12449,8 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "setsockopt", 3);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "setsockopt", &s) != 0) return -1;
     if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "TypeError", "setsockopt: level/optname devem ser int");
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0].t != V_INT ? args[0] : args[1]));
     int rc;
     if (EH_BYTES(args[2]) || EH_STRING(args[2]))
         rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i,
@@ -12319,7 +12459,8 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
         int v = args[2].t == V_INT ? (int)args[2].as.i : (args[2].as.b ? 1 : 0);
         rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, sizeof(v));
     } else
-        MERRO(vm, "TypeError", "setsockopt: value deve ser int ou bytes");
+        MERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+              nome_do_tipo_valor(args[2]));
     if (rc != 0) SK_ERRNO(vm, "setsockopt", errno);
     *out = MK_NULL();
     return 0;
@@ -12332,7 +12473,10 @@ static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (args[0].t != V_INT || args[1].t != V_INT)
         MERRO(vm, "TypeError", "getsockopt: level/optname devem ser int");
     if (n == 3) {   /* com buflen -> bytes, igual ao Python */
-        if (args[2].t != V_INT || args[2].as.i <= 0 || args[2].as.i > 1024)
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[2]));
+        if (args[2].as.i <= 0 || args[2].as.i > 1024)
             MERRO(vm, "TypeError", "getsockopt: buflen invalido");
         char buf[1024]; socklen_t sl = (socklen_t)args[2].as.i;
         if (getsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, buf, &sl) != 0)
@@ -12549,7 +12693,7 @@ static int mod_sk_gethostbyname(VM *vm, Value *args, int n, Value *out)
                                   nome_do_tipo_valor(args[0]));
     SkDnsOff o = { COMO_STRING(args[0])->chars, "", AF_INET, 0 };
     fib_offload(vm, sk_dns_off, &o);
-    if (o.rc != 0) BERRO(vm, "RuntimeError", "gethostbyname: %s", gai_strerror(o.rc));
+    if (o.rc != 0) BERRO(vm, "RuntimeError", "[Errno %d] %s", o.rc, gai_strerror(o.rc));
     PSString *r = nova_string(vm, o.ip, (int)strlen(o.ip));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
@@ -12581,8 +12725,12 @@ static int sk_host_ex(VM *vm, const char *nome_of, const char *host, Value *out)
 {
     /* (nome, [aliases], [ips]) — gethostbyname_r/gethostbyaddr já resolvido */
     struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
-    if (gethostbyname_r(host, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe)
-        BERRO(vm, "RuntimeError", "%s: host nao encontrado: %s", nome_of, host);
+    (void)nome_of;
+    if (gethostbyname_r(host, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe) {
+        int g = (herr == TRY_AGAIN) ? EAI_AGAIN
+              : (herr == NO_RECOVERY) ? EAI_FAIL : EAI_NONAME;
+        BERRO(vm, "RuntimeError", "[Errno %d] %s", g, gai_strerror(g));
+    }
     PSList *t = lista_com_cap(vm, 3, OBJ_TUPLE);
     if (!t) BERRO(vm, "MemoryError", "sem memoria");
     t->len = 3;
@@ -12629,7 +12777,7 @@ static int mod_sk_gethostbyaddr(VM *vm, Value *args, int n, Value *out)
         BERRO(vm, "TypeError", "gethostbyaddr: endereco invalido: %s", ip);
     struct hostent he, *rhe = NULL; char aux[4096]; int herr = 0;
     if (gethostbyaddr_r(&v4, sizeof(v4), AF_INET, &he, aux, sizeof(aux), &rhe, &herr) != 0 || !rhe)
-        BERRO(vm, "RuntimeError", "gethostbyaddr: host nao encontrado: %s", ip);
+        BERRO(vm, "RuntimeError", "[Errno %d] %s", herr, hstrerror(herr));
     return sk_host_ex(vm, "gethostbyaddr", rhe->h_name, out);
 }
 
@@ -12647,7 +12795,7 @@ static int mod_sk_getaddrinfo(VM *vm, Value *args, int n, Value *out)
     hints.ai_protocol = (n >= 5 && args[4].t == V_INT) ? (int)args[4].as.i : 0;
     hints.ai_flags    = (n >= 6 && args[5].t == V_INT) ? (int)args[5].as.i : 0;
     int rc = getaddrinfo(host, porta[0] ? porta : NULL, &hints, &res);
-    if (rc != 0) BERRO(vm, "RuntimeError", "getaddrinfo: %s", gai_strerror(rc));
+    if (rc != 0) BERRO(vm, "RuntimeError", "[Errno %d] %s", rc, gai_strerror(rc));
     PSList *l = lista_com_cap(vm, 4, OBJ_LIST);
     if (!l) { freeaddrinfo(res); BERRO(vm, "MemoryError", "sem memoria"); }
     *out = MK_OBJ(l);
@@ -12702,7 +12850,7 @@ static int mod_sk_getservbyname(VM *vm, Value *args, int n, Value *out)
                                   nome_do_tipo_valor(args[0]));
     const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
     struct servent *se = getservbyname(COMO_STRING(args[0])->chars, proto);
-    if (!se) BERRO(vm, "RuntimeError", "getservbyname: servico nao encontrado: %s", COMO_STRING(args[0])->chars);
+    if (!se) BERRO(vm, "RuntimeError", "service/proto not found");
     *out = MK_INT(ntohs((uint16_t)se->s_port));
     return 0;
 }
@@ -12714,7 +12862,7 @@ static int mod_sk_getservbyport(VM *vm, Value *args, int n, Value *out)
                                  nome_do_tipo_valor(args[0]));
     const char *proto = (n == 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
     struct servent *se = getservbyport(htons((uint16_t)args[0].as.i), proto);
-    if (!se) BERRO(vm, "RuntimeError", "getservbyport: porta sem servico: %lld", (long long)args[0].as.i);
+    if (!se) BERRO(vm, "RuntimeError", "port/proto not found");
     PSString *r = nova_string(vm, se->s_name, (int)strlen(se->s_name));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
@@ -12727,7 +12875,7 @@ static int mod_sk_getprotobyname(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "getprotobyname() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
     struct protoent *pe = getprotobyname(COMO_STRING(args[0])->chars);
-    if (!pe) BERRO(vm, "RuntimeError", "getprotobyname: protocolo nao encontrado: %s", COMO_STRING(args[0])->chars);
+    if (!pe) BERRO(vm, "RuntimeError", "protocol not found");
     *out = MK_INT(pe->p_proto);
     return 0;
 }
@@ -12736,7 +12884,9 @@ static int mod_sk_getprotobyname(VM *vm, Value *args, int n, Value *out)
 static int nome_fn(VM *vm, Value *args, int n, Value *out) \
 { \
     EXIGE_ARGS(vm, quem, 1); \
-    if (args[0].t != V_INT) BERRO(vm, "TypeError", quem ": espera int"); \
+    if (args[0].t != V_INT) BERRO(vm, "TypeError", \
+        "'%s' object cannot be interpreted as an integer", \
+        nome_do_tipo_valor(args[0])); \
     int64_t x = args[0].as.i; (void)x; \
     *out = MK_INT((int64_t)(expr)); \
     return 0; \
@@ -12782,8 +12932,12 @@ static int mod_sk_inet_ntoa(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_inet_pton(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_pton", 2);
-    if (args[0].t != V_INT || !EH_STRING(args[1]))
-        BERRO(vm, "TypeError", "inet_pton: espera (family, str)");
+    if (args[0].t != V_INT)
+        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0]));
+    if (!EH_STRING(args[1]))
+        BERRO(vm, "TypeError", "inet_pton() argument 2 must be str, not %s",
+              nome_do_tipo_valor(args[1]));
     unsigned char buf[16];
     int fam = (int)args[0].as.i;
     int rc = inet_pton(fam, COMO_STRING(args[1])->chars, buf);
@@ -12797,8 +12951,12 @@ static int mod_sk_inet_pton(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_ntop", 2);
-    if (args[0].t != V_INT || (!EH_BYTES(args[1]) && !EH_STRING(args[1])))
-        BERRO(vm, "TypeError", "inet_ntop: espera (family, bytes)");
+    if (args[0].t != V_INT)
+        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0]));
+    if (!EH_BYTES(args[1]) && !EH_STRING(args[1]))
+        BERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+              nome_do_tipo_valor(args[1]));
     char ip[INET6_ADDRSTRLEN];
     /* O inet_ntop(3) não olha o tamanho do buffer: a única falha que ele
      * reporta é EAFNOSUPPORT, e é essa a frase do CPython. */
@@ -12869,7 +13027,7 @@ static int mod_sk_if_nametoindex(VM *vm, Value *args, int n, Value *out)
     if (!EH_STRING(args[0])) BERRO(vm, "TypeError", "if_nametoindex() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
     unsigned idx = if_nametoindex(COMO_STRING(args[0])->chars);
-    if (idx == 0) BERRO(vm, "RuntimeError", "if_nametoindex: interface nao encontrada: %s", COMO_STRING(args[0])->chars);
+    if (idx == 0) BERRO(vm, "RuntimeError", "no interface with this name");
     *out = MK_INT(idx);
     return 0;
 }
@@ -12881,7 +13039,7 @@ static int mod_sk_if_indextoname(VM *vm, Value *args, int n, Value *out)
                                  nome_do_tipo_valor(args[0]));
     char nome[IF_NAMESIZE];
     if (!if_indextoname((unsigned)args[0].as.i, nome))
-        BERRO(vm, "RuntimeError", "if_indextoname: indice invalido: %lld", (long long)args[0].as.i);
+        BERRO(vm, "RuntimeError", "[Errno %d] %s", errno, strerror(errno));
     PSString *r = nova_string(vm, nome, (int)strlen(nome));
     if (!r) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(r);
@@ -13747,12 +13905,12 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
                 }
                 if (!cam[0]) {
                     free(mp.b);
-                    BERRO(vm, "FileNotFoundError", "file=: arquivo não encontrado: %s", caminho);
+                    return erro_sistema(vm, ENOENT, caminho, NULL);
                 }
                 const char *nome_arq = strrchr(cam, '/');
                 nome_arq = nome_arq ? nome_arq + 1 : cam;
                 FILE *f = fopen(cam, "rb");
-                if (!f) { free(mp.b); BERRO(vm, "FileNotFoundError", "file=: arquivo não encontrado: %s", caminho); }
+                if (!f) { int e = errno; free(mp.b); return erro_sistema(vm, e, caminho, NULL); }
                 fseek(f, 0, SEEK_END); long tam = ftell(f); fseek(f, 0, SEEK_SET);
                 char *dados = malloc((size_t)(tam > 0 ? tam : 1));
                 size_t rd = dados ? fread(dados, 1, (size_t)(tam > 0 ? tam : 0), f) : 0;
@@ -14201,8 +14359,12 @@ static int met_qri_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_qri_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "resize", 2);
-    if (args[0].t != V_INT || args[1].t != V_INT)
-        MERRO(vm, "TypeError", "resize() espera (int, int)");
+    if (args[0].t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[0]));
+    if (args[1].t != V_INT)
+        MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+              nome_do_tipo_valor(args[1]));
     PSQRImage *q = COMO_QRIMAGE(alvo);
     q->tw = (int)args[0].as.i;
     q->th = (int)args[1].as.i;
@@ -15281,7 +15443,7 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* param solto (não-sequência) era descartado em silêncio -> o `%s` vazava
      * cru pro banco. Erra claro, igual ao caminho do sqlite. */
     if (n == 2 && args[1].t != V_NULL && args[1].t != V_UNSET && !EH_SEQ(args[1]))
-        MERRO(vm, "TypeError", "execute() espera tupla ou lista de parametros");
+        MERRO(vm, "TypeError", "parameters are of unsupported type");
     ps_db_res_libera(&cu->res);
     cu->pos = 0;
     /* Transação implícita antes de DML — igual ao psycopg2/sqlite3 do interp:
@@ -16037,8 +16199,12 @@ static int met_jresp_status(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jresp_header(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "header", 2);
-    if (!EH_STRING(args[0]) || !EH_STRING(args[1]))
-        MERRO(vm, "TypeError", "header() espera (str, str)");
+    if (!EH_STRING(args[0]))
+        MERRO(vm, "TypeError", "header() argument 1 must be str, not %s",
+              nome_do_tipo_valor(args[0]));
+    if (!EH_STRING(args[1]))
+        MERRO(vm, "TypeError", "header() argument 2 must be str, not %s",
+              nome_do_tipo_valor(args[1]));
     PSJResp *r = COMO_JRESP(alvo);
     if (!EH_DICT(r->headers)) {
         PSDict *d = novo_dict(vm, 4);
@@ -21795,11 +21961,15 @@ ERRO_TF(vm, "TypeError",
                 Value tmp;
                 r = dict_get(COMO_DICT(cont), &alvo, &tmp) == 0;
             } else if (EH_STRING(cont)) {
-                if (!EH_STRING(alvo)) ERRO_T(vm, "TypeError", "'in' em str espera str");
+                if (!EH_STRING(alvo))
+                    ERRO_TF(vm, "TypeError",
+                            "'in <string>' requires string as left operand, not %s",
+                            nome_do_tipo_valor(alvo));
                 PSString *h = COMO_STRING(cont), *n2 = COMO_STRING(alvo);
                 r = acha_bytes(h->chars, h->len, n2->chars, n2->len, 0) >= 0;
             } else {
-                ERRO_T(vm, "TypeError", "'in' nao se aplica a este tipo");
+                ERRO_TF(vm, "TypeError", "argument of type '%s' is not iterable",
+                        nome_do_tipo_valor(cont));
             }
             stack[sp - 1] = MK_BOOL(arg ? !r : r);
             break;

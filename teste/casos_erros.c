@@ -104,9 +104,9 @@ const Caso CASOS_ERROS[] = {
 
 /* ── chave de dict tem que ser imutável ── */
 { "lista como chave de dict",
-  "d = {}\nd[[1,2]] = \"a\"\n", NULL, "chave de dict", -1 },
+  "d = {}\nd[[1,2]] = \"a\"\n", NULL, "unhashable type: 'list'", -1 },
 { "dict como chave de dict",
-  "d = {}\nd[{ \"x\": 1 }] = \"b\"\n", NULL, "chave de dict", -1 },
+  "d = {}\nd[{ \"x\": 1 }] = \"b\"\n", NULL, "unhashable type: 'dict'", -1 },
 { "chaves imutáveis seguem valendo",
   "d = {}\nd[\"s\"] = 1\nd[2] = \"b\"\nd[2.5] = \"c\"\nd[true] = \"d\"\nd[(1, 2)] = \"tup\"\n"
   "post(len(d), d[\"s\"], d[2], d[(1, 2)])\n",
