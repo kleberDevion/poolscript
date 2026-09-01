@@ -1,10 +1,8 @@
 # PoolScript v8.3.90
 
-Linguagem de programação híbrida — dinâmica e estática ao mesmo tempo.
-
 ---
 
-Verificando:
+Versão:
 
 ```bash
 pool --version
@@ -25,8 +23,7 @@ pool build          # roda todos os .ps da pasta atual
 ## Só checar a sintaxe (sem rodar)
 
 `--check` analisa o arquivo (lexer + parser) e **não executa nada** — é o que
-um editor/LSP usa pra sublinhar erro enquanto você digita. A saída é um JSON
-de uma linha:
+um editor/LSP usa pra sublinhar erro enquanto você digita. OBS.: O a checagem de erro e sempre de cima pra baixo, caso tenha mais de 1 erro não detecta,e sempre um por '--check'
 
 ```bash
 pool --check meu_arquivo.ps
@@ -71,7 +68,7 @@ Até mais!
 ## Comentários
 
 ```
-# comentário de linha  (era `//` também; o `//` virou divisão inteira)
+# comentário de linha
 
 """
 comentário
@@ -118,7 +115,7 @@ post(msg)  # Olá kleber!
 Aspas simples também funcionam:
 
 ```
-str x = 'texto aqui'
+str x = 'texto'
 ```
 
 Aspas simples **triplas** — `'''...'''` — abrem string multi-linha (útil pra
@@ -802,7 +799,6 @@ action dados() {
     return jsonify({"msg": "área protegida"}), 200
 }
 
-if __name__ == "main" {
+if __name__ == "main":
     app(debug=False, host="0.0.0.0", port=7700, reload=true)
-}
 ```

@@ -44,21 +44,23 @@ try {
 - **`finally:`** — opcional; roda **sempre**, tenha havido erro ou não (bom para
   fechar recursos). Roda tanto na saída normal quanto quando o erro vai propagar.
 
-> **`catch` é obrigatório.** Não existe `try:` seguido direto de `finally:` —
-> isso é `SyntaxError: esperado 'catch' apos bloco do try`. Para garantir
-> limpeza **sem** capturar o erro, use `catch (e)` que relança:
+> **`try` + `finally` sem `catch` vale.** É a forma "faça isto aconteça o que
+> acontecer, sem tratar o erro" — fechar arquivo, soltar trava, derrubar um
+> servidor. O `finally` roda e a exceção, se houver, **propaga depois dele**:
 >
 > ```ps
-> try:
->     arriscado()
-> catch (e):
->     raise Erro(e)
-> finally:
->     limpa()
+> try {
+>     abre_a_porteira()
+>     pode_estourar()
+> }
+> finally {
+>     fecha_a_porteira()          # roda mesmo se estourar
+> }
 > ```
 >
-> Para fechar arquivo/conexão, o caminho normal é o `using`, que fecha
-> sozinho na saída do bloco, com erro ou sem.
+> O que continua sendo erro é `try` **sozinho**, sem `catch` nem `finally` —
+> aí ele não pediria nada:
+> `SyntaxError: esperado 'catch' ou 'finally' apos bloco do try`.
 
 Blocos `try` podem ser aninhados; um erro não capturado no `catch` interno sobe
 para o `try` externo.
@@ -151,8 +153,10 @@ Observações:
 
 - **`raise Tipo("msg")`** — tipo livre (maiúsculo), mensagem opcional; sem
   `try` em volta, propaga e encerra o programa.
-- **`try:` / `catch (...)` / `finally:`** — `catch` exige parênteses; `finally`
-  roda sempre.
+- **`try` / `catch (...)` / `finally`** — `catch` exige parênteses; `finally`
+  roda sempre. Um dos dois tem que existir; os dois juntos também valem, e
+  `try` + `finally` **sem** `catch` é legítimo (o erro propaga depois do
+  `finally`).
 - **Formas de `catch`**: `(Tipo e)`, `(Tipo)`, `(e)`, `()` — com tipo só pega
   aquele tipo (senão propaga); `e` é o texto do erro, local ao bloco.
 - **Tipos embutidos**: `TypeError`, `ValueError`, `NameError`,

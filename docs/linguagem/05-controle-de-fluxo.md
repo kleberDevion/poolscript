@@ -89,10 +89,26 @@ Regras e limites (verificados):
   }
   ```
 
-- A variável do laço é **um único nome**. Não há forma com índice embutido nem
-  desempacotamento no cabeçalho: `for each i, x in ...` é erro. Se cada elemento
-  é uma tupla, ele chega inteiro na variável (desempacote no corpo, ou itere
-  índices com `range`).
+- **Desempacotamento no cabeçalho vale**, como no Python: `for each a, b in
+  pares` abre cada elemento em dois nomes. Vale com quantos nomes quiser e
+  aninhado.
+
+  ```ps
+  for each nome, idade in [["ana", 30], ["bia", 25]] {
+      post(nome, "tem", idade)
+  }
+
+  for each a, (b, c) in [[1, [2, 3]]] {
+      post(a, b, c)               # 1 2 3
+  }
+  ```
+
+  É a mesma máquina do `a, b = [1, 2]`, e por isso as recusas são as mesmas —
+  e são as do CPython: elemento com itens demais dá
+  `ValueError: too many values to unpack (expected 2)`; elemento que não é
+  sequência dá `TypeError: cannot unpack non-iterable int object`.
+
+  Índice embutido não existe: para contar, use `range` (5.3.1).
 - A variável do laço **não existe depois** do laço (seção 4.6.3).
 
 ### 5.3.1. `range` — sequência de inteiros

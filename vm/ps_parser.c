@@ -1741,12 +1741,39 @@ static PSNode *for_stmt(P *p)
     PSToken *t = atual(p);
     p->pos++;                                  /* for */
     if (!aceita_kw(p, "each")) { perro(p, "esperado 'each' em 'for each'", atual(p)); return NULL; }
+
+    /* `for each a, b in pares` — DESEMPACOTAMENTO, como o Python.
+     *
+     * Antes o parser lia UM nome e exigia `in`, entao a virgula dava
+     * "esperado 'in' no loop for each" e quem itera lista de pares tinha que
+     * abrir o item na mao dentro do corpo. A maquina ja existia inteira: o
+     * `alvos_unpack` e o `compila_unpack_alvo` sao os mesmos do
+     * `a, b = [1, 2]`, que ja funcionava. So o laco nao os chamava. */
+    PSToken *nt = atual(p);
     const char *item = exige_nome(p, "variavel de loop");
     if (FALHOU(p)) return NULL;
+
+    PSNode *desempacota = NULL;
+    if (checa(p, T_COMMA)) {
+        desempacota = ps_node_novo(p->arena, N_UNPACK_TARGET, nt->line, nt->col);
+        if (!desempacota) return NULL;
+        desempacota->i2 = -1;
+        PSNode *primeiro = ps_node_novo(p->arena, N_NAME, nt->line, nt->col);
+        if (!primeiro) return NULL;
+        primeiro->texto = item;
+        if (ps_vec_push(p->arena, &desempacota->lista, primeiro) != 0) {
+            perro(p, "sem memoria", nt); return NULL;
+        }
+        while (aceita(p, T_COMMA)) {
+            if (um_alvo(p, desempacota) != 0) return NULL;
+        }
+    }
+
     if (!aceita_kw(p, "in")) { perro(p, "esperado 'in' no loop for each", atual(p)); return NULL; }
     PSNode *n = ps_node_novo(p->arena, N_FOR_EACH_STMT, t->line, t->col);
     if (!n) return NULL;
     n->texto = item;
+    n->e = desempacota;      /* NULL quando e um nome so */
     {
         int salvo = p->chave_abre_bloco;
         p->chave_abre_bloco = 1;
@@ -2485,7 +2512,16 @@ static PSNode *statement(P *p)
             salvo = p->pos;
             pula_separadores(p);
         }
-        if (n->lista.n == 0) { perro(p, "esperado 'catch' apos bloco do try", atual(p)); return NULL; }
+        /* `try { } finally { }` SEM catch nenhum é válido, e é o que o Python
+         * faz: o finally roda e a exceção (se houver) propaga depois dele. O
+         * parser exigia catch, então a forma "faça isto aconteça o que
+         * acontecer, sem tratar o erro" — fechar arquivo, soltar trava,
+         * derrubar servidor — não existia. Só é erro quando não há NEM catch
+         * NEM finally: aí o `try` não pediria nada. */
+        if (n->lista.n == 0 && !checa_kw(p, "finally")) {
+            perro(p, "esperado 'catch' ou 'finally' apos bloco do try", atual(p));
+            return NULL;
+        }
 
         if (checa_kw(p, "finally")) {
             p->pos++;

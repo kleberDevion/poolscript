@@ -6,6 +6,115 @@
 #include "ps_teste.h"
 
 const Caso CASOS_LINGUAGEM[] = {
+
+/* ── as tres limitacoes que a doc listava, e que viraram conserto ─────────
+ *
+ * `docs/LANGUAGE.md` tinha um bloco "Limitacoes e comportamentos conhecidos"
+ * com cinco itens. DUAS eram falsas — `for each c in "abc" { }` funciona, e
+ * `elif`/`else` em linha nova tambem — e o mesmo arquivo dizia o contrario
+ * algumas linhas antes. As tres verdadeiras estao consertadas aqui.
+ *
+ * O oraculo e o CPython: cada esperado abaixo foi colhido rodando o mesmo
+ * caso no python3. */
+
+/* 1. try/finally SEM catch. Era `SyntaxError: esperado 'catch'`. */
+{ "try/finally sem catch roda o finally",
+  "try {\n"
+  "    post(\"dentro\")\n"
+  "}\n"
+  "finally {\n"
+  "    post(\"fim\")\n"
+  "}\n",
+  "dentro\nfim", NULL, 0 },
+{ "try/finally sem catch: a excecao PROPAGA depois do finally",
+  /* O conserto do parser sozinho engolia o erro: o compilador so emitia
+   * RERAISE quando algum catch existia e nao casava. Saia rc=0 e o erro
+   * sumia — trocar um SyntaxError por um erro calado seria piorar. */
+  "try {\n"
+  "    post(\"dentro\")\n"
+  "    raise ValueError(\"x\")\n"
+  "}\n"
+  "finally {\n"
+  "    post(\"fim\")\n"
+  "}\n",
+  "dentro\nfim", "ValueError: x", 1 },
+{ "try/finally sem catch: o finally roda antes do return",
+  "action f() {\n"
+  "    try {\n"
+  "        return \"A\"\n"
+  "    }\n"
+  "    finally {\n"
+  "        post(\"fim\")\n"
+  "    }\n"
+  "}\n"
+  "post(f())\n",
+  "fim\nA", NULL, 0 },
+{ "try/finally aninhado: o de fora pega o que o de dentro deixou passar",
+  "try {\n"
+  "    try {\n"
+  "        raise KeyError(\"k\")\n"
+  "    }\n"
+  "    finally {\n"
+  "        post(\"interno\")\n"
+  "    }\n"
+  "}\n"
+  "catch (KeyError e) {\n"
+  "    post(\"pegou\")\n"
+  "}\n",
+  "interno\npegou", NULL, 0 },
+{ "try sozinho, sem catch nem finally, continua sendo erro",
+  /* o `try` nao pediria nada; e a unica forma que segue recusada */
+  "try {\n"
+  "    post(\"a\")\n"
+  "}\n",
+  "", "esperado 'catch' ou 'finally' apos bloco do try", 2 },
+
+/* 2. escape invalido: mantem a barra E avisa, como o CPython. */
+{ "escape invalido MANTEM a barra",
+  /* Era `C:pasta` (7 chars): a barra sumia, calada. O python3 da
+   * 'C:\\pasta' com 8 — perder um byte do dado em silencio e o pior dos
+   * dois mundos. O aviso vai pro stderr e nao entra no stdout. */
+  "x = \"C:\\pasta\"\n"
+  "post(x, len(x))\n",
+  "C:\\pasta 8", "SyntaxWarning: sequencia de escape invalida '\\p'", 0 },
+{ "escape CONHECIDO segue igual",
+  "post(len(\"a\\nb\"), len(\"a\\tb\"), len(\"a\\\\b\"))\n",
+  "3 3 3", NULL, 0 },
+{ "aviso nao e erro: o programa roda ate o fim",
+  "x = \"\\q\"\n"
+  "post(\"terminei\")\n",
+  "terminei", "SyntaxWarning: sequencia de escape invalida '\\q'", 0 },
+
+/* 3. unpacking no for each. Era `SyntaxError: esperado 'in'`. */
+{ "for each com dois nomes desempacota",
+  "for each a, b in [[1, 2], [3, 4]] {\n"
+  "    post(a, b)\n"
+  "}\n",
+  "1 2\n3 4", NULL, 0 },
+{ "for each com tres nomes, e aninhado",
+  "for each a, b, c in [[1, 2, 3]] {\n"
+  "    post(a, b, c)\n"
+  "}\n"
+  "for each x, (y, z) in [[1, [2, 3]]] {\n"
+  "    post(x, y, z)\n"
+  "}\n",
+  "1 2 3\n1 2 3", NULL, 0 },
+{ "for each com UM nome continua igual",
+  "for each x in [1, 2, 3] {\n"
+  "    post(x)\n"
+  "}\n",
+  "1\n2\n3", NULL, 0 },
+{ "for each desempacota com a quantidade errada: a mensagem e a do CPython",
+  "for each a, b in [[1, 2, 3]] {\n"
+  "    post(a)\n"
+  "}\n",
+  "", "too many values to unpack (expected 2)", 1 },
+{ "for each desempacota o que nao e sequencia",
+  "for each a, b in [1, 2] {\n"
+  "    post(a)\n"
+  "}\n",
+  "", "cannot unpack non-iterable int object", 1 },
+
 /* ── escopo ── */
 { "for each sombreia variável de fora",
   "i = \"importante\"\n"

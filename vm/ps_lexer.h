@@ -45,6 +45,14 @@ typedef struct {
     int32_t   nchars;
 } PSToken;
 
+/* Um aviso do lexer: o programa compila, mas provavelmente não faz o que
+ * parece. Ver o campo `avisos` de PSTokenList. */
+typedef struct {
+    char    msg[160];
+    int32_t linha;
+    int32_t col;
+} PSAviso;
+
 typedef struct {
     PSToken *tokens;
     int32_t  n;
@@ -55,7 +63,27 @@ typedef struct {
     char     erro[256];
     int32_t  erro_linha;
     int32_t  erro_col;
+
+    /* AVISOS: o programa compila, mas alguma coisa quase certamente não é o
+     * que quem escreveu quis. Hoje só um caso, e ele custou caro:
+     * `"C:\pasta"` — o `\p` não é escape, e o lexer engolia a barra CALADO,
+     * devolvendo `C:pasta`. O CPython mantém a barra E avisa
+     * (`SyntaxWarning: invalid escape sequence '\p'`); nós fazíamos o
+     * contrário nas duas metades.
+     *
+     * Aviso não é erro: `ok` continua 1 e o programa roda. Quem apresenta é
+     * quem chamou — o `pool` imprime no stderr, o `--check` devolve no JSON,
+     * e o editor sublinha. */
+    PSAviso *avisos;
+    int32_t  navisos;
+    int32_t  cap_avisos;
 } PSTokenList;
+
+/* Imprime no stderr os avisos que a lista juntou, no formato do CPython
+ * (`<arquivo>:<linha>: SyntaxWarning: ...`). stderr, e nao stdout, porque
+ * stdout e o canal de dado do programa e do JSON do `--check`. Definida em
+ * poolscript_vm.c. */
+void ps_avisos_para_stderr(const PSTokenList *toks, const char *caminho);
 
 /* Analisa `fonte` (UTF-8, terminada em NUL). Sempre devolve uma lista que
  * precisa ser liberada com ps_lexer_free, mesmo em caso de erro. */

@@ -139,6 +139,26 @@ static void erro(Lexer *lx, const char *msg)
     lx->out->erro_col = lx->col;
 }
 
+/* Registra um AVISO na posição dada. Não mexe em `ok`: o programa compila e
+ * roda; quem apresenta é quem chamou o lexer. Ver o campo `avisos` em
+ * ps_lexer.h. Sem memória, o aviso é descartado em silêncio — perder um aviso
+ * é melhor que derrubar a compilação por causa dele. */
+static void aviso_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
+{
+    PSTokenList *o = lx->out;
+    if (o->navisos >= 64) return;            /* um arquivo ruim não vira enxurrada */
+    if (o->navisos >= o->cap_avisos) {
+        int32_t nc = o->cap_avisos ? o->cap_avisos * 2 : 8;
+        PSAviso *nv = realloc(o->avisos, sizeof(PSAviso) * (size_t)nc);
+        if (!nv) return;
+        o->avisos = nv; o->cap_avisos = nc;
+    }
+    snprintf(o->avisos[o->navisos].msg, sizeof(o->avisos[o->navisos].msg), "%s", msg);
+    o->avisos[o->navisos].linha = l;
+    o->avisos[o->navisos].col = c;
+    o->navisos++;
+}
+
 static void erro_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
 {
     if (!lx->out->ok) return;
@@ -344,7 +364,13 @@ static int buf_push_utf8(Buf *bf, unsigned long cp)
 /* Processa o escape que começa no '\\' em lx->pos, empurra o resultado (UTF-8)
  * em bf e avança lx->pos/col pelos chars consumidos. Espelha o _decode_escape
  * reconhecidos: \n \t \r \a \b \f \v \e, \\ \" \', octal \033,
- * hex \x1b, unicode \uXXXX/\UXXXXXXXX. Desconhecido solta a barra. 0 ok, -1 mem. */
+ * hex \x1b, unicode \uXXXX/\UXXXXXXXX.
+ *
+ * DESCONHECIDO MANTÉM A BARRA E AVISA — como o CPython. Antes a barra sumia,
+ * calada: `"C:\pasta"` virava `C:pasta` (7 bytes) em vez de `C:\pasta` (8), e
+ * ninguém ficava sabendo. Perder um byte do dado do usuário em silêncio é o
+ * pior dos dois mundos; o Python emite `SyntaxWarning: invalid escape
+ * sequence '\p'` e preserva os dois caracteres. 0 ok, -1 mem. */
 static int decode_escape(Lexer *lx, Buf *bf)
 {
     const char *s = lx->src;
@@ -352,6 +378,19 @@ static int decode_escape(Lexer *lx, Buf *bf)
     char nxt = s[i + 1];
     int consumido = 2;
     unsigned long cp;
+
+    /* Guarda a barra e avisa: o chamador emite `nxt` logo em seguida. */
+    #define ESCAPE_DESCONHECIDO()                                             \
+        do {                                                                  \
+            char _m[160];                                                     \
+            snprintf(_m, sizeof(_m),                                          \
+                     "sequencia de escape invalida '\\%c' — a barra fica no "  \
+                     "texto; use '\\\\%c' se ela e mesmo pra estar ali", nxt, nxt); \
+            aviso_em(lx, _m, lx->linha, lx->col);                             \
+            if (buf_push_utf8(bf, (unsigned long)'\\') != 0) return -1;        \
+            cp = (unsigned char)nxt;                                          \
+            consumido = 2;                                                    \
+        } while (0)
     switch (nxt) {
         case 'n': cp = '\n'; break;
         case 't': cp = '\t'; break;
@@ -374,7 +413,7 @@ static int decode_escape(Lexer *lx, Buf *bf)
             } else if (nxt == 'x' || nxt == 'X') {   /* hex \xHH */
                 if (i + 3 < n && ehexdig(s[i+2]) && ehexdig(s[i+3])) {
                     cp = (unsigned long)(hexval(s[i+2]) * 16 + hexval(s[i+3])); consumido = 4;
-                } else { cp = (unsigned char)nxt; consumido = 2; }
+                } else { ESCAPE_DESCONHECIDO(); }
             } else if (nxt == 'u' || nxt == 'U') {   /* unicode \uXXXX / \UXXXXXXXX */
                 int k = (nxt == 'u') ? 4 : 8, ok = 1; unsigned long v = 0;
                 for (int t = 0; t < k; t++) {
@@ -382,14 +421,15 @@ static int decode_escape(Lexer *lx, Buf *bf)
                     v = v * 16 + (unsigned long)hexval(s[i+2+t]);
                 }
                 if (ok) { cp = v; consumido = 2 + k; }
-                else    { cp = (unsigned char)nxt; consumido = 2; }
+                else    { ESCAPE_DESCONHECIDO(); }
             } else {
-                cp = (unsigned char)nxt; consumido = 2;   /* desconhecido: solta a barra */
+                ESCAPE_DESCONHECIDO();
             }
     }
     lx->pos += (size_t)consumido; lx->col += consumido;
     return buf_push_utf8(bf, cp);
 }
+#undef ESCAPE_DESCONHECIDO
 
 static void le_string(Lexer *lx, char aspa, int fstring, int raw)
 {
@@ -820,6 +860,7 @@ void ps_lexer_free(PSTokenList *lista)
     if (!lista) return;
     for (int32_t i = 0; i < lista->n; i++) free(lista->tokens[i].texto);
     free(lista->tokens);
+    free(lista->avisos);
     free(lista);
 }
 

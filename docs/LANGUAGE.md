@@ -1,11 +1,6 @@
-# PoolScript v8.2.18 — Referência da linguagem
+# PoolScript v8.3.90 — Referência da linguagem
 
-Este documento descreve, de forma completa, tudo que existe atualmente na linguagem
-PoolScript: sintaxe, tipos, controle de fluxo, funções, classes, tratamento de
-erros, bibliotecas padrão e comportamentos/limitações conhecidas. Substitui
-`docs/PoolScript.md` (que documentava a v1.0.8 e está bastante desatualizado —
-não cobre `async`/`await`, `Entity`, `match`/`case`, `count`, decorators nem
-unpacking).
+Este mark down tem alguams specs da linguagem.
 
 > Arquitetura (para quem for mexer no código): lexer (`vm/ps_lexer.c`) →
 > parser recursive-descent que produz uma AST (`vm/ps_parser.c`) → compilador
@@ -48,19 +43,18 @@ unpacking).
 pool arquivo.ps       # roda um arquivo
 pool repl             # REPL interativo
 pool build            # roda todos os .ps da pasta atual
-pool --version        # versão do binário
-pool --help           # ajuda
+pool --version / -v / -V       # versão do binário
+pool --help    / -h       # ajuda
 ```
 
-Chamar `pool` **sem nenhum argumento** abre o REPL interativo (igual ao `python`
-sem argumentos) — não imprime a ajuda.
+Chamar `pool` **sem nenhum argumento** abre o REPL interativo
 
 ---
 
 ## Comentários
 
 ```
-# comentário de linha  (o `//` virou divisão inteira — ver Operadores)
+# comentário de linha 
 
 """
 comentário de bloco,
@@ -71,24 +65,6 @@ pode ter várias linhas
 ---
 
 ## Blocos: `{ }`
-
-O bloco da PoolScript é `{ }`. **Só.** Não existe bloco por indentação com `:`
-— tentar usar dá um erro que diz o que fazer:
-
-```
-SyntaxError: bloco com ':' nao existe mais — use '{ }'
-```
-
-Isso já foi diferente: a linguagem aceitava os dois estilos e permitia
-misturá-los. A convivência custou caro — quase toda regressão de parser saía da
-interação entre indentação e chave — e o `:` saiu.
-
-Dentro de `{ }` a **indentação não tem significado**: quem delimita é a chave.
-Indente como quiser (o repositório usa 4 espaços por nível, por costume).
-
-A chave de abertura pode ficar **na mesma linha** ou **na linha seguinte**, e
-`elif`/`else`/`catch`/`finally` podem vir colados ao `}` ou numa linha nova —
-as quatro combinações valem:
 
 ```
 if (nota >= 9) {
@@ -110,9 +86,6 @@ else
     post("Reprovado")
 }
 ```
-
-O `:` continua sendo `:` onde ele **não** abre bloco — e essas formas não
-mudaram:
 
 ```
 d = { "a": 1, "b": 2 }     // dicionário
@@ -176,17 +149,6 @@ dentro de `__init__`, então ligá-la a um nome quebrava `base(...)` — antes
 `base = 5` era aceito calado e só estourava depois, como
 `NameError: name 'base' is not defined`.
 
-Duas coisas que **continuam** válidas, porque não ligam nome nenhum:
-
-```
-o.base                             // acesso a membro chamado 'base'
-db.query(base="x.db")              // nome de argumento é só um rótulo
-regex.sub("a", "b", s, count=2)    // idem, mesmo sendo 'count'
-```
-
-`self` é reservada, mas liberada no único lugar onde faz sentido: a lista de
-parâmetros de um método.
-
 ---
 
 ## Null
@@ -222,8 +184,7 @@ caminhos do Windows direto numa string (`"C:\Users\..."` vira `"C:Users..."`,
 com `\t` virando um TAB literal). Para caminhos/regex, use **string raw**:
 
 ```
-r"C:\Users\nome"     # preserva tudo literalmente, sem processar escapes
-r'C:\Users\nome'
+
 ```
 
 **String multi-linha** — aspas simples **triplas** (`'''...'''`), combina com
@@ -476,8 +437,7 @@ f = lenta(1)          // não bloqueia — devolve um future na hora
 post(await f)          // só aqui bloqueia até o resultado
 ```
 
-Semântica (igual à de qualquer linguagem com async/await real, verificada com
-testes de concorrência por tempo de parede):
+Semântica (igual à de qualquer linguagem com async/await.s
 
 - Duas ou mais chamadas `async` disparadas antes de qualquer `await` rodam
   **em paralelo** (não seriado).
@@ -773,7 +733,7 @@ c = Carro()
 post(c.cavalos, c.qtd_rodas, c.tipo)   // 300 4 esportivo
 ```
 
-> ⚠️ **Armadilha real (verificada):** o alvo do pai só é reconhecido quando há
+> **Especificação:** o alvo do pai só é reconhecido quando há
 > uma **vírgula** depois do nome. `base(Motor, 300)` funciona. Mas
 > `base(Motor)` — nome sozinho, sem vírgula — **NÃO** mira o pai `Motor`: o
 > parser trata `Motor` como um *argumento comum* passado para o primeiro pai, e
@@ -934,8 +894,7 @@ Libs embutidas (lazy-loaded, só carregam quando importadas):
 `os, json, dotenv, mail, date, jinker, db, hash, jwt, request/requests,
 manpu/mp, regex, sqlite3, qrcode/qr, sys, datasentity/dataentity`.
 
-Referência completa de cada lib (todo membro acessível, com exemplos) em
-`docs/`:
+Referência completa de cada lib
 
 | Lib | Doc |
 |---|---|
@@ -956,10 +915,7 @@ Referência completa de cada lib (todo membro acessível, com exemplos) em
 
 Libs "stub" (existem mas não implementadas nesta versão — erro claro e
 catchable ao chamar, não ao importar): `sqlite, smtplib, mimetext,
-multipart, flask`.
-
-Também é possível importar arquivos `.ps` próprios, resolvidos relativos à
-raiz do projeto (igual a um pacote Python).
+multipart, flask`
 
 ---
 
@@ -1145,23 +1101,3 @@ Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
 `catch (e)` sem tipo pega **qualquer** erro de runtime, independente da causa.
 
 ---
-
-## Limitações e comportamentos conhecidos
-
-Encontradas e documentadas durante uma auditoria profunda desta versão
-(testes + correções, ver `CHANGELOG.md`):
-
-- **String bruta imediatamente seguida de `{` em estilo chave é ambígua**:
-  `for each c in "abc" { ... }` tenta interpretar o `{` como início de
-  interpolação (`"texto" {expr}`) em vez de abrir o bloco do loop. Contorne
-  usando o estilo `:` (`for each c in "abc":`) ou uma variável em vez do
-  literal direto.
-- **`elif`/`else` no estilo chave precisam ficar na mesma linha** do `}`
-  anterior (`} elif (...) {`), não numa linha nova.
-- **`try`/`finally` exige pelo menos um `catch`** — não existe `try {...}
-  finally {...}` puro.
-- **Escapes de string desconhecidos perdem o backslash silenciosamente**
-  (não é erro) — cuidado ao embutir caminhos do Windows sem usar string raw
-  (`r"..."`).
-- Unpacking não se aplica a `for each` (continua aceitando só 1 nome), a
-  declarações tipadas, nem a alvos de membro (`self.x`/`obj.y`).

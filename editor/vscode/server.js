@@ -478,18 +478,34 @@ function diagnostica(doc) {
   const bruto = motor(['--check'], doc.getText());
   let r;
   try { r = JSON.parse(bruto); } catch (_) { return; }
-  if (!r || r.ok) { conexao.sendDiagnostics({ uri: doc.uri, diagnostics: [] }); return; }
-  const linha = Math.max(0, (r.linha || 1) - 1);
-  const col = Math.max(0, (r.coluna || 1) - 1);
-  conexao.sendDiagnostics({
-    uri: doc.uri,
-    diagnostics: [{
+  if (!r) return;
+
+  /* AVISOS: o programa compila, mas alguma coisa quase certamente não é o que
+   * se quis — `"C:\pasta"`, onde `\p` não é escape. Vêm no mesmo JSON do
+   * `--check` e viram sublinhado amarelo. Sem isto o aviso só apareceria pra
+   * quem roda no terminal, e o editor é justamente onde ele seria visto. */
+  const diags = (r.avisos || []).map((a) => {
+    const l = Math.max(0, (a.linha || 1) - 1);
+    const c = Math.max(0, (a.coluna || 1) - 1);
+    return {
+      severity: DiagnosticSeverity.Warning,
+      range: { start: { line: l, character: c }, end: { line: l, character: c + 2 } },
+      message: a.msg,
+      source: 'poolscript',
+    };
+  });
+
+  if (!r.ok) {
+    const linha = Math.max(0, (r.linha || 1) - 1);
+    const col = Math.max(0, (r.coluna || 1) - 1);
+    diags.unshift({
       severity: DiagnosticSeverity.Error,
       range: { start: { line: linha, character: col }, end: { line: linha, character: col + 1 } },
       message: `${r.tipo}: ${r.msg}`,
       source: 'poolscript',
-    }],
-  });
+    });
+  }
+  conexao.sendDiagnostics({ uri: doc.uri, diagnostics: diags });
 }
 
 docs.onDidChangeContent((e) => diagnostica(e.document));

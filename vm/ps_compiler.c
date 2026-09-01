@@ -1692,7 +1692,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * escondido e devolve na saída: o laço SOMBREIA, não destrói. */
             const char *var_laco = n->texto ? n->texto : "";
             char salvo[128];
-            int sombreia = nome_ja_existe(u, var_laco);
+            /* Com desempacotamento (`for each a, b in ...`) o primeiro nome
+             * ainda esta em `n->texto`, mas os outros vivem em `n->e`; a
+             * sombra so cobre o primeiro, entao aqui ela sai de cena e as
+             * variaveis do laco seguem a regra normal de escopo (limpas na
+             * marca M, logo abaixo). Sombrear um nome de tres seria pior que
+             * nao sombrear nenhum. */
+            int sombreia = !n->e && nome_ja_existe(u, var_laco);
             if (sombreia) {
                 snprintf(salvo, sizeof(salvo), "  fe$%s", var_laco);   /* nome não digitável */
                 carrega_nome(c, u, var_laco);
@@ -1734,8 +1740,12 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             topo = UP(c, u)->ncode;
             fim = emite(c, u, OP_ITER_NEXT, 0);
             }
-            /* variável do laço é local desta função, como o parâmetro */
-            guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            /* variável do laço é local desta função, como o parâmetro.
+             * Com `for each a, b in ...`, o item que o ITER_NEXT deixou no
+             * topo e desempacotado pelo MESMO emissor do `a, b = [1, 2]` —
+             * mesma checagem de quantidade, mesma mensagem de erro. */
+            if (n->e) compila_unpack_alvo(c, u, n->e);
+            else      guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             abre_laco(c, topo, usa_range ? 4 : 2);   /* estado do laço na pilha */
             /* a var do laço é re-atribuída no topo a cada volta, então limpá-la
              * por-iteração é inofensivo — corpo e var compartilham a marca */
@@ -2393,9 +2403,15 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
             /* Nenhum catch casou: o erro CONTINUA. Engolir aqui fazia
              * `catch (KeyError e)` virar um catch-tudo silencioso — o `try`
-             * de fora nunca via a divisão por zero. */
-            if (prox_falha >= 0) {
-                UP(c, u)->code[prox_falha + 1] = UP(c, u)->ncode;
+             * de fora nunca via a divisão por zero.
+             *
+             * `n->lista.n == 0` é o `try { } finally { }` SEM catch, que o
+             * parser passou a aceitar. Sem esta condição o handler não emitia
+             * RERAISE nenhum e a exceção sumia CALADA: o finally rodava, o
+             * programa saía com rc=0 e o erro nunca aparecia. Trocar um
+             * `SyntaxError` por um erro engolido teria sido piorar. */
+            if (prox_falha >= 0 || n->lista.n == 0) {
+                if (prox_falha >= 0) UP(c, u)->code[prox_falha + 1] = UP(c, u)->ncode;
                 /* tipo junto da mensagem: o `finally` roda antes do RERAISE e
                  * pode ter trocado o erro corrente da VM */
                 if (setup_cat >= 0) emite(c, u, OP_POP_TRY, 0);   /* não caia no próprio handler */

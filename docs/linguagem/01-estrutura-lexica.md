@@ -226,8 +226,22 @@ fechada antes da quebra de linha`), a menos que seja multi-linha.
 | `\e` | ESC (`\x1b`, p/ ANSI) | | `\033` | octal (1–3 díg.) |
 | `\xHH` | hex (2 díg.) | | `\uXXXX` / `\UXXXXXXXX` | Unicode |
 
-Um escape desconhecido mantém o caractere e solta a barra. O valor de `\033`,
-`\x1b` e `\e` é o **mesmo byte** ESC.
+Um escape **desconhecido mantém a barra E o caractere**, e sai um aviso:
+
+```
+arquivo.ps:1: SyntaxWarning: sequencia de escape invalida '\p' — a barra fica
+no texto; use '\\p' se ela e mesmo pra estar ali
+```
+
+`"C:\pasta"` tem 8 caracteres e vale `C:\pasta`, como no Python. Isso já foi
+diferente e era pior: a barra sumia **calada**, o valor virava `C:pasta` (7), e
+quem escrevia um caminho do Windows perdia um byte sem ficar sabendo. O aviso
+vai pro **stderr** (não suja a saída do programa) e o `pool --check` o devolve
+no JSON, então o editor sublinha.
+
+Aviso não é erro: o programa roda e sai com 0.
+
+O valor de `\033`, `\x1b` e `\e` é o **mesmo byte** ESC.
 
 ```ps
 post("linha1\nlinha2")

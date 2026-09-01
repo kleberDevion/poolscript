@@ -24388,11 +24388,30 @@ void ps_metadata_json(FILE *saida)
     fprintf(f, "\n }\n}\n");
 }
 
-int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e)
+/* Despeja os avisos do lexer no STDERR, no formato do CPython.
+ *
+ * stderr, e nao stdout, porque stdout e o canal de dado do programa — e do
+ * `--check`, que devolve JSON pro editor. Um aviso no stdout corromperia os
+ * dois. O formato imita o do Python (`<arquivo>:<linha>: SyntaxWarning: ...`)
+ * porque quem le isso ja sabe ler aquele. */
+void ps_avisos_para_stderr(const PSTokenList *toks, const char *caminho)
+{
+    if (!toks) return;
+    const char *nome = caminho ? caminho : "<stdin>";
+    for (int32_t i = 0; i < toks->navisos; i++) {
+        fprintf(stderr, "%s:%d: SyntaxWarning: %s\n",
+                nome, toks->avisos[i].linha, toks->avisos[i].msg);
+    }
+}
+
+int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e,
+                      PSAviso **avisos, int32_t *navisos)
 {
     (void)caminho;   /* verificação não resolve import — só a gramática local */
     e->tipo = PS_ERRO_NENHUM; e->msg[0] = '\0'; e->tipo_nome[0] = '\0';
     e->linha = e->col = 0;
+    if (avisos) *avisos = NULL;
+    if (navisos) *navisos = 0;
 
     PSTokenList *toks = ps_lexer_tokenize(fonte, len);
     if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
@@ -24402,6 +24421,16 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
         e->linha = toks->erro_linha; e->col = toks->erro_col;
         ps_lexer_free(toks);
         return -1;
+    }
+    /* os avisos saem ANTES do free: a lista morre logo abaixo. Quem pediu vira
+     * dono do vetor. */
+    if (avisos && navisos && toks->navisos > 0) {
+        PSAviso *cp = malloc(sizeof(PSAviso) * (size_t)toks->navisos);
+        if (cp) {
+            memcpy(cp, toks->avisos, sizeof(PSAviso) * (size_t)toks->navisos);
+            *avisos = cp;
+            *navisos = toks->navisos;
+        }
     }
     PSParseResult *r = ps_parse(toks->tokens, toks->n);
     ps_lexer_free(toks);
@@ -24455,6 +24484,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         ps_lexer_free(toks);
         return -1;
     }
+    ps_avisos_para_stderr(toks, caminho);
 
     PSParseResult *r = ps_parse(toks->tokens, toks->n);
     ps_lexer_free(toks);

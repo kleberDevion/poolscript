@@ -15,13 +15,6 @@ lê o modelo de tipos do próprio binário (`pool --metadata`) e a prosa das
 páginas de `docs/`. Nada de dado digitado à mão: se o motor muda, a sugestão
 muda junto.
 
-O que é declarativo e vive aqui:
-
-- gramática de realce (`syntaxes/`) — usada quando o servidor está desligado;
-- tema **PoolScript One Dark**;
-- ícone do `.ps` e do `.psl`;
-- configuração da linguagem (comentário, par de chaves, indentação).
-
 ## Requisito
 
 O binário da linguagem precisa estar instalado — é ele que traz o

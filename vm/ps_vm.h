@@ -15,6 +15,8 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include "ps_lexer.h"   /* PSAviso: o `--check` devolve os avisos junto */
+
 typedef enum {
     PS_ERRO_NENHUM = 0,
     PS_ERRO_SINTAXE,        /* lexer ou parser */
@@ -54,7 +56,13 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
 /* Só VERIFICA (lexer → parser → compilador), NUNCA roda. Para o LSP/editor:
  * usa exatamente a gramática da VM pra apontar erro de sintaxe/compilação sem
  * executar o código do usuário. 0 = sem erro; -1 preenche `e`. */
-int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
+/* `avisos`/`navisos` sao OPCIONAIS (passe NULL/NULL pra ignorar): recebem os
+ * avisos do lexer — o programa compila, mas alguma coisa quase certamente nao
+ * e o que se quis, como `"C:\pasta"` com um `\p` que nao e escape. O
+ * `--check` os devolve no JSON pra o editor sublinhar; sem isso o aviso so
+ * existiria pra quem roda no terminal. O vetor e do CHAMADOR liberar. */
+int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e,
+                      PSAviso **avisos, int32_t *navisos);
 
 /* Despeja o MODELO DE TIPOS da linguagem em JSON: todo módulo com seus
  * membros e os nomes dos parâmetros, e os métodos de cada tipo/objeto nativo.

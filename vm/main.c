@@ -274,9 +274,32 @@ static int cmd_check(const char *arquivo)
     }
 
     PSErroExec e;
-    int rc = ps_verifica_fonte(fonte, tam, arquivo, &e);
+    PSAviso *avisos = NULL;
+    int32_t navisos = 0;
+    int rc = ps_verifica_fonte(fonte, tam, arquivo, &e, &avisos, &navisos);
     free(fonte);
-    if (rc == 0) { printf("{\"ok\":true}\n"); return 0; }
+
+    /* Os AVISOS entram no mesmo JSON, e entram tanto no caso `ok` quanto no de
+     * erro: um `\p` que nao e escape nao impede o programa de compilar, mas o
+     * editor tem que poder sublinhar. Sem isto o aviso so existiria pra quem
+     * roda no terminal — e o editor e onde ele seria visto. */
+    if (rc == 0) {
+        printf("{\"ok\":true");
+        if (navisos > 0) {
+            printf(",\"avisos\":[");
+            for (int32_t i = 0; i < navisos; i++) {
+                if (i) putchar(',');
+                printf("{\"msg\":");
+                json_str(avisos[i].msg);
+                printf(",\"linha\":%d,\"coluna\":%d}", avisos[i].linha, avisos[i].col);
+            }
+            putchar(']');
+        }
+        printf("}\n");
+        free(avisos);
+        return 0;
+    }
+    free(avisos);
 
     const char *tipo = e.tipo == PS_ERRO_SINTAXE ? "SyntaxError"
                      : e.tipo == PS_ERRO_NAO_SUPORTADO ? "NotImplementedError"

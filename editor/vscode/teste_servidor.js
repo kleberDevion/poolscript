@@ -212,6 +212,16 @@ async function main() {
          ultimo && ultimo.params.diagnostics);
   }
 
+  /* ── 9. AVISO (nao erro) vira sublinhado amarelo ───────────────────────── */
+  {
+    const m = await conversa('x = "C:\\pasta"\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const ultimo = ds[ds.length - 1];
+    const d = ultimo && ultimo.params.diagnostics[0];
+    conf('escape invalido vira AVISO (severity 2), nao erro',
+         !!d && d.severity === 2 && /escape invalida/.test(d.message), d);
+  }
+
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram`);
