@@ -99,7 +99,7 @@ substituir um trecho, monte a lista nova.
 ## 4.5. Desempacotamento (unpacking)
 
 Vários alvos de uma vez, no estilo Python. O lado direito é distribuído pelos
-nomes à esquerda.
+alvos à esquerda.
 
 ```ps
 a, b = 1, 2                 # a=1, b=2
@@ -110,9 +110,27 @@ primeiro, *resto = [10, 20, 30, 40]   # primeiro=10, resto=[20,30,40]
 (x, y), z = (1, 2), 3       # aninhado: x=1, y=2, z=3
 ```
 
+**Alvo é o mesmo da seção 4.4**: nome, membro (`o.x`), índice (`l[i]`, `d[k]`)
+e as cadeias deles (`o.d["k"]`). É o que faz a troca do bubble sort caber numa
+linha:
+
+```ps
+lista[c], lista[c + 1] = lista[c + 1], lista[c]
+
+d = {}
+d["a"], d["b"] = 1, 2       # {'a': 1, 'b': 2}
+
+o.x, o.y = 5, 6             # dois membros de uma Entity
+```
+
 - Um único alvo pode ter `*` (recebe uma lista com o que sobrar); só um `*` por
   nível.
-- A quantidade de nomes tem que casar com a de valores (fora o `*`).
+- A quantidade de alvos tem que casar com a de valores (fora o `*`).
+- A ordem é a do Python: o lado **direito inteiro** é avaliado primeiro, depois
+  a quantidade é conferida, e só então os alvos recebem — da esquerda pra
+  direita, cada índice calculado na hora de escrever nele.
+- Fatia continua fora (`l[0:2], x = ...`), pelo mesmo motivo de 4.4: `l[0:2] =`
+  também não existe.
 
 ---
 

@@ -413,6 +413,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai);
  * de origem, que estragariam a mensagem de erro. */
 static int32_t sintetiza_init(C *c, PSNode *entidade);
 static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo);
+static void guarda_em_alvo(C *c, Unidade *u, PSNode *e);
 
 static int eh_global_declarada(Unidade *u, const char *nome)
 {
@@ -1744,7 +1745,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * Com `for each a, b in ...`, o item que o ITER_NEXT deixou no
              * topo e desempacotado pelo MESMO emissor do `a, b = [1, 2]` —
              * mesma checagem de quantidade, mesma mensagem de erro. */
-            if (n->e) compila_unpack_alvo(c, u, n->e);
+            if (n->e) guarda_em_alvo(c, u, n->e);
             else      guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             abre_laco(c, topo, usa_range ? 4 : 2);   /* estado do laço na pilha */
             /* a var do laço é re-atribuída no topo a cada volta, então limpá-la
@@ -2525,6 +2526,44 @@ static int32_t novo_proto(C *c, const char *nome)
     return c->out->nprotos++;
 }
 
+/* Guarda o valor que está NO TOPO da pilha dentro de um alvo.
+ *
+ * O alvo pode ser nome, `o.campo`, `d[k]` ou um grupo aninhado — os mesmos
+ * quatro do CPython. A ordem importa: aqui o valor JÁ está na pilha (o UNPACK
+ * o pôs lá) e container/índice só são avaliados agora, depois do lado direito
+ * inteiro e depois da checagem de quantidade — que é a ordem do CPython.
+ * Como `INDEX_SET`/`SET_MEMBER` querem o valor por ÚLTIMO, o giro (ROT3/SWAP)
+ * acerta a pilha e a semântica de escrita continua sendo a MESMA de
+ * `l[i] = v` e `o.x = v`: um só lugar decide lista×dict, private e erro. */
+static void guarda_em_alvo(C *c, Unidade *u, PSNode *e)
+{
+    switch (e->kind) {
+        case N_UNPACK_TARGET:
+            compila_unpack_alvo(c, u, e);            /* `a, (b, c) = ...` */
+            return;
+        case N_NAME:
+            guarda_nome(c, u, e->texto ? e->texto : "");
+            return;
+        case N_INDEX_ACCESS:                         /* `l[i], x = ...` */
+            expr(c, u, e->a);                        /* container */
+            expr(c, u, e->b);                        /* índice    */
+            emite(c, u, OP_ROT3, 0);                 /* [v,c,i] -> [c,i,v] */
+            emite(c, u, OP_INDEX_SET, 0);
+            return;
+        case N_MEMBER_ACCESS: {                      /* `o.x, y = ...` */
+            int32_t mi = idx_const(c, u, K_STR, 0, 0, e->texto ? e->texto : "",
+                                   e->texto ? (int32_t)strlen(e->texto) : 0);
+            expr(c, u, e->a);                        /* objeto */
+            emite(c, u, OP_SWAP, 0);                 /* [v,o] -> [o,v] */
+            emite(c, u, OP_SET_MEMBER, mi);
+            return;
+        }
+        default:
+            cerro_sx(c, e, "alvo de desempacotamento precisa ser nome, membro ou indice");
+            return;
+    }
+}
+
 /* Emite UNPACK + um STORE por alvo. Presume a sequência no topo da pilha. */
 static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo)
 {
@@ -2532,17 +2571,8 @@ static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo)
     int32_t star = alvo->i2;                     /* -1 = sem `*` */
     if (n_alvos > 250) { cerro(c, "alvos demais no desempacotamento", alvo); return; }
     emite(c, u, OP_UNPACK, n_alvos | ((star + 1) << 8));
-    for (int32_t i = 0; i < n_alvos && !CFALHOU(c); i++) {
-        PSNode *e = alvo->lista.itens[i];
-        if (e->kind == N_UNPACK_TARGET) {
-            compila_unpack_alvo(c, u, e);        /* `a, (b, c) = ...` */
-        } else if (e->kind == N_NAME) {
-            guarda_nome(c, u, e->texto ? e->texto : "");
-        } else {
-            cerro_sx(c, e, "alvo de desempacotamento precisa ser nome");
-            return;
-        }
-    }
+    for (int32_t i = 0; i < n_alvos && !CFALHOU(c); i++)
+        guarda_em_alvo(c, u, alvo->lista.itens[i]);
 }
 
 static int32_t sintetiza_init(C *c, PSNode *entidade)

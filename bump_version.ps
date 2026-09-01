@@ -30,7 +30,12 @@ ARQUIVOS = [
     # o sufixo [PSVM]. Sem esta entrada essa linha não subia junto e ficava
     # anunciando uma versão velha dentro do próprio arquivo da versão nova.
     ["docs/PoolScript.md", "PoolScript (\\d+\\.\\d+\\.\\d+) \\[PSVM\\]",  "PoolScript "],
-    ["poolscript.md",      "Versão mais recente — \\*\\*(\\d+\\.\\d+\\.\\d+)\\*\\*", "Versão mais recente — **"]
+    ["poolscript.md",      "Versão mais recente — \\*\\*(\\d+\\.\\d+\\.\\d+)\\*\\*", "Versão mais recente — **"],
+    # A EXTENSÃO do VS Code. Ficou em 8.3.93 enquanto a linguagem já era
+    # 8.3.96: quem olha a lista de extensões vê uma versão que não é a do
+    # motor com que ela conversa. Como não estava aqui, subia à mão — ou seja,
+    # não subia.
+    ["editor/vscode/package.json", "\"version\": \"(\\d+\\.\\d+\\.\\d+)\"", "\"version\": \""]
 ]
 
 

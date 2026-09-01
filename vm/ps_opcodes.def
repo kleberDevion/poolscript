@@ -146,3 +146,14 @@ PS_OP(IMPORT_FROM, 87, "IMPORT_FROM")
  * (`int(10000000000000001 / 1)` dava 10000000000000000). */
 PS_OP(POW, 88, "POW")
 PS_OP(FLOORDIV, 89, "FLOORDIV")
+
+/* Reordenar o topo da pilha. Existem por causa de `l[i], l[j] = l[j], l[i]`:
+ * o UNPACK deixa o VALOR no topo, mas `INDEX_SET` quer [container, indice,
+ * valor] e `SET_MEMBER` quer [objeto, valor] — o valor por ULTIMO.
+ *
+ * A alternativa era um INDEX_SET/SET_MEMBER "invertido", com a semantica
+ * inteira duplicada (lista x dict, os erros do CPython, o corte de private).
+ * Duas copias da mesma regra e' o que garante que uma delas envelhece
+ * sozinha; girar a pilha em tres linhas reusa a original inteira. */
+PS_OP(SWAP, 90, "SWAP")      /* [.., a, b]    -> [.., b, a]    */
+PS_OP(ROT3, 91, "ROT3")      /* [.., a, b, c] -> [.., b, c, a] */

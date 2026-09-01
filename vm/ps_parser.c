@@ -1571,6 +1571,60 @@ static int lista_com_alias(P *p, PSNodeVec *nomes, PSNodeVec *aliases)
  * como flag de vírgula final. */
 static PSNode *alvos_unpack(P *p);
 
+/* Um alvo: NOME, e depois quantos sufixos `.campo` e `[indice]` vierem.
+ *
+ * POR QUE O SUFIXO: `lista[c], lista[c + 1] = lista[c + 1], lista[c]` — a
+ * troca do bubble sort — dava `SyntaxError: expressao invalida`. Aqui so se
+ * lia NOME, entao `d["a"], d["b"] = 1, 2` e `o.x, o.y = 1, 2` caiam junto:
+ * a linguagem tinha desempacotamento e tinha atribuicao indexada, e as duas
+ * nao se encontravam. No CPython todo alvo de atribuicao serve de alvo de
+ * desempacotamento, e e o que passa a valer aqui.
+ *
+ * Fatia (`l[1:2], x = ...`) NAO entra: `l[1:2] = ...` tambem nao existe na
+ * linguagem, e aceitar so de um lado seria inventar meia feature. */
+static PSNode *alvo_com_sufixos(P *p)
+{
+    PSToken *nt = atual(p);
+    const char *nome = exige_nome(p, "variavel");
+    if (FALHOU(p)) return NULL;
+    PSNode *no = ps_node_novo(p->arena, N_NAME, nt->line, nt->col);
+    if (!no) return NULL;
+    no->texto = nome;
+
+    for (;;) {
+        if (checa(p, T_DOT)) {
+            PSToken *dt = atual(p);
+            p->pos++;
+            PSToken *mt = atual(p);
+            if (mt->type != T_IDENT && mt->type != T_IDENT_UPPER && mt->type != T_KW) {
+                perro(p, "esperado nome do membro apos '.'", mt);
+                return NULL;
+            }
+            p->pos++;
+            PSNode *m = ps_node_novo(p->arena, N_MEMBER_ACCESS, dt->line, dt->col);
+            if (!m) return NULL;
+            m->a = no;
+            m->texto = dup_tok(p, mt);
+            no = m;
+            continue;
+        }
+        if (checa(p, T_LBRACK)) {
+            PSToken *bt = atual(p);
+            p->pos++;
+            PSNode *ix = expressao(p);
+            if (FALHOU(p)) return NULL;
+            if (!exige_fecha(p, T_RBRACK, "faltou ']' no indice", bt)) return NULL;
+            PSNode *a = ps_node_novo(p->arena, N_INDEX_ACCESS, bt->line, bt->col);
+            if (!a) return NULL;
+            a->a = no; a->b = ix;
+            no = a;
+            continue;
+        }
+        break;
+    }
+    return no;
+}
+
 static int um_alvo(P *p, PSNode *alvo)
 {
     PSToken *t = atual(p);
@@ -1580,13 +1634,9 @@ static int um_alvo(P *p, PSNode *alvo)
             return -1;
         }
         p->pos++;
-        PSToken *nt = atual(p);
-        const char *n = exige_nome(p, "variavel");
-        if (FALHOU(p)) return -1;
+        PSNode *no = alvo_com_sufixos(p);
+        if (FALHOU(p) || !no) return -1;
         alvo->i2 = alvo->lista.n;
-        PSNode *no = ps_node_novo(p->arena, N_NAME, nt->line, nt->col);
-        if (!no) return -1;
-        no->texto = n;
         return ps_vec_push(p->arena, &alvo->lista, no);
     }
     if (checa(p, T_LPAREN)) {
@@ -1599,12 +1649,8 @@ static int um_alvo(P *p, PSNode *alvo)
             return ps_vec_push(p->arena, &alvo->lista, dentro->lista.itens[0]);
         return ps_vec_push(p->arena, &alvo->lista, dentro);
     }
-    PSToken *nt = atual(p);
-    const char *n = exige_nome(p, "variavel");
-    if (FALHOU(p)) return -1;
-    PSNode *no = ps_node_novo(p->arena, N_NAME, nt->line, nt->col);
-    if (!no) return -1;
-    no->texto = n;
+    PSNode *no = alvo_com_sufixos(p);
+    if (FALHOU(p) || !no) return -1;
     return ps_vec_push(p->arena, &alvo->lista, no);
 }
 
@@ -1628,8 +1674,13 @@ static PSNode *alvos_unpack(P *p)
 }
 
 /* Lookahead puro: `a, b = ...` é desempacotamento? Não consome tokens.
- * Precisa recusar chamada, tupla-literal, comparação e atribuição de
- * membro — todas começam parecido. */
+ * Precisa recusar chamada, tupla-literal, comparação e atribuição simples —
+ * todas começam parecido.
+ *
+ * `.campo` e `[indice]` SÃO alvo (`l[i], l[j] = l[j], l[i]`); só a chamada
+ * `f(` nunca é. Enquanto isto recusava o colchete, `um_alvo` nem chegava a
+ * ser chamado: a linha caía no parser de expressão e virava
+ * "expressao invalida" na vírgula. */
 static int parece_unpack(P *p)
 {
     int32_t i = p->pos;
@@ -1644,11 +1695,29 @@ static int parece_unpack(P *p)
         if (t->type == T_LPAREN) { prof++; i++; continue; }
         if (t->type == T_RPAREN) { if (prof == 0) return 0; prof--; i++; continue; }
         if (t->type == T_IDENT || t->type == T_IDENT_UPPER) {
-            /* nome seguido de '.' '[' ou '(' não é alvo simples */
-            if (i + 1 < p->n && (p->toks[i+1].type == T_DOT
-                              || p->toks[i+1].type == T_LBRACK
-                              || p->toks[i+1].type == T_LPAREN)) return 0;
-            i++; continue;
+            i++;
+            for (;;) {                       /* cadeia de sufixos do alvo */
+                if (i + 1 < p->n && p->toks[i].type == T_DOT
+                        && (p->toks[i+1].type == T_IDENT
+                         || p->toks[i+1].type == T_IDENT_UPPER
+                         || p->toks[i+1].type == T_KW)) { i += 2; continue; }
+                if (i < p->n && p->toks[i].type == T_LBRACK) {
+                    int d = 0;               /* pula o índice inteiro, balanceado */
+                    while (i < p->n) {
+                        if (p->toks[i].type == T_LBRACK) d++;
+                        else if (p->toks[i].type == T_RBRACK) d--;
+                        else if (p->toks[i].type == T_EOF) return 0;
+                        i++;
+                        if (d == 0) break;
+                    }
+                    if (d != 0) return 0;
+                    continue;
+                }
+                break;
+            }
+            /* `f(...)` é chamada, não alvo — nem depois de sufixo (`o.m(`) */
+            if (i < p->n && p->toks[i].type == T_LPAREN) return 0;
+            continue;
         }
         if (t->type == T_COMMA) { viu_virgula = 1; i++; continue; }
         if (t->type == T_OP && t->texto && strcmp(t->texto, "=") == 0)
@@ -1748,25 +1817,30 @@ static PSNode *for_stmt(P *p)
      * "esperado 'in' no loop for each" e quem itera lista de pares tinha que
      * abrir o item na mao dentro do corpo. A maquina ja existia inteira: o
      * `alvos_unpack` e o `compila_unpack_alvo` sao os mesmos do
-     * `a, b = [1, 2]`, que ja funcionava. So o laco nao os chamava. */
+     * `a, b = [1, 2]`, que ja funcionava. So o laco nao os chamava.
+     *
+     * O alvo do laco e o MESMO alvo da atribuicao: `for each l[0] in xs` e
+     * `for each a, o.x in pares` valem, como no CPython. Sem isto o indexado
+     * so seria alvo da segunda posicao em diante — a metade que a gente
+     * lembrou de arrumar. */
     PSToken *nt = atual(p);
-    const char *item = exige_nome(p, "variavel de loop");
-    if (FALHOU(p)) return NULL;
+    PSNode *primeiro = alvo_com_sufixos(p);
+    if (FALHOU(p) || !primeiro) return NULL;
+    const char *item = primeiro->kind == N_NAME ? primeiro->texto : NULL;
 
     PSNode *desempacota = NULL;
     if (checa(p, T_COMMA)) {
         desempacota = ps_node_novo(p->arena, N_UNPACK_TARGET, nt->line, nt->col);
         if (!desempacota) return NULL;
         desempacota->i2 = -1;
-        PSNode *primeiro = ps_node_novo(p->arena, N_NAME, nt->line, nt->col);
-        if (!primeiro) return NULL;
-        primeiro->texto = item;
         if (ps_vec_push(p->arena, &desempacota->lista, primeiro) != 0) {
             perro(p, "sem memoria", nt); return NULL;
         }
         while (aceita(p, T_COMMA)) {
             if (um_alvo(p, desempacota) != 0) return NULL;
         }
+    } else if (!item) {
+        desempacota = primeiro;      /* alvo unico que nao e nome: `for each l[0] in` */
     }
 
     if (!aceita_kw(p, "in")) { perro(p, "esperado 'in' no loop for each", atual(p)); return NULL; }

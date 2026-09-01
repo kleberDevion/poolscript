@@ -21720,6 +21720,25 @@ ERRO_TF(vm, "TypeError",
             sp++;
             break;
 
+        /* Giros do topo. O desempacotamento com alvo indexado
+         * (`l[i], l[j] = l[j], l[i]`) precisa deles: o UNPACK empurra o valor
+         * ANTES de o compilador avaliar container e indice, e o INDEX_SET quer
+         * o valor por ultimo. Nao mexem em objeto nenhum — so na ordem. */
+        case OP_SWAP: {                 /* [.., a, b] -> [.., b, a] */
+            Value t = stack[sp - 1];
+            stack[sp - 1] = stack[sp - 2];
+            stack[sp - 2] = t;
+            break;
+        }
+
+        case OP_ROT3: {                 /* [.., a, b, c] -> [.., b, c, a] */
+            Value a = stack[sp - 3];
+            stack[sp - 3] = stack[sp - 2];
+            stack[sp - 2] = stack[sp - 1];
+            stack[sp - 1] = a;
+            break;
+        }
+
         case OP_ITER_RANGE: {
             /* `for each i in range(...)` — a lista NUNCA é construída.
              * Pilha: [.., ini, fim, passo, i]. Antes o range materializava

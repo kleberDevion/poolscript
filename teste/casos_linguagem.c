@@ -115,6 +115,120 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "", "cannot unpack non-iterable int object", 1 },
 
+/* ── alvo de desempacotamento: nao era so nome ────────────────────────────
+ *
+ * `lista[c], lista[c + 1] = lista[c + 1], lista[c]` — a troca do bubble sort —
+ * dava `SyntaxError: expressao invalida`, e junto com ela `d["a"], d["b"] = `
+ * e `o.x, o.y = `. A linguagem tinha desempacotamento (`a, b = b, a`) e tinha
+ * atribuicao indexada (`l[0] = 9`); o que nao existia era a interseccao.
+ *
+ * O oraculo e o CPython: cada esperado abaixo foi colhido rodando o mesmo
+ * caso no python3, saida e mensagem de erro. */
+{ "troca com alvo indexado (o bubble sort dele)",
+  "int reaction main(lista){\n"
+  "    n = len(lista)\n"
+  "    for each i in range(n - 1){\n"
+  "        for each c in range(0, n - 1 - i){\n"
+  "            if (lista[c] > lista[c + 1]) {\n"
+  "                lista[c], lista[c + 1] = lista[c + 1], lista[c]\n"
+  "            }\n"
+  "        }\n"
+  "    }\n"
+  "    return lista\n"
+  "}\n"
+  "post(main([5,1,4,3,6,7]))\n",
+  "[1, 3, 4, 5, 6, 7]", NULL, 0 },
+{ "alvo indexado: chave de dict dos dois lados",
+  "d = {}\n"
+  "d[\"a\"], d[\"b\"] = 1, 2\n"
+  "post(d)\n",
+  "{'a': 1, 'b': 2}", NULL, 0 },
+{ "alvo indexado: indice negativo",
+  "l = [1, 2, 3]\n"
+  "l[-1], l[0] = l[0], l[-1]\n"
+  "post(l)\n",
+  "[3, 2, 1]", NULL, 0 },
+{ "alvo membro de Entity",
+  "Entity O() {\n"
+  "    x: int\n"
+  "    y: int\n"
+  "}\n"
+  "o = O(0, 0)\n"
+  "o.x, o.y = 5, 6\n"
+  "post(o.x, o.y)\n",
+  "5 6", NULL, 0 },
+{ "alvo em cadeia: membro e depois indice",
+  "Entity O() {\n"
+  "    d: dict\n"
+  "}\n"
+  "o = O({})\n"
+  "o.d[\"k\"], z = 9, 8\n"
+  "post(o.d, z)\n",
+  "{'k': 9} 8", NULL, 0 },
+{ "alvo indexado dentro de grupo aninhado",
+  "a = [1, 2, 3]\n"
+  "a[0], (a[1], a[2]) = 9, (8, 7)\n"
+  "post(a)\n",
+  "[9, 8, 7]", NULL, 0 },
+{ "alvo indexado com estrela",
+  "x = [0, 0, 0]\n"
+  "*x[0], y = [1, 2, 3]\n"
+  "post(x, y)\n",
+  "[[1, 2], 0, 0] 3", NULL, 0 },
+{ "o mesmo alvo duas vezes: vence o da direita",
+  /* CPython guarda da ESQUERDA pra direita, entao o ultimo store manda. */
+  "a = [0]\n"
+  "a[0], a[0] = 1, 2\n"
+  "post(a)\n",
+  "[2]", NULL, 0 },
+{ "o indice e calculado na hora de escrever, nao antes",
+  /* `l[i], i = 5, 1`: o alvo da esquerda usa o i ANTIGO (0), porque os alvos
+   * recebem em ordem e o `i` so muda no segundo. */
+  "l = [0, 0]\n"
+  "i = 0\n"
+  "l[i], i = 5, 1\n"
+  "post(l, i)\n",
+  "[5, 0] 1", NULL, 0 },
+{ "alvo indexado fora do alcance: a mensagem e a de ESCRITA",
+  "l = [1, 2]\n"
+  "x = 0\n"
+  "l[5], x = 1, 2\n",
+  "", "IndexError: list assignment index out of range", 1 },
+{ "alvo indexado em tupla: nao aceita item assignment",
+  "t = (1, 2)\n"
+  "x = 0\n"
+  "t[0], x = 9, 8\n",
+  "", "TypeError: 'tup' object does not support item assignment", 1 },
+{ "quantidade errada reprova ANTES de escrever em alvo nenhum",
+  "l = [0, 0]\n"
+  "l[0], l[1] = [1]\n"
+  "post(l)\n",
+  "", "ValueError: not enough values to unpack (expected 2, got 1)", 1 },
+{ "for each com alvo indexado unico",
+  "l = [0, 0]\n"
+  "for each l[0] in [7, 8] { }\n"
+  "post(l)\n",
+  "[8, 0]", NULL, 0 },
+{ "for each com alvo indexado na segunda posicao",
+  "l = [0, 0]\n"
+  "for each a, l[0] in [[1, 2], [3, 4]] {\n"
+  "    post(a)\n"
+  "}\n"
+  "post(l)\n",
+  "1\n3\n[4, 0]", NULL, 0 },
+{ "chamada continua NAO sendo alvo",
+  /* O lookahead que passou a aceitar `[` e `.` nao pode aceitar `f(`: sem
+   * isso `post(a, b)` viraria desempacotamento. */
+  "action f(x) { return x }\n"
+  "post(f(1), f(2))\n",
+  "1 2", NULL, 0 },
+{ "atribuicao indexada sozinha continua igual",
+  "l = [1, 2]\n"
+  "l[0] = 9\n"
+  "l[1] += 5\n"
+  "post(l)\n",
+  "[9, 7]", NULL, 0 },
+
 /* ── escopo ── */
 { "for each sombreia variável de fora",
   "i = \"importante\"\n"

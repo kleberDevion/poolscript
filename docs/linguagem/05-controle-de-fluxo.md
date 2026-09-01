@@ -108,6 +108,19 @@ Regras e limites (verificados):
   `ValueError: too many values to unpack (expected 2)`; elemento que não é
   sequência dá `TypeError: cannot unpack non-iterable int object`.
 
+  Sendo a mesma máquina, o alvo também é o mesmo da seção 4.5 — membro e
+  índice valem no cabeçalho, com ou sem vírgula:
+
+  ```ps
+  ultimo = [null]
+  for each ultimo[0] in [7, 8] { }
+  post(ultimo)                    # [8]
+
+  registro = {}
+  for each nome, registro["idade"] in [["ana", 30]] { }
+  post(registro)                  # {'idade': 30}
+  ```
+
   Índice embutido não existe: para contar, use `range` (5.3.1).
 - A variável do laço **não existe depois** do laço (seção 4.6.3).
 
