@@ -1,12 +1,5 @@
 # PoolScript
 
-Linguagem de programação **híbrida (dinâmica/estática)** — legibilidade do
-Python com a estrutura de blocos do JS/C (indentação **ou** chaves, no mesmo
-arquivo). Compila pra bytecode e roda na **PSVM**, máquina virtual em **C** —
-o binário `pool`, sem runtime externo.
-
-## Documentação
-
 A doc completa — essência, como funciona, **instalação** e **guia de deploy** —
 está em **[`poolscript.md`](poolscript.md)**.
 

@@ -93,7 +93,32 @@ quebrado que derrubava o servidor a cada acento.
 
 ## Neovim
 
-Nativo, sem plugin nenhum:
+Nativo, sem plugin nenhum. A configuração pronta está em
+`editor/nvim/poolscript.lua` e se instala com:
+
+```bash
+make nvim          # vai pra ~/.config/nvim/init.lua
+```
+
+Se já existir um `init.lua` diferente, ele vira `init.lua.bak-<data>` e o novo
+entra. **Antes o alvo recusava sobrescrever**, e o resultado foi o pior dos
+dois mundos: a config da máquina ficou dias numa versão truncada — sem o
+fechamento automático de `()`/`[]`/`{}` e sem o modo de edição permanente — e o
+alvo dizia "não vou sobrescrever" toda vez, o que se lê como "está tudo certo".
+
+O que a config entrega, além do LSP:
+
+| | |
+|---|---|
+| menu de sugestão | abre **sozinho** enquanto se digita, como no VS Code (depois de um `.` ou de duas letras). `<C-Space>` força |
+| `()` `[]` `{}` | fecham sozinhos; `)` sobre o fechamento já existente anda por cima; `<BS>` num par vazio apaga os dois |
+| modo de edição | permanente — `Ctrl+S` salva, `Ctrl+Z` alterna |
+| `K` / `gd` / `[d` `]d` | hover, ir pra definição, navegar diagnóstico |
+
+O `completeopt` usa `noselect,noinsert` de propósito: o menu aparece, mas nada
+é escrito no buffer até você escolher — o `<CR>` continua sendo quebra de linha.
+
+O mínimo, se preferir montar a sua:
 
 ```lua
 vim.filetype.add({ extension = { ps = "poolscript", psl = "poolscript", p = "poolscript" } })
@@ -103,12 +128,16 @@ vim.api.nvim_create_autocmd("FileType", {
   callback = function()
     vim.lsp.start({
       name = "poolscript",
-      cmd = { "node", "/caminho/do/repo/editor/vscode/server.js" },
+      cmd = { "poolscript-lsp" },        -- ou { "node", "<repo>/editor/vscode/server.js", "--stdio" }
       root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, { upward = true })[1]),
     })
   end,
 })
 ```
+
+`editor/nvim/teste_nvim.sh` roda no `make check`: sobe um Neovim de verdade com
+essa config, confere que os pares fecham, que o menu abre sozinho, que o
+servidor anexa e que o completion responde. PULA sem `nvim`.
 
 ## Helix
 

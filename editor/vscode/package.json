@@ -2,7 +2,7 @@
   "name": "psl-poolscript",
   "displayName": "PoolScript Pro",
   "description": "Suporte à linguagem PoolScript: syntax highlighting e autocomplete type-aware (métodos por tipo, argumentos nomeados, libs instaladas).",
-  "version": "1.5.22",
+  "version": "8.3.93",
   "publisher": "KleberSantanadeOliveira",
   "engines": {
     "vscode": "^1.75.0"
@@ -87,8 +87,6 @@
     }
   },
   "dependencies": {
-    "@vscode/debugadapter": "^1.68.0",
-    "@vscode/debugprotocol": "^1.68.0",
     "vscode-languageclient": "^9.0.1",
     "vscode-languageserver": "^10.1.1",
     "vscode-languageserver-textdocument": "^1.0.14"

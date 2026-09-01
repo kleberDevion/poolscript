@@ -125,5 +125,5 @@ propósito). Import de arquivo local do projeto usa caminho pontuado
 
 ## Versionamento
 
-Versão mais recente — **8.3.90** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **8.3.93** (a fonte é `vm/ps_versao.h`; `pool --version`
 mostra a do binário).

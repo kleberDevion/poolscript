@@ -54,9 +54,13 @@ vim.api.nvim_create_autocmd("FileType", {
     if vim.fn.executable("poolscript-lsp") == 1 then
       cmd = { "poolscript-lsp" }
     else
-      local repo = vim.fn.expand("~/poolscript-lang/lsp/servidor.ps")
-      if vim.fn.filereadable(repo) == 1 and vim.fn.executable("pool") == 1 then
-        cmd = { "pool", repo }
+      -- direto do repositório clonado, útil enquanto se mexe no servidor.
+      -- (Apontava pro `lsp/servidor.ps`, que era o servidor em PoolScript e
+      -- não existe mais: hoje o servidor é `editor/vscode/server.js`, sobre
+      -- `vscode-languageserver`.)
+      local repo = vim.fn.expand("~/poolscript-lang/editor/vscode/server.js")
+      if vim.fn.filereadable(repo) == 1 and vim.fn.executable("node") == 1 then
+        cmd = { "node", repo, "--stdio" }
       else
         vim.notify(
           "PoolScript: nao achei `poolscript-lsp` no PATH. Rode `sudo make install` no repositorio.",
@@ -87,6 +91,49 @@ vim.api.nvim_create_autocmd("LspAttach", {
     vim.keymap.set("n", "]d", vim.diagnostic.goto_next, opts)
     -- <C-espaco> pede completion, como no VS Code
     vim.keymap.set("i", "<C-Space>", "<C-x><C-o>", opts)
+  end,
+})
+
+-- ── o menu de sugestão aparece SOZINHO ──────────────────────────────────────
+--
+-- No VS Code o menu abre enquanto se digita. Aqui não abria: o completion
+-- existia, mas só sob `<C-x><C-o>` — quem não conhece o atalho conclui, com
+-- razão, que "o LSP não funciona".
+--
+-- Não há gerenciador de plugin aqui, então é na mão. O `vim.lsp.completion`
+-- com `autotrigger` só chegou no Neovim 0.11; nesta versão o caminho é pedir o
+-- omni quando a palavra começa a tomar forma.
+--
+--   `menuone`   mostra o menu mesmo com UM candidato (senão ele completa
+--               sozinho e você nem vê o que aconteceu)
+--   `noselect`  não pré-seleciona: o <CR> continua sendo quebra de linha até
+--               você escolher alguma coisa de propósito
+--   `noinsert`  não escreve no buffer enquanto você navega o menu
+vim.opt.completeopt = { "menu", "menuone", "noselect", "noinsert" }
+vim.opt.pumheight = 12            -- menu gigante tapa o código
+
+local pedindo = false
+
+vim.api.nvim_create_autocmd("TextChangedI", {
+  desc = "abre o menu de sugestão enquanto digita",
+  callback = function(ev)
+    if vim.bo[ev.buf].buftype ~= "" then return end
+    if vim.fn.pumvisible() == 1 or pedindo then return end
+    -- só quando há servidor NESTE buffer: sem isto o omni é o do Vim e o menu
+    -- vira lista de palavras do arquivo, que atrapalha mais do que ajuda
+    local clientes = vim.lsp.get_active_clients({ bufnr = ev.buf })
+    if #clientes == 0 then return end
+
+    local linha = vim.api.nvim_get_current_line()
+    local col = vim.api.nvim_win_get_cursor(0)[2]
+    local antes = linha:sub(1, col)
+    -- dispara depois de um `.` (membro) ou de duas letras (nome). Uma letra só
+    -- abriria o menu a cada tecla e a lista seria o mundo inteiro.
+    if not (antes:match("%.$") or antes:match("[%w_][%w_]$")) then return end
+
+    pedindo = true
+    vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<C-x><C-o>", true, false, true), "n", false)
+    vim.schedule(function() pedindo = false end)
   end,
 })
 

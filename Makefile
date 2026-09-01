@@ -93,13 +93,19 @@ NVIM_CFG ?= $(HOME)/.config/nvim
 nvim:
 	@install -d $(NVIM_CFG)/colors
 	install -m644 editor/nvim/colors/ariake-dark.lua $(NVIM_CFG)/colors/
+	# GUARDA COPIA E INSTALA, em vez de recusar.
+	#
+	# Recusar parecia prudente e nao era: o init.lua da maquina ficou DIAS preso
+	# numa versao truncada — sem o fechamento automatico de () [] {} e sem o modo
+	# de edicao permanente — e o alvo dizia "nao vou sobrescrever" toda vez, o que
+	# se le como "esta tudo certo". Um backup datado resolve o medo real (perder
+	# edicao sua) sem deixar a config apodrecer.
 	@if [ -f $(NVIM_CFG)/init.lua ] && ! cmp -s editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua; then \
-	  echo "  ja existe $(NVIM_CFG)/init.lua e ele DIFERE — nao vou sobrescrever."; \
-	  echo "  o conteudo a acrescentar esta em editor/nvim/poolscript.lua"; \
-	else \
-	  install -m644 editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua; \
-	  echo "  init.lua instalado"; \
+	  cp $(NVIM_CFG)/init.lua $(NVIM_CFG)/init.lua.bak-$$(date +%Y%m%d-%H%M%S); \
+	  echo "  o init.lua anterior virou init.lua.bak-<data> (ele DIFERIA)"; \
 	fi
+	install -m644 editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua
+	@echo "  init.lua instalado"
 	@echo "  tema + LSP em $(NVIM_CFG)"
 
 .PHONY: nvim
@@ -386,6 +392,10 @@ check: pool testar
 	  else \
 	    echo "PULOU o teste do LSP — falta node ou 'npm install' em editor/vscode"; \
 	  fi
+	@echo
+	# NEOVIM: a config do editor tambem apodrece. A do desenvolvedor ficou DIAS
+	# truncada, sem o fechamento de () [] {}, e nada acusava.
+	@editor/nvim/teste_nvim.sh
 	@echo
 	@$(MAKE) --no-print-directory analisa
 	@echo
