@@ -55,10 +55,18 @@ ln -sf "$PREFIXO/bin/pool" "$PREFIXO/bin/psl"
 
 echo "== servidor LSP"
 install -d "$PREFIXO/share/poolscript/lsp"
-install -m644 lsp/protocolo.ps lsp/modelo.ps lsp/servidor.ps \
+install -m644 editor/vscode/server.js \
         "$PREFIXO/share/poolscript/lsp/"
-printf '#!/bin/sh\n# Atalho do servidor LSP. O servidor e PoolScript; ver docs/lsp.md.\nexec %s/bin/pool %s/share/poolscript/lsp/servidor.ps "$@"\n' \
-        "$PREFIXO" "$PREFIXO" > "$PREFIXO/bin/poolscript-lsp"
+for m in vscode-languageserver vscode-languageserver-protocol \
+         vscode-languageserver-types vscode-jsonrpc \
+         vscode-languageserver-textdocument semver; do
+    [ -d "editor/vscode/node_modules/$m" ] || continue
+    mkdir -p "$PREFIXO/share/poolscript/lsp/node_modules"
+    rm -rf "$PREFIXO/share/poolscript/lsp/node_modules/$m"
+    cp -r "editor/vscode/node_modules/$m" "$PREFIXO/share/poolscript/lsp/node_modules/"
+done
+printf '#!/bin/sh\n# Servidor LSP da PoolScript. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "poolscript-lsp precisa do node" >&2\n  exit 1\nfi\nexec node %s/share/poolscript/lsp/server.js "${@:---stdio}"\n' \
+        "$PREFIXO" > "$PREFIXO/bin/poolscript-lsp"
 chmod 755 "$PREFIXO/bin/poolscript-lsp"
 
 echo "== tipo MIME e ícone do .ps"

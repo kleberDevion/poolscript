@@ -1,16 +1,33 @@
 # Editores — a PoolScript em VS Code, JetBrains e Neovim
 
-O suporte a editor é um **servidor LSP escrito em PoolScript**, rodado pelo
-próprio `pool`:
+O suporte a editor é um **servidor LSP sobre `vscode-languageserver`** — a
+implementação de referência do protocolo, a mesma que as extensões sérias do
+VS Code usam:
 
 ```bash
-pool lsp/servidor.ps
+poolscript-lsp          # instalado por `make install`; precisa de node
 ```
 
 Ele fala **Language Server Protocol** por stdin/stdout, então serve qualquer
-editor que seja cliente LSP — VS Code, Neovim, Helix, Emacs, JetBrains (via
-plugin LSP). Não há JavaScript no projeto e não existe extensão pra instalar:
-o que se configura é o comando acima.
+editor que seja cliente LSP — VS Code, Neovim, Helix, Emacs, JetBrains.
+
+**Por que não é escrito em PoolScript.** Era, e o resultado foi ruim: o
+servidor anterior implementava o protocolo à mão, anunciava QUATRO capacidades
+e respondia `-32601` pra todo o resto — sem ir-pra-definição, sem outline, sem
+signature help. E o pouco que fazia, fazia adivinhando com busca de string no
+texto cru, o que dava:
+
+| escrito no editor | o que acontecia |
+|---|---|
+| `import json as js` → `js.` | ZERO sugestão — o `as` era ignorado |
+| `import random` | ZERO — lib instalada em `~/.poolscript/libs` não era catalogada |
+| `regex.sub("(", ` | o parêntese DENTRO DA STRING quebrava o detector |
+| `f(` com `action f(a, b)` | função LOCAL não oferecia parâmetro nenhum |
+| `regex.sub("a", "b", ` | reoferecia os cinco parâmetros, inclusive os dois já dados |
+| dentro de comentário | despejava a lista de módulos inteira |
+
+Reimplementar protocolo não é onde está o valor. O que é NOSSO — e continua
+sendo — é o conhecimento da linguagem, e esse vem do motor.
 
 ## O que ele entrega
 
@@ -59,7 +76,7 @@ Duas configurações existem, pra quando se está mexendo no servidor:
 ```json
 {
   // roda o servidor direto do repositório, sem instalar
-  "poolscript.lsp.comando": ["pool", "/caminho/do/repo/lsp/servidor.ps"],
+  "poolscript.pool": "/caminho/do/repo/pool",
 
   // desliga o servidor; sobra o realce da gramática, que é declarativo
   "poolscript.lsp.ativo": false
@@ -86,7 +103,7 @@ vim.api.nvim_create_autocmd("FileType", {
   callback = function()
     vim.lsp.start({
       name = "poolscript",
-      cmd = { "pool", "/caminho/do/repo/lsp/servidor.ps" },
+      cmd = { "node", "/caminho/do/repo/editor/vscode/server.js" },
       root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, { upward = true })[1]),
     })
   end,
@@ -99,8 +116,8 @@ Em `~/.config/helix/languages.toml`:
 
 ```toml
 [language-server.poolscript]
-command = "pool"
-args = ["/caminho/do/repo/lsp/servidor.ps"]
+command = "node"
+args = ["/caminho/do/repo/editor/vscode/server.js"]
 
 [[language]]
 name = "poolscript"
@@ -111,34 +128,42 @@ language-servers = ["poolscript"]
 ## JetBrains (IntelliJ, PyCharm, …)
 
 Pelo plugin **LSP4IJ**: `Settings → Languages & Frameworks → Language Servers`
-→ `+` → *New Language Server*, comando `pool /caminho/do/repo/lsp/servidor.ps`,
+→ `+` → *New Language Server*, comando `poolscript-lsp`,
 extensões `ps;psl;p`.
 
 ## Por dentro (pra quem mexe no repositório)
 
 | Arquivo | O que é |
 |---|---|
-| `lsp/protocolo.ps` | transporte: JSON-RPC enquadrado por `Content-Length`, sobre stdin/stdout |
-| `lsp/modelo.ps` | modelo de tipos (de `pool --metadata`) e a inferência da cadeia |
-| `lsp/servidor.ps` | os métodos do LSP: completion, hover, diagnóstico, realce |
-| `lsp/teste_lsp.ps` | dirige o servidor como um editor faria e confere as respostas |
+| `editor/vscode/server.js` | o servidor, sobre `vscode-languageserver` |
+| `editor/vscode/extension.js` | o cliente do VS Code — só levanta o servidor |
+| `editor/vscode/teste_servidor.js` | dirige o servidor como o editor faria e confere as respostas |
 
-O teste entra no `make check` — não é varredura à parte.
+O teste entra no `make check` (PULA sem node, dizendo que pulou). Cada caso
+dele é uma das linhas da tabela lá em cima: são defeitos reproduzidos, não
+features inventadas.
 
-Notas de implementação pra quem for mexer:
+**A divisão, que é a razão do desenho:**
 
-- o **corpo** de uma mensagem é lido com `sys.stdin.read(n)` (bytes exatos),
-  nunca por linha: as mensagens LSP vêm coladas, sem `\n` entre elas, e ler
-  por linha invade a mensagem seguinte;
-- todo log do servidor vai pro **stderr**. `stdout` é o canal do protocolo, e
-  um `post()` solto ali corrompe a conversa com o editor;
-- o modelo de tipos vem de `sys.executable --metadata`, ou seja, do binário que
-  está rodando o servidor — **não** do `pool` do PATH. Um `pool` instalado mais
-  velho descreveria um motor que não é o que o usuário está usando.
+| camada | quem faz |
+|---|---|
+| protocolo | `vscode-languageserver` — sync incremental, capacidades, cancelamento |
+| análise léxica | `pool --tokens`, o lexer DE VERDADE. `STR` e `COMMENT` chegam como um token cada, então parêntese dentro de string ou comentário não existe como pontuação — a família inteira de defeitos de detecção some por construção |
+| o que a linguagem tem | `pool --metadata`, das tabelas do VM |
+| diagnóstico | `pool --check` |
+| prosa | `docs/<escopo>/<nome>/<nome>.md` |
 
-Dois comandos do binário existem pra servir o editor:
+Nenhuma lista de módulo, método ou lib é digitada no servidor. Se o motor
+ganha um método, o completion ganha junto, sem ninguém tocar em nada.
+
+O binário que o servidor consulta vem do cliente (`poolscript.pool`) ou do
+PATH — apontar outro faria o completion descrever um motor diferente do que o
+usuário roda.
+
+Comandos do binário que existem pra servir o editor:
 
 | Comando | Devolve |
 |---|---|
 | `pool --metadata` | módulos, tipos e métodos, das tabelas do VM |
-| `pool --tokens` | tokens do lexer (fonte pelo stdin), com posição e tamanho no fonte |
+| `pool --tokens` | tokens do lexer (fonte pelo stdin), com posição e tamanho |
+| `pool --check` | o erro de compilação em JSON, com linha e coluna |

@@ -1,42 +1,40 @@
 /*
  * Cliente LSP da PoolScript para o VS Code.
  *
- * Este arquivo NÃO é o suporte da linguagem — ele é o soquete. Todo o
- * completion, hover, diagnóstico e realce vive em `lsp/servidor.ps`, escrito
- * em PoolScript e rodado pelo `pool`. O VS Code só carrega extensão cujo ponto
- * de entrada é JavaScript (regra do editor), então sobra este lançador.
+ * Este arquivo é o soquete: quem faz o trabalho é `server.js`, sobre
+ * `vscode-languageserver` — a implementação de REFERÊNCIA do protocolo. O
+ * cérebro da linguagem continua sendo o motor (`pool --metadata`, `--tokens`,
+ * `--check`); nada de lista de método escrita à mão.
  *
- * Se um dia o servidor ganhar uma capacidade nova, nada aqui muda.
- *
- * O comando padrão é `poolscript-lsp`, instalado em /usr/local/bin. Pra rodar
- * direto do repositório (útil enquanto se mexe no servidor):
- *
- *     "poolscript.lsp.comando": ["pool", "/caminho/do/repo/lsp/servidor.ps"]
- *
- * E `"poolscript.lsp.ativo": false` desliga — aí sobra só o realce da
- * gramática, que é declarativo e não depende deste arquivo.
+ * `"poolscript.lsp.ativo": false` desliga e sobra só o realce da gramática,
+ * que é declarativo. `"poolscript.pool"` aponta o binário quando ele não está
+ * no PATH.
  */
+const path = require('path');
 const { workspace, window } = require('vscode');
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
 let cliente;
 
-function comando() {
-  const cfg = workspace.getConfiguration('poolscript');
-  const dado = cfg.get('lsp.comando');
-  if (Array.isArray(dado) && dado.length > 0) {
-    return { command: dado[0], args: dado.slice(1) };
-  }
-  return { command: 'poolscript-lsp', args: [] };
+// O binário da linguagem. O servidor pergunta TUDO pra ele — módulos, tokens,
+// diagnóstico — então apontar pro `pool` errado faz o completion descrever um
+// motor que não é o que o usuário roda.
+function poolBin() {
+  const dado = workspace.getConfiguration('poolscript').get('pool');
+  return (typeof dado === 'string' && dado.trim()) ? dado.trim() : 'pool';
 }
 
 function activate(context) {
   if (!workspace.getConfiguration('poolscript').get('lsp.ativo')) return;
-  const { command, args } = comando();
 
+  // O servidor roda no MESMO Node do VS Code, pelo módulo `vscode-languageserver`.
+  // Antes era um processo externo (`poolscript-lsp`, PoolScript implementando o
+  // protocolo à mão): quem não tivesse feito `make install` ficava sem nada, e o
+  // protocolo era metade do trabalho pra um resultado pior.
   const servidor = {
-    run:   { command, args, transport: TransportKind.stdio },
-    debug: { command, args, transport: TransportKind.stdio },
+    run:   { module: path.join(__dirname, 'server.js'), transport: TransportKind.stdio },
+    debug: { module: path.join(__dirname, 'server.js'), transport: TransportKind.stdio,
+             options: { execArgv: ['--nolazy', '--inspect=6009'] } },
   };
 
   const cliente_opts = {
@@ -44,9 +42,9 @@ function activate(context) {
       { scheme: 'file', language: 'poolscript' },
       { scheme: 'file', language: 'poolscript-psl' },
     ],
-    // O servidor lê o documento que o editor manda; não precisa observar disco.
     synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.{ps,psl,p}') },
     outputChannelName: 'PoolScript',
+    initializationOptions: { pool: poolBin() },
   };
 
   cliente = new LanguageClient('poolscript', 'PoolScript', servidor, cliente_opts);
@@ -54,9 +52,8 @@ function activate(context) {
   cliente.start().catch((e) => {
     // Falhar calado deixaria o usuário sem completion sem saber por quê.
     window.showErrorMessage(
-      `PoolScript: não consegui iniciar o servidor (${command}). ` +
-      `Instale com \`make install\` no repositório, ou aponte ` +
-      `\`poolscript.lsp.comando\` para o lsp/servidor.ps. Detalhe: ${e.message}`
+      `PoolScript: o servidor de linguagem não subiu. Confira se o \`pool\` está ` +
+      `no PATH (ou aponte \`poolscript.pool\`). Detalhe: ${e.message}`
     );
   });
 

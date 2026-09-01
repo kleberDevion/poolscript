@@ -76,20 +76,21 @@
         "poolscript.lsp.ativo": {
           "type": "boolean",
           "default": true,
-          "description": "Liga o servidor LSP da linguagem (escrito em PoolScript). Desligado, a extensão fica só com o realce da gramática — não há mais cérebro embutido."
+          "description": "Liga o servidor de linguagem. Desligado, a extensão fica só com o realce da gramática."
         },
-        "poolscript.lsp.comando": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          },
-          "default": [],
-          "description": "Comando do servidor LSP. Vazio = usa `poolscript-lsp` do PATH. Pra rodar direto do repositório: [\"pool\", \"/caminho/do/repo/lsp/servidor.ps\"]."
+        "poolscript.pool": {
+          "type": "string",
+          "default": "",
+          "description": "Caminho do binário `pool`. Vazio = usa o do PATH. O servidor pergunta módulos, tokens e diagnóstico PRA ELE, então apontar outro faz o completion descrever um motor diferente do que você roda."
         }
       }
     }
   },
   "dependencies": {
-    "vscode-languageclient": "^9.0.1"
+    "@vscode/debugadapter": "^1.68.0",
+    "@vscode/debugprotocol": "^1.68.0",
+    "vscode-languageclient": "^9.0.1",
+    "vscode-languageserver": "^10.1.1",
+    "vscode-languageserver-textdocument": "^1.0.14"
   }
 }

@@ -17,7 +17,8 @@ rm -rf "$SAIDA"
 mkdir -p "$SAIDA/lib" "$SAIDA/lsp" "$SAIDA/dados/icones"
 
 cp pool "$SAIDA/pool.bin"
-cp lsp/protocolo.ps lsp/modelo.ps lsp/servidor.ps "$SAIDA/lsp/"
+cp editor/vscode/server.js "$SAIDA/lsp/"
+cp -r editor/vscode/node_modules "$SAIDA/lsp/" 2>/dev/null || true
 cp dados/zz-poolscript.xml "$SAIDA/dados/"
 cp dados/icones/text-poolscript.svg "$SAIDA/dados/icones/"
 cp instalar.sh "$SAIDA/"

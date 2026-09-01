@@ -112,16 +112,29 @@ install: pool
 	install -d $(PREFIXO)/bin $(PREFIXO)/share/poolscript/lsp
 	install -m755 pool $(PREFIXO)/bin/pool
 	install -m755 pool $(PREFIXO)/bin/psl
-	install -m644 lsp/protocolo.ps lsp/modelo.ps lsp/servidor.ps \
-	        $(PREFIXO)/share/poolscript/lsp/
+	# O SERVIDOR LSP e `editor/vscode/server.js`, sobre `vscode-languageserver`.
+	# Vai junto com as bibliotecas que ele importa (~3 MB) pra que Neovim,
+	# IntelliJ e qualquer editor que fale LSP tenham o MESMO cerebro que o VS
+	# Code — antes cada um dependia de um servidor em PoolScript que respondia
+	# `-32601` pra quase tudo.
+	install -m644 editor/vscode/server.js $(PREFIXO)/share/poolscript/lsp/
+	@for m in vscode-languageserver vscode-languageserver-protocol \
+	          vscode-languageserver-types vscode-jsonrpc \
+	          vscode-languageserver-textdocument semver; do \
+	    if [ -d editor/vscode/node_modules/$$m ]; then \
+	      rm -rf $(PREFIXO)/share/poolscript/lsp/node_modules/$$m; \
+	      mkdir -p $(PREFIXO)/share/poolscript/lsp/node_modules; \
+	      cp -r editor/vscode/node_modules/$$m $(PREFIXO)/share/poolscript/lsp/node_modules/; \
+	    fi; \
+	  done
 	# A DOC vai junto: a prosa das sugestões e do hover sai de
 	# `docs/<escopo>/<nome>/<nome>.md`. Sem ela instalada, o servidor funciona
 	# mas responde sem explicação nenhuma — que é justamente o que o completion
 	# não pode voltar a ser. Só as páginas, não o resto do repositório.
 	@cd docs && find . -name '*.md' -exec install -Dm644 {} \
 	        $(PREFIXO)/share/poolscript/docs/{} \;
-	printf '#!/bin/sh\n# Atalho do servidor LSP. O servidor e PoolScript; ver docs/lsp.md.\nexec %s/bin/pool %s/share/poolscript/lsp/servidor.ps "$$@"\n' \
-	        '$(PREFIXO)' '$(PREFIXO)' > $(PREFIXO)/bin/poolscript-lsp
+	printf '#!/bin/sh\n# Servidor LSP da PoolScript. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "poolscript-lsp precisa do node (o servidor usa vscode-languageserver)" >&2\n  exit 1\nfi\nexec node %s/share/poolscript/lsp/server.js "$${@:---stdio}"\n' \
+	        '$(PREFIXO)' > $(PREFIXO)/bin/poolscript-lsp
 	chmod 755 $(PREFIXO)/bin/poolscript-lsp
 	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO)
 	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp, tipo MIME e icone"
@@ -364,7 +377,15 @@ check: pool testar
 	# Mongo: sobe o proprio mongod em /tmp e derruba. PULA se nao houver binario.
 	@./pool teste/mongo_roda.ps
 	@echo
-	@./pool lsp/teste_lsp.ps
+	# LSP: o servidor agora e `editor/vscode/server.js`, sobre
+	# `vscode-languageserver` (a implementacao de REFERENCIA do protocolo). O
+	# teste o dirige como o VS Code faz. PULA sem node — o portao nao exige
+	# ambiente de editor, mas nao finge que passou.
+	@if command -v node >/dev/null 2>&1 && [ -d editor/vscode/node_modules/vscode-languageserver ]; then \
+	    node editor/vscode/teste_servidor.js ./pool; \
+	  else \
+	    echo "PULOU o teste do LSP — falta node ou 'npm install' em editor/vscode"; \
+	  fi
 	@echo
 	@$(MAKE) --no-print-directory analisa
 	@echo
@@ -575,7 +596,7 @@ cobertura: testar
 	@./cob/unidade > /dev/null 2>&1 || true
 	@echo "rodando os drivers .ps e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \
-	          scripts/audita_exemplos_doc.ps lsp/teste_lsp.ps \
+	          scripts/audita_exemplos_doc.ps \
 	          teste/fuzz_replay.ps teste/cli_roda.ps teste/sockets_roda.ps \
 	          teste/jinker_roda.ps teste/mongo_roda.ps; do \
 	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
