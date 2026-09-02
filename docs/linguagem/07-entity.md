@@ -35,9 +35,10 @@ class Ponto() {          # idêntico a Entity Ponto()
 
 ## 7.2. Campos e construtor sintetizado
 
-Campos são declarados com **tipo** (`nome: tipo`). A partir deles a linguagem
-**sintetiza um construtor** (`__init__`) que recebe um argumento por campo, na
-ordem declarada:
+Campos são declarados com **tipo**, em qualquer das duas ordens — `nome: tipo`
+ou `tipo nome`, a mesma da declaração de variável (seção 4.1). A partir deles a
+linguagem **sintetiza um construtor** (`__init__`) que recebe um argumento por
+campo, na ordem declarada:
 
 ```ps
 Entity Usuario() {
@@ -47,6 +48,13 @@ Entity Usuario() {
 
 u = Usuario("ana", 30)
 post(u.nome, u.idade)      # ana 30
+```
+
+```ps
+Entity Usuario() {         # idêntico ao de cima
+    str nome
+    int idade
+}
 ```
 
 - **Valor padrão** num campo torna o argumento opcional:
@@ -231,13 +239,48 @@ post(c.saldo)            # ERRO — saldo é private
 deixar a intenção explícita. Também há `private class`/`private Entity` (a
 classe não é exportada).
 
+### 7.6.1. Declarar o campo dentro do construtor
+
+O campo pode nascer no `__init__`, com tipo e visibilidade, na forma
+`<visibilidade> <tipo> <nome> = <valor>`:
+
+```ps
+private Class Pagamento() {
+    public reaction __init__(self, nome, doc) {
+        private str name = nome
+        private int cpf  = doc
+    }
+    public reaction mostra(self) {
+        return self.name + "/" + str(self.cpf)
+    }
+}
+
+p = Pagamento("ana", 123)
+post(p.mostra())         # ana/123
+post(p.name)             # ERRO — name é private
+```
+
+- É **campo do objeto**, não variável local: escreve em `self.<nome>`, e o
+  `private` é registrado na classe, então a VM barra o acesso de fora
+  exatamente como no campo declarado no corpo.
+- O **tipo é conferido igual ao da variável** (seção 4.1): `private int n = 5.9`
+  é `AttributedValueError`. Só os escalares (`str`, `int`, `flo`, `bool`,
+  `char`) são conferidos; `list`, `json` e uma Entity guardam sem reclamar.
+- Só vale **dentro de uma action de Entity que recebe `self`** — em `@static`
+  ou numa action solta não há objeto para o campo pertencer, e é erro de
+  sintaxe, não silêncio.
+- A ordem `nome: tipo` é a do **corpo da classe**; dentro da action use
+  `tipo nome`. Escrever `private name: str = nome` dentro da action é erro, e a
+  mensagem diz o conserto.
+
 ---
 
 ## 7.7. Resumo
 
 - `Entity Nome()` (parênteses obrigatórios); `class`/`Class` são sinônimos.
-- Campos `nome: tipo` sintetizam o construtor (1 arg por campo, na ordem);
-  padrão torna opcional; campos dinâmicos via `self.x = …`.
+- Campos `nome: tipo` (ou `tipo nome`) sintetizam o construtor (1 arg por campo,
+  na ordem); padrão torna opcional; campos dinâmicos via `self.x = …`.
+- Campo declarado no construtor: `private <tipo> <nome> = <valor>` (7.6.1).
 - Construtor próprio: `action __init__(self, …)`.
 - Métodos têm `self` como 1º parâmetro; `@static` não tem `self` e é chamado na
   Entity.

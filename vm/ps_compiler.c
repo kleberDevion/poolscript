@@ -415,6 +415,28 @@ static int32_t sintetiza_init(C *c, PSNode *entidade);
 static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo);
 static void guarda_em_alvo(C *c, Unidade *u, PSNode *e);
 
+/* Nomes de `private <tipo> <nome> = ...` na subárvore. `nomes == NULL` só
+ * conta (pra dimensionar o vetor); `achados` é o índice onde começar a
+ * escrever, então a varredura soma aos nomes que os campos do corpo da
+ * classe já puseram. */
+static int32_t varre_campos_priv(PSNode *n, char **nomes, int32_t achados)
+{
+    if (!n) return achados;
+    if (n->kind == N_FIELD_DECL && n->is_private && n->texto) {
+        if (nomes) nomes[achados] = strdup(n->texto);
+        achados++;
+    }
+    achados = varre_campos_priv(n->a, nomes, achados);
+    achados = varre_campos_priv(n->b, nomes, achados);
+    achados = varre_campos_priv(n->c, nomes, achados);
+    achados = varre_campos_priv(n->e, nomes, achados);
+    for (int32_t i = 0; i < n->lista.n; i++)
+        achados = varre_campos_priv(n->lista.itens[i], nomes, achados);
+    for (int32_t i = 0; i < n->lista2.n; i++)
+        achados = varre_campos_priv(n->lista2.itens[i], nomes, achados);
+    return achados;
+}
+
 static int eh_global_declarada(Unidade *u, const char *nome)
 {
     for (int32_t i = 0; i < u->nglobais_decl; i++)
@@ -1596,6 +1618,43 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             return;
         }
 
+        case N_FIELD_DECL: {
+            /* `private str name = nome` dentro da action: é CAMPO DO OBJETO,
+             * não local. Escreve em `self` pelo mesmo caminho de
+             * `self.name = nome` — um só lugar decide dict×instância e o
+             * corte de private. A visibilidade em si é registrada na CLASSE,
+             * no N_ENTITY_DECL, senão o `private` compilaria sem barrar nada. */
+            if (!c->dentro_entity || u->eh_modulo || !nome_ja_existe(u, "self")) {
+                cerro_sx(c, n, "'%s %s %s = ...' declara campo do objeto: so vale dentro de uma "
+                               "action de Entity que recebe 'self'",
+                         n->is_private ? "private" : "public",
+                         n->texto2 ? n->texto2 : "tipo", n->texto ? n->texto : "nome");
+                return;
+            }
+            const char *nome = n->texto ? n->texto : "";
+            int32_t mi = idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome));
+            carrega_nome(c, u, "self");
+            expr(c, u, n->a);
+            /* MESMA tabela do N_VAR_DECL: só escalar é conferido, e `list`/
+             * `json` guardam sem reclamar — a regra do tipo não muda por ter
+             * ganhado um modificador na frente. */
+            static const struct { const char *nome; int cod; } ESCF[] = {
+                { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 }, { "char", 8 },
+            };
+            for (int e = 0; e < 5; e++)
+                if (n->texto2 && !strcmp(n->texto2, ESCF[e].nome)) {
+                    int32_t ni = idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome));
+                    if (n->a) {
+                        if (n->a->line) c->linha_atual  = n->a->line;
+                        if (n->a->col)  c->coluna_atual = n->a->col;
+                    }
+                    emite(c, u, OP_COERCE_DECL, (ni << 4) | ESCF[e].cod);
+                    break;
+                }
+            emite(c, u, OP_SET_MEMBER, mi);
+            return;
+        }
+
         case N_ASSIGNMENT: {
             const char *op = n->texto2 ? n->texto2 : "=";
             if (strcmp(op, "=") != 0) {
@@ -2079,8 +2138,15 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             def->classe_privada = n->is_private;   /* `private class` = não exportada */
 
             /* nomes de membros `private` — métodos (n->lista) + campos
-             * (n->lista2_alias). A VM usa isto p/ barrar acesso de fora. */
-            int32_t npriv_max = n->lista.n + n->lista2_alias.n;
+             * (n->lista2_alias) + os campos declarados DENTRO das actions
+             * (`private str name = nome` no __init__). Estes últimos moram no
+             * corpo do método, mas a visibilidade é da CLASSE: sem varrer por
+             * eles aqui, o `private` compilaria e não barraria nada — pior que
+             * não ter encapsulamento, porque parece que tem. */
+            int32_t npriv_corpo = 0;
+            for (int32_t i = 0; i < n->lista.n; i++)
+                npriv_corpo = varre_campos_priv(n->lista.itens[i], NULL, npriv_corpo);
+            int32_t npriv_max = n->lista.n + n->lista2_alias.n + npriv_corpo;
             if (npriv_max > 0) {
                 def->priv_nomes = calloc((size_t)npriv_max, sizeof(char *));
                 if (!def->priv_nomes) { cerro(c, "sem memoria", n); return; }
@@ -2094,6 +2160,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     if (f->kind == N_ENTITY_FIELD && f->is_private && f->texto)
                         def->priv_nomes[def->npriv++] = strdup(f->texto);
                 }
+                for (int32_t i = 0; i < n->lista.n; i++)
+                    def->npriv = varre_campos_priv(n->lista.itens[i], def->priv_nomes, def->npriv);
             }
 
             int32_t nm = 0;

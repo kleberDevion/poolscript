@@ -326,6 +326,44 @@ if subiu
     os.cmd("kill $(cat " + PASTA + "/srv.pid) 2>/dev/null; true")
 }
 
+# ── erro DENTRO de um módulo importado ──────────────────────────────────────
+#
+# POR QUE AQUI: precisa de DOIS arquivos, e a suíte em C roda um fonte só.
+#
+# Uma lib instalada tinha `// nota` (comentário do tempo em que `//` comentava,
+# antes do I11). O erro saía assim:
+#
+#     SyntaxError: random: expressao invalida
+#       em d.ps, linha 1
+#       | import random
+#       | ^^^
+#
+# Dois defeitos numa linha: a mensagem não dizia o que `//` virou, e o quadro
+# apontava a única linha que estava certa — a do `import`. O arquivo e a linha
+# do defeito, em outro arquivo, não apareciam em lugar nenhum.
+os.writeFile(PASTA + "/lib_torta.ps", "action f() {\n    // nota velha\n    return 1\n}\n")
+os.writeFile(PASTA + "/usa_lib.ps", "import lib_torta\npost(lib_torta.f())\n")
+
+r = roda("'" + POOL + "' usa_lib.ps")
+confere("erro dentro do módulo importado aponta o ARQUIVO da lib",
+        "lib_torta.ps" in r["saida"])
+confere("...e a LINHA de dentro dela, não a do import",
+        "linha 2" in r["saida"])
+confere("...e o quadro do import continua lá, pra saber quem importou",
+        "usa_lib.ps" in r["saida"] and "import lib_torta" in r["saida"])
+confere("'//' diz que virou divisão inteira, em vez de 'expressao invalida'",
+        "divisao inteira, nao comentario" in r["saida"] and r["rc"] != 0)
+
+os.writeFile(PASTA + "/so_barra.ps", "x = 1\n// nota\npost(x)\n")
+r = roda("'" + POOL + "' so_barra.ps")
+confere("'//' solto no arquivo principal dá a mesma mensagem",
+        "divisao inteira, nao comentario" in r["saida"])
+
+os.writeFile(PASTA + "/divide.ps", "post(7 // 2)\n")
+r = roda("'" + POOL + "' divide.ps")
+confere("e a divisão inteira de verdade continua funcionando",
+        r["rc"] == 0 and r["saida"].strip() == "3")
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/psl:", ok, "checagens passaram")

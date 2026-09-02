@@ -1057,6 +1057,14 @@ struct VM_ {
     int     ntb_mod;
     int     import_falhou;   /* 1 = o erro atual veio de dentro de um módulo importado */
     int     importando;      /* >0 = rodando o corpo de um módulo importado (o guard pula) */
+    /* Módulo que NÃO COMPILOU. O `tb` acima guarda índice de proto, e um
+     * módulo que nem compilou não tem proto nenhum — então o erro saía como
+     * "SyntaxError: random: expressao invalida / em d.ps, linha 1", apontando
+     * a linha do `import` de quem importou. O defeito está DENTRO da lib e o
+     * usuário não tinha como saber onde. Estes três campos carregam o arquivo
+     * e a posição reais até o quadro final do traceback. */
+    char    mod_erro_arquivo[1024];   /* mesmo tamanho do `abspath` que o alimenta */
+    int     mod_erro_linha, mod_erro_col;
 };
 
 /* Handler de `try`: onde saltar e qual estado restaurar. Guardar fp/sp/
@@ -23897,11 +23905,18 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     fonte[lidos] = '\0';
     fclose(f);
 
+    /* Onde o erro aparecer daqui pra baixo, é dentro DESTE arquivo — e é isso
+     * que o quadro final do traceback tem que dizer. */
+    vm->mod_erro_arquivo[0] = '\0';
+    vm->mod_erro_linha = vm->mod_erro_col = 0;
+
     PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
     free(fonte);
     if (!toks || !toks->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, toks ? toks->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
+        snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
+        if (toks) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
         if (toks) ps_lexer_free(toks);
         return -1;
     }
@@ -23910,6 +23925,8 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     if (!r || !r->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, r ? r->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
+        snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
+        if (r) { vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col; }
         if (r) ps_parse_free(r);
         return -1;
     }
@@ -23919,6 +23936,8 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, prog ? prog->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
                  (prog && prog->erro_do_programa) ? "SyntaxError" : "NotImplementedError");
+        snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
+        if (prog) { vm->mod_erro_linha = prog->erro_linha; vm->mod_erro_col = prog->erro_col; }
         if (prog) ps_compila_free(prog);
         return -1;
     }
@@ -24646,6 +24665,18 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
                      pr->arquivo ? pr->arquivo : "");
             e->tb[i].linha = vm.tb[i].linha;
             e->tb[i].col   = vm.tb[i].col;
+        }
+        /* Módulo que não compilou: o quadro mais interno é o do ARQUIVO DA
+         * LIB, não o do `import`. Sem ele o erro dizia "em d.ps, linha 1" pra
+         * um defeito que está na linha 16 de outro arquivo — e o `^^^` caía
+         * em cima do `import random`, que é a única linha que estava certa. */
+        if (vm.mod_erro_arquivo[0] && e->ntb < 64) {
+            int i = e->ntb++;
+            snprintf(e->tb[i].nome, sizeof(e->tb[i].nome), "%s", "<module>");
+            snprintf(e->tb[i].arquivo, sizeof(e->tb[i].arquivo), "%s", vm.mod_erro_arquivo);
+            e->tb[i].linha = vm.mod_erro_linha;
+            e->tb[i].col   = vm.mod_erro_col;
+            e->linha       = vm.mod_erro_linha;
         }
         libera_vm(&vm);
         return -1;

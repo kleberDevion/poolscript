@@ -28,7 +28,11 @@ typedef enum {
 /* Um quadro do traceback: função, arquivo e linha. */
 typedef struct {
     char nome[64];      /* nome da função (ou "<module>") */
-    char arquivo[256];  /* arquivo-fonte do quadro (vazio = desconhecido) */
+    /* Arquivo-fonte do quadro (vazio = desconhecido). 1024 é o tamanho do
+     * `abspath` que alimenta este campo: cortar aqui produziria um caminho
+     * que não abre, e o quadro sairia sem a linha do fonte — sem dizer que
+     * cortou. */
+    char arquivo[1024];
     int  linha;
     int  col;           /* coluna do cursor `^^^` (0 = 1ª não-branco da linha) */
 } PSQuadroTB;

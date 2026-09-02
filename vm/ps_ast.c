@@ -154,6 +154,7 @@ const char *ps_node_nome(PSNodeKind k)
         case N_INDEX_ASSIGNMENT: return "IndexAssignment";
         case N_UNPACK_ASSIGNMENT: return "UnpackAssignment";
         case N_UNPACK_TARGET:   return "UnpackTarget";
+        case N_FIELD_DECL:      return "FieldDecl";
     }
     return "?";
 }

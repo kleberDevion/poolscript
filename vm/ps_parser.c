@@ -698,6 +698,18 @@ static PSNode *primario(P *p)
             return n;
         }
         default:
+            /* `// nota` no lugar de uma expressão: quase sempre é comentário
+             * de código escrito antes do I11, quando `//` COMENTAVA. Hoje ele
+             * é divisão inteira, e sem operando à esquerda dava só
+             * "expressao invalida" — a mensagem certa pro parser e inútil pra
+             * quem escreveu. Um arquivo inteiro pode cair por causa disto (e
+             * caiu: uma lib instalada, com o erro aparecendo na linha do
+             * `import` de quem a usava). */
+            if (t->type == T_OP && t->texto && strcmp(t->texto, "//") == 0) {
+                perro(p, "'//' e divisao inteira, nao comentario — comentario e '#' "
+                         "(ou bloco entre tres aspas)", t);
+                return NULL;
+            }
             perro(p, "expressao invalida", t);
             return NULL;
     }
@@ -2147,11 +2159,41 @@ static PSNode *statement(P *p)
                 if (ps_vec_push(p->arena, &n->lista, d) != 0) return NULL;
             } else if (mt->type == T_KW && mt->texto
                        && (strcmp(mt->texto,"action")==0 || strcmp(mt->texto,"reaction")==0
-                        || strcmp(mt->texto,"async")==0 || eh_tipo_kw(mt))) {
+                        || strcmp(mt->texto,"async")==0
+                        /* `int action f()` — o tipo aqui é RETORNO, e depois
+                         * dele vem sempre outra palavra da linguagem. Sem esta
+                         * condição o `str x = "a"` logo abaixo caía aqui: virava
+                         * um VarDecl empurrado pra lista de MÉTODOS, que só olha
+                         * N_ACTION_DECL. Compilava, sumia, e o campo nunca
+                         * existia — `self.x` dava AttributeError sem uma linha
+                         * de aviso. */
+                        || (eh_tipo_kw(mt) && espia(p, 1)->type == T_KW))) {
                 PSNode *a = statement(p);
                 if (FALHOU(p)) return NULL;
                 if (a) a->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
+            } else if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
+                       && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+                /* `<tipo> <nome> [= valor]` — a MESMA declaração do §7.6 que
+                 * vale dentro da action, escrita no corpo da classe. Equivale
+                 * a `<nome>: <tipo> [= valor]`, e o `private`/`public` da
+                 * frente já foi lido acima. */
+                PSToken *tt = mt;
+                p->pos++;                                  /* tipo */
+                PSToken *nmt = atual(p);
+                const char *nome = exige_nome(p, "campo");
+                if (FALHOU(p)) return NULL;
+                PSNode *f = ps_node_novo(p->arena, N_ENTITY_FIELD, nmt->line, nmt->col);
+                if (!f) return NULL;
+                f->texto = nome;
+                f->texto2 = dup_tok(p, tt);
+                if (checa_op(p, "=")) {
+                    p->pos++;
+                    f->a = expressao(p);
+                    if (FALHOU(p)) return NULL;
+                }
+                f->is_private = membro_priv;
+                if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else if (mt->type == T_IDENT || mt->type == T_IDENT_UPPER) {
                 /* campo `nome: tipo [= default]`. Sem o `:` NÃO é campo —
                  * erro explícito: devolver "nada" aqui sem consumir token
@@ -2700,6 +2742,71 @@ static PSNode *statement(P *p)
             PSNode *ad = action_decl(p, is_async, tipo);
             if (ad && is_priv >= 0) ad->is_private = is_priv;
             return ad;
+        }
+
+        /* `private str name = nome` — CAMPO DO OBJETO declarado dentro da
+         * action, com visibilidade. É a forma que ele pediu: o modificador
+         * na frente da declaração tipada que a linguagem já tinha
+         * (`str x = "a"`), e não a ordem do corpo da classe.
+         *
+         * O QUE HAVIA ANTES: nada disto era erro. `private` chegava no parser
+         * de expressão, virava um NOME comum, e o programa compilava limpo
+         * pra estourar `NameError: name 'private' is not defined` em tempo de
+         * execução — dentro de `int action`, engolido pro 500 da seção 6.4,
+         * ou seja, calado. Palavra reservada lida como variável é o pior dos
+         * dois mundos: não faz o que diz e não avisa. */
+        if (off) {
+            PSToken *tt  = espia(p, 1);
+            PSToken *nmt = espia(p, 2);
+
+            /* `private nome: tipo = v` — a ordem do CORPO da Entity, escrita
+             * dentro da action. Era "expressao invalida" apontando pro ':',
+             * que não diz nada. A mensagem agora diz o conserto. */
+            if ((tt->type == T_IDENT || tt->type == T_IDENT_UPPER)
+                    && nmt->type == T_COLON) {
+                char m[240];
+                snprintf(m, sizeof(m),
+                         "'%s nome: tipo' so vale no corpo da Entity — dentro de uma action escreva "
+                         "'%s <tipo> %s = <valor>'",
+                         m0->texto, m0->texto, tt->texto ? tt->texto : "nome");
+                perro(p, m, tt);
+                return NULL;
+            }
+
+            /* `<tipo> <nome> = <valor>`. O tipo é o mesmo conjunto que o campo
+             * `nome: tipo` aceita (qualquer nome de tipo, Entity inclusive);
+             * a checagem em runtime só existe pros escalares, igual ao
+             * `str x = "a"` sem modificador. */
+            if ((tt->type == T_IDENT || tt->type == T_IDENT_UPPER || tt->type == T_KW)
+                    && (nmt->type == T_IDENT || nmt->type == T_IDENT_UPPER)) {
+                p->pos++;                                   /* private/public */
+                const char *tipo = dup_tok(p, atual(p));
+                p->pos++;                                   /* tipo */
+                PSToken *nt2 = atual(p);
+                const char *nome = exige_nome(p, "campo");
+                if (FALHOU(p)) return NULL;
+                if (!checa_op(p, "=")) {
+                    perro(p, "campo declarado dentro de action precisa de '=' e um valor", atual(p));
+                    return NULL;
+                }
+                p->pos++;
+                PSNode *n = ps_node_novo(p->arena, N_FIELD_DECL, nt2->line, nt2->col);
+                if (!n) return NULL;
+                n->texto = nome; n->texto2 = tipo;
+                n->is_private = is_priv;
+                n->a = expressao(p);
+                if (FALHOU(p)) return NULL;
+                return n;
+            }
+
+            /* Sobrou: `private` sem nada válido atrás. Os usos legítimos
+             * (classe, action/reaction, campo) já retornaram acima. */
+            char m[200];
+            snprintf(m, sizeof(m),
+                     "'%s' so vale antes de class/Entity, de action/reaction ou de "
+                     "'<tipo> <nome> = <valor>'", m0->texto);
+            perro(p, m, m0);
+            return NULL;
         }
     }
 

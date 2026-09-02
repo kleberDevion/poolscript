@@ -123,6 +123,26 @@ Um nome que não casa com nenhum dos três é `ImportError`.
 > Imports relativos (`from .x import …`) **não** entram nessa ordem — são sempre
 > resolvidos direto contra o sistema de arquivos, relativos ao arquivo atual.
 
+### 9.5.1. Erro DENTRO do módulo importado
+
+Quando o módulo é achado mas **não compila**, o traceback tem dois quadros: o
+`import` de quem pediu e, por último, o **arquivo e a linha do defeito**:
+
+```
+SyntaxError: random: '//' e divisao inteira, nao comentario — comentario e '#' (ou bloco entre tres aspas)
+
+Traceback (arquivo mais recente por último):
+  em d.ps, linha 1
+  | import random
+  | ^^^
+  em random.ps, linha 16
+  |             // 127.970.195
+  |             ^^^
+```
+
+O prefixo da mensagem (`random:`) é o nome do módulo como foi escrito no
+`import`; o último quadro é onde consertar.
+
 ---
 
 ## 9.6. Import não roda o guard de entrada

@@ -229,6 +229,142 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(l)\n",
   "[9, 7]", NULL, 0 },
 
+/* ── `private <tipo> <nome> = <valor>` ────────────────────────────────────
+ *
+ * Encapsulamento so existia como `nome: tipo` no corpo da classe. Quem
+ * declarava o campo no construtor — `private str name = nome`, a forma que
+ * ele pediu — nao levava erro: `private` chegava no parser de EXPRESSAO e
+ * virava um nome comum. O programa compilava limpo e estourava
+ * `NameError: name 'private' is not defined` so em runtime; dentro de
+ * `int action` isso vira o 500 da secao 6.4, ou seja, some.
+ *
+ * O irmao do mesmo bug: `str x = "a"` NO CORPO DA CLASSE virava um VarDecl
+ * empurrado pra lista de METODOS (que so olha N_ACTION_DECL). Compilava,
+ * sumia, e `self.x` dava AttributeError sem uma linha de aviso. */
+{ "campo declarado no construtor, com tipo e visibilidade",
+  "private Class Pagamento() {\n"
+  "    public reaction __init__(self, nome, doc) {\n"
+  "        private str name = nome\n"
+  "        private int cpf = doc\n"
+  "    }\n"
+  "    public reaction mostra(self) {\n"
+  "        return self.name + \"/\" + str(self.cpf)\n"
+  "    }\n"
+  "}\n"
+  "post(Pagamento(\"ana\", 123).mostra())\n",
+  "ana/123", NULL, 0 },
+{ "campo private declarado no construtor BARRA de fora",
+  /* Registrar a visibilidade e o ponto: `private` que compila e nao barra e
+   * pior que nao ter encapsulamento, porque parece que tem. */
+  "Class A() {\n"
+  "    public reaction __init__(self, nome) {\n"
+  "        private str name = nome\n"
+  "    }\n"
+  "}\n"
+  "post(A(\"ana\").name)\n",
+  "", "acesso negado: 'name' e private de A", 1 },
+{ "public declarado no construtor NAO barra",
+  "Class A() {\n"
+  "    public reaction __init__(self, nome) {\n"
+  "        public str name = nome\n"
+  "    }\n"
+  "}\n"
+  "post(A(\"ana\").name)\n",
+  "ana", NULL, 0 },
+{ "o tipo do campo e conferido como o da variavel",
+  "Class A() {\n"
+  "    public reaction __init__(self) {\n"
+  "        private int n = 5.9\n"
+  "    }\n"
+  "}\n"
+  "a = A()\n",
+  "", "AttributedValueError: variável n esperava int", 1 },
+{ "tipo nao escalar guarda sem conferir, como na variavel",
+  "Class A() {\n"
+  "    public reaction __init__(self) {\n"
+  "        public list itens = [1, 2]\n"
+  "    }\n"
+  "    public reaction ver(self) { return self.itens }\n"
+  "}\n"
+  "post(A().ver())\n",
+  "[1, 2]", NULL, 0 },
+{ "a mesma declaracao vale NO CORPO da classe",
+  "Class A() {\n"
+  "    str x = \"a\"\n"
+  "    public reaction ver(self) { return self.x }\n"
+  "}\n"
+  "post(A().ver())\n",
+  "a", NULL, 0 },
+{ "no corpo da classe, sem default, vira parametro do construtor",
+  "Class A() {\n"
+  "    str x\n"
+  "    public reaction ver(self) { return self.x }\n"
+  "}\n"
+  "post(A(\"oi\").ver())\n",
+  "oi", NULL, 0 },
+{ "private no corpo da classe pela forma nova tambem barra",
+  "Class A() {\n"
+  "    private str x = \"a\"\n"
+  "}\n"
+  "post(A().x)\n",
+  "", "acesso negado: 'x' e private de A", 1 },
+{ "int action dentro da Entity continua sendo action, nao campo",
+  /* A condicao que separa `int action f()` de `str x = 1` no corpo da
+   * classe: depois do tipo de RETORNO vem sempre outra palavra da
+   * linguagem. */
+  "Class A() {\n"
+  "    int action f(self) { return 7 }\n"
+  "    public async int reaction g(self) { return 8 }\n"
+  "}\n"
+  "a = A()\n"
+  "post(a.f(), await a.g())\n",
+  "7 8", NULL, 0 },
+{ "a ordem 'nome: tipo' dentro da action diz o conserto",
+  /* Era `SyntaxError: expressao invalida` apontando pro ':'. */
+  "Class A() {\n"
+  "    public reaction __init__(self, nome) {\n"
+  "        private name: str = nome\n"
+  "    }\n"
+  "}\n",
+  "", "dentro de uma action escreva 'private <tipo> name = <valor>'", 2 },
+{ "private sem tipo nenhum nao passa mais calado",
+  /* Antes: compilava, e `private` virava um nome inexistente em runtime. */
+  "Class A() {\n"
+  "    public reaction __init__(self, nome) {\n"
+  "        private name = nome\n"
+  "    }\n"
+  "}\n",
+  "", "'private' so vale antes de class/Entity", 2 },
+{ "campo do objeto exige uma action com self",
+  "action f(n) {\n"
+  "    private str x = n\n"
+  "}\n",
+  "", "so vale dentro de uma action de Entity que recebe 'self'", 2 },
+/* `//` deixou de ser comentário no I11. A mensagem tinha que dizer isso. */
+{ "'//' no lugar de expressao diz que virou divisao inteira",
+  "x = 1\n"
+  "// comentario velho\n"
+  "post(x)\n",
+  "", "'//' e divisao inteira, nao comentario", 2 },
+{ "'//' indentado dentro de bloco diz o mesmo",
+  "for each i in [1] {\n"
+  "    // nota\n"
+  "    post(i)\n"
+  "}\n",
+  "", "'//' e divisao inteira, nao comentario", 2 },
+{ "a divisao inteira de verdade continua",
+  "post(7 // 2, -7 // 2, 10 // 3)\n",
+  "3 -4 3", NULL, 0 },
+
+{ "private class e private action continuam valendo",
+  "private Class A() {\n"
+  "    private saldo: int\n"
+  "    public action ver(self) { return self.saldo }\n"
+  "    private action log(self) { return \"x\" }\n"
+  "}\n"
+  "post(A(10).ver())\n",
+  "10", NULL, 0 },
+
 /* ── escopo ── */
 { "for each sombreia variável de fora",
   "i = \"importante\"\n"

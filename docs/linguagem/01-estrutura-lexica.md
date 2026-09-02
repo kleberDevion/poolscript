@@ -37,7 +37,9 @@ viram tokens, não afetam o programa):
 > coisas: `x = a // b` teria que ser divisão num contexto e comentário no
 > outro, e nenhuma regra de desambiguação sobrevive a `a //b` contra `a  // b`.
 >
-> Código antigo com `// comentário` agora é erro de sintaxe. A troca é `#`.
+> Código antigo com `// comentário` agora é erro de sintaxe, e o erro diz isso
+> com todas as letras: `'//' e divisao inteira, nao comentario — comentario e
+> '#' (ou bloco entre tres aspas)`. A troca é `#`.
 
 ```ps
 # isto é um comentário de linha

@@ -1,7 +1,6 @@
 # PoolScript
 
-A doc completa — essência, como funciona, **instalação** e **guia de deploy** —
-está em **[`poolscript.md`](poolscript.md)**.
+Doc — **[`poolscript.md`](poolscript.md)**.
 
 - Sintaxe da linguagem: [`docs/LANGUAGE.md`](docs/LANGUAGE.md)
 - Referência das libs (por método): [`docs/INDEX.md`](docs/INDEX.md)

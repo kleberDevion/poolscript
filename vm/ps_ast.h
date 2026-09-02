@@ -88,7 +88,12 @@ typedef enum {
     N_MEMBER_ASSIGNMENT,
     N_INDEX_ASSIGNMENT,
     N_UNPACK_ASSIGNMENT,
-    N_UNPACK_TARGET
+    N_UNPACK_TARGET,
+    /* `private str nome = valor` DENTRO de uma action de Entity: campo do
+     * objeto declarado no construtor, com visibilidade. Não é o
+     * `N_ENTITY_FIELD` (que é `nome: tipo` no corpo da classe) nem o
+     * `N_VAR_DECL` (que é local). texto = nome, texto2 = tipo, a = valor. */
+    N_FIELD_DECL
 } PSNodeKind;
 
 /* Qual campo do literal vale */

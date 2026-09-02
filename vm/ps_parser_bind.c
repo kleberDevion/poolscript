@@ -89,6 +89,7 @@ static int serializa(SBuf *s, const PSNode *n)
 
         case N_VAR_DECL:
         case N_ASSIGNMENT:
+        case N_FIELD_DECL:
             snprintf(tmp, sizeof(tmp), " %s %s", n->texto2 ? n->texto2 : "",
                      n->texto ? n->texto : "");
             if (sb_str(s, tmp) != 0) return -1;
