@@ -1,0 +1,301 @@
+# BENCHMARK de cobertura: compara arquivo com arquivo, e run com run.
+#
+# POR QUE ISTO EXISTE, e o que ele resolve que o `cobertura_portao.ps` não
+# resolve.
+#
+# 1. PERCENTUAL NÃO COMPARA ARQUIVO COM ARQUIVO. `ps_ast.c` com 94,2% e
+#    `poolscript_vm.c` com 55,6% parecem dizer que o primeiro está quase pronto
+#    e o segundo é o problema. Em ramo DESCOBERTO são 5 contra 7.400: o `ast`
+#    não está "quase pronto", ele é pequeno. E `ps_db.c` com 48,4% tem 174
+#    descobertos — menos que `ps_parser.c`, que está em 68,2%. Ordenar por
+#    percentual manda trabalhar no lugar errado.
+#
+# 2. O PORTÃO DIZ O ARQUIVO, NÃO A LINHA. Quando ele acusou
+#    `ps_jinker.c 300 -> 264`, o relatório tinha o nome do arquivo e mais nada:
+#    36 ramos sumiram e não havia como saber QUAIS. Rodei os quatro testes que
+#    cobrem esse arquivo, todos passaram, e o número não se mexeu — sem a lista
+#    de linhas não dá pra fechar a pergunta, só pra chutar.
+#
+#    Por isso o benchmark grava o INVENTÁRIO: as linhas com ramo descoberto,
+#    por arquivo. Duas rodadas viram um diff de LINHAS, não de percentual.
+#
+# TRÊS MEDIDAS, e cada uma responde uma pergunta diferente:
+#
+#   descobertos   quanto falta, em ramo. É o tamanho do trabalho.
+#   densidade     descobertos por 100 linhas de fonte. É o que permite comparar
+#                 um arquivo de 400 linhas com um de 25.000 — sem isso, o maior
+#                 sempre "perde" e o menor sempre "ganha".
+#   peso          fatia do descoberto TOTAL do projeto. Responde "se eu só
+#                 puder mexer num arquivo, qual move o número?"
+#
+#     ./pool teste/bench_cobertura.ps            tabela + compara com o anterior
+#     ./pool teste/bench_cobertura.ps --grava    adota a medição como referência
+#     ./pool teste/bench_cobertura.ps --linhas <arquivo>   as linhas descobertas
+#
+# Lê `cob/vm.info`, que o `make cobertura` produz. Sem ele, PULA — nunca
+# inventa número.
+import os
+import sys
+import json
+
+INFO = "cob/vm.info"
+SNAP = "teste/bench_cobertura.json"
+
+
+# Lê o .info do lcov: por arquivo, os ramos (BRDA) e as linhas (DA).
+#
+# BRDA:<linha>,<bloco>,<ramo>,<tomado>  — `tomado` é "-" (nunca executado) ou
+# um contador. Uma LINHA só conta como descoberta quando NENHUM ramo dela foi
+# tomado; linha com um ramo tomado e outro não é parcial, e some do inventário
+# se a gente contar por linha. Por isso o inventário guarda o par
+# (linha, ramos descobertos daquela linha).
+action le_info(caminho) {
+    arquivos = {}
+    atual = ""
+    for each linha in open(caminho).read().split("\n") {
+        if linha.startswith("SF:") {
+            atual = linha[3:]
+            arquivos[atual] = {"brda": {}, "linhas": 0, "cob": 0, "tot": 0}
+            continue
+        }
+        if atual == "" {
+            continue
+        }
+        if linha.startswith("DA:") {
+            arquivos[atual]["linhas"] = arquivos[atual]["linhas"] + 1
+            continue
+        }
+        if linha.startswith("BRDA:") {
+            partes = linha[5:].split(",")
+            if len(partes) < 4 {
+                continue
+            }
+            n = partes[0]
+            tomado = partes[3]
+            arquivos[atual]["tot"] = arquivos[atual]["tot"] + 1
+            if tomado != "-" and tomado != "0" {
+                arquivos[atual]["cob"] = arquivos[atual]["cob"] + 1
+            }
+            else {
+                d = arquivos[atual]["brda"]
+                if n in d.value() {
+                    d[n] = d[n] + 1
+                }
+                else {
+                    d[n] = 1
+                }
+            }
+            continue
+        }
+    }
+    return arquivos
+}
+
+
+action base_nome(caminho) {
+    p = caminho.split("/")
+    return p[len(p) - 1]
+}
+
+
+action pct(a, b) {
+    if b == 0 {
+        return 0.0
+    }
+    return (flo(a) * 100.0) / flo(b)
+}
+
+
+action alinha(txt, n) {
+    s = str(txt)
+    while len(s) < n {
+        s = s + " "
+    }
+    return s
+}
+
+
+action direita(txt, n) {
+    s = str(txt)
+    while len(s) < n {
+        s = " " + s
+    }
+    return s
+}
+
+
+# Uma casa decimal. `/` na PoolScript e' divisao REAL (`10/4 == 2.5`), entao
+# `str(inteiro / 10)` devolvia "55.5" e o resultado saia "55.5.5". Quociente
+# inteiro e' `//`.
+action fmt1(x) {
+    inteiro = int(x * 10.0)
+    return str(inteiro // 10) + "." + str(inteiro % 10)
+}
+
+
+if __name__ == "main" {
+    if not os.isfile(INFO) {
+        post("PULOU o benchmark — falta " + INFO + " (rode `make cobertura`)")
+        sys.exit(0)
+    }
+
+    arquivos = le_info(INFO)
+
+    linhas_tab = []
+    total_desc = 0
+    total_tot = 0
+    total_cob = 0
+    for each caminho in arquivos.keys() {
+        a = arquivos[caminho]
+        if a["tot"] == 0 {
+            continue                 # `.def` incluido: nao tem ramo pra medir
+        }
+        desc = a["tot"] - a["cob"]
+        total_desc = total_desc + desc
+        total_tot = total_tot + a["tot"]
+        total_cob = total_cob + a["cob"]
+        addEnd(linhas_tab, {
+            "arq": base_nome(caminho),
+            "cob": a["cob"],
+            "tot": a["tot"],
+            "desc": desc,
+            "fonte": a["linhas"],
+            "brda": a["brda"]
+        })
+    }
+
+    if "--linhas" in sys.argv {
+        alvo = sys.argv[len(sys.argv) - 1]
+        for each r in linhas_tab {
+            if r["arq"] != alvo {
+                continue
+            }
+            ns = []
+            for each n in r["brda"].keys() {
+                addEnd(ns, int(n))
+            }
+            ns.sort()
+            post(alvo + ": " + str(len(ns)) + " linhas com ramo descoberto")
+            post("")
+            saida = ""
+            for each n in ns {
+                saida = saida + str(n) + "(" + str(r["brda"][str(n)]) + ") "
+            }
+            post("  " + saida)
+            sys.exit(0)
+        }
+        post("nao medi " + alvo + " — nomes: veja a tabela sem --linhas")
+        sys.exit(1)
+    }
+
+    # ordena por DESCOBERTOS, que é o tamanho do trabalho — não por percentual
+    i = 0
+    while i < len(linhas_tab) {
+        j = i + 1
+        while j < len(linhas_tab) {
+            if linhas_tab[j]["desc"] > linhas_tab[i]["desc"] {
+                linhas_tab[i], linhas_tab[j] = linhas_tab[j], linhas_tab[i]
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    post("BENCHMARK DE COBERTURA — ordenado por RAMO DESCOBERTO (o trabalho)")
+    post("")
+    post("  " + alinha("arquivo", 18) + direita("ramo%", 7) + direita("cobertos", 10)
+         + direita("total", 8) + direita("DESCOB", 8) + direita("dens", 7)
+         + direita("peso%", 7))
+    post("  " + alinha("", 18) + direita("", 7) + direita("", 10) + direita("", 8)
+         + direita("", 8) + direita("/100L", 7) + direita("", 7))
+    post("  " + "-" * 65)
+    for each r in linhas_tab {
+        dens = 0.0
+        if r["fonte"] > 0 {
+            dens = (flo(r["desc"]) * 100.0) / flo(r["fonte"])
+        }
+        post("  " + alinha(r["arq"], 18)
+             + direita(fmt1(pct(r["cob"], r["tot"])), 7)
+             + direita(r["cob"], 10)
+             + direita(r["tot"], 8)
+             + direita(r["desc"], 8)
+             + direita(fmt1(dens), 7)
+             + direita(fmt1(pct(r["desc"], total_desc)), 7))
+    }
+    post("  " + "-" * 65)
+    post("  " + alinha("TOTAL", 18) + direita(fmt1(pct(total_cob, total_tot)), 7)
+         + direita(total_cob, 10) + direita(total_tot, 8) + direita(total_desc, 8))
+
+    # ── comparação com a referência ─────────────────────────────────────────
+    agora = {}
+    for each r in linhas_tab {
+        ns = []
+        for each n in r["brda"].keys() {
+            addEnd(ns, int(n))
+        }
+        ns.sort()
+        agora[r["arq"]] = {"cob": r["cob"], "tot": r["tot"], "linhas": ns}
+    }
+
+    if "--grava" in sys.argv or not os.isfile(SNAP) {
+        open(SNAP, "w").write(json.stringify(agora))
+        post("")
+        post("referencia gravada em " + SNAP)
+        sys.exit(0)
+    }
+
+    antes = json.parse(open(SNAP).read())
+    mudou = 0
+    post("")
+    for each arq in agora.keys() {
+        if not (arq in antes.value()) {
+            post("  NOVO  " + arq + " — " + str(agora[arq]["cob"]) + " ramos cobertos")
+            mudou = mudou + 1
+            continue
+        }
+        a = antes[arq]
+        b = agora[arq]
+        if a["cob"] == b["cob"] {
+            continue
+        }
+        mudou = mudou + 1
+        sinal = "SUBIU"
+        if b["cob"] < a["cob"] {
+            sinal = "CAIU "
+        }
+        post("  " + sinal + " " + arq + ": " + str(a["cob"]) + " -> " + str(b["cob"])
+             + " ramos cobertos")
+
+        # AS LINHAS. É isto que o portão não dava — sem elas, "36 ramos sumiram"
+        # é uma frase, não um endereço.
+        novas = []
+        for each n in b["linhas"] {
+            if not (n in a["linhas"]) {
+                addEnd(novas, n)
+            }
+        }
+        voltaram = []
+        for each n in a["linhas"] {
+            if not (n in b["linhas"]) {
+                addEnd(voltaram, n)
+            }
+        }
+        if len(novas) > 0 {
+            mais = ""
+            if len(novas) > 25 {
+                mais = " ... (+" + str(len(novas) - 25) + ")"
+            }
+            post("        descobriu: " + ", ".join([str(x) for each x in novas[0:25]]) + mais)
+        }
+        if len(voltaram) > 0 {
+            mais = ""
+            if len(voltaram) > 25 {
+                mais = " ... (+" + str(len(voltaram) - 25) + ")"
+            }
+            post("        cobriu:    " + ", ".join([str(x) for each x in voltaram[0:25]]) + mais)
+        }
+    }
+    if mudou == 0 {
+        post("  nenhum arquivo mudou desde a referencia")
+    }
+}
