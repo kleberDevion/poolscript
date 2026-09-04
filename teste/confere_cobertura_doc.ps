@@ -1,0 +1,109 @@
+# Portão da COBERTURA da doc: quantos membros do motor têm página, e o número
+# não pode cair.
+#
+# POR QUE ISTO EXISTE. O `scripts/audita_doc.ps` confere se a página QUE EXISTE
+# bate com o motor, e passa dizendo "nenhuma divergência de nome/ordem entre
+# doc e motor". Isso se lê como "a doc está completa", e não é o que ele mede:
+# ele nunca perguntou se a página existe. Media 132 páginas e calava sobre 721
+# membros sem nenhuma — `hash.sha256` e `sys.stdin` entre eles.
+#
+# Um portão que reprova o errado é ruim; um que APROVA medindo 15% e não diz
+# que são 15% é pior, porque vira base pra afirmar que está tudo conferido.
+#
+# A catraca é o mesmo desenho do `teste/cobertura_base.txt`: o número de hoje
+# fica gravado, e cair reprova. Subir é bem-vindo e atualiza a base sozinho.
+#
+#     ./pool teste/confere_cobertura_doc.ps           # reprova se cair
+#     ./pool teste/confere_cobertura_doc.ps --lista   # mostra o que falta
+#     ./pool teste/confere_cobertura_doc.ps --grava   # regrava a base
+import os
+import sys
+import json
+
+DOCS = "docs"
+BASE = "teste/cobertura_doc_base.txt"
+
+
+action pagina_de(escopo, nome) {
+    return DOCS + "/" + escopo + "/" + nome + "/" + nome + ".md"
+}
+
+
+if __name__ == "main" {
+    # `os.cmd` ECOA a saída além de devolvê-la: sem o redirecionamento, o
+    # `--metadata` inteiro (853 membros) sai no terminal antes do relatório.
+    tmp = "/tmp/ps_cobdoc_meta.json"
+    os.cmd(sys.executable + " --metadata > " + tmp)
+    meta = json.parse(open(tmp).read())
+
+    # `bytes` é módulo E tipo, e os dois documentam em `docs/bytes/`. Somar as
+    # listas em vez de sobrescrever: com `escopos[k] = ...` os 12 membros do
+    # módulo sumiam da conta, e o portão media menos do que existe.
+    escopos = {}
+    for each fonte in [meta["modulos"], meta["tipos"]] {
+        for each k in fonte.keys() {
+            if not (k in escopos.keys()) {
+                escopos[k] = []
+            }
+            for each m in fonte[k] {
+                addEnd(escopos[k], m)
+            }
+        }
+    }
+
+    total = 0
+    com = 0
+    falta = {}
+    for each escopo in escopos.keys() {
+        for each m in escopos[escopo] {
+            nome = m["nome"]
+            total = total + 1
+            if os.isfile(pagina_de(escopo, nome)) {
+                com = com + 1
+            }
+            else {
+                if not (escopo in falta.keys()) {
+                    falta[escopo] = []
+                }
+                addEnd(falta[escopo], nome)
+            }
+        }
+    }
+
+    post("doc: " + str(com) + "/" + str(total) + " membros do motor têm página")
+
+    if "--lista" in sys.argv {
+        post("")
+        for each escopo in falta.keys() {
+            post("  " + escopo + " (" + str(len(falta[escopo])) + "): "
+                 + ", ".join(falta[escopo]))
+        }
+    }
+
+    if "--grava" in sys.argv {
+        open(BASE, "w").write(str(com) + "\n")
+        post("base regravada em " + BASE)
+        sys.exit(0)
+    }
+
+    if not os.isfile(BASE) {
+        open(BASE, "w").write(str(com) + "\n")
+        post("base criada em " + BASE + " com " + str(com))
+        sys.exit(0)
+    }
+
+    gravado = int(open(BASE).read().strip())
+    if com < gravado {
+        post("")
+        post("REPROVADO: eram " + str(gravado) + " membros com página, agora são "
+             + str(com) + ".")
+        post("Página não se apaga sem motivo — se o membro sumiu do motor,")
+        post("rode com --grava pra baixar a base de propósito.")
+        sys.exit(1)
+    }
+    if com > gravado {
+        open(BASE, "w").write(str(com) + "\n")
+        post("base subiu: " + str(gravado) + " -> " + str(com))
+    }
+    post("cobertura da doc: não caiu (base " + str(gravado) + ")")
+}

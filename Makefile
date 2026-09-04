@@ -28,7 +28,7 @@ CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_guzer.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -42,7 +42,7 @@ MK := $(lastword $(MAKEFILE_LIST))
 
 pool: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libX11.so.6 -l:libgmp.so.10
+	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libgmp.so.10
 
 # Bundle PORTÁTIL: pool + todas as .so numa pasta lib/, com wrapper. Roda em
 # qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls, krb5,
@@ -244,7 +244,7 @@ pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
 	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libX11.so.6 -l:libgmp.so.10
+	  -l:libgmp.so.10
 
 # Análise estática do gcc: caminho de execução simbólico, acha vazamento,
 # desreferência de NULL e uso de não-inicializado sem rodar o programa.
@@ -392,6 +392,14 @@ check: pool testar
 	@echo
 	@./pool scripts/audita_doc.ps
 	@echo
+	# COBERTURA da doc, com catraca. O `audita_doc` acima confere a página que
+	# EXISTE contra o motor e passa dizendo "nenhuma divergencia" — o que se le
+	# como "esta completa". Ele nunca perguntou se a pagina existe: media 132 e
+	# calava sobre 721 membros sem nenhuma, `hash.sha256` e `sys.stdin` entre
+	# eles. Portao que aprova medindo 15% sem dizer que sao 15% e' pior que
+	# portao nenhum, porque vira base pra afirmar que esta tudo conferido.
+	@./pool teste/confere_cobertura_doc.ps
+	@echo
 	@./pool scripts/audita_c.ps
 	@echo
 	@./pool scripts/audita_exemplos_doc.ps
@@ -443,7 +451,7 @@ check: pool testar
 	@$(MAKE) --no-print-directory check-debug
 	@echo
 	# E2E que nao precisa de servico externo. Ficou FORA do portao por um tempo,
-	# e o preco foi ps_jinker.c, ps_db.c e ps_guzer.c em 0% de cobertura: nao por
+	# e o preco foi ps_jinker.c e ps_db.c em 0% de cobertura: nao por
 	# falta de teste, mas porque o teste que os cobre nao entrava em portao nenhum.
 	@$(MAKE) --no-print-directory check-e2e-local
 	@echo
@@ -472,12 +480,12 @@ check-e2e: pool
 	@./pool teste/e2e_roda.ps $(E2E)
 
 # E2E que NÃO precisa de serviço externo: arquivo, sqlite (embutida), socket
-# (loopback), guzer (headless) e o par jinker (loopback). São cinco scripts que
+# (loopback) e o par jinker (loopback). São scripts que
 # rodam em qualquer máquina, e são o caminho mais barato pra tirar
-# `ps_jinker.c`, `ps_db.c` e `ps_guzer.c` dos 0% de cobertura — eles estão em
+# `ps_jinker.c` e `ps_db.c` dos 0% de cobertura — eles estão em
 # zero não por serem código morto, mas porque só o e2e os toca e o e2e não
 # entrava em portão nenhum.
-E2E_SEM_SERVICO := arquivo sqlite socket guzer guzer_janela pkg mail_local jinker manpu qrcode c d f
+E2E_SEM_SERVICO := arquivo sqlite socket pkg mail_local jinker manpu qrcode c d f
 # DIZ QUAL alvo caiu. Antes o laço só levantava uma flag e o fim imprimia
 # "e2e local: FALHOU" — treze alvos rodados, nenhum nome. Portão que reprova
 # sem dizer o quê obriga a rodar tudo de novo à mão pra descobrir, que é o
@@ -525,7 +533,7 @@ pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	  -lpgport -lmariadb -lodbc -lssl -lcrypto -lpng -lexpat -lz \
 	  -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 \
 	  -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libX11.so.6 -l:libgmp.so.10
+	  -l:libgmp.so.10
 
 # Falha a i-ésima alocação de cada programa de teste/oom_varre.ps. Passar não é
 # "não deu erro": é "morreu limpo" — segfault, liberação dupla e trava reprovam.
@@ -553,7 +561,7 @@ pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
 	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libX11.so.6 -l:libgmp.so.10
+	  -l:libgmp.so.10
 
 # Semeia o corpus com os programas que a suíte já tem: o fuzzer parte de
 # entrada VÁLIDA e muta a partir dela, em vez de descobrir a sintaxe do zero.
@@ -620,7 +628,7 @@ pool-debug: $(FONTES) $(VM)/ps_versao.h $(MK)
 	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libX11.so.6 -l:libgmp.so.10
+	  -l:libgmp.so.10
 
 check-debug: pool-debug testar
 	@echo "suite inteira com as invariantes do motor ligadas…"
@@ -638,11 +646,11 @@ cobertura: testar
 	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libX11.so.6 -l:libgmp.so.10
+	  -l:libgmp.so.10
 	@echo "rodando a suite contra o binario instrumentado…"
 	@PS_POOL=cob/pool nice -n 19 ./testar 2>&1 | tail -2
 	# O PORTÃO INTEIRO, não só o `testar`. Enquanto a medição rodava apenas a
-	# suíte, `ps_jinker.c`, `ps_db.c`, `ps_guzer.c` e os 113 nativos de socket
+	# suíte, `ps_jinker.c`, `ps_db.c` e os 113 nativos de socket
 	# apareciam em 0% — não por falta de teste, mas porque o teste que os cobre
 	# (e2e local, drivers .ps) rodava FORA da medição. Número que ignora metade
 	# do portão manda corrigir o que já está coberto.
