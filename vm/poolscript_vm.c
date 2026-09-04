@@ -1620,7 +1620,7 @@ static void fin_mailrd(VM *, Obj *);    static void fin_response(VM *, Obj *);
 static void fin_qrfile(VM *, Obj *);    static void fin_manpu_res(VM *, Obj *);
 static void fin_dbconn(VM *, Obj *);    static void fin_dbcur(VM *, Obj *);
 static void fin_mongoconn(VM *, Obj *); static void fin_mongocol(VM *, Obj *);
-static void fin_mailmsg(VM *, Obj *);
+static void fin_mailmsg(VM *, Obj *);   static void fin_jinker(VM *, Obj *);
 static void fin_jcors(VM *, Obj *);     static void fin_jreg(VM *, Obj *);
 static void fin_jresp(VM *, Obj *);     static void fin_jreq(VM *, Obj *);
 static void fin_jproxy(VM *, Obj *);    static void fin_jupload(VM *, Obj *);
