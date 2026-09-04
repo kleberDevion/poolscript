@@ -853,8 +853,6 @@ const Caso CASOS_LINGUAGEM[] = {
   "import regex\np = regex.compile(\"\\\\d+\")\n"
   "post(p.match(\"77\"), p.search(\"a9\"), p.findall(\"x9y8\"), p.fullmatch(\"12\"))\n",
   "True True ['9', '8'] True", NULL, 0 },
-{ "elemento do guzer sem argumento continua valendo",
-  "import guzer\na = guzer.UI()\npost(type(a.p()), type(a.div()))\n", "p div", NULL, 0 },
 
 /* ── jinker: status e corpo vazio ────────────────────────────────────────
  * Achados rodando o servidor da linguagem em loopback e batendo nele com o

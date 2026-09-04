@@ -49,7 +49,6 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 - **[mail](mail/mail.md)** — enviar e ler e-mails
 
 ### Interface (desktop)
-- **[guzer](guzer/guzer.md)** — UI desktop com os elementos do HTML, janela nativa (X11)
 
 ### Linguagem
 - **[exceptions](exceptions/exceptions.md)** — erros, `raise` (tipo livre) e `catch` (tipo/variável opcionais)

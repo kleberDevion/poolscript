@@ -141,7 +141,7 @@ portão também cobra. O que não pode é o piso ser o buraco.
 ### E `make cobertura` mede menos do que roda
 
 Confira antes de qualquer coisa: o alvo `cobertura` roda `./testar`, mas o que
-tira db/jinker/guzer do zero é o `make check-e2e-local` (10 scripts, entrou em
+tira db/jinker do zero é o `make check-e2e-local` (entrou em
 `6ca7def`). Se a medição não incluir o e2e, o baseline nasce zerado de novo por
 construção.
 

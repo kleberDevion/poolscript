@@ -75,12 +75,6 @@ action espera_porta(porta, prazo) {
 
 # Scripts que PRECISAM de janela de verdade.
 #
-# O padrão daqui é `GUZER_HEADLESS=1`, senão todo script que monta UI trava
-# esperando o usuário fechar a janela. Mas o headless retorna de `guz_mostra`
-# na primeira linha, e foi por isso que `vm/ps_guzer.c` — desenho, despacho de
-# clique, laço de eventos — ficou em 0,0% de cobertura com o e2e passando.
-# Estes rodam SEM o headless; eles mesmos sobem o Xvfb e agem pelo xdotool.
-COM_JANELA = ["guzer_janela.ps"]
 
 
 PIDFILE = "/tmp/ps_e2e_srv.pid"
@@ -99,7 +93,7 @@ PIDFILE = "/tmp/ps_e2e_srv.pid"
 # por pid exato o problema não existe.
 action sobe(srv) {
     os.cmd("rm -f " + PIDFILE)
-    os.cmd("sh -c 'exec env GUZER_HEADLESS=1 \"" + sys.executable + "\" "
+    os.cmd("sh -c 'exec \"" + sys.executable + "\" "
            + PASTA + "/" + srv + " > /tmp/ps_e2e_srv.log 2>&1 < /dev/null' &"
            + " echo $! > " + PIDFILE)
     i = 0
@@ -149,13 +143,10 @@ action derruba(pid) {
 
 # Roda um script e devolve [rc, saida_junta].
 action roda(caminho) {
-    env = "GUZER_HEADLESS=1 "
-    for each nome in COM_JANELA {
-        if caminho.endswith(nome) {
-            env = ""
-        }
-    }
-    os.cmd(env + "timeout " + str(TEMPO) + " '" + sys.executable + "' " +
+    # Havia aqui uma lista `COM_JANELA` e um `GUZER_HEADLESS=1` no ambiente: o
+    # guzer abria janela no fim do script e travava esperando o usuário fechar.
+    # O guzer saiu da linguagem; nenhum script do e2e abre janela.
+    os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' " +
            caminho + " > /tmp/ps_e2e_out.txt 2>&1 < /dev/null; echo $? > /tmp/ps_e2e_rc.txt")
     rc = int(open("/tmp/ps_e2e_rc.txt").read().strip())
     return [rc, open("/tmp/ps_e2e_out.txt").read()]

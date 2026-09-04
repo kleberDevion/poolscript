@@ -11,7 +11,6 @@ virava `$1` no PostgreSQL.
 | `arquivo.ps` | nada (usa `/tmp`) | `./pool teste/e2e/arquivo.ps` |
 | `sqlite.ps` | nada (sqlite é embutido) | `./pool teste/e2e/sqlite.ps` |
 | `socket.ps` | nada (loopback) | `./pool teste/e2e/socket.ps` |
-| `guzer.ps` | nada | `GUZER_HEADLESS=1 ./pool teste/e2e/guzer.ps` |
 | `jinker_srv.ps` + `jinker_cli.ps` | nada (loopback) | ver abaixo |
 | `db.ps` | PostgreSQL e/ou MySQL | ver abaixo |
 | `mongo.ps` | mongod local | ver abaixo |
@@ -67,11 +66,6 @@ Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
   mensagem, e só pra ele; é o único jeito de responder fora de um canal.
 - `emit` que não alcança ninguém devolve `Error`, não `Success`.
 
-## guzer
-
-`GUZER_HEADLESS=1` monta a árvore inteira **sem abrir janela**. Sem essa
-variável o script trava esperando você fechar a janela — não é defeito, é o
-`guzer.UI()` sendo exibido ao fim do script por definição.
 
 ## Bancos
 

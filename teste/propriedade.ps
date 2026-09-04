@@ -92,7 +92,7 @@ action roda(fonte, tag) {
     using open(alvo, "w") as f {
         f.write(fonte)
     }
-    os.cmd("cd " + TMP + " && GUZER_HEADLESS=1 timeout 15 '" + sys.executable + "' " +
+    os.cmd("cd " + TMP + " && timeout 15 '" + sys.executable + "' " +
            tag + ".ps > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
     rc = int(open(TMP + "/rc.txt").read().strip())
     return [rc, open(TMP + "/o.txt").read(), open(TMP + "/e.txt").read().split("\n")[0]]

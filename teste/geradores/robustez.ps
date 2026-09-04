@@ -29,10 +29,10 @@ ALVO = [
     ["MailMessage", "mail.MailMessage()"], ["MailServer", "mail.MailServer()"],
     ["MailReader", "mail.MailReader()"], ["Jinker", "jinker.Jinker(name=\"r\")"],
     ["JinkerResponse", "jinker.JinkerResponse()"], ["QRImage", "qrcode.make(\"x\")"],
-    ["UI", "guzer.UI()"], ["socket", "sockets.socket()"]
+    ["socket", "sockets.socket()"]
 ]
 
-IMPORTS = "import os\nimport regex\nimport mail\nimport jinker\nimport qrcode\nimport guzer\nimport sockets\n"
+IMPORTS = "import os\nimport regex\nimport mail\nimport jinker\nimport qrcode\nimport sockets\n"
 
 # Chamada errada com efeito colateral EXISTE: um QRImage que recebeu a string
 # "texto" como caminho salvou um PNG na raiz do repo. Cada tipo roda numa pasta
@@ -209,7 +209,7 @@ if __name__ == "main" {
         using open(fonte, "w") as f {
             f.write(sonda)
         }
-        os.cmd("GUZER_HEADLESS=1 ./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
+        os.cmd("./pool " + fonte + " > " + TMP + "/out 2> " + TMP + "/err; echo $? > " + TMP + "/rc")
         saida = open(TMP + "/out").read().strip()
         rc = int(open(TMP + "/rc").read().strip())
         if rc != 0 {
@@ -235,7 +235,7 @@ if __name__ == "main" {
         using open(fonte, "w") as f {
             f.write(src)
         }
-        os.cmd("GUZER_HEADLESS=1 ./pool " + fonte + " > " + TMP + "/out2 2> " + TMP + "/err2; echo $? > " + TMP + "/rc2")
+        os.cmd("./pool " + fonte + " > " + TMP + "/out2 2> " + TMP + "/err2; echo $? > " + TMP + "/rc2")
         conf = open(TMP + "/out2").read().strip()
         if conf != "ok" {
             post("ERRO: o caso de", tipo, "nao ficou verde com a propria divida:", conf)

@@ -75,7 +75,7 @@ action roda(caminho, falha_em, contando) {
     if falha_em > 0 {
         env = env + "PS_OOM_FALHA=" + str(falha_em) + " "
     }
-    os.cmd("cd '" + TMP + "' && " + env + "GUZER_HEADLESS=1 timeout 20 " +
+    os.cmd("cd '" + TMP + "' && " + env + "timeout 20 " +
            BASE + "/" + BIN + " " + caminho +
            " > o.txt 2> e.txt 3> n.txt < /dev/null; echo $? > rc.txt")
     rc = int(open(TMP + "/rc.txt").read().strip())
