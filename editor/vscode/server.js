@@ -1,39 +1,3 @@
-/*
- * Servidor LSP da PoolScript, sobre `vscode-languageserver`.
- *
- * POR QUE ESTE ARQUIVO SUBSTITUIU O `lsp/servidor.ps`:
- *
- * O servidor anterior era escrito em PoolScript e implementava o protocolo à
- * mão. Ele anunciava QUATRO capacidades (sync, completion, hover, semantic
- * tokens) e respondia `-32601` pra todo o resto — sem "ir pra definição", sem
- * outline, sem símbolos, sem signature help, sem rename. E o pouco que fazia,
- * fazia adivinhando com busca de string no texto cru, o que produzia:
- *
- *     import json as js   ->  `js.` dava ZERO sugestão (o `as` era ignorado)
- *     import random       ->  ZERO (lib instalada em ~/.poolscript/libs não
- *                             era catalogada; havia quatro instaladas aqui)
- *     regex.sub("(", )    ->  o parêntese DENTRO DA STRING quebrava o detector
- *     f(  com action f    ->  função LOCAL não oferecia parâmetro nenhum
- *     regex.sub("a","b",  ->  reoferecia os cinco parâmetros, inclusive os
- *                             dois já passados
- *
- * Nada disso é bug de detalhe: é o que acontece quando se reimplementa
- * protocolo e análise léxica em vez de usar o que existe.
- *
- * A DIVISÃO AGORA É ESTA, e ela é a razão do arquivo:
- *
- *   protocolo   `vscode-languageserver`, a implementação de REFERÊNCIA. Sync
- *               incremental, capacidades, cancelamento — nada disso é nosso.
- *   análise     O MOTOR. `pool --tokens` dá o lexer de verdade (string e
- *               comentário são TOKENS, então parêntese dentro deles nunca se
- *               confunde com chamada), `pool --metadata` dá módulos/tipos/
- *               métodos lidos das tabelas do VM, `pool --check` dá o
- *               diagnóstico. Aqui não há uma segunda gramática.
- *   prosa       `docs/<escopo>/<nome>/<nome>.md`, a mesma página que o
- *               `scripts/audita_doc.ps` confere contra o motor.
- *
- * Nenhuma lista de módulo, método ou lib é digitada neste arquivo.
- */
 'use strict';
 
 const {
@@ -150,8 +114,36 @@ function tokensDe(doc) {
  * e o `js.` continuava dando zero, agora por outro motivo. */
 function ehNome(t) {
   if (!t) return false;
-  if (t.t === 'IDENT') return true;
+  if (t.t === 'IDENT' || t.t === 'IDENT_UPPER') return true;
   return t.t === 'KW' && (!!META.modulos[t.v] || !!META.tipos[t.v]);
+}
+
+/* IDENT **ou** IDENT_UPPER.
+ *
+ * O lexer separa os dois porque o nome de Entity começa com maiúscula
+ * (docs/linguagem/01-estrutura-lexica.md §1.4). Este arquivo exigia `IDENT`
+ * em `simbolosDoDoc` e em `membrosDeArquivo` — e com isso TODA Entity, de
+ * todo arquivo, era invisível pro servidor. Não era um detalhe de completion:
+ * era a razão de `self.` não oferecer nada, de `c = Conta(...)` seguido de
+ * `c.` não oferecer nada, e de o nome da classe nem aparecer na lista. */
+function ehIdent(t) { return !!t && (t.t === 'IDENT' || t.t === 'IDENT_UPPER'); }
+
+/* Palavra que pode ser TIPO numa declaração de campo (`str nome`, `B dono`). */
+const TIPOS_KW = ['str', 'int', 'flo', 'bool', 'char', 'list', 'json', 'dict', 'tup'];
+function ehTipo(t) {
+  if (!t) return false;
+  if (t.t === 'IDENT_UPPER') return true;
+  return t.t === 'KW' && TIPOS_KW.indexOf(t.v) >= 0;
+}
+
+/* Índice do `}` que casa com o `{` em `iAbre`. */
+function fechaBloco(toks, iAbre) {
+  let prof = 0;
+  for (let k = iAbre; k < toks.length; k++) {
+    if (toks[k].t === 'LBRACE') prof++;
+    else if (toks[k].t === 'RBRACE') { prof--; if (prof === 0) return k; }
+  }
+  return toks.length - 1;
 }
 
 /* Índice do primeiro token que COMEÇA em ou depois da posição. */
@@ -189,6 +181,15 @@ function dentroDeTextoLivre(toks, pos) {
 function pastaLibs() {
   const h = process.env.HOME;
   return h ? path.join(h, '.poolscript', 'libs') : '';
+}
+
+/* Os nomes instalados em `~/.poolscript/libs` — o que `import <nome>` acha. */
+function libsInstaladas() {
+  try {
+    return fs.readdirSync(pastaLibs())
+      .filter((f) => f.endsWith('.ps'))
+      .map((f) => f.slice(0, -3));
+  } catch (_) { return []; }
 }
 
 function arquivoDoImport(mod, dirDoc) {
@@ -239,20 +240,24 @@ function importsDe(doc) {
  *
  * Também pelos tokens do motor: uma `action` citada num comentário do arquivo
  * importado não vira membro. */
-const CACHE_ARQ = new Map();     // caminho -> {mtime, membros}
+const CACHE_ARQ = new Map();     // caminho -> {mtime, membros, ents}
 
-function membrosDeArquivo(caminho) {
-  if (!caminho) return [];
+function leArquivo(caminho) {
+  if (!caminho) return { membros: [], ents: [] };
   let mtime;
-  try { mtime = fs.statSync(caminho).mtimeMs; } catch (_) { return []; }
+  try { mtime = fs.statSync(caminho).mtimeMs; } catch (_) { return { membros: [], ents: [] }; }
   const c = CACHE_ARQ.get(caminho);
-  if (c && c.mtime === mtime) return c.membros;
+  if (c && c.mtime === mtime) return c;
 
   let texto;
-  try { texto = fs.readFileSync(caminho, 'utf8'); } catch (_) { return []; }
+  try { texto = fs.readFileSync(caminho, 'utf8'); } catch (_) { return { membros: [], ents: [] }; }
   const bruto = motor(['--tokens'], texto);
   let toks = [];
   if (bruto.trim().startsWith('[')) { try { toks = JSON.parse(bruto); } catch (_) { toks = []; } }
+
+  const ents = entidadesEmToks(toks);
+  for (const e of ents) e.arquivo = caminho;   /* "ir pra definição" atravessa arquivo */
+  const dentroDeEntity = (i) => ents.some((e) => i > e.iIni && i <= e.iFim);
 
   const membros = [];
   const vistos = new Set();
@@ -261,13 +266,16 @@ function membrosDeArquivo(caminho) {
     const t = toks[i];
     if (t.t === 'LBRACE' || t.t === 'INDENT') prof++;
     else if (t.t === 'RBRACE' || t.t === 'DEDENT') prof = Math.max(0, prof - 1);
-    if (prof !== 0) continue;                    /* só o nível de topo */
     const kw = t.t === 'KW' ? t.v : '';
     const decl = (kw === 'action' || kw === 'reaction') ? 'action'
                : (kw === 'class' || kw === 'Class' || kw === 'Entity') ? 'class' : '';
     if (!decl) continue;
+    /* o método de uma Entity não é membro do MÓDULO — mas a Entity é, e ela
+     * abre um bloco, então contar só `prof === 0` deixava a classe de fora
+     * quando o `{` dela ficava na linha de baixo. */
+    if (decl === 'action' && (prof !== 0 || dentroDeEntity(i))) continue;
     const ident = toks[i + 1];
-    if (!ident || ident.t !== 'IDENT') continue;
+    if (!ehIdent(ident)) continue;
     const nome = ident.v;
     if (nome.startsWith('_') || vistos.has(nome)) continue;
     vistos.add(nome);
@@ -280,9 +288,13 @@ function membrosDeArquivo(caminho) {
       coluna: ident.c - 1,
     });
   }
-  CACHE_ARQ.set(caminho, { mtime, membros });
-  return membros;
+  const r = { mtime, membros, ents };
+  CACHE_ARQ.set(caminho, r);
+  return r;
 }
+
+function membrosDeArquivo(caminho) { return leArquivo(caminho).membros; }
+function entidadesDeArquivo(caminho) { return leArquivo(caminho).ents; }
 
 /* Os parâmetros de uma declaração, a partir do índice do `(`. */
 function paramsDaDeclaracao(toks, iAbre) {
@@ -312,6 +324,240 @@ function paramsDaDeclaracao(toks, iAbre) {
   return ps;
 }
 
+/* ── Entity: campos, métodos, visibilidade e herança ──────────────────────
+ *
+ * Nada disto existia. O servidor indexava `action` de topo e mais nada, então
+ * as três coisas que ele cobrou — classe, herança, `self` — não tinham como
+ * funcionar: não havia onde procurar a resposta.
+ *
+ * Cada entrada guarda o INTERVALO DE TOKENS do corpo. É por ele que se sabe
+ * em qual Entity o cursor está — e portanto o que `self.` deve oferecer,
+ * incluindo o que é `private` (de dentro, private é visível; é a regra que a
+ * VM impõe em runtime, e o completion tem que contar a mesma história). */
+
+/* Campos que o CORPO de um método cria: `self.x = …` e a declaração com
+ * visibilidade `private str nome = …` (docs/linguagem/07-entity.md §7.6.1).
+ * Sem isto, uma Entity que monta tudo no `__init__` — que é como ele
+ * escreve — não teria campo nenhum. */
+function camposDoMetodo(toks, iIni, iFim, membros) {
+  const jaTem = new Set(membros.map((m) => m.nome));
+  for (let i = iIni; i < iFim; i++) {
+    const t = toks[i];
+    const anterior = toks[i - 1];
+    /* `private str name = nome` */
+    if (ehTipo(t) && ehIdent(toks[i + 1])
+        && toks[i + 2] && toks[i + 2].t === 'OP' && toks[i + 2].v === '='
+        && anterior && anterior.t === 'KW'
+        && (anterior.v === 'private' || anterior.v === 'public')) {
+      const nt = toks[i + 1];
+      if (!jaTem.has(nt.v)) {
+        jaTem.add(nt.v);
+        membros.push({ nome: nt.v, kind: 'campo', privado: anterior.v === 'private',
+                       tipo: t.v, linha: nt.l - 1, coluna: nt.c - 1 });
+      }
+      continue;
+    }
+    /* `self.x = …` — campo dinâmico (§7.2) */
+    if (t.t === 'KW' && t.v === 'self' && toks[i + 1] && toks[i + 1].t === 'DOT'
+        && ehIdent(toks[i + 2]) && toks[i + 3] && toks[i + 3].t === 'OP'
+        && /^[-+*/%]?=$/.test(toks[i + 3].v)) {
+      const nt = toks[i + 2];
+      if (!jaTem.has(nt.v)) {
+        jaTem.add(nt.v);
+        membros.push({ nome: nt.v, kind: 'campo', privado: false, tipo: '',
+                       linha: nt.l - 1, coluna: nt.c - 1 });
+      }
+    }
+  }
+}
+
+/* Membros declarados entre `{` e `}` de uma Entity. */
+function membrosNoCorpo(toks, iIni, iFim) {
+  const membros = [];
+  let priv = false;
+  for (let i = iIni + 1; i < iFim; i++) {
+    const t = toks[i];
+    if (t.t === 'KW' && (t.v === 'private' || t.v === 'public')) {
+      priv = t.v === 'private';
+      continue;
+    }
+    /* método: [public|private] [async|tipo]* action|reaction NOME(...) {...} */
+    if (t.t === 'KW' && (t.v === 'action' || t.v === 'reaction')) {
+      const nt = toks[i + 1];
+      if (ehIdent(nt)) {
+        const ps = paramsDaDeclaracao(toks, i + 2);
+        membros.push({
+          nome: nt.v, kind: 'action', privado: priv,
+          /* `self` não é argumento de quem chama: `c.deposita(v)` passa UM. */
+          params: ps.filter((x) => x.nome !== 'self'),
+          linha: nt.l - 1, coluna: nt.c - 1,
+        });
+      }
+      let j = i + 1;
+      while (j < iFim && toks[j].t !== 'LBRACE') j++;
+      if (j < iFim) {
+        const corpo = Math.min(fechaBloco(toks, j), iFim);
+        camposDoMetodo(toks, j, corpo, membros);
+        i = corpo;
+      }
+      priv = false;
+      continue;
+    }
+    /* campo `nome: tipo [= valor]` */
+    if (ehIdent(t) && toks[i + 1] && toks[i + 1].t === 'COLON') {
+      const tt = toks[i + 2];
+      membros.push({ nome: t.v, kind: 'campo', privado: priv,
+                     tipo: tt ? tt.v : '', linha: t.l - 1, coluna: t.c - 1 });
+      priv = false;
+      continue;
+    }
+    /* campo `tipo nome [= valor]` — a outra ordem (§7.2) */
+    if (ehTipo(t) && ehIdent(toks[i + 1])) {
+      const nt = toks[i + 1];
+      membros.push({ nome: nt.v, kind: 'campo', privado: priv,
+                     tipo: t.v, linha: nt.l - 1, coluna: nt.c - 1 });
+      priv = false;
+      continue;
+    }
+    if (t.t !== 'NEWLINE' && t.t !== 'INDENT' && t.t !== 'DEDENT'
+        && t.t !== 'AT' && t.t !== 'KW') priv = false;
+  }
+  return membros;
+}
+
+/* As Entities de uma lista de tokens. */
+function entidadesEmToks(toks) {
+  const out = [];
+  for (let i = 0; i < toks.length; i++) {
+    const t = toks[i];
+    if (!(t.t === 'KW' && (t.v === 'Entity' || t.v === 'class' || t.v === 'Class'))) continue;
+    const nt = toks[i + 1];
+    if (!ehIdent(nt)) continue;
+    const bases = [];
+    let j = i + 2;
+    if (toks[j] && toks[j].t === 'LPAREN') {          /* `Entity Conta(Base)` */
+      j++;
+      while (j < toks.length && toks[j].t !== 'RPAREN') {
+        if (ehIdent(toks[j])) bases.push(toks[j].v);
+        j++;
+      }
+      j++;
+    }
+    while (j < toks.length && toks[j].t !== 'LBRACE' && toks[j].t !== 'RBRACE') j++;
+    if (!toks[j] || toks[j].t !== 'LBRACE') continue;
+    const fim = fechaBloco(toks, j);
+    out.push({
+      nome: nt.v, bases, iIni: j, iFim: fim,
+      linha: nt.l - 1, coluna: nt.c - 1,
+      membros: membrosNoCorpo(toks, j, fim),
+    });
+    i = fim;                                          /* não reentra no corpo */
+  }
+  return out;
+}
+
+const CACHE_ENT = new Map();     // uri -> {versao, ents}
+function entidadesDe(doc) {
+  const c = CACHE_ENT.get(doc.uri);
+  if (c && c.versao === doc.version) return c.ents;
+  const ents = entidadesEmToks(tokensDe(doc));
+  CACHE_ENT.set(doc.uri, { versao: doc.version, ents });
+  return ents;
+}
+
+/* A Entity cujo CORPO contém o cursor — quem responde o `self.`. */
+function entidadeEm(doc, pos) {
+  const toks = tokensDe(doc);
+  const i = corteEm(toks, pos);
+  for (const e of entidadesDe(doc)) if (i > e.iIni && i <= e.iFim) return e;
+  return null;
+}
+
+/* Acha a Entity pelo nome: neste documento ou num arquivo importado. */
+function achaEntidade(doc, nome) {
+  for (const e of entidadesDe(doc)) if (e.nome === nome) return e;
+  for (const [, imp] of importsDe(doc)) {
+    if (!imp.arquivo) continue;
+    for (const e of entidadesDeArquivo(imp.arquivo)) if (e.nome === nome) return e;
+  }
+  return null;
+}
+
+/* Membros de uma Entity **com herança**, na ordem em que o Python resolve:
+ * o da própria classe vence o do pai. `interno` = o cursor está dentro da
+ * classe, então `private` conta. */
+function membrosDaEntidade(doc, nome, interno, vistos) {
+  vistos = vistos || new Set();
+  if (vistos.has(nome)) return [];      /* herança circular não trava o editor */
+  vistos.add(nome);
+  const e = achaEntidade(doc, nome);
+  if (!e) return [];
+  const out = [];
+  const jaTem = new Set();
+  for (const m of e.membros) {
+    /* `__init__` é o construtor: chama-se escrevendo `Conta(...)`, nunca
+     * `c.__init__(...)`. Oferecê-lo é ruído em toda lista de membro. */
+    if (m.nome === '__init__') continue;
+    if (m.privado && !interno) continue;
+    if (jaTem.has(m.nome)) continue;
+    jaTem.add(m.nome);
+    out.push(Object.assign({ de: nome }, m));
+  }
+  for (const b of e.bases) {
+    /* herdado: o `private` do pai NÃO é visível nem de dentro do filho */
+    for (const m of membrosDaEntidade(doc, b, false, vistos)) {
+      if (jaTem.has(m.nome)) continue;
+      jaTem.add(m.nome);
+      out.push(m);
+    }
+  }
+  return out;
+}
+
+/* Nomes visíveis no ponto do cursor: parâmetros da action que o contém e o
+ * que foi ligado antes dele. Era a outra metade do "não sugere nada": mesmo
+ * com as classes indexadas, digitar dentro de uma action não oferecia nem o
+ * parâmetro que está no cabeçalho três linhas acima. */
+function escopoLocal(doc, pos) {
+  const toks = tokensDe(doc);
+  const fim = corteEm(toks, pos);
+  const out = new Map();
+
+  for (let i = 0; i < fim; i++) {
+    const t = toks[i];
+    if (!(t.t === 'KW' && (t.v === 'action' || t.v === 'reaction'))) continue;
+    let j = i + 1;
+    if (ehIdent(toks[j])) j++;
+    if (!toks[j] || toks[j].t !== 'LPAREN') continue;
+    const ps = paramsDaDeclaracao(toks, j);
+    let k = j;
+    while (k < toks.length && toks[k].t !== 'LBRACE') k++;
+    if (k >= toks.length) continue;
+    if (k < fim && fim <= fechaBloco(toks, k)) {
+      for (const p of ps) out.set(p.nome, 'parametro');
+    }
+  }
+
+  for (let i = 0; i + 1 < fim; i++) {
+    const t = toks[i];
+    if (!ehIdent(t)) continue;
+    const nx = toks[i + 1];
+    const atribui = nx.t === 'OP' && nx.v === '=';
+    const doLaco  = nx.t === 'KW' && nx.v === 'in'
+                 && toks[i - 1] && toks[i - 1].t === 'KW' && toks[i - 1].v === 'each';
+    /* `a, b = …` — o alvo de desempacotamento também é nome ligado */
+    const emTupla = nx.t === 'COMMA' && (() => {
+      for (let k = i + 1; k < fim && k < i + 12; k++) {
+        if (toks[k].t === 'OP' && toks[k].v === '=') return true;
+        if (toks[k].t === 'NEWLINE' || toks[k].t === 'LPAREN') return false;
+      }
+      return false;
+    })();
+    if ((atribui || doLaco || emTupla) && !out.has(t.v)) out.set(t.v, 'variavel');
+  }
+  return out;
+}
+
 /* Declarações de topo DO PRÓPRIO documento — para completion, outline e
  * "ir pra definição". */
 function simbolosDoDoc(doc) {
@@ -327,7 +573,7 @@ function simbolosDoDoc(doc) {
                : (kw === 'class' || kw === 'Class' || kw === 'Entity') ? 'class' : '';
     if (!decl) continue;
     const ident = toks[i + 1];
-    if (!ident || ident.t !== 'IDENT') continue;
+    if (!ehIdent(ident)) continue;
     out.push({
       nome: ident.v,
       kind: decl,
@@ -429,7 +675,12 @@ function tipoDaVariavel(doc, nome) {
   const toks = tokensDe(doc);
   let tipo = '';
   for (let i = 0; i + 2 < toks.length; i++) {
-    if (toks[i].t !== 'IDENT' || toks[i].v !== nome) continue;
+    if (!ehIdent(toks[i]) || toks[i].v !== nome) continue;
+    /* `str s = "a"` — o tipo está DECLARADO, uma palavra antes */
+    if (ehTipo(toks[i - 1]) && toks[i + 1].t === 'OP' && toks[i + 1].v === '=') {
+      tipo = toks[i - 1].v;
+      continue;
+    }
     if (!(toks[i + 1].t === 'OP' && toks[i + 1].v === '=')) continue;
     const d = toks[i + 2];
     if (d.t === 'STR') { tipo = 'str'; continue; }
@@ -437,14 +688,47 @@ function tipoDaVariavel(doc, nome) {
     if (d.t === 'FLOAT') { tipo = 'flo'; continue; }
     if (d.t === 'LBRACK') { tipo = 'list'; continue; }
     if (d.t === 'LBRACE') { tipo = 'dict'; continue; }
-    /* `x = mod.membro(...)` — o tipo é o retorno declarado */
-    if (d.t === 'IDENT' && toks[i + 3] && toks[i + 3].t === 'DOT' && toks[i + 4]) {
+    /* `c = Conta(...)` — instância de Entity. Faltava, e era o caso do dia a
+     * dia dele: sem isto, `c.` não tinha o que oferecer. */
+    if (ehIdent(d) && toks[i + 3] && toks[i + 3].t === 'LPAREN' && achaEntidade(doc, d.v)) {
+      tipo = d.v;
+      continue;
+    }
+    /* `x = mod.membro(...)` — o tipo é o retorno declarado; `x = mod.Classe()`
+     * é a Entity daquele arquivo */
+    if (ehIdent(d) && toks[i + 3] && toks[i + 3].t === 'DOT' && toks[i + 4]) {
+      const imp = importsDe(doc);
+      if (imp.has(d.v) && imp.get(d.v).arquivo) {
+        for (const e of entidadesDeArquivo(imp.get(d.v).arquivo)) {
+          if (e.nome === toks[i + 4].v) { tipo = e.nome; break; }
+        }
+      }
       for (const m of membrosDoNome(doc, d.v)) {
         if (m.nome === toks[i + 4].v && m.retorna) { tipo = m.retorna; break; }
       }
     }
   }
   return tipo;
+}
+
+/* Um item de completion pra um membro de Entity. */
+function itemDeMembro(m, deOndeVem) {
+  const priv = m.privado ? ' · private' : '';
+  const herdado = deOndeVem && m.de && m.de !== deOndeVem ? ` · de ${m.de}` : '';
+  if (m.kind === 'action') {
+    return {
+      label: m.nome,
+      kind: CompletionItemKind.Method,
+      detail: assinatura(m) + priv + herdado,
+      sortText: (m.privado ? '1' : '0') + m.nome,
+    };
+  }
+  return {
+    label: m.nome,
+    kind: CompletionItemKind.Field,
+    detail: (m.tipo ? `${m.tipo} ${m.nome}` : m.nome) + priv + herdado,
+    sortText: (m.privado ? '1' : '0') + m.nome,
+  };
 }
 
 function assinatura(m) {
@@ -526,10 +810,51 @@ conexao.onCompletion((p) => {
     end: p.position,
   });
 
+  /* `import <cursor>` / `from <cursor>` — AQUI é onde os módulos do motor
+   * fazem sentido, e só aqui.
+   *
+   * Antes eles entravam na lista de QUALQUER lugar do arquivo, com
+   * "(precisa de import)" no detalhe: digitar `f` oferecia `flask`. Um nome
+   * que o arquivo não importou não é candidato a nada — é ruído com cara de
+   * sugestão. */
+  if (/(^|\s)(import|from|PUSH)\s+[A-Za-z0-9_.]*$/.test(linha)) {
+    const itens = Object.keys(META.modulos || {})
+      .filter((m) => m.indexOf('.') < 0)
+      .map((m) => ({
+        label: m,
+        kind: CompletionItemKind.Module,
+        detail: `modulo do motor — ${(META.modulos[m] || []).length} membros`,
+        documentation: { kind: MarkupKind.Markdown, value: resumoDe(m, m) },
+      }));
+    for (const nome of libsInstaladas()) {
+      itens.push({ label: nome, kind: CompletionItemKind.Module, detail: 'lib instalada' });
+    }
+    return itens;
+  }
+
+  /* `self.` — os membros da Entity que CONTÉM o cursor, herdados inclusive.
+   * De dentro da classe o `private` aparece: é a mesma regra que a VM impõe
+   * (docs/linguagem/07-entity.md §7.6), e o completion não pode contar outra
+   * história. */
+  if (/(^|[^A-Za-z0-9_.])self\.\s*$/.test(linha)) {
+    const ent = entidadeEm(doc, p.position);
+    if (!ent) return [];
+    return membrosDaEntidade(doc, ent.nome, true).map((m) => itemDeMembro(m, ent.nome));
+  }
+
   /* `alvo.` — membros do que o alvo designa */
   const mDot = /([A-Za-z_][A-Za-z0-9_.]*)\.\s*$/.exec(linha);
   if (mDot) {
     const alvo = mDot[1];
+
+    /* variável que guarda uma Entity, ou o nome da própria Entity (membro
+     * @static). De FORA da classe, `private` não é oferecido. */
+    const tipoEnt = achaEntidade(doc, alvo) ? alvo : tipoDaVariavel(doc, alvo);
+    if (tipoEnt && achaEntidade(doc, tipoEnt)) {
+      const dentro = (() => { const e = entidadeEm(doc, p.position); return !!e && e.nome === tipoEnt; })();
+      return membrosDaEntidade(doc, tipoEnt, dentro).map((m) => itemDeMembro(m, tipoEnt));
+    }
+
     const membros = membrosDoNome(doc, alvo);
     if (membros.length) {
       const imp = importsDe(doc);
@@ -569,31 +894,42 @@ conexao.onCompletion((p) => {
     return [];
   }
 
-  /* sem receptor: módulos importados, símbolos do arquivo, módulos do motor */
+  /* Sem receptor: o que está REALMENTE em escopo aqui.
+   *
+   * A ordem é a de utilidade, e o `sortText` a impõe contra a ordenação
+   * alfabética do editor: primeiro o que está a três linhas de distância
+   * (parâmetro, variável, `self`), depois o do arquivo, depois o importado.
+   * Módulo do motor NÃO entra — ver o ramo do `import` acima. */
   const itens = [];
-  for (const [ligado, e] of importsDe(doc)) {
-    itens.push({
-      label: ligado,
-      kind: CompletionItemKind.Module,
-      detail: e.mod === ligado ? 'modulo' : `modulo ${e.mod} (as ${ligado})`,
-    });
+  const jaTem = new Set();
+  const poe = (label, kind, detail, ordem) => {
+    if (jaTem.has(label)) return;
+    jaTem.add(label);
+    itens.push({ label, kind, detail, sortText: ordem + label });
+  };
+
+  for (const [nome, tipo] of escopoLocal(doc, p.position)) {
+    poe(nome, tipo === 'parametro' ? CompletionItemKind.Variable : CompletionItemKind.Variable,
+        tipo, '0');
+  }
+
+  /* dentro de uma Entity: `self` e os membros dela sem qualificar */
+  const ent = entidadeEm(doc, p.position);
+  if (ent) {
+    poe('self', CompletionItemKind.Keyword, `a instância de ${ent.nome}`, '0');
+  }
+
+  for (const e of entidadesDe(doc)) {
+    poe(e.nome, CompletionItemKind.Class,
+        `class ${e.nome}` + (e.bases.length ? `(${e.bases.join(', ')})` : ''), '1');
   }
   for (const s of simbolosDoDoc(doc)) {
-    if (!s.topo) continue;
-    itens.push({
-      label: s.nome,
-      kind: s.kind === 'class' ? CompletionItemKind.Class : CompletionItemKind.Function,
-      detail: s.kind === 'action' ? assinatura(s) : `class ${s.nome}`,
-    });
+    if (!s.topo || s.kind !== 'action') continue;
+    poe(s.nome, CompletionItemKind.Function, assinatura(s), '1');
   }
-  const jaTem = new Set(itens.map((i) => i.label));
-  for (const mo of Object.keys(META.modulos || {})) {
-    if (jaTem.has(mo)) continue;
-    itens.push({
-      label: mo,
-      kind: CompletionItemKind.Module,
-      detail: `modulo — ${(META.modulos[mo] || []).length} membros (precisa de import)`,
-    });
+  for (const [ligado, e] of importsDe(doc)) {
+    poe(ligado, CompletionItemKind.Module,
+        e.mod === ligado ? 'modulo' : `modulo ${e.mod} (as ${ligado})`, '2');
   }
   return itens;
 });
@@ -629,6 +965,22 @@ conexao.onHover((p) => {
   const i = toks.indexOf(t);
   if (i >= 2 && toks[i - 1].t === 'DOT' && ehNome(toks[i - 2])) {
     const alvo = toks[i - 2].v;
+
+    /* membro de Entity: `self.x`, `c.deposita` */
+    const ent = alvo === 'self' ? entidadeEm(doc, p.position)
+              : (achaEntidade(doc, alvo) ? achaEntidade(doc, alvo)
+                                         : achaEntidade(doc, tipoDaVariavel(doc, alvo)));
+    if (ent) {
+      for (const m of membrosDaEntidade(doc, ent.nome, true)) {
+        if (m.nome !== t.v) continue;
+        const cabeca = m.kind === 'action'
+          ? `${m.privado ? 'private ' : ''}action ${ent.nome}.${assinatura(m)}`
+          : `${m.privado ? 'private ' : ''}${m.tipo ? m.tipo + ' ' : ''}${ent.nome}.${m.nome}`;
+        const onde = m.de && m.de !== ent.nome ? `\n\nherdado de \`${m.de}\`` : '';
+        return { contents: { kind: MarkupKind.Markdown, value: '```ps\n' + cabeca + '\n```' + onde } };
+      }
+    }
+
     const imp = importsDe(doc);
     const escopo = imp.has(alvo) ? imp.get(alvo).mod : alvo;
     for (const m of membrosDoNome(doc, alvo)) {
@@ -674,6 +1026,22 @@ conexao.onDefinition((p) => {
   const i = toks.indexOf(t);
   if (i >= 2 && toks[i - 1].t === 'DOT' && ehNome(toks[i - 2])) {
     const alvo = toks[i - 2].v;
+
+    /* membro de Entity — inclusive o HERDADO, que mora na declaração do pai */
+    const ent = alvo === 'self' ? entidadeEm(doc, p.position)
+              : (achaEntidade(doc, alvo) ? achaEntidade(doc, alvo)
+                                         : achaEntidade(doc, tipoDaVariavel(doc, alvo)));
+    if (ent) {
+      for (const m of membrosDaEntidade(doc, ent.nome, true)) {
+        if (m.nome !== t.v) continue;
+        const dono = achaEntidade(doc, m.de || ent.nome);
+        const uri = (dono && dono.arquivo) ? 'file://' + dono.arquivo : doc.uri;
+        return { uri,
+                 range: { start: { line: m.linha, character: m.coluna },
+                          end: { line: m.linha, character: m.coluna + m.nome.length } } };
+      }
+    }
+
     if (imp.has(alvo) && imp.get(alvo).arquivo) {
       for (const m of membrosDeArquivo(imp.get(alvo).arquivo)) {
         if (m.nome !== t.v) continue;
@@ -697,15 +1065,39 @@ conexao.onDefinition((p) => {
 conexao.onDocumentSymbol((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return [];
-  return simbolosDoDoc(doc).map((s) => ({
-    name: s.nome,
-    kind: s.kind === 'class' ? SymbolKind.Class : SymbolKind.Function,
-    range: { start: { line: s.linha, character: 0 },
-             end: { line: s.linha, character: s.coluna + s.nome.length } },
-    selectionRange: { start: { line: s.linha, character: s.coluna },
-                      end: { line: s.linha, character: s.coluna + s.nome.length } },
-    detail: s.kind === 'action' ? assinatura(s) : '',
-  }));
+  const faixa = (l, c, n) => ({ start: { line: l, character: c }, end: { line: l, character: c + n } });
+  const out = [];
+  const ents = entidadesDe(doc);
+
+  /* A classe vira um nó com os campos e métodos DENTRO dela. Antes o outline
+   * era uma lista plana que nem chegava a incluir as classes. */
+  for (const e of ents) {
+    out.push({
+      name: e.nome,
+      kind: SymbolKind.Class,
+      detail: e.bases.length ? `(${e.bases.join(', ')})` : '',
+      range: faixa(e.linha, 0, e.coluna + e.nome.length),
+      selectionRange: faixa(e.linha, e.coluna, e.nome.length),
+      children: e.membros.map((m) => ({
+        name: m.nome,
+        kind: m.kind === 'action' ? SymbolKind.Method : SymbolKind.Field,
+        detail: (m.privado ? 'private ' : '') + (m.kind === 'action' ? assinatura(m) : (m.tipo || '')),
+        range: faixa(m.linha, 0, m.coluna + m.nome.length),
+        selectionRange: faixa(m.linha, m.coluna, m.nome.length),
+      })),
+    });
+  }
+  for (const s of simbolosDoDoc(doc)) {
+    if (!s.topo || s.kind !== 'action') continue;    /* método tem prof > 0 */
+    out.push({
+      name: s.nome,
+      kind: SymbolKind.Function,
+      detail: assinatura(s),
+      range: faixa(s.linha, 0, s.coluna + s.nome.length),
+      selectionRange: faixa(s.linha, s.coluna, s.nome.length),
+    });
+  }
+  return out;
 });
 
 docs.listen(conexao);

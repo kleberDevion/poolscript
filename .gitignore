@@ -89,3 +89,7 @@ unidade
 
 # saida do swagger gerada por teste (jinker/cli) — artefato, nao fonte
 __DOCS__/
+
+# IntelliJ: saida de compilacao do plugin (gerada por editor/intellij/build.sh)
+editor/intellij/plugin/out/
+editor/intellij/plugin/dist/

@@ -42,7 +42,27 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   **não entra**: o editor já completa palavra do próprio buffer, e uma lista
   de `for`/`while` rotulada "palavra da linguagem" só empurra a sugestão útil
   pra baixo;
+- **Entity: campos, métodos, `private` e herança.** `self.` dentro de um
+  método lista os campos e métodos daquela Entity **e os herdados do pai**;
+  `c = Conta(...)` seguido de `c.` lista os mesmos, agora **sem** os `private`
+  — a mesma regra que a VM impõe em runtime (07-entity §7.6), porque o
+  completion não pode contar uma história diferente da do motor. Conta como
+  campo o declarado no corpo (`saldo: int` ou `int saldo`), o declarado no
+  construtor (`private str nome = n`, §7.6.1) e o criado com `self.x = …`.
+  Vale também pra Entity de **outro arquivo**, pelo `import`.
+
+  > O nome de Entity é `IDENT_UPPER` no lexer (§1.4) e o servidor exigia
+  > `IDENT`. Uma linha — e com ela toda Entity, de todo arquivo, era invisível:
+  > `self.` dava zero, `c.` dava zero, e o nome da classe não aparecia em lista
+  > nenhuma.
+
+- **escopo local** — parâmetro da action que contém o cursor e variável ligada
+  antes dele (atribuição, `for each`, desempacotamento). Módulo que o arquivo
+  **não importou** não entra na lista: digitar `f` oferecia `flask` porque o
+  servidor despejava todo módulo do motor em qualquer ponto do arquivo. O
+  lugar deles é depois do `import`, e é lá que estão;
 - **hover** — a assinatura real do método e o tipo que ele devolve;
+- **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;
 - **realce** (*semantic tokens*) — palavra da linguagem, string, número,
@@ -156,9 +176,49 @@ language-servers = ["poolscript"]
 
 ## JetBrains (IntelliJ, PyCharm, …)
 
-Pelo plugin **LSP4IJ**: `Settings → Languages & Frameworks → Language Servers`
-→ `+` → *New Language Server*, comando `poolscript-lsp`,
-extensões `ps;psl;p`.
+```bash
+make intellij      # compila o plugin, sincroniza a gramática e instala
+```
+
+São três peças, e as três vêm do repositório:
+
+| peça | o que dá | onde |
+|---|---|---|
+| plugin | ícone por extensão (`.ps` azul, `.p` roxo, `.psl` vermelho), indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
+| bundle TextMate | o realce — **cópia** da gramática do vsix, fonte única lá | `editor/intellij/bundle` |
+| LSP4IJ | completion, hover, diagnóstico: o mesmo `poolscript-lsp` do VS Code | plugin do marketplace |
+
+Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot) e:
+
+- realce: `Settings → Editor → TextMate Bundles → +` →
+  `editor/intellij/bundle/PoolScript.tmbundle`;
+- LSP: `Settings → Languages & Frameworks → Language Servers → +` →
+  *New Language Server*, comando `poolscript-lsp`, extensões `ps;psl;p`.
+
+> O fonte do plugin morava em `ideia-icons/` e foi apagado junto com centenas
+> de arquivos no commit `d91f2e9`. O `.jar` continuou instalado e funcionando,
+> então nada acusou — mas sem o fonte ele não se reconstrói, não acompanha a
+> gramática e não vai pra outra máquina. Um binário instalado não é uma
+> entrega. O `build.sh` compila contra **stubs** (só as assinaturas usadas):
+> não precisa de Gradle nem do SDK do IntelliJ, só de um `javac`.
+
+## Tema
+
+A extensão traz **PoolScript C# Dark** — a paleta do C# no VS Code:
+
+| cor | onde |
+|---|---|
+| `#569CD6` | palavra da linguagem, tipo primitivo, `self`, `private`/`public` |
+| `#C586C0` | controle de fluxo (`if`, `return`, `for each`) |
+| `#4EC9B0` | nome de tipo — a Entity e o pai dela |
+| `#DCDCAA` | nome de método, chamada e decorador |
+| `#9CDCFE` | parâmetro, variável local, campo |
+| `#CE9178` string · `#B5CEA8` número · `#6A9955` comentário | |
+
+Escolha em `Ctrl+K Ctrl+T → PoolScript C# Dark`. A gramática emite os escopos
+padrão que essas cores esperam (`entity.name.type.class`, `variable.parameter`,
+`variable.language.self`, …), então o visual fica próximo do C# **em qualquer
+tema dark** — o tema só fecha a paleta exata.
 
 ## Por dentro (pra quem mexe no repositório)
 

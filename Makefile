@@ -110,6 +110,41 @@ nvim:
 
 .PHONY: nvim
 
+# ── IntelliJ / JetBrains ────────────────────────────────────────────────────
+# O plugin (ícone por extensão, indentação no Enter, auto-fechamento com
+# type-over) MORAVA em `ideia-icons/` e foi apagado junto com centenas de
+# arquivos no commit d91f2e9. O `.jar` seguiu instalado e funcionando, então
+# nada acusou — mas sem o fonte no repositório ele não se reconstrói, não
+# acompanha a gramática e não vai pra outra máquina. Um binário instalado não
+# é uma entrega.
+#
+# O bundle TextMate (realce) é CÓPIA da gramática do vsix — fonte única lá,
+# sincronizada aqui, então o IDEA colore igual (inclusive a paleta do C#).
+#
+#     make intellij     compila, sincroniza a gramática e instala no IDEA
+IJ      := editor/intellij
+IJ_HOME ?= $(HOME)/.local/share/JetBrains
+
+intellij:
+	$(IJ)/bundle/atualiza.sh
+	$(IJ)/plugin/build.sh
+	@destino=$$(ls -d $(IJ_HOME)/IntelliJIdea* $(IJ_HOME)/IdeaIC* 2>/dev/null | head -1); \
+	if [ -z "$$destino" ]; then \
+	  echo "  nao achei instalacao do IntelliJ em $(IJ_HOME)"; \
+	  echo "  o jar esta em $(IJ)/plugin/dist/poolscript-icons.jar — instale pelo"; \
+	  echo "  Settings > Plugins > engrenagem > Install Plugin from Disk"; \
+	else \
+	  install -d "$$destino/poolscript-icons/lib"; \
+	  install -m644 $(IJ)/plugin/dist/poolscript-icons.jar "$$destino/poolscript-icons/lib/"; \
+	  echo "  plugin instalado em $$destino/poolscript-icons"; \
+	  echo "  REINICIE o IDEA (plugin so recarrega no boot)"; \
+	fi
+	@echo "  realce: Settings > Editor > TextMate Bundles > + > $(PWD)/$(IJ)/bundle/PoolScript.tmbundle"
+	@echo "  LSP:    Settings > Languages & Frameworks > Language Servers > + >"
+	@echo "          comando 'poolscript-lsp', extensoes 'ps;psl;p' (precisa do plugin LSP4IJ)"
+
+.PHONY: intellij
+
 # Instala no sistema: o binário (como `pool` e `psl`, que são o mesmo) e o
 # servidor LSP, que é PoolScript e por isso precisa dos .ps ao lado. O
 # `poolscript-lsp` é o atalho que o editor chama.
@@ -443,12 +478,25 @@ check-e2e: pool
 # zero não por serem código morto, mas porque só o e2e os toca e o e2e não
 # entrava em portão nenhum.
 E2E_SEM_SERVICO := arquivo sqlite socket guzer guzer_janela pkg mail_local jinker manpu qrcode c d f
+# DIZ QUAL alvo caiu. Antes o laço só levantava uma flag e o fim imprimia
+# "e2e local: FALHOU" — treze alvos rodados, nenhum nome. Portão que reprova
+# sem dizer o quê obriga a rodar tudo de novo à mão pra descobrir, que é o
+# oposto do que ele existe pra fazer.
+#
+# Cada alvo com TIMEOUT próprio: um servidor que não sobe pendurava o alvo
+# inteiro, e o que se via era a máquina travando, não um teste falhando.
+E2E_TIMEOUT ?= 180
+
 check-e2e-local: pool
-	@falhou=0; \
+	@caidos=""; \
 	for alvo in $(E2E_SEM_SERVICO); do \
-	  ./pool teste/e2e_roda.ps $$alvo || falhou=1; \
+	  timeout $(E2E_TIMEOUT) ./pool teste/e2e_roda.ps $$alvo || caidos="$$caidos $$alvo"; \
 	done; \
-	if [ $$falhou -ne 0 ]; then echo "e2e local: FALHOU"; exit 1; fi; \
+	if [ -n "$$caidos" ]; then \
+	  echo "e2e local: FALHARAM ->$$caidos"; \
+	  echo "  rode um por vez: ./pool teste/e2e_roda.ps <alvo>"; \
+	  exit 1; \
+	fi; \
 	echo "e2e local: ok"
 
 .PHONY: check-e2e check-e2e-local

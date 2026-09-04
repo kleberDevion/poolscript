@@ -1,4 +1,4 @@
-# PoolScript v8.4.0
+# PoolScript v8.4.3
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 8.4.0 [PSVM]
+# PoolScript 8.4.3 [PSVM]
 ```
 
 ---
@@ -48,7 +48,7 @@ pool repl
 ```
 
 ```
-PoolScript v8.4.0 — REPL
+PoolScript v8.4.3 — REPL
 Digite 'sair' ou Ctrl+C para sair.
 
 >>> str nome = "joao"

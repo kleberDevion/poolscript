@@ -222,6 +222,91 @@ async function main() {
          !!d && d.severity === 2 && /escape invalida/.test(d.message), d);
   }
 
+  /* ── 10. CLASSE, HERANÇA, `self` — nada disso funcionava ────────────────
+   *
+   * Medido antes: `self.` dava ZERO, `c = Conta(...)` + `c.` dava ZERO, e a
+   * lista sem receptor não tinha nem o parâmetro da action nem o nome da
+   * classe. Uma linha explicava as três: o nome de Entity é `IDENT_UPPER` no
+   * lexer, e o servidor exigia `IDENT` — então toda Entity de todo arquivo
+   * era invisível. */
+  const OO = [
+    'import mail',
+    'Entity Base() {',
+    '    public action ping(self) { return "pong" }',
+    '}',
+    'Entity Conta(Base) {',
+    '    saldo: int',
+    '    dono: str',
+    '    public action deposita(self, valor) {',
+    '        self.',
+    '    }',
+    '    private action log(self) { return "x" }',
+    '}',
+    'action principal(quantia, cliente) {',
+    '    c = Conta(0, "ana")',
+    '    c.',
+    '    ',
+    '}',
+  ].join('\n');
+  {
+    const m = await conversa(OO, [compl(2, 8, 13), compl(3, 14, 6), compl(4, 15, 4),
+      { jsonrpc: '2.0', id: 5, method: 'textDocument/documentSymbol', params: { textDocument: { uri: URI } } }]);
+    const S = rotulos(resp(m, 2));
+    conf('`self.` lista campo e metodo da propria Entity',
+         S.includes('saldo') && S.includes('dono') && S.includes('deposita'), S);
+    conf('`self.` mostra o private (de DENTRO ele e visivel)', S.includes('log'), S);
+    conf('`self.` traz o HERDADO do pai', S.includes('ping'), S);
+
+    const C = rotulos(resp(m, 3));
+    conf('`c.` com `c = Conta(...)` lista os membros da instancia',
+         C.includes('saldo') && C.includes('deposita') && C.includes('ping'), C);
+    conf('de FORA, o private nao aparece', !C.includes('log'), C);
+    conf('`__init__` nao e oferecido como membro', !C.includes('__init__'), C);
+
+    const L = rotulos(resp(m, 4));
+    conf('a lista sem receptor tem os PARAMETROS da action',
+         L.includes('quantia') && L.includes('cliente'), L);
+    conf('...e a variavel local declarada antes do cursor', L.includes('c'), L);
+    conf('...e as Entities do arquivo', L.includes('Conta') && L.includes('Base'), L);
+
+    const ds = resp(m, 5);
+    const raiz = ds && ds.result ? ds.result : [];
+    const cls = raiz.find((s) => s.name === 'Conta');
+    conf('o outline traz a classe com os membros DENTRO dela',
+         !!cls && (cls.children || []).map((x) => x.name).includes('deposita'),
+         cls && (cls.children || []).map((x) => x.name));
+  }
+
+  /* ── 11. `f` sugeria `flask` ─────────────────────────────────────────────
+   *
+   * O servidor despejava TODO módulo do motor na lista de qualquer ponto do
+   * arquivo, com "(precisa de import)" no detalhe. Módulo que o arquivo não
+   * importou não é candidato a nada: é ruído com cara de sugestão. O lugar
+   * deles é depois do `import`. */
+  {
+    const m = await conversa('action f() {\n    \n}\n', [compl(2, 1, 4)]);
+    const L = rotulos(resp(m, 2));
+    conf('modulo NAO importado nao entra na lista (era `f` -> `flask`)',
+         !L.includes('flask') && !L.includes('smtplib'), L);
+  }
+  {
+    const m = await conversa('import \n', [compl(2, 0, 7)]);
+    const L = rotulos(resp(m, 2));
+    conf('depois de `import` os modulos do motor APARECEM',
+         L.includes('flask') && L.includes('json') && L.includes('os'), L.slice(0, 8));
+  }
+
+  /* ── 12. Entity de OUTRO arquivo, pelo import ───────────────────────────── */
+  {
+    const dir = path.join(os.tmpdir(), 'ps_lsp_t');
+    fs.writeFileSync(path.join(dir, 'modelo.ps'),
+      'Entity Usuario() {\n    nome: str\n    public action saudacao(self) { return "oi" }\n}\n');
+    const m = await conversa('import modelo\nu = modelo.Usuario("ana")\nu.\n', [compl(2, 2, 2)]);
+    const L = rotulos(resp(m, 2));
+    conf('Entity de arquivo importado expoe os membros dela',
+         L.includes('nome') && L.includes('saudacao'), L);
+  }
+
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram`);
