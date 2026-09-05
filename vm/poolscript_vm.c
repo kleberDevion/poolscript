@@ -17626,10 +17626,25 @@ static int jk_casa(VM *vm, const char *pat, const char *path, PSDict *params)
     const char *pp = pat, *sp = path;
     while (*pp) {
         if (*pp == ':') {
+            /* `:nome` é um SEGMENTO do caminho: `/user:id` casa `/user/42`,
+             * igual a `/user/<id>` e a `/user/:id`. Era colado — `/user:id`
+             * só casava `/user42` — e a doc registrava isso como
+             * "comportamento verificado" em vez de perguntar se fazia
+             * sentido. Não fazia: ninguém escreve URL sem a barra, e o front
+             * dele chamava `/sing-in/abc` e recebia 404.
+             *
+             * Se o padrão já traz a barra antes do `:` (`/user/:id`), ela foi
+             * casada como literal logo acima; senão, é o path que tem que
+             * trazê-la aqui. */
+            int barra_no_padrao = (pp > pat && pp[-1] == '/');
             pp++;
             char nome[64]; int ni = 0;
             while ((isalnum((unsigned char)*pp) || *pp == '_') && ni < 63) nome[ni++] = *pp++;
             nome[ni] = '\0';
+            if (!barra_no_padrao) {
+                if (*sp != '/') return 0;
+                sp++;
+            }
             /* captura até '/' ou fim */
             char val[512]; int vi = 0;
             while (*sp && *sp != '/' && vi < 511) val[vi++] = *sp++;

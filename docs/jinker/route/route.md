@@ -158,9 +158,10 @@ action perfil() {
 }
 ```
 
-> A forma com **barra** (`/user/<id>`) é a recomendada: casa `/user/42`
-> naturalmente. A forma `/user:id` (sem barra) exige a URL colada
-> (`/user42`) — comportamento verificado.
+> As duas formas casam a **mesma** URL: `/user/42`. `:id` marca um
+> **segmento** do caminho — `/user:id`, `/user/:id` e `/user/<id>` são
+> equivalentes. (Houve uma versão em que `/user:id` só casava a URL colada,
+> `/user42`; não faz sentido e não existe mais.)
 
 ---
 

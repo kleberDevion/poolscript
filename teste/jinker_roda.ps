@@ -155,9 +155,14 @@ r = get(RAIZ + "/param/42")
 confere("path param chega", r.get_json("id") == "42")
 
 # I18: o path param no argumento da action, sem tocar em request.path_param
-r = get(RAIZ + "/injeta7")
+# `:id` e um SEGMENTO: `/injeta:id` casa `/injeta/7`, como `/injeta/<id>`.
+# Era colado (`/injeta7`) e a suite gravava isso como certo — o front dele
+# chamava `/sing-in/abc` e via 404. A forma colada deixa de casar.
+r = get(RAIZ + "/injeta/7")
 confere("path param injetado no argumento", r.get_json("id") == "7")
-r = get(RAIZ + "/inverteX/subY")
+r = get(RAIZ + "/injeta7")
+confere("URL colada ao nome (`/injeta7`) NAO casa `/injeta:id`", r.status_code == 404)
+r = get(RAIZ + "/inverte/X/sub/Y")
 confere("injeta por NOME, nao por posicao",
         r.get_json("a") == "X" and r.get_json("b") == "Y")
 r = get(RAIZ + "/param/ana")

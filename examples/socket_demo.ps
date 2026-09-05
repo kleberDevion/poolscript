@@ -1,5 +1,5 @@
 # socket_demo.ps — websocket com salas (rooms) no Jinker
-# Cada conexão em /sala:id entra automaticamente na sala = valor de :id.
+# Cada conexão em /sala:id (ws://…/sala/42) entra automaticamente na sala = valor de :id.
 # Um emit(room_id=id) só alcança quem está conectado naquela sala.
 
 from jinker import Jinker, cors

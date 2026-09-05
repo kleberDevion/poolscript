@@ -1,7 +1,8 @@
 # `request.path_param(key)`
 
 Devolve o valor de um **parâmetro dinâmico da URL** — a parte do caminho que
-você marcou como variável na rota (`/user/<id>` ou `/user:id`).
+você marcou como variável na rota (`/user/<id>` ou `/user:id`; as duas casam
+`/user/42`).
 
 ```
 request.path_param(key: str) -> valor | Null

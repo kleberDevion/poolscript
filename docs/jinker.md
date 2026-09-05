@@ -180,13 +180,14 @@ action receber() {
 }
 ```
 
-Em rotas ou sockets com parâmetro dinâmico no path (`/user:id`, `/user/<id>`),
-há **duas** formas de pegar o valor. A action escolhe.
+Em rotas ou sockets com parâmetro dinâmico no path (`/user:id`, `/user/<id>` —
+as duas casam `/user/42`; `:id` é um **segmento**), há **duas** formas de pegar
+o valor. A action escolhe.
 
 **1. Declarando o parâmetro** — o valor chega no argumento, casado pelo **nome**:
 
 ```ps
-@app.route("/user:id")
+@app.route("/user:id")            # GET /user/42
 action perfil(id) {
     return jsonify({"user_id": id}), 200
 }
