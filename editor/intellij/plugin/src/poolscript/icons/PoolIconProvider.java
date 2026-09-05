@@ -6,8 +6,11 @@ import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.vfs.VirtualFile;
 import javax.swing.Icon;
 
-/** Ícone "P" para os arquivos da PoolScript, uma cor por extensão:
- *  .ps azul #2196F7, .p roxo #A074C4 (cor do .h), .psl vermelho #F44336. */
+/** Ícone dos arquivos da PoolScript, um por extensão:
+ *  .ps "PS" azul #2196F7, .p "P" azul #2196F7, .psl "&lt;PSL/&gt;" vermelho #F44336.
+ *
+ *  Os SVG são CONTORNO, não &lt;text&gt;: o renderizador do IntelliJ não garante
+ *  fonte, e o que não resolve sai com outra métrica ou vazio. */
 public class PoolIconProvider implements FileIconProvider {
   private static final Icon PS  = IconLoader.getIcon("/icons/poolscript_ps.svg",  PoolIconProvider.class);
   private static final Icon P   = IconLoader.getIcon("/icons/poolscript_p.svg",   PoolIconProvider.class);

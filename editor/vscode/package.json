@@ -31,8 +31,8 @@
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./images/poolscript-p.svg",
-          "dark": "./images/poolscript-p.svg"
+          "light": "./images/poolscript-ps.svg",
+          "dark": "./images/poolscript-ps.svg"
         }
       },
       {
