@@ -284,6 +284,38 @@ confere("frame de 300 bytes (comprimento em 2 bytes) atravessa inteiro",
 confere("frame de 70000 bytes (comprimento em 8 bytes) atravessa inteiro",
         len(eco_grande) >= 70000 and eco_grande.endswith("g"))
 
+# ── validação do corpo com `model` ──────────────────────────────────────────
+#
+# A linguagem já tinha `model` com validação no `==`; o que faltava era ligar
+# isso na porta de entrada da rota. Sem isso toda rota começa com o mesmo bloco
+# de `if` conferindo o que já está declarado no model.
+#
+# O que cada checagem defende:
+#   - corpo torto responde 422 dizendo QUAL campo e por quê. "corpo inválido"
+#     manda o cliente adivinhar entre os campos.
+#   - JSON quebrado é 400, não 422: o defeito é do parser, não do model.
+#   - rota SEM model não muda em nada.
+r = http_post(RAIZ + "/modelo", body={"nome": "ana", "idade": 30})
+confere("corpo que casa o model passa", r.status_code == 200 and r.get_json("criado") == "ana")
+
+r = http_post(RAIZ + "/modelo", body={"nome": "ana"})
+confere("campo faltando vira 422", r.status_code == 422)
+confere("...dizendo QUAL campo", "idade" in r.text and "faltando" in r.text)
+
+r = http_post(RAIZ + "/modelo", body={"nome": "ana", "idade": "x"})
+confere("tipo errado vira 422 dizendo o esperado e o que veio",
+        r.status_code == 422 and "esperava int" in r.text and "veio str" in r.text)
+
+r = http_post(RAIZ + "/modelo", body={"nome": "um nome bem maior que o limite", "idade": 1})
+confere("length estourado diz os dois numeros",
+        r.status_code == 422 and "20" in r.text and "30" in r.text)
+
+r = http_post(RAIZ + "/modelo", body="{isto nao e json")
+confere("JSON quebrado e 400, nao 422", r.status_code == 400)
+
+r = http_post(RAIZ + "/eco", body="corpo qualquer")
+confere("rota SEM model nao e afetada", r.status_code == 200)
+
 # ── cookie ──────────────────────────────────────────────────────────────────
 #
 # Não havia UMA ocorrência de "cookie" no motor. É a feature mais usada depois

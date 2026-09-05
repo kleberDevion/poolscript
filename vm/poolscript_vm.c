@@ -478,6 +478,7 @@ typedef struct {
     char **auth;    int nauth;      /* origens permitidas; 0 = sem restrição */
     Value  handler;                 /* a action crua */
     Value  middleware;              /* V_NULL quando não há */
+    Value  model;                   /* valida o corpo antes do handler; V_NULL = não valida */
 } JkRota;
 
 typedef struct {
@@ -551,6 +552,10 @@ typedef struct {
     char **metodos; int nmetodos;
     char **auth;    int nauth;
     Value  middleware;
+    /* `@app.route("/x", model=Usuario)` — o corpo é validado ANTES do handler
+     * e, torto, vira 422 dizendo o campo. A linguagem já tem `model` com
+     * validação no `==`; isto só liga o que existe na porta de entrada. */
+    Value  model;
 } PSJReg;
 
 typedef struct {
@@ -1523,6 +1528,7 @@ static void gct_jinker(VM *vm, Obj *o) {
     for (int i = 0; i < j->nrotas; i++) {
         marca_valor(vm, &j->rotas[i].handler);
         marca_valor(vm, &j->rotas[i].middleware);
+        marca_valor(vm, &j->rotas[i].model);
     }
     for (int i = 0; i < j->nsocks; i++) marca_valor(vm, &j->socks[i].handler);
     for (int i = 0; i < j->nws; i++)    marca_valor(vm, &j->ws[i].params);
@@ -1531,6 +1537,7 @@ static void gct_jinker(VM *vm, Obj *o) {
 }
 static void gct_jreg(VM *vm, Obj *o) {
     PSJReg *r = (PSJReg *)o; marca_valor(vm, &r->app); marca_valor(vm, &r->middleware);
+    marca_valor(vm, &r->model);
 }
 static void gct_jresp(VM *vm, Obj *o) {
     PSJResp *r = (PSJResp *)o; marca_valor(vm, &r->corpo); marca_valor(vm, &r->headers);
@@ -8108,7 +8115,7 @@ static int met_jsock_status_send(VM *vm, Value alvo, Value *args, int n, Value *
 static int met_jchan_emit(VM *vm, Value alvo, Value *args, int n, Value *out);
 
 static const MetodoNat METODOS_JINKER[] = {
-    { "route", met_jk_route, "path,methods,auth,middleware" },
+    { "route", met_jk_route, "path,methods,auth,middleware,model" },
     { "middleware", met_jk_middleware, NULL },
 };
 static const MetodoNat METODOS_JCORS[] = {
@@ -8800,6 +8807,96 @@ static int model_valida(const PSModel *m, const Value *v)
             }
         }
     }
+    return 1;
+}
+
+/* A MESMA validação do `==`, dizendo QUAL campo reprovou e POR QUÊ.
+ *
+ * O `model_valida` devolve 0/1, que basta pro operador e não basta pra uma
+ * resposta HTTP: "corpo inválido" manda o cliente adivinhar entre oito campos.
+ * Reimplementar a regra aqui faria as duas divergirem no primeiro tipo novo —
+ * então esta função percorre a mesma tabela de campos e o `model_valida`
+ * continua sendo o dono da decisão; aqui só se acrescenta o PORQUÊ.
+ *
+ * Devolve 1 quando passa. Quando não, preenche `campo` e `motivo`. */
+static const char *model_nome_tipo(int32_t t)
+{
+    switch (t) {
+        case TIPO_STR:  return "str";
+        case TIPO_INT:  return "int";
+        case TIPO_FLO:  return "flo";
+        case TIPO_BOOL: return "bool";
+        case TIPO_LIST: return "list";
+        case TIPO_DICT: return "dict";
+        case TIPO_TUP:  return "tup";
+        default:        return "?";
+    }
+}
+
+static int model_valida_detalhe(const PSModel *m, const Value *v,
+                                char *campo, size_t ccap, char *motivo, size_t mcap)
+{
+    campo[0] = '\0'; motivo[0] = '\0';
+    if (!EH_DICT(*v)) {
+        snprintf(motivo, mcap, "o corpo precisa ser um objeto JSON");
+        return 0;
+    }
+    PSDict *d = COMO_DICT(*v);
+    for (int32_t i = 0; i < m->ncampos; i++) {
+        const PSModelCampo *f = &m->campos[i];
+        Value um = MK_NULL();
+        int tem = 0;
+        for (int k = 0; k < d->usados && !tem; k++) {
+            if (d->entradas[k].estado != 1) continue;
+            Value ch = d->entradas[k].chave;
+            if (EH_STRING(ch) && strcmp(COMO_STRING(ch)->chars, f->nome) == 0) {
+                um = d->entradas[k].valor;
+                tem = 1;
+            }
+        }
+        snprintf(campo, ccap, "%s", f->nome);
+        if (!tem)              { snprintf(motivo, mcap, "faltando"); return 0; }
+        if (um.t == V_NULL)    { snprintf(motivo, mcap, "nao pode ser null"); return 0; }
+
+        Value so_esse = *v;
+        (void)so_esse;
+        int tipo_ok = 1;
+        switch (f->tipo) {
+            case TIPO_STR:  tipo_ok = EH_STRING(um); break;
+            case TIPO_INT:
+            case TIPO_FLO:  tipo_ok = (um.t == V_INT || um.t == V_FLOAT); break;
+            case TIPO_BOOL: tipo_ok = (um.t == V_BOOL); break;
+            case TIPO_LIST: tipo_ok = EH_LIST(um); break;
+            case TIPO_DICT: tipo_ok = EH_DICT(um); break;
+            case TIPO_TUP:  tipo_ok = EH_TUPLA(um); break;
+            default:        tipo_ok = 0; break;
+        }
+        if (!tipo_ok) {
+            snprintf(motivo, mcap, "esperava %s, veio %s",
+                     model_nome_tipo(f->tipo), nome_do_tipo_valor(um));
+            return 0;
+        }
+        if (f->length >= 0) {
+            if (f->tipo == TIPO_STR) {
+                PSString *sv = COMO_STRING(um);
+                int q = utf8_conta(sv->chars, sv->len);
+                if (q > f->length) {
+                    snprintf(motivo, mcap, "no maximo %d caracteres, veio %d", f->length, q);
+                    return 0;
+                }
+            } else if (f->tipo == TIPO_INT) {
+                int64_t x = (um.t == V_INT) ? um.as.i : (int64_t)um.as.d;
+                if (x < 0) x = -x;
+                int dig = 1;
+                while (x >= 10) { x /= 10; dig++; }
+                if (dig > f->length) {
+                    snprintf(motivo, mcap, "no maximo %d digitos, veio %d", f->length, dig);
+                    return 0;
+                }
+            }
+        }
+    }
+    campo[0] = '\0';
     return 1;
 }
 
@@ -16789,6 +16886,7 @@ static PSJReg *jk_novo_reg(VM *vm, Value app, int kind)
     r->app = app; r->kind = kind; r->path = NULL; r->channel = 0;
     r->metodos = NULL; r->nmetodos = 0; r->auth = NULL; r->nauth = 0;
     r->middleware = MK_NULL();
+    r->model = MK_NULL();
     vm->alocado += sizeof(PSJReg);
     return r;
 }
@@ -16829,6 +16927,11 @@ static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     /* middleware posicional (4º) — função ou app */
     if (n >= 4) r->middleware = args[3];
+    /* model (5º): o corpo da requisição é validado contra ele ANTES do handler */
+    if (n >= 5 && EH_MODEL(args[4])) r->model = args[4];
+    else if (n >= 5 && args[4].t != V_NULL)
+        MERRO(vm, "TypeError", "route(model=) espera um model, nao %s",
+              nome_do_tipo_valor(args[4]));
     *out = MK_OBJ(r);
     return 0;
 }
@@ -16892,6 +16995,7 @@ static int met_jreg_register(VM *vm, Value alvo, Value *args, int n, Value *out)
     r->metodos = NULL; r->nmetodos = 0; r->auth = NULL; r->nauth = 0;
     rt->handler = args[0];
     rt->middleware = r->middleware;
+    rt->model = r->model;
     *out = MK_NULL();
     return 0;
 }
@@ -18105,6 +18209,39 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
                      "Access-Control-Allow-Headers: Content-Type, Authorization\r\n");
             ps_jk_responde(c, r->status, r->ctype, corpo, nco, extra, hr->keep_alive);
             vm->sp--; if (params) { }
+            return hr->keep_alive;
+        }
+    }
+
+    /* MODEL: valida o corpo ANTES do handler.
+     *
+     * A linguagem já tem `model` com validação no `==`; aqui ela vira a porta
+     * de entrada da rota. Corpo torto responde 422 dizendo QUAL campo e por
+     * quê, e o handler nem roda — que é o ponto: sem isto, toda rota começa
+     * com o mesmo bloco de `if` conferindo o que já está declarado no model. */
+    if (EH_MODEL(rota->model)) {
+        Value corpo_json = MK_NULL();
+        PSJReq *rq = req;
+        if (rq && EH_BYTES(rq->corpo) && COMO_BYTES(rq->corpo)->len > 0) {
+            /* MESMO caminho do `request.get_json()` — uma segunda leitura de
+             * JSON aqui poderia aceitar o que aquele recusa. */
+            Value um[1] = { jk_str_val(vm, COMO_BYTES(rq->corpo)->chars) };
+            /* JSON inválido não é erro de model: é 400, e quem diz é o parser */
+            if (mod_json_parse(vm, um, 1, &corpo_json) != 0) {
+                vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+                vm->sp--;
+                jk_erro_json(c, 400, "corpo nao e JSON valido", hr->keep_alive, "*");
+                return hr->keep_alive;
+            }
+        }
+        char campo[128], motivo[192];
+        if (!model_valida_detalhe(COMO_MODEL(rota->model), &corpo_json,
+                                  campo, sizeof(campo), motivo, sizeof(motivo))) {
+            char msg[400];
+            if (campo[0]) snprintf(msg, sizeof(msg), "campo '%.100s': %.200s", campo, motivo);
+            else          snprintf(msg, sizeof(msg), "%.300s", motivo);
+            vm->sp--;
+            jk_erro_json(c, 422, msg, hr->keep_alive, "*");
             return hr->keep_alive;
         }
     }

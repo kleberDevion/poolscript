@@ -160,6 +160,19 @@ action ws_sala()
 }
 
 
+# ── validação do corpo com `model` ──────────────────────────────────────────
+model Usuario() {
+    nome: str(length=20)
+    idade: int
+}
+
+@app.route("/modelo", methods=["POST"], model=Usuario)
+action modelo()
+{
+    return {"criado": request.get("nome")}
+}
+
+
 # ── cookie ──────────────────────────────────────────────────────────────────
 @app.route("/cookie-poe")
 action cookie_poe()

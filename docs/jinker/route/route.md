@@ -1,4 +1,4 @@
-# `@app.route(path, methods=None, auth=None, middleware=None)`
+# `@app.route(path, methods=None, auth=None, middleware=None, model=None)`
 
 Registra uma **rota**: liga um caminho de URL à `action` declarada logo abaixo
 do decorador. Quando alguém acessa esse caminho, o jinker chama a action e usa
@@ -17,6 +17,52 @@ action nome_da_rota() {
 | `methods` | lista | todos do `cors` | métodos HTTP aceitos — use [`cors.options([...])`](../cors/options/options.md) |
 | `auth` | lista | origens do `cors` | checagem de origem — use [`cors.origins()`](../cors/origins/origins.md) |
 | `middleware` | função | nenhum | roda antes da action (ver [middleware](../middleware/middleware.md)) |
+| `model` | `model` | nenhum | valida o corpo JSON **antes** da action; torto vira `422` |
+
+---
+
+## `model=` — o corpo validado antes da action
+
+A linguagem já tem [`model`](../../linguagem/08-model-e-enum.md) e o `==` que
+valida um dict contra ele. Passar o model na rota liga isso na porta de
+entrada: o corpo é conferido **antes** de a action rodar, e corpo torto vira
+`422` dizendo qual campo e por quê.
+
+```ps
+model Usuario() {
+    nome: str(length=20)
+    idade: int
+}
+
+@app.route("/user", methods=["POST"], model=Usuario)
+action cria()
+{
+    # chegou aqui: nome e idade EXISTEM e são do tipo certo.
+    # Nenhum `if` de validação neste corpo.
+    return {"criado": request.get("nome")}
+}
+```
+
+O que o cliente recebe:
+
+| corpo enviado | resposta |
+|---|---|
+| `{"nome": "ana", "idade": 30}` | `200` — a action rodou |
+| `{"nome": "ana"}` | `422` · `campo 'idade': faltando` |
+| `{"nome": "ana", "idade": "x"}` | `422` · `campo 'idade': esperava int, veio str` |
+| `{"nome": "<21 letras>", "idade": 1}` | `422` · `campo 'nome': no maximo 20 caracteres, veio 21` |
+| `{isto nao e json` | `400` · `corpo nao e JSON valido` |
+
+**JSON quebrado é `400`, não `422`**, e a diferença não é decorativa: `422`
+significa "entendi o que você mandou e ele não serve", `400` significa "não
+consegui nem ler". Quem recebe `422` corrige um campo; quem recebe `400`
+corrige o cliente.
+
+A validação é a MESMA do operador `==` — a rota não tem uma segunda noção do
+que o model aceita. A única coisa que ela acrescenta é dizer **qual** campo
+reprovou, que o `==` não tem como devolver.
+
+Rota sem `model=` não muda em nada.
 
 ---
 
