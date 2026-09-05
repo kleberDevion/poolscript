@@ -24214,23 +24214,6 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
         ps_compila_free(prog);
         return -1;
     }
-    /* Os avisos do COMPILADOR entram na mesma lista dos do lexer: quem
-     * apresenta (o `--check`, o editor) não deve precisar saber de qual etapa
-     * cada um veio — o que importa pra quem lê é a linha e o texto. */
-    if (avisos && navisos && prog->navisos > 0) {
-        int32_t total = *navisos + prog->navisos;
-        PSAviso *cp = realloc(*avisos, sizeof(PSAviso) * (size_t)total);
-        if (cp) {
-            for (int32_t i = 0; i < prog->navisos; i++) {
-                PSAviso *d = &cp[*navisos + i];
-                snprintf(d->msg, sizeof(d->msg), "%s", prog->avisos[i].msg);
-                d->linha = prog->avisos[i].linha;
-                d->col   = prog->avisos[i].col;
-            }
-            *avisos = cp;
-            *navisos = total;
-        }
-    }
     ps_compila_free(prog);
     return 0;
 }
@@ -24286,12 +24269,6 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         ps_compila_free(prog);
         return -1;
     }
-    /* Aviso do compilador no terminal, no mesmo formato do aviso do lexer:
-     * `arquivo:linha: SyntaxWarning: ...`, em stderr. O programa roda —
-     * aviso não é erro; ele só deixa de ser invisível. */
-    for (int32_t i = 0; i < prog->navisos; i++)
-        fprintf(stderr, "%s:%d: SyntaxWarning: %s\n",
-                caminho ? caminho : "<stdin>", prog->avisos[i].linha, prog->avisos[i].msg);
 
     VM vm;
     memset(&vm, 0, sizeof(vm));

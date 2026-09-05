@@ -115,39 +115,20 @@ Automação, auditoria e smoke tests de apoio são escritos em `.ps` e rodados n
 `./pool`. Todo tropeço escrevendo `.ps` é bug ou limitação candidata — anotar em
 `notas/LIMITACOES.md` ou corrigir na hora.
 
-## Editor: servidor LSP, sobre `vscode-languageserver`
+## Editor: servidor LSP, em PoolScript
 
-Fica em `editor/vscode/`: `server.js` (protocolo) e `analise.js` (análise). O
-mesmo binário `poolscript-lsp` serve VS Code, Neovim e IntelliJ. **Era escrito
-em PoolScript e não é mais** — implementar o protocolo à mão rendeu quatro
-capacidades e `-32601` pro resto; protocolo não é onde está o valor.
+O suporte a editor é um **servidor LSP escrito em PoolScript** (`lsp/`), rodado
+pelo `pool`. Não há JavaScript no projeto, e não há extensão VS Code
+versionada aqui — qualquer editor que fale LSP conversa com esse servidor.
 
-**NÃO EXISTE UMA EXPRESSÃO REGULAR NESSES `.js`, e isso é regra.** Regex ali é
-uma segunda gramática, e foi o defeito: o servidor casava padrão em cima do
-texto (uma regex pra `self.`, outra pra `alvo.`, varredura de token à mão pra
-achar parâmetro), então cada forma nova que o usuário escrevia era um ramo novo
-escrito à mão — e sempre faltava um.
+O modelo de tipos vem do próprio binário: `pool --metadata` lista módulos,
+membros, tipos e métodos lidos das tabelas do VM. É o que alimenta o hover —
+a assinatura real e o tipo de retorno, sem nada digitado à mão.
 
-Cada resposta sai de uma fonte do motor, e nenhuma lista é digitada:
-
-| o quê | de onde |
-|---|---|
-| escopo, Entity, import | `pool --ast` — a árvore do PARSER |
-| módulos, tipos, métodos | `pool --metadata`, das tabelas do VM |
-| string/comentário, contagem de parêntese | `pool --tokens`, o LEXER |
-| diagnóstico e aviso | `pool --check` |
-| prosa do hover | `docs/<escopo>/<nome>/<nome>.md` |
-
-Três coisas que só aparecem medindo em arquivo REAL, e que voltam se alguém
-mexer sem saber: `self.` sozinho não é programa válido (o servidor emenda um
-identificador no cursor antes de pedir a árvore); chamada aberta idem (fecha os
-grupos contando pelo LEXER, não no texto); e `PSNode.linha_fim` existe porque
-sem a linha do `}` o escopo acaba no último comando e o cursor na linha em
-branco cai fora dele.
-
-`make install` leva `server.js` **e** `analise.js` — instalar só o primeiro
-deixa Neovim e IntelliJ com servidor que morre no boot, e o VS Code não acusa
-porque a vsix leva a pasta toda.
+O completion é type-aware pela mesma fonte, e cada sugestão carrega nome,
+assinatura com tipo de retorno e a **prosa de `docs/`** — a mesma página que o
+`scripts/audita_doc.ps` confere. Palavra da linguagem NÃO entra: sugestão sem
+conteúdo empurra a útil pra baixo.
 
 ## Doc: assinatura vem do CÓDIGO, nunca digitada
 

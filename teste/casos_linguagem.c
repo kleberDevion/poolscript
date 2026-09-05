@@ -340,62 +340,6 @@ const Caso CASOS_LINGUAGEM[] = {
   "    private str x = n\n"
   "}\n",
   "", "so vale dentro de uma action de Entity que recebe 'self'", 2 },
-/* ── escrita silenciosa no módulo, de dentro de uma função ────────────────
- *
- * Atribuir dentro de uma action a um nome que existe no módulo ESCREVE NO
- * MÓDULO. É o design da linguagem — 26 casos `matriz: closure` dependem dele,
- * e é o que faz o contador em closure funcionar sem `global`.
- *
- * O problema nunca foi a semântica: foi o SILÊNCIO. Um `i = 0` dentro de uma
- * action zera o `i` do laço de quem chamou, sem erro nenhum, e o defeito
- * aparece longe da causa — travou o `scripts/conserta_barra_doc.ps` por meia
- * hora com um laço que nunca terminava.
- *
- * O aviso não muda o que o programa faz: torna a colisão visível. */
-{ "escrita no modulo de dentro de action avisa",
-  "i = 0\n"
-  "action f() {\n"
-  "    i = 99\n"
-  "    return i\n"
-  "}\n"
-  "post(f(), i)\n",
-  "99 99", "SyntaxWarning: 'i' existe no modulo", 0 },
-{ "com `global` declarado NAO avisa — a intencao foi dita",
-  "cont = 0\n"
-  "action bump() {\n"
-  "    global cont\n"
-  "    cont = cont + 1\n"
-  "}\n"
-  "bump()\n"
-  "bump()\n"
-  "post(cont)\n",
-  "2", NULL, 0 },
-{ "nome que so existe na funcao nao avisa",
-  "action so_local() {\n"
-  "    temp = 1\n"
-  "    return temp\n"
-  "}\n"
-  "post(so_local())\n",
-  "1", NULL, 0 },
-{ "PARAMETRO com nome de global nao avisa — ele nao vaza",
-  /* `action usa(n)` com `n` no módulo: o parâmetro sombreia de verdade, o de
-   * fora fica intacto. Avisar aqui seria alarme falso. */
-  "n = 5\n"
-  "action usa(n) {\n"
-  "    n = n + 1\n"
-  "    return n\n"
-  "}\n"
-  "post(usa(1), n)\n",
-  "2 5", NULL, 0 },
-{ "o contador em closure continua funcionando (so passa a avisar)",
-  "a = 1\n"
-  "action inc() {\n"
-  "    a = a + 1\n"
-  "    return a\n"
-  "}\n"
-  "post(inc(), inc())\n",
-  "2 3", "SyntaxWarning: 'a' existe no modulo", 0 },
-
 /* `//` deixou de ser comentário no I11. A mensagem tinha que dizer isso. */
 { "'//' no lugar de expressao diz que virou divisao inteira",
   "x = 1\n"
