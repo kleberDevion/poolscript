@@ -160,6 +160,25 @@ action ws_sala()
 }
 
 
+# ── cookie ──────────────────────────────────────────────────────────────────
+@app.route("/cookie-poe")
+action cookie_poe()
+{
+    return jinker.JinkerResponse()
+           .send({"ok": true})
+           .cookie("sid", "abc123", max_age=3600)
+           .cookie("tema", "escuro", httponly=false, path="/x")
+}
+
+@app.route("/cookie-le")
+action cookie_le()
+{
+    return {"sid": request.cookie("sid"),
+            "tema": request.cookie("tema"),
+            "nao": request.cookie("naoexiste")}
+}
+
+
 # ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
 @app.route("/__parar")
 action parar()

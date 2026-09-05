@@ -215,9 +215,17 @@ function indiceNoCursor(doc, pos) {
 
   const texto = doc.getText();
   const off = doc.offsetAt(pos);
-  /* o ponto do cursor pode não estar no fim da linha (`self.|algo`), então ele
-   * é emendado à parte; os outros vão pelo varredor de linha. */
-  const comCursor = (off > 0 && texto[off - 1] === '.')
+  /* Emenda o nome que falta DEPOIS do ponto — e só quando ele falta mesmo.
+   *
+   * Com `self.|obj` (cursor entre o ponto e um nome que já existe) a emenda
+   * COLAVA: virava `self.__ps_cursor__obj`, e o completion oferecia um membro
+   * com esse nome. O membro seguinte já fecha o `MemberAccess`, então aqui não
+   * há nada a remendar. */
+  const depois = off < texto.length ? texto[off] : '';
+  const nomeChar = depois !== '' && (
+    (depois >= 'a' && depois <= 'z') || (depois >= 'A' && depois <= 'Z') ||
+    (depois >= '0' && depois <= '9') || depois === '_' || depois.charCodeAt(0) > 127);
+  const comCursor = (off > 0 && texto[off - 1] === '.' && !nomeChar)
     ? texto.slice(0, off) + MARCA_CURSOR + texto.slice(off)
     : texto;
   const idx = A.indexa(arvoreDe(fechaAbertos(remendaPontosSoltos(comCursor))));
@@ -573,6 +581,24 @@ function chamadaEm(doc, pos) {
   return { partes, chamado: partes.join('.'), posicionais, nomeados };
 }
 
+/* O cursor está mesmo DENTRO de um `(` que ainda não fechou?
+ *
+ * Contado no LEXER, andando pelos tokens até a posição: parêntese dentro de
+ * string ou comentário não existe ali. É a mesma razão de o fecha-grupos usar
+ * tokens em vez do texto cru. */
+function dentroDeParenteses(doc, pos) {
+  let prof = 0;
+  for (const t of tokensDe(doc)) {
+    if (t.l0 > pos.line || (t.l0 === pos.line && t.c0 >= pos.character)) break;
+    if (t.t === 'LPAREN') prof++;
+    else if (t.t === 'RPAREN' && prof > 0) prof--;
+    /* o fim do comando zera: `f(1)` numa linha e o cursor na de baixo não
+     * está dentro de chamada nenhuma */
+    else if (t.t === 'LBRACE' || t.t === 'RBRACE') prof = 0;
+  }
+  return prof > 0;
+}
+
 function paramsDoChamado(doc, ch, linha) {
   if (ch.partes.length > 1) {
     const membros = membrosDaCadeia(doc, ch.partes.slice(0, -1), linha);
@@ -710,8 +736,14 @@ function completa(doc, p) {
   }
 
   /* DENTRO dos parênteses de uma chamada: os parâmetros QUE AINDA CABEM.
-   * Vem depois da cadeia porque `f(x.` é membro de `x`, não argumento de `f`. */
-  const ch = chamadaEm(doc, p.position);
+   * Vem depois da cadeia porque `f(x.` é membro de `x`, não argumento de `f`.
+   *
+   * `dentroDeParenteses` é a guarda que faltava: sem ela bastava o nó `Call`
+   * ABRANGER a linha do cursor pra o servidor oferecer argumento — e como o
+   * remendo fecha os grupos no fim do arquivo, uma chamada podia abranger o
+   * arquivo todo. O corpo de um método respondia `["flags="]` em vez do
+   * escopo. */
+  const ch = dentroDeParenteses(doc, p.position) ? chamadaEm(doc, p.position) : null;
   if (ch && !cad.partes.length) {
     const ps = paramsDoChamado(doc, ch, p.position.line);
     const faltam = ps.filter((x, i) => i >= ch.posicionais && !ch.nomeados.has(x.nome));

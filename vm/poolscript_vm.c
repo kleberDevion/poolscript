@@ -559,6 +559,10 @@ typedef struct {
     Value  corpo;       /* OBJ_STRING ou OBJ_BYTES (render binário) */
     char   ctype[128];
     Value  headers;     /* dict extra ou V_NULL */
+    /* `Set-Cookie` é o único cabeçalho que se REPETE numa resposta: um por
+     * cookie. Num dict ele não cabe — a segunda chamada sobrescreveria a
+     * primeira e o segundo cookie sumiria calado. Por isso lista. */
+    Value  cookies;     /* lista de linhas "nome=valor; ..." ou V_NULL */
 } PSJResp;
 
 /* a requisição corrente — interna; o proxy (`request`) lê daqui */
@@ -1530,6 +1534,7 @@ static void gct_jreg(VM *vm, Obj *o) {
 }
 static void gct_jresp(VM *vm, Obj *o) {
     PSJResp *r = (PSJResp *)o; marca_valor(vm, &r->corpo); marca_valor(vm, &r->headers);
+    marca_valor(vm, &r->cookies);
 }
 static void gct_jreq(VM *vm, Obj *o) {
     PSJReq *r = (PSJReq *)o;
@@ -8092,6 +8097,8 @@ static int met_jpx_get(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_text(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_path_param(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_header(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jpx_cookie(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jresp_cookie(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_file(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jpx_files(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jup_save(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -8117,6 +8124,8 @@ static const MetodoNat METODOS_JRESP[] = {
     { "json", met_jresp_json, "data,status" },
     { "status", met_jresp_status, "code" },
     { "header", met_jresp_header, "key,value" },
+    { "cookie", met_jresp_cookie,
+      "nome,valor,path=\"/\",max_age=Null,httponly=true,secure=false,samesite=\"Lax\",domain=Null" },
 };
 static const MetodoNat METODOS_JPROXY[] = {
     { "get_json", met_jpx_get_json, NULL },
@@ -8125,6 +8134,7 @@ static const MetodoNat METODOS_JPROXY[] = {
     { "text", met_jpx_text, NULL },
     { "path_param", met_jpx_path_param, "key" },
     { "header", met_jpx_header, "key" },
+    { "cookie", met_jpx_cookie, "nome" },
     { "file", met_jpx_file, "field,allowed" },
     { "files", met_jpx_files, "field,allowed" },
 };
@@ -16527,6 +16537,7 @@ static PSJResp *jk_novo_resp(VM *vm)
     r->corpo = jk_str_val(vm, "");
     snprintf(r->ctype, sizeof(r->ctype), "text/plain; charset=utf-8");
     r->headers = MK_NULL();
+    r->cookies = MK_NULL();
     vm->alocado += sizeof(PSJResp);
     return r;
 }
@@ -16597,6 +16608,83 @@ static int met_jresp_header(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (dict_set(vm, COMO_DICT(r->headers), &args[0], &args[1]) != 0)
         MERRO(vm, "MemoryError", "sem memoria");
     *out = alvo;
+    return 0;
+}
+
+/* ── cookie ───────────────────────────────────────────────────────────────
+ *
+ * POR QUE FALTAVA E POR QUE ISSO PESA: não havia uma ocorrência de "cookie" no
+ * motor inteiro. É a feature mais usada de um framework web depois de rota —
+ * sem ela, sessão, login e "lembrar de mim" se escrevem montando o cabeçalho
+ * `Set-Cookie` na mão, com o escape e os atributos por conta de quem chama.
+ *
+ *     resp.cookie("sid", token, httponly=true, samesite="Lax", max_age=3600)
+ *     request.cookie("sid")     ->  o valor, ou Null
+ *
+ * Os padrões são os SEGUROS, não os permissivos: `path="/"`, `httponly=true`,
+ * `samesite="Lax"`. Cookie de sessão que nasce legível por JavaScript é XSS
+ * virando roubo de sessão, e quem escreve `resp.cookie("sid", t)` sem pensar
+ * nos atributos merece o padrão que não o machuca. `httponly=false` continua
+ * disponível pra quem PRECISA ler no cliente.
+ */
+static int jk_cookie_valido(const char *s)
+{
+    /* CR/LF num cookie é injeção de cabeçalho: o valor fecharia a linha e
+     * escreveria outra. Recusar é a única resposta certa. */
+    for (const unsigned char *p = (const unsigned char *)s; *p; p++)
+        if (*p == '\r' || *p == '\n' || *p < 0x20) return 0;
+    return 1;
+}
+
+static int met_jresp_cookie(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n < 2 || n > 8) return erro_aridade(vm, "cookie", 2, 8, n);
+    if (!EH_STRING(args[0]) || !EH_STRING(args[1]))
+        MERRO(vm, "TypeError", "cookie() espera nome e valor em str");
+    const char *nome  = COMO_STRING(args[0])->chars;
+    const char *valor = COMO_STRING(args[1])->chars;
+    if (!jk_cookie_valido(nome) || !jk_cookie_valido(valor))
+        MERRO(vm, "ValueError", "cookie() nao aceita quebra de linha no nome nem no valor");
+
+    const char *path = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "/";
+    long max_age = -1;
+    if (n > 3 && args[3].t == V_INT) max_age = (long)args[3].as.i;
+    int httponly = (n > 4) ? val_truthy(&args[4]) : 1;
+    int secure   = (n > 5) ? val_truthy(&args[5]) : 0;
+    const char *samesite = (n > 6 && EH_STRING(args[6])) ? COMO_STRING(args[6])->chars : "Lax";
+    const char *domain   = (n > 7 && EH_STRING(args[7])) ? COMO_STRING(args[7])->chars : NULL;
+    if (!jk_cookie_valido(path) || !jk_cookie_valido(samesite)
+        || (domain && !jk_cookie_valido(domain)))
+        MERRO(vm, "ValueError", "cookie() nao aceita quebra de linha nos atributos");
+
+    char linha[1024];
+    int w = snprintf(linha, sizeof(linha), "%s=%s", nome, valor);
+    if (w > 0 && (size_t)w < sizeof(linha) && path && *path)
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Path=%s", path);
+    if (w > 0 && (size_t)w < sizeof(linha) && max_age >= 0)
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Max-Age=%ld", max_age);
+    if (w > 0 && (size_t)w < sizeof(linha) && domain && *domain)
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Domain=%s", domain);
+    if (w > 0 && (size_t)w < sizeof(linha) && samesite && *samesite)
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; SameSite=%s", samesite);
+    if (w > 0 && (size_t)w < sizeof(linha) && httponly)
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; HttpOnly");
+    if (w > 0 && (size_t)w < sizeof(linha) && secure)
+        w += snprintf(linha + w, sizeof(linha) - (size_t)w, "; Secure");
+    if (w < 0 || (size_t)w >= sizeof(linha))
+        MERRO(vm, "ValueError", "cookie() ficou grande demais (limite 1023 bytes)");
+
+    PSJResp *r = COMO_JRESP(alvo);
+    if (!EH_SEQ(r->cookies)) {
+        PSList *l = lista_com_cap(vm, 2, OBJ_LIST);
+        if (!l) MERRO(vm, "MemoryError", "sem memoria");
+        r->cookies = MK_OBJ(l);
+    }
+    PSString *s = nova_string(vm, linha, w);
+    if (!s) MERRO(vm, "MemoryError", "sem memoria");
+    if (lista_push(vm, COMO_LIST(r->cookies), MK_OBJ(s)) != 0)
+        MERRO(vm, "MemoryError", "sem memoria");
+    *out = alvo;                      /* encadeia, como os outros métodos */
     return 0;
 }
 
@@ -17059,6 +17147,58 @@ static int met_jpx_header(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+/* `request.cookie("sid")` — o valor daquele cookie, ou Null.
+ *
+ * Lê o cabeçalho `Cookie:`, que é UMA linha com os pares separados por `; `.
+ * Sem isto, quem quisesse o cookie tinha que pegar o header inteiro e fatiar
+ * na mão — e errar o espaço depois do ponto e vírgula, ou casar `sid` dentro
+ * de `notsid`, que é o defeito clássico. A comparação aqui é do NOME INTEIRO. */
+static int met_jpx_cookie(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)alvo;
+    ARGS_MET(vm, "cookie", 1);
+    if (!EH_STRING(args[0]))
+        MERRO(vm, "TypeError", "cookie() argument 1 must be str, not %s",
+              nome_do_tipo_valor(args[0]));
+    *out = MK_NULL();
+    PSJReq *r = jk_req_corrente(vm);
+    if (!r || !EH_DICT(r->headers)) return 0;
+
+    const char *bruto = NULL;
+    PSDict *d = COMO_DICT(r->headers);
+    for (int i = 0; i < d->usados; i++) {
+        if (d->entradas[i].estado != 1) continue;
+        Value k = d->entradas[i].chave;
+        if (EH_STRING(k) && strcasecmp(COMO_STRING(k)->chars, "Cookie") == 0
+            && EH_STRING(d->entradas[i].valor)) {
+            bruto = COMO_STRING(d->entradas[i].valor)->chars;
+            break;
+        }
+    }
+    if (!bruto) return 0;
+
+    const char *want = COMO_STRING(args[0])->chars;
+    size_t wl = strlen(want);
+    for (const char *p = bruto; *p; ) {
+        while (*p == ' ' || *p == ';') p++;         /* separador entre pares */
+        if (!*p) break;
+        const char *igual = p;
+        while (*igual && *igual != '=' && *igual != ';') igual++;
+        size_t nl = (size_t)(igual - p);
+        const char *vi = (*igual == '=') ? igual + 1 : igual;
+        const char *vf = vi;
+        while (*vf && *vf != ';') vf++;
+        if (nl == wl && strncmp(p, want, wl) == 0) {
+            PSString *s = nova_string(vm, vi, (int)(vf - vi));
+            if (!s) MERRO(vm, "MemoryError", "sem memoria");
+            *out = MK_OBJ(s);
+            return 0;
+        }
+        p = vf;
+    }
+    return 0;
+}
+
 /* multipart: parseia e devolve upload(s) do campo */
 static const char *JK_BLOQ[] = {
     ".exe",".bat",".sh",".ps1",".cmd",".msi",".dll",".php",".py",".rb",
@@ -17437,9 +17577,10 @@ static PSJReq *jk_monta_req(VM *vm, const PSJkReq *hr, PSDict *params)
  * bytes do Value) — o chamador escreve antes de qualquer GC. */
 static void jk_converte_retorno(VM *vm, Value res, int *status, const char **ctype,
                                 const char **corpo, size_t *ncorpo, Value *guarda,
-                                Value **extra_headers)
+                                Value **extra_headers, Value **cookies)
 {
     *extra_headers = NULL;
+    *cookies = NULL;
     /* tupla (body, status) */
     if (EH_TUPLA(res) && COMO_LIST(res)->len == 2) {
         Value body = COMO_LIST(res)->itens[0];
@@ -17460,6 +17601,7 @@ static void jk_converte_retorno(VM *vm, Value res, int *status, const char **cty
         else if (EH_STRING(r->corpo)) { *corpo = COMO_STRING(r->corpo)->chars; *ncorpo = (size_t)COMO_STRING(r->corpo)->len; }
         else { *corpo = ""; *ncorpo = 0; }
         if (EH_DICT(r->headers)) *extra_headers = &r->headers;
+        if (EH_SEQ(r->cookies)) *cookies = &r->cookies;
         return;
     }
     if (EH_DICT(res) || EH_SEQ(res)) {
@@ -17990,8 +18132,8 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
 
     int status; const char *ctype = "text/plain; charset=utf-8";
     const char *corpo = ""; size_t ncorpo = 0;
-    Value guarda = MK_NULL(); Value *extra_h = NULL;
-    jk_converte_retorno(vm, ret, &status, &ctype, &corpo, &ncorpo, &guarda, &extra_h);
+    Value guarda = MK_NULL(); Value *extra_h = NULL; Value *cookies = NULL;
+    jk_converte_retorno(vm, ret, &status, &ctype, &corpo, &ncorpo, &guarda, &extra_h, &cookies);
     (void)guarda;
 
     /* método join pros headers */
@@ -18012,6 +18154,24 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
                               COMO_STRING(hd->entradas[i].chave)->chars,
                               COMO_STRING(hd->entradas[i].valor)->chars);
         }
+    }
+    /* Um `Set-Cookie` POR COOKIE — é o único cabeçalho de resposta que se
+     * repete, e por isso ele não passa pelo dict acima. */
+    if (cookies && EH_SEQ(*cookies)) {
+        PSList *cl = COMO_LIST(*cookies);
+        for (int i = 0; i < cl->len && w < (int)sizeof(extra) - 2; i++) {
+            if (!EH_STRING(cl->itens[i])) continue;
+            w += snprintf(extra + w, sizeof(extra) - w, "Set-Cookie: %s\r\n",
+                          COMO_STRING(cl->itens[i])->chars);
+        }
+    }
+    /* `snprintf` devolve o que a string TERIA — se estourou, o buffer está
+     * truncado no meio de um cabeçalho. Mandar isso é resposta malformada;
+     * cortar no último `\r\n` inteiro é o pior caso honesto. */
+    if (w >= (int)sizeof(extra)) {
+        int corte = (int)sizeof(extra) - 1;
+        while (corte > 0 && !(extra[corte - 1] == '\n' && corte >= 2 && extra[corte - 2] == '\r')) corte--;
+        extra[corte] = '\0';
     }
     ps_jk_responde(c, status, ctype, corpo, ncorpo, extra, hr->keep_alive);
     vm->sp--;   /* solta req */

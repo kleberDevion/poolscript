@@ -284,6 +284,41 @@ confere("frame de 300 bytes (comprimento em 2 bytes) atravessa inteiro",
 confere("frame de 70000 bytes (comprimento em 8 bytes) atravessa inteiro",
         len(eco_grande) >= 70000 and eco_grande.endswith("g"))
 
+# ── cookie ──────────────────────────────────────────────────────────────────
+#
+# Não havia UMA ocorrência de "cookie" no motor. É a feature mais usada depois
+# de rota, e sem ela sessão e login se escrevem montando `Set-Cookie` na mão.
+#
+# O que cada checagem defende:
+#   - `Set-Cookie` é o ÚNICO cabeçalho de resposta que se REPETE. Num dict o
+#     segundo cookie sobrescreveria o primeiro e sumiria calado.
+#   - o padrão é o SEGURO (HttpOnly, SameSite=Lax, Path=/): cookie de sessão
+#     legível por JavaScript é XSS virando roubo de sessão.
+#   - ler `sid` não pode casar dentro de `notsid` — é o defeito clássico de
+#     quem fatia o cabeçalho na mão.
+r = cru("GET /cookie-poe HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+n_set = 0
+for each l in r.split("\r\n")
+{
+    if l.lower().startswith("set-cookie:")
+    {
+        n_set = n_set + 1
+    }
+}
+confere("os DOIS cookies saem, um Set-Cookie cada", n_set == 2)
+confere("o padrao e seguro: HttpOnly e SameSite", "HttpOnly" in r and "SameSite=Lax" in r)
+confere("max_age vira Max-Age", "Max-Age=3600" in r)
+confere("httponly=false e respeitado",
+        "tema=escuro; Path=/x; SameSite=Lax\r\n" in r)
+
+r = get(RAIZ + "/cookie-le", headers={"Cookie": "sid=abc123; tema=escuro"})
+confere("request.cookie le o valor", r.get_json("sid") == "abc123")
+confere("...e o segundo par depois do ponto e virgula", r.get_json("tema") == "escuro")
+confere("cookie inexistente e null", r.get_json("nao") == null)
+
+r = get(RAIZ + "/cookie-le", headers={"Cookie": "notsid=x; sid=certo"})
+confere("nome parcial NAO casa (`sid` dentro de `notsid`)", r.get_json("sid") == "certo")
+
 # ── protocolo CRU: requisição torta é recusada COM resposta ─────────────────
 r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
 confere("Content-Length não numérico vira 400", "400" in r)

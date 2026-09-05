@@ -91,6 +91,7 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 | `@app.middleware()` | verificação que roda antes de rotas | [middleware/middleware.md](middleware/middleware.md) |
 | `cors(...)` | config global de métodos + origens | [cors/cors.md](cors/cors.md) |
 | `request` | o que chegou na requisição | [request/request.md](request/request.md) |
+| `resp.cookie(...)` · `request.cookie(...)` | gravar e ler cookie; sessão assinada com `jwt` | [cookie/cookie.md](cookie/cookie.md) |
 | `jsonify(dados)` | atalho pra resposta JSON | [jsonify/jsonify.md](jsonify/jsonify.md) |
 | `render(caminho)` | resposta a partir de um arquivo | [render/render.md](render/render.md) |
 | `JinkerResponse` | o objeto de resposta (`.json`/`.send`/`.status`/`.header`) | [JinkerResponse/JinkerResponse.md](JinkerResponse/JinkerResponse.md) |
