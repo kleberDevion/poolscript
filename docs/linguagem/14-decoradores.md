@@ -137,6 +137,11 @@ abaixo é definida, e o objeto a registra como handler. Os detalhes de cada
 decorador desse tipo (rotas, middleware, eventos de socket…) ficam na
 documentação da biblioteca que os oferece (ex.: jinker).
 
+A action abaixo pode ter **qualquer** modificador, em qualquer ordem —
+`int async action`, `public async reaction`, `bool action`… (ver
+[6.4](06-funcoes.md#ordem-dos-modificadores-é-livre)). A cabeça da declaração
+é uma unidade só, e o decorador a captura inteira.
+
 ---
 
 ## 14.5. Decorador desconhecido

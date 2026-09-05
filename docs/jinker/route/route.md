@@ -21,6 +21,54 @@ action nome_da_rota() {
 
 ---
 
+## Atalhos por verbo: `get`, `post`, `put`, `patch`, `delete`
+
+Quando a rota responde a **um** método só — que é a maioria — o verbo pode ir
+no nome do membro, e aí `methods=` não existe:
+
+```ps
+from jinker import Jinker, jsonify, request, cors
+
+app = Jinker(__name__)
+
+model Login() {
+    email: str(length=60)
+    senha: str
+}
+
+@app.post("/login", model=Login, auth=cors.origins())
+action entrar() {
+    return jsonify({"ok": true, "email": request.get("email")})
+}
+
+@app.get("/perfil")
+action perfil() {
+    return jsonify({"quem": "ana"})
+}
+```
+
+Os cinco recebem os mesmos `auth=`, `middleware=` e `model=` desta página.
+Estão explicados em **[post/post.md](../post/post.md)** — inclusive o `405`
+abaixo, que é a razão de eles existirem.
+
+## Método errado é `405`, não `404`
+
+Se o **path** está registrado mas o **método** não, a resposta é
+`405 Method Not Allowed`, com `Allow:` listando o que a rota (ou as rotas)
+daquele path aceita:
+
+```
+GET /login          (rota declarada só com POST)
+→ 405   Allow: POST
+  {"error": true, "code": 405, "message": "método inválido: GET /login — a rota aceita POST"}
+```
+
+`404` fica reservado pra path que **não existe**. A diferença é o que o front
+precisa saber: `405` = "a URL está certa, troque o método"; `404` = "a URL
+está errada".
+
+---
+
 ## `model=` — o corpo validado antes da action
 
 A linguagem já tem [`model`](../../linguagem/08-model-e-enum.md) e o `==` que
@@ -132,6 +180,10 @@ action login() {
 `methods` e `auth` são **opcionais**. Sem `methods`, vale o conjunto global do
 `cors()`. Sem `auth`, não há restrição de origem.
 
+Pra um método só, o atalho diz a mesma coisa sem a lista:
+`@app.post("/api/login", auth=cors.origins())` — ver
+[post/post.md](../post/post.md).
+
 ### `HEAD` vem junto com o `GET`
 
 Uma rota que aceita **GET** responde **HEAD** automaticamente: mesmo status e
@@ -152,9 +204,9 @@ curl -I http://localhost:2000/relatorio.pdf
 # (sem corpo)
 ```
 
-Rota que **não** aceita GET (só POST, por exemplo) devolve 404 no HEAD, igual
-ao GET. Do outro lado, pra **fazer** uma requisição HEAD, use
-[`request.head()`](../../request/head/head.md).
+Rota que **não** aceita GET (só POST, por exemplo) devolve `405` no HEAD, igual
+ao GET — o path existe, o método não. Do outro lado, pra **fazer** uma
+requisição HEAD, use [`request.head()`](../../request/head/head.md).
 
 ---
 

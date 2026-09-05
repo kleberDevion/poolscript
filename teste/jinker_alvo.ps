@@ -15,6 +15,23 @@ PASTA = "/tmp/ps_jinker_teste"
 os.mkdir(PASTA + "/estatico", exist_ok=true)
 os.writeFile(PASTA + "/estatico/pagina.txt", "sou estatico")
 
+# O que NAO pode sair pela rede — cada arquivo abaixo e um jeito que JA VAZOU
+# (ver `jk_sob_a_raiz` e `jk_nome_publicavel` na VM):
+os.writeFile(PASTA + "/segredo.txt", "FORA da pasta publicada")      # `..` sobe
+os.writeFile(PASTA + "/estatico/.env", "SENHA=nao")                 # oculto
+os.writeFile(PASTA + "/estatico/fonte.ps", "post(1)")               # fonte da lang
+os.mkdir(PASTA + "/estatico/.well-known", exist_ok=true)
+os.writeFile(PASTA + "/estatico/.well-known/acme", "token")         # a UNICA excecao
+# A pasta fixa `/static/` e a que fica AO LADO do .ps (aqui: teste/static/),
+# nao a do diretorio de onde o servidor foi chamado. O driver roda de
+# `./pool teste/jinker_alvo.ps` na raiz do repositorio; o `/__parar` apaga.
+os.mkdir("teste/static", exist_ok=true)
+os.writeFile("teste/static/solto.txt", "asset solto")
+# symlink DENTRO da pasta publicada apontando pra FORA: nao tem `..` na URL,
+# so o `realpath` pega. O `os` nao cria link; o `ln` do sistema serve.
+os.cmd("ln -sf /etc/passwd " + PASTA + "/estatico/link_passwd")
+os.cmd("ln -sf " + PASTA + "/segredo.txt teste/static/link_fora")
+
 app = jinker.Jinker(name="alvo", static_folder=PASTA + "/estatico", static_url="/estatico")
 
 cors(options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://permitido.test"])
@@ -173,6 +190,40 @@ action modelo()
 }
 
 
+# ── atalhos por verbo: o metodo E o nome do membro ──────────────────────────
+# Quatro rotas no MESMO path, uma por verbo — e o 405 tem que listar as
+# quatro no `Allow`. A ordem de registro e a ordem do `Allow`.
+@app.get("/verbo")
+action verbo_get()
+{
+    return {"verbo": "GET"}
+}
+
+@app.post("/verbo", model=Usuario, auth=cors.origins())
+action verbo_post()
+{
+    return {"verbo": "POST", "nome": request.get("nome")}
+}
+
+@app.put("/verbo")
+action verbo_put()
+{
+    return {"verbo": "PUT"}
+}
+
+@app.delete("/verbo")
+action verbo_delete()
+{
+    return {"verbo": "DELETE"}
+}
+
+@app.patch("/verbo/<id>")
+action verbo_patch(id)
+{
+    return {"verbo": "PATCH", "id": id}
+}
+
+
 # ── cookie ──────────────────────────────────────────────────────────────────
 @app.route("/cookie-poe")
 action cookie_poe()
@@ -197,6 +248,7 @@ action cookie_le()
 action parar()
 {
     post("servidor-alvo: parando a pedido do driver")
+    os.rmdir("teste/static", force=true)
     sys.exit(0)
 }
 

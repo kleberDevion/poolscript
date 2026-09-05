@@ -38,7 +38,11 @@ action ler_ou_apagar() { ... }
 O `cors(options=...)` global diz o "teto" de métodos da API. Cada rota
 normalmente aceita **só um ou dois** desses. `cors.options(["POST"])` deixa
 explícito, na própria rota, o que ela responde — quem chamar com outro método
-recebe erro.
+recebe **`405`** com `Allow: POST`.
+
+Pra rota de **um** método só, o verbo pode ir no nome e a lista some:
+`@app.post("/api/login")` — ver [post/post.md](../../post/post.md). O
+`cors.options([...])` continua sendo o jeito de uma rota aceitar **vários**.
 
 ```
 @app.route("/api/login", methods=cors.options(["POST"]))

@@ -152,6 +152,13 @@ public async reaction f() { }
 private int action f() { }
 ```
 
+Vale igual com um [decorador](14-decoradores.md) em cima: `@app.post("/x")`
+seguido de `int async action h()` registra `h` como qualquer outra ordem.
+
+Esquecer o `action` (ou `reaction`) é erro de sintaxe, e a mensagem devolve a
+linha montada: `int async f(x)` dá
+`faltou 'action' (ou 'reaction') antes de 'f': int async action f(...)`.
+
 ---
 
 ## 6.5. Funções são valores (first-class)

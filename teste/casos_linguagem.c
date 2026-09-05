@@ -1370,6 +1370,49 @@ const Caso CASOS_LINGUAGEM[] = {
  * nome de jeito nenhum (fim de linha, fim de arquivo). */
 { "decorador com membro que e palavra reservada",
   "@app.route(\"/x\")\naction h() { return 1 }\n", "", "name 'app' is not defined", 1 },
+/* A cabeça da action sob um decorador é a MESMA unidade do statement:
+ * `[public|private] {async|tipo}* action|reaction`, em qualquer ordem. O
+ * lookahead do decorador era uma cópia à mão que conhecia quatro formas e
+ * não conhecia `tipo async action`: `@app.post(...)` sobre `int async action
+ * h()` compilava limpo, a action virava statement solto SEM decorador, a rota
+ * nunca era registrada e o cliente via 404 — sem aviso. O `register` abaixo
+ * imprime quando é chamado; o caso reprova se o decorador não pegar. */
+{ "decorador pega `int async action` (tipo antes de async)",
+  "class Reg() {\n"
+  "    action reg(self) {\n"
+  "        return self\n"
+  "    }\n"
+  "    action register(self, fn) {\n"
+  "        post(\"registrou\")\n"
+  "        return fn\n"
+  "    }\n"
+  "}\n"
+  "r = Reg()\n"
+  "@r.reg()\n"
+  "int async action h() {\n"
+  "    return 1\n"
+  "}\n",
+  "registrou", NULL, 0 },
+{ "decorador pega `public int async action` e `bool async reaction`",
+  "class Reg() {\n"
+  "    action reg(self) {\n"
+  "        return self\n"
+  "    }\n"
+  "    action register(self, fn) {\n"
+  "        post(\"registrou\")\n"
+  "        return fn\n"
+  "    }\n"
+  "}\n"
+  "r = Reg()\n"
+  "@r.reg()\n"
+  "public int async action h() {\n"
+  "    return 1\n"
+  "}\n"
+  "@r.reg()\n"
+  "bool async reaction g() {\n"
+  "    return true\n"
+  "}\n",
+  "registrou\nregistrou", NULL, 0 },
 { "import sem nome nenhum",
   "import\n", "", "esperado nome de modulo depois de 'import'", 2 },
 { "import valido continua valendo",

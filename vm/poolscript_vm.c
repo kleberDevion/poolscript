@@ -8090,6 +8090,11 @@ static const MetodoNat METODOS_MONGOCONN[] = {
 
 /* jinker — implementações mais adiante, junto do servidor */
 static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jk_get(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jk_post(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jk_put(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jk_patch(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jk_delete(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jk_middleware(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jcors_options(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jcors_origins(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -8114,8 +8119,14 @@ static int met_jsock_emit(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jsock_status_send(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jchan_emit(VM *vm, Value alvo, Value *args, int n, Value *out);
 
+/* Os atalhos NÃO têm `methods`: o método é o nome do membro. */
 static const MetodoNat METODOS_JINKER[] = {
     { "route", met_jk_route, "path,methods,auth,middleware,model" },
+    { "get", met_jk_get, "path,auth,middleware,model" },
+    { "post", met_jk_post, "path,auth,middleware,model" },
+    { "put", met_jk_put, "path,auth,middleware,model" },
+    { "patch", met_jk_patch, "path,auth,middleware,model" },
+    { "delete", met_jk_delete, "path,auth,middleware,model" },
     { "middleware", met_jk_middleware, NULL },
 };
 static const MetodoNat METODOS_JCORS[] = {
@@ -16892,18 +16903,35 @@ static PSJReg *jk_novo_reg(VM *vm, Value app, int kind)
 }
 
 /* app.route(path, methods=, auth=, middleware=) */
-static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
+/* Núcleo de `@app.route(...)` E dos atalhos por verbo (`@app.post(...)`).
+ *
+ * `verbo` NULL = `route()`, que aceita `methods=` e cai no `cors` quando não
+ * recebe; `verbo` = "POST" etc. = atalho, onde o método É o nome do membro e
+ * portanto `methods=` não existe — os argumentos seguintes andam uma casa pra
+ * trás. Os dois montam o MESMO `PSJReg`: um atalho não é uma segunda espécie
+ * de rota, é a mesma rota com a lista de métodos já decidida. */
+static int jk_rota_nova(VM *vm, Value alvo, const char *nome, const char *verbo,
+                        Value *args, int n, Value *out)
 {
     if (n < 1 || !EH_STRING(args[0]))
-        MERRO(vm, "TypeError", "route() argument 1 must be str, not %s",
-                  nome_do_tipo_valor(args[0]));
+        MERRO(vm, "TypeError", "%s() argument 1 must be str, not %s",
+                  nome, nome_do_tipo_valor(args[0]));
     Value cors = jk_cors_singleton(vm);
     PSJReg *r = jk_novo_reg(vm, alvo, JREG_ROUTE);
     if (!r) MERRO(vm, "MemoryError", "sem memoria");
     r->path = strdup(COMO_STRING(args[0])->chars);
-    /* methods: dado ou cors.options() */
-    if (n >= 2 && EH_SEQ(args[1]))
-        r->metodos = jk_strvec(args[1], 1, &r->nmetodos);
+    /* Com verbo, o resto anda uma casa: (path, auth, middleware, model). */
+    int i_met = verbo ? -1 : 1;
+    int i_aut = verbo ? 1 : 2;
+    int i_mid = verbo ? 2 : 3;
+    int i_mod = verbo ? 3 : 4;
+    /* methods: o verbo, o que veio em `methods=`, ou o cors */
+    if (verbo) {
+        r->metodos = calloc(1, sizeof(char *));
+        if (r->metodos) { r->metodos[0] = strdup(verbo); r->nmetodos = 1; }
+    }
+    else if (n > i_met && EH_SEQ(args[i_met]))
+        r->metodos = jk_strvec(args[i_met], 1, &r->nmetodos);
     else if (EH_JCORS(cors)) {
         PSJCors *c = COMO_JCORS(cors);
         r->metodos = calloc((size_t)(c->nmetodos > 0 ? c->nmetodos : 1), sizeof(char *));
@@ -16913,8 +16941,8 @@ static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
         }
     }
     /* auth: dado ou cors.permiser() (= origens) */
-    if (n >= 3 && EH_SEQ(args[2]))
-        r->auth = jk_strvec(args[2], 0, &r->nauth);
+    if (n > i_aut && EH_SEQ(args[i_aut]))
+        r->auth = jk_strvec(args[i_aut], 0, &r->nauth);
     else if (EH_JCORS(cors)) {
         PSJCors *c = COMO_JCORS(cors);
         if (c->norigens) {
@@ -16925,16 +16953,35 @@ static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
             }
         }
     }
-    /* middleware posicional (4º) — função ou app */
-    if (n >= 4) r->middleware = args[3];
-    /* model (5º): o corpo da requisição é validado contra ele ANTES do handler */
-    if (n >= 5 && EH_MODEL(args[4])) r->model = args[4];
-    else if (n >= 5 && args[4].t != V_NULL)
-        MERRO(vm, "TypeError", "route(model=) espera um model, nao %s",
-              nome_do_tipo_valor(args[4]));
+    /* middleware — função ou app */
+    if (n > i_mid) r->middleware = args[i_mid];
+    /* model: o corpo da requisição é validado contra ele ANTES do handler */
+    if (n > i_mod && EH_MODEL(args[i_mod])) r->model = args[i_mod];
+    else if (n > i_mod && args[i_mod].t != V_NULL)
+        MERRO(vm, "TypeError", "%s(model=) espera um model, nao %s",
+              nome, nome_do_tipo_valor(args[i_mod]));
     *out = MK_OBJ(r);
     return 0;
 }
+
+static int met_jk_route(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    return jk_rota_nova(vm, alvo, "route", NULL, args, n, out);
+}
+
+/* Atalhos por verbo. O método fica no NOME, então ele não pode divergir da
+ * lista — que era o jeito de errar com `route(methods=)`: escrever
+ * `methods=["GET"]` numa rota que o front chama com POST, e descobrir em
+ * produção. */
+#define JK_VERBO(fn, nome_ps, metodo)                                          \
+    static int fn(VM *vm, Value alvo, Value *args, int n, Value *out)          \
+    { return jk_rota_nova(vm, alvo, nome_ps, metodo, args, n, out); }
+JK_VERBO(met_jk_get,    "get",    "GET")
+JK_VERBO(met_jk_post,   "post",   "POST")
+JK_VERBO(met_jk_put,    "put",    "PUT")
+JK_VERBO(met_jk_patch,  "patch",  "PATCH")
+JK_VERBO(met_jk_delete, "delete", "DELETE")
+#undef JK_VERBO
 /* app.middleware() */
 static int met_jk_middleware(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -17743,21 +17790,40 @@ static int jk_slot_global(VM *vm, const char *nome)
 
 /* Mensagem pronta pra entrar entre aspas num JSON: escapa o que precisa e
  * CORTA no que cabe, sem partir um caractere UTF-8 no meio. */
+/* Escapa `msg` pra dentro de uma string JSON. O que entra aqui é em parte o
+ * PATH que o cliente mandou (o 404 o repete), e path é byte cru: um
+ * `GET /%c0%ae/x` chegava decodificado como `\xC0\xAE`, saía copiado pro
+ * corpo, e a resposta inteira deixava de ser UTF-8 válido — cliente JSON
+ * nenhum lê isso. Então UTF-8 é VALIDADO na cópia: sequência inteira e bem
+ * formada passa; byte solto, líder sem continuação, overlong (C0/C1, E0 com
+ * 2º byte < A0, F0 com 2º < 90) e F5+ viram '?'. A cópia é por caractere
+ * inteiro, então o corte no `cap` nunca cai no meio de um. */
 static void jk_json_seg(const char *msg, char *out, size_t cap)
 {
     size_t j = 0;
-    for (const unsigned char *p = (const unsigned char *)(msg ? msg : ""); *p; p++) {
+    const unsigned char *p = (const unsigned char *)(msg ? msg : "");
+    while (*p) {
         if (j + 8 >= cap) break;
-        if (*p == '"' || *p == '\\')  { out[j++] = '\\'; out[j++] = (char)*p; }
-        else if (*p == '\n')          { out[j++] = '\\'; out[j++] = 'n'; }
-        else if (*p == '\r')          { out[j++] = '\\'; out[j++] = 'r'; }
-        else if (*p == '\t')          { out[j++] = '\\'; out[j++] = 't'; }
-        else if (*p < 0x20)           j += (size_t)snprintf(out + j, cap - j, "\\u%04x", *p);
-        else                          out[j++] = (char)*p;
+        unsigned char c = *p;
+        if (c == '"' || c == '\\')  { out[j++] = '\\'; out[j++] = (char)c; p++; }
+        else if (c == '\n')         { out[j++] = '\\'; out[j++] = 'n'; p++; }
+        else if (c == '\r')         { out[j++] = '\\'; out[j++] = 'r'; p++; }
+        else if (c == '\t')         { out[j++] = '\\'; out[j++] = 't'; p++; }
+        else if (c < 0x20)          { j += (size_t)snprintf(out + j, cap - j, "\\u%04x", c); p++; }
+        else if (c < 0x80)          { out[j++] = (char)c; p++; }
+        else {
+            int n = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
+            int ok = n > 0 && c != 0xC0 && c != 0xC1 && c < 0xF5;
+            for (int k = 1; ok && k <= n; k++)
+                if ((p[k] & 0xC0) != 0x80) ok = 0;     /* NUL aqui também reprova */
+            if (ok && c == 0xE0 && p[1] < 0xA0) ok = 0;
+            if (ok && c == 0xF0 && p[1] < 0x90) ok = 0;
+            if (ok && j + (size_t)n + 1 < cap) {
+                for (int k = 0; k <= n; k++) out[j++] = (char)p[k];
+                p += n + 1;
+            } else { out[j++] = '?'; p++; }
+        }
     }
-    /* cortou no meio de um UTF-8? volta até o começo do caractere */
-    while (j > 0 && ((unsigned char)out[j - 1] & 0xC0) == 0x80) j--;
-    if (j > 0 && ((unsigned char)out[j - 1] & 0x80)) j--;
     out[j] = '\0';
 }
 
@@ -17776,8 +17842,83 @@ static void jk_json_seg(const char *msg, char *out, size_t cap)
  *
  * Agora a mensagem entra escapada e cortada, e o tamanho enviado é o que
  * REALMENTE está no buffer. */
-static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep,
-                         const char *acao_origin)
+/* O arquivo pedido caiu DENTRO da raiz que ele podia sair?
+ *
+ * Os dois servidores de arquivo do jinker (`/static/` e o `static_folder` do
+ * SPA) montavam o caminho concatenando a raiz com o path da URL. Concatenar
+ * não é resolver: `GET /static/../../../../../../etc/passwd` virava um
+ * caminho válido FORA da raiz, e o servidor o entregava com 200. Medido: saía
+ * o `/etc/passwd`, e saía o PRÓPRIO `.ps` da aplicação — com o que estivesse
+ * escrito nele. Qualquer app com jinker no ar publicava todo arquivo que o
+ * processo conseguisse ler.
+ *
+ * Filtrar a string `".."` não resolve: `%2e%2e` chega decodificado, e link
+ * simbólico sai da raiz sem nenhum `..` no caminho. Quem responde de verdade é
+ * o `realpath`, que resolve `..`, `.` e symlink e devolve onde o caminho FOI
+ * PARAR — e é isso que se compara com a raiz.
+ *
+ * Devolve 1 e escreve o caminho resolvido em `saida`; 0 = fora da raiz (ou não
+ * existe, que aqui dá no mesmo: não se serve). */
+/* Este nome pode sair pela rede, mesmo estando dentro da raiz?
+ *
+ * Estar na pasta publicada não basta, porque a pasta publicada quase nunca é
+ * só o que o autor pensou que era. Medido com `static_folder="."`, que é o
+ * erro de configuração mais comum que existe: saíam `/.git/config` com a URL
+ * do repositório, `/.env` com a senha, e o `.ps` da aplicação inteiro.
+ *
+ * A regra, valendo DENTRO da raiz: nome começando em `.` não sai — `.git`,
+ * `.env`, `.ssh`, `.htaccess`. A exceção é `.well-known`, que EXISTE pra ser
+ * público: é por onde o Let's Encrypt valida o domínio, e bloquear ela
+ * quebraria a emissão do certificado do próprio `oauth={tls:true}`.
+ *
+ * O que NÃO é regra, de propósito: extensão. Houve uma versão que barrava
+ * `.ps` "porque servidor de estático não entrega código" — e ela quebrou o
+ * `psl install`, que baixa pacote `.ps` de um registry servido por um
+ * `static_folder` do próprio jinker (`teste/cli_roda.ps`). Publicar `.ps` é
+ * uso da linguagem. O `.ps` da APLICAÇÃO não sai porque ele não está na
+ * pasta publicada: travessia é barrada pelo `jk_sob_a_raiz`, e a `/static/`
+ * é uma SUBPASTA ao lado do `.ps`, não a pasta dele. Quem aponta
+ * `static_folder="."` está publicando o projeto, e a doc diz isso.
+ *
+ * `rel` é o caminho JÁ RESOLVIDO, relativo à raiz — então symlink apontando
+ * pra um `.env` também cai aqui, não só o nome escrito na URL. */
+static int jk_nome_publicavel(const char *rel)
+{
+    for (const char *p = rel; *p; ) {
+        while (*p == '/') p++;
+        if (!*p) break;
+        const char *fim = strchr(p, '/');
+        size_t len = fim ? (size_t)(fim - p) : strlen(p);
+        if (p[0] == '.' && !(len == 11 && strncmp(p, ".well-known", 11) == 0))
+            return 0;
+        p = fim ? fim : p + len;
+    }
+    return 1;
+}
+
+static int jk_sob_a_raiz(const char *raiz, const char *cam, char *saida, size_t n)
+{
+    if (!raiz || !cam || !saida || n == 0) return 0;
+    char *rr = realpath(raiz, NULL);
+    if (!rr) return 0;
+    char *rc = realpath(cam, NULL);
+    if (!rc) { free(rr); return 0; }
+    size_t lr = strlen(rr);
+    while (lr > 0 && rr[lr - 1] == '/') lr--;      /* raiz "/" vira "" */
+    int ok = strncmp(rc, rr, lr) == 0
+             /* a borda tem que ser separador: sem isto a raiz `/srv/app`
+              * aprovaria `/srv/app-secreto`, que é outro diretório */
+             && (rc[lr] == '/' || rc[lr] == '\0')
+             && jk_nome_publicavel(rc + lr);
+    if (ok) snprintf(saida, n, "%s", rc);
+    free(rr); free(rc);
+    return ok;
+}
+
+/* `cabecalhos` = linhas extras já terminadas em "\r\n" (ou NULL). O 405 usa
+ * pra mandar o `Allow:`, que a RFC 9110 exige nele. */
+static void jk_erro_json_h(struct PSJkConn *c, int code, const char *msg, int keep,
+                           const char *acao_origin, const char *cabecalhos)
 {
     char seg[380];
     jk_json_seg(msg, seg, sizeof(seg));
@@ -17786,9 +17927,15 @@ static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep
                       "{\"error\": true, \"code\": %d, \"message\": \"%s\"}", code, seg);
     if (nc < 0) nc = 0;
     if ((size_t)nc >= sizeof(corpo)) nc = (int)sizeof(corpo) - 1;
-    char extra[256];
-    snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: %s\r\n", acao_origin ? acao_origin : "*");
+    char extra[768];
+    snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: %s\r\n%s",
+             acao_origin ? acao_origin : "*", cabecalhos ? cabecalhos : "");
     ps_jk_responde(c, code, "application/json; charset=utf-8", corpo, (size_t)nc, extra, keep);
+}
+static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep,
+                         const char *acao_origin)
+{
+    jk_erro_json_h(c, code, msg, keep, acao_origin, NULL);
 }
 
 /* Chama o handler `.ps` (0 args) com a requisição corrente montada. Devolve
@@ -18052,24 +18199,84 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         }
     }
 
+    /* Nenhuma rota casou método E path. Se o PATH existe com OUTRO método, a
+     * resposta é 405, não 404 — e o motivo é prático: o front escreveu
+     * `fetch(url)` (GET) numa rota que o back declarou `post`, e o 404 mandava
+     * ele procurar a URL errada, quando a URL estava certa e o método não. O
+     * `Allow:` diz o que a rota aceita (RFC 9110 exige o cabeçalho no 405), e
+     * a mensagem repete no corpo pra quem lê o JSON e não o header.
+     *
+     * A varredura é por PATH só, juntando os métodos de TODAS as rotas que
+     * casam — um mesmo path pode estar em duas rotas (`get` numa, `post` na
+     * outra), e o `Allow` tem que listar as duas. */
+    if (!rota && j->nrotas > 0) {
+        char permitidos[256]; int wp = 0; permitidos[0] = '\0';
+        for (int i = 0; i < j->nrotas; i++) {
+            if (params) { params->count = 0; params->usados = 0; }
+            if (!jk_casa(vm, j->rotas[i].path, hr->path, params)) continue;
+            for (int k = 0; k < j->rotas[i].nmetodos; k++) {
+                const char *m = j->rotas[i].metodos[k];
+                /* sem repetir: `GET` de duas rotas no mesmo path entra uma vez */
+                int ja = 0;
+                for (const char *p = permitidos; *p && !ja; ) {
+                    size_t lm = strlen(m);
+                    if (strncasecmp(p, m, lm) == 0 && (p[lm] == ',' || p[lm] == '\0')) ja = 1;
+                    p = strchr(p, ',');
+                    if (!p) break;
+                    p += 2;                                   /* pula ", " */
+                }
+                if (ja || wp >= (int)sizeof(permitidos) - 2) continue;
+                wp += snprintf(permitidos + wp, sizeof(permitidos) - wp, "%s%s", wp ? ", " : "", m);
+            }
+        }
+        if (wp > 0) {
+            if (params) vm->sp--;
+            char msg[600];
+            snprintf(msg, sizeof(msg), "método inválido: %s %s — a rota aceita %s",
+                     hr->metodo, hr->path, permitidos);
+            char cab[320];
+            snprintf(cab, sizeof(cab), "Allow: %s\r\nAccess-Control-Allow-Methods: %s\r\n",
+                     permitidos, permitidos);
+            jk_erro_json_h(c, 405, msg, hr->keep_alive, "*", cab);
+            return hr->keep_alive;
+        }
+    }
+
     /* Tier 2/2b/3: arquivos estáticos e SPA */
     if (!rota) {
         char acao[512]; snprintf(acao, sizeof(acao), "*");
-        /* /static/ físico */
+        /* /static/ físico.
+         *
+         * A raiz é a pasta `static/` AO LADO DO `.ps`, não a do diretório de
+         * onde o servidor foi chamado. Era o `getcwd`, e isso publicava a
+         * `static/` de quem chamou: `cd /qualquer/lugar && pool app.ps`
+         * servia `/qualquer/lugar/static/` — pasta que o autor do app nunca
+         * viu. O `static_folder` (Tier 2b) já resolvia pelo diretório do
+         * script; este era o único que não.
+         *
+         * Quem roda de dentro da pasta do app (o caso normal) não vê
+         * diferença: lá os dois diretórios são o mesmo. */
         if (strncmp(hr->path, "/static/", 8) == 0) {
             char cam[1024];
-            char cwd[512]; if (!getcwd(cwd, sizeof(cwd))) snprintf(cwd, sizeof(cwd), ".");
-            snprintf(cam, sizeof(cam), "%s/%s", cwd, hr->path + 1);
+            char base[512];
+            if (vm->dir_script[0]) snprintf(base, sizeof(base), "%s", vm->dir_script);
+            else if (!getcwd(base, sizeof(base))) snprintf(base, sizeof(base), ".");
+            snprintf(cam, sizeof(cam), "%s/%s", base, hr->path + 1);
+            /* E o caminho tem que TERMINAR dentro dela — ver `jk_sob_a_raiz`.
+             * Sem isto o `..` no path saía da pasta. */
+            char raiz[1024]; snprintf(raiz, sizeof(raiz), "%s/static", base);
+            char seguro[4096];
             struct stat st;
-            if (stat(cam, &st) == 0 && S_ISREG(st.st_mode)) {
-                FILE *f = fopen(cam, "rb");
+            if (jk_sob_a_raiz(raiz, cam, seguro, sizeof(seguro))
+                && stat(seguro, &st) == 0 && S_ISREG(st.st_mode)) {
+                FILE *f = fopen(seguro, "rb");
                 if (f) {
                     fseek(f, 0, SEEK_END); long t = ftell(f); fseek(f, 0, SEEK_SET);
                     char *buf = malloc((size_t)(t > 0 ? t : 1));
                     size_t rd = buf ? fread(buf, 1, (size_t)t, f) : 0;
                     fclose(f);
                     char extra[128]; snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: *\r\n");
-                    ps_jk_responde(c, 200, ps_jk_mime(cam), buf ? buf : "", rd, extra, hr->keep_alive);
+                    ps_jk_responde(c, 200, ps_jk_mime(seguro), buf ? buf : "", rd, extra, hr->keep_alive);
                     free(buf);
                     if (params) vm->sp--;
                     return hr->keep_alive;
@@ -18113,8 +18320,12 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             if (achou_base) {
                 char cam[3072]; snprintf(cam, sizeof(cam), "%s/%s", base, rel);
                 struct stat st;
-                const char *serve = NULL; char idx[3072];
-                if (stat(cam, &st) == 0 && S_ISREG(st.st_mode)) serve = cam;
+                const char *serve = NULL; char idx[3072]; char seguro[4096];
+                /* mesma trava do `/static/`: o pedido tem que RESOLVER dentro
+                 * do static_folder. Fora dele, cai no index.html do SPA — que
+                 * é o que a URL desconhecida já devolvia. */
+                if (jk_sob_a_raiz(base, cam, seguro, sizeof(seguro))
+                    && stat(seguro, &st) == 0 && S_ISREG(st.st_mode)) serve = seguro;
                 else { snprintf(idx, sizeof(idx), "%s/index.html", base); if (stat(idx, &st) == 0) serve = idx; }
                 if (serve) {
                     FILE *f = fopen(serve, "rb");

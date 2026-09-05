@@ -2359,24 +2359,28 @@ static PSNode *statement(P *p)
             n->b = bloco(p);
             if (FALHOU(p)) return NULL;
         } else if (!p->dec_sem_captura) {
-            /* `@NonNull action f()` — a action vira um bloco de um nó só */
+            /* `@NonNull action f()` — a action vira um bloco de um nó só.
+             *
+             * A cabeça da action é UMA unidade: `[public|private] {async|tipo}*
+             * action|reaction`, em qualquer ordem dos modificadores — a mesma
+             * que o parser de statement aceita. Aqui havia uma cópia à mão
+             * que conhecia quatro formas (`action`, `tipo action`, `async
+             * action`, `async tipo action`) e NÃO conhecia `tipo async
+             * action`. O resultado era o pior possível: `@app.post(...)` em
+             * cima de `int async action handler()` compilava limpo, a action
+             * virava um statement solto SEM decorator, a rota nunca era
+             * registrada, e o cliente recebia 404 — sem um aviso sequer. */
             PSToken *nt = atual(p);
-            int eh_action = (nt->type == T_KW && nt->texto
-                             && (strcmp(nt->texto,"action")==0 || strcmp(nt->texto,"reaction")==0));
-            if (!eh_action && eh_tipo_kw(nt)) {
-                PSToken *n2 = espia(p, 1);
-                eh_action = (n2->type == T_KW && n2->texto
-                             && (strcmp(n2->texto,"action")==0 || strcmp(n2->texto,"reaction")==0));
-            }
-            if (!eh_action && nt->type == T_KW && nt->texto && strcmp(nt->texto,"async")==0) {
-                PSToken *n2 = espia(p, 1);
-                eh_action = (n2->type == T_KW && n2->texto
-                             && (strcmp(n2->texto,"action")==0 || strcmp(n2->texto,"reaction")==0));
-                if (!eh_action && eh_tipo_kw(n2)) {
-                    PSToken *n3 = espia(p, 2);
-                    eh_action = (n3->type == T_KW && n3->texto
-                                 && (strcmp(n3->texto,"action")==0 || strcmp(n3->texto,"reaction")==0));
-                }
+            int eh_action = 0;
+            {
+                int j = 0;
+                PSToken *mk = espia(p, 0);
+                if (mk->type == T_KW && mk->texto
+                        && (strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0)) j++;
+                while ((mk = espia(p, j))->type == T_KW && mk->texto
+                        && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw(mk))) j++;
+                eh_action = (mk->type == T_KW && mk->texto
+                             && (strcmp(mk->texto, "action") == 0 || strcmp(mk->texto, "reaction") == 0));
             }
             /* @app.route(...) class Nome(): ... — handler baseado em classe.
              * O decorador captura a classe (com prefixo private/public opcional)
@@ -2749,6 +2753,40 @@ static PSNode *statement(P *p)
             PSNode *ad = action_decl(p, is_async, tipo);
             if (ad && is_priv >= 0) ad->is_private = is_priv;
             return ad;
+        }
+
+        /* A cabeça `{async|tipo}+ NOME` SEM action/reaction é UMA unidade: uma
+         * função com o `action` esquecido — nunca "uma variável chamada
+         * async". Sem isto, `int async LoginHandler(data)` caía na declaração
+         * tipada e o erro era "'async' e palavra reservada ... nome de
+         * variavel" (o parser tinha lido `int async` como `int <nome>`);
+         * `async f(x) {` virava chamada + literal de dict e o erro falava de
+         * dicionário; `int f(x) {` dizia "exige '='". Três mensagens pro
+         * mesmo esquecimento, e nenhuma com a palavra que faltava.
+         *
+         * `int x = 1` continua declaração tipada: só é função aqui se a cabeça
+         * tem `async` (que nunca declara variável) ou se o nome vem seguido
+         * de `(`, que declaração nenhuma tem. A mensagem devolve a linha
+         * montada com os modificadores que a pessoa escreveu. */
+        if (j > off && (ap->type == T_IDENT || ap->type == T_IDENT_UPPER)) {
+            int tem_async = 0;
+            for (int k = off; k < j; k++)
+                if (strcmp(espia(p, k)->texto, "async") == 0) tem_async = 1;
+            if (tem_async || espia(p, j + 1)->type == T_LPAREN) {
+                char mods[64]; size_t w = 0; mods[0] = '\0';
+                for (int k = off; k < j; k++) {
+                    int n = snprintf(mods + w, sizeof(mods) - w, "%s ", espia(p, k)->texto);
+                    if (n < 0 || (size_t)n >= sizeof(mods) - w) { mods[w] = '\0'; break; }
+                    w += (size_t)n;
+                }
+                char m[240];
+                const char *nome = ap->texto ? ap->texto : "?";
+                snprintf(m, sizeof(m),
+                         "faltou 'action' (ou 'reaction') antes de '%.40s': %saction %.40s(...)",
+                         nome, mods, nome);
+                perro(p, m, ap);
+                return NULL;
+            }
         }
 
         /* `private str name = nome` — CAMPO DO OBJETO declarado dentro da

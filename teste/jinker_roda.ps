@@ -200,6 +200,76 @@ confere("arquivo estático é servido", r.text.strip() == "sou estatico")
 r = get(RAIZ + "/estatico/nao_existe.txt")
 confere("estático inexistente é 404", r.status_code == 404)
 
+# ── estático: o que NÃO sai ─────────────────────────────────────────────────
+# Cada vetor aqui é um jeito conhecido de sair da pasta publicada, e os dois
+# primeiros foram MEDIDOS vazando antes do conserto: `GET /static/../x`
+# entregava o `.ps` da aplicação e o `/etc/passwd`; `static_folder="."`
+# entregava `.git/config` e `.env`. A defesa é o `realpath` do caminho FINAL
+# (`jk_sob_a_raiz`), não filtro de string na URL — por isso a lista testa
+# codificação, dupla codificação, NUL, UTF-8 overlong, barra invertida e
+# symlink: tudo que vira `..` depois de decodificar resolve pra fora e é
+# barrado; o que não vira é um nome que não existe. Um vetor novo entra aqui.
+#
+# O `get()` do request normaliza o `..` no CLIENTE (todo cliente HTTP faz),
+# então só a requisição CRUA testa o servidor.
+VETORES = [
+    # static_folder (montado em /estatico) -> /tmp/ps_jinker_teste/segredo.txt
+    "/estatico/../segredo.txt",
+    "/estatico/%2e%2e/segredo.txt",
+    "/estatico/%2E%2E/segredo.txt",
+    "/estatico/..%2fsegredo.txt",
+    "/estatico/%2e%2e%2fsegredo.txt",
+    "/estatico/%252e%252e/segredo.txt",
+    "/estatico/....//segredo.txt",
+    "/estatico/..\\segredo.txt",
+    "/estatico/./../segredo.txt",
+    "/estatico//../segredo.txt",
+    "/estatico/pagina.txt%00/../segredo.txt",
+    "/estatico/%c0%ae%c0%ae/segredo.txt",
+    "/estatico/%e0%80%ae%e0%80%ae/segredo.txt",
+    "/estatico/../../../../../../../../etc/passwd",
+    "/estatico/link_passwd",
+    "/estatico/.env",
+    # /static/ fixo (teste/static/) -> teste/jinker_alvo.ps, o proprio servidor
+    "/static/../jinker_alvo.ps",
+    "/static/%2e%2e/jinker_alvo.ps",
+    "/static/..%2fjinker_alvo.ps",
+    "/static/%252e%252e/jinker_alvo.ps",
+    "/static/solto.txt%00/../jinker_alvo.ps",
+    "/static/../../../../../../../../etc/passwd",
+    "/static/link_fora"
+]
+SEGREDOS = ["FORA da pasta", "root:x:", "Jinker(", "SENHA=nao"]
+vazou = []
+for each caminho in VETORES
+{
+    r = cru("GET " + caminho + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+    for each s in SEGREDOS
+    {
+        if s in r
+        {
+            addEnd(vazou, caminho + "  entregou  " + s)
+        }
+    }
+}
+confere("nenhum dos " + str(len(VETORES)) + " vetores de travessia entrega segredo", len(vazou) == 0)
+for each v in vazou
+{
+    post("      VAZOU: " + v)
+}
+r = get(RAIZ + "/estatico/.env")
+confere("oculto (.env) DENTRO da pasta publicada e 404", r.status_code == 404)
+# `.ps` DENTRO da pasta publicada SAI: e assim que o `psl install` baixa
+# pacote de um registry servido pelo jinker (`cli_roda.ps`). Uma versao
+# barrava por extensao e quebrou isso. O `.ps` da aplicacao nao sai porque
+# nao esta na pasta publicada — e o que os vetores acima garantem.
+r = get(RAIZ + "/estatico/fonte.ps")
+confere("fonte .ps DENTRO da pasta publicada e servido (registry do psl)", r.status_code == 200 and r.text.strip() == "post(1)")
+r = get(RAIZ + "/estatico/.well-known/acme")
+confere(".well-known e a excecao e sai (Let's Encrypt)", r.status_code == 200 and r.text.strip() == "token")
+r = get(RAIZ + "/static/solto.txt")
+confere("/static/ fixo serve da pasta AO LADO do .ps, nao do cwd", r.status_code == 200 and r.text.strip() == "asset solto")
+
 # ── canal ───────────────────────────────────────────────────────────────────
 r = get(RAIZ + "/emitir")
 confere("canal emite sem cliente e diz o status", r.status_code == 200)
@@ -213,7 +283,32 @@ r = http_post(RAIZ + "/ok", body="x")
 confere("rota sem methods= aceita POST (contrato)", r.status_code == 200)
 # Já `/json` declara `methods=["POST"]`: GET nela tem que ser recusado.
 r = get(RAIZ + "/json")
-confere("método fora do methods= declarado não vira 200", r.status_code != 200)
+confere("método fora do methods= declarado é 405", r.status_code == 405)
+
+# ── atalhos por verbo e o 405 ───────────────────────────────────────────────
+r = get(RAIZ + "/verbo")
+confere("@app.get registra GET", r.status_code == 200 and r.get_json("verbo") == "GET")
+r = http_post(RAIZ + "/verbo", body={"nome": "ana", "idade": 3})
+confere("@app.post registra POST e model= valida", r.status_code == 200 and r.get_json("nome") == "ana")
+r = http_post(RAIZ + "/verbo", body={"nome": "ana"})
+confere("model= no atalho reprova campo faltando com 422", r.status_code == 422)
+r = put(RAIZ + "/verbo", body="x")
+confere("@app.put registra PUT", r.get_json("verbo") == "PUT")
+r = delete(RAIZ + "/verbo")
+confere("@app.delete registra DELETE", r.get_json("verbo") == "DELETE")
+r = patch(RAIZ + "/verbo/9", body="x")
+confere("@app.patch registra PATCH e injeta o path param", r.get_json("id") == "9")
+# Método errado num path que EXISTE é 405, não 404: o front que escreveu
+# `fetch(url)` (GET) numa rota `post` recebia "URL não existe" — a URL
+# existia, o método é que não. O `Allow` diz o que a rota aceita, juntando
+# TODAS as rotas do path, na ordem em que foram registradas.
+r = http_post(RAIZ + "/verbo/9", body="x")
+confere("metodo errado em path existente e 405", r.status_code == 405)
+r = cru("POST /verbo/9 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("405 leva Allow: com o metodo da rota", "Allow: PATCH" in r)
+confere("405 diz o motivo no corpo", "método inválido: POST /verbo/9" in r)
+r = cru("PATCH /verbo HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("Allow junta os verbos de TODAS as rotas do path", "Allow: GET, POST, PUT, DELETE" in r)
 
 # ── WebSocket ───────────────────────────────────────────────────────────────
 eco = ""

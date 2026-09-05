@@ -15,6 +15,33 @@ const Caso CASOS_ERROS[] = {
   "}\n"
   "post(f(b=1))\n",
   "", "f() missing 1 required positional argument: 'a'", 1 },
+
+/* ── `action` esquecido: a cabeça `{tipo|async}+ NOME(` é UMA unidade ──────
+ * Eram três mensagens pro mesmo esquecimento, nenhuma com a palavra que
+ * faltava: `int async f(` dizia "'async' e palavra reservada ... nome de
+ * variavel" (o parser tinha lido `int async` como `int <nome>`); `async f(`
+ * dizia "faltou ':' no dicionario" (o corpo virou literal de dict); `int f(`
+ * dizia "declaracao de variavel exige '='". Agora as três dizem o que faltou
+ * e devolvem a linha montada com os modificadores que a pessoa escreveu. */
+{ "action esquecido: int async NOME(...) diz o que faltou",
+  "int async LoginHandler(data) {\n"
+  "    return 1\n"
+  "}\n",
+  "", "faltou 'action' (ou 'reaction') antes de 'LoginHandler': int async action LoginHandler(...)", 2 },
+{ "action esquecido: async NOME(...) nao fala de dicionario",
+  "async f(x) {\n"
+  "    return 1\n"
+  "}\n",
+  "", "faltou 'action' (ou 'reaction') antes de 'f': async action f(...)", 2 },
+{ "action esquecido: int NOME(...) nao fala de '='",
+  "int f(x) {\n"
+  "    return 1\n"
+  "}\n",
+  "", "faltou 'action' (ou 'reaction') antes de 'f': int action f(...)", 2 },
+{ "int x = 1 continua declaracao tipada, nao action esquecida",
+  "int x = 1\n"
+  "post(x)\n",
+  "1", NULL, 0 },
 { "método de instância sem argumento",
   "class C() {\n"
   "    action m(self, a) {\n"

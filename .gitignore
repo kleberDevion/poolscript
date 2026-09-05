@@ -51,6 +51,8 @@ psl-poolscript-vsix/*.vsix
 # assinaturas introspectadas pra auditoria da doc (scripts/audita_doc_sigs.py)
 .audita_sigs.json
 teste/ultima_falha.txt
+# o servidor-alvo do jinker cria e apaga; testa a `/static/` ao lado do .ps
+teste/static/
 
 # binarios de teste (gerados por make; nao versionar)
 testar

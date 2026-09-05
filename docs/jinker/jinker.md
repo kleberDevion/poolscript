@@ -86,6 +86,7 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 |---|---|---|
 | `Jinker(...)` | a aplicação; construtor, `oauth`, subir o servidor | [Jinker/Jinker.md](Jinker/Jinker.md) |
 | `@app.route(...)` | registra uma rota HTTP | [route/route.md](route/route.md) |
+| `@app.get/post/put/patch/delete(...)` | rota com o verbo no nome; método errado é `405` | [post/post.md](post/post.md) |
 | `@app.socket(...)` | registra um handler de WebSocket | [socket/socket.md](socket/socket.md) |
 | `app.channel` | envia mensagens pros WebSockets conectados | [channel/channel.md](channel/channel.md) |
 | `@app.middleware()` | verificação que roda antes de rotas | [middleware/middleware.md](middleware/middleware.md) |
@@ -113,15 +114,23 @@ Let's Encrypt em produção): **[tls.md](tls.md)**.
 
 Duas formas:
 
-1. **`/static/` (fixo):** qualquer URL `/static/...` serve de uma pasta
-   `static/` no diretório atual. Nome `static` é fixo, não configurável.
-   Ver a seção em [render](render/render.md).
+1. **`/static/` (fixo):** qualquer URL `/static/...` serve da pasta `static/`
+   **ao lado do `.ps`** — não da pasta de onde o servidor foi chamado. Nome
+   `static` é fixo, não configurável. Ver a seção em [render](render/render.md).
 2. **`static_folder` (SPA):** `Jinker(static_folder="frontend/dist")` — hospeda
    um front-end inteiro junto com a API, com fallback pra `index.html`. Página
    própria: **[static_folder/static_folder.md](static_folder/static_folder.md)**.
 
-Ordem de decisão de cada requisição: rota → `/static/` → arquivo no
-`static_folder` → `index.html` do `static_folder` → 404.
+Ordem de decisão de cada requisição: rota → path existe com outro método
+(`405`) → `/static/` → arquivo no `static_folder` → `index.html` do
+`static_folder` → 404.
+
+**O que nunca sai** pelos dois: caminho que resolve pra **fora** da pasta
+(`..`, codificado ou não, e symlink) e nome que começa com **`.`** (`.env`,
+`.git`; a exceção é `.well-known`, do Let's Encrypt). O resto sai — `.ps`
+inclusive, que é como o `psl install` baixa pacote de um registry —, então
+**não aponte `static_folder` pra raiz do projeto**. Detalhe em
+[static_folder/static_folder.md](static_folder/static_folder.md#o-que-não-sai).
 
 ---
 
