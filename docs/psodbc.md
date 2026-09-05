@@ -9,7 +9,7 @@ o que é interno/privado do módulo Python (não aparece do lado de fora).
 
 ```
 import psodbc
-// ou: import psodbc   (alias)
+# ou: import psodbc   (alias)
 ```
 
 A tabela abaixo é a superfície INTEIRA de `psodbc.*`: o que não está aqui
@@ -86,7 +86,7 @@ rodarem dentro de transação implícita. E o placeholder de parâmetros no
 ```
 import psodbc
 
-// 1. Autenticação SQL, servidor remoto, porta explícita
+# 1. Autenticação SQL, servidor remoto, porta explícita
 conn = psodbc.connect(
     driver="sqlserver",
     host="10.0.0.5",
@@ -96,13 +96,13 @@ conn = psodbc.connect(
     database="vendas"
 )
 
-// 2. Autenticação do Windows, instância local nomeada (repare o r"")
+# 2. Autenticação do Windows, instância local nomeada (repare o r"")
 conn = psodbc.connect(driver="sqlserver", host=r"localhost\SQLEXPRESS", database="vendas")
 
-// 3. Por URL — igual ao exemplo 1 (senha com @ vira %40 na URL)
+# 3. Por URL — igual ao exemplo 1 (senha com @ vira %40 na URL)
 conn = psodbc.connect(url="sqlserver://sa:Senha%40123@10.0.0.5:1433/vendas")
 
-// 4. Forçando um driver ODBC específico
+# 4. Forçando um driver ODBC específico
 conn = psodbc.connect(driver="sqlserver", host="localhost", database="vendas",
                       odbc_driver="ODBC Driver 17 for SQL Server")
 
@@ -135,7 +135,7 @@ conn.close()
 
 ```
 resultado = psodbc.query(base="meu_banco.db", cmd="SELECT * FROM @t", table="users")
-post(resultado)   // list[dict], ou None se não for SELECT
+post(resultado)   # list[dict], ou None se não for SELECT
 ```
 
 **Por parâmetros — Postgres/MySQL/SQL Server**:

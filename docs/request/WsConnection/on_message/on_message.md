@@ -23,7 +23,7 @@ impresso. É o motivo nº 1 de "conectei mas não recebo nada".
 ```
 conn = request.ws_connect("ws://localhost:8081/chat/sala")
 
-// SEM esta linha, as mensagens somem sem aviso:
+# SEM esta linha, as mensagens somem sem aviso:
 conn.on_message(action(msg) { post(msg) })
 ```
 

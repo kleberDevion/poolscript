@@ -6,7 +6,7 @@ está aberto (dentro do `using`), você lê e escreve nele; ao sair do bloco, é
 
 ```
 using mp.open(target="dados.csv") as arq {
-    // arq é um ManpuFile
+    # arq é um ManpuFile
 }
 ```
 
@@ -31,13 +31,13 @@ using mp.open(target="dados.csv") as arq {
 import manpu as mp
 
 using mp.open(target="dados.csv") as arq {
-    linhas = arq.read()                    // lê o que já tem
+    linhas = arq.read()                    # lê o que já tem
     for each l in linhas {
         post(l["nome"])
     }
     arq.write(column=0, cell=full, content="novo\nvalores")
 }
-// salvo e fechado automaticamente
+# salvo e fechado automaticamente
 ```
 
 ---

@@ -11,8 +11,8 @@ col.remove(query: dict) -> None
 ## Uso
 
 ```
-col.remove({"ativo": false})      // remove todos os inativos
-col.remove({"nome": "café"})      // remove os cafés
+col.remove({"ativo": false})      # remove todos os inativos
+col.remove({"nome": "café"})      # remove os cafés
 ```
 
 > **Cuidado:** `col.remove({})` (filtro vazio) removeria **todos** os

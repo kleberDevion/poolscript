@@ -23,9 +23,9 @@ API fica dona do resto.
 ```
 app = Jinker(__name__, static_folder="dist", static_url="/app")
 
-// dist/app.js      →  GET /app/app.js      ✅ serve o arquivo
-// dist/style.css   →  GET /app/style.css   ✅
-// GET /users                               → NÃO é estático → vai pra API/404
+# dist/app.js      →  GET /app/app.js      ✅ serve o arquivo
+# dist/style.css   →  GET /app/style.css   ✅
+# GET /users                               → NÃO é estático → vai pra API/404
 ```
 
 É o mesmo conceito do `static_url_path` do Flask e do mount path do Express.
@@ -38,9 +38,9 @@ Se você **não** passar `static_url`, nada muda: o `static_folder` continua sen
 servido na raiz, como sempre foi.
 
 ```
-app = Jinker(__name__, static_folder="dist")   // static_url = "/"
+app = Jinker(__name__, static_folder="dist")   # static_url = "/"
 
-// dist/app.js  →  GET /app.js   (raiz)
+# dist/app.js  →  GET /app.js   (raiz)
 ```
 
 ---
@@ -76,8 +76,8 @@ use `static_url="/static"` — escolha `/app`, `/assets`, `/public` etc.
 `app.static_folder` a pasta (ou `Null` se não setada):
 
 ```
-post(app.static_url)      // "/app"
-post(app.static_folder)   // "dist"
+post(app.static_url)      # "/app"
+post(app.static_folder)   # "dist"
 ```
 
 ---

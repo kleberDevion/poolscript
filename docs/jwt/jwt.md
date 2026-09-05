@@ -35,14 +35,14 @@ O segredo (`secret`) é o que garante que ninguém forja um token. Guarde-o num
 import jwt
 import date
 
-// LOGIN — gera o token (expira em 24h)
+# LOGIN — gera o token (expira em 24h)
 payload = {
     "user_id": 42,
     "exp": date.timestamp() + date.hora(hours=24)
 }
 token = jwt.gen(payload, "meu_segredo")
 
-// DEPOIS — verifica o token que o cliente mandou
+# DEPOIS — verifica o token que o cliente mandou
 dados = jwt.check(token, "meu_segredo")
 if (dados is Null) {
     post("token inválido ou expirado")

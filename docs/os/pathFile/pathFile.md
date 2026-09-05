@@ -15,7 +15,7 @@ os.pathFile(name: str) -> str
 import os
 
 caminho = os.pathFile("dados.json")
-post(caminho)     // "C:\projeto\dados.json"
+post(caminho)     # "C:\projeto\dados.json"
 ```
 
 Diferente de `loadFile`, o `pathFile` **não lê** o conteúdo — só te dá o

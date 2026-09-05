@@ -20,15 +20,15 @@ os.run(args: list | str, capture: bool = false) -> str | Null
 ## Rodar sem capturar
 
 ```
-os.run(["mkdir", "uploads"])        // executa; devolve Null
-os.run(["git", "status"])           // a saída vai direto pro terminal
+os.run(["mkdir", "uploads"])        # executa; devolve Null
+os.run(["git", "status"])           # a saída vai direto pro terminal
 ```
 
 ## Capturar a saída
 
 ```
 versao = os.run(["python", "--version"], capture=true)
-post(versao)                        // "Python 3.14.6"
+post(versao)                        # "Python 3.14.6"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando
@@ -42,11 +42,11 @@ não produziu stdout mas gerou erro, devolve o **stderr** — igual ao `os.cmd`.
 são só texto. Compare:
 
 ```
-nome = "x; rm -rf ~"                // valor malicioso vindo de fora
+nome = "x; rm -rf ~"                # valor malicioso vindo de fora
 
-os.cmd("mkdir " + nome)             // ⚠️ o shell executa o `rm -rf ~`
-os.run(["mkdir", nome])             // seguro: cria uma pasta chamada
-                                    //   literalmente "x; rm -rf ~"
+os.cmd("mkdir " + nome)             # ⚠️ o shell executa o `rm -rf ~`
+os.run(["mkdir", nome])             # seguro: cria uma pasta chamada
+                                    #   literalmente "x; rm -rf ~"
 ```
 
 Regra prática: **dado do usuário no comando → sempre `os.run([...])`**. Só use
@@ -60,7 +60,7 @@ redirecionamento, variável) numa string que **você** controla.
 Também aceita string, dividida respeitando aspas, **sem** interpretar shell:
 
 ```
-os.run("python -c \"print(1+1)\"", capture=true)   // "2"
+os.run("python -c \"print(1+1)\"", capture=true)   # "2"
 ```
 
 A forma com lista é a recomendada — não depende das regras de divisão por
@@ -84,8 +84,8 @@ action versao_de(programa) {
     }
 }
 
-post(versao_de("git"))          // ex: "git version 2.43.0"
-post(versao_de("nao_existe"))   // "nao_existe não encontrado"
+post(versao_de("git"))          # ex: "git version 2.43.0"
+post(versao_de("nao_existe"))   # "nao_existe não encontrado"
 ```
 
 Diferença importante para o [`os.cmd`](../cmd/cmd.md): como o `cmd` passa pelo

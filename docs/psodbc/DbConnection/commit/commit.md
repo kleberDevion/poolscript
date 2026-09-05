@@ -13,7 +13,7 @@ conn.commit() -> None
 
 ```
 cursor.execute("INSERT INTO produtos (nome, preco) VALUES (?, ?)", ("café", 15))
-conn.commit()          // agora sim a inserção está salva
+conn.commit()          # agora sim a inserção está salva
 ```
 
 Precisa de `commit` depois de **cada** operação que altera dados (ou de um

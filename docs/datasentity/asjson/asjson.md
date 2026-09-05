@@ -20,7 +20,7 @@ Entity Pessoa() {
 }
 
 p = Pessoa(nome="Ana", idade=30)
-post(asjson(p))     // '{"nome": "Ana", "idade": 30}'
+post(asjson(p))     # '{"nome": "Ana", "idade": 30}'
 ```
 
 Atalho pra `asdict` + `json.stringify` — útil pra gravar em arquivo ou mandar

@@ -33,13 +33,13 @@ Todas as funções usam o horário **local** da máquina.
 ```
 import date
 
-post(date.today())        // 25/07/2026
-post(date.time())         // 14:30:05
-post(date.datahora())     // 25/07/2026 14:30:05
+post(date.today())        # 25/07/2026
+post(date.time())         # 14:30:05
+post(date.datahora())     # 25/07/2026 14:30:05
 
-// carimbar um registro
+# carimbar um registro
 registro = {"texto": "olá", "quando": date.datahora()}
 
-// expiração de token daqui a 24h (ver lib jwt)
+# expiração de token daqui a 24h (ver lib jwt)
 exp = date.timestamp() + date.hora(hours=24)
 ```

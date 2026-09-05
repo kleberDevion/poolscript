@@ -16,8 +16,8 @@ request.header(key: str) -> str | Null
 ```
 @app.route("/api", methods=["GET"]) {
     action api() {
-        token = request.header("Authorization")   // "Bearer abc..." ou Null
-        tipo  = request.header("content-type")     // mesma coisa que "Content-Type"
+        token = request.header("Authorization")   # "Bearer abc..." ou Null
+        tipo  = request.header("content-type")     # mesma coisa que "Content-Type"
         return jsonify({"tem_token": token is not Null})
     }
 }
@@ -32,11 +32,11 @@ request.header(key: str) -> str | Null
   mandou (aí a caixa importa, e `.get()` também é case-sensitive).
 
 ```
-// um header, jeito recomendado
+# um header, jeito recomendado
 ua = request.header("User-Agent")
 
-// o dict inteiro (ex: logar tudo)
-todos = request.headers            // {"Host": "...", "User-Agent": "...", ...}
+# o dict inteiro (ex: logar tudo)
+todos = request.headers            # {"Host": "...", "User-Agent": "...", ...}
 ```
 
 ---
@@ -44,7 +44,7 @@ todos = request.headers            // {"Host": "...", "User-Agent": "...", ...}
 ## Ausente devolve `Null`
 
 ```
-x = request.header("X-Nao-Existe")   // Null
+x = request.header("X-Nao-Existe")   # Null
 if (x is Null) {
     return jsonify({"erro": "header obrigatório faltando"}), 400
 }
@@ -60,7 +60,7 @@ resposta (inclusive o `Content-Type`/mime), use o `JinkerResponse`:
 ```
 r = JinkerResponse()
 r.send("<nota>oi</nota>")
-r.header("Content-Type", "application/xml")   // seta na saída
+r.header("Content-Type", "application/xml")   # seta na saída
 return r
 ```
 

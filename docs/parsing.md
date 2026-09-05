@@ -7,7 +7,7 @@ valor original intacto (não muta a variável de entrada).
 disponível em qualquer script:
 
 ```
-post(Parsing.integer("R$ 1.234"))   // 1234
+post(Parsing.integer("R$ 1.234"))   # 1234
 ```
 
 ---
@@ -18,7 +18,7 @@ Remove caracteres não textuais e colapsa espaços. Com `to_type="int"` ou
 `"flo"`, delega pra `integer()`/`floating()`.
 
 ```
-Parsing.string("  ana   souza  ")   // "ana souza"
+Parsing.string("  ana   souza  ")   # "ana souza"
 ```
 
 ---
@@ -29,8 +29,8 @@ Converte pra inteiro. Float **trunca** (não arredonda): `123.7 → 123`.
 Em string, extrai só os dígitos antes do primeiro ponto.
 
 ```
-Parsing.integer(123.7)        // 123
-Parsing.integer("R$ 1.234")   // 1234
+Parsing.integer(123.7)        # 123
+Parsing.integer("R$ 1.234")   # 1234
 ```
 
 ---
@@ -40,8 +40,8 @@ Parsing.integer("R$ 1.234")   // 1234
 Converte pra float. Suporta separador decimal brasileiro:
 
 ```
-Parsing.floating("1.299,90")   // 1299.9
-Parsing.floating("29,90")      // 29.9
+Parsing.floating("1.299,90")   # 1299.9
+Parsing.floating("29,90")      # 29.9
 ```
 
 ---
@@ -49,11 +49,11 @@ Parsing.floating("29,90")      // 29.9
 ## Parsing.boolean(value, to_type="bool")
 
 ```
-Parsing.boolean("")        // False
-Parsing.boolean("0")       // False
-Parsing.boolean("false")   // False
-Parsing.boolean("null")    // False
-Parsing.boolean("sim")     // True — qualquer outra string não-vazia
+Parsing.boolean("")        # False
+Parsing.boolean("0")       # False
+Parsing.boolean("false")   # False
+Parsing.boolean("null")    # False
+Parsing.boolean("sim")     # True — qualquer outra string não-vazia
 ```
 
 ---
@@ -65,7 +65,7 @@ entre `integer()`/`floating()`/string conforme `to_type`.
 
 ```
 v = Parsing.TransientValue("29,90", "flo")
-post(v + 10)   // 39.9 — aritmética funciona direto no TransientValue
+post(v + 10)   # 39.9 — aritmética funciona direto no TransientValue
 ```
 
 ---
@@ -76,7 +76,7 @@ Converte pra `dict`/`list`. String tenta parse JSON (devolve `{}` se
 falhar); `dict`/`list` retornam como estão.
 
 ```
-Parsing.JSONformatt('{"a": 1}')   // {"a": 1}
+Parsing.JSONformatt('{"a": 1}')   # {"a": 1}
 ```
 
 ---
@@ -87,8 +87,8 @@ Converte pra lista: `tuple`/`set` → `list`; `str` → lista de caracteres;
 `dict` → lista das chaves; qualquer outro valor vira `[value]`.
 
 ```
-Parsing.Arrayformatt("abc")         // ["a", "b", "c"]
-Parsing.Arrayformatt({"a": 1})      // ["a"]
+Parsing.Arrayformatt("abc")         # ["a", "b", "c"]
+Parsing.Arrayformatt({"a": 1})      # ["a"]
 ```
 
 ---
@@ -108,7 +108,7 @@ aritmética, comparação e `str()`/`int()`/`float()`/`bool()`, mas guarda o
 
 ```
 v = Parsing.integer("42")
-post(v + 8)        // 50
-post(v.type())      // "int"
-post(v == 42)        // True
+post(v + 8)        # 50
+post(v.type())      # "int"
+post(v == 42)        # True
 ```

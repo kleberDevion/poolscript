@@ -16,7 +16,7 @@ arq.read() -> list | str
 import manpu as mp
 
 using mp.open(target="clientes.csv") as arq {
-    dados = arq.read()             // lista de dicts
+    dados = arq.read()             # lista de dicts
     for each c in dados {
         post(c["nome"])
     }

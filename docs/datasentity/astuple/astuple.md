@@ -21,7 +21,7 @@ Entity Pessoa() {
 }
 
 p = Pessoa(nome="Ana", idade=30)
-post(astuple(p))     // ("Ana", 30)
+post(astuple(p))     # ("Ana", 30)
 ```
 
 Só os valores, na ordem dos campos — sem as chaves.

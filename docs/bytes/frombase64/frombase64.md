@@ -14,8 +14,8 @@ bytes.frombase64(s: str) -> bytes
 ```
 import bytes
 
-bytes.frombase64("SGVsbG8=")   // b'Hello'
-bytes.frombase64("3q2+7w==")   // b'\xde\xad\xbe\xef'
+bytes.frombase64("SGVsbG8=")   # b'Hello'
+bytes.frombase64("3q2+7w==")   # b'\xde\xad\xbe\xef'
 ```
 
 ---

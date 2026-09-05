@@ -42,7 +42,7 @@ qrcode.gen(
     size=15,
     color="navy",
     bg="white",
-    error_correction="H"        // aguenta mais dano/sujeira
+    error_correction="H"        # aguenta mais dano/sujeira
 )
 ```
 
@@ -50,8 +50,8 @@ qrcode.gen(
 
 ```
 img = qrcode.gen("texto")
-img.save("qr.png")              // grava quando quiser
-dados = img.bytes()            // ou pega os bytes (ex: enviar por email)
+img.save("qr.png")              # grava quando quiser
+dados = img.bytes()            # ou pega os bytes (ex: enviar por email)
 ```
 
 ---

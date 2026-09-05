@@ -12,8 +12,8 @@ Parsing.string(value, to_type="str")
 ## Uso
 
 ```
-Parsing.string("  texto   com   espaços  ")   // "texto com espaços"
-Parsing.string(42)                            // "42"
+Parsing.string("  texto   com   espaços  ")   # "texto com espaços"
+Parsing.string(42)                            # "42"
 ```
 
 Com `to_type`, pode já converter pra número no fim (`"int"`, `"flo"`).

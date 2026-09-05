@@ -15,10 +15,10 @@ Parsing.floating(value, to_type="flo") -> flo
 ## Uso
 
 ```
-Parsing.floating("R$ 19,90")     // 19.90   (entende vírgula BR)
-Parsing.floating("3.14")         // 3.14
-Parsing.floating(10)             // 10.0
-Parsing.floating("abc")          // 0.0
+Parsing.floating("R$ 19,90")     # 19.90   (entende vírgula BR)
+Parsing.floating("3.14")         # 3.14
+Parsing.floating(10)             # 10.0
+Parsing.floating("abc")          # 0.0
 ```
 
 ---

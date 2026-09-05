@@ -17,9 +17,9 @@ os.code(path: str = ".") -> None
 ```
 import os
 
-os.code()                  // abre o editor na pasta atual
-os.code("config.json")     // abre esse arquivo
-os.code("frontend")        // abre essa pasta
+os.code()                  # abre o editor na pasta atual
+os.code("config.json")     # abre esse arquivo
+os.code("frontend")        # abre essa pasta
 ```
 
 Depende de o editor estar instalado e disponível no `PATH` (ex: o comando

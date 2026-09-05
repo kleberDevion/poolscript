@@ -95,8 +95,8 @@ conn = psodbc.connect(url="mongodb://localhost:27017/loja")
 ## Depois de conectar
 
 ```
-cursor = conn.cursor()                       // SQL
-col = conn.collection("nome")                // Mongo
+cursor = conn.cursor()                       # SQL
+col = conn.collection("nome")                # Mongo
 ```
 
 ---

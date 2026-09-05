@@ -13,9 +13,9 @@ date.time() -> str
 ```
 import date
 
-post(date.time())          // "14:30:05"
+post(date.time())          # "14:30:05"
 
-// carimbar um log
+# carimbar um log
 post(f"[{date.time()}] servidor iniciado")
 ```
 

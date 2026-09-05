@@ -23,12 +23,12 @@ psodbc.query(base: str, cmd=None, table: str = "") -> list | None | DbConnection
 ```
 import psodbc
 
-// SELECT → devolve list[dict] direto
+# SELECT → devolve list[dict] direto
 resultado = psodbc.query(
     base="loja.db",
     cmd="SELECT * FROM produtos"
 )
-post(resultado)      // [{"id": 1, "nome": "café"}, ...]
+post(resultado)      # [{"id": 1, "nome": "café"}, ...]
 ```
 
 Se o comando não for `SELECT` (INSERT/UPDATE/DELETE), executa e devolve `Null`.
@@ -59,7 +59,7 @@ psodbc.query(
     cmd=("SELECT * FROM @t WHERE ativo = ?", (true,)),
     table="clientes"
 )
-// vira: SELECT * FROM clientes WHERE ativo = ?
+# vira: SELECT * FROM clientes WHERE ativo = ?
 ```
 
 ---

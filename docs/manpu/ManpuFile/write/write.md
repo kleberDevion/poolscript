@@ -28,10 +28,10 @@ lista = mp.load("compras.txt")
 
 using mp.open(target="compras.csv") as arq {
     arq.write(column=0, cell=full, content=lista)
-    // pode escrever mais de uma vez no mesmo arquivo:
+    # pode escrever mais de uma vez no mesmo arquivo:
     arq.write(column=1, cell=0, content="cabeçalho")
 }
-// salvo e fechado automaticamente
+# salvo e fechado automaticamente
 ```
 
 ---

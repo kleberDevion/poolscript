@@ -17,7 +17,7 @@ request.get(key: str) -> valor | Null
 ```
 @app.route("/buscar", methods=cors.options(["GET"]))
 action buscar() {
-    termo = request.get("termo")     // "poolscript"
+    termo = request.get("termo")     # "poolscript"
     return jsonify({"buscando": termo})
 }
 ```
@@ -27,7 +27,7 @@ action buscar() {
 ```
 @app.route("/salvar", methods=cors.options(["POST"]))
 action salvar() {
-    nome = request.get("nome")       // "ana"
+    nome = request.get("nome")       # "ana"
     return jsonify({"salvo": nome})
 }
 ```

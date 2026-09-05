@@ -16,7 +16,7 @@ request.patch(url, headers=None, body=None, timeout=30, stream=false, max_size=N
 ```
 import request
 
-// muda SÓ o email do usuário 10, o resto fica como está
+# muda SÓ o email do usuário 10, o resto fica como está
 resp = request.patch(
     "https://api.x.com/users/10",
     body={"email": "ana@nova.com"}

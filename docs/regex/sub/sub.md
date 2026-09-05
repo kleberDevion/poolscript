@@ -21,17 +21,17 @@ regex.sub(pattern: str, repl: str, string: str, count=0, flags=0) -> str
 ```
 import regex
 
-// trocar espaços múltiplos por um só
+# trocar espaços múltiplos por um só
 limpo = regex.sub(" +", " ", "string    com   espaços")
-post(limpo)          // "texto com espaços"
+post(limpo)          # "texto com espaços"
 
-// remover todos os dígitos (substitui por nada)
+# remover todos os dígitos (substitui por nada)
 sem_num = regex.sub(r"\d", "", "abc123def")
-post(sem_num)        // "abcdef"
+post(sem_num)        # "abcdef"
 
-// censurar
+# censurar
 censurado = regex.sub("senha=\w+", "senha=***", "user=ana senha=1234")
-post(censurado)      // "user=ana senha=***"
+post(censurado)      # "user=ana senha=***"
 ```
 
 ---
@@ -39,7 +39,7 @@ post(censurado)      // "user=ana senha=***"
 ## Limitar quantas trocas
 
 ```
-regex.sub("a", "X", "banana", count=1)     // "bXnana"  (só a primeira)
+regex.sub("a", "X", "banana", count=1)     # "bXnana"  (só a primeira)
 ```
 
 ---

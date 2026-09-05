@@ -9,8 +9,8 @@ HTML, imagens, PDFs — qualquer arquivo.
 ```
 from jinker import render
 
-render(folder_or_file: str) -> JinkerResponse            // caminho completo
-render(folder_or_file: str, file: str) -> JinkerResponse // pasta + arquivo
+render(folder_or_file: str) -> JinkerResponse            # caminho completo
+render(folder_or_file: str, file: str) -> JinkerResponse # pasta + arquivo
 ```
 
 ---
@@ -18,8 +18,8 @@ render(folder_or_file: str, file: str) -> JinkerResponse // pasta + arquivo
 ## As duas formas de passar o caminho (equivalentes)
 
 ```
-return render("paginas/index.html")     // caminho completo, um argumento
-return render("paginas", "index.html")  // pasta + arquivo separados
+return render("paginas/index.html")     # caminho completo, um argumento
+return render("paginas", "index.html")  # pasta + arquivo separados
 ```
 
 São **exatamente a mesma coisa**: internamente
@@ -31,7 +31,7 @@ A forma de dois argumentos brilha quando a pasta é fixa e o arquivo é variáve
 ```
 action pagina() {
     nome = request.path_param("nome")
-    return render("paginas", f"{nome}.html")   // paginas/<nome>.html
+    return render("paginas", f"{nome}.html")   # paginas/<nome>.html
 }
 ```
 
@@ -64,9 +64,9 @@ regra fixa de `/static/`, que exige a pasta chamar-se `static`.)
 Você não precisa fazer nada — só apontar o arquivo.
 
 ```
-return render("web/index.html")    // text/html
-return render("web/logo.png")      // image/png, bytes
-return render("docs/manual.pdf")   // application/pdf, bytes
+return render("web/index.html")    # text/html
+return render("web/logo.png")      # image/png, bytes
+return render("docs/manual.pdf")   # application/pdf, bytes
 ```
 
 ---
@@ -80,7 +80,7 @@ página de erro em vez de lançar exceção — então é seguro usar direto no
 ```
 @app.route("/", methods=cors.options(["GET"]))
 action index() {
-    return render("web/index.html")   // se não existir, vira 404 automático
+    return render("web/index.html")   # se não existir, vira 404 automático
 }
 ```
 

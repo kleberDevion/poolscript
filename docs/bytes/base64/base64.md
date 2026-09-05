@@ -14,8 +14,8 @@ bytes.base64(b: bytes) -> str
 ```
 import bytes
 
-bytes.base64(bytes.new("Hello"))   // "SGVsbG8="
-bytes.base64(bytes.fromhex("deadbeef"))   // "3q2+7w=="
+bytes.base64(bytes.new("Hello"))   # "SGVsbG8="
+bytes.base64(bytes.fromhex("deadbeef"))   # "3q2+7w=="
 ```
 
 ---

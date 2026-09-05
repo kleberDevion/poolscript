@@ -8,7 +8,7 @@ com entrada suja como um `int()` cru quebraria.
 disponível.
 
 ```
-Parsing.integer("R$ 1.234")     // extrai o número
+Parsing.integer("R$ 1.234")     # extrai o número
 ```
 
 ---
@@ -42,8 +42,8 @@ incerta** (texto de usuário, planilha) e você quer o melhor esforço.
 ## Exemplo
 
 ```
-// entrada suja de um formulário
-preco = Parsing.floating("R$ 19,90")     // 19.90 (entende vírgula BR)
-qtd   = Parsing.integer("12 unidades")   // 12
-ativo = Parsing.boolean("sim")           // true
+# entrada suja de um formulário
+preco = Parsing.floating("R$ 19,90")     # 19.90 (entende vírgula BR)
+qtd   = Parsing.integer("12 unidades")   # 12
+ativo = Parsing.boolean("sim")           # true
 ```

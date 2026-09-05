@@ -22,8 +22,8 @@ ou pega os bytes.
 import qrcode
 
 img = qrcode.make("https://meusite.com")
-img.resize(300, 300)          // ajusta o tamanho
-img.save("site.png")          // grava
+img.resize(300, 300)          # ajusta o tamanho
+img.save("site.png")          # grava
 ```
 
 ---

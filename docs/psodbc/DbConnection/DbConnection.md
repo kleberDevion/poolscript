@@ -22,10 +22,10 @@ transações e fecha a conexão.
 import psodbc
 
 conn = psodbc.connect(driver="sqlite", base="loja.db")
-cursor = conn.cursor()                     // abre cursor
-cursor.execute("SELECT * FROM produtos")   // executa
-dados = cursor.fetchall()                  // lê
-conn.close()                               // fecha
+cursor = conn.cursor()                     # abre cursor
+cursor.execute("SELECT * FROM produtos")   # executa
+dados = cursor.fetchall()                  # lê
+conn.close()                               # fecha
 ```
 
 Pra inserir/atualizar/apagar, chame `.commit()` depois do `execute` (senão as
@@ -33,7 +33,7 @@ mudanças não são salvas):
 
 ```
 cursor.execute("INSERT INTO produtos (nome) VALUES (?)", ("café",))
-conn.commit()                              // salva a inserção
+conn.commit()                              # salva a inserção
 ```
 
 ---

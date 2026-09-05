@@ -6,7 +6,7 @@ lista ou JSON.
 
 ```
 from datasentity import dataentity, asdict, astuple, aslist, asjson
-// (dataentity é o nome canônico; datasentity é o alias do módulo)
+# (dataentity é o nome canônico; datasentity é o alias do módulo)
 ```
 
 | Membro | O que faz | Página |
@@ -27,17 +27,17 @@ from datasentity import dataentity, asdict, astuple, aslist, asjson
 @dataentity
 Entity Pessoa() {
     nome: str
-    idade: int = 18          // default opcional
+    idade: int = 18          # default opcional
 }
 
-p = Pessoa(nome="Ana", idade=30)     // __init__ gerado — aceita kwargs
-q = Pessoa(nome="Léo")                // idade cai no default 18
+p = Pessoa(nome="Ana", idade=30)     # __init__ gerado — aceita kwargs
+q = Pessoa(nome="Léo")                # idade cai no default 18
 
-post(asdict(p))     // {"nome": "Ana", "idade": 30}
-post(astuple(p))    // ("Ana", 30)
-post(aslist(p))     // ["Ana", 30]
-post(asjson(p))     // '{"nome": "Ana", "idade": 30}'
-post(q.idade)       // 18
+post(asdict(p))     # {"nome": "Ana", "idade": 30}
+post(astuple(p))    # ("Ana", 30)
+post(aslist(p))     # ["Ana", 30]
+post(asjson(p))     # '{"nome": "Ana", "idade": 30}'
+post(q.idade)       # 18
 ```
 
 ---

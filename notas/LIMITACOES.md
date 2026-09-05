@@ -478,6 +478,54 @@ emoji funcionam; o caminho com aspas continua para termo ASCII, que é o comum.
 
 ## Em aberto
 
+### Atribuição dentro de action SOBRESCREVE a variável de módulo de mesmo nome
+
+Achado em 2026-09-05, e é o mais caro desta lista: **não dá erro, dá resultado
+errado.**
+
+```ps
+action f() {
+    i = 99
+    return i
+}
+i = 0
+while i < 3 {
+    post("volta", i, "| f() =", f())
+    i = i + 1
+}
+post("i no fim:", i)
+```
+
+| | |
+|---|---|
+| PoolScript | `volta 0 \| f() = 99` · `i no fim: 100` — **o laço rodou UMA vez** |
+| CPython | três voltas, `i no fim: 3` |
+
+O `i = 99` dentro da action escreveu no `i` do módulo. O laço então fez
+`100 = 99 + 1` e terminou.
+
+**O que é e o que não é:**
+
+- **parâmetro NÃO vaza** — `action g(i)` com `i = 5` no módulo deixa o de fora
+  intacto. Só a atribuição a nome livre vaza.
+- **`global` faz exatamente o mesmo** que a atribuição comum. A única coisa que
+  ele acrescenta hoje é *criar* uma global que ainda não existe.
+
+**A doc se contradiz no mesmo parágrafo (§4.7):** diz que sem `global`,
+`contador = ...` dentro da função "criaria uma local e a de fora ficaria em 0",
+e logo em seguida que "apenas reatribuir uma global que já existe funciona sem
+`global` — o write-through de 4.6.2". As duas frases não podem valer juntas.
+
+**Custo real:** travou o `scripts/conserta_barra_doc.ps` por meia hora, sem
+erro nenhum. A action tinha um `i` local; quem chamava tinha um `i` de laço; o
+laço nunca terminava. Qualquer nome comum (`i`, `n`, `x`, `linha`, `caminho`)
+tem esse risco em qualquer arquivo com mais de uma função.
+
+**DECISÃO É DELE**, porque muda semântica e pode quebrar código existente:
+ou (a) função passa a criar local, como o CPython — e `global` volta a ter
+razão de existir; ou (b) o write-through fica e a doc é corrigida pra dizer
+isso sem se contradizer, e o `global` é documentado como redundante.
+
 ### Sem list comprehension (design, não defeito)
 
 `[f(x) for x in xs]` é `SyntaxError: faltou ']' na lista` — coerente, a doc

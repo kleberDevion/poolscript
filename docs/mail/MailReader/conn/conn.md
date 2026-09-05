@@ -12,9 +12,9 @@ r.conn(provider_or_host: str, port: int = None) -> None
 ## Provedores auto-configurados
 
 ```
-r.conn("gmail.com")       // → imap.gmail.com:993
-r.conn("outlook.com")     // → outlook.office365.com:993
-r.conn("yahoo.com")       // → imap.mail.yahoo.com:993
+r.conn("gmail.com")       # → imap.gmail.com:993
+r.conn("outlook.com")     # → outlook.office365.com:993
+r.conn("yahoo.com")       # → imap.mail.yahoo.com:993
 ```
 
 ## Host manual

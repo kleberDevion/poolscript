@@ -16,9 +16,9 @@ bytes.toint(b: bytes, byteorder: str = "big") -> int
 ```
 import bytes
 
-bytes.toint(bytes.fromint(258, 4))          // 258
-bytes.toint(bytes.fromhex("deadbeef"))      // 3735928559
-bytes.toint(bytes.fromint(258, 4, "little"), "little")   // 258
+bytes.toint(bytes.fromint(258, 4))          # 258
+bytes.toint(bytes.fromhex("deadbeef"))      # 3735928559
+bytes.toint(bytes.fromint(258, 4, "little"), "little")   # 258
 ```
 
 ---

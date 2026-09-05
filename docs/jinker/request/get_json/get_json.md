@@ -16,7 +16,7 @@ request.get_json() -> dict | list | Null
 ```
 @app.route("/usuario", methods=cors.options(["POST"]))
 action criar() {
-    data = request.get_json()        // {"nome": "ana", "idade": 30}
+    data = request.get_json()        # {"nome": "ana", "idade": 30}
     return jsonify({"criado": data["nome"]})
 }
 ```
@@ -43,12 +43,12 @@ if (data is Null) {
 - [`.get("nome")`](../get/get.md) — só **um** campo (query string ou JSON).
 
 ```
-// preciso de vários → get_json
+# preciso de vários → get_json
 data = request.get_json()
 nome = data["nome"]
 email = data["email"]
 
-// preciso de um → get
+# preciso de um → get
 nome = request.get("nome")
 ```
 

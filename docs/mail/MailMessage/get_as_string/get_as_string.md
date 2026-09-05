@@ -18,7 +18,7 @@ m.to("destino@email.com")
 m.subject("Teste")
 m.body("Olá")
 
-post(m.get_as_string())     // mostra os headers + corpo em formato MIME
+post(m.get_as_string())     # mostra os headers + corpo em formato MIME
 ```
 
 Normalmente você não precisa disto no dia a dia — é pra debug ou pra guardar

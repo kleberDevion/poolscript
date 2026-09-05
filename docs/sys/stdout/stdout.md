@@ -33,8 +33,8 @@ import sys
 sys.stdout.write("carregando")
 sys.stdout.write("...")
 sys.stdout.write(" pronto")
-sys.stdout.writeln("")        // agora quebra a linha
-// saída: carregando... pronto
+sys.stdout.writeln("")        # agora quebra a linha
+# saída: carregando... pronto
 ```
 
 ---
@@ -46,8 +46,8 @@ imediatamente — importante em barras de progresso ou logs ao vivo:
 
 ```
 sys.stdout.write("processando")
-sys.stdout.flush()            // mostra "processando" agora, sem esperar
-// ... trabalho demorado ...
+sys.stdout.flush()            # mostra "processando" agora, sem esperar
+# ... trabalho demorado ...
 sys.stdout.writeln(" ok")
 ```
 

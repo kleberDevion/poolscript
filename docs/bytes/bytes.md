@@ -120,8 +120,8 @@ cruzam: `bytes.hex(b)` é função da lib e `b.hex()` é método do valor.
 
 ```
 b = "ção".encode()
-post(b.len())        // 5  — em UTF-8, "ç" e "ã" ocupam 2 bytes cada
-post("ção".len())    // 3  — caracteres
+post(b.len())        # 5  — em UTF-8, "ç" e "ã" ocupam 2 bytes cada
+post("ção".len())    # 3  — caracteres
 ```
 
 É o mesmo número que o builtin `len(b)` devolve; existe como método porque
@@ -139,17 +139,17 @@ import bytes
 
 b = "Hello".encode()
 
-post(len(b))                 // 5
-post(b[0])                   // 72     — indexar dá o INTEIRO do byte
-post(b[0:2])                 // b'He'  — fatiar dá bytes
-post(b + " ali".encode())    // b'Hello ali'
-post(b * 2)                  // b'HelloHello'
-post("ell".encode() in b)    // True   — subsequência
-post(101 in b)               // True   — esse BYTE aparece?
-post("abc".encode() < "abd".encode())   // True — ordem lexicográfica por byte
+post(len(b))                 # 5
+post(b[0])                   # 72     — indexar dá o INTEIRO do byte
+post(b[0:2])                 # b'He'  — fatiar dá bytes
+post(b + " ali".encode())    # b'Hello ali'
+post(b * 2)                  # b'HelloHello'
+post("ell".encode() in b)    # True   — subsequência
+post(101 in b)               # True   — esse BYTE aparece?
+post("abc".encode() < "abd".encode())   # True — ordem lexicográfica por byte
 
 for each x in "abc".encode() {
-    post(x)                  // 97, 98, 99 — itera em INTEIROS
+    post(x)                  # 97, 98, 99 — itera em INTEIROS
 }
 ```
 
@@ -166,21 +166,21 @@ Duas diferenças que valem lembrar, e as duas são as do Python:
 ```
 import bytes
 
-// criar
-b = bytes.new([72, 105])         // b'Hi'  (de lista de inteiros)
-b = bytes.new("Oi")              // b'Oi'  (de texto, utf-8)
-b = bytes.fromhex("deadbeef")    // de hex
+# criar
+b = bytes.new([72, 105])         # b'Hi'  (de lista de inteiros)
+b = bytes.new("Oi")              # b'Oi'  (de texto, utf-8)
+b = bytes.fromhex("deadbeef")    # de hex
 
-// converter
-post(bytes.hex(b))               // "deadbeef"
-post(bytes.base64(b))            // "3q2+7w=="
-post(bytes.toint(b))             // 3735928559
-post(bytes.tolist(b))            // [222, 173, 190, 239]
+# converter
+post(bytes.hex(b))               # "deadbeef"
+post(bytes.base64(b))            # "3q2+7w=="
+post(bytes.toint(b))             # 3735928559
+post(bytes.tolist(b))            # [222, 173, 190, 239]
 
-// manipular
-post(bytes.slice(b, 0, 2))       // b'\xde\xad'
-post(bytes.get(b, 0))            // 222
-post(bytes.concat([bytes.new("a"), bytes.new("b")]))  // b'ab'
+# manipular
+post(bytes.slice(b, 0, 2))       # b'\xde\xad'
+post(bytes.get(b, 0))            # 222
+post(bytes.concat([bytes.new("a"), bytes.new("b")]))  # b'ab'
 ```
 
 ---
@@ -192,13 +192,13 @@ post(bytes.concat([bytes.new("a"), bytes.new("b")]))  // b'ab'
 ```
 import bytes
 
-// inteiro → 4 bytes, big-endian (o padrão)
-cab = bytes.fromint(258, 4)      // b'\x00\x00\x01\x02'
-post(bytes.toint(cab))           // 258
+# inteiro → 4 bytes, big-endian (o padrão)
+cab = bytes.fromint(258, 4)      # b'\x00\x00\x01\x02'
+post(bytes.toint(cab))           # 258
 
-// little-endian quando o formato pede
-le = bytes.fromint(258, 4, "little")   // b'\x02\x01\x00\x00'
-post(bytes.toint(le, "little"))        // 258
+# little-endian quando o formato pede
+le = bytes.fromint(258, 4, "little")   # b'\x02\x01\x00\x00'
+post(bytes.toint(le, "little"))        # 258
 ```
 
 ---
@@ -216,8 +216,8 @@ segredo = bytes.new("mensagem secreta")
 chave   = bytes.new("K3y")
 
 cifrado  = bytes.xor(segredo, chave)
-decifrado = bytes.xor(cifrado, chave)    // XOR de novo com a mesma chave
-post(decifrado)                          // b'mensagem secreta'
+decifrado = bytes.xor(cifrado, chave)    # XOR de novo com a mesma chave
+post(decifrado)                          # b'mensagem secreta'
 ```
 
 ---

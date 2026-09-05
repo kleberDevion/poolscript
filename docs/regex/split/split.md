@@ -20,12 +20,12 @@ regex.split(pattern: str, string: str, maxsplit=0, flags=0) -> list
 ```
 import regex
 
-// dividir por qualquer pontuação/espaço
+# dividir por qualquer pontuação/espaço
 partes = regex.split(r"[,;\s]+", "ana, leo; bia  joao")
-post(partes)         // ["ana", "leo", "bia", "joao"]
+post(partes)         # ["ana", "leo", "bia", "joao"]
 
-// dividir por um ou mais dígitos
-regex.split(r"\d+", "a1b22c333d")   // ["a", "b", "c", "d"]
+# dividir por um ou mais dígitos
+regex.split(r"\d+", "a1b22c333d")   # ["a", "b", "c", "d"]
 ```
 
 Diferente do `split` normal de string (que separa por um texto fixo), aqui o

@@ -22,11 +22,11 @@ Só duas funções — e é tudo que você precisa pra autenticação segura:
 ```
 import hash
 
-// CADASTRO — guarde o hash, nunca a senha
+# CADASTRO — guarde o hash, nunca a senha
 senha_hash = hash.crypt("minhaSenha123")
-// ... salve senha_hash no banco ...
+# ... salve senha_hash no banco ...
 
-// LOGIN — compare a senha digitada com o hash guardado
+# LOGIN — compare a senha digitada com o hash guardado
 if (hash.check(senha_hash, "minhaSenha123")) {
     post("senha correta")
 } else {

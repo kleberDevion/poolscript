@@ -136,7 +136,7 @@ Traceback (arquivo mais recente por último):
   | import random
   | ^^^
   em random.ps, linha 16
-  |             // 127.970.195
+  |             # 127.970.195
   |             ^^^
 ```
 

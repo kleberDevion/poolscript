@@ -15,7 +15,7 @@ os.ipmach() -> str
 import os
 
 ip = os.ipmach()
-// imprime: [info] IP da sua máquina: 192.168.0.15
+# imprime: [info] IP da sua máquina: 192.168.0.15
 post("meu ip:", ip)
 ```
 

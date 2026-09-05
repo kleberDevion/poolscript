@@ -72,8 +72,8 @@ resp = request.post(
     "https://api.x.com/users",
     body={"nome": "ana", "email": "ana@email.com"}
 )
-post(resp.status)            // 201
-post(resp.get_json())        // resposta do servidor
+post(resp.status)            # 201
+post(resp.get_json())        # resposta do servidor
 ```
 
 ---

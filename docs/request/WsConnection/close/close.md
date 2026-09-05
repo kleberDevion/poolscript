@@ -16,9 +16,9 @@ import request
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
 conn.on_message(action(msg) { post(msg) })
 
-// ... usa a conexão ...
+# ... usa a conexão ...
 
-conn.close()          // encerra quando terminar
+conn.close()          # encerra quando terminar
 ```
 
 ---

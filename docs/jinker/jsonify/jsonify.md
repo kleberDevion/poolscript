@@ -73,7 +73,7 @@ Se você só quer JSON simples com status 200, devolver o dict/lista direto já
 funciona — a rota converte sozinha:
 
 ```
-return {"msg": "ok"}      // idêntico a jsonify({"msg": "ok"})
+return {"msg": "ok"}      # idêntico a jsonify({"msg": "ok"})
 ```
 
 `jsonify` passa a valer a pena quando você quer status diferente ou headers.

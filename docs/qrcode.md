@@ -5,7 +5,7 @@ Espelha a API da lib `qrcode` do Python: mesmos nomes sempre que possível.
 
 ```
 import qrcode
-// ou: import qrcode   (alias)
+# ou: import qrcode   (alias)
 ```
 
 ---
@@ -13,28 +13,28 @@ import qrcode
 ## qrcode.gen() — função de alto nível
 
 ```
-// gera em memória
+# gera em memória
 file = qrcode.gen("https://meusite.com")
 file.save("qr.png")
 
-// gera e já salva num caminho
+# gera e já salva num caminho
 qrcode.gen("https://meusite.com", save="qr.png")
 
-// customizado
+# customizado
 qrcode.gen(
     "dados",
     save="qr.png",
-    size=10,             // box_size — tamanho das caixinhas
+    size=10,             # box_size — tamanho das caixinhas
     border=2,
     color="black",
     bg="white",
-    error_correction="H" // "L" 7%, "M" 15%, "Q" 25%, "H" 30% tolerância a dano
+    error_correction="H" # "L" 7%, "M" 15%, "Q" 25%, "H" 30% tolerância a dano
 )
 
-// redimensiona a imagem final
+# redimensiona a imagem final
 qrcode.gen("dados", save="qr.png", qr32=(300, 300))
 
-// dict/list vira JSON automaticamente
+# dict/list vira JSON automaticamente
 qrcode.gen({"user_id": 42, "acao": "checkin"}, save="checkin.png")
 ```
 
@@ -72,7 +72,7 @@ qrcode.make(fit=true)
 img = qrcode.make_image(fill_color="black", back_color="white")
 img.save("qr.png")
 
-qrcode.clear()   // limpa pra reusar o mesmo objeto
+qrcode.clear()   # limpa pra reusar o mesmo objeto
 ```
 
 `add_data()` aceita `dict`/`list` também — vira JSON automaticamente.
@@ -82,8 +82,8 @@ qrcode.clear()   // limpa pra reusar o mesmo objeto
 ## Constantes de correção de erro
 
 ```
-qrcode.ERROR_CORRECT_L   // "L" — 7% de tolerância
-qrcode.ERROR_CORRECT_M   // "M" — 15%
-qrcode.ERROR_CORRECT_Q   // "Q" — 25%
-qrcode.ERROR_CORRECT_H   // "H" — 30%
+qrcode.ERROR_CORRECT_L   # "L" — 7% de tolerância
+qrcode.ERROR_CORRECT_M   # "M" — 15%
+qrcode.ERROR_CORRECT_Q   # "Q" — 25%
+qrcode.ERROR_CORRECT_H   # "H" — 30%
 ```

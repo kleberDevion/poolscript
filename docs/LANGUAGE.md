@@ -88,9 +88,9 @@ else
 ```
 
 ```
-d = { "a": 1, "b": 2 }     // dicionário
-s = "abcdef"[1:3]          // fatia
-Entity P() { nome: str }   // campo tipado
+d = { "a": 1, "b": 2 }     # dicionário
+s = "abcdef"[1:3]          # fatia
+Entity P() { nome: str }   # campo tipado
 ```
 
 ## Tipos e variáveis
@@ -139,9 +139,9 @@ variável, parâmetro, `action`, `Entity`, `model`, campo, variável de loop, de
 `catch`, de `global` e alvo de desempacotamento:
 
 ```
-if = 5                       // erro: 'if' é palavra reservada
-action f(while) { ... }      // erro: 'while' é palavra reservada
-for each return in xs { }    // erro: 'return' é palavra reservada
+if = 5                       # erro: 'if' é palavra reservada
+action f(while) { ... }      # erro: 'while' é palavra reservada
+for each return in xs { }    # erro: 'return' é palavra reservada
 ```
 
 `base` entra na lista mesmo não sendo keyword: é a chamada da superclasse
@@ -209,7 +209,7 @@ como em qualquer string):
 ```
 grau = 25
 post(f"Clima: {grau} graus")
-post(f'Clima: {grau} graus')     // mesma coisa
+post(f'Clima: {grau} graus')     # mesma coisa
 ```
 
 **Concatenação com interpolação** (sem `f`, útil em `post(...)` com vários
@@ -355,7 +355,7 @@ action soma(a, b) {
     return a + b
 }
 
-action saudacao(nome="Visitante") {   // parâmetro com default
+action saudacao(nome="Visitante") {   # parâmetro com default
     return "Olá, " nome
 }
 ```
@@ -386,7 +386,7 @@ levanta erro se for:
 action precisa(v) {
     return v
 }
-precisa(Null)   // erro
+precisa(Null)   # erro
 ```
 
 **`global`**: dentro de uma `action`/`reaction`, declara que um nome se
@@ -404,7 +404,7 @@ action incrementar() {
 
 incrementar()
 incrementar()
-post(contador)   // 2
+post(contador)   # 2
 ```
 
 Também funciona para criar uma variável global que ainda não existe:
@@ -416,7 +416,7 @@ action registrar() {
 }
 
 registrar()
-post(total_visitas)   // 1 — visível fora da action também
+post(total_visitas)   # 1 — visível fora da action também
 ```
 
 ---
@@ -433,8 +433,8 @@ async action lenta(n) {
     return n
 }
 
-f = lenta(1)          // não bloqueia — devolve um future na hora
-post(await f)          // só aqui bloqueia até o resultado
+f = lenta(1)          # não bloqueia — devolve um future na hora
+post(await f)          # só aqui bloqueia até o resultado
 ```
 
 Semântica (igual à de qualquer linguagem com async/await.s
@@ -478,7 +478,7 @@ action contar(n) {
 }
 
 for each v in contar(3) {
-    post(v)      // 0, 1, 2
+    post(v)      # 0, 1, 2
 }
 ```
 
@@ -588,9 +588,9 @@ class Animal() {
     }
 }
 
-a = Animal("Bicho")     // chama __init__ automaticamente
-post(a.nome)            // Bicho
-post(a.falar())         // Bicho faz um som
+a = Animal("Bicho")     # chama __init__ automaticamente
+post(a.nome)            # Bicho
+post(a.falar())         # Bicho faz um som
 ```
 
 Regras concretas:
@@ -615,22 +615,22 @@ tentar ler, escrever ou chamar de fora levanta erro:
 
 ```
 Entity Conta() {
-    private saldo: int = 0          // só a própria classe mexe
-    public dono: str = "kleber"     // público (igual a não pôr nada)
+    private saldo: int = 0          # só a própria classe mexe
+    public dono: str = "kleber"     # público (igual a não pôr nada)
 
     public reaction deposita(self, v) {
-        self.saldo = self.saldo + v   // OK: dentro da classe
+        self.saldo = self.saldo + v   # OK: dentro da classe
         return self.saldo
     }
-    private reaction _log(self) { return "interno" }   // só a classe chama
+    private reaction _log(self) { return "interno" }   # só a classe chama
 }
 
 c = Conta()
-post(c.deposita(100))   // 100  — via método público
-post(c.dono)            // kleber — público
-post(c.saldo)           // ERRO: 'saldo' é private de Conta
-c._log()                // ERRO: 'private'
-c.saldo = 9             // ERRO: escrita em private de fora
+post(c.deposita(100))   # 100  — via método público
+post(c.dono)            # kleber — público
+post(c.saldo)           # ERRO: 'saldo' é private de Conta
+c._log()                # ERRO: 'private'
+c.saldo = 9             # ERRO: escrita em private de fora
 ```
 
 - **Default é público** — código sem modificador funciona como sempre.
@@ -651,17 +651,17 @@ __init__ de Entity").
 ```
 class Cachorro(Animal) {
     action __init__(self, nome, raca) {
-        base(nome)          // executa Animal.__init__(self, nome)
-        self.raca = raca    // e aí adiciona o atributo próprio
+        base(nome)          # executa Animal.__init__(self, nome)
+        self.raca = raca    # e aí adiciona o atributo próprio
     }
-    action falar(self) {     // sobrescreve o falar do pai
+    action falar(self) {     # sobrescreve o falar do pai
         return f"{self.nome} ({self.raca}) late"
     }
 }
 
 c = Cachorro("Rex", "vira-lata")
-post(c.falar())     // Rex (vira-lata) late
-post(c.nome)        // Rex   — atributo herdado, criado pelo base()
+post(c.falar())     # Rex (vira-lata) late
+post(c.nome)        # Rex   — atributo herdado, criado pelo base()
 ```
 
 Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
@@ -674,7 +674,7 @@ class Gato(Animal) {
     }
 }
 
-post(Gato("Felix").falar())   // Felix faz um som   (veio de Animal)
+post(Gato("Felix").falar())   # Felix faz um som   (veio de Animal)
 ```
 
 Cadeia de qualquer profundidade funciona; cada nível chama o `base()` do seu
@@ -688,19 +688,19 @@ class Base() {
 }
 class Meio(Base) {
     action __init__(self, x, y) {
-        base(x)          // Base.__init__
+        base(x)          # Base.__init__
         self.y = y
     }
 }
 class Topo(Meio) {
     action __init__(self, x, y, z) {
-        base(x, y)       // Meio.__init__
+        base(x, y)       # Meio.__init__
         self.z = z
     }
 }
 
 t = Topo(1, 2, 3)
-post(t.x, t.y, t.z)      // 1 2 3
+post(t.x, t.y, t.z)      # 1 2 3
 ```
 
 ### Herança múltipla e `base(Pai, ...)`
@@ -723,14 +723,14 @@ class Roda() {
 
 class Carro(Motor, Roda) {
     action __init__(self) {
-        base(Motor, 300)     // mira Motor, passa 300
-        base(Roda, 4)        // mira Roda, passa 4
+        base(Motor, 300)     # mira Motor, passa 300
+        base(Roda, 4)        # mira Roda, passa 4
         self.tipo = "esportivo"
     }
 }
 
 c = Carro()
-post(c.cavalos, c.qtd_rodas, c.tipo)   // 300 4 esportivo
+post(c.cavalos, c.qtd_rodas, c.tipo)   # 300 4 esportivo
 ```
 
 > **Especificação:** o alvo do pai só é reconhecido quando há
@@ -748,7 +748,7 @@ post(c.cavalos, c.qtd_rodas, c.tipo)   // 300 4 esportivo
 >         self.a = 1
 > class C(A, B):
 >     action __init__(self):
->         base(A,)     // vírgula final = mira A, sem argumentos
+>         base(A,)     # vírgula final = mira A, sem argumentos
 >         base(B,)
 > ```
 
@@ -769,7 +769,7 @@ class Util() {
     }
 }
 
-post(Util.dobro(21))    // 42   — sem instanciar Util
+post(Util.dobro(21))    # 42   — sem instanciar Util
 ```
 
 ### `@NonNull` — barra argumentos Null
@@ -790,8 +790,8 @@ class Calc() {
 }
 
 c = Calc()
-c.somar(5)        // ok
-c.somar(Null)     // ERRO: @NonNull: parâmetro 'valor' em 'somar' não pode ser Null
+c.somar(5)        # ok
+c.somar(Null)     # ERRO: @NonNull: parâmetro 'valor' em 'somar' não pode ser Null
 ```
 
 **Escopo (por design):** `@NonNull` vale para chamadas de método normais
@@ -815,17 +815,17 @@ from datasentity import dataentity, asdict, astuple, aslist, asjson
 @dataentity
 class Pessoa() {
     nome: str
-    idade: int = 18        // default opcional
+    idade: int = 18        # default opcional
 }
 
-p = Pessoa(nome="Ana", idade=30)    // __init__ gerado — aceita kwargs
-q = Pessoa(nome="Léo")               // idade cai no default 18
+p = Pessoa(nome="Ana", idade=30)    # __init__ gerado — aceita kwargs
+q = Pessoa(nome="Léo")               # idade cai no default 18
 
-post(asdict(p))     // {"nome": "Ana", "idade": 30}
-post(astuple(p))    // ("Ana", 30)
-post(aslist(p))     // ["Ana", 30]
-post(asjson(p))     // string JSON
-post(q.idade)       // 18
+post(asdict(p))     # {"nome": "Ana", "idade": 30}
+post(astuple(p))    # ("Ana", 30)
+post(aslist(p))     # ["Ana", 30]
+post(asjson(p))     # string JSON
+post(q.idade)       # 18
 ```
 
 Detalhes de `@dataentity`:
@@ -845,9 +845,9 @@ Operador multifuncional para contar/checar ocorrências em coleções, strings e
 números. Três formas equivalentes:
 
 ```
-count int(7) in nums          // prefixo
-int(7) count in nums          // infixo
-count int in nums             // sem valor — conta todos do tipo
+count int(7) in nums          # prefixo
+int(7) count in nums          # infixo
+count int in nums             # sem valor — conta todos do tipo
 ```
 
 `count` devolve `int` (`0` é falsy, funciona direto em `if`).
@@ -876,7 +876,7 @@ Gerenciador de contexto — fecha o recurso automaticamente ao sair do bloco
 using open("arquivo.txt", "w") as f {
     f.write("linha 1\n")
 }
-// arquivo já está fechado aqui
+# arquivo já está fechado aqui
 ```
 
 ---
@@ -886,8 +886,8 @@ using open("arquivo.txt", "w") as f {
 ```
 import os
 from os import getenv
-PUSH os GET getenv        // forma alternativa
-import os as sistema      // alias
+PUSH os GET getenv        # forma alternativa
+import os as sistema      # alias
 ```
 
 Libs embutidas (lazy-loaded, só carregam quando importadas):
@@ -922,23 +922,23 @@ multipart, flask`
 ## Builtins globais
 
 ```
-post(...)            // imprime (join dos argumentos com espaço) e guarda no output
-post.flush(texto, delay=0.05)   // efeito de digitação, char a char
-input(prompt="")     // sempre devolve str
+post(...)            # imprime (join dos argumentos com espaço) e guarda no output
+post.flush(texto, delay=0.05)   # efeito de digitação, char a char
+input(prompt="")     # sempre devolve str
 
-open(path, mode="r", encoding="utf-8")     // FileHandle: .read() .readlines() .readline() .write(t) .writelines(l) .close()
+open(path, mode="r", encoding="utf-8")     # FileHandle: .read() .readlines() .readline() .write(t) .writelines(l) .close()
 len(x)  range(...)  type(x)
-str(x)  int(x)  flo(x)  bool(x)   // conversores
+str(x)  int(x)  flo(x)  bool(x)   # conversores
 
 id(x)  hex(n)  bin(n)  oct(n)  ord(c)  chr(n)
 abs(n)  round(n)  sum(lista)  min(...)  max(...)
 sorted(lista)  reversed(lista)  enumerate(lista)  zip(a, b, ...)
 
 addEnd(l, v)  removeEnd(l)  addStart(l, v)  removeStart(l)
-map(lista, fn)  filter(lista, fn)   // atenção: lista vem PRIMEIRO, depois a função
+map(lista, fn)  filter(lista, fn)   # atenção: lista vem PRIMEIRO, depois a função
 
-sleep(segundos)      // pausa a execução (útil dentro de async action)
-gather(...)          // agrega múltiplos futures
+sleep(segundos)      # pausa a execução (útil dentro de async action)
+gather(...)          # agrega múltiplos futures
 ```
 
 ---

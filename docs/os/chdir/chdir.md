@@ -14,9 +14,9 @@ os.chdir(path: str) -> None
 ```
 import os
 
-post(os.cwd())          // "C:\projeto"
+post(os.cwd())          # "C:\projeto"
 os.chdir("dados")
-post(os.cwd())          // "C:\projeto\dados"
+post(os.cwd())          # "C:\projeto\dados"
 ```
 
 ---

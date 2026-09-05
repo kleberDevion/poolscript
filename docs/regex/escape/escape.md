@@ -18,9 +18,9 @@ que escapá-los — senão o regex os interpreta como comandos.
 ```
 import regex
 
-// quero procurar o texto literal "3.14 (pi)"
+# quero procurar o texto literal "3.14 (pi)"
 alvo = "3.14 (pi)"
-padrao = regex.escape(alvo)         // "3\.14\ \(pi\)"
+padrao = regex.escape(alvo)         # "3\.14\ \(pi\)"
 
 if (regex.search(padrao, texto)) {
     post("achou")
@@ -38,7 +38,7 @@ Sempre que o padrão vier de uma **variável** (entrada do usuário, um nome de
 arquivo, etc.) e você quer casá-lo **literalmente**:
 
 ```
-termo = request.get("busca")        // pode ter . * + etc.
+termo = request.get("busca")        # pode ter . * + etc.
 padrao = regex.escape(termo)
 achados = regex.findall(padrao, documento)
 ```

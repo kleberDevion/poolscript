@@ -25,10 +25,10 @@ os.loadFile(name: str, encoding: str = None) -> str | dict | list | PoolFile
 | `.pdf`, `.jpg`, `.png`, `.docx`, binários | [`PoolFile`](../PoolFile/PoolFile.md) |
 
 ```
-config  = os.loadFile("config.json")     // dict → config["versao"]
-tabela  = os.loadFile("dados.csv")       // lista de dicts
-texto   = os.loadFile("leiame.txt")      // str
-imagem  = os.loadFile("logo.png")        // PoolFile (bytes)
+config  = os.loadFile("config.json")     # dict → config["versao"]
+tabela  = os.loadFile("dados.csv")       # lista de dicts
+texto   = os.loadFile("leiame.txt")      # str
+imagem  = os.loadFile("logo.png")        # PoolFile (bytes)
 ```
 
 ---
@@ -43,8 +43,8 @@ O segundo argumento força a leitura:
   charset. Só aceita extensões de texto.
 
 ```
-img = os.loadFile("recibo.dat", encoding="rb")        // trata como binário
-txt = os.loadFile("legado.csv", encoding="latin-1")   // texto em charset antigo
+img = os.loadFile("recibo.dat", encoding="rb")        # trata como binário
+txt = os.loadFile("legado.csv", encoding="latin-1")   # texto em charset antigo
 ```
 
 Forçar um modo incompatível com a extensão levanta erro claro (ex: `"rb"` num
@@ -58,12 +58,12 @@ Forçar um modo incompatível com a extensão levanta erro claro (ex: `"rb"` num
 import os
 import mail
 
-// JSON vira dict direto
+# JSON vira dict direto
 cfg = os.loadFile("config.json")
 post(cfg["destinatario"])
 
-// binário vira PoolFile, pronto pra anexar
-pdf = os.loadFile("relatorio.pdf")       // PoolFile
+# binário vira PoolFile, pronto pra anexar
+pdf = os.loadFile("relatorio.pdf")       # PoolFile
 ```
 
 ---

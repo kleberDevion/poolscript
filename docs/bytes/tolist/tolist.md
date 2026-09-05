@@ -14,8 +14,8 @@ bytes.tolist(b: bytes) -> list
 ```
 import bytes
 
-bytes.tolist(bytes.new("ABC"))            // [65, 66, 67]
-bytes.tolist(bytes.fromhex("deadbeef"))   // [222, 173, 190, 239]
+bytes.tolist(bytes.new("ABC"))            # [65, 66, 67]
+bytes.tolist(bytes.fromhex("deadbeef"))   # [222, 173, 190, 239]
 ```
 
 ---

@@ -14,9 +14,9 @@ Parsing.Tuplasformatt(value, to_type="tup") -> tup
 ## Uso
 
 ```
-Parsing.Tuplasformatt([1, 2, 3])     // (1, 2, 3)   (lista → tupla)
-Parsing.Tuplasformatt("abc")         // ("a", "b", "c")
-Parsing.Tuplasformatt(42)            // (42,)
+Parsing.Tuplasformatt([1, 2, 3])     # (1, 2, 3)   (lista → tupla)
+Parsing.Tuplasformatt("abc")         # ("a", "b", "c")
+Parsing.Tuplasformatt(42)            # (42,)
 ```
 
 ---

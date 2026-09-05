@@ -57,13 +57,13 @@ return JinkerResponse()
 ## Montando na mão vs. atalhos
 
 ```
-// atalho (dia a dia):
+# atalho (dia a dia):
 return jsonify({"ok": true})
 
-// equivalente, na mão:
+# equivalente, na mão:
 return JinkerResponse().json({"ok": true})
 
-// na mão faz sentido quando você combina várias coisas:
+# na mão faz sentido quando você combina várias coisas:
 return JinkerResponse()
     .send("relatorio,linha1\n", 200)
     .header("Content-Type", "text/csv")

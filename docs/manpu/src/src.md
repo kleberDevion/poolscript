@@ -14,7 +14,7 @@ manpu.src(filepath: str) -> str
 import manpu as mp
 
 caminho = mp.src("planilha.xlsx")
-post(caminho)     // "C:\projeto\planilha.xlsx"
+post(caminho)     # "C:\projeto\planilha.xlsx"
 ```
 
 Não lê o arquivo — só resolve onde ele está.

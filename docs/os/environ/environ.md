@@ -19,9 +19,9 @@ os.environ(key: str = None) -> str | dict
 ```
 import os
 
-path = os.environ("PATH")           // uma variável
+path = os.environ("PATH")           # uma variável
 
-todas = os.environ()                // dict com tudo
+todas = os.environ()                # dict com tudo
 for each chave in todas.keys() {
     post(chave)
 }

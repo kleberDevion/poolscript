@@ -20,7 +20,7 @@ Entity Pessoa() {
 }
 
 p = Pessoa(nome="Ana", idade=30)
-post(asdict(p))     // {"nome": "Ana", "idade": 30}
+post(asdict(p))     # {"nome": "Ana", "idade": 30}
 ```
 
 Útil pra devolver a instância como JSON numa API, ou salvar no banco.

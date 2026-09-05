@@ -94,7 +94,7 @@ os.writeFile(PASTA + "/entrada.txt", "primeira\nabcdefgh")
 os.cmd("'" + sys.executable + "' " + PASTA + "/le_stdin.ps < " + PASTA
        + "/entrada.txt > " + PASTA + "/stdin.out 2>&1")
 confere("sys.stdin.readline() e read(n) leem a entrada",
-        open(PASTA + "/stdin.out").read().strip() == "primeira|abcd")
+        os.readFile(PASTA + "/stdin.out").strip() == "primeira|abcd")
 
 # ── os: caminho, diretório, ambiente ────────────────────────────────────────
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —

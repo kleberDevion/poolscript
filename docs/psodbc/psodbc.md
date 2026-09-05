@@ -5,7 +5,7 @@ Lib pra conectar e consultar bancos de dados. Um único `connect()` cobre
 
 ```
 import psodbc
-// ou: import psodbc   (apelido)
+# ou: import psodbc   (apelido)
 ```
 
 ---
@@ -39,7 +39,7 @@ import psodbc
 conn = psodbc.connect(driver="sqlite", base="loja.db")
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM produtos WHERE preco > ?", (100,))
-resultado = cursor.fetchall()      // lista de dicts
+resultado = cursor.fetchall()      # lista de dicts
 post(resultado)
 conn.close()
 ```

@@ -13,9 +13,9 @@ date.today() -> str
 ```
 import date
 
-post(date.today())         // "25/07/2026"
+post(date.today())         # "25/07/2026"
 
-nome_arquivo = f"relatorio_{date.today()}.csv"   // relatorio_25/07/2026.csv
+nome_arquivo = f"relatorio_{date.today()}.csv"   # relatorio_25/07/2026.csv
 ```
 
 > Repare que o formato tem `/` — se for usar em nome de arquivo, troque por `-`

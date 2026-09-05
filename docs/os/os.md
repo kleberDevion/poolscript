@@ -6,7 +6,7 @@ sistema operacional dentro da PoolScript.
 
 ```
 import os
-// ou: import os as sistema
+# ou: import os as sistema
 ```
 
 Todo caminho relativo (`"dados.json"`, `"pasta/x.txt"`) é resolvido a partir da
@@ -70,17 +70,17 @@ precisa de caminho absoluto.
 import os
 from dotenv import load
 
-load()                                   // carrega o .env
-str banco = os.getenv("DB_PATH")         // variável de ambiente
+load()                                   # carrega o .env
+str banco = os.getenv("DB_PATH")         # variável de ambiente
 
-if (os.exists("uploads")) {              // pasta existe?
+if (os.exists("uploads")) {              # pasta existe?
     for each item in os.ls("uploads") {
         post(item)
     }
 } else {
-    os.mkdir("uploads")                  // cria se não existe
+    os.mkdir("uploads")                  # cria se não existe
 }
 
-conteudo = os.loadFile("config.json")    // lê e parseia JSON automaticamente
+conteudo = os.loadFile("config.json")    # lê e parseia JSON automaticamente
 post(conteudo["versao"])
 ```

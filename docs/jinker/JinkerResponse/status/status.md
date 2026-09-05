@@ -19,10 +19,10 @@ status(code: int) -> JinkerResponse
 código diferente. `.status(...)` ajusta sem precisar da tupla `(resp, codigo)`:
 
 ```
-// com tupla:
+# com tupla:
 return jsonify({"criado": true}), 201
 
-// com .status() — dispensa a tupla:
+# com .status() — dispensa a tupla:
 return jsonify({"criado": true}).status(201)
 ```
 

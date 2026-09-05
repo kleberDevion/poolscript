@@ -14,10 +14,10 @@ Parsing.Arrayformatt(value, to_type="list") -> list
 ## Uso
 
 ```
-Parsing.Arrayformatt((1, 2, 3))      // [1, 2, 3]   (tupla → lista)
-Parsing.Arrayformatt("abc")          // ["a", "b", "c"]  (string → caracteres)
-Parsing.Arrayformatt({"a": 1, "b": 2}) // ["a", "b"]  (dict → chaves)
-Parsing.Arrayformatt(42)             // [42]        (valor solto → lista de 1)
+Parsing.Arrayformatt((1, 2, 3))      # [1, 2, 3]   (tupla → lista)
+Parsing.Arrayformatt("abc")          # ["a", "b", "c"]  (string → caracteres)
+Parsing.Arrayformatt({"a": 1, "b": 2}) # ["a", "b"]  (dict → chaves)
+Parsing.Arrayformatt(42)             # [42]        (valor solto → lista de 1)
 ```
 
 ---

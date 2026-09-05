@@ -8,8 +8,8 @@ método, headers, arquivos.
 ```
 @app.route("/api/dados", methods=cors.options(["POST"]))
 action receber() {
-    data = request.get_json()     // corpo JSON inteiro (dict)
-    nome = request.get("nome")    // um campo (JSON ou query string)
+    data = request.get_json()     # corpo JSON inteiro (dict)
+    nome = request.get("nome")    # um campo (JSON ou query string)
     return jsonify({"ola": nome})
 }
 ```
@@ -46,7 +46,7 @@ Exportado pela lib caso você queira checar o tipo:
 
 ```
 from jinker import JinkerRequest
-// request is JinkerRequest  → true dentro de uma rota
+# request is JinkerRequest  → true dentro de uma rota
 ```
 
 ---

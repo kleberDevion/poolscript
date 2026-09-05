@@ -15,7 +15,7 @@ sys.RelativePath(name: str) -> str
 import sys
 
 caminho = sys.RelativePath("config.json")
-post(caminho)     // acha o config.json em qualquer subpasta
+post(caminho)     # acha o config.json em qualquer subpasta
 ```
 
 Diferente de [`os.pathFile`](../../os/pathFile/pathFile.md), que busca a partir

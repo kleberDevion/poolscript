@@ -6,7 +6,7 @@ focado em **dados tabulares** (linhas e colunas) e edições pontuais.
 
 ```
 import manpu as mp
-// (mp é o apelido comum; import manpu também funciona)
+# (mp é o apelido comum; import manpu também funciona)
 ```
 
 ---
@@ -32,7 +32,7 @@ coisa, e fecham.
 
 ```
 import manpu as mp
-dados = mp.read("clientes.csv")     // lista de dicts
+dados = mp.read("clientes.csv")     # lista de dicts
 ```
 
 **Várias operações no mesmo arquivo** — `open()` com `using`: abre uma vez, faz
@@ -42,7 +42,7 @@ tudo, salva/fecha automático ao sair do bloco.
 using mp.open(target="saida.csv") as arq {
     arq.write(column=0, cell=full, content=lista)
 }
-// salvo e fechado aqui
+# salvo e fechado aqui
 ```
 
 ---
@@ -52,13 +52,13 @@ using mp.open(target="saida.csv") as arq {
 ```
 import manpu as mp
 
-// lê uma planilha como lista de dicts
+# lê uma planilha como lista de dicts
 clientes = mp.read("clientes.xlsx")
 for each c in clientes {
     post(c["nome"], c["email"])
 }
 
-// escreve um relatório, salvando automático
+# escreve um relatório, salvando automático
 lista = mp.load("compras.txt")
 using mp.open(target="relatorio.csv") as arq {
     arq.write(column=0, cell=full, content=lista)

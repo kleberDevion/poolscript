@@ -11,8 +11,8 @@ col.count(query: dict = None) -> int
 ## Uso
 
 ```
-total = col.count()                    // todos
-ativos = col.count({"ativo": true})    // só os que batem
+total = col.count()                    # todos
+ativos = col.count({"ativo": true})    # só os que batem
 post(ativos, "produtos ativos")
 ```
 

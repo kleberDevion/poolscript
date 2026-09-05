@@ -5,7 +5,7 @@ Lib pra gerar imagens de **QR Code** a partir de um texto/URL.
 
 ```
 import qrcode
-// ou: import qrcode   (apelido)
+# ou: import qrcode   (apelido)
 ```
 
 | Membro | O que faz | Página |
@@ -21,10 +21,10 @@ import qrcode
 ```
 import qrcode
 
-// gera e salva num arquivo
+# gera e salva num arquivo
 qrcode.gen("https://meusite.com", save="site.png")
 
-// ou o atalho, e salva depois
+# ou o atalho, e salva depois
 img = qrcode.make("texto qualquer")
 img.save("qr.png")
 ```

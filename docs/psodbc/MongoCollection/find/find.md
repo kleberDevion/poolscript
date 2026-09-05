@@ -11,9 +11,9 @@ col.find(query: dict = None) -> list
 ## Uso
 
 ```
-col.find({"ativo": true})      // todos com ativo = true
+col.find({"ativo": true})      # todos com ativo = true
 col.find({"categoria": "bebida"})
-col.find()                     // todos (sem filtro)
+col.find()                     # todos (sem filtro)
 
 for each doc in col.find({"preco": 15}) {
     post(doc["nome"])

@@ -24,9 +24,9 @@ devolve. Aqui você busca, insere, atualiza e remove **documentos** (dicts).
 Em quase todos os métodos, você descreve o que procurar com um dict:
 
 ```
-col.find({"ativo": true})               // todos com ativo = true
-col.find({"idade": 30})                 // todos com idade = 30
-col.find({})                            // todos (filtro vazio)
+col.find({"ativo": true})               # todos com ativo = true
+col.find({"idade": 30})                 # todos com idade = 30
+col.find({})                            # todos (filtro vazio)
 ```
 
 ---
@@ -43,7 +43,7 @@ col.insert({"nome": "café", "preco": 15, "ativo": true})
 col.insert_many([{"nome": "chá"}, {"nome": "suco"}])
 
 ativos = col.find({"ativo": true})
-post(col.count())                       // total de documentos
+post(col.count())                       # total de documentos
 
 col.update({"nome": "café"}, {"preco": 18})
 col.remove({"ativo": false})

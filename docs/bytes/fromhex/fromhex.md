@@ -14,9 +14,9 @@ bytes.fromhex(s: str) -> bytes
 ```
 import bytes
 
-bytes.fromhex("48656c6c6f")       // b'Hello'
-bytes.fromhex("48 65 6c 6c 6f")   // b'Hello'  (espaços ignorados)
-bytes.fromhex("deadbeef")         // b'\xde\xad\xbe\xef'
+bytes.fromhex("48656c6c6f")       # b'Hello'
+bytes.fromhex("48 65 6c 6c 6f")   # b'Hello'  (espaços ignorados)
+bytes.fromhex("deadbeef")         # b'\xde\xad\xbe\xef'
 ```
 
 ---
@@ -26,8 +26,8 @@ bytes.fromhex("deadbeef")         // b'\xde\xad\xbe\xef'
 - **ValueError** — hex inválido: dígito fora de `0-9a-f` ou quantidade ímpar de dígitos.
 
 ```
-bytes.fromhex("zz")    // erro: hex inválido: 'zz'
-bytes.fromhex("abc")   // erro: hex inválido (ímpar)
+bytes.fromhex("zz")    # erro: hex inválido: 'zz'
+bytes.fromhex("abc")   # erro: hex inválido (ímpar)
 ```
 
 ---

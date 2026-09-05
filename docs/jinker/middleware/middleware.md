@@ -7,8 +7,8 @@ requisição para no middleware com a resposta que ele devolver.
 ```
 @app.middleware()
 action nome() {
-    // request disponível aqui
-    // `pass` libera a rota; `return jsonify(...), 401` barra
+    # request disponível aqui
+    # `pass` libera a rota; `return jsonify(...), 401` barra
 }
 ```
 
@@ -21,9 +21,9 @@ action nome() {
 action verificar() {
     token = request.get("token")
     if (not token) {
-        return jsonify({"msg": "sem permissão"}), 401   // BARRA
+        return jsonify({"msg": "sem permissão"}), 401   # BARRA
     }
-    pass                                                 // LIBERA
+    pass                                                 # LIBERA
 }
 ```
 
@@ -39,13 +39,13 @@ O middleware **não** roda automaticamente em tudo — você escolhe as rotas
 protegidas passando `middleware=app.middleware`:
 
 ```
-// rota livre — sem middleware
+# rota livre — sem middleware
 @app.route("/api/login", methods=cors.options(["POST"]))
 action login() {
     return jsonify({"ok": true})
 }
 
-// rota protegida — o middleware roda primeiro
+# rota protegida — o middleware roda primeiro
 @app.route("/api/dados", methods=cors.options(["GET"]), middleware=app.middleware)
 action dados() {
     return jsonify({"msg": "área protegida"})
@@ -83,7 +83,7 @@ action auth() {
     if (not token) {
         return jsonify({"erro": "não autorizado"}), 401
     }
-    // aqui você validaria o token (jwt.check, consulta no banco, etc.)
+    # aqui você validaria o token (jwt.check, consulta no banco, etc.)
     pass
 }
 ```

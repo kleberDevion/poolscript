@@ -18,8 +18,8 @@ Diferente de `bytes.slice(b, i, i+1)` (que devolve `bytes`), `get` devolve o
 import bytes
 
 b = bytes.new("ABC")
-bytes.get(b, 0)     // 65
-bytes.get(b, -1)    // 67   — o último
+bytes.get(b, 0)     # 65
+bytes.get(b, -1)    # 67   — o último
 ```
 
 ---
@@ -30,7 +30,7 @@ bytes.get(b, -1)    // 67   — o último
 - **ValueError** — o índice está fora da faixa.
 
 ```
-bytes.get(bytes.new("ab"), 9)   // erro: índice 9 fora do range (0..1)
+bytes.get(bytes.new("ab"), 9)   # erro: índice 9 fora do range (0..1)
 ```
 
 ---

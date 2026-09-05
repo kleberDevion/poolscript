@@ -23,7 +23,7 @@ action upload() {
     if (foto is Null) {
         return jsonify({"erro": "nenhum arquivo enviado"}), 400
     }
-    foto.save("uploads/perfil.jpg")      // grava em disco
+    foto.save("uploads/perfil.jpg")      # grava em disco
     return jsonify({"salvo": foto.name, "tamanho": foto.size})
 }
 ```
@@ -58,10 +58,10 @@ Duas camadas automáticas:
    qualquer outra levanta erro com a lista permitida na mensagem.
 
 ```
-// só imagens; um .pdf aqui levanta erro
+# só imagens; um .pdf aqui levanta erro
 foto = request.file("foto", allowed=[".jpg", ".jpeg", ".png"])
 
-// sem allowed: aceita qualquer extensão que NÃO esteja na lista de bloqueadas
+# sem allowed: aceita qualquer extensão que NÃO esteja na lista de bloqueadas
 doc = request.file("documento")
 ```
 

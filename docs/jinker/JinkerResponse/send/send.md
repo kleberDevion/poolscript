@@ -60,16 +60,16 @@ Se `x` for o caminho de um arquivo, o cliente recebe o **caminho** (a string),
 **não o conteúdo do arquivo**:
 
 ```
-// ERRADO — envia a string "C:\projeto\dados.csv", não o arquivo:
+# ERRADO — envia a string "C:\projeto\dados.csv", não o arquivo:
 path = os.pathFile("dados.csv")
-return JinkerResponse().send(path)      // cliente recebe: C:\projeto\dados.csv
+return JinkerResponse().send(path)      # cliente recebe: C:\projeto\dados.csv
 ```
 
 Pra mandar o **conteúdo de um arquivo**, quem lê o disco é o
 [`render()`](../../render/render.md), não o `send()`:
 
 ```
-// CERTO — render() lê o arquivo e manda o conteúdo (com MIME certo):
+# CERTO — render() lê o arquivo e manda o conteúdo (com MIME certo):
 return render("dados.csv")
 ```
 

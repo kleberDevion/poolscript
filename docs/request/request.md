@@ -57,7 +57,7 @@ import request
 
 resp = request.get("https://api.exemplo.com/users")
 if (resp.ok) {
-    dados = resp.get_json()      // corpo parseado como dict/lista
+    dados = resp.get_json()      # corpo parseado como dict/lista
     post(dados)
 }
 
@@ -65,7 +65,7 @@ resp2 = request.post(
     "https://api.exemplo.com/users",
     body={"nome": "ana", "email": "ana@email.com"}
 )
-post(resp2.status)               // 201, por exemplo
+post(resp2.status)               # 201, por exemplo
 ```
 
 ## Exemplo rápido — WebSocket
@@ -74,7 +74,7 @@ post(resp2.status)               // 201, por exemplo
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
-conn.on_message(action(msg) { post(msg) })   // OBRIGATÓRIO pra ver o que chega
-// O uso de uma action/reaction dentro dos () do modulo e opcional, pois ele devolve sozinho
+conn.on_message(action(msg) { post(msg) })   # OBRIGATÓRIO pra ver o que chega
+# O uso de uma action/reaction dentro dos () do modulo e opcional, pois ele devolve sozinho
 conn.send({"author": "ana", "body": "oi"})
 ```

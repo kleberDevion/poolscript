@@ -28,10 +28,10 @@ if (sys.platform() == "windows") {
     post("rodando no Windows")
 }
 
-sys.stdout.write("sem quebra de linha")   // controle fino da saída
+sys.stdout.write("sem quebra de linha")   # controle fino da saída
 sys.stdout.writeln(" com quebra")
 
 if (algo_deu_errado) {
-    sys.exit(1)                            // encerra com código de erro
+    sys.exit(1)                            # encerra com código de erro
 }
 ```

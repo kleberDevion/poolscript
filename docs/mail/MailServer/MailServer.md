@@ -36,10 +36,10 @@ m.subject("Assunto")
 m.body("Corpo")
 
 s = mail.MailServer()
-s.conn("gmail.com")                             // 1. conecta
-s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))   // 2. loga
-s.send(m)                                       // 3. envia
-s.quit()                                        // 4. fecha
+s.conn("gmail.com")                             # 1. conecta
+s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))   # 2. loga
+s.send(m)                                       # 3. envia
+s.quit()                                        # 4. fecha
 ```
 
 ---

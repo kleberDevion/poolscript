@@ -33,10 +33,10 @@ Código:
 import os
 from dotenv import load
 
-load()                              // carrega o .env
+load()                              # carrega o .env
 
-banco = os.getenv("DB_PATH")        // "loja.db"
-chave = os.getenv("SECRET_KEY")     // "abc123"
+banco = os.getenv("DB_PATH")        # "loja.db"
+chave = os.getenv("SECRET_KEY")     # "abc123"
 ```
 
 ---

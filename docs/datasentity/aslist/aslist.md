@@ -21,7 +21,7 @@ Entity Pessoa() {
 }
 
 p = Pessoa(nome="Ana", idade=30)
-post(aslist(p))     // ["Ana", 30]
+post(aslist(p))     # ["Ana", 30]
 ```
 
 Igual ao [`astuple`](../astuple/astuple.md), mas devolve uma lista (mutável).

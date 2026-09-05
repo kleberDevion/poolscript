@@ -16,10 +16,10 @@ col.update(query: dict, new_values: dict) -> None
 ## Uso
 
 ```
-// muda o preço de todos os cafés
+# muda o preço de todos os cafés
 col.update({"nome": "café"}, {"preco": 18})
 
-// marca como inativo quem tem estoque 0
+# marca como inativo quem tem estoque 0
 col.update({"estoque": 0}, {"ativo": false})
 ```
 

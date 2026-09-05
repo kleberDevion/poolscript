@@ -18,9 +18,9 @@ Parsing.TransientValue(value, to_type="str")
 ## Uso
 
 ```
-Parsing.TransientValue(123.7, "int")   // 123   (trunca)
-Parsing.TransientValue("R$ 10", "flo") // 10.0
-Parsing.TransientValue(42, "str")      // "42"
+Parsing.TransientValue(123.7, "int")   # 123   (trunca)
+Parsing.TransientValue("R$ 10", "flo") # 10.0
+Parsing.TransientValue(42, "str")      # "42"
 ```
 
 É a base que os outros conversores (`integer`, `floating`) usam por dentro.

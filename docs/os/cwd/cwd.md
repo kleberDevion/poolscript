@@ -14,7 +14,7 @@ os.cwd() -> str
 ```
 import os
 
-post(os.cwd())     // ex: "C:\Users\ana\projeto"
+post(os.cwd())     # ex: "C:\Users\ana\projeto"
 ```
 
 Útil pra montar caminhos ou entender de onde caminhos relativos partem.

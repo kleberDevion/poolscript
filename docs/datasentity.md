@@ -24,7 +24,7 @@ Entity Person {
 }
 
 user = Person(nome="Kleber", idade=17, email="k@mail.com")
-post(user.nome)   // "Kleber"
+post(user.nome)   # "Kleber"
 ```
 
 ---
@@ -35,7 +35,7 @@ Converte a instância pra `dict` PoolScript.
 
 ```
 asdict(user)
-// {"nome": "Kleber", "idade": 17, "email": "k@mail.com"}
+# {"nome": "Kleber", "idade": 17, "email": "k@mail.com"}
 ```
 
 ---
@@ -46,7 +46,7 @@ Converte pra tupla, na ordem dos campos declarados.
 
 ```
 astuple(user)
-// ("Kleber", 17, "k@mail.com")
+# ("Kleber", 17, "k@mail.com")
 ```
 
 ---
@@ -57,7 +57,7 @@ Converte pra lista, na ordem dos campos declarados.
 
 ```
 aslist(user)
-// ["Kleber", 17, "k@mail.com"]
+# ["Kleber", 17, "k@mail.com"]
 ```
 
 ---
@@ -68,7 +68,7 @@ Converte pra string JSON. Serializa `DataEntity` aninhada recursivamente.
 
 ```
 asjson(user)
-// {"nome": "Kleber", "idade": 17, "email": "k@mail.com"}
+# {"nome": "Kleber", "idade": 17, "email": "k@mail.com"}
 ```
 
 ---

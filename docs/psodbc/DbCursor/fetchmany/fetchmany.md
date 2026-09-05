@@ -14,14 +14,14 @@ cursor.fetchmany(size: int = 1) -> list
 ```
 cursor.execute("SELECT * FROM muitos_registros")
 
-// processa de 100 em 100
+# processa de 100 em 100
 while (true) {
     bloco = cursor.fetchmany(100)
     if (len(bloco) == 0) {
         break
     }
     for each linha in bloco {
-        // processa cada uma
+        # processa cada uma
     }
 }
 ```

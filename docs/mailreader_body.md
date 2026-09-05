@@ -45,7 +45,7 @@ Uso:
 emails = reader.select("INBOX").search("SUBJECT", "fatura")
 for each e in emails {
     if "urgente" in e["subject"] {
-        corpo = reader.body(e["id"])   // só busca o corpo do que interessa
+        corpo = reader.body(e["id"])   # só busca o corpo do que interessa
     }
 }
 ```
@@ -173,15 +173,15 @@ sempre funcionou, o que não funcionava era acento — e agora funciona.**
 reader = mail.MailReader()
 reader.conn("gmail.com")
 reader.login("user@gmail.com", "senha-de-app")
-reader.select("INBOX", true)          // readonly=true por padrão
+reader.select("INBOX", true)          # readonly=true por padrão
 
-// busca só metadado (rápido, é o default)
+# busca só metadado (rápido, é o default)
 emails = reader.search("SUBJECT", "Relatório, urgente")
 
-// corpo sob demanda, um de cada vez
+# corpo sob demanda, um de cada vez
 corpo = reader.body(emails[0]["id"])
 
-// ou corpo já embutido em todos os resultados
+# ou corpo já embutido em todos os resultados
 com_corpo = reader.select().search("SUBJECT", "fatura", limit=20, include_body=true)
 post(com_corpo[0]["body"])
 

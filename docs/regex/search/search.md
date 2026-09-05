@@ -21,7 +21,7 @@ if (regex.search("erro", "log: um erro aconteceu")) {
     post("achou 'erro' no texto")
 }
 
-// tem algum número no texto?
+# tem algum número no texto?
 if (regex.search(r"\d", "abc123")) {
     post("tem dígito")
 }

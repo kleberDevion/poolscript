@@ -26,8 +26,8 @@ request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=Non
 import request
 
 resp = request.get("https://api.exemplo.com/users")
-post(resp.status)          // 200
-dados = resp.get_json()    // corpo parseado (dict ou lista)
+post(resp.status)          # 200
+dados = resp.get_json()    # corpo parseado (dict ou lista)
 ```
 
 ---
@@ -63,10 +63,10 @@ cheque `.ok` ou `.status`:
 
 ```
 resp = request.get("https://api.x.com/item/999")
-if (resp.ok) {                       // true se status 2xx
+if (resp.ok) {                       # true se status 2xx
     post(resp.get_json())
 } else {
-    post("falhou:", resp.status)     // ex: 404
+    post("falhou:", resp.status)     # ex: 404
 }
 ```
 

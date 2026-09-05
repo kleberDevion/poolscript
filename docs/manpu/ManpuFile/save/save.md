@@ -19,10 +19,10 @@ import manpu as mp
 
 using mp.open(target="dados.csv") as arq {
     arq.write(column=0, cell=0, content="parte 1")
-    arq.save()                     // grava agora, sem esperar o fim
+    arq.save()                     # grava agora, sem esperar o fim
 
     arq.write(column=0, cell=1, content="parte 2")
-    // ao sair, salva de novo automaticamente
+    # ao sair, salva de novo automaticamente
 }
 ```
 

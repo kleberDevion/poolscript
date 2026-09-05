@@ -16,14 +16,14 @@ Como o XOR é reversível, aplicar a **mesma chave** duas vezes volta ao origina
 ```
 import bytes
 
-// chave repetida
-bytes.xor(bytes.new("aaaa"), bytes.new("K"))   // b'****'  (0x61 ^ 0x4B = 0x2A)
+# chave repetida
+bytes.xor(bytes.new("aaaa"), bytes.new("K"))   # b'****'  (0x61 ^ 0x4B = 0x2A)
 
-// cifra reversível
+# cifra reversível
 segredo  = bytes.new("mensagem")
 chave    = bytes.new("K3y")
 cifrado  = bytes.xor(segredo, chave)
-bytes.xor(cifrado, chave)     // b'mensagem'  — de volta ao original
+bytes.xor(cifrado, chave)     # b'mensagem'  — de volta ao original
 ```
 
 ---

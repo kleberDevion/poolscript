@@ -13,8 +13,8 @@ from regex import match, search, findall, sub, split, escape
 Casa a string **inteira** com o padrão (`re.fullmatch`). Retorna `bool`.
 
 ```
-match("\d+", "abc123")   // False — tem letras
-match("\d+", "123")      // True
+match("\d+", "abc123")   # False — tem letras
+match("\d+", "123")      # True
 ```
 
 ---
@@ -25,7 +25,7 @@ Verifica se o padrão existe em qualquer posição da string (`re.search`).
 Retorna `bool`.
 
 ```
-search("\d+", "abc123")  // True
+search("\d+", "abc123")  # True
 ```
 
 ---
@@ -35,7 +35,7 @@ search("\d+", "abc123")  // True
 Retorna lista com todas as ocorrências do padrão.
 
 ```
-findall("\d+", "a1b2c3")   // ["1", "2", "3"]
+findall("\d+", "a1b2c3")   # ["1", "2", "3"]
 ```
 
 ---
@@ -46,7 +46,7 @@ Substitui ocorrências do padrão. Retorna string (encadeável, tem os
 métodos estendidos de string da PoolScript).
 
 ```
-sub("\s+", "_", "hello world")   // "hello_world"
+sub("\s+", "_", "hello world")   # "hello_world"
 ```
 
 ---
@@ -56,7 +56,7 @@ sub("\s+", "_", "hello world")   // "hello_world"
 Divide a string pelo padrão.
 
 ```
-split("\s+", "a b  c")   // ["a", "b", "c"]
+split("\s+", "a b  c")   # ["a", "b", "c"]
 ```
 
 ---
@@ -66,7 +66,7 @@ split("\s+", "a b  c")   // ["a", "b", "c"]
 Escapa caracteres especiais de regex.
 
 ```
-escape("a.b*c")   // "a\.b\*c"
+escape("a.b*c")   # "a\.b\*c"
 ```
 
 ---
@@ -80,6 +80,6 @@ action email_valido(email) {
     return match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
 }
 
-post(email_valido("ana@email.com"))   // True
-post(email_valido("invalido"))        // False
+post(email_valido("ana@email.com"))   # True
+post(email_valido("invalido"))        # False
 ```

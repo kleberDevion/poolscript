@@ -67,8 +67,8 @@ import request
 
 resp = request.get("https://api.x.com/user/1")
 
-if (resp.ok) {                        // status 2xx?
-    dados = resp.json()               // dict
+if (resp.ok) {                        # status 2xx?
+    dados = resp.json()               # dict
     post(dados["nome"])
 } else {
     post("erro", resp.status)
@@ -78,15 +78,15 @@ if (resp.ok) {                        // status 2xx?
 ### `.get_json()` — inteiro ou uma chave
 
 ```
-resp.get_json()             // {"nome": "ana", "idade": 30}
-resp.get_json("nome")       // "ana"  (atalho pra uma chave)
+resp.get_json()             # {"nome": "ana", "idade": 30}
+resp.get_json("nome")       # "ana"  (atalho pra uma chave)
 ```
 
 ### `.get()` — serve pra header e pra chave JSON
 
 ```
-tipo = resp.get("Content-Type")   // procura primeiro nos headers
-nome = resp.get("nome")           // se não for header, procura no JSON
+tipo = resp.get("Content-Type")   # procura primeiro nos headers
+nome = resp.get("nome")           # se não for header, procura no JSON
 ```
 
 ### `.text` — corpo cru
@@ -95,7 +95,7 @@ Quando a resposta não é JSON (HTML, texto, XML):
 
 ```
 resp = request.get("https://exemplo.com/pagina.html")
-post(resp.text)             // o HTML como string
+post(resp.text)             # o HTML como string
 ```
 
 ---

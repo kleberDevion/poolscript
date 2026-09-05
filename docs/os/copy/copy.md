@@ -18,8 +18,8 @@ os.copy(src: str, dst: str) -> None
 ```
 import os
 
-os.copy("dados.db", "backup/dados.db")     // duplica o arquivo
-os.copy("config.json", "config.bak.json")  // cópia de segurança
+os.copy("dados.db", "backup/dados.db")     # duplica o arquivo
+os.copy("config.json", "config.bak.json")  # cópia de segurança
 ```
 
 Depois de copiar, os **dois** arquivos existem.

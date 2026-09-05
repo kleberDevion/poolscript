@@ -19,9 +19,9 @@ os.warn(text: str = "", color: str = "yellow") -> None
 ```
 import os
 
-os.warn("cuidado: arquivo será sobrescrito")          // amarelo (padrão)
-os.warn("erro ao conectar", "red")                    // vermelho
-os.warn("tudo certo", "green")                        // verde
+os.warn("cuidado: arquivo será sobrescrito")          # amarelo (padrão)
+os.warn("erro ao conectar", "red")                    # vermelho
+os.warn("tudo certo", "green")                        # verde
 ```
 
 ---

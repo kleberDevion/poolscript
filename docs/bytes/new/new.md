@@ -15,11 +15,11 @@ bytes.new(x: list | str | int | bytes = 0) -> bytes
 ```
 import bytes
 
-bytes.new([72, 105])        // b'Hi'   — cada inteiro vira um byte
-bytes.new("Oi")             // b'Oi'   — texto em utf-8
-bytes.new(3)                // b'\x00\x00\x00'  — 3 bytes zerados
-bytes.new()                 // b''     — vazio
-bytes.new(bytes.new("ok"))  // b'ok'   — cópia
+bytes.new([72, 105])        # b'Hi'   — cada inteiro vira um byte
+bytes.new("Oi")             # b'Oi'   — texto em utf-8
+bytes.new(3)                # b'\x00\x00\x00'  — 3 bytes zerados
+bytes.new()                 # b''     — vazio
+bytes.new(bytes.new("ok"))  # b'ok'   — cópia
 ```
 
 ---
@@ -30,8 +30,8 @@ bytes.new(bytes.new("ok"))  // b'ok'   — cópia
 - **ValueError** — lista com item fora de 0-255, ou tamanho negativo.
 
 ```
-bytes.new([300])   // erro: a lista precisa conter inteiros de 0 a 255
-bytes.new(3.5)     // erro: não sei criar bytes de flo
+bytes.new([300])   # erro: a lista precisa conter inteiros de 0 a 255
+bytes.new(3.5)     # erro: não sei criar bytes de flo
 ```
 
 ---

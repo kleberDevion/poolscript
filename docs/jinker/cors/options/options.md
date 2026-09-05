@@ -4,8 +4,8 @@ Resolve a lista de métodos HTTP de uma rota. Usado no `methods=` do
 `@app.route(...)`.
 
 ```
-cors.options() -> list           // todos os métodos configurados globalmente
-cors.options(["POST"]) -> list   // filtra/sobrescreve pra esta rota
+cors.options() -> list           # todos os métodos configurados globalmente
+cors.options(["POST"]) -> list   # filtra/sobrescreve pra esta rota
 ```
 
 ---
@@ -17,14 +17,14 @@ global:
 
 ```
 cors(options=["GET", "POST", "DELETE"])
-// ...
-methods=cors.options()    // GET, POST, DELETE
+# ...
+methods=cors.options()    # GET, POST, DELETE
 ```
 
 **Com uma lista** — define exatamente os métodos daquela rota (ignora o global):
 
 ```
-@app.route("/api/item", methods=cors.options(["POST"]))   // só POST
+@app.route("/api/item", methods=cors.options(["POST"]))   # só POST
 action criar() { ... }
 
 @app.route("/api/item", methods=cors.options(["GET", "DELETE"]))
@@ -43,7 +43,7 @@ recebe erro.
 ```
 @app.route("/api/login", methods=cors.options(["POST"]))
 action login() {
-    // só responde POST /api/login
+    # só responde POST /api/login
     return jsonify({"ok": true})
 }
 ```

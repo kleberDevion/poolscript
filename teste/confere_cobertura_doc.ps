@@ -34,7 +34,7 @@ if __name__ == "main" {
     # `--metadata` inteiro (853 membros) sai no terminal antes do relatório.
     tmp = "/tmp/ps_cobdoc_meta.json"
     os.cmd(sys.executable + " --metadata > " + tmp)
-    meta = json.parse(open(tmp).read())
+    meta = json.parse(os.readFile(tmp))
 
     # `bytes` é módulo E tipo, e os dois documentam em `docs/bytes/`. Somar as
     # listas em vez de sobrescrever: com `escopos[k] = ...` os 12 membros do
@@ -81,18 +81,18 @@ if __name__ == "main" {
     }
 
     if "--grava" in sys.argv {
-        open(BASE, "w").write(str(com) + "\n")
+        os.writeFile(BASE, str(com) + "\n")
         post("base regravada em " + BASE)
         sys.exit(0)
     }
 
     if not os.isfile(BASE) {
-        open(BASE, "w").write(str(com) + "\n")
+        os.writeFile(BASE, str(com) + "\n")
         post("base criada em " + BASE + " com " + str(com))
         sys.exit(0)
     }
 
-    gravado = int(open(BASE).read().strip())
+    gravado = int(os.readFile(BASE).strip())
     if com < gravado {
         post("")
         post("REPROVADO: eram " + str(gravado) + " membros com página, agora são "
@@ -102,7 +102,7 @@ if __name__ == "main" {
         sys.exit(1)
     }
     if com > gravado {
-        open(BASE, "w").write(str(com) + "\n")
+        os.writeFile(BASE, str(com) + "\n")
         post("base subiu: " + str(gravado) + " -> " + str(com))
     }
     post("cobertura da doc: não caiu (base " + str(gravado) + ")")

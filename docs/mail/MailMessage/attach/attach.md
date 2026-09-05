@@ -15,23 +15,23 @@ m.attach(file_or_path) -> None
 ```
 m = mail.MailMessage()
 m.attach("relatorio.pdf")
-m.attach("planilha.xlsx")     // dá pra anexar vários
+m.attach("planilha.xlsx")     # dá pra anexar vários
 ```
 
 ## Anexar um arquivo já carregado
 
 ```
 import os
-pdf = os.loadFile("nota.pdf")     // PoolFile
+pdf = os.loadFile("nota.pdf")     # PoolFile
 m.attach(pdf)
 ```
 
 ## Anexar um upload recebido (jinker)
 
 ```
-// dentro de uma rota que recebe upload
+# dentro de uma rota que recebe upload
 foto = request.file("foto")
-m.attach(foto)                    // PoolFileUpload
+m.attach(foto)                    # PoolFileUpload
 ```
 
 ---

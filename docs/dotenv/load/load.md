@@ -19,7 +19,7 @@ load(path: str = None) -> dict
 import os
 from dotenv import load
 
-load()                          // acha e carrega o .env automaticamente
+load()                          # acha e carrega o .env automaticamente
 
 usuario = os.getenv("MAIL_USER")
 senha = os.getenv("MAIL_PASS")

@@ -28,7 +28,7 @@ lista = mp.load("compras.txt")
 using mp.open(target="compras.xlsx") as arq {
     arq.write(column=0, cell=full, content=lista)
 }
-// aqui o arquivo já está salvo e fechado
+# aqui o arquivo já está salvo e fechado
 ```
 
 O `using` usa bloco de chaves `{ }` (acima), como todo bloco da linguagem:

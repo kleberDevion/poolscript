@@ -13,7 +13,7 @@ date.now() -> str
 ```
 import date
 
-post(date.now())           // "2026-07-25 14:30:05"
+post(date.now())           # "2026-07-25 14:30:05"
 ```
 
 ---

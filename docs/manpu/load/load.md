@@ -16,10 +16,10 @@ manpu.load(filepath: str) -> bytes
 import manpu as mp
 import mail
 
-ld = mp.load("relatorio.pdf")      // bytes do PDF
+ld = mp.load("relatorio.pdf")      # bytes do PDF
 
 m = mail.MailMessage()
-m.body(ld)                          // usa os bytes
+m.body(ld)                          # usa os bytes
 ```
 
 ---

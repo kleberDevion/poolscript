@@ -27,9 +27,9 @@ manpu.read(filepath: str) -> list | dict | str
 ```
 import manpu as mp
 
-// CSV/XLSX → lista de dicts, uma linha por dict
+# CSV/XLSX → lista de dicts, uma linha por dict
 clientes = mp.read("clientes.csv")
-post(clientes[0]["nome"])          // primeira linha, coluna "nome"
+post(clientes[0]["nome"])          # primeira linha, coluna "nome"
 
 for each c in clientes {
     post(c["nome"], "-", c["email"])

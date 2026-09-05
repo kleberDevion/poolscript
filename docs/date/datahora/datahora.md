@@ -14,9 +14,9 @@ date.datahora() -> str
 ```
 import date
 
-post(date.datahora())      // "25/07/2026 14:30:05"
+post(date.datahora())      # "25/07/2026 14:30:05"
 
-// carimbar um registro no banco
+# carimbar um registro no banco
 msg = {"texto": "olá", "criado_em": date.datahora()}
 ```
 

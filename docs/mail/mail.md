@@ -29,16 +29,16 @@ from dotenv import load
 
 load()
 
-// 1. monta a mensagem
+# 1. monta a mensagem
 m = mail.MailMessage()
 m.from_address(os.getenv("MAIL_USER"))
 m.to("destino@email.com")
 m.subject("Olá!")
 m.body("Corpo do e-mail")
 
-// 2. conecta, loga e envia
+# 2. conecta, loga e envia
 s = mail.MailServer()
-s.conn("gmail.com")                              // host/porta automáticos
+s.conn("gmail.com")                              # host/porta automáticos
 s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 s.send(m)
 s.quit()

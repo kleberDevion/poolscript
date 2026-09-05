@@ -15,7 +15,7 @@ conn = psodbc.connect(driver="sqlite", base="loja.db")
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM produtos")
 dados = cursor.fetchall()
-conn.close()           // encerra
+conn.close()           # encerra
 ```
 
 > Se você fez alterações (INSERT/UPDATE/DELETE), chame

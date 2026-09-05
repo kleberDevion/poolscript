@@ -14,15 +14,15 @@ cursor.execute(sql: str, params: tuple = ()) -> DbCursor
 ```
 cursor = conn.cursor()
 
-// SELECT
+# SELECT
 cursor.execute("SELECT * FROM produtos")
 dados = cursor.fetchall()
 
-// com parâmetros (o jeito seguro)
+# com parâmetros (o jeito seguro)
 cursor.execute("SELECT * FROM produtos WHERE preco > ?", (100,))
 caros = cursor.fetchall()
 
-// INSERT (lembre do commit)
+# INSERT (lembre do commit)
 cursor.execute("INSERT INTO produtos (nome, preco) VALUES (?, ?)", ("café", 15))
 conn.commit()
 ```
@@ -34,10 +34,10 @@ conn.commit()
 ```
 nome = request.get("nome")
 
-// CERTO — parâmetro:
+# CERTO — parâmetro:
 cursor.execute("SELECT * FROM users WHERE nome = ?", (nome,))
 
-// ERRADO — concatenar permite SQL injection:
+# ERRADO — concatenar permite SQL injection:
 cursor.execute("SELECT * FROM users WHERE nome = '" + nome + "'")
 ```
 

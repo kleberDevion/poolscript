@@ -39,23 +39,23 @@ Crie um arquivo `app.ps` com isto — é um servidor inteiro, funcional:
 from jinker import Jinker, cors, jsonify
 import os
 
-app = Jinker(__name__)              // 1. cria a aplicação
+app = Jinker(__name__)              # 1. cria a aplicação
 
-// 2. uma rota: quem acessar GET /  recebe o JSON abaixo
+# 2. uma rota: quem acessar GET /  recebe o JSON abaixo
 @app.route("/", methods=cors.options(["GET"]))
 action inicio() {
     return jsonify({"msg": "meu primeiro servidor jinker!"})
 }
 
-// 3. uma rota que lê algo de quem chamou
+# 3. uma rota que lê algo de quem chamou
 @app.route("/somar", methods=cors.options(["POST"]))
 action somar() {
-    a = request.get("a")            // pega do corpo JSON ou da query string
+    a = request.get("a")            # pega do corpo JSON ou da query string
     b = request.get("b")
     return jsonify({"resultado": a + b})
 }
 
-// 4. sobe o servidor quando o arquivo é executado direto
+# 4. sobe o servidor quando o arquivo é executado direto
 if __name__ == "main" {
     porta = int(os.getenv("PORT", "8080"))
     app(debug=true, host="0.0.0.0", port=porta)
@@ -150,9 +150,9 @@ Passe `route_prefix` no construtor pra montar **todas** as rotas (e sockets) sob
 um prefixo comum, sem repetir em cada `@app.route`:
 
 ```
-app = Jinker(route_prefix="api")     // "api" | "/api/" -> "/api"
+app = Jinker(route_prefix="api")     # "api" | "/api/" -> "/api"
 
-@app.route("/hello", methods=["GET"])   // servida em  /api/hello
+@app.route("/hello", methods=["GET"])   # servida em  /api/hello
 action hello() {
     return {"ok": true}
 }
@@ -235,9 +235,9 @@ linha que constrói um `JinkerResponse` e chama `.json(dados)` nele. Ou seja,
 estas três formas produzem exatamente a mesma resposta:
 
 ```
-return jsonify({"msg": "ok"})                      // atalho
-return JinkerResponse().json({"msg": "ok"})        // idêntico ao de cima
-return {"msg": "ok"}                                // dict puro: a rota converte sozinha
+return jsonify({"msg": "ok"})                      # atalho
+return JinkerResponse().json({"msg": "ok"})        # idêntico ao de cima
+return {"msg": "ok"}                                # dict puro: a rota converte sozinha
 ```
 
 Use `jsonify` por ser mais curto; use `JinkerResponse` direto quando quiser
@@ -255,8 +255,8 @@ encadeiam):
 
 ```
 return jsonify({"msg": "ok"}).header("X-Request-Id", "abc123"), 200
-return jsonify({"msg": "criado"}).status(201)   // status() dispensa a tupla
-return JinkerResponse().send("texto puro", 200)  // resposta não-JSON
+return jsonify({"msg": "criado"}).status(201)   # status() dispensa a tupla
+return JinkerResponse().send("texto puro", 200)  # resposta não-JSON
 ```
 
 `request` (o parâmetro implícito de toda rota) é uma instância de
@@ -321,8 +321,8 @@ As duas formas abaixo são **exatamente equivalentes** — escolha a que ficar
 mais legível:
 
 ```
-return render("paginas/index.html")     // caminho completo num argumento só
-return render("paginas", "index.html")  // pasta + arquivo separados
+return render("paginas/index.html")     # caminho completo num argumento só
+return render("paginas", "index.html")  # pasta + arquivo separados
 ```
 
 Internamente `render("paginas", "index.html")` só faz `"paginas" / "index.html"`
@@ -332,7 +332,7 @@ quando a pasta é fixa e o arquivo é variável:
 ```
 action pagina() {
     nome = request.path_param("nome")
-    return render("paginas", f"{nome}.html")   // paginas/<nome>.html
+    return render("paginas", f"{nome}.html")   # paginas/<nome>.html
 }
 ```
 
@@ -560,8 +560,8 @@ os outros no mesmo worker.
 ```
 @app.route("/lento")
 action lento() {
-    sleep(1)                 // 100 clientes aqui NÃO viram 100s de fila:
-    return jsonify({"ok": true})   // todos dormem juntos e respondem em ~1s
+    sleep(1)                 # 100 clientes aqui NÃO viram 100s de fila:
+    return jsonify({"ok": true})   # todos dormem juntos e respondem em ~1s
 }
 ```
 
@@ -613,7 +613,7 @@ Uma fibra é concorrência **dentro de um núcleo** (uma coisa roda por vez, ela
 revezam na espera). Pra usar os vários núcleos da máquina, suba mais processos:
 
 ```
-app(host="0.0.0.0", port=2000, workers=4)   // 4 processos dividem a porta
+app(host="0.0.0.0", port=2000, workers=4)   # 4 processos dividem a porta
 ```
 
 Cada worker é um processo próprio (o kernel balanceia as conexões entre eles),

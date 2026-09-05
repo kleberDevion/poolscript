@@ -16,8 +16,8 @@ r.conn("gmail.com")
 r.login(user, senha)
 r.select("INBOX")
 emails = r.search("ALL", limit=10)
-// ... processa ...
-r.close()          // fecha
+# ... processa ...
+r.close()          # fecha
 ```
 
 Seguro chamar mesmo se a conexão já caiu — não quebra.

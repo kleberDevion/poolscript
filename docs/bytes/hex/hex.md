@@ -13,8 +13,8 @@ bytes.hex(b: bytes) -> str
 ```
 import bytes
 
-bytes.hex(bytes.new("Hello"))   // "48656c6c6f"
-bytes.hex(bytes.new([222, 173, 190, 239]))   // "deadbeef"
+bytes.hex(bytes.new("Hello"))   # "48656c6c6f"
+bytes.hex(bytes.new([222, 173, 190, 239]))   # "deadbeef"
 ```
 
 ---

@@ -1,0 +1,177 @@
+# `//` na doc: era comentário, virou divisão inteira, e ninguém trocou.
+#
+# POR QUE ISTO EXISTE. O I11 tirou `//` de comentário e o transformou no
+# operador de divisão inteira. A linguagem mudou; a documentação não. Ficaram
+# **179 páginas** ensinando `// comentário`, e quem copia um exemplo da doc
+# escreve código que não compila.
+#
+# Não é hipótese: eu mesmo escrevi `//` num exemplo de `docs/jinker/route`
+# nesta semana, dois dias depois de consertar o parser e escrever a mensagem de
+# erro desse caso. Aprendi errado lendo a própria doc.
+#
+# COMO ELE DECIDE, e por que é seguro:
+#
+#   - só dentro de cerca ``` — prosa pode citar `//` à vontade;
+#   - `://` nunca é tocado (URL);
+#   - troca por `#` quando o `//` está no COMEÇO da linha ou depois de DUAS ou
+#     mais espaços. É o estilo de comentário à direita;
+#   - com UM espaço só antes, não mexe e RELATA. `post(7 // 2)` é divisão de
+#     verdade, e é assim que ela aparece — as 5 ocorrências reais na doc estão
+#     nessa forma, e todas já usam `#` no comentário delas.
+#
+# Não escreve prosa nenhuma: troca dois caracteres dentro de bloco de código
+# que hoje não compila.
+#
+#     ./pool scripts/conserta_barra_doc.ps            # relata, não altera
+#     ./pool scripts/conserta_barra_doc.ps --aplica   # aplica
+import os
+import sys
+
+RAIZ = "docs"
+
+
+action junta_md(dir, acc) {
+    for each ent in os.ls(dir) {
+        cam = dir + "/" + ent["name"]
+        if ent["type"] == "dir" {
+            junta_md(cam, acc)
+        }
+        elif ent["name"].endswith(".md") {
+            addEnd(acc, cam)
+        }
+    }
+    return acc
+}
+
+
+# Onde `//` começa nesta linha, ignorando `://`. -1 = não tem.
+#
+# Usa `find` do motor, não varredura em PoolScript: indexar `L[i]` numa string
+# UTF-8 custa O(n) (conta code points), então o laço char a char virava O(n²)
+# por linha.
+#
+# O local se chama `p`, e NÃO `i`, de propósito: atribuir dentro de uma action
+# a um nome que existe no módulo ESCREVE no de fora (ver notas/LIMITACOES.md).
+# Com `i` aqui, o `i` do laço de quem chama era sobrescrito e o laço nunca
+# terminava — travou este script por meia hora, sem erro nenhum.
+action acha_barra(L) {
+    de = 0
+    while true {
+        p = L.find("//", de)
+        if p < 0 {
+            return -1
+        }
+        if p > 0 and L[p - 1] == ":" {
+            de = p + 2
+            continue
+        }
+        return p
+    }
+    return -1
+}
+
+
+action so_espaco_antes(L, ate) {
+    return L[0:ate].strip() == ""
+}
+
+
+if __name__ == "main" {
+    aplica = "--aplica" in sys.argv
+    arquivos = junta_md(RAIZ, [])
+
+    trocadas = 0
+    tocados = 0
+    ambiguas = []
+
+    for each caminho in arquivos {
+        linhas = os.readFile(caminho).split("\n")
+        dentro = false
+        mudou = false
+        i = 0
+        while i < len(linhas) {
+            L = linhas[i]
+            if L.strip().startswith("```") {
+                dentro = not dentro
+                i = i + 1
+                continue
+            }
+            if not dentro {
+                i = i + 1
+                continue
+            }
+            b = acha_barra(L)
+            if b < 0 {
+                i = i + 1
+                continue
+            }
+            # começo da linha, ou dois espaços antes = comentário à direita
+            eh_comentario = so_espaco_antes(L, b)
+            if not eh_comentario and b >= 2 {
+                if L[b - 1] == " " and L[b - 2] == " " {
+                    eh_comentario = true
+                }
+            }
+            # Um espaço só antes: decide pelo que vem DEPOIS. Divisão inteira
+            # tem um operando atrás — dígito, `-` ou `(`. Comentário tem
+            # palavra. As 5 divisões reais da doc são `// 2`, `// -2`, `// 1`;
+            # nenhuma delas passa por aqui.
+            if not eh_comentario and b + 3 <= len(L) {
+                depois = L[b + 2:b + 4]
+                if depois[0:1] == " " {
+                    c = depois[1:2]
+                    if c != "" and not (c >= "0" and c <= "9") and c != "-" and c != "(" {
+                        eh_comentario = true
+                    }
+                }
+            }
+            if eh_comentario {
+                linhas[i] = L[0:b] + "#" + L[b + 2:]
+                trocadas = trocadas + 1
+                mudou = true
+            }
+            else {
+                addEnd(ambiguas, caminho + ":" + str(i + 1) + "  " + L.strip())
+            }
+            i = i + 1
+        }
+        if mudou {
+            tocados = tocados + 1
+            if aplica {
+                os.writeFile(caminho, "\n".join(linhas))
+            }
+        }
+    }
+
+    # `--portao`: não conserta, REPROVA. É o que roda no `make check` — depois
+    # de a categoria estar zerada, `//` de comentário voltando pra doc é
+    # regressão, e regressão silenciosa é como ela chegou a 179 páginas.
+    if "--portao" in sys.argv {
+        if trocadas > 0 {
+            post("REPROVADO: " + str(trocadas) + " `//` de comentario em "
+                 + str(tocados) + " pagina(s) da doc.")
+            post("O `//` e DIVISAO INTEIRA desde o I11 — comentario e `#`.")
+            post("Conserte com: ./pool scripts/conserta_barra_doc.ps --aplica")
+            sys.exit(1)
+        }
+        post("doc: nenhum `//` usado como comentario")
+        sys.exit(0)
+    }
+
+    if aplica {
+        post("trocadas: " + str(trocadas) + " ocorrencias em " + str(tocados) + " paginas")
+    }
+    else {
+        post("A TROCAR: " + str(trocadas) + " ocorrencias em " + str(tocados) + " paginas")
+        post("(rode com --aplica)")
+    }
+
+    if len(ambiguas) > 0 {
+        post("")
+        post("NAO MEXI em " + str(len(ambiguas)) + " — um espaco so antes do `//`,")
+        post("que e a forma da DIVISAO INTEIRA. Confira a mao:")
+        for each a in ambiguas {
+            post("  " + a)
+        }
+    }
+}

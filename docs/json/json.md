@@ -5,7 +5,7 @@ listas). Você usa quando recebe/manda JSON como texto e precisa ir e voltar.
 
 ```
 import json
-// (JSON — maiúsculo — é o mesmo módulo, apelido)
+# (JSON — maiúsculo — é o mesmo módulo, apelido)
 ```
 
 | Membro | O que faz | Página |
@@ -20,13 +20,13 @@ import json
 ```
 import json
 
-// texto → dados
+# texto → dados
 dados = json.parse('{"nome": "ana", "idade": 30}')
-post(dados["nome"])          // "ana"
+post(dados["nome"])          # "ana"
 
-// dados → texto
+# dados → texto
 texto = json.stringify({"nome": "ana", "idade": 30})
-post(texto)                  // '{"nome": "ana", "idade": 30}'
+post(texto)                  # '{"nome": "ana", "idade": 30}'
 ```
 
 `parse` e `stringify` são **opostos**: um desfaz o outro.
@@ -44,7 +44,7 @@ montando manualmente pra salvar.
 import json
 import os
 
-// um JSON guardado numa variável de ambiente
+# um JSON guardado numa variável de ambiente
 config = json.parse(os.getenv("CONFIG_JSON"))
 ```
 

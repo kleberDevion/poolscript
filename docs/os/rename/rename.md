@@ -18,8 +18,8 @@ os.rename(src: str, dst: str) -> None
 ```
 import os
 
-os.rename("rascunho.txt", "final.txt")       // troca o nome
-os.rename("fotos", "imagens")                // renomeia a pasta
+os.rename("rascunho.txt", "final.txt")       # troca o nome
+os.rename("fotos", "imagens")                # renomeia a pasta
 ```
 
 ---

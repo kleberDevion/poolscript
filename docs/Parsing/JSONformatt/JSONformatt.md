@@ -15,9 +15,9 @@ Parsing.JSONformatt(value, to_type="json") -> dict | list
 ## Uso
 
 ```
-Parsing.JSONformatt('{"a": 1}')      // {"a": 1}   (parseia a string)
-Parsing.JSONformatt({"a": 1})        // {"a": 1}   (já é dict)
-Parsing.JSONformatt("texto inválido") // {}        (não deu → dict vazio)
+Parsing.JSONformatt('{"a": 1}')      # {"a": 1}   (parseia a string)
+Parsing.JSONformatt({"a": 1})        # {"a": 1}   (já é dict)
+Parsing.JSONformatt("texto inválido") # {}        (não deu → dict vazio)
 ```
 
 Diferente de [`json.parse`](../../json/parse/parse.md), não quebra com JSON

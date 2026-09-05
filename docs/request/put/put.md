@@ -16,7 +16,7 @@ request.put(url, headers=None, body=None, timeout=30, stream=false, max_size=Non
 ```
 import request
 
-// substitui TODOS os dados do usuário 10
+# substitui TODOS os dados do usuário 10
 resp = request.put(
     "https://api.x.com/users/10",
     body={"nome": "ana", "email": "ana@nova.com", "idade": 31}

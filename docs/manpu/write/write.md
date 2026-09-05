@@ -48,10 +48,10 @@ Com `celula=full` (ou `cell=full`), o conteúdo é dividido por quebra de linha 
 cada parte vai numa célula, descendo na coluna:
 
 ```
-// content com "Arroz\nFeijão\nMacarrão" e cell=full:
-// coluna 0, linha 0 → Arroz
-// coluna 0, linha 1 → Feijão
-// coluna 0, linha 2 → Macarrão
+# content com "Arroz\nFeijão\nMacarrão" e cell=full:
+# coluna 0, linha 0 → Arroz
+# coluna 0, linha 1 → Feijão
+# coluna 0, linha 2 → Macarrão
 ```
 
 ---

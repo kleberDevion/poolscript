@@ -68,10 +68,10 @@ A ordem não importa — todos entram na resposta.
 `(resposta, codigo)` **ou** `.status(codigo)`:
 
 ```
-// forma 1 — tupla no return
+# forma 1 — tupla no return
 return jsonify({"criado": true}).header("Location", "/itens/10"), 201
 
-// forma 2 — .status() dispensa a tupla
+# forma 2 — .status() dispensa a tupla
 return jsonify({"criado": true}).header("Location", "/itens/10").status(201)
 ```
 
@@ -101,7 +101,7 @@ action baixar() {
 ```
 action processar() {
     rid = request.get("request_id")
-    // ... faz o trabalho ...
+    # ... faz o trabalho ...
     return jsonify({"status": "ok"}).header("X-Request-Id", rid)
 }
 ```

@@ -5,8 +5,8 @@ Envia um e-mail. O primeiro parâmetro (`to_or_msg`) aceita duas coisas: um
 destino (aí os demais campos vêm direto).
 
 ```
-s.send(msg)                                            // to_or_msg = MailMessage
-s.send(to, subject=None, body=None, html=false)        // to_or_msg = destinatário
+s.send(msg)                                            # to_or_msg = MailMessage
+s.send(to, subject=None, body=None, html=false)        # to_or_msg = destinatário
 ```
 
 ---

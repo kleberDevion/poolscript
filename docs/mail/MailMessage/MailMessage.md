@@ -36,7 +36,7 @@ m.subject("Sua fatura")
 m.body("<h1>Olá!</h1><p>Segue sua fatura.</p>", is_html=true)
 m.attach("fatura.pdf")
 
-// ... envia com MailServer.send(m) ...
+# ... envia com MailServer.send(m) ...
 ```
 
 ---

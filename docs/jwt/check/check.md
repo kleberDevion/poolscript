@@ -53,7 +53,7 @@ action auth() {
     if (dados is Null) {
         return jsonify({"erro": "não autorizado"}), 401
     }
-    continue    // token válido → libera a rota
+    continue    # token válido → libera a rota
 }
 ```
 

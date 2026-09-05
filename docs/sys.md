@@ -11,10 +11,10 @@ import sys
 Argumentos passados na linha de comando, depois do nome do arquivo:
 
 ```
-// $ pool app.ps criar joao
-comando = sys.argv[0]   // "criar"
-nome    = sys.argv[1]   // "joao"
-len(sys.argv)            // quantidade de args
+# $ pool app.ps criar joao
+comando = sys.argv[0]   # "criar"
+nome    = sys.argv[1]   # "joao"
+len(sys.argv)            # quantidade de args
 ```
 
 Fora do intervalo **levanta** `IndexError: list index out of range` — guarde
@@ -56,7 +56,7 @@ Saída padrão e de erro, com flush automático.
 ```
 sys.stdout.write("sem quebra de linha")
 sys.stdout.write("com quebra", end=true)
-sys.stdout.writeln("sempre quebra linha")   // atalho de write(..., end=true)
+sys.stdout.writeln("sempre quebra linha")   # atalho de write(..., end=true)
 
 sys.stderr.writeln("mensagem de erro")
 ```

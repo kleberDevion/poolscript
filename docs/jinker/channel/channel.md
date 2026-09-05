@@ -8,13 +8,13 @@ elas, com suporte a **salas**. É o "megafone" do servidor pros clientes.
 ## Broadcast pra todos
 
 ```
-app.channel(forAll=msg)      // manda `msg` pra TODAS as conexões abertas
+app.channel(forAll=msg)      # manda `msg` pra TODAS as conexões abertas
 ```
 
 ## Enviar pra uma sala específica
 
 ```
-app.channel.emit(msg, room_id="geral")   // só quem está na sala "geral"
+app.channel.emit(msg, room_id="geral")   # só quem está na sala "geral"
 ```
 
 ## Status do último envio
@@ -61,7 +61,7 @@ disparou (ou quando emite de fora de um handler).
 reaction mensagem() {
     sala = request.path_param("sala")
     msg  = request.get_json()
-    app.channel.emit(msg, room_id=sala)     // reenvia pra sala inteira
+    app.channel.emit(msg, room_id=sala)     # reenvia pra sala inteira
 }
 ```
 

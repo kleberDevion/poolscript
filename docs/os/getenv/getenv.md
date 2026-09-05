@@ -31,11 +31,11 @@ No código, carregue o `.env` uma vez e leia:
 import os
 from dotenv import load
 
-load()                                   // carrega o .env pro ambiente
+load()                                   # carrega o .env pro ambiente
 
-str banco = os.getenv("DB_PATH")         // "dados.db"
-str key = os.getenv("SECRET_KEY")      // "abc123"
-porta = int(os.getenv("PORT", "3000"))   // "8080" → 8080
+str banco = os.getenv("DB_PATH")         # "dados.db"
+str key = os.getenv("SECRET_KEY")      # "abc123"
+porta = int(os.getenv("PORT", "3000"))   # "8080" → 8080
 ```
 
 ---
@@ -46,7 +46,7 @@ Se a variável não existe e você **não** passou `default`, devolve `Null`. Co
 `default`, devolve o valor que você deu:
 
 ```
-modo = os.getenv("MODO", "producao")     // "producao" se MODO não existir
+modo = os.getenv("MODO", "producao")     # "producao" se MODO não existir
 ```
 
 Isso evita `Null` inesperado quando a variável é opcional.

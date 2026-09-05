@@ -4,7 +4,7 @@ Os **argumentos da linha de comando** passados quando você rodou o programa —
 uma lista de strings.
 
 ```
-sys.argv   // lista
+sys.argv   # lista
 ```
 
 ---
@@ -16,11 +16,11 @@ Se você rodar `pool app.ps entrada.txt saida.txt`:
 ```
 import sys
 
-post(sys.argv)        // ["entrada.txt", "saida.txt"]
+post(sys.argv)        # ["entrada.txt", "saida.txt"]
 
-// pegar um argumento (checando se existe)
+# pegar um argumento (checando se existe)
 if (len(sys.argv) > 0) {
-    arquivo = sys.argv[0]      // "entrada.txt"
+    arquivo = sys.argv[0]      # "entrada.txt"
     post("processando:", arquivo)
 }
 ```

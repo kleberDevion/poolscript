@@ -18,8 +18,8 @@ os.rmdir(path: str, force: bool = false) -> None
 ```
 import os
 
-os.rmdir("temp")                   // só remove se estiver VAZIA
-os.rmdir("cache", force=true)      // remove a pasta e tudo dentro dela
+os.rmdir("temp")                   # só remove se estiver VAZIA
+os.rmdir("cache", force=true)      # remove a pasta e tudo dentro dela
 ```
 
 ---

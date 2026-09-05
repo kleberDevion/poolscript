@@ -66,7 +66,7 @@ Passou disso → recebe **429 Too Many Requests** e é **banido por `bloq` dias*
 (toda requisição durante o ban recebe 429 com `Retry-After`).
 
 ```
-// no máximo 60 req/min por IP; quem passar fica banido 1 dia
+# no máximo 60 req/min por IP; quem passar fica banido 1 dia
 app = Jinker(__name__, oauth={poolip: true, rate: 60, bloq: 1})
 ```
 
@@ -89,10 +89,10 @@ Cert e chave podem vir **juntos** num PEM só, ou **separados** (é como
 Let's Encrypt e mkcert entregam: `fullchain.pem` + `privkey.pem`):
 
 ```
-// juntos (cert e chave no mesmo arquivo)
+# juntos (cert e chave no mesmo arquivo)
 app = Jinker(__name__, oauth={tls: true, cert: ".jinkerTls"})
 
-// separados (o normal de um cert real)
+# separados (o normal de um cert real)
 app = Jinker(__name__, oauth={tls: true, cert: "fullchain.pem", key: "privkey.pem"})
 ```
 

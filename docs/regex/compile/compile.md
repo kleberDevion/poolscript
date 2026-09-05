@@ -50,11 +50,11 @@ E um campo (sem parênteses):
 
 ```
 p = regex.compile("\\d+")
-post(type(p))            // Pattern
-post(p.pattern)          // \d+
-post(p.findall("a1b22")) // ['1', '22']
-post(p.sub("#", "a1b22"))// a#b#
-post(p.split("a1b22c"))  // ['a', 'b', 'c']
+post(type(p))            # Pattern
+post(p.pattern)          # \d+
+post(p.findall("a1b22")) # ['1', '22']
+post(p.sub("#", "a1b22"))# a#b#
+post(p.split("a1b22c"))  # ['a', 'b', 'c']
 ```
 
 ---
@@ -73,7 +73,7 @@ Erra **na hora do `compile`** (e não em cada uso), o que é a vantagem de
 compilar cedo:
 
 ```
-p = regex.compile("[a-")    // TypeError: classe [ ] nao fechada
+p = regex.compile("[a-")    # TypeError: classe [ ] nao fechada
 ```
 
 ---

@@ -14,11 +14,11 @@ s.conn(provider_or_host: str, port: int = None) -> None
 Passe só o domínio — a lib sabe o resto:
 
 ```
-s.conn("gmail.com")       // → smtp.gmail.com:587
-s.conn("outlook.com")     // → smtp.office365.com:587
-s.conn("hotmail.com")     // → smtp.office365.com:587
-s.conn("yahoo.com")       // → smtp.mail.yahoo.com:587
-s.conn("proton.me")       // → smtp.protonmail.ch:587
+s.conn("gmail.com")       # → smtp.gmail.com:587
+s.conn("outlook.com")     # → smtp.office365.com:587
+s.conn("hotmail.com")     # → smtp.office365.com:587
+s.conn("yahoo.com")       # → smtp.mail.yahoo.com:587
+s.conn("proton.me")       # → smtp.protonmail.ch:587
 ```
 
 ## Host manual

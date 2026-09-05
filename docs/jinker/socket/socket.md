@@ -7,7 +7,7 @@ pra chat, notificações, dados ao vivo. A `reaction`/`action` logo abaixo roda
 ```
 @app.socket(path, channel=true)
 reaction nome() {
-    // request disponível; roda a cada mensagem que chega
+    # request disponível; roda a cada mensagem que chega
 }
 ```
 
@@ -23,10 +23,10 @@ na **sala** = valor do parâmetro. `/chat/geral` → sala `"geral"`.
 ```
 @app.socket("/chat/<sala>", channel=true)
 reaction mensagem() {
-    sala = request.path_param("sala")     // "geral"
-    msg  = request.get_json()             // a mensagem que chegou (dict)
+    sala = request.path_param("sala")     # "geral"
+    msg  = request.get_json()             # a mensagem que chegou (dict)
 
-    // reenvia pra todo mundo na MESMA sala
+    # reenvia pra todo mundo na MESMA sala
     send = app.socket()
     send.emit(payload=msg, room_id=sala, exclude_self=false)
 }
@@ -40,9 +40,9 @@ Dentro do handler, `app.socket()` (sem argumentos) devolve um **emissor**:
 
 ```
 send = app.socket()
-send.emit(payload=msg, room_id=sala)                    // manda pra sala
-send.emit(payload=msg, room_id=sala, exclude_self=false) // inclui o remetente
-state = send.status_send()                               // status do envio
+send.emit(payload=msg, room_id=sala)                    # manda pra sala
+send.emit(payload=msg, room_id=sala, exclude_self=false) # inclui o remetente
+state = send.status_send()                               # status do envio
 ```
 
 - `payload` — o que enviar (dict vira JSON automaticamente);
@@ -61,7 +61,7 @@ String sai crua; dict/lista viram JSON.
 ```
 @app.socket("/eco")
 reaction eco() {
-    return "recebi: " + request.text()      // volta só pra quem mandou
+    return "recebi: " + request.text()      # volta só pra quem mandou
 }
 ```
 
@@ -92,7 +92,7 @@ Do outro lado, conecta com `request.ws_connect` (lib `request`) e registra
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
-conn.on_message(action(msg) { post(msg) })   // OBRIGATÓRIO pra ver mensagens
+conn.on_message(action(msg) { post(msg) })   # OBRIGATÓRIO pra ver mensagens
 conn.send({"author": "ana", "body": "oi"})
 ```
 

@@ -23,10 +23,10 @@ import date
 
 payload = {
     "user_id": 42,
-    "exp": date.timestamp() + date.hora(hours=24)   // expira em 24h
+    "exp": date.timestamp() + date.hora(hours=24)   # expira em 24h
 }
 token = jwt.gen(payload, "meu_segredo")
-post(token)     // "eyJhbGciOi..." (string longa)
+post(token)     # "eyJhbGciOi..." (string longa)
 ```
 
 ---
@@ -38,8 +38,8 @@ recusa o token automaticamente depois desse instante. É como você faz o token
 "vencer":
 
 ```
-"exp": date.timestamp() + date.hora(days=7)     // vale 7 dias
-"exp": date.timestamp() + date.hora(hours=1)    // vale 1 hora
+"exp": date.timestamp() + date.hora(days=7)     # vale 7 dias
+"exp": date.timestamp() + date.hora(hours=1)    # vale 1 hora
 ```
 
 Sem `exp`, o token nunca expira (não recomendado).

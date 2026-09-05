@@ -16,7 +16,7 @@ Rota com parâmetro `id`:
 ```
 @app.route("/user/<id>", methods=cors.options(["GET"]))
 action perfil() {
-    id = request.path_param("id")    // acessando /user/42 → "42"
+    id = request.path_param("id")    # acessando /user/42 → "42"
     return jsonify({"user_id": id})
 }
 ```
@@ -31,9 +31,9 @@ action perfil() {
 São fontes diferentes:
 
 ```
-// GET /user/42?fmt=json
-id  = request.path_param("id")   // "42"  (do caminho)
-fmt = request.get("fmt")         // "json" (da query string)
+# GET /user/42?fmt=json
+id  = request.path_param("id")   # "42"  (do caminho)
+fmt = request.get("fmt")         # "json" (da query string)
 ```
 
 ---

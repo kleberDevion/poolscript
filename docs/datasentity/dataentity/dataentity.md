@@ -23,12 +23,12 @@ from datasentity import dataentity
 @dataentity
 Entity Pessoa() {
     nome: str
-    idade: int = 18          // com default
+    idade: int = 18          # com default
 }
 
-p = Pessoa(nome="Ana", idade=30)   // construtor gerado, aceita kwargs
-q = Pessoa(nome="Léo")              // idade usa o default 18
-post(p.nome, p.idade)               // Ana 30
+p = Pessoa(nome="Ana", idade=30)   # construtor gerado, aceita kwargs
+q = Pessoa(nome="Léo")              # idade usa o default 18
+post(p.nome, p.idade)               # Ana 30
 ```
 
 ---
@@ -57,8 +57,8 @@ Entity Pessoa() {
 }
 
 p = Pessoa(nome="Ana", idade=30)
-post(asdict(p))     // {"nome": "Ana", "idade": 30}
-post(asjson(p))     // '{"nome": "Ana", "idade": 30}'
+post(asdict(p))     # {"nome": "Ana", "idade": 30}
+post(asjson(p))     # '{"nome": "Ana", "idade": 30}'
 ```
 
 ---

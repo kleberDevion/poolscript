@@ -17,15 +17,15 @@ os.cmd(command: str, capture: bool = false) -> str | Null
 ## Rodar sem capturar
 
 ```
-os.cmd("mkdir uploads")           // executa; devolve Null
-os.cmd("git status")              // a saída vai direto pro terminal
+os.cmd("mkdir uploads")           # executa; devolve Null
+os.cmd("git status")              # a saída vai direto pro terminal
 ```
 
 ## Capturar a saída
 
 ```
 versao = os.cmd("python --version", capture=true)
-post(versao)                      // "Python 3.14.6"
+post(versao)                      # "Python 3.14.6"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando
@@ -39,7 +39,7 @@ mensagem de erro em vez de string vazia.
 ```
 import os
 
-// checa se uma ferramenta existe
+# checa se uma ferramenta existe
 git = os.cmd("git --version", capture=true)
 if (git) {
     post("git instalado:", git)

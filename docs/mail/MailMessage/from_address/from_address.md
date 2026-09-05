@@ -20,7 +20,7 @@ Normalmente é o **mesmo e-mail** que você usa no
 que o remetente bata com a conta autenticada.
 
 ```
-m.from_address(os.getenv("MAIL_USER"))    // mesmo do login
+m.from_address(os.getenv("MAIL_USER"))    # mesmo do login
 ```
 
 ---

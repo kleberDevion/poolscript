@@ -19,11 +19,11 @@ import sys
 
 if (not os.exists("config.json")) {
     post("config não encontrado")
-    sys.exit(1)                // encerra com erro
+    sys.exit(1)                # encerra com erro
 }
 
-// ... segue o programa ...
-sys.exit()                     // encerra com sucesso (código 0)
+# ... segue o programa ...
+sys.exit()                     # encerra com sucesso (código 0)
 ```
 
 ---

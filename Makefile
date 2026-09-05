@@ -405,6 +405,13 @@ check: pool testar
 	# portao nenhum, porque vira base pra afirmar que esta tudo conferido.
 	@./pool teste/confere_cobertura_doc.ps
 	@echo
+	# `//` na doc. O I11 tirou `//` de comentario e o fez divisao inteira; a doc
+	# nao acompanhou e ficaram 179 paginas (725 ocorrencias) ensinando
+	# `// comentario`. Quem copia um exemplo escreve codigo que nao compila — e
+	# eu mesmo aprendi errado lendo a doc e escrevi `//` num exemplo novo. O
+	# `audita_exemplos_doc` nao pegava: essas cercas nao sao ```ps.
+	@./pool scripts/conserta_barra_doc.ps --portao
+	@echo
 	# STDLIB que a suite inteira nao chamava uma vez. O benchmark de cobertura
 	# (`teste/bench_cobertura.ps`) lista as funcoes em ZERO execucao, e eram 115
 	# so em poolscript_vm.c: `os.cwd`, `sys.platform`, `sys.stdin.read`,

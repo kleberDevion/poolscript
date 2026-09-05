@@ -15,7 +15,7 @@ import os
 
 bytes = os.size("video.mp4")
 post(bytes, "bytes")
-post(bytes / 1024 / 1024, "MB")     // converte pra megabytes
+post(bytes / 1024 / 1024, "MB")     # converte pra megabytes
 ```
 
 ---
@@ -23,7 +23,7 @@ post(bytes / 1024 / 1024, "MB")     // converte pra megabytes
 ## Exemplo: recusar upload grande demais
 
 ```
-if (os.size("enviado.pdf") > 5 * 1024 * 1024) {   // maior que 5 MB
+if (os.size("enviado.pdf") > 5 * 1024 * 1024) {   # maior que 5 MB
     post("arquivo grande demais")
 }
 ```

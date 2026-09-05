@@ -17,8 +17,8 @@ r.select(folder: str = "INBOX", readonly: bool = true) -> self
 ## Uso
 
 ```
-r.select("INBOX")            // caixa de entrada
-r.select("[Gmail]/Enviados") // outra folder (nome depende do provedor)
+r.select("INBOX")            # caixa de entrada
+r.select("[Gmail]/Enviados") # outra folder (nome depende do provedor)
 ```
 
 `readonly=true` (padrão) garante que abrir a caixa **não** marca os e-mails

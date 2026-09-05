@@ -17,9 +17,9 @@ bytes.fromint(n: int, length: int = 0, byteorder: str = "big") -> bytes
 ```
 import bytes
 
-bytes.fromint(258)             // b'\x01\x02'  — mínimo (2 bytes)
-bytes.fromint(258, 4)          // b'\x00\x00\x01\x02'  — largura fixa 4
-bytes.fromint(258, 4, "little") // b'\x02\x01\x00\x00'  — little-endian
+bytes.fromint(258)             # b'\x01\x02'  — mínimo (2 bytes)
+bytes.fromint(258, 4)          # b'\x00\x00\x01\x02'  — largura fixa 4
+bytes.fromint(258, 4, "little") # b'\x02\x01\x00\x00'  — little-endian
 ```
 
 ---
@@ -30,7 +30,7 @@ bytes.fromint(258, 4, "little") // b'\x02\x01\x00\x00'  — little-endian
 - **ValueError** — `n` negativo, `byteorder` inválido, ou `n` não cabe em `length` bytes.
 
 ```
-bytes.fromint(70000, 1)   // erro: 70000 não cabe em 1 byte(s)
+bytes.fromint(70000, 1)   # erro: 70000 não cabe em 1 byte(s)
 ```
 
 ---

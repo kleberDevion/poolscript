@@ -9,9 +9,9 @@ opcional) ou **capturar** com `try/catch`.
 ## `raise` — levantar um erro
 
 ```
-raise "algo deu errado"           // tipo RuntimeError, com essa mensagem
-raise NetworkError("a conexão caiu")   // tipo LIVRE: qualquer NomeAssim vira o tipo
-raise MinhaFalha                  // só o tipo, sem mensagem
+raise "algo deu errado"           # tipo RuntimeError, com essa mensagem
+raise NetworkError("a conexão caiu")   # tipo LIVRE: qualquer NomeAssim vira o tipo
+raise MinhaFalha                  # só o tipo, sem mensagem
 ```
 
 Regra: um nome que **começa com maiúscula** vira o **tipo** do erro — você
@@ -23,8 +23,8 @@ crash:
 
 ```
 raise NetworkError("caiu")
-// NetworkError: caiu
-//   em app.ps, linha 1
+# NetworkError: caiu
+#   em app.ps, linha 1
 ```
 
 ---
@@ -34,10 +34,10 @@ raise NetworkError("caiu")
 O **tipo** e a **variável do erro** são os dois opcionais:
 
 ```
-try { ... } catch (NetworkError e) { post("caiu:", e) }   // tipo + variável
-try { ... } catch (NetworkError)   { post("caiu") }        // só o tipo, sem var
-try { ... } catch (e)              { post("qualquer:", e) } // captura tudo, com var
-try { ... } catch ()               { post("qualquer") }     // captura tudo, sem var
+try { ... } catch (NetworkError e) { post("caiu:", e) }   # tipo + variável
+try { ... } catch (NetworkError)   { post("caiu") }        # só o tipo, sem var
+try { ... } catch (e)              { post("qualquer:", e) } # captura tudo, com var
+try { ... } catch ()               { post("qualquer") }     # captura tudo, sem var
 ```
 
 Vários `catch` em cadeia + `finally` opcional:

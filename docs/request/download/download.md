@@ -6,9 +6,9 @@ corromperia).
 
 ```
 resp = request.get(url)
-resp.content        -> bytes    // conteúdo cru, intacto
-resp.save(destino)  -> PoolFile // grava em disco
-resp.decode(enc)    -> str      // texto num encoding específico
+resp.content        -> bytes    # conteúdo cru, intacto
+resp.save(destino)  -> PoolFile # grava em disco
+resp.decode(enc)    -> str      # texto num encoding específico
 ```
 
 ---
@@ -25,11 +25,11 @@ reaction baixar() {
     try {
         url = "https://exemplo.com/PoolScript-Setup.exe"
 
-        // stream=true: baixa em pedaços e aborta se ficar grande demais.
-        // content_type: garante que veio mesmo um binário (senão dá raise).
+        # stream=true: baixa em pedaços e aborta se ficar grande demais.
+        # content_type: garante que veio mesmo um binário (senão dá raise).
         f = request.get(url, stream=true)
             .content_type("application/octet-stream")
-            .save("downloads/")            // pasta -> nome vem do servidor
+            .save("downloads/")            # pasta -> nome vem do servidor
 
         post("salvo:", f.name, "-", f.size, "bytes")
         return f.path()
@@ -53,9 +53,9 @@ passar do teto, ele **para e lança erro** (cai no `catch`) — protege contra b
 um arquivo gigante sem querer.
 
 ```
-request.get(url, stream=true)                    // teto padrão: 100 MB
-request.get(url, stream=true, max_size="500mb")  // teto maior
-request.get(url, stream=true, max_size=2000000)  // em bytes também vale
+request.get(url, stream=true)                    # teto padrão: 100 MB
+request.get(url, stream=true, max_size="500mb")  # teto maior
+request.get(url, stream=true, max_size=2000000)  # em bytes também vale
 ```
 
 > **Recomendado** usar `stream=true` em qualquer download de arquivo. Pra
@@ -70,8 +70,8 @@ Declara o MIME que você **espera**. Se o servidor devolver outro, dá **raise**
 no lugar do arquivo).
 
 ```
-request.get(url).content_type("application/octet-stream")   // ok se bater
-request.get(url).content_type("image/png")                  // raise se vier outra coisa
+request.get(url).content_type("application/octet-stream")   # ok se bater
+request.get(url).content_type("image/png")                  # raise se vier outra coisa
 ```
 
 ---
@@ -84,7 +84,7 @@ binário direto:
 ```
 resp = request.get(url, stream=true)
 if (resp.size <= 100) {
-    return 400                     // pequeno demais, provável erro
+    return 400                     # pequeno demais, provável erro
 }
 using open("downloads/pool.exe", "wb") as f {
     f.write(resp.content)

@@ -14,15 +14,15 @@ regex.findall(pattern: str, string: str, flags=0) -> list
 ```
 import regex
 
-// todos os números
+# todos os números
 nums = regex.findall(r"\d+", "tenho 3 gatos, 2 cães e 10 peixes")
-post(nums)          // ["3", "2", "10"]
+post(nums)          # ["3", "2", "10"]
 
-// todas as palavras
+# todas as palavras
 palavras = regex.findall(r"\w+", "olá, mundo!")
-post(palavras)      // ["olá", "mundo"]
+post(palavras)      # ["olá", "mundo"]
 
-// todos os e-mails de um texto
+# todos os e-mails de um texto
 emails = regex.findall(r"[^@\s]+@[^@\s]+\.[^@\s]+", string)
 ```
 

@@ -15,8 +15,8 @@ Mas o nome é exportado como builtin global pra você poder checar o tipo
 ```
 import os
 
-img = os.loadFile("logo.png")     // PoolFile (extensão binária)
-pdf = os.loadFile("nota.pdf")     // PoolFile
+img = os.loadFile("logo.png")     # PoolFile (extensão binária)
+pdf = os.loadFile("nota.pdf")     # PoolFile
 ```
 
 ---
@@ -38,12 +38,12 @@ pdf = os.loadFile("nota.pdf")     // PoolFile
 ```
 img = os.loadFile("temp/foto.png")
 
-post(img.name, img.ext, img.size)   // foto.png .png 4821
-post(img.path())              // caminho absoluto
-dados = img.bytes()          // bytes (ex: pra enviar por rede)
+post(img.name, img.ext, img.size)   # foto.png .png 4821
+post(img.path())              # caminho absoluto
+dados = img.bytes()          # bytes (ex: pra enviar por rede)
 
-img.copy("backup/foto.png")  // duplica
-img.move("final/foto.png")   // move (devolve o novo PoolFile)
+img.copy("backup/foto.png")  # duplica
+img.move("final/foto.png")   # move (devolve o novo PoolFile)
 ```
 
 `save` grava o **conteúdo que está em memória** — útil quando o `PoolFile`
@@ -52,8 +52,8 @@ disco, ou pra materializar uma cópia onde você quiser:
 
 ```
 arq = os.loadFile("nota.pdf")
-arq.save()                    // grava na pasta do .ps, como "nota.pdf"
-arq.save("saida/nota.pdf")    // ou onde você mandar (cria "saida/" se faltar)
+arq.save()                    # grava na pasta do .ps, como "nota.pdf"
+arq.save("saida/nota.pdf")    # ou onde você mandar (cria "saida/" se faltar)
 ```
 
 ---

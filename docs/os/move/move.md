@@ -19,8 +19,8 @@ os.move(src: str, dst: str) -> None
 ```
 import os
 
-os.move("temp/foto.png", "final/foto.png")   // move o arquivo
-os.move("rascunhos", "arquivados")           // move a pasta inteira
+os.move("temp/foto.png", "final/foto.png")   # move o arquivo
+os.move("rascunhos", "arquivados")           # move a pasta inteira
 ```
 
 Também serve como "renomear + mudar de lugar" ao mesmo tempo (é só o destino

@@ -28,9 +28,9 @@ apenas `d` (verificado na VM) — o padrão fica errado **em silêncio**,
 achando nada.
 
 ```
-regex.findall("\d+", "a12")      // []        ← a string virou "d+"
-regex.findall("\\d+", "a12")     // ['12']    ← barra dobrada
-regex.findall(r"\d+", "a12")     // ['12']    ← string crua (mais legível)
+regex.findall("\d+", "a12")      # []        ← a string virou "d+"
+regex.findall("\\d+", "a12")     # ['12']    ← barra dobrada
+regex.findall(r"\d+", "a12")     # ['12']    ← string crua (mais legível)
 ```
 
 Regra: em padrão com `\d`, `\w`, `\s`, `\b`, `\.`, use **`r"..."`**.
@@ -42,18 +42,18 @@ Regra: em padrão com `\d`, `\w`, `\s`, `\b`, `\.`, use **`r"..."`**.
 ```
 import regex
 
-// validar e-mail
+# validar e-mail
 if (regex.match("[^@]+@[^@]+\.[^@]+", "ana@email.com")) {
     post("e-mail válido")
 }
 
-// extrair todos os números de um texto
+# extrair todos os números de um texto
 nums = regex.findall("[0-9]+", "tenho 3 gatos e 2 cães")
-post(nums)          // ["3", "2"]
+post(nums)          # ["3", "2"]
 
-// limpar espaços múltiplos
+# limpar espaços múltiplos
 limpo = regex.sub(" +", " ", "texto    com   espaços")
-post(limpo)         // "texto com espaços"
+post(limpo)         # "texto com espaços"
 ```
 
 ---
@@ -64,8 +64,8 @@ Padrões usam muita barra invertida (`\d`, `\w`, `\.`). Numa string normal, a
 barra some (`"\d"` vira `"d"`). Use **string raw** (`r"..."`) pra preservar:
 
 ```
-regex.findall(r"\d+", texto)        // certo — \d preservado
-regex.findall("\d+", texto)         // errado — vira "d+"
+regex.findall(r"\d+", texto)        # certo — \d preservado
+regex.findall("\d+", texto)         # errado — vira "d+"
 ```
 
 ---

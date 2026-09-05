@@ -15,10 +15,10 @@ Parsing.integer(value, to_type="int") -> int
 ## Uso
 
 ```
-Parsing.integer("12 unidades")   // 12    (extrai o número)
-Parsing.integer("R$ 1.234")      // 1234
-Parsing.integer(123.7)           // 123   (trunca, não arredonda)
-Parsing.integer("abc")           // 0     (nada de número → 0)
+Parsing.integer("12 unidades")   # 12    (extrai o número)
+Parsing.integer("R$ 1.234")      # 1234
+Parsing.integer(123.7)           # 123   (trunca, não arredonda)
+Parsing.integer("abc")           # 0     (nada de número → 0)
 ```
 
 ---

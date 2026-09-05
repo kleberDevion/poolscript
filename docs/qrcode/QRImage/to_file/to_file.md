@@ -18,7 +18,7 @@ import mail
 img = qrcode.make("https://meusite.com")
 arquivo = img.to_file()
 
-// anexar num email sem salvar no disco
+# anexar num email sem salvar no disco
 m = mail.MailMessage()
 m.attach(arquivo)
 ```

@@ -48,16 +48,16 @@ Com `include_body=true`, ganha também a chave `"body"` com o texto do e-mail.
 ## Exemplos
 
 ```
-// os 10 mais recentes
+# os 10 mais recentes
 emails = r.search("ALL", limit=10)
 
-// só não lidos
+# só não lidos
 novos = r.search("UNSEEN")
 
-// por assunto (precisa de term)
+# por assunto (precisa de term)
 faturas = r.search("SUBJECT", term="fatura")
 
-// de um remetente, já com o corpo
+# de um remetente, já com o corpo
 de_ana = r.search("FROM", term="ana@x.com", include_body=true)
 for each e in de_ana {
     post(e["subject"])

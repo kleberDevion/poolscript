@@ -45,21 +45,21 @@ que volta). Todo o resto é detalhe dessas duas pontas.
 from jinker import Jinker, cors, jsonify
 import os
 
-app = Jinker(__name__)                    // 1. cria a aplicação
+app = Jinker(__name__)                    # 1. cria a aplicação
 
-@app.route("/", methods=cors.options(["GET"]))   // 2. rota GET /
+@app.route("/", methods=cors.options(["GET"]))   # 2. rota GET /
 action inicio() {
     return jsonify({"msg": "meu primeiro servidor!"})
 }
 
-@app.route("/somar", methods=cors.options(["POST"]))   // 3. lê dados do cliente
+@app.route("/somar", methods=cors.options(["POST"]))   # 3. lê dados do cliente
 action somar() {
     a = request.get("a")
     b = request.get("b")
     return jsonify({"resultado": a + b})
 }
 
-if __name__ == "main" {                   // 4. sobe o servidor
+if __name__ == "main" {                   # 4. sobe o servidor
     porta = int(os.getenv("PORT", "8080"))
     app(debug=true, host="0.0.0.0", port=porta)
 }

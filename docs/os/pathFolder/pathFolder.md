@@ -15,7 +15,7 @@ os.pathFolder(name: str) -> str
 import os
 
 pasta = os.pathFolder("uploads")
-post(pasta)     // "C:\projeto\uploads"
+post(pasta)     # "C:\projeto\uploads"
 ```
 
 Não lê nem lista — só te dá o caminho absoluto da pasta.

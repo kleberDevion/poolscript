@@ -82,7 +82,7 @@ r.login(user="seu@gmail.com", password="sua_senha_app")
 `.select()` escolhe a pasta e retorna o próprio objeto, então dá pra encadear direto com `.search()`:
 
 ```
-emails = r.select("INBOX", true).search("UNSEEN")   // true = readonly, não marca como lida
+emails = r.select("INBOX", true).search("UNSEEN")   # true = readonly, não marca como lida
 ```
 
 `.search(criterion_type, term, limit)` aceita:
@@ -113,11 +113,11 @@ r.close()
 `.search()` por padrão só traz os headers (`id`/`from`/`subject`/`date`) — não baixa o corpo, que é o dado mais pesado. Duas formas de pegar:
 
 ```
-// (a) sob demanda, só do e-mail que interessa
+# (a) sob demanda, só do e-mail que interessa
 emails = r.select("INBOX").search("SUBJECT", "fatura")
 corpo = r.body(emails[0]["id"])
 
-// (b) já embutido em cada resultado da busca
+# (b) já embutido em cada resultado da busca
 emails = r.select("INBOX").search("SUBJECT", "fatura", include_body=true)
 post(emails[0]["body"])
 ```

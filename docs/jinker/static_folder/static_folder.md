@@ -64,14 +64,14 @@ from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__, static_folder="frontend/dist")
 
-// a API responde em /api/...
+# a API responde em /api/...
 @app.route("/api/usuarios", methods=cors.options(["GET"]))
 action usuarios() {
     return jsonify([{"nome": "ana"}, {"nome": "leo"}])
 }
 
-// qualquer outra URL (/, /perfil, /app.js, /style.css) é servida
-// do frontend/dist automaticamente — não precisa de rota pra cada uma
+# qualquer outra URL (/, /perfil, /app.js, /style.css) é servida
+# do frontend/dist automaticamente — não precisa de rota pra cada uma
 
 if __name__ == "main" {
     app(debug=false, host="0.0.0.0", port=8080)
@@ -101,8 +101,8 @@ sob um prefixo** (pra não colidir com as rotas de API), passe `static_url`:
 ```
 app = Jinker(__name__, static_folder="dist", static_url="/app")
 
-// dist/app.js  →  GET /app/app.js
-// fora do prefixo (ex: /users) o static_folder NÃO responde → sobra pra API
+# dist/app.js  →  GET /app/app.js
+# fora do prefixo (ex: /users) o static_folder NÃO responde → sobra pra API
 ```
 
 Detalhes na [página do `static_url`](../static_url/static_url.md). Um aviso: o

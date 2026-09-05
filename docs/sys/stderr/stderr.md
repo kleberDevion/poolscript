@@ -33,8 +33,8 @@ resultado pra um arquivo enquanto os erros continuam aparecendo na tela:
 ```
 import sys
 
-sys.stdout.writeln("resultado: 42")      // saída normal
-sys.stderr.writeln("aviso: cache vazio") // vai pro canal de erro
+sys.stdout.writeln("resultado: 42")      # saída normal
+sys.stderr.writeln("aviso: cache vazio") # vai pro canal de erro
 ```
 
 Mensagens de erro/log devem ir pro `stderr`, não pro `stdout`.

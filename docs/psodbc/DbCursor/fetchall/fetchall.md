@@ -14,7 +14,7 @@ cursor.fetchall() -> list
 ```
 cursor.execute("SELECT id, nome FROM produtos")
 todos = cursor.fetchall()
-// [{"id": 1, "nome": "café"}, {"id": 2, "nome": "chá"}]
+# [{"id": 1, "nome": "café"}, {"id": 2, "nome": "chá"}]
 
 for each p in todos {
     post(p["id"], p["nome"])

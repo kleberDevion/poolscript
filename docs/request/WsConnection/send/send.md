@@ -20,8 +20,8 @@ import request
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
 conn.on_message(action(msg) { post(msg) })
 
-conn.send({"author": "ana", "body": "oi pessoal"})   // dict → JSON
-conn.send("mensagem simples")                        // string crua
+conn.send({"author": "ana", "body": "oi pessoal"})   # dict → JSON
+conn.send("mensagem simples")                        # string crua
 ```
 
 ---

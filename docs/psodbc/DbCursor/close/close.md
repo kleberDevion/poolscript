@@ -15,8 +15,8 @@ cursor.close() -> None
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM produtos")
 dados = cursor.fetchall()
-cursor.close()         // fecha o cursor
-conn.close()           // fecha a conexão
+cursor.close()         # fecha o cursor
+conn.close()           # fecha a conexão
 ```
 
 ---

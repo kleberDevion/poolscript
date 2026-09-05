@@ -95,10 +95,10 @@ Duas configurações existem, pra quando se está mexendo no servidor:
 
 ```json
 {
-  // roda o servidor direto do repositório, sem instalar
+  # roda o servidor direto do repositório, sem instalar
   "poolscript.pool": "/caminho/do/repo/pool",
 
-  // desliga o servidor; sobra o realce da gramática, que é declarativo
+  # desliga o servidor; sobra o realce da gramática, que é declarativo
   "poolscript.lsp.ativo": false
 }
 ```

@@ -14,10 +14,10 @@ parseado).
 
 ```
 data = parse('{"nome": "ana", "idade": 30}')
-post(data["nome"])   // "ana"
+post(data["nome"])   # "ana"
 
 data2 = parse({"ja": "e dict"})
-post(data2)   // {"ja": "e dict"} — passou direto
+post(data2)   # {"ja": "e dict"} — passou direto
 ```
 
 ---
@@ -29,7 +29,7 @@ unicode (`ensure_ascii=False`) — acentos saem como estão.
 
 ```
 texto = stringify({"nome": "joão", "idade": 30})
-post(texto)   // {"nome": "joão", "idade": 30}
+post(texto)   # {"nome": "joão", "idade": 30}
 ```
 
 ---

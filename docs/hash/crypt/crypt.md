@@ -15,9 +15,9 @@ hash.crypt(senha: str) -> str
 import hash
 
 senha_hash = hash.crypt("minhaSenha123")
-post(senha_hash)     // algo tipo "$2b$12$Xk...longo..." — irreversível
+post(senha_hash)     # algo tipo "$2b$12$Xk...longo..." — irreversível
 
-// salve senha_hash no banco (NÃO a senha em texto)
+# salve senha_hash no banco (NÃO a senha em texto)
 ```
 
 ---
@@ -27,8 +27,8 @@ post(senha_hash)     // algo tipo "$2b$12$Xk...longo..." — irreversível
 Cada chamada usa um salt novo, então a **mesma senha gera hashes diferentes**:
 
 ```
-hash.crypt("abc")    // "$2b$12$aaa..."
-hash.crypt("abc")    // "$2b$12$bbb..."  (diferente!)
+hash.crypt("abc")    # "$2b$12$aaa..."
+hash.crypt("abc")    # "$2b$12$bbb..."  (diferente!)
 ```
 
 Isso é proposital e seguro — o [`hash.check()`](../check/check.md) sabe

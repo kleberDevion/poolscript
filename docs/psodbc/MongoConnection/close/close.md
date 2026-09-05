@@ -13,7 +13,7 @@ conn.close() -> None
 ```
 conn = psodbc.connect(driver="mongo", host="localhost", database="loja")
 col = conn.collection("produtos")
-// ... operações ...
+# ... operações ...
 conn.close()
 ```
 

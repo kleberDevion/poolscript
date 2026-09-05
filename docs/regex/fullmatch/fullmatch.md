@@ -17,9 +17,9 @@ regex.fullmatch(pattern: str, string: str, flags=0) -> bool
 ```
 import regex
 
-post(regex.fullmatch("\\d+", "123"))      // true
-post(regex.fullmatch("\\d+", "123abc"))   // false — sobrou "abc"
-post(regex.fullmatch("\\d+", "a123"))     // false
+post(regex.fullmatch("\\d+", "123"))      # true
+post(regex.fullmatch("\\d+", "123abc"))   # false — sobrou "abc"
+post(regex.fullmatch("\\d+", "a123"))     # false
 ```
 
 Validando um CEP:

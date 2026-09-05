@@ -418,7 +418,7 @@ os.cmd("kill $(cat " + PASTA + "/alvo.pid) 2>/dev/null; true")
 # `os.cmd` ECOA a saída e devolve Null — quem quer o resultado grava em
 # arquivo e lê. É o mesmo jeito do resto da suíte.
 os.cmd("command -v curl > /dev/null 2>&1; echo $? > " + PASTA + "/tem_curl")
-if open(PASTA + "/tem_curl").read().strip() != "0"
+if os.readFile(PASTA + "/tem_curl").strip() != "0"
 {
     post("  PULOU o TLS — falta o curl (o cliente da linguagem valida o cert,")
     post("  e o do teste é self-signed)")
@@ -435,7 +435,7 @@ else
     while i < 60
     {
         os.cmd("curl -sk --max-time 2 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
-        r = open(PASTA + "/tls_ok.txt").read()
+        r = os.readFile(PASTA + "/tls_ok.txt")
         if "\"ok\"" in r
         {
             subiu = true
@@ -451,7 +451,7 @@ else
     if subiu
     {
         os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
-        r = open(PASTA + "/tls_ok.txt").read()
+        r = os.readFile(PASTA + "/tls_ok.txt")
         confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in r)
 
         # parada limpa pelo MESMO motivo do alvo HTTP: morto por sinal, o

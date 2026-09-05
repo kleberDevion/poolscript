@@ -21,7 +21,7 @@ MongoDB não usa SQL nem cursor — você trabalha com **coleções** e
 import psodbc
 
 conn = psodbc.connect(driver="mongo", host="localhost", port=27017, database="loja")
-col = conn.collection("produtos")      // escolhe a coleção
+col = conn.collection("produtos")      # escolhe a coleção
 
 col.insert({"nome": "café", "preco": 15})
 achados = col.find({"preco": 15})

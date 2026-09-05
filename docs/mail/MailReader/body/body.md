@@ -12,11 +12,11 @@ r.body(id: str) -> str
 ## Uso
 
 ```
-emails = r.search("ALL", limit=20)     // sem corpo (leve)
+emails = r.search("ALL", limit=20)     # sem corpo (leve)
 
 for each e in emails {
     if (e["subject"] == "relatório") {
-        texto = r.body(e["id"])         // pega o corpo só desse
+        texto = r.body(e["id"])         # pega o corpo só desse
         post(texto)
     }
 }

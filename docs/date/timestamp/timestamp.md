@@ -14,7 +14,7 @@ date.timestamp() -> int
 ```
 import date
 
-agora = date.timestamp()   // ex: 1785000000
+agora = date.timestamp()   # ex: 1785000000
 ```
 
 ---
@@ -30,7 +30,7 @@ import jwt
 
 payload = {
     "user_id": 42,
-    "exp": date.timestamp() + date.hora(hours=24)   // expira em 24h
+    "exp": date.timestamp() + date.hora(hours=24)   # expira em 24h
 }
 token = jwt.gen(payload, "minha_chave")
 ```
@@ -43,7 +43,7 @@ Como é número, dá pra subtrair pra saber quanto tempo passou:
 
 ```
 inicio = date.timestamp()
-// ... trabalho demorado ...
+# ... trabalho demorado ...
 fim = date.timestamp()
 post(f"levou {fim - inicio} segundos")
 ```

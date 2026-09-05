@@ -23,7 +23,7 @@ devolve. Por ele você **executa** comandos SQL e **lê** o que voltou.
 ```
 cursor = conn.cursor()
 cursor.execute("SELECT * FROM produtos WHERE preco > ?", (100,))
-caros = cursor.fetchall()      // lista de dicts
+caros = cursor.fetchall()      # lista de dicts
 for each p in caros {
     post(p["nome"], p["preco"])
 }

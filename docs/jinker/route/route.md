@@ -7,7 +7,7 @@ o que ela retorna como resposta.
 ```
 @app.route(path, methods=..., auth=..., middleware=...)
 action nome_da_rota() {
-    // request disponível aqui; return vira a resposta
+    # request disponível aqui; return vira a resposta
 }
 ```
 
@@ -95,8 +95,8 @@ acessada.
 **Com parâmetro** — parte do caminho vira variável. Duas sintaxes:
 
 ```
-@app.route("/user:id", methods=cors.options(["GET"]))       // /user/42
-@app.route("/user/<id>", methods=cors.options(["GET"]))     // /user/42
+@app.route("/user:id", methods=cors.options(["GET"]))       # /user/42
+@app.route("/user/<id>", methods=cors.options(["GET"]))     # /user/42
 ```
 
 Pegue o valor dentro da action com
@@ -121,8 +121,8 @@ action perfil() {
 ```
 @app.route(
     "/api/login",
-    methods=cors.options(["POST"]),   // só POST
-    auth=cors.origins()               // só origens configuradas no cors(...)
+    methods=cors.options(["POST"]),   # só POST
+    auth=cors.origins()               # só origens configuradas no cors(...)
 )
 action login() {
     return jsonify({"ok": true})
@@ -164,11 +164,11 @@ Ver [`JinkerResponse`](../JinkerResponse/JinkerResponse.md) para a tabela
 completa. Resumo:
 
 ```
-return {"a": 1}                      // dict/lista → JSON 200
-return "texto"                       // string → texto puro 200
-return jsonify({"x": 1}), 201        // JSON com status
-return render("web/index.html")      // arquivo
-return None                          // 204 sem corpo
+return {"a": 1}                      # dict/lista → JSON 200
+return "texto"                       # string → texto puro 200
+return jsonify({"x": 1}), 201        # JSON com status
+return render("web/index.html")      # arquivo
+return None                          # 204 sem corpo
 ```
 
 ---

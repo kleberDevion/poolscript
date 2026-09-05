@@ -14,7 +14,7 @@ img.resize(width: int, height: int) -> None
 import qrcode
 
 img = qrcode.make("https://meusite.com")
-img.resize(300, 300)          // 300x300 pixels
+img.resize(300, 300)          # 300x300 pixels
 img.save("site.png")
 ```
 

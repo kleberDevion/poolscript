@@ -17,7 +17,7 @@ formato próprio, ou quando você quer o conteúdo exato pra processar na mão.
 ```
 @app.route("/webhook", methods=cors.options(["POST"]))
 action webhook() {
-    corpo = request.text()           // string com o corpo exato
+    corpo = request.text()           # string com o corpo exato
     post(f"recebido: {corpo}")
     return jsonify({"ok": true})
 }

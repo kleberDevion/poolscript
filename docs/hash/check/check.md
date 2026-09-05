@@ -19,7 +19,7 @@ hash.check(senha_hash: str, senha_digitada: str) -> bool
 ```
 import hash
 
-// senha_hash veio do banco; "minhaSenha123" veio do formulário de login
+# senha_hash veio do banco; "minhaSenha123" veio do formulário de login
 if (hash.check(senha_hash, "minhaSenha123")) {
     post("login ok")
 } else {
@@ -43,7 +43,7 @@ guardado e refaz a conta certa — é o único jeito correto de conferir.
 @app.route("/api/login", methods=cors.options(["POST"]))
 action login() {
     senha = request.get("senha")
-    // senha_hash você busca no banco pelo usuário...
+    # senha_hash você busca no banco pelo usuário...
     if (hash.check(senha_hash, senha)) {
         return jsonify({"ok": true})
     }

@@ -14,12 +14,12 @@ Parsing.boolean(value, to_type="bool") -> bool
 ## Uso
 
 ```
-Parsing.boolean("sim")       // true
-Parsing.boolean("true")      // true
-Parsing.boolean("1")         // true
-Parsing.boolean("não")       // false
-Parsing.boolean("0")         // false
-Parsing.boolean("")          // false
+Parsing.boolean("sim")       # true
+Parsing.boolean("true")      # true
+Parsing.boolean("1")         # true
+Parsing.boolean("não")       # false
+Parsing.boolean("0")         # false
+Parsing.boolean("")          # false
 ```
 
 Textos que representam "vazio/falso" (`""`, `"0"`, `"false"`, `"null"`,

@@ -21,13 +21,13 @@ mensagens, **recebe** (via callback) e **fecha** quando termina.
 ```
 import request
 
-conn = request.ws_connect("ws://localhost:8081/chat/geral")  // 1. conecta
+conn = request.ws_connect("ws://localhost:8081/chat/geral")  # 1. conecta
 
-conn.on_message(action(msg) { post(msg) })                   // 2. receber (ANTES de esperar)
+conn.on_message(action(msg) { post(msg) })                   # 2. receber (ANTES de esperar)
 
-conn.send({"author": "ana", "body": "oi"})                   // 3. enviar
+conn.send({"author": "ana", "body": "oi"})                   # 3. enviar
 
-conn.close()                                                 // 4. fechar
+conn.close()                                                 # 4. fechar
 ```
 
 A ordem importa: registre o `on_message` **antes** de mandar/esperar, senão as
