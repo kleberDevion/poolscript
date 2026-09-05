@@ -61,7 +61,13 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   **não importou** não entra na lista: digitar `f` oferecia `flask` porque o
   servidor despejava todo módulo do motor em qualquer ponto do arquivo. O
   lugar deles é depois do `import`, e é lá que estão;
-- **hover** — a assinatura real do método e o tipo que ele devolve;
+- **hover** — a assinatura real do método e o tipo que ele devolve, com a
+  prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`);
+  numa **palavra-chave** (`if`, `for each`, `try`, `action`, `return`…) a seção
+  de `docs/linguagem/` cujo título a traz em crase; numa variável, o tipo
+  construído (`Jinker mapping`) e a linha; num parâmetro, a action dona; numa
+  action do arquivo, `int async action f(...)` e o decorador em cima; num
+  `model`, os campos;
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;

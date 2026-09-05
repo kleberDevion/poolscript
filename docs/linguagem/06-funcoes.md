@@ -84,7 +84,7 @@ mais** é erro em tempo de execução.
 
 ---
 
-## 6.3. Retorno
+## 6.3. Retorno — `return`
 
 `return <expr>` devolve um valor e encerra a função. Um `return` **sem valor**,
 ou uma função que **termina sem `return`**, devolve `null`:

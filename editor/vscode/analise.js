@@ -261,11 +261,14 @@ function escoposDaArvore(arvore) {
     if (no.k === 'ActionDecl') {
       const esc = { tipo: 'action', nome: no.texto, ini: no.l, fim: ultimaLinha(no), liga: [] };
       for (const p of no.lista || []) {
-        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1 });
+        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1, no: p });
       }
       escopos.push(esc);
-      /* a action LIGA O PRÓPRIO NOME no escopo de fora */
-      dono.liga.push({ nome: no.texto, kind: 'action', tipo: null, linha: no.l - 1,
+      /* a action LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto (`no`):
+       * o hover mostra `int async action f(...)` lendo texto2/async dele, em
+       * vez de perder os modificadores que a árvore já tem. */
+      dono.liga.push({ nome: no.texto, kind: 'action', tipo: no.texto2 || null, async: !!no.async,
+                       linha: no.l - 1, no,
                        params: (no.lista || []).filter((p) => p && p.texto !== 'self')
                                                .map((p) => ({ nome: p.texto, default: null })) });
       cada(no, (f) => { if (f !== no.b) return; anda(f, esc); });
@@ -281,7 +284,7 @@ function escoposDaArvore(arvore) {
           const esc = { tipo: 'metodo', nome: m.texto, entidade: no.texto,
                         ini: m.l, fim: ultimaLinha(m), liga: [] };
           for (const p of m.lista || []) {
-            if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1 });
+            if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1, no: p });
           }
           escopos.push(esc);
           if (m.b) anda(m.b, esc);
@@ -291,7 +294,9 @@ function escoposDaArvore(arvore) {
     }
 
     ligacoesDe(no, (nome, kind, tipo, origem) => {
-      if (nome) dono.liga.push({ nome, kind, tipo, linha: (origem.l || 1) - 1 });
+      /* o nó de origem viaja na ligação: o hover de um model lê os campos
+       * dele dali, sem varrer a árvore de novo */
+      if (nome) dono.liga.push({ nome, kind, tipo, linha: (origem.l || 1) - 1, no: origem });
     });
     cada(no, (f) => anda(f, dono));
   };

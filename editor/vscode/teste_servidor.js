@@ -116,7 +116,8 @@ async function main() {
     const libs = process.env.HOME ? path.join(process.env.HOME, '.poolscript', 'libs') : '';
     let alguma = '';
     try {
-      alguma = (fs.readdirSync(libs).find((f) => f.endsWith('.ps')) || '').replace(/\.ps$/, '');
+      const f = fs.readdirSync(libs).find((x) => x.endsWith('.ps')) || '';
+      alguma = f.slice(0, f.length - '.ps'.length);
     } catch (_) { /* sem libs instaladas */ }
     if (!alguma) {
       console.log('  PULOU lib instalada — nenhuma em ~/.poolscript/libs');
@@ -219,7 +220,80 @@ async function main() {
     const ultimo = ds[ds.length - 1];
     const d = ultimo && ultimo.params.diagnostics[0];
     conf('escape invalido vira AVISO (severity 2), nao erro',
-         !!d && d.severity === 2 && /escape invalida/.test(d.message), d);
+         !!d && d.severity === 2 && d.message.includes('escape invalida'), d);
+  }
+
+  /* ── 9b. A FORMA REAL do arquivo dele: `from jinker import Jinker` ───────
+   *
+   * Medido antes: `mapping = Jinker(__name__)` + `mapping.` dava ZERO (o
+   * servidor só resolvia `jinker.Jinker(...)`), `@mapping.` idem — e o VS
+   * Code, recebendo [], caía nas palavras soltas do arquivo ("itens nada a
+   * ver"). Hover em palavra-chave devolvia null (nunca perguntava ao lexer
+   * que token era); em variável saía "mapping / variavel"; `jsonify` saía
+   * "import jinker / 6 membros"; `request.get` saía sem prosa. */
+  const DELE = [
+    'from jinker import Jinker, jsonify, request, cors',
+    'mapping = Jinker(__name__)',
+    'model Rota() {',
+    '    email: str(length=60)',
+    '    senha: str',
+    '}',
+    '@mapping.post("/x", model=Rota)',
+    'int async action entra(data) {',
+    '    if data == "" {',
+    '        return jsonify({"ok": false})',
+    '    }',
+    '    for each it in [1, 2] {',
+    '        post(it)',
+    '    }',
+    '    return jsonify({"ok": true, "e": request.get("email")})',
+    '}',
+    'mapping.',
+    '@mapping.',
+  ];
+  const DELE_SRC = DELE.join('\n') + '\n';
+  const hov = (id, line, ch) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+    params: { textDocument: { uri: URI }, position: { line, character: ch } } });
+  const valor = (m, id) => {
+    const r = resp(m, id);
+    return r && r.result && r.result.contents ? r.result.contents.value : '';
+  };
+  const col = (line, trecho) => DELE[line].indexOf(trecho);
+  {
+    const m = await conversa(DELE_SRC, [compl(2, 16, 8), compl(3, 17, 9)]);
+    const L1 = rotulos(resp(m, 2));
+    conf('`from jinker import Jinker` + `mapping = Jinker()` -> `mapping.` sugere os membros',
+         L1.includes('post') && L1.includes('route') && L1.includes('get'), L1);
+    const L2 = rotulos(resp(m, 3));
+    conf('`@mapping.` (posicao de decorador) sugere os mesmos membros',
+         L2.includes('post') && L2.includes('route'), L2);
+  }
+  {
+    const m = await conversa(DELE_SRC, [
+      hov(10, 8, col(8, 'if')),                 hov(11, 11, col(11, 'for')),
+      hov(12, 9, col(9, 'return')),             hov(13, 7, col(7, 'action')),
+      hov(14, 12, col(12, 'post')),             hov(15, 1, 0),
+      hov(16, 7, col(7, 'data')),               hov(17, 7, col(7, 'entra')),
+      hov(18, 2, col(2, 'Rota')),               hov(19, 9, col(9, 'jsonify')),
+      hov(20, 14, col(14, 'request.get') + 'request.'.length),
+      hov(21, 6, col(6, 'post')),
+    ]);
+    conf('hover em `if` traz a secao da doc da linguagem', valor(m, 10).includes('Condicional'), valor(m, 10).slice(0, 120));
+    conf('hover em `for` acha `for each` (dois tokens KW vizinhos)', valor(m, 11).includes('for each'), valor(m, 11).slice(0, 120));
+    conf('hover em `return` acha a secao 6.3', valor(m, 12).includes('Retorno'), valor(m, 12).slice(0, 120));
+    conf('hover em `action` acha a secao 6.1', valor(m, 13).includes('Definição'), valor(m, 13).slice(0, 120));
+    conf('hover em `post` (builtin) traz a pagina do builtin', valor(m, 14).includes('post('), valor(m, 14).slice(0, 120));
+    conf('hover na variavel diz o TIPO construido e a linha', valor(m, 15).includes('Jinker mapping') && valor(m, 15).includes('linha 2'), valor(m, 15));
+    conf('hover no parametro diz de que action ele e', valor(m, 16).includes('parâmetro de `entra`'), valor(m, 16));
+    conf('hover na action mostra `int async action` e o decorador',
+         valor(m, 17).includes('int async action entra(data)') && valor(m, 17).includes('@mapping.post'), valor(m, 17));
+    conf('hover no model lista os campos', valor(m, 18).includes('email: str(length=60)') && valor(m, 18).includes('senha: str'), valor(m, 18));
+    conf('hover em nome vindo de `from` mostra a assinatura do modulo, nao "N membros"',
+         valor(m, 19).includes('jinker.jsonify(') && !valor(m, 19).includes('membros'), valor(m, 19));
+    conf('hover em `request.get` traz a prosa de docs/jinker/request/get',
+         valor(m, 20).includes('request.get(') && valor(m, 20).split('\n').length > 3, valor(m, 20).slice(0, 200));
+    conf('hover em `post` de `@mapping.post` traz a prosa de docs/jinker/post',
+         valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
   /* ── 10. CLASSE, HERANÇA, `self` — nada disso funcionava ────────────────

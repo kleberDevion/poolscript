@@ -92,29 +92,47 @@ function raizDoc() {
   return RAIZ_DOC;
 }
 
-/* O primeiro parágrafo de prosa da página do membro, ou "". */
-const RESUMOS = new Map();
-function resumoDe(escopo, nome) {
+/* A página `docs/<escopo>/<nome>/<nome>.md`: o título (a assinatura, que a
+ * doc tira do código) e o primeiro parágrafo de prosa. `{titulo:'', resumo:''}`
+ * quando não há página.
+ *
+ * `escopo` é um CAMINHO, e pode ser uma lista de candidatos — a regra da doc é
+ * "o caminho diz o namespace" (`docs/jinker/request/get/get.md` documenta
+ * `jinker.request.get`), e o servidor só sabe o TIPO do que está na cadeia
+ * (`RequestProxy`), não a pasta. Então quem chama passa de onde o tipo veio
+ * (`jinker/request`, depois `jinker`, depois o nome do tipo) e a primeira
+ * página que existir responde. Antes o escopo era só o nome do tipo, e
+ * `request.get`, `cors.origins` e `mapping.post` saíam sem prosa nenhuma —
+ * a página existia, o servidor procurava em `docs/RequestProxy/`. */
+const PAGINAS = new Map();
+function paginaDe(escopo, nome) {
+  if (Array.isArray(escopo)) {
+    for (const e of escopo) { const p = paginaDe(e, nome); if (p.titulo || p.resumo) return p; }
+    return { titulo: '', resumo: '' };
+  }
   const chave = `${escopo}/${nome}`;
-  if (RESUMOS.has(chave)) return RESUMOS.get(chave);
-  RESUMOS.set(chave, '');
+  if (PAGINAS.has(chave)) return PAGINAS.get(chave);
+  const vazio = { titulo: '', resumo: '' };
+  PAGINAS.set(chave, vazio);
   const raiz = raizDoc();
-  if (!raiz) return '';
+  if (!raiz) return vazio;
   const p = path.join(raiz, escopo, nome, `${nome}.md`);
   let texto;
-  try { texto = fs.readFileSync(p, 'utf8'); } catch (_) { return ''; }
+  try { texto = fs.readFileSync(p, 'utf8'); } catch (_) { return vazio; }
   const partes = [];
-  let passouTitulo = false;
+  let titulo = '';
   for (const linha of texto.split('\n')) {
     const t = linha.trim();
-    if (!passouTitulo) { if (t.startsWith('# ')) passouTitulo = true; continue; }
+    if (!titulo) { if (t.startsWith('# ')) titulo = t.slice(2).trim(); continue; }
     if (t === '') { if (partes.length) break; continue; }
     if (t.startsWith('#') || t.startsWith('|') || t.startsWith('```')) break;
     partes.push(t);
   }
-  RESUMOS.set(chave, partes.join(' '));
-  return RESUMOS.get(chave);
+  const pg = { titulo, resumo: partes.join(' ') };
+  PAGINAS.set(chave, pg);
+  return pg;
 }
+function resumoDe(escopo, nome) { return paginaDe(escopo, nome).resumo; }
 
 /* ── a árvore do documento ───────────────────────────────────────────────
  *
@@ -428,6 +446,25 @@ function tipoDoNome(doc, nome, linha) {
   const cons = construidoPor(idx, nome, linha);
   if (cons) {
     if (achaEntidade(doc, cons.nome)) return { tipo: 'entity', nome: cons.nome, interno: false };
+    /* `mapping = Jinker(__name__)` com `from jinker import Jinker`: o nome
+     * construído é um membro de módulo ligado pelo `from`. Este ramo não
+     * existia — só `x = jinker.Jinker(...)` (abaixo) consultava o `retorna`
+     * do motor, e a forma com `from`, que é a da doc, caía no `return null`:
+     * `mapping.` sem sugestão nenhuma, `@mapping.` idem, e o VS Code caía nas
+     * palavras soltas do arquivo. Fontes: o construtor vem do nó Call da
+     * árvore; o vínculo Jinker → jinker, do ImportStmt; o tipo da instância,
+     * de `modulos.jinker[].retorna` do `--metadata`. */
+    if (!cons.mod) {
+      const alvoC = alvoDoImport(doc, cons.nome);
+      if (alvoC && alvoC.tipo === 'membro_modulo') {
+        for (const m of META.modulos[alvoC.mod] || []) {
+          if (m.nome === alvoC.membro && m.retorna && META.tipos[m.retorna])
+            return { tipo: 'tipo_motor', nome: m.retorna, via: { mod: alvoC.mod, membro: alvoC.membro } };
+        }
+      }
+      if (alvoC && alvoC.tipo === 'membro_arquivo' && achaEntidade(doc, alvoC.membro))
+        return { tipo: 'entity', nome: alvoC.membro, interno: false };
+    }
     if (cons.mod) {
       const alvoM = alvoDoImport(doc, cons.mod);
       if (alvoM && alvoM.arquivo) {
@@ -437,7 +474,8 @@ function tipoDoNome(doc, nome, linha) {
       }
       if (alvoM && alvoM.mod && META.modulos[alvoM.mod]) {
         for (const m of META.modulos[alvoM.mod]) {
-          if (m.nome === cons.nome && m.retorna) return { tipo: 'tipo_motor', nome: m.retorna };
+          if (m.nome === cons.nome && m.retorna)
+            return { tipo: 'tipo_motor', nome: m.retorna, via: { mod: alvoM.mod, membro: cons.nome } };
         }
       }
     }
@@ -475,9 +513,12 @@ function membrosDaCadeia(doc, partes, linha) {
     const membros = membrosDe(doc, alvo, linha);
     const m = membros.find((x) => x.nome === passo);
     if (!m) return [];
-    /* desce um nível: o tipo do membro é o que ele devolve ou declara */
+    /* desce um nível: o tipo do membro é o que ele devolve ou declara. A
+     * procedência (`via`: de que módulo/membro o tipo saiu) desce junto —
+     * é ela que diz em que pasta da doc está a prosa do próximo membro. */
     const t = m.retorna || m.tipo || '';
-    if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t };
+    const modBase = alvo.via ? alvo.via.mod : (alvo.tipo === 'import' && alvo.alvo ? alvo.alvo.mod : null);
+    if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via: modBase ? { mod: modBase, membro: passo } : undefined };
     else if (t && achaEntidade(doc, t)) alvo = { tipo: 'entity', nome: t, interno: false };
     else if (m.kind === 'class' && achaEntidade(doc, m.nome)) alvo = { tipo: 'entity', nome: m.nome, interno: false };
     else return [];
@@ -489,8 +530,13 @@ function membrosDe(doc, alvo, linha) {
   if (!alvo) return [];
   if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno);
   if (alvo.tipo === 'tipo_motor') {
+    /* onde está a prosa: pela procedência (`jinker/Jinker`, `jinker`) antes
+     * do nome do tipo — ver `paginaDe` */
+    const escopo = alvo.via
+      ? [`${alvo.via.mod}/${alvo.via.membro}`, alvo.via.mod, alvo.nome]
+      : alvo.nome;
     return (META.tipos[alvo.nome] || []).concat(META.tipos.__universal__ || [])
-      .map((m) => Object.assign({ kind: 'action', escopo: alvo.nome }, m));
+      .map((m) => Object.assign({ kind: 'action', escopo }, m));
   }
   if (alvo.tipo === 'import') {
     const a = alvo.alvo;
@@ -501,7 +547,8 @@ function membrosDe(doc, alvo, linha) {
     if (a.tipo === 'membro_modulo') {
       for (const m of META.modulos[a.mod] || []) {
         if (m.nome === a.membro && m.retorna && META.tipos[m.retorna])
-          return (META.tipos[m.retorna] || []).map((x) => Object.assign({ kind: 'action', escopo: m.retorna }, x));
+          return (META.tipos[m.retorna] || [])
+            .map((x) => Object.assign({ kind: 'action', escopo: [`${a.mod}/${a.membro}`, a.mod, m.retorna] }, x));
       }
       return [];
     }
@@ -846,10 +893,167 @@ function nomeSob(doc, pos) {
   return { partes: c.partes, nome: c.parcial };
 }
 
+/* ── hover ────────────────────────────────────────────────────────────────
+ *
+ * Cada resposta sai de uma fonte, e a fonte é dita aqui:
+ *   palavra-chave      -> `pool --tokens` diz que é KW; a prosa é a SEÇÃO de
+ *                         docs/linguagem/NN-*.md cujo título traz a palavra em
+ *                         crase (`## 5.1. Condicional — \`if\` / \`elif\`…`),
+ *                         ou a página do builtin (docs/builtins/post/post.md)
+ *   variável           -> tipo do que foi declarado/construído (árvore +
+ *                         `--metadata`) e a linha da declaração (árvore)
+ *   parâmetro          -> a action dona, do índice de escopos (árvore)
+ *   action do arquivo  -> `int async action f(...)` do nó ActionDecl, e o
+ *                         decorador em cima (DecoratorStmt), da árvore
+ *   model do arquivo   -> os campos do ModelDecl, da árvore
+ *   nome vindo de from -> assinatura do membro no `--metadata` e a página
+ *                         docs/<mod>/<membro>/<membro>.md
+ *   `alvo.membro`      -> assinatura da tabela do VM e a página achada pelo
+ *                         CAMINHO (`jinker/request/get`), ver `paginaDe`
+ *
+ * O que havia: keyword caía no `return null` (o hover nunca perguntava ao
+ * lexer que token era); variável saía "x / variavel"; `jsonify` saía como
+ * "import jinker / 6 membros" — o 6 era a contagem de membros do tipo de
+ * RETORNO; `request.get` saía sem prosa por procurar em docs/RequestProxy/. */
+function md(valor) { return { contents: { kind: MarkupKind.Markdown, value: valor } }; }
+
+/* O token do lexer sob o cursor: `[c0, c0+n)`, o PRIMEIRO caractere incluso.
+ * (`dentroDeTextoLivre` usa `>` de propósito: o cursor logo antes de uma
+ * string não está dentro dela. Aqui o cursor no `i` de `if` está no `if`.) */
+function tokenSob(doc, pos) {
+  for (const t of tokensDe(doc)) {
+    if (t.l0 === pos.line && pos.character >= t.c0 && pos.character < t.c0 + t.n) return t;
+  }
+  return null;
+}
+
+/* As seções de um arquivo de docs/linguagem: título, os spans em crase do
+ * título (é por eles que a keyword se acha) e as linhas do corpo. Título
+ * dentro de cerca de código não conta. Cache por mtime. */
+const SECOES = new Map();
+function secoesDe(arq) {
+  let st;
+  try { st = fs.statSync(arq); } catch (_) { return []; }
+  const c = SECOES.get(arq);
+  if (c && c.mtime === st.mtimeMs) return c.secoes;
+  let texto;
+  try { texto = fs.readFileSync(arq, 'utf8'); } catch (_) { return []; }
+  const secoes = [];
+  let cerca = false;
+  let atual = null;
+  for (const linha of texto.split('\n')) {
+    const t = linha.trim();
+    if (t.startsWith('```')) { cerca = !cerca; if (atual) atual.corpo.push(linha); continue; }
+    if (!cerca && t.startsWith('#')) {
+      let j = 0;
+      while (t[j] === '#') j++;
+      const titulo = t.slice(j).trim();
+      const pedacos = titulo.split('`');
+      atual = { titulo, spans: pedacos.filter((_, k) => k % 2 === 1).map((s) => s.trim()), corpo: [] };
+      secoes.push(atual);
+      continue;
+    }
+    if (atual) atual.corpo.push(linha);
+  }
+  SECOES.set(arq, { mtime: st.mtimeMs, secoes });
+  return secoes;
+}
+
+/* A primeira seção, na ordem dos arquivos, cujo título traz `candidato` em
+ * crase. Sem lista digitada: a doc da linguagem é a fonte. */
+function secaoDaLinguagem(candidato) {
+  const raiz = raizDoc();
+  if (!raiz) return null;
+  const dir = path.join(raiz, 'linguagem');
+  let arqs;
+  try { arqs = fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort(); } catch (_) { return null; }
+  for (const f of arqs) {
+    for (const s of secoesDe(path.join(dir, f))) if (s.spans.includes(candidato)) return s;
+  }
+  return null;
+}
+
+/* O que se mostra de uma seção: o título, o primeiro bloco ```ps quando ele
+ * vem ANTES da prosa (5.1, 6.1 e 10.2 abrem com o exemplo), e o primeiro
+ * parágrafo — bullets ficam um por linha, senão viravam um parágrafo só. */
+function trechoDaSecao(s) {
+  const prosa = [];
+  let bloco = null;
+  let blocoPronto = '';
+  for (const linha of s.corpo) {
+    const t = linha.trim();
+    if (bloco !== null) {
+      if (t.startsWith('```')) { blocoPronto = '```ps\n' + bloco.join('\n') + '\n```'; bloco = null; if (prosa.length) break; }
+      else bloco.push(linha);
+      continue;
+    }
+    if (t.startsWith('```')) { if (prosa.length || blocoPronto) break; bloco = []; continue; }
+    if (t === '') { if (prosa.length) break; continue; }
+    if (t.startsWith('|') || t.startsWith('#')) break;
+    prosa.push(t);
+  }
+  let texto = '';
+  for (const p of prosa) texto += (texto === '' ? '' : (p.startsWith('-') || p.startsWith('*') ? '\n' : ' ')) + p;
+  return s.titulo + (blocoPronto ? '\n\n' + blocoPronto : '') + (texto ? '\n\n' + texto : '');
+}
+
+/* Keyword sob o cursor. Candidatos: a palavra unida à vizinha se ela também é
+ * KW na mesma linha (`for each`, `count each`), depois a palavra só. */
+function hoverDeKeyword(doc, tok) {
+  const toks = tokensDe(doc);
+  const i = toks.indexOf(tok);
+  const ant = i > 0 ? toks[i - 1] : null;
+  const seg = i >= 0 ? toks[i + 1] : null;
+  const cands = [];
+  if (ant && ant.t === 'KW' && ant.l0 === tok.l0) cands.push(ant.v + ' ' + tok.v);
+  if (seg && seg.t === 'KW' && seg.l0 === tok.l0) cands.push(tok.v + ' ' + seg.v);
+  cands.push(tok.v);
+  for (const c of cands) {
+    const s = secaoDaLinguagem(c);
+    if (s) return md('```ps\n' + c + '\n```\n\n' + trechoDaSecao(s));
+  }
+  return null;
+}
+
+/* `@app.post(...)` em cima da action `nome` declarada na linha `linha`, ou "".
+ * O DecoratorStmt embrulha a action num Block (`.b.lista[0]`). */
+function decoradorDe(idx, nome, linha) {
+  let achado = '';
+  const anda = (no) => {
+    if (!no || typeof no !== 'object' || achado) return;
+    if (no.k === 'DecoratorStmt' && no.a && no.b) {
+      const dentro = (no.b.lista || []).some((x) => x && x.k === 'ActionDecl' && x.texto === nome && x.l - 1 === linha);
+      if (dentro) { achado = '@' + (no.a.lista || []).map((x) => x && x.texto).filter(Boolean).join('.'); return; }
+    }
+    A.cada(no, anda);
+  };
+  anda(idx.arvore || null);
+  return achado;
+}
+
 conexao.onHover((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return null;
   if (dentroDeTextoLivre(doc, p.position)) return null;
+
+  /* palavra-chave — o lexer é quem diz; `json`/`str` são também módulo/tipo
+   * do motor, e aí a resposta é a do motor. Depois de um `.` o token com
+   * nome de keyword é MEMBRO (`app.post`, `d.post`): o lexer marca `post`
+   * como KW em qualquer posição, e sem esta cláusula o hover em
+   * `@mapping.post` mostrava o builtin de imprimir. */
+  const tok = tokenSob(doc, p.position);
+  const toksAqui = tokensDe(doc);
+  const antes = tok ? toksAqui[toksAqui.indexOf(tok) - 1] : null;
+  const aposPonto = !!(antes && antes.t === 'DOT' && antes.l0 === tok.l0);
+  if (tok && tok.t === 'KW' && !aposPonto && !META.modulos[tok.v]) {
+    if (META.tipos[tok.v]) {
+      return md('```ps\n' + tok.v + '\n```\n\ntipo · ' + (META.tipos[tok.v] || []).length + ' métodos');
+    }
+    const pg = paginaDe('builtins', tok.v);
+    if (pg.titulo) return md('```ps\n' + pg.titulo.split('`').join('') + '\n```' + (pg.resumo ? '\n\n' + pg.resumo : ''));
+    return hoverDeKeyword(doc, tok);
+  }
+
   const { partes, nome } = nomeSob(doc, p.position);
   if (!nome) return null;
 
@@ -860,31 +1064,58 @@ conexao.onHover((p) => {
     const dono = partes[partes.length - 1];
     const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
     const herd = m.de && m.de !== dono ? `\n\nherdado de \`${m.de}\`` : '';
-    return { contents: { kind: MarkupKind.Markdown,
-      value: '```ps\n' + (m.privado ? 'private ' : '') + dono + '.' + assinatura(m)
-             + '\n```' + herd + (prosa ? '\n\n' + prosa : '') } };
+    return md('```ps\n' + (m.privado ? 'private ' : '') + dono + '.' + assinatura(m)
+              + '\n```' + herd + (prosa ? '\n\n' + prosa : ''));
   }
 
   const idx = indiceDe(doc);
   const e = idx.entidades.find((x) => x.nome === nome);
   if (e) {
-    return { contents: { kind: MarkupKind.Markdown,
-      value: '```ps\nclass ' + e.nome + (e.bases.length ? '(' + e.bases.join(', ') + ')' : '')
-             + '\n```\n\n' + e.membros.length + ' membros' } };
+    return md('```ps\nclass ' + e.nome + (e.bases.length ? '(' + e.bases.join(', ') + ')' : '')
+              + '\n```\n\n' + e.membros.length + ' membros');
   }
   for (const b of A.visiveisEm(idx, p.position.line)) {
     if (b.nome !== nome) continue;
-    const txt = b.kind === 'action' ? assinatura({ nome: b.nome, params: b.params })
-              : `${b.tipo ? b.tipo + ' ' : ''}${b.nome}`;
-    return { contents: { kind: MarkupKind.Markdown,
-      value: '```ps\n' + txt + '\n```\n\n' + b.kind } };
+    const no = b.no || {};
+    const onde = 'linha ' + (b.linha + 1);
+    if (b.kind === 'action') {
+      /* a ordem dos modificadores é livre na linguagem; aqui sai a canônica
+       * da doc (6.4): tipo, async, action */
+      const cab = (b.tipo ? b.tipo + ' ' : '') + (b.async ? 'async ' : '') + 'action '
+                + assinatura({ nome: b.nome, params: b.params });
+      const dec = decoradorDe(idx, b.nome, b.linha);
+      return md('```ps\n' + (dec ? dec + '\n' : '') + cab + '\n```\n\naction · declarada na ' + onde);
+    }
+    if (b.kind === 'parametro') {
+      const esc = idx.escopos.find((s) => s.liga.includes(b));
+      const dono = esc ? (esc.tipo === 'metodo' ? esc.entidade + '.' + esc.nome : esc.nome) : '';
+      return md('```ps\n' + b.nome + '\n```\n\nparâmetro' + (dono ? ' de `' + dono + '`' : ''));
+    }
+    if (b.kind === 'model') {
+      const campos = (no.lista || []).filter((f) => f && f.texto)
+        .map((f) => f.texto + ': ' + (f.texto2 || '') + (f.i2 >= 0 ? '(length=' + f.i2 + ')' : ''));
+      return md('```ps\nmodel ' + b.nome + '() { ' + campos.join(', ') + ' }\n```\n\nmodel · declarado na ' + onde);
+    }
+    /* variável: o tipo é o declarado (`str x`) ou o construído (`x = Jinker(...)`) */
+    const t = tipoDoNome(doc, nome, p.position.line);
+    const tipo = b.tipo || (t && t.tipo !== 'import' && t.nome) || '';
+    return md('```ps\n' + (tipo ? tipo + ' ' : '') + b.nome + '\n```\n\n' + b.kind + ' · declarada na ' + onde);
   }
   const alvo = alvoDoImport(doc, nome);
   if (alvo) {
+    if (alvo.tipo === 'membro_modulo') {
+      const m = (META.modulos[alvo.mod] || []).find((x) => x.nome === alvo.membro);
+      if (m) {
+        const cab = alvo.mod + '.' + (m.kind === 'value'
+          ? m.nome + (m.retorna ? ' -> ' + m.retorna : '')
+          : assinatura(m));
+        const prosa = resumoDe(alvo.mod, alvo.membro);
+        return md('```ps\n' + cab + '\n```' + (prosa ? '\n\n' + prosa : ''));
+      }
+    }
     const n = membrosDe(doc, { tipo: 'import', alvo }, p.position.line).length;
     const de = alvo.arquivo ? `\n\n_de ${alvo.arquivo}_` : '';
-    return { contents: { kind: MarkupKind.Markdown,
-      value: '```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\n' + n + ' membros' + de } };
+    return md('```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\n' + n + ' membros' + de);
   }
   return null;
 });
