@@ -187,11 +187,13 @@ install: pool
 	# junto um install que já tinha copiado o `pool`, o `psl` e o LSP com
 	# sucesso. O ícone do arquivo no gerenciador é uma comodidade do desktop;
 	# ele não pode dar "Erro 2" num install que deu certo.
-	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO) \
-	  || { echo ""; \
-	       echo "  o tipo MIME/ícone NAO foi instalado: $(DADOS) pede root."; \
-	       echo "  o resto entrou. Pra ter o ícone do .ps: sudo make install-mime"; \
-	       echo ""; }
+	# Sem root ele cai no `install-icone` — que atualiza a LOGO no diretório do
+	# usuário, onde o GTK olha primeiro. O que fica faltando aí é só o registro
+	# do TIPO (`$(DADOS)/mime`), que é o que precisa de root de verdade; se ele
+	# já foi feito uma vez, o desktop continua inteiro.
+	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO) 2>/dev/null \
+	  || { $(MAKE) --no-print-directory install-icone; \
+	       echo "  (o TIPO MIME em $(DADOS)/mime pede root: sudo make install-mime)"; }
 	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp"
 
 # Tipo MIME + ícone do `.ps` pro desktop (GNOME/KDE/XFCE/…). Fica separado
@@ -211,7 +213,17 @@ install-mime:
 	-update-mime-database $(DADOS)/mime 2>/dev/null || true
 	@./dados/espalha_icone.sh "$(DADOS)" instalar
 
-.PHONY: install install-mime desinstala
+# Só a LOGO, no diretório do usuário — não precisa de root. Serve pra trocar o
+# desenho sem reinstalar nada: `~/.local/share/icons/<tema>` vem antes do
+# `/usr/share/icons/<tema>` na busca do GTK, e o `espalha_icone.sh` espelha os
+# temas do sistema pra lá. Só o registro do TIPO (o `.xml` em mime/packages)
+# continua sendo coisa de root, e ele muda muito mais raramente que o desenho.
+DADOS_USUARIO ?= $(HOME)/.local/share
+install-icone:
+	@./dados/espalha_icone.sh "$(DADOS_USUARIO)" instalar
+	@echo "  logo do .ps atualizada em $(DADOS_USUARIO)/icons (sem root)"
+
+.PHONY: install install-mime install-icone desinstala
 
 desinstala:
 	rm -f $(PREFIXO)/bin/pool $(PREFIXO)/bin/psl $(PREFIXO)/bin/poolscript-lsp
