@@ -168,6 +168,12 @@ typedef struct {
      * precisa varrer o arquivo INTEIRO pra saber se `range` foi redefinido
      * em algum ponto (inclusive depois do laço). */
     PSNode *raiz;
+    /* Nomes ligados no TOPO do arquivo. Montado uma vez, do mesmo
+     * `binda_nomes` que o resto usa (ele não desce em action, então o que sai
+     * é exatamente o escopo de módulo). Serve pro aviso de escrita silenciosa
+     * no módulo de dentro de uma função. */
+    char  **mod_nomes;
+    int32_t n_mod_nomes;
 } C;
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
@@ -699,6 +705,50 @@ static int nome_ja_existe(Unidade *u, const char *nome)
     return 0;
 }
 
+/* Avisa que uma escrita dentro de função vai cair no módulo.
+ *
+ * A linguagem faz isso de propósito (é o idioma do contador em closure, e 31
+ * casos da suíte dependem dele) — mas é a coisa mais SILENCIOSA que ela faz.
+ * Um `i = 0` dentro de uma action zera o `i` do laço de quem chamou, sem erro
+ * nenhum, e o defeito aparece longe da causa: travou o
+ * `scripts/conserta_barra_doc.ps` por meia hora, com o laço nunca terminando.
+ *
+ * `global nome` não passa por aqui (aquele caminho emite STORE_GLOBAL antes),
+ * então quem declarou a intenção não é incomodado. */
+static void avisa_escreve_no_modulo(C *c, const char *nome)
+{
+    if (!c->out || !nome || !*nome) return;
+    /* é nome de módulo? `c->mod_nomes` é montado uma vez, do topo do programa */
+    int achou = 0;
+    for (int32_t i = 0; i < c->n_mod_nomes && !achou; i++)
+        if (strcmp(c->mod_nomes[i], nome) == 0) achou = 1;
+    if (!achou) return;
+
+    /* um aviso por NOME por função: repetir o mesmo texto a cada atribuição
+     * num laço enterraria o resto do relatório */
+    for (int32_t i = 0; i < c->out->navisos; i++)
+        if (strstr(c->out->avisos[i].msg, nome) && c->out->avisos[i].linha == c->linha_atual)
+            return;
+
+    if (c->out->navisos + 1 > c->out->cap_avisos) {
+        int32_t novo = c->out->cap_avisos < 8 ? 8 : c->out->cap_avisos * 2;
+        PSAvisoC *nv = realloc(c->out->avisos, sizeof(PSAvisoC) * (size_t)novo);
+        if (!nv) return;                 /* sem memória: aviso não é essencial */
+        c->out->avisos = nv;
+        c->out->cap_avisos = novo;
+    }
+    PSAvisoC *a = &c->out->avisos[c->out->navisos++];
+    /* 28+28 cabem no `msg[160]` junto com os 99 de texto fixo. Largura maior
+     * fazia o snprintf cortar a frase no conselho do fim, que é a parte que
+     * diz o que fazer. */
+    snprintf(a->msg, sizeof(a->msg),
+             "'%.28s' existe no modulo: esta atribuicao ESCREVE NELE, nao cria "
+             "uma local. Use 'global %.28s', ou outro nome",
+             nome, nome);
+    a->linha = c->linha_atual;
+    a->col   = c->coluna_atual;
+}
+
 static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
 {
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
@@ -723,6 +773,10 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
         return;
     }
     if (i < 256 && u->certo[i]) { emite(c, u, OP_STORE_LOCAL, i); return; }
+    /* Este é o caminho que ESCREVE NO MÓDULO quando a global existe (ver
+     * OP_STORE_NAME na VM). É aqui, e só aqui, que a colisão silenciosa
+     * acontece — então é aqui que ela é avisada. */
+    avisa_escreve_no_modulo(c, nome);
     emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
     emite(c, u, OP_STORE_NAME, idx_global(c, nome));
 }
@@ -2844,6 +2898,14 @@ PSPrograma *ps_compila(PSNode *programa)
     int32_t idx = novo_proto(&c, "<module>");
     if (idx < 0) return out;
 
+    /* Os nomes do escopo de módulo, pro aviso de escrita silenciosa. O
+     * `binda_nomes` NÃO desce em action (o corpo dela é outro escopo), então
+     * o que sai daqui é exatamente o topo do arquivo. */
+    {
+        int32_t cap = 0;
+        binda_nomes(&c, programa, &c.mod_nomes, &c.n_mod_nomes, &cap);
+    }
+
     Unidade u;
     memset(&u, 0, sizeof(u));
     u.idx = idx;
@@ -2862,6 +2924,8 @@ PSPrograma *ps_compila(PSNode *programa)
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
+    for (int32_t i = 0; i < c.n_mod_nomes; i++) free(c.mod_nomes[i]);
+    free(c.mod_nomes);
     return out;
 }
 
@@ -2916,5 +2980,6 @@ void ps_compila_free(PSPrograma *p)
         free(p->enums[i].membros);
     }
     free(p->enums);
+    free(p->avisos);
     free(p);
 }

@@ -18,6 +18,18 @@
 
 #include "ps_ast.h"
 
+/* Um aviso do compilador. Mesma forma do `PSAviso` do lexer, declarado à parte
+ * pra este header não depender do outro — quem apresenta os dois (o `--check`,
+ * o `pool`, o editor) trata igual. */
+typedef struct {
+    /* 160, o MESMO do `PSAviso` do lexer: os dois vão pra mesma lista quando o
+     * `--check` responde, e um buffer maior aqui só faria a cópia truncar lá —
+     * cortando o fim da frase, que é onde está o conselho. */
+    char    msg[160];
+    int32_t linha;
+    int32_t col;
+} PSAvisoC;
+
 /* Constante numa forma que não depende do runtime. */
 typedef enum { K_NULL = 0, K_BOOL, K_INT, K_FLO, K_STR, K_BIGINT } PSConstKind;
 
@@ -137,6 +149,21 @@ typedef struct {
      * saía como "NotImplementedError", inclusive `base()` fora de lugar — o
      * nome do erro não tinha nada a ver com o problema. */
     int      erro_do_programa;
+
+    /* AVISOS do compilador — o programa compila e roda, mas alguma coisa quase
+     * certamente não é o que se quis. Mesma ideia dos avisos do lexer
+     * (`PSAviso` em ps_lexer.h), num nível que só o compilador enxerga: aqui
+     * já se sabe o que é função, o que é módulo e o que cada uma liga.
+     *
+     * O primeiro caso, e a razão de isto existir: escrever dentro de uma
+     * função num nome que existe no módulo ESCREVE NO MÓDULO. É o design da
+     * linguagem (31 casos da suíte dependem dele), e ao mesmo tempo é a coisa
+     * mais silenciosa que ela faz — um `i = 0` dentro de uma action zera o `i`
+     * do laço de quem chamou, sem erro nenhum, e o defeito aparece longe da
+     * causa. O aviso não muda a semântica: torna a colisão visível. */
+    PSAvisoC *avisos;
+    int32_t   navisos;
+    int32_t   cap_avisos;
 } PSPrograma;
 
 /* Compila a AST. Sempre devolve algo que precisa de ps_compila_free,

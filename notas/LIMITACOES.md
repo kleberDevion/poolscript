@@ -478,7 +478,41 @@ emoji funcionam; o caminho com aspas continua para termo ASCII, que é o comum.
 
 ## Em aberto
 
-### Atribuição dentro de action SOBRESCREVE a variável de módulo de mesmo nome
+### Escrita silenciosa no módulo — RESOLVIDA COM AVISO (2026-09-05)
+
+**Não era defeito: era design, e 31 casos da suíte dependem dele.** O que
+faltava era não ser silencioso. Fica registrado inteiro porque o caminho até
+descobrir isso é a parte útil.
+
+Escrever dentro de uma função num nome que existe no módulo agora emite
+
+```
+arquivo.ps:3: SyntaxWarning: 'i' existe no modulo: esta atribuicao ESCREVE
+NELE, nao cria uma local. Use 'global i', ou outro nome
+```
+
+no terminal e no `--check` (sublinhado amarelo no editor). Semântica intacta;
+`global` cala o aviso; parâmetro não dispara.
+
+**Por que NÃO viramos a semântica pro Python.** A tentativa foi feita e
+medida: trocar `OP_STORE_NAME` pra sempre criar local quebra 13 casos, e — pior
+— produz um TERCEIRO comportamento que não é o de ninguém:
+
+| `a = 1; action inc() { a = a + 1  return a }; post(inc(), inc())` | |
+|---|---|
+| PoolScript | `2 3` (contador em closure, 26 casos dependem) |
+| só trocando a ESCRITA | `2 2` — não bate com ninguém |
+| CPython | `UnboundLocalError` |
+
+Pra ser CPython de verdade a LEITURA teria que mudar junto (nome atribuído em
+qualquer ponto da função é local no corpo inteiro), e aí o idioma do contador
+morre. Decisão dele: fica o design, entra o aviso.
+
+O texto abaixo é o relato original de quando eu achava que era defeito.
+
+---
+
+### (histórico) Atribuição dentro de action SOBRESCREVE a variável de módulo
 
 Achado em 2026-09-05, e é o mais caro desta lista: **não dá erro, dá resultado
 errado.**
@@ -521,7 +555,7 @@ erro nenhum. A action tinha um `i` local; quem chamava tinha um `i` de laço; o
 laço nunca terminava. Qualquer nome comum (`i`, `n`, `x`, `linha`, `caminho`)
 tem esse risco em qualquer arquivo com mais de uma função.
 
-**DECISÃO É DELE**, porque muda semântica e pode quebrar código existente:
+**DECIDIDO** (ver acima): fica o design, entra o aviso. As opções eram:
 ou (a) função passa a criar local, como o CPython — e `global` volta a ter
 razão de existir; ou (b) o write-through fica e a doc é corrigida pra dizer
 isso sem se contradizer, e o `global` é documentado como redundante.

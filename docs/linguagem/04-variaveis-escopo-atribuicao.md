@@ -228,7 +228,8 @@ post(type(s))       # int
   (não são de bloco; sobrevivem entre os blocos internos dela).
 - Variáveis no **topo do arquivo** são do **escopo de módulo** (globais).
 - Dentro de uma função, atribuir a um nome que **não existe fora** cria uma
-  variável **local** à função — ela some quando a função retorna:
+  variável **local** à função — ela some quando a função retorna. Se o nome
+  **existe** no módulo, a atribuição escreve nele (§4.7), e a linguagem avisa:
 
 ```ps
 action f() {
@@ -259,10 +260,42 @@ bump()
 post(contador)      # 2
 ```
 
-Sem o `global`, `contador = ...` dentro de `bump` criaria uma local e a de fora
-ficaria em `0`. (Apenas **reatribuir** uma global que já existe funciona sem
-`global` — o write-through de 4.6.2 —; o `global` é necessário para **criar** a
-global de dentro, ou deixar a intenção explícita.)
+**Sem o `global` o resultado é o mesmo — e é isso que o `global` serve pra
+deixar dito.** Atribuir dentro de uma função a um nome que **já existe no
+módulo** escreve nele; é o write-through de 4.6.2 valendo também através da
+fronteira da função, e é o que faz o contador em closure funcionar:
+
+```ps
+a = 1
+action inc() {
+    a = a + 1       # escreve no `a` do módulo
+    return a
+}
+post(inc(), inc())  # 2 3
+```
+
+`global` é necessário para **criar** uma global que ainda não existe, e é
+recomendado sempre que a intenção for escrever no módulo.
+
+> **A linguagem AVISA quando você não diz.** Escrever num nome de módulo de
+> dentro de uma função sem `global` sai como:
+>
+> ```
+> arquivo.ps:3: SyntaxWarning: 'a' existe no modulo: esta atribuicao ESCREVE
+> NELE, nao cria uma local. Use 'global a', ou outro nome
+> ```
+>
+> O programa **roda igual** — aviso não é erro. Ele existe porque essa é a
+> coisa mais silenciosa que a linguagem faz: um `i = 0` dentro de uma função
+> zera o `i` do laço de quem chamou, e o defeito aparece longe da causa. Se a
+> escrita é intencional, `global` cala o aviso; se não é, troque o nome.
+>
+> **Parâmetro não conta**: `action f(n)` com `n` no módulo sombreia de verdade,
+> e não avisa.
+>
+> Aqui a linguagem **diverge do Python**, onde `a = a + 1` dentro da função
+> faria de `a` uma local em todo o corpo e o exemplo acima daria
+> `UnboundLocalError`.
 
 ---
 
