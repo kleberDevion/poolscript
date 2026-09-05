@@ -184,7 +184,7 @@ São três peças, e as três vêm do repositório:
 
 | peça | o que dá | onde |
 |---|---|---|
-| plugin | ícone por extensão (`.ps` azul, `.p` roxo, `.psl` vermelho), indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
+| plugin | ícone por extensão (`.ps` → **PS** azul, `.p` → **P** azul, `.psl` → **&lt;PSL/&gt;** vermelho), indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
 | bundle TextMate | o realce — **cópia** da gramática do vsix, fonte única lá | `editor/intellij/bundle` |
 | LSP4IJ | completion, hover, diagnóstico: o mesmo `poolscript-lsp` do VS Code | plugin do marketplace |
 
