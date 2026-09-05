@@ -18,6 +18,7 @@
 
 #include "ps_vm.h"
 #include "ps_lexer.h"   /* --contexto: o editor pergunta pro lexer, nao pro regex */
+#include "ps_parser.h"  /* --ast: e pra ARVORE que ele pergunta, pelo mesmo motivo */
 #include "ps_pkg.h"
 
 #include "ps_versao.h"
@@ -38,6 +39,7 @@ static void ajuda(void)
 "  pool //doc                Mostra a URL da especificacao\n"
 "  pool --contexto L:C       O que o cursor toca (pro editor); fonte no stdin\n"
 "  pool --tokens             Tokens do lexer em JSON (pro realce); fonte no stdin\n"
+"  pool --ast                A arvore do parser em JSON (pro editor); stdin\n"
 "  pool --version / -V       Mostra a versao\n"
 "  pool --help / -h          Mostra esta ajuda\n"
 "\n"
@@ -469,6 +471,126 @@ static int cmd_tokens(void)
     return 0;
 }
 
+/* ── `--ast`: a ÁRVORE, em JSON, pro editor ──────────────────────────────
+ *
+ * POR QUE ESTE COMANDO EXISTE.
+ *
+ * O servidor de linguagem tinha `--tokens` (o léxico), `--metadata` (as
+ * tabelas do VM) e `--check` (o erro). Faltava a única coisa que responde
+ * "o que está em escopo NESTA linha": a árvore.
+ *
+ * Sem ela, o servidor casava PADRÃO em cima do texto — uma regex pra `self.`,
+ * outra pra `alvo.`, uma varredura à mão pra achar parâmetro, outra pra achar
+ * Entity. Cada forma nova que o usuário escrevia era um ramo novo escrito à
+ * mão, e por isso sempre faltava um: `a.b.c`, método dentro de classe,
+ * variável declarada três linhas acima. Não era análise, era remendo.
+ *
+ * Quem sabe o que é variável, de quem é o membro e o que está em escopo é o
+ * PARSER — o mesmo que compila o programa. Publicar a árvore acaba com a
+ * segunda gramática do lado do editor.
+ *
+ * O emissor é GENÉRICO sobre a struct do nó: percorre `a/b/c/e` e as três
+ * listas, sem um caso por tipo. Nó novo na linguagem já sai aqui, sem ninguém
+ * tocar neste arquivo — que é a mesma razão de `--metadata` sair das tabelas
+ * do VM em vez de uma lista digitada.
+ *
+ * A LISTA DE ERRO NÃO IMPEDE A ÁRVORE: o editor precisa completar enquanto o
+ * arquivo está pela metade (é justamente quando se digita). Com erro de
+ * sintaxe sai `{"ok":false,...}` COM a árvore parcial que o parser conseguiu,
+ * em vez de vazio.
+ */
+static void ast_json(FILE *f, const PSNode *n);
+
+static void ast_lista(FILE *f, const char *chave, const PSNodeVec *v, int *virg)
+{
+    if (v->n == 0) return;
+    if (*virg) fputc(',', f);
+    *virg = 1;
+    fprintf(f, "\"%s\":[", chave);
+    for (int32_t i = 0; i < v->n; i++) {
+        if (i) fputc(',', f);
+        ast_json(f, v->itens[i]);
+    }
+    fputc(']', f);
+}
+
+static void ast_filho(FILE *f, const char *chave, const PSNode *c, int *virg)
+{
+    if (!c) return;
+    if (*virg) fputc(',', f);
+    *virg = 1;
+    fprintf(f, "\"%s\":", chave);
+    ast_json(f, c);
+}
+
+static void ast_txt(FILE *f, const char *chave, const char *s, int *virg)
+{
+    if (!s) return;
+    if (*virg) fputc(',', f);
+    *virg = 1;
+    fprintf(f, "\"%s\":\"", chave);
+    json_escapa(f, s, (int)strlen(s));
+    fputc('"', f);
+}
+
+static void ast_json(FILE *f, const PSNode *n)
+{
+    if (!n) { fputs("null", f); return; }
+    int virg = 0;
+    fputc('{', f);
+    fprintf(f, "\"k\":\"%s\",\"l\":%d,\"c\":%d", ps_node_nome(n->kind), n->line, n->col);
+    virg = 1;
+    ast_txt(f, "texto",  n->texto,  &virg);
+    ast_txt(f, "texto2", n->texto2, &virg);
+    ast_txt(f, "texto3", n->texto3, &virg);
+    ast_txt(f, "estilo", n->estilo, &virg);
+    if (n->is_async)   { fputs(",\"async\":true", f); }
+    if (n->is_private) { fputs(",\"private\":true", f); }
+    if (n->i2)         { fprintf(f, ",\"i2\":%d", n->i2); }
+    ast_filho(f, "a", n->a, &virg);
+    ast_filho(f, "b", n->b, &virg);
+    ast_filho(f, "c", n->c, &virg);
+    ast_filho(f, "e", n->e, &virg);
+    ast_lista(f, "lista",  &n->lista,  &virg);
+    ast_lista(f, "lista2", &n->lista2, &virg);
+    ast_lista(f, "alias",  &n->lista2_alias, &virg);
+    fputc('}', f);
+}
+
+static int cmd_ast(void)
+{
+    size_t tam = 0;
+    char *fonte = le_stdin_todo(&tam);
+    if (!fonte) { printf("{\"ok\":false,\"msg\":\"sem entrada\"}\n"); return 1; }
+
+    PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
+    free(fonte);
+    if (!tl || !tl->ok) {
+        printf("{\"ok\":false,\"tipo\":\"SyntaxError\",\"msg\":\"");
+        if (tl) json_escapa(stdout, tl->erro, (int)strlen(tl->erro));
+        printf("\",\"linha\":%d,\"coluna\":%d,\"arvore\":null}\n",
+               tl ? tl->erro_linha : 0, tl ? tl->erro_col : 0);
+        if (tl) ps_lexer_free(tl);
+        return 1;
+    }
+    PSParseResult *r = ps_parse(tl->tokens, tl->n);
+    ps_lexer_free(tl);
+    if (!r) { printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
+
+    if (!r->ok) {
+        printf("{\"ok\":false,\"tipo\":\"SyntaxError\",\"msg\":\"");
+        json_escapa(stdout, r->erro, (int)strlen(r->erro));
+        printf("\",\"linha\":%d,\"coluna\":%d,\"arvore\":", r->erro_linha, r->erro_col);
+    } else {
+        printf("{\"ok\":true,\"arvore\":");
+    }
+    ast_json(stdout, r->programa);
+    fputs("}\n", stdout);
+    int rc = r->ok ? 0 : 1;
+    ps_parse_free(r);
+    return rc;
+}
+
 static int cmd_contexto(const char *pos)
 {
     int linha = 0, col = 0;
@@ -611,6 +733,8 @@ int main(int argc, char **argv)
     /* o editor pergunta o contexto do cursor pro LEXER, nao pra um regex */
     if (!strcmp(cmd, "--tokens") || !strcmp(cmd, "tokens"))
         return cmd_tokens();
+    if (!strcmp(cmd, "--ast") || !strcmp(cmd, "ast"))
+        return cmd_ast();
     if (!strcmp(cmd, "--contexto") || !strcmp(cmd, "contexto"))
         return cmd_contexto(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--metadata") || !strcmp(cmd, "metadata")) {
