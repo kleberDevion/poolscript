@@ -284,6 +284,41 @@ if __name__ == "main" {
         }
     }
 
+    # ── os arquivos que a medição NÃO ALCANÇA ───────────────────────────────
+    #
+    # O relatório acima lista o que o `.info` traz, e o `.info` só traz o que
+    # foi COMPILADO. Um `.c` fora do build não aparece em lugar nenhum: não sai
+    # como 0%, sai como se não existisse — e o total fecha bonito porque ele
+    # nunca entrou na conta.
+    #
+    # Não é hipótese: `ps_compiler_bind.c`, `ps_lexer_bind.c` e
+    # `ps_parser_bind.c` (570 linhas) estão fora do `FONTES` do Makefile desde
+    # sempre, e o benchmark dizia "17 arquivos" sobre um diretório com 20.
+    medidos = arquivos.keys()
+    fora = []
+    for each e in os.ls("vm") {
+        nome = e["name"]
+        if not nome.endswith(".c") {
+            continue
+        }
+        if nome in medidos {
+            continue
+        }
+        n = len(open("vm/" + nome).read().split("\n"))
+        addEnd(fora, [nome, n])
+    }
+    post("")
+    if len(fora) == 0 {
+        post("FORA DA MEDIÇÃO: nenhum — todo .c de vm/ tem cobertura medida")
+    }
+    else {
+        post("FORA DA MEDIÇÃO — " + str(len(fora)) + " arquivo(s) de vm/ sem NENHUM dado")
+        post("(não é 0%: é ausência. Não estão no build, então nunca entram na conta)")
+        for each f in fora {
+            post("  " + pad(f[0], 24) + padl(f[1], 6) + " linhas")
+        }
+    }
+
     if "--só-mede" in sys.argv {
         sys.exit(0)
     }
