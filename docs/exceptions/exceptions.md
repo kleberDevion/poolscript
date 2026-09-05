@@ -83,6 +83,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `MemoryError` | sem memória. **Único caso em que a mensagem não é a do CPython**, e de propósito: lá ela é vazia (`MemoryError:` e nada mais), aqui ela diz onde acabou — `sem memoria em sorted()`. Num processo que morreu de memória essa é a única pista que sobra |
 | `AttributedValueError` | valor incompatível atribuído a variável **tipada**: `str x = 10`. **Não** cobre o `+` — somar tipos que não somam é `TypeError` |
 | `IndexError` | índice fora da faixa, lendo **ou** escrevendo. O texto diz qual: `list index out of range`, `string index out of range`, `tup index out of range`, `index out of range` (bytes), e `list assignment index out of range` na escrita |
+| `AssertionError` | `assert(...)` que não passou. Com um valor só, o texto é o valor recebido (`false nao e verdadeiro`); com dois, os dois lados (`veio 3, esperava 4`); com uma nota, ela vem na frente. É capturável como qualquer outra — um teste pode contar as falhas em vez de parar na primeira |
 | `NotImplemented` | função de lib "stub": existe, e ainda não faz nada. O nome é esse mesmo, **sem** o `Error` no fim — `catch (NotImplementedError e)` não pega esta |
 | `NotImplementedError` | módulo importado que **não compila** por motivo que não é sintaxe. É outro erro, apesar do nome parecido — não confunda com o de cima |
 | `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `pool --check` relata |

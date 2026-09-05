@@ -19293,9 +19293,73 @@ static int nativa_filter(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+/* ── assert ───────────────────────────────────────────────────────────────
+ *
+ * POR QUE ELE FALTAVA, E POR QUE ISSO IMPORTA. A linguagem se testa com 9201
+ * casos e não dava a quem ESCREVE nela nenhuma forma de testar o próprio
+ * código: não havia `assert` nos embutidos nem runner. Quem usava PoolScript
+ * de verdade escrevia `if x != y { post("erro") }` na mão e contava na cabeça.
+ * Linguagem que não deixa testar é linguagem pra script de cinquenta linhas.
+ *
+ *     assert(cond)                        falhou -> AssertionError
+ *     assert(cond, "mensagem")            falhou -> AssertionError: mensagem
+ *     assert(recebido, esperado, "nota")  compara os DOIS e mostra os dois
+ *
+ * A terceira forma existe porque `assert(a == b)` é a forma que mais se
+ * escreve e a que menos ajuda quando quebra: "AssertionError" e nada mais.
+ * Recebendo os dois lados, a mensagem diz o que veio e o que se esperava — que
+ * é a diferença entre um teste que aponta o defeito e um que só avisa que ele
+ * existe. É a mesma razão de o `ValueError` do desempacotamento dizer os dois
+ * números.
+ *
+ * Devolve `true` quando passa, então serve dentro de expressão e o valor não
+ * se perde.
+ */
+static int nativa_assert(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 3) return erro_aridade(vm, "assert", 1, 3, n);
+
+    /* `assert(a, b, ...)` com DOIS valores compara; com valor + texto, o texto
+     * é a mensagem. Um `str` na segunda posição nunca é "esperado": comparar
+     * contra a própria explicação seria o oposto do que se escreveu. */
+    int comparando = (n >= 2 && !EH_STRING(args[1]));
+    const char *nota = NULL;
+    if (n == 3)                     nota = EH_STRING(args[2]) ? COMO_STRING(args[2])->chars : NULL;
+    else if (n == 2 && !comparando) nota = COMO_STRING(args[1])->chars;
+
+    /* `val_iguais` é a MESMA função do operador `==` (OP_EQ). Uma segunda
+     * noção de igualdade aqui faria `assert(a, b)` discordar de `a == b`. */
+    if (comparando) {
+        if (val_iguais(&args[0], &args[1])) { *out = MK_BOOL(1); return 0; }
+        TXTBUF_AUTO a = {0};
+        TXTBUF_AUTO b = {0};
+        valor_para_texto(&a, &args[0], 1);
+        valor_para_texto(&b, &args[1], 1);
+        /* As larguras somam menos que o `vm->erro[256]` DE PROPÓSITO: com
+         * `%.200s` duas vezes o formato chega a 417 bytes e o snprintf corta
+         * calado no meio do valor esperado — a mensagem perderia justamente a
+         * metade que diz o que devia ter vindo. */
+        if (nota) BERRO(vm, "AssertionError", "%.100s — veio %.65s, esperava %.65s",
+                        nota, a.b ? a.b : "?", b.b ? b.b : "?");
+        BERRO(vm, "AssertionError", "veio %.110s, esperava %.110s",
+              a.b ? a.b : "?", b.b ? b.b : "?");
+    }
+
+    if (val_truthy(&args[0])) { *out = MK_BOOL(1); return 0; }
+    if (nota) BERRO(vm, "AssertionError", "%.240s", nota);
+    /* Sem nota, mostrar o valor recebido é a única informação que sobra —
+     * "AssertionError" seco não diz nem se veio `false`, `null` ou `0`. */
+    {
+        TXTBUF_AUTO a = {0};
+        valor_para_texto(&a, &args[0], 1);
+        BERRO(vm, "AssertionError", "%.200s nao e verdadeiro", a.b ? a.b : "?");
+    }
+}
+
 typedef struct { const char *nome; FnNativa fn; const char *params; } Builtin;
 
 static Builtin BUILTINS[] = {
+    { "assert", nativa_assert, "cond,esperado=Null,mensagem=Null" },
     { "post", nativa_post, NULL },
     { "len", nativa_len, NULL },
     { "str", nativa_str, NULL },

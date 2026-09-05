@@ -111,6 +111,12 @@ struct PSNode {
     PSNodeKind kind;
     int32_t    line;
     int32_t    col;
+    /* Onde o nó TERMINA (0 = não registrado). Hoje só o `Block` preenche, que
+     * é o que o editor precisa: sem isto o escopo de uma action acabava no
+     * último comando, e o cursor numa linha em branco antes do `}` caía FORA
+     * dele — parâmetro e variável local sumiam da sugestão exatamente onde se
+     * está escrevendo. A árvore tinha só onde cada coisa começa. */
+    int32_t    linha_fim;
 
     /* texto: nome de variável/action/membro/operador/parâmetro.
      * Aponta pra dentro da arena; não precisa de free. */

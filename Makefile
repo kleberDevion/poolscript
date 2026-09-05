@@ -158,7 +158,12 @@ install: pool
 	# IntelliJ e qualquer editor que fale LSP tenham o MESMO cerebro que o VS
 	# Code — antes cada um dependia de um servidor em PoolScript que respondia
 	# `-32601` pra quase tudo.
-	install -m644 editor/vscode/server.js $(PREFIXO)/share/poolscript/lsp/
+	# `analise.js` vai JUNTO: o server exige ele (`require('./analise.js')`), e
+	# instalar so o server.js deixava o Neovim e o IntelliJ com um servidor que
+	# morre no boot por MODULE_NOT_FOUND. O VS Code nao via porque a vsix leva a
+	# pasta inteira — o defeito so aparecia nos outros dois editores.
+	install -m644 editor/vscode/server.js editor/vscode/analise.js \
+	        $(PREFIXO)/share/poolscript/lsp/
 	@for m in vscode-languageserver vscode-languageserver-protocol \
 	          vscode-languageserver-types vscode-jsonrpc \
 	          vscode-languageserver-textdocument semver; do \

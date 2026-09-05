@@ -1,0 +1,15 @@
+# O que NÃO entra no .vsix.
+#
+# `node_modules` entra: o `vscode-languageclient` é dependência de execução e
+# o VS Code não instala nada por conta própria. O que sai é o que só serve pra
+# construir ou pra desenvolver.
+.vscode/**
+.gitignore
+**/*.map
+**/tsconfig.json
+**/.eslintrc*
+node_modules/.package-lock.json
+node_modules/**/test/**
+node_modules/**/tests/**
+node_modules/**/*.md
+node_modules/**/.github/**

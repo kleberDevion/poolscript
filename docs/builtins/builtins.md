@@ -8,6 +8,7 @@ Funções disponíveis em qualquer `.ps`, sem import.
 |---|---|---|
 | [`abs`](abs/abs.md) | `abs(n)` | Valor absoluto de um número. |
 | [`addEnd`](addEnd/addEnd.md) | `addEnd(lista, item)` | Anexa o item no FIM da lista, mutando a própria lista. |
+| [`assert`](assert/assert.md) | `assert(cond)` · `assert(cond, msg)` · `assert(veio, esperado, msg)` | Falha com `AssertionError` se não passar. Com dois valores, compara e mostra os dois lados. |
 | [`addStart`](addStart/addStart.md) | `addStart(lista, item)` | Insere o item no INÍCIO da lista, mutando a própria lista. |
 | [`bin`](bin/bin.md) | `bin(n)` | Inteiro em binário, com prefixo 0b. |
 | [`bool`](bool/bool.md) | `bool(x)` | Verdade do valor: vazio/zero/Null são falsos, o resto é verdadeiro. |

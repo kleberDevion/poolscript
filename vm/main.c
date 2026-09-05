@@ -539,6 +539,7 @@ static void ast_json(FILE *f, const PSNode *n)
     int virg = 0;
     fputc('{', f);
     fprintf(f, "\"k\":\"%s\",\"l\":%d,\"c\":%d", ps_node_nome(n->kind), n->line, n->col);
+    if (n->linha_fim) fprintf(f, ",\"l2\":%d", n->linha_fim);
     virg = 1;
     ast_txt(f, "texto",  n->texto,  &virg);
     ast_txt(f, "texto2", n->texto2, &virg);

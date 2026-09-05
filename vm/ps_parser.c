@@ -1309,6 +1309,13 @@ static PSNode *bloco_no(P *p)
             pula_indent_solto(p);
         }
         if (checa(p, T_EOF)) { perro(p, "bloco com '{' nao foi fechado com '}'", t); return NULL; }
+        /* A LINHA DO `}` — a extensão do bloco.
+         *
+         * O editor precisa dela: sem `linha_fim`, o escopo de uma action
+         * acabava no último comando, e o cursor numa linha em branco antes do
+         * fecha-chaves caía FORA dele. Parâmetro e variável local sumiam da
+         * sugestão exatamente onde se está escrevendo. */
+        b->linha_fim = atual(p)->line;
         p->pos++;   /* } */
         return b;
     }
