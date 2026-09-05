@@ -237,6 +237,53 @@ catch (e)
 }
 confere("WebSocket faz handshake e ecoa a mensagem", "alo" in eco)
 
+# TAMANHO DO FRAME: o WebSocket codifica o comprimento em três formatos, e o
+# ramo escolhido depende do tamanho. Só o primeiro era exercitado — "alo" tem 3
+# bytes.
+#
+#   n < 126      1 byte           (o único que o teste acima cobria)
+#   n < 65536    126 + 2 bytes
+#   n >= 65536   127 + 8 bytes
+#
+# São dois ramos em `ps_jinker.c` (escrita e leitura de cada formato) que a
+# suíte inteira não tocava. Um `if` de tamanho errado corrompe o frame e o
+# outro lado desconecta sem dizer por quê — defeito caro de achar em produção
+# e barato de cobrir aqui.
+medio  = "m" * 300
+grande = "g" * 70000
+eco_medio = ""
+eco_grande = ""
+try
+{
+    ws2 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    recebidas = []
+    ws2.on_message(action(m) { recebidas.append(m) })
+    ws2.send(medio)
+    sleep(1)
+    ws2.send(grande)
+    sleep(2)
+    ws2.close()
+    for each r in recebidas
+    {
+        if len(r) > 60000
+        {
+            eco_grande = r
+        }
+        elif len(r) > 250
+        {
+            eco_medio = r
+        }
+    }
+}
+catch (e)
+{
+    eco_medio = "ERRO: " + str(e)
+}
+confere("frame de 300 bytes (comprimento em 2 bytes) atravessa inteiro",
+        len(eco_medio) >= 300 and eco_medio.endswith("m"))
+confere("frame de 70000 bytes (comprimento em 8 bytes) atravessa inteiro",
+        len(eco_grande) >= 70000 and eco_grande.endswith("g"))
+
 # ── protocolo CRU: requisição torta é recusada COM resposta ─────────────────
 r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
 confere("Content-Length não numérico vira 400", "400" in r)
@@ -288,6 +335,81 @@ while i < 50
 }
 confere("o servidor para limpo quando pedido (sem isso o gcov dele não existe)", parou)
 os.cmd("kill $(cat " + PASTA + "/alvo.pid) 2>/dev/null; true")
+
+
+# ── TLS: o mesmo servidor, agora em HTTPS ───────────────────────────────────
+#
+# O benchmark de cobertura (`teste/bench_cobertura.ps`) mostrou as três funções
+# de TLS de `ps_jinker.c` em ZERO execução: `ps_jk_tls_autogera` (chave RSA,
+# X509, subjectAltName, assinatura, PEM no disco), `ps_jk_tls_ctx` e
+# `ps_jk_tls_ctx_solta`. Nenhum teste subia o jinker com `tls` — 36 ramos que a
+# suíte inteira não tocava.
+#
+# O cliente da linguagem NÃO serve aqui: ele valida o certificado, e o do teste
+# é self-signed, então `request.get` recusa (corretamente). Quem fala é o
+# `curl -k`. Sem curl, PULA — e diz que pulou.
+# `os.cmd` ECOA a saída e devolve Null — quem quer o resultado grava em
+# arquivo e lê. É o mesmo jeito do resto da suíte.
+os.cmd("command -v curl > /dev/null 2>&1; echo $? > " + PASTA + "/tem_curl")
+if open(PASTA + "/tem_curl").read().strip() != "0"
+{
+    post("  PULOU o TLS — falta o curl (o cliente da linguagem valida o cert,")
+    post("  e o do teste é self-signed)")
+}
+else
+{
+    PASTA_TLS = "/tmp/ps_jinker_tls"
+    os.cmd("rm -rf " + PASTA_TLS)
+    os.cmd("setsid '" + sys.executable + "' teste/jinker_alvo_tls.ps > "
+           + PASTA + "/tls.log 2>&1 < /dev/null & echo $! > " + PASTA + "/tls.pid")
+
+    subiu = false
+    i = 0
+    while i < 60
+    {
+        os.cmd("curl -sk --max-time 2 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
+        r = open(PASTA + "/tls_ok.txt").read()
+        if "\"ok\"" in r
+        {
+            subiu = true
+            break
+        }
+        sleep(0.25)
+        i = i + 1
+    }
+    confere("o jinker sobe em HTTPS gerando o self-signed sozinho", subiu)
+    confere("o certificado autogerado foi pro disco",
+            os.isfile(PASTA_TLS + "/.jinkerTls") and os.isfile(PASTA_TLS + "/.jinkerTls.key"))
+
+    if subiu
+    {
+        os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
+        r = open(PASTA + "/tls_ok.txt").read()
+        confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in r)
+
+        # parada limpa pelo MESMO motivo do alvo HTTP: morto por sinal, o
+        # servidor não grava o `.gcda` e a medição perde o lado TLS.
+        os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/__parar > /dev/null 2>&1; true")
+        parou_tls = false
+        i = 0
+        while i < 50
+        {
+            s = sockets.socket()
+            s.settimeout(0.2)
+            fechou = s.connect_ex(("127.0.0.1", 28953)) != 0
+            s.close()
+            if fechou
+            {
+                parou_tls = true
+                break
+            }
+            sleep(0.1)
+            i = i + 1
+        }
+        confere("o servidor TLS para limpo quando pedido", parou_tls)
+    }
+    os.cmd("kill $(cat " + PASTA + "/tls.pid) 2>/dev/null; true")
+}
 
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")

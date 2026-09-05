@@ -400,6 +400,12 @@ check: pool testar
 	# portao nenhum, porque vira base pra afirmar que esta tudo conferido.
 	@./pool teste/confere_cobertura_doc.ps
 	@echo
+	# STDLIB que a suite inteira nao chamava uma vez. O benchmark de cobertura
+	# (`teste/bench_cobertura.ps`) lista as funcoes em ZERO execucao, e eram 115
+	# so em poolscript_vm.c: `os.cwd`, `sys.platform`, `sys.stdin.read`,
+	# `date.now`, as 63 constantes de socket. Documentadas e nao testadas.
+	@./pool teste/cobre_stdlib.ps
+	@echo
 	@./pool scripts/audita_c.ps
 	@echo
 	@./pool scripts/audita_exemplos_doc.ps

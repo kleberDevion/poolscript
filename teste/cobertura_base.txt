@@ -21,19 +21,18 @@
 # Editar na mão pra BAIXAR um número é desligar o portão. Se a queda for
 # legítima (código deletado), rode `--grava` de propósito.
 
-main.c 84.3 66.5 256 385
-poolscript_vm.c 80.8 55.2 9167 16620
-ps_ast.c 100.0 95.3 81 85
-ps_compiler.c 96.0 70.9 1131 1596
+main.c 83.6 66.2 259 391
+poolscript_vm.c 82.8 56.7 9653 17036
+ps_ast.c 99.1 94.2 81 86
+ps_compiler.c 96.0 71.2 1181 1658
 ps_db.c 68.6 48.4 163 337
-ps_guzer.c 96.6 70.4 145 206
-ps_hash.c 99.2 89.6 138 154
+ps_hash.c 99.2 89.0 137 154
 ps_http.c 79.1 59.5 132 222
-ps_jinker.c 79.0 61.6 300 487
-ps_lexer.c 80.5 69.7 445 638
+ps_jinker.c 89.1 63.2 308 487
+ps_lexer.c 81.4 69.6 454 652
 ps_mail.c 89.5 56.9 418 734
 ps_mongo.c 89.5 55.0 44 80
-ps_parser.c 93.9 67.8 1382 2038
+ps_parser.c 93.9 68.2 1470 2156
 ps_pilha.c 100.0 81.2 13 16
 ps_pkg.c 84.0 60.5 207 342
 ps_qr.c 93.3 82.9 339 409

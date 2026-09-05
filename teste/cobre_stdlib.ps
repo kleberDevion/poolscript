@@ -1,0 +1,257 @@
+# Cobre a STDLIB DA LINGUAGEM que nenhum teste chamava uma vez sequer.
+#
+# POR QUE ELE EXISTE. O `teste/bench_cobertura.ps` lista as funções em ZERO
+# execução, e a lista de `poolscript_vm.c` tinha 115 — não ramos de erro
+# esquecidos, mas funções inteiras da biblioteca padrão:
+#
+#     sys.platform  sys.RelativePath  sys.stdin.read/readline
+#     sys.stdout.flush  sys.stderr.flush/writeln
+#     os.pathFile  os.pathFolder  os.rename  os.cwd  os.environ  os.warn
+#     os.ipmach  os.code
+#     date.time  date.now
+#     load()  id()  tup()  dict()      .replace() com lista
+#     63 constantes de socket, uma função cada
+#
+# Nenhuma delas é obscura: `os.cwd()` e `sys.platform()` são das primeiras
+# coisas que alguém chama. Elas estavam DOCUMENTADAS e NÃO TESTADAS, que é a
+# combinação que faz uma linguagem quebrar na mão de quem confia na doc.
+#
+# CADA CHECAGEM AFIRMA UM VALOR. Chamar a função e ignorar o retorno cobriria a
+# linha e não provaria nada — seria comprar percentual, que é o oposto do que o
+# benchmark serve pra decidir.
+#
+#     ./pool teste/cobre_stdlib.ps
+import os
+import sys
+import date
+import sockets
+
+PASTA = "/tmp/ps_cobre_stdlib"
+
+falhas = []
+ok = 0
+
+
+action confere(nome, cond)
+{
+    global ok
+    if cond
+    {
+        ok = ok + 1
+    }
+    else
+    {
+        addEnd(falhas, nome)
+    }
+}
+
+
+os.cmd("rm -rf " + PASTA)
+os.mkdir(PASTA, exist_ok=true)
+
+# ── sys ─────────────────────────────────────────────────────────────────────
+p = sys.platform()
+confere("sys.platform() diz o sistema", p == "linux" or p == "darwin" or p == "win32")
+
+# `sys.RelativePath` BUSCA o arquivo recursivamente a partir do cwd e devolve
+# onde achou; sem achar, devolve Null. Então o teste cria o alvo primeiro —
+# pedir um nome inexistente testaria só o caminho de falha.
+os.mkdir(PASTA + "/fundo", exist_ok=true)
+os.writeFile(PASTA + "/fundo/alvo_rp.txt", "achou")
+volta = os.cwd()
+os.chdir(PASTA)
+rp = sys.RelativePath("alvo_rp.txt")
+os.chdir(volta)
+confere("sys.RelativePath acha o arquivo em subpasta",
+        rp != null and rp.endswith("alvo_rp.txt"))
+confere("sys.RelativePath de nome inexistente devolve null",
+        sys.RelativePath("nao_existe_mesmo_987.txt") == null)
+
+confere("sys.executable aponta um arquivo que existe", os.isfile(sys.executable))
+# `sys.argv` traz só os argumentos DO USUÁRIO — o nome do script NÃO entra,
+# diferente do Python. Rodado sem argumento, é lista vazia.
+confere("sys.argv sem argumento é lista vazia", len(sys.argv) == 0)
+
+# stdout/stderr: o `flush` não devolve nada, então o que se afirma é que ele
+# ESCOA — escrevendo sem newline e conferindo que o texto saiu antes do fim.
+sys.stdout.write("")
+sys.stdout.flush()
+sys.stderr.write("")
+sys.stderr.writeln("")
+sys.stderr.flush()
+confere("sys.stdout/stderr write+writeln+flush não levantam", true)
+
+# ── sys.stdin ───────────────────────────────────────────────────────────────
+#
+# Roda um script FILHO com a entrada redirecionada: no processo do teste o
+# stdin é o terminal, e ler dele penduraria a suíte pra sempre.
+os.writeFile(PASTA + "/le_stdin.ps",
+             "import sys\n"
+             + "l = sys.stdin.readline()\n"
+             + "r = sys.stdin.read(4)\n"
+             + "post(l.strip() + \"|\" + r)\n")
+os.writeFile(PASTA + "/entrada.txt", "primeira\nabcdefgh")
+os.cmd("'" + sys.executable + "' " + PASTA + "/le_stdin.ps < " + PASTA
+       + "/entrada.txt > " + PASTA + "/stdin.out 2>&1")
+confere("sys.stdin.readline() e read(n) leem a entrada",
+        open(PASTA + "/stdin.out").read().strip() == "primeira|abcd")
+
+# ── os: caminho, diretório, ambiente ────────────────────────────────────────
+# `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
+# então o teste cria o alvo e roda de dentro da pasta.
+os.mkdir(PASTA + "/uploads", exist_ok=true)
+os.writeFile(PASTA + "/dados.json", "{}")
+volta2 = os.cwd()
+os.chdir(PASTA)
+cf = os.pathFile("dados.json")
+cp = os.pathFolder("uploads")
+os.chdir(volta2)
+confere("os.pathFile devolve o caminho absoluto do arquivo",
+        cf.startswith("/") and cf.endswith("dados.json"))
+confere("os.pathFolder devolve o caminho absoluto da pasta",
+        cp.startswith("/") and cp.endswith("uploads"))
+
+antes = os.cwd()
+confere("os.cwd() devolve caminho absoluto", antes.startswith("/"))
+os.chdir(PASTA)
+confere("os.chdir muda o cwd de verdade", os.cwd() != antes)
+os.chdir(antes)
+confere("e volta", os.cwd() == antes)
+
+os.writeFile(PASTA + "/velho.txt", "conteudo")
+os.rename(PASTA + "/velho.txt", PASTA + "/novo.txt")
+confere("os.rename move o arquivo",
+        os.isfile(PASTA + "/novo.txt") and not os.isfile(PASTA + "/velho.txt"))
+confere("e o conteúdo atravessa intacto",
+        os.readFile(PASTA + "/novo.txt") == "conteudo")
+
+confere("os.environ lê variável do ambiente", os.environ("HOME") == os.getenv("HOME"))
+confere("os.environ de variável inexistente é null",
+        os.environ("PS_NAO_EXISTE_MESMO_123") == null)
+
+ip = os.ipmach()
+confere("os.ipmach devolve um IP com três pontos", len(ip.split(".")) == 4)
+
+# `os.code` NÃO entra aqui: ele ABRE o arquivo no editor (`code <path>`).
+# Chamar num teste levantaria uma janela do VS Code a cada rodada da suíte.
+
+# `os.warn` escreve em stderr colorido — não devolve nada; o que se afirma é
+# que ele aceita a cor e não levanta.
+os.warn("aviso do teste de cobertura", color="yellow")
+confere("os.warn aceita texto e cor", true)
+
+# ── date ────────────────────────────────────────────────────────────────────
+t = date.time()
+confere("date.time() devolve HH:MM:SS", len(t.split(":")) == 3)
+n = date.now()
+confere("date.now() traz data e hora juntas", len(str(n)) >= 10)
+confere("date.today() traz a data", len(date.today()) >= 8)
+confere("date.timestamp() é número positivo", date.timestamp() > 0)
+
+# ── embutidos ───────────────────────────────────────────────────────────────
+confere("tup() constrói tupla", type(tup([1, 2])) == "tup" and len(tup([1, 2])) == 2)
+confere("dict() constrói dict vazio", type(dict()) == "dict")
+confere("id() de dois objetos distintos difere", id([1]) != id([1]))
+mesmo = [1]
+confere("id() do MESMO objeto é estável", id(mesmo) == id(mesmo))
+
+# `.replace()` com LISTA: troca vários de uma vez
+confere("str.replace com lista troca todos",
+        "a-b-c".replace(["a", "b"], "x") == "x-x-c")
+
+# `load()` é o `dotenv.load` exposto sem import: lê um `.env` e põe as
+# variáveis no ambiente.
+#
+# A doc (`docs/builtins/load/load.md`) diz "Retorno: bool"; o motor devolve um
+# `dict` com o que leu. O teste afirma o que o MOTOR faz — a doc é quem está
+# fora de sincronia, e o `audita_doc.ps` não pega isso porque só confere nome e
+# ordem de parâmetro, nunca o tipo de retorno.
+os.writeFile(PASTA + "/.env", "PS_COB_UM=alfa\nPS_COB_DOIS=beta\n")
+m = load(PASTA + "/.env")
+confere("load() devolve o que leu do .env",
+        type(m) == "dict" and m["PS_COB_UM"] == "alfa")
+confere("load() põe a variável no ambiente", os.getenv("PS_COB_DOIS") == "beta")
+
+# ── constantes de socket ────────────────────────────────────────────────────
+#
+# São 63 funções de uma linha cada, e nenhuma era lida. Conferir o VALOR (e não
+# só que existe) é o que separa cobrir de carimbar: `SOCK_STREAM` tem que ser 1
+# no Linux, não "algum inteiro".
+confere("AF_INET/AF_INET6/AF_UNIX",
+        sockets.AF_INET == 2 and sockets.AF_INET6 == 10 and sockets.AF_UNIX == 1)
+confere("AF_UNSPEC é 0", sockets.AF_UNSPEC == 0)
+confere("AF_PACKET é 17 no Linux", sockets.AF_PACKET == 17)
+confere("SOCK_STREAM=1 SOCK_DGRAM=2 SOCK_RAW=3",
+        sockets.SOCK_STREAM == 1 and sockets.SOCK_DGRAM == 2 and sockets.SOCK_RAW == 3)
+confere("SOCK_SEQPACKET é 5", sockets.SOCK_SEQPACKET == 5)
+confere("SOL_SOCKET é 1", sockets.SOL_SOCKET == 1)
+
+opts = [sockets.SO_REUSEADDR, sockets.SO_REUSEPORT, sockets.SO_KEEPALIVE,
+        sockets.SO_BROADCAST, sockets.SO_LINGER, sockets.SO_RCVBUF,
+        sockets.SO_SNDBUF, sockets.SO_ERROR, sockets.SO_RCVTIMEO,
+        sockets.SO_SNDTIMEO, sockets.SO_OOBINLINE, sockets.SO_DONTROUTE,
+        sockets.SO_TYPE]
+confere("as 13 opções SO_* são inteiros distintos e positivos",
+        len(opts) == 13 and min(opts) > 0)
+
+confere("TCP_NODELAY é 1", sockets.TCP_NODELAY == 1)
+confere("TCP_KEEPIDLE/INTVL/CNT existem e diferem",
+        sockets.TCP_KEEPIDLE != sockets.TCP_KEEPINTVL
+        and sockets.TCP_KEEPINTVL != sockets.TCP_KEEPCNT)
+
+confere("IPPROTO_IP=0 TCP=6 UDP=17 ICMP=1 RAW=255",
+        sockets.IPPROTO_IP == 0 and sockets.IPPROTO_TCP == 6
+        and sockets.IPPROTO_UDP == 17 and sockets.IPPROTO_ICMP == 1
+        and sockets.IPPROTO_RAW == 255)
+
+confere("SHUT_RD=0 WR=1 RDWR=2",
+        sockets.SHUT_RD == 0 and sockets.SHUT_WR == 1 and sockets.SHUT_RDWR == 2)
+
+msgs = [sockets.MSG_PEEK, sockets.MSG_WAITALL, sockets.MSG_DONTWAIT,
+        sockets.MSG_OOB, sockets.MSG_DONTROUTE, sockets.MSG_TRUNC]
+confere("as 6 flags MSG_* são potências de dois distintas",
+        len(msgs) == 6 and min(msgs) > 0)
+
+ais = [sockets.AI_PASSIVE, sockets.AI_CANONNAME, sockets.AI_NUMERICHOST,
+       sockets.AI_NUMERICSERV, sockets.AI_ADDRCONFIG, sockets.AI_V4MAPPED,
+       sockets.AI_ALL]
+confere("as 7 flags AI_* são positivas", len(ais) == 7 and min(ais) > 0)
+
+nis = [sockets.NI_NUMERICHOST, sockets.NI_NUMERICSERV, sockets.NI_NOFQDN,
+       sockets.NI_NAMEREQD, sockets.NI_DGRAM]
+confere("as 5 flags NI_* são positivas", len(nis) == 5 and min(nis) > 0)
+
+confere("SOMAXCONN é positivo", sockets.SOMAXCONN > 0)
+confere("INADDR_ANY=0 e LOOPBACK=0x7f000001",
+        sockets.INADDR_ANY == 0 and sockets.INADDR_LOOPBACK == 2130706433)
+confere("INADDR_BROADCAST é 0xffffffff", sockets.INADDR_BROADCAST == 4294967295)
+
+ips = [sockets.IP_TTL, sockets.IP_MULTICAST_TTL, sockets.IP_MULTICAST_LOOP,
+       sockets.IP_ADD_MEMBERSHIP, sockets.IP_DROP_MEMBERSHIP, sockets.IPV6_V6ONLY]
+confere("as 6 opções de IP são positivas", len(ips) == 6 and min(ips) > 0)
+
+# ── resolução de nome ───────────────────────────────────────────────────────
+#
+# `localhost` resolve sem rede: está no /etc/hosts. Nada aqui sai da máquina.
+h = sockets.gethostbyname_ex("localhost")
+confere("gethostbyname_ex devolve nome, apelidos e endereços",
+        len(h) == 3 and "127.0.0.1" in h[2])
+confere("gethostbyaddr resolve o loopback de volta",
+        len(sockets.gethostbyaddr("127.0.0.1")) == 3)
+confere("has_dualstack_ipv6 responde bool",
+        sockets.has_dualstack_ipv6() == true or sockets.has_dualstack_ipv6() == false)
+
+os.cmd("rm -rf " + PASTA)
+
+# ── relatório ───────────────────────────────────────────────────────────────
+post("")
+post("stdlib:", ok, "checagens passaram")
+if falhas.len() > 0
+{
+    post("FALHARAM:", falhas.len())
+    for each f in falhas
+    {
+        post("  " + f)
+    }
+    sys.exit(1)
+}

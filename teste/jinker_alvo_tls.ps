@@ -1,0 +1,57 @@
+# Servidor-alvo HTTPS do `teste/jinker_roda.ps` — loopback, sem serviço externo.
+#
+# POR QUE ELE É UM ARQUIVO À PARTE do `jinker_alvo.ps`: TLS se liga na
+# construção do app (`{"tls": true}`), não por rota. Um processo serve HTTP ou
+# HTTPS, não os dois.
+#
+# O QUE ELE COBRE, e por que isso importa: o benchmark de cobertura
+# (`teste/bench_cobertura.ps`) mostrou que as TRÊS funções de TLS de
+# `ps_jinker.c` nunca executavam —
+#
+#     ps_jk_tls_autogera    ~50 linhas: chave RSA, X509, subjectAltName,
+#                           basicConstraints, assinatura, PEM no disco
+#     ps_jk_tls_ctx         SSL_CTX, carga do par cert/chave
+#     ps_jk_tls_ctx_solta   liberação
+#
+# Nenhum teste subia o jinker com `tls`. Elas respondem por 36 dos ramos que o
+# portão de cobertura acusou como perdidos em `ps_jinker.c`, e o conserto certo
+# é cobrir, não baixar a base.
+#
+# `{"tls": true}` SEM `cert`/`key` é de propósito: é esse caminho que dispara a
+# autogeração do self-signed em `.jinkerTls`/`.jinkerTls.key`. Com um par
+# pronto, `ps_jk_tls_autogera` continuaria em zero.
+#
+# A rota `/__parar` existe pelo mesmo motivo do alvo HTTP: processo morto por
+# SINAL não grava o `.gcda` do gcov, e sem saída limpa a metade servidor some
+# da medição inteira.
+import jinker
+import sys
+import os
+
+PASTA = "/tmp/ps_jinker_tls"
+os.mkdir(PASTA, exist_ok=true)
+# O cert autogerado nasce no diretório de trabalho: rodar aqui deixa o lixo
+# num lugar só, e o driver apaga a pasta inteira no fim.
+os.chdir(PASTA)
+
+app = jinker.Jinker("alvo_tls", {"tls": true})
+
+
+@app.route("/ok")
+action ok()
+{
+    return {"ok": true, "protocolo": "https"}
+}
+
+
+@app.route("/__parar")
+action parar()
+{
+    post("servidor-tls: parando a pedido do driver")
+    sys.exit(0)
+}
+
+
+if __name__ == "main" {
+    app(debug=false, host="127.0.0.1", port=28953)
+}

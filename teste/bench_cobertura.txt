@@ -1,0 +1,25 @@
+# Benchmark de cobertura — uma linha por arquivo:
+#   <arquivo> <ramos descobertos> <ramos cobertos> <funcoes em zero>
+#
+# Gravado pelo `teste/bench_cobertura.ps` a cada rodada. Serve pra comparar
+# RUN com RUN: a coluna 'vs. ultima' do relatorio sai daqui.
+#
+# Nao confundir com `teste/cobertura_base.txt`, que e o PISO do portao. Este
+# arquivo nao reprova nada — so lembra do numero anterior.
+poolscript_vm.c 7383 9653 40
+ps_parser.c 686 1470 1
+ps_compiler.c 477 1181 1
+ps_mail.c 316 418 0
+ps_lexer.c 198 454 3
+ps_regex.c 185 551 2
+ps_jinker.c 179 308 1
+ps_db.c 174 163 5
+ps_pkg.c 135 207 0
+main.c 132 259 0
+ps_xlsx.c 110 125 3
+ps_http.c 90 132 1
+ps_qr.c 70 339 2
+ps_mongo.c 36 44 0
+ps_hash.c 17 137 0
+ps_ast.c 5 81 0
+ps_pilha.c 3 13 0
