@@ -182,8 +182,17 @@ install: pool
 	printf '#!/bin/sh\n# Servidor LSP da PoolScript. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "poolscript-lsp precisa do node (o servidor usa vscode-languageserver)" >&2\n  exit 1\nfi\nexec node %s/share/poolscript/lsp/server.js "$${@:---stdio}"\n' \
 	        '$(PREFIXO)' > $(PREFIXO)/bin/poolscript-lsp
 	chmod 755 $(PREFIXO)/bin/poolscript-lsp
-	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO)
-	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp, tipo MIME e icone"
+	# O MIME NÃO derruba o install. Ele escreve em $(DADOS) (/usr/share por
+	# padrão, ver a nota abaixo), então sem root ele falha — e falhava levando
+	# junto um install que já tinha copiado o `pool`, o `psl` e o LSP com
+	# sucesso. O ícone do arquivo no gerenciador é uma comodidade do desktop;
+	# ele não pode dar "Erro 2" num install que deu certo.
+	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO) \
+	  || { echo ""; \
+	       echo "  o tipo MIME/ícone NAO foi instalado: $(DADOS) pede root."; \
+	       echo "  o resto entrou. Pra ter o ícone do .ps: sudo make install-mime"; \
+	       echo ""; }
+	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp"
 
 # Tipo MIME + ícone do `.ps` pro desktop (GNOME/KDE/XFCE/…). Fica separado
 # porque num servidor sem ambiente gráfico ele não faz falta e as ferramentas
