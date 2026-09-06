@@ -1,9 +1,5 @@
 # Cookie — `resp.cookie(...)` e `request.cookie(nome)`
 
-Uma página, os dois lados. Cookie é um assunto só: quem escreve precisa saber
-ler e gravar na mesma sentada, e separar isso em duas páginas de três linhas
-não ajuda ninguém.
-
 ```
 JinkerResponse.cookie(nome, valor, path="/", max_age=Null,
                       httponly=true, secure=false,
