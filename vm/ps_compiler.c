@@ -730,6 +730,9 @@ static int cod_tipo_decl(const char *t)
         { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 },
         { "list", 4 }, { "dict", 5 }, { "json", 5 }, { "tup", 6 },
         { "char", 8 }, { "Object", 10 }, { "object", 10 },
+        /* apelidos (ver eh_apelido_tipo no parser): a mesma regra do tipo */
+        { "string", 0 }, { "String", 0 }, { "integer", 1 }, { "Integer", 1 },
+        { "tuple", 6 }, { "Tuple", 6 }, { "dictionary", 5 }, { "Dictionary", 5 },
     };
     if (!t) return -1;
     for (size_t i = 0; i < sizeof(T) / sizeof(T[0]); i++)
@@ -1977,7 +1980,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 int32_t t = -1;
                 for (int32_t k = 0; k < 8; k++)
                     if (f->texto2 && strcmp(f->texto2, tipos_m[k]) == 0) { t = k; break; }
-                if (t < 0 && f->texto2 && strcmp(f->texto2, "json") == 0) t = 5;
+                /* `json` e os apelidos (`string`, `Integer`…) passam pela
+                 * mesma tabela da declaracao; `char` e `Object` nao sao tipo
+                 * de campo de model */
+                if (t < 0) {
+                    int a = cod_tipo_decl(f->texto2);
+                    if (a >= 0 && a <= 6) t = a;
+                }
                 if (t < 0) { cerro(c, "tipo desconhecido em model", f); return; }
                 def->campos[i].tipo = t;
             }

@@ -73,7 +73,7 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   `"abc".` direto), retorno de método ou de action com tipo declarado,
   `model` e `enum` do arquivo (`Rota.`, `Cor.`), `self.` com campos do corpo
   da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
-  ninguém sabe (`for each x in …`) recebe ao menos o que todo valor tem;
+  é desconhecido (`for each x in …`) recebe ao menos o que todo valor tem;
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`);
   numa **palavra-chave** (`if`, `for each`, `try`, `action`, `return`…) a seção
@@ -154,7 +154,7 @@ O que a config entrega, além do LSP:
 | modo de edição | permanente — `Ctrl+S` salva, `Ctrl+Z` alterna |
 | `K` / `gd` / `[d` `]d` | hover, ir pra definição, navegar diagnóstico |
 
-O `completeopt` usa `noselect,noinsert` de propósito: o menu aparece, mas nada
+O `completeopt` usa `noselect,noinsert`: o menu aparece, mas nada
 é escrito no buffer até você escolher — o `<CR>` continua sendo quebra de linha.
 
 O mínimo, se preferir montar a sua:
@@ -262,7 +262,7 @@ features inventadas.
 | prosa | `docs/<escopo>/<nome>/<nome>.md` |
 
 Nenhuma lista de módulo, método ou lib é digitada no servidor. Se o motor
-ganha um método, o completion ganha junto, sem ninguém tocar em nada.
+ganha um método, o completion ganha junto, sem mudança no servidor.
 
 O binário que o servidor consulta vem do cliente (`poolscript.pool`) ou do
 PATH — apontar outro faria o completion descrever um motor diferente do que o

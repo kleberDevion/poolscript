@@ -160,6 +160,7 @@ Regras de coerção na declaração, por tipo-alvo:
 | `bool` | `bool` | — | `int` (mesmo `1`), etc. |
 | `list` `dict` `tup` `json` | o próprio tipo | — | os demais |
 | `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo | — | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
+| `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary` | apelidos de `str`, `int`, `tup`, `dict` — a linha do tipo apelidado vale igual | idem | idem |
 
 Ou seja: a linguagem faz só as conversões que não perdem nem adivinham
 informação — **int→flo** (alargamento) e **string numérica→número** (parsing).

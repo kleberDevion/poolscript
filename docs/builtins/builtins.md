@@ -2,7 +2,7 @@
 
 Funções disponíveis em qualquer `.ps`, sem import.
 
-**35 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make check`): doc errada quebra o teste.
+A lista sai da tabela `BUILTINS[]` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|

@@ -438,7 +438,10 @@ function tipoDoNome(doc, nome, linha) {
   /* variável: o tipo vem da declaração (`str x = …`) ou do que foi atribuído */
   for (const b of A.visiveisEm(idx, linha)) {
     if (b.nome !== nome) continue;
-    if (b.tipo && META.tipos[b.tipo]) return { tipo: 'tipo_motor', nome: b.tipo };
+    /* `string s = ...`: o apelido vira o tipo do motor pela tabela que o
+     * `--metadata` publica (tipos_apelidos), sem lista aqui */
+    const bt = (b.tipo && (META.tipos_apelidos || {})[b.tipo]) || b.tipo;
+    if (bt && META.tipos[bt]) return { tipo: 'tipo_motor', nome: bt };
     if (b.tipo && achaEntidade(doc, b.tipo)) return { tipo: 'entity', nome: b.tipo, interno: false };
     /* `Rota.` / `Cor.` — model e enum do arquivo: os membros estão no nó */
     if (b.kind === 'model' && b.no) return { tipo: 'model', no: b.no };

@@ -24377,7 +24377,23 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, kw[i]);
         }
     }
-    fprintf(f, "\n ]\n}\n");
+    /* Apelidos de tipo (`string` = str…): o editor precisa saber que `string
+     * s = ...` e um `str` pra oferecer os metodos certos em `s.`. */
+    fprintf(f, "\n ],\n \"tipos_apelidos\": {");
+    {
+        static const char *const AP[][2] = {
+            { "string", "str" }, { "String", "str" }, { "integer", "int" }, { "Integer", "int" },
+            { "tuple", "tup" }, { "Tuple", "tup" }, { "dictionary", "dict" }, { "Dictionary", "dict" },
+        };
+        for (size_t i = 0; i < sizeof(AP) / sizeof(AP[0]); i++) {
+            if (i) fputc(',', f);
+            fprintf(f, "\n  ");
+            jm_txt(f, AP[i][0]);
+            fprintf(f, ": ");
+            jm_txt(f, AP[i][1]);
+        }
+    }
+    fprintf(f, "\n }\n}\n");
 }
 
 /* Despeja os avisos do lexer no STDERR, no formato do CPython.

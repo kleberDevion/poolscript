@@ -27,6 +27,10 @@ str nome = "ana"      # declaração com tipo (checada/coagida em toda escrita)
   variável**: toda escrita seguinte é conferida igual — ver 4.6.4. Os tipos
   declaráveis: `str`, `int`, `flo`, `bool`, `char`, `list`, `dict`/`json`,
   `tup` e `Object` (qualquer objeto: instância, servidor, conexão, arquivo).
+  `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple` e
+  `dictionary`/`Dictionary` são apelidos de `str`, `int`, `tup` e `dict`, com
+  a mesma regra — e só valem na posição de tipo: não são palavras reservadas,
+  `string` continua podendo ser variável ou nome de argumento.
 
 A declaração tipada **exige** um valor: `int x` sozinho é erro de sintaxe
 (`declaracao de variavel exige '='`).

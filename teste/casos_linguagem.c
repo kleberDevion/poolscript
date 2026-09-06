@@ -1472,6 +1472,24 @@ const Caso CASOS_LINGUAGEM[] = {
   "x = \"a\"\n"
   "post(x)\n",
   "a", NULL, 0 },
+/* Apelidos de tipo, decisao dele: string/String = str, integer/Integer = int,
+ * tuple/Tuple = tup, dictionary/Dictionary = dict — a mesma regra do tipo que
+ * apelidam, inclusive a estatica. */
+{ "apelidos de tipo: string/Integer/tuple/Dictionary declaram e conferem como str/int/tup/dict",
+  "string s = \"a\"\n"
+  "Integer n = \"7\"\n"
+  "post(n + 1)\n"
+  "tuple t = (1, 2)\n"
+  "Dictionary d = {\"k\": 1}\n"
+  "post(len(t), d[\"k\"])\n"
+  "s = 1\n",
+  "8\n2 1", "AttributedValueError: variável s esperava str", 1 },
+{ "apelido de tipo NAO e palavra reservada: `string` como variavel e como argumento nomeado",
+  "import regex\n"
+  "string = 5\n"
+  "post(string)\n"
+  "post(regex.sub(\"a\", \"b\", string=\"aXa\"))\n",
+  "5\nbXb", NULL, 0 },
 /* A cabeça da action sob um decorador é a MESMA unidade do statement:
  * `[public|private] {async|tipo}* action|reaction`, em qualquer ordem. O
  * lookahead do decorador era uma cópia à mão que conhecia quatro formas e

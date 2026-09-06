@@ -344,6 +344,8 @@ async function main() {
        ['from jinker import request', 'request.get("x").'], 1, undefined, ['type'], []],
       ['`str action g()` + `v = g()` + `v.` -> metodos de str',
        ['str action g() {', '    return "a"', '}', 'v = g()', 'v.'], 4, undefined, ['upper'], []],
+      ['`string s = "a"` + `s.` -> metodos de str (apelido de tipo, pela tabela do --metadata)',
+       ['string s = "a"', 's.'], 1, undefined, ['upper'], []],
       ['sem receptor: nomes do arquivo + import + BUILTINS + PALAVRAS-CHAVE',
        ['import mail', 'total = 1', 'action soma(a) {', '    return a', '}', 't'], 5, undefined,
        ['total', 'soma', 'mail', 'post', 'len', 'str', 'action', 'if', 'for'], []],

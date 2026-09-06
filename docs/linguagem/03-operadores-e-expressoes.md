@@ -271,7 +271,7 @@ Tipos diferentes que não sejam numéricos nunca são iguais: `5 == "5"` é `Fal
 `null` só é igual a `null`. Na **igualdade** ele não equivale a zero, a `false`
 nem a string vazia — `null == 0` é `False`. Nas comparações de **ordem** (`<`,
 `>`, `<=`, `>=`), qualquer lado `null` **levanta** `TypeError`: `null` não tem
-magnitude, e devolver `False` calado escondia o erro.
+magnitude, e devolver `False` escondia o erro.
 
 ```ps
 post(null == null)   # True
@@ -423,7 +423,7 @@ post(9 not in [1, 2, 3])    # True
 ## 3.7. Operadores bit a bit
 
 `&` (E), `|` (OU), `^` (XOR), `<<` / `>>` (deslocamento) e o unário `~` (NÃO
-bit a bit) operam **apenas entre `int`**. `bool` é rejeitado de propósito (mesmo
+bit a bit) operam **apenas entre `int`**. `bool` é rejeitado (mesmo
 sendo 0/1) — o operando precisa ser `int` de verdade; `flo`/`str` também são
 erro. Deslocamento por valor negativo é erro.
 

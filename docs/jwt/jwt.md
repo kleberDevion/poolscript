@@ -24,7 +24,7 @@ import jwt
 4. Você **verifica** com `jwt.check(...)` — se o token é válido e não expirou,
    devolve os dados; senão, `Null`.
 
-O segredo (`secret`) é o que garante que ninguém forja um token. Guarde-o num
+O segredo (`secret`) é o que impede forjar um token. Guarde-o num
 `.env`, nunca no código.
 
 ---

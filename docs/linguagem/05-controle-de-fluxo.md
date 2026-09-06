@@ -254,7 +254,7 @@ action ainda_nao() {
 }
 
 if x < 0 {
-    pass                 # esse caso é ignorado de propósito
+    pass                 # esse caso é ignorado
 } else {
     post("positivo")
 }

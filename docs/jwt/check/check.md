@@ -38,7 +38,7 @@ presta. Um token expirado ou com assinatura errada vira `Null`, não erro.
 ## O segredo tem que ser o mesmo
 
 `jwt.check` só valida se o `secret` for **idêntico** ao que gerou o token. É
-isso que impede forjar tokens: sem o segredo, ninguém cria um token que passe
+isso que impede forjar tokens: sem o segredo não se cria um token que passe
 no check.
 
 ---

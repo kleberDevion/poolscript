@@ -74,7 +74,7 @@ Duas regras, e as duas valem pros dois mecanismos (`/static/` e
 No SPA, o que é barrado cai no `index.html` (passo 5) como qualquer URL
 desconhecida — o cliente não distingue "não existe" de "existe e não sai".
 
-**Todo o resto que está na pasta sai — inclusive `.ps`.** É de propósito: o
+**Todo o resto que está na pasta sai — inclusive `.ps`.** O motivo: o
 `psl install` baixa pacotes `.ps` de um registry que pode ser um
 `static_folder` do próprio jinker. O `.ps` da *sua aplicação* não sai porque
 ele não está na pasta publicada: a `/static/` é uma **subpasta** ao lado dele,

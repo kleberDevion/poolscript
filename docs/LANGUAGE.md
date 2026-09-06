@@ -146,7 +146,7 @@ for each return in xs { }    # erro: 'return' é palavra reservada
 
 `base` entra na lista mesmo não sendo keyword: é a chamada da superclasse
 dentro de `__init__`, então ligá-la a um nome quebrava `base(...)` — antes
-`base = 5` era aceito calado e só estourava depois, como
+`base = 5` era aceito sem erro e só estourava depois, como
 `NameError: name 'base' is not defined`.
 
 ---
@@ -161,7 +161,7 @@ Null   null   None   none
 
 `Null` só é igual a `Null`: `Null == 0` é **`False`**, e o mesmo vale para
 `false` e `""`. Comparação de magnitude (`<`, `>`, `<=`, `>=`) com `Null`
-**levanta** `TypeError` — devolver `False` calado fazia `if x > 0` com `x` nulo
+**levanta** `TypeError` — devolver `False` sem erro fazia `if x > 0` com `x` nulo
 cair no `else` sem avisar. `post(Null)` imprime **`Null`**, com inicial
 maiúscula — igual a `True` e `False`.
 
@@ -999,7 +999,7 @@ Tudo trabalha em **caractere**, não em byte: `"ção".len()` é 3, e
 
 **Quebrar e juntar** — `split()` sem separador quebra em qualquer corrida de
 branco e descarta as pontas vazias; **com** separador, cada ocorrência gera um
-campo, inclusive vazio. São regras diferentes de propósito.
+campo, inclusive vazio. São regras diferentes.
 
 | | |
 |---|---|

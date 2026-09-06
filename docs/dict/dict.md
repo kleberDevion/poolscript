@@ -2,7 +2,7 @@
 
 Chamados direto no valor: `d.metodo()`. Lembre: `x in d` testa a **chave**; para procurar um **valor**, `x in d.value()`.
 
-**12 no total** — a contagem sai da fonte (`vm/poolscript_vm.c`), não da memória de ninguém. Cada exemplo das páginas roda de verdade na suíte em C (`make check`): doc errada quebra o teste.
+A lista sai da tabela `METODOS_DICT` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|

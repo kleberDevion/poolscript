@@ -1971,13 +1971,27 @@ static int eh_tipo_kw(PSToken *t)
 /* Tipos que abrem uma DECLARAÇÃO (`char c = "a"`). É maior que o
  * `eh_tipo_kw`, que também guarda o tipo de RETORNO de action — e ali só
  * `int action`/`bool action` existem. */
+/* Apelidos de tipo em declaracao: `string`/`String` = str, `integer`/`Integer`
+ * = int, `tuple`/`Tuple` = tup, `dictionary`/`Dictionary` = dict. NAO sao
+ * palavras reservadas — `string` continua podendo ser variavel ou nome de
+ * parametro (`regex.sub(string=...)`): o apelido so vale onde um TIPO vale,
+ * antes do nome numa declaracao. */
+static int eh_apelido_tipo(PSToken *t)
+{
+    static const char *const A[] = { "string", "String", "integer", "Integer",
+                                     "tuple", "Tuple", "dictionary", "Dictionary", NULL };
+    if ((t->type != T_IDENT && t->type != T_IDENT_UPPER) || !t->texto) return 0;
+    for (int i = 0; A[i]; i++) if (strcmp(t->texto, A[i]) == 0) return 1;
+    return 0;
+}
+
 static int eh_tipo_kw_decl(PSToken *t)
 {
     /* `list`/`dict`/`json`/`tup` entraram aqui com a tipagem estatica: `list
      * l = [1]` era lido como um TypeName SOLTO (statement vazio) seguido da
      * atribuicao comum `l = [1]` — a doc prometia "guarda o proprio tipo" e
      * nenhuma declaracao existia. */
-    return eh_tipo_kw(t)
+    return eh_tipo_kw(t) || eh_apelido_tipo(t)
         || (t->type == T_KW && t->texto
             && (strcmp(t->texto, "char") == 0
                 || strcmp(t->texto, "list") == 0 || strcmp(t->texto, "dict") == 0
@@ -2450,9 +2464,16 @@ static PSNode *statement(P *p)
             if (FALHOU(p)) return NULL;
             if (!exige(p, T_COLON, "esperado ':' apos nome do campo")) return NULL;
             PSToken *tt = atual(p);
-            if (tt->type != T_KW || !tt->texto
-                    || !(strcmp(tt->texto,"str")==0 || strcmp(tt->texto,"int")==0
-                      || strcmp(tt->texto,"flo")==0 || strcmp(tt->texto,"bool")==0)) {
+            /* os quatro tipos de campo, mais os apelidos de str e int
+             * (`string`/`String`, `integer`/`Integer`) */
+            int tipo_ok = tt->texto
+                && ((tt->type == T_KW
+                     && (strcmp(tt->texto,"str")==0 || strcmp(tt->texto,"int")==0
+                         || strcmp(tt->texto,"flo")==0 || strcmp(tt->texto,"bool")==0))
+                    || (eh_apelido_tipo(tt)
+                        && (strcmp(tt->texto,"string")==0 || strcmp(tt->texto,"String")==0
+                            || strcmp(tt->texto,"integer")==0 || strcmp(tt->texto,"Integer")==0)));
+            if (!tipo_ok) {
                 perro(p, "tipo do campo deve ser str, int, flo ou bool", tt); return NULL;
             }
             p->pos++;

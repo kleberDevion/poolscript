@@ -38,7 +38,7 @@ inteiro nem se preocupar com maiúsculas/minúsculas.
 
 Alias de get_json() — o corpo do POST como dict. O JinkerRequest usa
 `.json()`, então o proxy aceita os dois nomes (request.json() e
-request.get_json()) pra não pegar ninguém de surpresa.
+request.get_json()) pra não surpreender.
 
 ### `.path_param(...)`
 

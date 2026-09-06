@@ -187,7 +187,7 @@ u = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
 u.bind(("127.0.0.1", 0))
 u.settimeout(0.2)
 try {
-    u.recv(16)                      # ninguém manda nada -> estoura o prazo
+    u.recv(16)                      # nada chega -> estoura o prazo
 } catch (e) {
     post("timed out" in str(e))
 }

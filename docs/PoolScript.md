@@ -661,7 +661,7 @@ post(type(200) == int)     # True
 ```
 
 > As duas escrevem `int` na tela, então elas se comparam pelo nome. Sem isso,
-> `type(200) == int` daria **falso calado**: o `if` nunca entrava e ninguém era
+> `type(200) == int` daria **falso sem erro**: o `if` nunca entrava e nada era
 > avisado.
 
 Para instância de Entity, `is` compara a **classe exata** — ele não sobe pela

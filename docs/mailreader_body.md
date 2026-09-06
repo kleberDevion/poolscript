@@ -3,7 +3,7 @@
 Isso aqui não é um tutorial fofinho. É a explicação direta do que estava
 quebrado no `MailReader`, por que estava quebrado daquele jeito específico,
 e o que foi feito pra resolver. Se você só quer o código, pula pra "API".
-Se quer entender *por que* o código é assim e não de outro jeito óbvio-mas-errado,
+Se quer entender *por que* o código é assim e não de outro jeito,
 leia tudo.
 
 ## 1. O bug conceitual: `.search()` nunca baixava o corpo
@@ -81,7 +81,7 @@ servidor por e-mail: o `fetch` já pede `RFC822` completo na primeira (e
 
 **A escolha errada mais comum vai ser usar `include_body=True` numa busca
 ampla tipo `"ALL"` sem `limit`.** Se sua caixa tem 5000 mensagens, isso
-baixa 5000 corpos completos de uma vez. Ninguém vai te impedir de fazer
+baixa 5000 corpos completos de uma vez. Nada impede de fazer
 isso, mas o servidor IMAP e sua conexão vão sentir. Combine
 `include_body` com `limit` se não tiver certeza do volume.
 
@@ -102,7 +102,7 @@ Regras, sem meio-termo:
   strip de tags, não roda parser de HTML, não tenta converter pra texto
   legível. Por quê? Porque "converter HTML pra texto legível direito" é
   um problema em si, e enfiar isso aqui seria resolver um problema que
-  ninguém pediu, com uma solução que ia estar errada pra metade dos
+  não foi pedido, com uma solução que ia estar errada pra metade dos
   casos (tabelas, links, formatação). Se você precisa disso, trate o
   `body` retornado como HTML no seu próprio código.
 - **Anexos são pulados.** Uma parte com `Content-Disposition: attachment`

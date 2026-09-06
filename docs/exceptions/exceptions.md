@@ -80,7 +80,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `AttributeError` | membro que o objeto não tem: `"abc".m` → `'str' object has no attribute 'm'`; também `module 'json' has no attribute 'x'` |
 | `OverflowError` | número que não cabe no destino: `int(flo("inf"))` → `cannot convert flo infinity to integer` |
 | `RecursionError` | recursão ou expressão funda demais: `maximum recursion depth exceeded`. Antes era `RuntimeError`, e por isso só dava pra pegar junto com todo o resto |
-| `MemoryError` | sem memória. **Único caso em que a mensagem não é a do CPython**, e de propósito: lá ela é vazia (`MemoryError:` e nada mais), aqui ela diz onde acabou — `sem memoria em sorted()`. Num processo que morreu de memória essa é a única pista que sobra |
+| `MemoryError` | sem memória. **Único caso em que a mensagem não é a do CPython**: lá ela é vazia (`MemoryError:` e nada mais), aqui ela diz onde acabou — `sem memoria em sorted()`. Num processo que morreu de memória essa é a única pista que sobra |
 | `AttributedValueError` | valor incompatível atribuído a variável **tipada**: `str x = 10`. **Não** cobre o `+` — somar tipos que não somam é `TypeError` |
 | `IndexError` | índice fora da faixa, lendo **ou** escrevendo. O texto diz qual: `list index out of range`, `string index out of range`, `tup index out of range`, `index out of range` (bytes), e `list assignment index out of range` na escrita |
 | `AssertionError` | `assert(...)` que não passou. Com um valor só, o texto é o valor recebido (`false nao e verdadeiro`); com dois, os dois lados (`veio 3, esperava 4`); com uma nota, ela vem na frente. É capturável como qualquer outra — um teste pode contar as falhas em vez de parar na primeira |

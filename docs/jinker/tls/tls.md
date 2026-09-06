@@ -19,7 +19,7 @@ servidor sobe em `https://`, mas o navegador vai mostrar **"não seguro"**.
 ## Por que "não seguro" — e por que não é bug
 
 Um certificado self-signed é assinado por ele mesmo, não por uma **autoridade
-certificadora (CA)** que o navegador conhece. TLS foi feito assim de propósito:
+certificadora (CA)** que o navegador conhece. TLS funciona assim:
 o navegador só confia em quem uma CA reconhecida garantiu. Um self-signed não
 tem essa garantia, então vira aviso — **em qualquer linguagem, qualquer
 servidor**. Não é defeito do jinker.
