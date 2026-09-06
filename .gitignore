@@ -41,6 +41,9 @@ Thumbs.db
 # binário de build da raiz (regenerável com `make`)
 /pool
 
+# PID de servidor subido por teste/auditoria — nunca e conteudo do repositorio
+*.pid
+
 # config local do Claude Code — nunca vai pro repo
 .claude/
 .codex/

@@ -185,7 +185,7 @@
               "include": "#constants"
             },
             {
-              "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|char)\\b",
+              "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|char|Object|object)\\b",
               "name": "storage.type.poolscript"
             },
             {
@@ -213,7 +213,7 @@
         },
         {
           "name": "storage.type.poolscript",
-          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|action|reaction|Entity|class|Class|model|enum|type|char)\\b"
+          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|action|reaction|Entity|class|Class|model|enum|type|char|Object|object)\\b"
         },
         {
           "name": "storage.modifier.poolscript",
