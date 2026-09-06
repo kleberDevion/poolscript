@@ -45,6 +45,14 @@ static const char *KEYWORDS[] = {
     "dict", "tup",
     NULL
 };
+
+/* A lista de palavras-chave, pra quem precisa dela FORA do lexer — o
+ * `--metadata` a publica e o editor sugere `action`, `if`, `for each`… a
+ * partir daí, em vez de manter uma cópia digitada que envelhece. */
+const char *const *ps_lexer_keywords(void)
+{
+    return KEYWORDS;
+}
 /*as cores devem funcionar no hexadecimal tbm*/
 static const char *CORES[] = {
     "red", "green", "blue", "yellow", "cyan", "magenta", "white", "black",

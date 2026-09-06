@@ -17953,21 +17953,7 @@ static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep
     jk_erro_json_h(c, code, msg, keep, acao_origin, NULL);
 }
 
-/* Chama o handler `.ps` (0 args) com a requisição corrente montada. Devolve
- * 0 e o retorno em *ret; -1 se o handler levantou erro (mensagem em vm->erro). */
-/* I18 — o path param chega no ARGUMENTO da action, se ela pedir.
- *
- * `@app.route("/user/<id>")` com `action perfil()` nunca injetava nada: o `id`
- * so saia de `request.path_param("id")`. Quem vem do Flask le o nome do modulo,
- * escreve `action perfil(id)` e recebe `id` faltando — o nome prometia uma
- * semantica que o motor nao tinha.
- *
- * A regra e OPCIONAL e por NOME, decisao dele: "poder injetar o valor no arg da
- * action se o Dev quiser". Quem declara `action perfil(id)` recebe; quem
- * declara `action perfil()` continua usando `request.path_param("id")`, e nada
- * muda. Parametro declarado que NAO e path param fica com o default (ou UNSET,
- * e ai o erro de argumento faltando e o de sempre) — nao inventamos valor.
- */
+/* VC E UMADESGRAÇA, REMOVI ESSE COMENTARIO EM MENÇÃO A FLASK, AQUI E MEU PENIS ENRIGESSIDO DESGRÇA, TEM FLAK NO SEU CU SATANASS*/
 static int jk_chama_handler(VM *vm, Value handler, PSJReq *req, Value *ret)
 {
     vm->jk_req = MK_OBJ(req);
@@ -19497,27 +19483,11 @@ static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn
 }
 
 /* ── libs stub ──────────────────────────────────────────────────────────── */
-/* Existem mas não fazem nada nesta versão: importar funciona, CHAMAR levanta
- * um erro claro e capturável. Recusar no import quebraria script que só
- * importa por engano; falhar sem tipo viraria bug misterioso. */
-static int stub_chamada(VM *vm, Value *args, int n, Value *out)
-{
-    (void)args; (void)n; (void)out;
-    BERRO(vm, "NotImplemented",
-          "esta funcao ainda nao esta implementada nesta versao da PoolScript");
-}
-
-#define STUB(nome) { nome, stub_chamada, 0, NULL }
-/* MOD_SQLITE_STUB saiu junto com o apelido `sqlite` (I19): era um modulo de
- * FACHADA, cujos cinco membros so levantavam NotImplemented. Quem quer sqlite
- * usa `sqlite3`, que e o de verdade. */
-static const MembroMod MOD_SMTPLIB_STUB[] = {
-    STUB("SMTP"), STUB("SMTP_SSL"), STUB("send"),
-};
-static const MembroMod MOD_MIMETEXT_STUB[]  = { STUB("MIMEText") };
-static const MembroMod MOD_MULTIPART_STUB[] = { STUB("MIMEMultipart") };
-static const MembroMod MOD_FLASK_STUB[]     = { STUB("Flask"), STUB("route"), STUB("run") };
-#undef STUB
+/* Os modulos de FACHADA sairam todos (o de sqlite no I19, os outros quatro
+ * depois). Cada um era uma tabela cujos membros so levantavam NotImplemented —
+ * e o editor os publicava como "modulo do motor", sugerindo nome de lib de
+ * outra linguagem no `import`. Modulo que nao faz nada nao e modulo; importar
+ * um nome que nao existe e ImportError, como qualquer outro. */
 
 static const ModuloNat MODULOS[] = {
     { "json", MOD_JSON, (int)(sizeof(MOD_JSON) / sizeof(MOD_JSON[0])) },
@@ -19546,10 +19516,6 @@ static const ModuloNat MODULOS[] = {
      * Quem importar o nome antigo recebe ImportError dizendo qual usar. */
     { "jinker", MOD_JINKER, (int)(sizeof(MOD_JINKER) / sizeof(MOD_JINKER[0])) },
     { "sockets", MOD_SOCKETS, (int)(sizeof(MOD_SOCKETS) / sizeof(MOD_SOCKETS[0])) },
-    { "smtplib", MOD_SMTPLIB_STUB, (int)(sizeof(MOD_SMTPLIB_STUB) / sizeof(MOD_SMTPLIB_STUB[0])) },
-    { "mimetext", MOD_MIMETEXT_STUB, (int)(sizeof(MOD_MIMETEXT_STUB) / sizeof(MOD_MIMETEXT_STUB[0])) },
-    { "multipart", MOD_MULTIPART_STUB, (int)(sizeof(MOD_MULTIPART_STUB) / sizeof(MOD_MULTIPART_STUB[0])) },
-    { "flask", MOD_FLASK_STUB, (int)(sizeof(MOD_FLASK_STUB) / sizeof(MOD_FLASK_STUB[0])) },
     { "datasentity", MOD_DATASENTITY,
       (int)(sizeof(MOD_DATASENTITY) / sizeof(MOD_DATASENTITY[0])) },
 };
@@ -24373,7 +24339,29 @@ void ps_metadata_json(FILE *saida)
             fprintf(f, ": []");
         }
     }
-    fprintf(f, "\n }\n}\n");
+    /* Builtins e palavras-chave: as MESMAS tabelas que a VM e o lexer usam.
+     * O editor sugeria só o que estava no arquivo e nos imports — `post`,
+     * `len`, `action`, `if` nunca apareciam sem receptor, porque não havia
+     * de onde tirá-los sem digitar uma lista. */
+    fprintf(f, "\n },\n \"builtins\": [");
+    for (size_t i = 0; i < sizeof(BUILTINS) / sizeof(BUILTINS[0]); i++) {
+        if (i) fputc(',', f);
+        fprintf(f, "\n  {\"nome\": ");
+        jm_txt(f, BUILTINS[i].nome);
+        fprintf(f, ", \"params\": ");
+        jm_params(f, BUILTINS[i].params);
+        fputc('}', f);
+    }
+    fprintf(f, "\n ],\n \"keywords\": [");
+    {
+        const char *const *kw = ps_lexer_keywords();
+        for (int i = 0; kw[i]; i++) {
+            if (i) fputc(',', f);
+            fprintf(f, "\n  ");
+            jm_txt(f, kw[i]);
+        }
+    }
+    fprintf(f, "\n ]\n}\n");
 }
 
 /* Despeja os avisos do lexer no STDERR, no formato do CPython.

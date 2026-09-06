@@ -28,7 +28,6 @@ app = Jinker(__name__, static_folder="dist", static_url="/app")
 # GET /users                               → NÃO é estático → vai pra API/404
 ```
 
-É o mesmo conceito do `static_url_path` do Flask e do mount path do Express.
 
 ---
 

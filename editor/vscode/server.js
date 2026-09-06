@@ -440,12 +440,30 @@ function tipoDoNome(doc, nome, linha) {
     if (b.nome !== nome) continue;
     if (b.tipo && META.tipos[b.tipo]) return { tipo: 'tipo_motor', nome: b.tipo };
     if (b.tipo && achaEntidade(doc, b.tipo)) return { tipo: 'entity', nome: b.tipo, interno: false };
+    /* `Rota.` / `Cor.` — model e enum do arquivo: os membros estão no nó */
+    if (b.kind === 'model' && b.no) return { tipo: 'model', no: b.no };
+    if (b.kind === 'enum' && b.no) return { tipo: 'enum', no: b.no };
     break;
   }
   /* `c = Conta(...)` / `u = mod.Usuario(...)`: o tipo é o que foi construído */
   const cons = construidoPor(idx, nome, linha);
+  if (cons && cons.literal) {
+    return META.tipos[cons.literal] ? { tipo: 'tipo_motor', nome: cons.literal } : { tipo: 'universal' };
+  }
   if (cons) {
     if (achaEntidade(doc, cons.nome)) return { tipo: 'entity', nome: cons.nome, interno: false };
+    /* `x = Rota(...)` (model do arquivo) e `v = f()` (action do arquivo: o
+     * tipo declarado do retorno, `str action f()`; sem ele, os universais) */
+    if (!cons.mod) {
+      for (const b of A.visiveisEm(idx, linha)) {
+        if (b.nome !== cons.nome) continue;
+        if (b.kind === 'model' && b.no) return { tipo: 'model', no: b.no };
+        if (b.kind === 'action') {
+          return b.tipo && META.tipos[b.tipo] ? { tipo: 'tipo_motor', nome: b.tipo } : { tipo: 'universal' };
+        }
+        break;
+      }
+    }
     /* `mapping = Jinker(__name__)` com `from jinker import Jinker`: o nome
      * construído é um membro de módulo ligado pelo `from`. Este ramo não
      * existia — só `x = jinker.Jinker(...)` (abaixo) consultava o `retorna`
@@ -480,7 +498,16 @@ function tipoDoNome(doc, nome, linha) {
       }
     }
   }
+  /* Nome que EXISTE (variável, parâmetro, variável de laço) mas cujo tipo
+   * ninguém sabe: ao menos o que todo valor tem (`type`…). Devolver nada
+   * fazia `for each x in …` + `x.` ficar mudo. */
+  for (const b of A.visiveisEm(idx, linha)) if (b.nome === nome) return { tipo: 'universal' };
   return null;
+}
+
+/* O que TODO valor da linguagem tem — a tabela `__universal__` do motor. */
+function universais() {
+  return (META.tipos.__universal__ || []).map((m) => Object.assign({ kind: 'action', escopo: '__universal__' }, m));
 }
 
 /* O que a atribuição mais recente antes da linha CONSTRUIU: `x = Foo(...)`
@@ -490,11 +517,21 @@ function construidoPor(idx, nome, linha) {
   const anda = (no) => {
     if (!no || typeof no !== 'object') return;
     const ehAtrib = (no.k === 'Assignment' || no.k === 'VarDecl') && no.texto === nome;
-    if (ehAtrib && no.l - 1 <= linha && no.a && no.a.k === 'Call' && no.a.a) {
-      const callee = no.a.a;
-      if (callee.k === 'Name') achado = { nome: callee.texto, mod: null };
-      else if (callee.k === 'MemberAccess' && callee.a && callee.a.k === 'Name')
-        achado = { nome: callee.texto, mod: callee.a.texto };
+    if (ehAtrib && no.l - 1 <= linha && no.a) {
+      const v = no.a;
+      if (v.k === 'Call' && v.a) {
+        const callee = v.a;
+        if (callee.k === 'Name') achado = { nome: callee.texto, mod: null };
+        else if (callee.k === 'MemberAccess' && callee.a && callee.a.k === 'Name')
+          achado = { nome: callee.texto, mod: callee.a.texto };
+      }
+      /* LITERAL: `nome = "ana"` é str, `xs = [1]` é list, `d = {}` é dict —
+       * o nó da árvore diz qual. (Número e bool saem como `Literal` sem
+       * texto e não têm tabela de métodos; ficam sem tipo.) */
+      else if (v.k === 'Literal' && typeof v.texto === 'string') achado = { literal: 'str' };
+      else if (v.k === 'ListLiteral') achado = { literal: 'list' };
+      else if (v.k === 'DictLiteral') achado = { literal: 'dict' };
+      else if (v.k === 'TupleLiteral') achado = { literal: 'tup' };
     }
     A.cada(no, anda);
   };
@@ -521,13 +558,23 @@ function membrosDaCadeia(doc, partes, linha) {
     if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via: modBase ? { mod: modBase, membro: passo } : undefined };
     else if (t && achaEntidade(doc, t)) alvo = { tipo: 'entity', nome: t, interno: false };
     else if (m.kind === 'class' && achaEntidade(doc, m.nome)) alvo = { tipo: 'entity', nome: m.nome, interno: false };
-    else return [];
+    /* membro existe, retorno desconhecido (`request.get(...).`): universais */
+    else alvo = { tipo: 'universal' };
   }
   return membrosDe(doc, alvo, linha);
 }
 
 function membrosDe(doc, alvo, linha) {
   if (!alvo) return [];
+  if (alvo.tipo === 'universal') return universais();
+  if (alvo.tipo === 'model') {
+    return (alvo.no.lista || []).filter((f) => f && f.k === 'ModelField')
+      .map((f) => ({ nome: f.texto, kind: 'campo', tipo: f.texto2 || '', linha: f.l - 1, coluna: f.c - 1 }));
+  }
+  if (alvo.tipo === 'enum') {
+    return (alvo.no.lista || []).filter((m) => m && m.k === 'EnumMember')
+      .map((m) => ({ nome: m.texto, kind: 'campo', tipo: '', linha: m.l - 1, coluna: m.c - 1 }));
+  }
   if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno);
   if (alvo.tipo === 'tipo_motor') {
     /* onde está a prosa: pela procedência (`jinker/Jinker`, `jinker`) antes
@@ -742,6 +789,97 @@ function emImport(doc, pos) {
   return prim === 'import' || prim === 'from' || prim === 'PUSH';
 }
 
+/* A pasta do documento no disco ("" se a URI não é de arquivo). */
+function pastaDoDoc(doc) {
+  return doc.uri.startsWith('file://') ? path.dirname(doc.uri.slice(7)) : '';
+}
+
+/* Os membros que `from X import …` pode trazer: os do módulo do motor, ou os
+ * de topo do arquivo `.ps` (lib instalada ou arquivo ao lado). */
+function membrosParaImport(doc, mod) {
+  if (META.modulos[mod]) {
+    return META.modulos[mod].map((m) => Object.assign(
+      { kind: m.kind === 'value' ? 'campo' : 'action', escopo: mod, tipo: m.retorna || '' }, m));
+  }
+  const arq = arquivoDoImport(mod, pastaDoDoc(doc));
+  return arq ? membrosDeArquivo(arq) : [];
+}
+
+/* Dentro de um `import`/`from`. Dois casos, decididos pelos TOKENS da linha
+ * (o lexer), nunca pelo texto:
+ *
+ *  - `from X import <cursor>`: os MEMBROS de X — módulo do motor, lib
+ *    instalada ou arquivo `.ps` — menos os já listados antes do cursor. Era o
+ *    defeito da tela dele: `from mail import Mia` devolvia a lista de
+ *    MÓDULOS, com `mail` e `multipart` dentro, porque este ramo não
+ *    distinguia os dois lados do `import`.
+ *  - `import <cursor>` / `from <cursor>` / `import pasta.<cursor>`: módulos do
+ *    motor, libs instaladas e os ARQUIVOS e PASTAS ao lado do documento (ou
+ *    dentro da pasta já digitada). Arquivo e pasta não apareciam. */
+function completaImport(doc, p) {
+  const linha = linhaAte(doc, p.position);
+  const parcial = A.cadeiaAntes(linha, p.position.character).parcial;
+  const iniParcial = p.position.character - parcial.length;
+  const antes = tokensDe(doc).filter((t) => t.l0 === p.position.line && t.n > 0 && t.c0 + t.n <= iniParcial);
+  const ehFrom = antes.length > 0 && antes[0].t === 'KW' && antes[0].v === 'from';
+  const iImp = antes.findIndex((t, i) => i > 0 && t.t === 'KW' && t.v === 'import');
+  const ehNome = (t) => t.t === 'DOT' || t.t.startsWith('IDENT');
+
+  if (ehFrom && iImp > 0) {
+    const mod = antes.slice(1, iImp).filter(ehNome).map((t) => t.v).join('');
+    const jaTem = new Set(antes.slice(iImp + 1).filter((t) => t.t.startsWith('IDENT')).map((t) => t.v));
+    return membrosParaImport(doc, mod).filter((m) => !jaTem.has(m.nome)).map((m) => itemDeMembro(m, mod));
+  }
+
+  /* o `pasta.` já digitado antes do cursor, se houver */
+  let k = antes.length;
+  while (k > 0 && ehNome(antes[k - 1])) k--;
+  const prefixo = antes.slice(k).map((t) => t.v).join('');
+  const sub = prefixo.split('.').filter((s) => s !== '');
+
+  const itens = [];
+  const jaTem = new Set();
+  const poe = (label, detail, doc_) => {
+    if (jaTem.has(label)) return;
+    jaTem.add(label);
+    const it = { label, kind: CompletionItemKind.Module, detail };
+    if (doc_) it.documentation = { kind: MarkupKind.Markdown, value: doc_ };
+    itens.push(it);
+  };
+  if (!sub.length) {
+    for (const m of Object.keys(META.modulos || {})) {
+      if (m.indexOf('.') >= 0) continue;
+      poe(m, `modulo do motor — ${(META.modulos[m] || []).length} membros`, resumoDe(m, m));
+    }
+    for (const nome of libsInstaladas()) poe(nome, 'lib instalada');
+  }
+  /* arquivos e pastas: ao lado do documento, ou dentro de `sub` */
+  const dir = pastaDoDoc(doc);
+  if (dir) {
+    const base = path.join(dir, ...sub);
+    const meu = doc.uri.startsWith('file://') ? path.basename(doc.uri.slice(7)) : '';
+    let ents = [];
+    try { ents = fs.readdirSync(base, { withFileTypes: true }); } catch (_) { ents = []; }
+    for (const e of ents) {
+      if (e.name.startsWith('.') || e.name === meu) continue;
+      if (e.isDirectory()) poe(e.name, 'pasta');
+      else if (e.name.endsWith('.ps')) poe(e.name.slice(0, -3), 'arquivo .ps');
+    }
+  }
+  return itens;
+}
+
+/* `"a,b".` — o token antes do ponto é uma STRING: os membros são os de `str`.
+ * Só literal de texto: `]` e `}` podem ser índice ou fim de literal, e o tipo
+ * de `x[0]` ninguém sabe aqui. */
+function receptorLiteral(doc, pos) {
+  const toks = tokensDe(doc).filter((t) => t.l0 === pos.line && t.n > 0 && t.c0 + t.n <= pos.character);
+  const n = toks.length;
+  if (n < 2 || toks[n - 1].t !== 'DOT') return null;
+  if (toks[n - 2].t === 'STR' && META.tipos.str) return 'str';
+  return null;
+}
+
 conexao.onCompletion((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return [];
@@ -756,24 +894,13 @@ function completa(doc, p) {
   /* `import <cursor>` — AQUI é onde os módulos do motor e as libs instaladas
    * fazem sentido, e só aqui. Num ponto qualquer do arquivo, módulo que não
    * foi importado é ruído com cara de sugestão. */
-  if (emImport(doc, p.position)) {
-    const itens = Object.keys(META.modulos || {})
-      .filter((m) => m.indexOf('.') < 0)
-      .map((m) => ({
-        label: m,
-        kind: CompletionItemKind.Module,
-        detail: `modulo do motor — ${(META.modulos[m] || []).length} membros`,
-        documentation: { kind: MarkupKind.Markdown, value: resumoDe(m, m) },
-      }));
-    const jaTem = new Set(itens.map((i) => i.label));
-    for (const nome of libsInstaladas()) {
-      if (jaTem.has(nome)) continue;
-      itens.push({ label: nome, kind: CompletionItemKind.Module, detail: 'lib instalada' });
-    }
-    return itens;
-  }
+  if (emImport(doc, p.position)) return completaImport(doc, p);
 
   const cad = A.cadeiaAntes(linhaAte(doc, p.position), p.position.character);
+
+  /* `"a,b".` — o receptor é um LITERAL de texto: o token antes do ponto é STR */
+  const lit = receptorLiteral(doc, p.position);
+  if (lit) return membrosDe(doc, { tipo: 'tipo_motor', nome: lit }, p.position.line).map((m) => itemDeMembro(m, lit));
 
   /* `alvo.` / `a.b.c.` — membros do que a cadeia designa */
   if (cad.terminaEmPonto && cad.partes.length) {
@@ -843,6 +970,13 @@ function completa(doc, p) {
         imp.membro ? `${imp.membro} de ${imp.mod}`
                    : (imp.mod === ligado ? 'modulo' : `modulo ${imp.mod} (as ${ligado})`), '2');
   }
+  /* builtins e palavras-chave: as tabelas do motor (`--metadata` publica a
+   * `BUILTINS[]` da VM e a `KEYWORDS[]` do lexer). Não apareciam — `post`,
+   * `len`, `action`, `if` nunca eram sugeridos sem receptor. */
+  for (const b of META.builtins || []) {
+    poe(b.nome, CompletionItemKind.Function, 'builtin · ' + assinatura({ nome: b.nome, params: b.params }), '3');
+  }
+  for (const k of META.keywords || []) poe(k, CompletionItemKind.Keyword, 'palavra-chave', '4');
   return itens;
 }
 

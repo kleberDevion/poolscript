@@ -913,9 +913,8 @@ Referência completa de cada lib
 `Parsing` (conversões de tipo seguras) é builtin global, não precisa de
 `import` — ver `docs/parsing.md`.
 
-Libs "stub" (existem mas não implementadas nesta versão — erro claro e
-catchable ao chamar, não ao importar): `sqlite, smtplib, mimetext,
-multipart, flask`
+Não existem módulos "stub" (de fachada): módulo que não faz nada não é
+módulo. Importar um nome que não existe é `ImportError`.
 
 ---
 

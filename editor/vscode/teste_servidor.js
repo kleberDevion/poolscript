@@ -63,9 +63,11 @@ function conversa(texto, pedidos) {
         const s = buf.indexOf('\r\n\r\n');
         if (s < 0) break;
         const cab = buf.slice(0, s).toString('utf8');
-        const m = /Content-Length: (\d+)/i.exec(cab);
-        if (!m) break;
-        const n = parseInt(m[1], 10);
+        /* sem regex, como o resto dos .js: acha o cabeçalho e lê o número */
+        const k = cab.toLowerCase().indexOf('content-length:');
+        if (k < 0) break;
+        const n = parseInt(cab.slice(k + 'content-length:'.length).trim(), 10);
+        if (!(n >= 0)) break;
         if (buf.length < s + 4 + n) break;
         const msg = JSON.parse(buf.slice(s + 4, s + 4 + n).toString('utf8'));
         msgs.push(msg);
@@ -296,6 +298,73 @@ async function main() {
          valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
+  /* ── 9c. TODO receptor expõe o que é — a matriz de contextos ─────────────
+   *
+   * Medido antes, 16 de 30 contextos vazios ou errados: `from mail import
+   * Mia` devolvia a lista de MÓDULOS (a tela dele); `nome = "ana"` + `nome.`
+   * dava zero; `Rota.`/`Cor.` zero; `for each x` + `x.` zero; sem receptor
+   * não vinha builtin nem palavra-chave; arquivo e pasta não apareciam no
+   * `import`. Cada caso aqui é um desses. */
+  {
+    const dir = path.join(os.tmpdir(), 'ps_lsp_t');
+    fs.mkdirSync(path.join(dir, 'pasta'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'vizinho.ps'), 'action soma_vizinha(a) {\n    return a\n}\n');
+    fs.writeFileSync(path.join(dir, 'pasta', 'dentro.ps'), 'x = 1\n');
+    const casos = [
+      ['`from mail import Mia` -> MEMBROS do mail, nao modulos (a tela dele)',
+       ['from regex import fullmatch, compile', 'from random import asterisco', 'from mail import Mia'], 2, undefined,
+       ['MailServer', 'MailMessage', 'MailReader'], ['mail', 'json']],
+      ['`from mail import MailServer, ` -> so os que faltam',
+       ['from mail import MailServer, '], 0, undefined, ['MailMessage', 'MailReader'], ['MailServer']],
+      ['`from jinker import ` -> funcoes E valores (request, cors)',
+       ['from jinker import '], 0, undefined, ['Jinker', 'jsonify', 'request', 'cors'], []],
+      ['`import ` -> modulos do motor + ARQUIVOS e PASTAS ao lado',
+       ['import '], 0, undefined, ['mail', 'vizinho', 'pasta'], ['a']],
+      ['`import pasta.` -> os arquivos DENTRO da pasta',
+       ['import pasta.'], 0, undefined, ['dentro'], ['mail']],
+      ['`from vizinho import ` -> as actions do arquivo ao lado',
+       ['from vizinho import '], 0, undefined, ['soma_vizinha'], []],
+      ['`nome = "ana"` + `nome.` -> metodos de str (tipo pelo LITERAL)',
+       ['nome = "ana"', 'nome.'], 1, undefined, ['upper', 'split'], []],
+      ['`xs = [1, 2]` + `xs.` -> metodos de list',
+       ['xs = [1, 2]', 'xs.'], 1, undefined, ['append'], []],
+      ['`d = {"a": 1}` + `d.` -> metodos de dict',
+       ['d = {"a": 1}', 'd.'], 1, undefined, ['keys'], []],
+      ['`"abc".` direto -> metodos de str',
+       ['x = "abc".'], 0, undefined, ['upper'], []],
+      ['`Rota.` (model do arquivo) -> campos',
+       ['model Rota() {', '    email: str', '}', 'Rota.'], 3, undefined, ['email'], []],
+      ['`r = Rota()` + `r.` -> campos',
+       ['model Rota() {', '    email: str', '}', 'r = Rota()', 'r.'], 4, undefined, ['email'], []],
+      ['`Cor.` (enum do arquivo) -> membros',
+       ['enum Cor {', '    AZUL', '    VERDE', '}', 'Cor.'], 4, undefined, ['AZUL', 'VERDE'], []],
+      ['`for each x in [1, 2]` + `x.` -> ao menos os universais',
+       ['for each x in [1, 2] {', '    x.', '}'], 1, undefined, ['type'], []],
+      ['`request.get("x").` (retorno desconhecido) -> universais',
+       ['from jinker import request', 'request.get("x").'], 1, undefined, ['type'], []],
+      ['`str action g()` + `v = g()` + `v.` -> metodos de str',
+       ['str action g() {', '    return "a"', '}', 'v = g()', 'v.'], 4, undefined, ['upper'], []],
+      ['sem receptor: nomes do arquivo + import + BUILTINS + PALAVRAS-CHAVE',
+       ['import mail', 'total = 1', 'action soma(a) {', '    return a', '}', 't'], 5, undefined,
+       ['total', 'soma', 'mail', 'post', 'len', 'str', 'action', 'if', 'for'], []],
+      ['`self.` em reaction, dentro de `if`, campo `private str nome` do corpo e metodo HERDADO',
+       ['class Base() {', '    action b(self) {', '        return 1', '    }', '}', 'class C(Base) {',
+        '    private str nome = "a"', '    int n = 1', '    action __init__(self, x) {', '        self.x = x', '    }',
+        '    reaction m(self) {', '        if self.n > 0 {', '            self.', '        }', '    }', '}'],
+       13, undefined, ['nome', 'n', 'x', 'm', 'b'], []],
+    ];
+    for (const [nome, linhas, line, ch, espera, nao] of casos) {
+      const src = linhas.join('\n') + '\n';
+      const c = ch !== undefined ? ch : linhas[line].length;
+      const m = await conversa(src, [compl(2, line, c)]);
+      const L = rotulos(resp(m, 2));
+      const faltam = espera.filter((e) => !L.includes(e));
+      const sobram = nao.filter((e) => L.includes(e));
+      conf(nome, faltam.length === 0 && sobram.length === 0,
+           { voltou: L.slice(0, 10), faltam, sobram });
+    }
+  }
+
   /* ── 10. CLASSE, HERANÇA, `self` — nada disso funcionava ────────────────
    *
    * Medido antes: `self.` dava ZERO, `c = Conta(...)` + `c.` dava ZERO, e a
@@ -351,23 +420,27 @@ async function main() {
          cls && (cls.children || []).map((x) => x.name));
   }
 
-  /* ── 11. `f` sugeria `flask` ─────────────────────────────────────────────
+  /* ── 11. módulo NÃO importado aparecia em qualquer lugar ─────────────────
    *
    * O servidor despejava TODO módulo do motor na lista de qualquer ponto do
    * arquivo, com "(precisa de import)" no detalhe. Módulo que o arquivo não
    * importou não é candidato a nada: é ruído com cara de sugestão. O lugar
-   * deles é depois do `import`. */
+   * deles é depois do `import`. E módulo de FACHADA (stub que só levantava
+   * NotImplemented) não existe mais em lista nenhuma. */
   {
     const m = await conversa('action f() {\n    \n}\n', [compl(2, 1, 4)]);
     const L = rotulos(resp(m, 2));
-    conf('modulo NAO importado nao entra na lista (era `f` -> `flask`)',
-         !L.includes('flask') && !L.includes('smtplib'), L);
+    /* `json`/`str`/`list` são também palavra-chave ou builtin, e ESSES
+     * entram; o que não pode entrar é módulo que só existe via import */
+    conf('modulo NAO importado nao entra na lista sem receptor',
+         !L.includes('mail') && !L.includes('regex') && !L.includes('jinker'), L);
   }
   {
     const m = await conversa('import \n', [compl(2, 0, 7)]);
     const L = rotulos(resp(m, 2));
-    conf('depois de `import` os modulos do motor APARECEM',
-         L.includes('flask') && L.includes('json') && L.includes('os'), L.slice(0, 8));
+    conf('depois de `import` os modulos do motor APARECEM — e nenhum stub de fachada',
+         L.includes('mail') && L.includes('json') && L.includes('os')
+         && !L.includes('smtplib') && !L.includes('multipart') && !L.includes('mimetext'), L.slice(0, 8));
   }
 
   /* ── 12. Entity de OUTRO arquivo, pelo import ───────────────────────────── */

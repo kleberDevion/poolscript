@@ -1757,12 +1757,15 @@ static PSNode *if_stmt(P *p)
     for (;;) {
         PSToken *tb = atual(p);
         PSNode *cond;
-        if (aceita(p, T_LPAREN)) {
-            cond = expressao(p);
-            if (FALHOU(p)) return NULL;
-            if (!exige(p, T_RPAREN, "faltou ')' na condicao")) return NULL;
-        } else {
-            /* `if x == "" {` — o `{` ali ABRE BLOCO, não interpola a string.
+        {
+            /* A condição vai até o `{`, comece com o que começar. Havia um
+             * ramo especial pra `if (`: lia o grupo e EXIGIA `)` seguido do
+             * bloco — então `if (a) or (b) {` quebrava com "esperado inicio de
+             * bloco com '{'". Parêntese na condição é só precedência; o
+             * `expressao` já lê `(a) or (b)` inteiro, e `if (x) {` continua
+             * valendo por ser uma expressão como outra qualquer.
+             *
+             * `if x == "" {` — o `{` ali ABRE BLOCO, não interpola a string.
              * Sem isto, uma condição terminada em literal de texto engolia o
              * `{` do bloco como interpolação (`"txt" {x}`) e o `if` ficava sem
              * corpo. Mesmo tratamento que o `for each` já tinha. */
@@ -1807,12 +1810,10 @@ static PSNode *while_stmt(P *p)
     p->pos++;
     PSNode *n = ps_node_novo(p->arena, N_WHILE_STMT, t->line, t->col);
     if (!n) return NULL;
-    if (aceita(p, T_LPAREN)) {
-        n->a = expressao(p);
-        if (FALHOU(p)) return NULL;
-        if (!exige(p, T_RPAREN, "faltou ')' na condicao")) return NULL;
-    } else {
-        /* idem `if`: `while s != "" {` abre bloco, não interpola */
+    {
+        /* idem `if`: a condição vai até o `{` (o `(` inicial é precedência,
+         * não envoltório — `while (a) and (b) {` quebrava), e `while s != "" {`
+         * abre bloco, não interpola */
         int salvo = p->chave_abre_bloco;
         p->chave_abre_bloco = 1;
         n->a = expressao(p);
@@ -2202,32 +2203,46 @@ static PSNode *statement(P *p)
                 f->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else if (mt->type == T_IDENT || mt->type == T_IDENT_UPPER) {
-                /* campo `nome: tipo [= default]`. Sem o `:` NÃO é campo —
-                 * erro explícito: devolver "nada" aqui sem consumir token
-                 * fazia o laço girar pra sempre no mesmo ponto. */
-                if (espia(p, 1)->type != T_COLON) {
-                    perro(p, "dentro de Entity so sao permitidas declaracoes 'action', decoradores ou campos 'nome: tipo'", mt);
-                    return NULL;
-                }
-                p->pos += 2;
-                PSToken *tt = atual(p);
-                if (tt->type != T_IDENT && tt->type != T_IDENT_UPPER && tt->type != T_KW) {
-                    perro(p, "esperado tipo apos ':' no campo da Entity", tt); return NULL;
-                }
-                p->pos++;
+                /* Campo. Três grafias, todas o MESMO nó:
+                 *   nome: tipo [= valor]     (a original)
+                 *   tipo nome [= valor]      (o ramo acima)
+                 *   nome = valor             (sem tipo — como uma variável)
+                 * A terceira não existia: `conexao = ""` no corpo da classe
+                 * era "so sao permitidas declaracoes 'action'...", e quem
+                 * declara um campo como declara qualquer variável era
+                 * repelido. Sem tipo, o campo é dinâmico, igual `x = 1`.
+                 * O erro continua explícito pra qualquer outra coisa:
+                 * devolver "nada" sem consumir token fazia o laço girar pra
+                 * sempre no mesmo ponto. */
+                p->pos++;                                  /* nome */
                 PSNode *f = ps_node_novo(p->arena, N_ENTITY_FIELD, mt->line, mt->col);
                 if (!f) return NULL;
                 f->texto = dup_tok(p, mt);
-                f->texto2 = dup_tok(p, tt);
-                if (checa_op(p, "=")) {
+                if (checa(p, T_COLON)) {
+                    p->pos++;
+                    PSToken *tt = atual(p);
+                    if (tt->type != T_IDENT && tt->type != T_IDENT_UPPER && tt->type != T_KW) {
+                        perro(p, "esperado tipo apos ':' no campo da Entity", tt); return NULL;
+                    }
+                    p->pos++;
+                    f->texto2 = dup_tok(p, tt);
+                    if (checa_op(p, "=")) {
+                        p->pos++;
+                        f->a = expressao(p);
+                        if (FALHOU(p)) return NULL;
+                    }
+                } else if (checa_op(p, "=")) {
                     p->pos++;
                     f->a = expressao(p);
                     if (FALHOU(p)) return NULL;
+                } else {
+                    perro(p, "dentro de Entity entra 'action', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
+                    return NULL;
                 }
                 f->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else {
-                perro(p, "dentro de Entity so sao permitidas declaracoes 'action', decoradores ou campos 'nome: tipo'", mt);
+                perro(p, "dentro de Entity entra 'action', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
                 return NULL;
             }
             pula_indent_solto(p);

@@ -57,10 +57,23 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   > nenhuma.
 
 - **escopo local** — parâmetro da action que contém o cursor e variável ligada
-  antes dele (atribuição, `for each`, desempacotamento). Módulo que o arquivo
-  **não importou** não entra na lista: digitar `f` oferecia `flask` porque o
-  servidor despejava todo módulo do motor em qualquer ponto do arquivo. O
-  lugar deles é depois do `import`, e é lá que estão;
+  antes dele (atribuição, `for each`, desempacotamento), mais os **builtins**
+  (`post`, `len`, `str`…) e as **palavras-chave** (`action`, `if`, `for`…),
+  que saem das tabelas do motor pelo `--metadata`. Módulo que o arquivo
+  **não importou** não entra na lista: o servidor antigo despejava todo
+  módulo do motor em qualquer ponto do arquivo. O lugar deles é depois do
+  `import`, e é lá que estão;
+- **`import`** — `import ` e `from ` oferecem os módulos do motor, as libs
+  instaladas e os **arquivos e pastas** `.ps` ao lado do documento (`import
+  pasta.` entra na pasta); `from X import ` oferece os **membros** de X —
+  módulo, lib ou arquivo — menos os já listados;
+- **todo receptor expõe o que é** — `x.` responde pelo tipo de `x`, venha de
+  onde vier: declaração (`str s`), construção (`Jinker(…)`, `MailServer(…)`,
+  `Rota()`), **literal** (`nome = "ana"` → métodos de `str`; `[…]`, `{…}`,
+  `"abc".` direto), retorno de método ou de action com tipo declarado,
+  `model` e `enum` do arquivo (`Rota.`, `Cor.`), `self.` com campos do corpo
+  da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
+  ninguém sabe (`for each x in …`) recebe ao menos o que todo valor tem;
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`);
   numa **palavra-chave** (`if`, `for each`, `try`, `action`, `return`…) a seção

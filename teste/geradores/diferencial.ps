@@ -1,0 +1,392 @@
+# Gera `teste/casos_diferencial.c` DO ZERO.
+#
+# O diferencial da linguagem é o comportamento dela CONTRA ELA MESMA no tempo:
+# cada programa do corpus com a saída que o motor produz HOJE. Qualquer mudança
+# de comportamento acende lá, e aí se decide se foi correção ou estrago.
+#
+# De onde vêm os programas: dos outros `casos_*.c` escritos à mão (a lista
+# `ARQS`). Ficam de fora os NÃO REPRODUTÍVEIS — e isso não é lista de nomes:
+# cada programa roda DUAS vezes, e o que der saída diferente entre as duas
+# (relógio, endereço, aleatório, rede) não entra. O que citar rede, banco ou
+# entrada (jinker, sockets, request, bancos, input) também fica de fora, porque
+# depende do que está do outro lado.
+#
+# NÃO edite o `.c` à mão. Mudou o comportamento de propósito? Regera:
+#
+#     ./pool teste/geradores/diferencial.ps
+#
+# e o `git diff` mostra exatamente quais casos mudaram.
+import os
+import sys
+import bytes
+
+ARQS = ["teste/casos_linguagem.c", "teste/casos_erros.c", "teste/casos_crash.c",
+        "teste/casos_pendentes.c", "teste/casos_cobertura.c",
+        "teste/casos_libs.c", "teste/casos_inteiros.c"]
+SAIDA = "teste/casos_diferencial.c"
+TMP = "/tmp/ps_dif_gera"
+
+# Programa que depende do que está do outro lado (rede, banco, entrada) não é
+# reprodutível por definição — nem vale rodar duas vezes.
+DEPENDE_DE_FORA = ["jinker", "sockets", "import request", "from request",
+                   "psodbc", "sqlite3", "mongo", "mail", "input(", "os.cmd(",
+                   "environ", "dotenv"]
+
+
+# ── tokens de UMA linha de C: literal, NULL, número, pontuação ─────────────
+# Varredura linear (sem regex): o que interessa é só literal com escape.
+action tokens(L) {
+    out = []
+    i = 0
+    while i < len(L) {
+        c = L[i]
+        if c == " " or c == "\t" {
+            i = i + 1
+            continue
+        }
+        if c == "\"" {
+            j = i + 1
+            lit = ""
+            while j < len(L) {
+                if L[j] == "\\" and j + 1 < len(L) {
+                    lit = lit + L[j] + L[j + 1]
+                    j = j + 2
+                    continue
+                }
+                if L[j] == "\"" {
+                    break
+                }
+                lit = lit + L[j]
+                j = j + 1
+            }
+            addEnd(out, ["lit", lit])
+            i = j + 1
+            continue
+        }
+        if c == "-" or (c >= "0" and c <= "9") {
+            j = i + 1
+            while j < len(L) and L[j] >= "0" and L[j] <= "9" {
+                j = j + 1
+            }
+            addEnd(out, ["num", L[i:j]])
+            i = j
+            continue
+        }
+        if ((c >= "A" and c <= "Z") or (c >= "a" and c <= "z") or c == "_") {
+            j = i + 1
+            while j < len(L) and ((L[j] >= "A" and L[j] <= "Z") or (L[j] >= "a" and L[j] <= "z") or (L[j] >= "0" and L[j] <= "9") or L[j] == "_") {
+                j = j + 1
+            }
+            addEnd(out, ["palavra", L[i:j]])
+            i = j
+            continue
+        }
+        addEnd(out, ["pont", c])
+        i = i + 1
+    }
+    return out
+}
+
+
+# Tira comentário de C (`/* ... */`) de um texto inteiro. Comentário costuma
+# CITAR programa entre aspas, e sem isto a citação virava fonte.
+action sem_comentario(texto) {
+    out = ""
+    i = 0
+    em = false
+    while i < len(texto) {
+        if em {
+            if texto[i:i+2] == "*/" {
+                em = false
+                i = i + 2
+                continue
+            }
+            i = i + 1
+            continue
+        }
+        if texto[i:i+2] == "/*" {
+            em = true
+            i = i + 2
+            continue
+        }
+        out = out + texto[i]
+        i = i + 1
+    }
+    return out
+}
+
+
+# Desfaz o escape de C e devolve a LISTA DE BYTES — bytes, e não string, pra
+# `\xc3\xa7` voltar como os dois bytes que eram.
+action des_c(s) {
+    out = []
+    i = 0
+    while i < len(s) {
+        c = s[i]
+        if c == "\\" and i + 1 < len(s) {
+            d = s[i + 1]
+            if d == "n" { addEnd(out, 10) i = i + 2 continue }
+            if d == "t" { addEnd(out, 9) i = i + 2 continue }
+            if d == "r" { addEnd(out, 13) i = i + 2 continue }
+            if d == "0" { addEnd(out, 0) i = i + 2 continue }
+            if d == "\\" { addEnd(out, 92) i = i + 2 continue }
+            if d == "\"" { addEnd(out, 34) i = i + 2 continue }
+            if d == "x" and i + 3 < len(s) {
+                addEnd(out, hex2(s[i + 2]) * 16 + hex2(s[i + 3]))
+                i = i + 4
+                continue
+            }
+            for each b in c.encode() { addEnd(out, b) }
+            i = i + 1
+            continue
+        }
+        for each b in c.encode() { addEnd(out, b) }
+        i = i + 1
+    }
+    return out
+}
+
+
+action hex2(c) {
+    d = "0123456789abcdef".find(c.lower())
+    if d < 0 {
+        return 0
+    }
+    return d
+}
+
+
+# Bytes -> literal de C. Byte fora do ASCII sai como `\xHH`; e se o byte
+# SEGUINTE for dígito hexadecimal, fecha e reabre a aspa — em C, `\xa7a` é UM
+# escape (o `a` entra no número), então `"\xa7" "a"` é a única grafia certa.
+action esc_bytes(bs) {
+    HEX = "0123456789abcdef"
+    out = ""
+    i = 0
+    while i < len(bs) {
+        b = bs[i]
+        if b == 34 { out = out + "\\\"" }
+        elif b == 92 { out = out + "\\\\" }
+        elif b == 10 { out = out + "\\n" }
+        elif b == 9 { out = out + "\\t" }
+        elif b == 13 { out = out + "\\r" }
+        elif b >= 32 and b < 127 { out = out + chr(b) }
+        else {
+            out = out + "\\x" + HEX[b // 16] + HEX[b % 16]
+            if i + 1 < len(bs) {
+                p = bs[i + 1]
+                if ((p >= 48 and p <= 57) or (p >= 65 and p <= 70) or (p >= 97 and p <= 102)) {
+                    out = out + "\" \""
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+
+# Os casos de um arquivo: lista de [nome, fonte_em_bytes].
+action casos_de(arq) {
+    texto = sem_comentario(os.readFile(arq))
+    linhas = texto.split("\n")
+    casos = []
+    i = 0
+    while i < len(linhas) {
+        L = linhas[i]
+        if not L.startswith("{ \"") {
+            i = i + 1
+            continue
+        }
+        # o bloco vai até a linha que termina em `},`
+        toks = []
+        j = i
+        while j < len(linhas) {
+            for each t in tokens(linhas[j]) { addEnd(toks, t) }
+            if linhas[j].rstrip().endswith("},") {
+                break
+            }
+            j = j + 1
+        }
+        i = j + 1
+        # estrutura: { LIT(nome) , LIT(fonte)... , X , Y , NUM } ,
+        # rc = o último número antes do `}` final; X e Y = os dois itens antes
+        # dele; o fonte = todo literal entre o nome e o X.
+        n = len(toks)
+        k = n - 1
+        while k >= 0 and not (toks[k][0] == "num") {
+            k = k - 1
+        }
+        if k < 4 {
+            continue
+        }
+        # anda pra trás sobre `, Y , X ,` — TRÊS vírgulas: a primeira versão
+        # andava duas e parava EM CIMA do X (o stdout esperado), que entrava
+        # no fonte. Todo caso de uma linha só virava outro programa, com a
+        # saída esperada colada no fim; 494 dos 718 reprovaram no runner.
+        virgulas = 0
+        m = k - 1
+        while m >= 0 and virgulas < 3 {
+            if toks[m][0] == "pont" and toks[m][1] == "," {
+                virgulas = virgulas + 1
+            }
+            m = m - 1
+        }
+        # m é o último literal do fonte; os literais do fonte estão em [2 .. m]
+        fonte = []
+        q = 2
+        while q <= m {
+            if toks[q][0] == "lit" {
+                for each b in des_c(toks[q][1]) { addEnd(fonte, b) }
+            }
+            q = q + 1
+        }
+        if toks[1][0] == "lit" and len(fonte) > 0 {
+            addEnd(casos, [toks[1][1], fonte])
+        }
+    }
+    return casos
+}
+
+
+# Roda o programa e devolve [rc, stdout_bytes, primeira_linha_do_stderr].
+action roda(fonte_bytes) {
+    using open(TMP + "/caso.ps", "wb") as f {
+        f.write(bytes.new(fonte_bytes))
+    }
+    os.cmd("cd " + TMP + " && timeout 20 '" + sys.executable + "' caso.ps"
+           + " > out 2> err; echo $? > rc")
+    rc = int(os.readFile(TMP + "/rc").strip())
+    saida = []
+    for each b in os.readFile(TMP + "/out").encode() { addEnd(saida, b) }
+    # o runner compara o stdout SEM os `\n`/`\r` do fim (`sem_fim_de_linha`
+    # em ps_teste.c) — a expectativa gravada tem que seguir a mesma regra
+    while len(saida) > 0 and (saida[len(saida) - 1] == 10 or saida[len(saida) - 1] == 13) {
+        removeEnd(saida)
+    }
+    err = os.readFile(TMP + "/err")
+    primeira = ""
+    if err != "" {
+        primeira = err.split("\n")[0]
+    }
+    # Aviso do lexer vem prefixado com `arquivo:linha: ` — e o arquivo muda a
+    # cada rodada (`caso.ps` aqui, `/tmp/ps_teste_xxx` no runner). Grava a
+    # partir do tipo (`SyntaxWarning: ...`), que é o que o runner casa.
+    if primeira.startswith("caso.ps:") {
+        p = primeira.find(": ", len("caso.ps:"))
+        if p >= 0 {
+            primeira = primeira[p + 2:]
+        }
+    }
+    return [rc, saida, primeira]
+}
+
+
+action iguais(a, b) {
+    if a[0] != b[0] or a[2] != b[2] or len(a[1]) != len(b[1]) {
+        return false
+    }
+    i = 0
+    while i < len(a[1]) {
+        if a[1][i] != b[1][i] {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+
+action texto_de(bs) {
+    partes = []
+    for each b in bs { addEnd(partes, b) }
+    return bytes.new(partes).decode()
+}
+
+
+# O corpo principal é uma ACTION de propósito: variável de módulo é escrita
+# por qualquer função que atribua o mesmo nome (write-through, §4.7). A
+# primeira versão tinha `linhas` e `n` no `if __name__` — escopo de módulo —
+# e `casos_de()` também atribuía `linhas` e `n`: a lista de saída virou as
+# linhas do último arquivo lido e o contador foi zerado. Dentro de uma action
+# os nomes são locais dela, e ninguém de fora os alcança.
+action principal() {
+    os.mkdir(TMP, exist_ok=true)
+    linhas = []
+    addEnd(linhas, "/*")
+    addEnd(linhas, " * DIFERENCIAL — antes x depois, o corpus inteiro.")
+    addEnd(linhas, " *")
+    addEnd(linhas, " * GERADO por `teste/geradores/diferencial.ps`. NAO edite a mao: mudou o")
+    addEnd(linhas, " * comportamento de proposito, regera e o diff mostra quais casos mudaram.")
+    addEnd(linhas, " *")
+    addEnd(linhas, " * Cada programa vem dos outros `casos_*.c` e traz a saida que a VM produz")
+    addEnd(linhas, " * quando o arquivo foi gerado: stdout exato, primeira linha do stderr (ou")
+    addEnd(linhas, " * NULL) e codigo de saida. O que nao e reproduzivel (roda duas vezes e")
+    addEnd(linhas, " * muda; ou depende de rede, banco ou entrada) fica de fora.")
+    addEnd(linhas, " */")
+    addEnd(linhas, "#include \"ps_teste.h\"")
+    addEnd(linhas, "")
+    addEnd(linhas, "const Caso CASOS_DIFERENCIAL[] = {")
+
+    n = 0
+    lidos = 0
+    fora_dependencia = 0
+    fora_instavel = 0
+    fora_binario = 0
+    for each arq in ARQS {
+        for each caso in casos_de(arq) {
+            lidos = lidos + 1
+            fonte = caso[1]
+            texto = ""
+            try {
+                texto = texto_de(fonte)
+            } catch (e) {
+                fora_binario = fora_binario + 1
+                continue
+            }
+            depende = false
+            for each marca in DEPENDE_DE_FORA {
+                if texto.find(marca) >= 0 {
+                    depende = true
+                }
+            }
+            if depende {
+                fora_dependencia = fora_dependencia + 1
+                continue
+            }
+            r1 = Null
+            r2 = Null
+            try {
+                r1 = roda(fonte)
+                r2 = roda(fonte)
+            } catch (e) {
+                fora_binario = fora_binario + 1
+                continue
+            }
+            if not iguais(r1, r2) {
+                fora_instavel = fora_instavel + 1
+                continue
+            }
+            addEnd(linhas, "{ \"dif #" + str(n) + "\",")
+            addEnd(linhas, "  \"" + esc_bytes(fonte) + "\",")
+            err_c = "NULL"
+            if r1[2] != "" {
+                err_c = "\"" + esc_bytes(r1[2].encode()) + "\""
+            }
+            addEnd(linhas, "  \"" + esc_bytes(r1[1]) + "\", " + err_c + ", " + str(r1[0]) + " },")
+            n = n + 1
+        }
+    }
+    addEnd(linhas, "};")
+    addEnd(linhas, "const int NC_DIFERENCIAL = N_CASOS(CASOS_DIFERENCIAL);")
+    addEnd(linhas, "")
+    os.writeFile(SAIDA, "\n".join(linhas))
+    post("diferencial:", str(n), "casos gravados em", SAIDA)
+    post("  lidos:", str(lidos), " fora por dependencia externa:", str(fora_dependencia),
+         " instaveis:", str(fora_instavel), " binario/falha:", str(fora_binario))
+}
+
+
+if __name__ == "main" {
+    principal()
+}

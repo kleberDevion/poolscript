@@ -11,7 +11,7 @@ JSON.
 | Acesso | O que é |
 |---|---|
 | `.status` | código HTTP (`200`, `404`, `500`…). `-1` em falha de transporte. |
-| `.status_code` | **alias** de `.status` (mesmo nome da lib `requests` do Python) |
+| `.status_code` | **alias** de `.status` |
 | `.ok` | `true` se o status for `2xx` (sucesso) |
 | `.text` | o corpo como texto UTF-8 (tolerante a bytes inválidos) |
 | `.content` | o corpo em **bytes** crus — use pra binário (imagem, zip, pdf, exe); não corrompe |

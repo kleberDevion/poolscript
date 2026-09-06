@@ -35,10 +35,11 @@ class Ponto() {          # idêntico a Entity Ponto()
 
 ## 7.2. Campos e construtor sintetizado
 
-Campos são declarados com **tipo**, em qualquer das duas ordens — `nome: tipo`
-ou `tipo nome`, a mesma da declaração de variável (seção 4.1). A partir deles a
-linguagem **sintetiza um construtor** (`__init__`) que recebe um argumento por
-campo, na ordem declarada:
+Campos são declarados como uma variável (seção 4.1): com **tipo**, em qualquer
+das duas ordens — `nome: tipo` ou `tipo nome` — ou **sem tipo**, `nome = valor`,
+e aí o campo é dinâmico como qualquer `x = 1`. A partir deles a linguagem
+**sintetiza um construtor** (`__init__`) que recebe um argumento por campo, na
+ordem declarada:
 
 ```ps
 Entity Usuario() {

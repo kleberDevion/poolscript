@@ -1370,6 +1370,41 @@ const Caso CASOS_LINGUAGEM[] = {
  * nome de jeito nenhum (fim de linha, fim de arquivo). */
 { "decorador com membro que e palavra reservada",
   "@app.route(\"/x\")\naction h() { return 1 }\n", "", "name 'app' is not defined", 1 },
+/* Condicao que COMECA com parentese: `if (a) or (b) {` dava "esperado inicio
+ * de bloco com '{'" — o parser lia o grupo como se fosse a forma `if (cond) {`
+ * e exigia o bloco logo depois do `)`. O parentese e so precedencia; a
+ * condicao vai ate o `{`. Achado escrevendo o gerador do corpus diferencial. */
+{ "condicao que comeca com parentese: `if (a) or (b) {` e `while (a) and (b) {`",
+  "x = 1\n"
+  "if (x == 1) or (x == 2) {\n"
+  "    post(\"sim\")\n"
+  "}\n"
+  "while (x < 2) and (x > 0) {\n"
+  "    post(\"laco\")\n"
+  "    x = x + 1\n"
+  "}\n"
+  "if (x == 2) {\n"
+  "    post(\"so um grupo continua valendo\")\n"
+  "}\n",
+  "sim\nlaco\nso um grupo continua valendo", NULL, 0 },
+/* Campo SEM tipo no corpo da classe: `conexao = ""`, `LIMITE = 10`, com ou sem
+ * `private`. Era recusado ("so sao permitidas declaracoes 'action'..."): quem
+ * declara um campo como declara uma variavel era repelido. E a terceira
+ * grafia do mesmo no (`nome: tipo`, `tipo nome`, `nome = valor`), dinamica
+ * como `x = 1`, e entra no construtor sintetizado como argumento opcional. */
+{ "campo sem tipo no corpo da classe: `nome = valor`, `private nome = valor`",
+  "class P() {\n"
+  "    nome = \"a\"\n"
+  "    private conexao = \"\"\n"
+  "    LIMITE = 10\n"
+  "    n: int = 2\n"
+  "    action m(self) {\n"
+  "        return self.nome + str(self.n) + str(self.LIMITE) + self.conexao\n"
+  "    }\n"
+  "}\n"
+  "post(P().m())\n"
+  "post(P(\"z\", \"-\", 5, 7).m())\n",
+  "a210\nz75-", NULL, 0 },
 /* A cabeça da action sob um decorador é a MESMA unidade do statement:
  * `[public|private] {async|tipo}* action|reaction`, em qualquer ordem. O
  * lookahead do decorador era uma cópia à mão que conhecia quatro formas e

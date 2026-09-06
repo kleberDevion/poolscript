@@ -53,6 +53,10 @@ typedef struct {
     int32_t col;
 } PSAviso;
 
+/* As palavras-chave da linguagem, terminadas em NULL. Fonte única: a tabela
+ * que o próprio lexer consulta. */
+const char *const *ps_lexer_keywords(void);
+
 typedef struct {
     PSToken *tokens;
     int32_t  n;

@@ -30,6 +30,8 @@ if nota >= 7 {
   verdadeiro.
 - `elif` encadeia quantas vezes quiser; `else` é opcional e vem por último.
 - A palavra é **`elif`** — não existe `else if` (é erro de sintaxe).
+- A condição vai até o `{`. Parêntese nela é só precedência: `if (a) or (b) {`
+  e `if (x) {` valem, e valem igual no `while`.
 
 ```ps
 if 5       { post("entra") }      # int não-zero é verdadeiro
