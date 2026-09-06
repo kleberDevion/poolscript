@@ -225,6 +225,14 @@ action verbo_patch(id)
 
 
 # ── cookie ──────────────────────────────────────────────────────────────────
+# logout: o mesmo cookie com vida zero — e o que a doc do cookie mostra em
+# `POST /sair`; o Set-Cookie exato esta na tabela de la
+@app.post("/cookie-sai")
+action cookie_sai()
+{
+    return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
+}
+
 @app.route("/cookie-poe")
 action cookie_poe()
 {

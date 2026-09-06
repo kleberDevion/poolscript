@@ -448,6 +448,12 @@ confere("request.cookie le o valor", r.get_json("sid") == "abc123")
 confere("...e o segundo par depois do ponto e virgula", r.get_json("tema") == "escuro")
 confere("cookie inexistente e null", r.get_json("nao") == null)
 
+# logout = o cookie reescrito com vida zero, mesmo path — a linha exata que
+# a doc do cookie promete na tabela de `POST /sair`
+r = cru("POST /cookie-sai HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+confere("logout: Set-Cookie com valor vazio e Max-Age=0, e os padroes seguros",
+        "Set-Cookie: sid=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly\r\n" in r)
+
 r = get(RAIZ + "/cookie-le", headers={"Cookie": "notsid=x; sid=certo"})
 confere("nome parcial NAO casa (`sid` dentro de `notsid`)", r.get_json("sid") == "certo")
 
