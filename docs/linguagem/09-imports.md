@@ -84,19 +84,66 @@ post(valor)
 
 ---
 
-## 9.4. Imports relativos
+## 9.4. Import por caminho — `import '…'`
 
-Prefixar o módulo com pontos importa **relativo à pasta do arquivo atual** (como
-no Python), sem passar pela stdlib:
+O módulo pode vir **entre aspas**. É a forma de importar um arquivo `.ps` pelo
+caminho dele:
 
 ```ps
-from .modulo import x        # mesma pasta
+import '../pacote/modulo.ps'             # liga `modulo`
+from './irmao.ps' import w               # nomes soltos
+from '../pacote/modulo' import z as zz   # a extensão pode ficar de fora
+import '/opt/app/util.ps' as u           # caminho absoluto, com `as`
+```
+
+- O caminho é **relativo à pasta do arquivo que contém o `import`** — não ao
+  diretório atual nem ao arquivo principal. `./`, `../` e subpastas valem;
+  caminho que começa com `/` é absoluto.
+- Sem extensão, o motor tenta o nome como escrito e depois `.ps`, `.psl`, `.p`.
+- O nome ligado é o **nome do arquivo**, sem pasta e sem extensão
+  (`'../pacote/modulo.ps'` liga `modulo`). Com `as`, é o nome do `as`. Se o
+  nome do arquivo não serve de nome de variável, o `as` é obrigatório:
+
+  ```
+  import 'sub/meu-mod.ps'
+  SyntaxError: 'meu-mod' nao serve de nome de variavel: ligue com `as` (import 'sub/meu-mod.ps' as nome)
+  ```
+
+- Caminho que não existe é `ImportError: No module named './x.ps'`, com o
+  caminho como foi escrito.
+- Dentro do módulo importado, `__name__` é o nome do arquivo (`modulo`), e as
+  mensagens de atributo citam esse nome: `module 'modulo' has no attribute 'x'`.
+
+A string também aceita o **nome de um módulo ou de uma lib** — sem `/` e sem
+extensão, ela vale o mesmo que o `import` sem aspas:
+
+```ps
+import 'json'                       # == import json
+from 'jinker' import Jinker         # == from jinker import Jinker
+import 'minhalib'                   # lib instalada com `psl install … -asLib`
+```
+
+O que decide é a forma da string: com `/`, ou terminando em `.ps`/`.psl`/`.p`,
+é caminho de arquivo; sem isso é nome de módulo, e segue a ordem da seção 9.5.
+Por isso `import 'pacote'` (uma pasta, sem barra) não é caminho: é o nome
+`pacote`, e dá `ImportError: No module named 'pacote'` se não houver módulo com
+esse nome. String vazia (`import ''`) é `SyntaxError`.
+
+`PUSH` aceita a mesma string: `PUSH '../pacote/modulo.ps' as pm` e
+`PUSH './irmao.ps' GET w`.
+
+### 9.4.1. Relativo com pontos
+
+A forma com pontos antes do nome continua valendo:
+
+```ps
+from .modulo import x           # mesma pasta
 from ..pacote.modulo import y   # um nível acima
 ```
 
-Cada `.` extra sobe um diretório. Um relativo não encontrado é `ImportError` —
-a mesma mensagem do absoluto (`No module named '.x'`); não há texto próprio pro
-relativo.
+Cada `.` extra sobe um diretório, a partir da pasta do arquivo atual. Um
+relativo não encontrado é `ImportError` — a mesma mensagem do absoluto
+(`No module named '..pacote.modulo'`); não há texto próprio pro relativo.
 
 > O tipo é `ImportError`, não `ModuleNotFoundError`. No Python o segundo é
 > **subclasse** do primeiro, então `except ImportError` pega os dois. Aqui o
@@ -125,8 +172,13 @@ casar vence:
 
 Um nome que não casa com nenhum dos quatro é `ImportError`.
 
-> Imports relativos (`from .x import …`) **não** entram nessa ordem — são sempre
-> resolvidos direto contra o sistema de arquivos, relativos ao arquivo atual.
+A string sem caminho (`import 'json'`, `import 'minhalib'`) segue esta mesma
+ordem.
+
+> Imports por caminho (`import '../x.ps'`) e relativos com pontos
+> (`from .x import …`) **não** entram nessa ordem — são resolvidos direto contra
+> o sistema de arquivos, a partir da pasta do arquivo atual, e nunca caem nas
+> libs.
 
 ### 9.5.1. Erro DENTRO do módulo importado
 
@@ -179,7 +231,10 @@ post(mymod.saudar("ana"))
 - **`from mod import x [as y], z`** — liga nomes soltos.
 - **`PUSH mod [as m] [GET x, y]`** — alternativa: `PUSH` = `import`, `GET` =
   `from … import`.
-- **`from .mod` / `from ..pkg.mod`** — relativo ao arquivo atual.
-- Resolução (sem pontos): **stdlib → lib global → arquivo ao lado de quem
-  importa → arquivo do projeto**; senão `ImportError`.
+- **`import '../pasta/arquivo.ps' [as m]`** / **`from './arquivo.ps' import x`**
+  — por caminho, relativo à pasta do arquivo atual; liga o nome do arquivo.
+  Sem `/` nem extensão (`import 'json'`) é nome de módulo ou lib.
+- **`from .mod` / `from ..pkg.mod`** — relativo com pontos.
+- Resolução (nome, sem caminho): **stdlib → lib global → arquivo ao lado de
+  quem importa → arquivo do projeto**; senão `ImportError`.
 - **Importar não dispara** o guard `if __name__ == "main"` do módulo.

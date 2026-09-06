@@ -126,6 +126,40 @@ os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' rotas.ps > saida_viz.ou
 confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
         os.readFile(PASTA + "/rel/saida_viz.out").strip() == "mandou")
 
+# ── import por caminho entre aspas (`import '../x.ps'`) ──────────────────────
+#
+# A string e o especificador: com `/` ou extensao e caminho relativo ao
+# arquivo que importa; sem isso e nome de modulo do motor ou lib instalada.
+# Aqui o que precisa de arquivo de verdade: relativo, pai, sem extensao, `as`,
+# PUSH/GET, absoluto, lib (POOLSCRIPT_HOME), modulo do motor entre aspas e
+# `__name__` dentro do modulo importado por caminho.
+os.mkdir(PASTA + "/asp/sub", exist_ok=true)
+os.mkdir(PASTA + "/asp/pacote", exist_ok=true)
+os.mkdir(PASTA + "/asp/home/libs", exist_ok=true)
+os.writeFile(PASTA + "/asp/pacote/modulo.ps", "z = 99\naction f() {\n    return \"f de \" + __name__\n}\n")
+os.writeFile(PASTA + "/asp/sub/irmao.ps", "w = 7\n")
+os.writeFile(PASTA + "/asp/home/libs/minhalib.ps", "LIB = \"lib ok\"\n")
+os.writeFile(PASTA + "/asp/sub/meu-mod.ps", "q = 1\n")
+os.writeFile(PASTA + "/asp/sub/filho.ps",
+    "import '../pacote/modulo.ps'\n"
+    + "from './irmao.ps' import w\n"
+    + "from '../pacote/modulo' import z as zz\n"
+    + "import 'json'\n"
+    + "from 'json' import stringify as st\n"
+    + "import 'minhalib'\n"
+    + "PUSH '../pacote/modulo.ps' as pm\n"
+    + "PUSH './irmao.ps' GET w as w2\n"
+    + "import '" + PASTA + "/asp/pacote/modulo.ps' as abs\n"
+    + "import './meu-mod.ps' as mm\n"
+    + "post(modulo.z, w, zz, json.stringify([1]), st([2]), minhalib.LIB, pm.z, w2, abs.f(), mm.q)\n")
+ESPERADO_ASP = "99 7 99 [1] [2] lib ok 99 7 f de modulo 1"
+os.cmd("cd " + PASTA + "/asp && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable + "' sub/filho.ps > saida_asp.out 2>&1")
+confere("import por caminho: relativo, pai, sem extensao, `as`, PUSH/GET, absoluto, lib e modulo do motor entre aspas",
+        os.readFile(PASTA + "/asp/saida_asp.out").strip() == ESPERADO_ASP)
+os.cmd("cd " + PASTA + "/asp/sub && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable + "' filho.ps > ../saida_asp2.out 2>&1")
+confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
+        os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
+
 # ── os: caminho, diretório, ambiente ────────────────────────────────────────
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
 # então o teste cria o alvo e roda de dentro da pasta.

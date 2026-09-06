@@ -1526,6 +1526,31 @@ static const char *nome_livre(P *p, const char *msg)
 }
 
 /* caminho pontilhado: a.b.c — cada parte vira um Name na lista */
+/* `import 'caminho/alvo.ps'` / `from 'nome' import x` / `PUSH 'x'`: o modulo
+ * vem numa STRING, como no TypeScript. Fica um literal so em `lista`, e
+ * `i2 = -1` marca a forma. Com `/` ou extensao da linguagem e caminho,
+ * relativo ao arquivo que importa; sem isso e nome de modulo do motor ou de
+ * lib instalada — quem decide e o runtime (acha_modulo_ps). Devolve 1 se
+ * consumiu a string, 0 se nao havia string, -1 em erro. */
+static int modulo_entre_aspas(P *p, PSNode *n)
+{
+    PSToken *t = atual(p);
+    if (t->type != T_STR) return 0;
+    if (t->texto_len == 0) {
+        perro(p, "import entre aspas vazio: esperado um caminho ('../x.ps') ou o nome de um modulo ('json')", t);
+        return -1;
+    }
+    p->pos++;
+    PSNode *lit = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
+    if (!lit) return -1;
+    lit->lit = L_STR;
+    lit->texto = ps_arena_strdup(p->arena, t->texto ? t->texto : "", t->texto_len);
+    lit->texto_len = t->texto_len;
+    if (ps_vec_push(p->arena, &n->lista, lit) != 0) return -1;
+    n->i2 = -1;
+    return 1;
+}
+
 static int caminho_modulo(P *p, PSNodeVec *v)
 {
     PSToken *ponto = NULL;      /* o `.` que exigiu esta parte, se houve */
@@ -2319,7 +2344,9 @@ static PSNode *statement(P *p)
 
         if (aceita_kw(p, "import")) {
             n->texto = dup_str(p, "import");
-            if (caminho_modulo(p, &n->lista) != 0) return NULL;
+            int aspas = modulo_entre_aspas(p, n);
+            if (aspas < 0) return NULL;
+            if (!aspas && caminho_modulo(p, &n->lista) != 0) return NULL;
             if (aceita_kw(p, "as")) {
                 n->texto2 = nome_livre(p, "esperado nome apos 'as'");
                 if (FALHOU(p)) return NULL;
@@ -2328,10 +2355,14 @@ static PSNode *statement(P *p)
         }
         if (aceita_kw(p, "from")) {
             n->texto = dup_str(p, "from");
-            /* pontos iniciais = import relativo (`from .mod import x`) */
-            while (checa(p, T_DOT)) { p->pos++; n->i2++; }
-            if (!(n->i2 > 0 && checa_kw(p, "import"))) {
-                if (caminho_modulo(p, &n->lista) != 0) return NULL;
+            int aspas = modulo_entre_aspas(p, n);
+            if (aspas < 0) return NULL;
+            if (!aspas) {
+                /* pontos iniciais = import relativo (`from .mod import x`) */
+                while (checa(p, T_DOT)) { p->pos++; n->i2++; }
+                if (!(n->i2 > 0 && checa_kw(p, "import"))) {
+                    if (caminho_modulo(p, &n->lista) != 0) return NULL;
+                }
             }
             if (!aceita_kw(p, "import")) {
                 perro(p, "esperado 'import' apos o modulo", atual(p)); return NULL;
@@ -2341,7 +2372,9 @@ static PSNode *statement(P *p)
         }
         p->pos++;                                  /* PUSH */
         n->texto = dup_str(p, "push");
-        if (caminho_modulo(p, &n->lista) != 0) return NULL;
+        int aspas_push = modulo_entre_aspas(p, n);
+        if (aspas_push < 0) return NULL;
+        if (!aspas_push && caminho_modulo(p, &n->lista) != 0) return NULL;
         if (aceita_kw(p, "as")) {
             n->texto2 = nome_livre(p, "esperado nome apos 'as'");
             if (FALHOU(p)) return NULL;

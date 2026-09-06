@@ -1601,6 +1601,19 @@ const Caso CASOS_LINGUAGEM[] = {
   "import\n", "", "esperado nome de modulo depois de 'import'", 2 },
 { "import valido continua valendo",
   "import sys\npost(type(sys))\n", "module", NULL, 0 },
+/* ── import por caminho entre aspas (`import '../x.ps'`), 2026-09-06 ───────
+ * A string e o especificador, como no TypeScript: com `/` ou extensao da
+ * linguagem e caminho relativo ao arquivo que importa; sem isso e nome de
+ * modulo (motor ou lib instalada). Os casos com arquivo de verdade estao em
+ * teste/cobre_stdlib.ps; aqui, o que nao precisa de arquivo. */
+{ "import por caminho inexistente cita o caminho como foi escrito",
+  "import './nao_existe.ps'\n", "", "ImportError: No module named './nao_existe.ps'", 1 },
+{ "import 'nome' sem barra nem extensao e nome de modulo, nao caminho",
+  "import 'pasta_que_nao_existe'\n", "", "ImportError: No module named 'pasta_que_nao_existe'", 1 },
+{ "import por caminho cujo arquivo nao serve de nome de variavel exige `as`",
+  "import 'sub/meu-mod.ps'\n", "", "'meu-mod' nao serve de nome de variavel: ligue com `as`", 2 },
+{ "import entre aspas vazio e erro de sintaxe",
+  "import ''\n", "", "import entre aspas vazio", 2 },
 { "from ... import continua valendo",
   "from jinker import cors\npost(type(cors))\n", "CorsConfig", NULL, 0 },
 

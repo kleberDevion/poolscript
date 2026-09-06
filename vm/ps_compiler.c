@@ -2405,13 +2405,29 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 return;
             }
             char encoded[512]; int el = 0;
-            for (int32_t i = 0; i < n->i2 && el < 500; i++) encoded[el++] = '.';
-            for (int32_t i = 0; i < n->lista.n && el < 500; i++) {
-                if (i) encoded[el++] = '.';
-                const char *pt = n->lista.itens[i]->texto ? n->lista.itens[i]->texto : "";
-                int pl = (int)strlen(pt);
-                if (el + pl >= 500) pl = 500 - el;
-                memcpy(encoded + el, pt, (size_t)pl); el += pl;
+            /* `import 'x'` (i2 == -1): marcador \x01 + o literal como foi
+             * escrito; o runtime decide se e caminho ou nome de modulo. O nome
+             * ligado e o do arquivo, sem pasta e sem extensao. */
+            char base_aspas[256]; base_aspas[0] = '\0';
+            if (n->i2 == -1) {
+                const char *spec = (n->lista.n > 0 && n->lista.itens[0]->texto) ? n->lista.itens[0]->texto : "";
+                int pl = (int)strlen(spec); if (pl > 500) pl = 500;
+                encoded[el++] = '\x01';
+                memcpy(encoded + el, spec, (size_t)pl); el += pl;
+                const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
+                snprintf(base_aspas, sizeof(base_aspas), "%s", b);
+                char *ext = strrchr(base_aspas, '.');
+                if (ext && ext != base_aspas && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0))
+                    *ext = '\0';
+            } else {
+                for (int32_t i = 0; i < n->i2 && el < 500; i++) encoded[el++] = '.';
+                for (int32_t i = 0; i < n->lista.n && el < 500; i++) {
+                    if (i) encoded[el++] = '.';
+                    const char *pt = n->lista.itens[i]->texto ? n->lista.itens[i]->texto : "";
+                    int pl = (int)strlen(pt);
+                    if (el + pl >= 500) pl = 500 - el;
+                    memcpy(encoded + el, pt, (size_t)pl); el += pl;
+                }
             }
             encoded[el] = '\0';
             const char *mod = encoded;
@@ -2419,9 +2435,25 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * a doc diz e o interpretador faz — antes a VM recusava com
              * NotImplementedError. Import RELATIVO (`import .x`) segue exigindo
              * `from`, porque aí não há nome óbvio pra ligar. */
-            int simples = (n->i2 == 0 && n->lista.n >= 1);
-            const char *ultimo = n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto
-                               ? n->lista.itens[n->lista.n - 1]->texto : mod;
+            int simples = (n->i2 == -1) || (n->i2 == 0 && n->lista.n >= 1);
+            const char *ultimo = (n->i2 == -1) ? base_aspas
+                               : (n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto
+                                  ? n->lista.itens[n->lista.n - 1]->texto : mod);
+            /* `import 'meu-mod.ps'` sem `as`: o nome do arquivo tem que servir
+             * de nome de variavel, senao nao ha o que ligar. */
+            if (n->i2 == -1 && !n->texto2 && n->lista2.n == 0) {
+                int ok_nome = ultimo[0] != '\0';
+                for (const char *q = ultimo; ok_nome && *q; q++) {
+                    int letra = (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || *q == '_';
+                    int digito = (*q >= '0' && *q <= '9');
+                    if (!(letra || (digito && q != ultimo))) ok_nome = 0;
+                }
+                if (!ok_nome) {
+                    cerro_sx(c, n, "'%s' nao serve de nome de variavel: ligue com `as` (import '%s' as nome)",
+                             ultimo, mod + 1);
+                    return;
+                }
+            }
 
             /* `PUSH mod` é `import mod`; `PUSH mod GET a, b` é
              * `from mod import a, b`. Com GET, o módulo NÃO fica visível —

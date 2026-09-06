@@ -890,6 +890,16 @@ PUSH os GET getenv        # forma alternativa
 import os as sistema      # alias
 ```
 
+Arquivo `.ps` pelo caminho, entre aspas — relativo à pasta do arquivo que
+importa (ver [`docs/linguagem/09-imports.md`](linguagem/09-imports.md) §9.4):
+
+```
+import '../pacote/modulo.ps'          # liga `modulo`
+from './irmao.ps' import w
+import 'sub/meu-mod.ps' as mm         # nome que não serve de variável: use `as`
+import 'json'                         # sem barra e sem extensão: nome de módulo
+```
+
 Libs embutidas (lazy-loaded, só carregam quando importadas):
 `os, json, dotenv, mail, date, jinker, db, hash, jwt, request/requests,
 manpu/mp, regex, sqlite3, qrcode/qr, sys, datasentity/dataentity`.

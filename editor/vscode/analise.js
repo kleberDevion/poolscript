@@ -162,14 +162,35 @@ function alvosDoUnpack(alvo, poe, origem) {
 
 /* ── imports ────────────────────────────────────────────────────────────── */
 
+/* `import 'x'`: com `/` ou extensão da linguagem é caminho; senão é nome de
+ * módulo do motor ou de lib — a mesma regra do motor. */
+function especificadorEhCaminho(spec) {
+  if (spec.indexOf('/') >= 0) return true;
+  return ['.ps', '.psl', '.p'].some((e) => spec.endsWith(e));
+}
+
+/* O nome que `import 'pasta/alvo.ps'` liga: só o arquivo, sem pasta nem
+ * extensão. */
+function nomeDoArquivoImport(spec) {
+  const base = spec.slice(spec.lastIndexOf('/') + 1);
+  for (const e of ['.ps', '.psl', '.p']) {
+    if (base.endsWith(e) && base.length > e.length) return base.slice(0, -e.length);
+  }
+  return base;
+}
+
 function importsDaArvore(arvore) {
   const tab = new Map();
   const anda = (no) => {
     if (!no || typeof no !== 'object') return;
     if (no.k === 'ImportStmt') {
-      const segs = (no.lista || []).map((x) => x.texto).filter(Boolean);
-      if (segs.length) {
-        const mod = segs.join('.');
+      const itens = no.lista || [];
+      /* `import 'caminho/alvo.ps'` / `from 'json' import x`: um literal só,
+       * marcado com `i2 = -1`. O texto vai inteiro — é caminho ou nome. */
+      const aspas = no.i2 === -1 && itens.length === 1 && itens[0].k === 'Literal';
+      const segs = aspas ? [itens[0].texto || ''] : itens.map((x) => x.texto).filter(Boolean);
+      if (segs.length && segs[0]) {
+        const mod = aspas ? segs[0] : segs.join('.');
         /* `from mod import a, b` NÃO liga o módulo: liga cada nome pedido. */
         if (no.texto === 'from' || (no.lista2 || []).length) {
           const pedidos = no.lista2 || [];
@@ -178,11 +199,11 @@ function importsDaArvore(arvore) {
             const nome = pedidos[i] && pedidos[i].texto;
             if (!nome) continue;
             const ap = apelidos[i] && apelidos[i].texto ? apelidos[i].texto : nome;
-            tab.set(ap, { mod, membro: nome, de_from: true });
+            tab.set(ap, { mod, membro: nome, de_from: true, aspas });
           }
         } else {
-          const ligado = no.texto2 ? no.texto2 : segs[segs.length - 1];
-          tab.set(ligado, { mod, membro: null, de_from: false });
+          const ligado = no.texto2 ? no.texto2 : (aspas ? nomeDoArquivoImport(mod) : segs[segs.length - 1]);
+          tab.set(ligado, { mod, membro: null, de_from: false, aspas });
         }
       }
     }
@@ -353,4 +374,5 @@ function entidadeEm(idx, linha) {
   return null;
 }
 
-module.exports = { indexa, visiveisEm, entidadeEm, cadeiaAntes, ultimaLinha, cada };
+module.exports = { indexa, visiveisEm, entidadeEm, cadeiaAntes, ultimaLinha, cada,
+                   especificadorEhCaminho, nomeDoArquivoImport };

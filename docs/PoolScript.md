@@ -610,6 +610,14 @@ post(somar(3, 4))  # 7
 post(VERSAO)       # 1.0
 ```
 
+Pelo caminho, entre aspas — relativo à pasta do arquivo que importa:
+
+```
+from './utils.ps' import somar
+import '../lib/texto.ps'         # liga `texto`
+import 'ferramentas/kit.ps' as k
+```
+
 ---
 
 ## Builtins globais

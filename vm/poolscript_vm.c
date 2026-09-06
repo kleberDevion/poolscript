@@ -9686,6 +9686,7 @@ static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
+static int spec_eh_caminho(const char *s);
 
 static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nargs_dados)
 {
@@ -23052,7 +23053,13 @@ ERRO_TF(vm, "TypeError",
         case OP_IMPORT_MOD: {
             Value nomev = p->consts[arg];
             if (!EH_STRING(nomev)) ERRO(vm, "nome de modulo invalido");
-            int mi = acha_modulo(COMO_STRING(nomev)->chars);
+            const char *nome_imp = COMO_STRING(nomev)->chars;
+            /* `import 'x'` (marcador \x01): sem `/` nem extensao e NOME, e o
+             * modulo nativo ganha como no `import x`; com caminho nunca e
+             * nativo — `import './json.ps'` e o arquivo, de proposito. */
+            int mi = (nome_imp[0] == '\x01')
+                   ? (spec_eh_caminho(nome_imp + 1) ? -1 : acha_modulo(nome_imp + 1))
+                   : acha_modulo(nome_imp);
             if (mi < 0) {
                 /* Não é nativo: tenta `.ps` ao lado do script, depois as libs
                  * instaladas pelo `psl`. Módulo nativo ganha do arquivo — o
@@ -23812,8 +23819,56 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
  *   - `a.b` (nível 0): ABSOLUTO da raiz do projeto (vm->dir_script), depois
  *     lib instalada em ~/.poolscript/libs/<a.b>.ps.
  * O caminho pontuado vira caminho de pasta (`a.b` -> `a/b`). */
+/* `import 'x'`: com `/` ou extensao da linguagem e CAMINHO; senao e nome. */
+static int spec_eh_caminho(const char *s)
+{
+    if (strchr(s, '/')) return 1;
+    const char *ext = strrchr(s, '.');
+    return ext && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0);
+}
+
+/* fopen("rb") abre PASTA no Linux; pra achar modulo so arquivo comum serve */
+static int eh_arquivo_comum(const char *caminho)
+{
+    struct stat st;
+    return stat(caminho, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+/* O nome que o modulo mostra (`__name__`, mensagens, `module 'x' has no
+ * attribute`): o literal sem o marcador; caminho vira so o nome do arquivo,
+ * sem pasta nem extensao. */
+static void nome_visivel_modulo(const char *nome, char *out, size_t cap)
+{
+    if (nome[0] != '\x01') { snprintf(out, cap, "%s", nome); return; }
+    const char *spec = nome + 1;
+    if (!spec_eh_caminho(spec)) { snprintf(out, cap, "%s", spec); return; }
+    const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
+    snprintf(out, cap, "%s", b);
+    char *ext = strrchr(out, '.');
+    if (ext && ext != out && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0))
+        *ext = '\0';
+}
+
 static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
 {
+    /* `import 'caminho/alvo.ps'`: absoluto como esta, senao relativo a pasta
+     * do arquivo que importa. Tenta como escrito e com as extensoes; nunca
+     * cai pras libs. `import 'nome'` sem caminho segue a busca comum abaixo. */
+    if (nome[0] == '\x01') {
+        const char *spec = nome + 1;
+        if (spec_eh_caminho(spec)) {
+            static const char *EXTS_C[] = { "", ".ps", ".psl", ".p" };
+            char base[1024];
+            if (spec[0] == '/') snprintf(base, sizeof(base), "%s", spec);
+            else snprintf(base, sizeof(base), "%s/%s", vm->dir_modulo[0] ? vm->dir_modulo : ".", spec);
+            for (int e = 0; e < 4; e++) {
+                snprintf(saida, cap, "%s%s", base, EXTS_C[e]);
+                if (eh_arquivo_comum(saida)) return 0;
+            }
+            return -1;
+        }
+        nome = spec;
+    }
     int nivel = 0;
     const char *p = nome;
     while (*p == '.') { nivel++; p++; }      /* pontos de nível relativo */
@@ -23886,6 +23941,11 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     /* resolve ANTES de olhar o cache: o mesmo nome relativo (".util") aponta
      * pra arquivos diferentes conforme quem importa, então a chave do cache é
      * o CAMINHO ABSOLUTO, não o nome. */
+    /* `import 'x'` chega com o marcador \x01: nas mensagens vai o literal como
+     * foi escrito; no `__name__` e no nome do modulo, so o nome do arquivo. */
+    const char *escrito = (nome[0] == '\x01') ? nome + 1 : nome;
+    char nome_vis[256];
+    nome_visivel_modulo(nome, nome_vis, sizeof(nome_vis));
     char caminho[1024];
     if (acha_modulo_ps(vm, nome, caminho, sizeof(caminho)) != 0) {
         /* Texto do CPython. O TIPO fica `ImportError` de propósito: lá o nome é
@@ -23893,7 +23953,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
          * `except ImportError` continua pegando. Aqui não há hierarquia — o
          * catch compara o nome — e adotar o nome novo quebraria em silêncio
          * todo `catch (ImportError e)` que hoje pega módulo ausente. */
-        snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", nome);
+        snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", escrito);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
     }
@@ -23924,7 +23984,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
     free(fonte);
     if (!toks || !toks->ok) {
-        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, toks ? toks->erro : "sem memoria");
+        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, toks ? toks->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
         snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
         if (toks) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
@@ -23934,7 +23994,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     PSParseResult *r = ps_parse(toks->tokens, toks->n);
     ps_lexer_free(toks);
     if (!r || !r->ok) {
-        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, r ? r->erro : "sem memoria");
+        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, r ? r->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
         snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
         if (r) { vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col; }
@@ -23944,7 +24004,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     PSPrograma *prog = ps_compila(r->programa);
     ps_parse_free(r);
     if (!prog || !prog->ok) {
-        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome, prog ? prog->erro : "sem memoria");
+        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, prog ? prog->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
                  (prog && prog->erro_do_programa) ? "SyntaxError" : "NotImplementedError");
         snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
@@ -23956,7 +24016,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     int32_t bp, bg, bc;
     if (anexa_programa(vm, prog, &bp, &bg, &bc) != 0) {
         ps_compila_free(prog);
-        snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao carregar %.200s", nome);
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao carregar %.200s", escrito);
         return -1;
     }
     /* protos recém-anexados são deste módulo — marca o arquivo pro traceback */
@@ -23978,7 +24038,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
          * principal e o caminho). Nao existia: `Jinker(__name__)` num modulo
          * estourava com NameError. */
         if (strcmp(prog->globais[i], "__name__") == 0) {
-            PSString *nm = nova_string(vm, nome, (int)strlen(nome));
+            PSString *nm = nova_string(vm, nome_vis, (int)strlen(nome_vis));
             if (nm) vm->globals[bg + i] = MK_OBJ(nm);
             continue;
         }
@@ -24001,7 +24061,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     if (!m) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
     m->obj.type = OBJ_MODULO_PS; m->obj.marked = 0;
     m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
-    m->nome = strdup(nome);
+    m->nome = strdup(nome_vis);
     m->caminho = strdup(abspath);   /* realpath: o `__file__` do Python tambem e absoluto */
     m->base = bg;
     m->n = prog->nglobais;

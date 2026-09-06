@@ -304,7 +304,17 @@ function libsInstaladas() {
   } catch (_) { return []; }
 }
 
-function arquivoDoImport(mod, dirDoc) {
+function arquivoDoImport(mod, dirDoc, aspas) {
+  /* `import 'caminho/alvo.ps'`: absoluto como está, senão relativo à pasta do
+   * documento; como escrito e com as extensões — a mesma busca do motor. */
+  if (aspas && A.especificadorEhCaminho(mod)) {
+    const base = path.isAbsolute(mod) ? mod : (dirDoc ? path.join(dirDoc, mod) : '');
+    if (!base) return '';
+    for (const ext of ['', '.ps', '.psl', '.p']) {
+      try { if (fs.statSync(base + ext).isFile()) return base + ext; } catch (_) { /* segue */ }
+    }
+    return '';
+  }
   const rel = mod.split('.').join(path.sep) + '.ps';
   for (const base of [pastaLibs(), dirDoc]) {
     if (!base) continue;
@@ -343,7 +353,7 @@ function alvoDoImport(doc, nome) {
   if (!imp) return null;
   if (META.modulos[imp.mod] && !imp.membro) return { tipo: 'modulo', mod: imp.mod };
   const dirDoc = doc.uri.startsWith('file://') ? path.dirname(doc.uri.slice(7)) : '';
-  const arq = arquivoDoImport(imp.mod, dirDoc);
+  const arq = arquivoDoImport(imp.mod, dirDoc, imp.aspas);
   if (imp.membro) {
     /* `from mod import X` — o nome ligado é o MEMBRO, não o módulo */
     if (META.modulos[imp.mod]) return { tipo: 'membro_modulo', mod: imp.mod, membro: imp.membro };
@@ -721,7 +731,7 @@ conexao.onInitialize((params) => {
   return {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
-      completionProvider: { triggerCharacters: ['.', '('], resolveProvider: false },
+      completionProvider: { triggerCharacters: ['.', '(', '/', "'", '"'], resolveProvider: false },
       hoverProvider: true,
       definitionProvider: true,
       documentSymbolProvider: true,
@@ -799,13 +809,67 @@ function pastaDoDoc(doc) {
 
 /* Os membros que `from X import …` pode trazer: os do módulo do motor, ou os
  * de topo do arquivo `.ps` (lib instalada ou arquivo ao lado). */
-function membrosParaImport(doc, mod) {
+function membrosParaImport(doc, mod, aspas) {
   if (META.modulos[mod]) {
     return META.modulos[mod].map((m) => Object.assign(
       { kind: m.kind === 'value' ? 'campo' : 'action', escopo: mod, tipo: m.retorna || '' }, m));
   }
-  const arq = arquivoDoImport(mod, pastaDoDoc(doc));
+  const arq = arquivoDoImport(mod, pastaDoDoc(doc), aspas);
   return arq ? membrosDeArquivo(arq) : [];
+}
+
+/* A aspa que abriu o especificador de `import`/`from`/`PUSH` e ainda não
+ * fechou antes do cursor — o índice dela na linha, ou -1. Sem regex: a
+ * primeira palavra decide, a primeira aspa depois dela abre, a mesma aspa
+ * depois dela fecha. */
+function aspaAbertaDoImport(linha) {
+  const t = linha.trimStart();
+  const kw = ['import ', 'from ', 'PUSH '].find((k) => t.startsWith(k));
+  if (!kw) return -1;
+  const ini = linha.length - t.length + kw.length;
+  const i1 = linha.indexOf("'", ini);
+  const i2 = linha.indexOf('"', ini);
+  const i = i1 < 0 ? i2 : (i2 < 0 ? i1 : Math.min(i1, i2));
+  if (i < 0) return -1;
+  return linha.indexOf(linha[i], i + 1) < 0 ? i : -1;
+}
+
+/* Dentro das aspas de um import: arquivos `.ps` e pastas a partir da pasta do
+ * documento (ou da subpasta já digitada), e — enquanto não há `/` — os
+ * módulos do motor e as libs instaladas, que também vêm entre aspas. O rótulo
+ * é só o último segmento: é o que o editor substitui. */
+function completaCaminhoImport(doc, parcial) {
+  const corte = parcial.lastIndexOf('/');
+  const sub = corte < 0 ? '' : parcial.slice(0, corte + 1);
+  const itens = [];
+  const jaTem = new Set();
+  const poe = (label, kind, detail, insertText) => {
+    if (jaTem.has(label)) return;
+    jaTem.add(label);
+    const it = { label, kind, detail };
+    if (insertText) it.insertText = insertText;
+    itens.push(it);
+  };
+  if (!sub) {
+    for (const m of Object.keys(META.modulos || {})) {
+      if (m.indexOf('.') < 0) poe(m, CompletionItemKind.Module, `modulo do motor — ${(META.modulos[m] || []).length} membros`);
+    }
+    for (const nome of libsInstaladas()) poe(nome, CompletionItemKind.Module, 'lib instalada');
+  }
+  const dir = pastaDoDoc(doc);
+  const base = path.isAbsolute(sub) ? sub : (dir ? path.join(dir, sub) : '');
+  if (base) {
+    const meu = doc.uri.startsWith('file://') ? path.basename(doc.uri.slice(7)) : '';
+    let ents = [];
+    try { ents = fs.readdirSync(base, { withFileTypes: true }); } catch (_) { ents = []; }
+    for (const e of ents) {
+      if (e.name.startsWith('.') || (!sub && e.name === meu)) continue;
+      if (e.isDirectory()) poe(e.name, CompletionItemKind.Folder, 'pasta', e.name + '/');
+      else if (e.name.endsWith('.ps')) poe(e.name, CompletionItemKind.File, 'arquivo .ps');
+    }
+    poe('..', CompletionItemKind.Folder, 'pasta acima', '../');
+  }
+  return itens;
 }
 
 /* Dentro de um `import`/`from`. Dois casos, decididos pelos TOKENS da linha
@@ -821,6 +885,11 @@ function membrosParaImport(doc, mod) {
  *    dentro da pasta já digitada). Arquivo e pasta não apareciam. */
 function completaImport(doc, p) {
   const linha = linhaAte(doc, p.position);
+  /* `import '<cursor>` / `from '<cursor>`: dentro das aspas — o caminho
+   * parcial é o texto entre a aspa e o cursor */
+  const aspa = aspaAbertaDoImport(linha);
+  if (aspa >= 0) return completaCaminhoImport(doc, linha.slice(aspa + 1));
+
   const parcial = A.cadeiaAntes(linha, p.position.character).parcial;
   const iniParcial = p.position.character - parcial.length;
   const antes = tokensDe(doc).filter((t) => t.l0 === p.position.line && t.n > 0 && t.c0 + t.n <= iniParcial);
@@ -829,9 +898,11 @@ function completaImport(doc, p) {
   const ehNome = (t) => t.t === 'DOT' || t.t.startsWith('IDENT');
 
   if (ehFrom && iImp > 0) {
-    const mod = antes.slice(1, iImp).filter(ehNome).map((t) => t.v).join('');
+    /* `from 'x/y.ps' import <cursor>`: o módulo é a STRING */
+    const aspas = antes.length > 1 && antes[1].t === 'STR';
+    const mod = aspas ? antes[1].v : antes.slice(1, iImp).filter(ehNome).map((t) => t.v).join('');
     const jaTem = new Set(antes.slice(iImp + 1).filter((t) => t.t.startsWith('IDENT')).map((t) => t.v));
-    return membrosParaImport(doc, mod).filter((m) => !jaTem.has(m.nome)).map((m) => itemDeMembro(m, mod));
+    return membrosParaImport(doc, mod, aspas).filter((m) => !jaTem.has(m.nome)).map((m) => itemDeMembro(m, mod));
   }
 
   /* o `pasta.` já digitado antes do cursor, se houver */
@@ -886,8 +957,9 @@ function receptorLiteral(doc, pos) {
 conexao.onCompletion((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return [];
-  /* dentro de string ou comentário não se completa nada */
-  if (dentroDeTextoLivre(doc, p.position)) return [];
+  /* dentro de string ou comentário não se completa nada — menos a string de
+   * um `import '…'`, que é onde o caminho se escreve */
+  if (dentroDeTextoLivre(doc, p.position) && !emImport(doc, p.position)) return [];
   IDX_FORCADO = indiceNoCursor(doc, p.position);
   try { return completa(doc, p); } finally { IDX_FORCADO = null; }
 });
