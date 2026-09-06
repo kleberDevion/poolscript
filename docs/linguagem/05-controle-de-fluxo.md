@@ -365,10 +365,12 @@ O bloco `if __name__ == "main"` roda **apenas quando o arquivo é executado
 direto**, e é pulado quando ele é **importado** por outro. É o
 `if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
 
-Ele é reconhecido pela **forma**, não avaliando a condição: `__name__` vale o
-caminho do arquivo (é o que se passa pro `Jinker`, por exemplo), então comparar
-com `"main"` nunca daria verdadeiro por conta própria. O compilador vê o
-desenho e emite o guard.
+Ele é reconhecido pela **forma**, não avaliando a condição: no arquivo
+executado, `__name__` vale o caminho dele (é o que se passa pro `Jinker`, por
+exemplo); num módulo importado, `__name__` vale o **nome do módulo**. Comparar
+com `"main"` nunca daria verdadeiro por conta própria; o compilador vê o
+desenho e emite o guard. A chave pode ficar na linha seguinte, como em todo
+bloco.
 
 É também o **único** lugar da linguagem onde `:` ainda abre bloco — `{ }` vale
 igual, e a chave pode ficar na linha seguinte:

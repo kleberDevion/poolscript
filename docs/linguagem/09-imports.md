@@ -115,10 +115,15 @@ casar vence:
 2. **lib instalada globalmente** — o que foi instalado com
    `psl install … -asLib` (em `~/.poolscript/libs/`). Vem **antes** dos
    arquivos locais: o nome de um arquivo seu nunca ofusca uma lib instalada.
-3. **arquivo `.ps` do projeto** — resolvido a partir da raiz do projeto
-   (ex.: `from services.smtp import x` → `<raiz>/services/smtp.ps`).
+3. **arquivo ao lado de quem importa** — a pasta do arquivo que contém o
+   `import`. É o que faz `import smtp` dentro de `acesso/controller.ps` achar
+   `acesso/smtp.ps`, mesmo com `controller` tendo sido importado por um
+   arquivo de outra pasta.
+4. **arquivo `.ps` do projeto** — resolvido a partir da raiz do projeto, a
+   pasta do arquivo executado (ex.: `from services.smtp import x` →
+   `<raiz>/services/smtp.ps`).
 
-Um nome que não casa com nenhum dos três é `ImportError`.
+Um nome que não casa com nenhum dos quatro é `ImportError`.
 
 > Imports relativos (`from .x import …`) **não** entram nessa ordem — são sempre
 > resolvidos direto contra o sistema de arquivos, relativos ao arquivo atual.
@@ -175,6 +180,6 @@ post(mymod.saudar("ana"))
 - **`PUSH mod [as m] [GET x, y]`** — alternativa: `PUSH` = `import`, `GET` =
   `from … import`.
 - **`from .mod` / `from ..pkg.mod`** — relativo ao arquivo atual.
-- Resolução (sem pontos): **stdlib → lib global → arquivo do projeto**;
-  senão `ImportError`.
+- Resolução (sem pontos): **stdlib → lib global → arquivo ao lado de quem
+  importa → arquivo do projeto**; senão `ImportError`.
 - **Importar não dispara** o guard `if __name__ == "main"` do módulo.

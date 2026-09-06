@@ -355,6 +355,7 @@ typedef struct {
     int32_t  base;       /* primeira global do módulo em vm->globals */
     int32_t  n;
     char   **nomes;      /* nome de cada global, na ordem */
+    unsigned char *priv; /* 1 = `private` no modulo: nao sai por import (paralelo a nomes) */
 } PSModuloPS;
 
 /* Inteiro de precisão arbitrária (GMP). Só existe quando um int64 estoura;
@@ -1597,6 +1598,7 @@ static void fin_moduleps(VM *vm, Obj *o) {
     PSModuloPS *m = (PSModuloPS *)o;
     for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
     free(m->nomes);
+    free(m->priv);
     free(m->nome);
     free(m->caminho);
 }
@@ -4204,8 +4206,10 @@ static int nativa_zip(VM *vm, Value *args, int n, Value *out)
     int menor = 0;
     for (int i = 0; i < n; i++) {
         int t = iteravel_tam(&args[i]);
+        /* nomeia o argumento que NAO itera — era sempre o primeiro, mesmo
+         * quando o problema estava no segundo */
         if (t < 0) BERRO(vm, "TypeError", "'%s' object is not iterable",
-              nome_do_tipo_valor(args[0]));
+              nome_do_tipo_valor(args[i]));
         if (i == 0 || t < menor) menor = t;
     }
     PSList *l = lista_com_cap(vm, menor, OBJ_LIST);
@@ -18927,8 +18931,15 @@ static long fib_ms_ate(struct timespec *wake, struct timespec *agora)
 }
 static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
 {
-    int meu_ep = -1, ep_ant = g_jk_epfd;
-    if (g_jk_epfd < 0) { meu_ep = epoll_create1(0); g_jk_epfd = meu_ep; }
+    /* O epoll do top-level e UM SO e PERSISTE. Era criado por chamada e
+     * fechado quando os alvos desta chamada resolviam — mas as outras fibras
+     * que esta rodada iniciou (o `gather` resolve um future por vez) ainda
+     * esperavam eventfds registrados NELE. O epoll seguinte ganhava o mesmo
+     * numero de fd, os efds antigos nao estavam la, e o `epoll_wait` ficava
+     * pra sempre: `gather(pega(1), pega(2), pega(3))` com `request.get`
+     * pendurava em metade das rodadas (medido com strace: `close(3)` logo
+     * apos o primeiro future, e os writes em 5 e 6 chegando ao epoll morto). */
+    if (g_jk_epfd < 0) g_jk_epfd = epoll_create1(EPOLL_CLOEXEC);
     struct epoll_event evs[64];
     for (;;) {
         int falta = 0;
@@ -18972,7 +18983,6 @@ static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
         }
         /* timers vencidos são pegos no passo (1) da próxima volta */
     }
-    if (meu_ep >= 0) { close(meu_ep); g_jk_epfd = ep_ant; }
 }
 
 /* Resolve UM future: dentro de fibra CEDE ao escalonador; no top-level DIRIGE.
@@ -20083,9 +20093,16 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         Proto *pb = &vm->protos[proto];
         if (pb->nparams == 0 || !pb->param_nomes || !pb->param_nomes[0]
                 || strcmp(pb->param_nomes[0], "self") != 0) {
-            snprintf(vm->erro, sizeof(vm->erro),
-                     "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
-                     pb->nome ? pb->nome : "?");
+            /* `@static` chamado pela instancia: a mensagem antiga mandava por
+             * `self` num metodo que por definicao nao tem self */
+            if (pb->eh_static)
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "action '%s' e @static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                         pb->nome ? pb->nome : "?", pb->nome ? pb->nome : "?");
+            else
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                         pb->nome ? pb->nome : "?");
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
             return -1;
         }
@@ -21000,10 +21017,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * no slot 0 — senão a instância cairia no 1º parâmetro real. Mesma
              * regra do OP_CALL e do interpretador. */
             if (EH_BOUND(alvo_kw) && (!pk->param_nomes[0]
-                    || strcmp(pk->param_nomes[0], "self") != 0))
+                    || strcmp(pk->param_nomes[0], "self") != 0)) {
+                if (pk->eh_static)
+                    ERRO_TF(vm, "RuntimeError",
+                            "action '%s' e @static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                            pk->nome ? pk->nome : "?", pk->nome ? pk->nome : "?");
                 ERRO_TF(vm, "RuntimeError",
                         "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                         pk->nome ? pk->nome : "?");
+            }
 
             /* monta os argumentos finais na ordem dos parâmetros */
             Value finais[64];
@@ -21118,7 +21140,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!inst) ERRO(vm, "sem memoria ao instanciar");
                 Value iv = MK_OBJ(inst);
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), "__init__");
-                if (mp < 0) { sp = sp - n - 1; stack[sp++] = iv; break; }
+                if (mp < 0) {
+                    /* sem __init__ e sem campo, a Entity nao recebe argumento:
+                     * `Zero(1, 2, 3)` engolia os tres em silencio */
+                    if (n > 0) {
+                        vm->sp = sp; vm->locals_top = locals_top;
+                        ERRO_TF(vm, "TypeError", "%s() takes no arguments (%d given)",
+                                COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?", n);
+                    }
+                    sp = sp - n - 1; stack[sp++] = iv; break;
+                }
                 /* empurra self na frente dos argumentos */
                 Proto *np = &vm->protos[mp];
                 if (n + 1 > np->nparams) {
@@ -21169,10 +21200,15 @@ ERRO_TF(vm, "TypeError",
                  * argumento do usuário virava o 2º -> "argumentos demais" sem
                  * nexo. Erro claro, igual ao interpretador. */
                 if (np->nparams == 0 || !np->param_nomes || !np->param_nomes[0]
-                        || strcmp(np->param_nomes[0], "self") != 0)
+                        || strcmp(np->param_nomes[0], "self") != 0) {
+                    if (np->eh_static)
+                        ERRO_TF(vm, "RuntimeError",
+                                "action '%s' e @static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                                np->nome ? np->nome : "?", np->nome ? np->nome : "?");
                     ERRO_TF(vm, "RuntimeError",
                             "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
+                }
                 if (n + 1 > np->nparams)
                     ERRO_TF(vm, "TypeError",
                             "%s() takes %d positional argument%s but %d %s given",
@@ -22346,8 +22382,10 @@ ERRO_TF(vm, "TypeError",
                     if (strcmp(m->nomes[k], nome) != 0) continue;
                     Value v = vm->globals[m->base + k];
                     if (v.t == V_UNSET) ERRO_T(vm, "RuntimeError", "membro nao definido no modulo");
-                    /* `private class Nome()` não sai do arquivo — mesma msg do interp */
-                    if (EH_CLASS(v) && COMO_CLASS(v)->classe_privada)
+                    /* `private class Nome()` e `private action f()` não saem do
+                     * arquivo — mesma msg do interp */
+                    if ((EH_CLASS(v) && COMO_CLASS(v)->classe_privada)
+                            || (m->priv && m->priv[k]))
                         ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'"
                                 " (existe, mas é private)", m->nome, nome);
                     stack[sp - 1] = v;
@@ -23820,6 +23858,16 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
     }
+    /* depois: a pasta do ARQUIVO que esta importando. `import smtp` dentro de
+     * `acesso/controller.ps` (ele mesmo importado por `api/rotas.ps`) tem que
+     * achar `acesso/smtp.ps`; so a raiz do projeto era olhada, e o modulo
+     * vizinho dava "No module named 'smtp'". */
+    if (vm->dir_modulo[0] && strcmp(vm->dir_modulo, vm->dir_script) != 0) {
+        for (int e = 0; e < 3; e++) {
+            snprintf(saida, cap, "%s/%s%s", vm->dir_modulo, rel, EXTS[e]);
+            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+        }
+    }
     /* depois: arquivo do projeto (raiz = dir do entry) */
     if (vm->dir_script[0]) {
         for (int e = 0; e < 3; e++) {
@@ -23926,6 +23974,14 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
             vm->globals[bg + i] = MK_TIPO(TIPO_PFILE);
             continue;
         }
+        /* `__name__` num modulo importado e o NOME do modulo (no arquivo
+         * principal e o caminho). Nao existia: `Jinker(__name__)` num modulo
+         * estourava com NameError. */
+        if (strcmp(prog->globais[i], "__name__") == 0) {
+            PSString *nm = nova_string(vm, nome, (int)strlen(nome));
+            if (nm) vm->globals[bg + i] = MK_OBJ(nm);
+            continue;
+        }
         if (strcmp(prog->globais[i], "Parsing") == 0) {
             int mi = acha_modulo_oculto("_Parsing");
             if (mi >= 0) {
@@ -23952,6 +24008,12 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     m->nomes = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), sizeof(char *));
     if (!m->nome || !m->caminho || !m->nomes) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
     for (int32_t i = 0; i < prog->nglobais; i++) m->nomes[i] = strdup(prog->globais[i]);
+    /* `private action` do modulo: marca o nome pra nao sair no import */
+    m->priv = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), 1);
+    if (m->priv)
+        for (int32_t i = 0; i < prog->nglobais; i++)
+            for (int32_t k = 0; k < prog->npriv_globais; k++)
+                if (strcmp(prog->globais[i], prog->priv_globais[k]) == 0) m->priv[i] = 1;
     vm->alocado += sizeof(PSModuloPS);
 
     /* registra ANTES de rodar: módulo que importa a si mesmo pega o parcial em
@@ -24530,6 +24592,18 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             vm.dir_script[n] = '\0';
         } else {
             snprintf(vm.dir_script, sizeof(vm.dir_script), ".");
+        }
+        /* ABSOLUTO: `pool sub/app.ps` deixava "sub" aqui, e o import relativo
+         * `from ..x import y` subia uma pasta de "sub" pra ".." — isto e,
+         * relativo ao cwd, nao ao arquivo. Com `pool ./sub/app.ps` ou caminho
+         * absoluto funcionava; o resultado dependia de como o caminho foi
+         * digitado. Resolvido uma vez, tudo que usa dir_script fica igual. */
+        {
+            char *rp = realpath(vm.dir_script, NULL);
+            if (rp) {
+                snprintf(vm.dir_script, sizeof(vm.dir_script), "%s", rp);
+                free(rp);
+            }
         }
     }
     /* no começo, o "arquivo atual" é o entry: import relativo do topo resolve

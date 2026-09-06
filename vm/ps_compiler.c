@@ -723,6 +723,18 @@ static int nome_ja_existe(Unidade *u, const char *nome)
  *
  * Nome sem tipo declarado continua como sempre: `x = 1` depois `x = "a"`. */
 
+/* `private action f()` no nivel do modulo: o nome entra na lista que o
+ * `import` consulta. Antes o `private` compilava e nao fazia nada. */
+static void priv_global_add(C *c, const char *nome)
+{
+    if (!nome || !c->out) return;
+    char **nv = realloc(c->out->priv_globais, sizeof(char *) * (size_t)(c->out->npriv_globais + 1));
+    if (!nv) { cerro(c, "sem memoria", NULL); return; }
+    c->out->priv_globais = nv;
+    c->out->priv_globais[c->out->npriv_globais] = strdup(nome);
+    if (c->out->priv_globais[c->out->npriv_globais]) c->out->npriv_globais++;
+}
+
 /* codigo TIPO_* de um nome de tipo declaravel, ou -1 */
 static int cod_tipo_decl(const char *t)
 {
@@ -1698,6 +1710,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t idx = compila_action(c, n, u);
             if (CFALHOU(c)) return;
             emite_funcao(c, u, idx);
+            if (u->eh_modulo && n->is_private) priv_global_add(c, n->texto);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -2487,10 +2500,26 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     falhou_guarda = emite(c, u, OP_JUMP_IF_FALSE, 0);
                 }
                 bloco_stmts(c, u, caso->b);
-                escopo_fecha(c, u, Mc);        /* captura/vars do case não vazam */
-                if (nfins < 64) fins[nfins++] = emite(c, u, OP_JUMP, 0);
+                /* Os TRES caminhos (casou e rodou o corpo; padrão falhou;
+                 * guarda falhou) convergem num ponto só, e a limpeza das
+                 * variáveis do case (`escopo_fecha`) roda ali, pra todos.
+                 *
+                 * Antes a limpeza só ficava no caminho de sucesso. Numa
+                 * action, `case v if v < 50` com a guarda falsa deixava o
+                 * slot de `v` preenchido; o slot era devolvido ao pool e o
+                 * próximo nome sem declaração (`post`, resolvido por
+                 * LOAD_NAME) caía nele — e o 999 do sujeito era "chamado":
+                 * "'int' object is not callable". Só dentro de function, só
+                 * com guarda falsa, e "consertava" se o corpo seguinte
+                 * atribuísse algo antes — exatamente o que se mediu. */
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 1, 0, NULL, 0));
+                int32_t casou = emite(c, u, OP_JUMP, 0);
                 if (falhou >= 0) UP(c, u)->code[falhou + 1] = UP(c, u)->ncode;
                 if (falhou_guarda >= 0) UP(c, u)->code[falhou_guarda + 1] = UP(c, u)->ncode;
+                emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_BOOL, 0, 0, NULL, 0));
+                UP(c, u)->code[casou + 1] = UP(c, u)->ncode;
+                escopo_fecha(c, u, Mc);        /* captura/vars do case não vazam — nos 3 caminhos */
+                if (nfins < 64) fins[nfins++] = emite(c, u, OP_JUMP_IF_TRUE, 0);
             }
             int32_t fim = UP(c, u)->ncode;
             for (int k = 0; k < nfins; k++) UP(c, u)->code[fins[k] + 1] = fim;
@@ -3037,5 +3066,7 @@ void ps_compila_free(PSPrograma *p)
         free(p->enums[i].membros);
     }
     free(p->enums);
+    for (int32_t i = 0; i < p->npriv_globais; i++) free(p->priv_globais[i]);
+    free(p->priv_globais);
     free(p);
 }

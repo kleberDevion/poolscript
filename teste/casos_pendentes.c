@@ -177,40 +177,13 @@ const Caso CASOS_PENDENTES[] = {
 { "os.readFile recusa argumento sobrando",
   "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\n",
   NULL, "readFile", -1, NULL, 1 },
-/* ── `if __name__ == "main"` só vale com a chave na MESMA linha ──────────────
- * Achado escrevendo `teste/jinker_alvo.ps`: o servidor subia, não abria porta
- * nenhuma e saía com rc=0, sem uma linha de erro. A causa é que o bloco de
- * entrada NUNCA rodou.
- *
- *     if __name__ == "main" {      ->  entra          (forma de mesma linha)
- *     if __name__ == "main"        ->  NÃO entra      (Allman, que o projeto
- *     {                                                adotou em 88ae542 e
- *         ...                                          documenta)
- *     }
- *     if (__name__ == "main")      ->  NÃO entra      (Allman com parênteses)
- *
- * O reconhecimento é sintático (vira `OP_SKIP_IF_IMPORT`) e só casa com uma
- * das formas. Nas outras não sobra nem erro nem aviso: o `main` do programa
- * simplesmente não acontece — o pior tipo de defeito, o que passa calado.
- *
- * A forma com `:` (a ÚNICA da linguagem onde `:` ainda abre bloco) funciona:
- *
- *     if __name__ == "main":
- *         principal()
- *
- * E o contrato está escrito, não é dedução: `docs/linguagem/05-controle-de-fluxo.md`
- * diz, sobre esse mesmo `if`, "`{ }` vale igual, e a chave pode ficar na linha
- * seguinte". A doc promete exatamente a forma que o motor pula. */
-{ "if __name__ == \"main\" com chave na mesma linha",
-  "if __name__ == \"main\" {\n    post(\"entrou\")\n}\n", "entrou", NULL, 0 },
-{ "if __name__ == \"main\" no estilo Allman",
-  "if __name__ == \"main\"\n{\n    post(\"entrou\")\n}\n", "entrou", NULL, 0, NULL, 1 },
-{ "if (__name__ == \"main\") com parenteses",
-  "if (__name__ == \"main\")\n{\n    post(\"entrou\")\n}\n", "entrou", NULL, 0, NULL, 1 },
-
-/* O mesmo reconhecimento faz a condição MENTIR como expressão: dentro do `if`
- * ela é verdadeira, avaliada sozinha ela é falsa. Uma das duas está errada, e
- * quem lê o programa não tem como saber qual. */
+/* ── `if __name__ == "main"` como EXPRESSÃO ──────────────────────────────────
+ * O guard de entrada é reconhecido pela FORMA (vira `OP_SKIP_IF_IMPORT`), não
+ * avaliando a condição. As três formas do `if` (chave na mesma linha, Allman,
+ * Allman com parênteses) já entram — os casos estão em `casos_linguagem.c`, no
+ * bloco do ponto de entrada. O que ainda falta é a condição valer o mesmo
+ * FORA do `if`: dentro dele é verdadeira, avaliada sozinha é falsa. Uma das
+ * duas está errada, e quem lê o programa não tem como saber qual. */
 { "__name__ == \"main\" vale o mesmo dentro e fora do if",
   "post(__name__ == \"main\")\nif __name__ == \"main\" {\n    post(\"entrou\")\n}\n",
   "True\nentrou", NULL, 0, NULL, 1 },

@@ -128,6 +128,13 @@ typedef struct {
     PSEnumDef  *enums;
     int32_t     nenums;
 
+    /* Nomes de MODULO marcados `private` (action, reaction): nao saem no
+     * `import` nem no `from ... import`. `private class` ja tinha o seu
+     * caminho (PSClassDef.classe_privada); action de modulo compilava o
+     * `private` e nao fazia nada com ele. */
+    char   **priv_globais;
+    int32_t  npriv_globais;
+
     int      ok;
     char     erro[256];
     int32_t  erro_linha;

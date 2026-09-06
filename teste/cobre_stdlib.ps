@@ -96,6 +96,36 @@ os.cmd("'" + sys.executable + "' " + PASTA + "/le_stdin.ps < " + PASTA
 confere("sys.stdin.readline() e read(n) leem a entrada",
         os.readFile(PASTA + "/stdin.out").strip() == "primeira|abcd")
 
+# ── import relativo `..` e `__name__` em modulo importado ───────────────────
+#
+# `pool sub/filho.ps` (caminho RELATIVO, sem `./`) resolvia o `..` a partir do
+# cwd, nao da pasta do arquivo — `pool ./sub/filho.ps` funcionava e o outro
+# nao. E `__name__` nao existia em modulo importado (`Jinker(__name__)` num
+# modulo estourava com NameError). Os dois medidos pela auditoria doc x motor.
+os.mkdir(PASTA + "/rel/sub", exist_ok=true)
+os.mkdir(PASTA + "/rel/pacote", exist_ok=true)
+os.writeFile(PASTA + "/rel/pacote/modulo.ps", "z = 99\n")
+os.writeFile(PASTA + "/rel/sub/filho.ps", "from ..pacote.modulo import z\npost(\"z:\", z)\n")
+os.writeFile(PASTA + "/rel/nomeado.ps", "post(\"nome:\", __name__)\n")
+os.writeFile(PASTA + "/rel/principal.ps", "import nomeado\n")
+os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' sub/filho.ps > saida_rel.out 2>&1")
+confere("import relativo `..` com o script dado como caminho relativo (sub/filho.ps)",
+        os.readFile(PASTA + "/rel/saida_rel.out").strip() == "z: 99")
+os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' principal.ps > saida_nome.out 2>&1")
+confere("__name__ num modulo importado e o nome do modulo",
+        os.readFile(PASTA + "/rel/saida_nome.out").strip() == "nome: nomeado")
+
+# `import vizinho` (sem ponto) dentro de um modulo de subpasta acha o arquivo
+# ao lado dele — so a raiz do projeto era olhada, e `import smtp` dentro de
+# `acesso/controller.ps` dava "No module named 'smtp'" (o erro da tela dele).
+os.mkdir(PASTA + "/rel/acesso", exist_ok=true)
+os.writeFile(PASTA + "/rel/acesso/smtp.ps", "action manda() {\n    return \"mandou\"\n}\n")
+os.writeFile(PASTA + "/rel/acesso/controller.ps", "import smtp\naction entra() {\n    return smtp.manda()\n}\n")
+os.writeFile(PASTA + "/rel/rotas.ps", "from acesso.controller import entra\npost(entra())\n")
+os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' rotas.ps > saida_viz.out 2>&1")
+confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
+        os.readFile(PASTA + "/rel/saida_viz.out").strip() == "mandou")
+
 # ── os: caminho, diretório, ambiente ────────────────────────────────────────
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
 # então o teste cria o alvo e roda de dentro da pasta.

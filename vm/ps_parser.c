@@ -2558,7 +2558,11 @@ static PSNode *statement(P *p)
     }
 
     /* match <expr> { case ... } | match <expr>: case ...: */
-    if (checa_kw(p, "match") && espia(p, 1)->type != T_LPAREN) {
+    /* `match` e palavra reservada: `match (x) {` e o statement com o sujeito
+     * entre parenteses (precedencia, como em `if (a) or (b) {`). A exclusao
+     * de `(` que havia aqui mandava `match (1 + 1) {` pro caminho de
+     * expressao, e o `{` virava "faltou ':' no dicionario". */
+    if (checa_kw(p, "match")) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_MATCH_STMT, t->line, t->col);
         if (!n) return NULL;
@@ -2748,6 +2752,15 @@ static PSNode *statement(P *p)
             if (paren) {
                 if (depois >= p->n || p->toks[depois].type != T_RPAREN) goto if_normal;
                 depois++;
+            }
+            /* A chave pode vir na linha seguinte, como em todo bloco da
+             * linguagem. Sem isto o guard com `{` embaixo caia no `if`
+             * comum — que compara `__name__` com a string "main" de verdade,
+             * da falso, e o bloco era pulado sem erro nenhum. */
+            {
+                int32_t q = depois;
+                while (q < p->n && p->toks[q].type == T_NEWLINE) q++;
+                if (q < p->n && p->toks[q].type == T_LBRACE) depois = q;
             }
             if (depois >= p->n
                 || (p->toks[depois].type != T_COLON && p->toks[depois].type != T_LBRACE))

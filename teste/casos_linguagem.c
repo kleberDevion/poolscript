@@ -1490,6 +1490,70 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(string)\n"
   "post(regex.sub(\"a\", \"b\", string=\"aXa\"))\n",
   "5\nbXb", NULL, 0 },
+
+/* ── achados da auditoria doc x motor (2026-09-06), cada um medido antes ── */
+{ "guard `if __name__ == \"main\"` com a chave na linha seguinte RODA",
+  "if __name__ == \"main\"\n"
+  "{\n"
+  "    post(\"rodou\")\n"
+  "}\n"
+  "post(\"fim\")\n",
+  "rodou\nfim", NULL, 0 },
+{ "guard `if (__name__ == \"main\")` com parenteses e chave na linha seguinte RODA",
+  "if (__name__ == \"main\")\n"
+  "{\n"
+  "    post(\"rodou\")\n"
+  "}\n"
+  "post(\"fim\")\n",
+  "rodou\nfim", NULL, 0 },
+{ "`match (expr) {` — sujeito entre parenteses e statement, nao dict",
+  "match (1 + 1) {\n"
+  "    case 2 {\n"
+  "        post(\"dois\")\n"
+  "    }\n"
+  "}\n",
+  "dois", NULL, 0 },
+{ "Entity sem __init__ e sem campo nao recebe argumento",
+  "Entity Zero() {\n"
+  "    action m(self) {\n"
+  "        return 1\n"
+  "    }\n"
+  "}\n"
+  "post(Zero().m())\n"
+  "Zero(1, 2, 3)\n",
+  "1", "TypeError: Zero() takes no arguments (3 given)", 1 },
+{ "@static chamado pela instancia: a mensagem diz pra chamar pela Entity",
+  "Entity Mat() {\n"
+  "    @static\n"
+  "    action soma(a, b) {\n"
+  "        return a + b\n"
+  "    }\n"
+  "}\n"
+  "post(Mat.soma(1, 2))\n"
+  "m = Mat()\n"
+  "m.soma(1, 2)\n",
+  "3", "RuntimeError: action 'soma' e @static: chame pela Entity (Tipo.soma(...)), nao pela instancia", 1 },
+{ "zip: a mensagem nomeia o argumento que NAO itera, nao o primeiro",
+  "zip([1], 5)\n",
+  "", "TypeError: 'int' object is not iterable", 1 },
+{ "match com guarda falsa dentro de action nao corrompe o slot do case seguinte",
+  "action m(valor) {\n"
+  "    match valor {\n"
+  "        case 200 {\n"
+  "            post(\"ok\")\n"
+  "        }\n"
+  "        case v if v < 50 {\n"
+  "            post(\"barato\")\n"
+  "        }\n"
+  "        case _ {\n"
+  "            post(\"outro\")\n"
+  "        }\n"
+  "    }\n"
+  "}\n"
+  "m(999)\n"
+  "m(7)\n"
+  "m(200)\n",
+  "outro\nbarato\nok", NULL, 0 },
 /* A cabeça da action sob um decorador é a MESMA unidade do statement:
  * `[public|private] {async|tipo}* action|reaction`, em qualquer ordem. O
  * lookahead do decorador era uma cópia à mão que conhecia quatro formas e

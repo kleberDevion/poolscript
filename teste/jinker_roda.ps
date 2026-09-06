@@ -454,6 +454,26 @@ r = cru("POST /cookie-sai HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection
 confere("logout: Set-Cookie com valor vazio e Max-Age=0, e os padroes seguros",
         "Set-Cookie: sid=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly\r\n" in r)
 
+# ── gather + request.get: pendurava em metade das rodadas ────────────────────
+#
+# O escalonador de topo criava um epoll por chamada e o fechava quando o SEU
+# alvo resolvia; as outras fibras do mesmo gather ficavam com o eventfd num
+# epoll morto e o processo esperava pra sempre. Seis rodadas: se uma pendurar,
+# o runner mata por tempo — e e o que se quer, nao um verde por sorte.
+async action pega_ok()
+{
+    return get(RAIZ + "/ok").status_code
+}
+rodadas_ok = 0
+for each rodada in [1, 2, 3, 4, 5, 6]
+{
+    if gather(pega_ok(), pega_ok(), pega_ok()) == [200, 200, 200]
+    {
+        rodadas_ok = rodadas_ok + 1
+    }
+}
+confere("gather de tres request.get concorrentes resolve nas seis rodadas", rodadas_ok == 6)
+
 r = get(RAIZ + "/cookie-le", headers={"Cookie": "notsid=x; sid=certo"})
 confere("nome parcial NAO casa (`sid` dentro de `notsid`)", r.get_json("sid") == "certo")
 
