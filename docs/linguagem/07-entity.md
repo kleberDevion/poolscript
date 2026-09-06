@@ -37,7 +37,7 @@ class Ponto() {          # idêntico a Entity Ponto()
 
 Campos são declarados como uma variável (seção 4.1): com **tipo**, em qualquer
 das duas ordens — `nome: tipo` ou `tipo nome` — ou **sem tipo**, `nome = valor`,
-e aí o campo é dinâmico como qualquer `x = 1`. A partir deles a linguagem
+e aí o campo aceita qualquer valor, como um `x = 1`. A partir deles a linguagem
 **sintetiza um construtor** (`__init__`) que recebe um argumento por campo, na
 ordem declarada:
 
@@ -70,8 +70,8 @@ Entity Usuario() {         # idêntico ao de cima
   post(c.host, c.porta)     # localhost 8080
   ```
 
-- **Campos dinâmicos:** um método pode criar um campo não declarado com
-  `self.x = ...` — ele passa a existir na instância:
+- **Campos criados no método:** um método pode criar um campo não declarado
+  com `self.x = ...` — ele passa a existir na instância:
 
   ```ps
   Entity Bolsa() {
@@ -280,7 +280,7 @@ post(p.name)             # ERRO — name é private
 
 - `Entity Nome()` (parênteses obrigatórios); `class`/`Class` são sinônimos.
 - Campos `nome: tipo` (ou `tipo nome`) sintetizam o construtor (1 arg por campo,
-  na ordem); padrão torna opcional; campos dinâmicos via `self.x = …`.
+  na ordem); padrão torna opcional; campo criado no método via `self.x = …`.
 - Campo declarado no construtor: `private <tipo> <nome> = <valor>` (7.6.1).
 - Construtor próprio: `action __init__(self, …)`.
 - Métodos têm `self` como 1º parâmetro; `@static` não tem `self` e é chamado na

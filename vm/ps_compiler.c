@@ -88,6 +88,10 @@ struct Unidade {
      * modificando uma variável externa, então vira LOAD_NAME/STORE_NAME e a
      * decisão fica em runtime. */
     unsigned char certo[256];
+    /* Tipo DECLARADO de cada slot (`str s = ...`): 0 = sem tipo, senao o
+     * TIPO_* da VM + 1. E o que faz a tipagem ser estatica: toda escrita no
+     * slot passa pelo OP_COERCE_DECL, nao so a declaracao. */
+    unsigned char tipo_decl[256];
     /* `int action` / `bool action`: 1 = int, 2 = bool, 0 = sem tipo. Faz o
      * RETURN converter Null e faz o corpo inteiro virar um `try` implícito —
      * é o contrato dessas duas declarações: nunca propagam erro. */
@@ -168,6 +172,14 @@ typedef struct {
      * precisa varrer o arquivo INTEIRO pra saber se `range` foi redefinido
      * em algum ponto (inclusive depois do laço). */
     PSNode *raiz;
+    /* Tipo declarado dos nomes de MODULO (`str s = ...` no topo do arquivo,
+     * dentro ou fora de bloco), colhido numa passada antes de compilar: uma
+     * action compilada ANTES da declaracao ainda precisa saber o tipo pra
+     * conferir o write-through (`s = 5` de dentro dela escreve no `s` do
+     * modulo). 0 = sem tipo, senao TIPO_* + 1. */
+    char   **tipos_topo_nomes;
+    unsigned char *tipos_topo;
+    int32_t  n_tipos_topo, cap_tipos_topo;
 } C;
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
@@ -699,9 +711,96 @@ static int nome_ja_existe(Unidade *u, const char *nome)
     return 0;
 }
 
+/* ── tipagem estatica ────────────────────────────────────────────────────
+ *
+ * O tipo escrito numa declaracao (`str s = "a"`) e da VARIAVEL, nao so do
+ * valor inicial. Antes a checagem valia uma vez, na criacao, e depois `s =
+ * 42` passava — a doc chamava isso de "dinamica". Agora o compilador guarda o
+ * tipo de cada nome declarado (slot da funcao, nome do modulo, upvalue) e
+ * emite o OP_COERCE_DECL antes de TODA escrita nele: reatribuicao, `for
+ * each`, desempacotamento, write-through de dentro de uma action e closure.
+ * Nada muda na VM alem do proprio opcode conferir tambem list/dict/tup/Object.
+ *
+ * Nome sem tipo declarado continua como sempre: `x = 1` depois `x = "a"`. */
+
+/* codigo TIPO_* de um nome de tipo declaravel, ou -1 */
+static int cod_tipo_decl(const char *t)
+{
+    static const struct { const char *nome; int cod; } T[] = {
+        { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 },
+        { "list", 4 }, { "dict", 5 }, { "json", 5 }, { "tup", 6 },
+        { "char", 8 }, { "Object", 10 }, { "object", 10 },
+    };
+    if (!t) return -1;
+    for (size_t i = 0; i < sizeof(T) / sizeof(T[0]); i++)
+        if (strcmp(T[i].nome, t) == 0) return T[i].cod;
+    return -1;
+}
+
+static void tipo_topo_poe(C *c, const char *nome, int cod)
+{
+    if (!nome || cod < 0) return;
+    for (int32_t i = 0; i < c->n_tipos_topo; i++)
+        if (strcmp(c->tipos_topo_nomes[i], nome) == 0) { c->tipos_topo[i] = (unsigned char)(cod + 1); return; }
+    if (c->n_tipos_topo + 1 > c->cap_tipos_topo) {
+        int32_t novo = c->cap_tipos_topo < 8 ? 8 : c->cap_tipos_topo * 2;
+        char **nn = realloc(c->tipos_topo_nomes, sizeof(char *) * (size_t)novo);
+        unsigned char *nt = realloc(c->tipos_topo, (size_t)novo);
+        if (!nn || !nt) { free(nn == c->tipos_topo_nomes ? NULL : nn); cerro(c, "sem memoria", NULL); return; }
+        c->tipos_topo_nomes = nn; c->tipos_topo = nt; c->cap_tipos_topo = novo;
+    }
+    c->tipos_topo_nomes[c->n_tipos_topo] = strdup(nome);
+    c->tipos_topo[c->n_tipos_topo] = (unsigned char)(cod + 1);
+    c->n_tipos_topo++;
+}
+
+static int tipo_topo_de(C *c, const char *nome)
+{
+    if (!nome) return 0;
+    for (int32_t i = 0; i < c->n_tipos_topo; i++)
+        if (strcmp(c->tipos_topo_nomes[i], nome) == 0) return c->tipos_topo[i];
+    return 0;
+}
+
+/* Passada previa: toda declaracao tipada no escopo de MODULO (fora de action,
+ * dentro ou fora de bloco). A primeira declaracao de cada nome vence. */
+static void coleta_tipos_topo(C *c, PSNode *n)
+{
+    if (!n) return;
+    if (n->kind == N_ACTION_DECL) return;       /* o corpo dela e outro escopo */
+    if (n->kind == N_VAR_DECL && n->texto && !tipo_topo_de(c, n->texto))
+        tipo_topo_poe(c, n->texto, cod_tipo_decl(n->texto2));
+    coleta_tipos_topo(c, n->a);
+    coleta_tipos_topo(c, n->b);
+    coleta_tipos_topo(c, n->c);
+    coleta_tipos_topo(c, n->e);
+    for (int32_t i = 0; i < n->lista.n; i++)  coleta_tipos_topo(c, n->lista.itens[i]);
+    for (int32_t i = 0; i < n->lista2.n; i++) coleta_tipos_topo(c, n->lista2.itens[i]);
+}
+
+/* tipo declarado de `nome` na funcao que ENVOLVE (a dona da celula), pra
+ * escrita via upvalue */
+static int tipo_de_upval(Unidade *u, const char *nome)
+{
+    for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
+        for (int32_t i = 0; i < q->nlocais && i < 256; i++)
+            if (strcmp(q->locais[i], nome) == 0) return q->tipo_decl[i];
+    return 0;
+}
+
+/* Emite a conferencia do tipo declarado (se houver) sobre o valor no topo da
+ * pilha — e chamado imediatamente antes do store. `cod1` = TIPO_* + 1. */
+static void emite_coerce_se_tipado(C *c, Unidade *u, const char *nome, int cod1)
+{
+    if (cod1 <= 0) return;
+    int32_t ni = idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome));
+    emite(c, u, OP_COERCE_DECL, (ni << 4) | (cod1 - 1));
+}
+
 static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
 {
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
+        emite_coerce_se_tipado(c, u, nome, tipo_topo_de(c, nome));
         if (u->eh_modulo) mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
         return;
@@ -711,18 +810,31 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
      * escreve lá"), agora valendo também pro escopo da função que envolve. */
     {
         int32_t up = resolve_upval(c, u, nome);
-        if (up >= 0) { emite(c, u, OP_STORE_UPVAL, up); return; }
+        if (up >= 0) {
+            emite_coerce_se_tipado(c, u, nome, tipo_de_upval(u, nome));
+            emite(c, u, OP_STORE_UPVAL, up);
+            return;
+        }
     }
     int32_t i = idx_local(c, u, nome);
     if (certa && i < 256) u->certo[i] = 1;
     if (i < 256) u->celula_virgem[i] = 0;
     if (i < 256 && u->celula[i]) {
+        emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i]);
         if (u->certo[i]) { emite(c, u, OP_CELL_SET, i); return; }
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
         emite(c, u, OP_CELL_SET_NAME, idx_global(c, nome));
         return;
     }
-    if (i < 256 && u->certo[i]) { emite(c, u, OP_STORE_LOCAL, i); return; }
+    if (i < 256 && u->certo[i]) {
+        emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i]);
+        emite(c, u, OP_STORE_LOCAL, i);
+        return;
+    }
+    /* STORE_NAME decide em runtime entre local novo e global existente: se o
+     * nome e um global DECLARADO com tipo no topo do arquivo, e nele que a
+     * escrita vai cair (write-through), entao confere pelo tipo dele. */
+    emite_coerce_se_tipado(c, u, nome, i < 256 && u->tipo_decl[i] ? u->tipo_decl[i] : tipo_topo_de(c, nome));
     emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
     emite(c, u, OP_STORE_NAME, idx_global(c, nome));
 }
@@ -1590,31 +1702,27 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         case N_VAR_DECL: {
             /* declaração tipada cria local, sempre — não sobe escopo */
             expr(c, u, n->a);
-            /* Só os escalares são checados: `list x = (1,2)` guarda a tupla
-             * sem reclamar. O código de cada um é o TIPO_* da VM — `char` é 8,
-             * por isso a lista é esparsa e não um índice de array. */
-            static const struct { const char *nome; int cod; } ESC[] = {
-                { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 }, { "char", 8 },
-            };
-            for (int e = 0; e < 5; e++)
-                if (n->texto2 && !strcmp(n->texto2, ESC[e].nome)) {
-                    int k = ESC[e].cod;
-                    /* Empacota nome+tipo num só operando: tipo nos 4 bits
-                     * baixos, índice do nome (const string) no resto. Eram 2
-                     * bits; `char` (8) não cabia. */
-                    const char *vn = n->texto ? n->texto : "";
-                    int32_t ni = idx_const(c, u, K_STR, 0, 0, vn, (int32_t)strlen(vn));
-                    /* aponta o erro no INÍCIO do valor (RHS), não na sub-expressão
-                     * mais profunda que o expr() deixou em coluna_atual — é o
-                     * lugar EXATO do erro, igual ao node.value do interp. */
-                    if (n->a) {
-                        if (n->a->line) c->linha_atual  = n->a->line;
-                        if (n->a->col)  c->coluna_atual = n->a->col;
-                    }
-                    emite(c, u, OP_COERCE_DECL, (ni << 4) | k);
-                    break;
+            /* O tipo fica REGISTRADO na variavel (slot da funcao ou nome do
+             * modulo); quem emite a conferencia e o `guarda_nome_modo`, em
+             * toda escrita — esta e so a primeira. O codigo e o TIPO_* da VM;
+             * `char` e 8, `Object` e 10, por isso e tabela e nao indice. */
+            const char *vn = n->texto ? n->texto : "";
+            int cod = cod_tipo_decl(n->texto2);
+            if (cod >= 0) {
+                if (u->eh_modulo || eh_global_declarada(u, vn)) tipo_topo_poe(c, vn, cod);
+                else {
+                    int32_t sl = idx_local(c, u, vn);
+                    if (sl < 256) u->tipo_decl[sl] = (unsigned char)(cod + 1);
                 }
-            guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            }
+            /* aponta o erro no INÍCIO do valor (RHS), não na sub-expressão
+             * mais profunda que o expr() deixou em coluna_atual — é o
+             * lugar EXATO do erro, igual ao node.value do interp. */
+            if (n->a) {
+                if (n->a->line) c->linha_atual  = n->a->line;
+                if (n->a->col)  c->coluna_atual = n->a->col;
+            }
+            guarda_nome_modo(c, u, vn, 1);
             return;
         }
 
@@ -1638,19 +1746,17 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             /* MESMA tabela do N_VAR_DECL: só escalar é conferido, e `list`/
              * `json` guardam sem reclamar — a regra do tipo não muda por ter
              * ganhado um modificador na frente. */
-            static const struct { const char *nome; int cod; } ESCF[] = {
-                { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 }, { "char", 8 },
-            };
-            for (int e = 0; e < 5; e++)
-                if (n->texto2 && !strcmp(n->texto2, ESCF[e].nome)) {
+            {
+                int codf = cod_tipo_decl(n->texto2);
+                if (codf >= 0) {
                     int32_t ni = idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome));
                     if (n->a) {
                         if (n->a->line) c->linha_atual  = n->a->line;
                         if (n->a->col)  c->coluna_atual = n->a->col;
                     }
-                    emite(c, u, OP_COERCE_DECL, (ni << 4) | ESCF[e].cod);
-                    break;
+                    emite(c, u, OP_COERCE_DECL, (ni << 4) | codf);
                 }
+            }
             emite(c, u, OP_SET_MEMBER, mi);
             return;
         }
@@ -2844,6 +2950,9 @@ PSPrograma *ps_compila(PSNode *programa)
     int32_t idx = novo_proto(&c, "<module>");
     if (idx < 0) return out;
 
+    /* tipos declarados no topo do arquivo, antes de compilar qualquer action */
+    coleta_tipos_topo(&c, programa);
+
     Unidade u;
     memset(&u, 0, sizeof(u));
     u.idx = idx;
@@ -2862,6 +2971,9 @@ PSPrograma *ps_compila(PSNode *programa)
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
+    for (int32_t i = 0; i < c.n_tipos_topo; i++) free(c.tipos_topo_nomes[i]);
+    free(c.tipos_topo_nomes);
+    free(c.tipos_topo);
     return out;
 }
 

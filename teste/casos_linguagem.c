@@ -76,14 +76,14 @@ const Caso CASOS_LINGUAGEM[] = {
    * dois mundos. O aviso vai pro stderr e nao entra no stdout. */
   "x = \"C:\\pasta\"\n"
   "post(x, len(x))\n",
-  "C:\\pasta 8", "SyntaxWarning: sequencia de escape invalida '\\p'", 0 },
+  "C:\\pasta 8", "SyntaxWarning: sequencia de escape invalida '\\p' \xe2\x80\x94 a barra fica no texto; use '\\\\p' se ela e mesmo pra estar ali", 0 },
 { "escape CONHECIDO segue igual",
   "post(len(\"a\\nb\"), len(\"a\\tb\"), len(\"a\\\\b\"))\n",
   "3 3 3", NULL, 0 },
 { "aviso nao e erro: o programa roda ate o fim",
   "x = \"\\q\"\n"
   "post(\"terminei\")\n",
-  "terminei", "SyntaxWarning: sequencia de escape invalida '\\q'", 0 },
+  "terminei", "SyntaxWarning: sequencia de escape invalida '\\q' \xe2\x80\x94 a barra fica no texto; use '\\\\q' se ela e mesmo pra estar ali", 0 },
 
 /* 3. unpacking no for each. Era `SyntaxError: esperado 'in'`. */
 { "for each com dois nomes desempacota",
@@ -1405,6 +1405,73 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(P().m())\n"
   "post(P(\"z\", \"-\", 5, 7).m())\n",
   "a210\nz75-", NULL, 0 },
+
+/* ── TIPAGEM ESTATICA: o tipo declarado e da VARIAVEL ──────────────────────
+ * Antes a checagem valia so na criacao e `str s = "a"` seguido de `s = 42`
+ * passava (a doc chamava de "dinamica"). Agora toda escrita num nome
+ * declarado com tipo confere: reatribuicao, for each, desempacotamento,
+ * write-through de dentro de uma action, closure. Sem tipo declarado nada
+ * muda. `Object` e o tipo de qualquer objeto (instancia, servidor, arquivo). */
+{ "tipagem estatica: `str s` recusa `s = 42` depois",
+  "str s = \"a\"\n"
+  "s = 42\n"
+  "post(s)\n",
+  "", "AttributedValueError: variável s esperava str", 1 },
+{ "tipagem estatica: `int n` coage `n = \"7\"` (a matriz de coercao continua)",
+  "int n = 1\n"
+  "n = \"7\"\n"
+  "post(n + 1)\n"
+  "flo f = 1\n"
+  "f = 2\n"
+  "post(f)\n",
+  "8\n2.0", NULL, 0 },
+{ "tipagem estatica: `list l` recusa string; `dict d` recusa lista",
+  "list l = [1]\n"
+  "l = \"x\"\n",
+  "", "AttributedValueError: variável l esperava list", 1 },
+{ "tipagem estatica: Object recebe instancia de classe e o app do jinker",
+  "from jinker import Jinker\n"
+  "class C() {\n"
+  "    action m(self) {\n"
+  "        return 1\n"
+  "    }\n"
+  "}\n"
+  "Object app = Jinker(__name__)\n"
+  "object c = C()\n"
+  "post(c.m())\n",
+  "1", NULL, 0 },
+{ "tipagem estatica: Object recusa str e lista",
+  "Object o = \"x\"\n",
+  "", "AttributedValueError: variável o esperava Object", 1 },
+{ "tipagem estatica: global tipado escrito de dentro de uma action confere",
+  "str s = \"a\"\n"
+  "action f() {\n"
+  "    s = 5\n"
+  "}\n"
+  "f()\n",
+  "", "AttributedValueError: variável s esperava str", 1 },
+{ "tipagem estatica: local tipado capturado por closure confere na escrita de dentro",
+  "action f() {\n"
+  "    int n = 1\n"
+  "    action g() {\n"
+  "        n = \"z\"\n"
+  "    }\n"
+  "    g()\n"
+  "    return n\n"
+  "}\n"
+  "post(f())\n",
+  "", "ConversionError: não foi possível converter 'z' para int", 1 },
+{ "tipagem estatica: `for each` num nome declarado confere cada volta",
+  "str s = \"a\"\n"
+  "for each s in [1, 2] {\n"
+  "    post(s)\n"
+  "}\n",
+  "", "AttributedValueError: variável s esperava str", 1 },
+{ "sem tipo declarado continua livre: `x = 1` depois `x = \"a\"`",
+  "x = 1\n"
+  "x = \"a\"\n"
+  "post(x)\n",
+  "a", NULL, 0 },
 /* A cabeça da action sob um decorador é a MESMA unidade do statement:
  * `[public|private] {async|tipo}* action|reaction`, em qualquer ordem. O
  * lookahead do decorador era uma cópia à mão que conhecia quatro formas e

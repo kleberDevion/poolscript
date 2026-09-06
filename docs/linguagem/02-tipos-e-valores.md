@@ -1,10 +1,10 @@
 # Referência da Linguagem — 2. Tipos e valores
 
-A PoolScript é **dinamicamente tipada com anotação estática opcional**: toda
-variável carrega o tipo do seu valor em tempo de execução (como Python), mas
-você *pode* declarar um tipo (`int x = 5`), e aí a linguagem passa a **exigir e
-coagir** esse tipo na atribuição (mais perto de Java/TypeScript). As duas coisas
-convivem.
+A PoolScript tem **tipagem estática por declaração**: uma variável declarada
+com tipo (`int x = 5`) **é** daquele tipo — a linguagem exige e coage esse tipo
+em toda atribuição a ela, da criação em diante. Uma variável criada sem tipo
+(`x = 5`) carrega o tipo do valor que recebeu e pode receber outro depois. As
+duas formas convivem no mesmo programa.
 
 ---
 
@@ -146,9 +146,9 @@ flo   preco = 9.90
 bool  ativo = True
 ```
 
-A checagem vale **só na declaração**. A partir daí a variável é dinâmica: uma
-atribuição posterior (sem o tipo na frente) pode trocar o valor por outro tipo
-livremente — ver seção 4.
+A checagem vale em **toda** escrita na variável, não só na declaração: `s = 42`
+depois de `str s = "oi"` é erro (`variável s esperava str`), e `n = "7"` depois
+de `int n = 1` coage para `7` — ver seção 4.6.4.
 
 Regras de coerção na declaração, por tipo-alvo:
 
@@ -159,6 +159,7 @@ Regras de coerção na declaração, por tipo-alvo:
 | `str` | `str` | — | `int`, `flo`, `bool` (não "stringifica") |
 | `bool` | `bool` | — | `int` (mesmo `1`), etc. |
 | `list` `dict` `tup` `json` | o próprio tipo | — | os demais |
+| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo | — | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
 
 Ou seja: a linguagem faz só as conversões que não perdem nem adivinham
 informação — **int→flo** (alargamento) e **string numérica→número** (parsing).

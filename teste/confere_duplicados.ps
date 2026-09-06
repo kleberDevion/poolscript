@@ -22,11 +22,18 @@ import regex
 PASTA = "teste"
 
 # Ordem de precedência: quem aparece ANTES manda; a cópia sai de quem vem
-# depois. `diferencial` é o mais antigo e o mais referenciado.
-ORDEM = ["casos_diferencial.c", "casos_linguagem.c", "casos_erros.c",
+# depois.
+#
+# `casos_diferencial.c` FICA DE FORA da conferência: ele é GERADO
+# (`teste/geradores/diferencial.ps`) a partir dos casos escritos à mão — cada
+# caso dele é, por construção, o programa de um caso destes arquivos com a
+# saída que o motor dá hoje. Não é cópia: é o mesmo programa travado no tempo.
+# Compará-lo aqui acusaria todos os 700 e tantos.
+ORDEM = ["casos_linguagem.c", "casos_erros.c",
          "casos_inteiros.c", "casos_crash.c", "casos_oraculo.c",
          "casos_equivalencia.c", "casos_libs.c", "casos_robustez.c",
          "casos_pendentes.c", "casos_cobertura.c"]
+GERADOS_DE_OUTROS = ["casos_diferencial.c"]
 
 
 # Quebra um arquivo em [ [nome, linhas...], ... ] e o resto (cabeçalho/rodapé).
@@ -148,7 +155,7 @@ if __name__ == "main" {
     # fora da conferência por esquecimento
     for each e in os.ls(PASTA) {
         n = e["name"]
-        if n.startswith("casos_") and n.endswith(".c") and not n in presentes {
+        if n.startswith("casos_") and n.endswith(".c") and not n in presentes and not n in GERADOS_DE_OUTROS {
             presentes.append(n)
         }
     }

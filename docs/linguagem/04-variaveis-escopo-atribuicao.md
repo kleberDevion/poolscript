@@ -15,16 +15,18 @@ VM e comparando a saída.
 Há duas formas de introduzir uma variável:
 
 ```ps
-nome = "ana"          # atribuição simples (dinâmica)
-str nome = "ana"      # declaração com tipo (checada/coagida na criação)
+nome = "ana"          # atribuição simples (sem tipo declarado)
+str nome = "ana"      # declaração com tipo (checada/coagida em toda escrita)
 ```
 
 - **Simples** (`nome = valor`): o nome recebe o valor e passa a existir; o tipo
-  é o do valor.
+  é o do valor, e pode mudar em outra atribuição.
 - **Tipada** (`Tipo nome = valor`): o valor é checado e, quando seguro, coagido
   para o tipo declarado, seguindo a matriz de coerção da seção 2.6
-  (`int x = "7"` vira `7`; `int x = 5.0` é erro). A checagem vale **só na
-  criação** — ver 4.5.4.
+  (`int x = "7"` vira `7`; `int x = 5.0` é erro). O tipo fica **na
+  variável**: toda escrita seguinte é conferida igual — ver 4.6.4. Os tipos
+  declaráveis: `str`, `int`, `flo`, `bool`, `char`, `list`, `dict`/`json`,
+  `tup` e `Object` (qualquer objeto: instância, servidor, conexão, arquivo).
 
 A declaração tipada **exige** um valor: `int x` sozinho é erro de sintaxe
 (`declaracao de variavel exige '='`).
@@ -211,15 +213,30 @@ post(i)              # NameError: name 'i' is not defined (i não vaza do for)
 `break` e `continue` respeitam isso: ao sair (ou reiniciar), o que nasceu no
 laço é descartado.
 
-### 4.6.4. A checagem de tipo é só na declaração
+### 4.6.4. O tipo declarado é da variável — tipagem estática
 
-Depois de criada, a variável é **dinâmica**: uma atribuição simples posterior
-pode trocar o tipo à vontade. O `Tipo` na frente vale só no momento da criação.
+`Tipo nome = valor` fixa o tipo da **variável**, não só do valor inicial: toda
+escrita posterior nela é conferida pela mesma regra da criação (coerção onde a
+matriz da seção 2.6 permite, erro onde não). Vale para reatribuição, `+=`,
+`for each`, desempacotamento, escrita de dentro de uma action (§4.7) e
+closure.
 
 ```ps
 str s = "oi"
-s = 42              # ok — agora s é o int 42
-post(type(s))       # int
+s = 42              # AttributedValueError: variável s esperava str
+
+int n = 1
+n = "7"             # ok — coage: n vale 7
+```
+
+Uma variável criada **sem** tipo (`x = 1`) não tem essa restrição: `x = "a"`
+depois dela vale. `Object` é o tipo de qualquer objeto — instância de classe,
+servidor, conexão, arquivo — e é como se declara o que uma lib devolve:
+
+```ps
+Object app = Jinker(__name__)
+object c = Conta("ana")      # `object` e `Object` são o mesmo tipo
+Object s = "texto"           # AttributedValueError: variável s esperava Object
 ```
 
 ### 4.6.5. Funções e o escopo de módulo
@@ -307,7 +324,7 @@ faz — são detalhadas na parte de bibliotecas.)
 
 ## 4.10. Resumo
 
-- `nome = v` cria/atualiza; `Tipo nome = v` checa e coage na criação (exige
+- `nome = v` cria/atualiza; `Tipo nome = v` checa e coage em toda escrita (exige
   `=`); sem atribuição encadeada.
 - Aumentadas (`+=` etc.) e `++`/`--` (só pós-fixado) herdam as regras da seção 3.
 - Alvos compostos: `l[i]`, `obj.x`, `d.chave` (sem atribuição por fatia).

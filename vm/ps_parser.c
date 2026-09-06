@@ -1973,8 +1973,16 @@ static int eh_tipo_kw(PSToken *t)
  * `int action`/`bool action` existem. */
 static int eh_tipo_kw_decl(PSToken *t)
 {
+    /* `list`/`dict`/`json`/`tup` entraram aqui com a tipagem estatica: `list
+     * l = [1]` era lido como um TypeName SOLTO (statement vazio) seguido da
+     * atribuicao comum `l = [1]` — a doc prometia "guarda o proprio tipo" e
+     * nenhuma declaracao existia. */
     return eh_tipo_kw(t)
-        || (t->type == T_KW && t->texto && strcmp(t->texto, "char") == 0);
+        || (t->type == T_KW && t->texto
+            && (strcmp(t->texto, "char") == 0
+                || strcmp(t->texto, "list") == 0 || strcmp(t->texto, "dict") == 0
+                || strcmp(t->texto, "json") == 0 || strcmp(t->texto, "tup") == 0
+                || strcmp(t->texto, "Object") == 0 || strcmp(t->texto, "object") == 0));
 }
 
 static PSNode *statement(P *p)
@@ -2870,8 +2878,15 @@ static PSNode *statement(P *p)
         }
     }
 
-    /* tipo de retorno antes de action: `int action f()` */
-    if (eh_tipo_kw_decl(t)) {
+    /* tipo de retorno antes de action: `int action f()`; ou declaracao tipada
+     * `int x = 1`. So entra aqui se o que vem depois do tipo e uma ACTION ou
+     * um NOME — `list(x)`, `json.parse(s)`, `str(n)` como statement continuam
+     * expressao (chamada/modulo), como o ramo de expressao ja tratava. */
+    if (eh_tipo_kw_decl(t)
+            && ((espia(p, 1)->type == T_KW && espia(p, 1)->texto
+                 && (strcmp(espia(p, 1)->texto, "action") == 0
+                     || strcmp(espia(p, 1)->texto, "reaction") == 0))
+                || espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
         PSToken *nx = espia(p, 1);
         if (nx->type == T_KW && nx->texto
                 && (strcmp(nx->texto, "action") == 0 || strcmp(nx->texto, "reaction") == 0)) {

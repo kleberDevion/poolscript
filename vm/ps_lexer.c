@@ -43,6 +43,10 @@ static const char *KEYWORDS[] = {
     "POST", "PUT", "DELETE", "JSON", "json",
     /* `dict` é apelido de `json`; `tup` nomeia a tupla */
     "dict", "tup",
+    /* `Object`/`object`: o tipo de qualquer objeto que nao e str/list/dict/
+     * tup/bytes — instancia de classe, servidor, conexao, arquivo. E o que
+     * se declara pra receber o que uma lib devolve: `Object app = Jinker()`. */
+    "Object", "object",
     NULL
 };
 

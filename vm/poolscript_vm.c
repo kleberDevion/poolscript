@@ -692,7 +692,7 @@ enum {
     TIPO_LIST, TIPO_DICT, TIPO_TUP, TIPO_TYPE
 };
 static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
-                                   "tup", "type", "char", "PoolFile" };
+                                   "tup", "type", "char", "PoolFile", "Object" };
 #define MK_OBJ(x)    ((Value){ .t = V_OBJ,    .as.obj = (Obj*)(x) })
 
 #define EH_STRING(v) ((v).t == V_OBJ && (v).as.obj->type == OBJ_STRING)
@@ -8769,6 +8769,9 @@ static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
  * branco. Não existe como tipo declarável, só aqui. */
 #define TIPO_CHAR  8
 #define TIPO_PFILE 9
+/* `Object`: qualquer objeto que nao e str/list/dict/tup/bytes — instancia de
+ * classe, servidor, conexao, arquivo, funcao. `Object app = Jinker(...)`. */
+#define TIPO_OBJ   10
 
 /* Um item casa o `count` se bate no TIPO e, quando há valor, é igual a ele. */
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val);
@@ -22085,8 +22088,11 @@ ERRO_TF(vm, "TypeError",
                                 decl_nome, utf8_conta(t->chars, t->len));
                     break;
                 }
+                /* diz o que veio: sem isto a mensagem era PREFIXO da de cima
+                 * ("esperava char (um caractere), recebeu N") e uma
+                 * expectativa de teste com a curta casava com a longa */
                 ERRO_TF(vm, "AttributedValueError",
-                        "variável %s esperava char", decl_nome);
+                        "variável %s esperava char, recebeu %s", decl_nome, nome_do_tipo_valor(v));
             }
             if (tipo == TIPO_INT && EH_STRING(v)) {
                 PSString *t = COMO_STRING(v);
@@ -22111,12 +22117,22 @@ ERRO_TF(vm, "TypeError",
                     break;
                 }
             }
+            /* Tipagem ESTATICA: este opcode roda em TODA escrita numa variavel
+             * declarada com tipo (o compilador o emite antes de cada store,
+             * nao so na declaracao), entao a lista cobre todos os tipos
+             * declaraveis — `list`/`dict`/`tup` eram guardados sem conferir. */
             int ok;
             switch (tipo) {
                 case TIPO_STR:  ok = EH_STRING(v); break;
                 case TIPO_INT:  ok = v.t == V_INT; break;
                 case TIPO_FLO:  ok = v.t == V_INT || v.t == V_FLOAT; break;
-                default:        ok = v.t == V_BOOL; break;
+                case TIPO_BOOL: ok = v.t == V_BOOL; break;
+                case TIPO_LIST: ok = EH_LIST(v); break;
+                case TIPO_DICT: ok = EH_DICT(v); break;
+                case TIPO_TUP:  ok = EH_TUPLA(v); break;
+                case TIPO_OBJ:  ok = v.t == V_OBJ && !EH_STRING(v) && !EH_LIST(v)
+                                     && !EH_TUPLA(v) && !EH_DICT(v) && !EH_BYTES(v); break;
+                default:        ok = 1; break;
             }
             if (!ok) {
                 const char *vn = "";
