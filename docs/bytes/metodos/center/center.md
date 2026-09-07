@@ -7,7 +7,10 @@ Centraliza na largura. Com sobra ímpar e largura ímpar, o byte a mais fica à 
 | nome | default |
 |---|---|
 | `width` | — |
-| `fillbyte` | — |
+| `fillbyte` | espaço |
+
+Omitir o `fillbyte` preenche com espaço: `"ab".encode().center(7)` é
+`b'   ab  '`.
 
 ## Retorno
 

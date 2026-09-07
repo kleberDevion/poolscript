@@ -27,7 +27,11 @@ bytes.slice(b, 0, -1)   # b'Hell'  — tudo menos o último
 
 ## Erros
 
-- **TypeError** — `b` não é bytes, ou `ini`/`fim` não são inteiros.
+- **TypeError** — `b` não é bytes, ou `ini`/`fim` não são inteiros nem `Null`.
+
+`Null` (e `None`, que é apelido dele) vale **omitido** nos dois: `slice(b, 1,
+Null)` é o mesmo que `slice(b, 1)`, e `slice(b, Null, 3)` o mesmo que
+`slice(b, 0, 3)`.
 
 ---
 

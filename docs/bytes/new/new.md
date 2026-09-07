@@ -30,8 +30,8 @@ bytes.new(bytes.new("ok"))  # b'ok'   — cópia
 - **ValueError** — lista com item fora de 0-255, ou tamanho negativo.
 
 ```
-bytes.new([300])   # erro: a lista precisa conter inteiros de 0 a 255
-bytes.new(3.5)     # erro: não sei criar bytes de flo
+bytes.new([300])   # ValueError: bytes must be in range(0, 256)
+bytes.new(3.5)     # TypeError: cannot convert 'flo' object to bytes
 ```
 
 ---

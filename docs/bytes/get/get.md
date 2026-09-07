@@ -27,10 +27,11 @@ bytes.get(b, -1)    # 67   — o último
 ## Erros
 
 - **TypeError** — `b` não é bytes, ou `i` não é inteiro.
-- **ValueError** — o índice está fora da faixa.
+- **IndexError** — o índice está fora da faixa: `index out of range` (sem
+  nomear o tipo, diferente de list/tup/str). **Não** é `ValueError`.
 
 ```
-bytes.get(bytes.new("ab"), 9)   # erro: índice 9 fora do range (0..1)
+bytes.get(bytes.new("ab"), 9)   # IndexError: index out of range
 ```
 
 ---

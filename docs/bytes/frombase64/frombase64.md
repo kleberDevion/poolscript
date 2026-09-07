@@ -22,7 +22,14 @@ bytes.frombase64("3q2+7w==")   # b'\xde\xad\xbe\xef'
 
 ## Erros
 
-- **ValueError** — a `str` não é base64 válido.
+- **ValueError** — a `str` não é base64 válido: caractere fora do alfabeto
+  (`Only base64 data is allowed`) ou comprimento impossível
+  (`Invalid base64-encoded string: number of data characters (1) cannot be 1
+  more than a multiple of 4`).
+
+**Padding faltando NÃO é erro**: `bytes.frombase64("abc")` (3 caracteres, sem
+`=`) devolve `b'i\xb7'` em vez de reclamar. Se o dado vem de fora e o padding
+importa, confira o comprimento antes.
 
 ---
 

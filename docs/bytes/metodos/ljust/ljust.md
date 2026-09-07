@@ -7,7 +7,9 @@ Enche à direita até a largura. `fillbyte` tem que ter exatamente um byte.
 | nome | default |
 |---|---|
 | `width` | — |
-| `fillbyte` | — |
+| `fillbyte` | espaço |
+
+Omitir o `fillbyte` preenche com espaço.
 
 ## Retorno
 

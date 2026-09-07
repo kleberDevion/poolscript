@@ -1,6 +1,8 @@
 # `b.splitlines(keepends=false)`
 
-Parte em linhas. Quebra em `\n`, `\r` e `\r\n` — e SÓ. O `\v` e o `\f`, que no `str` quebram, aqui ficam dentro da linha.
+Parte em linhas. Quebra em `\n`, `\r` e `\r\n` — e SÓ. É a mesma regra do
+`str`: nenhum dos dois quebra em `\v` ou `\f` (`"a\vb".splitlines()` devolve
+`['a\x0bb']`, um elemento só).
 
 ## Parâmetros
 

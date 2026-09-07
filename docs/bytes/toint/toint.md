@@ -1,7 +1,8 @@
 # `bytes.toint(b, byteorder="big")`
 
-Desempacota bytes num inteiro (>= 0). É o caminho de volta do
-[`bytes.fromint()`](../fromint/fromint.md).
+Desempacota bytes num inteiro. É o caminho de volta do
+[`bytes.fromint()`](../fromint/fromint.md). Até 8 bytes sem o bit alto o
+resultado é positivo; a nota de bordas explica o que acontece acima disso.
 
 ```
 bytes.toint(b: bytes, byteorder: str = "big") -> int
@@ -26,9 +27,21 @@ bytes.toint(bytes.fromint(258, 4, "little"), "little")   # 258
 ## Erros
 
 - **TypeError** — o argumento não é bytes.
-- **ValueError** — `byteorder` inválido (o tipo está certo, o valor não serve): `bytes.toint: byteorder deve ser 'big' ou 'little'`.
+- **ValueError** — `byteorder` inválido (o tipo está certo, o valor não
+  serve): `byteorder must be either 'little' or 'big'`.
 
-> Nota: o inteiro da PoolScript é de 64 bits — use pra sequências de até 8 bytes.
+> **O inteiro é de 64 bits COM SINAL, e isso vaza aqui.** Com 8 bytes e o bit
+> alto ligado o resultado é **negativo**, e com 9 bytes ou mais o byte que
+> sobra some, sem erro:
+>
+> ```ps
+> post(bytes.toint(bytes.fromhex("ffffffffffffffff")))     # -1
+> post(bytes.toint(bytes.fromhex("8000000000000000")))     # -9223372036854775808
+> post(bytes.toint(bytes.fromhex("010000000000000000")))   # 0   — 9 bytes, o alto some
+> ```
+>
+> Ou seja: o "(>= 0)" do começo desta página só vale enquanto o valor cabe em
+> 2^63. Acima disso, confira o tamanho antes de desempacotar.
 
 ---
 

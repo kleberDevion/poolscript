@@ -13,7 +13,7 @@ A lista sai da tabela `METODOS_LIST` de `vm/poolscript_vm.c`, publicada por `poo
 | [`count`](count/count.md) | `l.count(item)` | Quantas vezes o item aparece. |
 | [`extend`](extend/extend.md) | `l.extend(outra)` | Anexa TODOS os itens de outra sequência no fim (muta). |
 | [`has`](has/has.md) | `l.has(item)` | Apelido de `contains` — as duas grafias existem. |
-| [`index`](index/index.md) | `l.index(item)` | Posição da primeira ocorrência do item. |
+| [`index`](index/index.md) | `l.index(item, inicio=0, fim=len)` | Posição da primeira ocorrência do item. |
 | [`insert`](insert/insert.md) | `l.insert(i, item)` | Insere `item` NA posição `i`, empurrando o resto (muta). |
 | [`len`](len/len.md) | `l.len()` | Quantidade de itens — forma de método do builtin `len`. |
 | [`pop`](pop/pop.md) | `l.pop(i=-1)` | Remove e DEVOLVE o item da posição `i` (o último, por padrão). |

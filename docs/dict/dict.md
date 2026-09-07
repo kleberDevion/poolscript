@@ -14,7 +14,7 @@ A lista sai da tabela `METODOS_DICT` de `vm/poolscript_vm.c`, publicada por `poo
 | [`items`](items/items.md) | `d.items()` | Lista de tuplas `(chave, valor)`. |
 | [`keys`](keys/keys.md) | `d.keys()` | Lista das CHAVES, na ordem de inserção. |
 | [`len`](len/len.md) | `d.len()` | Quantos pares — forma de método do builtin `len`. |
-| [`pop`](pop/pop.md) | `d.pop(chave)` | Remove a chave e DEVOLVE o valor dela (muta). |
+| [`pop`](pop/pop.md) | `d.pop(chave, default=Null)` | Remove a chave e DEVOLVE o valor dela (muta). |
 | [`update`](update/update.md) | `d.update(outro)` | Mescla os pares de outro dict; chave repetida é sobrescrita (muta). |
 | [`value`](value/value.md) | `d.value()` | Os VALORES — idêntico a `values()`, com o nome curto. |
 | [`values`](values/values.md) | `d.values()` | Lista dos VALORES, na ordem de inserção. |

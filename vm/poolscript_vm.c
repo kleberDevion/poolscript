@@ -10266,14 +10266,18 @@ static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
     if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "slice() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     int len = b->len;
+    /* `Null` vale OMITIDO, nos dois. A propria mensagem dizia "integers or
+     * None" e o teste recusava Null: passar explicitamente o default que a doc
+     * publica (`slice(b, 1, Null)`) era TypeError, com a mensagem prometendo
+     * o contrario do que o codigo fazia. */
     int64_t ini = 0;
-    if (n > 1 && args[1].t != V_UNSET) {
+    if (n > 1 && args[1].t != V_UNSET && args[1].t != V_NULL) {
         if (args[1].t == V_BOOL || args[1].t != V_INT)
             BY_ERRO_TIPO(vm, "slice indices must be integers or None or have an __index__ method");
         ini = args[1].as.i;
     }
     int64_t fim = len;
-    if (n > 2 && args[2].t != V_UNSET) {
+    if (n > 2 && args[2].t != V_UNSET && args[2].t != V_NULL) {
         if (args[2].t == V_BOOL || args[2].t != V_INT)
             BY_ERRO_TIPO(vm, "slice indices must be integers or None or have an __index__ method");
         fim = args[2].as.i;

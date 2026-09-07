@@ -27,10 +27,14 @@ bytes.fromint(258, 4, "little") # b'\x02\x01\x00\x00'  — little-endian
 ## Erros
 
 - **TypeError** — `n` não é inteiro, ou `length` não é inteiro.
-- **ValueError** — `n` negativo, `byteorder` inválido, ou `n` não cabe em `length` bytes.
+- **ValueError** — `byteorder` inválido: `byteorder must be either 'little' or 'big'`.
+- **OverflowError** — `n` negativo (`can't convert negative int to unsigned`)
+  ou `n` que não cabe em `length` bytes (`int too big to convert`). **Não** é
+  `ValueError`: um `catch (ValueError e)` não pega esses dois.
 
 ```
-bytes.fromint(70000, 1)   # erro: 70000 não cabe em 1 byte(s)
+bytes.fromint(70000, 1)   # OverflowError: int too big to convert
+bytes.fromint(-1)         # OverflowError: can't convert negative int to unsigned
 ```
 
 ---

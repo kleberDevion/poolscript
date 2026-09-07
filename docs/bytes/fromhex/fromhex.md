@@ -23,12 +23,16 @@ bytes.fromhex("deadbeef")         # b'\xde\xad\xbe\xef'
 
 ## Erros
 
-- **ValueError** — hex inválido: dígito fora de `0-9a-f` ou quantidade ímpar de dígitos.
+- **ValueError** — dígito que não é hexadecimal, ou quantidade ímpar. A
+  mensagem é a mesma nos dois casos, e aponta a **posição**:
 
 ```
-bytes.fromhex("zz")    # erro: hex inválido: 'zz'
-bytes.fromhex("abc")   # erro: hex inválido (ímpar)
+bytes.fromhex("zz")    # ValueError: non-hexadecimal number found in fromhex() arg at position 0
+bytes.fromhex("abc")   # ValueError: non-hexadecimal number found in fromhex() arg at position 3
 ```
+
+**Maiúsculas passam**: `bytes.fromhex("DEADBEEF")` é `b'\xde\xad\xbe\xef'`. A
+faixa aceita é `0-9a-fA-F`, não só a minúscula.
 
 ---
 

@@ -20,8 +20,8 @@ entre formatos.
 | `bytes.hex(b)` | os bytes como string hex | [hex/hex.md](hex/hex.md) |
 | `bytes.base64(b)` | os bytes como string base64 | [base64/base64.md](base64/base64.md) |
 | `bytes.frombase64(s)` | bytes a partir de uma string base64 | [frombase64/frombase64.md](frombase64/frombase64.md) |
-| `bytes.fromint(n, tam, ordem)` | empacota um inteiro em bytes | [fromint/fromint.md](fromint/fromint.md) |
-| `bytes.toint(b, ordem)` | desempacota bytes num inteiro | [toint/toint.md](toint/toint.md) |
+| `bytes.fromint(n, length, byteorder)` | empacota um inteiro em bytes | [fromint/fromint.md](fromint/fromint.md) |
+| `bytes.toint(b, byteorder)` | desempacota bytes num inteiro | [toint/toint.md](toint/toint.md) |
 | `bytes.tolist(b)` | lista com o valor de cada byte (0-255) | [tolist/tolist.md](tolist/tolist.md) |
 | `bytes.concat(lista)` | junta uma lista de bytes num só | [concat/concat.md](concat/concat.md) |
 | `bytes.slice(b, ini, fim)` | uma fatia dos bytes | [slice/slice.md](slice/slice.md) |

@@ -28,7 +28,8 @@ bytes.concat([cab, corpo])          # b'\x00\x02oi'
 - **TypeError** — o argumento não é lista, ou algum item não é bytes.
 
 ```
-bytes.concat([bytes.new("a"), 5])   # erro: item 1 não é bytes (int)
+bytes.concat([bytes.new("a"), 5])   # TypeError: sequence item 1: expected a bytes-like object, int found
+bytes.concat("abc")                 # TypeError: can only join an iterable
 ```
 
 ---
