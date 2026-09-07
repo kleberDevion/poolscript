@@ -1,17 +1,17 @@
-# `os.loadFile(name, encoding=None)`
+# `os.loadFile(name, modo=Null)`
 
 Lê um arquivo e devolve o conteúdo já no formato certo, **detectado pela
 extensão**: texto vira `str`, JSON vira dict/lista, CSV vira lista de dicts, e
 arquivos binários (imagem, PDF, docx…) viram um [`PoolFile`](../PoolFile/PoolFile.md).
 
 ```
-os.loadFile(name: str, encoding: str = None) -> str | dict | list | PoolFile
+os.loadFile(name: str, modo: str = Null) -> str | dict | list | PoolFile
 ```
 
 | Parâmetro | O que é |
 |---|---|
 | `name` | nome/caminho do arquivo (buscado a partir da pasta do `.ps` e do cwd) |
-| `encoding` | força o modo — ver abaixo. `None` = automático pela extensão |
+| `modo` | força o modo, `"r"` ou `"rb"` — ver abaixo. Omitido = automático pela extensão |
 
 ---
 
@@ -33,18 +33,27 @@ imagem  = os.loadFile("logo.png")        # PoolFile (bytes)
 
 ---
 
-## Forçando o modo com `encoding`
+## Forçando o modo com o 2º argumento
 
-O segundo argumento força a leitura:
+O segundo argumento é o **modo**, e só dois valores existem:
 
-- **`encoding="rb"`** — força **binário** (devolve `PoolFile`). Só aceita
-  extensões binárias.
-- **`encoding="utf-8"`** (ou `"latin-1"`, etc.) — força **texto** com aquele
-  charset. Só aceita extensões de texto.
+- **`"rb"`** — força **binário** (devolve `PoolFile`). Só aceita extensões
+  binárias: `os.loadFile("recibo.dat", "rb")` é erro, porque `.dat` não está na
+  lista de extensões binárias.
+- **`"r"`** — força **texto**.
 
 ```
-img = os.loadFile("recibo.dat", encoding="rb")        # trata como binário
-txt = os.loadFile("legado.csv", encoding="latin-1")   # texto em charset antigo
+img = os.loadFile("recibo.pdf", "rb")     # binário: devolve PoolFile
+txt = os.loadFile("dados.csv", "r")       # texto
+```
+
+**Não é charset.** Passar um nome de codificação aqui é erro, e a mensagem diz
+onde ele vale:
+
+```
+os.loadFile("legado.csv", encoding="latin-1")
+ValueError: loadFile(): o 2o argumento e o MODO ('r' ou 'rb'), nao um charset.
+            Pra ler '.csv' com charset use os.readFile(caminho, encoding="latin-1")
 ```
 
 Forçar um modo incompatível com a extensão levanta erro claro (ex: `"rb"` num

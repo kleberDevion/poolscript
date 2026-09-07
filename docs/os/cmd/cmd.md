@@ -39,14 +39,19 @@ mensagem de erro em vez de string vazia.
 ```
 import os
 
-# checa se uma ferramenta existe
-git = os.cmd("git --version", capture=true)
-if (git) {
-    post("git instalado:", git)
+# checa se uma ferramenta existe — pelo código de saída, não pelo texto
+achou = os.cmd("command -v git > /dev/null; echo $?", capture=true).strip()
+if achou == "0" {
+    post("git instalado")
 } else {
     post("git não encontrado")
 }
 ```
+
+> **Não teste com `if (os.cmd(...))`.** Sem stdout o `cmd` devolve o **stderr**
+> (regra das linhas acima), e `sh: 1: gitzz: not found` é string não-vazia:
+> o `if` é verdadeiro mesmo quando o programa não existe, e o `else` nunca
+> roda. Por isso o exemplo pergunta o código de saída.
 
 ---
 

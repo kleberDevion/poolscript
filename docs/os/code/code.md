@@ -3,7 +3,7 @@
 Abre o **editor de código** do sistema (ex: VS Code) no caminho indicado.
 
 ```
-os.code(path: str = ".") -> None
+os.code(path: str = ".") -> str
 ```
 
 | Parâmetro | Padrão | O que é |

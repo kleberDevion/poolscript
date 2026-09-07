@@ -10661,12 +10661,16 @@ static int mod_out_flush(VM *vm, Value *a, int n, Value *o)
 static int mod_err_flush(VM *vm, Value *a, int n, Value *o)
 { (void)a; EXIGE_ARGS(vm, "flush", 0); fflush(stderr); *o = MK_NULL(); return 0; }
 
+/* Os nomes dos parametros PRECISAM estar aqui: a tabela e o que autoriza a
+ * chamada por nome. Estavam NULL, entao `sys.stdout.write("x", end=true)` —
+ * que a doc mostra — era `write() takes no keyword arguments`, embora o
+ * `escreve_em` ja tratasse o 2o argumento como `end`. */
 static const MembroMod MOD_STDOUT[] = {
-    { "write", mod_out_write, 0, NULL }, { "writeln", mod_out_writeln, 0, NULL },
+    { "write", mod_out_write, 0, "texto,end" }, { "writeln", mod_out_writeln, 0, "texto" },
     { "flush", mod_out_flush, 0, NULL },
 };
 static const MembroMod MOD_STDERR[] = {
-    { "write", mod_err_write, 0, NULL }, { "writeln", mod_err_writeln, 0, NULL },
+    { "write", mod_err_write, 0, "texto,end" }, { "writeln", mod_err_writeln, 0, "texto" },
     { "flush", mod_err_flush, 0, NULL },
 };
 
@@ -11285,6 +11289,19 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
                   nome_do_tipo_valor(args[1])); }
         modo = COMO_STRING(args[1])->chars;
     }
+    /* O 2o argumento e MODO, nao charset. Um nome de charset passava calado e
+     * o arquivo era lido byte a byte do mesmo jeito: `loadFile(csv,
+     * encoding="latin-1")` devolvia acento quebrado sem uma palavra. Se o que
+     * veio parece charset, diz onde ele vale. */
+    if (modo && strcmp(modo, "rb") != 0 && strcmp(modo, "r") != 0) {
+        int c = codec_de_nome(modo, (int)strlen(modo));
+        vm->sp--;
+        if (c >= 0)
+            BERRO(vm, "ValueError",
+                  "loadFile(): o 2o argumento e o MODO ('r' ou 'rb'), nao um charset. "
+                  "Pra ler '%s' com charset use os.readFile(caminho, encoding=\"%s\")", ext, modo);
+        BERRO(vm, "ValueError", "loadFile: mode='%s' nao existe — use 'r' ou 'rb'", modo);
+    }
     int bin = ext_binaria(ext);
     if (modo && !strcmp(modo, "rb")) {
         if (!bin) { vm->sp--; BERRO(vm, "TypeError", "loadFile: mode='rb' nao aceita extensao '%s'", ext); }
@@ -11324,11 +11341,73 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
     return devolve_sbuf(vm, &b, out);
 }
 
+/* ── charset nos arquivos ────────────────────────────────────────────────────
+ *
+ * O `encoding` de `readFile`/`writeFile`/`loadFile` era DECLARADO E IGNORADO:
+ * a tabela dizia "path,encoding" e o codigo devolvia os bytes crus. Ler um
+ * arquivo latin-1 pedindo latin-1 saia com acento quebrado, e
+ * `writeFile(..., encoding="latin-1")` gravava UTF-8 do mesmo jeito — o pior
+ * tipo de defeito, porque a chamada parece certa.
+ *
+ * A linguagem guarda texto em UTF-8. Entao ler e DECODIFICAR de `codec` pra
+ * UTF-8, e gravar e CODIFICAR de UTF-8 pra `codec`. O nome do codec vem do
+ * mesmo `codec_de_nome` que o `.encode()` usa.
+ *
+ * Os codecs de largura fixa (utf-16/32) ficam de fora aqui, e com nome: um
+ * arquivo desses precisa de BOM e de tratamento de par de surrogates que o
+ * `str.encode`/`bytes.decode` ja fazem — a mensagem manda usar eles. */
+static int os_codec_arq(VM *vm, Value *args, int n, int idx, const char *quem, int *codec)
+{
+    *codec = CODEC_UTF8;
+    if (n <= idx || args[idx].t == V_UNSET || args[idx].t == V_NULL) return 0;
+    if (!EH_STRING(args[idx]))
+        { BERRO(vm, "TypeError", "%s() encoding deve ser str, nao %s",
+                quem, nome_do_tipo_valor(args[idx])); }
+    PSString *e = COMO_STRING(args[idx]);
+    int c = codec_de_nome(e->chars, e->len);
+    if (c < 0)
+        { BERRO(vm, "LookupError", "unknown encoding: %.*s", e->len, e->chars); }
+    if (c != CODEC_UTF8 && c != CODEC_LATIN1 && c != CODEC_ASCII)
+        { BERRO(vm, "ValueError",
+                "%s(): encoding '%.*s' nao e aplicado em arquivo — leia os bytes "
+                "(open(caminho, \"rb\")) e use .decode(\"%.*s\")",
+                quem, e->len, e->chars, e->len, e->chars); }
+    *codec = c;
+    return 0;
+}
+
+/* bytes do arquivo -> texto UTF-8 da linguagem */
+static PSString *os_decodifica(VM *vm, const char *b, int len, int codec)
+{
+    if (codec == CODEC_UTF8) return nova_string(vm, b, len);
+    /* latin-1 e ascii: 1 byte = 1 codepoint. Acima de 0x7F vira 2 bytes UTF-8. */
+    SBUF_AUTO sb = {0};
+    for (int i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)b[i];
+        if (codec == CODEC_ASCII && c > 0x7F) {
+            /* devolve NULL com o erro posto: quem chama so propaga */
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "'ascii' codec can't decode byte 0x%02x in position %d: "
+                     "ordinal not in range(128)", c, i);
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "UnicodeDecodeError");
+            return NULL;
+        }
+        if (c < 0x80) { if (sb_bytes(&sb, (const char *)&c, 1) != 0) return NULL; }
+        else {
+            char par[2] = { (char)(0xC0 | (c >> 6)), (char)(0x80 | (c & 0x3F)) };
+            if (sb_bytes(&sb, par, 2) != 0) return NULL;
+        }
+    }
+    return nova_string(vm, sb.b ? sb.b : "", sb.n);
+}
+
 static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1) return erro_aridade(vm, "readFile", 1, 2, n);
     PSString *p;
     if (os_str(vm, args[0], "readFile", &p) != 0) return -1;
+    int codec;
+    if (os_codec_arq(vm, args, n, 1, "readFile", &codec) != 0) return -1;
     /* O `fopen("rb")` do Linux ABRE um diretório sem reclamar (o `nativa_open`
      * já barra isso na mão, por isto mesmo). Aqui não barrava: o `ftell` de
      * diretório devolve LONG_MAX, o malloc estoura e `readFile("pasta")` saía
@@ -11343,9 +11422,12 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
     if (!buf) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
     size_t rd = fread(buf, 1, (size_t)t, f);
     fclose(f); buf[rd] = '\0';
-    PSString *s = nova_string(vm, buf, (int)rd);
+    PSString *s = os_decodifica(vm, buf, (int)rd, codec);
     free(buf);
-    if (!s) BERRO(vm, "MemoryError", "sem memoria");
+    if (!s) {
+        if (vm->erro_tipo[0]) return -1;      /* erro de decodificacao ja posto */
+        BERRO(vm, "MemoryError", "sem memoria");
+    }
     *out = MK_OBJ(s);
     return 0;
 }
@@ -11355,11 +11437,33 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
     if (n < 2) return erro_aridade(vm, "writeFile", 2, 2, n);
     PSString *p;
     if (os_str(vm, args[0], "writeFile", &p) != 0) return -1;
+    int codec;
+    if (os_codec_arq(vm, args, n, 2, "writeFile", &codec) != 0) return -1;
     const char *dados; int ndados;
+    SBUF_AUTO conv = {0};
     if (EH_STRING(args[1]))      { PSString *c = COMO_STRING(args[1]); dados = c->chars; ndados = c->len; }
     else if (EH_BYTES(args[1]))  { PSString *c = COMO_BYTES(args[1]);  dados = c->chars; ndados = c->len; }
     else BERRO(vm, "TypeError", "writeFile() argument 2 must be str or bytes, not %s",
                nome_do_tipo_valor(args[1]));
+    /* `content` em bytes ja E a sequencia final: o encoding so vale pro str,
+     * que a linguagem guarda em UTF-8 e aqui vira o charset pedido. */
+    if (codec != CODEC_UTF8 && EH_STRING(args[1])) {
+        for (int i = 0; i < ndados; ) {
+            uint32_t cp;
+            int k = utf8_le(dados, ndados, i, &cp);
+            if (!k) break;
+            i += k;
+            uint32_t teto = (codec == CODEC_ASCII) ? 0x80 : 0x100;
+            if (cp >= teto)
+                BERRO(vm, "UnicodeEncodeError",
+                      "'%s' codec can't encode character in position %d: ordinal not in range(%u)",
+                      nome_do_codec(codec), utf8_conta(dados, i - k), (unsigned)teto);
+            char b1 = (char)(unsigned char)cp;
+            if (sb_bytes(&conv, &b1, 1) != 0) BERRO(vm, "MemoryError", "sem memoria em writeFile()");
+        }
+        dados = conv.b ? conv.b : "";
+        ndados = conv.n;
+    }
     /* cria a pasta pai (como makedirs) */
     char tmp[2048]; snprintf(tmp, sizeof(tmp), "%s", p->chars);
     for (char *q = tmp + 1; *q; q++) { if (*q == '/') { *q = '\0'; mkdir(tmp, 0755); *q = '/'; } }
@@ -11616,8 +11720,11 @@ static int mod_os_warn(VM *vm, Value *args, int n, Value *out)
     }
     TXTBUF_AUTO t = {0};
     if (n >= 1 && valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
-    printf("%s%.*s\033[0m\n", cod, t.n, t.b ? t.b : "");
-    fflush(stdout);
+    /* AVISO vai pro STDERR, que e o que a doc promete e o que faz sentido:
+     * saia no stdout e ele se mistura ao resultado do programa — quem faz
+     * `pool x.ps > saida.txt` levava o aviso junto pro arquivo. */
+    fprintf(stderr, "%s%.*s\033[0m\n", cod, t.n, t.b ? t.b : "");
+    fflush(stderr);
     *out = MK_NULL();
     return 0;
 }
@@ -11906,7 +12013,9 @@ static int mod_os_poolfile_tipo(VM *vm, Value *args, int n, Value *out)
 
 static const MembroMod MOD_OS[] = {
     { "pathFile", mod_os_pathfile, 0, "name" }, { "pathFolder", mod_os_pathfolder, 0, "name" },
-    { "loadFile", mod_os_loadfile, 0, "name,encoding" }, { "getenv", mod_os_getenv, 0, "key,default" },
+    /* `modo`, nao `encoding`: o 2o argumento e 'r'/'rb', e o nome antigo fazia
+     * a chamada por nome pedir um charset que nunca foi aplicado aqui. */
+    { "loadFile", mod_os_loadfile, 0, "name,modo" }, { "getenv", mod_os_getenv, 0, "key,default" },
     { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },

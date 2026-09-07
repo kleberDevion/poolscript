@@ -16,6 +16,8 @@ import sys
 | `sys.stdout` | escrever na saída padrão | [stdout/stdout.md](stdout/stdout.md) |
 | `sys.stderr` | escrever na saída de erro | [stderr/stderr.md](stderr/stderr.md) |
 | `sys.argv` | argumentos da linha de comando | [argv/argv.md](argv/argv.md) |
+| `sys.stdin` | ler da entrada padrão (`read(n)`, `readline()`) | — |
+| `sys.executable` | o caminho do binário `pool` que está rodando | — |
 
 ---
 

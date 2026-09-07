@@ -16,6 +16,7 @@ sys.exit(code: int = 0) -> None
 
 ```
 import sys
+import os
 
 if (not os.exists("config.json")) {
     post("config não encontrado")

@@ -9,9 +9,16 @@ import os
 # ou: import os as sistema
 ```
 
-Todo caminho relativo (`"dados.json"`, `"pasta/x.txt"`) é resolvido a partir da
-pasta do `.ps` em execução e depois do diretório atual — você quase nunca
-precisa de caminho absoluto.
+Caminho relativo (`"dados.json"`, `"pasta/x.txt"`) é resolvido a partir do
+**diretório atual** (o de onde você chamou o `pool`), como em qualquer
+programa. Rodar `pool sub/prog.ps` de outra pasta faz `os.readFile("x.txt")`
+procurar no diretório atual, **não** ao lado do `.ps`.
+
+Quatro funções são a exceção e olham também a pasta do `.ps`:
+[`pathFile`](pathFile/pathFile.md), [`pathFolder`](pathFolder/pathFolder.md),
+[`loadFile`](loadFile/loadFile.md) e o `PoolFile.save()` sem caminho. As
+outras — `exists`, `isfile`, `isdir`, `size`, `readFile`, `writeFile`, `ls`,
+`mkdir`, `copy`, `move`, `rename` — usam só o diretório atual.
 
 ---
 

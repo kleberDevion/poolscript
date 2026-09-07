@@ -16,7 +16,7 @@ Se você rodar `pool app.ps entrada.txt saida.txt`:
 ```
 import sys
 
-post(sys.argv)        # ["entrada.txt", "saida.txt"]
+post(sys.argv)        # ['entrada.txt', 'saida.txt']   — sai com aspas simples
 
 # pegar um argumento (checando se existe)
 if (len(sys.argv) > 0) {
