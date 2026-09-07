@@ -42,7 +42,7 @@ HIST = "teste/bench_cobertura.txt"
 # Lê o .info do lcov. Um registro por arquivo:
 #   SF:<caminho>   FN:<linha>,<nome>   FNDA:<vezes>,<nome>
 #   DA:<linha>,<vezes>                 BRDA:<linha>,<bloco>,<ramo>,<vezes|->
-action le_info(caminho) {
+funct le_info(caminho) {
     arquivos = {}
     atual = ""
     for each linha in os.readFile(caminho).split("\n") {
@@ -103,7 +103,7 @@ action le_info(caminho) {
 
 
 # Funções que nunca executaram, e os ramos que moram nelas.
-action zeradas(a) {
+funct zeradas(a) {
     fora = []
     for each nome in a["fn"].keys() {
         vezes = 0
@@ -120,7 +120,7 @@ action zeradas(a) {
 
 # Uma casa decimal, montada a mao: `x / 10.0` imprime o float inteiro
 # ("55.576426391171640") e estoura a coluna.
-action pct(parte, todo) {
+funct pct(parte, todo) {
     if todo == 0 {
         return "100.0"
     }
@@ -129,7 +129,7 @@ action pct(parte, todo) {
 }
 
 
-action pad(txt, n) {
+funct pad(txt, n) {
     s = str(txt)
     while len(s) < n {
         s = s + " "
@@ -138,7 +138,7 @@ action pad(txt, n) {
 }
 
 
-action padl(txt, n) {
+funct padl(txt, n) {
     s = str(txt)
     while len(s) < n {
         s = " " + s
@@ -147,7 +147,7 @@ action padl(txt, n) {
 }
 
 
-action le_historico() {
+funct le_historico() {
     ant = {}
     if not os.isfile(HIST) {
         return ant

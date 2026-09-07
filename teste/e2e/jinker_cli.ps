@@ -90,7 +90,7 @@ post("emitir ->", request.get(U + "/emitir").get_json())
 # ── WebSocket sem canal: o `return` do handler volta pro remetente ──────────
 eco = request.ws_connect("ws://127.0.0.1:28841/ws")
 vindas = []
-eco.on_message(action(m) { vindas.append(m) })
+eco.on_message(funct(m) { vindas.append(m) })
 eco.send("pingue")
 sleep(1)
 post("return do handler volta ->", vindas)
@@ -107,7 +107,7 @@ WS = "ws://127.0.0.1:28841/sala"
 recebidas = []
 
 ouvinte = request.ws_connect(WS)
-ouvinte.on_message(action(m) { recebidas.append(m) })
+ouvinte.on_message(funct(m) { recebidas.append(m) })
 
 falante = request.ws_connect(WS)
 falante.send("oi da outra ponta")

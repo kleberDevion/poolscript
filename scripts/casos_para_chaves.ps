@@ -19,7 +19,7 @@ import para_chaves
 
 # Decodifica uma sequência de literais C adjacentes ("a\n" "b\n") no texto que
 # eles representam. Devolve [texto, posicao_depois].
-action le_literais(s, i)
+funct le_literais(s, i)
 {
     texto = ""
     n = len(s)
@@ -66,7 +66,7 @@ action le_literais(s, i)
 
 # Volta o texto pro formato do arquivo: uma linha de literal C por linha do
 # fonte, indentada com 2 espaços, como o resto do arquivo já é.
-action escreve_literais(texto, recuo)
+funct escreve_literais(texto, recuo)
 {
     linhas = texto.split("\n")
     # a última entrada depois de um "\n" final é vazia e não vira literal

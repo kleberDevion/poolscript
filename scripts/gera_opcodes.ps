@@ -25,7 +25,7 @@ DESTINO = "vm/ps_opcodes.def"
 
 # Recorta o corpo do enum de opcodes: do `enum {` que vem depois do comentário
 # "opcodes:" até o `};` da coluna 0.
-action corpo_do_enum(caminho) {
+funct corpo_do_enum(caminho) {
     fonte = open(caminho).read()
     i = fonte.find("/* ── opcodes:")
     if i < 0 {
@@ -39,7 +39,7 @@ action corpo_do_enum(caminho) {
 
 
 # Tira comentários /* ... */ e devolve {NOME: valor} pros pares `OP_X = <n>`.
-action pares(texto) {
+funct pares(texto) {
     limpo = regex.sub("/\\*[\\s\\S]*?\\*/", " ", texto)
     saida = {}
     for each m in regex.findall("OP_([A-Z0-9_]+)\\s*=\\s*(\\d+)", limpo) {
@@ -52,7 +52,7 @@ action pares(texto) {
 # O nome que o desmontador imprime nem sempre é o sufixo do enum: OP_IS sai
 # como "IS_OP" e OP_IN como "IN_OP" (IS/IN sozinhos leriam como palavra solta).
 # Por isso o `.def` carrega o texto numa coluna própria, lida daqui.
-action textos_do_desmontador() {
+funct textos_do_desmontador() {
     fonte = open(COMPILADOR).read()
     i = fonte.find("const char *ps_op_nome")
     fim = fonte.find("\n}", i)

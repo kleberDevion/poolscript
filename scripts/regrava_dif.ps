@@ -14,7 +14,7 @@ import para_chaves
 TMP = "/tmp/ps_regrava"
 
 
-action roda(fonte) {
+funct roda(fonte) {
     os.mkdir(TMP, exist_ok=true)
     alvo = TMP + "/c.ps"
     using open(alvo, "w") as f {
@@ -29,7 +29,7 @@ action roda(fonte) {
 }
 
 
-action escapa_c(s) {
+funct escapa_c(s) {
     return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\t", "\\t")
 }
 

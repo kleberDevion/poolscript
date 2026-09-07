@@ -21,7 +21,7 @@ PORTA = 28840
 
 # Manda os bytes exatos e devolve a primeira linha da resposta ("HTTP/1.1 400
 # Bad Request"), ou "" se o servidor fechou sem responder.
-action bate(cru) {
+funct bate(cru) {
     s = sockets.socket()
     s.settimeout(5)
     if s.connect_ex((HOST, PORTA)) != 0 {
@@ -52,7 +52,7 @@ action bate(cru) {
 # lixo binário no fim, o `decode` estourava, a saída virava "" e o teste dizia
 # "FECHOU-CALADO". Diagnóstico errado por dias — parecia conexão fechada e era
 # vazamento de memória do servidor. Pra ver isso é preciso olhar os bytes.
-action bate_cru(cru) {
+funct bate_cru(cru) {
     s = sockets.socket()
     s.settimeout(5)
     if s.connect_ex((HOST, PORTA)) != 0 {
@@ -78,7 +78,7 @@ action bate_cru(cru) {
 }
 
 
-action confere(nome, cru, esperado) {
+funct confere(nome, cru, esperado) {
     obtido = bate(cru)
     if esperado in obtido {
         post("  ok    ", nome, "->", obtido)

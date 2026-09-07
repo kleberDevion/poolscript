@@ -131,7 +131,7 @@ CASOS = {
 
 
 # Assinatura REAL, lida do motor. Devolve {metodo: "nome(a, b=1)"}.
-action assinaturas_do_motor() {
+funct assinaturas_do_motor() {
     tmp = "/tmp/ps_meta_bytes.json"
     os.cmd("'" + sys.executable + "' --metadata > " + tmp)
     meta = json.parse(open(tmp).read())
@@ -155,7 +155,7 @@ action assinaturas_do_motor() {
 # Roda o exemplo e devolve o que ele imprimiu. Erro de execução vira falha
 # ALTA — exemplo de doc que não roda é o defeito que este gerador existe pra
 # não deixar acontecer.
-action roda_exemplo(codigo) {
+funct roda_exemplo(codigo) {
     fonte = "import bytes\n" + codigo + "\n"
     using open("/tmp/ps_doc_bytes.ps", "w") as f {
         f.write(fonte)
@@ -174,7 +174,7 @@ action roda_exemplo(codigo) {
 }
 
 
-action pagina(metodo, sig, frase, retorno, exemplo, saida, params) {
+funct pagina(metodo, sig, frase, retorno, exemplo, saida, params) {
     L = []
     L.append("# `b." + sig + "`")
     L.append("")

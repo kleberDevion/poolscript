@@ -25,7 +25,7 @@ fam = []
 # família escrita em qualquer estilo sai SEMPRE em chaves, que é o único que a
 # linguagem tem. O conversor é o mesmo de `scripts/para_chaves.ps`, que usa o
 # lexer do motor pra decidir o que é bloco.
-action F(nome, progs) {
+funct F(nome, progs) {
     emchaves = []
     for each p in progs {
         emchaves.append(para_chaves.converte(p))
@@ -255,7 +255,7 @@ F("ordenar", [
 
 # `os.cmd` não captura a saída: manda pro terminal e devolve null. Então
 # redireciono os três canais pra arquivo e leio de volta.
-action roda(src, n) {
+funct roda(src, n) {
     fonte = TMP + "/p" + str(n) + ".ps"
     fim = src
     if not src.endswith("\n") {
@@ -273,7 +273,7 @@ action roda(src, n) {
 
 
 # Fonte .ps virando literal C: uma string por linha, com \n no fim.
-action cstr(s) {
+funct cstr(s) {
     linhas = []
     for each l in s.split("\n") {
         e = l.replace("\\", "\\\\").replace("\"", "\\\"").replace("\t", "\\t")
@@ -283,7 +283,7 @@ action cstr(s) {
 }
 
 
-action esc(s) {
+funct esc(s) {
     return s.rstrip("\n").replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 }
 

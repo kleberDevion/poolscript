@@ -35,7 +35,7 @@ DEPENDE_DE_FORA = ["jinker", "sockets", "import request", "from request",
 
 # ── tokens de UMA linha de C: literal, NULL, número, pontuação ─────────────
 # Varredura linear (sem regex): o que interessa é só literal com escape.
-action tokens(L) {
+funct tokens(L) {
     out = []
     i = 0
     while i < len(L) {
@@ -90,7 +90,7 @@ action tokens(L) {
 
 # Tira comentário de C (`/* ... */`) de um texto inteiro. Comentário costuma
 # CITAR programa entre aspas, e sem isto a citação virava fonte.
-action sem_comentario(texto) {
+funct sem_comentario(texto) {
     out = ""
     i = 0
     em = false
@@ -118,7 +118,7 @@ action sem_comentario(texto) {
 
 # Desfaz o escape de C e devolve a LISTA DE BYTES — bytes, e não string, pra
 # `\xc3\xa7` voltar como os dois bytes que eram.
-action des_c(s) {
+funct des_c(s) {
     out = []
     i = 0
     while i < len(s) {
@@ -147,7 +147,7 @@ action des_c(s) {
 }
 
 
-action hex2(c) {
+funct hex2(c) {
     d = "0123456789abcdef".find(c.lower())
     if d < 0 {
         return 0
@@ -159,7 +159,7 @@ action hex2(c) {
 # Bytes -> literal de C. Byte fora do ASCII sai como `\xHH`; e se o byte
 # SEGUINTE for dígito hexadecimal, fecha e reabre a aspa — em C, `\xa7a` é UM
 # escape (o `a` entra no número), então `"\xa7" "a"` é a única grafia certa.
-action esc_bytes(bs) {
+funct esc_bytes(bs) {
     HEX = "0123456789abcdef"
     out = ""
     i = 0
@@ -187,7 +187,7 @@ action esc_bytes(bs) {
 
 
 # Os casos de um arquivo: lista de [nome, fonte_em_bytes].
-action casos_de(arq) {
+funct casos_de(arq) {
     texto = sem_comentario(os.readFile(arq))
     linhas = texto.split("\n")
     casos = []
@@ -250,7 +250,7 @@ action casos_de(arq) {
 
 
 # Roda o programa e devolve [rc, stdout_bytes, primeira_linha_do_stderr].
-action roda(fonte_bytes) {
+funct roda(fonte_bytes) {
     using open(TMP + "/caso.ps", "wb") as f {
         f.write(bytes.new(fonte_bytes))
     }
@@ -282,7 +282,7 @@ action roda(fonte_bytes) {
 }
 
 
-action iguais(a, b) {
+funct iguais(a, b) {
     if a[0] != b[0] or a[2] != b[2] or len(a[1]) != len(b[1]) {
         return false
     }
@@ -297,7 +297,7 @@ action iguais(a, b) {
 }
 
 
-action texto_de(bs) {
+funct texto_de(bs) {
     partes = []
     for each b in bs { addEnd(partes, b) }
     return bytes.new(partes).decode()
@@ -310,7 +310,7 @@ action texto_de(bs) {
 # e `casos_de()` também atribuía `linhas` e `n`: a lista de saída virou as
 # linhas do último arquivo lido e o contador foi zerado. Dentro de uma action
 # os nomes são locais dela, e ninguém de fora os alcança.
-action principal() {
+funct principal() {
     os.mkdir(TMP, exist_ok=true)
     linhas = []
     addEnd(linhas, "/*")

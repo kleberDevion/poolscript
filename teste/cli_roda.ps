@@ -23,7 +23,7 @@ PORTA = 28951
 falhas = []
 ok = 0
 
-action confere(nome, cond)
+funct confere(nome, cond)
 {
     global ok
     if cond
@@ -39,13 +39,13 @@ action confere(nome, cond)
 # Roda um comando e devolve {"saida": <stdout+stderr>, "rc": <int>}. O `os.cmd`
 # não devolve código de saída (só a saída), então ele vai pro arquivo — sem
 # isso metade dos casos da CLI seria "não deu erro", que não é asserção.
-action roda(cmd)
+funct roda(cmd)
 {
     os.cmd("cd " + PASTA + " && { " + cmd + " ; } > " + PASTA + "/.out 2>&1; echo $? > " + PASTA + "/.rc")
     return {"saida": os.readFile(PASTA + "/.out"), "rc": int(os.readFile(PASTA + "/.rc").strip())}
 }
 
-action com_home(cmd)
+funct com_home(cmd)
 {
     return roda("POOLSCRIPT_HOME=" + HOME + " " + cmd)
 }

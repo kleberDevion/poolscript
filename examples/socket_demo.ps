@@ -8,7 +8,7 @@ sk = Jinker(__name__)
 cors(options=["POST", "GET"], origins=["https://nome.com"])
 
 @sk.socket("/sala:id", channel=true) {
-    action main() {
+    funct main() {
         msg = request.get_json()
         id = request.path_param('id')
 

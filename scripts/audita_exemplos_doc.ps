@@ -29,7 +29,7 @@ TMP = "/tmp/ps_audita_doc"
 IGNORA_SE_TEM = ["...", "SyntaxError"]
 
 
-action lista_md(dir) {
+funct lista_md(dir) {
     saida = []
     for each item in os.ls(dir) {
         caminho = dir + "/" + item["name"]
@@ -49,7 +49,7 @@ action lista_md(dir) {
 # A cerca pode estar INDENTADA (bloco dentro de item de lista do markdown).
 # Essa indentação é do markdown, não do código: mantê-la faria o auditor acusar
 # "indentacao deve ser multiplo de 4" num exemplo correto — achado inventado.
-action recuo(linha) {
+funct recuo(linha) {
     n = 0
     while n < linha.len() and linha[n] == " " {
         n = n + 1
@@ -58,7 +58,7 @@ action recuo(linha) {
 }
 
 
-action blocos_ps(txt) {
+funct blocos_ps(txt) {
     blocos = []
     dentro = false
     atual = []
@@ -94,7 +94,7 @@ action blocos_ps(txt) {
 }
 
 
-action ignora(codigo) {
+funct ignora(codigo) {
     for each marca in IGNORA_SE_TEM {
         if marca in codigo {
             return true
@@ -104,7 +104,7 @@ action ignora(codigo) {
 }
 
 
-action confere(codigo) {
+funct confere(codigo) {
     alvo = TMP + "/bloco.ps"
     using open(alvo, "w") as f {
         f.write(codigo + "\n")

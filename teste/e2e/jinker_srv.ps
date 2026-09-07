@@ -23,7 +23,7 @@ cors(options=["GET", "POST", "PUT", "DELETE"], origins=["http://permitido.test"]
 
 # middleware: roda ANTES da rota; `pass` libera, `return` barra
 @app.middleware()
-action confere() {
+funct confere() {
     if jinker.request.header("X-Chave") != "abre" {
         return jinker.jsonify({"msg": "sem permissao"}), 401
     }
@@ -31,34 +31,34 @@ action confere() {
 }
 
 @app.route("/protegida", middleware=app.middleware)
-action protegida() {
+funct protegida() {
     return {"entrou": true}
 }
 
 @app.route("/cors-info")
-action cors_info() {
+funct cors_info() {
     return {"options": cors.options(), "origins": cors.origins(),
             "subset": cors.options(["POST"]), "permiser": cors.permiser()}
 }
 
 @app.route("/oi")
-action oi() {
+funct oi() {
     return "alo"
 }
 
 @app.route("/json")
-action js() {
+funct js() {
     return {"a": 1, "b": [2, 3]}
 }
 
 @app.route("/eco", methods=["POST"])
-action eco() {
+funct eco() {
     corpo = jinker.request.get_json()
     return {"recebi": corpo["x"]}
 }
 
 @app.route("/param/<nome>")
-action param() {
+funct param() {
     return jinker.request.path_param("nome")
 }
 
@@ -67,7 +67,7 @@ action param() {
 # 128 KB, ~64x menor que a do processo. O cliente seguinte tomava "Connection
 # refused". Hoje o `str` trunca em 256 e a pilha da fibra tem página de guarda.
 @app.route("/fundo/<prof>")
-action fundo() {
+funct fundo() {
     p = int(jinker.request.path_param("prof"))
     x = []
     i = 0
@@ -79,47 +79,47 @@ action fundo() {
 }
 
 @app.route("/hdr")
-action hdr() {
+funct hdr() {
     return {"ua": jinker.request.header("X-Teste")}
 }
 
 @app.route("/metodo", methods=["GET", "POST", "PUT", "DELETE"])
-action metodo() {
+funct metodo() {
     return jinker.request.method
 }
 
 @app.route("/status")
-action st() {
+funct st() {
     # JinkerResponse montado em etapas: status + header + json
     r = jinker.JinkerResponse()
     return r.status(418).header("X-Bule", "sim").json({"cha": true})
 }
 
 @app.route("/tupla")
-action tp() {
+funct tp() {
     # a rota também aceita (corpo, status) como tupla
     return ({"t": 1}, 201)
 }
 
 @app.route("/vazio")
-action vz() {
+funct vz() {
     return Null
 }
 
 @app.route("/send")
-action sd() {
+funct sd() {
     r = jinker.JinkerResponse()
     return r.send("cru")
 }
 
 @app.route("/jsonify")
-action jf() {
+funct jf() {
     return jinker.jsonify({"via": "jsonify"})
 }
 
 # ── upload multipart: PoolFileUpload (7 membros) ────────────────────────────
 @app.route("/upload", methods=["POST"])
-action up() {
+funct up() {
     f = jinker.request.file("arq")
     if f == Null {
         return {"erro": "sem arquivo"}
@@ -130,7 +130,7 @@ action up() {
 }
 
 @app.route("/uploads", methods=["POST"])
-action ups() {
+funct ups() {
     # files() é POR CAMPO: vários arquivos mandados no mesmo nome de campo
     fotos = jinker.request.files("fotos")
     nomes = []
@@ -146,7 +146,7 @@ action ups() {
 # É o único jeito de responder a quem mandou sem estar num canal (o emit só
 # alcança conexão com channel=true).
 @app.socket("/ws")
-action ws_handler() {
+funct ws_handler() {
     using open("/tmp/ps_ws_sem_canal.txt", "w") as f {
         f.write(jinker.request.text())
     }
@@ -156,7 +156,7 @@ action ws_handler() {
 # canal de verdade: `channel=true` põe a conexão no broadcast. É o caso dos
 # "dois terminais" — quem está só ouvindo tem que receber o que o outro manda.
 @app.socket("/sala", channel=true)
-reaction ws_sala() {
+funct ws_sala() {
     envia = app.socket()
     envia.emit(jinker.request.text(), exclude_self=false)
     using open("/tmp/ps_ws_status.txt", "w") as f {
@@ -166,13 +166,13 @@ reaction ws_sala() {
 
 # Content-Disposition: é daí que o cliente tira o Response.filename
 @app.route("/baixar")
-action baixar() {
+funct baixar() {
     r = jinker.JinkerResponse()
     return r.header("Content-Disposition", "attachment; filename=relatorio.csv").send("a,b\n1,2\n")
 }
 
 @app.route("/emitir")
-action emitir() {
+funct emitir() {
     st = app.channel.emit("aviso", {"n": 1})
     return {"emit": str(st), "status": str(app.channel.status)}
 }

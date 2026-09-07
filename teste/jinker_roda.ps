@@ -34,7 +34,7 @@ RAIZ  = "http://127.0.0.1:" + str(PORTA)
 falhas = []
 ok = 0
 
-action confere(nome, cond)
+funct confere(nome, cond)
 {
     global ok
     if cond
@@ -50,7 +50,7 @@ action confere(nome, cond)
 # Requisição CRUA: abre o socket, escreve os bytes exatos e lê a resposta. É o
 # único jeito de testar requisição torta — nenhum cliente HTTP decente deixa
 # você mandar `Content-Length: abc`.
-action cru(bytes_pedido)
+funct cru(bytes_pedido)
 {
     s = sockets.socket()
     s.settimeout(5.0)
@@ -90,7 +90,7 @@ action cru(bytes_pedido)
     return resposta
 }
 
-action espera_porta(prazo_decimos)
+funct espera_porta(prazo_decimos)
 {
     i = 0
     while i < prazo_decimos
@@ -325,7 +325,7 @@ try
     # a mensagem tem que chegar DURANTE a espera, não no `close`.
     ws = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
     vindas = []
-    ws.on_message(action(m) { vindas.append(m) })
+    ws.on_message(funct(m) { vindas.append(m) })
     ws.send("alo")
     sleep(1)
     eco = str(vindas)
@@ -357,7 +357,7 @@ try
 {
     ws2 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
     recebidas = []
-    ws2.on_message(action(m) { recebidas.append(m) })
+    ws2.on_message(funct(m) { recebidas.append(m) })
     ws2.send(medio)
     sleep(1)
     ws2.send(grande)
@@ -460,7 +460,7 @@ confere("logout: Set-Cookie com valor vazio e Max-Age=0, e os padroes seguros",
 # alvo resolvia; as outras fibras do mesmo gather ficavam com o eventfd num
 # epoll morto e o processo esperava pra sempre. Seis rodadas: se uma pendurar,
 # o runner mata por tempo — e e o que se quer, nao um verde por sorte.
-async action pega_ok()
+async funct pega_ok()
 {
     return get(RAIZ + "/ok").status_code
 }

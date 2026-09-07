@@ -44,7 +44,7 @@ TMP = "/tmp/ps_fortalece"
 # Bytes, e não string, porque `\xc3\xa7` (o "ç" de um caso) tem que voltar como
 # os dois bytes que eram. Montar com `chr(0xc3) + chr(0xa7)` daria dois
 # CODEPOINTS, que em UTF-8 ocupam quatro bytes — outro programa.
-action des_c(s) {
+funct des_c(s) {
     out = []
     i = 0
     while i < len(s) {
@@ -74,7 +74,7 @@ action des_c(s) {
 
 
 # Um dígito hexadecimal -> valor. O `int()` da linguagem não recebe base.
-action hex2(c) {
+funct hex2(c) {
     d = "0123456789abcdef".find(c.lower())
     if d < 0 {
         return 0
@@ -83,14 +83,14 @@ action hex2(c) {
 }
 
 
-action esc_c(s) {
+funct esc_c(s) {
     return (s.replace("\\", "\\\\").replace("\"", "\\\"")
              .replace("\n", "\\n").replace("\t", "\\t").replace("\r", "\\r"))
 }
 
 
 # Roda o fonte e devolve [rc, stdout, stderr].
-action roda(fonte) {
+funct roda(fonte) {
     using open(TMP + "/caso.ps", "wb") as f {
         f.write(bytes.new(fonte))
     }

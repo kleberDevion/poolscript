@@ -30,20 +30,20 @@ POR_NIVEL = 3000              # requisicoes por nivel (o cronometro custa um
                               # fork, ~3 ms: a rodada precisa durar bem mais)
 
 
-action agora_ns() {
+funct agora_ns() {
     os.cmd("date +%s%N > " + PASTA + "/t")
     return int(os.readFile(PASTA + "/t").strip())
 }
 
 
-action tem(cmd) {
+funct tem(cmd) {
     os.cmd("command -v " + cmd + " > " + PASTA + "/tem 2>/dev/null; echo $? >> " + PASTA + "/tem")
     linhas = os.readFile(PASTA + "/tem").strip().split("\n")
     return linhas[len(linhas) - 1] == "0"
 }
 
 
-action sobe(cmd, porta) {
+funct sobe(cmd, porta) {
     os.cmd("cd " + PASTA + " && (" + cmd + " > srv_" + str(porta) + ".log 2>&1 &)")
     i = 0
     while i < 40 {
@@ -62,13 +62,13 @@ action sobe(cmd, porta) {
 }
 
 
-action derruba(porta) {
+funct derruba(porta) {
     os.cmd("P=$(ss -lptn 'sport = :" + str(porta) + "' | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2); [ -n \"$P\" ] && kill -9 $P; true")
 }
 
 
 # K fibras, cada uma com a sua fatia — devolve [req/s, erros]
-async action bate(porta, quantas) {
+async funct bate(porta, quantas) {
     erros = 0
     i = 0
     while i < quantas {
@@ -86,7 +86,7 @@ async action bate(porta, quantas) {
 }
 
 
-action rodada(porta, k, total) {
+funct rodada(porta, k, total) {
     fibras = []
     i = 0
     while i < k {
@@ -105,7 +105,7 @@ action rodada(porta, k, total) {
 }
 
 
-action carga_http() {
+funct carga_http() {
     post("── servidor HTTP: requisicoes por segundo (cliente: PoolScript, " + str(POR_NIVEL) + " req por nivel) ──")
     os.writeFile(PASTA + "/srv_ps.ps",
         "import jinker\nfrom jinker import Jinker\napp = Jinker(__name__)\n"
@@ -157,7 +157,7 @@ action carga_http() {
 
 
 # ── motor: os mesmos tres programas em tres linguagens ──────────────────────
-action mede_cmd(cmd) {
+funct mede_cmd(cmd) {
     melhor = -1.0
     i = 0
     while i < 3 {
@@ -174,7 +174,7 @@ action mede_cmd(cmd) {
 }
 
 
-action carga_motor() {
+funct carga_motor() {
     post("")
     post("── motor: menor de 3 execucoes, em ms, partida descontada ──")
     progs = {

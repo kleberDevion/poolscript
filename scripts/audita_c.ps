@@ -50,7 +50,7 @@ FONTES = "vm"
 ACEITOS = ["malloc(sizeof(PSString) +"]
 
 
-action aceito(linha) {
+funct aceito(linha) {
     for each a in ACEITOS {
         if a in linha {
             return true
@@ -60,7 +60,7 @@ action aceito(linha) {
 }
 
 
-action arquivos_c() {
+funct arquivos_c() {
     saida = []
     for each e in os.ls(FONTES) {
         n = e["name"]
@@ -74,7 +74,7 @@ action arquivos_c() {
 
 
 # ── 1) realloc que se auto-atribui ──────────────────────────────────────────
-action acha_realloc(caminho, linhas, achados) {
+funct acha_realloc(caminho, linhas, achados) {
     i = 0
     for each l in linhas {
         i = i + 1
@@ -98,7 +98,7 @@ action acha_realloc(caminho, linhas, achados) {
 # ── 2, 3) objeto do GC ──────────────────────────────────────────────────────
 # Um objeto entra na lista com `vm->objetos = (Obj *)x;`. Olhamos pra trás
 # (nasceu de malloc?) e pra frente (libera campo sem zerar?).
-action acha_gc(caminho, linhas, achados) {
+funct acha_gc(caminho, linhas, achados) {
     n = len(linhas)
     i = 0
     while i < n {
@@ -150,7 +150,7 @@ action acha_gc(caminho, linhas, achados) {
 
 # ── 4) contador publicado antes do vetor ────────────────────────────────────
 # `d->nX = ...` numa linha, e o `calloc` que preenche `d->X` DEPOIS.
-action acha_contador(caminho, linhas, achados) {
+funct acha_contador(caminho, linhas, achados) {
     n = len(linhas)
     i = 0
     while i < n {
@@ -200,7 +200,7 @@ action acha_contador(caminho, linhas, achados) {
 # Agora a lista vive em `vm/ps_opcodes.def` e os dois `.c` a incluem. Esta regra
 # é o que impede a duplicação de voltar — sem ela, o próximo opcode novo entra
 # escrito à mão em algum lugar e a árvore volta ao estado anterior sem aviso.
-action acha_opcode_solto(caminho, linhas, achados) {
+funct acha_opcode_solto(caminho, linhas, achados) {
     if caminho.endswith("ps_opcodes.def") {
         return
     }
@@ -230,7 +230,7 @@ action acha_opcode_solto(caminho, linhas, achados) {
 #
 # Os dois são dado, não lógica: o compilador nunca vai reclamar, e só aparece
 # pra quem lê o metadata. Por isso precisam de detector.
-action acha_assinatura_torta(caminho, linhas, achados) {
+funct acha_assinatura_torta(caminho, linhas, achados) {
     i = 0
     while i < len(linhas) {
         # só as linhas de TABELA: `{ "nome", funcao, "assinatura" }`

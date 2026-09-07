@@ -26,7 +26,7 @@ RAIZ = "/tmp/ps_pkg_teste"
 # deliberado, `val_iguais` documenta o porquê). Então `os.cmd(...) != 0` é
 # sempre False e um teste escrito assim aprova qualquer coisa — falso verde
 # perfeito, do tipo que passa por revisão.
-action psl(args) {
+funct psl(args) {
     cmd = ("POOLSCRIPT_HOME='" + RAIZ + "' '" + sys.executable + "' " + args
            + " > /tmp/ps_pkg_out.txt 2>&1; echo $? > /tmp/ps_pkg_rc.txt")
     os.cmd(cmd)
@@ -37,7 +37,7 @@ action psl(args) {
 
 erros = 0
 
-action conf(nome, cond, detalhe) {
+funct conf(nome, cond, detalhe) {
     if cond {
         post("   ok  " + nome)
         return 0

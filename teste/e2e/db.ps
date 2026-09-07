@@ -11,7 +11,7 @@ import sys
 falhas = []
 ok = 0
 
-action confere(nome, cond) {
+funct confere(nome, cond) {
     global ok
     if cond {
         ok = ok + 1
@@ -22,13 +22,13 @@ action confere(nome, cond) {
     }
 }
 
-action conecta(drv, porta) {
+funct conecta(drv, porta) {
     return psodbc.connect(driver=drv, host="127.0.0.1", port=porta,
                           user="ps_teste", password="ps_teste",
                           database="ps_teste")
 }
 
-action exercita(nome, drv, porta) {
+funct exercita(nome, drv, porta) {
     post("=====", nome)
     con = conecta(drv, porta)
     cur = con.cursor()

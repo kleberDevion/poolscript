@@ -39,33 +39,33 @@ cors(options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://permiti
 
 # ── básico: método, status, cabeçalho, corpo ────────────────────────────────
 @app.route("/ok")
-action ok()
+funct ok()
 {
     return {"ok": true, "metodo": request.method}
 }
 
 @app.route("/texto")
-action texto()
+funct texto()
 {
     r = jinker.JinkerResponse()
     return r.header("X-Marca", "poolscript").send("texto puro")
 }
 
 @app.route("/status")
-action com_status()
+funct com_status()
 {
     r = jinker.JinkerResponse()
     return r.status(418).json({"cha": true})
 }
 
 @app.route("/eco", methods=["POST", "PUT", "PATCH", "DELETE"])
-action eco()
+funct eco()
 {
     return {"metodo": request.method, "corpo": request.text(), "caminho": request.path}
 }
 
 @app.route("/json", methods=["POST"])
-action recebe_json()
+funct recebe_json()
 {
     # `request.get_json()` NAO recebe campo: devolve o corpo inteiro. Quem
     # recebe nome de campo e o `get_json()` do lado CLIENTE, da lib request —
@@ -75,19 +75,19 @@ action recebe_json()
 }
 
 @app.route("/consulta")
-action consulta()
+funct consulta()
 {
     return {"q": request.get("q"), "faltando": request.get("nao_existe")}
 }
 
 @app.route("/cabecalho")
-action cabecalho()
+funct cabecalho()
 {
     return {"chave": request.header("X-Chave"), "todos": request.headers.len() > 0}
 }
 
 @app.route("/param/<id>")
-action param()
+funct param()
 {
     return {"id": request.path_param("id")}
 }
@@ -99,7 +99,7 @@ action param()
 # mudou pra ela: as duas formas convivem, que é o ponto da decisão ("opcional,
 # poder injetar o valor no arg da action se o Dev quiser").
 @app.route("/injeta:id")
-action injeta(id)
+funct injeta(id)
 {
     return {"id": id}
 }
@@ -107,7 +107,7 @@ action injeta(id)
 # Casa por NOME, não por posição: aqui os parâmetros estão na ordem INVERSA da
 # rota, e cada um recebe o seu.
 @app.route("/inverte:a/sub:b")
-action inverte(b, a)
+funct inverte(b, a)
 {
     return {"a": a, "b": b}
 }
@@ -115,7 +115,7 @@ action inverte(b, a)
 
 # ── upload multipart ────────────────────────────────────────────────────────
 @app.route("/subir", methods=["POST"])
-action subir()
+funct subir()
 {
     f = request.file("arquivo")
     if f == null
@@ -134,7 +134,7 @@ action subir()
 
 # ── middleware: barra sem a chave, libera com ela ───────────────────────────
 @app.middleware()
-action confere_chave()
+funct confere_chave()
 {
     if request.header("X-Chave") != "abre"
     {
@@ -144,7 +144,7 @@ action confere_chave()
 }
 
 @app.route("/protegida", middleware=app.middleware)
-action protegida()
+funct protegida()
 {
     return {"entrou": true}
 }
@@ -152,7 +152,7 @@ action protegida()
 
 # ── CORS: o que foi configurado aparece ─────────────────────────────────────
 @app.route("/cors-info")
-action cors_info()
+funct cors_info()
 {
     return {"options": cors.options(), "origins": cors.origins(), "permiser": cors.permiser()}
 }
@@ -160,7 +160,7 @@ action cors_info()
 
 # ── canal e websocket ───────────────────────────────────────────────────────
 @app.route("/emitir")
-action emitir()
+funct emitir()
 {
     st = app.channel.emit("aviso", {"n": 1})
     return {"emit": str(st), "status": str(app.channel.status)}
@@ -171,7 +171,7 @@ action emitir()
 # vai pra todo mundo inscrito — sem canal não há a quem emitir, e o cliente
 # ficava esperando um eco que nunca vinha.
 @app.socket("/ws")
-action ws_sala()
+funct ws_sala()
 {
     return "eco: " + request.text()
 }
@@ -184,7 +184,7 @@ model Usuario() {
 }
 
 @app.route("/modelo", methods=["POST"], model=Usuario)
-action modelo()
+funct modelo()
 {
     return {"criado": request.get("nome")}
 }
@@ -194,31 +194,31 @@ action modelo()
 # Quatro rotas no MESMO path, uma por verbo — e o 405 tem que listar as
 # quatro no `Allow`. A ordem de registro e a ordem do `Allow`.
 @app.get("/verbo")
-action verbo_get()
+funct verbo_get()
 {
     return {"verbo": "GET"}
 }
 
 @app.post("/verbo", model=Usuario, auth=cors.origins())
-action verbo_post()
+funct verbo_post()
 {
     return {"verbo": "POST", "nome": request.get("nome")}
 }
 
 @app.put("/verbo")
-action verbo_put()
+funct verbo_put()
 {
     return {"verbo": "PUT"}
 }
 
 @app.delete("/verbo")
-action verbo_delete()
+funct verbo_delete()
 {
     return {"verbo": "DELETE"}
 }
 
 @app.patch("/verbo/<id>")
-action verbo_patch(id)
+funct verbo_patch(id)
 {
     return {"verbo": "PATCH", "id": id}
 }
@@ -228,13 +228,13 @@ action verbo_patch(id)
 # logout: o mesmo cookie com vida zero — e o que a doc do cookie mostra em
 # `POST /sair`; o Set-Cookie exato esta na tabela de la
 @app.post("/cookie-sai")
-action cookie_sai()
+funct cookie_sai()
 {
     return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
 }
 
 @app.route("/cookie-poe")
-action cookie_poe()
+funct cookie_poe()
 {
     return jinker.JinkerResponse()
            .send({"ok": true})
@@ -243,7 +243,7 @@ action cookie_poe()
 }
 
 @app.route("/cookie-le")
-action cookie_le()
+funct cookie_le()
 {
     return {"sid": request.cookie("sid"),
             "tema": request.cookie("tema"),
@@ -253,7 +253,7 @@ action cookie_le()
 
 # ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
 @app.route("/__parar")
-action parar()
+funct parar()
 {
     post("servidor-alvo: parando a pedido do driver")
     os.rmdir("teste/static", force=true)

@@ -35,11 +35,11 @@ NUM = ["0", "1", "2", "-1", "3", "10"]
 
 casos = []
 
-action add(e) {
+funct add(e) {
     casos.append(e)
 }
 
-action met(nome, recv, args) {
+funct met(nome, recv, args) {
     add(recv + "." + nome + "(" + ", ".join(args) + ")")
 }
 
@@ -284,7 +284,7 @@ for each a in ["\"\"", "\"ab\""] {
 # ── 2. tradução pro dialeto Python ──────────────────────────────────────────
 # Devolve "" quando a expressão NÃO tem oráculo (repr de bytes e de iterador
 # difere por design).
-action pra_python(e) {
+funct pra_python(e) {
     p = e
     p = p.replace("true", "True").replace("false", "False").replace("Null", "None")
     p = p.replace(".contains(", ".__contains__(").replace(".has(", ".__contains__(")
@@ -301,7 +301,7 @@ action pra_python(e) {
 # Python. A exclusão escondia um defeito nosso — ver o comentário da seção
 # BYTES lá em cima. `.len()` de bytes sai porque o Python não tem esse método,
 # não porque diverge.
-action sem_oraculo_expr(e) {
+funct sem_oraculo_expr(e) {
     return e.count("reversed(") > 0
 }
 
@@ -310,7 +310,7 @@ action sem_oraculo_expr(e) {
 # uma por expressão, separadas pelo sentinela. Sentinela porque uma expressão
 # cujo valor tem \n (ex.: "linha1\nlinha2".upper()) imprime mais de uma linha,
 # então dividir a saída por linha não serve.
-action fatia_por_sentinela(bruto, quantas) {
+funct fatia_por_sentinela(bruto, quantas) {
     partes = bruto.split(SENT + "\n")
     if len(partes) > 0 and partes[len(partes) - 1] == "" {
         partes.pop()
@@ -328,7 +328,7 @@ action fatia_por_sentinela(bruto, quantas) {
 }
 
 
-action cstr(s) {
+funct cstr(s) {
     e = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\t", "\\t")
     return "\"" + e + "\""
 }
@@ -337,7 +337,7 @@ action cstr(s) {
 # Aspas como o `repr` do Python escolhe: simples, salvo quando o texto tem `'`
 # e não tem `"` — aí ele troca pra duplas. É só o comentário do caso gerado,
 # mas o arquivo é diffado, então tem que sair igual.
-action repr_py(s) {
+funct repr_py(s) {
     if s.count("'") > 0 and s.count("\"") == 0 {
         return "\"" + s + "\""
     }
@@ -345,7 +345,7 @@ action repr_py(s) {
 }
 
 
-action monta_caso(nome, expr, saida) {
+funct monta_caso(nome, expr, saida) {
     fonte = cstr("post(" + expr + ")\n")
     if saida.startswith("<<ERRO>> ") {
         # o texto do erro traz " (linha N)" do programa em LOTE — inútil aqui
@@ -514,7 +514,7 @@ if __name__ == "main" {
         }
     }
 
-    action sem_nul2(lst) {
+    funct sem_nul2(lst) {
         r = []
         for each p in lst {
             if p[1].count(NUL) == 0 {

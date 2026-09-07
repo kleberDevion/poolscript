@@ -38,14 +38,14 @@ app = jinker.Jinker("alvo_tls", {"tls": true})
 
 
 @app.route("/ok")
-action ok()
+funct ok()
 {
     return {"ok": true, "protocolo": "https"}
 }
 
 
 @app.route("/__parar")
-action parar()
+funct parar()
 {
     post("servidor-tls: parando a pedido do driver")
     sys.exit(0)

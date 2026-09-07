@@ -84,14 +84,14 @@ CASOS = [
 ]
 
 
-action agora_ns() {
+funct agora_ns() {
     os.cmd("date +%s%N > /tmp/ps_bench_t")
     return int(open("/tmp/ps_bench_t").read().strip())
 }
 
 
 # Roda o fonte uma vez e devolve o tempo de parede em MILISSEGUNDOS.
-action mede_uma(caminho) {
+funct mede_uma(caminho) {
     t0 = agora_ns()
     os.cmd("'" + sys.executable + "' " + caminho + " > /dev/null 2>&1")
     t1 = agora_ns()
@@ -101,7 +101,7 @@ action mede_uma(caminho) {
 
 # Menor de REPETE execuções. O mínimo é o mais próximo do custo real: o que
 # está ACIMA dele é ruído de escalonamento, não trabalho do motor.
-action mede(caminho) {
+funct mede(caminho) {
     melhor = -1.0
     i = 0
     while i < REPETE {
@@ -115,7 +115,7 @@ action mede(caminho) {
 }
 
 
-action le_base() {
+funct le_base() {
     saida = {}
     if not os.exists(BASE) {
         return saida
@@ -138,13 +138,13 @@ action le_base() {
 # que faz duas medições serem comparáveis — sem isso, comparar é chutar.
 # `sys` não expõe a versão; vem do próprio binário, que é a fonte única
 # (`PS_VERSAO` embutido em `vm/ps_versao.h`).
-action versao_do_binario() {
+funct versao_do_binario() {
     os.cmd("'" + sys.executable + "' --version > /tmp/ps_bench_v 2>&1")
     return open("/tmp/ps_bench_v").read().strip()
 }
 
 
-action governor() {
+funct governor() {
     os.cmd("cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor > /tmp/ps_bench_g 2>/dev/null || echo desconhecido > /tmp/ps_bench_g")
     return open("/tmp/ps_bench_g").read().strip()
 }

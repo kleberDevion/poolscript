@@ -37,7 +37,7 @@ GERADOS_DE_OUTROS = ["casos_diferencial.c"]
 
 
 # Quebra um arquivo em [ [nome, linhas...], ... ] e o resto (cabeçalho/rodapé).
-action fatia(caminho) {
+funct fatia(caminho) {
     linhas = open(caminho).read().split("\n")
     blocos = []
     i = 0
@@ -70,7 +70,7 @@ action fatia(caminho) {
 # demais" numa das linhas longas do `casos_oraculo.c`: a alternância dentro do
 # grupo repetido é justamente o padrão que explode. Varredura linear não tem
 # esse problema e ainda é mais rápida.
-action literais(L) {
+funct literais(L) {
     out = []
     i = 0
     while i < len(L) {
@@ -102,7 +102,7 @@ action literais(L) {
 # A "impressão digital" de um caso: todos os literais do bloco MENOS o nome.
 # Comentário de C sai fora — ele cita o programa entre aspas e envenenaria a
 # comparação (foi o que aconteceu no `fortalece_casos.ps`).
-action digital(nome, corpo) {
+funct digital(nome, corpo) {
     tudo = ""
     em_com = false
     for each L in corpo {

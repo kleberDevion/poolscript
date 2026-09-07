@@ -59,7 +59,7 @@ META = {
 #
 # Formato (LTP): SF:<arquivo> abre; LF/LH = linhas total/atingidas;
 # BRF/BRH = ramos total/atingidos; `end_of_record` fecha.
-action le_info(caminho) {
+funct le_info(caminho) {
     if not os.exists(caminho) {
         return {}
     }
@@ -119,7 +119,7 @@ action le_info(caminho) {
 }
 
 
-action le_base() {
+funct le_base() {
     if not os.exists(BASE) {
         return {}
     }
@@ -143,7 +143,7 @@ action le_base() {
 }
 
 
-action grava_base(atual) {
+funct grava_base(atual) {
     nomes = atual.keys()
     nomes.sort()
     linhas = ["# PISO de cobertura, por arquivo:",
@@ -191,7 +191,7 @@ action grava_base(atual) {
 #
 # META continua aparecendo quando existe, como marco intermediário: é o ponto
 # onde a dívida da migração está paga. Não é o destino.
-action divida(nome, ramo_hoje) {
+funct divida(nome, ramo_hoje) {
     if ramo_hoje >= 100.0 - FOLGA {
         return ""
     }

@@ -13,7 +13,7 @@ TMP = "/tmp/ps_conv"
 
 
 # Roda um fonte e devolve [codigo, stdout, primeira linha do stderr].
-action roda(fonte, tag) {
+funct roda(fonte, tag) {
     alvo = TMP + "/" + tag + ".ps"
     using open(alvo, "w") as f {
         f.write(fonte)
@@ -27,7 +27,7 @@ action roda(fonte, tag) {
 }
 
 
-action junta_ps(alvo, acc) {
+funct junta_ps(alvo, acc) {
     if os.isdir(alvo) {
         # `os.ls` devolve dict por entrada: {name, type, size}
         for each e in os.ls(alvo) {

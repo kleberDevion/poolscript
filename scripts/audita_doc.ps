@@ -25,7 +25,7 @@ DOCS = "docs"
 
 
 # Todas as páginas .md, recursivamente.
-action junta_md(alvo, acc) {
+funct junta_md(alvo, acc) {
     if os.isdir(alvo) {
         for each e in os.ls(alvo) {
             junta_md(alvo + "/" + e["name"], acc)
@@ -40,7 +40,7 @@ action junta_md(alvo, acc) {
 
 # "# `regex.sub(pattern, repl, string, count=0)`" -> ["regex.sub", [nomes...]]
 # Devolve [] quando a primeira linha não é um título de assinatura.
-action le_titulo(caminho) {
+funct le_titulo(caminho) {
     linha = ""
     for each l in open(caminho).read().split("\n") {
         if l.strip() != "" {
@@ -84,7 +84,7 @@ action le_titulo(caminho) {
 # como string no motor. Nome levantado pelo USUARIO (`raise MinhaCoisa("x")`) e
 # exceção legitima e sai da conta — por isso o filtro pega so o que o motor
 # poderia emitir.
-action tipos_do_motor() {
+funct tipos_do_motor() {
     vistos = {}
     for each nome in os.ls("vm") {
         n = nome["name"]
@@ -143,7 +143,7 @@ action tipos_do_motor() {
 }
 
 
-action confere_tipos_de_erro(paginas) {
+funct confere_tipos_de_erro(paginas) {
     motor = tipos_do_motor()
     # Levantados pelo usuario nos exemplos da doc: sao ilustracao de `raise`,
     # nao promessa de que o motor emite.
@@ -195,7 +195,7 @@ action confere_tipos_de_erro(paginas) {
 # doc inteira aponta. Tipo que o motor levanta e nao esta la, reprova.
 CATALOGO = "docs/exceptions/exceptions.md"
 
-action confere_motor_na_doc() {
+funct confere_motor_na_doc() {
     motor = tipos_do_motor()
     texto = open(CATALOGO).read()
     faltando = []

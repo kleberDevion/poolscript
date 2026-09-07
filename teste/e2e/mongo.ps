@@ -9,7 +9,7 @@ import sys
 
 falhas = []
 
-action confere(nome, cond) {
+funct confere(nome, cond) {
     if not cond {
         addEnd(falhas, nome)
         post("  FALHOU:", nome)

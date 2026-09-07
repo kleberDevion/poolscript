@@ -18,7 +18,7 @@ TMP = "/tmp/ps_para_chaves"
 
 
 # Tokens do lexer do motor, na ordem.
-action tokens_de(fonte) {
+funct tokens_de(fonte) {
     os.mkdir(TMP, exist_ok=true)
     alvo = TMP + "/e.ps"
     using open(alvo, "w") as f {
@@ -49,7 +49,7 @@ action tokens_de(fonte) {
 # Acha os `:` que ABREM BLOCO e, pra cada um, em que linha o bloco termina.
 # Devolve dois mapas: linha do `:` -> coluna do `:`, e linha do `:` -> linha
 # ANTES da qual o `}` entra.
-action acha_blocos(toks) {
+funct acha_blocos(toks) {
     abre = {}
     fecha = {}
     pilha = []
@@ -118,12 +118,12 @@ action acha_blocos(toks) {
 }
 
 
-action linhas_de(fonte) {
+funct linhas_de(fonte) {
     return fonte.split("\n")
 }
 
 
-action converte(fonte) {
+funct converte(fonte) {
     linhas = fonte.split("\n")
     toks = tokens_de(fonte)
     if len(toks) == 0 {
@@ -197,7 +197,7 @@ action converte(fonte) {
 }
 
 
-action junta_continuacoes(linhas) {
+funct junta_continuacoes(linhas) {
     CONT = ["else", "elif", "catch", "finally"]
     r = []
     for each l in linhas {

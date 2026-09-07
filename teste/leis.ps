@@ -54,7 +54,7 @@ semente = 1
 # O resto sai dos bits ALTOS (`/ 65536`): num LCG com módulo potência de 2 os
 # bits baixos têm período curto — o último bit alterna 0,1,0,1 sempre, então
 # `semente % 2` não sorteava nada, decidia por turnos.
-action rnd(n) {
+funct rnd(n) {
     semente = (semente * 1103515245 + 12345) % 2147483648
     if (n <= 0) {
         return 0
@@ -63,7 +63,7 @@ action rnd(n) {
 }
 
 
-action escolhe(l) {
+funct escolhe(l) {
     return l[rnd(len(l))]
 }
 
@@ -83,7 +83,7 @@ TXT_BORDA = ["", "a", "ab", "abc", "ção", "über", "日本語", "🙂",
              "aAbB", "123", "0", "-1"]
 
 
-action gera_int() {
+funct gera_int() {
     if rnd(3) == 0 {
         return escolhe(INT_BORDA)
     }
@@ -91,7 +91,7 @@ action gera_int() {
 }
 
 
-action gera_txt() {
+funct gera_txt() {
     if rnd(2) == 0 {
         return escolhe(TXT_BORDA)
     }
@@ -106,7 +106,7 @@ action gera_txt() {
 }
 
 
-action gera_lista_int() {
+funct gera_lista_int() {
     n = rnd(7)
     l = []
     i = 0
@@ -123,7 +123,7 @@ action gera_lista_int() {
 # Uma lei é montada como texto de programa, então todo valor precisa virar
 # literal. Escapar aqui é obrigatório: sem isso, um texto com aspas ou barra
 # gera programa que nem compila, e a lei "falha" por motivo que não é dela.
-action lit_txt(s) {
+funct lit_txt(s) {
     fora = "\""
     for each c in s {
         if c == "\\" {
@@ -149,7 +149,7 @@ action lit_txt(s) {
 }
 
 
-action lit_int(n) {
+funct lit_int(n) {
     # Literal negativo em posição de expressão pode colar no operador
     # anterior (`a - -1`); o parêntese resolve sem depender da precedência.
     if n < 0 {
@@ -159,7 +159,7 @@ action lit_int(n) {
 }
 
 
-action lit_lista(l) {
+funct lit_lista(l) {
     partes = []
     for each v in l {
         addEnd(partes, lit_int(v))
@@ -470,7 +470,7 @@ PREAMBULO = ("action ordena(l) {\n"
 # do literal já inserido: com A = "aAbB" (que está na borda de texto de
 # propósito), o replace de B corrompia o literal de A e a "falha" era do
 # gerador, não da lei.
-action preenche(forma, subs) {
+funct preenche(forma, subs) {
     fora = ""
     for each c in forma {
         if subs.has(c) {
@@ -485,7 +485,7 @@ action preenche(forma, subs) {
 
 
 # Sorteia os literais do domínio e devolve [forma_preenchida, descricao].
-action instancia(dominio, forma) {
+funct instancia(dominio, forma) {
     if dominio == "i" {
         a = gera_int()
         return [preenche(forma, {"A": lit_int(a)}), "A=" + str(a)]
@@ -533,7 +533,7 @@ action instancia(dominio, forma) {
 
 # Monta um programa com várias leis e devolve a saída. Cada lei que falha
 # imprime o índice; o resto fica calado.
-action roda_lote(itens, tag) {
+funct roda_lote(itens, tag) {
     corpo = PREAMBULO
     i = 0
     while i < len(itens) {
@@ -564,7 +564,7 @@ CANDIDATOS_T = ["", "a", "ab", "ç", "日", "\n", " "]
 CANDIDATOS_L = [[], [0], [1], [1, 0], [0, 0], [-1, 1]]
 
 
-action ainda_falha(forma) {
+funct ainda_falha(forma) {
     r = roda_lote([[forma, ""]], "shrink")
     if r[0] != 0 {
         return true
@@ -576,7 +576,7 @@ action ainda_falha(forma) {
 # Recebe o TEMPLATE da lei (com A/B/C por preencher), nunca a forma já
 # instanciada — nesta os marcadores já viraram literal e o replace seria no-op:
 # o "encolhido" sairia igual ao sorteado, com o rótulo mentindo "A=0".
-action encolhe(dominio, forma) {
+funct encolhe(dominio, forma) {
     if dominio == "i" {
         for each c in CANDIDATOS_I {
             f = preenche(forma, {"A": lit_int(c)})

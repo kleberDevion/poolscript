@@ -24,13 +24,13 @@ SRV = "teste/smtp_falso.py"
 erros = 0
 
 
-action tem(cmd) {
+funct tem(cmd) {
     os.cmd("command -v " + cmd + " > /dev/null 2>&1; echo $? > /tmp/ps_tem.txt")
     return int(open("/tmp/ps_tem.txt").read().strip()) == 0
 }
 
 
-action conf(nome, cond, detalhe) {
+funct conf(nome, cond, detalhe) {
     if cond {
         post("   ok  " + nome)
         return 0
@@ -41,7 +41,7 @@ action conf(nome, cond, detalhe) {
 
 
 # Roda um .ps com o ambiente dado e devolve [rc, saida].
-action roda(fonte, env) {
+funct roda(fonte, env) {
     using open("/tmp/ps_mail_caso.ps", "w") as f {
         f.write(fonte)
     }
@@ -60,21 +60,21 @@ action roda(fonte, env) {
 # sem ter nada a ver com mail.
 #
 # A espera é por SINAL (o arquivo aparecer), não por `sleep` no escuro.
-action sobe_servidor() {
+funct sobe_servidor() {
     return sobe(SRV)
 }
 
 
 # O mesmo, escolhendo o script: `smtp_falso.py` ou `imap_falso.py`. Os dois
 # falam o mesmo protocolo de arranque (porta 0, anuncia na 1ª linha da caixa).
-action sobe(script) {
+funct sobe(script) {
     return sobe_com(script, "")
 }
 
 
 # O mesmo, com variáveis de ambiente pro servidor falso (ex.: anunciar só
 # `AUTH LOGIN` em vez de `PLAIN`).
-action sobe_com(script, env) {
+funct sobe_com(script, env) {
     os.cmd("rm -f " + CAIXA)
     os.cmd(env + " setsid python3 " + script + " 0 " + CERT + " " + CHAVE
            + " " + CAIXA + " > /tmp/ps_smtp_srv.log 2>&1 &")

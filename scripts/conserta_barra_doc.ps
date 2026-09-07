@@ -30,7 +30,7 @@ import sys
 RAIZ = "docs"
 
 
-action junta_md(dir, acc) {
+funct junta_md(dir, acc) {
     for each ent in os.ls(dir) {
         cam = dir + "/" + ent["name"]
         if ent["type"] == "dir" {
@@ -54,7 +54,7 @@ action junta_md(dir, acc) {
 # a um nome que existe no módulo ESCREVE no de fora (ver notas/LIMITACOES.md).
 # Com `i` aqui, o `i` do laço de quem chama era sobrescrito e o laço nunca
 # terminava — travou este script por meia hora, sem erro nenhum.
-action acha_barra(L) {
+funct acha_barra(L) {
     de = 0
     while true {
         p = L.find("//", de)
@@ -71,7 +71,7 @@ action acha_barra(L) {
 }
 
 
-action so_espaco_antes(L, ate) {
+funct so_espaco_antes(L, ate) {
     return L[0:ate].strip() == ""
 }
 

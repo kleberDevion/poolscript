@@ -21,7 +21,7 @@ ACHADOS = "teste/fuzz_achados"
 TEMPO = 20
 
 
-action arquivos() {
+funct arquivos() {
     if not os.isdir(ACHADOS) {
         return []
     }

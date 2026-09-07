@@ -61,7 +61,7 @@ PROGRAMAS = [
 
 # Roda o binário com a i-ésima alocação falhando (0 = nenhuma, só conta).
 # Devolve [rc, saida, erro].
-action roda(caminho, falha_em, contando) {
+funct roda(caminho, falha_em, contando) {
     # Cada execução parte do MESMO estado. Sem isto, um programa que grava
     # arquivo (o de xlsx grava `p.xlsx`) deixa o resto pra próxima rodada: uma
     # falha no meio da escrita produz um arquivo truncado, e a rodada seguinte

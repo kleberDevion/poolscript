@@ -1,6 +1,6 @@
 #!lib
 
-reaction hashing(segredo=none) {
+funct hashing(segredo=none) {
    lista = str(list(segredo)).replace("'", "").replace(",", "").replace(" ", "").replace("[", "").replace("]", "")
    box = []
    for each i in lista {
@@ -17,7 +17,7 @@ reaction hashing(segredo=none) {
    return livre_hash
 }
 
-reaction check_hash(segredo=none, hash_comparar=none) {
+funct check_hash(segredo=none, hash_comparar=none) {
    lista = str(list(segredo)).replace("'", "").replace(",", "").replace(" ", "").replace("[", "").replace("]", "")
    box = []
    for each i in lista {

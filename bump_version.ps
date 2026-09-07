@@ -39,20 +39,20 @@ ARQUIVOS = [
 ]
 
 
-action morre(msg) {
+funct morre(msg) {
     post("[erro]", msg)
     sys.exit(1)
 }
 
 
-action parte(versao) {
+funct parte(versao) {
     ps = versao.split(".")
     return [int(ps[0]), int(ps[1]), int(ps[2])]
 }
 
 
 # Devolve a mensagem do problema, ou "" se a versão respeita a regra.
-action valida(versao) {
+funct valida(versao) {
     p = parte(versao)
     if p[2] > MAX_DIGITO {
         return "3º dígito " + str(p[2]) + " passou de " + str(MAX_DIGITO) + " (faltou o rollover)"
@@ -64,7 +64,7 @@ action valida(versao) {
 }
 
 
-action sobe(versao) {
+funct sobe(versao) {
     p = parte(versao)
     maior = p[0]
     meio = p[1]
@@ -84,7 +84,7 @@ action sobe(versao) {
 # Lê a versão de um arquivo. Um arquivo pode citar a versão em vários lugares
 # (a doc mostra no título, no `pool --version` e no banner do REPL) — todas têm
 # que concordar, senão sincronizar não significa nada.
-action le_versao(caminho, padrao) {
+funct le_versao(caminho, padrao) {
     if not os.exists(caminho) {
         morre("não achei o arquivo " + caminho)
     }
@@ -107,7 +107,7 @@ action le_versao(caminho, padrao) {
 
 
 # Confere que TODOS os arquivos têm a mesma versão e que ela respeita a regra.
-action confere() {
+funct confere() {
     achadas = []
     for each par in ARQUIVOS {
         achadas.append(le_versao(par[0], par[1]))
@@ -138,7 +138,7 @@ action confere() {
 
 
 # Troca a versão em TODAS as ocorrências de todos os arquivos.
-action aplica(atual) {
+funct aplica(atual) {
     nova = sobe(atual)
     for each par in ARQUIVOS {
         caminho = par[0]

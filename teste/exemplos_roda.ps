@@ -33,7 +33,7 @@ SERVIDOR = ["socket_demo.ps"]
 PODE_FALTAR = ["mail_demo.ps", "request.ps", "push_get.ps", "swagger.ps"]
 
 
-action roda(caminho) {
+funct roda(caminho) {
     os.cmd("timeout " + str(TEMPO) + " '" + sys.executable + "' " + caminho
            + " > /tmp/ps_ex_out.txt 2>&1 < /dev/null; echo $? > /tmp/ps_ex_rc.txt")
     return [int(open("/tmp/ps_ex_rc.txt").read().strip()),
@@ -41,7 +41,7 @@ action roda(caminho) {
 }
 
 
-action confere_sintaxe(caminho) {
+funct confere_sintaxe(caminho) {
     os.cmd("'" + sys.executable + "' --check " + caminho
            + " > /tmp/ps_ex_chk.txt 2>&1; echo $? > /tmp/ps_ex_rc.txt")
     return [int(open("/tmp/ps_ex_rc.txt").read().strip()),

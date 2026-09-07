@@ -1,0 +1,185 @@
+# Troca as grafias antigas `action` e `reaction` pela palavra da linguagem,
+# `funct`, num fonte PoolScript.
+#
+#     ./pool scripts/converte_funct.ps arquivo.ps           # mostra o resultado
+#     ./pool scripts/converte_funct.ps arquivo.ps --grava   # sobrescreve
+#     ./pool scripts/converte_funct.ps --lista a.ps b.ps    # em lote, gravando
+#
+# Quem decide o que e a PALAVRA e o lexer do motor (`pool --tokens`), nunca o
+# texto: `action` dentro de string, de comentario ou como nome de arquivo
+# (`examples/action.ps`) nao e palavra reservada, e so o lexer separa isso sem
+# errar. Cada token vem com linha, coluna e tamanho — a troca e cirurgica.
+#
+# A CONFERENCIA e a parte que importa: o FLUXO DE TOKENS do arquivo convertido
+# tem que ser o mesmo do original, token a token, tipo e valor, so trocando a
+# palavra. Se um so token a mais, a menos ou diferente aparecer, o arquivo nao
+# e gravado — renomear que mexe em outra coisa nao e renomear, e estragar.
+#
+# Comparar a ARVORE nao serve aqui: `funct` tem 5 letras e `action` tem 6,
+# entao toda linha convertida desloca a COLUNA dos nos seguintes e a arvore
+# difere por posicao, nao por estrutura. O fluxo de tokens ignora coluna.
+import os
+import sys
+import json
+
+TMP = "/tmp/ps_converte_funct"
+ANTIGAS = ["action", "reaction"]
+
+
+funct roda_motor(bandeira, fonte) {
+    os.mkdir(TMP, exist_ok=true)
+    alvo = TMP + "/e.ps"
+    using open(alvo, "w") as f {
+        f.write(fonte)
+    }
+    # Apaga a saida ANTES: um subprocesso que falhe deixaria o resultado da
+    # chamada anterior no lugar, e um arquivo seria julgado pela arvore de
+    # outro — a mesma armadilha que o para_chaves.ps documenta.
+    os.cmd("rm -f " + TMP + "/saida.json")
+    os.cmd("'" + sys.executable + "' " + bandeira + " < " + alvo + " > " + TMP + "/saida.json 2>/dev/null")
+    if not os.exists(TMP + "/saida.json") {
+        return ""
+    }
+    return open(TMP + "/saida.json").read().strip()
+}
+
+
+# Os tokens KW que sao a grafia antiga, agrupados por linha.
+funct alvos_por_linha(fonte) {
+    bruto = roda_motor("--tokens", fonte)
+    if bruto == "" or not bruto.startswith("[") {
+        return {}
+    }
+    porlinha = {}
+    for each t in json.parse(bruto) {
+        if t["t"] != "KW" {
+            continue
+        }
+        if not (t["v"] in ANTIGAS) {
+            continue
+        }
+        chave = str(t["l"])
+        if not (chave in porlinha.value()) and not (chave in porlinha) {
+            porlinha[chave] = []
+        }
+        addEnd(porlinha[chave], t)
+    }
+    return porlinha
+}
+
+
+funct converte(fonte) {
+    porlinha = alvos_por_linha(fonte)
+    if len(porlinha) == 0 {
+        return fonte
+    }
+    linhas = fonte.split("\n")
+    saida = []
+    i = 0
+    while i < len(linhas) {
+        L = linhas[i]
+        chave = str(i + 1)
+        if chave in porlinha {
+            # De TRAS PRA FRENTE: trocar da esquerda pra direita desloca as
+            # colunas dos tokens seguintes da mesma linha.
+            toks = porlinha[chave]
+            k = len(toks) - 1
+            while k >= 0 {
+                t = toks[k]
+                ini = t["c"] - 1
+                L = L[0:ini] + "funct" + L[ini + t["n"]:len(L)]
+                k = k - 1
+            }
+        }
+        addEnd(saida, L)
+        i = i + 1
+    }
+    return "\n".join(saida)
+}
+
+
+# A assinatura do fonte: tipo e valor de cada token, na ordem, com a grafia
+# antiga ja normalizada pra `funct`. Sem linha, sem coluna, sem tamanho — o
+# que muda de posicao ao encurtar a palavra nao pode contar como diferenca.
+funct assinatura(fonte) {
+    bruto = roda_motor("--tokens", fonte)
+    if bruto == "" or not bruto.startswith("[") {
+        return ""
+    }
+    partes = []
+    for each t in json.parse(bruto) {
+        v = t["v"]
+        if t["t"] == "KW" and v in ANTIGAS {
+            v = "funct"
+        }
+        addEnd(partes, t["t"] + ":" + v)
+    }
+    return "|".join(partes)
+}
+
+
+# Converte UM arquivo. Devolve o que aconteceu, ou o motivo da recusa.
+funct converte_arquivo(caminho, grava) {
+    fonte = open(caminho).read()
+    novo = converte(fonte)
+    if novo == fonte {
+        return "sem ocorrencia"
+    }
+    antes = assinatura(fonte)
+    depois = assinatura(novo)
+    if antes == "" or depois == "" {
+        return "RECUSADO: o lexer nao devolveu tokens"
+    }
+    if antes != depois {
+        return "RECUSADO: o fluxo de tokens mudou"
+    }
+    if not roda_motor("--check", novo).startswith("{\"ok\":true") {
+        return "RECUSADO: o convertido nao passa no --check"
+    }
+    if grava {
+        using open(caminho, "w") as f {
+            f.write(novo)
+        }
+        return "convertido"
+    }
+    post(novo)
+    return "ok (nao gravado)"
+}
+
+
+if __name__ == "main" {
+    if len(sys.argv) < 1 {
+        post("uso: pool scripts/converte_funct.ps <arquivo.ps> [--grava]")
+        post("     pool scripts/converte_funct.ps --lista <a.ps> <b.ps> ...")
+        sys.exit(1)
+    }
+    lote = sys.argv[0] == "--lista"
+    grava = lote
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+    }
+    alvos = []
+    for each a in sys.argv {
+        if a == "--lista" or a == "--grava" {
+            continue
+        }
+        addEnd(alvos, a)
+    }
+    ruins = 0
+    for each caminho in alvos {
+        r = converte_arquivo(caminho, grava)
+        if r.startswith("RECUSADO") {
+            ruins = ruins + 1
+        }
+        if lote or r.startswith("RECUSADO") or r == "sem ocorrencia" {
+            post(r.ljust(14), caminho)
+        }
+    }
+    if ruins > 0 {
+        post("")
+        post(str(ruins) + " arquivo(s) RECUSADO(s) — nada foi gravado neles")
+        sys.exit(1)
+    }
+}

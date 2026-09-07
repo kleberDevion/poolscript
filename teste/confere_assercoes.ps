@@ -31,7 +31,7 @@ PASTA = "teste"
 # (`"((?:[^"\\]|\\.)*)"`) o motor estoura com "backtracking demais" nas
 # linhas longas do `casos_oraculo.c`: alternância dentro de grupo repetido é o
 # padrão que explode. Varredura linear não tem esse problema.
-action literais(L) {
+funct literais(L) {
     out = []
     i = 0
     while i < len(L) {

@@ -58,7 +58,7 @@ SEM_PAR = {
 # a "espera de 20 s" era decorativa. Quando `Null == 0` virou False (I1/I2/I3),
 # ela passou a nunca dar certo e o jinker reprovou dizendo que a porta não
 # abriu — com o log do servidor logo abaixo dizendo que abriu.
-action espera_porta(porta, prazo) {
+funct espera_porta(porta, prazo) {
     i = 0
     while i < prazo * 10 {
         os.cmd("timeout 1 bash -c '</dev/tcp/127.0.0.1/" + str(porta)
@@ -91,7 +91,7 @@ PIDFILE = "/tmp/ps_e2e_srv.pid"
 # que já morreu — o sinal não chega em ninguém e o servidor fica órfão. Ele
 # estava aqui pra proteger de `pkill -f`, que matava o próprio script; matando
 # por pid exato o problema não existe.
-action sobe(srv) {
+funct sobe(srv) {
     os.cmd("rm -f " + PIDFILE)
     os.cmd("sh -c 'exec \"" + sys.executable + "\" "
            + PASTA + "/" + srv + " > /tmp/ps_e2e_srv.log 2>&1 < /dev/null' &"
@@ -123,7 +123,7 @@ action sobe(srv) {
 # com SIGKILL pula a saída limpa, e processo morto por sinal **não grava o
 # `.gcda`** — foi por isso que 24 casos novos de HTTP cru não mexeram um ponto
 # na cobertura de `ps_jinker.c`. O KILL fica só como último recurso.
-action derruba(pid) {
+funct derruba(pid) {
     if pid <= 0 {
         return
     }
@@ -142,7 +142,7 @@ action derruba(pid) {
 
 
 # Roda um script e devolve [rc, saida_junta].
-action roda(caminho) {
+funct roda(caminho) {
     # Havia aqui uma lista `COM_JANELA` e um `GUZER_HEADLESS=1` no ambiente: o
     # guzer abria janela no fim do script e travava esperando o usuário fechar.
     # O guzer saiu da linguagem; nenhum script do e2e abre janela.
@@ -153,7 +153,7 @@ action roda(caminho) {
 }
 
 
-action mostra(saida) {
+funct mostra(saida) {
     for each l in saida.split("\n") {
         if l.strip() != "" {
             post("     ", l)
