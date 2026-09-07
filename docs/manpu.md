@@ -129,7 +129,7 @@ using mp.open(target="compras.xlsx") as arq {
 ```
 
 `using` aceita bloco com chaves `{ }`, como todo bloco da linguagem — não é
-diferente de `if`/`while`/`action` nesse sentido:
+diferente de `if`/`while`/`funct` nesse sentido:
 
 ```
 using mp.open(target="compras.xlsx") as arq {

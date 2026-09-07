@@ -222,7 +222,7 @@ laço é descartado.
 `Tipo nome = valor` fixa o tipo da **variável**, não só do valor inicial: toda
 escrita posterior nela é conferida pela mesma regra da criação (coerção onde a
 matriz da seção 2.6 permite, erro onde não). Vale para reatribuição, `+=`,
-`for each`, desempacotamento, escrita de dentro de uma action (§4.7) e
+`for each`, desempacotamento, escrita de dentro de uma funct (§4.7) e
 closure.
 
 ```ps
@@ -252,7 +252,7 @@ Object s = "texto"           # AttributedValueError: variável s esperava Object
   variável **local** à função — ela some quando a função retorna:
 
 ```ps
-action f() {
+funct f() {
     local = 5       # local à função
 }
 f()
@@ -270,7 +270,7 @@ dentro de uma função:
 ```ps
 contador = 0
 
-action bump() {
+funct bump() {
     global contador
     contador = contador + 1
 }

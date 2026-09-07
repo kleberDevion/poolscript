@@ -7,7 +7,7 @@ método, headers, arquivos.
 
 ```
 @app.route("/api/dados", methods=cors.options(["POST"]))
-action receber() {
+funct receber() {
     data = request.get_json()     # corpo JSON inteiro (dict)
     nome = request.get("nome")    # um campo (JSON ou query string)
     return jsonify({"ola": nome})

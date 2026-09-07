@@ -1,31 +1,35 @@
 # Referência da Linguagem — 6. Funções
 
 Uma função agrupa um trecho de código sob um nome, recebe parâmetros e devolve
-um valor. Na PoolScript ela se declara com **`action`** (ou o sinônimo
-**`reaction`**). Esta seção cobre a definição, os parâmetros, o retorno, as
-formas tipadas (`int action`/`bool action`), funções como valores, recursão e
-geradores.
+um valor. Na PoolScript ela se declara com **`funct`**. Esta seção cobre a
+definição, os parâmetros, o retorno, as formas tipadas (`int funct`/`bool
+funct`), os modificadores colados (`static`, `nonnull`), funções como valores,
+recursão e geradores.
 
 Como sempre, cada comportamento foi verificado rodando o fonte de verdade.
 
 ---
 
-## 6.1. Definição — `action` e `reaction`
+## 6.1. Definição — `funct` (e as grafias `action` e `reaction`)
 
 ```ps
-action soma(a, b) {
+funct soma(a, b) {
     return a + b
 }
 
 post(soma(2, 3))     # 5
 ```
 
-`reaction` é **sinônimo exato** de `action` — mesma sintaxe, mesmo
-comportamento, e `type()` de qualquer uma devolve `"action"`. A escolha entre as
-duas é só de intenção na leitura (por exemplo, `action` para um procedimento,
-`reaction` para um callback/handler); mecanicamente não há diferença.
+`action` e `reaction` são as **grafias antigas** da mesma declaração: mesma
+sintaxe, mesmo comportamento, e `type()` de qualquer uma devolve `"funct"`.
+Continuam valendo em todo lugar — código escrito com elas não quebra — mas
+`funct` é o nome da construção.
 
 ```ps
+action antiga(x) {
+    post("continua valendo", x)
+}
+
 reaction ao_clicar(x) {
     post("clicou em", x)
 }
@@ -43,7 +47,7 @@ Parâmetros podem ter **valor padrão** (uma expressão, avaliada quando falta o
 argumento):
 
 ```ps
-action g(a, b = 10) {
+funct g(a, b = 10) {
     return a + b
 }
 
@@ -51,7 +55,7 @@ post(g(5))       # 15   (b usa o padrão)
 post(g(5, 1))    # 6
 ```
 
-O padrão pode ser qualquer expressão: `action f(a, b = 5 * 2)` → `b` vale `10`.
+O padrão pode ser qualquer expressão: `funct f(a, b = 5 * 2)` → `b` vale `10`.
 
 ### 6.2.2. Argumentos nomeados (na chamada)
 
@@ -59,7 +63,7 @@ Na chamada, um argumento pode ser passado pelo nome do parâmetro, em qualquer
 ordem, e misturado com posicionais:
 
 ```ps
-action f(a, b, c) {
+funct f(a, b, c) {
     return str(a) + str(b) + str(c)
 }
 
@@ -70,9 +74,9 @@ post(f(1, c=3, b=2))      # "123"  (posicional + nomeado)
 ### 6.2.3. Parâmetros não têm tipo
 
 Os parâmetros são **sempre nomes simples** — não se declara tipo neles. Nem
-`action f(int x)` (o `int` é palavra reservada) nem `action f(x: int)` são
+`funct f(int x)` (o `int` é palavra reservada) nem `funct f(x: int)` são
 válidos. A tipagem estática da linguagem fica nas **declarações de variável**
-(seção 4.1) e nas formas tipadas de action abaixo.
+(seção 4.1) e nas formas tipadas de funct abaixo.
 
 Também **não há parâmetro variádico** (`*args` / `**kwargs` não existem). O
 número de parâmetros é fixo (fora os que têm padrão).
@@ -90,12 +94,12 @@ mais** é erro em tempo de execução.
 ou uma função que **termina sem `return`**, devolve `null`:
 
 ```ps
-action nada() {
+funct nada() {
     return
 }
 post(nada())     # null
 
-action semret() {
+funct semret() {
     x = 1
 }
 post(semret())   # null
@@ -103,14 +107,14 @@ post(semret())   # null
 
 ---
 
-## 6.4. Actions tipadas — `int action` / `bool action`
+## 6.4. Functs tipadas — `int funct` / `bool funct`
 
-Prefixar a action com `int` ou `bool` muda o **contrato de retorno**: a função
+Prefixar a funct com `int` ou `bool` muda o **contrato de retorno**: a função
 passa a **nunca propagar erro** (o corpo vira um `try` implícito) e a garantir
 um resultado do feitio pedido. É pensado para handlers que precisam sempre
 devolver algo (por exemplo, um status).
 
-`int action`:
+`int funct`:
 
 | Situação | Devolve |
 |---|---|
@@ -120,76 +124,117 @@ devolver algo (por exemplo, um status).
 | `return <outro tipo>` | passa como está (não é coagido) |
 
 ```ps
-int action status() {
+int funct status() {
     return null
 }
 post(status())        # 0
 
-int action quebra() {
+int funct quebra() {
     raise Boom("x")
 }
 post(quebra())        # 500  (erro engolido)
 ```
 
-`bool action`: o retorno vira `bool` por *truthiness* — `return 0` → `False`,
+`bool funct`: o retorno vira `bool` por *truthiness* — `return 0` → `False`,
 `return 5` → `True`; **erro no corpo → `False`**; `return null`/sem return →
 `True`.
 
-> Diferente de um cast: `int action f(): return "7"` devolve a **string**
+> Diferente de um cast: `int funct f()` com `return "7"` devolve a **string**
 > `"7"`, não o inteiro `7`. O `int`/`bool` aqui rege o tratamento de
 > ausência/erro, não uma conversão do valor retornado.
 
-### Ordem dos modificadores é livre
+Só `int` e `bool` existem como tipo de retorno: `char funct f()` é
+`SyntaxError: so 'int funct' e 'bool funct' existem`.
 
-Os prefixos de uma action/reaction — tipo de retorno (`int`/`bool`/`str`/`flo`),
-`async` e visibilidade (`public`/`private`) — podem vir em **qualquer ordem**.
-Todos abaixo são equivalentes e válidos:
+### 6.4.1. Modificadores colados — `static` e `nonnull`
+
+Além do tipo de retorno, do `async` e da visibilidade, dois modificadores vêm
+**colados na declaração**:
+
+| Modificador | O que faz |
+|---|---|
+| `static` | o método pertence ao **tipo**, não ao objeto: chama-se `Tipo.metodo(...)`, sem instanciar (seção [7.4](07-entity.md)) |
+| `nonnull` | nenhum parâmetro pode chegar `Null` — inclusive por valor padrão |
 
 ```ps
-int async reaction f() { }
-async int reaction f() { }
-public async reaction f() { }
-private int action f() { }
+Entity Mat() {
+    static funct soma(a, b) {
+        return a + b
+    }
+}
+post(Mat.soma(1, 2))        # 3
+
+nonnull funct exige(valor) {
+    return valor
+}
+exige(Null)                 # nonnull: parametro 'valor' em 'exige' nao pode ser Null
+```
+
+Chamar um `static` pela instância é erro:
+`funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia`.
+
+Os dois valem só para a funct em que estão escritos — uma funct declarada
+**dentro** do corpo não herda a marca.
+
+`static` e `nonnull` **não são palavras reservadas**: valem por posição, só na
+cabeça da declaração. `static = 1` continua sendo uma variável comum.
+
+> As grafias antigas `@static` e `@NonNull`, em linha própria acima da
+> declaração, continuam funcionando — seção [14](14-decoradores.md).
+
+### 6.4.2. Ordem dos modificadores é livre
+
+Os prefixos de uma funct — tipo de retorno (`int`/`bool`/`str`/`flo`), `async`,
+visibilidade (`public`/`private`) e os colados (`static`/`nonnull`) — podem vir
+em **qualquer ordem**. Todos abaixo são equivalentes e válidos:
+
+```ps
+int async funct f() { }
+async int funct f() { }
+public async funct f() { }
+private int funct f() { }
+static nonnull funct f(v) { }
+private static int funct f() { }
 ```
 
 Vale igual com um [decorador](14-decoradores.md) em cima: `@app.post("/x")`
-seguido de `int async action h()` registra `h` como qualquer outra ordem.
+seguido de `int async funct h()` registra `h` como qualquer outra ordem.
 
-Esquecer o `action` (ou `reaction`) é erro de sintaxe, e a mensagem devolve a
-linha montada: `int async f(x)` dá
-`faltou 'action' (ou 'reaction') antes de 'f': int async action f(...)`.
+Esquecer o `funct` é erro de sintaxe, e a mensagem devolve a linha montada:
+`int async f(x)` dá `faltou 'funct' antes de 'f': int async funct f(...)`.
 
 ---
 
 ## 6.5. Funções são valores (first-class)
 
-Uma action pode ser guardada em variável, passada como argumento e devolvida —
+Uma funct pode ser guardada em variável, passada como argumento e devolvida —
 sem os parênteses, o nome é a própria função:
 
 ```ps
-action dobro(n) {
+funct dobro(n) {
     return n * 2
 }
 
 g = dobro
 post(g(21))          # 42
 
-action aplica(fn, x) {
+funct aplica(fn, x) {
     return fn(x)
 }
 post(aplica(dobro, 21))   # 42
 ```
 
-`type()` de uma função é `"action"`.
+`type()` de uma função é `"funct"`, e `post` de uma delas imprime
+`<funct #N>`.
 
 ---
 
 ## 6.6. Recursão
 
-Uma action pode chamar a si mesma:
+Uma funct pode chamar a si mesma:
 
 ```ps
-action fatorial(n) {
+funct fatorial(n) {
     if n <= 1 {
         return 1
     }
@@ -203,12 +248,12 @@ post(fatorial(5))    # 120
 
 ## 6.7. Geradores — `yield`
 
-Uma action que usa `yield` (em vez de `return`) é um **gerador**: cada `yield`
+Uma funct que usa `yield` (em vez de `return`) é um **gerador**: cada `yield`
 entrega um valor e a execução pausa ali até o próximo pedido. O resultado é uma
 sequência preguiçosa, consumível por `for each` ou materializável com `list(...)`:
 
 ```ps
-action conta() {
+funct conta() {
     yield 1
     yield 2
     yield 3
@@ -225,13 +270,13 @@ post(list(conta()))  # [1, 2, 3]
 
 ## 6.8. Assíncrono — `async` / `await` / `gather`
 
-Uma action marcada `async` (`async action`, `async reaction`) **não roda na
-chamada**: devolve um **future** (uma promessa do resultado). O valor sai com
+Uma funct marcada `async` (`async funct`) **não roda na chamada**: devolve um
+**future** (uma promessa do resultado). O valor sai com
 `await` (espera um future) ou `gather` (espera vários). As tasks correm
 **concorrentes** — enquanto uma espera I/O, as outras andam.
 
 ```ps
-async action dobro(n) {
+async funct dobro(n) {
     sleep(0.2)
     return n * 2
 }
@@ -254,7 +299,7 @@ post(await 5)               # 5 — valor comum devolve ele mesmo
 cada argumento vira um elemento do resultado, e o argumento-lista vira a
 sub-lista dos valores dele. Pra achatar, use `await fs`.
 
-Roda sobre **fibras** (*green-threads*): cada `async action` vira uma fibra e o
+Roda sobre **fibras** (*green-threads*): cada `async funct` vira uma fibra e o
 escalonador as revessa; `sleep`, banco e requisições de saída cedem sozinhos. O
 modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
 **centenas** de tasks concorrentes, onde ganha do Node em tempo e memória.
@@ -263,13 +308,15 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
 
 ## 6.9. Resumo
 
-- **`action` / `reaction`** definem funções e são sinônimos (`type()` →
-  `"action"`).
+- **`funct`** define uma função (`type()` → `"funct"`); `action` e `reaction`
+  são as grafias antigas e continuam valendo.
 - Parâmetros: posicionais + **padrão** (`b=10`); **nomeados** na chamada; **sem
   tipo**, **sem variádico**; aridade errada é erro.
 - `return` sem valor / ausência de `return` → `null`.
-- **`int action` / `bool action`**: nunca propagam erro (int→`500`, bool→`False`
+- **`int funct` / `bool funct`**: nunca propagam erro (int→`500`, bool→`False`
   no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.
+- **`static`** e **`nonnull`** vêm colados na cabeça, em qualquer ordem com os
+  outros modificadores, e valem só para a funct em que estão escritos.
 - Funções são **valores** (first-class); há **recursão** e **geradores**
   (`yield`).
 - **`async`/`await`/`gather`** funcionam sobre fibras; as tasks correm

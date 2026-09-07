@@ -25,7 +25,8 @@
 static const char *KEYWORDS[] = {
     "if", "else", "elif", "while", "for", "each", "in", "is",
     "and", "or", "not", "Not",
-    "action", "reaction", "return", "continue", "break", "pass", "model", "enum", "async", "await",
+    /* `funct` e o nome da funcao; `action`/`reaction` sao as grafias antigas */
+    "funct", "action", "reaction", "return", "continue", "break", "pass", "model", "enum", "async", "await",
     "try", "catch", "as", "with", "of", "using",
     "import", "from", "PUSH", "GET",
     "str", "int", "flo", "bool",

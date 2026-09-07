@@ -59,8 +59,8 @@ for each item in os.ls() {
 Filtre pelo `type`:
 
 ```
-arquivos = filter(os.ls("dados"), action(i) { return i["type"] == "file" })
-pastas   = filter(os.ls("dados"), action(i) { return i["type"] == "dir" })
+arquivos = filter(os.ls("dados"), funct(i) { return i["type"] == "file" })
+pastas   = filter(os.ls("dados"), funct(i) { return i["type"] == "dir" })
 ```
 
 ---

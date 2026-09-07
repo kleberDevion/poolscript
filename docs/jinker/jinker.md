@@ -18,7 +18,7 @@ uma URL) e decide o que responder pra cada uma. No jinker, você descreve esse
 Uma **rota** liga:
 
 - um **caminho** de URL (ex: `/api/hello`), a
-- uma **`action`** que roda quando esse caminho é acessado e devolve a resposta.
+- uma **`funct`** que roda quando esse caminho é acessado e devolve a resposta.
 
 O ciclo é sempre este:
 
@@ -26,13 +26,13 @@ O ciclo é sempre este:
 navegador pede  GET /api/hello
         │
         ▼
-jinker acha a rota  ──►  roda sua action  ──►  você faz `return ...`
+jinker acha a rota  ──►  roda sua funct  ──►  você faz `return ...`
         │
         ▼
 jinker vira seu return em resposta HTTP  ──►  navegador recebe
 ```
 
-Dentro da action você tem `request` (o que chegou) de graça, e o `return` (o
+Dentro da funct você tem `request` (o que chegou) de graça, e o `return` (o
 que volta). Todo o resto é detalhe dessas duas pontas.
 
 ---
@@ -48,12 +48,12 @@ import os
 app = Jinker(__name__)                    # 1. cria a aplicação
 
 @app.route("/", methods=cors.options(["GET"]))   # 2. rota GET /
-action inicio() {
+funct inicio() {
     return jsonify({"msg": "meu primeiro servidor!"})
 }
 
 @app.route("/somar", methods=cors.options(["POST"]))   # 3. lê dados do cliente
-action somar() {
+funct somar() {
     a = request.get("a")
     b = request.get("b")
     return jsonify({"resultado": a + b})
@@ -68,9 +68,9 @@ if __name__ == "main" {                   # 4. sobe o servidor
 Rode `pool app.ps` e abra `http://localhost:8080/`. Cada bloco:
 
 1. **`Jinker(__name__)`** cria a app — tudo pendura nela.
-2. **`@app.route("/", ...)`** registra a action de baixo como resposta a
+2. **`@app.route("/", ...)`** registra a funct de baixo como resposta a
    `GET /`. Você não chama `inicio()` — o jinker chama quando a URL é acessada.
-3. `request` já existe dentro da action; `return jsonify(...)` vira a resposta.
+3. `request` já existe dentro da funct; `return jsonify(...)` vira a resposta.
 4. **`if __name__ == "main"`** liga o servidor (só quando o arquivo roda direto).
 
 Repare que não teve `cors(...)` nem `auth=` — sem configurar, tudo é liberado.

@@ -65,7 +65,7 @@ O bloco da PoolScript é **`{ }`**, e só. Quem delimita é a chave; a
 **indentação não tem significado** nenhum pro compilador:
 
 ```ps
-action soma(a, b) {
+funct soma(a, b) {
     return a + b
 }
 ```
@@ -74,7 +74,7 @@ A chave de abertura vale na mesma linha do cabeçalho ou na linha seguinte, e o
 `}` de fechamento pode vir colado à continuação (`} else {`) ou sozinho:
 
 ```ps
-action soma(a, b)
+funct soma(a, b)
 {
     return a + b
 }
@@ -161,7 +161,7 @@ Agrupadas por papel:
 |---|---|
 | Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `pass` `return` |
 | Lógicos | `and` `or` `not` `Not` |
-| Funções | `action` `reaction` `async` `await` `yield` |
+| Funções | `funct` `async` `await` `yield` |
 | Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` |
 | Classes / OO | `Entity` `class` `Class` `self` `base` `model` `enum` |
 | Encapsulamento | `private` `public` |

@@ -133,7 +133,7 @@ import os
 
 load()
 
-action verificar_caixa() {
+funct verificar_caixa() {
     r = mail.MailReader()
     r.conn("gmail.com")
     r.login(user=os.getenv("MAIL_SYSTEM"), password=os.getenv("PASSWORD_SYSTEM"))
@@ -160,7 +160,7 @@ from dotenv import load
 
 load()
 
-action enviar_email(nome, email_destino) {
+funct enviar_email(nome, email_destino) {
     try {
         s = mail.MailServer()
         s.conn("gmail.com")
@@ -364,7 +364,7 @@ import request
 conn = request.ws_connect("ws://localhost:7701/chat")
 post(conn)  # <WsConnection ws://localhost:7701/chat [conectado]>
 
-conn.on_message(action(msg) { post(msg) })
+conn.on_message(funct(msg) { post(msg) })
 conn.send({"user_name": "joao", "body_msg": "Oi!"})
 ```
 
@@ -376,7 +376,7 @@ import request
 str nome = input("Seu nome: ")
 
 conn = request.ws_connect("ws://localhost:7701/chat")
-conn.on_message(action(msg) { post(f"\n{msg}") })
+conn.on_message(funct(msg) { post(f"\n{msg}") })
 post(f"Conectado como {nome}!")
 
 while (true) {
@@ -398,17 +398,17 @@ Sem o `conn.on_message(...)`, dois terminais conectados no mesmo chat **não vã
 ### Lambda — função anônima
 
 ```
-dobro = action(n) { return n * 2 }
+dobro = funct(n) { return n * 2 }
 post(dobro(5))   # 10
 
-quadrado = action(n) { return n * n }
+quadrado = funct(n) { return n * n }
 post(quadrado(4))  # 16
 ```
 
 Passando lambda como argumento:
 
 ```
-action aplicar(func, valor) {
+funct aplicar(func, valor) {
     return func(valor)
 }
 
@@ -423,14 +423,14 @@ Aplica uma função em cada item da lista:
 ```
 list nums = [1, 2, 3, 4, 5]
 
-dobrados = map(nums, action(n) { return n * 2 })
+dobrados = map(nums, funct(n) { return n * 2 })
 post(dobrados)  # [2, 4, 6, 8, 10]
 
-quadrados = map(nums, action(n) { return n * n })
+quadrados = map(nums, funct(n) { return n * n })
 post(quadrados)  # [1, 4, 9, 16, 25]
 
 list nomes = ["ana", "leo", "bia"]
-iniciais = map(nomes, action(n) { return n[0:1] })
+iniciais = map(nomes, funct(n) { return n[0:1] })
 post(iniciais)  # ["a", "l", "b"]
 ```
 
@@ -441,10 +441,10 @@ Filtra itens da lista que passam na condição:
 ```
 list nums = [1, 2, 3, 4, 5, 6]
 
-pares = filter(nums, action(n) { return n % 2 == 0 })
+pares = filter(nums, funct(n) { return n % 2 == 0 })
 post(pares)  # [2, 4, 6]
 
-maiores = filter(nums, action(n) { return n > 3 })
+maiores = filter(nums, funct(n) { return n > 3 })
 post(maiores)  # [4, 5, 6]
 ```
 
@@ -454,7 +454,7 @@ Combinando map e filter:
 list nums = [1, 2, 3, 4, 5, 6]
 
 # Pega os pares e dobra
-pares = filter(nums, action(n) { return n % 2 == 0 })
-resultado = map(pares, action(n) { return n * 2 })
+pares = filter(nums, funct(n) { return n % 2 == 0 })
+resultado = map(pares, funct(n) { return n * 2 })
 post(resultado)  # [4, 8, 12]
 ```

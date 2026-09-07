@@ -6,12 +6,12 @@ tem `methods=`: o verbo é o membro.
 
 ```ps
 @app.get("/perfil")
-action perfil() {
+funct perfil() {
     return jsonify({"quem": "ana"})
 }
 
 @app.get("/user/<id>")
-action um(id) {                      # o path param entra no argumento, se pedir
+funct um(id) {                       # o path param entra no argumento, se pedir
     return jsonify({"id": id})
 }
 ```

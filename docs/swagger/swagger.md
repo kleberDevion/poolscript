@@ -19,7 +19,7 @@ import swagger
 ```ps
 import swagger
 
-int async reaction main() {
+int async funct main() {
     d = swagger.infos(target="app.ps")
                .title("API de Pedidos")
                .description("API de app de pedidos e entrega")

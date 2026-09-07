@@ -35,7 +35,7 @@ para os detalhes do que acontece por baixo.
 
 ```
 @app.route("/api/user", methods=cors.options(["GET"]))
-action user() {
+funct user() {
     return jsonify({"nome": "ana", "idade": 30})
 }
 ```

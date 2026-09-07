@@ -23,7 +23,7 @@ import request
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
 
 # 1. registre o que fazer com CADA mensagem que chegar
-conn.on_message(action(msg) { post(msg) })
+conn.on_message(funct(msg) { post(msg) })
 
 # 2. envie mensagens
 conn.send({"author": "ana", "body": "oi"})
@@ -43,7 +43,7 @@ esperar receber:
 
 ```
 conn = request.ws_connect("ws://localhost:8081/chat/sala")
-conn.on_message(action(msg) { post(f"chegou: {msg}") })   # sem isto, você não vê nada
+conn.on_message(funct(msg) { post(f"chegou: {msg}") })   # sem isto, você não vê nada
 ```
 
 Ver [`WsConnection.on_message`](../WsConnection/on_message/on_message.md).

@@ -23,7 +23,7 @@ duas formas convivem no mesmo programa.
 | Nulo | `"Null"` | `Null`/`null`/`None`/`none` | — | ausência de valor |
 
 Além destes, existem **valores-objeto**: instâncias de `Entity`, funções
-(`action`/`reaction`), módulos importados, `enum`, `model` — descritos nas suas
+(`funct`), módulos importados, `enum`, `model` — descritos nas suas
 seções.
 
 `json` é apenas outro **nome** para `dict` (o mesmo tipo).
@@ -53,7 +53,7 @@ char c = -1         # ConversionError: -1 nao e um caractere valido
 valor guardado é uma `str` de comprimento 1, e `type()` responde `"str"`. Não
 existe construtor `char()` — pra converter um número use `chr(n)`.
 
-`char action` não existe: só `int action` e `bool action` têm tipo de retorno.
+`char funct` não existe: só `int funct` e `bool funct` têm tipo de retorno.
 
 ---
 

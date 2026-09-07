@@ -3,7 +3,7 @@
 `Entity` é a construção de orientação a objetos da PoolScript: define um **tipo**
 com campos e métodos, do qual se criam **instâncias**. Esta seção cobre a
 declaração, os campos e o construtor (sintetizado ou próprio), os métodos e o
-`self`, os métodos `@static`, a herança com `base`, e o encapsulamento
+`self`, os métodos `static`, a herança com `base`, e o encapsulamento
 `private`/`public`.
 
 Tudo verificado na VM.
@@ -75,20 +75,20 @@ Entity Usuario() {         # idêntico ao de cima
 
   ```ps
   Entity Bolsa() {
-      action guarda(self, item) {
+      funct guarda(self, item) {
           self.conteudo = item
       }
   }
   ```
 
-### 7.2.1. Construtor próprio — `action __init__`
+### 7.2.1. Construtor próprio — `funct __init__`
 
 Para um construtor com lógica própria (validação, campos derivados), defina
-`action __init__(self, …)`. Isso **substitui** o construtor sintetizado:
+`funct __init__(self, …)`. Isso **substitui** o construtor sintetizado:
 
 ```ps
 Entity Retangulo() {
-    action __init__(self, largura, altura) {
+    funct __init__(self, largura, altura) {
         self.largura = largura
         self.altura  = altura
         self.area    = largura * altura
@@ -103,17 +103,17 @@ post(r.area)              # 12
 
 ## 7.3. Métodos e `self`
 
-Um método é uma `action` cujo **primeiro parâmetro é `self`** (a instância).
-Sem `self`, é erro (a não ser que seja `@static`, 7.4).
+Um método é uma `funct` cujo **primeiro parâmetro é `self`** (a instância).
+Sem `self`, é erro (a não ser que seja `static`, 7.4).
 
 ```ps
 Entity Contador() {
     valor: int
-    action inc(self) {
+    funct inc(self) {
         self.valor += 1
         return self.valor
     }
-    action zera(self) {
+    funct zera(self) {
         self.valor = 0
     }
 }
@@ -127,15 +127,14 @@ chama outros métodos da instância.
 
 ---
 
-## 7.4. Métodos `@static`
+## 7.4. Métodos `static`
 
-Prefixado com `@static`, o método **não recebe `self`** e é chamado **na
+Prefixado com `static`, o método **não recebe `self`** e é chamado **na
 própria Entity** (não numa instância):
 
 ```ps
 Entity Mat() {
-    @static
-    action soma(a, b) {
+    static funct soma(a, b) {
         return a + b
     }
 }
@@ -143,8 +142,8 @@ Entity Mat() {
 post(Mat.soma(2, 3))     # 5
 ```
 
-Chamar um `@static` por uma instância (`m.soma(...)`) é erro — ele pertence ao
-tipo, não ao objeto. (Ver também a nota sobre `@static` na seção de
+Chamar um `static` por uma instância (`m.soma(...)`) é erro — ele pertence ao
+tipo, não ao objeto. (Ver também a nota sobre `static` na seção de
 decoradores.)
 
 ---
@@ -158,13 +157,13 @@ Uma Entity pode herdar de uma ou mais outras, listadas entre os parênteses. Os
 ```ps
 Entity Animal() {
     nome: str
-    action fala(self) {
+    funct fala(self) {
         return "..."
     }
 }
 
 Entity Cao(Animal) {
-    action fala(self) {
+    funct fala(self) {
         return "au"      # sobrescreve
     }
 }
@@ -193,13 +192,13 @@ superclasse**:
 
 ```ps
 Entity A() {
-    action __init__(self, x) {
+    funct __init__(self, x) {
         self.x = x
     }
 }
 
 Entity B(A) {
-    action __init__(self, x, y) {
+    funct __init__(self, x, y) {
         base(x)          # roda o __init__ de A
         self.y = y
     }
@@ -223,10 +222,10 @@ regra é **imposta pela VM**, não é só convenção.
 ```ps
 Entity Conta() {
     private saldo: int
-    public action ver(self) {
+    public funct ver(self) {
         return self.saldo
     }
-    private action log(self) {
+    private funct log(self) {
         return "..."
     }
 }
@@ -247,11 +246,11 @@ O campo pode nascer no `__init__`, com tipo e visibilidade, na forma
 
 ```ps
 private Class Pagamento() {
-    public reaction __init__(self, nome, doc) {
+    public funct __init__(self, nome, doc) {
         private str name = nome
         private int cpf  = doc
     }
-    public reaction mostra(self) {
+    public funct mostra(self) {
         return self.name + "/" + str(self.cpf)
     }
 }
@@ -267,11 +266,11 @@ post(p.name)             # ERRO — name é private
 - O **tipo é conferido igual ao da variável** (seção 4.1): `private int n = 5.9`
   é `AttributedValueError`. Só os escalares (`str`, `int`, `flo`, `bool`,
   `char`) são conferidos; `list`, `json` e uma Entity guardam sem reclamar.
-- Só vale **dentro de uma action de Entity que recebe `self`** — em `@static`
-  ou numa action solta não há objeto para o campo pertencer, e é erro de
+- Só vale **dentro de uma funct de Entity que recebe `self`** — em `static`
+  ou numa funct solta não há objeto para o campo pertencer, e é erro de
   sintaxe, não silêncio.
-- A ordem `nome: tipo` é a do **corpo da classe**; dentro da action use
-  `tipo nome`. Escrever `private name: str = nome` dentro da action é erro, e a
+- A ordem `nome: tipo` é a do **corpo da classe**; dentro da funct use
+  `tipo nome`. Escrever `private name: str = nome` dentro da funct é erro, e a
   mensagem diz o conserto.
 
 ---
@@ -282,8 +281,8 @@ post(p.name)             # ERRO — name é private
 - Campos `nome: tipo` (ou `tipo nome`) sintetizam o construtor (1 arg por campo,
   na ordem); padrão torna opcional; campo criado no método via `self.x = …`.
 - Campo declarado no construtor: `private <tipo> <nome> = <valor>` (7.6.1).
-- Construtor próprio: `action __init__(self, …)`.
-- Métodos têm `self` como 1º parâmetro; `@static` não tem `self` e é chamado na
+- Construtor próprio: `funct __init__(self, …)`.
+- Métodos têm `self` como 1º parâmetro; `static` não tem `self` e é chamado na
   Entity.
 - Herança (inclusive múltipla) compartilha métodos; filho com campos gera o
   próprio construtor; `base(...)` chama o construtor do pai.

@@ -18,7 +18,7 @@ request.file(field: str, allowed: list = None) -> PoolFileUpload | Null
 
 ```
 @app.route("/upload", methods=cors.options(["POST"]))
-action upload() {
+funct upload() {
     foto = request.file("foto", allowed=[".jpg", ".png"])
     if (foto is Null) {
         return jsonify({"erro": "nenhum arquivo enviado"}), 400

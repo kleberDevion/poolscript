@@ -547,6 +547,8 @@ static void ast_json(FILE *f, const PSNode *n)
     ast_txt(f, "estilo", n->estilo, &virg);
     if (n->is_async)   { fputs(",\"async\":true", f); }
     if (n->is_private) { fputs(",\"private\":true", f); }
+    if (n->is_static)  { fputs(",\"static\":true", f); }
+    if (n->is_nonnull) { fputs(",\"nonnull\":true", f); }
     if (n->i2)         { fprintf(f, ",\"i2\":%d", n->i2); }
     ast_filho(f, "a", n->a, &virg);
     ast_filho(f, "b", n->b, &virg);

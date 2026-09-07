@@ -15,7 +15,7 @@ request.get_json() -> dict | list | Null
 
 ```
 @app.route("/usuario", methods=cors.options(["POST"]))
-action criar() {
+funct criar() {
     data = request.get_json()        # {"nome": "ana", "idade": 30}
     return jsonify({"criado": data["nome"]})
 }

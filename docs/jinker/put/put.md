@@ -11,7 +11,7 @@ model Perfil() {
 }
 
 @app.put("/perfil", model=Perfil)
-action troca() {
+funct troca() {
     # PUT substitui o recurso inteiro: o model garante que veio inteiro
     return jsonify({"trocou": request.get("nome")})
 }

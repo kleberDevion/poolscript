@@ -327,7 +327,7 @@ Precedência: `not` (4) é mais forte que `and` (3), que é mais forte que
 Isso vale para efeitos colaterais: no exemplo, `f()` só roda no último caso.
 
 ```ps
-action f() {
+funct f() {
     post("  f() rodou")
     return true
 }

@@ -37,7 +37,7 @@ Exemplos de coisas que vivem em headers, não no corpo:
 
 ```
 @app.route("/api/dado", methods=cors.options(["GET"]))
-action dado() {
+funct dado() {
     return jsonify({"ok": true}).header("X-Request-Id", "req-42")
 }
 ```
@@ -86,7 +86,7 @@ quem lê o arquivo é o `render()`; o header `Content-Disposition: attachment` �
 o que manda o navegador **baixar**:
 
 ```
-action baixar() {
+funct baixar() {
     return render("relatorios/vendas.csv")
         .header("Content-Disposition", "attachment; filename=\"vendas.csv\"")
 }
@@ -99,7 +99,7 @@ action baixar() {
 **Rastrear requisições com um ID nos logs:**
 
 ```
-action processar() {
+funct processar() {
     rid = request.get("request_id")
     # ... faz o trabalho ...
     return jsonify({"status": "ok"}).header("X-Request-Id", rid)

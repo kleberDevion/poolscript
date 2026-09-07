@@ -631,7 +631,8 @@ function assinatura(m) {
 }
 
 function itemDeMembro(m, deOnde) {
-  const priv = m.privado ? ' · private' : '';
+  const priv = (m.privado ? ' · private' : '')
+             + (m.estatica ? ' · static' : '') + (m.nonnull ? ' · nonnull' : '');
   const herd = deOnde && m.de && m.de !== deOnde ? ` · de ${m.de}` : '';
   const kind = m.kind === 'campo' ? CompletionItemKind.Field
              : m.kind === 'class' ? CompletionItemKind.Class
@@ -1052,6 +1053,10 @@ function completa(doc, p) {
     poe(b.nome, CompletionItemKind.Function, 'builtin · ' + assinatura({ nome: b.nome, params: b.params }), '3');
   }
   for (const k of META.keywords || []) poe(k, CompletionItemKind.Keyword, 'palavra-chave', '4');
+  /* `static` e `nonnull` NÃO são palavra reservada de propósito (valem por
+   * posição, só colados na cabeça da funct), então não vêm em META.keywords —
+   * e sem isto o editor jamais os ofereceria. */
+  for (const m of MODIFICADORES) poe(m, CompletionItemKind.Keyword, 'modificador de funct', '4');
   return itens;
 }
 
@@ -1125,6 +1130,27 @@ function nomeSob(doc, pos) {
  * "import jinker / 6 membros" — o 6 era a contagem de membros do tipo de
  * RETORNO; `request.get` saía sem prosa por procurar em docs/RequestProxy/. */
 function md(valor) { return { contents: { kind: MarkupKind.Markdown, value: valor } }; }
+
+/* Os modificadores COLADOS na cabeça da funct. Não são palavra reservada (o
+ * lexer os entrega como IDENT, e `static = 1` continua valendo), então tudo
+ * que o editor sabe sobre eles vem daqui — não de `META.keywords`. */
+const MODIFICADORES = ['static', 'nonnull', 'NonNull'];
+
+/* O token está na CABEÇA de uma declaração de funct? Anda pra frente na mesma
+ * linha atravessando os outros modificadores; se chegar em `funct` (ou nas
+ * grafias antigas), sim. É a mesma forma que o parser aceita, e é o que separa
+ * `static funct m()` de uma variável chamada `static`. */
+function ehCabecaDeFunct(doc, tok) {
+  const toks = tokensDe(doc).filter((t) => t.l0 === tok.l0 && t.c0 >= tok.c0 && t.n > 0);
+  const passa = ['public', 'private', 'async', 'str', 'int', 'flo', 'bool'];
+  for (const t of toks) {
+    if (t === tok) continue;
+    if (t.t === 'KW' && ['funct', 'action', 'reaction'].includes(t.v)) return true;
+    if (MODIFICADORES.includes(t.v) || (t.t === 'KW' && passa.includes(t.v))) continue;
+    return false;
+  }
+  return false;
+}
 
 /* O token do lexer sob o cursor: `[c0, c0+n)`, o PRIMEIRO caractere incluso.
  * (`dentroDeTextoLivre` usa `>` de propósito: o cursor logo antes de uma
@@ -1254,6 +1280,12 @@ conexao.onHover((p) => {
   const toksAqui = tokensDe(doc);
   const antes = tok ? toksAqui[toksAqui.indexOf(tok) - 1] : null;
   const aposPonto = !!(antes && antes.t === 'DOT' && antes.l0 === tok.l0);
+  /* `static`/`nonnull` chegam como IDENT (não são reservadas), então não
+   * passam pela porta de palavra-chave abaixo: sem esta exceção, o hover em
+   * cima do modificador colado devolvia nada. */
+  if (tok && MODIFICADORES.includes(tok.v) && !aposPonto && ehCabecaDeFunct(doc, tok)) {
+    return hoverDeKeyword(doc, tok);
+  }
   if (tok && tok.t === 'KW' && !aposPonto && !META.modulos[tok.v]) {
     if (META.tipos[tok.v]) {
       return md('```ps\n' + tok.v + '\n```\n\ntipo · ' + (META.tipos[tok.v] || []).length + ' métodos');
@@ -1273,7 +1305,8 @@ conexao.onHover((p) => {
     const dono = partes[partes.length - 1];
     const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
     const herd = m.de && m.de !== dono ? `\n\nherdado de \`${m.de}\`` : '';
-    return md('```ps\n' + (m.privado ? 'private ' : '') + dono + '.' + assinatura(m)
+    return md('```ps\n' + (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
+              + (m.nonnull ? 'nonnull ' : '') + dono + '.' + assinatura(m)
               + '\n```' + herd + (prosa ? '\n\n' + prosa : ''));
   }
 
@@ -1289,11 +1322,12 @@ conexao.onHover((p) => {
     const onde = 'linha ' + (b.linha + 1);
     if (b.kind === 'action') {
       /* a ordem dos modificadores é livre na linguagem; aqui sai a canônica
-       * da doc (6.4): tipo, async, action */
-      const cab = (b.tipo ? b.tipo + ' ' : '') + (b.async ? 'async ' : '') + 'action '
+       * da doc (6.4): visibilidade, static/nonnull, tipo, async, funct */
+      const cab = (b.estatica ? 'static ' : '') + (b.nonnull ? 'nonnull ' : '')
+                + (b.tipo ? b.tipo + ' ' : '') + (b.async ? 'async ' : '') + 'funct '
                 + assinatura({ nome: b.nome, params: b.params });
       const dec = decoradorDe(idx, b.nome, b.linha);
-      return md('```ps\n' + (dec ? dec + '\n' : '') + cab + '\n```\n\naction · declarada na ' + onde);
+      return md('```ps\n' + (dec ? dec + '\n' : '') + cab + '\n```\n\nfunct · declarada na ' + onde);
     }
     if (b.kind === 'parametro') {
       const esc = idx.escopos.find((s) => s.liga.includes(b));
@@ -1397,7 +1431,8 @@ conexao.onDocumentSymbol((p) => {
       children: e.membros.map((m) => ({
         name: m.nome,
         kind: m.kind === 'action' ? SymbolKind.Method : SymbolKind.Field,
-        detail: (m.privado ? 'private ' : '') + assinatura(m),
+        detail: (m.privado ? 'private ' : '') + (m.estatica ? 'static ' : '')
+                + (m.nonnull ? 'nonnull ' : '') + assinatura(m),
         range: faixa(m.linha, 0, m.coluna + m.nome.length),
         selectionRange: faixa(m.linha, m.coluna, m.nome.length),
       })),

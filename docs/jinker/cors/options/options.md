@@ -25,10 +25,10 @@ methods=cors.options()    # GET, POST, DELETE
 
 ```
 @app.route("/api/item", methods=cors.options(["POST"]))   # só POST
-action criar() { ... }
+funct criar() { ... }
 
 @app.route("/api/item", methods=cors.options(["GET", "DELETE"]))
-action ler_ou_apagar() { ... }
+funct ler_ou_apagar() { ... }
 ```
 
 ---
@@ -46,7 +46,7 @@ Pra rota de **um** método só, o verbo pode ir no nome e a lista some:
 
 ```
 @app.route("/api/login", methods=cors.options(["POST"]))
-action login() {
+funct login() {
     # só responde POST /api/login
     return jsonify({"ok": true})
 }

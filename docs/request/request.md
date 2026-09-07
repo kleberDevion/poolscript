@@ -74,7 +74,7 @@ post(resp2.status)               # 201, por exemplo
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
-conn.on_message(action(msg) { post(msg) })   # OBRIGATÓRIO pra ver o que chega
-# O uso de uma action/reaction dentro dos () do modulo e opcional, pois ele devolve sozinho
+conn.on_message(funct(msg) { post(msg) })   # OBRIGATÓRIO pra ver o que chega
+# O uso de uma funct dentro dos () do modulo e opcional, pois ele devolve sozinho
 conn.send({"author": "ana", "body": "oi"})
 ```

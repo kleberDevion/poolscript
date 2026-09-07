@@ -23,7 +23,7 @@ import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")  # 1. conecta
 
-conn.on_message(action(msg) { post(msg) })                   # 2. receber (ANTES de esperar)
+conn.on_message(funct(msg) { post(msg) })                    # 2. receber (ANTES de esperar)
 
 conn.send({"author": "ana", "body": "oi"})                   # 3. enviar
 

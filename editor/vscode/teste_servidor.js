@@ -241,7 +241,7 @@ async function main() {
     '    senha: str',
     '}',
     '@mapping.post("/x", model=Rota)',
-    'int async action entra(data) {',
+    'int async funct entra(data) {',
     '    if data == "" {',
     '        return jsonify({"ok": false})',
     '    }',
@@ -273,7 +273,7 @@ async function main() {
   {
     const m = await conversa(DELE_SRC, [
       hov(10, 8, col(8, 'if')),                 hov(11, 11, col(11, 'for')),
-      hov(12, 9, col(9, 'return')),             hov(13, 7, col(7, 'action')),
+      hov(12, 9, col(9, 'return')),             hov(13, 7, col(7, 'funct')),
       hov(14, 12, col(12, 'post')),             hov(15, 1, 0),
       hov(16, 7, col(7, 'data')),               hov(17, 7, col(7, 'entra')),
       hov(18, 2, col(2, 'Rota')),               hov(19, 9, col(9, 'jsonify')),
@@ -283,12 +283,12 @@ async function main() {
     conf('hover em `if` traz a secao da doc da linguagem', valor(m, 10).includes('Condicional'), valor(m, 10).slice(0, 120));
     conf('hover em `for` acha `for each` (dois tokens KW vizinhos)', valor(m, 11).includes('for each'), valor(m, 11).slice(0, 120));
     conf('hover em `return` acha a secao 6.3', valor(m, 12).includes('Retorno'), valor(m, 12).slice(0, 120));
-    conf('hover em `action` acha a secao 6.1', valor(m, 13).includes('Definição'), valor(m, 13).slice(0, 120));
+    conf('hover em `funct` acha a secao 6.1', valor(m, 13).includes('Definição'), valor(m, 13).slice(0, 120));
     conf('hover em `post` (builtin) traz a pagina do builtin', valor(m, 14).includes('post('), valor(m, 14).slice(0, 120));
     conf('hover na variavel diz o TIPO construido e a linha', valor(m, 15).includes('Jinker mapping') && valor(m, 15).includes('linha 2'), valor(m, 15));
     conf('hover no parametro diz de que action ele e', valor(m, 16).includes('parâmetro de `entra`'), valor(m, 16));
-    conf('hover na action mostra `int async action` e o decorador',
-         valor(m, 17).includes('int async action entra(data)') && valor(m, 17).includes('@mapping.post'), valor(m, 17));
+    conf('hover na funct mostra `int async funct` e o decorador',
+         valor(m, 17).includes('int async funct entra(data)') && valor(m, 17).includes('@mapping.post'), valor(m, 17));
     conf('hover no model lista os campos', valor(m, 18).includes('email: str(length=60)') && valor(m, 18).includes('senha: str'), valor(m, 18));
     conf('hover em nome vindo de `from` mostra a assinatura do modulo, nao "N membros"',
          valor(m, 19).includes('jinker.jsonify(') && !valor(m, 19).includes('membros'), valor(m, 19));
@@ -360,9 +360,19 @@ async function main() {
        ['str action g() {', '    return "a"', '}', 'v = g()', 'v.'], 4, undefined, ['upper'], []],
       ['`string s = "a"` + `s.` -> metodos de str (apelido de tipo, pela tabela do --metadata)',
        ['string s = "a"', 's.'], 1, undefined, ['upper'], []],
-      ['sem receptor: nomes do arquivo + import + BUILTINS + PALAVRAS-CHAVE',
-       ['import mail', 'total = 1', 'action soma(a) {', '    return a', '}', 't'], 5, undefined,
-       ['total', 'soma', 'mail', 'post', 'len', 'str', 'action', 'if', 'for'], []],
+      ['sem receptor: nomes do arquivo + import + BUILTINS + PALAVRAS-CHAVE + MODIFICADORES',
+       ['import mail', 'total = 1', 'funct soma(a) {', '    return a', '}', 't'], 5, undefined,
+       ['total', 'soma', 'mail', 'post', 'len', 'str', 'funct', 'action', 'if', 'for', 'static', 'nonnull'], []],
+      /* a reforma: `funct` e os modificadores COLADOS. `static`/`nonnull` não são
+       * palavra reservada, então nada disso vem de graça do --metadata. */
+      ["`static funct` numa Entity: o completion de `Tipo.` diz que e static",
+       ['Entity Mat() {', '    static funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
+       5, undefined, ['soma'], []],
+      ["`@static` (grafia antiga) marca o metodo igual ao modificador colado",
+       ['Entity Mat() {', '    @static', '    action soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
+       6, undefined, ['soma'], []],
+      ["`funct` do arquivo aparece no completion sem receptor",
+       ['funct minha(a) {', '    return a', '}', 'm'], 3, undefined, ['minha'], []],
       ['`self.` em reaction, dentro de `if`, campo `private str nome` do corpo e metodo HERDADO',
        ['class Base() {', '    action b(self) {', '        return 1', '    }', '}', 'class C(Base) {',
         '    private str nome = "a"', '    int n = 1', '    action __init__(self, x) {', '        self.x = x', '    }',
@@ -379,6 +389,40 @@ async function main() {
       conf(nome, faltam.length === 0 && sobram.length === 0,
            { voltou: L.slice(0, 10), faltam, sobram });
     }
+  }
+
+  /* ── 9d. os modificadores COLADOS (`static funct`, `nonnull funct`) ──────
+   *
+   * Eles não são palavra reservada: o lexer os entrega como IDENT, então não
+   * entram em `--metadata` nem passam pela porta de palavra-chave do hover.
+   * Tudo que o editor sabe deles é a exceção que confere se ali começa uma
+   * cabeça de funct — e é isso que estes três casos medem, incluindo o lado
+   * negativo: `static = 1` é uma variável, não um modificador. */
+  {
+    const MOD = [
+      'Entity Mat() {',
+      '    static funct soma(a, b) {',
+      '        return a + b',
+      '    }',
+      '}',
+      'nonnull funct exige(v) {',
+      '    return v',
+      '}',
+      'static = 1',
+      '',
+    ];
+    const m = await conversa(MOD.join('\n'),
+      [hov(30, 1, MOD[1].indexOf('static') + 2), hov(31, 5, 2),
+       hov(32, 8, 2), compl(33, 9, 0)]);
+    conf('hover em `static` colado acha a secao dos modificadores',
+         valor(m, 30).includes('static'), valor(m, 30).slice(0, 140));
+    conf('hover em `nonnull` colado acha a secao dos modificadores',
+         valor(m, 31).includes('nonnull'), valor(m, 31).slice(0, 140));
+    conf('hover em `static` que e VARIAVEL nao devolve a secao do modificador',
+         !valor(m, 32).includes('Entity'), valor(m, 32).slice(0, 140));
+    const L = rotulos(resp(m, 33));
+    conf('completion oferece `funct`, `static` e `nonnull`',
+         ['funct', 'static', 'nonnull'].every((k) => L.includes(k)), L.slice(0, 12));
   }
 
   /* ── 10. CLASSE, HERANÇA, `self` — nada disso funcionava ────────────────

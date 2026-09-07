@@ -103,7 +103,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `LookupError` | nome de codec ou de handler que não existe: `"a".encode("xyz")` → `unknown encoding: xyz` |
 | `UnicodeEncodeError` | caractere que não cabe no encoding pedido: `"é".encode("ascii")` |
 | `UnicodeDecodeError` | bytes que não formam texto válido no encoding pedido |
-| `RuntimeError` | `raise "texto"`; e o que é só desta linguagem e não tem par no Python: `acesso negado: … private`, `@NonNull`, `for each` sobre tipo que não itera |
+| `RuntimeError` | `raise "texto"`; e o que é só desta linguagem: `acesso negado: … private`, `nonnull`, `funct … e static` |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
 > **`catch` casa o NOME do tipo, não uma árvore.** Vindo do Python, a
@@ -155,7 +155,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 ```
 import request
 
-action buscar(url=str) {
+funct buscar(url=str) {
     try {
         r = request.get(url=url, timeout=5)
         return r.json()

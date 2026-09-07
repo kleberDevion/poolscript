@@ -21,7 +21,7 @@ Este mark down tem alguams specs da linguagem.
 8. [Unpacking (desempacotamento de tuplas)](#unpacking-desempacotamento-de-tuplas)
 9. [Operadores](#operadores)
 10. [Controle de fluxo](#controle-de-fluxo)
-11. [Funções: `action` / `reaction`](#funções-action--reaction)
+11. [Funções: `funct`](#funções-funct)
 12. [`async` / `await`](#async--await)
 13. [Geradores (`yield`)](#geradores-yield)
 14. [`try` / `catch` / `finally`](#try--catch--finally)
@@ -135,12 +135,12 @@ while true {
 ### Palavras reservadas não podem virar nome
 
 Como no Python, uma palavra reservada é recusada onde um nome seria **ligado** —
-variável, parâmetro, `action`, `Entity`, `model`, campo, variável de loop, de
+variável, parâmetro, `funct`, `Entity`, `model`, campo, variável de loop, de
 `catch`, de `global` e alvo de desempacotamento:
 
 ```
 if = 5                       # erro: 'if' é palavra reservada
-action f(while) { ... }      # erro: 'while' é palavra reservada
+funct f(while) { ... }       # erro: 'while' é palavra reservada
 for each return in xs { }    # erro: 'return' é palavra reservada
 ```
 

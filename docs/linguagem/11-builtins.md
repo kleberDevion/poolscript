@@ -25,7 +25,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `bytes`. `len(null)` → `0`. |
-| `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"action"`, `"type"`, `"generator"`). Igual ao método `x.type()`. |
+| `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"funct"`, `"type"`, `"generator"`). Igual ao método `x.type()`. |
 | `range` | `range(fim)` / `range(início, fim, passo=1)` | **lista** concreta de inteiros, `início` (inclusive) a `fim` (exclusive), de `passo` em `passo` (negativo conta pra trás). Aceita string numérica (`range("3")`) e trunca float. `passo=0` → erro. |
 
 ---
@@ -74,10 +74,10 @@ tipada, estão na seção 2.)
 | `filter` | `filter(lista, fn)` | nova lista só com os itens em que `fn` é verdadeiro. **A lista vem primeiro.** |
 
 ```ps
-action dobro(x) {
+funct dobro(x) {
     return x * 2
 }
-action par(x) {
+funct par(x) {
     return x % 2 == 0
 }
 
@@ -110,7 +110,7 @@ post(removeStart(l))  # 1   (e l == [2, 3, 4])
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `gather` | `gather(a, b, …)` | espera vários `async action` **concorrentes** e devolve os valores numa lista (na ordem). Valor comum passa direto. Aceita lista de futures. |
+| `gather` | `gather(a, b, …)` | espera vários `async funct` **concorrentes** e devolve os valores numa lista (na ordem). Valor comum passa direto. Aceita lista de futures. |
 | `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `null`. |
 | `id` | `id(x)` | identidade do valor como `int`. Para objetos, o endereço; para imediatos, o conteúdo bruto. O número em si não é estável entre execuções — use só pra comparar identidade. |
 

@@ -169,6 +169,12 @@ struct PSNode {
     /* ACTION_DECL / ENTITY_FIELD: marcado `private` (encapsulamento). NÃO é
      * serializado no diff de AST/bytecode — é metadado de acesso, não código. */
     int         is_private;
+    /* ACTION_DECL: modificadores COLADOS na cabeça (`static funct m(a)`,
+     * `nonnull funct f(v)`) — a forma da linguagem; os decoradores `@static`
+     * e `@NonNull` continuam valendo e chegam ao compilador por outro caminho
+     * (pendente_static / pendente_nonnull). */
+    int         is_static;
+    int         is_nonnull;
 };
 
 /* ── arena ──────────────────────────────────────────────────────────────── */

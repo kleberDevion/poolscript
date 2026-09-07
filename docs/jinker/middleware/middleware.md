@@ -1,12 +1,12 @@
 # `@app.middleware()` — verificação antes da rota
 
-Um **middleware** é uma verificação que roda **antes** da action de uma rota —
+Um **middleware** é uma verificação que roda **antes** da funct de uma rota —
 tipicamente pra checar autenticação. Se passar, a rota executa; se barrar, a
 requisição para no middleware com a resposta que ele devolver.
 
 ```
 @app.middleware()
-action nome() {
+funct nome() {
     # request disponível aqui
     # `pass` libera a rota; `return jsonify(...), 401` barra
 }
@@ -18,7 +18,7 @@ action nome() {
 
 ```
 @app.middleware()
-action verificar() {
+funct verificar() {
     token = request.get("token")
     if (not token) {
         return jsonify({"msg": "sem permissão"}), 401   # BARRA
@@ -27,9 +27,9 @@ action verificar() {
 }
 ```
 
-- **`pass`** — deixa a requisição seguir pra action da rota.
+- **`pass`** — deixa a requisição seguir pra funct da rota.
 - **`return jsonify(...), <status>`** — para aqui e devolve isso ao cliente
-  (a action da rota nem roda).
+  (a funct da rota nem roda).
 
 ---
 
@@ -41,13 +41,13 @@ protegidas passando `middleware=app.middleware`:
 ```
 # rota livre — sem middleware
 @app.route("/api/login", methods=cors.options(["POST"]))
-action login() {
+funct login() {
     return jsonify({"ok": true})
 }
 
 # rota protegida — o middleware roda primeiro
 @app.route("/api/dados", methods=cors.options(["GET"]), middleware=app.middleware)
-action dados() {
+funct dados() {
     return jsonify({"msg": "área protegida"})
 }
 ```
@@ -61,9 +61,9 @@ normalmente.
 | Forma | Quando usar |
 |---|---|
 | `middleware=app.middleware` | o único middleware da app, o do `@app.middleware()` |
-| `middleware=nome_da_action` | uma action qualquer, quando você quer mais de um |
+| `middleware=nome_da_funct` | uma funct qualquer, quando você quer mais de um |
 
-Nos dois casos a action é chamada **sem argumentos** — a requisição vem do
+Nos dois casos a funct é chamada **sem argumentos** — a requisição vem do
 `request`, igual numa rota — e o que ela devolve decide:
 
 | Devolve | Efeito |
@@ -78,7 +78,7 @@ Nos dois casos a action é chamada **sem argumentos** — a requisição vem do
 
 ```
 @app.middleware()
-action auth() {
+funct auth() {
     token = request.get("token")
     if (not token) {
         return jsonify({"erro": "não autorizado"}), 401

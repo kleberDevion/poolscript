@@ -15,7 +15,7 @@ request.header(key: str) -> str | Null
 
 ```
 @app.route("/api", methods=["GET"]) {
-    action api() {
+    funct api() {
         token = request.header("Authorization")   # "Bearer abc..." ou Null
         tipo  = request.header("content-type")     # mesma coisa que "Content-Type"
         return jsonify({"tem_token": token is not Null})

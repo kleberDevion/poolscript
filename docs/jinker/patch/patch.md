@@ -6,7 +6,7 @@ tem `methods=`: o verbo é o membro.
 
 ```ps
 @app.patch("/perfil/<id>")
-action remenda(id) {
+funct remenda(id) {
     # PATCH altera parte do recurso: o corpo traz só o que muda
     return jsonify({"id": id, "mudou": request.get_json()})
 }

@@ -39,7 +39,7 @@ post(errado)  # False
 import psodbc
 import hash
 
-action cadastrar(nome, email, senha) {
+funct cadastrar(nome, email, senha) {
     str senha_hash = hash.crypt(senha)
 
     psodbc.query(
@@ -50,7 +50,7 @@ action cadastrar(nome, email, senha) {
     )
 }
 
-action logar(email, senha) {
+funct logar(email, senha) {
     result = psodbc.query(
         base="banco.db",
         cmd=("SELECT * FROM @t WHERE email = ?", (email,)),
@@ -156,7 +156,7 @@ app = Jinker(__name__)
 cors(options=["POST", "GET"], permiser=["*/api", "allowed.all/Users-Agent"])
 
 @app.middleware()
-action auth() {
+funct auth() {
     token = request.get("token")
     if (not token) {
         return jsonify({"msg": "não autorizado"}), 401
@@ -169,7 +169,7 @@ action auth() {
 }
 
 @app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
-action login() {
+funct login() {
     data = request.get_json()
     email = data.get("email")
     senha = data.get("senha")
@@ -198,7 +198,7 @@ action login() {
 }
 
 @app.route("/api/perfil", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
-action perfil() {
+funct perfil() {
     return jsonify({"msg": "área protegida — token válido!"}), 200
 }
 

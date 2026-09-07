@@ -15,7 +15,7 @@ model Login() {
 }
 
 @app.post("/login", model=Login, auth=cors.origins())
-action entrar() {
+funct entrar() {
     # chegou aqui: é POST, a origem foi checada, e email/senha EXISTEM
     return jsonify({"ok": true, "email": request.get("email")})
 }

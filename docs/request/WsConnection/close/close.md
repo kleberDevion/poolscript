@@ -14,7 +14,7 @@ conn.close() -> None
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
-conn.on_message(action(msg) { post(msg) })
+conn.on_message(funct(msg) { post(msg) })
 
 # ... usa a conexão ...
 
@@ -27,7 +27,7 @@ conn.close()          # encerra quando terminar
 
 ```
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
-conn.on_message(action(msg) { post(f"\n{msg}") })
+conn.on_message(funct(msg) { post(f"\n{msg}") })
 
 while (true) {
     texto = input("")

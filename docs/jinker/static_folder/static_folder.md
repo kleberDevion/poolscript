@@ -96,7 +96,7 @@ app = Jinker(__name__, static_folder="frontend/dist")
 
 # a API responde em /api/...
 @app.route("/api/usuarios", methods=cors.options(["GET"]))
-action usuarios() {
+funct usuarios() {
     return jsonify([{"nome": "ana"}, {"nome": "leo"}])
 }
 

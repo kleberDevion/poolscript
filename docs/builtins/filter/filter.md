@@ -7,7 +7,7 @@ Nova lista só com os itens em que fn devolve verdadeiro. A LISTA vem primeiro.
 | nome | tipo | default | nota |
 |---|---|---|---|
 | `lista` | list | tup | — |  |
-| `fn` | action | — | recebe 1 argumento |
+| `fn` | funct | — | recebe 1 argumento |
 
 ## Retorno
 
@@ -20,7 +20,7 @@ list
 ## Exemplos
 
 ```ps
-action par(x) { return x % 2 == 0 }
+funct par(x) { return x % 2 == 0 }
 post(filter([1, 2, 3, 4], par))
 ```
 

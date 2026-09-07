@@ -206,12 +206,12 @@ O prefixo da mensagem (`random:`) é o nome do módulo como foi escrito no
 
 Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não
 executa** (só roda quando o arquivo é o principal — seção 5.7). Assim, importar
-um módulo traz as definições (actions, Entities, constantes) sem disparar o
+um módulo traz as definições (functs, Entities, constantes) sem disparar o
 ponto de entrada:
 
 ```ps
 # mymod.ps
-action saudar(nome) {
+funct saudar(nome) {
     return "ola " + nome
 }
 if __name__ == "main" {

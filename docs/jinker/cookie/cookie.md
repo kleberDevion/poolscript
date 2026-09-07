@@ -21,7 +21,7 @@ from jinker import request
 app = jinker.Jinker("auth")
 
 @app.route("/entrar", methods=["POST"])
-action entrar()
+funct entrar()
 {
     token = gera_token(request.get("usuario"))
     return jinker.JinkerResponse()
@@ -54,7 +54,7 @@ return jinker.JinkerResponse()
 
 ```ps
 @app.route("/eu")
-action eu()
+funct eu()
 {
     sid = request.cookie("sid")
     if sid == null
@@ -125,7 +125,7 @@ SEGREDO = os.getenv("APP_SECRET")       # nunca no código: no .env
 
 # LOGIN — valida a senha do seu jeito, emite o token, grava no cookie
 @app.post("/entrar")
-action entrar()
+funct entrar()
 {
     uid = valida_senha(request.get("usuario"), request.get("senha"))
     if uid is Null
@@ -139,7 +139,7 @@ action entrar()
 # ROTA PROTEGIDA — o cookie chega sozinho; `check` devolve Null pra token
 # adulterado, assinado com outro segredo, expirado ou ausente
 @app.get("/eu")
-action eu()
+funct eu()
 {
     dados = jwt.check(request.cookie("sid"), SEGREDO)
     if dados is Null

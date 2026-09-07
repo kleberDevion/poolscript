@@ -1750,7 +1750,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * no N_ENTITY_DECL, senão o `private` compilaria sem barrar nada. */
             if (!c->dentro_entity || u->eh_modulo || !nome_ja_existe(u, "self")) {
                 cerro_sx(c, n, "'%s %s %s = ...' declara campo do objeto: so vale dentro de uma "
-                               "action de Entity que recebe 'self'",
+                               "funct de Entity que recebe 'self'",
                          n->is_private ? "private" : "public",
                          n->texto2 ? n->texto2 : "tipo", n->texto ? n->texto : "nome");
                 return;
@@ -2888,8 +2888,22 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
 
 static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
 {
-    int32_t idx = novo_proto(c, n->texto ? n->texto : "<action>");
+    int32_t idx = novo_proto(c, n->texto ? n->texto : "<funct>");
     if (idx < 0) return -1;
+
+    /* Modificadores COLADOS na cabeça (`static funct m()`, `nonnull funct f()`)
+     * valem exatamente o que os decoradores antigos `@static` e `@NonNull`, que
+     * chegam aqui pelas pendências. Um OU: escrever os dois não é erro.
+     *
+     * E as pendências são CONSUMIDAS aqui: valem para ESTA funct, não para as
+     * declaradas dentro do corpo dela. `static` vazava — uma funct aninhada
+     * herdava a marca, e se o primeiro parâmetro dela se chamasse `self` ele
+     * era descartado: `inner() takes 0 positional arguments but 1 was given`,
+     * sem nenhuma relação visível com o `static` de fora. */
+    int meu_static  = c->pendente_static  || n->is_static;
+    int meu_nonnull = c->pendente_nonnull || n->is_nonnull;
+    c->pendente_static  = 0;
+    c->pendente_nonnull = 0;
 
     Unidade u;
     memset(&u, 0, sizeof(u));
@@ -2915,7 +2929,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     c->out->protos[idx].nparams = n->lista.n;
     c->out->protos[idx].ndefaults = ndef;
     c->out->protos[idx].eh_async = n->is_async;
-    c->out->protos[idx].eh_static = c->pendente_static;
+    c->out->protos[idx].eh_static = meu_static;
     if (n->lista.n > 0) {
         char **nomes = calloc((size_t)n->lista.n, sizeof(char *));
         if (!nomes) { cerro(c, "sem memoria", n); }
@@ -2947,10 +2961,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     marca_celulas(c, &u, n, n->b);
 
     /* Depois do prólogo: um default que avalie pra Null também é violação. */
-    if (c->pendente_nonnull) {
-        c->pendente_nonnull = 0;
-        emite(c, &u, OP_CHECK_NONNULL, n->lista.n);
-    }
+    if (meu_nonnull) emite(c, &u, OP_CHECK_NONNULL, n->lista.n);
 
     /* `int action` e `bool action` não deixam erro escapar: devolvem 500 e
      * False. Sai mais barato emitir o `try` implícito aqui do que ensinar o

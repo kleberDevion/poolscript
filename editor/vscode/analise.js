@@ -225,12 +225,26 @@ function membrosDaEntity(no) {
     poe({ nome: f.texto, kind: 'campo', tipo: f.texto2 || '',
           privado: !!f.private, linha: f.l - 1, coluna: f.c - 1 });
   }
-  for (const m of no.lista || []) {                       /* métodos */
-    if (m.k !== 'ActionDecl') continue;
+  /* Modificador vindo da GRAFIA ANTIGA: `@static` / `@NonNull` são nós irmãos
+   * (DecoratorStmt) na frente do método, não marcas dentro dele. Sem olhar pra
+   * eles, o mesmo método escrito das duas formas apareceria diferente no
+   * editor — um com a marca, o outro sem. */
+  let decStatic = false, decNonnull = false;
+  for (const m of no.lista || []) {
+    if (m.k === 'DecoratorStmt') {
+      const dn = m.a && (m.a.lista || []).length === 1 ? m.a.lista[0].texto : null;
+      if (dn === 'static') decStatic = true;
+      if (dn === 'NonNull') decNonnull = true;
+      continue;
+    }
+    if (m.k !== 'ActionDecl') continue;                   /* métodos */
     const ps = (m.lista || []).filter((p) => p && p.texto && p.texto !== 'self')
                               .map((p) => ({ nome: p.texto, default: null }));
     poe({ nome: m.texto, kind: 'action', params: ps, retorna: m.texto2 || null,
-          privado: !!m.private, linha: m.l - 1, coluna: m.c - 1 });
+          privado: !!m.private, estatica: !!m.static || decStatic,
+          nonnull: !!m.nonnull || decNonnull,
+          linha: m.l - 1, coluna: m.c - 1 });
+    decStatic = false; decNonnull = false;
     /* campos que o CORPO cria: `self.x = …` e `private str x = …` */
     const corpo = (no2) => {
       if (!no2 || typeof no2 !== 'object') return;
@@ -285,10 +299,11 @@ function escoposDaArvore(arvore) {
         if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1, no: p });
       }
       escopos.push(esc);
-      /* a action LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto (`no`):
-       * o hover mostra `int async action f(...)` lendo texto2/async dele, em
-       * vez de perder os modificadores que a árvore já tem. */
+      /* a funct LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto (`no`):
+       * o hover mostra `static int async funct f(...)` lendo texto2/async e os
+       * modificadores colados do nó, em vez de perder o que a árvore já tem. */
       dono.liga.push({ nome: no.texto, kind: 'action', tipo: no.texto2 || null, async: !!no.async,
+                       estatica: !!no.static, nonnull: !!no.nonnull,
                        linha: no.l - 1, no,
                        params: (no.lista || []).filter((p) => p && p.texto !== 'self')
                                                .map((p) => ({ nome: p.texto, default: null })) });

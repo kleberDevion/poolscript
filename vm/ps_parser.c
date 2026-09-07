@@ -146,6 +146,53 @@ static int checa_op(P *p, const char *op)
     return t->type == T_OP && t->texto && strcmp(t->texto, op) == 0;
 }
 
+/* `funct` e o nome da funcao na linguagem. `action` e `reaction` sao as
+ * grafias antigas e continuam valendo em todo lugar — sao a MESMA declaracao
+ * (N_ACTION_DECL), so o nome que mudou. */
+static int eh_kw_funct(PSToken *t)
+{
+    return t->type == T_KW && t->texto
+        && (strcmp(t->texto, "funct") == 0
+         || strcmp(t->texto, "action") == 0 || strcmp(t->texto, "reaction") == 0);
+}
+
+/* `static` e `nonnull` COLADOS na declaracao: `static funct m(a)`,
+ * `private nonnull int funct f(v)`. Valem por POSICAO — so na cabeca, antes
+ * de `funct` — entao NAO viram palavra reservada: variavel chamada `static`
+ * continua valendo. `NonNull` casa junto, que e como o decorador se escreve. */
+static int eh_mod_funct(PSToken *t)
+{
+    if (!t->texto) return 0;
+    if (t->type != T_KW && t->type != T_IDENT && t->type != T_IDENT_UPPER) return 0;
+    return strcmp(t->texto, "static") == 0 || strcmp(t->texto, "nonnull") == 0
+        || strcmp(t->texto, "NonNull") == 0;
+}
+
+static int eh_tipo_kw(PSToken *t);
+
+/* A CABECA de uma declaracao de funcao, olhando a partir de `off`:
+ *
+ *     [public|private] {async | <tipo> | static|nonnull}* funct|action|reaction
+ *
+ * A ordem dos modificadores e do usuario. Devolve o indice do `funct` (>= off)
+ * ou -1 se ali nao comeca uma funcao. Um so lugar sabe a forma da cabeca: os
+ * quatro pontos que precisavam dela tinham copias a mao, e a que esquecia um
+ * modificador deixava a declaracao virar statement solto, calada. */
+static int cabeca_de_funct(P *p, int off)
+{
+    int j = off;
+    PSToken *mk = espia(p, j);
+    if (mk->type == T_KW && mk->texto
+            && (strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0)) j++;
+    for (;;) {
+        mk = espia(p, j);
+        if ((mk->type == T_KW && mk->texto && strcmp(mk->texto, "async") == 0)
+                || eh_tipo_kw(mk) || eh_mod_funct(mk)) { j++; continue; }
+        break;
+    }
+    return eh_kw_funct(espia(p, j)) ? j : -1;
+}
+
 static int aceita(P *p, PSTokType t)
 {
     if (checa(p, t)) { p->pos++; return 1; }
@@ -624,10 +671,9 @@ static PSNode *primario(P *p)
                 n->texto = dup_tok(p, tt);         /* string com o nome do tipo */
                 return n;
             }
-            /* lambda: `action(params) { ... }` como expressão */
-            if ((strcmp(t->texto, "action") == 0 || strcmp(t->texto, "reaction") == 0)
-                    && espia(p, 1)->type == T_LPAREN) {
-                p->pos += 2;                       /* action ( */
+            /* lambda: `funct(params) { ... }` como expressão */
+            if (eh_kw_funct(t) && espia(p, 1)->type == T_LPAREN) {
+                p->pos += 2;                       /* funct ( */
                 PSNode *n = ps_node_novo(p->arena, N_LAMBDA_EXPR, t->line, t->col);
                 if (!n) return NULL;
                 while (!checa(p, T_RPAREN)) {
@@ -1908,8 +1954,8 @@ static PSNode *for_stmt(P *p)
 static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
 {
     PSToken *t = atual(p);
-    p->pos++;                                  /* action / reaction */
-    const char *nome = exige_nome(p, "action");
+    p->pos++;                                  /* funct / action / reaction */
+    const char *nome = exige_nome(p, "funct");
     if (FALHOU(p)) return NULL;
 
     PSNode *n = ps_node_novo(p->arena, N_ACTION_DECL, t->line, t->col);
@@ -1918,7 +1964,7 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
     n->texto2 = tipo_retorno;
     n->is_async = is_async;
 
-    if (!exige(p, T_LPAREN, "faltou '(' na declaracao da action")) return NULL;
+    if (!exige(p, T_LPAREN, "faltou '(' na declaracao da funct")) return NULL;
     if (!checa(p, T_RPAREN)) {
         for (;;) {
             PSToken *pt = atual(p);
@@ -1945,7 +1991,7 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
             if (checa(p, T_RPAREN)) break;   /* vírgula final */
         }
     }
-    if (!exige(p, T_RPAREN, "faltou ')' na declaracao da action")) return NULL;
+    if (!exige(p, T_RPAREN, "faltou ')' na declaracao da funct")) return NULL;
     while (checa(p, T_NEWLINE)) p->pos++;      /* `{` pode vir na linha seguinte */
     n->b = bloco(p);
     if (FALHOU(p)) return NULL;
@@ -2048,7 +2094,7 @@ static PSNode *statement(P *p)
         if ((n1->type == T_IDENT || n1->type == T_IDENT_UPPER)
                 && n2->type == T_LPAREN) {
             perro(p, "'def' nao existe nesta linguagem; a funcao se declara com"
-                     " 'action' (ou 'reaction'): action nome(args) { ... }", t);
+                     " 'funct': funct nome(args) { ... }", t);
             return NULL;
         }
     }
@@ -2213,7 +2259,7 @@ static PSNode *statement(P *p)
                 if (FALHOU(p)) return NULL;
                 if (ps_vec_push(p->arena, &n->lista, d) != 0) return NULL;
             } else if (mt->type == T_KW && mt->texto
-                       && (strcmp(mt->texto,"action")==0 || strcmp(mt->texto,"reaction")==0
+                       && (eh_kw_funct(mt)
                         || strcmp(mt->texto,"async")==0
                         /* `int action f()` — o tipo aqui é RETORNO, e depois
                          * dele vem sempre outra palavra da linguagem. Sem esta
@@ -2223,6 +2269,12 @@ static PSNode *statement(P *p)
                          * existia — `self.x` dava AttributeError sem uma linha
                          * de aviso. */
                         || (eh_tipo_kw(mt) && espia(p, 1)->type == T_KW))) {
+                PSNode *a = statement(p);
+                if (FALHOU(p)) return NULL;
+                if (a) a->is_private = membro_priv;
+                if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
+            } else if (eh_mod_funct(mt) && cabeca_de_funct(p, 0)) {
+                /* membro que começa por modificador colado: `static funct m()` */
                 PSNode *a = statement(p);
                 if (FALHOU(p)) return NULL;
                 if (a) a->is_private = membro_priv;
@@ -2283,13 +2335,13 @@ static PSNode *statement(P *p)
                     f->a = expressao(p);
                     if (FALHOU(p)) return NULL;
                 } else {
-                    perro(p, "dentro de Entity entra 'action', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
+                    perro(p, "dentro de Entity entra 'funct', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
                     return NULL;
                 }
                 f->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else {
-                perro(p, "dentro de Entity entra 'action', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
+                perro(p, "dentro de Entity entra 'funct', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
                 return NULL;
             }
             pula_indent_solto(p);
@@ -2441,17 +2493,7 @@ static PSNode *statement(P *p)
              * virava um statement solto SEM decorator, a rota nunca era
              * registrada, e o cliente recebia 404 — sem um aviso sequer. */
             PSToken *nt = atual(p);
-            int eh_action = 0;
-            {
-                int j = 0;
-                PSToken *mk = espia(p, 0);
-                if (mk->type == T_KW && mk->texto
-                        && (strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0)) j++;
-                while ((mk = espia(p, j))->type == T_KW && mk->texto
-                        && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw(mk))) j++;
-                eh_action = (mk->type == T_KW && mk->texto
-                             && (strcmp(mk->texto, "action") == 0 || strcmp(mk->texto, "reaction") == 0));
-            }
+            int eh_action = (cabeca_de_funct(p, 0) >= 0);
             /* @app.route(...) class Nome(): ... — handler baseado em classe.
              * O decorador captura a classe (com prefixo private/public opcional)
              * como bloco; o compilador enxerga a action dentro dela. */
@@ -2813,35 +2855,31 @@ static PSNode *statement(P *p)
     if (checa_kw(p, "for"))   return for_stmt(p);
     if (checa_kw(p, "return")) return return_stmt(p);
 
-    /* action/reaction com modificadores em QUALQUER ordem (a ordem é do usuário):
-     * [public|private] {async|tipo}* action/reaction — ex: `int async reaction`,
-     * `public async reaction`, `async int action`, `private reaction`... */
+    /* funct com modificadores em QUALQUER ordem (a ordem é do usuário):
+     * [public|private] {async|tipo|static|nonnull}* funct — ex: `int async funct`,
+     * `public async funct`, `static funct`, `private nonnull int funct`... */
     {
-        int off = 0, is_priv = -1;
+        int is_priv = -1;
         PSToken *m0 = espia(p, 0);
         if (m0->type == T_KW && m0->texto
-                && (strcmp(m0->texto, "public") == 0 || strcmp(m0->texto, "private") == 0)) {
+                && (strcmp(m0->texto, "public") == 0 || strcmp(m0->texto, "private") == 0))
             is_priv = (strcmp(m0->texto, "private") == 0);
-            off = 1;
-        }
-        int j = off;
-        PSToken *mk;
-        while ((mk = espia(p, j))->type == T_KW && mk->texto
-                && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw(mk))) j++;
-        PSToken *ap = espia(p, j);
-        if (ap->type == T_KW && ap->texto
-                && (strcmp(ap->texto, "action") == 0 || strcmp(ap->texto, "reaction") == 0)) {
-            if (off) p->pos++;                 /* consome public/private */
-            int is_async = 0; const char *tipo = NULL;
+        if (cabeca_de_funct(p, 0) >= 0) {
+            if (is_priv >= 0) p->pos++;        /* consome public/private */
+            int is_async = 0, eh_static = 0, eh_nonnull = 0; const char *tipo = NULL;
             PSToken *cur;
-            while ((cur = atual(p))->type == T_KW && cur->texto
-                    && (strcmp(cur->texto, "async") == 0 || eh_tipo_kw(cur))) {
-                if (strcmp(cur->texto, "async") == 0) is_async = 1;
-                else tipo = dup_tok(p, cur);
+            for (;;) {
+                cur = atual(p);
+                if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "async") == 0) is_async = 1;
+                else if (eh_tipo_kw(cur)) tipo = dup_tok(p, cur);
+                else if (eh_mod_funct(cur)) {
+                    if (strcmp(cur->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
+                } else break;
                 p->pos++;
             }
             PSNode *ad = action_decl(p, is_async, tipo);
             if (ad && is_priv >= 0) ad->is_private = is_priv;
+            if (ad) { ad->is_static = eh_static; ad->is_nonnull = eh_nonnull; }
             return ad;
         }
 
@@ -2858,6 +2896,12 @@ static PSNode *statement(P *p)
          * tem `async` (que nunca declara variável) ou se o nome vem seguido
          * de `(`, que declaração nenhuma tem. A mensagem devolve a linha
          * montada com os modificadores que a pessoa escreveu. */
+        int off = (is_priv >= 0) ? 1 : 0;
+        int j = off;
+        PSToken *mk;
+        while ((mk = espia(p, j))->type == T_KW && mk->texto
+                && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw(mk))) j++;
+        PSToken *ap = espia(p, j);
         if (j > off && (ap->type == T_IDENT || ap->type == T_IDENT_UPPER)) {
             int tem_async = 0;
             for (int k = off; k < j; k++)
@@ -2872,7 +2916,7 @@ static PSNode *statement(P *p)
                 char m[240];
                 const char *nome = ap->texto ? ap->texto : "?";
                 snprintf(m, sizeof(m),
-                         "faltou 'action' (ou 'reaction') antes de '%.40s': %saction %.40s(...)",
+                         "faltou 'funct' antes de '%.40s': %sfunct %.40s(...)",
                          nome, mods, nome);
                 perro(p, m, ap);
                 return NULL;
@@ -2901,7 +2945,7 @@ static PSNode *statement(P *p)
                     && nmt->type == T_COLON) {
                 char m[240];
                 snprintf(m, sizeof(m),
-                         "'%s nome: tipo' so vale no corpo da Entity — dentro de uma action escreva "
+                         "'%s nome: tipo' so vale no corpo da Entity — dentro de uma funct escreva "
                          "'%s <tipo> %s = <valor>'",
                          m0->texto, m0->texto, tt->texto ? tt->texto : "nome");
                 perro(p, m, tt);
@@ -2921,7 +2965,7 @@ static PSNode *statement(P *p)
                 const char *nome = exige_nome(p, "campo");
                 if (FALHOU(p)) return NULL;
                 if (!checa_op(p, "=")) {
-                    perro(p, "campo declarado dentro de action precisa de '=' e um valor", atual(p));
+                    perro(p, "campo declarado dentro de funct precisa de '=' e um valor", atual(p));
                     return NULL;
                 }
                 p->pos++;
@@ -2938,7 +2982,7 @@ static PSNode *statement(P *p)
              * (classe, action/reaction, campo) já retornaram acima. */
             char m[200];
             snprintf(m, sizeof(m),
-                     "'%s' so vale antes de class/Entity, de action/reaction ou de "
+                     "'%s' so vale antes de class/Entity, de funct ou de "
                      "'<tipo> <nome> = <valor>'", m0->texto);
             perro(p, m, m0);
             return NULL;
@@ -2950,17 +2994,14 @@ static PSNode *statement(P *p)
      * um NOME — `list(x)`, `json.parse(s)`, `str(n)` como statement continuam
      * expressao (chamada/modulo), como o ramo de expressao ja tratava. */
     if (eh_tipo_kw_decl(t)
-            && ((espia(p, 1)->type == T_KW && espia(p, 1)->texto
-                 && (strcmp(espia(p, 1)->texto, "action") == 0
-                     || strcmp(espia(p, 1)->texto, "reaction") == 0))
+            && (eh_kw_funct(espia(p, 1))
                 || espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
         PSToken *nx = espia(p, 1);
-        if (nx->type == T_KW && nx->texto
-                && (strcmp(nx->texto, "action") == 0 || strcmp(nx->texto, "reaction") == 0)) {
-            /* `char action` não existe: só `int action` e `bool action`.
+        if (eh_kw_funct(nx)) {
+            /* `char funct` não existe: só `int funct` e `bool funct`.
              * Aceitar calado deixaria o tipo de retorno ser ignorado. */
             if (!eh_tipo_kw(t)) {
-                perro(p, "so 'int action' e 'bool action' existem", t);
+                perro(p, "so 'int funct' e 'bool funct' existem", t);
                 return NULL;
             }
             const char *tipo = dup_tok(p, t);

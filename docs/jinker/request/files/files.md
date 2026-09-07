@@ -18,7 +18,7 @@ request.files(field: str, allowed: list = None) -> list[PoolFileUpload]
 
 ```
 @app.route("/galeria", methods=cors.options(["POST"]))
-action galeria() {
+funct galeria() {
     fotos = request.files("fotos", allowed=[".jpg", ".png"])
     if (len(fotos) == 0) {
         return jsonify({"erro": "envie ao menos uma foto"}), 400

@@ -1,12 +1,12 @@
 # `@app.route(path, methods=None, auth=None, middleware=None, model=None)`
 
-Registra uma **rota**: liga um caminho de URL à `action` declarada logo abaixo
-do decorador. Quando alguém acessa esse caminho, o jinker chama a action e usa
+Registra uma **rota**: liga um caminho de URL à `funct` declarada logo abaixo
+do decorador. Quando alguém acessa esse caminho, o jinker chama a funct e usa
 o que ela retorna como resposta.
 
 ```
 @app.route(path, methods=..., auth=..., middleware=...)
-action nome_da_rota() {
+funct nome_da_rota() {
     # request disponível aqui; return vira a resposta
 }
 ```
@@ -16,8 +16,8 @@ action nome_da_rota() {
 | `path` | `str` | — | o path da URL (ex: `"/api/hello"`) |
 | `methods` | lista | todos do `cors` | métodos HTTP aceitos — use [`cors.options([...])`](../cors/options/options.md) |
 | `auth` | lista | origens do `cors` | checagem de origem — use [`cors.origins()`](../cors/origins/origins.md) |
-| `middleware` | função | nenhum | roda antes da action (ver [middleware](../middleware/middleware.md)) |
-| `model` | `model` | nenhum | valida o corpo JSON **antes** da action; torto vira `422` |
+| `middleware` | função | nenhum | roda antes da funct (ver [middleware](../middleware/middleware.md)) |
+| `model` | `model` | nenhum | valida o corpo JSON **antes** da funct; torto vira `422` |
 
 ---
 
@@ -37,12 +37,12 @@ model Login() {
 }
 
 @app.post("/login", model=Login, auth=cors.origins())
-action entrar() {
+funct entrar() {
     return jsonify({"ok": true, "email": request.get("email")})
 }
 
 @app.get("/perfil")
-action perfil() {
+funct perfil() {
     return jsonify({"quem": "ana"})
 }
 ```
@@ -69,11 +69,11 @@ está errada".
 
 ---
 
-## `model=` — o corpo validado antes da action
+## `model=` — o corpo validado antes da funct
 
 A linguagem já tem [`model`](../../linguagem/08-model-e-enum.md) e o `==` que
 valida um dict contra ele. Passar o model na rota liga isso na porta de
-entrada: o corpo é conferido **antes** de a action rodar, e corpo torto vira
+entrada: o corpo é conferido **antes** de a funct rodar, e corpo torto vira
 `422` dizendo qual campo e por quê.
 
 ```ps
@@ -83,7 +83,7 @@ model Usuario() {
 }
 
 @app.route("/user", methods=["POST"], model=Usuario)
-action cria()
+funct cria()
 {
     # chegou aqui: nome e idade EXISTEM e são do tipo certo.
     # Nenhum `if` de validação neste corpo.
@@ -95,7 +95,7 @@ O que o cliente recebe:
 
 | corpo enviado | resposta |
 |---|---|
-| `{"nome": "ana", "idade": 30}` | `200` — a action rodou |
+| `{"nome": "ana", "idade": 30}` | `200` — a funct rodou |
 | `{"nome": "ana"}` | `422` · `campo 'idade': faltando` |
 | `{"nome": "ana", "idade": "x"}` | `422` · `campo 'idade': esperava int, veio str` |
 | `{"nome": "<21 letras>", "idade": 1}` | `422` · `campo 'nome': no maximo 20 caracteres, veio 21` |
@@ -114,19 +114,19 @@ Rota sem `model=` não muda em nada.
 
 ---
 
-## A action é capturada automaticamente
+## A funct é capturada automaticamente
 
-Você **não** envolve a action em chaves extras nem a chama. O `@app.route(...)`
-pega a próxima `action` como o handler da rota:
+Você **não** envolve a funct em chaves extras nem a chama. O `@app.route(...)`
+pega a próxima `funct` como o handler da rota:
 
 ```
 @app.route("/", methods=cors.options(["GET"]))
-action inicio() {
+funct inicio() {
     return jsonify({"msg": "olá"})
 }
 ```
 
-A action **não recebe parâmetros** — `request` já está disponível dentro dela
+A funct **não recebe parâmetros** — `request` já está disponível dentro dela
 de graça. E você nunca escreve `inicio()`: o jinker chama quando a URL `/` é
 acessada.
 
@@ -147,12 +147,12 @@ acessada.
 @app.route("/user/<id>", methods=cors.options(["GET"]))     # /user/42
 ```
 
-Pegue o valor dentro da action com
+Pegue o valor dentro da funct com
 [`request.path_param("id")`](../request/path_param/path_param.md):
 
 ```
 @app.route("/user/<id>", methods=cors.options(["GET"]))
-action perfil() {
+funct perfil() {
     id = request.path_param("id")
     return jsonify({"user_id": id})
 }
@@ -173,7 +173,7 @@ action perfil() {
     methods=cors.options(["POST"]),   # só POST
     auth=cors.origins()               # só origens configuradas no cors(...)
 )
-action login() {
+funct login() {
     return jsonify({"ok": true})
 }
 ```
@@ -193,7 +193,7 @@ RFC 9110 manda e serve pra quem só quer checar existência/tamanho:
 
 ```
 @app.route("/relatorio.pdf", methods=cors.options(["GET"]))
-action relatorio() {
+funct relatorio() {
     return render("arquivos/relatorio.pdf")
 }
 ```
@@ -211,7 +211,7 @@ requisição HEAD, use [`request.head()`](../../request/head/head.md).
 
 ---
 
-## O que a action pode retornar
+## O que a funct pode retornar
 
 Ver [`JinkerResponse`](../JinkerResponse/JinkerResponse.md) para a tabela
 completa. Resumo:

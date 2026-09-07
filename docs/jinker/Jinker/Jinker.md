@@ -116,7 +116,7 @@ app = Jinker(__name__, oauth={poolip: true, rate: 100, bloq: 1})
 cors(options=["GET", "POST"], origins=["https://meusite.com"])
 
 @app.route("/api/status", methods=cors.options(["GET"]))
-action status() {
+funct status() {
     return jsonify({"online": true})
 }
 

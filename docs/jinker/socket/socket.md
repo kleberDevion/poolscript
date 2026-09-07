@@ -1,12 +1,12 @@
 # `@app.socket(path=None, channel=false)`
 
 Registra um handler de **WebSocket** — conexão persistente de mão-dupla, boa
-pra chat, notificações, dados ao vivo. A `reaction`/`action` logo abaixo roda
+pra chat, notificações, dados ao vivo. A `funct` logo abaixo roda
 **a cada mensagem recebida** naquela conexão.
 
 ```
 @app.socket(path, channel=true)
-reaction nome() {
+funct nome() {
     # request disponível; roda a cada mensagem que chega
 }
 ```
@@ -22,7 +22,7 @@ na **sala** = valor do parâmetro. `/chat/geral` → sala `"geral"`.
 
 ```
 @app.socket("/chat/<sala>", channel=true)
-reaction mensagem() {
+funct mensagem() {
     sala = request.path_param("sala")     # "geral"
     msg  = request.get_json()             # a mensagem que chegou (dict)
 
@@ -60,7 +60,7 @@ String sai crua; dict/lista viram JSON.
 
 ```
 @app.socket("/eco")
-reaction eco() {
+funct eco() {
     return "recebi: " + request.text()      # volta só pra quem mandou
 }
 ```
@@ -92,7 +92,7 @@ Do outro lado, conecta com `request.ws_connect` (lib `request`) e registra
 import request
 
 conn = request.ws_connect("ws://localhost:8081/chat/geral")
-conn.on_message(action(msg) { post(msg) })   # OBRIGATÓRIO pra ver mensagens
+conn.on_message(funct(msg) { post(msg) })   # OBRIGATÓRIO pra ver mensagens
 conn.send({"author": "ana", "body": "oi"})
 ```
 

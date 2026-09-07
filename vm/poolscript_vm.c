@@ -2099,7 +2099,7 @@ static PyObject *value_para_py(const Value *v)
         case V_BOOL:   return PyBool_FromLong(v->as.b);
         case V_INT:    return PyLong_FromLongLong((long long)v->as.i);
         case V_FLOAT:  return PyFloat_FromDouble(v->as.d);
-        case V_FUNC:   return PyUnicode_FromFormat("<action #%d>", v->as.proto);
+        case V_FUNC:   return PyUnicode_FromFormat("<funct #%d>", v->as.proto);
         case V_NATIVE: return PyUnicode_FromString("<builtin>");
         case V_TIPO:   return PyUnicode_FromString(NOME_TIPO[v->as.i]);
         case V_UNSET:  Py_RETURN_NONE;
@@ -2607,7 +2607,7 @@ static void escreve_valor(const Value *v, int dentro)
             fputs(fb, stdout);
             break;
         }
-        case V_FUNC:   printf("<action #%d>", v->as.proto); break;
+        case V_FUNC:   printf("<funct #%d>", v->as.proto); break;
         case V_NATIVE: fputs("<builtin>", stdout); break;
         case V_TIPO:   fputs(NOME_TIPO[v->as.i], stdout); break;
         case V_UNSET:  fputs("Null", stdout); break;
@@ -2838,7 +2838,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
         case V_INT:    return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "%lld", (long long)v->as.i));
         case V_FLOAT:
             return txt_put(t, tmp, float_para_texto(tmp, sizeof(tmp), v->as.d));
-        case V_FUNC:   return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<action #%d>", v->as.proto));
+        case V_FUNC:   return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<funct #%d>", v->as.proto));
         case V_NATIVE: return txt_put(t, "<builtin>", 9);
         case V_TIPO:   return txt_put(t, NOME_TIPO[v->as.i], (int)strlen(NOME_TIPO[v->as.i]));
         case V_UNSET:  return txt_put(t, "Null", 4);
@@ -3344,7 +3344,7 @@ static const char *nome_do_tipo_valor(Value v)
         case V_BOOL:               t = "bool";   break;
         case V_INT:                t = "int";    break;
         case V_FLOAT:              t = "flo";    break;
-        case V_FUNC: case V_NATIVE:t = "action"; break;
+        case V_FUNC: case V_NATIVE:t = "funct"; break;
         case V_TIPO:               t = "type";  break;
         case V_OBJ:
             switch (v.as.obj->type) {
@@ -3360,7 +3360,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_CLOSURE:
                 case OBJ_BOUND:
                 case OBJ_NATIVA:
-                case OBJ_METODO_NAT: t = "action"; break;
+                case OBJ_METODO_NAT: t = "funct"; break;
                 case OBJ_MODULO:     t = "module"; break;
                 case OBJ_MODEL:      t = "PoolModel"; break;
                 case OBJ_ENUM:       t = "enum";   break;
@@ -6073,7 +6073,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
         case V_BOOL:                t = "bool";   break;
         case V_INT:                 t = "int";    break;
         case V_FLOAT:               t = "flo";    break;
-        case V_FUNC: case V_NATIVE: t = "action"; break;
+        case V_FUNC: case V_NATIVE: t = "funct"; break;
         case V_TIPO:                t = "type";  break;
         case V_OBJ:
             switch (alvo.as.obj->type) {
@@ -6089,7 +6089,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_CLOSURE:
                 case OBJ_BOUND:
                 case OBJ_NATIVA:
-                case OBJ_METODO_NAT:  t = "action"; break;
+                case OBJ_METODO_NAT:  t = "funct"; break;
                 case OBJ_MODULO:      t = "module"; break;
                 case OBJ_MODEL:       t = "PoolModel"; break;
                 case OBJ_ENUM:        t = "enum";   break;
@@ -20098,11 +20098,11 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
              * `self` num metodo que por definicao nao tem self */
             if (pb->eh_static)
                 snprintf(vm->erro, sizeof(vm->erro),
-                         "action '%s' e @static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                         "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
                          pb->nome ? pb->nome : "?", pb->nome ? pb->nome : "?");
             else
                 snprintf(vm->erro, sizeof(vm->erro),
-                         "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                         "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                          pb->nome ? pb->nome : "?");
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
             return -1;
@@ -21013,7 +21013,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
 
             Proto *pk = &vm->protos[proto_kw];
-            if (!pk->param_nomes) ERRO(vm, "action sem nomes de parametro");
+            if (!pk->param_nomes) ERRO(vm, "funct sem nomes de parametro");
             /* Método de instância (bound) chamado por nome também exige `self`
              * no slot 0 — senão a instância cairia no 1º parâmetro real. Mesma
              * regra do OP_CALL e do interpretador. */
@@ -21021,10 +21021,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     || strcmp(pk->param_nomes[0], "self") != 0)) {
                 if (pk->eh_static)
                     ERRO_TF(vm, "RuntimeError",
-                            "action '%s' e @static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                            "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
                             pk->nome ? pk->nome : "?", pk->nome ? pk->nome : "?");
                 ERRO_TF(vm, "RuntimeError",
-                        "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                        "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                         pk->nome ? pk->nome : "?");
             }
 
@@ -21204,10 +21204,10 @@ ERRO_TF(vm, "TypeError",
                         || strcmp(np->param_nomes[0], "self") != 0) {
                     if (np->eh_static)
                         ERRO_TF(vm, "RuntimeError",
-                                "action '%s' e @static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                                "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
                                 np->nome ? np->nome : "?", np->nome ? np->nome : "?");
                     ERRO_TF(vm, "RuntimeError",
-                            "action '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                            "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
                 }
                 if (n + 1 > np->nparams)
@@ -22962,7 +22962,7 @@ ERRO_TF(vm, "TypeError",
                 const char *pn = (p->param_nomes && k < p->nparams && p->param_nomes[k])
                                ? p->param_nomes[k] : "?";
                 snprintf(vm->erro, sizeof(vm->erro),
-                         "@NonNull: parametro '%s' em '%s' nao pode ser Null",
+                         "nonnull: parametro '%s' em '%s' nao pode ser Null",
                          pn, p->nome ? p->nome : "?");
                 snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                 goto erro_runtime;

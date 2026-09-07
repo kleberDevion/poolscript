@@ -88,7 +88,7 @@ Entity Produto {
 app = Jinker(__name__)
 
 @app.route("/api/produto", auth=cors.permiser(), methods=cors.options(["GET"]))
-action produto() {
+funct produto() {
     p = Produto(nome="Caneca", preco=29.90)
     return jsonify(asdict(p)), 200
 }

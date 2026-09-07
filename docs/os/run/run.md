@@ -76,7 +76,7 @@ o processo nem chega a rodar. Trate com `try`/`catch`:
 ```
 import os
 
-action versao_de(programa) {
+funct versao_de(programa) {
     try {
         return os.run([programa, "--version"], capture=true)
     } catch (IOError e) {

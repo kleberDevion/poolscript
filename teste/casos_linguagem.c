@@ -326,7 +326,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "        private name: str = nome\n"
   "    }\n"
   "}\n",
-  "", "dentro de uma action escreva 'private <tipo> name = <valor>'", 2 },
+  "", "dentro de uma funct escreva 'private <tipo> name = <valor>'", 2 },
 { "private sem tipo nenhum nao passa mais calado",
   /* Antes: compilava, e `private` virava um nome inexistente em runtime. */
   "Class A() {\n"
@@ -335,11 +335,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "    }\n"
   "}\n",
   "", "'private' so vale antes de class/Entity", 2 },
-{ "campo do objeto exige uma action com self",
-  "action f(n) {\n"
+{ "campo do objeto exige uma funct com self",
+  "funct f(n) {\n"
   "    private str x = n\n"
   "}\n",
-  "", "so vale dentro de uma action de Entity que recebe 'self'", 2 },
+  "", "so vale dentro de uma funct de Entity que recebe 'self'", 2 },
 /* `//` deixou de ser comentário no I11. A mensagem tinha que dizer isso. */
 { "'//' no lugar de expressao diz que virou divisao inteira",
   "x = 1\n"
@@ -533,10 +533,10 @@ const Caso CASOS_LINGUAGEM[] = {
 
 /* ── request: head e multipart ── */
 { "request.head existe",
-  "import request\npost(type(request.head))\n", "action", NULL, 0 },
+  "import request\npost(type(request.head))\n", "funct", NULL, 0 },
 { "request tem os métodos HTTP",
   "import request\npost(type(request.get), type(request.post), type(request.delete))\n",
-  "action action action", NULL, 0 },
+  "funct funct funct", NULL, 0 },
 
 /* ── closure: action aninhada captura o escopo de fora ──────────────────
  * A captura é por CÉLULA (o modelo do CPython): quem declara e quem captura
@@ -737,7 +737,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return g\n"
   "}\n"
   "post(type(f()))\n",
-  "action", NULL, 0 },
+  "funct", NULL, 0 },
 { "variável capturada usada antes de receber valor é erro",
   "action f() {\n"
   "    action g() {\n"
@@ -1033,7 +1033,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "char action nao existe",
   "char action f() {\n"
   "    return 1\n"
-  "}\n", "", "int action", 2 },
+  "}\n", "", "int funct", 2 },
 { "as outras declaracoes tipadas continuam iguais",
   "str a = \"oi\"\nint b = \"7\"\nflo c = 1\nbool d = true\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
@@ -1047,10 +1047,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * REGISTRO (`_Parsing`, `_stdout`), e aí o editor sugeria `import _stdout`, que
  * só podia dar ImportError. */
 { "Parsing existe sem import",
-  "post(type(Parsing), type(Parsing.integer))\n", "module action", NULL, 0 },
+  "post(type(Parsing), type(Parsing.integer))\n", "module funct", NULL, 0 },
 { "sys.stdout e sys.stderr são atributos de sys",
   "import sys\npost(type(sys.stdout), type(sys.stderr), type(sys.stdout.write))\n",
-  "module module action", NULL, 0 },
+  "module module funct", NULL, 0 },
 { "import de nome interno é erro",
   "import _stdout\n", "", "ImportError: No module named '_stdout'", 1 },
 
@@ -1532,7 +1532,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(Mat.soma(1, 2))\n"
   "m = Mat()\n"
   "m.soma(1, 2)\n",
-  "3", "RuntimeError: action 'soma' e @static: chame pela Entity (Tipo.soma(...)), nao pela instancia", 1 },
+  "3", "RuntimeError: funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia", 1 },
 { "zip: a mensagem nomeia o argumento que NAO itera, nao o primeiro",
   "zip([1], 5)\n",
   "", "TypeError: 'int' object is not iterable", 1 },
@@ -1601,6 +1601,85 @@ const Caso CASOS_LINGUAGEM[] = {
   "import\n", "", "esperado nome de modulo depois de 'import'", 2 },
 { "import valido continua valendo",
   "import sys\npost(type(sys))\n", "module", NULL, 0 },
+/* ── `funct` e os modificadores COLADOS (`static funct`), 2026-09-06 ────────
+ * A funcao passou a se chamar `funct`; `action`/`reaction` continuam valendo,
+ * sao a mesma declaracao. `@static` e `@NonNull` viraram modificadores colados
+ * na cabeca (`static funct m()`), e os decoradores antigos seguem funcionando.
+ * A ordem dos modificadores e do usuario: a matriz inteira entra aqui, porque
+ * cada ponto do parser que conhecia a cabeca tinha a sua copia a mao — e a que
+ * esquecia um modificador deixava a declaracao virar statement solto, calada. */
+{ "funct declara funcao",
+  "funct soma(a, b) {\n    return a + b\n}\npost(soma(2, 3))\n", "5", NULL, 0 },
+{ "funct com tipo de retorno, async e visibilidade",
+  "int funct d(n) {\n    return n * 2\n}\n"
+  "private funct p() {\n    return \"p\"\n}\n"
+  "async funct t(n) {\n    return n\n}\n"
+  "post(d(4), p(), gather(t(1))[0])\n", "8 p 1", NULL, 0 },
+{ "funct como lambda",
+  "f = funct(x) {\n    return x * 10\n}\npost(f(5))\n", "50", NULL, 0 },
+{ "post de uma funct imprime <funct #N>",
+  "funct f() {\n    return 1\n}\npost(f)\n", "<funct #1>", NULL, 0 },
+{ "static colado: chamavel pela Entity",
+  "Entity Mat() {\n    static funct soma(a, b) {\n        return a + b\n    }\n}\n"
+  "post(Mat.soma(1, 2))\n", "3", NULL, 0 },
+{ "static colado: pela instancia e erro, e a mensagem fala em static",
+  "Entity Mat() {\n    static funct soma(a, b) {\n        return a + b\n    }\n}\n"
+  "m = Mat()\nm.soma(1, 2)\n",
+  "", "RuntimeError: funct 'soma' e static: chame pela Entity (Tipo.soma(...)), nao pela instancia", 1 },
+{ "nonnull colado: valor passa, Null nao",
+  "nonnull funct e(v) {\n    return v\n}\npost(e(5))\ne(Null)\n",
+  "5", "nonnull: parametro 'v' em 'e' nao pode ser Null", 1 },
+{ "modificadores colados em qualquer ordem: private static int funct",
+  "Entity K() {\n    private static int funct tres() {\n        return 3\n    }\n}\n"
+  "post(K.tres())\n", "3", NULL, 0 },
+{ "modificadores colados em qualquer ordem: static nonnull funct",
+  "Entity K() {\n    static nonnull funct eco(x) {\n        return x\n    }\n}\n"
+  "post(K.eco(\"ok\"))\n", "ok", NULL, 0 },
+{ "modificadores colados em qualquer ordem: nonnull async funct",
+  "nonnull async funct f(v) {\n    return v\n}\npost(gather(f(7))[0])\n", "7", NULL, 0 },
+{ "static colado tambem vale fora de Entity (marca inofensiva)",
+  "static funct f() {\n    return 1\n}\npost(f())\n", "1", NULL, 0 },
+{ "NonNull colado, na grafia do decorador antigo",
+  "NonNull funct e(v) {\n    return v\n}\ne(Null)\n",
+  "", "nonnull: parametro 'v' em 'e' nao pode ser Null", 1 },
+{ "`static` e `nonnull` NAO viraram palavra reservada",
+  "static = 7\nnonnull = 8\npost(static + nonnull)\n", "15", NULL, 0 },
+{ "action e reaction continuam valendo, e sao a mesma declaracao",
+  "action a() {\n    return \"a\"\n}\nreaction r() {\n    return \"r\"\n}\npost(a(), r())\n",
+  "a r", NULL, 0 },
+{ "@static continua valendo junto com o modificador colado",
+  "Entity M() {\n    @static\n    action velha(a) {\n        return a\n    }\n"
+  "    static funct nova(a) {\n        return a\n    }\n}\n"
+  "post(M.velha(1), M.nova(2))\n", "1 2", NULL, 0 },
+{ "@NonNull continua valendo",
+  "@NonNull\naction f(v) {\n    return v\n}\nf(Null)\n",
+  "", "nonnull: parametro 'v' em 'f' nao pode ser Null", 1 },
+{ "funct dentro de decorador de rota (a cabeca com decorador conhece funct)",
+  "import jinker\nfrom jinker import Jinker\n"
+  "Object app = Jinker(__name__)\n"
+  "@app.get(\"/x\")\nint async funct h() {\n    return 1\n}\n"
+  "post(\"registrou\")\n", "registrou", NULL, 0 },
+{ "faltou funct: a mensagem diz a palavra nova",
+  "int async LoginHandler(data) {\n    return 1\n}\n",
+  "", "faltou 'funct' antes de 'LoginHandler': int async funct LoginHandler(...)", 2 },
+/* `static` valia pra funct DE DENTRO tambem: a pendencia do compilador nao era
+ * consumida, entao toda funct declarada no corpo herdava a marca — e se o
+ * primeiro parametro dela se chamasse `self`, ele era descartado, com um
+ * "takes 0 positional arguments" sem relacao visivel com o `static` de fora. */
+{ "static nao vaza pra funct aninhada (decorador)",
+  "@static\naction outer(a) {\n    action inner(self) {\n        return self\n    }\n"
+  "    return inner(a)\n}\npost(outer(7))\n", "7", NULL, 0 },
+{ "static nao vaza pra funct aninhada (modificador colado)",
+  "static funct outer(a) {\n    funct inner(self) {\n        return self\n    }\n"
+  "    return inner(a)\n}\npost(outer(7))\n", "7", NULL, 0 },
+{ "nonnull nao vaza pra funct aninhada",
+  "nonnull funct outer(a) {\n    funct inner(x) {\n        return x\n    }\n"
+  "    return inner(Null)\n}\npost(outer(1))\n", "Null", NULL, 0 },
+{ "'def' manda escrever funct",
+  "def f(a) {\n    return a\n}\n", "", "a funcao se declara com 'funct'", 2 },
+{ "so 'int funct' e 'bool funct' existem",
+  "char funct f() {\n    return \"a\"\n}\n", "", "so 'int funct' e 'bool funct' existem", 2 },
+
 /* ── import por caminho entre aspas (`import '../x.ps'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da
  * linguagem e caminho relativo ao arquivo que importa; sem isso e nome de

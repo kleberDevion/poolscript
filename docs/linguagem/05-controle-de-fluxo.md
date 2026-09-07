@@ -249,7 +249,7 @@ statement onde a linguagem exige um corpo, mas você não tem nada a fazer ali.
 Não gera bytecode nenhum.
 
 ```ps
-action ainda_nao() {
+funct ainda_nao() {
     pass                 # corpo vazio, sem erro
 }
 
@@ -264,11 +264,11 @@ for each n in range(3) {
 }
 ```
 
-Vale em **qualquer** posição de statement — corpo de `action`, `if`/`else`,
+Vale em **qualquer** posição de statement — corpo de `funct`, `if`/`else`,
 `while`, `for each`, `try`/`catch`, corpo de classe. Diferente de `break` e
 `continue`, não depende de estar dentro de um laço.
 
-Uma action cujo corpo é só `pass` devolve `null`, igual a uma que termina sem
+Uma funct cujo corpo é só `pass` devolve `null`, igual a uma que termina sem
 `return` (seção 6.3).
 
 > Uso típico fora de corpo vazio: no **middleware** do `jinker`, chegar no
@@ -381,7 +381,7 @@ if __name__ == "main":
 ```
 
 ```ps
-action principal() {
+funct principal() {
     post("rodando o app")
 }
 
@@ -390,7 +390,7 @@ if __name__ == "main" {
 }
 ```
 
-Assim, `import` desse arquivo traz a `action principal` sem disparar o
+Assim, `import` desse arquivo traz a `funct principal` sem disparar o
 `principal()`. Como os outros blocos, é um escopo próprio (variáveis criadas
 dentro não vazam).
 

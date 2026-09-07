@@ -277,6 +277,12 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(n)\n"
   "\n",
   "3", NULL, 0 },
+{ "equiv: for each [1/2]",
+  "for each i in [1,2] {\n"
+  "    post(i)\n"
+  "}\n"
+  "\n",
+  "1\n2", NULL, 0 },
 { "equiv: for each [2/2]",
   "for each i in [1,2]\n"
   "{\n"

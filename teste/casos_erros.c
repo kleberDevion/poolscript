@@ -23,22 +23,22 @@ const Caso CASOS_ERROS[] = {
  * dizia "faltou ':' no dicionario" (o corpo virou literal de dict); `int f(`
  * dizia "declaracao de variavel exige '='". Agora as três dizem o que faltou
  * e devolvem a linha montada com os modificadores que a pessoa escreveu. */
-{ "action esquecido: int async NOME(...) diz o que faltou",
+{ "funct esquecido: int async NOME(...) diz o que faltou",
   "int async LoginHandler(data) {\n"
   "    return 1\n"
   "}\n",
-  "", "faltou 'action' (ou 'reaction') antes de 'LoginHandler': int async action LoginHandler(...)", 2 },
-{ "action esquecido: async NOME(...) nao fala de dicionario",
+  "", "faltou 'funct' antes de 'LoginHandler': int async funct LoginHandler(...)", 2 },
+{ "funct esquecido: async NOME(...) nao fala de dicionario",
   "async f(x) {\n"
   "    return 1\n"
   "}\n",
-  "", "faltou 'action' (ou 'reaction') antes de 'f': async action f(...)", 2 },
-{ "action esquecido: int NOME(...) nao fala de '='",
+  "", "faltou 'funct' antes de 'f': async funct f(...)", 2 },
+{ "funct esquecido: int NOME(...) nao fala de '='",
   "int f(x) {\n"
   "    return 1\n"
   "}\n",
-  "", "faltou 'action' (ou 'reaction') antes de 'f': int action f(...)", 2 },
-{ "int x = 1 continua declaracao tipada, nao action esquecida",
+  "", "faltou 'funct' antes de 'f': int funct f(...)", 2 },
+{ "int x = 1 continua declaracao tipada, nao funct esquecida",
   "int x = 1\n"
   "post(x)\n",
   "1", NULL, 0 },
@@ -161,7 +161,7 @@ const Caso CASOS_ERROS[] = {
   "try {\n    raise ValueError(\"x\")\n} catch (e) {\n    post(\"peguei\")\n} finally {\n    post(\"f2\")\n}\n",
   "ok\nf1\npeguei\nf2", NULL, 0 },
 
-/* ── @NonNull ── */
+/* ── nonnull (e o decorador @NonNull, a grafia antiga) ── */
 { "@NonNull dentro de Entity",
   "class C() {\n"
   "    @NonNull\n"
@@ -170,7 +170,15 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().f(null))\n",
-  "", "NonNull", 1 },
+  "", "nonnull", 1 },
+{ "nonnull colado dentro de Entity",
+  "class C() {\n"
+  "    nonnull funct f(self, a) {\n"
+  "        return a\n"
+  "    }\n"
+  "}\n"
+  "post(C().f(null))\n",
+  "", "nonnull: parametro 'a' em 'f' nao pode ser Null", 1 },
 { "@NonNull com valor válido passa",
   "class C() {\n"
   "    @NonNull\n"

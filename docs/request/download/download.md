@@ -21,7 +21,7 @@ já tem `.name`, `.size`, `.bytes()`, `.move()`, `.copy()`, `.delete()`.
 ```
 import request
 
-reaction baixar() {
+funct baixar() {
     try {
         url = "https://exemplo.com/PoolScript-Setup.exe"
 

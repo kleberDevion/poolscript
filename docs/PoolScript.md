@@ -30,7 +30,7 @@ pool --check meu_arquivo.ps
 # {"ok":true}
 
 pool --check com_erro.ps
-# {"ok":false,"tipo":"SyntaxError","msg":"faltou ')' na declaracao da action","linha":1,"coluna":11}
+# {"ok":false,"tipo":"SyntaxError","msg":"faltou ')' na declaracao da funct","linha":1,"coluna":11}
 
 cat meu_arquivo.ps | pool --check     # sem arquivo, lê da entrada padrão
 ```
@@ -54,7 +54,7 @@ Digite 'sair' ou Ctrl+C para sair.
 >>> str nome = "joao"
 >>> post(nome)
 joao
->>> action dobro(n) {
+>>> funct dobro(n) {
 ...     return n * 2
 ... }
 >>> post(dobro(5))
@@ -403,24 +403,24 @@ Tipos disponíveis:
 
 ---
 
-## action
+## funct
 
 ```
-action somar(a, b) {
+funct somar(a, b) {
     return a + b
 }
 
 post(somar(3, 4))   # 7
 ```
 
-Action chamando outra:
+Funct chamando outra:
 
 ```
-action dobro(n) {
+funct dobro(n) {
     return n * 2
 }
 
-action quadruplo(n) {
+funct quadruplo(n) {
     return dobro(dobro(n))
 }
 
@@ -524,7 +524,7 @@ count each int(7) in nums {
 
 ## using
 
-`using <expr> as <nome>` — igual `if`/`while`/`action`, aceita bloco com
+`using <expr> as <nome>` — igual `if`/`while`/`funct`, aceita bloco com
 chaves `{ }` — o único estilo de bloco da linguagem.
 
 Funciona com qualquer objeto que tenha `__enter__`/`__exit__` — o builtin
@@ -570,7 +570,7 @@ veja [manpu.md](manpu.md).
 ## Ponto de entrada
 
 ```
-action iniciar() {
+funct iniciar() {
     post("Servidor iniciando...")
 }
 
@@ -599,7 +599,7 @@ Importar de outro arquivo `.ps`:
 
 ```
 # utils.ps
-action somar(a, b) {
+funct somar(a, b) {
     return a + b
 }
 str VERSAO = "1.0"
@@ -737,7 +737,7 @@ model Usuario() {
 }
 
 @app.middleware()
-action verificar() {
+funct verificar() {
     token = request.get("token")
     if (not token) {
         return jsonify({"msg": "não autorizado"}), 401
@@ -750,7 +750,7 @@ action verificar() {
 }
 
 @app.route("/api/cadastro", auth=cors.permiser(), methods=cors.options(["POST"]))
-action cadastrar() {
+funct cadastrar() {
     data = request.get_json()
 
     if (data == Usuario) {
@@ -778,7 +778,7 @@ action cadastrar() {
 }
 
 @app.route("/api/login", auth=cors.permiser(), methods=cors.options(["POST"]))
-action logar() {
+funct logar() {
     data = request.get_json()
     email = data.get("email")
     senha = data.get("senha")
@@ -803,7 +803,7 @@ action logar() {
 }
 
 @app.route("/api/dados", auth=cors.permiser(), methods=cors.options(["GET"]), middleware=app.middleware)
-action dados() {
+funct dados() {
     return jsonify({"msg": "área protegida"}), 200
 }
 

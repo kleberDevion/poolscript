@@ -22,7 +22,7 @@ texto cru, o que dava:
 | `import json as js` → `js.` | ZERO sugestão — o `as` era ignorado |
 | `import random` | ZERO — lib instalada em `~/.poolscript/libs` não era catalogada |
 | `regex.sub("(", ` | o parêntese DENTRO DA STRING quebrava o detector |
-| `f(` com `action f(a, b)` | função LOCAL não oferecia parâmetro nenhum |
+| `f(` com `funct f(a, b)` | função LOCAL não oferecia parâmetro nenhum |
 | `regex.sub("a", "b", ` | reoferecia os cinco parâmetros, inclusive os dois já dados |
 | dentro de comentário | despejava a lista de módulos inteira |
 
@@ -56,9 +56,9 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   > `self.` dava zero, `c.` dava zero, e o nome da classe não aparecia em lista
   > nenhuma.
 
-- **escopo local** — parâmetro da action que contém o cursor e variável ligada
+- **escopo local** — parâmetro da funct que contém o cursor e variável ligada
   antes dele (atribuição, `for each`, desempacotamento), mais os **builtins**
-  (`post`, `len`, `str`…) e as **palavras-chave** (`action`, `if`, `for`…),
+  (`post`, `len`, `str`…) e as **palavras-chave** (`funct`, `if`, `for`…),
   que saem das tabelas do motor pelo `--metadata`. Módulo que o arquivo
   **não importou** não entra na lista: o servidor antigo despejava todo
   módulo do motor em qualquer ponto do arquivo. O lugar deles é depois do
@@ -70,16 +70,16 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
 - **todo receptor expõe o que é** — `x.` responde pelo tipo de `x`, venha de
   onde vier: declaração (`str s`), construção (`Jinker(…)`, `MailServer(…)`,
   `Rota()`), **literal** (`nome = "ana"` → métodos de `str`; `[…]`, `{…}`,
-  `"abc".` direto), retorno de método ou de action com tipo declarado,
+  `"abc".` direto), retorno de método ou de funct com tipo declarado,
   `model` e `enum` do arquivo (`Rota.`, `Cor.`), `self.` com campos do corpo
   da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
   é desconhecido (`for each x in …`) recebe ao menos o que todo valor tem;
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
   prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`);
-  numa **palavra-chave** (`if`, `for each`, `try`, `action`, `return`…) a seção
+  numa **palavra-chave** (`if`, `for each`, `try`, `funct`, `return`…) a seção
   de `docs/linguagem/` cujo título a traz em crase; numa variável, o tipo
-  construído (`Jinker mapping`) e a linha; num parâmetro, a action dona; numa
-  action do arquivo, `int async action f(...)` e o decorador em cima; num
+  construído (`Jinker mapping`) e a linha; num parâmetro, a funct dona; numa
+  funct do arquivo, `int async funct f(...)` e o decorador em cima; num
   `model`, os campos;
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha

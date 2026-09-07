@@ -76,7 +76,7 @@ escape("a.b*c")   # "a\.b\*c"
 ```
 from regex import match
 
-action email_valido(email) {
+funct email_valido(email) {
     return match(r"[^@\s]+@[^@\s]+\.[^@\s]+", email)
 }
 

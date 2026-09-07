@@ -107,7 +107,7 @@ A divisão entre eles é a do Python: **`TypeError`** quando o TIPO está errado
 
 | Tipo | Quando ocorre |
 |---|---|
-| `TypeError` | o **tipo** está errado: `"a" - 1`, `len(5)`, aridade errada de action ou método |
+| `TypeError` | o **tipo** está errado: `"a" - 1`, `len(5)`, aridade errada de funct ou método |
 | `ValueError` | o tipo está certo e o **valor** não serve: `int("abc")`, `max([])`, `chr(99999999)` |
 | `NameError` | nome que não existe no escopo: `post(x)` |
 | `AttributeError` | membro que o objeto não tem: `"abc".m`, `json.naoexiste` |
@@ -119,7 +119,7 @@ A divisão entre eles é a do Python: **`TypeError`** quando o TIPO está errado
 | `ConversionError` | coerção de declaração tipada que não dá (`int z = "abc"`) |
 | `ImportError` | módulo não encontrado no `import` |
 | `MemoryError` | sem memória |
-| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private`, `@NonNull`, `for each` sobre tipo que não itera |
+| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private`, `nonnull`, `for each` sobre tipo que não itera |
 
 ```ps
 try {

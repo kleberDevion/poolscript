@@ -1,12 +1,12 @@
 # `gather(a, b, ...)`
 
-Espera vários `async action` de uma vez, **rodando-os concorrentes**, e devolve os resultados numa lista, na ordem dos argumentos. Argumento que não é future passa direto. Aceita também uma **lista** de futures (`gather(fs)`).
+Espera vários `async funct` de uma vez, **rodando-os concorrentes**, e devolve os resultados numa lista, na ordem dos argumentos. Argumento que não é future passa direto. Aceita também uma **lista** de futures (`gather(fs)`).
 
 ## Parâmetros
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `a, b...` | future/qualquer | — | futures de `async action`; valor comum passa direto |
+| `a, b...` | future/qualquer | — | futures de `async funct`; valor comum passa direto |
 
 ## Retorno
 
@@ -15,7 +15,7 @@ list — os valores resolvidos, na ordem dos argumentos.
 ## Exemplos
 
 ```ps
-async action dobro(n) {
+async funct dobro(n) {
     sleep(0.2)
     return n * 2
 }
@@ -28,7 +28,7 @@ post(gather(dobro(1), dobro(2), dobro(3)))
 ```
 
 ```ps
-async action dobro(n) {
+async funct dobro(n) {
     sleep(0.2)
     return n * 2
 }

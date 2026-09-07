@@ -7,7 +7,7 @@ Nova lista com fn aplicada a cada item. A LISTA vem primeiro.
 | nome | tipo | default | nota |
 |---|---|---|---|
 | `lista` | list | tup | — |  |
-| `fn` | action | — | recebe 1 argumento |
+| `fn` | funct | — | recebe 1 argumento |
 
 ## Retorno
 
@@ -23,7 +23,7 @@ list
 ## Exemplos
 
 ```ps
-action dobro(x) { return x * 2 }
+funct dobro(x) { return x * 2 }
 post(map([1, 2, 3], dobro))
 ```
 

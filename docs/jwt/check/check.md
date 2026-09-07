@@ -47,7 +47,7 @@ no check.
 
 ```
 @app.middleware()
-action auth() {
+funct auth() {
     token = request.get("token")
     dados = jwt.check(token, os.getenv("JWT_SECRET"))
     if (dados is Null) {
