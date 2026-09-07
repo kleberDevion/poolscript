@@ -207,4 +207,4 @@ entende descarta a declaração em vez de rodá-la sem o decorador.
   `datasentity`.
 - **`@objeto.metodo(...)`** — forma geral: registra a funct como handler (rotas
   do jinker etc.); detalhes na doc da lib.
-- **Decorador desconhecido** — descarta a action (ela não é registrada).
+- **Decorador desconhecido** — descarta a funct (ela não é registrada).

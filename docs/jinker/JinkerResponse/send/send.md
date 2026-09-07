@@ -21,7 +21,7 @@ trecho de HTML montado na mão, um "pong", etc.
 
 ```
 @app.route("/ping", methods=cors.options(["GET"]))
-action ping() {
+funct ping() {
     return JinkerResponse().send("pong")
 }
 ```

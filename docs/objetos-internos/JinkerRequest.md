@@ -4,7 +4,7 @@
 > é o TIPO de um objeto que a lib `jinker` te entrega pronto.
 > Confira com `type(obj)`, que mostra exatamente este nome.
 
-Objeto de requisição disponível dentro da action do handler.
+Objeto de requisição disponível dentro da funct do handler.
 
 ## Métodos e propriedades
 

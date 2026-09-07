@@ -71,7 +71,7 @@ app = Jinker(__name__)
 cors(options=["GET", "POST"], origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))
-action dados() {
+funct dados() {
     return jsonify({"ok": true})
 }
 ```

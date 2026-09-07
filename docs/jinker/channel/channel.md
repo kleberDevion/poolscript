@@ -58,7 +58,7 @@ disparou (ou quando emite de fora de um handler).
 
 ```
 @app.socket("/chat/<sala>", channel=true)
-reaction mensagem() {
+funct mensagem() {
     sala = request.path_param("sala")
     msg  = request.get_json()
     app.channel.emit(msg, room_id=sala)     # reenvia pra sala inteira

@@ -29,7 +29,7 @@ São **exatamente a mesma coisa**: internamente
 A forma de dois argumentos brilha quando a pasta é fixa e o arquivo é variável:
 
 ```
-action pagina() {
+funct pagina() {
     nome = request.path_param("nome")
     return render("paginas", f"{nome}.html")   # paginas/<nome>.html
 }
@@ -79,7 +79,7 @@ página de erro em vez de lançar exceção — então é seguro usar direto no
 
 ```
 @app.route("/", methods=cors.options(["GET"]))
-action index() {
+funct index() {
     return render("web/index.html")   # se não existir, vira 404 automático
 }
 ```

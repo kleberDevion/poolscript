@@ -402,7 +402,7 @@ do Python):
 ```
 contador = 0
 
-action incrementar() {
+funct incrementar() {
     global contador
     contador = contador + 1
 }
@@ -415,25 +415,24 @@ post(contador)   # 2
 Também funciona para criar uma variável global que ainda não existe:
 
 ```
-action registrar() {
+funct registrar() {
     global total_visitas
     total_visitas = 1
 }
 
 registrar()
-post(total_visitas)   # 1 — visível fora da action também
+post(total_visitas)   # 1 — visível fora da funct também
 ```
 
 ---
 
 ## `async` / `await`
 
-`async action`/`async reaction` executam em uma thread separada
-(`ThreadPoolExecutor`) e devolvem imediatamente um **future** (`PoolFuture`) —
-a chamada em si nunca bloqueia:
+`async funct` roda em uma fibra e devolve imediatamente um **future**
+(`type(f)` é `future`) — a chamada em si nunca bloqueia:
 
 ```
-async action lenta(n) {
+async funct lenta(n) {
     sleep(0.3)
     return n
 }
@@ -446,15 +445,15 @@ Semântica (igual à de qualquer linguagem com async/await.s
 
 - Duas ou mais chamadas `async` disparadas antes de qualquer `await` rodam
   **em paralelo** (não seriado).
-- Exceção dentro de uma `async action` **não aparece na chamada** — só aparece
+- Exceção dentro de uma `async funct` **não aparece na chamada** — só aparece
   quando você dá `await`. O tipo original é PRESERVADO: um `raise
-  ValueError(...)` dentro da action chega como `ValueError` no `catch`, não
+  ValueError(...)` dentro da funct chega como `ValueError` no `catch`, não
   convertido em outra coisa.
 - `await` numa **lista** funciona como um `gather`: aguarda todos os
   futures da lista (misturados com valores já prontos) e devolve a lista de
   resultados; se algum tiver dado erro, o erro propaga no `await`.
-- `await` encadeado (uma `async action` chamando/aguardando outra `async
-  action`) e recursão assíncrona funcionam normalmente.
+- `await` encadeado (uma `async funct` chamando/aguardando outra `async
+  funct`) e recursão assíncrona funcionam normalmente.
 - Métodos `async` dentro de `Entity` funcionam e acessam/mutam `self`
   normalmente.
 - `await valor_comum` (não-future) é pass-through — devolve o valor como
@@ -462,19 +461,19 @@ Semântica (igual à de qualquer linguagem com async/await.s
 - O future **não tem** API de baixo nível: `f.done()` e `f.result(timeout=)`
   não existem (`AttributeError: 'future' object has no attribute 'result'`).
   A única forma de pegar o valor é `await`.
-- `async int reaction`/`async bool reaction` aplicam a mesma conversão de
+- `async int funct`/`async bool funct` aplicam a mesma conversão de
   erro→sentinela (500/False) que a versão síncrona, só que dentro da thread.
 
 ---
 
 ## Geradores (`yield`)
 
-Qualquer `action` que contenha `yield` em qualquer lugar do corpo (inclusive
+Qualquer `funct` que contenha `yield` em qualquer lugar do corpo (inclusive
 dentro de `if`/`while` aninhados) vira um gerador automaticamente — chamá-la
 não executa o corpo na hora, devolve um objeto iterável:
 
 ```
-action contar(n) {
+funct contar(n) {
     i = 0
     while (i < n) {
         yield i
@@ -585,10 +584,10 @@ Daqui pra frente o texto usa `class`, mas tudo vale igual para os três.
 
 ```
 class Animal() {
-    action __init__(self, nome) {
+    funct __init__(self, nome) {
         self.nome = nome
     }
-    action falar(self) {
+    funct falar(self) {
         return f"{self.nome} faz um som"
     }
 }
@@ -623,11 +622,11 @@ Entity Conta() {
     private saldo: int = 0          # só a própria classe mexe
     public dono: str = "kleber"     # público (igual a não pôr nada)
 
-    public reaction deposita(self, v) {
+    public funct deposita(self, v) {
         self.saldo = self.saldo + v   # OK: dentro da classe
         return self.saldo
     }
-    private reaction _log(self) { return "interno" }   # só a classe chama
+    private funct _log(self) { return "interno" }   # só a classe chama
 }
 
 c = Conta()
@@ -655,11 +654,11 @@ __init__ de Entity").
 
 ```
 class Cachorro(Animal) {
-    action __init__(self, nome, raca) {
+    funct __init__(self, nome, raca) {
         base(nome)          # executa Animal.__init__(self, nome)
         self.raca = raca    # e aí adiciona o atributo próprio
     }
-    action falar(self) {     # sobrescreve o falar do pai
+    funct falar(self) {      # sobrescreve o falar do pai
         return f"{self.nome} ({self.raca}) late"
     }
 }
@@ -674,7 +673,7 @@ Método **não sobrescrito** é herdado direto — `Gato` abaixo não define
 
 ```
 class Gato(Animal) {
-    action __init__(self, nome) {
+    funct __init__(self, nome) {
         base(nome)
     }
 }
@@ -687,18 +686,18 @@ pai imediato:
 
 ```
 class Base() {
-    action __init__(self, x) {
+    funct __init__(self, x) {
         self.x = x
     }
 }
 class Meio(Base) {
-    action __init__(self, x, y) {
+    funct __init__(self, x, y) {
         base(x)          # Base.__init__
         self.y = y
     }
 }
 class Topo(Meio) {
-    action __init__(self, x, y, z) {
+    funct __init__(self, x, y, z) {
         base(x, y)       # Meio.__init__
         self.z = z
     }
@@ -716,18 +715,18 @@ Para escolher um pai específico, passe o nome dele como primeiro argumento:
 
 ```
 class Motor() {
-    action __init__(self, cavalos) {
+    funct __init__(self, cavalos) {
         self.cavalos = cavalos
     }
 }
 class Roda() {
-    action __init__(self, qtd) {
+    funct __init__(self, qtd) {
         self.qtd_rodas = qtd
     }
 }
 
 class Carro(Motor, Roda) {
-    action __init__(self) {
+    funct __init__(self) {
         base(Motor, 300)     # mira Motor, passa 300
         base(Roda, 4)        # mira Roda, passa 4
         self.tipo = "esportivo"
@@ -749,10 +748,10 @@ post(c.cavalos, c.qtd_rodas, c.tipo)   # 300 4 esportivo
 >
 > ```
 > class A():
->     action __init__(self):
+>     funct __init__(self):
 >         self.a = 1
 > class C(A, B):
->     action __init__(self):
+>     funct __init__(self):
 >         base(A,)     # vírgula final = mira A, sem argumentos
 >         base(B,)
 > ```
@@ -761,15 +760,14 @@ Resolução de métodos (não-`__init__`) na herança múltipla é **esquerda-pa
 direita**: `class C(A, B)` procura o método primeiro em `C`, depois em `A` (e
 toda a cadeia de `A`), depois em `B`. O primeiro encontrado vence.
 
-### `@static` — método sem instância
+### `static` — método sem instância
 
-Método marcado com `@static` é chamado direto na classe, sem criar objeto e
-sem `self`:
+Método com o modificador `static` colado na cabeça é chamado direto na classe,
+sem criar objeto e sem `self`:
 
 ```
 class Util() {
-    @static
-    action dobro(n) {
+    static funct dobro(n) {
         return n * 2
     }
 }
@@ -777,18 +775,20 @@ class Util() {
 post(Util.dobro(21))    # 42   — sem instanciar Util
 ```
 
-### `@NonNull` — barra argumentos Null
+Chamar um `static` pela instância é erro: `funct 'dobro' e static: chame pela
+Entity (Tipo.dobro(...)), nao pela instancia`.
 
-Aplicado a um método, faz a chamada falhar (erro `@NonNull: parâmetro '...' não
-pode ser Null`) se qualquer argumento recebido for `Null`/`None`.
+### `nonnull` — barra argumentos Null
+
+Com `nonnull` na cabeça, a chamada falha se qualquer argumento recebido for
+`Null`.
 
 ```
 class Calc() {
-    action __init__(self) {
+    funct __init__(self) {
         self.total = 0
     }
-    @NonNull
-    action somar(self, valor) {
+    nonnull funct somar(self, valor) {
         self.total = self.total + valor
         return self.total
     }
@@ -796,17 +796,31 @@ class Calc() {
 
 c = Calc()
 c.somar(5)        # ok
-c.somar(Null)     # ERRO: @NonNull: parâmetro 'valor' em 'somar' não pode ser Null
+c.somar(Null)     # ERRO: nonnull: parametro 'valor' em 'somar' nao pode ser Null
 ```
 
-**Escopo (por design):** `@NonNull` vale para chamadas de método normais
-(`obj.metodo(...)`), métodos `@static` e funções soltas. Ele **não** dispara
-no `__init__` durante a instanciação — isso é intencional, não uma falha:
-`Null` é usado como sentinela interna de "campo sem default" (ver
-`@dataentity`), então barrar `Null` no construtor conflitaria com esse
-mecanismo. Da mesma forma, `@NonNull` não rejeita um valor **default** que seja
-`Null`. Se quiser validar um campo obrigatório no construtor, faça a checagem à
-mão dentro do `__init__` (`if dono is Null: raise ...`).
+**Escopo:** `nonnull` vale em todo lugar — chamada de método
+(`obj.metodo(...)`), método `static`, função solta e também o `__init__`
+durante a instanciação:
+
+```
+class I() {
+    nonnull funct __init__(self, dono) {
+        self.dono = dono
+    }
+}
+I(Null)     # nonnull: parametro 'dono' em '__init__' nao pode ser Null
+```
+
+E rejeita um **default** que seja `Null`, porque a checagem roda depois do
+prólogo, com os defaults já aplicados:
+
+```
+nonnull funct d(v=Null) {
+    return v
+}
+d()         # nonnull: parametro 'v' em 'd' nao pode ser Null
+```
 
 ### `@dataentity` — `__init__` automático + conversões
 
@@ -867,7 +881,7 @@ count each int(7) in nums {
 ```
 
 Dentro do bloco, `return;` (vazio) **acumula** e devolve o total ao final
-para a `action` que envolve o `count each`; `return valor` interrompe
+para a `funct` que envolve o `count each`; `return valor` interrompe
 imediatamente (curto-circuito) e devolve `valor`.
 
 ---
@@ -951,7 +965,7 @@ sorted(lista)  reversed(lista)  enumerate(lista)  zip(a, b, ...)
 addEnd(l, v)  removeEnd(l)  addStart(l, v)  removeStart(l)
 map(lista, fn)  filter(lista, fn)   # atenção: lista vem PRIMEIRO, depois a função
 
-sleep(segundos)      # pausa a execução (útil dentro de async action)
+sleep(segundos)      # pausa a execução (útil dentro de async funct)
 gather(...)          # agrega múltiplos futures
 ```
 
@@ -966,7 +980,7 @@ quais existem lendo código — e "etc." não é documentação.
 
 | | Devolve |
 |---|---|
-| `.type()` | nome do tipo: `str` `int` `flo` `bool` `list` `dict` `tup` `Null` `action`, ou o nome da Entity |
+| `.type()` | nome do tipo: `str` `int` `flo` `bool` `list` `dict` `tup` `Null` `funct`, ou o nome da Entity |
 
 Mesmos nomes que o builtin `type(x)` — os dois já discordaram (`json` contra
 `dict`), hoje não discordam mais.

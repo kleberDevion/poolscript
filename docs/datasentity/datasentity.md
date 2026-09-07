@@ -48,7 +48,7 @@ Sem ele, você escreveria o `__init__` na mão:
 
 ```
 Entity Pessoa() {
-    action __init__(self, nome, idade) {
+    funct __init__(self, nome, idade) {
         self.nome = nome
         self.idade = idade
     }

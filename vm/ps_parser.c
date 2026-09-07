@@ -2346,6 +2346,12 @@ static PSNode *statement(P *p)
             }
             pula_indent_solto(p);
         }
+        /* A LINHA DO `}` da Entity — mesma razão do `linha_fim` do bloco: sem
+         * ela o corpo da classe "acaba" no último membro, e o cursor numa
+         * linha nova antes do fecha-chaves cai FORA da Entity. O editor
+         * deixava de oferecer o construtor, os campos e o `self` bem onde se
+         * está escrevendo o próximo membro. */
+        n->linha_fim = atual(p)->line;
         if (!exige_fecha(p, T_RBRACE, "corpo da Entity nao foi fechado", abre_ent)) return NULL;
         return n;
     }

@@ -25,8 +25,8 @@ funct entrar() {
 |---|---|---|---|
 | `path` | `str` | — | o path da URL (`"/login"`, `"/user/<id>"`) |
 | `auth` | lista | origens do `cors` | checagem de origem — [`cors.origins()`](../cors/origins/origins.md) |
-| `middleware` | função | nenhum | roda antes da action — [middleware](../middleware/middleware.md) |
-| `model` | `model` | nenhum | valida o corpo JSON **antes** da action; torto vira `422` — a mesma regra do [`route`](../route/route.md#model--o-corpo-validado-antes-da-action) |
+| `middleware` | função | nenhum | roda antes da funct — [middleware](../middleware/middleware.md) |
+| `model` | `model` | nenhum | valida o corpo JSON **antes** da funct; torto vira `422` — a mesma regra do [`route`](../route/route.md#model--o-corpo-validado-antes-da-funct) |
 
 São cinco atalhos, e são a mesma coisa com outro verbo:
 [`get`](../get/get.md), `post`, [`put`](../put/put.md),
@@ -43,7 +43,7 @@ A URL existia; o **método** é que não. O servidor agora separa os dois casos:
 
 | situação | resposta |
 |---|---|
-| path e método batem | a action roda |
+| path e método batem | a funct roda |
 | path **existe**, método não | **`405 Method Not Allowed`**, com `Allow:` |
 | path não existe | `404` |
 
@@ -66,7 +66,7 @@ mesmos cabeçalhos, sem corpo).
 
 ## `route()` continua existindo
 
-`@app.route(path, methods=[...])` é o jeito de uma action responder a **mais
+`@app.route(path, methods=[...])` é o jeito de uma funct responder a **mais
 de um** método, e de deixar o método em aberto (sem `methods=`, ela aceita
 todos os do `cors`). O atalho é pra quando a rota tem um verbo só — que é a
 maioria.

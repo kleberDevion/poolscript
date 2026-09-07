@@ -363,6 +363,16 @@ async function main() {
       ['sem receptor: nomes do arquivo + import + BUILTINS + PALAVRAS-CHAVE + MODIFICADORES',
        ['import mail', 'total = 1', 'funct soma(a) {', '    return a', '}', 't'], 5, undefined,
        ['total', 'soma', 'mail', 'post', 'len', 'str', 'funct', 'action', 'if', 'for', 'static', 'nonnull'], []],
+      /* LITERAIS e `__name__`: o lexer entrega `true`/`false`/`Null` como token
+       * próprio (BOOL/NULL) e `__name__` é global do compilador — nenhum dos
+       * quatro está na KEYWORDS[] do --metadata, e o sugestor não os tinha. */
+      ['sem receptor: os LITERAIS e `__name__` aparecem',
+       ['x = 1', 'x'], 1, undefined, ['true', 'false', 'Null', '__name__'], []],
+      ['dentro da Entity o CONSTRUTOR e sugerido',
+       ['Entity Conta() {', '    saldo: int', '    f'], 2, undefined, ['__init__'], []],
+      ['Entity que JA tem __init__ nao sugere outro',
+       ['Entity Conta() {', '    funct __init__(self) {', '        self.s = 0', '    }', '    f'], 4, undefined,
+       [], ['__init__']],
       /* a reforma: `funct` e os modificadores COLADOS. `static`/`nonnull` não são
        * palavra reservada, então nada disso vem de graça do --metadata. */
       ["`static funct` numa Entity: o completion de `Tipo.` diz que e static",

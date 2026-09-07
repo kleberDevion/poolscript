@@ -246,9 +246,37 @@ function indiceNoCursor(doc, pos) {
   const comCursor = (off > 0 && texto[off - 1] === '.' && !nomeChar)
     ? texto.slice(0, off) + MARCA_CURSOR + texto.slice(off)
     : texto;
-  const idx = A.indexa(arvoreDe(fechaAbertos(remendaPontosSoltos(comCursor))));
+  /* A palavra PELA METADE, onde o parser não aceita nome solto: no corpo de
+   * uma Entity, `f` sozinho é `dentro de Entity entra 'funct', decorador ou
+   * campo` — e o erro derruba a árvore INTEIRA. O editor ficava sem nada pra
+   * sugerir bem enquanto se digita: era por isso que o construtor, os campos
+   * e os métodos da própria classe sumiam. Se a árvore voltou vazia, tira o
+   * fragmento e tenta de novo. O `--ast` extra só roda nesse caso. */
+  let arvore = arvoreDe(fechaAbertos(remendaPontosSoltos(comCursor)));
+  if (!arvore || !(arvore.lista || []).length) {
+    const sem = semParcialNoCursor(comCursor, off);
+    if (sem !== null) {
+      const alt = arvoreDe(fechaAbertos(remendaPontosSoltos(sem)));
+      if (alt && (alt.lista || []).length) arvore = alt;
+    }
+  }
+  const idx = A.indexa(arvore);
   CACHE_CUR.set(doc.uri, { versao: doc.version, linha: pos.line, col: pos.character, idx });
   return idx;
+}
+
+/* O texto sem o pedaço de nome que está sendo digitado logo antes do cursor.
+ * `null` quando não há fragmento nenhum ali. */
+function semParcialNoCursor(texto, off) {
+  let i = off;
+  while (i > 0) {
+    const c = texto[i - 1];
+    const nome = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                 (c >= '0' && c <= '9') || c === '_' || c.charCodeAt(0) > 127;
+    if (!nome) break;
+    i--;
+  }
+  return i === off ? null : texto.slice(0, i) + texto.slice(off);
 }
 
 /* Durante UM pedido de completion vale o índice do cursor (com a emenda);
@@ -1037,6 +1065,15 @@ function completa(doc, p) {
   const ent = A.entidadeEm(idx, p.position.line);
   if (ent) poe('self', CompletionItemKind.Keyword, `a instância de ${ent.nome}`, '0');
 
+  /* Dentro do corpo de uma Entity/class, o CONSTRUTOR. Não é palavra
+   * reservada nem builtin — é convenção de nome —, então não vinha de tabela
+   * nenhuma do motor e o editor nunca o oferecia. Só entra se a Entity ainda
+   * não tem um. */
+  if (ent && !ent.membros.some((m) => m.nome === '__init__')) {
+    poe('__init__', CompletionItemKind.Constructor,
+        `construtor de ${ent.nome} — roda ao instanciar`, '0');
+  }
+
   for (const e of idx.entidades) {
     poe(e.nome, CompletionItemKind.Class,
         `class ${e.nome}` + (e.bases.length ? `(${e.bases.join(', ')})` : ''), '1');
@@ -1053,6 +1090,13 @@ function completa(doc, p) {
     poe(b.nome, CompletionItemKind.Function, 'builtin · ' + assinatura({ nome: b.nome, params: b.params }), '3');
   }
   for (const k of META.keywords || []) poe(k, CompletionItemKind.Keyword, 'palavra-chave', '4');
+  /* `true`, `false` e `Null` são LITERAIS no lexer (tokens BOOL e NULL), não
+   * entradas de `KEYWORDS[]` — por isso não chegavam aqui pelo `--metadata` e
+   * o editor nunca sugeria booleano nenhum. `__name__` é global que o
+   * compilador liga, não palavra reservada, e some pelo mesmo motivo. */
+  for (const [lit, det] of LITERAIS) poe(lit, CompletionItemKind.Constant, det, '3');
+  poe('__name__', CompletionItemKind.Constant,
+      'no arquivo principal, o caminho dele; num módulo importado, o nome do módulo', '3');
   /* `static` e `nonnull` NÃO são palavra reservada de propósito (valem por
    * posição, só colados na cabeça da funct), então não vêm em META.keywords —
    * e sem isto o editor jamais os ofereceria. */
@@ -1135,6 +1179,15 @@ function md(valor) { return { contents: { kind: MarkupKind.Markdown, value: valo
  * lexer os entrega como IDENT, e `static = 1` continua valendo), então tudo
  * que o editor sabe sobre eles vem daqui — não de `META.keywords`. */
 const MODIFICADORES = ['static', 'nonnull', 'NonNull'];
+
+/* Os literais da linguagem. O lexer os entrega como token próprio (BOOL e
+ * NULL), não como palavra reservada, então não estão na `KEYWORDS[]` que o
+ * `--metadata` publica — e sem esta lista o editor não sugeria nem `true`. */
+const LITERAIS = [
+  ['true',  'literal booleano'],
+  ['false', 'literal booleano'],
+  ['Null',  'literal de ausência de valor'],
+];
 
 /* O token está na CABEÇA de uma declaração de funct? Anda pra frente na mesma
  * linha atravessando os outros modificadores; se chegar em `funct` (ou nas

@@ -15,7 +15,7 @@ cors.origins() -> list
 cors(origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))
-action dados() {
+funct dados() {
     return jsonify({"ok": true})
 }
 ```

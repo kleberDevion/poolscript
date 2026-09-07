@@ -151,7 +151,7 @@ funct eu()
 
 # LOGOUT — apaga o cookie: mesmo nome, mesmo path, vida zero
 @app.post("/sair")
-action sair()
+funct sair()
 {
     return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
 }

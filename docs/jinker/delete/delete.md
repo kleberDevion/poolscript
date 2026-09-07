@@ -6,7 +6,7 @@ tem `methods=`: o verbo é o membro.
 
 ```ps
 @app.delete("/perfil/<id>")
-action apaga(id) {
+funct apaga(id) {
     return jsonify({"apagou": id})
 }
 ```
