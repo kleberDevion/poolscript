@@ -26,6 +26,6 @@ post(d.get("a"), d.get("z"), d.get("z", 0))
 
 ## Bordas
 
-- `d["z"]` inexistente dá KeyError; `d.get("z")` devolve `null`
+- `d["z"]` inexistente dá KeyError; `d.get("z")` devolve `Null`
 
 [← índice](../dict.md)

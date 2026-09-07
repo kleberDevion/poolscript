@@ -124,8 +124,9 @@ resposta = request.get(url=u)
                   .get("dados")
 ```
 
-Um `.` seguido de dígito (`.5`, um float) ou um `.` isolado **não** dispara essa
-regra — seguem o fluxo normal.
+Um `.` isolado **não** dispara essa regra — segue o fluxo normal. E `.5` não é
+float: o número da linguagem exige dígito antes do ponto (`0.5`), então `.5`
+sozinho é `SyntaxError: expressao invalida`.
 
 ---
 
@@ -161,8 +162,8 @@ Agrupadas por papel:
 |---|---|
 | Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `pass` `return` |
 | Lógicos | `and` `or` `not` `Not` |
-| Funções | `funct` `async` `await` `yield` |
-| Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` |
+| Funções | `funct` `action` `reaction` `async` `await` `yield` |
+| Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` `Object` `object` |
 | Classes / OO | `Entity` `class` `Class` `self` `base` `model` `enum` |
 | Encapsulamento | `private` `public` |
 | Módulos | `import` `from` `as` `PUSH` `GET` |
@@ -171,7 +172,18 @@ Agrupadas por papel:
 | Conversão / operador | `to` `count` |
 
 `dict` é apelido de `json`; `tup` nomeia a tupla; `base` é reconhecida
-contextualmente dentro de `Entity` (chama o construtor do pai).
+contextualmente dentro de `Entity` (chama o construtor do pai). `action` e
+`reaction` são as grafias antigas de `funct` e continuam reservadas.
+
+Duas coisas **não** estão nesta tabela, e não é esquecimento:
+
+- Os **apelidos de tipo** (`string`/`String`, `integer`/`Integer`,
+  `tuple`/`Tuple`, `dictionary`/`Dictionary`) valem por **posição**, só onde um
+  tipo vale. Fora dali são nome comum: `string = "a"` continua valendo.
+- Os **modificadores colados** `static` e `nonnull` (seção 6), pela mesma
+  razão: só valem na cabeça de uma `funct`.
+
+A lista viva sai do próprio motor, com `pool --metadata` (campo `keywords`).
 
 Os **builtins** (`post`, `input`, `len`, `range`, `addEnd`, `chr`, `ord`, ...)
 também são nomes reservados, mas são **funções**, não palavras de controle —
@@ -196,8 +208,14 @@ gigante = 99999999999999999999999999999999999999   # ainda é int
 
 ### 1.6.2. Ponto flutuante (`flo`)
 
-Dígitos com um ponto decimal (`\d+\.\d+`). Não há notação científica no literal
-(use conversão se precisar).
+Dígitos com um ponto decimal (`\d+\.\d+`) — o dígito antes do ponto é
+obrigatório, então `0.5` vale e `.5` é erro de sintaxe.
+
+Há **notação científica**, com `e` ou `E`, e o resultado é sempre `flo`:
+
+```ps
+post(1E5, 1.5e3, 2e-2, type(1e5))    # 100000.0 1500.0 0.02 flo
+```
 
 ```ps
 pi = 3.14159
@@ -290,8 +308,15 @@ tupla = (1, 2, 3)                 # tup (imutável)
 ## 1.7. Operadores e pontuação
 
 **Operadores de múltiplos caracteres** (reconhecidos do mais longo para o mais
-curto): `==` `!=` `<=` `>=` `&&` `||` `<<` `>>` `+=` `-=` `*=` `/=`
-`%=` `++` `--`.
+curto — é o que faz `2 ** 3` não virar `2 * (*3)`): `==` `!=` `<=` `>=` `&&`
+`||` `<<` `>>` `**` `//` `+=` `-=` `*=` `/=` `%=` `++` `--`.
+
+`**` é potência e `//` é divisão inteira (seção 3). Não existe `**=` nem `//=`:
+`x **= 2` é `SyntaxError: expressao invalida`.
+
+O lexer também reconhece `===` e `!==`, mas **só para recusar com nome**:
+`` `===` nao existe nesta linguagem; use `==` ``. Sem isso o erro sairia como
+uma expressão inválida qualquer, sem dizer o que estava errado.
 
 **Operadores de um caractere:** `+ - * / % = < > ! . , @ | ^ & ~`.
 

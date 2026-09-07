@@ -1,4 +1,4 @@
-# `open(caminho, modo="r")`
+# `open(path, mode="r", encoding="utf-8")`
 
 Abre um arquivo e devolve o handle; combine com `using` para fechar sozinho.
 
@@ -6,8 +6,12 @@ Abre um arquivo e devolve o handle; combine com `using` para fechar sozinho.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `caminho` | str | — |  |
-| `modo` | str | "r" | "r", "w", "a", "rb", "wb"... |
+| `path` | str | — |  |
+| `mode` | str | "r" | "r", "w", "a", "rb", "wb"... |
+| `encoding` | str | "utf-8" |  |
+
+Os nomes são estes: `open(caminho=...)` e `open(p, modo="r")` são
+`TypeError: 'caminho' is an invalid keyword argument for open()`.
 
 ## Retorno
 
@@ -15,7 +19,9 @@ FileHandle (read/write/close)
 
 ## Erros
 
-- **IOError** — arquivo inexistente no modo de leitura
+- **FileNotFoundError** — arquivo inexistente no modo de leitura, e diretório
+  inexistente no modo de escrita: `[Errno 2] No such file or directory: '…'`.
+  Não é `IOError` — um `catch (IOError e)` não pega.
 
 ## Bordas
 

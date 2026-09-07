@@ -12,7 +12,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 
 ---
 
-## 12.1. Métodos de `str` (54)
+## 12.1. Métodos de `str` (55)
 
 ### Caixa
 
@@ -40,9 +40,9 @@ post("İ".lower())       # i      — o I turco com pingo
 | Método | Faz |
 |---|---|
 | `strip(chars=null)` / `lstrip` / `rstrip` | remove espaços (ou os `chars` dados) das duas pontas / esquerda / direita |
-| `ljust(n, ch=" ")` / `rjust(n, ch=" ")` / `center(n, ch=" ")` | preenche até largura `n` à esquerda / direita / centro |
+| `ljust(width, fillchar)` / `rjust(width, fillchar)` / `center(width, fillchar)` | preenche até a largura à esquerda / direita / centro; sem `fillchar`, com espaço |
 | `zfill(n)` | preenche com zeros à esquerda até `n` (respeita o sinal) |
-| `expandtabs(n=8)` | troca TABs por espaços |
+| `expandtabs(tabsize=8)` | troca TABs por espaços |
 
 ### Busca
 
@@ -90,8 +90,8 @@ caractere da classe.
 
 | Método | Faz |
 |---|---|
-| `split(sep=null, max=-1)` | divide numa lista; sem `sep`, quebra por espaços (colapsando); `max` limita o nº de cortes (o resto fica junto) |
-| `rsplit(sep=null, max=-1)` | igual, mas conta os cortes **da direita** |
+| `split(sep=Null, maxsplit=-1)` | divide numa lista; sem `sep`, quebra por espaços (colapsando); `maxsplit` limita o nº de cortes (o resto fica junto) |
+| `rsplit(sep=Null, maxsplit=-1)` | igual, mas conta os cortes **da direita** |
 | `splitlines()` | divide por quebras de linha |
 | `join(lista)` | une os itens da lista usando a string como cola: `", ".join(["a","b"])` → `"a, b"` |
 | `partition(sep)` / `rpartition(sep)` | divide em **3**: (antes, sep, depois), na 1ª / última ocorrência |
@@ -108,10 +108,11 @@ caractere da classe.
 
 | Método | Faz |
 |---|---|
-| `format(...)` / `format_map(dict)` | preenche `{}`/`{0}`/`{nome}` no template |
+| `format(a, b)` | preenche `{}` e `{0}` no template — **posicional só**; não há como preencher `{nome}` por aqui |
+| `format_map(dict)` | preenche `{nome}`, pelas chaves do dict |
 | `match(padrao)` | a string **inteira** casa com a regex? (`bool`) — igual ao [`regex.match`](../regex/match/match.md), que é o `fullmatch` do Python |
 | `findall(padrao)` | lista de todas as ocorrências da regex |
-| `sub(padrao, novo, count=…)` | substitui as ocorrências da regex |
+| `sub(pattern, repl)` | substitui **todas** as ocorrências da regex — não há `count` |
 
 ### Outros
 
@@ -253,7 +254,7 @@ etc. — tem prioridade sobre o acesso por atributo.)
 
 ---
 
-## 12.4. Métodos de `bytes` (42)
+## 12.4. Métodos de `bytes` (44)
 
 `bytes` é o tipo de **dado binário** — o que sai de `"texto".encode()`, de
 `open(..., "rb").read()`, do corpo de uma resposta HTTP. Ele tem a mesma
@@ -265,8 +266,8 @@ Os nomes são os mesmos do `str`, e é justamente por isso que vale ler as
 
 | Onde | `str` | `bytes` |
 |---|---|---|
-| caixa (`upper`, `lower`, `title`…) | Unicode inteiro | **só ASCII**: `b"\xc0".lower()` é `b"\xc0"` |
-| `splitlines` | quebra também em `\v`, `\f`, `\x1c`… | **só** `\n`, `\r` e `\r\n` |
+| caixa (`upper`, `lower`, `title`…) | Unicode inteiro | **só ASCII**: `bytes.new([0xc0, 65]).lower()` é `b'\xc0a'` |
+| `splitlines` | `\n`, `\r` e `\r\n` | os mesmos três |
 | `find`/`count`/`index` | só substring | aceitam também um **inteiro** de 0 a 255 |
 | `strip(x)` | conjunto de caracteres | conjunto de **bytes** |
 
@@ -308,13 +309,13 @@ for each x in "abc".encode() {
 
 - Os métodos são chamados por `valor.metodo(...)` e são parte da linguagem
   (sem `import`).
-- **`str`**: 54 métodos (caixa, bordas/preenchimento, busca, testes `is…`,
+- **`str`**: 55 métodos (caixa, bordas/preenchimento, busca, testes `is…`,
   divisão/junção, modificação com `replace` aceitando **lista** de alvos,
   formatação e regex). Detalhe por método em `docs/string/`.
 - **`list`**: 14 — a maioria muta a lista (`append`/`sort`/`pop`/…); `sorted`/
   `reversed` (builtins) devolvem cópia.
 - **`dict`**: 12 — `keys`/`values` (ou `value`)/`items`, `get` (com default, sem erro),
   `has`, `pop`, `update`, `copy`… mais acesso por `[]` e por `.chave`.
-- **`bytes`**: 42 — os mesmos nomes do `str`, com semântica de BYTE: caixa só
+- **`bytes`**: 44 — os mesmos nomes do `str`, com semântica de BYTE: caixa só
   em ASCII, `splitlines` só em `\n`/`\r`/`\r\n`, busca aceitando inteiro.
   Detalhe por método em `docs/bytes/`.

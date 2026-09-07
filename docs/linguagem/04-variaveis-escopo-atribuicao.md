@@ -280,16 +280,18 @@ bump()
 post(contador)      # 2
 ```
 
-Sem o `global`, `contador = ...` dentro de `bump` criaria uma local e a de fora
-ficaria em `0`. (Apenas **reatribuir** uma global que já existe funciona sem
-`global` — o write-through de 4.6.2 —; o `global` é necessário para **criar** a
-global de dentro, ou deixar a intenção explícita.)
+Neste exemplo o `global` é a **intenção explícita**, não o que faz funcionar:
+reatribuir uma global que já existe funciona sem ele, pelo write-through de
+4.6.2 — sem a linha `global contador`, o programa acima imprime `2` do mesmo
+jeito. O `global` é obrigatório para **criar** uma global de dentro da funct:
+sem ele, `nova = 1` dentro da funct e `post(nova)` fora dá
+`NameError: name 'nova' is not defined`.
 
 ---
 
 ## 4.8. `using` — fechamento automático de recurso
 
-`using <expr> as <nome>:` avalia a expressão, liga ao nome e roda o bloco; ao
+`using <expr> as <nome> { … }` avalia a expressão, liga ao nome e roda o bloco; ao
 terminar (**por saída normal ou por erro**) ele **fecha o recurso**, se for um
 dos tipos que a linguagem sabe fechar — **arquivo**, **conexão de banco**
 (com `commit` antes de fechar) e **planilha** (salva ao sair). É o `with` do
@@ -317,9 +319,10 @@ faz — são detalhadas na parte de bibliotecas.)
 
 ## 4.9. Notas
 
-- **Não há `pass`.** Um bloco precisa de pelo menos um statement; não existe
-  um "não faça nada" — use um comentário se quiser marcar o lugar, ou
-  reestruture para não ter bloco vazio.
+- **`pass` existe** e é o "não faça nada" (seção 5.4.1) — é palavra reservada,
+  e `if true { pass }` roda. Bloco **vazio** (`{ }`) também é aceito, em `if`,
+  `while`, `for each` e no corpo de uma `funct`; a funct de corpo vazio devolve
+  `Null`. O `pass` serve para deixar o lugar marcado à vista.
 - Nomes seguem as regras léxicas da seção 1.4. A caixa MAIÚSCULA é
   **convenção** para libs/classes/tipos de erro, mas não é reserva: um nome
   maiúsculo pode ser variável comum (`MAX = 100`, `str NOME = "ana"`).

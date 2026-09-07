@@ -20,7 +20,7 @@ post(l)
 
 ## Bordas
 
-- não devolve a lista: `post(l.reverse())` imprime `null`
+- não devolve a lista: `post(l.reverse())` imprime `Null`
 - pra uma CÓPIA invertida, use o builtin `reversed(l)`
 
 [← índice](../list.md)

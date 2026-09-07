@@ -114,7 +114,8 @@ post(E.A, E.B, E.C)                   # 10 11 12   (B e C continuam de 10)
 - Acesse um membro por `Nome.MEMBRO`.
 - O valor **é um inteiro** de verdade: `type(Cor.RED)` é `"int"` e
   `Cor.RED == 0` é `True` — dá pra comparar e usar em contas normalmente.
-- Acessar um membro inexistente é erro: `enum 'Cor' não tem membro 'AZUL'`.
+- Acessar um membro inexistente é erro:
+  `AttributeError: type object 'Cor' has no attribute 'AZUL'`.
 
 ---
 

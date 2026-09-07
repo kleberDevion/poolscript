@@ -122,6 +122,20 @@ hi("Underlined",     { underline = true })
 hi("Error",          { fg = "#ffffff", bg = c.del })
 hi("Todo",           { fg = c.constante, bold = true })
 
+-- ── PoolScript: onde este tema DIVERGE do Ariake original ──────────────────
+--
+-- O Ariake pinta `keyword` e `storage` com a MESMA tinta (#7e7edd). Em C ou em
+-- JS isso passa; aqui não: `if`, `funct`, `private` e `int` saíam todos da
+-- mesma cor, e a tela virava um bloco só. Os três grupos abaixo são da
+-- PoolScript (syntax/poolscript.vim) e ganham tinta própria — todas já da
+-- paleta do tema, nenhuma cor inventada.
+--
+-- Como o realce usa `hi def link`, que só vale se ninguém definiu antes, estas
+-- três linhas vencem: outro tema sem elas cai no link padrão e continua certo.
+hi("psFunctKw",  { fg = c.suporte })                  -- funct / action / reaction
+hi("psClassKw",  { fg = c.tipo })                     -- Entity / class / model / enum
+hi("psModifier", { fg = c.keyword, italic = true })   -- private / public / static / nonnull
+
 -- ── treesitter ──────────────────────────────────────────────────────────────
 hi("@comment",              { link = "Comment" })
 hi("@keyword",              { fg = c.keyword })

@@ -1,9 +1,9 @@
 # Referência da Linguagem — 11. Builtins
 
-Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **35**
-no total. Esta seção é a visão geral; cada builtin tem uma página detalhada em
-[`docs/builtins/`](../builtins/builtins.md), e os exemplos de lá **rodam de
-verdade** na suíte em C (`make check`) — doc errada quebra o teste.
+Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **39**
+no total — a contagem viva sai de `pool --metadata` (campo `builtins`), que é a
+tabela `BUILTINS[]` da VM. Esta seção é a visão geral; cada builtin tem uma
+página detalhada em [`docs/builtins/`](../builtins/builtins.md).
 
 Tudo aqui foi verificado rodando o fonte na VM em C.
 
@@ -13,10 +13,10 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `post` | `post(v1, v2, …)` | imprime os valores no stdout, separados por espaço, com quebra de linha; `post()` sem args é uma linha em branco vazia (na verdade nem imprime a quebra). `null` sai como `null`, dict como `{'k': v}`, bool como `True`/`False`. Devolve `null`. |
-| `input` | `input(prompt=null)` | lê uma linha do stdin; o `prompt` (opcional) é impresso antes, sem quebra. **Devolve sempre `str`** — pra número, use `int(...)` ou declare o tipo. |
-| `open` | `open(caminho, modo="r")` | abre um arquivo e devolve o handle (`read`/`readline`/`readlines`/`write`/`writelines`/`close`). Combine com `using` pra fechar sozinho. Arquivo inexistente em leitura → `IOError`. |
-| `load` | `load(caminho=null)` | carrega variáveis de um `.env` pro ambiente e **devolve um dict** com o que leu (`{ "CHAVE": "valor" }`); sem `.env`, dict vazio. Não sobrescreve variável já definida. Atalho de `dotenv.load`. |
+| `post` | `post(v1, v2, …)` | imprime os valores no stdout, separados por espaço, com quebra de linha; `post()` sem args é uma linha em branco vazia (na verdade nem imprime a quebra). `Null` sai como `Null`, dict como `{'k': v}`, bool como `True`/`False`. Devolve `Null`. |
+| `input` | `input(prompt)` | lê uma linha do stdin; o `prompt` (opcional, **só posicional**) é impresso antes, sem quebra. Devolve `str`, ou `Null` no fim do stdin — pra número, use `int(...)` ou declare o tipo. |
+| `open` | `open(path, mode="r", encoding="utf-8")` | abre um arquivo e devolve o handle (`read`/`readline`/`readlines`/`write`/`writelines`/`close`). Combine com `using` pra fechar sozinho. Arquivo inexistente em leitura → `FileNotFoundError`. |
+| `load` | `load(caminho)` | carrega variáveis de um `.env` pro ambiente e **devolve um dict** com o que leu (`{ "CHAVE": "valor" }`); sem `.env`, dict vazio. O caminho é **só posicional**. Não sobrescreve variável já definida. Atalho de `dotenv.load`. |
 
 ---
 
@@ -34,7 +34,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `str` | `str(x)` | qualquer valor → texto de renderização (o mesmo que `post` imprime): `null`→`"null"`, `true`→`"True"`; listas/dicts recursivos. |
+| `str` | `str(x)` | qualquer valor → texto de renderização (o mesmo que `post` imprime): `Null`→`"Null"`, `true`→`"True"`; listas/dicts recursivos. |
 | `int` | `int(x)` | → inteiro: string decimal, `flo` (**trunca** pra zero: `int(3.9)`→3), `bool`. `int()` sem argumento → `0`. String não-numérica → **`ValueError`** (`invalid literal for int() with base 10: 'abc'`) — o tipo está certo, o valor é que não serve; o `TypeError` que esta linha dizia nunca aconteceu. Não confundir com o `ConversionError` da **declaração** (`int z = "abc"`), que é outro caminho. |
 | `flo` | `flo(x)` | → ponto flutuante: string numérica, `int` (`3`→`3.0`), `bool`. Lixo no fim da string é recusado (não converte "meio"). |
 | `bool` | `bool(x)` | verdade do valor: `0`, `0.0`, `""`, `[]`, `{}`, `null` são `False`; o resto `True`. |
@@ -50,13 +50,13 @@ tipada, estão na seção 2.)
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `abs` | `abs(n)` | valor absoluto (aceita `int`/`flo`/`bool`). |
-| `round` | `round(n, casas=0)` | arredonda (meio-para-par: `round(2.5)`→2). 1 arg sobre `flo` → `int`; com `casas` → `flo`. `casas` negativas são **clampadas a 0**. |
+| `round` | `round(n, casas)` | arredonda (meio-para-par: `round(2.5)`→2). 1 arg sobre `flo` → `int`; com `casas` → `flo`. As casas são **só posicionais**, e negativas são **clampadas a 0**. |
 | `hex` | `hex(n)` | inteiro → `"0xff"` (sinal antes do prefixo: `hex(-255)`→`"-0xff"`). |
 | `bin` | `bin(n)` | inteiro → `"0b101"`. |
 | `oct` | `oct(n)` | inteiro → `"0o17"`. |
 | `ord` | `ord(c)` | 1 caractere → codepoint Unicode (`ord("ç")`→231, por codepoint, não byte). |
 | `chr` | `chr(n)` | codepoint (0..0x10FFFF) → caractere; aceita `bool` como int. |
-| `sum` | `sum(lista, start=0)` | soma os números de uma lista/tupla; `start` opcional. Vazia → `0`. |
+| `sum` | `sum(lista, start)` | soma os números de uma lista/tupla; o `start` é opcional e **só posicional**. Vazia → `0`. `bool` na lista soma como 0/1. |
 | `min` | `min(lista)` / `min(a, b, …)` | menor valor (1 iterável, ou vários argumentos). |
 | `max` | `max(lista)` / `max(a, b, …)` | maior valor. |
 
@@ -118,7 +118,7 @@ post(removeStart(l))  # 1   (e l == [2, 3, 4])
 
 ## 11.8. Resumo
 
-- **35 builtins**, sempre disponíveis, sem `import`. Página detalhada de cada um
+- **39 builtins**, sempre disponíveis, sem `import`. Página detalhada de cada um
   em `docs/builtins/`.
 - **I/O**: `post`, `input`, `open`, `load`.
 - **Núcleo**: `len` (conta caracteres; `len(null)`→0), `type`, `range`.

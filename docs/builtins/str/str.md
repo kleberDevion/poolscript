@@ -24,6 +24,6 @@ post(str(12) + "!", str(Null), str(true))
 
 ## Bordas
 
-- `str(Null)` é `"null"` (nunca `None`); bool vira `True`/`False`
+- `str(Null)` é `"Null"` (nunca `None` nem `null`); bool vira `True`/`False`
 
 [← índice](../builtins.md)

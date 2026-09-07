@@ -208,7 +208,7 @@ exceptions):
 try {
     x = 1 / 0
 } catch (e) {
-    post("erro:", e)     # erro: division by zero (linha 3)
+    post("erro:", e)     # erro: division by zero (linha 2)
 }
 ```
 
@@ -382,12 +382,21 @@ ocupa a posição de tipo com sentido.
 
 ### `is` com literal à direita é erro
 
-Qualquer **outro** literal do lado direito é `SyntaxError`:
+Um literal **escalar** do lado direito é `SyntaxError`:
 
 ```ps
-x is 5        # SyntaxError: 'is' com literal 'int' a direita — para comparar valor use '=='
+x is 5        # SyntaxError: 'is' com literal 'int' a direita — 'is' compara TIPO (`x is int`); para comparar valor use '=='
 x is "abc"    # idem, 'str'
 x is 5 is int # o literal continua sendo o da direita do primeiro `is`
+```
+
+A recusa vale para `int`, `flo`, `str` e `bool`. Literal de **lista, tupla e
+dicionário** à direita passa, e devolve `False` — nenhum valor tem esses
+literais por tipo:
+
+```ps
+x = 5
+post(x is (1, 2), x is {"a": 1}, x is [1])   # False False False
 ```
 
 **Por quê.** Antes, lado direito que não era tipo caía em **igualdade de valor
@@ -408,7 +417,7 @@ O erro é de **compilação**, então o `pool --check` do editor já o mostra.
 
 - **lista / tupla:** se algum elemento é igual a `x` (usa a igualdade de 3.3).
 - **string:** se `x` (um `str`) é **substring** de `c`.
-- **dict / json:** se `x` é uma **chave** (comparada por tipo exato).
+- **dict / json:** se `x` é uma **chave**.
 
 ```ps
 post(2 in [1, 2, 3])        # True
@@ -418,14 +427,22 @@ post(5 in {"5": 1})         # False   (a chave é o texto "5", não o int 5)
 post(9 not in [1, 2, 3])    # True
 ```
 
+A chave **não** é comparada por tipo exato: número e bool se encontram entre si,
+pela mesma igualdade de 3.3 (`1 == 1.0 == true`). Texto é que nunca casa com
+número:
+
+```ps
+d = {1: "a"}
+post(1 in d, 1.0 in d, true in d, "1" in d)   # True True True False
+```
+
 ---
 
 ## 3.7. Operadores bit a bit
 
 `&` (E), `|` (OU), `^` (XOR), `<<` / `>>` (deslocamento) e o unário `~` (NÃO
-bit a bit) operam **apenas entre `int`**. `bool` é rejeitado (mesmo
-sendo 0/1) — o operando precisa ser `int` de verdade; `flo`/`str` também são
-erro. Deslocamento por valor negativo é erro.
+bit a bit) operam entre `int`; `flo` e `str` são erro. Deslocamento por valor
+negativo é erro.
 
 ```ps
 post(5 & 3)     # 1
@@ -433,7 +450,14 @@ post(5 | 2)     # 7
 post(5 ^ 1)     # 4
 post(1 << 4)    # 16
 post(~5)        # -6      (~x == -x-1)
-post(true & 1)  # ERRO — bitwise só entre int
+```
+
+**`bool` entra nos binários como 0/1**, igual ao resto da aritmética
+(`true + 1` é 2). O unário `~` é a exceção, e recusa:
+
+```ps
+post(true & 1, true | false, true ^ 1, true << 1)   # 1 1 0 2
+post(~true)     # TypeError: bad operand type for unary ~: 'bool'
 ```
 
 Precedência entre eles (do mais forte pro mais fraco): `<<`/`>>` (9), `&` (8),
@@ -498,7 +522,8 @@ post(int in [2, 2, 3, 2] count)      # 4   (quantos elementos são int)
 
 ## 3.11. Operadores pós-fixados
 
-Ligam mais forte que qualquer operador binário (nível 13) e encadeiam à
+Ligam mais forte que qualquer operador binário (nível 14, o topo da tabela de
+3.1 — o 13 é a potência) e encadeiam à
 esquerda. São detalhados em suas próprias seções; aqui fica só o resumo de
 precedência:
 
@@ -529,8 +554,10 @@ mesmas regras de `x + 1`.
 ## 3.13. Resumo
 
 - **Precedência**: ternário < `or` < `and` < `not` < comparação < bitwise
-  (`|`<`^`<`&`) < deslocamento < `+`/`-` < `*`/`/`/`%` < unários < pós-fixados.
-- **`/` é sempre real** (dá `flo`); não há `//` nem `**`/`pow`.
+  (`|`<`^`<`&`) < deslocamento < `+`/`-` < `*`/`/`/`%` < `**` < unários <
+  pós-fixados.
+- **`/` é sempre real** (dá `flo`); o quociente inteiro é `//` (3.2.3), e a
+  potência é `**` ou `pow()` (3.2.3b).
 - **`%`** segue o sinal do divisor.
 - **`+` concatena mas não coage** — `str` + número é erro; use `str()`/f-string.
 - **`==`** compara por valor (numérico entre tipos) e por estrutura

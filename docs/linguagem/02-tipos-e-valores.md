@@ -53,7 +53,13 @@ char c = -1         # ConversionError: -1 nao e um caractere valido
 valor guardado é uma `str` de comprimento 1, e `type()` responde `"str"`. Não
 existe construtor `char()` — pra converter um número use `chr(n)`.
 
-`char funct` não existe: só `int funct` e `bool funct` têm tipo de retorno.
+`char funct` não existe — a mensagem é `so 'int funct' e 'bool funct' existem`.
+
+Cuidado com o que essa mensagem promete: `str funct` e `flo funct` **são
+aceitos** pelo parser, e o tipo é ignorado (a função devolve o que devolver,
+sem conversão nem checagem). Só `int` e `bool` mudam o comportamento em caso de
+erro — o sentinela 500/False da seção 6. O que a mensagem recusa é `char`,
+`list`, `dict` e os outros tipos de declaração.
 
 ---
 
@@ -183,7 +189,7 @@ int  z = "abc"    # ConversionError — string não vira int
 
 ## 2.7. Conversão explícita
 
-Há três mecanismos, do mais direto ao mais tolerante:
+Há dois mecanismos, do mais direto ao mais tolerante:
 
 1. **Construtores builtin** — `int(x)`, `flo(x)`, `str(x)`, `bool(x)`,
    `list(x)`. Convertem ou estouram se impossível:

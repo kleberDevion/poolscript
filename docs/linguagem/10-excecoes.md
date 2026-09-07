@@ -119,7 +119,7 @@ A divisão entre eles é a do Python: **`TypeError`** quando o TIPO está errado
 | `ConversionError` | coerção de declaração tipada que não dá (`int z = "abc"`) |
 | `ImportError` | módulo não encontrado no `import` |
 | `MemoryError` | sem memória |
-| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private`, `nonnull`, `for each` sobre tipo que não itera |
+| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private` e `nonnull` |
 
 ```ps
 try {
@@ -139,11 +139,17 @@ Observações:
 
 - **`SyntaxError`** acontece **antes** de rodar (na análise do código), então não
   é capturável por `try`/`catch` — é erro de escrita, não de execução.
-- **`IndexError`** é levantado ao acessar fora do intervalo, tanto lendo
-  (`l[99]`) quanto escrevendo (`l[99] = x`), em `list`, `tup`, `str` e `bytes`.
-  A mensagem nomeia o tipo (`list index out of range`) e, na escrita, diz que
-  foi escrevendo (`list assignment index out of range`). Até 28/08 a LEITURA
-  era um aviso não-fatal que devolvia `null` e não podia ser capturado.
+- **`IndexError`** é levantado ao **ler** fora do intervalo (`l[99]`) em `list`,
+  `tup`, `str` e `bytes`; a mensagem nomeia o tipo (`list index out of range`),
+  menos em `bytes`, que sai como `index out of range`. Até 28/08 a leitura era
+  um aviso não-fatal que devolvia `null` e não podia ser capturado.
+- Na **escrita** por índice, `IndexError` só existe em `list`
+  (`list assignment index out of range`): `tup`, `str` e `bytes` são imutáveis,
+  e a escrita neles é `TypeError: '<tipo>' object does not support item
+  assignment`, fora do intervalo ou não.
+- **`for each` sobre tipo que não itera** é `TypeError`
+  (`'int' object is not iterable`), não `RuntimeError` — um
+  `catch (RuntimeError e)` não pega.
 - As **bibliotecas** (banco, rede, e-mail, …) levantam os próprios tipos
   (ex.: `DatabaseError`, `NetworkError`), documentados na parte de bibliotecas.
 

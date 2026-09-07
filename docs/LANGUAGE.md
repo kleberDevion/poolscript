@@ -41,13 +41,17 @@ Este mark down tem alguams specs da linguagem.
 
 ```bash
 pool arquivo.ps       # roda um arquivo
-pool repl             # REPL interativo
+pool -e "<codigo>"    # roda o código direto da linha de comando
 pool build            # roda todos os .ps da pasta atual
 pool --version / -v / -V       # versão do binário
 pool --help    / -h       # ajuda
 ```
 
-Chamar `pool` **sem nenhum argumento** abre o REPL interativo
+Chamar `pool` **sem nenhum argumento** imprime a ajuda.
+
+O **REPL não existe** neste binário: `pool repl` responde
+`o REPL interativo ainda nao esta no binario C (precisa de estado persistente
+na VM)` e aponta as duas formas acima.
 
 ---
 
@@ -919,24 +923,30 @@ import 'sub/meu-mod.ps' as mm         # nome que não serve de variável: use `a
 import 'json'                         # sem barra e sem extensão: nome de módulo
 ```
 
-Libs embutidas (lazy-loaded, só carregam quando importadas):
-`os, json, dotenv, mail, date, jinker, db, hash, jwt, request/requests,
-manpu/mp, regex, sqlite3, qrcode/qr, sys, datasentity/dataentity`.
+Libs embutidas (lazy-loaded, só carregam quando importadas) — a lista sai de
+`pool --metadata` (campo `modulos`):
+
+`os, sys, json, date, regex, Parsing, dotenv, jwt, hash, bytes, sqlite3, mail,
+request, qrcode, manpu, psodbc, jinker, sockets, datasentity`.
+
+Os apelidos **não existem**: `import db`, `import requests`, `import mp`,
+`import qr` e `import dataentity` são `ImportError` — os nomes são `psodbc`,
+`request`, `manpu`, `qrcode` e `datasentity`.
 
 Referência completa de cada lib
 
 | Lib | Doc |
 |---|---|
-| `os`, `dotenv`, `mail`, `date`, `request`/`requests` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](libs_utilitarias.md) |
+| `os`, `dotenv`, `mail`, `date`, `request` (+ lambda/map/filter) | [`docs/libs_utilitarias.md`](libs_utilitarias.md) |
 | `jinker` (HTTP + WebSocket com salas) | [`docs/jinker.md`](jinker.md) |
-| `db` (SQLite/Postgres/MySQL/Mongo, alias de `psodbc`) + `sqlite3` (acesso direto) | [`docs/psodbc.md`](psodbc.md) |
+| `psodbc` (SQLite/Postgres/MySQL/Mongo) + `sqlite3` (acesso direto) | [`docs/psodbc.md`](psodbc.md) |
 | `hash`, `jwt` | [`docs/hash_jwt.md`](hash_jwt.md) |
-| `manpu`/`mp` | [`docs/manpu.md`](manpu.md) |
+| `manpu` | [`docs/manpu.md`](manpu.md) |
 | `json` | [`docs/json.md`](json.md) |
 | `regex` | [`docs/regex.md`](regex.md) |
-| `qrcode`/`qr` | [`docs/qrcode.md`](qrcode.md) |
+| `qrcode` | [`docs/qrcode.md`](qrcode.md) |
 | `sys` | [`docs/sys.md`](sys.md) |
-| `datasentity`/`dataentity` | [`docs/datasentity.md`](datasentity.md) |
+| `datasentity` | [`docs/datasentity.md`](datasentity.md) |
 | `Parsing` (builtin global, sem import) | [`docs/parsing.md`](parsing.md) |
 
 `Parsing` (conversões de tipo seguras) é builtin global, não precisa de
@@ -951,8 +961,7 @@ módulo. Importar um nome que não existe é `ImportError`.
 
 ```
 post(...)            # imprime (join dos argumentos com espaço) e guarda no output
-post.flush(texto, delay=0.05)   # efeito de digitação, char a char
-input(prompt="")     # sempre devolve str
+input(prompt)        # devolve str, ou Null no fim do stdin; o prompt é só posicional
 
 open(path, mode="r", encoding="utf-8")     # FileHandle: .read() .readlines() .readline() .write(t) .writelines(l) .close()
 len(x)  range(...)  type(x)
@@ -998,7 +1007,7 @@ Tudo trabalha em **caractere**, não em byte: `"ção".len()` é 3, e
 | `.title()` | primeira letra de cada palavra; dígito quebra palavra, então `"a1b".title()` é `"A1B"` |
 | `.capitalize()` | só a primeira letra do texto |
 | `.swapcase()` | inverte a caixa de cada letra |
-| `.casefold()` | hoje igual a `.lower()` |
+| `.casefold()` | dobra mais que `.lower()` para comparação: `"ß".lower()` é `"ß"`, `"ß".casefold()` é `"ss"` |
 
 **Aparar** — o argumento é um **conjunto de caracteres**, não um prefixo:
 `"xyx".strip("xy")` come qualquer um dos dois, em qualquer ordem.
@@ -1018,8 +1027,10 @@ Tudo trabalha em **caractere**, não em byte: `"ção".len()` é 3, e
 | `.count(sub)` | ocorrências sem sobreposição |
 | `.len()` | caracteres |
 
-**Testar conteúdo** — todos dão `False` em string vazia. `isupper`/`islower`/
-`istitle` exigem pelo menos uma letra com caixa.
+**Testar conteúdo** — em string vazia dão `False`, menos `isascii()` e
+`isprintable()`, que dão `True` (a string vazia não tem caractere fora do ASCII
+nem caractere não-imprimível). `isupper`/`islower`/`istitle` exigem pelo menos
+uma letra com caixa.
 
 | | |
 |---|---|

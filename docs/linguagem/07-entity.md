@@ -19,7 +19,9 @@ Entity Usuario() {
 }
 ```
 
-- O nome da Entity começa com **maiúscula** (é `IDENT_UPPER`, seção 1.4).
+- O nome da Entity começa com **maiúscula** por convenção (é `IDENT_UPPER`,
+  seção 1.4). O motor não exige: `Entity usuario()` compila e roda. A maiúscula
+  é o que separa, à leitura, o tipo do valor.
 - Os **parênteses são obrigatórios**: `Entity Usuario:` é erro; use
   `Entity Usuario()`. Entre eles vão as superclasses (7.6), ou nada.
 - **`class` e `Class` são sinônimos de `Entity`** — mesma semântica.
@@ -264,8 +266,10 @@ post(p.name)             # ERRO — name é private
   `private` é registrado na classe, então a VM barra o acesso de fora
   exatamente como no campo declarado no corpo.
 - O **tipo é conferido igual ao da variável** (seção 4.1): `private int n = 5.9`
-  é `AttributedValueError`. Só os escalares (`str`, `int`, `flo`, `bool`,
-  `char`) são conferidos; `list`, `json` e uma Entity guardam sem reclamar.
+  é `AttributedValueError`. Vale para os escalares (`str`, `int`, `flo`,
+  `bool`, `char`) e também para `list` e `json` — `private list l = 5` é
+  `AttributedValueError: variável l esperava list`. O que guarda sem reclamar é
+  o campo cujo tipo é uma **Entity**: ali não há conferência.
 - Só vale **dentro de uma funct de Entity que recebe `self`** — em `static`
   ou numa funct solta não há objeto para o campo pertencer, e é erro de
   sintaxe, não silêncio.

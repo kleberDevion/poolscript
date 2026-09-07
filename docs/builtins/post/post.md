@@ -33,6 +33,6 @@ post([1, Null], {"k": 2})
 ## Bordas
 
 - `post()` sem argumento nenhum não imprime nada — nem a quebra de linha; linha em branco é `post("")`
-- `Null` imprime `null`, inclusive aninhado (`[Null]` → `[null]`)
+- `Null` imprime `Null`, inclusive aninhado (`[Null]` → `[Null]`)
 
 [← índice](../builtins.md)

@@ -401,7 +401,8 @@ dentro não vazam).
 - **`if` / `elif` / `else`** — condição por *truthiness*; `elif` (não `else if`).
 - **`while`** — repete enquanto verdadeiro; sem `while/else`.
 - **`for each x in seq`** — lista/tupla/string (não dict direto: use `.keys()`
-  etc.); uma variável só; `range(...)` pra contar.
+  etc.); o cabeçalho **desempacota** (`for each a, b in pares`), inclusive
+  aninhado, membro e índice — seção 5.3; `range(...)` pra contar.
 - **`break` / `continue`** — no laço mais interno.
 - **`pass`** — no-op; ocupa o lugar de um corpo vazio, em qualquer posição de
   statement (não precisa de laço).

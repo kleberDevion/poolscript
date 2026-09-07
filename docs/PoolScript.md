@@ -35,33 +35,17 @@ pool --check com_erro.ps
 cat meu_arquivo.ps | pool --check     # sem arquivo, lê da entrada padrão
 ```
 
-O processo sai com código 0 mesmo quando o arquivo tem erro — quem chama olha
-o campo `ok`.
+O campo `ok` diz o veredito, e o **código de saída acompanha**: `0` com
+`{"ok":true}`, `1` com `{"ok":false}`. Quem chama pode olhar qualquer um dos
+dois.
 
 ---
 
-## REPL
+## REPL — não existe
 
-```bash
-pool
-pool repl
-```
-
-```
-PoolScript v8.4.3 — REPL
-Digite 'sair' ou Ctrl+C para sair.
-
->>> str nome = "joao"
->>> post(nome)
-joao
->>> funct dobro(n) {
-...     return n * 2
-... }
->>> post(dobro(5))
-10
->>> sair
-Até mais!
-```
+`pool repl` responde que o REPL interativo ainda não está no binário C (ele
+precisa de estado persistente na VM), e `pool` sem argumento imprime a ajuda.
+Para rodar código sem criar arquivo, use `pool -e "<codigo>"`.
 
 ---
 
@@ -389,7 +373,7 @@ Tipos disponíveis:
 | `ConversionError` | coerção de declaração tipada (`int z = "abc"`) |
 | `NotImplemented` | construção reconhecida e ainda não executada — o nome é sem `Error` |
 | `MemoryError` | sem memória |
-| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private`, `@NonNull`, `for each` sobre tipo que não itera |
+| `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private` e `nonnull` (`for each` sobre tipo que não itera é `TypeError`) |
 | `e` (sem tipo) | qualquer erro |
 
 > Esta tabela já teve `PermissionError` e `ConnectionError`, que o motor **nunca
@@ -496,8 +480,8 @@ enum Mix { A, B = 10, C, D = "x", E }
 ```
 
 Membros separados por vírgula (opcional no último). Acessar um membro que não
-existe é erro (`enum 'Cor' não tem membro 'ROXO'`). `Cor.type()` devolve
-`"enum"`.
+existe é erro: `AttributeError: type object 'Cor' has no attribute 'ROXO'`.
+`Cor.type()` devolve `"enum"`.
 
 ---
 
@@ -547,17 +531,20 @@ E `manpu.open()` (lib separada, pensada pra CSV/XLSX estruturado — ver
 ```
 import manpu as mp
 
-lista = manpu.load("compras.txt")
+lista = mp.load("compras.txt")
 
-using manpu.open(target="planilha.xlsx") as arq {
-    arq.write(column=0, cell=full, content=lista)
+using mp.open(target="planilha.xlsx") as arq {
+    arq.write(column=0, celula="A1", content=lista)
 }
 # arquivo salvo e fechado automaticamente
 ```
 
+O nome do parâmetro é `celula`, não `cell`, e o módulo importado `as mp` se
+chama `mp` — usar `manpu.` depois do apelido é `NameError`.
+
 ```
-using manpu.open(target="planilha.xlsx", encoding="latin-1") as arq {
-    arq.write(column=0, cell=full, content=lista)
+using mp.open(target="planilha.xlsx", encoding="latin-1") as arq {
+    arq.write(column=0, celula="A1", content=lista)
 }
 # arquivo salvo e fechado automaticamente
 ```
@@ -625,7 +612,6 @@ import 'ferramentas/kit.ps' as k
 | Função | O que faz |
 |---|---|
 | `post(valor)` | Imprime no terminal |
-| `post.flush(texto, delay=N)` | Efeito de digitação |
 | `input(msg)` | Lê entrada do usuário |
 | `len(x)` | Tamanho de lista, string ou dict |
 | `range(n)` | Lista de 0 até n-1 |
@@ -683,13 +669,6 @@ g = Gato()
 post(type(g))            # Gato
 post(g is Gato)          # True
 post(g is Animal)        # False — classe exata, herança não conta
-```
-
-### post.flush()
-
-```
-post.flush("Carregando...", delay=0.05)
-post.flush("Pronto!", delay=0.08)
 ```
 
 ---
