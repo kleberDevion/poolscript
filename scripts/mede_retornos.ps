@@ -1,0 +1,281 @@
+# Descobre o TIPO DE RETORNO de cada membro, CHAMANDO ele.
+#
+#     ./pool scripts/mede_retornos.ps            # tudo que da pra medir
+#     ./pool scripts/mede_retornos.ps str list   # so esses receptores
+#
+# POR QUE ELE EXISTE. O `pool --metadata` publica `retorna` pra 69 de 513
+# membros: a tabela `RETORNOS[]` do motor nasceu so pra o editor conseguir
+# encadear `conn.cursor().fetchall()`, entao so lista quem devolve OBJETO.
+# Quem devolve `int`, `str`, `bool`, `list` ou `Null` nao tem entrada — e sem
+# isso a doc, o hover e o auditor ficam sem fonte, cada um chutando o seu.
+#
+# O metodo aqui e o do projeto: MEDIR, nao deduzir. Pra cada membro, monta uma
+# chamada com valores de exemplo do tipo do receptor, roda, e anota o
+# `type()` do que voltou. O que nao der pra chamar sai marcado como tal — e
+# melhor uma lacuna declarada do que um tipo inventado.
+import os
+import sys
+import json
+
+# Receptor de exemplo por tipo, e os argumentos que a maioria dos membros
+# daquele tipo aceita. A ordem importa: a primeira combinacao que NAO levanta
+# e a que vale.
+# DUAS amostras por tipo, com CONTEUDO de tipo diferente. Se as duas medicoes
+# derem tipos diferentes, o retorno DEPENDE do conteudo (`d.get()` devolve o
+# valor guardado, seja ele qual for) — e anotar `int` ali seria mentira vinda
+# da amostra, nao do motor.
+AMOSTRAS = {
+    "str": {
+        "recv": "\"aBc dEf\"",
+        "recv2": "\"1 2 3\"",
+        "args": ["", "\"b\"", "\"b\", \"x\"", "1", "\"b\", 1", "1, \"x\""]
+    },
+    "list": {
+        "recv": "[3, 1, 2]",
+        "recv2": "[\"c\", \"a\", \"b\"]",
+        "args": ["", "1", "1, 0", "[9]", "0, 9"]
+    },
+    "dict": {
+        "recv": "{\"a\": 1, \"b\": 2}",
+        "recv2": "{\"a\": \"x\", \"b\": \"y\"}",
+        "args": ["", "\"a\"", "\"a\", 0", "{\"c\": 3}"]
+    },
+    "tup": {
+        "recv": "(3, 1, 2)",
+        "recv2": "(\"c\", \"a\", \"b\")",
+        "args": ["", "1", "1, 0"]
+    },
+    "bytes": {
+        "recv": "\"aBc\".encode()",
+        "recv2": "\"123\".encode()",
+        "args": ["", "1", "\"b\".encode()", "5", "5, \"x\".encode()"]
+    }
+}
+
+
+# Funcoes de MODULO que rodam sem servico externo. Cada uma com uma chamada
+# de exemplo escrita a mao — aqui nao da pra adivinhar argumento como nos
+# metodos de tipo, e chamar errado devolveria o tipo do ERRO, nao do retorno.
+# Modulo que precisa de banco, rede ou e-mail fica de fora: melhor a lacuna
+# declarada do que um tipo vindo de uma chamada que falhou.
+CHAMADAS = [
+    ["json", "parse", "json.parse(\"{\\\"a\\\": 1}\")"],
+    ["json", "stringify", "json.stringify({\"a\": 1})"],
+    ["date", "today", "date.today()"],
+    ["date", "time", "date.time()"],
+    ["date", "now", "date.now()"],
+    ["date", "datahora", "date.datahora()"],
+    ["date", "hora", "date.hora()"],
+    ["date", "timestamp", "date.timestamp()"],
+    ["regex", "match", "regex.match(\"a\", \"a\")"],
+    ["regex", "fullmatch", "regex.fullmatch(\"a\", \"a\")"],
+    ["regex", "search", "regex.search(\"a\", \"ba\")"],
+    ["regex", "findall", "regex.findall(\"a\", \"aa\")"],
+    ["regex", "sub", "regex.sub(\"a\", \"b\", \"aa\")"],
+    ["regex", "split", "regex.split(\",\", \"a,b\")"],
+    ["regex", "compile", "regex.compile(\"a\")"],
+    ["regex", "escape", "regex.escape(\"a.b\")"],
+    ["hash", "sha256", "hash.sha256(\"a\")"],
+    ["hash", "md5", "hash.md5(\"a\")"],
+    ["hash", "sha1", "hash.sha1(\"a\")"],
+    ["hash", "sha512", "hash.sha512(\"a\")"],
+    ["hash", "b64encode", "hash.b64encode(\"a\")"],
+    ["hash", "b64decode", "hash.b64decode(hash.b64encode(\"a\"))"],
+    ["jwt", "gen", "jwt.gen({\"a\": 1}, \"s\")"],
+    ["jwt", "check", "jwt.check(jwt.gen({\"a\": 1}, \"s\"), \"s\")"],
+    ["os", "exists", "os.exists(\"/tmp\")"],
+    ["os", "isfile", "os.isfile(\"/tmp\")"],
+    ["os", "isdir", "os.isdir(\"/tmp\")"],
+    ["os", "cwd", "os.cwd()"],
+    ["os", "ls", "os.ls(\"/tmp\")"],
+    ["os", "size", "os.size(\"/etc/hostname\")"],
+    ["os", "readFile", "os.readFile(\"/etc/hostname\")"],
+    ["os", "writeFile", "os.writeFile(\"/tmp/ps_mr.txt\", \"a\")"],
+    ["os", "environ", "os.environ()"],
+    ["os", "getenv", "os.getenv(\"HOME\")"],
+    ["os", "cmd", "os.cmd(\"true\")"],
+    ["os", "warn", "os.warn(\"\")"],
+    ["os", "mkdir", "os.mkdir(\"/tmp/ps_mr_d\", exist_ok=true)"],
+    ["sys", "platform", "sys.platform()"],
+    ["sys", "RelativePath", "sys.RelativePath(\"nao_existe_zz\")"],
+    ["bytes", "new", "bytes.new(\"a\")"],
+    ["bytes", "fromhex", "bytes.fromhex(\"61\")"],
+    ["bytes", "tohex", "bytes.tohex(bytes.new(\"a\"))"],
+    ["bytes", "toint", "bytes.toint(bytes.new(\"a\"))"],
+    ["bytes", "fromint", "bytes.fromint(1, 2)"],
+    ["bytes", "tolist", "bytes.tolist(bytes.new(\"a\"))"],
+    ["bytes", "concat", "bytes.concat([bytes.new(\"a\")])"],
+    ["bytes", "slice", "bytes.slice(bytes.new(\"ab\"), 1)"],
+    ["bytes", "get", "bytes.get(bytes.new(\"ab\"), 0)"],
+    ["bytes", "tobase64", "bytes.tobase64(bytes.new(\"a\"))"],
+    ["bytes", "frombase64", "bytes.frombase64(bytes.tobase64(bytes.new(\"a\")))"],
+    ["dotenv", "load", "dotenv.load()"],
+    ["qrcode", "gen", "qrcode.gen(\"a\")"],
+    ["qrcode", "QRCode", "qrcode.QRCode()"]
+]
+
+
+# Os nomes aqui NAO podem repetir os globais do `main`: reatribuir uma global
+# que ja existe faz WRITE-THROUGH (secao 4.6.2 da referencia), entao `ok = 0`
+# dentro desta funct zerava o contador de fora e o total saia errado. Achado
+# rodando o proprio script.
+funct mede_modulos() {
+    global LINHAS
+    addEnd(LINHAS, "")
+    addEnd(LINHAS, "    /* funcoes de modulo */")
+    quantos_mod = 0
+    sem_medida = []
+    for each c in CHAMADAS {
+        fonte = "import " + c[0] + "\npost(type(" + c[2] + "))\n"
+        r = roda(fonte)
+        if r == "" {
+            addEnd(sem_medida, c[0] + "." + c[1])
+            continue
+        }
+        addEnd(LINHAS, "    { \"" + c[0] + "\", \"" + c[1] + "\", \"" + r + "\" },")
+        quantos_mod = quantos_mod + 1
+    }
+    if len(sem_medida) > 0 {
+        addEnd(LINHAS, "    /* nao medido (falhou a chamada de exemplo): " + ", ".join(sem_medida) + " */")
+    }
+    post("modulos".ljust(8), "medidos:", str(quantos_mod).rjust(3), "| nao medidos:", len(sem_medida))
+    return quantos_mod
+}
+
+
+funct membros_de(tipo) {
+    bruto = os.readFile(META)
+    m = json.parse(bruto)
+    if not (tipo in m["tipos"]) {
+        return []
+    }
+    return m["tipos"][tipo]
+}
+
+
+# Roda um programa e devolve a saida (ou "" se levantou).
+funct roda(fonte) {
+    os.writeFile(TMP + "/m.ps", fonte)
+    os.cmd("rm -f " + TMP + "/m.out")
+    os.cmd("'" + sys.executable + "' " + TMP + "/m.ps > " + TMP + "/m.out 2>&1")
+    if not os.exists(TMP + "/m.out") {
+        return ""
+    }
+    saida = os.readFile(TMP + "/m.out").strip()
+    if "Error" in saida or "Traceback" in saida {
+        return ""
+    }
+    # O que volta tem que PARECER nome de tipo. Sem esta trava, membro que
+    # imprime por conta propria (`os.warn` escreve no stderr, colhido junto)
+    # emendava a saida dele no nome do tipo e gerava C que nao compila:
+    #   { "os", "warn", "<escape de cor>
+    #   Null" },
+    if len(saida) == 0 or len(saida) > 20 {
+        return ""
+    }
+    for each c in saida {
+        # `eh_letra`, e nao `ok`: `ok` e global do main, e reatribuir global
+        # existente faz write-through — este laco zerava o contador de fora.
+        eh_letra = (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or c == "_"
+        if not eh_letra {
+            return ""
+        }
+    }
+    return saida
+}
+
+
+funct mede_tipo(tipo) {
+    a = AMOSTRAS[tipo]
+    achados = []
+    naomediu = []
+    for each membro in membros_de(tipo) {
+        nome = membro["nome"]
+        eh_prop = "kind" in membro and membro["kind"] == "property"
+        resultado = ""
+        conf = ""
+        if eh_prop {
+            resultado = roda("x = " + a["recv"] + "\npost(type(x." + nome + "))\n")
+            conf = roda("x = " + a["recv2"] + "\npost(type(x." + nome + "))\n")
+        }
+        else {
+            for each arg in a["args"] {
+                fonte = "x = " + a["recv"] + "\npost(type(x." + nome + "(" + arg + ")))\n"
+                resultado = roda(fonte)
+                if resultado != "" {
+                    conf = roda("x = " + a["recv2"] + "\npost(type(x." + nome + "(" + arg + ")))\n")
+                    break
+                }
+            }
+        }
+        if resultado == "" {
+            addEnd(naomediu, nome)
+        }
+        elif conf != "" and conf != resultado {
+            # o tipo saiu diferente com conteudo diferente: e o VALOR guardado
+            addEnd(achados, [nome, "(depende do conteudo: " + resultado + " / " + conf + ")"])
+        }
+        else {
+            addEnd(achados, [nome, resultado])
+        }
+    }
+    global LINHAS
+    addEnd(LINHAS, "")
+    addEnd(LINHAS, "    /* " + tipo + " */")
+    for each par in achados {
+        if par[1].startswith("(") {
+            # retorno que depende do conteudo guardado: NAO entra na tabela —
+            # declarar um tipo fixo aqui seria a amostra falando pelo motor
+            addEnd(LINHAS, "    /* " + tipo + "." + par[0] + ": devolve o VALOR guardado, tipo varia */")
+            continue
+        }
+        addEnd(LINHAS, "    { \"" + tipo + "\", \"" + par[0] + "\", \"" + par[1] + "\" },")
+    }
+    if len(naomediu) > 0 {
+        addEnd(LINHAS, "    /* nao medido automaticamente: " + ", ".join(naomediu) + " */")
+    }
+    post(tipo.ljust(8), "medidos:", str(len(achados)).rjust(3), "| nao medidos:", len(naomediu))
+    return [len(achados), len(naomediu)]
+}
+
+
+if __name__ == "main" {
+    TMP = "/tmp/ps_mede_retorno"
+    META = TMP + "/meta.json"
+    SAIDA = "vm/retornos_medidos.inc"
+    LINHAS = []
+    os.mkdir(TMP, exist_ok=true)
+    os.cmd("'" + sys.executable + "' --metadata > " + META)
+
+    alvos = []
+    for each a in sys.argv {
+        addEnd(alvos, a)
+    }
+    if len(alvos) == 0 {
+        alvos = ["str", "list", "dict", "tup", "bytes"]
+    }
+    ok = 0
+    faltou = 0
+    for each t in alvos {
+        r = mede_tipo(t)
+        ok = ok + r[0]
+        faltou = faltou + r[1]
+    }
+    ok = ok + mede_modulos()
+
+    cab = ["/* GERADO por scripts/mede_retornos.ps — NAO edite a mao.",
+           " *",
+           " * Tipo de retorno de cada metodo de tipo, MEDIDO: o script chama o membro",
+           " * num receptor de exemplo e anota o `type()` do que voltou. Roda de novo",
+           " * quando um retorno mudar de proposito:",
+           " *",
+           " *     ./pool scripts/mede_retornos.ps",
+           " *",
+           " * Quem devolve o VALOR GUARDADO (d.get, l.pop) fica de fora, com comentario:",
+           " * ali o tipo e o do conteudo, e fixar um seria a amostra falando pelo motor.",
+           " */"]
+    tudo = "\n".join(cab + LINHAS) + "\n"
+    os.writeFile(SAIDA, tudo)
+    post("")
+    post("gravado em", SAIDA, "—", ok, "medidos,", faltou, "nao medidos")
+}

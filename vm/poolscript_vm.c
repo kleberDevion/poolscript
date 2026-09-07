@@ -24291,6 +24291,14 @@ void ps_set_argv(int argc, char **argv)
  * de introspectar a stdlib do interpretador (que vai deixar de existir).
  * Membro que não aparece nesta tabela devolve tipo primitivo ou desconhecido. */
 static const struct { const char *dono; const char *membro; const char *tipo; } RETORNOS[] = {
+    /* Os metodos de tipo entram MEDIDOS, de `vm/retornos_medidos.inc`: o
+     * script chama cada um e anota o `type()` do que voltou. Antes desta
+     * inclusao a tabela so tinha quem devolve OBJETO (era feita pro editor
+     * encadear `conn.cursor().fetchall()`), e `--metadata` publicava retorno
+     * pra 69 de 513 membros — doc, hover e auditor ficavam sem fonte, cada um
+     * chutando o seu. */
+#include "retornos_medidos.inc"
+
     { "ChannelManager", "emit", "ChannelStatus" },
     { "CorsConfig", "options", "list[str]" },
     { "CorsConfig", "origins", "list[str]" },

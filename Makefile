@@ -40,7 +40,11 @@ FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
 # de lá, sem `-f`.
 MK := $(lastword $(MAKEFILE_LIST))
 
-pool: $(FONTES) $(VM)/ps_versao.h $(MK)
+# `retornos_medidos.inc` é GERADO (scripts/mede_retornos.ps) e incluído pelo
+# `poolscript_vm.c`. Sem ele nesta lista, regerar o .inc não recompilava nada:
+# o make olhava só os .c, via tudo em dia, e o binário seguia com a tabela
+# velha — a medição nova ficava no arquivo sem chegar no `--metadata`.
+pool: $(FONTES) $(VM)/ps_versao.h $(VM)/retornos_medidos.inc $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
 	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libgmp.so.10
 
