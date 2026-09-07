@@ -9,14 +9,14 @@
 
 const Caso CASOS_ERROS[] = {
 /* ── argumento faltando: TEM que reclamar em toda forma de chamada ── */
-{ "action: nomeado sem cobrir obrigatório",
-  "action f(a, b=2) {\n"
+{ "funct: nomeado sem cobrir obrigatório",
+  "funct f(a, b=2) {\n"
   "    return a\n"
   "}\n"
   "post(f(b=1))\n",
   "", "f() missing 1 required positional argument: 'a'", 1 },
 
-/* ── `action` esquecido: a cabeça `{tipo|async}+ NOME(` é UMA unidade ──────
+/* ── `funct` esquecido: a cabeça `{tipo|async}+ NOME(` é UMA unidade ──────
  * Eram três mensagens pro mesmo esquecimento, nenhuma com a palavra que
  * faltava: `int async f(` dizia "'async' e palavra reservada ... nome de
  * variavel" (o parser tinha lido `int async` como `int <nome>`); `async f(`
@@ -44,7 +44,7 @@ const Caso CASOS_ERROS[] = {
   "1", NULL, 0 },
 { "método de instância sem argumento",
   "class C() {\n"
-  "    action m(self, a) {\n"
+  "    funct m(self, a) {\n"
   "        return a\n"
   "    }\n"
   "}\n"
@@ -52,35 +52,35 @@ const Caso CASOS_ERROS[] = {
   "", "m() missing 1 required positional argument: 'a'", 1 },
 { "__init__ sem argumento",
   "class C() {\n"
-  "    action __init__(self, a) {\n"
+  "    funct __init__(self, a) {\n"
   "        self.a = a\n"
   "    }\n"
   "}\n"
   "x = C()\n",
   "", "__init__() missing 1 required positional argument: 'a'", 1 },
-{ "action solta sem argumento",
-  "action f(a) {\n"
+{ "funct solta sem argumento",
+  "funct f(a) {\n"
   "    return a\n"
   "}\n"
   "post(f())\n",
   "", "f() missing 1 required positional argument: 'a'", 1 },
 { "argumentos demais",
-  "action f(a, b=2) {\n"
+  "funct f(a, b=2) {\n"
   "    return a\n"
   "}\n"
   "post(f(1, 2, 3))\n",
   "", "f() takes 2 positional arguments but 3 were given", 1 },
 
 /* ── argumento nomeado que não existe ── */
-{ "nomeado inexistente em action",
-  "action f(a) {\n"
+{ "nomeado inexistente em funct",
+  "funct f(a) {\n"
   "    return a\n"
   "}\n"
   "post(f(1, c=2))\n",
   "", "TypeError: f() got an unexpected keyword argument 'c'", 1 },
 { "nomeado inexistente em método",
   "class C() {\n"
-  "    action m(self, a) {\n"
+  "    funct m(self, a) {\n"
   "        return a\n"
   "    }\n"
   "}\n"
@@ -90,7 +90,7 @@ const Caso CASOS_ERROS[] = {
 /* ── @static: sem ele, não dá pra chamar na classe ── */
 { "método normal chamado na classe",
   "class C() {\n"
-  "    action m(self, a) {\n"
+  "    funct m(self, a) {\n"
   "        return a\n"
   "    }\n"
   "}\n"
@@ -99,7 +99,7 @@ const Caso CASOS_ERROS[] = {
 { "@static com self na assinatura",
   "class C() {\n"
   "    @static\n"
-  "    action m(self, a, b=10) {\n"
+  "    funct m(self, a, b=10) {\n"
   "        return a + b\n"
   "    }\n"
   "}\n"
@@ -108,7 +108,7 @@ const Caso CASOS_ERROS[] = {
 { "@static sem self",
   "class C() {\n"
   "    @static\n"
-  "    action m(a) {\n"
+  "    funct m(a) {\n"
   "        return a\n"
   "    }\n"
   "}\n"
@@ -141,7 +141,7 @@ const Caso CASOS_ERROS[] = {
 
 /* ── finally roda em TODA saída ── */
 { "finally com return",
-  "action f() {\n    try {\n        return \"do try\"\n    } catch (e) {\n        return \"do catch\"\n"
+  "funct f() {\n    try {\n        return \"do try\"\n    } catch (e) {\n        return \"do catch\"\n"
   "    } finally {\n        post(\"finally\")\n    }\n}\npost(f())\n",
   "finally\ndo try", NULL, 0 },
 { "finally com break",
@@ -165,7 +165,7 @@ const Caso CASOS_ERROS[] = {
 { "@NonNull dentro de Entity",
   "class C() {\n"
   "    @NonNull\n"
-  "    action f(self, a) {\n"
+  "    funct f(self, a) {\n"
   "        return a\n"
   "    }\n"
   "}\n"
@@ -182,7 +182,7 @@ const Caso CASOS_ERROS[] = {
 { "@NonNull com valor válido passa",
   "class C() {\n"
   "    @NonNull\n"
-  "    action f(self, a) {\n"
+  "    funct f(self, a) {\n"
   "        return a\n"
   "    }\n"
   "}\n"
@@ -191,13 +191,13 @@ const Caso CASOS_ERROS[] = {
 
 /* ── comentário e linha vazia abrindo bloco ── */
 { "comentário como 1ª linha do bloco",
-  "action f(x) {\n"
+  "funct f(x) {\n"
   "    # comentário\n"
   "    return x + 1\n"
   "}\n"
   "post(f(1))\n", "2", NULL, 0 },
 { "linha vazia como 1ª linha do bloco",
-  "action g(x) {\n"
+  "funct g(x) {\n"
   "\n"
   "    return x * 2\n"
   "}\n"

@@ -36,7 +36,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: soma 0..0 [3/6]",
-  "action g() {\n"
+  "funct g() {\n"
   "    for each i in range(0) {\n"
   "        yield i\n"
   "    }\n"
@@ -49,7 +49,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: soma 0..0 [4/6]",
-  "action r(i, acc) {\n"
+  "funct r(i, acc) {\n"
   "    if i >= 0 {\n"
   "        return acc\n"
   "    }\n"
@@ -89,7 +89,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: soma 0..1 [3/6]",
-  "action g() {\n"
+  "funct g() {\n"
   "    for each i in range(1) {\n"
   "        yield i\n"
   "    }\n"
@@ -102,7 +102,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: soma 0..1 [4/6]",
-  "action r(i, acc) {\n"
+  "funct r(i, acc) {\n"
   "    if i >= 1 {\n"
   "        return acc\n"
   "    }\n"
@@ -142,7 +142,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "10", NULL, 0 },
 { "equiv: soma 0..5 [3/6]",
-  "action g() {\n"
+  "funct g() {\n"
   "    for each i in range(5) {\n"
   "        yield i\n"
   "    }\n"
@@ -155,7 +155,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "10", NULL, 0 },
 { "equiv: soma 0..5 [4/6]",
-  "action r(i, acc) {\n"
+  "funct r(i, acc) {\n"
   "    if i >= 5 {\n"
   "        return acc\n"
   "    }\n"
@@ -195,7 +195,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "136", NULL, 0 },
 { "equiv: soma 0..17 [3/6]",
-  "action g() {\n"
+  "funct g() {\n"
   "    for each i in range(17) {\n"
   "        yield i\n"
   "    }\n"
@@ -208,7 +208,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "136", NULL, 0 },
 { "equiv: soma 0..17 [4/6]",
-  "action r(i, acc) {\n"
+  "funct r(i, acc) {\n"
   "    if i >= 17 {\n"
   "        return acc\n"
   "    }\n"
@@ -290,15 +290,15 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "}\n"
   "\n",
   "1\n2", NULL, 0 },
-{ "equiv: action [1/2]",
-  "action f() {\n"
+{ "equiv: funct [1/2]",
+  "funct f() {\n"
   "    return 7\n"
   "}\n"
   "post(f())\n"
   "\n",
   "7", NULL, 0 },
-{ "equiv: action [2/2]",
-  "action f()\n"
+{ "equiv: funct [2/2]",
+  "funct f()\n"
   "{\n"
   "    return 7\n"
   "}\n"
@@ -325,7 +325,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "peguei", NULL, 0 },
 { "equiv: Entity [1/2]",
   "Entity P() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        return 3\n"
   "    }\n"
   "}\n"
@@ -335,7 +335,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
 { "equiv: Entity [2/2]",
   "Entity P()\n"
   "{\n"
-  "    action m(self)\n"
+  "    funct m(self)\n"
   "    {\n"
   "        return 3\n"
   "    }\n"
@@ -449,8 +449,8 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "outro", NULL, 0 },
 { "equiv: captura 0 [1/4]",
-  "action mult(k) {\n"
-  "    action f(x) {\n"
+  "funct mult(k) {\n"
+  "    funct f(x) {\n"
   "        return x * k\n"
   "    }\n"
   "    return f\n"
@@ -459,7 +459,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: captura 0 [2/4]",
-  "action f(x, k) {\n"
+  "funct f(x, k) {\n"
   "    return x * k\n"
   "}\n"
   "post(f(7, 0))\n"
@@ -467,10 +467,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "0", NULL, 0 },
 { "equiv: captura 0 [3/4]",
   "Entity M() {\n"
-  "    action __init__(self, k) {\n"
+  "    funct __init__(self, k) {\n"
   "        self.k = k\n"
   "    }\n"
-  "    action ap(self, x) {\n"
+  "    funct ap(self, x) {\n"
   "        return x * self.k\n"
   "    }\n"
   "}\n"
@@ -479,15 +479,15 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "0", NULL, 0 },
 { "equiv: captura 0 [4/4]",
   "k = 0\n"
-  "action f(x) {\n"
+  "funct f(x) {\n"
   "    return x * k\n"
   "}\n"
   "post(f(7))\n"
   "\n",
   "0", NULL, 0 },
 { "equiv: captura 3 [1/4]",
-  "action mult(k) {\n"
-  "    action f(x) {\n"
+  "funct mult(k) {\n"
+  "    funct f(x) {\n"
   "        return x * k\n"
   "    }\n"
   "    return f\n"
@@ -496,7 +496,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "21", NULL, 0 },
 { "equiv: captura 3 [2/4]",
-  "action f(x, k) {\n"
+  "funct f(x, k) {\n"
   "    return x * k\n"
   "}\n"
   "post(f(7, 3))\n"
@@ -504,10 +504,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "21", NULL, 0 },
 { "equiv: captura 3 [3/4]",
   "Entity M() {\n"
-  "    action __init__(self, k) {\n"
+  "    funct __init__(self, k) {\n"
   "        self.k = k\n"
   "    }\n"
-  "    action ap(self, x) {\n"
+  "    funct ap(self, x) {\n"
   "        return x * self.k\n"
   "    }\n"
   "}\n"
@@ -516,15 +516,15 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "21", NULL, 0 },
 { "equiv: captura 3 [4/4]",
   "k = 3\n"
-  "action f(x) {\n"
+  "funct f(x) {\n"
   "    return x * k\n"
   "}\n"
   "post(f(7))\n"
   "\n",
   "21", NULL, 0 },
 { "equiv: captura -2 [1/4]",
-  "action mult(k) {\n"
-  "    action f(x) {\n"
+  "funct mult(k) {\n"
+  "    funct f(x) {\n"
   "        return x * k\n"
   "    }\n"
   "    return f\n"
@@ -533,7 +533,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "-14", NULL, 0 },
 { "equiv: captura -2 [2/4]",
-  "action f(x, k) {\n"
+  "funct f(x, k) {\n"
   "    return x * k\n"
   "}\n"
   "post(f(7, -2))\n"
@@ -541,10 +541,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "-14", NULL, 0 },
 { "equiv: captura -2 [3/4]",
   "Entity M() {\n"
-  "    action __init__(self, k) {\n"
+  "    funct __init__(self, k) {\n"
   "        self.k = k\n"
   "    }\n"
-  "    action ap(self, x) {\n"
+  "    funct ap(self, x) {\n"
   "        return x * self.k\n"
   "    }\n"
   "}\n"
@@ -553,16 +553,16 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "-14", NULL, 0 },
 { "equiv: captura -2 [4/4]",
   "k = -2\n"
-  "action f(x) {\n"
+  "funct f(x) {\n"
   "    return x * k\n"
   "}\n"
   "post(f(7))\n"
   "\n",
   "-14", NULL, 0 },
 { "equiv: contador 3x [1/3]",
-  "action faz() {\n"
+  "funct faz() {\n"
   "    n = 0\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        n = n + 1\n"
   "        return n\n"
   "    }\n"
@@ -574,10 +574,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "1 2 3", NULL, 0 },
 { "equiv: contador 3x [2/3]",
   "Entity C() {\n"
-  "    action __init__(self) {\n"
+  "    funct __init__(self) {\n"
   "        self.n = 0\n"
   "    }\n"
-  "    action inc(self) {\n"
+  "    funct inc(self) {\n"
   "        self.n = self.n + 1\n"
   "        return self.n\n"
   "    }\n"
@@ -588,7 +588,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "1 2 3", NULL, 0 },
 { "equiv: contador 3x [3/3]",
   "l = [0]\n"
-  "action inc() {\n"
+  "funct inc() {\n"
   "    l[0] = l[0] + 1\n"
   "    return l[0]\n"
   "}\n"
@@ -596,7 +596,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "1 2 3", NULL, 0 },
 { "equiv: dobro de 0..4 [1/4]",
-  "action g() {\n"
+  "funct g() {\n"
   "    for each i in range(5) {\n"
   "        yield i * 2\n"
   "    }\n"
@@ -613,21 +613,21 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "[0, 2, 4, 6, 8]", NULL, 0 },
 { "equiv: dobro de 0..4 [3/4]",
-  "action d(x) {\n"
+  "funct d(x) {\n"
   "    return x * 2\n"
   "}\n"
   "post(map(list(range(5)), d))\n"
   "\n",
   "[0, 2, 4, 6, 8]", NULL, 0 },
 { "equiv: dobro de 0..4 [4/4]",
-  "action d2(x) {\n"
+  "funct d2(x) {\n"
   "    return x * 2\n"
   "}\n"
   "post(map(range(5), d2))\n"
   "\n",
   "[0, 2, 4, 6, 8]", NULL, 0 },
 { "equiv: finally com return [1/2]",
-  "action f() {\n"
+  "funct f() {\n"
   "    try {\n"
   "        return \"R\"\n"
   "    } catch(e) {\n"
@@ -640,7 +640,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "F\nR", NULL, 0 },
 { "equiv: finally com return [2/2]",
-  "action f() {\n"
+  "funct f() {\n"
   " try {\n"
   "  return \"R\"\n"
   " } catch (e) {\n"
@@ -707,7 +707,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "F1\nF2\nfim", NULL, 0 },
 { "equiv: finally roda com erro propagando [1/2]",
-  "action f() {\n"
+  "funct f() {\n"
   "    try {\n"
   "        raise B(\"x\")\n"
   "    } catch(e) {\n"
@@ -721,7 +721,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "C\nF\nR", NULL, 0 },
 { "equiv: finally roda com erro propagando [2/2]",
-  "action f() {\n"
+  "funct f() {\n"
   " try {\n"
   "  raise B(\"x\")\n"
   " } catch (e) {\n"
@@ -735,42 +735,42 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "C\nF\nR", NULL, 0 },
 { "equiv: async dobro [1/3]",
-  "async action d(n) {\n"
+  "async funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post(await d(4))\n"
   "\n",
   "8", NULL, 0 },
 { "equiv: async dobro [2/3]",
-  "action d(n) {\n"
+  "funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post(d(4))\n"
   "\n",
   "8", NULL, 0 },
 { "equiv: async dobro [3/3]",
-  "async action d(n) {\n"
+  "async funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post(gather(d(4))[0])\n"
   "\n",
   "8", NULL, 0 },
 { "equiv: async lista [1/3]",
-  "async action d(n) {\n"
+  "async funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post(await [d(1), d(2), d(3)])\n"
   "\n",
   "[2, 4, 6]", NULL, 0 },
 { "equiv: async lista [2/3]",
-  "action d(n) {\n"
+  "funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post([d(1), d(2), d(3)])\n"
   "\n",
   "[2, 4, 6]", NULL, 0 },
 { "equiv: async lista [3/3]",
-  "async action d(n) {\n"
+  "async funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post(gather(d(1), d(2), d(3)))\n"
@@ -839,12 +839,12 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "3", NULL, 0 },
 { "equiv: heranca 0 [1/3]",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        base(x)\n"
   "    }\n"
   "}\n"
@@ -853,7 +853,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "0", NULL, 0 },
 { "equiv: heranca 0 [2/3]",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
@@ -862,10 +862,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "0", NULL, 0 },
 { "equiv: heranca 0 [3/3]",
   "Entity B() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
-  "    action pega(self) {\n"
+  "    funct pega(self) {\n"
   "        return self.x\n"
   "    }\n"
   "}\n"
@@ -874,12 +874,12 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "0", NULL, 0 },
 { "equiv: heranca 5 [1/3]",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        base(x)\n"
   "    }\n"
   "}\n"
@@ -888,7 +888,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "5", NULL, 0 },
 { "equiv: heranca 5 [2/3]",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
@@ -897,10 +897,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "5", NULL, 0 },
 { "equiv: heranca 5 [3/3]",
   "Entity B() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
-  "    action pega(self) {\n"
+  "    funct pega(self) {\n"
   "        return self.x\n"
   "    }\n"
   "}\n"
@@ -909,12 +909,12 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "5", NULL, 0 },
 { "equiv: heranca -3 [1/3]",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        base(x)\n"
   "    }\n"
   "}\n"
@@ -923,7 +923,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "-3", NULL, 0 },
 { "equiv: heranca -3 [2/3]",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
@@ -932,10 +932,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "-3", NULL, 0 },
 { "equiv: heranca -3 [3/3]",
   "Entity B() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
-  "    action pega(self) {\n"
+  "    funct pega(self) {\n"
   "        return self.x\n"
   "    }\n"
   "}\n"
@@ -945,7 +945,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
 { "equiv: private lido de dentro [1/3]",
   "Entity P() {\n"
   "    private s: int\n"
-  "    action ve(self) {\n"
+  "    funct ve(self) {\n"
   "        return self.s\n"
   "    }\n"
   "}\n"
@@ -955,7 +955,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
 { "equiv: private lido de dentro [2/3]",
   "Entity Q() {\n"
   "    s: int\n"
-  "    action ve(self) {\n"
+  "    funct ve(self) {\n"
   "        return self.s\n"
   "    }\n"
   "}\n"
@@ -963,7 +963,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "9", NULL, 0 },
 { "equiv: private lido de dentro [3/3]",
-  "action ve(s) {\n"
+  "funct ve(s) {\n"
   "    return s\n"
   "}\n"
   "post(ve(9))\n"
@@ -972,7 +972,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
 { "equiv: static [1/2]",
   "Entity K() {\n"
   "    @static\n"
-  "    action f(self, n) {\n"
+  "    funct f(self, n) {\n"
   "        return n + 1\n"
   "    }\n"
   "}\n"
@@ -980,7 +980,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "5", NULL, 0 },
 { "equiv: static [2/2]",
-  "action f(n) {\n"
+  "funct f(n) {\n"
   "    return n + 1\n"
   "}\n"
   "post(f(4))\n"
@@ -1124,9 +1124,9 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "-3-ção", NULL, 0 },
 { "equiv: dois niveis [1/2]",
-  "action n1(a) {\n"
-  "    action n2(b) {\n"
-  "        action n3(c) {\n"
+  "funct n1(a) {\n"
+  "    funct n2(b) {\n"
+  "        funct n3(c) {\n"
   "            return a + b + c\n"
   "        }\n"
   "        return n3(3)\n"
@@ -1137,7 +1137,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "6", NULL, 0 },
 { "equiv: dois niveis [2/2]",
-  "action f(a, b, c) {\n"
+  "funct f(a, b, c) {\n"
   "    return a + b + c\n"
   "}\n"
   "post(f(1, 2, 3))\n"
@@ -1159,7 +1159,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "1", NULL, 0 },
 { "equiv: erro capturado vira valor [1/3]",
-  "action f() {\n"
+  "funct f() {\n"
   "    try {\n"
   "        raise B(\"x\")\n"
   "    } catch(e) {\n"
@@ -1170,7 +1170,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "0", NULL, 0 },
 { "equiv: erro capturado vira valor [2/3]",
-  "int action g() {\n"
+  "int funct g() {\n"
   "    return null\n"
   "}\n"
   "post(g())\n"

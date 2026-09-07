@@ -5,7 +5,7 @@
  *     programas `.ps` E a resposta esperada de cada um; só entraram aqui os
  *     que a VM de hoje confirma — divergência virou investigação, não caso.
  *  2. a matriz de INTERAÇÃO: cada feature nova exercitada dentro de cada
- *     contexto da linguagem (action, método, aninhada, for, while, try,
+ *     contexto da linguagem (funct, método, aninhada, for, while, try,
  *     finally, gerador, async, using, match, bloco `:` e bloco `{}`).
  *     Passar isolado não prova nada — o que quebra é a combinação.
  */
@@ -13,7 +13,7 @@
 
 const Caso CASOS_COBERTURA[] = {
 { "git: test_async_deep #0",
-  "async action lenta() {\n"
+  "async funct lenta() {\n"
   "    sleep(0.3)\n"
   "    return 1\n"
   "}\n"
@@ -22,7 +22,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "chamou", NULL, 0 },
 { "git: test_async_deep #1",
-  "async action lenta(n) {\n"
+  "async funct lenta(n) {\n"
   "    sleep(0.3)\n"
   "    return n\n"
   "}\n"
@@ -33,7 +33,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "1\n2", NULL, 0 },
 { "git: test_async_deep #2",
-  "async action falha() {\n"
+  "async funct falha() {\n"
   "    x = 1 / 0\n"
   "    return x\n"
   "}\n"
@@ -43,7 +43,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "nao_lancou_ainda", NULL, 0 },
 { "git: test_async_deep #7",
-  "async action ident(n) {\n"
+  "async funct ident(n) {\n"
   "    sleep(0.05)\n"
   "    return n\n"
   "}\n"
@@ -86,7 +86,7 @@ const Caso CASOS_COBERTURA[] = {
   "ç 1", NULL, 0 },
 { "matriz: closure em topo",
   "a = 1\n"
-  "action inc() {\n"
+  "funct inc() {\n"
   "    a = a + 1\n"
   "    return a\n"
   "}\n"
@@ -95,7 +95,7 @@ const Caso CASOS_COBERTURA[] = {
   "2 3", NULL, 0 },
 { "matriz: closure_self em topo",
   "x = 5\n"
-  "action le() {\n"
+  "funct le() {\n"
   "    return x\n"
   "}\n"
   "post(le())\n"
@@ -146,7 +146,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em topo",
-  "async action d(n) {\n"
+  "async funct d(n) {\n"
   "    return n * 2\n"
   "}\n"
   "post(await [d(1), d(2)])\n"
@@ -168,26 +168,26 @@ const Caso CASOS_COBERTURA[] = {
   "post(\"abcdef\"[999999999999999999999:])\n"
   "\n",
   "", NULL, 0 },
-{ "matriz: char em action",
-  "action f() {\n"
+{ "matriz: char em funct",
+  "funct f() {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "}\n"
   "f()\n"
   "\n",
   "@", NULL, 0 },
-{ "matriz: char_texto em action",
-  "action f() {\n"
+{ "matriz: char_texto em funct",
+  "funct f() {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "}\n"
   "f()\n"
   "\n",
   "ç 1", NULL, 0 },
-{ "matriz: closure em action",
-  "action f() {\n"
+{ "matriz: closure em funct",
+  "funct f() {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -196,10 +196,10 @@ const Caso CASOS_COBERTURA[] = {
   "f()\n"
   "\n",
   "2 3", NULL, 0 },
-{ "matriz: closure_self em action",
-  "action f() {\n"
+{ "matriz: closure_self em funct",
+  "funct f() {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -207,83 +207,83 @@ const Caso CASOS_COBERTURA[] = {
   "f()\n"
   "\n",
   "5", NULL, 0 },
-{ "matriz: startswith em action",
-  "action f() {\n"
+{ "matriz: startswith em funct",
+  "funct f() {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "}\n"
   "f()\n"
   "\n",
   "True", NULL, 0 },
-{ "matriz: index_faixa em action",
-  "action f() {\n"
+{ "matriz: index_faixa em funct",
+  "funct f() {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "}\n"
   "f()\n"
   "\n",
   "3", NULL, 0 },
-{ "matriz: encode em action",
-  "action f() {\n"
+{ "matriz: encode em funct",
+  "funct f() {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "}\n"
   "f()\n"
   "\n",
   "b'caf\\xe9'", NULL, 0 },
-{ "matriz: decode em action",
-  "action f() {\n"
+{ "matriz: decode em funct",
+  "funct f() {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "}\n"
   "f()\n"
   "\n",
   "café", NULL, 0 },
-{ "matriz: num_base em action",
-  "action f() {\n"
+{ "matriz: num_base em funct",
+  "funct f() {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "}\n"
   "f()\n"
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
-{ "matriz: unicode em action",
-  "action f() {\n"
+{ "matriz: unicode em funct",
+  "funct f() {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "}\n"
   "f()\n"
   "\n",
   "ω SS", NULL, 0 },
-{ "matriz: isdigit em action",
-  "action f() {\n"
+{ "matriz: isdigit em funct",
+  "funct f() {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "}\n"
   "f()\n"
   "\n",
   "True False", NULL, 0 },
-{ "matriz: regex_split em action",
-  "action f() {\n"
+{ "matriz: regex_split em funct",
+  "funct f() {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "}\n"
   "f()\n"
   "\n",
   "['a', ',', 'b']", NULL, 0 },
-{ "matriz: regex_sub em action",
-  "action f() {\n"
+{ "matriz: regex_sub em funct",
+  "funct f() {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "}\n"
   "f()\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em action",
-  "action f() {\n"
+{ "matriz: json_emoji em funct",
+  "funct f() {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "}\n"
   "f()\n"
   "\n",
   "{'a': '😀'}", NULL, 0 },
-{ "matriz: await_lista em action",
-  "action f() {\n"
-  "    async action d(n) {\n"
+{ "matriz: await_lista em funct",
+  "funct f() {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -291,8 +291,8 @@ const Caso CASOS_COBERTURA[] = {
   "f()\n"
   "\n",
   "[2, 4]", NULL, 0 },
-{ "matriz: int_inf em action",
-  "action f() {\n"
+{ "matriz: int_inf em funct",
+  "funct f() {\n"
   "    try {\n"
   "        post(int(flo(\"inf\")))\n"
   "    } catch(e) {\n"
@@ -302,15 +302,15 @@ const Caso CASOS_COBERTURA[] = {
   "f()\n"
   "\n",
   "ok-erro", NULL, 0 },
-{ "matriz: nul em action",
-  "action f() {\n"
+{ "matriz: nul em funct",
+  "funct f() {\n"
   "    post(len(\"a\\x00b\"))\n"
   "}\n"
   "f()\n"
   "\n",
   "3", NULL, 0 },
-{ "matriz: fatia em action",
-  "action f() {\n"
+{ "matriz: fatia em funct",
+  "funct f() {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "}\n"
   "f()\n"
@@ -333,7 +333,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure em bloco_if",
   "if true {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -344,7 +344,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure_self em bloco_if",
   "if true {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -417,7 +417,7 @@ const Caso CASOS_COBERTURA[] = {
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em bloco_if",
   "if true {\n"
-  "    async action d(n) {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -553,7 +553,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure em for_each",
   "for each _i in range(2) {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -564,7 +564,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure_self em for_each",
   "for each _i in range(2) {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -637,7 +637,7 @@ const Caso CASOS_COBERTURA[] = {
   "{'a': '😀'}\n{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em for_each",
   "for each _i in range(2) {\n"
-  "    async action d(n) {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -689,7 +689,7 @@ const Caso CASOS_COBERTURA[] = {
   "while n < 1 {\n"
   "    n = n + 1\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -702,7 +702,7 @@ const Caso CASOS_COBERTURA[] = {
   "while n < 1 {\n"
   "    n = n + 1\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -797,7 +797,7 @@ const Caso CASOS_COBERTURA[] = {
   "n = 0\n"
   "while n < 1 {\n"
   "    n = n + 1\n"
-  "    async action d(n) {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -853,7 +853,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure em try",
   "try {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -866,7 +866,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure_self em try",
   "try {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -961,7 +961,7 @@ const Caso CASOS_COBERTURA[] = {
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em try",
   "try {\n"
-  "    async action d(n) {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -1023,7 +1023,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure em finally",
   "try {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -1038,7 +1038,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure_self em finally",
   "try {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -1155,7 +1155,7 @@ const Caso CASOS_COBERTURA[] = {
   "{'a': '😀'}\nfim", NULL, 0 },
 { "matriz: await_lista em finally",
   "try {\n"
-  "    async action d(n) {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -1202,7 +1202,7 @@ const Caso CASOS_COBERTURA[] = {
   "\nfim", NULL, 0 },
 { "matriz: char em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        char c = 64\n"
   "        post(c)\n"
   "    }\n"
@@ -1212,7 +1212,7 @@ const Caso CASOS_COBERTURA[] = {
   "@", NULL, 0 },
 { "matriz: char_texto em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        char c = \"ç\"\n"
   "        post(c, len(c))\n"
   "    }\n"
@@ -1222,9 +1222,9 @@ const Caso CASOS_COBERTURA[] = {
   "ç 1", NULL, 0 },
 { "matriz: closure em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        a = 1\n"
-  "        action inc() {\n"
+  "        funct inc() {\n"
   "            a = a + 1\n"
   "            return a\n"
   "        }\n"
@@ -1236,9 +1236,9 @@ const Caso CASOS_COBERTURA[] = {
   "2 3", NULL, 0 },
 { "matriz: closure_self em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        x = 5\n"
-  "        action le() {\n"
+  "        funct le() {\n"
   "            return x\n"
   "        }\n"
   "        post(le())\n"
@@ -1249,7 +1249,7 @@ const Caso CASOS_COBERTURA[] = {
   "5", NULL, 0 },
 { "matriz: startswith em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    }\n"
   "}\n"
@@ -1258,7 +1258,7 @@ const Caso CASOS_COBERTURA[] = {
   "True", NULL, 0 },
 { "matriz: index_faixa em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        l = [1, 2, 3, 2]\n"
   "        post(l.index(2, 2))\n"
   "    }\n"
@@ -1268,7 +1268,7 @@ const Caso CASOS_COBERTURA[] = {
   "3", NULL, 0 },
 { "matriz: encode em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(\"café\".encode(\"latin-1\"))\n"
   "    }\n"
   "}\n"
@@ -1277,7 +1277,7 @@ const Caso CASOS_COBERTURA[] = {
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    }\n"
   "}\n"
@@ -1286,7 +1286,7 @@ const Caso CASOS_COBERTURA[] = {
   "café", NULL, 0 },
 { "matriz: num_base em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(0x1F, 0b101, 1_000, 1e3)\n"
   "    }\n"
   "}\n"
@@ -1295,7 +1295,7 @@ const Caso CASOS_COBERTURA[] = {
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(\"Ω\".lower(), \"ß\".upper())\n"
   "    }\n"
   "}\n"
@@ -1304,7 +1304,7 @@ const Caso CASOS_COBERTURA[] = {
   "ω SS", NULL, 0 },
 { "matriz: isdigit em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    }\n"
   "}\n"
@@ -1313,7 +1313,7 @@ const Caso CASOS_COBERTURA[] = {
   "True False", NULL, 0 },
 { "matriz: regex_split em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        import regex\n"
   "        post(regex.split(r\"(,)\", \"a,b\"))\n"
   "    }\n"
@@ -1323,7 +1323,7 @@ const Caso CASOS_COBERTURA[] = {
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        import regex\n"
   "        post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "    }\n"
@@ -1333,7 +1333,7 @@ const Caso CASOS_COBERTURA[] = {
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        import json\n"
   "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "    }\n"
@@ -1343,8 +1343,8 @@ const Caso CASOS_COBERTURA[] = {
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
-  "        async action d(n) {\n"
+  "    funct m(self) {\n"
+  "        async funct d(n) {\n"
   "            return n * 2\n"
   "        }\n"
   "        post(await [d(1), d(2)])\n"
@@ -1355,7 +1355,7 @@ const Caso CASOS_COBERTURA[] = {
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        try {\n"
   "            post(int(flo(\"inf\")))\n"
   "        } catch(e) {\n"
@@ -1368,7 +1368,7 @@ const Caso CASOS_COBERTURA[] = {
   "ok-erro", NULL, 0 },
 { "matriz: nul em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(len(\"a\\x00b\"))\n"
   "    }\n"
   "}\n"
@@ -1377,7 +1377,7 @@ const Caso CASOS_COBERTURA[] = {
   "3", NULL, 0 },
 { "matriz: fatia em metodo",
   "Entity K() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        post(\"abcdef\"[999999999999999999999:])\n"
   "    }\n"
   "}\n"
@@ -1385,8 +1385,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "", NULL, 0 },
 { "matriz: char em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        char c = 64\n"
   "        post(c)\n"
   "    }\n"
@@ -1396,8 +1396,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        char c = \"ç\"\n"
   "        post(c, len(c))\n"
   "    }\n"
@@ -1407,10 +1407,10 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        a = 1\n"
-  "        action inc() {\n"
+  "        funct inc() {\n"
   "            a = a + 1\n"
   "            return a\n"
   "        }\n"
@@ -1422,10 +1422,10 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        x = 5\n"
-  "        action le() {\n"
+  "        funct le() {\n"
   "            return x\n"
   "        }\n"
   "        post(le())\n"
@@ -1436,8 +1436,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    }\n"
   "    dentro()\n"
@@ -1446,8 +1446,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        l = [1, 2, 3, 2]\n"
   "        post(l.index(2, 2))\n"
   "    }\n"
@@ -1457,8 +1457,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(\"café\".encode(\"latin-1\"))\n"
   "    }\n"
   "    dentro()\n"
@@ -1467,8 +1467,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    }\n"
   "    dentro()\n"
@@ -1477,8 +1477,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(0x1F, 0b101, 1_000, 1e3)\n"
   "    }\n"
   "    dentro()\n"
@@ -1487,8 +1487,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(\"Ω\".lower(), \"ß\".upper())\n"
   "    }\n"
   "    dentro()\n"
@@ -1497,8 +1497,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    }\n"
   "    dentro()\n"
@@ -1507,8 +1507,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        import regex\n"
   "        post(regex.split(r\"(,)\", \"a,b\"))\n"
   "    }\n"
@@ -1518,8 +1518,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        import regex\n"
   "        post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "    }\n"
@@ -1529,8 +1529,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        import json\n"
   "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "    }\n"
@@ -1540,9 +1540,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
-  "        async action d(n) {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
+  "        async funct d(n) {\n"
   "            return n * 2\n"
   "        }\n"
   "        post(await [d(1), d(2)])\n"
@@ -1553,8 +1553,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        try {\n"
   "            post(int(flo(\"inf\")))\n"
   "        } catch(e) {\n"
@@ -1567,8 +1567,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(len(\"a\\x00b\"))\n"
   "    }\n"
   "    dentro()\n"
@@ -1577,8 +1577,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em aninhada",
-  "action fora() {\n"
-  "    action dentro() {\n"
+  "funct fora() {\n"
+  "    funct dentro() {\n"
   "        post(\"abcdef\"[999999999999999999999:])\n"
   "    }\n"
   "    dentro()\n"
@@ -1587,7 +1587,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "", NULL, 0 },
 { "matriz: char em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "    yield 1\n"
@@ -1598,7 +1598,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "@", NULL, 0 },
 { "matriz: char_texto em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "    yield 1\n"
@@ -1609,9 +1609,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ç 1", NULL, 0 },
 { "matriz: closure em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -1624,9 +1624,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "2 3", NULL, 0 },
 { "matriz: closure_self em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -1638,7 +1638,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "5", NULL, 0 },
 { "matriz: startswith em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    yield 1\n"
   "}\n"
@@ -1648,7 +1648,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True", NULL, 0 },
 { "matriz: index_faixa em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "    yield 1\n"
@@ -1659,7 +1659,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3", NULL, 0 },
 { "matriz: encode em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "    yield 1\n"
   "}\n"
@@ -1669,7 +1669,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "b'caf\\xe9'", NULL, 0 },
 { "matriz: decode em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    yield 1\n"
   "}\n"
@@ -1679,7 +1679,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "café", NULL, 0 },
 { "matriz: num_base em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "    yield 1\n"
   "}\n"
@@ -1689,7 +1689,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "31 5 1000 1000.0", NULL, 0 },
 { "matriz: unicode em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "    yield 1\n"
   "}\n"
@@ -1699,7 +1699,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ω SS", NULL, 0 },
 { "matriz: isdigit em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    yield 1\n"
   "}\n"
@@ -1709,7 +1709,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True False", NULL, 0 },
 { "matriz: regex_split em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "    yield 1\n"
@@ -1720,7 +1720,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "['a', ',', 'b']", NULL, 0 },
 { "matriz: regex_sub em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "    yield 1\n"
@@ -1731,7 +1731,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "a[1]", NULL, 0 },
 { "matriz: json_emoji em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "    yield 1\n"
@@ -1742,8 +1742,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em gerador",
-  "action g() {\n"
-  "    async action d(n) {\n"
+  "funct g() {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -1755,7 +1755,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "[2, 4]", NULL, 0 },
 { "matriz: int_inf em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    try {\n"
   "        post(int(flo(\"inf\")))\n"
   "    } catch(e) {\n"
@@ -1769,7 +1769,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ok-erro", NULL, 0 },
 { "matriz: nul em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(len(\"a\\x00b\"))\n"
   "    yield 1\n"
   "}\n"
@@ -1779,7 +1779,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3", NULL, 0 },
 { "matriz: fatia em gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "    yield 1\n"
   "}\n"
@@ -1789,7 +1789,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "", NULL, 0 },
 { "matriz: char em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    char c = 64\n"
   "    post(c)\n"
   "    return 1\n"
@@ -1798,7 +1798,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "@\n1", NULL, 0 },
 { "matriz: char_texto em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    char c = \"ç\"\n"
   "    post(c, len(c))\n"
   "    return 1\n"
@@ -1807,9 +1807,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ç 1\n1", NULL, 0 },
 { "matriz: closure em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -1820,9 +1820,9 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "2 3\n1", NULL, 0 },
 { "matriz: closure_self em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -1832,7 +1832,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "5\n1", NULL, 0 },
 { "matriz: startswith em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(\"abc\".startswith((\"z\", \"a\")))\n"
   "    return 1\n"
   "}\n"
@@ -1840,7 +1840,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True\n1", NULL, 0 },
 { "matriz: index_faixa em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    l = [1, 2, 3, 2]\n"
   "    post(l.index(2, 2))\n"
   "    return 1\n"
@@ -1849,7 +1849,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3\n1", NULL, 0 },
 { "matriz: encode em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(\"café\".encode(\"latin-1\"))\n"
   "    return 1\n"
   "}\n"
@@ -1857,7 +1857,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "b'caf\\xe9'\n1", NULL, 0 },
 { "matriz: decode em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(\"café\".encode(\"latin-1\").decode(\"latin-1\"))\n"
   "    return 1\n"
   "}\n"
@@ -1865,7 +1865,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "café\n1", NULL, 0 },
 { "matriz: num_base em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(0x1F, 0b101, 1_000, 1e3)\n"
   "    return 1\n"
   "}\n"
@@ -1873,7 +1873,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "31 5 1000 1000.0\n1", NULL, 0 },
 { "matriz: unicode em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(\"Ω\".lower(), \"ß\".upper())\n"
   "    return 1\n"
   "}\n"
@@ -1881,7 +1881,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ω SS\n1", NULL, 0 },
 { "matriz: isdigit em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(\"²\".isdigit(), \"²\".isdecimal())\n"
   "    return 1\n"
   "}\n"
@@ -1889,7 +1889,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "True False\n1", NULL, 0 },
 { "matriz: regex_split em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    import regex\n"
   "    post(regex.split(r\"(,)\", \"a,b\"))\n"
   "    return 1\n"
@@ -1898,7 +1898,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "['a', ',', 'b']\n1", NULL, 0 },
 { "matriz: regex_sub em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    import regex\n"
   "    post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "    return 1\n"
@@ -1907,7 +1907,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "a[1]\n1", NULL, 0 },
 { "matriz: json_emoji em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    import json\n"
   "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
   "    return 1\n"
@@ -1916,8 +1916,8 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "{'a': '😀'}\n1", NULL, 0 },
 { "matriz: await_lista em async",
-  "async action a() {\n"
-  "    async action d(n) {\n"
+  "async funct a() {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -1927,7 +1927,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "[2, 4]\n1", NULL, 0 },
 { "matriz: int_inf em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    try {\n"
   "        post(int(flo(\"inf\")))\n"
   "    } catch(e) {\n"
@@ -1939,7 +1939,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "ok-erro\n1", NULL, 0 },
 { "matriz: nul em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(len(\"a\\x00b\"))\n"
   "    return 1\n"
   "}\n"
@@ -1947,7 +1947,7 @@ const Caso CASOS_COBERTURA[] = {
   "\n",
   "3\n1", NULL, 0 },
 { "matriz: fatia em async",
-  "async action a() {\n"
+  "async funct a() {\n"
   "    post(\"abcdef\"[999999999999999999999:])\n"
   "    return 1\n"
   "}\n"
@@ -1971,7 +1971,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure em using",
   "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    a = 1\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        a = a + 1\n"
   "        return a\n"
   "    }\n"
@@ -1982,7 +1982,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: closure_self em using",
   "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    x = 5\n"
-  "    action le() {\n"
+  "    funct le() {\n"
   "        return x\n"
   "    }\n"
   "    post(le())\n"
@@ -2055,7 +2055,7 @@ const Caso CASOS_COBERTURA[] = {
   "{'a': '😀'}", NULL, 0 },
 { "matriz: await_lista em using",
   "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
-  "    async action d(n) {\n"
+  "    async funct d(n) {\n"
   "        return n * 2\n"
   "    }\n"
   "    post(await [d(1), d(2)])\n"
@@ -2106,7 +2106,7 @@ const Caso CASOS_COBERTURA[] = {
   "match 1 {\n"
   "    case 1 {\n"
   "        a = 1\n"
-  "        action inc() {\n"
+  "        funct inc() {\n"
   "            a = a + 1\n"
   "            return a\n"
   "        }\n"
@@ -2119,7 +2119,7 @@ const Caso CASOS_COBERTURA[] = {
   "match 1 {\n"
   "    case 1 {\n"
   "        x = 5\n"
-  "        action le() {\n"
+  "        funct le() {\n"
   "            return x\n"
   "        }\n"
   "        post(le())\n"
@@ -2214,7 +2214,7 @@ const Caso CASOS_COBERTURA[] = {
 { "matriz: await_lista em match",
   "match 1 {\n"
   "    case 1 {\n"
-  "        async action d(n) {\n"
+  "        async funct d(n) {\n"
   "            return n * 2\n"
   "        }\n"
   "        post(await [d(1), d(2)])\n"

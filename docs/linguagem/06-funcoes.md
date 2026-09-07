@@ -10,7 +10,7 @@ Como sempre, cada comportamento foi verificado rodando o fonte de verdade.
 
 ---
 
-## 6.1. Definição — `funct` (e as grafias `action` e `reaction`)
+## 6.1. Definição — `funct`
 
 ```ps
 funct soma(a, b) {
@@ -20,22 +20,20 @@ funct soma(a, b) {
 post(soma(2, 3))     # 5
 ```
 
-`action` e `reaction` são as **grafias antigas** da mesma declaração: mesma
-sintaxe, mesmo comportamento, e `type()` de qualquer uma devolve `"funct"`.
-Continuam valendo em todo lugar — código escrito com elas não quebra — mas
-`funct` é o nome da construção.
-
-```ps
-action antiga(x) {
-    post("continua valendo", x)
-}
-
-reaction ao_clicar(x) {
-    post("clicou em", x)
-}
-```
-
 O corpo é um bloco `{ }`, como todo bloco da linguagem (seção 1.3).
+
+> **`action` e `reaction` saíram da linguagem.** Eram as grafias antigas desta
+> mesma declaração. Não são mais palavra reservada, e escrever qualquer uma
+> delas onde `funct` deveria estar é erro de sintaxe, com o conserto na
+> mensagem:
+>
+> ```
+> action g() { ... }
+> SyntaxError: 'action' saiu da linguagem; a funcao se declara com 'funct': funct g(args) { ... }
+> ```
+>
+> A recusa cobre as quatro posições: função solta, método de Entity, lambda
+> (`x = action(y) {`) e cabeça com modificadores (`int async reaction h(a)`).
 
 ---
 
@@ -308,8 +306,8 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
 
 ## 6.9. Resumo
 
-- **`funct`** define uma função (`type()` → `"funct"`); `action` e `reaction`
-  são as grafias antigas e continuam valendo.
+- **`funct`** define uma função (`type()` → `"funct"`). É a única palavra:
+  `action` e `reaction` saíram e são erro de sintaxe.
 - Parâmetros: posicionais + **padrão** (`b=10`); **nomeados** na chamada; **sem
   tipo**, **sem variádico**; aridade errada é erro.
 - `return` sem valor / ausência de `return` → `null`.

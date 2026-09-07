@@ -91,8 +91,13 @@ instala-vsix: vsix
 NVIM_CFG ?= $(HOME)/.config/nvim
 
 nvim:
-	@install -d $(NVIM_CFG)/colors
+	@install -d $(NVIM_CFG)/colors $(NVIM_CFG)/syntax
 	install -m644 editor/nvim/colors/ariake-dark.lua $(NVIM_CFG)/colors/
+	# O REALCE. Ficou meses só na maquina, fora do repositorio: a copia
+	# instalada era de antes da reforma, nao conhecia `funct` e pintava `//`
+	# de comentario (nesta linguagem `//` e divisao inteira). Fora do git,
+	# nada disso aparecia num diff.
+	install -m644 editor/nvim/syntax/poolscript.vim $(NVIM_CFG)/syntax/
 	# GUARDA COPIA E INSTALA, em vez de recusar.
 	#
 	# Recusar parecia prudente e nao era: o init.lua da maquina ficou DIAS preso

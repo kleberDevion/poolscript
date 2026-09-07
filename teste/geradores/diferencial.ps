@@ -308,7 +308,7 @@ funct texto_de(bs) {
 # por qualquer função que atribua o mesmo nome (write-through, §4.7). A
 # primeira versão tinha `linhas` e `n` no `if __name__` — escopo de módulo —
 # e `casos_de()` também atribuía `linhas` e `n`: a lista de saída virou as
-# linhas do último arquivo lido e o contador foi zerado. Dentro de uma action
+# linhas do último arquivo lido e o contador foi zerado. Dentro de uma funct
 # os nomes são locais dela, e ninguém de fora os alcança.
 funct principal() {
     os.mkdir(TMP, exist_ok=true)

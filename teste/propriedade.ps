@@ -57,7 +57,7 @@ funct fam_soma(n) {
         "s = 0\ni = 0\nwhile i < " + str(n) + " {\n    s = s + i\n    i = i + 1\n}\npost(s)",
         "post(sum(range(" + str(n) + ")))",
         "post(sum([i for each i in range(" + str(n) + ")]))",
-        "action g() {\n    for each i in range(" + str(n) + ") {\n        yield i\n    }\n}\npost(sum(list(g())))"
+        "funct g() {\n    for each i in range(" + str(n) + ") {\n        yield i\n    }\n}\npost(sum(list(g())))"
     ]
 }
 
@@ -67,8 +67,8 @@ funct fam_expr(e) {
     return [
         "post(" + e + ")",
         "x = " + e + "\npost(x)",
-        "action f() {\n    return " + e + "\n}\npost(f())",
-        "action f(v) {\n    return v\n}\npost(f(" + e + "))",
+        "funct f() {\n    return " + e + "\n}\npost(f())",
+        "funct f(v) {\n    return v\n}\npost(f(" + e + "))",
         "post([" + e + "][0])",
         "post({\"k\": " + e + "}[\"k\"])",
         "post((" + e + ",)[0])"

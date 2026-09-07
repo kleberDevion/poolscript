@@ -124,7 +124,7 @@ funct chamadas(meta, tipo, recv) {
 # catraca de cobertura: só piora reprova.
 funct programa(tipo, fora, divida) {
     L = [IMPORTS + prologo(tipo), "CAL = []",
-         "action calou_(nome) {",
+         "funct calou_(nome) {",
          "    if not CAL.contains(nome) {",
          "        CAL.append(nome)",
          "    }",

@@ -119,8 +119,8 @@ confere("__name__ num modulo importado e o nome do modulo",
 # ao lado dele — so a raiz do projeto era olhada, e `import smtp` dentro de
 # `acesso/controller.ps` dava "No module named 'smtp'" (o erro da tela dele).
 os.mkdir(PASTA + "/rel/acesso", exist_ok=true)
-os.writeFile(PASTA + "/rel/acesso/smtp.ps", "action manda() {\n    return \"mandou\"\n}\n")
-os.writeFile(PASTA + "/rel/acesso/controller.ps", "import smtp\naction entra() {\n    return smtp.manda()\n}\n")
+os.writeFile(PASTA + "/rel/acesso/smtp.ps", "funct manda() {\n    return \"mandou\"\n}\n")
+os.writeFile(PASTA + "/rel/acesso/controller.ps", "import smtp\nfunct entra() {\n    return smtp.manda()\n}\n")
 os.writeFile(PASTA + "/rel/rotas.ps", "from acesso.controller import entra\npost(entra())\n")
 os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' rotas.ps > saida_viz.out 2>&1")
 confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
@@ -136,7 +136,7 @@ confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
 os.mkdir(PASTA + "/asp/sub", exist_ok=true)
 os.mkdir(PASTA + "/asp/pacote", exist_ok=true)
 os.mkdir(PASTA + "/asp/home/libs", exist_ok=true)
-os.writeFile(PASTA + "/asp/pacote/modulo.ps", "z = 99\naction f() {\n    return \"f de \" + __name__\n}\n")
+os.writeFile(PASTA + "/asp/pacote/modulo.ps", "z = 99\nfunct f() {\n    return \"f de \" + __name__\n}\n")
 os.writeFile(PASTA + "/asp/sub/irmao.ps", "w = 7\n")
 os.writeFile(PASTA + "/asp/home/libs/minhalib.ps", "LIB = \"lib ok\"\n")
 os.writeFile(PASTA + "/asp/sub/meu-mod.ps", "q = 1\n")

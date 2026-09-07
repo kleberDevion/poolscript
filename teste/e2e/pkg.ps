@@ -53,7 +53,7 @@ if __name__ == "main" {
 
     # ── um pacote de mentira, mas .ps de verdade ────────────────────────────
     using open("/tmp/ps_pkg_ola.ps", "w") as f {
-        f.write("action saudacao(nome) {\n    return \"ola \" + nome\n}\n")
+        f.write("funct saudacao(nome) {\n    return \"ola \" + nome\n}\n")
     }
     using open("/tmp/ps_pkg_cmd.ps", "w") as f {
         f.write("post(\"rodei como comando\")\n")

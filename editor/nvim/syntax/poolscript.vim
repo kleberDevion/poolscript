@@ -68,9 +68,12 @@ syn keyword psModifier private public
 syn match   psModifier "\<\%(static\|nonnull\|NonNull\)\>\ze\%(\s\+\%(public\|private\|async\|static\|nonnull\|NonNull\|str\|int\|flo\|bool\)\)\{0,4}\s\+\%(funct\|action\|reaction\)\>"
 
 " ── declarações: a palavra num grupo, o nome logo depois em outro ───────────
-" `action` e `reaction` são as grafias antigas de `funct` — a mesma declaração.
-syn keyword psFunctKw  funct action reaction skipwhite nextgroup=psFuncName
-syn keyword psClassKw  Entity class Class model enum skipwhite nextgroup=psTypeName
+syn keyword psFunctKw  funct skipwhite nextgroup=psFuncName
+syn keyword psClassKw  Entity class Class enum skipwhite nextgroup=psTypeName
+" `model` só é declaração quando NÃO vem `=` depois. Em `@app.post("/x",
+" model=Rota)` ele é NOME DE ARGUMENTO da rota, e pintar de palavra-chave
+" mentia sobre o que a linha faz.
+syn match   psClassKw  "\<model\>\%(\s*=\)\@!" skipwhite nextgroup=psTypeName
 syn match   psFuncName "[A-Za-z_]\w*" contained
 syn match   psTypeName "[A-Za-z_]\w*" contained
 

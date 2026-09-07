@@ -210,7 +210,7 @@ r = roda("cd b && '" + POOL + "' build")
 confere("build roda os .ps da pasta", "um" in r["saida"])
 
 # ── gerenciador de pacotes: instalar do disco (vm/ps_pkg.c) ─────────────────
-os.writeFile(PASTA + "/hello.ps", "#!cmd\naction main() {\n    post(\"oi do pacote\")\n}\nmain()\n")
+os.writeFile(PASTA + "/hello.ps", "#!cmd\nfunct main() {\n    post(\"oi do pacote\")\n}\nmain()\n")
 
 r = com_home("'" + POOL + "' install hello.ps")
 confere("psl install cria o comando", "instalado" in r["saida"] and r["rc"] == 0)
@@ -227,7 +227,7 @@ confere("o atalho instalado executa o pacote", "oi do pacote" in r["saida"])
 r = com_home("'" + POOL + "' uninstall hello")
 confere("psl uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.ps") == false)
 
-os.writeFile(PASTA + "/minhalib.ps", "#!lib\naction dobro(x) {\n    return x * 2\n}\n")
+os.writeFile(PASTA + "/minhalib.ps", "#!lib\nfunct dobro(x) {\n    return x * 2\n}\n")
 r = com_home("'" + POOL + "' install minhalib.ps -asLib")
 confere("psl install -asLib instala como biblioteca", r["rc"] == 0)
 confere("a lib vai pra pasta de libs", os.isfile(HOME + "/libs/minhalib.ps"))
@@ -261,7 +261,7 @@ confere("registry em http inseguro é recusado",
 os.writeFile(PASTA + "/estatico/pacote.ps", "")
 os.mkdir(PASTA + "/estatico", exist_ok=true)
 os.writeFile(PASTA + "/estatico/pacote.ps",
-             "#!cmd\naction main() {\n    post(\"vim do registry\")\n}\nmain()\n")
+             "#!cmd\nfunct main() {\n    post(\"vim do registry\")\n}\nmain()\n")
 
 import hash
 fonte = os.readFile(PASTA + "/estatico/pacote.ps")
@@ -341,7 +341,7 @@ if subiu
 # Dois defeitos numa linha: a mensagem não dizia o que `//` virou, e o quadro
 # apontava a única linha que estava certa — a do `import`. O arquivo e a linha
 # do defeito, em outro arquivo, não apareciam em lugar nenhum.
-os.writeFile(PASTA + "/lib_torta.ps", "action f() {\n    // nota velha\n    return 1\n}\n")
+os.writeFile(PASTA + "/lib_torta.ps", "funct f() {\n    // nota velha\n    return 1\n}\n")
 os.writeFile(PASTA + "/usa_lib.ps", "import lib_torta\npost(lib_torta.f())\n")
 
 r = roda("'" + POOL + "' usa_lib.ps")

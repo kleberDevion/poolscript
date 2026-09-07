@@ -61,7 +61,7 @@ const Caso CASOS_PENDENTES[] = {
 /* ── herança / Entity ───────────────────────────────────────────────────── */
 { "base() em Entity sem pai é erro",
   "Entity B() {\n"
-  "    action __init__(self) {\n"
+  "    funct __init__(self) {\n"
   "        base()\n"
   "        self.m = 2\n"
   "    }\n"
@@ -70,12 +70,12 @@ const Caso CASOS_PENDENTES[] = {
   "", "base()", 2 },
 { "base() com argumento nomeado",
   "Entity A() {\n"
-  "    action __init__(self, x) {\n"
+  "    funct __init__(self, x) {\n"
   "        self.x = x\n"
   "    }\n"
   "}\n"
   "Entity B(A) {\n"
-  "    action __init__(self) {\n"
+  "    funct __init__(self) {\n"
   "        base(x=5)\n"
   "    }\n"
   "}\n"
@@ -85,7 +85,7 @@ const Caso CASOS_PENDENTES[] = {
 { "campo private do pai visível no método do pai",
   "Entity P() {\n"
   "    private s: int\n"
-  "    action mostra(self) {\n"
+  "    funct mostra(self) {\n"
   "        return self.s\n"
   "    }\n"
   "}\n"
@@ -117,8 +117,8 @@ const Caso CASOS_PENDENTES[] = {
   "post(int(flo(\"nan\")))\n", "", "NaN", 1 },
 
 /* ── funções de ordem superior e arquivo ─────────────────────────────────── */
-{ "map confere a aridade da action",
-  "action f(x, y) {\n"
+{ "map confere a aridade da funct",
+  "funct f(x, y) {\n"
   "    return x\n"
   "}\n"
   "post(map([1, 2], f))\n", "", "f() missing 1 required positional argument: 'y'", 1 },
@@ -163,7 +163,7 @@ const Caso CASOS_PENDENTES[] = {
 /* ── aridade: TRÊS nativas aceitam argumento a mais em silêncio ──────────────
  * Achado escrevendo `teste/cli_roda.ps`: `os.writeFile(p, c, "utf-8", "SOBRA", 9)`
  * grava e não reclama. A regra do projeto já é a oposta — `sha256()`,
- * `exists()`, `len()`, `upper()` e toda action de usuário recusam o argumento
+ * `exists()`, `len()`, `upper()` e toda funct de usuário recusam o argumento
  * sobrando ("espera N argumento(s)"), e o commit 347dd10 fez disso contrato.
  *
  * A causa é mecânica, e a varredura do fonte dá a lista COMPLETA: das 425

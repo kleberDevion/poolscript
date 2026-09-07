@@ -107,17 +107,17 @@ const Caso CASOS_CRASH[] = {
  * vizinho — corrupção silenciosa, que só aparecia longe dali.
  *
  * O caso não precisa do jinker: `fib_pega_async` usa exatamente a mesma pilha,
- * então uma `async action` alcança o mesmo código. Sem estes dois casos a
+ * então uma `async funct` alcança o mesmo código. Sem estes dois casos a
  * guarda não é cobrada por portão nenhum, porque o e2e do jinker é alvo
  * separado e não roda em todo push. */
 { "recursao funda DENTRO de fibra async é erro, nao corrupcao",
-  "action fundo(n) {\n"
+  "funct fundo(n) {\n"
   "    if n <= 0 {\n"
   "        return 0\n"
   "    }\n"
   "    return 1 + fundo(n - 1)\n"
   "}\n"
-  "async action dentro() {\n"
+  "async funct dentro() {\n"
   "    return fundo(100000)\n"
   "}\n"
   "try {\n"
@@ -136,7 +136,7 @@ const Caso CASOS_CRASH[] = {
    * as fibras criadas de uma vez, o mesmo estouro sai em 0,76 s — 20x mais
    * rápido pra provar exatamente a mesma coisa. Teste lento é teste que alguém
    * acaba desligando. */
-  "async action f(n) {\n"
+  "async funct f(n) {\n"
   "    return n\n"
   "}\n"
   "fs = []\n"

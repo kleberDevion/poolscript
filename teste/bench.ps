@@ -58,7 +58,7 @@ CASOS = [
     ["aritmetica", "s = 0\ni = 0\nwhile (i < 3000000) {\n    s = s + i * 2 - 1\n    i = i + 1\n}\npost(s)\n",
      "LOAD_LOCAL/ADD/MUL/SUB/STORE_LOCAL/LT/JUMP — o caminho mais quente que existe"],
 
-    ["chamada", "action f(a, b) {\n    return a + b\n}\ns = 0\ni = 0\nwhile (i < 600000) {\n    s = f(s, i)\n    i = i + 1\n}\npost(s)\n",
+    ["chamada", "funct f(a, b) {\n    return a + b\n}\ns = 0\ni = 0\nwhile (i < 600000) {\n    s = f(s, i)\n    i = i + 1\n}\npost(s)\n",
      "CALL/RETURN e a montagem de quadro — o segundo mais quente"],
 
     ["lista_indice", "l = []\ni = 0\nwhile (i < 200000) {\n    addEnd(l, i)\n    i = i + 1\n}\ns = 0\ni = 0\nwhile (i < 1000000) {\n    s = s + l[i % 200000]\n    i = i + 1\n}\npost(s)\n",
@@ -73,10 +73,10 @@ CASOS = [
     ["metodo", "s = \"abcdefghij\"\nn = 0\ni = 0\nwhile (i < 400000) {\n    n = n + len(s.upper())\n    i = i + 1\n}\npost(n)\n",
      "despacho de método nativo: busca na tabela METODOS_STR + alocação do resultado"],
 
-    ["closure", "action fora() {\n    x = 0\n    action dentro() {\n        x = x + 1\n        return x\n    }\n    return dentro\n}\nf = fora()\ni = 0\nwhile (i < 400000) {\n    f()\n    i = i + 1\n}\npost(f())\n",
+    ["closure", "funct fora() {\n    x = 0\n    funct dentro() {\n        x = x + 1\n        return x\n    }\n    return dentro\n}\nf = fora()\ni = 0\nwhile (i < 400000) {\n    f()\n    i = i + 1\n}\npost(f())\n",
      "CELL_GET/CELL_SET e MAKE_CLOSURE — o caminho que a captura de variável usa"],
 
-    ["objeto", "Entity P() {\n    action __init__(self, n) {\n        self.n = n\n    }\n    action mais(self) {\n        self.n = self.n + 1\n        return self.n\n    }\n}\np = P(0)\ni = 0\nwhile (i < 300000) {\n    p.mais()\n    i = i + 1\n}\npost(p.n)\n",
+    ["objeto", "Entity P() {\n    funct __init__(self, n) {\n        self.n = n\n    }\n    funct mais(self) {\n        self.n = self.n + 1\n        return self.n\n    }\n}\np = P(0)\ni = 0\nwhile (i < 300000) {\n    p.mais()\n    i = i + 1\n}\npost(p.n)\n",
      "GET_MEMBER/SET_MEMBER e chamada de método de entity"],
 
     ["gc", "i = 0\nwhile (i < 300000) {\n    l = [i, i + 1, [i]]\n    d = {\"a\": l}\n    i = i + 1\n}\npost(\"fim\")\n",

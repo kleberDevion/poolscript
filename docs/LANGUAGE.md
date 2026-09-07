@@ -378,8 +378,8 @@ corpo do loop.
 
 ## Funções: `funct`
 
-A função se declara com `funct`. `action` e `reaction` são as grafias antigas
-da mesma declaração e continuam valendo:
+A função se declara com `funct` — é a única palavra. `action` e `reaction`
+saíram da linguagem e são erro de sintaxe (referência §6.1):
 
 ```
 funct soma(a, b) {

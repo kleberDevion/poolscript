@@ -39,7 +39,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "dentro\nfim", "ValueError: x", 1 },
 { "try/finally sem catch: o finally roda antes do return",
-  "action f() {\n"
+  "funct f() {\n"
   "    try {\n"
   "        return \"A\"\n"
   "    }\n"
@@ -125,7 +125,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * O oraculo e o CPython: cada esperado abaixo foi colhido rodando o mesmo
  * caso no python3, saida e mensagem de erro. */
 { "troca com alvo indexado (o bubble sort dele)",
-  "int reaction main(lista){\n"
+  "int funct main(lista){\n"
   "    n = len(lista)\n"
   "    for each i in range(n - 1){\n"
   "        for each c in range(0, n - 1 - i){\n"
@@ -219,7 +219,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "chamada continua NAO sendo alvo",
   /* O lookahead que passou a aceitar `[` e `.` nao pode aceitar `f(`: sem
    * isso `post(a, b)` viraria desempacotamento. */
-  "action f(x) { return x }\n"
+  "funct f(x) { return x }\n"
   "post(f(1), f(2))\n",
   "1 2", NULL, 0 },
 { "atribuicao indexada sozinha continua igual",
@@ -236,18 +236,18 @@ const Caso CASOS_LINGUAGEM[] = {
  * ele pediu — nao levava erro: `private` chegava no parser de EXPRESSAO e
  * virava um nome comum. O programa compilava limpo e estourava
  * `NameError: name 'private' is not defined` so em runtime; dentro de
- * `int action` isso vira o 500 da secao 6.4, ou seja, some.
+ * `int funct` isso vira o 500 da secao 6.4, ou seja, some.
  *
  * O irmao do mesmo bug: `str x = "a"` NO CORPO DA CLASSE virava um VarDecl
  * empurrado pra lista de METODOS (que so olha N_ACTION_DECL). Compilava,
  * sumia, e `self.x` dava AttributeError sem uma linha de aviso. */
 { "campo declarado no construtor, com tipo e visibilidade",
   "private Class Pagamento() {\n"
-  "    public reaction __init__(self, nome, doc) {\n"
+  "    public funct __init__(self, nome, doc) {\n"
   "        private str name = nome\n"
   "        private int cpf = doc\n"
   "    }\n"
-  "    public reaction mostra(self) {\n"
+  "    public funct mostra(self) {\n"
   "        return self.name + \"/\" + str(self.cpf)\n"
   "    }\n"
   "}\n"
@@ -257,7 +257,7 @@ const Caso CASOS_LINGUAGEM[] = {
   /* Registrar a visibilidade e o ponto: `private` que compila e nao barra e
    * pior que nao ter encapsulamento, porque parece que tem. */
   "Class A() {\n"
-  "    public reaction __init__(self, nome) {\n"
+  "    public funct __init__(self, nome) {\n"
   "        private str name = nome\n"
   "    }\n"
   "}\n"
@@ -265,7 +265,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "acesso negado: 'name' e private de A", 1 },
 { "public declarado no construtor NAO barra",
   "Class A() {\n"
-  "    public reaction __init__(self, nome) {\n"
+  "    public funct __init__(self, nome) {\n"
   "        public str name = nome\n"
   "    }\n"
   "}\n"
@@ -273,7 +273,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "ana", NULL, 0 },
 { "o tipo do campo e conferido como o da variavel",
   "Class A() {\n"
-  "    public reaction __init__(self) {\n"
+  "    public funct __init__(self) {\n"
   "        private int n = 5.9\n"
   "    }\n"
   "}\n"
@@ -281,24 +281,24 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "AttributedValueError: variável n esperava int", 1 },
 { "tipo nao escalar guarda sem conferir, como na variavel",
   "Class A() {\n"
-  "    public reaction __init__(self) {\n"
+  "    public funct __init__(self) {\n"
   "        public list itens = [1, 2]\n"
   "    }\n"
-  "    public reaction ver(self) { return self.itens }\n"
+  "    public funct ver(self) { return self.itens }\n"
   "}\n"
   "post(A().ver())\n",
   "[1, 2]", NULL, 0 },
 { "a mesma declaracao vale NO CORPO da classe",
   "Class A() {\n"
   "    str x = \"a\"\n"
-  "    public reaction ver(self) { return self.x }\n"
+  "    public funct ver(self) { return self.x }\n"
   "}\n"
   "post(A().ver())\n",
   "a", NULL, 0 },
 { "no corpo da classe, sem default, vira parametro do construtor",
   "Class A() {\n"
   "    str x\n"
-  "    public reaction ver(self) { return self.x }\n"
+  "    public funct ver(self) { return self.x }\n"
   "}\n"
   "post(A(\"oi\").ver())\n",
   "oi", NULL, 0 },
@@ -308,21 +308,21 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(A().x)\n",
   "", "acesso negado: 'x' e private de A", 1 },
-{ "int action dentro da Entity continua sendo action, nao campo",
-  /* A condicao que separa `int action f()` de `str x = 1` no corpo da
+{ "int funct dentro da Entity continua sendo funct, nao campo",
+  /* A condicao que separa `int funct f()` de `str x = 1` no corpo da
    * classe: depois do tipo de RETORNO vem sempre outra palavra da
    * linguagem. */
   "Class A() {\n"
-  "    int action f(self) { return 7 }\n"
-  "    public async int reaction g(self) { return 8 }\n"
+  "    int funct f(self) { return 7 }\n"
+  "    public async int funct g(self) { return 8 }\n"
   "}\n"
   "a = A()\n"
   "post(a.f(), await a.g())\n",
   "7 8", NULL, 0 },
-{ "a ordem 'nome: tipo' dentro da action diz o conserto",
+{ "a ordem 'nome: tipo' dentro da funct diz o conserto",
   /* Era `SyntaxError: expressao invalida` apontando pro ':'. */
   "Class A() {\n"
-  "    public reaction __init__(self, nome) {\n"
+  "    public funct __init__(self, nome) {\n"
   "        private name: str = nome\n"
   "    }\n"
   "}\n",
@@ -330,7 +330,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "private sem tipo nenhum nao passa mais calado",
   /* Antes: compilava, e `private` virava um nome inexistente em runtime. */
   "Class A() {\n"
-  "    public reaction __init__(self, nome) {\n"
+  "    public funct __init__(self, nome) {\n"
   "        private name = nome\n"
   "    }\n"
   "}\n",
@@ -356,11 +356,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(7 // 2, -7 // 2, 10 // 3)\n",
   "3 -4 3", NULL, 0 },
 
-{ "private class e private action continuam valendo",
+{ "private class e private funct continuam valendo",
   "private Class A() {\n"
   "    private saldo: int\n"
-  "    public action ver(self) { return self.saldo }\n"
-  "    private action log(self) { return \"x\" }\n"
+  "    public funct ver(self) { return self.saldo }\n"
+  "    private funct log(self) { return \"x\" }\n"
   "}\n"
   "post(A(10).ver())\n",
   "10", NULL, 0 },
@@ -373,15 +373,15 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(i)\n",
   "1\n2\nimportante", NULL, 0 },
-{ "for each não apaga action de mesmo nome",
-  "action f() {\n"
-  "    return \"sou action\"\n"
+{ "for each não apaga funct de mesmo nome",
+  "funct f() {\n"
+  "    return \"sou funct\"\n"
   "}\n"
   "for each f in [1, 2] {\n"
   "    post(f)\n"
   "}\n"
   "post(f())\n",
-  "1\n2\nsou action", NULL, 0 },
+  "1\n2\nsou funct", NULL, 0 },
 { "variável do laço não vaza",
   "for each z in [1] {\n"
   "    post(z)\n"
@@ -538,13 +538,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "import request\npost(type(request.get), type(request.post), type(request.delete))\n",
   "funct funct funct", NULL, 0 },
 
-/* ── closure: action aninhada captura o escopo de fora ──────────────────
+/* ── closure: funct aninhada captura o escopo de fora ──────────────────
  * A captura é por CÉLULA (o modelo do CPython): quem declara e quem captura
  * mexem no mesmo valor, então a aninhada VÊ e MUTA a variável de fora. */
 { "aninhada lê local de fora",
-  "action fora() {\n"
+  "funct fora() {\n"
   "    a = 1\n"
-  "    action dentro() {\n"
+  "    funct dentro() {\n"
   "        post(a)\n"
   "    }\n"
   "    dentro()\n"
@@ -552,8 +552,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "fora()\n",
   "1", NULL, 0 },
 { "aninhada chama a si mesma (recursão)",
-  "action fora() {\n"
-  "    action rec(n) {\n"
+  "funct fora() {\n"
+  "    funct rec(n) {\n"
   "        if n <= 0 {\n"
   "            return 0\n"
   "        }\n"
@@ -565,11 +565,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "0", NULL, 0 },
 { "aninhada dentro de método enxerga self",
   "Entity C() {\n"
-  "    action __init__(self) {\n"
+  "    funct __init__(self) {\n"
   "        self.v = 3\n"
   "    }\n"
-  "    action m(self) {\n"
-  "        action inner() {\n"
+  "    funct m(self) {\n"
+  "        funct inner() {\n"
   "            return self.v\n"
   "        }\n"
   "        return inner()\n"
@@ -579,9 +579,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(c.m())\n",
   "3", NULL, 0 },
 { "contador: a aninhada MUTA a variável de fora",
-  "action faz() {\n"
+  "funct faz() {\n"
   "    n = 0\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        n = n + 1\n"
   "        return n\n"
   "    }\n"
@@ -591,9 +591,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(c(), c(), c())\n",
   "1 2 3", NULL, 0 },
 { "cada closure tem o próprio estado",
-  "action faz() {\n"
+  "funct faz() {\n"
   "    n = 0\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        n = n + 1\n"
   "        return n\n"
   "    }\n"
@@ -604,10 +604,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(a(), a(), b())\n",
   "1 2 1", NULL, 0 },
 { "captura em cadeia (três níveis)",
-  "action n1() {\n"
+  "funct n1() {\n"
   "    a = 10\n"
-  "    action n2() {\n"
-  "        action n3() {\n"
+  "    funct n2() {\n"
+  "        funct n3() {\n"
   "            return a * 2\n"
   "        }\n"
   "        return n3()\n"
@@ -617,8 +617,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(n1())\n",
   "20", NULL, 0 },
 { "closure como callback do map",
-  "action mult(k) {\n"
-  "    action f(x) {\n"
+  "funct mult(k) {\n"
+  "    funct f(x) {\n"
   "        return x * k\n"
   "    }\n"
   "    return f\n"
@@ -626,8 +626,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(map([1, 2, 3], mult(10)))\n",
   "[10, 20, 30]", NULL, 0 },
 { "parâmetro capturado",
-  "action soma(a) {\n"
-  "    action mais(b) {\n"
+  "funct soma(a) {\n"
+  "    funct mais(b) {\n"
   "        return a + b\n"
   "    }\n"
   "    return mais\n"
@@ -635,10 +635,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(soma(3)(4))\n",
   "7", NULL, 0 },
 { "closures do laço compartilham a variável",
-  "action junta() {\n"
+  "funct junta() {\n"
   "    fs = []\n"
   "    for each i in range(3) {\n"
-  "        action g() {\n"
+  "        funct g() {\n"
   "            return i\n"
   "        }\n"
   "        fs.append(g)\n"
@@ -649,14 +649,14 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(fs[0](), fs[1](), fs[2]())\n",
   "2 2 2", NULL, 0 },
 { "recursão mútua entre aninhadas",
-  "action mutuo(n) {\n"
-  "    action par(k) {\n"
+  "funct mutuo(n) {\n"
+  "    funct par(k) {\n"
   "        if k == 0 {\n"
   "            return true\n"
   "        }\n"
   "        return impar(k - 1)\n"
   "    }\n"
-  "    action impar(k) {\n"
+  "    funct impar(k) {\n"
   "        if k == 0 {\n"
   "            return false\n"
   "        }\n"
@@ -668,8 +668,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "True False", NULL, 0 },
 { "global continua visível de dentro da aninhada",
   "G = 99\n"
-  "action f() {\n"
-  "    action dentro() {\n"
+  "funct f() {\n"
+  "    funct dentro() {\n"
   "        return G\n"
   "    }\n"
   "    return dentro()\n"
@@ -677,8 +677,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(f())\n",
   "99", NULL, 0 },
 { "gerador aninhado mantém a captura",
-  "action faz(k) {\n"
-  "    action g() {\n"
+  "funct faz(k) {\n"
+  "    funct g() {\n"
   "        for each i in range(3) {\n"
   "            yield i * k\n"
   "        }\n"
@@ -691,9 +691,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(s)\n",
   "30", NULL, 0 },
-{ "closure em async action (fibra)",
-  "async action t(k) {\n"
-  "    action calc() {\n"
+{ "closure em async funct (fibra)",
+  "async funct t(k) {\n"
+  "    funct calc() {\n"
   "        return k * 3\n"
   "    }\n"
   "    return calc()\n"
@@ -701,9 +701,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(gather(t(1), t(2)))\n",
   "[3, 6]", NULL, 0 },
 { "closure sobrevive ao GC e continua mutando",
-  "action cont() {\n"
+  "funct cont() {\n"
   "    n = 0\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        n = n + 1\n"
   "        return n\n"
   "    }\n"
@@ -716,8 +716,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(c(), c())\n",
   "1 2", NULL, 0 },
 { "muitas closures vivas ao mesmo tempo",
-  "action cria(n) {\n"
-  "    action f() {\n"
+  "funct cria(n) {\n"
+  "    funct f() {\n"
   "        return n\n"
   "    }\n"
   "    return f\n"
@@ -728,10 +728,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(len(l), l[0](), l[19999]())\n",
   "20000 0 19999", NULL, 0 },
-{ "type() de closure é action",
-  "action f() {\n"
+{ "type() de closure é funct",
+  "funct f() {\n"
   "    a = 1\n"
-  "    action g() {\n"
+  "    funct g() {\n"
   "        return a\n"
   "    }\n"
   "    return g\n"
@@ -739,8 +739,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(type(f()))\n",
   "funct", NULL, 0 },
 { "variável capturada usada antes de receber valor é erro",
-  "action f() {\n"
-  "    action g() {\n"
+  "funct f() {\n"
+  "    funct g() {\n"
   "        return z\n"
   "    }\n"
   "    r = g()\n"
@@ -764,7 +764,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "[<arquivo /tmp/ps_str2.txt>]", NULL, 0 },
 { "str() de gerador",
-  "action g() {\n"
+  "funct g() {\n"
   "    yield 1\n"
   "}\n"
   "post(\"[\" + str(g()) + \"]\")\n",
@@ -787,8 +787,8 @@ const Caso CASOS_LINGUAGEM[] = {
  * ignorada); depois de `)`, nome ou literal é BLOCO (indentação conta). */
 { "dicionario multilinha com continuacao indentada",
   "d = {\"a\": 1,\n     \"b\": 2}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
-{ "dicionario multilinha dentro de action",
-  "action f() {\n"
+{ "dicionario multilinha dentro de funct",
+  "funct f() {\n"
   "    return {\"a\": 1,\n"
   "            \"b\": 2}\n"
   "}\n"
@@ -797,7 +797,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "dicionario com a chave em linha propria",
   "d = {\n    \"a\": 1,\n    \"b\": 2\n}\npost(d)\n", "{'a': 1, 'b': 2}", NULL, 0 },
 { "lista multilinha indentada",
-  "action g() {\n"
+  "funct g() {\n"
   "    return [1,\n"
   "            2]\n"
   "}\n"
@@ -806,14 +806,14 @@ const Caso CASOS_LINGUAGEM[] = {
   "d = {\"a\": {\"b\": 1,\n            \"c\": 2},\n     \"d\": 3}\npost(d)\n",
   "{'a': {'b': 1, 'c': 2}, 'd': 3}", NULL, 0 },
 { "dicionario como argumento multilinha",
-  "action f(x) {\n"
+  "funct f(x) {\n"
   "    return x[\"a\"]\n"
   "}\n"
   "post(f({\"a\": 1,\n"
   "        \"b\": 2}))\n", "1", NULL, 0 },
 { "bloco de chaves continua sendo bloco depois de )",
   "if (true) {\n"
-  "    action f() {\n"
+  "    funct f() {\n"
   "        return 1\n"
   "    }\n"
   "    post(f())\n"
@@ -834,7 +834,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "full = 1\nmei = \"x\"\npost(full, mei)\n", "1 x", NULL, 0 },
 
 /* ── aridade de método nativo ────────────────────────────────────────────
- * A linguagem sempre recusou `f(1,2,3)` numa action de zero parâmetros, mas
+ * A linguagem sempre recusou `f(1,2,3)` numa funct de zero parâmetros, mas
  * 95 métodos nativos engoliam argumento a mais em silêncio. O teto agora sai
  * do próprio `params` da tabela, conferido no despacho.
  *
@@ -923,27 +923,27 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n", "0\n1", NULL, 0 },
 { "bloco de chaves dentro de bloco ':'",
   "if true {\n"
-  "    action f() {\n"
+  "    funct f() {\n"
   "        return 1\n"
   "    }\n"
   "    post(f())\n"
   "}\n", "1", NULL, 0 },
 { "metodo ':' dentro de Entity de chaves",
   "Entity P() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        return 3\n"
   "    }\n"
   "}\n"
   "post(P().m())\n", "3", NULL, 0 },
 { "metodo de chaves dentro de Entity ':'",
   "Entity Q() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        return 4\n"
   "    }\n"
   "}\n"
   "post(Q().m())\n", "4", NULL, 0 },
 { "indentacao livre dentro de chaves",
-  "action r(n) {\n if (n < 1) {\n  return 0\n }\n return 1 + r(n - 1)\n}\npost(r(5))\n",
+  "funct r(n) {\n if (n < 1) {\n  return 0\n }\n return 1 + r(n - 1)\n}\npost(r(5))\n",
   "5", NULL, 0 },
 { "model de chaves continua valendo",
   "model M() {\n    a: str(length=3)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
@@ -1006,7 +1006,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "range fora do laco continua sendo lista",
   "r = range(4)\npost(type(r), len(r), r[2], r)\n", "list 4 2 [0, 1, 2, 3]", NULL, 0 },
 { "range redefinido pelo usuario ganha do embutido",
-  "action range(n) {\n"
+  "funct range(n) {\n"
   "    return [\"MEU\", n]\n"
   "}\n"
   "for each x in range(2) {\n"
@@ -1030,8 +1030,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "char c = 1.5\n", "", "esperava char", 1 },
 { "char recusa codepoint invalido",
   "char c = -1\n", "", "nao e um caractere valido", 1 },
-{ "char action nao existe",
-  "char action f() {\n"
+{ "char funct nao existe",
+  "char funct f() {\n"
   "    return 1\n"
   "}\n", "", "int funct", 2 },
 { "as outras declaracoes tipadas continuam iguais",
@@ -1057,8 +1057,8 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── `pass` — no-op igual ao Python ─────────────────────────────────────────
  * Nasceu porque a doc do middleware do jinker mandava usar `continue` fora de
  * laço, que não compila. `pass` vale em QUALQUER posição de statement. */
-{ "pass como corpo de action devolve null",
-  "action f() {\n"
+{ "pass como corpo de funct devolve null",
+  "funct f() {\n"
   "    pass\n"
   "}\n"
   "post(f())\n", "Null", NULL, 0 },
@@ -1076,7 +1076,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(\"fim\")\n", "fim", NULL, 0 },
 { "pass nao encerra o resto do bloco",
-  "action f() {\n"
+  "funct f() {\n"
   "    pass\n"
   "    return 7\n"
   "}\n"
@@ -1096,7 +1096,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(\"seguiu\")\n", "seguiu", NULL, 0 },
 { "pass com chaves",
-  "action f() { pass }\npost(f())\n", "Null", NULL, 0 },
+  "funct f() { pass }\npost(f())\n", "Null", NULL, 0 },
 { "pass e palavra reservada",
   "pass = 1\n", "", "palavra reservada", 2 },
 { "pass no corpo de classe",
@@ -1111,7 +1111,7 @@ const Caso CASOS_LINGUAGEM[] = {
 
 /* ── estilo Allman: a chave na LINHA SEGUINTE ───────────────────────────────
  * FALTAVA NO PORTE (nunca esteve no parser em C, conferido até a 8.2.30):
- * `Entity`/`class`/`action` aceitavam, porque o cabeçalho deles pula
+ * `Entity`/`class`/`funct` aceitavam, porque o cabeçalho deles pula
  * separadores antes de procurar o `{`; `if`/`while`/`for`/`try` não. O MESMO
  * arquivo passava numa construção e falhava na outra — foi o que impedia uma
  * lib real de carregar. */
@@ -1138,8 +1138,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "{\n"
   "    post(\"peguei\")\n"
   "}\n", "peguei", NULL, 0 },
-{ "action com chave na linha seguinte continua valendo",
-  "action f()\n{\n    return 7\n}\npost(f())\n", "7", NULL, 0 },
+{ "funct com chave na linha seguinte continua valendo",
+  "funct f()\n{\n    return 7\n}\npost(f())\n", "7", NULL, 0 },
 { "chave na linha seguinte nao estraga bloco de dois-pontos",
   "if true {\n"
   "    post(\"A\")\n"
@@ -1163,8 +1163,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "post([1 for each q in []])\n", "[]", NULL, 0 },
 { "variavel da compreensao SOMBREIA, nao destroi",
   "n = \"de fora\"\npost([n for each n in [1,2]], n)\n", "[1, 2] de fora", NULL, 0 },
-{ "compreensao dentro de action",
-  "action f(l) {\n    return [v + 1 for each v in l]\n}\npost(f([1,2]))\n", "[2, 3]", NULL, 0 },
+{ "compreensao dentro de funct",
+  "funct f(l) {\n    return [v + 1 for each v in l]\n}\npost(f([1,2]))\n", "[2, 3]", NULL, 0 },
 { "lista comum continua igual",
   "post([1, 2, 3], [], [1])\n", "[1, 2, 3] [] [1]", NULL, 0 },
 /* Sem os colchetes, como argumento ÚNICO de uma chamada — a forma do Python.
@@ -1194,7 +1194,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "bloco com ':' numa linha so tambem e recusado",
   "if true: post(\"A\")\n", "", "bloco com ':' nao existe mais", 2 },
 { "Entity com ':' e recusada",
-  "Entity A():\n    action m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
+  "Entity A():\n    funct m(self) { return 1 }\n", "", "bloco com ':' nao existe mais", 2 },
 { "a mensagem diz o que usar no lugar",
   "while true:\n    break\n", "", "use '{ }'", 2 },
 { "dicionario com ':' continua valendo",
@@ -1207,15 +1207,15 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── closure DENTRO de módulo importado ─────────────────────────────────────
  * O índice de proto do `OP_MAKE_CLOSURE` e o índice de global do
  * `OP_CELL_GET_NAME`/`OP_CELL_SET_NAME` não eram relocados ao anexar um
- * módulo: a action aninhada apontava pro protótipo de OUTRA função do
+ * módulo: a funct aninhada apontava pro protótipo de OUTRA função do
  * programa principal. `poe()` dentro de `um()` virava `um()` — recursão
  * infinita. Aqui o arquivo se importa, que é o caminho mais curto pra passar
  * pela relocação. */
 { "closure dentro de modulo importado",
   "import ps_mod_clo\n"
-  "action com_closure() {\n"
+  "funct com_closure() {\n"
   "    l = []\n"
-  "    action poe(r) {\n"
+  "    funct poe(r) {\n"
   "        l.append(r)\n"
   "    }\n"
   "    poe(\"a\")\n"
@@ -1226,9 +1226,9 @@ const Caso CASOS_LINGUAGEM[] = {
   "['a', 'b']\n['a', 'b']", NULL, 0, "ps_mod_clo.ps" },
 { "closure de modulo mantem estado proprio",
   "import ps_mod_cnt\n"
-  "action contador() {\n"
+  "funct contador() {\n"
   "    n = 0\n"
-  "    action inc() {\n"
+  "    funct inc() {\n"
   "        n = n + 1\n"
   "        return n\n"
   "    }\n"
@@ -1246,20 +1246,20 @@ const Caso CASOS_LINGUAGEM[] = {
  * Um erro de posição de uma construção alcançando outra é o defeito; estes
  * casos travam as duas pontas. */
 { "f-string nao muda a linha do statement que a contem",
-  "action f() {\n"
+  "funct f() {\n"
   "    e = \"x\"\n"
   "    raise Boom(f\"erro: {e}\")\n"
   "}\n"
   "f()\n", "", "linha 3", 1 },
 { "erro DENTRO da f-string aponta a linha da f-string",
-  "action f() {\n"
+  "funct f() {\n"
   "    x = 0\n"
   "\n"
   "    post(f\"v: {1 / x}\")\n"
   "}\n"
   "f()\n", "", "linha 4", 1 },
 { "f-string no meio nao desloca o que vem depois",
-  "action f() {\n"
+  "funct f() {\n"
   "    e = 1\n"
   "    post(f\"a {e}\")\n"
   "    raise Boom(\"y\")\n"
@@ -1268,7 +1268,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "f-string continua interpolando",
   "n = 7\ns = \"ana\"\npost(f\"{s} tem {n}\", f\"{n * 2}\")\n", "ana tem 7 14", NULL, 0 },
 { "f-string aninhada em chamada aninhada",
-  "action g(x) {\n    return x\n}\n"
+  "funct g(x) {\n    return x\n}\n"
   "v = 3\npost(g(f\"v={v}\"))\n", "v=3", NULL, 0 },
 
 /* ── input(): fim da entrada é `null`, linha vazia é `""` ───────────────────
@@ -1317,8 +1317,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "if (x == 1) {\n"
   "    post(\"a\") }\n"
   "post(\"b\")\n", "a\nb", NULL, 0 },
-{ "fecha o bloco na linha do ultimo comando: action",
-  "action f() {\n"
+{ "fecha o bloco na linha do ultimo comando: funct",
+  "funct f() {\n"
   "    return 1 }\n"
   "post(f())\n", "1", NULL, 0 },
 { "fecha DOIS blocos na mesma linha",
@@ -1369,7 +1369,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * decorador cujo membro é keyword. A recusa só vale pro que não pode ser
  * nome de jeito nenhum (fim de linha, fim de arquivo). */
 { "decorador com membro que e palavra reservada",
-  "@app.route(\"/x\")\naction h() { return 1 }\n", "", "name 'app' is not defined", 1 },
+  "@app.route(\"/x\")\nfunct h() { return 1 }\n", "", "name 'app' is not defined", 1 },
 /* Condicao que COMECA com parentese: `if (a) or (b) {` dava "esperado inicio
  * de bloco com '{'" — o parser lia o grupo como se fosse a forma `if (cond) {`
  * e exigia o bloco logo depois do `)`. O parentese e so precedencia; a
@@ -1388,7 +1388,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n",
   "sim\nlaco\nso um grupo continua valendo", NULL, 0 },
 /* Campo SEM tipo no corpo da classe: `conexao = ""`, `LIMITE = 10`, com ou sem
- * `private`. Era recusado ("so sao permitidas declaracoes 'action'..."): quem
+ * `private`. Era recusado ("so sao permitidas declaracoes 'funct'..."): quem
  * declara um campo como declara uma variavel era repelido. E a terceira
  * grafia do mesmo no (`nome: tipo`, `tipo nome`, `nome = valor`), dinamica
  * como `x = 1`, e entra no construtor sintetizado como argumento opcional. */
@@ -1398,7 +1398,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    private conexao = \"\"\n"
   "    LIMITE = 10\n"
   "    n: int = 2\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        return self.nome + str(self.n) + str(self.LIMITE) + self.conexao\n"
   "    }\n"
   "}\n"
@@ -1410,7 +1410,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * Antes a checagem valia so na criacao e `str s = "a"` seguido de `s = 42`
  * passava (a doc chamava de "dinamica"). Agora toda escrita num nome
  * declarado com tipo confere: reatribuicao, for each, desempacotamento,
- * write-through de dentro de uma action, closure. Sem tipo declarado nada
+ * write-through de dentro de uma funct, closure. Sem tipo declarado nada
  * muda. `Object` e o tipo de qualquer objeto (instancia, servidor, arquivo). */
 { "tipagem estatica: `str s` recusa `s = 42` depois",
   "str s = \"a\"\n"
@@ -1432,7 +1432,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "tipagem estatica: Object recebe instancia de classe e o app do jinker",
   "from jinker import Jinker\n"
   "class C() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        return 1\n"
   "    }\n"
   "}\n"
@@ -1443,17 +1443,17 @@ const Caso CASOS_LINGUAGEM[] = {
 { "tipagem estatica: Object recusa str e lista",
   "Object o = \"x\"\n",
   "", "AttributedValueError: variável o esperava Object", 1 },
-{ "tipagem estatica: global tipado escrito de dentro de uma action confere",
+{ "tipagem estatica: global tipado escrito de dentro de uma funct confere",
   "str s = \"a\"\n"
-  "action f() {\n"
+  "funct f() {\n"
   "    s = 5\n"
   "}\n"
   "f()\n",
   "", "AttributedValueError: variável s esperava str", 1 },
 { "tipagem estatica: local tipado capturado por closure confere na escrita de dentro",
-  "action f() {\n"
+  "funct f() {\n"
   "    int n = 1\n"
-  "    action g() {\n"
+  "    funct g() {\n"
   "        n = \"z\"\n"
   "    }\n"
   "    g()\n"
@@ -1515,7 +1515,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "dois", NULL, 0 },
 { "Entity sem __init__ e sem campo nao recebe argumento",
   "Entity Zero() {\n"
-  "    action m(self) {\n"
+  "    funct m(self) {\n"
   "        return 1\n"
   "    }\n"
   "}\n"
@@ -1525,7 +1525,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "@static chamado pela instancia: a mensagem diz pra chamar pela Entity",
   "Entity Mat() {\n"
   "    @static\n"
-  "    action soma(a, b) {\n"
+  "    funct soma(a, b) {\n"
   "        return a + b\n"
   "    }\n"
   "}\n"
@@ -1536,8 +1536,8 @@ const Caso CASOS_LINGUAGEM[] = {
 { "zip: a mensagem nomeia o argumento que NAO itera, nao o primeiro",
   "zip([1], 5)\n",
   "", "TypeError: 'int' object is not iterable", 1 },
-{ "match com guarda falsa dentro de action nao corrompe o slot do case seguinte",
-  "action m(valor) {\n"
+{ "match com guarda falsa dentro de funct nao corrompe o slot do case seguinte",
+  "funct m(valor) {\n"
   "    match valor {\n"
   "        case 200 {\n"
   "            post(\"ok\")\n"
@@ -1554,46 +1554,46 @@ const Caso CASOS_LINGUAGEM[] = {
   "m(7)\n"
   "m(200)\n",
   "outro\nbarato\nok", NULL, 0 },
-/* A cabeça da action sob um decorador é a MESMA unidade do statement:
- * `[public|private] {async|tipo}* action|reaction`, em qualquer ordem. O
+/* A cabeça da funct sob um decorador é a MESMA unidade do statement:
+ * `[public|private] {async|tipo}* funct|funct`, em qualquer ordem. O
  * lookahead do decorador era uma cópia à mão que conhecia quatro formas e
- * não conhecia `tipo async action`: `@app.post(...)` sobre `int async action
- * h()` compilava limpo, a action virava statement solto SEM decorador, a rota
+ * não conhecia `tipo async funct`: `@app.post(...)` sobre `int async funct
+ * h()` compilava limpo, a funct virava statement solto SEM decorador, a rota
  * nunca era registrada e o cliente via 404 — sem aviso. O `register` abaixo
  * imprime quando é chamado; o caso reprova se o decorador não pegar. */
-{ "decorador pega `int async action` (tipo antes de async)",
+{ "decorador pega `int async funct` (tipo antes de async)",
   "class Reg() {\n"
-  "    action reg(self) {\n"
+  "    funct reg(self) {\n"
   "        return self\n"
   "    }\n"
-  "    action register(self, fn) {\n"
+  "    funct register(self, fn) {\n"
   "        post(\"registrou\")\n"
   "        return fn\n"
   "    }\n"
   "}\n"
   "r = Reg()\n"
   "@r.reg()\n"
-  "int async action h() {\n"
+  "int async funct h() {\n"
   "    return 1\n"
   "}\n",
   "registrou", NULL, 0 },
-{ "decorador pega `public int async action` e `bool async reaction`",
+{ "decorador pega `public int async funct` e `bool async funct`",
   "class Reg() {\n"
-  "    action reg(self) {\n"
+  "    funct reg(self) {\n"
   "        return self\n"
   "    }\n"
-  "    action register(self, fn) {\n"
+  "    funct register(self, fn) {\n"
   "        post(\"registrou\")\n"
   "        return fn\n"
   "    }\n"
   "}\n"
   "r = Reg()\n"
   "@r.reg()\n"
-  "public int async action h() {\n"
+  "public int async funct h() {\n"
   "    return 1\n"
   "}\n"
   "@r.reg()\n"
-  "bool async reaction g() {\n"
+  "bool async funct g() {\n"
   "    return true\n"
   "}\n",
   "registrou\nregistrou", NULL, 0 },
@@ -1602,7 +1602,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "import valido continua valendo",
   "import sys\npost(type(sys))\n", "module", NULL, 0 },
 /* ── `funct` e os modificadores COLADOS (`static funct`), 2026-09-06 ────────
- * A funcao passou a se chamar `funct`; `action`/`reaction` continuam valendo,
+ * A funcao passou a se chamar `funct`; `funct`/`funct` continuam valendo,
  * sao a mesma declaracao. `@static` e `@NonNull` viraram modificadores colados
  * na cabeca (`static funct m()`), e os decoradores antigos seguem funcionando.
  * A ordem dos modificadores e do usuario: a matriz inteira entra aqui, porque
@@ -1689,15 +1689,31 @@ const Caso CASOS_LINGUAGEM[] = {
   "static private int funct f(n) {\n    return n\n}\npost(f(9))\n", "9", NULL, 0 },
 { "`static` e `nonnull` NAO viraram palavra reservada",
   "static = 7\nnonnull = 8\npost(static + nonnull)\n", "15", NULL, 0 },
-{ "action e reaction continuam valendo, e sao a mesma declaracao",
-  "action a() {\n    return \"a\"\n}\nreaction r() {\n    return \"r\"\n}\npost(a(), r())\n",
-  "a r", NULL, 0 },
+/* ── `action` e `reaction` SAIRAM ──────────────────────────────────────────
+ * Nao sao mais palavra reservada. Sem uma recusa com nome, `action f() {`
+ * viraria nome solto + chamada + literal de dicionario ("faltou ':' no
+ * dicionario"), ou pior, um NameError em tempo de execucao. Sao QUATRO as
+ * posicoes onde a grafia morta pode aparecer, e cada uma tem a sua mensagem. */
+{ "grafia morta: funcao solta",
+  "action g() {\n    return 1\n}\n",
+  "", "'action' saiu da linguagem; a funcao se declara com 'funct': funct g(args) { ... }", 2 },
+{ "grafia morta: metodo de Entity",
+  "Entity A() {\n    action m(self) {\n        return 1\n    }\n}\n",
+  "", "'action' saiu da linguagem; o metodo se declara com 'funct': funct m(self) { ... }", 2 },
+{ "grafia morta: lambda",
+  "x = action(y) {\n    return y\n}\n",
+  "", "'action' saiu da linguagem; a funcao sem nome se escreve 'funct(args) { ... }'", 2 },
+{ "grafia morta: cabeca com modificadores",
+  "int async reaction h(a) {\n    return a\n}\n",
+  "", "'reaction' saiu da linguagem; troque por 'funct': int async funct h(...)", 2 },
+{ "`action` como NOME comum continua valendo (nao e mais reservada)",
+  "action = 5\nreaction = 2\npost(action + reaction)\n", "7", NULL, 0 },
 { "@static continua valendo junto com o modificador colado",
-  "Entity M() {\n    @static\n    action velha(a) {\n        return a\n    }\n"
+  "Entity M() {\n    @static\n    funct velha(a) {\n        return a\n    }\n"
   "    static funct nova(a) {\n        return a\n    }\n}\n"
   "post(M.velha(1), M.nova(2))\n", "1 2", NULL, 0 },
 { "@NonNull continua valendo",
-  "@NonNull\naction f(v) {\n    return v\n}\nf(Null)\n",
+  "@NonNull\nfunct f(v) {\n    return v\n}\nf(Null)\n",
   "", "nonnull: parametro 'v' em 'f' nao pode ser Null", 1 },
 { "funct dentro de decorador de rota (a cabeca com decorador conhece funct)",
   "import jinker\nfrom jinker import Jinker\n"
@@ -1712,7 +1728,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * primeiro parametro dela se chamasse `self`, ele era descartado, com um
  * "takes 0 positional arguments" sem relacao visivel com o `static` de fora. */
 { "static nao vaza pra funct aninhada (decorador)",
-  "@static\naction outer(a) {\n    action inner(self) {\n        return self\n    }\n"
+  "@static\nfunct outer(a) {\n    funct inner(self) {\n        return self\n    }\n"
   "    return inner(a)\n}\npost(outer(7))\n", "7", NULL, 0 },
 { "static nao vaza pra funct aninhada (modificador colado)",
   "static funct outer(a) {\n    funct inner(self) {\n        return self\n    }\n"
@@ -1767,7 +1783,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "o idioma canonico continua o `is`",
   "post(200 is int, \"a\" is int, 200 not is str)\n", "True False True", NULL, 0 },
 { "o `if` que antes nunca entrava agora entra",
-  "action f(x) {\n"
+  "funct f(x) {\n"
   "    if type(x) == int {\n"
   "        return \"inteiro\"\n"
   "    }\n"

@@ -42,7 +42,7 @@ A grafia antiga, em linha própria, faz exatamente o mesmo:
 ```ps
 Entity Mat() {
     @static
-    action soma(a, b) {
+    funct soma(a, b) {
         return a + b
     }
 }
@@ -98,7 +98,7 @@ A grafia antiga continua valendo, com o mesmo efeito e a mesma mensagem:
 
 ```ps
 @NonNull
-action saudar(nome) {
+funct saudar(nome) {
     return "olá, " + nome
 }
 ```

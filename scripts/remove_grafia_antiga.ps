@@ -1,0 +1,141 @@
+# Troca `action` e `reaction` por `funct` COMO PALAVRA, em texto qualquer.
+#
+#     ./pool scripts/remove_grafia_antiga.ps <arq> [<arq>...]        # mostra o que muda
+#     ./pool scripts/remove_grafia_antiga.ps --grava <arq> [<arq>...]
+#
+# Irmao do `converte_funct.ps`, para o que o lexer NAO alcanca: os programas
+# que vivem dentro de string (os casos em C de `teste/*.c`, os fontes que os
+# testes .ps escrevem em disco) e a prosa dos comentarios. Ali nao ha token
+# pra perguntar, entao o criterio e o limite de palavra: o caractere antes e o
+# depois nao podem ser de nome (letra, digito ou `_`).
+#
+# Isso troca tambem dentro de comentario e de nome de caso, e e o que se quer:
+# depois da remocao, `action` nao e palavra da linguagem em lugar nenhum.
+#
+# A CONFERENCIA de quem chama e a suite: se um programa embutido virou outra
+# coisa, o caso falha. Este script nao tem como saber sozinho.
+#
+# LIMITE CONHECIDO: num fonte C, `"\naction f()"` tem a letra `n` do escape
+# colada na palavra, entao o limite de palavra nao reconhece e a ocorrencia
+# fica. Depois de rodar, procure `\naction` e `\nreaction` e conserte a mao —
+# foram 4 na conversao de 2026-09-07. Tratar `\n` como fronteira aqui exigiria
+# o script conhecer escapes de C, que e o comeco de escrever um parser de C
+# por engano.
+import os
+import sys
+
+ANTIGAS = ["reaction", "action"]      # `reaction` PRIMEIRO: contem `action`
+
+
+funct eh_char_de_nome(c) {
+    if c >= "a" and c <= "z" {
+        return true
+    }
+    if c >= "A" and c <= "Z" {
+        return true
+    }
+    if c >= "0" and c <= "9" {
+        return true
+    }
+    return c == "_"
+}
+
+
+# Troca `velha` por `nova` só onde ela e palavra inteira.
+#
+# Junta por LISTA + join. A primeira versao concatenava (`saida = saida + c`)
+# e era quadratica: cada `+` copia a string inteira, entao um arquivo de 200 KB
+# virava 20 bilhoes de copias de byte — passava de 7 minutos num arquivo so.
+# Aqui cada pedaco entra na lista uma vez e a juncao acontece no fim.
+funct troca_palavra(texto, velha, nova) {
+    pedacos = []
+    i = 0
+    ini = 0                       # comeco do trecho ainda nao copiado
+    n = len(texto)
+    m = len(velha)
+    while i < n {
+        if texto[i] == velha[0] and i + m <= n and texto[i:i + m] == velha {
+            antes_ok = true
+            if i > 0 and eh_char_de_nome(texto[i - 1]) {
+                antes_ok = false
+            }
+            depois_ok = true
+            if i + m < n and eh_char_de_nome(texto[i + m]) {
+                depois_ok = false
+            }
+            if antes_ok and depois_ok {
+                addEnd(pedacos, texto[ini:i])
+                addEnd(pedacos, nova)
+                i = i + m
+                ini = i
+                continue
+            }
+        }
+        i = i + 1
+    }
+    if len(pedacos) == 0 {
+        return texto
+    }
+    addEnd(pedacos, texto[ini:n])
+    return "".join(pedacos)
+}
+
+
+funct converte(texto) {
+    for each velha in ANTIGAS {
+        texto = troca_palavra(texto, velha, "funct")
+    }
+    return texto
+}
+
+
+funct conta(texto, palavra) {
+    n = 0
+    i = 0
+    while i < len(texto) {
+        if i + len(palavra) <= len(texto) and texto[i:i + len(palavra)] == palavra {
+            n = n + 1
+        }
+        i = i + 1
+    }
+    return n
+}
+
+
+if __name__ == "main" {
+    if len(sys.argv) < 1 {
+        post("uso: pool scripts/remove_grafia_antiga.ps [--grava] <arq> [<arq>...]")
+        sys.exit(1)
+    }
+    grava = false
+    alvos = []
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+            continue
+        }
+        addEnd(alvos, a)
+    }
+    total = 0
+    for each caminho in alvos {
+        fonte = open(caminho).read()
+        novo = converte(fonte)
+        if novo == fonte {
+            post("sem ocorrencia  " + caminho)
+            continue
+        }
+        quantas = conta(fonte, "action")
+        total = total + quantas
+        if grava {
+            using open(caminho, "w") as f {
+                f.write(novo)
+            }
+            post("convertido " + str(quantas).rjust(4) + "  " + caminho)
+        }
+        else {
+            post("mudaria   " + str(quantas).rjust(4) + "  " + caminho)
+        }
+    }
+    post("")
+    post("total de ocorrencias:", total)
+}

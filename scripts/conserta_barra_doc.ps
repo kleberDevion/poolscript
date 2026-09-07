@@ -50,7 +50,7 @@ funct junta_md(dir, acc) {
 # UTF-8 custa O(n) (conta code points), então o laço char a char virava O(n²)
 # por linha.
 #
-# O local se chama `p`, e NÃO `i`, de propósito: atribuir dentro de uma action
+# O local se chama `p`, e NÃO `i`, de propósito: atribuir dentro de uma funct
 # a um nome que existe no módulo ESCREVE no de fora (ver notas/LIMITACOES.md).
 # Com `i` aqui, o `i` do laço de quem chama era sobrescrito e o laço nunca
 # terminava — travou este script por meia hora, sem erro nenhum.

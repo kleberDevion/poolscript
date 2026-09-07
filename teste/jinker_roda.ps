@@ -154,7 +154,7 @@ confere("query percent-encoded é decodificada", r.get_json("q") == "a b+c")
 r = get(RAIZ + "/param/42")
 confere("path param chega", r.get_json("id") == "42")
 
-# I18: o path param no argumento da action, sem tocar em request.path_param
+# I18: o path param no argumento da funct, sem tocar em request.path_param
 # `:id` e um SEGMENTO: `/injeta:id` casa `/injeta/7`, como `/injeta/<id>`.
 # Era colado (`/injeta7`) e a suite gravava isso como certo — o front dele
 # chamava `/sing-in/abc` e via 404. A forma colada deixa de casar.

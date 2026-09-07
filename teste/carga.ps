@@ -8,7 +8,7 @@
 # SERVIDOR, nao do cliente.
 #
 # Comparacao de MOTOR (interpretador): tres programas equivalentes — laco
-# aritmetico, chamada de action, dicionario — em PoolScript, Python e Node,
+# aritmetico, chamada de funct, dicionario — em PoolScript, Python e Node,
 # cronometrados do mesmo jeito (menor de 3 execucoes, custo de partida
 # descontado).
 #
@@ -109,7 +109,7 @@ funct carga_http() {
     post("── servidor HTTP: requisicoes por segundo (cliente: PoolScript, " + str(POR_NIVEL) + " req por nivel) ──")
     os.writeFile(PASTA + "/srv_ps.ps",
         "import jinker\nfrom jinker import Jinker\napp = Jinker(__name__)\n"
-        + "@app.get(\"/ping\")\naction ping() {\n    return {\"ok\": true}\n}\n"
+        + "@app.get(\"/ping\")\nfunct ping() {\n    return {\"ok\": true}\n}\n"
         + "if __name__ == \"main\" {\n    app(debug=false, host=\"127.0.0.1\", port=" + str(PORTA_PS) + ")\n}\n")
     servidores = [["jinker (PoolScript)", "'" + sys.executable + "' srv_ps.ps", PORTA_PS]]
     if tem("python3") {
@@ -184,7 +184,7 @@ funct carga_motor() {
             "js": "let s = 0, i = 0;\nwhile (i < 3000000) { s = s + i * 2 - 1; i = i + 1; }\nconsole.log(s);\n"
         },
         "chamada": {
-            "ps": "action f(a, b) {\n    return a + b\n}\ns = 0\ni = 0\nwhile i < 600000 {\n    s = f(s, i)\n    i = i + 1\n}\npost(s)\n",
+            "ps": "funct f(a, b) {\n    return a + b\n}\ns = 0\ni = 0\nwhile i < 600000 {\n    s = f(s, i)\n    i = i + 1\n}\npost(s)\n",
             "py": "def f(a, b):\n    return a + b\ns = 0\ni = 0\nwhile i < 600000:\n    s = f(s, i)\n    i = i + 1\nprint(s)\n",
             "js": "function f(a, b) { return a + b; }\nlet s = 0, i = 0;\nwhile (i < 600000) { s = f(s, i); i = i + 1; }\nconsole.log(s);\n"
         },

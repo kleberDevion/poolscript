@@ -3,7 +3,7 @@
 #
 # Tudo num fluxo só, sem fibra: `listen` já enfileira a conexão na backlog,
 # então o `connect` do cliente completa ANTES do `accept` do servidor. Fibra
-# não serve aqui porque `async action` não roda até ser aguardada — o servidor
+# não serve aqui porque `async funct` não roda até ser aguardada — o servidor
 # nem chegaria a fazer bind.
 import sockets
 

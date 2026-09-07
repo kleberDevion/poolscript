@@ -734,7 +734,7 @@ const Caso CASOS_LIBS[] = {
 
 { "faltar argumento lista TODOS os que faltam",
   /* citava so o primeiro: quem esquecia tres consertava um por vez */
-  "action f(x, y, z) {\n"
+  "funct f(x, y, z) {\n"
   "    return x\n"
   "}\n"
   "try {\n"

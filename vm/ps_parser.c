@@ -146,14 +146,24 @@ static int checa_op(P *p, const char *op)
     return t->type == T_OP && t->texto && strcmp(t->texto, op) == 0;
 }
 
-/* `funct` e o nome da funcao na linguagem. `action` e `reaction` sao as
- * grafias antigas e continuam valendo em todo lugar — sao a MESMA declaracao
- * (N_ACTION_DECL), so o nome que mudou. */
+/* `funct` e a palavra que declara funcao — a unica. `action` e `reaction`
+ * SAIRAM da linguagem; o que sobrou delas e a recusa com nome, logo abaixo. */
 static int eh_kw_funct(PSToken *t)
 {
-    return t->type == T_KW && t->texto
-        && (strcmp(t->texto, "funct") == 0
-         || strcmp(t->texto, "action") == 0 || strcmp(t->texto, "reaction") == 0);
+    return t->type == T_KW && t->texto && strcmp(t->texto, "funct") == 0;
+}
+
+/* `action` / `reaction` escritos onde `funct` deveria estar.
+ *
+ * Elas nao sao mais palavra reservada: o lexer devolve IDENT, e sem esta
+ * checagem `action f() { ... }` viraria um nome solto seguido de outro, com
+ * erro de sintaxe generico ou — pior — um `NameError: name 'action' is not
+ * defined` em tempo de execucao. Recusar aqui, com a palavra certa na
+ * mensagem, e o mesmo tratamento que o `def` ja tinha. */
+static int eh_grafia_morta(PSToken *t)
+{
+    return t->texto && (t->type == T_IDENT || t->type == T_KW)
+        && (strcmp(t->texto, "action") == 0 || strcmp(t->texto, "reaction") == 0);
 }
 
 /* `static` e `nonnull` COLADOS na declaracao: `static funct m(a)`,
@@ -416,6 +426,18 @@ static PSNode *primario(P *p)
      * logo depois. Se a corrida não terminar assim, este bloco não faz nada e
      * o resto do parser segue igual — por isso `int x = 1` e `str s = "a"` não
      * são tocados: ali a corrida termina num NOME, não em `funct`. */
+    /* `x = action(y) { ... }` — a grafia morta em posição de lambda. Sem esta
+     * recusa, `action` virava nome solto, `(y)` uma chamada e o `{` um literal
+     * de dicionário: o erro saía como "faltou ':' no dicionario". */
+    if (eh_grafia_morta(t) && espia(p, 1)->type == T_LPAREN) {
+        char m[200];
+        snprintf(m, sizeof(m),
+                 "'%s' saiu da linguagem; a funcao sem nome se escreve 'funct(args) { ... }'",
+                 t->texto);
+        perro(p, m, t);
+        return NULL;
+    }
+
     {
         int ifun = cabeca_de_funct(p, 0);
         if (ifun > 0 && espia(p, ifun + 1)->type == T_LPAREN) {
@@ -2144,6 +2166,28 @@ static PSNode *statement(P *p)
         }
     }
 
+    /* `action nome(` / `reaction nome(` / `action(` — a grafia que saiu.
+     *
+     * Mesma armadilha do `def`: sem palavra reservada, `action f() {` vira
+     * nome solto + chamada + literal de dicionario, e o erro fala de
+     * dicionario. Com um `int` ou um `async` na frente, pior ainda: casava com
+     * a regra de declaracao tipada e virava variavel. A recusa diz a palavra
+     * nova e mostra a linha inteira consertada. */
+    if (eh_grafia_morta(t)) {
+        PSToken *n1 = espia(p, 1);
+        PSToken *n2 = espia(p, 2);
+        if (n1->type == T_LPAREN
+                || ((n1->type == T_IDENT || n1->type == T_IDENT_UPPER) && n2->type == T_LPAREN)) {
+            char m[200];
+            snprintf(m, sizeof(m),
+                     "'%s' saiu da linguagem; a funcao se declara com 'funct': funct %s(args) { ... }",
+                     t->texto,
+                     (n1->type == T_LPAREN) ? "" : (n1->texto ? n1->texto : "nome"));
+            perro(p, m, t);
+            return NULL;
+        }
+    }
+
     /* reservada seguida de '=' é tentativa de usá-la como variável */
     if (t->type == T_KW) {
         PSToken *nx = espia(p, 1);
@@ -2288,6 +2332,17 @@ static PSNode *statement(P *p)
                 viu_visib = 1;
                 p->pos++;
                 mt = atual(p);
+            }
+            /* A grafia que saiu, escrita como método: aqui ela casaria com a
+             * regra de campo (`<tipo> <nome>`) e nasceria um campo chamado
+             * `action`, calado. A recusa vem antes, com a palavra certa. */
+            if (eh_grafia_morta(mt)) {
+                char m[200];
+                snprintf(m, sizeof(m),
+                         "'%s' saiu da linguagem; o metodo se declara com 'funct': funct %s(self) { ... }",
+                         mt->texto, espia(p, 1)->texto ? espia(p, 1)->texto : "nome");
+                perro(p, m, mt);
+                return NULL;
             }
             /* `pass` sozinho: corpo vazio de classe, como no Python. Não vira
              * membro nenhum — só ocupa o lugar pra a Entity poder existir sem
@@ -2973,9 +3028,18 @@ static PSNode *statement(P *p)
                 }
                 char m[240];
                 const char *nome = ap->texto ? ap->texto : "?";
-                snprintf(m, sizeof(m),
-                         "faltou 'funct' antes de '%.40s': %sfunct %.40s(...)",
-                         nome, mods, nome);
+                /* `int async reaction h(a)`: o que está no lugar do nome é a
+                 * grafia que saiu. Dizer "faltou funct antes de 'reaction'"
+                 * mandaria escrever `funct reaction(...)`, que não é o
+                 * conserto — o conserto é trocar a palavra. */
+                if (eh_grafia_morta(ap))
+                    snprintf(m, sizeof(m),
+                             "'%s' saiu da linguagem; troque por 'funct': %sfunct %.40s(...)",
+                             nome, mods, espia(p, j + 1)->texto ? espia(p, j + 1)->texto : "nome");
+                else
+                    snprintf(m, sizeof(m),
+                             "faltou 'funct' antes de '%.40s': %sfunct %.40s(...)",
+                             nome, mods, nome);
                 perro(p, m, ap);
                 return NULL;
             }

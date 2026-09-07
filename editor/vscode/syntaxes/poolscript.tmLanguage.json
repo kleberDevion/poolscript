@@ -140,10 +140,10 @@
     "declarations": {
       "patterns": [
         {
-          "match": "\\b(funct|action|reaction)\\s+([A-Za-z_]\\w*)",
+          "match": "\\b(funct)\\s+([A-Za-z_]\\w*)",
           "captures": {
             "1": {
-              "name": "storage.type.function.poolscript"
+              "name": "storage.type.function.poolscript keyword.declaration.function.poolscript keyword.poolscript"
             },
             "2": {
               "name": "entity.name.function.poolscript"
@@ -154,7 +154,7 @@
           "match": "\\b(Entity|class|Class|model|enum)\\s+([A-Za-z_]\\w*)",
           "captures": {
             "1": {
-              "name": "storage.type.class.poolscript"
+              "name": "storage.type.class.poolscript keyword.declaration.class.poolscript keyword.poolscript"
             },
             "2": {
               "name": "entity.name.type.class.poolscript"
@@ -172,7 +172,7 @@
         },
         {
           "comment": "parametros da declaracao — o C# pinta parametro de azul claro",
-          "begin": "(?<=\\b(?:funct|action|reaction)\\s{1,4}[A-Za-z_]\\w{0,64})\\(",
+          "begin": "(?<=\\bfunct\\s{1,4}[A-Za-z_]\\w{0,64})\\(",
           "end": "\\)",
           "patterns": [
             {
@@ -212,16 +212,27 @@
           "match": "\\b(and|or|not|Not)\\b"
         },
         {
+          "comment": "A PALAVRA que declara funcao. Escopo proprio, com dois nomes de reserva atras: um tema que nao conheca `storage.type.function` ainda casa `keyword.declaration.function`, e um que nao conheca nenhum dos dois casa `keyword`. Sem essa cauda, tema que so estiliza o generico deixava `funct` sem cor nenhuma.",
+          "name": "storage.type.function.poolscript keyword.declaration.function.poolscript keyword.poolscript",
+          "match": "\\b(funct)\\b"
+        },
+        {
+          "comment": "As palavras que declaram TIPO. Iam no mesmo escopo dos tipos primitivos, e com isso `Entity`, `class` e `int` saiam da mesma cor — a pagina inteira azul. O `(?!\\s*=)` tira o caso `model=Rota`: ali `model` e NOME DE ARGUMENTO da rota, nao declaracao de model, e pintar de palavra-chave mentia sobre o que a linha faz.",
+          "name": "storage.type.class.poolscript keyword.declaration.class.poolscript keyword.poolscript",
+          "match": "\\b(Entity|class|Class|model|enum)\\b(?!\\s*=)"
+        },
+        {
+          "comment": "idem: `int = 1` ou `type=...` como nome de argumento nao e tipo",
           "name": "storage.type.poolscript",
-          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|funct|action|reaction|Entity|class|Class|model|enum|type|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b"
+          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|type|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b(?!\\s*=[^=])"
         },
         {
           "comment": "static/nonnull sao modificadores COLADOS na cabeca — so pintam antes de funct, que e onde valem; fora dali sao nome comum",
-          "name": "storage.modifier.poolscript",
+          "name": "storage.modifier.poolscript keyword.modifier.poolscript keyword.poolscript",
           "match": "\\b(static|nonnull|NonNull)\\b(?=(?:\\s+(?:public|private|async|static|nonnull|NonNull|str|int|flo|bool)){0,4}\\s+(?:funct|action|reaction)\\b)"
         },
         {
-          "name": "storage.modifier.poolscript",
+          "name": "storage.modifier.poolscript keyword.modifier.poolscript keyword.poolscript",
           "match": "\\b(private|public)\\b"
         },
         {
@@ -229,8 +240,9 @@
           "match": "\\b(PUSH|GET|POST|PUT|DELETE|JSON)\\b"
         },
         {
+          "comment": "builtins de verdade, e so quando CHAMADOS: `route` e `listen` sairam daqui porque sao metodos, e pintados soltos manchavam a variavel de quem escreve `route = 1`",
           "name": "support.function.builtin.poolscript",
-          "match": "\\b(post|input|listen|route|create|clear|space|addEnd|full|mei)\\b"
+          "match": "\\b(post|input|addEnd|addStart|removeEnd|removeStart|len|range|str|int|flo|bool|type|abs|pow|round|sorted|reversed|enumerate|zip|map|filter|open|sleep|gather|assert|id|load|min|max|sum|hex|bin|oct|ord|chr)\\s*(?=\\()"
         }
       ]
     },

@@ -93,11 +93,11 @@ funct param()
 }
 
 
-# I18 — o path param chega no ARGUMENTO da action, se ela pedir.
+# I18 — o path param chega no ARGUMENTO da funct, se ela pedir.
 #
 # A rota `/param/<id>` acima continua usando `request.path_param("id")` e nada
 # mudou pra ela: as duas formas convivem, que é o ponto da decisão ("opcional,
-# poder injetar o valor no arg da action se o Dev quiser").
+# poder injetar o valor no arg da funct se o Dev quiser").
 @app.route("/injeta:id")
 funct injeta(id)
 {

@@ -25,13 +25,19 @@
 static const char *KEYWORDS[] = {
     "if", "else", "elif", "while", "for", "each", "in", "is",
     "and", "or", "not", "Not",
-    /* `funct` e o nome da funcao; `action`/`reaction` sao as grafias antigas */
-    "funct", "action", "reaction", "return", "continue", "break", "pass", "model", "enum", "async", "await",
+    "funct", "return", "continue", "break", "pass", "model", "enum", "async", "await",
     "try", "catch", "as", "with", "of", "using",
     "import", "from", "PUSH", "GET",
     "str", "int", "flo", "bool",
-    "post", "input", "listen", "route", "create",
-    "clear", "space", "addEnd", "char", "list",
+    /* `post`, `input` e `addEnd` sao BUILTINS (estao na tabela BUILTINS[] da
+     * VM). `listen`, `route`, `create`, `clear` e `space` SAIRAM daqui: nao
+     * eram construcao da linguagem nem builtin — `route` e `listen` sao METODOS
+     * (`app.route(...)`, `sock.listen()`), e acesso a membro nao precisa que o
+     * nome seja reservado. Enquanto estavam nesta tabela, `route = 1` era
+     * "palavra reservada da linguagem e nao pode ser usada como nome de
+     * variavel", e o editor pintava `route` de palavra-chave em qualquer
+     * lugar — inclusive como nome de variavel de quem escreve. */
+    "post", "input", "addEnd", "char", "list",
     "Class", "class", "type",
     "Entity", "self",
     "private", "public",

@@ -142,10 +142,10 @@ async function main() {
 
   /* ── 4. função LOCAL não oferecia parâmetro nenhum ─────────────────────── */
   {
-    const src = 'action soma(a, b=2) {\n    return a\n}\nsoma(';
+    const src = 'funct soma(a, b=2) {\n    return a\n}\nsoma(';
     const m = await conversa(src, [compl(2, 3, 5)]);
     const L = rotulos(resp(m, 2));
-    conf('action LOCAL oferece os parametros dela', L.includes('a=') && L.includes('b='), L);
+    conf('funct LOCAL oferece os parametros dela', L.includes('a=') && L.includes('b='), L);
   }
 
   /* ── 5. reoferecia parâmetro JÁ PASSADO ────────────────────────────────── */
@@ -175,7 +175,7 @@ async function main() {
 
   /* ── 7. o que NÃO existia: outline, definição, assinatura ──────────────── */
   {
-    const src = 'action alfa(x) {\n    return x\n}\naction beta() {\n    return 1\n}\n';
+    const src = 'funct alfa(x) {\n    return x\n}\nfunct beta() {\n    return 1\n}\n';
     const m = await conversa(src, [
       { jsonrpc: '2.0', id: 3, method: 'textDocument/documentSymbol', params: { textDocument: { uri: URI } } },
       { jsonrpc: '2.0', id: 4, method: 'textDocument/definition',
@@ -183,7 +183,7 @@ async function main() {
     ]);
     const ds = resp(m, 3);
     const nomes = ds && ds.result ? ds.result.map((s) => s.name) : [];
-    conf('documentSymbol lista as actions do arquivo', nomes.includes('alfa') && nomes.includes('beta'), nomes);
+    conf('documentSymbol lista as functs do arquivo', nomes.includes('alfa') && nomes.includes('beta'), nomes);
     const df = resp(m, 4);
     conf('definition responde (nao e mais -32601)', !!df && !df.error, df);
   }
@@ -202,7 +202,7 @@ async function main() {
 
   /* ── 8. diagnóstico vem do `--check` do motor ──────────────────────────── */
   {
-    const m = await conversa('action f(:\n    return 1\n', []);
+    const m = await conversa('funct f(:\n    return 1\n', []);
     const d = m.find((x) => x.method === 'textDocument/publishDiagnostics');
     conf('erro de sintaxe vira diagnostico', !!d && d.params.diagnostics.length > 0,
          d && d.params.diagnostics[0] && d.params.diagnostics[0].message);
@@ -286,7 +286,7 @@ async function main() {
     conf('hover em `funct` acha a secao 6.1', valor(m, 13).includes('Definição'), valor(m, 13).slice(0, 120));
     conf('hover em `post` (builtin) traz a pagina do builtin', valor(m, 14).includes('post('), valor(m, 14).slice(0, 120));
     conf('hover na variavel diz o TIPO construido e a linha', valor(m, 15).includes('Jinker mapping') && valor(m, 15).includes('linha 2'), valor(m, 15));
-    conf('hover no parametro diz de que action ele e', valor(m, 16).includes('parâmetro de `entra`'), valor(m, 16));
+    conf('hover no parametro diz de que funct ele e', valor(m, 16).includes('parâmetro de `entra`'), valor(m, 16));
     conf('hover na funct mostra `int async funct` e o decorador',
          valor(m, 17).includes('int async funct entra(data)') && valor(m, 17).includes('@mapping.post'), valor(m, 17));
     conf('hover no model lista os campos', valor(m, 18).includes('email: str(length=60)') && valor(m, 18).includes('senha: str'), valor(m, 18));
@@ -308,7 +308,7 @@ async function main() {
   {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
     fs.mkdirSync(path.join(dir, 'pasta'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'vizinho.ps'), 'action soma_vizinha(a) {\n    return a\n}\n');
+    fs.writeFileSync(path.join(dir, 'vizinho.ps'), 'funct soma_vizinha(a) {\n    return a\n}\n');
     fs.writeFileSync(path.join(dir, 'pasta', 'dentro.ps'), 'x = 1\n');
     const casos = [
       ['`from mail import Mia` -> MEMBROS do mail, nao modulos (a tela dele)',
@@ -322,7 +322,7 @@ async function main() {
        ['import '], 0, undefined, ['mail', 'vizinho', 'pasta'], ['a']],
       ['`import pasta.` -> os arquivos DENTRO da pasta',
        ['import pasta.'], 0, undefined, ['dentro'], ['mail']],
-      ['`from vizinho import ` -> as actions do arquivo ao lado',
+      ['`from vizinho import ` -> as functs do arquivo ao lado',
        ['from vizinho import '], 0, undefined, ['soma_vizinha'], []],
       /* import por CAMINHO entre aspas (`import '../x.ps'`, como no TypeScript):
        * dentro das aspas vem arquivo, pasta, `..` e os modulos do motor */
@@ -332,7 +332,7 @@ async function main() {
        ["import 'pasta/"], 0, undefined, ['dentro.ps'], ['mail', 'vizinho.ps']],
       ["`import 'pas|'` (aspa fechada pelo editor, cursor dentro) -> pasta",
        ["import 'pas'"], 0, 11, ['pasta'], []],
-      ["`from './vizinho.ps' import ` -> as actions do arquivo",
+      ["`from './vizinho.ps' import ` -> as functs do arquivo",
        ["from './vizinho.ps' import "], 0, undefined, ['soma_vizinha'], []],
       ["`import './vizinho.ps'` + `vizinho.` -> os membros do arquivo",
        ["import './vizinho.ps'", 'vizinho.'], 1, undefined, ['soma_vizinha'], []],
@@ -356,13 +356,14 @@ async function main() {
        ['for each x in [1, 2] {', '    x.', '}'], 1, undefined, ['type'], []],
       ['`request.get("x").` (retorno desconhecido) -> universais',
        ['from jinker import request', 'request.get("x").'], 1, undefined, ['type'], []],
-      ['`str action g()` + `v = g()` + `v.` -> metodos de str',
-       ['str action g() {', '    return "a"', '}', 'v = g()', 'v.'], 4, undefined, ['upper'], []],
+      ['`str funct g()` + `v = g()` + `v.` -> metodos de str',
+       ['str funct g() {', '    return "a"', '}', 'v = g()', 'v.'], 4, undefined, ['upper'], []],
       ['`string s = "a"` + `s.` -> metodos de str (apelido de tipo, pela tabela do --metadata)',
        ['string s = "a"', 's.'], 1, undefined, ['upper'], []],
       ['sem receptor: nomes do arquivo + import + BUILTINS + PALAVRAS-CHAVE + MODIFICADORES',
        ['import mail', 'total = 1', 'funct soma(a) {', '    return a', '}', 't'], 5, undefined,
-       ['total', 'soma', 'mail', 'post', 'len', 'str', 'funct', 'action', 'if', 'for', 'static', 'nonnull'], []],
+       ['total', 'soma', 'mail', 'post', 'len', 'str', 'funct', 'if', 'for', 'static', 'nonnull'],
+       ['action', 'reaction']],
       /* LITERAIS e `__name__`: o lexer entrega `true`/`false`/`Null` como token
        * próprio (BOOL/NULL) e `__name__` é global do compilador — nenhum dos
        * quatro está na KEYWORDS[] do --metadata, e o sugestor não os tinha. */
@@ -378,15 +379,15 @@ async function main() {
       ["`static funct` numa Entity: o completion de `Tipo.` diz que e static",
        ['Entity Mat() {', '    static funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
        5, undefined, ['soma'], []],
-      ["`@static` (grafia antiga) marca o metodo igual ao modificador colado",
-       ['Entity Mat() {', '    @static', '    action soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
+      ["`@static` (o decorador) marca o metodo igual ao modificador colado",
+       ['Entity Mat() {', '    @static', '    funct soma(a, b) {', '        return a + b', '    }', '}', 'Mat.'],
        6, undefined, ['soma'], []],
       ["`funct` do arquivo aparece no completion sem receptor",
        ['funct minha(a) {', '    return a', '}', 'm'], 3, undefined, ['minha'], []],
-      ['`self.` em reaction, dentro de `if`, campo `private str nome` do corpo e metodo HERDADO',
-       ['class Base() {', '    action b(self) {', '        return 1', '    }', '}', 'class C(Base) {',
-        '    private str nome = "a"', '    int n = 1', '    action __init__(self, x) {', '        self.x = x', '    }',
-        '    reaction m(self) {', '        if self.n > 0 {', '            self.', '        }', '    }', '}'],
+      ['`self.` dentro de `if`, campo `private str nome` do corpo e metodo HERDADO',
+       ['class Base() {', '    funct b(self) {', '        return 1', '    }', '}', 'class C(Base) {',
+        '    private str nome = "a"', '    int n = 1', '    funct __init__(self, x) {', '        self.x = x', '    }',
+        '    funct m(self) {', '        if self.n > 0 {', '            self.', '        }', '    }', '}'],
        13, undefined, ['nome', 'n', 'x', 'm', 'b'], []],
     ];
     for (const [nome, linhas, line, ch, espera, nao] of casos) {
@@ -438,24 +439,24 @@ async function main() {
   /* ── 10. CLASSE, HERANÇA, `self` — nada disso funcionava ────────────────
    *
    * Medido antes: `self.` dava ZERO, `c = Conta(...)` + `c.` dava ZERO, e a
-   * lista sem receptor não tinha nem o parâmetro da action nem o nome da
+   * lista sem receptor não tinha nem o parâmetro da funct nem o nome da
    * classe. Uma linha explicava as três: o nome de Entity é `IDENT_UPPER` no
    * lexer, e o servidor exigia `IDENT` — então toda Entity de todo arquivo
    * era invisível. */
   const OO = [
     'import mail',
     'Entity Base() {',
-    '    public action ping(self) { return "pong" }',
+    '    public funct ping(self) { return "pong" }',
     '}',
     'Entity Conta(Base) {',
     '    saldo: int',
     '    dono: str',
-    '    public action deposita(self, valor) {',
+    '    public funct deposita(self, valor) {',
     '        self.',
     '    }',
-    '    private action log(self) { return "x" }',
+    '    private funct log(self) { return "x" }',
     '}',
-    'action principal(quantia, cliente) {',
+    'funct principal(quantia, cliente) {',
     '    c = Conta(0, "ana")',
     '    c.',
     '    ',
@@ -477,7 +478,7 @@ async function main() {
     conf('`__init__` nao e oferecido como membro', !C.includes('__init__'), C);
 
     const L = rotulos(resp(m, 4));
-    conf('a lista sem receptor tem os PARAMETROS da action',
+    conf('a lista sem receptor tem os PARAMETROS da funct',
          L.includes('quantia') && L.includes('cliente'), L);
     conf('...e a variavel local declarada antes do cursor', L.includes('c'), L);
     conf('...e as Entities do arquivo', L.includes('Conta') && L.includes('Base'), L);
@@ -498,7 +499,7 @@ async function main() {
    * deles é depois do `import`. E módulo de FACHADA (stub que só levantava
    * NotImplemented) não existe mais em lista nenhuma. */
   {
-    const m = await conversa('action f() {\n    \n}\n', [compl(2, 1, 4)]);
+    const m = await conversa('funct f() {\n    \n}\n', [compl(2, 1, 4)]);
     const L = rotulos(resp(m, 2));
     /* `json`/`str`/`list` são também palavra-chave ou builtin, e ESSES
      * entram; o que não pode entrar é módulo que só existe via import */
@@ -517,7 +518,7 @@ async function main() {
   {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
     fs.writeFileSync(path.join(dir, 'modelo.ps'),
-      'Entity Usuario() {\n    nome: str\n    public action saudacao(self) { return "oi" }\n}\n');
+      'Entity Usuario() {\n    nome: str\n    public funct saudacao(self) { return "oi" }\n}\n');
     const m = await conversa('import modelo\nu = modelo.Usuario("ana")\nu.\n', [compl(2, 2, 2)]);
     const L = rotulos(resp(m, 2));
     conf('Entity de arquivo importado expoe os membros dela',
@@ -541,17 +542,17 @@ async function main() {
   {
     const src = [
       'Entity Motor() {',
-      '    public action ligar(self) { return 1 }',
+      '    public funct ligar(self) { return 1 }',
       '}',
       'Entity Carro() {',
       '    motor: Motor',
-      '    private action interna(self) { return 0 }',
-      '    public action andar(self, marcha) {',
+      '    private funct interna(self) { return 0 }',
+      '    public funct andar(self, marcha) {',
       '        velocidade = marcha * 10',
       '        self.',
       '    }',
       '}',
-      'action principal(quantos) {',
+      'funct principal(quantos) {',
       '    c = Carro(Motor())',
       '    c.motor.',
       '    ',
@@ -570,7 +571,7 @@ async function main() {
 
     const L = rotulos(resp(m, 4));
     conf('variavel local declarada acima e sugerida', L.includes('c'), L);
-    conf('parametro da action e sugerido', L.includes('quantos'), L);
+    conf('parametro da funct e sugerido', L.includes('quantos'), L);
     conf('as classes do arquivo sao sugeridas',
          L.includes('Carro') && L.includes('Motor'), L);
   }

@@ -162,7 +162,7 @@ Agrupadas por papel:
 |---|---|
 | Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `pass` `return` |
 | Lógicos | `and` `or` `not` `Not` |
-| Funções | `funct` `action` `reaction` `async` `await` `yield` |
+| Funções | `funct` `async` `await` `yield` |
 | Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` `Object` `object` |
 | Classes / OO | `Entity` `class` `Class` `self` `base` `model` `enum` |
 | Encapsulamento | `private` `public` |
@@ -173,7 +173,8 @@ Agrupadas por papel:
 
 `dict` é apelido de `json`; `tup` nomeia a tupla; `base` é reconhecida
 contextualmente dentro de `Entity` (chama o construtor do pai). `action` e
-`reaction` são as grafias antigas de `funct` e continuam reservadas.
+`reaction` **saíram**: não são mais reservadas, e o parser as recusa com a
+palavra nova na mensagem (seção 6.1).
 
 Duas coisas **não** estão nesta tabela, e não é esquecimento:
 

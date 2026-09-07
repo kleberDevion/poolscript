@@ -42,20 +42,20 @@ PROGRAMAS = [
     ["string",      "s = \"a\" * 500\npost(len(s), s[10:20], s.upper()[:5])\n"],
     ["lista",       "l = []\nfor each i in range(200) {\n    l.append(i * 2)\n}\npost(sum(l), len(l))\n"],
     ["dict",        "d = {}\nfor each i in range(200) {\n    d[str(i)] = i\n}\npost(len(d), d[\"77\"])\n"],
-    ["closure",     "action faz() {\n    n = 0\n    action inc() {\n        n = n + 1\n        return n\n    }\n    return inc\n}\nc = faz()\npost(c(), c())\n"],
-    ["entity",      "Entity P() {\n    action __init__(self, x) {\n        self.x = x\n    }\n    action d(self) {\n        return self.x * 2\n    }\n}\npost(P(21).d())\n"],
+    ["closure",     "funct faz() {\n    n = 0\n    funct inc() {\n        n = n + 1\n        return n\n    }\n    return inc\n}\nc = faz()\npost(c(), c())\n"],
+    ["entity",      "Entity P() {\n    funct __init__(self, x) {\n        self.x = x\n    }\n    funct d(self) {\n        return self.x * 2\n    }\n}\npost(P(21).d())\n"],
     # Entity SEM __init__: passa pelo sintetiza_init, que é o realloc duplo do
     # achado C1 da auditoria — o que deixava ponteiro pendurado no descritor.
-    ["entity_init", "Entity S() {\n    action m(self) {\n        return 1\n    }\n}\npost(S().m())\n"],
+    ["entity_init", "Entity S() {\n    funct m(self) {\n        return 1\n    }\n}\npost(S().m())\n"],
     ["fstring",     "n = \"ana\"\nfor each i in range(50) {\n    x = f\"{n} tem {i} anos e {i * 2} meses\"\n}\npost(x)\n"],
     ["json",        "import json\nd = {\"a\": [1, 2, 3], \"b\": {\"c\": \"d\"}}\ns = json.stringify(d)\npost(json.parse(s)[\"b\"][\"c\"])\n"],
     ["regex",       "import regex\np = regex.compile(\"(\\\\d+)-(\\\\w+)\")\npost(p.findall(\"1-a 22-bb 333-ccc\"))\n"],
     ["arquivo",     "using open(\"a.txt\", \"w\") as f {\n    f.write(\"linha1\\nlinha2\\n\")\n}\npost(open(\"a.txt\").read().split(\"\\n\")[0])\n"],
     ["split",       "s = (\",\").join([str(i) for each i in range(100)])\npost(len(s.split(\",\")))\n"],
-    ["gerador",     "action g() {\n    for each i in range(100) {\n        yield i * i\n    }\n}\npost(sum(list(g())))\n"],
+    ["gerador",     "funct g() {\n    for each i in range(100) {\n        yield i * i\n    }\n}\npost(sum(list(g())))\n"],
     ["import",      "import os\nimport sys\nimport json\npost(type(os), type(sys), type(json))\n"],
     ["xlsx",        "import manpu as mp\nusing mp.open(target=\"p.xlsx\") as a {\n    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n}\npost(len(mp.read(\"p.xlsx\")))\n"],
-    ["traceback",   "action f() {\n    raise ValueError(\"x\")\n}\ntry {\n    f()\n} catch (e) {\n    post(\"peguei\")\n}\n"],
+    ["traceback",   "funct f() {\n    raise ValueError(\"x\")\n}\ntry {\n    f()\n} catch (e) {\n    post(\"peguei\")\n}\n"],
 ]
 
 
