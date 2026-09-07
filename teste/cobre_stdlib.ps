@@ -196,6 +196,66 @@ r = os.run(["echo", "capturado"], true)
 confere("os.run com capture=true espera e devolve a saida",
         type(r) == "str" and r.strip() == "capturado")
 
+# ── charset em arquivo: TODO codec que a linguagem conhece ──────────────────
+#
+# O `encoding` de readFile/writeFile era declarado e IGNORADO — ler latin-1
+# pedindo latin-1 saia com acento quebrado e gravar latin-1 gravava utf-8. A
+# conversao nao e reimplementada no `os`: ler chama o `.decode()` do bytes e
+# gravar chama o `.encode()` do str, entao nao ha lista de convidados nem uma
+# segunda copia da logica pra sair de sincronia.
+#
+# A ida e volta e o que se afirma: gravar num charset e ler de volta nele tem
+# que devolver o MESMO texto, e o TAMANHO em bytes prova que a conversao
+# aconteceu (latin-1 gasta 4 onde utf-8 gasta 5).
+os.mkdir(PASTA + "/cs", exist_ok=true)
+TXT = "café"
+volta_ok = true
+for each cod in ["utf-8", "latin-1", "utf-16", "utf-16be", "utf-32", "utf-32be", "iso-8859-1", "cp819"] {
+    arq = PASTA + "/cs/" + cod.replace("-", "") + ".txt"
+    os.writeFile(arq, TXT, encoding=cod)
+    if os.readFile(arq, encoding=cod) != TXT {
+        volta_ok = false
+    }
+}
+confere("arquivo: grava e le de volta em todo codec da linguagem", volta_ok)
+confere("arquivo: latin-1 gasta 4 bytes onde utf-8 gasta 5",
+        os.size(PASTA + "/cs/latin1.txt") == 4 and os.size(PASTA + "/cs/utf8.txt") == 5)
+confere("arquivo: utf-16 gasta 8 bytes e utf-32 gasta 16",
+        os.size(PASTA + "/cs/utf16.txt") == 8 and os.size(PASTA + "/cs/utf32.txt") == 16)
+
+pegou = false
+try {
+    os.writeFile(PASTA + "/cs/x.txt", "ção", encoding="ascii")
+}
+catch (e) {
+    pegou = true
+}
+confere("arquivo: caractere que nao cabe no charset levanta", pegou)
+
+pegou = false
+try {
+    os.readFile(PASTA + "/cs/utf8.txt", encoding="klingon")
+}
+catch (e) {
+    pegou = true
+}
+confere("arquivo: encoding inexistente levanta", pegou)
+
+# `content` em bytes JA e a sequencia final: o encoding nao se aplica
+os.writeFile(PASTA + "/cs/b.bin", "ab".encode(), encoding="utf-16")
+confere("arquivo: content em bytes ignora o encoding", os.size(PASTA + "/cs/b.bin") == 2)
+
+# o 2o argumento do loadFile e MODO, e charset ali e erro com o caminho certo
+os.writeFile(PASTA + "/cs/d.csv", "a,b\n1,2\n")
+pegou = false
+try {
+    os.loadFile(PASTA + "/cs/d.csv", "latin-1")
+}
+catch (e) {
+    pegou = "os.readFile" in str(e)
+}
+confere("loadFile recusa charset e aponta o os.readFile", pegou)
+
 # ── os: caminho, diretório, ambiente ────────────────────────────────────────
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
 # então o teste cria o alvo e roda de dentro da pasta.

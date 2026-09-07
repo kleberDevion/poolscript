@@ -11343,62 +11343,24 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 
 /* ── charset nos arquivos ────────────────────────────────────────────────────
  *
- * O `encoding` de `readFile`/`writeFile`/`loadFile` era DECLARADO E IGNORADO:
- * a tabela dizia "path,encoding" e o codigo devolvia os bytes crus. Ler um
- * arquivo latin-1 pedindo latin-1 saia com acento quebrado, e
+ * O `encoding` de `readFile`/`writeFile` era DECLARADO E IGNORADO: a tabela
+ * dizia "path,encoding" e o codigo devolvia os bytes crus. Ler um arquivo
+ * latin-1 pedindo latin-1 saia com acento quebrado, e
  * `writeFile(..., encoding="latin-1")` gravava UTF-8 do mesmo jeito — o pior
  * tipo de defeito, porque a chamada parece certa.
  *
- * A linguagem guarda texto em UTF-8. Entao ler e DECODIFICAR de `codec` pra
- * UTF-8, e gravar e CODIFICAR de UTF-8 pra `codec`. O nome do codec vem do
- * mesmo `codec_de_nome` que o `.encode()` usa.
- *
- * Os codecs de largura fixa (utf-16/32) ficam de fora aqui, e com nome: um
- * arquivo desses precisa de BOM e de tratamento de par de surrogates que o
- * `str.encode`/`bytes.decode` ja fazem — a mensagem manda usar eles. */
-static int os_codec_arq(VM *vm, Value *args, int n, int idx, const char *quem, int *codec)
-{
-    *codec = CODEC_UTF8;
-    if (n <= idx || args[idx].t == V_UNSET || args[idx].t == V_NULL) return 0;
-    if (!EH_STRING(args[idx]))
-        { BERRO(vm, "TypeError", "%s() encoding deve ser str, nao %s",
-                quem, nome_do_tipo_valor(args[idx])); }
-    PSString *e = COMO_STRING(args[idx]);
-    int c = codec_de_nome(e->chars, e->len);
-    if (c < 0)
-        { BERRO(vm, "LookupError", "unknown encoding: %.*s", e->len, e->chars); }
-    if (c != CODEC_UTF8 && c != CODEC_LATIN1 && c != CODEC_ASCII)
-        { BERRO(vm, "ValueError",
-                "%s(): encoding '%.*s' nao e aplicado em arquivo — leia os bytes "
-                "(open(caminho, \"rb\")) e use .decode(\"%.*s\")",
-                quem, e->len, e->chars, e->len, e->chars); }
-    *codec = c;
-    return 0;
-}
+ * A conversao NAO e reimplementada aqui: ler delega ao `.decode()` do bytes e
+ * gravar ao `.encode()` do str, que sao as mesmas funcoes que o usuario chama.
+ * Assim TODO codec que a linguagem conhece vale em arquivo — utf-8, latin-1,
+ * ascii, utf-16/32 nas duas ordens, com os apelidos — sem lista de convidados
+ * e sem uma segunda copia da logica de surrogate pra sair de sincronia. */
 
-/* bytes do arquivo -> texto UTF-8 da linguagem */
-static PSString *os_decodifica(VM *vm, const char *b, int len, int codec)
+/* O argumento de encoding, repassado como o `.encode()`/`.decode()` esperam. */
+static int os_enc_args(Value *args, int n, int idx, Value *dest)
 {
-    if (codec == CODEC_UTF8) return nova_string(vm, b, len);
-    /* latin-1 e ascii: 1 byte = 1 codepoint. Acima de 0x7F vira 2 bytes UTF-8. */
-    SBUF_AUTO sb = {0};
-    for (int i = 0; i < len; i++) {
-        unsigned char c = (unsigned char)b[i];
-        if (codec == CODEC_ASCII && c > 0x7F) {
-            /* devolve NULL com o erro posto: quem chama so propaga */
-            snprintf(vm->erro, sizeof(vm->erro),
-                     "'ascii' codec can't decode byte 0x%02x in position %d: "
-                     "ordinal not in range(128)", c, i);
-            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "UnicodeDecodeError");
-            return NULL;
-        }
-        if (c < 0x80) { if (sb_bytes(&sb, (const char *)&c, 1) != 0) return NULL; }
-        else {
-            char par[2] = { (char)(0xC0 | (c >> 6)), (char)(0x80 | (c & 0x3F)) };
-            if (sb_bytes(&sb, par, 2) != 0) return NULL;
-        }
-    }
-    return nova_string(vm, sb.b ? sb.b : "", sb.n);
+    if (n <= idx || args[idx].t == V_UNSET || args[idx].t == V_NULL) return 0;
+    dest[0] = args[idx];
+    return 1;
 }
 
 static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
@@ -11406,8 +11368,6 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
     if (n < 1) return erro_aridade(vm, "readFile", 1, 2, n);
     PSString *p;
     if (os_str(vm, args[0], "readFile", &p) != 0) return -1;
-    int codec;
-    if (os_codec_arq(vm, args, n, 1, "readFile", &codec) != 0) return -1;
     /* O `fopen("rb")` do Linux ABRE um diretório sem reclamar (o `nativa_open`
      * já barra isso na mão, por isto mesmo). Aqui não barrava: o `ftell` de
      * diretório devolve LONG_MAX, o malloc estoura e `readFile("pasta")` saía
@@ -11422,14 +11382,24 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
     if (!buf) { fclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
     size_t rd = fread(buf, 1, (size_t)t, f);
     fclose(f); buf[rd] = '\0';
-    PSString *s = os_decodifica(vm, buf, (int)rd, codec);
-    free(buf);
-    if (!s) {
-        if (vm->erro_tipo[0]) return -1;      /* erro de decodificacao ja posto */
-        BERRO(vm, "MemoryError", "sem memoria");
+    Value enc[1]; int ne = os_enc_args(args, n, 1, enc);
+    if (ne == 0) {                            /* sem encoding: o texto e os bytes */
+        PSString *s = nova_string(vm, buf, (int)rd);
+        free(buf);
+        if (!s) BERRO(vm, "MemoryError", "sem memoria");
+        *out = MK_OBJ(s);
+        return 0;
     }
-    *out = MK_OBJ(s);
-    return 0;
+    PSString *bt = novo_bytes(vm, buf, (int)rd);
+    free(buf);
+    if (!bt) BERRO(vm, "MemoryError", "sem memoria");
+    /* O decode ALOCA, e alocar pode disparar o GC: sem fixar, o bytes recem
+     * criado (que ninguem mais aponta) seria recolhido no meio da conversao. */
+    Value bv = MK_OBJ(bt);
+    if (fixa_raiz(vm, bv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
+    int rc = met_b_decode(vm, bv, enc, ne, out);
+    vm->sp--;
+    return rc;
 }
 
 static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
@@ -11437,40 +11407,32 @@ static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
     if (n < 2) return erro_aridade(vm, "writeFile", 2, 2, n);
     PSString *p;
     if (os_str(vm, args[0], "writeFile", &p) != 0) return -1;
-    int codec;
-    if (os_codec_arq(vm, args, n, 2, "writeFile", &codec) != 0) return -1;
     const char *dados; int ndados;
-    SBUF_AUTO conv = {0};
     if (EH_STRING(args[1]))      { PSString *c = COMO_STRING(args[1]); dados = c->chars; ndados = c->len; }
     else if (EH_BYTES(args[1]))  { PSString *c = COMO_BYTES(args[1]);  dados = c->chars; ndados = c->len; }
     else BERRO(vm, "TypeError", "writeFile() argument 2 must be str or bytes, not %s",
                nome_do_tipo_valor(args[1]));
     /* `content` em bytes ja E a sequencia final: o encoding so vale pro str,
-     * que a linguagem guarda em UTF-8 e aqui vira o charset pedido. */
-    if (codec != CODEC_UTF8 && EH_STRING(args[1])) {
-        for (int i = 0; i < ndados; ) {
-            uint32_t cp;
-            int k = utf8_le(dados, ndados, i, &cp);
-            if (!k) break;
-            i += k;
-            uint32_t teto = (codec == CODEC_ASCII) ? 0x80 : 0x100;
-            if (cp >= teto)
-                BERRO(vm, "UnicodeEncodeError",
-                      "'%s' codec can't encode character in position %d: ordinal not in range(%u)",
-                      nome_do_codec(codec), utf8_conta(dados, i - k), (unsigned)teto);
-            char b1 = (char)(unsigned char)cp;
-            if (sb_bytes(&conv, &b1, 1) != 0) BERRO(vm, "MemoryError", "sem memoria em writeFile()");
-        }
-        dados = conv.b ? conv.b : "";
-        ndados = conv.n;
+     * que a linguagem guarda em UTF-8 e aqui vira o charset pedido — pelo
+     * MESMO `.encode()` do usuario, entao vale todo codec que ele conhece. */
+    Value enc[1]; int ne = os_enc_args(args, n, 2, enc);
+    Value conv = MK_NULL();
+    int fixado = 0;
+    if (ne > 0 && EH_STRING(args[1])) {
+        if (met_encode(vm, args[1], enc, ne, &conv) != 0) return -1;
+        if (fixa_raiz(vm, conv) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
+        fixado = 1;
+        PSString *c = COMO_BYTES(conv);
+        dados = c->chars; ndados = c->len;
     }
     /* cria a pasta pai (como makedirs) */
     char tmp[2048]; snprintf(tmp, sizeof(tmp), "%s", p->chars);
     for (char *q = tmp + 1; *q; q++) { if (*q == '/') { *q = '\0'; mkdir(tmp, 0755); *q = '/'; } }
     FILE *f = fopen(p->chars, "wb");
-    if (!f) return erro_sistema(vm, errno, p->chars, NULL);
+    if (!f) { int e = errno; if (fixado) vm->sp--; return erro_sistema(vm, e, p->chars, NULL); }
     if (grava_e_fecha(f, dados, (size_t)ndados) != 0)
-        return erro_sistema(vm, errno, p->chars, NULL);
+        { int e = errno; if (fixado) vm->sp--; return erro_sistema(vm, e, p->chars, NULL); }
+    if (fixado) vm->sp--;             /* os bytes convertidos ja foram gravados */
     PSString *rp = nova_string(vm, p->chars, p->len);
     if (!rp) BERRO(vm, "MemoryError", "sem memoria");
     *out = MK_OBJ(rp);

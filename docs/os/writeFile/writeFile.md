@@ -20,10 +20,14 @@ os.writeFile("legado.txt", "café", encoding="latin-1")
 post(os.size("legado.txt"))     # 4 bytes — em utf-8 seriam 5
 ```
 
-Valem `utf-8`, `latin-1` (e apelidos) e `ascii`. Caractere que não cabe no
-charset é `UnicodeEncodeError`; nome desconhecido é `LookupError`; `utf-16`/
-`utf-32` não são aplicados aqui, e a mensagem manda usar `.encode(...)` e
-gravar os bytes.
+Vale **qualquer charset que a linguagem conhece** — os mesmos de
+[`.encode()`](../../string/encode/encode.md): `utf-8`, `latin-1`, `ascii`,
+`utf-16`/`utf-16be`, `utf-32`/`utf-32be`, com os apelidos. A gravação **chama o
+mesmo `.encode()`**, então não há lista à parte nem codec que valha num e no
+outro não.
+
+Caractere que não cabe no charset é `UnicodeEncodeError`; nome que não existe é
+`LookupError: unknown encoding: …`.
 
 ## Retorno
 

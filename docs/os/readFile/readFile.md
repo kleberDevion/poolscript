@@ -17,11 +17,14 @@ dele para o texto da linguagem:
 post(os.readFile("legado.txt", encoding="latin-1"))   # café, com o acento certo
 ```
 
-Valem `utf-8`, `latin-1` (e apelidos: `iso-8859-1`, `cp819`…) e `ascii`. Byte
-fora do ASCII com `encoding="ascii"` é `UnicodeDecodeError`. Nome desconhecido é
-`LookupError: unknown encoding: …`. Charset de largura fixa (`utf-16`,
-`utf-32`) **não** é aplicado aqui, e a mensagem diz o caminho: leia os bytes
-(`open(caminho, "rb")`) e use `.decode("utf-16")`.
+Vale **qualquer charset que a linguagem conhece** — os mesmos de
+[`.decode()`](../../bytes/metodos/decode/decode.md): `utf-8`, `latin-1`,
+`ascii`, `utf-16`/`utf-16be`, `utf-32`/`utf-32be`, com os apelidos
+(`iso-8859-1`, `cp819`, `u8`, …). Não é uma lista à parte: a leitura **chama o
+mesmo `.decode()`**, então o que funciona num funciona no outro.
+
+Erros são os de lá: byte que não cabe no charset é `UnicodeDecodeError`, nome
+que não existe é `LookupError: unknown encoding: …`.
 
 ## Retorno
 
