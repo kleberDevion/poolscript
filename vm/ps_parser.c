@@ -181,12 +181,11 @@ static int eh_tipo_kw(PSToken *t);
 static int cabeca_de_funct(P *p, int off)
 {
     int j = off;
-    PSToken *mk = espia(p, j);
-    if (mk->type == T_KW && mk->texto
-            && (strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0)) j++;
     for (;;) {
-        mk = espia(p, j);
-        if ((mk->type == T_KW && mk->texto && strcmp(mk->texto, "async") == 0)
+        PSToken *mk = espia(p, j);
+        if ((mk->type == T_KW && mk->texto
+             && (strcmp(mk->texto, "async") == 0
+              || strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0))
                 || eh_tipo_kw(mk) || eh_mod_funct(mk)) { j++; continue; }
         break;
     }
@@ -2236,10 +2235,11 @@ static PSNode *statement(P *p)
             /* modificador de visibilidade opcional antes de campo/método.
              * `is_private` não entra na serialização do AST (não é código), então
              * o diff de parser/bytecode continua batendo. */
-            int membro_priv = 0;
+            int membro_priv = 0, viu_visib = 0;
             if (mt->type == T_KW && mt->texto
                     && (strcmp(mt->texto, "private") == 0 || strcmp(mt->texto, "public") == 0)) {
                 membro_priv = (strcmp(mt->texto, "private") == 0);
+                viu_visib = 1;
                 p->pos++;
                 mt = atual(p);
             }
@@ -2258,26 +2258,23 @@ static PSNode *statement(P *p)
                 p->dec_sem_captura = salvo_flag;
                 if (FALHOU(p)) return NULL;
                 if (ps_vec_push(p->arena, &n->lista, d) != 0) return NULL;
-            } else if (mt->type == T_KW && mt->texto
-                       && (eh_kw_funct(mt)
-                        || strcmp(mt->texto,"async")==0
-                        /* `int action f()` — o tipo aqui é RETORNO, e depois
-                         * dele vem sempre outra palavra da linguagem. Sem esta
-                         * condição o `str x = "a"` logo abaixo caía aqui: virava
-                         * um VarDecl empurrado pra lista de MÉTODOS, que só olha
-                         * N_ACTION_DECL. Compilava, sumia, e o campo nunca
-                         * existia — `self.x` dava AttributeError sem uma linha
-                         * de aviso. */
-                        || (eh_tipo_kw(mt) && espia(p, 1)->type == T_KW))) {
+            /* MÉTODO: a cabeça inteira, com os modificadores em qualquer ordem
+             * (`int static funct r()`, `static funct s()`, `async funct t()`).
+             *
+             * Aqui havia uma cópia à mão da cabeça, e ela não conhecia os
+             * modificadores COLADOS: em `public int static funct r(n)` o
+             * `int static` casava com a regra de campo logo abaixo e virava um
+             * CAMPO chamado `static`; a funct saía sem tipo, sem `public` e
+             * sem a marca de estática, e `Tipo.r(...)` respondia "nao tem
+             * metodo estatico 'r' — instancie primeiro", com o `static`
+             * escrito na tela. Um só lugar decide o que é cabeça de funct. */
+            } else if (cabeca_de_funct(p, 0) >= 0) {
                 PSNode *a = statement(p);
                 if (FALHOU(p)) return NULL;
-                if (a) a->is_private = membro_priv;
-                if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
-            } else if (eh_mod_funct(mt) && cabeca_de_funct(p, 0)) {
-                /* membro que começa por modificador colado: `static funct m()` */
-                PSNode *a = statement(p);
-                if (FALHOU(p)) return NULL;
-                if (a) a->is_private = membro_priv;
+                /* Só sobrescreve se a visibilidade veio ANTES do resto: em
+                 * `static private funct m()` quem a leu foi a cabeça, e
+                 * carimbar 0 aqui apagaria o `private` da pessoa. */
+                if (a && viu_visib) a->is_private = membro_priv;
                 if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
             } else if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
                        && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
@@ -2861,22 +2858,20 @@ static PSNode *statement(P *p)
     if (checa_kw(p, "for"))   return for_stmt(p);
     if (checa_kw(p, "return")) return return_stmt(p);
 
-    /* funct com modificadores em QUALQUER ordem (a ordem é do usuário):
-     * [public|private] {async|tipo|static|nonnull}* funct — ex: `int async funct`,
-     * `public async funct`, `static funct`, `private nonnull int funct`... */
+    /* funct com modificadores em QUALQUER ordem — a ordem é do usuário:
+     * {public|private|async|tipo|static|nonnull}* funct. Vale `int async funct`,
+     * `public async funct`, `static funct`, `static private funct`,
+     * `private nonnull int funct`, `int static funct`... */
     {
         int is_priv = -1;
-        PSToken *m0 = espia(p, 0);
-        if (m0->type == T_KW && m0->texto
-                && (strcmp(m0->texto, "public") == 0 || strcmp(m0->texto, "private") == 0))
-            is_priv = (strcmp(m0->texto, "private") == 0);
         if (cabeca_de_funct(p, 0) >= 0) {
-            if (is_priv >= 0) p->pos++;        /* consome public/private */
             int is_async = 0, eh_static = 0, eh_nonnull = 0; const char *tipo = NULL;
             PSToken *cur;
             for (;;) {
                 cur = atual(p);
                 if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "async") == 0) is_async = 1;
+                else if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "public") == 0) is_priv = 0;
+                else if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "private") == 0) is_priv = 1;
                 else if (eh_tipo_kw(cur)) tipo = dup_tok(p, cur);
                 else if (eh_mod_funct(cur)) {
                     if (strcmp(cur->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
@@ -2902,7 +2897,18 @@ static PSNode *statement(P *p)
          * tem `async` (que nunca declara variável) ou se o nome vem seguido
          * de `(`, que declaração nenhuma tem. A mensagem devolve a linha
          * montada com os modificadores que a pessoa escreveu. */
-        int off = (is_priv >= 0) ? 1 : 0;
+        /* Daqui pra baixo NÃO é funct: é o campo com visibilidade
+         * (`private str x = v`) e as mensagens de cabeça mal escrita. A
+         * visibilidade é relida do token, e não herdada do ramo da funct
+         * acima — que agora aceita `public` em qualquer posição e sai por
+         * `return`, deixando `is_priv` em -1 aqui. Sem reler, `public str
+         * name = nome` dentro do construtor virava campo PRIVATE e o acesso
+         * de fora passava a ser negado. */
+        PSToken *m0 = espia(p, 0);
+        int tem_visib = (m0->type == T_KW && m0->texto
+                         && (strcmp(m0->texto, "public") == 0 || strcmp(m0->texto, "private") == 0));
+        if (tem_visib) is_priv = (strcmp(m0->texto, "private") == 0);
+        int off = tem_visib ? 1 : 0;
         int j = off;
         PSToken *mk;
         while ((mk = espia(p, j))->type == T_KW && mk->texto

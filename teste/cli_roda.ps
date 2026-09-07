@@ -364,6 +364,46 @@ r = roda("'" + POOL + "' divide.ps")
 confere("e a divisão inteira de verdade continua funcionando",
         r["rc"] == 0 and r["saida"].strip() == "3")
 
+# ── `-o`: executavel que roda sozinho ───────────────────────────────────────
+#
+# `pool programa.ps -o nome` gruda o fonte numa copia do proprio binario, com
+# um rodape que diz onde ele comeca. O que importa medir: o gerado roda SEM o
+# fonte ao lado, recebe argumentos, aceita as tres extensoes, nao gera nada
+# quando o fonte esta torto, e recompilar nao empilha payload (senao cada
+# geracao carregaria o programa da anterior e o arquivo cresceria sem parar).
+os.writeFile(PASTA + "/prog.ps", "import sys\npost(\"compilado\")\npost(\"argv:\", sys.argv)\n")
+r = roda("'" + POOL + "' prog.ps -o meuprog")
+confere("`-o` gera o executavel", r["rc"] == 0 and "gerado:" in r["saida"])
+confere("o gerado existe", os.exists(PASTA + "/meuprog"))
+
+r = roda("./meuprog um dois")
+confere("o gerado roda e recebe argumentos",
+        "compilado" in r["saida"] and "['um', 'dois']" in r["saida"] and r["rc"] == 0)
+
+os.cmd("mv " + PASTA + "/prog.ps " + PASTA + "/guardado.ps")
+r = roda("./meuprog")
+confere("o gerado roda SEM o fonte ao lado", "compilado" in r["saida"] and r["rc"] == 0)
+os.cmd("mv " + PASTA + "/guardado.ps " + PASTA + "/prog.ps")
+
+tam1 = os.size(PASTA + "/meuprog")
+os.writeFile(PASTA + "/prog2.ps", "post(\"dois\")\n")
+roda("'" + POOL + "' prog2.ps -o meuprog2")
+tam2 = os.size(PASTA + "/meuprog2")
+confere("recompilar nao empilha o payload anterior", tam2 > 0 and tam2 < tam1 + 4096)
+
+os.writeFile(PASTA + "/p3.psl", "post(\"psl\")\n")
+roda("'" + POOL + "' p3.psl -o prog3")
+r = roda("./prog3")
+confere("`-o` vale pra .psl tambem", "psl" in r["saida"] and r["rc"] == 0)
+
+os.writeFile(PASTA + "/ruim.ps", "funct f( {\n")
+r = roda("'" + POOL + "' ruim.ps -o naodeve")
+confere("fonte com erro nao gera executavel",
+        r["rc"] != 0 and not os.exists(PASTA + "/naodeve"))
+
+r = roda("'" + POOL + "' prog.ps -o")
+confere("`-o` sem nome de saida diz o uso", r["rc"] == 64 and "uso:" in r["saida"])
+
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
 post("cli/psl:", ok, "checagens passaram")

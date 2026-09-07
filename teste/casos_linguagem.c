@@ -1642,6 +1642,31 @@ const Caso CASOS_LINGUAGEM[] = {
 { "NonNull colado, na grafia do decorador antigo",
   "NonNull funct e(v) {\n    return v\n}\ne(Null)\n",
   "", "nonnull: parametro 'v' em 'e' nao pode ser Null", 1 },
+/* ── a ordem dos modificadores e LIVRE, inclusive dentro da Entity ─────────
+ * `public int static funct r(n)` dentro de Entity compilava e a funct saia SEM
+ * static, SEM tipo e SEM public: o despacho do corpo da classe tinha uma copia
+ * a mao da cabeca, que nao conhecia os modificadores colados, e `int static`
+ * casava com a regra de CAMPO — nascia um campo chamado `static`. Na tela dele:
+ * `static` escrito e "Entity 'asterisco' nao tem metodo estatico 'randint'".
+ * As 24 permutacoes de {public, int, static, async} foram medidas; aqui ficam
+ * as que cobrem cada posicao do que quebrava. */
+{ "Entity: `public int static funct` (a ordem dele) e chamavel pelo tipo",
+  "Entity A() {\n    public int static funct r(n) {\n        return n\n    }\n}\npost(A.r(2))\n",
+  "2", NULL, 0 },
+{ "Entity: visibilidade DEPOIS do modificador (`static public funct`)",
+  "Entity A() {\n    static public funct b(n) {\n        return n\n    }\n}\npost(A.b(3))\n",
+  "3", NULL, 0 },
+{ "Entity: `int static funct` sem visibilidade nenhuma",
+  "Entity A() {\n    int static funct d(n) {\n        return n\n    }\n}\npost(A.d(4))\n",
+  "4", NULL, 0 },
+{ "Entity: `static private funct` mantem o private lido na cabeca",
+  "Entity A() {\n    static private funct p(n) {\n        return n\n    }\n}\nx = A()\nx.p(1)\n",
+  "", "acesso negado: 'p' e private de A (so acessivel de dentro da classe)", 1 },
+{ "Entity: campo `int y = 2` continua campo ao lado de funct com modificador",
+  "Entity A() {\n    static funct m(n) {\n        return n\n    }\n    int y = 2\n}\n"
+  "post(A.m(1), A(2).y)\n", "1 2", NULL, 0 },
+{ "topo: a ordem tambem e livre fora de Entity",
+  "static private int funct f(n) {\n    return n\n}\npost(f(9))\n", "9", NULL, 0 },
 { "`static` e `nonnull` NAO viraram palavra reservada",
   "static = 7\nnonnull = 8\npost(static + nonnull)\n", "15", NULL, 0 },
 { "action e reaction continuam valendo, e sao a mesma declaracao",

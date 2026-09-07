@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
+#include <sys/stat.h>   /* chmod — o executavel gerado por `-o` nasce +x */
 #include <unistd.h>   /* getcwd — encurta o caminho do traceback pro relativo */
 
 #include "ps_vm.h"
@@ -32,6 +33,8 @@ static void ajuda(void)
 "\n"
 "Uso:\n"
 "  pool arquivo.ps           Roda um arquivo\n"
+"  pool arquivo.ps -o nome   Gera um executavel que roda sozinho (sem o fonte\n"
+"                            e sem o pool instalado); vale .ps, .p e .psl\n"
 "  pool -e \"<codigo>\"        Roda codigo inline (uma linha)\n"
 "  pool build                Roda todos os .ps da pasta atual\n"
 "  pool --check [arq.ps]     So analisa (nao roda); JSON com o erro. Sem\n"
@@ -160,6 +163,146 @@ static int reporta(const PSErroExec *e, const char *origem)
             }
             return 1;
     }
+}
+
+/* ── `-o`: gerar um executavel que roda sozinho ──────────────────────────────
+ *
+ * `pool programa.ps -o programa` produz um binario que NAO precisa do fonte
+ * nem do `pool` instalado: e uma copia deste mesmo binario com o programa
+ * grudado no fim, mais um rodape que diz onde ele comeca.
+ *
+ * Rodape (os ultimos RODAPE_TAM bytes do arquivo):
+ *
+ *     [ ...binario do pool... ][ fonte ][ tamanho do fonte, 16 digitos ][ MAGIA ]
+ *
+ * Na partida, o binario le o proprio arquivo, ve a magia no fim e, se estiver
+ * la, roda o fonte embutido em vez de olhar os argumentos. Assim o mesmo
+ * executavel serve de compilador e de programa compilado, sem toolchain
+ * nenhuma no meio — nao ha compilador de C na maquina de quem so quer rodar.
+ *
+ * Compilar a partir de um binario JA compilado corta o payload velho antes de
+ * grudar o novo: senao cada geracao carregaria o programa da anterior. */
+#define PS_MAGIA_EMB   "PSPOOLEXE1"
+#define PS_MAGIA_TAM   10
+#define PS_DIG_TAM     16
+#define PS_RODAPE_TAM  (PS_DIG_TAM + PS_MAGIA_TAM)
+
+/* Caminho do executavel em execucao. */
+static int ps_meu_caminho(char *out, size_t cap)
+{
+    ssize_t n = readlink("/proc/self/exe", out, cap - 1);
+    if (n <= 0) return -1;
+    out[n] = '\0';
+    return 0;
+}
+
+/* O fonte embutido neste binario, ou NULL. `base` recebe o tamanho do binario
+ * SEM o payload (e o que se copia ao compilar de novo). */
+static char *ps_payload(const char *caminho, size_t *tam_out, long *base)
+{
+    FILE *f = fopen(caminho, "rb");
+    if (!f) return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
+    long fim = ftell(f);
+    if (base) *base = fim;
+    if (fim < PS_RODAPE_TAM) { fclose(f); return NULL; }
+
+    char rodape[PS_RODAPE_TAM + 1];
+    if (fseek(f, fim - PS_RODAPE_TAM, SEEK_SET) != 0
+            || fread(rodape, 1, PS_RODAPE_TAM, f) != PS_RODAPE_TAM) { fclose(f); return NULL; }
+    rodape[PS_RODAPE_TAM] = '\0';
+    if (memcmp(rodape + PS_DIG_TAM, PS_MAGIA_EMB, PS_MAGIA_TAM) != 0) { fclose(f); return NULL; }
+
+    char dig[PS_DIG_TAM + 1];
+    memcpy(dig, rodape, PS_DIG_TAM); dig[PS_DIG_TAM] = '\0';
+    char *fimp = NULL;
+    long tam = strtol(dig, &fimp, 10);
+    if (!fimp || *fimp != '\0' || tam <= 0 || tam > fim - PS_RODAPE_TAM) { fclose(f); return NULL; }
+
+    long inicio = fim - PS_RODAPE_TAM - tam;
+    char *buf = malloc((size_t)tam + 1);
+    if (!buf) { fclose(f); return NULL; }
+    if (fseek(f, inicio, SEEK_SET) != 0 || fread(buf, 1, (size_t)tam, f) != (size_t)tam) {
+        free(buf); fclose(f); return NULL;
+    }
+    fclose(f);
+    buf[tam] = '\0';
+    if (tam_out) *tam_out = (size_t)tam;
+    if (base) *base = inicio;          /* o binario limpo termina aqui */
+    return buf;
+}
+
+/* `pool fonte.ps -o saida` */
+static int cmd_compila(const char *fonte_arq, const char *saida)
+{
+    size_t tam = 0;
+    char *fonte = le_arquivo(fonte_arq, &tam);
+    if (!fonte) return 66;
+
+    /* Nao gera executavel que ja nasce quebrado: o fonte tem que compilar. */
+    PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
+    if (!tl || !tl->ok) {
+        fprintf(stderr, "%s: %s (linha %d)\n", fonte_arq,
+                tl ? tl->erro : "sem memoria", tl ? tl->erro_linha : 0);
+        if (tl) ps_lexer_free(tl);
+        free(fonte);
+        return 65;
+    }
+    PSParseResult *pr = ps_parse(tl->tokens, tl->n);
+    ps_lexer_free(tl);
+    if (!pr || !pr->ok) {
+        fprintf(stderr, "%s: %s (linha %d)\n", fonte_arq,
+                pr ? pr->erro : "sem memoria", pr ? pr->erro_linha : 0);
+        if (pr) ps_parse_free(pr);
+        free(fonte);
+        return 65;
+    }
+    ps_parse_free(pr);
+
+    char meu[4096];
+    if (ps_meu_caminho(meu, sizeof(meu)) != 0) {
+        fprintf(stderr, "pool: nao consegui achar o proprio executavel\n");
+        free(fonte); return 70;
+    }
+    long base = 0;
+    char *velho = ps_payload(meu, NULL, &base);   /* corta payload anterior */
+    free(velho);
+
+    FILE *in = fopen(meu, "rb");
+    if (!in) { fprintf(stderr, "pool: nao consegui ler %s\n", meu); free(fonte); return 70; }
+    FILE *out = fopen(saida, "wb");
+    if (!out) {
+        fprintf(stderr, "pool: nao consegui escrever %s\n", saida);
+        fclose(in); free(fonte); return 73;
+    }
+    char buf[65536];
+    long resta = base;
+    while (resta > 0) {
+        size_t quer = (size_t)(resta < (long)sizeof(buf) ? resta : (long)sizeof(buf));
+        size_t lidos = fread(buf, 1, quer, in);
+        if (lidos == 0) break;
+        if (fwrite(buf, 1, lidos, out) != lidos) {
+            fprintf(stderr, "pool: escrita incompleta em %s\n", saida);
+            fclose(in); fclose(out); free(fonte); return 73;
+        }
+        resta -= (long)lidos;
+    }
+    fclose(in);
+    char rodape[PS_RODAPE_TAM + 1];
+    snprintf(rodape, sizeof(rodape), "%0*zu%s", PS_DIG_TAM, tam, PS_MAGIA_EMB);
+    if (fwrite(fonte, 1, tam, out) != tam
+            || fwrite(rodape, 1, PS_RODAPE_TAM, out) != PS_RODAPE_TAM) {
+        fprintf(stderr, "pool: escrita incompleta em %s\n", saida);
+        fclose(out); free(fonte); return 73;
+    }
+    fclose(out);
+    free(fonte);
+    if (chmod(saida, 0755) != 0) {
+        fprintf(stderr, "pool: gerado, mas nao consegui dar permissao de execucao a %s\n", saida);
+        return 73;
+    }
+    printf("gerado: %s\n", saida);
+    return 0;
 }
 
 /* `build`: roda todos os .ps da pasta atual, em ordem, e conta OK/erro. */
@@ -713,6 +856,26 @@ int main(int argc, char **argv)
      * que impede a recursão de estourar (ver `ps_pilha_apertada`). Feito no
      * main porque aqui a pilha ainda está praticamente intocada. */
     ps_pilha_marca_processo();
+
+    /* Executavel gerado por `-o`: o programa esta grudado neste binario. Roda
+     * ele e ignora os subcomandos — quem chama um programa compilado espera o
+     * PROGRAMA, não a CLI do pool. Os argumentos vão inteiros pro `sys.argv`. */
+    {
+        char meu[4096];
+        if (ps_meu_caminho(meu, sizeof(meu)) == 0) {
+            size_t tam_emb = 0;
+            char *emb = ps_payload(meu, &tam_emb, NULL);
+            if (emb) {
+                PSErroExec ee;
+                ps_set_argv(argc - 1, argv + 1);
+                int rc = ps_roda_fonte(emb, tam_emb, meu, &ee);
+                free(emb);
+                if (rc != 0) return reporta(&ee, meu);
+                return 0;
+            }
+        }
+    }
+
     if (argc < 2) { ajuda(); return 0; }
 
     const char *cmd = argv[1];
@@ -746,8 +909,11 @@ int main(int argc, char **argv)
     }
     if (!strcmp(cmd, "build")) return cmd_build();
     if (!strcmp(cmd, "compile")) {
-        printf("compile: nao disponivel nesta versao.\n");
-        return 0;
+        if (argc < 4) { fprintf(stderr, "uso: pool compile <arquivo.ps> -o <saida>\n"); return 64; }
+        if (strcmp(argv[3], "-o") != 0 || argc < 5) {
+            fprintf(stderr, "uso: pool compile <arquivo.ps> -o <saida>\n"); return 64;
+        }
+        return cmd_compila(argv[2], argv[4]);
     }
     /* ── pacotes (só .ps: lib/comando) ──────────────────────────────── */
     if (!strcmp(cmd, "install")) {
@@ -777,6 +943,14 @@ int main(int argc, char **argv)
         if (ps_roda_fonte(argv[2], strlen(argv[2]), NULL, &e) != 0)
             return reporta(&e, "<-e>");
         return 0;
+    }
+
+    /* `pool programa.ps -o saida` — gera o executavel em vez de rodar. */
+    if (argc >= 4 && !strcmp(argv[2], "-o"))
+        return cmd_compila(cmd, argv[3]);
+    if (argc == 3 && !strcmp(argv[2], "-o")) {
+        fprintf(stderr, "uso: pool %s -o <saida>\n", cmd);
+        return 64;
     }
 
     /* tudo depois do arquivo é do usuário — é o que o `sys.argv` devolve */

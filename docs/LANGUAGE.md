@@ -41,11 +41,37 @@ Este mark down tem alguams specs da linguagem.
 
 ```bash
 pool arquivo.ps       # roda um arquivo
+pool arquivo.ps -o nome   # gera um executável que roda sozinho
 pool -e "<codigo>"    # roda o código direto da linha de comando
 pool build            # roda todos os .ps da pasta atual
 pool --version / -v / -V       # versão do binário
 pool --help    / -h       # ajuda
 ```
+
+### Compilar: `pool arquivo.ps -o nome`
+
+Gera um **executável que roda sozinho** — sem o `.ps` ao lado e sem o `pool`
+instalado na máquina de quem roda. Vale para `.ps`, `.p` e `.psl`.
+
+```bash
+pool programa.ps -o programa
+./programa um dois        # os argumentos chegam em sys.argv
+```
+
+Como é feito: o binário copia **a si mesmo** e gruda o seu programa no fim,
+com um rodapé que diz onde ele começa. Na partida, o executável lê o próprio
+arquivo, encontra o rodapé e roda o que está embutido. Não há compilador de C
+no meio — quem só quer rodar não precisa de toolchain nenhuma.
+
+Consequências que valem saber:
+
+- O executável tem o tamanho do `pool` mais o seu fonte (alguns MB): ele leva a
+  VM inteira junto, que é o que o faz rodar sozinho.
+- **Recompilar a partir de um executável gerado não funciona** — ele ignora
+  argumentos de linha de comando e roda o programa embutido, que é o que se
+  espera de um programa compilado. Compile sempre com o `pool`.
+- Fonte que não compila **não vira executável**: o erro sai e nada é gerado.
+- O programa embutido não é ofuscado — o fonte está lá dentro, legível.
 
 Chamar `pool` **sem nenhum argumento** imprime a ajuda.
 
