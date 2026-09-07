@@ -1,4 +1,0 @@
-package com.intellij.openapi.vfs;
-public abstract class VirtualFile {
-  public String getExtension() { return null; }
-}

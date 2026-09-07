@@ -346,17 +346,18 @@ corpo do loop.
 
 ---
 
-## Funções: `action` / `reaction`
+## Funções: `funct`
 
-`action` e `reaction` são sinônimos na declaração de função:
+A função se declara com `funct`. `action` e `reaction` são as grafias antigas
+da mesma declaração e continuam valendo:
 
 ```
-action soma(a, b) {
+funct soma(a, b) {
     return a + b
 }
 
-action saudacao(nome="Visitante") {   # parâmetro com default
-    return "Olá, " nome
+funct saudacao(nome="Visitante") {   # parâmetro com default
+    return "Olá, " + nome
 }
 ```
 
@@ -365,31 +366,35 @@ erro dentro da função — em vez de propagar a exceção, devolve um valor
 "sentinela" (útil para handlers HTTP-like):
 
 ```
-int reaction f() { return 1 / 0 }
+int funct f() { return 1 / 0 }
 post(f())     # 500 (em vez de propagar o erro)
 
-bool reaction g() { return 1 / 0 }
+bool funct g() { return 1 / 0 }
 post(g())     # False
 ```
 
 Sem tipo de retorno declarado, o erro propaga normalmente (pode ser pego com
 `try/catch`).
 
-**Lambda / função anônima**: `action(params) { ... }` sem nome, atribuível a
+**Lambda / função anônima**: `funct(params) { ... }` sem nome, atribuível a
 uma variável.
 
-**Decorator `@NonNull`**: valida que nenhum argumento passado é `Null`,
-levanta erro se for:
+**Modificadores colados** `static` e `nonnull`: vêm na cabeça da declaração,
+em qualquer ordem com o tipo, o `async` e a visibilidade. `static` faz o método
+pertencer ao tipo (`Tipo.metodo(...)`, sem instanciar); `nonnull` recusa
+argumento `Null`:
 
 ```
-@NonNull
-action precisa(v) {
+nonnull funct precisa(v) {
     return v
 }
-precisa(Null)   # erro
+precisa(Null)   # nonnull: parametro 'v' em 'precisa' nao pode ser Null
 ```
 
-**`global`**: dentro de uma `action`/`reaction`, declara que um nome se
+As grafias antigas `@static` e `@NonNull`, em linha própria, continuam
+funcionando.
+
+**`global`**: dentro de uma `funct`, declara que um nome se
 refere à variável do escopo global — leituras e escritas passam a atingir
 direto o global, em vez de criar/usar uma variável local (igual ao `global`
 do Python):
