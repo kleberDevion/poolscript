@@ -1,4 +1,4 @@
-# `s.center(largura, preenchimento=" ")`
+# `s.center(width, fillchar)`
 
 Centraliza preenchendo dos dois lados.
 
@@ -6,8 +6,11 @@ Centraliza preenchendo dos dois lados.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `largura` | int | — |  |
-| `preenchimento` | str de 1 char | " " |  |
+| `width` | int | — |  |
+| `fillchar` | str de 1 char | espaço | omitir preenche com espaço |
+
+Os nomes são estes: `"ab".center(largura=6)` é
+`TypeError: 'largura' is an invalid keyword argument for center()`.
 
 ## Retorno
 

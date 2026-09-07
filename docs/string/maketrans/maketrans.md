@@ -15,7 +15,9 @@ dict
 
 ## Erros
 
-- **TypeError** — os dois argumentos têm tamanhos diferentes
+- **ValueError** — os dois argumentos têm tamanhos diferentes
+  (`the first two maketrans arguments must have equal length`). Não é
+  `TypeError`: um `catch (TypeError e)` não pega.
 
 ## Exemplos
 

@@ -14,7 +14,8 @@ list
 
 ## Erros
 
-- **TypeError** — o padrão não é uma expressão regular válida
+- **ValueError** — o padrão não é uma expressão regular válida
+  (`unterminated character set at position 0`). Não é `TypeError`.
 
 ## Exemplos
 

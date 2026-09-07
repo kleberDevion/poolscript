@@ -160,6 +160,42 @@ os.cmd("cd " + PASTA + "/asp/sub && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + 
 confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
         os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
 
+# ── os.run: SEGUNDO PLANO ───────────────────────────────────────────────────
+#
+# O `run` sem `capture` dispara e volta na hora — e o que o separa do `cmd`.
+# Enquanto os dois esperavam, ter os dois nao fazia sentido: medido antes,
+# `os.run(["sleep", "3"])` segurava o programa por 3 s.
+#
+# O que se afirma aqui: (1) volta antes do processo terminar, (2) devolve o PID,
+# (3) o processo RODA de verdade e sobrevive ao fim de quem disparou,
+# (4) programa inexistente continua levantando IOError — sem isso o disparo
+# ficaria calado, com o processo morrendo de 127 sem ninguem saber,
+# (5) `capture=true` continua ESPERANDO e devolvendo a saida.
+os.mkdir(PASTA + "/bg", exist_ok=true)
+os.cmd("rm -f " + PASTA + "/bg/prova.txt")
+t0 = date.timestamp()
+pid = os.run(["sh", "-c", "sleep 2; echo RODOU > " + PASTA + "/bg/prova.txt"])
+gasto = date.timestamp() - t0
+confere("os.run sem capture volta antes do processo terminar", gasto < 2)
+confere("os.run sem capture devolve o PID", type(pid) == "int" and pid > 0)
+os.cmd("sleep 3")
+confere("o processo disparado RODA e sobrevive a quem disparou",
+        os.exists(PASTA + "/bg/prova.txt")
+        and os.readFile(PASTA + "/bg/prova.txt").strip() == "RODOU")
+
+pegou = false
+try {
+    os.run(["programa_que_nao_existe_zz_987"])
+}
+catch (IOError e) {
+    pegou = true
+}
+confere("os.run de programa inexistente levanta IOError (nao volta PID calado)", pegou)
+
+r = os.run(["echo", "capturado"], true)
+confere("os.run com capture=true espera e devolve a saida",
+        type(r) == "str" and r.strip() == "capturado")
+
 # ── os: caminho, diretório, ambiente ────────────────────────────────────────
 # `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
 # então o teste cria o alvo e roda de dentro da pasta.

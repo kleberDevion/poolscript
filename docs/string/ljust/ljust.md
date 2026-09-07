@@ -1,4 +1,4 @@
-# `s.ljust(largura, preenchimento=" ")`
+# `s.ljust(width, fillchar)`
 
 Preenche à direita até a largura.
 
@@ -6,8 +6,11 @@ Preenche à direita até a largura.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `largura` | int | — |  |
-| `preenchimento` | str de 1 char | " " |  |
+| `width` | int | — |  |
+| `fillchar` | str de 1 char | espaço | omitir preenche com espaço |
+
+Os nomes são estes: `"ab".ljust(largura=5)` é
+`TypeError: 'largura' is an invalid keyword argument for ljust()`.
 
 ## Retorno
 

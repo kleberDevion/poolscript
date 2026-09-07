@@ -6,7 +6,7 @@ import os
 
 arq = "/tmp/ps_e2e.db"
 if os.exists(arq) {
-    _r = os.run(["rm", "-f", arq])
+    _r = os.run(["rm", "-f", arq], true)      # capture=true = espera terminar
 }
 
 con = sqlite3.connect(arq)

@@ -1,14 +1,17 @@
-# `s.replace(velho, novo, count=-1)`
+# `s.replace(old, new, count)`
 
-Troca ocorrências; velho pode ser LISTA de alvos.
+Troca ocorrências; `old` pode ser LISTA de alvos.
 
 ## Parâmetros
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `velho` | str | list | — | lista troca cada um pelo mesmo novo |
-| `novo` | str | — |  |
-| `count` | int | -1 | máximo de trocas |
+| `old` | str \| list | — | lista troca cada um pelo mesmo `new` |
+| `new` | str | — |  |
+| `count` | int | todas | máximo de trocas; omitir troca todas |
+
+Os nomes são estes: `"banana".replace(velho="na", novo="NA")` é
+`TypeError: 'velho' is an invalid keyword argument for replace()`.
 
 ## Retorno
 

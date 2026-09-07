@@ -16,7 +16,7 @@ txt = dir + "/lista.txt"
 # começa limpo: execução anterior que abortou deixaria conteúdo pra trás e a
 # semântica de escrita (acrescenta x sobrescreve) ficaria ilegível
 if os.exists(txt) {
-    _r = os.run(["rm", "-f", txt])
+    _r = os.run(["rm", "-f", txt], true)      # capture=true = espera terminar
 }
 
 # ── manpu.write: grava direto ───────────────────────────────────────────────
@@ -55,7 +55,7 @@ post("xlsx lido ->", mp.read(xls))
 post("remove ->", mp.remove(target=xls, value="cabecalho"))
 
 for each ent in os.ls(dir) {
-    _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+    _r = os.run(["rm", "-f", dir + "/" + ent["name"]], true)
 }
 os.rmdir(dir)
 post("fim")

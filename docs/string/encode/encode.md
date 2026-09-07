@@ -1,4 +1,4 @@
-# `s.encode(encoding="utf-8")`
+# `s.encode(encoding="utf-8", errors="strict")`
 
 Converte a string para bytes.
 
@@ -6,11 +6,24 @@ Converte a string para bytes.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `encoding` | str | "utf-8" | aceito e ignorado — tudo é utf-8 |
+| `encoding` | str | "utf-8" | **respeitado**, não ignorado |
+| `errors` | str | "strict" | `"ignore"` descarta o que não couber; `"replace"` troca por `?` |
 
 ## Retorno
 
 bytes
+
+## Erros
+
+- **UnicodeEncodeError** — o caractere não existe no charset pedido e
+  `errors` é `"strict"`:
+
+  ```ps
+  post("ção".encode("latin-1"))            # b'\xe7\xe3o'   — bytes de latin-1
+  post("ção".encode("ascii"))              # erro: 'ascii' codec can't encode characters
+  post("ção".encode("ascii", "ignore"))    # b'o'
+  post("ção".encode("ascii", errors="replace"))   # b'??o'
+  ```
 
 ## Exemplos
 

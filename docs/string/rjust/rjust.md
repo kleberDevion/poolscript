@@ -1,4 +1,4 @@
-# `s.rjust(largura, preenchimento=" ")`
+# `s.rjust(width, fillchar)`
 
 Preenche à esquerda até a largura.
 
@@ -6,8 +6,11 @@ Preenche à esquerda até a largura.
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `largura` | int | — |  |
-| `preenchimento` | str de 1 char | " " |  |
+| `width` | int | — |  |
+| `fillchar` | str de 1 char | espaço | omitir preenche com espaço |
+
+Os nomes são estes: `"ab".rjust(largura=5)` é
+`TypeError: 'largura' is an invalid keyword argument for rjust()`.
 
 ## Retorno
 

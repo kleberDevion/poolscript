@@ -13,26 +13,46 @@ os.run(args: list | str, capture: bool = false) -> str | Null
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `args` | — | lista `["programa", "arg1", "arg2"]` (recomendado) ou string |
-| `capture` | `false` | `true` = devolve a saída; `false` = só roda e devolve `Null` |
+| `capture` | `false` | `true` = **espera** e devolve a saída; `false` = dispara em segundo plano e devolve o **PID** |
 
 ---
 
-## Rodar sem capturar
+## Rodar em segundo plano — o padrão
+
+Sem `capture`, o `run` **dispara e volta na hora**. É o que separa `run` de
+[`cmd`](../cmd/cmd.md): o `cmd` espera, o `run` não.
 
 ```
-os.run(["mkdir", "uploads"])        # executa; devolve Null
-os.run(["git", "status"])           # a saída vai direto pro terminal
+pid = os.run(["sleep", "3"])
+post("já estou aqui:", pid)     # imprime na hora, não depois de 3s
 ```
 
-## Capturar a saída
+O que volta é o **PID** (`int`) do processo, pra acompanhar ou matar:
+
+```
+pid = os.run(["ffmpeg", "-i", entrada, saida])
+os.run(["kill", str(pid)])      # se precisar interromper
+```
+
+O processo é **solto do terminal** (`setsid`) e sobrevive ao fim do programa
+que o disparou — quem quiser esperar, espera pelo PID. E não deixa zumbi: o
+disparo é por fork duplo, então o processo é adotado pelo init e ninguém
+precisa recolher o código de saída.
+
+A saída dele vai pro mesmo terminal do programa. Pra mandar pra outro lugar,
+redirecione no próprio comando (`["sh", "-c", "prog > log.txt 2>&1"]`) — mas
+aí é shell, e vale a advertência de injeção lá embaixo.
+
+## Capturar a saída — aí espera
 
 ```
 versao = os.run(["python", "--version"], capture=true)
 post(versao)                        # "Python 3.14.6"
 ```
 
-Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando
-não produziu stdout mas gerou erro, devolve o **stderr** — igual ao `os.cmd`.
+Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
+o fim dele. Devolve o **stdout** (sem espaços nas pontas); se o comando não
+produziu stdout mas gerou erro, devolve o **stderr** — igual ao `os.cmd`.
 
 ---
 

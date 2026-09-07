@@ -14,7 +14,8 @@ str
 
 ## Erros
 
-- **TypeError** — a chave citada no formato não existe
+- **KeyError** — a chave citada no formato não existe:
+  `"{b}!".format_map({"a": "oi"})` → `'b'`. Não é `TypeError`.
 
 ## Exemplos
 

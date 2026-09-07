@@ -1,13 +1,17 @@
-# `s.sub(padrao, novo)`
+# `s.sub(pattern, repl)`
 
-Substitui as ocorrências do padrão regex.
+Substitui **todas** as ocorrências do padrão regex. Não há `count` aqui — a
+lib `regex` tem.
 
 ## Parâmetros
 
 | nome | tipo | default | nota |
 |---|---|---|---|
-| `padrao` | str regex | — |  |
-| `novo` | str | — |  |
+| `pattern` | str regex | — |  |
+| `repl` | str | — |  |
+
+Os nomes são estes: `"a1".sub(padrao="[0-9]", novo="#")` é
+`TypeError: 'padrao' is an invalid keyword argument for sub()`.
 
 ## Retorno
 
@@ -15,7 +19,9 @@ str
 
 ## Erros
 
-- **TypeError** — o padrão não é uma expressão regular válida
+- **ValueError** — o padrão não é uma expressão regular válida
+  (`unterminated character set at position 0`). Não é `TypeError`: um
+  `catch (TypeError e)` não pega.
 
 ## Exemplos
 

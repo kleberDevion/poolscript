@@ -74,7 +74,10 @@ post("delete ->", os.exists(dir + "/movido.png"))
 # rmdir só remove diretório VAZIO: apaga o conteúdo antes.
 # `os.ls` devolve dicts {name, type, size}, não strings.
 for each ent in os.ls(dir) {
-    _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+    # `capture=true` pra ESPERAR: sem capture o `run` dispara em segundo plano,
+    # e o `rmdir` logo abaixo corria antes de os arquivos sumirem
+    # ("Directory not empty").
+    _r = os.run(["rm", "-f", dir + "/" + ent["name"]], true)
 }
 os.rmdir(dir)
 post("fim")

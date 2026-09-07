@@ -67,7 +67,7 @@ using open(p1, "rb") as f {
 }
 
 for each ent in os.ls(dir) {
-    _r = os.run(["rm", "-f", dir + "/" + ent["name"]])
+    _r = os.run(["rm", "-f", dir + "/" + ent["name"]], true)
 }
 os.rmdir(dir)
 post("fim")

@@ -24,6 +24,12 @@ heLLo
 
 ## Bordas
 
-- a tabela vem sempre do `maketrans` — não é um dict qualquer montado à mão
+- a tabela **normalmente** vem do `maketrans`, mas um dict montado à mão é
+  aceito — e aí a chave precisa ser o **codepoint**, não a letra:
+
+  ```ps
+  post("hello".translate({108: 76}))    # heLLo   (108 é "l", 76 é "L")
+  post("hello".translate({"l": "L"}))   # hello   — chave str é IGNORADA, em silêncio
+  ```
 
 [← índice](../string.md)

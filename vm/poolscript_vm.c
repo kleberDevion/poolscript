@@ -11790,6 +11790,72 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
     }
     if (q == 0) BERRO(vm, "TypeError", "run() sem comando");
     vetor[q] = NULL;
+
+    /* SEM `capture`: SEGUNDO PLANO. Dispara e volta na hora — e o que separa o
+     * `run` do `cmd`; enquanto os dois esperavam, ter os dois nao fazia
+     * sentido. Devolve o PID do processo, pra dar pra acompanhar ou matar.
+     *
+     * Fork DUPLO: o filho do meio sai imediatamente e o neto e adotado pelo
+     * init, entao nao vira zumbi nem precisa de waitpid — o programa pode
+     * disparar quantos quiser e terminar antes deles. O PID do neto volta pelo
+     * cano; sem ele so daria pra devolver o pid do meio, que morre na hora.
+     *
+     * COM `capture=true` continua esperando: colher a saida exige o fim do
+     * processo, e devolver texto vazio "porque e bg" seria mentira.
+     */
+    if (!capturar) {
+        /* Dois canos. O primeiro traz o PID do neto. O segundo existe so pra
+         * dizer se o `execvp` deu certo: a ponta de escrita e CLOEXEC, entao o
+         * exec bem-sucedido FECHA ela sozinho e o pai le EOF; se o exec falha,
+         * o neto escreve o errno antes de morrer. Sem isso, programa que nao
+         * existe devolvia um PID e morria calado com 127 — o `IOError` que a
+         * doc promete some, e o "rodei" e mentira. A espera aqui e a do exec
+         * (microssegundos), nao a do processo: o segundo plano continua. */
+        int cano[2], canoerr[2];
+        if (pipe(cano) != 0) BERRO(vm, "IOError", "run(): nao consegui criar o cano (%s)", strerror(errno));
+        if (pipe(canoerr) != 0) {
+            close(cano[0]); close(cano[1]);
+            BERRO(vm, "IOError", "run(): nao consegui criar o cano (%s)", strerror(errno));
+        }
+        fcntl(canoerr[1], F_SETFD, FD_CLOEXEC);
+        pid_t meio = fork();
+        if (meio < 0) {
+            close(cano[0]); close(cano[1]); close(canoerr[0]); close(canoerr[1]);
+            BERRO(vm, "IOError", "run(): fork falhou (%s)", strerror(errno));
+        }
+        if (meio == 0) {
+            close(cano[0]); close(canoerr[0]);
+            pid_t neto = fork();
+            if (neto == 0) {
+                close(cano[1]);
+                setsid();                 /* solta do terminal de quem chamou */
+                execvp(vetor[0], vetor);
+                int e = errno;            /* execvp so volta em erro */
+                ssize_t ig = write(canoerr[1], &e, sizeof(e));
+                (void)ig;
+                _exit(127);
+            }
+            close(canoerr[1]);
+            ssize_t ig = write(cano[1], &neto, sizeof(neto));
+            (void)ig;
+            close(cano[1]);
+            _exit(0);
+        }
+        close(cano[1]); close(canoerr[1]);
+        pid_t neto = -1;
+        ssize_t lidos = read(cano[0], &neto, sizeof(neto));
+        close(cano[0]);
+        int erro_exec = 0;
+        ssize_t le = read(canoerr[0], &erro_exec, sizeof(erro_exec));
+        close(canoerr[0]);
+        waitpid(meio, NULL, 0);           /* o do meio morre na hora */
+        if (le == (ssize_t)sizeof(erro_exec))
+            BERRO(vm, "IOError", "run(): %s: %s", vetor[0], strerror(erro_exec));
+        if (lidos != (ssize_t)sizeof(neto) || neto < 0)
+            BERRO(vm, "IOError", "run(): nao consegui disparar '%s'", vetor[0]);
+        *out = MK_INT((int64_t)neto);
+        return 0;
+    }
     return roda_processo(vm, NULL, vetor, capturar, out);
 }
 
