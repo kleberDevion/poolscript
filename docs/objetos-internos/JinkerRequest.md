@@ -1,32 +1,26 @@
-# `JinkerRequest`
+# `JinkerRequest` — vazio de propósito
 
-> **Objeto interno da linguagem** — você não cria `JinkerRequest` na mão:
-> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
-> Confira com `type(obj)`, que mostra exatamente este nome.
+O tipo existe e é criável (`JinkerRequest()`), mas **não tem membro nenhum**:
+`pool --metadata` publica a lista vazia, e qualquer acesso é
+`AttributeError: 'JinkerRequest' object has no attribute '…'`.
 
-Objeto de requisição disponível dentro da funct do handler.
+Esta página listava `.file`, `.files`, `.get`, `.json`, `.path_param`, `.text`,
+`.body_raw`, `.headers`, `.method`, `.path` e `.query` — **os onze dão
+`AttributeError`**.
 
-## Métodos e propriedades
+Dentro da rota e do socket, o `request` **não é** um `JinkerRequest`:
 
-| Acesso | O que faz |
-|---|---|
-| `.file(field, allowed=None)` | Retorna um único arquivo do upload. |
-| `.files(field, allowed=None)` | Retorna lista de arquivos do upload (múltiplos arquivos no mesmo campo). |
-| `.get(key)` | Pega do query string ou do body JSON. |
-| `.json()` |  |
-| `.path_param(key)` | Retorna parâmetro dinâmico da URL. Ex: /user:<id> → request.path_param('id') |
-| `.text()` |  |
-| `.body_raw` | atributo |
-| `.headers` | atributo |
-| `.method` | atributo |
-| `.path` | atributo |
-| `.query` | atributo |
+```ps
+@app.get("/x")
+funct h() {
+    post(type(request))    # RequestProxy
+    return {"ok": true}
+}
+```
 
-### `.file(...)`
-
-Retorna um único arquivo do upload.
-
-allowed: lista de extensões permitidas ex: [".jpg", ".png"]
-         None = aceita qualquer extensão segura
+A API de requisição está em [`RequestProxy`](RequestProxy.md). Dela, dois nomes
+que esta página prometia **não existem em objeto nenhum**: `body_raw` e
+`query` — para o corpo cru use `request.text()`, e para a query string
+`request.get(chave)`.
 
 [← índice](objetos-internos.md)

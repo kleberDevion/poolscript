@@ -4,6 +4,15 @@ Tipos que você **não cria na mão** — cada um é o que uma lib te
 entrega pronto (o `type(obj)` mostra esse nome). Um índice só,
 todos juntos.
 
+Cinco nomes desta lista **não são tipo da VM**, e a página de cada um explica o
+que existe no lugar: `DataEntityMeta`, `MiddlewareRegistrar`, `PoolIp`,
+`QRCode` e `Route`. A lista viva de tipos sai de `pool --metadata`.
+
+Onde uma página mostra **valor padrão** de parâmetro (`.emit(payload=None, …)`,
+`.options(subset=None)`, `.make(fit=True)`), o padrão é o que está escrito
+aqui: o `--metadata` publica os nomes dos parâmetros, mas **não** os defaults
+de função de módulo. Omitir esses argumentos funciona.
+
 | Objeto | Vem da lib |
 |---|---|
 | [`ChannelManager`](ChannelManager.md) | `jinker` |

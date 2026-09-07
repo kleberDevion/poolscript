@@ -1,14 +1,26 @@
-# `DataEntityMeta`
+# `DataEntityMeta` — não existe
 
-> **Objeto interno da linguagem** — você não cria `DataEntityMeta` na mão:
-> é o TIPO de um objeto que a lib `datasentity` te entrega pronto.
-> Confira com `type(obj)`, que mostra exatamente este nome.
+Esta página descrevia um tipo `DataEntityMeta`, "marcador interno" de uma
+Entity decorada com `@dataentity`. **Ele não existe na VM**: o nome não aparece
+em `pool --metadata`, não está no fonte do motor, e `type()` nunca o devolve.
 
-Marcador interno — indica que uma Entity foi decorada com @dataentity.
+O que o `@dataentity` deixa é uma Entity comum:
 
-## Métodos e propriedades
+```ps
+@dataentity
+Entity Pessoa() {
+    nome: str
+    idade: int = 18
+}
 
-| Acesso | O que faz |
-|---|---|
+p = Pessoa(nome="Ana")
+post(type(p))         # Pessoa   — o nome da própria Entity
+post(type(Pessoa))    # Entity
+```
+
+Não há marcador consultável dizendo "esta foi decorada". O que o decorador faz
+— gerar o `__init__` a partir dos campos tipados — está em
+[`14-decoradores`](../linguagem/14-decoradores.md) e em
+[`datasentity`](../datasentity/datasentity.md).
 
 [← índice](objetos-internos.md)

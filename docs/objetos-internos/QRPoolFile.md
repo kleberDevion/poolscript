@@ -13,10 +13,12 @@ name pode ser customizado via gen(data, name="meu.png").
 | Acesso | O que faz |
 |---|---|
 | `.bytes()` |  |
-| `.save(path)` |  |
-| `.content_type` | atributo |
-| `.ext` | atributo |
-| `.name` | atributo |
-| `.size` | atributo |
+| `.save(caminho)` | o parâmetro se chama `caminho`, não `path` |
+| `.ext` | atributo — `.png` |
+| `.name` | atributo — `qrcode.png` |
+| `.size` | atributo — tamanho em bytes |
+
+`.content_type` **não existe**: `AttributeError: 'QRPoolFile' object has no
+attribute 'content_type'`.
 
 [← índice](objetos-internos.md)

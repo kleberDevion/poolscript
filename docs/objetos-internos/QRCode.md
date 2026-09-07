@@ -1,23 +1,14 @@
-# `QRCode`
+# `QRCode` — o tipo se chama `PoolQRCode`
 
-> **Objeto interno da linguagem** — você não cria `QRCode` na mão:
-> é o TIPO de um objeto que a lib `qrcode` te entrega pronto.
-> Confira com `type(obj)`, que mostra exatamente este nome.
+`qrcode.QRCode()` existe e funciona, mas o **tipo** dele não se chama `QRCode`:
 
-Wrapper de qrcode.QRCode — mesma API da lib Python:
+```ps
+import qrcode
+post(type(qrcode.QRCode()))    # PoolQRCode
+```
 
-    qr = qrcode.QRCode(version=None, error_correction="L", box_size=10, border=4)
-    qr.add_data("texto")
-    qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
-
-## Métodos e propriedades
-
-| Acesso | O que faz |
-|---|---|
-| `.add_data(data)` |  |
-| `.clear()` |  |
-| `.make(fit=True)` |  |
-| `.make_image(fill_color='black', back_color='white', name='qrcode.png')` |  |
+`type()` nunca devolve `QRCode`, e o nome não aparece em `pool --metadata`.
+Esta página duplicava, sob um nome que não existe, o que está em
+[`PoolQRCode`](PoolQRCode.md) — é lá que a API está documentada.
 
 [← índice](objetos-internos.md)

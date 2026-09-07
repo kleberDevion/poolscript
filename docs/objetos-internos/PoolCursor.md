@@ -11,8 +11,8 @@ Wrapper do cursor SQLite — expõe métodos como atributos.
 | Acesso | O que faz |
 |---|---|
 | `.close()` |  |
-| `.execute(sql, params=None)` |  |
-| `.executemany(sql, seq)` |  |
+| `.execute(sql, params=())` |  |
+| `.executemany(sql, params)` | o segundo parâmetro se chama `params`, não `seq` |
 | `.fetchall()` |  |
 | `.fetchmany(size=1)` |  |
 | `.fetchone()` |  |

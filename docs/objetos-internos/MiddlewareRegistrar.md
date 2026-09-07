@@ -1,15 +1,26 @@
-# `MiddlewareRegistrar`
+# `MiddlewareRegistrar` — não existe
 
-> **Objeto interno da linguagem** — você não cria `MiddlewareRegistrar` na mão:
-> é o TIPO de um objeto que a lib `jinker` te entrega pronto.
-> Confira com `type(obj)`, que mostra exatamente este nome.
+Esta página descrevia um tipo `MiddlewareRegistrar` com `.register(handler)`.
+**Ele não existe**: o nome não aparece em `pool --metadata`, e o que
+`app.middleware` vale é uma função:
 
-Registrador do middleware.
+```ps
+Object app = Jinker(__name__)
+post(type(app.middleware))    # funct
+```
 
-## Métodos e propriedades
+Não há objeto registrador nem método `.register`. O middleware se declara com o
+decorador, e é isso:
 
-| Acesso | O que faz |
-|---|---|
-| `.register(handler)` |  |
+```ps
+@app.middleware()
+funct exige_token() {
+    if request.header("Authorization") == Null {
+        return jsonify({"erro": "sem token"}, 401)
+    }
+}
+```
+
+Está documentado em [`middleware`](../jinker/middleware/middleware.md).
 
 [← índice](objetos-internos.md)
