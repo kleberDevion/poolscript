@@ -1617,6 +1617,26 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(d(4), p(), gather(t(1))[0])\n", "8 p 1", NULL, 0 },
 { "funct como lambda",
   "f = funct(x) {\n    return x * 10\n}\npost(f(5))\n", "50", NULL, 0 },
+/* Em POSICAO DE EXPRESSAO o que vem nao e declaracao de valor, e funcao sem
+ * nome — entao os modificadores valem ali tambem. So o `funct(` pelado era
+ * lambda: qualquer modificador na frente jogava a linha no caminho da
+ * declaracao, que exige nome, e saia `esperado nome de funct`. Quem decide e a
+ * CABECA terminando em `funct` seguida de `(`; se nao terminar assim o bloco
+ * nao dispara, e por isso `int x = 1` continua declaracao. */
+{ "lambda com async: devolve future",
+  "g = async funct(x) {\n    return x * 2\n}\npost(await g(2))\n", "4", NULL, 0 },
+{ "lambda com tipo de retorno: o sentinela 500 vale",
+  "h = int funct(x) {\n    return x / 0\n}\npost(h(9))\n", "500", NULL, 0 },
+{ "lambda com nonnull recusa Null",
+  "i = nonnull funct(x) {\n    return x\n}\ni(Null)\n",
+  "", "nonnull: parametro 'x' em '<funct>' nao pode ser Null", 1 },
+{ "lambda com static compila e roda (a marca so vale em Entity)",
+  "j = static funct(x) {\n    return x + 1\n}\npost(j(4))\n", "5", NULL, 0 },
+{ "lambda com a cabeca inteira, em qualquer ordem",
+  "k = private int async funct(x) {\n    return x\n}\npost(await k(6))\n", "6", NULL, 0 },
+{ "a cabeca de lambda NAO mexe em declaracao tipada",
+  "int x = 1\nstr s = \"a\"\nstring s2 = \"b\"\nlist l = [1]\npost(x, s, s2, l)\n",
+  "1 a b [1]", NULL, 0 },
 { "post de uma funct imprime <funct #N>",
   "funct f() {\n    return 1\n}\npost(f)\n", "<funct #1>", NULL, 0 },
 { "static colado: chamavel pela Entity",

@@ -373,9 +373,74 @@ static PSNode *bloco(P *p);
 static PSNode *bloco_entrada(P *p);
 
 /* ── primário ───────────────────────────────────────────────────────────── */
+/* O corpo da lambda, com o cursor no `funct`: `funct(params) { ... }`.
+ * Um só lugar monta o nó, chamado dos dois caminhos — o `funct(` pelado e o
+ * que vem atrás de modificadores. */
+static PSNode *lambda_apos_kw(P *p)
+{
+    PSToken *t = atual(p);
+    p->pos += 2;                               /* funct ( */
+    PSNode *n = ps_node_novo(p->arena, N_LAMBDA_EXPR, t->line, t->col);
+    if (!n) return NULL;
+    while (!checa(p, T_RPAREN)) {
+        PSToken *pt = atual(p);
+        const char *pn = exige_nome(p, "parametro");
+        if (FALHOU(p)) return NULL;
+        PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
+        if (!par) return NULL;
+        par->texto = pn;
+        if (ps_vec_push(p->arena, &n->lista, par) != 0) {
+            perro(p, "sem memoria", pt); return NULL;
+        }
+        if (!aceita(p, T_COMMA)) break;
+    }
+    if (!exige(p, T_RPAREN, "faltou ')' na lambda")) return NULL;
+    n->b = bloco(p);
+    if (FALHOU(p)) return NULL;
+    return n;
+}
+
 static PSNode *primario(P *p)
 {
     PSToken *t = atual(p);
+
+    /* LAMBDA COM MODIFICADORES — `async funct(x) { ... }`, `int funct(x) {...}`.
+     *
+     * Aqui é POSIÇÃO DE EXPRESSÃO: o que vem não é declaração de valor, é uma
+     * função sem nome. Quem decide isso é a CABEÇA — a corrida de
+     * modificadores terminando em `funct` seguida de `(`. Antes, só o `funct(`
+     * pelado era lambda: qualquer modificador na frente jogava a linha no
+     * caminho da declaração, que exige nome, e saía `esperado nome de funct`.
+     *
+     * A checagem é um lookahead que só dispara quando cai em `funct` COM `(`
+     * logo depois. Se a corrida não terminar assim, este bloco não faz nada e
+     * o resto do parser segue igual — por isso `int x = 1` e `str s = "a"` não
+     * são tocados: ali a corrida termina num NOME, não em `funct`. */
+    {
+        int ifun = cabeca_de_funct(p, 0);
+        if (ifun > 0 && espia(p, ifun + 1)->type == T_LPAREN) {
+            int is_async = 0, eh_static = 0, eh_nonnull = 0;
+            const char *tipo = NULL;
+            for (int k = 0; k < ifun; k++) {
+                PSToken *m = espia(p, k);
+                if (m->type == T_KW && m->texto && strcmp(m->texto, "async") == 0) is_async = 1;
+                else if (eh_tipo_kw(m)) tipo = dup_tok(p, m);
+                else if (eh_mod_funct(m)) {
+                    if (strcmp(m->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
+                }
+                /* `public`/`private` numa lambda não ligam nada: não há dono
+                 * pra esconder. Consumidos e ignorados, sem erro. */
+            }
+            p->pos += ifun;                    /* consome os modificadores */
+            PSNode *n = lambda_apos_kw(p);
+            if (!n) return NULL;
+            n->is_async = is_async;
+            n->texto2 = tipo;
+            n->is_static = eh_static;
+            n->is_nonnull = eh_nonnull;
+            return n;
+        }
+    }
 
     switch (t->type) {
         case T_INT: {
@@ -671,27 +736,8 @@ static PSNode *primario(P *p)
                 return n;
             }
             /* lambda: `funct(params) { ... }` como expressão */
-            if (eh_kw_funct(t) && espia(p, 1)->type == T_LPAREN) {
-                p->pos += 2;                       /* funct ( */
-                PSNode *n = ps_node_novo(p->arena, N_LAMBDA_EXPR, t->line, t->col);
-                if (!n) return NULL;
-                while (!checa(p, T_RPAREN)) {
-                    PSToken *pt = atual(p);
-                    const char *pn = exige_nome(p, "parametro");
-                    if (FALHOU(p)) return NULL;
-                    PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
-                    if (!par) return NULL;
-                    par->texto = pn;
-                    if (ps_vec_push(p->arena, &n->lista, par) != 0) {
-                        perro(p, "sem memoria", pt); return NULL;
-                    }
-                    if (!aceita(p, T_COMMA)) break;
-                }
-                if (!exige(p, T_RPAREN, "faltou ')' na lambda")) return NULL;
-                n->b = bloco(p);
-                if (FALHOU(p)) return NULL;
-                return n;
-            }
+            if (eh_kw_funct(t) && espia(p, 1)->type == T_LPAREN)
+                return lambda_apos_kw(p);
             /* `count <tipo>[(<v>)] in <cont>` e `count each ...` como expressão */
             if (strcmp(t->texto, "count") == 0) {
                 int eh_each = (espia(p, 1)->type == T_KW && espia(p, 1)->texto
