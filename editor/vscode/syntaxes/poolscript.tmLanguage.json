@@ -185,7 +185,7 @@
               "include": "#constants"
             },
             {
-              "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b",
+              "match": "\\b(str|int|long|Long|flo|bool|list|dict|json|tup|bytes|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b",
               "name": "storage.type.poolscript"
             },
             {
@@ -227,9 +227,9 @@
           "match": "\\b(str|int|long|Long|flo|bool|list|dict|json|tup|bytes|type|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b(?!\\s*=[^=])"
         },
         {
-          "comment": "static/nonnull sao modificadores COLADOS na cabeca — so pintam antes de funct, que e onde valem; fora dali sao nome comum",
+          "comment": "static/nonnull sao modificadores COLADOS na declaracao — de funct E de campo (`static object mapp = ...`), em qualquer ordem com o tipo e a visibilidade. Pintam quando vem uma palavra atras (modificador, tipo, nome ou funct); `static` sozinho numa expressao continua nome comum. A lista antiga de tipos no lookahead nao tinha long/object/list e nao cobria campo.",
           "name": "storage.modifier.poolscript keyword.modifier.poolscript keyword.poolscript",
-          "match": "\\b(static|nonnull|NonNull)\\b(?=(?:\\s+(?:public|private|async|static|nonnull|NonNull|str|int|flo|bool)){0,4}\\s+(?:funct|action|reaction)\\b)"
+          "match": "\\b(static|nonnull|NonNull)\\b(?=\\s+[A-Za-z_])"
         },
         {
           "name": "storage.modifier.poolscript keyword.modifier.poolscript keyword.poolscript",

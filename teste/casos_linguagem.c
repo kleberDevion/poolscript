@@ -1855,6 +1855,25 @@ const Caso CASOS_LINGUAGEM[] = {
   "class Reg(){\n    funct rota(self, c){ return self }\n}\n"
   "class App(){\n    object mapp = Reg()\n    @mapp.rota(\"/x\")\n    static funct h(){ return 1 }\n}\n",
   "", "campo de instancia", 2 },
+/* A ordem dos modificadores do CAMPO e de quem escreve, como na cabeca de
+ * funct. `private object static nome` era lido com `static` como o NOME do
+ * campo: virava campo de instancia chamado `static`, calado, e `C.nome` nao
+ * existia. As dez ordens abaixo tem que dar o mesmo. */
+{ "campo static: modificador antes OU depois do tipo, qualquer ordem",
+  "class C(){\n"
+  "    static object a = 1\n"
+  "    private static object b = 2\n"
+  "    static private object c = 3\n"
+  "    private object static d = 4\n"
+  "    object static e = 5\n"
+  "    object private static f = 6\n"
+  "    static object private g = 7\n"
+  "    object static private h = 8\n"
+  "    static public i = 9\n"
+  "}\npost(C.a, C.b, C.c, C.d, C.e, C.f, C.g, C.h, C.i)\n",
+  "1 2 3 4 5 6 7 8 9", NULL, 0 },
+{ "funct: modificador depois do tipo continua valendo",
+  "class C(){\n    object private static funct m(){ return 1 }\n}\npost(C.m())\n", "1", NULL, 0 },
 
 /* ── import por caminho entre aspas (`import '../x.ps'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da

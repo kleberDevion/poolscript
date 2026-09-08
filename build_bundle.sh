@@ -26,6 +26,11 @@ for j in editor/vscode/*.js; do
     cp "$j" "$SAIDA/lsp/"
 done
 cp -r editor/vscode/node_modules "$SAIDA/lsp/" 2>/dev/null || true
+# A DOC vai junto: o servidor LSP lê o hover das páginas (`docs/linguagem`,
+# `docs/<lib>/...`) a partir de `<prefixo>/share/poolscript/docs`. Sem ela no
+# bundle, a máquina instalada por ele tinha hover de palavra-chave vazio — ou
+# pior, uma cópia velha de outro `make install`, dizendo `action`.
+cp -r docs "$SAIDA/docs"
 cp dados/zz-poolscript.xml "$SAIDA/dados/"
 cp dados/icones/text-poolscript.svg "$SAIDA/dados/icones/"
 cp instalar.sh "$SAIDA/"

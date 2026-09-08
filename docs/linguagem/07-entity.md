@@ -170,8 +170,20 @@ class App() {
 App.run()
 ```
 
-Os modificadores vêm em qualquer ordem (`public static`, `static private`…),
-e sem inicializador o campo nasce `Null`.
+Os modificadores vêm em qualquer ordem, antes **ou depois** do tipo — a mesma
+regra da cabeça de funct:
+
+```ps
+class Config() {
+    static object a = 1
+    private static object b = 2
+    private object static c = 3      # o `static` depois do tipo também vale
+    object static private d = 4
+}
+post(Config.a, Config.d)             # 1 4
+```
+
+Sem inicializador o campo nasce `Null`.
 
 Quem enxerga o campo, e como:
 

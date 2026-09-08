@@ -210,7 +210,7 @@ fi
 
 echo "== tirando PoolScript antiga do PATH"
 # Uma instalação velha em `~/.local/bin` vem ANTES de `/usr/local/bin` e
-# SEQUESTRA o comando: o `pool` respondia o traceback de um pacote Python que
+# SEQUESTRA o comando: o `pool` respondia o erro de um pacote antigo que
 # não existe mais, com a instalação nova intacta logo atrás e invisível. O
 # instalador dizia "pronto" e o comando estava quebrado.
 #
@@ -282,6 +282,22 @@ if [ -n "${SUDO_USER:-}" ] && [ -n "${CASA:-}" ]; then
         REMOVIDOS="$REMOVIDOS
 alias"
     fi
+fi
+
+echo "== documentação (o hover do editor lê daqui)"
+# O servidor LSP resolve o hover de palavra-chave, de builtin e de método de
+# lib nas páginas de `docs/`, procurando em `<prefixo>/share/poolscript/docs`.
+# O instalador não levava a doc: a máquina ficava com hover vazio — ou com a
+# cópia velha de um `make install` antigo, ensinando `action`. Copia inteira e
+# substitui a que estiver lá, senão página apagada no repositório sobrevive
+# instalada e o hover mostra o que não existe mais.
+if [ -d docs ]; then
+    rm -rf "$PREFIXO/share/poolscript/docs"
+    install -d "$PREFIXO/share/poolscript"
+    cp -r docs "$PREFIXO/share/poolscript/docs"
+else
+    echo "   (não veio documentação neste pacote)"
+    INCOMPLETO=1
 fi
 
 echo "== tipo MIME e ícone do .ps"

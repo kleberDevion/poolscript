@@ -2468,13 +2468,37 @@ static PSNode *statement(P *p)
                 if (a && campo_static) a->is_static = 1;
                 if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
             } else if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
-                       && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+                       && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER
+                           /* `object private static nome`: depois do tipo pode vir
+                            * modificador antes do nome — o laço abaixo os lê */
+                           || (espia(p, 1)->type == T_KW && espia(p, 1)->texto
+                               && (strcmp(espia(p, 1)->texto, "private") == 0
+                                   || strcmp(espia(p, 1)->texto, "public") == 0)))) {
                 /* `<tipo> <nome> [= valor]` — a MESMA declaração do §7.6 que
                  * vale dentro da action, escrita no corpo da classe. Equivale
                  * a `<nome>: <tipo> [= valor]`, e o `private`/`public` da
                  * frente já foi lido acima. */
                 PSToken *tt = mt;
                 p->pos++;                                  /* tipo */
+                /* Modificador DEPOIS do tipo — `object static nome`,
+                 * `object private nome` — mesma regra da cabeça de funct: a
+                 * ordem é de quem escreve. Sem isto o `static` era lido como
+                 * o NOME do campo e `private object static mapp` virava um
+                 * campo de instância chamado `static`, calado. */
+                for (;;) {
+                    PSToken *md = atual(p);
+                    if (md->texto && strcmp(md->texto, "static") == 0
+                            && (md->type == T_IDENT || md->type == T_KW)
+                            && espia(p, 1)->type != T_LPAREN) {
+                        campo_static = 1; p->pos++; continue;
+                    }
+                    if (md->type == T_KW && md->texto
+                            && (strcmp(md->texto, "private") == 0 || strcmp(md->texto, "public") == 0)) {
+                        membro_priv = (strcmp(md->texto, "private") == 0);
+                        p->pos++; continue;
+                    }
+                    break;
+                }
                 PSToken *nmt = atual(p);
                 const char *nome = exige_nome(p, "campo");
                 if (FALHOU(p)) return NULL;
