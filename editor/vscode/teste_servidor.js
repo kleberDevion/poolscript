@@ -605,6 +605,36 @@ async function main() {
     }
   }
 
+  /* ── o MANIFESTO: o que a extensão promete ao VS Code ────────────────────
+   *
+   * O botão de rodar não é código do servidor — é contribuição declarada no
+   * `package.json`. Um `git` malfeito ou um merge tira a entrada e ninguém
+   * percebe: a extensão instala, o realce funciona, e o botão simplesmente
+   * não está lá. Aqui a promessa fica travada. */
+  {
+    const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+    const c = man.contributes || {};
+    const cmds = (c.commands || []).map((x) => x.command);
+    conf('o manifesto declara o comando de rodar', cmds.includes('poolscript.rodar'), cmds);
+    conf('o botão de rodar aparece na barra do editor',
+         ((c.menus || {})['editor/title/run'] || []).some((m) => m.command === 'poolscript.rodar'),
+         Object.keys(c.menus || {}));
+    conf('o comando tem atalho (ctrl+f5)',
+         (c.keybindings || []).some((k) => k.command === 'poolscript.rodar' && k.key),
+         (c.keybindings || []).map((k) => k.key));
+    conf('o comando só aparece em arquivo da linguagem',
+         (c.commands || []).length > 0
+         && ((c.menus || {}).commandPalette || []).every((m) => (m.when || '').includes('poolscript')),
+         (c.menus || {}).commandPalette);
+    /* O cliente registra o comando ANTES do `return` que desliga o LSP: quem
+     * põe `lsp.ativo: false` não está pedindo pra perder o botão. */
+    const cli = fs.readFileSync(path.join(__dirname, 'extension.js'), 'utf8');
+    const iReg = cli.indexOf("registerCommand('poolscript.rodar'");
+    const iOff = cli.indexOf("get('lsp.ativo')");
+    conf('o comando é registrado mesmo com o LSP desligado',
+         iReg > 0 && iOff > 0 && iReg < iOff, { iReg, iOff });
+  }
+
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram`);

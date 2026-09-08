@@ -63,6 +63,43 @@
         "path": "./syntaxes/poolscript.tmLanguage.json"
       }
     ],
+    "commands": [
+      {
+        "command": "poolscript.rodar",
+        "title": "Rodar arquivo",
+        "category": "PoolScript",
+        "icon": "$(play)"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "poolscript.rodar",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "poolscript.rodar",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "group": "navigation@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "poolscript.rodar",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "poolscript.rodar",
+        "key": "ctrl+f5",
+        "when": "editorTextFocus && (resourceLangId == poolscript || resourceLangId == poolscript-psl)"
+      }
+    ],
     "themes": [
       {
         "label": "PoolScript C# Dark",
