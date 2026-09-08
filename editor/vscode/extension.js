@@ -14,7 +14,7 @@ const path = require('path');
 const net = require('net');
 const { spawn } = require('child_process');
 const vscode = require('vscode');
-const { workspace, window, commands, debug } = vscode;
+const { workspace, window, commands, debug, languages } = vscode;
 const { LanguageClient, TransportKind } = require('vscode-languageclient/node');
 
 let cliente;
@@ -71,6 +71,78 @@ async function rodarArquivo() {
   terminal.sendText('cd ' + pro_shell(path.dirname(arq)));
   terminal.sendText(pro_shell(poolBin()) + ' ' + pro_shell(path.basename(arq)));
 }
+
+/* Começa uma sessão de depuração no arquivo do editor.
+ *
+ * Existe pra ficar ao lado do "Rodar" no topo do editor: quem está com o
+ * arquivo aberto quer escolher entre rodar e depurar ali, não decorar que o
+ * atalho global é F5. Salva antes, pelo mesmo motivo do `rodarArquivo` —
+ * depurar a versão em disco enquanto o editor mostra outra é perseguir um erro
+ * que já foi corrigido. */
+async function depurarArquivo() {
+  const ed = window.activeTextEditor;
+  if (!ed) {
+    window.showWarningMessage('PoolScript: nenhum arquivo aberto pra depurar.');
+    return;
+  }
+  const doc = ed.document;
+  if (doc.languageId !== 'poolscript' && doc.languageId !== 'poolscript-psl') {
+    window.showWarningMessage('PoolScript: este arquivo não é .ps, .p nem .psl.');
+    return;
+  }
+  if (doc.isUntitled) {
+    window.showWarningMessage('PoolScript: salve o arquivo antes de depurar.');
+    return;
+  }
+  if (doc.isDirty) await doc.save();
+
+  const arq = doc.uri.fsPath;
+  const pasta = workspace.getWorkspaceFolder(doc.uri);
+  await debug.startDebugging(pasta, {
+    type: 'poolscript',
+    request: 'launch',
+    name: 'Depurar ' + path.basename(arq),
+    programa: arq,
+    cwd: path.dirname(arq)
+  });
+}
+
+/* ── `Rodar | Depurar` em cima do ponto de entrada ──────────────────────────
+ *
+ * O mesmo lugar em que o Java põe o `Run | Debug` acima do `main`: quem abriu o
+ * arquivo age ali, sem procurar botão no topo nem decorar atalho.
+ *
+ * A âncora é o `if __name__ == "main" {`, que é onde um programa PoolScript
+ * começa de verdade. Sem essa guarda o arquivo roda de cima a baixo, e aí a
+ * âncora é a primeira linha com código — pôr na linha 1 fixa deixaria a lente
+ * flutuando acima de comentário de cabeçalho, longe do que ela executa.
+ *
+ * Sem regex, como o resto da extensão: são três testes de texto.
+ */
+function linhaDeEntrada(texto) {
+  const linhas = texto.split('\n');
+  for (let i = 0; i < linhas.length; i++) {
+    const t = linhas[i].trim();
+    if (t.startsWith('if') && t.includes('__name__') && t.includes('main')) return i;
+  }
+  for (let i = 0; i < linhas.length; i++) {
+    const t = linhas[i].trim();
+    if (t.length > 0 && !t.startsWith('#')) return i;
+  }
+  return -1;
+}
+
+const provedorLentes = {
+  provideCodeLenses(doc) {
+    const alvo = linhaDeEntrada(doc.getText());
+    if (alvo < 0) return [];
+    const faixa = new vscode.Range(alvo, 0, alvo, 0);
+    return [
+      new vscode.CodeLens(faixa, { title: 'Rodar',   command: 'poolscript.rodar' }),
+      new vscode.CodeLens(faixa, { title: 'Depurar', command: 'poolscript.depurar' })
+    ];
+  }
+};
 
 /* ── depurador ──────────────────────────────────────────────────────────────
  *
@@ -322,6 +394,10 @@ function activate(context) {
   /* Os comandos ficam FORA do `if` do LSP: quem desliga o servidor de
    * linguagem não está pedindo pra perder o botão de rodar. */
   context.subscriptions.push(commands.registerCommand('poolscript.rodar', rodarArquivo));
+  context.subscriptions.push(commands.registerCommand('poolscript.depurar', depurarArquivo));
+  context.subscriptions.push(
+    languages.registerCodeLensProvider(
+      [{ language: 'poolscript' }, { language: 'poolscript-psl' }], provedorLentes));
   context.subscriptions.push(
     commands.registerCommand('poolscript.grafico', comandoGrafico),
     debug.registerDebugConfigurationProvider('poolscript', provedorConfig),

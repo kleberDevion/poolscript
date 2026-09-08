@@ -670,6 +670,29 @@ async function main() {
     conf('o comando do gráfico existe',
          (c.commands || []).some((x) => x.command === 'poolscript.grafico'),
          (c.commands || []).map((x) => x.command));
+    /* Rodar e Depurar lado a lado no topo do editor: quem está com o arquivo
+     * aberto escolhe ali, sem ter que decorar que o atalho global é F5. */
+    conf('o botão de depurar fica ao lado do de rodar',
+         ((c.menus || {})['editor/title/run'] || [])
+           .some((x) => x.command === 'poolscript.depurar'),
+         ((c.menus || {})['editor/title/run'] || []).map((x) => x.command));
+    /* `Rodar | Depurar` inline, em cima do ponto de entrada — o lugar em que o
+     * Java põe o `Run | Debug` acima do `main`. */
+    conf('há CodeLens de Rodar/Depurar',
+         cli.indexOf('registerCodeLensProvider') > 0
+         && cli.indexOf("title: 'Rodar'") > 0
+         && cli.indexOf("title: 'Depurar'") > 0,
+         { lens: cli.indexOf('registerCodeLensProvider') });
+    /* A âncora é o `if __name__ == "main"`, não a linha 1: numa linha fixa a
+     * lente flutua acima do comentário de cabeçalho, longe do que executa. */
+    conf('a CodeLens ancora no ponto de entrada',
+         cli.indexOf('__name__') > 0
+         && cli.indexOf('linhaDeEntrada') > 0,
+         { ancora: cli.indexOf('__name__') });
+    conf('o comando de depurar é registrado mesmo com o LSP desligado',
+         cli.indexOf("registerCommand('poolscript.depurar'") > 0
+         && cli.indexOf("registerCommand('poolscript.depurar'") < iOff,
+         { reg: cli.indexOf("registerCommand('poolscript.depurar'"), iOff });
 
     /* A fábrica do adaptador tem que ESPERAR o motor abrir a porta antes de
      * devolver o descritor: o VS Code conecta na hora, e devolver antes dá

@@ -72,6 +72,12 @@
         "icon": "$(play)"
       },
       {
+        "command": "poolscript.depurar",
+        "title": "Depurar arquivo",
+        "category": "PoolScript",
+        "icon": "$(debug-alt)"
+      },
+      {
         "command": "poolscript.grafico",
         "title": "Gráfico de execução",
         "category": "PoolScript",
@@ -84,6 +90,11 @@
           "command": "poolscript.rodar",
           "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
           "group": "navigation@1"
+        },
+        {
+          "command": "poolscript.depurar",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "group": "navigation@2"
         }
       ],
       "editor/context": [
@@ -91,11 +102,20 @@
           "command": "poolscript.rodar",
           "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
           "group": "navigation@1"
+        },
+        {
+          "command": "poolscript.depurar",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
           "command": "poolscript.rodar",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
+        },
+        {
+          "command": "poolscript.depurar",
           "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
         },
         {
