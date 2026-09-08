@@ -26,6 +26,22 @@ CC      ?= gcc
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
+
+# O diretório das libs do PostgreSQL tem a VERSÃO no nome (`.../16/lib`), e
+# essa versão muda com a distribuição: fixar `16` fazia o link falhar em
+# qualquer máquina com outra (o Debian 13 traz a 17). Descobre no momento do
+# build e pega a mais nova; se não houver nenhuma, sai vazio e o link usa o
+# caminho padrão do sistema.
+PGLIB     := $(shell ls -d /usr/lib/postgresql/*/lib 2>/dev/null | sort -V | tail -1)
+PGLIBFLAG := $(if $(PGLIB),-L$(PGLIB),)
+
+# A `libpq.a` é a build ESTÁTICA da biblioteca COMPARTILHADA, e os símbolos que
+# ela deixa em aberto (`pg_encoding_to_char`, `pg_char_to_encoding`, …) moram na
+# variante `_shlib` do pgcommon/pgport. Na pg16 as duas variantes definem esses
+# símbolos, então `-lpgcommon` simples funcionava por acidente; na pg17 (Debian
+# 13) só a `_shlib` define, e o link morre em `undefined reference`. A `_shlib`
+# é a certa nas duas — a outra fica de reserva pra distribuição que não a tenha.
+PGSTATIC  := $(if $(wildcard $(PGLIB)/libpgcommon_shlib.a),-lpgcommon_shlib -lpgport_shlib,-lpgcommon -lpgport)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
            $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
@@ -46,7 +62,7 @@ MK := $(lastword $(MAKEFILE_LIST))
 # velha — a medição nova ficava no arquivo sem chegar no `--metadata`.
 pool: $(FONTES) $(VM)/ps_versao.h $(VM)/retornos_medidos.inc $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon -lpgport -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libgmp.so.10
+	  $(PGLIBFLAG) -Wl,-Bstatic -lsqlite3 -lpq $(PGSTATIC) -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libgmp.so.10
 
 # Bundle PORTÁTIL: pool + todas as .so numa pasta lib/, com wrapper. Roda em
 # qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls, krb5,
@@ -276,7 +292,7 @@ testar: $(TESTE_FONTES) teste/ps_teste.h
 pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -fsanitize=address,undefined -fno-omit-frame-pointer \
 	  -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
+	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libgmp.so.10
@@ -577,8 +593,8 @@ unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)
 pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ $(FONTES) teste/ps_oom.c \
 	  -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
-	  -L/usr/lib/postgresql/16/lib -Wl,-Bstatic -lsqlite3 -lpq -lpgcommon \
-	  -lpgport -lmariadb -lodbc -lssl -lcrypto -lpng -lexpat -lz \
+	  $(PGLIBFLAG) -Wl,-Bstatic -lsqlite3 -lpq $(PGSTATIC) \
+	  -lmariadb -lodbc -lssl -lcrypto -lpng -lexpat -lz \
 	  -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 \
 	  -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libgmp.so.10
@@ -606,7 +622,7 @@ pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
 	  -Wno-everything -I$(VM) -I/usr/include/postgresql -I/usr/include/mariadb \
 	  -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0 \
 	  -o $@ $(FUZZ_FONTES) teste/ps_fuzz.c \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
+	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libgmp.so.10
@@ -673,7 +689,7 @@ check-asan: pool-asan testar
 # sinal em vez de derrubar a bateria.
 pool-debug: $(FONTES) $(VM)/ps_versao.h $(MK)
 	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
+	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libgmp.so.10
@@ -691,7 +707,7 @@ check-debug: pool-debug testar
 cobertura: testar
 	@rm -rf cob && mkdir -p cob
 	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) \
-	  -L/usr/lib/postgresql/16/lib -lsqlite3 -lpq -lmariadb -lodbc -lssl \
+	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
 	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
 	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libgmp.so.10

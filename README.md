@@ -13,6 +13,13 @@ sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .ps
 pool examples/01_hello.ps
 ```
 
+Numa máquina onde ainda não há nada (um WSL Debian novo, por exemplo), o
+instalador busca sozinho o que faltar:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/instalar.sh | sudo bash
+```
+
 Compilando do fonte (gcc + libs de dev: postgresql, mariadb, mongoc, openssl):
 
 ```bash

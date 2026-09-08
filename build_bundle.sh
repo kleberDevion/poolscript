@@ -17,7 +17,14 @@ rm -rf "$SAIDA"
 mkdir -p "$SAIDA/lib" "$SAIDA/lsp" "$SAIDA/dados/icones"
 
 cp pool "$SAIDA/pool.bin"
-cp editor/vscode/server.js "$SAIDA/lsp/"
+# O servidor LSP não é um arquivo só: `server.js` carrega `analise.js`. Levar
+# apenas o server.js fazia o bundle instalar um LSP que morre ao subir.
+for j in editor/vscode/*.js; do
+    case "$(basename "$j")" in
+        extension.js|teste_servidor.js) continue ;;
+    esac
+    cp "$j" "$SAIDA/lsp/"
+done
 cp -r editor/vscode/node_modules "$SAIDA/lsp/" 2>/dev/null || true
 cp dados/zz-poolscript.xml "$SAIDA/dados/"
 cp dados/icones/text-poolscript.svg "$SAIDA/dados/icones/"

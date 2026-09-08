@@ -44,13 +44,33 @@ sudo ./instalar.sh --remover
 
 Do repositório com o fonte, `sudo make install` faz o mesmo.
 
+### Numa máquina onde não há nada
+
+Num WSL Debian recém-criado, por exemplo, não há nem `curl` nem compilador —
+e mesmo assim é uma linha só:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/instalar.sh | sudo bash
+```
+
+O instalador busca o pacote pronto do último release; não havendo release
+publicado, ele clona o fonte, instala as dependências de compilação e compila.
+Instala também o `node` se faltar, porque o servidor LSP precisa dele em tempo
+de execução. Nos dois caminhos não sobra passo manual.
+
 Depois disso o `.ps` é **`text/poolscript`** e aparece com a logo da linguagem
 no gerenciador de arquivos. (O `.ps` era do PostScript; aqui ele é da
 linguagem. `.eps` e `.ai` continuam do PostScript.)
 
 ### Compilando do fonte
 
-Precisa de `gcc` e das libs de dev: postgresql, mysql, mongoc, openssl.
+Precisa de `gcc` e das libs de dev: postgresql, mysql, mongoc, openssl. Do lado
+do PostgreSQL são **dois** pacotes: `libpq-dev` e `postgresql-server-dev-all` —
+a libpq entra estática, e a `libpq.a` referencia símbolos que moram na
+`libpgcommon.a`/`libpgport.a`, que só o segundo instala.
+
+A lista completa, que é a mesma que o `instalar.sh` usa quando compila sozinho,
+está em `DEPS_BUILD` no [`instalar.sh`](instalar.sh).
 
 ```bash
 make pool      # gera ./pool na raiz
@@ -94,8 +114,13 @@ Se faltar alguma: `ldd ./pool | grep "not found"` mostra o nome exato.
 
 **Alternativa sem instalar nada** — bundle portátil (`make bundle`): gera
 `dist/pool-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper
-carrega de lá. É só copiar a pasta pro VPS e rodar. Requisito único do alvo:
-glibc compatível (x86-64).
+carrega de lá. É só copiar a pasta pro VPS e rodar.
+
+O núcleo do glibc NÃO vai junto (levá-lo quebra o `getaddrinfo`), então o alvo
+precisa ser x86-64 com **glibc ≥ 2.38** — o piso vem dos símbolos que o binário
+referencia (`strlcpy`, `strlcat`, `__isoc23_strtol`, `fmod`). Isso cobre Debian
+13, Ubuntu 24.04 e mais novos; Debian 12 (glibc 2.36) não roda o bundle, e
+nessa máquina o instalador compila do fonte.
 
 ---
 
