@@ -175,6 +175,54 @@ A funct abaixo pode ter **qualquer** modificador, em qualquer ordem —
 [6.4.2](06-funcoes.md)). A cabeça da declaração é uma unidade só, e o decorador
 a captura inteira.
 
+### As três posições
+
+O mesmo `@objeto.metodo(...)` vale em cima de uma **funct solta**, em cima de
+uma **classe** e em cima de um **método dentro da classe** — e é o mesmo
+protocolo nos três (`registrar.register(handler)`):
+
+```ps
+@r.rota("/funct")
+funct f() { return 1 }             # registra f
+
+@r.rota("/classe")
+class H() {
+    funct handler(self) { return 1 }   # registra o 1º método (fora o __init__), numa instância
+}
+
+class D() {
+    @r.rota("/dentro")
+    static funct h() { return 1 }      # registra D.h — a própria funct
+
+    @r.rota("/inst")
+    funct i(self) { return 1 }         # método comum: instancia D() e registra a instância.i
+}
+```
+
+Dentro da classe, o decorador **roda quando a classe é declarada** — antes de
+existir instância. Por isso o objeto que ele usa precisa ser um campo
+**`static`** (ver [7.4.1](07-entity.md)):
+
+```ps
+class App() {
+    public static object mapp = jinker.Jinker(__name__)   # static: existe já na declaração
+
+    @mapp.post("/opa/<data>")
+    public static string funct handler(data) { return "ok" }
+}
+```
+
+Sem o `static`, o campo é de instância e o decorador não tem o que ler. Isso é
+recusado na compilação, com a palavra que falta:
+
+```
+SyntaxError: 'mapp' e campo de instancia — o decorador no corpo da classe
+roda antes de existir instancia; declare-o `static`: static mapp = ...
+```
+
+Antes, o decorador em cima de um método era **descartado** pelo compilador: o
+método compilava sem registro nenhum e a rota nunca existia — sem erro.
+
 ---
 
 ## 14.5. Decorador desconhecido

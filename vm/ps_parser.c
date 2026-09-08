@@ -2396,13 +2396,30 @@ static PSNode *statement(P *p)
             /* modificador de visibilidade opcional antes de campo/método.
              * `is_private` não entra na serialização do AST (não é código), então
              * o diff de parser/bytecode continua batendo. */
-            int membro_priv = 0, viu_visib = 0;
-            if (mt->type == T_KW && mt->texto
-                    && (strcmp(mt->texto, "private") == 0 || strcmp(mt->texto, "public") == 0)) {
-                membro_priv = (strcmp(mt->texto, "private") == 0);
-                viu_visib = 1;
-                p->pos++;
-                mt = atual(p);
+            /* Modificadores do membro, em qualquer ordem: `public`, `private`
+             * e `static`. O `static` em CAMPO é o que faz um atributo
+             * pertencer à classe (avaliado uma vez, na declaração) em vez de
+             * à instância — sem ele, `App.mapp` não existe e um método
+             * estático não tem como enxergar o campo. */
+            int membro_priv = 0, viu_visib = 0, campo_static = 0;
+            for (;;) {
+                if (mt->type == T_KW && mt->texto
+                        && (strcmp(mt->texto, "private") == 0 || strcmp(mt->texto, "public") == 0)) {
+                    membro_priv = (strcmp(mt->texto, "private") == 0);
+                    viu_visib = 1;
+                    p->pos++;
+                    mt = atual(p);
+                    continue;
+                }
+                if (mt->texto && strcmp(mt->texto, "static") == 0
+                        && (mt->type == T_IDENT || mt->type == T_KW)
+                        && espia(p, 1)->type != T_LPAREN) {
+                    campo_static = 1;
+                    p->pos++;
+                    mt = atual(p);
+                    continue;
+                }
+                break;
             }
             /* A grafia que saiu, escrita como método: aqui ela casaria com a
              * regra de campo (`<tipo> <nome>`) e nasceria um campo chamado
@@ -2447,6 +2464,8 @@ static PSNode *statement(P *p)
                  * `static private funct m()` quem a leu foi a cabeça, e
                  * carimbar 0 aqui apagaria o `private` da pessoa. */
                 if (a && viu_visib) a->is_private = membro_priv;
+                /* o `static` lido pelo laço de modificadores acima é do método */
+                if (a && campo_static) a->is_static = 1;
                 if (ps_vec_push(p->arena, &n->lista, a) != 0) return NULL;
             } else if ((mt->type == T_IDENT || mt->type == T_IDENT_UPPER || mt->type == T_KW)
                        && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
@@ -2469,6 +2488,7 @@ static PSNode *statement(P *p)
                     if (FALHOU(p)) return NULL;
                 }
                 f->is_private = membro_priv;
+                f->is_static  = campo_static;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else if (mt->type == T_IDENT || mt->type == T_IDENT_UPPER) {
                 /* Campo. Três grafias, todas o MESMO nó:
@@ -2508,6 +2528,7 @@ static PSNode *statement(P *p)
                     return NULL;
                 }
                 f->is_private = membro_priv;
+                f->is_static  = campo_static;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else {
                 perro(p, "dentro de Entity entra 'funct', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);

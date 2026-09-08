@@ -148,6 +148,51 @@ Chamar um `static` por uma instância (`m.soma(...)`) é erro — ele pertence a
 tipo, não ao objeto. (Ver também a nota sobre `static` na seção de
 decoradores.)
 
+### 7.4.1. Campos `static` — o atributo da classe
+
+Um campo comum pertence à **instância**: nasce no `__init__`, um por objeto.
+Prefixado com `static`, o campo pertence à **classe**: é avaliado **uma vez**,
+quando a classe é declarada, e existe antes de qualquer instância.
+
+```ps
+class App() {
+    public static object mapp = jinker.Jinker(__name__)
+
+    @mapp.post("/opa/<data>")
+    public static string funct handler(data) {
+        return "ok"
+    }
+
+    public static funct run() {
+        mapp(debug=true, port=3003, host="127.0.0.1")
+    }
+}
+App.run()
+```
+
+Os modificadores vêm em qualquer ordem (`public static`, `static private`…),
+e sem inicializador o campo nasce `Null`.
+
+Quem enxerga o campo, e como:
+
+| De onde | Como se escreve |
+|---|---|
+| de fora | `App.mapp` |
+| no corpo da classe (decoradores) e nos métodos `static` da **própria** classe | `mapp`, o nome solto |
+| num método comum | `self.mapp` ou `App.mapp` |
+| numa classe filha | `self.mapp` ou `Pai.mapp` — o nome solto cobre só os `static` da própria classe |
+
+Um parâmetro ou variável local com o mesmo nome **ganha** do campo: `funct
+m(self, x)` devolve o `x` recebido, não o `C.x`.
+
+É **um só** valor, compartilhado: `K.n = K.n + 1` num método muda o que toda
+instância lê em `self.n`. E ele **não entra** no construtor sintetizado —
+`class P() { static int total = 0  str nome }` continua sendo `P("ana")`.
+
+Por que existe: sem ele, `App.mapp` não existia, um método `static` não tinha
+como enxergar o campo, e o decorador no corpo da classe rodava antes de haver
+instância — o programa acima passava no `--check` e não fazia nada.
+
 ---
 
 ## 7.5. Herança

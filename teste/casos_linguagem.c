@@ -1804,6 +1804,58 @@ const Caso CASOS_LINGUAGEM[] = {
 { "static continua valendo depois do tipo",
   "class C() {\n    str static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
 
+/* ── campo `static`, 2026-09-08 ────────────────────────────────────────────
+ * Campo de classe: avaliado UMA vez na declaracao, lido como `Classe.x`, por
+ * nome solto dentro do corpo e dos metodos da propria classe, e por
+ * `self.x` na instancia. Sem ele, `App.mapp` nao existia e um metodo static
+ * nao tinha como enxergar o campo — o arquivo dele rodava sem fazer nada. */
+{ "campo static: Classe.x e nome solto em metodo static",
+  "class C(){\n    static int x = 7\n    static funct le(){ return x }\n}\npost(C.x, C.le())\n", "7 7", NULL, 0 },
+{ "campo static: modificadores em qualquer ordem",
+  "class C(){\n    static public int x = 7\n    private static int y = 8\n}\npost(C.x, C.y)\n", "7 8", NULL, 0 },
+{ "campo static sem inicializador nasce Null",
+  "class C(){\n    static int x\n}\npost(C.x)\n", "Null", NULL, 0 },
+{ "campo static e UM so: instancias leem e a reescrita e da classe",
+  "class K(){\n    static int n = 0\n    funct inc(self){ K.n = K.n + 1 }\n}\na = K()\nb = K()\na.inc()\nb.inc()\npost(K.n, a.n, b.n)\n", "2 2 2", NULL, 0 },
+/* Parametro com o mesmo nome GANHA do campo static; o herdado le-se por
+ * `self.`/`Classe.` (o nome solto cobre os static da propria classe). */
+{ "campo static: local ganha, heranca por self. e Classe.",
+  "class B(){\n    static int fundo = 1\n}\nclass C(B){\n    static int x = 7\n"
+  "    funct m(self, x){ return x }\n    funct s(self){ return self.x + self.fundo }\n"
+  "    static funct t(){ return x + C.fundo }\n}\nc = C()\npost(c.m(99), c.s(), C.fundo, C.t())\n",
+  "99 8 1 8", NULL, 0 },
+{ "campo static nao entra no __init__ sintetizado",
+  "class P(){\n    static int total = 0\n    str nome\n    int idade = 3\n}\np = P(\"ana\")\npost(p.nome, p.idade, P.total)\n",
+  "ana 3 0", NULL, 0 },
+/* ── decorador `@obj.metodo()` DENTRO da classe, 2026-09-08 ────────────────
+ * Era descartado pelo compilador: o metodo compilava sem registro nenhum e a
+ * rota nunca existia, calada. Agora vale nas tres posicoes — funct solta, em
+ * cima da classe e em cima do metodo — pelo MESMO protocolo (register). */
+{ "decorador @obj.m() nas tres posicoes: funct, classe, metodo",
+  "class Reg(){\n    funct __init__(self){ self.v = [] }\n"
+  "    funct rota(self, c){ self.c = c\n        return self }\n"
+  "    funct register(self, h){ addEnd(self.v, self.c)\n        return h }\n}\nr = Reg()\n"
+  "@r.rota(\"/funct\")\nfunct f(){ return 1 }\n"
+  "@r.rota(\"/classe\")\nclass H(){\n    funct handler(self){ return 1 }\n}\n"
+  "class D(){\n    @r.rota(\"/dentro\")\n    static funct h(){ return 1 }\n"
+  "    @r.rota(\"/inst\")\n    funct i(self){ return 1 }\n}\npost(r.v)\n",
+  "['/funct', '/classe', '/dentro', '/inst']", NULL, 0 },
+/* O arquivo dele: campo static + decorador no corpo usando o campo. */
+{ "decorador no corpo da classe le campo static da propria classe",
+  "class Reg(){\n    funct __init__(self){ self.v = [] }\n"
+  "    funct rota(self, c){ self.c = c\n        return self }\n"
+  "    funct register(self, h){ addEnd(self.v, self.c)\n        return h }\n}\n"
+  "public class App(){\n    public static object mapp = Reg()\n"
+  "    @mapp.rota(\"/opa\")\n    public string static funct handler(data){ return \"ok\" }\n}\n"
+  "post(App.mapp.v)\n",
+  "['/opa']", NULL, 0 },
+/* Sem o `static` o decorador nao tem como ler o campo — e a mensagem diz o
+ * que falta, em vez de um NameError apontando pra linha da classe. */
+{ "decorador no corpo lendo campo de INSTANCIA e recusado com a palavra certa",
+  "class Reg(){\n    funct rota(self, c){ return self }\n}\n"
+  "class App(){\n    object mapp = Reg()\n    @mapp.rota(\"/x\")\n    static funct h(){ return 1 }\n}\n",
+  "", "campo de instancia", 2 },
+
 /* ── import por caminho entre aspas (`import '../x.ps'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da
  * linguagem e caminho relativo ao arquivo que importa; sem isso e nome de

@@ -225,6 +225,11 @@ typedef struct PSClass_ {
     char   **priv_nomes;   /* membros `private` — acesso de fora barrado */
     int32_t  npriv;
     int32_t  classe_privada;   /* `private class` — não exportada no import */
+    /* Campos `static`: pertencem à CLASSE, não à instância. Avaliados uma vez,
+     * na declaração; lidos como `Classe.x`, e por nome solto dentro do corpo
+     * da classe e dos métodos dela. V_NULL enquanto a classe não tem nenhum —
+     * é um dict pra não inventar uma segunda tabela nome→valor. */
+    Value    estaticos;
 } PSClass;
 
 typedef struct {
@@ -1588,10 +1593,23 @@ static void gct_instance(VM *vm, Obj *o) {
     if (inst->classe) marca_obj(vm, (Obj *)inst->classe);
     if (inst->campos) marca_obj(vm, (Obj *)inst->campos);
 }
+/* Campo `static` de uma classe, procurando nela e depois nos pais, na ordem
+ * declarada. 0 = achou (em `out`), -1 = não existe. */
+static int classe_estatico(PSClass *cl, const Value *nomev, Value *out)
+{
+    if (!cl) return -1;
+    if (EH_DICT(cl->estaticos) && dict_get(COMO_DICT(cl->estaticos), nomev, out) == 0)
+        return 0;
+    for (int32_t i = 0; i < cl->npais; i++)
+        if (classe_estatico(cl->pais[i], nomev, out) == 0) return 0;
+    return -1;
+}
+
 static void gct_class(VM *vm, Obj *o) {
     PSClass *cl = (PSClass *)o;
     for (int32_t i = 0; i < cl->npais; i++)
         if (cl->pais[i]) marca_obj(vm, (Obj *)cl->pais[i]);
+    marca_valor(vm, &cl->estaticos);
 }
 static void gct_enum(VM *vm, Obj *o) {
     PSEnum *e = (PSEnum *)o;
@@ -23086,6 +23104,7 @@ ERRO_TF(vm, "TypeError",
             }
             /* membros private (encapsulamento) — copiados da def */
             nova->classe_privada = def->classe_privada;   /* `private class` */
+            nova->estaticos = MK_NULL();   /* o dict nasce no 1º `Classe.x = v` */
             nova->priv_nomes = NULL;
             if (def->npriv > 0) {
                 nova->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
@@ -23133,6 +23152,15 @@ ERRO_TF(vm, "TypeError",
                 }
                 int32_t mp = acha_metodo(inst->classe, nome);
                 if (mp < 0) {
+                    /* campo `static` da classe, lido pela instância:
+                     * `self.mapp` dentro de um método comum */
+                    {
+                        Value ev;
+                        if (classe_estatico(inst->classe, &nomev, &ev) == 0) {
+                            stack[sp - 1] = ev;
+                            break;
+                        }
+                    }
                     /* `.type()` vale em qualquer valor, inclusive instância.
                      * Fica DEPOIS de campo e método por disciplina: hoje
                      * `type` é palavra reservada e uma Entity não pode ter
@@ -23156,6 +23184,14 @@ ERRO_TF(vm, "TypeError",
                 break;
             }
             if (EH_CLASS(alvo)) {
+                /* campo `static` da classe (ou de um pai): `App.mapp` */
+                {
+                    Value ev;
+                    if (classe_estatico(COMO_CLASS(alvo), &nomev, &ev) == 0) {
+                        stack[sp - 1] = ev;
+                        break;
+                    }
+                }
                 /* método estático: chamado direto na Entity */
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), nome);
                 if (mp < 0) ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
@@ -23540,6 +23576,20 @@ ERRO_TF(vm, "TypeError",
             if (EH_DICT(alvo)) {   /* d.chave = v  ->  d["chave"] = v */
                 vm->sp = sp; vm->locals_top = locals_top;
                 if (dict_set(vm, COMO_DICT(alvo), &nomev, &valor) != 0) ERRO(vm, "sem memoria");
+                break;
+            }
+            if (EH_CLASS(alvo)) {
+                /* `Classe.x = v` — campo `static`. É por aqui que o compilador
+                 * grava os inicializadores logo depois de criar a classe. */
+                PSClass *cl = COMO_CLASS(alvo);
+                vm->sp = sp; vm->locals_top = locals_top;
+                if (!EH_DICT(cl->estaticos)) {
+                    PSDict *d = novo_dict(vm, 4);
+                    if (!d) ERRO(vm, "sem memoria");
+                    cl->estaticos = MK_OBJ(d);
+                }
+                if (dict_set(vm, COMO_DICT(cl->estaticos), &nomev, &valor) != 0)
+                    ERRO(vm, "sem memoria");
                 break;
             }
             if (!EH_INST(alvo))

@@ -164,6 +164,10 @@ typedef struct {
     /* Estamos dentro de uma Entity (com ou sem pai)? `base()` sem pai é
      * no-op aqui e erro fora. */
     int dentro_entity;
+    /* O nó da Entity cujo corpo/métodos estão sendo compilados. É por ele que
+     * um nome solto dentro da classe resolve pra campo `static` dela
+     * (`mapp` -> `App.mapp`), no corpo (decoradores) e nos métodos. */
+    PSNode *entity_no;
     /* Linha do fonte do nó sendo compilado agora — o `emite()` grava por
      * instrução, pra o erro de runtime dizer ONDE aconteceu. */
     int32_t linha_atual;
@@ -691,8 +695,75 @@ static void emite_funcao(C *c, Unidade *u, int32_t proto)
     emite(c, u, c->out->protos[proto].nupvals > 0 ? OP_MAKE_CLOSURE : OP_MAKE_FUNCTION, proto);
 }
 
+static void expr(C *c, Unidade *u, PSNode *n);
+static void carrega_nome(C *c, Unidade *u, const char *nome);
+
+/* O nome é uma variável LOCAL desta unidade? Local ganha do campo `static`:
+ * um parâmetro chamado `mapp` dentro de um método não pode virar `App.mapp`. */
+static int nome_e_local(Unidade *u, const char *nome)
+{
+    for (int32_t i = 0; i < u->nlocais; i++)
+        if (strcmp(u->locais[i], nome) == 0) return 1;
+    return 0;
+}
+
+/* `nome` é um campo `static` da Entity que está sendo compilada? */
+static int campo_estatico_da_classe(C *c, const char *nome)
+{
+    PSNode *e = c->entity_no;
+    if (!e || !nome) return 0;
+    for (int32_t i = 0; i < e->lista2_alias.n; i++) {
+        PSNode *f = e->lista2_alias.itens[i];
+        if (f && f->kind == N_ENTITY_FIELD && f->is_static && f->texto
+                && strcmp(f->texto, nome) == 0) return 1;
+    }
+    return 0;
+}
+
+/* `mapp` dentro da classe App -> `App.mapp` (a classe é um global). */
+static void carrega_estatico(C *c, Unidade *u, const char *nome)
+{
+    const char *cls = c->entity_no->texto ? c->entity_no->texto : "";
+    emite(c, u, OP_LOAD_GLOBAL, idx_global(c, cls));
+    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome)));
+}
+
+/* A expressão de um decorador geral (`@obj.metodo(args)` / `@obj.prop`),
+ * avaliada SEMPRE como chamada — é o mesmo protocolo em qualquer posição
+ * (funct solta, em cima de classe, dentro de classe), num lugar só. O valor
+ * fica no topo da pilha: é o registrar a quem se entrega a função. */
+static void emite_decorador_chamada(C *c, Unidade *u, PSNode *dec)
+{
+    carrega_nome(c, u, dec->lista.itens[0]->texto);
+    for (int32_t i = 1; i < dec->lista.n; i++)
+        emite(c, u, OP_GET_MEMBER,
+              idx_const(c, u, K_STR, 0, 0, dec->lista.itens[i]->texto,
+                        (int32_t)strlen(dec->lista.itens[i]->texto)));
+    int32_t nkw = 0;
+    for (int32_t i = 0; i < dec->lista2.n; i++)
+        if (dec->lista2.itens[i]->texto) nkw++;
+    for (int32_t i = 0; i < dec->lista2.n; i++)
+        expr(c, u, dec->lista2.itens[i]->a);
+    if (nkw == 0) emite(c, u, OP_CALL, dec->lista2.n);
+    else {
+        for (int32_t i = dec->lista2.n - nkw; i < dec->lista2.n; i++) {
+            const char *nm = dec->lista2.itens[i]->texto;
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
+        }
+        emite(c, u, OP_BUILD_TUPLE, nkw);
+        emite(c, u, OP_CALL_KW, dec->lista2.n);
+    }
+}
+
 static void carrega_nome(C *c, Unidade *u, const char *nome)
 {
+    /* Campo `static` da Entity em compilação ganha do global e do "resolve em
+     * runtime" — mas NÃO de um local: parâmetro com o mesmo nome continua
+     * sendo o parâmetro. */
+    if (c->entity_no && !nome_e_local(u, nome) && campo_estatico_da_classe(c, nome)) {
+        carrega_estatico(c, u, nome);
+        return;
+    }
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
         emite(c, u, OP_LOAD_GLOBAL, idx_global(c, nome));
         return;
@@ -2115,27 +2186,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     }
 
                 /* 1) avalia SEMPRE a expressão do decorador como CHAMADA
-                 * `obj.metodo(args)` — é o que o interpretador faz (erro do
-                 * decorador propaga, mesmo com 0 args). */
-                carrega_nome(c, u, dec->lista.itens[0]->texto);
-                for (int32_t i = 1; i < dec->lista.n; i++)
-                    emite(c, u, OP_GET_MEMBER,
-                          idx_const(c, u, K_STR, 0, 0, dec->lista.itens[i]->texto,
-                                    (int32_t)strlen(dec->lista.itens[i]->texto)));
-                int32_t nkw = 0;
-                for (int32_t i = 0; i < dec->lista2.n; i++)
-                    if (dec->lista2.itens[i]->texto) nkw++;
-                for (int32_t i = 0; i < dec->lista2.n; i++)
-                    expr(c, u, dec->lista2.itens[i]->a);
-                if (nkw == 0) emite(c, u, OP_CALL, dec->lista2.n);
-                else {
-                    for (int32_t i = dec->lista2.n - nkw; i < dec->lista2.n; i++) {
-                        const char *nm = dec->lista2.itens[i]->texto;
-                        emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
-                    }
-                    emite(c, u, OP_BUILD_TUPLE, nkw);
-                    emite(c, u, OP_CALL_KW, dec->lista2.n);
-                }
+                 * `obj.metodo(args)` — erro do decorador propaga, mesmo com 0
+                 * args. É a MESMA emissão do decorador dentro da classe. */
+                emite_decorador_chamada(c, u, dec);
                 /* 2) guarda o registrar (descartável) e roda o bloco */
                 guarda_nome_modo(c, u, "$reg", 1);
                 bloco_stmts(c, u, n->b);
@@ -2336,13 +2389,23 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             const char *pai_salvo = c->entity_pai;
             int dentro_salvo = c->dentro_entity;
+            PSNode *no_salvo = c->entity_no;
             c->entity_pai = (n->lista2.n > 0) ? n->lista2.itens[0]->texto : NULL;
             c->dentro_entity = 1;
+            c->entity_no = n;   /* nome solto -> campo `static` desta classe */
             /* Dentro de Entity o decorador é uma entrada SEPARADA do corpo
              * (dec_sem_captura no parser): ele não embrulha a action. Então o
              * `@static` visto aqui vale pra PRÓXIMA action da lista — é assim
              * que a marca chega no Proto (Proto.eh_static). */
             int static_pendente = 0, nonnull_pendente = 0;
+            /* Decorador GERAL (`@mapp.post("/x")`) em cima de um método: era
+             * DESCARTADO aqui — o `continue` abaixo pulava o nó, o método
+             * compilava sem registro nenhum e a rota nunca existia, calada.
+             * Os pares (decorador, método) ficam guardados e são emitidos
+             * DEPOIS de a classe existir, porque a expressão do decorador pode
+             * ler um campo `static` que só nasce então. */
+            PSNode *dec_pend[8];  int ndec_pend = 0;
+            PSNode *par_dec[64];  PSNode *par_met[64];  int npares = 0;
             for (int32_t i = 0; i < n->lista.n && !CFALHOU(c); i++) {
                 PSNode *m = n->lista.itens[i];
                 if (m->kind == N_DECORATOR_STMT) {
@@ -2353,9 +2416,16 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                      * nó do decorador: o método rodava sem checagem nenhuma
                      * enquanto o interpretador recusava o Null. */
                     if (dn && strcmp(dn, "NonNull") == 0) nonnull_pendente = 1;
+                    if (dec && dec->lista.n > 1 && ndec_pend < 8) dec_pend[ndec_pend++] = dec;
                     continue;
                 }
                 if (m->kind != N_ACTION_DECL) continue;
+                for (int k = 0; k < ndec_pend && npares < 64; k++) {
+                    par_dec[npares] = dec_pend[k];
+                    par_met[npares] = m;
+                    npares++;
+                }
+                ndec_pend = 0;
                 c->pendente_static = static_pendente;
                 c->pendente_nonnull = nonnull_pendente;
                 int32_t pi = compila_action(c, m, NULL);
@@ -2374,12 +2444,27 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
 
             /* Campos tipados sem `__init__` escrito à mão: a Entity ganha um
              * gerado, com um parâmetro por campo na ordem de declaração. */
-            if (n->lista2_alias.n > 0 && !CFALHOU(c)) {
+            /* Campo `static` NÃO é parâmetro do `__init__`: pertence à classe,
+             * não à instância. O `sintetiza_init` recebe só os de instância. */
+            int32_t n_inst = 0;
+            for (int32_t i = 0; i < n->lista2_alias.n; i++)
+                if (!n->lista2_alias.itens[i]->is_static) n_inst++;
+            if (n_inst > 0 && !CFALHOU(c)) {
                 int tem_init = 0;
                 for (int32_t i = 0; i < def->nmetodos; i++)
                     if (strcmp(def->met_nomes[i], "__init__") == 0) { tem_init = 1; break; }
                 if (!tem_init) {
+                    PSNodeVec todos = n->lista2_alias;
+                    PSNode **so_inst = calloc((size_t)n_inst, sizeof(PSNode *));
+                    if (!so_inst) { cerro(c, "sem memoria", n); return; }
+                    int32_t k = 0;
+                    for (int32_t i = 0; i < todos.n; i++)
+                        if (!todos.itens[i]->is_static) so_inst[k++] = todos.itens[i];
+                    n->lista2_alias.itens = so_inst;
+                    n->lista2_alias.n = n_inst;
                     int32_t pi = sintetiza_init(c, n);
+                    n->lista2_alias = todos;
+                    free(so_inst);
                     if (CFALHOU(c)) return;
                     def = &c->out->classes[ci];
                     /* Cada campo é PUBLICADO assim que o realloc dele dá certo.
@@ -2405,6 +2490,69 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 carrega_nome(c, u, n->lista2.itens[i]->texto ? n->lista2.itens[i]->texto : "");
             emite(c, u, OP_MAKE_CLASS, ci);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+
+            /* A classe existe. Agora, nesta ordem:
+             *   1) campos `static` — `Classe.x = <inicializador>` (ou Null);
+             *   2) decoradores dos métodos — a expressão do decorador pode
+             *      ler esses campos (`@mapp.post(...)`), por isso vem depois.
+             * Tudo com `entity_no` ainda apontando pra esta classe: é o que
+             * faz `mapp` virar `App.mapp` dentro dessas expressões. */
+            const char *cls_nome_aqui = n->texto ? n->texto : "";
+            for (int32_t i = 0; i < n->lista2_alias.n && !CFALHOU(c); i++) {
+                PSNode *f = n->lista2_alias.itens[i];
+                if (!f->is_static || !f->texto) continue;
+                carrega_nome(c, u, cls_nome_aqui);
+                if (f->a) expr(c, u, f->a);
+                else emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+                emite(c, u, OP_SET_MEMBER,
+                      idx_const(c, u, K_STR, 0, 0, f->texto, (int32_t)strlen(f->texto)));
+            }
+            for (int k = 0; k < npares && !CFALHOU(c); k++) {
+                PSNode *dec = par_dec[k];
+                PSNode *met = par_met[k];
+                const char *mn = met->texto ? met->texto : "";
+                /* `@mapp.post(...)` com `mapp` sendo campo de INSTÂNCIA da
+                 * própria classe: na hora em que o corpo é declarado não há
+                 * instância, e o nome cairia num NameError apontando pra
+                 * linha da classe — sem dizer que o que falta é `static`. */
+                {
+                    const char *raiz = dec->lista.itens[0]->texto;
+                    for (int32_t i = 0; raiz && i < n->lista2_alias.n; i++) {
+                        PSNode *f = n->lista2_alias.itens[i];
+                        if (f->kind == N_ENTITY_FIELD && !f->is_static && f->texto
+                                && strcmp(f->texto, raiz) == 0) {
+                            cerro_sx(c, dec, "'%s' e campo de instancia — o decorador no corpo da classe "
+                                     "roda antes de existir instancia; declare-o `static`: "
+                                     "static %s = ...", raiz, raiz);
+                            return;
+                        }
+                    }
+                }
+                def = &c->out->classes[ci];
+                int eh_est = met->is_static;
+                for (int32_t j = 0; j < def->nmetodos && !eh_est; j++)
+                    if (strcmp(def->met_nomes[j], mn) == 0)
+                        eh_est = c->out->protos[def->met_protos[j]].eh_static;
+                emite_decorador_chamada(c, u, dec);
+                guarda_nome_modo(c, u, "$reg", 1);
+                carrega_nome(c, u, "$reg");
+                emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "register", 8));
+                if (eh_est) {
+                    /* método estático: `Classe.metodo` é a própria funct */
+                    carrega_nome(c, u, cls_nome_aqui);
+                } else {
+                    /* método comum precisa de instância — o mesmo protocolo
+                     * do decorador em cima da classe: `$inst = Classe()` */
+                    carrega_nome(c, u, cls_nome_aqui);
+                    emite(c, u, OP_CALL, 0);
+                    guarda_nome_modo(c, u, "$inst", 1);
+                    carrega_nome(c, u, "$inst");
+                }
+                emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, mn, (int32_t)strlen(mn)));
+                emite(c, u, OP_CALL, 1);
+                emite(c, u, OP_POP_TOP, 0);
+            }
+            c->entity_no = no_salvo;
             return;
         }
 
