@@ -1030,10 +1030,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "char c = 1.5\n", "", "esperava char", 1 },
 { "char recusa codepoint invalido",
   "char c = -1\n", "", "nao e um caractere valido", 1 },
-{ "char funct nao existe",
+/* `char funct` passou a EXISTIR (2026-09-08): todo tipo vale como retorno. O
+ * `char` aqui declara o retorno e nao coage — devolve o 1 como esta. Quem
+ * coage e a declaracao de VARIAVEL (`char c = 1`), logo acima. */
+{ "char funct existe e nao coage o retorno",
   "char funct f() {\n"
   "    return 1\n"
-  "}\n", "", "int funct", 2 },
+  "}\npost(f())\n", "1", NULL, 0 },
 { "as outras declaracoes tipadas continuam iguais",
   "str a = \"oi\"\nint b = \"7\"\nflo c = 1\nbool d = true\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
@@ -1772,8 +1775,34 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return inner(Null)\n}\npost(outer(1))\n", "Null", NULL, 0 },
 { "'def' manda escrever funct",
   "def f(a) {\n    return a\n}\n", "", "a funcao se declara com 'funct'", 2 },
-{ "so 'int funct' e 'bool funct' existem",
-  "char funct f() {\n    return \"a\"\n}\n", "", "so 'int funct' e 'bool funct' existem", 2 },
+/* ── tipo de retorno: TODO tipo vale, 2026-09-08 ───────────────────────────
+ * Era uma lista branca de dois (`int`/`bool`), com `str`/`flo` aceitos calados
+ * e o resto recusado. Uma lista que aceita `dict` e recusa `list` e arbitraria;
+ * agora o que decide e a POSICAO — o que vem colado antes do `funct` e o tipo
+ * de retorno, incluindo nome de classe. So `int` e `bool` mudam o
+ * comportamento; os outros declaram e nao coagem. */
+{ "char funct devolve o valor sem coagir",
+  "char funct f() {\n    return \"a\"\n}\npost(f())\n", "a", NULL, 0 },
+{ "list funct vale como retorno",
+  "list funct f() {\n    return [1, 2]\n}\npost(f())\n", "[1, 2]", NULL, 0 },
+{ "nome de classe vale como tipo de retorno",
+  "class P() {\n    funct __init__(self, n) {\n        self.n = n\n    }\n}\n"
+  "P funct cria(n) {\n    return P(n)\n}\npost(cria(7).n)\n", "7", NULL, 0 },
+/* O apelido resolve pro canonico: `string` E `str`. */
+{ "apelido de tipo vale como retorno",
+  "string funct f() {\n    return \"oi\"\n}\npost(f())\n", "oi", NULL, 0 },
+/* ── o apelido na CABECA dentro de classe, 2026-09-08 ──────────────────────
+ * `public static string funct main()` nao era reconhecido como cabeca de
+ * funct: casava com a regra de campo e nascia um CAMPO chamado `string`, do
+ * tipo `static`. O metodo sumia da classe e o arquivo rodava sem erro nenhum e
+ * sem fazer nada — foi assim que ele apareceu. */
+{ "apelido de tipo na cabeca dentro de classe nao vira campo",
+  "public class C() {\n    public static string funct main() {\n        post(\"rodou\")\n    }\n}\n"
+  "C.main()\n", "rodou", NULL, 0 },
+{ "static colado registra o metodo como estatico",
+  "class C() {\n    static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
+{ "static continua valendo depois do tipo",
+  "class C() {\n    str static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
 
 /* ── import por caminho entre aspas (`import '../x.ps'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da

@@ -105,7 +105,7 @@ post(semret())   # null
 
 ---
 
-## 6.4. Functs tipadas — `int funct` / `bool funct`
+## 6.4. Functs tipadas — o tipo antes do `funct`
 
 Prefixar a funct com `int` ou `bool` muda o **contrato de retorno**: a função
 passa a **nunca propagar erro** (o corpo vira um `try` implícito) e a garantir
@@ -141,8 +141,52 @@ post(quebra())        # 500  (erro engolido)
 > `"7"`, não o inteiro `7`. O `int`/`bool` aqui rege o tratamento de
 > ausência/erro, não uma conversão do valor retornado.
 
-Só `int` e `bool` existem como tipo de retorno: `char funct f()` é
-`SyntaxError: so 'int funct' e 'bool funct' existem`.
+### Qualquer tipo vale como retorno
+
+Não há lista branca. O que vem colado antes do `funct`, depois dos
+modificadores, **é** o tipo de retorno — qualquer tipo da linguagem
+(`str`, `int`, `long`, `flo`, `bool`, `char`, `list`, `dict`, `tup`, `json`,
+`Object`) e também o nome de uma classe sua:
+
+```ps
+str  funct nome()      { return "ana" }
+list funct itens()     { return [1, 2] }
+Pessoa funct criar()   { return Pessoa("ana") }
+```
+
+Não há ambiguidade a resolver: nenhuma outra construção da linguagem tem um
+nome seguido de `funct`.
+
+Os **apelidos** resolvem para o tipo apelidado, e a árvore guarda o canônico —
+`string funct f()` é a mesma coisa que `str funct f()`:
+
+| Escrita | Vale como |
+|---|---|
+| `string`, `String` | `str` |
+| `integer`, `Integer` | `int` |
+| `tuple`, `Tuple` | `tup` |
+| `dictionary`, `Dictionary`, `json`, `JSON` | `dict` |
+| `object` | `Object` |
+
+> **Só `int` e `bool` mudam o comportamento** — o contrato de erro descrito
+> acima. Os outros hoje são só a declaração: a funct devolve o que devolver,
+> sem conversão e sem tratamento de erro.
+
+Isto vale em qualquer posição — solta, dentro de `Entity`/`class` e em lambda —
+e os modificadores vêm em qualquer ordem:
+
+```ps
+public class C() {
+    public static string funct main() {
+        sys.stdout.writeln("Ola mundo!")
+    }
+}
+```
+
+Antes, dentro de uma classe, `string funct` não era reconhecido como cabeça de
+funct: casava com a regra de campo e nascia um **campo chamado `string`, do
+tipo `static`**. O método sumia da classe e o arquivo rodava sem erro nenhum e
+sem fazer nada.
 
 ### 6.4.1. Modificadores colados — `static` e `nonnull`
 

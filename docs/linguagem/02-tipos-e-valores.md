@@ -53,13 +53,12 @@ char c = -1         # ConversionError: -1 nao e um caractere valido
 valor guardado é uma `str` de comprimento 1, e `type()` responde `"str"`. Não
 existe construtor `char()` — pra converter um número use `chr(n)`.
 
-`char funct` não existe — a mensagem é `so 'int funct' e 'bool funct' existem`.
+`char funct` existe, como qualquer outro tipo: o que vem antes do `funct` é o
+tipo de retorno, e não há lista branca — ver a seção 6.4.
 
-Cuidado com o que essa mensagem promete: `str funct` e `flo funct` **são
-aceitos** pelo parser, e o tipo é ignorado (a função devolve o que devolver,
-sem conversão nem checagem). Só `int` e `bool` mudam o comportamento em caso de
-erro — o sentinela 500/False da seção 6. O que a mensagem recusa é `char`,
-`list`, `dict` e os outros tipos de declaração.
+O que o tipo FAZ é outra coisa: só `int` e `bool` mudam o comportamento (o
+sentinela 500/False da seção 6). Os demais declaram o retorno e a função
+devolve o que devolver, sem conversão nem checagem.
 
 ---
 
@@ -138,8 +137,8 @@ if (Null) { post("não entra") }    # Null é falso
 
 ## 2.4. Booleano é um inteiro
 
-Como no Python, `bool` é subtipo de `int`: `True` vale `1` e `False` vale `0` em
-qualquer operação aritmética ou de comparação.
+`bool` é subtipo de `int`: `True` vale `1` e `False` vale `0` em qualquer
+operação aritmética ou de comparação.
 
 ```ps
 post(True + True)     # 2
@@ -241,7 +240,7 @@ Há dois mecanismos, do mais direto ao mais tolerante:
 
 ## 2.8. Torre numérica e promoção
 
-Em operação mista, a linguagem promove seguindo a regra do Python:
+Em operação mista, a linguagem promove assim:
 
 - `int OP int` → `int` (com promoção a **bignum** se estourar 64 bits).
 - Qualquer operando `flo` → o resultado é `flo`.
@@ -254,8 +253,7 @@ post(9223372036854775807 + 1)   # 9223372036854775808  (bignum, sem estourar)
 ```
 
 A divisão `/` é **sempre real** (resultado `flo`), inclusive entre inteiros:
-`7 / 2` é `3.5`. O `%` segue o **sinal do divisor** (como o Python): `-1 % 3` é
-`2`.
+`7 / 2` é `3.5`. O `%` segue o **sinal do divisor**: `-1 % 3` é `2`.
 
 ---
 

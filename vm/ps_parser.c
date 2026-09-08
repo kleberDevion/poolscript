@@ -179,6 +179,75 @@ static int eh_mod_funct(PSToken *t)
 }
 
 static int eh_tipo_kw(PSToken *t);
+static int eh_apelido_tipo(PSToken *t);
+
+/* O tipo de RETORNO de uma funct, no nome canônico — ou NULL se este token não
+ * é um tipo de retorno.
+ *
+ * UM lugar decide isso. Antes a resposta estava espalhada: o `eh_tipo_kw`
+ * (usado também pra declaração de variável), a cabeça de funct e a validação
+ * do statement, cada um com uma lista. O apelido não estava em nenhuma delas, e
+ * `public static string funct main()` dentro de uma classe casava com a regra
+ * de CAMPO: nascia um campo chamado `string`, do tipo `static`, a funct sumia
+ * como membro e o programa rodava sem erro nenhum e sem fazer nada.
+ *
+ * Os apelidos resolvem pro canônico porque a doc diz que a linha do tipo
+ * apelidado vale igual à do tipo apelidado: `string` É `str`. */
+/* TODO tipo vale como retorno — os da linguagem e os que o usuário declara.
+ * Não há lista branca: uma que aceitasse `dict` e recusasse `list` seria
+ * arbitrária, e a linguagem é pra ser simples.
+ *
+ * O que decide é a POSIÇÃO: o que vem colado antes do `funct`, depois dos
+ * modificadores, é o tipo de retorno. Nenhuma outra construção da linguagem
+ * tem um nome seguido de `funct`, então não há ambiguidade a resolver.
+ *
+ * Palavra-chave precisa da lista porque nem toda palavra-chave é tipo:
+ * `return funct` não pode virar "funct que devolve return". */
+static int eh_tipo_de_retorno(PSToken *t)
+{
+    if (!t->texto) return 0;
+    /* `static`/`nonnull` são IDENT e vêm na mesma posição. Sem esta linha eles
+     * seriam lidos como TIPO — e `static funct m()` virava uma funct que
+     * devolve `static`, sem a marca de estática: `C.m()` respondia "não tem
+     * método estático 'm'" com o `static` escrito na tela. */
+    if (eh_mod_funct(t)) return 0;
+    /* Nome do usuário: classe, Entity, model, apelido de tipo. */
+    if (t->type == T_IDENT || t->type == T_IDENT_UPPER) return 1;
+    if (t->type != T_KW) return 0;
+    static const char *const TIPOS[] = {
+        "str", "int", "long", "flo", "bool", "char", "list",
+        "dict", "tup", "json", "JSON", "Object", "object", NULL
+    };
+    for (int i = 0; TIPOS[i]; i++) if (strcmp(t->texto, TIPOS[i]) == 0) return 1;
+    return 0;
+}
+
+/* O nome canônico de um apelido, ou NULL quando o token já é o nome canônico.
+ * A doc diz que a linha do tipo apelidado vale igual: `string` É `str`, e a
+ * árvore guarda `str` pra quem consome não precisar saber das duas grafias. */
+static const char *canonico_de_apelido(PSToken *t)
+{
+    if (!t->texto) return NULL;
+    const char *s = t->texto;
+    if (strcmp(s, "string")     == 0 || strcmp(s, "String")     == 0) return "str";
+    if (strcmp(s, "integer")    == 0 || strcmp(s, "Integer")    == 0) return "int";
+    if (strcmp(s, "tuple")      == 0 || strcmp(s, "Tuple")      == 0) return "tup";
+    if (strcmp(s, "dictionary") == 0 || strcmp(s, "Dictionary") == 0) return "dict";
+    if (strcmp(s, "object")     == 0 || strcmp(s, "Object")     == 0) return "Object";
+    if (strcmp(s, "json")       == 0 || strcmp(s, "JSON")       == 0) return "dict";
+    return NULL;
+}
+
+/* O tipo de retorno deste token, pronto pra ir na árvore. */
+static const char *tipo_retorno_dup(P *p, PSToken *t)
+{
+    const char *c = canonico_de_apelido(t);
+    return c ? dup_str(p, c) : dup_tok(p, t);
+}
+
+#define MSG_TIPO_RETORNO \
+    "antes de 'funct' vem o TIPO de retorno — um tipo da linguagem ou o nome " \
+    "de uma classe"
 
 /* A CABECA de uma declaracao de funcao, olhando a partir de `off`:
  *
@@ -196,7 +265,7 @@ static int cabeca_de_funct(P *p, int off)
         if ((mk->type == T_KW && mk->texto
              && (strcmp(mk->texto, "async") == 0
               || strcmp(mk->texto, "public") == 0 || strcmp(mk->texto, "private") == 0))
-                || eh_tipo_kw(mk) || eh_mod_funct(mk)) { j++; continue; }
+                || eh_tipo_de_retorno(mk) || eh_mod_funct(mk)) { j++; continue; }
         break;
     }
     return eh_kw_funct(espia(p, j)) ? j : -1;
@@ -447,7 +516,7 @@ static PSNode *primario(P *p)
             for (int k = 0; k < ifun; k++) {
                 PSToken *m = espia(p, k);
                 if (m->type == T_KW && m->texto && strcmp(m->texto, "async") == 0) is_async = 1;
-                else if (eh_tipo_kw(m)) tipo = dup_tok(p, m);
+                else if (eh_tipo_de_retorno(m)) tipo = tipo_retorno_dup(p, m);
                 else if (eh_mod_funct(m)) {
                     if (strcmp(m->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
                 }
@@ -2975,7 +3044,7 @@ static PSNode *statement(P *p)
                 if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "async") == 0) is_async = 1;
                 else if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "public") == 0) is_priv = 0;
                 else if (cur->type == T_KW && cur->texto && strcmp(cur->texto, "private") == 0) is_priv = 1;
-                else if (eh_tipo_kw(cur)) tipo = dup_tok(p, cur);
+                else if (eh_tipo_de_retorno(cur)) tipo = tipo_retorno_dup(p, cur);
                 else if (eh_mod_funct(cur)) {
                     if (strcmp(cur->texto, "static") == 0) eh_static = 1; else eh_nonnull = 1;
                 } else break;
@@ -3122,13 +3191,11 @@ static PSNode *statement(P *p)
                 || espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
         PSToken *nx = espia(p, 1);
         if (eh_kw_funct(nx)) {
-            /* `char funct` não existe: só `int funct` e `bool funct`.
-             * Aceitar calado deixaria o tipo de retorno ser ignorado. */
-            if (!eh_tipo_kw(t)) {
-                perro(p, "so 'int funct' e 'bool funct' existem", t);
+            if (!eh_tipo_de_retorno(t)) {
+                perro(p, MSG_TIPO_RETORNO, t);
                 return NULL;
             }
-            const char *tipo = dup_tok(p, t);
+            const char *tipo = tipo_retorno_dup(p, t);
             p->pos++;
             return action_decl(p, 0, tipo);
         }
