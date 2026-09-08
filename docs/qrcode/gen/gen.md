@@ -1,8 +1,8 @@
 # `qrcode.gen(data, save=None, size=10, border=4, color="black", bg="white", name=None, error_correction="L", qr32=None)`
 
-Gera um QR Code com controle de tamanho, cores e correção de erro. Devolve o
-objeto da imagem (com `.save()` e `.bytes()`); se você passar `save=`, o arquivo
-já é gravado.
+Gera um QR Code com controle de tamanho, cores e correção de erro. Devolve um
+[`QRPoolFile`](../../objetos-internos/QRPoolFile.md) (com `.save()` e
+`.bytes()`); se você passar `save=`, o arquivo já é gravado.
 
 ```
 qrcode.gen(data, save=None, size=10, border=4, color="black",

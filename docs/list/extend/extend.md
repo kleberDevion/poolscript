@@ -10,7 +10,7 @@ Anexa TODOS os itens de outra sequência no fim (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 

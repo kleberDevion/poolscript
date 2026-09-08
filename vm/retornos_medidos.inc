@@ -9,6 +9,8 @@
  * Quem devolve o VALOR GUARDADO (d.get, l.pop) fica de fora, com comentario:
  * ali o tipo e o do conteudo, e fixar um seria a amostra falando pelo motor.
  */
+    /* str.get_json: devolve o VALOR do JSON, tipo varia */
+    /* str.get: devolve o VALOR do JSON, tipo varia */
 
     /* str */
     { "str", "upper", "str" },
@@ -28,8 +30,6 @@
     { "str", "rfind", "int" },
     { "str", "count", "int" },
     { "str", "len", "int" },
-    { "str", "get_json", "Null" },
-    { "str", "get", "Null" },
     { "str", "isalpha", "bool" },
     { "str", "isdigit", "bool" },
     { "str", "isnumeric", "bool" },
@@ -142,7 +142,6 @@
     /* nao medido automaticamente: index, rindex, join, replace, maketrans, translate */
 
     /* funcoes de modulo */
-    { "json", "parse", "dict" },
     { "json", "stringify", "str" },
     { "date", "today", "str" },
     { "date", "time", "str" },
@@ -176,7 +175,7 @@
     { "os", "cmd", "Null" },
     { "os", "mkdir", "Null" },
     { "sys", "platform", "str" },
-    { "sys", "RelativePath", "Null" },
+    { "sys", "RelativePath", "str" },
     { "bytes", "new", "bytes" },
     { "bytes", "fromhex", "bytes" },
     { "bytes", "toint", "int" },

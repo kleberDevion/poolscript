@@ -4,7 +4,7 @@ Esvazia o dict (muta).
 
 ## Retorno
 
-null — muta o dict
+Null — muta o dict
 
 ## Exemplos
 

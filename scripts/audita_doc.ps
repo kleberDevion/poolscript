@@ -84,6 +84,60 @@ funct le_titulo(caminho) {
 # como string no motor. Nome levantado pelo USUARIO (`raise MinhaCoisa("x")`) e
 # exceção legitima e sai da conta — por isso o filtro pega so o que o motor
 # poderia emitir.
+# A pasta sob `docs/` que corresponde a cada TIPO da linguagem. O titulo de uma
+# pagina de metodo e `s.upper()`, `l.append()` — o receptor e uma letra, entao
+# quem diz o tipo e o caminho.
+PASTA_DO_TIPO = {"string": "str", "list": "list", "dict": "dict", "bytes": "bytes", "tup": "tup"}
+
+
+# ONDE a pagina declara o retorno. Duas formas convivem no projeto, e as duas
+# valem — exigir so uma faria "corrigir" pagina que ja diz a verdade:
+#
+#   1. secao `## Retorno` (as paginas de metodo de tipo usam)
+#   2. a seta da linha de assinatura, `-> bool` (as de modulo usam), muitas
+#      vezes com a prosa junto: "Devolve **`bool`**: true se achou"
+#
+# Devolve o trecho onde o retorno esta declarado, ou "" se a pagina nao declara
+# em lugar nenhum.
+funct secao_retorno(caminho) {
+    linhas = open(caminho).read().split("\n")
+    i = 0
+    while i < len(linhas) {
+        if linhas[i].strip().startswith("## Retorno") {
+            corpo = []
+            i = i + 1
+            while i < len(linhas) and not linhas[i].strip().startswith("## ") {
+                addEnd(corpo, linhas[i])
+                i = i + 1
+            }
+            return "\n".join(corpo).strip()
+        }
+        i = i + 1
+    }
+    # sem a secao: a seta da assinatura, ou a prosa de "Devolve" das primeiras
+    # linhas (onde a pagina de modulo escreve o contrato)
+    setas = []
+    i = 0
+    while i < len(linhas) and i < 30 {
+        L = linhas[i]
+        if "->" in L {
+            addEnd(setas, L.split("->")[len(L.split("->")) - 1])
+        }
+        if "evolve" in L {
+            # com a linha SEGUINTE junto: a prosa quebra, e o nome do tipo
+            # costuma cair nela ("Devolve um\n[`QRPoolFile`](...)"). Sem isso a
+            # pagina aparecia devendo um tipo que ela declara na linha de baixo.
+            addEnd(setas, L)
+            if i + 1 < len(linhas) {
+                addEnd(setas, linhas[i + 1])
+            }
+        }
+        i = i + 1
+    }
+    return " ".join(setas).strip()
+}
+
+
 funct tipos_do_motor() {
     vistos = {}
     for each nome in os.ls("vm") {
@@ -315,6 +369,105 @@ if __name__ == "main" {
         }
         else {
             divergentes.append([caminho, nome, docp, motorp])
+        }
+    }
+
+    # ── a secao `## Retorno` contra o que o motor PUBLICA ────────────────────
+    #
+    # O `--metadata` passou a publicar `retorna` pra 228 membros, MEDIDO por
+    # `scripts/mede_retornos.ps` (ele chama o membro e olha o `type()`). Antes
+    # eram 69, so os que devolvem objeto, e a doc nao tinha contra o que ser
+    # conferida — 255 das 419 paginas nao tinham nem a secao.
+    #
+    # A conferencia e por MENCAO, nao por igualdade: a secao e prosa
+    # ("int — a posição", "str, sem espaços nas pontas"), e exigir o texto exato
+    # trocaria uma doc boa por uma tabela. O que se cobra e que o tipo do motor
+    # ESTEJA la. Quem nao tem `retorna` publicado fica de fora: sem fonte, nao
+    # ha o que conferir, e inventar seria pior.
+    ret_real = {}
+    for each mod in meta["modulos"].keys() {
+        for each f in meta["modulos"][mod] {
+            if "retorna" in f and f["retorna"] != null {
+                ret_real[mod + "." + f["nome"]] = f["retorna"]
+            }
+        }
+    }
+    for each tp in meta["tipos"].keys() {
+        for each f in meta["tipos"][tp] {
+            if "retorna" in f and f["retorna"] != null {
+                ret_real[tp + "|" + f["nome"]] = f["retorna"]
+            }
+        }
+    }
+
+    ret_sem_secao = []
+    ret_divergente = []
+    ret_ok = 0
+    for each caminho in junta_md(DOCS, []) {
+        t = le_titulo(caminho)
+        if len(t) == 0 {
+            continue
+        }
+        nome = t[0]
+        chave = ""
+        # A MESMA regra de namespace da conferencia de assinatura: o caminho
+        # manda. `docs/jinker/request/get/get.md` documenta o `.get(chave)` do
+        # proxy da requisicao, nao o `request.get` de HTTP — sem isto a pagina
+        # aparecia devendo uma secao "Response" que nao e dela.
+        raiz_doc = caminho.split("/")[1]
+        if nome.split(".")[0] != raiz_doc and not (raiz_doc in PASTA_DO_TIPO) {
+            continue
+        }
+        if nome in ret_real {
+            chave = nome
+        }
+        else {
+            # metodo de tipo: o caminho diz o tipo, o titulo diz o membro
+            raiz = caminho.split("/")[1]
+            if raiz in PASTA_DO_TIPO {
+                curto = nome.split(".")
+                if len(curto) == 2 {
+                    tentativa = PASTA_DO_TIPO[raiz] + "|" + curto[1]
+                    if tentativa in ret_real {
+                        chave = tentativa
+                    }
+                }
+            }
+        }
+        if chave == "" {
+            continue
+        }
+        esperado = ret_real[chave]
+        corpo = secao_retorno(caminho)
+        if corpo == "" {
+            addEnd(ret_sem_secao, [caminho, nome, esperado])
+        }
+        elif esperado in corpo {
+            ret_ok = ret_ok + 1
+        }
+        else {
+            addEnd(ret_divergente, [caminho, nome, esperado, corpo.split("\n")[0]])
+        }
+    }
+
+    post("")
+    post("secao `## Retorno` conferida contra o motor:", ret_ok + len(ret_divergente) + len(ret_sem_secao))
+    post("  batem:", ret_ok)
+    post("  sem a secao:", len(ret_sem_secao))
+    post("  citam outro tipo:", len(ret_divergente))
+    if len(ret_divergente) > 0 {
+        post("")
+        post("RETORNO DIVERGENTE (o motor devolve um tipo, a pagina diz outro):")
+        for each d in ret_divergente {
+            post("  ", d[0])
+            post("      motor:", d[2], " | pagina:", d[3])
+        }
+    }
+    if len(ret_sem_secao) > 0 {
+        post("")
+        post("SEM secao `## Retorno`, e o motor sabe o tipo:")
+        for each d in ret_sem_secao {
+            post("  ", d[0].ljust(52), d[1], "->", d[2])
         }
     }
 

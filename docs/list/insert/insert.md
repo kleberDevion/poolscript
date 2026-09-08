@@ -11,7 +11,7 @@ Insere `item` NA posição `i`, empurrando o resto (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 

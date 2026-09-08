@@ -4,7 +4,7 @@ Inverte a ordem dos itens NO LUGAR (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 

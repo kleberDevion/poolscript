@@ -10,7 +10,7 @@ Remove a PRIMEIRA ocorrência do item (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 

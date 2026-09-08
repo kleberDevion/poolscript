@@ -10,7 +10,7 @@ Anexa UM item no fim da lista (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 

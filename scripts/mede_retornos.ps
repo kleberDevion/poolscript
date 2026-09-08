@@ -59,7 +59,8 @@ AMOSTRAS = {
 # Modulo que precisa de banco, rede ou e-mail fica de fora: melhor a lacuna
 # declarada do que um tipo vindo de uma chamada que falhou.
 CHAMADAS = [
-    ["json", "parse", "json.parse(\"{\\\"a\\\": 1}\")"],
+    # `json.parse` NAO entra: devolve dict, list ou o escalar, conforme o JSON —
+    # medir com um objeto diria `dict` e a tabela mentiria pro editor
     ["json", "stringify", "json.stringify({\"a\": 1})"],
     ["date", "today", "date.today()"],
     ["date", "time", "date.time()"],
@@ -97,7 +98,9 @@ CHAMADAS = [
     ["os", "warn", "os.warn(\"\")"],
     ["os", "mkdir", "os.mkdir(\"/tmp/ps_mr_d\", exist_ok=true)"],
     ["sys", "platform", "sys.platform()"],
-    ["sys", "RelativePath", "sys.RelativePath(\"nao_existe_zz\")"],
+    # com um nome que EXISTE: chamar com inexistente media o caminho de falha
+    # (Null) e a tabela diria que RelativePath sempre devolve Null
+    ["sys", "RelativePath", "sys.RelativePath(os.ls(\".\")[0][\"name\"])"],
     ["bytes", "new", "bytes.new(\"a\")"],
     ["bytes", "fromhex", "bytes.fromhex(\"61\")"],
     ["bytes", "tohex", "bytes.tohex(bytes.new(\"a\"))"],
@@ -126,7 +129,9 @@ funct mede_modulos() {
     quantos_mod = 0
     sem_medida = []
     for each c in CHAMADAS {
-        fonte = "import " + c[0] + "\npost(type(" + c[2] + "))\n"
+        # `import os` sempre junto: varias chamadas de exemplo precisam dele
+        # pra montar o argumento (arquivo que existe, caminho do cwd...)
+        fonte = "import os\nimport " + c[0] + "\npost(type(" + c[2] + "))\n"
         r = roda(fonte)
         if r == "" {
             addEnd(sem_medida, c[0] + "." + c[1])
@@ -141,6 +146,14 @@ funct mede_modulos() {
     post("modulos".ljust(8), "medidos:", str(quantos_mod).rjust(3), "| nao medidos:", len(sem_medida))
     return quantos_mod
 }
+
+
+# Membros cujo retorno depende do CONTEUDO e que as duas amostras nao pegam,
+# porque as duas dao o mesmo tipo pelo motivo errado. `"aBc dEf".get_json()`
+# devolve Null nas duas — nao porque get_json devolva Null, mas porque nenhuma
+# das duas e JSON. Medir aqui produziria `Null` e a tabela mentiria pro editor
+# e pro auditor. Ficam de fora, nomeados.
+DEPENDE_DO_CONTEUDO = ["str.get", "str.get_json"]
 
 
 funct membros_de(tipo) {
@@ -191,6 +204,10 @@ funct mede_tipo(tipo) {
     naomediu = []
     for each membro in membros_de(tipo) {
         nome = membro["nome"]
+        if (tipo + "." + nome) in DEPENDE_DO_CONTEUDO {
+            addEnd(LINHAS, "    /* " + tipo + "." + nome + ": devolve o VALOR do JSON, tipo varia */")
+            continue
+        }
         eh_prop = "kind" in membro and membro["kind"] == "property"
         resultado = ""
         conf = ""

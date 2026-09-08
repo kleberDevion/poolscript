@@ -4,7 +4,7 @@ Esvazia a lista (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 

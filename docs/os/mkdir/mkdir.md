@@ -3,7 +3,7 @@
 Cria uma pasta (diretório).
 
 ```
-os.mkdir(path: str, exist_ok: bool = false) -> None
+os.mkdir(path: str, exist_ok: bool = false) -> Null
 ```
 
 | Parâmetro | Padrão | O que é |

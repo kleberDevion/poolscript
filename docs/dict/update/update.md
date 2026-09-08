@@ -10,7 +10,7 @@ Mescla os pares de outro dict; chave repetida é sobrescrita (muta).
 
 ## Retorno
 
-null — muta o dict
+Null — muta o dict
 
 ## Exemplos
 

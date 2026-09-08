@@ -4,7 +4,7 @@ Ordena crescente NO LUGAR (muta).
 
 ## Retorno
 
-null — muta a lista
+Null — muta a lista
 
 ## Exemplos
 
