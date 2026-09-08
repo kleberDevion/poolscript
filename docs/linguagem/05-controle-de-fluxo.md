@@ -91,9 +91,8 @@ Regras e limites (verificados):
   }
   ```
 
-- **Desempacotamento no cabeçalho vale**, como no Python: `for each a, b in
-  pares` abre cada elemento em dois nomes. Vale com quantos nomes quiser e
-  aninhado.
+- **Desempacotamento no cabeçalho vale**: `for each a, b in pares` abre cada
+  elemento em dois nomes. Vale com quantos nomes quiser e aninhado.
 
   ```ps
   for each nome, idade in [["ana", 30], ["bia", 25]] {
@@ -105,8 +104,8 @@ Regras e limites (verificados):
   }
   ```
 
-  É a mesma máquina do `a, b = [1, 2]`, e por isso as recusas são as mesmas —
-  e são as do CPython: elemento com itens demais dá
+  É a mesma máquina do `a, b = [1, 2]`, e por isso as recusas são as mesmas:
+  elemento com itens demais dá
   `ValueError: too many values to unpack (expected 2)`; elemento que não é
   sequência dá `TypeError: cannot unpack non-iterable int object`.
 
@@ -128,8 +127,8 @@ Regras e limites (verificados):
 
 ### 5.3.1. `range` — sequência de inteiros
 
-`range` gera os inteiros para contar num `for each`. Tem três formas (iguais às
-do Python; o fim é **exclusivo**):
+`range` gera os inteiros para contar num `for each`. Tem três formas, e o fim é
+sempre **exclusivo**:
 
 | Forma | Gera |
 |---|---|
@@ -160,7 +159,7 @@ nums = [1, 2, 3, 4]
 post([n * 2 for each n in nums])        # [2, 4, 6, 8]
 ```
 
-A forma é a do Python, escrita com o `for each` da linguagem:
+A forma, escrita com o `for each` da linguagem:
 
 ```
 [ <expressão> for each <nome> in <iterável> ]
@@ -196,8 +195,8 @@ n = "de fora"
 post([n for each n in [1, 2]], n)       # [1, 2] de fora
 ```
 
-Como **argumento único** de uma chamada, os colchetes são dispensáveis — é a
-forma curta do Python, e vale em qualquer função:
+Como **argumento único** de uma chamada, os colchetes são dispensáveis, e isso
+vale em qualquer função:
 
 ```ps
 post(n * 2 for each n in nums)          # [2, 4, 6, 8]
@@ -244,8 +243,8 @@ for each n in range(100) {
 
 ## 5.4.1. `pass` — o statement que não faz nada
 
-`pass` é um **no-op**, igual ao do Python: existe só pra ocupar o lugar de um
-statement onde a linguagem exige um corpo, mas você não tem nada a fazer ali.
+`pass` é um **no-op**: existe só pra ocupar o lugar de um statement onde a
+linguagem exige um corpo, mas você não tem nada a fazer ali.
 Não gera bytecode nenhum.
 
 ```ps
@@ -362,8 +361,8 @@ sem laço — `int(2) count in xs` e `int in xs count` — na seção 3.10.)
 ## 5.7. `if __name__ == "main"` — código só quando é o principal
 
 O bloco `if __name__ == "main"` roda **apenas quando o arquivo é executado
-direto**, e é pulado quando ele é **importado** por outro. É o
-`if __name__ == "__main__":` do Python — o lugar do ponto de entrada.
+direto**, e é pulado quando ele é **importado** por outro. É o lugar do ponto
+de entrada do programa.
 
 Ele é reconhecido pela **forma**, não avaliando a condição: no arquivo
 executado, `__name__` vale o caminho dele (é o que se passa pro `Jinker`, por

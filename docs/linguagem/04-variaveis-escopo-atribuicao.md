@@ -104,8 +104,7 @@ substituir um trecho, monte a lista nova.
 
 ## 4.5. Desempacotamento (unpacking)
 
-Vários alvos de uma vez, no estilo Python. O lado direito é distribuído pelos
-alvos à esquerda.
+Vários alvos de uma vez: o lado direito é distribuído pelos alvos à esquerda.
 
 ```ps
 a, b = 1, 2                 # a=1, b=2
@@ -132,7 +131,7 @@ o.x, o.y = 5, 6             # dois membros de uma Entity
 - Um único alvo pode ter `*` (recebe uma lista com o que sobrar); só um `*` por
   nível.
 - A quantidade de alvos tem que casar com a de valores (fora o `*`).
-- A ordem é a do Python: o lado **direito inteiro** é avaliado primeiro, depois
+- A ordem: o lado **direito inteiro** é avaliado primeiro, depois
   a quantidade é conferida, e só então os alvos recebem — da esquerda pra
   direita, cada índice calculado na hora de escrever nele.
 - Fatia continua fora (`l[0:2], x = ...`), pelo mesmo motivo de 4.4: `l[0:2] =`
@@ -158,8 +157,8 @@ if true {
 post(dentro)        # NameError: name 'dentro' is not defined
 ```
 
-O tropeço mais comum de quem vem do Python é criar a variável **nos dois ramos**
-de um `if`/`else` e usá-la depois — na PoolScript isso é o mesmo erro. Declare
+O tropeço mais comum é criar a variável **nos dois ramos** de um `if`/`else` e
+usá-la depois — ela não existe fora do bloco. Declare
 o nome **antes** do bloco (aí a atribuição dentro dele é write-through, 4.6.2):
 
 ```ps
@@ -294,8 +293,8 @@ sem ele, `nova = 1` dentro da funct e `post(nova)` fora dá
 `using <expr> as <nome> { … }` avalia a expressão, liga ao nome e roda o bloco; ao
 terminar (**por saída normal ou por erro**) ele **fecha o recurso**, se for um
 dos tipos que a linguagem sabe fechar — **arquivo**, **conexão de banco**
-(com `commit` antes de fechar) e **planilha** (salva ao sair). É o `with` do
-Python: garante a liberação mesmo se o bloco estourar. Para um valor que não é
+(com `commit` antes de fechar) e **planilha** (salva ao sair). Garante a
+liberação mesmo se o bloco estourar. Para um valor que não é
 um desses recursos, o `using` só executa o bloco (não há o que fechar).
 
 ```ps

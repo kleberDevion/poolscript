@@ -34,6 +34,6 @@ post("banana".count("na", 3), "banana".count("a", 1, 4))
 
 ## Bordas
 
-- substring vazia conta `len + 1` (uma "posição" entre cada caractere), como no Python
+- substring vazia conta `len + 1` — uma "posição" entre cada caractere
 
 [← índice](../string.md)

@@ -25,8 +25,7 @@ if (len(sys.argv) > 0) {
 }
 ```
 
-`argv[0]` é o **primeiro argumento seu**, não o nome do script — diferente do
-Python. O nome do script não entra na lista.
+`argv[0]` é o **primeiro argumento seu**: o nome do script NÃO entra na lista.
 
 > Esta página dizia o contrário, e o exemplo (`len(sys.argv) > 1` / `argv[1]`)
 > ensinava a pular o primeiro argumento de verdade. `docs/sys.md` sempre esteve

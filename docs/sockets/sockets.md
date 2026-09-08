@@ -1,8 +1,7 @@
-# sockets — sockets de rede crus (a API do `socket` do Python)
+# sockets — sockets de rede crus
 
-A lib `sockets` traz **toda a API do módulo `socket` do Python** pra
-PoolScript: sockets TCP, UDP e UNIX crus — cliente **e** servidor — mais
-resolução de nomes, conversões de endereço/byte-order e as constantes.
+A lib `sockets` traz os sockets TCP, UDP e UNIX crus — cliente **e** servidor —
+mais resolução de nomes, conversões de endereço/byte-order e as constantes.
 É a camada por baixo de qualquer protocolo: com ela você implementa o SEU
 protocolo, do zero, sem framework no meio.
 
@@ -14,7 +13,7 @@ Não confundir com o **jinker** (framework web HTTP/WebSocket) — o jinker é u
 SERVIDOR pronto; a `sockets` é o metal cru por baixo, pra quando você quer
 controlar cada byte da conexão.
 
-O espelho é **1:1 com o Python**: mesmos nomes, mesmos formatos —
+Os formatos são os do sistema operacional —
 
 - endereço = tup `(host, porta)` (IPv6: `(host, porta, flowinfo, scope_id)`;
   `AF_UNIX`: caminho str);
@@ -60,7 +59,7 @@ NÃO trava os outros requests (o mesmo async uniforme de DB/HTTP/mail).
 | `detach()` | devolve o fd e SOLTA a posse (fileno vira −1) |
 | `dup()` | duplica → outro socket |
 
-Campos (sem parênteses, como no Python): **`family`**, **`type`**, **`proto`**.
+Campos, lidos sem parênteses: **`family`**, **`type`**, **`proto`**.
 
 `using sockets.socket() as s { ... }` fecha sozinho no fim do bloco.
 
@@ -94,16 +93,108 @@ O timeout estourado dá erro com **"timed out"** na mensagem — capturável com
 
 ## Constantes
 
-As mesmas do Python — famílias `AF_INET`, `AF_INET6`, `AF_UNIX`, `AF_UNSPEC`,
-`AF_PACKET`; tipos `SOCK_STREAM`, `SOCK_DGRAM`, `SOCK_RAW`, `SOCK_SEQPACKET`;
-opções `SOL_SOCKET`, `SO_REUSEADDR`, `SO_REUSEPORT`, `SO_KEEPALIVE`,
-`SO_BROADCAST`, `SO_LINGER`, `SO_RCVBUF`, `SO_SNDBUF`, `SO_ERROR`,
-`SO_RCVTIMEO`, `SO_SNDTIMEO`, `TCP_NODELAY`, `TCP_KEEPIDLE`...; protocolos
-`IPPROTO_TCP`, `IPPROTO_UDP`, `IPPROTO_IP`, `IPPROTO_ICMP`; shutdown
-`SHUT_RD`, `SHUT_WR`, `SHUT_RDWR`; flags `MSG_PEEK`, `MSG_WAITALL`,
-`MSG_DONTWAIT`...; getaddrinfo `AI_PASSIVE`, `AI_CANONNAME`,
-`NI_NUMERICHOST`...; e `SOMAXCONN`, `INADDR_ANY`, `IP_TTL`,
-`IP_ADD_MEMBERSHIP`, `IPV6_V6ONLY` etc.
+São **63**, e o valor de cada uma é o do sistema — a lista abaixo é a tabela
+`sockets` do motor, inteira. (Antes esta seção era um parágrafo com "…" e
+"etc.": nomeava umas e escondia as outras, e quem procurava `IP_TTL` não
+achava.)
+
+**Família do endereço** — 1º argumento de `socket()`:
+
+| Constante | Para |
+|---|---|
+| `AF_INET` | IPv4 |
+| `AF_INET6` | IPv6 |
+| `AF_UNIX` | soquete local por caminho de arquivo |
+| `AF_UNSPEC` | "tanto faz" — só em `getaddrinfo` |
+| `AF_PACKET` | quadro cru da camada de enlace (precisa de privilégio) |
+
+**Tipo do soquete** — 2º argumento:
+
+| Constante | Para |
+|---|---|
+| `SOCK_STREAM` | fluxo confiável e ordenado (TCP) |
+| `SOCK_DGRAM` | datagrama solto (UDP) |
+| `SOCK_RAW` | pacote cru, sem a camada de transporte |
+| `SOCK_SEQPACKET` | datagrama confiável e ordenado |
+
+**Nível e opções** — `setsockopt(nivel, opcao, valor)` / `getsockopt`:
+
+| Constante | O que controla |
+|---|---|
+| `SOL_SOCKET` | o NÍVEL das opções `SO_*` abaixo |
+| `SO_REUSEADDR` | reusar o endereço em `TIME_WAIT` — o que evita "Address already in use" ao reiniciar |
+| `SO_REUSEPORT` | vários processos escutando a MESMA porta |
+| `SO_KEEPALIVE` | sondar a conexão ociosa pra detectar queda |
+| `SO_BROADCAST` | permitir envio pra endereço de difusão |
+| `SO_LINGER` | quanto o `close()` espera pelo que falta enviar |
+| `SO_RCVBUF` / `SO_SNDBUF` | tamanho do buffer de recepção / envio |
+| `SO_ERROR` | lê e LIMPA o erro pendente do soquete |
+| `SO_RCVTIMEO` / `SO_SNDTIMEO` | prazo de `recv` / `send` |
+| `SO_OOBINLINE` | entregar dado urgente no fluxo normal |
+| `SO_DONTROUTE` | não usar a tabela de rotas |
+| `SO_TYPE` | só leitura: o tipo com que o soquete nasceu |
+| `TCP_NODELAY` | desliga o Nagle — manda o pacote pequeno na hora |
+| `TCP_KEEPIDLE` | ocioso antes da primeira sonda |
+| `TCP_KEEPINTVL` | intervalo entre sondas |
+| `TCP_KEEPCNT` | quantas sondas sem resposta derrubam |
+| `IP_TTL` | tempo de vida do pacote (saltos) |
+| `IP_MULTICAST_TTL` | idem, para multicast |
+| `IP_MULTICAST_LOOP` | receber de volta o que este host enviou |
+| `IP_ADD_MEMBERSHIP` / `IP_DROP_MEMBERSHIP` | entrar / sair de um grupo multicast |
+| `IPV6_V6ONLY` | soquete IPv6 aceita SÓ IPv6 (não mapeia IPv4) |
+
+**Protocolo** — 3º argumento de `socket()`:
+
+| Constante | Para |
+|---|---|
+| `IPPROTO_IP` | o padrão do tipo escolhido |
+| `IPPROTO_TCP` / `IPPROTO_UDP` / `IPPROTO_ICMP` | forçar o protocolo |
+| `IPPROTO_RAW` | cru, com o cabeçalho IP por sua conta |
+
+**Desligar meia conexão** — `shutdown(como)`:
+
+| Constante | Fecha |
+|---|---|
+| `SHUT_RD` | a leitura |
+| `SHUT_WR` | a escrita (o outro lado vê o fim do fluxo) |
+| `SHUT_RDWR` | as duas |
+
+**Flags de `send`/`recv`**:
+
+| Constante | O que faz |
+|---|---|
+| `MSG_PEEK` | lê SEM tirar da fila |
+| `MSG_WAITALL` | só volta com tudo o que se pediu |
+| `MSG_DONTWAIT` | não bloqueia nesta chamada |
+| `MSG_OOB` | dado urgente (fora de banda) |
+| `MSG_DONTROUTE` | ignora a tabela de rotas |
+| `MSG_TRUNC` | (em `recv`) informa o tamanho REAL, mesmo truncado |
+
+**`getaddrinfo` (`AI_*`) e `getnameinfo` (`NI_*`)**:
+
+| Constante | O que pede |
+|---|---|
+| `AI_PASSIVE` | endereço pra ESCUTAR (bind), não pra conectar |
+| `AI_CANONNAME` | trazer também o nome canônico |
+| `AI_NUMERICHOST` | o host já é numérico — não resolver |
+| `AI_NUMERICSERV` | o serviço já é número de porta |
+| `AI_ADDRCONFIG` | só famílias que a máquina tem configuradas |
+| `AI_V4MAPPED` | IPv4 aparece mapeado em IPv6 |
+| `AI_ALL` | com `AI_V4MAPPED`, devolve IPv4 **e** IPv6 |
+| `NI_NUMERICHOST` | devolver o IP, não o nome |
+| `NI_NUMERICSERV` | devolver o número da porta, não o nome do serviço |
+| `NI_NOFQDN` | só a primeira parte do nome |
+| `NI_NAMEREQD` | falhar se não houver nome (em vez de devolver o IP) |
+| `NI_DGRAM` | consultar como UDP |
+
+**Endereços e limites**:
+
+| Constante | Vale |
+|---|---|
+| `SOMAXCONN` | maior fila de espera que o sistema aceita em `listen()` |
+| `INADDR_ANY` | "todas as interfaces" (`0.0.0.0`) |
+| `INADDR_LOOPBACK` | só a máquina local (`127.0.0.1`) |
+| `INADDR_BROADCAST` | difusão (`255.255.255.255`) |
 
 ---
 
@@ -198,7 +289,7 @@ u.close()
 True
 ```
 
-Cliente HTTP na unha (é literalmente o exemplo clássico do Python):
+Cliente HTTP na unha:
 
 ```ps
 import sockets

@@ -2,9 +2,9 @@
 
 Testa se o texto **inteiro** casa com o padrão. Devolve **`bool`**.
 
-É **o mesmo** que [`regex.match()`](../match/match.md) — existe porque este é o
-nome que o `re` do Python usa pra essa semântica, e o `match` da PoolScript já
-casa a string toda (ao contrário do `re.match`, que casa só o começo).
+É **o mesmo** que [`regex.match()`](../match/match.md) — existe porque o nome
+diz a semântica em voz alta: casa a string TODA. Quem quer "em algum lugar"
+usa [`regex.search()`](../search/search.md).
 
 ```
 regex.fullmatch(pattern: str, string: str, flags=0) -> bool

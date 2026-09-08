@@ -38,7 +38,7 @@ load("config/producao.env")
 ```
 
 Sem argumento, `load()` sobe nos diretórios a partir do atual até achar um
-`.env` — igual ao comportamento do python-dotenv.
+`.env`.
 
 ---
 

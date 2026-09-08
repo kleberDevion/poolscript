@@ -1,6 +1,6 @@
 # regex — Expressões Regulares
 
-Wrapper fino sobre o `re` do Python.
+Motor de expressões regulares do próprio `pool` (`vm/ps_regex.c`).
 
 ```
 from regex import match, search, findall, sub, split, escape

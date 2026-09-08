@@ -19,6 +19,6 @@ post(d.keys())
 
 ## Bordas
 
-- a ordem é a de inserção, como no Python 3.7+
+- a ordem é a de **inserção** — o dict guarda o array denso nessa ordem
 
 [← índice](../dict.md)

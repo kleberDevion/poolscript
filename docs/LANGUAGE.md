@@ -164,7 +164,7 @@ while true {
 
 ### Palavras reservadas não podem virar nome
 
-Como no Python, uma palavra reservada é recusada onde um nome seria **ligado** —
+Uma palavra reservada é recusada onde um nome seria **ligado** —
 variável, parâmetro, `funct`, `Entity`, `model`, campo, variável de loop, de
 `catch`, de `global` e alvo de desempacotamento:
 
@@ -269,7 +269,7 @@ nome desconhecido, **não** é tratado como cor — o `<` volta a ser o operador
 
 ```
 lista = [1, 2, 3]
-tupla = (1, 2, 3)            # imutável (implementada como tuple do Python)
+tupla = (1, 2, 3)            # imutável
 dicionario = {"a": 1, "b": 2}
 ```
 
@@ -285,8 +285,7 @@ Builtins de lista: `addEnd(l, v)`, `removeEnd(l)`, `addStart(l, v)`,
 
 ## Unpacking (desempacotamento de tuplas)
 
-Funciona como no Python — atribuição múltipla a partir de uma lista/tupla/
-string do lado direito:
+Atribuição múltipla a partir de uma lista/tupla/string do lado direito:
 
 ```
 a, b = 1, 2                  # múltiplo direto
@@ -298,7 +297,7 @@ a, (b, c) = 1, (2, 3)         # aninhado
 a, b = "hi"                   # string também é iterável: a="h", b="i"
 ```
 
-**Star / rest**, igual ao Python:
+**Star / rest**:
 
 ```
 a, *resto = [1, 2, 3, 4]      # a=1, resto=[2, 3, 4]  (resto é sempre list)
@@ -307,13 +306,13 @@ a, *meio, z = [1, 2, 3, 4, 5] # a=1, meio=[2, 3, 4], z=5
 a, = [5]                      # vírgula final — desempacota 1 elemento
 ```
 
-Regras (idênticas ao Python):
+Regras:
 - No máximo **um** `*alvo` por nível de aninhamento — dois `*` no mesmo nível
   é erro de sintaxe.
 - `*resto = [...]` **sem vírgula nenhuma** é erro de sintaxe — precisa de
   `*resto, = [...]`.
-- Aridade errada levanta `ValueError`, com a mensagem do CPython — que diz os
-  DOIS números, e por isso resolve sozinha:
+- Aridade errada levanta `ValueError`, e a mensagem diz os DOIS números, por
+  isso resolve sozinha:
   `a, b = [1, 2, 3]` → `too many values to unpack (expected 2)`;
   `a, b, c = [1, 2]` → `not enough values to unpack (expected 3, got 2)`;
   com estrela, `a, b, *c = [1]` → `not enough values to unpack (expected at
@@ -347,7 +346,7 @@ in  not in              # pertencimento (`v in lista`, `v not in lista`)
 |  ^  &  ~  <<  >>      # bitwise — só entre int (bool/flo/str dão erro)
 ```
 
-Os bitwise seguem a precedência do Python — do mais fraco pro mais forte:
+Os bitwise, do mais fraco pro mais forte:
 `|`, `^`, `&`, `<<`/`>>`. Ligam mais forte que comparação e mais fraco que
 `+`/`-`, então `2 + 3 << 1` é `(2 + 3) << 1` = `10`. `~` é unário.
 
@@ -426,8 +425,7 @@ funcionando.
 
 **`global`**: dentro de uma `funct`, declara que um nome se
 refere à variável do escopo global — leituras e escritas passam a atingir
-direto o global, em vez de criar/usar uma variável local (igual ao `global`
-do Python):
+direto o global, em vez de criar/usar uma variável local:
 
 ```
 contador = 0
@@ -524,7 +522,7 @@ executa o resto do corpo da função geradora).
 ## `try` / `catch` / `finally`
 
 **Precisa de pelo menos um `catch`** — `try { ... } finally { ... }` sem
-nenhum `catch` **não é sintaxe válida** (diferente do Python).
+nenhum `catch` **não é sintaxe válida**.
 
 ```
 try {

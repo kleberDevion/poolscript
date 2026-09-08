@@ -33,6 +33,6 @@ post(map([1, 2, 3], dobro))
 
 ## Bordas
 
-- a ordem dos argumentos é INVERSA à do Python: lista primeiro, função depois
+- a ordem dos argumentos é **lista primeiro, função depois**
 
 [← índice](../builtins.md)

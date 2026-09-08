@@ -1,8 +1,8 @@
 # sqlite3 — Banco SQLite embutido
 
 Banco SQL **local, num arquivo** (ou em memória), sem servidor: o `sqlite3` já
-vem embutido, sem instalar nada. A API é a mesma do Python puro — `connect` →
-`cursor` → `execute` → `fetch`.
+vem embutido, sem instalar nada. O caminho é `connect` → `cursor` → `execute`
+→ `fetch`.
 
 ```
 import sqlite3

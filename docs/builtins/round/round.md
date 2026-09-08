@@ -29,6 +29,6 @@ post(round(3.567, 2), round(2.5))
 
 ## Bordas
 
-- arredondamento de banco (half-to-even): `round(2.5)` → 2, como no Python
+- arredondamento de banco (half-to-even): `round(2.5)` → 2, `round(3.5)` → 4
 
 [← índice](../builtins.md)

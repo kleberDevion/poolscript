@@ -1,7 +1,7 @@
 # `bytes.slice(b, ini=0, fim=None)`
 
-Recorta uma **fatia** dos bytes, de `ini` (inclusive) até `fim` (exclusive) —
-mesma semântica de fatia do Python. Índices negativos contam a partir do fim.
+Recorta uma **fatia** dos bytes, de `ini` (inclusive) até `fim` (exclusive).
+Índices negativos contam a partir do fim.
 
 ```
 bytes.slice(b: bytes, ini: int = 0, fim: int = None) -> bytes
@@ -21,7 +21,8 @@ bytes.slice(b, -2)      # b'lo'    — os 2 últimos
 bytes.slice(b, 0, -1)   # b'Hell'  — tudo menos o último
 ```
 
-Índices fora do range são recortados (não dão erro) — igual às fatias do Python.
+Índices fora do range são recortados, não dão erro — o mesmo que a fatia de
+`str` e `list` faz.
 
 ---
 

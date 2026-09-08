@@ -46,8 +46,8 @@ post(1 + 2 << 3)     # 24   — `+` (10) antes de `<<` (9): (1 + 2) << 3
 post(not 1 == 1)     # False — `==` (5) antes de `not` (4): not (1 == 1)
 ```
 
-> **`not`/`!` é mais fraco que a comparação** (nível 4 < nível 5), como no
-> Python. `not a == b` é `not (a == b)`, nunca `(not a) == b`. Para negar só o
+> **`not`/`!` é mais fraco que a comparação** (nível 4 < nível 5):
+> `not a == b` é `not (a == b)`, nunca `(not a) == b`. Para negar só o
 > operando, use parênteses: `(not a) == b`.
 
 Use **parênteses** `(…)` sempre que quiser forçar uma ordem diferente da tabela
@@ -85,8 +85,8 @@ Para o quociente **inteiro** existe `//` — ver 3.2.3.
 
 ### 3.2.2. Módulo segue o sinal do divisor
 
-`%` usa a semântica de piso (a mesma do Python): o resto tem o **sinal do
-divisor**, não o do dividendo.
+`%` usa a semântica de **piso**: o resto tem o **sinal do divisor**, não o do
+dividendo.
 
 ```ps
 post(-7 % 3)    # 2    (não -1)
@@ -95,9 +95,8 @@ post(7 % -3)    # -2
 
 ### 3.2.3. `//` — divisão inteira
 
-`//` devolve o quociente com **piso** (arredonda para baixo, não trunca para
-zero), como no Python. Entre inteiros o resultado é `int`; com qualquer `flo`
-envolvido é `flo`.
+`//` devolve o quociente com **piso** — arredonda para baixo, não trunca para
+zero. Entre inteiros o resultado é `int`; com qualquer `flo` envolvido é `flo`.
 
 ```ps
 post(7 // 2)      # 3
@@ -133,7 +132,7 @@ post(2 ** 100)       # 1267650600228229401496703205376   (bignum)
 post(1.5 ** 2)       # 2.25
 ```
 
-A precedência dele tem três regras, todas as do Python:
+A precedência dele tem três regras:
 
 ```ps
 post(-2 ** 2)        # -4      liga mais FORTE que o unário à esquerda
@@ -155,7 +154,7 @@ post(pow(3, 200, 1000))   # 1
 ### 3.2.4. Repetição de sequência
 
 `*` entre uma **sequência** e um **int** repete a sequência — vale para `list`,
-`tup` e `str`, igual ao Python:
+`tup` e `str`:
 
 ```ps
 post([0] * 3)        # [0, 0, 0]
@@ -192,7 +191,7 @@ post(f"n = {5}")         # "n = 5"    (idiomático)
 
 O texto muda conforme quem está à **esquerda**: com sequência à esquerda o erro
 diz qual dos dois lados é o estranho (`not "int"`); nos outros casos ele lista
-os dois. É a mesma distinção do CPython.
+os dois.
 
 `-`, `/`, `%` com qualquer `str` envolvida também são erro
 (`unsupported operand type(s) for -: 'str' and 'int'`). `*` é a exceção: com
@@ -296,10 +295,10 @@ if x != null and x > 0 {
 
 ### 3.3.4. Comparações são associativas à ESQUERDA (não encadeiam)
 
-Este é um ponto onde a PoolScript difere do Python. `a < b < c` **não** é o
-encadeamento matemático `(a < b) and (b < c)`; é a avaliação normal à esquerda
-`(a < b) < c` — e como `a < b` é um `bool` (0/1), o segundo `<` compara esse
-bool com `c`.
+`a < b < c` **não** é o encadeamento matemático `(a < b) and (b < c)`; é a
+avaliação normal à esquerda `(a < b) < c` — e como `a < b` é um `bool` (0/1), o
+segundo `<` compara esse bool com `c`. Quem quer o encadeamento escreve os dois
+lados: `a < b and b < c`.
 
 ```ps
 post(1 < 2 < 3)   # True   → (1<2)=True, True<3 → 1<3 → True  (coincidência)
@@ -337,11 +336,11 @@ r2 = false and f()    # f() NÃO roda
 r3 = false or f()     # f() roda
 ```
 
-### 3.4.2. Resultado é sempre `bool` (diferente do Python)
+### 3.4.2. Resultado é sempre `bool`
 
-Em Python, `0 or "x"` devolve `"x"` (o operando). Aqui **não**: os operadores
-lógicos sempre devolvem um `bool`, resultado da avaliação de verdade dos
-operandos (ver *truthiness* na seção 2).
+Os operadores lógicos **não devolvem o operando** — devolvem sempre um `bool`,
+resultado da avaliação de verdade dos operandos (ver *truthiness* na seção 2).
+`0 or "x"` é `True`, não `"x"`.
 
 ```ps
 post(0 or "x")       # True    (não "x")
@@ -350,16 +349,16 @@ post(1 and 0)        # False
 post(not 0)          # True
 ```
 
-> Consequência prática: o idioma "valor padrão" do Python
-> (`nome = entrada or "anônimo"`) **não** funciona aqui — `or` devolveria
-> `True`, não o texto. Use um ternário: `nome = entrada if entrada else "anônimo"`.
+> Consequência prática: `nome = entrada or "anônimo"` **não** dá o valor
+> padrão — `or` devolve `True`, não o texto. Use um ternário:
+> `nome = entrada if entrada else "anônimo"`.
 
 ---
 
 ## 3.5. Identidade de tipo — `is`, `is not`
 
-Aqui `is` **não** é a identidade de objeto do Python. É o **operador de
-verificação de tipo**: `valor is Tipo` pergunta se `valor` é daquele tipo, e
+`is` **não** compara identidade de objeto. É o **operador de verificação de
+tipo**: `valor is Tipo` pergunta se `valor` é daquele tipo, e
 `Tipo is Tipo` compara dois tipos. O lado direito costuma ser um nome de tipo
 (`int`, `str`, `flo`, `bool`, `list`, `dict`, `tup`, `json`).
 
@@ -376,9 +375,8 @@ post(x is not dict)   # True
 `json` e `dict` são o mesmo tipo, então `d is json` e `d is dict` coincidem
 (ver seção 2). Para obter o nome do tipo como texto, use `type(x)`.
 
-**`x is Null`** vale, e é o idioma pro teste de ausência — o equivalente do
-`x is None` do Python. `type(null)` é literalmente `"Null"`, então ali o nome
-ocupa a posição de tipo com sentido.
+**`x is Null`** vale, e é o idioma pro teste de ausência. `type(null)` é
+literalmente `"Null"`, então ali o nome ocupa a posição de tipo com sentido.
 
 ### `is` com literal à direita é erro
 
@@ -401,10 +399,9 @@ post(x is (1, 2), x is {"a": 1}, x is [1])   # False False False
 
 **Por quê.** Antes, lado direito que não era tipo caía em **igualdade de valor
 sem avisar**: `x is 0` digitado no lugar de `x == 0` virava comparação, dava o
-resultado "certo" e nunca reclamava — até o dia em que não desse. O CPython não
-deixa passar tampouco; ele emite `SyntaxWarning: "is" with 'int' literal. Did
-you mean "=="?`. Aqui é erro, porque a linguagem não tem canal de aviso e foi
-justamente o silêncio que criou o problema.
+resultado "certo" e nunca reclamava — até o dia em que não desse. Aqui é erro,
+e não aviso, porque a linguagem não tem canal de aviso e foi justamente o
+silêncio que criou o problema.
 
 O erro é de **compilação**, então o `pool --check` do editor já o mostra.
 `x is y` com dois nomes continua valendo: `y` pode guardar um tipo.
@@ -462,7 +459,7 @@ post(~true)     # TypeError: bad operand type for unary ~: 'bool'
 
 Precedência entre eles (do mais forte pro mais fraco): `<<`/`>>` (9), `&` (8),
 `^` (7), `|` (6) — todos **mais fortes** que a comparação e **mais fracos** que
-`+`/`-`, exatamente como no Python.
+`+`/`-`.
 
 ---
 

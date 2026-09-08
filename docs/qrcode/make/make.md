@@ -24,8 +24,8 @@ img.save("site.png")
 
 ## `make` vs `gen`
 
-- **`make`** — atalho: devolve a imagem, você chama `.save()`. Nomes de
-  parâmetro no estilo da lib Python (`fill_color`, `back_color`, `box_size`).
+- **`make`** — atalho: devolve a imagem, você chama `.save()`. Os parâmetros
+  têm nome longo (`fill_color`, `back_color`, `box_size`).
 - **[`gen`](../gen/gen.md)** — função de alto nível da PoolScript, com opção de
   salvar direto (`save=`), redimensionar (`qr32=`) e nomes mais curtos
   (`color`, `bg`, `size`).

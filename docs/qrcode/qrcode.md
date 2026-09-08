@@ -11,7 +11,7 @@ import qrcode
 | Membro | O que faz | Página |
 |---|---|---|
 | `qrcode.gen(data, ...)` | gera um QR Code (função de alto nível, mais opções) | [gen/gen.md](gen/gen.md) |
-| `qrcode.make(data, ...)` | atalho estilo Python — `make(data)` | [make/make.md](make/make.md) |
+| `qrcode.make(data, ...)` | atalho — `make(data)` devolve a imagem | [make/make.md](make/make.md) |
 | `QRImage` | a imagem gerada (`.save`/`.resize`/`.to_file`) | [QRImage/QRImage.md](QRImage/QRImage.md) |
 
 ---

@@ -30,9 +30,9 @@ entre formatos.
 
 ## Métodos do próprio valor
 
-Estes se chamam NO valor, não na lib — `b.metodo()`, não `bytes.metodo(b)`. A
-referência é o `bytes` do Python, método por método; cada página tem a
-assinatura tirada do motor e a saída de um exemplo que foi RODADO.
+Estes se chamam NO valor, não na lib — `b.metodo()`, não `bytes.metodo(b)`.
+Cada página tem a assinatura tirada do motor e a saída de um exemplo que foi
+RODADO.
 
 As páginas ficam sob [`metodos/`](metodos/) porque os dois espaços de nome se
 cruzam: `bytes.hex(b)` é função da lib e `b.hex()` é método do valor.
@@ -153,7 +153,7 @@ for each x in "abc".encode() {
 }
 ```
 
-Duas diferenças que valem lembrar, e as duas são as do Python:
+Duas coisas que valem lembrar:
 
 - **Indexar dá inteiro, fatiar dá bytes.** `b[0]` é `72`; `b[0:1]` é `b'H'`.
 - **Iterar dá inteiro.** `for each x in b` entrega `int`, não pedaços de um

@@ -17,7 +17,7 @@ mesmo fonte produz os mesmos tokens.
   palavras-chave, operadores e pontuação; dentro de strings qualquer caractere
   Unicode é válido.
 - A varredura é **caractere a caractere**, mantendo `linha` e `coluna` (ambas
-  1-based) para as mensagens de erro no estilo Python (com o indicador `^^^`).
+  1-based) para as mensagens de erro apontarem o lugar com o indicador `^^^`.
 - Quebras de linha `\n` e `\r\n` são reconhecidas; o `\r` isolado é ignorado.
 
 ---
@@ -89,8 +89,8 @@ mensagem que diz o que usar:
 SyntaxError: bloco com ':' nao existe mais — use '{ }'
 ```
 
-Já foi diferente: a linguagem aceitava `:` + indentação (estilo Python) e
-chaves, misturados no mesmo arquivo. Manter os dois saiu caro — praticamente
+Já foi diferente: a linguagem aceitava `:` + indentação **e** chaves,
+misturados no mesmo arquivo. Manter os dois saiu caro — praticamente
 toda regressão de parser vinha da interação entre indentação e chave — e o `:`
 saiu de vez.
 
@@ -254,7 +254,7 @@ arquivo.ps:1: SyntaxWarning: sequencia de escape invalida '\p' — a barra fica
 no texto; use '\\p' se ela e mesmo pra estar ali
 ```
 
-`"C:\pasta"` tem 8 caracteres e vale `C:\pasta`, como no Python. Isso já foi
+`"C:\pasta"` tem 8 caracteres e vale `C:\pasta`. Isso já foi
 diferente e era pior: a barra sumia **calada**, o valor virava `C:pasta` (7), e
 quem escrevia um caminho do Windows perdia um byte sem ficar sabendo. O aviso
 vai pro **stderr** (não suja a saída do programa) e o `pool --check` o devolve

@@ -70,7 +70,7 @@ tipada, estão na seção 2.)
 | `reversed` | `reversed(lista)` | nova lista na ordem inversa (devolve **lista**, não iterador). |
 | `enumerate` | `enumerate(lista)` | lista de tuplas `(índice, item)`, índice a partir de 0. |
 | `zip` | `zip(a, b, …)` | lista de tuplas pareando os iteráveis posição a posição; **para no menor**. |
-| `map` | `map(lista, fn)` | nova lista com `fn` aplicada a cada item. **A lista vem primeiro** (ao contrário do Python). |
+| `map` | `map(lista, fn)` | nova lista com `fn` aplicada a cada item. **A lista vem primeiro.** |
 | `filter` | `filter(lista, fn)` | nova lista só com os itens em que `fn` é verdadeiro. **A lista vem primeiro.** |
 
 ```ps

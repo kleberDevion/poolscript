@@ -46,8 +46,8 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 ## Capturar a saída — aí espera
 
 ```
-versao = os.run(["python", "--version"], capture=true)
-post(versao)                        # "Python 3.14.6"
+versao = os.run(["pool", "--version"], capture=true)
+post(versao)                        # "PoolScript 8.4.3 [PSVM]"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
@@ -80,7 +80,7 @@ redirecionamento, variável) numa string que **você** controla.
 Também aceita string, dividida respeitando aspas, **sem** interpretar shell:
 
 ```
-os.run("python -c \"print(1+1)\"", capture=true)   # "2"
+os.run("pool -e \"post(1+1)\"", capture=true)   # "2"
 ```
 
 A forma com lista é a recomendada — não depende das regras de divisão por

@@ -102,7 +102,7 @@ try {
 Além dos tipos livres que você levanta, a VM usa estes nomes ao reportar
 erros — e você pode capturá-los por tipo:
 
-A divisão entre eles é a do Python: **`TypeError`** quando o TIPO está errado,
+A divisão entre eles: **`TypeError`** quando o TIPO está errado,
 **`ValueError`** quando o tipo está certo e o VALOR não serve.
 
 | Tipo | Quando ocorre |

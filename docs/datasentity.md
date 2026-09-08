@@ -1,7 +1,7 @@
 # datasentity — Entity com Campos Tipados
 
-Equivalente ao `@dataclass` do Python — Entity com campos tipados,
-`__init__` automático (sem escrever `self.campo = campo` na mão).
+Entity com campos tipados e `__init__` automático — sem escrever
+`self.campo = campo` na mão.
 
 ```
 from datasentity import dataentity, asdict, astuple, aslist, asjson

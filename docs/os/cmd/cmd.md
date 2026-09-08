@@ -9,7 +9,7 @@ os.cmd(command: str, capture: bool = false) -> str | Null
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `command` | — | a linha de comando a executar (ex: `"python --version"`) |
+| `command` | — | a linha de comando a executar (ex: `"pool --version"`) |
 | `capture` | `false` | `true` = devolve a saída; `false` = só roda e devolve `Null` |
 
 ---
@@ -24,8 +24,8 @@ os.cmd("git status")              # a saída vai direto pro terminal
 ## Capturar a saída
 
 ```
-versao = os.cmd("python --version", capture=true)
-post(versao)                      # "Python 3.14.6"
+versao = os.cmd("pool --version", capture=true)
+post(versao)                      # "PoolScript 8.4.3 [PSVM]"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando

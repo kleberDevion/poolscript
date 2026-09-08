@@ -208,7 +208,7 @@ if (x == 1 or y == 2) { ... }
 if (not x) { ... }
 ```
 
-Bitwise (só entre `int`; `bool` entra como 0/1, como no Python — `flo` e `str`
+Bitwise (só entre `int`; `bool` entra como 0/1 — `flo` e `str`
 são recusados com `TypeError: unsupported operand type(s) for &: 'flo' and 'int'`):
 
 ```
@@ -220,7 +220,7 @@ post(1 << 4)    # 16  — deslocamento à esquerda
 post(256 >> 4)  # 16  — deslocamento à direita
 ```
 
-Precedência igual à do Python — do mais fraco pro mais forte:
+Precedência, do mais fraco pro mais forte:
 `|` , `^` , `&` , `<<`/`>>`. Todos ligam mais forte que comparação e mais
 fraco que `+`/`-`, então `2 + 3 << 1` é `(2 + 3) << 1` = `10`.
 
@@ -258,7 +258,7 @@ else
 
 ### Condicional inline (ternário)
 
-Como **expressão**, `if`/`else` viram o condicional inline no estilo Python —
+Como **expressão**, `if`/`else` viram o condicional inline:
 `A if cond else B`. Devolve `A` quando a condição é verdadeira, senão `B`, e só
 avalia o ramo escolhido:
 
@@ -521,8 +521,8 @@ using open("log.txt", "a", encoding="utf-8") as f {
 # arquivo fechado automaticamente, mesmo se f.write() der erro
 ```
 
-`open(path, mode="r", encoding="utf-8")` — `mode` aceita os mesmos valores do
-Python (`"r"`, `"w"`, `"a"`, `"rb"`, `"wb"`...); `encoding` é ignorado em modo
+`open(path, mode="r", encoding="utf-8")` — `mode` aceita `"r"`, `"w"`, `"a"` e
+as variantes binárias (`"rb"`, `"wb"`, `"ab"`); `encoding` é ignorado em modo
 binário (`"b"` no mode).
 
 E `manpu.open()` (lib separada, pensada pra CSV/XLSX estruturado — ver

@@ -1,7 +1,6 @@
 # qrcode — Geração de QR Code
 
 **Zero dependências externas** — a geração e o PNG são do próprio motor.
-Espelha a API da lib `qrcode` do Python: mesmos nomes sempre que possível.
 
 ```
 import qrcode
@@ -48,10 +47,9 @@ qrcode.gen({"user_id": 42, "acao": "checkin"}, save="checkin.png")
 
 ---
 
-## qrcode.make(data) — estilo Python
+## qrcode.make(data) — o atalho
 
-Atalho equivalente ao `qrcode.make(data)` da lib original — retorna a
-imagem direto, sem passar por arquivo:
+Retorna a imagem direto, sem passar por arquivo:
 
 ```
 img = qrcode.make("https://meusite.com")
@@ -63,7 +61,7 @@ img.resize(300, 300)
 
 ## qrcode.QRCode(...) — controle total
 
-Mesma API da classe `QRCode` do Python original:
+A classe `QRCode`, com todos os parâmetros:
 
 ```
 qr = qrcode.QRCode(version=None, error_correction="L", box_size=10, border=4)

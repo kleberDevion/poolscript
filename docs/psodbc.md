@@ -1,7 +1,7 @@
 # psodbc
 
 Referência de API — o que é acessível via `import psodbc` num script `.ps` e
-o que é interno/privado do módulo Python (não aparece do lado de fora).
+o que é interno do módulo (não aparece do lado de fora).
 
 ---
 

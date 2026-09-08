@@ -110,7 +110,7 @@ caractere da classe.
 |---|---|
 | `format(a, b)` | preenche `{}` e `{0}` no template — **posicional só**; não há como preencher `{nome}` por aqui |
 | `format_map(dict)` | preenche `{nome}`, pelas chaves do dict |
-| `match(padrao)` | a string **inteira** casa com a regex? (`bool`) — igual ao [`regex.match`](../regex/match/match.md), que é o `fullmatch` do Python |
+| `match(padrao)` | a string **inteira** casa com a regex? (`bool`) — o mesmo que [`regex.match`](../regex/match/match.md); casamento parcial é `regex.search` |
 | `findall(padrao)` | lista de todas as ocorrências da regex |
 | `sub(pattern, repl)` | substitui **todas** as ocorrências da regex — não há `count` |
 
@@ -220,7 +220,7 @@ for each k in d.keys() {
 
 ### `in` olha a CHAVE; pro VALOR, use `value()`
 
-`x in d` testa se `x` é uma **chave** (como no Python) — então procurar um
+`x in d` testa se `x` é uma **chave** — então procurar um
 valor ali dá `false` sempre, seja ele str, int, flo, list ou tup:
 
 ```ps
@@ -257,9 +257,8 @@ etc. — tem prioridade sobre o acesso por atributo.)
 ## 12.4. Métodos de `bytes` (44)
 
 `bytes` é o tipo de **dado binário** — o que sai de `"texto".encode()`, de
-`open(..., "rb").read()`, do corpo de uma resposta HTTP. Ele tem a mesma
-superfície do `bytes` do Python, e as páginas por método estão em
-[`docs/bytes/`](../bytes/bytes.md).
+`open(..., "rb").read()`, do corpo de uma resposta HTTP. As páginas por método
+estão em [`docs/bytes/`](../bytes/bytes.md).
 
 Os nomes são os mesmos do `str`, e é justamente por isso que vale ler as
 **quatro diferenças** — são as que se erra por analogia:

@@ -7,8 +7,7 @@ o padrão consome a string do começo ao fim, `false` caso contrário.
 regex.match(pattern: str, string: str, flags=0) -> bool
 ```
 
-> **Atenção, quem vem do Python:** aqui `match` é o **`fullmatch`** do `re`,
-> não o `re.match`. O padrão precisa casar a string **toda** — não só o começo.
+> **Atenção:** `match` casa a string **toda**, não só o começo.
 > O nome `fullmatch` também existe e faz exatamente o mesmo:
 > [`regex.fullmatch()`](../fullmatch/fullmatch.md). Pra "casa em algum lugar",
 > use [`search`](../search/search.md).
@@ -66,7 +65,7 @@ for each t in telefones {
 
 ## Relacionados
 
-- [`regex.fullmatch()`](../fullmatch/fullmatch.md) — o mesmo, com o nome do Python
+- [`regex.fullmatch()`](../fullmatch/fullmatch.md) — o mesmo, com o nome explícito
 - [`regex.search()`](../search/search.md) — achar em qualquer posição
 - [`regex.findall()`](../findall/findall.md) — todas as ocorrências
 - [`regex.compile()`](../compile/compile.md) — padrão compilado e reusável

@@ -67,20 +67,19 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 > divisão por zero e falha de conversão caíam todos no mesmo balde, e não dava
 > pra tratar um sem tratar os outros.
 >
-> Ele não existe mais. A divisão agora é a do Python: **`TypeError`** quando o
-> TIPO está errado, **`ValueError`** quando o tipo está certo e o VALOR não
-> serve.
+> Ele não existe mais. A divisão agora é: **`TypeError`** quando o TIPO está
+> errado, **`ValueError`** quando o tipo está certo e o VALOR não serve.
 
 | tipo | quando acontece |
 |---|---|
 | `TypeError` | **o tipo está errado**: `"a" - 1`, `sum(["a"])`, `len(5)`, `[1,2]["x"]`, aridade errada de método. É o mais comum. |
-| `ValueError` | **o tipo está certo e o valor não serve**: `int("abc")`, `"banana".index("zz")`, `max([])`, `chr(99999999)`. A divisão é a mesma do Python. |
-| `ZeroDivisionError` | divisão ou resto por zero. O texto separa quatro casos, como no Python: `1/0` → `division by zero`; `1.0/0` → `flo division by zero`; `1%0` → `integer modulo by zero`; `1.5%0.0` → `flo modulo` |
+| `ValueError` | **o tipo está certo e o valor não serve**: `int("abc")`, `"banana".index("zz")`, `max([])`, `chr(99999999)`. |
+| `ZeroDivisionError` | divisão ou resto por zero. O texto separa quatro casos: `1/0` → `division by zero`; `1.0/0` → `flo division by zero`; `1%0` → `integer modulo by zero`; `1.5%0.0` → `flo modulo` |
 | `NameError` | nome que não existe no escopo: `post(x)` → `name 'x' is not defined` |
 | `AttributeError` | membro que o objeto não tem: `"abc".m` → `'str' object has no attribute 'm'`; também `module 'json' has no attribute 'x'` |
 | `OverflowError` | número que não cabe no destino: `int(flo("inf"))` → `cannot convert flo infinity to integer` |
 | `RecursionError` | recursão ou expressão funda demais: `maximum recursion depth exceeded`. Antes era `RuntimeError`, e por isso só dava pra pegar junto com todo o resto |
-| `MemoryError` | sem memória. **Único caso em que a mensagem não é a do CPython**: lá ela é vazia (`MemoryError:` e nada mais), aqui ela diz onde acabou — `sem memoria em sorted()`. Num processo que morreu de memória essa é a única pista que sobra |
+| `MemoryError` | sem memória. A mensagem diz ONDE acabou — `sem memoria em sorted()` — em vez de vir vazia: num processo que morreu de memória essa é a única pista que sobra |
 | `AttributedValueError` | valor incompatível atribuído a variável **tipada**: `str x = 10`. **Não** cobre o `+` — somar tipos que não somam é `TypeError` |
 | `IndexError` | índice fora da faixa, lendo **ou** escrevendo. O texto diz qual: `list index out of range`, `string index out of range`, `tup index out of range`, `index out of range` (bytes), e `list assignment index out of range` na escrita |
 | `AssertionError` | `assert(...)` que não passou. Com um valor só, o texto é o valor recebido (`false nao e verdadeiro`); com dois, os dois lados (`veio 3, esperava 4`); com uma nota, ela vem na frente. É capturável como qualquer outra — um teste pode contar as falhas em vez de parar na primeira |
@@ -94,7 +93,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `DatabaseError` | erro de banco (`psodbc`) |
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |
 | `IOError` | falha de I/O que o motor não conseguiu classificar melhor |
-| `OSError` | erro do sistema sem tipo próprio. A mensagem é a do sistema, no formato do Python: `[Errno 39] Directory not empty: '/tmp/x'` |
+| `OSError` | erro do sistema sem tipo próprio. A mensagem é a do sistema, com o número do erro na frente: `[Errno 39] Directory not empty: '/tmp/x'` |
 | `FileNotFoundError` | o caminho não existe: `os.readFile("sumiu.txt")` → `[Errno 2] No such file or directory: 'sumiu.txt'` |
 | `FileExistsError` | já existe: `os.mkdir` de pasta que está lá → `[Errno 17] File exists: '…'` |
 | `PermissionError` | sem permissão: `[Errno 13] Permission denied: '…'` |
@@ -106,8 +105,8 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `RuntimeError` | `raise "texto"`; e o que é só desta linguagem: `acesso negado: … private`, `nonnull`, `funct … e static` |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
-> **`catch` casa o NOME do tipo, não uma árvore.** Vindo do Python, a
-> armadilha é escrever `catch (OSError e)` esperando que ele pegue
+> **`catch` casa o NOME do tipo, não uma árvore.** A armadilha é escrever
+> `catch (OSError e)` esperando que ele pegue
 > `FileNotFoundError` — não pega, porque aqui `OSError` é só um nome, não um
 > ancestral. As duas formas que funcionam:
 >
@@ -134,13 +133,12 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 > IndexError: list index out of range
 > IndexError: string index out of range
 > IndexError: tup index out of range
-> IndexError: index out of range              (bytes — o Python também não põe o tipo aqui)
+> IndexError: index out of range              (bytes — aqui o tipo não entra)
 > IndexError: list assignment index out of range     (escrevendo: l[99] = x)
 > KeyError: 'z'
 > ```
 >
-> As frases são as do CPython, palavra por palavra. A única diferença é o nome
-> do tipo, que é o que o `type()` desta linguagem devolve: `tup`, não `tuple`.
+> O nome do tipo na frase é o que o `type()` devolve: `tup`, não `tuple`.
 >
 > Antes eram TRÊS comportamentos: LER devolvia `null` com rc=0 e escrevia
 > `IndexOutOfBoundsWarning` direto no stderr — que não era exceção, então

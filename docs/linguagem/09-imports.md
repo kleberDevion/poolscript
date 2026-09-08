@@ -49,7 +49,7 @@ p = Ponto(1, 2)
 ```
 
 Pedir um nome que o módulo não exporta é erro, e o **tipo depende de como você
-pediu** — a mesma separação do Python:
+pediu**:
 
 ```ps
 from json import naotem      # ImportError: cannot import name 'naotem' from 'json' (unknown location)
@@ -61,7 +61,7 @@ post(json.naotem)            # AttributeError: module 'json' has no attribute 'n
 O `ImportError` cita o **arquivo** do módulo entre parênteses; módulo nativo,
 que não tem arquivo, sai como `(unknown location)`. O `AttributeError` é o que
 traz a sugestão de nome parecido (`Did you mean: 'parse'?`) — o `ImportError`
-não sugere, como no Python. Nome que existe mas é `private` sai como
+não sugere. Nome que existe mas é `private` sai como
 `AttributeError: module '…' has no attribute '…' (existe, mas é private)`.
 
 ---
@@ -145,10 +145,10 @@ Cada `.` extra sobe um diretório, a partir da pasta do arquivo atual. Um
 relativo não encontrado é `ImportError` — a mesma mensagem do absoluto
 (`No module named '..pacote.modulo'`); não há texto próprio pro relativo.
 
-> O tipo é `ImportError`, não `ModuleNotFoundError`. No Python o segundo é
-> **subclasse** do primeiro, então `except ImportError` pega os dois. Aqui o
-> `catch` compara o nome e não há hierarquia — usar o nome do Python quebraria,
-> em silêncio, todo `catch (ImportError e)` que hoje pega módulo ausente.
+> O tipo é `ImportError`, e só. Não existe um `ModuleNotFoundError` mais
+> específico: o `catch` compara o NOME e não há hierarquia, então um segundo
+> nome quebraria, em silêncio, todo `catch (ImportError e)` que hoje pega
+> módulo ausente.
 
 ---
 

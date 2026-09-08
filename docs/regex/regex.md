@@ -1,8 +1,8 @@
 # regex — Expressões regulares
 
 Lib pra buscar, validar e substituir **padrões** em texto usando expressões
-regulares (as mesmas do Python). Útil pra validar e-mail/CPF, extrair pedaços
-de um texto, limpar strings.
+regulares. Útil pra validar e-mail/CPF, extrair pedaços de um texto, limpar
+strings.
 
 ```
 import regex
@@ -12,7 +12,7 @@ import regex
 |---|---|---|
 | `regex.compile(padrão)` | compila **uma vez** e devolve um `Pattern` reusável | [compile/compile.md](compile/compile.md) |
 | `regex.match(padrão, texto)` | o texto **inteiro** casa? (`bool`) | [match/match.md](match/match.md) |
-| `regex.fullmatch(padrão, texto)` | o mesmo que `match`, com o nome do Python | [fullmatch/fullmatch.md](fullmatch/fullmatch.md) |
+| `regex.fullmatch(padrão, texto)` | o mesmo que `match`, com o nome explícito | [fullmatch/fullmatch.md](fullmatch/fullmatch.md) |
 | `regex.search(padrão, texto)` | acha o padrão **em qualquer lugar** (`bool`) | [search/search.md](search/search.md) |
 | `regex.findall(padrão, texto)` | acha **todas** as ocorrências (lista) | [findall/findall.md](findall/findall.md) |
 | `regex.sub(padrão, novo, texto)` | **substitui** o padrão por outro texto | [sub/sub.md](sub/sub.md) |
