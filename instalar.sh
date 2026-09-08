@@ -224,21 +224,64 @@ if [ -n "${SUDO_USER:-}" ]; then
 $CASA/.local/bin
 $CASA/bin"
     fi
+    # O PATH do usuário tem pastas que o do root não tem. No WSL isso inclui as
+    # do Windows (`/mnt/c/.../AppData/Roaming/npm`), onde um `pool` de instalação
+    # antiga também responde. Sem ler o PATH dele, essas ficavam de fora.
+    # Tem que ser um shell INTERATIVO: o `.bashrc` do Debian começa com um
+    # `case $- in *i*) ;; *) return;; esac`, então tudo que veio depois — o
+    # PATH do Windows incluído — não é lido por `su -c` comum.
+    PATH_USUARIO=$(su - "$SUDO_USER" -s /bin/bash -c 'bash -ic "printf %s \$PATH"' 2>/dev/null || true)
+    if [ -n "$PATH_USUARIO" ]; then
+        VARRER="$VARRER
+$(echo "$PATH_USUARIO" | tr ':' '\n')"
+    fi
 fi
 REMOVIDOS=$(echo "$VARRER" | sort -u | while read -r d; do
-    if [ -z "$d" ] || [ "$d" = "$PREFIXO/bin" ]; then
+    # Só caminho absoluto: o shell interativo lido acima pode ter escrito algo
+    # além do PATH, e nada disso vira alvo de `rm`.
+    case "$d" in /*) ;; *) continue ;; esac
+    if [ "$d" = "$PREFIXO/bin" ]; then
         continue
     fi
+    # Nas pastas do Windows o comando é um punhado de arquivos irmãos (o shim
+    # sh, o `.cmd`, o `.ps1`, o `.exe`) — apagar só o sem extensão deixaria o
+    # comando de pé no lado de lá.
     for c in pool psl poolscript-lsp; do
-        if [ -e "$d/$c" ] || [ -L "$d/$c" ]; then
-            rm -f "$d/$c" && echo "$d/$c"
-        fi
+        for e in "" .cmd .ps1 .exe .bat; do
+            if [ -e "$d/$c$e" ] || [ -L "$d/$c$e" ]; then
+                rm -f "$d/$c$e" && echo "$d/$c$e"
+            fi
+        done
     done
 done)
 if [ -n "$REMOVIDOS" ]; then
     echo "$REMOVIDOS" | sed 's/^/   removido: /'
 else
-    echo "   nada a remover"
+    echo "   nada no PATH"
+fi
+
+# Apagar o arquivo não basta: um `alias pool='...'` no `.bashrc` aponta pro
+# caminho velho DIRETO, sem passar pelo PATH, e sobrevive ao `hash -r`. Depois
+# da varredura acima o comando virava `No such file or directory` apontando pro
+# que acabara de ser removido. Tira o alias dos arquivos de shell do usuário.
+if [ -n "${SUDO_USER:-}" ] && [ -n "${CASA:-}" ]; then
+    ALIASES=""
+    for rc in .bashrc .bash_aliases .bash_profile .profile .zshrc; do
+        [ -f "$CASA/$rc" ] || continue
+        # Só linhas que DEFINEM o alias dos nossos três comandos; qualquer
+        # outra menção a "pool" no arquivo fica onde está.
+        if grep -qE "^[[:space:]]*alias[[:space:]]+(pool|psl|poolscript-lsp)=" "$CASA/$rc"; then
+            cp -a "$CASA/$rc" "$CASA/$rc.antes-da-poolscript"
+            grep -vE "^[[:space:]]*alias[[:space:]]+(pool|psl|poolscript-lsp)=" \
+                 "$CASA/$rc.antes-da-poolscript" > "$CASA/$rc"
+            ALIASES="$ALIASES $rc"
+        fi
+    done
+    if [ -n "$ALIASES" ]; then
+        echo "   alias removido de:$ALIASES (cópia em <arquivo>.antes-da-poolscript)"
+        REMOVIDOS="$REMOVIDOS
+alias"
+    fi
 fi
 
 echo "== tipo MIME e ícone do .ps"
@@ -269,8 +312,10 @@ if [ -f "$DADOS/mime/packages/zz-poolscript.xml" ]; then
 fi
 if [ -n "$REMOVIDOS" ]; then
     echo
-    echo "havia PoolScript antiga no PATH e ela foi removida. O shell que já"
-    echo "estava aberto lembra do caminho velho — rode \`hash -r\` nele."
+    echo "havia PoolScript antiga na máquina e ela foi removida. O shell que já"
+    echo "estava aberto ainda lembra dela — nele, rode:"
+    echo "    unalias pool psl 2>/dev/null; hash -r"
+    echo "(ou abra um terminal novo, que já nasce limpo)."
 fi
 if [ -n "${INCOMPLETO:-}" ]; then
     echo

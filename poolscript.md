@@ -44,13 +44,26 @@ sudo ./instalar.sh --remover
 
 Do repositório com o fonte, `sudo make install` faz o mesmo.
 
-O instalador também **apaga qualquer PoolScript antiga que esteja no PATH** —
-`pool`, `psl` e `poolscript-lsp` em qualquer outra pasta, inclusive o
-`~/.local/bin` de quem chamou o `sudo`. Uma instalação velha ali vem antes de
-`/usr/local/bin` e sequestra o comando: era o caso do `pool` em Python, que
-respondia `ModuleNotFoundError` com a instalação nova intacta e invisível
-logo atrás. Se o shell já estava aberto, ele lembra do caminho velho — `hash -r`
-resolve.
+O instalador também **apaga qualquer PoolScript antiga que responda pelo
+comando**. Uma instalação velha em `~/.local/bin` vem antes de `/usr/local/bin`
+e sequestra o `pool`: era o caso do shim em Python, que respondia
+`ModuleNotFoundError: No module named 'poolscript'` com a instalação nova
+intacta e invisível logo atrás. São três frentes, porque tirar só uma não
+resolve:
+
+- **PATH** — `pool`, `psl` e `poolscript-lsp` em toda pasta que não seja a do
+  prefixo. Inclui o PATH do usuário que chamou o `sudo`, lido de um shell
+  *interativo*: o `.bashrc` do Debian retorna cedo quando não é interativo, e
+  sem isso as pastas do Windows no WSL (`/mnt/c/.../npm`) não apareceriam. Lá
+  o comando é um punhado de irmãos (`pool`, `pool.cmd`, `pool.ps1`, `pool.exe`),
+  e todos saem.
+- **alias** — `alias pool='...'` no `.bashrc` aponta pro caminho velho direto,
+  sem passar pelo PATH, e sobrevive ao `hash -r`. As linhas que *definem* o
+  alias dos três comandos são removidas; o resto do arquivo fica, e uma cópia
+  vai pra `<arquivo>.antes-da-poolscript`.
+- **cache do shell aberto** — esse o instalador não alcança de fora. No
+  terminal que já estava aberto: `unalias pool psl 2>/dev/null; hash -r`, ou
+  abra um novo.
 
 ### Numa máquina onde não há nada
 
