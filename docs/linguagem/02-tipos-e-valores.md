@@ -83,6 +83,34 @@ g = 99999999999999999999999999999999999999
 post(type(g))         # int
 ```
 
+### `long` — o inteiro que não promete 64 bits
+
+A promoção é transparente no VALOR, mas não na **declaração**: `int` promete
+que cabe em 64 bits, e por isso recusa um bignum.
+
+```ps
+x = 1103515245 * 99999999999999999    # estourou: virou bignum
+int y = x
+# AttributedValueError: variável y esperava int, e o valor nao cabe em 64 bits
+#                       (declare como 'long y' pra aceitar inteiro de qualquer tamanho)
+long y = x                            # aceita
+```
+
+`long` é a declaração sem essa promessa — inteiro de qualquer tamanho, como em
+C. Aceita os dois lados: `long b = 42` também vale (alarga, não converte).
+
+É **chamável** como os outros tipos, e converte igual ao `int`:
+
+```ps
+post(long("123"), long(3.9), long())     # 123 3 0
+post(x is long, 5 is long, "a" is long)  # True True False
+```
+
+`type()` de um `long` responde `"int"`, porque o **valor** é um inteiro — a
+declaração é uma restrição de quem escreve, não um tipo separado em runtime. É
+a mesma ideia do [`char`](#25-char--a-declaração-de-um-caractere), que guarda
+uma `str`.
+
 ---
 
 ## 2.3. Veracidade (*truthiness*)

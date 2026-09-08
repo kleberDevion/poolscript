@@ -686,14 +686,44 @@ typedef struct PSDict_ {
 #define MK_UNSET()   ((Value){ .t = V_UNSET,  .as.i = 0 })
 #define MK_TIPO(x)   ((Value){ .t = V_TIPO,   .as.i = (x) })
 
-/* Os tipos nomeáveis. A ordem é o valor gravado no bytecode, então mexer
- * nela invalida bytecode já gerado — só acrescentar no fim. */
+/* ── OS TIPOS NOMEÁVEIS, num lugar só ────────────────────────────────────────
+ *
+ * A ordem é o valor gravado no bytecode, então mexer nela invalida bytecode já
+ * gerado — só acrescentar no fim.
+ *
+ * POR QUE ISTO É UMA TABELA E NÃO CINCO SWITCHES. O mesmo conhecimento estava
+ * escrito em cinco lugares: este enum, o array de nomes (casado por POSIÇÃO),
+ * o `model_nome_tipo` (que repetia os nomes num switch), o `valor_eh_tipo` (a
+ * pertinência) e o switch de campo de model. Acrescentar um tipo exigia
+ * lembrar dos cinco, e esquecer um não dava erro de compilação — dava
+ * comportamento incoerente em runtime. Foi exatamente o que aconteceu com o
+ * bignum: `type(x)` respondia `"int"` e `int x = <bignum>` recusava o MESMO
+ * valor, porque quem nomeia e quem testa eram dois códigos diferentes.
+ *
+ * Agora cada tipo é UMA LINHA: código, nome e o teste de pertinência. Quem
+ * precisa do nome chama `tipo_nome()`, quem precisa do teste chama
+ * `valor_eh_tipo()`, e os dois leem daqui. */
 enum {
     TIPO_STR = 0, TIPO_INT, TIPO_FLO, TIPO_BOOL,
-    TIPO_LIST, TIPO_DICT, TIPO_TUP, TIPO_TYPE
+    TIPO_LIST, TIPO_DICT, TIPO_TUP, TIPO_TYPE,
+    /* estes três não vinham do enum: eram `#define` soltos 2.000 linhas
+     * abaixo, e o array de nomes tinha que adivinhar a posição deles */
+    TIPO_CHAR, TIPO_PFILE, TIPO_OBJ,
+    /* `long`: inteiro de QUALQUER tamanho. `int` promete caber em 64 bits, e
+     * é por isso que ele recusa bignum; `long` não promete, e aceita os dois.
+     * Mesma ideia do `char`, que é restrição de DECLARAÇÃO — `type()` de
+     * ambos continua respondendo `"int"`, porque o valor é um inteiro. */
+    TIPO_LONG,
+    TIPO__N
 };
-static const char *NOME_TIPO[] = { "str", "int", "flo", "bool", "list", "dict",
-                                   "tup", "type", "char", "PoolFile", "Object" };
+
+/* O nome de um tipo pelo código, e o teste de pertinência. A tabela que
+ * responde os dois fica mais abaixo, junto — aqui só as declarações, porque a
+ * impressão de valor, as mensagens de erro e o campo de model precisam delas
+ * antes. */
+static const char *tipo_nome(int64_t t);
+static int valor_eh_tipo(const Value *v, int64_t tipo);
+static int model_campo_aceita(int32_t tipo, const Value *v);
 #define MK_OBJ(x)    ((Value){ .t = V_OBJ,    .as.obj = (Obj*)(x) })
 
 #define EH_STRING(v) ((v).t == V_OBJ && (v).as.obj->type == OBJ_STRING)
@@ -2101,7 +2131,7 @@ static PyObject *value_para_py(const Value *v)
         case V_FLOAT:  return PyFloat_FromDouble(v->as.d);
         case V_FUNC:   return PyUnicode_FromFormat("<funct #%d>", v->as.proto);
         case V_NATIVE: return PyUnicode_FromString("<builtin>");
-        case V_TIPO:   return PyUnicode_FromString(NOME_TIPO[v->as.i]);
+        case V_TIPO:   return PyUnicode_FromString(tipo_nome(v->as.i));
         case V_UNSET:  Py_RETURN_NONE;
         case V_OBJ:
             if (v->as.obj->type == OBJ_BIGINT) {
@@ -2254,11 +2284,11 @@ static int val_iguais(const Value *a, const Value *b)
      * pelo nome. (A forma canônica de testar tipo continua sendo `x is int`.) */
     if (a->t == V_TIPO && EH_STRING(*b)) {
         PSString *s = COMO_STRING(*b);
-        return strcmp(s->chars, NOME_TIPO[a->as.i]) == 0;
+        return strcmp(s->chars, tipo_nome(a->as.i)) == 0;
     }
     if (b->t == V_TIPO && EH_STRING(*a)) {
         PSString *s = COMO_STRING(*a);
-        return strcmp(s->chars, NOME_TIPO[b->as.i]) == 0;
+        return strcmp(s->chars, tipo_nome(b->as.i)) == 0;
     }
     if (a->t == V_TIPO || b->t == V_TIPO) return 0;
     /* int/float/bool se comparam por valor numérico — bool é subtipo de int
@@ -2609,7 +2639,7 @@ static void escreve_valor(const Value *v, int dentro)
         }
         case V_FUNC:   printf("<funct #%d>", v->as.proto); break;
         case V_NATIVE: fputs("<builtin>", stdout); break;
-        case V_TIPO:   fputs(NOME_TIPO[v->as.i], stdout); break;
+        case V_TIPO:   fputs(tipo_nome(v->as.i), stdout); break;
         case V_UNSET:  fputs("Null", stdout); break;
         case V_OBJ:
             if (v->as.obj->type == OBJ_STRING) {
@@ -2840,7 +2870,7 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             return txt_put(t, tmp, float_para_texto(tmp, sizeof(tmp), v->as.d));
         case V_FUNC:   return txt_put(t, tmp, snprintf(tmp, sizeof(tmp), "<funct #%d>", v->as.proto));
         case V_NATIVE: return txt_put(t, "<builtin>", 9);
-        case V_TIPO:   return txt_put(t, NOME_TIPO[v->as.i], (int)strlen(NOME_TIPO[v->as.i]));
+        case V_TIPO:   return txt_put(t, tipo_nome(v->as.i), (int)strlen(tipo_nome(v->as.i)));
         case V_UNSET:  return txt_put(t, "Null", 4);
         case V_OBJ:
             if (v->as.obj->type == OBJ_BIGINT) {
@@ -4022,7 +4052,11 @@ static FnNativa tipo_conversor(int32_t idx)
 {
     switch (idx) {
         case TIPO_STR:  return nativa_str;
-        case TIPO_INT:  return nativa_int;
+        /* `long(x)` e a MESMA conversao do `int(x)`: o `nativa_int` ja devolve
+         * o bignum intacto. O que separa os dois e a DECLARACAO — `int x =`
+         * promete 64 bits e recusa bignum, `long x =` nao promete. */
+        case TIPO_INT:
+        case TIPO_LONG: return nativa_int;
         case TIPO_FLO:  return nativa_flo;
         case TIPO_BOOL: return nativa_bool;
         case TIPO_LIST: return nativa_list;
@@ -8769,13 +8803,9 @@ static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
 
 
 
-/* `char` do `count` é caractere visível — string de 1 posição que não é
- * branco. Não existe como tipo declarável, só aqui. */
-#define TIPO_CHAR  8
-#define TIPO_PFILE 9
-/* `Object`: qualquer objeto que nao e str/list/dict/tup/bytes — instancia de
- * classe, servidor, conexao, arquivo, funcao. `Object app = Jinker(...)`. */
-#define TIPO_OBJ   10
+/* TIPO_CHAR, TIPO_PFILE e TIPO_OBJ saíram destes `#define` e entraram no enum
+ * lá em cima, junto com os outros — eram três números escritos à mão que
+ * tinham que casar com a posição no array de nomes. */
 
 /* Um item casa o `count` se bate no TIPO e, quando há valor, é igual a ele. */
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val);
@@ -8802,16 +8832,7 @@ static int model_valida(const PSModel *m, const Value *v)
         if (!tem || achado.t == V_NULL) return 0;
         /* tipo: int aceita flo e vice-versa (validação de dado, não de
          * representação — é o que o interpretador faz) */
-        switch (f->tipo) {
-            case TIPO_STR:  if (!EH_STRING(achado)) return 0; break;
-            case TIPO_INT:
-            case TIPO_FLO:  if (achado.t != V_INT && achado.t != V_FLOAT) return 0; break;
-            case TIPO_BOOL: if (achado.t != V_BOOL) return 0; break;
-            case TIPO_LIST: if (!EH_LIST(achado)) return 0; break;
-            case TIPO_DICT: if (!EH_DICT(achado)) return 0; break;
-            case TIPO_TUP:  if (!EH_TUPLA(achado)) return 0; break;
-            default: return 0;
-        }
+        if (!model_campo_aceita(f->tipo, &achado)) return 0;
         if (f->length >= 0) {
             if (f->tipo == TIPO_STR) {
                 PSString *sv = COMO_STRING(achado);
@@ -8837,17 +8858,26 @@ static int model_valida(const PSModel *m, const Value *v)
  * continua sendo o dono da decisão; aqui só se acrescenta o PORQUÊ.
  *
  * Devolve 1 quando passa. Quando não, preenche `campo` e `motivo`. */
-static const char *model_nome_tipo(int32_t t)
+/* Era um switch repetindo os mesmos nomes da tabela — duas listas pra manter
+ * iguais, e o campo de model dizia "?" pros tipos que faltavam nela. */
+static const char *model_nome_tipo(int32_t t) { return tipo_nome(t); }
+
+/* O tipo do CAMPO DE MODEL é mais frouxo que o `is`: aqui `int` aceita `flo` e
+ * vice-versa, porque model valida DADO que veio de fora (JSON não distingue
+ * 1 de 1.0), não representação. A regra estava escrita duas vezes, em dois
+ * switches iguais a algumas linhas de distância. */
+static int model_campo_aceita(int32_t tipo, const Value *v)
 {
-    switch (t) {
-        case TIPO_STR:  return "str";
-        case TIPO_INT:  return "int";
-        case TIPO_FLO:  return "flo";
-        case TIPO_BOOL: return "bool";
-        case TIPO_LIST: return "list";
-        case TIPO_DICT: return "dict";
-        case TIPO_TUP:  return "tup";
-        default:        return "?";
+    switch (tipo) {
+        case TIPO_INT:
+        case TIPO_FLO:  return v->t == V_INT || v->t == V_FLOAT;
+        case TIPO_LONG: return EH_INTEIRO(*v) || v->t == V_FLOAT;
+        case TIPO_STR:
+        case TIPO_BOOL:
+        case TIPO_LIST:
+        case TIPO_DICT:
+        case TIPO_TUP:  return valor_eh_tipo(v, tipo);
+        default:        return 0;
     }
 }
 
@@ -8878,17 +8908,7 @@ static int model_valida_detalhe(const PSModel *m, const Value *v,
 
         Value so_esse = *v;
         (void)so_esse;
-        int tipo_ok = 1;
-        switch (f->tipo) {
-            case TIPO_STR:  tipo_ok = EH_STRING(um); break;
-            case TIPO_INT:
-            case TIPO_FLO:  tipo_ok = (um.t == V_INT || um.t == V_FLOAT); break;
-            case TIPO_BOOL: tipo_ok = (um.t == V_BOOL); break;
-            case TIPO_LIST: tipo_ok = EH_LIST(um); break;
-            case TIPO_DICT: tipo_ok = EH_DICT(um); break;
-            case TIPO_TUP:  tipo_ok = EH_TUPLA(um); break;
-            default:        tipo_ok = 0; break;
-        }
+        int tipo_ok = model_campo_aceita(f->tipo, &um);
         if (!tipo_ok) {
             snprintf(motivo, mcap, "esperava %s, veio %s",
                      model_nome_tipo(f->tipo), nome_do_tipo_valor(um));
@@ -8918,21 +8938,63 @@ static int model_valida_detalhe(const PSModel *m, const Value *v,
     return 1;
 }
 
-/* `x is <tipo>` — o teste que o TypeName habilita. */
+/* ── a tabela: uma linha por tipo, nome e pertinência juntos ───────────────
+ *
+ * Indexada pelo CÓDIGO do tipo — a mesma ordem do enum, que é a gravada no
+ * bytecode. Quem acrescenta um tipo acrescenta UMA linha, e nome e teste
+ * nascem casados; antes eram dois códigos distantes que podiam discordar. */
+static int aceita_str(const Value *v)   { return EH_STRING(*v); }
+static int aceita_int(const Value *v)   { return v->t == V_INT; }   /* bool NÃO conta */
+static int aceita_flo(const Value *v)   { return v->t == V_FLOAT; }
+static int aceita_bool(const Value *v)  { return v->t == V_BOOL; }
+static int aceita_list(const Value *v)  { return EH_LIST(*v); }
+static int aceita_dict(const Value *v)  { return EH_DICT(*v); }
+static int aceita_tup(const Value *v)   { return EH_TUPLA(*v); }
+static int aceita_type(const Value *v)  { return v->t == V_TIPO; }
+static int aceita_pfile(const Value *v) { return EH_PFILE(*v); }
+/* `char` é caractere VISÍVEL: string de uma posição que não é branco. */
+static int aceita_char(const Value *v)
+{
+    return EH_STRING(*v)
+        && utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len) == 1
+        && !cp_eh_branco((unsigned char)COMO_STRING(*v)->chars[0]);
+}
+/* `Object`: qualquer objeto que não é str/list/dict/tup/bytes — instância de
+ * classe, servidor, conexão, arquivo, função. `Object app = Jinker(...)`. */
+static int aceita_obj(const Value *v)
+{
+    return v->t == V_OBJ && !EH_STRING(*v) && !EH_LIST(*v) && !EH_DICT(*v)
+        && !EH_TUPLA(*v) && !EH_BYTES(*v);
+}
+/* `long`: inteiro de qualquer tamanho — cabendo ou não em 64 bits. */
+static int aceita_long(const Value *v)  { return EH_INTEIRO(*v); }
+
+static const struct { const char *nome; int (*aceita)(const Value *); } TIPOS[] = {
+    { "str",      aceita_str   },
+    { "int",      aceita_int   },
+    { "flo",      aceita_flo   },
+    { "bool",     aceita_bool  },
+    { "list",     aceita_list  },
+    { "dict",     aceita_dict  },
+    { "tup",      aceita_tup   },
+    { "type",     aceita_type  },
+    { "char",     aceita_char  },
+    { "PoolFile", aceita_pfile },
+    { "Object",   aceita_obj   },
+    { "long",     aceita_long  },
+};
+
+static const char *tipo_nome(int64_t t)
+{
+    return (t >= 0 && t < (int64_t)(sizeof(TIPOS) / sizeof(TIPOS[0]))) ? TIPOS[t].nome : "?";
+}
+
+/* `x is <tipo>`, campo de model, `count <tipo>` e a coerção de declaração —
+ * os quatro perguntam AQUI. */
 static int valor_eh_tipo(const Value *v, int64_t tipo)
 {
-    switch (tipo) {
-        case TIPO_STR:  return EH_STRING(*v);
-        case TIPO_INT:  return v->t == V_INT;      /* bool NÃO conta como int */
-        case TIPO_FLO:  return v->t == V_FLOAT;
-        case TIPO_BOOL: return v->t == V_BOOL;
-        case TIPO_LIST: return EH_LIST(*v);
-        case TIPO_DICT: return EH_DICT(*v);
-        case TIPO_TUP:  return EH_TUPLA(*v);
-        case TIPO_TYPE: return v->t == V_TIPO;
-        case TIPO_PFILE: return EH_PFILE(*v);
-        default:        return 0;
-    }
+    if (tipo < 0 || tipo >= (int64_t)(sizeof(TIPOS) / sizeof(TIPOS[0]))) return 0;
+    return TIPOS[tipo].aceita(v);
 }
 
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val)
@@ -20008,6 +20070,11 @@ static Builtin BUILTINS[] = {
     { "len", nativa_len, NULL },
     { "str", nativa_str, NULL },
     { "int", nativa_int, NULL },
+    /* `long(x)` converte igual ao `int(x)` — o `nativa_int` ja devolve bignum
+     * intacto. Ele existe como BUILTIN, e nao so como palavra de declaracao,
+     * porque `long(...)` numa expressao e uma CHAMADA: sem entrada aqui saia
+     * `NameError: name 'long' is not defined`. */
+    { "long", nativa_int, NULL },
     { "flo", nativa_flo, NULL },
     { "bool", nativa_bool, NULL },
     { "type", nativa_type, NULL },
@@ -20192,7 +20259,7 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         FnNativa conv = tipo_conversor(fn.as.i);
         if (!conv) {
             snprintf(vm->erro, sizeof(vm->erro), "tipo '%s' não pode ser usado como conversor",
-                     (fn.as.i >= 0 && fn.as.i <= TIPO_TYPE) ? NOME_TIPO[fn.as.i] : "?");
+                     tipo_nome(fn.as.i));
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
             return -1;
         }
@@ -21147,7 +21214,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * responde pra `list(a=1)`. */
                 ERRO_TF(vm, "TypeError", "%s() takes no keyword arguments",
                         (alvo_kw.as.i >= 0 && alvo_kw.as.i <= TIPO_TYPE)
-                            ? NOME_TIPO[alvo_kw.as.i] : "?");
+                            ? tipo_nome(alvo_kw.as.i) : "?");
             } else {
                 ERRO_TF(vm, "TypeError", "'%s' object is not callable",
                         nome_do_tipo_valor(alvo_kw));
@@ -21526,7 +21593,7 @@ ERRO_TF(vm, "TypeError",
                 if (!conv)
                     ERRO_TF(vm, "TypeError",
                             "tipo '%s' não pode ser usado como conversor",
-                            (alvo.as.i >= 0 && alvo.as.i <= TIPO_TYPE) ? NOME_TIPO[alvo.as.i] : "?");
+                            tipo_nome(alvo.as.i));
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';
                 Value rv;
@@ -22299,24 +22366,28 @@ ERRO_TF(vm, "TypeError",
              * declarada com tipo (o compilador o emite antes de cada store,
              * nao so na declaracao), entao a lista cobre todos os tipos
              * declaraveis — `list`/`dict`/`tup` eram guardados sem conferir. */
+            /* `flo` é o único que aceita outro tipo: um `int` cabe num `flo`
+             * sem perder nada. O resto pergunta à tabela — era mais um switch
+             * repetindo a mesma pertinência com as próprias mãos. */
             int ok;
-            switch (tipo) {
-                case TIPO_STR:  ok = EH_STRING(v); break;
-                case TIPO_INT:  ok = v.t == V_INT; break;
-                case TIPO_FLO:  ok = v.t == V_INT || v.t == V_FLOAT; break;
-                case TIPO_BOOL: ok = v.t == V_BOOL; break;
-                case TIPO_LIST: ok = EH_LIST(v); break;
-                case TIPO_DICT: ok = EH_DICT(v); break;
-                case TIPO_TUP:  ok = EH_TUPLA(v); break;
-                case TIPO_OBJ:  ok = v.t == V_OBJ && !EH_STRING(v) && !EH_LIST(v)
-                                     && !EH_TUPLA(v) && !EH_DICT(v) && !EH_BYTES(v); break;
-                default:        ok = 1; break;
-            }
+            if (tipo == TIPO_FLO)      ok = v.t == V_INT || v.t == V_FLOAT;
+            else if (tipo >= TIPO__N)  ok = 1;      /* tipo desconhecido: não barra */
+            else                       ok = valor_eh_tipo(&v, tipo);
             if (!ok) {
                 const char *vn = "";
                 if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))
                     vn = COMO_STRING(p->consts[nome_idx])->chars;
-                snprintf(vm->erro, sizeof(vm->erro), "variável %s esperava %s", vn, NOME_TIPO[tipo]);
+                /* O caso que mais aparece: `int x = <bignum>`. Dizer só
+                 * "esperava int" e cruel, porque `type()` do valor RESPONDE
+                 * `int` — quem le acha que o motor esta se contradizendo. A
+                 * mensagem diz o que houve e qual e a palavra. */
+                if (tipo == TIPO_INT && EH_BIGINT(v))
+                    snprintf(vm->erro, sizeof(vm->erro),
+                             "variável %s esperava int, e o valor nao cabe em 64 bits "
+                             "(declare como 'long %s' pra aceitar inteiro de qualquer tamanho)",
+                             vn, vn);
+                else
+                    snprintf(vm->erro, sizeof(vm->erro), "variável %s esperava %s", vn, tipo_nome(tipo));
                 snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError");
                 goto erro_runtime;
             }

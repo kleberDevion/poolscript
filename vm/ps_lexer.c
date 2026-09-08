@@ -28,7 +28,9 @@ static const char *KEYWORDS[] = {
     "funct", "return", "continue", "break", "pass", "model", "enum", "async", "await",
     "try", "catch", "as", "with", "of", "using",
     "import", "from", "PUSH", "GET",
-    "str", "int", "flo", "bool",
+    /* `long`: inteiro de qualquer tamanho. `int` promete caber em 64 bits e
+     * por isso recusa bignum; `long` nao promete, e aceita os dois. */
+    "str", "int", "long", "flo", "bool",
     /* `post`, `input` e `addEnd` sao BUILTINS (estao na tabela BUILTINS[] da
      * VM). `listen`, `route`, `create`, `clear` e `space` SAIRAM daqui: nao
      * eram construcao da linguagem nem builtin — `route` e `listen` sao METODOS

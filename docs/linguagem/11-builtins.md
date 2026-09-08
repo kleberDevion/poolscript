@@ -1,6 +1,6 @@
 # Referência da Linguagem — 11. Builtins
 
-Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **39**
+Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **40**
 no total — a contagem viva sai de `pool --metadata` (campo `builtins`), que é a
 tabela `BUILTINS[]` da VM. Esta seção é a visão geral; cada builtin tem uma
 página detalhada em [`docs/builtins/`](../builtins/builtins.md).
@@ -118,7 +118,7 @@ post(removeStart(l))  # 1   (e l == [2, 3, 4])
 
 ## 11.8. Resumo
 
-- **39 builtins**, sempre disponíveis, sem `import`. Página detalhada de cada um
+- **40 builtins**, sempre disponíveis, sem `import`. Página detalhada de cada um
   em `docs/builtins/`.
 - **I/O**: `post`, `input`, `open`, `load`.
 - **Núcleo**: `len` (conta caracteres; `len(null)`→0), `type`, `range`.

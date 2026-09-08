@@ -360,6 +360,7 @@ static int eh_tipo_kw_expr(PSToken *t)
 {
     return t->type == T_KW && t->texto
         && (strcmp(t->texto, "str") == 0 || strcmp(t->texto, "int") == 0
+         || strcmp(t->texto, "long") == 0
          || strcmp(t->texto, "flo") == 0 || strcmp(t->texto, "bool") == 0
          || strcmp(t->texto, "list") == 0 || strcmp(t->texto, "json") == 0
          || strcmp(t->texto, "dict") == 0 || strcmp(t->texto, "tup") == 0
@@ -2132,6 +2133,7 @@ static int eh_tipo_kw_decl(PSToken *t)
     return eh_tipo_kw(t) || eh_apelido_tipo(t)
         || (t->type == T_KW && t->texto
             && (strcmp(t->texto, "char") == 0
+                || strcmp(t->texto, "long") == 0
                 || strcmp(t->texto, "list") == 0 || strcmp(t->texto, "dict") == 0
                 || strcmp(t->texto, "json") == 0 || strcmp(t->texto, "tup") == 0
                 || strcmp(t->texto, "Object") == 0 || strcmp(t->texto, "object") == 0));

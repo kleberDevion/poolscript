@@ -163,7 +163,7 @@ Agrupadas por papel:
 | Fluxo | `if` `elif` `else` `while` `for` `each` `in` `is` `match` `case` `break` `continue` `pass` `return` |
 | Lógicos | `and` `or` `not` `Not` |
 | Funções | `funct` `async` `await` `yield` |
-| Tipos (em declaração / cast / `count`) | `str` `int` `flo` `bool` `list` `dict` `tup` `json` `char` `Object` `object` |
+| Tipos (em declaração / cast / `count`) | `str` `int` `long` `flo` `bool` `list` `dict` `tup` `json` `char` `Object` `object` |
 | Classes / OO | `Entity` `class` `Class` `self` `base` `model` `enum` |
 | Encapsulamento | `private` `public` |
 | Módulos | `import` `from` `as` `PUSH` `GET` |

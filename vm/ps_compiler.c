@@ -742,6 +742,8 @@ static int cod_tipo_decl(const char *t)
         { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 },
         { "list", 4 }, { "dict", 5 }, { "json", 5 }, { "tup", 6 },
         { "char", 8 }, { "Object", 10 }, { "object", 10 },
+        /* 11 = TIPO_LONG: inteiro de qualquer tamanho, bignum inclusive */
+        { "long", 11 }, { "Long", 11 },
         /* apelidos (ver eh_apelido_tipo no parser): a mesma regra do tipo */
         { "string", 0 }, { "String", 0 }, { "integer", 1 }, { "Integer", 1 },
         { "tuple", 6 }, { "Tuple", 6 }, { "dictionary", 5 }, { "Dictionary", 5 },
@@ -1397,13 +1399,13 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_TYPE_NAME: {
-            /* `json` e `dict` são o MESMO tipo — apelido, não dois. */
-            static const char *nomes[] = { "str", "int", "flo", "bool",
-                                           "list", "dict", "tup", "type" };
-            int32_t t = -1;
-            for (int32_t k = 0; k < 8; k++)
-                if (n->texto && strcmp(n->texto, nomes[k]) == 0) { t = k; break; }
-            if (t < 0 && n->texto && strcmp(n->texto, "json") == 0) t = 5;
+            /* A MESMA tabela da declaração (`cod_tipo_decl`): aqui havia uma
+             * segunda lista, com oito nomes escritos à mão, e por isso `long`
+             * valia em `long x = 1` e não valia como valor em `long(x)` —
+             * duas listas pro mesmo conceito discordando uma da outra.
+             * `json` e `dict` são o MESMO tipo, e o apelido sai de lá. */
+            int t = cod_tipo_decl(n->texto);
+            if (t < 0 && n->texto && strcmp(n->texto, "type") == 0) t = 7;
             if (t < 0) { cerro(c, "tipo desconhecido", n); return; }
             emite(c, u, OP_LOAD_TIPO, t);
             return;

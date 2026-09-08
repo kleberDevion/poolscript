@@ -1689,6 +1689,40 @@ const Caso CASOS_LINGUAGEM[] = {
   "static private int funct f(n) {\n    return n\n}\npost(f(9))\n", "9", NULL, 0 },
 { "`static` e `nonnull` NAO viraram palavra reservada",
   "static = 7\nnonnull = 8\npost(static + nonnull)\n", "15", NULL, 0 },
+/* ── `long`: inteiro de QUALQUER tamanho ────────────────────────────────────
+ * A VM promove pra bignum sozinha quando estoura 64 bits, e `type()` do
+ * resultado responde `"int"` — mas `int x = <bignum>` RECUSAVA o mesmo valor.
+ * O motor se contradizia: nomeava de um jeito e testava de outro, porque quem
+ * nomeia e quem testa eram dois codigos diferentes.
+ *
+ * `long` e a declaracao que nao promete 64 bits, como em C. `int` continua
+ * prometendo — e por isso continua recusando, agora com a mensagem dizendo
+ * qual e a palavra. Mesma ideia do `char`, que tambem e restricao de
+ * DECLARACAO: `type()` dos dois responde o tipo do VALOR, nao o da promessa. */
+{ "long aceita bignum, int nao",
+  "long a = 99999999999999999999999999\npost(a)\n",
+  "99999999999999999999999999", NULL, 0 },
+{ "long aceita int pequeno tambem (alarga, como em C)",
+  "long b = 42\npost(b)\n", "42", NULL, 0 },
+{ "long recebe o resultado que estourou 64 bits",
+  "x = 1103515245 * 99999999999999999\nlong c = x\npost(c)\n",
+  "110351524499999998896484755", NULL, 0 },
+{ "int com bignum diz que nao cabe e aponta o long",
+  "x = 1103515245 * 99999999999999999\nint y = x\n",
+  "", "esperava int, e o valor nao cabe em 64 bits (declare como 'long y'", 1 },
+{ "long e CHAMAVEL, e converte igual ao int",
+  "post(long(\"123\"), long(3.9), long(), type(long(\"1\")))\n", "123 3 0 int", NULL, 0 },
+{ "long(bignum) devolve o bignum intacto",
+  "b = 99999999999999999999999999\npost(long(b))\n",
+  "99999999999999999999999999", NULL, 0 },
+{ "`is long` vale pros dois tamanhos, e so pra inteiro",
+  "b = 99999999999999999999999999\npost(b is long, 5 is long, \"a\" is long, 1.5 is long)\n",
+  "True True False False", NULL, 0 },
+{ "long recusa o que nao e inteiro",
+  "long d = \"texto\"\n", "", "variável d esperava long", 1 },
+{ "type() de bignum continua int — o valor e inteiro",
+  "b = 99999999999999999999999999\nlong a = b\npost(type(a), type(b))\n", "int int", NULL, 0 },
+
 /* ── `action` e `reaction` SAIRAM ──────────────────────────────────────────
  * Nao sao mais palavra reservada. Sem uma recusa com nome, `action f() {`
  * viraria nome solto + chamada + literal de dicionario ("faltou ':' no

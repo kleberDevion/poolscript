@@ -224,7 +224,7 @@
         {
           "comment": "idem: `int = 1` ou `type=...` como nome de argumento nao e tipo",
           "name": "storage.type.poolscript",
-          "match": "\\b(str|int|flo|bool|list|dict|json|tup|bytes|type|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b(?!\\s*=[^=])"
+          "match": "\\b(str|int|long|Long|flo|bool|list|dict|json|tup|bytes|type|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b(?!\\s*=[^=])"
         },
         {
           "comment": "static/nonnull sao modificadores COLADOS na cabeca — so pintam antes de funct, que e onde valem; fora dali sao nome comum",

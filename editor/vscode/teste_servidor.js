@@ -42,6 +42,10 @@ function conversa(texto, pedidos) {
     const msgs = [];
     const esperados = new Set(pedidos.map((q) => q.id).filter((x) => x !== undefined));
     let terminou = false;
+    /* Sem pedido nenhum, o caso está esperando o DIAGNÓSTICO — e é ele que
+     * diz quando pode encerrar, em vez de um relógio. */
+    const esperaDiagnostico = pedidos.length === 0;
+    let viuDiagnostico = false;
 
     const encerra = () => {
       if (terminou) return;
@@ -72,10 +76,17 @@ function conversa(texto, pedidos) {
         const msg = JSON.parse(buf.slice(s + 4, s + 4 + n).toString('utf8'));
         msgs.push(msg);
         if (msg.id !== undefined) esperados.delete(msg.id);
+        if (msg.method === 'textDocument/publishDiagnostics') viuDiagnostico = true;
         buf = buf.slice(s + 4 + n);
       }
-      /* tudo respondido: dá um respiro pro diagnóstico assíncrono e encerra */
-      if (esperados.size === 0 && !terminou) setTimeout(encerra, 400);
+      /* Tudo respondido E o diagnóstico já veio: pode encerrar.
+       *
+       * Antes era um `setTimeout` de 400/600 ms torcendo pra chegar a tempo, e
+       * sob carga (o `make check` inteiro rodando) o `--check` do motor não
+       * voltava dentro da janela: duas checagens FALHAVAM sem nada estar
+       * quebrado. Teste que chora lobo ensina a ignorar teste. */
+      if (esperados.size === 0 && (viuDiagnostico || !esperaDiagnostico) && !terminou)
+        setTimeout(encerra, 60);
     });
     p.on('error', reject);
 
@@ -85,7 +96,9 @@ function conversa(texto, pedidos) {
     manda({ jsonrpc: '2.0', method: 'textDocument/didOpen',
             params: { textDocument: { uri: URI, languageId: 'poolscript', version: 1, text: texto } } });
     for (const q of pedidos) manda(q);
-    if (esperados.size === 0) setTimeout(encerra, 600);   /* só diagnóstico */
+    /* Sem pedido nenhum, o que se espera é o DIAGNÓSTICO. O teto de 20 s
+     * abaixo continua sendo a rede: se ele nunca vier, o caso falha por não
+     * ter vindo — não por ter demorado 601 ms numa máquina ocupada. */
     setTimeout(() => { try { p.kill(); } catch (_) {} resolve(msgs); }, 20000);
   });
 }

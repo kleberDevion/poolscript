@@ -55,7 +55,7 @@ syn keyword psVerb     PUSH GET POST PUT DELETE JSON
 syn keyword psSelf     self
 
 " ── tipos ───────────────────────────────────────────────────────────────────
-syn keyword psType     str int flo bool list dict json tup bytes type char
+syn keyword psType     str int long flo bool list dict json tup bytes type char
       \ Object object
 " Apelidos de tipo (`string s = "a"`): valem por POSIÇÃO, só onde um tipo vale.
 " Fora dali são nome comum — `string = "a"` é variável, e não pode pintar.

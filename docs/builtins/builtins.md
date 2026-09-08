@@ -21,6 +21,7 @@ A lista sai da tabela `BUILTINS[]` de `vm/poolscript_vm.c`, publicada por `pool 
 | [`id`](id/id.md) | `id(x)` | Identidade do valor: endereço para objetos, o próprio conteúdo para imediatos. |
 | [`input`](input/input.md) | `input(prompt=Null)` | Lê uma linha do stdin; o prompt opcional é impresso antes, sem quebra. |
 | [`int`](int/int.md) | `int(x)` | Converte para inteiro: string numérica, float (trunca) ou bool. |
+| `long` | `long(x)` | A MESMA conversão do `int(x)`. O que muda é a **declaração**: `int x =` promete caber em 64 bits e recusa bignum; `long x =` aceita inteiro de qualquer tamanho — ver [tipos](../linguagem/02-tipos-e-valores.md). |
 | [`len`](len/len.md) | `len(x)` | Tamanho de string (em caracteres), lista, tupla, dict ou bytes. |
 | [`list`](list/list.md) | `list(x)` | Converte para lista: string vira caracteres, dict vira chaves, tupla vira lista. |
 | [`load`](load/load.md) | `load(path=Null)` | Carrega variáveis de um arquivo .env para o ambiente — atalho de dotenv.load. |
