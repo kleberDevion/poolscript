@@ -44,6 +44,14 @@ sudo ./instalar.sh --remover
 
 Do repositório com o fonte, `sudo make install` faz o mesmo.
 
+O instalador também **apaga qualquer PoolScript antiga que esteja no PATH** —
+`pool`, `psl` e `poolscript-lsp` em qualquer outra pasta, inclusive o
+`~/.local/bin` de quem chamou o `sudo`. Uma instalação velha ali vem antes de
+`/usr/local/bin` e sequestra o comando: era o caso do `pool` em Python, que
+respondia `ModuleNotFoundError` com a instalação nova intacta e invisível
+logo atrás. Se o shell já estava aberto, ele lembra do caminho velho — `hash -r`
+resolve.
+
 ### Numa máquina onde não há nada
 
 Num WSL Debian recém-criado, por exemplo, não há nem `curl` nem compilador —

@@ -208,6 +208,39 @@ else
     INCOMPLETO=1
 fi
 
+echo "== tirando PoolScript antiga do PATH"
+# Uma instalação velha em `~/.local/bin` vem ANTES de `/usr/local/bin` e
+# SEQUESTRA o comando: o `pool` respondia o traceback de um pacote Python que
+# não existe mais, com a instalação nova intacta logo atrás e invisível. O
+# instalador dizia "pronto" e o comando estava quebrado.
+#
+# Rodando por `sudo`, o `$PATH` é o do root e o `~/.local/bin` de quem chamou
+# não aparece nele — por isso a casa do `SUDO_USER` entra na busca à mão.
+VARRER=$(echo "$PATH" | tr ':' '\n')
+if [ -n "${SUDO_USER:-}" ]; then
+    CASA=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    if [ -n "$CASA" ]; then
+        VARRER="$VARRER
+$CASA/.local/bin
+$CASA/bin"
+    fi
+fi
+REMOVIDOS=$(echo "$VARRER" | sort -u | while read -r d; do
+    if [ -z "$d" ] || [ "$d" = "$PREFIXO/bin" ]; then
+        continue
+    fi
+    for c in pool psl poolscript-lsp; do
+        if [ -e "$d/$c" ] || [ -L "$d/$c" ]; then
+            rm -f "$d/$c" && echo "$d/$c"
+        fi
+    done
+done)
+if [ -n "$REMOVIDOS" ]; then
+    echo "$REMOVIDOS" | sed 's/^/   removido: /'
+else
+    echo "   nada a remover"
+fi
+
 echo "== tipo MIME e ícone do .ps"
 # Um pacote sem a pasta `dados/` fazia o `install` falhar e, com o `set -e`,
 # derrubava o script AQUI — depois do binário já instalado. Ficava uma
@@ -233,6 +266,11 @@ if [ -x "$PREFIXO/bin/poolscript-lsp" ]; then
 fi
 if [ -f "$DADOS/mime/packages/zz-poolscript.xml" ]; then
     echo "  .ps              text/poolscript, com a logo"
+fi
+if [ -n "$REMOVIDOS" ]; then
+    echo
+    echo "havia PoolScript antiga no PATH e ela foi removida. O shell que já"
+    echo "estava aberto lembra do caminho velho — rode \`hash -r\` nele."
 fi
 if [ -n "${INCOMPLETO:-}" ]; then
     echo
