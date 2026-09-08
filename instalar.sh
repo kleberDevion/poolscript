@@ -5,7 +5,7 @@
 # Numa máquina onde não há NADA — um WSL Debian recém-criado, por exemplo —
 # esta linha faz tudo sozinha, buscando o que faltar:
 #
-#   curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/instalar.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/instalar.sh | sudo bash
 #
 # Ela pega o pacote pronto do último release; não havendo release publicado,
 # clona o fonte, instala as dependências de compilação e compila. Nos dois
@@ -23,7 +23,7 @@
 # definição estiver na mesma base.
 set -e
 
-REPO="${REPO:-https://github.com/kleberDevion/poolscript-lang}"
+REPO="${REPO:-https://github.com/kleberDevion/poolscript}"
 # `PACOTE` é a URL do bundle. Sai do release por padrão, mas aceita qualquer
 # outra origem — o repositório pode estar privado, e aí o release não responde
 # sem credencial. Servindo o `dist/` de outra máquina da rede, por exemplo:

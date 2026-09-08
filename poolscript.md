@@ -50,7 +50,7 @@ Num WSL Debian recém-criado, por exemplo, não há nem `curl` nem compilador �
 e mesmo assim é uma linha só:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript-lang/main/instalar.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/kleberDevion/poolscript/main/instalar.sh | sudo bash
 ```
 
 O instalador busca o pacote pronto do último release; não havendo release
