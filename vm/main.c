@@ -907,6 +907,29 @@ int main(int argc, char **argv)
         ps_metadata_json(stdout);
         return 0;
     }
+    /* Depurador: `pool --debug <porta> arquivo.ps`. O motor escuta DAP na porta
+     * e o editor conecta — é a extensão do VS Code quem escolhe a porta livre e
+     * passa aqui. Ver docs/debugger.md. */
+    if (!strcmp(cmd, "--debug") || !strcmp(cmd, "debug")) {
+        if (argc < 4) {
+            fprintf(stderr, "uso: pool --debug <porta> <arquivo.ps>\n");
+            return 64;
+        }
+        char *fim = NULL;
+        long porta = strtol(argv[2], &fim, 10);
+        if (fim == argv[2] || *fim || porta < 1 || porta > 65535) {
+            fprintf(stderr, "pool --debug: porta invalida: %s\n", argv[2]);
+            return 64;
+        }
+        ps_debug_porta((int)porta);
+        /* Consome o `--debug <porta>` e deixa a linha como se o usuário tivesse
+         * escrito `pool arquivo.ps <args>`: o arquivo volta pra argv[1] e os
+         * argumentos dele continuam depois, senão o `sys.argv` do programa
+         * receberia o próprio nome do arquivo como primeiro argumento. */
+        for (int k = 1; k + 2 < argc; k++) argv[k] = argv[k + 2];
+        argc -= 2;
+        cmd = argv[1];
+    }
     if (!strcmp(cmd, "build")) return cmd_build();
     if (!strcmp(cmd, "compile")) {
         if (argc < 4) { fprintf(stderr, "uso: pool compile <arquivo.ps> -o <saida>\n"); return 64; }

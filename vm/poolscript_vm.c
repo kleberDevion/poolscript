@@ -49,6 +49,7 @@
 #include "ps_db.h"
 #include "ps_mongo.h"
 #include "ps_jinker.h"
+#include "ps_debug.h"
 #include "ps_gmp_min.h"
 #include <poll.h>
 #include <sys/epoll.h>
@@ -851,6 +852,11 @@ typedef struct {
     PSUpval  *upvals;
     int       nupvals;
     char    **upval_nomes;  /* nome de cada upvalue — só pra mensagem de erro */
+    /* Variáveis locais com a faixa de bytecode em que valem. Só o debugger lê:
+     * é o que permite dizer QUAL nome mora no slot com o frame parado num `ip`,
+     * já que os slots são reaproveitados entre blocos. */
+    PSVarDbg *vars;
+    int       nvars;
 } Proto;
 
 typedef struct {
@@ -867,6 +873,41 @@ typedef struct {
      * LOAD_UPVAL acha as células. NULL numa action comum. */
     PSClosure *cl;
 } Frame;
+
+/* ── estado do depurador ──────────────────────────────────────────────────
+ * Existe só com `pool --debug`. Fora disso o campo fica zerado e o laço da VM
+ * paga um `if` previsível por instrução — nada mais.
+ *
+ * `ult_linha`/`ult_proto` são o que impede o passo de parar várias vezes na
+ * MESMA linha: uma linha vira várias instruções, e sem essa memória o "próximo
+ * passo" andaria de opcode em opcode em vez de de linha em linha, que é o que
+ * quem depura espera ver. */
+#define DBG_SOLTO      0   /* rodando até bater breakpoint */
+#define DBG_PASSO_DENTRO 1 /* para na próxima linha, entrando em chamada */
+#define DBG_PASSO_SOBRE  2 /* para na próxima linha do mesmo frame ou acima */
+#define DBG_PASSO_FORA   3 /* para quando voltar pro frame de cima */
+#define DBG_PAUSAR       4 /* para na próxima instrução, seja onde for */
+
+typedef struct {
+    int      ativo;
+    int      fd_in, fd_out;
+    int      configurado;     /* o editor já mandou `configurationDone` */
+    int      parar_entrada;   /* `stopOnEntry` do launch */
+    int      desconectou;
+    int      modo;            /* DBG_* */
+    int      passo_prof;      /* profundidade de frame de referência do passo */
+    int      ult_linha;
+    int      ult_proto;
+    int      seq;             /* numeração das mensagens que o motor envia */
+    struct { char *arquivo; int32_t linha; } *bps;
+    int      nbps;
+    /* Rastro da execução, pro gráfico: cada aresta é um salto de (proto,linha)
+     * pra outro (proto,linha). Guardado como lista circular pra não crescer sem
+     * limite num laço de milhões de voltas. */
+    struct { int32_t de_proto, de_linha, para_proto, para_linha; int64_t vezes; } *arestas;
+    int      narestas, cap_arestas;
+    int32_t  quebrou_proto, quebrou_linha;   /* onde o erro estourou (-1 = não estourou) */
+} Debug;
 
 /* Tamanhos modestos por padrão: antes eram 1<<20 slots cada, o que reservava
  * 33,5 MB por execução mesmo pra um `post(1)` — medido com RSS. Estes valores
@@ -1047,6 +1088,8 @@ struct VM_ {
     char   **nomes_globais;
     int      n_nomes_globais;   /* só as do script principal — nglobals cresce
                                  * com import de .ps, esta tabela não */
+
+    Debug   dbg;             /* só com `pool --debug`; zerado no resto */
 
     char    erro[256];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
@@ -20371,6 +20414,558 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
     return r;
 }
 
+/* ── depurador: o DAP falado pelo próprio motor ───────────────────────────
+ *
+ * O editor conversa em Debug Adapter Protocol, o mesmo de qualquer depurador
+ * do VS Code. Falar isso aqui — e não numa reimplementação em JavaScript — é a
+ * mesma decisão do LSP: quem sabe onde a execução está, quais frames existem e
+ * que variável mora em que slot é a VM. Uma cópia disso na extensão erraria no
+ * dia seguinte.
+ *
+ * O laço da VM chama `dbg_passo` a cada instrução. Quando é hora de parar, o
+ * controle vem pra `dbg_serve`, que atende pedidos até o editor mandar seguir.
+ * Nada disso roda sem `--debug`.
+ */
+
+/* Porta do depurador, posta por `ps_debug_porta` antes de rodar. 0 = desligado. */
+static int g_debug_porta = 0;
+
+void ps_debug_porta(int porta) { g_debug_porta = porta > 0 ? porta : 0; }
+
+/* Escuta em 127.0.0.1:porta e espera UMA conexão — o editor.
+ *
+ * Socket, e não stdin/stdout: o DAP e a saída do programa dividiriam o mesmo
+ * fluxo, e um `post()` no meio de uma mensagem quebraria o protocolo. Com
+ * socket separado, o `post` do usuário continua indo pro terminal dele, como
+ * sempre foi. Só 127.0.0.1: isto abre uma porta que executa código. */
+static int dbg_conecta(VM *vm, int porta)
+{
+    int srv = socket(AF_INET, SOCK_STREAM, 0);
+    if (srv < 0) return -1;
+    int um = 1;
+    setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, &um, sizeof um);
+    struct sockaddr_in ad;
+    memset(&ad, 0, sizeof ad);
+    ad.sin_family = AF_INET;
+    ad.sin_port   = htons((uint16_t)porta);
+    ad.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    if (bind(srv, (struct sockaddr *)&ad, sizeof ad) != 0 || listen(srv, 1) != 0) {
+        close(srv);
+        fprintf(stderr, "pool --debug: nao consegui escutar na porta %d\n", porta);
+        return -1;
+    }
+    int c = accept(srv, NULL, NULL);
+    close(srv);
+    if (c < 0) return -1;
+    vm->dbg.fd_in = vm->dbg.fd_out = c;
+    return 0;
+}
+
+static void dbg_fecha(VM *vm)
+{
+    if (vm->dbg.fd_in >= 0) close(vm->dbg.fd_in);
+    vm->dbg.fd_in = vm->dbg.fd_out = -1;
+    for (int i = 0; i < vm->dbg.nbps; i++) free(vm->dbg.bps[i].arquivo);
+    free(vm->dbg.bps);
+    free(vm->dbg.arestas);
+    vm->dbg.bps = NULL; vm->dbg.nbps = 0;
+    vm->dbg.arestas = NULL; vm->dbg.narestas = vm->dbg.cap_arestas = 0;
+    vm->dbg.ativo = 0;
+}
+
+static void dbg_manda(VM *vm, const char *json)
+{
+    if (!vm->dbg.ativo || vm->dbg.desconectou) return;
+    if (psdbg_escreve(vm->dbg.fd_out, json, strlen(json)) != 0)
+        vm->dbg.desconectou = 1;
+}
+
+/* corpo pode ser NULL (evento sem body) */
+static void dbg_evento(VM *vm, const char *nome, const char *corpo)
+{
+    SBUF_AUTO b = {0};
+    char cab[128];
+    snprintf(cab, sizeof cab, "{\"seq\":%d,\"type\":\"event\",\"event\":\"",
+             ++vm->dbg.seq);
+    if (sb_txt(&b, cab) != 0) return;
+    if (sb_txt(&b, nome) != 0) return;
+    if (corpo) {
+        if (sb_txt(&b, "\",\"body\":") != 0) return;
+        if (sb_txt(&b, corpo) != 0) return;
+        if (sb_txt(&b, "}") != 0) return;
+    } else {
+        if (sb_txt(&b, "\"}") != 0) return;
+    }
+    if (sb_bytes(&b, "", 1) != 0) return;   /* '\0' */
+    dbg_manda(vm, b.b);
+}
+
+/* Resposta a um pedido. `corpo` é o JSON do body, ou NULL. */
+static void dbg_resposta(VM *vm, int req_seq, const char *cmd, const char *corpo)
+{
+    SBUF_AUTO b = {0};
+    char cab[160];
+    snprintf(cab, sizeof cab,
+             "{\"seq\":%d,\"type\":\"response\",\"request_seq\":%d,"
+             "\"success\":true,\"command\":\"", ++vm->dbg.seq, req_seq);
+    if (sb_txt(&b, cab) != 0) return;
+    if (sb_txt(&b, cmd) != 0) return;
+    if (corpo) {
+        if (sb_txt(&b, "\",\"body\":") != 0) return;
+        if (sb_txt(&b, corpo) != 0) return;
+        if (sb_txt(&b, "}") != 0) return;
+    } else {
+        if (sb_txt(&b, "\"}") != 0) return;
+    }
+    if (sb_bytes(&b, "", 1) != 0) return;
+    dbg_manda(vm, b.b);
+}
+
+/* Recusa explícita, com motivo. */
+static void dbg_recusa(VM *vm, int req_seq, const char *cmd, const char *motivo)
+{
+    SBUF_AUTO b = {0};
+    char cab[160];
+    snprintf(cab, sizeof cab,
+             "{\"seq\":%d,\"type\":\"response\",\"request_seq\":%d,"
+             "\"success\":false,\"command\":\"", ++vm->dbg.seq, req_seq);
+    if (sb_txt(&b, cab) != 0) return;
+    if (sb_txt(&b, cmd) != 0) return;
+    if (sb_txt(&b, "\",\"message\":") != 0) return;
+    if (json_texto(&b, motivo, (int)strlen(motivo)) != 0) return;
+    if (sb_txt(&b, "}") != 0) return;
+    if (sb_bytes(&b, "", 1) != 0) return;
+    dbg_manda(vm, b.b);
+}
+
+/* Campo de um dict vindo do JSON. V_UNSET quando não existe — o DAP tem muito
+ * campo opcional, e tratar ausência como erro derrubaria a sessão à toa. */
+static Value dbg_campo(Value d, const char *chave)
+{
+    if (!EH_DICT(d)) return MK_UNSET();
+    PSDict *dd = COMO_DICT(d);
+    size_t n = strlen(chave);
+    for (int32_t i = 0; i < dd->usados; i++) {
+        if (dd->entradas[i].estado != 1) continue;
+        Value k = dd->entradas[i].chave;
+        if (!EH_STRING(k)) continue;
+        PSString *s = COMO_STRING(k);
+        if ((size_t)s->len == n && memcmp(s->chars, chave, n) == 0)
+            return dd->entradas[i].valor;
+    }
+    return MK_UNSET();
+}
+
+static int64_t dbg_inteiro(Value v, int64_t padrao)
+{
+    if (v.t == V_INT)   return v.as.i;
+    if (v.t == V_FLOAT) return (int64_t)v.as.d;
+    if (v.t == V_BOOL)  return v.as.b ? 1 : 0;
+    return padrao;
+}
+
+/* Linha do fonte de um frame. `ip` é o ENDEREÇO DE RETORNO (a palavra depois da
+ * instrução), que é como os frames guardam — daí o -2, igual ao traceback. */
+static int dbg_linha(Proto *pr, int ip)
+{
+    if (!pr->linhas || ip < 2 || (ip - 2) >= pr->ncode) return 0;
+    return pr->linhas[ip - 2];
+}
+
+static const char *dbg_arquivo(Proto *pr)
+{
+    return pr->arquivo ? pr->arquivo : "";
+}
+
+/* Registra a aresta (de → para) do gráfico de execução. Arestas repetidas só
+ * incrementam o contador: um laço de um milhão de voltas é UMA aresta com
+ * peso, não um milhão de arestas — sem isso o gráfico não caberia na memória
+ * nem faria sentido pra quem olha. */
+static void dbg_aresta(VM *vm, int32_t dp, int32_t dl, int32_t pp, int32_t pl)
+{
+    Debug *g = &vm->dbg;
+    if (dl <= 0 || pl <= 0) return;
+    for (int i = 0; i < g->narestas; i++) {
+        if (g->arestas[i].de_proto == dp && g->arestas[i].de_linha == dl
+                && g->arestas[i].para_proto == pp && g->arestas[i].para_linha == pl) {
+            g->arestas[i].vezes++;
+            return;
+        }
+    }
+    /* Teto: o gráfico é pra ser lido por gente. Passando disso, para de
+     * registrar aresta NOVA — as que já existem seguem contando, então o
+     * caminho quente continua correto. */
+    if (g->narestas >= 4096) return;
+    if (g->narestas == g->cap_arestas) {
+        int novo = g->cap_arestas ? g->cap_arestas * 2 : 64;
+        void *n = realloc(g->arestas, sizeof(*g->arestas) * (size_t)novo);
+        if (!n) return;
+        g->arestas = n;
+        g->cap_arestas = novo;
+    }
+    g->arestas[g->narestas].de_proto   = dp;
+    g->arestas[g->narestas].de_linha   = dl;
+    g->arestas[g->narestas].para_proto = pp;
+    g->arestas[g->narestas].para_linha = pl;
+    g->arestas[g->narestas].vezes      = 1;
+    g->narestas++;
+}
+
+static int dbg_bate_bp(VM *vm, const char *arquivo, int linha)
+{
+    for (int i = 0; i < vm->dbg.nbps; i++) {
+        if (vm->dbg.bps[i].linha != linha) continue;
+        const char *a = vm->dbg.bps[i].arquivo;
+        if (!a || !*a) return 1;
+        /* Compara pelo FIM do caminho: o editor manda absoluto, o proto guarda
+         * o caminho como veio na linha de comando. Exigir igualdade literal
+         * fazia todo breakpoint ser ignorado em silêncio. */
+        size_t la = strlen(a), lb = strlen(arquivo);
+        if (la == lb && strcmp(a, arquivo) == 0) return 1;
+        if (lb < la && strcmp(a + (la - lb), arquivo) == 0 && a[la - lb - 1] == '/') return 1;
+        if (la < lb && strcmp(arquivo + (lb - la), a) == 0 && arquivo[lb - la - 1] == '/') return 1;
+    }
+    return 0;
+}
+
+/* Pilha de chamadas, do frame parado (id 0) pro mais externo. */
+static void dbg_pilha(VM *vm, SBuf *b, int fp)
+{
+    if (sb_txt(b, "{\"stackFrames\":[") != 0) return;
+    int n = 0;
+    for (int f = fp; f >= 0 && n < 64; f--, n++) {
+        Proto *pr = &vm->protos[vm->frames[f].proto];
+        char cab[96];
+        snprintf(cab, sizeof cab, "%s{\"id\":%d,\"line\":%d,\"column\":1,\"name\":",
+                 n ? "," : "", f, dbg_linha(pr, vm->frames[f].ip));
+        if (sb_txt(b, cab) != 0) return;
+        const char *nome = pr->nome ? pr->nome : "<module>";
+        if (json_texto(b, nome, (int)strlen(nome)) != 0) return;
+        if (sb_txt(b, ",\"source\":{\"path\":") != 0) return;
+        const char *arq = dbg_arquivo(pr);
+        if (json_texto(b, arq, (int)strlen(arq)) != 0) return;
+        if (sb_txt(b, "}}") != 0) return;
+    }
+    char fim[64];
+    snprintf(fim, sizeof fim, "],\"totalFrames\":%d}", n);
+    sb_txt(b, fim);
+}
+
+/* Uma variável no formato do DAP. O VALOR sai do mesmo serializador do
+ * `json.stringify`; o que ele recusa (uma instância, por exemplo) vira o texto
+ * de renderização da linguagem, que é o que o usuário veria num `post`. */
+static void dbg_uma_var(VM *vm, SBuf *b, const char *nome, Value v, int primeira)
+{
+    if (sb_txt(b, primeira ? "{\"name\":" : ",{\"name\":") != 0) return;
+    if (json_texto(b, nome, (int)strlen(nome)) != 0) return;
+    if (sb_txt(b, ",\"value\":") != 0) return;
+
+    SBUF_AUTO t = {0};
+    int ok = (v.t != V_UNSET) && json_escreve(vm, &t, &v, 0, 1) == 0;
+    if (!ok) {
+        vm->erro[0] = '\0';           /* recusa do JSON não é erro do programa */
+        t.n = 0;
+        TXTBUF_AUTO r = {0};
+        if (v.t == V_UNSET) { sb_txt(&t, "<sem valor>"); }
+        else if (valor_para_texto(&r, &v, 0) == 0) sb_bytes(&t, r.b ? r.b : "", r.n);
+    }
+    /* O `value` do DAP é SEMPRE string, inclusive pra número: mandar `42` cru
+     * faz o editor receber um inteiro onde o protocolo promete texto, e quem
+     * consome do outro lado quebra na concatenação. O tipo real vai no campo
+     * `type`, logo abaixo. */
+    if (json_texto(b, t.b ? t.b : "", t.n) != 0) return;
+    if (sb_txt(b, ",\"type\":") != 0) return;
+    const char *tp = v.t == V_UNSET ? "unset" : nome_do_tipo_valor(v);
+    if (json_texto(b, tp, (int)strlen(tp)) != 0) return;
+    sb_txt(b, ",\"variablesReference\":0}");
+}
+
+#define DBG_REF_GLOBAIS 1
+#define DBG_REF_LOCAIS  100   /* 100 + índice do frame */
+
+static void dbg_variaveis(VM *vm, SBuf *b, int ref)
+{
+    if (sb_txt(b, "{\"variables\":[") != 0) return;
+    int primeira = 1;
+
+    if (ref == DBG_REF_GLOBAIS) {
+        for (int i = 0; i < vm->n_nomes_globais; i++) {
+            if (!vm->nomes_globais[i]) continue;
+            if (i >= vm->nglobals) break;
+            if (vm->globals[i].t == V_UNSET) continue;
+            dbg_uma_var(vm, b, vm->nomes_globais[i], vm->globals[i], primeira);
+            primeira = 0;
+        }
+    } else if (ref >= DBG_REF_LOCAIS) {
+        int f = ref - DBG_REF_LOCAIS;
+        if (f >= 0 && f < MAX_FRAMES) {
+            Proto *pr = &vm->protos[vm->frames[f].proto];
+            int    ip = vm->frames[f].ip - 2;
+            int  base = vm->frames[f].locals_base;
+            /* Só os nomes VIVOS neste ponto do bytecode. É por isso que a
+             * tabela guarda faixa: o mesmo slot é outra variável noutro bloco,
+             * e sem a faixa o painel mostraria o nome de um com o valor do
+             * outro. */
+            for (int k = 0; k < pr->nvars; k++) {
+                PSVarDbg *d = &pr->vars[k];
+                if (ip < d->ip_ini) continue;
+                if (d->ip_fim >= 0 && ip >= d->ip_fim) continue;
+                if (base + d->slot >= vm->locals_teto) continue;
+                dbg_uma_var(vm, b, d->nome ? d->nome : "?",
+                            vm->locals[base + d->slot], primeira);
+                primeira = 0;
+            }
+        }
+    }
+    sb_txt(b, "]}");
+}
+
+/* O gráfico de execução: por onde o programa passou e onde ele quebrou. */
+static void dbg_grafico(VM *vm, SBuf *b)
+{
+    if (sb_txt(b, "{\"nos\":[") != 0) return;
+    /* Os nós são os (proto,linha) que aparecem nas arestas. Sai um por vez,
+     * sem tabela auxiliar: a lista é pequena por construção (teto de 4096). */
+    int primeiro = 1;
+    for (int i = 0; i < vm->dbg.narestas; i++) {
+        for (int lado = 0; lado < 2; lado++) {
+            int32_t pp = lado ? vm->dbg.arestas[i].para_proto : vm->dbg.arestas[i].de_proto;
+            int32_t pl = lado ? vm->dbg.arestas[i].para_linha : vm->dbg.arestas[i].de_linha;
+            int repetido = 0;
+            for (int j = 0; j < i && !repetido; j++) {
+                if ((vm->dbg.arestas[j].de_proto == pp && vm->dbg.arestas[j].de_linha == pl)
+                 || (vm->dbg.arestas[j].para_proto == pp && vm->dbg.arestas[j].para_linha == pl))
+                    repetido = 1;
+            }
+            if (!repetido && lado == 1
+                && vm->dbg.arestas[i].de_proto == pp && vm->dbg.arestas[i].de_linha == pl)
+                repetido = 1;
+            if (repetido) continue;
+            Proto *pr = &vm->protos[pp];
+            char cab[128];
+            snprintf(cab, sizeof cab, "%s{\"proto\":%d,\"linha\":%d,\"quebrou\":%s,\"nome\":",
+                     primeiro ? "" : ",", pp, pl,
+                     (pp == vm->dbg.quebrou_proto && pl == vm->dbg.quebrou_linha)
+                        ? "true" : "false");
+            if (sb_txt(b, cab) != 0) return;
+            const char *nm = pr->nome ? pr->nome : "<module>";
+            if (json_texto(b, nm, (int)strlen(nm)) != 0) return;
+            if (sb_txt(b, ",\"arquivo\":") != 0) return;
+            const char *aq = dbg_arquivo(pr);
+            if (json_texto(b, aq, (int)strlen(aq)) != 0) return;
+            if (sb_txt(b, "}") != 0) return;
+            primeiro = 0;
+        }
+    }
+    if (sb_txt(b, "],\"arestas\":[") != 0) return;
+    for (int i = 0; i < vm->dbg.narestas; i++) {
+        char e[192];
+        snprintf(e, sizeof e,
+                 "%s{\"de\":{\"proto\":%d,\"linha\":%d},"
+                 "\"para\":{\"proto\":%d,\"linha\":%d},\"vezes\":%lld}",
+                 i ? "," : "",
+                 vm->dbg.arestas[i].de_proto, vm->dbg.arestas[i].de_linha,
+                 vm->dbg.arestas[i].para_proto, vm->dbg.arestas[i].para_linha,
+                 (long long)vm->dbg.arestas[i].vezes);
+        if (sb_txt(b, e) != 0) return;
+    }
+    char fim[96];
+    snprintf(fim, sizeof fim, "],\"quebrou\":{\"proto\":%d,\"linha\":%d}}",
+             vm->dbg.quebrou_proto, vm->dbg.quebrou_linha);
+    sb_txt(b, fim);
+}
+
+static void dbg_troca_bps(VM *vm, const char *arquivo, Value linhas)
+{
+    /* Substitui os deste arquivo, mantendo os dos outros: o editor manda o
+     * conjunto COMPLETO de um arquivo por vez. */
+    int escrita = 0;
+    for (int i = 0; i < vm->dbg.nbps; i++) {
+        if (vm->dbg.bps[i].arquivo && strcmp(vm->dbg.bps[i].arquivo, arquivo) == 0) {
+            free(vm->dbg.bps[i].arquivo);
+            continue;
+        }
+        vm->dbg.bps[escrita++] = vm->dbg.bps[i];
+    }
+    vm->dbg.nbps = escrita;
+
+    if (!EH_SEQ(linhas)) return;
+    PSList *l = COMO_LIST(linhas);
+    for (int32_t i = 0; i < l->len; i++) {
+        Value lin = dbg_campo(l->itens[i], "line");
+        int32_t nl = (int32_t)dbg_inteiro(lin, 0);
+        if (nl <= 0) continue;
+        void *n = realloc(vm->dbg.bps, sizeof(*vm->dbg.bps) * (size_t)(vm->dbg.nbps + 1));
+        if (!n) return;
+        vm->dbg.bps = n;
+        vm->dbg.bps[vm->dbg.nbps].arquivo = strdup(arquivo);
+        vm->dbg.bps[vm->dbg.nbps].linha   = nl;
+        vm->dbg.nbps++;
+    }
+}
+
+/* Atende pedidos do editor até ele mandar seguir. `fp` é o frame parado. */
+static void dbg_serve(VM *vm, int fp)
+{
+    while (!vm->dbg.desconectou) {
+        char  *corpo = NULL;
+        size_t tam   = 0;
+        if (psdbg_le(vm->dbg.fd_in, &corpo, &tam) != 0) {
+            vm->dbg.desconectou = 1;
+            return;
+        }
+        Value req = MK_NULL();
+        JLeitor j = { corpo, (int)tam, 0 };
+        int erro_parse = j_valor(vm, &j, &req, 0) != 0;
+        free(corpo);
+        if (erro_parse) { vm->erro[0] = '\0'; continue; }
+        /* O pedido é objeto novo e a VM está num ponto seguro do coletor:
+         * sem fixar, um GC durante o atendimento o liberaria debaixo de nós. */
+        int sp_antes = vm->sp;
+        if (fixa_raiz(vm, req) != 0) continue;
+
+        int         seq = (int)dbg_inteiro(dbg_campo(req, "seq"), 0);
+        Value       cmdv = dbg_campo(req, "command");
+        const char *cmd  = EH_STRING(cmdv) ? COMO_STRING(cmdv)->chars : "";
+        Value       arg  = dbg_campo(req, "arguments");
+        int         seguir = 0;
+
+        if (strcmp(cmd, "initialize") == 0) {
+            dbg_resposta(vm, seq,cmd,
+                "{\"supportsConfigurationDoneRequest\":true,"
+                "\"supportsTerminateRequest\":true,"
+                "\"supportsSingleThreadExecutionRequests\":false}");
+            dbg_evento(vm, "initialized", NULL);
+        } else if (strcmp(cmd, "launch") == 0 || strcmp(cmd, "attach") == 0) {
+            vm->dbg.parar_entrada = dbg_inteiro(dbg_campo(arg, "stopOnEntry"), 0) != 0;
+            dbg_resposta(vm, seq, cmd, NULL);
+        } else if (strcmp(cmd, "setBreakpoints") == 0) {
+            Value fonte = dbg_campo(arg, "source");
+            Value cam   = dbg_campo(fonte, "path");
+            const char *arquivo = EH_STRING(cam) ? COMO_STRING(cam)->chars : "";
+            Value lins  = dbg_campo(arg, "breakpoints");
+            dbg_troca_bps(vm, arquivo, lins);
+            /* Confirma cada um como verificado: a VM não pré-valida linha, e
+             * responder "não verificado" faria o editor riscar o ponto que
+             * depois funciona. */
+            SBUF_AUTO b = {0};
+            sb_txt(&b, "{\"breakpoints\":[");
+            int n = EH_SEQ(lins) ? COMO_LIST(lins)->len : 0;
+            for (int i = 0; i < n; i++) {
+                char e[64];
+                snprintf(e, sizeof e, "%s{\"verified\":true}", i ? "," : "");
+                sb_txt(&b, e);
+            }
+            sb_txt(&b, "]}");
+            sb_bytes(&b, "", 1);
+            dbg_resposta(vm, seq, cmd, b.b ? b.b : "{\"breakpoints\":[]}");
+        } else if (strcmp(cmd, "configurationDone") == 0) {
+            /* Devolve o controle: daqui o programa começa a rodar. Sem isso a
+             * sessão travava esperando um pedido que o editor só manda depois
+             * de ver o programa andar. */
+            vm->dbg.configurado = 1;
+            dbg_resposta(vm, seq, cmd, NULL);
+            seguir = 1;
+        } else if (strcmp(cmd, "threads") == 0) {
+            dbg_resposta(vm, seq, cmd,
+                         "{\"threads\":[{\"id\":1,\"name\":\"principal\"}]}");
+        } else if (strcmp(cmd, "stackTrace") == 0) {
+            SBUF_AUTO b = {0};
+            dbg_pilha(vm, &b, fp);
+            sb_bytes(&b, "", 1);
+            dbg_resposta(vm, seq, cmd, b.b ? b.b : "{\"stackFrames\":[]}");
+        } else if (strcmp(cmd, "scopes") == 0) {
+            int f = (int)dbg_inteiro(dbg_campo(arg, "frameId"), 0);
+            char corpo2[256];
+            snprintf(corpo2, sizeof corpo2,
+                "{\"scopes\":[{\"name\":\"Locais\",\"variablesReference\":%d,"
+                "\"expensive\":false},{\"name\":\"Globais\",\"variablesReference\":%d,"
+                "\"expensive\":false}]}", DBG_REF_LOCAIS + f, DBG_REF_GLOBAIS);
+            dbg_resposta(vm, seq, cmd, corpo2);
+        } else if (strcmp(cmd, "variables") == 0) {
+            int ref = (int)dbg_inteiro(dbg_campo(arg, "variablesReference"), 0);
+            SBUF_AUTO b = {0};
+            dbg_variaveis(vm, &b, ref);
+            sb_bytes(&b, "", 1);
+            dbg_resposta(vm, seq, cmd, b.b ? b.b : "{\"variables\":[]}");
+        } else if (strcmp(cmd, "poolscriptGrafico") == 0) {
+            SBUF_AUTO b = {0};
+            dbg_grafico(vm, &b);
+            sb_bytes(&b, "", 1);
+            dbg_resposta(vm, seq, cmd, b.b ? b.b : "{\"nos\":[],\"arestas\":[]}");
+        } else if (strcmp(cmd, "continue") == 0) {
+            vm->dbg.modo = DBG_SOLTO;
+            dbg_resposta(vm, seq, cmd, "{\"allThreadsContinued\":true}");
+            seguir = 1;
+        } else if (strcmp(cmd, "next") == 0) {
+            vm->dbg.modo = DBG_PASSO_SOBRE; vm->dbg.passo_prof = fp;
+            dbg_resposta(vm, seq, cmd, NULL); seguir = 1;
+        } else if (strcmp(cmd, "stepIn") == 0) {
+            vm->dbg.modo = DBG_PASSO_DENTRO;
+            dbg_resposta(vm, seq, cmd, NULL); seguir = 1;
+        } else if (strcmp(cmd, "stepOut") == 0) {
+            vm->dbg.modo = DBG_PASSO_FORA; vm->dbg.passo_prof = fp;
+            dbg_resposta(vm, seq, cmd, NULL); seguir = 1;
+        } else if (strcmp(cmd, "pause") == 0) {
+            vm->dbg.modo = DBG_PAUSAR;
+            dbg_resposta(vm, seq, cmd, NULL);
+        } else if (strcmp(cmd, "disconnect") == 0 || strcmp(cmd, "terminate") == 0) {
+            dbg_resposta(vm, seq, cmd, NULL);
+            vm->dbg.desconectou = 1;
+            vm->sp = sp_antes;
+            return;
+        } else {
+            /* Comando que o motor não implementa (`evaluate`, `setVariable`,
+             * breakpoint condicional…). Responder SUCESSO com corpo vazio faz o
+             * editor mostrar resultado em branco como se tivesse funcionado —
+             * o protocolo tem recusa justamente pra isso. */
+            dbg_recusa(vm, seq, cmd, "comando nao implementado pelo motor");
+        }
+
+        vm->sp = sp_antes;
+        if (seguir) return;
+    }
+}
+
+/* Chamado a cada instrução quando `--debug` está ligado. */
+static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
+{
+    Debug *g = &vm->dbg;
+    int linha = (p->linhas && ip >= 0 && ip < p->ncode) ? p->linhas[ip] : 0;
+    if (linha <= 0) return;
+
+    int proto_id = (int)(p - vm->protos);
+    if (proto_id == g->ult_proto && linha == g->ult_linha) return;  /* mesma linha */
+
+    if (g->ult_linha > 0)
+        dbg_aresta(vm, g->ult_proto, g->ult_linha, proto_id, linha);
+
+    int parar = 0;
+    const char *motivo = "step";
+    if (g->modo == DBG_PAUSAR) { parar = 1; motivo = "pause"; }
+    else if (g->modo == DBG_PASSO_DENTRO) parar = 1;
+    else if (g->modo == DBG_PASSO_SOBRE && fp <= g->passo_prof) parar = 1;
+    else if (g->modo == DBG_PASSO_FORA  && fp <  g->passo_prof) parar = 1;
+    if (!parar && dbg_bate_bp(vm, dbg_arquivo(p), linha)) { parar = 1; motivo = "breakpoint"; }
+
+    g->ult_proto = proto_id;
+    g->ult_linha = linha;
+    if (!parar) return;
+
+    /* Publica o estado antes de ceder: o atendimento cria objetos (o pedido
+     * vem em JSON) e pode passar por coleta. */
+    vm->sp         = sp;
+    vm->locals_top = locals_top;
+    vm->frames[fp].proto = proto_id;
+    vm->frames[fp].ip    = ip + 2;   /* convenção de endereço de retorno */
+
+    char corpo[160];
+    snprintf(corpo, sizeof corpo,
+             "{\"reason\":\"%s\",\"threadId\":1,\"allThreadsStopped\":true}", motivo);
+    dbg_evento(vm, "stopped", corpo);
+    dbg_serve(vm, fp);
+}
+
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado)
 {
@@ -20441,6 +21036,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             vm->gc_fp = fp_salvo;
             vm->gc_cl = cl_salvo;
         }
+
+        /* Depurador: um `if` previsível por instrução, e só. Fica ANTES de
+         * consumir o opcode porque quem depura espera parar EM CIMA da linha
+         * que vai rodar, não depois dela. */
+        if (vm->dbg.ativo) dbg_passo(vm, p, ip, fp, sp, locals_top);
 
         int32_t o   = p->code[ip];
         int32_t arg = p->code[ip + 1];
@@ -23410,6 +24010,26 @@ ERRO_TF(vm, "TypeError",
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
         if (nh == 0) {
+            /* Depurador: é AQUI que o gráfico ganha o ponto vermelho, e é aqui
+             * que o editor precisa parar. Depois deste ponto a VM desmonta os
+             * frames pra propagar o erro, e a pilha que interessa — a do
+             * momento da falha, com as variáveis ainda vivas — some. */
+            if (vm->dbg.ativo) {
+                vm->dbg.quebrou_proto = p ? (int)(p - vm->protos) : -1;
+                vm->dbg.quebrou_linha = linha_agora;
+                vm->sp = sp;
+                vm->locals_top = locals_top;
+                vm->frames[fp].proto = vm->dbg.quebrou_proto;
+                vm->frames[fp].ip    = ip;
+                SBUF_AUTO tx = {0};
+                sb_txt(&tx, "{\"reason\":\"exception\",\"threadId\":1,"
+                            "\"allThreadsStopped\":true,\"text\":");
+                json_texto(&tx, vm->erro, (int)strlen(vm->erro));
+                sb_txt(&tx, "}");
+                sb_bytes(&tx, "", 1);
+                dbg_evento(vm, "stopped", tx.b ? tx.b : "{\"reason\":\"exception\"}");
+                dbg_serve(vm, fp);
+            }
             /* sem handler: erro não-capturado. Monta o traceback na MESMA ordem
              * do interpretador (que é a autoridade): os chamadores do mais
              * interno pro mais externo, cruzando a fronteira do `import`, e o
@@ -23526,6 +24146,9 @@ static void libera_vm(VM *vm)
                     free(vm->protos[i].param_nomes[k]);
                 free(vm->protos[i].param_nomes);
             }
+            for (int k = 0; k < vm->protos[i].nvars; k++)
+                free(vm->protos[i].vars[k].nome);
+            free(vm->protos[i].vars);
         }
         free(vm->protos);
     }
@@ -23722,6 +24345,23 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                 p->param_nomes[k] = malloc(ln + 1);
                 if (!p->param_nomes[k]) return -1;
                 memcpy(p->param_nomes[k], src_n, ln + 1);
+            }
+        }
+        /* tabela de variáveis do debugger: a VM precisa ser dona das strings,
+         * porque o PSPrograma é liberado antes da execução começar. */
+        /* Monta num local e publica ponteiro E contador JUNTOS, no fim: assim
+         * não existe instante em que `p->vars` está visível pela metade. */
+        p->vars  = NULL;
+        p->nvars = 0;
+        if (o->vars && o->nvars > 0) {
+            PSVarDbg *vs = calloc((size_t)o->nvars, sizeof(PSVarDbg));
+            if (vs) {
+                for (int32_t k = 0; k < o->nvars; k++) {
+                    vs[k] = o->vars[k];
+                    vs[k].nome = o->vars[k].nome ? strdup(o->vars[k].nome) : NULL;
+                }
+                p->vars  = vs;
+                p->nvars = o->nvars;
             }
         }
         if (!p->code || !p->consts) return -1;
@@ -23959,6 +24599,22 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         if (o->colunas && o->ncode > 0) {
             d->colunas = malloc(sizeof(int32_t) * (size_t)o->ncode);
             if (d->colunas) memcpy(d->colunas, o->colunas, sizeof(int32_t) * (size_t)o->ncode);
+        }
+        /* tabela do debugger — como as linhas, é do fonte e não sofre relocação.
+         * Este é o caminho do `import`: sem copiar AQUI também, o debugger via
+         * variáveis no arquivo principal e nenhuma dentro de um módulo. */
+        d->vars  = NULL;
+        d->nvars = 0;
+        if (o->vars && o->nvars > 0) {
+            PSVarDbg *vs = calloc((size_t)o->nvars, sizeof(PSVarDbg));
+            if (vs) {
+                for (int32_t k = 0; k < o->nvars; k++) {
+                    vs[k] = o->vars[k];
+                    vs[k].nome = o->vars[k].nome ? strdup(o->vars[k].nome) : NULL;
+                }
+                d->vars  = vs;
+                d->nvars = o->nvars;
+            }
         }
 
         d->nlocals = o->nlocals;
@@ -24968,9 +25624,33 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
 
     ps_compila_free(prog);
 
+    /* Depurador: espera o editor conectar e conversar o aperto de mão ANTES de
+     * a primeira instrução rodar — senão os breakpoints do editor chegariam
+     * depois de o programa já ter passado por eles. */
+    if (g_debug_porta > 0) {
+        vm.dbg.quebrou_proto = vm.dbg.quebrou_linha = -1;
+        if (dbg_conecta(&vm, g_debug_porta) == 0) {
+            vm.dbg.ativo = 1;
+            vm.frames[0].proto = 0;
+            vm.frames[0].ip    = 2;
+            dbg_serve(&vm, 0);                 /* até o `configurationDone` */
+            if (vm.dbg.parar_entrada) vm.dbg.modo = DBG_PASSO_DENTRO;
+        }
+    }
+
     Value resultado;
     int rc = vm_executa(&vm, 0, &resultado);
     fflush(stdout);
+    if (vm.dbg.ativo) {
+        char corpo[96];
+        snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}", rc == 0 ? 0 : 1);
+        dbg_evento(&vm, "exited", corpo);
+        dbg_evento(&vm, "terminated", NULL);
+        /* Fica atendendo depois do fim: é aqui que o editor busca o gráfico de
+         * execução, que só está completo agora. Sai quando ele desconectar. */
+        while (!vm.dbg.desconectou) dbg_serve(&vm, 0);
+        dbg_fecha(&vm);
+    }
     if (rc != 0) {
         e->tipo = PS_ERRO_RUNTIME;
         snprintf(e->msg, sizeof(e->msg), "%s", vm.erro);

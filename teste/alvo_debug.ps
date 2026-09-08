@@ -1,0 +1,19 @@
+# Programa-alvo do teste do depurador (teste/depurador.ps).
+#
+# Cada linha aqui é referenciada por NÚMERO no teste, então mexer no arquivo
+# quebra o teste de propósito: é o jeito de garantir que o breakpoint para na
+# linha certa, e não numa linha qualquer que por acaso funcione.
+funct soma(a, b) {
+    total = a + b        # linha 7 — onde o teste põe o breakpoint
+    return total
+}
+
+funct dobra(n) {
+    return n * 2
+}
+
+x = 10
+y = 32
+r = soma(x, y)
+d = dobra(r)
+post("resultado:", r, d)

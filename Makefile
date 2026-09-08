@@ -44,7 +44,7 @@ PGLIBFLAG := $(if $(PGLIB),-L$(PGLIB),)
 PGSTATIC  := $(if $(wildcard $(PGLIB)/libpgcommon_shlib.a),-lpgcommon_shlib -lpgport_shlib,-lpgcommon -lpgport)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/poolscript_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/poolscript_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -469,6 +469,12 @@ check: pool testar
 	@./pool scripts/audita_exemplos_doc.ps
 	@echo
 	@./pool teste/fuzz_replay.ps
+	@echo
+	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha
+	# pedida, pilha, variaveis VIVAS no ponto (slot e reaproveitado entre
+	# blocos, entao nome errado aqui e' silencioso), passo a passo, parada na
+	# excecao e o grafico de execucao. Sobe dois processos `pool --debug`.
+	@./pool teste/depurador.ps
 	@echo
 	# Os EXEMPLOS de `examples/` — 16 programas que ninguem rodava. Sao a
 	# primeira coisa que se le pra aprender a linguagem, e apodreciam em

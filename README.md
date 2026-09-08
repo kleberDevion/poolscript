@@ -5,6 +5,7 @@ Doc — **[`poolscript.md`](poolscript.md)**.
 - Sintaxe da linguagem: [`docs/LANGUAGE.md`](docs/LANGUAGE.md)
 - Referência das libs (por método): [`docs/INDEX.md`](docs/INDEX.md)
 - Editor (VS Code, IntelliJ, Neovim): [`docs/lsp.md`](docs/lsp.md)
+- Depurador (breakpoint, passo a passo, gráfico de execução): [`docs/debugger.md`](docs/debugger.md)
 
 ## Começo rápido
 

@@ -55,6 +55,12 @@ typedef struct {
  * `sys.argv` enxerga. Chamar antes de rodar; sem isso a lista sai vazia. */
 void ps_set_argv(int argc, char **argv);
 
+/* Liga o depurador: o motor escuta o Debug Adapter Protocol em
+ * 127.0.0.1:<porta> e só executa a primeira instrução depois que o editor
+ * conectar e terminar o aperto de mão — senão os breakpoints chegariam tarde.
+ * A saída do programa continua no stdout dele; o protocolo vai pelo socket. */
+void ps_debug_porta(int porta);
+
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
 
 /* Só VERIFICA (lexer → parser → compilador), NUNCA roda. Para o LSP/editor:

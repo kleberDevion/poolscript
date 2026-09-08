@@ -38,6 +38,20 @@ typedef struct {
     int32_t idx;
 } PSUpval;
 
+/* Uma variável local, com a FAIXA de bytecode em que ela existe.
+ *
+ * Não dá pra guardar só um vetor `nome[slot]`: `nlocals` é marca d'água e os
+ * slots são REAPROVEITADOS entre blocos — o slot 2 é `x` dentro de um `if` e
+ * `y` no `for` seguinte. Um vetor plano mostraria o nome errado no debugger.
+ * Com a faixa, quem inspeciona um frame parado no `ip` sabe exatamente quais
+ * nomes estão vivos ali. */
+typedef struct {
+    char    *nome;
+    int32_t  slot;
+    int32_t  ip_ini;    /* primeira palavra de code em que o nome vale */
+    int32_t  ip_fim;    /* primeira palavra em que já NÃO vale (-1 = aberta) */
+} PSVarDbg;
+
 typedef struct {
     char    *nome;
     int32_t *code;      /* pares [opcode, arg] */
@@ -66,6 +80,9 @@ typedef struct {
     PSUpval *upvals;
     int32_t  nupvals;
     char   **upval_nomes;   /* nome de cada upvalue — só pra mensagem de erro */
+    /* Tabela de variáveis locais com faixa de vida — só o debugger usa. */
+    PSVarDbg *vars;
+    int32_t   nvars;
 } PSProto;
 
 /* Descritor de Entity produzido pela compilação. Os PAIS não entram aqui:

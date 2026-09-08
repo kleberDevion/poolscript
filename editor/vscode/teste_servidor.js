@@ -646,6 +646,50 @@ async function main() {
     const iOff = cli.indexOf("get('lsp.ativo')");
     conf('o comando é registrado mesmo com o LSP desligado',
          iReg > 0 && iOff > 0 && iReg < iOff, { iReg, iOff });
+
+    /* ── depurador ────────────────────────────────────────────────────────
+     * Sem estas entradas o VS Code nem deixa pôr breakpoint num `.ps`: a
+     * gengiva do depurador é declarativa, e falta dela não dá erro nenhum —
+     * o F5 simplesmente não faz nada, que é o pior modo de quebrar. */
+    conf('o manifesto permite breakpoint em .ps',
+         (c.breakpoints || []).some((b) => b.language === 'poolscript'),
+         c.breakpoints);
+    const dbg = (c.debuggers || []).find((d) => d.type === 'poolscript');
+    conf('o manifesto declara o depurador poolscript', !!dbg,
+         (c.debuggers || []).map((d) => d.type));
+    conf('a configuração de launch exige o programa',
+         !!dbg && ((dbg.configurationAttributes || {}).launch || {}).required
+                  .includes('programa'),
+         dbg && dbg.configurationAttributes);
+    conf('há configuração inicial pronta (F5 sem launch.json)',
+         !!dbg && (dbg.initialConfigurations || []).length > 0,
+         dbg && dbg.initialConfigurations);
+    conf('a extensão acorda pra depurar',
+         (man.activationEvents || []).includes('onDebugResolve:poolscript'),
+         man.activationEvents);
+    conf('o comando do gráfico existe',
+         (c.commands || []).some((x) => x.command === 'poolscript.grafico'),
+         (c.commands || []).map((x) => x.command));
+
+    /* A fábrica do adaptador tem que ESPERAR o motor abrir a porta antes de
+     * devolver o descritor: o VS Code conecta na hora, e devolver antes dá
+     * "connection refused" sem explicação. */
+    conf('a fábrica espera a porta abrir antes de conectar',
+         cli.indexOf('esperaPorta') > 0
+         && cli.indexOf('await esperaPorta') < cli.indexOf('DebugAdapterServer'),
+         { espera: cli.indexOf('await esperaPorta'),
+           servidor: cli.indexOf('DebugAdapterServer') });
+    /* Porta escolhida pelo sistema, não fixa: porta fixa colide ao depurar
+     * dois arquivos ao mesmo tempo. */
+    conf('a porta do depurador é pedida ao sistema',
+         cli.indexOf('portaLivre') > 0 && cli.indexOf('listen(0') > 0,
+         { portaLivre: cli.indexOf('portaLivre') });
+    /* O gráfico é buscado no `terminated`, enquanto a sessão ainda responde. */
+    conf('o gráfico é capturado antes da sessão fechar',
+         cli.indexOf("'terminated'") > 0
+         && cli.indexOf("customRequest('poolscriptGrafico')") > cli.indexOf("'terminated'"),
+         { terminated: cli.indexOf("'terminated'"),
+           pedido: cli.indexOf("customRequest('poolscriptGrafico')") });
   }
 
   console.log('');

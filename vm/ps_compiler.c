@@ -296,6 +296,36 @@ static int32_t idx_global(C *c, const char *nome)
     return c->out->nglobais++;
 }
 
+/* Abre a faixa de vida de um nome local, pro debugger saber que variável mora
+ * em que slot em cada ponto do bytecode. Falha aqui não é erro de compilação:
+ * sem a tabela o programa roda igual, só o painel de variáveis fica pobre. */
+static void vardbg_abre(C *c, Unidade *u, const char *nome, int32_t slot)
+{
+    PSProto *p = UP(c, u);
+    PSVarDbg *nv = realloc(p->vars, sizeof(PSVarDbg) * (size_t)(p->nvars + 1));
+    if (!nv) return;
+    p->vars = nv;
+    char *copia = strdup(nome);
+    if (!copia) return;
+    p->vars[p->nvars].nome   = copia;
+    p->vars[p->nvars].slot   = slot;
+    p->vars[p->nvars].ip_ini = p->ncode;
+    p->vars[p->nvars].ip_fim = -1;
+    p->nvars++;
+}
+
+/* Fecha a faixa dos slots >= marca: eles morrem no fim do bloco e o mesmo slot
+ * passa a ser outra variável. Só a entrada ABERTA mais recente de cada slot é
+ * fechada — as anteriores já têm fim próprio. */
+static void vardbg_fecha(C *c, Unidade *u, int32_t marca)
+{
+    PSProto *p = UP(c, u);
+    for (int32_t i = p->nvars - 1; i >= 0; i--) {
+        if (p->vars[i].ip_fim < 0 && p->vars[i].slot >= marca)
+            p->vars[i].ip_fim = p->ncode;
+    }
+}
+
 static int32_t idx_local(C *c, Unidade *u, const char *nome)
 {
     for (int32_t i = 0; i < u->nlocais; i++)
@@ -316,6 +346,7 @@ static int32_t idx_local(C *c, Unidade *u, const char *nome)
      * escopo de bloco os slots são reaproveitados (nlocais encolhe no fim do
      * bloco), e o frame precisa caber o pico, não o valor do momento. */
     if (u->nlocais + 1 > UP(c, u)->nlocals) UP(c, u)->nlocals = u->nlocais + 1;
+    vardbg_abre(c, u, nome, u->nlocais);
     return u->nlocais++;
 }
 
@@ -344,13 +375,14 @@ static void escopo_emite_clears(C *c, Unidade *u, int32_t marca)
 
 /* Remove da resolução de compilação os nomes nascidos desde `marca` (sem
  * emitir nada). Depois disso o mesmo nome, se reusado, ganha slot/global novo. */
-static void escopo_trunca(Unidade *u, int32_t marca)
+static void escopo_trunca(C *c, Unidade *u, int32_t marca)
 {
     if (u->eh_modulo) {
         for (int32_t i = u->n_mod_criados - 1; i >= marca; i--)
             free(u->mod_criados[i]);
         if (u->n_mod_criados > marca) u->n_mod_criados = marca;
     } else {
+        vardbg_fecha(c, u, marca);
         for (int32_t i = u->nlocais - 1; i >= marca; i--) {
             free(u->locais[i]);
             if (i < 256) u->certo[i] = 0;
@@ -363,7 +395,7 @@ static void escopo_trunca(Unidade *u, int32_t marca)
 static void escopo_fecha(C *c, Unidade *u, int32_t marca)
 {
     escopo_emite_clears(c, u, marca);
-    escopo_trunca(u, marca);
+    escopo_trunca(c, u,marca);
 }
 
 /* Módulo: registra um global CRIADO por atribuição (idempotente). Nome já
@@ -1270,7 +1302,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_JUMP, topo);
             UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             escopo_emite_clears(c, u, M);
-            escopo_trunca(u, M);
+            escopo_trunca(c, u,M);
             if (sombreia) {
                 carrega_nome(c, u, salvo);
                 guarda_nome_modo(c, u, var, 1);
@@ -1858,7 +1890,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (sai >= 0) UP(c, u)->code[sai + 1] = UP(c, u)->ncode;
             fecha_laco(c, u, topo);              /* break/saída normal caem aqui */
             escopo_emite_clears(c, u, M);        /* limpa o que sobrou na saída */
-            escopo_trunca(u, M);
+            escopo_trunca(c, u,M);
             return;
         }
 
@@ -1941,7 +1973,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             fecha_laco(c, u, topo);
             escopo_emite_clears(c, u, M);        /* saída: var do laço não vaza */
-            escopo_trunca(u, M);
+            escopo_trunca(c, u,M);
             if (sombreia) {                      /* devolve o valor de fora */
                 carrega_nome(c, u, salvo);
                 guarda_nome_modo(c, u, var_laco, 1);
@@ -2245,7 +2277,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (fim >= 0) UP(c, u)->code[fim + 1] = UP(c, u)->ncode;
             fecha_laco(c, u, topo);
             escopo_emite_clears(c, u, M);        /* saída: self/_count e cia. somem */
-            escopo_trunca(u, M);
+            escopo_trunca(c, u,M);
             return;
         }
 
@@ -2879,6 +2911,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_NULL, 0, 0, NULL, 0));
     emite(c, &u, OP_RETURN, 0);
 
+    vardbg_fecha(c, &u, 0);   /* o que chegou vivo ao fim vale até a última palavra */
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
@@ -3008,6 +3041,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     for (int32_t i = 0; i < u.nupvals; i++) free(u.upvals[i].nome);
     free(u.upvals);
 
+    vardbg_fecha(c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
@@ -3048,6 +3082,7 @@ PSPrograma *ps_compila(PSNode *programa)
     }
     emite(&c, &u, OP_HALT, 0);
 
+    vardbg_fecha(&c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
@@ -3082,6 +3117,9 @@ void ps_compila_free(PSPrograma *p)
                 free(p->protos[i].upval_nomes[k]);
             free(p->protos[i].upval_nomes);
         }
+        for (int32_t k = 0; k < p->protos[i].nvars; k++)
+            free(p->protos[i].vars[k].nome);
+        free(p->protos[i].vars);
     }
     free(p->protos);
     for (int32_t i = 0; i < p->nglobais; i++) free(p->globais[i]);

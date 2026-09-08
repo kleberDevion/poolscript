@@ -1,0 +1,11 @@
+# Alvo do teste do depurador para o caminho de ERRO (teste/depurador.ps).
+# O número das linhas importa: o teste confere que o depurador para EM CIMA da
+# linha que quebrou, e que o gráfico marca essa linha como o ponto vermelho.
+funct divide(a, b) {
+    return a / b        # linha 5 — quebra quando b é 0
+}
+
+n = divide(10, 2)
+post("primeiro ok:", n)
+m = divide(1, 0)        # linha 10 — daqui sai o erro
+post("nunca chega aqui:", m)

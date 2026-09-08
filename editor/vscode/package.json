@@ -14,7 +14,8 @@
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:poolscript",
-    "onLanguage:poolscript-psl"
+    "onLanguage:poolscript-psl",
+    "onDebugResolve:poolscript"
   ],
   "contributes": {
     "languages": [
@@ -69,6 +70,12 @@
         "title": "Rodar arquivo",
         "category": "PoolScript",
         "icon": "$(play)"
+      },
+      {
+        "command": "poolscript.grafico",
+        "title": "Gráfico de execução",
+        "category": "PoolScript",
+        "icon": "$(graph)"
       }
     ],
     "menus": {
@@ -90,6 +97,10 @@
         {
           "command": "poolscript.rodar",
           "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
+        },
+        {
+          "command": "poolscript.grafico",
+          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
         }
       ]
     },
@@ -98,6 +109,72 @@
         "command": "poolscript.rodar",
         "key": "ctrl+f5",
         "when": "editorTextFocus && (resourceLangId == poolscript || resourceLangId == poolscript-psl)"
+      }
+    ],
+    "breakpoints": [
+      { "language": "poolscript" },
+      { "language": "poolscript-psl" }
+    ],
+    "debuggers": [
+      {
+        "type": "poolscript",
+        "label": "PoolScript",
+        "languages": [
+          "poolscript",
+          "poolscript-psl"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "programa"
+            ],
+            "properties": {
+              "programa": {
+                "type": "string",
+                "description": "O .ps a depurar.",
+                "default": "${file}"
+              },
+              "pararNaEntrada": {
+                "type": "boolean",
+                "description": "Para na primeira linha, antes de rodar qualquer coisa.",
+                "default": false
+              },
+              "args": {
+                "type": "array",
+                "description": "Argumentos passados ao programa (o sys.argv dele).",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Pasta de trabalho do programa.",
+                "default": "${workspaceFolder}"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "poolscript",
+            "request": "launch",
+            "name": "Depurar o arquivo aberto",
+            "programa": "${file}"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "PoolScript: depurar o arquivo aberto",
+            "description": "Roda o .ps em foco sob o depurador do motor.",
+            "body": {
+              "type": "poolscript",
+              "request": "launch",
+              "name": "Depurar o arquivo aberto",
+              "programa": "^\"\\${file}\""
+            }
+          }
+        ]
       }
     ],
     "themes": [

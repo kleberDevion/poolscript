@@ -109,6 +109,13 @@ pool examples/01_hello.ps
 Servidor LSP em PoolScript: `pool lsp/servidor.ps`. Vale pra VS Code, Neovim,
 Helix e JetBrains — como ligar em cada um está em [`docs/lsp.md`](docs/lsp.md).
 
+### Depurar
+
+No VS Code: breakpoint na canaleta, **F5**. Sem `launch.json`. O motor fala
+Debug Adapter Protocol direto (`pool --debug <porta> <arquivo.ps>`), e no fim
+mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
+[`docs/debugger.md`](docs/debugger.md).
+
 ---
 
 ## Guia de deploy (rodar num servidor/VPS)
@@ -152,6 +159,8 @@ nessa máquina o instalador compila do fonte.
 - **Referência das libs** (uma pasta por lib, uma página por método) e os
   **objetos internos** (tipos que as libs devolvem): [`docs/INDEX.md`](docs/INDEX.md)
 - **Editor / LSP** (VS Code, IntelliJ, Neovim): [`docs/lsp.md`](docs/lsp.md)
+- **Depurador** (breakpoint, passo a passo, variáveis, gráfico de execução):
+  [`docs/debugger.md`](docs/debugger.md)
 - **Limites conhecidos e notas de projeto**: pasta [`notas/`](notas/)
 - **Como buildar / versionar**: [`notas/CLAUDE.md`](notas/CLAUDE.md)
 

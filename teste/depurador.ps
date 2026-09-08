@@ -1,0 +1,394 @@
+# Teste do depurador: fala Debug Adapter Protocol com o motor, igual o editor.
+#
+# O que ele prova, ponta a ponta, sem editor nenhum no meio:
+#   - o motor escuta DAP na porta e só executa depois do aperto de mão;
+#   - o breakpoint para na LINHA pedida, não numa linha qualquer;
+#   - a pilha de chamadas tem os frames certos, na ordem certa;
+#   - o painel de variáveis mostra os nomes VIVOS naquele ponto, com os valores;
+#   - `next`/`stepIn`/`stepOut`/`continue` andam como se espera;
+#   - o gráfico de execução registra por onde passou.
+#
+# Rodar: pool teste/depurador.ps
+import sockets
+import json
+import os
+
+PORTA = 47119
+ALVO  = "teste/alvo_debug.ps"
+
+falhas = []
+passou = 0
+
+funct checa(nome, veio, esperado) {
+    if veio == esperado {
+        return True
+    }
+    return False
+}
+
+# ── enquadramento do DAP ────────────────────────────────────────────────────
+# `Content-Length: N\r\n\r\n` + N bytes. O `recv` devolve o que tiver chegado,
+# não o que se pediu, então ler byte a byte é o que garante não invadir a
+# mensagem seguinte nem ficar com meia mensagem no buffer.
+funct le_byte(sock) {
+    b = sock.recv(1)
+    if b == Null {
+        return ""
+    }
+    return str(b.decode())
+}
+
+funct le_mensagem(sock) {
+    cab = ""
+    while True {
+        c = le_byte(sock)
+        if c == "" {
+            return Null
+        }
+        cab = cab + c
+        if len(cab) >= 4 and cab[len(cab) - 4:len(cab)] == "\r\n\r\n" {
+            break
+        }
+    }
+    marca = cab.find("Content-Length:")
+    if marca < 0 {
+        return Null
+    }
+    resto = cab[marca + 15:len(cab)]
+    fim = resto.find("\r\n")
+    tam = int(resto[0:fim].strip())
+
+    corpo = ""
+    while len(corpo) < tam {
+        pedaco = sock.recv(tam - len(corpo))
+        if pedaco == Null {
+            return Null
+        }
+        corpo = corpo + str(pedaco.decode())
+    }
+    return json.parse(corpo)
+}
+
+funct manda(sock, obj) {
+    texto = json.stringify(obj)
+    sock.sendall("Content-Length: " + str(len(texto)) + "\r\n\r\n" + texto)
+}
+
+# Lê até chegar uma resposta ao pedido `seq`. Eventos que vierem no caminho são
+# guardados: o `stopped` chega ANTES da resposta em alguns casos, e descartar
+# eventos aqui esconderia justamente o que o teste quer ver.
+eventos = []
+
+funct espera_resposta(sock, seq) {
+    while True {
+        m = le_mensagem(sock)
+        if m == Null {
+            return Null
+        }
+        if m["type"] == "event" {
+            addEnd(eventos, m)
+        }
+        if m["type"] == "response" and m["request_seq"] == seq {
+            return m
+        }
+    }
+}
+
+funct espera_evento(sock, nome) {
+    for each e in eventos {
+        if e["event"] == nome {
+            return e
+        }
+    }
+    while True {
+        m = le_mensagem(sock)
+        if m == Null {
+            return Null
+        }
+        if m["type"] == "event" {
+            if m["event"] == nome {
+                return m
+            }
+            addEnd(eventos, m)
+        }
+    }
+}
+
+proximo_seq = 0
+
+funct pede(sock, comando, argumentos) {
+    proximo_seq = proximo_seq + 1
+    manda(sock, { "seq": proximo_seq, "type": "request",
+                  "command": comando, "arguments": argumentos })
+    return espera_resposta(sock, proximo_seq)
+}
+
+# ── o teste ─────────────────────────────────────────────────────────────────
+post("subindo o motor em modo debug na porta", PORTA)
+os.run("./pool --debug " + str(PORTA) + " " + ALVO)
+
+# O motor precisa de um instante pra abrir o socket. Tentar conectar em laço é
+# mais confiável que dormir um tempo fixo, que falha em máquina carregada.
+sock = Null
+tentativa = 0
+while tentativa < 50 and sock == Null {
+    try {
+        sock = sockets.create_connection(("127.0.0.1", PORTA), 1)
+    } catch (e) {
+        sleep(0.1)
+        tentativa = tentativa + 1
+    }
+}
+if sock == Null {
+    post("FALHOU: nao consegui conectar no depurador")
+    sys.exit(1)
+}
+post("conectado")
+
+r = pede(sock, "initialize", { "adapterID": "poolscript" })
+if r != Null and r["body"]["supportsConfigurationDoneRequest"] == True {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "initialize nao anunciou configurationDone")
+}
+
+r = pede(sock, "setBreakpoints", {
+    "source": { "path": ALVO },
+    "breakpoints": [ { "line": 7 } ]
+})
+if r != Null and len(r["body"]["breakpoints"]) == 1 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "setBreakpoints nao confirmou o ponto")
+}
+
+pede(sock, "configurationDone", {})
+
+# ── parou no breakpoint? ────────────────────────────────────────────────────
+ev = espera_evento(sock, "stopped")
+if ev != Null and ev["body"]["reason"] == "breakpoint" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "nao parou no breakpoint")
+}
+
+r = pede(sock, "stackTrace", { "threadId": 1 })
+quadros = r["body"]["stackFrames"]
+if len(quadros) >= 2 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "pilha com " + str(len(quadros)) + " quadro(s), esperava 2+")
+}
+if len(quadros) >= 1 and quadros[0]["line"] == 7 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "parou na linha " + str(quadros[0]["line"]) + ", esperava 7")
+}
+if len(quadros) >= 1 and quadros[0]["name"] == "soma" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "quadro do topo e '" + str(quadros[0]["name"]) + "', esperava 'soma'")
+}
+if len(quadros) >= 2 and quadros[1]["name"] == "<module>" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "quadro de baixo nao e <module>")
+}
+
+# ── as variáveis do frame parado ────────────────────────────────────────────
+r = pede(sock, "scopes", { "frameId": quadros[0]["id"] })
+ref_locais = r["body"]["scopes"][0]["variablesReference"]
+r = pede(sock, "variables", { "variablesReference": ref_locais })
+vistos = {}
+for each v in r["body"]["variables"] {
+    vistos[v["name"]] = v["value"]
+}
+if "a" in vistos and vistos["a"] == "10" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "local 'a' saiu como " + str(vistos))
+}
+if "b" in vistos and vistos["b"] == "32" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "local 'b' saiu como " + str(vistos))
+}
+
+# ── passo a passo ───────────────────────────────────────────────────────────
+eventos = []
+pede(sock, "next", { "threadId": 1 })
+ev = espera_evento(sock, "stopped")
+r = pede(sock, "stackTrace", { "threadId": 1 })
+if r["body"]["stackFrames"][0]["line"] == 8 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o `next` foi pra linha "
+                   + str(r["body"]["stackFrames"][0]["line"]) + ", esperava 8")
+}
+
+# depois do `total = a + b`, o `total` tem que aparecer com o valor somado
+r = pede(sock, "scopes", { "frameId": r["body"]["stackFrames"][0]["id"] })
+r = pede(sock, "variables", { "variablesReference": r["body"]["scopes"][0]["variablesReference"] })
+achou_total = ""
+for each v in r["body"]["variables"] {
+    if v["name"] == "total" {
+        achou_total = v["value"]
+    }
+}
+if achou_total == "42" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "'total' saiu como '" + achou_total + "', esperava 42")
+}
+
+# sair da funct devolve o controle pro <module>
+eventos = []
+pede(sock, "stepOut", { "threadId": 1 })
+ev = espera_evento(sock, "stopped")
+r = pede(sock, "stackTrace", { "threadId": 1 })
+if r["body"]["stackFrames"][0]["name"] == "<module>" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o `stepOut` nao voltou pro <module>")
+}
+
+# ── segue até o fim ─────────────────────────────────────────────────────────
+eventos = []
+pede(sock, "continue", { "threadId": 1 })
+ev = espera_evento(sock, "terminated")
+if ev != Null {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "nao recebeu o evento `terminated`")
+}
+
+# ── o gráfico de execução ───────────────────────────────────────────────────
+r = pede(sock, "poolscriptGrafico", {})
+g = r["body"]
+if len(g["nos"]) > 0 and len(g["arestas"]) > 0 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o grafico saiu vazio")
+}
+# a chamada de `soma` tem que aparecer como aresta pra dentro da funct
+viu_entrada = False
+for each a in g["arestas"] {
+    if a["de"]["linha"] == 17 and a["para"]["linha"] == 7 {
+        viu_entrada = True
+    }
+}
+if viu_entrada {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o grafico nao registrou a entrada em soma() (17 -> 7)")
+}
+
+pede(sock, "disconnect", {})
+sock.close()
+
+# ── segunda sessão: o programa QUEBRA ───────────────────────────────────────
+# Sem breakpoint nenhum: o depurador tem que parar sozinho no erro, mostrar a
+# pilha do momento da falha e marcar a linha no gráfico. Se ele só relatasse o
+# erro depois, as variáveis do frame que quebrou já teriam sumido.
+PORTA2 = 47121
+eventos = []
+proximo_seq = 0
+post("")
+post("segunda sessao: alvo que quebra")
+os.run("./pool --debug " + str(PORTA2) + " teste/alvo_debug_erro.ps")
+
+sock = Null
+tentativa = 0
+while tentativa < 50 and sock == Null {
+    try {
+        sock = sockets.create_connection(("127.0.0.1", PORTA2), 1)
+    } catch (e) {
+        sleep(0.1)
+        tentativa = tentativa + 1
+    }
+}
+if sock == Null {
+    post("FALHOU: nao conectou na segunda sessao")
+    sys.exit(1)
+}
+
+pede(sock, "initialize", { "adapterID": "poolscript" })
+pede(sock, "setBreakpoints", { "source": { "path": "teste/alvo_debug_erro.ps" },
+                               "breakpoints": [] })
+pede(sock, "configurationDone", {})
+
+ev = espera_evento(sock, "stopped")
+if ev != Null and ev["body"]["reason"] == "exception" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "nao parou na excecao")
+}
+if ev != Null and ev["body"]["text"].find("division by zero") >= 0 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "a excecao veio sem a mensagem do erro")
+}
+
+r = pede(sock, "stackTrace", { "threadId": 1 })
+quadros = r["body"]["stackFrames"]
+if len(quadros) >= 1 and quadros[0]["line"] == 5 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "parou na linha " + str(quadros[0]["line"]) + ", esperava 5 (a que quebrou)")
+}
+if len(quadros) >= 2 and quadros[1]["line"] == 10 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o chamador nao esta na linha 10")
+}
+
+# as variáveis do frame que quebrou ainda têm que estar vivas
+r = pede(sock, "scopes", { "frameId": quadros[0]["id"] })
+r = pede(sock, "variables", { "variablesReference": r["body"]["scopes"][0]["variablesReference"] })
+vistos = {}
+for each v in r["body"]["variables"] {
+    vistos[v["name"]] = v["value"]
+}
+if "b" in vistos and vistos["b"] == "0" {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "no erro, 'b' saiu como " + str(vistos))
+}
+
+eventos = []
+pede(sock, "continue", { "threadId": 1 })
+espera_evento(sock, "terminated")
+
+r = pede(sock, "poolscriptGrafico", {})
+g = r["body"]
+if g["quebrou"]["linha"] == 5 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o grafico marcou a quebra na linha "
+                   + str(g["quebrou"]["linha"]) + ", esperava 5")
+}
+marcado = 0
+for each no in g["nos"] {
+    if no["quebrou"] == True {
+        marcado = marcado + 1
+    }
+}
+if marcado == 1 {
+    passou = passou + 1
+} else {
+    addEnd(falhas, "o grafico marcou " + str(marcado) + " no(s) como quebrado, esperava 1")
+}
+
+pede(sock, "disconnect", {})
+sock.close()
+
+post("")
+post("passaram:", passou)
+if len(falhas) > 0 {
+    post("FALHARAM:", len(falhas))
+    for each f in falhas {
+        post("  -", f)
+    }
+    sys.exit(1)
+}
+post("depurador: ok")
