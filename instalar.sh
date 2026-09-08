@@ -24,7 +24,11 @@
 set -e
 
 REPO="${REPO:-https://github.com/kleberDevion/poolscript-lang}"
-PACOTE="$REPO/releases/latest/download/pool-portable.tar.gz"
+# `PACOTE` é a URL do bundle. Sai do release por padrão, mas aceita qualquer
+# outra origem — o repositório pode estar privado, e aí o release não responde
+# sem credencial. Servindo o `dist/` de outra máquina da rede, por exemplo:
+#   PACOTE=http://192.168.0.10:8080/pool-portable.tar.gz sudo -E bash instalar.sh
+PACOTE="${PACOTE:-$REPO/releases/latest/download/pool-portable.tar.gz}"
 
 # Vindo de `curl | bash` não existe arquivo nem pasta ao lado ($0 é "bash"), e
 # o `cd` levaria pra um lugar sem relação nenhuma com a PoolScript.
@@ -201,19 +205,37 @@ if [ -f "$LSP_ORIG/server.js" ]; then
     fi
 else
     echo "   (não veio servidor LSP neste pacote)"
+    INCOMPLETO=1
 fi
 
 echo "== tipo MIME e ícone do .ps"
-install -d "$DADOS/mime/packages" "$DADOS/icons/hicolor/scalable/mimetypes"
-install -m644 dados/zz-poolscript.xml "$DADOS/mime/packages/"
-install -m644 dados/icones/text-poolscript.svg \
-        "$DADOS/icons/hicolor/scalable/mimetypes/"
-update-mime-database "$DADOS/mime" 2>/dev/null || true
-gtk-update-icon-cache -f -t "$DADOS/icons/hicolor" 2>/dev/null || true
+# Um pacote sem a pasta `dados/` fazia o `install` falhar e, com o `set -e`,
+# derrubava o script AQUI — depois do binário já instalado. Ficava uma
+# instalação pela metade que dizia "erro" sem dizer o que sobrou funcionando.
+if [ -f dados/zz-poolscript.xml ]; then
+    install -d "$DADOS/mime/packages" "$DADOS/icons/hicolor/scalable/mimetypes"
+    install -m644 dados/zz-poolscript.xml "$DADOS/mime/packages/"
+    install -m644 dados/icones/text-poolscript.svg \
+            "$DADOS/icons/hicolor/scalable/mimetypes/"
+    update-mime-database "$DADOS/mime" 2>/dev/null || true
+    gtk-update-icon-cache -f -t "$DADOS/icons/hicolor" 2>/dev/null || true
+else
+    echo "   (não veio o tipo MIME neste pacote)"
+    INCOMPLETO=1
+fi
 
 echo
 echo "pronto:"
 echo "  pool             $("$PREFIXO/bin/pool" --version 2>/dev/null)"
 echo "  psl              mesmo binário"
-echo "  poolscript-lsp   servidor LSP (aponte o editor pra ele)"
-echo "  .ps              text/poolscript, com a logo"
+if [ -x "$PREFIXO/bin/poolscript-lsp" ]; then
+    echo "  poolscript-lsp   servidor LSP (aponte o editor pra ele)"
+fi
+if [ -f "$DADOS/mime/packages/zz-poolscript.xml" ]; then
+    echo "  .ps              text/poolscript, com a logo"
+fi
+if [ -n "${INCOMPLETO:-}" ]; then
+    echo
+    echo "o pacote instalado não trazia tudo: o que faltou está marcado acima." >&2
+    echo "gere um completo com \`make bundle\` (ele leva lsp/ e dados/)." >&2
+fi
