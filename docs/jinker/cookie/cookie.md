@@ -36,6 +36,38 @@ Sai na resposta:
 Set-Cookie: sid=<token>; Path=/; Max-Age=3600; SameSite=Lax; HttpOnly
 ```
 
+### A chamada completa
+
+`nome` e `valor` são os dois **posicionais**, nessa ordem. Todo o resto é
+**nomeado**, e nomeado vai em qualquer ordem — só o nome tem que existir. Não
+há parâmetro `token`: o token é o `valor`.
+
+```ps
+import jinker
+import os
+
+app = jinker.Jinker("auth")
+
+@app.post("/entrar")
+funct entrar()
+{
+    token = gera_token(request.get("usuario"))
+    return jinker.JinkerResponse()
+           .send({"ok": true})
+           .cookie("sid", token,
+                   path="/",
+                   max_age=36000,
+                   httponly=true,
+                   secure=true,
+                   samesite="Lax",
+                   domain=os.getenv("DOMAINS"))
+}
+```
+
+`path`, `httponly` e `samesite` estão nos valores padrão — escritos aqui só
+pra mostrar o nome de cada um; podem ser omitidos. O que muda em relação ao
+exemplo de cima é `secure=true` (o padrão é `false`) e `domain`.
+
 Devolve a própria resposta, então **encadeia** — e cada chamada acrescenta um
 cookie, não substitui o anterior:
 
