@@ -10264,8 +10264,11 @@ static int mod_hash_b64decode(VM *vm, Value *args, int n, Value *out)
 
 static const MembroMod MOD_HASH[] = {
     { "crypt", mod_hash_crypt, 0, "senha" }, { "check", mod_hash_check, 0, "senha_hash,senha_digitada" },
-    { "sha256", mod_hash_sha256, 0, NULL },
-    { "b64encode", mod_hash_b64encode, 0, NULL }, { "b64decode", mod_hash_b64decode, 0, NULL },
+    /* NULL aqui era `params: []` no `--metadata`: o editor não oferecia
+     * completion de argumento nenhum nos três, e a auditoria da doc não tinha
+     * o que conferir contra o motor. O nome do parâmetro é o que a página diz. */
+    { "sha256", mod_hash_sha256, 0, "dado" },
+    { "b64encode", mod_hash_b64encode, 0, "dado" }, { "b64decode", mod_hash_b64decode, 0, "texto" },
 };
 
 
@@ -17256,8 +17259,18 @@ static int met_jresp_cookie(VM *vm, Value alvo, Value *args, int n, Value *out)
     const char *path = (n > 2 && EH_STRING(args[2])) ? COMO_STRING(args[2])->chars : "/";
     long max_age = -1;
     if (n > 3 && args[3].t == V_INT) max_age = (long)args[3].as.i;
-    int httponly = (n > 4) ? val_truthy(&args[4]) : 1;
-    int secure   = (n > 5) ? val_truthy(&args[5]) : 0;
+    /* "não veio" tem que ser distinguido de "veio falso": a chamada por NOME
+     * preenche os slots pulados com UNSET (`pos[k] = MK_UNSET()` no OP_CALL_KW),
+     * e `val_truthy(UNSET)` é falso. Sem esta distinção, nomear `secure`,
+     * `samesite` ou `domain` APAGAVA o `httponly=true` que o default promete —
+     * medido: `.cookie("s","1", secure=true)` saía sem `HttpOnly`. O default
+     * seguro virava permissivo em silêncio, que é o pior jeito de errar.
+     * Os outros opcionais já se salvavam por checarem o TIPO (EH_STRING,
+     * V_INT), que UNSET não passa; estes dois liam qualquer coisa. */
+    #define VEIO(i)  ((n) > (i) && args[i].t != V_UNSET && args[i].t != V_NULL)
+    int httponly = VEIO(4) ? val_truthy(&args[4]) : 1;
+    int secure   = VEIO(5) ? val_truthy(&args[5]) : 0;
+    #undef VEIO
     const char *samesite = (n > 6 && EH_STRING(args[6])) ? COMO_STRING(args[6])->chars : "Lax";
     const char *domain   = (n > 7 && EH_STRING(args[7])) ? COMO_STRING(args[7])->chars : NULL;
     if (!jk_cookie_valido(path) || !jk_cookie_valido(samesite)

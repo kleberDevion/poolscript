@@ -86,7 +86,12 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 |---|---|---|
 | `Jinker(...)` | a aplicação; construtor, `oauth`, subir o servidor | [Jinker/Jinker.md](Jinker/Jinker.md) |
 | `@app.route(...)` | registra uma rota HTTP | [route/route.md](route/route.md) |
-| `@app.get/post/put/patch/delete(...)` | rota com o verbo no nome; método errado é `405` | [post/post.md](post/post.md) |
+| `@app.get(...)` | rota só de GET (e o `HEAD` dela) | [get/get.md](get/get.md) |
+| `@app.post(...)` | rota só de POST; método errado é `405` | [post/post.md](post/post.md) |
+| `@app.put(...)` | rota só de PUT | [put/put.md](put/put.md) |
+| `@app.patch(...)` | rota só de PATCH | [patch/patch.md](patch/patch.md) |
+| `@app.delete(...)` | rota só de DELETE | [delete/delete.md](delete/delete.md) |
+| `RouteRegistrar` | o objeto que `route` e os cinco verbos devolvem | [RouteRegistrar/RouteRegistrar.md](RouteRegistrar/RouteRegistrar.md) |
 | `@app.socket(...)` | registra um handler de WebSocket | [socket/socket.md](socket/socket.md) |
 | `app.channel` | envia mensagens pros WebSockets conectados | [channel/channel.md](channel/channel.md) |
 | `@app.middleware()` | verificação que roda antes de rotas | [middleware/middleware.md](middleware/middleware.md) |
@@ -95,7 +100,7 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 | `resp.cookie(...)` · `request.cookie(...)` | gravar e ler cookie; sessão assinada com `jwt` | [cookie/cookie.md](cookie/cookie.md) |
 | `jsonify(dados)` | atalho pra resposta JSON | [jsonify/jsonify.md](jsonify/jsonify.md) |
 | `render(caminho)` | resposta a partir de um arquivo | [render/render.md](render/render.md) |
-| `JinkerResponse` | o objeto de resposta (`.json`/`.send`/`.status`/`.header`) | [JinkerResponse/JinkerResponse.md](JinkerResponse/JinkerResponse.md) |
+| `JinkerResponse` | o objeto de resposta (`.json`/`.send`/`.status`/`.header`/`.cookie`/`status_code`) | [JinkerResponse/JinkerResponse.md](JinkerResponse/JinkerResponse.md) |
 | `JinkerRequest` | o tipo de `request` | [request/request.md](request/request.md) |
 
 ---

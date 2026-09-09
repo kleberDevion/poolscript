@@ -26,6 +26,9 @@ Neovim…) com completion type-aware e diagnóstico do parser real, veja
 - **[dict methods](dict/dict.md)** — `keys`/`values` (ou `value`)/`items`,
   `get` (com default), `has`, `pop`, `update`, `copy`, `len`. `x in d` testa a
   **chave**; pro **valor**, `x in d.value()`.
+- **[tup methods](tup/tup.md)** — a tupla é imutável, então só os cinco de
+  leitura: `index`, `count`, `contains`/`has`, `len`. Nenhum muta, todos
+  devolvem valor.
 
 ---
 

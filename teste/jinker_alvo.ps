@@ -242,6 +242,20 @@ funct cookie_poe()
            .cookie("tema", "escuro", httponly=false, path="/x")
 }
 
+# O default nao pode sumir porque OUTRO parametro foi nomeado. Nomear
+# `secure`, `samesite` ou `domain` apagava o `HttpOnly` que o default promete:
+# o slot pulado chega UNSET e o motor lia UNSET como "passou falso". Default
+# seguro virando permissivo em silencio e o pior jeito de errar.
+@app.route("/cookie-defaults")
+funct cookie_defaults()
+{
+    return jinker.JinkerResponse()
+           .send({"ok": true})
+           .cookie("d_secure", "1", secure=true)
+           .cookie("d_samesite", "1", samesite="Strict")
+           .cookie("d_domain", "1", domain="e.com")
+}
+
 @app.route("/cookie-le")
 funct cookie_le()
 {

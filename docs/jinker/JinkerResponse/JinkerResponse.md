@@ -42,6 +42,7 @@ quando você quer **encadear** ajustes.
 | `.send(texto, status=200)` | corpo texto puro (`text/plain`) | [send/send.md](send/send.md) |
 | `.status(codigo)` | troca só o status | [status/status.md](status/status.md) |
 | `.header(chave, valor)` | adiciona um cabeçalho HTTP | [header/header.md](header/header.md) |
+| `.cookie(nome, valor, ...)` | acrescenta um `Set-Cookie` (um por chamada) | [cookie/cookie.md](cookie/cookie.md) |
 
 Como cada um devolve o próprio `JinkerResponse`, dá pra encaixar em cadeia:
 
@@ -50,7 +51,20 @@ return JinkerResponse()
     .json({"criado": true})
     .status(201)
     .header("Location", "/itens/10")
+    .cookie("sid", token, max_age=3600)
 ```
+
+---
+
+## Campo (sem parênteses)
+
+| Campo | Tipo | O que é | Doc |
+|---|---|---|---|
+| `status_code` | `int` | o código HTTP; **lê e escreve** (`resp.status_code = 201`) | [status_code/status_code.md](status_code/status_code.md) |
+
+Ele e o método `.status(codigo)` mexem no mesmo número. A diferença é o
+retorno: `.status(201)` devolve a resposta e encadeia; `status_code = 201` é
+atribuição e não encadeia.
 
 ---
 
@@ -77,3 +91,5 @@ return JinkerResponse()
 - [`jsonify`](../jsonify/jsonify.md) — atalho pra resposta JSON
 - [`render`](../render/render.md) — resposta a partir de um arquivo
 - [`request`](../request/request.md) — o lado de entrada (o que chegou)
+- [cookie e sessão assinada](../cookie/cookie.md) — o `.cookie()` daqui junto
+  com o `request.cookie()` e o `jwt`

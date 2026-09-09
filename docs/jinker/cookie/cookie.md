@@ -65,8 +65,12 @@ funct entrar()
 ```
 
 `path`, `httponly` e `samesite` estão nos valores padrão — escritos aqui só
-pra mostrar o nome de cada um; podem ser omitidos. O que muda em relação ao
-exemplo de cima é `secure=true` (o padrão é `false`) e `domain`.
+pra mostrar o nome de cada um. O que muda em relação ao exemplo de cima é
+`secure=true` (o padrão é `false`) e `domain`.
+
+Omitir `httponly` **não** é inofensivo quando você nomeia `secure`, `samesite`
+ou `domain`: medido, o `HttpOnly` some da linha gerada. O caso está em
+[`JinkerResponse.cookie`](../JinkerResponse/cookie/cookie.md#httponly-some-quando-você-nomeia-secure-samesite-ou-domain).
 
 Devolve a própria resposta, então **encadeia** — e cada chamada acrescenta um
 cookie, não substitui o anterior:
@@ -265,6 +269,8 @@ pra "esquecer". Duas saídas, escolha pelo que a aplicação precisa:
 
 ## Relacionados
 
+- [`JinkerResponse.cookie()`](../JinkerResponse/cookie/cookie.md) — a
+  referência do método: os oito argumentos, o formato da linha e o retorno
 - [`request.header()`](../header/header.md) — o cabeçalho cru, quando o cookie
   não basta
 - [`JinkerResponse.header()`](../header/header.md) — cabeçalho de resposta que

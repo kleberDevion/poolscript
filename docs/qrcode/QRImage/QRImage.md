@@ -16,6 +16,14 @@ ou pega os bytes.
 
 ---
 
+## Campos
+
+| Campo | Devolve | O que é | Página |
+|---|---|---|---|
+| `.name` | `str` | o nome do arquivo (`"qrcode.png"` por padrão) — **campo, sem `()`** | [name/name.md](name/name.md) |
+
+---
+
 ## Uso
 
 ```

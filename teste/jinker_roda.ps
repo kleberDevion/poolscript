@@ -443,6 +443,17 @@ confere("max_age vira Max-Age", "Max-Age=3600" in r)
 confere("httponly=false e respeitado",
         "tema=escuro; Path=/x; SameSite=Lax\r\n" in r)
 
+# Nomear UM parametro nao pode apagar o default de outro. Era bug: o slot
+# pulado chega UNSET e `val_truthy(UNSET)` e falso, entao `secure=true`,
+# `samesite=` e `domain=` derrubavam o `httponly=true` do default.
+r = cru("GET /cookie-defaults HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("secure= nomeado mantem o HttpOnly do default",
+        "Set-Cookie: d_secure=1; Path=/; SameSite=Lax; HttpOnly; Secure\r\n" in r)
+confere("samesite= nomeado mantem o HttpOnly do default",
+        "Set-Cookie: d_samesite=1; Path=/; SameSite=Strict; HttpOnly\r\n" in r)
+confere("domain= nomeado mantem o HttpOnly do default",
+        "Set-Cookie: d_domain=1; Path=/; Domain=e.com; SameSite=Lax; HttpOnly\r\n" in r)
+
 r = get(RAIZ + "/cookie-le", headers={"Cookie": "sid=abc123; tema=escuro"})
 confere("request.cookie le o valor", r.get_json("sid") == "abc123")
 confere("...e o segundo par depois do ponto e virgula", r.get_json("tema") == "escuro")
