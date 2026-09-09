@@ -3,6 +3,7 @@
 ```
 sys.stdin.read(tamanho=Null) -> str | Null
 sys.stdin.readline()         -> str | Null
+sys.stdin.raw(ligar)         -> bool
 ```
 
 `sys.stdin` é o que chega pelo terminal ou por um `|`. Três formas de ler, e
@@ -54,67 +55,63 @@ post(len(texto.split("\n")), "linhas")
 
 ---
 
-## Uma tecla, sem Enter
+## Modo cru — `raw()`: tecla na hora, sem Enter
 
-Por padrão o terminal só entrega a linha quando você aperta Enter. Pra ler
-tecla por tecla, o terminal entra em modo cru — pelo `stty` do sistema, que
-age no mesmo terminal do programa:
+Por padrão o terminal só entrega a linha quando você aperta Enter, e ecoa o que
+você digita. `sys.stdin.raw(true)` põe o terminal em **modo cru** — a tecla
+chega na hora, sem eco — e `raw(false)` volta ao normal. É do próprio motor
+(termios), sem `stty` externo.
 
 ```ps
-import os
 import sys
 
-os.cmd("stty -icanon -echo min 1 time 0")   # tecla por tecla, sem eco
-tecla = sys.stdin.read(1)                   # volta na hora, sem Enter
-os.cmd("stty sane")                         # SEMPRE devolver o terminal
+sys.stdin.raw(true)
+tecla = sys.stdin.read(1)     # volta na hora, sem Enter, sem aparecer na tela
+sys.stdin.raw(false)
 post("apertou:", tecla)
 ```
 
-Quem não devolve com `stty sane` deixa o terminal do usuário sem eco depois
-que o programa sai. Ponha o `sane` num `finally`.
+- Devolve `true` se ligou, `false` quando **não há terminal** (entrada por `|`
+  ou arquivo) — aí não há modo cru pra ligar.
+- O motor **restaura o terminal sozinho** ao fim do programa e num `Ctrl+C`,
+  mesmo que o script esqueça o `raw(false)` ou quebre no meio. Ainda assim,
+  ponha o `raw(false)` num `finally` — é o certo.
+- `Ctrl+C` continua encerrando (o modo é *cbreak*, não raw total).
 
 As setas chegam como três caracteres: `\x1b`, `[` e `A`/`B`/`C`/`D` (cima,
-baixo, direita, esquerda). Leia `read(1)` três vezes quando o primeiro for
+baixo, direita, esquerda). Leia `read(1)` mais duas vezes quando o primeiro for
 `\x1b`.
 
 ---
 
-## Ler tecla sem travar o programa
+## Ler tecla sem travar — o laço de um jogo
 
-`read(1)` espera a tecla. Dentro de um `async funct` ele **cede**: o resto do
-programa continua — é o que um jogo no terminal precisa.
+Em modo cru, `read(1)` **não bloqueia**: se não há tecla, devolve `""` (string
+vazia), não `Null`. `Null` fica reservado pro fim real da entrada. Assim um
+laço só — ler, mover, desenhar, dormir — roda livre e só reage quando há tecla:
 
 ```ps
 import sys
 
-async funct tecla() {
-    return sys.stdin.read(1)
-}
-
-async funct laco() {
-    for each i in range(4) {
-        post("tique", i)
-        sleep(0.3)
+sys.stdin.raw(true)
+n = 0
+while n < 40 {
+    t = sys.stdin.read(1)
+    if t == "q" {
+        break
     }
-    return "fim"
+    if t != "" {
+        post("apertou:", t)
+    }
+    sleep(0.1)               # o resto do jogo: mover, desenhar
+    n = n + 1
 }
-
-post(gather(tecla(), laco()))
+sys.stdin.raw(false)
 ```
 
-```
-$ (sleep 1; printf 'k') | pool jogo.ps
-tique 0
-tique 1
-tique 2
-tique 3
-['k', 'fim']
-```
-
-Os quatro `tique` saíram **enquanto** a tecla ainda não tinha chegado. Uma
-cobrinha é isto: uma fibra guardando a última direção lida, outra com
-`sleep → move → redesenha` (cor e cursor em ANSI: `"\x1b[2J"` limpa,
-`"\x1b[H"` volta ao canto, `"\x1b[31m"` vermelho), e `gather` das duas.
+Uma cobrinha completa, com esse laço e desenho em ANSI (`"\x1b[2J"` limpa,
+`"\x1b[H"` volta ao canto, `"\x1b[31m"` cor), está em
+[`examples/cobrinha.ps`](../../../examples/cobrinha.ps).
 
 ---
 
@@ -124,6 +121,5 @@ cobrinha é isto: uma fibra guardando a última direção lida, outra com
 - [`sys.stdout`](../stdout/stdout.md) — escrever; `write(texto, end)`,
   `writeln(texto)`, `flush()`
 - [`sys.stderr`](../stderr/stderr.md) — a saída de erro
-- [`os.cmd`](../../os/cmd/cmd.md) — o `stty` acima
 
 [← sys](../sys.md)

@@ -72,6 +72,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <termios.h>
 #include <string.h>
 
 #include "ps_lexer.h"
@@ -10797,12 +10798,28 @@ static const MembroMod MOD_STDERR[] = {
     { "flush", mod_err_flush, 0, NULL },
 };
 
+/* Terminal em modo POLL: não-canônico (ICANON off) e sem espera (VMIN==0),
+ * que é o que `stty -icanon min 0 time 0` deixa. Nesse modo o `read()` do
+ * sistema devolve 0 bytes quando NÃO HÁ TECLA AGORA — o que não é fim de
+ * entrada, é "tente de novo". Sem distinguir isso, `read(1)` num jogo de
+ * terminal devolvia `Null` pra tudo (o `fgetc` reporta o mesmo EOF pros dois
+ * casos, e a flag de EOF ainda grudava e engolia as teclas seguintes). */
+static int stdin_em_poll(void)
+{
+    struct termios t;
+    if (!isatty(0)) return 0;
+    if (tcgetattr(0, &t) != 0) return 0;
+    return !(t.c_lflag & ICANON) && t.c_cc[VMIN] == 0;
+}
+
 /* `sys.stdin.read(n)` — lê EXATAMENTE n bytes (ou até o fim da entrada).
  * `input()` só lê linha, e isso não serve pra protocolo enquadrado por
  * tamanho (o LSP, por exemplo): as mensagens vêm coladas, sem `\n` entre
  * elas, e ler por linha invade a mensagem seguinte.
  * Sem argumento, lê a entrada TODA até o fim.
- * Devolve `null` quando já não há mais nada — igual ao `input()`. */
+ * Devolve `null` quando já não há mais nada — igual ao `input()`. Exceção: num
+ * terminal em modo poll, "nada agora" é `""` (string vazia), não `null` —
+ * assim um laço de jogo distingue "sem tecla" de "fim". */
 static int mod_in_read(VM *vm, Value *a, int n, Value *o)
 {
     long quer = -1;
@@ -10814,17 +10831,23 @@ static int mod_in_read(VM *vm, Value *a, int n, Value *o)
         quer = (long)a[0].as.i;
         if (quer < 0) BERRO(vm, "TypeError", "read() nao aceita tamanho negativo");
     }
+    int poll = stdin_em_poll();
     SBUF_AUTO b = {0};
     long lidos = 0;
     while (quer < 0 || lidos < quer) {
         int c = fgetc(stdin);
-        if (c == EOF) break;
+        if (c == EOF) {
+            /* Em modo poll, o EOF é "nada agora": limpa a flag pra próxima
+             * leitura tentar de novo, e para de ler sem tratar como fim. */
+            if (poll) clearerr(stdin);
+            break;
+        }
         char ch = (char)c;
         if (sb_bytes(&b, &ch, 1) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
         lidos++;
     }
-    if (lidos == 0 && quer != 0) { *o = MK_NULL(); return 0; }
-    return devolve_sbuf(vm, &b, o);
+    if (lidos == 0 && quer != 0 && !poll) { *o = MK_NULL(); return 0; }
+    return devolve_sbuf(vm, &b, o);   /* poll sem tecla -> "" */
 }
 
 /* `sys.stdin.readline()` — uma linha, sem o `\n` (nem o `\r` do Windows).
@@ -10845,9 +10868,67 @@ static int mod_in_readline(VM *vm, Value *a, int n, Value *o)
     return devolve_sbuf(vm, &b, o);
 }
 
+/* Modo cru do terminal, no MOTOR — sem `os.cmd("stty")`. `sys.stdin.raw(true)`
+ * deixa a tecla chegar na hora, sem eco e sem esperar Enter; `raw(false)`
+ * volta ao normal. O estado original é salvo e RESTAURADO sozinho: em
+ * `raw(false)`, no fim do processo (atexit) e num Ctrl+C — senão o jogo que
+ * esquece de desligar (ou que crasha) deixa o terminal do usuário mudo.
+ *
+ * É "cbreak", não raw total: ICANON e ECHO saem, mas ISIG fica — Ctrl+C
+ * continua matando o programa, que é o que se espera de um jogo de terminal. */
+static struct termios g_term_orig;
+static int g_term_salvo = 0, g_term_raw = 0;
+
+static void term_restaura(void)
+{
+    if (g_term_salvo && g_term_raw) {
+        tcsetattr(0, TCSANOW, &g_term_orig);
+        g_term_raw = 0;
+    }
+}
+
+/* Handler async-signal-safe: `tcsetattr` está na lista POSIX de seguras. */
+static void term_sig(int s)
+{
+    term_restaura();
+    signal(s, SIG_DFL);
+    raise(s);
+}
+
+static int mod_in_raw(VM *vm, Value *a, int n, Value *o)
+{
+    EXIGE_ARGS(vm, "raw", 1);
+    if (a[0].t != V_BOOL) BERRO(vm, "TypeError", "raw() espera bool (true liga, false desliga)");
+    /* Sem terminal (entrada por pipe/arquivo) não há modo cru: devolve false
+     * pra o script saber, em vez de estourar. */
+    if (!isatty(0)) { *o = MK_BOOL(0); return 0; }
+    if (a[0].as.b) {
+        if (!g_term_salvo) {
+            if (tcgetattr(0, &g_term_orig) != 0) { *o = MK_BOOL(0); return 0; }
+            g_term_salvo = 1;
+            atexit(term_restaura);
+            struct sigaction sa; memset(&sa, 0, sizeof sa);
+            sa.sa_handler = term_sig;
+            sigaction(SIGINT, &sa, NULL);
+            sigaction(SIGTERM, &sa, NULL);
+        }
+        struct termios t = g_term_orig;
+        t.c_lflag &= ~(ICANON | ECHO);   /* tecla na hora, sem eco; ISIG fica */
+        t.c_cc[VMIN] = 0;                 /* read() não bloqueia: 0 bytes = sem tecla */
+        t.c_cc[VTIME] = 0;
+        tcsetattr(0, TCSANOW, &t);
+        g_term_raw = 1;
+    } else {
+        term_restaura();
+    }
+    *o = MK_BOOL(1);
+    return 0;
+}
+
 static const MembroMod MOD_STDIN[] = {
     { "read", mod_in_read, 0, "tamanho" },
     { "readline", mod_in_readline, 0, NULL },
+    { "raw", mod_in_raw, 0, "ligar" },
 };
 
 /* Índice na tabela MODULOS, preenchido no primeiro acesso. */

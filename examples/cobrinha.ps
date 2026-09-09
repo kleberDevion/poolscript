@@ -1,0 +1,121 @@
+# Cobrinha no terminal — só com o que a linguagem tem, sem lib nenhuma.
+#
+#   pool examples/cobrinha.ps
+#
+# WASD ou setas movem; q sai. As três peças de um jogo de terminal, todas do
+# motor:
+#   1. modo cru NATIVO — `sys.stdin.raw(true)` (termios; nada de stty externo).
+#      O motor restaura o terminal sozinho no fim e no Ctrl+C.
+#   2. tecla sem travar — `sys.stdin.read(1)` em modo cru devolve a tecla na
+#      hora, ou `""` quando não há nenhuma. Um laço só: lê, move, desenha.
+#   3. desenhar — códigos ANSI: limpar, cursor no canto, cor.
+import sys
+
+LARG = 24
+ALT = 12
+
+cobra = [(6, 6), (5, 6), (4, 6)]     # cabeça primeiro
+dir = (1, 0)
+comida = (16, 4)
+pontos = 0
+semente = 1237
+
+funct proxima_comida() {
+    global semente
+    while True {
+        semente = (semente * 1103515245 + 12345) % 2147483648
+        x = 1 + semente % (LARG - 2)
+        y = 1 + (semente // 97) % (ALT - 2)
+        if not ((x, y) in cobra) {
+            return (x, y)
+        }
+    }
+}
+
+funct vira(nova) {
+    global dir
+    if nova[0] == -dir[0] and nova[1] == -dir[1] {   # não vira 180°
+        return
+    }
+    dir = nova
+}
+
+# Lê TODAS as teclas que chegaram desde o último quadro (o buffer pode ter
+# mais de uma), e devolve a última direção pedida. Seta = ESC [ A/B/C/D.
+funct le_teclas() {
+    global rodando
+    while True {
+        t = sys.stdin.read(1)
+        if t == "" {                 # nada mais no buffer
+            return
+        }
+        if t == "q" {
+            rodando = False
+            return
+        }
+        if t == "\x1b" {
+            sys.stdin.read(1)        # o '['
+            t = sys.stdin.read(1)    # a letra
+        }
+        if t == "w" or t == "A" { vira((0, -1)) }
+        elif t == "s" or t == "B" { vira((0, 1)) }
+        elif t == "d" or t == "C" { vira((1, 0)) }
+        elif t == "a" or t == "D" { vira((-1, 0)) }
+    }
+}
+
+funct desenha() {
+    tela = ["\x1b[H"]
+    addEnd(tela, "\x1b[33m pontos: " + str(pontos) + "   (WASD/setas, q sai)\x1b[0m\n")
+    for each y in range(ALT) {
+        linha = []
+        for each x in range(LARG) {
+            if y == 0 or y == ALT - 1 or x == 0 or x == LARG - 1 {
+                addEnd(linha, "\x1b[34m#\x1b[0m")
+            } elif (x, y) == cobra[0] {
+                addEnd(linha, "\x1b[32mO\x1b[0m")
+            } elif (x, y) in cobra {
+                addEnd(linha, "\x1b[32mo\x1b[0m")
+            } elif (x, y) == comida {
+                addEnd(linha, "\x1b[31m@\x1b[0m")
+            } else {
+                addEnd(linha, " ")
+            }
+        }
+        addEnd(tela, "".join(linha) + "\n")
+    }
+    sys.stdout.write("".join(tela))
+    sys.stdout.flush()
+}
+
+rodando = True
+
+if __name__ == "main" {
+    sys.stdin.raw(true)
+    sys.stdout.write("\x1b[?25l\x1b[2J")          # esconde cursor, limpa
+    try {
+        desenha()
+        while rodando {
+            le_teclas()
+            cab = (cobra[0][0] + dir[0], cobra[0][1] + dir[1])
+            parede = cab[0] <= 0 or cab[0] >= LARG - 1 or cab[1] <= 0 or cab[1] >= ALT - 1
+            if parede or (cab in cobra) {
+                rodando = False
+            } else {
+                addStart(cobra, cab)
+                if cab == comida {
+                    pontos = pontos + 1
+                    comida = proxima_comida()
+                } else {
+                    removeEnd(cobra)
+                }
+                desenha()
+                sleep(0.12)
+            }
+        }
+    } finally {
+        sys.stdin.raw(false)                      # o motor também faz sozinho
+        sys.stdout.write("\x1b[?25h\n")           # mostra o cursor de volta
+        post("fim — pontos:", pontos)
+    }
+}

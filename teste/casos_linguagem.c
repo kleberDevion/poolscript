@@ -1293,6 +1293,17 @@ const Caso CASOS_LINGUAGEM[] = {
  * O runner roda todo caso com stdin em /dev/null, então aqui a entrada já
  * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre
  * quando o outro lado fechasse o cano — foi o que travou o servidor LSP. */
+/* ── sys.stdin.raw() — modo cru do terminal, 2026-09-09 ────────────────────
+ * A suíte roda com stdin em /dev/null (não é terminal), então aqui `raw` só
+ * pode ser CONFERIDO no caminho não-tty: devolve false e não estoura, e a
+ * leitura segue devolvendo Null no fim (o polling em tty tem prova própria em
+ * examples/cobrinha.ps, que precisa de pty). */
+{ "raw() sem terminal devolve false, nao estoura",
+  "import sys\npost(sys.stdin.raw(true), sys.stdin.raw(false))\n", "False False", NULL, 0 },
+{ "raw() nao muda a leitura de pipe: Null no fim",
+  "import sys\nsys.stdin.raw(true)\npost(type(sys.stdin.read()))\n", "Null", NULL, 0 },
+{ "raw() exige bool",
+  "import sys\nsys.stdin.raw(1)\n", "", "raw() espera bool", 1 },
 { "input() no fim da entrada devolve null",
   "post(input())\n", "Null", NULL, 0 },
 { "input() no fim é null, não string vazia",
