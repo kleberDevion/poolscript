@@ -67,7 +67,7 @@ return jsonify({"itens": lista}).header("X-Total-Count", "3"), 200
 
 ---
 
-## Dá pra nem usar `jsonify`
+## Sem usar `jsonify`
 
 Se você só quer JSON simples com status 200, devolver o dict/lista direto já
 funciona — a rota converte sozinha:
