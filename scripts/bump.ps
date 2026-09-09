@@ -99,7 +99,8 @@ if __name__ == "main" {
         sys.exit(1)
     }
 
-    if len(sys.argv) == 0 {
+    args = sys.argv[1:]          # sys.argv[0] é o nome do script
+    if len(args) == 0 {
         post("versão atual: " + atual)
         post("")
         post("onde ela está:")
@@ -117,9 +118,9 @@ if __name__ == "main" {
         sys.exit(0)
     }
 
-    nova = calcula(atual, sys.argv[0])
+    nova = calcula(atual, args[0])
     if nova == "" {
-        post("não entendi '" + sys.argv[0] + "'.")
+        post("não entendi '" + args[0] + "'.")
         post("use patch, minor, major ou uma versão X.Y.Z com três números.")
         sys.exit(1)
     }

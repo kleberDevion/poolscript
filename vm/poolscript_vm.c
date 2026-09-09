@@ -10647,15 +10647,23 @@ static const MembroMod MOD_JWT[] = {
 
 
 /* ── sys ────────────────────────────────────────────────────────────────── */
-/* `sys.argv` são os argumentos DO USUÁRIO: `pool arquivo.ps a b` dá
- * {"a","b"}. O nome do programa e o do script ficam de fora — é o que o
- * o script não entra em `argv`. */
+/* `sys.argv` na convenção de C/Python/JS: `argv[0]` é o NOME DO SCRIPT e os
+ * argumentos do usuário vêm a partir de `argv[1]`. `pool app.ps a b` dá
+ * {"app.ps", "a", "b"}. Antes o nome do script ficava de fora e `argv[0]` já
+ * era o primeiro argumento — quem vinha de outra linguagem lia `argv[1]`
+ * esperando o primeiro arg e levava IndexError numa lista que "não tinha
+ * limite". Agora é igual a todo mundo. Sem script (código de `-e` ou da borda
+ * externa), `nome_script` é "__main__", que ocupa o [0] do mesmo jeito. */
 static int mod_sys_argv(VM *vm, Value *args, int n, Value *out)
 {
     (void)args; (void)n;
-    PSList *l = lista_com_cap(vm, vm->argc_user > 0 ? vm->argc_user : 1, OBJ_LIST);
+    const char *prog = vm->nome_script[0] ? vm->nome_script : "__main__";
+    PSList *l = lista_com_cap(vm, vm->argc_user + 1, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria");
     if (fixa_raiz(vm, MK_OBJ(l)) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
+    PSString *p0 = nova_string(vm, prog, (int)strlen(prog));
+    if (!p0) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+    l->itens[l->len++] = MK_OBJ(p0);
     for (int i = 0; i < vm->argc_user; i++) {
         PSString *a = nova_string(vm, vm->argv_user[i], (int)strlen(vm->argv_user[i]));
         if (!a) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }

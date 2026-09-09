@@ -85,13 +85,14 @@ funct escreve_literais(texto, recuo)
 }
 
 if __name__ == "main" {
-    if len(sys.argv) < 1 {
+    args = sys.argv[1:]          # sys.argv[0] é o nome do script
+    if len(args) < 1 {
         post("uso: pool scripts/casos_para_chaves.ps <casos_x.c> [--grava]")
         sys.exit(1)
     }
-    caminho = sys.argv[0]
+    caminho = args[0]
     grava = false
-    for each a in sys.argv {
+    for each a in args {
         if a == "--grava" {
             grava = true
         }

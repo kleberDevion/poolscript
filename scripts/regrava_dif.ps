@@ -35,15 +35,16 @@ funct escapa_c(s) {
 
 
 if __name__ == "main" {
-    if len(sys.argv) < 2 {
+    args = sys.argv[1:]          # sys.argv[0] é o nome do script
+    if len(args) < 2 {
         post("uso: pool scripts/regrava_dif.ps <casos.c> <nome> ... [--grava]")
         sys.exit(1)
     }
-    caminho = sys.argv[0]
+    caminho = args[0]
     grava = false
     nomes = []
     i = 0
-    for each a in sys.argv {
+    for each a in args {
         i = i + 1
         if i == 1 {
             continue

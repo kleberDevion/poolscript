@@ -164,8 +164,8 @@ funct mostra(saida) {
 
 if __name__ == "main" {
     filtro = ""
-    if len(sys.argv) > 0 {
-        filtro = sys.argv[0]
+    if len(sys.argv) > 1 {
+        filtro = sys.argv[1]
     }
 
     # Nomes que já têm papel declarado não entram na lista de "sozinhos".

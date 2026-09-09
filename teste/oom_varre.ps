@@ -89,11 +89,11 @@ if __name__ == "main" {
     os.mkdir(TMP, exist_ok=true)
 
     so_um = -1
-    if len(sys.argv) > 0 {
-        so_um = int(sys.argv[0])
-    }
     if len(sys.argv) > 1 {
-        PONTOS_MAX = int(sys.argv[1])
+        so_um = int(sys.argv[1])
+    }
+    if len(sys.argv) > 2 {
+        PONTOS_MAX = int(sys.argv[2])
     }
 
     total_pontos = 0

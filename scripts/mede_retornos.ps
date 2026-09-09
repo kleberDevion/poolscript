@@ -265,7 +265,7 @@ if __name__ == "main" {
     os.cmd("'" + sys.executable + "' --metadata > " + META)
 
     alvos = []
-    for each a in sys.argv {
+    for each a in sys.argv[1:] {   # sys.argv[0] é o nome do script
         addEnd(alvos, a)
     }
     if len(alvos) == 0 {

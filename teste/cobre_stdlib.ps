@@ -68,9 +68,10 @@ confere("sys.RelativePath de nome inexistente devolve null",
         sys.RelativePath("nao_existe_mesmo_987.txt") == null)
 
 confere("sys.executable aponta um arquivo que existe", os.isfile(sys.executable))
-# `sys.argv` traz só os argumentos DO USUÁRIO — o nome do script NÃO entra,
-# diferente do Python. Rodado sem argumento, é lista vazia.
-confere("sys.argv sem argumento é lista vazia", len(sys.argv) == 0)
+# `sys.argv[0]` é o NOME DO SCRIPT e os argumentos vêm a partir de `[1]` — a
+# convenção de C/Python. Rodado sem argumento (é o caso aqui), tem só o [0].
+confere("sys.argv sem argumento tem só o nome do script", len(sys.argv) == 1)
+confere("sys.argv[0] é o script rodando", sys.argv[0].endswith("cobre_stdlib.ps"))
 
 # stdout/stderr: o `flush` não devolve nada, então o que se afirma é que ele
 # ESCOA — escrevendo sem newline e conferindo que o texto saiu antes do fim.

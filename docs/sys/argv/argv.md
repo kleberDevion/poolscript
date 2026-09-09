@@ -11,28 +11,33 @@ sys.argv   # lista
 
 ## Uso
 
-Se você rodar `pool app.ps entrada.txt saida.txt`:
+`argv[0]` é o **nome do script**; os seus argumentos vêm a partir de `argv[1]`
+— a mesma convenção de C, Python e JS. Rodando
+`pool app.ps entrada.txt saida.txt`:
 
 ```
 import sys
 
-post(sys.argv)        # ['entrada.txt', 'saida.txt']   — sai com aspas simples
+post(sys.argv)        # ['app.ps', 'entrada.txt', 'saida.txt']  — aspas simples
 
-# pegar um argumento (checando se existe)
-if (len(sys.argv) > 0) {
-    arquivo = sys.argv[0]      # "entrada.txt"
+# pegar o primeiro argumento (checando se existe)
+if (len(sys.argv) > 1) {
+    arquivo = sys.argv[1]      # "entrada.txt"
     post("processando:", arquivo)
 }
 ```
 
-`argv[0]` é o **primeiro argumento seu**: o nome do script NÃO entra na lista.
+| índice | é |
+|---|---|
+| `argv[0]` | o nome do script (`app.ps`) — `__main__` quando o código vem de `pool -e` |
+| `argv[1]`, `argv[2]`, … | os seus argumentos, na ordem |
 
-> Esta página dizia o contrário, e o exemplo (`len(sys.argv) > 1` / `argv[1]`)
-> ensinava a pular o primeiro argumento de verdade. `docs/sys.md` sempre esteve
-> certa; as duas se contradiziam.
+Então **conte quantos você espera contando o script**: um programa que precisa
+de um argumento exige `len(sys.argv) >= 2` (o script + o argumento).
 
-Indexar fora do intervalo **levanta** `IndexError: list index out of range`, por
-isso a guarda com `len()`.
+Indexar fora do intervalo **levanta** `IndexError: list index out of range` —
+por isso a guarda com `len()`. Sem argumento nenhum, `sys.argv` tem só o
+`[0]` (o script), e `argv[1]` estoura.
 
 ---
 

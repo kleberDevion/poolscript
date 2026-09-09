@@ -148,20 +148,21 @@ funct converte_arquivo(caminho, grava) {
 
 
 if __name__ == "main" {
-    if len(sys.argv) < 1 {
+    args = sys.argv[1:]          # sys.argv[0] é o nome do script
+    if len(args) < 1 {
         post("uso: pool scripts/converte_funct.ps <arquivo.ps> [--grava]")
         post("     pool scripts/converte_funct.ps --lista <a.ps> <b.ps> ...")
         sys.exit(1)
     }
-    lote = sys.argv[0] == "--lista"
+    lote = args[0] == "--lista"
     grava = lote
-    for each a in sys.argv {
+    for each a in args {
         if a == "--grava" {
             grava = true
         }
     }
     alvos = []
-    for each a in sys.argv {
+    for each a in args {
         if a == "--lista" or a == "--grava" {
             continue
         }

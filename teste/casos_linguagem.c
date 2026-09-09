@@ -1298,6 +1298,14 @@ const Caso CASOS_LINGUAGEM[] = {
  * pode ser CONFERIDO no caminho não-tty: devolve false e não estoura, e a
  * leitura segue devolvendo Null no fim (o polling em tty tem prova própria em
  * examples/cobrinha.ps, que precisa de pty). */
+/* ── sys.argv na convencao C/Python, 2026-09-09 ────────────────────────────
+ * `argv[0]` e o NOME DO SCRIPT; os argumentos do usuario vem de `argv[1]`. O
+ * runner roda `pool <arquivo>` sem argumentos extras, entao argv tem SO o [0]
+ * (o script). Antes o nome do script ficava de fora e argv[0] ja era o 1o
+ * argumento — quem lia argv[1] levava IndexError numa lista "sem limite". */
+{ "sys.argv[0] e o nome do script; sem args tem so ele",
+  "import sys\npost(type(sys.argv), len(sys.argv), type(sys.argv[0]))\n",
+  "list 1 str", NULL, 0 },
 { "raw() sem terminal devolve false, nao estoura",
   "import sys\npost(sys.stdin.raw(true), sys.stdin.raw(false))\n", "False False", NULL, 0 },
 { "raw() nao muda a leitura de pipe: Null no fim",

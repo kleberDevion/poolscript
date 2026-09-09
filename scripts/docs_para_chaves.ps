@@ -68,13 +68,14 @@ funct converte_md(texto) {
 
 
 if __name__ == "main" {
-    if len(sys.argv) < 1 {
+    args = sys.argv[1:]          # sys.argv[0] é o nome do script
+    if len(args) < 1 {
         post("uso: pool scripts/docs_para_chaves.ps <arquivo.md> [--grava]")
         sys.exit(1)
     }
     grava = false
     alvos = []
-    for each a in sys.argv {
+    for each a in args {
         if a == "--grava" {
             grava = true
         }

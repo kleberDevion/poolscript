@@ -45,7 +45,7 @@ if __name__ == "main" {
     os.mkdir(TMP, exist_ok=true)
     grava = false
     alvos = []
-    for each a in sys.argv {
+    for each a in sys.argv[1:] {   # sys.argv[0] é o nome do script
         if a == "--grava" {
             grava = true
         }

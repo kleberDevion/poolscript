@@ -8,18 +8,20 @@ import sys
 
 ## sys.argv
 
-Argumentos passados na linha de comando, depois do nome do arquivo:
+`argv[0]` é o **nome do script**; os seus argumentos vêm a partir de `argv[1]`
+— a convenção de C, Python e JS:
 
 ```
 # $ pool app.ps criar joao
-comando = sys.argv[0]   # "criar"
-nome    = sys.argv[1]   # "joao"
-len(sys.argv)            # quantidade de args
+script  = sys.argv[0]   # "app.ps"
+comando = sys.argv[1]   # "criar"
+nome    = sys.argv[2]   # "joao"
+len(sys.argv)            # 3  (script + 2 argumentos)
 ```
 
 Fora do intervalo **levanta** `IndexError: list index out of range` — guarde
-com `len(sys.argv)` antes de indexar. (Até 28/08 devolvia `Null`; a mudança é a
-mesma que fez `l[99]` levantar.)
+com `len(sys.argv)` antes de indexar, contando o script: um programa que precisa
+de um argumento exige `len(sys.argv) >= 2`. Ver [`sys/argv`](sys/argv/argv.md).
 
 ---
 
