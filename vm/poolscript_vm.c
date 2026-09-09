@@ -22913,9 +22913,13 @@ ERRO_TF(vm, "TypeError",
         }
 
         case OP_COERCE_DECL: {
-            /* `int x = "7"` e `flo x = "1.5"` convertem — o tipo escrito é
-             * uma ordem, não um comentário. `flo x = 5` também (int sobe pra
-             * flo). O resto é violação: `int x = 5.9` não trunca em silêncio. */
+            /* NENHUMA conversão implícita (decisão dele, 2026-09-09): o tipo
+             * escrito é o tipo que o valor JÁ tem que ter. `int x = "7"`,
+             * `flo x = 5` e `flo x = "1.5"` convertiam aqui, e ele nunca pediu
+             * isso — "se eu tenho terra eu transformo em cacau em pó?". Quem
+             * quer converter escreve `int("7")`, `flo(5)`: explícito. Este
+             * opcode só CONFERE. A única exceção que ficou é `char`, que é
+             * restrição de declaração (um caractere), não um tipo de valor. */
             /* operando empacotado: tipo nos 4 bits baixos, índice do nome da
              * variável (const string) no resto — ver ps_compiler.c. */
             int tipo = arg & 15;
@@ -22957,40 +22961,15 @@ ERRO_TF(vm, "TypeError",
                 ERRO_TF(vm, "AttributedValueError",
                         "variável %s esperava char, recebeu %s", decl_nome, nome_do_tipo_valor(v));
             }
-            if (tipo == TIPO_INT && EH_STRING(v)) {
-                PSString *t = COMO_STRING(v);
-                int64_t r;
-                if (texto_para_int(t->chars, t->len, &r) != 0)
-                    ERRO_TF(vm, "ConversionError",
-                            "não foi possível converter '%.*s' para int (declarado como 'int %s')",
-                            (int)t->len, t->chars, decl_nome);
-                stack[sp - 1] = MK_INT(r);
-                break;
-            }
-            if (tipo == TIPO_FLO) {
-                if (v.t == V_INT) { stack[sp - 1] = MK_FLOAT((double)v.as.i); break; }
-                if (EH_STRING(v)) {
-                    PSString *t = COMO_STRING(v);
-                    double d;
-                    if (texto_para_flo(t->chars, t->len, &d) != 0)
-                        ERRO_TF(vm, "ConversionError",
-                                "não foi possível converter '%.*s' para flo (declarado como 'flo %s')",
-                                (int)t->len, t->chars, decl_nome);
-                    stack[sp - 1] = MK_FLOAT(d);
-                    break;
-                }
-            }
             /* Tipagem ESTATICA: este opcode roda em TODA escrita numa variavel
              * declarada com tipo (o compilador o emite antes de cada store,
              * nao so na declaracao), entao a lista cobre todos os tipos
-             * declaraveis — `list`/`dict`/`tup` eram guardados sem conferir. */
-            /* `flo` é o único que aceita outro tipo: um `int` cabe num `flo`
-             * sem perder nada. O resto pergunta à tabela — era mais um switch
-             * repetindo a mesma pertinência com as próprias mãos. */
+             * declaraveis — `list`/`dict`/`tup` eram guardados sem conferir.
+             * A pertinência vem da tabela TIPOS[], num lugar só: `flo` NÃO
+             * aceita `int` (era o único que aceitava outro tipo, e saiu). */
             int ok;
-            if (tipo == TIPO_FLO)      ok = v.t == V_INT || v.t == V_FLOAT;
-            else if (tipo >= TIPO__N)  ok = 1;      /* tipo desconhecido: não barra */
-            else                       ok = valor_eh_tipo(&v, tipo);
+            if (tipo >= TIPO__N)  ok = 1;      /* tipo desconhecido: não barra */
+            else                  ok = valor_eh_tipo(&v, tipo);
             if (!ok) {
                 const char *vn = "";
                 if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))

@@ -21,10 +21,10 @@ str nome = "ana"      # declaração com tipo (checada/coagida em toda escrita)
 
 - **Simples** (`nome = valor`): o nome recebe o valor e passa a existir; o tipo
   é o do valor, e pode mudar em outra atribuição.
-- **Tipada** (`Tipo nome = valor`): o valor é checado e, quando seguro, coagido
-  para o tipo declarado, seguindo a matriz de coerção da seção 2.6
-  (`int x = "7"` vira `7`; `int x = 5.0` é erro). O tipo fica **na
-  variável**: toda escrita seguinte é conferida igual — ver 4.6.4. Os tipos
+- **Tipada** (`Tipo nome = valor`): o valor é **checado** contra o tipo
+  declarado, e tem que já ser dele — nada é convertido (`int x = "7"` é erro,
+  como `int x = 5.0`; converter é `int("7")`) — ver a seção 2.6. O tipo fica
+  **na variável**: toda escrita seguinte é conferida igual — ver 4.6.4. Os tipos
   declaráveis: `str`, `int`, `flo`, `bool`, `char`, `list`, `dict`/`json`,
   `tup` e `Object` (qualquer objeto: instância, servidor, conexão, arquivo).
   `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple` e
@@ -219,8 +219,8 @@ laço é descartado.
 ### 4.6.4. O tipo declarado é da variável — tipagem estática
 
 `Tipo nome = valor` fixa o tipo da **variável**, não só do valor inicial: toda
-escrita posterior nela é conferida pela mesma regra da criação (coerção onde a
-matriz da seção 2.6 permite, erro onde não). Vale para reatribuição, `+=`,
+escrita posterior nela é conferida pela mesma regra da criação (tipo exato, sem
+conversão — seção 2.6). Vale para reatribuição, `+=`,
 `for each`, desempacotamento, escrita de dentro de uma funct (§4.7) e
 closure.
 
@@ -229,7 +229,7 @@ str s = "oi"
 s = 42              # AttributedValueError: variável s esperava str
 
 int n = 1
-n = "7"             # ok — coage: n vale 7
+n = "7"             # AttributedValueError — "7" é str, não int; escreva int("7")
 ```
 
 Uma variável criada **sem** tipo (`x = 1`) não tem essa restrição: `x = "a"`
@@ -330,7 +330,7 @@ faz — são detalhadas na parte de bibliotecas.)
 
 ## 4.10. Resumo
 
-- `nome = v` cria/atualiza; `Tipo nome = v` checa e coage em toda escrita (exige
+- `nome = v` cria/atualiza; `Tipo nome = v` checa o tipo — e **não converte** em toda escrita (exige
   `=`); sem atribuição encadeada.
 - Aumentadas (`+=` etc.) e `++`/`--` (só pós-fixado) herdam as regras da seção 3.
 - Alvos compostos: `l[i]`, `obj.x`, `d.chave` (sem atribuição por fatia).

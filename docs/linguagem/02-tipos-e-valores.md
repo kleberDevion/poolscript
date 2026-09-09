@@ -1,8 +1,9 @@
 # Referência da Linguagem — 2. Tipos e valores
 
 A PoolScript tem **tipagem estática por declaração**: uma variável declarada
-com tipo (`int x = 5`) **é** daquele tipo — a linguagem exige e coage esse tipo
-em toda atribuição a ela, da criação em diante. Uma variável criada sem tipo
+com tipo (`int x = 5`) **é** daquele tipo — a linguagem exige esse tipo em toda
+atribuição a ela, da criação em diante, e **não converte** nada por conta
+própria. Uma variável criada sem tipo
 (`x = 5`) carrega o tipo do valor que recebeu e pode receber outro depois. As
 duas formas convivem no mesmo programa.
 
@@ -168,9 +169,9 @@ post([10, 20][True])  # 20  (índice 1)
 
 ---
 
-## 2.6. Declaração com tipo e coerção
+## 2.6. Declaração com tipo — checada, nunca convertida
 
-Declarar o tipo antes do nome torna a atribuição **checada e coagida**:
+Declarar o tipo antes do nome torna a atribuição **checada**:
 
 ```ps
 int   idade = 30
@@ -181,36 +182,38 @@ bool  ativo = True
 
 A checagem vale em **toda** escrita na variável, não só na declaração: `s = 42`
 depois de `str s = "oi"` é erro (`variável s esperava str`), e `n = "7"` depois
-de `int n = 1` coage para `7` — ver seção 4.6.4.
+de `int n = 1` **também** — `"7"` é `str`, não `int` — ver seção 4.6.4.
 
-Regras de coerção na declaração, por tipo-alvo:
+**Não existe conversão implícita.** O valor tem que **já ser** do tipo
+declarado. Quem quer converter escreve a conversão: `int("7")`, `flo(5)`,
+`str(42)`. Se você tem terra, não vira cacau em pó sozinho.
 
-| Alvo | Aceita direto | Coage | Recusa |
-|---|---|---|---|
-| `int` | `int` | string numérica inteira (`"7"`→`7`) | `flo` (mesmo `5.0`), `bool` |
-| `flo` | `flo` | `int` (`5`→`5.0`), string numérica (`"1.5"`→`1.5`) | `bool` |
-| `str` | `str` | — | `int`, `flo`, `bool` (não "stringifica") |
-| `bool` | `bool` | — | `int` (mesmo `1`), etc. |
-| `list` `dict` `tup` `json` | o próprio tipo | — | os demais |
-| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo | — | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
-| `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary` | apelidos de `str`, `int`, `tup`, `dict` — a linha do tipo apelidado vale igual | idem | idem |
+| Alvo | Aceita | Recusa |
+|---|---|---|
+| `int` | `int` | `flo` (mesmo `5.0`), `str` (mesmo `"7"`), `bool` |
+| `flo` | `flo` | `int` (mesmo `5`), `str` (mesmo `"1.5"`), `bool` |
+| `str` | `str` | `int`, `flo`, `bool` (não "stringifica") |
+| `bool` | `bool` | `int` (mesmo `1`), etc. |
+| `long` | inteiro de qualquer tamanho (`int` **é** inteiro — não há conversão aí) | o resto |
+| `list` `dict` `tup` `json` | o próprio tipo | os demais |
+| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
+| `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary` | apelidos de `str`, `int`, `tup`, `dict` — a linha do tipo apelidado vale igual | idem |
 
-Ou seja: a linguagem faz só as conversões que não perdem nem adivinham
-informação — **int→flo** (alargamento) e **string numérica→número** (parsing).
-O resto é erro, e há dois erros distintos:
-
-- **`AttributedValueError`** — tipo incompatível que não se coage
-  (`int x = 5.0`, `str s = 42`, `bool b = 1`).
-- **`ConversionError`** — o valor é uma string que não representa o número
-  pedido (`int x = "abc"`).
+Tipo errado é **`AttributedValueError`**, sempre — não há mais "quase
+converteu":
 
 ```ps
-int  x = "7"      # 7    (parsing de string numérica)
-flo  f = 5        # 5.0  (alargamento int→flo)
-int  y = 5.0      # AttributedValueError — não trunca nem aceita float
-str  s = 42       # AttributedValueError — não "stringifica" sozinho
-int  z = "abc"    # ConversionError — string não vira int
+int  x = "7"      # AttributedValueError — "7" é str; escreva int("7")
+flo  f = 5        # AttributedValueError — 5 é int; escreva flo(5)
+int  y = 5.0      # AttributedValueError — não trunca
+str  s = 42       # AttributedValueError — não "stringifica"; escreva str(42)
+int  z = "abc"    # AttributedValueError — o mesmo caso do "7"
 ```
+
+Já foi diferente: `int x = "7"` virava `7` e `flo f = 5` virava `5.0`
+("conversões que não perdem informação"). Saiu porque conversão que ninguém
+escreveu é conversão que ninguém vê — e a regra da linguagem é uma só:
+converter é `tipo(valor)`, explícito.
 
 ---
 

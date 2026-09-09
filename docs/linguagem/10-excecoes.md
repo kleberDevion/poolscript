@@ -116,7 +116,7 @@ A divisão entre eles: **`TypeError`** quando o TIPO está errado,
 | `ZeroDivisionError` | divisão ou resto por zero: `1 / 0` |
 | `OverflowError` | número que não cabe no destino: `int(flo("inf"))` |
 | `AttributedValueError` | valor incompatível com o tipo declarado (`str x = 10`) |
-| `ConversionError` | coerção de declaração tipada que não dá (`int z = "abc"`) |
+| `ConversionError` | `char c = -1` — inteiro que não é um codepoint válido. (`int z = "abc"` NÃO é isto: declaração não converte, é `AttributedValueError`) |
 | `ImportError` | módulo não encontrado no `import` |
 | `MemoryError` | sem memória |
 | `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private` e `nonnull` |

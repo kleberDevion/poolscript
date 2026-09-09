@@ -370,7 +370,7 @@ Tipos disponíveis:
 | `TimeoutError` | tempo esgotado |
 | `DatabaseError` | erro de banco |
 | `ImportError` | módulo não encontrado |
-| `ConversionError` | coerção de declaração tipada (`int z = "abc"`) |
+| `ConversionError` | `char c = -1` — inteiro que não é um codepoint válido. (`int z = "abc"` é `AttributedValueError`: declaração não converte) |
 | `NotImplemented` | construção reconhecida e ainda não executada — o nome é sem `Error` |
 | `MemoryError` | sem memória |
 | `RuntimeError` | `raise "texto"`, e o que só existe aqui: `private` e `nonnull` (`for each` sobre tipo que não itera é `TypeError`) |

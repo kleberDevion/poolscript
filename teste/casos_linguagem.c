@@ -1037,12 +1037,27 @@ const Caso CASOS_LINGUAGEM[] = {
   "char funct f() {\n"
   "    return 1\n"
   "}\npost(f())\n", "1", NULL, 0 },
-{ "as outras declaracoes tipadas continuam iguais",
-  "str a = \"oi\"\nint b = \"7\"\nflo c = 1\nbool d = true\npost(a, b, c, d)\n",
+/* ── NENHUMA conversao implicita, 2026-09-09 ───────────────────────────────
+ * `int b = "7"` virava 7 e `flo c = 1` virava 1.0 ("conversoes que nao perdem
+ * informacao"). Ele nunca pediu isso: "se eu tenho terra eu transformo em
+ * cacau em po?". A declaracao CONFERE o tipo e nao converte nada; converter e
+ * escrever `int("7")`, `flo(5)`. O `ConversionError` da declaracao de int/flo
+ * deixou de existir — sobrou so no `char c = -1`. */
+{ "declaracao tipada aceita o tipo EXATO",
+  "str a = \"oi\"\nint b = 7\nflo c = 1.0\nbool d = true\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
-{ "int tipado ainda recusa texto invalido",
-  "int x = \"abc\"\n", "",
-  "ConversionError: não foi possível converter 'abc' para int (declarado como 'int x')", 1 },
+{ "int NAO aceita string numerica: nao converte",
+  "int b = \"7\"\n", "", "AttributedValueError: variável b esperava int", 1 },
+{ "flo NAO aceita int: nao alarga",
+  "flo c = 1\n", "", "AttributedValueError: variável c esperava flo", 1 },
+{ "flo NAO aceita string numerica",
+  "flo x = \"1.5\"\n", "", "AttributedValueError: variável x esperava flo", 1 },
+{ "int recusa texto invalido pelo MESMO erro (nao ha 'quase converteu')",
+  "int x = \"abc\"\n", "", "AttributedValueError: variável x esperava int", 1 },
+{ "conversao e explicita: tipo(valor)",
+  "int n = int(\"7\")\nflo f = flo(5)\nstr s = str(42)\npost(n, f, s)\n", "7 5.0 42", NULL, 0 },
+{ "long aceita int porque int E inteiro — nao e conversao",
+  "long y = 5\npost(y)\n", "5", NULL, 0 },
 
 /* ── módulos sem `import` ────────────────────────────────────────────────
  * `Parsing` é namespace pré-ligado e `sys.stdout`/`sys.stderr` são atributos:
@@ -1420,14 +1435,18 @@ const Caso CASOS_LINGUAGEM[] = {
   "s = 42\n"
   "post(s)\n",
   "", "AttributedValueError: variável s esperava str", 1 },
-{ "tipagem estatica: `int n` coage `n = \"7\"` (a matriz de coercao continua)",
+/* Sem conversao implicita (2026-09-09): a reatribuicao confere o tipo EXATO,
+ * igual a criacao. `n = "7"` num `int n` era convertido pra 7; agora e erro. */
+{ "tipagem estatica: `int n` recusa `n = \"7\"` — nao converte na escrita",
   "int n = 1\n"
-  "n = \"7\"\n"
-  "post(n + 1)\n"
-  "flo f = 1\n"
-  "f = 2\n"
-  "post(f)\n",
-  "8\n2.0", NULL, 0 },
+  "n = \"7\"\n",
+  "", "AttributedValueError: variável n esperava int", 1 },
+{ "tipagem estatica: `flo f` recusa int na escrita; flo passa",
+  "flo f = 1.0\n"
+  "f = 2.0\n"
+  "post(f)\n"
+  "f = 2\n",
+  "2.0", "AttributedValueError: variável f esperava flo", 1 },
 { "tipagem estatica: `list l` recusa string; `dict d` recusa lista",
   "list l = [1]\n"
   "l = \"x\"\n",
@@ -1463,7 +1482,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return n\n"
   "}\n"
   "post(f())\n",
-  "", "ConversionError: não foi possível converter 'z' para int", 1 },
+  "", "AttributedValueError: variável n esperava int", 1 },
 { "tipagem estatica: `for each` num nome declarado confere cada volta",
   "str s = \"a\"\n"
   "for each s in [1, 2] {\n"
@@ -1480,7 +1499,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * apelidam, inclusive a estatica. */
 { "apelidos de tipo: string/Integer/tuple/Dictionary declaram e conferem como str/int/tup/dict",
   "string s = \"a\"\n"
-  "Integer n = \"7\"\n"
+  "Integer n = 7\n"
   "post(n + 1)\n"
   "tuple t = (1, 2)\n"
   "Dictionary d = {\"k\": 1}\n"

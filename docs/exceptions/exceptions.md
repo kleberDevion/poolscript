@@ -88,7 +88,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `pool --check` relata |
 | `KeyError` | chave inexistente num dict: `d["naoexiste"]`. A mensagem é a **chave**, e só ela: `KeyError: 'naoexiste'`. Vale igual em `d.chave` e `d.pop("chave")` |
 | `ImportError` | módulo não encontrado: `import naoexiste` |
-| `ConversionError` | coerção de **declaração tipada** que não dá: `int z = "abc"`, `char c = -1`. A lib `Parsing` **não** levanta — ela é best-effort e devolve `0`/`0.0`/`{}` |
+| `ConversionError` | `char c = -1` — inteiro que não é um codepoint válido. Só isso: a declaração tipada **não converte** (`int z = "abc"` é `AttributedValueError`, porque `"abc"` é `str`). A lib `Parsing` **não** levanta — ela é best-effort e devolve `0`/`0.0`/`{}` |
 | `NetworkError` | falha de rede/conexão (`request`, http) |
 | `DatabaseError` | erro de banco (`psodbc`) |
 | `TimeoutError` | tempo esgotado (`request` com `timeout=`) |

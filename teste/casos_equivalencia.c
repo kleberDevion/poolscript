@@ -776,8 +776,10 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "post(gather(d(1), d(2), d(3)))\n"
   "\n",
   "[2, 4, 6]", NULL, 0 },
+/* Sem conversao implicita (2026-09-09): `int x = "7"` e erro. A equivalencia
+ * que sobrevive e a explicita — `int x = int("7")` == `int("7")`. */
 { "equiv: int de '7' [1/2]",
-  "int x = \"7\"\n"
+  "int x = int(\"7\")\n"
   "post(x)\n"
   "\n",
   "7", NULL, 0 },
@@ -786,7 +788,7 @@ const Caso CASOS_EQUIVALENCIA[] = {
   "\n",
   "7", NULL, 0 },
 { "equiv: flo de 1 [1/2]",
-  "flo x = 1\n"
+  "flo x = flo(1)\n"
   "post(x)\n"
   "\n",
   "1.0", NULL, 0 },
