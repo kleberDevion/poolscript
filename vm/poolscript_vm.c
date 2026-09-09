@@ -3457,7 +3457,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_MODEL:      t = "PoolModel"; break;
                 case OBJ_ENUM:       t = "enum";   break;
                 case OBJ_GERADOR:    t = "generator"; break;
-                case OBJ_ARQUIVO:    t = "FileHandle"; break;
+                case OBJ_ARQUIVO:    t = "PoolFile"; break;   /* todo arquivo é PoolFile */
                 case OBJ_MODULO_PS:  t = "module"; break;
                 case OBJ_BYTES:      t = "bytes";  break;
                 case OBJ_POOLFILE:   t = "PoolFile"; break;
@@ -6190,7 +6190,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_MODEL:       t = "PoolModel"; break;
                 case OBJ_ENUM:        t = "enum";   break;
                 case OBJ_GERADOR:     t = "generator"; break;
-                case OBJ_ARQUIVO:     t = "FileHandle"; break;
+                case OBJ_ARQUIVO:     t = "PoolFile"; break;   /* todo arquivo é PoolFile */
                 case OBJ_MODULO_PS:   t = "module"; break;
                 case OBJ_BYTES:       t = "bytes";  break;
                 case OBJ_POOLFILE:    t = "PoolFile"; break;
@@ -6244,7 +6244,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int arq_exige(VM *vm, Value v, const char *quem, PSArquivo **out)
 {
     if (!EH_ARQUIVO(v))
-        MERRO(vm, "TypeError", "%s() argument 1 must be FileHandle, not %s",
+        MERRO(vm, "TypeError", "%s() argument 1 must be PoolFile, not %s",
               quem, nome_do_tipo_valor(v));
     *out = COMO_ARQ(v);
     if ((*out)->fechado) MERRO(vm, "ValueError", "I/O operation on closed file.");
@@ -6425,7 +6425,7 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
     (void)args;
     if (n != 0) return erro_aridade(vm, "close", 0, 0, n);
     if (!EH_ARQUIVO(alvo))
-        MERRO(vm, "TypeError", "close() argument 1 must be FileHandle, not %s",
+        MERRO(vm, "TypeError", "close() argument 1 must be PoolFile, not %s",
               nome_do_tipo_valor(alvo));
     PSArquivo *a = COMO_ARQ(alvo);
     /* O `fclose` faz o flush final, e é ali que o disco cheio costuma aparecer
@@ -6503,11 +6503,24 @@ static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
+/* Definidos junto do PoolFile carregado, mais abaixo — valem nos dois. */
+static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pf_delete(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pf_bytes(VM *vm, Value alvo, Value *args, int n, Value *out);
+
+/* Um `PoolFile` aberto por `open()`. Os cinco últimos são os MESMOS métodos
+ * do `PoolFile` carregado (`os.loadFile`): o tipo é um só, então o que vale
+ * num vale no outro. Ver `pf_caminho`/`pf_exige_fechado`. */
 static const MetodoNat METODOS_ARQ[] = {
     { "read", met_a_read, "n=-1" }, { "readline", met_a_readline, NULL },
     { "readlines", met_a_readlines, NULL }, { "write", met_a_write, "conteudo" },
     { "writelines", met_a_writelines, "linhas" }, { "close", met_a_close, NULL },
     { "save", met_a_save, "caminho=Null" },
+    { "path", met_pf_path, NULL }, { "move", met_pf_move, "destino" },
+    { "copy", met_pf_copy, "destino" }, { "delete", met_pf_delete, NULL },
+    { "bytes", met_pf_bytes, NULL },
 };
 
 static int nativa_open(VM *vm, Value *args, int n, Value *out)
@@ -7952,11 +7965,51 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
     return 0;
 }
 
+/* ── TODO ARQUIVO É PoolFile ───────────────────────────────────────────────
+ * Existem dois objetos por dentro — o handle aberto (`open()`) e o conteúdo
+ * carregado (`os.loadFile`) — mas pra quem escreve `.ps` é UM tipo só:
+ * `PoolFile`. Antes o handle se dizia `FileHandle` no `type()`, `Arquivo` no
+ * `--metadata`, e não tinha `move`/`copy`/`path`: três nomes e dois conjuntos
+ * de método pra mesma ideia. Estes dois ajudantes deixam os métodos de
+ * arquivo valerem nos DOIS. */
+static const char *pf_caminho(Value v)
+{
+    if (EH_PFILE(v))   return COMO_PFILE(v)->caminho;
+    if (EH_ARQUIVO(v)) return COMO_ARQ(v)->caminho;
+    return NULL;
+}
+
+/* Operação que mexe no arquivo em disco (mover, apagar) num handle ainda
+ * ABERTO: o descritor continuaria escrevendo no lugar antigo. Recusa dizendo
+ * o que fazer, em vez de deixar o dado sumir em silêncio. */
+static int pf_exige_fechado(VM *vm, Value v, const char *quem)
+{
+    if (EH_ARQUIVO(v) && !COMO_ARQ(v)->fechado)
+        MERRO(vm, "ValueError",
+              "%s() num arquivo ainda ABERTO — chame .close() antes (ou saia do `using`)", quem);
+    return 0;
+}
+
 static int met_pf_move(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "move", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "move() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
+    if (pf_exige_fechado(vm, alvo, "move") != 0) return -1;
+    if (!EH_PFILE(alvo)) {
+        /* handle fechado: move pelo caminho, sem conteúdo em memória */
+        const char *orig = pf_caminho(alvo);
+        const char *dst = COMO_STRING(args[0])->chars;
+        cria_pais(dst);
+        if (rename(orig, dst) != 0) {
+            const char *culpa = orig;
+            if (copia_arquivo(orig, dst, &culpa) != 0) return erro_sistema(vm, errno, culpa, NULL);
+            remove(orig);
+        }
+        snprintf(COMO_ARQ(alvo)->caminho, sizeof(COMO_ARQ(alvo)->caminho), "%s", dst);
+        *out = alvo;
+        return 0;
+    }
     PSPoolFile *f = COMO_PFILE(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     cria_pais(dest);
@@ -7980,11 +8033,14 @@ static int met_pf_copy(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "copy", 1);
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "copy() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
-    PSPoolFile *f = COMO_PFILE(alvo);
+    /* Copiar não mexe no original, então vale com o handle aberto — só é
+     * preciso escoar o que ainda está no buffer, senão a cópia sai truncada. */
+    if (EH_ARQUIVO(alvo) && COMO_ARQ(alvo)->f) fflush(COMO_ARQ(alvo)->f);
+    const char *origem = pf_caminho(alvo);
     const char *dest = COMO_STRING(args[0])->chars;
     cria_pais(dest);
-    const char *culpa = f->caminho;
-    if (copia_arquivo(f->caminho, dest, &culpa) != 0)
+    const char *culpa = origem;
+    if (copia_arquivo(origem, dest, &culpa) != 0)
         return erro_sistema(vm, errno, culpa, NULL);
     PSPoolFile *novo = novo_poolfile(vm, dest);
     if (!novo) return erro_sistema(vm, errno, dest, NULL);
@@ -7996,7 +8052,8 @@ static int met_pf_delete(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
     if (n != 0) return erro_aridade(vm, "delete", 0, 0, n);
-    unlink(COMO_PFILE(alvo)->caminho);   /* já apagado não é erro */
+    if (pf_exige_fechado(vm, alvo, "delete") != 0) return -1;
+    unlink(pf_caminho(alvo));            /* já apagado não é erro */
     *out = MK_BOOL(1);
     return 0;
 }
@@ -8005,7 +8062,14 @@ static int met_pf_bytes(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
     if (n != 0) return erro_aridade(vm, "bytes", 0, 0, n);
-    *out = COMO_PFILE(alvo)->conteudo;
+    if (EH_PFILE(alvo)) { *out = COMO_PFILE(alvo)->conteudo; return 0; }
+    /* Handle: o conteúdo não está em memória — lê do disco agora. O `fflush`
+     * antes, senão o que ainda está no buffer não entraria nos bytes. */
+    PSArquivo *a = COMO_ARQ(alvo);
+    if (a->f) fflush(a->f);
+    PSPoolFile *lido = novo_poolfile(vm, a->caminho);
+    if (!lido) return erro_sistema(vm, errno, a->caminho, NULL);
+    *out = lido->conteudo;
     return 0;
 }
 
@@ -8042,9 +8106,8 @@ static int met_pf_path(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
     if (n != 0) return erro_aridade(vm, "path", 0, 0, n);
-    PSPoolFile *f = COMO_PFILE(alvo);
     char abs[2048];
-    caminho_abs(f->caminho, abs, sizeof(abs));
+    caminho_abs(pf_caminho(alvo), abs, sizeof(abs));
     return devolve_texto(vm, out, abs, (int)strlen(abs));
 }
 
@@ -23453,11 +23516,41 @@ ERRO_TF(vm, "TypeError",
                 if (strcmp(nome, "rowcount") == 0) { stack[sp - 1] = MK_INT(cu->rowcount); break; }
                 if (strcmp(nome, "lastrowid") == 0) { stack[sp - 1] = MK_INT(cu->lastrowid); break; }
             }
-            if (EH_PFILE(alvo)) {
+            if (EH_PFILE(alvo) || EH_ARQUIVO(alvo)) {
                 /* `name`/`ext`/`size` são CAMPOS, não métodos — `f.size` sem
-                 * parêntese, igual ao `PoolFile` do interpretador */
-                PSPoolFile *pf = COMO_PFILE(alvo);
+                 * parêntese. Valem nos DOIS: todo arquivo é `PoolFile`, e um
+                 * aberto por `open()` também tem nome, extensão e tamanho. */
                 const char *txt = NULL;
+                char nbuf[512], ebuf[64];
+                if (EH_ARQUIVO(alvo)) {
+                    /* derivados do caminho; o tamanho vem do disco, depois de
+                     * escoar o que ainda estiver no buffer de escrita */
+                    PSArquivo *ah = COMO_ARQ(alvo);
+                    const char *base = strrchr(ah->caminho, '/');
+                    base = base ? base + 1 : ah->caminho;
+                    if (strcmp(nome, "name") == 0) {
+                        snprintf(nbuf, sizeof(nbuf), "%s", base);
+                        txt = nbuf;
+                    } else if (strcmp(nome, "ext") == 0) {
+                        /* COM o ponto (".png"), igual ao PoolFile carregado —
+                         * um tipo só não pode dar duas respostas pro mesmo campo */
+                        const char *p = strrchr(base, '.');
+                        snprintf(ebuf, sizeof(ebuf), "%s", p ? p : "");
+                        txt = ebuf;
+                    } else if (strcmp(nome, "size") == 0) {
+                        if (ah->f) fflush(ah->f);
+                        struct stat sa;
+                        stack[sp - 1] = MK_INT(stat(ah->caminho, &sa) == 0 ? (int64_t)sa.st_size : 0);
+                        break;
+                    }
+                    if (!txt) goto pf_sem_campo;
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *sa2 = nova_string(vm, txt, (int)strlen(txt));
+                    if (!sa2) ERRO(vm, "sem memoria");
+                    stack[sp - 1] = MK_OBJ(sa2);
+                    break;
+                }
+                PSPoolFile *pf = COMO_PFILE(alvo);
                 if      (strcmp(nome, "name") == 0) txt = pf->nome;
                 else if (strcmp(nome, "ext")  == 0) txt = pf->ext;
                 else if (strcmp(nome, "size") == 0) { stack[sp - 1] = MK_INT(pf->tamanho); break; }
@@ -23468,6 +23561,7 @@ ERRO_TF(vm, "TypeError",
                     stack[sp - 1] = MK_OBJ(s2);
                     break;
                 }
+                pf_sem_campo: ;   /* não é campo: cai no despacho de método */
             }
             if (EH_JINKER(alvo)) {
                 PSJinker *jj = COMO_JINKER(alvo);
@@ -25331,7 +25425,7 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_DICT:      return "dict";
         case T_MET_TUPLA:     return "tup";
         case T_MET_UNIV:      return "__universal__";
-        case T_MET_ARQ:       return "Arquivo";
+        case T_MET_ARQ:       return "PoolFile";   /* todo arquivo é PoolFile */
         case T_MET_BYTES:     return "bytes";
         case T_MET_PFILE:     return "PoolFile";
         case T_MET_SQLCONN:   return "PoolConnection";

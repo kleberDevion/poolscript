@@ -987,7 +987,8 @@ módulo. Importar um nome que não existe é `ImportError`.
 post(...)            # imprime (join dos argumentos com espaço) e guarda no output
 input(prompt)        # devolve str, ou Null no fim do stdin; o prompt é só posicional
 
-open(path, mode="r", encoding="utf-8")     # FileHandle: .read() .readlines() .readline() .write(t) .writelines(l) .close()
+open(path, mode="r", encoding="utf-8")     # -> PoolFile: .read() .readline() .readlines() .write(t)->int .close()
+                                           #    .path() .bytes() .copy(d) .move(d) .delete() .save(p) | campos: .name .ext .size
 len(x)  range(...)  type(x)
 str(x)  int(x)  flo(x)  bool(x)   # conversores
 

@@ -1303,6 +1303,37 @@ const Caso CASOS_LINGUAGEM[] = {
  * runner roda `pool <arquivo>` sem argumentos extras, entao argv tem SO o [0]
  * (o script). Antes o nome do script ficava de fora e argv[0] ja era o 1o
  * argumento — quem lia argv[1] levava IndexError numa lista "sem limite". */
+/* ── TODO ARQUIVO É PoolFile, 2026-09-09 ───────────────────────────────────
+ * O handle de `open()` dizia `FileHandle` no `type()`, `Arquivo` no
+ * `--metadata` (o que a doc e o LSP liam) e nao tinha `move`/`copy`/`path`/
+ * `name`/`ext`/`size`: tres nomes e dois conjuntos de metodo pra mesma ideia.
+ * Quem procurava a doc de `FileHandle` nao achava pagina nenhuma. Agora o
+ * tipo e UM: `PoolFile`, e o que vale num vale no outro. */
+{ "open() devolve PoolFile",
+  "f = open(\"u1.txt\", \"w\")\npost(type(f))\nf.close()\n", "PoolFile", NULL, 0 },
+{ "PoolFile aberto tem name, ext e size",
+  "f = open(\"u2.txt\", \"w\")\nf.write(\"12345\")\npost(f.name, f.ext, f.size)\nf.close()\n",
+  "u2.txt .txt 5", NULL, 0 },
+/* O `ext` com ponto e o MESMO do PoolFile carregado — um tipo so nao pode dar
+ * duas respostas pro mesmo campo. */
+{ "ext do aberto e do carregado sao iguais",
+  "import os\nusing open(\"u3.png\", \"wb\") as f { f.write(\"\\x89PNG\") }\n"
+  "a = os.loadFile(\"u3.png\")\nf2 = open(\"u3.png\", \"rb\")\npost(a.ext, f2.ext)\nf2.close()\n",
+  ".png .png", NULL, 0 },
+{ "PoolFile aberto: path, bytes, copy e delete",
+  "import os\nf = open(\"u4.txt\", \"w\")\nf.write(\"dados\")\nf.close()\n"
+  "post(f.path().endswith(\"u4.txt\"), f.bytes())\n"
+  "f.copy(\"u5.txt\")\npost(os.isfile(\"u5.txt\"))\nf.delete()\npost(os.isfile(\"u4.txt\"))\n",
+  "True b'dados'\nTrue\nFalse", NULL, 0 },
+{ "PoolFile aberto: move leva o arquivo e atualiza o caminho",
+  "import os\nf = open(\"u6.txt\", \"w\")\nf.write(\"x\")\nf.close()\nf.move(\"u7.txt\")\n"
+  "post(os.isfile(\"u7.txt\"), os.isfile(\"u6.txt\"), f.name)\n",
+  "True False u7.txt", NULL, 0 },
+/* Mexer no arquivo com o descritor ABERTO faria a escrita seguinte ir pro
+ * lugar antigo. Recusa dizendo o que fazer, em vez de perder o dado calado. */
+{ "move num PoolFile ainda aberto e recusado com a saida escrita",
+  "f = open(\"u8.txt\", \"w\")\nf.write(\"x\")\nf.move(\"u9.txt\")\n",
+  "", "move() num arquivo ainda ABERTO — chame .close() antes", 1 },
 { "sys.argv[0] e o nome do script; sem args tem so ele",
   "import sys\npost(type(sys.argv), len(sys.argv), type(sys.argv[0]))\n",
   "list 1 str", NULL, 0 },
@@ -2026,9 +2057,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n"
   "    post(a.write(column=\"full\", cell=\"full\", content=\"1,2,3,4\", sep=\",\"))\n"
   "}\n", "Error: Arquivo xlsx tem colunas insuficientes", NULL, 0 },
-/* `copy()` é método de PoolFile, que vem de `os.loadFile` num binário — não
- * do FileHandle do `open()`. O caminho inteiro do copy() nunca tinha sido
- * exercitado por caso nenhum da suíte (gcov: linha ##### na função). */
+/* `copy()` num PoolFile vindo de `os.loadFile` (binário). O caminho inteiro do
+ * copy() nunca tinha sido exercitado por caso nenhum da suíte (gcov: linha
+ * ##### na função). Desde 2026-09-09 o mesmo `copy()` vale no PoolFile aberto
+ * por `open()` — ver "TODO ARQUIVO É PoolFile", abaixo. */
 { "PoolFile.copy() copia o conteudo",
   "import os\n"
   "using open(\"o.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\nDADOS\") }\n"

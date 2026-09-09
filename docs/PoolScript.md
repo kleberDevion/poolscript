@@ -616,7 +616,7 @@ import 'ferramentas/kit.ps' as k
 | `len(x)` | Tamanho de lista, string ou dict |
 | `range(n)` | Lista de 0 até n-1 |
 | `type(x)` | Nome do tipo do valor, em texto — ver [Testar o tipo](#testar-o-tipo) |
-| `open(path, mode="r", encoding="utf-8")` | Abre arquivo — devolve `FileHandle` (`.read()`, `.readlines()`, `.readline()`, `.write(texto)`, `.writelines(lista)`, `.close()`). Use com `using` pra fechar automático |
+| `open(path, mode="r", encoding="utf-8")` | Abre arquivo — devolve **`PoolFile`** (`.read()`, `.readlines()`, `.readline()`, `.write(t)`→`int`, `.close()`, `.path()`, `.copy()`, `.move()`, `.delete()`, `.name`, `.ext`, `.size`). Use com `using` pra fechar automático |
 | `load()` | Carrega o .env |
 
 ### Testar o tipo
