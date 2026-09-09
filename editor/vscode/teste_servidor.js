@@ -212,6 +212,27 @@ async function main() {
     conf('signatureHelp aponta o parametro ATUAL',
          sh && sh.result && sh.result.activeParameter === 1, sh && sh.result && sh.result.activeParameter);
   }
+  /* Parametro tipado: o tipo vem antes do nome no fonte, e a assinatura que o
+   * editor mostra tem que sair na MESMA ordem — `str corpo`, nao `corpo`. */
+  {
+    const src = 'funct webhookDoctor(str corpo, int n = 2) {\n    return corpo * n\n}\n'
+              + 'webhookDoctor("a")\n'
+              + 'webhookDoctor(';
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 6, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 4, character: 14 } } },
+      { jsonrpc: '2.0', id: 7, method: 'textDocument/hover',
+        params: { textDocument: { uri: URI }, position: { line: 3, character: 4 } } },
+    ]);
+    const sh = resp(m, 6);
+    const lbl = sh && sh.result && sh.result.signatures[0] ? sh.result.signatures[0].label : '';
+    conf('signatureHelp mostra o TIPO antes do nome do parametro',
+         lbl.includes('str corpo') && lbl.includes('int n'), lbl);
+    const hv = resp(m, 7);
+    const txt = hv && hv.result && hv.result.contents
+      ? (hv.result.contents.value || String(hv.result.contents)) : '';
+    conf('hover da funct tipada mostra o tipo do parametro', txt.includes('str corpo'), txt);
+  }
 
   /* ── 8. diagnóstico vem do `--check` do motor ──────────────────────────── */
   {

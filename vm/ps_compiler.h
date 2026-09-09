@@ -75,6 +75,10 @@ typedef struct {
     /* Nome de cada parâmetro, na ordem. Só existe pra resolver argumento
      * nomeado em runtime — o call site não sabe qual função vai chamar. */
     char   **param_nomes;
+    /* Tipo declarado de cada parâmetro (`funct f(str nome)`), na mesma ordem.
+     * NULL na posição = parâmetro sem tipo; NULL no vetor = nenhum tem. É só
+     * CHECAGEM em runtime: a linguagem não converte argumento nenhum. */
+    char   **param_tipos;
     /* Variáveis de fora que esta action captura (closure). Vazio na maioria
      * das actions: só uma action DECLARADA DENTRO de outra tem upvalue. */
     PSUpval *upvals;

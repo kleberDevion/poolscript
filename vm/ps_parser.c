@@ -464,11 +464,20 @@ static PSNode *lambda_apos_kw(P *p)
     if (!n) return NULL;
     while (!checa(p, T_RPAREN)) {
         PSToken *pt = atual(p);
+        /* tipo antes do nome também na lambda — a forma é a mesma */
+        const char *ptipo = NULL;
+        if (eh_tipo_de_retorno(pt)
+                && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+            ptipo = tipo_retorno_dup(p, pt);
+            p->pos++;
+            pt = atual(p);
+        }
         const char *pn = exige_nome(p, "parametro");
         if (FALHOU(p)) return NULL;
         PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
         if (!par) return NULL;
         par->texto = pn;
+        par->texto2 = ptipo;
         if (ps_vec_push(p->arena, &n->lista, par) != 0) {
             perro(p, "sem memoria", pt); return NULL;
         }
@@ -2106,6 +2115,17 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
         for (;;) {
             PSToken *pt = atual(p);
             const char *pn;
+            /* TIPO ANTES DO NOME, como em Java: `funct f(String corpo, int n)`.
+             * O tipo é o token que vem colado ANTES de um nome — a mesma forma
+             * do campo de Entity e do retorno da funct. Sem nome depois, o
+             * token é o próprio nome do parâmetro (`funct f(corpo)`). */
+            const char *ptipo = NULL;
+            if (eh_tipo_de_retorno(pt)
+                    && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+                ptipo = tipo_retorno_dup(p, pt);
+                p->pos++;
+                pt = atual(p);
+            }
             if (pt->type == T_KW && pt->texto && strcmp(pt->texto, "self") == 0) {
                 pn = dup_tok(p, pt);           /* `self` é o único KW aceito */
                 p->pos++;
@@ -2116,6 +2136,7 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
             PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
             if (!par) return NULL;
             par->texto = pn;
+            par->texto2 = ptipo;               /* NULL = parâmetro sem tipo */
             /* valor padrão: `action f(a, b=1)`. Fica pendurado no próprio nó
              * do parâmetro (campo `a`), que é o que o serializador compara. */
             if (checa_op(p, "=")) {

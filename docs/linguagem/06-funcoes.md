@@ -69,12 +69,69 @@ post(f(c=3, a=1, b=2))    # "123"
 post(f(1, c=3, b=2))      # "123"  (posicional + nomeado)
 ```
 
-### 6.2.3. Parâmetros não têm tipo
+### 6.2.3. Parâmetro tipado — o tipo vem ANTES do nome
 
-Os parâmetros são **sempre nomes simples** — não se declara tipo neles. Nem
-`funct f(int x)` (o `int` é palavra reservada) nem `funct f(x: int)` são
-válidos. A tipagem estática da linguagem fica nas **declarações de variável**
-(seção 4.1) e nas formas tipadas de funct abaixo.
+Um parâmetro pode declarar o tipo, e o tipo vem **antes** do nome, como no
+campo de Entity (seção 7.2) e como em Java:
+
+```ps
+funct saudacao(str nome, int vezes) {
+    return nome * vezes
+}
+
+post(saudacao("oi ", 3))     # "oi oi oi "
+```
+
+Vale **qualquer tipo** da tabela da seção 2.6 (`str`, `int`, `flo`, `bool`,
+`char`, `long`, `list`, `dict`, `tup`, `bytes`, `PoolFile`, `Object`), os
+apelidos deles (`String` é `str`, `Integer` é `int`), o nome de uma **Entity**
+e o nome de um tipo de objeto do motor (`Response`, `PoolCursor`,
+`MailMessage`…).
+
+O tipo é **checado na chamada**, e checar é tudo o que ele faz — argumento de
+tipo errado é recusado, **nunca convertido**:
+
+```ps
+saudacao(5, 3)
+# AttributedValueError: parâmetro nome de saudacao() esperava str, recebeu int
+```
+
+A mesma regra vale para os `int`/`flo` que se parecem: `int` não aceita `flo`,
+`flo` não aceita `int`, `bool` não aceita `int`. Para passar outro tipo,
+converta você: `saudacao(str(5), 3)`.
+
+Numa **Entity**, o tipo aceita subclasse onde a mãe foi pedida:
+
+```ps
+Entity Animal() { str nome }
+Entity Cachorro(Animal) { }
+
+funct fala(Animal a) { post(a.nome) }
+fala(Cachorro("Rex"))        # Rex
+```
+
+Tipar é **opcional e por parâmetro** — pode misturar:
+
+```ps
+funct mist(str a, b, int c) { post(a, b, c) }
+mist("a", [1], 2)            # a [1] 2
+```
+
+O tipo casa com **valor padrão** e com **argumento nomeado**:
+
+```ps
+funct pad(str a, int n = 2) { return a * n }
+post(pad("x"))               # "xx"
+post(pad("x", n=3))          # "xxx"
+post(pad("x", n="y"))
+# AttributedValueError: parâmetro n de pad() esperava int, recebeu str
+```
+
+A checagem vale em **todas** as formas de chamada: função solta, método,
+método `static` chamado na Entity, lambda, gerador e `async funct`.
+
+A forma `funct f(x: int)` **não** existe — no parâmetro só há a ordem
+`tipo nome`. (Em campo de Entity as duas ordens valem; no parâmetro, não.)
 
 Também **não há parâmetro variádico** (`*args` / `**kwargs` não existem). O
 número de parâmetros é fixo (fora os que têm padrão).

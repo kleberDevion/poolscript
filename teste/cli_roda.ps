@@ -377,8 +377,12 @@ confere("`-o` gera o executavel", r["rc"] == 0 and "gerado:" in r["saida"])
 confere("o gerado existe", os.exists(PASTA + "/meuprog"))
 
 r = roda("./meuprog um dois")
+# `sys.argv` segue a convencao de C/Python tambem no executavel gerado: o
+# proprio programa em [0] e os argumentos a partir de [1]. O caso conferia
+# `['um', 'dois']` e ficou para tras quando a convencao mudou.
 confere("o gerado roda e recebe argumentos",
-        "compilado" in r["saida"] and "['um', 'dois']" in r["saida"] and r["rc"] == 0)
+        "compilado" in r["saida"] and "meuprog', 'um', 'dois']" in r["saida"]
+        and r["rc"] == 0)
 
 os.cmd("mv " + PASTA + "/prog.ps " + PASTA + "/guardado.ps")
 r = roda("./meuprog")

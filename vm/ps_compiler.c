@@ -3125,6 +3125,26 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
             }
             c->out->protos[idx].param_nomes = nomes;
         }
+        /* Tipo declarado (`funct f(str nome)`) — o parser deixou em texto2.
+         * O vetor só nasce se ALGUM parâmetro tiver tipo: função sem tipagem
+         * não paga nada, nem memória nem checagem. */
+        int32_t com_tipo = 0;
+        for (int32_t i = 0; i < n->lista.n; i++)
+            if (n->lista.itens[i]->texto2) com_tipo = 1;
+        if (com_tipo) {
+            char **tipos = calloc((size_t)n->lista.n, sizeof(char *));
+            if (!tipos) { cerro(c, "sem memoria", n); }
+            else {
+                for (int32_t i = 0; i < n->lista.n; i++) {
+                    const char *pt = n->lista.itens[i]->texto2;
+                    if (!pt) continue;
+                    size_t lt = strlen(pt);
+                    tipos[i] = malloc(lt + 1);
+                    if (tipos[i]) memcpy(tipos[i], pt, lt + 1);
+                }
+                c->out->protos[idx].param_tipos = tipos;
+            }
+        }
     }
 
     /* Prólogo: para cada parâmetro com default, avalia o default SÓ se o
@@ -3255,6 +3275,11 @@ void ps_compila_free(PSPrograma *p)
             for (int32_t k = 0; k < p->protos[i].nparams; k++)
                 free(p->protos[i].param_nomes[k]);
             free(p->protos[i].param_nomes);
+        }
+        if (p->protos[i].param_tipos) {
+            for (int32_t k = 0; k < p->protos[i].nparams; k++)
+                free(p->protos[i].param_tipos[k]);
+            free(p->protos[i].param_tipos);
         }
         for (int32_t k = 0; k < p->protos[i].nconsts; k++)
             free(p->protos[i].consts[k].s);

@@ -239,7 +239,7 @@ function membrosDaEntity(no) {
     }
     if (m.k !== 'ActionDecl') continue;                   /* métodos */
     const ps = (m.lista || []).filter((p) => p && p.texto && p.texto !== 'self')
-                              .map((p) => ({ nome: p.texto, default: null }));
+                              .map((p) => ({ nome: p.texto, tipo: p.texto2 || null, default: null }));
     poe({ nome: m.texto, kind: 'action', params: ps, retorna: m.texto2 || null,
           privado: !!m.private, estatica: !!m.static || decStatic,
           nonnull: !!m.nonnull || decNonnull,
@@ -306,7 +306,8 @@ function escoposDaArvore(arvore) {
                        estatica: !!no.static, nonnull: !!no.nonnull,
                        linha: no.l - 1, no,
                        params: (no.lista || []).filter((p) => p && p.texto !== 'self')
-                                               .map((p) => ({ nome: p.texto, default: null })) });
+                                               .map((p) => ({ nome: p.texto, tipo: p.texto2 || null,
+                                                              default: null })) });
       cada(no, (f) => { if (f !== no.b) return; anda(f, esc); });
       if (no.b) anda(no.b, esc);
       return;

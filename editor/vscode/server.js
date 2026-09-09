@@ -649,9 +649,17 @@ function membrosDe(doc, alvo, linha) {
   return [];
 }
 
+/* Um parâmetro, escrito como no fonte: tipo ANTES do nome
+ * (`funct f(str corpo, int n = 2)`). Sem tipo sai só o nome.
+ * A regra mora AQUI porque o rótulo aparece em dois lugares — a assinatura da
+ * completion/hover e o signatureHelp — e cada um tinha a sua cópia. */
+function rotuloParam(p) {
+  const nome = p.tipo ? `${p.tipo} ${p.nome}` : p.nome;
+  return (p.default === null || p.default === undefined) ? nome : `${nome} = ${p.default}`;
+}
+
 function assinatura(m) {
-  const ps = (m.params || []).map((p) => (p.default === null || p.default === undefined)
-    ? p.nome : `${p.nome}=${p.default}`);
+  const ps = (m.params || []).map(rotuloParam);
   const ret = m.retorna ? ` -> ${m.retorna}` : '';
   if (m.kind === 'campo') return `${m.tipo ? m.tipo + ' ' : ''}${m.nome}`;
   if (m.kind === 'class') return `class ${m.nome}`;
@@ -1118,8 +1126,7 @@ function assinaturaEm(doc, p) {
   if (!ch) return null;
   const ps = paramsDoChamado(doc, ch, p.position.line);
   if (!ps.length) return null;
-  const rotulos = ps.map((x) => (x.default === null || x.default === undefined)
-    ? x.nome : `${x.nome}=${x.default}`);
+  const rotulos = ps.map(rotuloParam);
   return {
     signatures: [{
       label: `${ch.chamado}(${rotulos.join(', ')})`,

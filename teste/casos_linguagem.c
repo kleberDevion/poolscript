@@ -2202,6 +2202,100 @@ const Caso CASOS_LINGUAGEM[] = {
   /* o lexer casa o token de 3 chars inteiro, entao a coluna e a do operador */
   "x = 1\npost(x === 1)\n", "", "nao existe nesta linguagem", 2 },
 
+/* ── PARAMETRO TIPADO: o tipo vem ANTES do nome, 2026-09-09 ────────────────
+ * Ordem do dono: "o tipo em args o tipo sempre primeiro que a variavel, igual
+ * no java". Antes NENHUMA forma passava: `str corpo` dava "'str' e palavra
+ * reservada", `String corpo` dava "faltou ')'", `corpo: str` idem. O tipo so
+ * CHECA — argumento errado e recusado, nunca convertido (mesma regra da
+ * declaracao de variavel). A checagem mora num lugar so na VM e e chamada de
+ * TODO ponto que monta frame: chamada direta, metodo, static na Entity,
+ * argumento nomeado, lambda, gerador e async. */
+{ "parametro tipado: o tipo vem antes do nome",
+  "funct saudacao(str nome, int vezes) { return nome * vezes }\n"
+  "post(saudacao(\"oi \", 3))\n", "oi oi oi ", NULL, 0 },
+{ "parametro tipado recusa o tipo errado — nao converte",
+  "funct saudacao(str nome, int vezes) { return nome * vezes }\n"
+  "post(saudacao(5, 3))\n", "",
+  "AttributedValueError: parâmetro nome de saudacao() esperava str, recebeu int", 1 },
+{ "apelido do tipo vale no parametro (String e str, Integer e int)",
+  "funct f(String s, Integer n) { return s * n }\npost(f(\"a\", 2))\n",
+  "aa", NULL, 0 },
+{ "int NAO aceita flo no parametro",
+  "funct f(int n) { post(n) }\nf(1.5)\n", "",
+  "AttributedValueError: parâmetro n de f() esperava int, recebeu flo", 1 },
+{ "flo NAO aceita int no parametro",
+  "funct f(flo x) { post(x) }\nf(1)\n", "",
+  "AttributedValueError: parâmetro x de f() esperava flo, recebeu int", 1 },
+{ "bool NAO aceita int no parametro",
+  "funct f(bool b) { post(b) }\nf(1)\n", "",
+  "AttributedValueError: parâmetro b de f() esperava bool, recebeu int", 1 },
+{ "tipar e opcional e por parametro — pode misturar",
+  "funct mist(str a, b, int c) { post(a, b, c) }\nmist(\"a\", [1], 2)\n",
+  "a [1] 2", NULL, 0 },
+{ "o tipo vale no argumento NOMEADO",
+  "funct f(str nome, int vezes) { return nome * vezes }\n"
+  "post(f(vezes=2, nome=\"ei \"))\n", "ei ei ", NULL, 0 },
+{ "argumento nomeado de tipo errado e recusado",
+  "funct f(str nome, int vezes) { return nome * vezes }\n"
+  "post(f(vezes=\"x\", nome=\"ei \"))\n", "",
+  "AttributedValueError: parâmetro vezes de f() esperava int, recebeu str", 1 },
+{ "valor padrao convive com o tipo",
+  "funct pad(str a, int n = 2) { return a * n }\npost(pad(\"x\"), pad(\"x\", 3))\n",
+  "xx xxx", NULL, 0 },
+{ "o tipo vale no METODO da Entity",
+  "Entity P() {\n  str nome\n  public str funct diz(self, str saud) { return saud + self.nome }\n}\n"
+  "P p = P(\"Ana\")\npost(p.diz(\"ola \"))\np.diz(9)\n",
+  "ola Ana",
+  "AttributedValueError: parâmetro saud de diz() esperava str, recebeu int", 1 },
+{ "o tipo vale no metodo static chamado na Entity",
+  "Entity P() {\n  str nome\n  @static\n  public static funct cria(str nome) { return P(nome) }\n}\n"
+  "post(P.cria(\"Ana\").nome)\nP.cria(1)\n", "Ana",
+  "AttributedValueError: parâmetro nome de cria() esperava str, recebeu int", 1 },
+{ "o tipo vale na lambda",
+  "g = funct(int n) { return n + 1 }\npost(g(2))\ng(\"x\")\n", "3",
+  "AttributedValueError: parâmetro n de <funct>() esperava int, recebeu str", 1 },
+{ "o tipo vale no gerador",
+  "funct gera(int n) { for each i in range(n) { yield i } }\n"
+  "post(list(gera(3)))\npost(list(gera(\"x\")))\n", "[0, 1, 2]",
+  "AttributedValueError: parâmetro n de gera() esperava int, recebeu str", 1 },
+{ "o tipo vale na async funct",
+  "async funct af(str s) { post(s) }\ngather([af(1)])\n", "",
+  "AttributedValueError: parâmetro s de af() esperava str, recebeu int", 1 },
+{ "nome de Entity serve de tipo, e subclasse passa (como em Java)",
+  "Entity Animal() { str nome }\nEntity Cachorro(Animal) { }\n"
+  "funct fala(Animal a) { post(a.nome) }\nfala(Cachorro(\"Rex\"))\n",
+  "Rex", NULL, 0 },
+{ "Entity errada no lugar de outra e recusada",
+  "Entity Animal() { str nome }\nEntity Carro() { str nome }\n"
+  "funct fala(Animal a) { post(a.nome) }\nfala(Carro(\"Fusca\"))\n", "",
+  "AttributedValueError: parâmetro a de fala() esperava Animal, recebeu Carro", 1 },
+{ "PoolFile serve de tipo de parametro — o handle do open() E PoolFile",
+  "funct pega(PoolFile f) { post(type(f)) }\n"
+  "using open(\"/tmp/ps_param_tipo.txt\", \"w\") as f { pega(f) }\n",
+  "PoolFile", NULL, 0 },
+{ "char no parametro pede UM caractere",
+  "funct f(char c) { post(c) }\nf(\"a\")\nf(\"ab\")\n", "a",
+  "AttributedValueError: parâmetro c de f() esperava char, recebeu str", 1 },
+{ "list/dict/tup no parametro conferem o container certo",
+  "funct lst(list xs, dict d, tup t) { post(len(xs), len(d), len(t)) }\n"
+  "lst([1], {\"a\": 1}, (1, 2))\nlst([1], {\"a\": 1}, [1, 2])\n", "1 1 2",
+  "AttributedValueError: parâmetro t de lst() esperava tup, recebeu list", 1 },
+{ "`x: tipo` NAO existe no parametro — so `tipo x`",
+  "funct f(x: int) { post(x) }\n", "",
+  "SyntaxError: faltou ')' na declaracao da funct", 2 },
+{ "parametro sem tipo continua valendo",
+  "funct f(a, b = 10) { return a + b }\npost(f(5), f(5, 1))\n", "15 6", NULL, 0 },
+
+/* `f is PoolFile` seguia falso pro handle do open(): a tabela de tipos so
+ * aceitava OBJ_POOLFILE, contra a regra "todo arquivo e PoolFile" — o mesmo
+ * `type()` ja respondia "PoolFile" pros dois. */
+{ "open() e PoolFile tambem pro `is` e pra declaracao tipada",
+  "using open(\"/tmp/ps_param_tipo2.txt\", \"w\") as f {\n"
+  "    post(f is PoolFile)\n"
+  "    PoolFile g = f\n"
+  "    post(type(g))\n"
+  "}\n", "True\nPoolFile", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

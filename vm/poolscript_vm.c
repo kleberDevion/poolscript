@@ -848,6 +848,10 @@ typedef struct {
     int       nparams;
     int       ndefaults;   /* quantos parâmetros finais têm valor padrão */
     char    **param_nomes; /* nome de cada parâmetro — só pra argumento nomeado */
+    /* Tipo declarado de cada parâmetro (`funct f(str nome)`). NULL no vetor =
+     * nenhum parâmetro tem tipo; NULL numa posição = aquele não tem. A VM só
+     * CHECA — argumento de tipo errado é erro, nunca conversão. */
+    char    **param_tipos;
     char     *nome;        /* nome da action — usado na mensagem de erro */
     char     *arquivo;     /* arquivo-fonte deste proto — pro traceback (ou NULL) */
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
@@ -9076,7 +9080,11 @@ static int aceita_list(const Value *v)  { return EH_LIST(*v); }
 static int aceita_dict(const Value *v)  { return EH_DICT(*v); }
 static int aceita_tup(const Value *v)   { return EH_TUPLA(*v); }
 static int aceita_type(const Value *v)  { return v->t == V_TIPO; }
-static int aceita_pfile(const Value *v) { return EH_PFILE(*v); }
+/* Todo arquivo é PoolFile: o handle do `open()` (OBJ_ARQUIVO) e o carregado
+ * pelo `os.loadFile()` (OBJ_POOLFILE) são o MESMO tipo pra linguagem —
+ * `type()` responde "PoolFile" nos dois. A tabela tem que dizer o mesmo, ou
+ * `f is PoolFile` e `PoolFile f = open(...)` recusam metade dos arquivos. */
+static int aceita_pfile(const Value *v) { return EH_PFILE(*v) || EH_ARQUIVO(*v); }
 /* `char` é caractere VISÍVEL: string de uma posição que não é branco. */
 static int aceita_char(const Value *v)
 {
@@ -9120,6 +9128,73 @@ static int valor_eh_tipo(const Value *v, int64_t tipo)
 {
     if (tipo < 0 || tipo >= (int64_t)(sizeof(TIPOS) / sizeof(TIPOS[0]))) return 0;
     return TIPOS[tipo].aceita(v);
+}
+
+/* Índice na TIPOS[] a partir do nome canônico, ou -1 se o nome não é um tipo
+ * da tabela (aí é nome de Entity ou de objeto nativo). */
+static int64_t tipo_indice(const char *nome)
+{
+    if (!nome) return -1;
+    for (size_t i = 0; i < sizeof(TIPOS) / sizeof(TIPOS[0]); i++)
+        if (strcmp(TIPOS[i].nome, nome) == 0) return (int64_t)i;
+    return -1;
+}
+
+/* A classe `c`, ou alguma ancestral dela, chama-se `nome`? */
+static int classe_eh(const PSClass *c, const char *nome)
+{
+    if (!c) return 0;
+    if (c->nome && strcmp(c->nome, nome) == 0) return 1;
+    for (int32_t i = 0; i < c->npais; i++)
+        if (classe_eh(c->pais[i], nome)) return 1;
+    return 0;
+}
+
+/* O valor serve pro tipo declarado de um parâmetro (`funct f(str nome)`)?
+ * Três origens de nome, nesta ordem: a TIPOS[] (str, int, char, PoolFile…),
+ * o nome de tipo do próprio valor (Response, PoolCursor, MailMessage…) e a
+ * cadeia de Entity — subclasse serve onde a mãe é pedida, como em Java.
+ * Só responde SIM ou NÃO: nada aqui converte valor nenhum. */
+static int param_casa_tipo(const Value *v, const char *tipo)
+{
+    if (!tipo || !*tipo) return 1;              /* parâmetro sem tipo */
+    int64_t idx = tipo_indice(tipo);
+    if (idx >= 0) return valor_eh_tipo(v, idx);
+    if (strcmp(nome_do_tipo_valor(*v), tipo) == 0) return 1;
+    if (EH_INST(*v)) return classe_eh(COMO_INST(*v)->classe, tipo);
+    return 0;
+}
+
+/* Confere os tipos declarados dos parâmetros de uma chamada. `vals[k]` é o
+ * valor do parâmetro de índice `base + k` — `base` é 1 quando o `self` foi
+ * dropado (@static chamado na Entity) e os posicionais começam no slot 1.
+ * Valor UNSET é pulado: ou é o self que ficou vazio, ou é parâmetro que não
+ * veio e vai receber o padrão no prólogo.
+ *
+ * TODO ponto que monta frame chama isto — chamada direta, método, @static,
+ * argumento nomeado, gerador, async. Uma checagem que mora em cinco lugares
+ * diverge no dia em que um deles for editado sozinho; por isso a regra vive
+ * AQUI e lá só tem a chamada. Devolve -1 com vm->erro posto quando um
+ * argumento não bate: a linguagem RECUSA, nunca converte. */
+static int checa_param_tipos(VM *vm, const Proto *np, const Value *vals, int n, int base)
+{
+    if (!np->param_tipos) return 0;
+    for (int k = 0; k < n; k++) {
+        int idx = base + k;
+        if (idx < 0 || idx >= np->nparams) continue;
+        const char *t = np->param_tipos[idx];
+        if (!t) continue;
+        const Value *v = &vals[k];
+        if (v->t == V_UNSET) continue;
+        if (param_casa_tipo(v, t)) continue;
+        snprintf(vm->erro, sizeof(vm->erro),
+                 "parâmetro %s de %s() esperava %s, recebeu %s",
+                 (np->param_nomes && np->param_nomes[idx]) ? np->param_nomes[idx] : "?",
+                 np->nome ? np->nome : "?", t, nome_do_tipo_valor(*v));
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError");
+        return -1;
+    }
+    return 0;
 }
 
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val)
@@ -21188,6 +21263,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     Value *stack  = vm->stack;
     Value *locals = vm->locals;
 
+    /* Frame de base: é por aqui que entra a chamada vinda do C (handler do
+     * jinker, chave de sort, callback de lib). O tipo declarado do parâmetro
+     * vale igual, então a checagem é a mesma — fica DEPOIS de todas as
+     * declarações pra o `goto` não pular inicialização nenhuma. */
+    if (nargs_in >= 0 && checa_param_tipos(vm, p, &locals[locals0], p->nparams, 0) != 0)
+        goto erro_runtime;
+
     for (;;) {
         /* Ponto seguro do GC: aqui sp/locals_top descrevem exatamente o que
          * está vivo. Publicar no VM antes de coletar é o que torna as raízes
@@ -22095,6 +22177,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int novo_lb = locals_top;
             for (int k = 0; k < pk->nlocals; k++)
                 vm->locals[novo_lb + k] = (k < pk->nparams && marcado[k]) ? finais[k] : MK_UNSET();
+            if (checa_param_tipos(vm, pk, &vm->locals[novo_lb], pk->nparams, 0) != 0)
+                goto erro_runtime;
 
             fp++;
             locals_top += pk->nlocals;
@@ -22163,6 +22247,8 @@ ERRO_TF(vm, "TypeError",
                 vm->locals[nb] = iv;
                 for (int k = 0; k < n; k++) vm->locals[nb + 1 + k] = stack[sp - n + k];
                 for (int k = n + 1; k < np->nlocals; k++) vm->locals[nb + k] = MK_UNSET();
+                if (checa_param_tipos(vm, np, &vm->locals[nb], np->nparams, 0) != 0)
+                    goto erro_runtime;
                 fp++;
                 locals_top += np->nlocals;
                 sp = sp - n - 1;
@@ -22214,6 +22300,8 @@ ERRO_TF(vm, "TypeError",
                 vm->locals[nb] = b->instancia;
                 for (int k = 0; k < n; k++) vm->locals[nb + 1 + k] = stack[sp - n + k];
                 for (int k = n + 1; k < np->nlocals; k++) vm->locals[nb + k] = MK_UNSET();
+                if (checa_param_tipos(vm, np, &vm->locals[nb], np->nparams, 0) != 0)
+                    goto erro_runtime;
                 fp++;
                 locals_top += np->nlocals;
                 sp = sp - n - 1;
@@ -22252,6 +22340,10 @@ ERRO_TF(vm, "TypeError",
                         np->nome ? np->nome : "?", conta_faltantes(n + desloca, np->nparams - np->ndefaults, NULL),
                         conta_faltantes(n + desloca, np->nparams - np->ndefaults, NULL) == 1 ? "" : "s",
                         lista_faltantes(np, n + desloca, np->nparams - np->ndefaults, NULL));
+                /* tipo declarado do parâmetro — antes de gerador/async/frame,
+                 * pra recusar a chamada errada na hora da chamada */
+                if (checa_param_tipos(vm, np, &stack[sp - n], n, desloca) != 0)
+                    goto erro_runtime;
                 if (np->eh_gerador) {
                     /* chamar um gerador não executa nada: devolve o frame
                      * congelado, e o corpo só roda no primeiro `next` */
@@ -24180,6 +24272,8 @@ ERRO_TF(vm, "TypeError",
             vm->locals[nb] = selfv;
             for (int k = 0; k < n; k++) vm->locals[nb + 1 + k] = stack[sp - n + k];
             for (int k = n + 1; k < np->nlocals; k++) vm->locals[nb + k] = MK_UNSET();
+            if (checa_param_tipos(vm, np, &vm->locals[nb], np->nparams, 0) != 0)
+                goto erro_runtime;
             fp++;
             locals_top += np->nlocals;
             sp = sp - n - 2;
@@ -24357,6 +24451,11 @@ static void libera_vm(VM *vm)
                 for (int k = 0; k < vm->protos[i].nparams; k++)
                     free(vm->protos[i].param_nomes[k]);
                 free(vm->protos[i].param_nomes);
+            }
+            if (vm->protos[i].param_tipos) {
+                for (int k = 0; k < vm->protos[i].nparams; k++)
+                    free(vm->protos[i].param_tipos[k]);
+                free(vm->protos[i].param_tipos);
             }
             for (int k = 0; k < vm->protos[i].nvars; k++)
                 free(vm->protos[i].vars[k].nome);
@@ -24557,6 +24656,19 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                 p->param_nomes[k] = malloc(ln + 1);
                 if (!p->param_nomes[k]) return -1;
                 memcpy(p->param_nomes[k], src_n, ln + 1);
+            }
+        }
+        /* mesma cópia pros tipos declarados dos parâmetros */
+        p->param_tipos = NULL;
+        if (o->param_tipos && o->nparams > 0) {
+            p->param_tipos = calloc((size_t)o->nparams, sizeof(char *));
+            if (!p->param_tipos) return -1;
+            for (int32_t k = 0; k < o->nparams; k++) {
+                if (!o->param_tipos[k]) continue;   /* este não tem tipo */
+                size_t lt = strlen(o->param_tipos[k]);
+                p->param_tipos[k] = malloc(lt + 1);
+                if (!p->param_tipos[k]) return -1;
+                memcpy(p->param_tipos[k], o->param_tipos[k], lt + 1);
             }
         }
         /* tabela de variáveis do debugger: a VM precisa ser dona das strings,
@@ -24856,6 +24968,13 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
             if (!d->param_nomes) return -1;
             for (int32_t k = 0; k < o->nparams; k++)
                 d->param_nomes[k] = strdup(o->param_nomes[k] ? o->param_nomes[k] : "");
+        }
+        d->param_tipos = NULL;
+        if (o->param_tipos && o->nparams > 0) {
+            d->param_tipos = calloc((size_t)o->nparams, sizeof(char *));
+            if (!d->param_tipos) return -1;
+            for (int32_t k = 0; k < o->nparams; k++)
+                d->param_tipos[k] = o->param_tipos[k] ? strdup(o->param_tipos[k]) : NULL;
         }
 
         d->consts = calloc((size_t)(o->nconsts > 0 ? o->nconsts : 1), sizeof(Value));
