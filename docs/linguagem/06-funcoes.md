@@ -131,7 +131,13 @@ A checagem vale em **todas** as formas de chamada: função solta, método,
 método `static` chamado na Entity, lambda, gerador e `async funct`.
 
 A forma `funct f(x: int)` **não** existe — no parâmetro só há a ordem
-`tipo nome`. (Em campo de Entity as duas ordens valem; no parâmetro, não.)
+`tipo nome`. (Em campo de Entity as duas ordens valem; no parâmetro, não.) O
+erro diz a ordem certa:
+
+```
+funct f(x: int) { post(x) }
+SyntaxError: no parametro o tipo vem ANTES do nome: escreva `funct f(int x)`, nao `funct f(x: int)`
+```
 
 Também **não há parâmetro variádico** (`*args` / `**kwargs` não existem). O
 número de parâmetros é fixo (fora os que têm padrão).

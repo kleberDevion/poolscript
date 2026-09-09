@@ -2280,9 +2280,17 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct lst(list xs, dict d, tup t) { post(len(xs), len(d), len(t)) }\n"
   "lst([1], {\"a\": 1}, (1, 2))\nlst([1], {\"a\": 1}, [1, 2])\n", "1 1 2",
   "AttributedValueError: parâmetro t de lst() esperava tup, recebeu list", 1 },
-{ "`x: tipo` NAO existe no parametro — so `tipo x`",
+/* A ordem invertida dava "faltou ')' na declaracao da funct" — mensagem que
+ * fala de um parentese que ninguem esqueceu. Quem escreve `x: int` inverteu a
+ * ordem, e o erro tem que dizer isso. */
+{ "`x: tipo` NAO existe no parametro — e o erro diz a ordem certa",
   "funct f(x: int) { post(x) }\n", "",
-  "SyntaxError: faltou ')' na declaracao da funct", 2 },
+  "no parametro o tipo vem ANTES do nome: escreva `funct f(int x)`", 2 },
+{ "a mesma inversao na lambda tambem e apontada",
+  "g = funct(x: int) { return x }\n", "",
+  "no parametro o tipo vem ANTES do nome: escreva `funct(int x)`", 2 },
+{ "parentese que falta de verdade continua dizendo que falta",
+  "funct f(a\n", "", "faltou ')' na declaracao da funct", 2 },
 { "parametro sem tipo continua valendo",
   "funct f(a, b = 10) { return a + b }\npost(f(5), f(5, 1))\n", "15 6", NULL, 0 },
 

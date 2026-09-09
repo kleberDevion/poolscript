@@ -478,6 +478,11 @@ static PSNode *lambda_apos_kw(P *p)
         if (!par) return NULL;
         par->texto = pn;
         par->texto2 = ptipo;
+        if (checa(p, T_COLON)) {               /* mesma inversão, na lambda */
+            perro(p, "no parametro o tipo vem ANTES do nome: "
+                     "escreva `funct(int x)`, nao `funct(x: int)`", atual(p));
+            return NULL;
+        }
         if (ps_vec_push(p->arena, &n->lista, par) != 0) {
             perro(p, "sem memoria", pt); return NULL;
         }
@@ -2137,6 +2142,15 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
             if (!par) return NULL;
             par->texto = pn;
             par->texto2 = ptipo;               /* NULL = parâmetro sem tipo */
+            /* `funct f(x: int)` — a ordem do CAMPO de Entity, que no parâmetro
+             * não vale. O erro daqui era "faltou ')' na declaracao da funct",
+             * que não fala do que está errado: quem escreveu isso não esqueceu
+             * parêntese nenhum, inverteu a ordem. */
+            if (checa(p, T_COLON)) {
+                perro(p, "no parametro o tipo vem ANTES do nome: "
+                         "escreva `funct f(int x)`, nao `funct f(x: int)`", atual(p));
+                return NULL;
+            }
             /* valor padrão: `action f(a, b=1)`. Fica pendurado no próprio nó
              * do parâmetro (campo `a`), que é o que o serializador compara. */
             if (checa_op(p, "=")) {
