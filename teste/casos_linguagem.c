@@ -1515,6 +1515,40 @@ const Caso CASOS_LINGUAGEM[] = {
 { "tipagem estatica: Object recusa str e lista",
   "Object o = \"x\"\n",
   "", "AttributedValueError: variável o esperava Object", 1 },
+
+/* ── FUNCT E OBJETO, 2026-09-10 ────────────────────────────────────────────
+ * `Object f = funct(){ … }` era recusado: `V_FUNC`/`V_NATIVE` nao sao
+ * `V_OBJ` (o valor carrega o indice do proto, nao um ponteiro), entao o
+ * teste do `Object` os deixava de fora — embora o comentario dele no C ja
+ * prometesse "função". A incoerencia aparecia dentro da MESMA expressao:
+ * lambda que captura vira closure (que e objeto) e passava; lambda que nao
+ * captura nao passava. */
+{ "Object aceita lambda",
+  "Object f = funct(){ return 1 }\npost(type(f), f())\n", "funct 1", NULL, 0 },
+{ "Object aceita funct nomeada, builtin e metodo",
+  "funct nom() { return 1 }\n"
+  "class C() { funct m(self) { return 2 } }\n"
+  "Object a = nom\nObject b = post\nObject c = C().m\n"
+  "post(a(), c())\n", "1 2", NULL, 0 },
+{ "Object no parametro aceita funct",
+  "funct roda(Object cb) { return cb() }\npost(roda(funct(){ return 7 }))\n",
+  "7", NULL, 0 },
+{ "Object continua recusando escalar e colecao",
+  "Object o = 1\n", "", "AttributedValueError: variável o esperava Object", 1 },
+
+/* Funct e igual a si mesma. `V_FUNC`/`V_NATIVE` caiam no `return 0` final do
+ * comparador, entao `f == f` respondia False — inclusive pra builtin. */
+{ "funct e igual a si mesma, e duas referencias a mesma funct sao iguais",
+  "funct nom() { return 1 }\nf = nom\ng = nom\n"
+  "lam = funct(){ return 1 }\nh = lam\n"
+  "post(f == f, f == g, post == post, lam == lam, lam == h)\n",
+  "True True True True True", NULL, 0 },
+{ "duas lambdas escritas separadas NAO sao iguais",
+  "a = funct(){ return 1 }\nb = funct(){ return 1 }\npost(a == b, a != b)\n",
+  "False True", NULL, 0 },
+{ "funct serve de chave de dict: hash e igualdade batem",
+  "funct nom() { return 1 }\nd = {}\nd[nom] = \"x\"\n"
+  "post(d[nom], nom in d)\n", "x True", NULL, 0 },
 { "tipagem estatica: global tipado escrito de dentro de uma funct confere",
   "str s = \"a\"\n"
   "funct f() {\n"

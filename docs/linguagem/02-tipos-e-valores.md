@@ -196,7 +196,7 @@ declarado. Quem quer converter escreve a conversão: `int("7")`, `flo(5)`,
 | `bool` | `bool` | `int` (mesmo `1`), etc. |
 | `long` | inteiro de qualquer tamanho (`int` **é** inteiro — não há conversão aí) | o resto |
 | `list` `dict` `tup` `json` | o próprio tipo | os demais |
-| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
+| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo e **funct** (lambda, nomeada, builtin, método) | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
 | `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary` | apelidos de `str`, `int`, `tup`, `dict` — a linha do tipo apelidado vale igual | idem |
 
 Tipo errado é **`AttributedValueError`**, sempre — não há mais "quase

@@ -2395,6 +2395,15 @@ static int val_iguais(const Value *a, const Value *b)
         }
         return 1;
     }
+    /* Funct é igual a si mesma. `V_FUNC` e `V_NATIVE` não são `V_OBJ` — o
+     * valor carrega o índice do proto/builtin, não um ponteiro — então os dois
+     * caíam no `return 0` lá embaixo e `f == f` respondia False. Comparar por
+     * identidade é o mesmo critério do objeto: `f = nom` e `g = nom` apontam
+     * pra mesma funct, logo são iguais; duas lambdas escritas separadas não.
+     * (`hash_valor` já lê os mesmos bits, então funct como chave de dict
+     * continua batendo com a igualdade.) */
+    if (a->t == V_FUNC   && b->t == V_FUNC)   return a->as.proto  == b->as.proto;
+    if (a->t == V_NATIVE && b->t == V_NATIVE) return a->as.nativa == b->as.nativa;
     if (a->t == V_OBJ && b->t == V_OBJ) return a->as.obj == b->as.obj;
     return 0;
 }
@@ -9093,9 +9102,19 @@ static int aceita_char(const Value *v)
         && !cp_eh_branco((unsigned char)COMO_STRING(*v)->chars[0]);
 }
 /* `Object`: qualquer objeto que não é str/list/dict/tup/bytes — instância de
- * classe, servidor, conexão, arquivo, função. `Object app = Jinker(...)`. */
+ * classe, servidor, conexão, arquivo, função. `Object app = Jinker(...)`.
+ *
+ * FUNCT É OBJETO. O comentário já prometia "função" e o teste não entregava:
+ * `V_FUNC` e `V_NATIVE` não são `V_OBJ` (o valor carrega o índice do proto,
+ * não um ponteiro pro monte), então `Object f = funct(){ … }` era recusado.
+ * A incoerência aparecia até dentro da mesma expressão — lambda que CAPTURA
+ * vira OBJ_CLOSURE e passava, lambda que não captura não passava. Quem
+ * escreve `Object` quer dizer "qualquer coisa que não é escalar nem coleção",
+ * e uma funct é exatamente isso: `type()` dela responde "funct" nas seis
+ * formas (V_FUNC, V_NATIVE, closure, bound, nativa, método nativo). */
 static int aceita_obj(const Value *v)
 {
+    if (v->t == V_FUNC || v->t == V_NATIVE) return 1;
     return v->t == V_OBJ && !EH_STRING(*v) && !EH_LIST(*v) && !EH_DICT(*v)
         && !EH_TUPLA(*v) && !EH_BYTES(*v);
 }
