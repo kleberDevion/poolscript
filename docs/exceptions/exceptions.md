@@ -105,25 +105,61 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `RuntimeError` | `raise "texto"`; e o que é só desta linguagem: `acesso negado: … private`, `nonnull`, `funct … e static` |
 | *(o seu)* | qualquer nome que você levantar com `raise Nome("msg")` |
 
-> **`catch` casa o NOME do tipo, não uma árvore.** A armadilha é escrever
-> `catch (OSError e)` esperando que ele pegue
-> `FileNotFoundError` — não pega, porque aqui `OSError` é só um nome, não um
-> ancestral. As duas formas que funcionam:
->
-> ```ps
-> try {
->     conteudo = os.readFile(caminho)
-> } catch (FileNotFoundError e) {
->     post("não achei:", caminho)
-> } catch (PermissionError e) {
->     post("sem permissão:", caminho)
-> }
-> ```
->
-> ...ou `catch (e)` sem tipo, que pega qualquer erro. O `catch (e)` é o mais
-> curto e vale quando tanto faz o motivo; o encadeado é o que você quer quando
-> cada motivo pede uma resposta diferente — ou quando não quer engolir junto um
-> `NameError` de digitação sua.
+## A árvore de exceções
+
+`catch (Tipo e)` pega o tipo pedido **e todos os descendentes dele**. `Exception`
+é a raiz: `catch (Exception e)` pega qualquer erro.
+
+```
+Exception
+├── OSError              FileExistsError · FileNotFoundError · IsADirectoryError
+│                        NotADirectoryError · PermissionError · NetworkError
+├── IOError
+├── LookupError          IndexError · KeyError
+├── ArithmeticError      ZeroDivisionError · OverflowError
+├── ValueError           UnicodeError (UnicodeDecodeError · UnicodeEncodeError)
+│                        AttributedValueError · ConversionError
+├── RuntimeError         RecursionError
+├── TypeError      ├── AttributeError   ├── NameError      ├── ImportError
+└── MemoryError    └── AssertionError   └── SyntaxError    └── DatabaseError
+```
+
+Pegar por família, em vez de listar filho por filho:
+
+```ps
+try {
+    conteudo = os.readFile(caminho)
+} catch (OSError e) {
+    post("problema de arquivo:", e)
+}
+```
+
+...e ainda dá pra separar os motivos que pedem resposta diferente, pondo o
+**mais específico primeiro** — o `catch` tenta na ordem em que você escreveu:
+
+```ps
+try {
+    conteudo = os.readFile(caminho)
+} catch (FileNotFoundError e) {
+    post("não achei:", caminho)
+} catch (OSError e) {
+    post("outro problema de arquivo:", e)
+}
+```
+
+`catch (e)` sem tipo continua pegando tudo, e é o mais curto quando tanto faz o
+motivo.
+
+> **`IOError` é IRMÃO de `OSError`, não pai nem filho.** `catch (IOError e)`
+> não pega `FileNotFoundError`, e nunca pegou. Um tipo que você mesmo levantar
+> com `raise Nome("msg")` fica fora da árvore: só o `catch` do próprio nome e o
+> `catch (e)` o pegam.
+
+> **Isto mudou na versão 15.90.14.** Antes o `catch` comparava os dois nomes
+> letra a letra, então `catch (Exception e)` não pegava **nada** e
+> `catch (OSError e)` não pegava `FileNotFoundError` — mesmo o motor gerando
+> esses nomes de subclasse de propósito. Quem escreveu a cadeia filho a filho
+> não precisa mudar nada: a árvore só acrescenta capturas, nunca tira.
 
 > **Nota — "não existe" sempre LEVANTA, desde 28/08.** Ler índice fora da
 > faixa, escrever fora da faixa e pedir chave ausente levantam, e cada um diz o

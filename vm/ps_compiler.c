@@ -2817,7 +2817,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     emite(c, u, OP_PUSH_ERR_TYPE, 0);
                     emite(c, u, OP_LOAD_CONST,
                           idx_const(c, u, K_STR, 0, 0, cl->texto2, (int32_t)strlen(cl->texto2)));
-                    emite(c, u, OP_EQ, 0);
+                    /* EXC_CASA, nao EQ: o catch pergunta "este tipo E do tipo
+                     * pedido?", e a resposta vem da tabela de excecoes, entao
+                     * o pai pega o filho. Com EQ, `catch (Exception e)` nao
+                     * pegava nada. */
+                    emite(c, u, OP_EXC_CASA, 0);
                     prox_falha = emite(c, u, OP_JUMP_IF_FALSE, 0);
                 }
                 /* liga a mensagem ao nome do catch e roda o bloco */

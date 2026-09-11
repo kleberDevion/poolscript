@@ -157,3 +157,10 @@ PS_OP(FLOORDIV, 89, "FLOORDIV")
  * sozinha; girar a pilha em tres linhas reusa a original inteira. */
 PS_OP(SWAP, 90, "SWAP")      /* [.., a, b]    -> [.., b, a]    */
 PS_OP(ROT3, 91, "ROT3")      /* [.., a, b, c] -> [.., b, c, a] */
+
+/* `catch (Tipo e)` casa o tipo levantado contra o pedido, CONSULTANDO A
+ * HIERARQUIA DE EXCECOES. Substitui o `OP_EQ` que o catch usava: comparar os
+ * dois nomes por igualdade literal e' o que deixava `catch (Exception e)` sem
+ * pegar nada e `catch (OSError e)` sem pegar FileNotFoundError — enquanto o
+ * motor emitia esses nomes de subclasse de proposito. */
+PS_OP(EXC_CASA, 92, "EXC_CASA")

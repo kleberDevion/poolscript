@@ -146,9 +146,9 @@ relativo não encontrado é `ImportError` — a mesma mensagem do absoluto
 (`No module named '..pacote.modulo'`); não há texto próprio pro relativo.
 
 > O tipo é `ImportError`, e só. Não existe um `ModuleNotFoundError` mais
-> específico: o `catch` compara o NOME e não há hierarquia, então um segundo
-> nome quebraria, em silêncio, todo `catch (ImportError e)` que hoje pega
-> módulo ausente.
+> específico; `ImportError` é o nome único para módulo ausente. Ele fica direto
+> sob `Exception` na árvore de exceções, então `catch (Exception e)` também o
+> pega.
 
 ---
 

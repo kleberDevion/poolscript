@@ -3160,6 +3160,93 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
  * português: `nao consegui criar '/tmp/x'`. Ninguém escreve
  * `catch (TypeError)` pra pasta já existente — e quem escrevesse pegava junto
  * `1 + "a"`, `len(5)` e aridade errada. */
+/* ── HIERARQUIA DE EXCEÇÕES: a única lista ────────────────────────────────
+ *
+ * O tipo de uma exceção era uma string solta, digitada à mão em cada um dos
+ * ~1000 sítios de erro, e o `catch` comparava os dois nomes por IGUALDADE
+ * LITERAL. Duas consequências medidas no binário:
+ *
+ *   catch (Exception e)  não pegava NADA — nem erro de arquivo, nem
+ *                        `1 + "a"`, nem um `raise ValueError` explícito
+ *   catch (OSError e)    não pegava FileNotFoundError
+ *
+ * e o motor gera esses nomes de subclasse DE PROPÓSITO: `tipo_do_errno`
+ * logo abaixo devolve `FileNotFoundError`, `PermissionError`,
+ * `IsADirectoryError`. Nomes que só fazem sentido se o pai os pegasse.
+ *
+ * Aqui cada exceção é UMA LINHA: o nome e o PAI. `Exception` é a raiz e tem
+ * pai NULL. Quem pergunta "este catch pega este erro?" chama `excecao_eh()`,
+ * que sobe a cadeia — não existe um segundo lugar com a mesma resposta.
+ *
+ * Tipo levantado que NÃO estiver nesta tabela continua sendo pego pelo
+ * `catch` do próprio nome e pelo `catch (e)` sem tipo: ninguém perde captura
+ * que já tinha. A tabela só ACRESCENTA os pais que faltavam. */
+typedef struct { const char *nome; const char *pai; } ExcLinha;
+
+static const ExcLinha EXCECOES[] = {
+    { "Exception",            NULL },
+
+    /* erro de sistema — os nomes que `tipo_do_errno` já emitia */
+    { "OSError",              "Exception" },
+    { "FileExistsError",      "OSError" },
+    { "FileNotFoundError",    "OSError" },
+    { "IsADirectoryError",    "OSError" },
+    { "NotADirectoryError",   "OSError" },
+    { "PermissionError",      "OSError" },
+    { "NetworkError",         "OSError" },
+    /* `IOError` fica IRMÃO de OSError, não pai nem filho: a doc do `open()`
+     * promete, com teste, que `catch (IOError e)` NÃO pega FileNotFoundError.
+     * Pendurar um no outro mudaria comportamento documentado. */
+    { "IOError",              "Exception" },
+
+    { "LookupError",          "Exception" },
+    { "IndexError",           "LookupError" },
+    { "KeyError",             "LookupError" },
+
+    { "ArithmeticError",      "Exception" },
+    { "ZeroDivisionError",    "ArithmeticError" },
+    { "OverflowError",        "ArithmeticError" },
+
+    { "ValueError",           "Exception" },
+    { "UnicodeError",         "ValueError" },
+    { "UnicodeDecodeError",   "UnicodeError" },
+    { "UnicodeEncodeError",   "UnicodeError" },
+    { "AttributedValueError", "ValueError" },
+    { "ConversionError",      "ValueError" },
+
+    { "RuntimeError",         "Exception" },
+    { "RecursionError",       "RuntimeError" },
+
+    { "TypeError",            "Exception" },
+    { "AttributeError",       "Exception" },
+    { "NameError",            "Exception" },
+    { "ImportError",          "Exception" },
+    { "MemoryError",          "Exception" },
+    { "AssertionError",       "Exception" },
+    { "SyntaxError",          "Exception" },
+    { "DatabaseError",        "Exception" },
+};
+
+static const char *excecao_pai(const char *nome)
+{
+    if (!nome) return NULL;
+    for (size_t i = 0; i < sizeof(EXCECOES) / sizeof(EXCECOES[0]); i++)
+        if (strcmp(EXCECOES[i].nome, nome) == 0) return EXCECOES[i].pai;
+    return NULL;   /* fora da tabela: só casa pelo próprio nome */
+}
+
+/* `catch (pedido e)` pega um erro do tipo `levantado`? Sobe a cadeia de pais.
+ * O limite de voltas é a própria tabela: ciclo escrito por engano para, em vez
+ * de pendurar a VM. */
+static int excecao_eh(const char *levantado, const char *pedido)
+{
+    if (!levantado || !pedido) return 0;
+    size_t teto = sizeof(EXCECOES) / sizeof(EXCECOES[0]) + 1;
+    for (const char *t = levantado; t && teto--; t = excecao_pai(t))
+        if (strcmp(t, pedido) == 0) return 1;
+    return 0;
+}
+
 static const char *tipo_do_errno(int e)
 {
     switch (e) {
@@ -7826,16 +7913,31 @@ static const MetodoNat METODOS_BYTES[] = {
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-/* Extensões tratadas como binário pelo `loadFile`. Mesma lista do
- * pelo conteúdo — adivinhar faria o mesmo arquivo virar texto numa leitura e
- * PoolFile no outro. */
-static int ext_binaria(const char *ext)
+/* O arquivo é binário? Pergunta ao CONTEÚDO, não a uma lista de extensões.
+ *
+ * Havia aqui um vetor com doze extensões, e ele mandava em duas coisas: o
+ * padrão do `loadFile` e — pior — o que podia ser aberto, porque pedir
+ * `modo='rb'` fora da lista era recusado. `.xlsm`, `.7z`, `.tar`, `.wav`,
+ * `.odt`, `.parquet` e arquivo sem extensão nenhuma ficavam de fora. Uma
+ * lista de convidados escrita à mão nunca termina, e quem chega depois
+ * descobre pelo erro.
+ *
+ * O critério é o mesmo das ferramentas de linha de comando: byte NUL nos
+ * primeiros 8 KB. Texto não tem NUL; PNG, ZIP, PDF e planilha têm no
+ * cabeçalho. Não é adivinhação de formato, é a única pergunta que separa as
+ * duas leituras — e ela vale pra arquivo que ninguém previu.
+ *
+ * Não conseguir abrir devolve 0 de propósito: quem falha é o `fopen` do
+ * caminho de texto logo abaixo, com o errno de verdade, em vez de virar um
+ * PoolFile que não existe. */
+static int conteudo_binario(const char *caminho)
 {
-    static const char *BIN[] = {".pdf",".docx",".xlsx",".png",".jpg",".jpeg",
-                                ".gif",".bmp",".webp",".zip",".mp3",".mp4"};
-    for (size_t i = 0; i < sizeof(BIN)/sizeof(BIN[0]); i++)
-        if (!strcmp(ext, BIN[i])) return 1;
-    return 0;
+    FILE *f = fopen(caminho, "rb");
+    if (!f) return 0;
+    char amostra[8192];
+    size_t lidos = fread(amostra, 1, sizeof(amostra), f);
+    fclose(f);
+    return memchr(amostra, '\0', lidos) != NULL;
 }
 
 static void minusculo(const char *s, char *saida, size_t cap)
@@ -11641,8 +11743,8 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
 static int mod_os_pathfile(VM *v, Value *a, int n, Value *o)   { return os_procura(v, a, n, o, 0, "pathFile"); }
 static int mod_os_pathfolder(VM *v, Value *a, int n, Value *o) { return os_procura(v, a, n, o, 1, "pathFolder"); }
 
-/* Decide texto ou binário pela EXTENSÃO, não pelo conteúdo — é o contrato do
- * a extensão, e adivinhar pelo conteúdo daria resultado diferente. */
+/* O `mode` manda: 'rb' devolve PoolFile e 'r' devolve texto, em qualquer
+ * caminho. Sem `mode`, quem decide é o CONTEÚDO do arquivo. */
 static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "loadFile", 1, 2, n);
@@ -11654,33 +11756,29 @@ static int mod_os_loadfile(VM *vm, Value *args, int n, Value *out)
     char ext[64] = "";
     if (ponto) minusculo(ponto, ext, sizeof(ext));
 
-    const char *modo = NULL;
+    /* `mode`: o mesmo nome que a tabela do modulo declara e que o usuario
+     * escreve na chamada. A variavel se chamava `modo` e as mensagens
+     * escreviam `mode` — dois nomes pra mesma coisa dentro da mesma funcao. */
+    const char *mode = NULL;
     if (n == 2 && args[1].t != V_NULL) {
         if (!EH_STRING(args[1])) { vm->sp--;
             BERRO(vm, "TypeError", "loadFile() argument 2 must be str, not %s",
                   nome_do_tipo_valor(args[1])); }
-        modo = COMO_STRING(args[1])->chars;
+        mode = COMO_STRING(args[1])->chars;
     }
-    /* O 2o argumento e MODO, nao charset. Um nome de charset passava calado e
-     * o arquivo era lido byte a byte do mesmo jeito: `loadFile(csv,
-     * encoding="latin-1")` devolvia acento quebrado sem uma palavra. Se o que
-     * veio parece charset, diz onde ele vale. */
-    if (modo && strcmp(modo, "rb") != 0 && strcmp(modo, "r") != 0) {
-        int c = codec_de_nome(modo, (int)strlen(modo));
+
+    if (mode && strcmp(mode, "rb") != 0 && strcmp(mode, "r") != 0) {
+        int c = codec_de_nome(mode, (int)strlen(mode));
         vm->sp--;
         if (c >= 0)
             BERRO(vm, "ValueError",
-                  "loadFile(): o 2o argumento e o MODO ('r' ou 'rb'), nao um charset. "
-                  "Pra ler '%s' com charset use os.readFile(caminho, encoding=\"%s\")", ext, modo);
-        BERRO(vm, "ValueError", "loadFile: mode='%s' nao existe — use 'r' ou 'rb'", modo);
+                  "loadFile: '%s' e um charset, o 2 argumento e o mode ('r' ou 'rb'). "
+                  "Pra ler com charset: os.readFile(path, encoding=\"%s\")", mode, mode);
+        BERRO(vm, "ValueError",
+              "loadFile: '%s' nao e um mode valido — use 'r' ou 'rb'", mode);
     }
-    int bin = ext_binaria(ext);
-    if (modo && !strcmp(modo, "rb")) {
-        if (!bin) { vm->sp--; BERRO(vm, "TypeError", "loadFile: mode='rb' nao aceita extensao '%s'", ext); }
-    } else if (modo && bin) {
-        vm->sp--;
-        BERRO(vm, "TypeError", "loadFile: mode='%s' nao aceita extensao '%s' — use 'rb'", modo, ext);
-    }
+
+    int bin = mode ? (strcmp(mode, "rb") == 0) : conteudo_binario(caminho);
 
     if (bin) {
         PSPoolFile *pf = novo_poolfile(vm, caminho);
@@ -12349,7 +12447,10 @@ static const MembroMod MOD_OS[] = {
     { "pathFile", mod_os_pathfile, 0, "name" }, { "pathFolder", mod_os_pathfolder, 0, "name" },
     /* `modo`, nao `encoding`: o 2o argumento e 'r'/'rb', e o nome antigo fazia
      * a chamada por nome pedir um charset que nunca foi aplicado aqui. */
-    { "loadFile", mod_os_loadfile, 0, "name,modo" }, { "getenv", mod_os_getenv, 0, "key,default" },
+    /* `path,mode`: os mesmos nomes do `open()` e os que as mensagens de erro
+     * ja usavam. Era `name,modo`, entao quem copiava o erro (`mode='rb'`)
+     * escrevia um nome que nao existia. */
+    { "loadFile", mod_os_loadfile, 0, "path,mode" }, { "getenv", mod_os_getenv, 0, "key,default" },
     { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
@@ -23185,6 +23286,19 @@ ERRO_TF(vm, "TypeError",
             PSString *ts = nova_string(vm, vm->erro_tipo, (int)strlen(vm->erro_tipo));
             if (!ts) ERRO(vm, "sem memoria");
             stack[sp++] = MK_OBJ(ts);
+            break;
+        }
+
+        /* `catch (Tipo e)`: [.., levantado, pedido] -> [.., bool]. Onde o
+         * compilador emitia OP_EQ — dois nomes comparados letra a letra — a
+         * pergunta agora passa pela tabela de exceções, então o pai pega o
+         * filho. */
+        case OP_EXC_CASA: {
+            Value pedido = stack[--sp];
+            Value levantado = stack[--sp];
+            const char *p = EH_STRING(pedido)    ? COMO_STRING(pedido)->chars    : "";
+            const char *l = EH_STRING(levantado) ? COMO_STRING(levantado)->chars : "";
+            stack[sp++] = MK_BOOL(excecao_eh(l, p));
             break;
         }
 

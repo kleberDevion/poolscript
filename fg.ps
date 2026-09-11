@@ -1,0 +1,20 @@
+object solution = bool funct(String s){
+
+    dict mapa =  {')': '(', ']': '[', '}': '{'}
+    list pilha = []
+
+    for each caracter in s{
+        if (caracter in mapa){
+            string element_topic = pilha.pop() if pilha else '#'
+
+            if (mapa[caracter] != element_topic){
+                return false
+            }else{
+                return pilha.append(caracter)
+            }
+        }
+    }
+    return len(pilha) == 0
+}
+
+post(solution(s='('))

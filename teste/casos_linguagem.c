@@ -1316,8 +1316,12 @@ const Caso CASOS_LINGUAGEM[] = {
   "u2.txt .txt 5", NULL, 0 },
 /* O `ext` com ponto e o MESMO do PoolFile carregado — um tipo so nao pode dar
  * duas respostas pro mesmo campo. */
+/* O fixture escrevia so `\x89PNG` — quatro bytes sem NUL nenhum, um PNG
+ * FALSO. Passava porque a extensao `.png` estava numa lista fixa; agora quem
+ * decide o modo automatico e o CONTEUDO, e conteudo sem NUL e texto. O
+ * cabecalho de verdade continua depois da assinatura: `\x00\x00\x00\rIHDR`. */
 { "ext do aberto e do carregado sao iguais",
-  "import os\nusing open(\"u3.png\", \"wb\") as f { f.write(\"\\x89PNG\") }\n"
+  "import os\nusing open(\"u3.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\") }\n"
   "a = os.loadFile(\"u3.png\")\nf2 = open(\"u3.png\", \"rb\")\npost(a.ext, f2.ext)\nf2.close()\n",
   ".png .png", NULL, 0 },
 { "PoolFile aberto: path, bytes, copy e delete",
@@ -2097,10 +2101,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * por `open()` — ver "TODO ARQUIVO É PoolFile", abaixo. */
 { "PoolFile.copy() copia o conteudo",
   "import os\n"
-  "using open(\"o.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\nDADOS\") }\n"
+  "using open(\"o.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\") }\n"
   "a = os.loadFile(\"o.png\")\n"
   "a.copy(\"d.png\")\n"
-  "using open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n", "14", NULL, 0 },
+  "using open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n", "17", NULL, 0 },
 
 /* ── regex: recursao profunda vira ERRO, nao segfault ───────────────────────
  * O casador é recursivo e gasta um quadro de pilha C por caractere. O teto de
@@ -2337,6 +2341,83 @@ const Caso CASOS_LINGUAGEM[] = {
   "    PoolFile g = f\n"
   "    post(type(g))\n"
   "}\n", "True\nPoolFile", NULL, 0 },
+
+/* ── HIERARQUIA DE EXCECOES, 2026-09-11 ────────────────────────────────────
+ * O tipo da excecao era uma STRING solta, digitada a mao em cada um dos ~1000
+ * sitios de erro, e o `catch` comparava os dois nomes por igualdade literal —
+ * o comentario do proprio motor admitia: "Aqui nao ha hierarquia, o catch
+ * compara o nome". Medido antes do conserto:
+ *     catch (Exception e)  nao pegava NADA — nem erro de arquivo, nem
+ *                          `1 + "a"`, nem um `raise ValueError` explicito
+ *     catch (OSError e)    nao pegava FileNotFoundError
+ * e o motor emite esses nomes de subclasse DE PROPOSITO (`tipo_do_errno`).
+ * Agora a tabela EXCECOES[] diz o pai de cada tipo num lugar so, e o `catch`
+ * compila pra OP_EXC_CASA, que sobe a cadeia. */
+{ "catch (Exception e) pega qualquer erro",
+  "try { post(1 + \"a\") }\ncatch (Exception e) { post(\"pegou\") }\n",
+  "pegou", NULL, 0 },
+{ "catch (Exception e) pega raise explicito",
+  "try { raise ValueError(\"x\") }\ncatch (Exception e) { post(\"pegou\") }\n",
+  "pegou", NULL, 0 },
+{ "catch (Exception e) pega erro de sistema",
+  "import os\ntry { os.loadFile(\"/nao/existe/xyz.txt\") }\ncatch (Exception e) { post(\"pegou\") }\n",
+  "pegou", NULL, 0 },
+{ "OSError pega FileNotFoundError — o motor emite a subclasse de proposito",
+  "import os\ntry { os.loadFile(\"/nao/existe/xyz.txt\") }\ncatch (OSError e) { post(\"pegou\") }\n",
+  "pegou", NULL, 0 },
+{ "LookupError pega IndexError",
+  "try { post([1][9]) }\ncatch (LookupError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
+{ "LookupError pega KeyError",
+  "try { post({\"a\": 1}[\"z\"]) }\ncatch (LookupError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
+{ "ArithmeticError pega ZeroDivisionError",
+  "try { post(1 / 0) }\ncatch (ArithmeticError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
+{ "ValueError pega AttributedValueError da declaracao tipada",
+  "try { int x = \"7\" }\ncatch (ValueError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
+{ "RuntimeError pega RecursionError",
+  "funct f() { return f() }\ntry { f() }\ncatch (RuntimeError e) { post(\"pegou\") }\n",
+  "pegou", NULL, 0 },
+/* A hierarquia so ACRESCENTA: quem nao e da linhagem continua nao pegando. */
+{ "TypeError NAO pega ValueError",
+  "try { raise ValueError(\"x\") }\ncatch (TypeError e) { post(\"NAO DEVIA\") }\n", "",
+  "ValueError: x", 1 },
+{ "OSError NAO pega TypeError",
+  "try { post(1 + \"a\") }\ncatch (OSError e) { post(\"NAO DEVIA\") }\n", "",
+  "TypeError: unsupported operand type(s) for +", 1 },
+{ "IOError segue IRMAO de OSError, nao pai — a doc do open() promete isso",
+  "import os\ntry { os.loadFile(\"/nao/existe/xyz.txt\") }\ncatch (IOError e) { post(\"NAO DEVIA\") }\n",
+  "", "FileNotFoundError:", 1 },
+{ "catch do tipo EXATO continua pegando, e o catch sem tipo tambem",
+  "import os\ntry { os.loadFile(\"/nao/x\") } catch (FileNotFoundError e) { post(\"exato\") }\n"
+  "try { os.loadFile(\"/nao/x\") } catch (e) { post(\"sem tipo\") }\n",
+  "exato\nsem tipo", NULL, 0 },
+
+/* ── loadFile NAO TEM LISTA DE EXTENSAO, 2026-09-11 ─────────────────────────
+ * Havia um vetor com 12 extensoes binarias, e pedir `mode='rb'` fora dela era
+ * recusado: "loadFile: mode='rb' nao aceita extensao '.xlsm'". `.xlsm`,
+ * `.7z`, `.tar`, `.wav` e arquivo SEM extensao nao abriam. Uma linguagem nao
+ * tem lista de arquivos que pode abrir. Agora o modo manda, e sem modo quem
+ * decide e o conteudo (byte NUL nos primeiros 8 KB). */
+{ "mode='rb' abre extensao que nao esta em lista nenhuma",
+  "import os\nusing open(\"a.xlsm\", \"w\") as f { f.write(\"planilha\") }\n"
+  "a = os.loadFile(\"a.xlsm\", mode=\"rb\")\npost(type(a), a.ext)\n",
+  "PoolFile .xlsm", NULL, 0 },
+{ "mode='rb' abre arquivo SEM extensao",
+  "import os\nusing open(\"semext\", \"w\") as f { f.write(\"conteudo\") }\n"
+  "a = os.loadFile(\"semext\", mode=\"rb\")\npost(type(a))\n",
+  "PoolFile", NULL, 0 },
+{ "mode='r' le como texto ate o que a lista chamava de binario",
+  "import os\nusing open(\"z.png\", \"w\") as f { f.write(\"nao sou png\") }\n"
+  "post(os.loadFile(\"z.png\", mode=\"r\"))\n",
+  "nao sou png", NULL, 0 },
+{ "sem mode, quem decide e o CONTEUDO: byte NUL e binario",
+  "import os\nusing open(\"c1.dat\", \"wb\") as f { f.write(\"AB\\x00CD\") }\n"
+  "using open(\"c2.dat\", \"w\") as f { f.write(\"texto puro\") }\n"
+  "post(type(os.loadFile(\"c1.dat\")), type(os.loadFile(\"c2.dat\")))\n",
+  "PoolFile str", NULL, 0 },
+{ "mode que nao existe diz que o VALOR nao serve, e lista os que servem",
+  "import os\nusing open(\"m.txt\", \"w\") as f { f.write(\"x\") }\n"
+  "os.loadFile(\"m.txt\", mode=\"xyz\")\n", "",
+  "use 'r' ou 'rb'", 1 },
 
 /* ── CLI ── */
 { "--check não executa o script",
