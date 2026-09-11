@@ -160,6 +160,18 @@ static void pg_tipo_erro(PGresult *r, char *tipo_out, size_t tcap)
     for (int i = 0; i < PG_ERR_N; i++)
         if (strcmp(PG_ERR_NOMES[i].sqlstate, ss) == 0) { snprintf(tipo_out, tcap, "%s", PG_ERR_NOMES[i].nome); return; }
 }
+
+/* A árvore de exceções pergunta AQUI se um nome é de erro do banco, pra dar
+ * `DatabaseError` como pai aos 251 de uma vez. Sem isto, `catch (DatabaseError
+ * e)` não pegava `UniqueViolation` — e a MESMA violação de UNIQUE no sqlite já
+ * dava `DatabaseError`, então o tipo mudava conforme o driver. */
+int ps_db_eh_nome_erro(const char *nome)
+{
+    if (!nome || !*nome) return 0;
+    for (int i = 0; i < PG_ERR_N; i++)
+        if (strcmp(PG_ERR_NOMES[i].nome, nome) == 0) return 1;
+    return 0;
+}
 static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
                    PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
@@ -196,7 +208,7 @@ static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparam
     if (st == PGRES_TUPLES_OK) {
         int ncol = PQnfields(r), nrow = PQntuples(r);
         res->tem_result = 1;
-        res->rowcount = nrow;   /* psycopg2: rowcount de SELECT = nº de linhas */
+        res->rowcount = nrow;   /* rowcount de SELECT = nº de linhas */
         res->ncols = ncol;
         if (res_cols_reserva(res, ncol, erro, ecap) != 0) { PQclear(r); return -1; }
         for (int i = 0; i < ncol; i++)

@@ -1,5 +1,12 @@
-/* SQLSTATE -> nome da classe de erro psycopg2 — gerado da lib (psycopg2.errorcodes
- * + errors.lookup). Match exato do que o interpretador poe em catch(Tipo e). */
+/* SQLSTATE -> nome da classe de erro do postgres. E o nome que o motor poe em
+ * `catch (Tipo e)` quando o banco recusa a operacao.
+ *
+ * Todos estes nomes tem `DatabaseError` como PAI na arvore de excecoes: quem
+ * escreve `catch (DatabaseError e)` pega qualquer um dos 251 sem ter que
+ * conhecer o SQLSTATE. Quem quer so a chave duplicada escreve
+ * `catch (UniqueViolation e)`. A ligacao e feita em `excecao_pai()`
+ * (vm/poolscript_vm.c), que pergunta a ESTA tabela — nao ha uma segunda copia
+ * da lista pra sair de sincronia. */
 #ifndef PS_PGERR_H
 #define PS_PGERR_H
 typedef struct { const char *sqlstate, *nome; } PgErrNome;

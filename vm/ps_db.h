@@ -4,7 +4,7 @@
  * Uma interface só sobre as libs C dos drivers (libpq, libmysqlclient, unixODBC
  * e a sqlite que já entra). O resultado de um SELECT é bufferizado como uma
  * grade de células com tipo (int/float/str/bool/null), pra a VM montar a lista
- * de dicts com os tipos certos — igual ao que psycopg2/mysql.connector devolvem.
+ * de dicts com os tipos certos.
  */
 #ifndef PS_DB_H
 #define PS_DB_H
@@ -46,6 +46,12 @@ PSDbConn *ps_db_conecta(PSDbDriver drv, const char *host, int porta,
 /* `params` são textos (NULL = SQL NULL); ligados nos `?`/`$n`. */
 /* `tipo_out` recebe o nome da classe de erro (ex: "UndefinedTable" no pg);
  * pode ser NULL. */
+/* `nome` é um dos nomes de erro do postgres (a tabela SQLSTATE de
+ * `ps_pgerr.h`)? A árvore de exceções pergunta isto pra dar `DatabaseError`
+ * como pai a todos eles de uma vez. Mora aqui porque a tabela mora aqui:
+ * copiá-la pro outro arquivo é o que a faria envelhecer sozinha. */
+int ps_db_eh_nome_erro(const char *nome);
+
 int ps_db_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
                PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap);
 

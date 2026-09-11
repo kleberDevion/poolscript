@@ -2386,6 +2386,18 @@ const Caso CASOS_LINGUAGEM[] = {
 { "IOError segue IRMAO de OSError, nao pai — a doc do open() promete isso",
   "import os\ntry { os.loadFile(\"/nao/existe/xyz.txt\") }\ncatch (IOError e) { post(\"NAO DEVIA\") }\n",
   "", "FileNotFoundError:", 1 },
+/* Um inventario de 14 agentes cruzou os tipos que o motor EMITE contra a
+ * tabela e achou 15 de fora. `NotImplementedError` e `TimeoutError` eram da
+ * propria linguagem e escapavam do `catch (Exception e)`; os outros 13 sao
+ * nomes de erro do postgres, agora todos com `DatabaseError` de pai.
+ *
+ * SEM CASO AQUI, e a razao: `NotImplementedError` so nasce ao IMPORTAR um
+ * modulo que nao compila, e o runner nao consegue importar — ele roda o caso
+ * num tmpfile sem extensao, e a busca de modulo olha a pasta do SCRIPT, nao o
+ * cwd (medido: o `.ps` escrito esta la, `os.isfile` responde True, e o import
+ * ainda diz "No module named"). Conferido a mao, fora do runner:
+ *     try { import <modulo que nao compila> } catch (Exception e) { ... }
+ * pega, e com RuntimeError tambem. `TimeoutError` precisa de rede lenta. */
 { "catch do tipo EXATO continua pegando, e o catch sem tipo tambem",
   "import os\ntry { os.loadFile(\"/nao/x\") } catch (FileNotFoundError e) { post(\"exato\") }\n"
   "try { os.loadFile(\"/nao/x\") } catch (e) { post(\"sem tipo\") }\n",

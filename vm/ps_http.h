@@ -36,6 +36,14 @@ int ps_http_request(const char *metodo, const char *url, const char *cabs,
                     const char *corpo, size_t ncorpo, int timeout,
                     long teto, PSHttpResp *r);
 
+/* O mesmo, com um DESTINO: cada pedaço do corpo é escrito nele assim que
+ * chega e nada se acumula, então dá pra baixar arquivo maior que a memória.
+ * `destino` NULL faz exatamente o que o `ps_http_request` faz. Em modo de
+ * fluxo o `r->corpo` volta vazio e `r->ncorpo` é quantos bytes desceram. */
+int ps_http_baixa(const char *metodo, const char *url, const char *cabs,
+                  const char *corpo, size_t ncorpo, int timeout,
+                  long teto, FILE *destino, PSHttpResp *r);
+
 void ps_http_resp_solta(PSHttpResp *r);
 
 #endif /* PS_HTTP_H */

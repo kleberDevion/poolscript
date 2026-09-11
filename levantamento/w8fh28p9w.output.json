@@ -1,0 +1,1578 @@
+{
+  "summary": "Inventario dos tipos de erro que a VM emite e quais o catch NAO consegue pegar, mais o desenho da tabela de erros que substitui o BERRO escrito a mao",
+  "agentCount": 14,
+  "logs": [
+    "7 regioes — todo tipo de erro que a VM emite",
+    "tipos distintos: 43 · medidos: 84 · nao disparam: 2 · catch exato falha em: 0"
+  ],
+  "result": {
+    "inventario": [
+      {
+        "tipo": "MemoryError",
+        "ocorrencias": 423,
+        "suspeitas": [
+          "vm-b: 131 sitios sao MERRO/BERRO \"sem memoria\" (falha real de malloc, inalcancavel por programa), mas 3 sitios (5412, 5456, 9967) levantam MemoryError para um ARGUMENTO grande demais, sem nenhuma alocacao ter falhado — o mesmo caso que em 5319 seria ValueError. Mesma condicao logica, dois tipos diferentes.",
+          "vm-e: os 7 sitios cobrem so a repeticao de str e de bytes (21571-21599). A MESMA mensagem literal, \"sem memoria na repeticao\", e MemoryError em 21577 e RuntimeError em 21556 (repeticao de lista). Fora dai, todos os 69 sitios de falta de memoria da regiao usam ERRO( e saem como RuntimeError.",
+          "libs: so existe num sitio — e o unico MemoryError da regiao inteira, e nao e falta de memoria: e o teto de max_size que o proprio programa pediu. Os 31 sitios de falta de memoria de verdade da regiao (13 em ps_db.c, 9 em ps_mail.c, 5 em ps_regex.c, 3 em ps_mongo.c, 1 em ps_jinker.c) NAO viram MemoryError nenhum.",
+          "frente: Nome correto e na hierarquia (poolscript_vm.c: MemoryError->Exception). Os 4 sitios da regiao sao inalcancaveis por programa; sao rede de seguranca de alocacao."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3608",
+          "vm/poolscript_vm.c:5412",
+          "vm/poolscript_vm.c:10458",
+          "vm/poolscript_vm.c:15604",
+          "vm/poolscript_vm.c:21571",
+          "vm/ps_http.c:368",
+          "vm/main.c:149"
+        ]
+      },
+      {
+        "tipo": "TypeError",
+        "ocorrencias": 333,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:3551",
+          "vm/poolscript_vm.c:5210",
+          "vm/poolscript_vm.c:10684",
+          "vm/poolscript_vm.c:15880",
+          "vm/poolscript_vm.c:22890"
+        ]
+      },
+      {
+        "tipo": "RuntimeError",
+        "ocorrencias": 245,
+        "suspeitas": [
+          "vm-a: so existe num sitio",
+          "vm-b: macro-guarda-chuva: os 23 sitios misturam 3 causas sem relacao — \"estouro da pilha\" do fixa_raiz, \"regex: backtracking demais\" (9561, 9597, 9613, 9666...) e \"sem fonte de aleatoriedade do sistema\" (10200). Um catch (RuntimeError e) pega as tres de uma vez e nao consegue distinguir.",
+          "vm-c: mesmo erro com tipos diferentes: SK_ERRNO (vm/poolscript_vm.c:13206) manda TODO errno de socket pra RuntimeError, ECONNREFUSED/ETIMEDOUT inclusive, enquanto o MESMO errno no modulo os vira subclasse de OSError (vm/poolscript_vm.c:11849)",
+          "vm-e: e o tipo POR OMISSAO, nao uma escolha: 103 dos 125 sitios usam a macro ERRO(vm, msg) (definida em 20538), que grava \"RuntimeError\" sem o sitio digitar nada. 69 desses 103 sao falta de memoria. Resultado medido: [1,2]*9999999999 -> RuntimeError e \"ab\"*9999999999 -> MemoryError, mesmo opcode OP_MUL, 21552 vs 21571. E 5[1:2] -> RuntimeError (23089) enquanto 5[1] -> TypeError (22890), mesmo valor, mesma falha.",
+          "frente: main.c:451: ramo morto, condicao impossivel (PS_ERRO_RUNTIME so nasce em ps_roda_fonte, e quem chama e ps_verifica_fonte). main.c:153: default defensivo que nao consegui alcancar."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3990",
+          "vm/poolscript_vm.c:5235",
+          "vm/poolscript_vm.c:13973",
+          "vm/poolscript_vm.c:17797",
+          "vm/poolscript_vm.c:21552",
+          "vm/main.c:153"
+        ]
+      },
+      {
+        "tipo": "ValueError",
+        "ocorrencias": 65,
+        "suspeitas": [
+          "vm-b: o sitio 5319 e o unico da regiao que ainda carrega o prefixo em portugues \"valor invalido: \" (e sem acento), justamente o prefixo que o comentario de 10322 diz ter sido removido de todas as mensagens. Todos os outros 28 ValueError da regiao usam o texto seco.",
+          "vm-d: so existe num sitio"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3373",
+          "vm/poolscript_vm.c:5319",
+          "vm/poolscript_vm.c:11774",
+          "vm/poolscript_vm.c:17377",
+          "vm/poolscript_vm.c:22972"
+        ]
+      },
+      {
+        "tipo": "FileNotFoundError",
+        "ocorrencias": 42,
+        "suspeitas": [
+          "vm-a: subclasse sem pai / so existe num sitio",
+          "vm-b: subclasse sem pai: sai de tipo_do_errno (vm/poolscript_vm.c:3163, ENOENT), chamado pelos 20 erro_sistema() da regiao. catch (OSError e) NAO pega, porque o catch compara a string por igualdade.",
+          "vm-c: subclasse sem pai pelo nome, mas MEDIDO no binario de hoje: catch (OSError e) PEGA (confere vm/poolscript_vm.c:3186 EXCECOES + excecao_eh em 3241). As 21 ocorrencias sao os 21 sitios erro_sistema da regiao, um funil so: tipo_do_errno (vm/poolscript_vm.c:3250) escolhe qual dos 6 nomes sai, pelo errno"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3167",
+          "vm/poolscript_vm.c:6590",
+          "vm/poolscript_vm.c:11730"
+        ]
+      },
+      {
+        "tipo": "FileExistsError",
+        "ocorrencias": 42,
+        "suspeitas": [
+          "vm-a: subclasse sem pai / so existe num sitio",
+          "vm-b: subclasse sem pai E aparentemente inalcancavel pelo open(): tipo_do_errno (3163) so devolve FileExistsError com EEXIST, e o unico modo do open() que produziria EEXIST e o 'x'. O open() valida 'x' como modo primario valido (6560) e depois entrega a string de modo crua ao fopen(3) (6575-6577, 6589), que nao aceita um 'x' sozinho. Medido: open(\"/etc/hostname\", \"x\") num arquivo QUE EXISTE devolve OSError: [Errno 22] Invalid argument: '/etc/hostname' — nunca FileExistsError.",
+          "vm-c: subclasse sem pai pelo nome; medido: catch (OSError e) pega. Mesmo funil de 21 sitios erro_sistema"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3166",
+          "vm/poolscript_vm.c:6590",
+          "vm/poolscript_vm.c:11926"
+        ]
+      },
+      {
+        "tipo": "IsADirectoryError",
+        "ocorrencias": 42,
+        "suspeitas": [
+          "vm-a: subclasse sem pai / so existe num sitio",
+          "vm-b: subclasse sem pai. O sitio 6587 e o unico da regiao que FORCA o errno na mao (erro_sistema(vm, EISDIR, ...)) — ali o nome IsADirectoryError e deterministico, nao vem do sistema.",
+          "vm-c: subclasse sem pai pelo nome; medido: catch (OSError e) pega. Mesmo funil de 21 sitios erro_sistema, o errno EISDIR e passado fixo aqui"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3168",
+          "vm/poolscript_vm.c:6587",
+          "vm/poolscript_vm.c:11847"
+        ]
+      },
+      {
+        "tipo": "NotADirectoryError",
+        "ocorrencias": 42,
+        "suspeitas": [
+          "vm-a: subclasse sem pai / so existe num sitio",
+          "vm-b: subclasse sem pai: tipo_do_errno (3163) para ENOTDIR. catch (OSError e) NAO pega.",
+          "vm-c: subclasse sem pai pelo nome; medido: catch (OSError e) pega. Mesmo funil de 21 sitios erro_sistema"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3169",
+          "vm/poolscript_vm.c:6590",
+          "vm/poolscript_vm.c:11730"
+        ]
+      },
+      {
+        "tipo": "PermissionError",
+        "ocorrencias": 42,
+        "suspeitas": [
+          "vm-a: subclasse sem pai / so existe num sitio",
+          "vm-b: subclasse sem pai: tipo_do_errno (3163) para EACCES/EPERM. catch (OSError e) NAO pega.",
+          "vm-c: subclasse sem pai pelo nome; medido: catch (OSError e) pega. Mesmo funil de 21 sitios erro_sistema"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3171",
+          "vm/poolscript_vm.c:6590",
+          "vm/poolscript_vm.c:11849"
+        ]
+      },
+      {
+        "tipo": "OSError",
+        "ocorrencias": 35,
+        "suspeitas": [
+          "vm-a: so existe num sitio",
+          "vm-b: o comentario de 3152-3162 chama isto de \"OSError puro\" e diz que \"o resto cai no OSError\" — escrito como se houvesse hierarquia. Nao ha: o catch compara a string, entao catch (OSError e) pega SOMENTE o default do switch (errno fora de EEXIST/ENOENT/EISDIR/ENOTDIR/EACCES/EPERM) e deixa passar os 5 casos que o proprio switch se deu ao trabalho de nomear.",
+          "libs: so existe num sitio — e alem de unico, e codigo morto: nenhum programa consegue levanta-lo, e no lugar dele o motor manda uma URL truncada em silencio."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:3172",
+          "vm/poolscript_vm.c:6391",
+          "vm/poolscript_vm.c:14026",
+          "vm/ps_http.c:301"
+        ]
+      },
+      {
+        "tipo": "DatabaseError",
+        "ocorrencias": 25,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:12623",
+          "vm/poolscript_vm.c:16553",
+          "vm/ps_db.c:93"
+        ]
+      },
+      {
+        "tipo": "RecursionError",
+        "ocorrencias": 17,
+        "suspeitas": [
+          "vm-b: os 3 sitios da regiao (10041, 10043, 10046) ficam todos dentro de ger_retoma e dao a MESMA mensagem \"maximum recursion depth exceeded\" para 3 limites diferentes (frames, locais, pilha). Nao consta da tabela de tipos embutidos de docs/linguagem/10-excecoes.md:108-123.",
+          "vm-d: so existe num sitio"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:10041",
+          "vm/poolscript_vm.c:20780",
+          "vm/poolscript_vm.c:22294"
+        ]
+      },
+      {
+        "tipo": "IOError",
+        "ocorrencias": 15,
+        "suspeitas": [
+          "vm-c: mesmo erro com tipos diferentes: ENOENT sai FileNotFoundError no os.loadFile e IOError aqui. Medido: catch (OSError e) pega o loadFile e NAO pega o os.run; so catch (Exception e) ou catch (IOError e) pegam. Em vm/poolscript_vm.c:12205 o tipo que erro_sistema acabou de escrever e SOBRESCRITO a mao por \"IOError\"",
+          "frente: so existe num sitio — e, pior, e um SEGUNDO nome para uma condicao que o resto do motor ja batizou de outro jeito. MEDIDO com o mesmo arquivo inexistente: `os.loadFile(\"/nao/existe/xyz.ps\")` -> `FileNotFoundError: [Errno 2] No such file or directory`, porque tipo_do_errno (poolscript_vm.c:3250) devolve FileNotFoundError para ENOENT. O `--check` chama isso de IOError. E os dois nomes nao se encontram: a tabela EXCECOES pendura IOError em Exception de proposito (poolscript_vm.c:3196-3200, comentario: \"IOError fica IRMAO de OSError, nao pai nem filho\"), entao `catch (IOError e)` NAO pega o FileNotFoundError — medido: o erro escapou do catch (`FileNotFoundError: [Errno 2] ...`, rc=1)."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:12396",
+          "vm/main.c:408"
+        ]
+      },
+      {
+        "tipo": "NetworkError",
+        "ocorrencias": 14,
+        "suspeitas": [
+          "vm-c: so existe num sitio. E o UNICO ponto da regiao onde o tipo da excecao nao e literal: vm/poolscript_vm.c:15086 copia hr.erro_tipo cru com \"%.30s\", entao o nome do tipo e um dado vindo de vm/ps_http.c, sem validacao nenhuma contra a tabela de excecoes",
+          "vm-d: subclasse sem pai"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:15083",
+          "vm/poolscript_vm.c:19827",
+          "vm/ps_http.c:85"
+        ]
+      },
+      {
+        "tipo": "ZeroDivisionError",
+        "ocorrencias": 12,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:3620",
+          "vm/poolscript_vm.c:21635"
+        ]
+      },
+      {
+        "tipo": "AttributeError",
+        "ocorrencias": 10,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:23546"
+        ]
+      },
+      {
+        "tipo": "IndexError",
+        "ocorrencias": 8,
+        "suspeitas": [
+          "vm-c: so existe num sitio"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:5887",
+          "vm/poolscript_vm.c:10692",
+          "vm/poolscript_vm.c:22851"
+        ]
+      },
+      {
+        "tipo": "SyntaxError",
+        "ocorrencias": 8,
+        "suspeitas": [
+          "vm-e: 2 sitios literais (25333 lexer, 25343 parser) mais um ramo do ternario 25354, que decide entre SyntaxError e NotImplementedError pela flag prog->erro_do_programa.",
+          "libs: so existe num sitio + subclasse sem pai — emitido por vm/ps_db.c:161 (SQLSTATE 42601). Pior: colide com o SyntaxError da propria linguagem (vm/poolscript_vm.c:3226), que e erro de compilacao e nem e capturavel em runtime. Um catch (SyntaxError e) escrito por engano ao redor de uma query passa a pegar erro de banco.",
+          "frente: O nome esta certo e esta na tabela de hierarquia (poolscript_vm.c:3226 SyntaxError->Exception). O suspeito e outro: os 4 sitios (main.c:141, 449, 715, 727) so IMPRIMEM o nome. Os 104 sitios que de fato levantam o erro (76 perro em ps_parser.c, 18 erro/erro_em em ps_lexer.c, 10 cerro_sx em ps_compiler.c) gravam SO a mensagem num buffer char[256] e nunca escrevem tipo nenhum. O nome nasce em main.c mapeando um enum de 4 valores (PSTipoErro, ps_vm.h:19-26). Efeito medido: o MESMO defeito e pegavel ou nao dependendo de estar no arquivo rodado (rc=2, nao pegavel) ou num modulo importado (pegavel)."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:25333",
+          "vm/ps_pgerr.h:153",
+          "vm/main.c:141"
+        ]
+      },
+      {
+        "tipo": "OverflowError",
+        "ocorrencias": 4,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:3342",
+          "vm/poolscript_vm.c:10560"
+        ]
+      },
+      {
+        "tipo": "UnicodeDecodeError",
+        "ocorrencias": 4,
+        "suspeitas": [
+          "vm-b: nao consta da tabela de tipos embutidos de docs/linguagem/10-excecoes.md:108-123 — quem so leu a doc nao sabe escrever este nome no catch. E um nome de SUBCLASSE (a raiz seria UnicodeError/ValueError), que nada pega."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:6844"
+        ]
+      },
+      {
+        "tipo": "KeyError",
+        "ocorrencias": 4,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:5686",
+          "vm/poolscript_vm.c:22863"
+        ]
+      },
+      {
+        "tipo": "AttributedValueError",
+        "ocorrencias": 4,
+        "suspeitas": [
+          "vm-b: so existe num sitio na regiao (9228, dentro de checa_param_tipos). O nome nao existe em nenhuma outra linguagem e e escrito a mao em 4 lugares do arquivo (9228 e 23243/23251/23278, fora da minha regiao): quatro strings soltas que precisam continuar identicas pra o mesmo catch pegar as quatro."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:9228",
+          "vm/poolscript_vm.c:23378"
+        ]
+      },
+      {
+        "tipo": "TimeoutError",
+        "ocorrencias": 4,
+        "suspeitas": [
+          "vm-c: so existe num sitio, e o sitio nem escreve o nome: vem de vm/ps_http.c:324/350/376 por dentro de hr.erro_tipo. TimeoutError NAO esta na tabela EXCECOES (vm/poolscript_vm.c:3186-3226), entao e o unico tipo levantado nesta regiao que catch (Exception e) nao pega. Medido acima"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:15086",
+          "vm/ps_http.c:324"
+        ]
+      },
+      {
+        "tipo": "AssertionError",
+        "ocorrencias": 4,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:20482"
+        ]
+      },
+      {
+        "tipo": "NameError",
+        "ocorrencias": 4,
+        "suspeitas": [],
+        "onde": [
+          "vm/poolscript_vm.c:21923"
+        ]
+      },
+      {
+        "tipo": "ImportError",
+        "ocorrencias": 4,
+        "suspeitas": [
+          "vm-e: o sitio 24343 e um remendo: `if (!vm->erro_tipo[0]) ... \"ImportError\"`. Ele so cobre os 7 sitios de carrega_modulo_ps que nao escrevem tipo nenhum QUANDO erro_tipo esta vazio; se sobrou tipo de um erro anterior, o remendo nao dispara e o tipo velho vaza (medido, ver observacoes)."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:25302"
+        ]
+      },
+      {
+        "tipo": "NotImplementedError",
+        "ocorrencias": 3,
+        "suspeitas": [
+          "vm-e: so existe num sitio: 25354 e a UNICA ocorrencia de \"NotImplementedError\" como tipo de excecao em todo o vm/poolscript_vm.c, e e o unico tipo emitido pelo motor que ficou de FORA da tabela EXCECOES (3187-3227). Medido: `catch (Exception e)` NAO pega esse erro, enquanto pega todos os outros 14 tipos da regiao. Alem disso a doc chama o tipo de `NotImplemented`, sem Error, e afirma isso por escrito em docs/PoolScript.md:374 e docs/LANGUAGE.md:1162 - medido: `catch (NotImplemented e)` nao pega nada.",
+          "frente: NAO ESTA NA TABELA DE HIERARQUIA. A tabela EXCECOES (vm/poolscript_vm.c:3195-3227) nao tem entrada para NotImplementedError, entao excecao_pai() devolve NULL e so casa pelo proprio nome. MEDIDO: `try { import rg_mod_ni } catch (Exception e) {...}` NAO pega — o erro escapa (`NotImplementedError: rg_mod_ni: 'break' fora de laco (linha 2)`, rc=1), enquanto o mesmo teste com SyntaxError pega. Alem disso o nome MENTE: 63 dos 73 sitios do compilador usam cerro() (erro_do_programa=0 -> NotImplementedError) e muitos sao erro de quem escreveu, nao feature faltando: ps_compiler.c:2904 \"'break' fora de laco\", :2923 \"'continue' fora de laco\", :2583 \"import mal formado\", :1460 e :1463 \"cor invalida\", :1569 \"argumento posicional depois de nomeado\", :2058 \"alvo de desempacotamento invalido\", :1512 \"tipo desconhecido\", :1032 \"chave nao fechada na f-string\". O editor recebe esses como 'nao implementado'."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:25354",
+          "vm/main.c:145"
+        ]
+      },
+      {
+        "tipo": "UnicodeEncodeError",
+        "ocorrencias": 2,
+        "suspeitas": [
+          "vm-b: nao consta da tabela de tipos embutidos de docs/linguagem/10-excecoes.md:108-123. Nome de SUBCLASSE (raiz seria UnicodeError/ValueError), que nada pega."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:6787"
+        ]
+      },
+      {
+        "tipo": "LookupError",
+        "ocorrencias": 2,
+        "suspeitas": [
+          "vm-b: so existe nestes 2 sitios em TODO o vm/poolscript_vm.c (grep -c LookupError = 2, ambos na regiao) e nao aparece em nenhuma tabela de docs/linguagem/10-excecoes.md. Nome inventado que nenhum programa sabe que existe pra escrever no catch."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:6672"
+        ]
+      },
+      {
+        "tipo": "%.60s do buffer tp (vem de vm/ps_db.c) — \"DatabaseError\" ou 1 dos 251 nomes de vm/ps_pgerr.h",
+        "ocorrencias": 2,
+        "suspeitas": [
+          "vm-d: so existe num sitio"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:16599"
+        ]
+      },
+      {
+        "tipo": "(nenhum — o sitio escreve so vm->erro e faz return -1, erro_tipo fica com o valor ANTERIOR)",
+        "ocorrencias": 2,
+        "suspeitas": [
+          "vm-d: so existe num sitio"
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:20710"
+        ]
+      },
+      {
+        "tipo": "ConversionError",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "vm-e: so existe num sitio: 23330 e o UNICO ponto da regiao que levanta ConversionError, e o unico do arquivo inteiro fora da propria tabela EXCECOES (3213). Alcanca apenas `char x = <inteiro fora de 0..0x10FFFF>`."
+        ],
+        "onde": [
+          "vm/poolscript_vm.c:23330"
+        ]
+      },
+      {
+        "tipo": "UniqueViolation",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — o caso classico: quem escreve catch (DatabaseError e) para tratar chave duplicada NAO pega nada. E o mesmo UNIQUE no sqlite DA DatabaseError (medido)."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:101"
+        ]
+      },
+      {
+        "tipo": "UndefinedTable",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — vm/ps_db.c:161, SQLSTATE 42P01. No sqlite o mesmo SELECT sai como DatabaseError (medido)."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:173"
+        ]
+      },
+      {
+        "tipo": "UndefinedColumn",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — vm/ps_db.c:161, SQLSTATE 42703."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:159"
+        ]
+      },
+      {
+        "tipo": "DivisionByZero",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: digitado errado (divergencia de nome) + subclasse sem pai — a linguagem chama divisao por zero de ZeroDivisionError (vm/poolscript_vm.c:3207, 21634-21725); o mesmo conceito vindo do banco se chama DivisionByZero. Dois nomes para a mesma coisa no mesmo motor, e nenhum pega o outro."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:51"
+        ]
+      },
+      {
+        "tipo": "InsufficientPrivilege",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — vm/ps_db.c:161, SQLSTATE 42501. A mensagem diz \"permission denied\" e o motor TEM PermissionError (vm/poolscript_vm.c:3194), mas o tipo emitido nao e nem PermissionError nem DatabaseError."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:152"
+        ]
+      },
+      {
+        "tipo": "StringDataRightTruncation",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — vm/ps_db.c:161, SQLSTATE 22001. Valor que nao serve para a coluna: nem ValueError nem DatabaseError."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:30"
+        ]
+      },
+      {
+        "tipo": "ConnectionFailure",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — nome de falha de conexao que nao e NetworkError. A falha de conexao do MESMO driver, quando acontece no connect, vira NetworkError (medido: \"4) NetworkError: falha de conexao: connection to server at \\\"127.0.0.1\\\", port 9 failed\"). Mesmo evento, dois tipos, conforme a hora em que acontece."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:14"
+        ]
+      },
+      {
+        "tipo": "OutOfMemory",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — falta de memoria com um nome que nao e MemoryError (vm/poolscript_vm.c:3223). Nem catch (MemoryError e) nem catch (DatabaseError e) pegam."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:198"
+        ]
+      },
+      {
+        "tipo": "DiskFull",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — nem OSError nem DatabaseError pegam."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:197"
+        ]
+      },
+      {
+        "tipo": "SystemError",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: so existe num sitio + subclasse sem pai — nome generico de \"erro do sistema\" que existe SO por causa de um SQLSTATE de banco. Nao esta na tabela de excecoes da linguagem (vm/poolscript_vm.c:3178-3228), entao so casa por igualdade literal e ninguem sabe que existe pra escrever."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:217"
+        ]
+      },
+      {
+        "tipo": "AssertFailure",
+        "ocorrencias": 1,
+        "suspeitas": [
+          "libs: digitado errado (divergencia de nome) + subclasse sem pai — a linguagem chama falha de assert de AssertionError (vm/poolscript_vm.c:3225); vindo do banco chama AssertFailure. Nenhum pega o outro."
+        ],
+        "onde": [
+          "vm/ps_pgerr.h:255"
+        ]
+      }
+    ],
+    "medidas": [
+      {
+        "tipo": "TypeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[MEDIDO COM ./pool 15.90.14, binario de 2026-09-11 12:18:10, HEAD d037e16 'hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto'. O defeito descrito NAO reproduz mais neste binario.]\n\n--- 1) sem try: post(abs(\"a\")) ---\nTypeError: bad operand type for abs(): 'str'\n  em rga_01_TypeError_1.ps, linha 1\n  | post(abs(\"a\"))\n  |         ^^^\n(rc=1)\n\n--- 2) catch (TypeError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\n--- CONTROLE (prova que o catch nao virou pega-tudo) ---\ncatch (BananaError e) -> NAO pegou:\nTypeError: bad operand type for abs(): 'str' (linha 2)\n  em rga_15_controle_tipo_bobo.ps, linha 1\n  | try {\n  | ^^^\n(rc=1)\ncatch (ValueError e) -> NAO pegou:\nTypeError: bad operand type for abs(): 'str' (linha 2)\n  em rga_16_controle_tipo_irmao.ps, linha 1\n  | try {\n  | ^^^\n(rc=1)\n\nTabela: vm/poolscript_vm.c:3220 { \"TypeError\", \"Exception\" }"
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: post(pow(2, 99999999)) ---\nMemoryError: expoente grande demais em pow()\n  em rga_02_MemoryError_1.ps, linha 1\n  | post(pow(2, 99999999))\n  |         ^^^\n(rc=1)\n\n--- 2) catch (MemoryError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nSitio do erro: vm/poolscript_vm.c:3695 BERRO(vm, \"MemoryError\", \"expoente grande demais em pow()\")\nTabela: vm/poolscript_vm.c:3224 { \"MemoryError\", \"Exception\" }"
+      },
+      {
+        "tipo": "ValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: post(int(\"abc\")) ---\nValueError: invalid literal for int() with base 10: 'abc'\n  em rga_03_ValueError_1.ps, linha 1\n  | post(int(\"abc\"))\n  |         ^^^\n(rc=1)\n\n--- 2) catch (ValueError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nEXTRA MEDIDO: 'raise ValueError(\"boom\")' dentro de try { } catch (Exception e) -> imprime 'pegou' (rc=0). O caso que o orquestrador reportou como nao-pegando tambem pega neste binario.\nTabela: vm/poolscript_vm.c:3210 { \"ValueError\", \"Exception\" }"
+      },
+      {
+        "tipo": "RuntimeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Gatilho que achei (o orquestrador nao tinha): import sockets / post(sockets.getprotobyname(\"zzznaoexiste\")), sitio em vm/poolscript_vm.c:13998 BERRO(vm, \"RuntimeError\", \"protocol not found\").\n\n--- 1) sem try ---\nRuntimeError: protocol not found\n  em rga_04_RuntimeError_1.ps, linha 2\n  | post(sockets.getprotobyname(\"zzznaoexiste\"))\n  |                            ^^^\n(rc=1)\n\n--- 2) catch (RuntimeError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3217 { \"RuntimeError\", \"Exception\" }; filho RecursionError em 3218."
+      },
+      {
+        "tipo": "ZeroDivisionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: post(pow(0, -1)) ---\nZeroDivisionError: 0.0 cannot be raised to a negative power\n  em rga_05_ZeroDivisionError_1.ps, linha 1\n  | post(pow(0, -1))\n  |         ^^^\n(rc=1)\n\n--- 2) catch (ZeroDivisionError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3207 { \"ZeroDivisionError\", \"ArithmeticError\" } e 3206 { \"ArithmeticError\", \"Exception\" } — o Exception pega por DOIS saltos de pai."
+      },
+      {
+        "tipo": "OverflowError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: post(int(flo(\"inf\"))) ---\nOverflowError: cannot convert flo infinity to integer\n  em rga_06_OverflowError_1.ps, linha 1\n  | post(int(flo(\"inf\")))\n  |         ^^^\n(rc=1)\n\n--- 2) catch (OverflowError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nSitio: vm/poolscript_vm.c:3429 e 3738 BERRO(vm, \"OverflowError\", \"cannot convert flo infinity to integer\").\nTabela: vm/poolscript_vm.c:3208 { \"OverflowError\", \"ArithmeticError\" }."
+      },
+      {
+        "tipo": "FileNotFoundError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: import os / post(os.loadFile(\"/tmp/nao_existe_rga.txt\")) ---\nFileNotFoundError: [Errno 2] No such file or directory: '/tmp/nao_existe_rga.txt'\n  em rga_07_FileNotFoundError_1.ps, linha 2\n  | post(os.loadFile(\"/tmp/nao_existe_rga.txt\"))\n  |                 ^^^\n(rc=1)\n\n--- 2) catch (FileNotFoundError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nEXTRA MEDIDO (o outro sintoma do orquestrador): catch (OSError e) no MESMO trecho -> imprime 'pegou' (rc=0). O pai agora pega o filho.\nTabela: vm/poolscript_vm.c:3192 { \"FileNotFoundError\", \"OSError\" }; tipo_do_errno em vm/poolscript_vm.c:3251 (case ENOENT)."
+      },
+      {
+        "tipo": "FileExistsError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: import os / os.mkdir(\"/tmp\") ---\nFileExistsError: [Errno 17] File exists: '/tmp'\n  em rga_08_FileExistsError_1.ps, linha 2\n  | os.mkdir(\"/tmp\")\n  |         ^^^\n(rc=1)\n\n--- 2) catch (FileExistsError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3191 { \"FileExistsError\", \"OSError\" }; tipo_do_errno case EEXIST em vm/poolscript_vm.c:3250."
+      },
+      {
+        "tipo": "IsADirectoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: import os / os.writeFile(\"/tmp\", \"x\") ---\nIsADirectoryError: [Errno 21] Is a directory: '/tmp'\n  em rga_09_IsADirectoryError_1.ps, linha 2\n  | os.writeFile(\"/tmp\", \"x\")\n  |             ^^^\n(rc=1)\n\n--- 2) catch (IsADirectoryError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3193 { \"IsADirectoryError\", \"OSError\" }; tipo_do_errno case EISDIR em vm/poolscript_vm.c:3252."
+      },
+      {
+        "tipo": "NotADirectoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: import os / post(os.ls(\"/etc/hostname\")) ---\nNotADirectoryError: [Errno 20] Not a directory: '/etc/hostname'\n  em rga_10_NotADirectoryError_1.ps, linha 2\n  | post(os.ls(\"/etc/hostname\"))\n  |           ^^^\n(rc=1)\n\n--- 2) catch (NotADirectoryError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3194 { \"NotADirectoryError\", \"OSError\" }; tipo_do_errno case ENOTDIR em vm/poolscript_vm.c:3253."
+      },
+      {
+        "tipo": "PermissionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "--- 1) sem try: import os / post(os.loadFile(\"/etc/shadow\")) (uid 1000, /etc/shadow e root:shadow 0640) ---\nPermissionError: [Errno 13] Permission denied: '/etc/shadow'\n  em rga_11_PermissionError_1.ps, linha 2\n  | post(os.loadFile(\"/etc/shadow\"))\n  |                 ^^^\n(rc=1)\n\n--- 2) catch (PermissionError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3195 { \"PermissionError\", \"OSError\" }; tipo_do_errno case EACCES/EPERM em vm/poolscript_vm.c:3254-3255."
+      },
+      {
+        "tipo": "OSError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "O gatilho do enunciado (os.rmdir(\"/caminho/de/uma/pasta/NAO/vazia\")) da ENOENT -> FileNotFoundError, nao OSError puro. Usei uma pasta REAL nao vazia que criei no scratchpad, pra cair no ENOTEMPTY (default de tipo_do_errno, vm/poolscript_vm.c:3256).\n\n--- 1) sem try: import os / os.rmdir(\"<scratchpad>/rga_naovazia\") ---\nOSError: [Errno 39] Directory not empty: '/tmp/claude-1000/-home-kleberdevion-poolscript-lang/6d969e59-69de-417b-8aa4-653e4a35fc16/scratchpad/rga_naovazia'\n  em rga_12_OSError_1.ps, linha 2\n  | os.rmdir(\"/tmp/claude-1000/-home-kleberdevion-poolscript-lang/6d969e59-69de-417b-8aa4-653e4a35fc16/scratchpad/rga_naovazia\")\n  |         ^^^\n(rc=1)\n\n--- 2) catch (OSError e) ---\npegou\n(rc=0)\n\n--- 3) catch (Exception e) ---\npegou\n(rc=0)\n\n--- 4) catch (e) ---\npegou\n(rc=0)\n\nTabela: vm/poolscript_vm.c:3190 { \"OSError\", \"Exception\" }.\n\nBURACO QUE SOBRA (medido na tabela, nao no ./pool): IOError esta em vm/poolscript_vm.c:3200 como { \"IOError\", \"Exception\" } — IRMAO de OSError, de proposito, com o comentario dizendo que a doc do open() promete que catch (IOError e) NAO pega FileNotFoundError. E ImportError continua fora da hierarquia: o comentario em vm/poolscript_vm.c:25298 (\"Aqui nao ha hierarquia — o catch compara o nome\"), que o enunciado citou como linha 25198, hoje fala SO do par ImportError/ModuleNotFoundError, nao do catch em geral."
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "ATENCAO: medido com ./pool 15.90.14 [PSVM], binario de 2026-09-11 12:18:10, que JA CONTEM o commit d037e16 \"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\". O defeito descrito NAO reproduz mais neste binario.\n\n$ ./pool mem_1.ps   (sem try)\nMemoryError: memória insuficiente: ljust() pediu largura 99999999999\n  em mem_1.ps, linha 1\n  | x = \"abc\".ljust(99999999999)\n  |                ^^^\n[rc=1]\n\n$ ./pool mem_2.ps   catch (MemoryError e)\npegou\n[rc=0]\n\n$ ./pool mem_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool mem_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "TypeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool typ_1.ps   (sem try)\nTypeError: can only join an iterable\n  em typ_1.ps, linha 1\n  | x = \"a,b\".join(5)\n  |               ^^^\n[rc=1]\n\n$ ./pool typ_2.ps   catch (TypeError e)\npegou\n[rc=0]\n\n$ ./pool typ_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool typ_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "ValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool val_1.ps   (sem try)\nValueError: valor invalido: separador vazio em partition()\n  em val_1.ps, linha 1\n  | x = \"a,b\".partition(\"\")\n  |                    ^^^\n[rc=1]\n\n$ ./pool val_2.ps   catch (ValueError e)\npegou\n[rc=0]\n\n$ ./pool val_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool val_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "RuntimeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "CONSEGUI disparar (o orquestrador nao tinha achado gatilho). Gatilho: backtracking catastrofico no regex; sitio vm/poolscript_vm.c:9840 MERRO(vm, \"RuntimeError\", \"regex: backtracking demais\").\nPrograma:\nimport regex\nx = regex.match(\"(a+)+$\", \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\")\n\n$ ./pool run_1.ps   (sem try)\nRuntimeError: regex: backtracking demais\n  em run_1.ps, linha 2\n  | x = regex.match(\"(a+)+$\", \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa!\")\n  |                ^^^\n[rc=1]\n\n$ ./pool run_2.ps   catch (RuntimeError e)\npegou\n[rc=0]\n\n$ ./pool run_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool run_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "UnicodeDecodeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool udec_1.ps   (sem try)\nUnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte\n  em udec_1.ps, linha 2\n  | x = b.decode(\"utf-8\")\n  |             ^^^\n[rc=1]\n\n$ ./pool udec_2.ps   catch (UnicodeDecodeError e)\npegou\n[rc=0]\n\n$ ./pool udec_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool udec_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "UnicodeEncodeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool uenc_1.ps   (sem try)\nUnicodeEncodeError: 'ascii' codec can't encode character '\\xe1' in position 0: ordinal not in range(128)\n  em uenc_1.ps, linha 1\n  | x = \"á\".encode(\"ascii\")\n  |               ^^^\n[rc=1]\n\n$ ./pool uenc_2.ps   catch (UnicodeEncodeError e)\npegou\n[rc=0]\n\n$ ./pool uenc_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool uenc_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "IndexError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool idx_1.ps   (sem try)\nIndexError: pop from empty list\n  em idx_1.ps, linha 1\n  | x = [].pop()\n  |           ^^^\n[rc=1]\n\n$ ./pool idx_2.ps   catch (IndexError e)\npegou\n[rc=0]\n\n$ ./pool idx_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool idx_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "RecursionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "CONSEGUI disparar (o orquestrador nao tinha achado gatilho). Gatilho: recursao infinita; sitio vm/poolscript_vm.c:22294 ERRO_T(vm, \"RecursionError\", \"maximum recursion depth exceeded\").\nPrograma:\nfunct f(n) {\n    return f(n + 1)\n}\nx = f(0)\n\n$ ./pool rec_1.ps   (sem try)\nRecursionError: maximum recursion depth exceeded\n\nTraceback (arquivo mais recente por último):\n  em rec_1.ps, linha 2\n  |     return f(n + 1)\n  |     ^^^\n  em rec_1.ps, linha 2\n  |     return f(n + 1)\n[rc=1]\n\n$ ./pool rec_2.ps   catch (RecursionError e)\npegou\n[rc=0]\n\n$ ./pool rec_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool rec_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "LookupError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool lkp_1.ps   (sem try)\nLookupError: unknown encoding: naoexiste\n  em lkp_1.ps, linha 1\n  | x = \"a\".encode(\"naoexiste\")\n  |               ^^^\n[rc=1]\n\n$ ./pool lkp_2.ps   catch (LookupError e)\npegou\n[rc=0]\n\n$ ./pool lkp_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool lkp_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "KeyError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool key_1.ps   (sem try)\nKeyError: 'nao'\n  em key_1.ps, linha 1\n  | x = \"{nao}\".format(1)\n  |                   ^^^\n[rc=1]\n\n$ ./pool key_2.ps   catch (KeyError e)\npegou\n[rc=0]\n\n$ ./pool key_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool key_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "AttributedValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool att_1.ps   (sem try)\nAttributedValueError: parâmetro x de f() esperava str, recebeu int\n  em att_1.ps, linha 4\n  | f(1)\n  |  ^^^\n[rc=1]\n\n$ ./pool att_2.ps   catch (AttributedValueError e)\npegou\n[rc=0]\n\n$ ./pool att_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool att_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "FileNotFoundError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool fnf_1.ps   (sem try)\nFileNotFoundError: [Errno 2] No such file or directory: '/tmp/nao_existe_xyz_reg2.txt'\n  em fnf_1.ps, linha 1\n  | x = open(\"/tmp/nao_existe_xyz_reg2.txt\")\n  |         ^^^\n[rc=1]\n\n$ ./pool fnf_2.ps   catch (FileNotFoundError e)\npegou\n[rc=0]\n\n$ ./pool fnf_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool fnf_4.ps   catch (e)\npegou\n[rc=0]\n\nMedicao extra sobre a premissa do orquestrador, mesmo trecho com catch (OSError e):\n$ ./pool os_1.ps\npegou\n[rc=0]\nOu seja: catch (OSError e) AGORA pega FileNotFoundError."
+      },
+      {
+        "tipo": "IsADirectoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool isd_1.ps   (sem try)\nIsADirectoryError: [Errno 21] Is a directory: '/tmp'\n  em isd_1.ps, linha 1\n  | x = open(\"/tmp\")\n  |         ^^^\n[rc=1]\n\n$ ./pool isd_2.ps   catch (IsADirectoryError e)\npegou\n[rc=0]\n\n$ ./pool isd_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool isd_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "PermissionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "$ ./pool prm_1.ps   (sem try)\nPermissionError: [Errno 13] Permission denied: '/etc/shadow'\n  em prm_1.ps, linha 1\n  | x = open(\"/etc/shadow\")\n  |         ^^^\n[rc=1]\n\n$ ./pool prm_2.ps   catch (PermissionError e)\npegou\n[rc=0]\n\n$ ./pool prm_3.ps   catch (Exception e)\npegou\n[rc=0]\n\n$ ./pool prm_4.ps   catch (e)\npegou\n[rc=0]"
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nMemoryError: sem memoria\n  em regQ_01_MemoryError_1.ps, linha 2\n  | bytes.new(9000000000000000000)\n  |          ^^^\n[exit=1]\n\n[2 catch (MemoryError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "TypeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nTypeError: get() argument 1 must be bytes, not str\n  em regQ_02_TypeError_1.ps, linha 2\n  | bytes.get(\"nao sou bytes\", 0)\n  |          ^^^\n[exit=1]\n\n[2 catch (TypeError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "RuntimeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nRuntimeError: service/proto not found\n  em regQ_03_RuntimeError_1.ps, linha 2\n  | sockets.getservbyname(\"zzz_nao_existe\", \"tcp\")\n  |                      ^^^\n[exit=1]\n\n[2 catch (RuntimeError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "IOError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nIOError: run(): prog_zz_nao_existe: No such file or directory\n  em regQ_04_IOError_1.ps, linha 2\n  | os.run([\"prog_zz_nao_existe\"])\n  |       ^^^\n[exit=1]\n\n[2 catch (IOError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]\n\nNOTA: IOError esta na tabela como IRMAO de OSError (vm/poolscript_vm.c:3199), nao pai nem filho — comentario em 3196-3198 diz que a doc do open() promete, com teste, que catch (IOError e) NAO pega FileNotFoundError."
+      },
+      {
+        "tipo": "ValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nValueError: loadFile: 'latin-1' e um charset, o 2 argumento e o mode ('r' ou 'rb'). Pra ler com charset: os.readFile(path, encoding=\"latin-1\")\n  em regQ_05_ValueError_1.ps, linha 3\n  | os.loadFile(\"/tmp/regQ_d.csv\", \"latin-1\")\n  |            ^^^\n[exit=1]\n\n[2 catch (ValueError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "OSError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nOSError: illegal IP address string passed to inet_aton\n  em regQ_06_OSError_1.ps, linha 2\n  | sockets.inet_aton(\"nao_e_ip\")\n  |                  ^^^\n[exit=1]\n\n[2 catch (OSError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "DatabaseError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nDatabaseError: near \"ISTO\": syntax error\n  em regQ_07_DatabaseError_1.ps, linha 3\n  | cn.execute(\"ISTO NAO E SQL\")\n  |           ^^^\n[exit=1]\n\n[2 catch (DatabaseError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "OverflowError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nOverflowError: can't convert negative int to unsigned\n  em regQ_08_OverflowError_1.ps, linha 2\n  | bytes.fromint(-1)\n  |              ^^^\n[exit=1]\n\n[2 catch (OverflowError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "IndexError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nIndexError: index out of range\n  em regQ_09_IndexError_1.ps, linha 3\n  | bytes.get(b, 99)\n  |          ^^^\n[exit=1]\n\n[2 catch (IndexError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "NetworkError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nNetworkError: falha de conexão: Connection refused\n  em regQ_10_NetworkError_1.ps, linha 2\n  | request.get(\"http://127.0.0.1:1/nada\")\n  |            ^^^\n[exit=1]\n\n[2 catch (NetworkError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "TimeoutError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "UNICA DIVERGENCIA DAS 14. Medido com listener silencioso: setsid nc -k -l 127.0.0.1 18150 (aceita e nunca responde). Rodado DUAS vezes, resultado identico.\n\n[1 sem try]\nTimeoutError: operação expirou: requisição passou de 2s (url=http://127.0.0.1:18150/)\n  em regQ_11_TimeoutError_1.ps, linha 2\n  | request.get(\"http://127.0.0.1:18150/\", timeout=2)\n  |            ^^^\n[exit=1]\n\n[2 catch (TimeoutError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]  <-- NAO PEGOU, o programa morreu\nTimeoutError: operação expirou: requisição passou de 2s (url=http://127.0.0.1:18150/) (linha 2)\n  em regQ_11_TimeoutError_3.ps, linha 2\n  | try { request.get(\"http://127.0.0.1:18150/\", timeout=2) }\n  | ^^^\n[exit=1]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]\n\nCAUSA, com prova: TimeoutError e levantado em vm/ps_http.c:324, :350 e :376, mas esta AUSENTE da tabela EXCECOES (vm/poolscript_vm.c:3186-3228) — 'grep -c TimeoutError vm/poolscript_vm.c' devolve 0. Cai no caminho documentado em excecao_pai (vm/poolscript_vm.c:3235): 'fora da tabela: so casa pelo proprio nome'. Por isso variante 2 (nome exato) e 4 (sem tipo) pegam e variante 3 (pai) nao."
+      },
+      {
+        "tipo": "FileNotFoundError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nFileNotFoundError: [Errno 2] No such file or directory: '/tmp/nao_existe_regQ.txt'\n  em regQ_12_FileNotFoundError_1.ps, linha 2\n  | os.loadFile(\"/tmp/nao_existe_regQ.txt\")\n  |            ^^^\n[exit=1]\n\n[2 catch (FileNotFoundError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "IsADirectoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nIsADirectoryError: [Errno 21] Is a directory: '/tmp'\n  em regQ_13_IsADirectoryError_1.ps, linha 2\n  | os.readFile(\"/tmp\")\n  |            ^^^\n[exit=1]\n\n[2 catch (IsADirectoryError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "NotADirectoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nNotADirectoryError: [Errno 20] Not a directory: '/etc/passwd'\n  em regQ_14_NotADirectoryError_1.ps, linha 2\n  | os.pathFolder(\"/etc/passwd\")\n  |              ^^^\n[exit=1]\n\n[2 catch (NotADirectoryError e)]\npegou\npassou do try\n[exit=0]\n\n[3 catch (Exception e)]\npegou\npassou do try\n[exit=0]\n\n[4 catch (e)]\npegou\npassou do try\n[exit=0]"
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "ATENCAO: o binario ./pool (mtime 2026-09-11 12:18:10) JA ESTA RECONSTRUIDO com o commit d037e16 \"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\", que entrou em 2026-09-11 12:19. A tabela EXCECOES esta em vm/poolscript_vm.c:3186 e o teste de captura e excecao_eh() em vm/poolscript_vm.c:3242. Por isso 'catch (Exception e)' PEGA, ao contrario do que o orquestrador mediu no binario anterior.\n\nArquivos: zq_01_mem_1..4.ps, rodados com ( ulimit -v 52000; timeout 60 nice -n 19 ./pool ... )\n\n===== zq_01_mem_1 (sem try) =====\nMemoryError: sem memoria em map()\n  em zq_01_mem_1.ps, linha 7\n  | post(len(map(l, funct(x){ return x })))\n  |             ^^^\nrc=1\n===== zq_01_mem_2 (catch (MemoryError e)) =====\npegou\nrc=0\n===== zq_01_mem_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_01_mem_4 (catch (e)) =====\npegou\nrc=0"
+      },
+      {
+        "tipo": "TypeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Arquivos: zq_02_type_1..4.ps\n\n===== zq_02_type_1 (sem try) =====\nTypeError: 'int' object is not iterable\n  em zq_02_type_1.ps, linha 1\n  | post(map(5, funct(x){ return x }))\n  |         ^^^\nrc=1\n===== zq_02_type_2 (catch (TypeError e)) =====\npegou\nrc=0\n===== zq_02_type_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_02_type_4 (catch (e)) =====\npegou\nrc=0\n\nLinha na tabela: { \"TypeError\", \"Exception\" } em vm/poolscript_vm.c:3220."
+      },
+      {
+        "tipo": "RuntimeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Arquivos: zq_03_run_1..4.ps. Sitio que escreve o tipo: vm/poolscript_vm.c:20736.\n\n===== zq_03_run_1 (sem try) =====\nRuntimeError: funct 'semself' dentro de Entity deve ter 'self' como primeiro parâmetro\n  em zq_03_run_1.ps, linha 5\n  | post(map([1,2], o.semself))\n  |         ^^^\nrc=1\n===== zq_03_run_2 (catch (RuntimeError e)) =====\npegou\nrc=0\n===== zq_03_run_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_03_run_4 (catch (e)) =====\npegou\nrc=0"
+      },
+      {
+        "tipo": "DatabaseError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Arquivos: zq_04_db_1..4.ps. Linha na tabela: { \"DatabaseError\", \"Exception\" } em vm/poolscript_vm.c:3227.\n\n===== zq_04_db_1 (sem try) =====\nDatabaseError: cursor fechado: nao da pra operar depois de close()\n  em zq_04_db_1.ps, linha 5\n  | cur.execute(\"SELECT 1\")\n  |            ^^^\nrc=1\n===== zq_04_db_2 (catch (DatabaseError e)) =====\npegou\nrc=0\n===== zq_04_db_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_04_db_4 (catch (e)) =====\npegou\nrc=0"
+      },
+      {
+        "tipo": "NetworkError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Arquivos: zq_05_net_1..4.ps. NetworkError foi pendurado em OSError na tabela: { \"NetworkError\", \"OSError\" } em vm/poolscript_vm.c:3193 — entao sobe NetworkError -> OSError -> Exception.\n\n===== zq_05_net_1 (sem try) =====\nNetworkError: bind 127.0.0.1:80: Permission denied\n  em zq_05_net_1.ps, linha 3\n  | app(host=\"127.0.0.1\", port=80)\n  |    ^^^\nrc=1\n===== zq_05_net_2 (catch (NetworkError e)) =====\npegou\nrc=0\n===== zq_05_net_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_05_net_4 (catch (e)) =====\npegou\nrc=0"
+      },
+      {
+        "tipo": "AssertionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Arquivos: zq_06_ass_1..4.ps. Linha na tabela: { \"AssertionError\", \"Exception\" } em vm/poolscript_vm.c:3225.\n\n===== zq_06_ass_1 (sem try) =====\nAssertionError: False nao e verdadeiro\n  em zq_06_ass_1.ps, linha 1\n  | assert(false)\n  |       ^^^\nrc=1\n===== zq_06_ass_2 (catch (AssertionError e)) =====\npegou\nrc=0\n===== zq_06_ass_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_06_ass_4 (catch (e)) =====\npegou\nrc=0"
+      },
+      {
+        "tipo": "ValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Arquivos: zq_07_val_1..4.ps. Linha na tabela: { \"ValueError\", \"Exception\" } em vm/poolscript_vm.c:3210.\n\n===== zq_07_val_1 (sem try) =====\nValueError: cookie() nao aceita quebra de linha no nome nem no valor\n  em zq_07_val_1.ps, linha 3\n  | r.cookie(\"sid\", \"a\\nb\")\n  |         ^^^\nrc=1\n===== zq_07_val_2 (catch (ValueError e)) =====\npegou\nrc=0\n===== zq_07_val_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_07_val_4 (catch (e)) =====\npegou\nrc=0"
+      },
+      {
+        "tipo": "RecursionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "CORRIGE O \"nao consegui\" DO ORQUESTRADOR: da pra disparar, so nao pelo caminho de map/chama_valor. Recursao DIRETA passa pela guarda de OP_CALL em vm/poolscript_vm.c:22504 (ERRO_T(vm, \"RecursionError\", ...)), que roda ANTES de a pilha C estourar.\n\nArquivos: zq_08_rec_1..4.ps, com\n  funct f(x) {\n      return f(x + 1)\n  }\n  post(f(1))\n\n===== zq_08_rec_1 (sem try; 195 linhas de traceback, colo o inicio) =====\nRecursionError: maximum recursion depth exceeded\n\nTraceback (arquivo mais recente por último):\n  em zq_08_rec_1.ps, linha 2\n  |     return f(x + 1)\n  |     ^^^\nrc=1\n===== zq_08_rec_2 (catch (RecursionError e)) =====\npegou\nrc=0\n===== zq_08_rec_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_08_rec_4 (catch (e)) =====\npegou\nrc=0\n\nLinha na tabela: { \"RecursionError\", \"RuntimeError\" } em vm/poolscript_vm.c:3218, e RuntimeError -> Exception em :3217.\n\nO caminho de map CONTINUA MATANDO O PROCESSO — reproduzido agora (arquivo zq_08b_recmap.ps):\n  funct f(x) {\n      return map([x], f)\n  }\n  post(f(1))\nsaida literal:\n/bin/bash, linha 1: 452845 Falha de segmentação  timeout 60 nice -n 19 ./pool .../zq_08b_recmap.ps\nrc=139\ntimeout: o comando monitorado despejou núcleo\nA pilha C morre dentro de chama_valor (vm/poolscript_vm.c:20669) antes de qualquer guarda de profundidade — chama_valor nao tem checagem de frames_teto/locals_teto/stack_teto nenhuma."
+      },
+      {
+        "tipo": "%.60s do buffer tp (vem de vm/ps_db.c) — \"DatabaseError\" ou 1 dos 251 nomes de vm/ps_pgerr.h",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Disparei o ramo \"DatabaseError\" do sitio. Cadeia: vm/ps_db.c:233 chama pg_tipo_erro (vm/ps_db.c:154), que escreve tipo_out; a VM copia com %.60s em vm/poolscript_vm.c:16599 e :16829.\n\nArquivos: zq_09_tp_1..4.ps\n\n===== zq_09_tp_1 (sem try) =====\nDatabaseError: erro de banco de dados: near \"SELEC\": syntax error\n  em zq_09_tp_1.ps, linha 3\n  | c.cursor().execute(\"SELEC 1\")\n  |                   ^^^\nrc=1\n===== zq_09_tp_2 (catch (DatabaseError e)) =====\npegou\nrc=0\n===== zq_09_tp_3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_09_tp_4 (catch (e)) =====\npegou\nrc=0\n\nAS FLAGS ACIMA VALEM SO PRO RAMO \"DatabaseError\". O OUTRO RAMO DO MESMO SITIO FALHA — ver a linha seguinte da matriz (ConnectionFailure). Contagem feita agora: vm/ps_pgerr.h tem 252 entradas, 251 nomes unicos, e cruzando com a tabela EXCECOES (vm/poolscript_vm.c:3186-3228) so 1 nome coincide, SyntaxError. Ou seja 250 dos 251 nomes que este sitio pode escrever ficam FORA da hierarquia."
+      },
+      {
+        "tipo": "ConnectionFailure (SQLSTATE 08006, vm/ps_pgerr.h:13) — nome que o MESMO sitio de vm/ps_db.c emite, fora da tabela EXCECOES",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ESTA E A EXCECAO QUE O ORQUESTRADOR PEDIU PRA PROCURAR: existe tipo que 'catch (Exception e)' NAO pega, mesmo no binario ja corrigido.\n\nNao tenho um postgres respondendo, entao levantei o nome pelo `raise`, que aceita nome de tipo arbitrario e alimenta o mesmo campo erro_tipo que o sitio de ps_db.c alimenta. Arquivos: zq_11_raise_1..4.ps\n\n===== zq_11_raise_1 (sem try) =====\nConnectionFailure: nome vindo do SQLSTATE\n  em zq_11_raise_1.ps, linha 1\n  | raise ConnectionFailure(\"nome vindo do SQLSTATE\")\n  | ^^^\nrc=1\n===== zq_11_raise_2 (catch (ConnectionFailure e)) =====\npegou\nrc=0\n===== zq_11_raise_3 (catch (Exception e)) =====\nConnectionFailure: nome vindo do SQLSTATE (linha 2)\n  em zq_11_raise_3.ps, linha 1\n  | try {\n  | ^^^\nrc=1\n===== zq_11_raise_4 (catch (e)) =====\npegou\nrc=0\n\nCausa no codigo: excecao_pai (vm/poolscript_vm.c:3229) devolve NULL pra nome que nao esta na tabela, e o comentario em :3182 diz que isso e proposital — \"Tipo levantado que NAO estiver nesta tabela continua sendo pego pelo catch do proprio nome e pelo catch (e) sem tipo\". O buraco e que 250 nomes que o PROPRIO motor emite (vm/ps_pgerr.h) caem nessa condicao, mais qualquer nome que o usuario use no `raise`."
+      },
+      {
+        "tipo": "(nenhum — o sitio escreve so vm->erro e faz return -1, erro_tipo fica com o valor ANTERIOR)",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "CORRIGE O \"nao consegui\" DO ORQUESTRADOR: cheguei no sitio vm/poolscript_vm.c:20710 (`if (n + 1 > 8) { snprintf(vm->erro, ..., \"argumentos demais\"); return -1; }`, sem snprintf em erro_tipo).\n\nO caminho e o chamador de vm/poolscript_vm.c:19343 (corpo da fibra async). Precisa de: @static + async + 1o parametro chamado self + 9 parametros + 8 argumentos. Com 8 parametros (self + 7) como o orquestrador tentou, n+1 = 8 e a guarda nao dispara. Com metodo de INSTANCIA tambem nao chega: o ramo BOUND de OP_CALL (vm/poolscript_vm.c:22430) roda o corpo INLINE e nunca cria fibra — medi `o.m(1..8)` numa async funct de instancia e imprimiu 1, sem erro.\n\nArquivos: zq_10_semtipo_v1..4.ps\n  class C() {\n      @static\n      async funct m(self, a, b, c, d, e, f, g, h) {\n          return a\n      }\n  }\n  fu = C.m(1, 2, 3, 4, 5, 6, 7, 8)\n  post(await fu)\n\n===== zq_10_semtipo_v1 (sem try) =====\nRuntimeError: argumentos demais\n  em zq_10_semtipo_v1.ps, linha 8\n  | post(await fu)\n  |      ^^^\nrc=1\n===== zq_10_semtipo_v2 (catch (RuntimeError e)) =====\npegou\nrc=0\n===== zq_10_semtipo_v3 (catch (Exception e)) =====\npegou\nrc=0\n===== zq_10_semtipo_v4 (catch (e)) =====\npegou\nrc=0\n\nO \"RuntimeError\" que aparece NAO vem do sitio: vem do fallback de vm/poolscript_vm.c:19632, `fu->erro_tipo[0] ? fu->erro_tipo : \"RuntimeError\"`, porque vm->erro_tipo estava vazio quando a fibra copiou o tipo em :19347. Testei plantar um tipo anterior (zq_10_semtipo_2b.ps: um `1 / 0` pego por `catch (e)` antes da chamada) e a saida NAO mudou — continuou `RuntimeError: argumentos demais`, porque o handler do catch limpa erro_tipo. Nesse caminho o vazamento do tipo anterior nao chega ao usuario; o que chega e um tipo generico inventado pelo fallback, que nao diz nada sobre o defeito real (numero de argumentos).\n\nO gemeo em vm/poolscript_vm.c:20739 (mesmo `if (n + 1 > 8)` no ramo BOUND) eu NAO consegui alcancar: dos 5 chamadores de chama_valor, 15147 e 20386/20410 passam n=1, 19343 passa V_FUNC (nao BOUND), e 18616 so preenche argumentos quando o handler e V_FUNC (vm/poolscript_vm.c:18598), entao com BOUND chega nargs=0."
+      },
+      {
+        "tipo": "RuntimeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nRuntimeError: sequencia grande demais na repeticao\n  em reg5_RuntimeError_1.ps, linha 1\n  | l = [1, 2] * 9999999999\n  |            ^^^\n(rc=1)\n[2 catch (RuntimeError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "TypeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nTypeError: 'int' object is not subscriptable\n  em reg5_TypeError_1.ps, linha 1\n  | x = 5[1]\n  |      ^^^\n(rc=1)\n[2 catch (TypeError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "RecursionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try] (saida cortada em 12 linhas por mim: o traceback repete a mesma linha ate o teto)\nRecursionError: maximum recursion depth exceeded\n\nTraceback (arquivo mais recente por último):\n  em reg5_RecursionError_1.ps, linha 1\n  | funct fundo(n) { return fundo(n + 1) }\n  | ^^^\n  em reg5_RecursionError_1.ps, linha 1\n  | funct fundo(n) { return fundo(n + 1) }\n  | ^^^\n  em reg5_RecursionError_1.ps, linha 1\n  | funct fundo(n) { return fundo(n + 1) }\n  | ^^^\n(rc=1)\n[2 catch (RecursionError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "ZeroDivisionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nZeroDivisionError: division by zero\n  em reg5_ZeroDivisionError_1.ps, linha 1\n  | x = 1 / 0\n  |       ^^^\n(rc=1)\n[2 catch (ZeroDivisionError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "AttributeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nAttributeError: 'str' object has no attribute 'naoexiste'\n  em reg5_AttributeError_1.ps, linha 1\n  | x = \"abc\".naoexiste\n  |          ^^^\n(rc=1)\n[2 catch (AttributeError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nMemoryError: string grande demais na repeticao\n  em reg5_MemoryError_1.ps, linha 1\n  | s = \"a\" * 99999999999\n  |         ^^^\n(rc=1)\n[2 catch (MemoryError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)\n(rodado com ulimit -v 2000000 pra nao arriscar a maquina; a mensagem e a do guarda de tamanho do motor, nao falha de malloc)"
+      },
+      {
+        "tipo": "ValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nValueError: range() arg 3 must not be zero\n  em reg5_ValueError_1.ps, linha 1\n  | for each i in range(1, 10, 0) { post(i) }\n  | ^^^\n(rc=1)\n[2 catch (ValueError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "NameError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nNameError: name 'naoexiste_nenhum' is not defined\n  em reg5_NameError_1.ps, linha 1\n  | post(naoexiste_nenhum)\n  |      ^^^\n(rc=1)\n[2 catch (NameError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "IndexError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nIndexError: list index out of range\n  em reg5_IndexError_1.ps, linha 2\n  | x = l[9]\n  |      ^^^\n(rc=1)\n[2 catch (IndexError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "ImportError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nImportError: No module named 'modulo_que_nao_existe_xyz'\n  em reg5_ImportError_1.ps, linha 1\n  | import 'modulo_que_nao_existe_xyz'\n  | ^^^\n(rc=1)\n[2 catch (ImportError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "AttributedValueError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nAttributedValueError: variável x esperava str\n  em reg5_AttributedValueError_1.ps, linha 1\n  | str x = 10\n  |         ^^^\n(rc=1)\n[2 catch (AttributedValueError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "SyntaxError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nSyntaxError: reg5_lexruim: string nao fechada antes da quebra de linha\n\nTraceback (arquivo mais recente por último):\n  em reg5_SyntaxError_1.ps, linha 1\n  | import './reg5_lexruim.ps'\n  | ^^^\n  em reg5_lexruim.ps, linha 1\n  | x = \"aberta\n  |            ^^^\n(rc=1)\n[2 catch (SyntaxError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "KeyError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nKeyError: 'b'\n  em reg5_KeyError_1.ps, linha 2\n  | x = d[\"b\"]\n  |      ^^^\n(rc=1)\n[2 catch (KeyError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "ConversionError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[1 sem try]\nConversionError: 9999999 nao e um caractere valido (declarado como 'char c')\n  em reg5_ConversionError_1.ps, linha 1\n  | char c = 9999999\n  |          ^^^\n(rc=1)\n[2 catch (ConversionError e)] pegou (rc=0)\n[3 catch (Exception e)] pegou (rc=0)\n[4 catch (e)] pegou (rc=0)"
+      },
+      {
+        "tipo": "NetworkError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "BINARIO MEDIDO: ./pool 15.90.14 [PSVM], md5 af54821a85f3, compilado 12:18 de HOJE a partir do commit d037e16 \"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\" (arvore limpa). ATENCAO: este binario JA TEM a tabela de hierarquia (vm/poolscript_vm.c:3186 EXCECOES[], excecao_eh() em :3241, OP_EXC_CASA em :23296) — a linha de base do orquestrador (\"catch (Exception e) nao pega NADA\") era do binario ANTERIOR. Sitio: vm/ps_http.c:85.\n\n(1) sem try [medx_net_1.ps]:\nNetworkError: falha de conexão: nome não resolvido: nao.existe.este.host.invalido.zzz\n  em medx_net_1.ps, linha 2\n  | r = request.get(\"http://nao.existe.este.host.invalido.zzz/x\")\n  |                ^^^\n\n(2) catch (NetworkError e) [medx_net_2.ps]:\npegou: falha de conexão: nome não resolvido: nao.existe.este.host.invalido.zzz (linha 2)\n\n(3) catch (Exception e) [medx_net_3.ps]:\npegou: falha de conexão: nome não resolvido: nao.existe.este.host.invalido.zzz (linha 2)\n\n(4) catch (e) [medx_net_4.ps]:\npegou: falha de conexão: nome não resolvido: nao.existe.este.host.invalido.zzz (linha 2)\n\nEXTRA [medx_extra_net.ps] catch (OSError e): \"C) OSError pegou NetworkError\" — sobe pela linha vm/poolscript_vm.c:3196 { \"NetworkError\", \"OSError\" }."
+      },
+      {
+        "tipo": "TimeoutError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "BURACO CONFIRMADO NO BINARIO NOVO. TimeoutError nao aparece em NENHUMA linha da tabela EXCECOES (vm/poolscript_vm.c:3186-3232): e um orfao sem pai. Sitios que o levantam: vm/ps_http.c:324, :350, :376. Disparado contra servidor mudo em PoolScript (sockets, bind 127.0.0.1:18741, listen, accept, nunca responde).\n\n(1) sem try [medx_to_1.ps]:\nTimeoutError: operação expirou: requisição passou de 2s (url=http://127.0.0.1:18741/x)\n  em medx_to_1.ps, linha 2\n  | r = request.get(\"http://127.0.0.1:18741/x\", timeout=2)\n  |                ^^^\n\n(2) catch (TimeoutError e) [medx_to_2.ps]:\npegou: operação expirou: requisição passou de 2s (url=http://127.0.0.1:18741/x) (linha 2)\n\n(3) catch (Exception e) [medx_to_3.ps] — NAO PEGOU, o erro atravessou o try:\nTimeoutError: operação expirou: requisição passou de 2s (url=http://127.0.0.1:18741/x) (linha 2)\n  em medx_to_3.ps, linha 2\n  | try { request.get(\"http://127.0.0.1:18741/x\", timeout=2) } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_to_4.ps]:\npegou: operação expirou: requisição passou de 2s (url=http://127.0.0.1:18741/x) (linha 2)"
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Sitio: vm/ps_http.c:368. Esta na tabela: vm/poolscript_vm.c:3224 { \"MemoryError\", \"Exception\" }. Disparado contra servidor em PoolScript na 127.0.0.1:18742 que anuncia Content-Length: 400000, com stream=true e max_size=1000.\n\n(1) sem try [medx_mem_1.ps]:\nMemoryError: download passou do limite de 1000 bytes\n  em medx_mem_1.ps, linha 2\n  | r = request.get(\"http://127.0.0.1:18742/x\", timeout=5, stream=true, max_size=1000)\n  |                ^^^\n\n(2) catch (MemoryError e) [medx_mem_2.ps]:\npegou: download passou do limite de 1000 bytes (linha 2)\n\n(3) catch (Exception e) [medx_mem_3.ps]:\npegou: download passou do limite de 1000 bytes (linha 2)\n\n(4) catch (e) [medx_mem_4.ps]:\npegou: download passou do limite de 1000 bytes (linha 2)"
+      },
+      {
+        "tipo": "OSError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "CORRIGE O \"nao consegui\" DO ORQUESTRADOR: o sitio de vm/ps_http.c:301 e mesmo inalcancavel (o caminho e grampeado em caminho[2048] e a linha montada em lin[2400] chega no maximo a 2344 bytes), MAS o OSError puro TEM sitio alcancavel no inventario: vm/ps_mail.c pela macro MAIL_ERRO_REDE (definida em vm/poolscript_vm.c:12913, usada em :14308 no .conn()). Levantei de verdade.\n\n(1) sem try [medx_os_1.ps] — import mail; s = mail.MailServer(); s.conn(\"nao.existe.este.host.invalido.zzz\"):\nOSError: [Errno -2] Name or service not known\n  em medx_os_1.ps, linha 3\n  | s.conn(\"nao.existe.este.host.invalido.zzz\")\n  |       ^^^\n\n(2) catch (OSError e) [medx_os_2.ps]:\npegou: [Errno -2] Name or service not known (linha 3)\n\n(3) catch (Exception e) [medx_os_3.ps]:\npegou: [Errno -2] Name or service not known (linha 3)\n\n(4) catch (e) [medx_os_4.ps]:\npegou: [Errno -2] Name or service not known (linha 3)"
+      },
+      {
+        "tipo": "DatabaseError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "Sitio sqlite: vm/ps_db.c (mensagem \"erro de banco de dados: %s\" com sqlite3_errmsg). Esta na tabela: vm/poolscript_vm.c:3231 { \"DatabaseError\", \"Exception\" }. Base /tmp/claude-1000/medx_sqlite.db.\n\n(1) sem try [medx_dbe_1.ps]:\nDatabaseError: erro de banco de dados: near \"ISTO\": syntax error\n  em medx_dbe_1.ps, linha 4\n  | cur.execute(\"ISTO NAO E SQL\")\n  |            ^^^\n\n(2) catch (DatabaseError e) [medx_dbe_2.ps]:\npegou: erro de banco de dados: near \"ISTO\": syntax error (linha 4)\n\n(3) catch (Exception e) [medx_dbe_3.ps]:\npegou: erro de banco de dados: near \"ISTO\": syntax error (linha 4)\n\n(4) catch (e) [medx_dbe_4.ps]:\npegou: erro de banco de dados: near \"ISTO\": syntax error (linha 4)"
+      },
+      {
+        "tipo": "SyntaxError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "E A UNICA EXCECAO DA FAMILIA DO BANCO: dos 252 SQLSTATEs mapeados em vm/ps_pgerr.h (251 nomes distintos), SyntaxError (42601, vm/ps_pgerr.h:153) e o UNICO nome que tambem existe na tabela EXCECOES (vm/poolscript_vm.c:3230 { \"SyntaxError\", \"Exception\" }). Por isso — e so por isso — o catch (Exception e) pega este. Postgres 127.0.0.1:5432 base ps_teste.\n\n(1) sem try [medx_pgsyn_1.ps]:\nSyntaxError: erro de banco de dados: ERROR:  syntax error at or near \"ISTO\"\nLINE 1: ISTO NAO E SQL\n        ^\n\n  em medx_pgsyn_1.ps, linha 4\n  | cur.execute(\"ISTO NAO E SQL\")\n  |            ^^^\n\n(2) catch (SyntaxError e) [medx_pgsyn_2.ps]:\npegou: erro de banco de dados: ERROR:  syntax error at or near \"ISTO\"\nLINE 1: ISTO NAO E SQL\n        ^\n (linha 4)\n\n(3) catch (Exception e) [medx_pgsyn_3.ps]:\npegou: erro de banco de dados: ERROR:  syntax error at or near \"ISTO\"\nLINE 1: ISTO NAO E SQL\n        ^\n (linha 4)\n\n(4) catch (e) [medx_pgsyn_4.ps]:\npegou: erro de banco de dados: ERROR:  syntax error at or near \"ISTO\"\nLINE 1: ISTO NAO E SQL\n        ^\n (linha 4)"
+      },
+      {
+        "tipo": "UniqueViolation",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ORFAO: 23505 -> UniqueViolation (vm/ps_pgerr.h:101), nome que NAO existe na tabela EXCECOES. Postgres ps_teste; CREATE TEMP TABLE tmp_medx_u (id INT PRIMARY KEY) + INSERT 1 duas vezes.\n\n(1) sem try [medx_pguni_1.ps]:\nUniqueViolation: erro de banco de dados: ERROR:  duplicate key value violates unique constraint \"tmp_medx_u_pkey\"\nDETAIL:  Key (id)=(1) already exists.\n\n  em medx_pguni_1.ps, linha 6\n  | cur.execute(\"INSERT INTO tmp_medx_u (id) VALUES (1)\")\n  |            ^^^\n\n(2) catch (UniqueViolation e) [medx_pguni_2.ps]:\npegou: erro de banco de dados: ERROR:  duplicate key value violates unique constraint \"tmp_medx_u_pkey\"\nDETAIL:  Key (id)=(1) already exists.\n (linha 6)\n\n(3) catch (Exception e) [medx_pguni_3.ps] — NAO PEGOU:\nUniqueViolation: erro de banco de dados: ERROR:  duplicate key value violates unique constraint \"tmp_medx_u_pkey\"\nDETAIL:  Key (id)=(1) already exists.\n (linha 6)\n  em medx_pguni_3.ps, linha 6\n  | try { cur.execute(\"INSERT INTO tmp_medx_u (id) VALUES (1)\") } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_pguni_4.ps]:\npegou: erro de banco de dados: ERROR:  duplicate key value violates unique constraint \"tmp_medx_u_pkey\"\nDETAIL:  Key (id)=(1) already exists.\n (linha 6)\n\nEXTRA [medx_extra_db.ps] catch (DatabaseError e) ... catch (e): \"A) DatabaseError NAO pegou; generico pegou\" — nem o pai obvio pega."
+      },
+      {
+        "tipo": "UndefinedTable",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ORFAO: 42P01 -> UndefinedTable (vm/ps_pgerr.h:173), fora da tabela EXCECOES.\n\n(1) sem try [medx_pgtab_1.ps]:\nUndefinedTable: erro de banco de dados: ERROR:  relation \"tabela_que_nao_existe_zz\" does not exist\nLINE 1: SELECT * FROM tabela_que_nao_existe_zz\n                      ^\n\n  em medx_pgtab_1.ps, linha 4\n  | cur.execute(\"SELECT * FROM tabela_que_nao_existe_zz\")\n  |            ^^^\n\n(2) catch (UndefinedTable e) [medx_pgtab_2.ps]:\npegou: erro de banco de dados: ERROR:  relation \"tabela_que_nao_existe_zz\" does not exist\nLINE 1: SELECT * FROM tabela_que_nao_existe_zz\n                      ^\n (linha 4)\n\n(3) catch (Exception e) [medx_pgtab_3.ps] — NAO PEGOU:\nUndefinedTable: erro de banco de dados: ERROR:  relation \"tabela_que_nao_existe_zz\" does not exist\nLINE 1: SELECT * FROM tabela_que_nao_existe_zz\n                      ^\n (linha 4)\n  em medx_pgtab_3.ps, linha 4\n  | try { cur.execute(\"SELECT * FROM tabela_que_nao_existe_zz\") } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_pgtab_4.ps]:\npegou: erro de banco de dados: ERROR:  relation \"tabela_que_nao_existe_zz\" does not exist\nLINE 1: SELECT * FROM tabela_que_nao_existe_zz\n                      ^\n (linha 4)"
+      },
+      {
+        "tipo": "UndefinedColumn",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ORFAO: 42703 -> UndefinedColumn (vm/ps_pgerr.h:159), fora da tabela EXCECOES.\n\n(1) sem try [medx_pgcol_1.ps]:\nUndefinedColumn: erro de banco de dados: ERROR:  column \"coluna_que_nao_existe\" does not exist\nLINE 1: SELECT coluna_que_nao_existe FROM (SELECT 1) AS x\n               ^\n\n  em medx_pgcol_1.ps, linha 4\n  | cur.execute(\"SELECT coluna_que_nao_existe FROM (SELECT 1) AS x\")\n  |            ^^^\n\n(2) catch (UndefinedColumn e) [medx_pgcol_2.ps]:\npegou: erro de banco de dados: ERROR:  column \"coluna_que_nao_existe\" does not exist\nLINE 1: SELECT coluna_que_nao_existe FROM (SELECT 1) AS x\n               ^\n (linha 4)\n\n(3) catch (Exception e) [medx_pgcol_3.ps] — NAO PEGOU:\nUndefinedColumn: erro de banco de dados: ERROR:  column \"coluna_que_nao_existe\" does not exist\nLINE 1: SELECT coluna_que_nao_existe FROM (SELECT 1) AS x\n               ^\n (linha 4)\n  em medx_pgcol_3.ps, linha 4\n  | try { cur.execute(\"SELECT coluna_que_nao_existe FROM (SELECT 1) AS x\") } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_pgcol_4.ps]:\npegou: erro de banco de dados: ERROR:  column \"coluna_que_nao_existe\" does not exist\nLINE 1: SELECT coluna_que_nao_existe FROM (SELECT 1) AS x\n               ^\n (linha 4)"
+      },
+      {
+        "tipo": "DivisionByZero",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ORFAO E COM NOME QUASE-IGUAL AO DA LINGUAGEM: 22012 -> DivisionByZero (vm/ps_pgerr.h:51) fica FORA da tabela, enquanto ZeroDivisionError da propria linguagem esta la (vm/poolscript_vm.c:3208, filho de ArithmeticError). Dividir por zero no banco e dividir por zero no script sao dois tipos sem parentesco.\n\n(1) sem try [medx_pgdiv_1.ps]:\nDivisionByZero: erro de banco de dados: ERROR:  division by zero\n\n  em medx_pgdiv_1.ps, linha 4\n  | cur.execute(\"SELECT 1/0\")\n  |            ^^^\n\n(2) catch (DivisionByZero e) [medx_pgdiv_2.ps]:\npegou: erro de banco de dados: ERROR:  division by zero\n (linha 4)\n\n(3) catch (Exception e) [medx_pgdiv_3.ps] — NAO PEGOU:\nDivisionByZero: erro de banco de dados: ERROR:  division by zero\n (linha 4)\n  em medx_pgdiv_3.ps, linha 4\n  | try { cur.execute(\"SELECT 1/0\") } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_pgdiv_4.ps]:\npegou: erro de banco de dados: ERROR:  division by zero\n (linha 4)\n\nEXTRA [medx_extra_div.ps] com catch (ZeroDivisionError e) / catch (ArithmeticError e) / catch (DatabaseError e) / catch (e) em cadeia: \"B) so o generico pegou\"."
+      },
+      {
+        "tipo": "InsufficientPrivilege",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ORFAO: 42501 -> InsufficientPrivilege (vm/ps_pgerr.h:152), fora da tabela EXCECOES — e sem parentesco com o PermissionError da linguagem, que esta la (vm/poolscript_vm.c:3195, filho de OSError).\n\n(1) sem try [medx_pgpriv_1.ps]:\nInsufficientPrivilege: erro de banco de dados: ERROR:  permission denied for schema pg_catalog\nLINE 1: CREATE TABLE pg_catalog.nao_pode_medx (id INT)\n                     ^\n\n  em medx_pgpriv_1.ps, linha 4\n  | cur.execute(\"CREATE TABLE pg_catalog.nao_pode_medx (id INT)\")\n  |            ^^^\n\n(2) catch (InsufficientPrivilege e) [medx_pgpriv_2.ps]:\npegou: erro de banco de dados: ERROR:  permission denied for schema pg_catalog\nLINE 1: CREATE TABLE pg_catalog.nao_pode_medx (id INT)\n                     ^\n (linha 4)\n\n(3) catch (Exception e) [medx_pgpriv_3.ps] — NAO PEGOU:\nInsufficientPrivilege: erro de banco de dados: ERROR:  permission denied for schema pg_catalog\nLINE 1: CREATE TABLE pg_catalog.nao_pode_medx (id INT)\n                     ^\n (linha 4)\n  em medx_pgpriv_3.ps, linha 4\n  | try { cur.execute(\"CREATE TABLE pg_catalog.nao_pode_medx (id INT)\") } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_pgpriv_4.ps]:\npegou: erro de banco de dados: ERROR:  permission denied for schema pg_catalog\nLINE 1: CREATE TABLE pg_catalog.nao_pode_medx (id INT)\n                     ^\n (linha 4)"
+      },
+      {
+        "tipo": "StringDataRightTruncation",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "ORFAO: 22001 -> StringDataRightTruncation (vm/ps_pgerr.h:30), fora da tabela EXCECOES — e sem parentesco com ValueError, que esta la (vm/poolscript_vm.c:3212). Preparo: CREATE TEMP TABLE tmp_medx_s (s VARCHAR(2)).\n\n(1) sem try [medx_pgtrunc_1.ps]:\nStringDataRightTruncation: erro de banco de dados: ERROR:  value too long for type character varying(2)\n\n  em medx_pgtrunc_1.ps, linha 5\n  | cur.execute(\"INSERT INTO tmp_medx_s (s) VALUES ('abcdefgh')\")\n  |            ^^^\n\n(2) catch (StringDataRightTruncation e) [medx_pgtrunc_2.ps]:\npegou: erro de banco de dados: ERROR:  value too long for type character varying(2)\n (linha 5)\n\n(3) catch (Exception e) [medx_pgtrunc_3.ps] — NAO PEGOU:\nStringDataRightTruncation: erro de banco de dados: ERROR:  value too long for type character varying(2)\n (linha 5)\n  em medx_pgtrunc_3.ps, linha 5\n  | try { cur.execute(\"INSERT INTO tmp_medx_s (s) VALUES ('abcdefgh')\") } catch (Exception e) { post(\"pegou:\", e) }\n  | ^^^\n[rc=1]\n\n(4) catch (e) [medx_pgtrunc_4.ps]:\npegou: erro de banco de dados: ERROR:  value too long for type character varying(2)\n (linha 5)"
+      },
+      {
+        "tipo": "ConnectionFailure",
+        "disparou": false,
+        "pega_exato": false,
+        "pega_generico": false,
+        "pega_sem_tipo": false,
+        "saida": "NAO LEVANTEI — e tenho a PROVA de que o cenario dele nao produz esse nome. O 08006 esta mapeado (vm/ps_pgerr.h:14) e pg_tipo_erro (vm/ps_db.c:154-162) so olha o SQLSTATE de um PGresult ja devolvido. Derrubei A MINHA PROPRIA sessao (nao o servidor da maquina) com pg_terminate_backend(pg_backend_pid()) e medi os dois momentos:\n\n[medx_pgconn_tipoA.ps] — a sessao morre NO MEIO do exec:\nDatabaseError: erro de banco de dados: FATAL:  terminating connection due to administrator command\nSSL connection has been closed unexpectedly\n\n  em medx_pgconn_tipoA.ps, linha 4\n  | cur.execute(\"SELECT pg_terminate_backend(pg_backend_pid())\")\n  |            ^^^\n\n[medx_pgconn_tipoB.ps] — exec seguinte, ja com a conexao morta:\nDatabaseError: erro de banco de dados: no connection to the server\n\n  em medx_pgconn_tipoB.ps, linha 5\n  | cur.execute(\"SELECT 1\")\n  |            ^^^\n\nO QUE ISSO MOSTRA: 57P01 tambem esta mapeado (vm/ps_pgerr.h:212 -> AdminShutdown) e mesmo assim saiu DatabaseError — ou seja, quando o servidor derruba a sessao o PGresult chega SEM campo SQLSTATE e o mapeamento inteiro nao dispara. ConnectionFailure e nome morto no motor: e justamente na queda de conexao que o SQLSTATE se perde. Nao matei o postgres da maquina do dono."
+      },
+      {
+        "tipo": "OutOfMemory",
+        "disparou": false,
+        "pega_exato": false,
+        "pega_generico": false,
+        "pega_sem_tipo": false,
+        "saida": "NAO LEVANTEI — o 53200 (vm/ps_pgerr.h:198) exige esgotar a memoria do servidor postgres e a maquina do dono trava com carga; nao fiz isso. Tentei o vizinho barato, um erro de tamanho que o servidor recusa ANTES de alocar, so pra provar que a via de mapeamento funciona e que ela nao passa por OutOfMemory:\n\n[medx_pgoom_sonda.ps] cur.execute(\"SELECT repeat('x', 1500000000)\"):\nProgramLimitExceeded: erro de banco de dados: ERROR:  requested length too large\n\n  em medx_pgoom_sonda.ps, linha 5\n  | cur.execute(\"SELECT repeat('x', 1500000000)\")\n  |            ^^^\n\nSaiu 54000 -> ProgramLimitExceeded, mais um nome fora da tabela EXCECOES. Pela contagem, OutOfMemory teria o mesmo destino dos outros orfaos de banco: so o proprio nome e o catch (e) o pegariam."
+      },
+      {
+        "tipo": "SyntaxError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[binario medido: pool 15.90.14, md5 af54821a85f37cf0993350e5ca311858, commit d037e16 — a tabela EXCECOES ja esta DENTRO deste binario; SyntaxError esta listada em vm/poolscript_vm.c:3226 como filha de Exception]\n\nModulo rgS_mod_sx.ps: `y = (1 +`\n\n1) SEM try, arquivo solto rgS_sx_1.ps (`x = (1 +`):\nSyntaxError: expressao invalida\n  em rgS_sx_1.ps, linha 2\nrc=2\n(nao e pegavel: o programa nem comeca)\n\n1b) SEM try, via import (rgS_sx_1b.ps: `import rgS_mod_sx`):\nSyntaxError: rgS_mod_sx: expressao invalida\n\nTraceback (arquivo mais recente por ultimo):\n  em rgS_sx_1b.ps, linha 1\n  | import rgS_mod_sx\n  | ^^^\n  em rgS_mod_sx.ps, linha 2\nrc=1\n\n2) catch (SyntaxError e):\npegou SyntaxError: rgS_mod_sx: expressao invalida (linha 2)\nrc=0\n\n3) catch (Exception e):\npegou Exception: rgS_mod_sx: expressao invalida (linha 2)\nrc=0\n\n4) catch (e):\npegou sem tipo: rgS_mod_sx: expressao invalida (linha 2)\nrc=0\n\nSitios de emissao: vm/poolscript_vm.c:25333 (lexer do modulo), :25343 (parser do modulo), :25354 (compilador do modulo, ramo erro_do_programa), vm/main.c:449."
+      },
+      {
+        "tipo": "NotImplementedError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": false,
+        "pega_sem_tipo": true,
+        "saida": "[binario medido: pool 15.90.14, md5 af54821a85f37cf0993350e5ca311858, commit d037e16]\n\nESTE E O BURACO QUE SOBROU. NotImplementedError NAO esta na tabela EXCECOES (vm/poolscript_vm.c:3185-3226 — li a tabela inteira, os 33 nomes, e ele nao esta la), mas E EMITIDO em vm/poolscript_vm.c:25354 e vm/main.c:450. `excecao_pai` (vm/poolscript_vm.c:3229) devolve NULL pra nome fora da tabela, entao `excecao_eh` so casa pelo proprio nome e `catch (Exception e)` DEIXA PASSAR.\n\nModulo rgS_mod_ni.ps: `break`\n\n1) SEM try, arquivo solto rgS_ni_1.ps (`break`):\nNotImplementedError: 'break' fora de laco\n  em rgS_ni_1.ps, linha 1\n  | break\n  | ^^^\nrc=3\n\n1b) SEM try, via import:\nNotImplementedError: rgS_mod_ni: 'break' fora de laco\n\nTraceback (arquivo mais recente por ultimo):\n  em rgS_ni_1b.ps, linha 1\n  | import rgS_mod_ni\n  | ^^^\n  em rgS_mod_ni.ps, linha 1\n  | break\n  | ^^^\nrc=1\n\n2) catch (NotImplementedError e):\npegou NotImplementedError: rgS_mod_ni: 'break' fora de laco (linha 2)\nrc=0\n\n3) catch (Exception e) — NAO PEGA, o erro atravessa o try:\nNotImplementedError: rgS_mod_ni: 'break' fora de laco (linha 2)\n\nTraceback (arquivo mais recente por ultimo):\n  em rgS_ni_3.ps, linha 1\n  | try {\n  | ^^^\n  em rgS_mod_ni.ps, linha 1\n  | break\n  | ^^^\nrc=1\n\n4) catch (e):\npegou sem tipo: rgS_mod_ni: 'break' fora de laco (linha 2)\nrc=0\n\nCONFIRMADO COM SEGUNDO GATILHO (rgS_mod_ni2.ps: `continue`):\ncatch (NotImplementedError e) -> pegou NotImplementedError: rgS_mod_ni2: 'continue' fora de laco (linha 2), rc=0\ncatch (Exception e) -> NAO pegou; saiu `NotImplementedError: rgS_mod_ni2: 'continue' fora de laco (linha 2)` + traceback, rc=1\n\nTambem sai pelo --check: `./pool --check rgS_ni_1.ps` -> {\"ok\":false,\"tipo\":\"NotImplementedError\",\"msg\":\"'break' fora de laco\",\"linha\":1,\"coluna\":1}, rc=1"
+      },
+      {
+        "tipo": "MemoryError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[binario medido: pool 15.90.14, md5 af54821a85f37cf0993350e5ca311858, commit d037e16 — MemoryError esta na tabela em vm/poolscript_vm.c:3224 como filha de Exception]\n\nGatilho: `s = \"a\" * 100000000000` — sitio vm/poolscript_vm.c:21571, guarda `x->len > PS_STR_MAX / n64` ANTES de alocar (li o codigo em 21565-21572), entao nao consome memoria da maquina.\n\n1) SEM try:\nMemoryError: string grande demais na repeticao\n  em rgS_me_1.ps, linha 1\n  | s = \"a\" * 100000000000\n  |         ^^^\nrc=1\n\n2) catch (MemoryError e):\npegou MemoryError: string grande demais na repeticao (linha 2)\nrc=0\n\n3) catch (Exception e):\npegou Exception: string grande demais na repeticao (linha 2)\nrc=0\n\n4) catch (e):\npegou sem tipo: string grande demais na repeticao (linha 2)\nrc=0\n\nOs 4 sitios de main.c (149, 412, 416, 451) continuam inalcancaveis por .ps — so acendem em falha real de malloc/realloc — mas o NOME e alcancavel pelo caminho acima."
+      },
+      {
+        "tipo": "RuntimeError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[binario medido: pool 15.90.14, md5 af54821a85f37cf0993350e5ca311858, commit d037e16 — RuntimeError esta na tabela em vm/poolscript_vm.c:3216 como filha de Exception, e RecursionError como filha dele]\n\nCORRIGE A MEDICAO ANTERIOR DE 'nao consegui': RuntimeError DISPARA de um .ps. Nao pelos dois sitios de main.c (esses continuam sendo default/morto), e sim pelo macro ERRO(vm, msg) de vm/poolscript_vm.c:20538, que carimba \"RuntimeError\" ele mesmo. Achei um sitio alcancavel sem falha de alocacao: vm/poolscript_vm.c:22727, `if (b.as.i < 0) ERRO(vm, \"deslocamento negativo\")`.\n\nGatilho: `x = 1 << -1`\n\n1) SEM try:\nRuntimeError: deslocamento negativo\n  em rgS_rt_1.ps, linha 1\n  | x = 1 << -1\n  |       ^^^\nrc=1\n\n2) catch (RuntimeError e):\npegou RuntimeError: deslocamento negativo (linha 2)\nrc=0\n\n3) catch (Exception e):\npegou Exception: deslocamento negativo (linha 2)\nrc=0\n\n4) catch (e):\npegou sem tipo: deslocamento negativo (linha 2)\nrc=0\n\nO mesmo macro tem irmao em vm/poolscript_vm.c:22757 (o outro operador de deslocamento) e mais ~100 sitios no arquivo."
+      },
+      {
+        "tipo": "IOError",
+        "disparou": true,
+        "pega_exato": true,
+        "pega_generico": true,
+        "pega_sem_tipo": true,
+        "saida": "[binario medido: pool 15.90.14, md5 af54821a85f37cf0993350e5ca311858, commit d037e16 — IOError esta na tabela em vm/poolscript_vm.c:3200, IRMAO de OSError e filho direto de Exception, com o comentario dizendo que pendurar em OSError quebraria comportamento documentado]\n\nCORRIGE A MEDICAO ANTERIOR DE 'nao existe .ps que faca este sitio disparar': IOError E levantavel de um .ps, so nao pelo sitio do --check. Sitio usado: vm/poolscript_vm.c:12205, em `checa_exec_erro`, que carimba erro_tipo = \"IOError\" quando o exec falha.\n\nGatilho: `import os` + `os.run([\"rgS_nao_existe_zzz\"])`\n\n1) SEM try:\nIOError: run(): rgS_nao_existe_zzz: No such file or directory\n  em rgS_io_1.ps, linha 2\n  | os.run([\"rgS_nao_existe_zzz\"])\n  |       ^^^\nrc=1\n\n2) catch (IOError e):\npegou IOError: run(): rgS_nao_existe_zzz: No such file or directory (linha 3)\nrc=0\n\n3) catch (Exception e):\npegou Exception: run(): rgS_nao_existe_zzz: No such file or directory (linha 3)\nrc=0\n\n4) catch (e):\npegou sem tipo: run(): rgS_nao_existe_zzz: No such file or directory (linha 3)\nrc=0\n\nO sitio de linha de comando continua fora de alcance de excecao, como levantado antes: `./pool --check /nao/existe/xyz.ps` ->\npool: nao consegui abrir '/nao/existe/xyz.ps'\n{\"ok\":false,\"tipo\":\"IOError\",\"msg\":\"nao consegui abrir o arquivo\",\"linha\":1,\"coluna\":1}\nrc=1\n\nOutros sitios de IOError alcancaveis por .ps, por leitura: vm/poolscript_vm.c:12358, 12361, 12367, 12396, 12398 (os.run), 13113, 13124 (anexo), 14804, 14809, 15355, 15427, 15429, 15478 (gravacao de arquivo)."
+      }
+    ],
+    "nao_disparam": [
+      "ConnectionFailure",
+      "OutOfMemory"
+    ],
+    "catch_exato_falha": [],
+    "catch_generico_pega": [
+      "TypeError",
+      "MemoryError",
+      "ValueError",
+      "RuntimeError",
+      "ZeroDivisionError",
+      "OverflowError",
+      "FileNotFoundError",
+      "FileExistsError",
+      "IsADirectoryError",
+      "NotADirectoryError",
+      "PermissionError",
+      "OSError",
+      "MemoryError",
+      "TypeError",
+      "ValueError",
+      "RuntimeError",
+      "UnicodeDecodeError",
+      "UnicodeEncodeError",
+      "IndexError",
+      "RecursionError",
+      "LookupError",
+      "KeyError",
+      "AttributedValueError",
+      "FileNotFoundError",
+      "IsADirectoryError",
+      "PermissionError",
+      "MemoryError",
+      "TypeError",
+      "RuntimeError",
+      "IOError",
+      "ValueError",
+      "OSError",
+      "DatabaseError",
+      "OverflowError",
+      "IndexError",
+      "NetworkError",
+      "FileNotFoundError",
+      "IsADirectoryError",
+      "NotADirectoryError",
+      "MemoryError",
+      "TypeError",
+      "RuntimeError",
+      "DatabaseError",
+      "NetworkError",
+      "AssertionError",
+      "ValueError",
+      "RecursionError",
+      "%.60s do buffer tp (vem de vm/ps_db.c) — \"DatabaseError\" ou 1 dos 251 nomes de vm/ps_pgerr.h",
+      "(nenhum — o sitio escreve so vm->erro e faz return -1, erro_tipo fica com o valor ANTERIOR)",
+      "RuntimeError",
+      "TypeError",
+      "RecursionError",
+      "ZeroDivisionError",
+      "AttributeError",
+      "MemoryError",
+      "ValueError",
+      "NameError",
+      "IndexError",
+      "ImportError",
+      "AttributedValueError",
+      "SyntaxError",
+      "KeyError",
+      "ConversionError",
+      "NetworkError",
+      "MemoryError",
+      "OSError",
+      "DatabaseError",
+      "SyntaxError",
+      "SyntaxError",
+      "MemoryError",
+      "RuntimeError",
+      "IOError"
+    ],
+    "observacoes": [
+      "vm-a: TOTAL DA REGIAO (linhas 1-5200): 120 sitios de erro — 113 chamadas BERRO/MERRO (as 2 definicoes de macro em 3145 e 4651 nao contam; REERRO, definida em 4660, nao tem NENHUM uso na regiao), 6 snprintf(vm->erro_tipo, ...) diretos que escrevem \"TypeError\" literal (1428, 3115, 3140, 3276, 3926, 3934) e 1 sitio dinamico (erro_sistema, 3189) que copia o retorno de tipo_do_errno. ERRO/ERRO_T/ERRO_TF nao ocorrem aqui — as macros so nascem em 20451/20458/20466.\n\n12 nomes distintos, e 2 deles (TypeError + MemoryError = 98 sitios) sao 82% de tudo. Nenhum nome esta digitado errado: comparei os 12 com a varredura do arquivo inteiro (412 MemoryError, 283 TypeError, 111 RuntimeError, 54 ValueError, 13 IOError, 12 ZeroDivisionError, 12 RecursionError, ...) e a grafia bate em todo lugar.\n\nPROVA DE QUE NAO HA HIERARQUIA, medida agora (script /tmp/claude-1000/-home-kleberdevion-poolscript-lang/6d969e59-69de-417b-8aa4-653e4a35fc16/scratchpad/rga_catch.ps, saida colada):\n  1 TypeError pegou        <- catch (TypeError e) em abs(\"a\")\n  2 so generico            <- catch (ArithmeticError e) NAO pega pow(0,-1)\n  3 so generico            <- catch (ArithmeticError e) NAO pega int(flo(\"inf\"))\n  4 MemoryError pegou      <- catch (MemoryError e) em range(60000000)\n  5 so generico            <- catch (OSError e) NAO pega os.loadFile inexistente\n  6 OSError pegou          <- catch (OSError e) pega o rmdir de pasta cheia\n  7 so generico            <- catch (Exception e) NAO pega abs(\"a\")\nAs linhas 5 e 6 sao a prova mais dura: o MESMO catch (OSError e) pega o erro cujo errno caiu no `default` de tipo_do_errno (3172) e deixa passar o que caiu no `case ENOENT` (3167). \"OSError\" nao e pai de nada — e mais uma folha. Os 5 nomes de subclasse de 3166-3171 so foram escritos porque alguem assumiu que OSError os pegaria; o comentario de 3159-3162, que justifica a troca de TypeError por esses nomes, descreve um comportamento que a VM nao tem.\n\nMESMO ERRO, TIPOS DIFERENTES (todos medidos com ./pool):\n- texto que nao e numero: `int(\"abc\")` -> ValueError (3373); `range(\"abc\")` -> TypeError (3957 e 3926), mensagem \"'str' object cannot be interpreted as an integer\". Mesma falha do usuario, dois catch diferentes.\n- dominio de valor saindo como TypeError: `ord(\"ab\")` -> TypeError: ord() expected a character, but string of length 2 found (3811/3818) — o problema e o COMPRIMENTO, nao o tipo; e `ord()` com UTF-8 quebrado tambem sai TypeError (3814), enquanto o vizinho `chr(9999999)` sai ValueError (3747).\n- limite de dominio saindo como MemoryError: `pow(2, 99999999)` -> MemoryError: expoente grande demais em pow() (3608) e `range(60000000)` -> MemoryError: range() grande demais (3971). Nos dois casos o teste roda ANTES de qualquer alocacao — nada faltou de memoria, o programa so pediu um numero grande. Quem escreve catch (MemoryError e) esperando falta de RAM pega isso junto.\n\nMemoryError como lixeira: dos 48 sitios, 6 (4043, 4082, 4116, 4246, 4300, 4335) reportam MemoryError para QUALQUER retorno != 0 de iteravel_item(). Lendo iteravel_item (20080 em diante, corpo colado abaixo do prototipo de 4417), ela devolve -1 tambem quando dict_pos_viva nao acha entrada viva no indice e quando utf8_le tropeca numa sequencia UTF-8 invalida — duas falhas que nao tem nada a ver com memoria e que chegam ao catch como MemoryError.\n\nRuntimeError e o unico dos 12 que eu NAO consegui disparar. Os 4 sitios (3990, 5063, 5148, 5186) sao todos `fixa_raiz(...) != 0`, e fixa_raiz (20276) so falha em `vm->sp + 1 >= vm->stack_teto`, com stack_teto = STACK_SIZE = 1<<16 (927). Duas tentativas:\n a) recursao profunda: `funct f(int n){ if (n<=0){ return \"a,b\".split(\",\") } return f(n-1) }` com n=100000 bate antes em `RecursionError: maximum recursion depth exceeded` (guarda de 22209).\n b) empurrar a pilha de valores direto, com um literal de lista de 70001 itens terminando numa chamada a split(). Saida real:\n      malloc(): unsorted double linked list corrupted\n      timeout: o comando monitorado despejou nucleo\n    O controle com 60001 itens (abaixo do teto) roda e imprime 60001. Ou seja: o sp passa do teto e corrompe o heap antes de fixa_raiz ter chance de recusar — o RuntimeError \"estouro da pilha\" desta regiao e codigo morto por esse caminho. Arquivos: scratchpad/rga_gera.ps (gerador), rga_pilha.ps (70001, quebra), rga_pilha2.ps (60001, passa).\n\nDetalhe menor de mensagem, na mesma familia: 3645 escreve \"type %s doesn't define __round__ method\" sem aspas em volta do %s, enquanto todos os vizinhos usam '%s' — e cita um metodo especial que a linguagem nao expoe ao usuario, entao a mensagem nao diz o que fazer.",
+      "vm-b: REGIAO vm/poolscript_vm.c 5200-10400. TOTAL: 302 sitios de erro, 17 nomes de tipo distintos.\n\nComposicao dos 302, medida:\n- 256 chamadas de macro com o tipo como string literal (82 BERRO + 176 MERRO = 258 casamentos, menos 2 que sao as DEFINICOES de macro em 10324/10325). Zero ERRO(), ERRO_T(), ERRO_TF() e REERRO() na regiao — essas 4 macros so sao definidas em 20451-20471 e so tem uso depois disso, ja fora daqui.\n- 6 usos de BY_ERRO_TIPO/BY_ERRO_VALOR dentro da regiao (10366, 10368, 10384, 10385, 10392, 10398), que sao BERRO(vm,\"TypeError\",...) e BERRO(vm,\"ValueError\",...) disfarcados por #define em 10324-10325.\n- 20 escritas DIRETAS em vm->erro_tipo via snprintf, fora de qualquer macro: 5533, 5540, 5548, 5689, 6664, 6667, 6672, 6676, 6681, 8678, 8713, 9228, 9386, 9397, 9961, 9968, 10035, 10041, 10043, 10046. Mais um sitio que LIMPA o campo na mao (9906: vm->erro_tipo[0] = '\\0').\n- 20 chamadas de erro_sistema(): 6391, 6398, 6404, 6424, 6430, 6454, 6492, 6494, 6510, 6587, 6590, 8034, 8048, 8052, 8072, 8074, 8099, 8121, 8124, 8126. Nenhuma diz o tipo: o nome sai de tipo_do_errno() (3163) em tempo de execucao, entao o mesmo sitio de codigo pode levantar 6 tipos diferentes dependendo do errno do momento. Por isso as 6 entradas da familia de errno aparecem com 20 ocorrencias cada: e o mesmo conjunto de 20 sitios, nao 120.\n\nVERIFICADO RODANDO ./pool: 14 dos 17 tipos foram efetivamente disparados e a saida esta colada em cada 'como_disparar'. Nao consegui disparar RuntimeError, RecursionError e FileExistsError — para os dois primeiros a medicao foi interrompida pelo dono antes do teste; FileExistsError parece genuinamente inalcancavel pelo open() (ver a suspeita dele, com a saida real de open(...,\"x\") dando OSError/[Errno 22]).\n\nPADROES QUE A REGIAO MOSTRA:\n\n1. Tres nomes de tipo (LookupError, UnicodeEncodeError, UnicodeDecodeError, RecursionError) sao levantados de verdade pelo motor mas NAO constam da tabela \"Tipos de erro embutidos\" de docs/linguagem/10-excecoes.md:108-123. O programador nao tem como saber o nome pra escrever no catch — e como o catch compara string por igualdade, errar o nome e um handler morto silencioso. A propria doc, em 10-excecoes.md:127-137, admite que ja houve um exemplo publicado com catch (TypeError e) numa divisao por zero, handler que \"nunca disparava\".\n\n2. O MESMO erro conceitual sai com tipos diferentes conforme o sitio. Argumento numerico grande demais: em 5412 e 5456 (ljust/rjust/center/zfill) e MemoryError (\"memória insuficiente: ljust() pediu largura 99999999999\" — sem malloc nenhum ter falhado), enquanto o mesmo tipo de recusa de valor em 5319 e ValueError. Quem escreve catch (ValueError e) em volta de ljust() nao pega nada.\n\n3. 131 dos 302 sitios (43%) sao MemoryError \"sem memoria\" — falha de malloc, que nenhum programa alcanca. Quase metade da superficie de erro da regiao e ruido que nunca vai parar num catch.\n\n4. A familia de errno e o caso mais caro: 20 sitios produzem 6 nomes distintos em tempo de execucao, 5 deles nomes de subclasse (FileNotFoundError, PermissionError, IsADirectoryError, NotADirectoryError, FileExistsError) que so fariam sentido se OSError os pegasse. O comentario em 3152-3162 descreve a taxonomia por escrito — \"cada errno frequente tem a SUA subclasse de OSError e o resto cai no OSError puro\" — mas o codigo do catch nao implementa heranca nenhuma. Resultado medido: catch (OSError e) pega apenas o ramo default do switch e deixa escapar exatamente os 5 casos que o switch se deu ao trabalho de nomear.\n\n5. AttributedValueError e a mesma string digitada a mao em 4 pontos do arquivo (9228 na minha regiao, e 23243/23251/23278 fora dela). Nao ha constante, nao ha enum: sao 4 literais que precisam permanecer identicos byte a byte pra um unico catch pegar os 4.\n\n6. 20 sitios escrevem em vm->erro_tipo direto com snprintf, sem passar por macro alguma, e um deles (9906) zera o campo na mao. Nao existe um ponto unico por onde um tipo de erro nasca.\n\n7. Padrao de \"rede de seguranca\": 5689 e 8678 sao `if (!vm->erro_tipo[0]) snprintf(..., \"TypeError\")` — quando uma funcao mais funda falhou sem escolher tipo, a regiao chuta TypeError. O comentario em 8674-8676 assume isso explicitamente. Ou seja: parte dos TypeError que um programa recebe nao significa \"o tipo esta errado\", significa \"ninguem sabia o que dizer\".\n\n8. Inconsistencia de mensagem sobrevivente: 5319 ainda emite o prefixo em portugues \"valor invalido: \" (e sem acento em \"invalido\"), exatamente o prefixo que o comentario de 10320-10323 declara ter sido eliminado de todas as mensagens. E o unico dos 29 ValueError da regiao que o carrega.",
+      "vm-c: TOTAL DE SITIOS DE ERRO NA REGIAO (vm/poolscript_vm.c 10400-15600): 402.\nQuebra: 380 sitios com o nome do tipo escrito literal (147 MemoryError, 106 TypeError, 71 RuntimeError, 14 IOError, 14 ValueError, 13 OSError, 12 DatabaseError, 2 OverflowError, 1 IndexError) + 21 chamadas de erro_sistema() (o funil do errno) + 1 repasse do request (15083-15086). Nao ha nenhum ERRO(), ERRO_T() nem ERRO_TF() na regiao: esses tres so sao definidos em 20538/20545/20553, depois dela.\n\nCOMO OS 380 LITERAIS SE ESCONDEM: nem todos aparecem num grep por BERRO/MERRO. Ha 5 macros intermediarias, e cada uma fixa um tipo por conta propria: BY_ERRO_TIPO (10411, 23 usos, TypeError), BY_ERRO_VALOR (10412, 7 usos, ValueError), SQL_ERRO (12470, 8 usos, DatabaseError), MAIL_ERRO_REDE (12915, 10 usos, OSError), SK_ERRNO (13206, 15 usos, RuntimeError). Mais 11 snprintf diretos em vm->erro_tipo (12205, 12480, 12517, 12525, 12545, 12857, 12915, 15086, 15368, 15375 e o corpo de SQL_ERRO em 12472) e 1 REERRO (15180, TypeError).\n\nNENHUM NOME DIGITADO ERRADO. Varri a regiao inteira por qualquer string com \"Erro\"/\"Error\"/\"ERROR\": saem exatamente 10 nomes, todos na grafia canonica. Nao ha \"ValueErro\", \"Typeerror\" nem \"IOerror\" aqui.\n\nO TIPO QUE ESCAPA DA HIERARQUIA — TimeoutError. Este e o achado da regiao. Em 15086 o motor faz snprintf(vm->erro_tipo, ..., \"%.30s\", tp), e tp vem de hr.erro_tipo, preenchido por vm/ps_http.c. Quer dizer: nesse unico sitio o tipo da excecao nao e uma decisao do motor, e um dado de outro modulo copiado cru e truncado em 30 bytes, sem conferencia contra a tabela EXCECOES. vm/ps_http.c escreve 4 nomes por ali (9x NetworkError, 3x TimeoutError, 1x OSError, 1x MemoryError em ps_http.c:368) e TimeoutError NAO consta da tabela EXCECOES (vm/poolscript_vm.c:3186-3226). Medido com o ./pool de hoje, com um `nc -l 127.0.0.1 18100` parado do outro lado:\n  TimeoutError: operacao expirou: requisicao passou de 2s (url=http://127.0.0.1:18100/) (linha 3)\no try/catch (Exception e) em volta NAO pegou e o programa morreu. Ou seja: request.get com timeout e o unico erro desta regiao que escapa ate do catch (Exception e).\n\nO MESMO ERRO COM TIPOS DIFERENTES — tres pares medidos:\n1) ENOENT: os.loadFile de arquivo sumido da FileNotFoundError; os.run de programa inexistente da IOError (12396). catch (OSError e) pega o primeiro e nao pega o segundo (IOError e IRMAO de OSError por decisao explicita, comentada em 3196-3199). Em 12205 isso e feito na mao: erro_sistema ja escreveu FileNotFoundError e a linha seguinte sobrescreve com \"IOError\".\n2) errno de rede: pelo modulo sockets, SK_ERRNO (13206) empacota TODO errno em RuntimeError, ECONNREFUSED e ETIMEDOUT inclusive; pelo modulo request o mesmo Connection refused sai NetworkError; pelo modulo os o mesmo errno sai subclasse de OSError. Tres modulos, tres tipos, mesma falha do kernel.\n3) timeout: pelo sockets vira RuntimeError \"timed out\" (13209); pelo request vira TimeoutError (15086). Dois nomes pro mesmo evento, e um dos dois nao esta na tabela.\n\n%s MONTADO COM A VARIAVEL ERRADA — confirmado rodando. Em 14883 a mensagem e \"%s() argument 1 must be str, not %s\" com `metodo`, que e o VERBO HTTP, nao o nome da funcao chamada:\n  ./pool com `import request` + `request.get(5)` imprime\n  TypeError: GET() argument 1 must be str, not int\nO usuario chamou request.get() e a mensagem manda ele procurar uma funcao \"GET()\" que nao existe. Os outros 44 \"argument N must be ...\" da regiao eu conferi um a um: o indice do texto bate com o args[N-1] testado e com o valor impresso no %s.\n\nMemoryError E METADE DA REGIAO: 147 dos 402 sitios (37%) sao guardas de malloc com a mesma mensagem \"sem memoria\", em portugues, enquanto TypeError/ValueError/IndexError/OverflowError usam o texto em ingles. E disparavel de verdade, nao e so defesa: `bytes.new(9000000000000000000)` (10458) levanta MemoryError: sem memoria.\n\nESTADO DO BINARIO TESTADO — diverge do que o briefing diz. O ./pool de /home/kleberdevion/poolscript-lang (construido em 2026-09-11 12:07:50, a partir do vm/poolscript_vm.c modificado e ainda nao commitado) JA TEM hierarquia: existe a tabela EXCECOES em 3186-3226 e excecao_eh() em 3241 que sobe a cadeia de pais. Medido agora:\n  catch (Exception e)  pega TypeError de 1 + \"a\", pega DatabaseError, pega IOError\n  catch (OSError e)    pega FileNotFoundError, pega NetworkError\n  catch (OSError e)    NAO pega IOError (por decisao, 3196-3199)\n  catch (Exception e)  NAO pega TimeoutError (buraco descrito acima)\nOu seja, das quatro consequencias listadas no briefing, tres ja nao se reproduzem neste binario; a que sobra, e que ninguem tinha medido, e o TimeoutError.\n\nScripts .ps de prova em /tmp/claude-1000/-home-kleberdevion-poolscript-lang/6d969e59-69de-417b-8aa4-653e4a35fc16/scratchpad/regA_01.ps ate regA_25.ps.",
+      "vm-d: TOTAL DE SITIOS DE ERRO NA REGIAO 15600-20800: 210.\nRepartidos assim: 149 por macro (53 BERRO, 94 MERRO, 2 REERRO), 18 por snprintf(vm->erro_tipo,...) direto, 2 SEM tipo nenhum, e 41 de aridade (20 chamadas de erro_aridade + 13 ARGS_MET + 8 EXIGE_ARGS) que carimbam TypeError de fora da regiao (vm/poolscript_vm.c:3363).\nNenhum ERRO_T/ERRO_TF/ERRO real na regiao: as 3 ocorrencias desses nomes sao as PROPRIAS definicoes dos macros, em 20538, 20545 e 20553.\n\nPADRAO 1 — O MESMO ERRO COM DOIS TIPOS DIFERENTES (medido, nao deduzido).\n\"operar depois de close()\" e DatabaseError no CURSOR e TypeError na CONEXAO:\n  vm/poolscript_vm.c:16553  MERRO(vm, \"DatabaseError\", \"cursor fechado: nao da pra operar depois de close()\")\n  vm/poolscript_vm.c:16565  MERRO(vm, \"TypeError\", \"conexao fechada\")   (idem 16666, 16676, 16940, 17054)\nSaida real do ./pool, mesmo script mudando so QUEM foi fechado:\n  cur.close() ; cur.execute(\"SELECT 1\")  ->  DatabaseError: cursor fechado: nao da pra operar depois de close()\n  c.close()   ; cur.execute(\"SELECT 1\")  ->  TypeError: conexao fechada\nQuem escreve catch (DatabaseError e) num bloco de banco perde metade dos casos.\n\nPADRAO 2 — \"sem memoria\" sai com DOIS tipos, e o macro culpado e definido DENTRO da minha regiao.\nOs 81 sitios de MemoryError da regiao usam BERRO/MERRO. Mas o macro ERRO, definido em vm/poolscript_vm.c:20538-20542, carimba \"RuntimeError\" fixo, e e usado 104 vezes no arquivo, varias delas em falta de memoria (21464 \"sem memoria na concatenacao\", 22016 \"sem memoria no closure\", 22336 \"sem memoria ao instanciar\", 22887, 23043, 23287...).\nMedido, mesmo script, so mudando o teto de memoria:\n  ( ulimit -v 50000; ./pool arq.ps )  ->  RuntimeError: sem memoria\n  ( ulimit -v 52000; ./pool arq.ps )  ->  MemoryError: sem memoria em map()\n\nPADRAO 3 — FALHA DE ARQUIVO/IO CARIMBADA COMO TypeError.\n  15898  BERRO(vm, \"TypeError\", \"%s\", erro)                      -> falha ao ler o xlsx\n  17502  BERRO(vm, \"TypeError\", \"render: nao abriu %.200s\", ...)  -> template que nao abriu\n  18103  MERRO(vm, \"TypeError\", \"save: nao criou %s\", dest)       -> upload que nao gravou\n  16759  BERRO(vm, \"TypeError\", \"driver desconhecido: %s\", driver)\n  18048/18058  MERRO(vm, \"TypeError\", \"extensao bloqueada por seguranca\" / \"nao permitida\")\nConfirmado: `psodbc.connect(driver=\"oraculo\", base=\"/tmp/x.db\")` -> TypeError: driver desconhecido: oraculo. Nenhum desses e erro de TIPO; cada um deles fica preso junto com `1 + \"a\"` no mesmo catch.\n\nPADRAO 4 — DOIS SITIOS SEM TIPO (20710 e 20739): so escrevem vm->erro e retornam -1, entao o catch compara contra o erro_tipo que sobrou da falha ANTERIOR. Nao e tipo errado: e tipo herdado.\n\nPADRAO 5 — A REGIAO ABRE UMA PORTA PRA 251 NOMES QUE NINGUEM CONHECE.\nOs sitios 16599 e 16829 copiam o tipo cru do buffer `tp` que vem de vm/ps_db.c. Com postgres, vm/ps_db.c:161 preenche esse buffer com o nome da tabela vm/ps_pgerr.h (252 entradas). Sao 251 nomes distintos que so podem ser pegos se o programador adivinhar a grafia exata, e nenhum deles aparece em nenhum outro ponto do motor.\n\nNAO ACHEI NENHUM NOME DIGITADO ERRADO na regiao: os 8 literais sao TypeError, ValueError, RuntimeError, MemoryError, AssertionError, NetworkError, DatabaseError, RecursionError, todos grafados igual em todos os sitios.\n\nRecursionError (20780, 20785) esta MORTO nesse caminho: `funct f(x) { return map([x], f) }` derruba o processo com SIGSEGV (rc=139, core dumped) antes de a guarda de frames ser alcancada. A guarda existe e nunca dispara por ali.\n\nAVISO SOBRE O BINARIO QUE USEI: ./pool esta com data 2026-09-11 12:07:50, mais NOVO que vm/poolscript_vm.c (12:07:00), e a arvore tem modificacao NAO COMITADA que insere uma tabela de hierarquia (`static const ExcLinha EXCECOES[]`) em vm/poolscript_vm.c:3163. Com esse binario, `catch (Exception e)` JA PEGA: rodei um bloco com `int x = 1` / `string s = \"a\"` / `var y = x + s` e a saida foi `Exception pegou: name 'var' is not defined (linha 4)`. Ou seja, a medicao do orquestrador (\"Exception nao pega NADA\") nao vale mais para este binario. A regiao 15600-20800 em si esta intocada pelo diff (os hunks caem em 3163, 7916, 11746-11781, 12450 e 23292).",
+      "vm-e: TOTAL DE SITIOS DE ERRO NA REGIAO (20800..26344, o arquivo tem 26344 linhas hoje): 255.\n  103 ERRO(vm, msg)          -> RuntimeError fixo dentro da propria macro (20538)\n   37 ERRO_T(vm, tipo, msg)   (20545)\n   86 ERRO_TF(vm, tipo, ...)  (20553)\n   22 snprintf(vm->erro_tipo, ...) direto (20 com nome literal, 2 com ternario)\n    7 snprintf(vm->erro, ...) SEM escrever tipo nenhum\nZero BERRO( e zero MERRO( na regiao: essas duas macros so aparecem antes da linha 20800.\n15 tipos distintos. Nenhum erro de digitacao: varri todas as strings \"...Error\"/\"...Erro\" do arquivo inteiro e nao ha nenhuma variante torta (nada de \"ValueErro\", \"Typeerror\", \"IOerror\"). Nenhum nome de subclasse (FileNotFoundError, PermissionError, IsADirectoryError...) e emitido na minha regiao - todos vem de tipo_do_errno, que fica antes da 20800.\n\nESTADO ATUAL DO BINARIO, QUE MUDOU DESDE O BRIEFING. O commit d037e16 (\"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\") ja esta em main e o ./pool na arvore e o 15.90.14, compilado hoje 12:18. A tabela EXCECOES esta em vm/poolscript_vm.c:3187-3227 e o catch agora chama excecao_eh() no OP_EXC_CASA (23296-23302), nao mais OP_EQ. Medido com esse binario (reg5_n.ps):\n  catch (OSError e)           PEGA os.loadFile de arquivo inexistente\n  catch (FileNotFoundError e) PEGA\n  catch (Exception e)         PEGA\nOu seja, as tres consequencias citadas no briefing nao reproduzem mais. O comentario \"Aqui nao ha hierarquia - o catch compara o nome\" ainda esta no arquivo, agora em 25299, e hoje esta DESATUALIZADO: ele justifica emitir ImportError em vez de ModuleNotFoundError com uma premissa que a tabela derrubou.\n\nO QUE A TABELA NAO CONSERTOU, MEDIDO NA MINHA REGIAO:\n\n1) NotImplementedError (25354) ficou de fora da tabela. E o unico tipo que o motor emite e que a tabela nao lista. Medido:\n   $ ./pool reg5_e.ps\n   A Exception NAO pegou NotImplementedError\n   B Exception pegou TypeError\n   Quem escreve `catch (Exception e)` em volta de um import pega tudo menos esse. E a doc piora: PoolScript.md:374 diz \"o nome e sem `Error`\", entao quem seguir a doc escreve `catch (NotImplemented e)` e nao pega nada (medido, reg5_i.ps).\n\n2) SETE sitios escrevem a mensagem e NAO escrevem o tipo: 25316, 25319, 25364, 25406, 25414, 25429, 25454. Todos em carrega_modulo_ps. O unico anteparo e o `if (!vm->erro_tipo[0])` em 24342-24343, que so age se erro_tipo estiver vazio - e nada limpa erro_tipo quando um catch trata o erro. Medido, sem nenhuma chamada de builtin no meio (builtin limpa erro_tipo em 22545):\n   $ ./pool reg5_h.ps\n   TypeError - vazou o tipo do erro anterior\n   O programa fez `1 + \"a\"` num try, tratou, e depois importou um .ps sem permissao de leitura. O import saiu como TypeError. A mensagem que veio junto e \"nao consegui abrir /.../reg5_semperm.ps (linha 1)\", que e exatamente o texto de 25316.\n\n3) O MESMO ERRO COM TIPOS DIFERENTES, tudo dentro do opcode OP_MUL, em 50 linhas:\n   $ ./pool reg5_j.ps\n   lista: RuntimeError\n   str:   MemoryError\n   bytes: MemoryError\n   21552 ERRO(vm, \"sequencia grande demais na repeticao\")            -> RuntimeError\n   21571 ERRO_T(vm, \"MemoryError\", \"string grande demais na repeticao\")\n   21591 ERRO_T(vm, \"MemoryError\", \"bytes grande demais na repeticao\")\n   E o caso mais direto: a string literal \"sem memoria na repeticao\" aparece em 21556 como ERRO( (RuntimeError) e em 21577/21579/21597/21599 como ERRO_T MemoryError. Texto identico, tipo diferente.\n\n4) MESMA FALHA, INDEXAR vs FATIAR:\n   $ ./pool reg5_l.ps e reg5_k.ps\n   indice de int: TypeError      (22890, \"'%s' object is not subscriptable\")\n   fatia de int:  RuntimeError   (23089, ERRO(vm, \"tipo nao fatiavel\"))\n   `5[1]` e `5[1:2]` sao a mesma reclamacao sobre o mesmo valor e caem em tipos diferentes.\n   Na mesma linha: `1 << -1` sai RuntimeError (22727/22757, \"deslocamento negativo\"), nao ValueError.\n\n5) A macro ERRO( e um dreno. Ela grava \"RuntimeError\" sem o sitio dizer nada, e 103 dos 255 sitios da regiao passam por ela. Dentro desses 103 estao 12 mensagens que dizem \"(bug do compilador)\" ou \"global fora da tabela\" - defeito interno do motor - misturadas com \"deslocamento negativo\" e \"tipo nao fatiavel\", que sao erro do programa do usuario. Um `catch (RuntimeError e)` nao consegue separar as duas coisas.\n\n6) Exception NAO e raiz de tudo, so dos nomes da tabela. Medido:\n   $ ./pool reg5_l.ps\n   raise MinhaCoisa -> MinhaCoisa\n   Exception NAO pega tipo inventado\n   Isso esta escrito como intencional no comentario 3182-3185, mas convem saber que `catch (Exception e)` nao e rede de seguranca para tipo levantado pelo usuario.\n\nNao editei nada. `git status --porcelain` sai vazio. Os .ps de teste ficaram todos em /tmp/claude-1000/-home-kleberdevion-poolscript-lang/6d969e59-69de-417b-8aa4-653e4a35fc16/scratchpad, prefixados reg5_.",
+      "libs: TAMANHO DA REGIAO. 20 sitios emitem tipo de excecao, todos em 2 dos 10 arquivos: 14 em vm/ps_http.c (NetworkError 85/101/108/113/119/283/314/326/429, TimeoutError 324/350/376, OSError 301, MemoryError 368) e 6 em vm/ps_db.c (DatabaseError fixo em 93/158/253/325/462, mais a consulta de tabela em 161). Os outros 8 arquivos — ps_jinker.c, ps_mail.c, ps_hash.c, ps_qr.c, ps_xlsx.c, ps_mongo.c, ps_regex.c, ps_pkg.c — emitem ZERO tipo: `grep -n 'erro_tipo' ` neles nao devolve nada. Eles so enchem um buffer de MENSAGEM; quem decide o tipo e o VM na fronteira.\n\nO NUMERO QUE IMPORTA: 252, NAO 5. vm/ps_db.c:161 faz `snprintf(tipo_out, tcap, \"%s\", PG_ERR_NOMES[i].nome)` varrendo a tabela de vm/ps_pgerr.h, que tem 252 nomes DISTINTOS de SQLSTATE. Nenhum desses 252 esta na tabela de hierarquia de vm/poolscript_vm.c:3178-3228, entao cada um so casa por igualdade literal do nome. Contando estes, a regiao emite 257 tipos distintos.\n\nMEDIDO COM O ./pool DE HOJE (12:18): a hierarquia FUNCIONA para os tipos que estao na tabela — `catch (OSError e)` pega os.readFile de arquivo inexistente e `catch (Exception e)` tambem (rodei o teste). O que NAO funciona sao os 252 de fora dela. Saida real, postgres em 127.0.0.1:5432, base ps_teste:\n  \"1) SyntaxError pegou (DatabaseError NAO): erro de banco de dados: ERROR:  syntax error at or near \\\"ISTO\\\"\"\n  \"4) Exception NAO pegou; generico pegou: erro de banco de dados: ERROR:  division by zero\"\nOu seja: erro de postgres nao e pego por catch (DatabaseError e) NEM por catch (Exception e). So por catch (e) sem tipo, ou escrevendo o nome exato do SQLSTATE.\n\nMESMO ERRO, TIPOS DIFERENTES — 3 medicoes.\n1) O MESMO SQL invalido, a MESMA lib psodbc, o MESMO metodo .execute(): sqlite -> \"1) DatabaseError pegou: erro de banco de dados: near \\\"ISTO\\\": syntax error\"; mysql -> \"1) DatabaseError pegou: erro de banco de dados: You have an error in your SQL syntax...\"; postgres -> \"1) SyntaxError pegou (DatabaseError NAO)\". Trocar de driver troca o tipo da excecao sem trocar uma linha do programa. Igual para UNIQUE: sqlite da DatabaseError, postgres da UniqueViolation.\n2) \"Connection refused\" no request e NetworkError; no mail e OSError. Saida real: \"1) NetworkError pegou: falha de conexao: Connection refused\" (vm/ps_http.c:101) contra \"1) NetworkError NAO pegou; OSError pegou: [Errno 111] Connection refused\" (MAIL_ERRO_REDE, vm/poolscript_vm.c). Quem escreve catch (NetworkError e) para tratar rede perde o caso do mail.\n3) Falha de conexao do MESMO driver postgres: no connect e NetworkError (medido: \"4) NetworkError: falha de conexao: connection to server at \\\"127.0.0.1\\\", port 9 failed\"), no meio do exec seria ConnectionFailure (vm/ps_pgerr.h:14).\n\nO TIPO ESCOLHIDO POR strstr NA MENSAGEM. vm/poolscript_vm.c:16788: `strstr(erro, \"conexão\") ? \"NetworkError\" : \"DatabaseError\"`. O tipo do erro depende de a mensagem conter uma palavra em portugues. vm/ps_db.c escreve \"falha de conexão: \" para postgres (416) e mysql (427), mas od_erro (314-320) escreve \"erro de banco de dados: \" para ODBC/mssql — logo servidor inalcancavel da NetworkError em postgres/mysql e DatabaseError em mssql, ao contrario do que o proprio comentario de vm/ps_db.c:446 afirma (\"falha de conexão vira NetworkError-ish\").\n\n31 SITIOS DE FALTA DE MEMORIA, ZERO MemoryError. ps_db.c 67/75/126/206/301/350/368/395/423/435/439 (13 com 399), ps_mail.c 149/173/237/376/497/584/630/644, ps_regex.c 306/429/520/575/580, ps_mongo.c 32/69/88, ps_jinker.c 650. Todos saem como DatabaseError, NetworkError, OSError ou ValueError conforme a fronteira que cruzam. O unico MemoryError da regiao (ps_http.c:368) nao e falta de memoria: e o max_size que o programa pediu.\n\nDOIS DONOS PARA UM ERRO SO. vm/ps_db.c:232 tira a MENSAGEM da conexao (`PQerrorMessage(c->pg)`) e vm/ps_db.c:233 tira o TIPO do resultado (`pg_tipo_erro(r, ...)`). Sao dois objetos diferentes descrevendo o mesmo erro.\n\nTIPO QUE NENHUM PROGRAMA ALCANCA. vm/ps_http.c:301 (OSError) e codigo morto — provado por conta (caminho grampeado em 2048, linha em 2400, maximo possivel 2344) e medido (caminho de 3001 chars: o servidor recebeu 2060 bytes de linha de pedido, caminho truncado, e o ./pool devolveu status 200 sem levantar nada). Tambem inalcancaveis: vm/ps_db.c:462 (\"driver ainda nao suportado na VM\") e 466 (\"driver nao suportado\"), porque db_resolve_driver (vm/poolscript_vm.c:16435) ja recusa qualquer driver fora dos 4 antes de chamar ps_db_conecta — medido: psodbc.connect(driver=\"oracle\") sai como \"driver desconhecido: oracle\" de vm/poolscript_vm.c:16759.\n\nERRO QUE NAO VIRA EXCECAO NENHUMA. vm/ps_pkg.c tem 73 impressoes de erro em stderr e e chamado so de vm/main.c:945-953 (o comando psl) — nenhuma delas pode ser pega por catch, em lugar nenhum. E as falhas de TLS de vm/ps_jinker.c:936-994 so viram fprintf(stderr) em vm/poolscript_vm.c:19817 e 19822: o servidor cai para HTTP em claro em silencio, sem levantar nada.\n\nTIPO ESCOLHIDO NA FRONTEIRA, FORA DA CATEGORIA. As mensagens dos 8 arquivos mudos ganham tipo assim: ps_xlsx.c -> TypeError (vm/poolscript_vm.c:15898, arquivo xlsx corrompido classificado como erro de TIPO); ps_qr.c -> RuntimeError (15367); ps_regex.c -> ValueError (9484) e TypeError (9473) — medido: \"1) ValueError pegou: regex: grupos demais (posicao 94)\"; ps_mongo.c -> NetworkError no connect (17088) e DatabaseError nas queries (16948-17043); ps_mail.c -> OSError; ps_jinker.c -> NetworkError (19827) — medido: \"1) NetworkError pegou: bind 127.0.0.1:80: Permission denied\", com o motor tendo PermissionError e nao usando.\n\nMARGEM DE TRUNCAMENTO. vm->erro_tipo tem 64 bytes (vm/poolscript_vm.c:1105) e as copias de tipo de banco usam \"%.60s\" (vm/poolscript_vm.c:16599 e 16829). O maior nome da tabela tem 47 chars (\"InappropriateIsolationLevelForBranchTransaction\"), entao hoje nada trunca — sobram 13 chars de folga. Um nome novo de 61+ chars entra truncado e nao casa com catch nenhum, nem com o proprio nome.",
+      "frente: MEDIDO COM: ./pool 15.90.14, HEAD = d037e16 (binario de 12:18, commit de 12:19 — o binario CONFERE com a fonte). Atencao: d037e16 ja se chama \"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\" e adicionou a tabela EXCECOES + excecao_eh() em vm/poolscript_vm.c:3195-3247, usada no catch em :23301. Ou seja, a premissa \"catch (Exception e) nao pega nada\" ja nao vale para tudo: medi `catch (Exception e)` pegando SyntaxError. Nao pega NotImplementedError porque esse nome ficou de fora da tabela.\n\nTOTAL DE SITIOS DE ERRO NA MINHA REGIAO: 177.\n  vm/ps_parser.c   —  76 (perro(), definido em :109)\n  vm/ps_compiler.c —  73 (63 cerro() def em :195, + 10 cerro_sx() def em :206)\n  vm/ps_lexer.c    —  18 (erro() def em :154, erro_em() def em :183)\n  vm/main.c        —  10 (os unicos que escrevem um NOME de tipo: :141 :145 :149 :153 :408 :412 :416 :449 :715 :727)\n  vm/ps_debug.c    —   0\n\nPADRAO 1 — A REGIAO INTEIRA NAO TEM TIPO. `grep -c erro_tipo` nos cinco arquivos da regiao da 0 em todos. Nenhum BERRO/MERRO/ERRO_TF/ERRO_T/ERRO tambem: 0 ocorrencias nos cinco. Os 167 sitios de lexer/parser/compilador fazem so `snprintf(out->erro, ...)` com a MENSAGEM. O tipo e inventado depois, em main.c, a partir de um enum de 4 valores (PSTipoErro, vm/ps_vm.h:19-26) — e so para IMPRIMIR. Consequencia: em toda a regiao existem exatamente 4 tipos possiveis para 167 erros diferentes, e o que escolhe entre SyntaxError e NotImplementedError e um unico bit, `erro_do_programa` (ps_compiler.h:163, setado 0 em cerro e 1 em cerro_sx).\n\nPADRAO 2 — O MESMO ERRO SAI COM DOIS TIPOS DIFERENTES. A mensagem \"argumento posicional depois de nomeado\" existe em dois sitios do compilador, um com cada helper:\n  vm/ps_compiler.c:1291  cerro_sx(...)  -> SyntaxError\n  vm/ps_compiler.c:1569  cerro(...)     -> NotImplementedError\nMedido, mesma frase, tipos e codigos de saida diferentes:\n  `funct f(a,b){return a}` + `f(a=1, 2)`  ->  SyntaxError: argumento posicional depois de nomeado   (rc=2)\n  `base(nome=nome, \"preto\")` dentro de __init__ de subclasse  ->  NotImplementedError: argumento posicional depois de nomeado   (rc=3)\nHa um par irmao na mesma situacao, mesma feature partida em dois tipos: ps_compiler.c:2058 \"alvo de desempacotamento invalido\" (cerro -> NotImplementedError) e ps_compiler.c:2992 \"alvo de desempacotamento precisa ser nome, membro ou indice\" (cerro_sx -> SyntaxError).\n\nPADRAO 3 — DOIS NOMES PARA A MESMA CONDICAO. Arquivo que nao abre: main.c:408 chama de IOError; o motor chama de FileNotFoundError (tipo_do_errno, poolscript_vm.c:3250). Os dois nomes sao irmaos na tabela, de propósito, entao nenhum catch pega os dois.\n\nPADRAO 4 — A LINHA QUE CHEGA NO catch E DE OUTRO ARQUIVO. Quando um erro de compilacao de modulo vira excecao pegavel, o \"(linha N)\" colado na mensagem (poolscript_vm.c:24566) usa `linha_agora`, que e a linha do `import` no arquivo que PEGA, nao a linha do defeito no modulo. Medido: modulo rg_mod_ni2.ps com `break` na LINHA 4; rodado direto diz \"em rg_mod_ni2.ps, linha 4\"; pego num catch diz \"rg_mod_ni2: 'break' fora de laco (linha 2)\" — 2 e a linha do `import`. A linha certa existe em vm->mod_erro_linha (gravada em poolscript_vm.c:25336/25346/25357) e nao e usada aqui.\n\nPADRAO 5 — CODIGO DE SAIDA POR TIPO, em reporta() (vm/main.c:137-165): SyntaxError=2, NotImplementedError=3, MemoryError=4, runtime=1. Medido 2 e 3. Quem roteia por rc ve `break` fora de laco (rc=3) como se fosse feature faltando.\n\nNAO ACHEI na regiao: nome digitado errado (nenhum \"ValueErro\"/\"Typeerror\"/\"IOerror\"), nem nome de subclasse solta — a regiao so usa 5 nomes e todos sao de topo. A varredura foi exaustiva: grep -E '\"[A-Z][A-Za-z]*(Error|Exception|Warning)\"' nos cinco arquivos devolve exatamente as 10 linhas de main.c listadas acima; as demais aparicoes de \"SyntaxError\"/\"NotImplementedError\" na regiao (ps_parser.c:1818, ps_compiler.c:205, :2618, :2843) sao comentario.\n\nArquivos de teste que escrevi (todos em /tmp/claude-1000/-home-kleberdevion-poolscript-lang/6d969e59-69de-417b-8aa4-653e4a35fc16/scratchpad, prefixo rg_): rg_sx.ps, rg_break.ps, rg_cont.ps, rg_lex.ps, rg_mod_sx.ps, rg_mod_ni.ps, rg_mod_ni2.ps, rg_catch_sx.ps, rg_catch_ni.ps, rg_catch_exc.ps, rg_catch_exc2.ps, rg_catch_ni2.ps, rg_a.ps, rg_b.ps, rg_c.ps, rg_d.ps, rg_e.ps, rg_f.ps, rg_g.ps, rg_h.ps, rg_kw1.ps, rg_kw2.ps, rg_u1.ps, rg_is.ps, rg_i3.ps. Nao editei nada do repositorio; git status continua limpo."
+    ]
+  },
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Inventariar"
+    },
+    {
+      "type": "workflow_phase",
+      "index": 2,
+      "title": "Medir"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "inventario:vm-a",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "a301eea09dcac7a6f",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789138651946,
+      "queuedAt": 1789138651900,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "TOTAL DA REGIAO (linhas 1-5200): 120 sitios de erro — 113 c…",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789139378866,
+      "tokens": 77659,
+      "toolCalls": 37,
+      "durationMs": 726919,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"TypeError\",\"ocorrencias\":50,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":3551,\"como_disparar\":\"post(abs(\\\"a\\\"))\",\"suspeita\":\"\"},{\"tipo\":\"MemoryError\",\"ocorrencias\":48,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":3608,\"como_disparar\":\"post(pow(2, 99999999))\",\"suspeita\":\"\"},{\"tipo\":\"ValueError\",\"ocorrencias\":13,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_li…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "inventario:vm-b",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "a0f3e25d00737cfb3",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789138651947,
+      "queuedAt": 1789138651900,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "REGIAO vm/poolscript_vm.c 5200-10400. TOTAL: 302 sitios de …",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789139268131,
+      "tokens": 76240,
+      "toolCalls": 23,
+      "durationMs": 614414,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"MemoryError\",\"ocorrencias\":135,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":5412,\"como_disparar\":\"x = \\\"abc\\\".ljust(99999999999)\\n# saida real do ./pool:\\n# MemoryError: memória insuficiente: ljust() pediu largura 99999999999\",\"suspeita\":\"131 sitios sao MERRO/BERRO \\\"sem memoria\\\" (falha real de malloc, inalcancavel por programa), mas 3 sitios (5412, 5456, 9967) levant…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "inventario:vm-c",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "a59eaff90661439b5",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789139268140,
+      "queuedAt": 1789138651900,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "TOTAL DE SITIOS DE ERRO NA REGIAO (vm/poolscript_vm.c 10400…",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789140096117,
+      "tokens": 109382,
+      "toolCalls": 57,
+      "durationMs": 827977,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"MemoryError\",\"ocorrencias\":147,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":10458,\"como_disparar\":\"import bytes\\nbytes.new(9000000000000000000)\\n# saida real: MemoryError: sem memoria\",\"suspeita\":\"\"},{\"tipo\":\"TypeError\",\"ocorrencias\":106,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":10684,\"como_disparar\":\"import bytes\\nbytes.get(\\\"nao sou bytes\\\", 0)\\n# saida …"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "inventario:vm-d",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "a708cc648180fe106",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789139378871,
+      "queuedAt": 1789138651900,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "TOTAL DE SITIOS DE ERRO NA REGIAO 15600-20800: 210. Reparti…",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789140275445,
+      "tokens": 105918,
+      "toolCalls": 64,
+      "durationMs": 896574,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"MemoryError\",\"ocorrencias\":81,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":15604,\"como_disparar\":\"l = []\\ni = 0\\nwhile i < 200000 {\\n    l.append(i)\\n    i = i + 1\\n}\\npost(len(map(l, funct(x){ return x })))\\n\\n# rodado com teto de memoria virtual:  ( ulimit -v 52000; ./pool arq.ps )\\n# saida real: MemoryError: sem memoria em map()   <- sitio vm/poolscript_vm.c:20379\",…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 5,
+      "label": "inventario:vm-e",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "a401ad207cd44b9d2",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789140096120,
+      "queuedAt": 1789138651901,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "TOTAL DE SITIOS DE ERRO NA REGIAO (20800..26344, o arquivo …",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789141080553,
+      "tokens": 117989,
+      "toolCalls": 81,
+      "durationMs": 984431,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"RuntimeError\",\"ocorrencias\":125,\"exemplo_arquivo\":\"vm/poolscript_vm.c\",\"exemplo_linha\":21552,\"como_disparar\":\"try { l = [1, 2] * 9999999999 }\\ncatch (RuntimeError e) { post(\\\"RuntimeError\\\") }\\n# saida real: RuntimeError\",\"suspeita\":\"e o tipo POR OMISSAO, nao uma escolha: 103 dos 125 sitios usam a macro ERRO(vm, msg) (definida em 20538), que grava \\\"RuntimeError\\\" sem o sitio di…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 6,
+      "label": "inventario:libs",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "af9a88ea4d7cc7b9e",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789140275448,
+      "queuedAt": 1789138651901,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "TAMANHO DA REGIAO. 20 sitios emitem tipo de excecao, todos …",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789141368551,
+      "tokens": 129449,
+      "toolCalls": 112,
+      "durationMs": 1093102,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"NetworkError\",\"ocorrencias\":9,\"exemplo_arquivo\":\"vm/ps_http.c\",\"exemplo_linha\":85,\"como_disparar\":\"import request\\ntry { request.get(\\\"http://nao.existe.este.host.invalido.zzz/x\\\") } catch (NetworkError e) { post(e) }\\n# saida real do ./pool: \\\"1) NetworkError pegou: falha de conexao: nome nao resolvido: nao.existe.este.host.invalido.zzz\\\"\\n# tambem confirmado: catch (OSError e)…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 7,
+      "label": "inventario:frente",
+      "phaseIndex": 1,
+      "phaseTitle": "Inventariar",
+      "agentId": "a2d1641fb3805f915",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789141080558,
+      "queuedAt": 1789138651901,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "MEDIDO COM: ./pool 15.90.14, HEAD = d037e16 (binario de 12:…",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789142785070,
+      "tokens": 92674,
+      "toolCalls": 66,
+      "durationMs": 1704512,
+      "resultPreview": "{\"tipos\":[{\"tipo\":\"SyntaxError\",\"ocorrencias\":4,\"exemplo_arquivo\":\"vm/main.c\",\"exemplo_linha\":141,\"como_disparar\":\"Arquivo solto (NAO pegavel, o programa nem comeca):\\n    x = (1 +\\n-> saida real: `SyntaxError: expressao invalida` / `em rg_sx.ps, linha 2`, rc=2\\n\\nPegavel SO via import (medido):\\n    rg_mod_sx.ps:  y = (1 +\\n    try { import rg_mod_sx } catch (SyntaxError e) { post(str(e)) }\\n-> s…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 8,
+      "label": "mede:vm-b",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "a0f27b217175b8a11",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789141368575,
+      "queuedAt": 1789139268165,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789142009117,
+      "tokens": 71497,
+      "toolCalls": 78,
+      "durationMs": 640540,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"MemoryError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"ATENCAO: medido com ./pool 15.90.14 [PSVM], binario de 2026-09-11 12:18:10, que JA CONTEM o commit d037e16 \\\"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\\\". O defeito descrito NAO reproduz mais neste binario.\\n\\n$ ./pool mem_1.ps   (sem try)\\nMemoryE…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 9,
+      "label": "mede:vm-a",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "a36ee6cc7c25c6ae0",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789142009140,
+      "queuedAt": 1789139378887,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789147531577,
+      "tokens": 75579,
+      "toolCalls": 78,
+      "durationMs": 5522437,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"TypeError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"[MEDIDO COM ./pool 15.90.14, binario de 2026-09-11 12:18:10, HEAD d037e16 'hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto'. O defeito descrito NAO reproduz mais neste binario.]\\n\\n--- 1) sem try: post(abs(\\\"a\\\")) ---\\nTypeError: bad operand type for abs(…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 10,
+      "label": "mede:vm-c",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "aa6648d3a52de1440",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789142785073,
+      "queuedAt": 1789140096129,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789147688516,
+      "tokens": 75676,
+      "toolCalls": 79,
+      "durationMs": 4903443,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"MemoryError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"[1 sem try]\\nMemoryError: sem memoria\\n  em regQ_01_MemoryError_1.ps, linha 2\\n  | bytes.new(9000000000000000000)\\n  |          ^^^\\n[exit=1]\\n\\n[2 catch (MemoryError e)]\\npegou\\npassou do try\\n[exit=0]\\n\\n[3 catch (Exception e)]\\npegou\\npassou do try\\n[exit=0]\\n\\n[4 catch (e)]…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 11,
+      "label": "mede:vm-d",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "ae9bc2e58fe26160a",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789147531580,
+      "queuedAt": 1789140275476,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789148882986,
+      "tokens": 96844,
+      "toolCalls": 97,
+      "durationMs": 1351405,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"MemoryError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"ATENCAO: o binario ./pool (mtime 2026-09-11 12:18:10) JA ESTA RECONSTRUIDO com o commit d037e16 \\\"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\\\", que entrou em 2026-09-11 12:19. A tabela EXCECOES esta em vm/poolscript_vm.c:3186 e o teste de captura e…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 12,
+      "label": "mede:vm-e",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "af9765249c246f2c6",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789147688518,
+      "queuedAt": 1789141080568,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789148786344,
+      "tokens": 71153,
+      "toolCalls": 85,
+      "durationMs": 1097825,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"RuntimeError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"[1 sem try]\\nRuntimeError: sequencia grande demais na repeticao\\n  em reg5_RuntimeError_1.ps, linha 1\\n  | l = [1, 2] * 9999999999\\n  |            ^^^\\n(rc=1)\\n[2 catch (RuntimeError e)] pegou (rc=0)\\n[3 catch (Exception e)] pegou (rc=0)\\n[4 catch (e)] pegou (rc=0)\"},{\"tipo\":\"…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 13,
+      "label": "mede:libs",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "a274a15e4dfddfdf2",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789148786347,
+      "queuedAt": 1789141368584,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789149784404,
+      "tokens": 85189,
+      "toolCalls": 49,
+      "durationMs": 998057,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"NetworkError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"BINARIO MEDIDO: ./pool 15.90.14 [PSVM], md5 af54821a85f3, compilado 12:18 de HOJE a partir do commit d037e16 \\\"hierarquia de excecoes: o catch pergunta a uma tabela, nao compara texto\\\" (arvore limpa). ATENCAO: este binario JA TEM a tabela de hierarquia (vm/poolscript_vm.c:318…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 14,
+      "label": "mede:frente",
+      "phaseIndex": 2,
+      "phaseTitle": "Medir",
+      "agentId": "a2f29e8e8e2bf2fa8",
+      "model": "claude-opus-5[1m]",
+      "state": "done",
+      "startedAt": 1789148882990,
+      "queuedAt": 1789142785082,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "promptPreview": "CONTEXTO. Repositorio: /home/kleberdevion/poolscript-lang. Linguagem\nPoolScript, motor em C (vm/*.c). O dono achou um defeito de arquitetura e voce\nesta medindo o tamanho dele.\n\nO DEFEITO. O tipo de uma excecao e uma STRING solta. Cada sitio de erro digita\no nome do tipo a mao:\n    BERRO(vm, \"ValueError\", \"loadFile: ...\")\n    MERRO(vm, \"TypeError\", \"...\")\n    ERRO_TF(vm, \"AttributedValueError\", \".…",
+      "promptFramed": false,
+      "lastProgressAt": 1789149296908,
+      "tokens": 60754,
+      "toolCalls": 35,
+      "durationMs": 413917,
+      "resultPreview": "{\"resultados\":[{\"tipo\":\"SyntaxError\",\"disparou\":true,\"pega_exato\":true,\"pega_generico\":true,\"pega_sem_tipo\":true,\"saida\":\"[binario medido: pool 15.90.14, md5 af54821a85f37cf0993350e5ca311858, commit d037e16 — a tabela EXCECOES ja esta DENTRO deste binario; SyntaxError esta listada em vm/poolscript_vm.c:3226 como filha de Exception]\\n\\nModulo rgS_mod_sx.ps: `y = (1 +`\\n\\n1) SEM try, arquivo solto r…"
+    }
+  ],
+  "totalTokens": 1246003,
+  "totalToolCalls": 941
+}

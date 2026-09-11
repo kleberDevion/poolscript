@@ -650,6 +650,11 @@ typedef struct {
     FILE *f;
     int   fechado;
     int   binario;
+    /* `processo`: o FILE* veio de um COMANDO, não de um caminho no disco, e
+     * fecha com `pclose` (que espera o filho e devolve o código de saída), não
+     * com `fclose`. É o que permite ler a saída de um comando em pedaços, pelo
+     * mesmo `.read()`/`.readline()` de qualquer arquivo. */
+    int   processo;
     char  caminho[512];
 } PSArquivo;
 
@@ -1835,7 +1840,8 @@ static void percorre_cinzas(VM *vm)
  * na tabela põe tam=0) + libera os buffers internos. */
 static void fin_arquivo(VM *vm, Obj *o) {
     PSArquivo *a = (PSArquivo *)o;
-    if (!a->fechado && a->f) fclose(a->f);   /* fecha o que o usuário esqueceu */
+    /* fecha o que o usuário esqueceu — e quem veio de comando espera o filho */
+    if (!a->fechado && a->f) { if (a->processo) pclose(a->f); else fclose(a->f); }
     vm->alocado -= sizeof(PSArquivo);
 }
 static void fin_sqlcur(VM *vm, Obj *o) {
@@ -3224,6 +3230,8 @@ static const ExcLinha EXCECOES[] = {
     { "MemoryError",          "Exception" },
     { "AssertionError",       "Exception" },
     { "SyntaxError",          "Exception" },
+    { "NotImplementedError",  "RuntimeError" },
+    { "TimeoutError",         "OSError" },
     { "DatabaseError",        "Exception" },
 };
 
@@ -3232,6 +3240,12 @@ static const char *excecao_pai(const char *nome)
     if (!nome) return NULL;
     for (size_t i = 0; i < sizeof(EXCECOES) / sizeof(EXCECOES[0]); i++)
         if (strcmp(EXCECOES[i].nome, nome) == 0) return EXCECOES[i].pai;
+    /* Os 251 nomes de erro do postgres vivem na tabela SQLSTATE de
+     * `ps_pgerr.h` e todos são `DatabaseError`. Perguntar a ela é o que evita
+     * uma segunda cópia da lista aqui — e sem esta linha `catch (DatabaseError
+     * e)` não pegava `UniqueViolation`, enquanto a MESMA violação de UNIQUE no
+     * sqlite já dava `DatabaseError`: o tipo mudava conforme o driver. */
+    if (ps_db_eh_nome_erro(nome)) return "DatabaseError";
     return NULL;   /* fora da tabela: só casa pelo próprio nome */
 }
 
@@ -6535,8 +6549,19 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
      * objeto "aberto" faria o finalizador do GC fechar de novo. */
     if (!a->fechado && a->f) {
         FILE *f = a->f;
+        int proc = a->processo;
         a->f = NULL; a->fechado = 1;
         errno = 0;
+        /* Vindo de comando, `pclose` espera o filho e devolve o status dele.
+         * Status != 0 NÃO é erro de fechar: é o comando que saiu com código
+         * diferente de zero, e quem chamou decide o que fazer — por isso o
+         * código vira o RETORNO do close em vez de virar exceção. */
+        if (proc) {
+            int st = pclose(f);
+            if (st < 0) return erro_sistema(vm, errno ? errno : EIO, NULL, NULL);
+            *out = MK_INT(WIFEXITED(st) ? WEXITSTATUS(st) : -1);
+            return 0;
+        }
         if (fclose(f) != 0)
             return erro_sistema(vm, errno ? errno : EIO, NULL, NULL);
     }
@@ -12208,6 +12233,13 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
     return 0;
 }
 
+/* Teto da saída capturada de um comando. Existe porque `capture=true` tem que
+ * MATERIALIZAR o texto pra devolver: sem teto, a saída inteira do comando vira
+ * memória do processo, e um pacote grande derruba a máquina. Quem precisa de
+ * saída sem tamanho usa `capture=false`, que escreve direto no terminal e não
+ * guarda nada. */
+#define PS_CAPTURA_TETO  (64L * 1024 * 1024)
+
 /* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`, que é o
  * comando que falhou tem a mensagem no stderr. */
 static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
@@ -12265,13 +12297,62 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
     }
     SBUF_AUTO so = {0};
     SBUF_AUTO se = {0};
-    char buf[4096];
-    ssize_t r;
-    while ((r = read(po[0], buf, sizeof(buf))) > 0) sb_bytes(&so, buf, (int)r);
-    while ((r = read(pe[0], buf, sizeof(buf))) > 0) sb_bytes(&se, buf, (int)r);
-    close(po[0]); close(pe[0]);
+    char buf[65536];
+
+    /* OS DOIS CANOS AO MESMO TEMPO, com poll().
+     *
+     * Antes era `while(read(stdout))` até o fim e SÓ DEPOIS o stderr. O cano
+     * tem 64 KB: um comando que escreve mais que isso no stderr antes de o
+     * stdout acabar trava o filho na escrita, o filho nunca fecha o stdout, e
+     * o pai fica esperando para sempre. Não é lentidão, é impasse — medido:
+     * 200 KB no stderr e o `pool` pendurou até o timeout matar.
+     *
+     * E o TETO: os dois buffers cresciam sem limite, então a saída inteira do
+     * comando virava RSS do processo. Instalar um pacote grande derrubava a
+     * máquina por falta de memória. Passando do teto, o erro diz o que fazer
+     * em vez de o sistema matar o processo. */
+    int fds[2] = { po[0], pe[0] };
+    SBuf *destino[2] = { &so, &se };
+    int vivos = 2;
+    int estourou = 0;
+    while (vivos > 0 && !estourou) {
+        struct pollfd pf[2];
+        int np = 0, idx[2];
+        for (int k = 0; k < 2; k++)
+            if (fds[k] >= 0) { pf[np].fd = fds[k]; pf[np].events = POLLIN; pf[np].revents = 0; idx[np] = k; np++; }
+        if (np == 0) break;
+        if (poll(pf, (nfds_t)np, -1) < 0) { if (errno == EINTR) continue; break; }
+        for (int j = 0; j < np; j++) {
+            if (!(pf[j].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+            int k = idx[j];
+            ssize_t r = read(fds[k], buf, sizeof(buf));
+            if (r > 0) {
+                if ((long)destino[k]->n + r > PS_CAPTURA_TETO) { estourou = 1; break; }
+                if (sb_bytes(destino[k], buf, (int)r) != 0) { estourou = 1; break; }
+            } else if (r == 0 || (r < 0 && errno != EINTR)) {
+                close(fds[k]); fds[k] = -1; vivos--;
+            }
+        }
+    }
+    /* Estourou: continua DRENANDO e jogando fora, senão o filho fica travado
+     * na escrita e o waitpid abaixo nunca volta — trocaríamos um impasse por
+     * outro. */
+    if (estourou)
+        for (int k = 0; k < 2; k++)
+            while (fds[k] >= 0) {
+                ssize_t r = read(fds[k], buf, sizeof(buf));
+                if (r > 0) continue;
+                if (r < 0 && errno == EINTR) continue;
+                close(fds[k]); fds[k] = -1; vivos--;
+            }
+    for (int k = 0; k < 2; k++) if (fds[k] >= 0) close(fds[k]);
     int st;
     waitpid(pid, &st, 0);
+    if (estourou)
+        BERRO(vm, "MemoryError",
+              "a saida do comando passou de %d MB. Rode sem capturar "
+              "(capture=false) pra ela ir direto pro terminal, sem virar memoria",
+              (int)(PS_CAPTURA_TETO / (1024 * 1024)));
 
     SBuf *escolhido = &so;
     int fim = so.n;
@@ -12284,6 +12365,47 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
     int ini = 0;
     while (ini < fim && (escolhido->b[ini] == '\n' || escolhido->b[ini] == ' ')) ini++;
     return devolve_texto(vm, out, escolhido->b ? escolhido->b + ini : "", fim - ini);
+}
+
+/* `os.pipeline(command)` — a saída do comando em PEDAÇOS, nunca inteira.
+ *
+ * `os.cmd(c, true)` tem que MATERIALIZAR o texto pra devolver: a saída inteira
+ * do comando vira memória do processo, e um pacote grande derruba a máquina.
+ * Aqui o comando devolve um PoolFile ligado ao cano, e o programa lê no ritmo
+ * dele com o `.readline()`/`.read(n)` de qualquer arquivo.
+ *
+ * A contrapressão sai de graça e é real: enquanto ninguém pede o próximo
+ * pedaço, ninguém lê o cano; o cano enche em 64 KB e o SISTEMA suspende o
+ * comando na escrita. Nunca há mais que um pedaço na memória.
+ *
+ *     using os.pipeline("dpkg -i pacote.deb") as p {
+ *         linha = p.readline()
+ *         while linha != Null { post(linha); linha = p.readline() }
+ *     }
+ *
+ * `close()` devolve o CÓDIGO DE SAÍDA do comando (o `using` fecha sozinho). */
+static int mod_os_pipeline(VM *vm, Value *args, int n, Value *out)
+{
+    if (n != 1) return erro_aridade(vm, "pipeline", 1, 1, n);
+    if (!EH_STRING(args[0]))
+        BERRO(vm, "TypeError", "pipeline() argument 1 must be str, not %s",
+              nome_do_tipo_valor(args[0]));
+    const char *cmd = COMO_STRING(args[0])->chars;
+    FILE *f = popen(cmd, "r");
+    if (!f) return erro_sistema(vm, errno ? errno : EIO, cmd, NULL);
+
+    PSArquivo *a = calloc(1, sizeof(PSArquivo));
+    if (!a) { pclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
+    a->obj.type = OBJ_ARQUIVO; a->obj.marked = 0;
+    a->obj.next = vm->objetos; vm->objetos = (Obj *)a;
+    a->f = f;
+    a->fechado = 0;
+    a->binario = 0;
+    a->processo = 1;
+    snprintf(a->caminho, sizeof(a->caminho), "%s", cmd);
+    vm->alocado += sizeof(PSArquivo);
+    *out = MK_OBJ(a);
+    return 0;
 }
 
 static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
@@ -12454,7 +12576,8 @@ static const MembroMod MOD_OS[] = {
     { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
-    { "cmd", mod_os_cmd, 0, "command,capture" }, { "run", mod_os_run, 0, "args,capture" }, { "code", mod_os_code, 0, "path" },
+    { "cmd", mod_os_cmd, 0, "command,capture" }, { "run", mod_os_run, 0, "args,capture" },
+    { "pipeline", mod_os_pipeline, 0, "command" }, { "code", mod_os_code, 0, "path" },
     { "exists", mod_os_exists, 0, "path" }, { "isfile", mod_os_isfile, 0, "path" }, { "isdir", mod_os_isdir, 0, "path" },
     { "rename", mod_os_rename, 0, "src,dst" }, { "copy", mod_os_copy, 0, "src,dst" }, { "move", mod_os_move, 0, "src,dst" },
     { "size", mod_os_size, 0, "path" }, { "cwd", mod_os_cwd, 0, NULL }, { "chdir", mod_os_chdir, 0, "path" },
@@ -14867,13 +14990,14 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto 
 typedef struct {
     const char *metodo, *url, *cabs, *corpo;
     size_t ncorpo; int timeout; long teto;
+    FILE *destino;                 /* `save=`: o corpo vai direto pro disco */
     PSHttpResp *hr; int rc;
 } ReqOffload;
 static void req_http_offload(void *p)
 {
     ReqOffload *r = (ReqOffload *)p;
-    r->rc = ps_http_request(r->metodo, r->url, r->cabs, r->corpo, r->ncorpo,
-                            r->timeout, r->teto, r->hr);
+    r->rc = ps_http_baixa(r->metodo, r->url, r->cabs, r->corpo, r->ncorpo,
+                          r->timeout, r->teto, r->destino, r->hr);
 }
 
 static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *out)
@@ -14897,6 +15021,21 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
      * montado aqui e o Content-Type (com o boundary gerado) é da lib. */
     Value fields = n > 6 ? args[6] : MK_NULL();
     Value vfile  = n > 7 ? args[7] : MK_NULL();
+
+    /* `save=caminho`: o corpo vai DIRETO pro disco, pedaço a pedaço, e nunca
+     * existe inteiro na memória. Sem isto, baixar 237 MB custava 480 MB de RSS
+     * (medido) — o corpo vira `char*` e depois vira string da linguagem, então
+     * ele existe duas vezes, e arquivo maior que a memória não baixa de jeito
+     * nenhum. Com `save`, o `.content` volta vazio e o arquivo está no disco. */
+    FILE *destino = NULL;
+    if (n > 8 && EH_STRING(args[8])) {
+        const char *cam = COMO_STRING(args[8])->chars;
+        destino = fopen(cam, "wb");
+        if (!destino) return erro_sistema(vm, errno, cam, NULL);
+    } else if (n > 8 && args[8].t != V_NULL && args[8].t != V_UNSET) {
+        BERRO(vm, "TypeError", "%s() save must be str, not %s",
+              metodo, nome_do_tipo_valor(args[8]));
+    }
     int multipart = 0;
     if (fields.t != V_NULL && fields.t != V_UNSET) {
         if (!EH_DICT(fields))
@@ -15072,9 +15211,10 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     /* estado já publicado pelo chamador -> seguro ceder no offload */
     PSHttpResp hr;
     ReqOffload ro = { metodo, COMO_STRING(args[0])->chars, cabs.b ? cabs.b : "",
-                      corpo, ncorpo, timeout, teto, &hr, 0 };
+                      corpo, ncorpo, timeout, teto, destino, &hr, 0 };
     fib_offload(vm, req_http_offload, &ro);   /* rede numa thread: NÃO trava o worker */
     int rc = ro.rc;
+    if (destino) fclose(destino);
     if (corpo_livre) free(corpo);
     if (rc != 0) {
         char msg[300];
@@ -15262,7 +15402,7 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-#define REQ_PARAMS "url,headers,body,timeout,stream,max_size,fields,file"
+#define REQ_PARAMS "url,headers,body,timeout,stream,max_size,fields,file,save"
 static const MembroMod MOD_REQUEST[] = {
     { "get", mod_req_get, 0, REQ_PARAMS }, { "post", mod_req_post, 0, REQ_PARAMS },
     { "put", mod_req_put, 0, REQ_PARAMS }, { "patch", mod_req_patch, 0, REQ_PARAMS },
@@ -16569,8 +16709,8 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
         MERRO(vm, "TypeError", "parameters are of unsupported type");
     ps_db_res_libera(&cu->res);
     cu->pos = 0;
-    /* Transação implícita antes de DML — igual ao psycopg2/sqlite3 do interp:
-     * sem isto o postgres/mysql cru fica em AUTOCOMMIT e cada INSERT já grava,
+    /* Transação implícita antes de DML: sem isto o postgres/mysql cru fica em
+     * AUTOCOMMIT e cada INSERT já grava,
      * então um erro depois (antes do commit()) NÃO desfaz — o registro fica no
      * banco. Com o BEGIN, só o commit() persiste; erro antes disso + close/GC
      * da conexão faz o servidor dar rollback. */
@@ -20707,7 +20847,12 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         Proto *pf = &vm->protos[proto];
         if (pf->param_nomes && pf->param_nomes[0]
                 && strcmp(pf->param_nomes[0], "self") == 0) {
-            if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais"); return -1; }
+            /* O tipo tem que ser escrito JUNTO da mensagem: sem esta linha o
+             * `erro_tipo` ficava com o valor do erro ANTERIOR, e o catch
+             * casava pelo tipo de um erro que já tinha acontecido. */
+            if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais");
+                             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                             return -1; }
             reais[0] = MK_UNSET();
             for (int i = 0; i < n; i++) reais[i + 1] = args[i];
             args = reais;
@@ -20736,7 +20881,10 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
             return -1;
         }
-        if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais"); return -1; }
+        /* mesmo caso do sítio acima: o tipo tem que sair junto da mensagem */
+        if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais");
+                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                         return -1; }
         reais[0] = b->instancia;
         for (int i = 0; i < n; i++) reais[i + 1] = args[i];
         args = reais;

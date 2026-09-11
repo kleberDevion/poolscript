@@ -174,11 +174,22 @@ static int le_linha(Conn *c, char *out, int cap)
     }
 }
 
-/* Acumula em `buf` (realloc). Devolve 0. */
-typedef struct { char *b; size_t n, cap; } Acc;
+/* Acumula em `buf` (realloc). Devolve 0.
+ *
+ * Com `destino` != NULL o corpo NÃO é acumulado: cada pedaço vai direto pro
+ * arquivo e a memória não cresce. `n` segue contando o total, que é o tamanho
+ * baixado. Os três leitores de corpo (Content-Length, chunked e até-fechar)
+ * passam por aqui, então o modo de fluxo vale para os três sem uma segunda
+ * cópia da lógica de leitura. */
+typedef struct { char *b; size_t n, cap; FILE *destino; } Acc;
 static int acc_add(Acc *a, const char *d, size_t n, long teto)
 {
     if (teto > 0 && a->n + n > (size_t)teto) return -2;   /* passou do limite */
+    if (a->destino) {
+        if (n && fwrite(d, 1, n, a->destino) != n) return -1;
+        a->n += n;
+        return 0;
+    }
     if (a->n + n + 1 > a->cap) {
         size_t nc = a->cap < 4096 ? 4096 : a->cap;
         while (nc < a->n + n + 1) nc *= 2;
@@ -275,7 +286,7 @@ static const char *header_valor(const char *linha)
  * Location se houver 3xx. */
 static int uma_request(const char *metodo, const char *url, const char *cabs,
                        const char *corpo, size_t ncorpo, int timeout, long teto,
-                       PSHttpResp *r, char *local, size_t lcap)
+                       FILE *destino, PSHttpResp *r, char *local, size_t lcap)
 {
     int https, porta;
     char host[256], caminho[2048];
@@ -354,6 +365,9 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
 
     /* corpo — HEAD e 204/304 não têm */
     Acc corpo_acc = {0};
+    /* O corpo de um 3xx que vamos SEGUIR não é o download: ele iria pro
+     * arquivo antes do conteúdo de verdade. Só a resposta final escreve. */
+    if (!(r->status >= 300 && r->status < 400 && local[0])) corpo_acc.destino = destino;
     int sem_corpo = (strcmp(metodo, "HEAD") == 0) || r->status == 204 || r->status == 304;
     if (!sem_corpo) {
         int br;
@@ -378,6 +392,8 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
         }
     }
     conn_fecha(&c);
+    /* Em modo de fluxo o corpo foi pro arquivo: `corpo` fica vazio e `ncorpo`
+     * conta quantos bytes desceram — não há uma segunda cópia na memória. */
     r->corpo = corpo_acc.b ? corpo_acc.b : strdup("");
     r->ncorpo = corpo_acc.n;
     r->url_final = strdup(url);
@@ -388,12 +404,23 @@ int ps_http_request(const char *metodo, const char *url, const char *cabs,
                     const char *corpo, size_t ncorpo, int timeout,
                     long teto, PSHttpResp *r)
 {
+    return ps_http_baixa(metodo, url, cabs, corpo, ncorpo, timeout, teto, NULL, r);
+}
+
+/* Igual ao `ps_http_request`, com um DESTINO: cada pedaço do corpo vai direto
+ * pro arquivo e nada se acumula. É o que permite baixar um arquivo maior que a
+ * memória — sem isto o corpo inteiro vira `char*`, e depois vira string da
+ * linguagem, então um download de 237 MB custava 480 MB de RSS (medido). */
+int ps_http_baixa(const char *metodo, const char *url, const char *cabs,
+                  const char *corpo, size_t ncorpo, int timeout,
+                  long teto, FILE *destino, PSHttpResp *r)
+{
     memset(r, 0, sizeof(*r));
     char atual[4096];
     snprintf(atual, sizeof(atual), "%s", url);
     for (int salto = 0; salto < 10; salto++) {
         char local[2048];
-        if (uma_request(metodo, atual, cabs, corpo, ncorpo, timeout, teto, r, local, sizeof(local)) != 0)
+        if (uma_request(metodo, atual, cabs, corpo, ncorpo, timeout, teto, destino, r, local, sizeof(local)) != 0)
             return -1;
         /* segue 3xx com Location, como o urllib. 303 (e 301/302 em POST)
          * viram GET sem corpo; 307/308 preservam o método. */
