@@ -33,6 +33,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <stdio.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <stdint.h>
 #include <stddef.h>
 #include <ctype.h>
@@ -438,13 +439,30 @@ typedef struct {
 } PSMailMsg;
 
 /* request.Response — o resultado de get/post/etc. Guarda tudo como Value
- * pra o GC varrer: `headers` é dict, `url` é string, `corpo` é bytes. */
+ * pra o GC varrer: `headers` é dict, `url` é string, `corpo` é bytes.
+ *
+ * O CORPO NÃO É BUFFERIZADO PELO MOTOR. Ele desce da rede direto pro
+ * `arquivo` abaixo, pedaço a pedaço, e `corpo` nasce UNSET. Só vira bytes na
+ * memória se o programa PEDIR (`.content`, `.text`, `.json()`…), e aí a
+ * escolha é de quem chamou, não do motor.
+ *
+ * Antes o corpo era acumulado inteiro e depois COPIADO pra uma string da
+ * linguagem: baixar 237 MB custava 480 MB de RSS, porque existia duas vezes, e
+ * arquivo maior que a memória não baixava de jeito nenhum. `.size` e `.save()`
+ * hoje nem tocam na memória — leem o tamanho e movem o arquivo. */
 typedef struct {
     Obj    obj;
     long   status;
     Value  headers;   /* OBJ_DICT */
     Value  url;       /* OBJ_STRING */
-    Value  corpo;     /* OBJ_BYTES */
+    Value  corpo;     /* OBJ_BYTES — UNSET enquanto ninguém pediu */
+    char  *arquivo;   /* onde o corpo está (malloc); NULL = não há corpo */
+    int    temporario;/* 1 = criado pelo motor, apagar ao coletar */
+    size_t nbytes;    /* tamanho do corpo, sem precisar lê-lo */
+    /* Quem criou o arquivo. O jinker faz `fork()` e o filho herda o heap: sem
+     * isto, um Response do pai seria finalizado no filho e o `unlink` apagaria
+     * o arquivo do pai. Só o processo dono apaga. */
+    pid_t  dono;
 } PSResponse;
 
 /* manpu.ManpuResult — `== true/false` e `bool()` olham `sucesso`; `post`
@@ -650,11 +668,6 @@ typedef struct {
     FILE *f;
     int   fechado;
     int   binario;
-    /* `processo`: o FILE* veio de um COMANDO, não de um caminho no disco, e
-     * fecha com `pclose` (que espera o filho e devolve o código de saída), não
-     * com `fclose`. É o que permite ler a saída de um comando em pedaços, pelo
-     * mesmo `.read()`/`.readline()` de qualquer arquivo. */
-    int   processo;
     char  caminho[512];
 } PSArquivo;
 
@@ -1840,8 +1853,7 @@ static void percorre_cinzas(VM *vm)
  * na tabela põe tam=0) + libera os buffers internos. */
 static void fin_arquivo(VM *vm, Obj *o) {
     PSArquivo *a = (PSArquivo *)o;
-    /* fecha o que o usuário esqueceu — e quem veio de comando espera o filho */
-    if (!a->fechado && a->f) { if (a->processo) pclose(a->f); else fclose(a->f); }
+    if (!a->fechado && a->f) fclose(a->f);   /* fecha o que o usuário esqueceu */
     vm->alocado -= sizeof(PSArquivo);
 }
 static void fin_sqlcur(VM *vm, Obj *o) {
@@ -1865,7 +1877,17 @@ static void fin_mailrd(VM *vm, Obj *o) {
     if (m->conn) ps_mail_solta(m->conn);
     vm->alocado -= sizeof(PSMailMsg_reader);
 }
-static void fin_response(VM *vm, Obj *o) { (void)o; vm->alocado -= sizeof(PSResponse); }
+static void fin_response(VM *vm, Obj *o) {
+    PSResponse *r = (PSResponse *)o;
+    /* o arquivo do corpo é do motor quando ele mesmo o criou: some junto com a
+     * resposta. O que o usuário pediu com `save=` é dele e fica. */
+    if (r->arquivo) {
+        if (r->temporario && r->dono == getpid()) unlink(r->arquivo);
+        free(r->arquivo);
+        r->arquivo = NULL;
+    }
+    vm->alocado -= sizeof(PSResponse);
+}
 static void fin_qrfile(VM *vm, Obj *o) {
     PSQRFile *q = (PSQRFile *)o;
     free(q->nome); free(q->ext);
@@ -2778,9 +2800,9 @@ static void escreve_valor(const Value *v, int dentro)
                 fputs("<MailReader>", stdout);
             } else if (v->as.obj->type == OBJ_RESPONSE) {
                 PSResponse *rp = (PSResponse *)v->as.obj;
-                printf("<Response status=%ld url='%s' (%d bytes)>", rp->status,
+                printf("<Response status=%ld url='%s' (%zu bytes)>", rp->status,
                        EH_STRING(rp->url) ? COMO_STRING(rp->url)->chars : "",
-                       EH_BYTES(rp->corpo) ? COMO_BYTES(rp->corpo)->len : 0);
+                       rp->nbytes);   /* o tamanho, sem trazer o corpo pra memória */
             } else if (v->as.obj->type == OBJ_QRFILE) {
                 PSQRFile *q = (PSQRFile *)v->as.obj;
                 printf("<QRCode '%s' %lld bytes>", q->nome, (long long)q->tamanho);
@@ -6549,19 +6571,8 @@ static int met_a_close(VM *vm, Value alvo, Value *args, int n, Value *out)
      * objeto "aberto" faria o finalizador do GC fechar de novo. */
     if (!a->fechado && a->f) {
         FILE *f = a->f;
-        int proc = a->processo;
         a->f = NULL; a->fechado = 1;
         errno = 0;
-        /* Vindo de comando, `pclose` espera o filho e devolve o status dele.
-         * Status != 0 NÃO é erro de fechar: é o comando que saiu com código
-         * diferente de zero, e quem chamou decide o que fazer — por isso o
-         * código vira o RETORNO do close em vez de virar exceção. */
-        if (proc) {
-            int st = pclose(f);
-            if (st < 0) return erro_sistema(vm, errno ? errno : EIO, NULL, NULL);
-            *out = MK_INT(WIFEXITED(st) ? WEXITSTATUS(st) : -1);
-            return 0;
-        }
         if (fclose(f) != 0)
             return erro_sistema(vm, errno ? errno : EIO, NULL, NULL);
     }
@@ -10972,6 +10983,14 @@ static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
               nome_do_tipo_valor(args[0]));
     }
     fflush(stdout);
+    /* `exit()` não passa pelo `libera_vm`, então os finalizadores não rodam e
+     * os arquivos do motor com corpo de resposta ficariam no disco. Só os
+     * deste processo: o filho do fork do jinker não apaga o do pai. */
+    for (Obj *o = vm->objetos; o; o = o->next)
+        if (o->type == OBJ_RESPONSE) {
+            PSResponse *r = (PSResponse *)o;
+            if (r->arquivo && r->temporario && r->dono == getpid()) unlink(r->arquivo);
+        }
     exit(codigo);
 }
 
@@ -12233,13 +12252,6 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
     return 0;
 }
 
-/* Teto da saída capturada de um comando. Existe porque `capture=true` tem que
- * MATERIALIZAR o texto pra devolver: sem teto, a saída inteira do comando vira
- * memória do processo, e um pacote grande derruba a máquina. Quem precisa de
- * saída sem tamanho usa `capture=false`, que escreve direto no terminal e não
- * guarda nada. */
-#define PS_CAPTURA_TETO  (64L * 1024 * 1024)
-
 /* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`, que é o
  * comando que falhou tem a mensagem no stderr. */
 static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
@@ -12327,16 +12339,15 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
             int k = idx[j];
             ssize_t r = read(fds[k], buf, sizeof(buf));
             if (r > 0) {
-                if ((long)destino[k]->n + r > PS_CAPTURA_TETO) { estourou = 1; break; }
                 if (sb_bytes(destino[k], buf, (int)r) != 0) { estourou = 1; break; }
             } else if (r == 0 || (r < 0 && errno != EINTR)) {
                 close(fds[k]); fds[k] = -1; vivos--;
             }
         }
     }
-    /* Estourou: continua DRENANDO e jogando fora, senão o filho fica travado
-     * na escrita e o waitpid abaixo nunca volta — trocaríamos um impasse por
-     * outro. */
+    /* Falta de memória de verdade: continua DRENANDO e jogando fora, senão o
+     * filho fica travado na escrita e o waitpid abaixo nunca volta —
+     * trocaríamos um impasse por outro. */
     if (estourou)
         for (int k = 0; k < 2; k++)
             while (fds[k] >= 0) {
@@ -12348,11 +12359,7 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
     for (int k = 0; k < 2; k++) if (fds[k] >= 0) close(fds[k]);
     int st;
     waitpid(pid, &st, 0);
-    if (estourou)
-        BERRO(vm, "MemoryError",
-              "a saida do comando passou de %d MB. Rode sem capturar "
-              "(capture=false) pra ela ir direto pro terminal, sem virar memoria",
-              (int)(PS_CAPTURA_TETO / (1024 * 1024)));
+    if (estourou) BERRO(vm, "MemoryError", "sem memoria");
 
     SBuf *escolhido = &so;
     int fim = so.n;
@@ -12365,47 +12372,6 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
     int ini = 0;
     while (ini < fim && (escolhido->b[ini] == '\n' || escolhido->b[ini] == ' ')) ini++;
     return devolve_texto(vm, out, escolhido->b ? escolhido->b + ini : "", fim - ini);
-}
-
-/* `os.pipeline(command)` — a saída do comando em PEDAÇOS, nunca inteira.
- *
- * `os.cmd(c, true)` tem que MATERIALIZAR o texto pra devolver: a saída inteira
- * do comando vira memória do processo, e um pacote grande derruba a máquina.
- * Aqui o comando devolve um PoolFile ligado ao cano, e o programa lê no ritmo
- * dele com o `.readline()`/`.read(n)` de qualquer arquivo.
- *
- * A contrapressão sai de graça e é real: enquanto ninguém pede o próximo
- * pedaço, ninguém lê o cano; o cano enche em 64 KB e o SISTEMA suspende o
- * comando na escrita. Nunca há mais que um pedaço na memória.
- *
- *     using os.pipeline("dpkg -i pacote.deb") as p {
- *         linha = p.readline()
- *         while linha != Null { post(linha); linha = p.readline() }
- *     }
- *
- * `close()` devolve o CÓDIGO DE SAÍDA do comando (o `using` fecha sozinho). */
-static int mod_os_pipeline(VM *vm, Value *args, int n, Value *out)
-{
-    if (n != 1) return erro_aridade(vm, "pipeline", 1, 1, n);
-    if (!EH_STRING(args[0]))
-        BERRO(vm, "TypeError", "pipeline() argument 1 must be str, not %s",
-              nome_do_tipo_valor(args[0]));
-    const char *cmd = COMO_STRING(args[0])->chars;
-    FILE *f = popen(cmd, "r");
-    if (!f) return erro_sistema(vm, errno ? errno : EIO, cmd, NULL);
-
-    PSArquivo *a = calloc(1, sizeof(PSArquivo));
-    if (!a) { pclose(f); BERRO(vm, "MemoryError", "sem memoria"); }
-    a->obj.type = OBJ_ARQUIVO; a->obj.marked = 0;
-    a->obj.next = vm->objetos; vm->objetos = (Obj *)a;
-    a->f = f;
-    a->fechado = 0;
-    a->binario = 0;
-    a->processo = 1;
-    snprintf(a->caminho, sizeof(a->caminho), "%s", cmd);
-    vm->alocado += sizeof(PSArquivo);
-    *out = MK_OBJ(a);
-    return 0;
 }
 
 static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
@@ -12577,7 +12543,7 @@ static const MembroMod MOD_OS[] = {
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
     { "cmd", mod_os_cmd, 0, "command,capture" }, { "run", mod_os_run, 0, "args,capture" },
-    { "pipeline", mod_os_pipeline, 0, "command" }, { "code", mod_os_code, 0, "path" },
+    { "code", mod_os_code, 0, "path" },
     { "exists", mod_os_exists, 0, "path" }, { "isfile", mod_os_isfile, 0, "path" }, { "isdir", mod_os_isdir, 0, "path" },
     { "rename", mod_os_rename, 0, "src,dst" }, { "copy", mod_os_copy, 0, "src,dst" }, { "move", mod_os_move, 0, "src,dst" },
     { "size", mod_os_size, 0, "path" }, { "cwd", mod_os_cwd, 0, NULL }, { "chdir", mod_os_chdir, 0, "path" },
@@ -14783,12 +14749,51 @@ static void resp_filename(PSResponse *rp, char *saida, size_t cap)
     snprintf(saida, cap, "%s", tmp[0] ? tmp : "download");
 }
 
+/* O corpo em bytes — lido do arquivo NA HORA em que alguém pede, e só então.
+ * Todo consumidor do corpo (`.content`, `.text`, `.json()`, `.decode()`…)
+ * passa por aqui: é o único ponto que traz o corpo pra memória, e ele só roda
+ * porque o programa pediu. Depois da primeira leitura o resultado fica em
+ * `corpo`, então pedir duas vezes lê uma. Devolve NULL com o erro posto. */
+static PSString *resp_corpo(VM *vm, PSResponse *rp)
+{
+    if (EH_BYTES(rp->corpo)) return COMO_BYTES(rp->corpo);
+    if (!rp->arquivo) {
+        PSString *vazio = novo_bytes(vm, "", 0);
+        if (vazio) rp->corpo = MK_OBJ(vazio);
+        return vazio;
+    }
+    if (rp->nbytes > (size_t)INT_MAX) {
+        snprintf(vm->erro, sizeof(vm->erro),
+                 "o corpo tem %zu bytes e nao cabe numa string. Use .save() ou o "
+                 "arquivo em que ele ja esta", rp->nbytes);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+        return NULL;
+    }
+    FILE *f = fopen(rp->arquivo, "rb");
+    if (!f) { erro_sistema(vm, errno, rp->arquivo, NULL); return NULL; }
+    PSString *b = malloc(sizeof(PSString) + rp->nbytes + 1);
+    if (!b) { fclose(f); snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+              snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return NULL; }
+    size_t lidos = fread(b->chars, 1, rp->nbytes, f);
+    fclose(f);
+    b->obj.type = OBJ_BYTES; b->obj.marked = 0;
+    b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
+    b->len = (int)lidos;
+    b->chars[lidos] = '\0';
+    b->hash = hash_str(b->chars, (int)lidos);
+    vm->alocado += sizeof(PSString) + rp->nbytes + 1;
+    rp->corpo = MK_OBJ(b);
+    return b;
+}
+
 static int met_resp_text(VM *vm, Value alvo, Value *out)
 {
     PSResponse *rp = COMO_RESP(alvo);
-    PSString *b = EH_BYTES(rp->corpo) ? COMO_BYTES(rp->corpo) : NULL;
-    PSString *s = nova_string(vm, b ? b->chars : "", b ? b->len : 0);
-    if (!s) return -1;
+    PSString *b = resp_corpo(vm, rp);
+    if (!b) return -1;
+    PSString *s = nova_string(vm, b->chars, b->len);
+    if (!s) { snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+              snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError"); return -1; }
     *out = MK_OBJ(s);
     return 0;
 }
@@ -14798,7 +14803,7 @@ static int met_resp_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* o encoding é aceito e ignorado — a linguagem é UTF-8; devolver outro
      * seria mudar os bytes. Mesmo contrato do `.encode()` de string. */
     if (n > 1) return erro_aridade(vm, "decode", 0, 1, n);
-    if (met_resp_text(vm, alvo, out) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    if (met_resp_text(vm, alvo, out) != 0) return -1;   /* erro já posto por resp_corpo */
     return 0;
 }
 
@@ -14860,7 +14865,7 @@ static int met_resp_get(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     /* 2) chave do corpo JSON */
     Value txt;
-    if (met_resp_text(vm, alvo, &txt) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    if (met_resp_text(vm, alvo, &txt) != 0) return -1;   /* erro já posto por resp_corpo */
     if (fixa_raiz(vm, txt) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
     Value dados;
     char antes[sizeof(vm->erro)];
@@ -14882,7 +14887,7 @@ static int met_resp_get_json(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "get_json", 0, 1, n);
     Value txt;
-    if (met_resp_text(vm, alvo, &txt) != 0) MERRO(vm, "MemoryError", "sem memoria");
+    if (met_resp_text(vm, alvo, &txt) != 0) return -1;   /* erro já posto por resp_corpo */
     if (fixa_raiz(vm, txt) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
     Value dados;
     char antes[sizeof(vm->erro)];
@@ -14908,6 +14913,8 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "save", 0, 1, n);
     PSResponse *rp = COMO_RESP(alvo);
+    if (n == 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
+        BERRO(vm, "TypeError", "save() argument 1 must be str, not %s", nome_do_tipo_valor(args[0]));
     const char *destino = (n == 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : ".";
     char caminho[2048];
     /* pasta ('.', '..', termina em barra, ou é diretório) → deriva o nome */
@@ -14923,19 +14930,65 @@ static int met_resp_save(VM *vm, Value alvo, Value *args, int n, Value *out)
         snprintf(caminho, sizeof(caminho), "%.1900s", destino);
     }
     cria_pais(caminho);
-    FILE *f = fopen(caminho, "wb");
-    if (!f) BERRO(vm, "IOError", "nao consegui escrever '%.200s'", caminho);
-    PSString *b = EH_BYTES(rp->corpo) ? COMO_BYTES(rp->corpo) : NULL;
-    if (grava_e_fecha(f, b ? b->chars : "", b ? (size_t)b->len : 0) != 0)
-        return erro_sistema(vm, errno, caminho, NULL);
-    PSPoolFile *pf = novo_poolfile(vm, caminho);
-    if (!pf) BERRO(vm, "IOError", "nao consegui reler '%.200s'", caminho);
-    *out = MK_OBJ(pf);
+
+    /* O CORPO NÃO PASSA PELA MEMÓRIA. Ele já está num arquivo; `.save()` só
+     * decide onde esse arquivo fica:
+     *   - arquivo do motor (sem `save=`): MOVE. `rename` é atômico e não copia
+     *     nada; entre sistemas de arquivos cai na cópia + apaga, o mesmo que
+     *     `PoolFile.move()` faz. Depois o arquivo é do usuário.
+     *   - arquivo do usuário (`save=` ou já salvo antes): COPIA. Mover apagaria
+     *     o que ele pediu explicitamente.
+     *   - sem corpo: cria o arquivo vazio, porque `.save()` sempre produz um.
+     * Antes isto gravava do buffer e depois RELIA o arquivo inteiro pra
+     * memória, duas vezes. */
+    if (!rp->arquivo) {
+        FILE *f = fopen(caminho, "wb");
+        if (!f) return erro_sistema(vm, errno, caminho, NULL);
+        if (fclose(f) != 0) return erro_sistema(vm, errno, caminho, NULL);
+    } else {
+        char dest_abs[2048];
+        if (rp->temporario) {
+            if (rename(rp->arquivo, caminho) != 0) {
+                const char *culpa = rp->arquivo;
+                if (copia_arquivo(rp->arquivo, caminho, &culpa) != 0)
+                    return erro_sistema(vm, errno, culpa, NULL);
+                unlink(rp->arquivo);
+            }
+            caminho_abs(caminho, dest_abs, sizeof dest_abs);
+            char *novo = strdup(dest_abs);
+            if (!novo) BERRO(vm, "MemoryError", "sem memoria");
+            free(rp->arquivo);
+            rp->arquivo = novo;
+            rp->temporario = 0;
+        } else {
+            caminho_abs(caminho, dest_abs, sizeof dest_abs);
+            if (strcmp(dest_abs, rp->arquivo) != 0) {      /* mesmo arquivo: nada a fazer */
+                const char *culpa = rp->arquivo;
+                if (copia_arquivo(rp->arquivo, caminho, &culpa) != 0)
+                    return erro_sistema(vm, errno, culpa, NULL);
+            }
+        }
+    }
+
+    /* Devolve o PoolFile FECHADO, por caminho — o mesmo objeto do `open()`
+     * depois do `.close()`. `.name`, `.ext`, `.size`, `.path()`, `.move()`,
+     * `.copy()`, `.delete()` operam pelo caminho; `.bytes()` lê do disco só se
+     * for chamado. Nada é carregado aqui. */
+    PSArquivo *a = calloc(1, sizeof(PSArquivo));
+    if (!a) BERRO(vm, "MemoryError", "sem memoria");
+    a->obj.type = OBJ_ARQUIVO; a->obj.marked = 0;
+    a->obj.next = vm->objetos; vm->objetos = (Obj *)a;
+    a->f = NULL;
+    a->fechado = 1;
+    a->binario = 1;
+    snprintf(a->caminho, sizeof(a->caminho), "%.511s", caminho);   /* o campo tem 512 */
+    vm->alocado += sizeof(PSArquivo);
+    *out = MK_OBJ(a);
     return 0;
 }
 
 /* Constrói o Response a partir do que o ps_http devolveu. */
-static int monta_response(VM *vm, PSHttpResp *hr, Value *out)
+static int monta_response(VM *vm, PSHttpResp *hr, const char *arquivo, int temporario, Value *out)
 {
     PSResponse *rp = calloc(1, sizeof(PSResponse));
     if (!rp) BERRO(vm, "MemoryError", "sem memoria");
@@ -14949,9 +15002,19 @@ static int monta_response(VM *vm, PSHttpResp *hr, Value *out)
     *out = MK_OBJ(rp);
     if (fixa_raiz(vm, *out) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
 
-    PSString *b = novo_bytes(vm, hr->corpo ? hr->corpo : "", (int)hr->ncorpo);
-    if (!b) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
-    rp->corpo = MK_OBJ(b);
+    /* O CORPO NÃO ENTRA AQUI. Ele já está em `arquivo` (o do `save=` ou o do
+     * motor), e `corpo` fica Null até alguém pedir — aí `resp_corpo` lê. O que
+     * havia aqui era um `novo_bytes` do buffer inteiro: a segunda cópia do
+     * corpo, e a razão de 237 MB custarem 480 MB. */
+    rp->dono = getpid();
+    if (arquivo) {
+        char ab[2048];
+        caminho_abs(arquivo, ab, sizeof ab);   /* `os.chdir()` depois não pode perder o corpo */
+        rp->arquivo = strdup(ab);
+        if (!rp->arquivo) { vm->sp--; BERRO(vm, "MemoryError", "sem memoria"); }
+        rp->temporario = temporario;
+    }
+    rp->nbytes = hr->nbaixado;
     PSString *u = nova_string(vm, hr->url_final ? hr->url_final : "", (int)strlen(hr->url_final ? hr->url_final : ""));
     if (u) rp->url = MK_OBJ(u);
 
@@ -15022,20 +15085,23 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     Value fields = n > 6 ? args[6] : MK_NULL();
     Value vfile  = n > 7 ? args[7] : MK_NULL();
 
-    /* `save=caminho`: o corpo vai DIRETO pro disco, pedaço a pedaço, e nunca
-     * existe inteiro na memória. Sem isto, baixar 237 MB custava 480 MB de RSS
-     * (medido) — o corpo vira `char*` e depois vira string da linguagem, então
-     * ele existe duas vezes, e arquivo maior que a memória não baixa de jeito
-     * nenhum. Com `save`, o `.content` volta vazio e o arquivo está no disco. */
-    FILE *destino = NULL;
-    if (n > 8 && EH_STRING(args[8])) {
-        const char *cam = COMO_STRING(args[8])->chars;
-        destino = fopen(cam, "wb");
-        if (!destino) return erro_sistema(vm, errno, cam, NULL);
-    } else if (n > 8 && args[8].t != V_NULL && args[8].t != V_UNSET) {
+    /* `save=caminho`: o corpo vai pra ESTE arquivo, que é do usuário — o motor
+     * não o apaga. Sem `save=`, vai pra um arquivo do motor, que some junto com
+     * o Response. Nos dois casos o corpo nunca fica na memória do motor: só
+     * vira bytes se o programa pedir (`.content`, `.text`, `.json()`), e
+     * `.content` com `save=` lê do arquivo salvo. Antes, baixar 237 MB custava
+     * 480 MB de RSS (medido): o corpo virava `char*` e depois string da
+     * linguagem, duas cópias. */
+    /* Só o NOME aqui; o arquivo é aberto lá embaixo, encostado no envio. Entre
+     * este ponto e o offload há 14 caminhos que voltam por erro (tipo errado em
+     * `fields=`, arquivo do `file=` inexistente, falta de memória no
+     * multipart): abrir agora deixaria o descritor aberto e um arquivo vazio no
+     * disco em cada um deles. */
+    const char *save_cam = NULL;
+    if (n > 8 && EH_STRING(args[8])) save_cam = COMO_STRING(args[8])->chars;
+    else if (n > 8 && args[8].t != V_NULL && args[8].t != V_UNSET)
         BERRO(vm, "TypeError", "%s() save must be str, not %s",
               metodo, nome_do_tipo_valor(args[8]));
-    }
     int multipart = 0;
     if (fields.t != V_NULL && fields.t != V_UNSET) {
         if (!EH_DICT(fields))
@@ -15209,12 +15275,53 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     if (cabs.b && sb_bytes(&cabs, "\0", 1) != 0) { if (corpo_livre) free(corpo); BERRO(vm, "MemoryError", "sem memoria"); }
 
     /* estado já publicado pelo chamador -> seguro ceder no offload */
+    /* agora sim: nada mais pode voltar por erro antes do envio.
+     *
+     * O CORPO NUNCA FICA NA MEMÓRIA DO MOTOR. Ele desce da rede direto pra um
+     * arquivo: o que o usuário pediu com `save=`, ou um do motor, que some
+     * junto com o Response. HEAD não tem corpo e não cria nada. */
+    FILE *destino = NULL;
+    char tmp[2048] = "";
+    int temporario = 0;
+    if (save_cam) {
+        destino = fopen(save_cam, "wb");
+        if (!destino) { int e = errno; if (corpo_livre) free(corpo);
+                        return erro_sistema(vm, e, save_cam, NULL); }
+    } else if (strcmp(metodo, "HEAD") != 0) {
+        /* Nasce na PASTA CORRENTE: é onde o `.save()` sem caminho grava, e no
+         * mesmo sistema de arquivos o `rename` é atômico — sem cópia, sem
+         * disco extra. Só cai em $TMPDIR / padrão do sistema se a pasta
+         * corrente não for gravável, e aí não há opção melhor. */
+        const char *dirs[3]; int nd = 0;
+        char cwd_[1024];
+        if (getcwd(cwd_, sizeof cwd_)) dirs[nd++] = cwd_;
+        const char *td = getenv("TMPDIR");
+        if (td && *td) dirs[nd++] = td;
+        dirs[nd++] = P_tmpdir;
+        int fd = -1;
+        for (int i = 0; i < nd && fd < 0; i++) {
+            snprintf(tmp, sizeof tmp, "%s/.ps_resposta_XXXXXX", dirs[i]);
+            fd = mkstemp(tmp);
+        }
+        if (fd < 0) { int e = errno; if (corpo_livre) free(corpo);
+                      return erro_sistema(vm, e, tmp, NULL); }
+        destino = fdopen(fd, "wb");
+        if (!destino) { int e = errno; close(fd); unlink(tmp); if (corpo_livre) free(corpo);
+                        return erro_sistema(vm, e, tmp, NULL); }
+        temporario = 1;
+    }
     PSHttpResp hr;
     ReqOffload ro = { metodo, COMO_STRING(args[0])->chars, cabs.b ? cabs.b : "",
                       corpo, ncorpo, timeout, teto, destino, &hr, 0 };
     fib_offload(vm, req_http_offload, &ro);   /* rede numa thread: NÃO trava o worker */
     int rc = ro.rc;
-    if (destino) fclose(destino);
+    /* Disco cheio aparece no `fwrite` curto ou no flush do `fclose`. Ignorar os
+     * dois era responder 200 com o arquivo truncado. */
+    int e_io = 0;
+    if (destino) {
+        if (ferror(destino)) e_io = errno ? errno : EIO;
+        if (fclose(destino) != 0 && !e_io) e_io = errno ? errno : EIO;
+    }
     if (corpo_livre) free(corpo);
     if (rc != 0) {
         char msg[300];
@@ -15222,11 +15329,22 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
         char tp[32];
         snprintf(tp, sizeof(tp), "%s", hr.erro_tipo[0] ? hr.erro_tipo : "NetworkError");
         ps_http_resp_solta(&hr);
+        if (temporario) unlink(tmp);
         snprintf(vm->erro, sizeof(vm->erro), "%.240s", msg);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%.30s", tp);
         return -1;
     }
-    int mrc = monta_response(vm, &hr, out);
+    if (e_io) {
+        ps_http_resp_solta(&hr);
+        if (temporario) unlink(tmp);
+        return erro_sistema(vm, e_io, save_cam ? save_cam : tmp, NULL);
+    }
+    /* sem corpo (204, 304, Content-Length 0): nada a guardar. O arquivo do
+     * motor some; o do usuário fica, vazio — foi ele que pediu. */
+    const char *arq = save_cam ? save_cam : (temporario ? tmp : NULL);
+    if (hr.nbaixado == 0) { if (temporario) unlink(tmp); arq = NULL; temporario = 0; }
+    int mrc = monta_response(vm, &hr, arq, temporario, out);
+    if (mrc != 0 && temporario) unlink(tmp);
     ps_http_resp_solta(&hr);
     return mrc;
 }
@@ -23876,15 +23994,22 @@ ERRO_TF(vm, "TypeError",
                 if (strcmp(nome, "status_code") == 0) { stack[sp - 1] = MK_INT(rp->status); break; }  /* alias estilo requests */
                 if (strcmp(nome, "headers") == 0) { stack[sp - 1] = rp->headers; break; }
                 if (strcmp(nome, "url") == 0) { stack[sp - 1] = rp->url; break; }
-                if (strcmp(nome, "content") == 0) { stack[sp - 1] = rp->corpo; break; }
-                if (strcmp(nome, "size") == 0) {
-                    stack[sp - 1] = MK_INT(EH_BYTES(rp->corpo) ? COMO_BYTES(rp->corpo)->len : 0); break;
+                /* `.content` é o programa PEDINDO o corpo: só aqui ele vira
+                 * bytes na memória, lido do arquivo. `.size` não abre nada. */
+                if (strcmp(nome, "content") == 0) {
+                    vm->sp = sp; vm->locals_top = locals_top;
+                    PSString *b = resp_corpo(vm, rp);
+                    if (!b) goto erro_runtime;
+                    stack[sp - 1] = MK_OBJ(b); break;
                 }
+                if (strcmp(nome, "size") == 0) { stack[sp - 1] = MK_INT((int64_t)rp->nbytes); break; }
                 if (strcmp(nome, "ok") == 0) { stack[sp - 1] = MK_BOOL(rp->status >= 200 && rp->status < 300); break; }
                 if (strcmp(nome, "text") == 0) {
                     vm->sp = sp; vm->locals_top = locals_top;
                     Value t;
-                    if (met_resp_text(vm, alvo, &t) != 0) ERRO(vm, "sem memoria");
+                    /* o erro (arquivo sumiu, corpo não cabe) já vem posto de
+                     * `resp_corpo`; um ERRO aqui o sobrescrevia com "sem memoria" */
+                    if (met_resp_text(vm, alvo, &t) != 0) goto erro_runtime;
                     stack[sp - 1] = t; break;
                 }
                 if (strcmp(nome, "filename") == 0) {

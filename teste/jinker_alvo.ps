@@ -246,6 +246,21 @@ funct cookie_poe()
 # `secure`, `samesite` ou `domain` apagava o `HttpOnly` que o default promete:
 # o slot pulado chega UNSET e o motor lia UNSET como "passou falso". Default
 # seguro virando permissivo em silencio e o pior jeito de errar.
+# Corpo grande o bastante pra o download com `save=` valer alguma coisa: e o
+# tamanho que fazia o `.content` copiar de um buffer de 1 byte e estourar.
+@app.get("/grande")
+funct grande()
+{
+    return "y" * 300000
+}
+
+# Sem corpo (204): o cliente nao pode deixar arquivo do motor sobrando.
+@app.get("/vazio")
+funct vazio()
+{
+    return Null
+}
+
 @app.route("/cookie-defaults")
 funct cookie_defaults()
 {

@@ -1,4 +1,4 @@
-# `request.delete(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None)`
+# `request.delete(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None, save=None)`
 
 Faz uma requisição HTTP **DELETE** — usada pra **remover** um recurso. Mesma
 assinatura de [`request.post`](../post/post.md). Devolve um
@@ -6,7 +6,7 @@ assinatura de [`request.post`](../post/post.md). Devolve um
 
 ```
 request.delete(url, headers=None, body=None, timeout=30, stream=false, max_size=None,
-               fields=None, file=None) -> Response
+               fields=None, file=None, save=None) -> Response
 ```
 
 ---

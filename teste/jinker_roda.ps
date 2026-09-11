@@ -454,6 +454,52 @@ confere("samesite= nomeado mantem o HttpOnly do default",
 confere("domain= nomeado mantem o HttpOnly do default",
         "Set-Cookie: d_domain=1; Path=/; Domain=e.com; SameSite=Lax; HttpOnly\r\n" in r)
 
+# O CORPO NUNCA FICA NA MEMORIA DO MOTOR. Ele desce da rede direto pra um
+# arquivo — o do `save=` (do usuario) ou um do motor, `.ps_resposta_XXXXXX` na
+# pasta corrente, que some com o Response. `.content`/`.text` leem do arquivo
+# NA HORA em que o programa pede; `.size` e `.save()` nao tocam na memoria.
+# O primeiro conserto tinha SIGSEGV: `ncorpo` guardava o total baixado com
+# `corpo` vazio, e o `.content` copiava dai — com corpo pequeno voltava heap do
+# proprio processo no lugar dos dados.
+funct sobra_temp()
+{
+    return int(os.cmd("ls -a . | grep -c ps_resposta_", true).strip())
+}
+alvo_sv = PASTA + "/baixado.bin"
+r = get(RAIZ + "/grande", save=alvo_sv)
+confere("save= responde 200", r.status_code == 200)
+confere("save= grava o corpo INTEIRO no disco", os.size(alvo_sv) == 300000)
+confere("save=: .size diz o tamanho sem ler o corpo", r.size == 300000)
+confere("save=: .content LE do arquivo salvo quando o programa pede", len(r.content) == 300000)
+confere("o que foi pro disco e o corpo de verdade, byte a byte",
+        os.readFile(alvo_sv) == "y" * 300000)
+confere("save=: o arquivo e do usuario e continua la depois do .content", os.exists(alvo_sv))
+confere("save=: nenhum arquivo do motor sobrando", sobra_temp() == 0)
+
+# sem save=: arquivo do motor, e o .save() MOVE em vez de copiar
+r = get(RAIZ + "/grande")
+confere("sem save=: .size antes de qualquer leitura", r.size == 300000)
+f = r.save(PASTA + "/movido.bin")
+confere(".save() devolve PoolFile", f is PoolFile)
+confere(".save() gravou tudo", os.size(PASTA + "/movido.bin") == 300000)
+confere("o PoolFile devolvido sabe o tamanho sem carregar", f.size == 300000)
+confere("depois do .save() nao sobra arquivo do motor", sobra_temp() == 0)
+confere(".content depois do .save() le do arquivo movido", len(r.content) == 300000)
+g = r.save(PASTA + "/copia.bin")
+confere("segundo .save() COPIA: o primeiro fica", os.exists(PASTA + "/movido.bin"))
+confere("segundo .save() COPIA: o segundo e inteiro", os.size(PASTA + "/copia.bin") == 300000)
+tipo_err = ""
+try { r.save(7) } catch (TypeError e) { tipo_err = "TypeError" }
+confere(".save(7) e TypeError", tipo_err == "TypeError")
+
+# sem corpo: nada e criado, nada sobra
+h = head(RAIZ + "/grande")
+confere("HEAD: .size 0 e .content vazio", h.size == 0 and len(h.content) == 0)
+confere("HEAD: nenhum arquivo do motor", sobra_temp() == 0)
+v = get(RAIZ + "/vazio")
+confere("204: status certo", v.status_code == 204)
+confere("204: .size 0 e nenhum arquivo do motor", v.size == 0 and sobra_temp() == 0)
+
 r = get(RAIZ + "/cookie-le", headers={"Cookie": "sid=abc123; tema=escuro"})
 confere("request.cookie le o valor", r.get_json("sid") == "abc123")
 confere("...e o segundo par depois do ponto e virgula", r.get_json("tema") == "escuro")

@@ -31,6 +31,41 @@
 
 const Caso CASOS_LIBS[] = {
 
+/* ── save= : o corpo vai pro DISCO, nao pra memoria (2026-09-11) ───────────
+ * `request.get(url)` guarda o corpo inteiro: baixar 237 MB custava 480 MB de
+ * RSS, porque o corpo vira `char*` e depois vira string da linguagem — existe
+ * duas vezes. Com `save=` o pedaco vai direto pro arquivo e nada acumula:
+ * o mesmo download passou a 17,6 MB de pico.
+ *
+ * O primeiro conserto tinha um SIGSEGV: `ncorpo` guardava o total BAIXADO
+ * enquanto `corpo` era uma string vazia, e o `monta_response` fazia
+ * `memcpy(destino, corpo, ncorpo)` — 64 MB lidos de um buffer de 1 byte.
+ * Com corpo pequeno nem sinal havia: o `.content` voltava com heap do proprio
+ * processo (medido: 4096 bytes de ponteiros e lixo em vez dos dados). Agora
+ * `ncorpo` descreve SEMPRE o que esta no buffer, e o total fica em `nbaixado`.
+ * O caso abaixo e o que pegaria a volta do vazamento. */
+{ "save= com conexao recusada devolve NetworkError, sem crash",
+  "import request\nimport os\n"
+  "r = request.get(\"http://127.0.0.1:1/x\", save=\"s.bin\")\n",
+  "", "NetworkError", 1 },
+{ "save= que nao pode ser criado diz o caminho, e nao envia nada",
+  "import request\n"
+  "request.get(\"http://127.0.0.1:1/x\", save=\"/pasta/que/nao/existe/s.bin\")\n",
+  "", "No such file or directory", 1 },
+{ "save= exige str",
+  "import request\nrequest.get(\"http://127.0.0.1:1/x\", save=7)\n",
+  "", "save must be str, not int", 1 },
+/* Sem save=, o motor cria o arquivo do corpo ANTES de conectar (mkstemp na
+ * pasta corrente). Conexao recusada tem que apaga-lo: o runner roda cada caso
+ * numa pasta nova, entao a contagem so pode ser zero. */
+{ "sem save=, conexao recusada nao deixa arquivo do motor na pasta",
+  "import os\nimport request\n"
+  "try { request.get(\"http://127.0.0.1:1/x\") } catch (e) { pass }\n"
+  "post(os.cmd(\"ls -a . | grep -c ps_resposta_\", true).strip())\n",
+  "0", NULL, 0 },
+
+
+
 /* ── hash: vetores do FIPS 180-4 e do RFC 4648 ───────────────────────────── */
 { "sha256 do vetor \"abc\" (FIPS 180-4)",
   "import hash\npost(hash.sha256(\"abc\"))\n",

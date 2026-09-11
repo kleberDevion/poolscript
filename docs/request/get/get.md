@@ -1,11 +1,11 @@
-# `request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None)`
+# `request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=None, fields=None, file=None, save=None)`
 
 Faz uma requisição HTTP **GET** para uma URL. Devolve um
 [`Response`](../Response/Response.md).
 
 ```
 request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=None,
-            fields=None, file=None) -> Response
+            fields=None, file=None, save=None) -> Response
 ```
 
 | Parâmetro | Padrão | O que é |
@@ -14,9 +14,10 @@ request.get(url, headers=None, body=None, timeout=30, stream=false, max_size=Non
 | `headers` | `None` | dict de cabeçalhos a enviar |
 | `body` | `None` | corpo da requisição (dict vira JSON automaticamente) |
 | `timeout` | `30` | segundos até desistir |
-| `stream` | `false` | `true` = lê o corpo em pedaços de 64 KB com **teto de memória** — passa do teto, levanta erro em vez de engolir a RAM (pra download grande) |
+| `stream` | `false` | liga o teto do `max_size`, e só isso. O corpo nunca é carregado por conta do motor — ver [baixar arquivo](../download/download.md) |
 | `max_size` | `None` | o teto quando `stream=true`: bytes ou texto com unidade (`"500mb"`); `None` = 100 MB. Ignorado sem `stream` |
 | `fields` / `file` | `None` | corpo **multipart/form-data** (formulário + arquivo) — ver a seção Multipart em [`request.post`](../post/post.md) |
+| `save` | `None` | caminho de arquivo: o corpo vai direto pra ele, e o arquivo é **seu** (o motor não o apaga). Sem `save=` o corpo vai pra um arquivo do motor, que some junto com o `Response`. `.content` lê do arquivo salvo — ver [baixar arquivo](../download/download.md) |
 
 ---
 

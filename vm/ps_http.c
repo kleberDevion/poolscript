@@ -106,7 +106,7 @@ static int liga_tls(Conn *c, const char *host, PSHttpResp *r)
 {
     c->ctx = SSL_CTX_new(TLS_client_method());
     if (!c->ctx) REDE(r, "NetworkError", "falha de conexão: sem contexto TLS");
-    /* verifica o certificado, como o urllib — usa as CAs do sistema */
+    /* verifica o certificado — usa as CAs do sistema */
     SSL_CTX_set_default_verify_paths(c->ctx);
     SSL_CTX_set_verify(c->ctx, SSL_VERIFY_PEER, NULL);
     c->ssl = SSL_new(c->ctx);
@@ -181,10 +181,15 @@ static int le_linha(Conn *c, char *out, int cap)
  * baixado. Os três leitores de corpo (Content-Length, chunked e até-fechar)
  * passam por aqui, então o modo de fluxo vale para os três sem uma segunda
  * cópia da lógica de leitura. */
-typedef struct { char *b; size_t n, cap; FILE *destino; } Acc;
+/* `descarta`: o corpo é lido do fio e JOGADO FORA — é o caso do 3xx que vai
+ * ser seguido, cujo corpo ninguém quer. Antes ele era acumulado inteiro em
+ * memória só pra ser liberado no salto seguinte: um redirecionamento com corpo
+ * de gigabytes bufferizava tudo. Contar `n` continua, pra o total bater. */
+typedef struct { char *b; size_t n, cap; FILE *destino; int descarta; } Acc;
 static int acc_add(Acc *a, const char *d, size_t n, long teto)
 {
     if (teto > 0 && a->n + n > (size_t)teto) return -2;   /* passou do limite */
+    if (a->descarta) { a->n += n; return 0; }
     if (a->destino) {
         if (n && fwrite(d, 1, n, a->destino) != n) return -1;
         a->n += n;
@@ -367,7 +372,8 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
     Acc corpo_acc = {0};
     /* O corpo de um 3xx que vamos SEGUIR não é o download: ele iria pro
      * arquivo antes do conteúdo de verdade. Só a resposta final escreve. */
-    if (!(r->status >= 300 && r->status < 400 && local[0])) corpo_acc.destino = destino;
+    if (r->status >= 300 && r->status < 400 && local[0]) corpo_acc.descarta = 1;
+    else                                                   corpo_acc.destino  = destino;
     int sem_corpo = (strcmp(metodo, "HEAD") == 0) || r->status == 204 || r->status == 304;
     if (!sem_corpo) {
         int br;
@@ -392,10 +398,17 @@ static int uma_request(const char *metodo, const char *url, const char *cabs,
         }
     }
     conn_fecha(&c);
-    /* Em modo de fluxo o corpo foi pro arquivo: `corpo` fica vazio e `ncorpo`
-     * conta quantos bytes desceram — não há uma segunda cópia na memória. */
+    /* `ncorpo` descreve o que está EM `corpo`, sempre. Em modo de fluxo o
+     * corpo foi pro arquivo e não há buffer nenhum: `ncorpo` é 0, e o total
+     * que desceu vai em `nbaixado`.
+     *
+     * Isto já foi um SIGSEGV: `ncorpo` recebia `corpo_acc.n` mesmo em fluxo,
+     * então a struct dizia ter 64 MB num buffer de 1 byte, e o consumidor
+     * copiava os 64 MB. Com corpo pequeno não havia sinal — o `.content`
+     * voltava com heap do próprio processo. */
     r->corpo = corpo_acc.b ? corpo_acc.b : strdup("");
-    r->ncorpo = corpo_acc.n;
+    r->ncorpo = corpo_acc.b ? corpo_acc.n : 0;
+    r->nbaixado = corpo_acc.n;
     r->url_final = strdup(url);
     return 0;
 }
@@ -422,8 +435,8 @@ int ps_http_baixa(const char *metodo, const char *url, const char *cabs,
         char local[2048];
         if (uma_request(metodo, atual, cabs, corpo, ncorpo, timeout, teto, destino, r, local, sizeof(local)) != 0)
             return -1;
-        /* segue 3xx com Location, como o urllib. 303 (e 301/302 em POST)
-         * viram GET sem corpo; 307/308 preservam o método. */
+        /* segue 3xx com Location. 303 (e 301/302 em POST) viram GET sem
+         * corpo; 307/308 preservam o método. */
         if (r->status >= 300 && r->status < 400 && local[0]) {
             char prox[4096];
             if (strncmp(local, "http://", 7) == 0 || strncmp(local, "https://", 8) == 0) {

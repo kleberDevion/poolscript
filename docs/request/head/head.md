@@ -47,8 +47,9 @@ o header diz quanto o GET traria.
 | corpo baixado | **não** | sim |
 | uso típico | "existe? qual o tamanho/tipo?" | buscar o conteúdo |
 
-Pra baixar algo grande com teto de memória, o par certo é
-[`get(stream=true, max_size=...)`](../get/get.md).
+Pra baixar, `get(url).save(caminho)` ou `get(url, save=caminho)`: o corpo vai
+direto pra um arquivo e nunca passa pela memória — ver
+[baixar arquivo](../download/download.md).
 
 ---
 

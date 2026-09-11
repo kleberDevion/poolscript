@@ -6,17 +6,60 @@ corromperia).
 
 ```
 resp = request.get(url)
-resp.content        -> bytes    # conteúdo cru, intacto
-resp.save(destino)  -> PoolFile # grava em disco
+resp.save(destino)  -> PoolFile # move o arquivo do corpo pro destino
+resp.content        -> bytes    # o corpo, lido do arquivo quando você pede
 resp.decode(enc)    -> str      # texto num encoding específico
 ```
 
 ---
 
+## Onde o corpo fica
+
+O motor **nunca guarda o corpo na memória**. Toda resposta desce da rede direto
+pra um arquivo, pedaço a pedaço:
+
+- com `save="caminho"`, o arquivo é **esse**, e é **seu** — o motor não o apaga;
+- sem `save=`, é um arquivo do motor (`.ps_resposta_…` na pasta corrente), que
+  **some junto com o `Response`**.
+
+`.size` diz quantos bytes chegaram sem abrir nada. `.save()` **move** o arquivo
+(`rename`, sem cópia). O corpo só ocupa memória se o **programa pedir** —
+`.content`, `.text`, `.json()` — e aí ele é lido do arquivo naquela hora.
+
+Medido no mesmo download de 237 MB:
+
+| forma | pico de memória do processo |
+|---|---|
+| `request.get(url).save("x")` ou `request.get(url, save="x")` | 12,7 MB |
+| `request.get(url).content` | 254,8 MB — o corpo uma vez, mais o processo |
+| antes desta versão, `request.get(url)` | 480 MB — o corpo duas vezes |
+
+Por isso dá pra baixar arquivo maior que a memória da máquina, desde que você
+não peça `.content` dele.
+
+```ps
+import request
+import os
+
+r = request.get("https://exemplo.com/pacote.deb", save="pacote.deb")
+post(r.status_code, r.size, os.size("pacote.deb"))
+```
+
+`.content` com `save=` **lê do arquivo salvo** — `save=` decide só onde o corpo
+está, não se você pode lê-lo.
+
+> **`stream=true` não faz nada disso.** Apesar do nome, a única coisa que
+> `stream` liga é o teto do `max_size` (abaixo). O corpo nunca é carregado por
+> conta do motor, com ou sem `stream`.
+
+---
+
 ## Jeito simples — `.save()`
 
-`.save()` grava e devolve um [`PoolFile`](../../os/PoolFile/PoolFile.md), então você
-já tem `.name`, `.size`, `.bytes()`, `.move()`, `.copy()`, `.delete()`.
+`.save()` move o arquivo do corpo pro destino e devolve um
+[`PoolFile`](../../os/PoolFile/PoolFile.md) **fechado**: você tem `.name`,
+`.size`, `.path()`, `.move()`, `.copy()`, `.delete()`, e `.bytes()` lê do disco
+só se for chamado. Pra ler em pedaços, `open(f.path(), "rb")`.
 
 ```
 import request
@@ -25,9 +68,8 @@ funct baixar() {
     try {
         url = "https://exemplo.com/PoolScript-Setup.exe"
 
-        # stream=true: baixa em pedaços e aborta se ficar grande demais.
         # content_type: garante que veio mesmo um binário (senão dá raise).
-        f = request.get(url, stream=true)
+        f = request.get(url)
             .content_type("application/octet-stream")
             .save("downloads/")            # pasta -> nome vem do servidor
 
@@ -44,22 +86,24 @@ funct baixar() {
 `"."`), vem do header `Content-Disposition` do servidor; se não tiver, do fim da
 URL. Se você passar o caminho **com nome** (`"downloads/pool.exe"`), usa o seu.
 
+Um segundo `.save()` no mesmo `Response` **copia**: o primeiro arquivo fica. O
+mesmo vale quando o corpo veio de `save=` — mover apagaria o que você pediu.
+
 ---
 
-## Controlando a memória — `stream` e `max_size`
+## Limitando o tamanho — `stream` e `max_size`
 
-`stream=true` baixa em pedaços em vez de carregar tudo de uma vez. Se o arquivo
-passar do teto, ele **para e lança erro** (cai no `catch`) — protege contra baixar
-um arquivo gigante sem querer.
+`max_size` corta o download quando o corpo passa do teto, levantando erro em vez
+de continuar baixando. Ele **só vale com `stream=true`**:
 
-```
+```ps
 request.get(url, stream=true)                    # teto padrão: 100 MB
 request.get(url, stream=true, max_size="500mb")  # teto maior
 request.get(url, stream=true, max_size=2000000)  # em bytes também vale
 ```
 
-> **Recomendado** usar `stream=true` em qualquer download de arquivo. Pra
-> respostas pequenas (JSON de API) não precisa.
+Combina com `save=`: `max_size` continua sendo o teto, e o que couber nele vai
+pro arquivo.
 
 ---
 
@@ -79,10 +123,11 @@ request.get(url).content_type("image/png")                  # raise se vier outr
 ## Jeito manual — `using open`
 
 Se preferir controlar a escrita, `.content` são bytes e o `open(..., "wb")` grava
-binário direto:
+binário direto. Repare que aqui **você** trouxe o corpo pra memória com
+`.content`; o `.save()` acima não traz.
 
 ```
-resp = request.get(url, stream=true)
+resp = request.get(url)
 if (resp.size <= 100) {
     return 400                     # pequeno demais, provável erro
 }
