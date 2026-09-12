@@ -1124,8 +1124,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(type(Vazia))\n", "Entity", NULL, 0 },
 { "pass fora de laco NAO e erro (ao contrario de continue)",
   "pass\npost(\"ok\")\n", "ok", NULL, 0 },
+/* rc 2 e SyntaxError: e erro de quem escreveu, nao "nao implementado". Ate
+ * o L2 do plano das contradicoes saia rc 3 / NotImplementedError. */
 { "continue fora de laco continua sendo erro",
-  "continue\n", "", "'continue' fora de laco", 3 },
+  "continue\n", "", "SyntaxError: 'continue' fora de laco", 2 },
 
 /* ── estilo Allman: a chave na LINHA SEGUINTE ───────────────────────────────
  * FALTAVA NO PORTE (nunca esteve no parser em C, conferido até a 8.2.30):
@@ -2430,6 +2432,72 @@ const Caso CASOS_LINGUAGEM[] = {
   "import os\nusing open(\"m.txt\", \"w\") as f { f.write(\"x\") }\n"
   "os.loadFile(\"m.txt\", mode=\"xyz\")\n", "",
   "use 'r' ou 'rb'", 1 },
+
+/* ── L2 DO PLANO DAS CONTRADICOES: compilador, parser, lexer (2026-09-12) ──
+ * Toda string abaixo foi MEDIDA no binario antes de entrar. */
+
+/* Erro de PROGRAMA e SyntaxError (rc 2); NotImplementedError (rc 3) fica so
+ * pro que a VM nao emite, limite do motor e falta de memoria. Vinte sitios
+ * usavam `cerro` (rc 3) pra erro de quem escreveu. */
+{ "break fora de laco e SyntaxError, rc 2",
+  "break\n", "", "SyntaxError: 'break' fora de laco", 2 },
+{ "base() com posicional depois de nomeado e SyntaxError, rc 2 (era rc 3)",
+  "Entity A() { int x\n    funct __init__(self, x, b) { self.x = x } }\n"
+  "Entity B(A) {\n    funct __init__(self) { base(1, b=2, 3) }\n}\nB()\n", "",
+  "SyntaxError: argumento posicional depois de nomeado", 2 },
+/* Limite do motor continua rc 3, mas a frase diz que e limite — antes o
+ * estouro de 32 lacos era SILENCIOSO: o chamador escrevia no laco de fora e
+ * break/continue saltavam pro lugar errado. */
+{ "33 lacos aninhados: limite do compilador, acusado",
+  "for each a1 in [1] {\nfor each a2 in [1] {\nfor each a3 in [1] {\nfor each a4 in [1] {\n"
+  "for each a5 in [1] {\nfor each a6 in [1] {\nfor each a7 in [1] {\nfor each a8 in [1] {\n"
+  "for each a9 in [1] {\nfor each a10 in [1] {\nfor each a11 in [1] {\nfor each a12 in [1] {\n"
+  "for each a13 in [1] {\nfor each a14 in [1] {\nfor each a15 in [1] {\nfor each a16 in [1] {\n"
+  "for each a17 in [1] {\nfor each a18 in [1] {\nfor each a19 in [1] {\nfor each a20 in [1] {\n"
+  "for each a21 in [1] {\nfor each a22 in [1] {\nfor each a23 in [1] {\nfor each a24 in [1] {\n"
+  "for each a25 in [1] {\nfor each a26 in [1] {\nfor each a27 in [1] {\nfor each a28 in [1] {\n"
+  "for each a29 in [1] {\nfor each a30 in [1] {\nfor each a31 in [1] {\nfor each a32 in [1] {\n"
+  "for each a33 in [1] {\npost(1)\n}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}\n", "",
+  "NotImplementedError: limite do compilador: lacos aninhados demais", 3 },
+/* Literal em base que estoura o int64 virava INT64_MAX calado: o lexer
+ * guardava o texto cru e o parser relia em base 10. */
+{ "literal hex/bin maior que int64 vira bignum",
+  "post(0xFFFFFFFFFFFFFFFFFF)\npost(0b1111111111111111111111111111111111111111111111111111111111111111111)\n",
+  "4722366482869645213695\n147573952589676412927", NULL, 0 },
+{ "literal em base pequeno segue int, com separador",
+  "post(0x1F, 0o17, 0b101, 0xFF_FF)\nx = 0b101\npost(type(x))\nlong g = 0xFFFFFFFFFFFFFFFFFF\npost(type(g))\n",
+  "31 15 5 65535\nint\nint", NULL, 0 },
+/* As mensagens de `to` e `count` enumeravam 3 de 9 e 7 de 9 tipos. */
+{ "to: a frase enumera a lista inteira",
+  "post(to xyz)\n", "",
+  "esperado tipo apos 'to': int, float, str, flo, bool, json, list, tup, dict, long ou char", 2 },
+{ "to aceita long e char",
+  "post(to long, to char)\n", "long char", NULL, 0 },
+{ "count: a frase enumera a lista inteira",
+  "post(count xyz in [1])\n", "",
+  "esperado tipo apos 'count': str, int, flo, bool, list, json, dict, tup, char ou type", 2 },
+/* Eram duas listas: o prefixo aceitava `char` e nao `type`, o infixo o
+ * contrario. Agora e uma (`eh_tipo_count`), a uniao. */
+{ "count aceita char e type nas duas formas",
+  "post(count char(\"a\") in \"banana\")\npost(count type in [1, int, str])\npost(char(\"a\") count in \"banana\")\n",
+  "3\n2\n3", NULL, 0 },
+/* A cabeca "faltou funct" so conhecia str/int/flo/bool. */
+{ "list f(x) { diz que faltou funct",
+  "list f(x) {\n    return x\n}\n", "",
+  "faltou 'funct' antes de 'f': list funct f(...)", 2 },
+/* Justaposicao: `int(`/`str(`/`flo(` como argumento colado. So a forma de
+ * CHAMADA — o tipo solto nao abre argumento, senao `f(x` engolia a linha de
+ * baixo. */
+{ "justaposicao aceita int(x), str(x) e flo(x)",
+  "post(\"v: \" int(3))\npost(\"n: \" str(2) \" \" flo(1))\n",
+  "v:  3\nn:  2   1.0", NULL, 0 },
+/* `length` era so um IDENT qualquer: `str(tamanho=10)` passava e o numero
+ * ia pro slot de length sem ninguem ter escrito length. */
+{ "campo de model so aceita length=",
+  "model M() {\n    nome: str(tamanho=10)\n}\n", "",
+  "no campo do model o unico parametro e 'length'", 2 },
+{ "campo de model com length= segue valendo",
+  "model M() {\n    nome: str(length=10)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

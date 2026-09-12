@@ -564,7 +564,17 @@ static void le_numero(Lexer *lx)
             PSToken *tk = novo_token(lx, T_INT, lx->linha, c0);
             if (!tk) return;
             tk->i = (int64_t)strtoll(tmp, NULL, base);
-            guarda_texto(lx, tk, lx->src + ini, (int)(lx->pos - ini));
+            /* Texto NORMALIZADO: prefixo minúsculo + dígitos sem `_`, o mesmo
+             * formato do ramo decimal abaixo. O parser relê o texto pra
+             * detectar estouro e virar bignum, e a VM o entrega ao mpz — os
+             * dois precisam saber a base pelo prefixo. Guardar o trecho cru
+             * (com `_`, `0X`) fazia o parser reler em base 10, e `0xFFFF…`
+             * grande saturava em INT64_MAX calado em vez de virar bignum. */
+            char norm[84];
+            norm[0] = '0';
+            norm[1] = (base == 16) ? 'x' : (base == 8) ? 'o' : 'b';
+            memcpy(norm + 2, tmp, (size_t)j + 1);
+            guarda_texto(lx, tk, norm, j + 2);
             return;
         }
     }

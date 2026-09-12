@@ -191,7 +191,10 @@ typedef struct {
 
 #define CFALHOU(c) (!(c)->out->ok)
 
-/* Erro do COMPILADOR: o nó existe, mas a VM ainda não o emite. */
+/* Erro do COMPILADOR — o que NÃO é culpa de quem escreveu: nó que a VM ainda
+ * não emite, limite do motor ou falta de memória. Sai como NotImplementedError
+ * (rc 3). Erro do PROGRAMA vai em `cerro_sx` (SyntaxError, rc 2). Durante um
+ * tempo os dois se misturaram e `break` fora de laço dizia "não implementado". */
 static void cerro(C *c, const char *msg, PSNode *n)
 {
     if (!c->out->ok) return;
@@ -1029,7 +1032,7 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
                 else if (t[j] == '}') prof--;
                 j++;
             }
-            if (prof != 0) { free(buf); cerro(c, "chave nao fechada na f-string", n); return; }
+            if (prof != 0) { free(buf); cerro_sx(c, n, "chave nao fechada na f-string"); return; }
 
             /* trecho entre as chaves: lexa, parseia e compila como expressão */
             int32_t elen = j - 1 - (i + 1);
@@ -1042,7 +1045,7 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
             if (!toks || !toks->ok) {
                 if (toks) ps_lexer_free(toks);
                 free(e); free(buf);
-                cerro(c, "expressao invalida dentro da f-string", n);
+                cerro_sx(c, n, "expressao invalida dentro da f-string");
                 return;
             }
             PSParseResult *r = ps_parse(toks->tokens, toks->n);
@@ -1050,7 +1053,7 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
             if (!r || !r->ok || !r->programa || r->programa->lista.n == 0) {
                 if (r) ps_parse_free(r);
                 free(e); free(buf);
-                cerro(c, "expressao invalida dentro da f-string", n);
+                cerro_sx(c, n, "expressao invalida dentro da f-string");
                 return;
             }
             PSNode *st = r->programa->lista.itens[0];
@@ -1100,7 +1103,7 @@ static int32_t arg_count(C *c, PSNode *n)
     for (int32_t k = 0; k < 9; k++)
         if (n->texto && strcmp(n->texto, nomes[k]) == 0) { t = k; break; }
     if (t < 0 && n->texto && strcmp(n->texto, "json") == 0) t = 5;
-    if (t < 0) { cerro(c, "tipo desconhecido em count", n); return -1; }
+    if (t < 0) { cerro_sx(c, n, "tipo desconhecido em count"); return -1; }
     return t | ((n->b != NULL) << 8);
 }
 
@@ -1457,10 +1460,10 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 size_t ln = strlen(cor);
                 if (ln == 6) memcpy(hex, cor, 6);
                 else if (ln == 3) { for (int k = 0; k < 3; k++) { hex[k*2] = cor[k]; hex[k*2+1] = cor[k]; } }
-                else { cerro(c, "cor invalida", n); return; }
+                else { cerro_sx(c, n, "cor invalida"); return; }
             }
             unsigned r = 0, g = 0, b = 0;
-            if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) { cerro(c, "cor invalida", n); return; }
+            if (sscanf(hex, "%2x%2x%2x", &r, &g, &b) != 3) { cerro_sx(c, n, "cor invalida"); return; }
 
             /* String SIMPLES (literal): a cor é conhecida em compilação, então
              * vira UMA constante já com os escapes ANSI — caminho rápido. */
@@ -1468,7 +1471,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 const char *txt = n->a->texto ? n->a->texto : "";
                 char buf[1024];
                 int len = snprintf(buf, sizeof(buf), "\033[38;2;%u;%u;%um%s\033[0m", r, g, b, txt);
-                if (len < 0 || len >= (int)sizeof(buf)) { cerro(c, "string colorida longa demais", n); return; }
+                if (len < 0 || len >= (int)sizeof(buf)) { cerro_sx(c, n, "string colorida longa demais"); return; }
                 emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, buf, len));
                 return;
             }
@@ -1509,7 +1512,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
              * `json` e `dict` são o MESMO tipo, e o apelido sai de lá. */
             int t = cod_tipo_decl(n->texto);
             if (t < 0 && n->texto && strcmp(n->texto, "type") == 0) t = 7;
-            if (t < 0) { cerro(c, "tipo desconhecido", n); return; }
+            if (t < 0) { cerro_sx(c, n, "tipo desconhecido"); return; }
             emite(c, u, OP_LOAD_TIPO, t);
             return;
         }
@@ -1566,7 +1569,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
              * carregado LIGADO ao self e a chamada segue o caminho normal. */
             for (int32_t i = 0, viu = 0; i < n->lista.n; i++) {
                 if (n->lista.itens[i]->texto) viu = 1;
-                else if (viu) { cerro(c, "argumento posicional depois de nomeado", n); return; }
+                else if (viu) { cerro_sx(c, n, "argumento posicional depois de nomeado"); return; }
             }
             carrega_nome(c, u, pai);
             emite(c, u, OP_LOAD_BASE_INIT, 0);
@@ -1605,15 +1608,19 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
 }
 
 /* ── laços: pilha para backpatch de break/continue ──────────────────────── */
-static void abre_laco(C *c, int32_t inicio, int slots_pilha)
+/* Devolve -1 no estouro de MAX_LACOS, com o erro já posto. Antes voltava em
+ * silêncio e o chamador escrevia em `c->lacos[c->nlacos - 1]` — o laço de
+ * FORA — enquanto `break`/`continue` do de dentro saltavam pro lugar errado;
+ * o comentário prometia um erro "fora de laco" que nunca acontecia. */
+static int abre_laco(C *c, PSNode *n, int32_t inicio, int slots_pilha)
 {
-    if (c->nlacos >= MAX_LACOS) return;      /* laço profundo demais: break/continue
-                                              * caem no erro "fora de laco" */
+    if (c->nlacos >= MAX_LACOS) { cerro(c, "limite do compilador: lacos aninhados demais", n); return -1; }
     Laco *l = &c->lacos[c->nlacos++];
     l->inicio = inicio;
     l->nsaidas = 0;
     l->ncontinues = 0;
     l->slots_pilha = slots_pilha;
+    return 0;
 }
 
 static void fecha_laco(C *c, Unidade *u, int32_t inicio)
@@ -1888,7 +1895,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 /* `x += v` → carrega x, calcula, guarda */
                 char base[3] = { op[0], '\0', '\0' };
                 int32_t opc = op_binario(base);
-                if (opc < 0) { cerro(c, "operador de atribuicao invalido", n); return; }
+                if (opc < 0) { cerro_sx(c, n, "operador de atribuicao invalido"); return; }
                 carrega_nome(c, u, n->texto ? n->texto : "");
                 expr(c, u, n->a);
                 emite(c, u, opc, 0);
@@ -1952,7 +1959,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t topo = UP(c, u)->ncode;
             expr(c, u, n->a);
             int32_t sai = emite(c, u, OP_JUMP_IF_FALSE, 0);
-            abre_laco(c, topo, 0);
+            if (abre_laco(c, n, topo, 0) != 0) return;
             c->lacos[c->nlacos - 1].escopo_marca = M;
             c->lacos[c->nlacos - 1].escopo_marca_body = M;
             bloco_stmts(c, u, n->b);
@@ -2033,7 +2040,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * mesma checagem de quantidade, mesma mensagem de erro. */
             if (n->e) guarda_em_alvo(c, u, n->e);
             else      guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
-            abre_laco(c, topo, usa_range ? 4 : 2);   /* estado do laço na pilha */
+            if (abre_laco(c, n, topo, usa_range ? 4 : 2) != 0) return;   /* estado do laço na pilha */
             /* a var do laço é re-atribuída no topo a cada volta, então limpá-la
              * por-iteração é inofensivo — corpo e var compartilham a marca */
             c->lacos[c->nlacos - 1].escopo_marca = M;
@@ -2055,7 +2062,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         case N_UNPACK_ASSIGNMENT: {
             /* alvo aninhado `a, (b, c) = ...` desempacota de novo por alvo */
             PSNode *alvo = n->a;
-            if (!alvo || alvo->kind != N_UNPACK_TARGET) { cerro(c, "alvo de desempacotamento invalido", n); return; }
+            if (!alvo || alvo->kind != N_UNPACK_TARGET) { cerro_sx(c, n, "alvo de desempacotamento invalido"); return; }
             expr(c, u, n->b);
             compila_unpack_alvo(c, u, alvo);
             return;
@@ -2105,7 +2112,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     int a = cod_tipo_decl(f->texto2);
                     if (a >= 0 && a <= 6) t = a;
                 }
-                if (t < 0) { cerro(c, "tipo desconhecido em model", f); return; }
+                if (t < 0) { cerro_sx(c, f, "tipo desconhecido em model"); return; }
                 def->campos[i].tipo = t;
             }
             emite(c, u, OP_MAKE_MODEL, mi);
@@ -2319,7 +2326,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
             emite(c, u, OP_INDEX_GET, 0);
             guarda_nome_modo(c, u, "_match", 1);
-            abre_laco(c, topo, 2);          /* lista + indice */
+            if (abre_laco(c, n, topo, 2) != 0) return;          /* lista + indice */
             c->lacos[c->nlacos - 1].escopo_marca = M;
             c->lacos[c->nlacos - 1].escopo_marca_body = Mb;
             c->dentro_count_each++;
@@ -2566,7 +2573,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 expr(c, u, n->c);
                 char bin[2] = { n->texto[0], 0 };
                 int32_t op = op_binario(bin);
-                if (op < 0) { cerro(c, "operador de atribuicao invalido", n); return; }
+                if (op < 0) { cerro_sx(c, n, "operador de atribuicao invalido"); return; }
                 emite(c, u, op, 0);
             } else {
                 expr(c, u, n->c);
@@ -2580,10 +2587,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * `n->i2` pontos de nível relativo, seguidos do caminho pontuado.
              * `from .a.b import x` -> ".a.b"; `from pkg.mod import x` -> "pkg.mod";
              * `import json` -> "json". O runtime (carrega_modulo_ps) resolve. */
-            if (!n->texto) { cerro(c, "import mal formado", n); return; }
+            if (!n->texto) { cerro_sx(c, n, "import mal formado"); return; }
             if (n->i2 > 0 && n->lista.n == 0) {
-                cerro(c, "import relativo precisa de um modulo depois dos pontos "
-                         "(ex: from .modulo import x)", n);
+                cerro_sx(c, n, "import relativo precisa de um modulo depois dos pontos "
+                               "(ex: from .modulo import x)");
                 return;
             }
             char encoded[512]; int el = 0;
@@ -2643,7 +2650,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * interpretador faz. */
             if (strcmp(n->texto, "push") == 0) {
                 if (n->lista2.n == 0) {
-                    if (!simples) { cerro(c, "import de modulo pontuado/relativo precisa de 'from ... import ...'", n); return; }
+                    if (!simples) { cerro_sx(c, n, "import de modulo pontuado/relativo precisa de 'from ... import ...'"); return; }
                     emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
                     guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                     return;
@@ -2660,7 +2667,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
 
             if (strcmp(n->texto, "import") == 0) {
-                if (!simples) { cerro(c, "import de modulo pontuado/relativo precisa de 'from ... import ...'", n); return; }
+                if (!simples) { cerro_sx(c, n, "import de modulo pontuado/relativo precisa de 'from ... import ...'"); return; }
                 emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
                 guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                 return;
@@ -2688,7 +2695,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 expr(c, u, n->b);
                 char bin[2] = { n->texto2[0], 0 };
                 int32_t op = op_binario(bin);
-                if (op < 0) { cerro(c, "operador de atribuicao invalido", n); return; }
+                if (op < 0) { cerro_sx(c, n, "operador de atribuicao invalido"); return; }
                 emite(c, u, op, 0);
             } else {
                 expr(c, u, n->b);
@@ -2901,9 +2908,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_BREAK_STMT: {
-            if (c->nlacos == 0) { cerro(c, "'break' fora de laco", n); return; }
+            if (c->nlacos == 0) { cerro_sx(c, n, "'break' fora de laco"); return; }
             Laco *l = &c->lacos[c->nlacos - 1];
-            if (l->nsaidas >= MAX_SAIDAS) { cerro(c, "'break' demais no mesmo laco", n); return; }
+            if (l->nsaidas >= MAX_SAIDAS) { cerro(c, "limite do compilador: 'break' demais no mesmo laco", n); return; }
             /* saindo do laço: apaga TUDO nascido nele até aqui (var do laço +
              * corpo + blocos aninhados abertos), pra nada vazar pra fora */
             emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
@@ -2920,9 +2927,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_CONTINUE_STMT: {
-            if (c->nlacos == 0) { cerro(c, "'continue' fora de laco", n); return; }
+            if (c->nlacos == 0) { cerro_sx(c, n, "'continue' fora de laco"); return; }
             Laco *l = &c->lacos[c->nlacos - 1];
-            if (l->ncontinues >= MAX_SAIDAS) { cerro(c, "'continue' demais no mesmo laco", n); return; }
+            if (l->ncontinues >= MAX_SAIDAS) { cerro(c, "limite do compilador: 'continue' demais no mesmo laco", n); return; }
             /* próxima iteração começa limpa: apaga só o escopo do CORPO (o que é
              * do laço — var/ self/_count — é re-atribuído no topo ou persiste) */
             emite_finallys(c, u, c->nlacos);   /* finally aberto DENTRO deste laço */
@@ -2999,7 +3006,7 @@ static void compila_unpack_alvo(C *c, Unidade *u, PSNode *alvo)
 {
     int32_t n_alvos = alvo->lista.n;
     int32_t star = alvo->i2;                     /* -1 = sem `*` */
-    if (n_alvos > 250) { cerro(c, "alvos demais no desempacotamento", alvo); return; }
+    if (n_alvos > 250) { cerro(c, "limite do compilador: alvos demais no desempacotamento", alvo); return; }
     emite(c, u, OP_UNPACK, n_alvos | ((star + 1) << 8));
     for (int32_t i = 0; i < n_alvos && !CFALHOU(c); i++)
         guarda_em_alvo(c, u, alvo->lista.itens[i]);

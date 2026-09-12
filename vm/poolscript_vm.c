@@ -25028,6 +25028,20 @@ static void libera_vm(VM *vm)
  * saída. Serve também pra fechar o laço do teste — a saída daqui é comparada
  * contra o interpretador, validando SEMÂNTICA e não só formato de bytecode.
  */
+/* Bignum a partir do TEXTO do literal, na base do prefixo (`0x`, `0o`, `0b`)
+ * que o lexer normaliza. Era `mpz_set_str(..., 10)` fixo: um `0xFFFF…` que
+ * estourasse o int64 chegava aqui como texto hexadecimal e o mpz lia lixo. */
+static void mpz_de_literal(mpz_t z, const char *s)
+{
+    int base = 10;
+    if (s[0] == '0' && s[1]) {
+        if (s[1] == 'x') { base = 16; s += 2; }
+        else if (s[1] == 'o') { base = 8; s += 2; }
+        else if (s[1] == 'b') { base = 2; s += 2; }
+    }
+    if (mpz_set_str(z, s, base) != 0) mpz_set_str(z, "0", 10);   /* o shim de gmp não tem mpz_set_ui */
+}
+
 static int carrega_protos(VM *vm, PSPrograma *prog)
 {
     vm->protos = calloc((size_t)(prog->nprotos > 0 ? prog->nprotos : 1), sizeof(Proto));
@@ -25232,7 +25246,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                 case K_BIGINT: {
                     PSBigInt *bg = novo_bigint(vm);
                     if (!bg) return -1;
-                    mpz_set_str(bg->v, kc->s ? kc->s : "0", 10);
+                    mpz_de_literal(bg->v, kc->s ? kc->s : "0");
                     p->consts[k] = MK_OBJ(bg);
                     break;
                 }
@@ -25507,7 +25521,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
                 case K_BIGINT: {
                     PSBigInt *bg = novo_bigint(vm);
                     if (!bg) return -1;
-                    mpz_set_str(bg->v, cc->s ? cc->s : "0", 10);
+                    mpz_de_literal(bg->v, cc->s ? cc->s : "0");
                     d->consts[k] = MK_OBJ(bg);
                     break;
                 }

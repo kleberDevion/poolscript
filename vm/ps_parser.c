@@ -382,11 +382,25 @@ static const char *exige_nome(P *p, const char *contexto)
  * reservadas que ABREM expressão. `if`/`return`/`while` etc. NÃO abrem
  * expressão: sem isso, `f(x` esquecido aberto engolia o `if` da linha de
  * baixo como argumento e o erro saía no lugar errado. */
+/* Base de um literal inteiro pelo prefixo que o lexer normaliza (`0x`, `0o`,
+ * `0b`); `*dig` aponta pro primeiro dígito. Sem prefixo, base 10. É a
+ * mesma regra que a VM usa ao montar o bignum — uma tabela, dois leitores. */
+static int base_do_literal(const char *t, const char **dig)
+{
+    *dig = t;
+    if (t[0] == '0' && t[1]) {
+        if (t[1] == 'x') { *dig = t + 2; return 16; }
+        if (t[1] == 'o') { *dig = t + 2; return 8; }
+        if (t[1] == 'b') { *dig = t + 2; return 2; }
+    }
+    return 10;
+}
+
 static int kw_abre_expr(const char *s)
 {
     static const char *NOMES[] = {
         "post", "input", "create", "clear", "space", "addEnd", "char", "list",
-        "json", "dict", "tup", "JSON", "self",
+        "json", "dict", "tup", "JSON", "self", "count", "to", "await",
         "upper", "lower", "replace", "split", "strip", "join", "startswith",
         "endswith", "find", "index", "format", "encode", "decode", "lstrip",
         "rstrip", "title", "capitalize", "not", "Not", NULL
@@ -416,12 +430,17 @@ static int pode_iniciar_expr(PSToken *t)
     }
 }
 
-static int eh_tipo_nome(const char *s)
+/* Os tipos que o `count` aceita — UMA lista pros três lugares que perguntam
+ * (o prefixo `count int in x` e as duas formas do infixo/sufixo). Eram duas
+ * listas escritas separadas e já divergiam: uma aceitava `char` e não `type`,
+ * a outra o contrário, e `count char(x) in s` valia numa forma e não na outra.
+ * Esta é a união das duas. */
+static int eh_tipo_count(const char *s)
 {
     return s && (strcmp(s,"str")==0 || strcmp(s,"int")==0 || strcmp(s,"flo")==0
               || strcmp(s,"bool")==0 || strcmp(s,"list")==0 || strcmp(s,"json")==0
               || strcmp(s,"dict")==0 || strcmp(s,"tup")==0
-              || strcmp(s,"type")==0);
+              || strcmp(s,"char")==0 || strcmp(s,"type")==0);
 }
 
 /* tipos válidos como TypeName numa expressão (`x is int`) */
@@ -446,7 +465,7 @@ static PSNode *soma(P *p);
 static int count_tipo_valor(P *p, const char **tipo, PSNode **valor);
 static int parece_unpack(P *p);
 static PSNode *alvos_unpack(P *p);
-static int eh_tipo_nome(const char *s);
+static int eh_tipo_count(const char *s);
 static int count_esquerda(P *p, PSNode *no, PSToken *tok, const char **tipo, PSNode **valor);
 static PSNode *statement(P *p);
 static PSNode *bloco(P *p);
@@ -554,9 +573,12 @@ static PSNode *primario(P *p)
             PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
             if (!n) return NULL;
             /* Literal maior que int64 vira bignum: o lexer trava em INT64_MAX,
-             * então re-checo o texto original com errno. */
+             * então re-checo o texto com errno — na BASE do prefixo (`0x`,
+             * `0o`, `0b`), que o lexer normaliza; reler em base 10 fixa fazia
+             * `0xFFFFFFFFFFFFFFFFFF` saturar calado. */
             errno = 0;
-            (void)strtoll(t->texto ? t->texto : "0", NULL, 10);
+            { const char *dig; int base = base_do_literal(t->texto ? t->texto : "0", &dig);
+              (void)strtoll(dig, NULL, base); }
             if (errno == ERANGE && t->texto) { n->lit = L_BIGINT; n->texto = dup_tok(p, t); }
             else                             { n->lit = L_INT;    n->i = t->i; }
             return n;
@@ -828,12 +850,14 @@ static PSNode *primario(P *p)
              */
             if (strcmp(t->texto, "to") == 0) {
                 PSToken *tt = espia(p, 1);
-                static const char *TIPOS[] = {"int","float","str","flo","bool","json","list","tup","dict"};
+                static const char *TIPOS[] = {"int","float","str","flo","bool","json","list","tup","dict","long","char"};
                 int ok = 0;
                 if (tt->texto)
                     for (size_t i = 0; i < sizeof(TIPOS)/sizeof(TIPOS[0]); i++)
                         if (strcmp(tt->texto, TIPOS[i]) == 0) { ok = 1; break; }
-                if (!ok) { perro(p, "esperado 'int', 'float' ou 'str' apos 'to'", tt); return NULL; }
+                /* a frase enumera o VETOR de cima inteiro — dizia "int, float ou
+                 * str" enquanto o vetor aceitava nove */
+                if (!ok) { perro(p, "esperado tipo apos 'to': int, float, str, flo, bool, json, list, tup, dict, long ou char", tt); return NULL; }
                 p->pos += 2;                       /* to <tipo> */
                 PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
                 if (!n) return NULL;
@@ -1004,8 +1028,13 @@ static PSNode *posfixo(P *p)
                         return NULL;
                     }
                     /* sem vírgula: só continua se o próximo puder abrir
-                     * expressão — é a justaposição `post("a" b)` */
+                     * expressão — é a justaposição `post("a" b)`. Os tipos que
+                     * `kw_abre_expr` não lista (int, str, flo, bool, long) só
+                     * abrem argumento na forma de CHAMADA `int(`: dentro de
+                     * `(` o lexer suprime NEWLINE, e um `f(x` aberto engoliria
+                     * um `int y = 1` da linha de baixo como argumento. */
                     if (pode_iniciar_expr(atual(p))) continue;
+                    if (eh_tipo_kw_expr(atual(p)) && espia(p, 1)->type == T_LPAREN) continue;
                     break;
                 }
             }
@@ -1653,17 +1682,12 @@ static PSNode *padrao(P *p)
 }
 
 /* ── operador count ─────────────────────────────────────────────────────── */
-/* Lê `<tipo>` ou `<tipo>(<valor>)`. `char` só é tipo válido aqui. */
+/* Lê `<tipo>` ou `<tipo>(<valor>)`. O conjunto é o de `eh_tipo_count`. */
 static int count_tipo_valor(P *p, const char **tipo, PSNode **valor)
 {
     PSToken *t = atual(p);
-    if (t->type != T_KW || !t->texto
-            || !(strcmp(t->texto,"str")==0 || strcmp(t->texto,"int")==0
-              || strcmp(t->texto,"flo")==0 || strcmp(t->texto,"bool")==0
-              || strcmp(t->texto,"list")==0 || strcmp(t->texto,"json")==0
-              || strcmp(t->texto,"dict")==0 || strcmp(t->texto,"tup")==0
-              || strcmp(t->texto,"char")==0)) {
-        perro(p, "esperado tipo (str, int, flo, bool, list, json, char) apos 'count'", t);
+    if (t->type != T_KW || !t->texto || !eh_tipo_count(t->texto)) {
+        perro(p, "esperado tipo apos 'count': str, int, flo, bool, list, json, dict, tup, char ou type", t);
         return -1;
     }
     p->pos++;
@@ -1685,7 +1709,7 @@ static int count_esquerda(P *p, PSNode *no, PSToken *tok,
                           const char **tipo, PSNode **valor)
 {
     if (no && no->kind == N_CALL && no->a && no->a->kind == N_NAME
-            && eh_tipo_nome(no->a->texto)) {
+            && eh_tipo_count(no->a->texto)) {
         for (int32_t i = 0; i < no->lista.n; i++) {
             if (no->lista.itens[i]->texto) {
                 perro(p, "'count' nao aceita argumentos nomeados no valor", tok);
@@ -1701,7 +1725,7 @@ static int count_esquerda(P *p, PSNode *no, PSToken *tok,
         return 0;
     }
     if (no && no->kind == N_TYPE_NAME) { *tipo = no->texto; *valor = NULL; return 0; }
-    if (no && no->kind == N_NAME && eh_tipo_nome(no->texto)) {
+    if (no && no->kind == N_NAME && eh_tipo_count(no->texto)) {
         *tipo = no->texto; *valor = NULL; return 0;
     }
     perro(p, "lado esquerdo de 'count in' deve ser um tipo (ex: int(7) count in lista)", tok);
@@ -2198,12 +2222,12 @@ static PSNode *return_stmt(P *p)
     return n;
 }
 
-/* Tipos aceitos em DECLARAÇÃO (`int x = 1`) e como tipo de retorno.
- *
- * Só str/int/flo/bool — `list` e `json` NÃO declaram variável: o parser
- * Python os deixa como TypeName solto, então `list nums = [...]` vira
- * `(TypeName list)` + `(Assignment nums ...)`, não um VarDecl. Incluí-los
- * aqui gerava uma AST diferente da de referência. */
+/* Os quatro tipos-base. É a BASE das outras listas, não a lista de quem
+ * declara: a declaração tipada usa `eh_tipo_kw_decl` (que soma char, long,
+ * list, dict, json, tup, Object e os apelidos), o tipo de retorno usa
+ * `eh_tipo_de_retorno`, e o TypeName em expressão (`x is int`) usa
+ * `eh_tipo_kw_expr`. Cada uma tem um papel gramatical diferente; o que não
+ * pode é a mesma pergunta ("isto é tipo aqui?") ser feita com duas listas. */
 static int eh_tipo_kw(PSToken *t)
 {
     return t->type == T_KW && t->texto
@@ -2813,7 +2837,15 @@ static PSNode *statement(P *p)
             f->texto2 = dup_tok(p, tt);
             f->i2 = -1;                       /* -1 = sem length */
             if (aceita(p, T_LPAREN)) {
-                if (!exige(p, T_IDENT, "esperado 'length'")) return NULL;
+                /* A mensagem dizia "esperado 'length'" e o código só cobrava
+                 * um IDENT qualquer: `str(tamanho=10)` passava e o número ia
+                 * pro slot de length sem ninguém ter escrito length. */
+                PSToken *id = atual(p);
+                if (id->type != T_IDENT || !id->texto || strcmp(id->texto, "length") != 0) {
+                    perro(p, "no campo do model o unico parametro e 'length' — escreva str(length=N)", id);
+                    return NULL;
+                }
+                p->pos++;
                 if (!checa_op(p, "=")) { perro(p, "esperado '=' apos 'length'", atual(p)); return NULL; }
                 p->pos++;
                 PSToken *lt = atual(p);
@@ -3163,8 +3195,11 @@ static PSNode *statement(P *p)
         int off = tem_visib ? 1 : 0;
         int j = off;
         PSToken *mk;
+        /* O mesmo conjunto de tipos da declaração (`eh_tipo_kw_decl`): com só
+         * os quatro tipos-base, `list f(x) {` ou `char f(x) {` não caíam aqui
+         * e o erro saía sem a palavra `funct`. */
         while ((mk = espia(p, j))->type == T_KW && mk->texto
-                && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw(mk))) j++;
+                && (strcmp(mk->texto, "async") == 0 || eh_tipo_kw_decl(mk))) j++;
         PSToken *ap = espia(p, j);
         if (j > off && (ap->type == T_IDENT || ap->type == T_IDENT_UPPER)) {
             int tem_async = 0;

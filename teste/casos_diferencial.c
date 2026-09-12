@@ -527,7 +527,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "ok", NULL, 0 },
 { "dif #170",
   "continue\n",
-  "", "NotImplementedError: 'continue' fora de laco", 3 },
+  "", "SyntaxError: 'continue' fora de laco", 2 },
 { "dif #171",
   "if (true)\n{\n    post(\"A\")\n}\n",
   "A", NULL, 0 },

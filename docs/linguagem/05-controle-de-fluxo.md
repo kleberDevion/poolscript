@@ -224,8 +224,8 @@ Dentro de um laço (`while`, `for each`, `count each`):
 - **`break`** encerra o laço imediatamente.
 - **`continue`** pula pro próximo elemento/iteração.
 
-Ambos agem sobre o laço **mais interno**. Fora de um laço são erro de
-compilação (`'break' fora de laco`).
+Ambos agem sobre o laço **mais interno**. Fora de um laço são `SyntaxError`
+(`'break' fora de laco`), e o programa sai com código 2.
 
 ```ps
 for each n in range(100) {
