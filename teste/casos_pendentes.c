@@ -160,23 +160,6 @@ const Caso CASOS_PENDENTES[] = {
 { "split com padrão vazio separa caractere a caractere",
   "import regex\npost(regex.split(\"\", \"abc\"))\n", "['', 'a', 'b', 'c', '']", NULL, 0 },
 
-/* ── aridade: TRÊS nativas aceitam argumento a mais em silêncio ──────────────
- * Achado escrevendo `teste/cli_roda.ps`: `os.writeFile(p, c, "utf-8", "SOBRA", 9)`
- * grava e não reclama. A regra do projeto já é a oposta — `sha256()`,
- * `exists()`, `len()`, `upper()` e toda funct de usuário recusam o argumento
- * sobrando ("espera N argumento(s)"), e o commit 347dd10 fez disso contrato.
- *
- * A causa é mecânica, e a varredura do fonte dá a lista COMPLETA: das 425
- * nativas, só três checam o piso e não o teto (`if (n < 2)` sem `n > 2`):
- * `mod_os_readfile`, `mod_os_writefile` e `mod_mp_open`. Argumento que some
- * calado é erro de digitação que vira comportamento errado sem aviso —
- * exatamente o que a aridade estrita evita no resto da linguagem. */
-{ "os.writeFile recusa argumento sobrando",
-  "import os\nos.writeFile(\"f.txt\", \"a\", \"utf-8\", \"SOBRA\")\n",
-  NULL, "writeFile", -1, NULL, 1 },
-{ "os.readFile recusa argumento sobrando",
-  "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\n",
-  NULL, "readFile", -1, NULL, 1 },
 /* ── `if __name__ == "main"` como EXPRESSÃO ──────────────────────────────────
  * O guard de entrada é reconhecido pela FORMA (vira `OP_SKIP_IF_IMPORT`), não
  * avaliando a condição. As três formas do `if` (chave na mesma linha, Allman,
@@ -187,10 +170,6 @@ const Caso CASOS_PENDENTES[] = {
 { "__name__ == \"main\" vale o mesmo dentro e fora do if",
   "post(__name__ == \"main\")\nif __name__ == \"main\" {\n    post(\"entrou\")\n}\n",
   "True\nentrou", NULL, 0, NULL, 1 },
-
-{ "manpu.open recusa argumento sobrando",
-  "import manpu\ntry {\n    manpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n}\ncatch (e) {\n    post(str(e))\n}\n",
-  NULL, "open", -1, NULL, 1 },
 
 };
 const int NC_PENDENTES = N_CASOS(CASOS_PENDENTES);

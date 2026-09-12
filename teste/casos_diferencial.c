@@ -1272,18 +1272,22 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #418",
   "import regex\npost(regex.split(\"\", \"abc\"))\n",
   "['', 'a', 'b', 'c', '']", NULL, 0 },
+/* #419/#420: o argumento sobrando passava calado e o erro vinha da linha de
+ * baixo (NameError); desde o L4a das contradicoes ele e recusado antes. */
 { "dif #419",
   "import os\nos.writeFile(\"f.txt\", \"a\", \"utf-8\", \"SOBRA\")\nwriteFile",
-  "", "NameError: name 'writeFile' is not defined", 1 },
+  "", "TypeError: writeFile() takes at most 3 arguments (4 given)", 1 },
 { "dif #420",
   "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\nreadFile",
-  "a", "NameError: name 'readFile' is not defined", 1 },
+  "", "TypeError: readFile() takes at most 2 arguments (3 given)", 1 },
 { "dif #421",
   "post(__name__ == \"main\")\nif __name__ == \"main\" {\n    post(\"entrou\")\n}\nTrue\nentrou",
   "False\nentrou", "NameError: name 'entrou' is not defined", 1 },
+/* #422: os dois argumentos sobrando passavam calados; desde o L4a das
+ * contradicoes o open recusa antes de abrir nada. */
 { "dif #422",
   "import manpu\ntry {\n    manpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n}\ncatch (e) {\n    post(str(e))\n}\nopen",
-  "", NULL, 0 },
+  "open() takes at most 2 arguments (4 given) (linha 3)", NULL, 0 },
 { "dif #423",
   "async funct lenta() {\n    sleep(0.3)\n    return 1\n}\nf = lenta()\npost(\"chamou\")\n\n",
   "chamou", NULL, 0 },

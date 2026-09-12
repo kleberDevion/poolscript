@@ -16,7 +16,7 @@ list
 ## Erros
 
 - **TypeError** — `fn` não é chamável: `'int' object is not callable`
-- **TypeError** — o 1º argumento não itera: `'int' object is not iterable`
+- **TypeError** — o 1º argumento não é `list` nem `tup`: `map() argument 1 must be list or tup, not int`
 
 `map(l, str)` **funciona** — `str` é chamável. O exemplo anterior citava isso como erro.
 

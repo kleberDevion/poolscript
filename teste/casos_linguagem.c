@@ -2535,6 +2535,45 @@ const Caso CASOS_LINGUAGEM[] = {
   "import regex\npost(regex.fullmatch(\"a+\", \"aaa\"), regex.match(\"a\", \"aaa\"))\n",
   "True False", NULL, 0 },
 
+/* ── L4a DO PLANO DAS CONTRADICOES: nativas, aridade e tipo (2026-09-12) ──
+ * Strings medidas no binario. As nativas que exigem list/tup diziam "'str'
+ * object is not iterable" sobre tipos que o motor ITERA (str, bytes, dict);
+ * agora dizem o que pedem e o tipo que veio, numa funcao so (arg_exige_seq
+ * / arg_exige_dict). Nada que rodava mudou: str segue recusado. */
+{ "sum recusa str dizendo o que pede, nao negando que str itera",
+  "sum(\"abc\")\n", "", "TypeError: sum() argument 1 must be list or tup, not str", 1 },
+{ "sum recusa bytes pelo mesmo caminho",
+  "sum(\"abc\".encode())\n", "", "TypeError: sum() argument 1 must be list or tup, not bytes", 1 },
+{ "str.join diz o tipo recebido",
+  "\", \".join(\"abc\")\n", "", "TypeError: join() argument 1 must be list or tup, not str", 1 },
+{ "str.join recusa dict",
+  "\", \".join({\"a\": 1})\n", "", "TypeError: join() argument 1 must be list or tup, not dict", 1 },
+{ "list.extend recusa str dizendo o que pede",
+  "l = [1]\nl.extend(\"ab\")\n", "", "TypeError: extend() argument 1 must be list or tup, not str", 1 },
+{ "dict.update recusa list dizendo que pede dict",
+  "d = {}\nd.update([1])\n", "", "TypeError: update() argument 1 must be dict, not list", 1 },
+{ "translate recusa str dizendo que pede dict, nao 'not subscriptable'",
+  "\"abc\".translate(\"xyz\")\n", "", "TypeError: translate() argument 1 must be dict, not str", 1 },
+{ "map diz o que pede no 1o argumento",
+  "map(5, funct(x) { return x })\n", "", "TypeError: map() argument 1 must be list or tup, not int", 1 },
+{ "filter diz o que pede no 1o argumento",
+  "filter(\"ab\", funct(x) { return x })\n", "", "TypeError: filter() argument 1 must be list or tup, not str", 1 },
+/* dict(): sequencia com tamanho errado dizia "cannot convert ... to a
+ * sequence" — o contrario do fato, e sem dizer que precisa de 2. */
+{ "dict(): par com tamanho errado diz o tamanho e que precisa de 2",
+  "dict([[1, 2, 3]])\n", "", "TypeError: dictionary update sequence element #0 has length 3; 2 is required", 1 },
+{ "dict(): par de 1 elemento",
+  "dict([[1]])\n", "", "TypeError: dictionary update sequence element #0 has length 1; 2 is required", 1 },
+{ "dict(): item que nao e sequencia segue com a frase antiga",
+  "dict([5])\n", "", "TypeError: cannot convert dictionary update sequence element #0 to a sequence", 1 },
+/* min comparava com `<` e citava `>` na frase. */
+{ "min cita '<', que e o que compara",
+  "min([1, \"a\"])\n", "", "TypeError: '<' not supported between instances of 'str' and 'int'", 1 },
+{ "min com varios argumentos tambem cita '<'",
+  "min(1, \"a\")\n", "", "TypeError: '<' not supported between instances of 'str' and 'int'", 1 },
+{ "max segue citando '>'",
+  "max([1, \"a\"])\n", "", "TypeError: '>' not supported between instances of 'str' and 'int'", 1 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

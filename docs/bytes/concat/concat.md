@@ -29,7 +29,7 @@ bytes.concat([cab, corpo])          # b'\x00\x02oi'
 
 ```
 bytes.concat([bytes.new("a"), 5])   # TypeError: sequence item 1: expected a bytes-like object, int found
-bytes.concat("abc")                 # TypeError: can only join an iterable
+bytes.concat("abc")                 # TypeError: concat() argument 1 must be list or tup, not str
 ```
 
 ---

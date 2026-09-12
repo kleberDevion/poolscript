@@ -15,7 +15,7 @@ valor
 ## Erros
 
 - **ValueError** — a lista está vazia: `min() iterable argument is empty`
-- **TypeError** — os itens não se comparam entre si: `'>' not supported between instances of 'str' and 'int'`
+- **TypeError** — os itens não se comparam entre si: `'<' not supported between instances of 'str' and 'int'`
 - **TypeError** — o argumento não itera: `'int' object is not iterable`
 
 ## Exemplos

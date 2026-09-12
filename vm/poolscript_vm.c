@@ -3413,6 +3413,29 @@ static int erro_aridade(VM *vm, const char *nome, int minimo, int maximo, int n)
     return -1;
 }
 
+/* Tipo do argumento 1, numa frase só pra toda nativa que exige list/tup ou
+ * dict. Antes cada sítio tinha a própria cópia, e a maioria dizia "'str'
+ * object is not iterable" sobre tipos que o motor ITERA (str, bytes, dict):
+ * a frase negava uma capacidade da linguagem em vez de dizer o que a função
+ * pede. Nenhuma conversão: str continua recusado onde entra list. */
+static int arg_exige_seq(VM *vm, Value v, const char *quem)
+{
+    if (EH_SEQ(v)) return 0;
+    snprintf(vm->erro, sizeof(vm->erro), "%s() argument 1 must be list or tup, not %s",
+             quem, nome_do_tipo_valor(v));
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+    return -1;
+}
+
+static int arg_exige_dict(VM *vm, Value v, const char *quem)
+{
+    if (EH_DICT(v)) return 0;
+    snprintf(vm->erro, sizeof(vm->erro), "%s() argument 1 must be dict, not %s",
+             quem, nome_do_tipo_valor(v));
+    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+    return -1;
+}
+
 #define EXIGE_ARGS(vm, nome, quant) do { \
     if (n != (quant)) return erro_aridade(vm, (nome), (quant), (quant), n); \
 } while (0)
@@ -4216,10 +4239,16 @@ static int nativa_dict(VM *vm, Value *args, int n, Value *out)
     for (int i = 0; i < tam; i++) {
         Value par;
         if (iteravel_item(vm, &args[0], i, &par) != 0) BERRO(vm, "MemoryError", "sem memoria em dict()");
-        if (!EH_SEQ(par) || iteravel_tam(&par) != 2)
+        if (!EH_SEQ(par))
             BERRO(vm, "TypeError",
                   "cannot convert dictionary update sequence element #%d"
                   " to a sequence", i);
+        /* É sequência, o que não serve é o TAMANHO: a frase de cima afirmava
+         * o contrário e não dizia que o motor esperava 2. */
+        if (iteravel_tam(&par) != 2)
+            BERRO(vm, "TypeError",
+                  "dictionary update sequence element #%d has length %d; 2 is required",
+                  i, iteravel_tam(&par));
         Value k, v;
         if (iteravel_item(vm, &par, 0, &k) != 0 || iteravel_item(vm, &par, 1, &v) != 0)
             BERRO(vm, "MemoryError", "sem memoria em dict()");
@@ -4279,9 +4308,7 @@ static FnNativa tipo_conversor(int32_t idx)
 static int nativa_sum(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "sum", 1, 2, n);
-    if (!EH_SEQ(args[0]))
-        BERRO(vm, "TypeError", "'%s' object is not iterable",
-              nome_do_tipo_valor(args[0]));
+    if (arg_exige_seq(vm, args[0], "sum") != 0) return -1;
     PSList *l = COMO_LIST(args[0]);
     double  sd = 0;
     int flutuou = 0;
@@ -4344,8 +4371,8 @@ static int extremo(VM *vm, Value *args, int n, Value *out, const char *nome, int
             int c = compara_valores_par(&item, &melhor, &ma, &mb);
             if (c == -2)
                 BERRO(vm, "TypeError",
-                      "'>' not supported between instances of '%s' and '%s'",
-                      nome_do_tipo_valor(*ma), nome_do_tipo_valor(*mb));
+                      "'%s' not supported between instances of '%s' and '%s'",
+                      maior ? ">" : "<", nome_do_tipo_valor(*ma), nome_do_tipo_valor(*mb));
             if (maior ? (c > 0) : (c < 0)) melhor = item;
         }
         *out = melhor;
@@ -4357,8 +4384,8 @@ static int extremo(VM *vm, Value *args, int n, Value *out, const char *nome, int
         int c = compara_valores_par(&args[i], &melhor, &ma, &mb);
         if (c == -2)
             BERRO(vm, "TypeError",
-                  "'>' not supported between instances of '%s' and '%s'",
-                  nome_do_tipo_valor(*ma), nome_do_tipo_valor(*mb));
+                  "'%s' not supported between instances of '%s' and '%s'",
+                  maior ? ">" : "<", nome_do_tipo_valor(*ma), nome_do_tipo_valor(*mb));
         if (maior ? (c > 0) : (c < 0)) melhor = args[i];
     }
     *out = melhor;
@@ -5343,7 +5370,7 @@ static int met_join(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "join", 1);
     PSString *sep = COMO_STRING(alvo);
-    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "can only join an iterable");
+    if (arg_exige_seq(vm, args[0], "join") != 0) return -1;
     PSList *l = COMO_LIST(args[0]);
     SBUF_AUTO b = {0};
     for (int i = 0; i < l->len; i++) {
@@ -5906,9 +5933,7 @@ static int met_maketrans(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "translate", 1);
-    if (!EH_DICT(args[0]))
-        MERRO(vm, "TypeError", "'%s' object is not subscriptable",
-              nome_do_tipo_valor(args[0]));
+    if (arg_exige_dict(vm, args[0], "translate") != 0) return -1;
     PSString *s = COMO_STRING(alvo);
     SBUF_AUTO b = {0};
     for (int i = 0; i < s->len; ) {
@@ -5984,8 +6009,7 @@ static int met_l_append(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_l_extend(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "extend", 1);
-    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "'%s' object is not iterable",
-                               nome_do_tipo_valor(args[0]));
+    if (arg_exige_seq(vm, args[0], "extend") != 0) return -1;
     PSList *l = COMO_LIST(alvo), *o = COMO_LIST(args[0]);
     /* `l.extend(l)` duplica a própria lista: fixa o tamanho antes do laço,
      * senão a condição de parada anda junto e o loop não termina. */
@@ -6252,8 +6276,7 @@ static int met_d_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_d_update(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "update", 1);
-    if (!EH_DICT(args[0])) MERRO(vm, "TypeError", "'%s' object is not iterable",
-                                nome_do_tipo_valor(args[0]));
+    if (arg_exige_dict(vm, args[0], "update") != 0) return -1;
     PSDict *d = COMO_DICT(alvo), *o = COMO_DICT(args[0]);
     if (d == o) { *out = MK_NULL(); return 0; }    /* `d.update(d)` é no-op */
     for (int i = 0; i < o->usados; i++) {
@@ -6547,8 +6570,7 @@ static int met_a_writelines(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "writelines", 1);
     PSArquivo *a;
     if (arq_exige(vm, alvo, "writelines", &a) != 0) return -1;
-    if (!EH_SEQ(args[0])) MERRO(vm, "TypeError", "'%s' object is not iterable",
-                               nome_do_tipo_valor(args[0]));
+    if (arg_exige_seq(vm, args[0], "writelines") != 0) return -1;
     PSList *l = COMO_LIST(args[0]);
     for (int i = 0; i < l->len; i++) {
         /* bytes vão CRUS, como no write(): antes caíam no valor_para_texto e
@@ -7712,7 +7734,8 @@ static int met_b_join(VM *vm, Value alvo, Value *args, int n, Value *out)
     BY_EU(alvo, sep, nsep);
     int quantos = iteravel_tam(&args[0]);
     if (quantos < 0 || EH_DICT(args[0]))
-        MERRO(vm, "TypeError", "can only join an iterable");
+        MERRO(vm, "TypeError", "join() argument 1 must be list, tup, str or bytes, not %s",
+              nome_do_tipo_valor(args[0]));
     SBUF_AUTO b = {0};
     for (int i = 0; i < quantos; i++) {
         Value item;
@@ -9091,7 +9114,7 @@ static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
         else if (args[i].t == V_FLOAT) v[i] = (int64_t)args[i].as.d;
         else if (args[i].t == V_BOOL)  v[i] = args[i].as.b ? 1 : 0;
         else BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[0]));
+              nome_do_tipo_valor(args[i]));
     }
     *out = MK_INT(v[0] * 3600 + v[1] * 60 + v[2] * 86400);
     return 0;
@@ -10670,7 +10693,7 @@ static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
         big = by_ordem(args[1]);
         if (big < 0) BY_ERRO_VALOR(vm, "byteorder must be either 'little' or 'big'");
     }
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "cannot convert '%s' object to bytes", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "toint() argument 1 must be bytes, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     uint64_t acc = 0;
     for (int i = 0; i < b->len; i++) {
@@ -10697,7 +10720,7 @@ static int mod_bytes_tolist(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "concat", 1);
-    if (!EH_SEQ(args[0])) BY_ERRO_TIPO(vm, "can only join an iterable");
+    if (arg_exige_seq(vm, args[0], "concat") != 0) return -1;
     PSList *l = COMO_LIST(args[0]);
     int64_t total = 0;
     for (int i = 0; i < l->len; i++) {
@@ -11915,7 +11938,7 @@ static int os_enc_args(Value *args, int n, int idx, Value *dest)
 
 static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1) return erro_aridade(vm, "readFile", 1, 2, n);
+    if (n < 1 || n > 2) return erro_aridade(vm, "readFile", 1, 2, n);
     PSString *p;
     if (os_str(vm, args[0], "readFile", &p) != 0) return -1;
     /* O `fopen("rb")` do Linux ABRE um diretório sem reclamar (o `nativa_open`
@@ -11954,7 +11977,9 @@ static int mod_os_readfile(VM *vm, Value *args, int n, Value *out)
 
 static int mod_os_writefile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 2) return erro_aridade(vm, "writeFile", 2, 2, n);
+    /* Aceita 3 (path, content, encoding); dizia "exactly 2" e deixava o 4o
+     * passar calado. */
+    if (n < 2 || n > 3) return erro_aridade(vm, "writeFile", 2, 3, n);
     PSString *p;
     if (os_str(vm, args[0], "writeFile", &p) != 0) return -1;
     const char *dados; int ndados;
@@ -12420,44 +12445,25 @@ static int mod_os_cmd(VM *vm, Value *args, int n, Value *out)
     return roda_processo(vm, c->chars, NULL, (n == 2) && val_truthy(&args[1]), out);
 }
 
-static int mod_os_run(VM *vm, Value *args, int n, Value *out)
+/* Vetor de argumentos do `run` sem teto. Era `char *vetor[64]`: lista com
+ * mais de 62 itens saía como erro de ARIDADE ("takes at most 2 arguments
+ * (2 given)") e a forma em string truncava calada no mesmo ponto, com a
+ * cópia presa em 4096 bytes. */
+static int os_run_empurra(char ***v, int *q, int *cap, char *s)
 {
-    if (n < 1 || n > 2) return erro_aridade(vm, "run", 1, 2, n);
-    int capturar = (n == 2) && val_truthy(&args[1]);
-    char *vetor[64];
-    int q = 0;
-    char copia[4096];
-
-    if (EH_SEQ(args[0])) {
-        PSList *l = COMO_LIST(args[0]);
-        if (l->len >= 63) return erro_aridade(vm, "run", 1, 2, n);
-        for (int i = 0; i < l->len; i++) {
-            if (!EH_STRING(l->itens[i]))
-            BERRO(vm, "TypeError", "run() argument 1 must be list of str, not %s",
-                  nome_do_tipo_valor(l->itens[i]));
-            vetor[q++] = COMO_STRING(l->itens[i])->chars;
-        }
-    } else if (EH_STRING(args[0])) {
-        /* string é dividida respeitando aspas, SEM interpretar shell */
-        PSString *c = COMO_STRING(args[0]);
-        snprintf(copia, sizeof(copia), "%.*s", c->len, c->chars);
-        char *p = copia;
-        while (*p && q < 63) {
-            while (*p == ' ' || *p == '\t') p++;
-            if (!*p) break;
-            char aspas = 0;
-            if (*p == '"' || *p == '\'') { aspas = *p; p++; }
-            vetor[q++] = p;
-            while (*p && (aspas ? *p != aspas : (*p != ' ' && *p != '\t'))) p++;
-            if (*p) { *p = '\0'; p++; }
-        }
-    } else {
-        BERRO(vm, "TypeError", "run() argument 1 must be list or str, not %s",
-          nome_do_tipo_valor(args[0]));
+    if (*q >= *cap) {
+        int nc = *cap ? *cap * 2 : 16;
+        char **nv = realloc(*v, (size_t)nc * sizeof(char *));
+        if (!nv) return -1;
+        *v = nv; *cap = nc;
     }
-    if (q == 0) BERRO(vm, "TypeError", "run() sem comando");
-    vetor[q] = NULL;
+    (*v)[(*q)++] = s;
+    return 0;
+}
 
+/* Dispara `vetor` (terminado em NULL, montado por `mod_os_run`). */
+static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
+{
     /* SEM `capture`: SEGUNDO PLANO. Dispara e volta na hora — e o que separa o
      * `run` do `cmd`; enquanto os dois esperavam, ter os dois nao fazia
      * sentido. Devolve o PID do processo, pra dar pra acompanhar ou matar.
@@ -12524,6 +12530,62 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     return roda_processo(vm, NULL, vetor, capturar, out);
+}
+
+static int mod_os_run(VM *vm, Value *args, int n, Value *out)
+{
+    if (n < 1 || n > 2) return erro_aridade(vm, "run", 1, 2, n);
+    int capturar = (n == 2) && val_truthy(&args[1]);
+    char **vetor = NULL;
+    char *copia = NULL;
+    int q = 0, cap = 0;
+
+    if (EH_SEQ(args[0])) {
+        PSList *l = COMO_LIST(args[0]);
+        for (int i = 0; i < l->len; i++) {
+            if (!EH_STRING(l->itens[i])) {
+                free(vetor);
+                BERRO(vm, "TypeError", "run() argument 1 must be list of str, not %s",
+                      nome_do_tipo_valor(l->itens[i]));
+            }
+            if (os_run_empurra(&vetor, &q, &cap, COMO_STRING(l->itens[i])->chars) != 0) {
+                free(vetor);
+                BERRO(vm, "MemoryError", "sem memoria em run()");
+            }
+        }
+    } else if (EH_STRING(args[0])) {
+        /* string é dividida respeitando aspas, SEM interpretar shell */
+        PSString *c = COMO_STRING(args[0]);
+        copia = malloc((size_t)c->len + 1);
+        if (!copia) BERRO(vm, "MemoryError", "sem memoria em run()");
+        memcpy(copia, c->chars, (size_t)c->len);
+        copia[c->len] = '\0';
+        char *p = copia;
+        while (*p) {
+            while (*p == ' ' || *p == '\t') p++;
+            if (!*p) break;
+            char aspas = 0;
+            if (*p == '"' || *p == '\'') { aspas = *p; p++; }
+            if (os_run_empurra(&vetor, &q, &cap, p) != 0) {
+                free(vetor); free(copia);
+                BERRO(vm, "MemoryError", "sem memoria em run()");
+            }
+            while (*p && (aspas ? *p != aspas : (*p != ' ' && *p != '\t'))) p++;
+            if (*p) { *p = '\0'; p++; }
+        }
+    } else {
+        BERRO(vm, "TypeError", "run() argument 1 must be list or str, not %s",
+          nome_do_tipo_valor(args[0]));
+    }
+    if (q == 0 || os_run_empurra(&vetor, &q, &cap, NULL) != 0) {
+        int vazio = (q == 0);
+        free(vetor); free(copia);
+        if (vazio) BERRO(vm, "TypeError", "run() sem comando");
+        BERRO(vm, "MemoryError", "sem memoria em run()");
+    }
+    int rc = os_run_dispara(vm, vetor, capturar, out);
+    free(vetor); free(copia);
+    return rc;
 }
 
 static int mod_os_code(VM *vm, Value *args, int n, Value *out)
@@ -15099,12 +15161,15 @@ static void req_http_offload(void *p)
                           r->timeout, r->teto, r->destino, r->hr);
 }
 
-static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *out)
+/* `nome` é o membro que o usuário chamou (get/post/…/head) e vai nos erros;
+ * `metodo` é o verbo HTTP e vai só pro pedido. Os erros saíam "GET() …",
+ * nome de função que não existe na linguagem. */
+static int request_comum(VM *vm, const char *nome, const char *metodo, Value *args, int n, Value *out)
 {
-    if (n < 1) return erro_aridade(vm, metodo, 1, 99, n);
+    if (n < 1) return erro_aridade(vm, nome, 1, 99, n);
     if (!EH_STRING(args[0]))
         BERRO(vm, "TypeError", "%s() argument 1 must be str, not %s",
-              metodo, nome_do_tipo_valor(args[0]));
+              nome, nome_do_tipo_valor(args[0]));
     Value headers = n > 1 ? args[1] : MK_NULL();
     Value body    = n > 2 ? args[2] : MK_NULL();
     int timeout   = (n > 3 && args[3].t == V_INT) ? (int)args[3].as.i : 30;
@@ -15413,11 +15478,11 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     return mrc;
 }
 
-static int mod_req_get(VM *v, Value *a, int n, Value *o)    { return request_comum(v, "GET", a, n, o); }
-static int mod_req_post(VM *v, Value *a, int n, Value *o)   { return request_comum(v, "POST", a, n, o); }
-static int mod_req_put(VM *v, Value *a, int n, Value *o)    { return request_comum(v, "PUT", a, n, o); }
-static int mod_req_patch(VM *v, Value *a, int n, Value *o)  { return request_comum(v, "PATCH", a, n, o); }
-static int mod_req_delete(VM *v, Value *a, int n, Value *o) { return request_comum(v, "DELETE", a, n, o); }
+static int mod_req_get(VM *v, Value *a, int n, Value *o)    { return request_comum(v, "get", "GET", a, n, o); }
+static int mod_req_post(VM *v, Value *a, int n, Value *o)   { return request_comum(v, "post", "POST", a, n, o); }
+static int mod_req_put(VM *v, Value *a, int n, Value *o)    { return request_comum(v, "put", "PUT", a, n, o); }
+static int mod_req_patch(VM *v, Value *a, int n, Value *o)  { return request_comum(v, "patch", "PATCH", a, n, o); }
+static int mod_req_delete(VM *v, Value *a, int n, Value *o) { return request_comum(v, "delete", "DELETE", a, n, o); }
 
 /* head(url, headers, timeout) — só cabeçalhos, sem corpo. Remapeia pro layout
  * do request_comum (timeout é o 4º argumento lá). */
@@ -15428,7 +15493,7 @@ static int mod_req_head(VM *v, Value *a, int n, Value *o)
     b[1] = n > 1 ? a[1] : MK_NULL();
     b[2] = MK_NULL();
     b[3] = n > 2 ? a[2] : MK_NULL();
-    return request_comum(v, "HEAD", b, n >= 3 ? 4 : n, o);
+    return request_comum(v, "head", "HEAD", b, n >= 3 ? 4 : n, o);
 }
 
 /* Drena as mensagens já chegadas e entrega ao on_message. Sem thread própria,
@@ -16484,7 +16549,8 @@ static int mp_grade_para_csv(const PSGrade *g, SBuf *saida)
 
 static int mod_mp_open(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || !EH_STRING(args[0]))
+    if (n < 1 || n > 2) return erro_aridade(vm, "open", 1, 2, n);
+    if (!EH_STRING(args[0]))
         BERRO(vm, "TypeError", "open() argument 1 must be str, not %s",
                       nome_do_tipo_valor(args[0]));
     const char *caminho = COMO_STRING(args[0])->chars;
@@ -17832,8 +17898,12 @@ static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
     }
 
     if (!ok) {
+        /* Na forma `render(pasta, arquivo)` quem faltou é o ARQUIVO: a frase
+         * imprimia a pasta, que existe. */
+        const char *faltou = (n == 2 && EH_STRING(args[1]))
+                           ? COMO_STRING(args[1])->chars : COMO_STRING(args[0])->chars;
         char msg[2200];
-        snprintf(msg, sizeof(msg), "<h1>404 — arquivo não encontrado: %s</h1>", COMO_STRING(args[0])->chars);
+        snprintf(msg, sizeof(msg), "<h1>404 — arquivo não encontrado: %s</h1>", faltou);
         r->status = 404;
         r->corpo = jk_str_val(vm, msg);
         snprintf(r->ctype, sizeof(r->ctype), "text/html; charset=utf-8");
@@ -17889,7 +17959,10 @@ static PSJReg *jk_novo_reg(VM *vm, Value app, int kind)
 static int jk_rota_nova(VM *vm, Value alvo, const char *nome, const char *verbo,
                         Value *args, int n, Value *out)
 {
-    if (n < 1 || !EH_STRING(args[0]))
+    /* Sem argumento não existe args[0] pra ler o tipo: `app.route()` saía
+     * "argument 1 must be str, not str", lendo lixo do slot. */
+    if (n < 1) return erro_aridade(vm, nome, 1, 5, n);
+    if (!EH_STRING(args[0]))
         MERRO(vm, "TypeError", "%s() argument 1 must be str, not %s",
                   nome, nome_do_tipo_valor(args[0]));
     Value cors = jk_cors_singleton(vm);
@@ -20738,8 +20811,7 @@ static int fixa_raiz(VM *vm, Value v)
 static int nativa_map(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "map", 2);
-    if (!EH_SEQ(args[0])) BERRO(vm, "TypeError", "'%s' object is not iterable",
-                               nome_do_tipo_valor(args[0]));
+    if (arg_exige_seq(vm, args[0], "map") != 0) return -1;
     PSList *src = COMO_LIST(args[0]);
     PSList *l = lista_com_cap(vm, src->len, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em map()");
@@ -20764,8 +20836,7 @@ static int nativa_map(VM *vm, Value *args, int n, Value *out)
 static int nativa_filter(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "filter", 2);
-    if (!EH_SEQ(args[0])) BERRO(vm, "TypeError", "'%s' object is not iterable",
-                               nome_do_tipo_valor(args[0]));
+    if (arg_exige_seq(vm, args[0], "filter") != 0) return -1;
     PSList *src = COMO_LIST(args[0]);
     PSList *l = lista_com_cap(vm, src->len, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria em filter()");

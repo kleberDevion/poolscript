@@ -3266,7 +3266,7 @@ const Caso CASOS_ORACULO[] = {
 { "oraculo #3252", "post(len([1, \"a\"]))\n", "2", NULL, 0 },
 { "oraculo #3253", "post(sorted([1, \"a\"]))\n", "", "'<' not supported between instances of 'str' and 'int'", 1 },
 { "oraculo #3254", "post(sum([1, \"a\"]))\n", "", "unsupported operand type(s) for +: 'int' and 'str'", 1 },
-{ "oraculo #3255", "post(min([1, \"a\"]))\n", "", "'>' not supported between instances of 'str' and 'int'", 1 },
+{ "oraculo #3255", "post(min([1, \"a\"]))\n", "", "'<' not supported between instances of 'str' and 'int'", 1 },
 { "oraculo #3256", "post(max([1, \"a\"]))\n", "", "'>' not supported between instances of 'str' and 'int'", 1 },
 { "oraculo #3257", "post({}.copy())\n", "{}", NULL, 0 },
 { "oraculo #3258", "post({}.has(\"a\"))\n", "False", NULL, 0 },

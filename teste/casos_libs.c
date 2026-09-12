@@ -848,6 +848,59 @@ const Caso CASOS_LIBS[] = {
   "try { post((1,2)[9]) } catch (e) { if \"tup\" in str(e) { n = n + 1 } }\n"
   "try { post(Null + 1) } catch (e) { if \"Null\" in str(e) { n = n + 1 } }\n"
   "post(n)\n", "3", NULL, 0 },
+
+/* ── L4a DO PLANO DAS CONTRADICOES: nativas de modulo, aridade e tipo ──────
+ * (2026-09-12) Strings medidas no binario. */
+/* date.hora testava args[i] e imprimia o tipo de args[0]: acusava o int que
+ * estava certo e escondia o argumento errado. */
+{ "date.hora acusa o argumento errado, nao o primeiro",
+  "import date\ndate.hora(1, \"abc\")\n", "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
+{ "date.hora acusa o terceiro quando e ele",
+  "import date\ndate.hora(1, 2, [3])\n", "", "TypeError: 'list' object cannot be interpreted as an integer", 1 },
+/* toint converte bytes PARA int; dizia "cannot convert 'str' object to bytes". */
+{ "bytes.toint diz que pede bytes, nao que converte pra bytes",
+  "import bytes\nbytes.toint(\"abc\")\n", "", "TypeError: toint() argument 1 must be bytes, not str", 1 },
+{ "bytes.concat diz o tipo recebido",
+  "import bytes\nbytes.concat(\"abc\")\n", "", "TypeError: concat() argument 1 must be list or tup, not str", 1 },
+{ "bytes.join recusa dict dizendo o que aceita",
+  "import bytes\nbytes.new(\"-\").join({\"a\": 1})\n", "", "TypeError: join() argument 1 must be list, tup, str or bytes, not dict", 1 },
+{ "writelines diz o que pede",
+  "f = open(\"wl.txt\", \"w\")\nf.writelines(\"abc\")\n", "", "TypeError: writelines() argument 1 must be list or tup, not str", 1 },
+/* request.* assinava o VERBO HTTP ("GET() argument 1 ..."), funcao que nao
+ * existe na linguagem. */
+{ "request.get assina get(), nao GET()",
+  "import request\nrequest.get(123)\n", "", "TypeError: get() argument 1 must be str, not int", 1 },
+{ "request.get sem argumento assina get()",
+  "import request\nrequest.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 1 },
+{ "request.head assina head()",
+  "import request\nrequest.head(123)\n", "", "TypeError: head() argument 1 must be str, not int", 1 },
+/* Sem argumento nao existe args[0]: manpu.open() e app.route() liam lixo do
+ * slot e saiam "argument 1 must be str, not str". */
+{ "manpu.open sem argumento e erro de aridade, nao 'not str'",
+  "import manpu\nmanpu.open()\n", "", "TypeError: open() takes at least 1 argument (0 given)", 1 },
+{ "manpu.open recusa argumento sobrando",
+  "import manpu\nmanpu.open(\"nao_existe.mp\", \"r\", \"SOBRA\", 1)\n", "", "TypeError: open() takes at most 2 arguments (4 given)", 1 },
+{ "route() sem argumento e erro de aridade, nao 'not str'",
+  "import jinker\napp = jinker.Jinker()\napp.route()\n", "", "TypeError: route() takes at least 1 argument (0 given)", 1 },
+{ "get() sem argumento assina get",
+  "import jinker\napp = jinker.Jinker()\napp.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 1 },
+/* writeFile aceita 3 (path, content, encoding) e dizia "exactly 2"; ela e
+ * readFile deixavam o argumento sobrando passar calado. */
+{ "os.writeFile com 1 argumento diz 'at least 2', nao 'exactly 2'",
+  "import os\nos.writeFile(\"f.txt\")\n", "", "TypeError: writeFile() takes at least 2 arguments (1 given)", 1 },
+{ "os.writeFile recusa argumento sobrando",
+  "import os\nos.writeFile(\"f.txt\", \"a\", \"utf-8\", \"SOBRA\")\n", "", "TypeError: writeFile() takes at most 3 arguments (4 given)", 1 },
+{ "os.writeFile com encoding segue aceito",
+  "import os\nos.writeFile(\"wf3.txt\", \"acao\", \"latin-1\")\npost(os.readFile(\"wf3.txt\", \"latin-1\"))\n", "acao", NULL, 0 },
+{ "os.readFile recusa argumento sobrando",
+  "import os\nos.writeFile(\"f.txt\", \"a\")\npost(os.readFile(\"f.txt\", \"utf-8\", \"SOBRA\"))\n", "", "TypeError: readFile() takes at most 2 arguments (3 given)", 1 },
+/* os.run tinha `char *vetor[64]`: lista com 63+ itens saia como erro de
+ * ARIDADE ("takes at most 2 arguments (2 given)") e a string truncava calada
+ * em 62 palavras / 4096 bytes. O vetor cresce; nenhum teto. */
+{ "os.run aceita lista com mais de 62 itens",
+  "import os\nl = [\"echo\"]\nfor each i in range(70) { l.append(str(i)) }\npost(os.run(l, true).strip().split(\" \").len())\n", "70", NULL, 0 },
+{ "os.run em string nao trunca em 62 palavras nem em 4096 bytes",
+  "import os\ns = \"echo\"\nfor each i in range(3000) { s = s + \" x\" }\npost(os.run(s, true).strip().split(\" \").len())\n", "3000", NULL, 0 },
 };
 
 const int NC_LIBS = N_CASOS(CASOS_LIBS);
