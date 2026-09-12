@@ -46,6 +46,21 @@ img.copy("backup/foto.png")  # duplica
 img.move("final/foto.png")   # move (devolve o novo PoolFile)
 ```
 
+## Arquivo aberto com `open()` também é `PoolFile`
+
+`type(open("a.txt", "r"))` responde `PoolFile`: o arquivo aberto é o mesmo
+tipo, com os métodos de leitura e escrita por cima dos de acima. A página do
+[`open()`](../../builtins/open/open.md) detalha cada um.
+
+| Acesso | O que faz |
+|---|---|
+| `.read(n=-1)` | lê tudo (ou `n` caracteres) |
+| `.readline()` | a próxima linha; `Null` no fim |
+| `.readlines()` | todas as linhas, numa `list` |
+| `.write(conteudo)` | escreve `str` ou `bytes` |
+| `.writelines(linhas)` | escreve cada item da `list` |
+| `.close()` | fecha; o `using` faz sozinho |
+
 `save` grava o **conteúdo que está em memória** — útil quando o `PoolFile`
 veio de uma lib (download, geração de áudio/imagem...) e ainda não existe no
 disco, ou pra materializar uma cópia onde você quiser:

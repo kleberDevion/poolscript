@@ -12,7 +12,7 @@ manpu.remove(value="", content="", column=0, celula=0, amount="full", target="")
 | `value` | `""` | o texto a remover (em HTML/txt) |
 | `content` | `""` | **apelido** de `value` — usado só quando `value` está vazio (`value or content`) |
 | `column` / `celula` | `0` | posição a limpar (em CSV): coluna e célula |
-| `amount` | `"full"` | `full` = remove tudo que encontrar; `mei` = remove metade |
+| `amount` | `"full"` | `full` = remove tudo que encontrar; `mei` = remove a metade inicial de cada ocorrência |
 | `target` | `""` | caminho do arquivo (obrigatório na prática: sem arquivo, devolve `ManpuResult` de erro) |
 
 ---
@@ -45,7 +45,7 @@ x = mp.remove(
 | Valor | Efeito |
 |---|---|
 | `full` | remove **todas** as ocorrências encontradas |
-| `mei` | remove **metade** do texto encontrado |
+| `mei` | remove a **metade inicial** de cada ocorrência (sobra a final: `abcd` vira `cd`) |
 
 ---
 

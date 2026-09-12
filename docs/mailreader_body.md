@@ -218,8 +218,9 @@ A suíte em C (`teste/`, rodada por `make check`) cobre:
 - `.body()` com mensagem `multipart/alternative` (plain + html) devolve o
   plain.
 - `.body()` com mensagem só-HTML devolve o HTML cru.
-- `.body()` sem `.select()` antes levanta (mesma regra defensiva de
-  `.search()`).
+- `.body()` sem `.select()` antes levanta `chame .select() antes de .body()`;
+  sem nem conexão, `chame .conn() e .login() antes de .body()` — cada passo
+  que falta tem a própria frase (mesma regra de `.search()`).
 - `.body()` com fetch que falha no servidor levanta.
 - Escaping de aspas e barra invertida no termo de busca.
 - Termo acentuado com vírgula chega intacto no comando `SEARCH`, com

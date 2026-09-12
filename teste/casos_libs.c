@@ -901,6 +901,58 @@ const Caso CASOS_LIBS[] = {
   "import os\nl = [\"echo\"]\nfor each i in range(70) { l.append(str(i)) }\npost(os.run(l, true).strip().split(\" \").len())\n", "70", NULL, 0 },
 { "os.run em string nao trunca em 62 palavras nem em 4096 bytes",
   "import os\ns = \"echo\"\nfor each i in range(3000) { s = s + \" x\" }\npost(os.run(s, true).strip().split(\" \").len())\n", "3000", NULL, 0 },
+
+/* ── L4c DO PLANO DAS CONTRADICOES: servicos, tabelas, metadata ──────────
+ * (2026-09-12) Strings medidas no binario. */
+/* body/search sem conexao mandavam chamar .select(), que por si so falha. */
+{ "MailReader.body sem conexao nomeia o passo certo",
+  "import mail\nm = mail.MailReader()\nm.body(\"1\")\n", "",
+  "RuntimeError: erro de execução: chame .conn() e .login() antes de .body()", 1 },
+{ "MailReader.search sem conexao nomeia o passo certo",
+  "import mail\nm = mail.MailReader()\nm.search(\"ALL\")\n", "",
+  "RuntimeError: erro de execução: chame .conn() e .login() antes de .search()", 1 },
+/* json: profundidade e RecursionError nos dois lados (escrever e ler); saia
+ * TypeError porque so vm->erro era escrito. */
+{ "json.stringify aninhado demais e RecursionError",
+  "import json\nv = 1\nfor each i in range(80) { v = [v] }\ntry { json.stringify(v) } catch (RecursionError e) { post(\"pegou:\", e) }\n",
+  "pegou: json aninhado demais (linha 4)", NULL, 0 },
+{ "json.parse aninhado demais e RecursionError",
+  "import json\ntry { json.parse(\"[\" * 200 + \"]\" * 200) } catch (RecursionError e) { post(\"pegou:\", e) }\n",
+  "pegou: json aninhado demais (linha 2)", NULL, 0 },
+/* assert(cond, mensagem=) — o nome publicado pela tabela — transformava
+ * condicao verdadeira em falha ("veio True, esperava Null"). */
+{ "assert honra mensagem= pelo nome publicado",
+  "post(assert(true, mensagem=\"tudo certo\"))\npost(assert(1, esperado=1))\n"
+  "try { assert(false, mensagem=\"deu ruim\") } catch (AssertionError e) { post(\"pegou:\", e) }\n"
+  "try { assert(1, esperado=2, mensagem=\"nota\") } catch (AssertionError e) { post(\"pegou:\", e) }\n"
+  "try { assert(1, 2, \"nota\") } catch (AssertionError e) { post(\"pegou:\", e) }\n",
+  "True\nTrue\npegou: deu ruim (linha 3)\npegou: nota — veio 1, esperava 2 (linha 4)\npegou: nota — veio 1, esperava 2 (linha 5)", NULL, 0 },
+/* save(caminho=Null): a tabela declara o default Null e o metodo o recusava. */
+{ "save(caminho=Null) e o mesmo que save() no arquivo e no PoolFile",
+  "import os\nos.writeFile(\"sv.txt\", \"conteudo\")\nf = open(\"sv.txt\", \"r\")\npost(f.save(caminho=Null))\n"
+  "p = os.loadFile(\"sv.txt\", \"rb\")\npost(p.save(caminho=Null))\n",
+  "./sv.txt\n<PoolFile 'sv.txt' (8 bytes)>", NULL, 0 },
+/* sendto: o codigo lia o endereco do ULTIMO argumento; a ordem publicada
+ * pela tabela (data, address, flags) — posicional ou por nome — era recusada. */
+{ "sendto segue a ordem da tabela, posicional e por nome",
+  "import sockets\nu1 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)\nu1.bind((\"127.0.0.1\", 0))\nporta = u1.getsockname()[1]\n"
+  "u2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)\n"
+  "post(u2.sendto(\"posicional\", (\"127.0.0.1\", porta), 0))\npost(u1.recv(64).decode())\n"
+  "post(u2.sendto(data=\"nomeado\", address=(\"127.0.0.1\", porta), flags=0))\npost(u1.recv(64).decode())\n"
+  "post(u2.sendto(\"sem flags\", (\"127.0.0.1\", porta)))\npost(u1.recv(64).decode())\nu1.close(); u2.close()\n",
+  "10\nposicional\n7\nnomeado\n9\nsem flags", NULL, 0 },
+{ "sendto: flags que nao e int e TypeError",
+  "import sockets\nu2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)\nu2.sendto(\"x\", (\"127.0.0.1\", 9), \"flags\")\n",
+  "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
+/* channel.emit anunciava `exclude=` que ninguem lia: saiu da tabela. */
+{ "channel.emit nao aceita mais exclude=",
+  "import jinker\napp = jinker.Jinker()\napp.channel.emit(\"x\", exclude=1)\n", "",
+  "TypeError: 'exclude' is an invalid keyword argument for emit()", 1 },
+/* manpu.remove amount=\"mei\": sobra a metade FINAL (o comentario e a doc
+ * diziam o contrario; o codigo e o entregue). */
+{ "manpu.remove mei tira a metade inicial de cada ocorrencia",
+  "import os\nimport manpu\nos.writeFile(\"mp.txt\", \"xx abcd yy abcd zz\")\nmanpu.remove(value=\"abcd\", amount=\"mei\", target=\"mp.txt\")\npost(os.readFile(\"mp.txt\"))\n",
+  "xx cd yy cd zz", NULL, 0 },
 };
 
 const int NC_LIBS = N_CASOS(CASOS_LIBS);

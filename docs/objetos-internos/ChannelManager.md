@@ -17,13 +17,15 @@ app.channel.status                    → status do último envio
 
 | Acesso | O que faz |
 |---|---|
-| `.emit(payload=None, room_id=None, exclude=None)` | Envia payload pros conectados. room_id filtra pra uma sala específica; |
+| `.emit(payload=None, room_id=None)` | Envia payload pros conectados. room_id filtra pra uma sala específica; |
 | `.status` | atributo |
 
 ### `.emit(...)`
 
 Envia payload pros conectados. room_id filtra pra uma sala específica;
-sem room_id, faz broadcast geral (igual __call__(forAll=...)).
-exclude: set de conexões a pular (usado pra não ecoar pro remetente).
+sem room_id, faz broadcast geral (igual __call__(forAll=...)). Não há
+`exclude`: fora de handler de WebSocket não existe remetente a pular — para
+não ecoar pro remetente, use `socket.emit(..., exclude_self=true)` de dentro
+do handler.
 
 [← índice](objetos-internos.md)

@@ -32,6 +32,9 @@ mensagem não tem como dizer o que veio. Recebendo os dois lados, ela diz.
 - `esperado` do tipo `str` é lido como MENSAGEM, não como valor esperado:
   `assert(x, "explicando")` testa a verdade de `x`. Pra comparar contra texto,
   use a forma de três: `assert(x, "abc", "nota")`.
+- Por nome, `assert(x, mensagem="…")` é a forma de dois (testa `x` e usa o
+  texto na falha); `esperado=` sozinho compara. Os dois juntos são a forma de
+  três.
 - A comparação é a mesma do operador `==` — não há uma segunda noção de
   igualdade.
 - `AssertionError` é capturável: um runner pode contar as falhas em vez de

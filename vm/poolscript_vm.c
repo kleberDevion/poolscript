@@ -6640,14 +6640,16 @@ static int cria_pais(const char *caminho);   /* definido mais abaixo */
 static int met_a_save(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "save", 0, 1, n);
-    if (n == 1 && !EH_STRING(args[0]))
+    /* `caminho=Null` (o default que a tabela declara) = ausente, como nos
+     * vizinhos `=Null`; recusava o próprio default com TypeError */
+    if (n == 1 && args[0].t != V_NULL && !EH_STRING(args[0]))
         MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
               nome_do_tipo_valor(args[0]));
     PSArquivo *a;
     if (arq_exige(vm, alvo, "save", &a) != 0) return -1;
     if (a->f) fflush(a->f);
 
-    const char *destino = (n == 1) ? COMO_STRING(args[0])->chars : ".";
+    const char *destino = (n == 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : ".";
     struct stat st;
     int eh_pasta = (strcmp(destino, ".") == 0 || strcmp(destino, "..") == 0
                     || (destino[0] && destino[strlen(destino) - 1] == '/')
@@ -8292,7 +8294,7 @@ static int met_pf_save(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (n > 1) return erro_aridade(vm, "save", 0, 1, n);
     PSPoolFile *f = COMO_PFILE(alvo);
     char dest[2048];
-    if (n == 1) {
+    if (n == 1 && args[0].t != V_NULL) {   /* Null = ausente, como a tabela declara */
         if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "save() argument 1 must be str, not %s",
                                       nome_do_tipo_valor(args[0]));
         snprintf(dest, sizeof(dest), "%s", COMO_STRING(args[0])->chars);
@@ -8545,7 +8547,7 @@ static const MetodoNat METODOS_JEMIT[] = {
     { "status_send", met_jsock_status_send, NULL },
 };
 static const MetodoNat METODOS_JCHAN[] = {
-    { "emit", met_jchan_emit, "payload,room_id,exclude" },
+    { "emit", met_jchan_emit, "payload,room_id" },
 };
 
 static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -8787,7 +8789,13 @@ static int json_texto(SBuf *b, const char *s, int len)
  * em vez de duas funções porque duas divergiriam na primeira correção. */
 static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
 {
-    if (prof > 64) { snprintf(vm->erro, sizeof(vm->erro), "json aninhado demais"); return -1; }
+    /* profundidade é RecursionError (o comentário do stringify já prometia;
+     * só vm->erro era escrito e a rede de baixo virava TypeError) */
+    if (prof > 64) {
+        snprintf(vm->erro, sizeof(vm->erro), "json aninhado demais");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+        return -1;
+    }
     char tmp[64];
     switch (v->t) {
         case V_NULL: case V_UNSET: return sb_bytes(b, "null", 4);
@@ -8985,7 +8993,7 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
 
 static int j_valor(VM *vm, JLeitor *j, Value *out, int prof)
 {
-    if (prof > 64) BERRO(vm, "TypeError", "json aninhado demais");
+    if (prof > 64) BERRO(vm, "RecursionError", "json aninhado demais");
     j_espaco(j);
     if (j->i >= j->n) return j_erro(vm, j, j->i, "Expecting value");
     char c = j->s[j->i];
@@ -13700,9 +13708,18 @@ static int met_sk_sendto(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "sendto", &s) != 0) return -1;
     const char *p = NULL; size_t tam = 0;
     if (sk_dados(vm, args[0], "sendto", &p, &tam) != 0) return -1;
-    /* Python: sendto(data, addr) OU sendto(data, flags, addr) */
-    Value addr = args[n - 1];
-    int flags = (n == 3 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
+    /* A ordem é a da tabela — (data, address, flags) — que alimenta o
+     * completion, o `--metadata`, a chamada por nome e o título da doc. O
+     * código lia o endereço do ÚLTIMO argumento, e a ordem publicada
+     * (posicional ou `address=`/`flags=` juntos) era recusada. */
+    Value addr = args[1];
+    int flags = 0;
+    if (n == 3 && args[2].t != V_UNSET && args[2].t != V_NULL) {
+        if (args[2].t != V_INT)
+            MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
+                  nome_do_tipo_valor(args[2]));
+        flags = (int)args[2].as.i;
+    }
     struct sockaddr_storage sa; socklen_t sl;
     if (sk_monta_addr(vm, s->familia, s->tipo, addr, "sendto", &sa, &sl, 0) != 0) return -1;
     SkSendOff o = { s->fd, p, tam, flags, 0, 0, 0, (struct sockaddr *)&sa, sl };
@@ -14653,7 +14670,10 @@ static int met_mr_search(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 4) return erro_aridade(vm, "search", 0, 4, n);
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
-    if (!m->conn || !m->teve_select)
+    /* dois passos, duas frases: sem conexão o conselho ".select()" só leva a
+     * outro erro */
+    if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() e .login() antes de .search()");
+    if (!m->teve_select)
         MERRO(vm, "RuntimeError", "erro de execução: chame .select() antes de .search()");
     const char *crit = (n >= 1 && EH_STRING(args[0])) ? COMO_STRING(args[0])->chars : "ALL";
     const char *termo = (n >= 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : NULL;
@@ -14738,7 +14758,8 @@ static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "body", 1);
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
-    if (!m->conn || !m->teve_select)
+    if (!m->conn) MERRO(vm, "RuntimeError", "erro de execução: chame .conn() e .login() antes de .body()");
+    if (!m->teve_select)
         MERRO(vm, "RuntimeError", "erro de execução: chame .select() antes de .body()");
     if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "body() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
@@ -16484,8 +16505,8 @@ static int mod_mp_remove(VM *vm, Value *args, int n, Value *out)
     if (!alvo[0]) { PSManpuRes *r = novo_manpures(vm, 0, "Error: forneça value para remover"); *out = MK_OBJ(r); return 0; }
     char *b; int nb;
     if (mp_le_arquivo(target, &b, &nb) != 0) { PSManpuRes *r = novo_manpures(vm, 0, "Error"); *out = MK_OBJ(r); return 0; }
-    /* substitui: full = tira tudo; mei = tira a metade final de cada ocorrência
-     * (aproxima o comportamento de texto do interpretador) */
+    /* substitui: full = tira tudo; mei = tira a metade INICIAL de cada
+     * ocorrência (sobra a metade final: `alvo + meio`) */
     SBUF_AUTO saida = {0};
     int la = (int)strlen(alvo);
     int meio = la / 2;
@@ -17190,10 +17211,12 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
     if (drv == PS_DB_MSSQL) {
         /* monta o connection string do SQL Server, como o psodbc_lib faz.
          * Sem user/senha usa autenticação integrada. */
+        /* a porta é decidida UMA vez: sem `port` saía "SERVER=localhost1433"
+         * (separador vazio + 1433 colado), um host que não existe */
+        int p = porta ? porta : 1433;
         int off = snprintf(odbc_cs, sizeof(odbc_cs),
-                           "DRIVER={ODBC Driver 18 for SQL Server};SERVER=%s%s%d;DATABASE=%s;",
-                           host && host[0] ? host : "localhost",
-                           porta ? "," : "", porta ? porta : 1433, db);
+                           "DRIVER={ODBC Driver 18 for SQL Server};SERVER=%s,%d;DATABASE=%s;",
+                           host && host[0] ? host : "localhost", p, db);
         if (user && user[0])
             off += snprintf(odbc_cs+off, sizeof(odbc_cs)-off, "UID=%s;PWD=%s;", user, senha ? senha : "");
         else
@@ -18248,7 +18271,9 @@ static int met_jsock_status_send(VM *vm, Value alvo, Value *args, int n, Value *
     *out = j->ch_status;
     return 0;
 }
-/* app.channel.emit(payload, room_id=, exclude=) — sem exclude_self implícito */
+/* app.channel.emit(payload, room_id=) — sem exclude_self implícito: fora de
+ * handler de WS não há remetente, e não há valor da linguagem que nomeie uma
+ * conexão a pular (a tabela anunciava `exclude=` que ninguém lia). */
 static int met_jchan_emit(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     Value app = COMO_JCHAN(alvo)->app;
@@ -19597,12 +19622,14 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
 /* ── FIBRAS (green-threads) do jinker ─────────────────────────────────────
  * Cada requisição HTTP roda numa fibra: pilha do C própria (ucontext) + arrays
  * de execução (pilha de valores/locais/frames) PRÓPRIOS e pequenos. Quando o
- * handler bate numa I/O que bloquearia — por ora só `sleep()` — a fibra devolve
- * o controle ao poll loop (o escalonador) via swapcontext; outra requisição é
- * atendida enquanto isso; a fibra é retomada quando a condição fica pronta.
- * Thread ÚNICA: sem corrida, sem GC concorrente. O handler continua SÍNCRONO
- * (nada de await). Se o pool de fibras enche, o handler é servido INLINE
- * (bloqueante, como antes) — degradação graciosa, nunca estoura memória. */
+ * handler bate numa I/O que bloquearia — `sleep()` e todo `fib_offload` (DB,
+ * mongo, sockets, smtp/imap, request, WS) — a fibra devolve o controle ao
+ * poll loop (o escalonador) via swapcontext; outra requisição é atendida
+ * enquanto isso; a fibra é retomada quando a condição fica pronta. A VM é
+ * thread ÚNICA (o offload roda em thread, mas a fibra só volta quando ele
+ * terminou): sem corrida, sem GC concorrente. `async action`/`await` também
+ * rodam aqui, em fibra FIB_ASYNC com future. Pool cheio ENFILEIRA a conexão
+ * (back-pressure, drenado por http_drena_fila) — nunca serve inline. */
 /* Pool de fibras DINÂMICO: cresce sob demanda (não trava num teto). Cada fibra
  * é malloc'da à parte (ponteiro estável — o vetor g_fibs pode realocar sem
  * invalidar referências). FIB_HARD é só a rede de segurança contra loop maluco.*/
@@ -20002,10 +20029,12 @@ static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
 }
 
 /* ── escalonador de async actions (top-level) ─────────────────────────────
- * Roda as fibras async PRONTAS (nunca iniciadas ou timer vencido) e espera os
- * eventos (timer de sleep / eventfd de DB) até todos os `alvos` resolverem.
- * Reusa fib_resume + o sleep/DB que já cedem. Só é chamado FORA de fibra
- * (top-level): async dentro de handler roda inline, então não aninha. */
+ * Roda as fibras async PRONTAS (nunca iniciadas, timer vencido ou future
+ * resolvido) e espera os eventos (timer de sleep / eventfd de offload) até
+ * todos os `alvos` resolverem. Reusa fib_resume + o sleep/offload que já
+ * cedem. Só é chamado FORA de fibra: dentro de handler `fut_resolve` desvia
+ * pra cedência ao escalonador (vm->fib_atual != NULL) — a async também vira
+ * fibra lá, quem dirige é o poll loop do jk_app_run. */
 static long fib_ms_ate(struct timespec *wake, struct timespec *agora)
 {
     return (long)(wake->tv_sec - agora->tv_sec) * 1000
@@ -20036,6 +20065,10 @@ static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
             if (!f->usada || f->kind != FIB_ASYNC || f->status != FIB_SUSPENSA) continue;
             if (f->wait_fd >= 0) continue;                      /* espera DB (fd) */
             if (f->tem_timer && fib_ms_ate(&f->wake_at, &agora) > 0) continue;  /* dormindo */
+            /* espera future: sem esta guarda (que o loop do jinker já tinha) a
+             * fibra parada num `await` contava como "rodou", cedia na hora e o
+             * laço nunca chegava ao epoll_wait — 100% de CPU durante o sono */
+            if (f->wait_fut && !f->wait_fut->done) continue;
             fib_resume(vm, f);
             rodou = 1;
             if (f->status == FIB_PRONTA) fib_libera(f);
@@ -20235,7 +20268,7 @@ static void http_drena_fila(VM *vm, SrvLoop *s)
 static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     PSJinker *j = COMO_JINKER(alvo);
-    /* params: debug, host, port, reload */
+    /* params: debug, host, port, reload, workers (mesma ordem de jk_obj_callable) */
     j->debug = (n >= 1 && val_truthy(&args[0]));
     const char *host = (n >= 2 && EH_STRING(args[1])) ? COMO_STRING(args[1])->chars : "127.0.0.1";
     int porta = (n >= 3 && args[2].t == V_INT) ? (int)args[2].as.i : 2000;
@@ -20906,7 +20939,13 @@ static int nativa_assert(VM *vm, Value *args, int n, Value *out)
     /* `assert(a, b, ...)` com DOIS valores compara; com valor + texto, o texto
      * é a mensagem. Um `str` na segunda posição nunca é "esperado": comparar
      * contra a própria explicação seria o oposto do que se escreveu. */
-    int comparando = (n >= 2 && !EH_STRING(args[1]));
+    /* `assert(cond, mensagem="…")` chega com o slot de `esperado` vazio (a
+     * chamada por nome preenche o que pulou com Null) e o texto no slot 3: é
+     * a forma cond+mensagem, não uma comparação contra Null. A tabela publica
+     * `mensagem=` e a chamada pelo nome publicado transformava condição
+     * verdadeira em falha ("veio True, esperava Null"). */
+    int buraco = (n == 3 && (args[1].t == V_NULL || args[1].t == V_UNSET) && EH_STRING(args[2]));
+    int comparando = (n >= 2 && !EH_STRING(args[1]) && !buraco);
     const char *nota = NULL;
     if (n == 3)                     nota = EH_STRING(args[2]) ? COMO_STRING(args[2])->chars : NULL;
     else if (n == 2 && !comparando) nota = COMO_STRING(args[1])->chars;
@@ -26141,7 +26180,6 @@ static const struct { const char *dono; const char *campo; const char *tipo; } C
     { "Response", "size", "int" },
     { "Response", "status_code", "int" },
     { "Response", "text", "str" },
-    { "UI", "POOLHTMLElements", "UI" },
 };
 #define N_CAMPOS ((int)(sizeof(CAMPOS) / sizeof(CAMPOS[0])))
 
@@ -26212,8 +26250,8 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_TUPLA:     return "tup";
         case T_MET_UNIV:      return "__universal__";
         case T_MET_ARQ:       return "PoolFile";   /* todo arquivo é PoolFile */
+        case T_MET_PFILE:     return NULL;         /* mesmo tipo: entra na chave do T_MET_ARQ (união) */
         case T_MET_BYTES:     return "bytes";
-        case T_MET_PFILE:     return "PoolFile";
         case T_MET_SQLCONN:   return "PoolConnection";
         case T_MET_SQLCUR:    return "PoolCursor";
         case T_MET_MAILSRV:   return "MailServer";
@@ -26317,8 +26355,9 @@ void ps_metadata_json(FILE *saida)
         fprintf(f, "\n  ");
         jm_txt(f, rotulo);
         fprintf(f, ": [");
+        int emitidos = 0;
         for (int k = 0; k < TAM_TABELA[t]; k++) {
-            if (k) fputc(',', f);
+            if (emitidos++) fputc(',', f);
             fprintf(f, "\n   {\"nome\": ");
             jm_txt(f, TABELAS[t][k].nome);
             fprintf(f, ", \"params\": ");
@@ -26327,6 +26366,28 @@ void ps_metadata_json(FILE *saida)
             fprintf(f, ", \"retorna\": ");
             if (ret) jm_txt(f, ret); else fprintf(f, "null");
             fputc('}', f);
+        }
+        /* T_MET_ARQ e T_MET_PFILE são o MESMO tipo pra `type()` ("PoolFile"):
+         * a chave sai UMA vez, com a união das duas tabelas. Saía duas vezes
+         * e o parser do editor guardava a última (a menor): read, write,
+         * readline, readlines, writelines e close sumiam do completion. */
+        if (t == T_MET_ARQ) {
+            for (int k = 0; k < TAM_TABELA[T_MET_PFILE]; k++) {
+                const char *nome = TABELAS[T_MET_PFILE][k].nome;
+                int ja = 0;
+                for (int j = 0; j < TAM_TABELA[T_MET_ARQ] && !ja; j++)
+                    ja = strcmp(TABELAS[T_MET_ARQ][j].nome, nome) == 0;
+                if (ja) continue;
+                if (emitidos++) fputc(',', f);
+                fprintf(f, "\n   {\"nome\": ");
+                jm_txt(f, nome);
+                fprintf(f, ", \"params\": ");
+                jm_params(f, TABELAS[T_MET_PFILE][k].params);
+                const char *ret = retorno_de(rotulo, nome);
+                fprintf(f, ", \"retorna\": ");
+                if (ret) jm_txt(f, ret); else fprintf(f, "null");
+                fputc('}', f);
+            }
         }
         for (int k = 0; k < N_CAMPOS; k++) {
             if (strcmp(CAMPOS[k].dono, rotulo) != 0) continue;

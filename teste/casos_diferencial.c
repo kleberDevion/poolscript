@@ -2196,7 +2196,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "{\"a\": [1, 2], \"b\": null}\n{'a': [1, 2], 'b': Null}", NULL, 0 },
 { "dif #725",
   "import json\npost(json.parse(\"[\" * 200 + \"]\" * 200))\n",
-  "", "TypeError: json aninhado demais", 1 },
+  "", "RecursionError: json aninhado demais", 1 },
 { "dif #726",
   "import json\ntry {\n    json.parse(\"{nao e json}\")\n    post(\"passou calado\")\n}\ncatch (e) {\n    post(\"recusou\")\n}\n",
   "recusou", NULL, 0 },

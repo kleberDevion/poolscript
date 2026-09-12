@@ -11,17 +11,9 @@ Manda um datagrama para um endereço **escolhido nesta chamada** — sem
 | `address` | tup | — | `AF_INET`: `(str host, int porta)`. `AF_INET6`: 4 posições. `AF_UNIX`: **`str`** com o caminho |
 | `flags` | int | `0` | `sockets.MSG_DONTWAIT`, `MSG_DONTROUTE` — combináveis com `\|` |
 
-> **Com TRÊS argumentos posicionais a ordem é `(data, flags, address)`**, não a
-> da assinatura. O motor lê o endereço do **último** argumento:
-> `s.sendto(dado, 0, ("127.0.0.1", 9000))` funciona,
-> `s.sendto(dado, ("127.0.0.1", 9000), 0)` é
-> `sendto(): AF_INET address must be tuple, not int`.
->
-> Pela mesma razão, `flags=` e `address=` juntos por nome não funcionam:
-> `s.sendto(data=d, flags=0, address=a)` também é
-> `AF_INET address must be tuple, not int`. Por nome, use só
-> `s.sendto(data=d, address=a)`; com `flags`, use as três posições na ordem
-> `(data, flags, address)`.
+A ordem é a da assinatura, posicional ou por nome: `s.sendto(dado, addr, 0)`
+e `s.sendto(data=d, address=a, flags=0)` são a mesma chamada. `flags` que não
+é `int` é `TypeError: 'str' object cannot be interpreted as an integer`.
 
 ## Retorno
 
@@ -37,7 +29,7 @@ tamanho do dado, não um pedaço dele.
   `sendto() takes at most 3 arguments (4 given)`
 - **`TypeError`** — `a bytes-like object is required, not 'int'` (dado errado)
 - **`TypeError`** — `sendto(): AF_INET address must be tuple, not int`
-  (endereço na posição errada, ver o aviso acima)
+  (endereço que não é a tupla `(host, porta)`)
 - **`RuntimeError`** — dado maior do que o datagrama aceita:
   `[Errno 90] Message too long`
 - **`OSError`** — socket fechado: `[Errno 9] Bad file descriptor`
@@ -63,14 +55,14 @@ u1.close(); u2.close()
 datagrama
 ```
 
-Com `flags`, nas três posições:
+Com `flags`, na ordem da assinatura:
 
 ```ps
 import sockets
 u1 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
 u1.bind(("127.0.0.1", 0))
 u2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)
-post(u2.sendto("com flags", 0, ("127.0.0.1", u1.getsockname()[1])))
+post(u2.sendto("com flags", ("127.0.0.1", u1.getsockname()[1]), 0))
 post(u1.recv(64).decode())
 u1.close(); u2.close()
 ```
