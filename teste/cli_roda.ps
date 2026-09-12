@@ -239,6 +239,20 @@ confere("a lib instalada é importável", r["saida"].strip() == "42")
 r = com_home("'" + POOL + "' uninstall minhalib -asLib")
 confere("psl uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.ps") == false)
 
+# nome instalado como comando E como lib: sem flag, o uninstall dizia "Erro:"
+# e removia o comando mesmo assim. Comando destrutivo sob "Erro:" para.
+os.writeFile(PASTA + "/dup.ps", "#!cmd\nfunct main() {\n    post(\"dup\")\n}\nmain()\n")
+com_home("'" + POOL + "' install dup.ps")
+com_home("'" + POOL + "' install dup.ps -asLib")
+r = com_home("'" + POOL + "' uninstall dup")
+confere("uninstall ambiguo recusa (rc 1) e diz como desambiguar",
+        r["rc"] == 1 and "-asLib" in r["saida"])
+confere("uninstall ambiguo nao remove nada",
+        os.isfile(HOME + "/commands/dup.ps") and os.isfile(HOME + "/libs/dup.ps"))
+com_home("'" + POOL + "' uninstall dup -asLib")
+r = com_home("'" + POOL + "' uninstall dup")
+confere("desambiguado, o comando sai", r["rc"] == 0 and os.exists(HOME + "/commands/dup.ps") == false)
+
 r = com_home("'" + POOL + "' uninstall nao_instalado")
 confere("uninstall do que não existe não finge sucesso",
         r["rc"] != 0 and "nao esta instalado" in r["saida"])

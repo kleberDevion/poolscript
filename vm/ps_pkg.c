@@ -173,7 +173,7 @@ static void regen_installed(const char *home)
     escreve_secao(f, home, "commands");
     fprintf(f, "},\n  \"libs\": {");
     escreve_secao(f, home, "libs");
-    fprintf(f, "},\n  \"py\": {}\n}\n");
+    fprintf(f, "}\n}\n");
     fclose(f);
 }
 
@@ -326,7 +326,7 @@ static int registry_lookup(const char *home, const char *nome, char *url, size_t
         return -1;
     }
     if (!https_ok(idx_url)) {
-        fprintf(stderr, "Erro: o registry precisa ser https: %s\n", idx_url);
+        fprintf(stderr, "Erro: o registry precisa ser https (http so em localhost/127.0.0.1): %s\n", idx_url);
         return -1;
     }
     PSHttpResp r;
@@ -381,7 +381,7 @@ static int registry_lookup(const char *home, const char *nome, char *url, size_t
 static char *baixa_fonte(const char *url, const char *sha_esperado, size_t *tam)
 {
     if (!https_ok(url)) {
-        fprintf(stderr, "Erro: recusando baixar por HTTP inseguro: %s (use https)\n", url);
+        fprintf(stderr, "Erro: recusando baixar por http fora de localhost/127.0.0.1: %s (use https)\n", url);
         return NULL;
     }
     PSHttpResp r;
@@ -502,9 +502,10 @@ int ps_pkg_uninstall(const char *nome, int categoria)
         return 1;
     }
     if (tem_cmd && tem_lib) {
+        /* "Erro:" e seguir removendo era mentira num comando destrutivo */
         fprintf(stderr, "Erro: '%s' esta instalado como comando E como lib. "
-                        "Desambigue: `-asLib` remove a lib; sem flag, o comando.\n", nome);
-        /* segue e remove o comando (sem flag = comando) */
+                        "Desambigue: `-asLib` remove a lib; depois, sem flag, sai o comando.\n", nome);
+        return 1;
     }
     if (tem_cmd) { remove_categoria(home, nome, 0); printf("comando '%s' removido\n", nome); }
     else         { remove_categoria(home, nome, 1); printf("lib '%s' removida\n", nome); }

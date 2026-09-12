@@ -52,8 +52,7 @@ tamanho.
 
 Os percentuais são os do padrão ISO/IEC 18004; a coluna de capacidade é medida
 neste motor — `1664` bytes em Q já levanta
-`RuntimeError: Erro ao gerar QR Code: dados grandes demais pro QR (max ~2953 bytes)`
-(a mensagem cita sempre o teto absoluto, o de L).
+`RuntimeError: Erro ao gerar QR Code: dados grandes demais pro QR (max 1663 bytes no nivel Q)`.
 
 **Quando usar Q:** superfície que se suja ou se dobra — chão de fábrica, caixa
 de entrega, adesivo em equipamento. Também quando você vai colar um logo
@@ -80,8 +79,8 @@ qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_Q, box_size=10, border=4)
 - **TypeError: `'str' object is not callable`** — você escreveu
   `qrcode.ERROR_CORRECT_Q()`. Constante não se chama.
 - **RuntimeError: `Erro ao gerar QR Code: dados grandes demais pro QR
-  (max ~2953 bytes)`** — não é da constante, é de quem gera: o payload passou
-  do que Q comporta (1663 bytes), mesmo que a mensagem cite o teto de L.
+  (max 1663 bytes no nivel Q)`** — não é da constante, é de quem gera: o
+  payload passou do que Q comporta.
 
 ---
 

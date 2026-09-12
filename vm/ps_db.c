@@ -1,6 +1,7 @@
 /*
- * psodbc SQL — ver ps_db.h. sqlite + postgres agora; mysql/odbc entram no
- * mesmo molde (o result buffer é o mesmo).
+ * psodbc SQL — ver ps_db.h. sqlite, postgres, mysql e odbc no mesmo molde:
+ * cada driver preenche o mesmo PSDbRes, e os placeholders (`?`/`%s`) passam
+ * por UM varredor (`sql_varre_placeholders`) que cada driver só alimenta.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -172,34 +173,60 @@ int ps_db_eh_nome_erro(const char *nome)
         if (strcmp(PG_ERR_NOMES[i].nome, nome) == 0) return 1;
     return 0;
 }
+/* ── placeholders: UMA regra pros três drivers que reescrevem a query ─────
+ * `?` e `%s` são placeholders só FORA de literal entre aspas simples (`''` é
+ * aspa escapada): `WHERE s = 'e ai?'` não consome parâmetro. A regra vivia só
+ * no postgres; a cópia do mysql não pulava literal e um `?` dentro de texto
+ * comia o parâmetro seguinte e corrompia a query. Cada driver só decide o que
+ * escrever no lugar do marcador (`emite`): postgres `$k`, mysql o valor
+ * escapado, odbc `?`. */
+typedef int (*PhEmite)(void *ctx, int k, char *out, size_t cap);
+
+static int sql_varre_placeholders(const char *sql, char *out, size_t cap,
+                                  PhEmite emite, void *ctx)
+{
+    size_t j = 0; int k = 0, em_texto = 0;
+    for (const char *p = sql; *p; p++) {
+        if (j + 2 >= cap) return -1;
+        if (*p == '\'') { em_texto = !em_texto; out[j++] = *p; continue; }
+        int marca = em_texto ? 0 : (p[0] == '%' && p[1] == 's') ? 2 : (p[0] == '?') ? 1 : 0;
+        if (!marca) { out[j++] = *p; continue; }
+        int n = emite(ctx, k++, out + j, cap - j);
+        if (n < 0) return -1;
+        j += (size_t)n;
+        if (marca == 2) p++;
+    }
+    out[j] = '\0';
+    return (int)j;
+}
+
+static int ph_pg(void *ctx, int k, char *out, size_t cap)
+{
+    (void)ctx;
+    int n = snprintf(out, cap, "$%d", k + 1);
+    return (n < 0 || (size_t)n >= cap) ? -1 : n;
+}
+
+static int ph_odbc(void *ctx, int k, char *out, size_t cap)
+{
+    (void)ctx; (void)k;
+    if (cap < 2) return -1;
+    out[0] = '?';
+    return 1;
+}
+
 static int pg_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
                    PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     PGresult *r;
     if (nparams > 0) {
-        /* Troca cada `?` por $1,$2,... (o estilo do postgres). O comentário
-         * sempre disse `?` e a doc promete `?`, mas o código procurava `%s` —
-         * então `WHERE id = ?` chegava CRU no servidor e dava "syntax error at
-         * end of input". `%s` continua aceito por compatibilidade.
-         *
-         * Literal entre aspas simples é PULADO: um `?` dentro de texto
-         * (`WHERE s = 'e ai?'`) não é placeholder. `''` é aspa escapada. */
-        char conv[8192]; int j = 0, k = 1;
-        int em_texto = 0;
-        for (const char *p = sql; *p && j < (int)sizeof(conv) - 8; p++) {
-            if (*p == '\'') { em_texto = !em_texto; conv[j++] = *p; continue; }
-            if (!em_texto && *p == '?') {
-                j += snprintf(conv + j, sizeof(conv) - j, "$%d", k++);
-                continue;
-            }
-            if (!em_texto && p[0] == '%' && p[1] == 's') {
-                j += snprintf(conv + j, sizeof(conv) - j, "$%d", k++);
-                p++;
-                continue;
-            }
-            conv[j++] = *p;
+        /* `?` vira $1,$2,... (o estilo do postgres); `%s` segue aceito */
+        char conv[8192];
+        if (sql_varre_placeholders(sql, conv, sizeof(conv), ph_pg, NULL) < 0) {
+            snprintf(erro, ecap, "erro de banco de dados: sql grande demais");
+            if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
+            return -1;
         }
-        conv[j] = 0;
         r = PQexecParams(c->pg, conv, nparams, NULL, params, NULL, NULL, 0);
     } else {
         r = PQexec(c->pg, sql);
@@ -259,29 +286,39 @@ static int my_eh_float(enum enum_field_types t) {
          ||t==MYSQL_TYPE_DECIMAL||t==MYSQL_TYPE_NEWDECIMAL;
 }
 
+typedef struct { MYSQL *my; const char **params; int nparams; } PhMy;
+
+static int ph_mysql(void *ctx, int k, char *out, size_t cap)
+{
+    PhMy *m = ctx;
+    if (k >= m->nparams) {            /* marcador sem valor: fica como veio */
+        if (cap < 2) return -1;
+        out[0] = '?';
+        return 1;
+    }
+    const char *pv = m->params[k];
+    if (!pv) {
+        int n = snprintf(out, cap, "NULL");
+        return (n < 0 || (size_t)n >= cap) ? -1 : n;
+    }
+    size_t lv = strlen(pv);
+    if (2 * lv + 3 > cap) return -1;  /* o escape pode dobrar */
+    out[0] = '\'';
+    unsigned long en = mysql_real_escape_string(m->my, out + 1, pv, (unsigned long)lv);
+    out[1 + en] = '\'';
+    return (int)(en + 2);
+}
+
 static int mysql_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
                       PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
-    /* monta a query final: substitui cada `%s`/`?` por o param escapado.
-     * (o DbCursor troca `?`->`%s` pro mysql; aceito os dois.) */
-    char q[16384]; int j = 0, k = 0;
-    for (const char *p = sql; *p && j < (int)sizeof(q) - 4; p++) {
-        int marca = (p[0]=='%' && p[1]=='s') ? 2 : (p[0]=='?') ? 1 : 0;
-        if (marca && k < nparams) {
-            if (marca == 2) p++;
-            const char *pv = params[k++];
-            if (!pv) { j += snprintf(q+j, sizeof(q)-j, "NULL"); }
-            else {
-                q[j++] = '\'';
-                char esc[4096];
-                unsigned long en = mysql_real_escape_string(c->my, esc, pv, strlen(pv));
-                if (j + (int)en + 2 < (int)sizeof(q)) { memcpy(q+j, esc, en); j += en; }
-                q[j++] = '\'';
-            }
-        } else q[j++] = *p;
-    }
-    q[j] = 0;
+    /* monta a query final: cada `?`/`%s` fora de literal recebe o param
+     * escapado (o mysql não tem placeholder nativo no protocolo de texto) */
+    char q[16384];
+    PhMy ctx = { c->my, params, nparams };
+    int j = sql_varre_placeholders(sql, q, sizeof(q), ph_mysql, &ctx);
+    if (j < 0) { snprintf(erro, ecap, "erro de banco de dados: sql grande demais"); return -1; }
     if (mysql_real_query(c->my, q, (unsigned long)j) != 0) {
         snprintf(erro, ecap, "erro de banco de dados: %s", mysql_error(c->my));
         return -1;
@@ -344,7 +381,13 @@ static int odbc_exec(PSDbConn *c, const char *sql, const char **params, int npar
                          0, 0, (SQLPOINTER)(v ? v : ""), v ? (SQLLEN)strlen(v) : 0,
                          v ? NULL : (SQLLEN[]){SQL_NULL_DATA});
     }
-    if (!SQL_SUCCEEDED(SQLExecDirect(st, (SQLCHAR *)sql, SQL_NTS))) {
+    /* `%s` vira `?` (o placeholder do odbc); `?` dentro de literal fica */
+    char conv[16384];
+    if (sql_varre_placeholders(sql, conv, sizeof(conv), ph_odbc, NULL) < 0) {
+        snprintf(erro, ecap, "erro de banco de dados: sql grande demais");
+        SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
+    }
+    if (!SQL_SUCCEEDED(SQLExecDirect(st, (SQLCHAR *)conv, SQL_NTS))) {
         od_erro(SQL_HANDLE_STMT, st, erro, ecap);
         SQLFreeHandle(SQL_HANDLE_STMT, st); return -1;
     }

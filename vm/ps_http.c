@@ -115,8 +115,18 @@ static int liga_tls(Conn *c, const char *host, PSHttpResp *r)
     /* casa o hostname contra o CN/SAN do certificado */
     SSL_set1_host(c->ssl, host);
     SSL_set_fd(c->ssl, c->fd);
-    if (SSL_connect(c->ssl) != 1)
-        REDE(r, "NetworkError", "falha de conexão: certificado TLS inválido para %.100s", host);
+    if (SSL_connect(c->ssl) != 1) {
+        /* a frase dizia "certificado inválido" pra TODA falha do handshake —
+         * porta de texto puro, versão de TLS, conexão caída. O motivo real
+         * vem da pilha de erros do TLS; certificado ruim continua dizendo
+         * "certificate verify failed". */
+        unsigned long e = ERR_get_error();
+        int en = errno;
+        const char *motivo = e ? ERR_reason_error_string(e)
+                           : en ? strerror(en) : "conexao encerrada pelo servidor";
+        REDE(r, "NetworkError", "falha no handshake TLS com %.100s: %s", host,
+             motivo ? motivo : "conexao encerrada pelo servidor");
+    }
     return 0;
 }
 

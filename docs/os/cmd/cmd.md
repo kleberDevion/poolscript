@@ -25,7 +25,7 @@ os.cmd("git status")              # a saída vai direto pro terminal
 
 ```
 versao = os.cmd("pool --version", capture=true)
-post(versao)                      # "PoolScript 15.90.21 [PSVM]"
+post(versao)                      # "PoolScript 15.90.22 [PSVM]"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando

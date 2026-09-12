@@ -357,7 +357,13 @@ int ps_qr_matriz(const char *dados, int ndados, char nivel,
         int need = 4 + count_bits(cand) + 8 * ndados;
         if (need <= cap_bits) { v = cand; break; }
     }
-    if (v == 0) { snprintf(erro, ecap, "dados grandes demais pro QR (max ~2953 bytes)"); return -1; }
+    if (v == 0) {
+        /* o teto do NÍVEL pedido: a frase citava sempre 2953 (o teto de L),
+         * e em H o corte real é menos da metade disso */
+        int max = (capacidade_dados(40, nv) * 8 - 4 - count_bits(40)) / 8;
+        snprintf(erro, ecap, "dados grandes demais pro QR (max %d bytes no nivel %c)", max, nivel);
+        return -1;
+    }
 
     int cap_cw = capacidade_dados(v, nv);
     Bits bt;

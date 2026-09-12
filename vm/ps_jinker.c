@@ -21,6 +21,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <poll.h>
 
 #include <openssl/ssl.h>
@@ -105,6 +106,28 @@ static void conn_consome(PSJkConn *c, size_t n)
 
 /* ── escuta / aceita ────────────────────────────────────────────────────── */
 
+/* Resolve `host` pra IPv4. Todo nome que não era IP literal caía no loopback
+ * SEM resolver: `app(host="meu-servidor")` escutava só em 127.0.0.1 e o log
+ * dizia o nome pedido. Nome que não resolve é erro, não fallback. */
+static int jk_resolve_ipv4(const char *host, struct in_addr *out, char *erro, size_t ecap)
+{
+    if (inet_pton(AF_INET, host, out) == 1) return 0;
+    struct addrinfo dicas, *res = NULL;
+    memset(&dicas, 0, sizeof(dicas));
+    dicas.ai_family = AF_INET;
+    dicas.ai_socktype = SOCK_STREAM;
+    int rc = getaddrinfo(host, NULL, &dicas, &res);
+    if (rc != 0 || !res) {
+        snprintf(erro, ecap, "host '%s' nao resolve: %s", host,
+                 rc != 0 ? gai_strerror(rc) : "sem endereco IPv4");
+        if (res) freeaddrinfo(res);
+        return -1;
+    }
+    *out = ((struct sockaddr_in *)res->ai_addr)->sin_addr;
+    freeaddrinfo(res);
+    return 0;
+}
+
 int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -118,9 +141,8 @@ int ps_jk_listen(const char *host, int porta, char *erro, size_t ecap)
     a.sin_port = htons((unsigned short)porta);
     if (!host || !host[0] || strcmp(host, "0.0.0.0") == 0)
         a.sin_addr.s_addr = INADDR_ANY;
-    else if (inet_pton(AF_INET, host, &a.sin_addr) != 1) {
-        /* nome tipo "localhost" — resolve pro loopback, que é o uso real */
-        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    else if (jk_resolve_ipv4(host, &a.sin_addr, erro, ecap) != 0) {
+        close(fd); return -1;
     }
     if (bind(fd, (struct sockaddr *)&a, sizeof(a)) != 0) {
         snprintf(erro, ecap, "bind %s:%d: %s", host ? host : "", porta, strerror(errno));
@@ -449,6 +471,7 @@ static const char *frase(int status)
     switch (status) {
         case 200: return "OK";
         case 201: return "Created";
+        case 202: return "Accepted";
         case 204: return "No Content";
         case 301: return "Moved Permanently";
         case 302: return "Found";
@@ -458,10 +481,22 @@ static const char *frase(int status)
         case 403: return "Forbidden";
         case 404: return "Not Found";
         case 405: return "Method Not Allowed";
+        case 409: return "Conflict";
+        case 422: return "Unprocessable Content";
         case 429: return "Too Many Requests";
-        case 501: return "Not Implemented";
         case 500: return "Internal Server Error";
-        default:  return "OK";
+        case 501: return "Not Implemented";
+        case 502: return "Bad Gateway";
+        case 503: return "Service Unavailable";
+        case 504: return "Gateway Timeout";
+        default:
+            /* código sem frase própria: a da CLASSE. Saía "OK" em qualquer
+             * um, inclusive `503 OK`. */
+            if (status >= 500) return "Server Error";
+            if (status >= 400) return "Client Error";
+            if (status >= 300) return "Redirection";
+            if (status >= 200) return "Success";
+            return "Informational";
     }
 }
 
@@ -636,8 +671,9 @@ PSJkConn *ps_jk_ws_conecta(const char *host, int porta, const char *path,
     memset(&a, 0, sizeof(a));
     a.sin_family = AF_INET;
     a.sin_port = htons((unsigned short)porta);
-    if (inet_pton(AF_INET, host && host[0] ? host : "127.0.0.1", &a.sin_addr) != 1)
-        a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);   /* "localhost" e afins */
+    if (jk_resolve_ipv4(host && host[0] ? host : "127.0.0.1", &a.sin_addr, erro, ecap) != 0) {
+        close(fd); return NULL;
+    }
     struct timeval tv = { 10, 0 };
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     int um = 1;

@@ -51,8 +51,9 @@ static int tcp_conecta(const char *host, int porta, char *erro, size_t cap)
     dicas.ai_socktype = SOCK_STREAM;
     int rc = getaddrinfo(host, pstr, &dicas, &res);
     if (rc != 0) {
-        /* a mensagem do interpretador vem do getaddrinfo também */
-        if (erro) snprintf(erro, cap, "[Errno -2] Name or service not known");
+        /* o motivo REAL do getaddrinfo: dizia sempre "-2 Name or service not
+         * known", também pra DNS fora do ar (EAI_AGAIN) e afins */
+        if (erro) snprintf(erro, cap, "[Errno %d] %s", rc, gai_strerror(rc));
         return -1;
     }
     int fd = -1;
@@ -148,12 +149,7 @@ static int liga_tls(PSMailConn *c, const char *host, char *erro, size_t cap)
     c->ctx = SSL_CTX_new(TLS_client_method());
     if (!c->ctx) FALHA(erro, cap, "sem memoria para o TLS");
 
-    /* VERIFICA a cadeia E o hostname.
-     *
-     * Estava `SSL_VERIFY_NONE`, e o comentário justificava dizendo ser "o
-     * contexto stdlib do Python". É o contrário: `smtplib.SMTP_SSL` e
-     * `starttls()` usam `ssl.create_default_context()` desde o Python 3.6
-     * (PEP 476 / bpo-25008), que verifica cadeia e hostname.
+    /* VERIFICA a cadeia E o hostname. Estava `SSL_VERIFY_NONE`.
      *
      * Não é detalhe de conformidade. Logo abaixo, `ps_smtp_login` manda
      * `AUTH PLAIN`/`AUTH LOGIN` (usuário e senha em base64) e `ps_imap_login`
@@ -176,9 +172,21 @@ static int liga_tls(PSMailConn *c, const char *host, char *erro, size_t cap)
      * domínio passa, que é metade do ataque */
     if (!mail_tls_inseguro()) SSL_set1_host(c->ssl, host);
     SSL_set_fd(c->ssl, c->fd);
-    if (SSL_connect(c->ssl) != 1)
-        FALHA(erro, cap, "certificado TLS invalido para %s "
-                         "(self-signed? PS_MAIL_TLS_INSEGURO=1 pula a verificacao)", host);
+    if (SSL_connect(c->ssl) != 1) {
+        /* Só é "certificado invalido" quando a VERIFICAÇÃO reprovou; porta de
+         * texto puro, versão de TLS ou conexão caída diziam a mesma frase e
+         * mandavam o usuário pular a verificação de um certificado que nem
+         * chegou a ser visto. */
+        unsigned long e = ERR_get_error();
+        int en = errno;
+        const char *motivo = e ? ERR_reason_error_string(e)
+                           : en ? strerror(en) : "conexao encerrada";
+        if (SSL_get_verify_result(c->ssl) != X509_V_OK)
+            FALHA(erro, cap, "certificado TLS invalido para %s "
+                             "(self-signed? PS_MAIL_TLS_INSEGURO=1 pula a verificacao)", host);
+        FALHA(erro, cap, "o servidor em %s nao completou o handshake TLS (porta de texto puro?): %s",
+              host, motivo ? motivo : "conexao encerrada");
+    }
     return 0;
 }
 
@@ -246,9 +254,28 @@ PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap)
         if (erro) snprintf(erro, cap, "EHLO recusado");
         goto falha;
     }
-    if (smtp_manda(c, "STARTTLS") != 0 || smtp_resposta(c, NULL, 0) != 220) {
-        if (erro) snprintf(erro, cap, "STARTTLS extension not supported by server.");
+    /* Três falhas diferentes davam a mesma frase ("extension not supported"):
+     * o servidor não anunciar STARTTLS, a escrita cair, e o servidor recusar
+     * o comando. Cada uma diz o que houve. */
+    if (!strstr(extras, "STARTTLS")) {
+        if (erro) snprintf(erro, cap, "o servidor em %s nao anunciou STARTTLS no EHLO "
+                                      "(porta de texto puro sem TLS?)", host);
         goto falha;
+    }
+    if (smtp_manda(c, "STARTTLS") != 0) {
+        if (erro) snprintf(erro, cap, "a conexao com %s caiu ao mandar STARTTLS", host);
+        goto falha;
+    }
+    {
+        char resp[512];
+        int cod = smtp_resposta(c, resp, sizeof(resp));
+        if (cod != 220) {
+            if (erro) snprintf(erro, cap, cod < 0
+                               ? "a conexao com %s caiu depois do STARTTLS%s"
+                               : "o servidor em %s recusou STARTTLS: %s",
+                               host, cod < 0 ? "" : resp);
+            goto falha;
+        }
     }
     c->nbuf = 0;                       /* nada legível atravessa o handshake */
     if (liga_tls(c, host, erro, cap) != 0) goto falha;

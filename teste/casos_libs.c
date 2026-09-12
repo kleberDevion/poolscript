@@ -953,6 +953,25 @@ const Caso CASOS_LIBS[] = {
 { "manpu.remove mei tira a metade inicial de cada ocorrencia",
   "import os\nimport manpu\nos.writeFile(\"mp.txt\", \"xx abcd yy abcd zz\")\nmanpu.remove(value=\"abcd\", amount=\"mei\", target=\"mp.txt\")\npost(os.readFile(\"mp.txt\"))\n",
   "xx cd yy cd zz", NULL, 0 },
+
+/* ── L5 DO PLANO DAS CONTRADICOES: qrcode (2026-09-12) ─────────────────────
+ * A frase citava sempre 2953 (o teto de L) em qualquer nivel; em H o corte
+ * real e menos da metade. Agora diz o teto do nivel pedido. Strings medidas. */
+{ "QR: teto do nivel L na frase",
+  "import qrcode\nq = qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_L)\nq.add_data(\"x\" * 2954)\nq.make()\n",
+  "", "dados grandes demais pro QR (max 2953 bytes no nivel L)", 1 },
+{ "QR: teto do nivel M na frase",
+  "import qrcode\nq = qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_M)\nq.add_data(\"x\" * 2332)\nq.make()\n",
+  "", "dados grandes demais pro QR (max 2331 bytes no nivel M)", 1 },
+{ "QR: teto do nivel Q na frase",
+  "import qrcode\nq = qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_Q)\nq.add_data(\"x\" * 1664)\nq.make()\n",
+  "", "dados grandes demais pro QR (max 1663 bytes no nivel Q)", 1 },
+{ "QR: teto do nivel H na frase",
+  "import qrcode\nq = qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_H)\nq.add_data(\"x\" * 1274)\nq.make()\n",
+  "", "dados grandes demais pro QR (max 1273 bytes no nivel H)", 1 },
+{ "QR: 2953 bytes em L ainda cabem",
+  "import qrcode\nq = qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_L)\nq.add_data(\"x\" * 2953)\nq.make()\npost(\"coube\")\n",
+  "coube", NULL, 0 },
 };
 
 const int NC_LIBS = N_CASOS(CASOS_LIBS);

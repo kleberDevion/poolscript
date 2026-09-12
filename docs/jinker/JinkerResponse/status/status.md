@@ -37,12 +37,22 @@ está encadeando `.header(...)`, `.status()` costuma ler melhor.
 |---|---|---|
 | `200` | OK | sucesso padrão (é o default) |
 | `201` | Created | criou um recurso (POST que insere) |
+| `202` | Accepted | recebido, vai processar depois |
 | `204` | No Content | sucesso sem corpo (é o que `return None` gera) |
 | `400` | Bad Request | dados inválidos que o cliente mandou |
 | `401` | Unauthorized | falta autenticação/token |
 | `403` | Forbidden | autenticado, mas sem permissão |
 | `404` | Not Found | recurso não existe |
+| `409` | Conflict | o estado atual não deixa (duplicado, versão velha) |
+| `422` | Unprocessable Content | bem formado, mas não faz sentido |
 | `500` | Internal Server Error | erro no servidor |
+| `502` | Bad Gateway | o serviço atrás respondeu mal |
+| `503` | Service Unavailable | fora do ar / manutenção |
+| `504` | Gateway Timeout | o serviço atrás não respondeu a tempo |
+
+Código sem frase própria recebe a da classe na linha de status
+(`Success`, `Redirection`, `Client Error`, `Server Error`): `418` sai
+`418 Client Error`, nunca `418 OK`.
 
 ---
 

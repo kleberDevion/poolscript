@@ -31,10 +31,12 @@ using open(p) as g {
 }
 
 # ── modo binario ────────────────────────────────────────────────────────────
+# Binário DE VERDADE (cabeçalho PNG com bytes NUL): `loadFile` decide pelo
+# conteúdo, não pela extensão — "oi!" num .png é texto e vira str.
 pb = dir + "/b.png"
 using open(pb, "wb") as f {
-    f.write("oi".encode())
-    f.writelines(["!".encode()])
+    f.write("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".encode())
+    f.writelines(["oi!".encode()])
 }
 using open(pb, "rb") as f {
     post("binario ->", f.read())
