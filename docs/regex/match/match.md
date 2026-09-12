@@ -1,10 +1,10 @@
-# `regex.match(pattern, string, flags=0)`
+# `regex.match(pattern, string)`
 
 Testa se o texto **inteiro** casa com o padrão. Devolve **`bool`** — `true` se
 o padrão consome a string do começo ao fim, `false` caso contrário.
 
 ```
-regex.match(pattern: str, string: str, flags=0) -> bool
+regex.match(pattern: str, string: str) -> bool
 ```
 
 > **Atenção:** `match` casa a string **toda**, não só o começo.

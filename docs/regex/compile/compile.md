@@ -1,10 +1,10 @@
-# `regex.compile(pattern, flags=0)`
+# `regex.compile(pattern)`
 
 Compila o padrão **uma vez** e devolve um objeto `Pattern` reusável, com os
 mesmos métodos do módulo — sem repetir o padrão a cada chamada.
 
 ```
-regex.compile(pattern: str, flags=0) -> Pattern
+regex.compile(pattern: str) -> Pattern
 ```
 
 As funções soltas (`regex.match`, `regex.sub`, ...) compilam o padrão **em

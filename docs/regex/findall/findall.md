@@ -1,10 +1,10 @@
-# `regex.findall(pattern, string, flags=0)`
+# `regex.findall(pattern, string)`
 
 Acha **todas** as ocorrências do padrão e devolve uma **lista** com elas
 (lista vazia se não achar nada).
 
 ```
-regex.findall(pattern: str, string: str, flags=0) -> list
+regex.findall(pattern: str, string: str) -> list
 ```
 
 ---

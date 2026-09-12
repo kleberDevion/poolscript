@@ -1,10 +1,10 @@
-# `regex.search(pattern, string, flags=0)`
+# `regex.search(pattern, string)`
 
 Procura o padrão em **qualquer posição** do texto. Devolve **`bool`**: `true`
 se achou em algum lugar, `false` se não.
 
 ```
-regex.search(pattern: str, string: str, flags=0) -> bool
+regex.search(pattern: str, string: str) -> bool
 ```
 
 Pra pegar **o que** casou (e não só se casou), use

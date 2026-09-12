@@ -9609,10 +9609,12 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
         }
         char e = rep[i + 1];
         int g = -1;
-        int p_ref = i + 1;   /* posicao que o `re` acusa: o digito de `\5`, ou
-                              * o inicio do nome em `\g<...>` (ajustado abaixo) */
+        int p_ref = i + 1;   /* posicao acusada no erro: o digito de `\5`, ou o
+                              * inicio do nome em `\g<...>` (ajustado abaixo) */
         if (e >= '0' && e <= '9') {
-            /* `\12` é o grupo 12 quando existe (o `re` lê até 2 dígitos) */
+            /* `\0`..`\9` sao referencia de GRUPO — `\0` e o casamento inteiro,
+             * e por isso nunca chega ao escape de caractere la embaixo.
+             * `\12` e o grupo 12 quando ele existe (ate 2 digitos). */
             g = e - '0';
             i++;
             if (i + 1 < rlen && rep[i + 1] >= '0' && rep[i + 1] <= '9'
@@ -9644,17 +9646,17 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
             } else {
                 g = ps_regex_grupo_por_nome(r, nome, nlen);
                 if (g < 0) {
-                    /* O `re` levanta IndexError aqui (nao re.error) e a
-                     * mensagem NAO tem posicao. */
+                    /* nome que nao existe: a mensagem nao leva posicao */
                     snprintf(erro, (size_t)erro_cap, "unknown group name '%.*s'",
                              nlen, nome);
                     return -2;
                 }
             }
-            p_ref = i + 3;   /* o `re` aponta o nome, nao a barra */
+            p_ref = i + 3;   /* o erro aponta o nome, nao a barra */
             i = j;
         } else {
-            /* escape de caractere: o mesmo conjunto do literal da linguagem */
+            /* escape de caractere: o mesmo conjunto do literal da linguagem.
+             * `\0` NAO esta aqui de proposito: e o grupo 0, tratado acima. */
             char c;
             switch (e) {
                 case 'n': c = '\n';  break;
@@ -9664,11 +9666,10 @@ static int rx_expande(SBuf *b, const char *rep, int rlen, const char *s,
                 case 'v': c = '\v';  break;
                 case 'a': c = '\a';  break;
                 case 'b': c = '\b';  break;
-                case '0': c = '\0';  break;
                 case '\\': c = '\\'; break;
                 default:
-                    /* desconhecido: mantém os dois bytes, como o `re` faz com
-                     * `\%` (não é escape, então a barra fica) */
+                    /* desconhecido: mantém os dois bytes — `\%` não é escape,
+                     * então a barra fica */
                     if (sb_bytes(b, rep + i, 2) != 0) return -1;
                     i++;
                     continue;
@@ -9707,7 +9708,10 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
         {
             char msg[160] = {0};
             int rc = rx_expande(&b, rep, rlen, s, &cap, r, msg, (int)sizeof(msg));
-            if (rc == -2) BERRO(vm, "TypeError", "%s", msg);
+            /* ValueError: a MESMA classe que `rx_compila` da ao padrao invalido.
+             * Grupo inexistente na substituicao saia como TypeError — duas
+             * respostas pra "esta regex nao serve", uma em cada funcao. */
+            if (rc == -2) BERRO(vm, "ValueError", "%s", msg);
             if (rc != 0)  BERRO(vm, "MemoryError", "sem memoria");
         }
         feitos++;
@@ -9726,12 +9730,15 @@ static int rx_sub(VM *vm, PSRegex *r, const char *s, int len,
     return 0;
 }
 
-static int mod_regex_match(VM *vm, Value *args, int n, Value *out)
+/* `match` e `fullmatch` sao a MESMA funcao (as duas casam a string inteira),
+ * mas cada uma assina o proprio nome no erro: com "match" chumbado,
+ * `regex.fullmatch("a")` reclamava de `match()`. */
+static int regex_match_nome(VM *vm, Value *args, int n, Value *out, const char *quem)
 {
-    EXIGE_ARGS(vm, "match", 2);
-    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "match() argument 2 must be str, not %s",
-                                  nome_do_tipo_valor(args[1]));
-    PSRegex *r = rx_compila(vm, args[0], "match");
+    if (n != 2) return erro_aridade(vm, quem, 2, 2, n);
+    if (!EH_STRING(args[1])) BERRO(vm, "TypeError", "%s() argument 2 must be str, not %s",
+                                  quem, nome_do_tipo_valor(args[1]));
+    PSRegex *r = rx_compila(vm, args[0], quem);
     if (!r) return -1;
     PSString *s = COMO_STRING(args[1]);
     RxCaptura cap;
@@ -9741,6 +9748,8 @@ static int mod_regex_match(VM *vm, Value *args, int n, Value *out)
     *out = MK_BOOL(v);
     return 0;
 }
+static int mod_regex_match(VM *vm, Value *a, int n, Value *o)     { return regex_match_nome(vm, a, n, o, "match"); }
+static int mod_regex_fullmatch(VM *vm, Value *a, int n, Value *o) { return regex_match_nome(vm, a, n, o, "fullmatch"); }
 
 static int mod_regex_search(VM *vm, Value *args, int n, Value *out)
 {
@@ -9944,9 +9953,12 @@ static int met_rx_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 2 || n > 3) return erro_aridade(vm, "sub", 2, 3, n);
+    /* diz QUAL argumento veio errado — a mensagem tinha "argument 1" fixo e
+     * imprimia o tipo do 1º mesmo quando o errado era o 2º */
     if (!EH_STRING(args[0]) || !EH_STRING(args[1]))
-        MERRO(vm, "TypeError", "sub() argument 1 must be str, not %s",
-                  nome_do_tipo_valor(args[0]));
+        MERRO(vm, "TypeError", "sub() argument %d must be str, not %s",
+                  EH_STRING(args[0]) ? 2 : 1,
+                  nome_do_tipo_valor(EH_STRING(args[0]) ? args[1] : args[0]));
     int64_t limite = 0;
     if (n == 3) {
         if (args[2].t != V_INT)
@@ -9962,7 +9974,8 @@ static int met_rx_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 static int mod_regex_compile(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) return erro_aridade(vm, "compile", 1, 2, n);
+    /* um argumento so: o 2º era aceito e IGNORADO em silencio */
+    EXIGE_ARGS(vm, "compile", 1);
     PSRegex *r = rx_compila(vm, args[0], "compile");
     if (!r) return -1;
     PSString *p = COMO_STRING(args[0]);
@@ -10023,14 +10036,17 @@ static int met_sub(VM *vm, Value alvo, Value *args, int n, Value *out)
     return mod_regex_sub(vm, a, 3, out);
 }
 
+/* Sem `flags`: nenhuma funcao o lia — a tabela anunciava um parametro que
+ * chamado por nome dava "unexpected keyword" e por posicao dava aridade
+ * errada. Caixa e modo vao no padrao, `(?i)`, `(?m)`, `(?s)`. */
 static const MembroMod MOD_REGEX[] = {
-    { "compile", mod_regex_compile, 0, "pattern,flags" },
-    { "match", mod_regex_match, 0, "pattern,string,flags" },
-    { "fullmatch", mod_regex_match, 0, "pattern,string,flags" },
-    { "search", mod_regex_search, 0, "pattern,string,flags" },
-    { "findall", mod_regex_findall, 0, "pattern,string,flags" },
-    { "sub", mod_regex_sub, 0, "pattern,repl,string,count,flags" },
-    { "split", mod_regex_split, 0, "pattern,string,maxsplit,flags" },
+    { "compile", mod_regex_compile, 0, "pattern" },
+    { "match", mod_regex_match, 0, "pattern,string" },
+    { "fullmatch", mod_regex_fullmatch, 0, "pattern,string" },
+    { "search", mod_regex_search, 0, "pattern,string" },
+    { "findall", mod_regex_findall, 0, "pattern,string" },
+    { "sub", mod_regex_sub, 0, "pattern,repl,string,count" },
+    { "split", mod_regex_split, 0, "pattern,string,maxsplit" },
     { "escape", mod_regex_escape, 0, "pattern" },
 };
 

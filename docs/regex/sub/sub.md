@@ -1,10 +1,10 @@
-# `regex.sub(pattern, repl, string, count=0, flags=0)`
+# `regex.sub(pattern, repl, string, count=0)`
 
 **Substitui** as ocorrências do padrão por outro texto. Devolve o texto novo
 (o original não muda).
 
 ```
-regex.sub(pattern: str, repl: str, string: str, count=0, flags=0) -> str
+regex.sub(pattern: str, repl: str, string: str, count=0) -> str
 ```
 
 | Parâmetro | Padrão | O que é |

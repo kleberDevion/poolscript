@@ -533,11 +533,17 @@ static void le_seq(Leitor *l, Seq *s)
         if (!le_atomo(l, &q.atomo)) break;
         if (l->falhou) return;
         q.min = 1; q.max = 1; q.guloso = 1;
+        /* `teve_quant`: um quantificador foi de fato consumido. É o que decide
+         * se o `?` seguinte é o marcador PREGUIÇOSO. A guarda antiga olhava
+         * `q.min != 1 || q.max != 1`, e `{1}` deixa os dois em 1 — então
+         * `a{1}?` era lido como "quantificador em cima de quantificador" e
+         * recusado com "multiple repeat", quando é só o `{1}` preguiçoso. */
+        int teve_quant = 0;
         if (l->i < l->n) {
             char t = l->p[l->i];
-            if (t == '*')      { q.min = 0; q.max = -1; l->i++; }
-            else if (t == '+') { q.min = 1; q.max = -1; l->i++; }
-            else if (t == '?') { q.min = 0; q.max = 1;  l->i++; }
+            if (t == '*')      { q.min = 0; q.max = -1; l->i++; teve_quant = 1; }
+            else if (t == '+') { q.min = 1; q.max = -1; l->i++; teve_quant = 1; }
+            else if (t == '?') { q.min = 0; q.max = 1;  l->i++; teve_quant = 1; }
             else if (t == '{') {
                 /* `{` sem número é literal, como no `re` */
                 int salvo = l->i, j = l->i + 1, lo = 0, hi = -1, temlo = 0;
@@ -551,7 +557,7 @@ static void le_seq(Leitor *l, Seq *s)
                     hi = lo;
                 }
                 if (temlo && j < l->n && l->p[j] == '}') {
-                    q.min = lo; q.max = hi; l->i = j + 1;
+                    q.min = lo; q.max = hi; l->i = j + 1; teve_quant = 1;
                     if (hi >= 0 && hi < lo) {
                         rerro_em(l, salvo + 1, "min repeat greater than max repeat");
                         return;
@@ -560,7 +566,7 @@ static void le_seq(Leitor *l, Seq *s)
                     l->i = salvo;              /* trata como literal '{' */
                 }
             }
-            if (l->i < l->n && l->p[l->i] == '?' && (q.min != 1 || q.max != 1)) {
+            if (teve_quant && l->i < l->n && l->p[l->i] == '?') {
                 q.guloso = 0; l->i++;
             }
         }
@@ -725,9 +731,10 @@ typedef struct {
 } Estado;
 
 /* Folding pro IGNORECASE: ASCII + Latin-1 Supplement (À-Þ<->à-þ), que cobre o
- * não-ASCII comum (café, ção, ñ). Outros scripts (grego, cirílico) não dobram
- * — é o único ponto onde IGNORECASE ainda pode divergir do `re`. */
-static unsigned char rx_lower(unsigned char c) { return (c >= 'A' && c <= 'Z') ? (unsigned char)(c + 32) : c; }
+ * não-ASCII comum (café, ção, ñ). Outros scripts (grego, cirílico) não dobram.
+ * É UMA regra, por CODEPOINT, nos três caminhos que comparam texto: o literal
+ * (A_CHAR), a classe (A_CLASSE) e o retrovisor (A_BACKREF). O retrovisor
+ * dobrava por BYTE, só A-Z, e `(?i)(é)\1` não casava `éÉ`. */
 static unsigned int  rx_lower_cp(unsigned int cp)
 {
     if (cp >= 'A' && cp <= 'Z') return cp + 32;
@@ -884,14 +891,23 @@ static int casa_simples(Estado *e, const Atomo *a, int pos)
             if (gi_ini < 0 || gi_fim < 0) return -1;   /* grupo não participou */
             int len = gi_fim - gi_ini;
             if (len == 0) return 0;
-            if (pos + len > e->n) return -1;
-            for (int t = 0; t < len; t++) {
-                unsigned char x = (unsigned char)e->s[pos + t];
-                unsigned char y = (unsigned char)e->s[gi_ini + t];
-                if (a->flags & RX_I) { x = rx_lower(x); y = rx_lower(y); }
-                if (x != y) return -1;
+            if (!(a->flags & RX_I)) {
+                if (pos + len > e->n) return -1;
+                return memcmp(e->s + pos, e->s + gi_ini, (size_t)len) == 0 ? len : -1;
             }
-            return len;
+            /* IGNORECASE: por CODEPOINT, com o mesmo `rx_lower_cp` do literal e
+             * da classe. Os comprimentos em bytes podem diferir entre as duas
+             * caixas, então o retorno é o que foi consumido do lado do texto. */
+            int px = pos, py = gi_ini;
+            while (py < gi_fim) {
+                unsigned int cx, cy;
+                int uy = cp_le(e->s, e->n, py, &cy);
+                int ux = (px < e->n) ? cp_le(e->s, e->n, px, &cx) : 0;
+                if (!ux || !uy) return -1;
+                if (rx_lower_cp(cx) != rx_lower_cp(cy)) return -1;
+                px += ux; py += uy;
+            }
+            return px - pos;
         }
         default:
             return -1;

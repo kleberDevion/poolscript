@@ -37,7 +37,7 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   receptor. Tipo desconhecido **não sugere nada** — zero método falso.
 
   Cada sugestão carrega três coisas, e é isso que a faz valer: o **nome**, a
-  **assinatura real com o tipo de retorno** (`regex.compile(pattern, flags) ->
+  **assinatura real com o tipo de retorno** (`regex.compile(pattern) ->
   Pattern`) e a **frase da doc** explicando o que faz. Palavra da linguagem
   **não entra**: o editor já completa palavra do próprio buffer, e uma lista
   de `for`/`while` rotulada "palavra da linguagem" só empurra a sugestão útil

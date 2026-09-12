@@ -1,4 +1,4 @@
-# `regex.fullmatch(pattern, string, flags=0)`
+# `regex.fullmatch(pattern, string)`
 
 Testa se o texto **inteiro** casa com o padrão. Devolve **`bool`**.
 
@@ -7,7 +7,7 @@ diz a semântica em voz alta: casa a string TODA. Quem quer "em algum lugar"
 usa [`regex.search()`](../search/search.md).
 
 ```
-regex.fullmatch(pattern: str, string: str, flags=0) -> bool
+regex.fullmatch(pattern: str, string: str) -> bool
 ```
 
 ---

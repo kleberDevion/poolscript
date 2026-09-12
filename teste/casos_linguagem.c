@@ -2499,6 +2499,42 @@ const Caso CASOS_LINGUAGEM[] = {
 { "campo de model com length= segue valendo",
   "model M() {\n    nome: str(length=10)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
 
+/* ── L3 DO PLANO DAS CONTRADICOES: regex (2026-09-12) — strings medidas ──── */
+/* `a{1}?` era recusado com "multiple repeat": a guarda do preguicoso olhava
+ * `min != 1 || max != 1`, e `{1}` deixa os dois em 1. */
+{ "a{1}? e o {1} preguicoso, nao repeticao de repeticao",
+  "import regex\npost(regex.findall(\"a{1}?\", \"aaa\"))\n", "['a', 'a', 'a']", NULL, 0 },
+/* O retrovisor dobrava caixa por BYTE, so A-Z; literal e classe dobravam por
+ * codepoint (Latin-1). Uma regra so agora. */
+{ "retrovisor com (?i) casa acento nas duas caixas",
+  "import regex\npost(regex.findall(\"(?i)(é)\\\\1\", \"éÉ\"))\npost(regex.findall(\"(?i)(ab)\\\\1\", \"abAB\"))\n",
+  "['é']\n['ab']", NULL, 0 },
+/* Pattern.sub tinha "argument 1" fixo e imprimia o tipo do 1o mesmo quando o
+ * errado era o 2o. */
+{ "Pattern.sub diz QUAL argumento veio errado",
+  "import regex\nregex.compile(\"a\").sub(\"x\", 5)\n", "",
+  "TypeError: sub() argument 2 must be str, not int", 1 },
+/* Grupo inexistente na substituicao saia TypeError; padrao invalido em
+ * rx_compila ja era ValueError — duas classes pra "esta regex nao serve". */
+{ "grupo inexistente na substituicao e ValueError, como o padrao invalido",
+  "import regex\ntry { regex.sub(\"(a)\", \"\\\\g<zz>\", \"xax\") } catch (ValueError e) { post(\"pegou:\", e) }\n",
+  "pegou: unknown group name 'zz' (linha 2)", NULL, 0 },
+/* fullmatch e match sao a mesma funcao, mas cada uma assina o proprio nome. */
+{ "fullmatch assina fullmatch no erro, nao match",
+  "import regex\nregex.fullmatch(\"a\")\n", "",
+  "TypeError: fullmatch() takes exactly 2 arguments (1 given)", 1 },
+/* A tabela anunciava `flags` em sete funcoes e nenhuma o lia: por nome dava
+ * keyword invalido, por posicao o compile ENGOLIA o 2o argumento calado. */
+{ "regex.compile nao aceita mais um 2o argumento que era ignorado",
+  "import regex\nregex.compile(\"a\", 0)\n", "",
+  "TypeError: compile() takes exactly one argument (2 given)", 1 },
+{ "flags= nao existe em regex.match",
+  "import regex\nregex.match(\"a\", \"a\", flags=0)\n", "",
+  "'flags' is an invalid keyword argument for match()", 1 },
+{ "match e fullmatch seguem casando a string inteira",
+  "import regex\npost(regex.fullmatch(\"a+\", \"aaa\"), regex.match(\"a\", \"aaa\"))\n",
+  "True False", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

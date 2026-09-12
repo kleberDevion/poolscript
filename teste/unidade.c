@@ -603,6 +603,12 @@ static void teste_regex_fundo(void)
     CONF(casa("(ab)\\1", "abcd", NULL), "retrovisor casou coisa diferente");
     CONF(casa("(a)(b)\\2\\1", "abba", "abba"), "\\1 e \\2 juntos falharam");
     CONF(casa("(?i)(ab)\\1", "abAB", "abAB"), "retrovisor nao respeitou (?i)");
+    /* por CODEPOINT, com o mesmo folding do literal: `é` casa `É` no
+     * retrovisor (dobrava por byte, so A-Z) */
+    CONF(casa("(?i)(é)\\1", "éÉ", "éÉ"), "retrovisor (?i) nao dobrou acento");
+    CONF(casa("(é)\\1", "éÉ", NULL), "retrovisor sem (?i) casou caixa diferente");
+    /* `a{1}?` e o `{1}` preguicoso, nao repeticao de repeticao */
+    CONF(casa("a{1}?", "aaa", "a"), "a{1}? foi recusado ou casou errado");
 
     grupo("regex/lookaround");
     CONF(casa("foo(?=bar)", "foobar", "foo"), "lookahead positivo falhou");
