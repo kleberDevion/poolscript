@@ -270,6 +270,11 @@ post(b.x, b.y)           # 1 2
 `base` serve para o **construtor** do pai; não é a forma de chamar um método
 qualquer da superclasse.
 
+O pai precisa **ter** construtor: um `__init__` próprio ou campos declarados
+(que sintetizam um). Se não tem nenhum dos dois, `base(...)` levanta
+`TypeError: base(): a Entity pai 'A' nao tem __init__` — posicional ou
+nomeado, a resposta é a mesma.
+
 ---
 
 ## 7.6. Encapsulamento — `private` e `public`

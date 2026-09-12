@@ -1040,7 +1040,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "", "TypeError: f() missing 1 required positional argument: 'a'", 1 },
 { "dif #341",
   "funct f(a, b=2) {\n    return a\n}\npost(f(1, 2, 3))\n",
-  "", "TypeError: f() takes 2 positional arguments but 3 were given", 1 },
+  "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 1 },
 { "dif #342",
   "funct f(a) {\n    return a\n}\npost(f(1, c=2))\n",
   "", "TypeError: f() got an unexpected keyword argument 'c'", 1 },

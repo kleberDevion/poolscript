@@ -3821,10 +3821,9 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
         *out = MK_INT((int64_t)r);
         return 0;
     }
-    if (args[1].t != V_INT)
-        BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
-              nome_do_tipo_valor(args[1]));
-    int64_t casas = args[1].as.i;
+    /* As casas já foram conferidas na entrada (int ou bool); esta era uma
+     * segunda cópia da decisão, e recusava bool que a primeira aceitava. */
+    int64_t casas = (args[1].t == V_BOOL) ? (args[1].as.b ? 1 : 0) : args[1].as.i;
     if (casas < 0)  casas = 0;
     if (casas > 30) casas = 30;
     /* Formata e relê: o printf arredonda sobre o valor binário exato, que é
@@ -3841,6 +3840,25 @@ static int base_para_texto(VM *vm, Value *args, int n, Value *out,
 {
     EXIGE_ARGS(vm, nome, 1);
     Value v = args[0];
+    /* Inteiro grande é `int` pro type() e entra em | ^ & << >>; aqui era
+     * recusado com "'int' object cannot be interpreted as an integer". O
+     * sinal vai antes do prefixo, como no caminho de 64 bits abaixo. */
+    if (EH_BIGINT(v)) {
+        char *dig = mpz_get_str(NULL, base, COMO_BIGINT(v)->v);
+        if (!dig) BERRO(vm, "MemoryError", "sem memoria em %s()", nome);
+        size_t nd = strlen(dig);
+        char *buf = malloc(nd + 3);
+        if (!buf) { free(dig); BERRO(vm, "MemoryError", "sem memoria em %s()", nome); }
+        int j = 0;
+        const char *d = dig;
+        if (*d == '-') { buf[j++] = '-'; d++; }
+        buf[j++] = prefixo[0]; buf[j++] = prefixo[1];
+        memcpy(buf + j, d, strlen(d));
+        j += (int)strlen(d);
+        int rc = devolve_texto(vm, out, buf, j);
+        free(buf); free(dig);
+        return rc;
+    }
     if (v.t != V_INT && v.t != V_BOOL)
         BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
               nome_do_tipo_valor(v));
@@ -20822,7 +20840,9 @@ static int nativa_map(VM *vm, Value *args, int n, Value *out)
         Value item = src->itens[i];
         Value r;
         if (chama_valor(vm, args[1], &item, 1, &r) != 0) { vm->sp--; return -1; }
-        if (i >= l->cap) { vm->sp--; BERRO(vm, "MemoryError", "map() cresceu durante a iteracao"); }
+        /* Erro de iteração, não de memória: a funct chamada cresceu a lista
+         * de origem. MemoryError aqui é só "sem memoria". */
+        if (i >= l->cap) { vm->sp--; BERRO(vm, "RuntimeError", "map() cresceu durante a iteracao"); }
         l->itens[i] = r;
         l->len = i + 1;
         src = COMO_LIST(args[0]);
@@ -20846,7 +20866,7 @@ static int nativa_filter(VM *vm, Value *args, int n, Value *out)
         Value r;
         if (chama_valor(vm, args[1], &item, 1, &r) != 0) { vm->sp--; return -1; }
         if (val_truthy(&r)) {
-            if (l->len >= l->cap) { vm->sp--; BERRO(vm, "MemoryError", "filter() cresceu durante a iteracao"); }
+            if (l->len >= l->cap) { vm->sp--; BERRO(vm, "RuntimeError", "filter() cresceu durante a iteracao"); }
             l->itens[l->len++] = item;
         }
         src = COMO_LIST(args[0]);
@@ -22852,12 +22872,20 @@ ERRO_TF(vm, "TypeError",
                             "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
                 }
-                if (n + 1 > np->nparams)
+                if (n + 1 > np->nparams) {
+                    /* com default a frase diz o intervalo, como nos outros
+                     * caminhos de chamada (OP_CALL_KW, instanciação, base) */
+                    if (np->ndefaults > 0)
+                        ERRO_TF(vm, "TypeError",
+                                "%s() takes from %d to %d positional arguments but %d %s given",
+                                np->nome ? np->nome : "?", np->nparams - np->ndefaults,
+                                np->nparams, n + 1, n + 1 == 1 ? "was" : "were");
                     ERRO_TF(vm, "TypeError",
                             "%s() takes %d positional argument%s but %d %s given",
                             np->nome ? np->nome : "?", np->nparams,
                             np->nparams == 1 ? "" : "s", n + 1,
                             n + 1 == 1 ? "was" : "were");
+                }
                 /* falta argumento obrigatório: erro, não `null` calado */
                 if (n + 1 < np->nparams - np->ndefaults)
 ERRO_TF(vm, "TypeError",
@@ -22907,11 +22935,17 @@ ERRO_TF(vm, "TypeError",
                 /* Aceita MENOS argumentos: o prólogo do callee preenche os
                  * que faltam com o default. Mais que os parâmetros continua
                  * erro. */
-                if (n > maxpos)
+                if (n > maxpos) {
+                    if (np->ndefaults > 0)
+                        ERRO_TF(vm, "TypeError",
+                                "%s() takes from %d to %d positional arguments but %d %s given",
+                                np->nome ? np->nome : "?", maxpos - np->ndefaults,
+                                maxpos, n, n == 1 ? "was" : "were");
                     ERRO_TF(vm, "TypeError",
                             "%s() takes %d positional argument%s but %d %s given",
                             np->nome ? np->nome : "?", maxpos,
                             maxpos == 1 ? "" : "s", n, n == 1 ? "was" : "were");
+                }
                 if (n < (np->nparams - np->ndefaults) - desloca)
 ERRO_TF(vm, "TypeError",
                         "%s() missing %d required positional argument%s: %s",
@@ -23208,6 +23242,17 @@ ERRO_TF(vm, "TypeError",
         }
         case OP_BIT_NOT: {
             Value a = stack[sp - 1];
+            /* Inteiro grande como nos vizinhos | ^ & << >>: recusá-lo dizia
+             * "bad operand type ... 'int'" sobre o único tipo que ~ aceita. */
+            if (EH_BIGINT(a)) {
+                vm->sp = sp; vm->locals_top = locals_top;
+                mpz_t z; mpz_init(z);
+                mpz_com(z, COMO_BIGINT(a)->v);
+                Value r = mk_from_mpz(vm, z);
+                mpz_clear(z);
+                stack[sp - 1] = r;
+                break;
+            }
             if (a.t != V_INT)
                 ERRO_TF(vm, "TypeError",
                         "bad operand type for unary ~: '%s'", nome_do_tipo_valor(a));
@@ -23540,12 +23585,16 @@ ERRO_TF(vm, "TypeError",
             if (EH_BIGINT(fim)) { fim.t = V_INT; fim.as.i = mpz_sgn(COMO_BIGINT(fim)->v) < 0 ? INT64_MIN : INT64_MAX; }
             if (ini.t == V_BOOL) { ini.t = V_INT; ini.as.i = ini.as.b ? 1 : 0; }
             if (fim.t == V_BOOL) { fim.t = V_INT; fim.as.i = fim.as.b ? 1 : 0; }
-            int64_t st = 1;
-            if (passo.t == V_INT) st = passo.as.i;
-            else if (passo.t != V_NULL)
+            /* A regra vale pros TRÊS índices. Só o passo era conferido:
+             * `s[1.5:]` e `s[:"x"]` tratavam o limite como ausente, calados,
+             * e devolviam a coleção inteira. */
+            if ((ini.t != V_INT && ini.t != V_NULL) || (fim.t != V_INT && fim.t != V_NULL)
+                    || (passo.t != V_INT && passo.t != V_NULL))
                 ERRO_T(vm, "TypeError",
                        "slice indices must be integers or None"
                        " or have an __index__ method");
+            int64_t st = 1;
+            if (passo.t == V_INT) st = passo.as.i;
             if (st == 0) ERRO_T(vm, "ValueError", "slice step cannot be zero");
 
             /* mesma normalização do Python: negativo conta do fim, e os
@@ -24826,9 +24875,12 @@ ERRO_TF(vm, "TypeError",
             Value paiv = stack[sp - 1];
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
             int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__");
+            /* mesma resposta do OP_CALL_BASE: pai sem __init__ (nem campos)
+             * não tem o que receber — antes só o caminho nomeado levantava e
+             * o posicional engolia os argumentos calado */
             if (mp < 0)
                 ERRO_TF(vm, "TypeError",
-                        "base(): a Entity pai '%s' nao tem __init__ pra receber argumento nomeado",
+                        "base(): a Entity pai '%s' nao tem __init__",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
             Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();
             PSBound *b = novo_bound(vm, selfv, mp);
@@ -24843,7 +24895,10 @@ ERRO_TF(vm, "TypeError",
             Value paiv  = stack[sp - n - 2];
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
             int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__");
-            if (mp < 0) { sp = sp - n - 2; stack[sp++] = MK_NULL(); break; }
+            if (mp < 0)
+                ERRO_TF(vm, "TypeError",
+                        "base(): a Entity pai '%s' nao tem __init__",
+                        COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
 
             Proto *np = &vm->protos[mp];
             if (n + 1 > np->nparams) {

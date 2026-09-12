@@ -2574,6 +2574,70 @@ const Caso CASOS_LINGUAGEM[] = {
 { "max segue citando '>'",
   "max([1, \"a\"])\n", "", "TypeError: '>' not supported between instances of 'str' and 'int'", 1 },
 
+/* ── L4b DO PLANO DAS CONTRADICOES: numerico e chamadas (2026-09-12) ──────
+ * Strings medidas no binario. */
+/* hex/bin/oct recusavam inteiro grande com "'int' object cannot be
+ * interpreted as an integer" — 'int' e o tipo que eles aceitam. */
+{ "hex aceita inteiro grande",
+  "post(hex(10 ** 30))\n", "0xc9f2c9cd04674edea40000000", NULL, 0 },
+{ "bin com inteiro grande negativo poe o sinal antes do prefixo",
+  "post(bin(-(2 ** 70)))\n", "-0b10000000000000000000000000000000000000000000000000000000000000000000000", NULL, 0 },
+{ "oct aceita inteiro grande",
+  "post(oct(10 ** 30))\n", "0o1447626234640431647336510000000000", NULL, 0 },
+{ "hex segue recusando str",
+  "hex(\"a\")\n", "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
+/* ~ era o unico bit-a-bit que recusava bignum, e dizia "bad operand type
+ * ... 'int'". */
+{ "~ aceita inteiro grande como | ^ & << >>",
+  "long g = 2 ** 100\npost(~g)\npost(~(-(2 ** 100)))\n",
+  "-1267650600228229401496703205377\n1267650600228229401496703205375", NULL, 0 },
+{ "~ segue recusando bool",
+  "post(~true)\n", "", "TypeError: bad operand type for unary ~: 'bool'", 1 },
+/* round conferia as casas duas vezes com respostas diferentes: bool passava
+ * com n int e estourava com n flo. */
+{ "round(flo, bool) usa bool como 0/1 de casas",
+  "post(round(1.5, true), round(1.55, false), round(2.675, 2))\n", "1.5 2.0 2.67", NULL, 0 },
+{ "round segue recusando casas que nao sao inteiro",
+  "round(1.5, \"a\")\n", "", "TypeError: 'str' object cannot be interpreted as an integer", 1 },
+/* A fatia so conferia o passo: `s[1.5:]` tratava o limite como ausente e
+ * devolvia a colecao inteira, calada. */
+{ "fatia: inicio que nao e inteiro e TypeError, nao 'ausente'",
+  "s = \"abcdef\"\ns[1.5:]\n", "", "TypeError: slice indices must be integers or None or have an __index__ method", 1 },
+{ "fatia: fim que nao e inteiro e TypeError",
+  "s = \"abcdef\"\ns[:\"x\"]\n", "", "TypeError: slice indices must be integers or None or have an __index__ method", 1 },
+{ "fatia: bool, bignum saturado e Null seguem valendo",
+  "s = \"abcdef\"\npost(s[1:], s[:2], s[::2], s[true:], s[999999999999999999999:], s[:999999999999999999999])\nl = [1,2,3,4]\npost(l[1:3], l[::-1])\n",
+  "bcdef ab ace bcdef  abcdef\n[2, 3] [4, 3, 2, 1]", NULL, 0 },
+/* Argumentos demais com default: metodo e funct escondiam o minimo; so a
+ * instanciacao e OP_CALL_KW diziam "from N to M". */
+{ "metodo com default: argumentos demais diz o intervalo",
+  "Entity C() {\n    funct soma(self, a, b = 2) {\n        return a + b\n    }\n}\nc = C()\nc.soma(1, 2, 3)\n",
+  "", "TypeError: soma() takes from 2 to 3 positional arguments but 4 were given", 1 },
+{ "@static com default: argumentos demais diz o intervalo sem contar self",
+  "Entity C() {\n    @static\n    funct soma(a, b = 2) {\n        return a + b\n    }\n}\nC.soma(1, 2, 3)\n",
+  "", "TypeError: soma() takes from 1 to 2 positional arguments but 3 were given", 1 },
+{ "funct sem default segue com a frase simples",
+  "funct f(a) {\n    return a\n}\npost(f(1, 2))\n",
+  "", "TypeError: f() takes 1 positional argument but 2 were given", 1 },
+/* map/filter que crescem a origem: erro de iteracao, nao MemoryError. */
+{ "map que cresce a origem e RuntimeError",
+  "l = [1, 2, 3]\nfunct cresce(x) { l.append(x)\n    return x }\ntry { post(map(l, cresce)) } catch (RuntimeError e) { post(\"pegou:\", e) }\n",
+  "pegou: map() cresceu durante a iteracao (linha 4)", NULL, 0 },
+{ "filter que cresce a origem nao e MemoryError",
+  "l = [1, 2, 3]\nfunct cresce(x) { l.append(x)\n    return true }\ntry { post(filter(l, cresce)) } catch (MemoryError e) { post(\"NAO devia pegar\") }\n",
+  "", "RuntimeError: filter() cresceu durante a iteracao", 1 },
+/* base() num pai sem __init__ nem campos: o caminho posicional engolia os
+ * argumentos calado e o nomeado levantava. Agora os dois levantam. */
+{ "base() posicional em pai sem __init__ e TypeError",
+  "Entity A() {\n}\nEntity B(A) {\n    funct __init__(self, nome) {\n        base(nome)\n    }\n}\nB(\"som\")\n",
+  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 1 },
+{ "base() nomeado em pai sem __init__ da a MESMA frase",
+  "Entity A() {\n}\nEntity B(A) {\n    funct __init__(self, nome) {\n        base(nome=nome)\n    }\n}\nB(\"som\")\n",
+  "", "TypeError: base(): a Entity pai 'A' nao tem __init__", 1 },
+{ "base() em pai com construtor de campos segue funcionando",
+  "Entity A() {\n    nome: str\n}\nEntity B(A) {\n    funct __init__(self, nome, y) {\n        base(nome)\n        self.y = y\n    }\n}\nb = B(\"ana\", 2)\npost(b.nome, b.y)\n",
+  "ana 2", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

@@ -1,6 +1,7 @@
 # `oct(n)`
 
-Inteiro em octal, com prefixo 0o.
+Inteiro em octal, com prefixo 0o. Inteiro grande também (o sinal vai antes do
+prefixo).
 
 ## Parâmetros
 

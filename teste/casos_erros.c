@@ -69,7 +69,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(1, 2, 3))\n",
-  "", "f() takes 2 positional arguments but 3 were given", 1 },
+  "", "f() takes from 1 to 2 positional arguments but 3 were given", 1 },
 
 /* ── argumento nomeado que não existe ── */
 { "nomeado inexistente em funct",

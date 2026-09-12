@@ -1,6 +1,7 @@
 # `bin(n)`
 
-Inteiro em binário, com prefixo 0b.
+Inteiro em binário, com prefixo 0b. Inteiro grande também (o sinal vai antes
+do prefixo).
 
 ## Parâmetros
 
