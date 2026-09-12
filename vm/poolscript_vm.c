@@ -19,8 +19,11 @@
  * dentro do alocador exigiria ancorar temporários a cada operação; parar
  * num ponto seguro elimina essa classe inteira de bug.
  *
- * Raízes: tabela de globais, pilha viva [0,sp), pool de locais
- * [0,locals_top) e as constantes de todos os protótipos.
+ * Raízes: a lista é a de `gc_coleta`, e só ela — globais, pilha viva [0,sp),
+ * locais [0,locals_top), constantes dos protótipos, singletons e requisição
+ * corrente do jinker, módulos `.ps` importados, conexões WS abertas, closures
+ * dos frames em execução e as fibras (fib_marca_gc). Raiz que fique fora
+ * dela é objeto vivo coletado.
  */
 /* Antes de QUALQUER include: expõe as extensões POSIX/GNU (struct sigaction,
  * getcwd, etc.). O gcc em -std=gnu* já liga o _DEFAULT_SOURCE implícito, mas o
@@ -548,9 +551,10 @@ typedef struct {
     char  *nome;
     JkRota *rotas; int nrotas, cap_rotas;
     JkSock *socks; int nsocks, cap_socks;
-    Value  mw_handler;              /* @app.middleware() — guardado, nunca usado
-                                     * (o wrapper também não usa; só o middleware
-                                     * explícito da rota roda) */
+    Value  mw_handler;              /* @app.middleware(): o handler guardado. A
+                                     * rota com `middleware=app.middleware` resolve
+                                     * pra ele (jk_chama_handler roda e a resposta
+                                     * dele barra a requisição); é raiz de GC. */
     int    debug;
     char  *static_folder, *static_url;
     char  *route_prefix;    /* prefixo de TODAS as rotas: "/api" ou NULL */
@@ -919,7 +923,8 @@ typedef struct {
 #define DBG_PASSO_DENTRO 1 /* para na próxima linha, entrando em chamada */
 #define DBG_PASSO_SOBRE  2 /* para na próxima linha do mesmo frame ou acima */
 #define DBG_PASSO_FORA   3 /* para quando voltar pro frame de cima */
-#define DBG_PAUSAR       4 /* para na próxima instrução, seja onde for */
+#define DBG_PAUSAR       4 /* para na próxima LINHA com fonte, seja em que frame
+                            * for — o mesmo grão dos passos (`ult_linha`) */
 
 typedef struct {
     int      ativo;
@@ -1112,8 +1117,7 @@ struct VM_ {
      * Singletons e a requisição corrente são RAÍZES do GC: vivem aqui (e não
      * em estático C) porque o coletor não varre a pilha do C. `nomes_globais`
      * é a tabela de nomes do programa — o Jinker() usa pra achar os slots
-     * `request`/`channel` e pré-ligá-los, como o interpretador injeta esses
-     * nomes no escopo do handler. */
+     * `request`/`channel` e pré-ligá-los no escopo do handler. */
     Value    jk_cors;      /* singleton de cors — V_UNSET até o 1º uso */
     Value    jk_proxy;     /* singleton do `request` */
     Value    jk_req;       /* requisição corrente (V_NULL fora de handler) */
@@ -2303,9 +2307,7 @@ static int val_truthy(const Value *v)
             if (v->as.obj->type == OBJ_MANPU_RES) return ((PSManpuRes *)v->as.obj)->sucesso;
             /* ChannelStatus: `if send.status_send()` responde o sucesso */
             if (v->as.obj->type == OBJ_JCHST) return ((PSJChSt *)v->as.obj)->sucesso;
-            if (v->as.obj->type == OBJ_CLASS || v->as.obj->type == OBJ_INSTANCE
-                || v->as.obj->type == OBJ_BOUND) return 1;
-            return 1;
+            return 1;   /* todo outro objeto (Entity, instância, método…) é verdadeiro */
     }
     return 0;
 }
@@ -7169,8 +7171,8 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
  * diferenças que ele tem em relação ao `str` e que é fácil errar copiando:
  *
  *   - `upper`/`lower`/`title` mexem só no ASCII. `b"\xc0".lower()` é `b"\xc0"`.
- *   - `splitlines` quebra em `\n`, `\r` e `\r\n` e MAIS NADA — o `\x0b` e o
- *     `\x0c`, que no `str` quebram, aqui ficam dentro da linha.
+ *   - `splitlines` quebra em `\n`, `\r` e `\r\n` e MAIS NADA — o mesmo que
+ *     o `str` (`met_splitlines`); `\x0b`/`\x0c` ficam dentro da linha nos dois.
  *   - `find`/`count`/`index` aceitam um INTEIRO (0..255) além de bytes.
  *   - `strip(chars)` é CONJUNTO de bytes, não prefixo.
  *
@@ -7668,8 +7670,8 @@ static int by_split(VM *vm, Value alvo, Value *args, int n, Value *out,
 static int met_b_split(VM *v, Value a, Value *g, int n, Value *o)  { return by_split(v, a, g, n, o, "split", 0); }
 static int met_b_rsplit(VM *v, Value a, Value *g, int n, Value *o) { return by_split(v, a, g, n, o, "rsplit", 1); }
 
-/* Só `\n`, `\r` e `\r\n`. O `str` também quebra em `\v`, `\f`, `\x1c`… — o
- * `bytes` NÃO, e copiar o do str aqui daria linha a mais em dado binário. */
+/* Só `\n`, `\r` e `\r\n` — a MESMA regra do `str` (`met_splitlines`); nenhum
+ * dos dois quebra em `\v`, `\f` ou `\x1c`. */
 static int met_b_splitlines(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "splitlines", 0, 1, n);
@@ -12339,8 +12341,8 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
     return 0;
 }
 
-/* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`, que é o
- * comando que falhou tem a mensagem no stderr. */
+/* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`: comando
+ * que falhou tem a mensagem lá, e devolver vazio esconderia o motivo. */
 static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
                          int capturar, Value *out)
 {
@@ -12657,8 +12659,6 @@ static int mod_os_poolfile_tipo(VM *vm, Value *args, int n, Value *out)
 
 static const MembroMod MOD_OS[] = {
     { "pathFile", mod_os_pathfile, 0, "name" }, { "pathFolder", mod_os_pathfolder, 0, "name" },
-    /* `modo`, nao `encoding`: o 2o argumento e 'r'/'rb', e o nome antigo fazia
-     * a chamada por nome pedir um charset que nunca foi aplicado aqui. */
     /* `path,mode`: os mesmos nomes do `open()` e os que as mensagens de erro
      * ja usavam. Era `name,modo`, entao quem copiava o erro (`mode='rb'`)
      * escrevia um nome que nao existia. */
@@ -13741,7 +13741,7 @@ static int sk_recv_nucleo(VM *vm, Value alvo, Value *args, int n, const char *qu
     PSSocket *s = NULL; if (sk_exige(vm, alvo, quem, &s) != 0) return -1;
     size_t cap = (size_t)args[0].as.i;
     int flags = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
-    char *buf = malloc(cap ? cap : 1);   /* cap 0 e legal: recv(0) da b"" */
+    char *buf = malloc(cap);   /* cap >= 1: o zero foi recusado acima */
     if (!buf) MERRO(vm, "MemoryError", "sem memoria");
     SkRecvOff o = { s->fd, buf, cap, flags, 0, 0, com_addr, {0}, 0 };
     fib_offload(vm, sk_recv_off, &o);
@@ -15712,9 +15712,9 @@ static const MembroMod MOD_REQUEST[] = {
 
 
 /* ── módulo qrcode ──────────────────────────────────────────────────────── */
-/* Encoder próprio (ps_qr.c), byte mode, sem libqrencode. A lib Python otimiza
- * o modo (numérico/alfanumérico) e o QR sai um pouco menor pra dígitos/maiúsc;
- * o byte mode é sempre válido e escaneável, só não é o mais compacto. */
+/* Encoder próprio (ps_qr.c), byte mode. Os modos numérico/alfanumérico do
+ * padrão dariam um QR um pouco menor pra dígitos/maiúsculas; o byte mode é
+ * sempre válido e escaneável, só não é o mais compacto. */
 
 /* extrai nivel 'L'/'M'/'Q'/'H' de um arg opcional; default 'L' */
 static char qr_nivel_arg(Value v)
@@ -16096,7 +16096,7 @@ static int mp_celula_valor(VM *vm, const PSGrade *g, int r, int c, Value *out)
     char t = ps_grade_tipo(g, r, c);
     const char *s = ps_grade_get(g, r, c);
     if (t == 'n') {
-        /* int se não tem ponto/expoente; senão float — como o openpyxl */
+        /* int se não tem ponto/expoente; senão float */
         if (strpbrk(s, ".eE")) {
             double d;
             if (texto_para_flo(s, (int)strlen(s), &d) == 0) { *out = MK_FLOAT(d); return 0; }
@@ -23518,10 +23518,10 @@ ERRO_TF(vm, "TypeError",
             int64_t i = idx.as.i;
             int64_t n;
 
-            /* Só lista e string. Dict NÃO é iterável em `for each` — é o que
-             * o interpretador faz ("for each exige lista, tupla ou string").
-             * Aceitar dict aqui deixaria a VM mais permissiva que a
-             * linguagem, divergindo da referência sem ninguém perceber. */
+            /* Lista, tupla, string, bytes e gerador. Dict NÃO é iterável em
+             * `for each` (a doc manda usar `.keys()`/`.items()`): aceitar
+             * aqui deixaria a VM mais permissiva que a linguagem documentada,
+             * sem ninguém perceber. */
             /* Gerador não tem tamanho: retomar é a única forma de saber se
              * acabou, então ele sai antes da conta de `n`. */
             if (EH_GERADOR(cont)) {
@@ -24863,10 +24863,11 @@ ERRO_TF(vm, "TypeError",
                    ? (spec_eh_caminho(nome_imp + 1) ? -1 : acha_modulo(nome_imp + 1))
                    : acha_modulo(nome_imp);
             if (mi < 0) {
-                /* Não é nativo: tenta `.ps` ao lado do script, depois as libs
-                 * instaladas pelo `psl`. Módulo nativo ganha do arquivo — o
-                 * contrário deixaria um `json.ps` local sequestrar o módulo
-                 * `json` da linguagem. */
+                /* Não é nativo: `acha_modulo_ps` procura, nesta ordem, a lib
+                 * instalada pelo `psl`, a pasta do arquivo que importa e a
+                 * raiz do projeto (a ordem decidida em poolscript.md). Módulo
+                 * nativo ganha de qualquer `.ps` — o contrário deixaria um
+                 * `json.ps` local sequestrar o módulo `json` da linguagem. */
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 /* `anexa_programa` faz realloc de vm->protos, e `p` aponta
                  * pra dentro desse array. Guardar o ÍNDICE é obrigatório:
@@ -25714,10 +25715,10 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
     return 0;
 }
 
-/* Procura o `.ps` do módulo: primeiro ao lado do script, depois nas libs
- * instaladas pelo `psl`. A ordem importa — um arquivo local com o mesmo nome
- * de uma lib global tem que ganhar, senão instalar uma lib quebraria projeto
- * que já tinha um módulo com esse nome. */
+/* Procura o `.ps` do módulo: LIB INSTALADA primeiro (~/.poolscript/libs),
+ * depois a pasta do arquivo que importa, depois a raiz do projeto — a ordem
+ * está no nível 0 de `acha_modulo_ps` e em poolscript.md: um arquivo local
+ * nunca ofusca uma lib instalada. */
 /* Resolve o nome codificado (ver o compilador) num caminho de arquivo:
  *   - `.a.b` / `..a` (nível>0): RELATIVO ao dir do arquivo importador
  *     (vm->dir_modulo), subindo nível-1 pastas; nunca tenta libs.
