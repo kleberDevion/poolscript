@@ -44,6 +44,17 @@ const Caso CASOS_LIBS[] = {
  * processo (medido: 4096 bytes de ponteiros e lixo em vez dos dados). Agora
  * `ncorpo` descreve SEMPRE o que esta no buffer, e o total fica em `nbaixado`.
  * O caso abaixo e o que pegaria a volta do vazamento. */
+/* `save=` abria o caminho do usuario com "wb" ANTES de conectar: nome que
+ * nao resolvia, conexao recusada ou timeout no meio deixavam o arquivo dele
+ * ZERADO ou pela metade, e o erro nao dizia isso. Agora o corpo desce num
+ * temporario na mesma pasta e so o sucesso faz o `rename`. */
+{ "save= com falha de rede deixa o arquivo do usuario INTACTO",
+  "import request\nimport os\n"
+  "os.writeFile(\"ps93.bin\", \"ORIGINAL\")\n"
+  "try { request.get(\"http://127.0.0.1:1/x\", save=\"ps93.bin\") } catch (e) { pass }\n"
+  "post(os.readFile(\"ps93.bin\"))\n"
+  "post(os.cmd(\"ls -a | grep -c ps_resposta_\", true))\n",
+  "ORIGINAL\n0", NULL, 0 },
 { "save= com conexao recusada devolve NetworkError, sem crash",
   "import request\nimport os\n"
   "r = request.get(\"http://127.0.0.1:1/x\", save=\"s.bin\")\n",

@@ -591,9 +591,9 @@ check-e2e-local: pool
 # as funções direto. É o que fura o teto de ~60% de ramo da suíte `.ps`, que
 # por construção não alcança tratamento de erro — não existe programa PoolScript
 # que faça um `malloc` falhar ou passe um buffer curto pro base64.
-unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(MK)
+unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c -lz -lexpat -lm
 	@./$@
 
 pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)

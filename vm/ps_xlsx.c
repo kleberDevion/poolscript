@@ -122,13 +122,25 @@ static int zip_extrai(const unsigned char *zip, size_t nzip, const char *nome,
         uint16_t elen = le16(zip + p + 30);
         uint16_t clen = le16(zip + p + 32);
         uint32_t lho = le32(zip + p + 42);
+        /* Tudo que vem do arquivo é tratado como hostil: cada deslocamento e
+         * cada tamanho é conferido contra `nzip` ANTES de ser usado, e as
+         * contas são em `size_t` — `lho + 30` em 32 bits dava a volta com
+         * `lho = 0xFFFFFFFF` e passava na checagem. Sem isto o `memcmp` do
+         * nome (até 65535 bytes), o `memcpy` do STORED e o `inflate` liam
+         * fora do buffer num `.xlsx` corrompido. */
+        if ((size_t)p + 46 + nlen > nzip) return -1;
         int bate = (nlen == strlen(nome)) && memcmp(zip + p + 46, nome, nlen) == 0;
         if (bate) {
+            if (lho == 0xFFFFFFFFu) return -1;            /* marcador zip64: não suportado */
+            size_t lh = lho;
             /* local header: recalcula os campos de nome/extra locais */
-            if (lho + 30 > nzip || le32(zip + lho) != 0x04034b50) return -1;
-            uint16_t lnlen = le16(zip + lho + 26);
-            uint16_t lelen = le16(zip + lho + 28);
-            const unsigned char *dados = zip + lho + 30 + lnlen + lelen;
+            if (lh + 30 > nzip || le32(zip + lh) != 0x04034b50) return -1;
+            uint16_t lnlen = le16(zip + lh + 26);
+            uint16_t lelen = le16(zip + lh + 28);
+            size_t off = lh + 30 + (size_t)lnlen + (size_t)lelen;
+            if (off > nzip || comp > nzip - off) return -1;
+            if (metodo == 0 && orig != comp) return -1;   /* STORED: tamanhos iguais por definição */
+            const unsigned char *dados = zip + off;
             char *out = malloc((size_t)orig + 1);
             if (!out) return -1;
             if (metodo == 0) {                       /* STORED */

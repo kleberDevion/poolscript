@@ -475,7 +475,12 @@ typedef struct {
 
 /* psodbc: conexão e cursor unificados (sqlite/postgres/mysql/mssql). O cursor
  * bufferiza o result de um SELECT e os fetch* leem dele com `pos`. */
-typedef struct { Obj obj; PSDbConn *conn; int fechado; int drv; int em_transacao; } PSDbConexao;
+/* `ocupada`: uma consulta por conexão por vez. O handle do driver (`conn`)
+ * não aguenta duas consultas simultâneas, e o `PSDbRes` do cursor era
+ * entregue a uma thread enquanto outra fibra podia liberá-lo com um segundo
+ * `execute()` — free em cima de memória que a thread ainda enchia. A segunda
+ * fibra agora ESPERA a primeira devolver a conexão (ver `met_dbcur_execute`). */
+typedef struct { Obj obj; PSDbConn *conn; int fechado; int drv; int em_transacao; int ocupada; } PSDbConexao;
 /* `fechado`: depois de `close()` o cursor não volta a servir. Sem essa marca,
  * `cur.close()` liberava o resultado e um `execute()` seguinte simplesmente
  * preparava outro e funcionava — o `close()` não fechava nada. O DB-API (PEP
@@ -1980,8 +1985,9 @@ static void fin_wsconn(VM *vm, Obj *o) {
     PSWsConn *w = (PSWsConn *)o;
     if (w->conn) ps_jk_close(w->conn);
     free(w->url);
-    /* tira da lista do `sleep()`: é ponteiro fraco, ficar lá seria uso após
-     * liberar na próxima espera */
+    /* tira da lista do `sleep()`. Enquanto está nela é RAIZ do GC (ver
+     * gc_coleta), então só chega aqui quem já foi fechado por `.close()` ou
+     * quem está morrendo com a VM. */
     for (int i = 0; i < vm->n_ws_vivos; i++)
         if (vm->ws_vivos[i] == w) {
             vm->ws_vivos[i] = vm->ws_vivos[--vm->n_ws_vivos];
@@ -2045,6 +2051,13 @@ static void gc_coleta(VM *vm)
      * (igual sys.modules do Python) — são RAÍZES, senão o GC coleta um módulo
      * ainda em uso e depois libera de novo -> double free -> segfault. */
     for (int i = 0; i < vm->nmods_ps; i++)   marca_valor(vm, &vm->mods_ps[i].valor);
+    /* Conexão WebSocket ABERTA é raiz até o `.close()`. `ws_vivos` era só
+     * ponteiro fraco: `request.ws_connect(u).on_message(f)` sem variável, ou
+     * com a variável reatribuída, deixava o objeto sem raiz; o `sleep()` o
+     * drenava, o callback disparava o GC, o objeto morria, e o laço da
+     * drenagem voltava a ler `w->conn` de memória liberada. `fin_wsconn` tira
+     * da lista o que foi fechado, então nada fica enraizado além da vida. */
+    for (int i = 0; i < vm->n_ws_vivos; i++)  marca_obj(vm, (Obj *)vm->ws_vivos[i]);
     for (int i = 0; i < vm->sp; i++)         marca_valor(vm, &vm->stack[i]);
     for (int i = 0; i < vm->locals_top; i++) marca_valor(vm, &vm->locals[i]);
     /* closures dos frames em execução (não aparecem na pilha de valores) */
@@ -7998,7 +8011,14 @@ static PSPoolFile *novo_poolfile(VM *vm, const char *caminho)
     fseek(f, 0, SEEK_END);
     long tam = ftell(f);
     rewind(f);
-    char *buf = malloc((size_t)(tam > 0 ? tam : 1));
+    /* `ftell` devolve -1 em FIFO, pipe e dispositivo. O `tam > 0 ? tam : 1`
+     * de antes escondia o sinal: o `malloc` era de 1 byte e o `fread` recebia
+     * `(size_t)-1` — lia até o EOF ESCREVENDO fora do heap. O `errno` sai
+     * pro chamador traduzir com `erro_sistema`, como nos outros caminhos. */
+    if (tam < 0) { fclose(f); errno = ESPIPE; return NULL; }
+    /* limite físico, não teto: `novo_bytes` recebe `int` */
+    if (tam > INT_MAX) { fclose(f); errno = EFBIG; return NULL; }
+    char *buf = malloc((size_t)tam + 1);
     if (!buf) { fclose(f); return NULL; }
     size_t lidos = fread(buf, 1, (size_t)tam, f);
     fclose(f);
@@ -15283,28 +15303,45 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     FILE *destino = NULL;
     char tmp[2048] = "";
     int temporario = 0;
-    if (save_cam) {
-        destino = fopen(save_cam, "wb");
-        if (!destino) { int e = errno; if (corpo_livre) free(corpo);
-                        return erro_sistema(vm, e, save_cam, NULL); }
-    } else if (strcmp(metodo, "HEAD") != 0) {
-        /* Nasce na PASTA CORRENTE: é onde o `.save()` sem caminho grava, e no
-         * mesmo sistema de arquivos o `rename` é atômico — sem cópia, sem
-         * disco extra. Só cai em $TMPDIR / padrão do sistema se a pasta
-         * corrente não for gravável, e aí não há opção melhor. */
+    const char *final = NULL;   /* `save=`: o caminho do usuário, ocupado só no fim */
+    if (strcmp(metodo, "HEAD") != 0) {
+        /* O corpo desce SEMPRE num arquivo do motor, e só no sucesso ele vira o
+         * arquivo pedido (`rename`). Antes, com `save=`, o caminho do usuário
+         * era aberto com "wb" ANTES de conectar: nome que não resolvia, conexão
+         * recusada ou timeout no meio deixavam o arquivo dele zerado ou pela
+         * metade, e o erro levantado não dizia isso.
+         *
+         * O temporário nasce na MESMA pasta do destino (o do usuário, ou a
+         * pasta corrente pro `.save()` sem caminho): no mesmo sistema de
+         * arquivos o `rename` é atômico — sem cópia, sem disco extra. Só cai
+         * em $TMPDIR / padrão do sistema se a pasta não for gravável. */
         const char *dirs[3]; int nd = 0;
-        char cwd_[1024];
-        if (getcwd(cwd_, sizeof cwd_)) dirs[nd++] = cwd_;
-        const char *td = getenv("TMPDIR");
-        if (td && *td) dirs[nd++] = td;
-        dirs[nd++] = P_tmpdir;
+        char pasta[1024];
+        if (save_cam) {
+            final = save_cam;
+            const char *barra = strrchr(save_cam, '/');
+            if (barra && barra != save_cam) {
+                size_t l = (size_t)(barra - save_cam);
+                if (l >= sizeof pasta) l = sizeof pasta - 1;
+                memcpy(pasta, save_cam, l); pasta[l] = '\0';
+            } else snprintf(pasta, sizeof pasta, "%s", barra ? "/" : ".");
+            dirs[nd++] = pasta;
+        } else if (getcwd(pasta, sizeof pasta)) dirs[nd++] = pasta;
+        /* O recuo pra $TMPDIR / padrão do sistema é só do arquivo do MOTOR. O
+         * do usuário nasce na pasta que ele pediu ou não nasce: pasta que não
+         * existe é erro AGORA, com o caminho dele, antes de mandar um byte. */
+        if (!final) {
+            const char *td = getenv("TMPDIR");
+            if (td && *td) dirs[nd++] = td;
+            dirs[nd++] = P_tmpdir;
+        }
         int fd = -1;
         for (int i = 0; i < nd && fd < 0; i++) {
             snprintf(tmp, sizeof tmp, "%s/.ps_resposta_XXXXXX", dirs[i]);
             fd = mkstemp(tmp);
         }
         if (fd < 0) { int e = errno; if (corpo_livre) free(corpo);
-                      return erro_sistema(vm, e, tmp, NULL); }
+                      return erro_sistema(vm, e, final ? final : tmp, NULL); }
         destino = fdopen(fd, "wb");
         if (!destino) { int e = errno; close(fd); unlink(tmp); if (corpo_livre) free(corpo);
                         return erro_sistema(vm, e, tmp, NULL); }
@@ -15337,12 +15374,23 @@ static int request_comum(VM *vm, const char *metodo, Value *args, int n, Value *
     if (e_io) {
         ps_http_resp_solta(&hr);
         if (temporario) unlink(tmp);
-        return erro_sistema(vm, e_io, save_cam ? save_cam : tmp, NULL);
+        return erro_sistema(vm, e_io, final ? final : tmp, NULL);
     }
-    /* sem corpo (204, 304, Content-Length 0): nada a guardar. O arquivo do
-     * motor some; o do usuário fica, vazio — foi ele que pediu. */
-    const char *arq = save_cam ? save_cam : (temporario ? tmp : NULL);
-    if (hr.nbaixado == 0) { if (temporario) unlink(tmp); arq = NULL; temporario = 0; }
+    /* Sucesso com `save=`: agora sim o arquivo do usuário é tocado — de uma
+     * vez, pelo `rename` (o mesmo de `met_resp_save`). Vale também pro corpo
+     * vazio: foi ele que pediu o arquivo, e ele existe, vazio. */
+    const char *arq = NULL;
+    if (final) {
+        if (rename(tmp, final) != 0) {
+            int e = errno; unlink(tmp); ps_http_resp_solta(&hr);
+            return erro_sistema(vm, e, final, NULL);
+        }
+        arq = final; temporario = 0;
+    } else if (temporario) {
+        /* sem corpo (204, 304, Content-Length 0): nada a guardar */
+        if (hr.nbaixado == 0) { unlink(tmp); temporario = 0; }
+        else arq = tmp;
+    }
     int mrc = monta_response(vm, &hr, arq, temporario, out);
     if (mrc != 0 && temporario) unlink(tmp);
     ps_http_resp_solta(&hr);
@@ -15384,6 +15432,13 @@ static void ws_recv_off(void *p){ WsRecvOff *o = (WsRecvOff *)p;
 
 static int ws_drena(VM *vm, PSWsConn *w, int timeout_ms)
 {
+    /* `w` fica na pilha da VM enquanto o laço roda: o callback do usuário
+     * (`chama_valor` abaixo) pode fechar esta mesma conexão — e aí ela sai
+     * de `ws_vivos` e perde a raiz — ou disparar o GC por qualquer alocação.
+     * Sem a raiz aqui, a volta seguinte do `for` lia `w->conn` de um objeto
+     * já liberado. Toda saída faz o `vm->sp--` correspondente. */
+    if (fixa_raiz(vm, MK_OBJ(w)) != 0) return -1;
+    int rc = 0;
     for (;;) {
         if (!w->conn) break;
         WsRecvOff ro = { w->conn, timeout_ms, 0, 0, NULL, 0 };
@@ -15397,16 +15452,17 @@ static int ws_drena(VM *vm, PSWsConn *w, int timeout_ms)
         /* parseia como JSON; se falhar, entrega a string crua */
         Value sv = jk_str_val(vm, raw);
         free(raw);
-        if (fixa_raiz(vm, sv) != 0) return -1;
+        if (fixa_raiz(vm, sv) != 0) { rc = -1; break; }
         Value msg, um[1] = { sv };
         if (mod_json_parse(vm, um, 1, &msg) != 0) { vm->erro[0]='\0'; vm->erro_tipo[0]='\0'; msg = sv; }
         vm->stack[vm->sp - 1] = msg;   /* raiz troca pra mensagem final */
         Value ret;
-        int rc = chama_valor(vm, w->on_msg, &msg, 1, &ret);
-        vm->sp--;
-        if (rc != 0) return -1;
+        int r = chama_valor(vm, w->on_msg, &msg, 1, &ret);
+        vm->sp--;                      /* a mensagem */
+        if (r != 0) { rc = -1; break; }
     }
-    return 0;
+    vm->sp--;                          /* o `w` */
+    return rc;
 }
 
 /* envio do WS cliente offloadado (o write pode bloquear se o buffer do peer
@@ -15500,22 +15556,27 @@ static int mod_req_ws(VM *vm, Value *args, int n, Value *out)
     if (*p == ':') { p++; porta = 0; while (*p >= '0' && *p <= '9') porta = porta * 10 + (*p++ - '0'); }
     const char *path = *p ? p : "/";
 
+    /* connect+handshake na thread do pool PRIMEIRO, objeto da VM DEPOIS —
+     * a mesma ordem de `met_sk_accept`. O objeto nascia antes do offload, sem
+     * raiz nenhuma; se outra fibra disparasse o GC durante o connect, `w` era
+     * liberado e a linha `w->conn = wo.conn` escrevia em memória solta. O
+     * offload só precisa de dados C (host, porta, path), então não há por que
+     * o objeto existir antes. Falha de conexão NÃO erra: devolve o objeto
+     * desconectado e o send avisa "não conectado". */
+    char erro[256];
+    WsConnOffload wo = { host, porta, path, erro, sizeof(erro), NULL };
+    fib_offload(vm, ws_conn_offload, &wo);
+
     PSWsConn *w = calloc(1, sizeof(PSWsConn));
-    if (!w) BERRO(vm, "MemoryError", "sem memoria");
+    if (!w) { if (wo.conn) ps_jk_close(wo.conn); BERRO(vm, "MemoryError", "sem memoria"); }
     w->obj.type = OBJ_WSCONN; w->obj.marked = 0;
     w->obj.next = vm->objetos; vm->objetos = (Obj *)w;
     w->url = strdup(url);
     w->on_msg = MK_NULL();
-    vm->alocado += sizeof(PSWsConn);
-    /* entra na lista que o `sleep()` bombeia */
-    if (vm->n_ws_vivos < 64) vm->ws_vivos[vm->n_ws_vivos++] = w;
-    char erro[256];
-    /* falha de conexão NÃO erra: o wrapper devolve o objeto desconectado e
-     * o send avisa "Error: não conectado" — mesmo contrato aqui.
-     * connect+handshake na thread do pool: NÃO trava o worker. */
-    WsConnOffload wo = { host, porta, path, erro, sizeof(erro), NULL };
-    fib_offload(vm, ws_conn_offload, &wo);
     w->conn = wo.conn;
+    vm->alocado += sizeof(PSWsConn);
+    /* entra na lista que o `sleep()` bombeia — e que o GC marca como raiz */
+    if (vm->n_ws_vivos < 64) vm->ws_vivos[vm->n_ws_vivos++] = w;
     *out = MK_OBJ(w);
     return 0;
 }
@@ -15684,7 +15745,7 @@ static int mod_qr_gen(VM *vm, Value *args, int n, Value *out)
         free(png);
         if (ok != 0) BERRO(vm, "IOError", "nao consegui salvar '%.200s'", caminho);
         PSPoolFile *pf = novo_poolfile(vm, caminho);   /* com save= devolve PoolFile */
-        if (!pf) BERRO(vm, "IOError", "nao consegui reler '%.200s'", caminho);
+        if (!pf) return erro_sistema(vm, errno, caminho, NULL);   /* o errno diz o motivo */
         *out = MK_OBJ(pf);
         return 0;
     }
@@ -16781,6 +16842,7 @@ static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0
  * toca a VM), então roda numa thread enquanto a fibra cede — o `recv` bloqueante
  * do driver não trava mais o worker. (def. de fib_offload junto do jinker.) */
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg);
+static void fib_espera_ms(VM *vm, int ms);   /* cede a fibra por `ms`; def. junto do sleep() */
 typedef struct {
     PSDbConn *c; const char *sql; const char **params; int nparams;
     PSDbRes *res; char *erro; size_t ecap; char *tipo_out; size_t tcap; int rc;
@@ -16849,8 +16911,16 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     /* SQLite é local e rápido -> roda inline (offload seria só overhead de thread).
      * Drivers de rede (postgres/mysql/mssql) fazem recv bloqueante -> offload pra
      * thread e a fibra cede, sem travar o worker. */
+    /* Uma consulta por conexão por vez: enquanto a thread do pool usa `cn->conn`
+     * e enche `cu->res`, outra fibra que chame `execute()` na mesma conexão
+     * ESPERA (cede por 1 ms e tenta de novo) em vez de disparar uma segunda
+     * consulta no mesmo handle e liberar o resultado que a primeira ainda
+     * escreve. O sqlite roda inline e nunca encontra a conexão ocupada. */
+    while (cn->ocupada) fib_espera_ms(vm, 1);
+    cn->ocupada = 1;
     if (cu->drv == PS_DB_SQLITE) db_exec_offload(&dea);
     else                         fib_offload(vm, db_exec_offload, &dea);
+    cn->ocupada = 0;
     if (dea.rc != 0) {
         db_params_libera(pars, np);
         snprintf(vm->erro, sizeof(vm->erro), "%.200s", erro);
@@ -19782,6 +19852,28 @@ static void pool_submete(void (*fn)(void *), void *arg, int efd)
 /* Roda `fn(arg)` (uma chamada C bloqueante) SEM travar o worker: se estamos
  * numa fibra de handler, joga pra thread do pool e cede até terminar; fora de
  * fibra (script comum), roda inline como sempre. */
+/* Cede a fibra corrente por `ms` milissegundos — o mesmo mecanismo do
+ * `sleep()` dentro de handler (timer + volta pro escalonador). Fora de fibra
+ * não há a quem ceder: dorme de verdade, curto. Serve a quem precisa esperar
+ * um recurso que outra fibra está usando (a conexão de banco, por exemplo). */
+static void fib_espera_ms(VM *vm, int ms)
+{
+    Fiber *f = vm->fib_atual;
+    if (!f || g_jk_epfd < 0) {
+        struct timespec t = { ms / 1000, (long)(ms % 1000) * 1000000L };
+        nanosleep(&t, NULL);
+        return;
+    }
+    clock_gettime(CLOCK_MONOTONIC, &f->wake_at);
+    f->wake_at.tv_sec  += ms / 1000;
+    f->wake_at.tv_nsec += (long)(ms % 1000) * 1000000L;
+    if (f->wake_at.tv_nsec >= 1000000000L) { f->wake_at.tv_sec++; f->wake_at.tv_nsec -= 1000000000L; }
+    f->tem_timer = 1;
+    f->status = FIB_SUSPENSA;
+    ps_ctx_swap(&f->ctx, &vm->sched_ctx);
+    f->tem_timer = 0;
+}
+
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
 {
     if (!vm->fib_atual || g_jk_epfd < 0) { fn(arg); return; }   /* fora de handler: inline */
