@@ -1320,10 +1320,10 @@ const Caso CASOS_LINGUAGEM[] = {
  * duas respostas pro mesmo campo. */
 /* O fixture escrevia so `\x89PNG` — quatro bytes sem NUL nenhum, um PNG
  * FALSO. Passava porque a extensao `.png` estava numa lista fixa; agora quem
- * decide o modo automatico e o CONTEUDO, e conteudo sem NUL e texto. O
- * cabecalho de verdade continua depois da assinatura: `\x00\x00\x00\rIHDR`. */
+ * decide o modo automatico e o CONTEUDO, e conteudo sem NUL e texto. O PNG
+ * vem do proprio motor (qrcode): valido pro sistema, nao so "binario". */
 { "ext do aberto e do carregado sao iguais",
-  "import os\nusing open(\"u3.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\") }\n"
+  "import os\nimport qrcode\nqrcode.make(\"oi\").save(\"u3.png\")\n"
   "a = os.loadFile(\"u3.png\")\nf2 = open(\"u3.png\", \"rb\")\npost(a.ext, f2.ext)\nf2.close()\n",
   ".png .png", NULL, 0 },
 { "PoolFile aberto: path, bytes, copy e delete",
@@ -2103,10 +2103,11 @@ const Caso CASOS_LINGUAGEM[] = {
  * por `open()` — ver "TODO ARQUIVO É PoolFile", abaixo. */
 { "PoolFile.copy() copia o conteudo",
   "import os\n"
-  "using open(\"o.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\") }\n"
+  "import qrcode\n"
+  "qrcode.make(\"oi\").save(\"o.png\")\n"
   "a = os.loadFile(\"o.png\")\n"
   "a.copy(\"d.png\")\n"
-  "using open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n", "17", NULL, 0 },
+  "using open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n", "1219", NULL, 0 },
 
 /* ── regex: recursao profunda vira ERRO, nao segfault ───────────────────────
  * O casador é recursivo e gasta um quadro de pilha C por caractere. O teto de

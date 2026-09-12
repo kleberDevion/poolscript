@@ -2,6 +2,7 @@
 # de ponta a ponta sem rede nem banco. Cada metodo e chamado de verdade e o
 # efeito e conferido lendo de volta.
 import os
+import qrcode
 
 dir = "/tmp/ps_e2e"
 if not os.exists(dir) {
@@ -31,12 +32,10 @@ using open(p) as g {
 }
 
 # ── modo binario ────────────────────────────────────────────────────────────
-# Binário DE VERDADE (cabeçalho PNG com bytes NUL): `loadFile` decide pelo
-# conteúdo, não pela extensão — "oi!" num .png é texto e vira str.
-pb = dir + "/b.png"
+pb = dir + "/b.bin"
 using open(pb, "wb") as f {
-    f.write("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR".encode())
-    f.writelines(["oi!".encode()])
+    f.write("oi".encode())
+    f.writelines(["!".encode()])
 }
 using open(pb, "rb") as f {
     post("binario ->", f.read())
@@ -49,9 +48,14 @@ using open(p) as g {
 post("save copiou ->", os.exists(dir + "/copia.txt"))
 
 # ── PoolFile: path/name/ext/size/bytes/save/copy/move/delete ────────────────
-# `loadFile` devolve str pra texto e PoolFile pra BINÁRIO (.png/.pdf/...).
+# `loadFile` devolve str pra texto e PoolFile pra BINÁRIO — decide pelo
+# CONTEÚDO, não pela extensão. O .png é gerado pelo próprio motor (qrcode),
+# então é um PNG de verdade: um "oi!" gravado num .png seria texto (vira str)
+# e o sistema reclamaria do arquivo.
 # `path` é MÉTODO; `name`, `ext` e `size` são CAMPOS (sem parênteses) — é o
 # que o `pool --metadata` declara ("kind": "property").
+pb = dir + "/b.png"
+qrcode.make("oi").save(pb)
 pf = os.loadFile(pb)
 post("path ->", pf.path().endswith("b.png"))
 post("name ->", pf.name)

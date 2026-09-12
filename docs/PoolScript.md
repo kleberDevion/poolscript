@@ -1,4 +1,4 @@
-# PoolScript v15.90.22
+# PoolScript v15.90.23
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.90.22 [PSVM]
+# PoolScript 15.90.23 [PSVM]
 ```
 
 ---

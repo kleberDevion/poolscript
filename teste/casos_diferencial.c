@@ -933,9 +933,12 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #305",
   "import manpu as mp\nusing mp.open(target=\"r.xlsx\") as a {\n    a.write(column=\"full\", cell=\"full\", content=\"a,b\", sep=\",\")\n    post(a.write(column=\"full\", cell=\"full\", content=\"1,2,3,4\", sep=\",\"))\n}\n",
   "Error: Arquivo xlsx tem colunas insuficientes", NULL, 0 },
+/* #306: o PNG e gerado pelo motor (qrcode) — o fixture antigo escrevia
+ * `"\x89PNG…"` como str, e `\x89` em UTF-8 sao DOIS bytes: binario, mas nao
+ * um PNG valido. */
 { "dif #306",
-  "import os\nusing open(\"o.png\", \"wb\") as f { f.write(\"\\x89PNG\\r\\n\\x1a\\n\\x00\\x00\\x00\\rIHDR\") }\na = os.loadFile(\"o.png\")\na.copy(\"d.png\")\nusing open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n",
-  "17", NULL, 0 },
+  "import os\nimport qrcode\nqrcode.make(\"oi\").save(\"o.png\")\na = os.loadFile(\"o.png\")\na.copy(\"d.png\")\nusing open(\"d.png\", \"rb\") as f { post(len(f.read())) }\n",
+  "1219", NULL, 0 },
 { "dif #307",
   "import regex\nalvo = \"x\" * 60000\npost(regex.findall(\"(?:a|(x))*\", alvo))\n",
   "", "RuntimeError: regex: backtracking demais", 1 },
