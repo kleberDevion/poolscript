@@ -291,9 +291,10 @@ if __name__ == "main" {
     # como 0%, sai como se não existisse — e o total fecha bonito porque ele
     # nunca entrou na conta.
     #
-    # Não é hipótese: `ps_compiler_bind.c`, `ps_lexer_bind.c` e
-    # `ps_parser_bind.c` (570 linhas) estão fora do `FONTES` do Makefile desde
-    # sempre, e o benchmark dizia "17 arquivos" sobre um diretório com 20.
+    # Não é hipótese: três `*_bind.c` (570 linhas, ponte pra outro runtime)
+    # ficaram fora do `FONTES` do Makefile desde sempre, e o benchmark dizia
+    # "17 arquivos" sobre um diretório com 20. Foram apagados em 2026-09-12;
+    # a checagem fica pra pegar o próximo .c que entre em vm/ sem entrar no build.
     medidos = arquivos.keys()
     fora = []
     for each e in os.ls("vm") {

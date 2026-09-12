@@ -950,7 +950,7 @@ import 'json'                         # sem barra e sem extensão: nome de módu
 Libs embutidas (lazy-loaded, só carregam quando importadas) — a lista sai de
 `pool --metadata` (campo `modulos`):
 
-`os, sys, json, date, regex, Parsing, dotenv, jwt, hash, bytes, sqlite3, mail,
+`os, sys, json, date, regex, dotenv, jwt, hash, bytes, sqlite3, mail,
 request, qrcode, manpu, psodbc, jinker, sockets, datasentity`.
 
 Os apelidos **não existem**: `import db`, `import requests`, `import mp`,

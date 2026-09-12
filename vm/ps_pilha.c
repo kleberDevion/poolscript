@@ -50,8 +50,8 @@ void ps_pilha_marca(size_t tam)
 }
 
 /* Entrada do processo: a pilha é a do sistema. `getrlimit` dá o tamanho real
- * (8 MB no padrão do Linux, mas `ulimit -s` muda, e o `make oom` roda com
- * limite apertado de propósito). */
+ * (8 MB no padrão do Linux, mas `ulimit -s` muda o valor — por isso é medido,
+ * não uma constante). */
 void ps_pilha_marca_processo(void)
 {
     struct rlimit rl;

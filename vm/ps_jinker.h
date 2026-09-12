@@ -52,8 +52,6 @@ typedef struct {
     void     *ar;
 } PSJkReq;
 
-/* Lê UMA requisição completa da conexão (bloqueante com timeout curto).
- * 0 = ok; -1 = conexão fechada/erro/timeout (fechar e seguir). */
 /* Lê UMA requisição. Devolve:
  *    0  ok
  *   -1  conexão acabou / incompleta -> fechar calado

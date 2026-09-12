@@ -60,7 +60,7 @@ static const char *KEYWORDS[] = {
 };
 
 /* A lista de palavras-chave, pra quem precisa dela FORA do lexer — o
- * `--metadata` a publica e o editor sugere `action`, `if`, `for each`… a
+ * `--metadata` a publica e o editor sugere `funct`, `if`, `for each`… a
  * partir daí, em vez de manter uma cópia digitada que envelhece. */
 const char *const *ps_lexer_keywords(void)
 {
@@ -251,7 +251,7 @@ static void trata_newline(Lexer *lx)
     /* Dentro de `(` e `[` a indentação não conta (expressão multilinha). Mas
      * `{` NÃO entra aqui: ele também abre BLOCO, e um bloco pode ter um
      * sub-bloco `:` dentro — suprimir o NEWLINE/INDENT fazia
-     * `if (x) { action f(): ... }` morrer com "faltou quebra de linha apos
+     * `if (x) { funct f(): ... }` morrer com "faltou quebra de linha apos
      * ':'". Dentro de dicionário literal quem ignora esses tokens é o parser
      * (pula_separadores com grupo_depth > 0). */
     if (lx->paren_depth > 0) return;

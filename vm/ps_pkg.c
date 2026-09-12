@@ -2,9 +2,8 @@
  * Gerenciador de pacotes pool-native — ver ps_pkg.h.
  *
  * A verdade do que está instalado é o SISTEMA DE ARQUIVOS (os .ps em
- * commands/ e libs/); o installed.json é reescrito a partir dele a cada op, só
- * pra `psl` (Python) enxergar o mesmo estado. config.json guarda o
- * registry_url. Nada aqui depende de Python nem de pip.
+ * commands/ e libs/); o installed.json é reescrito a partir dele a cada
+ * operação, pra quem lê o estado de fora. config.json guarda o registry_url.
  */
 #define _GNU_SOURCE 1
 #include <stdio.h>

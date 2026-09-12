@@ -1,14 +1,11 @@
 /*
- * `pool` — o executável da PoolScript. Zero CPython.
+ * `pool` — o executável da PoolScript.
  *
- * Faz o que o `vm_executa_fonte` do plugin faz, chamando a MESMA
- * `ps_roda_fonte`. A diferença é só o que acontece com o erro: aqui vira
- * texto no stderr e código de saída, lá vira exceção do Python.
- *
- * Os comandos de RUNTIME da CLI vivem aqui (rodar, repl, build, help…). Os de
- * PACOTE (`install`/`uninstall`/`list`/`registry`) NÃO: dependem de pip e da
- * árvore de pacotes do Python, que não existem num binário sem CPython — esses
- * são do `psl`. Chamá-los aqui dá um aviso claro em vez de fingir que faz.
+ * Roda o fonte pela `ps_roda_fonte`; o erro vira texto no stderr e código de
+ * saída. Os comandos de RUNTIME (rodar, repl, build, help…) e os de PACOTE
+ * (`psl install`/`uninstall`/`list`/`registry`, implementados em ps_pkg.c)
+ * vivem no MESMO binário: `pool` roda, `psl` gerencia pacotes, e o help e a
+ * doc respeitam essa divisão.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,10 +53,9 @@ static void ajuda(void)
 "  psl registry set-url <url>    Configura o indice de pacotes\n"
 "  psl registry show             Mostra o registry configurado\n"
 "\n"
-"Libs internas: json, date, regex, hash, jwt, sys, dotenv, os, datasentity,\n"
-"  Parsing, sqlite3, mail, request, qrcode, manpu, psodbc, jinker\n"
+"Libs internas: %s\n"
 "\n"
-"Docs: " SPEC_URL "\n", PS_VERSAO);
+"Docs: " SPEC_URL "\n", PS_VERSAO, ps_modulos_publicos());
 }
 
 /* Lê o arquivo inteiro. Devolve NULL e reclama no stderr se não der. */
@@ -548,7 +544,7 @@ static void jsonf(const char *chave, const char *valor)
 /* `pool --tokens` — o fonte vem pelo stdin e sai a lista de tokens do LEXER
  * DE VERDADE, em JSON:
  *
- *   [{"t":"KW","l":1,"c":1,"n":6,"v":"action"}, ...]
+ *   [{"t":"KW","l":1,"c":1,"n":5,"v":"funct"}, ...]
  *
  * É o que dá realce ao editor sem existir uma segunda gramática pra divergir
  * do motor. `n` é o comprimento em CARACTERES (o editor conta caractere, não

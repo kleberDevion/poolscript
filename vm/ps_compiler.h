@@ -7,9 +7,8 @@
  * precisaria alocar objetos sob o coletor antes de existir uma VM — e
  * strings de constante nasceriam como lixo coletável no meio da compilação.
  *
- * A tabela de protótipos já sai PLANA (o achatamento acontece em
- * Python acontece aqui direto): `MAKE_FUNCTION` carrega índice de protótipo,
- * não índice de constante.
+ * A tabela de protótipos já sai PLANA do compilador: `MAKE_FUNCTION` carrega
+ * índice de protótipo, não índice de constante.
  */
 #ifndef PS_COMPILER_H
 #define PS_COMPILER_H

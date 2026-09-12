@@ -1,5 +1,5 @@
-/* Tabelas do padrão QR (ISO/IEC 18004), extraídas da lib `qrcode`
- * pra não errar na transcrição. Geradas por script — não editar à mão. */
+/* Tabelas do padrão QR (ISO/IEC 18004). Geradas por script — não editar à
+ * mão. */
 #ifndef PS_QR_TABLES_H
 #define PS_QR_TABLES_H
 #include <stdint.h>

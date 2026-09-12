@@ -4,8 +4,8 @@
  * libqrencode não tem `.a` nesta máquina (só `.so`), e o encoder de QR não é
  * sensível como TLS — então é escrito à mão, como o HTTP foi. Modo byte,
  * versões 1..40, níveis L/M/Q/H, seleção automática de versão e de máscara
- * (pelas 4 regras de penalidade do padrão). A saída é a MESMA matriz que a
- * lib `qrcode` do Python produz — validado grade a grade.
+ * (pelas 4 regras de penalidade do padrão). A saída é a matriz do padrão
+ * ISO/IEC 18004.
  *
  * O PNG sai pela libpng (essa tem `.a`, entra estática).
  */

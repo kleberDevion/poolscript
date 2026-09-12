@@ -1,5 +1,5 @@
 /*
- * Leitura e escrita de .xlsx em C — sem openpyxl, sem libzip.
+ * Leitura e escrita de .xlsx em C — sem libzip.
  *
  * xlsx é um ZIP de XMLs (OOXML). libzip não tem `.a` aqui, então o container
  * ZIP é feito à mão sobre a zlib (que já entra estática pelo PNG); o XML das

@@ -38,9 +38,10 @@ typedef struct {
  * tamanho do corpo lido: 0 = sem limite; estourar vira erro MemoryError.
  * `timeout` em segundos.
  *
- * Devolve 0 e preenche `r`. Em erro de rede devolve 0 também, mas com
- * `r->status == -1` e `r->erro`/`r->erro_tipo` — resposta HTTP de erro
- * (404, 500) NÃO é erro de rede: volta com o status certo e o corpo. */
+ * Devolve 0 e preenche `r`. Erro de rede, timeout ou teto estourado devolve
+ * -1, com `r->status == -1` e `r->erro`/`r->erro_tipo` — resposta HTTP de
+ * erro (404, 500) NÃO é erro de rede: devolve 0, com o status certo e o
+ * corpo. */
 int ps_http_request(const char *metodo, const char *url, const char *cabs,
                     const char *corpo, size_t ncorpo, int timeout,
                     long teto, PSHttpResp *r);

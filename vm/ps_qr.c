@@ -5,7 +5,7 @@
  * terminador + padding), quebra em blocos, calcula Reed-Solomon por bloco,
  * intercala data+EC, desenha os padrões fixos, distribui os bits em zigue-zague,
  * testa as 8 máscaras pela penalidade do padrão e grava a escolhida com o
- * format/version info. A matriz final é idêntica à da lib `qrcode`.
+ * format/version info. A matriz final é a do padrão ISO/IEC 18004.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,9 +163,9 @@ static void monta_funcoes(uint8_t *m, int dim, int v)
             if (!perto_finder) alinhamento(m, dim, cr, cc);
         }
 
-    /* dark module: reservado mas CLARO por ora — a lib avalia a penalidade com
-     * ele claro (test=True), e o valor real (escuro) entra no grava_format da
-     * máscara vencedora. */
+    /* dark module: reservado mas CLARO por ora — a penalidade é avaliada com
+     * ele claro, e o valor real (escuro) entra no grava_format da máscara
+     * vencedora. */
     poe(m, dim, dim - 8, 8, 0, 1);
 
     /* reserva format info (cor 0 por ora) */
@@ -222,7 +222,7 @@ static int mascara_bit(int mask, int r, int c)
     }
 }
 
-/* Penalidade do padrão (4 regras) — igual ao _lost_point do qrcode. */
+/* Penalidade do padrão (as 4 regras da ISO/IEC 18004). */
 static int penalidade(const uint8_t *m, int dim)
 {
     int p = 0;
@@ -271,10 +271,10 @@ static int penalidade(const uint8_t *m, int dim)
             }
             if (ok1 || ok2) p += 40;
         }
-    /* regra 4: desvio da proporção de escuros. A lib faz em float:
-     * int(abs(dark/total*100 - 50)/5). Fazer `dark*100/total` em inteiro
-     * arredonda cedo e infla a penalidade — a conta abaixo é o float truncado,
-     * exata: floor(|100*dark - 50*total| / (5*total)). */
+    /* regra 4: desvio da proporção de escuros — o padrão define
+     * |escuros/total·100 − 50| / 5, truncado. Fazer `dark*100/total` em
+     * inteiro arredonda cedo e infla a penalidade — a conta abaixo é essa
+     * fração truncada, exata: floor(|100*dark - 50*total| / (5*total)). */
     int escuros = 0;
     for (int i = 0; i < dim * dim; i++) escuros += m[i] & 1;
     int total = dim * dim;
@@ -431,8 +431,8 @@ int ps_qr_matriz(const char *dados, int ndados, char nivel,
     free(fluxo);
 
     /* testa as 8 máscaras. A penalidade é medida com as áreas de format/version
-     * e o dark module CLAROS (é o test=True da lib) — gravar os bits reais aqui
-     * mudaria a penalidade e a máscara escolhida. */
+     * e o dark module CLAROS — gravar os bits reais aqui mudaria a penalidade
+     * e a máscara escolhida. */
     int melhor_pen = -1, melhor_mask = 0;
     for (int mask = 0; mask < 8; mask++) {
         uint8_t *t = malloc((size_t)dim * dim);
@@ -499,7 +499,9 @@ static void png_escreve_cb(png_structp p, png_bytep dados, png_size_t n)
 }
 static void png_flush_cb(png_structp p) { (void)p; }
 
-/* "black"/"white"/"#rrggbb"/"#rgb" → RGB. Default preto. */
+/* Nome de cor (black, white, red, green, blue, yellow, cyan, magenta, gray),
+ * "#rrggbb" ou "#rgb" → RGB. Nome desconhecido cai no default do CHAMADOR
+ * (`claro_padrao`): preto pro traço, branco pro fundo — sem erro. */
 static void cor_rgb(const char *nome, unsigned char rgb[3], int claro_padrao)
 {
     static const struct { const char *n; unsigned char r,g,b; } TAB[] = {

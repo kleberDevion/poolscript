@@ -20649,6 +20649,32 @@ static const ModuloNat MODULOS[] = {
 };
 #define N_MODULOS ((int)(sizeof(MODULOS) / sizeof(MODULOS[0])))
 
+/* Os módulos que o `import` enxerga, separados por vírgula, pro `--help`.
+ * Sai da MESMA tabela que o `import` e o `--metadata` usam — a lista digitada
+ * no help já envelhecia (citava `Parsing`, que é interno, e não citava
+ * `bytes`, `sockets`…). Quebra a linha perto da coluna 70. */
+const char *ps_modulos_publicos(void)
+{
+    static char buf[1024];
+    size_t j = 0, col = 0;
+    buf[0] = '\0';
+    for (int i = 0; i < N_MODULOS; i++) {
+        const char *nome = MODULOS[i].nome;
+        if (nome[0] == '_') continue;             /* interno: `_stdout`, `_Parsing` */
+        size_t tam = strlen(nome);
+        if (j + tam + 6 >= sizeof(buf)) break;
+        if (j) {
+            buf[j++] = ',';
+            if (col + tam + 2 > 60) { buf[j++] = '\n'; buf[j++] = ' '; buf[j++] = ' '; col = 2; }
+            else { buf[j++] = ' '; col++; }
+        }
+        memcpy(buf + j, nome, tam);
+        j += tam; col += tam;
+        buf[j] = '\0';
+    }
+    return buf;
+}
+
 /* Busca inclusive os que o `import` não enxerga (`_stdout`, `_Parsing`). */
 static int acha_modulo_oculto(const char *nome)
 {

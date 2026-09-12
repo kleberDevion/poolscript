@@ -421,7 +421,7 @@ static void col_letra(int col, char *out) {
 int ps_xlsx_escreve(const char *caminho, const PSGrade *g, char *erro, size_t ecap)
 {
     /* sheet1.xml com todas as células como inlineStr (t="inlineStr") — evita a
-     * tabela de shared strings e ainda abre no Excel/LibreOffice/openpyxl */
+     * tabela de shared strings e ainda abre em qualquer leitor de planilha */
     Buf sheet = {0};
     const char *decl = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>";
     buf_add(&sheet, decl, (int)strlen(decl));
