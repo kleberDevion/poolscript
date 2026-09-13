@@ -31,8 +31,8 @@ typedef struct {
     PSArena   *arena;
     PSParseResult *out;
     /* Dentro de Entity o decorador NÃO engole a action seguinte: os dois
-     * viram entradas separadas do corpo (é o capture_action=False do parser
-     * Python). Fora de Entity, `@NonNull action f()` captura. */
+     * viram entradas separadas do corpo. Fora de Entity,
+     * `@NonNull action f()` captura. */
     int        dec_sem_captura;
     /* `for each x in <expr> {` — ali o `{` ABRE BLOCO, não interpola.
      * Sem isto, `for each c in "abc" {` lia `"abc" {` como interpolação e o
@@ -70,7 +70,7 @@ typedef struct {
  * marcar deixaria a descida sem freio nenhum. O contador é o cinto de
  * segurança do freio — nunca é ele que dispara em uso real.
  *
- * É o que CPython faz com `PyOS_CheckStack`, e o SQLite no parser dele. */
+ * É o mesmo freio que o SQLite usa no parser dele. */
 #define PS_PARSE_PROF_MAX 100000
 
 /* ── reservadas que também não podem virar nome ─────────────────────────── */
@@ -376,8 +376,8 @@ static const char *exige_nome(P *p, const char *contexto)
 }
 
 /* Um argumento pode seguir outro SEM vírgula: `post("a" b)` são dois
- * argumentos. É a justaposição da linguagem, e o parser Python a implementa
- * continuando o laço quando o token seguinte puder iniciar expressão. */
+ * argumentos. É a justaposição da linguagem: o laço de argumentos continua
+ * quando o token seguinte puder iniciar expressão. */
 /* keywords que valem como NOME em expressão (post, self, list...) — espelho
  * reservadas que ABREM expressão. `if`/`return`/`while` etc. NÃO abrem
  * expressão: sem isso, `f(x` esquecido aberto engolia o `if` da linha de
@@ -879,7 +879,7 @@ static PSNode *primario(P *p)
                 if (!aceita_kw(p, "in")) {
                     perro(p, "esperado 'in' apos o tipo de 'count'", atual(p)); return NULL;
                 }
-                PSNode *cont = soma(p);          /* parse_add no Python */
+                PSNode *cont = soma(p);          /* nível `+`/`-`: não engole `in`/`is`/comparação */
                 if (FALHOU(p)) return NULL;
                 PSNode *n = ps_node_novo(p->arena,
                                          eh_each ? N_COUNT_EACH_EXPR : N_COUNT_EXPR,
@@ -968,7 +968,7 @@ static PSNode *posfixo(P *p)
                     PSNode *valor = expressao(p);
                     if (FALHOU(p)) return NULL;
                     /* COMPREENSÃO como argumento: `post(n * 2 for each n in l)`
-                     * — a forma do Python, sem os colchetes. Só vale como
+                     * — sem os colchetes. Só vale como
                      * argumento ÚNICO e sem nome, que é onde ela não é
                      * ambígua com uma lista de argumentos. */
                     if (c->lista.n == 0 && nome_arg == NULL && checa_kw(p, "for")) {
@@ -997,8 +997,8 @@ static PSNode *posfixo(P *p)
                         valor = lc;
                     }
                     /* `f(a, x for each x in l)` — ambíguo: não dá pra saber se
-                     * a compreensão é um argumento ou se falta um `)`. Python
-                     * também recusa; a mensagem diz o conserto. */
+                     * a compreensão é um argumento ou se falta um `)`. Recusa,
+                     * e a mensagem diz o conserto. */
                     else if (checa_kw(p, "for")) {
                         perro(p, "compreensao so vale como argumento unico — ponha entre colchetes: [x for each ...]",
                               atual(p));
@@ -1152,8 +1152,7 @@ static PSNode *unario(P *p)
     return potencia(p);
 }
 
-/* `**` — I11. A precedencia dele nao cabe na cadeia normal, e a regra e a do
- * Python:
+/* `**` — I11. A precedencia dele nao cabe na cadeia normal; a regra:
  *
  *   - liga mais FORTE que o unario a ESQUERDA:  -2 ** 2  ==  -(2 ** 2)  == -4
  *   - liga mais FRACO que o unario a DIREITA:    2 ** -1  ==  2 ** (-1)
@@ -1211,8 +1210,7 @@ static int op_eh(PSToken *t, const char *s)
     return t->type == T_OP && t->texto && strcmp(t->texto, s) == 0;
 }
 
-/* `//` (divisao inteira) tem a MESMA precedencia de `/` e `%`, como no
- * Python — I11. */
+/* `//` (divisao inteira) tem a MESMA precedencia de `/` e `%` — I11. */
 NIVEL_BIN(mul,    unario, op_eh(t, "*") || op_eh(t, "/") || op_eh(t, "%")
                        || op_eh(t, "//"))
 NIVEL_BIN(soma,   mul,    op_eh(t, "+") || op_eh(t, "-"))
@@ -1379,7 +1377,7 @@ static PSNode *e_ou(P *p)
     return no;
 }
 
-/* Topo da expressão: nível `or` + condicional inline (ternário Python)
+/* Topo da expressão: nível `or` + condicional inline (ternário)
  * `A if cond else B`. `if` só é ternário DEPOIS de uma expressão — no início
  * de statement ele já foi despachado como `if` statement, sem ambiguidade. */
 /* Corpo real; a casca `expressao` conta a profundidade. */
@@ -1704,7 +1702,7 @@ static int count_tipo_valor(P *p, const char **tipo, PSNode **valor)
 }
 
 /* Lado esquerdo do count infixo/sufixo: `int(7)` (Call), `int` (TypeName)
- * ou `int` (Name). Espelha _extract_count_left do parser Python. */
+ * ou `int` (Name). */
 static int count_esquerda(P *p, PSNode *no, PSToken *tok,
                           const char **tipo, PSNode **valor)
 {
@@ -1842,8 +1840,8 @@ static PSNode *alvos_unpack(P *p);
  * troca do bubble sort — dava `SyntaxError: expressao invalida`. Aqui so se
  * lia NOME, entao `d["a"], d["b"] = 1, 2` e `o.x, o.y = 1, 2` caiam junto:
  * a linguagem tinha desempacotamento e tinha atribuicao indexada, e as duas
- * nao se encontravam. No CPython todo alvo de atribuicao serve de alvo de
- * desempacotamento, e e o que passa a valer aqui.
+ * nao se encontravam. Agora todo alvo de atribuicao serve de alvo de
+ * desempacotamento.
  *
  * Fatia (`l[1:2], x = ...`) NAO entra: `l[1:2] = ...` tambem nao existe na
  * linguagem, e aceitar so de um lado seria inventar meia feature. */
@@ -2077,7 +2075,7 @@ static PSNode *for_stmt(P *p)
     p->pos++;                                  /* for */
     if (!aceita_kw(p, "each")) { perro(p, "esperado 'each' em 'for each'", atual(p)); return NULL; }
 
-    /* `for each a, b in pares` — DESEMPACOTAMENTO, como o Python.
+    /* `for each a, b in pares` — DESEMPACOTAMENTO.
      *
      * Antes o parser lia UM nome e exigia `in`, entao a virgula dava
      * "esperado 'in' no loop for each" e quem itera lista de pares tinha que
@@ -2086,7 +2084,7 @@ static PSNode *for_stmt(P *p)
      * `a, b = [1, 2]`, que ja funcionava. So o laco nao os chamava.
      *
      * O alvo do laco e o MESMO alvo da atribuicao: `for each l[0] in xs` e
-     * `for each a, o.x in pares` valem, como no CPython. Sem isto o indexado
+     * `for each a, o.x in pares` valem. Sem isto o indexado
      * so seria alvo da segunda posicao em diante — a metade que a gente
      * lembrou de arrumar. */
     PSToken *nt = atual(p);
@@ -2144,7 +2142,7 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
         for (;;) {
             PSToken *pt = atual(p);
             const char *pn;
-            /* TIPO ANTES DO NOME, como em Java: `funct f(String corpo, int n)`.
+            /* TIPO ANTES DO NOME: `funct f(String corpo, int n)`.
              * O tipo é o token que vem colado ANTES de um nome — a mesma forma
              * do campo de Entity e do retorno da funct. Sem nome depois, o
              * token é o próprio nome do parâmetro (`funct f(corpo)`). */
@@ -2274,7 +2272,7 @@ static PSNode *statement(P *p)
 
     if (t->type == T_EOF) return NULL;
 
-    /* `def f(x) { ... }` — quem vem do Python escreve isto, e a linguagem
+    /* `def f(x) { ... }` — quem vem de outra linguagem escreve isto, e a linguagem
      * respondia "faltou ':' no dicionario" apontando pra DENTRO do corpo.
      *
      * O motivo: `def` nao e palavra da linguagem. Entao `def` vira um nome
@@ -2339,7 +2337,7 @@ static PSNode *statement(P *p)
         p->pos++;
         return ps_node_novo(p->arena, N_BREAK_STMT, t->line, t->col);
     }
-    /* `pass` — no-op, igual ao Python: vale em qualquer lugar onde caberia um
+    /* `pass` — no-op: vale em qualquer lugar onde caberia um
      * statement, e serve pra dar corpo a um bloco que não faz nada. */
     if (checa_kw(p, "pass")) {
         p->pos++;
@@ -2397,8 +2395,8 @@ static PSNode *statement(P *p)
         }
         return n;
     }
-    /* `run_selfwith_` SAIU: o ponto de entrada agora é `if __name__ == "main"`,
-     * a forma do Python. A recusa diz o conserto em vez de virar
+    /* `run_selfwith_` SAIU: o ponto de entrada agora é `if __name__ == "main"`.
+     * A recusa diz o conserto em vez de virar
      * "variável não definida: run_selfwith_" lá na frente. */
     if (t->type == T_IDENT && t->texto && strcmp(t->texto, "run_selfwith_") == 0) {
         perro(p, "run_selfwith_ nao existe mais — use: if __name__ == \"main\"", t);
@@ -2491,7 +2489,7 @@ static PSNode *statement(P *p)
                 perro(p, m, mt);
                 return NULL;
             }
-            /* `pass` sozinho: corpo vazio de classe, como no Python. Não vira
+            /* `pass` sozinho: corpo vazio de classe. Não vira
              * membro nenhum — só ocupa o lugar pra a Entity poder existir sem
              * campo nem método. */
             if (mt->type == T_KW && mt->texto && strcmp(mt->texto, "pass") == 0) {
@@ -3049,8 +3047,8 @@ static PSNode *statement(P *p)
             salvo = p->pos;
             pula_separadores(p);
         }
-        /* `try { } finally { }` SEM catch nenhum é válido, e é o que o Python
-         * faz: o finally roda e a exceção (se houver) propaga depois dele. O
+        /* `try { } finally { }` SEM catch nenhum é válido: o finally roda e
+         * a exceção (se houver) propaga depois dele. O
          * parser exigia catch, então a forma "faça isto aconteça o que
          * acontecer, sem tratar o erro" — fechar arquivo, soltar trava,
          * derrubar servidor — não existia. Só é erro quando não há NEM catch
