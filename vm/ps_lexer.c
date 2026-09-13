@@ -12,7 +12,7 @@
  *   - `<hex>` / `<nome>` vira COLOR só se o hex tiver exatamente 3 ou 6
  *     dígitos ou o nome estiver na tabela; senão `<` volta a ser operador.
  *
- * Sem dependência do CPython: só a libc.
+ * Sem dependência de fora: só a libc.
  */
 #include "ps_lexer.h"
 
@@ -144,7 +144,7 @@ static char espia(Lexer *lx, int off)
  * caracteres, não bytes. Byte de continuação de UTF-8 é 10xxxxxx: contá-lo
  * faria a coluna derivar em toda linha com acento — foi exatamente o que o
  * teste diferencial pegou em `post("Clima: " {grau} "°")`, onde o `°` (2
- * bytes) empurrava a coluna 1 casa à frente do lexer em Python. */
+ * bytes) empurrava a coluna 1 casa à frente do lexer do interpretador. */
 static void avanca1(Lexer *lx)
 {
     if (((unsigned char)lx->src[lx->pos] & 0xC0) != 0x80) lx->col++;
@@ -383,15 +383,15 @@ static int buf_push_utf8(Buf *bf, unsigned long cp)
 }
 
 /* Processa o escape que começa no '\\' em lx->pos, empurra o resultado (UTF-8)
- * em bf e avança lx->pos/col pelos chars consumidos. Espelha o _decode_escape
- * reconhecidos: \n \t \r \a \b \f \v \e, \\ \" \', octal \033,
- * hex \x1b, unicode \uXXXX/\UXXXXXXXX.
+ * em bf e avança lx->pos/col pelos chars consumidos. Escapes reconhecidos:
+ * \n \t \r \a \b \f \v \e, \\ \" \', octal \033, hex \x1b,
+ * unicode \uXXXX/\UXXXXXXXX.
  *
- * DESCONHECIDO MANTÉM A BARRA E AVISA — como o CPython. Antes a barra sumia,
- * calada: `"C:\pasta"` virava `C:pasta` (7 bytes) em vez de `C:\pasta` (8), e
+ * DESCONHECIDO MANTÉM A BARRA E AVISA. Antes a barra sumia, calada:
+ * `"C:\pasta"` virava `C:pasta` (7 bytes) em vez de `C:\pasta` (8), e
  * ninguém ficava sabendo. Perder um byte do dado do usuário em silêncio é o
- * pior dos dois mundos; o Python emite `SyntaxWarning: invalid escape
- * sequence '\p'` e preserva os dois caracteres. 0 ok, -1 mem. */
+ * pior dos dois mundos; agora sai o aviso e os dois caracteres ficam no
+ * texto. 0 ok, -1 mem. */
 static int decode_escape(Lexer *lx, Buf *bf)
 {
     const char *s = lx->src;

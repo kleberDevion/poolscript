@@ -1,21 +1,21 @@
 /*
  * Motor de expressão regular da PoolScript, em C puro.
  *
- * Sem `Python.h` e sem dependência da VM — recebe e devolve buffers de bytes.
- * É o que permite `regex_lib`, `parsing_lib` e os métodos `match`/`findall`/
- * `sub` de string saírem do Python.
+ * Sem dependência da VM — recebe e devolve buffers de bytes. É o que permite
+ * `regex_lib`, `parsing_lib` e os métodos `match`/`findall`/`sub` de string
+ * rodarem em C puro.
  *
- * Backtracking recursivo, não autômato. A escolha é deliberada: o `re` do
- * Python também é backtracking, e reproduzir a semântica dele (ganância,
- * ordem de alternativas, quais grupos ficam preenchidos) é o requisito —
- * um autômato daria outra resposta em casos como `(a|ab)c`.
+ * Backtracking recursivo, não autômato. A escolha é deliberada: a semântica
+ * de backtracking (ganância, ordem de alternativas, quais grupos ficam
+ * preenchidos) é o requisito, e os dois motores têm que dar a mesma resposta
+ * — um autômato daria outra em casos como `(a|ab)c`.
  *
  * Suporta: classes, quantificadores (gulosos/preguiçosos), alternância,
  * grupos, âncoras `^ $ \A \Z \b \B`, `\d \w \s` e negações, retrovisor
  * (`\1`..`\9`), grupo nomeado `(?P<n>...)` (tratado como numerado), flags
  * inline global e com escopo `(?i)`/`(?m)`/`(?s)`/`(?i:...)`, e
  * lookahead/lookbehind `(?=)`/`(?!)`/`(?<=)`/`(?<!)` (lookbehind de largura
- * fixa, como o `re`). IGNORECASE dobra ASCII + Latin-1 (café/CAFÉ); outros
+ * fixa). IGNORECASE dobra ASCII + Latin-1 (café/CAFÉ); outros
  * scripts (grego, cirílico) não dobram.
  *
  * O que NÃO suporta, e para com erro em vez de errar em silêncio: grupo

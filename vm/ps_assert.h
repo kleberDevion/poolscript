@@ -11,9 +11,8 @@
  * de GC esquecida — nada disso vira falha enquanto não virar segfault. Com
  * 41% de ramo coberto, há muito caminho onde não vira.
  *
- * É a diferença entre "não quebrou" e "as invariantes valeram". CPython
- * compila `--with-pydebug` e roda a suíte nos dois modos; o V8 tem `DCHECK`;
- * o SQLite roda com `SQLITE_DEBUG` e sem.
+ * É a diferença entre "não quebrou" e "as invariantes valeram". O SQLite roda
+ * a suíte com `SQLITE_DEBUG` e sem.
  *
  *     make check          binário normal: PS_ASSERT some, custo zero
  *     make check-debug    a MESMA suíte com -DPS_DEBUG: invariantes valendo

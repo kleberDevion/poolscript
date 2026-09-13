@@ -252,6 +252,51 @@ funct acha_assinatura_torta(caminho, linhas, achados) {
 }
 
 
+# 7. Menção a tecnologia de outra linguagem em qualquer arquivo de `vm/`.
+#
+# Regra do dono: nem em comentário. Comentário que diz "como o Python faz"
+# descreve outro motor, não este — e envelhece sozinho quando este muda. A
+# varredura de 2026-09-12 achou 288 linhas assim, todas reescritas para dizer
+# o que ESTE código faz. Esta regra é o que impede a volta: a lista de nomes
+# é de palavras inteiras (case-insensitive), e vale pra `.c`, `.h` e `.def`.
+FORA = "(?i)\\b(python|cpython|pep ?[0-9]+|lua|java|node\\.js|ruby|golang|smtplib|openpyxl|flask|pypi|pip|numpy|pytest)\\b"
+
+# Exceção única, do dono: a nota dele registrando que REMOVEU uma menção cita
+# a palavra ao dizer o que tirou. Padrão de texto, não linha (linha desloca).
+ACEITOS_FORA = ["REMOVI ESSE COMENTARIO EM MENÇÃO A FLASK"]
+
+funct acha_tecnologia_de_fora(caminho, linhas, achados) {
+    i = 0
+    while i < len(linhas) {
+        aceita = false
+        for each a in ACEITOS_FORA {
+            if a in linhas[i] {
+                aceita = true
+            }
+        }
+        if not aceita and regex.search(FORA, linhas[i]) {
+            achados.append([caminho, i + 1,
+                            "menciona tecnologia de outra linguagem (regra do dono: nem em comentario)",
+                            linhas[i].strip()])
+        }
+        i = i + 1
+    }
+}
+
+
+funct arquivos_vm_todos() {
+    saida = []
+    for each e in os.ls(FONTES) {
+        n = e["name"]
+        if n.endswith(".c") or n.endswith(".h") or n.endswith(".def") {
+            saida.append(FONTES + "/" + n)
+        }
+    }
+    saida.sort()
+    return saida
+}
+
+
 if __name__ == "main" {
     lista = false
     for each a in sys.argv {
@@ -270,6 +315,9 @@ if __name__ == "main" {
         acha_contador(caminho, linhas, achados)
         acha_opcode_solto(caminho, linhas, achados)
         acha_assinatura_torta(caminho, linhas, achados)
+    }
+    for each caminho in arquivos_vm_todos() {
+        acha_tecnologia_de_fora(caminho, os.readFile(caminho).split("\n"), achados)
     }
 
     post("")

@@ -384,9 +384,9 @@ static void json_str(const char *s)
  * o editor roda a cada tecla, o que a CI roda em arquivo que veio de fora, e o
  * que o `psl install` roda em pacote de TERCEIRO.
  *
- * É a convenção de todo conferidor: `node --check`, `python -m py_compile`,
- * `ruby -c`, `tsc --noEmit`, `gofmt -e`. O JSON no stdout não muda — quem lê o
- * JSON continua lendo igual; quem lê o rc passa a poder confiar nele.
+ * É a convenção de todo conferidor de sintaxe: o código de saída diz se
+ * passou. O JSON no stdout não muda — quem lê o JSON continua lendo igual;
+ * quem lê o rc passa a poder confiar nele.
  *
  * Erro de LEITURA (arquivo que não abre, sem memória) também sai != 0: não
  * conseguir conferir não é conferir e aprovar. */

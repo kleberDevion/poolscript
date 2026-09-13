@@ -1,9 +1,9 @@
 /*
- * SMTP, IMAP e MIME em C — sem `Python.h`.
+ * SMTP, IMAP e MIME em C.
  *
  * O TLS vem do OpenSSL do sistema, SEM verificação de certificado: é o que o
- * smtplib/imaplib do interpretador fazem por padrão (contexto stdlib), e
- * divergir aqui faria o mesmo script conectar num motor e falhar no outro.
+ * interpretador faz por padrão, e divergir aqui faria o mesmo script conectar
+ * num motor e falhar no outro.
  *
  * Erro: as funções devolvem -1 (ou NULL) e escrevem a mensagem em `erro` —
  * quem converte pra DatabaseError/OSError/etc. é a VM, não esta camada.

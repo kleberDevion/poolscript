@@ -9,8 +9,7 @@
  * escolher acaba sendo "o valor que faz o teste calar".
  *
  * O que decide é a FOLGA QUE SOBRA. Aqui se marca a base ao entrar e se mede a
- * distância no meio da recursão. É o que o CPython faz em `PyOS_CheckStack` e
- * o SQLite no parser.
+ * distância no meio da recursão. É o que o SQLite faz no parser.
  *
  * Vive em módulo próprio porque três unidades precisam: o parser (descida
  * recursiva de expressão e bloco), a VM (impressão de estrutura aninhada) e o

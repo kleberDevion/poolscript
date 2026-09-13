@@ -134,8 +134,8 @@ PS_OP(CELL_SET_NAME, 85, "CELL_SET_NAME")
  * [ini, fim, passo, i] e o item sai por aritmética. */
 PS_OP(ITER_RANGE, 86, "ITER_RANGE")
 
-/* `from mod import x`: MESMA busca do GET_MEMBER, erro diferente. O Python
- * separa os dois — `mod.x` inexistente e AttributeError "module 'mod' has no
+/* `from mod import x`: MESMA busca do GET_MEMBER, erro diferente. Sao dois
+ * erros — `mod.x` inexistente e AttributeError "module 'mod' has no
  * attribute 'x'"; `from mod import x` e ImportError "cannot import name 'x'
  * from 'mod' (arquivo)". Sem opcode proprio a VM nao sabe qual dos dois. */
 PS_OP(IMPORT_FROM, 87, "IMPORT_FROM")
@@ -152,7 +152,7 @@ PS_OP(FLOORDIV, 89, "FLOORDIV")
  * valor] e `SET_MEMBER` quer [objeto, valor] — o valor por ULTIMO.
  *
  * A alternativa era um INDEX_SET/SET_MEMBER "invertido", com a semantica
- * inteira duplicada (lista x dict, os erros do CPython, o corte de private).
+ * inteira duplicada (lista x dict, as frases de erro, o corte de private).
  * Duas copias da mesma regra e' o que garante que uma delas envelhece
  * sozinha; girar a pilha em tres linhas reusa a original inteira. */
 PS_OP(SWAP, 90, "SWAP")      /* [.., a, b]    -> [.., b, a]    */

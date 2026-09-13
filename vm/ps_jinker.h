@@ -122,13 +122,13 @@ int  ps_jk_multipart(const char *corpo, size_t n, const char *boundary,
 void ps_jk_partes_solta(PSJkParte *p, int n);
 
 /* ── utilidades ─────────────────────────────────────────────────────────── */
-/* MIME por extensão — mesma tabela que o mimetypes do Python responde pros
- * tipos comuns; desconhecido = application/octet-stream. */
+/* MIME por extensão — tabela fixa com os tipos comuns; desconhecido =
+ * application/octet-stream. */
 const char *ps_jk_mime(const char *caminho);
 
-/* Percent-decoding in-place ('+' NÃO vira espaço — igual unquote do path). */
+/* Percent-decoding in-place ('+' NÃO vira espaço — regra do path). */
 void ps_jk_urldecode(char *s);
-/* Versão de query string ('+' vira espaço, igual parse_qs). */
+/* Versão de query string ('+' vira espaço). */
 void ps_jk_urldecode_qs(char *s);
 
 /* ── TLS ────────────────────────────────────────────────────────────────── */

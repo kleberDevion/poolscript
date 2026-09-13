@@ -1,5 +1,5 @@
 /*
- * Gerenciador de pacotes pool-native em C — só lib/comando `.ps`, ZERO pip.
+ * Gerenciador de pacotes pool-native em C — só lib/comando `.ps`.
  *
  * Gerência de pacotes: instala `.ps` como comando global
  * (com shim em ~/.poolscript/bin) ou como lib importável (~/.poolscript/libs,

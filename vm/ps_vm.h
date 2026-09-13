@@ -1,10 +1,10 @@
 /*
- * Entrada pura da VM da PoolScript — sem `Python.h`.
+ * Entrada pura da VM da PoolScript.
  *
  * O mesmo `poolscript_vm.c` compila de dois jeitos:
  *
- *   com  -DPS_MODULO_PYTHON  → extensão `.so` do CPython (testes diferenciais)
- *   sem  ela                 → objeto de um binário standalone
+ *   com a macro da extensão de teste diferencial → módulo carregável `.so`
+ *   sem ela                                       → objeto de um binário standalone
  *
  * As duas formas chamam `ps_roda_fonte`, então não existe "funciona no plugin
  * mas não no binário": é literalmente o mesmo caminho.
@@ -43,8 +43,8 @@ typedef struct {
     char       tipo_nome[64];  /* nome do erro em runtime — o que o `catch` compara */
     int        linha;
     int        col;
-    /* Traceback do runtime: do mais externo (<module>) ao mais interno, na
-     * ordem do Python. `ntb == 0` quando não há (erro de sintaxe, etc.). */
+    /* Traceback do runtime: do mais externo (<module>) ao mais interno.
+     * `ntb == 0` quando não há (erro de sintaxe, etc.). */
     PSQuadroTB tb[64];
     int        ntb;
 } PSErroExec;
@@ -79,8 +79,8 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
  *
  * Sai do próprio motor (tabelas MODULOS[]/METODOS_*), que é a única fonte que
  * não tem como ficar defasada. É o que o editor (autocomplete) e a auditoria
- * de assinatura da doc consomem — antes isso era introspecção da stdlib em
- * Python, o que amarrava o tooling ao interpretador. */
+ * de assinatura da doc consomem — antes isso era introspecção da stdlib do
+ * interpretador, o que amarrava o tooling a ele. */
 void ps_metadata_json(FILE *saida);
 
 /* Os módulos importáveis, separados por vírgula (com quebras de linha), da

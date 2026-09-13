@@ -38,7 +38,7 @@ extern char  *__gmpz_get_str(char *, int, mpz_srcptr);
 extern void   __gmpz_add(mpz_ptr, mpz_srcptr, mpz_srcptr);
 extern void   __gmpz_sub(mpz_ptr, mpz_srcptr, mpz_srcptr);
 extern void   __gmpz_mul(mpz_ptr, mpz_srcptr, mpz_srcptr);
-extern void   __gmpz_fdiv_q(mpz_ptr, mpz_srcptr, mpz_srcptr);   /* divisão pra baixo (Python) */
+extern void   __gmpz_fdiv_q(mpz_ptr, mpz_srcptr, mpz_srcptr);   /* divisão pra baixo (floor) */
 extern void   __gmpz_fdiv_r(mpz_ptr, mpz_srcptr, mpz_srcptr);   /* módulo com sinal do divisor */
 extern int    __gmpz_cmp(mpz_srcptr, mpz_srcptr);
 extern int    __gmpz_cmp_si(mpz_srcptr, long);

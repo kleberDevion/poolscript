@@ -1,8 +1,8 @@
 /*
- * Lexer da PoolScript em C puro — sem Python.h.
+ * Lexer da PoolScript em C puro.
  *
- * Este cabeçalho é a fronteira da etapa "tudo nativo": nada aqui depende do
- * CPython, então o mesmo código serve tanto pra extensão (durante a
+ * Este cabeçalho é a fronteira da etapa "tudo nativo": nada aqui depende de
+ * nada além da libc, então o mesmo código serve tanto pra extensão (durante a
  * transição) quanto pro binário standalone (destino final).
  */
 #ifndef PS_LEXER_H
@@ -71,9 +71,8 @@ typedef struct {
     /* AVISOS: o programa compila, mas alguma coisa quase certamente não é o
      * que quem escreveu quis. Hoje só um caso, e ele custou caro:
      * `"C:\pasta"` — o `\p` não é escape, e o lexer engolia a barra CALADO,
-     * devolvendo `C:pasta`. O CPython mantém a barra E avisa
-     * (`SyntaxWarning: invalid escape sequence '\p'`); nós fazíamos o
-     * contrário nas duas metades.
+     * devolvendo `C:pasta`. O certo é manter a barra E avisar; nós fazíamos
+     * o contrário nas duas metades.
      *
      * Aviso não é erro: `ok` continua 1 e o programa roda. Quem apresenta é
      * quem chamou — o `pool` imprime no stderr, o `--check` devolve no JSON,
@@ -83,8 +82,8 @@ typedef struct {
     int32_t  cap_avisos;
 } PSTokenList;
 
-/* Imprime no stderr os avisos que a lista juntou, no formato do CPython
- * (`<arquivo>:<linha>: SyntaxWarning: ...`). stderr, e nao stdout, porque
+/* Imprime no stderr os avisos que a lista juntou, no formato
+ * `<arquivo>:<linha>: SyntaxWarning: ...`. stderr, e nao stdout, porque
  * stdout e o canal de dado do programa e do JSON do `--check`. Definida em
  * poolscript_vm.c. */
 void ps_avisos_para_stderr(const PSTokenList *toks, const char *caminho);

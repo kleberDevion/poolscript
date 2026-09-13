@@ -305,7 +305,7 @@ falha:
 int ps_smtp_login(PSMailConn *c, const char *user, const char *senha,
                   char *erro, size_t cap)
 {
-    /* PLAIN quando anunciado, senão LOGIN — a ordem do smtplib sem CRAM. */
+    /* PLAIN quando anunciado (ou sem lista de AUTH), senão LOGIN; CRAM-MD5 não entra. */
     int plain = strstr(c->auth, "PLAIN") != NULL || c->auth[0] == '\0';
     char cru[512], b64[1024], cmd[1100];
     /* o snprintf TRUNCA em cru[512] mas DEVOLVE o tamanho que a string TERIA
@@ -687,7 +687,7 @@ static void pega_fetch(const char *linha, void *ctx, PSMailConn *c)
     const char *abre = strrchr(linha, '{');
     if (!abre || f->msg) return;
     /* `{-1}` virava (size_t)-1: malloc(0) e le_bytes escrevendo sem fim.
-     * O imaplib do Python so casa `{` 1*DIGIT `}` — negativo nao e literal. */
+     * O literal da RFC 3501 e `{` 1*DIGIT `}` — negativo nao e literal. */
     long ln = atol(abre + 1);
     if (ln < 0 || ln > 256L * 1024 * 1024) return;
     size_t n = (size_t)ln;
@@ -926,9 +926,9 @@ static char *decodifica_parte(const char *parte, size_t n)
     if (cte && strncasecmp(cte, "base64", 6) == 0) {
         long r = ps_base64_decode(parte + c0, nc, cru, nc + 4);
         if (r < 0) {
-            /* base64 sujo: o Python (validate=False) joga fora o byte invalido
-             * e decodifica o resto. Perder o CORPO INTEIRO por um byte de um
-             * mailer velho e perda de dado calada. */
+            /* base64 sujo: joga-se fora o byte invalido e decodifica-se o
+             * resto. Perder o CORPO INTEIRO por um byte de um mailer velho e
+             * perda de dado calada. */
             char *lp = malloc(nc + 1);
             if (lp) {
                 size_t lj = 0;

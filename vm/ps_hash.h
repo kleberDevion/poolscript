@@ -1,7 +1,7 @@
 /*
- * SHA-256, HMAC, PBKDF2 e base64 em C puro — sem OpenSSL, sem `Python.h`.
+ * SHA-256, HMAC, PBKDF2 e base64 em C puro — sem OpenSSL.
  *
- * O formato segue os padrões (hashlib/HMAC): um hash gerado
+ * O formato segue os padrões: um hash gerado
  * pelo interpretador precisa validar no binário e vice-versa. Por isso nada
  * aqui é "uma variação minha" — é RFC 6234 (SHA-2), RFC 2104 (HMAC),
  * RFC 8018 (PBKDF2) e RFC 4648 (base64), exatamente.

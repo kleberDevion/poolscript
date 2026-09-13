@@ -112,7 +112,7 @@ void ps_hmac_sha256(const unsigned char *chave, size_t nchave,
     unsigned char k[64];
     memset(k, 0, sizeof(k));
     /* chave maior que o bloco vira o hash dela — é a regra da RFC, e sem ela
-     * chaves longas dariam resultado diferente do Python */
+     * chaves longas dariam um HMAC que nenhuma outra implementação valida */
     if (nchave > 64) ps_sha256(chave, nchave, k);
     else memcpy(k, chave, nchave);
 

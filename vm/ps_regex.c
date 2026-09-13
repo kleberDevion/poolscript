@@ -20,7 +20,7 @@ typedef enum { A_CHAR, A_QUALQUER, A_CLASSE, A_GRUPO, A_BOL, A_EOL, A_BACKREF,
                A_LOOK        /* lookahead/lookbehind — ver campos em Atomo */
              } TipoAtomo;
 
-/* flags inline `(?i)`/`(?m)`/`(?s)` — os mesmos do `re` do Python */
+/* flags inline `(?i)`/`(?m)`/`(?s)` */
 #define RX_I 1   /* IGNORECASE */
 #define RX_M 2   /* MULTILINE  */
 #define RX_S 4   /* DOTALL     */
@@ -92,8 +92,8 @@ typedef struct {
     char       *nomes[RX_MAX_GRUPOS];   /* nome de cada grupo, ou NULL */
 } Leitor;
 
-/* Falha interna, sem par no `re` (so as de memoria usam esta): mantem o
- * formato antigo, porque nao ha texto do CPython pra copiar. */
+/* Falha interna (so as de memoria usam esta): nao e erro de sintaxe do
+ * padrao, entao sai no formato proprio `regex: <msg> (posicao N)`. */
 static void rerro(Leitor *l, const char *msg)
 {
     if (!l->falhou && l->erro && l->erro_cap > 0)
@@ -101,8 +101,8 @@ static void rerro(Leitor *l, const char *msg)
     l->falhou = 1;
 }
 
-/* Erro de sintaxe do padrao. O texto e o do `re` do CPython, VERBATIM,
- * inclusive o sufixo " at position N" — e a posicao e a que ELE acusa: o
+/* Erro de sintaxe do padrao. A mensagem e o sufixo " at position N" sao os
+ * que o teste diferencial compara entre os dois motores — e a posicao e o
  * INICIO do construto culpado, nao onde o cursor parou. */
 static void rerro_em(Leitor *l, int pos, const char *msg)
 {
@@ -111,7 +111,7 @@ static void rerro_em(Leitor *l, int pos, const char *msg)
     l->falhou = 1;
 }
 
-/* As poucas mensagens do `re` que NAO trazem posicao. */
+/* As poucas mensagens de sintaxe que NAO trazem posicao. */
 static void rerro_txt(Leitor *l, const char *msg)
 {
     if (!l->falhou && l->erro && l->erro_cap > 0)
@@ -192,8 +192,8 @@ static int classe_escape(unsigned char e, Classe *cl)
         for (unsigned c = 'a'; c <= 'z'; c++) classe_add(cl, c);
         for (unsigned c = 'A'; c <= 'Z'; c++) classe_add(cl, c);
         classe_add(cl, '_');
-        /* fora do ASCII entra inteiro: o `\w` do Python é Unicode-aware, e
-         * sem isso "ção" não casaria com `\w+` */
+        /* fora do ASCII entra inteiro: `\w` é Unicode-aware, e sem isso
+         * "ção" não casaria com `\w+` */
         faixa_add(cl, 128, 0x10FFFF);
     } else if (letra == 's') {
         classe_add(cl, ' '); classe_add(cl, '\t'); classe_add(cl, '\n');
@@ -283,13 +283,13 @@ static void le_classe(Leitor *l, Atomo *a)
     a->tipo = A_CLASSE;
     memset(&a->classe, 0, sizeof(a->classe));
     Classe *cl = &a->classe;
-    int p_abre = l->i;                        /* posicao do '[': e AQUI que o `re` acusa */
+    int p_abre = l->i;                        /* posicao do '[': e AQUI que o erro aponta */
     l->i++;                                   /* passa '[' */
     if (l->i < l->n && l->p[l->i] == '^') { cl->negado = 1; l->i++; }
     int primeiro = 1;
     while (l->i < l->n && (l->p[l->i] != ']' || primeiro)) {
         primeiro = 0;
-        int c_ini = l->i;   /* inicio deste item: o `re` acusa a FAIXA a partir daqui */
+        int c_ini = l->i;   /* inicio deste item: erro de FAIXA e acusado a partir daqui */
         unsigned int c;
         if (l->p[l->i] == '\\') {
             l->i++;
@@ -359,7 +359,7 @@ static int le_atomo(Leitor *l, Atomo *a)
     a->flags = l->flags;          /* carimba as flags efetivas neste átomo */
     a->look_neg = a->look_atras = a->look_larg = 0;
     if (c == '(') {
-        int p_abre = l->i;                /* posicao do '(': e AQUI que o `re` acusa */
+        int p_abre = l->i;                /* posicao do '(': e AQUI que o erro aponta */
         l->i++;
         int captura = 1;
         int eh_look = 0, lk_neg = 0, lk_atras = 0;
@@ -397,8 +397,8 @@ static int le_atomo(Leitor *l, Atomo *a)
                      || (esp == '<' && l->i + 2 < l->n
                          && l->p[l->i+2] != '=' && l->p[l->i+2] != '!')) {
                 /* grupo nomeado `(?P<nome>...)` — e também a forma curta
-                 * `(?<nome>...)`, que o `re` aceita desde o 3.12. O nome é
-                 * GUARDADO (era descartado), pra `\g<nome>` funcionar. */
+                 * `(?<nome>...)`. O nome é GUARDADO (era descartado), pra
+                 * `\g<nome>` funcionar. */
                 l->i += (esp == 'P') ? 3 : 2;
                 int n0 = l->i;
                 while (l->i < l->n && l->p[l->i] != '>') l->i++;
@@ -408,7 +408,7 @@ static int le_atomo(Leitor *l, Atomo *a)
                 l->i++;
             }
             else {
-                /* o `re` cita a extensao que ele nao conhece: `?y`, `?Pz`, ... */
+                /* a mensagem cita a extensao desconhecida: `?y`, `?Pz`, ... */
                 char msgb[48];
                 if (esp == 'P' && l->i + 2 < l->n)
                     snprintf(msgb, sizeof(msgb), "unknown extension ?P%c", l->p[l->i + 2]);
@@ -468,7 +468,7 @@ static int le_atomo(Leitor *l, Atomo *a)
             if (e - '0' > l->ngrupos) {
                 char msgb[48];
                 snprintf(msgb, sizeof(msgb), "invalid group reference %c", e);
-                rerro_em(l, l->i - 1, msgb);   /* o `re` aponta o DIGITO, nao a barra */
+                rerro_em(l, l->i - 1, msgb);   /* a posicao e a do DIGITO, nao a da barra */
                 return 0;
             }
             a->tipo = A_BACKREF;
@@ -483,7 +483,7 @@ static int le_atomo(Leitor *l, Atomo *a)
         if (!ok) {
             char msgb[48];
             snprintf(msgb, sizeof(msgb), "bad escape \\%c", e);
-            rerro_em(l, l->i - 2, msgb);       /* o `re` aponta a BARRA */
+            rerro_em(l, l->i - 2, msgb);       /* a posicao e a da BARRA */
             return 0;
         }
         a->tipo = A_CHAR; a->cp = v;
@@ -491,7 +491,7 @@ static int le_atomo(Leitor *l, Atomo *a)
     }
     if (c == ')' || c == '|') return 0;        /* fim deste Seq */
     if (c == '*' || c == '+' || c == '?') {
-        /* O `re` separa os dois casos: quantificador sem alvo nenhum e
+        /* Sao duas mensagens distintas: quantificador sem alvo nenhum e
          * quantificador EM CIMA de outro. O que distingue e o caractere
          * anterior — se ele fecha um quantificador ja consumido pelo
          * `le_seq`, entao e repeticao de repeticao. */
@@ -545,7 +545,7 @@ static void le_seq(Leitor *l, Seq *s)
             else if (t == '+') { q.min = 1; q.max = -1; l->i++; teve_quant = 1; }
             else if (t == '?') { q.min = 0; q.max = 1;  l->i++; teve_quant = 1; }
             else if (t == '{') {
-                /* `{` sem número é literal, como no `re` */
+                /* `{` sem número é literal */
                 int salvo = l->i, j = l->i + 1, lo = 0, hi = -1, temlo = 0;
                 while (j < l->n && l->p[j] >= '0' && l->p[j] <= '9') { lo = lo * 10 + (l->p[j] - '0'); j++; temlo = 1; }
                 if (j < l->n && l->p[j] == ',') {
@@ -751,7 +751,7 @@ static unsigned int  rx_swap_cp(unsigned int cp)
 }
 
 /* Caractere de palavra (\w): igual ao classe_escape('w') — ASCII alnum + '_'
- * e qualquer não-ASCII (o \w do Python é Unicode-aware). */
+ * e qualquer não-ASCII (\w é Unicode-aware). */
 static int rx_is_word(unsigned int cp)
 {
     return (cp >= '0' && cp <= '9') || (cp >= 'a' && cp <= 'z')
