@@ -24013,6 +24013,75 @@ ERRO_TF(vm, "TypeError",
             break;
         }
 
+        /* O protocolo do decorador, num lugar só (ver ps_opcodes.def).
+         * [.., dec, funct, nome] -> [.., resultado]. Os três ficam na pilha
+         * até o fim: são raízes do GC durante as chamadas. */
+        case OP_DECORA: {
+            Value nomev = stack[sp - 1], funct = stack[sp - 2], dec = stack[sp - 3];
+            const char *nome = EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?";
+            int modo = arg;
+            Value r = MK_NULL();
+            int registrou = 0;
+            vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+            vm->erro_tipo[0] = '\0';
+            /* 1) tem `register`: registrador nativo do jinker ou instância de
+             * Entity com campo/método `register` (mesma ordem do GET_MEMBER) */
+            if (EH_JREG(dec)) {
+                int tab, mi;
+                if (acha_metodo_valor(dec, "register", &tab, &mi) == 0) {
+                    if (TABELAS[tab][mi].fn(vm, dec, &funct, 1, &r) != 0) {
+                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                        goto erro_runtime;
+                    }
+                    registrou = 1;
+                }
+            } else if (EH_INST(dec)) {
+                PSInstance *inst = COMO_INST(dec);
+                PSString *rs = nova_string(vm, "register", 8);
+                if (!rs) ERRO(vm, "sem memoria");
+                Value chave = MK_OBJ(rs), reg;
+                int32_t mp = -1;
+                if (inst->campos && dict_get(inst->campos, &chave, &reg) == 0) {
+                    if (chama_valor(vm, reg, &funct, 1, &r) != 0) {
+                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                        goto erro_runtime;
+                    }
+                    registrou = 1;
+                } else if ((mp = acha_metodo(inst->classe, "register")) >= 0) {
+                    PSBound *b = novo_bound(vm, dec, mp);
+                    if (!b) ERRO(vm, "sem memoria");
+                    if (chama_valor(vm, MK_OBJ(b), &funct, 1, &r) != 0) {
+                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                        goto erro_runtime;
+                    }
+                    registrou = 1;
+                }
+            }
+            if (registrou) {
+                r = funct;                      /* registrar não troca a funct */
+            } else if (EH_ACTION(dec) || EH_BOUND(dec) || dec.t == V_NATIVE
+                       || EH_NATIVA(dec) || EH_METNAT(dec)) {
+                /* 2) chamável: envolve. Null mantém a funct. */
+                if (chama_valor(vm, dec, &funct, 1, &r) != 0) {
+                    if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                    goto erro_runtime;
+                }
+                if (r.t == V_NULL || r.t == V_UNSET) r = funct;
+                else if (modo == 1 && !val_iguais(&r, &funct))
+                    ERRO_TF(vm, "TypeError",
+                            "decorador @%s de metodo so pode registrar (devolver Null ou o proprio metodo)",
+                            nome);
+            } else {
+                /* 3) nem registra nem envolve */
+                ERRO_TF(vm, "TypeError",
+                        "decorador @%s vale '%s', que nao registra (.register) nem envolve (chamavel) a funct",
+                        nome, nome_do_tipo_valor(dec));
+            }
+            sp -= 2;
+            stack[sp - 1] = r;
+            break;
+        }
+
         case OP_HAS_KEY: {
             /* Diferente do INDEX_GET: chave ausente devolve False em vez de
              * levantar erro — padrão de match precisa TESTAR, não exigir. */

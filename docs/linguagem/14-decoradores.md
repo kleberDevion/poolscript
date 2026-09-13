@@ -165,10 +165,75 @@ funct listar() {
 }
 ```
 
-O protocolo é: a expressão do decorador (`app.route(...)`) é avaliada, a `funct`
-abaixo é definida, e o objeto a registra como handler. Os detalhes de cada
-decorador desse tipo (rotas, middleware, eventos de socket…) ficam na
-documentação da biblioteca que os oferece (ex.: jinker).
+O protocolo é um só, e vale para qualquer decorador que não seja `static`,
+`nonnull` ou `dataentity` — inclusive os que **você** escreve em `.ps`:
+
+1. A expressão do decorador é avaliada. **Com parênteses é uma chamada**
+   (`@app.route("/x")`, `@log()`); **sem parênteses é o valor** (`@log` é a
+   própria funct `log`).
+2. A `funct` abaixo é definida.
+3. O valor do passo 1 recebe a funct, de um de dois jeitos:
+   - se ele tem um método **`.register(f)`** (o registrador do jinker, ou uma
+     Entity sua com esse método), o motor chama `register(funct)` e o nome da
+     funct continua sendo a própria funct;
+   - senão, se ele é **chamável**, o motor chama `decorador(funct)` e o nome
+     passa a valer **o que ele devolveu** — é assim que um decorador envolve
+     a funct. Devolver `Null` mantém a funct original.
+   - Qualquer outro valor é erro:
+     `TypeError: decorador @app.route vale 'str', que nao registra (.register) nem envolve (chamavel) a funct`.
+
+Uma lib sua, então, não precisa de `register`: basta o método devolver uma
+funct que recebe a funct decorada:
+
+```ps
+Entity NET() {
+    funct __init__(self) {
+        self.rotas = {}
+    }
+    funct route(self, caminho) {
+        funct registra(f) {
+            self.rotas[caminho] = f
+            return f
+        }
+        return registra
+    }
+}
+
+app = NET()
+
+@app.route("/x")
+funct h() {
+    return "ok"
+}
+
+post(h(), app.rotas["/x"](), len(app.rotas))    # ok ok 1
+```
+
+E um decorador que envolve:
+
+```ps
+funct log(f) {
+    funct w() {
+        post("antes")
+        return f()
+    }
+    return w
+}
+
+@log
+funct h() {
+    return 1
+}
+
+post(h())     # antes
+              # 1
+```
+
+Decoradores **empilham**: o de baixo aplica primeiro e o de cima recebe a
+funct já envolvida (`@a` sobre `@b` sobre `h` dá `a(b(h))`).
+
+Os detalhes de cada decorador de biblioteca (rotas, middleware, eventos de
+socket…) ficam na documentação da biblioteca que os oferece (ex.: jinker).
 
 A funct abaixo pode ter **qualquer** modificador, em qualquer ordem —
 `int async funct`, `public async funct`, `bool funct`, `static funct`… (ver
@@ -179,7 +244,12 @@ a captura inteira.
 
 O mesmo `@objeto.metodo(...)` vale em cima de uma **funct solta**, em cima de
 uma **classe** e em cima de um **método dentro da classe** — e é o mesmo
-protocolo nos três (`registrar.register(handler)`):
+protocolo nos três. Só a funct solta pode ser **envolvida** (o nome passa a
+valer o que o decorador devolveu); em cima de classe e de método o decorador
+**registra**: um chamável que devolva outra funct ali é erro
+(`decorador @log de metodo so pode registrar (devolver Null ou o proprio metodo)`).
+Uma Entity sem método (fora `__init__`) embaixo de decorador é `SyntaxError`
+(`nao ha o que registrar`).
 
 ```ps
 @r.rota("/funct")
@@ -225,22 +295,35 @@ método compilava sem registro nenhum e a rota nunca existia — sem erro.
 
 ---
 
-## 14.5. Decorador desconhecido
+## 14.5. Decorador desconhecido é erro
 
-Se o decorador não é nenhum dos embutidos nem um registrador válido, a `funct`
-decorada **não é registrada** — ela simplesmente não passa a existir:
+Nada é engolido. Um nome que não existe é `NameError` **na linha do `@`**; um
+valor que não registra nem envolve é `TypeError`; um `@` sem nada embaixo é
+`SyntaxError`:
 
 ```ps
-@qualquer
+@nao_existe
 funct f() {
     return 1
 }
+# NameError: name 'nao_existe' is not defined
+#   em app.ps, linha 1
 
-f()      # NameError: name 'f' is not defined  (o @qualquer engoliu a funct)
+x = 5
+@x
+funct g() {
+    return 1
+}
+# TypeError: decorador @x vale 'int', que nao registra (.register) nem envolve (chamavel) a funct
+
+@x
+y = 1
+# SyntaxError: decorador sem funct ou Entity embaixo
 ```
 
-Um decorador que a linguagem não
-entende descarta a declaração em vez de rodá-la sem o decorador.
+> Antes, `@qualquer` desconhecido descartava a `funct` inteira, calado — `f()`
+> depois dava `NameError` sobre a **funct**, e esta página documentava isso
+> como comportamento. Não é mais.
 
 ---
 
@@ -253,6 +336,8 @@ entende descarta a declaração em vez de rodá-la sem o decorador.
 - **`@dataentity`** — marca uma Entity de dados (construtor de campos tipados já
   é automático); conversões `asdict`/`astuple`/`aslist`/`asjson` vêm da lib
   `datasentity`.
-- **`@objeto.metodo(...)`** — forma geral: registra a funct como handler (rotas
-  do jinker etc.); detalhes na doc da lib.
-- **Decorador desconhecido** — descarta a funct (ela não é registrada).
+- **Forma geral** (`@objeto.metodo(...)`, `@log`, `@log()`) — com parênteses é
+  chamada, sem é o valor; o valor registra (`.register(f)`) ou envolve
+  (chamável: o nome passa a valer o retorno; `Null` mantém). Empilha.
+- **Decorador desconhecido** — erro: `NameError` (nome), `TypeError` (valor que
+  não serve) ou `SyntaxError` (nada embaixo). Nunca engole a funct.

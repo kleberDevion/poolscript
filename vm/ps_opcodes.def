@@ -164,3 +164,13 @@ PS_OP(ROT3, 91, "ROT3")      /* [.., a, b, c] -> [.., b, c, a] */
  * pegar nada e `catch (OSError e)` sem pegar FileNotFoundError — enquanto o
  * motor emitia esses nomes de subclasse de proposito. */
 PS_OP(EXC_CASA, 92, "EXC_CASA")
+
+/* O protocolo do decorador, num lugar so: [.., decorador, funct, nome] ->
+ * [.., resultado]. `arg` = 0 (funct solta: o nome passa a valer o resultado)
+ * ou 1 (metodo/handler de classe: so registra). Regra: valor com `register`
+ * -> chama register(funct), resultado = a funct; senao chamavel -> resultado
+ * = decorador(funct) (Null mantem a funct); senao TypeError. Antes, o
+ * compilador chamava `.register` a mao em tres lugares e DESCARTAVA calado
+ * todo decorador de um nome que nao fosse static/NonNull/dataentity — junto
+ * com a funct embaixo. */
+PS_OP(DECORA, 93, "DECORA")

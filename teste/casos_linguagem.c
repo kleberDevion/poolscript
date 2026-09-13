@@ -2680,6 +2680,63 @@ const Caso CASOS_LINGUAGEM[] = {
 { "excecao em f-string e str()",
   "post(f\"tipo: {ValueError}\", str(OSError) + \"!\")\n", "tipo: ValueError OSError!", NULL, 0 },
 
+/* ── DECORADOR DEFINIDO EM .ps (2026-09-12) ───────────────────────────────────
+ * Um protocolo so, no OP_DECORA: valor com `.register` registra; chamavel
+ * envolve (Null mantem a funct); o resto e TypeError. Antes o compilador
+ * chamava `.register` a mao (a funct devolvida por `route()` dava
+ * AttributeError) e DESCARTAVA calado todo decorador de um nome que nao
+ * fosse static/NonNull/dataentity — junto com a funct embaixo. Strings
+ * medidas no binario. */
+#define DEC_NET "Entity NET() {\n    funct __init__(self) {\n        self.rotas = {}\n    }\n" \
+                "    funct route(self, caminho) {\n        funct registra(f) {\n" \
+                "            self.rotas[caminho] = f\n            return f\n        }\n" \
+                "        return registra\n    }\n}\n"
+{ "decorador de lib devolvendo funct registradora (o caso do dono)",
+  DEC_NET "app = NET()\n@app.route(\"/x\")\nfunct h() {\n    return \"ok\"\n}\npost(h(), app.rotas[\"/x\"](), len(app.rotas))\n",
+  "ok ok 1", NULL, 0 },
+{ "@log envolve: o nome passa a valer o wrapper",
+  "funct log(f) {\n    funct w() {\n        post(\"antes\")\n        return f()\n    }\n    return w\n}\n@log\nfunct h() {\n    return 1\n}\npost(h())\n",
+  "antes\n1", NULL, 0 },
+{ "@log() e fabrica: com parenteses o decorador e o que a chamada devolve",
+  "funct log() {\n    funct dec(f) {\n        post(\"decorou\")\n        return f\n    }\n    return dec\n}\n@log()\nfunct h() {\n    return 2\n}\npost(h())\n",
+  "decorou\n2", NULL, 0 },
+{ "decorador que devolve Null mantem a funct",
+  "funct reg(f) {\n    post(\"reg\")\n}\n@reg\nfunct h() {\n    return 3\n}\npost(h())\n",
+  "reg\n3", NULL, 0 },
+{ "decorador que devolve str: o nome vira a str",
+  "funct ruim(f) {\n    return \"x\"\n}\n@ruim\nfunct h() {\n    return 1\n}\npost(h)\n",
+  "x", NULL, 0 },
+{ "@obj.m() que devolve str: nem registra nem envolve",
+  "Entity R() {\n    funct route(self, c) {\n        return \"oi\"\n    }\n}\napp = R()\n@app.route(\"/x\")\nfunct h() {\n    return 1\n}\n",
+  "", "TypeError: decorador @app.route vale 'str', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
+{ "@nao_existe e NameError na linha do @, nao funct engolida",
+  "@nao_existe\nfunct h() {\n    return 1\n}\npost(h())\n",
+  "", "NameError: name 'nao_existe' is not defined\n  em ", 1 },
+{ "@x com x inteiro e TypeError",
+  "x = 5\n@x\nfunct h() {\n    return 1\n}\n",
+  "", "TypeError: decorador @x vale 'int', que nao registra", 1 },
+{ "metodo static na Entity com decorador registrador da lib",
+  DEC_NET "Entity App() {\n    static object app = NET()\n    @app.route(\"/m\")\n    static funct m() {\n        return \"m\"\n    }\n}\npost(App.app.rotas[\"/m\"]())\n",
+  "m", NULL, 0 },
+{ "wrapper em metodo de Entity e recusado: metodo so aceita registro",
+  "funct log(f) {\n    funct w(self) {\n        return 9\n    }\n    return w\n}\nEntity Svc() {\n    @log\n    funct i(self) {\n        return 1\n    }\n}\npost(Svc().i())\n",
+  "", "TypeError: decorador @log de metodo so pode registrar (devolver Null ou o proprio metodo)", 1 },
+{ "@reg sobre Entity com metodo registra o metodo de uma instancia",
+  "funct reg(f) {\n    post(\"registrou\", f)\n}\n@reg\nEntity H() {\n    funct handler(self) {\n        return 1\n    }\n}\npost(\"fim\")\n",
+  "registrou <metodo>\nfim", NULL, 0 },
+{ "decoradores empilhados: o de dentro aplica primeiro",
+  "funct a(f) {\n    funct wa() {\n        return \"a(\" + f() + \")\"\n    }\n    return wa\n}\nfunct b(f) {\n    funct wb() {\n        return \"b(\" + f() + \")\"\n    }\n    return wb\n}\n@a\n@b\nfunct h() {\n    return \"h\"\n}\npost(h())\n",
+  "a(b(h))", NULL, 0 },
+{ "@x sem funct ou Entity embaixo e SyntaxError, nao ignorado",
+  "@x\ny = 1\n", "", "SyntaxError: decorador sem funct ou Entity embaixo", 2 },
+{ "decorador sobre Entity sem metodo e SyntaxError, nao silencio",
+  "funct reg(f) {\n    return f\n}\n@reg\nEntity Vazia() {\n    x: int\n}\npost(\"fim\")\n",
+  "", "SyntaxError: decorador em cima de Entity 'Vazia' sem metodo: nao ha o que registrar", 2 },
+{ "jinker: @app.route segue registrando e o nome fica definido",
+  "import jinker\napp = jinker.Jinker()\n@app.route(\"/x\")\nfunct h() {\n    return \"ok\"\n}\npost(h())\n",
+  "ok", NULL, 0 },
+#undef DEC_NET
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

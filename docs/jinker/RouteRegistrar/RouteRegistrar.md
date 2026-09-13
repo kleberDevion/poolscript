@@ -8,7 +8,10 @@ rota enquanto a `funct` de baixo ainda não foi definida**.
 
 Você não o importa e, no uso normal, não o vê — ele nasce quando o decorador
 é avaliado e morre uma linha depois, quando o decorador chama
-[`.register(handler)`](register/register.md) nele.
+[`.register(handler)`](register/register.md) nele. O valor que `register`
+devolve é ignorado: o nome da funct decorada continua sendo a própria funct
+(é o protocolo geral de decorador, seção 14.4 da linguagem — uma lib sua pode
+oferecer `.register` do mesmo jeito, ou simplesmente devolver uma funct).
 
 ```ps
 reg = app.get("/x")

@@ -146,6 +146,10 @@ typedef struct {
     int         pendente_nonnull;
     /* `@static` visto, esperando a action que ele decora — vira Proto.eh_static */
     int         pendente_static;
+    /* profundidade de decorador EMPILHADO em compilação: cada nível guarda o
+     * próprio decorador num temporário distinto (`$reg0`, `$reg1`…), senão
+     * o de dentro sobrescrevia o de fora antes de ele ser usado */
+    int         decor_prof;
     /* `finally` PENDENTES (try aninhado): o bloco é emitido inline nas saídas
      * do try, mas `return`, `break` e `continue` saltam por fora — sem isto o
      * finally simplesmente NÃO rodava nesses três caminhos. Cada entrada
@@ -731,17 +735,19 @@ static void carrega_estatico(C *c, Unidade *u, const char *nome)
     emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome)));
 }
 
-/* A expressão de um decorador geral (`@obj.metodo(args)` / `@obj.prop`),
- * avaliada SEMPRE como chamada — é o mesmo protocolo em qualquer posição
- * (funct solta, em cima de classe, dentro de classe), num lugar só. O valor
- * fica no topo da pilha: é o registrar a quem se entrega a função. */
-static void emite_decorador_chamada(C *c, Unidade *u, PSNode *dec)
+/* A expressão de um decorador geral (`@obj.metodo(args)`, `@log()`, `@log`):
+ * com parênteses é CHAMADA, sem parênteses é o VALOR (o parser marca em
+ * `i2`). É a mesma emissão em qualquer posição (funct solta, em cima de
+ * classe, dentro de classe). O valor fica no topo da pilha: é o decorador a
+ * quem o OP_DECORA entrega a funct. */
+static void emite_decorador_expr(C *c, Unidade *u, PSNode *dec)
 {
     carrega_nome(c, u, dec->lista.itens[0]->texto);
     for (int32_t i = 1; i < dec->lista.n; i++)
         emite(c, u, OP_GET_MEMBER,
               idx_const(c, u, K_STR, 0, 0, dec->lista.itens[i]->texto,
                         (int32_t)strlen(dec->lista.itens[i]->texto)));
+    if (!dec->i2) return;              /* `@log`: o valor, sem chamar */
     int32_t nkw = 0;
     for (int32_t i = 0; i < dec->lista2.n; i++)
         if (dec->lista2.itens[i]->texto) nkw++;
@@ -756,6 +762,23 @@ static void emite_decorador_chamada(C *c, Unidade *u, PSNode *dec)
         emite(c, u, OP_BUILD_TUPLE, nkw);
         emite(c, u, OP_CALL_KW, dec->lista2.n);
     }
+}
+
+/* [.., decorador, funct] -> OP_DECORA -> [.., resultado]. O nome juntado
+ * (`app.route`) vai como constante, pra mensagem de erro. */
+static void emite_decora(C *c, Unidade *u, PSNode *dec, int32_t modo)
+{
+    char nome[256]; size_t j = 0;
+    nome[0] = '\0';
+    for (int32_t i = 0; i < dec->lista.n; i++) {
+        const char *p = dec->lista.itens[i]->texto ? dec->lista.itens[i]->texto : "?";
+        size_t t = strlen(p);
+        if (j + t + 2 >= sizeof(nome)) break;
+        if (i) nome[j++] = '.';
+        memcpy(nome + j, p, t); j += t; nome[j] = '\0';
+    }
+    emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, nome, (int32_t)j));
+    emite(c, u, OP_DECORA, modo);
 }
 
 static void carrega_nome(C *c, Unidade *u, const char *nome)
@@ -2150,29 +2173,39 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_DECORATOR_STMT: {
-            /* O decorador é resolvido em COMPILAÇÃO, não em runtime: os três
-             * que a linguagem define mudam como a action é gerada, não o que
-             * ela devolve. Decorador desconhecido não registra a action
-             * nenhuma — é o que o interpretador faz, e por isso `f()` depois
-             * dá "variável não definida" em vez de rodar sem o decorador. */
+            /* Três decoradores são resolvidos em COMPILAÇÃO (`static`,
+             * `NonNull`, `dataentity`): mudam como a action é gerada. Todo
+             * OUTRO decorador é o protocolo geral, em runtime (OP_DECORA):
+             * `@obj.metodo(args)`, `@log`, `@log()` — inclusive nome que não
+             * existe, que dá NameError na linha do `@` em vez de sumir calado
+             * com a funct embaixo (era o que acontecia). */
             PSNode *dec = n->a;
             const char *nome = (dec && dec->lista.n == 1) ? dec->lista.itens[0]->texto : NULL;
+            int embutido = nome && (strcmp(nome, "dataentity") == 0
+                                    || strcmp(nome, "static") == 0
+                                    || strcmp(nome, "NonNull") == 0);
             if (nome && strcmp(nome, "dataentity") == 0) {
                 if (n->b) bloco_stmts(c, u, n->b);
                 return;
             }
-            /* Decorador GERAL `@obj.metodo(args)` / `@obj.prop` (jinker):
-             * avalia a expressão -> um registrar descartável; roda o bloco
-             * (define a action); e chama `registrar.register(action)`. É o
-             * mesmo protocolo do interpretador (registrar.register(handler)),
-             * com o embrulho de request/retorno feito no lado do servidor. */
-            if (dec && dec->lista.n > 1) {
+            /* Decorador GERAL: avalia a expressão -> o decorador (guardado);
+             * roda o bloco (define a action); e entrega a action ao OP_DECORA,
+             * que registra (`.register`) ou envolve (chamável). Na funct solta
+             * o nome passa a valer o resultado; em cima de classe só registra. */
+            if (dec && !embutido) {
                 if (!n->b) return;
                 const char *act = NULL;
                 const char *cls_nome = NULL, *met_nome = NULL;
-                if (n->b->kind == N_BLOCK)
-                    for (int32_t i = 0; i < n->b->lista.n; i++) {
-                        PSNode *bi = n->b->lista.itens[i];
+                PSNode *corpo = n->b;
+                /* decorador EMPILHADO: o bloco é outro N_DECORATOR_STMT; o de
+                 * dentro aplica primeiro e rebinda o nome, e este carrega o
+                 * nome já envolvido — a action fica no fundo da pilha de @ */
+                while (corpo && corpo->kind == N_BLOCK && corpo->lista.n == 1
+                       && corpo->lista.itens[0]->kind == N_DECORATOR_STMT)
+                    corpo = corpo->lista.itens[0]->b;
+                if (corpo && corpo->kind == N_BLOCK)
+                    for (int32_t i = 0; i < corpo->lista.n; i++) {
+                        PSNode *bi = corpo->lista.itens[i];
                         if (bi->kind == N_ACTION_DECL) { act = bi->texto; break; }
                         /* handler baseado em CLASSE: acha a action DENTRO da
                          * classe (a primeira fora de __init__), nome qualquer */
@@ -2187,37 +2220,44 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                         }
                     }
 
-                /* 1) avalia SEMPRE a expressão do decorador como CHAMADA
-                 * `obj.metodo(args)` — erro do decorador propaga, mesmo com 0
-                 * args. É a MESMA emissão do decorador dentro da classe. */
-                emite_decorador_chamada(c, u, dec);
-                /* 2) guarda o registrar (descartável) e roda o bloco */
-                guarda_nome_modo(c, u, "$reg", 1);
+                if (cls_nome && !met_nome) {
+                    cerro_sx(c, dec, "decorador em cima de Entity '%s' sem metodo: nao ha o que registrar", cls_nome);
+                    return;
+                }
+                static const char *const REG[] = { "$reg0", "$reg1", "$reg2", "$reg3",
+                                                   "$reg4", "$reg5", "$reg6", "$reg7" };
+                if (c->decor_prof >= 8) { cerro(c, "limite do compilador: 8 decoradores empilhados", n); return; }
+                const char *reg = REG[c->decor_prof];
+                /* 1) avalia a expressão do decorador (chamada se teve
+                 * parênteses) — erro do decorador propaga */
+                emite_decorador_expr(c, u, dec);
+                /* 2) guarda o decorador e roda o bloco (define a action; um
+                 * decorador empilhado ali dentro usa o próprio temporário) */
+                guarda_nome_modo(c, u, reg, 1);
+                c->decor_prof++;
                 bloco_stmts(c, u, n->b);
-                /* 3) registrar.register(action) — só se o bloco define action */
+                c->decor_prof--;
+                if (CFALHOU(c)) return;
+                /* 3) OP_DECORA: funct solta -> o nome passa a valer o resultado */
                 if (act) {
-                    carrega_nome(c, u, "$reg");
-                    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "register", 8));
+                    carrega_nome(c, u, reg);
                     carrega_nome(c, u, act);
-                    emite(c, u, OP_CALL, 1);
-                    emite(c, u, OP_POP_TOP, 0);
+                    emite_decora(c, u, dec, 0);
+                    guarda_nome_modo(c, u, act, 1);
                 } else if (cls_nome && met_nome) {
-                    /* handler de classe: instancia a classe e registra o método
-                     * dela — $inst = Classe(); $reg.register($inst.metodo) */
+                    /* handler de classe: instancia a classe e entrega o método
+                     * dela — $inst = Classe(); OP_DECORA($reg, $inst.metodo) */
                     carrega_nome(c, u, cls_nome);
                     emite(c, u, OP_CALL, 0);
                     guarda_nome_modo(c, u, "$inst", 1);
-                    carrega_nome(c, u, "$reg");
-                    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "register", 8));
+                    carrega_nome(c, u, reg);
                     carrega_nome(c, u, "$inst");
                     emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, met_nome, (int32_t)strlen(met_nome)));
-                    emite(c, u, OP_CALL, 1);
+                    emite_decora(c, u, dec, 1);
                     emite(c, u, OP_POP_TOP, 0);
                 }
                 return;
             }
-            /* `@qualquer` sozinho, sem action embaixo, é ignorado — o
-             * interpretador aceita e segue. Recusar quebrava script válido. */
             if (!n->b) return;
             if (nome && strcmp(nome, "static") == 0) {
                 /* Marca a action decorada como estática (chamável na Entity
@@ -2234,13 +2274,6 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 c->pendente_nonnull = 0;
                 return;
             }
-            if (nome && strcmp(nome, "dataentity") == 0) {
-                /* Marcador: quem gera o `__init__` são os campos tipados, com
-                 * ou sem o decorador. Se vier bloco junto, compila o bloco. */
-                if (n->b) bloco_stmts(c, u, n->b);
-                return;
-            }
-            /* desconhecido: nada é registrado */
             return;
         }
 
@@ -2418,7 +2451,14 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                      * nó do decorador: o método rodava sem checagem nenhuma
                      * enquanto o interpretador recusava o Null. */
                     if (dn && strcmp(dn, "NonNull") == 0) nonnull_pendente = 1;
-                    if (dec && dec->lista.n > 1 && ndec_pend < 8) dec_pend[ndec_pend++] = dec;
+                    /* todo decorador que não é um dos três embutidos vai pro
+                     * protocolo geral — `@log` num método era ignorado calado */
+                    int emb = dn && (strcmp(dn, "static") == 0 || strcmp(dn, "NonNull") == 0
+                                     || strcmp(dn, "dataentity") == 0);
+                    if (dec && !emb) {
+                        if (ndec_pend >= 8) { cerro(c, "limite do compilador: 8 decoradores num metodo", m); return; }
+                        dec_pend[ndec_pend++] = dec;
+                    }
                     continue;
                 }
                 if (m->kind != N_ACTION_DECL) continue;
@@ -2535,10 +2575,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 for (int32_t j = 0; j < def->nmetodos && !eh_est; j++)
                     if (strcmp(def->met_nomes[j], mn) == 0)
                         eh_est = c->out->protos[def->met_protos[j]].eh_static;
-                emite_decorador_chamada(c, u, dec);
+                emite_decorador_expr(c, u, dec);
                 guarda_nome_modo(c, u, "$reg", 1);
                 carrega_nome(c, u, "$reg");
-                emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, "register", 8));
                 if (eh_est) {
                     /* método estático: `Classe.metodo` é a própria funct */
                     carrega_nome(c, u, cls_nome_aqui);
@@ -2551,7 +2590,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     carrega_nome(c, u, "$inst");
                 }
                 emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, mn, (int32_t)strlen(mn)));
-                emite(c, u, OP_CALL, 1);
+                emite_decora(c, u, dec, 1);     /* método: só registra */
                 emite(c, u, OP_POP_TOP, 0);
             }
             c->entity_no = no_salvo;

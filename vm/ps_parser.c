@@ -2802,7 +2802,11 @@ static PSNode *statement(P *p)
                              && (strcmp(n2->texto,"Entity")==0 || strcmp(n2->texto,"class")==0
                                  || strcmp(n2->texto,"Class")==0));
             }
-            if (eh_action || eh_classe) {
+            /* decorador EMPILHADO (`@a` em cima de `@b`): o de baixo vira o
+             * bloco deste — antes o de cima ficava sem bloco e o compilador
+             * o descartava calado */
+            int eh_outro_dec = (nt->type == T_AT);
+            if (eh_action || eh_classe || eh_outro_dec) {
                 PSNode *acao = statement(p);
                 if (FALHOU(p)) return NULL;
                 PSNode *b = ps_node_novo(p->arena, N_BLOCK, acao->line, acao->col);
@@ -2810,6 +2814,12 @@ static PSNode *statement(P *p)
                 b->estilo = "brace";
                 if (ps_vec_push(p->arena, &b->lista, acao) != 0) return NULL;
                 n->b = b;
+            } else {
+                /* `@x` seguido de qualquer outra coisa: não há o que decorar.
+                 * Era ignorado ("recusar quebrava script válido" — o único
+                 * caso coberto era o empilhamento acima, descartado calado). */
+                perro(p, "decorador sem funct ou Entity embaixo", nt);
+                return NULL;
             }
         }
         return n;
