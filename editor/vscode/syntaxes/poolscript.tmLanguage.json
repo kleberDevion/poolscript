@@ -87,14 +87,57 @@
           ]
         },
         {
+          "comment": "f-string: SO ela interpola `{expr}` dentro das aspas. Na string comum a interpolacao por chaves fica FORA (`\"texto\" {x} \"mais\"`), entao um `{` dentro de \"...\" e texto — a regra antiga abria interpolacao ali e o arquivo inteiro ia junto ate um `}` qualquer.",
           "name": "string.quoted.triple.poolscript",
-          "begin": "([frFR]*)'''",
+          "begin": "\\b([fF][rR]?|[rR][fF])(''')",
           "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
           "end": "'''",
           "patterns": [
             {
-              "include": "#interp"
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
             },
+            {
+              "include": "#interp"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.double.poolscript",
+          "begin": "\\b([fF][rR]?|[rR][fF])(\")",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            },
+            {
+              "include": "#interp"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.poolscript",
+          "begin": "\\b([fF][rR]?|[rR][fF])(')",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            },
+            {
+              "include": "#interp"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.poolscript",
+          "begin": "([rR]?)'''",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "end": "'''",
+          "patterns": [
             {
               "name": "constant.character.escape.poolscript",
               "match": "\\\\."
@@ -103,13 +146,10 @@
         },
         {
           "name": "string.quoted.double.poolscript",
-          "begin": "([frFR]*)\"",
+          "begin": "([rR]?)\"",
           "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
           "end": "\"",
           "patterns": [
-            {
-              "include": "#interp"
-            },
             {
               "name": "constant.character.escape.poolscript",
               "match": "\\\\."
@@ -118,13 +158,10 @@
         },
         {
           "name": "string.quoted.single.poolscript",
-          "begin": "([frFR]*)'",
+          "begin": "([rR]?)'",
           "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
           "end": "'",
           "patterns": [
-            {
-              "include": "#interp"
-            },
             {
               "name": "constant.character.escape.poolscript",
               "match": "\\\\."
