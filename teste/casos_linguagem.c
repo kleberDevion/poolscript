@@ -2639,6 +2639,47 @@ const Caso CASOS_LINGUAGEM[] = {
   "Entity A() {\n    nome: str\n}\nEntity B(A) {\n    funct __init__(self, nome, y) {\n        base(nome)\n        self.y = y\n    }\n}\nb = B(\"ana\", 2)\npost(b.nome, b.y)\n",
   "ana 2", NULL, 0 },
 
+/* ── EXCECOES COMO VALORES (2026-09-12) ──────────────────────────────────────
+ * Os nomes da tabela EXCECOES[] (Exception, ValueError, ...) sao globais: um
+ * V_TIPO com indice deslocado, ligado na partida como o PoolFile. Antes so
+ * existiam dentro de `raise Nome(...)` e `catch (Nome e)`; `post(Exception)`
+ * era NameError. Strings medidas no binario. */
+{ "excecao e valor: imprime o proprio nome",
+  "post(ValueError, Exception, FileNotFoundError)\n", "ValueError Exception FileNotFoundError", NULL, 0 },
+{ "is entre excecoes segue a arvore",
+  "post(ValueError is Exception, ValueError is ValueError, ValueError is TypeError, FileNotFoundError is OSError, OSError is FileNotFoundError)\n",
+  "True True False True False", NULL, 0 },
+{ "excecao is type; valor comum nao e excecao",
+  "post(ValueError is type, ValueError is str, 1 is ValueError, \"x\" is ValueError)\n",
+  "True False False False", NULL, 0 },
+{ "== por identidade e pelo nome, como os outros tipos; type() e type",
+  "post(ValueError == ValueError, ValueError == Exception, ValueError == \"ValueError\", type(ValueError))\n",
+  "True False True type", NULL, 0 },
+{ "raise de variavel que guarda excecao: o catch da familia pega",
+  "erro = FileNotFoundError\ntry { raise erro } catch (OSError e) { post(\"pegou\", \"[\" + e + \"]\") }\n",
+  "pegou [ (linha 2)]", NULL, 0 },
+{ "raise de variavel sem catch: o tipo sai no traceback",
+  "erro = KeyError\nraise erro\n", "", "KeyError:", 1 },
+{ "raise Nome maiusculo continua tipo LITERAL, mesmo sendo variavel",
+  "Boom = ValueError\ntry { raise Boom } catch (ValueError e) { post(\"NAO DEVIA\") }\n", "", "Boom:  (linha 2)", 1 },
+{ "chamar excecao fora do raise e TypeError que diz onde ela vale",
+  "x = ValueError(\"boom\")\n", "", "TypeError: ValueError(\"msg\") só vale depois de raise", 1 },
+{ "map com excecao como funcao: a mesma frase",
+  "map([1], ValueError)\n", "", "TypeError: ValueError(\"msg\") só vale depois de raise", 1 },
+{ "chamada por nome numa excecao assina o nome, nao '?'",
+  "f = ValueError\nf(a=1)\n", "", "TypeError: ValueError() takes no keyword arguments", 1 },
+{ "excecao devolvida de funct, como chave de dict e item de lista",
+  "funct f() { return ValueError }\npost(f() is Exception, {KeyError: 1}, [TypeError])\n",
+  "True {'KeyError': 1} [TypeError]", NULL, 0 },
+{ "o e capturado continua str; e is ValueError e False",
+  "try { raise ValueError(\"x\") } catch (e) { post(type(e), e is ValueError) }\n", "str False", NULL, 0 },
+{ "nome fora da tabela continua NameError",
+  "post(MeuErro)\n", "", "NameError: name 'MeuErro' is not defined", 1 },
+{ "excecao pode ser sombreada como qualquer global",
+  "ValueError = 3\npost(ValueError)\n", "3", NULL, 0 },
+{ "excecao em f-string e str()",
+  "post(f\"tipo: {ValueError}\", str(OSError) + \"!\")\n", "tipo: ValueError OSError!", NULL, 0 },
+
 /* ── CLI ── */
 { "--check não executa o script",
   "post(\"NAO DEVIA RODAR\")\n", "NAO DEVIA RODAR", NULL, 0 },

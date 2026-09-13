@@ -236,6 +236,14 @@ os.writeFile(PASTA + "/usa.ps", "import minhalib\npost(minhalib.dobro(21))\n")
 r = com_home("'" + POOL + "' usa.ps")
 confere("a lib instalada é importável", r["saida"].strip() == "42")
 
+# As exceções são valores também DENTRO de módulo importado: a ligação dos
+# nomes tem dois laços (script principal e módulo); sem o segundo,
+# `ValueError` num módulo era NameError.
+os.writeFile(PASTA + "/zzexc.ps", "funct quem() {\n    return ValueError\n}\n")
+os.writeFile(PASTA + "/usa_exc.ps", "import zzexc\npost(zzexc.quem() is Exception, zzexc.quem())\n")
+r = roda("'" + POOL + "' usa_exc.ps")
+confere("exceção é valor dentro de módulo importado", r["saida"].strip() == "True ValueError")
+
 r = com_home("'" + POOL + "' uninstall minhalib -asLib")
 confere("psl uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.ps") == false)
 

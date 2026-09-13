@@ -184,6 +184,51 @@ motivo.
 
 ---
 
+## Os nomes são valores
+
+Cada nome da árvore acima existe como **valor** da linguagem, sem importar
+nada — dá pra guardar numa variável, passar pra funct, comparar e imprimir:
+
+```ps
+erro = FileNotFoundError
+post(erro)                        # FileNotFoundError
+post(type(erro))                  # type
+post(erro is OSError)             # True  — `is` segue a árvore
+post(ValueError is Exception)     # True
+post(ValueError is TypeError)     # False
+post(ValueError == "ValueError")  # True  — como os outros tipos (`str == "str"`)
+```
+
+`raise` aceita a variável — levanta o tipo guardado, sem mensagem — e o
+`catch` da família pega:
+
+```ps
+erro = FileNotFoundError
+try {
+    raise erro
+} catch (OSError e) {
+    post("família OSError")
+}
+```
+
+Regras que valem junto:
+
+- **`raise Nome` com inicial maiúscula é tipo LITERAL**, não a variável:
+  `Boom = ValueError` seguido de `raise Boom` levanta `Boom`, não `ValueError`.
+  Pra levantar pelo valor, use nome minúsculo (`raise erro`).
+- **O `e` do `catch` continua sendo o TEXTO do erro** (`type(e)` é `str`), então
+  `e is ValueError` é sempre `False`. Pra testar o tipo, use o próprio `catch`:
+  `catch (ValueError e)`.
+- **`ValueError("msg")` fora do `raise` é erro**:
+  `TypeError: ValueError("msg") só vale depois de raise`.
+- Os nomes são globais como `PoolFile`: dá pra sombrear (`ValueError = 3`), e
+  nome fora da árvore (`MeuErro`) continua `NameError` até você levantá-lo com
+  `raise MeuErro(...)`.
+- O editor conhece os nomes (completion, hover e realce) pelo `pool --metadata`
+  (chave `excecoes`), que sai da mesma tabela do motor.
+
+---
+
 ## Exemplo completo
 
 ```

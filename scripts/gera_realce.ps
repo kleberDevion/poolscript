@@ -1,0 +1,119 @@
+# Gera as listas da gramática de realce do editor a partir do MOTOR.
+#
+# A gramática TextMate (editor/vscode/syntaxes/poolscript.tmLanguage.json)
+# tinha listas digitadas de tipos e builtins — e pintava `Long`, que a
+# linguagem não tem, e não pintava exceção nenhuma. Regra do dono: nenhuma
+# lista fixa. As três alternações saem do `pool --metadata`:
+#
+#   storage.type.poolscript             <- tipos_declaraveis + tipos_apelidos + tipos_nomes
+#   support.function.builtin.poolscript <- builtins[].nome
+#   support.class.exception.poolscript  <- excecoes[].nome
+#
+#     ./pool scripts/gera_realce.ps            # reescreve as três linhas `match`
+#     ./pool scripts/gera_realce.ps --portao   # não escreve: reprova se divergir
+#
+# O resto do arquivo (comentários, escopos, lookaheads) fica como está: só a
+# linha `"match"` logo abaixo de cada `"name"` marcado é trocada.
+import os
+import sys
+import json
+
+GRAMATICA = "editor/vscode/syntaxes/poolscript.tmLanguage.json"
+
+# `(?!\s*=[^=])`: `int = 1` ou `type=...` como nome de argumento não é tipo.
+# `\s*(?=\()`: builtin só pinta quando CHAMADO (`route = 1` fica variável).
+REGRAS = [
+    ["storage.type.poolscript",             "\\\\b(", ")\\\\b(?!\\\\s*=[^=])"],
+    ["support.function.builtin.poolscript", "\\\\b(", ")\\\\s*(?=\\\\()"],
+    ["support.class.exception.poolscript",  "\\\\b(", ")\\\\b"],
+]
+
+
+funct nomes_de(meta) {
+    tipos = []
+    for each t in meta["tipos_declaraveis"] {
+        if not tipos.contains(t) { addEnd(tipos, t) }
+    }
+    for each a in meta["tipos_apelidos"].keys() {
+        if not tipos.contains(a) { addEnd(tipos, a) }
+    }
+    for each t in meta["tipos_nomes"] {
+        if not tipos.contains(t) { addEnd(tipos, t) }
+    }
+    builtins = []
+    for each b in meta["builtins"] {
+        addEnd(builtins, b["nome"])
+    }
+    excecoes = []
+    for each x in meta["excecoes"] {
+        addEnd(excecoes, x["nome"])
+    }
+    return [tipos, builtins, excecoes]
+}
+
+
+# A linha `"match": "..."` gerada para a regra `i`, com a indentação da linha
+# que ela substitui.
+funct linha_match(indent, i, nomes) {
+    return indent + "\"match\": \"" + REGRAS[i][1] + "|".join(nomes) + REGRAS[i][2] + "\""
+}
+
+
+funct gera(linhas, listas) {
+    saida = []
+    pendente = -1
+    for each l in linhas {
+        t = l.strip()
+        if pendente >= 0 and t.startswith("\"match\":") {
+            indent = l[0:len(l) - len(l.lstrip())]
+            addEnd(saida, linha_match(indent, pendente, listas[pendente]))
+            pendente = -1
+            continue
+        }
+        i = 0
+        for each r in REGRAS {
+            if t == "\"name\": \"" + r[0] + "\"," {
+                pendente = i
+            }
+            i = i + 1
+        }
+        addEnd(saida, l)
+    }
+    return saida
+}
+
+
+if __name__ == "main" {
+    tmp = "/tmp/ps_realce_meta.json"
+    os.cmd(sys.executable + " --metadata > " + tmp)
+    meta = json.parse(os.readFile(tmp))
+    listas = nomes_de(meta)
+
+    original = os.readFile(GRAMATICA)
+    linhas = original.split("\n")
+    novas = gera(linhas, listas)
+    gerado = "\n".join(novas)
+
+    if "--portao" in sys.argv {
+        if gerado == original {
+            post("realce: a gramatica bate com o --metadata (" + str(len(listas[0])) + " tipos, "
+                 + str(len(listas[1])) + " builtins, " + str(len(listas[2])) + " excecoes)")
+            sys.exit(0)
+        }
+        post("realce: a gramatica DIVERGE do --metadata — rode ./pool scripts/gera_realce.ps")
+        i = 0
+        for each l in linhas {
+            if i < len(novas) and novas[i] != l {
+                post("  linha " + str(i + 1) + ":")
+                post("    tem:  " + l.strip()[0:100])
+                post("    gera: " + novas[i].strip()[0:100])
+            }
+            i = i + 1
+        }
+        sys.exit(1)
+    }
+
+    os.writeFile(GRAMATICA, gerado)
+    post("realce gerado: " + str(len(listas[0])) + " tipos, " + str(len(listas[1]))
+         + " builtins, " + str(len(listas[2])) + " excecoes")
+}

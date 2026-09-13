@@ -271,6 +271,33 @@ if len(nao_conferidos) > 0 {
     falhas = falhas + 1
 }
 
+# ── exceções: cada nome publicado É um valor no motor, e todo pai existe ──
+# A chave "excecoes" alimenta completion/hover/realce do editor; nome que o
+# motor não liga como global seria sugestão que estoura em NameError.
+exc = meta["excecoes"]
+nomes_exc = []
+for each x in exc {
+    addEnd(nomes_exc, x["nome"])
+}
+fantasmas_exc = []
+for each x in exc {
+    saida = os.run([POOL, "-e", "post(" + x["nome"] + ")"], true)
+    if saida.strip() != x["nome"] {
+        addEnd(fantasmas_exc, x["nome"] + " -> publicado, mas o motor responde: " + saida.strip())
+    }
+    if x["pai"] != Null and not nomes_exc.contains(x["pai"]) {
+        addEnd(fantasmas_exc, x["nome"] + " -> pai '" + x["pai"] + "' nao esta na lista")
+    }
+}
+post("excecoes conferidas:", len(exc))
+if len(fantasmas_exc) > 0 {
+    post("FALHA —", len(fantasmas_exc), "excecao(oes) fantasma:")
+    for each f in fantasmas_exc {
+        post("  ", f)
+    }
+    falhas = falhas + 1
+}
+
 if falhas > 0 {
     sys.exit(1)
 }

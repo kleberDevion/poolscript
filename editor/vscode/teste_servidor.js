@@ -332,6 +332,20 @@ async function main() {
          valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
+  /* ── 9b. exceção: hover diz a família (da tabela do catch, via --metadata) ─ */
+  {
+    const EXC = ['try {', '    x = 1', '} catch (FileNotFoundError e) {', '    post(e, OSError)', '}'];
+    const m = await conversa(EXC.join('\n') + '\n', [
+      hov(30, 2, EXC[2].indexOf('FileNotFoundError')),
+      hov(31, 3, EXC[3].indexOf('OSError')),
+    ]);
+    conf('hover em `FileNotFoundError` diz de quem ela e filha',
+         valor(m, 30).includes('filha de OSError') && valor(m, 30).includes('Exception'), valor(m, 30));
+    conf('hover em `OSError` lista os filhos e a pagina da arvore',
+         valor(m, 31).includes('filhos:') && valor(m, 31).includes('FileNotFoundError')
+         && valor(m, 31).includes('exceptions.md'), valor(m, 31));
+  }
+
   /* ── 9c. TODO receptor expõe o que é — a matriz de contextos ─────────────
    *
    * Medido antes, 16 de 30 contextos vazios ou errados: `from mail import
@@ -398,6 +412,11 @@ async function main() {
        ['import mail', 'total = 1', 'funct soma(a) {', '    return a', '}', 't'], 5, undefined,
        ['total', 'soma', 'mail', 'post', 'len', 'str', 'funct', 'if', 'for', 'static', 'nonnull'],
        ['action', 'reaction']],
+      /* As exceções vêm de `--metadata` ("excecoes", a tabela do catch): são
+       * valores da linguagem e o sugestor não as tinha. */
+      ['sem receptor: as EXCEÇÕES do motor aparecem',
+       ['x = Val'], 0, undefined,
+       ['ValueError', 'Exception', 'OSError'], []],
       /* LITERAIS e `__name__`: o lexer entrega `true`/`false`/`Null` como token
        * próprio (BOOL/NULL) e `__name__` é global do compilador — nenhum dos
        * quatro está na KEYWORDS[] do --metadata, e o sugestor não os tinha. */

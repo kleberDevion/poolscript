@@ -2233,6 +2233,21 @@ static int eh_tipo_kw(PSToken *t)
          || strcmp(t->texto, "flo") == 0 || strcmp(t->texto, "bool") == 0);
 }
 
+/* Os tipos que abrem uma DECLARAÇÃO (`char c = "a"`, `list l = []`): uma
+ * tabela só, lida por `eh_tipo_kw_decl` e publicada por
+ * `ps_parser_tipos_decl`. Os quatro primeiros são também tipo de retorno. */
+static const char *const TIPOS_DECL[] = {
+    "str", "int", "flo", "bool",
+    "char", "long", "list", "dict", "json", "tup", "Object", "object",
+    NULL
+};
+
+static int esta_em_lista(const char *s, const char *const *lista)
+{
+    for (int i = 0; lista[i]; i++) if (strcmp(s, lista[i]) == 0) return 1;
+    return 0;
+}
+
 /* Tipos que abrem uma DECLARAÇÃO (`char c = "a"`). É maior que o
  * `eh_tipo_kw`, que também guarda o tipo de RETORNO de action — e ali só
  * `int action`/`bool action` existem. */
@@ -2257,12 +2272,15 @@ static int eh_tipo_kw_decl(PSToken *t)
      * atribuicao comum `l = [1]` — a doc prometia "guarda o proprio tipo" e
      * nenhuma declaracao existia. */
     return eh_tipo_kw(t) || eh_apelido_tipo(t)
-        || (t->type == T_KW && t->texto
-            && (strcmp(t->texto, "char") == 0
-                || strcmp(t->texto, "long") == 0
-                || strcmp(t->texto, "list") == 0 || strcmp(t->texto, "dict") == 0
-                || strcmp(t->texto, "json") == 0 || strcmp(t->texto, "tup") == 0
-                || strcmp(t->texto, "Object") == 0 || strcmp(t->texto, "object") == 0));
+        || (t->type == T_KW && t->texto && esta_em_lista(t->texto, TIPOS_DECL));
+}
+
+/* A lista dos tipos que abrem declaração, pra quem precisa dela FORA do
+ * parser: o `--metadata` a publica e o realce do editor é gerado dela — em
+ * vez de uma cópia digitada na gramática, que envelhece. */
+const char *const *ps_parser_tipos_decl(void)
+{
+    return TIPOS_DECL;
 }
 
 static PSNode *statement(P *p)

@@ -135,6 +135,15 @@ try {
 > `audita_exemplos_doc.ps` pegavam: o primeiro só confere que o nome do tipo
 > existe, o segundo só roda `--check`, que é sintaxe.
 
+### 10.4.1. Os nomes são valores
+
+`Exception`, `ValueError`, `OSError`… existem como **valores** da linguagem:
+`erro = FileNotFoundError` guarda o tipo, `raise erro` levanta ele,
+`erro is OSError` segue a árvore, `type(erro)` é `type`. Só o `e` do `catch`
+continua sendo texto (`type(e)` é `str`), e `raise Nome` com maiúscula é tipo
+literal, não variável. A lista completa, com as regras, está em
+[exceptions.md](../exceptions/exceptions.md#os-nomes-são-valores).
+
 Observações:
 
 - **`SyntaxError`** acontece **antes** de rodar (na análise do código), então não
@@ -158,7 +167,10 @@ Observações:
 ## 10.5. Resumo
 
 - **`raise Tipo("msg")`** — tipo livre (maiúsculo), mensagem opcional; sem
-  `try` em volta, propaga e encerra o programa.
+  `try` em volta, propaga e encerra o programa. `raise erro` com uma variável
+  que guarda uma exceção (`erro = KeyError`) levanta aquele tipo.
+- **Os nomes da árvore são valores** (`ValueError is Exception` é `True`,
+  `type(ValueError)` é `type`) — seção 10.4.1.
 - **`try` / `catch (...)` / `finally`** — `catch` exige parênteses; `finally`
   roda sempre. Um dos dois tem que existir; os dois juntos também valem, e
   `try` + `finally` **sem** `catch` é legítimo (o erro propaga depois do

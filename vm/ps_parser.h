@@ -23,4 +23,8 @@ typedef struct {
 PSParseResult *ps_parse(PSToken *toks, int32_t n);
 void           ps_parse_free(PSParseResult *r);
 
+/* Os tipos que abrem declaração (`list l = []`), terminados em NULL. Fonte
+ * única: a tabela que o próprio parser consulta; o `--metadata` a publica. */
+const char *const *ps_parser_tipos_decl(void);
+
 #endif /* PS_PARSER_H */

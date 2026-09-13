@@ -67,7 +67,7 @@ function motor(args, entrada) {
 }
 
 /* Módulos, tipos e membros, das tabelas do VM. Lido uma vez. */
-let META = { modulos: {}, tipos: {}, acesso: {} };
+let META = { modulos: {}, tipos: {}, acesso: {}, excecoes: [] };
 function carregaMeta() {
   const bruto = motor(['--metadata']);
   if (bruto.trim().startsWith('{')) {
@@ -1098,6 +1098,11 @@ function completa(doc, p) {
     poe(b.nome, CompletionItemKind.Function, 'builtin · ' + assinatura({ nome: b.nome, params: b.params }), '3');
   }
   for (const k of META.keywords || []) poe(k, CompletionItemKind.Keyword, 'palavra-chave', '4');
+  /* As exceções são valores da linguagem (`raise erro`, `X is Exception`) e
+   * vêm da MESMA tabela que o `catch` consulta no motor. */
+  for (const x of META.excecoes || []) {
+    poe(x.nome, CompletionItemKind.Class, 'exceção · ' + (x.pai ? 'filha de ' + x.pai : 'raiz da árvore'), '3');
+  }
   /* `true`, `false` e `Null` são LITERAIS no lexer (tokens BOOL e NULL), não
    * entradas de `KEYWORDS[]` — por isso não chegavam aqui pelo `--metadata` e
    * o editor nunca sugeria booleano nenhum. `__name__` é global que o
@@ -1403,6 +1408,24 @@ conexao.onHover((p) => {
     const t = tipoDoNome(doc, nome, p.position.line);
     const tipo = b.tipo || (t && t.tipo !== 'import' && t.nome) || '';
     return md('```ps\n' + (tipo ? tipo + ' ' : '') + b.nome + '\n```\n\n' + b.kind + ' · declarada na ' + onde);
+  }
+  /* Exceção do motor: a cadeia de pais e os filhos saem de `META.excecoes`
+   * (a tabela do `catch`). Não há página por nome em docs/exceptions/<nome>/;
+   * a árvore inteira está em exceptions.md. */
+  const exc = (META.excecoes || []).find((x) => x.nome === nome);
+  if (exc) {
+    const pais = [];
+    for (let pai = exc.pai; pai; ) {
+      pais.push(pai);
+      const acima = (META.excecoes || []).find((x) => x.nome === pai);
+      pai = acima ? acima.pai : null;
+    }
+    const filhos = (META.excecoes || []).filter((x) => x.pai === nome).map((x) => x.nome);
+    const linha = 'exceção · ' + (pais.length ? 'filha de ' + pais.join(' → ') : 'raiz da árvore')
+                + (filhos.length ? ' · filhos: ' + filhos.join(', ') : '');
+    const pagina = path.join(raizDoc(), 'exceptions', 'exceptions.md');
+    return md('```ps\n' + nome + '\n```\n\n' + linha + '\n\n`catch (' + nome + ' e)` pega ' + nome
+              + (filhos.length ? ' e os descendentes' : '') + ' · [árvore de exceções](' + pagina + ')');
   }
   const alvo = alvoDoImport(doc, nome);
   if (alvo) {

@@ -750,6 +750,13 @@ enum {
     TIPO_LONG,
     TIPO__N
 };
+/* As exceções também são valores `V_TIPO`, com o índice DESLOCADO: `ValueError`
+ * é `MK_TIPO(TIPO_EXC_BASE + k)`, k = posição em `EXCECOES[]`. Reaproveita
+ * impressão, `==`, hash e `type()` dos tipos; `tipo_nome` resolve o nome e
+ * `tipo_eh_excecao` separa os dois mundos onde importa (`is`, `raise`,
+ * chamada). Nunca colide com `TIPOS[]`, que tem uma dúzia de entradas. */
+#define TIPO_EXC_BASE 1000
+static int tipo_eh_excecao(int64_t t);
 
 /* O nome de um tipo pelo código, e o teste de pertinência. A tabela que
  * responde os dois fica mais abaixo, junto — aqui só as declarações, porque a
@@ -3270,6 +3277,20 @@ static const ExcLinha EXCECOES[] = {
     { "TimeoutError",         "OSError" },
     { "DatabaseError",        "Exception" },
 };
+#define N_EXCECOES ((int64_t)(sizeof(EXCECOES) / sizeof(EXCECOES[0])))
+
+static int tipo_eh_excecao(int64_t t)
+{
+    return t >= TIPO_EXC_BASE && t < TIPO_EXC_BASE + N_EXCECOES;
+}
+
+/* posição do nome em EXCECOES[], ou -1: é o que liga o global `ValueError` */
+static int64_t excecao_indice(const char *nome)
+{
+    for (int64_t k = 0; k < N_EXCECOES; k++)
+        if (strcmp(EXCECOES[k].nome, nome) == 0) return k;
+    return -1;
+}
 
 static const char *excecao_pai(const char *nome)
 {
@@ -9346,6 +9367,7 @@ static const struct { const char *nome; int (*aceita)(const Value *); } TIPOS[] 
 
 static const char *tipo_nome(int64_t t)
 {
+    if (tipo_eh_excecao(t)) return EXCECOES[t - TIPO_EXC_BASE].nome;
     return (t >= 0 && t < (int64_t)(sizeof(TIPOS) / sizeof(TIPOS[0]))) ? TIPOS[t].nome : "?";
 }
 
@@ -21198,6 +21220,10 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         /* tipo como valor (`map(l, str)`) -> conversor nativo correspondente */
         FnNativa conv = tipo_conversor(fn.as.i);
         if (!conv) {
+            if (tipo_eh_excecao(fn.as.i))
+                snprintf(vm->erro, sizeof(vm->erro), "%s(\"msg\") só vale depois de raise",
+                         tipo_nome(fn.as.i));
+            else
             snprintf(vm->erro, sizeof(vm->erro), "tipo '%s' não pode ser usado como conversor",
                      tipo_nome(fn.as.i));
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
@@ -22725,8 +22751,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* `f = list; f(a=1)`: o tipo E chamavel, so nao aceita nome —
                  * dizer "not callable" aqui seria mentira. */
                 ERRO_TF(vm, "TypeError", "%s() takes no keyword arguments",
-                        (alvo_kw.as.i >= 0 && alvo_kw.as.i <= TIPO_TYPE)
-                            ? tipo_nome(alvo_kw.as.i) : "?");
+                        tipo_nome(alvo_kw.as.i));
             } else {
                 ERRO_TF(vm, "TypeError", "'%s' object is not callable",
                         nome_do_tipo_valor(alvo_kw));
@@ -23126,6 +23151,10 @@ ERRO_TF(vm, "TypeError",
                  * convertem, usando O MESMO conversor nativo da chamada direta
                  * `str(...)`. json/dict/tup não têm conversor -> recusam. */
                 FnNativa conv = tipo_conversor(alvo.as.i);
+                /* exceção chamada fora do `raise`: a frase diz onde ela vale */
+                if (!conv && tipo_eh_excecao(alvo.as.i))
+                    ERRO_TF(vm, "TypeError", "%s(\"msg\") só vale depois de raise",
+                            tipo_nome(alvo.as.i));
                 if (!conv)
                     ERRO_TF(vm, "TypeError",
                             "tipo '%s' não pode ser usado como conversor",
@@ -23819,6 +23848,14 @@ ERRO_TF(vm, "TypeError",
         case OP_RAISE: {
             Value v = stack[--sp];
             vm->sp = sp; vm->locals_top = locals_top;
+            /* `raise erro` com uma EXCEÇÃO guardada em variável levanta aquele
+             * tipo (sem mensagem). Só chega aqui a forma de expressão; `raise
+             * Nome` maiúsculo é tipo literal no parser. */
+            if (v.t == V_TIPO && tipo_eh_excecao(v.as.i)) {
+                vm->erro[0] = '\0';
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", tipo_nome(v.as.i));
+                goto erro_runtime;
+            }
             TXTBUF_AUTO t = {0};
             valor_para_texto(&t, &v, 0);
             snprintf(vm->erro, sizeof(vm->erro), "%s", t.b ? t.b : "");
@@ -24820,9 +24857,14 @@ ERRO_TF(vm, "TypeError",
             Value b = stack[--sp], a = stack[sp - 1];
             int r;
             /* tipo vs tipo -> IDENTIDADE (`str is str`, `int is int`); todo
-             * tipo `is type`. (json/dict já colapsam no mesmo índice.) */
-            if (a.t == V_TIPO && b.t == V_TIPO)
-                                        r = (b.as.i == TIPO_TYPE) || (a.as.i == b.as.i);
+             * tipo `is type`. (json/dict já colapsam no mesmo índice.) Entre
+             * exceções vale a ÁRVORE: `FileNotFoundError is OSError`. */
+            if (a.t == V_TIPO && b.t == V_TIPO) {
+                if (b.as.i == TIPO_TYPE)                                   r = 1;
+                else if (tipo_eh_excecao(a.as.i) && tipo_eh_excecao(b.as.i))
+                    r = excecao_eh(tipo_nome(a.as.i), tipo_nome(b.as.i));
+                else                                                       r = (a.as.i == b.as.i);
+            }
             else if (b.t == V_TIPO)     r = valor_eh_tipo(&a, b.as.i);
             else if (b.t == V_NULL)     r = (a.t == V_NULL || a.t == V_UNSET);
             else if (EH_CLASS(b))       r = EH_INST(a) && COMO_INST(a)->classe == COMO_CLASS(b);
@@ -25963,6 +26005,11 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
             vm->globals[bg + i] = MK_TIPO(TIPO_PFILE);
             continue;
         }
+        /* as exceções são globais também dentro de módulo importado */
+        {
+            int64_t k = excecao_indice(prog->globais[i]);
+            if (k >= 0) { vm->globals[bg + i] = MK_TIPO(TIPO_EXC_BASE + k); continue; }
+        }
         /* `__name__` num modulo importado e o NOME do modulo (no arquivo
          * principal e o caminho). Nao existia: `Jinker(__name__)` num modulo
          * estourava com NameError. */
@@ -26450,6 +26497,35 @@ void ps_metadata_json(FILE *saida)
         jm_params(f, BUILTINS[i].params);
         fputc('}', f);
     }
+    /* As exceções, com o pai: é a tabela que o `catch` consulta, e é dela que
+     * o editor tira completion, hover e realce — nenhuma lista digitada. */
+    fprintf(f, "\n ],\n \"excecoes\": [");
+    for (int64_t k = 0; k < N_EXCECOES; k++) {
+        if (k) fputc(',', f);
+        fprintf(f, "\n  {\"nome\": ");
+        jm_txt(f, EXCECOES[k].nome);
+        fprintf(f, ", \"pai\": ");
+        if (EXCECOES[k].pai) jm_txt(f, EXCECOES[k].pai); else fprintf(f, "null");
+        fputc('}', f);
+    }
+    /* Os nomes de tipo declarável (`str x`, `x is int`), da tabela TIPOS[]:
+     * o realce do editor pinta tipo a partir daqui, não de lista própria. */
+    fprintf(f, "\n ],\n \"tipos_nomes\": [");
+    for (size_t i = 0; i < sizeof(TIPOS) / sizeof(TIPOS[0]); i++) {
+        if (i) fputc(',', f);
+        fprintf(f, "\n  ");
+        jm_txt(f, TIPOS[i].nome);
+    }
+    /* e os que abrem DECLARAÇÃO (`list l = []`), da tabela do parser */
+    fprintf(f, "\n ],\n \"tipos_declaraveis\": [");
+    {
+        const char *const *td = ps_parser_tipos_decl();
+        for (int i = 0; td[i]; i++) {
+            if (i) fputc(',', f);
+            fprintf(f, "\n  ");
+            jm_txt(f, td[i]);
+        }
+    }
     fprintf(f, "\n ],\n \"keywords\": [");
     {
         const char *const *kw = ps_lexer_keywords();
@@ -26681,6 +26757,12 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         if (!ligou && strcmp(prog->globais[i], "PoolFile") == 0) {
             vm.globals[i] = MK_TIPO(TIPO_PFILE);
             ligou = 1;
+        }
+        /* `Exception`, `ValueError`… são valores: o nome da tabela EXCECOES[]
+         * vira um V_TIPO deslocado, como o `PoolFile` logo acima */
+        if (!ligou) {
+            int64_t k = excecao_indice(prog->globais[i]);
+            if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
         }
         if (!ligou && strcmp(prog->globais[i], "Parsing") == 0) {
             int mi = acha_modulo_oculto("_Parsing");

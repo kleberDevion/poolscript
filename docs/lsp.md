@@ -84,10 +84,11 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;
-- **realce** (*semantic tokens*) — palavra da linguagem, string, número,
-  comentário, tipo, identificador e operador, vindos do **lexer de verdade**
-  (`pool --tokens`). Não existe gramática paralela pra divergir do motor:
-  token novo na linguagem já nasce pintado.
+- **realce** — a gramática TextMate (`syntaxes/poolscript.tmLanguage.json`)
+  é **gerada** do `pool --metadata` por `scripts/gera_realce.ps`: as listas de
+  tipos, builtins e exceções saem das tabelas do motor, e o portão
+  `gera_realce.ps --portao` reprova se o arquivo divergir do gerado. Nome novo
+  na linguagem entra pintado ao regenerar; nenhuma lista é digitada à mão.
 
 O modelo de tipos vem do **próprio binário** (`pool --metadata`, lido das
 tabelas do VM). Nada é digitado à mão, então nem o completion nem o hover

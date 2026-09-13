@@ -185,8 +185,9 @@
               "include": "#constants"
             },
             {
-              "match": "\\b(str|int|long|Long|flo|bool|list|dict|json|tup|bytes|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b",
-              "name": "storage.type.poolscript"
+              "comment": "tipo do parametro — GERADO por scripts/gera_realce.ps (mesma lista da regra de tipos)",
+              "name": "storage.type.poolscript",
+              "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
             },
             {
               "match": "\\b[A-Za-z_]\\w*\\b",
@@ -224,7 +225,7 @@
         {
           "comment": "idem: `int = 1` ou `type=...` como nome de argumento nao e tipo",
           "name": "storage.type.poolscript",
-          "match": "\\b(str|int|long|Long|flo|bool|list|dict|json|tup|bytes|type|char|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary)\\b(?!\\s*=[^=])"
+          "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
         },
         {
           "comment": "static/nonnull sao modificadores COLADOS na declaracao — de funct E de campo (`static object mapp = ...`), em qualquer ordem com o tipo e a visibilidade. Pintam quando vem uma palavra atras (modificador, tipo, nome ou funct); `static` sozinho numa expressao continua nome comum. A lista antiga de tipos no lookahead nao tinha long/object/list e nao cobria campo.",
@@ -242,7 +243,12 @@
         {
           "comment": "builtins de verdade, e so quando CHAMADOS: `route` e `listen` sairam daqui porque sao metodos, e pintados soltos manchavam a variavel de quem escreve `route = 1`",
           "name": "support.function.builtin.poolscript",
-          "match": "\\b(post|input|addEnd|addStart|removeEnd|removeStart|len|range|str|int|flo|bool|type|abs|pow|round|sorted|reversed|enumerate|zip|map|filter|open|sleep|gather|assert|id|load|min|max|sum|hex|bin|oct|ord|chr)\\s*(?=\\()"
+          "match": "\\b(assert|post|len|str|int|long|flo|bool|type|abs|pow|round|hex|bin|oct|ord|chr|range|list|tup|dict|sum|min|max|sorted|reversed|enumerate|zip|addEnd|addStart|removeEnd|removeStart|map|filter|open|sleep|gather|input|id|load)\\s*(?=\\()"
+        },
+        {
+          "comment": "GERADO por scripts/gera_realce.ps a partir de `pool --metadata` (chave `excecoes`, a tabela do catch). As tres listas desta gramatica (tipos, builtins, excecoes) sao geradas; nao edite a mao.",
+          "name": "support.class.exception.poolscript",
+          "match": "\\b(Exception|OSError|FileExistsError|FileNotFoundError|IsADirectoryError|NotADirectoryError|PermissionError|NetworkError|IOError|LookupError|IndexError|KeyError|ArithmeticError|ZeroDivisionError|OverflowError|ValueError|UnicodeError|UnicodeDecodeError|UnicodeEncodeError|AttributedValueError|ConversionError|RuntimeError|RecursionError|TypeError|AttributeError|NameError|ImportError|MemoryError|AssertionError|SyntaxError|NotImplementedError|TimeoutError|DatabaseError)\\b"
         }
       ]
     },
