@@ -22,18 +22,19 @@ Este mark down tem alguams specs da linguagem.
 9. [Operadores](#operadores)
 10. [Controle de fluxo](#controle-de-fluxo)
 11. [Funções: `funct`](#funções-funct)
-12. [`async` / `await`](#async--await)
-13. [Geradores (`yield`)](#geradores-yield)
-14. [`try` / `catch` / `finally`](#try--catch--finally)
-15. [`match` / `case`](#match--case)
-16. [`model`](#model)
-17. [`Entity` (classes)](#entity-classes)
-18. [`count` / `count each`](#count--count-each)
-19. [`using`](#using)
-20. [Imports e bibliotecas padrão](#imports-e-bibliotecas-padrão)
-21. [Builtins globais](#builtins-globais)
-22. [Erros nomeados](#erros-nomeados)
-23. [Limitações e comportamentos conhecidos](#limitações-e-comportamentos-conhecidos)
+12. [Decoradores: `@`](#decoradores-)
+13. [`async` / `await`](#async--await)
+14. [Geradores (`yield`)](#geradores-yield)
+15. [`try` / `catch` / `finally`](#try--catch--finally)
+16. [`match` / `case`](#match--case)
+17. [`model`](#model)
+18. [`Entity` (classes)](#entity-classes)
+19. [`count` / `count each`](#count--count-each)
+20. [`using`](#using)
+21. [Imports e bibliotecas padrão](#imports-e-bibliotecas-padrão)
+22. [Builtins globais](#builtins-globais)
+23. [Erros nomeados](#erros-nomeados)
+24. [Limitações e comportamentos conhecidos](#limitações-e-comportamentos-conhecidos)
 
 ---
 
@@ -451,6 +452,61 @@ funct registrar() {
 registrar()
 post(total_visitas)   # 1 — visível fora da funct também
 ```
+
+---
+
+## Decoradores: `@`
+
+Um `@nome` na linha antes de uma `funct` (ou de uma `Entity`) entrega a
+declaração a um **decorador**. Três são resolvidos na compilação — `static`,
+`nonnull` (grafias `@static`/`@NonNull`) e `@dataentity`. Todo outro decorador
+é uma expressão sua, com um protocolo só:
+
+- **Com parênteses é chamada** (`@app.route("/x")`, `@log()`); **sem
+  parênteses é o valor** (`@log` é a própria funct `log`).
+- Se o valor tem **`.register(f)`**, o motor chama `register(funct)` e o nome
+  continua sendo a funct (é o registrador do jinker; uma Entity sua pode ter
+  o mesmo método).
+- Senão, se é **chamável**, o motor chama `decorador(funct)` e o nome passa a
+  valer **o que ele devolveu** (`Null` mantém a funct). É assim que um
+  decorador envolve ou registra, sem Entity nenhuma.
+- Qualquer outro valor é `TypeError`; nome inexistente é `NameError` na linha
+  do `@`; `@x` sem nada embaixo é `SyntaxError`. Nada é engolido.
+
+```ps
+funct log(f) {
+    funct w() {
+        post("antes")
+        return f()
+    }
+    return w
+}
+
+@log
+funct h() {
+    return 1
+}
+post(h())     # antes / 1
+
+rotas = {}
+funct rota(caminho) {
+    funct registra(f) {
+        rotas[caminho] = f
+    }
+    return registra
+}
+
+@rota("/x")
+funct index() {
+    return "ok"
+}
+post(index(), rotas["/x"]())    # ok ok
+```
+
+Decoradores empilham (`@a` sobre `@b` sobre `h` dá `a(b(h))`). Em cima de
+`Entity` e de método de Entity o decorador só **registra**. Detalhes, as três
+posições e os exemplos de biblioteca:
+[linguagem/14-decoradores.md](linguagem/14-decoradores.md).
 
 ---
 
