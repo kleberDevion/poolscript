@@ -530,7 +530,7 @@ static int liga_o_nome(PSNode *n, const char *alvo)
 
 /* ── closure: captura de variável de fora ────────────────────────────────
  *
- * O modelo é o do CPython, não o do Lua: a variável capturada mora numa
+ * A variável capturada mora numa
  * CÉLULA no heap, e tanto quem declara quanto quem captura mexem no valor de
  * dentro dela. Célula em vez de ponteiro pro slot porque a VM move locais —
  * gerador copia o frame pra dentro do objeto, fibra troca o array inteiro —
@@ -985,10 +985,8 @@ static void guarda_nome(C *c, Unidade *u, const char *nome)
  * mas DENTRO da interpolação ele continuaria errado: `post(f"{1 / x}")` na
  * linha 4 reportaria linha 1 na divisão por zero.
  *
- * É o mesmo ajuste que o CPython faz desde a PEP 498
- * (`fstring_fix_node_location`), e pelo mesmo motivo: ele também re-parseia o
- * interior. A coluna não é a exata dentro do trecho; a linha é a certa, e é
- * ela que o traceback mostra. */
+ * Por isso a sub-árvore recebe a posição do nó da f-string. A coluna não é a
+ * exata dentro do trecho; a linha é a certa, e é ela que o traceback mostra. */
 static void carimba_pos(PSNode *n, int32_t linha, int32_t col)
 {
     if (!n) return;
@@ -1126,8 +1124,8 @@ static void count_operandos(C *c, Unidade *u, PSNode *n)
  * linha 1: o interior da f-string é re-parseado a partir de uma string
  * isolada, e ali tudo é linha 1.
  *
- * O modelo de compilador é a posição ser ARGUMENTO, não estado pendurado (no
- * CPython o gerador usa a posição do nó, e é dela que sai o `co_linetable`).
+ * O modelo de compilador é a posição ser ARGUMENTO, não estado pendurado: a
+ * tabela de linhas sai da posição do nó que está sendo emitido.
  * Salvar e restaurar em volta de cada nó dá o mesmo efeito sem passar a
  * posição nas ~1000 chamadas de `emite`: nada aninhado alcança quem o contém. */
 static void expr_no(C *c, Unidade *u, PSNode *n);
@@ -1198,18 +1196,15 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                         || !strcmp(n->texto, "not is")) {
                     /* I10 — `is` com LITERAL de um dos lados e erro.
                      *
-                     * Aqui `is` e o operador de TIPO (`5 is int`), nao a
-                     * identidade do Python — esta na doc e ha 77 usos no
+                     * Aqui `is` e o operador de TIPO (`5 is int`), nao
+                     * identidade de objeto — esta na doc e ha 77 usos no
                      * repositorio. O defeito era outro: quando o outro lado
                      * NAO era um tipo, ele caia em igualdade de valor SEM
                      * AVISAR. `x is 0` digitado no lugar de `x == 0` virava
                      * comparacao, dava o resultado "certo" e nunca reclamava.
                      *
-                     * O CPython tambem nao deixa passar: emite
-                     * `SyntaxWarning: "is" with 'int' literal. Did you mean
-                     * "=="?` em tempo de compilacao. Aqui e ERRO — a linguagem
-                     * nao tem canal de aviso, e silencio foi o que criou o
-                     * problema.
+                     * Aqui e ERRO em tempo de compilacao — a linguagem nao tem
+                     * canal de aviso, e silencio foi o que criou o problema.
                      *
                      * So o LITERAL: `x is y` com dois nomes continua valendo,
                      * porque `y` pode perfeitamente guardar um tipo. */
@@ -1218,7 +1213,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                      * tipo chega como N_TYPE_NAME, nunca N_LITERAL, entao a
                      * checagem separa os dois sozinha. */
                     /* `x is Null` FICA: e o idioma da linguagem pro teste
-                     * de ausencia (o `x is None` do Python), e `type(null)` e
+                     * de ausencia, e `type(null)` e
                      * literalmente "Null" — ali o literal ocupa a posicao de
                      * tipo com sentido. Os outros literais nao tem essa
                      * leitura. */
@@ -1285,7 +1280,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             int32_t nkw = 0;
             for (int32_t i = 0; i < n->lista.n; i++)
                 if (n->lista.itens[i]->texto) nkw++;
-            /* nomeado só depois de posicional, como no Python */
+            /* nomeado só depois de posicional */
             if (nkw > 0) {
                 int viu_nome = 0;
                 for (int32_t i = 0; i < n->lista.n; i++) {
@@ -1420,7 +1415,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_SLICE_ACCESS: {
-            /* parte ausente vira Null — a VM normaliza como o Python */
+            /* parte ausente vira Null — a VM normaliza pro padrão da fatia */
             expr(c, u, n->a);
             if (n->b) expr(c, u, n->b);
             else emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
@@ -2965,10 +2960,10 @@ static int32_t novo_proto(C *c, const char *nome)
 
 /* Guarda o valor que está NO TOPO da pilha dentro de um alvo.
  *
- * O alvo pode ser nome, `o.campo`, `d[k]` ou um grupo aninhado — os mesmos
- * quatro do CPython. A ordem importa: aqui o valor JÁ está na pilha (o UNPACK
+ * O alvo pode ser nome, `o.campo`, `d[k]` ou um grupo aninhado.
+ * A ordem importa: aqui o valor JÁ está na pilha (o UNPACK
  * o pôs lá) e container/índice só são avaliados agora, depois do lado direito
- * inteiro e depois da checagem de quantidade — que é a ordem do CPython.
+ * inteiro e depois da checagem de quantidade.
  * Como `INDEX_SET`/`SET_MEMBER` querem o valor por ÚLTIMO, o giro (ROT3/SWAP)
  * acerta a pilha e a semântica de escrita continua sendo a MESMA de
  * `l[i] = v` e `o.x = v`: um só lugar decide lista×dict, private e erro. */
