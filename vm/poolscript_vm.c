@@ -4,8 +4,8 @@
  *
  * Etapa 1 (feita): int/float/bool/Null como valores nativos numa union
  *   etiquetada. Resultado medido: fib(22) de 597ms (tree-walker) pra 1,4ms,
- *   ultrapassando o próprio CPython (2,0ms), porque somar dois inteiros
- *   virou uma instrução da CPU em vez de PyNumber_Add com alocação.
+ *   porque somar dois inteiros virou uma instrução da CPU em vez de uma
+ *   chamada genérica com alocação.
  *
  * Etapa 2 (esta): objetos com dono próprio — `PSString` — e o coletor que
  *   os gerencia. Enquanto só existiam int/float/bool ninguém alocava e não
@@ -29,7 +29,8 @@
  * getcwd, etc.). O gcc em -std=gnu* já liga o _DEFAULT_SOURCE implícito, mas o
  * build de extensão e os analisadores de IDE em -std=c* estrito não — e aí
  * `struct sigaction` aparecia como tipo incompleto. Definir aqui deixa igual
- * pros dois. Python.h também define _GNU_SOURCE, então é compatível. */
+ * pros dois. O cabeçalho da extensão também define _GNU_SOURCE, então é
+ * compatível. */
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE 1
 #endif
@@ -60,7 +61,7 @@
 #include <sys/eventfd.h>
 #include <pthread.h>
 #include <ucontext.h>
-/* lib sockets (espelho do módulo socket do Python) */
+/* lib sockets */
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -145,7 +146,7 @@ typedef enum {
     OBJ_MANPU_FILE,/* mp.open() — arquivo aberto com write/read/save + using */
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
     OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
-    OBJ_SOCKET,    /* lib sockets — espelho do socket.socket do Python */
+    OBJ_SOCKET,    /* lib sockets — socket cru (TCP/UDP/UNIX) */
     OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
     OBJ_CELULA,    /* caixa de uma variável capturada por action aninhada */
     OBJ_CLOSURE,   /* action aninhada + as células que ela capturou */
@@ -248,14 +249,14 @@ typedef struct {
     Value    instancia;
     int32_t  proto;
 } PSBound;
-/* lib `sockets`: o objeto socket cru (TCP/UDP/UNIX). O espelho é 1:1 com o
- * Python: bind/listen/accept/connect/send/recv/..., endereço = tup
+/* lib `sockets`: o objeto socket cru (TCP/UDP/UNIX). Métodos
+ * bind/listen/accept/connect/send/recv/..., endereço = tup
  * (host, porta), recv devolve bytes. I/O bloqueante cede via fib_offload. */
 typedef struct {
     Obj    obj;
     int    fd;         /* -1 = fechado ou detach() */
     int    familia, tipo, proto;
-    double timeout;    /* segundos; < 0 = bloqueante (None, default) */
+    double timeout;    /* segundos; < 0 = bloqueante (Null, default) */
 } PSSocket;
 /* `regex.compile(padrao)`: o padrao COMPILADO uma vez e reusado — o mesmo
  * PSRegex que as funcoes do modulo compilam e jogam fora a cada chamada. */
@@ -361,7 +362,7 @@ typedef struct {
 typedef struct {
     Obj      obj;
     char    *nome;
-    char    *caminho;    /* arquivo de origem — o Python cita no ImportError
+    char    *caminho;    /* arquivo de origem — citado no ImportError
                           * de `from mod import x` */
     int32_t  base;       /* primeira global do módulo em vm->globals */
     int32_t  n;
@@ -370,7 +371,7 @@ typedef struct {
 } PSModuloPS;
 
 /* Inteiro de precisão arbitrária (GMP). Só existe quando um int64 estoura;
- * resultado que volta a caber em int64 é rebaixado pra V_INT (como o Python). */
+ * resultado que volta a caber em int64 é rebaixado pra V_INT. */
 typedef struct { Obj obj; mpz_t v; } PSBigInt;
 #define EH_BIGINT(x)   ((x).t == V_OBJ && (x).as.obj->type == OBJ_BIGINT)
 #define COMO_BIGINT(x) ((PSBigInt *)(x).as.obj)
@@ -423,7 +424,7 @@ typedef struct {
 
 /* mail.MailMessage — acumula headers (From/To/Subject, na ordem que o usuário
  * definiu) e partes (corpo e anexos). O MIME só é montado no send/as_string,
- * então a ordem de construção é preservada, como no email lib do Python. */
+ * então a ordem de construção é preservada. */
 typedef struct {
     char *nome, *valor;
 } MailCab;
@@ -486,9 +487,8 @@ typedef struct {
 typedef struct { Obj obj; PSDbConn *conn; int fechado; int drv; int em_transacao; int ocupada; } PSDbConexao;
 /* `fechado`: depois de `close()` o cursor não volta a servir. Sem essa marca,
  * `cur.close()` liberava o resultado e um `execute()` seguinte simplesmente
- * preparava outro e funcionava — o `close()` não fechava nada. O DB-API (PEP
- * 249) exige erro, e é o que o `sqlite3` do Python faz ("Cannot operate on a
- * closed cursor"). */
+ * preparava outro e funcionava — o `close()` não fechava nada. Cursor fechado
+ * tem que dar erro ("Cannot operate on a closed cursor"). */
 typedef struct { Obj obj; Value conexao; PSDbRes res; int pos; int drv; int fechado; } PSDbCursor;
 typedef struct { Obj obj; PSMongo *m; int fechado; } PSMongoConn;
 typedef struct { Obj obj; Value conexao; char *nome; } PSMongoCol;
@@ -639,7 +639,7 @@ typedef struct PSWsConn_ {
     Value  on_msg;           /* callback ou V_NULL */
 } PSWsConn;
 
-/* qrcode.QRCode — o builder do estilo Python. Acumula add_data; a matriz e o
+/* qrcode.QRCode — o builder. Acumula add_data; a matriz e o
  * PNG são gerados na hora do make_image/save (o wrapper delega pra lib no
  * mesmo ponto). `version` é aceito e ignorado: fit=True re-seleciona. */
 typedef struct {
@@ -689,7 +689,7 @@ typedef struct {
     const char *params;   /* nomes dos parâmetros, pra chamada nomeada */
 } PSNativa;
 
-/* Dict COMPACTO, no formato do CPython: um array denso em ordem de inserção
+/* Dict COMPACTO: um array denso em ordem de inserção
  * mais uma tabela de índices que resolve o hash.
  *
  * A tabela hash pura (que estava aqui antes) guarda as entradas na ordem do
@@ -800,7 +800,7 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 #define COMO_MODPS(v)  ((PSModuloPS*)(v).as.obj)
 /* Bytes reusam o layout da string: mesma alocação, mesmo GC, mesma
  * comparação. O que muda é o TIPO — e por isso `"ab" == "ab".encode()` é
- * falso, como no Python. */
+ * falso. */
 #define EH_BYTES(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_BYTES)
 #define COMO_BYTES(v)  ((PSString*)(v).as.obj)
 #define EH_PFILE(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_POOLFILE)
@@ -1131,7 +1131,7 @@ struct VM_ {
     char    erro[256];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
     /* Traceback do erro não-capturado: do <module> (mais externo) ao frame que
-     * falhou (mais interno), na ordem em que o Python imprime. */
+     * falhou (mais interno). */
     struct { int proto; int linha; int col; } tb[64];
     int     ntb;
     /* Traceback preservado de um import que estourou DENTRO do módulo: sem isto
@@ -1179,9 +1179,9 @@ typedef struct VM_ VM;
  *
  * Isso importa porque este runtime SERVE HTTP: header, query, formulário e
  * JSON do cliente viram dict. É o ataque de 2011 (n.runs SA-2011.004), que
- * rendeu CVE-2011-4885 no PHP e CVE-2012-1150 no Python — e a resposta de
- * todos eles, Ruby, Java e V8 inclusive, foi randomizar a semente por
- * processo. Custa uma leitura de /dev/urandom no boot.
+ * rendeu CVE em vários runtimes com dict de hash — e a resposta de todos
+ * eles foi randomizar a semente por processo. Custa uma leitura de
+ * /dev/urandom no boot.
  *
  * `PS_HASH_SEED=<n>` fixa a semente. Existe pro caso em que a saída precisa
  * ser reproduzível entre execuções (depurar ordem de dict, comparar despejo);
@@ -1240,7 +1240,7 @@ static PSBigInt *novo_bigint(VM *vm)
     return b;
 }
 
-/* Resultado de uma conta: rebaixa pra V_INT se couber em int64 (como o Python),
+/* Resultado de uma conta: rebaixa pra V_INT se couber em int64,
  * senão embrulha num bignum. */
 static Value mk_from_mpz(VM *vm, mpz_srcptr z)
 {
@@ -1360,7 +1360,7 @@ static uint32_t hash_valor(const Value *v)
         case V_NULL:  return 0u;
         /* bool hasheia como o int equivalente (true->1, false->0), pra
          * `d[1]`/`d[true]` e `d[0]`/`d[false]` serem a MESMA chave — bool é
-         * subtipo de int, igual ao interpretador (Python). */
+         * subtipo de int, igual ao interpretador. */
         case V_BOOL:  return (uint32_t)((uint64_t)(v->as.b ? 1 : 0) * 2654435761u);
         case V_INT:   return (uint32_t)((uint64_t)v->as.i * 2654435761u);
         case V_FLOAT: {
@@ -2052,7 +2052,7 @@ static void gc_coleta(VM *vm)
     marca_valor(vm, &vm->jk_req);
     marca_valor(vm, &vm->jk_app);
     /* módulos `.ps` importados vivem no cache mods_ps pro programa inteiro
-     * (igual sys.modules do Python) — são RAÍZES, senão o GC coleta um módulo
+     * — são RAÍZES, senão o GC coleta um módulo
      * ainda em uso e depois libera de novo -> double free -> segfault. */
     for (int i = 0; i < vm->nmods_ps; i++)   marca_valor(vm, &vm->mods_ps[i].valor);
     /* Conexão WebSocket ABERTA é raiz até o `.close()`. `ws_vivos` era só
@@ -2171,8 +2171,8 @@ static const char *nome_do_global(VM *vm, int32_t arg)
 /* Encapsulamento: 1 se `nome` é membro `private` de `cl` (ou de um ancestral)
  * E o protótipo em execução (`proto_atual`) NÃO é um método da classe que o
  * declara — isto é, acesso de FORA. 0 = liberado (público, ou private acessado
- * de dentro de um método da própria classe). Regra igual à do Java. */
-/* Regra do Java: um `private` é visível DENTRO da classe que o declara.
+ * de dentro de um método da própria classe). */
+/* Regra: um `private` é visível DENTRO da classe que o declara.
  *
  * A versão antiga parava na PRIMEIRA classe da hierarquia que declarasse o
  * nome — em geral a filha — e, se o método em execução não fosse dela,
@@ -2202,13 +2202,13 @@ static int priv_barrado(PSClass *cl, const char *nome, int32_t proto_atual)
     return achou;   /* private em algum ponto da hierarquia e não é de dentro */
 }
 
-/* ── conversões com o mundo Python ──────────────────────────────────────── */
+/* ── conversões com a extensão de teste diferencial ─────────────────────── */
 
 #ifdef PS_MODULO_PYTHON
-/* Entrada de dados: só converte o que a VM representa nativamente. Nada de
- * PyObject entra na VM — se o tipo não tem forma nativa, é erro explícito,
- * porque guardar um PyObject aqui reintroduziria a dependência que esta
- * etapa existe pra eliminar. */
+/* Entrada de dados: só converte o que a VM representa nativamente. Nenhum
+ * objeto da extensão entra na VM — se o tipo não tem forma nativa, é erro
+ * explícito, porque guardar um objeto de fora aqui reintroduziria a
+ * dependência que esta etapa existe pra eliminar. */
 static int py_para_value(VM *vm, PyObject *o, Value *out)
 {
     if (o == Py_None)  { *out = MK_NULL(); return 0; }
@@ -2330,7 +2330,7 @@ static int ps_prof_cmp = 0;
 static int val_iguais(const Value *a, const Value *b)
 {
     if (ps_prof_cmp > PS_CMP_MAX) return 0;
-    /* Null só é igual a Null — como o `None` do Python.
+    /* Null só é igual a Null.
      *
      * Até 28/08 `null == 0`, `null == 0.0` e `null == false` eram TRUE, e o
      * comentário aqui defendia isso pela transitividade interna. O custo real
@@ -2346,8 +2346,8 @@ static int val_iguais(const Value *a, const Value *b)
     if (a_nulo || b_nulo) return a_nulo && b_nulo;
     if (EH_STRING(*a) && EH_STRING(*b))
         return strings_iguais(COMO_STRING(*a), COMO_STRING(*b));
-    /* bytes só é igual a bytes: `"ab" == "ab".encode()` é falso, como no
-     * Python — são conteúdos iguais de tipos diferentes. */
+    /* bytes só é igual a bytes: `"ab" == "ab".encode()` é falso
+     * — são conteúdos iguais de tipos diferentes. */
     if (EH_BYTES(*a) && EH_BYTES(*b))
         return strings_iguais(COMO_BYTES(*a), COMO_BYTES(*b));
     if (a->t == V_INT && b->t == V_INT)   return a->as.i == b->as.i;
@@ -2451,8 +2451,8 @@ static int val_iguais(const Value *a, const Value *b)
     return 0;
 }
 
-/* ── impressão nativa (sem passar pelo Python) ──────────────────────────── */
-/* Float como o Python imprime: a MENOR representação que volta ao mesmo
+/* ── impressão nativa ───────────────────────────────────────────────────── */
+/* Float: a MENOR representação que volta ao mesmo
  * double. `%.17g` sempre roundtrippa mas escreve lixo — 1/3 vira
  * "0.33333333333333331" em vez de "0.3333333333333333".
  *
@@ -2474,8 +2474,8 @@ static int float_para_texto(char *buf, size_t cap, double d)
 
     /* 2) fixo ou exponencial — pelo EXPOENTE, não pela precisão.
      *    `%g` decide por precisão, e por isso 150.0 virava "1.5e+02": com 2
-     *    dígitos significativos ele já acha que o número é grande. O Python
-     *    usa exponencial só fora de [-4, 16). */
+     *    dígitos significativos ele já acha que o número é grande. Aqui a
+     *    exponencial só entra fora de [-4, 16). */
     const char *e = strchr(buf, 'e');
     int expo = e ? atoi(e + 1) : 0;
     int n;
@@ -2499,7 +2499,7 @@ static int float_para_texto(char *buf, size_t cap, double d)
  * uma lista e `sys.stdout` é um namespace, não funções que devolvem isso. */
 /* `params` lista os nomes dos parâmetros, separados por vírgula, na ordem —
  * é o que permite `regex.sub(..., count=2)`. NULL quer dizer "não aceita
- * nome", que é o certo pra quem embrulha builtin do Python posicional. */
+ * nome", que é o certo pra membro só posicional. */
 typedef struct { const char *nome; FnNativa fn; int eh_valor; const char *params; } MembroMod;
 typedef struct { const char *nome; const MembroMod *membros; int n; } ModuloNat;
 
@@ -2522,7 +2522,7 @@ static VM *vm_corrente = NULL;
 
 /* Estrutura que se contém (`l.append(l)`) fazia a recursão descer até estourar
  * a pilha do C — SEGFAULT, sem mensagem nenhuma. O container que já está sendo
- * impresso vira `[...]`, igual ao Python.
+ * impresso vira `[...]`.
  *
  * O CICLO SOZINHO NÃO BASTA, e a versão anterior deste comentário dizia
  * escolher detectá-lo "em vez de um teto de profundidade". Isso deixava dois
@@ -2552,7 +2552,7 @@ static VM *vm_corrente = NULL;
  * na entrada (`ps_pilha_marca`) e para quando falta menos que a margem.
  *
  * O vetor de visitados continua existindo pelo que ele faz de verdade —
- * detectar CICLO (`l.append(l)` vira `[...]`, igual ao Python). Ele não é mais
+ * detectar CICLO (`l.append(l)` vira `[...]`). Ele não é mais
  * teto: um ciclo que fecha acima de `PS_CICLO_MAX` níveis é pego pela folga de
  * pilha, não por uma contagem que responde "é ciclo" pra estrutura que não é.
  *
@@ -2647,12 +2647,11 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
 static void escreve_valor(const Value *v, int dentro);
 static int fut_resolve(VM *vm, PSFuturo *fu);   /* async: resolve o future (def. junto do jinker) */
 
-/* Repr de string ANINHADA (dentro de list/dict/tup), no formato do Python:
+/* Repr de string ANINHADA (dentro de list/dict/tup):
  * aspas simples, `"` quando o texto tem `'` e não tem `"`, e controle escapado
  * (`\n`, `\t`, `\\`, `\xNN`). Antes o caractere de controle saía CRU, e um
- * `["a\tb"]` imprimia com uma tabulação de verdade no meio — diferente do
- * Python, que mostra `['a\tb']`. Texto de topo (`post("a\tb")`) continua cru,
- * como o `print` do Python.
+ * `["a\tb"]` imprimia com uma tabulação de verdade no meio — o certo é
+ * `['a\tb']`. Texto de topo (`post("a\tb")`) continua cru.
  *
  * UTF-8 passa inteiro: só ASCII de controle (< 0x20 e 0x7f) vira escape.
  * Devolve buffer malloc'd (NUL-terminado) ou NULL sem memória. */
@@ -2683,11 +2682,11 @@ static char *repr_str_dup(const char *s, int len)
     return out;
 }
 
-/* O repr de `bytes`, no formato do Python: `b'...'`, com `\xNN` pra tudo que
+/* O repr de `bytes`: `b'...'`, com `\xNN` pra tudo que
  * não é ASCII imprimível.
  *
  * ESTAVA EM TRÊS CÓPIAS (escreve_valor, valor_para_texto e o ramo de dentro),
- * e as três erravam a mesma coisa: o Python troca a aspa quando o conteúdo tem
+ * e as três erravam a mesma coisa: a aspa troca quando o conteúdo tem
  * `'` e não tem `"` — `b"a'b"`, não `b'a\'b'`. O repr de STRING deste mesmo
  * arquivo já fazia a regra certa (`repr_str_dup`, logo acima); o de bytes não,
  * e ninguém tinha percebido porque o gerador de oráculo pulava toda expressão
@@ -2731,7 +2730,7 @@ static void escreve_valor(const Value *v, int dentro)
     }
     /* Mesma guarda de ciclo do valor_para_texto: `l.append(l)` descia até
      * estourar a pilha do C (segfault sem mensagem). Container que já está
-     * sendo escrito vira `[...]`, como no Python. */
+     * sendo escrito vira `[...]`. */
     if (v->t == V_OBJ && (v->as.obj->type == OBJ_LIST || v->as.obj->type == OBJ_TUPLE
                           || v->as.obj->type == OBJ_DICT)) {
         if (ps_em_ciclo(v->as.obj)) {
@@ -2780,7 +2779,7 @@ static void escreve_valor(const Value *v, int dentro)
                     if (i) fputs(", ", stdout);
                     ps_prof_texto++; escreve_valor(&l->itens[i], 1); ps_prof_texto--;
                 }
-                /* tupla de 1 elemento imprime `(x,)`, como no Python */
+                /* tupla de 1 elemento imprime `(x,)` */
                 if (tupla && l->len == 1) putchar(',');
                 putchar(tupla ? ')' : ']');
             } else if (v->as.obj->type == OBJ_CLASS) {
@@ -2832,7 +2831,7 @@ static void escreve_valor(const Value *v, int dentro)
                 if (rg->kind == JREG_MIDDLEWARE) fputs("<MiddlewareRegistrar>", stdout);
                 else if (rg->kind == JREG_SOCKET) printf("<SocketRegistrar %s>", rg->path);
                 else {
-                    /* mesmo formato do repr do wrapper: lista Python de métodos */
+                    /* mesmo formato do repr do wrapper: lista de métodos */
                     fputs("<RouteRegistrar [", stdout);
                     for (int i = 0; i < rg->nmetodos; i++)
                         printf("%s'%s'", i ? ", " : "", rg->metodos[i]);
@@ -3162,19 +3161,19 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
 
 /* AS MENSAGENS DE `sem memoria` FICAM EM PORTUGUÊS, E É DE PROPÓSITO.
  *
- * A regra desta base é copiar o texto do CPython verbatim. O `MemoryError` é a
- * exceção, e a razão é simples: no CPython ele não tem texto nenhum —
+ * A regra desta base é usar a frase padrão em inglês de cada erro. O
+ * `MemoryError` é a exceção, e a razão é simples: a frase padrão dele é vazia —
  * `MemoryError:` e mais nada. As 79 daqui dizem ONDE a memória acabou
  * (`sem memoria em sorted()`, `sem memoria na concatenacao`), e num processo
  * que morreu de memória essa é a única pista que sobra.
  *
- * Copiar o CPython aqui trocaria informação real por uma linha vazia. Se uma
+ * Deixar vazio aqui trocaria informação real por uma linha vazia. Se uma
  * varredura futura apontar estas 79 como "ainda em português", ela está
- * medindo a coisa errada — a pergunta não é se o texto é igual ao do Python, é
+ * medindo a coisa errada — a pergunta não é se o texto segue o padrão, é
  * se ele ajuda quem lê.
  */
 
-/* Argumento POSICIONAL onde o método só aceita nomeado. Texto do CPython pra
+/* Argumento POSICIONAL onde o método só aceita nomeado. Frase padrão pra
  * parâmetro keyword-only. */
 #define ERRO_ARIDADE_POS(vm, nome, n) do { \
     snprintf((vm)->erro, sizeof((vm)->erro), \
@@ -3191,13 +3190,13 @@ static int nativa_len(VM *vm, Value *args, int n, Value *out)
     return -1; \
 } while (0)
 
-/* Falha de SISTEMA (errno) → o par (tipo, mensagem) que o CPython levanta.
+/* Falha de SISTEMA (errno) → o par (tipo, mensagem).
  *
- * A taxonomia é a do PEP 3151: cada errno frequente tem a SUA subclasse de
- * OSError e o resto cai no OSError puro. A mensagem é o str() da exceção do
- * CPython, verbatim: `[Errno N] strerror: 'caminho'`, e `'a' -> 'b'` quando a
- * chamada tem dois caminhos (rename). `strerror` aqui dá o mesmo texto que o
- * CPython porque nem a VM nem o CPython chamam setlocale(LC_MESSAGES).
+ * A taxonomia: cada errno frequente tem a SUA subclasse de
+ * OSError e o resto cai no OSError puro. A mensagem é
+ * `[Errno N] strerror: 'caminho'`, e `'a' -> 'b'` quando a
+ * chamada tem dois caminhos (rename). `strerror` sai em inglês porque a VM
+ * não chama setlocale(LC_MESSAGES).
  *
  * Antes TODO erro de sistema do módulo `os` saía como `TypeError` com texto em
  * português: `nao consegui criar '/tmp/x'`. Ninguém escreve
@@ -3328,7 +3327,7 @@ static int erro_sistema(VM *vm, int e, const char *cam, const char *cam2)
     return -1;
 }
 
-/* Os parâmetros obrigatórios que ficaram sem valor, no formato do CPython:
+/* Os parâmetros obrigatórios que ficaram sem valor:
  * `'x'`, depois `'x' and 'y'`, depois `'x', 'y', and 'z'`.
  *
  * A mensagem antiga citava só o PRIMEIRO que faltou. Quem esquecia três
@@ -3371,7 +3370,7 @@ static int conta_faltantes(int de, int ate, const int *marcado)
     return q;
 }
 
-/* Aridade no formato do CPython:
+/* Aridade:
  *
  *     len() takes exactly one argument (2 given)
  *     upper() takes no arguments (1 given)
@@ -3383,17 +3382,16 @@ static int conta_faltantes(int de, int ate, const int *marcado)
  * passou de mais ou de menos — e é justamente isso que a pessoa acabou de
  * errar.
  *
- * POR QUE ESTA FAMÍLIA, e não a outra: o CPython tem DUAS redações pra isto,
- * herança de duas APIs internas de parsing. Esta (`takes … (N given)`) e a
- * outra (`expected …, got N`). Medi qual é qual pra cada nome que esta
- * linguagem também tem: 97 usam esta, 34 usam a outra. A primeira versão
- * daqui escolheu a MINORITÁRIA e errava 74% dos casos.
+ * POR QUE ESTA FAMÍLIA, e não a outra: existem DUAS redações correntes pra
+ * isto. Esta (`takes … (N given)`) e a outra (`expected …, got N`). Medi qual
+ * é qual pra cada nome que esta linguagem tem: 97 usam esta, 34 usam a
+ * outra. A primeira versão daqui escolheu a MINORITÁRIA e errava 74% dos
+ * casos.
  *
- * Não reproduzo a divisão exata do CPython, e é de propósito: ela não separa
- * nada — é só qual API interna o C daquela função usa. Copiar isso seria pôr
- * um acidente da implementação alheia dentro deste motor, com uma tabela de
- * 131 nomes pra manter. Aqui a redação é uma só, e é a que o CPython usa na
- * maioria esmagadora.
+ * Não reproduzo a divisão nome a nome, e é de propósito: ela não separa
+ * nada — é só um acidente de implementação. Copiar isso seria manter uma
+ * tabela de 131 nomes à toa. Aqui a redação é uma só, a da maioria
+ * esmagadora.
  */
 static int erro_aridade(VM *vm, const char *nome, int minimo, int maximo, int n)
 {
@@ -3461,7 +3459,7 @@ static int nativa_str(VM *vm, Value *args, int n, Value *out)
     return r;
 }
 
-/* Texto → int, com as regras do `int()` do Python: espaço em volta é
+/* Texto → int, com as regras do `int()`: espaço em volta é
  * ignorado, sinal opcional, só dígitos decimais. "0x1f" é erro. */
 static int texto_para_int(const char *s, int len, int64_t *out)
 {
@@ -3493,10 +3491,10 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
     if (v.t == V_INT)   { *out = v; return 0; }
     if (EH_BIGINT(v))   { *out = v; return 0; }   /* bignum já é int */
     if (v.t == V_BOOL)  { *out = MK_INT(v.as.b ? 1 : 0); return 0; }
-    /* trunca para zero, como o `int()` do Python — não arredonda */
+    /* trunca para zero — não arredonda */
     if (v.t == V_FLOAT) {
         /* inf/NaN não têm inteiro correspondente: o cast em C é comportamento
-         * indefinido e devolvia INT64_MIN calado. Erro, como no Python. */
+         * indefinido e devolvia INT64_MIN calado. Agora é erro. */
         if (isnan(v.as.d))
             BERRO(vm, "ValueError", "cannot convert flo NaN to integer");
         if (isinf(v.as.d))
@@ -3595,7 +3593,7 @@ static int nativa_bool(VM *vm, Value *args, int n, Value *out)
 /* O nome do tipo NA MENSAGEM tem que ser o que o usuário escreveu.
  *
  * A aritmética coage `bool` pra `int` antes de operar — está certo, bool vale
- * 0/1 aqui como no Python. O problema é que a coerção acontece ANTES do erro:
+ * 0/1 aqui. O problema é que a coerção acontece ANTES do erro:
  * `true - "a"` respondia "'-' entre tipos incompativeis: int - str", acusando
  * um `int` que não existe em lugar nenhum do código do usuário. Guardar a tag
  * original antes da coerção custa um registrador e devolve a verdade.
@@ -3747,8 +3745,8 @@ static int nativa_pow(VM *vm, Value *args, int n, Value *out)
             BERRO(vm, "ValueError", "pow() 3rd argument cannot be 0");
         }
         mpz_powm(zr, za, zb, zm);
-        /* mpz_powm devolve no intervalo [0, |m|); o Python segue o SINAL do
-         * modulo, como o `%` dele. */
+        /* mpz_powm devolve no intervalo [0, |m|); aqui o resultado segue o
+         * SINAL do modulo, como o `%` da linguagem. */
         if (mpz_sgn(zm) < 0 && mpz_sgn(zr) != 0) mpz_add(zr, zr, zm);
         *out = mk_from_mpz(vm, zr);
         mpz_clear(za); mpz_clear(zb); mpz_clear(zm); mpz_clear(zr);
@@ -3797,7 +3795,7 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
               nome_do_tipo_valor(args[1]));
     Value v = args[0];
     if (v.t == V_INT || v.t == V_BOOL) {
-        /* int já está arredondado; com casas, continua int (igual ao Python) */
+        /* int já está arredondado; com casas, continua int */
         *out = MK_INT(v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i);
         return 0;
     }
@@ -3818,7 +3816,7 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
             mpz_clear(z);
             return 0;
         }
-        /* nearbyint no modo padrão = meio-para-o-par, que é o do Python:
+        /* nearbyint no modo padrão = meio-para-o-par:
          * round(2.5) dá 2, não 3. */
         *out = MK_INT((int64_t)r);
         return 0;
@@ -3828,15 +3826,15 @@ static int nativa_round(VM *vm, Value *args, int n, Value *out)
     int64_t casas = (args[1].t == V_BOOL) ? (args[1].as.b ? 1 : 0) : args[1].as.i;
     if (casas < 0)  casas = 0;
     if (casas > 30) casas = 30;
-    /* Formata e relê: o printf arredonda sobre o valor binário exato, que é
-     * o mesmo critério do round() do Python (por isso 2.675 → 2.67). */
+    /* Formata e relê: o printf arredonda sobre o valor binário exato
+     * (por isso 2.675 → 2.67). */
     char buf[64];
     snprintf(buf, sizeof(buf), "%.*f", (int)casas, v.as.d);
     *out = MK_FLOAT(strtod(buf, NULL));
     return 0;
 }
 
-/* hex/bin/oct: o sinal vem antes do prefixo (`-0xff`), como no Python. */
+/* hex/bin/oct: o sinal vem antes do prefixo (`-0xff`). */
 static int base_para_texto(VM *vm, Value *args, int n, Value *out,
                            const char *nome, const char *prefixo, int base)
 {
@@ -3947,7 +3945,7 @@ static int nativa_chr(VM *vm, Value *args, int n, Value *out)
 /* Ordem total entre valores, para min/max/sorted. Devolve -1/0/1, ou -2 se
  * os tipos não se comparam (o chamador vira isso em erro).
  *
- * Lista contra lista é lexicográfico, como no Python: `min([1,2],[3])` é
+ * Lista contra lista é lexicográfico: `min([1,2],[3])` é
  * `[1,2]`. Sem isso, min/max com listas divergiriam do interpretador. */
 /* Quando a comparação recusa (-2), quem chama precisa dizer QUAIS tipos não se
  * comparam. Num aninhado os culpados são os de DENTRO: `[1] < ["a"]` falha por
@@ -4017,7 +4015,7 @@ static int iteravel_tam(const Value *v)
      * byte parte o UTF-8 no meio e devolve lixo. */
     if (EH_STRING(*v)) return utf8_conta(COMO_STRING(*v)->chars, COMO_STRING(*v)->len);
     /* bytes itera em BYTES e cada item é um INTEIRO 0..255 — não um pedaço de
-     * bytes de tamanho 1, e não codepoint. É o que o Python faz, e é o que
+     * bytes de tamanho 1, e não codepoint. É o que
      * torna `for each b in dados` útil pra dado binário. */
     if (EH_BYTES(*v))  return COMO_BYTES(*v)->len;
     if (EH_DICT(*v))   return COMO_DICT(*v)->count;
@@ -4230,7 +4228,7 @@ static int nativa_tup(VM *vm, Value *args, int n, Value *out)
  *
  * Sem argumento: dict vazio. Com um dict: CÓPIA rasa. Com uma sequência de
  * pares (`[[k, v], ...]`): monta a partir deles. Não invento terceira forma —
- * essas três são as únicas sem ambiguidade, e são as do Python. */
+ * essas três são as únicas sem ambiguidade. */
 static int nativa_dict(VM *vm, Value *args, int n, Value *out)
 {
     if (n > 1) return erro_aridade(vm, "dict", 0, 1, n);
@@ -4430,7 +4428,7 @@ static int nativa_sorted(VM *vm, Value *args, int n, Value *out)
         l->itens[i] = item;
         l->len = i + 1;
     }
-    /* Inserção: estável, como o sort do Python, e as listas aqui são
+    /* Inserção: estável, e as listas aqui são
      * pequenas. Trocar por merge sort se aparecer caso grande medido. */
     for (int i = 1; i < tam; i++) {
         Value chave = l->itens[i];
@@ -4618,7 +4616,7 @@ static PSMetodoNat *novo_metnat(VM *vm, Value alvo, int tabela, int idx)
 /* ── métodos de string ──────────────────────────────────────────────────── */
 /* A string é UTF-8, então nada aqui pode assumir "1 byte = 1 caractere".
  * Índice, fatia e contagem trabalham em CODEPOINT — é o que o usuário vê e o
- * que o interpretador (Python) faz. */
+ * que o interpretador faz. */
 
 /* Decodifica o codepoint que começa em `s[i]`; devolve quantos bytes usou. */
 static int utf8_le(const char *s, int len, int i, uint32_t *cp)
@@ -4673,7 +4671,7 @@ static int utf8_conta(const char *s, int len)
 
 /* Maiúscula/minúscula cobrindo ASCII, Latin-1 Suplementar e Latin Estendido-A.
  * É a faixa que importa pro português (ç, ã, é, ô…). Fora dela o codepoint
- * passa intacto — divergiria do Python, e está anotado em LIMITACOES.md. */
+ * passa intacto — está anotado em LIMITACOES.md. */
 /* Caixa fora do Latin-1: a tabela cobria só ASCII + Latin-1/Ext-A, então
  * grego e cirílico passavam INTACTOS por lower()/upper() e `isalpha` dizia
  * False pra letra. Os blocos abaixo são contíguos e regulares, então cabem
@@ -5007,7 +5005,7 @@ static int acha_bytes(const char *s, int slen, const char *ag, int alen, int de)
 }
 
 /* Um só teste pra `startswith`/`endswith`: o argumento pode ser uma string ou
- * uma TUPLA/LISTA de opções ("bate com qualquer uma"), como no Python — antes
+ * uma TUPLA/LISTA de opções ("bate com qualquer uma") — antes
  * a tupla dava erro de tipo e obrigava a escrever um `or` pra cada opção. */
 static int prefixo_bate(PSString *s, PSString *p, int fim)
 {
@@ -5061,9 +5059,9 @@ static int posicao_cp(const char *s, int bytes)
 }
 
 /* `inicio`/`fim` opcionais (args[1], args[2]) de find/rfind/index/rindex/count,
- * em CARACTERES, regra do Python: negativo conta do fim, limites saturam,
+ * em CARACTERES: negativo conta do fim, limites saturam,
  * Null = ausente. Sai a faixa em BYTES [*b0, *b1); inicio além do fim da
- * string vira faixa invertida (b1 < b0) = "não acha", como no Python. */
+ * string vira faixa invertida (b1 < b0) = "não acha". */
 static int faixa_busca(VM *vm, PSString *s, Value *args, int n, const char *quem,
                        int *b0, int *b1)
 {
@@ -5221,7 +5219,7 @@ static int met_isprintable(VM *v, Value a, Value *g, int n, Value *o){ (void)g; 
 /* ── quebra e junção ────────────────────────────────────────────────────── */
 /* `split()` sem separador quebra em QUALQUER corrida de branco e descarta as
  * bordas vazias; com separador, cada ocorrência gera um campo, inclusive
- * vazio. São regras diferentes de propósito — é o que o Python faz. */
+ * vazio. São regras diferentes de propósito. */
 static int met_split(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n > 2) return erro_aridade(vm, "split", 0, 2, n);
@@ -5606,7 +5604,7 @@ static int met_preenche(VM *vm, Value alvo, Value *args, int n, Value *out,
     else if (modo == 1) esq = falta;                   /* rjust  */
     else {
         /* center: a sobra ímpar vai pra ESQUERDA quando largura e folga são
-         * ambas ímpares. É a fórmula do CPython (`marg/2 + (marg & width & 1)`)
+         * ambas ímpares. A fórmula é `marg/2 + (marg & width & 1)`
          * — `"ab".center(5)` é "  ab ", não " ab  ". */
         esq = falta / 2 + (falta & larg & 1);
         dir = falta - esq;
@@ -5683,7 +5681,7 @@ static int met_expandtabs(VM *vm, Value alvo, Value *args, int n, Value *out)
 
 /* ── format ─────────────────────────────────────────────────────────────── */
 /*
- * Subconjunto da mini-linguagem do Python que cobre o uso real:
+ * Mini-linguagem de formato, no subconjunto que cobre o uso real:
  *
  *   {}  {0}  {nome}          posicional automático, indexado, nomeado
  *   {:[preenche][<^>][0][largura][.precisao][tipo]}
@@ -5706,7 +5704,7 @@ static int formata_um(VM *vm, SBuf *saida, const Value *v, const char *spec, int
     /* COM TETO. `largura = largura * 10 + digito` transbordava o `int` em
      * silencio: `"{:99999999999d}".format(1)` dava um valor lixo, o laco de
      * preenchimento la embaixo escrevia byte a byte, e o processo TRAVAVA
-     * comendo memoria ate morrer. O CPython responde MemoryError.
+     * comendo memoria ate morrer. Agora responde MemoryError.
      *
      * O teto e o mesmo limite de string do resto do motor — acima dele nao ha
      * o que produzir de qualquer forma. */
@@ -5817,7 +5815,7 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
         int fim = i + 1;
         while (fim < s->len && s->chars[fim] != '}') fim++;
         if (fim >= s->len) {
-            /* O CPython separa os dois casos, e os dois são ValueError — o TIPO
+            /* Dois casos separados, e os dois são ValueError — o TIPO
              * do argumento está certo, quem não serve é a string de formato. */
             if (i + 1 >= s->len)
                 MERRO(vm, "ValueError", "Single '{' encountered in format string");
@@ -5850,7 +5848,7 @@ static int met_format_geral(VM *vm, Value alvo, Value *args, int n, Value *out, 
             }
         }
         if (!achou) {
-            /* O CPython separa: campo POSICIONAL ausente (`{}` sem argumento
+            /* Dois erros distintos: campo POSICIONAL ausente (`{}` sem argumento
              * sobrando, ou `{5}`) é IndexError com o índice; campo por NOME é
              * KeyError com o nome, e só ele. Nos dois o TIPO do argumento está
              * certo — o que falta é o VALOR —, então nenhum é TypeError. */
@@ -5908,8 +5906,8 @@ static int met_isidentifier(VM *vm, Value alvo, Value *args, int n, Value *out)
         /* Letra ou `_`. O atalho "cp >= 128 vale" fazia `"²³".isidentifier()`
          * e `"٣٤".isidentifier()` responderem True: sobrescrito e dígito
          * árabe não são identificador em lugar nenhum. Depois do primeiro,
-         * dígito DECIMAL entra (`a²` continua inválido, `a٣` vale, como no
-         * Python, que aceita Nd). */
+         * dígito DECIMAL entra (`a²` continua inválido, `a٣` vale — a
+         * categoria Nd do Unicode). */
         int letra = cp_eh_letra(cp) || cp == '_';
         ok = primeiro ? letra : (letra || cp_eh_decimal(cp));
         primeiro = 0;
@@ -5962,7 +5960,7 @@ static int met_translate(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!k) break;
         Value ch = MK_INT((int64_t)cp), destino;
         if (dict_get(COMO_DICT(args[0]), &ch, &destino) == 0) {
-            /* Null na tabela REMOVE o caractere, como no Python */
+            /* Null na tabela REMOVE o caractere */
             if (destino.t == V_INT) {
                 if (sb_cp(&b, (uint32_t)destino.as.i) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
             } else if (EH_STRING(destino)) {
@@ -6051,7 +6049,7 @@ static int met_l_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
     int64_t i = args[0].as.i;
     if (i < 0) i += l->len;
     if (i < 0) i = 0;
-    if (i > l->len) i = l->len;            /* fora do fim gruda no fim, como no Python */
+    if (i > l->len) i = l->len;            /* fora do fim gruda no fim */
     if (cresce_lista(vm, l) != 0) MERRO(vm, "MemoryError", "sem memoria em insert()");
     memmove(l->itens + i + 1, l->itens + i, sizeof(Value) * (size_t)(l->len - i));
     l->itens[i] = args[1];
@@ -6094,16 +6092,15 @@ static int met_l_remove(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 
 /* `index(item, inicio=0, fim=len)` — a faixa é opcional, como no `.find` de
- * string e no `list.index` do Python. Antes só aceitava 1 argumento. */
+ * string. Antes só aceitava 1 argumento. */
 static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3)
         return erro_aridade(vm, "index", 1, 3, n);
     PSList *l = COMO_LIST(alvo);
     int64_t de = 0, ate = l->len;
-    /* Sem o "or None" que o `str.find` tem: o `list.index` do CPython escreve
-     * essa frase mais curta, porque ele não aceita None na faixa. Verbatim é
-     * verbatim, inclusive na diferença entre as duas. */
+    /* Sem o "or None" que o `str.find` tem: aqui a faixa não aceita Null,
+     * então a frase é a mais curta. */
     if (n >= 2) {
         if (args[1].t != V_INT)
             MERRO(vm, "TypeError",
@@ -6124,11 +6121,11 @@ static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     for (int64_t i = de; i < ate; i++)
         if (val_iguais(&l->itens[i], &args[0])) { *out = MK_INT(i); return 0; }
-    /* O CPython nao diz "nao achou o item": ele mostra o VALOR procurado, com
-     * repr, e diz de que sequencia ele nao faz parte. E tupla e lista tem
-     * frases DIFERENTES la — a mesma funcao serve as duas aqui (METODOS_TUPLA
+    /* Nao diz "nao achou o item": mostra o VALOR procurado, com
+     * repr, e diz de que sequencia ele nao faz parte. Tupla e lista tem
+     * frases DIFERENTES — a mesma funcao serve as duas aqui (METODOS_TUPLA
      * reusa met_l_index), entao o ramo tem que existir. O nome do tipo e o do
-     * type() da PoolScript: "tup", nao "tuple". */
+     * type() da PoolScript: "tup". */
     if (EH_TUPLA(alvo)) MERRO(vm, "ValueError", "tup.index(x): x not in tup");
     {
         TXTBUF_AUTO ib = {0};
@@ -6282,7 +6279,7 @@ static int met_d_pop(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (n == 2) { *out = args[1]; return 0; }
         /* Mesmo texto do `d["z"]` e do `d.z`: as tres respondem a mesma
          * pergunta, e ter tres redacoes pra isso era metade do I4. Hoje a
-         * redacao unica e a do CPython — a mensagem do KeyError e a CHAVE, e
+         * redacao e unica — a mensagem do KeyError e a CHAVE, e
          * so ela. */
         {
             TXTBUF_AUTO kb = {0};
@@ -6501,7 +6498,7 @@ static int met_a_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
     while ((ch = fgetc(a->f)) != EOF) {
         char c = (char)ch;
         if (sb_bytes(&b, &c, 1) != 0) { MERRO(vm, "MemoryError", "sem memoria"); }
-        if (c == '\n') break;              /* a quebra fica na linha, como no Python */
+        if (c == '\n') break;              /* a quebra fica na linha */
     }
     return devolve_leitura(vm, &b, a->binario, out);
 }
@@ -6541,7 +6538,7 @@ static int met_a_readlines(VM *vm, Value alvo, Value *args, int n, Value *out)
  * depois. Sem estes dois, "disco cheio" virava um número menor no retorno que
  * nenhum script confere — grava, fecha, e o arquivo está truncado.
  * Devolve 0, ou -1 com o `errno` da falha em `*pe` — quem chama monta a
- * frase com `erro_sistema`, que sai `[Errno N] <strerror>` igual ao CPython.
+ * frase com `erro_sistema`, que sai `[Errno N] <strerror>`.
  * O palpite antigo ("disco cheio?") mentia: `write()` em arquivo aberto em
  * "r" da EBADF e cano quebrado da EPIPE, e os dois liam "disco cheio". */
 static int arq_grava(FILE *f, const void *dados, size_t n, int *pe)
@@ -6727,7 +6724,7 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
                                       nome_do_tipo_valor(args[1]));
         modo = COMO_STRING(args[1])->chars;
     }
-    /* Valida o modo como o Python faz — senão um modo inválido ("Rb", "wz")
+    /* Valida o modo antes de abrir — senão um modo inválido ("Rb", "wz")
      * caía no fopen e virava o enganoso "arquivo nao encontrado". Mensagem
      * casa com o interp ("valor inválido: invalid mode: '...'"). */
     {
@@ -6740,8 +6737,8 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
             if (*m == 'r' || *m == 'w' || *m == 'a' || *m == 'x') prim++;
             if (*m == 't' || *m == 'b') tb++;
         }
-        /* O CPython tem DUAS frases aqui, e a diferenca nao e cosmetica: com
-         * modo demais ("rw") ele erra minusculo e sem a parte do "plus"; sem
+        /* Sao DUAS frases aqui, e a diferenca nao e cosmetica: com
+         * modo demais ("rw") sai minusculo e sem a parte do "plus"; sem
          * nenhum ("", "+") e a frase longa, com maiuscula. */
         if (prim > 1)
             BERRO(vm, "ValueError", "must have exactly one of create/read/write/append mode");
@@ -6805,7 +6802,7 @@ static PSString *novo_bytes(VM *vm, const char *dados, int n)
  * vira '?' se o `errors` pedir). */
 enum { CODEC_UTF8, CODEC_LATIN1, CODEC_ASCII, CODEC_UTF16LE, CODEC_UTF16BE, CODEC_UTF32LE, CODEC_UTF32BE };
 
-/* Normaliza como o Python: caixa e os separadores `-`/`_`/espaço não contam. */
+/* Normaliza o nome: caixa e os separadores `-`/`_`/espaço não contam. */
 static int codec_de_nome(const char *nome, int len)
 {
     char n[32];
@@ -6894,7 +6891,7 @@ static int utf8_le_estrito(const unsigned char *b, int len, int i, uint32_t *cp)
 static int codec_por_16(int codec) { return codec == CODEC_UTF16LE || codec == CODEC_UTF16BE; }
 static int codec_por_32(int codec) { return codec == CODEC_UTF32LE || codec == CODEC_UTF32BE; }
 
-/* O nome que o CPython poe na mensagem do codec: `'ascii' codec can't ...`.
+/* O nome que vai na mensagem do codec: `'ascii' codec can't ...`.
  * Nao e o nome que o usuario escreveu (`"utf16"`), e o canonico do codec. */
 static const char *nome_do_codec(int c)
 {
@@ -6909,7 +6906,7 @@ static const char *nome_do_codec(int c)
     }
 }
 
-/* POR QUE o UTF-8 falhou, no texto do CPython. O `utf8_le_estrito` so devolve
+/* POR QUE o UTF-8 falhou, na frase padrao de cada motivo. O `utf8_le_estrito` so devolve
  * -1; sem esta classificacao a mensagem teria que chutar um dos tres motivos,
  * e chutar errado e trocar um portugues honesto por um ingles mentiroso. */
 static const char *utf8_porque(const unsigned char *b, int len, int i)
@@ -6953,8 +6950,8 @@ static int met_encode(VM *vm, Value alvo, Value *args, int n, Value *out)
             if (pol == ERRO_IGNORE) continue;
             if (pol == ERRO_REPLACE) cp = '?';
             else {
-                /* O CPython agrupa os caracteres SEGUIDOS que nao cabem numa
-                 * faixa (`characters in position 1-2`) e so cita o caractere
+                /* Os caracteres SEGUIDOS que nao cabem viram uma
+                 * faixa (`characters in position 1-2`); o caractere so e citado
                  * quando e um so. A posicao e em CARACTERES, nao em bytes. */
                 int ini = utf8_conta(s->chars, i - k), corre = 1;
                 for (int j = i; j < s->len; ) {
@@ -7118,7 +7115,7 @@ static int met_b_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* `b.hex()`, `b.hex(sep)`, `b.hex(sep, n_por_grupo)`.
  *
  * O separador entra a cada `n` bytes. `n` POSITIVO agrupa da direita pra
- * esquerda e NEGATIVO da esquerda pra direita — é a regra do Python, e ela
+ * esquerda e NEGATIVO da esquerda pra direita — a regra
  * existe porque número em hexadecimal se lê do fim (`hex("_", 4)` de um MAC ou
  * de um inteiro dá os grupos alinhados pelo dígito menos significativo). */
 static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -7167,8 +7164,8 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
  * porque `\x00 in resposta` não existia. Conferência que precisa de rodeio é
  * conferência que ninguém escreve.
  *
- * A referência é o `bytes` do Python, método por método, incluindo as
- * diferenças que ele tem em relação ao `str` e que é fácil errar copiando:
+ * Método por método, incluindo as
+ * diferenças que `bytes` tem em relação ao `str` e que é fácil errar copiando:
  *
  *   - `upper`/`lower`/`title` mexem só no ASCII. `b"\xc0".lower()` é `b"\xc0"`.
  *   - `splitlines` quebra em `\n`, `\r` e `\r\n` e MAIS NADA — o mesmo que
@@ -7176,8 +7173,8 @@ static int met_b_hex(VM *vm, Value alvo, Value *args, int n, Value *out)
  *   - `find`/`count`/`index` aceitam um INTEIRO (0..255) além de bytes.
  *   - `strip(chars)` é CONJUNTO de bytes, não prefixo.
  *
- * As mensagens de erro são as do CPython, palavra por palavra, colhidas
- * rodando cada caso — não reescritas.
+ * As mensagens de erro são as frases padrão de cada caso, colhidas
+ * rodando cada um — não reescritas.
  */
 
 /* Bytes prontos pra devolver. O `(dados && n > 0) ? dados : ""` é porque
@@ -7209,7 +7206,7 @@ static int by_devolve_sbuf(VM *vm, SBuf *s, Value *out)
     const unsigned char *p = (const unsigned char *)COMO_BYTES(alvo)->chars; \
     int n = COMO_BYTES(alvo)->len
 
-/* Argumento "bytes-like". A frase é a do CPython. */
+/* Argumento "bytes-like". */
 static int by_like(VM *vm, Value v, const unsigned char **p, int *n)
 {
     if (!EH_BYTES(v))
@@ -7234,7 +7231,7 @@ static int by_agulha(VM *vm, Value v, const unsigned char **p, int *n,
         return 0;
     }
     if (v.t == V_INT || (v.t == V_OBJ && v.as.obj->type == OBJ_BIGINT)) {
-        /* bigint nunca cabe num byte, e o CPython responde a mesma coisa */
+        /* bigint nunca cabe num byte: mesmo erro do int fora de 0..255 */
         if (v.t != V_INT || v.as.i < 0 || v.as.i > 255)
             MERRO(vm, "ValueError", "byte must be in range(0, 256)");
         *um = (unsigned char)v.as.i;
@@ -7278,7 +7275,7 @@ static int by_faixa(VM *vm, int total, Value *args, int n, int *b0, int *b1)
     return 0;
 }
 
-/* ASCII e só ASCII: é o que o `bytes` do Python faz. */
+/* ASCII e só ASCII: caixa em `bytes` não toca byte >= 0x80. */
 static int by_up(int c)   { return (c >= 'a' && c <= 'z') ? c - 32 : c; }
 static int by_low(int c)  { return (c >= 'A' && c <= 'Z') ? c + 32 : c; }
 static int by_eh_up(int c)  { return c >= 'A' && c <= 'Z'; }
@@ -7355,7 +7352,7 @@ static int met_b_count(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (by_faixa(vm, slen, args, n, &b0, &b1) != 0) return -1;
     if (b1 < b0) { *out = MK_INT(0); return 0; }
     int janela = b1 - b0;
-    /* agulha vazia: o Python conta as POSIÇÕES, que são len+1 */
+    /* agulha vazia: conta as POSIÇÕES, que são len+1 */
     if (alen == 0) { *out = MK_INT(janela + 1); return 0; }
     int64_t c = 0;
     for (int i = 0; i + alen <= janela; ) {
@@ -7379,7 +7376,7 @@ static int met_b_contains(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 
 /* `startswith`/`endswith`: bytes, ou tupla/lista de bytes ("bate com qualquer
- * uma"), com `inicio`/`fim` opcionais como no Python. */
+ * uma"), com `inicio`/`fim` opcionais. */
 static int by_borda(VM *vm, Value alvo, Value *args, int n, Value *out,
                     const char *quem, int fim)
 {
@@ -7448,7 +7445,7 @@ static int met_b_title(VM *v, Value a, Value *g, int n, Value *o)      { (void)g
 
 /* ── predicados ─────────────────────────────────────────────────────────── */
 
-/* Vazio é FALSO em todos, menos no `isascii` — é assim no Python, e é o tipo
+/* Vazio é FALSO em todos, menos no `isascii` — é o tipo
  * de detalhe que só aparece quando alguém passa uma resposta vazia. */
 static int by_pred(VM *vm, Value alvo, Value *out, const char *quem, int n, int qual)
 {
@@ -7742,14 +7739,14 @@ static int by_parte(VM *vm, Value alvo, Value *args, int n, Value *out,
 static int met_b_partition(VM *v, Value a, Value *g, int n, Value *o)  { return by_parte(v, a, g, n, o, "partition", 0); }
 static int met_b_rpartition(VM *v, Value a, Value *g, int n, Value *o) { return by_parte(v, a, g, n, o, "rpartition", 1); }
 
-/* `b".".join([...])` — o alvo é o separador, como no Python.
+/* `b".".join([...])` — o alvo é o separador.
  *
  * O argumento é QUALQUER iterável, e desde que `bytes` passou a ser iterável
  * ele entra aqui também: `b"".join(b"")` é `b''` (nada pra juntar) e
  * `b"-".join(b"abc")` é TypeError, porque iterar bytes dá INTEIROS e inteiro
  * não é bytes-like. Os dois casos saíram da matriz do oráculo: com a lista
  * como único iterável aceito, o primeiro levantava "can only join an
- * iterable" onde o Python devolve vazio. */
+ * iterable" onde o certo é devolver vazio. */
 static int met_b_join(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     ARGS_MET(vm, "join", 1);
@@ -7796,7 +7793,7 @@ static int met_b_replace(VM *vm, Value alvo, Value *args, int n, Value *out)
     SBUF_AUTO b = {0};
     int64_t feitas = 0;
     int i = 0;
-    /* agulha VAZIA: o Python enfia a troca entre cada byte e nas duas pontas */
+    /* agulha VAZIA: a troca entra entre cada byte e nas duas pontas */
     if (nv == 0) {
         for (;;) {
             if (conta < 0 || feitas < conta) {
@@ -7860,9 +7857,10 @@ static int by_just(VM *vm, Value alvo, Value *args, int n, Value *out,
     if (n == 2 && by_enche(vm, args[1], quem, &ch) != 0) return -1;
     if (w <= slen) return by_devolve(vm, out, (const char *)s, slen);
     int falta = (int)(w - slen);
-    /* `center`: com sobra ímpar o Python põe o byte a mais na ESQUERDA quando
+    /* `center`: com sobra ímpar o byte a mais vai na ESQUERDA quando
      * a largura também é ímpar — `b"ab".center(7,b"*")` é `b"***ab**"`, não
-     * `b"**ab***"`. É `marg/2 + (marg & width & 1)`, do CPython. */
+     * `b"**ab***"`. É `marg/2 + (marg & width & 1)`, a mesma fórmula do
+     * `str.center`. */
     int esq = lado == 0 ? 0
             : (lado == 1 ? falta : falta / 2 + (falta & (int)w & 1));
     int dir = falta - esq;
@@ -8109,7 +8107,7 @@ static int cria_pais(const char *caminho)
     return 0;
 }
 
-/* `culpa` recebe QUAL dos dois caminhos falhou. O CPython nomeia o arquivo que
+/* `culpa` recebe QUAL dos dois caminhos falhou. A mensagem nomeia o arquivo que
  * deu erro, não sempre a origem — sem isto, destino sem permissão sairia
  * apontando a origem, que está perfeita. */
 /* Grava tudo e FECHA conferindo. Devolve 0, ou -1 com `errno` no motivo.
@@ -8137,8 +8135,8 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
 {
     /* `fopen` de diretório abre no Linux e só falha no `read` — sem este
      * teste, `copy("pasta", "x")` criaria um `x` vazio em silêncio. O `errno`
-     * daqui era LIXO da última syscall: agora o caso diz EISDIR, que é o que o
-     * shutil.copy do CPython levanta. */
+     * daqui era LIXO da última syscall: agora o caso diz EISDIR, que é o
+     * errno certo pra "origem é diretório". */
     struct stat st;
     if (culpa) *culpa = de;
     if (stat(de, &st) != 0) return -1;
@@ -8152,8 +8150,8 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
      * funcao devolvia 0 ("copiou") e o `os.move` seguia em frente e dava
      * `unlink` na ORIGEM: perda de dado em silencio, sem erro nenhum.
      * Reproduzido copiando pra /dev/full — o pool dizia que tinha dado certo e
-     * o arquivo de origem sumia; o shutil.move do Python levanta
-     * `OSError: [Errno 28] No space left on device` e mantem a origem.
+     * o arquivo de origem sumia; o certo e levantar
+     * `OSError: [Errno 28] No space left on device` e manter a origem.
      *
      * Os tres pontos que podem falhar, e todos os tres importam:
      *   fread  + ferror  — erro de leitura no meio (EIO)
@@ -8837,8 +8835,8 @@ static int json_escreve(VM *vm, SBuf *b, const Value *v, int prof, int compacto)
                 PSString *ks = COMO_STRING(k);
                 if (json_texto(b, ks->chars, ks->len) != 0) return -1;
             } else if (k.t == V_BOOL) {
-                /* JSON nao tem `True`: chave booleana sai minuscula, como no
-                 * CPython (`{True: 1}` -> `{"true": 1}`) e como este mesmo
+                /* JSON nao tem `True`: chave booleana sai minuscula
+                 * (`{true: 1}` -> `{"true": 1}`), como este mesmo
                  * serializador ja escreve um bool em posicao de VALOR. */
                 if (json_texto(b, k.as.b ? "true" : "false", k.as.b ? 4 : 5) != 0)
                     return -1;
@@ -8882,16 +8880,17 @@ static int mod_json_stringify(VM *vm, Value *args, int n, Value *out)
  * vm->erro em qualquer coisa malformada — JSON parcial nunca vira valor. */
 typedef struct { const char *s; int n; int i; } JLeitor;
 
-/* Erro de JSON no formato do CPython: a mensagem, e ONDE.
+/* Erro de JSON: a mensagem, e ONDE.
  *
  *     Expecting ',' delimiter: line 1 column 8 (char 7)
  *
  * A posição é o que faltava: "json: esperado ',' ou fechamento" num payload de
  * 40 KB não diz nada. Linha e coluna saem do offset contando as quebras — o
  * leitor já carrega o texto inteiro, então é uma varredura só, no caminho de
- * erro. `char` é o offset em BYTES, como no CPython.
+ * erro. `char` é o offset em BYTES.
  *
- * O tipo é ValueError porque o `JSONDecodeError` de lá herda de ValueError.
+ * O tipo é ValueError: o texto tem o tipo certo (str), é o conteúdo que não
+ * serve.
  */
 static int j_erro(VM *vm, const JLeitor *j, int onde, const char *oque)
 {
@@ -8918,7 +8917,7 @@ static int j_valor(VM *vm, JLeitor *j, Value *out, int prof);
 
 static int j_texto(VM *vm, JLeitor *j, Value *out)
 {
-    int ini = j->i;      /* a aspa de ABERTURA: e ela que o CPython aponta em
+    int ini = j->i;      /* a aspa de ABERTURA: e ela que a mensagem aponta em
                           * "Unterminated string starting at" */
     j->i++;                                   /* passa a aspa de abertura */
     SBUF_AUTO b = {0};
@@ -9119,7 +9118,7 @@ static int data_formatada(VM *vm, Value *out, const char *fmt)
 static int mod_date_time(VM *v, Value *a, int n, Value *o)     { (void)a; EXIGE_ARGS(v,"time",0);     return data_formatada(v, o, "%H:%M:%S"); }
 static int mod_date_today(VM *v, Value *a, int n, Value *o)    { (void)a; EXIGE_ARGS(v,"today",0);    return data_formatada(v, o, "%d/%m/%Y"); }
 static int mod_date_datahora(VM *v, Value *a, int n, Value *o) { (void)a; EXIGE_ARGS(v,"datahora",0); return data_formatada(v, o, "%d/%m/%Y %H:%M:%S"); }
-/* `now()` é ISO 8601 com espaço no lugar do T — igual ao isoformat(sep=" ") */
+/* `now()` é ISO 8601 com espaço no lugar do T */
 static int mod_date_now(VM *v, Value *a, int n, Value *o)      { (void)a; EXIGE_ARGS(v,"now",0);      return data_formatada(v, o, "%Y-%m-%d %H:%M:%S"); }
 
 static int mod_date_timestamp(VM *vm, Value *args, int n, Value *out)
@@ -9381,7 +9380,7 @@ static int classe_eh(const PSClass *c, const char *nome)
 /* O valor serve pro tipo declarado de um parâmetro (`funct f(str nome)`)?
  * Três origens de nome, nesta ordem: a TIPOS[] (str, int, char, PoolFile…),
  * o nome de tipo do próprio valor (Response, PoolCursor, MailMessage…) e a
- * cadeia de Entity — subclasse serve onde a mãe é pedida, como em Java.
+ * cadeia de Entity — subclasse serve onde a mãe é pedida.
  * Só responde SIM ou NÃO: nada aqui converte valor nenhum. */
 static int param_casa_tipo(const Value *v, const char *tipo)
 {
@@ -9585,15 +9584,14 @@ static PSRegex *rx_compila(VM *vm, Value v, const char *quem)
     PSRegex *r = ps_regex_compila(p->chars, p->len, e, sizeof(e));
     if (!r) {
         snprintf(vm->erro, sizeof(vm->erro), "%s", e[0] ? e : "regex invalida");
-        /* O CPython levanta `re.error`, que herda de Exception e esta linguagem
-         * não tem. ValueError é o par fiel: o TIPO do padrão está certo (é str),
+        /* ValueError: o TIPO do padrão está certo (é str),
          * é o VALOR que não compila. */
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ValueError");
     }
     return r;
 }
 
-/* `findall` do Python: sem grupo devolve o casamento inteiro; com UM grupo
+/* `findall`: sem grupo devolve o casamento inteiro; com UM grupo
  * devolve só ele; com vários, uma tupla por casamento. */
 /* NÃO libera o `r`: quem compila é quem libera (o Pattern reusa). */
 static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
@@ -9645,8 +9643,8 @@ static int rx_findall(VM *vm, PSRegex *r, const char *s, int len, Value *out)
 }
 
 /* `\1`..`\9` na substituição viram o grupo correspondente. */
-/* Expande o replacement do sub(). O `re` do Python trata o texto de troca
- * como uma mini-linguagem: `\1`, `\g<1>`, `\g<nome>` e os escapes de
+/* Expande o replacement do sub(). O texto de troca é
+ * uma mini-linguagem: `\1`, `\g<1>`, `\g<nome>` e os escapes de
  * caractere (`\n`, `\t`, `\\`). Antes só `\1`-`\9` e `\\` eram
  * entendidos: `r"\n"` saía como a barra mais o 'n' literal e `\g<1>` ia cru
  * pro resultado. */
@@ -9888,7 +9886,7 @@ static int rx_split(VM *vm, PSRegex *r, const char *src, int slen, int64_t maxsp
             l->itens[l->len++] = v;
         }
         if (cap.fim[0] == cap.inicio[0]) {
-            /* Separador VAZIO divide também (Python >= 3.7): `split("", "abc")`
+            /* Separador VAZIO divide também: `split("", "abc")`
              * dá ['', 'a', 'b', 'c', '']. Antes a VM pulava e devolvia ['abc'].
              * O campo seguinte começa aqui e a busca anda um byte, senão o
              * mesmo ponto casaria pra sempre. */
@@ -10180,7 +10178,7 @@ static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
             }
             unsigned long d = mpz_get_ui(zb);
             if (op == '<') mpz_mul_2exp(zr, za, d);
-            else           mpz_fdiv_q_2exp(zr, za, d);   /* aritmético, como Python */
+            else           mpz_fdiv_q_2exp(zr, za, d);   /* aritmético (piso) */
             break;
         }
     }
@@ -10470,8 +10468,8 @@ static int mod_hash_b64encode(VM *vm, Value *args, int n, Value *out)
 
 /* POR QUE o base64 não decodifica. `ps_base64_decode` só devolve -1; refazer
  * a varredura aqui é o que separa "caractere fora do alfabeto" de "padding
- * errado" — e cada caso tem o SEU texto no binascii do CPython (que é
- * subclasse de ValueError, por isso o tipo aqui é ValueError). */
+ * errado" — e cada caso tem o SEU texto (o tipo é ValueError: o
+ * argumento é str, é o conteúdo que não serve). */
 static int erro_base64(VM *vm, const char *s, int n)
 {
     int nsig = 0, npad = 0;
@@ -10520,7 +10518,7 @@ static const MembroMod MOD_HASH[] = {
  * Criar e converter sequências de bytes. O tipo
  * `bytes` já existe (OBJ_BYTES); este módulo é o que permite CRIAR do zero
  * (lista de ints, hex, base64, inteiro) e CONVERTER de volta. As mensagens de
- * erro seguem a taxonomia do Python: TIPO errado é `TypeError`, VALOR errado
+ * erro seguem a taxonomia: TIPO errado é `TypeError`, VALOR errado
  * (tipo certo, conteúdo que não serve) é `ValueError`.
  *
  * Até 29/08 os dois caíam num código só, `SomeValueUnexpected` — um nome
@@ -10528,7 +10526,7 @@ static const MembroMod MOD_HASH[] = {
  * `catch (TypeError e)` era inútil: divisão por zero, chave mutável,
  * comparação incompatível e falha de I/O caíam todas no mesmo balde. */
 
-/* TypeError/ValueError com o texto do CPython — sem prefixo inventado. Os
+/* TypeError/ValueError com a frase padrão — sem prefixo inventado. Os
  * dois prefixos ("operação inválida entre os tipos: ", "valor inválido: ")
  * eram cola em português colada na frente de TODA mensagem do módulo. */
 #define BY_ERRO_TIPO(vm, ...)  BERRO(vm, "TypeError", __VA_ARGS__)
@@ -10570,9 +10568,8 @@ static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
         PSString *s = COMO_STRING(x);
         return by_devolve(vm, out, s->chars, s->len);
     }
-    /* O Python aceita `bytes(True)` (bool é int lá) e devolve b'\x00'; aqui é
-     * recusa deliberada. Sem par no CPython, fica o texto do MESMO TypeError
-     * que o resto de bytes.new levanta. */
+    /* `bytes(True)` é recusa deliberada: bool não vira tamanho de buffer.
+     * Fica o texto do MESMO TypeError que o resto de bytes.new levanta. */
     if (x.t == V_BOOL) BY_ERRO_TIPO(vm, "cannot convert 'bool' object to bytes");
     if (x.t == V_INT) {
         if (x.as.i < 0) BY_ERRO_VALOR(vm, "negative count");
@@ -10590,7 +10587,7 @@ static int mod_bytes_new(VM *vm, Value *args, int n, Value *out)
         for (int i = 0; i < l->len; i++) {
             Value it = l->itens[i];
             int64_t bv;
-            if (it.t == V_INT || it.t == V_BOOL) bv = it.as.i;  /* True/False = 1/0, igual Python */
+            if (it.t == V_INT || it.t == V_BOOL) bv = it.as.i;  /* true/false = 1/0 */
             else { free(buf); BY_ERRO_TIPO(vm, "'%s' object cannot be interpreted as an integer", by_nome(it)); }
             if (bv < 0 || bv > 255) { free(buf); BY_ERRO_VALOR(vm, "bytes must be in range(0, 256)"); }
             buf[i] = (char)(unsigned char)bv;
@@ -10610,10 +10607,10 @@ static int mod_bytes_fromhex(VM *vm, Value *args, int n, Value *out)
     char *buf = malloc((size_t)(s->len / 2 + 1));
     if (!buf) BERRO(vm, "MemoryError", "sem memoria");
     int m = 0;
-    /* Mesmo laço do CPython (bytes_fromhex_impl): o branco separa PARES, não
+    /* O branco separa PARES, não
      * dígitos — por isso "ab cd" passa e "a b" NÃO. Antes daqui o motor fazia
      * "".join(s.split()), aceitava "a b", e a mensagem citava a string INTEIRA
-     * em vez da POSIÇÃO do dígito ruim, que é a informação que o CPython dá.
+     * em vez da POSIÇÃO do dígito ruim, que é a informação útil.
      * A posição é `i + 1` quando o primeiro dígito do par estava bom. */
     for (int i = 0; i < s->len; ) {
         unsigned char c = (unsigned char)s->chars[i];
@@ -10809,8 +10806,8 @@ static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
     if (args[1].t == V_BOOL || args[1].t != V_INT)
         BY_ERRO_TIPO(vm, "byte indices must be integers or slices, not %s", by_nome(args[1]));
     int64_t i = args[1].as.i;
-    /* IndexError, o mesmo texto de `b[i]` — é o mesmo erro, e o CPython não
-     * põe o nome do tipo na frente quando o alvo é bytes. */
+    /* IndexError, o mesmo texto de `b[i]` — é o mesmo erro, e o nome do
+     * tipo não vai na frente quando o alvo é bytes. */
     if (i < -(int64_t)b->len || i >= b->len)
         BERRO(vm, "IndexError", "index out of range");
     if (i < 0) i += b->len;
@@ -11032,7 +11029,7 @@ static const MembroMod MOD_JWT[] = {
 
 
 /* ── sys ────────────────────────────────────────────────────────────────── */
-/* `sys.argv` na convenção de C/Python/JS: `argv[0]` é o NOME DO SCRIPT e os
+/* `sys.argv` na convenção do C: `argv[0]` é o NOME DO SCRIPT e os
  * argumentos do usuário vêm a partir de `argv[1]`. `pool app.ps a b` dá
  * {"app.ps", "a", "b"}. Antes o nome do script ficava de fora e `argv[0]` já
  * era o primeiro argumento — quem vinha de outra linguagem lia `argv[1]`
@@ -11366,7 +11363,7 @@ static const MembroMod MOD_SYS[] = {
 };
 
 /* ── dotenv ─────────────────────────────────────────────────────────────── */
-/* Sobe os diretórios procurando `.env`, igual ao python-dotenv. Chave que já
+/* Sobe os diretórios procurando `.env`. Chave que já
  * está no ambiente NÃO é sobrescrita — `setdefault`, não `set`: variável de
  * ambiente de verdade tem que ganhar do arquivo. */
 static int mod_dotenv_load(VM *vm, Value *args, int n, Value *out)
@@ -11445,11 +11442,11 @@ static const MembroMod MOD_DOTENV[] = { { "load", mod_dotenv_load, 0, "path" } }
  * de origem. Testado caso a caso: esse tipo SEMPRE coincide com o tipo real
  * do valor, inclusive depois de aritmética (`x / 3` marca "flo" e o valor é
  * float). O embrulho só aparecia em `type(x)`, devolvendo o nome da classe
- * Python — o mesmo vazamento de `PoolEntityInstance`. Aqui devolvemos o valor
- * puro, e `.type()` responde igual.
+ * interna do interpretador — o mesmo vazamento de `PoolEntityInstance`. Aqui
+ * devolvemos o valor puro, e `.type()` responde igual.
  */
 
-/* Só os dígitos. É o `re.sub(r"[^\d]", "", s)` do lado Python. */
+/* Só os dígitos: tudo que não é 0-9 é descartado. */
 static void so_digitos(const char *s, int n, char *saida, size_t cap)
 {
     size_t o = 0;
@@ -11458,7 +11455,7 @@ static void so_digitos(const char *s, int n, char *saida, size_t cap)
     saida[o] = '\0';
 }
 
-/* Número em formato BR: `1.299,90` vira `1299.90`. A regra do Python: se tem
+/* Número em formato BR: `1.299,90` vira `1299.90`. A regra: se tem
  * vírgula E ponto, o ponto é milhar; só vírgula, ela é o decimal. */
 static void limpa_flo(const char *s, int n, char *saida, size_t cap)
 {
@@ -11485,7 +11482,7 @@ static void limpa_flo(const char *s, int n, char *saida, size_t cap)
     }
     norm[o] = '\0';
 
-    /* sobra só dígito e ponto; ponto extra é juntado, como o Python faz */
+    /* sobra só dígito e ponto; ponto extra é descartado, fica só o primeiro */
     size_t p = 0;
     int vistos = 0;
     for (size_t i = 0; i < o && p + 1 < cap; i++) {
@@ -11629,7 +11626,7 @@ static int par_json(VM *vm, Value *args, int n, Value *out)
     if (EH_STRING(args[0])) {
         Value um[1] = { args[0] };
         if (mod_json_parse(vm, um, 1, out) == 0) return 0;
-        /* JSON quebrado devolve dict vazio, não erro — é o que o Python faz */
+        /* JSON quebrado devolve dict vazio, não erro — igual ao interpretador */
         vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
     }
     PSDict *d = novo_dict(vm, 1);
@@ -11814,7 +11811,7 @@ static int os_str(VM *vm, Value v, const char *quem, PSString **out)
 }
 
 /* Busca recursiva a partir do diretório do script, depois do cwd — a mesma
- * ordem do `_search_roots` do Python. */
+ * ordem do interpretador. */
 static int acha_em(const char *raiz, const char *nome, int quer_dir,
                    char *saida, size_t cap, int prof)
 {
@@ -11855,7 +11852,7 @@ static int os_procura(VM *vm, Value *args, int n, Value *out, int quer_dir, cons
         int tem = (stat(nome->chars, &st) == 0);
         if (tem && (quer_dir ? S_ISDIR(st.st_mode) : S_ISREG(st.st_mode)))
             return devolve_texto(vm, out, nome->chars, nome->len);
-        /* Existe mas é do tipo errado: o CPython separa os dois casos, e a
+        /* Existe mas é do tipo errado: são dois casos distintos, e a
          * separação é útil — abrir uma pasta é EISDIR, listar um arquivo é
          * ENOTDIR. Só sumido de verdade é ENOENT. */
         return erro_sistema(vm, !tem ? ENOENT : (quer_dir ? ENOTDIR : EISDIR),
@@ -12331,7 +12328,7 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
     ssize_t r = read(rfd, &err, sizeof(err));
     close(rfd);
     if (r == (ssize_t)sizeof(err) && err != 0) {
-        /* o texto vira o do CPython; o TIPO fica `IOError` porque
+        /* o texto vira o `[Errno N] ...` padrao; o TIPO fica `IOError` porque
          * docs/os/run/run.md:73 fixa ("`os.run` **levanta `IOError`**") e o
          * exemplo de la e um `catch (IOError e)` */
         erro_sistema(vm, err, prog ? prog : "", NULL);
@@ -12810,7 +12807,7 @@ static int sql_linha(VM *vm, sqlite3_stmt *stmt, Value *out)
 
 /* O núcleo do execute(): prepara, amarra, e ou consome (sem colunas) ou
  * deixa o resultset no cursor. `*devolve_null` sai 1 pra DDL — o wrapper
- * do interpretador devolve None nesses, e a VM copia o contrato. */
+ * do interpretador devolve Null nesses, e a VM copia o contrato. */
 static int sql_executa(VM *vm, PSSqlCur *cur, const char *sql, int sql_len,
                        Value pars, int *devolve_null)
 {
@@ -12823,7 +12820,7 @@ static int sql_executa(VM *vm, PSSqlCur *cur, const char *sql, int sql_len,
     sql_palavra(sql, kw, sizeof(kw));
     if (devolve_null) *devolve_null = sql_eh_ddl(kw);
 
-    /* Transação implícita antes de DML, como o sqlite3 do Python: sem isto
+    /* Transação implícita antes de DML: sem isto
      * `rollback()` não desfaz nada, porque a sqlite crua fica em autocommit
      * e cada INSERT já teria sido gravado. */
     if (sql_eh_dml(kw) && sqlite3_get_autocommit(cn->db)) {
@@ -12901,7 +12898,7 @@ static int met_sqlcur_executemany(VM *vm, Value alvo, Value *args, int n, Value 
                                nome_do_tipo_valor(args[1]));
     PSSqlCur *cur = COMO_SQLCUR(alvo);
     PSList *seq = COMO_LIST(args[1]);
-    /* rowcount acumula o total das repetições — é o que o Python devolve */
+    /* rowcount acumula o total das repetições */
     int64_t total = 0;
     for (int i = 0; i < seq->len; i++) {
         if (sql_executa(vm, cur, COMO_STRING(args[0])->chars,
@@ -13023,7 +13020,7 @@ static int met_sqlconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out
     if (n != 0) return erro_aridade(vm, "commit", 0, 0, n);
     PSSqlConn *cn = COMO_SQLCONN(alvo);
     if (sql_conn_aberta(vm, cn) != 0) return -1;
-    /* fora de transação é no-op, como no Python */
+    /* fora de transação é no-op */
     if (!sqlite3_get_autocommit(cn->db)
             && sqlite3_exec(cn->db, "COMMIT", NULL, NULL, NULL) != SQLITE_OK)
         SQL_ERRO(vm, cn->db);
@@ -13359,16 +13356,16 @@ static int met_mm_asstring(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
-/* ══ lib `sockets` — espelho do módulo socket do Python ═════════════════════
+/* ══ lib `sockets` ═══════════════════════════════════════════════════════════
  *
  * Toda a API: o objeto socket (bind, listen, accept, connect, send, recv...),
  * resolução de nomes (getaddrinfo, gethostbyname...), conversões
  * (inet_aton..., htons...) e as constantes (AF_, SOCK_, SO_...).
  *
- * Convenções (idênticas ao Python):
+ * Convenções:
  *   endereço  = tup (host, porta); AF_UNIX = caminho str; IPv6 = 4-tupla
  *   recv      = bytes; send aceita str (UTF-8) ou bytes
- *   settimeout(0) = não-bloqueante; None = bloqueante; >0 = prazo
+ *   settimeout(0) = não-bloqueante; Null = bloqueante; >0 = prazo
  *
  * I/O bloqueante (connect/accept/recv/send) roda na thread do pool via
  * fib_offload — dentro de handler jinker a fibra cede (async uniforme).
@@ -13376,7 +13373,7 @@ static int met_mm_asstring(VM *vm, Value alvo, Value *args, int n, Value *out)
  * método (a fibra cede -> outras rodam -> GC pode coletar o recém-nascido);
  * só depois do offload voltar. */
 
-static double g_sk_def_timeout = -1.0;   /* setdefaulttimeout(); <0 = None */
+static double g_sk_def_timeout = -1.0;   /* setdefaulttimeout(); <0 = Null */
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto do jinker */
 
 static PSSocket *novo_socket(VM *vm, int fd, int familia, int tipo, int proto)
@@ -13399,7 +13396,7 @@ static int sk_exige(VM *vm, Value alvo, const char *quem, PSSocket **out)
     return 0;
 }
 
-/* timeout do jeito do Python: <0 = bloqueante; 0 = não-bloqueante (O_NONBLOCK);
+/* timeout: <0 = bloqueante; 0 = não-bloqueante (O_NONBLOCK);
  * >0 = SO_RCVTIMEO/SO_SNDTIMEO (recv/send/accept honram no Linux). */
 static void sk_aplica_timeout(PSSocket *s)
 {
@@ -13415,7 +13412,7 @@ static void sk_aplica_timeout(PSSocket *s)
     setsockopt(s->fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
 
-/* erro de socket com a cara do Python: timeout vira "timed out" */
+/* erro de socket: timeout vira "timed out", o resto `[Errno N] strerror` */
 #define SK_ERRNO(vm, quem, e) do { \
     (void)(quem); \
     if ((e) == EAGAIN || (e) == EWOULDBLOCK || (e) == EINPROGRESS || (e) == ETIMEDOUT) \
@@ -13424,7 +13421,7 @@ static void sk_aplica_timeout(PSSocket *s)
 } while (0)
 
 /* Value (tup/list (host, porta) | str caminho AF_UNIX) -> sockaddr.
- * Host resolve por getaddrinfo (numérico ou nome — igual ao Python). */
+ * Host resolve por getaddrinfo (numérico ou nome). */
 static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *quem,
                          struct sockaddr_storage *sa, socklen_t *sl, int passivo)
 {
@@ -13439,7 +13436,7 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
         *sl = (socklen_t)sizeof(*un);
         return 0;
     }
-    /* getnameinfo tem frase propria no CPython; os outros citam a familia */
+    /* getnameinfo tem frase propria; os outros citam a familia */
     const char *afn = familia == AF_INET6 ? "AF_INET6" : "AF_INET";
     if (!EH_TUPLA(addr) && !EH_LIST(addr)) {
         if (familia == AF_UNSPEC)
@@ -13475,7 +13472,7 @@ static int sk_monta_addr(VM *vm, int familia, int tipo, Value addr, const char *
     return 0;
 }
 
-/* sockaddr -> Value no formato do Python: v4 = (ip, porta);
+/* sockaddr -> Value: v4 = (ip, porta);
  * v6 = (ip, porta, flowinfo, scope_id); AF_UNIX = caminho str. */
 static int sk_addr_valor(VM *vm, const struct sockaddr_storage *sa, Value *out)
 {
@@ -13534,7 +13531,7 @@ static void sk_conn_off(void *p)
 {
     SkConnOff *o = (SkConnOff *)p;
     if (o->timeout >= 0) {
-        /* com prazo: não-bloqueante + poll + SO_ERROR (o que o Python faz) */
+        /* com prazo: não-bloqueante + poll + SO_ERROR */
         int fl = fcntl(o->fd, F_GETFL, 0);
         fcntl(o->fd, F_SETFL, fl | O_NONBLOCK);
         int rc = connect(o->fd, o->sa, o->sl);
@@ -13598,7 +13595,7 @@ static void sk_send_off(void *p)
         o->err = o->rc < 0 ? errno : 0;
         return;
     }
-    /* sendall: insiste até o fim (é o contrato do Python) */
+    /* sendall: insiste até o fim (é o contrato do método) */
     size_t feito = 0;
     while (feito < o->n) {
         long r = send(o->fd, o->p + feito, o->n - feito, o->flags);
@@ -13677,7 +13674,7 @@ static int met_sk_connect_ex(VM *vm, Value alvo, Value *args, int n, Value *out)
     ARGS_MET(vm, "connect_ex", 1);
     int err;
     if (sk_connect_nucleo(vm, alvo, args[0], "connect_ex", &err) != 0) return -1;
-    *out = MK_INT(err);   /* 0 = ok; senão o errno — igual ao Python */
+    *out = MK_INT(err);   /* 0 = ok; senão o errno */
     return 0;
 }
 
@@ -13814,7 +13811,7 @@ static int met_sk_getsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "getsockopt", &s) != 0) return -1;
     if (args[0].t != V_INT || args[1].t != V_INT)
         MERRO(vm, "TypeError", "getsockopt: level/optname devem ser int");
-    if (n == 3) {   /* com buflen -> bytes, igual ao Python */
+    if (n == 3) {   /* com buflen -> devolve bytes */
         if (args[2].t != V_INT)
             MERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
                   nome_do_tipo_valor(args[2]));
@@ -13863,7 +13860,7 @@ static int met_sk_setblocking(VM *vm, Value alvo, Value *args, int n, Value *out
 {
     ARGS_MET(vm, "setblocking", 1);
     PSSocket *s = NULL; if (sk_exige(vm, alvo, "setblocking", &s) != 0) return -1;
-    s->timeout = val_truthy(&args[0]) ? -1.0 : 0.0;   /* igual settimeout(None/0) */
+    s->timeout = val_truthy(&args[0]) ? -1.0 : 0.0;   /* igual settimeout(Null/0) */
     sk_aplica_timeout(s);
     *out = MK_NULL();
     return 0;
@@ -13872,7 +13869,7 @@ static int met_sk_setblocking(VM *vm, Value alvo, Value *args, int n, Value *out
 static int met_sk_getblocking(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)vm; (void)args; (void)n;
-    /* Python: True se gettimeout() != 0 (None ou prazo > 0) */
+    /* true se gettimeout() != 0 (Null ou prazo > 0) */
     *out = MK_BOOL(COMO_SOCKET(alvo)->timeout != 0.0);
     return 0;
 }
@@ -14049,7 +14046,7 @@ static int mod_sk_getfqdn(VM *vm, Value *args, int n, Value *out)
         snprintf(nome, sizeof(nome), "%s", COMO_STRING(args[0])->chars);
     else
         gethostname(nome, sizeof(nome) - 1);
-    /* canonical name via getaddrinfo AI_CANONNAME (o que o Python tenta) */
+    /* canonical name via getaddrinfo AI_CANONNAME */
     struct addrinfo hints, *res = NULL;
     memset(&hints, 0, sizeof(hints));
     hints.ai_flags = AI_CANONNAME;
@@ -14255,7 +14252,7 @@ static int mod_sk_inet_aton(VM *vm, Value *args, int n, Value *out)
 static int mod_sk_inet_ntoa(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "inet_ntoa", 1);
-    /* Um `if` só misturava TIPO errado e TAMANHO errado, e o CPython separa:
+    /* Um `if` só misturava TIPO errado e TAMANHO errado; são dois erros:
      * tipo -> TypeError, tamanho -> OSError. */
     if (!EH_BYTES(args[0]) && !EH_STRING(args[0]))
         BERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
@@ -14301,7 +14298,7 @@ static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
               nome_do_tipo_valor(args[1]));
     char ip[INET6_ADDRSTRLEN];
     /* O inet_ntop(3) não olha o tamanho do buffer: a única falha que ele
-     * reporta é EAFNOSUPPORT, e é essa a frase do CPython. */
+     * reporta é EAFNOSUPPORT, e é essa a frase. */
     if (!inet_ntop((int)args[0].as.i, COMO_STRING(args[1])->chars, ip, sizeof(ip)))
         BERRO(vm, "ValueError", "unknown address family %d", (int)args[0].as.i);
     PSString *r = nova_string(vm, ip, (int)strlen(ip));
@@ -15950,7 +15947,7 @@ static int met_qri_to_file(VM *vm, Value alvo, Value *args, int n, Value *out)
 /* ── qrcode.QRCode — o builder ──────────────────────────────────────────── */
 static int mod_qr_QRCode(VM *vm, Value *args, int n, Value *out)
 {
-    /* QRCode(version=None, error_correction="L", box_size=10, border=4) —
+    /* QRCode(version=Null, error_correction="L", box_size=10, border=4) —
      * `version` é aceito e ignorado (fit=True re-seleciona sempre) */
     (void)args;
     PSQRBuild *b = calloc(1, sizeof(PSQRBuild));
@@ -16018,7 +16015,7 @@ static int met_qrb_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
     return 0;
 }
 
-/* make(data, ...) do estilo Python — devolve QRImage (save/resize/to_file),
+/* make(data, ...) — devolve QRImage (save/resize/to_file),
  * como o wrapper. */
 static int mod_qr_make(VM *vm, Value *args, int n, Value *out)
 {
@@ -16563,8 +16560,8 @@ static int mp_csv_para_grade(const char *texto, int tam, PSGrade *g)
     return 0;
 }
 
-/* PSGrade -> CSV com o quoting do csv.writer (aspas quando tem , " \r \n;
- * aspas internas dobradas; linhas terminam \r\n como o Python escreve) */
+/* PSGrade -> CSV com o quoting da RFC 4180 (aspas quando tem , " \r \n;
+ * aspas internas dobradas; linhas terminam \r\n) */
 static int mp_grade_para_csv(const PSGrade *g, SBuf *saida)
 {
     for (int r = 0; r < g->nlin; r++) {
@@ -17403,7 +17400,7 @@ static int mongo_faz_find(VM *vm, Value alvo, Value *args, int n, int um_so, Val
     if (prc != 0) MERRO(vm, "MemoryError", "sem memoria");
     PSList *l = COMO_LIST(lista);
     if (um_so) { *out = l->len > 0 ? l->itens[0] : MK_NULL(); return 0; }
-    /* find() devolve None se vazio, como o wrapper */
+    /* find() devolve Null se vazio, como o wrapper */
     *out = l->len > 0 ? lista : MK_NULL();
     return 0;
 }
@@ -17425,7 +17422,7 @@ static int met_mcol_insert(VM *vm, Value alvo, Value *args, int n, Value *out)
     int rc = io.rc;
     free(dj);
     if (rc != 0) { snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
-    *out = MK_NULL();   /* insert devolve None no wrapper */
+    *out = MK_NULL();   /* insert devolve Null no wrapper */
     return 0;
 }
 static int met_mcol_insert_many(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -17803,7 +17800,7 @@ static int met_jresp_header(VM *vm, Value alvo, Value *args, int n, Value *out)
  *     request.cookie("sid")     ->  o valor, ou Null
  *
  * Os padrões são os SEGUROS, não os permissivos: `path="/"`, `httponly=true`,
- * `samesite="Lax"`. Cookie de sessão que nasce legível por JavaScript é XSS
+ * `samesite="Lax"`. Cookie de sessão que nasce legível pelo script da página é XSS
  * virando roubo de sessão, e quem escreve `resp.cookie("sid", t)` sem pensar
  * nos atributos merece o padrão que não o machuca. `httponly=false` continua
  * disponível pra quem PRECISA ler no cliente.
@@ -17899,7 +17896,7 @@ static int mod_jk_jsonify(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-/* render(folder_or_file, file=None) — serve arquivo estático com MIME */
+/* render(folder_or_file, file=Null) — serve arquivo estático com MIME */
 static int mod_jk_render(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 2) return erro_aridade(vm, "render", 1, 2, n);
@@ -21325,7 +21322,7 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
 /* ── depurador: o DAP falado pelo próprio motor ───────────────────────────
  *
  * O editor conversa em Debug Adapter Protocol, o mesmo de qualquer depurador
- * do VS Code. Falar isso aqui — e não numa reimplementação em JavaScript — é a
+ * do VS Code. Falar isso aqui — e não numa reimplementação na extensão — é a
  * mesma decisão do LSP: quem sabe onde a execução está, quais frames existem e
  * que variável mora em que slot é a VM. Uma cópia disso na extensão erraria no
  * dia seguinte.
@@ -22029,11 +22026,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 r->len = x->len + y->len;
                 stack[sp - 1] = MK_OBJ(r);
             }
-            /* Texto do CPython, verbatim. Com sequência à ESQUERDA ele diz
+            /* Com sequência à ESQUERDA a frase é
              * "can only concatenate X (not \"Y\") to X", que aponta qual dos
              * dois lados é o estranho; `bytes` tem forma própria; o resto cai
              * na genérica. Os nomes de tipo são os que o `type()` da
-             * linguagem devolve (`flo`, `tup`, `Null`), não os do Python —
+             * linguagem devolve (`flo`, `tup`, `Null`) —
              * mensagem citando um tipo que a linguagem não tem seria mentira
              * nova no lugar da antiga. */
             else {
@@ -22130,8 +22127,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp - 1] = MK_OBJ(rb);
             }
             else {
-                /* Sequência vezes algo que não é int tem mensagem própria no
-                 * CPython, e ela é melhor: nomeia o lado que está errado em
+                /* Sequência vezes algo que não é int tem mensagem própria,
+                 * e ela é melhor: nomeia o lado que está errado em
                  * vez de listar os dois. */
                 const char *na = TIPO0(a, ta0), *nb = TIPO0(b, tb0);
                 if (EH_STRING(a) || EH_SEQ(a) || EH_BYTES(a))
@@ -22156,7 +22153,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         TIPO0(a, ta0), TIPO0(b, tb0));
             double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
             double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
-            /* O CPython separa pelo tipo dos OPERANDOS, não pelo do resultado:
+            /* A frase separa pelo tipo dos OPERANDOS, não pelo do resultado:
              * `1/0` é "division by zero" e `1.0/0` é "flo division by zero",
              * embora os dois devolvam float. */
             if (y == 0.0) {
@@ -22174,7 +22171,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * por double e PERDE PRECISAO justamente onde a linguagem se orgulha
          * de nao perder: `int(10000000000000001 / 1)` dava 10000000000000000.
          *
-         * Semantica do Python nos dois:
+         * Semantica dos dois:
          *   2 ** 10   -> 1024   (int; promove a bignum se estourar)
          *   2 ** -1   -> 0.5    (expoente negativo cai pra flo)
          *   0 ** -1   -> ZeroDivisionError
@@ -22189,7 +22186,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 
             if (EH_INTEIRO(a) && EH_INTEIRO(b)) {
                 /* expoente negativo: o resultado nao e inteiro, entao vira
-                 * flo — igual ao Python. Base zero ai e divisao por zero. */
+                 * flo. Base zero ai e divisao por zero. */
                 int neg = (b.t == V_INT) ? (b.as.i < 0)
                                          : (mpz_sgn(COMO_BIGINT(b)->v) < 0);
                 if (neg) {
@@ -22240,7 +22237,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * resultado matematico nao cabe no int64: vai de bignum. */
                 if (!(a.as.i == INT64_MIN && b.as.i == -1)) {
                     int64_t q = a.as.i / b.as.i;
-                    /* C trunca pra zero; o piso do Python arredonda pra baixo
+                    /* C trunca pra zero; o piso arredonda pra baixo
                      * quando os sinais divergem e sobra resto. */
                     if ((a.as.i % b.as.i != 0) && ((a.as.i < 0) != (b.as.i < 0))) q--;
                     stack[sp - 1] = MK_INT(q);
@@ -22254,7 +22251,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     mpz_clear(za); mpz_clear(zb); mpz_clear(zq);
                     ERRO_T(vm, "ZeroDivisionError", "integer division or modulo by zero");
                 }
-                mpz_fdiv_q(zq, za, zb);          /* piso, como o Python */
+                mpz_fdiv_q(zq, za, zb);          /* piso, nao truncamento */
                 vm->sp = sp; vm->locals_top = locals_top;
                 stack[sp - 1] = mk_from_mpz(vm, zq);
                 mpz_clear(za); mpz_clear(zb); mpz_clear(zq);
@@ -22285,7 +22282,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * 0, que é o que o interpretador devolve. */
                 if (b.as.i == -1) { stack[sp - 1] = MK_INT(0); break; }
                 int64_t r = a.as.i % b.as.i;
-                if (r != 0 && ((r < 0) != (b.as.i < 0))) r += b.as.i;  /* sinal do divisor, como Python */
+                if (r != 0 && ((r < 0) != (b.as.i < 0))) r += b.as.i;  /* resto com o sinal do divisor */
                 stack[sp - 1] = MK_INT(r);
             } else if (EH_INTEIRO(a) && EH_INTEIRO(b)) {   /* pelo menos um bignum */
                 mpz_t za, zb, zr; mpz_init(za); mpz_init(zb); mpz_init(zr);
@@ -22294,19 +22291,19 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
                     ERRO_T(vm, "ZeroDivisionError", "integer modulo by zero");
                 }
-                mpz_fdiv_r(zr, za, zb);   /* resto com sinal do divisor, como Python */
+                mpz_fdiv_r(zr, za, zb);   /* resto com sinal do divisor */
                 vm->sp = sp; vm->locals_top = locals_top;
                 stack[sp - 1] = mk_from_mpz(vm, zr);
                 mpz_clear(za); mpz_clear(zb); mpz_clear(zr);
             } else if ((EH_INTEIRO(a) || a.t == V_FLOAT) && (EH_INTEIRO(b) || b.t == V_FLOAT)) {
-                /* `fmod` trunca pra zero; o Python (e o interpretador) usam o
+                /* `fmod` trunca pra zero; a linguagem (e o interpretador) usam o
                  * sinal do DIVISOR — `-1.0 % 3` é 2.0, não -1.0. */
                 double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);
                 double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);
                 if (y == 0.0) ERRO_T(vm, "ZeroDivisionError", "flo modulo");
                 double r = fmod(x, y);
                 if (r != 0.0 && ((r < 0.0) != (y < 0.0))) r += y;
-                /* resto ZERO leva o sinal do divisor, como no Python:
+                /* resto ZERO leva o sinal do divisor:
                  * `7 % -0.5` é -0.0, não 0.0. O `fmod` devolve o sinal do
                  * DIVIDENDO, e o ajuste acima só mexe em resto não-zero. */
                 else if (r == 0.0 && signbit(r) != signbit(y)) r = -r;
@@ -22334,11 +22331,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-/* Uma mensagem só pra TODA recusa de ordenação, que é o desenho do CPython:
- * `None < 1`, `"a" < 1` e `[] < {}` dão a mesma frase, mudando só os tipos.
+/* Uma mensagem só pra TODA recusa de ordenação:
+ * `Null < 1`, `"a" < 1` e `[] < {}` dão a mesma frase, mudando só os tipos.
  * Aqui havia três textos diferentes — "nao se aplica a Null", "comparacao
  * entre tipos incompativeis" (duas vezes, e essa nem dizia quais) — pro mesmo
- * erro. `#C_OP` já é `<`, `<=`, `>`, `>=`, exatamente como o Python imprime. */
+ * erro. `#C_OP` já é `<`, `<=`, `>`, `>=`, o operador como foi escrito. */
 #define CMP_RECUSA(C_OP, va, ta, vb, tb)                                      \
     ERRO_TF(vm, "TypeError",                                                  \
             "'%s' not supported between instances of '%s' and '%s'",          \
@@ -22348,8 +22345,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OPNAME: {                                                        \
             Value b = stack[--sp], a = stack[sp - 1];                         \
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */    \
-            /* bool conta como int (0/1) — Python: bool é subclasse de int,  \
-             * então `true < 3`, `false < true` valem, igual ao interp. */    \
+            /* bool conta como int (0/1) — bool é subtipo de int na            \
+             * linguagem, então `true < 3`, `false < true` valem, igual ao     \
+             * interp. */                                                      \
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }      \
             if (b.t == V_BOOL) { b.t = V_INT; b.as.i = b.as.b ? 1 : 0; }      \
             /* Null NÃO SE ORDENA, e agora isso é ERRO, não `False` calado.  \
@@ -22360,7 +22358,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * Null caía no `else` SEM AVISAR, e ainda convivia com            \
              * `"abc" < 5` levantando. Duas políticas para o mesmo erro.       \
              *                                                                \
-             * Agora é a regra do Python: comparar Null levanta, e quem quer   \
+             * Agora a regra é uma: comparar Null levanta, e quem quer        \
              * o teste sem erro escreve `x != Null` antes. `sorted` com Null   \
              * já levantava — agora o operador concorda com a biblioteca que   \
              * o usa. */                                                       \
@@ -22645,16 +22643,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             } else if (alvo_kw.t == V_NATIVE || EH_NATIVA(alvo_kw) || EH_METNAT(alvo_kw)) {
                 /* Nativa também aceita nome: `regex.sub(p, r, s, count=2)` e
                  * `"aaa".replace("a","b",count=2)` são chamadas normais no
-                 * interpretador, onde tudo vira `**kwargs` do Python. Aqui a
-                 * ordem é reconstruída pela lista de nomes do descritor —
-                 * quem não tem lista continua recusando nome, que é o certo
-                 * pra quem embrulha builtin posicional do Python. */
+                 * interpretador, onde o nome é resolvido em tempo de chamada.
+                 * Aqui a ordem é reconstruída pela lista de nomes do descritor
+                 * — quem não tem lista continua recusando nome, que é o certo
+                 * pra membro só posicional. */
                 const char *lista_nomes = NULL;
                 FnNativa fn_nat = NULL;
                 FnMetodo fn_met = NULL;
                 Value alvo_met = MK_NULL();
                 /* O nome (e, pra metodo, o tipo dono) precisa sobreviver ate a
-                 * mensagem de erro: o CPython diz `str.upper() takes no keyword
+                 * mensagem de erro: a frase e `str.upper() takes no keyword
                  * arguments` / `len() takes no keyword arguments`, nunca um
                  * texto generico sobre "esta funcao". */
                 const char *nome_nat = "?";
@@ -22725,8 +22723,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             } else if (alvo_kw.t == V_TIPO) {
                 /* `f = list; f(a=1)`: o tipo E chamavel, so nao aceita nome —
-                 * dizer "not callable" aqui seria mentira. E o que o CPython
-                 * responde pra `list(a=1)`. */
+                 * dizer "not callable" aqui seria mentira. */
                 ERRO_TF(vm, "TypeError", "%s() takes no keyword arguments",
                         (alvo_kw.as.i >= 0 && alvo_kw.as.i <= TIPO_TYPE)
                             ? tipo_nome(alvo_kw.as.i) : "?");
@@ -23084,7 +23081,7 @@ ERRO_TF(vm, "TypeError",
                 lbase = novo_lbase;
                 nargs = n + desloca;
             } else if (alvo.t == V_NATIVE) {
-                /* builtin em C — nenhuma travessia pro Python */
+                /* builtin em C — chamada direta, sem frame */
                 vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
                 vm->erro_tipo[0] = '\0';   /* o builtin escolhe o tipo */
                 Value rv;
@@ -23367,8 +23364,8 @@ ERRO_TF(vm, "TypeError",
             /* `l[true]` é `l[1]`: bool é 0/1 na linguagem inteira, então
              * recusar só aqui era incoerência. */
             if (idx.t == V_BOOL) { idx.t = V_INT; idx.as.i = idx.as.b ? 1 : 0; }
-            /* `b[i]` devolve o BYTE como int, não uma fatia de 1 — é o que o
-             * Python faz, e é o que torna `b[0]` comparável com número. */
+            /* `b[i]` devolve o BYTE como int, não uma fatia de 1 — é o que
+             * torna `b[0]` comparável com número. */
             if (EH_BYTES(alvo)) {
                 if (idx.t != V_INT)
                     ERRO_TF(vm, "TypeError",
@@ -23405,13 +23402,13 @@ ERRO_TF(vm, "TypeError",
                 if (idx.as.i < -l->len || idx.as.i >= l->len)
                     ERRO_TF(vm, "IndexError", "%s index out of range",
                             nome_do_tipo_valor(alvo));
-                if (i < 0) i += l->len;                 /* índice negativo, como Python */
+                if (i < 0) i += l->len;                 /* índice negativo conta do fim */
                 stack[sp - 1] = l->itens[i];
             } else if (EH_DICT(alvo)) {
                 Value v;
                 if (dict_get(COMO_DICT(alvo), &idx, &v) != 0) {
-                    /* A mensagem do KeyError é a CHAVE, e só ela — é o que o
-                     * CPython faz (`KeyError: 'z'`), com o mesmo repr: str
+                    /* A mensagem do KeyError é a CHAVE, e só ela
+                     * (`KeyError: 'z'`), com repr: str
                      * entre aspas, o resto cru. */
                     TXTBUF_AUTO kb = {0};
                     valor_para_texto(&kb, &idx, 1);
@@ -23461,7 +23458,7 @@ ERRO_TF(vm, "TypeError",
                 PSList *l = COMO_LIST(alvo);
                 int64_t i = idx.as.i;
                 if (i < 0) i += l->len;
-                /* O CPython separa LER de ESCREVER: `l[9]` é "list index out
+                /* LER e ESCREVER têm frases distintas: `l[9]` é "list index out
                  * of range" e `l[9] = 1` é "list assignment index out of
                  * range". A palavra a mais diz de qual lado do `=` está o
                  * problema. */
@@ -23576,7 +23573,7 @@ ERRO_TF(vm, "TypeError",
                 stack[sp++] = COMO_LIST(cont)->itens[i];
             } else if (EH_BYTES(cont)) {
                 /* Cada item é um INTEIRO 0..255, não um pedaço de bytes de
-                 * tamanho 1 — é o que o Python faz, e é o que deixa escrever
+                 * tamanho 1 — é o que deixa escrever
                  * `for each byte in dados { if byte == 0 { ... } }`. Não aloca
                  * nada, ao contrário da string. O `list(b)` já entregava
                  * inteiros pelo `iteravel_item`; o `for each` levantava "not
@@ -23645,7 +23642,7 @@ ERRO_TF(vm, "TypeError",
 
             /* Limite maior que o int64 chegava como BIGNUM e o `.as.i` lia
              * lixo (virava 0): `s[999999999999999999999:]` devolvia a coleção
-             * inteira em vez de vazio. Satura nos extremos, como o Python. */
+             * inteira em vez de vazio. Satura nos extremos. */
             if (EH_BIGINT(ini)) { ini.t = V_INT; ini.as.i = mpz_sgn(COMO_BIGINT(ini)->v) < 0 ? INT64_MIN : INT64_MAX; }
             if (EH_BIGINT(fim)) { fim.t = V_INT; fim.as.i = mpz_sgn(COMO_BIGINT(fim)->v) < 0 ? INT64_MIN : INT64_MAX; }
             if (ini.t == V_BOOL) { ini.t = V_INT; ini.as.i = ini.as.b ? 1 : 0; }
@@ -23662,7 +23659,7 @@ ERRO_TF(vm, "TypeError",
             if (passo.t == V_INT) st = passo.as.i;
             if (st == 0) ERRO_T(vm, "ValueError", "slice step cannot be zero");
 
-            /* mesma normalização do Python: negativo conta do fim, e os
+            /* normalização da fatia: negativo conta do fim, e os
              * limites saturam em vez de estourar */
             int64_t i0, i1;
             if (st > 0) {
@@ -24057,8 +24054,8 @@ ERRO_TF(vm, "TypeError",
         case OP_IMPORT_FROM:
         case OP_GET_MEMBER: {
             /* IMPORT_FROM e o GET_MEMBER do `from mod import x`: mesma busca,
-             * outro erro quando o nome nao existe. O Python distingue os dois
-             * e a linguagem tem que distinguir tambem. */
+             * outro erro quando o nome nao existe — ImportError num, AttributeError
+             * no outro. */
             int de_import = (o == OP_IMPORT_FROM);
             Value alvo = stack[sp - 1];
             Value nomev = p->consts[arg];
@@ -24169,9 +24166,9 @@ ERRO_TF(vm, "TypeError",
                     goto membro_ok;
                 }
                 {
-                    /* `from mod import x` com x ausente. O Python NAO sugere
-                     * nome aqui (a sugestao so sai no AttributeError de
-                     * `mod.x`) e cita o arquivo do modulo entre parenteses. */
+                    /* `from mod import x` com x ausente. Aqui NAO sai sugestao
+                     * de nome (a sugestao so sai no AttributeError de
+                     * `mod.x`); o arquivo do modulo vai entre parenteses. */
                     if (de_import)
                         ERRO_TF(vm, "ImportError",
                                 "cannot import name '%s' from '%s' (%s)",
@@ -24195,7 +24192,7 @@ ERRO_TF(vm, "TypeError",
                 for (int k = 0; k < mn->n; k++)
                     if (strcmp(mn->membros[k].nome, nome) == 0) { achado = &mn->membros[k]; break; }
                 if (!achado) {
-                    /* modulo nativo nao tem arquivo: o Python escreve
+                    /* modulo nativo nao tem arquivo: sai
                      * "(unknown location)" no lugar do caminho. */
                     if (de_import)
                         ERRO_TF(vm, "ImportError",
@@ -24262,7 +24259,7 @@ ERRO_TF(vm, "TypeError",
                 }
             }
             if (EH_SOCKET(alvo)) {
-                /* family/type/proto são CAMPOS (sem parêntese), como no Python */
+                /* family/type/proto são CAMPOS (sem parêntese) */
                 PSSocket *sk = COMO_SOCKET(alvo);
                 if (strcmp(nome, "family") == 0) { stack[sp - 1] = MK_INT(sk->familia); break; }
                 if (strcmp(nome, "type") == 0)   { stack[sp - 1] = MK_INT(sk->tipo); break; }
@@ -24284,7 +24281,7 @@ ERRO_TF(vm, "TypeError",
                  * são @property no wrapper — todos sem parêntese */
                 PSResponse *rp = COMO_RESP(alvo);
                 if (strcmp(nome, "status") == 0) { stack[sp - 1] = MK_INT(rp->status); break; }
-                if (strcmp(nome, "status_code") == 0) { stack[sp - 1] = MK_INT(rp->status); break; }  /* alias estilo requests */
+                if (strcmp(nome, "status_code") == 0) { stack[sp - 1] = MK_INT(rp->status); break; }  /* alias de `status` */
                 if (strcmp(nome, "headers") == 0) { stack[sp - 1] = rp->headers; break; }
                 if (strcmp(nome, "url") == 0) { stack[sp - 1] = rp->url; break; }
                 /* `.content` é o programa PEDINDO o corpo: só aqui ele vira
@@ -24695,9 +24692,9 @@ ERRO_TF(vm, "TypeError",
                  * mensagem. O ternário no NOME do tipo escolhia entre dois
                  * literais iguais: parecia separar "demais" de "insuficientes"
                  * pra quem faz `catch (Tipo e)`, e não separava. */
-                /* O CPython diz os DOIS números, e é o que faltava: "esperava
+                /* A frase diz os DOIS números, e é o que faltava: "esperava
                  * 3, veio 2" resolve sozinho, "valores insuficientes" manda
-                 * contar na mão. Tipo `ValueError`, como lá. */
+                 * contar na mão. Tipo `ValueError`. */
                 if (l->len > n_alvos)
                     ERRO_TF(vm, "ValueError",
                             "too many values to unpack (expected %d)", n_alvos);
@@ -24706,11 +24703,11 @@ ERRO_TF(vm, "TypeError",
                         n_alvos, l->len);
             }
             /* O caminho COM estrela ficou pra trás na renomeação: `a, b = [1]`
-             * já era ValueError com o texto do CPython, e `a, b, *c = [1]`
+             * já era ValueError com a frase padrão, e `a, b, *c = [1]`
              * continuava OutputUnexpectedValues em português. Dois caminhos do
              * mesmo erro discordando no tipo E no idioma.
              *
-             * O CPython diz "at least" aqui, porque com estrela o mínimo é o
+             * É "at least" aqui, porque com estrela o mínimo é o
              * número de alvos FIXOS — a estrela aceita zero. */
             if (star >= 0 && l->len < fixos)
                 ERRO_TF(vm, "ValueError",
@@ -24851,7 +24848,7 @@ ERRO_TF(vm, "TypeError",
                 PSString *h = COMO_STRING(cont), *n2 = COMO_STRING(alvo);
                 r = acha_bytes(h->chars, h->len, n2->chars, n2->len, 0) >= 0;
             } else if (EH_BYTES(cont)) {
-                /* `x in b` aceita as DUAS coisas que o Python aceita: outra
+                /* `x in b` aceita DUAS coisas: outra
                  * sequência de bytes (é subsequência?) e um INTEIRO 0..255
                  * (esse byte aparece?). O segundo é o que faltava pra escrever
                  * `0 in resposta` — sem ele, conferir se um corpo tem byte NUL
@@ -25024,8 +25021,8 @@ ERRO_TF(vm, "TypeError",
          * uma classe inteira de traceback errado: quando o erro atravessava um
          * `catch` que faz `raise`, o valor guardado ainda era o do erro
          * ORIGINAL, não o do `raise` que estava de fato propagando. O campo
-         * saiu; o que existe é a tabela, que é o modelo do CPython
-         * (`co_linetable` + `f_lasti`). `ip` já avançou 2 na busca, então a
+         * saiu; o que existe é a tabela de linhas do proto indexada pelo
+         * `ip` do frame. `ip` já avançou 2 na busca, então a
          * instrução é a de `ip-2`. */
         int linha_agora = (p && p->linhas && ip >= 2 && (ip - 2) < p->ncode)
                           ? p->linhas[ip - 2] : 0;
@@ -25148,7 +25145,7 @@ ERRO_TF(vm, "TypeError",
     }
 }
 
-/* ── ponte com o Python ─────────────────────────────────────────────────── */
+/* ── ciclo de vida da VM e entrada ──────────────────────────────────────── */
 
 static void libera_vm(VM *vm)
 {
@@ -25231,10 +25228,11 @@ static void libera_vm(VM *vm)
 
 /* ── pipeline completo em C: fonte → lexer → parser → compilador → VM ──────
  *
- * É o caminho que o binário standalone vai usar. Nenhum PyObject participa
- * da execução: o Python só entrega a string de entrada e recebe o código de
- * saída. Serve também pra fechar o laço do teste — a saída daqui é comparada
- * contra o interpretador, validando SEMÂNTICA e não só formato de bytecode.
+ * É o caminho que o binário standalone vai usar. Nenhum objeto de fora
+ * participa da execução: quem chama só entrega a string de entrada e recebe
+ * o código de saída. Serve também pra fechar o laço do teste — a saída daqui
+ * é comparada contra o interpretador, validando SEMÂNTICA e não só formato
+ * de bytecode.
  */
 /* Bignum a partir do TEXTO do literal, na base do prefixo (`0x`, `0o`, `0b`)
  * que o lexer normaliza. Era `mpz_set_str(..., 10)` fixo: um `0xFFFF…` que
@@ -25880,11 +25878,10 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     nome_visivel_modulo(nome, nome_vis, sizeof(nome_vis));
     char caminho[1024];
     if (acha_modulo_ps(vm, nome, caminho, sizeof(caminho)) != 0) {
-        /* Texto do CPython. O TIPO fica `ImportError` de propósito: lá o nome é
-         * `ModuleNotFoundError`, que é SUBCLASSE de ImportError, então um
-         * `except ImportError` continua pegando. Aqui não há hierarquia — o
-         * catch compara o nome — e adotar o nome novo quebraria em silêncio
-         * todo `catch (ImportError e)` que hoje pega módulo ausente. */
+        /* O TIPO fica `ImportError` de propósito, e não um
+         * `ModuleNotFoundError` separado: aqui não há hierarquia de tipos de
+         * erro — o catch compara o nome — e adotar um nome novo quebraria em
+         * silêncio todo `catch (ImportError e)` que hoje pega módulo ausente. */
         snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", escrito);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
@@ -25994,7 +25991,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     m->obj.type = OBJ_MODULO_PS; m->obj.marked = 0;
     m->obj.next = vm->objetos; vm->objetos = (Obj *)m;
     m->nome = strdup(nome_vis);
-    m->caminho = strdup(abspath);   /* realpath: o `__file__` do Python tambem e absoluto */
+    m->caminho = strdup(abspath);   /* realpath: o caminho citado no erro e absoluto */
     m->base = bg;
     m->n = prog->nglobais;
     m->nomes = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), sizeof(char *));
@@ -26009,7 +26006,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     vm->alocado += sizeof(PSModuloPS);
 
     /* registra ANTES de rodar: módulo que importa a si mesmo pega o parcial em
-     * vez de entrar em recursão infinita, que é o que o Python faz. */
+     * vez de entrar em recursão infinita. */
     if (vm->nmods_ps + 1 > vm->cap_mods_ps) {
         int novo = vm->cap_mods_ps ? vm->cap_mods_ps * 2 : 8;
         void *nv = realloc(vm->mods_ps, sizeof(*vm->mods_ps) * (size_t)novo);
@@ -26053,12 +26050,13 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
 
 /* ── entrada pura: lexer → parser → compilador → VM ─────────────────────
  *
- * Sem `PyObject` em lugar nenhum. É o que o binário standalone chama, e é o
- * que a borda Python chama também — as duas rodam exatamente o mesmo
- * caminho, então não existe "funciona no plugin mas não no binário".
+ * Sem objeto de fora em lugar nenhum. É o que o binário standalone chama, e é
+ * o que a extensão de teste diferencial chama também — as duas rodam
+ * exatamente o mesmo caminho, então não existe "funciona no plugin mas não no
+ * binário".
  *
  * O erro sai preenchido em `e`; `tipo` diz de qual fase veio, porque cada
- * uma vira uma exceção diferente do lado Python. */
+ * uma vira um erro diferente pra quem chama. */
 /* Guardados fora da VM porque `ps_roda_fonte` cria a VM por dentro — o
  * chamador não tem onde pôr isso antes. */
 static char **g_argv_user = NULL;
@@ -26073,7 +26071,7 @@ void ps_set_argv(int argc, char **argv)
 /* ── modelo de tipos em JSON (pro editor e pra auditoria da doc) ─────────── */
 /* A fonte é o próprio motor: MODULOS[] (módulo -> membros -> nomes dos
  * parâmetros) e TABELAS[] (tipo/objeto -> métodos). Antes o tooling
- * introspectava a stdlib em Python, o que prendia o editor ao interpretador —
+ * introspectava a stdlib do interpretador, o que prendia o editor a ele —
  * e podia divergir do que a VM realmente aceita. */
 
 /* Tipo de RETORNO de cada membro que devolve um objeto — é o que faz o
@@ -26480,12 +26478,12 @@ void ps_metadata_json(FILE *saida)
     fprintf(f, "\n }\n}\n");
 }
 
-/* Despeja os avisos do lexer no STDERR, no formato do CPython.
+/* Despeja os avisos do lexer no STDERR.
  *
  * stderr, e nao stdout, porque stdout e o canal de dado do programa — e do
  * `--check`, que devolve JSON pro editor. Um aviso no stdout corromperia os
- * dois. O formato imita o do Python (`<arquivo>:<linha>: SyntaxWarning: ...`)
- * porque quem le isso ja sabe ler aquele. */
+ * dois. O formato e `<arquivo>:<linha>: SyntaxWarning: ...`, o mesmo padrao
+ * `arquivo:linha:` que compilador e editor ja sabem ler. */
 void ps_avisos_para_stderr(const PSTokenList *toks, const char *caminho)
 {
     if (!toks) return;
@@ -26603,7 +26601,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     VM vm;
     memset(&vm, 0, sizeof(vm));
     /* Diretório do script: base do `import` de arquivo vizinho. Sem caminho
-     * (código vindo de `-e` ou da borda Python) só restam as libs globais. */
+     * (código vindo de `-e` ou da extensão de teste) só restam as libs globais. */
     snprintf(vm.nome_script, sizeof(vm.nome_script), "%s", caminho ? caminho : "__main__");
     if (caminho) {
         const char *barra = strrchr(caminho, '/');
@@ -26822,7 +26820,7 @@ static PyObject *vm_roda(PyObject *self, PyObject *args)
         Proto *p   = &vm.protos[i];
         p->ncode   = (int)nc;
         p->code    = malloc(sizeof(int32_t) * (size_t)(nc > 0 ? nc : 1));
-        p->linhas  = NULL;   /* extensão Python (diff-test) não passa linhas */
+        p->linhas  = NULL;   /* extensão de diff-test não passa linhas */
         p->nconsts = (int)nk;
         p->consts  = malloc(sizeof(Value) * (size_t)(nk > 0 ? nk : 1));
         p->nlocals = nlocals;
@@ -26843,7 +26841,7 @@ static PyObject *vm_roda(PyObject *self, PyObject *args)
     }
 
     /* Liga os builtins nativos: o dict recebido mapeia NOME → índice de
-     * global. Nenhum callable Python entra na VM — se o nome não for um
+     * global. Nenhum callable de fora entra na VM — se o nome não for um
      * builtin conhecido, a global fica Null e o erro aparece no uso. */
     if (PyDict_Check(dict_globais)) {
         PyObject *chave, *valor;
@@ -26866,7 +26864,7 @@ static PyObject *vm_roda(PyObject *self, PyObject *args)
     int rc = vm_executa(&vm, 0, &resultado);
     /* Descarrega o buffer do stdout do C antes de devolver o controle: sem
      * isto a saída do `post` nativo fica presa no buffer e só aparece quando
-     * o processo termina — fora de ordem em relação ao que o Python imprime,
+     * o processo termina — fora de ordem em relação ao que o chamador imprime,
      * e invisível pra quem redireciona o descritor pra capturar. */
     fflush(stdout);
     if (rc != 0) {
