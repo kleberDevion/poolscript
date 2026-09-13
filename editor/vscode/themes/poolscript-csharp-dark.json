@@ -46,6 +46,46 @@
   },
   "tokenColors": [
     {
+      "name": "PoolScript: builtin chamado — método, no C#",
+      "scope": ["support.function.builtin.poolscript"],
+      "settings": { "foreground": "#DCDCAA" }
+    },
+    {
+      "name": "PoolScript: exceção — nome de tipo, no C#",
+      "scope": ["support.class.exception.poolscript"],
+      "settings": { "foreground": "#4EC9B0" }
+    },
+    {
+      "name": "PoolScript: decorador — atributo, no C#",
+      "scope": ["meta.decorator.poolscript", "punctuation.decorator.poolscript", "entity.name.function.decorator.poolscript"],
+      "settings": { "foreground": "#DCDCAA" }
+    },
+    {
+      "name": "PoolScript: literal de bytes e prefixo de string",
+      "scope": ["string.quoted.bytes.poolscript"],
+      "settings": { "foreground": "#D69D85" }
+    },
+    {
+      "name": "PoolScript: prefixo f/r/b",
+      "scope": ["storage.type.string.prefix.poolscript"],
+      "settings": { "foreground": "#569CD6" }
+    },
+    {
+      "name": "PoolScript: operador e pontuação",
+      "scope": ["keyword.operator.poolscript", "punctuation.poolscript"],
+      "settings": { "foreground": "#D4D4D4" }
+    },
+    {
+      "name": "PoolScript: dunder",
+      "scope": ["support.variable.dunder.poolscript"],
+      "settings": { "foreground": "#9CDCFE" }
+    },
+    {
+      "name": "PoolScript: trecho interpolado",
+      "scope": ["meta.embedded.poolscript"],
+      "settings": { "foreground": "#D4D4D4" }
+    },
+    {
       "name": "comentário",
       "scope": ["comment", "comment.line", "comment.block", "punctuation.definition.comment"],
       "settings": { "foreground": "#6A9955", "fontStyle": "" }

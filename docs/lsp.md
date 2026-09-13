@@ -224,21 +224,48 @@ Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot) e:
 
 ## Tema
 
-A extensão traz **PoolScript C# Dark** — a paleta do C# no VS Code:
+A gramática emite um escopo **próprio** para cada construção da linguagem
+(`storage.type.function.poolscript` para `funct`, `storage.type.class.poolscript`
+para `Entity`, `support.class.exception.poolscript` para as exceções,
+`string.quoted.bytes.poolscript` para `b"..."`, …). Um tema comum só conhece os
+escopos genéricos e pinta `if`, `funct`, `Entity`, `int` e `static` da mesma
+cor. Por isso a extensão traz dois temas com regra para cada escopo — e o
+portão `scripts/gera_realce.ps --portao` reprova escopo da gramática sem cor
+neles.
 
-| cor | onde |
+**PoolScript One Dark** (`Ctrl+K Ctrl+T`) — um papel, uma cor:
+
+| papel | cor |
 |---|---|
-| `#569CD6` | palavra da linguagem, tipo primitivo, `self`, `private`/`public` |
-| `#C586C0` | controle de fluxo (`if`, `return`, `for each`) |
-| `#4EC9B0` | nome de tipo — a Entity e o pai dela |
-| `#DCDCAA` | nome de método, chamada e decorador |
-| `#9CDCFE` | parâmetro, variável local, campo |
-| `#CE9178` string · `#B5CEA8` número · `#6A9955` comentário | |
+| controle (`if for while return try match import …`) | `#C678DD` (operador-palavra em itálico; verbos `PUSH GET POST` em negrito) |
+| `funct` | `#E06C75` |
+| nome de funct (declaração e chamada) | `#61AFEF` |
+| `Entity class model enum` | `#D19A66` |
+| nome da Entity/model (pai herdado em itálico) | `#E5C07B` |
+| tipos (`str int byte list …`) e prefixo `f`/`r`/`b` | `#4EC9B0` |
+| modificadores (`static nonnull private public`) | `#ABB2BF` itálico |
+| builtins (`post len range …`) | `#DCDCAA` |
+| exceções (`Exception ValueError …`) | `#F78C6C` |
+| decorador (`@` e o nome) | `#FF79C6` |
+| `self` | `#56B6C2` itálico |
+| parâmetro | `#9CDCFE` |
+| string · escape · chaves de interpolação | `#98C379` · `#56B6C2` · `#C678DD` |
+| literal de bytes `b"..."` | `#B5CEA8` |
+| número · `true false Null` | `#D19A66` · `#D19A66` itálico |
+| operador de símbolo, pontuação, propriedade | `#ABB2BF` |
+| dunder (`__name__ __init__`) | `#E5C07B` itálico |
+| comentário | `#5C6370` itálico |
 
-Escolha em `Ctrl+K Ctrl+T → PoolScript C# Dark`. A gramática emite os escopos
-padrão que essas cores esperam (`entity.name.type.class`, `variable.parameter`,
-`variable.language.self`, …), então o visual fica próximo do C# **em qualquer
-tema dark** — o tema só fecha a paleta exata.
+**PoolScript C# Dark** — a paleta do C# no VS Code (`#569CD6` palavra da
+linguagem e tipo primitivo, `#C586C0` controle, `#4EC9B0` nome de tipo e
+exceção, `#DCDCAA` método, builtin e decorador, `#9CDCFE` parâmetro,
+`#CE9178` string, `#D69D85` bytes, `#B5CEA8` número, `#6A9955` comentário).
+
+Quem usa outro tema pode levar a paleta junto: copie as regras de
+`editor/vscode/themes/poolscript-one-dark.json` (as que começam com
+`"PoolScript:"`) para `editor.tokenColorCustomizations.textMateRules` no seu
+`settings.json` — os escopos terminam em `.poolscript`, então não tocam em
+outra linguagem.
 
 ## Por dentro (pra quem mexe no repositório)
 

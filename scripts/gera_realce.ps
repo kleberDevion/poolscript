@@ -83,6 +83,50 @@ funct gera(linhas, listas) {
 }
 
 
+# Todo token que a gramática emite (`"name": "..."`): uma lista de escopos
+# por token — as palavras separadas por espaço são ALTERNATIVAS (a segunda e a
+# terceira existem pra tema que não conhece a primeira). Só entram os `.poolscript`.
+funct escopos_da_gramatica(linhas) {
+    saida = []
+    for each l in linhas {
+        t = l.strip()
+        if not t.startswith("\"name\": \"") {
+            continue
+        }
+        valor = t[len("\"name\": \""):]
+        valor = valor[0:valor.find("\"")]
+        alternativas = []
+        for each esc in valor.split(" ") {
+            if esc.endswith(".poolscript") {
+                addEnd(alternativas, esc)
+            }
+        }
+        if len(alternativas) > 0 and not saida.contains(alternativas) {
+            addEnd(saida, alternativas)
+        }
+    }
+    return saida
+}
+
+
+# Os escopos que um tema cobre: a união de todos os `scope` de `tokenColors`.
+# Regra genérica cobre por prefixo (`keyword` cobre `keyword.control.poolscript`).
+funct tema_cobre(tema, esc) {
+    for each regra in tema["tokenColors"] {
+        escopos = regra["scope"]
+        if type(escopos) == "str" {
+            escopos = [escopos]
+        }
+        for each s in escopos {
+            if s == esc or esc.startswith(s + ".") {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+
 if __name__ == "main" {
     tmp = "/tmp/ps_realce_meta.json"
     os.cmd(sys.executable + " --metadata > " + tmp)
@@ -95,9 +139,37 @@ if __name__ == "main" {
     gerado = "\n".join(novas)
 
     if "--portao" in sys.argv {
+        # 1) escopo da gramática sem cor em algum tema da extensão: foi assim
+        #    que `funct`, `Entity`, tipo e builtin saíam todos da mesma cor.
+        sem_cor = []
+        for each e in os.ls("editor/vscode/themes") {
+            if not e["name"].endswith(".json") {
+                continue
+            }
+            tema = json.parse(os.readFile("editor/vscode/themes/" + e["name"]))
+            for each alternativas in escopos_da_gramatica(linhas) {
+                coberto = false
+                for each esc in alternativas {
+                    if tema_cobre(tema, esc) {
+                        coberto = true
+                    }
+                }
+                if not coberto {
+                    addEnd(sem_cor, e["name"] + ": " + " | ".join(alternativas))
+                }
+            }
+        }
+        if len(sem_cor) > 0 {
+            post("realce: escopo da gramatica SEM cor no tema:")
+            for each s in sem_cor {
+                post("  " + s)
+            }
+            sys.exit(1)
+        }
         if gerado == original {
             post("realce: a gramatica bate com o --metadata (" + str(len(listas[0])) + " tipos, "
-                 + str(len(listas[1])) + " builtins, " + str(len(listas[2])) + " excecoes)")
+                 + str(len(listas[1])) + " builtins, " + str(len(listas[2])) + " excecoes); "
+                 + str(len(escopos_da_gramatica(linhas))) + " escopos, todos com cor nos temas")
             sys.exit(0)
         }
         post("realce: a gramatica DIVERGE do --metadata — rode ./pool scripts/gera_realce.ps")

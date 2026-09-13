@@ -50,8 +50,46 @@
     "strings": {
       "patterns": [
         {
+          "comment": "literal de BYTES (b/B, br/rb cru): escopo proprio, sem interpolacao — bytes nao interpola",
+          "name": "string.quoted.bytes.poolscript",
+          "begin": "\\b([bB][rR]?|[rR][bB])(''')",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "end": "'''",
+          "patterns": [
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.bytes.poolscript",
+          "begin": "\\b([bB][rR]?|[rR][bB])(\")",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.bytes.poolscript",
+          "begin": "\\b([bB][rR]?|[rR][bB])(')",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.poolscript",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
           "name": "string.quoted.triple.poolscript",
-          "begin": "[frbFRB]*'''",
+          "begin": "([frFR]*)'''",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
           "end": "'''",
           "patterns": [
             {
@@ -65,7 +103,8 @@
         },
         {
           "name": "string.quoted.double.poolscript",
-          "begin": "[frbFRB]*\"",
+          "begin": "([frFR]*)\"",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
           "end": "\"",
           "patterns": [
             {
@@ -79,7 +118,8 @@
         },
         {
           "name": "string.quoted.single.poolscript",
-          "begin": "[frbFRB]*'",
+          "begin": "([frFR]*)'",
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
           "end": "'",
           "patterns": [
             {
@@ -246,6 +286,15 @@
           "match": "\\b(assert|post|len|str|int|long|flo|bool|type|abs|pow|round|hex|bin|oct|ord|chr|range|list|tup|dict|sum|min|max|sorted|reversed|enumerate|zip|addEnd|addStart|removeEnd|removeStart|map|filter|open|sleep|gather|input|id|load)\\s*(?=\\()"
         },
         {
+          "comment": "operadores de simbolo e pontuacao: sem escopo, o tema nao tinha como pinta-los, e ficavam na cor do texto comum",
+          "name": "keyword.operator.poolscript",
+          "match": "\\*\\*|//|==|!=|<=|>=|&&|\\|\\||<<|>>|\\+=|-=|\\*=|/=|%=|\\+\\+|--|[-+*/%=<>!&|^~]"
+        },
+        {
+          "name": "punctuation.poolscript",
+          "match": "[()\\[\\]{},;:.]"
+        },
+        {
           "comment": "GERADO por scripts/gera_realce.ps a partir de `pool --metadata` (chave `excecoes`, a tabela do catch). As tres listas desta gramatica (tipos, builtins, excecoes) sao geradas; nao edite a mao.",
           "name": "support.class.exception.poolscript",
           "match": "\\b(Exception|OSError|FileExistsError|FileNotFoundError|IsADirectoryError|NotADirectoryError|PermissionError|NetworkError|IOError|LookupError|IndexError|KeyError|ArithmeticError|ZeroDivisionError|OverflowError|ValueError|UnicodeError|UnicodeDecodeError|UnicodeEncodeError|AttributedValueError|ConversionError|RuntimeError|RecursionError|TypeError|AttributeError|NameError|ImportError|MemoryError|AssertionError|SyntaxError|NotImplementedError|TimeoutError|DatabaseError)\\b"
@@ -270,6 +319,11 @@
     },
     "calls": {
       "patterns": [
+        {
+          "comment": "__name__, __init__, __file__: nomes da linguagem, nao variaveis do usuario",
+          "name": "support.variable.dunder.poolscript",
+          "match": "\\b__\\w+__\\b"
+        },
         {
           "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()",
           "captures": {

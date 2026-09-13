@@ -19,6 +19,136 @@
   },
   "tokenColors": [
     {
+      "name": "PoolScript: comentário",
+      "scope": ["comment.line.number-sign.poolscript", "comment.block.poolscript"],
+      "settings": { "foreground": "#5C6370", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: controle de fluxo (if for while return try match import …)",
+      "scope": ["keyword.control.poolscript"],
+      "settings": { "foreground": "#C678DD", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: operador-palavra (and or not is in)",
+      "scope": ["keyword.operator.logical.poolscript"],
+      "settings": { "foreground": "#C678DD", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: verbos (PUSH GET POST PUT DELETE JSON)",
+      "scope": ["keyword.control.verb.poolscript"],
+      "settings": { "foreground": "#C678DD", "fontStyle": "bold" }
+    },
+    {
+      "name": "PoolScript: a palavra funct",
+      "scope": ["storage.type.function.poolscript"],
+      "settings": { "foreground": "#E06C75", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: nome da funct (declaração e chamada)",
+      "scope": ["entity.name.function.poolscript", "entity.name.function.call.poolscript"],
+      "settings": { "foreground": "#61AFEF", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: Entity class model enum",
+      "scope": ["storage.type.class.poolscript"],
+      "settings": { "foreground": "#D19A66", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: nome da Entity/model",
+      "scope": ["entity.name.type.class.poolscript"],
+      "settings": { "foreground": "#E5C07B", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: pai herdado",
+      "scope": ["entity.other.inherited-class.poolscript"],
+      "settings": { "foreground": "#E5C07B", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: tipos (str int byte list dict …) e prefixo de string (f r b)",
+      "scope": ["storage.type.poolscript", "storage.type.string.prefix.poolscript"],
+      "settings": { "foreground": "#4EC9B0", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: modificadores (static nonnull private public)",
+      "scope": ["storage.modifier.poolscript"],
+      "settings": { "foreground": "#ABB2BF", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: builtins (post len range …)",
+      "scope": ["support.function.builtin.poolscript"],
+      "settings": { "foreground": "#DCDCAA", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: exceções (Exception ValueError …)",
+      "scope": ["support.class.exception.poolscript"],
+      "settings": { "foreground": "#F78C6C", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: decorador (@ e o nome)",
+      "scope": ["meta.decorator.poolscript", "punctuation.decorator.poolscript", "entity.name.function.decorator.poolscript"],
+      "settings": { "foreground": "#FF79C6", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: self",
+      "scope": ["variable.language.self.poolscript"],
+      "settings": { "foreground": "#56B6C2", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: parâmetro",
+      "scope": ["variable.parameter.poolscript"],
+      "settings": { "foreground": "#9CDCFE", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: propriedade (.x sem chamada)",
+      "scope": ["variable.other.property.poolscript"],
+      "settings": { "foreground": "#ABB2BF", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: string",
+      "scope": ["string.quoted.double.poolscript", "string.quoted.single.poolscript", "string.quoted.triple.poolscript"],
+      "settings": { "foreground": "#98C379", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: literal de bytes b\"...\"",
+      "scope": ["string.quoted.bytes.poolscript"],
+      "settings": { "foreground": "#B5CEA8", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: escape na string",
+      "scope": ["constant.character.escape.poolscript"],
+      "settings": { "foreground": "#56B6C2", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: chaves da interpolação",
+      "scope": ["punctuation.definition.template-expression.begin.poolscript", "punctuation.definition.template-expression.end.poolscript"],
+      "settings": { "foreground": "#C678DD", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: número",
+      "scope": ["constant.numeric.poolscript"],
+      "settings": { "foreground": "#D19A66", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: true false Null",
+      "scope": ["constant.language.boolean.poolscript", "constant.language.null.poolscript"],
+      "settings": { "foreground": "#D19A66", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: operador de símbolo e pontuação",
+      "scope": ["keyword.operator.poolscript", "punctuation.poolscript"],
+      "settings": { "foreground": "#ABB2BF", "fontStyle": "" }
+    },
+    {
+      "name": "PoolScript: dunder (__name__ __init__)",
+      "scope": ["support.variable.dunder.poolscript"],
+      "settings": { "foreground": "#E5C07B", "fontStyle": "italic" }
+    },
+    {
+      "name": "PoolScript: trecho interpolado volta à cor do texto",
+      "scope": ["meta.embedded.poolscript"],
+      "settings": { "foreground": "#ABB2BF", "fontStyle": "" }
+    },
+    {
       "scope": [
         "keyword",
         "keyword.control",
