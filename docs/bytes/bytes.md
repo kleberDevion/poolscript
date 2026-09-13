@@ -9,9 +9,40 @@ próprias ferramentas binárias.
 import bytes
 ```
 
-O tipo `bytes` já existe na linguagem (`"oi".encode()`, leitura de arquivo em
-modo binário). Esta lib é o que permite **criar** bytes do zero e **converter**
-entre formatos.
+O **tipo** do valor chama-se `byte` (`type("oi".encode())` → `byte`); `bytes`
+é o **módulo**, com as funções de criar e converter. Um valor `byte` nasce de
+`"oi".encode()`, de um arquivo aberto em `"rb"`, das funções desta lib, ou do
+**literal `b"..."`**:
+
+## Literal `b"..."`
+
+```ps
+sig = b"\x89PNG\r\n\x1a\n"        # 8 bytes crus, exatamente esses
+post(len(sig), sig)                # 8 b'\x89PNG\r\n\x1a\n'
+post(b"a\x00b", len(b"a\x00b"))    # b'a\x00b' 3 — NUL dentro vale
+post(b"\xff"[0])                   # 255
+post(b"é")                         # b'\xc3\xa9' — não-ASCII entra com os bytes UTF-8 do fonte
+```
+
+- **Qualquer byte, 0 a 255.** `\xHH` é sempre UM byte; octal `\ooo` (0–255);
+  `\n \r \t \a \b \f \v \e \0 \\ \" \'` valem como na string.
+- `\u`/`\U` **não existem** em bytes (byte não tem codepoint):
+  `SyntaxError: \u nao vale em bytes: use \xHH`. Octal acima de 255 também é
+  erro. Escape desconhecido mantém a barra e avisa, como na string.
+- `B"..."` é o mesmo que `b"..."`; `br"..."`/`rb"..."` é **cru** (a barra fica:
+  `br"\n"` tem 2 bytes); `b'''...'''` é multilinha (a quebra vira o byte `\n`).
+- `b = 1` continua sendo uma variável: o prefixo só vale com a aspa colada.
+
+## O tipo `byte`
+
+```ps
+byte x = b"a"          # declaração tipada confere: `byte y = "texto"` é AttributedValueError
+post(x is byte)        # True
+post(byte("a"))        # b'a' — o mesmo que bytes.new("a")
+post(type(x))          # byte
+```
+
+`byte` é um nome global (não precisa de `import`), como `PoolFile`.
 
 | Membro | O que faz | Página |
 |---|---|---|
@@ -132,7 +163,7 @@ fora — quem escrevia `b.len()` por analogia tomava erro em tempo de execução
 
 ## Operadores
 
-`bytes` responde aos mesmos operadores de sequência que `str` e `list`:
+`byte` responde aos mesmos operadores de sequência que `str` e `list`:
 
 ```
 import bytes

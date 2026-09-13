@@ -258,7 +258,7 @@ static int32_t idx_const(C *c, Unidade *u, PSConstKind k,
     for (int32_t x = 0; x < UP(c, u)->nconsts; x++) {
         PSConst *e = &UP(c, u)->consts[x];
         if (e->kind != k) continue;
-        if (k == K_STR || k == K_BIGINT) {
+        if (k == K_STR || k == K_BIGINT || k == K_BYTES) {
             if (e->slen == slen && memcmp(e->s, s, (size_t)slen) == 0) return x;
         } else if (k == K_FLO) {
             if (e->d == d) return x;
@@ -278,7 +278,7 @@ static int32_t idx_const(C *c, Unidade *u, PSConstKind k,
     PSConst *e = &UP(c, u)->consts[UP(c, u)->nconsts];
     memset(e, 0, sizeof(*e));
     e->kind = k; e->i = i; e->d = d;
-    if (k == K_STR || k == K_BIGINT) {
+    if (k == K_STR || k == K_BIGINT || k == K_BYTES) {
         e->s = malloc((size_t)slen + 1);
         if (!e->s) { cerro(c, "sem memoria", NULL); return -1; }
         memcpy(e->s, s, (size_t)slen);
@@ -873,6 +873,8 @@ static int cod_tipo_decl(const char *t)
         { "char", 8 }, { "Object", 10 }, { "object", 10 },
         /* 11 = TIPO_LONG: inteiro de qualquer tamanho, bignum inclusive */
         { "long", 11 }, { "Long", 11 },
+        /* 12 = TIPO_BYTE: o valor de `b"..."` (`bytes` é o módulo) */
+        { "byte", 12 },
         /* apelidos (ver eh_apelido_tipo no parser): a mesma regra do tipo */
         { "string", 0 }, { "String", 0 }, { "integer", 1 }, { "Integer", 1 },
         { "tuple", 6 }, { "Tuple", 6 }, { "dictionary", 5 }, { "Dictionary", 5 },
@@ -1187,6 +1189,12 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                           idx_const(c, u, K_BIGINT, 0, 0, n->texto ? n->texto : "0",
                                     n->texto ? (int32_t)strlen(n->texto) : 1));
                     break;
+                case L_BYTES:
+                    /* `b"..."`: texto_len sempre (NUL dentro; `b""` é 0) */
+                    emite(c, u, OP_LOAD_CONST,
+                          idx_const(c, u, K_BYTES, 0, 0, n->texto ? n->texto : "",
+                                    n->texto ? n->texto_len : 0));
+                    break;
                 case L_FSTRING:
                     compila_fstring(c, u, n);
                     break;
@@ -1242,9 +1250,9 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                      * leitura. */
                     if (n->b && n->b->kind == N_LITERAL && n->b->lit != L_NULL) {
                         static const char *NOME_LIT[] = {
-                            "int", "flo", "str", "bool", "Null", "str", "int"
+                            "int", "flo", "str", "bool", "Null", "str", "int", "byte"
                         };
-                        const char *tn = (n->b->lit >= 0 && n->b->lit <= L_BIGINT)
+                        const char *tn = (n->b->lit >= 0 && n->b->lit <= L_BYTES)
                                          ? NOME_LIT[n->b->lit] : "?";
                         cerro_sx(c, n,
                                  "'is' com literal '%s' a direita — 'is' compara"
@@ -1670,6 +1678,9 @@ static void padrao_literal(C *c, Unidade *u, PSNode *lit)
         case L_BIGINT: emite(c, u, OP_LOAD_CONST,
                   idx_const(c, u, K_BIGINT, 0, 0, lit->texto ? lit->texto : "0",
                             lit->texto ? (int32_t)strlen(lit->texto) : 1)); break;
+        case L_BYTES: emite(c, u, OP_LOAD_CONST,          /* `case b"x":` casa bytes */
+                  idx_const(c, u, K_BYTES, 0, 0, lit->texto ? lit->texto : "",
+                            lit->texto ? lit->texto_len : 0)); break;
         default:
             emite(c, u, OP_LOAD_CONST,
                   idx_const(c, u, K_STR, 0, 0, lit->texto ? lit->texto : "",

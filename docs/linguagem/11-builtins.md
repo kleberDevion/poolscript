@@ -24,7 +24,7 @@ Tudo aqui foi verificado rodando o fonte na VM em C.
 
 | Builtin | Assinatura | O que faz |
 |---|---|---|
-| `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `bytes`. `len(null)` → `0`. |
+| `len` | `len(x)` | tamanho de `str` (em **caracteres**, não bytes: `len("olá")`→3), `list`, `tup`, `dict` ou `byte`. `len(null)` → `0`. |
 | `type` | `type(x)` | nome do tipo como `str` (`"int"`, `"str"`, `"list"`, `"Null"`, nome da Entity, `"funct"`, `"type"`, `"generator"`). Igual ao método `x.type()`. |
 | `range` | `range(fim)` / `range(início, fim, passo=1)` | **lista** concreta de inteiros, `início` (inclusive) a `fim` (exclusive), de `passo` em `passo` (negativo conta pra trás). Aceita string numérica (`range("3")`) e trunca float. `passo=0` → erro. |
 

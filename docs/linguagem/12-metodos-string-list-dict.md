@@ -1,7 +1,7 @@
 # Referência da Linguagem — 12. Métodos de string, list, dict e bytes
 
 Estes métodos são **parte da linguagem** (não vêm de `import`): qualquer `str`,
-`list`, `dict` ou `bytes` os expõe direto, com a sintaxe `valor.metodo(...)`.
+`list`, `dict` ou `byte` os expõe direto, com a sintaxe `valor.metodo(...)`.
 Esta seção é a referência agrupada; cada método tem ainda uma **página
 detalhada** — [`docs/string/`](../string/string.md),
 [`docs/list/`](../list/list.md), [`docs/dict/`](../dict/dict.md) e
@@ -119,13 +119,13 @@ caractere da classe.
 | Método | Faz |
 |---|---|
 | `len()` | nº de caracteres (igual a `len(s)`) |
-| `encode(encoding="utf-8", errors="strict")` | string → `bytes` no encoding pedido |
+| `encode(encoding="utf-8", errors="strict")` | string → `byte` no encoding pedido |
 | `get_json(chave=null)` | interpreta a string como JSON e devolve os dados (ou a chave) |
 | `get(...)` | acessa dado dentro de uma string JSON |
 
 #### `encode` / `decode`: o encoding vale de verdade
 
-`s.encode(encoding, errors)` produz `bytes`; `b.decode(encoding, errors)` volta
+`s.encode(encoding, errors)` produz `byte`; `b.decode(encoding, errors)` volta
 pra `str`. Encodings aceitos (o nome ignora caixa, `-`, `_` e espaço):
 
 `utf-8` (padrão) · `latin-1`/`iso-8859-1` · `ascii` · `utf-16-le`/`utf-16-be` ·
@@ -254,7 +254,7 @@ etc. — tem prioridade sobre o acesso por atributo.)
 
 ---
 
-## 12.4. Métodos de `bytes` (44)
+## 12.4. Métodos de `byte` (44)
 
 `bytes` é o tipo de **dado binário** — o que sai de `"texto".encode()`, de
 `open(..., "rb").read()`, do corpo de uma resposta HTTP. As páginas por método

@@ -83,7 +83,7 @@ post(saudacao("oi ", 3))     # "oi oi oi "
 ```
 
 Vale **qualquer tipo** da tabela da seção 2.6 (`str`, `int`, `flo`, `bool`,
-`char`, `long`, `list`, `dict`, `tup`, `bytes`, `PoolFile`, `Object`), os
+`char`, `long`, `list`, `dict`, `tup`, `byte`, `PoolFile`, `Object`), os
 apelidos deles (`String` é `str`, `Integer` é `int`), o nome de uma **Entity**
 e o nome de um tipo de objeto do motor (`Response`, `PoolCursor`,
 `MailMessage`…).

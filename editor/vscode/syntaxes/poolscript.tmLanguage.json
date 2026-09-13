@@ -187,7 +187,7 @@
             {
               "comment": "tipo do parametro — GERADO por scripts/gera_realce.ps (mesma lista da regra de tipos)",
               "name": "storage.type.poolscript",
-              "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
+              "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
             },
             {
               "match": "\\b[A-Za-z_]\\w*\\b",
@@ -225,7 +225,7 @@
         {
           "comment": "idem: `int = 1` ou `type=...` como nome de argumento nao e tipo",
           "name": "storage.type.poolscript",
-          "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
+          "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
         },
         {
           "comment": "static/nonnull sao modificadores COLADOS na declaracao — de funct E de campo (`static object mapp = ...`), em qualquer ordem com o tipo e a visibilidade. Pintam quando vem uma palavra atras (modificador, tipo, nome ou funct); `static` sozinho numa expressao continua nome comum. A lista antiga de tipos no lookahead nao tinha long/object/list e nao cobria campo.",

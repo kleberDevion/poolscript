@@ -2544,7 +2544,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "sum recusa str dizendo o que pede, nao negando que str itera",
   "sum(\"abc\")\n", "", "TypeError: sum() argument 1 must be list or tup, not str", 1 },
 { "sum recusa bytes pelo mesmo caminho",
-  "sum(\"abc\".encode())\n", "", "TypeError: sum() argument 1 must be list or tup, not bytes", 1 },
+  "sum(\"abc\".encode())\n", "", "TypeError: sum() argument 1 must be list or tup, not byte", 1 },
 { "str.join diz o tipo recebido",
   "\", \".join(\"abc\")\n", "", "TypeError: join() argument 1 must be list or tup, not str", 1 },
 { "str.join recusa dict",
@@ -2736,6 +2736,49 @@ const Caso CASOS_LINGUAGEM[] = {
   "import jinker\napp = jinker.Jinker()\n@app.route(\"/x\")\nfunct h() {\n    return \"ok\"\n}\npost(h())\n",
   "ok", NULL, 0 },
 #undef DEC_NET
+
+/* ── LITERAL b"..." E O TIPO byte (2026-09-12) ────────────────────────────────
+ * `b"..."` era o nome `b` seguido de string (NameError). Agora e um literal
+ * de bytes CRUS: \xHH e UM byte, NUL dentro vale, nao-ASCII entra com os
+ * bytes UTF-8 do fonte, `\u` e erro. O tipo chama `byte` (o modulo continua
+ * `bytes`): `byte x = ...` confere, `x is byte`, `type()` responde `byte`.
+ * Strings medidas no binario. */
+{ "byte: literal simples e type()",
+  "x = b\"abc\"\npost(x, len(x), type(x))\n", "b'abc' 3 byte", NULL, 0 },
+{ "byte: NUL no meio conta e imprime",
+  "x = b\"a\\x00b\"\npost(len(x), x)\n", "3 b'a\\x00b'", NULL, 0 },
+{ "byte: \\xff e UM byte de valor 255",
+  "x = b\"\\xff\"\npost(len(x), x[0], x)\n", "1 255 b'\\xff'", NULL, 0 },
+{ "byte: octal e \\0",
+  "x = b\"\\101\\0\"\npost(x, len(x))\n", "b'A\\x00' 2", NULL, 0 },
+{ "byte: nao-ASCII no fonte vira os bytes UTF-8 dele",
+  "x = b\"\xc3\xa9\"\npost(len(x), x)\n", "2 b'\\xc3\\xa9'", NULL, 0 },
+{ "byte: \\u nao vale em bytes",
+  "x = b\"\\u00e9\"\n", "", "SyntaxError: \\u nao vale em bytes: use \\xHH", 2 },
+{ "byte: octal acima de 255 e erro",
+  "x = b\"\\777\"\n", "", "SyntaxError: octal fora de 0-255 em bytes", 2 },
+{ "byte: literal == encode(), e nao == str",
+  "post(b\"oi\" == \"oi\".encode(), b\"oi\" == \"oi\")\n", "True False", NULL, 0 },
+{ "byte: declaracao tipada aceita bytes",
+  "byte x = b\"a\"\npost(x)\n", "b'a'", NULL, 0 },
+{ "byte: declaracao tipada recusa str (antes passava calado)",
+  "byte y = \"texto\"\n", "", "AttributedValueError: variável y esperava byte", 1 },
+{ "byte: is byte, sem import",
+  "post(b\"a\" is byte, \"a\" is byte, byte is type, type(byte))\n", "True False True type", NULL, 0 },
+{ "byte(x) e o mesmo que bytes.new(x)",
+  "import bytes\npost(byte(\"a\"), byte(\"a\") == bytes.new(\"a\"), byte(b\"x\"))\n", "b'a' True b'x'", NULL, 0 },
+{ "byte: match casa bytes e nao str",
+  "match b\"x\" {\n    case \"x\" { post(\"str\") }\n    case b\"x\" { post(\"bytes\") }\n}\n", "bytes", NULL, 0 },
+{ "byte: b e B continuam nomes quando nao vem aspa colada",
+  "b = 1\npost(b, b\"x\", b, B\"y\")\n", "1 b'x' 1 b'y'", NULL, 0 },
+{ "byte: br/rb e cru (nao processa escape)",
+  "post(len(br\"\\n\"), rb\"\\n\", len(b\"\\n\"))\n", "2 b'\\\\n' 1", NULL, 0 },
+{ "byte: literal triplo guarda a quebra de linha como byte",
+  "x = b'''linha1\nlinha2'''\npost(len(x), x)\n", "13 b'linha1\\nlinha2'", NULL, 0 },
+{ "byte: vazio",
+  "post(b\"\", len(b\"\"))\n", "b'' 0", NULL, 0 },
+{ "byte: assinatura PNG via fromhex bate com o literal",
+  "import bytes\npost(bytes.fromhex(\"89504e470d0a1a0a\") == b\"\\x89PNG\\r\\n\\x1a\\n\")\n", "True", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

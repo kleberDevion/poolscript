@@ -272,6 +272,15 @@ nome = "mundo"
 post(f"olá, {nome}!")            # f-string
 ```
 
+### 1.6.3.1. Bytes — `b"..."`
+
+O prefixo `b` (ou `B`) colado na aspa faz um literal de **bytes crus**, do tipo
+`byte`: `b"\x89PNG\r\n\x1a\n"`. Cada `\xHH` é UM byte (0–255), octal `\ooo`
+idem, `\0` vale, e um caractere não-ASCII entra com os bytes UTF-8 dele.
+`\u`/`\U` são erro (`\u nao vale em bytes: use \xHH`). `br"..."`/`rb"..."` é
+cru (sem escapes) e `b'''...'''` é multilinha. Sem a aspa colada, `b` é um
+nome comum. Detalhes e o tipo em [bytes](../bytes/bytes.md).
+
 ### 1.6.4. Booleanos e nulo
 
 - **Booleano:** `True`/`true` e `False`/`false` (as quatro formas valem).
@@ -333,7 +342,7 @@ definida na seção de expressões.
 ## 1.8. Resumo dos tipos de token
 
 O lexer emite: `IDENT`, `IDENT_UPPER`, `KW` (keyword), `INT`, `FLO`, `STR`,
-`FSTRING`, `BOOL`, `NULL`, `COLOR`, `OP` (operador), os tokens de pontuação
+`FSTRING`, `BYTES`, `BOOL`, `NULL`, `COLOR`, `OP` (operador), os tokens de pontuação
 (`LPAREN`, `RBRACE`, `COLON`, ...), `NEWLINE`, `INDENT`, `DEDENT` e `EOF`. As
 próximas seções descrevem como o parser combina esses tokens em expressões e
 statements.

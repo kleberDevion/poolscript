@@ -796,6 +796,7 @@ static int cmd_contexto(const char *pos)
             const char *tipo = NULL;
             switch (tl->tokens[i - 1].type) {
                 case T_STR: case T_FSTRING: tipo = "str";  break;
+                case T_BYTES:               tipo = "byte"; break;
                 case T_INT:                 tipo = "int";  break;
                 case T_FLO:                 tipo = "flo";  break;
                 case T_BOOL:                tipo = "bool"; break;

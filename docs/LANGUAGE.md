@@ -134,9 +134,15 @@ flo altura = 1.75
 bool ativo = true
 ```
 
-Tipos primitivos: `str`, `int`, `flo`, `bool`. Atribuir um valor incompatível a
-uma variável tipada é erro (`AttributedValueError`, ou `ConversionError` quando
-a conversão automática — ex.: string → int — falha).
+Tipos primitivos: `str`, `int`, `flo`, `bool`; e mais `char`, `long`, `list`,
+`dict`/`json`, `tup`, `byte`, `Object`. Atribuir um valor incompatível a uma
+variável tipada é erro (`AttributedValueError`) — **não há conversão
+implícita**: `int n = "7"` é erro, `int("7")` é a conversão.
+
+Bytes crus têm literal próprio: `b"\x89PNG\r\n\x1a\n"` (qualquer byte, `\xHH`
+é um byte, `\0` vale; `br"..."` é cru). O tipo é `byte` — `byte x = b"a"`,
+`x is byte` — e `bytes` é o módulo de conversões (`bytes.fromhex`, `bytes.new`).
+Detalhes em [bytes](bytes/bytes.md).
 
 > Esta seção dizia que **redeclarar** uma variável já tipada no mesmo escopo é
 > erro. Não é: `int x = 1` seguido de `int x = 2` roda com rc=0, e

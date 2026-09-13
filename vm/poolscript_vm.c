@@ -748,6 +748,10 @@ enum {
      * Mesma ideia do `char`, que é restrição de DECLARAÇÃO — `type()` de
      * ambos continua respondendo `"int"`, porque o valor é um inteiro. */
     TIPO_LONG,
+    /* `byte`: o tipo do valor de `b"..."` e do `.encode()`. O MÓDULO segue
+     * chamando `bytes` (`bytes.new`, `bytes.fromhex`) — nomes distintos, sem
+     * conflito entre tipo e módulo. */
+    TIPO_BYTE,
     TIPO__N
 };
 /* As exceções também são valores `V_TIPO`, com o índice DESLOCADO: `ValueError`
@@ -3556,7 +3560,7 @@ static int nativa_int(VM *vm, Value *args, int n, Value *out)
         return 0;
     }
     BERRO(vm, "TypeError",
-          "int() argument must be a string, a bytes-like object"
+          "int() argument must be a string, a byte-like object"
           " or a real number, not '%s'", nome_do_tipo_valor(v));
 }
 
@@ -3652,7 +3656,7 @@ static const char *nome_do_tipo_valor(Value v)
                 case OBJ_GERADOR:    t = "generator"; break;
                 case OBJ_ARQUIVO:    t = "PoolFile"; break;   /* todo arquivo é PoolFile */
                 case OBJ_MODULO_PS:  t = "module"; break;
-                case OBJ_BYTES:      t = "bytes";  break;
+                case OBJ_BYTES:      t = "byte";   break;   /* o tipo é `byte`; `bytes` é o módulo */
                 case OBJ_POOLFILE:   t = "PoolFile"; break;
                 case OBJ_SQLCONN:    t = "PoolConnection"; break;
                 case OBJ_SQLCUR:     t = "PoolCursor"; break;
@@ -4327,6 +4331,7 @@ static int nativa_list(VM *vm, Value *args, int n, Value *out)
 /* Tipo (V_TIPO) usado como valor chamável -> o conversor nativo correspondente,
  * O MESMO da chamada direta `str(...)`. json/dict/tup não convertem (NULL). */
 static int nativa_type(VM *vm, Value *args, int n, Value *out);
+static int mod_bytes_new(VM *vm, Value *args, int n, Value *out);
 static FnNativa tipo_conversor(int32_t idx)
 {
     switch (idx) {
@@ -4340,6 +4345,7 @@ static FnNativa tipo_conversor(int32_t idx)
         case TIPO_BOOL: return nativa_bool;
         case TIPO_LIST: return nativa_list;
         case TIPO_TYPE: return nativa_type;
+        case TIPO_BYTE: return mod_bytes_new;   /* `byte("a")` == `bytes.new("a")` */
         default:        return NULL;   /* dict, tup */
     }
 }
@@ -6402,7 +6408,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_GERADOR:     t = "generator"; break;
                 case OBJ_ARQUIVO:     t = "PoolFile"; break;   /* todo arquivo é PoolFile */
                 case OBJ_MODULO_PS:   t = "module"; break;
-                case OBJ_BYTES:       t = "bytes";  break;
+                case OBJ_BYTES:       t = "byte";   break;   /* o tipo é `byte`; `bytes` é o módulo */
                 case OBJ_POOLFILE:    t = "PoolFile"; break;
                 case OBJ_SQLCONN:     t = "PoolConnection"; break;
                 case OBJ_SQLCUR:      t = "PoolCursor"; break;
@@ -7231,7 +7237,7 @@ static int by_devolve_sbuf(VM *vm, SBuf *s, Value *out)
 static int by_like(VM *vm, Value v, const unsigned char **p, int *n)
 {
     if (!EH_BYTES(v))
-        MERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+        MERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(v));
     PSString *b = COMO_BYTES(v);
     *p = (const unsigned char *)b->chars;
@@ -7261,7 +7267,7 @@ static int by_agulha(VM *vm, Value v, const unsigned char **p, int *n,
         return 0;
     }
     MERRO(vm, "TypeError",
-          "argument should be integer or bytes-like object, not '%s'",
+          "argument should be integer or byte-like object, not '%s'",
           nome_do_tipo_valor(v));
 }
 
@@ -7418,7 +7424,7 @@ static int by_borda(VM *vm, Value alvo, Value *args, int n, Value *out,
     for (int i = 0; i < nopc; i++) {
         if (!EH_BYTES(opcoes[i]))
             MERRO(vm, "TypeError",
-                  "%s first arg must be bytes or a tuple of bytes, not %s",
+                  "%s first arg must be byte or a tuple of byte, not %s",
                   quem, nome_do_tipo_valor(opcoes[i]));
         PSString *p = COMO_BYTES(opcoes[i]);
         if (p->len > janela) continue;
@@ -7783,7 +7789,7 @@ static int met_b_join(VM *vm, Value alvo, Value *args, int n, Value *out)
             MERRO(vm, "MemoryError", "sem memoria em join()");
         if (!EH_BYTES(item))
             MERRO(vm, "TypeError",
-                  "sequence item %d: expected a bytes-like object, %s found",
+                  "sequence item %d: expected a byte-like object, %s found",
                   i, nome_do_tipo_valor(item));
         if (i > 0 && nsep > 0 && sb_bytes(&b, (const char *)sep, nsep) != 0)
             MERRO(vm, "MemoryError", "sem memoria");
@@ -9349,6 +9355,7 @@ static int aceita_obj(const Value *v)
 }
 /* `long`: inteiro de qualquer tamanho — cabendo ou não em 64 bits. */
 static int aceita_long(const Value *v)  { return EH_INTEIRO(*v); }
+static int aceita_byte(const Value *v)  { return EH_BYTES(*v); }
 
 static const struct { const char *nome; int (*aceita)(const Value *); } TIPOS[] = {
     { "str",      aceita_str   },
@@ -9363,6 +9370,7 @@ static const struct { const char *nome; int (*aceita)(const Value *); } TIPOS[] 
     { "PoolFile", aceita_pfile },
     { "Object",   aceita_obj   },
     { "long",     aceita_long  },
+    { "byte",     aceita_byte  },
 };
 
 static const char *tipo_nome(int64_t t)
@@ -10655,7 +10663,7 @@ static int mod_bytes_fromhex(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_hex(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "hex", 1);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "hex() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "hex() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     char *buf = malloc((size_t)b->len * 2 + 1);
     if (!buf) BERRO(vm, "MemoryError", "sem memoria");
@@ -10668,7 +10676,7 @@ static int mod_bytes_hex(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_base64(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "base64", 1);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "base64() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "base64() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     size_t cap = 4 * (((size_t)b->len + 2) / 3) + 4;
     char *buf = malloc(cap);
@@ -10740,7 +10748,7 @@ static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
         big = by_ordem(args[1]);
         if (big < 0) BY_ERRO_VALOR(vm, "byteorder must be either 'little' or 'big'");
     }
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "toint() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "toint() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     uint64_t acc = 0;
     for (int i = 0; i < b->len; i++) {
@@ -10754,7 +10762,7 @@ static int mod_bytes_toint(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_tolist(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "tolist", 1);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "tolist() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "tolist() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     PSList *l = lista_com_cap(vm, b->len, OBJ_LIST);
     if (!l) BERRO(vm, "MemoryError", "sem memoria");
@@ -10772,7 +10780,7 @@ static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
     int64_t total = 0;
     for (int i = 0; i < l->len; i++) {
         if (!EH_BYTES(l->itens[i]))
-            BY_ERRO_TIPO(vm, "sequence item %d: expected a bytes-like object, %s found", i, by_nome(l->itens[i]));
+            BY_ERRO_TIPO(vm, "sequence item %d: expected a byte-like object, %s found", i, by_nome(l->itens[i]));
         total += COMO_BYTES(l->itens[i])->len;
     }
     char *buf = malloc((size_t)(total > 0 ? total : 1));
@@ -10791,7 +10799,7 @@ static int mod_bytes_concat(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
 {
     if (n < 1 || n > 3) return erro_aridade(vm, "slice", 1, 3, n);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "slice() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "slice() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     int len = b->len;
     /* `Null` vale OMITIDO, nos dois. A propria mensagem dizia "integers or
@@ -10823,7 +10831,7 @@ static int mod_bytes_slice(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "get", 2);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "get() argument 1 must be bytes, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "get() argument 1 must be byte, not %s", by_nome(args[0]));
     PSString *b = COMO_BYTES(args[0]);
     if (args[1].t == V_BOOL || args[1].t != V_INT)
         BY_ERRO_TIPO(vm, "byte indices must be integers or slices, not %s", by_nome(args[1]));
@@ -10840,8 +10848,8 @@ static int mod_bytes_get(VM *vm, Value *args, int n, Value *out)
 static int mod_bytes_xor(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "xor", 2);
-    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "xor() argument 1 must be bytes, not %s", by_nome(args[0]));
-    if (!EH_BYTES(args[1])) BY_ERRO_TIPO(vm, "xor() argument 2 must be bytes, not %s", by_nome(args[1]));
+    if (!EH_BYTES(args[0])) BY_ERRO_TIPO(vm, "xor() argument 1 must be byte, not %s", by_nome(args[0]));
+    if (!EH_BYTES(args[1])) BY_ERRO_TIPO(vm, "xor() argument 2 must be byte, not %s", by_nome(args[1]));
     PSString *d = COMO_BYTES(args[0]);
     PSString *k = COMO_BYTES(args[1]);
     if (k->len == 0) BY_ERRO_VALOR(vm, "empty key");
@@ -13540,7 +13548,7 @@ static int sk_addr_valor(VM *vm, const struct sockaddr_storage *sa, Value *out)
 static int sk_dados(VM *vm, Value v, const char *quem, const char **p, size_t *n)
 {
     if (!EH_STRING(v) && !EH_BYTES(v))
-        MERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+        MERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(v));
     *p = COMO_STRING(v)->chars;
     *n = (size_t)COMO_STRING(v)->len;
@@ -13820,7 +13828,7 @@ static int met_sk_setsockopt(VM *vm, Value alvo, Value *args, int n, Value *out)
         int v = args[2].t == V_INT ? (int)args[2].as.i : (args[2].as.b ? 1 : 0);
         rc = setsockopt(s->fd, (int)args[0].as.i, (int)args[1].as.i, &v, sizeof(v));
     } else
-        MERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+        MERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(args[2]));
     if (rc != 0) SK_ERRNO(vm, "setsockopt", errno);
     *out = MK_NULL();
@@ -14277,7 +14285,7 @@ static int mod_sk_inet_ntoa(VM *vm, Value *args, int n, Value *out)
     /* Um `if` só misturava TIPO errado e TAMANHO errado; são dois erros:
      * tipo -> TypeError, tamanho -> OSError. */
     if (!EH_BYTES(args[0]) && !EH_STRING(args[0]))
-        BERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+        BERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(args[0]));
     if (COMO_STRING(args[0])->len != 4)
         BERRO(vm, "OSError", "packed IP wrong length for inet_ntoa");
@@ -14316,7 +14324,7 @@ static int mod_sk_inet_ntop(VM *vm, Value *args, int n, Value *out)
         BERRO(vm, "TypeError", "'%s' object cannot be interpreted as an integer",
               nome_do_tipo_valor(args[0]));
     if (!EH_BYTES(args[1]) && !EH_STRING(args[1]))
-        BERRO(vm, "TypeError", "a bytes-like object is required, not '%s'",
+        BERRO(vm, "TypeError", "a byte-like object is required, not '%s'",
               nome_do_tipo_valor(args[1]));
     char ip[INET6_ADDRSTRLEN];
     /* O inet_ntop(3) não olha o tamanho do buffer: a única falha que ele
@@ -24975,7 +24983,7 @@ ERRO_TF(vm, "TypeError",
                         ERRO_TF(vm, "ValueError", "byte must be in range(0, 256)");
                     r = memchr(h->chars, (int)alvo.as.i, (size_t)h->len) != NULL;
                 } else {
-                    ERRO_TF(vm, "TypeError", "a bytes-like object is required, not '%s'",
+                    ERRO_TF(vm, "TypeError", "a byte-like object is required, not '%s'",
                             nome_do_tipo_valor(alvo));
                 }
             } else {
@@ -25560,6 +25568,12 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                     p->consts[k] = MK_OBJ(str);
                     break;
                 }
+                case K_BYTES: {            /* `b"..."`: bytes crus, com comprimento */
+                    PSString *bt = novo_bytes(vm, kc->s ? kc->s : "", kc->slen);
+                    if (!bt) return -1;
+                    p->consts[k] = MK_OBJ(bt);
+                    break;
+                }
                 case K_BIGINT: {
                     PSBigInt *bg = novo_bigint(vm);
                     if (!bg) return -1;
@@ -25835,6 +25849,12 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
                     d->consts[k] = MK_OBJ(st);
                     break;
                 }
+                case K_BYTES: {
+                    PSString *bt = novo_bytes(vm, cc->s ? cc->s : "", cc->slen);
+                    if (!bt) return -1;
+                    d->consts[k] = MK_OBJ(bt);
+                    break;
+                }
                 case K_BIGINT: {
                     PSBigInt *bg = novo_bigint(vm);
                     if (!bg) return -1;
@@ -26072,6 +26092,10 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
             }
         if (strcmp(prog->globais[i], "PoolFile") == 0) {
             vm->globals[bg + i] = MK_TIPO(TIPO_PFILE);
+            continue;
+        }
+        if (strcmp(prog->globais[i], "byte") == 0) {
+            vm->globals[bg + i] = MK_TIPO(TIPO_BYTE);
             continue;
         }
         /* as exceções são globais também dentro de módulo importado */
@@ -26315,7 +26339,7 @@ static const struct { const char *dono; const char *campo; const char *tipo; } C
     { "RequestProxy", "headers", NULL },
     { "RequestProxy", "method", NULL },
     { "RequestProxy", "path", NULL },
-    { "Response", "content", "bytes" },
+    { "Response", "content", "byte" },
     { "Response", "filename", "str" },
     { "Response", "ok", "bool" },
     { "Response", "size", "int" },
@@ -26392,7 +26416,7 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_UNIV:      return "__universal__";
         case T_MET_ARQ:       return "PoolFile";   /* todo arquivo é PoolFile */
         case T_MET_PFILE:     return NULL;         /* mesmo tipo: entra na chave do T_MET_ARQ (união) */
-        case T_MET_BYTES:     return "bytes";
+        case T_MET_BYTES:     return "byte";    /* o tipo; o módulo `bytes` sai em "modulos" */
         case T_MET_SQLCONN:   return "PoolConnection";
         case T_MET_SQLCUR:    return "PoolCursor";
         case T_MET_MAILSRV:   return "MailServer";
@@ -26825,6 +26849,12 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         }
         if (!ligou && strcmp(prog->globais[i], "PoolFile") == 0) {
             vm.globals[i] = MK_TIPO(TIPO_PFILE);
+            ligou = 1;
+        }
+        /* `byte`: o tipo de `b"..."`, global como o PoolFile (`x is byte`,
+         * `byte x = ...`, `byte("a")`) */
+        if (!ligou && strcmp(prog->globais[i], "byte") == 0) {
+            vm.globals[i] = MK_TIPO(TIPO_BYTE);
             ligou = 1;
         }
         /* `Exception`, `ValueError`… são valores: o nome da tabela EXCECOES[]

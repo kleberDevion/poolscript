@@ -392,7 +392,7 @@ static int buf_push_utf8(Buf *bf, unsigned long cp)
  * ninguém ficava sabendo. Perder um byte do dado do usuário em silêncio é o
  * pior dos dois mundos; agora sai o aviso e os dois caracteres ficam no
  * texto. 0 ok, -1 mem. */
-static int decode_escape(Lexer *lx, Buf *bf)
+static int decode_escape(Lexer *lx, Buf *bf, int bytes)
 {
     const char *s = lx->src;
     size_t n = lx->len, i = lx->pos;      /* i aponta pro '\\' */
@@ -430,12 +430,15 @@ static int decode_escape(Lexer *lx, Buf *bf)
                 while (j < n && s[j] >= '0' && s[j] <= '7' && d < 3) {
                     v = v * 8 + (unsigned long)(s[j] - '0'); j++; d++;
                 }
+                if (bytes && v > 255) { erro(lx, "octal fora de 0-255 em bytes"); return -2; }
                 cp = v; consumido = (int)(j - i);
             } else if (nxt == 'x' || nxt == 'X') {   /* hex \xHH */
                 if (i + 3 < n && ehexdig(s[i+2]) && ehexdig(s[i+3])) {
                     cp = (unsigned long)(hexval(s[i+2]) * 16 + hexval(s[i+3])); consumido = 4;
                 } else { ESCAPE_DESCONHECIDO(); }
             } else if (nxt == 'u' || nxt == 'U') {   /* unicode \uXXXX / \UXXXXXXXX */
+                /* em bytes não existe codepoint: é byte a byte, com \xHH */
+                if (bytes) { erro(lx, "\\u nao vale em bytes: use \\xHH"); return -2; }
                 int k = (nxt == 'u') ? 4 : 8, ok = 1; unsigned long v = 0;
                 for (int t = 0; t < k; t++) {
                     if (i + 2 + (size_t)t >= n || !ehexdig(s[i+2+t])) { ok = 0; break; }
@@ -448,11 +451,15 @@ static int decode_escape(Lexer *lx, Buf *bf)
             }
     }
     lx->pos += (size_t)consumido; lx->col += consumido;
+    /* bytes: o valor É o byte (`\xff` = 0xFF); str: vira UTF-8 */
+    if (bytes) return buf_push(bf, (char)(unsigned char)cp);
     return buf_push_utf8(bf, cp);
 }
 #undef ESCAPE_DESCONHECIDO
 
-static void le_string(Lexer *lx, char aspa, int fstring, int raw)
+/* `bytes`: literal `b"..."` — o token é T_BYTES e cada escape é UM byte;
+ * caractere não-ASCII no fonte entra com os bytes UTF-8 dele. */
+static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes)
 {
     int32_t l0 = lx->linha, c0 = lx->col;
     lx->pos++; lx->col++;
@@ -461,12 +468,14 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw)
     while (lx->pos < lx->len) {
         char c = lx->src[lx->pos];
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
-            if (decode_escape(lx, &bf) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
+            int rc = decode_escape(lx, &bf, bytes);
+            if (rc == -2) { free(bf.b); return; }            /* erro ja registrado */
+            if (rc != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
         if (c == aspa) {
             lx->pos++; lx->col++;
-            PSToken *tk = novo_token(lx, fstring ? T_FSTRING : T_STR, l0, c0);
+            PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
             if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
             free(bf.b);
             return;
@@ -483,7 +492,7 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw)
     erro_em(lx, "string nao fechada ate o fim do arquivo", l0, c0);
 }
 
-static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw)
+static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int bytes)
 {
     int32_t l0 = lx->linha, c0 = lx->col;
     char tres[4] = { aspa, aspa, aspa, '\0' };
@@ -493,14 +502,16 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw)
     while (lx->pos < lx->len) {
         if (lx->pos + 2 < lx->len && strncmp(lx->src + lx->pos, tres, 3) == 0) {
             lx->pos += 3; lx->col += 3;
-            PSToken *tk = novo_token(lx, fstring ? T_FSTRING : T_STR, l0, c0);
+            PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
             if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
             free(bf.b);
             return;
         }
         char c = lx->src[lx->pos];
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
-            if (decode_escape(lx, &bf) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
+            int rc = decode_escape(lx, &bf, bytes);
+            if (rc == -2) { free(bf.b); return; }
+            if (rc != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
             continue;
         }
         if (c == '\n') {
@@ -628,18 +639,25 @@ static void le_ident(Lexer *lx)
     int n = (int)(lx->pos - ini);
     const char *txt = lx->src + ini;
 
-    /* prefixos de string: f"..." f'''...''' r"..." r'''...''' */
-    if (n == 1 && (txt[0] == 'f' || txt[0] == 'r')) {
-        int fstring = (txt[0] == 'f');
-        char prox = lx->pos < lx->len ? lx->src[lx->pos] : '\0';
-        if (prox == '\'' && espia(lx, 1) == '\'' && espia(lx, 2) == '\'') {
-            le_string_tripla(lx, '\'', fstring, !fstring);
-            return;
-        }
-        /* f"..." e f'...' valem igual — aspas são equivalentes na linguagem */
-        if (prox == '"' || prox == '\'') {
-            le_string(lx, prox, fstring, !fstring);
-            return;
+    /* prefixos de string: f"..." f'''...''' r"..." r'''...''' — e de BYTES:
+     * b"..." B"..." br"..." rb"..." (cru). Só quando a aspa vem IMEDIATAMENTE
+     * depois: `b = 1`, `b(x)` e `br = 2` continuam nomes. */
+    {
+        int fstring = 0, raw = 0, bytes = 0, prefixo = 0;
+        if (n == 1 && (txt[0] == 'f' || txt[0] == 'r')) { fstring = (txt[0] == 'f'); raw = !fstring; prefixo = 1; }
+        else if (n == 1 && (txt[0] == 'b' || txt[0] == 'B')) { bytes = 1; prefixo = 1; }
+        else if (n == 2 && ((txt[0] == 'b' && txt[1] == 'r') || (txt[0] == 'r' && txt[1] == 'b'))) { bytes = 1; raw = 1; prefixo = 1; }
+        if (prefixo) {
+            char prox = lx->pos < lx->len ? lx->src[lx->pos] : '\0';
+            if (prox == '\'' && espia(lx, 1) == '\'' && espia(lx, 2) == '\'') {
+                le_string_tripla(lx, '\'', fstring, raw, bytes);
+                return;
+            }
+            /* f"..." e f'...' valem igual — aspas são equivalentes na linguagem */
+            if (prox == '"' || prox == '\'') {
+                le_string(lx, prox, fstring, raw, bytes);
+                return;
+            }
         }
     }
 
@@ -834,9 +852,9 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
             pula_comentario_bloco(&lx); continue;
         }
         if (c == '\'' && espia(&lx, 1) == '\'' && espia(&lx, 2) == '\'') {
-            le_string_tripla(&lx, '\'', 0, 0); continue;
+            le_string_tripla(&lx, '\'', 0, 0, 0); continue;
         }
-        if (c == '"' || c == '\'') { le_string(&lx, c, 0, 0); continue; }
+        if (c == '"' || c == '\'') { le_string(&lx, c, 0, 0, 0); continue; }
 
         if (eh_digito(c)) { le_numero(&lx); continue; }
         if (eh_alpha(c) || c == '_') { le_ident(&lx); continue; }
@@ -907,6 +925,7 @@ const char *ps_tok_nome(PSTokType t)
         case T_FLO:         return "FLO";
         case T_STR:         return "STR";
         case T_FSTRING:     return "FSTRING";
+        case T_BYTES:       return "BYTES";
         case T_BOOL:        return "BOOL";
         case T_NULL:        return "NULL";
         case T_COLOR:       return "COLOR";

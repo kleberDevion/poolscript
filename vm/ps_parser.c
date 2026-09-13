@@ -414,7 +414,7 @@ static int kw_abre_expr(const char *s)
 static int pode_iniciar_expr(PSToken *t)
 {
     switch (t->type) {
-        case T_INT: case T_FLO: case T_STR: case T_FSTRING:
+        case T_INT: case T_FLO: case T_STR: case T_FSTRING: case T_BYTES:
         case T_BOOL: case T_NULL: case T_COLOR:
         case T_IDENT: case T_IDENT_UPPER:
         case T_LPAREN: case T_LBRACK: case T_LBRACE:
@@ -589,6 +589,16 @@ static PSNode *primario(P *p)
             if (!n) return NULL;
             n->lit = L_FLO; n->d = t->d;
             return n;
+        }
+        case T_BYTES: {
+            /* `b"..."`: bytes crus, sem interpolação (NUL dentro: texto_len) */
+            p->pos++;
+            PSNode *lit = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
+            if (!lit) return NULL;
+            lit->lit = L_BYTES;
+            lit->texto = ps_arena_strdup(p->arena, t->texto ? t->texto : "", t->texto_len);
+            lit->texto_len = t->texto_len;
+            return lit;
         }
         case T_STR: {
             p->pos++;
@@ -1630,7 +1640,7 @@ static PSNode *padrao(P *p)
         return talvez_ou(p, n);
     }
     /* literais */
-    if (t->type == T_STR || t->type == T_INT || t->type == T_FLO
+    if (t->type == T_STR || t->type == T_BYTES || t->type == T_INT || t->type == T_FLO
             || t->type == T_BOOL || t->type == T_NULL) {
         p->pos++;
         PSNode *n = ps_node_novo(p->arena, N_MATCH_PATTERN, t->line, t->col);
@@ -1640,6 +1650,8 @@ static PSNode *padrao(P *p)
         if (!n->b) return NULL;
         switch (t->type) {
             case T_STR:  n->b->lit = L_STR; n->b->texto = dup_tok(p, t);
+                         n->b->texto_len = t->texto_len; break;
+            case T_BYTES: n->b->lit = L_BYTES; n->b->texto = dup_tok(p, t);
                          n->b->texto_len = t->texto_len; break;
             case T_INT:  n->b->lit = L_INT; n->b->i = t->i; break;
             case T_FLO:  n->b->lit = L_FLO; n->b->d = t->d; break;
@@ -2239,6 +2251,7 @@ static int eh_tipo_kw(PSToken *t)
 static const char *const TIPOS_DECL[] = {
     "str", "int", "flo", "bool",
     "char", "long", "list", "dict", "json", "tup", "Object", "object",
+    "byte",    /* o tipo do valor de `b"..."`; `bytes` é o MÓDULO */
     NULL
 };
 
@@ -2272,7 +2285,8 @@ static int eh_tipo_kw_decl(PSToken *t)
      * atribuicao comum `l = [1]` — a doc prometia "guarda o proprio tipo" e
      * nenhuma declaracao existia. */
     return eh_tipo_kw(t) || eh_apelido_tipo(t)
-        || (t->type == T_KW && t->texto && esta_em_lista(t->texto, TIPOS_DECL));
+        || ((t->type == T_KW || t->type == T_IDENT) && t->texto
+            && esta_em_lista(t->texto, TIPOS_DECL));   /* `byte` é IDENT, não keyword */
 }
 
 /* A lista dos tipos que abrem declaração, pra quem precisa dela FORA do

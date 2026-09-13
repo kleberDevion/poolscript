@@ -20,7 +20,7 @@ duas formas convivem no mesmo programa.
 | Lista | `"list"` | `[1, 2]` | **sim** | sequência ordenada e homogênea/heterogênea |
 | Tupla | `"tup"` | `(1, 2)` | não | sequência **imutável** |
 | Dicionário | `"dict"` | `{ "k": v }` | **sim** | mapa chave→valor (apelido: `json`) |
-| Bytes | `"bytes"` | `"x".encode()` | não | sequência de bytes crus |
+| Bytes | `"byte"` | `b"\x00\xff"`, `"x".encode()` | não | sequência de bytes crus (o tipo é `byte`; `bytes` é o módulo) |
 | Nulo | `"Null"` | `Null`/`null`/`None`/`none` | — | ausência de valor |
 
 Além destes, existem **valores-objeto**: instâncias de `Entity`, funções
@@ -122,7 +122,7 @@ segundo estas regras:
 |---|---|
 | `int`/`flo` | diferente de zero |
 | `bool` | `True` |
-| `str`/`bytes` | não vazio (`len > 0`) |
+| `str`/`byte` | não vazio (`len > 0`) |
 | `list`/`tup` | não vazia |
 | `dict` | tem ao menos uma entrada |
 | `Null`/`none` | **sempre falso** |
@@ -196,7 +196,8 @@ declarado. Quem quer converter escreve a conversão: `int("7")`, `flo(5)`,
 | `bool` | `bool` | `int` (mesmo `1`), etc. |
 | `long` | inteiro de qualquer tamanho (`int` **é** inteiro — não há conversão aí) | o resto |
 | `list` `dict` `tup` `json` | o próprio tipo | os demais |
-| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`bytes`: instância de classe, servidor, conexão, arquivo e **funct** (lambda, nomeada, builtin, método) | `str`, `list`, `dict`, `tup`, `bytes`, `int`, `flo`, `bool`, `Null` |
+| `byte` | bytes (`b"..."`, `.encode()`, arquivo em `"rb"`) | `str` (mesmo `"abc"`) e o resto |
+| `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`byte`: instância de classe, servidor, conexão, arquivo e **funct** (lambda, nomeada, builtin, método) | `str`, `list`, `dict`, `tup`, `byte`, `int`, `flo`, `bool`, `Null` |
 | `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary` | apelidos de `str`, `int`, `tup`, `dict` — a linha do tipo apelidado vale igual | idem |
 
 Tipo errado é **`AttributedValueError`**, sempre — não há mais "quase
@@ -264,7 +265,7 @@ A divisão `/` é **sempre real** (resultado `flo`), inclusive entre inteiros:
 
 - **Mutáveis:** `list`, `dict` — podem ser alteradas no lugar (`addEnd`,
   `l[0] = x`, `d["k"] = v`).
-- **Imutáveis:** `str`, `tup`, `bytes`, números — operações geram um novo valor.
+- **Imutáveis:** `str`, `tup`, `byte`, números — operações geram um novo valor.
 
 ```ps
 l = [1, 2]

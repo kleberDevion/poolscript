@@ -19,6 +19,9 @@ typedef enum {
     T_NEWLINE, T_INDENT, T_DEDENT,
     T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE, T_LBRACK, T_RBRACK,
     T_COLON, T_SEMI, T_COMMA, T_DOT, T_AT,
+    /* literal de bytes `b"..."`: texto = os bytes CRUS (NUL dentro vale;
+     * texto_len é o comprimento) */
+    T_BYTES,
     /* Só existe no modo do editor (`ps_lexer_tokenize_editor`): o lexer
      * normal DESCARTA comentário, e o parser nunca vê este tipo. Fica por
      * ultimo pra nao mexer no valor numerico de nenhum outro. */

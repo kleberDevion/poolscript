@@ -149,11 +149,11 @@ Observações:
 - **`SyntaxError`** acontece **antes** de rodar (na análise do código), então não
   é capturável por `try`/`catch` — é erro de escrita, não de execução.
 - **`IndexError`** é levantado ao **ler** fora do intervalo (`l[99]`) em `list`,
-  `tup`, `str` e `bytes`; a mensagem nomeia o tipo (`list index out of range`),
-  menos em `bytes`, que sai como `index out of range`. Até 28/08 a leitura era
+  `tup`, `str` e `byte`; a mensagem nomeia o tipo (`list index out of range`),
+  menos em `byte`, que sai como `index out of range`. Até 28/08 a leitura era
   um aviso não-fatal que devolvia `null` e não podia ser capturado.
 - Na **escrita** por índice, `IndexError` só existe em `list`
-  (`list assignment index out of range`): `tup`, `str` e `bytes` são imutáveis,
+  (`list assignment index out of range`): `tup`, `str` e `byte` são imutáveis,
   e a escrita neles é `TypeError: '<tipo>' object does not support item
   assignment`, fora do intervalo ou não.
 - **`for each` sobre tipo que não itera** é `TypeError`

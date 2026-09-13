@@ -263,7 +263,7 @@ const Caso CASOS_LIBS[] = {
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n",
   "subsection not found\n"
-  "argument should be integer or bytes-like object, not 'str'\n"
+  "argument should be integer or byte-like object, not 'str'\n"
   "byte must be in range(0, 256)", NULL, 0 },
 { "bytes: startswith/endswith com tupla e com faixa",
   "b = \"abcdef\".encode()\n"
@@ -276,7 +276,7 @@ const Caso CASOS_LIBS[] = {
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n",
   "True True\nTrue\nTrue True\n"
-  "startswith first arg must be bytes or a tuple of bytes, not str", NULL, 0 },
+  "startswith first arg must be byte or a tuple of byte, not str", NULL, 0 },
 { "bytes: caixa mexe SO no ASCII",
   /* 0xc0/0xe0 são À/à em latin-1 e o `str` do Python os trocaria; o `bytes`
    * NÃO, e copiar o método do str aqui corromperia dado binário */
@@ -350,7 +350,7 @@ const Caso CASOS_LIBS[] = {
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n",
   "b'a-b-c'\nb'ab'\nb'bbb'\nb'bba'\nb'-a-b-c-'\n"
-  "sequence item 1: expected a bytes-like object, int found", NULL, 0 },
+  "sequence item 1: expected a byte-like object, int found", NULL, 0 },
 { "bytes: ljust, rjust, center, zfill e expandtabs",
   /* no `center`, com sobra ímpar E largura ímpar, o byte a mais fica na
    * ESQUERDA — b\"ab\".center(7) é b\"***ab**\", não b\"**ab***\" */
@@ -366,7 +366,7 @@ const Caso CASOS_LIBS[] = {
   "}\n",
   "b'ab...' b'...ab'\nb'***ab**'\nb'abcdef'\n"
   "b'00000042' b'-0000042' b'abc'\nb'a   bc  d'\n"
-  "center() argument 2 must be a byte string of length 1, not bytes", NULL, 0 },
+  "center() argument 2 must be a byte string of length 1, not byte", NULL, 0 },
 { "bytes: maketrans e translate, com e sem delete",
   "t = \"\".encode().maketrans(\"abc\".encode(), \"xyz\".encode())\n"
   "post(t.len(), \"abcabc\".encode().translate(t))\n"
@@ -442,8 +442,8 @@ const Caso CASOS_LIBS[] = {
   "    post(str(e).split(\" (linha \")[0])\n"
   "}\n",
   "can't multiply sequence by non-int of type 'str'\n"
-  "'<' not supported between instances of 'bytes' and 'str'\n"
-  "a bytes-like object is required, not 'str'\n"
+  "'<' not supported between instances of 'byte' and 'str'\n"
+  "a byte-like object is required, not 'str'\n"
   "byte must be in range(0, 256)", NULL, 0 },
 { "bytes: procurar byte NUL sem rodeio",
   /* O caso de uso que fez tudo isto existir: conferir se um corpo de resposta
@@ -859,7 +859,7 @@ const Caso CASOS_LIBS[] = {
   "import date\ndate.hora(1, 2, [3])\n", "", "TypeError: 'list' object cannot be interpreted as an integer", 1 },
 /* toint converte bytes PARA int; dizia "cannot convert 'str' object to bytes". */
 { "bytes.toint diz que pede bytes, nao que converte pra bytes",
-  "import bytes\nbytes.toint(\"abc\")\n", "", "TypeError: toint() argument 1 must be bytes, not str", 1 },
+  "import bytes\nbytes.toint(\"abc\")\n", "", "TypeError: toint() argument 1 must be byte, not str", 1 },
 { "bytes.concat diz o tipo recebido",
   "import bytes\nbytes.concat(\"abc\")\n", "", "TypeError: concat() argument 1 must be list or tup, not str", 1 },
 { "bytes.join recusa dict dizendo o que aceita",
@@ -972,6 +972,11 @@ const Caso CASOS_LIBS[] = {
 { "QR: 2953 bytes em L ainda cabem",
   "import qrcode\nq = qrcode.QRCode(error_correction=qrcode.ERROR_CORRECT_L)\nq.add_data(\"x\" * 2953)\nq.make()\npost(\"coube\")\n",
   "coube", NULL, 0 },
+/* O caso do dono: assinatura de um PNG REAL (gerado pelo motor) lida em "rb"
+ * e comparada com o literal b"..." — era `name 'b' is not defined`. */
+{ "byte: assinatura de PNG real lida em rb bate com o literal",
+  "import qrcode\nqrcode.make(\"oi\").save(\"q.png\")\nusing open(\"q.png\", \"rb\") as f {\n    sig = f.read(8)\n    post(sig == b\"\\x89PNG\\r\\n\\x1a\\n\", sig)\n}\n",
+  "True b'\\x89PNG\\r\\n\\x1a\\n'", NULL, 0 },
 };
 
 const int NC_LIBS = N_CASOS(CASOS_LIBS);
