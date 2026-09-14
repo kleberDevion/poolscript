@@ -1,35 +1,62 @@
-# Sobe a versão da linguagem em TODOS os lugares que a carregam.
+# Sobe a versão da LINGUAGEM em todos os lugares que a carregam — e, à parte,
+# a da EXTENSÃO do editor.
 #
 # POR QUE EXISTE. A versão é uma constante de header (`vm/ps_versao.h`), que é
-# a fonte, mas ela aparece copiada em mais sete lugares — o manifesto da
-# extensão, o lock dele, o título da doc e três exemplos que imprimem
-# `PoolScript X.Y.Z [PSVM]`. Subir na mão significava lembrar dos oito; o que
-# acontecia era subir um e deixar os outros mentindo.
+# a fonte, mas ela aparece copiada em mais quatro lugares — o título da doc e
+# três exemplos que imprimem `PoolScript X.Y.Z [PSVM]`. Subir na mão
+# significava lembrar dos cinco; o que acontecia era subir um e deixar os
+# outros mentindo.
 #
-#     pool scripts/bump.ps              # só mostra onde a versão está hoje
-#     pool scripts/bump.ps patch        # 8.4.3 -> 8.4.4
-#     pool scripts/bump.ps minor        # 8.4.3 -> 8.5.0
-#     pool scripts/bump.ps major        # 8.4.3 -> 9.0.0
-#     pool scripts/bump.ps 9.1.2        # exatamente essa
+# A extensão do VS Code tem versão PRÓPRIA (`editor/vscode/package.json`): ela
+# só muda quando gramática, tema ou servidor mudam. Até 2026-09-12 ela estava
+# na mesma lista e foi arrastada de 8.4.4 pra 15.90.x junto com a linguagem —
+# a ordem de subir pra 15.90.12 era só pra linguagem.
 #
-# Depois de subir é PRECISO recompilar: a versão é constante de compilação, e
-# sem `make pool` o binário segue respondendo a antiga.
+#     pool scripts/bump.ps              # só mostra onde as versões estão hoje
+#     pool scripts/bump.ps patch        # linguagem: 8.4.3 -> 8.4.4
+#     pool scripts/bump.ps minor        # linguagem: 8.4.3 -> 8.5.0
+#     pool scripts/bump.ps major        # linguagem: 8.4.3 -> 9.0.0
+#     pool scripts/bump.ps 9.1.2        # linguagem: exatamente essa
+#     pool scripts/bump.ps ext patch    # extensão (idem minor/major/X.Y.Z)
+#
+# Depois de subir a linguagem é PRECISO recompilar: a versão é constante de
+# compilação, e sem `make pool` o binário segue respondendo a antiga. Depois de
+# subir a extensão: `make vsix` + `make instala-vsix`.
 import os
 import sys
 
 FONTE = "vm/ps_versao.h"
 
-# Todo arquivo que carrega a versão. Um que não esteja aqui fica mentindo — foi
-# o que acontecia antes deste script existir.
+# Todo arquivo que carrega a versão da linguagem. Um que não esteja aqui fica
+# mentindo — foi o que acontecia antes deste script existir.
 ARQUIVOS = [
     "vm/ps_versao.h",
-    "editor/vscode/package.json",
-    "editor/vscode/package-lock.json",
     "poolscript.md",
     "docs/PoolScript.md",
     "docs/os/cmd/cmd.md",
     "docs/os/run/run.md"
 ]
+
+# A versão da extensão: o manifesto é a fonte, o lock a repete duas vezes.
+EXT_FONTE = "editor/vscode/package.json"
+EXT_ARQUIVOS = [
+    "editor/vscode/package.json",
+    "editor/vscode/package-lock.json"
+]
+
+
+# A versão da extensão, lida do manifesto (a primeira `"version": "..."`).
+funct versao_ext() {
+    for each linha in os.readFile(EXT_FONTE).split("\n") {
+        if linha.strip().startswith("\"version\": \"") {
+            partes = linha.split("\"")
+            if len(partes) >= 4 {
+                return partes[3]
+            }
+        }
+    }
+    return ""
+}
 
 
 # A versão de hoje, lida da FONTE — nunca digitada.
@@ -60,7 +87,7 @@ funct eh_numero(txt) {
 
 
 # `patch`/`minor`/`major` sobem uma casa; qualquer outra coisa tem que ser uma
-# versão inteira `X.Y.Z` — aceitar lixo aqui gravaria o lixo nos oito arquivos.
+# versão inteira `X.Y.Z` — aceitar lixo aqui gravaria o lixo em todos os arquivos.
 funct calcula(atual, pedido) {
     pecas = atual.split(".")
     if len(pecas) != 3 {
@@ -101,9 +128,10 @@ if __name__ == "main" {
 
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) == 0 {
-        post("versão atual: " + atual)
+        post("versão atual da linguagem: " + atual)
+        post("versão atual da extensão:  " + versao_ext())
         post("")
-        post("onde ela está:")
+        post("onde a da linguagem está:")
         for each caminho in ARQUIVOS {
             conta = 0
             for each linha in os.readFile(caminho).split("\n") {
@@ -115,6 +143,45 @@ if __name__ == "main" {
         }
         post("")
         post("pra subir: pool scripts/bump.ps patch|minor|major|X.Y.Z")
+        post("extensão:  pool scripts/bump.ps ext patch|minor|major|X.Y.Z")
+        sys.exit(0)
+    }
+
+    # `ext`: só a extensão do editor, pelos arquivos DELA
+    if args[0] == "ext" {
+        if len(args) < 2 {
+            post("uso: pool scripts/bump.ps ext patch|minor|major|X.Y.Z")
+            sys.exit(1)
+        }
+        atual_ext = versao_ext()
+        if atual_ext == "" {
+            post("não achei a `\"version\"` em " + EXT_FONTE)
+            sys.exit(1)
+        }
+        nova_ext = calcula(atual_ext, args[1])
+        if nova_ext == "" {
+            post("não entendi '" + args[1] + "'.")
+            sys.exit(1)
+        }
+        if nova_ext == atual_ext {
+            post("a versão da extensão já é " + nova_ext)
+            sys.exit(0)
+        }
+        post("extensão: " + atual_ext + "  ->  " + nova_ext)
+        for each caminho in EXT_ARQUIVOS {
+            texto = os.readFile(caminho)
+            alvo = "\"version\": \"" + atual_ext + "\""
+            quantas = 0
+            for each linha in texto.split("\n") {
+                if alvo in linha {
+                    quantas = quantas + 1
+                }
+            }
+            os.writeFile(caminho, texto.replace(alvo, "\"version\": \"" + nova_ext + "\""))
+            post("  " + str(quantas) + "x  " + caminho)
+        }
+        post("")
+        post("agora: make vsix && make instala-vsix")
         sys.exit(0)
     }
 
