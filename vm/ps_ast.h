@@ -159,7 +159,9 @@ struct PSNode {
     PSNode     *e;
     const char *texto2;
     const char *texto3;
-    int32_t     i2;           /* star_index, level do import, length do model */
+    int32_t     i2;           /* star_index, level do import, length do model;
+                               * no parâmetro (Name) e no argumento (CallArg):
+                               * 1 = `*args`/`*x`, 2 = `**kwarg`/`**d` */
     PSNodeVec   lista;
     PSNodeVec   lista2;       /* nomes importados, chaves de match, args de decorador */
     PSNodeVec   lista2_alias; /* alias de cada nome de import (Name ou NULL), alinhado com lista2 */

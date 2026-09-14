@@ -183,16 +183,20 @@ O protocolo é um só, e vale para qualquer decorador que não seja `static`,
      `TypeError: decorador @app.route vale 'str', que nao registra (.register) nem envolve (chamavel) a funct`.
 
 Uma lib sua, então, não precisa de `register`: basta o método devolver uma
-funct que recebe a funct decorada:
+funct que recebe a funct decorada. Com `**kwarg` ([6.2.4](06-funcoes.md)) o
+decorador aceita qualquer opção nomeada — `auth=`, `methods=` — sem obrigar
+quem escreve a rota a montar um dict:
 
 ```ps
 Entity NET() {
     funct __init__(self) {
         self.rotas = {}
+        self.opcoes = {}
     }
-    funct route(self, caminho) {
+    funct route(self, caminho, **kwarg) {
         funct registra(f) {
             self.rotas[caminho] = f
+            self.opcoes[caminho] = kwarg
             return f
         }
         return registra
@@ -201,13 +205,17 @@ Entity NET() {
 
 app = NET()
 
-@app.route("/x")
+@app.route("/x", auth="jwt", methods=["GET"])
 funct h() {
     return "ok"
 }
 
-post(h(), app.rotas["/x"](), len(app.rotas))    # ok ok 1
+post(h(), app.rotas["/x"](), app.opcoes["/x"])
+# ok ok {'auth': 'jwt', 'methods': ['GET']}
 ```
+
+E um dict pronto se espalha no decorador como em qualquer chamada:
+`@app.route("/y", **opts)`.
 
 E um decorador que envolve:
 

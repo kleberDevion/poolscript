@@ -139,10 +139,78 @@ funct f(x: int) { post(x) }
 SyntaxError: no parametro o tipo vem ANTES do nome: escreva `funct f(int x)`, nao `funct f(x: int)`
 ```
 
-Também **não há parâmetro variádico** (`*args` / `**kwargs` não existem). O
-número de parâmetros é fixo (fora os que têm padrão).
+### 6.2.4. Variádicos — `*args` e `**kwarg`
 
-### 6.2.4. Aridade
+Uma funct pode receber **qualquer quantidade** de argumentos: `*args` guarda
+os posicionais que sobraram numa **tup**, e `**kwarg` guarda os nomeados que
+não casam com nenhum parâmetro num **dict**, na ordem da chamada. Os nomes
+`args` e `kwarg` são convenção — qualquer nome vale.
+
+```ps
+funct f(a, *args, **kwarg) {
+    post(a, args, kwarg)
+}
+
+f(1, 2, x=3)     # 1 (2,) {'x': 3}
+f(1)             # 1 () {}
+```
+
+A ordem é fixa: parâmetros comuns (com ou sem padrão), depois `*args`, depois
+`**kwarg`. Cada um aparece **no máximo uma vez**; nenhum aceita tipo (a
+estrela já decide: tup e dict) nem valor padrão (sem argumento, vêm vazios).
+O erro diz o conserto:
+
+```
+funct f(*args, x) { }
+SyntaxError: parametro `x` depois de `*args` nao e permitido: mova `x` pra antes do `*args`
+
+funct f(*int args) { }
+SyntaxError: parametro `*int args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`
+```
+
+Um nomeado que **casa** com um parâmetro fixo fica nele; só o que não casa
+cai no `kwarg`:
+
+```ps
+funct g(a, b=2, **kwarg) {
+    post(a, b, kwarg)
+}
+
+g(1, c=3, b=5)   # 1 5 {'c': 3}
+```
+
+**Espalhamento na chamada.** Do outro lado, `f(*lista)` passa os itens de
+uma `list`/`tup` como posicionais e `f(**dict)` passa as chaves de um `dict`
+como nomeados — em qualquer chamada (funct, método, Entity, builtin,
+decorador, `base()`), misturados com argumentos comuns e na ordem escrita:
+
+```ps
+funct soma(a, b, c=0) {
+    return a + b + c
+}
+
+l = [1, 2]
+d = {"c": 3}
+post(soma(*l))             # 3
+post(soma(*l, **d))        # 6
+post(soma(1, *[2], c=3))   # 6
+post(max(*[4, 9, 2]))      # 9
+```
+
+Vale a regra de sempre: posicional (ou `*x`) antes de nomeado (ou `**d`), e
+num nome repetido o **último ganha**. `*x` exige `list` ou `tup` e `**d`
+exige `dict` — não há conversão:
+
+```
+f(*5)
+TypeError: argument after * must be a list or tup, not int
+```
+
+`funct meio(*args, **kwarg)` chamando `alvo(*args, **kwarg)` é o **repasse**:
+uma funct que envolve outra sem conhecer a assinatura dela — é o que um
+decorador faz ([capítulo 14](14-decoradores.md)).
+
+### 6.2.5. Aridade
 
 Passar argumentos **de menos** (sem cobrir um parâmetro sem padrão) ou **de
 mais** é erro em tempo de execução.
@@ -415,8 +483,9 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
 
 - **`funct`** define uma função (`type()` → `"funct"`). É a única palavra:
   `action` e `reaction` saíram e são erro de sintaxe.
-- Parâmetros: posicionais + **padrão** (`b=10`); **nomeados** na chamada; **sem
-  tipo**, **sem variádico**; aridade errada é erro.
+- Parâmetros: posicionais + **padrão** (`b=10`); **nomeados** na chamada;
+  **tipo antes do nome** (opcional); **variádicos** `*args` (tup) e `**kwarg`
+  (dict); `f(*lista)` / `f(**dict)` espalham na chamada; aridade errada é erro.
 - `return` sem valor / ausência de `return` → `null`.
 - **`int funct` / `bool funct`**: nunca propagam erro (int→`500`, bool→`False`
   no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.

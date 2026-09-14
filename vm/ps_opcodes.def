@@ -174,3 +174,16 @@ PS_OP(EXC_CASA, 92, "EXC_CASA")
  * todo decorador de um nome que nao fosse static/NonNull/dataentity — junto
  * com a funct embaixo. */
 PS_OP(DECORA, 93, "DECORA")
+
+/* Espalhamento na chamada: `f(*lista, **dict)`. Com estrela em algum
+ * argumento o compilador monta UMA lista com os posicionais e UM dict com os
+ * nomeados, na ordem escrita, e o CALL_EX espalha os dois no alvo:
+ *   LIST_EXTEND  [.., lista, x]   -> [.., lista]  (x: list ou tup)
+ *   DICT_MERGE   [.., dict, x]    -> [.., dict]   (x: dict)
+ *   CALL_EX      [.., f, lista, dict] -> [.., resultado]
+ * O CALL_EX so reorganiza a pilha e salta pro CALL/CALL_KW: nativa, tipo,
+ * jinker, Entity e "not callable" ficam servidos sem uma segunda copia da
+ * regra de chamada. */
+PS_OP(LIST_EXTEND, 94, "LIST_EXTEND")
+PS_OP(DICT_MERGE,  95, "DICT_MERGE")
+PS_OP(CALL_EX,     96, "CALL_EX")

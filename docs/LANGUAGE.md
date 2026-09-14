@@ -415,6 +415,19 @@ Sem tipo de retorno declarado, o erro propaga normalmente (pode ser pego com
 **Lambda / função anônima**: `funct(params) { ... }` sem nome, atribuível a
 uma variável.
 
+**Variádicos**: `*args` recebe os posicionais que sobraram numa tup, `**kwarg`
+os nomeados sem parâmetro num dict; vêm depois dos parâmetros comuns, sem tipo
+e sem padrão. Na chamada, `f(*lista)` e `f(**dict)` espalham (referência
+§6.2.4):
+
+```
+funct f(a, *args, **kwarg) {
+    post(a, args, kwarg)
+}
+f(1, 2, x=3)                # 1 (2,) {'x': 3}
+f(*[1, 2], **{"x": 3})      # 1 (2,) {'x': 3}
+```
+
 **Modificadores colados** `static` e `nonnull`: vêm na cabeça da declaração,
 em qualquer ordem com o tipo, o `async` e a visibilidade. `static` faz o método
 pertencer ao tipo (`Tipo.metodo(...)`, sem instanciar); `nonnull` recusa

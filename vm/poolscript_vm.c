@@ -883,9 +883,13 @@ typedef struct {
     Value    *consts;
     int       nconsts;
     int       nlocals;
-    int       nparams;
+    int       nparams;     /* só os parâmetros FIXOS (sem `*args`/`**kwarg`) */
     int       ndefaults;   /* quantos parâmetros finais têm valor padrão */
-    char    **param_nomes; /* nome de cada parâmetro — só pra argumento nomeado */
+    /* `funct f(a, *args, **kwarg)`: slot da tup dos posicionais excedentes e
+     * slot do dict dos nomeados sem parâmetro; -1 = a funct não tem. */
+    int       slot_vararg;
+    int       slot_kwarg;
+    char    **param_nomes; /* nome de cada parâmetro fixo — só pra argumento nomeado */
     /* Tipo declarado de cada parâmetro (`funct f(str nome)`). NULL no vetor =
      * nenhum parâmetro tem tipo; NULL numa posição = aquele não tem. A VM só
      * CHECA — argumento de tipo errado é erro, nunca conversão. */
@@ -9454,6 +9458,145 @@ static int checa_param_tipos(VM *vm, const Proto *np, const Value *vals, int n, 
     return 0;
 }
 
+/* ── O BINDING de uma chamada, num lugar só ──────────────────────────────
+ *
+ * Recebe o que a chamada trouxe — o `self` (ou o buraco do @static), os
+ * posicionais e os nomeados — e escreve os locais iniciais do frame em
+ * `dest[0..nlocals)`: parâmetro fixo no slot dele, a tup do `*args`, o dict
+ * do `**kwarg`, o resto UNSET (é o UNSET que deixa o prólogo do callee pôr
+ * o default e o LOAD_NAME distinguir "nunca atribuído" de Null).
+ *
+ * Sete caminhos de chamada faziam isto cada um do seu jeito — CALL de
+ * Entity, de bound e de funct, CALL_KW, CALL_BASE, a entrada do
+ * vm_executa_base (callback, handler, decorador, fibra) e o gerador — e foi
+ * assim que a chamada nomeada numa closure ficou "not callable" enquanto a
+ * posicional funcionava. Agora cada caminho só decide QUEM é o alvo e
+ * entrega os argumentos aqui.
+ *
+ * `desloca` = 1 quando o slot 0 é o self: `self` aponta o valor (instância,
+ * `base()`), ou é NULL pro buraco UNSET do @static chamado pela Entity —
+ * que existe pra o 1º posicional cair no 1º parâmetro REAL. A frase de
+ * aridade conta o self de instância (como sempre contou) e esconde o
+ * buraco. `ignora_kw_desconhecido`: instanciação (`P(z=1)` deixa o campo
+ * em Null e segue — regra antiga, mantida).
+ *
+ * Devolve 0, ou -1 com `vm->erro`/`erro_tipo` postos. */
+static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, int desloca,
+                     const Value *pos, int npos,
+                     const Value *kw_nomes, const Value *kw_vals, int nkw,
+                     int ignora_kw_desconhecido)
+{
+    const char *nome = np->nome ? np->nome : "?";
+    int nfix = np->nparams;
+    int marcado[256];
+    if (nfix > 256) {
+        snprintf(vm->erro, sizeof(vm->erro), "%s() tem parametros demais (maximo 256)", nome);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
+    /* Posicionais demais: erro, a não ser que haja `*args` pra recebê-los. */
+    int oculto = (desloca && !self) ? 1 : 0;
+    int dado = desloca + npos;
+    if (dado > nfix && np->slot_vararg < 0) {
+        int maxpos = nfix - oculto, dados = dado - oculto;
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        if (np->ndefaults > 0)
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "%s() takes from %d to %d positional arguments but %d %s given",
+                     nome, maxpos - np->ndefaults, maxpos, dados, dados == 1 ? "was" : "were");
+        else
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "%s() takes %d positional argument%s but %d %s given",
+                     nome, maxpos, maxpos == 1 ? "" : "s", dados, dados == 1 ? "was" : "were");
+        return -1;
+    }
+    for (int k = 0; k < np->nlocals; k++) dest[k] = MK_UNSET();
+    for (int k = 0; k < nfix; k++) marcado[k] = 0;
+    if (desloca && np->nlocals > 0) {
+        dest[0] = self ? *self : MK_UNSET();
+        if (nfix > 0) marcado[0] = 1;
+    }
+    int cabem = nfix - desloca;
+    if (cabem < 0) cabem = 0;
+    int fixos = npos < cabem ? npos : cabem;
+    for (int k = 0; k < fixos; k++) {
+        dest[desloca + k] = pos[k];
+        marcado[desloca + k] = 1;
+    }
+    /* `*args`: o que sobrou dos posicionais, numa tup (vazia se nada sobrou). */
+    if (np->slot_vararg >= 0) {
+        int sobra = npos - fixos;
+        PSList *tp = nova_seq(vm, sobra, OBJ_TUPLE);
+        if (!tp) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria em *args");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+            return -1;
+        }
+        for (int k = 0; k < sobra; k++) tp->itens[k] = pos[fixos + k];
+        tp->len = sobra;
+        dest[np->slot_vararg] = MK_OBJ(tp);
+    }
+    /* `**kwarg`: nasce vazio, e recebe cada nomeado que não casa com
+     * parâmetro, na ordem da chamada. */
+    PSDict *kd = NULL;
+    if (np->slot_kwarg >= 0) {
+        kd = novo_dict(vm, nkw > 0 ? nkw : 1);
+        if (!kd) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria em **kwarg");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+            return -1;
+        }
+        dest[np->slot_kwarg] = MK_OBJ(kd);
+    }
+    for (int k = 0; k < nkw; k++) {
+        if (!EH_STRING(kw_nomes[k])) {
+            snprintf(vm->erro, sizeof(vm->erro), "nome de argumento invalido");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+            return -1;
+        }
+        const char *nm = COMO_STRING(kw_nomes[k])->chars;
+        int achou = -1;
+        for (int q = desloca; q < nfix; q++) {
+            if (np->param_nomes && np->param_nomes[q] && strcmp(np->param_nomes[q], nm) == 0) {
+                achou = q; break;
+            }
+        }
+        if (achou >= 0) {
+            /* Nomeado SOBRESCREVE posicional — `f(1, a=2)` devolve 2. */
+            dest[achou] = kw_vals[k];
+            marcado[achou] = 1;
+            continue;
+        }
+        if (kd) {
+            if (dict_set(vm, kd, &kw_nomes[k], &kw_vals[k]) != 0) {
+                snprintf(vm->erro, sizeof(vm->erro), "sem memoria em **kwarg");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+                return -1;
+            }
+            continue;
+        }
+        if (ignora_kw_desconhecido) continue;
+        snprintf(vm->erro, sizeof(vm->erro), "%s() got an unexpected keyword argument '%s'", nome, nm);
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
+    /* Parâmetro obrigatório (sem default) que ninguém preencheu é ERRO —
+     * o slot ficaria UNSET e a funct devolveria `null` calada. O slot do
+     * self (desloca) fica de fora. */
+    int obrig = nfix - np->ndefaults;
+    if (conta_faltantes(desloca, obrig, marcado) > 0) {
+        int q = conta_faltantes(desloca, obrig, marcado);
+        snprintf(vm->erro, sizeof(vm->erro),
+                 "%s() missing %d required positional argument%s: %s",
+                 nome, q, q == 1 ? "" : "s", lista_faltantes(np, desloca, obrig, marcado));
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
+    /* tipo declarado do parâmetro — só nos fixos; a tup e o dict já são o
+     * tipo que a estrela decidiu */
+    return checa_param_tipos(vm, np, dest, nfix, 0);
+}
+
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val)
 {
     int bate;
@@ -10222,7 +10365,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
 static int spec_eh_caminho(const char *s);
 
-static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nargs_dados)
+/* O gerador nasce com os locais UNSET: quem chama liga os argumentos em
+ * `g->locais` com o `liga_args` — o mesmo binding de qualquer chamada. */
+static PSGerador *novo_gerador(VM *vm, int32_t proto)
 {
     Proto *pr = &vm->protos[proto];
     PSGerador *g = calloc(1, sizeof(PSGerador));
@@ -10256,9 +10401,7 @@ static PSGerador *novo_gerador(VM *vm, int32_t proto, const Value *args, int nar
         g->nlocais = 0;  g->npilha = 0;
         return NULL;
     }
-    /* argumentos entram como locais iniciais; o resto nasce UNSET */
-    for (int32_t k = 0; k < g->nlocais; k++)
-        g->locais[k] = (k < nargs_dados) ? args[k] : MK_UNSET();
+    for (int32_t k = 0; k < g->nlocais; k++) g->locais[k] = MK_UNSET();
     vm->alocado += sizeof(PSGerador) + sizeof(Value) * (size_t)(g->nlocais + cap_pilha);
     return g;
 }
@@ -19724,7 +19867,8 @@ typedef struct Fiber {
     int        kind;              /* FIB_HTTP (handler) | FIB_ASYNC (async action) */
     /* async action: proto + args a rodar, e o future a resolver */
     int        a_proto;
-    Value      a_args[8];
+    Value      a_args[32];  /* os argumentos da `async funct`, crus: a fibra
+                             * liga quando roda (o CALL já validou a chamada) */
     int        a_nargs;
     PSFuturo  *fut;
     PSFuturo  *wait_fut;         /* != NULL: fibra cedeu esperando este future */
@@ -19915,7 +20059,7 @@ static PSFuturo *fib_pega_async(VM *vm, int proto, Value *args, int nargs)
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_ASYNC;
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL; f->conn = NULL;
-    f->a_proto = proto; f->a_nargs = nargs > 8 ? 8 : nargs;
+    f->a_proto = proto; f->a_nargs = nargs > 32 ? 32 : nargs;   /* o CALL já recusou > 32 */
     for (int i = 0; i < f->a_nargs; i++) f->a_args[i] = args[i];
     f->fut = fu; fu->fib = f;
     ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
@@ -21241,7 +21385,7 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
     }
 
     int proto;
-    Value reais[8];
+    Value reais[64];
     PSClosure *cl_chamada = NULL;
     if (EH_CLOSURE(fn)) {
         /* action aninhada usada como valor (callback, map/filter, handler):
@@ -21263,9 +21407,9 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
             /* O tipo tem que ser escrito JUNTO da mensagem: sem esta linha o
              * `erro_tipo` ficava com o valor do erro ANTERIOR, e o catch
              * casava pelo tipo de um erro que já tinha acontecido. */
-            if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais");
-                             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                             return -1; }
+            if (n + 1 > 64) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
+                              snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                              return -1; }
             reais[0] = MK_UNSET();
             for (int i = 0; i < n; i++) reais[i + 1] = args[i];
             args = reais;
@@ -21295,9 +21439,9 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
             return -1;
         }
         /* mesmo caso do sítio acima: o tipo tem que sair junto da mensagem */
-        if (n + 1 > 8) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais");
-                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                         return -1; }
+        if (n + 1 > 64) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
+                          snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                          return -1; }
         reais[0] = b->instancia;
         for (int i = 0; i < n; i++) reais[i + 1] = args[i];
         args = reais;
@@ -21308,34 +21452,10 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         return -1;
     }
 
+    /* Aridade, defaults, `*args`/`**kwarg` e tipo: é o `liga_args` na
+     * entrada do vm_executa_base que decide — o mesmo binding do OP_CALL,
+     * então `map(l, f)` com `f(x, y)` recusa igual à chamada direta. */
     Proto *pr = &vm->protos[proto];
-    if (n > pr->nparams) {
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
-        if (pr->ndefaults > 0)
-            snprintf(vm->erro, sizeof(vm->erro),
-                     "%s() takes from %d to %d positional arguments but %d %s given",
-                     pr->nome ? pr->nome : "?", pr->nparams - pr->ndefaults,
-                     pr->nparams, n, n == 1 ? "was" : "were");
-        else
-            snprintf(vm->erro, sizeof(vm->erro),
-                     "%s() takes %d positional argument%s but %d %s given",
-                     pr->nome ? pr->nome : "?", pr->nparams,
-                     pr->nparams == 1 ? "" : "s", n, n == 1 ? "was" : "were");
-        return -1;
-    }
-    /* Mesma checagem do OP_CALL: parâmetro obrigatório sem valor é ERRO.
-     * Faltava aqui, então `map(l, f)` com `f(x, y)` rodava com `y` UNSET e
-     * devolvia lixo em silêncio — o caminho de callback escapava da regra. */
-    if (n < pr->nparams - pr->ndefaults) {
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
-        snprintf(vm->erro, sizeof(vm->erro),
-                 "%s() missing %d required positional argument%s: %s",
-                 pr->nome ? pr->nome : "?",
-                 conta_faltantes(n, pr->nparams - pr->ndefaults, NULL),
-                 conta_faltantes(n, pr->nparams - pr->ndefaults, NULL) == 1 ? "" : "s",
-                 lista_faltantes(pr, n, pr->nparams - pr->ndefaults, NULL));
-        return -1;
-    }
     if (vm->frame_topo + 1 >= vm->frames_teto) {
         snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
@@ -21926,11 +22046,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     int    nargs = nargs_in;   /* argumentos recebidos pelo frame corrente */
 
     /* `nargs_in < 0` = retomada de gerador: locais, pilha e ip já foram
-     * postos pelo chamador, então o prólogo não pode sobrescrevê-los. */
-    if (nargs_in >= 0) {
-        for (int k = 0; k < nargs_in && k < p->nlocals; k++) vm->locals[locals0 + k] = args[k];
-        for (int k = nargs_in; k < p->nlocals; k++) vm->locals[locals0 + k] = MK_UNSET();
-    } else {
+     * postos pelo chamador, então o prólogo não pode sobrescrevê-los. Com
+     * `nargs_in >= 0` os argumentos são ligados logo abaixo (`liga_args`),
+     * depois das declarações, porque o erro de lá sai pelo `goto`. */
+    if (nargs_in < 0) {
         ip = vm->ger_ip;
         sp = sp0 + vm->ger_npilha;
         nargs = p->nparams;
@@ -21958,10 +22077,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     Value *locals = vm->locals;
 
     /* Frame de base: é por aqui que entra a chamada vinda do C (handler do
-     * jinker, chave de sort, callback de lib). O tipo declarado do parâmetro
-     * vale igual, então a checagem é a mesma — fica DEPOIS de todas as
-     * declarações pra o `goto` não pular inicialização nenhuma. */
-    if (nargs_in >= 0 && checa_param_tipos(vm, p, &locals[locals0], p->nparams, 0) != 0)
+     * jinker, chave de sort, callback de lib, decorador, fibra async). O
+     * binding é o mesmo de qualquer chamada — aridade, `*args`, `**kwarg`,
+     * tipo declarado — e fica DEPOIS de todas as declarações pra o `goto`
+     * não pular inicialização nenhuma. */
+    if (nargs_in >= 0
+            && liga_args(vm, p, &locals[locals0], NULL, 0, args, nargs_in, NULL, NULL, 0, 0) != 0)
         goto erro_runtime;
 
     for (;;) {
@@ -22598,6 +22719,77 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
+        case OP_LIST_EXTEND: {
+            /* [.., lista, x] -> [.., lista] — o `*x` de uma chamada. Só
+             * list/tup: espalhar str ou gerador seria conversão calada. */
+            Value x = stack[--sp];
+            Value lv = stack[sp - 1];
+            if (!EH_LIST(lv)) ERRO(vm, "LIST_EXTEND sem lista");
+            if (!EH_LIST(x) && !EH_TUPLA(x))
+                ERRO_TF(vm, "TypeError", "argument after * must be a list or tup, not %s",
+                        nome_do_tipo_valor(x));
+            vm->sp = sp; vm->locals_top = locals_top;
+            PSList *dl = COMO_LIST(lv), *xl = COMO_LIST(x);
+            for (int32_t k = 0; k < xl->len; k++)
+                if (lista_push(vm, dl, xl->itens[k]) != 0) ERRO(vm, "sem memoria ao espalhar *");
+            break;
+        }
+
+        case OP_DICT_MERGE: {
+            /* [.., dict, x] -> [.., dict] — o `**x` de uma chamada. A chave
+             * repetida ganha da anterior: é a regra do último nomeado. */
+            Value x = stack[--sp];
+            Value dv = stack[sp - 1];
+            if (!EH_DICT(dv)) ERRO(vm, "DICT_MERGE sem dict");
+            if (!EH_DICT(x))
+                ERRO_TF(vm, "TypeError", "argument after ** must be a dict, not %s",
+                        nome_do_tipo_valor(x));
+            vm->sp = sp; vm->locals_top = locals_top;
+            PSDict *dd = COMO_DICT(dv), *xd = COMO_DICT(x);
+            for (int32_t e = 0; e < xd->usados; e++) {
+                if (!xd->entradas[e].estado) continue;
+                if (dict_set(vm, dd, &xd->entradas[e].chave, &xd->entradas[e].valor) != 0)
+                    ERRO(vm, "sem memoria ao espalhar **");
+            }
+            break;
+        }
+
+        case OP_CALL_EX: {
+            /* [.., f, lista, dict] -> a chamada. Espalha a lista como
+             * posicionais e o dict como nomeados NA PILHA e salta pro topo
+             * do CALL (sem nomeado) ou do CALL_KW (com): é lá que já mora a
+             * regra de quem é chamável — funct, closure, Entity, bound,
+             * nativa, tipo, jinker — e a mensagem de "not callable". */
+            Value dv = stack[--sp];
+            Value lv = stack[--sp];
+            if (!EH_LIST(lv) || !EH_DICT(dv)) ERRO(vm, "CALL_EX sem lista/dict");
+            PSList *la = COMO_LIST(lv);
+            PSDict *da = COMO_DICT(dv);
+            if (sp + la->len + da->count + 2 >= vm->stack_teto)
+                ERRO(vm, "argumentos demais na chamada");
+            for (int32_t k = 0; k < la->len; k++) stack[sp++] = la->itens[k];
+            if (da->count == 0) {
+                arg = la->len;
+                goto chama_posicional;
+            }
+            vm->sp = sp; vm->locals_top = locals_top;
+            PSList *tn_ex = nova_seq(vm, da->count, OBJ_TUPLE);
+            if (!tn_ex) ERRO(vm, "sem memoria ao espalhar **");
+            int32_t j = 0;
+            for (int32_t e = 0; e < da->usados; e++) {
+                if (!da->entradas[e].estado) continue;
+                if (!EH_STRING(da->entradas[e].chave))
+                    ERRO_T(vm, "TypeError", "keywords must be strings");
+                tn_ex->itens[j++] = da->entradas[e].chave;
+                stack[sp++] = da->entradas[e].valor;
+            }
+            tn_ex->len = j;
+            stack[sp++] = MK_OBJ(tn_ex);
+            arg = la->len + j;
+            goto chama_nomeada;
+        }
+
+        chama_nomeada:
         case OP_CALL_KW: {
             /* Pilha: callee, v1..vN, tupla_de_nomes.
              * Reposiciona cada nomeado no slot do parâmetro correspondente e
@@ -22611,6 +22803,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int nkw = tn->len;
             int npos = total - nkw;
             Value alvo_kw = stack[sp - total - 1];
+            /* Closure é uma funct como outra qualquer — normaliza pra FUNC e
+             * guarda as células pro frame. Sem isto, a funct que um decorador
+             * devolve (`route(caminho)` devolvendo `registra`, que captura
+             * `caminho`) era "not callable" quando chamada por nome. */
+            PSClosure *cl_kw = NULL;
+            if (EH_CLOSURE(alvo_kw)) {
+                cl_kw = COMO_CLOSURE(alvo_kw);
+                alvo_kw = MK_FUNC(cl_kw->proto);
+            }
             /* `P(nome="k")` instancia por nome: cria a instância aqui e
              * segue pro `__init__` como se fosse uma action nomeada. Sem
              * isto, Entity com campos tipados (que ganha um `__init__`
@@ -22766,11 +22967,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
 
             Proto *pk = &vm->protos[proto_kw];
-            if (!pk->param_nomes) ERRO(vm, "funct sem nomes de parametro");
             /* Método de instância (bound) chamado por nome também exige `self`
              * no slot 0 — senão a instância cairia no 1º parâmetro real. Mesma
              * regra do OP_CALL e do interpretador. */
-            if (EH_BOUND(alvo_kw) && (!pk->param_nomes[0]
+            if (EH_BOUND(alvo_kw) && (!pk->param_nomes || !pk->param_nomes[0]
                     || strcmp(pk->param_nomes[0], "self") != 0)) {
                 if (pk->eh_static)
                     ERRO_TF(vm, "RuntimeError",
@@ -22781,11 +22981,6 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         pk->nome ? pk->nome : "?");
             }
 
-            /* monta os argumentos finais na ordem dos parâmetros */
-            Value finais[64];
-            int marcado[64];
-            if (pk->nparams > 64) ERRO(vm, "parametros demais pra chamada nomeada");
-            for (int k = 0; k < pk->nparams; k++) marcado[k] = 0;
             /* Com `self` de instância, o slot 0 já está tomado e os posicionais
              * andam um. No @static (FUNC cujo 1º param é 'self', sem instância)
              * também anda um, mas o slot 0 fica UNSET — dropa o self pra o
@@ -22795,65 +22990,34 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                                   && pk->param_nomes && pk->param_nomes[0]
                                   && strcmp(pk->param_nomes[0], "self") == 0);
             int desloca = (inst_kw.t != V_NULL || eh_static_self) ? 1 : 0;
-            if (inst_kw.t != V_NULL) { finais[0] = inst_kw; marcado[0] = 1; }
-            if (npos + desloca > pk->nparams) {
-                if (pk->ndefaults > 0)
-                    ERRO_TF(vm, "TypeError",
-                            "%s() takes from %d to %d positional arguments but %d %s given",
-                            pk->nome ? pk->nome : "?", pk->nparams - pk->ndefaults,
-                            pk->nparams, npos + desloca,
-                            npos + desloca == 1 ? "was" : "were");
-                ERRO_TF(vm, "TypeError",
-                        "%s() takes %d positional argument%s but %d %s given",
-                        pk->nome ? pk->nome : "?", pk->nparams,
-                        pk->nparams == 1 ? "" : "s", npos + desloca,
-                        npos + desloca == 1 ? "was" : "were");
-            }
-            for (int k = 0; k < npos; k++) {
-                finais[k + desloca] = stack[sp - total + k];
-                marcado[k + desloca] = 1;
-            }
-            for (int k = 0; k < nkw; k++) {
-                Value nv = tn->itens[k];
-                if (!EH_STRING(nv)) ERRO(vm, "nome de argumento invalido");
-                PSString *ns = COMO_STRING(nv);
-                int achou = -1;
-                for (int q = desloca; q < pk->nparams; q++) {
-                    if (pk->param_nomes[q] && strcmp(pk->param_nomes[q], ns->chars) == 0) {
-                        achou = q; break;
-                    }
-                }
-                if (achou < 0) {
-                    /* Instanciação IGNORA nome desconhecido — `P(z=1)` deixa
-                     * o campo real em Null e segue. Em action é erro. É
-                     * assimétrico, mas é o que o interpretador faz. */
-                    if (EH_CLASS(alvo_kw)) continue;
-                    ERRO_TF(vm, "TypeError",
-                            "%s() got an unexpected keyword argument '%s'",
-                            pk->nome ? pk->nome : "?", ns->chars);
-                }
-                /* Nomeado SOBRESCREVE posicional — `f(1, a=2)` devolve 2, é
-                 * o que o interpretador faz. Recusar seria mais restritivo
-                 * que a linguagem. */
-                finais[achou] = stack[sp - nkw + k];
-                marcado[achou] = 1;
-            }
+            const Value *self_kw = inst_kw.t != V_NULL ? &inst_kw : NULL;
 
-            /* Parâmetro obrigatório (sem default) que ninguém preencheu é
-             * ERRO — antes o slot ficava UNSET e a action devolvia `null`
-             * calada, escondendo a chamada errada. Vale pra action, método e
-             * __init__; o slot do self (desloca) fica de fora. */
-            if (conta_faltantes(desloca, pk->nparams - pk->ndefaults, marcado) > 0)
-                ERRO_TF(vm, "TypeError",
-                        "%s() missing %d required positional argument%s: %s",
-                        pk->nome ? pk->nome : "?",
-                        conta_faltantes(desloca, pk->nparams - pk->ndefaults, marcado),
-                        conta_faltantes(desloca, pk->nparams - pk->ndefaults, marcado) == 1 ? "" : "s",
-                        lista_faltantes(pk, desloca, pk->nparams - pk->ndefaults, marcado));
+            if (pk->eh_gerador) {
+                /* gerador chamado por nome: mesmo binding, nos locais dele */
+                vm->sp = sp; vm->locals_top = locals_top;
+                PSGerador *g = novo_gerador(vm, proto_kw);
+                if (!g) ERRO(vm, "sem memoria no gerador");
+                if (liga_args(vm, pk, g->locais, self_kw, desloca, &stack[sp - total], npos,
+                              tn->itens, &stack[sp - nkw], nkw, EH_CLASS(alvo_kw)) != 0)
+                    goto erro_runtime;
+                g->cl = cl_kw;
+                sp = sp - total - 1;
+                stack[sp++] = MK_OBJ(g);
+                break;
+            }
 
             if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
             if (locals_top + pk->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
             if (sp + pk->ncode / 2 + 8 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+
+            /* O binding: posicionais, nomeados (que SOBRESCREVEM posicional,
+             * `f(1, a=2)` devolve 2), `*args`, `**kwarg`, faltantes e tipo.
+             * Instanciação IGNORA nome desconhecido — `P(z=1)` deixa o campo
+             * real em Null e segue; em funct é erro. */
+            int novo_lb = locals_top;
+            if (liga_args(vm, pk, &vm->locals[novo_lb], self_kw, desloca, &stack[sp - total], npos,
+                          tn->itens, &stack[sp - nkw], nkw, EH_CLASS(alvo_kw)) != 0)
+                goto erro_runtime;
 
             vm->frames[fp].proto       = (int)(p - vm->protos);
             vm->frames[fp].ip          = ip;
@@ -22864,26 +23028,18 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* instanciação devolve a instância, não o retorno do __init__ */
             vm->frames[fp].devolve_self = EH_CLASS(alvo_kw);
 
-            /* Slot não preenchido fica UNSET — o prólogo do callee coloca o
-             * default. Buraco no meio é normal: `f(1, c=100)` deixa o `b`
-             * pro default dele. */
-            int novo_lb = locals_top;
-            for (int k = 0; k < pk->nlocals; k++)
-                vm->locals[novo_lb + k] = (k < pk->nparams && marcado[k]) ? finais[k] : MK_UNSET();
-            if (checa_param_tipos(vm, pk, &vm->locals[novo_lb], pk->nparams, 0) != 0)
-                goto erro_runtime;
-
             fp++;
             locals_top += pk->nlocals;
             sp    = sp - total - 1;
             p     = pk;
-            cl    = EH_CLOSURE(alvo_kw) ? COMO_CLOSURE(alvo_kw) : NULL;
+            cl    = cl_kw;
             ip    = 0;
             lbase = novo_lb;
             nargs = pk->nparams;
             break;
         }
 
+        chama_posicional:
         case OP_CALL: {
             int n = arg;
             Value alvo = stack[sp - n - 1];
@@ -22906,29 +23062,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                     sp = sp - n - 1; stack[sp++] = iv; break;
                 }
-                /* empurra self na frente dos argumentos */
+                /* o self entra no slot 0, na frente dos argumentos */
                 Proto *np = &vm->protos[mp];
-                if (n + 1 > np->nparams) {
-                    if (np->ndefaults > 0)
-                        ERRO_TF(vm, "TypeError",
-                                "%s() takes from %d to %d positional arguments but %d %s given",
-                                np->nome ? np->nome : "?", np->nparams - np->ndefaults,
-                                np->nparams, n + 1, n + 1 == 1 ? "was" : "were");
-                    ERRO_TF(vm, "TypeError",
-                            "%s() takes %d positional argument%s but %d %s given",
-                            np->nome ? np->nome : "?", np->nparams,
-                            np->nparams == 1 ? "" : "s", n + 1, n + 1 == 1 ? "was" : "were");
-                }
-                /* falta argumento obrigatório: erro, não `null` calado (o
-                 * self já ocupa o slot 0, por isso o `n + 1`) */
-                if (n + 1 < np->nparams - np->ndefaults)
-ERRO_TF(vm, "TypeError",
-                        "%s() missing %d required positional argument%s: %s",
-                        np->nome ? np->nome : "?", conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL),
-                        conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL) == 1 ? "" : "s",
-                        lista_faltantes(np, n + 1, np->nparams - np->ndefaults, NULL));
                 if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                int nb = locals_top;
+                if (liga_args(vm, np, &vm->locals[nb], &iv, 1, &stack[sp - n], n, NULL, NULL, 0, 0) != 0)
+                    goto erro_runtime;
                 vm->frames[fp].proto = (int)(p - vm->protos);
                 vm->frames[fp].ip = ip;
                 vm->frames[fp].locals_base = lbase;
@@ -22936,12 +23076,6 @@ ERRO_TF(vm, "TypeError",
                 vm->frames[fp].nargs = nargs;
                 vm->frames[fp].cl = cl;
                 vm->frames[fp].devolve_self = 1;    /* o valor da expressão é a instância */
-                int nb = locals_top;
-                vm->locals[nb] = iv;
-                for (int k = 0; k < n; k++) vm->locals[nb + 1 + k] = stack[sp - n + k];
-                for (int k = n + 1; k < np->nlocals; k++) vm->locals[nb + k] = MK_UNSET();
-                if (checa_param_tipos(vm, np, &vm->locals[nb], np->nparams, 0) != 0)
-                    goto erro_runtime;
                 fp++;
                 locals_top += np->nlocals;
                 sp = sp - n - 1;
@@ -22967,29 +23101,12 @@ ERRO_TF(vm, "TypeError",
                             "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
                             np->nome ? np->nome : "?");
                 }
-                if (n + 1 > np->nparams) {
-                    /* com default a frase diz o intervalo, como nos outros
-                     * caminhos de chamada (OP_CALL_KW, instanciação, base) */
-                    if (np->ndefaults > 0)
-                        ERRO_TF(vm, "TypeError",
-                                "%s() takes from %d to %d positional arguments but %d %s given",
-                                np->nome ? np->nome : "?", np->nparams - np->ndefaults,
-                                np->nparams, n + 1, n + 1 == 1 ? "was" : "were");
-                    ERRO_TF(vm, "TypeError",
-                            "%s() takes %d positional argument%s but %d %s given",
-                            np->nome ? np->nome : "?", np->nparams,
-                            np->nparams == 1 ? "" : "s", n + 1,
-                            n + 1 == 1 ? "was" : "were");
-                }
-                /* falta argumento obrigatório: erro, não `null` calado */
-                if (n + 1 < np->nparams - np->ndefaults)
-ERRO_TF(vm, "TypeError",
-                        "%s() missing %d required positional argument%s: %s",
-                        np->nome ? np->nome : "?", conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL),
-                        conta_faltantes(n + 1, np->nparams - np->ndefaults, NULL) == 1 ? "" : "s",
-                        lista_faltantes(np, n + 1, np->nparams - np->ndefaults, NULL));
                 if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                int nb = locals_top;
+                if (liga_args(vm, np, &vm->locals[nb], &b->instancia, 1, &stack[sp - n], n,
+                              NULL, NULL, 0, 0) != 0)
+                    goto erro_runtime;
                 vm->frames[fp].proto = (int)(p - vm->protos);
                 vm->frames[fp].ip = ip;
                 vm->frames[fp].locals_base = lbase;
@@ -22997,12 +23114,6 @@ ERRO_TF(vm, "TypeError",
                 vm->frames[fp].nargs = nargs;
                 vm->frames[fp].cl = cl;
                 vm->frames[fp].devolve_self = 0;
-                int nb = locals_top;
-                vm->locals[nb] = b->instancia;
-                for (int k = 0; k < n; k++) vm->locals[nb + 1 + k] = stack[sp - n + k];
-                for (int k = n + 1; k < np->nlocals; k++) vm->locals[nb + k] = MK_UNSET();
-                if (checa_param_tipos(vm, np, &vm->locals[nb], np->nparams, 0) != 0)
-                    goto erro_runtime;
                 fp++;
                 locals_top += np->nlocals;
                 sp = sp - n - 1;
@@ -23026,38 +23137,16 @@ ERRO_TF(vm, "TypeError",
                  * Mesma heurística do interpretador (`params[0] == "self"`). */
                 int desloca = (np->eh_static && np->param_nomes && np->param_nomes[0]
                                && strcmp(np->param_nomes[0], "self") == 0) ? 1 : 0;
-                int maxpos = np->nparams - desloca;
-                /* Aceita MENOS argumentos: o prólogo do callee preenche os
-                 * que faltam com o default. Mais que os parâmetros continua
-                 * erro. */
-                if (n > maxpos) {
-                    if (np->ndefaults > 0)
-                        ERRO_TF(vm, "TypeError",
-                                "%s() takes from %d to %d positional arguments but %d %s given",
-                                np->nome ? np->nome : "?", maxpos - np->ndefaults,
-                                maxpos, n, n == 1 ? "was" : "were");
-                    ERRO_TF(vm, "TypeError",
-                            "%s() takes %d positional argument%s but %d %s given",
-                            np->nome ? np->nome : "?", maxpos,
-                            maxpos == 1 ? "" : "s", n, n == 1 ? "was" : "were");
-                }
-                if (n < (np->nparams - np->ndefaults) - desloca)
-ERRO_TF(vm, "TypeError",
-                        "%s() missing %d required positional argument%s: %s",
-                        np->nome ? np->nome : "?", conta_faltantes(n + desloca, np->nparams - np->ndefaults, NULL),
-                        conta_faltantes(n + desloca, np->nparams - np->ndefaults, NULL) == 1 ? "" : "s",
-                        lista_faltantes(np, n + desloca, np->nparams - np->ndefaults, NULL));
-                /* tipo declarado do parâmetro — antes de gerador/async/frame,
-                 * pra recusar a chamada errada na hora da chamada */
-                if (checa_param_tipos(vm, np, &stack[sp - n], n, desloca) != 0)
-                    goto erro_runtime;
+                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 if (np->eh_gerador) {
                     /* chamar um gerador não executa nada: devolve o frame
-                     * congelado, e o corpo só roda no primeiro `next` */
+                     * congelado, e o corpo só roda no primeiro `next`. O
+                     * binding é o mesmo, só que nos locais do gerador. */
                     vm->sp = sp; vm->locals_top = locals_top;
-                    PSGerador *g = novo_gerador(vm, (int32_t)(np - vm->protos),
-                                                &stack[sp - n], n);
+                    PSGerador *g = novo_gerador(vm, (int32_t)(np - vm->protos));
                     if (!g) ERRO(vm, "sem memoria no gerador");
+                    if (liga_args(vm, np, g->locais, NULL, desloca, &stack[sp - n], n, NULL, NULL, 0, 0) != 0)
+                        goto erro_runtime;
                     g->cl = cl_alvo;   /* gerador que captura mantém as células */
                     sp = sp - n - 1;
                     stack[sp++] = MK_OBJ(g);
@@ -23066,7 +23155,17 @@ ERRO_TF(vm, "TypeError",
                 if (np->eh_async) {
                     /* `async action`: NUNCA roda inline — cria uma fibra (lazy) e
                      * devolve um future. O corpo corre quando gather/await dirige
-                     * o escalonador (top-level) ou cede a ele (dentro de handler).*/
+                     * o escalonador (top-level) ou cede a ele (dentro de handler).
+                     * A chamada é validada AGORA (aridade, tipo — o erro sai na
+                     * chamada, não no await) ligando num rascunho acima de
+                     * `locals_top`; os argumentos seguem crus pra fibra, que
+                     * liga de novo quando roda. */
+                    if (liga_args(vm, np, &vm->locals[locals_top], NULL, desloca, &stack[sp - n], n,
+                                  NULL, NULL, 0, 0) != 0)
+                        goto erro_runtime;
+                    if (n > 32)
+                        ERRO_TF(vm, "TypeError", "%s(): async aceita no maximo 32 argumentos, recebeu %d",
+                                np->nome ? np->nome : "?", n);
                     vm->sp = sp; vm->locals_top = locals_top;
                     PSFuturo *fu = fib_pega_async(vm, (int32_t)(np - vm->protos),
                                                   &stack[sp - n], n);
@@ -23076,13 +23175,20 @@ ERRO_TF(vm, "TypeError",
                     break;
                 }
                 if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
                 /* Cota da pilha do chamado: cada instrução empilha no máximo
                  * um valor, então ncode/2 é teto seguro. Sem esta checagem,
                  * recursão profunda escrevia fora do array — corrupção de
                  * memória silenciosa em vez de erro. */
                 if (sp + np->ncode / 2 + 8 >= vm->stack_teto)
                     ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+
+                /* `desloca`: no @static o slot 0 (self) nasce UNSET e os
+                 * posicionais entram a partir do slot 1. Aridade, default,
+                 * `*args`, tipo: tudo no `liga_args`. */
+                int novo_lbase = locals_top;
+                if (liga_args(vm, np, &vm->locals[novo_lbase], NULL, desloca, &stack[sp - n], n,
+                              NULL, NULL, 0, 0) != 0)
+                    goto erro_runtime;
 
                 vm->frames[fp].proto       = (int)(p - vm->protos);
                 vm->frames[fp].ip          = ip;
@@ -23091,19 +23197,6 @@ ERRO_TF(vm, "TypeError",
                 vm->frames[fp].nargs       = nargs;
                 vm->frames[fp].cl          = cl;
                 vm->frames[fp].devolve_self = 0;
-
-                int novo_lbase = locals_top;
-                /* `desloca`: no @static o slot 0 (self) nasce UNSET e os
-                 * posicionais entram a partir do slot 1. */
-                for (int k = 0; k < desloca; k++)
-                    vm->locals[novo_lbase + k] = MK_UNSET();
-                for (int k = 0; k < n; k++)
-                    vm->locals[novo_lbase + desloca + k] = stack[sp - n + k];
-                /* Locais além dos parâmetros nascem UNSET, não Null: é o que
-                 * permite ao LOAD_NAME distinguir "ainda não atribuído nesta
-                 * função" de "atribuído com o valor Null". */
-                for (int k = desloca + n; k < np->nlocals; k++)
-                    vm->locals[novo_lbase + k] = MK_UNSET();
 
                 fp++;
                 cl = cl_alvo;
@@ -25083,19 +25176,11 @@ ERRO_TF(vm, "TypeError",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
 
             Proto *np = &vm->protos[mp];
-            if (n + 1 > np->nparams) {
-                if (np->ndefaults > 0)
-                    ERRO_TF(vm, "TypeError",
-                            "%s() takes from %d to %d positional arguments but %d %s given",
-                            np->nome ? np->nome : "?", np->nparams - np->ndefaults,
-                            np->nparams, n + 1, n + 1 == 1 ? "was" : "were");
-                ERRO_TF(vm, "TypeError",
-                        "%s() takes %d positional argument%s but %d %s given",
-                        np->nome ? np->nome : "?", np->nparams,
-                        np->nparams == 1 ? "" : "s", n + 1, n + 1 == 1 ? "was" : "were");
-            }
             if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
             if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            int nb = locals_top;
+            if (liga_args(vm, np, &vm->locals[nb], &selfv, 1, &stack[sp - n], n, NULL, NULL, 0, 0) != 0)
+                goto erro_runtime;
             vm->frames[fp].proto = (int)(p - vm->protos);
             vm->frames[fp].ip = ip;
             vm->frames[fp].locals_base = lbase;
@@ -25103,12 +25188,6 @@ ERRO_TF(vm, "TypeError",
             vm->frames[fp].nargs = nargs;
             vm->frames[fp].cl = cl;
             vm->frames[fp].devolve_self = 0;
-            int nb = locals_top;
-            vm->locals[nb] = selfv;
-            for (int k = 0; k < n; k++) vm->locals[nb + 1 + k] = stack[sp - n + k];
-            for (int k = n + 1; k < np->nlocals; k++) vm->locals[nb + k] = MK_UNSET();
-            if (checa_param_tipos(vm, np, &vm->locals[nb], np->nparams, 0) != 0)
-                goto erro_runtime;
             fp++;
             locals_top += np->nlocals;
             sp = sp - n - 2;
@@ -25473,6 +25552,8 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
         p->nlocals = o->nlocals;
         p->nparams = o->nparams;
         p->ndefaults = o->ndefaults;
+        p->slot_vararg = o->slot_vararg;
+        p->slot_kwarg = o->slot_kwarg;
         p->eh_gerador = o->eh_gerador;
         p->eh_async = o->eh_async;
         p->eh_static = o->eh_static;
@@ -25800,6 +25881,8 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
         d->nlocals = o->nlocals;
         d->nparams = o->nparams;
         d->ndefaults = o->ndefaults;
+        d->slot_vararg = o->slot_vararg;
+        d->slot_kwarg = o->slot_kwarg;
         d->eh_gerador = o->eh_gerador;
         d->eh_async = o->eh_async;
         d->eh_static = o->eh_static;
@@ -27006,6 +27089,8 @@ static PyObject *vm_roda(PyObject *self, PyObject *args)
         p->consts  = malloc(sizeof(Value) * (size_t)(nk > 0 ? nk : 1));
         p->nlocals = nlocals;
         p->nparams = nparams;
+        p->slot_vararg = -1;
+        p->slot_kwarg = -1;
         if (!p->code || !p->consts) { libera_vm(&vm); return PyErr_NoMemory(); }
 
         for (Py_ssize_t k = 0; k < nc; k++)

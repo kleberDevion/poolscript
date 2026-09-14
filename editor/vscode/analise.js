@@ -115,6 +115,15 @@ function ultimaLinha(no) {
   return m;
 }
 
+/* O nome de um parâmetro como aparece na assinatura: `*args` e `**kwarg`
+ * levam a estrela (o parser marca em `i2`: 1 = `*`, 2 = `**`). É o que o
+ * hover e o signatureHelp mostram — o NOME ligado no escopo segue sem
+ * estrela, porque no corpo a variável se chama `args`. */
+function nomeParam(p) {
+  const estrela = p.i2 === 2 ? '**' : (p.i2 === 1 ? '*' : '');
+  return estrela + (p.texto || '');
+}
+
 /* Os nomes que UM nó liga no escopo onde ele está. Enumerado por TIPO DE NÓ —
  * é a lista fechada da gramática, não um palpite sobre o texto. */
 function ligacoesDe(no, poe) {
@@ -239,7 +248,7 @@ function membrosDaEntity(no) {
     }
     if (m.k !== 'ActionDecl') continue;                   /* métodos */
     const ps = (m.lista || []).filter((p) => p && p.texto && p.texto !== 'self')
-                              .map((p) => ({ nome: p.texto, tipo: p.texto2 || null, default: null }));
+                              .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null, default: null }));
     poe({ nome: m.texto, kind: 'action', params: ps, retorna: m.texto2 || null,
           privado: !!m.private, estatica: !!m.static || decStatic,
           nonnull: !!m.nonnull || decNonnull,
@@ -306,7 +315,7 @@ function escoposDaArvore(arvore) {
                        estatica: !!no.static, nonnull: !!no.nonnull,
                        linha: no.l - 1, no,
                        params: (no.lista || []).filter((p) => p && p.texto !== 'self')
-                                               .map((p) => ({ nome: p.texto, tipo: p.texto2 || null,
+                                               .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null,
                                                               default: null })) });
       cada(no, (f) => { if (f !== no.b) return; anda(f, esc); });
       if (no.b) anda(no.b, esc);

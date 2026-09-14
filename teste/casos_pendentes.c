@@ -171,5 +171,16 @@ const Caso CASOS_PENDENTES[] = {
   "post(__name__ == \"main\")\nif __name__ == \"main\" {\n    post(\"entrou\")\n}\n",
   "True\nentrou", NULL, 0, NULL, 1 },
 
+/* ── async chamada por NOME ──────────────────────────────────────────────
+ * `f(1)` numa `async funct` devolve um future (a fibra roda no await/gather);
+ * `f(a=1)` roda o corpo INLINE e devolve o valor — o OP_CALL_KW nunca olhou
+ * `eh_async`. O resultado sai certo nos casos simples, e e por isso que o
+ * furo passou despercebido: so a diferenca de tipo denuncia. Medido em
+ * 2026-09-14 ao fechar `*args`/`**kwarg` (a chamada por nome ganhou gerador,
+ * mas a fibra guarda argumentos crus e o binding nomeado nao cabe nela). */
+{ "async por nome devolve future, como a chamada posicional",
+  "async funct f(a, b=2) {\n    return [a, b]\n}\npost(type(f(1)), type(f(a=1)))\n",
+  "future future", NULL, 0, NULL, 1 },
+
 };
 const int NC_PENDENTES = N_CASOS(CASOS_PENDENTES);

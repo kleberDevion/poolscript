@@ -2385,10 +2385,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "ValueError: x", 1 },
 { "OSError NAO pega TypeError",
   "try { post(1 + \"a\") }\ncatch (OSError e) { post(\"NAO DEVIA\") }\n", "",
-  "TypeError: unsupported operand type(s) for +", 1 },
+  "TypeError: unsupported operand type(s) for +: 'int' and 'str' (linha 1)", 1 },
 { "IOError segue IRMAO de OSError, nao pai — a doc do open() promete isso",
   "import os\ntry { os.loadFile(\"/nao/existe/xyz.txt\") }\ncatch (IOError e) { post(\"NAO DEVIA\") }\n",
-  "", "FileNotFoundError:", 1 },
+  "", "FileNotFoundError: [Errno 2] No such file or directory: '/nao/existe/xyz.txt' (linha 2)", 1 },
 /* Um inventario de 14 agentes cruzou os tipos que o motor EMITE contra a
  * tabela e achou 15 de fora. `NotImplementedError` e `TimeoutError` eram da
  * propria linguagem e escapavam do `catch (Exception e)`; os outros 13 sao
@@ -2658,8 +2658,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "raise de variavel que guarda excecao: o catch da familia pega",
   "erro = FileNotFoundError\ntry { raise erro } catch (OSError e) { post(\"pegou\", \"[\" + e + \"]\") }\n",
   "pegou [ (linha 2)]", NULL, 0 },
+/* A expectativa e a primeira linha INTEIRA do stderr: `KeyError: ` com o
+ * espaco no fim, porque a mensagem e vazia. So "KeyError:" era prefixo dela
+ * e o portao das assercoes recusa prefixo. */
 { "raise de variavel sem catch: o tipo sai no traceback",
-  "erro = KeyError\nraise erro\n", "", "KeyError:", 1 },
+  "erro = KeyError\nraise erro\n", "", "KeyError: ", 1 },
 { "raise Nome maiusculo continua tipo LITERAL, mesmo sendo variavel",
   "Boom = ValueError\ntry { raise Boom } catch (ValueError e) { post(\"NAO DEVIA\") }\n", "", "Boom:  (linha 2)", 1 },
 { "chamar excecao fora do raise e TypeError que diz onde ela vale",
@@ -2711,10 +2714,10 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "TypeError: decorador @app.route vale 'str', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
 { "@nao_existe e NameError na linha do @, nao funct engolida",
   "@nao_existe\nfunct h() {\n    return 1\n}\npost(h())\n",
-  "", "NameError: name 'nao_existe' is not defined\n  em ", 1 },
+  "", "NameError: name 'nao_existe' is not defined", 1 },
 { "@x com x inteiro e TypeError",
   "x = 5\n@x\nfunct h() {\n    return 1\n}\n",
-  "", "TypeError: decorador @x vale 'int', que nao registra", 1 },
+  "", "TypeError: decorador @x vale 'int', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
 { "metodo static na Entity com decorador registrador da lib",
   DEC_NET "Entity App() {\n    static object app = NET()\n    @app.route(\"/m\")\n    static funct m() {\n        return \"m\"\n    }\n}\npost(App.app.rotas[\"/m\"]())\n",
   "m", NULL, 0 },
@@ -2779,6 +2782,99 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(b\"\", len(b\"\"))\n", "b'' 0", NULL, 0 },
 { "byte: assinatura PNG via fromhex bate com o literal",
   "import bytes\npost(bytes.fromhex(\"89504e470d0a1a0a\") == b\"\\x89PNG\\r\\n\\x1a\\n\")\n", "True", NULL, 0 },
+
+/* ── variadicos: `*args` (tup) e `**kwarg` (dict), e o espalhamento `f(*l, **d)` ──
+ * Um binding so (`liga_args`) pros sete caminhos de chamada da VM: funct,
+ * closure, bound, Entity, base(), callback vindo do C e gerador. O que o
+ * dono pediu: `route(self, caminho, **kwarg)` num decorador de lib, sem
+ * obrigar quem escreve a rota a montar um dict. */
+{ "variadico: *args recebe os posicionais excedentes numa tup (vazia sem excedente)",
+  "funct f(a, *args) {\n    post(a, args)\n}\nf(1, 2, 3)\nf(1)\n", "1 (2, 3)\n1 ()", NULL, 0 },
+{ "variadico: **kwarg recebe os nomeados sem parametro, na ordem da chamada",
+  "funct f(**kwarg) {\n    post(kwarg)\n}\nf(b=2, a=1)\nf()\n", "{'b': 2, 'a': 1}\n{}", NULL, 0 },
+{ "variadico: nome que casa com parametro fixo fica nele, o resto cai no kwarg",
+  "funct f(a, b=2, **kwarg) {\n    post(a, b, kwarg)\n}\nf(1, c=3, b=5)\n", "1 5 {'c': 3}", NULL, 0 },
+{ "variadico: default antes do *args",
+  "funct f(a, b=2, *args) {\n    post(a, b, args)\n}\nf(1)\nf(1, 9, 8, 7)\n", "1 2 ()\n1 9 (8, 7)", NULL, 0 },
+{ "variadico: os dois juntos, cheios e vazios",
+  "funct f(a, *args, **kwarg) {\n    post(a, args, kwarg)\n}\nf(1, 2, x=3)\nf(1)\n",
+  "1 (2,) {'x': 3}\n1 () {}", NULL, 0 },
+{ "variadico: sem **kwarg o nome desconhecido continua erro",
+  "funct f(a) {\n    return a\n}\npost(f(1, x=2))\n",
+  "", "TypeError: f() got an unexpected keyword argument 'x'", 1 },
+{ "variadico: tipo em estrela e recusado (a estrela ja decide tup/dict)",
+  "funct f(*int args) {\n    return args\n}\n",
+  "", "SyntaxError: parametro `*int args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`", 2 },
+{ "variadico: **kwarg tem que ser o ultimo",
+  "funct f(**kwarg, a) {\n    return a\n}\n",
+  "", "SyntaxError: `**kwarg` tem que ser o ultimo parametro: mova-o pro fim", 2 },
+{ "variadico: parametro comum depois de *args e recusado com o conserto",
+  "funct f(*args, x) {\n    return x\n}\n",
+  "", "SyntaxError: parametro `x` depois de `*args` nao e permitido: mova `x` pra antes do `*args`", 2 },
+{ "variadico: estrela nao tem valor padrao",
+  "funct f(*args=1) {\n    return args\n}\n",
+  "", "SyntaxError: `*args` nao tem valor padrao: sem argumento a tup vem vazia", 2 },
+{ "espalhar: f(*lista), f(*tup) e misto com posicional",
+  "funct f(a, b, c) {\n    post(a, b, c)\n}\nl = [1, 2, 3]\nf(*l)\nf(*(4, 5), 6)\nf(0, *[7, 8])\n",
+  "1 2 3\n4 5 6\n0 7 8", NULL, 0 },
+{ "espalhar: f(**dict), com *lista e com nomeado",
+  "funct f(a, b, c=0) {\n    post(a, b, c)\n}\nd = {\"b\": 2, \"c\": 3}\nf(1, **d)\nf(*[1], **{\"b\": 9})\nf(1, b=2, **{\"c\": 5})\n",
+  "1 2 3\n1 9 0\n1 2 5", NULL, 0 },
+{ "espalhar: a ordem escrita e mantida e o ultimo nomeado ganha",
+  "funct f(*args, **kwarg) {\n    post(args, kwarg)\n}\nf(1, *[2, 3], 4, k=1, **{\"k\": 2, \"j\": 3}, m=4)\n",
+  "(1, 2, 3, 4) {'k': 2, 'j': 3, 'm': 4}", NULL, 0 },
+{ "espalhar: repasse meio(*args, **kwarg) -> alvo(*args, **kwarg)",
+  "funct alvo(a, b=1, *args, **kwarg) {\n    post(a, b, args, kwarg)\n}\nfunct meio(*args, **kwarg) {\n    return alvo(*args, **kwarg)\n}\nmeio(1, 2, 3, 4, z=5)\n",
+  "1 2 (3, 4) {'z': 5}", NULL, 0 },
+{ "espalhar: *x exige list ou tup",
+  "funct f(a) {\n    return a\n}\nf(*5)\n", "", "TypeError: argument after * must be a list or tup, not int", 1 },
+{ "espalhar: **d exige dict",
+  "funct f(a) {\n    return a\n}\nf(**[1])\n", "", "TypeError: argument after ** must be a dict, not list", 1 },
+{ "espalhar: chave que nao e str nao vira nome de argumento",
+  "funct f(**kwarg) {\n    return kwarg\n}\nf(**{1: 2})\n", "", "TypeError: keywords must be strings", 1 },
+{ "espalhar: *x depois de nomeado e recusado",
+  "funct f(*args, **kwarg) {\n    return 1\n}\nf(a=1, *[2])\n",
+  "", "SyntaxError: argumento `*x` depois de nomeado: mova-o pra antes dos nomeados", 2 },
+{ "espalhar: builtin e metodo nativo aceitam *lista",
+  "post(max(*[1, 5, 3]))\npost(len(*[\"abc\"]))\npost(\"a-b\".split(*[\"-\"]))\n", "5\n3\n['a', 'b']", NULL, 0 },
+/* O caso do dono: decorador de lib guardando os nomeados da rota. */
+{ "variadico: decorador de lib com route(self, caminho, **kwarg) e @app.route(\"/y\", **opts)",
+  "Entity NET() {\n    funct __init__(self) {\n        self.rotas = {}\n        self.opcoes = {}\n    }\n"
+  "    funct route(self, caminho, **kwarg) {\n        funct registra(f) {\n            self.rotas[caminho] = f\n"
+  "            self.opcoes[caminho] = kwarg\n            return f\n        }\n        return registra\n    }\n}\n"
+  "app = NET()\n@app.route(\"/x\", auth=\"jwt\", methods=[\"GET\"])\nfunct h(**kwarg) {\n    return kwarg\n}\n"
+  "post(app.opcoes[\"/x\"], app.rotas[\"/x\"](**app.opcoes[\"/x\"]))\n"
+  "opts = {\"auth\": \"none\"}\n@app.route(\"/y\", **opts)\nfunct g() {\n    return \"g\"\n}\n"
+  "post(app.opcoes[\"/y\"], app.rotas[\"/y\"]())\n",
+  "{'auth': 'jwt', 'methods': ['GET']} {'auth': 'jwt', 'methods': ['GET']}\n{'auth': 'none'} g", NULL, 0 },
+{ "variadico: lambda, metodo, @static e gerador com *args",
+  "g = funct(*args) {\n    return args\n}\npost(g(1, 2))\n"
+  "Entity C() {\n    funct m(self, *args, **kwarg) {\n        return [args, kwarg]\n    }\n"
+  "    @static\n    funct s(*args) {\n        return args\n    }\n}\npost(C().m(1, k=2), C.s(3, 4))\n"
+  "funct ger(*args) {\n    for each a in args {\n        yield a * 10\n    }\n}\npost(list(ger(1, 2)))\npost(list(ger(*[3])))\n",
+  "(1, 2)\n[(1,), {'k': 2}] (3, 4)\n[10, 20]\n[30]", NULL, 0 },
+/* Furo vizinho, medido: a funct que um decorador devolve captura o argumento
+ * do decorador (closure) e, chamada por nome, era "'funct' object is not
+ * callable" — o CALL_KW so aceitava FUNC. */
+{ "variadico: closure com captura chamada por nome",
+  "funct r(c) {\n    funct g(f) {\n        return f + c\n    }\n    return g\n}\nh = r(\"/x\")\npost(h(f=\"a\"))\n",
+  "a/x", NULL, 0 },
+{ "variadico: gerador chamado por nome",
+  "funct ger(a, b=1) {\n    yield a\n    yield b\n}\npost(list(ger(b=5, a=2)))\n", "[2, 5]", NULL, 0 },
+{ "variadico: lambda aceita valor padrao (mesma regra da declaracao)",
+  "g = funct(x=1) {\n    return x\n}\npost(g(), g(5))\n", "1 5", NULL, 0 },
+{ "espalhar: base(**kwarg) e base(*args)",
+  "Entity A() {\n    funct __init__(self, x, y=0) {\n        self.x = x\n        self.y = y\n    }\n}\n"
+  "Entity B(A) {\n    funct __init__(self, **kwarg) {\n        base(**kwarg)\n    }\n}\n"
+  "Entity C(A) {\n    funct __init__(self, *args) {\n        base(*args)\n    }\n}\n"
+  "b = B(x=1, y=2)\nc = C(3)\npost(b.x, b.y, c.x, c.y)\n", "1 2 3 0", NULL, 0 },
+{ "variadico: instanciacao por nome com **kwarg no __init__",
+  "Entity P() {\n    funct __init__(self, nome, **kwarg) {\n        self.nome = nome\n        self.extra = kwarg\n    }\n}\n"
+  "p = P(nome=\"k\", idade=3)\npost(p.nome, p.extra)\n", "k {'idade': 3}", NULL, 0 },
+{ "variadico: async funct com *args",
+  "async funct f(a, *args) {\n    return [a, args]\n}\npost(await f(1, 2, 3))\n", "[1, (2, 3)]", NULL, 0 },
+{ "variadico: callback vindo do C (map) com *args",
+  "funct f(x, *args) {\n    return x * 2\n}\npost(map([1, 2], f))\n", "[2, 4]", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

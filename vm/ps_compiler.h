@@ -62,8 +62,14 @@ typedef struct {
     PSConst *consts;
     int32_t  nconsts;
     int32_t  nlocals;
-    int32_t  nparams;
+    int32_t  nparams;     /* só os parâmetros FIXOS (sem `*args`/`**kwarg`) */
     int32_t  ndefaults;   /* quantos parâmetros finais têm valor padrão */
+    /* `funct f(a, *args, **kwarg)`: o slot local que recebe a tup dos
+     * posicionais excedentes e o do dict dos nomeados sem parâmetro. -1 =
+     * a funct não tem. Ficam FORA de `nparams`/`param_nomes`: `args=1` na
+     * chamada não casa com o parâmetro, cai no dict como qualquer nome. */
+    int32_t  slot_vararg;
+    int32_t  slot_kwarg;
     int32_t  eh_gerador;  /* contém `yield` — chamar cria gerador, não frame */
     int32_t  eh_async;    /* `async action` — chamar cria fibra+future, não roda inline */
     /* `@static`: chamável direto na Entity (`Classe.metodo()`), sem instância.

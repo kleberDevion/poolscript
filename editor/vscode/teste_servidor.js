@@ -233,6 +233,27 @@ async function main() {
       ? (hv.result.contents.value || String(hv.result.contents)) : '';
     conf('hover da funct tipada mostra o tipo do parametro', txt.includes('str corpo'), txt);
   }
+  /* Variadico: `*args`/`**kwarg` levam a estrela na assinatura que o editor
+   * mostra — sem ela, `route(caminho, kwarg)` mentiria sobre como chamar. */
+  {
+    const src = 'funct route(caminho, *args, **kwarg) {\n    return kwarg\n}\n'
+              + 'route("/x")\n'
+              + 'route(';
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 8, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 4, character: 6 } } },
+      { jsonrpc: '2.0', id: 9, method: 'textDocument/hover',
+        params: { textDocument: { uri: URI }, position: { line: 3, character: 2 } } },
+    ]);
+    const sh = resp(m, 8);
+    const lbl = sh && sh.result && sh.result.signatures[0] ? sh.result.signatures[0].label : '';
+    conf('signatureHelp mostra *args e **kwarg com a estrela',
+         lbl.includes('*args') && lbl.includes('**kwarg'), lbl);
+    const hv = resp(m, 9);
+    const txt = hv && hv.result && hv.result.contents
+      ? (hv.result.contents.value || String(hv.result.contents)) : '';
+    conf('hover da funct variadica mostra **kwarg', txt.includes('**kwarg'), txt);
+  }
 
   /* ── 8. diagnóstico vem do `--check` do motor ──────────────────────────── */
   {

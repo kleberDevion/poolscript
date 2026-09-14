@@ -19,6 +19,7 @@
 #include "ps_parser.h"
 #include "ps_pilha.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,6 +117,21 @@ static void perro(P *p, const char *msg, PSToken *t)
 }
 
 #define FALHOU(p) (!(p)->out->ok)
+
+/* Como `perro`, com a mensagem formatada — pra o erro DIZER o nome que a
+ * pessoa escreveu (`mova `x` pra antes do `*args``), em vez de um texto
+ * genérico que obriga a adivinhar de qual parâmetro se trata. */
+static void perro_f(P *p, PSToken *t, const char *fmt, ...)
+{
+    if (!p->out->ok) return;              /* preserva o primeiro erro */
+    p->out->ok = 0;
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(p->out->erro, sizeof(p->out->erro), fmt, ap);
+    va_end(ap);
+    p->out->erro_linha = t ? t->line : 0;
+    p->out->erro_col = t ? t->col : 0;
+}
 
 static PSToken *atual(P *p)
 {
@@ -471,6 +487,121 @@ static PSNode *statement(P *p);
 static PSNode *bloco(P *p);
 static PSNode *bloco_entrada(P *p);
 
+/* ── parâmetros ─────────────────────────────────────────────────────────── */
+/* Os parâmetros de uma funct, com o cursor logo depois do `(`, até o `)` —
+ * que fica pro chamador exigir, com a mensagem dele. UMA função pra
+ * declaração e pra lambda: eram duas cópias, e a da lambda tinha envelhecido
+ * sem o valor padrão (`funct(x=1) {}` dava "faltou ')'").
+ *
+ * Cada parâmetro vira um Name na `lista` do nó: `texto` = nome, `texto2` =
+ * tipo declarado (ou NULL), `a` = valor padrão (ou NULL), `i2` = 1 pra
+ * `*args`, 2 pra `**kwarg`, 0 pro comum. A ordem é fixa — comuns, depois
+ * `*args`, depois `**kwarg` — e é o parser que a garante: o compilador conta
+ * com os comuns sendo os primeiros da lista.
+ *
+ * `lambda` só muda o exemplo das mensagens e recusa `self` como nome. */
+static int parse_parametros(P *p, PSNode *n, int lambda)
+{
+    const char *nome_vararg = NULL, *nome_kwarg = NULL;
+    if (checa(p, T_RPAREN)) return 0;
+    for (;;) {
+        PSToken *pt = atual(p);
+        int estrela = 0;
+        if (checa_op(p, "**"))     { estrela = 2; p->pos++; }
+        else if (checa_op(p, "*")) { estrela = 1; p->pos++; }
+        /* TIPO ANTES DO NOME: `funct f(String corpo, int n)`.
+         * O tipo é o token que vem colado ANTES de um nome — a mesma forma
+         * do campo de Entity e do retorno da funct. Sem nome depois, o
+         * token é o próprio nome do parâmetro (`funct f(corpo)`). */
+        const char *ptipo = NULL;
+        PSToken *tt = atual(p);
+        if (eh_tipo_de_retorno(tt)
+                && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
+            if (estrela) {
+                /* `*int args`: a estrela já decide o tipo — tup no `*`, dict
+                 * no `**`. Um tipo aqui não teria o que checar. */
+                const char *nm = espia(p, 1)->texto ? espia(p, 1)->texto : "args";
+                perro_f(p, tt, "parametro `%s%s %s` nao aceita tipo: `*args` e sempre tup "
+                               "e `**kwarg` sempre dict — escreva `%s%s`",
+                        estrela == 2 ? "**" : "*", tt->texto ? tt->texto : "?", nm,
+                        estrela == 2 ? "**" : "*", nm);
+                return -1;
+            }
+            ptipo = tipo_retorno_dup(p, tt);
+            p->pos++;
+        }
+        PSToken *nt = atual(p);
+        const char *pn;
+        if (!lambda && nt->type == T_KW && nt->texto && strcmp(nt->texto, "self") == 0) {
+            pn = dup_tok(p, nt);               /* `self` é o único KW aceito */
+            p->pos++;
+        } else {
+            pn = exige_nome(p, "parametro");
+            if (FALHOU(p)) return -1;
+        }
+        /* A ordem: comuns, `*args`, `**kwarg`. Cada violação diz o conserto,
+         * com os nomes que a pessoa escreveu. */
+        if (nome_kwarg) {
+            perro_f(p, nt, "`**%s` tem que ser o ultimo parametro: mova-o pro fim", nome_kwarg);
+            return -1;
+        }
+        if (estrela == 1 && nome_vararg) {
+            perro_f(p, nt, "so um `*args` por funct: `*%s` e `*%s`", nome_vararg, pn);
+            return -1;
+        }
+        if (estrela == 0 && nome_vararg) {
+            perro_f(p, nt, "parametro `%s` depois de `*%s` nao e permitido: "
+                           "mova `%s` pra antes do `*%s`", pn, nome_vararg, pn, nome_vararg);
+            return -1;
+        }
+        if (estrela == 1) nome_vararg = pn;
+        if (estrela == 2) nome_kwarg = pn;
+        PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
+        if (!par) return -1;
+        par->texto = pn;
+        par->texto2 = ptipo;               /* NULL = parâmetro sem tipo */
+        par->i2 = estrela;
+        /* `funct f(x: int)` — a ordem do CAMPO de Entity, que no parâmetro
+         * não vale. O erro daqui era "faltou ')' na declaracao da funct",
+         * que não fala do que está errado: quem escreveu isso não esqueceu
+         * parêntese nenhum, inverteu a ordem. */
+        if (checa(p, T_COLON)) {
+            perro(p, lambda
+                    ? "no parametro o tipo vem ANTES do nome: escreva `funct(int x)`, nao `funct(x: int)`"
+                    : "no parametro o tipo vem ANTES do nome: escreva `funct f(int x)`, nao `funct f(x: int)`",
+                  atual(p));
+            return -1;
+        }
+        /* valor padrão: `funct f(a, b=1)`. Fica pendurado no próprio nó
+         * do parâmetro (campo `a`), que é o que o serializador compara. */
+        if (checa_op(p, "=")) {
+            if (estrela) {
+                perro_f(p, atual(p), "`%s%s` nao tem valor padrao: sem argumento %s vem %s",
+                        estrela == 2 ? "**" : "*", pn,
+                        estrela == 2 ? "o dict" : "a tup", estrela == 2 ? "vazio" : "vazia");
+                return -1;
+            }
+            p->pos++;
+            par->a = expressao(p);
+            if (FALHOU(p)) return -1;
+        }
+        if (ps_vec_push(p->arena, &n->lista, par) != 0) { perro(p, "sem memoria", pt); return -1; }
+        if (!aceita(p, T_COMMA)) break;
+        if (checa(p, T_RPAREN)) break;   /* vírgula final */
+    }
+    return 0;
+}
+
+/* Uma estrela no COMEÇO de um argumento de chamada: `f(*lista)` espalha os
+ * itens como posicionais, `f(**dict)` como nomeados. Só no começo: `f(a * b)`
+ * segue sendo multiplicação, porque lá o `*` vem DEPOIS de um operando. */
+static int estrela_de_argumento(P *p)
+{
+    if (checa_op(p, "**")) { p->pos++; return 2; }
+    if (checa_op(p, "*"))  { p->pos++; return 1; }
+    return 0;
+}
+
 /* ── primário ───────────────────────────────────────────────────────────── */
 /* O corpo da lambda, com o cursor no `funct`: `funct(params) { ... }`.
  * Um só lugar monta o nó, chamado dos dois caminhos — o `funct(` pelado e o
@@ -481,32 +612,7 @@ static PSNode *lambda_apos_kw(P *p)
     p->pos += 2;                               /* funct ( */
     PSNode *n = ps_node_novo(p->arena, N_LAMBDA_EXPR, t->line, t->col);
     if (!n) return NULL;
-    while (!checa(p, T_RPAREN)) {
-        PSToken *pt = atual(p);
-        /* tipo antes do nome também na lambda — a forma é a mesma */
-        const char *ptipo = NULL;
-        if (eh_tipo_de_retorno(pt)
-                && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
-            ptipo = tipo_retorno_dup(p, pt);
-            p->pos++;
-            pt = atual(p);
-        }
-        const char *pn = exige_nome(p, "parametro");
-        if (FALHOU(p)) return NULL;
-        PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
-        if (!par) return NULL;
-        par->texto = pn;
-        par->texto2 = ptipo;
-        if (checa(p, T_COLON)) {               /* mesma inversão, na lambda */
-            perro(p, "no parametro o tipo vem ANTES do nome: "
-                     "escreva `funct(int x)`, nao `funct(x: int)`", atual(p));
-            return NULL;
-        }
-        if (ps_vec_push(p->arena, &n->lista, par) != 0) {
-            perro(p, "sem memoria", pt); return NULL;
-        }
-        if (!aceita(p, T_COMMA)) break;
-    }
+    if (parse_parametros(p, n, 1) != 0) return NULL;
     if (!exige(p, T_RPAREN, "faltou ')' na lambda")) return NULL;
     n->b = bloco(p);
     if (FALHOU(p)) return NULL;
@@ -671,7 +777,9 @@ static PSNode *primario(P *p)
                     for (;;) {
                         PSToken *at = atual(p);
                         const char *nome_arg = NULL;
-                        if ((at->type == T_IDENT || at->type == T_IDENT_UPPER)
+                        int estrela = estrela_de_argumento(p);   /* `base(*a, **kw)` */
+                        if (!estrela
+                                && (at->type == T_IDENT || at->type == T_IDENT_UPPER)
                                 && espia(p, 1)->type == T_OP && espia(p, 1)->texto
                                 && strcmp(espia(p, 1)->texto, "=") == 0
                                 && espia(p, 2)->type != T_COMMA
@@ -683,7 +791,7 @@ static PSNode *primario(P *p)
                         if (FALHOU(p)) return NULL;
                         PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, t->line, t->col);
                         if (!arg) return NULL;
-                        arg->a = v; arg->texto = nome_arg;
+                        arg->a = v; arg->texto = nome_arg; arg->i2 = estrela;
                         if (ps_vec_push(p->arena, &n->lista, arg) != 0) return NULL;
                         if (!aceita(p, T_COMMA)) break;
                     }
@@ -967,9 +1075,11 @@ static PSNode *posfixo(P *p)
                     pula_separadores(p);
                     PSToken *at = atual(p);
                     const char *nome_arg = NULL;
+                    int estrela = estrela_de_argumento(p);   /* `*lista` / `**dict` */
                     /* argumento nomeado: NOME '=' valor. O nome é só um
                      * rótulo, então keyword é aceita aqui (regex.sub(count=2)). */
-                    if ((at->type == T_IDENT || at->type == T_IDENT_UPPER || at->type == T_KW)
+                    if (!estrela
+                            && (at->type == T_IDENT || at->type == T_IDENT_UPPER || at->type == T_KW)
                             && espia(p, 1)->type == T_OP
                             && espia(p, 1)->texto && strcmp(espia(p, 1)->texto, "=") == 0) {
                         nome_arg = dup_tok(p, at);
@@ -981,7 +1091,7 @@ static PSNode *posfixo(P *p)
                      * — sem os colchetes. Só vale como
                      * argumento ÚNICO e sem nome, que é onde ela não é
                      * ambígua com uma lista de argumentos. */
-                    if (c->lista.n == 0 && nome_arg == NULL && checa_kw(p, "for")) {
+                    if (c->lista.n == 0 && nome_arg == NULL && !estrela && checa_kw(p, "for")) {
                         p->pos++;
                         if (!aceita_kw(p, "each")) {
                             perro(p, "esperado 'each' depois de 'for' na compreensao", atual(p));
@@ -1018,6 +1128,7 @@ static PSNode *posfixo(P *p)
                     if (!arg) return NULL;
                     arg->a = valor;
                     arg->texto = nome_arg;
+                    arg->i2 = estrela;
                     if (ps_vec_push(p->arena, &c->lista, arg) != 0) {
                         perro(p, "sem memoria", at); return NULL;
                     }
@@ -2150,53 +2261,7 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
     n->is_async = is_async;
 
     if (!exige(p, T_LPAREN, "faltou '(' na declaracao da funct")) return NULL;
-    if (!checa(p, T_RPAREN)) {
-        for (;;) {
-            PSToken *pt = atual(p);
-            const char *pn;
-            /* TIPO ANTES DO NOME: `funct f(String corpo, int n)`.
-             * O tipo é o token que vem colado ANTES de um nome — a mesma forma
-             * do campo de Entity e do retorno da funct. Sem nome depois, o
-             * token é o próprio nome do parâmetro (`funct f(corpo)`). */
-            const char *ptipo = NULL;
-            if (eh_tipo_de_retorno(pt)
-                    && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
-                ptipo = tipo_retorno_dup(p, pt);
-                p->pos++;
-                pt = atual(p);
-            }
-            if (pt->type == T_KW && pt->texto && strcmp(pt->texto, "self") == 0) {
-                pn = dup_tok(p, pt);           /* `self` é o único KW aceito */
-                p->pos++;
-            } else {
-                pn = exige_nome(p, "parametro");
-                if (FALHOU(p)) return NULL;
-            }
-            PSNode *par = ps_node_novo(p->arena, N_NAME, pt->line, pt->col);
-            if (!par) return NULL;
-            par->texto = pn;
-            par->texto2 = ptipo;               /* NULL = parâmetro sem tipo */
-            /* `funct f(x: int)` — a ordem do CAMPO de Entity, que no parâmetro
-             * não vale. O erro daqui era "faltou ')' na declaracao da funct",
-             * que não fala do que está errado: quem escreveu isso não esqueceu
-             * parêntese nenhum, inverteu a ordem. */
-            if (checa(p, T_COLON)) {
-                perro(p, "no parametro o tipo vem ANTES do nome: "
-                         "escreva `funct f(int x)`, nao `funct f(x: int)`", atual(p));
-                return NULL;
-            }
-            /* valor padrão: `action f(a, b=1)`. Fica pendurado no próprio nó
-             * do parâmetro (campo `a`), que é o que o serializador compara. */
-            if (checa_op(p, "=")) {
-                p->pos++;
-                par->a = expressao(p);
-                if (FALHOU(p)) return NULL;
-            }
-            if (ps_vec_push(p->arena, &n->lista, par) != 0) { perro(p, "sem memoria", pt); return NULL; }
-            if (!aceita(p, T_COMMA)) break;
-            if (checa(p, T_RPAREN)) break;   /* vírgula final */
-        }
-    }
+    if (parse_parametros(p, n, 0) != 0) return NULL;
     if (!exige(p, T_RPAREN, "faltou ')' na declaracao da funct")) return NULL;
     while (checa(p, T_NEWLINE)) p->pos++;      /* `{` pode vir na linha seguinte */
     n->b = bloco(p);
@@ -2762,7 +2827,9 @@ static PSNode *statement(P *p)
                     pula_separadores(p);
                     PSToken *at = atual(p);
                     const char *nome_arg = NULL;
-                    if ((at->type == T_IDENT || at->type == T_IDENT_UPPER || at->type == T_KW)
+                    int estrela = estrela_de_argumento(p);   /* `@app.route("/x", **opts)` */
+                    if (!estrela
+                            && (at->type == T_IDENT || at->type == T_IDENT_UPPER || at->type == T_KW)
                             && espia(p, 1)->type == T_OP && espia(p, 1)->texto
                             && strcmp(espia(p, 1)->texto, "=") == 0) {
                         nome_arg = dup_tok(p, at);
@@ -2772,7 +2839,7 @@ static PSNode *statement(P *p)
                     if (FALHOU(p)) return NULL;
                     PSNode *arg = ps_node_novo(p->arena, N_CALL_ARG, at->line, at->col);
                     if (!arg) return NULL;
-                    arg->a = v; arg->texto = nome_arg;
+                    arg->a = v; arg->texto = nome_arg; arg->i2 = estrela;
                     if (ps_vec_push(p->arena, &dc->lista2, arg) != 0) return NULL;
                     pula_separadores(p);
                     if (!aceita(p, T_COMMA)) break;

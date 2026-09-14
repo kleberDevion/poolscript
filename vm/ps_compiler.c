@@ -735,6 +735,89 @@ static void carrega_estatico(C *c, Unidade *u, const char *nome)
     emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome)));
 }
 
+/* Os argumentos de uma chamada e a chamada em si, com o chamável JÁ na
+ * pilha. É UMA função pros três lugares que chamam — `f(...)`, o decorador
+ * `@d(...)` e `base(...)` por nome — porque eram três cópias da mesma regra,
+ * e a regra cresceu: espalhamento.
+ *
+ * Sem estrela: `OP_CALL n` (só posicionais) ou `OP_CALL_KW n` com a tupla
+ * de nomes por cima. Com `*x`/`**d` em algum argumento, os posicionais viram
+ * UMA lista e os nomeados UM dict, montados NA ORDEM ESCRITA (`f(1, *a, 2)`
+ * mantém o 2 depois dos itens de `a`; `f(k=1, **d)` deixa o `d` ganhar de
+ * `k`, como o último nomeado sempre ganha), e o `OP_CALL_EX` espalha os dois
+ * no alvo. A única ordem recusada é a que já era: posicional (ou `*x`)
+ * depois de nomeado (ou `**d`). */
+static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
+{
+    int32_t n = args->n, nkw = 0, estrelas = 0;
+    int viu_nome = 0;
+    for (int32_t i = 0; i < n; i++) {
+        PSNode *a = args->itens[i];
+        int nomeado = (a->texto != NULL || a->i2 == 2);
+        if (a->i2) estrelas++;
+        if (a->texto) nkw++;
+        if (nomeado) viu_nome = 1;
+        else if (viu_nome) {
+            cerro_sx(c, no, a->i2
+                     ? "argumento `*x` depois de nomeado: mova-o pra antes dos nomeados"
+                     : "argumento posicional depois de nomeado");
+            return;
+        }
+    }
+    if (estrelas == 0) {
+        for (int32_t i = 0; i < n; i++)
+            expr(c, u, args->itens[i]->a);
+        if (nkw == 0) { emite(c, u, OP_CALL, n); return; }
+        /* nomes dos kwargs entram como uma tupla de constantes */
+        for (int32_t i = n - nkw; i < n; i++) {
+            const char *nm = args->itens[i]->texto;
+            emite(c, u, OP_LOAD_CONST,
+                  idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
+        }
+        emite(c, u, OP_BUILD_TUPLE, nkw);
+        emite(c, u, OP_CALL_KW, n);
+        return;
+    }
+    /* Posicionais: os primeiros sem estrela numa BUILD_LIST só; daí em
+     * diante cada `*x` estende e cada posicional solto entra como lista de
+     * um item — é o que preserva a ordem escrita. */
+    int32_t i = 0, k = 0;
+    while (i < n && !args->itens[i]->texto && args->itens[i]->i2 == 0) {
+        expr(c, u, args->itens[i]->a);
+        i++; k++;
+    }
+    emite(c, u, OP_BUILD_LIST, k);
+    for (; i < n; i++) {
+        PSNode *a = args->itens[i];
+        if (a->texto || a->i2 == 2) break;
+        expr(c, u, a->a);
+        if (a->i2 == 0) emite(c, u, OP_BUILD_LIST, 1);
+        emite(c, u, OP_LIST_EXTEND, 0);
+    }
+    /* Nomeados: os primeiros `k=v` numa BUILD_DICT só; depois cada `**d`
+     * funde e cada `k=v` solto entra como dict de um par. */
+    int32_t m = 0;
+    while (i < n && args->itens[i]->texto) {
+        const char *nm = args->itens[i]->texto;
+        emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
+        expr(c, u, args->itens[i]->a);
+        i++; m++;
+    }
+    emite(c, u, OP_BUILD_DICT, m);
+    for (; i < n; i++) {
+        PSNode *a = args->itens[i];
+        if (a->texto) {
+            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, a->texto, (int32_t)strlen(a->texto)));
+            expr(c, u, a->a);
+            emite(c, u, OP_BUILD_DICT, 1);
+        } else {
+            expr(c, u, a->a);
+        }
+        emite(c, u, OP_DICT_MERGE, 0);
+    }
+    emite(c, u, OP_CALL_EX, 0);
+}
+
 /* A expressão de um decorador geral (`@obj.metodo(args)`, `@log()`, `@log`):
  * com parênteses é CHAMADA, sem parênteses é o VALOR (o parser marca em
  * `i2`). É a mesma emissão em qualquer posição (funct solta, em cima de
@@ -748,20 +831,7 @@ static void emite_decorador_expr(C *c, Unidade *u, PSNode *dec)
               idx_const(c, u, K_STR, 0, 0, dec->lista.itens[i]->texto,
                         (int32_t)strlen(dec->lista.itens[i]->texto)));
     if (!dec->i2) return;              /* `@log`: o valor, sem chamar */
-    int32_t nkw = 0;
-    for (int32_t i = 0; i < dec->lista2.n; i++)
-        if (dec->lista2.itens[i]->texto) nkw++;
-    for (int32_t i = 0; i < dec->lista2.n; i++)
-        expr(c, u, dec->lista2.itens[i]->a);
-    if (nkw == 0) emite(c, u, OP_CALL, dec->lista2.n);
-    else {
-        for (int32_t i = dec->lista2.n - nkw; i < dec->lista2.n; i++) {
-            const char *nm = dec->lista2.itens[i]->texto;
-            emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
-        }
-        emite(c, u, OP_BUILD_TUPLE, nkw);
-        emite(c, u, OP_CALL_KW, dec->lista2.n);
-    }
+    emite_args_e_chama(c, u, dec, &dec->lista2);
 }
 
 /* [.., decorador, funct] -> OP_DECORA -> [.., resultado]. O nome juntado
@@ -1307,36 +1377,10 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             else cerro(c, "operador unario ainda nao compila na VM", n);
             return;
 
-        case N_CALL: {
-            int32_t nkw = 0;
-            for (int32_t i = 0; i < n->lista.n; i++)
-                if (n->lista.itens[i]->texto) nkw++;
-            /* nomeado só depois de posicional */
-            if (nkw > 0) {
-                int viu_nome = 0;
-                for (int32_t i = 0; i < n->lista.n; i++) {
-                    if (n->lista.itens[i]->texto) viu_nome = 1;
-                    else if (viu_nome) {
-                        cerro_sx(c, n, "argumento posicional depois de nomeado");
-                        return;
-                    }
-                }
-            }
+        case N_CALL:
             expr(c, u, n->a);
-            for (int32_t i = 0; i < n->lista.n; i++)
-                expr(c, u, n->lista.itens[i]->a);
-            if (nkw == 0) { emite(c, u, OP_CALL, n->lista.n); return; }
-
-            /* nomes dos kwargs entram como uma tupla de constantes */
-            for (int32_t i = n->lista.n - nkw; i < n->lista.n; i++) {
-                const char *nm = n->lista.itens[i]->texto;
-                emite(c, u, OP_LOAD_CONST,
-                      idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
-            }
-            emite(c, u, OP_BUILD_TUPLE, nkw);
-            emite(c, u, OP_CALL_KW, n->lista.n);
+            emite_args_e_chama(c, u, n, &n->lista);
             return;
-        }
 
         case N_LIST_LITERAL:
             for (int32_t i = 0; i < n->lista.n; i++) expr(c, u, n->lista.itens[i]);
@@ -1581,7 +1625,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             }
             int32_t nkw_b = 0;
             for (int32_t i = 0; i < n->lista.n; i++)
-                if (n->lista.itens[i]->texto) nkw_b++;
+                if (n->lista.itens[i]->texto || n->lista.itens[i]->i2) nkw_b++;
             if (nkw_b == 0) {
                 carrega_nome(c, u, pai);
                 emite(c, u, OP_LOAD_SELF, 0);
@@ -1590,24 +1634,13 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 emite(c, u, OP_CALL_BASE, n->lista.n);
                 return;
             }
-            /* Com argumento NOMEADO (`base(x=5)`), em vez de repetir aqui toda
-             * a resolução de nome/default do OP_CALL_KW, o `__init__` do pai é
-             * carregado LIGADO ao self e a chamada segue o caminho normal. */
-            for (int32_t i = 0, viu = 0; i < n->lista.n; i++) {
-                if (n->lista.itens[i]->texto) viu = 1;
-                else if (viu) { cerro_sx(c, n, "argumento posicional depois de nomeado"); return; }
-            }
+            /* Com argumento NOMEADO ou espalhado (`base(x=5)`, `base(**kw)`),
+             * em vez de repetir aqui toda a resolução de nome/default do
+             * OP_CALL_KW, o `__init__` do pai é carregado LIGADO ao self e a
+             * chamada segue o caminho normal. */
             carrega_nome(c, u, pai);
             emite(c, u, OP_LOAD_BASE_INIT, 0);
-            for (int32_t i = 0; i < n->lista.n; i++)
-                expr(c, u, n->lista.itens[i]->a);
-            for (int32_t i = n->lista.n - nkw_b; i < n->lista.n; i++) {
-                const char *nm = n->lista.itens[i]->texto;
-                emite(c, u, OP_LOAD_CONST,
-                      idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
-            }
-            emite(c, u, OP_BUILD_TUPLE, nkw_b);
-            emite(c, u, OP_CALL_KW, n->lista.n);
+            emite_args_e_chama(c, u, n, &n->lista);
             return;
         }
 
@@ -3001,6 +3034,8 @@ static int32_t novo_proto(C *c, const char *nome)
     }
     PSProto *p = &c->out->protos[c->out->nprotos];
     memset(p, 0, sizeof(*p));
+    p->slot_vararg = -1;
+    p->slot_kwarg = -1;
     size_t n = strlen(nome);
     p->nome = malloc(n + 1);
     if (!p->nome) { cerro(c, "sem memoria", NULL); return -1; }
@@ -3152,28 +3187,36 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     if (n->texto2 && !strcmp(n->texto2, "int"))       u.tipo_ret = 1;
     else if (n->texto2 && !strcmp(n->texto2, "bool")) u.tipo_ret = 2;
 
-    int32_t ndef = 0;
+    /* Os parâmetros ocupam os primeiros slots, na ordem escrita. O parser
+     * garante a ordem comuns → `*args` → `**kwarg`, então os FIXOS são os
+     * `nfix` primeiros da lista: é só deles que `nparams`, `param_nomes` e
+     * `param_tipos` falam. A estrela ganha o slot dela e nada mais — a tup e
+     * o dict nascem no binding da chamada, não têm default nem tipo. */
+    int32_t ndef = 0, nfix = 0, slot_vararg = -1, slot_kwarg = -1;
     for (int32_t i = 0; i < n->lista.n; i++) {
         PSNode *par = n->lista.itens[i];
-        {
-            int32_t pi = idx_local(c, &u, par->texto ? par->texto : "");
-            if (pi < 256) u.certo[pi] = 1;
-        }
+        int32_t pi = idx_local(c, &u, par->texto ? par->texto : "");
+        if (pi < 256) u.certo[pi] = 1;
+        if (par->i2 == 1) { slot_vararg = pi; continue; }
+        if (par->i2 == 2) { slot_kwarg = pi; continue; }
+        nfix++;
         if (par->a) ndef++;
         else if (ndef > 0) {
             cerro_sx(c, n, "parametro sem valor padrao depois de um com padrao");
             break;
         }
     }
-    c->out->protos[idx].nparams = n->lista.n;
+    c->out->protos[idx].nparams = nfix;
     c->out->protos[idx].ndefaults = ndef;
+    c->out->protos[idx].slot_vararg = slot_vararg;
+    c->out->protos[idx].slot_kwarg = slot_kwarg;
     c->out->protos[idx].eh_async = n->is_async;
     c->out->protos[idx].eh_static = meu_static;
-    if (n->lista.n > 0) {
-        char **nomes = calloc((size_t)n->lista.n, sizeof(char *));
+    if (nfix > 0) {
+        char **nomes = calloc((size_t)nfix, sizeof(char *));
         if (!nomes) { cerro(c, "sem memoria", n); }
         else {
-            for (int32_t i = 0; i < n->lista.n; i++) {
+            for (int32_t i = 0; i < nfix; i++) {
                 const char *pn = n->lista.itens[i]->texto ? n->lista.itens[i]->texto : "";
                 size_t ln = strlen(pn);
                 nomes[i] = malloc(ln + 1);
@@ -3185,13 +3228,13 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
          * O vetor só nasce se ALGUM parâmetro tiver tipo: função sem tipagem
          * não paga nada, nem memória nem checagem. */
         int32_t com_tipo = 0;
-        for (int32_t i = 0; i < n->lista.n; i++)
+        for (int32_t i = 0; i < nfix; i++)
             if (n->lista.itens[i]->texto2) com_tipo = 1;
         if (com_tipo) {
-            char **tipos = calloc((size_t)n->lista.n, sizeof(char *));
+            char **tipos = calloc((size_t)nfix, sizeof(char *));
             if (!tipos) { cerro(c, "sem memoria", n); }
             else {
-                for (int32_t i = 0; i < n->lista.n; i++) {
+                for (int32_t i = 0; i < nfix; i++) {
                     const char *pt = n->lista.itens[i]->texto2;
                     if (!pt) continue;
                     size_t lt = strlen(pt);
@@ -3219,8 +3262,9 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
      * prólogo (que testa o slot cru com JUMP_IF_SET) e antes do corpo. */
     marca_celulas(c, &u, n, n->b);
 
-    /* Depois do prólogo: um default que avalie pra Null também é violação. */
-    if (meu_nonnull) emite(c, &u, OP_CHECK_NONNULL, n->lista.n);
+    /* Depois do prólogo: um default que avalie pra Null também é violação.
+     * Só os fixos: a tup e o dict das estrelas nunca são Null. */
+    if (meu_nonnull) emite(c, &u, OP_CHECK_NONNULL, nfix);
 
     /* `int action` e `bool action` não deixam erro escapar: devolvem 500 e
      * False. Sai mais barato emitir o `try` implícito aqui do que ensinar o
