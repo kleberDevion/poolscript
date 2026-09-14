@@ -2782,6 +2782,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(b\"\", len(b\"\"))\n", "b'' 0", NULL, 0 },
 { "byte: assinatura PNG via fromhex bate com o literal",
   "import bytes\npost(bytes.fromhex(\"89504e470d0a1a0a\") == b\"\\x89PNG\\r\\n\\x1a\\n\")\n", "True", NULL, 0 },
+/* `\"\"\"` pelado e comentario de bloco; com prefixo so pode ser literal. Antes
+ * `b\"\"\"ab\"\"\"` virava tres tokens (`b\"\"` + `\"ab\"` + `\"\"`). */
+{ "byte: literal triplo com aspas duplas e o mesmo que com simples (e a f-string tambem)",
+  "post(b\"\"\"ab\"\"\", f\"\"\"x{1}y\"\"\", len(b\"\"\"ab\"\"\"), b'''ab''' == b\"\"\"ab\"\"\")\n",
+  "b'ab' x1y 2 True", NULL, 0 },
 
 /* ── variadicos: `*args` (tup) e `**kwarg` (dict), e o espalhamento `f(*l, **d)` ──
  * Um binding so (`liga_args`) pros sete caminhos de chamada da VM: funct,

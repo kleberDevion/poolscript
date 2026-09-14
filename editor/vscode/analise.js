@@ -305,7 +305,11 @@ function escoposDaArvore(arvore) {
     if (no.k === 'ActionDecl') {
       const esc = { tipo: 'action', nome: no.texto, ini: no.l, fim: ultimaLinha(no), liga: [] };
       for (const p of no.lista || []) {
-        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1, no: p });
+        /* o tipo declarado (`byte raw`) vai junto: é ele que faz `raw.` e o
+         * hover de `raw.split` responderem pelo tipo — antes era `tipo: null`
+         * e o parâmetro tipado ficava mudo, enquanto `params` ao lado já lia
+         * o mesmo `texto2` */
+        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: p.texto2 || null, linha: p.l - 1, no: p });
       }
       escopos.push(esc);
       /* a funct LIGA O PRÓPRIO NOME no escopo de fora. O nó vai junto (`no`):
@@ -330,7 +334,11 @@ function escoposDaArvore(arvore) {
           const esc = { tipo: 'metodo', nome: m.texto, entidade: no.texto,
                         ini: m.l, fim: ultimaLinha(m), liga: [] };
           for (const p of m.lista || []) {
-            if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: null, linha: p.l - 1, no: p });
+            /* o tipo declarado (`byte raw`) vai junto: é ele que faz `raw.` e o
+         * hover de `raw.split` responderem pelo tipo — antes era `tipo: null`
+         * e o parâmetro tipado ficava mudo, enquanto `params` ao lado já lia
+         * o mesmo `texto2` */
+        if (p && p.texto) esc.liga.push({ nome: p.texto, kind: 'parametro', tipo: p.texto2 || null, linha: p.l - 1, no: p });
           }
           escopos.push(esc);
           if (m.b) anda(m.b, esc);

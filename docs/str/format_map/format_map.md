@@ -1,0 +1,30 @@
+# `s.format_map(dict)`
+
+Como format, buscando os {nome} num dict.
+
+## Parâmetros
+
+| nome | tipo | default | nota |
+|---|---|---|---|
+| `dict` | dict | — |  |
+
+## Retorno
+
+str
+
+## Erros
+
+- **KeyError** — a chave citada no formato não existe:
+  `"{b}!".format_map({"a": "oi"})` → `'b'`. Não é `TypeError`.
+
+## Exemplos
+
+```ps
+post("{a}!".format_map({"a": "oi"}))
+```
+
+```saida
+oi!
+```
+
+[← índice](../str.md)

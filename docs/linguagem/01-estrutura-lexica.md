@@ -278,7 +278,8 @@ O prefixo `b` (ou `B`) colado na aspa faz um literal de **bytes crus**, do tipo
 `byte`: `b"\x89PNG\r\n\x1a\n"`. Cada `\xHH` é UM byte (0–255), octal `\ooo`
 idem, `\0` vale, e um caractere não-ASCII entra com os bytes UTF-8 dele.
 `\u`/`\U` são erro (`\u nao vale em bytes: use \xHH`). `br"..."`/`rb"..."` é
-cru (sem escapes) e `b'''...'''` é multilinha. Sem a aspa colada, `b` é um
+cru (sem escapes) e `b'''...'''` (ou `b"""..."""`: com prefixo, `"""` é literal,
+não comentário) é multilinha. Sem a aspa colada, `b` é um
 nome comum. Detalhes e o tipo em [bytes](../bytes/bytes.md).
 
 ### 1.6.4. Booleanos e nulo

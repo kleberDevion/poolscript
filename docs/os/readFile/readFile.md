@@ -18,7 +18,7 @@ post(os.readFile("legado.txt", encoding="latin-1"))   # café, com o acento cert
 ```
 
 Vale **qualquer charset que a linguagem conhece** — os mesmos de
-[`.decode()`](../../bytes/metodos/decode/decode.md): `utf-8`, `latin-1`,
+[`.decode()`](../../byte/decode/decode.md): `utf-8`, `latin-1`,
 `ascii`, `utf-16`/`utf-16be`, `utf-32`/`utf-32be`, com os apelidos
 (`iso-8859-1`, `cp819`, `u8`, …). Não é uma lista à parte: a leitura **chama o
 mesmo `.decode()`**, então o que funciona num funciona no outro.

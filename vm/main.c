@@ -689,6 +689,9 @@ static void ast_json(FILE *f, const PSNode *n)
     if (n->is_static)  { fputs(",\"static\":true", f); }
     if (n->is_nonnull) { fputs(",\"nonnull\":true", f); }
     if (n->i2)         { fprintf(f, ",\"i2\":%d", n->i2); }
+    /* O literal de bytes tem o mesmo `texto` que o de string: sem esta marca o
+     * editor tipava `h = b"q"` como str e oferecia `upper` em vez de `decode`. */
+    if (n->kind == N_LITERAL && n->lit == L_BYTES) { fputs(",\"lit\":\"bytes\"", f); }
     ast_filho(f, "a", n->a, &virg);
     ast_filho(f, "b", n->b, &virg);
     ast_filho(f, "c", n->c, &virg);

@@ -37,7 +37,7 @@ amostras = {
     "list": "[1, 2]",
     "dict": "{\"a\": 1}",
     "tup": "(1, 2)",
-    "bytes": "\"oi\".encode()"
+    "byte": "\"oi\".encode()"
 }
 
 bruto = os.run([POOL, "--metadata"], true)
@@ -110,17 +110,29 @@ else {
 # ── metadata que declara TIPO DE RETORNO inexistente ────────────────────────
 # `retorna: "Button"` sem `Button` em `tipos` faz o editor resolver a cadeia
 # pro nada: `app.button().` não oferecia membro nenhum.
-# escalares e formas genéricas não são "tipos" com métodos — não se cobra
-# que estejam na tabela.
-escalares = ["str", "int", "flo", "bool", "list", "dict", "tup", "bytes",
-             "Null", "funct", "type", "future", "module", "Entity",
-             "list[str]", "list[dict]", "list[int]"]
-tipos_conhecidos = tipos.keys() + escalares
+#
+# O que um `retorna` pode citar: um tipo com tabela de métodos (`tipos`) ou um
+# nome do vocabulário do `type()` (`tipos_valor`, publicado pelo motor da MESMA
+# tabela que o `type()` lê) — e a forma genérica `X[Y]` com os dois conhecidos.
+# Havia aqui uma lista digitada de "escalares" com `bytes` dentro, e foi ela
+# que deixou passar `str.encode -> bytes` depois que o tipo virou `byte`.
+tipos_conhecidos = tipos.keys() + meta["tipos_valor"]
+funct retorno_conhecido(r) {
+    if tipos_conhecidos.contains(r) {
+        return true
+    }
+    if r.endswith("]") and "[" in r {
+        fora = r[0:r.find("[")]
+        dentro = r[r.find("[") + 1:len(r) - 1]
+        return tipos_conhecidos.contains(fora) and tipos_conhecidos.contains(dentro)
+    }
+    return false
+}
 retornos_orfaos = []
 for each t in tipos.keys() {
     for each m in tipos[t] {
         r = m["retorna"]
-        if r != Null and not tipos_conhecidos.contains(r) {
+        if r != Null and not retorno_conhecido(r) {
             retornos_orfaos.append(t + "." + m["nome"] + " -> " + r)
         }
     }
@@ -128,7 +140,7 @@ for each t in tipos.keys() {
 for each mod in meta["modulos"].keys() {
     for each m in meta["modulos"][mod] {
         r = m["retorna"]
-        if r != Null and not tipos_conhecidos.contains(r) {
+        if r != Null and not retorno_conhecido(r) {
             retornos_orfaos.append(mod + "." + m["nome"] + " -> " + r)
         }
     }

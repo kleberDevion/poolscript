@@ -75,12 +75,17 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   da classe, de `self.x = …` e os herdados. Receptor que existe mas cujo tipo
   é desconhecido (`for each x in …`) recebe ao menos o que todo valor tem;
 - **hover** — a assinatura real do método e o tipo que ele devolve, com a
-  prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`);
-  numa **palavra-chave** (`if`, `for each`, `try`, `funct`, `return`…) a seção
-  de `docs/linguagem/` cujo título a traz em crase; numa variável, o tipo
-  construído (`Jinker mapping`) e a linha; num parâmetro, a funct dona; numa
-  funct do arquivo, `int async funct f(...)` e o decorador em cima; num
-  `model`, os campos;
+  prosa da página `docs/…` achada pelo **caminho** (`jinker/request/get`;
+  método de tipo em `docs/<tipo>/`, como `docs/str/upper/`, `docs/byte/decode/`).
+  O receptor pode ser variável de tipo conhecido, **parâmetro tipado**
+  (`byte raw` → `raw.split`), **literal** (`"x".encode`, `b"x".decode`) ou
+  expressão de tipo **desconhecido** (`lines[1].decode`, `head.decode`): aí o
+  hover não inventa o tipo — lista os tipos do motor que têm um membro com
+  aquele nome, os declaráveis primeiro. Numa **palavra-chave** (`if`,
+  `for each`, `try`, `funct`, `return`…) a seção de `docs/linguagem/` cujo
+  título a traz em crase; numa variável, o tipo construído (`Jinker mapping`)
+  e a linha; num parâmetro, `byte raw` e a funct dona; numa funct do arquivo,
+  `int async funct f(...)` e o decorador em cima; num `model`, os campos;
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;

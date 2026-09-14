@@ -21,7 +21,7 @@ post(os.size("legado.txt"))     # 4 bytes — em utf-8 seriam 5
 ```
 
 Vale **qualquer charset que a linguagem conhece** — os mesmos de
-[`.encode()`](../../string/encode/encode.md): `utf-8`, `latin-1`, `ascii`,
+[`.encode()`](../../str/encode/encode.md): `utf-8`, `latin-1`, `ascii`,
 `utf-16`/`utf-16be`, `utf-32`/`utf-32be`, com os apelidos. A gravação **chama o
 mesmo `.encode()`**, então não há lista à parte nem codec que valha num e no
 outro não.

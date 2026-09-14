@@ -45,7 +45,7 @@ AMOSTRAS = {
         "recv2": "(\"c\", \"a\", \"b\")",
         "args": ["", "1", "1, 0"]
     },
-    "bytes": {
+    "byte": {
         "recv": "\"aBc\".encode()",
         "recv2": "\"123\".encode()",
         "args": ["", "1", "\"b\".encode()", "5", "5, \"x\".encode()"]
@@ -269,7 +269,7 @@ if __name__ == "main" {
         addEnd(alvos, a)
     }
     if len(alvos) == 0 {
-        alvos = ["str", "list", "dict", "tup", "bytes"]
+        alvos = ["str", "list", "dict", "tup", "byte"]
     }
     ok = 0
     faltou = 0

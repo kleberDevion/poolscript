@@ -3629,79 +3629,90 @@ static int nativa_bool(VM *vm, Value *args, int n, Value *out)
  */
 #define TIPO0(v, t0)  ((t0) == V_BOOL ? "bool" : nome_do_tipo_valor(v))
 
+/* O NOME que `type()` devolve pra cada valor, em TABELA — e é a mesma tabela
+ * que o `--metadata` publica como `tipos_valor`: o vocabulário que um
+ * `retorna` pode citar. Era um switch de 50 casos que ninguém lia de fora, e
+ * o portão de retorno órfão precisava de uma lista digitada pra saber que
+ * `Null` e `funct` são nomes válidos — foi assim que `str.encode -> bytes`
+ * (um tipo que já não existia) passou batido. Os dois casos que não cabem na
+ * tabela (o nome da Entity da instância e o registrador do jinker, que varia
+ * pelo kind) ficam explícitos na função. */
+static const struct { VType t; const char *nome; } NOMES_ESCALARES[] = {
+    { V_NULL, "Null" }, { V_UNSET, "Null" }, { V_BOOL, "bool" }, { V_INT, "int" },
+    { V_FLOAT, "flo" }, { V_FUNC, "funct" }, { V_NATIVE, "funct" }, { V_TIPO, "type" },
+};
+static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
+    [OBJ_BIGINT]     = "int",
+    [OBJ_FUTURO]     = "future",
+    [OBJ_STRING]     = "str",
+    [OBJ_LIST]       = "list",
+    [OBJ_TUPLE]      = "tup",
+    [OBJ_DICT]       = "dict",
+    [OBJ_CLASS]      = "Entity",
+    [OBJ_INSTANCE]   = NULL,          /* o nome da Entity — na função */
+    [OBJ_CELULA]     = "funct",       /* nunca escapa pro usuário; só pra tabela ficar completa */
+    [OBJ_CLOSURE]    = "funct",
+    [OBJ_BOUND]      = "funct",
+    [OBJ_NATIVA]     = "funct",
+    [OBJ_METODO_NAT] = "funct",
+    [OBJ_MODULO]     = "module",
+    [OBJ_MODEL]      = "PoolModel",
+    [OBJ_ENUM]       = "enum",
+    [OBJ_GERADOR]    = "generator",
+    [OBJ_ARQUIVO]    = "PoolFile",    /* todo arquivo é PoolFile */
+    [OBJ_MODULO_PS]  = "module",
+    [OBJ_BYTES]      = "byte",        /* o tipo é `byte`; `bytes` é o módulo */
+    [OBJ_POOLFILE]   = "PoolFile",
+    [OBJ_SQLCONN]    = "PoolConnection",
+    [OBJ_SQLCUR]     = "PoolCursor",
+    [OBJ_MAILSRV]    = "MailServer",
+    [OBJ_MAILMSG]    = "MailMessage",
+    [OBJ_MAILRD]     = "MailReader",
+    [OBJ_RESPONSE]   = "Response",
+    [OBJ_QRFILE]     = "QRPoolFile",
+    [OBJ_MANPU_RES]  = "ManpuResult",
+    [OBJ_DBCONN]     = "DbConnection",
+    [OBJ_DBCUR]      = "DbCursor",
+    [OBJ_MONGOCONN]  = "MongoConnection",
+    [OBJ_MONGOCOL]   = "MongoCollection",
+    [OBJ_JINKER]     = "Jinker",
+    [OBJ_JCORS]      = "CorsConfig",
+    [OBJ_JREG]       = NULL,          /* varia pelo kind — na função */
+    [OBJ_JRESP]      = "JinkerResponse",
+    [OBJ_JREQ]       = "JinkerRequest",
+    [OBJ_JPROXY]     = "RequestProxy",
+    [OBJ_JUPLOAD]    = "PoolFileUpload",
+    [OBJ_JSOCKNS]    = "SocketNamespace",
+    [OBJ_JEMIT]      = "SocketEmitter",
+    [OBJ_JCHAN]      = "ChannelManager",
+    [OBJ_JCHST]      = "ChannelStatus",
+    [OBJ_WSCONN]     = "WsConnection",
+    [OBJ_QRBUILD]    = "PoolQRCode",
+    [OBJ_QRIMAGE]    = "QRImage",
+    [OBJ_MANPU_FILE] = "ManpuFile",
+    [OBJ_SOCKET]     = "socket",
+    [OBJ_REGEX]      = "Pattern",
+};
+/* O registrador do jinker: um nome por kind, na ordem de JREG_MIDDLEWARE,
+ * JREG_SOCKET e o de rota. Tabela pra o `tipos_valor` citar os três. */
+static const char *const NOMES_JREG[] = { "MiddlewareRegistrar", "_SocketRegistrar", "_RouteRegistrar" };
+
 static const char *nome_do_tipo_valor(Value v)
 {
-    const char *t = "object";
-    switch (v.t) {
-        case V_NULL: case V_UNSET: t = "Null";   break;
-        case V_BOOL:               t = "bool";   break;
-        case V_INT:                t = "int";    break;
-        case V_FLOAT:              t = "flo";    break;
-        case V_FUNC: case V_NATIVE:t = "funct"; break;
-        case V_TIPO:               t = "type";  break;
-        case V_OBJ:
-            switch (v.as.obj->type) {
-                case OBJ_BIGINT:   t = "int";    break;
-                case OBJ_FUTURO:   t = "future"; break;
-                case OBJ_STRING:   t = "str";    break;
-                case OBJ_LIST:     t = "list";   break;
-                case OBJ_TUPLE:    t = "tup";    break;
-                case OBJ_DICT:     t = "dict";   break;
-                case OBJ_CLASS:    t = "Entity"; break;
-                case OBJ_INSTANCE: t = COMO_INST(v)->classe->nome; break;
-                case OBJ_CELULA:   /* nunca escapa pro usuário; só pra tabela ficar completa */
-                case OBJ_CLOSURE:
-                case OBJ_BOUND:
-                case OBJ_NATIVA:
-                case OBJ_METODO_NAT: t = "funct"; break;
-                case OBJ_MODULO:     t = "module"; break;
-                case OBJ_MODEL:      t = "PoolModel"; break;
-                case OBJ_ENUM:       t = "enum";   break;
-                case OBJ_GERADOR:    t = "generator"; break;
-                case OBJ_ARQUIVO:    t = "PoolFile"; break;   /* todo arquivo é PoolFile */
-                case OBJ_MODULO_PS:  t = "module"; break;
-                case OBJ_BYTES:      t = "byte";   break;   /* o tipo é `byte`; `bytes` é o módulo */
-                case OBJ_POOLFILE:   t = "PoolFile"; break;
-                case OBJ_SQLCONN:    t = "PoolConnection"; break;
-                case OBJ_SQLCUR:     t = "PoolCursor"; break;
-                case OBJ_MAILSRV:    t = "MailServer"; break;
-                case OBJ_MAILMSG:    t = "MailMessage"; break;
-                case OBJ_MAILRD:     t = "MailReader"; break;
-                case OBJ_RESPONSE:   t = "Response"; break;
-                case OBJ_QRFILE:     t = "QRPoolFile"; break;
-                case OBJ_MANPU_RES:  t = "ManpuResult"; break;
-                case OBJ_DBCONN:     t = "DbConnection"; break;
-                case OBJ_DBCUR:      t = "DbCursor"; break;
-                case OBJ_MONGOCONN:  t = "MongoConnection"; break;
-                case OBJ_MONGOCOL:   t = "MongoCollection"; break;
-                case OBJ_JINKER:     t = "Jinker"; break;
-                case OBJ_JCORS:      t = "CorsConfig"; break;
-                case OBJ_JREG: {
-                    PSJReg *rg = (PSJReg *)v.as.obj;
-                    t = rg->kind == JREG_MIDDLEWARE ? "MiddlewareRegistrar"
-                      : rg->kind == JREG_SOCKET    ? "_SocketRegistrar"
-                                                   : "_RouteRegistrar";
-                    break;
-                }
-                case OBJ_JRESP:      t = "JinkerResponse"; break;
-                case OBJ_JREQ:       t = "JinkerRequest"; break;
-                case OBJ_JPROXY:     t = "RequestProxy"; break;
-                case OBJ_JUPLOAD:    t = "PoolFileUpload"; break;
-                case OBJ_JSOCKNS:    t = "SocketNamespace"; break;
-                case OBJ_JEMIT:      t = "SocketEmitter"; break;
-                case OBJ_JCHAN:      t = "ChannelManager"; break;
-                case OBJ_JCHST:      t = "ChannelStatus"; break;
-                case OBJ_WSCONN:     t = "WsConnection"; break;
-                case OBJ_QRBUILD:    t = "PoolQRCode"; break;
-                case OBJ_QRIMAGE:    t = "QRImage"; break;
-                case OBJ_MANPU_FILE: t = "ManpuFile"; break;
-                case OBJ_SOCKET:     t = "socket"; break;
-                case OBJ_REGEX:      t = "Pattern"; break;
-                case OBJ__COUNT:     break;   /* sentinela: nunca ocorre */
-            }
-            break;
+    if (v.t == V_OBJ) {
+        ObjType ot = v.as.obj->type;
+        if (ot == OBJ_INSTANCE) return COMO_INST(v)->classe->nome;
+        if (ot == OBJ_JREG) {
+            PSJReg *rg = (PSJReg *)v.as.obj;
+            return rg->kind == JREG_MIDDLEWARE ? NOMES_JREG[0]
+                 : rg->kind == JREG_SOCKET    ? NOMES_JREG[1] : NOMES_JREG[2];
+        }
+        if ((int)ot >= 0 && (int)ot < (int)OBJ__COUNT && NOME_DE_OBJ[ot]) return NOME_DE_OBJ[ot];
+        return "object";
     }
-    return t;
+    for (size_t k = 0; k < sizeof(NOMES_ESCALARES) / sizeof(NOMES_ESCALARES[0]); k++)
+        if (NOMES_ESCALARES[k].t == v.t) return NOMES_ESCALARES[k].nome;
+    return "object";
 }
 
 static int nativa_type(VM *vm, Value *args, int n, Value *out)
@@ -26691,6 +26702,32 @@ void ps_metadata_json(FILE *saida)
         if (i) fputc(',', f);
         fprintf(f, "\n  ");
         jm_txt(f, TIPOS[i].nome);
+    }
+    /* O vocabulário do `type()` — todo nome que um `retorna` pode citar. Sai
+     * das MESMAS tabelas de `nome_do_tipo_valor` (escalares, objetos e o
+     * registrador do jinker), sem lista à parte: é o que deixa o portão de
+     * retorno órfão saber que `Null` e `funct` existem sem digitá-los. */
+    fprintf(f, "\n ],\n \"tipos_valor\": [");
+    {
+        const char *vistos[OBJ__COUNT + 16];
+        int nv = 0;
+        for (int fonte = 0; fonte < 3; fonte++) {
+            size_t total = fonte == 0 ? sizeof(NOMES_ESCALARES) / sizeof(NOMES_ESCALARES[0])
+                         : fonte == 1 ? (size_t)OBJ__COUNT
+                         : sizeof(NOMES_JREG) / sizeof(NOMES_JREG[0]);
+            for (size_t i = 0; i < total; i++) {
+                const char *nm = fonte == 0 ? NOMES_ESCALARES[i].nome
+                               : fonte == 1 ? NOME_DE_OBJ[i] : NOMES_JREG[i];
+                if (!nm) continue;
+                int ja = 0;
+                for (int k = 0; k < nv; k++) if (strcmp(vistos[k], nm) == 0) { ja = 1; break; }
+                if (ja || nv >= (int)(sizeof(vistos) / sizeof(vistos[0]))) continue;
+                vistos[nv++] = nm;
+                if (nv > 1) fputc(',', f);
+                fprintf(f, "\n  ");
+                jm_txt(f, nm);
+            }
+        }
     }
     /* e os que abrem DECLARAÇÃO (`list l = []`), da tabela do parser */
     fprintf(f, "\n ],\n \"tipos_declaraveis\": [");

@@ -458,10 +458,16 @@ static int decode_escape(Lexer *lx, Buf *bf, int bytes)
 #undef ESCAPE_DESCONHECIDO
 
 /* `bytes`: literal `b"..."` — o token é T_BYTES e cada escape é UM byte;
- * caractere não-ASCII no fonte entra com os bytes UTF-8 dele. */
-static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes)
+ * caractere não-ASCII no fonte entra com os bytes UTF-8 dele.
+ *
+ * `c_tok` é a coluna onde o TOKEN começa no fonte: a da aspa numa string
+ * pelada, a do prefixo em `f"…"`, `b"…"`, `br"…"`. O span (`nchars`) já era
+ * medido a partir do prefixo; a coluna começava na aspa, e o token saía
+ * deslocado um ou dois caracteres pra direita — o editor achava que o `.`
+ * de `b"q".` estava DENTRO da string e não completava nada. */
+static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int32_t c_tok)
 {
-    int32_t l0 = lx->linha, c0 = lx->col;
+    int32_t l0 = lx->linha, c0 = c_tok;
     lx->pos++; lx->col++;
     Buf bf = {0};
 
@@ -492,9 +498,9 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes)
     erro_em(lx, "string nao fechada ate o fim do arquivo", l0, c0);
 }
 
-static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int bytes)
+static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int bytes, int32_t c_tok)
 {
-    int32_t l0 = lx->linha, c0 = lx->col;
+    int32_t l0 = lx->linha, c0 = c_tok;
     char tres[4] = { aspa, aspa, aspa, '\0' };
     lx->pos += 3; lx->col += 3;
     Buf bf = {0};
@@ -649,13 +655,16 @@ static void le_ident(Lexer *lx)
         else if (n == 2 && ((txt[0] == 'b' && txt[1] == 'r') || (txt[0] == 'r' && txt[1] == 'b'))) { bytes = 1; raw = 1; prefixo = 1; }
         if (prefixo) {
             char prox = lx->pos < lx->len ? lx->src[lx->pos] : '\0';
-            if (prox == '\'' && espia(lx, 1) == '\'' && espia(lx, 2) == '\'') {
-                le_string_tripla(lx, '\'', fstring, raw, bytes);
+            /* Triplo com QUALQUER aspa: `"""` pelado é comentário de bloco,
+             * mas com prefixo (`b"""…"""`, `f"""…"""`) só pode ser literal —
+             * antes `b"""ab"""` virava `b""` + `"ab"` + `""`, três tokens. */
+            if ((prox == '"' || prox == '\'') && espia(lx, 1) == prox && espia(lx, 2) == prox) {
+                le_string_tripla(lx, prox, fstring, raw, bytes, c0);
                 return;
             }
             /* f"..." e f'...' valem igual — aspas são equivalentes na linguagem */
             if (prox == '"' || prox == '\'') {
-                le_string(lx, prox, fstring, raw, bytes);
+                le_string(lx, prox, fstring, raw, bytes, c0);
                 return;
             }
         }
@@ -852,9 +861,9 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
             pula_comentario_bloco(&lx); continue;
         }
         if (c == '\'' && espia(&lx, 1) == '\'' && espia(&lx, 2) == '\'') {
-            le_string_tripla(&lx, '\'', 0, 0, 0); continue;
+            le_string_tripla(&lx, '\'', 0, 0, 0, lx.col); continue;
         }
-        if (c == '"' || c == '\'') { le_string(&lx, c, 0, 0, 0); continue; }
+        if (c == '"' || c == '\'') { le_string(&lx, c, 0, 0, 0, lx.col); continue; }
 
         if (eh_digito(c)) { le_numero(&lx); continue; }
         if (eh_alpha(c) || c == '_') { le_ident(&lx); continue; }

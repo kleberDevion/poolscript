@@ -776,6 +776,81 @@ async function main() {
            pedido: cli.indexOf("customRequest('poolscriptGrafico')") });
   }
 
+  /* ── 14. MÉTODOS DE TIPO NO HOVER — parâmetro tipado, literal, receptor sem tipo ──
+   * Os três casos que ficavam mudos (medidos no comaly.ps do dono): o tipo do
+   * parâmetro era descartado pelo analise.js; o literal não entrava na cadeia
+   * de nomes; e receptor de tipo desconhecido só tinha os universais. E a
+   * prosa de str/byte, que nunca aparecia porque a doc morava em docs/string
+   * e docs/bytes/metodos — agora docs/str e docs/byte, o nome do tipo. */
+  {
+    const hov = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const txt = (m, id) => { const r = resp(m, id); return r && r.result && r.result.contents
+      ? (r.result.contents.value || String(r.result.contents)) : ''; };
+    const src = 'funct f(byte raw, str body) {\n'          // 0
+              + '    return raw.split(b"\\r\\n", 1)\n'      // 1  raw@11 split@15
+              + '}\n'                                       // 2
+              + 'h = b"q"\n'                                // 3
+              + 'h.decode()\n'                              // 4  decode@2
+              + 's = "abc"\n'                               // 5
+              + 's.upper()\n'                               // 6  upper@2
+              + 'c = "x".encode()\n'                        // 7  encode@8
+              + 'x = f"a{s}".upper()\n'                     // 8  upper@12
+              + 'd = b"x".decode()\n'                       // 9  decode@9
+              + 'lines = ["a", "b"]\n'                      // 10
+              + 'e = lines[1].decode()\n'                   // 11 decode@13
+              + 'head = lines[0]\n'                         // 12
+              + 't = head.decode()\n'                       // 13 decode@9
+              + 'Entity C() {\n    funct m(self) {\n        return 1\n    }\n}\n'   // 14-18
+              + 'k = C()\n'                                 // 19
+              + 'k.upper()\n';                              // 20 upper@2
+    const m = await conversa(src, [
+      hov(31, 1, 16), hov(32, 1, 12), hov(33, 4, 3), hov(34, 6, 3), hov(35, 7, 9), hov(36, 8, 13),
+      hov(37, 9, 10), hov(38, 11, 14), hov(39, 13, 10), hov(40, 3, 0), hov(41, 20, 3),
+    ]);
+    conf('hover em metodo de PARAMETRO TIPADO (`byte raw` -> raw.split) resolve pelo tipo',
+         txt(m, 31).includes('raw.split(') && txt(m, 31).includes('-> list'), txt(m, 31));
+    conf('hover no metodo do parametro tipado traz a prosa da pagina docs/byte',
+         txt(m, 31).includes('Parte no separador'), txt(m, 31));
+    conf('hover no parametro mostra o tipo antes do nome (`byte raw`)',
+         txt(m, 32).includes('byte raw') && txt(m, 32).includes('parâmetro de `f`'), txt(m, 32));
+    conf('variavel de literal b"..." e tipada como byte, nao str (h.decode)',
+         txt(m, 33).includes('h.decode(') && txt(m, 33).includes('Volta pra texto'), txt(m, 33));
+    conf('hover em metodo de str traz a prosa (docs/str)',
+         txt(m, 34).includes('s.upper()') && txt(m, 34).includes('maiúsculas'), txt(m, 34));
+    conf('hover em metodo de LITERAL de texto ("x".encode)',
+         txt(m, 35).includes('str.encode(') && txt(m, 35).includes('-> byte'), txt(m, 35));
+    conf('hover em metodo de f-string (f"...".upper)',
+         txt(m, 36).includes('str.upper()'), txt(m, 36));
+    conf('hover em metodo de literal de bytes (b"x".decode)',
+         txt(m, 37).includes('byte.decode('), txt(m, 37));
+    conf('receptor de tipo DESCONHECIDO (lines[1].decode) lista os candidatos por nome',
+         txt(m, 38).includes('receptor de tipo desconhecido') && txt(m, 38).includes('byte.decode('), txt(m, 38));
+    conf('variavel vinda de indice (head = lines[0]) tambem cai nos candidatos',
+         txt(m, 39).includes('receptor de tipo desconhecido') && txt(m, 39).includes('byte.decode('), txt(m, 39));
+    conf('hover na variavel de literal de bytes diz `byte h`',
+         txt(m, 40).includes('byte h'), txt(m, 40));
+    conf('membro inexistente numa Entity NAO vira candidato de outro tipo (k.upper fica mudo)',
+         txt(m, 41) === '', txt(m, 41));
+  }
+  /* completion e signatureHelp com o literal como receptor */
+  {
+    const m1 = await conversa('h = b"q"\nh.', [compl(42, 1, 2)]);
+    conf('completion apos `h.` com h = b"q" lista os metodos de byte',
+         rotulos(resp(m1, 42)).includes('decode') && rotulos(resp(m1, 42)).includes('hex'), rotulos(resp(m1, 42)).slice(0, 6));
+    const m2 = await conversa('b"q".', [compl(43, 0, 5)]);
+    conf('completion logo apos o literal `b"q".` (o span do token BYTES conta o prefixo)',
+         rotulos(resp(m2, 43)).includes('decode'), rotulos(resp(m2, 43)).slice(0, 6));
+    const sig = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/signatureHelp',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const m3 = await conversa('y = "a,b".split(', [sig(44, 0, 16)]);
+    const l3 = resp(m3, 44) && resp(m3, 44).result && resp(m3, 44).result.signatures[0] ? resp(m3, 44).result.signatures[0].label : '';
+    conf('signatureHelp com literal de texto como receptor ("a,b".split()', l3.startsWith('str.split('), l3);
+    const m4 = await conversa('z = b"x".decode(', [sig(45, 0, 16)]);
+    const l4 = resp(m4, 45) && resp(m4, 45).result && resp(m4, 45).result.signatures[0] ? resp(m4, 45).result.signatures[0].label : '';
+    conf('signatureHelp com literal de bytes como receptor (b"x".decode()', l4.startsWith('byte.decode('), l4);
+  }
+
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram`);

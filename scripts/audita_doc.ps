@@ -87,7 +87,10 @@ funct le_titulo(caminho) {
 # A pasta sob `docs/` que corresponde a cada TIPO da linguagem. O titulo de uma
 # pagina de metodo e `s.upper()`, `l.append()` — o receptor e uma letra, entao
 # quem diz o tipo e o caminho.
-PASTA_DO_TIPO = {"string": "str", "list": "list", "dict": "dict", "bytes": "bytes", "tup": "tup"}
+# Pasta de TIPO é a que tem o nome de um tipo do motor (`docs/str/`, `docs/byte/`,
+# `docs/list/`…): a regra é "o caminho diz o namespace", e sai de `meta["tipos"]`,
+# não de um mapa digitado — o mapa que havia aqui dizia `docs/string/` e
+# `docs/bytes/` e envelheceu quando o tipo virou `byte`.
 
 
 # ONDE a pagina declara o retorno. Duas formas convivem no projeto, e as duas
@@ -415,7 +418,7 @@ if __name__ == "main" {
         # proxy da requisicao, nao o `request.get` de HTTP — sem isto a pagina
         # aparecia devendo uma secao "Response" que nao e dela.
         raiz_doc = caminho.split("/")[1]
-        if nome.split(".")[0] != raiz_doc and not (raiz_doc in PASTA_DO_TIPO) {
+        if nome.split(".")[0] != raiz_doc and not (raiz_doc in meta["tipos"].keys()) {
             continue
         }
         if nome in ret_real {
@@ -424,10 +427,10 @@ if __name__ == "main" {
         else {
             # metodo de tipo: o caminho diz o tipo, o titulo diz o membro
             raiz = caminho.split("/")[1]
-            if raiz in PASTA_DO_TIPO {
+            if raiz in meta["tipos"].keys() {
                 curto = nome.split(".")
                 if len(curto) == 2 {
-                    tentativa = PASTA_DO_TIPO[raiz] + "|" + curto[1]
+                    tentativa = raiz + "|" + curto[1]
                     if tentativa in ret_real {
                         chave = tentativa
                     }

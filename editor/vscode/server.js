@@ -309,7 +309,7 @@ function tokensDe(doc) {
 function dentroDeTextoLivre(doc, pos) {
   for (const t of tokensDe(doc)) {
     if (t.l0 !== pos.line) continue;
-    if (t.t !== 'STR' && t.t !== 'COMMENT') continue;
+    if (t.t !== 'STR' && t.t !== 'FSTRING' && t.t !== 'BYTES' && t.t !== 'COMMENT') continue;
     if (pos.character > t.c0 && pos.character <= t.c0 + t.n) return true;
   }
   return false;
@@ -569,7 +569,11 @@ function construidoPor(idx, nome, linha) {
       /* LITERAL: `nome = "ana"` é str, `xs = [1]` é list, `d = {}` é dict —
        * o nó da árvore diz qual. (Número e bool saem como `Literal` sem
        * texto e não têm tabela de métodos; ficam sem tipo.) */
-      else if (v.k === 'Literal' && typeof v.texto === 'string') achado = { literal: 'str' };
+      else if (v.k === 'Literal' && typeof v.texto === 'string') {
+        /* `h = b"q"` chega com o mesmo `texto` que `"q"`; o `--ast` marca
+         * `lit: "bytes"` e é isso que separa `decode` de `upper` */
+        achado = { literal: v.lit === 'bytes' ? 'byte' : 'str' };
+      }
       else if (v.k === 'ListLiteral') achado = { literal: 'list' };
       else if (v.k === 'DictLiteral') achado = { literal: 'dict' };
       else if (v.k === 'TupleLiteral') achado = { literal: 'tup' };
@@ -582,15 +586,24 @@ function construidoPor(idx, nome, linha) {
 
 /* Resolve a cadeia `a.b.c` e devolve a LISTA DE MEMBROS do que ela designa. */
 function membrosDaCadeia(doc, partes, linha) {
-  if (!partes.length) return [];
+  return membrosDe(doc, alvoDaCadeia(doc, partes, linha), linha);
+}
+
+/* O ALVO que a cadeia `a.b.c` designa (Entity, módulo, tipo do motor,
+ * universal…), ou null quando um passo não existe. Separado de
+ * `membrosDaCadeia` porque o hover precisa saber se o alvo é `universal`
+ * (tipo desconhecido — cabe listar candidatos) ou uma Entity/módulo onde o
+ * membro simplesmente não existe (aí é erro de digitação, fica mudo). */
+function alvoDaCadeia(doc, partes, linha) {
+  if (!partes.length) return null;
   let alvo = tipoDoNome(doc, partes[0], linha);
-  if (!alvo) return [];
+  if (!alvo) return null;
 
   for (let i = 1; i < partes.length; i++) {
     const passo = partes[i];
     const membros = membrosDe(doc, alvo, linha);
     const m = membros.find((x) => x.nome === passo);
-    if (!m) return [];
+    if (!m) return null;
     /* desce um nível: o tipo do membro é o que ele devolve ou declara. A
      * procedência (`via`: de que módulo/membro o tipo saiu) desce junto —
      * é ela que diz em que pasta da doc está a prosa do próximo membro. */
@@ -602,7 +615,7 @@ function membrosDaCadeia(doc, partes, linha) {
     /* membro existe, retorno desconhecido (`request.get(...).`): universais */
     else alvo = { tipo: 'universal' };
   }
-  return membrosDe(doc, alvo, linha);
+  return alvo;
 }
 
 function membrosDe(doc, alvo, linha) {
@@ -709,10 +722,15 @@ function chamadaEm(doc, pos) {
   if (!melhor || !melhor.a) return null;
   const callee = melhor.a;
   const partes = [];
+  let receptor = null;                       /* `"a,b".split(` — literal como receptor */
   let cur = callee;
   while (cur) {
     if (cur.k === 'Name') { partes.unshift(cur.texto); break; }
     if (cur.k === 'MemberAccess') { partes.unshift(cur.texto); cur = cur.a; continue; }
+    if (cur.k === 'Literal' && typeof cur.texto === 'string' && partes.length) {
+      receptor = cur.lit === 'bytes' ? 'byte' : 'str';
+      break;
+    }
     return null;
   }
   const args = melhor.lista || [];
@@ -722,7 +740,8 @@ function chamadaEm(doc, pos) {
     if (a.texto) nomeados.add(a.texto);
     else posicionais++;
   }
-  return { partes, chamado: partes.join('.'), posicionais, nomeados };
+  const chamado = (receptor ? receptor + '.' : '') + partes.join('.');
+  return { partes, receptor, chamado, posicionais, nomeados };
 }
 
 /* O cursor está mesmo DENTRO de um `(` que ainda não fechou?
@@ -744,6 +763,11 @@ function dentroDeParenteses(doc, pos) {
 }
 
 function paramsDoChamado(doc, ch, linha) {
+  if (ch.receptor) {                         /* `"a,b".split(` / `b"x".decode(` */
+    const m = membrosDe(doc, { tipo: 'tipo_motor', nome: ch.receptor }, linha)
+                .find((x) => x.nome === ch.partes[ch.partes.length - 1]);
+    return m ? (m.params || []) : [];
+  }
   if (ch.partes.length > 1) {
     const membros = membrosDaCadeia(doc, ch.partes.slice(0, -1), linha);
     const m = membros.find((x) => x.nome === ch.partes[ch.partes.length - 1]);
@@ -980,15 +1004,44 @@ function completaImport(doc, p) {
   return itens;
 }
 
-/* `"a,b".` — o token antes do ponto é uma STRING: os membros são os de `str`.
- * Só literal de texto: `]` e `}` podem ser índice ou fim de literal, e o tipo
- * de `x[0]` ninguém sabe aqui. */
+/* `"a,b".` — o token antes do ponto é um LITERAL: os membros são os do tipo
+ * dele — `str` para STR e FSTRING, `byte` para BYTES (`b"x".decode`). Só
+ * literal de texto/bytes: `]` e `}` podem ser índice ou fim de literal, e o
+ * tipo de `x[0]` ninguém sabe aqui. */
 function receptorLiteral(doc, pos) {
   const toks = tokensDe(doc).filter((t) => t.l0 === pos.line && t.n > 0 && t.c0 + t.n <= pos.character);
   const n = toks.length;
   if (n < 2 || toks[n - 1].t !== 'DOT') return null;
-  if (toks[n - 2].t === 'STR' && META.tipos.str) return 'str';
+  const t = toks[n - 2].t;
+  if ((t === 'STR' || t === 'FSTRING') && META.tipos.str) return 'str';
+  if (t === 'BYTES' && META.tipos.byte) return 'byte';
   return null;
+}
+
+/* Receptor de tipo DESCONHECIDO (`lines[1].decode`, `head.decode` com `head`
+ * vindo de um índice): o hover não inventa o tipo — lista os tipos do motor
+ * que TÊM um membro com esse nome, os declaráveis (`tipos_nomes`) primeiro,
+ * com a prosa do primeiro que tiver página. Antes devolvia nada, e "nada" era
+ * lido como "esse método não existe". Tudo sai do `--metadata`. */
+function hoverCandidatos(nome) {
+  const decl = META.tipos_nomes || [];
+  const cands = [];
+  for (const t of Object.keys(META.tipos || {})) {
+    if (t === '__universal__') continue;
+    const m = (META.tipos[t] || []).find((x) => x.nome === nome);
+    if (m) cands.push({ t, m });
+  }
+  if (!cands.length) return null;
+  const ordem = (t) => { const i = decl.indexOf(t); return i < 0 ? decl.length : i; };
+  cands.sort((a, b) => (ordem(a.t) - ordem(b.t)) || a.t.localeCompare(b.t));
+  const TETO = 6;
+  const linhas = cands.slice(0, TETO).map((c) => c.t + '.' + assinatura(c.m));
+  const resto = cands.length > TETO ? ' · e mais ' + (cands.length - TETO) : '';
+  let prosa = '';
+  for (const c of cands) { prosa = resumoDe(c.t, nome); if (prosa) break; }
+  return md('```ps\n' + linhas.join('\n') + '\n```\n\nreceptor de tipo desconhecido · '
+            + cands.length + (cands.length === 1 ? ' tipo tem' : ' tipos têm') + ' `' + nome + '`' + resto
+            + (prosa ? '\n\n' + prosa : ''));
 }
 
 conexao.onCompletion((p) => {
@@ -1363,10 +1416,28 @@ conexao.onHover((p) => {
   const { partes, nome } = nomeSob(doc, p.position);
   if (!nome) return null;
 
+  /* Membro de um receptor que a cadeia de nomes NÃO lê: literal (`"x".encode`,
+   * `b"x".decode`) ou expressão (`lines[1].decode`). O `aposPonto` diz que há
+   * receptor; o literal responde pelo tipo dele, o resto vira candidatos. */
+  if (!partes.length && aposPonto) {
+    const lit = receptorLiteral(doc, { line: p.position.line, character: tok.c0 });
+    if (lit) {
+      const m = membrosDe(doc, { tipo: 'tipo_motor', nome: lit }, p.position.line)
+                  .find((x) => x.nome === nome);
+      if (!m) return null;
+      const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
+      return md('```ps\n' + lit + '.' + assinatura(m) + '\n```' + (prosa ? '\n\n' + prosa : ''));
+    }
+    return hoverCandidatos(nome);
+  }
+
   if (partes.length) {                       /* `alvo.membro` */
-    const membros = membrosDaCadeia(doc, partes, p.position.line);
+    const alvo = alvoDaCadeia(doc, partes, p.position.line);
+    const membros = membrosDe(doc, alvo, p.position.line);
     const m = membros.find((x) => x.nome === nome);
-    if (!m) return null;
+    /* receptor conhecido mas de tipo desconhecido (`head = lines[0]`): os
+     * candidatos por nome; membro inexistente numa Entity/módulo: nada */
+    if (!m) return alvo && alvo.tipo === 'universal' ? hoverCandidatos(nome) : null;
     const dono = partes[partes.length - 1];
     const prosa = m.escopo ? resumoDe(m.escopo, m.nome) : '';
     const herd = m.de && m.de !== dono ? `\n\nherdado de \`${m.de}\`` : '';
@@ -1397,7 +1468,9 @@ conexao.onHover((p) => {
     if (b.kind === 'parametro') {
       const esc = idx.escopos.find((s) => s.liga.includes(b));
       const dono = esc ? (esc.tipo === 'metodo' ? esc.entidade + '.' + esc.nome : esc.nome) : '';
-      return md('```ps\n' + b.nome + '\n```\n\nparâmetro' + (dono ? ' de `' + dono + '`' : ''));
+      /* como no fonte: o tipo declarado antes do nome (`byte raw`) */
+      return md('```ps\n' + (b.tipo ? b.tipo + ' ' : '') + b.nome + '\n```\n\nparâmetro'
+                + (dono ? ' de `' + dono + '`' : ''));
     }
     if (b.kind === 'model') {
       const campos = (no.lista || []).filter((f) => f && f.texto)

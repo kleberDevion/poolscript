@@ -3,9 +3,9 @@
 Estes métodos são **parte da linguagem** (não vêm de `import`): qualquer `str`,
 `list`, `dict` ou `byte` os expõe direto, com a sintaxe `valor.metodo(...)`.
 Esta seção é a referência agrupada; cada método tem ainda uma **página
-detalhada** — [`docs/string/`](../string/string.md),
+detalhada** — [`docs/str/`](../str/str.md),
 [`docs/list/`](../list/list.md), [`docs/dict/`](../dict/dict.md) e
-[`docs/bytes/`](../bytes/bytes.md) — com parâmetros, retorno, erros, bordas e
+[`docs/byte/`](../byte/byte.md) — com parâmetros, retorno, erros, bordas e
 exemplos que **rodam de verdade** pela suíte.
 
 Tudo aqui foi verificado rodando o fonte na VM em C.
@@ -310,7 +310,7 @@ for each x in "abc".encode() {
   (sem `import`).
 - **`str`**: 55 métodos (caixa, bordas/preenchimento, busca, testes `is…`,
   divisão/junção, modificação com `replace` aceitando **lista** de alvos,
-  formatação e regex). Detalhe por método em `docs/string/`.
+  formatação e regex). Detalhe por método em `docs/str/`.
 - **`list`**: 14 — a maioria muta a lista (`append`/`sort`/`pop`/…); `sorted`/
   `reversed` (builtins) devolvem cópia.
 - **`dict`**: 12 — `keys`/`values` (ou `value`)/`items`, `get` (com default, sem erro),

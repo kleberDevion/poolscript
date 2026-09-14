@@ -1,4 +1,6 @@
-# Gera as páginas de método do tipo `bytes`, em docs/bytes/metodos/<m>/<m>.md.
+# Gera as páginas de método do tipo `byte`, em docs/byte/<m>/<m>.md — e o
+# índice docs/byte/byte.md que as lista. (`bytes`, sem "s" no tipo, é o MÓDULO,
+# documentado em docs/bytes/.)
 #
 # POR QUE UM GERADOR, E NÃO 42 ARQUIVOS ESCRITOS À MÃO:
 #
@@ -23,7 +25,7 @@ import json
 # `b.hex()` é método do valor. Sem a pasta, a primeira geração passou por cima
 # de `docs/bytes/hex/hex.md` e apagou a página da função — o tipo de estrago
 # que um gerador faz calado.
-DEST = "docs/bytes/metodos"
+DEST = "docs/byte"
 
 # metodo -> [frase, retorno, codigo do exemplo]
 #
@@ -58,15 +60,15 @@ CASOS = {
     "endswith": ["True se termina com o sufixo. Mesmas regras do `startswith`.", "bool",
         "b = \"abcdef\".encode()\npost(b.endswith(\"def\".encode()))\npost(b.endswith(\"cd\".encode(), 0, 4))"],
 
-    "upper": ["Maiúsculas — SÓ ASCII. Byte fora de ASCII fica como está.", "bytes",
+    "upper": ["Maiúsculas — SÓ ASCII. Byte fora de ASCII fica como está.", "byte",
         "post(\"hello\".encode().upper())\npost(bytes.fromhex(\"c0e0\").upper())"],
-    "lower": ["Minúsculas — só ASCII.", "bytes",
+    "lower": ["Minúsculas — só ASCII.", "byte",
         "post(\"HELLO\".encode().lower())"],
-    "title": ["Primeira letra de cada palavra em maiúscula, resto em minúscula. Só ASCII; dígito não é letra e por isso separa palavra.", "bytes",
+    "title": ["Primeira letra de cada palavra em maiúscula, resto em minúscula. Só ASCII; dígito não é letra e por isso separa palavra.", "byte",
         "post(\"hello wOrld 3ab\".encode().title())"],
-    "capitalize": ["Primeiro byte maiúsculo, resto minúsculo.", "bytes",
+    "capitalize": ["Primeiro byte maiúsculo, resto minúsculo.", "byte",
         "post(\"hELLO\".encode().capitalize())"],
-    "swapcase": ["Troca maiúscula por minúscula e vice-versa. Só ASCII.", "bytes",
+    "swapcase": ["Troca maiúscula por minúscula e vice-versa. Só ASCII.", "byte",
         "post(\"Hello\".encode().swapcase())"],
 
     "isalpha": ["True se tem pelo menos um byte e TODOS são letras ASCII.", "bool",
@@ -86,15 +88,15 @@ CASOS = {
     "isascii": ["True se todo byte é menor que 0x80. Diferente dos outros predicados, o VAZIO é True.", "bool",
         "post(\"abc\".encode().isascii())\npost(bytes.fromhex(\"80\").isascii())\npost(\"\".encode().isascii())"],
 
-    "strip": ["Tira das duas pontas. `chars` é um CONJUNTO de bytes, não um prefixo. Sem argumento, tira branco ASCII.", "bytes",
+    "strip": ["Tira das duas pontas. `chars` é um CONJUNTO de bytes, não um prefixo. Sem argumento, tira branco ASCII.", "byte",
         "post(\"  a b \\n\".encode().strip())\npost(\"xyaXbyx\".encode().strip(\"xy\".encode()))"],
-    "lstrip": ["Como `strip`, só da esquerda.", "bytes",
+    "lstrip": ["Como `strip`, só da esquerda.", "byte",
         "post(\"xyaXbyx\".encode().lstrip(\"xy\".encode()))"],
-    "rstrip": ["Como `strip`, só da direita.", "bytes",
+    "rstrip": ["Como `strip`, só da direita.", "byte",
         "post(\"xyaXbyx\".encode().rstrip(\"xy\".encode()))"],
-    "removeprefix": ["Tira o prefixo se ele estiver lá; senão devolve igual. Não é conjunto: é o prefixo inteiro.", "bytes",
+    "removeprefix": ["Tira o prefixo se ele estiver lá; senão devolve igual. Não é conjunto: é o prefixo inteiro.", "byte",
         "b = \"Hello\".encode()\npost(b.removeprefix(\"He\".encode()))\npost(b.removeprefix(\"zz\".encode()))"],
-    "removesuffix": ["Tira o sufixo se ele estiver lá; senão devolve igual.", "bytes",
+    "removesuffix": ["Tira o sufixo se ele estiver lá; senão devolve igual.", "byte",
         "post(\"Hello\".encode().removesuffix(\"lo\".encode()))"],
 
     "split": ["Parte no separador. Sem separador (ou com `Null`), parte em RUNS de branco e descarta os das pontas.", "list",
@@ -107,25 +109,25 @@ CASOS = {
         "post(\"a=b=c\".encode().partition(\"=\".encode()))\npost(\"abc\".encode().partition(\"=\".encode()))"],
     "rpartition": ["Corta na ÚLTIMA ocorrência. Sem ocorrência, tudo vai no ÚLTIMO — ao contrário do `partition`.", "tup",
         "post(\"a=b=c\".encode().rpartition(\"=\".encode()))\npost(\"abc\".encode().rpartition(\"=\".encode()))"],
-    "join": ["Junta uma lista de bytes usando ESTE valor como separador.", "bytes",
+    "join": ["Junta uma lista de bytes usando ESTE valor como separador.", "byte",
         "post(\"-\".encode().join([\"a\".encode(), \"b\".encode(), \"c\".encode()]))"],
-    "replace": ["Troca ocorrências. `count` limita quantas; -1 (o padrão) troca todas.", "bytes",
+    "replace": ["Troca ocorrências. `count` limita quantas; -1 (o padrão) troca todas.", "byte",
         "b = \"aaa\".encode()\npost(b.replace(\"a\".encode(), \"b\".encode()))\npost(b.replace(\"a\".encode(), \"b\".encode(), 2))"],
 
-    "ljust": ["Enche à direita até a largura. `fillbyte` tem que ter exatamente um byte.", "bytes",
+    "ljust": ["Enche à direita até a largura. `fillbyte` tem que ter exatamente um byte.", "byte",
         "post(\"ab\".encode().ljust(5, \".\".encode()))"],
-    "rjust": ["Enche à esquerda até a largura.", "bytes",
+    "rjust": ["Enche à esquerda até a largura.", "byte",
         "post(\"ab\".encode().rjust(5, \".\".encode()))"],
-    "center": ["Centraliza na largura. Com sobra ímpar e largura ímpar, o byte a mais fica à esquerda.", "bytes",
+    "center": ["Centraliza na largura. Com sobra ímpar e largura ímpar, o byte a mais fica à esquerda.", "byte",
         "post(\"ab\".encode().center(7, \"*\".encode()))"],
-    "zfill": ["Enche com zeros à esquerda. Um `+` ou `-` inicial fica NA FRENTE dos zeros.", "bytes",
+    "zfill": ["Enche com zeros à esquerda. Um `+` ou `-` inicial fica NA FRENTE dos zeros.", "byte",
         "post(\"42\".encode().zfill(8))\npost(\"-42\".encode().zfill(8))"],
-    "expandtabs": ["Troca cada tabulação pelos espaços que faltam até a próxima parada.", "bytes",
+    "expandtabs": ["Troca cada tabulação pelos espaços que faltam até a próxima parada.", "byte",
         "post(\"a\\tbc\\td\".encode().expandtabs(4))"],
 
-    "maketrans": ["Monta a tabela de 256 bytes que o `translate` usa. Os dois argumentos precisam ter o mesmo tamanho.", "bytes",
+    "maketrans": ["Monta a tabela de 256 bytes que o `translate` usa. Os dois argumentos precisam ter o mesmo tamanho.", "byte",
         "t = \"\".encode().maketrans(\"abc\".encode(), \"xyz\".encode())\npost(\"abcabc\".encode().translate(t))"],
-    "translate": ["Traduz byte a byte pela tabela de 256 bytes. `Null` no lugar da tabela só apaga; `delete` diz quais bytes somem.", "bytes",
+    "translate": ["Traduz byte a byte pela tabela de 256 bytes. `Null` no lugar da tabela só apaga; `delete` diz quais bytes somem.", "byte",
         "t = \"\".encode().maketrans(\"abc\".encode(), \"xyz\".encode())\npost(\"abcabc\".encode().translate(t))\npost(\"abcabc\".encode().translate(Null, \"b\".encode()))"],
 }
 
@@ -136,7 +138,7 @@ funct assinaturas_do_motor() {
     os.cmd("'" + sys.executable + "' --metadata > " + tmp)
     meta = json.parse(open(tmp).read())
     out = {}
-    for each m in meta["tipos"]["bytes"] {
+    for each m in meta["tipos"]["byte"] {
         ps = []
         for each p in m["params"] {
             if p["default"] == Null {
@@ -212,7 +214,7 @@ funct pagina(metodo, sig, frase, retorno, exemplo, saida, params) {
     L.append(saida)
     L.append("```")
     L.append("")
-    L.append("[← índice](../../bytes.md)")
+    L.append("[← índice](../byte.md)")
     return ("\n").join(L) + "\n"
 }
 
@@ -232,7 +234,7 @@ if __name__ == "main" {
     # todo método do motor tem que ter caso escrito aqui: método novo sem
     # entrada em CASOS reprova, senão a doc silenciosamente fica pra trás
     sem_caso = []
-    for each m in meta["tipos"]["bytes"] {
+    for each m in meta["tipos"]["byte"] {
         if not m["nome"] in CASOS {
             sem_caso.append(m["nome"])
         }
@@ -244,7 +246,7 @@ if __name__ == "main" {
     }
     # e o contrário: caso escrito pra método que não existe mais
     nomes_motor = {}
-    for each m in meta["tipos"]["bytes"] {
+    for each m in meta["tipos"]["byte"] {
         nomes_motor[m["nome"]] = 1
     }
     sobrando = []
@@ -259,7 +261,7 @@ if __name__ == "main" {
     }
 
     mudou = 0
-    for each m in meta["tipos"]["bytes"] {
+    for each m in meta["tipos"]["byte"] {
         nome = m["nome"]
         ps = []
         for each p in m["params"] {
