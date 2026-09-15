@@ -2721,12 +2721,56 @@ const Caso CASOS_LINGUAGEM[] = {
 { "metodo static na Entity com decorador registrador da lib",
   DEC_NET "Entity App() {\n    static object app = NET()\n    @app.route(\"/m\")\n    static funct m() {\n        return \"m\"\n    }\n}\npost(App.app.rotas[\"/m\"]())\n",
   "m", NULL, 0 },
-{ "wrapper em metodo de Entity e recusado: metodo so aceita registro",
-  "funct log(f) {\n    funct w(self) {\n        return 9\n    }\n    return w\n}\nEntity Svc() {\n    @log\n    funct i(self) {\n        return 1\n    }\n}\npost(Svc().i())\n",
-  "", "TypeError: decorador @log de metodo so pode registrar (devolver Null ou o proprio metodo)", 1 },
-{ "@reg sobre Entity com metodo registra o metodo de uma instancia",
-  "funct reg(f) {\n    post(\"registrou\", f)\n}\n@reg\nEntity H() {\n    funct handler(self) {\n        return 1\n    }\n}\npost(\"fim\")\n",
-  "registrou <metodo>\nfim", NULL, 0 },
+/* ── decorador que ENVOLVE um metodo: o que ele devolve vale como o metodo ──
+ * A tabela de metodos da classe guarda o valor; `inst.m` liga o receptor e o
+ * chamado recebe o receptor no 1o argumento. Antes era TypeError ("de metodo
+ * so pode registrar") — limitacao sem motivo, tirada. */
+{ "decorador em metodo: o wrapper vale como o metodo e recebe o self no 1o argumento",
+  "funct log(f) {\n    funct w(*args, **kwarg) {\n        post(\"antes\", len(args))\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity C() {\n    funct __init__(self) {\n        self.v = 7\n    }\n    @log\n    funct m(self, x) {\n        return self.v + x\n    }\n}\nc = C()\npost(c.m(1))\npost(c.m(x=2))\npost(c.m(*[3]))\n",
+  "antes 2\n8\nantes 1\n9\nantes 2\n10", NULL, 0 },
+{ "decorador em metodo: empilhados compoem de baixo pra cima, como na funct solta",
+  "funct a(f) {\n    funct w(*args) {\n        return \"a(\" + f(*args) + \")\"\n    }\n    return w\n}\nfunct b(f) {\n    funct w(*args) {\n        return \"b(\" + f(*args) + \")\"\n    }\n    return w\n}\nEntity C() {\n    @a\n    @b\n    funct m(self) {\n        return \"m\"\n    }\n}\npost(C().m())\n",
+  "a(b(m))", NULL, 0 },
+{ "decorador em metodo static: vale pela classe, e pela instancia segue o erro de static",
+  "funct dobra(f) {\n    funct w(*args) {\n        return f(*args) * 2\n    }\n    return w\n}\nEntity C() {\n    @dobra\n    static funct s(x) {\n        return x + 1\n    }\n}\npost(C.s(4))\nC().s(4)\n",
+  "10", "RuntimeError: funct 's' e static: chame pela Entity (Tipo.s(...)), nao pela instancia", 1 },
+{ "decorador em __init__: vale na instanciacao posicional, nomeada e no base()",
+  "funct conta(f) {\n    funct w(*args, **kwarg) {\n        post(\"init\", len(args), kwarg)\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity A() {\n    @conta\n    funct __init__(self, v = 0) {\n        self.v = v\n    }\n}\nEntity B(A) {\n    funct __init__(self) {\n        base(v=9)\n    }\n}\nEntity D(A) {\n    funct __init__(self) {\n        base(8)\n    }\n}\npost(A(3).v, A(v=4).v, B().v, D().v)\n",
+  "init 2 {}\ninit 1 {'v': 4}\ninit 1 {'v': 9}\ninit 2 {}\n3 4 9 8", NULL, 0 },
+{ "decorador em metodo: o metodo envolvido passa por callback do C (map)",
+  "funct dobra(f) {\n    funct w(*args) {\n        return f(*args) * 2\n    }\n    return w\n}\nEntity E() {\n    funct __init__(self) {\n        self.k = 10\n    }\n    @dobra\n    funct soma(self, x) {\n        return self.k + x\n    }\n}\npost(map([1, 2], E().soma))\n",
+  "[22, 24]", NULL, 0 },
+{ "decorador em metodo: a filha herda o metodo envolvido, e o private segue de dentro",
+  "funct passa(f) {\n    funct w(*args) {\n        return f(*args)\n    }\n    return w\n}\nEntity P() {\n    private segredo = 5\n    funct __init__(self) {\n        self.segredo = 5\n    }\n    @passa\n    funct ver(self) {\n        return self.segredo\n    }\n}\nEntity F(P) {\n}\npost(F().ver())\n",
+  "5", NULL, 0 },
+{ "decorador em metodo: o wrapper e de fora da classe e nao le private",
+  "funct espia(f) {\n    funct w(self) {\n        return self.segredo\n    }\n    return w\n}\nEntity Q() {\n    private segredo = 1\n    funct __init__(self) {\n        self.segredo = 1\n    }\n    @espia\n    funct ver(self) {\n        return 0\n    }\n}\nQ().ver()\n",
+  "", "RuntimeError: acesso negado: 'segredo' e private de Q (so acessivel de dentro da classe)", 1 },
+{ "decorador em metodo: registrador e wrapper nas duas ordens, uma instancia por classe",
+  "Entity Reg() {\n    funct __init__(self) {\n        self.itens = []\n    }\n    funct register(self, f) {\n        self.itens.append(f)\n    }\n}\nr = Reg()\nfunct lock(f) {\n    funct w(*args) {\n        post(\"lock\")\n        return f(*args)\n    }\n    return w\n}\nEntity H() {\n    funct __init__(self) {\n        post(\"init H\")\n    }\n    @r\n    @lock\n    funct um(self) {\n        return \"um\"\n    }\n    @lock\n    @r\n    funct dois(self) {\n        return \"dois\"\n    }\n    @r\n    funct tres(self) {\n        return self\n    }\n}\npost(r.itens[0]())\npost(r.itens[1]())\npost(r.itens[2]() == r.itens[2]())\n",
+  "init H\nlock\num\ndois\nTrue", NULL, 0 },
+{ "decorador em metodo gerador e em metodo async",
+  "funct passa(f) {\n    funct w(*args, **kwarg) {\n        return f(*args, **kwarg)\n    }\n    return w\n}\nEntity G() {\n    @passa\n    funct gera(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n    @passa\n    async funct pega(self, x) {\n        return x * 3\n    }\n}\ng = G()\npost(list(g.gera(3)))\npost(await g.pega(5))\n",
+  "[0, 1, 2]\n15", NULL, 0 },
+/* `chama_valor` (callback do C) deslocava o `self` pelo NOME do 1o parametro
+ * sem olhar `static`: `map([7], f)` com `funct f(self, x)` ligava `[Null, 7]`
+ * calado, e a fibra contava o buraco. Agora so desloca em `static`, como o
+ * OP_CALL — e e o que deixa o metodo envolvido receber o receptor. */
+{ "callback do C nao desloca self pelo nome numa funct comum (map erra como f(x))",
+  "funct f(self, x) {\n    return [self, x]\n}\npost(map([7], f))\n",
+  "", "TypeError: f() missing 1 required positional argument: 'x'", 1 },
+{ "async funct com parametro chamado self conta os argumentos como a sincrona",
+  "async funct f(self, x) {\n    return [self, x]\n}\npost(await f(1, 2))\n",
+  "[1, 2]", NULL, 0 },
+{ "decorador em metodo que devolve Null mantem o metodo",
+  "funct nada(f) {\n    return Null\n}\nEntity C() {\n    @nada\n    funct m(self) {\n        return \"original\"\n    }\n}\npost(C().m())\n",
+  "original", NULL, 0 },
+{ "@reg sobre Entity: o decorador recebe a funct do 1o metodo",
+  "funct reg(f) {\n    post(\"recebeu\", type(f))\n}\n@reg\nEntity H() {\n    funct handler(self) {\n        return 1\n    }\n}\npost(H().handler())\n",
+  "recebeu funct\n1", NULL, 0 },
+{ "@log sobre Entity envolve o 1o metodo",
+  "funct log(f) {\n    funct w(*args) {\n        return \"log:\" + f(*args)\n    }\n    return w\n}\n@log\nEntity H() {\n    funct handler(self) {\n        return \"h\"\n    }\n}\npost(H().handler())\n",
+  "log:h", NULL, 0 },
 { "decoradores empilhados: o de dentro aplica primeiro",
   "funct a(f) {\n    funct wa() {\n        return \"a(\" + f() + \")\"\n    }\n    return wa\n}\nfunct b(f) {\n    funct wb() {\n        return \"b(\" + f() + \")\"\n    }\n    return wb\n}\n@a\n@b\nfunct h() {\n    return \"h\"\n}\npost(h())\n",
   "a(b(h))", NULL, 0 },
@@ -2735,6 +2779,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "decorador sobre Entity sem metodo e SyntaxError, nao silencio",
   "funct reg(f) {\n    return f\n}\n@reg\nEntity Vazia() {\n    x: int\n}\npost(\"fim\")\n",
   "", "SyntaxError: decorador em cima de Entity 'Vazia' sem metodo: nao ha o que registrar", 2 },
+/* `app.middleware()` COM parenteses e o registrador do decorador: guardado em
+ * `middleware=`, a rota rodava sem middleware nenhum, calada. */
+{ "jinker: middleware=app.middleware() com parenteses e recusado no registro da rota",
+  "import jinker\napp = jinker.Jinker(name=\"p\")\n@app.middleware()\nfunct mw() {\n    pass\n}\n@app.get(\"/x\", middleware=app.middleware())\nfunct x() {\n    return 1\n}\n",
+  "", "TypeError: get(middleware=) recebeu o registrador de app.middleware(): escreva middleware=app.middleware, sem parenteses", 1 },
 { "jinker: @app.route segue registrando e o nome fica definido",
   "import jinker\napp = jinker.Jinker()\n@app.route(\"/x\")\nfunct h() {\n    return \"ok\"\n}\npost(h())\n",
   "ok", NULL, 0 },
@@ -2880,6 +2929,34 @@ const Caso CASOS_LINGUAGEM[] = {
   "async funct f(a, *args) {\n    return [a, args]\n}\npost(await f(1, 2, 3))\n", "[1, (2, 3)]", NULL, 0 },
 { "variadico: callback vindo do C (map) com *args",
   "funct f(x, *args) {\n    return x * 2\n}\npost(map([1, 2], f))\n", "[2, 4]", NULL, 0 },
+/* ── FOTOGRAFIAS, decisao aberta (revisao de 236eba8, 2026-09-14) ──────────
+ * Os quatro casos abaixo gravam o que o motor faz HOJE, nao o que deve fazer:
+ * sao a prova de que o comportamento e este, pra quem decidir ter de onde
+ * partir. NAO sao pendentes.
+ *
+ * Teto da pilha de valores no `f(*lista)`: o CALL_EX confere
+ * `sp + len + 2 >= stack_teto` (STACK_SIZE = 65536) e diz "argumentos demais
+ * na chamada" sem nome da funct nem o limite; o que passa por essa conferencia
+ * ainda esbarra na do frame (`sp + ncode/2 + 8`) e sai como RecursionError —
+ * duas frases pro mesmo estouro, escolhidas pelo tamanho da lista. Dentro de
+ * async o teto e o da fibra (FIB_STACK = 2048), entao 3000 itens ja estouram
+ * onde no programa principal cabem 65 mil. */
+{ "espalhar: f(*lista) que cabe no CALL_EX mas nao no frame sai como RecursionError (fotografia)",
+  "funct f(*args) {\n    return len(args)\n}\nl = list(range(65520))\npost(f(*l))\n",
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
+{ "espalhar: f(*lista) acima do teto da pilha e RuntimeError sem nome nem limite (fotografia)",
+  "funct f(*args) {\n    return len(args)\n}\nl = list(range(100000))\npost(f(*l))\n",
+  "", "RuntimeError: argumentos demais na chamada", 1 },
+{ "espalhar: dentro de async o teto do f(*lista) e o da fibra, 2048 (fotografia)",
+  "funct f(*args) {\n    return len(args)\n}\nasync funct g() {\n    l = list(range(3000))\n    return f(*l)\n}\npost(await g())\n",
+  "", "RuntimeError: argumentos demais na chamada", 1 },
+/* `static funct f(self, a, b=10)` chamado com 3 posicionais: antes de 236eba8
+ * o CALL_KW contava o `self` ("from 2 to 3 ... but 4"); agora esconde o
+ * buraco como o OP_CALL ("from 1 to 2 ... but 3"). A doc 14.1 promete
+ * "f() takes N positional arguments but M were given" sem fixar N. */
+{ "static com self chamado por nome com posicionais demais: frase do CALL_KW = a do OP_CALL (fotografia)",
+  "Entity C() {\n    static funct f(self, a, b=10) {\n        return a + b\n    }\n}\npost(C.f(1, 2, 3, b=4))\n",
+  "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 1 },
 
 /* ── CLI ── */
 { "--check não executa o script",

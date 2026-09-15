@@ -194,6 +194,23 @@ confere("middleware barra sem a chave (401)", r.status_code == 401)
 r = get(RAIZ + "/protegida", headers={"X-Chave": "abre"})
 confere("middleware libera com a chave", r.status_code == 200 and r.get_json("entrou") == true)
 
+# ── handlers em classe com decorador que envolve (uso real) ─────────────────
+r = http_post(RAIZ + "/cls/login", body="{}")
+confere("classe: middleware=app.middleware barra a rota-metodo sem a chave (401)", r.status_code == 401)
+r = http_post(RAIZ + "/cls/login", body="{}", headers={"X-Chave": "abre"})
+confere("classe: rota-metodo envolvida por lock responde 200 e roda travada",
+        r.status_code == 200 and r.get_json("ok") == true and r.get_json("travado") == true)
+r = get(RAIZ + "/cls/item/42")
+confere("classe: path param chega no metodo (self, str id)", r.status_code == 200 and r.get_json("id") == "42")
+r = get(RAIZ + "/cls/lock/7")
+confere("classe: path param atravessa o wrapper (*args, **kwargs) e a rota roda travada",
+        r.status_code == 200 and r.get_json("id") == "7" and r.get_json("travado") == true)
+r = get(RAIZ + "/cls/lock/8")
+confere("classe: o lock foi solto no finally da requisicao anterior",
+        r.status_code == 200 and r.get_json("travado") == true)
+r = get(RAIZ + "/cls/mw_erra")
+confere("classe: middleware que levanta erro responde 500, nao deixa a rota rodar", r.status_code == 500)
+
 # ── CORS ────────────────────────────────────────────────────────────────────
 r = get(RAIZ + "/cors-info")
 confere("cors.options() devolve o configurado", "GET" in r.get_json("options"))

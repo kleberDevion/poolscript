@@ -254,6 +254,54 @@ async function main() {
       ? (hv.result.contents.value || String(hv.result.contents)) : '';
     conf('hover da funct variadica mostra **kwarg', txt.includes('**kwarg'), txt);
   }
+  /* Revisao de 236eba8 (2026-09-14): tres furos do editor com variadico,
+   * medidos VERMELHOS antes de entrar aqui. `activeParameter` e
+   * `min(posicionais, ps.length - 1)` e `faltam` filtra por indice — nenhum
+   * dos dois sabe que `*args` absorve todo posicional excedente, que
+   * `*args=`/`**kwarg=` nao existem como nomeado (o motor recusa com
+   * SyntaxError) nem que `**d` na chamada e nomeado, nao posicional. */
+  {
+    /* 2o posicional excedente: o parametro ativo tem que FICAR no `*args`;
+     * hoje pula pro `**kwarg` (activeParameter 2). */
+    const ult = 'route("/x", 1, 2, ';
+    const src = 'funct route(caminho, *args, **kwarg) {\n    return kwarg\n}\n' + ult;
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 8, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 3, character: ult.length } } },
+    ]);
+    const sh = resp(m, 8);
+    const ativo = sh && sh.result ? sh.result.activeParameter : -1;
+    conf('signatureHelp: do 2o posicional excedente em diante o ativo continua no *args',
+         ativo === 1, { activeParameter: ativo });
+  }
+  {
+    /* completion de nomeado: `*args=` e `**kwarg=` sao SyntaxError no motor,
+     * nao podem ser oferecidos; hoje sao os dois unicos itens. */
+    const ult = 'route("/x", ';
+    const src = 'funct route(caminho, *args, **kwarg) {\n    return kwarg\n}\n' + ult;
+    const m = await conversa(src, [compl(9, 3, ult.length)]);
+    const L = rotulos(resp(m, 9));
+    conf('completion de nomeado nao oferece *args= nem **kwarg=',
+         !L.includes('*args=') && !L.includes('**kwarg='), L.slice(0, 6));
+  }
+  {
+    /* `**d` na chamada e nomeado, nao posicional: depois de `f(1, **d, ` o
+     * ativo e o `b` (indice 1) e o nomeado que falta inclui `b=`; hoje o
+     * `**d` conta como 2o posicional e o `b` some dos dois. */
+    const ult = 'f(1, **d, ';
+    const src = 'funct f(a, b, c) {\n    return a\n}\nd = {"c": 1}\n' + ult;
+    const m = await conversa(src, [
+      { jsonrpc: '2.0', id: 10, method: 'textDocument/signatureHelp',
+        params: { textDocument: { uri: URI }, position: { line: 4, character: ult.length } } },
+      compl(11, 4, ult.length),
+    ]);
+    const sh = resp(m, 10);
+    const ativo = sh && sh.result ? sh.result.activeParameter : -1;
+    conf('signatureHelp: **d na chamada nao conta como posicional (ativo fica no b)',
+         ativo === 1, { activeParameter: ativo });
+    const L = rotulos(resp(m, 11));
+    conf('completion de nomeado depois de **d ainda oferece b=', L.includes('b=') && L.includes('c='), L.slice(0, 6));
+  }
 
   /* ── 8. diagnóstico vem do `--check` do motor ──────────────────────────── */
   {

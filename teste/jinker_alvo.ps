@@ -280,6 +280,66 @@ funct cookie_le()
 }
 
 
+# ── handlers em CLASSE, com decorador que envolve (o uso real) ──────────────
+# O formato de um painel de verdade: rotas como métodos, um decorador de lock
+# empilhado embaixo do registrador, path param chegando no método, middleware
+# na forma `middleware=app.middleware`. A suíte sem servidor não tem como ver
+# nada disso — é aqui, pelo HTTP, que se sabe se funciona.
+bool trava_cls = false
+
+funct controla(func)
+{
+    funct envolve(*args, **kwargs)
+    {
+        while trava_cls {
+            sleep(0.05)
+        }
+        trava_cls = true
+        try {
+            return func(*args, **kwargs)
+        }
+        finally {
+            trava_cls = false
+        }
+    }
+    return envolve
+}
+
+funct middleware_que_erra()
+{
+    return 1 / 0
+}
+
+public class PainelAlvo()
+{
+    @app.post("/cls/login", middleware=app.middleware)
+    @controla
+    public funct login(self)
+    {
+        return {"ok": true, "travado": trava_cls}
+    }
+
+    @app.get("/cls/item/:id")
+    public funct item(self, str id)
+    {
+        return {"id": id}
+    }
+
+    @app.get("/cls/lock/:id")
+    @controla
+    public funct comlock(self, str id)
+    {
+        return {"id": id, "travado": trava_cls}
+    }
+
+    @app.get("/cls/mw_erra", middleware=middleware_que_erra)
+    public funct mw_erra(self)
+    {
+        return {"nao": "devia"}
+    }
+}
+
+
 # ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
 @app.route("/__parar")
 funct parar()

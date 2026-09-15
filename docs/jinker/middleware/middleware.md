@@ -71,6 +71,19 @@ Nos dois casos a funct é chamada **sem argumentos** — a requisição vem do
 | `pass` / nada / `null` | libera: a rota roda |
 | `jsonify(...), <status>` (tupla) | barra: essa é a resposta |
 | `JinkerResponse` | barra: essa é a resposta |
+| levanta erro | barra: `500`, e o erro vai pro stderr (`[jinker] erro no middleware /rota: ...`) |
+
+`middleware=app.middleware` é **sem parênteses**. Com parênteses,
+`app.middleware()` é o registrador do decorador, não o middleware, e a rota é
+recusada no registro:
+
+```
+TypeError: get(middleware=) recebeu o registrador de app.middleware(): escreva middleware=app.middleware, sem parenteses
+```
+
+Em rota que é **método de classe**, vale igual — e o path param chega no
+método pelo nome (`@app.get("/item/:id")` em `funct item(self, str id)`), mesmo
+com um decorador `(*args, **kwargs)` embrulhando o método.
 
 ---
 

@@ -252,12 +252,78 @@ a captura inteira.
 
 O mesmo `@objeto.metodo(...)` vale em cima de uma **funct solta**, em cima de
 uma **classe** e em cima de um **método dentro da classe** — e é o mesmo
-protocolo nos três. Só a funct solta pode ser **envolvida** (o nome passa a
-valer o que o decorador devolveu); em cima de classe e de método o decorador
-**registra**: um chamável que devolva outra funct ali é erro
-(`decorador @log de metodo so pode registrar (devolver Null ou o proprio metodo)`).
-Uma Entity sem método (fora `__init__`) embaixo de decorador é `SyntaxError`
-(`nao ha o que registrar`).
+protocolo nos três: o decorador **registra** (`.register`) ou **envolve**
+(chamável). Na funct solta, o nome passa a valer o que ele devolveu; no método,
+o **método** passa a valer o que ele devolveu; em cima de classe, vale pro 1º
+método dela (fora `__init__`). Uma Entity sem método embaixo de decorador é
+`SyntaxError` (`nao ha o que registrar`).
+
+**Envolver um método.** O decorador recebe a funct do método. O que ele devolve
+fica na tabela de métodos da classe, e chamar pela instância entrega o
+receptor como **1º argumento** — então um wrapper `(*args, **kwargs)` repassa
+com `func(*args, **kwargs)` e o `self` chega certo. Vale por posição, por nome,
+com `*lista`, em callback (`map`), em método `static`, gerador, `async`, no
+`__init__` (e no `base()`) e na classe filha, que herda o método envolvido:
+
+```ps
+bool trava = False
+
+funct Controller(func) {
+    funct wrapper(*args, **kwargs) {
+        while trava {
+            sleep(0.4)
+        }
+        trava = True
+        try {
+            return func(*args, **kwargs)
+        }
+        finally {
+            trava = False
+        }
+    }
+    return wrapper
+}
+
+Entity Conta() {
+    funct __init__(self) {
+        self.saldo = 10
+    }
+    @Controller
+    funct saca(self, valor) {
+        return [trava, self.saldo - valor]
+    }
+}
+
+post(Conta().saca(3))          # [True, 7]
+post(Conta().saca(valor=4))    # [True, 6]
+```
+
+O `wrapper` é código de **fora** da classe: membro `private` continua legível
+só dentro do método de baixo, não no wrapper. Um decorador que esquece o
+`return wrapper` devolve `Null`, e `Null` mantém o método — não envolve nada.
+
+**Empilhados** num método compõem igual à funct solta: o de baixo aplica
+primeiro. Com um registrador no meio, a ordem decide o que é registrado:
+
+```ps
+class Painel() {
+    public static object app = jinker.Jinker(__name__)
+
+    @app.get("/lock/:id")      # registra o método JÁ envolvido: a rota roda travada
+    @Controller
+    public funct comlock(self, str id) { return id }
+
+    @Controller                # envolve depois: a rota foi registrada SEM o lock
+    @app.get("/sem")
+    public funct semlock(self) { return "sem" }
+}
+```
+
+**Registrar um método.** O registrador recebe o método como ele vai ser
+chamado: com `self` na assinatura, ligado a **uma instância da classe** —
+criada uma vez, na primeira necessidade, e a mesma pra todos os métodos
+registrados da classe; sem `self` (ou `static`), a própria funct. O registrador
+não troca o método.
 
 ```ps
 @r.rota("/funct")
@@ -265,7 +331,7 @@ funct f() { return 1 }             # registra f
 
 @r.rota("/classe")
 class H() {
-    funct handler(self) { return 1 }   # registra o 1º método (fora o __init__), numa instância
+    funct handler(self) { return 1 }   # registra H.handler ligado à instância de H
 }
 
 class D() {
@@ -273,7 +339,7 @@ class D() {
     static funct h() { return 1 }      # registra D.h — a própria funct
 
     @r.rota("/inst")
-    funct i(self) { return 1 }         # método comum: instancia D() e registra a instância.i
+    funct i(self) { return 1 }         # registra i ligado à instância de D (uma por classe)
 }
 ```
 
@@ -346,6 +412,9 @@ y = 1
   `datasentity`.
 - **Forma geral** (`@objeto.metodo(...)`, `@log`, `@log()`) — com parênteses é
   chamada, sem é o valor; o valor registra (`.register(f)`) ou envolve
-  (chamável: o nome passa a valer o retorno; `Null` mantém). Empilha.
+  (chamável: o nome — ou o método, dentro de classe — passa a valer o retorno;
+  `Null` mantém). Empilha, o de baixo primeiro. No método envolvido o receptor
+  chega como 1º argumento; o registrador recebe o método ligado à instância da
+  classe.
 - **Decorador desconhecido** — erro: `NameError` (nome), `TypeError` (valor que
   não serve) ou `SyntaxError` (nada embaixo). Nunca engole a funct.

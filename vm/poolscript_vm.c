@@ -236,6 +236,17 @@ typedef struct PSClass_ {
      * da classe e dos métodos dela. V_NULL enquanto a classe não tem nenhum —
      * é um dict pra não inventar uma segunda tabela nome→valor. */
     Value    estaticos;
+    /* A tabela de métodos nome → VALOR (paralela a `met_nomes`): nasce com a
+     * funct declarada de cada método e recebe o que um DECORADOR devolveu
+     * (`@log funct m(self)` com `log` devolvendo um wrapper). É o valor que o
+     * acesso `inst.m` liga ao receptor. O proto declarado fica em `met_protos`:
+     * é ele que diz se o método é `static` e que o `private` reconhece como
+     * "de dentro". */
+    Value   *met_valores;
+    /* A instância que os REGISTRADORES dos métodos desta classe recebem
+     * (`@app.post(...) funct h(self)` registra `h` ligado a ela). Uma por
+     * classe, criada na primeira vez que um registrador precisa. */
+    Value    inst_decor;
 } PSClass;
 
 typedef struct {
@@ -244,10 +255,13 @@ typedef struct {
     struct PSDict_ *campos;   /* os `self.x` */
 } PSInstance;
 
+/* Método ligado: o receptor e o VALOR do método, lido da tabela da classe no
+ * acesso `inst.m`. Chamar põe o receptor no slot zero do chamado — o `self`
+ * da funct declarada, ou o 1º argumento do que um decorador pôs no lugar. */
 typedef struct {
     Obj      obj;
     Value    instancia;
-    int32_t  proto;
+    Value    metodo;
 } PSBound;
 /* lib `sockets`: o objeto socket cru (TCP/UDP/UNIX). Métodos
  * bind/listen/accept/connect/send/recv/..., endereço = tup
@@ -1657,6 +1671,14 @@ static void gct_class(VM *vm, Obj *o) {
     for (int32_t i = 0; i < cl->npais; i++)
         if (cl->pais[i]) marca_obj(vm, (Obj *)cl->pais[i]);
     marca_valor(vm, &cl->estaticos);
+    for (int32_t i = 0; cl->met_valores && i < cl->nmetodos; i++)
+        marca_valor(vm, &cl->met_valores[i]);
+    marca_valor(vm, &cl->inst_decor);
+}
+static void gct_bound(VM *vm, Obj *o) {
+    PSBound *b = (PSBound *)o;
+    marca_valor(vm, &b->instancia);
+    marca_valor(vm, &b->metodo);
 }
 static void gct_enum(VM *vm, Obj *o) {
     PSEnum *e = (PSEnum *)o;
@@ -1723,6 +1745,7 @@ static void fin_class(VM *vm, Obj *o) {      /* CLASS (tam fixo; só buffers) */
     for (int32_t i = 0; i < cl->nmetodos; i++) free(cl->met_nomes[i]);
     free(cl->met_nomes);
     free(cl->met_protos);
+    free(cl->met_valores);
     for (int32_t i = 0; i < cl->npriv; i++) free(cl->priv_nomes[i]);
     free(cl->priv_nomes);
     free(cl->pais);
@@ -1791,7 +1814,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_DICT]       = { GC_FN,   0, gct_dict, 0, fin_dict },
     [OBJ_CLASS]      = { GC_FN,   0, gct_class, sizeof(PSClass), fin_class },
     [OBJ_INSTANCE]   = { GC_FN,   0, gct_instance, sizeof(PSInstance), NULL },
-    [OBJ_BOUND]      = { GC_ONE,  offsetof(PSBound, instancia), NULL, sizeof(PSBound), NULL },
+    [OBJ_BOUND]      = { GC_FN,   0, gct_bound, sizeof(PSBound), NULL },
     [OBJ_METODO_NAT] = { GC_ONE,  offsetof(PSMetodoNat, alvo), NULL, sizeof(PSMetodoNat), NULL },
     [OBJ_MODULO]     = { GC_LEAF, 0, NULL, sizeof(PSModulo), NULL },
     [OBJ_NATIVA]     = { GC_LEAF, 0, NULL, sizeof(PSNativa), NULL },
@@ -2137,30 +2160,36 @@ static PSInstance *nova_instancia(VM *vm, PSClass *cl)
     return o;
 }
 
-static PSBound *novo_bound(VM *vm, Value inst, int32_t proto)
+static PSBound *novo_bound(VM *vm, Value inst, Value metodo)
 {
     PSBound *b = calloc(1, sizeof(PSBound));
     if (!b) return NULL;
     b->obj.type = OBJ_BOUND; b->obj.marked = 0;
     b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
     b->instancia = inst;
-    b->proto = proto;
+    b->metodo = metodo;
     vm->alocado += sizeof(PSBound);
     return b;
 }
 
 /* MRO simples: a própria classe, depois os pais da esquerda pra direita —
  * é o `find_method` do interpretador. */
-static int32_t acha_metodo(PSClass *cl, const char *nome)
+/* `valor` (opcional): sai com o valor do método na tabela da classe — a funct
+ * declarada, ou o que um decorador pôs no lugar —, lido no mesmo índice em que
+ * o nome casou. O retorno é o proto DECLARADO. */
+static int32_t acha_metodo(PSClass *cl, const char *nome, Value *valor)
 {
     if (!cl || !cl->met_nomes) return -1;
     for (int32_t i = 0; i < cl->nmetodos; i++)
         /* `met_nomes[i]` NULL não pode derrubar a busca: quem monta a classe já
          * mantém o contador coerente, mas esta função é chamada de todo lugar
          * e é barato não confiar. */
-        if (cl->met_nomes[i] && strcmp(cl->met_nomes[i], nome) == 0) return cl->met_protos[i];
+        if (cl->met_nomes[i] && strcmp(cl->met_nomes[i], nome) == 0) {
+            if (valor) *valor = cl->met_valores ? cl->met_valores[i] : MK_FUNC(cl->met_protos[i]);
+            return cl->met_protos[i];
+        }
     for (int32_t i = 0; i < cl->npais; i++) {
-        int32_t r = acha_metodo(cl->pais[i], nome);
+        int32_t r = acha_metodo(cl->pais[i], nome, valor);
         if (r >= 0) return r;
     }
     return -1;
@@ -4630,6 +4659,8 @@ static int nativa_remove_start(VM *vm, Value *args, int n, Value *out)
 /* Definida junto do laço de execução (precisa reentrar na VM); aqui só a
  * declaração, pra `map`/`filter` poderem entrar na tabela de builtins. */
 static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out);
+static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
+                          const Value *kw_nomes, const Value *kw_vals, int nkw, Value *out);
 /* objetos jinker chamáveis (app(), cors(), app.socket(), app.channel()): dá o
  * params (pra chamada nomeada) e a fn de despacho. 1 se é chamável, 0 senão. */
 typedef int (*FnMetodoChamavel)(VM *, Value, Value *, int, Value *);
@@ -10372,6 +10403,7 @@ static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
 }
 
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
+                           const Value *kw_nomes, const Value *kw_vals, int nkw,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
 static int spec_eh_caminho(const char *s);
@@ -10460,7 +10492,7 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     g->rodando = 1;
 
     Value r;
-    int rc = vm_executa_base(vm, g->proto, NULL, -1, fp0, sp0, lb0, g->cl, &r);
+    int rc = vm_executa_base(vm, g->proto, NULL, -1, NULL, NULL, 0, fp0, sp0, lb0, g->cl, &r);
     int cedeu = vm->ger_cedeu;
     /* lê o estado ANTES de restaurar os campos de transporte */
     if (cedeu) {
@@ -18224,7 +18256,12 @@ static int jk_rota_nova(VM *vm, Value alvo, const char *nome, const char *verbo,
             }
         }
     }
-    /* middleware — função ou app */
+    /* middleware — função ou app. `app.middleware()` COM parênteses é o
+     * registrador do decorador, não o middleware: guardado aqui, a rota rodava
+     * sem middleware nenhum, calada. A forma é `middleware=app.middleware`. */
+    if (n > i_mid && EH_JREG(args[i_mid]))
+        MERRO(vm, "TypeError", "%s(middleware=) recebeu o registrador de app.middleware(): "
+                               "escreva middleware=app.middleware, sem parenteses", nome);
     if (n > i_mid) r->middleware = args[i_mid];
     /* model: o corpo da requisição é validado contra ele ANTES do handler */
     if (n > i_mod && EH_MODEL(args[i_mod])) r->model = args[i_mod];
@@ -19232,29 +19269,49 @@ static int jk_chama_handler(VM *vm, Value handler, PSJReq *req, Value *ret)
     vm->jk_req = MK_OBJ(req);
     vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
 
-    /* Monta os posicionais a partir dos nomes que o handler declara. */
-    Value args[8];
-    int nargs = 0;
+    /* Path params entram POR NOME no handler. A assinatura que decide é a do
+     * proto no fim da cadeia: método ligado (o receptor ocupa o 1º parâmetro),
+     * método trocado por decorador (o wrapper recebe o receptor e repassa),
+     * closure ou funct. Entra o param cujo nome o proto declara — ou todos,
+     * quando ele tem `**kwarg`, que é como um wrapper `(*args, **kwargs)`
+     * repassa pro método de baixo. Antes só funct/closure recebia, e em
+     * posição: um handler que é método não recebia nada e caía em "missing
+     * argument", 500. */
+    Value kn[32], kv[32];
+    int nkw = 0;
     if (req && EH_DICT(req->params) && COMO_DICT(req->params)->count > 0) {
         Value f = handler;
+        int ocupados = 0;
+        for (int passo = 0; passo < 16 && EH_BOUND(f); passo++) {
+            ocupados++;
+            f = COMO_BOUND(f)->metodo;
+        }
         if (EH_CLOSURE(f)) f = MK_FUNC(COMO_CLOSURE(f)->proto);
         if (f.t == V_FUNC && f.as.proto >= 0 && f.as.proto < vm->nprotos) {
             Proto *pr = &vm->protos[f.as.proto];
-            int lim = pr->nparams < 8 ? pr->nparams : 8;
-            for (int i = 0; i < lim; i++) {
-                const char *nm = (pr->param_nomes && pr->param_nomes[i])
-                                 ? pr->param_nomes[i] : NULL;
-                if (!nm) break;
-                PSString *k = nova_string(vm, nm, (int)strlen(nm));
-                if (!k) break;
-                Value chave = MK_OBJ(k), v;
-                if (dict_get(COMO_DICT(req->params), &chave, &v) != 0) break;
-                args[nargs++] = v;
+            PSDict *pd = COMO_DICT(req->params);
+            for (int32_t e = 0; e < pd->usados; e++) {
+                if (!pd->entradas[e].estado || !EH_STRING(pd->entradas[e].chave)) continue;
+                const char *nm = COMO_STRING(pd->entradas[e].chave)->chars;
+                int aceita = pr->slot_kwarg >= 0;
+                for (int q = ocupados; !aceita && q < pr->nparams; q++)
+                    if (pr->param_nomes && pr->param_nomes[q] && strcmp(pr->param_nomes[q], nm) == 0)
+                        aceita = 1;
+                if (!aceita) continue;
+                if (nkw >= 32) {
+                    snprintf(vm->erro, sizeof(vm->erro), "rota com path params demais (maximo 32)");
+                    snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                    vm->jk_req = MK_NULL();
+                    return -1;
+                }
+                kn[nkw] = pd->entradas[e].chave;
+                kv[nkw] = pd->entradas[e].valor;
+                nkw++;
             }
         }
     }
 
-    int rc = chama_valor(vm, handler, nargs ? args : NULL, nargs, ret);
+    int rc = chama_valor_kw(vm, handler, NULL, 0, nkw ? kn : NULL, nkw ? kv : NULL, nkw, ret);
     vm->jk_req = MK_NULL();
     return rc;
 }
@@ -19661,9 +19718,16 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
          * parâmetro — dava "argumentos demais" e o erro morria aqui, calado. */
         Value mret;
         int chamou = (jk_chama_handler(vm, mw, req, &mret) == 0);
-        if (!chamou && j->debug) {
-            fprintf(stderr, "[jinker] erro no middleware: %s\n", vm->erro);
+        if (!chamou) {
+            /* Middleware que ERRA não deixa a requisição passar: é a checagem
+             * de acesso da rota. Antes o erro só aparecia com `debug` e o
+             * handler rodava como se o middleware tivesse aprovado. */
+            fprintf(stderr, "[jinker] erro no middleware %s: %s\n", rota->path, vm->erro);
             fflush(stderr);
+            vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';
+            vm->sp--;
+            jk_erro_json(c, 500, "Erro interno do servidor", hr->keep_alive, "*");
+            return hr->keep_alive;
         }
         /* a doc promete `return jsonify(...), 401`: a tupla (corpo, status)
          * barra igual à de uma rota. */
@@ -21268,14 +21332,17 @@ static Builtin BUILTINS[] = {
  *
  * `args`/`nargs_in` preenchem os primeiros locais; o resto nasce UNSET, igual
  * ao prólogo de uma chamada normal. Termina quando o frame `fp0` retorna.
+ * `kw_nomes`/`kw_vals`/`nkw`: argumentos nomeados da entrada (NULL/0 quando
+ * não há) — é por onde o jinker passa path param por nome.
  */
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
+                           const Value *kw_nomes, const Value *kw_vals, int nkw,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
 
 static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
 {
     vm_corrente = vm;
-    int r = vm_executa_base(vm, proto_inicial, NULL, 0, 0, 0, 0, NULL, resultado);
+    int r = vm_executa_base(vm, proto_inicial, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, resultado);
     vm_corrente = NULL;
     return r;
 }
@@ -21372,6 +21439,59 @@ static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
 
 static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
 {
+    return chama_valor_kw(vm, fn, args, n, NULL, NULL, 0, out);
+}
+
+/* A instância que os registradores dos métodos de `cl` recebem: criada uma
+ * vez, na primeira necessidade, rodando o `__init__` (o da tabela — trocado
+ * por decorador, se for o caso) sem argumentos. Fica em `cl->inst_decor`,
+ * que também é a raiz dela pro GC enquanto o `__init__` roda. */
+static int instancia_decor(VM *vm, PSClass *cl, Value *out)
+{
+    if (cl->inst_decor.t == V_OBJ) { *out = cl->inst_decor; return 0; }
+    PSInstance *ni = nova_instancia(vm, cl);
+    if (!ni) {
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao instanciar %s", cl->nome ? cl->nome : "?");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+        return -1;
+    }
+    cl->inst_decor = MK_OBJ(ni);
+    Value initv = MK_NULL(), ign;
+    if (acha_metodo(cl, "__init__", &initv) >= 0) {
+        int rc;
+        if (initv.t == V_FUNC) {
+            PSBound *b = novo_bound(vm, cl->inst_decor, initv);
+            if (!b) {
+                snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao instanciar %s", cl->nome ? cl->nome : "?");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
+                cl->inst_decor = MK_NULL();
+                return -1;
+            }
+            rc = chama_valor(vm, MK_OBJ(b), NULL, 0, &ign);
+        } else {
+            Value recv = cl->inst_decor;
+            rc = chama_valor(vm, initv, &recv, 1, &ign);
+        }
+        if (rc != 0) { cl->inst_decor = MK_NULL(); return -1; }
+    }
+    *out = cl->inst_decor;
+    return 0;
+}
+
+/* Chamada vinda do C com posicionais E nomeados (`kw_nomes`/`kw_vals`, nkw).
+ * Nomeado só existe pra quem tem proto — nativa e tipo não recebem nome. */
+static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
+                          const Value *kw_nomes, const Value *kw_vals, int nkw, Value *out)
+{
+    if (nkw > 0 && (fn.t == V_NATIVE || EH_NATIVA(fn) || EH_METNAT(fn) || fn.t == V_TIPO)) {
+        snprintf(vm->erro, sizeof(vm->erro), "%s() takes no keyword arguments",
+                 fn.t == V_NATIVE ? BUILTINS[fn.as.nativa].nome
+                 : EH_NATIVA(fn) ? COMO_NATIVA(fn)->nome
+                 : EH_METNAT(fn) ? TABELAS[COMO_METNAT(fn)->tabela][COMO_METNAT(fn)->idx].nome
+                 : tipo_nome(fn.as.i));
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
     if (fn.t == V_NATIVE) return BUILTINS[fn.as.nativa].fn(vm, args, n, out);
     if (EH_NATIVA(fn)) return COMO_NATIVA(fn)->fn(vm, args, n, out);
     if (EH_METNAT(fn)) {
@@ -21409,11 +21529,12 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         /* @static com `self` na assinatura, chamado como VALOR (map/filter/
          * callback/handler/async): não há instância — dropa o self pra o
          * argumento cair no 1º parâmetro REAL, e o slot do self nasce UNSET.
-         * Mesma heurística do OP_CALL/OP_CALL_KW e do interpretador. Sem isto,
-         * o 1º argumento caía no self e o corpo estourava runtime ("'*' entre
-         * tipos incompativeis", parâmetro real ficando UNSET). */
+         * Mesma regra do OP_CALL/OP_CALL_KW: só vale com `static`. Um método
+         * de instância chegando aqui como funct (um decorador repassando o
+         * método com `func(*args)`) já traz o receptor no 1º argumento — e
+         * deslocar empurrava a instância pro parâmetro seguinte. */
         Proto *pf = &vm->protos[proto];
-        if (pf->param_nomes && pf->param_nomes[0]
+        if (pf->eh_static && pf->param_nomes && pf->param_nomes[0]
                 && strcmp(pf->param_nomes[0], "self") == 0) {
             /* O tipo tem que ser escrito JUNTO da mensagem: sem esta linha o
              * `erro_tipo` ficava com o valor do erro ANTERIOR, e o catch
@@ -21427,9 +21548,19 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
             n = n + 1;
         }
     } else if (EH_BOUND(fn)) {
-        /* método ligado: o `self` entra como argumento 0 */
+        /* método ligado: o receptor entra como argumento 0 */
         PSBound *b = COMO_BOUND(fn);
-        proto = b->proto;
+        if (b->metodo.t != V_FUNC) {
+            /* o método é o que um decorador pôs no lugar: chama o valor com o
+             * receptor na frente — o mesmo slot zero da funct declarada */
+            if (n + 1 > 64) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
+                              snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                              return -1; }
+            reais[0] = b->instancia;
+            for (int i = 0; i < n; i++) reais[i + 1] = args[i];
+            return chama_valor_kw(vm, b->metodo, reais, n + 1, kw_nomes, kw_vals, nkw, out);
+        }
+        proto = b->metodo.as.proto;
         /* Método de instância PRECISA declarar `self` como 1º parâmetro (mesma
          * regra do interp e do OP_CALL) — senão a instância cairia no parâmetro
          * real e daria "argumentos demais" sem nexo. */
@@ -21478,7 +21609,7 @@ static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
         return -1;
     }
     int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
-    int r = vm_executa_base(vm, proto, args, n,
+    int r = vm_executa_base(vm, proto, args, n, kw_nomes, kw_vals, nkw,
                             vm->frame_topo, vm->sp, vm->locals_top, cl_chamada, out);
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     return r;
@@ -22037,6 +22168,7 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
 }
 
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
+                           const Value *kw_nomes, const Value *kw_vals, int nkw,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado)
 {
     int fp = fp0;
@@ -22093,7 +22225,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
      * tipo declarado — e fica DEPOIS de todas as declarações pra o `goto`
      * não pular inicialização nenhuma. */
     if (nargs_in >= 0
-            && liga_args(vm, p, &locals[locals0], NULL, 0, args, nargs_in, NULL, NULL, 0, 0) != 0)
+            && liga_args(vm, p, &locals[locals0], NULL, 0, args, nargs_in, kw_nomes, kw_vals, nkw, 0) != 0)
         goto erro_runtime;
 
     for (;;) {
@@ -22814,6 +22946,21 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             int nkw = tn->len;
             int npos = total - nkw;
             Value alvo_kw = stack[sp - total - 1];
+            /* Método ligado cujo valor é o que um decorador pôs no lugar: o
+             * receptor entra como 1º posicional e a chamada é do VALOR —
+             * `[.., m, v1..vN]` vira `[.., valor, receptor, v1..vN]` e redespacha
+             * por aqui mesmo, com a tabela de nomes de volta no topo. */
+            if (EH_BOUND(alvo_kw) && COMO_BOUND(alvo_kw)->metodo.t != V_FUNC) {
+                if (sp + 2 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                PSBound *bk = COMO_BOUND(alvo_kw);
+                for (int k = sp - 1; k >= sp - total; k--) stack[k + 1] = stack[k];
+                stack[sp - total] = bk->instancia;
+                stack[sp - total - 1] = bk->metodo;
+                sp++;
+                stack[sp++] = nomes;
+                arg = total + 1;
+                goto chama_nomeada;
+            }
             /* Closure é uma funct como outra qualquer — normaliza pra FUNC e
              * guarda as células pro frame. Sem isto, a funct que um decorador
              * devolve (`route(caminho)` devolvendo `registra`, que captura
@@ -22830,19 +22977,40 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value inst_kw = MK_NULL();
             int32_t proto_kw;
             if (EH_CLASS(alvo_kw)) {
-                int32_t mp = acha_metodo(COMO_CLASS(alvo_kw), "__init__");
+                Value initv = MK_NULL();
+                int32_t mp = acha_metodo(COMO_CLASS(alvo_kw), "__init__", &initv);
                 if (mp < 0) ERRO_TF(vm, "TypeError", "%s() takes no arguments",
                                     COMO_CLASS(alvo_kw)->nome ? COMO_CLASS(alvo_kw)->nome : "?");
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSInstance *ni = nova_instancia(vm, COMO_CLASS(alvo_kw));
                 if (!ni) ERRO(vm, "sem memoria");
                 inst_kw = MK_OBJ(ni);
+                if (initv.t != V_FUNC) {
+                    /* `__init__` trocado por decorador: roda o valor com a
+                     * instância na frente; a expressão vale a instância */
+                    Value reais[64], ign;
+                    if (npos + 1 > 64) ERRO_T(vm, "TypeError", "argumentos demais (maximo 63)");
+                    reais[0] = inst_kw;
+                    for (int k = 0; k < npos; k++) reais[k + 1] = stack[sp - total + k];
+                    vm->frame_topo = fp + 1;
+                    vm->erro_tipo[0] = '\0';
+                    int rc_ini;
+                    REANCORA(rc_ini = chama_valor_kw(vm, initv, reais, npos + 1,
+                                                     tn->itens, &stack[sp - nkw], nkw, &ign));
+                    if (rc_ini != 0) {
+                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                        goto erro_runtime;
+                    }
+                    sp = sp - total - 1;
+                    stack[sp++] = inst_kw;
+                    break;
+                }
                 proto_kw = mp;
             } else if (alvo_kw.t == V_FUNC) {
                 proto_kw = alvo_kw.as.proto;
             } else if (EH_BOUND(alvo_kw)) {
                 inst_kw = COMO_BOUND(alvo_kw)->instancia;
-                proto_kw = COMO_BOUND(alvo_kw)->proto;
+                proto_kw = COMO_BOUND(alvo_kw)->metodo.as.proto;
             } else if (alvo_kw.t == V_OBJ && (EH_JINKER(alvo_kw) || EH_JCORS(alvo_kw)
                     || EH_JSOCKNS(alvo_kw) || EH_JCHAN(alvo_kw))) {
                 /* objeto jinker chamável por nome: `app(port=...)`, `cors(options=...)` */
@@ -23062,7 +23230,26 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 PSInstance *inst = nova_instancia(vm, COMO_CLASS(alvo));
                 if (!inst) ERRO(vm, "sem memoria ao instanciar");
                 Value iv = MK_OBJ(inst);
-                int32_t mp = acha_metodo(COMO_CLASS(alvo), "__init__");
+                Value initv = MK_NULL();
+                int32_t mp = acha_metodo(COMO_CLASS(alvo), "__init__", &initv);
+                if (mp >= 0 && initv.t != V_FUNC) {
+                    /* `__init__` trocado por decorador: roda o valor com a
+                     * instância na frente; a expressão vale a instância */
+                    Value reais[64], ign;
+                    if (n + 1 > 64) ERRO_T(vm, "TypeError", "argumentos demais (maximo 63)");
+                    reais[0] = iv;
+                    for (int k = 0; k < n; k++) reais[k + 1] = stack[sp - n + k];
+                    vm->frame_topo = fp + 1;
+                    vm->erro_tipo[0] = '\0';
+                    int rc_ini;
+                    REANCORA(rc_ini = chama_valor(vm, initv, reais, n + 1, &ign));
+                    if (rc_ini != 0) {
+                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                        goto erro_runtime;
+                    }
+                    sp = sp - n - 1; stack[sp++] = iv;
+                    break;
+                }
                 if (mp < 0) {
                     /* sem __init__ e sem campo, a Entity nao recebe argumento:
                      * `Zero(1, 2, 3)` engolia os tres em silencio */
@@ -23094,10 +23281,23 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
 
+            if (EH_BOUND(alvo) && COMO_BOUND(alvo)->metodo.t != V_FUNC) {
+                /* o método é o que um decorador pôs no lugar: `[.., m, a1..aN]`
+                 * vira `[.., valor, receptor, a1..aN]` e a chamada é do valor —
+                 * o receptor no slot zero, como na funct declarada */
+                if (sp + 1 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+                PSBound *bv = COMO_BOUND(alvo);
+                for (int k = sp - 1; k >= sp - n; k--) stack[k + 1] = stack[k];
+                stack[sp - n] = bv->instancia;
+                stack[sp - n - 1] = bv->metodo;
+                sp++;
+                arg = n + 1;
+                goto chama_posicional;
+            }
             if (EH_BOUND(alvo)) {
                 /* método ligado: `self` entra como primeiro argumento */
                 PSBound *b = COMO_BOUND(alvo);
-                Proto *np = &vm->protos[b->proto];
+                Proto *np = &vm->protos[b->metodo.as.proto];
                 /* Método de instância PRECISA declarar `self` como 1º parâmetro.
                  * Sem isso, a VM injetava a instância no 1º parâmetro real e o
                  * argumento do usuário virava o 2º -> "argumentos demais" sem
@@ -24129,68 +24329,122 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * [.., dec, funct, nome] -> [.., resultado]. Os três ficam na pilha
          * até o fim: são raízes do GC durante as chamadas. */
         case OP_DECORA: {
-            Value nomev = stack[sp - 1], funct = stack[sp - 2], dec = stack[sp - 3];
-            const char *nome = EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?";
+            /* modo 0 (funct solta):    [.., decorador, funct, nome]
+             * modo 1 (método de classe): [.., classe, nome_metodo, decorador, funct, nome]
+             * -> [.., resultado]. `funct` é o valor atual do método (a funct
+             * declarada, ou o que o decorador de baixo devolveu). */
             int modo = arg;
+            Value nomev = stack[sp - 1], funct = stack[sp - 2], dec = stack[sp - 3];
+            Value clsv = modo == 1 ? stack[sp - 5] : MK_NULL();
+            Value metnomev = modo == 1 ? stack[sp - 4] : MK_NULL();
+            const char *nome = EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?";
             Value r = MK_NULL();
-            int registrou = 0;
             vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
             vm->erro_tipo[0] = '\0';
             /* 1) tem `register`: registrador nativo do jinker ou instância de
              * Entity com campo/método `register` (mesma ordem do GET_MEMBER) */
+            int tem_reg = 0, tab = -1, mi = -1;
+            Value regv = MK_NULL(), regmet = MK_NULL();
             if (EH_JREG(dec)) {
-                int tab, mi;
-                if (acha_metodo_valor(dec, "register", &tab, &mi) == 0) {
-                    if (TABELAS[tab][mi].fn(vm, dec, &funct, 1, &r) != 0) {
-                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
-                        goto erro_runtime;
-                    }
-                    registrou = 1;
-                }
+                if (acha_metodo_valor(dec, "register", &tab, &mi) == 0) tem_reg = 1;
             } else if (EH_INST(dec)) {
                 PSInstance *inst = COMO_INST(dec);
                 PSString *rs = nova_string(vm, "register", 8);
                 if (!rs) ERRO(vm, "sem memoria");
-                Value chave = MK_OBJ(rs), reg;
-                int32_t mp = -1;
-                if (inst->campos && dict_get(inst->campos, &chave, &reg) == 0) {
-                    if (chama_valor(vm, reg, &funct, 1, &r) != 0) {
-                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
-                        goto erro_runtime;
-                    }
-                    registrou = 1;
-                } else if ((mp = acha_metodo(inst->classe, "register")) >= 0) {
-                    PSBound *b = novo_bound(vm, dec, mp);
-                    if (!b) ERRO(vm, "sem memoria");
-                    if (chama_valor(vm, MK_OBJ(b), &funct, 1, &r) != 0) {
-                        if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
-                        goto erro_runtime;
-                    }
-                    registrou = 1;
-                }
+                Value chave = MK_OBJ(rs);
+                if (inst->campos && dict_get(inst->campos, &chave, &regv) == 0) tem_reg = 2;
+                else if (acha_metodo(inst->classe, "register", &regmet) >= 0) tem_reg = 3;
             }
-            if (registrou) {
+            if (tem_reg) {
+                /* O que o registrador recebe: na funct solta, a funct. No
+                 * método de classe, o método como ele vai ser CHAMADO — com
+                 * `self` na assinatura, ligado à instância da classe (uma por
+                 * classe); sem `self` ou `static`, a própria funct. */
+                Value entrega = funct;
+                if (modo == 1 && EH_CLASS(clsv) && EH_STRING(metnomev)) {
+                    int32_t mpd = acha_metodo(COMO_CLASS(clsv), COMO_STRING(metnomev)->chars, NULL);
+                    Proto *pd = mpd >= 0 ? &vm->protos[mpd] : NULL;
+                    if (pd && !pd->eh_static && pd->nparams > 0 && pd->param_nomes
+                            && pd->param_nomes[0] && strcmp(pd->param_nomes[0], "self") == 0) {
+                        Value instd;
+                        int rc_i;
+                        REANCORA(rc_i = instancia_decor(vm, COMO_CLASS(clsv), &instd));
+                        if (rc_i != 0) {
+                            if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                            goto erro_runtime;
+                        }
+                        PSBound *be = novo_bound(vm, instd, funct);
+                        if (!be) ERRO(vm, "sem memoria");
+                        entrega = MK_OBJ(be);
+                    }
+                }
+                int rc_r;
+                if (tem_reg == 1) {
+                    REANCORA(rc_r = TABELAS[tab][mi].fn(vm, dec, &entrega, 1, &r));
+                } else {
+                    if (tem_reg == 3) {
+                        PSBound *b = novo_bound(vm, dec, regmet);
+                        if (!b) ERRO(vm, "sem memoria");
+                        regv = MK_OBJ(b);
+                    }
+                    REANCORA(rc_r = chama_valor(vm, regv, &entrega, 1, &r));
+                }
+                if (rc_r != 0) {
+                    if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                    goto erro_runtime;
+                }
                 r = funct;                      /* registrar não troca a funct */
             } else if (EH_ACTION(dec) || EH_BOUND(dec) || dec.t == V_NATIVE
                        || EH_NATIVA(dec) || EH_METNAT(dec)) {
-                /* 2) chamável: envolve. Null mantém a funct. */
-                if (chama_valor(vm, dec, &funct, 1, &r) != 0) {
+                /* 2) chamável: envolve — o resultado passa a valer como a funct
+                 * (na funct solta, o nome; no método, a entrada da tabela da
+                 * classe). Null mantém a funct. */
+                int rc_d;
+                REANCORA(rc_d = chama_valor(vm, dec, &funct, 1, &r));
+                if (rc_d != 0) {
                     if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
                 }
                 if (r.t == V_NULL || r.t == V_UNSET) r = funct;
-                else if (modo == 1 && !val_iguais(&r, &funct))
-                    ERRO_TF(vm, "TypeError",
-                            "decorador @%s de metodo so pode registrar (devolver Null ou o proprio metodo)",
-                            nome);
             } else {
                 /* 3) nem registra nem envolve */
                 ERRO_TF(vm, "TypeError",
                         "decorador @%s vale '%s', que nao registra (.register) nem envolve (chamavel) a funct",
                         nome, nome_do_tipo_valor(dec));
             }
-            sp -= 2;
+            sp -= modo == 1 ? 4 : 2;
             stack[sp - 1] = r;
+            break;
+        }
+
+        case OP_LOAD_METODO: {
+            /* [.., classe] -> [.., o valor atual do método `consts[arg]`] */
+            Value cv = stack[sp - 1];
+            Value mnv = p->consts[arg];
+            if (!EH_CLASS(cv) || !EH_STRING(mnv)) ERRO(vm, "LOAD_METODO sem classe");
+            Value mv = MK_NULL();
+            if (acha_metodo(COMO_CLASS(cv), COMO_STRING(mnv)->chars, &mv) < 0)
+                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
+                        COMO_CLASS(cv)->nome ? COMO_CLASS(cv)->nome : "?", COMO_STRING(mnv)->chars);
+            stack[sp - 1] = mv;
+            break;
+        }
+
+        case OP_SET_METODO: {
+            /* [.., classe, valor] -> [..]: o valor passa a ser o método
+             * `consts[arg]` na tabela da classe que o DECLARA */
+            Value mv = stack[--sp];
+            Value cv = stack[--sp];
+            Value mnv = p->consts[arg];
+            if (!EH_CLASS(cv) || !EH_STRING(mnv)) ERRO(vm, "SET_METODO sem classe");
+            PSClass *cls = COMO_CLASS(cv);
+            int32_t achou = -1;
+            for (int32_t k = 0; cls->met_nomes && k < cls->nmetodos; k++)
+                if (cls->met_nomes[k] && strcmp(cls->met_nomes[k], COMO_STRING(mnv)->chars) == 0) { achou = k; break; }
+            if (achou < 0 || !cls->met_valores)
+                ERRO_TF(vm, "RuntimeError", "SET_METODO: '%s' nao e metodo declarado em %s",
+                        COMO_STRING(mnv)->chars, cls->nome ? cls->nome : "?");
+            cls->met_valores[achou] = mv;
             break;
         }
 
@@ -24230,7 +24484,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             nova->nome = strdup(def->nome ? def->nome : "?");
             nova->met_nomes = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(char *));
             nova->met_protos = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(int32_t));
-            if (!nova->nome || !nova->met_nomes || !nova->met_protos) ERRO(vm, "sem memoria");
+            nova->met_valores = calloc((size_t)(def->nmetodos > 0 ? def->nmetodos : 1), sizeof(Value));
+            if (!nova->nome || !nova->met_nomes || !nova->met_protos || !nova->met_valores)
+                ERRO(vm, "sem memoria");
             for (int32_t i = 0; i < def->nmetodos; i++) {
                 /* `def->met_nomes[i]` pode ser NULL: a cópia que montou a `def`
                  * grava NULL quando o strdup dela falha. `strdup(NULL)` é
@@ -24243,11 +24499,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * varredura (`make oom`, entity, alocação 141). */
                 if (!nova->met_nomes[i]) { nova->nmetodos = i; ERRO(vm, "sem memoria"); }
                 nova->met_protos[i] = def->met_protos[i];
+                nova->met_valores[i] = MK_FUNC(def->met_protos[i]);   /* até um decorador trocar */
                 nova->nmetodos = i + 1;
             }
             /* membros private (encapsulamento) — copiados da def */
             nova->classe_privada = def->classe_privada;   /* `private class` */
             nova->estaticos = MK_NULL();   /* o dict nasce no 1º `Classe.x = v` */
+            nova->inst_decor = MK_NULL();     /* nasce no 1º registrador que precisa de self */
             nova->priv_nomes = NULL;
             if (def->npriv > 0) {
                 nova->priv_nomes = calloc((size_t)def->npriv, sizeof(char *));
@@ -24293,7 +24551,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp - 1] = v;
                     break;
                 }
-                int32_t mp = acha_metodo(inst->classe, nome);
+                Value metv = MK_NULL();
+                int32_t mp = acha_metodo(inst->classe, nome, &metv);
                 if (mp < 0) {
                     /* campo `static` da classe, lido pela instância:
                      * `self.mapp` dentro de um método comum */
@@ -24321,7 +24580,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                             nome_do_tipo_valor(alvo), nome);
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
-                PSBound *b = novo_bound(vm, alvo, mp);
+                /* Receptor + o valor do método. Método `static` lido pela
+                 * instância liga a funct DECLARADA mesmo que um decorador a
+                 * tenha trocado: chamar dá o erro de sempre ("e static: chame
+                 * pela Entity"), em vez de passar a instância como argumento. */
+                PSBound *b = novo_bound(vm, alvo, vm->protos[mp].eh_static ? MK_FUNC(mp) : metv);
                 if (!b) ERRO(vm, "sem memoria");
                 stack[sp - 1] = MK_OBJ(b);
                 break;
@@ -24336,7 +24599,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                 }
                 /* método estático: chamado direto na Entity */
-                int32_t mp = acha_metodo(COMO_CLASS(alvo), nome);
+                Value metv = MK_NULL();
+                int32_t mp = acha_metodo(COMO_CLASS(alvo), nome, &metv);
                 if (mp < 0) ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
                                     COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?",
                                     nome);
@@ -24351,7 +24615,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     ERRO_TF(vm, "RuntimeError",
                             "Entity '%s' não tem método estático '%s' — instancie primeiro",
                             COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?", nome);
-                stack[sp - 1] = MK_FUNC(mp);
+                stack[sp - 1] = metv;
                 break;
             }
             if (EH_ENUM(alvo)) {
@@ -25160,7 +25424,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_LOAD_BASE_INIT: {
             Value paiv = stack[sp - 1];
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
-            int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__");
+            Value initv = MK_NULL();
+            int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__", &initv);
             /* mesma resposta do OP_CALL_BASE: pai sem __init__ (nem campos)
              * não tem o que receber — antes só o caminho nomeado levantava e
              * o posicional engolia os argumentos calado */
@@ -25169,7 +25434,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         "base(): a Entity pai '%s' nao tem __init__",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
             Value selfv = lbase >= 0 ? vm->locals[lbase] : MK_NULL();
-            PSBound *b = novo_bound(vm, selfv, mp);
+            PSBound *b = novo_bound(vm, selfv, initv);   /* o __init__ da tabela do pai */
             if (!b) ERRO(vm, "sem memoria em base()");
             stack[sp - 1] = MK_OBJ(b);
             break;
@@ -25180,11 +25445,31 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value selfv = stack[sp - n - 1];
             Value paiv  = stack[sp - n - 2];
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
-            int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__");
+            Value initv = MK_NULL();
+            int32_t mp = acha_metodo(COMO_CLASS(paiv), "__init__", &initv);
             if (mp < 0)
                 ERRO_TF(vm, "TypeError",
                         "base(): a Entity pai '%s' nao tem __init__",
                         COMO_CLASS(paiv)->nome ? COMO_CLASS(paiv)->nome : "?");
+            if (initv.t != V_FUNC) {
+                /* `__init__` do pai trocado por decorador: roda o valor com o
+                 * self na frente; `base(...)` vale o que ele devolver */
+                Value reais[64], rb;
+                if (n + 1 > 64) ERRO_T(vm, "TypeError", "argumentos demais (maximo 63)");
+                reais[0] = selfv;
+                for (int k = 0; k < n; k++) reais[k + 1] = stack[sp - n + k];
+                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->erro_tipo[0] = '\0';
+                int rc_b;
+                REANCORA(rc_b = chama_valor(vm, initv, reais, n + 1, &rb));
+                if (rc_b != 0) {
+                    if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                    goto erro_runtime;
+                }
+                sp = sp - n - 2;
+                stack[sp++] = rb;
+                break;
+            }
 
             Proto *np = &vm->protos[mp];
             if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
@@ -26272,7 +26557,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1;
     }
     vm->importando++;   /* corpo importado: o guard é pulado (igual interp) */
-    int rc = vm_executa_base(vm, bp, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, NULL, &ignora);
+    int rc = vm_executa_base(vm, bp, NULL, 0, NULL, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, NULL, &ignora);
     vm->importando--;
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);   /* volta o dir do importador */

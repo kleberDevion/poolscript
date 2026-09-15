@@ -834,8 +834,9 @@ static void emite_decorador_expr(C *c, Unidade *u, PSNode *dec)
     emite_args_e_chama(c, u, dec, &dec->lista2);
 }
 
-/* [.., decorador, funct] -> OP_DECORA -> [.., resultado]. O nome juntado
- * (`app.route`) vai como constante, pra mensagem de erro. */
+/* modo 0: [.., decorador, funct] -> OP_DECORA -> [.., resultado].
+ * modo 1 (método): [.., classe, nome_metodo, decorador, funct] -> [.., resultado].
+ * O nome juntado (`app.route`) vai como constante, pra mensagem de erro. */
 static void emite_decora(C *c, Unidade *u, PSNode *dec, int32_t modo)
 {
     char nome[256]; size_t j = 0;
@@ -2235,7 +2236,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             /* Decorador GERAL: avalia a expressão -> o decorador (guardado);
              * roda o bloco (define a action); e entrega a action ao OP_DECORA,
              * que registra (`.register`) ou envolve (chamável). Na funct solta
-             * o nome passa a valer o resultado; em cima de classe só registra. */
+             * o nome passa a valer o resultado; em cima de classe, o 1º método
+             * da classe passa a valer o resultado. */
             if (dec && !embutido) {
                 if (!n->b) return;
                 const char *act = NULL;
@@ -2289,16 +2291,22 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     emite_decora(c, u, dec, 0);
                     guarda_nome_modo(c, u, act, 1);
                 } else if (cls_nome && met_nome) {
-                    /* handler de classe: instancia a classe e entrega o método
-                     * dela — $inst = Classe(); OP_DECORA($reg, $inst.metodo) */
+                    /* decorador em cima da classe: vale pro 1º método dela, com
+                     * o mesmo protocolo do decorador escrito em cima do método —
+                     * o valor atual do método entra, o resultado volta pra
+                     * tabela da classe. Empilhados em cima da classe compõem:
+                     * o de dentro já gravou quando este lê. */
+                    int32_t kmet = idx_const(c, u, K_STR, 0, 0, met_nome, (int32_t)strlen(met_nome));
                     carrega_nome(c, u, cls_nome);
-                    emite(c, u, OP_CALL, 0);
-                    guarda_nome_modo(c, u, "$inst", 1);
+                    emite(c, u, OP_LOAD_CONST, kmet);
                     carrega_nome(c, u, reg);
-                    carrega_nome(c, u, "$inst");
-                    emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, met_nome, (int32_t)strlen(met_nome)));
+                    carrega_nome(c, u, cls_nome);
+                    emite(c, u, OP_LOAD_METODO, kmet);
                     emite_decora(c, u, dec, 1);
-                    emite(c, u, OP_POP_TOP, 0);
+                    guarda_nome_modo(c, u, "$dmval", 1);
+                    carrega_nome(c, u, cls_nome);
+                    carrega_nome(c, u, "$dmval");
+                    emite(c, u, OP_SET_METODO, kmet);
                 }
                 return;
             }
@@ -2593,15 +2601,28 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 emite(c, u, OP_SET_MEMBER,
                       idx_const(c, u, K_STR, 0, 0, f->texto, (int32_t)strlen(f->texto)));
             }
-            for (int k = 0; k < npares && !CFALHOU(c); k++) {
-                PSNode *dec = par_dec[k];
+            /* Os decoradores de CADA método, na mesma regra da funct solta: as
+             * expressões avaliadas de cima pra baixo, a aplicação de baixo pra
+             * cima (`@a @b m` = `a(b(m))`), cada uma recebendo o valor que a de
+             * baixo deixou. O valor sai da tabela de métodos da classe
+             * (LOAD_METODO) e o resultado final volta pra ela (SET_METODO) — é
+             * ele que `inst.m` liga ao receptor. Os pares vêm agrupados por
+             * método, na ordem do fonte. */
+            static const char *const DM[] = { "$dm0", "$dm1", "$dm2", "$dm3",
+                                               "$dm4", "$dm5", "$dm6", "$dm7" };
+            for (int k = 0; k < npares && !CFALHOU(c); ) {
                 PSNode *met = par_met[k];
                 const char *mn = met->texto ? met->texto : "";
-                /* `@mapp.post(...)` com `mapp` sendo campo de INSTÂNCIA da
-                 * própria classe: na hora em que o corpo é declarado não há
-                 * instância, e o nome cairia num NameError apontando pra
-                 * linha da classe — sem dizer que o que falta é `static`. */
-                {
+                int ini = k, fim = k;
+                while (fim < npares && par_met[fim] == met) fim++;
+                k = fim;
+                if (fim - ini > 8) { cerro(c, "limite do compilador: 8 decoradores num metodo", met); return; }
+                for (int q = ini; q < fim; q++) {
+                    PSNode *dec = par_dec[q];
+                    /* `@mapp.post(...)` com `mapp` sendo campo de INSTÂNCIA da
+                     * própria classe: na hora em que o corpo é declarado não há
+                     * instância, e o nome cairia num NameError apontando pra
+                     * linha da classe — sem dizer que o que falta é `static`. */
                     const char *raiz = dec->lista.itens[0]->texto;
                     for (int32_t i = 0; raiz && i < n->lista2_alias.n; i++) {
                         PSNode *f = n->lista2_alias.itens[i];
@@ -2613,29 +2634,24 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                             return;
                         }
                     }
+                    emite_decorador_expr(c, u, dec);
+                    guarda_nome_modo(c, u, DM[q - ini], 1);
                 }
-                def = &c->out->classes[ci];
-                int eh_est = met->is_static;
-                for (int32_t j = 0; j < def->nmetodos && !eh_est; j++)
-                    if (strcmp(def->met_nomes[j], mn) == 0)
-                        eh_est = c->out->protos[def->met_protos[j]].eh_static;
-                emite_decorador_expr(c, u, dec);
-                guarda_nome_modo(c, u, "$reg", 1);
-                carrega_nome(c, u, "$reg");
-                if (eh_est) {
-                    /* método estático: `Classe.metodo` é a própria funct */
+                int32_t kmet = idx_const(c, u, K_STR, 0, 0, mn, (int32_t)strlen(mn));
+                carrega_nome(c, u, cls_nome_aqui);
+                emite(c, u, OP_LOAD_METODO, kmet);
+                guarda_nome_modo(c, u, "$dmval", 1);
+                for (int q = fim - 1; q >= ini && !CFALHOU(c); q--) {
                     carrega_nome(c, u, cls_nome_aqui);
-                } else {
-                    /* método comum precisa de instância — o mesmo protocolo
-                     * do decorador em cima da classe: `$inst = Classe()` */
-                    carrega_nome(c, u, cls_nome_aqui);
-                    emite(c, u, OP_CALL, 0);
-                    guarda_nome_modo(c, u, "$inst", 1);
-                    carrega_nome(c, u, "$inst");
+                    emite(c, u, OP_LOAD_CONST, kmet);
+                    carrega_nome(c, u, DM[q - ini]);
+                    carrega_nome(c, u, "$dmval");
+                    emite_decora(c, u, par_dec[q], 1);
+                    guarda_nome_modo(c, u, "$dmval", 1);
                 }
-                emite(c, u, OP_GET_MEMBER, idx_const(c, u, K_STR, 0, 0, mn, (int32_t)strlen(mn)));
-                emite_decora(c, u, dec, 1);     /* método: só registra */
-                emite(c, u, OP_POP_TOP, 0);
+                carrega_nome(c, u, cls_nome_aqui);
+                carrega_nome(c, u, "$dmval");
+                emite(c, u, OP_SET_METODO, kmet);
             }
             c->entity_no = no_salvo;
             return;

@@ -738,6 +738,7 @@ function chamadaEm(doc, pos) {
   let posicionais = 0;
   for (const a of args) {
     if (a.texto) nomeados.add(a.texto);
+    else if (a.i2 === 2) continue;           /* `**d` espalha NOMEADOS, não conta como posicional */
     else posicionais++;
   }
   const chamado = (receptor ? receptor + '.' : '') + partes.join('.');
@@ -1085,7 +1086,10 @@ function completa(doc, p) {
   const ch = dentroDeParenteses(doc, p.position) ? chamadaEm(doc, p.position) : null;
   if (ch && !cad.partes.length) {
     const ps = paramsDoChamado(doc, ch, p.position.line);
-    const faltam = ps.filter((x, i) => i >= ch.posicionais && !ch.nomeados.has(x.nome));
+    /* `*args`/`**kwarg` não existem como nomeado (`args=` cai no dict, e
+     * `*args=` é SyntaxError): não se oferecem */
+    const faltam = ps.filter((x, i) => i >= ch.posicionais && !ch.nomeados.has(x.nome)
+                                       && !String(x.nome).startsWith('*'));
     if (faltam.length) {
       return faltam.map((x) => ({
         label: `${x.nome}=`,
@@ -1185,13 +1189,18 @@ function assinaturaEm(doc, p) {
   const ps = paramsDoChamado(doc, ch, p.position.line);
   if (!ps.length) return null;
   const rotulos = ps.map(rotuloParam);
+  /* `*args` absorve todo posicional excedente: do índice dele em diante o
+   * ativo FICA nele, em vez de pular pro `**kwarg` */
+  const iVar = ps.findIndex((x) => String(x.nome).startsWith('*') && !String(x.nome).startsWith('**'));
+  const ativo = iVar >= 0 && ch.posicionais >= iVar
+    ? iVar : Math.min(ch.posicionais, Math.max(0, ps.length - 1));
   return {
     signatures: [{
       label: `${ch.chamado}(${rotulos.join(', ')})`,
       parameters: rotulos.map((r) => ({ label: r })),
     }],
     activeSignature: 0,
-    activeParameter: Math.min(ch.posicionais, Math.max(0, ps.length - 1)),
+    activeParameter: ativo,
   };
 }
 

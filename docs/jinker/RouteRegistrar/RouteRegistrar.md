@@ -45,9 +45,15 @@ funct f() { return {"ok": true} }        # registra f
 
 @app.get("/classe")
 class H() {
-    funct handler(self) { return {"ok": true} }   # instancia H() e registra o 1º método
+    funct handler(self) { return {"ok": true} }   # registra o 1º método, ligado à instância de H
 }
 ```
+
+Em método com `self`, o registrador recebe o método ligado a **uma instância da
+classe** (criada uma vez e a mesma pra todas as rotas da classe); o path param
+chega no método pelo nome. Com um decorador que envolve embaixo do registrador,
+a rota registra o método **já envolvido** — ver "As três posições" em
+[decoradores](../../linguagem/14-decoradores.md).
 
 Como o registrador é descartável, dá pra fazer o mesmo na mão, sem decorador:
 
