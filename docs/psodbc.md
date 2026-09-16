@@ -222,7 +222,7 @@ frente) responde normalmente por `.`.
 
 | Método | Retorno |
 |---|---|
-| `.find(query=None)` | `list` ou `None` |
+| `.find(query=None, skip=0, limit=0, sort=None)` | `list` ou `None` — `skip`/`limit`/`sort` rodam no servidor |
 | `.find_one(query=None)` | `dict` ou `None` |
 | `.insert(document)` | `None` |
 | `.insert_many(documents)` | `None` |

@@ -9,7 +9,7 @@ devolve. Aqui você busca, insere, atualiza e remove **documentos** (dicts).
 
 | Método | O que faz | Página |
 |---|---|---|
-| `.find(query)` | busca **todos** os documentos que batem | [find/find.md](find/find.md) |
+| `.find(query, skip, limit, sort)` | busca os documentos que batem; `skip`/`limit`/`sort` paginam no servidor | [find/find.md](find/find.md) |
 | `.find_one(query)` | busca **um** documento | [find_one/find_one.md](find_one/find_one.md) |
 | `.insert(doc)` | insere **um** documento | [insert/insert.md](insert/insert.md) |
 | `.insert_many(docs)` | insere **vários** | [insert_many/insert_many.md](insert_many/insert_many.md) |

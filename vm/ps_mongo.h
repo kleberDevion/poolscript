@@ -18,9 +18,13 @@ typedef struct PSMongo PSMongo;
 PSMongo *ps_mongo_conecta(const char *uri, const char *dbname, char *erro, size_t ecap);
 void     ps_mongo_fecha(PSMongo *m);
 
-/* find: `*json` recebe um array JSON com os docs (ou "[]"). 0/-1. */
+/* find: `*json` recebe um array JSON com os docs (ou "[]"). 0/-1.
+ * `skip`/`limit` 0 = sem; `sort_json` NULL = ordem do servidor. Vão no `opts`
+ * do driver, então quem pula e corta é o SERVIDOR — sem eles, paginar era
+ * trazer a coleção inteira. `um_so` (find_one) pede limit 1 ao servidor. */
 int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
-                  int um_so, char **json, char *erro, size_t ecap);
+                  int um_so, long skip, long limit, const char *sort_json,
+                  char **json, char *erro, size_t ecap);
 /* insert/insert_many/update/remove: 0/-1. `doc_json` é objeto (insert) ou
  * array (insert_many). update usa {$set: set_json}. */
 int ps_mongo_insert(PSMongo *m, const char *col, const char *doc_json, int muitos,

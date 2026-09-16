@@ -53,19 +53,36 @@ static bson_t *bson_de_json(const char *json, bson_error_t *be)
 }
 
 int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
-                  int um_so, char **json, char *erro, size_t ecap)
+                  int um_so, long skip, long limit, const char *sort_json,
+                  char **json, char *erro, size_t ecap)
 {
     bson_error_t be;
     bson_t *q = bson_de_json(query_json, &be);
     if (!q) { snprintf(erro, ecap, "erro de banco de dados: query invalida: %s", be.message); return -1; }
+    /* skip/limit/sort vão pro servidor: ele pula e corta antes de mandar.
+     * Sem opts, o cursor trazia a coleção inteira pela rede. */
+    bson_t *opts = bson_new();
+    if (skip > 0) BSON_APPEND_INT64(opts, "skip", (int64_t)skip);
+    long lim = um_so ? 1 : limit;
+    if (lim > 0) BSON_APPEND_INT64(opts, "limit", (int64_t)lim);
+    if (sort_json) {
+        bson_t *s = bson_de_json(sort_json, &be);
+        if (!s) {
+            bson_destroy(opts); bson_destroy(q);
+            snprintf(erro, ecap, "erro de banco de dados: sort invalido: %s", be.message);
+            return -1;
+        }
+        BSON_APPEND_DOCUMENT(opts, "sort", s);
+        bson_destroy(s);
+    }
     mongoc_collection_t *c = mongoc_client_get_collection(m->cli, m->dbname, col);
-    mongoc_cursor_t *cur = mongoc_collection_find_with_opts(c, q, NULL, NULL);
+    mongoc_cursor_t *cur = mongoc_collection_find_with_opts(c, q, opts, NULL);
 
     /* monta um array JSON com os docs */
     size_t cap = 256, n = 1;
     char *out = malloc(cap);
     if (!out) {
-        mongoc_cursor_destroy(cur); mongoc_collection_destroy(c); bson_destroy(q);
+        mongoc_cursor_destroy(cur); mongoc_collection_destroy(c); bson_destroy(q); bson_destroy(opts);
         snprintf(erro, ecap, "sem memoria");
         return -1;
     }
@@ -84,7 +101,7 @@ int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
             char *novo = realloc(out, cap);
             if (!novo) {
                 bson_free(dj); free(out);
-                mongoc_cursor_destroy(cur); mongoc_collection_destroy(c); bson_destroy(q);
+                mongoc_cursor_destroy(cur); mongoc_collection_destroy(c); bson_destroy(q); bson_destroy(opts);
                 snprintf(erro, ecap, "sem memoria");
                 return -1;
             }
@@ -100,6 +117,7 @@ int ps_mongo_find(PSMongo *m, const char *col, const char *query_json,
     mongoc_cursor_destroy(cur);
     mongoc_collection_destroy(c);
     bson_destroy(q);
+    bson_destroy(opts);
     if (falhou) { free(out); snprintf(erro, ecap, "erro de banco de dados: %s", be.message); return -1; }
     out[n++] = ']'; out[n] = 0;
     *json = out;

@@ -8559,7 +8559,7 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user, 
 static int met_mconn_collection(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mconn_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MONGOCOL[] = {
-    { "find", met_mcol_find, "query" }, { "find_one", met_mcol_find_one, "query=Null" },
+    { "find", met_mcol_find, "query=Null,skip=0,limit=0,sort=Null" }, { "find_one", met_mcol_find_one, "query=Null" },
     { "insert", met_mcol_insert, "documento" }, { "insert_many", met_mcol_insert_many, "documentos" },
     { "update", met_mcol_update, "query,novo" }, { "remove", met_mcol_remove, "query" },
     { "count", met_mcol_count, "query=Null" },
@@ -17643,9 +17643,11 @@ static int met_mcol_find(VM *vm, Value alvo, Value *args, int n, Value *out);   
 /* mongo offloadado: as ops de rede (find/insert/update/remove/count/connect)
  * rodam numa thread do pool e a fibra cede — igual postgres/mysql, pra `await`
  * no mongo não travar o worker. Só dados C (PSMongo + JSON) viajam pra thread. */
-typedef struct { PSMongo *m; const char *col, *q; int umso; char **rj; char *erro; size_t cap; int rc; } MgFindOff;
+typedef struct { PSMongo *m; const char *col, *q; int umso; long skip, limit; const char *sort;
+                 char **rj; char *erro; size_t cap; int rc; } MgFindOff;
 static void mg_find_off(void *p){ MgFindOff *o = (MgFindOff *)p;
-    o->rc = ps_mongo_find(o->m, o->col, o->q, o->umso, o->rj, o->erro, o->cap); }
+    o->rc = ps_mongo_find(o->m, o->col, o->q, o->umso, o->skip, o->limit, o->sort,
+                          o->rj, o->erro, o->cap); }
 typedef struct { PSMongo *m; const char *col, *doc; int muitos; char *erro; size_t cap; int rc; } MgInsOff;
 static void mg_ins_off(void *p){ MgInsOff *o = (MgInsOff *)p;
     o->rc = ps_mongo_insert(o->m, o->col, o->doc, o->muitos, o->erro, o->cap); }
@@ -17662,20 +17664,49 @@ typedef struct { const char *uri, *db; char *erro; size_t cap; PSMongo *m; } MgC
 static void mg_conn_off(void *p){ MgConnOff *o = (MgConnOff *)p;
     o->m = ps_mongo_conecta(o->uri, o->db, o->erro, o->cap); }
 
-/* núcleo do find/find_one */
+/* `skip`/`limit` do find: Null (o buraco de um nomeado pulado) é o padrão 0;
+ * fora isso, só int >= 0. 0/-1 com o erro posto. */
+static int mongo_inteiro_opcional(VM *vm, Value v, const char *nome, long *out)
+{
+    *out = 0;
+    if (v.t == V_NULL || v.t == V_UNSET) return 0;
+    if (v.t != V_INT)
+        MERRO(vm, "TypeError", "find(): '%s' tem que ser int, nao %s", nome, nome_do_tipo_valor(v));
+    if (v.as.i < 0)
+        MERRO(vm, "ValueError", "find(): '%s' nao pode ser negativo (%lld)", nome, (long long)v.as.i);
+    *out = (long)v.as.i;
+    return 0;
+}
+
+/* núcleo do find/find_one. find(query=Null, skip=0, limit=0, sort=Null):
+ * skip/limit/sort vão pro SERVIDOR (ver ps_mongo_find) — é o que torna paginar
+ * possível sem trazer a coleção inteira. find_one só tem `query`. */
 static int mongo_faz_find(VM *vm, Value alvo, Value *args, int n, int um_so, Value *out)
 {
-    if (n > 1) return erro_aridade(vm, "find", 0, 1, n);
+    if (um_so && n > 1) return erro_aridade(vm, "find_one", 0, 1, n);
+    if (!um_so && n > 4) return erro_aridade(vm, "find", 0, 4, n);
     PSMongoCol *mc = COMO_MONGOCOL(alvo);
     PSMongoConn *cn = COMO_MONGOCONN(mc->conexao);
     if (cn->fechado) MERRO(vm, "TypeError", "conexao fechada");
-    char *qj = mongo_json_de_valor(vm, n == 1 ? args[0] : MK_NULL());
-    if (!qj) MERRO(vm, "MemoryError", "sem memoria");
+    long skip = 0, limit = 0;
+    if (n >= 2 && mongo_inteiro_opcional(vm, args[1], "skip", &skip) != 0) return -1;
+    if (n >= 3 && mongo_inteiro_opcional(vm, args[2], "limit", &limit) != 0) return -1;
+    char *sj = NULL;
+    if (n >= 4 && args[3].t != V_NULL && args[3].t != V_UNSET) {
+        if (!EH_DICT(args[3]))
+            MERRO(vm, "TypeError", "find(): 'sort' tem que ser dict ({\"campo\": 1 ou -1}), nao %s",
+                  nome_do_tipo_valor(args[3]));
+        sj = mongo_json_de_valor(vm, args[3]);
+        if (!sj) MERRO(vm, "MemoryError", "sem memoria");
+    }
+    char *qj = mongo_json_de_valor(vm, n >= 1 ? args[0] : MK_NULL());
+    if (!qj) { free(sj); MERRO(vm, "MemoryError", "sem memoria"); }
     char *rj = NULL, erro[512];
-    MgFindOff fo = { cn->m, mc->nome, qj, um_so, &rj, erro, sizeof(erro), 0 };
+    MgFindOff fo = { cn->m, mc->nome, qj, um_so, skip, limit, sj, &rj, erro, sizeof(erro), 0 };
     fib_offload(vm, mg_find_off, &fo);
     int rc = fo.rc;
     free(qj);
+    free(sj);
     if (rc != 0) { free(rj); snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"DatabaseError"); return -1; }
     Value lista;
     int prc = mongo_json_para_lista(vm, rj, &lista);

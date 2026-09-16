@@ -73,6 +73,64 @@ if con != Null {
     col.remove({"nome": "caio"})
     confere("remove tira só o que casa", col.count({}) == 2)
 
+    # ── find com skip/limit/sort: quem pula e corta é o SERVIDOR ──────────
+    # Antes o find não tinha opção nenhuma e trazia a coleção inteira — paginar
+    # era carregar tudo na memória. Os nomes são os do próprio Mongo.
+    col.remove({})
+    lote = []
+    for each i in range(10) {
+        addEnd(lote, {"k": i, "par": i % 2 == 0})
+    }
+    col.insert_many(lote)
+    ks = funct(docs) {
+        r = []
+        for each d in docs {
+            addEnd(r, d["k"])
+        }
+        return r
+    }
+    confere("sort asc", ks(col.find({}, sort={"k": 1})) == [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    confere("sort desc", ks(col.find({}, sort={"k": -1})) == [9, 8, 7, 6, 5, 4, 3, 2, 1, 0])
+    confere("limit corta no servidor", ks(col.find({}, limit=3, sort={"k": 1})) == [0, 1, 2])
+    confere("skip pula no servidor", ks(col.find({}, skip=7, sort={"k": 1})) == [7, 8, 9])
+    confere("skip + limit + sort = uma pagina", ks(col.find({}, skip=4, limit=3, sort={"k": 1})) == [4, 5, 6])
+    confere("pagina com filtro", ks(col.find({"par": true}, skip=1, limit=2, sort={"k": -1})) == [6, 4])
+    confere("posicional na ordem query, skip, limit, sort", ks(col.find({}, 2, 2, {"k": 1})) == [2, 3])
+    confere("so nomeado, sem query", ks(col.find(limit=2, sort={"k": -1})) == [9, 8])
+    confere("limit 0 = sem limite", len(col.find({}, limit=0)) == 10)
+    confere("skip alem do fim devolve Null, como find vazio", col.find({}, skip=50) == Null)
+    confere("find_one continua achando um", col.find_one({"k": 5})["k"] == 5)
+
+    # `type(e)` no catch e `str`: o TIPO se confere pelo catch com nome.
+    msg = "sem erro"
+    try {
+        col.find({}, skip=-1)
+    } catch (ValueError e) {
+        msg = str(e)
+    }
+    confere("skip negativo e ValueError", msg.startswith("find(): 'skip' nao pode ser negativo"))
+    msg = "sem erro"
+    try {
+        col.find({}, limit=-5)
+    } catch (ValueError e) {
+        msg = str(e)
+    }
+    confere("limit negativo e ValueError", msg.startswith("find(): 'limit' nao pode ser negativo"))
+    msg = "sem erro"
+    try {
+        col.find({}, skip="2")
+    } catch (TypeError e) {
+        msg = str(e)
+    }
+    confere("skip que nao e int e TypeError", msg.startswith("find(): 'skip' tem que ser int"))
+    msg = "sem erro"
+    try {
+        col.find({}, sort="k")
+    } catch (TypeError e) {
+        msg = str(e)
+    }
+    confere("sort que nao e dict e TypeError", msg.startswith("find(): 'sort' tem que ser dict"))
+
     col.remove({})
     con.close()
     post("mongo -> ok")
