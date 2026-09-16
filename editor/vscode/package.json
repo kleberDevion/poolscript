@@ -1,8 +1,9 @@
 {
-  "name": "psl-poolscript",
-  "displayName": "PoolScript Pro",
-  "description": "Suporte à linguagem PoolScript: syntax highlighting e autocomplete type-aware (métodos por tipo, argumentos nomeados, libs instaladas).",
-  "version": "8.5.4",
+  "name": "pyrite",
+  "displayName": "Pyrite",
+  "description": "Suporte à linguagem Pyrite (a PoolScript): realce, autocomplete que sabe o tipo (métodos por tipo, argumentos nomeados, libs instaladas), hover, definição, diagnóstico e depurador.",
+  "homepage": "https://github.com/kleberDevion/poolscript/blob/main/editor/vscode/README.md",
+  "version": "8.5.5",
   "publisher": "KleberSantanadeOliveira",
   "engines": {
     "vscode": "^1.75.0"
@@ -22,6 +23,7 @@
       {
         "id": "poolscript",
         "aliases": [
+          "Pyrite",
           "PoolScript",
           "poolscript",
           "ps"
@@ -39,6 +41,7 @@
       {
         "id": "poolscript-psl",
         "aliases": [
+          "Pyrite",
           "PoolScript",
           "psl"
         ],
@@ -68,19 +71,19 @@
       {
         "command": "poolscript.rodar",
         "title": "Rodar arquivo",
-        "category": "PoolScript",
+        "category": "Pyrite",
         "icon": "$(play)"
       },
       {
         "command": "poolscript.depurar",
         "title": "Depurar arquivo",
-        "category": "PoolScript",
+        "category": "Pyrite",
         "icon": "$(debug-alt)"
       },
       {
         "command": "poolscript.grafico",
         "title": "Gráfico de execução",
-        "category": "PoolScript",
+        "category": "Pyrite",
         "icon": "$(graph)"
       }
     ],
@@ -138,7 +141,7 @@
     "debuggers": [
       {
         "type": "poolscript",
-        "label": "PoolScript",
+        "label": "Pyrite",
         "languages": [
           "poolscript",
           "poolscript-psl"
@@ -185,7 +188,7 @@
         ],
         "configurationSnippets": [
           {
-            "label": "PoolScript: depurar o arquivo aberto",
+            "label": "Pyrite: depurar o arquivo aberto",
             "description": "Roda o .ps em foco sob o depurador do motor.",
             "body": {
               "type": "poolscript",
@@ -199,12 +202,12 @@
     ],
     "themes": [
       {
-        "label": "PoolScript C# Dark",
+        "label": "Pyrite C# Dark",
         "uiTheme": "vs-dark",
         "path": "./themes/poolscript-csharp-dark.json"
       },
       {
-        "label": "PoolScript One Dark",
+        "label": "Pyrite One Dark",
         "uiTheme": "vs-dark",
         "path": "./themes/poolscript-one-dark.json"
       }
@@ -225,7 +228,7 @@
       }
     },
     "configuration": {
-      "title": "PoolScript",
+      "title": "Pyrite",
       "properties": {
         "poolscript.lsp.ativo": {
           "type": "boolean",
