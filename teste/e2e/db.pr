@@ -65,6 +65,34 @@ funct exercita(nome, drv, porta) {
     confere(nome + ": parâmetro ligado filtra de verdade",
             len(r) == 1 and r[0]["nome"] == "bia")
 
+    # O parâmetro vai com o TIPO do valor. O mysql monta a query com o valor
+    # dentro, e mandava tudo entre aspas: `LIMIT '2'` era erro de sintaxe,
+    # `true` virava 'True' (= 0, casava com FALSE) e `'41' + 1` virava float.
+    cur.execute("SELECT id FROM t ORDER BY id LIMIT ? OFFSET ?", (2, 1))
+    r = cur.fetchall()
+    confere(nome + ": int em LIMIT/OFFSET", len(r) == 2 and r[0]["id"] == 2 and r[1]["id"] == 3)
+    cur.execute("SELECT ? + 1 AS v", (41,))
+    r = cur.fetchone()["v"]
+    confere(nome + ": int em conta continua int", r == 42 and type(r) == "int")
+    cur.execute("DROP TABLE IF EXISTS tb")
+    cur.execute("CREATE TABLE tb (id INT, ativo BOOLEAN, preco FLOAT)")
+    cur.execute("INSERT INTO tb (id, ativo, preco) VALUES (?, ?, ?)", (1, true, 2.5))
+    cur.execute("INSERT INTO tb (id, ativo, preco) VALUES (?, ?, ?)", (2, false, 7.25))
+    con.commit()
+    cur.execute("SELECT id FROM tb WHERE ativo = ?", (true,))
+    r = cur.fetchall()
+    confere(nome + ": bool true casa so com a linha true", len(r) == 1 and r[0]["id"] == 1)
+    cur.execute("SELECT id FROM tb WHERE ativo = ?", (false,))
+    r = cur.fetchall()
+    confere(nome + ": bool false casa so com a linha false", len(r) == 1 and r[0]["id"] == 2)
+    cur.execute("SELECT id FROM tb WHERE preco = ?", (7.25,))
+    r = cur.fetchall()
+    confere(nome + ": flo como parametro", len(r) == 1 and r[0]["id"] == 2)
+    cur.execute("SELECT id FROM tb WHERE ? = 'a''b'", ("a'b",))
+    confere(nome + ": texto com aspa segue escapado", len(cur.fetchall()) == 2)
+    cur.execute("DROP TABLE IF EXISTS tb")
+    con.commit()
+
     # ── ERRO: o caminho que decide se o defeito aparece ou some ─────────────
     #
     # Todo o exercício acima é caminho feliz, e por isso `odbc_erro`

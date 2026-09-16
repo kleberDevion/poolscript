@@ -17217,24 +17217,34 @@ static PSDbCursor *novo_dbcursor(VM *vm, Value conexao, int drv)
     return cu;
 }
 
-/* tupla/lista de params -> array de textos (malloc); NULL = SQL NULL */
-static char **db_params_txt(VM *vm, Value v, int *nout)
+/* tupla/lista de params -> array de textos (malloc); NULL = SQL NULL.
+ * `*tipos_out` recebe o tipo de cada um ('i' int, 'f' flo, 'b' bool, 's' o
+ * resto) — ver ps_db_exec: sqlite e mysql precisam dele pra ligar número e bool
+ * como número e bool. Bool vai como "true"/"false" (o postgres aceita e o tipo
+ * decide o resto). */
+static char **db_params_txt(VM *vm, Value v, int *nout, char **tipos_out)
 {
     *nout = 0;
+    *tipos_out = NULL;
     if (v.t == V_NULL || v.t == V_UNSET) return NULL;
     if (!EH_SEQ(v)) return NULL;
     PSList *l = COMO_LIST(v);
     char **arr = calloc((size_t)(l->len > 0 ? l->len : 1), sizeof(char *));
     if (!arr) return NULL;
+    char *tipos = calloc((size_t)l->len + 1, 1);
+    if (!tipos) { free(arr); return NULL; }
     for (int i = 0; i < l->len; i++) {
         Value e = l->itens[i];
+        tipos[i] = e.t == V_INT ? 'i' : e.t == V_FLOAT ? 'f' : e.t == V_BOOL ? 'b' : 's';
         if (e.t == V_NULL || e.t == V_UNSET) { arr[i] = NULL; continue; }
+        if (e.t == V_BOOL) { arr[i] = strdup(e.as.b ? "true" : "false"); continue; }
         TXTBUF_AUTO t = {0};
         if (valor_para_texto(&t, &e, 0) != 0) { continue; }
         arr[i] = malloc((size_t)t.n + 1);
         if (arr[i]) { memcpy(arr[i], t.b ? t.b : "", (size_t)t.n); arr[i][t.n] = 0; }
     }
     *nout = l->len;
+    *tipos_out = tipos;
     return arr;
 }
 static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0;i<n;i++) free(arr[i]); free(arr); }
@@ -17245,13 +17255,13 @@ static void db_params_libera(char **arr, int n) { if (!arr) return; for (int i=0
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg);
 static void fib_espera_ms(VM *vm, int ms);   /* cede a fibra por `ms`; def. junto do sleep() */
 typedef struct {
-    PSDbConn *c; const char *sql; const char **params; int nparams;
+    PSDbConn *c; const char *sql; const char **params; const char *tipos; int nparams;
     PSDbRes *res; char *erro; size_t ecap; char *tipo_out; size_t tcap; int rc;
 } DbExecArgs;
 static void db_exec_offload(void *p)
 {
     DbExecArgs *a = (DbExecArgs *)p;
-    a->rc = ps_db_exec(a->c, a->sql, a->params, a->nparams, a->res,
+    a->rc = ps_db_exec(a->c, a->sql, a->params, a->tipos, a->nparams, a->res,
                        a->erro, a->ecap, a->tipo_out, a->tcap);
 }
 /* mesmo esquema pro connect() — o handshake de rede também é bloqueante */
@@ -17299,15 +17309,16 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     sql_palavra(COMO_STRING(args[0])->chars, kw, sizeof(kw));
     if (sql_eh_dml(kw) && !cn->em_transacao) {
         PSDbRes rb = {0}; char eb[256] = "", tb[64] = "";
-        if (ps_db_exec(cn->conn, "BEGIN", NULL, 0, &rb, eb, sizeof(eb), tb, sizeof(tb)) == 0) {
+        if (ps_db_exec(cn->conn, "BEGIN", NULL, NULL, 0, &rb, eb, sizeof(eb), tb, sizeof(tb)) == 0) {
             ps_db_res_libera(&rb);
             cn->em_transacao = 1;
         }
     }
     int np = 0;
-    char **pars = (n == 2) ? db_params_txt(vm, args[1], &np) : NULL;
+    char *tipos = NULL;
+    char **pars = (n == 2) ? db_params_txt(vm, args[1], &np, &tipos) : NULL;
     char erro[512], tp[64];
-    DbExecArgs dea = { cn->conn, COMO_STRING(args[0])->chars, (const char **)pars, np,
+    DbExecArgs dea = { cn->conn, COMO_STRING(args[0])->chars, (const char **)pars, tipos, np,
                        &cu->res, erro, sizeof(erro), tp, sizeof(tp), 0 };
     /* SQLite é local e rápido -> roda inline (offload seria só overhead de thread).
      * Drivers de rede (postgres/mysql/mssql) fazem recv bloqueante -> offload pra
@@ -17322,6 +17333,7 @@ static int met_dbcur_execute(VM *vm, Value alvo, Value *args, int n, Value *out)
     if (cu->drv == PS_DB_SQLITE) db_exec_offload(&dea);
     else                         fib_offload(vm, db_exec_offload, &dea);
     cn->ocupada = 0;
+    free(tipos);
     if (dea.rc != 0) {
         db_params_libera(pars, np);
         snprintf(vm->erro, sizeof(vm->erro), "%.200s", erro);
@@ -17408,7 +17420,7 @@ static int met_dbconn_commit(VM *vm, Value alvo, Value *args, int n, Value *out)
      * sqlite, que só tem `em_transacao` quando o BEGIN de fato rodou. */
     if (cn->em_transacao) {
         char erro[256]; PSDbRes r;
-        ps_db_exec(cn->conn, "COMMIT", NULL, 0, &r, erro, sizeof(erro), NULL, 0);
+        ps_db_exec(cn->conn, "COMMIT", NULL, NULL, 0, &r, erro, sizeof(erro), NULL, 0);
         ps_db_res_libera(&r);
         cn->em_transacao = 0;
     }
@@ -17560,7 +17572,7 @@ static int mod_db_query(VM *vm, Value *args, int n, Value *out)
     } else snprintf(sql, sizeof(sql), "%s", cmd);
 
     PSDbRes res; char tp[64];
-    if (ps_db_exec(c, sql, NULL, 0, &res, erro, sizeof(erro), tp, sizeof(tp)) != 0) {
+    if (ps_db_exec(c, sql, NULL, NULL, 0, &res, erro, sizeof(erro), tp, sizeof(tp)) != 0) {
         ps_db_solta(c);
         snprintf(vm->erro,sizeof(vm->erro),"%.200s",erro); snprintf(vm->erro_tipo,sizeof(vm->erro_tipo),"%.60s",tp);
         return -1;

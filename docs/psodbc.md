@@ -79,7 +79,9 @@ confiável de verdade.
 **Automático (não é parâmetro):** a conexão abre com `autocommit=True` — sem
 isso `CREATE DATABASE`/`DROP DATABASE` são rejeitados pelo SQL Server por
 rodarem dentro de transação implícita. E o placeholder de parâmetros no
-`execute()` é `?` (pyodbc): `cursor.execute("... WHERE id = ?", (1,))`.
+`execute()` é `?` (pyodbc): `cursor.execute("... WHERE id = ?", (1,))`. No SQL
+Server o parâmetro vai como texto e o servidor converte (não há servidor na
+bateria de testes pra conferir a ligação com tipo, como nos outros três).
 
 **Exemplos completos:**
 

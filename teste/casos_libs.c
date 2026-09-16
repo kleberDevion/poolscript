@@ -593,6 +593,42 @@ const Caso CASOS_LIBS[] = {
   "k = d.cursor()\nk.execute(\"select a from t\")\n"
   "post(caminho.startswith(\"/\"), k.fetchall())\nd.close()\n",
   "True [{'a': 7}]", NULL, 0 },
+/* O cursor mandava todo parametro como TEXTO: `true` virava 'True', e
+ * `WHERE ativo = ?` nao casava com linha nenhuma. O atalho `psodbc.query` ja
+ * ligava com tipo; o cursor passou a ligar igual. */
+{ "psodbc sqlite cursor: parametro liga com o tipo do valor",
+  "import psodbc\n"
+  "c = psodbc.connect(driver=\"sqlite\", base=\"tp.db\")\n"
+  "cur = c.cursor()\n"
+  "cur.execute(\"SELECT typeof(?) AS a, typeof(?) AS b, typeof(?) AS c, typeof(?) AS d, typeof(?) AS e\","
+  " (1, 2.5, true, \"x\", Null))\n"
+  "post(cur.fetchone())\nc.close()\n",
+  "{'a': 'integer', 'b': 'real', 'c': 'integer', 'd': 'text', 'e': 'null'}", NULL, 0 },
+{ "psodbc sqlite cursor: bool casa com a coluna booleana",
+  "import psodbc\n"
+  "c = psodbc.connect(driver=\"sqlite\", base=\"tb.db\")\n"
+  "cur = c.cursor()\n"
+  "cur.execute(\"CREATE TABLE t (id INTEGER, ativo BOOLEAN)\")\n"
+  "cur.execute(\"INSERT INTO t VALUES (?, ?)\", (1, true))\n"
+  "cur.execute(\"INSERT INTO t VALUES (?, ?)\", (2, false))\n"
+  "c.commit()\n"
+  "cur.execute(\"SELECT id FROM t WHERE ativo = ?\", (true,))\n"
+  "a = cur.fetchall()\n"
+  "cur.execute(\"SELECT id FROM t WHERE ativo = ?\", (false,))\n"
+  "post(a, cur.fetchall())\nc.close()\n",
+  "[{'id': 1}] [{'id': 2}]", NULL, 0 },
+{ "psodbc sqlite cursor: int em LIMIT e em conta continua int",
+  "import psodbc\n"
+  "c = psodbc.connect(driver=\"sqlite\", base=\"tl.db\")\n"
+  "cur = c.cursor()\n"
+  "cur.execute(\"CREATE TABLE t (id INTEGER)\")\n"
+  "cur.execute(\"INSERT INTO t VALUES (1), (2), (3)\")\n"
+  "c.commit()\n"
+  "cur.execute(\"SELECT id FROM t ORDER BY id LIMIT ? OFFSET ?\", (1, 1))\n"
+  "a = cur.fetchall()\n"
+  "cur.execute(\"SELECT ? + 1 AS v\", (41,))\n"
+  "post(a, cur.fetchone())\nc.close()\n",
+  "[{'id': 2}] {'v': 42}", NULL, 0 },
 { "psodbc sqlite: fetchone e fetchmany",
   "import psodbc\n"
   "c = psodbc.connect(driver=\"sqlite\", base=\"t.db\")\n"

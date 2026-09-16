@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include <sqlite3.h>
 #include <libpq-fe.h>
@@ -88,8 +89,29 @@ static void cel_float(PSCel *cel, double v)   { cel->tipo = PS_CEL_FLOAT; cel->f
 static void cel_bool(PSCel *cel, int v)       { cel->tipo = PS_CEL_BOOL; cel->b = v; cel->txt = strdup(v?"true":"false"); }
 
 /* ── sqlite ─────────────────────────────────────────────────────────────── */
-static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
-                       PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
+/* O parâmetro com o tipo do valor, como o atalho `psodbc.query` já ligava: bool
+ * e int viram inteiro, flo vira real, o resto texto. Tudo como texto, `true`
+ * era 'True' e `WHERE ativo = ?` não casava com linha nenhuma. Inteiro que não
+ * cabe em 64 bits (bignum) segue como texto. */
+static void sqlite_liga(sqlite3_stmt *st, int i, const char *pv, char tipo)
+{
+    if (!pv) { sqlite3_bind_null(st, i + 1); return; }
+    if (tipo == 'b') { sqlite3_bind_int64(st, i + 1, (pv[0] == 't' || pv[0] == '1') ? 1 : 0); return; }
+    if (tipo == 'i') {
+        errno = 0;
+        char *fim;
+        long long v = strtoll(pv, &fim, 10);
+        if (errno == 0 && *fim == '\0' && fim != pv) { sqlite3_bind_int64(st, i + 1, (sqlite3_int64)v); return; }
+    } else if (tipo == 'f') {
+        char *fim;
+        double d = strtod(pv, &fim);
+        if (*fim == '\0' && fim != pv) { sqlite3_bind_double(st, i + 1, d); return; }
+    }
+    sqlite3_bind_text(st, i + 1, pv, -1, SQLITE_TRANSIENT);
+}
+
+static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+                       int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     sqlite3_stmt *st = NULL;
@@ -97,10 +119,8 @@ static int sqlite_exec(PSDbConn *c, const char *sql, const char **params, int np
         snprintf(erro, ecap, "erro de banco de dados: %s", sqlite3_errmsg(c->sq));
         return -1;
     }
-    for (int i = 0; i < nparams; i++) {
-        if (params[i]) sqlite3_bind_text(st, i + 1, params[i], -1, SQLITE_TRANSIENT);
-        else sqlite3_bind_null(st, i + 1);
-    }
+    for (int i = 0; i < nparams; i++)
+        sqlite_liga(st, i, params[i], tipos ? tipos[i] : 's');
     int ncol = sqlite3_column_count(st);
     if (ncol == 0) {                     /* DML/DDL */
         int rc = sqlite3_step(st);
@@ -286,7 +306,19 @@ static int my_eh_float(enum enum_field_types t) {
          ||t==MYSQL_TYPE_DECIMAL||t==MYSQL_TYPE_NEWDECIMAL;
 }
 
-typedef struct { MYSQL *my; const char **params; int nparams; } PhMy;
+typedef struct { MYSQL *my; const char **params; const char *tipos; int nparams; } PhMy;
+
+/* Texto de número que a VM formatou (int ou flo): só dígito, sinal, ponto e
+ * expoente. É o que pode ir SEM aspas pro mysql — `inf`/`nan` e bignum com
+ * outro formato seguem entre aspas, como antes. */
+static int eh_numero_literal(const char *s)
+{
+    if (!*s) return 0;
+    for (const char *p = s; *p; p++)
+        if (!((*p >= '0' && *p <= '9') || *p == '-' || *p == '+' || *p == '.' || *p == 'e' || *p == 'E'))
+            return 0;
+    return 1;
+}
 
 static int ph_mysql(void *ctx, int k, char *out, size_t cap)
 {
@@ -301,6 +333,19 @@ static int ph_mysql(void *ctx, int k, char *out, size_t cap)
         int n = snprintf(out, cap, "NULL");
         return (n < 0 || (size_t)n >= cap) ? -1 : n;
     }
+    /* o mysql não tem placeholder no protocolo de texto: o valor entra na
+     * query. Número e bool entram SEM aspas — entre aspas, `LIMIT '10'` era
+     * erro de sintaxe, `'True'` virava 0 (casava com FALSE) e `'41' + 1` virava
+     * float. O texto de número vem da própria VM, nunca do usuário. */
+    char tipo = m->tipos ? m->tipos[k] : 's';
+    if (tipo == 'b') {
+        int n = snprintf(out, cap, "%s", (pv[0] == 't' || pv[0] == '1') ? "TRUE" : "FALSE");
+        return (n < 0 || (size_t)n >= cap) ? -1 : n;
+    }
+    if ((tipo == 'i' || tipo == 'f') && eh_numero_literal(pv)) {
+        int n = snprintf(out, cap, "%s", pv);
+        return (n < 0 || (size_t)n >= cap) ? -1 : n;
+    }
     size_t lv = strlen(pv);
     if (2 * lv + 3 > cap) return -1;  /* o escape pode dobrar */
     out[0] = '\'';
@@ -309,14 +354,14 @@ static int ph_mysql(void *ctx, int k, char *out, size_t cap)
     return (int)(en + 2);
 }
 
-static int mysql_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
-                      PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
+static int mysql_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+                      int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     /* monta a query final: cada `?`/`%s` fora de literal recebe o param
      * escapado (o mysql não tem placeholder nativo no protocolo de texto) */
     char q[16384];
-    PhMy ctx = { c->my, params, nparams };
+    PhMy ctx = { c->my, params, tipos, nparams };
     int j = sql_varre_placeholders(sql, q, sizeof(q), ph_mysql, &ctx);
     if (j < 0) { snprintf(erro, ecap, "erro de banco de dados: sql grande demais"); return -1; }
     if (mysql_real_query(c->my, q, (unsigned long)j) != 0) {
@@ -509,17 +554,17 @@ PSDbConn *ps_db_conecta(PSDbDriver drv, const char *host, int porta,
     return NULL;
 }
 
-int ps_db_exec(PSDbConn *c, const char *sql, const char **params, int nparams,
-               PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
+int ps_db_exec(PSDbConn *c, const char *sql, const char **params, const char *tipos,
+               int nparams, PSDbRes *res, char *erro, size_t ecap, char *tipo_out, size_t tcap)
 {
     memset(res, 0, sizeof(*res));
     res->rowcount = -1;
     if (tipo_out && tcap) snprintf(tipo_out, tcap, "DatabaseError");
     if (c->fechado) { snprintf(erro, ecap, "erro de banco de dados: conexao fechada"); return -1; }
     switch (c->drv) {
-        case PS_DB_SQLITE:   return sqlite_exec(c, sql, params, nparams, res, erro, ecap, tipo_out, tcap);
+        case PS_DB_SQLITE:   return sqlite_exec(c, sql, params, tipos, nparams, res, erro, ecap, tipo_out, tcap);
         case PS_DB_POSTGRES: return pg_exec(c, sql, params, nparams, res, erro, ecap, tipo_out, tcap);
-        case PS_DB_MYSQL:    return mysql_exec(c, sql, params, nparams, res, erro, ecap, tipo_out, tcap);
+        case PS_DB_MYSQL:    return mysql_exec(c, sql, params, tipos, nparams, res, erro, ecap, tipo_out, tcap);
         case PS_DB_MSSQL:    return odbc_exec(c, sql, params, nparams, res, erro, ecap, tipo_out, tcap);
         default: snprintf(erro, ecap, "driver nao suportado"); return -1;
     }
