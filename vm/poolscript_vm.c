@@ -17448,7 +17448,12 @@ static int mod_db_connect(VM *vm, Value *args, int n, Value *out)
             const char *resto = p + 3;
             PSDbDriver dtmp;
             if (db_resolve_driver(url_drv, &dtmp) == 0 && dtmp == PS_DB_SQLITE) {
-                while (*resto == '/') resto++;
+                /* `sqlite:///arq.db` é relativo e `sqlite:////abs/arq.db` é
+                 * absoluto: depois do `://` sai UMA barra só, a do `///`. O
+                 * laço antigo comia todas, e o absoluto virava relativo ao cwd
+                 * ("unable to open database file") — caminho absoluto por URL
+                 * nunca funcionou. */
+                if (*resto == '/') resto++;
                 snprintf(url_base, sizeof(url_base), "%s", resto);
                 driver = url_drv; base = url_base;
             } else {

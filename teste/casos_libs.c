@@ -571,6 +571,28 @@ const Caso CASOS_LIBS[] = {
   "cur.close()\n"
   "c.close()\n",
   "[{'a': 1, 'b': 'um'}, {'a': 2, 'b': 'dois'}]", NULL, 0 },
+/* URL de sqlite: `sqlite:///rel.db` e relativo, `sqlite:////abs/x.db` e
+ * absoluto. O parser comia TODAS as barras, e o absoluto virava relativo ao cwd
+ * ("unable to open database file") — caminho absoluto por URL nunca funcionou. */
+{ "psodbc sqlite url: tres barras e relativo ao cwd",
+  "import psodbc\nimport os\n"
+  "c = psodbc.connect(url=\"sqlite:///rel.db\")\n"
+  "c.cursor().execute(\"create table t (a int)\")\n"
+  "c.commit()\nc.close()\n"
+  "post(os.exists(\"rel.db\"))\n",
+  "True", NULL, 0 },
+{ "psodbc sqlite url: quatro barras e caminho absoluto",
+  "import psodbc\nimport os\n"
+  "caminho = os.cwd() + \"/abs.db\"\n"
+  "c = psodbc.connect(url=\"sqlite:///\" + caminho)\n"
+  "cur = c.cursor()\n"
+  "cur.execute(\"create table t (a int)\")\n"
+  "cur.execute(\"insert into t values (?)\", (7,))\n"
+  "c.commit()\nc.close()\n"
+  "d = psodbc.connect(driver=\"sqlite\", base=caminho)\n"
+  "k = d.cursor()\nk.execute(\"select a from t\")\n"
+  "post(caminho.startswith(\"/\"), k.fetchall())\nd.close()\n",
+  "True [{'a': 7}]", NULL, 0 },
 { "psodbc sqlite: fetchone e fetchmany",
   "import psodbc\n"
   "c = psodbc.connect(driver=\"sqlite\", base=\"t.db\")\n"

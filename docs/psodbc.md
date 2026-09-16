@@ -46,7 +46,7 @@ Nem todo parâmetro vale pra todo driver — esta tabela diz qual usa o quê:
 | `database` | — | sim | sim | **sim** (vazio = banco padrão do login) | sim |
 | `odbc_driver` | — | — | — | **sim** (só dele) | — |
 | `trust_server_cert` | — | — | — | **sim** (só dele) | — |
-| `url` | `sqlite:///arq.db` | `postgres://...` | `mysql://...` | **`sqlserver://user:senha@host:1433/banco`** | `mongodb://...` |
+| `url` | `sqlite:///arq.db` (relativo) / `sqlite:////abs/arq.db` (absoluto) | `postgres://...` | `mysql://...` | **`sqlserver://user:senha@host:1433/banco`** | `mongodb://...` |
 
 ### SQL Server em detalhe (`driver="mssql"` ou `"sqlserver"`)
 
@@ -163,7 +163,8 @@ conn = psodbc.connect(url="postgres://admin:senha@localhost:5432/meu_banco")
 conn = psodbc.connect(url="mysql://admin:senha@localhost:3306/meu_banco")
 conn = psodbc.connect(url="sqlserver://user:senha@localhost:1433/meu_banco")
 conn = psodbc.connect(url="mongodb://localhost:27017/meu_banco")
-conn = psodbc.connect(url="sqlite:///meu_banco.db")
+conn = psodbc.connect(url="sqlite:///meu_banco.db")          # relativo à pasta atual
+conn = psodbc.connect(url="sqlite:////var/dados/meu_banco.db")  # absoluto: quatro barras
 ```
 
 **SQL Server local com autenticação do Windows** (sem `user`/`password`):
