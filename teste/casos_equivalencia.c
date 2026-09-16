@@ -11,7 +11,7 @@
  * interessa o que o Python faria. Foi assim que apareceu o bug de bloco `:`
  * dentro de bloco `{}`: cada peça passava sozinha, a combinação é que quebrava.
  *
- * GERADO. Para adicionar uma família, edite teste/geradores/equivalencia.ps
+ * GERADO. Para adicionar uma família, edite teste/geradores/equivalencia.pr
  * e rode o gerador de novo — não edite este arquivo.
  */
 #include "ps_teste.h"

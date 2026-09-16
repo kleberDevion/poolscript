@@ -8,12 +8,12 @@ virava `$1` no PostgreSQL.
 
 | script | precisa de | roda com |
 |---|---|---|
-| `arquivo.ps` | nada (usa `/tmp`) | `./pool teste/e2e/arquivo.ps` |
-| `sqlite.ps` | nada (sqlite é embutido) | `./pool teste/e2e/sqlite.ps` |
-| `socket.ps` | nada (loopback) | `./pool teste/e2e/socket.ps` |
-| `jinker_srv.ps` + `jinker_cli.ps` | nada (loopback) | ver abaixo |
-| `db.ps` | PostgreSQL e/ou MySQL | ver abaixo |
-| `mongo.ps` | mongod local | ver abaixo |
+| `arquivo.pr` | nada (usa `/tmp`) | `./pool teste/e2e/arquivo.pr` |
+| `sqlite.pr` | nada (sqlite é embutido) | `./pool teste/e2e/sqlite.pr` |
+| `socket.pr` | nada (loopback) | `./pool teste/e2e/socket.pr` |
+| `jinker_srv.pr` + `jinker_cli.pr` | nada (loopback) | ver abaixo |
+| `db.pr` | PostgreSQL e/ou MySQL | ver abaixo |
+| `mongo.pr` | mongod local | ver abaixo |
 
 Script que não encontra o recurso imprime `PULOU` e o motivo — **não** passa
 calado nem falha a suíte por ausência de servidor.
@@ -25,9 +25,9 @@ make check-e2e                 # todos
 make check-e2e E2E=jinker      # só o que casa com o filtro
 ```
 
-O driver é `teste/e2e_roda.ps`, e ele conhece o PAPEL de cada script. Isso não
-é detalhe: o alvo antigo era um `for` sobre `*.ps`, o shell ordena
-alfabeticamente, e `jinker_cli.ps` rodava ANTES de `jinker_srv.ps` — cliente
+O driver é `teste/e2e_roda.pr`, e ele conhece o PAPEL de cada script. Isso não
+é detalhe: o alvo antigo era um `for` sobre `*.pr`, o shell ordena
+alfabeticamente, e `jinker_cli.pr` rodava ANTES de `jinker_srv.pr` — cliente
 sem servidor morria com "Connection refused" e o servidor ficava servindo até
 o timeout. A orquestração certa existia aqui embaixo, em prosa, fora de tudo
 que roda; agora está no código.
@@ -40,7 +40,7 @@ Três papéis, declarados no topo do driver:
 | **sozinho** | roda direto |
 | **sem par** | servidor sem cliente — bloquearia até o timeout. É RELATADO, não rodado |
 
-Todo script tem que ser **re-executável**: `jinker_srv.ps` falhava na primeira
+Todo script tem que ser **re-executável**: `jinker_srv.pr` falhava na primeira
 linha porque `os.mkdir` da pasta estática não aceitava a pasta que sobrou da
 rodada anterior. É a mesma família do E1 (teste que suja o ambiente) que a
 suíte principal fechou com `mkdtemp`+`chdir`.
@@ -50,10 +50,10 @@ suíte principal fechou com `mkdtemp`+`chdir`.
 Se quiser rodar fora do driver — pra depurar o servidor, por exemplo:
 
 ```bash
-setsid ./pool teste/e2e/jinker_srv.ps > /tmp/ps_srv.log 2>&1 < /dev/null &
+setsid ./pool teste/e2e/jinker_srv.pr > /tmp/ps_srv.log 2>&1 < /dev/null &
 sleep 2
-./pool teste/e2e/jinker_cli.ps
-pkill -f jinker_srv.ps
+./pool teste/e2e/jinker_cli.pr
+pkill -f jinker_srv.pr
 ```
 
 Cobre HTTP (rotas, status, tupla, 204, upload), **upload multipart**
@@ -95,6 +95,6 @@ porta própria:
 ```bash
 mkdir -p /tmp/ps_mongo_db
 mongod --dbpath /tmp/ps_mongo_db --port 27099 --bind_ip 127.0.0.1 --quiet &
-./pool teste/e2e/mongo.ps
+./pool teste/e2e/mongo.pr
 pkill -f "port 27099"
 ```

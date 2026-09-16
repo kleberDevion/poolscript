@@ -1,4 +1,4 @@
-# PoolScript v15.90.37
+# PoolScript v15.91.0
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.90.37 [PSVM]
+# PoolScript 15.91.0 [PSVM]
 ```
 
 ---
@@ -14,8 +14,8 @@ pool --version
 ## Rodando arquivos
 
 ```bash
-pool meu_arquivo.ps
-pool build          # roda todos os .ps da pasta atual
+pool meu_arquivo.pr
+pool build          # roda todos os .pr da pasta atual
 ```
 
 ---
@@ -26,13 +26,13 @@ pool build          # roda todos os .ps da pasta atual
 um editor/LSP usa pra sublinhar erro enquanto você digita. OBS.: O a checagem de erro e sempre de cima pra baixo, caso tenha mais de 1 erro não detecta,e sempre um por '--check'
 
 ```bash
-pool --check meu_arquivo.ps
+pool --check meu_arquivo.pr
 # {"ok":true}
 
-pool --check com_erro.ps
+pool --check com_erro.pr
 # {"ok":false,"tipo":"SyntaxError","msg":"faltou ')' na declaracao da funct","linha":1,"coluna":11}
 
-cat meu_arquivo.ps | pool --check     # sem arquivo, lê da entrada padrão
+cat meu_arquivo.pr | pool --check     # sem arquivo, lê da entrada padrão
 ```
 
 O campo `ok` diz o veredito, e o **código de saída acompanha**: `0` com
@@ -378,7 +378,7 @@ Tipos disponíveis:
 
 > Esta tabela já teve `PermissionError` e `ConnectionError`, que o motor **nunca
 > levanta**. Quem seguisse a doc escrevia um `catch` que jamais dispara — e aí o
-> erro escapa e o programa morre com rc=1. Hoje `scripts/audita_doc.ps` confere
+> erro escapa e o programa morre com rc=1. Hoje `scripts/audita_doc.pr` confere
 > cada nome desta lista contra o motor e reprova se algum não existir.
 >
 > **"Não existe" tem uma resposta só:** ler ou escrever índice fora da faixa
@@ -582,16 +582,16 @@ from dotenv import load
 from jinker import Jinker, cors, jsonify, render
 ```
 
-Importar de outro arquivo `.ps`:
+Importar de outro arquivo `.pr`:
 
 ```
-# utils.ps
+# utils.pr
 funct somar(a, b) {
     return a + b
 }
 str VERSAO = "1.0"
 
-# main.ps
+# main.pr
 from utils import somar, VERSAO
 post(somar(3, 4))  # 7
 post(VERSAO)       # 1.0
@@ -600,9 +600,9 @@ post(VERSAO)       # 1.0
 Pelo caminho, entre aspas — relativo à pasta do arquivo que importa:
 
 ```
-from './utils.ps' import somar
-import '../lib/texto.ps'         # liga `texto`
-import 'ferramentas/kit.ps' as k
+from './utils.pr' import somar
+import '../lib/texto.pr'         # liga `texto`
+import 'ferramentas/kit.pr' as k
 ```
 
 ---

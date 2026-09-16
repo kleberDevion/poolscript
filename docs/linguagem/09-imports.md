@@ -1,6 +1,6 @@
 # Referência da Linguagem — 9. Imports
 
-Um `.ps` pode usar código de outro arquivo `.ps` ou de uma biblioteca — da
+Um `.pr` pode usar código de outro arquivo `.pr` ou de uma biblioteca — da
 stdlib (embutida) ou instalada. Esta seção cobre as formas de import
 (`import`, `from … import`, `PUSH … GET`), o `as`, o `*`, os imports relativos
 e a ordem em que um nome é resolvido.
@@ -106,7 +106,7 @@ mesmo jeito que `from m import a, b, c` escrito à mão ligaria. **Não** liga o
 nome do módulo: depois de `import json *`, `json` sozinho é `NameError`. De
 módulo nativo (`json`, `os`, `regex`…), entram todos os membros.
 
-Vale com caminho entre aspas e com pontos: `from './util.ps' import *`,
+Vale com caminho entre aspas e com pontos: `from './util.pr' import *`,
 `import '../pacote/modulo' *`, `from ..pacote.modulo import *`.
 
 **Como os nomes se comportam** — exatamente como os de um import explícito:
@@ -191,30 +191,30 @@ post(valor)
 
 ## 9.4. Import por caminho — `import '…'`
 
-O módulo pode vir **entre aspas**. É a forma de importar um arquivo `.ps` pelo
+O módulo pode vir **entre aspas**. É a forma de importar um arquivo `.pr` pelo
 caminho dele:
 
 ```ps
-import '../pacote/modulo.ps'             # liga `modulo`
-from './irmao.ps' import w               # nomes soltos
+import '../pacote/modulo.pr'             # liga `modulo`
+from './irmao.pr' import w               # nomes soltos
 from '../pacote/modulo' import z as zz   # a extensão pode ficar de fora
-import '/opt/app/util.ps' as u           # caminho absoluto, com `as`
+import '/opt/app/util.pr' as u           # caminho absoluto, com `as`
 ```
 
 - O caminho é **relativo à pasta do arquivo que contém o `import`** — não ao
   diretório atual nem ao arquivo principal. `./`, `../` e subpastas valem;
   caminho que começa com `/` é absoluto.
-- Sem extensão, o motor tenta o nome como escrito e depois `.ps`, `.psl`, `.p`.
+- Sem extensão, o motor tenta o nome como escrito e depois `.pr`.
 - O nome ligado é o **nome do arquivo**, sem pasta e sem extensão
-  (`'../pacote/modulo.ps'` liga `modulo`). Com `as`, é o nome do `as`. Se o
+  (`'../pacote/modulo.pr'` liga `modulo`). Com `as`, é o nome do `as`. Se o
   nome do arquivo não serve de nome de variável, o `as` é obrigatório:
 
   ```
-  import 'sub/meu-mod.ps'
-  SyntaxError: 'meu-mod' nao serve de nome de variavel: ligue com `as` (import 'sub/meu-mod.ps' as nome)
+  import 'sub/meu-mod.pr'
+  SyntaxError: 'meu-mod' nao serve de nome de variavel: ligue com `as` (import 'sub/meu-mod.pr' as nome)
   ```
 
-- Caminho que não existe é `ImportError: No module named './x.ps'`, com o
+- Caminho que não existe é `ImportError: No module named './x.pr'`, com o
   caminho como foi escrito.
 - Dentro do módulo importado, `__name__` é o nome do arquivo (`modulo`), e as
   mensagens de atributo citam esse nome: `module 'modulo' has no attribute 'x'`.
@@ -229,14 +229,17 @@ from 'jinker' import Jinker         # == from jinker import Jinker
 import 'minhalib'                   # lib instalada com `psl install … -asLib`
 ```
 
-O que decide é a forma da string: com `/`, ou terminando em `.ps`/`.psl`/`.p`,
-é caminho de arquivo; sem isso é nome de módulo, e segue a ordem da seção 9.5.
+O que decide é a forma da string: com `/`, ou terminando na extensão da
+linguagem, é caminho de arquivo; sem isso é nome de módulo, e segue a ordem da
+seção 9.5. As três extensões de antes (`.ps`, `.psl`, `.p`) também contam como
+caminho — não pra serem carregadas, e sim pra o erro dizer que a extensão
+mudou, em vez de mandar procurar um módulo que nunca existiu.
 Por isso `import 'pacote'` (uma pasta, sem barra) não é caminho: é o nome
 `pacote`, e dá `ImportError: No module named 'pacote'` se não houver módulo com
 esse nome. String vazia (`import ''`) é `SyntaxError`.
 
-`PUSH` aceita a mesma string: `PUSH '../pacote/modulo.ps' as pm` e
-`PUSH './irmao.ps' GET w`.
+`PUSH` aceita a mesma string: `PUSH '../pacote/modulo.pr' as pm` e
+`PUSH './irmao.pr' GET w`.
 
 ### 9.4.1. Relativo com pontos
 
@@ -269,19 +272,19 @@ casar vence:
    `psl install … -asLib` (em `~/.poolscript/libs/`). Vem **antes** dos
    arquivos locais: o nome de um arquivo seu nunca ofusca uma lib instalada.
 3. **arquivo ao lado de quem importa** — a pasta do arquivo que contém o
-   `import`. É o que faz `import smtp` dentro de `acesso/controller.ps` achar
-   `acesso/smtp.ps`, mesmo com `controller` tendo sido importado por um
+   `import`. É o que faz `import smtp` dentro de `acesso/controller.pr` achar
+   `acesso/smtp.pr`, mesmo com `controller` tendo sido importado por um
    arquivo de outra pasta.
-4. **arquivo `.ps` do projeto** — resolvido a partir da raiz do projeto, a
+4. **arquivo `.pr` do projeto** — resolvido a partir da raiz do projeto, a
    pasta do arquivo executado (ex.: `from services.smtp import x` →
-   `<raiz>/services/smtp.ps`).
+   `<raiz>/services/smtp.pr`).
 
 Um nome que não casa com nenhum dos quatro é `ImportError`.
 
 A string sem caminho (`import 'json'`, `import 'minhalib'`) segue esta mesma
 ordem.
 
-> Imports por caminho (`import '../x.ps'`) e relativos com pontos
+> Imports por caminho (`import '../x.pr'`) e relativos com pontos
 > (`from .x import …`) **não** entram nessa ordem — são resolvidos direto contra
 > o sistema de arquivos, a partir da pasta do arquivo atual, e nunca caem nas
 > libs.
@@ -295,10 +298,10 @@ Quando o módulo é achado mas **não compila**, o traceback tem dois quadros: o
 SyntaxError: random: '//' e divisao inteira, nao comentario — comentario e '#' (ou bloco entre tres aspas)
 
 Traceback (arquivo mais recente por último):
-  em d.ps, linha 1
+  em d.pr, linha 1
   | import random
   | ^^^
-  em random.ps, linha 16
+  em random.pr, linha 16
   |             # 127.970.195
   |             ^^^
 ```
@@ -312,12 +315,12 @@ O prefixo da mensagem (`random:`) é o nome do módulo como foi escrito no
 
 Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não
 executa** (só roda quando o arquivo é o principal — seção 5.7). Vale até pra um
-módulo chamado `main.ps`, cujo `__name__` também é `"main"`: o guard é pulado em
+módulo chamado `main.pr`, cujo `__name__` também é `"main"`: o guard é pulado em
 todo import. Assim, importar um módulo traz as definições (functs, Entities,
 constantes) sem disparar o ponto de entrada:
 
 ```ps
-# mymod.ps
+# mymod.pr
 funct saudar(nome) {
     return "ola " + nome
 }
@@ -325,7 +328,7 @@ if __name__ == "main" {
     post("só quando rodo o mymod direto")
 }
 
-# outro.ps
+# outro.pr
 import mymod                 # NÃO imprime a linha do guard
 post(mymod.saudar("ana"))
 ```
@@ -345,7 +348,7 @@ post(mymod.saudar("ana"))
   compilação, só no topo do arquivo; em ciclo, nome ainda sem valor é pulado.
 - **`PUSH mod [as m] [GET x, y]`** — alternativa: `PUSH` = `import`, `GET` =
   `from … import`.
-- **`import '../pasta/arquivo.ps' [as m]`** / **`from './arquivo.ps' import x`**
+- **`import '../pasta/arquivo.pr' [as m]`** / **`from './arquivo.pr' import x`**
   — por caminho, relativo à pasta do arquivo atual; liga o nome do arquivo.
   Sem `/` nem extensão (`import 'json'`) é nome de módulo ou lib.
 - **`from .mod` / `from ..pkg.mod`** — relativo com pontos.

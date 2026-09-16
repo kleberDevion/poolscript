@@ -1,0 +1,569 @@
+# Gera `teste/casos_oraculo.c` a partir do produto (receptor x método x args)
+# pra str/list/dict/tup/bytes e builtins.
+#
+# O Python é o ORÁCULO: a doc da linguagem diz "igual ao Python" em toda parte,
+# então divergência é defeito até prova em contrário. O que este script faz:
+#
+#   1. avalia cada expressão no Python  -> esperado
+#   2. avalia cada expressão no ./pool  -> obtido
+#   3. gera um caso em C pra CADA expressão, com o valor que a linguagem
+#      realmente produz, e MARCA no comentário as que divergem do Python
+#
+# Nada é descartado. Divergência não vira caso omitido: vira caso com o
+# comportamento atual travado e o comentário dizendo do que ele difere — pra
+# mudança futura aparecer no diff em vez de passar batido.
+#
+# O CPython entra como FERRAMENTA EXTERNA consultada (como um banco de dados
+# seria), não como código do projeto: o driver que faz o `eval` é escrito em
+# /tmp na hora e apagado com o resto — não existe .py versionado aqui.
+#
+# Rodar:  ./pool teste/geradores/oraculo.pr
+import os
+import sys
+import regex
+
+SAIDA = "teste/casos_oraculo.c"
+TMP = "/tmp/ps_oraculo"
+SENT = "<<|>>"
+
+# ── 1. o produto de expressões ──────────────────────────────────────────────
+STR = ["\"\"", "\"a\"", "\"abc\"", "\"Ola Mundo\"", "\"  espaco  \"", "\"a,b,,c\"",
+       "\"CAFÉ\"", "\"café\"", "\"Ω\"", "\"ß\"", "\"123\"", "\"12.5\"", "\"a\\tb\"",
+       "\"linha1\\nlinha2\"", "\"aXbXc\"", "\"AbC dEf\"", "\"²³\"", "\"٣٤\""]
+SUB = ["\"\"", "\"a\"", "\"b\"", "\"X\"", "\",\"", "\"abc\"", "\" \"", "\"é\""]
+NUM = ["0", "1", "2", "-1", "3", "10"]
+
+casos = []
+
+funct add(e) {
+    casos.append(e)
+}
+
+funct met(nome, recv, args) {
+    add(recv + "." + nome + "(" + ", ".join(args) + ")")
+}
+
+
+# ── métodos de str sem argumento ────────────────────────────────────────────
+SEM = ["upper", "lower", "title", "capitalize", "swapcase", "casefold", "strip",
+       "lstrip", "rstrip", "splitlines", "isalpha", "isdigit", "isnumeric",
+       "isdecimal", "isalnum", "isspace", "isupper", "islower", "isascii",
+       "istitle", "isprintable", "isidentifier", "encode", "expandtabs"]
+for each s in STR {
+    for each n in SEM {
+        met(n, s, [])
+    }
+}
+
+# ── com 1 substring ─────────────────────────────────────────────────────────
+UM = ["count", "find", "rfind", "index", "rindex", "startswith", "endswith",
+      "partition", "rpartition", "removeprefix", "removesuffix", "split", "rsplit"]
+for each s in STR[0:10] {
+    for each n in UM {
+        for each a in SUB {
+            met(n, s, [a])
+        }
+    }
+}
+
+# ── com faixa ───────────────────────────────────────────────────────────────
+for each s in STR[0:8] {
+    for each n in ["find", "rfind", "count", "index", "rindex"] {
+        for each a in SUB[0:4] {
+            for each i in NUM[0:4] {
+                met(n, s, [a, i])
+            }
+        }
+    }
+}
+
+# ── replace / just / zfill ──────────────────────────────────────────────────
+for each s in STR[0:10] {
+    for each a in SUB[0:5] {
+        for each b in SUB[0:4] {
+            met("replace", s, [a, b])
+        }
+    }
+    for each w in NUM {
+        for each n in ["ljust", "rjust", "center", "zfill"] {
+            met(n, s, [w])
+        }
+    }
+}
+
+# ── fatias e índices ────────────────────────────────────────────────────────
+for each s in STR[0:12] {
+    for each i in ["0", "1", "-1", "2", "-2"] {
+        add(s + "[" + i + "]")
+    }
+    for each a in ["", "0", "1", "-1", "2"] {
+        for each b in ["", "1", "-1", "3", "100"] {
+            add(s + "[" + a + ":" + b + "]")
+        }
+    }
+    add("len(" + s + ")")
+}
+
+# ── list ────────────────────────────────────────────────────────────────────
+LST = ["[]", "[1]", "[1, 2, 3]", "[3, 1, 2]", "[\"a\", \"b\"]", "[1, 1, 2]",
+       "[[1], [2]]", "[True, False]", "[1, \"a\"]"]
+for each l in LST {
+    for each n in ["copy", "len"] {
+        met(n, l, [])
+    }
+    for each a in ["1", "2", "0", "\"a\""] {
+        for each n in ["count", "index", "contains"] {
+            met(n, l, [a])
+        }
+    }
+    for each i in ["0", "1", "-1"] {
+        add(l + "[" + i + "]")
+    }
+    for each a in ["", "0", "1", "-1"] {
+        for each b in ["", "1", "-1", "2"] {
+            add(l + "[" + a + ":" + b + "]")
+        }
+    }
+    add("len(" + l + ")")
+    add("sorted(" + l + ")")
+    add("reversed(" + l + ")")
+    add("sum(" + l + ")")
+    add("min(" + l + ")")
+    add("max(" + l + ")")
+}
+
+# ── dict ────────────────────────────────────────────────────────────────────
+DCT = ["{}", "{\"a\": 1}", "{\"a\": 1, \"b\": 2}", "{\"a\": {\"b\": 1}}", "{\"1\": 2}"]
+for each d in DCT {
+    for each n in ["keys", "values", "items", "copy", "len"] {
+        met(n, d, [])
+    }
+    for each a in ["\"a\"", "\"z\"", "\"1\""] {
+        met("get", d, [a])
+        met("has", d, [a])
+    }
+    add("len(" + d + ")")
+}
+
+# ── tup / bytes ─────────────────────────────────────────────────────────────
+for each t in ["()", "(1,)", "(1, 2, 3)", "(\"a\", \"b\")"] {
+    add("len(" + t + ")")
+    for each a in ["1", "2", "\"a\""] {
+        for each n in ["count", "index", "contains"] {
+            met(n, t, [a])
+        }
+    }
+}
+
+# ── bytes ───────────────────────────────────────────────────────────────────
+#
+# O `bytes` ficou FORA desta matriz até 31/08 porque o `sem_oraculo_expr`
+# pulava toda expressão com `.encode()`, alegando que "o repr de bytes difere
+# por design". Não difere — `post(b)` e `print(b)` dão a mesma coisa, incluindo
+# a troca de aspa quando o conteúdo tem `'`. O que havia era um DEFEITO no
+# nosso repr (três cópias, todas sem a regra da aspa), escondido justamente
+# pela regra que dispensava a conferência. Excluir do oráculo o que se acha
+# que é diferente é o jeito mais eficiente de nunca descobrir que não era.
+#
+# `.len()` fica de fora porque é método SÓ da PoolScript: `bytes` do Python não
+# tem, então ali não há oráculo de verdade. Ele é conferido em casos_libs.c.
+BYT = ["\"\".encode()", "\"a\".encode()", "\"abc\".encode()", "\"Hello, World\".encode()",
+       "\"aaa\".encode()", "\"  a b  \".encode()", "\"a-b-c\".encode()", "\"ABC\".encode()",
+       "\"abc123\".encode()", "\"café\".encode()"]
+BSUB = ["\"\".encode()", "\"a\".encode()", "\"-\".encode()", "\"abc\".encode()"]
+BINT = ["0", "97", "255"]
+
+BSEM = ["upper", "lower", "title", "capitalize", "swapcase", "strip", "lstrip",
+        "rstrip", "splitlines", "isalpha", "isdigit", "isalnum", "isspace",
+        "isupper", "islower", "istitle", "isascii", "hex", "decode"]
+for each b in BYT {
+    for each n in BSEM {
+        met(n, b, [])
+    }
+    add("len(" + b + ")")
+    add("list(" + b + ")")
+    add("sorted(" + b + ")")
+}
+
+BUM = ["count", "find", "rfind", "index", "rindex", "contains", "has",
+       "startswith", "endswith", "partition", "rpartition", "removeprefix",
+       "removesuffix", "split", "rsplit", "join"]
+for each b in BYT {
+    for each a in BSUB {
+        for each n in BUM {
+            met(n, b, [a])
+        }
+    }
+    for each a in BINT {
+        for each n in ["count", "find", "rfind", "index", "contains"] {
+            met(n, b, [a])
+        }
+    }
+}
+
+# preenchimento, tradução e os dois argumentos
+for each b in BYT {
+    for each w in ["0", "3", "8"] {
+        met("zfill", b, [w])
+        met("ljust", b, [w])
+        met("rjust", b, [w])
+        met("center", b, [w])
+        met("ljust", b, [w, "\".\".encode()"])
+        met("center", b, [w, "\"*\".encode()"])
+    }
+    met("expandtabs", b, ["4"])
+    met("replace", b, ["\"a\".encode()", "\"X\".encode()"])
+    met("replace", b, ["\"a\".encode()", "\"X\".encode()", "1"])
+    met("replace", b, ["\"\".encode()", "\"-\".encode()"])
+    met("splitlines", b, ["true"])
+    met("split", b, ["\"-\".encode()", "1"])
+    met("rsplit", b, ["\"-\".encode()", "1"])
+    met("strip", b, ["\"a \".encode()"])
+    met("find", b, ["\"a\".encode()", "1"])
+    met("find", b, ["\"a\".encode()", "0", "2"])
+    met("startswith", b, ["\"a\".encode()", "1"])
+    met("hex", b, ["\"-\""])
+    met("hex", b, ["\"-\"", "2"])
+    met("translate", b, ["Null", "\"a\".encode()"])
+}
+
+# operadores
+for each b in BYT {
+    add(b + " * 2")
+    add("2 * " + b)
+    add(b + " + " + "\"!\".encode()")
+    add(b + " == " + "\"abc\".encode()")
+    add(b + " < " + "\"abc\".encode()")
+    add(b + " > " + "\"abc\".encode()")
+    add("\"a\".encode() in " + b)
+    add("97 in " + b)
+    add("0 in " + b)
+}
+
+# ── builtins numéricos e de conversão ───────────────────────────────────────
+VAL = ["0", "1", "-1", "2", "255", "1000", "3.14", "-2.5", "0.0", "True", "False",
+       "\"7\"", "\"-3\"", "\"abc\"", "\"\"", "[1,2]", "{}"]
+for each v in VAL {
+    for each f in ["str", "int", "flo", "bool", "type", "abs", "len", "round"] {
+        add(f + "(" + v + ")")
+    }
+}
+for each v in ["0", "1", "65", "255", "1000", "-1"] {
+    for each f in ["hex", "bin", "oct", "chr"] {
+        add(f + "(" + v + ")")
+    }
+}
+for each v in ["\"a\"", "\"Z\"", "\"0\"", "\"é\""] {
+    add("ord(" + v + ")")
+}
+
+# ── operadores ──────────────────────────────────────────────────────────────
+OPS = ["+", "-", "*", "/", "%", "==", "!=", "<", ">", "<=", ">="]
+OPV = ["0", "1", "2", "-3", "7", "2.5", "-0.5", "True", "False"]
+for each a in OPV {
+    for each b in OPV {
+        for each o in OPS {
+            add(a + " " + o + " " + b)
+        }
+    }
+}
+for each a in ["\"\"", "\"a\"", "\"abc\""] {
+    for each b in ["\"\"", "\"a\"", "\"b\""] {
+        for each o in ["+", "==", "!=", "<", ">"] {
+            add(a + " " + o + " " + b)
+        }
+    }
+}
+for each a in ["\"\"", "\"ab\""] {
+    for each n in NUM {
+        add(a + " * " + n)
+    }
+}
+
+
+# ── 2. tradução pro dialeto Python ──────────────────────────────────────────
+# Devolve "" quando a expressão NÃO tem oráculo (repr de bytes e de iterador
+# difere por design).
+funct pra_python(e) {
+    p = e
+    p = p.replace("true", "True").replace("false", "False").replace("Null", "None")
+    p = p.replace(".contains(", ".__contains__(").replace(".has(", ".__contains__(")
+    p = p.replace(".value()", ".values()").replace("flo(", "float(")
+    p = p.replace("post(", "print(")
+    return p
+}
+
+
+# `reversed` da PoolScript devolve LISTA e o do Python devolve um iterador cujo
+# repr é `<list_reverseiterator ...>`: aí a diferença é real e de desenho.
+#
+# `.encode()` ESTAVA nesta lista e não devia: o repr de bytes é igual ao do
+# Python. A exclusão escondia um defeito nosso — ver o comentário da seção
+# BYTES lá em cima. `.len()` de bytes sai porque o Python não tem esse método,
+# não porque diverge.
+funct sem_oraculo_expr(e) {
+    return e.count("reversed(") > 0
+}
+
+
+# Roda um lote de expressões num interpretador e devolve a lista de saídas,
+# uma por expressão, separadas pelo sentinela. Sentinela porque uma expressão
+# cujo valor tem \n (ex.: "linha1\nlinha2".upper()) imprime mais de uma linha,
+# então dividir a saída por linha não serve.
+funct fatia_por_sentinela(bruto, quantas) {
+    partes = bruto.split(SENT + "\n")
+    if len(partes) > 0 and partes[len(partes) - 1] == "" {
+        partes.pop()
+    }
+    limpas = []
+    for each s in partes {
+        if s.endswith("\n") {
+            limpas.append(s[0:len(s) - 1])
+        }
+        else {
+            limpas.append(s)
+        }
+    }
+    return limpas
+}
+
+
+funct cstr(s) {
+    e = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\t", "\\t")
+    return "\"" + e + "\""
+}
+
+
+# Aspas como o `repr` do Python escolhe: simples, salvo quando o texto tem `'`
+# e não tem `"` — aí ele troca pra duplas. É só o comentário do caso gerado,
+# mas o arquivo é diffado, então tem que sair igual.
+funct repr_py(s) {
+    if s.count("'") > 0 and s.count("\"") == 0 {
+        return "\"" + s + "\""
+    }
+    return "'" + s.replace("'", "\\'") + "'"
+}
+
+
+funct monta_caso(nome, expr, saida) {
+    fonte = cstr("post(" + expr + ")\n")
+    if saida.startswith("<<ERRO>> ") {
+        # o texto do erro traz " (linha N)" do programa em LOTE — inútil aqui
+        msg = saida[len("<<ERRO>> "):]
+        msg = regex.sub(" \\(linha \\d+\\)$", "", msg).strip()
+        # STDOUT E RC entram junto, não só o stderr.
+        #
+        # Estava `NULL, msg, -1`: NULL manda o runner NÃO conferir a saída e -1
+        # manda NÃO conferir o código de saída. Um programa que imprimisse lixo
+        # e só depois errasse com a mensagem certa passava — e eram 577 casos
+        # só neste arquivo, 1577 na suíte inteira.
+        #
+        # Aqui os dois valores são CERTOS por construção, não medidos: o caso é
+        # sempre `post(<expr>)`, a expressão é avaliada ANTES de imprimir, então
+        # quem levanta não imprime nada (stdout vazio); e erro não capturado na
+        # PoolScript sai com 1.
+        return "{ \"" + nome + "\", " + fonte + ", \"\", " + cstr(msg) + ", 1 },"
+    }
+    return "{ \"" + nome + "\", " + fonte + ", " + cstr(saida) + ", NULL, 0 },"
+}
+
+
+if __name__ == "main" {
+    os.mkdir(TMP, exist_ok=true)
+
+    # dedup preservando a ordem
+    vistos = {}
+    uniq = []
+    for each e in casos {
+        if not e in vistos {
+            vistos[e] = 1
+            uniq.append(e)
+        }
+    }
+    post("expressoes:", len(uniq))
+
+    # ── 3. o lado PoolScript, num programa só ───────────────────────────────
+    linhas = []
+    for each e in uniq {
+        linhas.append("try {")
+        linhas.append("    post(" + e + ")")
+        linhas.append("} catch (e) {")
+        linhas.append("    post(\"<<ERRO>>\", e)")
+        linhas.append("}")
+        linhas.append("post(\"" + SENT + "\")")
+    }
+    using open(TMP + "/todos.pr", "w") as f {
+        f.write("\n".join(linhas) + "\n")
+    }
+    os.cmd("./pool " + TMP + "/todos.pr > " + TMP + "/ps.out 2> " + TMP + "/ps.err")
+    ps_out = fatia_por_sentinela(open(TMP + "/ps.out").read(), len(uniq))
+    if len(ps_out) != len(uniq) {
+        post("ERRO:", len(uniq), "expressoes,", len(ps_out), "saidas.")
+        post("stderr:", open(TMP + "/ps.err").read()[0:400])
+        sys.exit(1)
+    }
+
+    # ── 4. o oráculo: CPython avaliando o mesmo lote ────────────────────────
+    # O driver é escrito aqui e vive só em /tmp. `py_repr` reproduz o que o
+    # gerador antigo fazia: str sai crua, bool vira True/False, None vira null,
+    # o resto vai por repr().
+    drv = []
+    drv.append("import sys")
+    drv.append("SENT = " + "\"" + SENT + "\"")
+    drv.append("def py_repr(v):")
+    drv.append("    if isinstance(v, bool):  return 'True' if v else 'False'")
+    drv.append("    if isinstance(v, str):   return v")
+    drv.append("    if isinstance(v, float): return repr(v)")
+    drv.append("    if isinstance(v, (list, tuple, dict, int)): return repr(v)")
+    # `None`, com N maiúsculo, porque é o que o `print` do Python imprime.
+    #
+    # Estava `'null'`, que não é o que NENHUM dos dois imprime: a PoolScript
+    # diz `Null` (I22, inicial maiúscula) e o Python diz `None`. Com o oráculo
+    # inventando uma terceira grafia, o comentário `DIVERGE` de todo caso que
+    # devolve nulo citava um valor que o Python nunca produziu — e o número de
+    # divergências ficava errado nos dois sentidos, dependendo de quando o
+    # arquivo tinha sido regerado. Divergência de NOME (Null x None) é desenho
+    # da linguagem e continua marcada; o que muda é o comentário dizer a verdade.
+    drv.append("    if v is None: return 'None'")
+    drv.append("    return repr(v)")
+    drv.append("for linha in open(sys.argv[1], encoding='utf-8').read().split('\\n'):")
+    drv.append("    if linha == '': continue")
+    drv.append("    try:")
+    drv.append("        out = py_repr(eval(linha, {'__builtins__': __builtins__}, {}))")
+    drv.append("    except Exception:")
+    drv.append("        out = '<<ERRO>>'")
+    drv.append("    sys.stdout.write(out + '\\n' + SENT + '\\n')")
+    using open(TMP + "/driver.py", "w") as f {
+        f.write("\n".join(drv) + "\n")
+    }
+
+    traduzidas = []
+    for each e in uniq {
+        traduzidas.append(pra_python(e))
+    }
+    using open(TMP + "/exprs.txt", "w") as f {
+        f.write("\n".join(traduzidas) + "\n")
+    }
+    os.cmd("python3 " + TMP + "/driver.py " + TMP + "/exprs.txt > " + TMP + "/py.out 2>&1")
+    py_out = fatia_por_sentinela(open(TMP + "/py.out").read(), len(uniq))
+    if len(py_out) != len(uniq) {
+        post("ERRO no oraculo:", len(uniq), "expressoes,", len(py_out), "saidas.")
+        sys.exit(1)
+    }
+
+    # ── 5. classifica ───────────────────────────────────────────────────────
+    iguais = []
+    difere = []
+    sem_or = []
+    i = 0
+    for each e in uniq {
+        obtido = ps_out[i]
+        esp = py_out[i]
+        i = i + 1
+        if sem_oraculo_expr(e) {
+            sem_or.append([e, obtido])
+            continue
+        }
+        comparavel = obtido
+        if obtido.startswith("<<ERRO>>") {
+            comparavel = obtido.split(" ")[0]
+        }
+        if esp == comparavel {
+            iguais.append([e, obtido])
+        }
+        else {
+            difere.append([e, obtido, esp])
+        }
+    }
+
+    post("  bate com o Python :", len(iguais))
+    post("  diverge           :", len(difere))
+    post("  sem oraculo       :", len(sem_or), " (repr de bytes/iterador)")
+    if len(difere) > 0 {
+        post("")
+        post("  --- divergencias (PoolScript | Python) ---")
+        for each d in difere[0:400] {
+            post("   ", d[0], "->", d[1], "|", d[2])
+        }
+    }
+
+    # O runner compara com strlen, então saída com NUL não cabe num caso em C.
+    # Fica de fora — mas REGISTRADA, nunca sumida em silêncio.
+    NUL = chr(0)
+    nul = []
+    for each p in iguais {
+        if p[1].count(NUL) > 0 {
+            nul.append(p[0])
+        }
+    }
+    for each p in difere {
+        if p[1].count(NUL) > 0 {
+            nul.append(p[0])
+        }
+    }
+    for each p in sem_or {
+        if p[1].count(NUL) > 0 {
+            nul.append(p[0])
+        }
+    }
+    if len(nul) > 0 {
+        post("")
+        post("  fora do C (" + str(len(nul)) + "): saida com NUL, que strlen nao expressa")
+        for each e in nul {
+            post("   ", e)
+        }
+    }
+
+    funct sem_nul2(lst) {
+        r = []
+        for each p in lst {
+            if p[1].count(NUL) == 0 {
+                r.append(p)
+            }
+        }
+        return r
+    }
+
+    iguais = sem_nul2(iguais)
+    difere = sem_nul2(difere)
+    sem_or = sem_nul2(sem_or)
+
+    # ── 6. o arquivo C ──────────────────────────────────────────────────────
+    resumo = " * expressoes: " + str(len(uniq)) + "  |  batem com o Python: " + str(len(iguais))
+    resumo = resumo + "  |  divergem: " + str(len(difere)) + "  |  sem oraculo: " + str(len(sem_or))
+    out = ["/*", " * GERADO por teste/geradores/oraculo.pr — nao edite na mao.",
+           " *",
+           " * Cada caso e uma expressao rodada no ./pool, com o valor que a linguagem",
+           " * produz hoje. O Python foi o oraculo na geracao: caso marcado DIVERGE tem",
+           " * o comportamento do Python no comentario, pra a diferenca ficar visivel.",
+           " *", resumo,
+           " * fora do C (saida com NUL): " + str(len(nul)), " */",
+           "#include \"ps_teste.h\"", "", "const Caso CASOS_ORACULO[] = {"]
+
+    n = 0
+    for each p in iguais {
+        out.append(monta_caso("oraculo #" + str(n), p[0], p[1]))
+        n = n + 1
+    }
+    out.append("")
+    out.append("/* ── divergem do Python: comportamento da PoolScript, travado ───────── */")
+    for each p in difere {
+        out.append("/* Python daria: " + repr_py(p[2]) + " */")
+        out.append(monta_caso("oraculo #" + str(n) + " (DIVERGE)", p[0], p[1]))
+        n = n + 1
+    }
+    out.append("")
+    out.append("/* ── sem oraculo (repr de bytes/iterador difere por design) ─────────── */")
+    for each p in sem_or {
+        out.append(monta_caso("oraculo #" + str(n) + " (sem oraculo)", p[0], p[1]))
+        n = n + 1
+    }
+    out.append("};")
+    out.append("const int NC_ORACULO = N_CASOS(CASOS_ORACULO);")
+
+    using open(SAIDA, "w") as f {
+        f.write("\n".join(out) + "\n")
+    }
+    post("")
+    post(SAIDA + ":", n, "casos")
+}

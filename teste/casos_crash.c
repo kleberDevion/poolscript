@@ -19,8 +19,8 @@ const Caso CASOS_CRASH[] = {
   "import sys\n"
   "fundo = 30000\n"
   "src = \"post(\" + (\"(\" * fundo) + \"1\" + (\")\" * fundo) + \")\"\n"
-  "using open(\"p.ps\", \"w\") as f { f.write(src) }\n"
-  "os.cmd(\"'\" + sys.executable + \"' --check p.ps > o.txt 2>&1\")\n"
+  "using open(\"p.pr\", \"w\") as f { f.write(src) }\n"
+  "os.cmd(\"'\" + sys.executable + \"' --check p.pr > o.txt 2>&1\")\n"
   "post(\"aninhada demais\" in open(\"o.txt\").read())\n",
   "True", NULL, 0 },
 { "str() de estrutura profunda trunca, nao mata",
@@ -259,8 +259,8 @@ const Caso CASOS_CRASH[] = {
   "import os\n"
   "import sys\n"
   "src = \"post(\" + (\"(\" * 500) + \"1\" + (\")\" * 500) + \")\"\n"
-  "using open(\"leg.ps\", \"w\") as f { f.write(src) }\n"
-  "os.cmd(\"'\" + sys.executable + \"' leg.ps > o.txt 2>&1\")\n"
+  "using open(\"leg.pr\", \"w\") as f { f.write(src) }\n"
+  "os.cmd(\"'\" + sys.executable + \"' leg.pr > o.txt 2>&1\")\n"
   "post(open(\"o.txt\").read().strip())\n", "1", NULL, 0 },
 { "estrutura 200 niveis funda imprime inteira",
   "x = [\"fundo\"]\n"

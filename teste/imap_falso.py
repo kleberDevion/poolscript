@@ -2,7 +2,7 @@
 """IMAP de mentira com TLS de verdade, pra testar a metade LEITORA de `ps_mail.c`.
 
 POR QUE ISTO EXISTE: `vm/ps_mail.c` tem duas metades — SMTP (enviar) e IMAP
-(ler, o `MailReader`). O `teste/e2e/mail_local.ps` cobriu a primeira com o
+(ler, o `MailReader`). O `teste/e2e/mail_local.pr` cobriu a primeira com o
 `smtp_falso.py` e o arquivo saiu de 0,6% pra 16,9% de ramo. A segunda continuava
 INTEIRA sem teste: `ps_imap_conecta`, `login`, `select`, `search` (com e sem
 literal), `fetch` e `close` nunca tinham rodado, porque o único teste de leitura

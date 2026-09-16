@@ -36,14 +36,14 @@ mkdir -p "$TMP/nvim/colors"
 cp "$CFG" "$TMP/nvim/init.lua"
 cp "$REPO/editor/nvim/colors/ariake-dark.lua" "$TMP/nvim/colors/" 2>/dev/null || true
 
-printf 'import regex\nx = regex.\n' > "$TMP/alvo.ps"
+printf 'import regex\nx = regex.\n' > "$TMP/alvo.pr"
 
 falhas=0
 ok()   { echo "  ok     $1"; }
 falha() { echo "  FALHOU $1"; [ $# -gt 1 ] && echo "         $2"; falhas=$((falhas + 1)); }
 
 SAIDA="$TMP/saida.txt"
-SAIDA_TESTE="$SAIDA" XDG_CONFIG_HOME="$TMP" timeout 60 nvim --headless "$TMP/alvo.ps" \
+SAIDA_TESTE="$SAIDA" XDG_CONFIG_HOME="$TMP" timeout 60 nvim --headless "$TMP/alvo.pr" \
   -c 'lua
 local out = {}
 local function diz(k, v) out[#out+1] = k .. "=" .. tostring(v) end

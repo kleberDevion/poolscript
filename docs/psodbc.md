@@ -1,6 +1,6 @@
 # psodbc
 
-Referência de API — o que é acessível via `import psodbc` num script `.ps` e
+Referência de API — o que é acessível via `import psodbc` num script `.pr` e
 o que é interno do módulo (não aparece do lado de fora).
 
 ---

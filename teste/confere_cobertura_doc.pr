@@ -1,0 +1,270 @@
+# Portão da COBERTURA da doc: quantos membros do motor estão documentados, e o
+# número não pode cair.
+#
+# POR QUE ISTO EXISTE. O `scripts/audita_doc.pr` confere se a página QUE EXISTE
+# bate com o motor, e passa dizendo "nenhuma divergência de nome/ordem entre
+# doc e motor". Isso se lê como "a doc está completa", e não é o que ele mede:
+# ele nunca perguntou se a página existe. Media 132 páginas e calava sobre 721
+# membros sem nenhuma — `hash.sha256` e `sys.stdin` entre eles.
+#
+# POR QUE A MEDIDA MUDOU. A versão anterior perguntava se existe
+# `docs/<escopo>/<nome>/<nome>.md` — um ARQUIVO POR MEMBRO. Essa é exatamente a
+# forma proibida: "tem coisas na lang que só um md dá conta de dizer tudo, aí
+# você faz vários pra membros com funções relativamente pequenas, isso é
+# ridículo pra quem lê". O portão estava reprovando a doc BOA e premiando a
+# fragmentada: `docs/objetos-internos/PoolConnection.md` documenta `close`,
+# `commit`, `cursor`, `execute` e `rollback` numa tabela, e os cinco contavam
+# como não documentados.
+#
+# Agora a pergunta é "o membro está documentado em ALGUM lugar do escopo dele".
+# Vale a página própria, a linha de tabela e o título de seção — o que não vale
+# é menção solta no meio da prosa, que não ensina nada a quem procura.
+#
+#     ./pool teste/confere_cobertura_doc.pr           # reprova se cair
+#     ./pool teste/confere_cobertura_doc.pr --lista   # mostra o que falta
+#     ./pool teste/confere_cobertura_doc.pr --grava   # regrava a base
+import os
+import sys
+import json
+
+DOCS = "docs"
+BASE = "teste/cobertura_doc_base.txt"
+
+# Escopo do motor -> pasta da doc, quando os dois não têm o mesmo nome. Tipo mora
+# na pasta com o nome dele (`docs/str/`, `docs/byte/`, `docs/list/`…) — havia
+# aqui `str -> string` e `byte -> bytes`, e o mapa envelheceu quando o tipo
+# virou `byte`. Sobram os sub-escopos de módulo (`sys.stdin` documenta na página
+# do `sys`: é o trecho antes do ponto) e o pseudo-tipo `__universal__`.
+PASTA_DO_ESCOPO = {
+    "__universal__": "objetos-internos"
+}
+
+
+# Todos os `.md` de uma pasta, descendo nas subpastas. Mesmo andador do
+# `scripts/audita_doc.pr` — dois jeitos de varrer a doc no mesmo projeto é como
+# as regras divergem sem ninguém ver.
+funct mds_de(alvo, acc) {
+    if os.isdir(alvo) {
+        for each e in os.ls(alvo) {
+            mds_de(alvo + "/" + e["name"], acc)
+        }
+    }
+    elif alvo.endswith(".md") {
+        addEnd(acc, alvo)
+    }
+    return acc
+}
+
+
+# Onde a doc DESTE escopo pode estar.
+#
+# Não dá pra assumir `docs/<escopo>/`: a doc de um TIPO mora dentro da pasta do
+# módulo que o devolve — `docs/jinker/Jinker/Jinker.md`,
+# `docs/jinker/JinkerResponse/…` — e um tipo sem módulo próprio mora em
+# `docs/objetos-internos/<Tipo>.md`. Procurar só a pasta de mesmo nome dava 19
+# escopos "sem nenhuma página" que estão documentados.
+#
+# A regra: vale o arquivo que está DENTRO de uma pasta com o nome do escopo, o
+# arquivo `<escopo>.md` em qualquer lugar, e a página que traz o escopo como
+# TÍTULO — que é o que faz dela a página daquele escopo.
+funct arquivos_do_escopo(escopo, todos, linhas_de) {
+    pasta = escopo
+    if escopo in PASTA_DO_ESCOPO.keys() {
+        pasta = PASTA_DO_ESCOPO[escopo]
+    }
+    elif "." in escopo {
+        pasta = escopo.split(".")[0]      # `sys.stdin` -> a página do `sys`
+    }
+    achados = []
+    for each caminho in todos {
+        dentro = ("/" + escopo + "/") in caminho or ("/" + pasta + "/") in caminho
+        chamado = caminho.endswith("/" + escopo + ".md") or caminho.endswith("/" + pasta + ".md")
+        titulado = False
+        if not dentro and not chamado {
+            for each linha in linhas_de[caminho] {
+                t = linha.strip()
+                if t.startswith("#") and nomeia(t, escopo) {
+                    titulado = True
+                    break
+                }
+            }
+        }
+        if dentro or chamado or titulado {
+            addEnd(achados, caminho)
+        }
+    }
+    return achados
+}
+
+
+# O nome está NOMEADO nesta linha, não só mencionado? Exige fronteira dos dois
+# lados: sem isso, `get` casaria com `get_json` e o portão contaria membro que
+# não está documentado em lugar nenhum.
+funct nomeia(linha, nome) {
+    limite = "`.(), |*:\"'[]<>-=/"
+    i = linha.find(nome)
+    while i >= 0 {
+        antes = ""
+        if i > 0 {
+            antes = linha[i - 1:i]
+        }
+        depois = ""
+        fim = i + len(nome)
+        if fim < len(linha) {
+            depois = linha[fim:fim + 1]
+        }
+        ok_antes = i == 0 or antes in limite
+        ok_depois = fim == len(linha) or depois in limite
+        # `nome(` ou `` `nome` `` — a forma de quem documenta o membro, e não a
+        # de quem cita a palavra numa frase.
+        if ok_antes and ok_depois and (depois == "(" or depois == "`"
+                                       or antes == "`" or depois == " ") {
+            return True
+        }
+        prox = linha.find(nome, i + 1)
+        if prox <= i {
+            return False
+        }
+        i = prox
+    }
+    return False
+}
+
+
+# Linha que DOCUMENTA: título de seção ou linha de tabela. Prosa não conta.
+funct documenta(linha, nome) {
+    t = linha.strip()
+    if t.startswith("#") {
+        return nomeia(t, nome)
+    }
+    if t.startswith("|") {
+        return nomeia(t, nome)
+    }
+    return False
+}
+
+
+if __name__ == "main" {
+    # `os.cmd` ECOA a saída além de devolvê-la: sem o redirecionamento, o
+    # `--metadata` inteiro sai no terminal antes do relatório.
+    tmp = "/tmp/ps_cobdoc_meta.json"
+    os.cmd(sys.executable + " --metadata > " + tmp)
+    meta = json.parse(os.readFile(tmp))
+
+    # Um nome pode ser módulo E tipo (`socket` é o tipo, `sockets` o módulo;
+    # `bytes` já foi os dois). Somar as listas em vez de sobrescrever: com
+    # `escopos[k] = ...` os membros do módulo sumiam da conta, e o portão
+    # media menos do que existe.
+    escopos = {}
+    for each fonte in [meta["modulos"], meta["tipos"]] {
+        for each k in fonte.keys() {
+            if not (k in escopos.keys()) {
+                escopos[k] = []
+            }
+            for each m in fonte[k] {
+                addEnd(escopos[k], m)
+            }
+        }
+    }
+
+    # Lê a doc INTEIRA uma vez só. Com um `open` por membro, a mesma página era
+    # relida dezenas de vezes e o portão levava minutos.
+    todos = mds_de(DOCS, [])
+    linhas_de = {}
+    for each caminho in todos {
+        linhas_de[caminho] = os.readFile(caminho).split("\n")
+    }
+
+    total = 0
+    com = 0
+    proprios = 0
+    falta = {}
+    sem_doc_nenhuma = []
+
+    for each escopo in sorted(escopos.keys()) {
+        arquivos = arquivos_do_escopo(escopo, todos, linhas_de)
+        if len(arquivos) == 0 {
+            addEnd(sem_doc_nenhuma, escopo)
+        }
+
+        for each m in escopos[escopo] {
+            nome = m["nome"]
+            total = total + 1
+            achou = False
+            # 1. página PRÓPRIA do membro. Continua valendo — o que mudou é que
+            #    deixou de ser a única forma de contar.
+            for each caminho in arquivos {
+                if caminho.endswith("/" + nome + "/" + nome + ".md") {
+                    achou = True
+                    proprios = proprios + 1
+                    break
+                }
+            }
+            # 2. documentado DENTRO de alguma página do escopo
+            if not achou {
+                for each caminho in arquivos {
+                    if achou {
+                        break
+                    }
+                    for each linha in linhas_de[caminho] {
+                        if documenta(linha, nome) {
+                            achou = True
+                            break
+                        }
+                    }
+                }
+            }
+            if achou {
+                com = com + 1
+            }
+            else {
+                if not (escopo in falta.keys()) {
+                    falta[escopo] = []
+                }
+                addEnd(falta[escopo], nome)
+            }
+        }
+    }
+
+    post("doc: " + str(com) + "/" + str(total) + " membros do motor documentados"
+         + " (" + str(proprios) + " com página própria)")
+
+    if len(sem_doc_nenhuma) > 0 {
+        post("escopos SEM nenhuma página: " + ", ".join(sem_doc_nenhuma))
+    }
+
+    if "--lista" in sys.argv {
+        post("")
+        for each escopo in sorted(falta.keys()) {
+            post("  " + escopo + " (" + str(len(falta[escopo])) + "): "
+                 + ", ".join(falta[escopo]))
+        }
+    }
+
+    if "--grava" in sys.argv {
+        os.writeFile(BASE, str(com) + "\n")
+        post("base regravada em " + BASE)
+        sys.exit(0)
+    }
+
+    if not os.isfile(BASE) {
+        os.writeFile(BASE, str(com) + "\n")
+        post("base criada em " + BASE + " com " + str(com))
+        sys.exit(0)
+    }
+
+    gravado = int(os.readFile(BASE).strip())
+    if com < gravado {
+        post("")
+        post("REPROVADO: eram " + str(gravado) + " membros documentados, agora são "
+             + str(com) + ".")
+        post("Doc não se apaga sem motivo — se o membro sumiu do motor,")
+        post("rode com --grava pra baixar a base de propósito.")
+        sys.exit(1)
+    }
+    if com > gravado {
+        os.writeFile(BASE, str(com) + "\n")
+        post("base subiu: " + str(gravado) + " -> " + str(com))
+    }
+    post("cobertura da doc: não caiu (base " + str(gravado) + ")")
+}

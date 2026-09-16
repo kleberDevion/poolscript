@@ -10,7 +10,7 @@ erraria no dia em que o compilador mudasse a numeração dos slots.
 
 ## 1. No VS Code
 
-Abra um `.ps`, clique na canaleta para pôr o breakpoint e aperte **F5**. Não
+Abra um `.pr`, clique na canaleta para pôr o breakpoint e aperte **F5**. Não
 precisa de `launch.json`: sem um, a extensão monta a configuração com o arquivo
 em foco.
 
@@ -30,7 +30,7 @@ Com `launch.json`, os campos são:
 
 | Campo | O que faz |
 |---|---|
-| `programa` | o `.ps` a depurar (obrigatório) |
+| `programa` | o `.pr` a depurar (obrigatório) |
 | `pararNaEntrada` | para na primeira linha, antes de rodar qualquer coisa |
 | `args` | argumentos do programa — é o que o `sys.argv` dele devolve |
 | `cwd` | pasta de trabalho; o padrão é a do arquivo |
@@ -41,7 +41,7 @@ A saída do programa (`post`, `os.stdout`) vai para o painel **PoolScript
 ## 2. Na linha de comando
 
 ```bash
-pool --debug <porta> <arquivo.ps> [args do programa]
+pool --debug <porta> <arquivo.pr> [args do programa]
 ```
 
 O motor escuta em `127.0.0.1:<porta>` e **não executa a primeira instrução
@@ -120,9 +120,9 @@ Estes comandos são **recusados** com motivo, não respondidos em branco:
 
 ## 7. Testes
 
-`teste/depurador.ps` sobe o motor e fala DAP com ele igual o editor faria — 22
-verificações, dentro do `make check`. Os alvos são `teste/alvo_debug.ps` e
-`teste/alvo_debug_erro.ps`, e o **número das linhas neles é parte do teste**:
+`teste/depurador.pr` sobe o motor e fala DAP com ele igual o editor faria — 22
+verificações, dentro do `make check`. Os alvos são `teste/alvo_debug.pr` e
+`teste/alvo_debug_erro.pr`, e o **número das linhas neles é parte do teste**:
 mexer nos arquivos quebra a suíte de propósito, que é o jeito de garantir que o
 breakpoint para na linha certa e não numa linha qualquer que por acaso funcione.
 

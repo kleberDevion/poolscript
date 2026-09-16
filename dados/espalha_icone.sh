@@ -1,5 +1,5 @@
 #!/bin/sh
-# Põe (ou tira) a logo do `.ps` em TODOS os temas de ícone instalados.
+# Põe (ou tira) a logo do `.pr` em TODOS os temas de ícone instalados.
 #
 # Por que em todos, e não só no hicolor: o GTK resolve o ícone tema a tema, e
 # prefere um ícone achado num tema PRÓXIMO a um nome mais específico achado num

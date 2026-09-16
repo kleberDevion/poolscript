@@ -50,7 +50,7 @@ CamelCase**.
 | **instância** de uma `Entity` | o **nome da classe** (`"Ponto"`) |
 | `model` | `"PoolModel"` |
 | `enum` | `"enum"` |
-| módulo importado (nativo ou `.ps`) | `"module"` |
+| módulo importado (nativo ou `.pr`) | `"module"` |
 | `Pattern` compilado (`regex.compile`) | `"Pattern"` |
 | arquivo (`open`) | `"PoolFile"` |
 | socket (`sockets.socket()`) | `"socket"` |

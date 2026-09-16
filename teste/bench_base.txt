@@ -1,6 +1,6 @@
 # Referência do benchmark: <caso> <razão contra `aritmetica`>
 #
-# Gerado por `./pool teste/bench.ps --grava`: o MENOR de 5 execuções, com a partida descontada.
+# Gerado por `./pool teste/bench.pr --grava`: o MENOR de 5 execuções, com a partida descontada.
 #
 # É RAZÃO, não milissegundo. Tempo absoluto varia 27% entre duas
 # execuções do MESMO binário nesta máquina (powersave, temperatura),

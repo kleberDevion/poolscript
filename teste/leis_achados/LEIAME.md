@@ -1,11 +1,11 @@
 # Contraexemplos guardados das leis
 
-Cada `.ps` aqui é um valor que **já fez uma lei falhar**. Eles rodam em TODO
+Cada `.pr` aqui é um valor que **já fez uma lei falhar**. Eles rodam em TODO
 `make leis`, antes de qualquer sorteio.
 
 ## Por que a pasta existe
 
-`teste/leis.ps` sorteia valor novo a cada execução, e o noturno da CI usa a
+`teste/leis.pr` sorteia valor novo a cada execução, e o noturno da CI usa a
 semente do DIA. Isso é o que faz a lei achar coisa que exemplo congelado não
 acha — e é também o que faz o achado **evaporar**: amanhã a semente é outra, e
 o mesmo defeito só reaparece por sorte.
@@ -29,4 +29,4 @@ valor que já quebrou uma vez nunca mais passa batido.
   valor, o arquivo existente é mantido — o primeiro contraexemplo é tão bom
   quanto o mais recente, e assim a pasta não cresce sem fim.
 - O arquivo é um programa completo: dá pra rodar sozinho com
-  `./pool teste/leis_achados/<nome>.ps` e ele imprime `AINDA FALHA` ou `FIM`.
+  `./pool teste/leis_achados/<nome>.pr` e ele imprime `AINDA FALHA` ou `FIM`.

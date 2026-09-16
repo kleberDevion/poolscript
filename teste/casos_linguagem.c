@@ -1243,7 +1243,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return l\n"
   "}\n"
   "post(ps_mod_clo.com_closure())\n",
-  "['a', 'b']\n['a', 'b']", NULL, 0, "ps_mod_clo.ps" },
+  "['a', 'b']\n['a', 'b']", NULL, 0, "ps_mod_clo.pr" },
 { "closure de modulo mantem estado proprio",
   "import ps_mod_cnt\n"
   "funct contador() {\n"
@@ -1256,7 +1256,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "c = ps_mod_cnt.contador()\n"
   "post(c(), c(), c())\n",
-  "1 2 3\n1 2 3", NULL, 0, "ps_mod_cnt.ps" },
+  "1 2 3\n1 2 3", NULL, 0, "ps_mod_cnt.pr" },
 
 /* ── posição do fonte: nada aninhado vaza pra quem o contém ─────────────────
  * O interior de uma f-string é re-lexado a partir de uma string isolada, então
@@ -1299,7 +1299,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * A suíte roda com stdin em /dev/null (não é terminal), então aqui `raw` só
  * pode ser CONFERIDO no caminho não-tty: devolve false e não estoura, e a
  * leitura segue devolvendo Null no fim (o polling em tty tem prova própria em
- * examples/cobrinha.ps, que precisa de pty). */
+ * examples/cobrinha.pr, que precisa de pty). */
 /* ── sys.argv na convencao C/Python, 2026-09-09 ────────────────────────────
  * `argv[0]` e o NOME DO SCRIPT; os argumentos do usuario vem de `argv[1]`. O
  * runner roda `pool <arquivo>` sem argumentos extras, entao argv tem SO o [0]
@@ -1368,7 +1368,7 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── ponto de entrada: `if __name__ == "main"` ──────────────────────────────
  * Substituiu o `run_selfwith_`. No arquivo executado `__name__` vale "main", e
  * a condição é verdadeira também avaliada; o guard existe pelo import (um
- * `main.ps` importado também tem `__name__ == "main"`), e é reconhecido pela
+ * `main.pr` importado também tem `__name__ == "main"`), e é reconhecido pela
  * FORMA, só com o literal "main". É o único lugar onde `:` ainda abre bloco;
  * `{ }` vale igual. */
 { "guard com dois-pontos",
@@ -1411,7 +1411,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "if __name__ == \"main\" {\n"
   "    post(\"guard\")\n"
   "}\n",
-  "corpo\ncorpo\nguard", NULL, 0, "ps_guard.ps" },
+  "corpo\ncorpo\nguard", NULL, 0, "ps_guard.pr" },
 { "run_selfwith_ saiu, e a recusa ensina",
   "run_selfwith_(\"main\") {\n    post(1)\n}\n",
   "", "use: if __name__ == \"main\"", 2 },
@@ -2001,17 +2001,17 @@ const Caso CASOS_LINGUAGEM[] = {
 { "funct: modificador depois do tipo continua valendo",
   "class C(){\n    object private static funct m(){ return 1 }\n}\npost(C.m())\n", "1", NULL, 0 },
 
-/* ── import por caminho entre aspas (`import '../x.ps'`), 2026-09-06 ───────
+/* ── import por caminho entre aspas (`import '../x.pr'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da
  * linguagem e caminho relativo ao arquivo que importa; sem isso e nome de
  * modulo (motor ou lib instalada). Os casos com arquivo de verdade estao em
- * teste/cobre_stdlib.ps; aqui, o que nao precisa de arquivo. */
+ * teste/cobre_stdlib.pr; aqui, o que nao precisa de arquivo. */
 { "import por caminho inexistente cita o caminho como foi escrito",
-  "import './nao_existe.ps'\n", "", "ImportError: No module named './nao_existe.ps'", 1 },
+  "import './nao_existe.pr'\n", "", "ImportError: No module named './nao_existe.pr'", 1 },
 { "import 'nome' sem barra nem extensao e nome de modulo, nao caminho",
   "import 'pasta_que_nao_existe'\n", "", "ImportError: No module named 'pasta_que_nao_existe'", 1 },
 { "import por caminho cujo arquivo nao serve de nome de variavel exige `as`",
-  "import 'sub/meu-mod.ps'\n", "", "'meu-mod' nao serve de nome de variavel: ligue com `as`", 2 },
+  "import 'sub/meu-mod.pr'\n", "", "'meu-mod' nao serve de nome de variavel: ligue com `as`", 2 },
 { "import entre aspas vazio e erro de sintaxe",
   "import ''\n", "", "import entre aspas vazio", 2 },
 { "from ... import continua valendo",
@@ -2414,7 +2414,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * SEM CASO AQUI, e a razao: `NotImplementedError` so nasce ao IMPORTAR um
  * modulo que nao compila, e o runner nao consegue importar — ele roda o caso
  * num tmpfile sem extensao, e a busca de modulo olha a pasta do SCRIPT, nao o
- * cwd (medido: o `.ps` escrito esta la, `os.isfile` responde True, e o import
+ * cwd (medido: o `.pr` escrito esta la, `os.isfile` responde True, e o import
  * ainda diz "No module named"). Conferido a mao, fora do runner:
  *     try { import <modulo que nao compila> } catch (Exception e) { ... }
  * pega, e com RuntimeError tambem. `TimeoutError` precisa de rede lenta. */
@@ -2700,7 +2700,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "excecao em f-string e str()",
   "post(f\"tipo: {ValueError}\", str(OSError) + \"!\")\n", "tipo: ValueError OSError!", NULL, 0 },
 
-/* ── DECORADOR DEFINIDO EM .ps (2026-09-12) ───────────────────────────────────
+/* ── DECORADOR DEFINIDO EM .pr (2026-09-12) ───────────────────────────────────
  * Um protocolo so, no OP_DECORA: valor com `.register` registra; chamavel
  * envolve (Null mantem a funct); o resto e TypeError. Antes o compilador
  * chamava `.register` a mao (a funct devolvida por `route()` dava
@@ -3097,23 +3097,23 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "SyntaxError: f() tem parametros demais (maximo 256)", 2 },
 { "parametros: lambda com 257 parametros e recusada na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(257) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
-  "os.writeFile(\"j.ps\", \"g = funct(\" + \", \".join(ps) + \") {\\n    return 1\\n}\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "os.writeFile(\"j.pr\", \"g = funct(\" + \", \".join(ps) + \") {\\n    return 1\\n}\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
   "SyntaxError: <funct>() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: metodo com self + 256 parametros e recusado na declaracao",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
-  "os.writeFile(\"j.ps\", \"Entity E() {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "os.writeFile(\"j.pr\", \"Entity E() {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
   "SyntaxError: m() tem parametros demais (maximo 256)", NULL, 0 },
 { "parametros: Entity com 256 campos e recusada na declaracao",
   "import os\nimport sys\ncs = \"\"\nfor each i in range(256) {\n    cs = cs + \"    c\" + str(i) + \": int\\n\"\n}\n"
-  "os.writeFile(\"j.ps\", \"Entity E() {\\n\" + cs + \"}\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "os.writeFile(\"j.pr\", \"Entity E() {\\n\" + cs + \"}\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
   "SyntaxError: Entity E: o __init__ gerado dos campos tem parametros demais (maximo 256: self + 255 campos)", NULL, 0 },
 { "parametros: funct com exatamente 256 parametros roda",
   "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
-  "os.writeFile(\"j.ps\", \"funct f(\" + \", \".join(ps) + \") {\\n    return p0\\n}\\npost(f(*list(range(256))))\\n\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "os.writeFile(\"j.pr\", \"funct f(\" + \", \".join(ps) + \") {\\n    return p0\\n}\\npost(f(*list(range(256))))\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.pr > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
   "0", NULL, 0 },
 
 /* ── tipo escrito junto da estrela: a mesma frase nas duas ordens ─────────── */
@@ -3196,8 +3196,8 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── import *: as três grafias e as recusas ──────────────────────────────────
  * `from m import *`, `import m *` e `PUSH m GET *` são a mesma regra: ligam os
  * nomes que o módulo exporta, e não o nome do módulo. Os casos com arquivo
- * `.ps` (private, pré-ligado, bloco, reexportação, ciclo) moram em
- * teste/cobre_stdlib.ps, que monta os arquivos. */
+ * `.pr` (private, pré-ligado, bloco, reexportação, ciclo) moram em
+ * teste/cobre_stdlib.pr, que monta os arquivos. */
 { "import *: from json import *",
   "from json import *\npost(stringify([1]), parse(\"[2]\"))\n", "[1] [2]", NULL, 0 },
 { "import *: import json *",
@@ -3229,8 +3229,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "if __name__ == \"main\" {\n    from json import *\n}\n",
   "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
 { "import *: caminho entre aspas dentro de funct cita o caminho",
-  "funct g() {\n    from './x.ps' import *\n}\n",
-  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from './x.ps' import a, b", 2 },
+  "funct g() {\n    from './x.pr' import *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from './x.pr' import a, b", 2 },
 { "import *: import m as x * e recusado",
   "import json as j *\n",
   "", "SyntaxError: `import m as x *` mistura as duas formas: `import m as x` liga o modulo, `import m *` liga os nomes dele — escolha uma", 2 },

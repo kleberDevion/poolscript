@@ -1,7 +1,7 @@
 /*
  * DIFERENCIAL — antes x depois, o corpus inteiro.
  *
- * GERADO por `teste/geradores/diferencial.ps`. NAO edite a mao: mudou o
+ * GERADO por `teste/geradores/diferencial.pr`. NAO edite a mao: mudou o
  * comportamento de proposito, regera e o diff mostra quais casos mudaram.
  *
  * Cada programa vem dos outros `casos_*.c` e traz a saida que a VM produz
@@ -1024,17 +1024,17 @@ const Caso CASOS_DIFERENCIAL[] = {
   "class C(){\n    object private static funct m(){ return 1 }\n}\npost(C.m())\n",
   "1", NULL, 0 },
 { "dif #337",
-  "import './nao_existe.ps'\n",
-  "", "ImportError: No module named './nao_existe.ps'", 1 },
+  "import './nao_existe.pr'\n",
+  "", "ImportError: No module named './nao_existe.pr'", 1 },
 { "dif #338",
   "import 'pasta_que_nao_existe'\n",
   "", "ImportError: No module named 'pasta_que_nao_existe'", 1 },
 { "dif #339",
-  "import 'sub/meu-mod.ps'\n",
-  "", "SyntaxError: 'meu-mod' nao serve de nome de variavel: ligue com `as` (import 'sub/meu-mod.ps' as nome)", 2 },
+  "import 'sub/meu-mod.pr'\n",
+  "", "SyntaxError: 'meu-mod' nao serve de nome de variavel: ligue com `as` (import 'sub/meu-mod.pr' as nome)", 2 },
 { "dif #340",
   "import ''\n",
-  "", "SyntaxError: import entre aspas vazio: esperado um caminho ('../x.ps') ou o nome de um modulo ('json')", 2 },
+  "", "SyntaxError: import entre aspas vazio: esperado um caminho ('../x.pr') ou o nome de um modulo ('json')", 2 },
 { "dif #341",
   "import json\npost(json.naoexiste)\n",
   "", "AttributeError: module 'json' has no attribute 'naoexiste'", 1 },
@@ -1918,8 +1918,8 @@ const Caso CASOS_DIFERENCIAL[] = {
   "if __name__ == \"main\" {\n    from json import *\n}\n",
   "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
 { "dif #635",
-  "funct g() {\n    from './x.ps' import *\n}\n",
-  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from './x.ps' import a, b", 2 },
+  "funct g() {\n    from './x.pr' import *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from './x.pr' import a, b", 2 },
 { "dif #636",
   "import json as j *\n",
   "", "SyntaxError: `import m as x *` mistura as duas formas: `import m as x` liga o modulo, `import m *` liga os nomes dele \xe2\x80\x94 escolha uma", 2 },

@@ -20,7 +20,7 @@ São dois mecanismos separados:
 |---|---|---|
 | Configura? | não | `Jinker(static_folder="...")` |
 | Nome da pasta | **`static` fixo** | qualquer caminho |
-| Onde fica | **ao lado do `.ps`** | onde você apontar (ver abaixo) |
+| Onde fica | **ao lado do `.pr`** | onde você apontar (ver abaixo) |
 | Qual URL serve | só as que começam com `/static/` | **qualquer** URL não-roteada |
 | Fallback | não tem | serve `index.html` se não achar o arquivo |
 
@@ -36,7 +36,7 @@ Quando uma requisição chega, o jinker decide o que responder **nesta ordem**:
 1. Bateu numa **rota** (path **e** método)? → roda o handler. **Fim.**
 2. O path de uma rota bateu, mas o **método** não? → **`405`** com `Allow:`.
    **Fim.** (ver [post/post.md](../post/post.md))
-3. Começa com **`/static/`** e o arquivo existe na `static/` ao lado do `.ps`?
+3. Começa com **`/static/`** e o arquivo existe na `static/` ao lado do `.pr`?
    → serve o arquivo.
 4. `static_folder` definido e a URL é um **arquivo físico** dentro dele
    (ex: `/app.js` → `frontend/dist/app.js`)? → serve o arquivo.
@@ -54,10 +54,10 @@ etc.) mostra a tela certa.
 
 `static_folder` é resolvido nas mesmas raízes do `render()`:
 
-1. a pasta do `.ps` em execução;
+1. a pasta do `.pr` em execução;
 2. o diretório atual (`cwd`).
 
-Então `"frontend/dist"` pode ficar ao lado do seu `app.ps`.
+Então `"frontend/dist"` pode ficar ao lado do seu `app.pr`.
 
 ---
 
@@ -68,22 +68,22 @@ Duas regras, e as duas valem pros dois mecanismos (`/static/` e
 
 | pedido | resposta | por quê |
 |---|---|---|
-| `/static/../app.ps`, `/%2e%2e/.env`, symlink que aponta pra fora | `404` | o caminho é **resolvido** (`realpath`) e tem que terminar **dentro** da pasta. Não é filtro de `..` na URL: qualquer codificação que vire `..` resolve, e a que não vira é um nome que não existe |
+| `/static/../app.pr`, `/%2e%2e/.env`, symlink que aponta pra fora | `404` | o caminho é **resolvido** (`realpath`) e tem que terminar **dentro** da pasta. Não é filtro de `..` na URL: qualquer codificação que vire `..` resolve, e a que não vira é um nome que não existe |
 | `/.env`, `/.git/config`, `/static/.htaccess` | `404` | nome começando com `.` não sai. A **única** exceção é `.well-known/`, que existe pra ser público — é por onde o Let's Encrypt valida o domínio |
 
 No SPA, o que é barrado cai no `index.html` (passo 5) como qualquer URL
 desconhecida — o cliente não distingue "não existe" de "existe e não sai".
 
-**Todo o resto que está na pasta sai — inclusive `.ps`.** O motivo: o
-`psl install` baixa pacotes `.ps` de um registry que pode ser um
-`static_folder` do próprio jinker. O `.ps` da *sua aplicação* não sai porque
+**Todo o resto que está na pasta sai — inclusive `.pr`.** O motivo: o
+`psl install` baixa pacotes `.pr` de um registry que pode ser um
+`static_folder` do próprio jinker. O `.pr` da *sua aplicação* não sai porque
 ele não está na pasta publicada: a `/static/` é uma **subpasta** ao lado dele,
 e travessia pra fora dela é barrada.
 
 Por isso, **não aponte `static_folder` pra raiz do projeto** (`"."`). Isso
-publica o projeto — o `.ps` da aplicação junto. O `.git` e o `.env` ficam
+publica o projeto — o `.pr` da aplicação junto. O `.git` e o `.env` ficam
 protegidos pela regra do ponto, mas o código não, porque publicar código é
-uso legítimo e o servidor não tem como saber qual `.ps` é o seu.
+uso legítimo e o servidor não tem como saber qual `.pr` é o seu.
 
 ---
 
@@ -112,7 +112,7 @@ Estrutura:
 
 ```
 meu_projeto/
-  app.ps
+  app.pr
   frontend/
     dist/
       index.html

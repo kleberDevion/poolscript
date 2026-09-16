@@ -1,7 +1,7 @@
 /*
  * Suíte de testes da PoolScript — em C
  *
- * Cada caso é um programa `.ps` + o que se espera dele. O runner NÃO executa
+ * Cada caso é um programa `.pr` + o que se espera dele. O runner NÃO executa
  * o programa dentro deste processo: ele faz fork/exec do `./pool`. Isso é
  * deliberado — boa parte dos casos existe justamente porque a VM já MORREU
  * (segfault, SIGFPE, OOM) rodando aquele fonte, e um teste que morre junto
@@ -17,7 +17,7 @@
 
 typedef struct {
     const char *nome;    /* identificação curta, usada no filtro e no relato */
-    const char *fonte;   /* o programa .ps */
+    const char *fonte;   /* o programa .pr */
     const char *saida;   /* stdout esperado, EXATO (NULL = não confere) */
     const char *erro;    /* trecho que precisa aparecer no stderr
                           * (NULL = o programa tem que terminar sem erro) */

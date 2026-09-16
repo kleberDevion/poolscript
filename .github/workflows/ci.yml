@@ -109,7 +109,7 @@ jobs:
       # mais estável que uma máquina de trabalho, então aqui o --portao vale.
       - run: make bench BENCH=--portao
       # Replaya o que já estava guardado: crash de ontem que voltar reprova.
-      - run: ./pool teste/fuzz_replay.ps
+      - run: ./pool teste/fuzz_replay.pr
       - name: guardar o que o fuzzer achou
         if: always()
         uses: actions/upload-artifact@v4
@@ -136,7 +136,7 @@ jobs:
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
             libmongoc-dev libbson-dev
-      # `make cobertura` termina no PORTÃO (teste/cobertura_portao.ps): compara
+      # `make cobertura` termina no PORTÃO (teste/cobertura_portao.pr): compara
       # arquivo por arquivo com teste/cobertura_base.txt e sai != 0 se algum
       # perdeu cobertura de RAMO. Subir é livre.
       - run: make cobertura

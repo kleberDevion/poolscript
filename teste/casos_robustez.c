@@ -1,5 +1,5 @@
 /*
- * GERADO por teste/geradores/robustez.ps — nao edite na mao.
+ * GERADO por teste/geradores/robustez.pr — nao edite na mao.
  *
  * Aridade errada (argumento a mais, obrigatorio a menos) em cada metodo
  * de cada tipo. O caso imprime so o que REGREDIU: metodo que levantava e

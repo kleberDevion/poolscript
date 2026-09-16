@@ -2,7 +2,7 @@
  * Casos de COBERTURA — gerados a partir de duas fontes, não escritos à mão:
  *
  *  1. o corpus de testes do repositório (commit f90845d), de onde saíram os
- *     programas `.ps` E a resposta esperada de cada um; só entraram aqui os
+ *     programas `.pr` E a resposta esperada de cada um; só entraram aqui os
  *     que a VM de hoje confirma — divergência virou investigação, não caso.
  *  2. a matriz de INTERAÇÃO: cada feature nova exercitada dentro de cada
  *     contexto da linguagem (funct, método, aninhada, for, while, try,

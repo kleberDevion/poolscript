@@ -15,7 +15,7 @@ bool
 ## Exemplos
 
 ```ps
-post("a.ps".endswith(".ps"))
+post("a.pr".endswith(".pr"))
 ```
 
 ```saida

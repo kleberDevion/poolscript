@@ -10,8 +10,8 @@ Doc — **[`poolscript.md`](poolscript.md)**.
 ## Começo rápido
 
 ```bash
-sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .ps
-pool examples/01_hello.ps
+sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .pr
+pool examples/01_hello.pr
 ```
 
 Numa máquina onde ainda não há nada (um WSL Debian novo, por exemplo), o

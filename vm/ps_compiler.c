@@ -14,6 +14,7 @@
  * bytecode errado em silêncio.
  */
 #include "ps_compiler.h"
+#include "ps_ext.h"
 
 #include <stdarg.h>
 
@@ -520,7 +521,7 @@ static int eh_global_declarada(Unidade *u, const char *nome)
 /* O nome que `import m` / `PUSH m` (sem lista de nomes) liga quando não há
  * `as`: o ÚLTIMO segmento do caminho pontuado (`import pacote.modulo` liga
  * `modulo`), ou, entre aspas, o nome do arquivo sem pasta e sem extensão
- * (`import '../x/util.ps'` liga `util`). Um lugar só: o compilador liga com
+ * (`import '../x/util.pr'` liga `util`). Um lugar só: o compilador liga com
  * isto e o `liga_o_nome` pergunta com isto. */
 static void import_nome_do_arquivo(const PSNode *n, char *out, size_t cap)
 {
@@ -529,9 +530,7 @@ static void import_nome_do_arquivo(const PSNode *n, char *out, size_t cap)
         const char *spec = (n->lista.n > 0 && n->lista.itens[0]->texto) ? n->lista.itens[0]->texto : "";
         const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
         snprintf(out, cap, "%s", b);
-        char *ext = strrchr(out, '.');
-        if (ext && ext != out && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0))
-            *ext = '\0';
+        ps_tira_ext(out);
     } else if (n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto) {
         snprintf(out, cap, "%s", n->lista.itens[n->lista.n - 1]->texto);
     }
@@ -2871,7 +2870,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * `from`, porque aí não há nome óbvio pra ligar. */
             int simples = (n->i2 == -1) || (n->i2 == 0 && n->lista.n >= 1);
             const char *ultimo = (n->i2 == -1 || base_aspas[0]) ? base_aspas : mod;
-            /* `import 'meu-mod.ps'` sem `as`: o nome do arquivo tem que servir
+            /* `import 'meu-mod.pr'` sem `as`: o nome do arquivo tem que servir
              * de nome de variavel, senao nao ha o que ligar. */
             if (n->i2 == -1 && !n->texto2 && n->lista2.n == 0) {
                 int ok_nome = ultimo[0] != '\0';

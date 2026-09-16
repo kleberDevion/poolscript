@@ -1,0 +1,532 @@
+# Cobre a STDLIB DA LINGUAGEM que nenhum teste chamava uma vez sequer.
+#
+# POR QUE ELE EXISTE. O `teste/bench_cobertura.pr` lista as funções em ZERO
+# execução, e a lista de `poolscript_vm.c` tinha 115 — não ramos de erro
+# esquecidos, mas funções inteiras da biblioteca padrão:
+#
+#     sys.platform  sys.RelativePath  sys.stdin.read/readline
+#     sys.stdout.flush  sys.stderr.flush/writeln
+#     os.pathFile  os.pathFolder  os.rename  os.cwd  os.environ  os.warn
+#     os.ipmach  os.code
+#     date.time  date.now
+#     load()  id()  tup()  dict()      .replace() com lista
+#     63 constantes de socket, uma função cada
+#
+# Nenhuma delas é obscura: `os.cwd()` e `sys.platform()` são das primeiras
+# coisas que alguém chama. Elas estavam DOCUMENTADAS e NÃO TESTADAS, que é a
+# combinação que faz uma linguagem quebrar na mão de quem confia na doc.
+#
+# CADA CHECAGEM AFIRMA UM VALOR. Chamar a função e ignorar o retorno cobriria a
+# linha e não provaria nada — seria comprar percentual, que é o oposto do que o
+# benchmark serve pra decidir.
+#
+#     ./pool teste/cobre_stdlib.pr
+import os
+import sys
+import date
+import sockets
+
+PASTA = "/tmp/ps_cobre_stdlib"
+
+falhas = []
+ok = 0
+
+
+funct confere(nome, cond)
+{
+    global ok
+    if cond
+    {
+        ok = ok + 1
+    }
+    else
+    {
+        addEnd(falhas, nome)
+    }
+}
+
+
+os.cmd("rm -rf " + PASTA)
+os.mkdir(PASTA, exist_ok=true)
+
+# ── sys ─────────────────────────────────────────────────────────────────────
+p = sys.platform()
+confere("sys.platform() diz o sistema", p == "linux" or p == "darwin" or p == "win32")
+
+# `sys.RelativePath` BUSCA o arquivo recursivamente a partir do cwd e devolve
+# onde achou; sem achar, devolve Null. Então o teste cria o alvo primeiro —
+# pedir um nome inexistente testaria só o caminho de falha.
+os.mkdir(PASTA + "/fundo", exist_ok=true)
+os.writeFile(PASTA + "/fundo/alvo_rp.txt", "achou")
+volta = os.cwd()
+os.chdir(PASTA)
+rp = sys.RelativePath("alvo_rp.txt")
+os.chdir(volta)
+confere("sys.RelativePath acha o arquivo em subpasta",
+        rp != null and rp.endswith("alvo_rp.txt"))
+confere("sys.RelativePath de nome inexistente devolve null",
+        sys.RelativePath("nao_existe_mesmo_987.txt") == null)
+
+confere("sys.executable aponta um arquivo que existe", os.isfile(sys.executable))
+# `sys.argv[0]` é o NOME DO SCRIPT e os argumentos vêm a partir de `[1]` — a
+# convenção de C/Python. Rodado sem argumento (é o caso aqui), tem só o [0].
+confere("sys.argv sem argumento tem só o nome do script", len(sys.argv) == 1)
+confere("sys.argv[0] é o script rodando", sys.argv[0].endswith("cobre_stdlib.pr"))
+
+# stdout/stderr: o `flush` não devolve nada, então o que se afirma é que ele
+# ESCOA — escrevendo sem newline e conferindo que o texto saiu antes do fim.
+sys.stdout.write("")
+sys.stdout.flush()
+sys.stderr.write("")
+sys.stderr.writeln("")
+sys.stderr.flush()
+confere("sys.stdout/stderr write+writeln+flush não levantam", true)
+
+# ── sys.stdin ───────────────────────────────────────────────────────────────
+#
+# Roda um script FILHO com a entrada redirecionada: no processo do teste o
+# stdin é o terminal, e ler dele penduraria a suíte pra sempre.
+os.writeFile(PASTA + "/le_stdin.pr",
+             "import sys\n"
+             + "l = sys.stdin.readline()\n"
+             + "r = sys.stdin.read(4)\n"
+             + "post(l.strip() + \"|\" + r)\n")
+os.writeFile(PASTA + "/entrada.txt", "primeira\nabcdefgh")
+os.cmd("'" + sys.executable + "' " + PASTA + "/le_stdin.pr < " + PASTA
+       + "/entrada.txt > " + PASTA + "/stdin.out 2>&1")
+confere("sys.stdin.readline() e read(n) leem a entrada",
+        os.readFile(PASTA + "/stdin.out").strip() == "primeira|abcd")
+
+# ── import relativo `..` e `__name__` em modulo importado ───────────────────
+#
+# `pool sub/filho.pr` (caminho RELATIVO, sem `./`) resolvia o `..` a partir do
+# cwd, nao da pasta do arquivo — `pool ./sub/filho.pr` funcionava e o outro
+# nao. E `__name__` nao existia em modulo importado (`Jinker(__name__)` num
+# modulo estourava com NameError). Os dois medidos pela auditoria doc x motor.
+os.mkdir(PASTA + "/rel/sub", exist_ok=true)
+os.mkdir(PASTA + "/rel/pacote", exist_ok=true)
+os.writeFile(PASTA + "/rel/pacote/modulo.pr", "z = 99\n")
+os.writeFile(PASTA + "/rel/sub/filho.pr", "from ..pacote.modulo import z\npost(\"z:\", z)\n")
+os.writeFile(PASTA + "/rel/nomeado.pr", "post(\"nome:\", __name__)\n")
+os.writeFile(PASTA + "/rel/principal.pr", "import nomeado\n")
+os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' sub/filho.pr > saida_rel.out 2>&1")
+confere("import relativo `..` com o script dado como caminho relativo (sub/filho.pr)",
+        os.readFile(PASTA + "/rel/saida_rel.out").strip() == "z: 99")
+os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' principal.pr > saida_nome.out 2>&1")
+confere("__name__ num modulo importado e o nome do modulo",
+        os.readFile(PASTA + "/rel/saida_nome.out").strip() == "nome: nomeado")
+
+# `import vizinho` (sem ponto) dentro de um modulo de subpasta acha o arquivo
+# ao lado dele — so a raiz do projeto era olhada, e `import smtp` dentro de
+# `acesso/controller.pr` dava "No module named 'smtp'" (o erro da tela dele).
+os.mkdir(PASTA + "/rel/acesso", exist_ok=true)
+os.writeFile(PASTA + "/rel/acesso/smtp.pr", "funct manda() {\n    return \"mandou\"\n}\n")
+os.writeFile(PASTA + "/rel/acesso/controller.pr", "import smtp\nfunct entra() {\n    return smtp.manda()\n}\n")
+os.writeFile(PASTA + "/rel/rotas.pr", "from acesso.controller import entra\npost(entra())\n")
+os.cmd("cd " + PASTA + "/rel && '" + sys.executable + "' rotas.pr > saida_viz.out 2>&1")
+confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
+        os.readFile(PASTA + "/rel/saida_viz.out").strip() == "mandou")
+
+# ── import por caminho entre aspas (`import '../x.pr'`) ──────────────────────
+#
+# A string e o especificador: com `/` ou extensao e caminho relativo ao
+# arquivo que importa; sem isso e nome de modulo do motor ou lib instalada.
+# Aqui o que precisa de arquivo de verdade: relativo, pai, sem extensao, `as`,
+# PUSH/GET, absoluto, lib (POOLSCRIPT_HOME), modulo do motor entre aspas e
+# `__name__` dentro do modulo importado por caminho.
+os.mkdir(PASTA + "/asp/sub", exist_ok=true)
+os.mkdir(PASTA + "/asp/pacote", exist_ok=true)
+os.mkdir(PASTA + "/asp/home/libs", exist_ok=true)
+os.writeFile(PASTA + "/asp/pacote/modulo.pr", "z = 99\nfunct f() {\n    return \"f de \" + __name__\n}\n")
+os.writeFile(PASTA + "/asp/sub/irmao.pr", "w = 7\n")
+os.writeFile(PASTA + "/asp/home/libs/minhalib.pr", "LIB = \"lib ok\"\n")
+os.writeFile(PASTA + "/asp/sub/meu-mod.pr", "q = 1\n")
+os.writeFile(PASTA + "/asp/sub/filho.pr",
+    "import '../pacote/modulo.pr'\n"
+    + "from './irmao.pr' import w\n"
+    + "from '../pacote/modulo' import z as zz\n"
+    + "import 'json'\n"
+    + "from 'json' import stringify as st\n"
+    + "import 'minhalib'\n"
+    + "PUSH '../pacote/modulo.pr' as pm\n"
+    + "PUSH './irmao.pr' GET w as w2\n"
+    + "import '" + PASTA + "/asp/pacote/modulo.pr' as abs\n"
+    + "import './meu-mod.pr' as mm\n"
+    + "post(modulo.z, w, zz, json.stringify([1]), st([2]), minhalib.LIB, pm.z, w2, abs.f(), mm.q)\n")
+ESPERADO_ASP = "99 7 99 [1] [2] lib ok 99 7 f de modulo 1"
+os.cmd("cd " + PASTA + "/asp && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable + "' sub/filho.pr > saida_asp.out 2>&1")
+confere("import por caminho: relativo, pai, sem extensao, `as`, PUSH/GET, absoluto, lib e modulo do motor entre aspas",
+        os.readFile(PASTA + "/asp/saida_asp.out").strip() == ESPERADO_ASP)
+os.cmd("cd " + PASTA + "/asp/sub && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable + "' filho.pr > ../saida_asp2.out 2>&1")
+confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
+        os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
+
+# ── import * com arquivo `.pr` de verdade ────────────────────────────────────
+#
+# `from m import *`, `import m *` e `PUSH m GET *` ligam o que o arquivo
+# exporta: o que ele liga no nivel do arquivo (funct, Entity, variavel, os
+# imports dele, `global x` gravado de dentro de funct), sem `private`, sem o
+# que so existe dentro de bloco e sem o builtin que ele so chamou. A mesma
+# regra passou a valer pro `from m import x` e pro `m.x`. O `*` e resolvido na
+# compilacao; o que fica pra runtime e o valor (em ciclo, o nome ainda sem
+# valor e pulado). Os casos de um arquivo so estao em casos_linguagem.c.
+EST = PASTA + "/estrela"
+os.mkdir(EST + "/sub", exist_ok=true)
+os.writeFile(EST + "/m.pr",
+    "import json\n"
+    + "funct f() {\n    return \"f\"\n}\n"
+    + "Entity E() {\n}\n"
+    + "x = 1\n"
+    + "_u = 2\n"
+    + "private funct p() {\n    return 1\n}\n"
+    + "private class Pc() {\n}\n"
+    + "if true {\n    bloco = 3\n}\n"
+    + "funct init() {\n    global cfg\n    cfg = 9\n}\n"
+    + "init()\n"
+    + "n_chamou = len(\"ab\")\n")
+
+# roda `fonte` como EST/<arq> e devolve stdout+stderr sem o fim de linha
+funct roda_est(arq, fonte) {
+    os.writeFile(EST + "/" + arq, fonte)
+    os.cmd("cd " + EST + " && '" + sys.executable + "' " + arq + " > " + arq + ".out 2>&1")
+    return os.readFile(EST + "/" + arq + ".out").strip()
+}
+
+TUDO = "f E 1 2 [1] 9"
+USA = "post(f(), type(E()), x, _u, json.stringify([1]), cfg)\n"
+confere("import *: from m import * traz funct, Entity, variavel, _nome, os imports e o global gravado",
+        roda_est("e1.pr", "from m import *\n" + USA) == TUDO)
+confere("import *: import m * e a mesma regra",
+        roda_est("e2.pr", "import m *\n" + USA) == TUDO)
+confere("import *: PUSH m GET * e a mesma regra",
+        roda_est("e3.pr", "PUSH m GET *\n" + USA) == TUDO)
+confere("import *: caminho entre aspas, nas duas grafias",
+        roda_est("e4.pr", "from './m.pr' import *\nimport './m' *\n" + USA) == TUDO)
+os.writeFile(EST + "/sub/rel.pr", "from ..m import *\n" + USA)
+os.cmd("cd " + EST + " && '" + sys.executable + "' sub/rel.pr > sub/rel.out 2>&1")
+confere("import *: relativo com pontos a partir de subpasta",
+        os.readFile(EST + "/sub/rel.out").strip() == TUDO)
+confere("import *: nao liga o nome do modulo",
+        roda_est("e5.pr", "import m *\npost(m)\n").startswith("NameError: name 'm' is not defined"))
+confere("import *: private funct fica de fora",
+        roda_est("e6.pr", "from m import *\np()\n").startswith("NameError: name 'p' is not defined"))
+confere("import *: private class fica de fora",
+        roda_est("e7.pr", "from m import *\nPc()\n").startswith("NameError: name 'Pc' is not defined"))
+confere("import *: nome que so existe dentro de bloco fica de fora",
+        roda_est("e8.pr", "from m import *\npost(bloco)\n").startswith("NameError: name 'bloco' is not defined"))
+confere("import *: o builtin que o modulo so chamou nao sai, e o do importador sobrevive",
+        roda_est("e9.pr", "funct len(v) {\n    return 99\n}\nfrom m import *\npost(len(\"a\"))\n") == "99")
+os.writeFile(EST + "/m3.pr", "funct len(v) {\n    return 7\n}\n")
+confere("import *: builtin REDEFINIDO no modulo sai, como qualquer funct dele",
+        roda_est("e10.pr", "from m3 import *\npost(len(\"a\"))\n") == "7")
+confere("import explicito: builtin que o modulo so chamou e ImportError",
+        roda_est("e11.pr", "from m import len\n").startswith("ImportError: cannot import name 'len' from 'm'"))
+confere("import explicito: m.len do builtin que o modulo so chamou e AttributeError",
+        roda_est("e12.pr", "import m\npost(m.len)\n").startswith("AttributeError: module 'm' has no attribute 'len'"))
+confere("import explicito: private continua dizendo que existe",
+        roda_est("e13.pr", "import m\npost(m.p)\n").startswith("AttributeError: module 'm' has no attribute 'p' (existe, mas é private)"))
+confere("import explicito: private class continua dizendo que existe",
+        roda_est("e14.pr", "from m import Pc\n").startswith("AttributeError: module 'm' has no attribute 'Pc' (existe, mas é private)"))
+confere("import explicito: global gravado de dentro de funct sai",
+        roda_est("e15.pr", "from m import cfg\nimport m\npost(cfg, m.cfg)\n") == "9 9")
+confere("import *: o que vem depois sobrescreve o que o * trouxe",
+        roda_est("e16.pr", "from m import *\nx = 5\npost(x)\n") == "5")
+confere("import *: o * sobrescreve o que ja existia",
+        roda_est("e17.pr", "x = 5\nfrom m import *\npost(x)\n") == "1")
+confere("import *: funct do importador usa o nome que veio do *",
+        roda_est("e18.pr", "from m import *\nfunct g() {\n    return f() + str(x)\n}\npost(g())\n") == "f1")
+confere("import *: escrita dentro de bloco atravessa ate o nome do *",
+        roda_est("e19.pr", "from m import *\nif true {\n    x = 9\n}\npost(x)\n") == "9")
+confere("import *: for each sobre o nome do * devolve o valor depois do laco",
+        roda_est("e20.pr", "from m import *\nfor each x in [7, 8] {\n}\npost(x)\n") == "1")
+confere("import *: nome novo dentro de bloco continua sumindo no fim do bloco",
+        roda_est("e21.pr", "from m import *\nif true {\n    novo = 1\n}\npost(novo)\n").startswith("NameError"))
+confere("import *: variavel tipada do importador confere o valor que chega, como o import explicito",
+        roda_est("e22.pr", "str x = \"a\"\nfrom m import *\n").split("\n")[0]
+        == roda_est("e23.pr", "str x = \"a\"\nfrom m import x\n").split("\n")[0])
+os.writeFile(EST + "/r.pr", "from json import *\n")
+confere("import *: reexportacao — o que r trouxe por * sai de r por * e por r.nome",
+        roda_est("e24.pr", "from r import *\npost(parse(\"[1]\"))\nimport r\npost(r.parse(\"[2]\"))\n") == "[1]\n[2]")
+os.writeFile(EST + "/r2.pr", "from m import *\n")
+confere("import *: reexportacao atravessa arquivo .pr",
+        roda_est("e25.pr", "from r2 import *\npost(f())\n") == "f")
+os.writeFile(EST + "/mr.pr", "funct range(n) {\n    return [\"r\"]\n}\n")
+confere("import *: range que vem do * desliga o atalho do for each",
+        roda_est("e26.pr", "from mr import *\nfor each i in range(3) {\n    post(i)\n}\n") == "r")
+os.writeFile(EST + "/ca.pr", "from cb import *\npost(fb())\n")
+os.writeFile(EST + "/cb.pr", "funct fb() {\n    return \"fb\"\n}\nfrom ca import *\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' ca.pr > ca.out 2>&1")
+confere("import *: ciclo entre dois arquivos termina e liga o que ja tem valor",
+        os.readFile(EST + "/ca.out").strip() == "fb\nfb")
+os.writeFile(EST + "/auto.pr", "x = 1\nfrom auto import *\npost(x)\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' auto.pr > auto.out 2>&1")
+confere("import *: arquivo que importa a si mesmo com * termina",
+        os.readFile(EST + "/auto.out").strip() == "1\n1")
+confere("import *: modulo que so aparece em runtime diz por que o * nao tem nomes",
+        roda_est("e27.pr", "import os\nos.writeFile(\"" + EST + "/gerado.pr\", \"z = 1\\n\")\nfrom gerado import *\n")
+            .startswith("ImportError: `*` de 'gerado': os nomes do `*` sao resolvidos antes de o programa rodar"))
+# Um `*` que aponta pra modulo ausente deixa a lista do arquivo INCOMPLETA: a
+# recusa sobe, em vez de sumir nome em silencio no arquivo de cima.
+os.writeFile(EST + "/inc_b.pr", "from naoexiste import *\nW = 1\n")
+confere("import *: modulo com * que nao resolve nao entrega lista pela metade",
+        roda_est("e28.pr", "from inc_b import *\npost(W)\n").startswith("ImportError: No module named 'naoexiste'"))
+os.writeFile(EST + "/chk.pr", "from m import *\npost(f())\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' --check chk.pr > chk.out 2>&1")
+confere("import *: --check compila sem resolver o modulo",
+        os.readFile(EST + "/chk.out").strip() == "{\"ok\":true}")
+
+# ── os.run: SEGUNDO PLANO ───────────────────────────────────────────────────
+#
+# O `run` sem `capture` dispara e volta na hora — e o que o separa do `cmd`.
+# Enquanto os dois esperavam, ter os dois nao fazia sentido: medido antes,
+# `os.run(["sleep", "3"])` segurava o programa por 3 s.
+#
+# O que se afirma aqui: (1) volta antes do processo terminar, (2) devolve o PID,
+# (3) o processo RODA de verdade e sobrevive ao fim de quem disparou,
+# (4) programa inexistente continua levantando IOError — sem isso o disparo
+# ficaria calado, com o processo morrendo de 127 sem ninguem saber,
+# (5) `capture=true` continua ESPERANDO e devolvendo a saida.
+os.mkdir(PASTA + "/bg", exist_ok=true)
+os.cmd("rm -f " + PASTA + "/bg/prova.txt")
+t0 = date.timestamp()
+pid = os.run(["sh", "-c", "sleep 2; echo RODOU > " + PASTA + "/bg/prova.txt"])
+gasto = date.timestamp() - t0
+confere("os.run sem capture volta antes do processo terminar", gasto < 2)
+confere("os.run sem capture devolve o PID", type(pid) == "int" and pid > 0)
+os.cmd("sleep 3")
+confere("o processo disparado RODA e sobrevive a quem disparou",
+        os.exists(PASTA + "/bg/prova.txt")
+        and os.readFile(PASTA + "/bg/prova.txt").strip() == "RODOU")
+
+pegou = false
+try {
+    os.run(["programa_que_nao_existe_zz_987"])
+}
+catch (IOError e) {
+    pegou = true
+}
+confere("os.run de programa inexistente levanta IOError (nao volta PID calado)", pegou)
+
+r = os.run(["echo", "capturado"], true)
+confere("os.run com capture=true espera e devolve a saida",
+        type(r) == "str" and r.strip() == "capturado")
+
+# ── charset em arquivo: TODO codec que a linguagem conhece ──────────────────
+#
+# O `encoding` de readFile/writeFile era declarado e IGNORADO — ler latin-1
+# pedindo latin-1 saia com acento quebrado e gravar latin-1 gravava utf-8. A
+# conversao nao e reimplementada no `os`: ler chama o `.decode()` do bytes e
+# gravar chama o `.encode()` do str, entao nao ha lista de convidados nem uma
+# segunda copia da logica pra sair de sincronia.
+#
+# A ida e volta e o que se afirma: gravar num charset e ler de volta nele tem
+# que devolver o MESMO texto, e o TAMANHO em bytes prova que a conversao
+# aconteceu (latin-1 gasta 4 onde utf-8 gasta 5).
+os.mkdir(PASTA + "/cs", exist_ok=true)
+TXT = "café"
+volta_ok = true
+for each cod in ["utf-8", "latin-1", "utf-16", "utf-16be", "utf-32", "utf-32be", "iso-8859-1", "cp819"] {
+    arq = PASTA + "/cs/" + cod.replace("-", "") + ".txt"
+    os.writeFile(arq, TXT, encoding=cod)
+    if os.readFile(arq, encoding=cod) != TXT {
+        volta_ok = false
+    }
+}
+confere("arquivo: grava e le de volta em todo codec da linguagem", volta_ok)
+confere("arquivo: latin-1 gasta 4 bytes onde utf-8 gasta 5",
+        os.size(PASTA + "/cs/latin1.txt") == 4 and os.size(PASTA + "/cs/utf8.txt") == 5)
+confere("arquivo: utf-16 gasta 8 bytes e utf-32 gasta 16",
+        os.size(PASTA + "/cs/utf16.txt") == 8 and os.size(PASTA + "/cs/utf32.txt") == 16)
+
+pegou = false
+try {
+    os.writeFile(PASTA + "/cs/x.txt", "ção", encoding="ascii")
+}
+catch (e) {
+    pegou = true
+}
+confere("arquivo: caractere que nao cabe no charset levanta", pegou)
+
+pegou = false
+try {
+    os.readFile(PASTA + "/cs/utf8.txt", encoding="klingon")
+}
+catch (e) {
+    pegou = true
+}
+confere("arquivo: encoding inexistente levanta", pegou)
+
+# `content` em bytes JA e a sequencia final: o encoding nao se aplica
+os.writeFile(PASTA + "/cs/b.bin", "ab".encode(), encoding="utf-16")
+confere("arquivo: content em bytes ignora o encoding", os.size(PASTA + "/cs/b.bin") == 2)
+
+# o 2o argumento do loadFile e MODO, e charset ali e erro com o caminho certo
+os.writeFile(PASTA + "/cs/d.csv", "a,b\n1,2\n")
+pegou = false
+try {
+    os.loadFile(PASTA + "/cs/d.csv", "latin-1")
+}
+catch (e) {
+    pegou = "os.readFile" in str(e)
+}
+confere("loadFile recusa charset e aponta o os.readFile", pegou)
+
+# ── os: caminho, diretório, ambiente ────────────────────────────────────────
+# `pathFile`/`pathFolder` BUSCAM a partir do cwd e levantam se não acharem —
+# então o teste cria o alvo e roda de dentro da pasta.
+os.mkdir(PASTA + "/uploads", exist_ok=true)
+os.writeFile(PASTA + "/dados.json", "{}")
+volta2 = os.cwd()
+os.chdir(PASTA)
+cf = os.pathFile("dados.json")
+cp = os.pathFolder("uploads")
+os.chdir(volta2)
+confere("os.pathFile devolve o caminho absoluto do arquivo",
+        cf.startswith("/") and cf.endswith("dados.json"))
+confere("os.pathFolder devolve o caminho absoluto da pasta",
+        cp.startswith("/") and cp.endswith("uploads"))
+
+antes = os.cwd()
+confere("os.cwd() devolve caminho absoluto", antes.startswith("/"))
+os.chdir(PASTA)
+confere("os.chdir muda o cwd de verdade", os.cwd() != antes)
+os.chdir(antes)
+confere("e volta", os.cwd() == antes)
+
+os.writeFile(PASTA + "/velho.txt", "conteudo")
+os.rename(PASTA + "/velho.txt", PASTA + "/novo.txt")
+confere("os.rename move o arquivo",
+        os.isfile(PASTA + "/novo.txt") and not os.isfile(PASTA + "/velho.txt"))
+confere("e o conteúdo atravessa intacto",
+        os.readFile(PASTA + "/novo.txt") == "conteudo")
+
+confere("os.environ lê variável do ambiente", os.environ("HOME") == os.getenv("HOME"))
+confere("os.environ de variável inexistente é null",
+        os.environ("PS_NAO_EXISTE_MESMO_123") == null)
+
+ip = os.ipmach()
+confere("os.ipmach devolve um IP com três pontos", len(ip.split(".")) == 4)
+
+# `os.code` NÃO entra aqui: ele ABRE o arquivo no editor (`code <path>`).
+# Chamar num teste levantaria uma janela do VS Code a cada rodada da suíte.
+
+# `os.warn` escreve em stderr colorido — não devolve nada; o que se afirma é
+# que ele aceita a cor e não levanta.
+os.warn("aviso do teste de cobertura", color="yellow")
+confere("os.warn aceita texto e cor", true)
+
+# ── date ────────────────────────────────────────────────────────────────────
+t = date.time()
+confere("date.time() devolve HH:MM:SS", len(t.split(":")) == 3)
+n = date.now()
+confere("date.now() traz data e hora juntas", len(str(n)) >= 10)
+confere("date.today() traz a data", len(date.today()) >= 8)
+confere("date.timestamp() é número positivo", date.timestamp() > 0)
+
+# ── embutidos ───────────────────────────────────────────────────────────────
+confere("tup() constrói tupla", type(tup([1, 2])) == "tup" and len(tup([1, 2])) == 2)
+confere("dict() constrói dict vazio", type(dict()) == "dict")
+confere("id() de dois objetos distintos difere", id([1]) != id([1]))
+mesmo = [1]
+confere("id() do MESMO objeto é estável", id(mesmo) == id(mesmo))
+
+# `.replace()` com LISTA: troca vários de uma vez
+confere("str.replace com lista troca todos",
+        "a-b-c".replace(["a", "b"], "x") == "x-x-c")
+
+# `load()` é o `dotenv.load` exposto sem import: lê um `.env` e põe as
+# variáveis no ambiente.
+#
+# A doc (`docs/builtins/load/load.md`) diz "Retorno: bool"; o motor devolve um
+# `dict` com o que leu. O teste afirma o que o MOTOR faz — a doc é quem está
+# fora de sincronia, e o `audita_doc.pr` não pega isso porque só confere nome e
+# ordem de parâmetro, nunca o tipo de retorno.
+os.writeFile(PASTA + "/.env", "PS_COB_UM=alfa\nPS_COB_DOIS=beta\n")
+m = load(PASTA + "/.env")
+confere("load() devolve o que leu do .env",
+        type(m) == "dict" and m["PS_COB_UM"] == "alfa")
+confere("load() põe a variável no ambiente", os.getenv("PS_COB_DOIS") == "beta")
+
+# ── constantes de socket ────────────────────────────────────────────────────
+#
+# São 63 funções de uma linha cada, e nenhuma era lida. Conferir o VALOR (e não
+# só que existe) é o que separa cobrir de carimbar: `SOCK_STREAM` tem que ser 1
+# no Linux, não "algum inteiro".
+confere("AF_INET/AF_INET6/AF_UNIX",
+        sockets.AF_INET == 2 and sockets.AF_INET6 == 10 and sockets.AF_UNIX == 1)
+confere("AF_UNSPEC é 0", sockets.AF_UNSPEC == 0)
+confere("AF_PACKET é 17 no Linux", sockets.AF_PACKET == 17)
+confere("SOCK_STREAM=1 SOCK_DGRAM=2 SOCK_RAW=3",
+        sockets.SOCK_STREAM == 1 and sockets.SOCK_DGRAM == 2 and sockets.SOCK_RAW == 3)
+confere("SOCK_SEQPACKET é 5", sockets.SOCK_SEQPACKET == 5)
+confere("SOL_SOCKET é 1", sockets.SOL_SOCKET == 1)
+
+opts = [sockets.SO_REUSEADDR, sockets.SO_REUSEPORT, sockets.SO_KEEPALIVE,
+        sockets.SO_BROADCAST, sockets.SO_LINGER, sockets.SO_RCVBUF,
+        sockets.SO_SNDBUF, sockets.SO_ERROR, sockets.SO_RCVTIMEO,
+        sockets.SO_SNDTIMEO, sockets.SO_OOBINLINE, sockets.SO_DONTROUTE,
+        sockets.SO_TYPE]
+confere("as 13 opções SO_* são inteiros distintos e positivos",
+        len(opts) == 13 and min(opts) > 0)
+
+confere("TCP_NODELAY é 1", sockets.TCP_NODELAY == 1)
+confere("TCP_KEEPIDLE/INTVL/CNT existem e diferem",
+        sockets.TCP_KEEPIDLE != sockets.TCP_KEEPINTVL
+        and sockets.TCP_KEEPINTVL != sockets.TCP_KEEPCNT)
+
+confere("IPPROTO_IP=0 TCP=6 UDP=17 ICMP=1 RAW=255",
+        sockets.IPPROTO_IP == 0 and sockets.IPPROTO_TCP == 6
+        and sockets.IPPROTO_UDP == 17 and sockets.IPPROTO_ICMP == 1
+        and sockets.IPPROTO_RAW == 255)
+
+confere("SHUT_RD=0 WR=1 RDWR=2",
+        sockets.SHUT_RD == 0 and sockets.SHUT_WR == 1 and sockets.SHUT_RDWR == 2)
+
+msgs = [sockets.MSG_PEEK, sockets.MSG_WAITALL, sockets.MSG_DONTWAIT,
+        sockets.MSG_OOB, sockets.MSG_DONTROUTE, sockets.MSG_TRUNC]
+confere("as 6 flags MSG_* são potências de dois distintas",
+        len(msgs) == 6 and min(msgs) > 0)
+
+ais = [sockets.AI_PASSIVE, sockets.AI_CANONNAME, sockets.AI_NUMERICHOST,
+       sockets.AI_NUMERICSERV, sockets.AI_ADDRCONFIG, sockets.AI_V4MAPPED,
+       sockets.AI_ALL]
+confere("as 7 flags AI_* são positivas", len(ais) == 7 and min(ais) > 0)
+
+nis = [sockets.NI_NUMERICHOST, sockets.NI_NUMERICSERV, sockets.NI_NOFQDN,
+       sockets.NI_NAMEREQD, sockets.NI_DGRAM]
+confere("as 5 flags NI_* são positivas", len(nis) == 5 and min(nis) > 0)
+
+confere("SOMAXCONN é positivo", sockets.SOMAXCONN > 0)
+confere("INADDR_ANY=0 e LOOPBACK=0x7f000001",
+        sockets.INADDR_ANY == 0 and sockets.INADDR_LOOPBACK == 2130706433)
+confere("INADDR_BROADCAST é 0xffffffff", sockets.INADDR_BROADCAST == 4294967295)
+
+ips = [sockets.IP_TTL, sockets.IP_MULTICAST_TTL, sockets.IP_MULTICAST_LOOP,
+       sockets.IP_ADD_MEMBERSHIP, sockets.IP_DROP_MEMBERSHIP, sockets.IPV6_V6ONLY]
+confere("as 6 opções de IP são positivas", len(ips) == 6 and min(ips) > 0)
+
+# ── resolução de nome ───────────────────────────────────────────────────────
+#
+# `localhost` resolve sem rede: está no /etc/hosts. Nada aqui sai da máquina.
+h = sockets.gethostbyname_ex("localhost")
+confere("gethostbyname_ex devolve nome, apelidos e endereços",
+        len(h) == 3 and "127.0.0.1" in h[2])
+confere("gethostbyaddr resolve o loopback de volta",
+        len(sockets.gethostbyaddr("127.0.0.1")) == 3)
+confere("has_dualstack_ipv6 responde bool",
+        sockets.has_dualstack_ipv6() == true or sockets.has_dualstack_ipv6() == false)
+
+os.cmd("rm -rf " + PASTA)
+
+# ── relatório ───────────────────────────────────────────────────────────────
+post("")
+post("stdlib:", ok, "checagens passaram")
+if falhas.len() > 0
+{
+    post("FALHARAM:", falhas.len())
+    for each f in falhas
+    {
+        post("  " + f)
+    }
+    sys.exit(1)
+}

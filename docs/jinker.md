@@ -33,7 +33,7 @@ deste doc é só detalhar cada parte desse ciclo.
 
 ## Primeiro servidor (exemplo completo, rode e veja)
 
-Crie um arquivo `app.ps` com isto — é um servidor inteiro, funcional:
+Crie um arquivo `app.pr` com isto — é um servidor inteiro, funcional:
 
 ```
 from jinker import Jinker, cors, jsonify
@@ -62,7 +62,7 @@ if __name__ == "main" {
 }
 ```
 
-Rode com `pool app.ps` e teste no navegador `http://localhost:8080/` — você vê
+Rode com `pool app.pr` e teste no navegador `http://localhost:8080/` — você vê
 o JSON. Entendendo cada bloco:
 
 1. **`Jinker(__name__)`** cria a aplicação. Tudo (rotas, sockets) pendura nela.
@@ -341,7 +341,7 @@ funct pagina() {
 
 O caminho é resolvido, nesta ordem, relativo a:
 
-1. **A pasta do arquivo `.ps` em execução** (onde está o seu `app.ps`);
+1. **A pasta do arquivo `.pr` em execução** (onde está o seu `app.pr`);
 2. **O diretório atual** (`cwd`, de onde você rodou `pool`).
 
 O primeiro que tiver o arquivo vence. Um caminho absoluto
@@ -409,8 +409,8 @@ Fluxo de uma requisição, na ordem em que o servidor decide o que responder:
    **`index.html`** da pasta (fallback de SPA).
 5. Nada disso? → **404**.
 
-`static_folder` é buscado nas mesmas raízes do `render()` (pasta do `.ps` e
-`cwd`), então `"frontend/dist"` pode estar ao lado do seu `app.ps`.
+`static_folder` é buscado nas mesmas raízes do `render()` (pasta do `.pr` e
+`cwd`), então `"frontend/dist"` pode estar ao lado do seu `app.pr`.
 
 > **Nota:** o construtor também aceita `static_url="/"`, mas hoje esse valor é
 > **guardado e não usado** na hora de servir — a correspondência é feita contra
@@ -424,7 +424,7 @@ Fluxo de uma requisição, na ordem em que o servidor decide o que responder:
 
 ```
 meu_projeto/
-  app.ps
+  app.pr
   .env
   templates/
     index.html
@@ -539,7 +539,7 @@ if __name__ == "main" {
 | `debug` | Mostra erros detalhados no terminal |
 | `host` | `"0.0.0.0"` aceita qualquer conexão, `"127.0.0.1"` só local |
 | `port` | Porta do servidor |
-| `reload` | (dev) Reinicia o servidor quando o `.ps` muda. Só com `workers=1`. |
+| `reload` | (dev) Reinicia o servidor quando o `.pr` muda. Só com `workers=1`. |
 | `workers` | Nº de processos que dividem a porta (paralelismo real entre núcleos). Padrão `1`. |
 
 ---

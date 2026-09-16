@@ -24,7 +24,7 @@ crash:
 ```
 raise NetworkError("caiu")
 # NetworkError: caiu
-#   em app.ps, linha 1
+#   em app.pr, linha 1
 ```
 
 ---

@@ -54,7 +54,7 @@ psl-poolscript-vsix/*.vsix
 # assinaturas introspectadas pra auditoria da doc (scripts/audita_doc_sigs.py)
 .audita_sigs.json
 teste/ultima_falha.txt
-# o servidor-alvo do jinker cria e apaga; testa a `/static/` ao lado do .ps
+# o servidor-alvo do jinker cria e apaga; testa a `/static/` ao lado do .pr
 teste/static/
 
 # binarios de teste (gerados por make; nao versionar)
@@ -67,7 +67,7 @@ cob/
 pool-oom
 pool-fuzz
 pool-asan
-# O CORPUS é gerado (`make semeia` o reconstrói dos .ps e dos casos em C) e não
+# O CORPUS é gerado (`make semeia` o reconstrói dos .pr e dos casos em C) e não
 # entra. Os ACHADOS entram: um `crash-*` é o caso de regressão, e jogá-lo fora
 # é descobrir o mesmo defeito toda noite.
 teste/fuzz_corpus/

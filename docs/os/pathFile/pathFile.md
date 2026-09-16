@@ -1,7 +1,7 @@
 # `os.pathFile(name)`
 
 Devolve o **caminho absoluto** de um arquivo, buscando-o pelo nome a partir da
-pasta do `.ps` em execução e depois do diretório atual. Erro se não encontrar.
+pasta do `.pr` em execução e depois do diretório atual. Erro se não encontrar.
 
 ```
 os.pathFile(name: str) -> str

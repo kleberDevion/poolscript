@@ -1,0 +1,395 @@
+# Migrador de extensão: `.ps`, `.psl` e `.p` viram `.pr`.
+#
+# A extensão da linguagem passou a ser UMA só. Este script faz a travessia numa
+# pasta qualquer — o repositório da linguagem, as libs instaladas, um projeto
+# seu — em dois tempos: renomeia os arquivos e arruma as referências que citam
+# o nome ANTIGO dentro dos arquivos de texto.
+#
+# A troca de referência não é cega: só sai daqui o nome de um arquivo que ESTE
+# migrador renomeou, e só quando ele aparece com borda (o caractere antes e o
+# depois não podem ser de nome). É isso que impede `x.ps` de comer o `x.ps1` do
+# PowerShell e `a.ps` de estragar `ba.ps`.
+#
+#     pool scripts/migra_pr.pr <pasta>                        # só mostra
+#     pool scripts/migra_pr.pr <pasta> --aplica                # renomeia e arruma
+#     pool scripts/migra_pr.pr <pasta> --aplica --so-renome    # sem referências
+#     pool scripts/migra_pr.pr <pasta> --sem fuzz_corpus       # pula uma pasta
+#     pool scripts/migra_pr.pr --libs --aplica                 # libs instaladas
+#
+# Dentro de um repositório git o renome é comum (`os.rename`): o git enxerga o
+# renome pelo conteúdo no `git add -A`, e o histórico segue o arquivo.
+import os
+import sys
+
+VELHAS = [".ps", ".psl", ".p"]
+NOVA = ".pr"
+PULA_PASTA = [".git", "node_modules", "dist", "__pycache__", ".venv"]
+# Onde vale procurar referência a nome de arquivo. Binário fica de fora.
+TEXTO = [".pr", ".ps", ".psl", ".p", ".md", ".json", ".sh", ".yml", ".yaml",
+         ".c", ".h", ".inc", ".def", ".js", ".ts", ".lua", ".vim", ".xml",
+         ".txt", ".cfg", ".toml", ".desktop", ".ini"]
+
+
+funct extensao_velha(nome) {
+    for each e in VELHAS {
+        if nome.endswith(e) {
+            return e
+        }
+    }
+    return ""
+}
+
+
+funct eh_texto(nome) {
+    ponto = nome.rfind(".")
+    if ponto < 0 {
+        return true                  # Makefile, LEIAME e afins — e o binário
+    }                                # de build, que o `tem_byte_zero` barra
+    ext = nome[ponto:]
+    for each e in TEXTO {
+        if ext == e {
+            return true
+        }
+    }
+    return false
+}
+
+
+# Binário não se reescreve. Arquivo sem extensão pode ser `Makefile` ou o
+# executável do build (`pool`, `testar`): o byte zero separa os dois. Sem esta
+# barreira o migrador reescreveu o `pool-oom` e o deixou inservível.
+funct tem_byte_zero(texto) {
+    return texto.find(chr(0)) >= 0
+}
+
+
+funct char_de_nome(c) {
+    if c == "" {
+        return false
+    }
+    if c >= "a" and c <= "z" {
+        return true
+    }
+    if c >= "A" and c <= "Z" {
+        return true
+    }
+    if c >= "0" and c <= "9" {
+        return true
+    }
+    return c == "_"
+}
+
+
+# Troca `velho` por `novo` só onde `velho` aparece INTEIRO: o caractere antes e
+# o depois não podem ser de nome. Devolve [texto, quantas].
+funct troca_com_borda(texto, velho, novo) {
+    saida = ""
+    i = 0
+    n = len(texto)
+    lv = len(velho)
+    trocas = 0
+    while i < n {
+        j = texto.find(velho, i)
+        if j < 0 {
+            saida = saida + texto[i:]
+            i = n
+            continue
+        }
+        antes = ""
+        if j > 0 {
+            antes = texto[j - 1:j]
+        }
+        depois = ""
+        if j + lv < n {
+            depois = texto[j + lv:j + lv + 1]
+        }
+        if char_de_nome(antes) or char_de_nome(depois) {
+            saida = saida + texto[i:j + lv]
+            i = j + lv
+            continue
+        }
+        saida = saida + texto[i:j] + novo
+        trocas = trocas + 1
+        i = j + lv
+    }
+    return [saida, trocas]
+}
+
+
+# Varre a pasta e enche `achados` ([caminho, nome_velho, nome_novo]) e
+# `textos` (caminhos onde procurar referência).
+funct varre(dir, achados, textos) {
+    itens = []
+    try {
+        itens = os.ls(dir)
+    } catch (e) {
+        post("  (nao deu pra ler " + dir + ")")
+        return
+    }
+    for each ent in itens {
+        nome = ent["name"]
+        caminho = dir + "/" + nome
+        if ent["type"] == "dir" {
+            pula = false
+            for each p in PULA_PASTA {
+                if nome == p {
+                    pula = true
+                }
+            }
+            if not pula {
+                varre(caminho, achados, textos)
+            }
+            continue
+        }
+        ext = extensao_velha(nome)
+        if ext != "" {
+            addEnd(achados, [caminho, nome, nome[0:len(nome) - len(ext)] + NOVA])
+        }
+        if eh_texto(nome) {
+            addEnd(textos, caminho)
+        }
+    }
+}
+
+
+funct migra_pasta(raiz, aplica, so_renome) {
+    achados = []
+    textos = []
+    varre(raiz, achados, textos)
+    post("pasta:", raiz)
+    post("  arquivos a renomear:", len(achados))
+    # Antes do `len(achados) == 0`: pasta já renomeada pode ter link quebrado
+    # de uma passagem anterior, e é ali que se vem procurar por isso.
+    links = conserta_links(raiz, aplica)
+    if len(achados) == 0 {
+        return links
+    }
+    mostra = len(achados)
+    if mostra > 8 {
+        mostra = 8
+    }
+    i = 0
+    while i < mostra {
+        post("   ", achados[i][0], "->", achados[i][2])
+        i = i + 1
+    }
+    if len(achados) > mostra {
+        post("    ... e mais", len(achados) - mostra)
+    }
+
+    # referências: só os nomes que ESTE migrador renomeia
+    refs = 0
+    com_ref = 0
+    if not so_renome {
+        for each caminho in textos {
+            conteudo = ""
+            try {
+                conteudo = os.readFile(caminho)
+            } catch (e) {
+                continue
+            }
+            if tem_byte_zero(conteudo) {
+                continue
+            }
+            antes = conteudo
+            aqui = 0
+            for each a in achados {
+                if conteudo.find(a[1]) < 0 {
+                    continue
+                }
+                r = troca_com_borda(conteudo, a[1], a[2])
+                conteudo = r[0]
+                aqui = aqui + r[1]
+            }
+            if aqui == 0 {
+                continue
+            }
+            refs = refs + aqui
+            com_ref = com_ref + 1
+            if aplica and conteudo != antes {
+                os.writeFile(caminho, conteudo)
+            }
+        }
+        post("  referencias a arrumar:", refs, "em", com_ref, "arquivo(s)")
+    }
+
+    if not aplica {
+        post("  (nada foi mudado — rode com --aplica)")
+        return len(achados)
+    }
+    feitos = 0
+    for each a in achados {
+        barra = a[0].rfind("/")
+        destino = a[0][0:barra + 1] + a[2]
+        try {
+            os.rename(a[0], destino)
+            feitos = feitos + 1
+        } catch (e) {
+            post("  ERRO ao renomear", a[0])
+        }
+    }
+    post("  renomeados:", feitos)
+    return feitos
+}
+
+
+# Link simbólico: renomear o link muda o NOME dele, nunca o ALVO que ele
+# guarda dentro — e aí o link fica apontando pra um arquivo que não existe
+# mais. Foi assim que `teste/geradores/para_chaves.pr` virou link quebrado
+# pra `scripts/para_chaves.ps`, e o `make semeia` parou de rodar sem ninguém
+# ver: o renome dizia "6 arquivos", e o estrago não aparecia em lugar nenhum.
+#
+# A linguagem não tem `readlink`, então o alvo vem do `find` do sistema. Só
+# mexe no link cujo alvo termina em extensão VELHA — o resto fica como está.
+funct conserta_links(raiz, aplica) {
+    saida = os.cmd("find '" + raiz + "' -type l -printf '%p\t%l\n' 2>/dev/null",
+                   capture=true)
+    if saida == Null or saida == "" {
+        return 0
+    }
+    quebrados = []
+    for each linha in saida.split("\n") {
+        if linha == "" {
+            continue
+        }
+        p = linha.split("\t")
+        if len(p) != 2 {
+            continue
+        }
+        if pula_caminho(p[0]) {
+            continue
+        }
+        velha = extensao_velha(p[1])
+        if velha == "" {
+            continue
+        }
+        quebrados.append([p[0], p[1], p[1][0:len(p[1]) - len(velha)] + NOVA])
+    }
+    if len(quebrados) == 0 {
+        return 0
+    }
+    post("  links simbolicos a reapontar:", len(quebrados))
+    for each l in quebrados {
+        post("   ", l[0], "->", l[2])
+        if aplica {
+            os.cmd("ln -sfn '" + l[2] + "' '" + l[0] + "'")
+        }
+    }
+    return len(quebrados)
+}
+
+
+# O caminho passa por alguma das pastas que o migrador não toca?
+funct pula_caminho(caminho) {
+    for each x in PULA_PASTA {
+        if "/" + x + "/" in caminho {
+            return true
+        }
+    }
+    return false
+}
+
+
+# As libs instaladas (`~/.poolscript/libs`, ou `$POOLSCRIPT_HOME/libs`): o
+# arquivo delas tem que virar `.pr`, senão `import math` deixa de achar. O
+# `installed.json` guarda NOME, não caminho, então ele não muda.
+funct migra_libs(aplica) {
+    home = os.getenv("POOLSCRIPT_HOME", "")
+    if home == "" {
+        home = os.getenv("HOME", "") + "/.poolscript"
+    }
+    total = 0
+    for each pasta in ["libs", "commands"] {
+        alvo = home + "/" + pasta
+        if not os.isdir(alvo) {
+            continue
+        }
+        total = total + migra_pasta(alvo, aplica, true)
+    }
+    # A conferência roda SEMPRE que se aplicou, mesmo com 0 renomes: rodar o
+    # migrador de novo numa pasta já migrada é o jeito natural de perguntar
+    # "as libs estão servindo?", e sair calado ali não responde nada.
+    if not aplica or not os.isdir(home + "/libs") {
+        return total
+    }
+    # prova de que voltaram a servir: importar cada uma de verdade. O código de
+    # saída vem do shell (`echo $?`) porque `os.cmd` sem `capture` devolve Null.
+    post("  conferindo os imports:")
+    for each ent in os.ls(home + "/libs") {
+        nome = ent["name"]
+        if not nome.endswith(NOVA) {
+            continue
+        }
+        modulo = nome[0:len(nome) - len(NOVA)]
+        prova = "/tmp/ps_migra_prova.pr"
+        os.writeFile(prova, "import " + modulo + "\n")
+        rc = os.cmd("'" + sys.executable + "' " + prova + " > /dev/null 2>&1; echo $?",
+                    capture=true).strip()
+        if rc == "0" {
+            post("    ok    ", modulo)
+        } else {
+            post("    FALHOU", modulo, "(rc " + rc + ")")
+        }
+    }
+    return total
+}
+
+
+funct principal() {
+    alvos = []
+    aplica = false
+    so_renome = false
+    libs = false
+    i = 1
+    while i < len(sys.argv) {
+        a = sys.argv[i]
+        if a == "--aplica" {
+            aplica = true
+        } elif a == "--so-renome" {
+            so_renome = true
+        } elif a == "--libs" {
+            libs = true
+        } elif a == "--sem" {
+            i = i + 1
+            if i >= len(sys.argv) {
+                post("--sem precisa do nome da pasta")
+                return 2
+            }
+            addEnd(PULA_PASTA, sys.argv[i])
+        } elif a.startswith("--") {
+            post("opcao desconhecida:", a)
+            return 2
+        } else {
+            addEnd(alvos, a)
+        }
+        i = i + 1
+    }
+    if len(alvos) == 0 and not libs {
+        post("uso: pool scripts/migra_pr.pr <pasta> [--aplica] [--so-renome] [--libs]")
+        post("     sem --aplica ele so mostra o que faria")
+        return 2
+    }
+    total = 0
+    for each alvo in alvos {
+        if not os.isdir(alvo) {
+            post("nao e pasta:", alvo)
+            return 2
+        }
+        total = total + migra_pasta(alvo, aplica, so_renome)
+    }
+    if libs {
+        total = total + migra_libs(aplica)
+    }
+    post("")
+    if aplica {
+        post("pronto:", total, "arquivo(s) agora sao", NOVA)
+    } else {
+        post("nada mudou;", total, "arquivo(s) virariam", NOVA, "com --aplica")
+    }
+    return 0
+}
+
+
+if __name__ == "main" {
+    sys.exit(principal())
+}

@@ -3,7 +3,7 @@
   "displayName": "Pyrite",
   "description": "Suporte à linguagem Pyrite (a PoolScript): realce, autocomplete que sabe o tipo (métodos por tipo, argumentos nomeados, libs instaladas), hover, definição, diagnóstico e depurador.",
   "homepage": "https://github.com/kleberDevion/poolscript/blob/main/editor/vscode/README.md",
-  "version": "8.5.5",
+  "version": "8.6.0",
   "publisher": "KleberSantanadeOliveira",
   "engines": {
     "vscode": "^1.75.0"
@@ -15,7 +15,6 @@
   "main": "./extension.js",
   "activationEvents": [
     "onLanguage:poolscript",
-    "onLanguage:poolscript-psl",
     "onDebugResolve:poolscript"
   ],
   "contributes": {
@@ -29,40 +28,18 @@
           "ps"
         ],
         "extensions": [
-          ".ps",
-          ".p"
+          ".pr"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
-          "light": "./images/poolscript-ps.svg",
-          "dark": "./images/poolscript-ps.svg"
-        }
-      },
-      {
-        "id": "poolscript-psl",
-        "aliases": [
-          "Pyrite",
-          "PoolScript",
-          "psl"
-        ],
-        "extensions": [
-          ".psl"
-        ],
-        "configuration": "./language-configuration.json",
-        "icon": {
-          "light": "./images/poolscript-psl.svg",
-          "dark": "./images/poolscript-psl.svg"
+          "light": "./images/arquivo.png",
+          "dark": "./images/arquivo.png"
         }
       }
     ],
     "grammars": [
       {
         "language": "poolscript",
-        "scopeName": "source.poolscript",
-        "path": "./syntaxes/poolscript.tmLanguage.json"
-      },
-      {
-        "language": "poolscript-psl",
         "scopeName": "source.poolscript",
         "path": "./syntaxes/poolscript.tmLanguage.json"
       }
@@ -91,39 +68,39 @@
       "editor/title/run": [
         {
           "command": "poolscript.rodar",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "when": "resourceLangId == poolscript",
           "group": "navigation@1"
         },
         {
           "command": "poolscript.depurar",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "when": "resourceLangId == poolscript",
           "group": "navigation@2"
         }
       ],
       "editor/context": [
         {
           "command": "poolscript.rodar",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "when": "resourceLangId == poolscript",
           "group": "navigation@1"
         },
         {
           "command": "poolscript.depurar",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl",
+          "when": "resourceLangId == poolscript",
           "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
           "command": "poolscript.rodar",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
+          "when": "resourceLangId == poolscript"
         },
         {
           "command": "poolscript.depurar",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
+          "when": "resourceLangId == poolscript"
         },
         {
           "command": "poolscript.grafico",
-          "when": "resourceLangId == poolscript || resourceLangId == poolscript-psl"
+          "when": "resourceLangId == poolscript"
         }
       ]
     },
@@ -131,20 +108,18 @@
       {
         "command": "poolscript.rodar",
         "key": "ctrl+f5",
-        "when": "editorTextFocus && (resourceLangId == poolscript || resourceLangId == poolscript-psl)"
+        "when": "editorTextFocus && resourceLangId == poolscript"
       }
     ],
     "breakpoints": [
-      { "language": "poolscript" },
-      { "language": "poolscript-psl" }
+      { "language": "poolscript" }
     ],
     "debuggers": [
       {
         "type": "poolscript",
         "label": "Pyrite",
         "languages": [
-          "poolscript",
-          "poolscript-psl"
+          "poolscript"
         ],
         "configurationAttributes": {
           "launch": {
@@ -154,7 +129,7 @@
             "properties": {
               "programa": {
                 "type": "string",
-                "description": "O .ps a depurar.",
+                "description": "O .pr a depurar.",
                 "default": "${file}"
               },
               "pararNaEntrada": {
@@ -189,7 +164,7 @@
         "configurationSnippets": [
           {
             "label": "Pyrite: depurar o arquivo aberto",
-            "description": "Roda o .ps em foco sob o depurador do motor.",
+            "description": "Roda o .pr em foco sob o depurador do motor.",
             "body": {
               "type": "poolscript",
               "request": "launch",
@@ -217,12 +192,6 @@
         "editor.wordBasedSuggestions": "off",
         "editor.suggest.showWords": false,
         "editor.suggestSelection": "first",
-        "editor.tabSize": 4,
-        "editor.insertSpaces": true
-      },
-      "[poolscript-psl]": {
-        "editor.wordBasedSuggestions": "off",
-        "editor.suggest.showWords": false,
         "editor.tabSize": 4,
         "editor.insertSpaces": true
       }

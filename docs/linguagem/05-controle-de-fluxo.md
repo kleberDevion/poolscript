@@ -371,7 +371,7 @@ arquivo continua em `sys.argv[0]`.
 
 O `if` é reconhecido pela **forma** — `__name__ == "main"`, com o literal
 `"main"` — e o compilador emite o guard: o bloco é **pulado em todo import**,
-inclusive o de um arquivo chamado `main.ps`, cujo `__name__` também é `"main"`.
+inclusive o de um arquivo chamado `main.pr`, cujo `__name__` também é `"main"`.
 Com qualquer outra string (`if __name__ == "banana"`) é um `if` comum. A chave
 pode ficar na linha seguinte, como em todo bloco.
 

@@ -44,7 +44,7 @@ int LLVMFuzzerTestOneInput(const uint8_t *dados, size_t n)
 
     PSErroExec e;
     memset(&e, 0, sizeof e);
-    ps_verifica_fonte(fonte, n, "fuzz.ps", &e);   /* erro é resposta, não falha */
+    ps_verifica_fonte(fonte, n, "fuzz.pr", &e);   /* erro é resposta, não falha */
 
     free(fonte);
     return 0;

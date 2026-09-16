@@ -1,0 +1,342 @@
+# BENCHMARK de cobertura: compara arquivo com arquivo, e run com run.
+#
+# POR QUE ELE NÃO É O `cobertura_portao.pr`. O portão responde UMA pergunta —
+# "caiu?" — e responde bem. Ele não responde a próxima, que é a que decide o
+# trabalho: **onde vale mexer**. Percentual sozinho não decide isso:
+#
+#   ps_ast.c          94.2% de ramo   →   5 ramos descobertos
+#   poolscript_vm.c   55.6% de ramo   →   7383 ramos descobertos
+#
+# Os dois "faltam pra 100%", e a lista ordenada por percentual põe o `ps_db.c`
+# (337 ramos no total) na frente do `poolscript_vm.c` (16620). Ordenar por
+# percentual é ordenar por tamanho do denominador ao contrário.
+#
+# As quatro colunas que este arquivo mede, e o que cada uma decide:
+#
+#   DESCOBERTOS   ramos sem execução. É o TAMANHO do trabalho, em unidades
+#                 comparáveis entre arquivos de qualquer tamanho.
+#   RAMO%         a densidade. Diz quão mal-tratado o arquivo está.
+#   FN ZERO       funções que NUNCA executaram. É a coluna que acha buraco
+#                 ESTRUTURAL: um arquivo com 60% de ramo e três funções em
+#                 zero tem uma FEATURE inteira sem teste, não ramos de erro
+#                 esparsos. Foi ela que achou o TLS do jinker — três funções,
+#                 36 ramos, nenhum teste subia o servidor com `tls`.
+#   R/FN          ramos descobertos por função descoberta. Alto = poucas
+#                 funções grandes sem teste (barato de atacar: um teste cobre
+#                 muito); baixo = espalhado.
+#
+# E ele GRAVA cada medição em `teste/bench_cobertura.txt`, então duas rodadas
+# se comparam: o relatório mostra o delta por arquivo contra a última.
+#
+#     make cobertura                        mede (gera cob/vm.info)
+#     ./pool teste/bench_cobertura.pr       compara e grava
+#     ./pool teste/bench_cobertura.pr --fn  lista as funções em zero
+#     ./pool teste/bench_cobertura.pr --só-mede   não grava histórico
+import os
+import sys
+
+INFO = "cob/vm.info"
+HIST = "teste/bench_cobertura.txt"
+
+
+# Lê o .info do lcov. Um registro por arquivo:
+#   SF:<caminho>   FN:<linha>,<nome>   FNDA:<vezes>,<nome>
+#   DA:<linha>,<vezes>                 BRDA:<linha>,<bloco>,<ramo>,<vezes|->
+funct le_info(caminho) {
+    arquivos = {}
+    atual = ""
+    for each linha in os.readFile(caminho).split("\n") {
+        L = linha.strip()
+        if L.startswith("SF:") {
+            atual = L[3:]
+            nome = atual.split("/")[-1]
+            atual = nome
+            if not (nome in arquivos.keys()) {
+                arquivos[nome] = {"fn": {}, "fnda": {}, "lin": 0, "lin_cob": 0,
+                                  "ramo": 0, "ramo_cob": 0}
+            }
+            continue
+        }
+        if atual == "" {
+            continue
+        }
+        a = arquivos[atual]
+        if L.startswith("FN:") {
+            # `FN:<linha_ini>,<linha_fim>,<nome>` no lcov novo e
+            # `FN:<linha>,<nome>` no antigo — o NOME e sempre o ultimo campo.
+            # Pegar `partes[1]` dava o numero da linha como nome da funcao.
+            partes = L[3:].split(",")
+            if len(partes) >= 2 {
+                a["fn"][partes[-1]] = 1
+            }
+            continue
+        }
+        if L.startswith("FNDA:") {
+            partes = L[5:].split(",")
+            if len(partes) >= 2 {
+                atualiza = int(partes[0])
+                if partes[1] in a["fnda"].keys() {
+                    atualiza = atualiza + a["fnda"][partes[1]]
+                }
+                a["fnda"][partes[1]] = atualiza
+            }
+            continue
+        }
+        if L.startswith("DA:") {
+            partes = L[3:].split(",")
+            a["lin"] = a["lin"] + 1
+            if len(partes) >= 2 and int(partes[1]) > 0 {
+                a["lin_cob"] = a["lin_cob"] + 1
+            }
+            continue
+        }
+        if L.startswith("BRDA:") {
+            partes = L[5:].split(",")
+            a["ramo"] = a["ramo"] + 1
+            if len(partes) >= 4 and partes[3] != "-" and partes[3] != "0" {
+                a["ramo_cob"] = a["ramo_cob"] + 1
+            }
+        }
+    }
+    return arquivos
+}
+
+
+# Funções que nunca executaram, e os ramos que moram nelas.
+funct zeradas(a) {
+    fora = []
+    for each nome in a["fn"].keys() {
+        vezes = 0
+        if nome in a["fnda"].keys() {
+            vezes = a["fnda"][nome]
+        }
+        if vezes == 0 {
+            addEnd(fora, nome)
+        }
+    }
+    return fora
+}
+
+
+# Uma casa decimal, montada a mao: `x / 10.0` imprime o float inteiro
+# ("55.576426391171640") e estoura a coluna.
+funct pct(parte, todo) {
+    if todo == 0 {
+        return "100.0"
+    }
+    m = int(parte * 1000 / todo)
+    return str(m // 10) + "." + str(m % 10)
+}
+
+
+funct pad(txt, n) {
+    s = str(txt)
+    while len(s) < n {
+        s = s + " "
+    }
+    return s
+}
+
+
+funct padl(txt, n) {
+    s = str(txt)
+    while len(s) < n {
+        s = " " + s
+    }
+    return s
+}
+
+
+funct le_historico() {
+    ant = {}
+    if not os.isfile(HIST) {
+        return ant
+    }
+    for each linha in os.readFile(HIST).split("\n") {
+        L = linha.strip()
+        if L == "" or L.startswith("#") {
+            continue
+        }
+        c = L.split()
+        if len(c) >= 4 {
+            ant[c[0]] = {"desc": int(c[1]), "cob": int(c[2]), "fnzero": int(c[3])}
+        }
+    }
+    return ant
+}
+
+
+if __name__ == "main" {
+    if not os.isfile(INFO) {
+        post("nao achei " + INFO + " — rode `make cobertura` antes")
+        sys.exit(1)
+    }
+
+    arquivos = le_info(INFO)
+    anterior = le_historico()
+
+    linhas = []
+    tot_desc = 0
+    tot_ramo = 0
+    tot_fnzero = 0
+    for each nome in arquivos.keys() {
+        a = arquivos[nome]
+        if a["ramo"] == 0 {
+            continue
+        }
+        desc = a["ramo"] - a["ramo_cob"]
+        fz = zeradas(a)
+        rfn = "0.0"
+        if len(fz) > 0 {
+            q = int(desc * 10 / len(fz))
+            rfn = str(q // 10) + "." + str(q % 10)
+        }
+        addEnd(linhas, {"nome": nome, "desc": desc, "cob": a["ramo_cob"],
+                        "ramo": a["ramo"], "pct": pct(a["ramo_cob"], a["ramo"]),
+                        "lpct": pct(a["lin_cob"], a["lin"]),
+                        "fnzero": len(fz), "fns": fz, "rfn": rfn})
+        tot_desc = tot_desc + desc
+        tot_ramo = tot_ramo + a["ramo"]
+        tot_fnzero = tot_fnzero + len(fz)
+    }
+
+    # ordena por DESCOBERTOS: é onde está o trabalho, não onde o percentual dói
+    i = 0
+    while i < len(linhas) {
+        j = i + 1
+        while j < len(linhas) {
+            if linhas[j]["desc"] > linhas[i]["desc"] {
+                linhas[i], linhas[j] = linhas[j], linhas[i]
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+
+    post("BENCHMARK DE COBERTURA — ordenado por RAMOS DESCOBERTOS")
+    post("(o percentual ordena por tamanho do denominador ao contrário)")
+    post("")
+    post(pad("arquivo", 18) + padl("desc", 7) + padl("cob", 8) + padl("total", 8)
+         + padl("ramo%", 8) + padl("linha%", 8) + padl("fn=0", 7) + padl("R/FN", 8)
+         + "  vs. ultima")
+    post("-" * 84)
+
+    for each l in linhas {
+        delta = ""
+        if l["nome"] in anterior.keys() {
+            d = l["desc"] - anterior[l["nome"]]["desc"]
+            dc = l["cob"] - anterior[l["nome"]]["cob"]
+            if d == 0 and dc == 0 {
+                delta = "  ="
+            }
+            else {
+                sinal = "+"
+                if dc < 0 {
+                    sinal = ""
+                }
+                delta = "  cobertos " + sinal + str(dc)
+            }
+        }
+        else {
+            delta = "  (novo)"
+        }
+        rfn = ""
+        if l["fnzero"] > 0 {
+            rfn = l["rfn"]
+        }
+        post(pad(l["nome"], 18) + padl(l["desc"], 7) + padl(l["cob"], 8)
+             + padl(l["ramo"], 8) + padl(l["pct"] + "%", 8)
+             + padl(l["lpct"] + "%", 8) + padl(l["fnzero"], 7)
+             + padl(rfn, 8) + delta)
+    }
+
+    post("-" * 84)
+    post(pad("TOTAL", 18) + padl(tot_desc, 7) + padl(tot_ramo - tot_desc, 8)
+         + padl(tot_ramo, 8) + padl(pct(tot_ramo - tot_desc, tot_ramo) + "%", 8)
+         + padl("", 8) + padl(tot_fnzero, 7))
+
+    # As funções em ZERO são o achado acionável: cada uma é uma feature que
+    # nenhum teste toca, não um ramo de erro esquecido.
+    post("")
+    post("FUNÇÕES QUE NUNCA EXECUTARAM — " + str(tot_fnzero) + " no total")
+    post("(cada uma é código que a suíte inteira não chama uma vez)")
+    for each l in linhas {
+        if l["fnzero"] == 0 {
+            continue
+        }
+        post("")
+        post("  " + l["nome"] + " — " + str(l["fnzero"]) + " funcao(oes), "
+             + str(l["desc"]) + " ramos descobertos no arquivo")
+        if "--fn" in sys.argv {
+            for each f in l["fns"] {
+                post("      " + f)
+            }
+        }
+        else {
+            amostra = l["fns"]
+            if len(amostra) > 6 {
+                amostra = amostra[0:6]
+            }
+            post("      " + ", ".join(amostra))
+            if l["fnzero"] > 6 {
+                post("      (+" + str(l["fnzero"] - 6) + " — rode com --fn)")
+            }
+        }
+    }
+
+    # ── os arquivos que a medição NÃO ALCANÇA ───────────────────────────────
+    #
+    # O relatório acima lista o que o `.info` traz, e o `.info` só traz o que
+    # foi COMPILADO. Um `.c` fora do build não aparece em lugar nenhum: não sai
+    # como 0%, sai como se não existisse — e o total fecha bonito porque ele
+    # nunca entrou na conta.
+    #
+    # Não é hipótese: três `*_bind.c` (570 linhas, ponte pra outro runtime)
+    # ficaram fora do `FONTES` do Makefile desde sempre, e o benchmark dizia
+    # "17 arquivos" sobre um diretório com 20. Foram apagados em 2026-09-12;
+    # a checagem fica pra pegar o próximo .c que entre em vm/ sem entrar no build.
+    medidos = arquivos.keys()
+    fora = []
+    for each e in os.ls("vm") {
+        nome = e["name"]
+        if not nome.endswith(".c") {
+            continue
+        }
+        if nome in medidos {
+            continue
+        }
+        n = len(os.readFile("vm/" + nome).split("\n"))
+        addEnd(fora, [nome, n])
+    }
+    post("")
+    if len(fora) == 0 {
+        post("FORA DA MEDIÇÃO: nenhum — todo .c de vm/ tem cobertura medida")
+    }
+    else {
+        post("FORA DA MEDIÇÃO — " + str(len(fora)) + " arquivo(s) de vm/ sem NENHUM dado")
+        post("(não é 0%: é ausência. Não estão no build, então nunca entram na conta)")
+        for each f in fora {
+            post("  " + pad(f[0], 24) + padl(f[1], 6) + " linhas")
+        }
+    }
+
+    if "--só-mede" in sys.argv {
+        sys.exit(0)
+    }
+
+    saida = "# Benchmark de cobertura — uma linha por arquivo:\n"
+    saida = saida + "#   <arquivo> <ramos descobertos> <ramos cobertos> <funcoes em zero>\n"
+    saida = saida + "#\n"
+    saida = saida + "# Gravado pelo `teste/bench_cobertura.pr` a cada rodada. Serve pra comparar\n"
+    saida = saida + "# RUN com RUN: a coluna 'vs. ultima' do relatorio sai daqui.\n"
+    saida = saida + "#\n"
+    saida = saida + "# Nao confundir com `teste/cobertura_base.txt`, que e o PISO do portao. Este\n"
+    saida = saida + "# arquivo nao reprova nada — so lembra do numero anterior.\n"
+    for each l in linhas {
+        saida = saida + (l["nome"] + " " + str(l["desc"]) + " "
+                         + str(l["cob"]) + " " + str(l["fnzero"]) + "\n")
+    }
+    os.writeFile(HIST, saida)
+    post("")
+    post("historico gravado em " + HIST)
+}

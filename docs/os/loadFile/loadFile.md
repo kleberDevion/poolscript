@@ -10,7 +10,7 @@ os.loadFile(path: str, mode: str = Null) -> str | dict | list | PoolFile
 
 | Parâmetro | O que é |
 |---|---|
-| `path` | nome/caminho do arquivo (buscado a partir da pasta do `.ps` e do cwd) |
+| `path` | nome/caminho do arquivo (buscado a partir da pasta do `.pr` e do cwd) |
 | `mode` | `"r"` ou `"rb"`. Omitido = decidido pelo conteúdo do arquivo |
 
 ---

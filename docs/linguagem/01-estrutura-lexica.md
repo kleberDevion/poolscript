@@ -1,7 +1,7 @@
 # Referência da Linguagem — 1. Estrutura léxica
 
 Esta seção especifica como o **lexer** (o primeiro estágio do compilador/
-transforma o texto-fonte de um `.ps`/`.psl`/`.p` numa sequência
+transforma o texto-fonte de um `.pr` numa sequência
 de *tokens*. É o nível mais baixo da linguagem: o que conta como espaço,
 comentário, número, string, operador, e como blocos são delimitados. As seções
 seguintes (tipos, expressões, statements) assumem estas regras.
@@ -250,7 +250,7 @@ fechada antes da quebra de linha`), a menos que seja multi-linha.
 Um escape **desconhecido mantém a barra E o caractere**, e sai um aviso:
 
 ```
-arquivo.ps:1: SyntaxWarning: sequencia de escape invalida '\p' — a barra fica
+arquivo.pr:1: SyntaxWarning: sequencia de escape invalida '\p' — a barra fica
 no texto; use '\\p' se ela e mesmo pra estar ali
 ```
 

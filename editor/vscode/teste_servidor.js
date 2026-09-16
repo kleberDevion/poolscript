@@ -103,7 +103,7 @@ function conversa(texto, pedidos) {
   });
 }
 
-const URI = 'file://' + path.join(os.tmpdir(), 'ps_lsp_t', 'a.ps');
+const URI = 'file://' + path.join(os.tmpdir(), 'ps_lsp_t', 'a.pr');
 
 
 const resp = (msgs, id) => msgs.find((m) => m.id === id);
@@ -131,8 +131,8 @@ async function main() {
     const libs = process.env.HOME ? path.join(process.env.HOME, '.poolscript', 'libs') : '';
     let alguma = '';
     try {
-      const f = fs.readdirSync(libs).find((x) => x.endsWith('.ps')) || '';
-      alguma = f.slice(0, f.length - '.ps'.length);
+      const f = fs.readdirSync(libs).find((x) => x.endsWith('.pr')) || '';
+      alguma = f.slice(0, f.length - '.pr'.length);
     } catch (_) { /* sem libs instaladas */ }
     if (!alguma) {
       console.log('  PULOU lib instalada — nenhuma em ~/.poolscript/libs');
@@ -425,8 +425,8 @@ async function main() {
   {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
     fs.mkdirSync(path.join(dir, 'pasta'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'vizinho.ps'), 'funct soma_vizinha(a) {\n    return a\n}\n');
-    fs.writeFileSync(path.join(dir, 'pasta', 'dentro.ps'), 'x = 1\n');
+    fs.writeFileSync(path.join(dir, 'vizinho.pr'), 'funct soma_vizinha(a) {\n    return a\n}\n');
+    fs.writeFileSync(path.join(dir, 'pasta', 'dentro.pr'), 'x = 1\n');
     const casos = [
       ['`from mail import Mia` -> MEMBROS do mail, nao modulos (a tela dele)',
        ['from regex import fullmatch, compile', 'from random import asterisco', 'from mail import Mia'], 2, undefined,
@@ -441,20 +441,20 @@ async function main() {
        ['import pasta.'], 0, undefined, ['dentro'], ['mail']],
       ['`from vizinho import ` -> as functs do arquivo ao lado',
        ['from vizinho import '], 0, undefined, ['soma_vizinha'], []],
-      /* import por CAMINHO entre aspas (`import '../x.ps'`, como no TypeScript):
+      /* import por CAMINHO entre aspas (`import '../x.pr'`, como no TypeScript):
        * dentro das aspas vem arquivo, pasta, `..` e os modulos do motor */
-      ["`import '` -> arquivos .ps, pastas, `..` e modulos do motor",
-       ["import '"], 0, undefined, ['vizinho.ps', 'pasta', '..', 'mail'], ['a.ps']],
+      ["`import '` -> arquivos .pr, pastas, `..` e modulos do motor",
+       ["import '"], 0, undefined, ['vizinho.pr', 'pasta', '..', 'mail'], ['a.pr']],
       ["`import 'pasta/` -> os arquivos DENTRO da pasta, sem modulos",
-       ["import 'pasta/"], 0, undefined, ['dentro.ps'], ['mail', 'vizinho.ps']],
+       ["import 'pasta/"], 0, undefined, ['dentro.pr'], ['mail', 'vizinho.pr']],
       ["`import 'pas|'` (aspa fechada pelo editor, cursor dentro) -> pasta",
        ["import 'pas'"], 0, 11, ['pasta'], []],
-      ["`from './vizinho.ps' import ` -> as functs do arquivo",
-       ["from './vizinho.ps' import "], 0, undefined, ['soma_vizinha'], []],
-      ["`import './vizinho.ps'` + `vizinho.` -> os membros do arquivo",
-       ["import './vizinho.ps'", 'vizinho.'], 1, undefined, ['soma_vizinha'], []],
-      ["`import './vizinho.ps' as v` + `v.` -> idem pelo apelido",
-       ["import './vizinho.ps' as v", 'v.'], 1, undefined, ['soma_vizinha'], []],
+      ["`from './vizinho.pr' import ` -> as functs do arquivo",
+       ["from './vizinho.pr' import "], 0, undefined, ['soma_vizinha'], []],
+      ["`import './vizinho.pr'` + `vizinho.` -> os membros do arquivo",
+       ["import './vizinho.pr'", 'vizinho.'], 1, undefined, ['soma_vizinha'], []],
+      ["`import './vizinho.pr' as v` + `v.` -> idem pelo apelido",
+       ["import './vizinho.pr' as v", 'v.'], 1, undefined, ['soma_vizinha'], []],
       ['`nome = "ana"` + `nome.` -> metodos de str (tipo pelo LITERAL)',
        ['nome = "ana"', 'nome.'], 1, undefined, ['upper', 'split'], []],
       ['`xs = [1, 2]` + `xs.` -> metodos de list',
@@ -639,7 +639,7 @@ async function main() {
   /* ── 12. Entity de OUTRO arquivo, pelo import ───────────────────────────── */
   {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
-    fs.writeFileSync(path.join(dir, 'modelo.ps'),
+    fs.writeFileSync(path.join(dir, 'modelo.pr'),
       'Entity Usuario() {\n    nome: str\n    public funct saudacao(self) { return "oi" }\n}\n');
     const m = await conversa('import modelo\nu = modelo.Usuario("ana")\nu.\n', [compl(2, 2, 2)]);
     const L = rotulos(resp(m, 2));
@@ -660,14 +660,14 @@ async function main() {
    * dão NameError. */
   {
     const dir = path.join(os.tmpdir(), 'ps_lsp_t');
-    fs.writeFileSync(path.join(dir, 'estrela_fonte.ps'),
+    fs.writeFileSync(path.join(dir, 'estrela_fonte.pr'),
       'funct soma_estrela(a) {\n    return a\n}\nprivate funct escondida() {\n    return 0\n}\n'
       + '_interno = 1\nif true {\n    so_no_bloco = 2\n}\n');
-    fs.writeFileSync(path.join(dir, 'estrela_ponte.ps'),
+    fs.writeFileSync(path.join(dir, 'estrela_ponte.pr'),
       'import estrela_fonte *\nfunct da_ponte() {\n    return 1\n}\n');
     /* `*` de ida e volta: sem o corte de ciclo o servidor não termina */
-    fs.writeFileSync(path.join(dir, 'ciclo_a.ps'), 'from ciclo_b import *\nfunct de_a() {\n    return 1\n}\n');
-    fs.writeFileSync(path.join(dir, 'ciclo_b.ps'), 'from ciclo_a import *\nfunct de_b() {\n    return 2\n}\n');
+    fs.writeFileSync(path.join(dir, 'ciclo_a.pr'), 'from ciclo_b import *\nfunct de_a() {\n    return 1\n}\n');
+    fs.writeFileSync(path.join(dir, 'ciclo_b.pr'), 'from ciclo_a import *\nfunct de_b() {\n    return 2\n}\n');
     const def = (id, line, ch) => ({ jsonrpc: '2.0', id, method: 'textDocument/definition',
       params: { textDocument: { uri: URI }, position: { line, character: ch } } });
 
@@ -696,10 +696,10 @@ async function main() {
         hov(3, 1, 2), def(4, 1, 2), hov(5, 2, 2), def(6, 2, 2), hov(7, 3, 2), compl(8, 4, 1),
       ]);
       conf('hover em nome trazido por `*` de arquivo mostra a funct e o arquivo',
-           valor(m, 3).includes('funct soma_estrela(a)') && valor(m, 3).includes('estrela_fonte.ps'), valor(m, 3));
+           valor(m, 3).includes('funct soma_estrela(a)') && valor(m, 3).includes('estrela_fonte.pr'), valor(m, 3));
       const d = resp(m, 4);
       conf('definicao de nome trazido por `*` vai na declaracao, no arquivo do modulo',
-           !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.ps') && d.result.range.start.line === 0,
+           !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.pr') && d.result.range.start.line === 0,
            d && d.result);
       conf('`private funct` NAO e resolvida pelo `*` (hover mudo)', valor(m, 5) === '', valor(m, 5));
       const d2 = resp(m, 6);
@@ -728,7 +728,7 @@ async function main() {
     /* `*` que atravessa arquivos (reexporte) e `*` em ciclo, nas outras duas
      * grafias: caminho entre aspas e `PUSH m GET *` */
     {
-      const SRC = ["import './estrela_ponte.ps' *", 'PUSH ciclo_a GET *', 'soma_estrela(2)', 's'];
+      const SRC = ["import './estrela_ponte.pr' *", 'PUSH ciclo_a GET *', 'soma_estrela(2)', 's'];
       const m = await conversa(SRC.join('\n') + '\n', [compl(2, 3, 1), def(3, 2, 2)]);
       const L = rotulos(resp(m, 2));
       const faltam = ['soma_estrela', 'da_ponte', 'de_a', 'de_b'].filter((e) => !L.includes(e));
@@ -737,7 +737,7 @@ async function main() {
            faltam.length === 0 && sobram.length === 0, { faltam, sobram });
       const d = resp(m, 3);
       conf('definicao de nome reexportado por `*` vai no arquivo de ORIGEM',
-           !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.ps'), d && d.result);
+           !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.pr'), d && d.result);
     }
 
     /* ── 12c. a ORDEM do arquivo, e a assinatura de quem veio pelo `*` ─────
@@ -754,8 +754,8 @@ async function main() {
      *                                                 baixo, a funct
      *
      * E o signatureHelp: `f(` de um nome vindo do `*` mostrava assinatura
-     * nenhuma, de arquivo `.ps` e de módulo do motor. */
-    fs.writeFileSync(path.join(dir, 'estrela_ordem.ps'),
+     * nenhuma, de arquivo `.pr` e de módulo do motor. */
+    fs.writeFileSync(path.join(dir, 'estrela_ordem.pr'),
       'x = "do modulo"\nfunct soma_ordem(a) {\n    return a\n}\n');
     const sig = (id, line, ch) => ({ jsonrpc: '2.0', id, method: 'textDocument/signatureHelp',
       params: { textDocument: { uri: URI }, position: { line, character: ch } } });
@@ -766,7 +766,7 @@ async function main() {
     {
       const ult = 'soma_estrela(';
       const m = await conversa('from estrela_fonte import *\n' + ult, [sig(3, 1, ult.length)]);
-      conf('signatureHelp de funct vinda de `*` de arquivo .ps mostra a assinatura da declaracao',
+      conf('signatureHelp de funct vinda de `*` de arquivo .pr mostra a assinatura da declaracao',
            rotuloSig(m, 3) === 'soma_estrela(a)', rotuloSig(m, 3));
     }
     {
@@ -779,10 +779,10 @@ async function main() {
     {
       const m = await conversa('x = 5\nfrom estrela_ordem import *\nx\n', [hov(3, 2, 0), def(4, 2, 0)]);
       conf('`x = 5` e `*` embaixo: na linha de baixo o x e o do MODULO',
-           valor(m, 3).includes('estrela_ordem.ps'), valor(m, 3));
+           valor(m, 3).includes('estrela_ordem.pr'), valor(m, 3));
       const d = resp(m, 4);
       conf('...e a definicao vai no arquivo do modulo',
-           !!d && !!d.result && d.result.uri.endsWith('/estrela_ordem.ps') && d.result.range.start.line === 0,
+           !!d && !!d.result && d.result.uri.endsWith('/estrela_ordem.pr') && d.result.range.start.line === 0,
            d && d.result);
     }
     {
@@ -791,7 +791,7 @@ async function main() {
            valor(m, 3).includes('linha 2') && !valor(m, 3).includes('estrela_ordem'), valor(m, 3));
       const d = resp(m, 4);
       conf('...e a definicao fica no proprio arquivo, na linha da atribuicao',
-           !!d && !!d.result && d.result.uri.endsWith('/a.ps') && d.result.range.start.line === 1,
+           !!d && !!d.result && d.result.uri.endsWith('/a.pr') && d.result.range.start.line === 1,
            d && d.result);
     }
     {
@@ -799,7 +799,7 @@ async function main() {
        * carregado, e vale a ÚLTIMA ligação do topo */
       const m = await conversa('funct f() {\n    return x\n}\nx = 5\nfrom estrela_ordem import *\n', [hov(3, 1, 11)]);
       conf('dentro da funct, com o `*` por ultimo no arquivo, o x e o do MODULO',
-           valor(m, 3).includes('estrela_ordem.ps'), valor(m, 3));
+           valor(m, 3).includes('estrela_ordem.pr'), valor(m, 3));
     }
     {
       const m = await conversa('from estrela_ordem import *\nfunct f() {\n    return x\n}\nx = 5\n', [hov(3, 2, 11)]);
@@ -811,7 +811,7 @@ async function main() {
                    '    return a', '}', 'soma_ordem(2)'];
       const m = await conversa(SRC.join('\n') + '\n', [hov(3, 1, 0), hov(4, 5, 0)]);
       conf('nome de funct NAO e hoisted por cima do `*`: acima da declaracao vale o do modulo',
-           valor(m, 3).includes('estrela_ordem.ps'), valor(m, 3));
+           valor(m, 3).includes('estrela_ordem.pr'), valor(m, 3));
       conf('...e da linha da declaracao pra baixo vale a funct do arquivo',
            valor(m, 4).includes('funct soma_ordem(a, b)') && !valor(m, 4).includes('estrela_ordem'), valor(m, 4));
     }
@@ -875,7 +875,7 @@ async function main() {
     let classe = '';
     try {
       for (const f of fs.readdirSync(libs)) {
-        if (!f.endsWith('.ps')) continue;
+        if (!f.endsWith('.pr')) continue;
         const txt = fs.readFileSync(path.join(libs, f), 'utf8');
         const i = txt.indexOf('class ');
         if (i < 0) continue;
@@ -927,10 +927,10 @@ async function main() {
          iReg > 0 && iOff > 0 && iReg < iOff, { iReg, iOff });
 
     /* ── depurador ────────────────────────────────────────────────────────
-     * Sem estas entradas o VS Code nem deixa pôr breakpoint num `.ps`: a
+     * Sem estas entradas o VS Code nem deixa pôr breakpoint num `.pr`: a
      * gengiva do depurador é declarativa, e falta dela não dá erro nenhum —
      * o F5 simplesmente não faz nada, que é o pior modo de quebrar. */
-    conf('o manifesto permite breakpoint em .ps',
+    conf('o manifesto permite breakpoint em .pr',
          (c.breakpoints || []).some((b) => b.language === 'poolscript'),
          c.breakpoints);
     const dbg = (c.debuggers || []).find((d) => d.type === 'poolscript');
@@ -995,7 +995,7 @@ async function main() {
   }
 
   /* ── 14. MÉTODOS DE TIPO NO HOVER — parâmetro tipado, literal, receptor sem tipo ──
-   * Os três casos que ficavam mudos (medidos no comaly.ps do dono): o tipo do
+   * Os três casos que ficavam mudos (medidos no comaly.pr do dono): o tipo do
    * parâmetro era descartado pelo analise.js; o literal não entrava na cadeia
    * de nomes; e receptor de tipo desconhecido só tinha os universais. E a
    * prosa de str/byte, que nunca aparecia porque a doc morava em docs/string

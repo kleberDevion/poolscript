@@ -67,7 +67,7 @@ disco, ou pra materializar uma cópia onde você quiser:
 
 ```
 arq = os.loadFile("nota.pdf")
-arq.save()                    # grava na pasta do .ps, como "nota.pdf"
+arq.save()                    # grava na pasta do .pr, como "nota.pdf"
 arq.save("saida/nota.pdf")    # ou onde você mandar (cria "saida/" se faltar)
 ```
 

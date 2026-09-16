@@ -1,0 +1,344 @@
+# Auditoria de PADRÕES de C que o compilador e o `-fanalyzer` não pegam.
+#
+# POR QUE ESTE ARQUIVO EXISTE: os defeitos mais graves de 2026-08-26 não foram
+# achados pelo gcc nem pelo analisador — foram achados por varreduras de padrão
+# escritas na hora, que rodaram num heredoc de shell e evaporaram. Elas acharam
+# a liberação dupla do gerador, os 49 objetos nascendo com lixo de malloc na
+# lista do GC, e o descritor de classe com contador publicado antes do vetor.
+# Ferramenta que acha defeito e não fica versionada é trabalho jogado fora, e
+# na próxima varredura tudo teria que ser redescoberto.
+#
+#     ./pool scripts/audita_c.pr            # relata e reprova se achar
+#     ./pool scripts/audita_c.pr --lista    # mostra a linha de cada achado
+#
+# O que ele procura, e por que cada um é defeito:
+#
+#   1. `x = realloc(x, n)`         o realloc que falha devolve NULL SEM liberar
+#                                  o bloco antigo; a atribuição perde a única
+#                                  referência a ele e a linha seguinte escreve
+#                                  em NULL. Sempre por temporária.
+#   2. objeto do GC de `malloc`    objeto ligado em `vm->objetos` nasce ANTES
+#                                  de os campos existirem; com lixo de pilha, o
+#                                  finalizador libera ponteiro inventado se a
+#                                  construção falhar no meio. Tem que ser
+#                                  `calloc`.
+#   3. `free(x->campo)` sem zerar  depois de o objeto já estar na lista do GC,
+#                                  o finalizador libera de novo.
+#   5. opcode fora do `.def`       lista de opcode escrita à mão duplica a de
+#                                  `vm/ps_opcodes.def`; número trocado num dos
+#                                  lados não dá erro de compilação, dá bytecode
+#                                  que executa outra instrução.
+#   4. contador antes do vetor     `d->n = k` antes do `calloc` do vetor: se o
+#                                  calloc falha, o destrutor percorre `k`
+#                                  posições de um ponteiro NULL.
+#
+# Todos os quatro são a MESMA família: estado publicado pela metade.
+import os
+import sys
+import regex
+
+FONTES = "vm"
+
+# Exceção CONFERIDA, com o motivo. Objeto de tamanho variável (`PSString` tem
+# vetor flexível no fim) preenche TODOS os campos logo depois de entrar na
+# lista, sem nenhuma alocação no meio que possa falhar — não há ponto onde o
+# finalizador pegue lixo. Trocar por `calloc` zeraria o buffer inteiro em toda
+# concatenação de string, que é caminho quente.
+#
+# A lista é por PADRÃO DE CÓDIGO, não por número de linha: linha se desloca no
+# primeiro commit e a exceção passaria a acobertar outra coisa.
+ACEITOS = ["malloc(sizeof(PSString) +"]
+
+
+funct aceito(linha) {
+    for each a in ACEITOS {
+        if a in linha {
+            return true
+        }
+    }
+    return false
+}
+
+
+funct arquivos_c() {
+    saida = []
+    for each e in os.ls(FONTES) {
+        n = e["name"]
+        if n.endswith(".c") {
+            saida.append(FONTES + "/" + n)
+        }
+    }
+    saida.sort()
+    return saida
+}
+
+
+# ── 1) realloc que se auto-atribui ──────────────────────────────────────────
+funct acha_realloc(caminho, linhas, achados) {
+    i = 0
+    for each l in linhas {
+        i = i + 1
+        # Comentário não é código: o padrão aparece EXPLICADO em comentário de
+        # conserto ("o `x = realloc(x, …)` perdia o bloco antigo"), e acusar
+        # isso é o detector brigando com a documentação do próprio conserto.
+        t = l.strip()
+        if t.startswith("*") or t.startswith("/*") or t.startswith("//") or t.startswith("#") {
+            continue
+        }
+        m = regex.findall("([A-Za-z_][A-Za-z0-9_>.\\[\\]-]*)\\s*=\\s*realloc\\(\\s*([A-Za-z_][A-Za-z0-9_>.\\[\\]-]*)", l)
+        for each par in m {
+            if par[0] == par[1] {
+                achados.append([caminho, i, "realloc se auto-atribui: " + par[0], l.strip()])
+            }
+        }
+    }
+}
+
+
+# ── 2, 3) objeto do GC ──────────────────────────────────────────────────────
+# Um objeto entra na lista com `vm->objetos = (Obj *)x;`. Olhamos pra trás
+# (nasceu de malloc?) e pra frente (libera campo sem zerar?).
+funct acha_gc(caminho, linhas, achados) {
+    n = len(linhas)
+    i = 0
+    while i < n {
+        l = linhas[i]
+        m = regex.findall("vm->objetos = \\(Obj \\*\\)([A-Za-z_][A-Za-z0-9_]*)", l)
+        if len(m) == 0 {
+            i = i + 1
+            continue
+        }
+        var = m[0]
+
+        # 2) nasceu de malloc? (procura a declaração nas 8 linhas anteriores)
+        j = i - 8
+        if j < 0 {
+            j = 0
+        }
+        while j < i {
+            if regex.fullmatch(".*[^A-Za-z0-9_]" + var + "\\s*=\\s*malloc\\(sizeof\\(.*", linhas[j].strip()) and not aceito(linhas[j]) {
+                achados.append([caminho, j + 1,
+                                "objeto do GC nasce de malloc (lixo de pilha): " + var,
+                                linhas[j].strip()])
+            }
+            j = j + 1
+        }
+
+        # 3) libera campo sem zerar, depois de já estar na lista
+        k = i + 1
+        fim = i + 25
+        if fim > n {
+            fim = n
+        }
+        while k < fim {
+            lk = linhas[k]
+            fs = regex.findall("free\\(" + var + "->([A-Za-z0-9_]+)\\)", lk)
+            for each campo in fs {
+                # zerado na MESMA linha (free(x->c); x->c = NULL) ou reatribuído?
+                if not regex.fullmatch(".*" + var + "->" + campo + "\\s*=\\s*.*", lk) {
+                    achados.append([caminho, k + 1,
+                                    "libera " + var + "->" + campo + " sem zerar (objeto ja no GC)",
+                                    lk.strip()])
+                }
+            }
+            k = k + 1
+        }
+        i = i + 1
+    }
+}
+
+
+# ── 4) contador publicado antes do vetor ────────────────────────────────────
+# `d->nX = ...` numa linha, e o `calloc` que preenche `d->X` DEPOIS.
+funct acha_contador(caminho, linhas, achados) {
+    n = len(linhas)
+    i = 0
+    while i < n {
+        # `->nome` começa com "n" e NÃO é contador — sem esta exceção o
+        # detector acusa toda atribuição de nome seguida de um calloc.
+        m = regex.findall("([A-Za-z_][A-Za-z0-9_]*)->(n[A-Za-z0-9_]+)\\s*=\\s*[^=]", linhas[i])
+        if len(m) > 0 and m[0][1] == "nome" {
+            m = []
+        }
+        if len(m) == 0 {
+            i = i + 1
+            continue
+        }
+        obj = m[0][0]
+        # O campo alocado tem que SE RELACIONAR com o contador, senão o
+        # detector acusa `d->npais` só porque um `calloc` de `met_nomes` vem
+        # depois. Tirando o `n` da frente, os três primeiros caracteres bastam:
+        # nmetodos -> met_nomes, npriv -> priv_nomes, nconsts -> consts.
+        raiz = m[0][1][1:4]
+        k = i + 1
+        fim = i + 6
+        if fim > n {
+            fim = n
+        }
+        while k < fim {
+            if regex.fullmatch(".*" + obj + "->" + raiz + "[A-Za-z0-9_]*\\s*=\\s*c?alloc\\(.*", linhas[k]) {
+                achados.append([caminho, i + 1,
+                                "contador " + obj + "->" + m[0][1] + " publicado ANTES do vetor",
+                                linhas[i].strip()])
+                break
+            }
+            k = k + 1
+        }
+        i = i + 1
+    }
+}
+
+
+# 5. Lista de opcode escrita à mão fora do `.def`.
+#
+# Os 87 opcodes já estiveram declarados TRÊS vezes: um enum em `ps_compiler.c`,
+# um enum idêntico em `poolscript_vm.c` e o switch de nomes do desmontador.
+# Nada no build conferia que batiam, e o modo de falhar é o pior que existe:
+# número trocado num dos lados NÃO dá erro de compilação, dá bytecode que
+# executa outra instrução, com o defeito aparecendo longe da causa.
+#
+# Agora a lista vive em `vm/ps_opcodes.def` e os dois `.c` a incluem. Esta regra
+# é o que impede a duplicação de voltar — sem ela, o próximo opcode novo entra
+# escrito à mão em algum lugar e a árvore volta ao estado anterior sem aviso.
+funct acha_opcode_solto(caminho, linhas, achados) {
+    if caminho.endswith("ps_opcodes.def") {
+        return
+    }
+    i = 0
+    while i < len(linhas) {
+        if regex.fullmatch(".*\\bOP_[A-Z0-9_]+\\s*=\\s*[0-9]+.*", linhas[i]) {
+            achados.append([caminho, i + 1,
+                            "opcode com numero escrito fora de vm/ps_opcodes.def",
+                            linhas[i].strip()])
+        }
+        i = i + 1
+    }
+}
+
+
+# 6. Assinatura de método/módulo com ESPAÇO depois da vírgula, ou default `null`
+#    em minúscula.
+#
+# A terceira coluna das tabelas (`METODOS_STR`, `MembroMod`, ...) é a assinatura
+# que o `pool --metadata` publica, e o `jm_params` a copia VERBATIM: ele parte
+# em `,` e não faz `strip`. Um `"sub, inicio=0"` vira um parâmetro chamado
+# `" inicio"`, COM O ESPAÇO NO NOME — e é assim que ele aparece no hover do
+# editor e em qualquer doc gerada dela. Eram 14 parâmetros assim (I21b).
+#
+# E `fim=null` contra `fim=Null` é a mesma tabela discordando de si mesma sobre
+# como se escreve nulo: 4562 maiúsculos contra 5 minúsculos (I23).
+#
+# Os dois são dado, não lógica: o compilador nunca vai reclamar, e só aparece
+# pra quem lê o metadata. Por isso precisam de detector.
+funct acha_assinatura_torta(caminho, linhas, achados) {
+    i = 0
+    while i < len(linhas) {
+        # só as linhas de TABELA: `{ "nome", funcao, "assinatura" }`
+        for each m in regex.findall("\\{\\s*\"[a-zA-Z_][a-zA-Z_0-9]*\",\\s*[a-zA-Z_][a-zA-Z_0-9]*,\\s*\"([^\"]*)\"", linhas[i]) {
+            ass = m
+            if ", " in ass {
+                achados.append([caminho, i + 1,
+                                "assinatura com ESPACO depois da virgula (vira nome de parametro com espaco)",
+                                ass])
+            }
+            if "=null" in ass {
+                achados.append([caminho, i + 1,
+                                "default grafado `null` minusculo (o resto da tabela usa `Null`)",
+                                ass])
+            }
+        }
+        i = i + 1
+    }
+}
+
+
+# 7. Menção a tecnologia de outra linguagem em qualquer arquivo de `vm/`.
+#
+# Regra do dono: nem em comentário. Comentário que diz "como o Python faz"
+# descreve outro motor, não este — e envelhece sozinho quando este muda. A
+# varredura de 2026-09-12 achou 288 linhas assim, todas reescritas para dizer
+# o que ESTE código faz. Esta regra é o que impede a volta: a lista de nomes
+# é de palavras inteiras (case-insensitive), e vale pra `.c`, `.h` e `.def`.
+FORA = "(?i)\\b(python|cpython|pep ?[0-9]+|lua|java|node\\.js|ruby|golang|smtplib|openpyxl|flask|pypi|pip|numpy|pytest)\\b"
+
+# Exceção única, do dono: a nota dele registrando que REMOVEU uma menção cita
+# a palavra ao dizer o que tirou. Padrão de texto, não linha (linha desloca).
+ACEITOS_FORA = ["REMOVI ESSE COMENTARIO EM MENÇÃO A FLASK"]
+
+funct acha_tecnologia_de_fora(caminho, linhas, achados) {
+    i = 0
+    while i < len(linhas) {
+        aceita = false
+        for each a in ACEITOS_FORA {
+            if a in linhas[i] {
+                aceita = true
+            }
+        }
+        if not aceita and regex.search(FORA, linhas[i]) {
+            achados.append([caminho, i + 1,
+                            "menciona tecnologia de outra linguagem (regra do dono: nem em comentario)",
+                            linhas[i].strip()])
+        }
+        i = i + 1
+    }
+}
+
+
+funct arquivos_vm_todos() {
+    saida = []
+    for each e in os.ls(FONTES) {
+        n = e["name"]
+        if n.endswith(".c") or n.endswith(".h") or n.endswith(".def") {
+            saida.append(FONTES + "/" + n)
+        }
+    }
+    saida.sort()
+    return saida
+}
+
+
+if __name__ == "main" {
+    lista = false
+    for each a in sys.argv {
+        if a == "--lista" {
+            lista = true
+        }
+    }
+
+    achados = []
+    nlinhas = 0
+    for each caminho in arquivos_c() {
+        linhas = open(caminho).read().split("\n")
+        nlinhas = nlinhas + len(linhas)
+        acha_realloc(caminho, linhas, achados)
+        acha_gc(caminho, linhas, achados)
+        acha_contador(caminho, linhas, achados)
+        acha_opcode_solto(caminho, linhas, achados)
+        acha_assinatura_torta(caminho, linhas, achados)
+    }
+    for each caminho in arquivos_vm_todos() {
+        acha_tecnologia_de_fora(caminho, os.readFile(caminho).split("\n"), achados)
+    }
+
+    post("")
+    post("linhas de C varridas:", nlinhas)
+    post("achados:", len(achados))
+    if len(achados) == 0 {
+        post("")
+        post("nenhum estado publicado pela metade.")
+        sys.exit(0)
+    }
+    post("")
+    for each a in achados {
+        post("  " + a[0] + ":" + str(a[1]))
+        post("      " + a[2])
+        if lista {
+            post("      | " + a[3])
+        }
+    }
+    post("")
+    post("Os quatro padroes sao a MESMA familia: estado publicado pela metade.")
+    post("Se algum for falso positivo, o conserto e deixar o codigo obvio pro")
+    post("detector — nao silenciar o detector.")
+    sys.exit(1)
+}

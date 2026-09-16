@@ -49,9 +49,9 @@ typedef struct {
     int        ntb;
 } PSErroExec;
 
-/* Roda o `.ps` inteiro. 0 = sucesso; -1 preenche `e`. */
+/* Roda o `.pr` inteiro. 0 = sucesso; -1 preenche `e`. */
 /* `caminho` ancora o `import` de arquivo vizinho; NULL só busca lib global. */
-/* Argumentos DO USUÁRIO (o que vem depois do arquivo `.ps`) — é o que o
+/* Argumentos DO USUÁRIO (o que vem depois do arquivo `.pr`) — é o que o
  * `sys.argv` enxerga. Chamar antes de rodar; sem isso a lista sai vazia. */
 void ps_set_argv(int argc, char **argv);
 

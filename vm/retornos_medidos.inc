@@ -1,10 +1,10 @@
-/* GERADO por scripts/mede_retornos.ps — NAO edite a mao.
+/* GERADO por scripts/mede_retornos.pr — NAO edite a mao.
  *
  * Tipo de retorno de cada metodo de tipo, MEDIDO: o script chama o membro
  * num receptor de exemplo e anota o `type()` do que voltou. Roda de novo
  * quando um retorno mudar de proposito:
  *
- *     ./pool scripts/mede_retornos.ps
+ *     ./pool scripts/mede_retornos.pr
  *
  * Quem devolve o VALOR GUARDADO (d.get, l.pop) fica de fora, com comentario:
  * ali o tipo e o do conteudo, e fixar um seria a amostra falando pelo motor.

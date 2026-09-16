@@ -2,12 +2,17 @@
 <!--
   Tipo MIME da PoolScript pro freedesktop (GNOME, KDE, XFCE, Cinnamon…).
 
-  O `.ps` era `application/postscript`. Aqui ele é da LINGUAGEM, por decisão
-  do dono: peso 80 no glob (o padrão é 50) faz o `.ps` resolver pra cá.
+  A extensão da linguagem é `.pr`, e ninguém mais a reivindica — então aqui
+  basta UM glob, com o peso padrão. Era `.ps`, `.psl` e `.p`: o `.ps` é do
+  `application/postscript`, e pra ganhar dele este arquivo precisava de peso 80
+  no glob, do prefixo `zz-` no nome (o `update-mime-database` processa em
+  ordem) e de um `<glob-deleteall/>` que arrancava o `.ps` do PostScript. Nada
+  disso existe mais.
 
-  O nome do arquivo começa com `zz-` de propósito: o `update-mime-database`
-  processa os pacotes em ordem, e o `glob-deleteall` abaixo só apaga o que foi
-  registrado ANTES dele.
+  O nome do arquivo continua `zz-poolscript.xml` de propósito: é o nome que já
+  está instalado em `/usr/share/mime/packages/` nas máquinas que rodaram o
+  instalador antes. Trocar o nome deixaria o arquivo velho lá, ainda roubando o
+  `.ps` do PostScript, sem ninguém pra sobrescrevê-lo.
 -->
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="text/poolscript">
@@ -21,9 +26,7 @@
          específico achado num tema mais distante. Com o genérico declarado, a
          logo da linguagem nunca era escolhida. -->
 
-    <glob pattern="*.ps" weight="80"/>
-    <glob pattern="*.psl" weight="80"/>
-    <glob pattern="*.p" weight="80"/>
+    <glob pattern="*.pr"/>
 
     <!-- Marcas de pacote da própria linguagem: decidem pelo CONTEÚDO, sem
          depender da extensão. -->
@@ -33,12 +36,5 @@
       <match type="string" value="#!/usr/bin/env pool" offset="0"/>
       <match type="string" value="#!/usr/local/bin/pool" offset="0"/>
     </magic>
-  </mime-type>
-
-  <!-- PostScript deixa de reivindicar o `.ps`. `.eps` e `.ai` continuam dele. -->
-  <mime-type type="application/postscript">
-    <glob-deleteall/>
-    <glob pattern="*.eps"/>
-    <glob pattern="*.ai"/>
   </mime-type>
 </mime-info>

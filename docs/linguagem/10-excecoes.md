@@ -131,8 +131,8 @@ try {
 
 > Este exemplo dizia `catch (TypeError e)`, e o `catch` **nunca disparava** —
 > divisão por zero é `ZeroDivisionError`. Quem copiasse escrevia um handler
-> morto e o erro escapava assim mesmo. Nem `audita_doc.ps` nem
-> `audita_exemplos_doc.ps` pegavam: o primeiro só confere que o nome do tipo
+> morto e o erro escapava assim mesmo. Nem `audita_doc.pr` nem
+> `audita_exemplos_doc.pr` pegavam: o primeiro só confere que o nome do tipo
 > existe, o segundo só roda `--check`, que é sintaxe.
 
 ### 10.4.1. Os nomes são valores

@@ -169,7 +169,7 @@ funct listar() {
 ```
 
 O protocolo é um só, e vale para qualquer decorador que não seja `static`,
-`nonnull` ou `dataentity` — inclusive os que **você** escreve em `.ps`:
+`nonnull` ou `dataentity` — inclusive os que **você** escreve em `.pr`:
 
 1. A expressão do decorador é avaliada. **Com parênteses é uma chamada**
    (`@app.route("/x")`, `@log()`); **sem parênteses é o valor** (`@log` é a
@@ -384,7 +384,7 @@ funct f() {
     return 1
 }
 # NameError: name 'nao_existe' is not defined
-#   em app.ps, linha 1
+#   em app.pr, linha 1
 
 x = 5
 @x

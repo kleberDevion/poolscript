@@ -57,11 +57,11 @@ chmod +x "$SAIDA/pool"
 cat > "$SAIDA/LEIAME.txt" <<'TXT'
 PoolScript — bundle portátil
 
-    ./pool programa.ps        roda sem instalar nada
+    ./pool programa.pr        roda sem instalar nada
     sudo ./instalar.sh        instala no sistema (binário, LSP, MIME e ícone)
     sudo ./instalar.sh --remover
 
-Depois de instalar, `.ps` passa a ser `text/poolscript` e aparece com a logo
+Depois de instalar, `.pr` passa a ser `text/poolscript` e aparece com a logo
 no gerenciador de arquivos. O servidor LSP fica em `poolscript-lsp` — aponte
 o editor pra ele (ver docs/lsp.md).
 TXT

@@ -13,7 +13,7 @@
  * emitido, então renumerar não é refatorar, é quebrar. Opcode novo entra
  * no FIM, com o próximo número livre. Nenhum número se reaproveita.
  *
- * `scripts/audita_c.ps` reprova qualquer `OP_X = <número>` escrito fora
+ * `scripts/audita_c.pr` reprova qualquer `OP_X = <número>` escrito fora
  * daqui, que é o que impede a lista de se duplicar de novo.
  */
 #ifndef PS_OP

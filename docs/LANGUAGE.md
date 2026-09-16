@@ -41,21 +41,21 @@ Este mark down tem alguams specs da linguagem.
 ## Rodando código
 
 ```bash
-pool arquivo.ps       # roda um arquivo
-pool arquivo.ps -o nome   # gera um executável que roda sozinho
+pool arquivo.pr       # roda um arquivo
+pool arquivo.pr -o nome   # gera um executável que roda sozinho
 pool -e "<codigo>"    # roda o código direto da linha de comando
-pool build            # roda todos os .ps da pasta atual
+pool build            # roda todos os .pr da pasta atual
 pool --version / -v / -V       # versão do binário
 pool --help    / -h       # ajuda
 ```
 
-### Compilar: `pool arquivo.ps -o nome`
+### Compilar: `pool arquivo.pr -o nome`
 
-Gera um **executável que roda sozinho** — sem o `.ps` ao lado e sem o `pool`
-instalado na máquina de quem roda. Vale para `.ps`, `.p` e `.psl`.
+Gera um **executável que roda sozinho** — sem o `.pr` ao lado e sem o `pool`
+instalado na máquina de quem roda.
 
 ```bash
-pool programa.ps -o programa
+pool programa.pr -o programa
 ./programa um dois        # os argumentos chegam em sys.argv
 ```
 
@@ -1012,13 +1012,13 @@ PUSH os GET getenv        # forma alternativa
 import os as sistema      # alias
 ```
 
-Arquivo `.ps` pelo caminho, entre aspas — relativo à pasta do arquivo que
+Arquivo `.pr` pelo caminho, entre aspas — relativo à pasta do arquivo que
 importa (ver [`docs/linguagem/09-imports.md`](linguagem/09-imports.md) §9.4):
 
 ```
-import '../pacote/modulo.ps'          # liga `modulo`
-from './irmao.ps' import w
-import 'sub/meu-mod.ps' as mm         # nome que não serve de variável: use `as`
+import '../pacote/modulo.pr'          # liga `modulo`
+from './irmao.pr' import w
+import 'sub/meu-mod.pr' as mm         # nome que não serve de variável: use `as`
 import 'json'                         # sem barra e sem extensão: nome de módulo
 ```
 

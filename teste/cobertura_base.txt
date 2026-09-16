@@ -10,7 +10,7 @@
 # caindo por teste que sumiu e REGRESSAO. So a contagem absoluta
 # separa as duas, e so uma delas e para o trabalho.
 #
-# CATRACA: o `teste/cobertura_portao.ps` regrava este arquivo SOZINHO
+# CATRACA: o `teste/cobertura_portao.pr` regrava este arquivo SOZINHO
 # toda vez que um arquivo sobe. Cair abaixo do que está aqui reprova o
 # portão, com o nome do arquivo que caiu.
 #

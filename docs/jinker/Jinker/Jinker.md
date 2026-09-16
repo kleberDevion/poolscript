@@ -36,7 +36,7 @@ if __name__ == "main" {
 | `debug` | `false` | imprime logs de requisição e erros detalhados no terminal |
 | `host` | `"0.0.0.0"` | interface de rede (`"0.0.0.0"` = aceita de qualquer IP; `"127.0.0.1"` = só local) |
 | `port` | `2000` | porta HTTP |
-| `reload` | `false` | reinicia sozinho quando o arquivo `.ps` muda (dev) |
+| `reload` | `false` | reinicia sozinho quando o arquivo `.pr` muda (dev) |
 | `workers` | `1` | nº de processos (prefork). `>1` usa vários núcleos: forka N processos que dividem o socket HTTP. |
 
 Se houver algum `@app.socket(...)`, o servidor WebSocket sobe automaticamente

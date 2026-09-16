@@ -21,7 +21,7 @@
  *
  * Raízes: a lista é a de `gc_coleta`, e só ela — globais, pilha viva [0,sp),
  * locais [0,locals_top), constantes dos protótipos, singletons e requisição
- * corrente do jinker, módulos `.ps` importados, conexões WS abertas, closures
+ * corrente do jinker, módulos `.pr` importados, conexões WS abertas, closures
  * dos frames em execução e as fibras (fib_marca_gc). Raiz que fique fora
  * dela é objeto vivo coletado.
  */
@@ -88,6 +88,7 @@
 #include "ps_vm.h"
 #include "ps_hash.h"
 #include "ps_pilha.h"
+#include "ps_ext.h"
 
 /* ── opcodes ─────────────────────────────────────────────────────────────
  * A lista vive em `ps_opcodes.def` e é a MESMA que o compilador inclui. Antes eram
@@ -114,7 +115,7 @@ typedef enum {
     OBJ_ENUM,      /* `enum Cor { ... }` — namespace de constantes (Cor.RED) */
     OBJ_GERADOR,   /* action com `yield` — frame suspenso, retomável */
     OBJ_ARQUIVO,   /* handle de `open()` — fechado pelo `using` */
-    OBJ_MODULO_PS, /* `.ps` importado — namespace sobre as globais dele */
+    OBJ_MODULO_PS, /* `.pr` importado — namespace sobre as globais dele */
     OBJ_BYTES,     /* sequência de bytes crus — `"x".encode()` */
     OBJ_SQLCONN,   /* conexão sqlite3 aberta */
     OBJ_SQLCUR,    /* cursor sqlite3 — carrega o resultset pendente */
@@ -367,7 +368,7 @@ typedef struct {
     PSClosure *cl;
 } PSGerador;
 
-/* Módulo carregado de um `.ps`.
+/* Módulo carregado de um `.pr`.
  *
  * Não copia valor nenhum: guarda a FAIXA de globais que o módulo ocupa dentro
  * do array da VM, mais os nomes na mesma ordem. `mod.nome` é uma busca no
@@ -710,7 +711,7 @@ typedef struct {
  * A tabela hash pura (que estava aqui antes) guarda as entradas na ordem do
  * hash, e a linguagem perde a ordem de inserção — `post({"b":1,"a":2})` saía
  * com as chaves trocadas em relação ao interpretador. Ordem de inserção não é
- * detalhe estético: é o que faz a saída de um `.ps` ser reproduzível.
+ * detalhe estético: é o que faz a saída de um `.pr` ser reproduzível.
  *
  * `indices[slot]` guarda a POSIÇÃO no array denso, ou VAZIO/LAPIDE. */
 #define DICT_VAZIO  (-1)
@@ -1117,7 +1118,7 @@ struct VM_ {
     int     m_stack_teto, m_locals_teto, m_frames_teto;
     Value   m_jk_req;
 
-    /* Módulos `.ps` já carregados, pra `import` duas vezes não reexecutar. */
+    /* Módulos `.pr` já carregados, pra `import` duas vezes não reexecutar. */
     struct { char *nome; Value valor; } *mods_ps;
     int      nmods_ps;
     int      cap_mods_ps;
@@ -1127,7 +1128,7 @@ struct VM_ {
     /* Diretório do arquivo cujo corpo está rodando AGORA — base do import
      * RELATIVO (`from .mod import x`). Muda ao entrar/sair de cada módulo. */
     char     dir_modulo[512];
-    /* Argumentos do usuário: `pool arquivo.ps a b` -> {"a","b"}. */
+    /* Argumentos do usuário: `pool arquivo.pr a b` -> {"a","b"}. */
     char   **argv_user;
     int      argc_user;
     /* Caminho do script, ou "__main__" quando não veio de arquivo. É o que
@@ -1172,7 +1173,7 @@ struct VM_ {
     Value    jk_app;       /* o app servindo agora (pra emit/socket) */
     char   **nomes_globais;
     int      n_nomes_globais;   /* só as do script principal — nglobals cresce
-                                 * com import de .ps, esta tabela não */
+                                 * com import de .pr, esta tabela não */
 
     Debug   dbg;             /* só com `pool --debug`; zerado no resto */
 
@@ -1191,7 +1192,7 @@ struct VM_ {
     int     importando;      /* >0 = rodando o corpo de um módulo importado (o guard pula) */
     /* Módulo que NÃO COMPILOU. O `tb` acima guarda índice de proto, e um
      * módulo que nem compilou não tem proto nenhum — então o erro saía como
-     * "SyntaxError: random: expressao invalida / em d.ps, linha 1", apontando
+     * "SyntaxError: random: expressao invalida / em d.pr, linha 1", apontando
      * a linha do `import` de quem importou. O defeito está DENTRO da lib e o
      * usuário não tinha como saber onde. Estes três campos carregam o arquivo
      * e a posição reais até o quadro final do traceback. */
@@ -2115,7 +2116,7 @@ static void gc_coleta(VM *vm)
     marca_valor(vm, &vm->jk_proxy);
     marca_valor(vm, &vm->jk_req);
     marca_valor(vm, &vm->jk_app);
-    /* módulos `.ps` importados vivem no cache mods_ps pro programa inteiro
+    /* módulos `.pr` importados vivem no cache mods_ps pro programa inteiro
      * — são RAÍZES, senão o GC coleta um módulo
      * ainda em uso e depois libera de novo -> double free -> segfault. */
     for (int i = 0; i < vm->nmods_ps; i++)   marca_valor(vm, &vm->mods_ps[i].valor);
@@ -2222,7 +2223,7 @@ static int32_t acha_metodo(PSClass *cl, const char *nome, Value *valor)
 }
 
 /* Nome do global de índice `arg`, pra mensagem de erro. Primeiro o script
- * principal (nomes_globais); se não achar, procura nos módulos `.ps` já
+ * principal (nomes_globais); se não achar, procura nos módulos `.pr` já
  * carregados (cada um cobre a faixa [base, base+n)). "?" só se nada bater. */
 static const char *nome_do_global(VM *vm, int32_t arg)
 {
@@ -4281,7 +4282,7 @@ static int drena_gerador(VM *vm, Value g, Value *out)
  * definida" — o nome que o próprio motor imprime não existia como global.
  *
  * Achado escrevendo a LEI "lista vira tupla e volta" (`list(tup(l)) == l`) em
- * `teste/leis.ps`: enunciar a regra obrigou a nomear a conversão, e aí a falta
+ * `teste/leis.pr`: enunciar a regra obrigou a nomear a conversão, e aí a falta
  * apareceu. Nenhum dos 7903 casos fixos tinha topado com isso. */
 static int nativa_tup(VM *vm, Value *args, int n, Value *out)
 {
@@ -6856,7 +6857,7 @@ static int nativa_open(VM *vm, Value *args, int n, Value *out)
     cfmodo[ci] = '\0';
 
     /* o 3º argumento é `encoding` no interpretador; aqui tudo é UTF-8 e o
-     * valor é aceito e ignorado, pra o mesmo `.ps` rodar nos dois */
+     * valor é aceito e ignorado, pra o mesmo `.pr` rodar nos dois */
     PSString *cam = COMO_STRING(args[0]);
     /* O fopen("r") do Linux ABRE um diretório sem reclamar; só o read()
      * depois falha, e falhava calado (devolvia ""). Barra aqui. */
@@ -7205,7 +7206,7 @@ static int met_b_decode(VM *vm, Value alvo, Value *args, int n, Value *out)
  * (str, list, dict e tup têm). Quem escreve `pedaco.len()` depois de usar o
  * mesmo em str tomava "membro inexistente" em tempo de execução — e num `try`
  * isso vira falha silenciosa. Custou seis testes de protocolo cru reprovando
- * com a causa invisível em `teste/jinker_roda.ps`. */
+ * com a causa invisível em `teste/jinker_roda.pr`. */
 static int met_b_len(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
@@ -8283,7 +8284,7 @@ static int copia_arquivo(const char *de, const char *para, const char **culpa)
 
 /* ── TODO ARQUIVO É PoolFile ───────────────────────────────────────────────
  * Existem dois objetos por dentro — o handle aberto (`open()`) e o conteúdo
- * carregado (`os.loadFile`) — mas pra quem escreve `.ps` é UM tipo só:
+ * carregado (`os.loadFile`) — mas pra quem escreve `.pr` é UM tipo só:
  * `PoolFile`. Antes o handle se dizia `FileHandle` no `type()`, `Arquivo` no
  * `--metadata`, e não tinha `move`/`copy`/`path`: três nomes e dois conjuntos
  * de método pra mesma ideia. Estes dois ajudantes deixam os métodos de
@@ -11309,8 +11310,8 @@ static const MembroMod MOD_JWT[] = {
 
 /* ── sys ────────────────────────────────────────────────────────────────── */
 /* `sys.argv` na convenção do C: `argv[0]` é o NOME DO SCRIPT e os
- * argumentos do usuário vêm a partir de `argv[1]`. `pool app.ps a b` dá
- * {"app.ps", "a", "b"}. Antes o nome do script ficava de fora e `argv[0]` já
+ * argumentos do usuário vêm a partir de `argv[1]`. `pool app.pr a b` dá
+ * {"app.pr", "a", "b"}. Antes o nome do script ficava de fora e `argv[0]` já
  * era o primeiro argumento — quem vinha de outra linguagem lia `argv[1]`
  * esperando o primeiro arg e levava IndexError numa lista que "não tinha
  * limite". Agora é igual a todo mundo. Sem script (código de `-e` ou da borda
@@ -12563,7 +12564,7 @@ static int mod_os_warn(VM *vm, Value *args, int n, Value *out)
     if (n >= 1 && valor_para_texto(&t, &args[0], 0) != 0) { BERRO(vm, "MemoryError", "sem memoria"); }
     /* AVISO vai pro STDERR, que e o que a doc promete e o que faz sentido:
      * saia no stdout e ele se mistura ao resultado do programa — quem faz
-     * `pool x.ps > saida.txt` levava o aviso junto pro arquivo. */
+     * `pool x.pr > saida.txt` levava o aviso junto pro arquivo. */
     fprintf(stderr, "%s%.*s\033[0m\n", cod, t.n, t.b ? t.b : "");
     fflush(stderr);
     *out = MK_NULL();
@@ -17826,7 +17827,7 @@ static int mongo_connect(VM *vm, const char *host, int porta, const char *user,
 /* O transporte (socket/HTTP/WS/TLS/multipart) mora
  * em ps_jinker.c; aqui ficam os objetos da VM, o roteamento, a ponte com os
  * handlers via chama_valor e a montagem das respostas. Single-thread: o loop
- * roda na thread da VM, então o handler `.ps` reentra sem corrida nem GC
+ * roda na thread da VM, então o handler `.pr` reentra sem corrida nem GC
  * concorrente — o preço é uma requisição por vez, aceitável pro alvo. */
 
 /* helpers de construção de Value */
@@ -17843,7 +17844,7 @@ static int jk_dict_set_str(VM *vm, PSDict *d, const char *chave, Value v)
     return dict_set(vm, d, &kv, &v);
 }
 
-/* copia uma lista de strings do .ps (pra maiúsculas se `upper`) */
+/* copia uma lista de strings do .pr (pra maiúsculas se `upper`) */
 static char **jk_strvec(Value v, int upper, int *nout)
 {
     *nout = 0;
@@ -19228,7 +19229,7 @@ static void jk_json_seg(const char *msg, char *out, size_t cap)
  * e 130 bytes de PILHA — ponteiros crus, adeus ASLR — indo pro cliente. Sem
  * autenticação nenhuma, só uma URL comprida.
  *
- * Quem apontou foi o `jinker_bruto.ps`, que reprovava uma vez a cada seis
+ * Quem apontou foi o `jinker_bruto.pr`, que reprovava uma vez a cada seis
  * dizendo "FECHOU-CALADO". Não era conexão fechada: era o `.decode()` do teste
  * engasgando no lixo binário do fim da resposta. Vermelho intermitente escondeu
  * isso por dias — é a razão de a suíte não poder ter teste que oscila.
@@ -19241,7 +19242,7 @@ static void jk_json_seg(const char *msg, char *out, size_t cap)
  * SPA) montavam o caminho concatenando a raiz com o path da URL. Concatenar
  * não é resolver: `GET /static/../../../../../../etc/passwd` virava um
  * caminho válido FORA da raiz, e o servidor o entregava com 200. Medido: saía
- * o `/etc/passwd`, e saía o PRÓPRIO `.ps` da aplicação — com o que estivesse
+ * o `/etc/passwd`, e saía o PRÓPRIO `.pr` da aplicação — com o que estivesse
  * escrito nele. Qualquer app com jinker no ar publicava todo arquivo que o
  * processo conseguisse ler.
  *
@@ -19257,7 +19258,7 @@ static void jk_json_seg(const char *msg, char *out, size_t cap)
  * Estar na pasta publicada não basta, porque a pasta publicada quase nunca é
  * só o que o autor pensou que era. Medido com `static_folder="."`, que é o
  * erro de configuração mais comum que existe: saíam `/.git/config` com a URL
- * do repositório, `/.env` com a senha, e o `.ps` da aplicação inteiro.
+ * do repositório, `/.env` com a senha, e o `.pr` da aplicação inteiro.
  *
  * A regra, valendo DENTRO da raiz: nome começando em `.` não sai — `.git`,
  * `.env`, `.ssh`, `.htaccess`. A exceção é `.well-known`, que EXISTE pra ser
@@ -19265,12 +19266,12 @@ static void jk_json_seg(const char *msg, char *out, size_t cap)
  * quebraria a emissão do certificado do próprio `oauth={tls:true}`.
  *
  * O que NÃO é regra, de propósito: extensão. Houve uma versão que barrava
- * `.ps` "porque servidor de estático não entrega código" — e ela quebrou o
- * `psl install`, que baixa pacote `.ps` de um registry servido por um
- * `static_folder` do próprio jinker (`teste/cli_roda.ps`). Publicar `.ps` é
- * uso da linguagem. O `.ps` da APLICAÇÃO não sai porque ele não está na
+ * `.pr` "porque servidor de estático não entrega código" — e ela quebrou o
+ * `psl install`, que baixa pacote `.pr` de um registry servido por um
+ * `static_folder` do próprio jinker (`teste/cli_roda.pr`). Publicar `.pr` é
+ * uso da linguagem. O `.pr` da APLICAÇÃO não sai porque ele não está na
  * pasta publicada: travessia é barrada pelo `jk_sob_a_raiz`, e a `/static/`
- * é uma SUBPASTA ao lado do `.ps`, não a pasta dele. Quem aponta
+ * é uma SUBPASTA ao lado do `.pr`, não a pasta dele. Quem aponta
  * `static_folder="."` está publicando o projeto, e a doc diz isso.
  *
  * `rel` é o caminho JÁ RESOLVIDO, relativo à raiz — então symlink apontando
@@ -19648,9 +19649,9 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         char acao[512]; snprintf(acao, sizeof(acao), "*");
         /* /static/ físico.
          *
-         * A raiz é a pasta `static/` AO LADO DO `.ps`, não a do diretório de
+         * A raiz é a pasta `static/` AO LADO DO `.pr`, não a do diretório de
          * onde o servidor foi chamado. Era o `getcwd`, e isso publicava a
-         * `static/` de quem chamou: `cd /qualquer/lugar && pool app.ps`
+         * `static/` de quem chamou: `cd /qualquer/lugar && pool app.pr`
          * servia `/qualquer/lugar/static/` — pasta que o autor do app nunca
          * viu. O `static_folder` (Tier 2b) já resolvia pelo diretório do
          * script; este era o único que não.
@@ -20760,7 +20761,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
     sa.sa_handler = jk_sigint; sigaction(SIGINT, &sa, NULL); sigaction(SIGTERM, &sa, NULL);
     g_jk_parar = 0;
 
-    /* auto-reload (dev): vigia o mtime do .ps de entrada e RE-EXECUTA o processo
+    /* auto-reload (dev): vigia o mtime do .pr de entrada e RE-EXECUTA o processo
      * quando ele muda. Só single-process (é feature de dev; com workers>1 é prod
      * e não faz sentido). Antes era um param MORTO no binário. */
     int reload = (n >= 4 && val_truthy(&args[3]) && workers == 1);
@@ -20903,7 +20904,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             }
         }
 
-        /* auto-reload: o .ps mudou -> RE-EXECUTA `pool <script> [args]`. */
+        /* auto-reload: o .pr mudou -> RE-EXECUTA `pool <script> [args]`. */
         if (reload) {
             struct stat st;
             if (stat(vm->nome_script, &st) == 0 && src_mtime && st.st_mtime != src_mtime) {
@@ -25583,8 +25584,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* Não é nativo: `acha_modulo_ps` procura, nesta ordem, a lib
                  * instalada pelo `psl`, a pasta do arquivo que importa e a
                  * raiz do projeto (a ordem decidida em poolscript.md). Módulo
-                 * nativo ganha de qualquer `.ps` — o contrário deixaria um
-                 * `json.ps` local sequestrar o módulo `json` da linguagem. */
+                 * nativo ganha de qualquer `.pr` — o contrário deixaria um
+                 * `json.pr` local sequestrar o módulo `json` da linguagem. */
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 /* `anexa_programa` faz realloc de vm->protos, e `p` aponta
                  * pra dentro desse array. Guardar o ÍNDICE é obrigatório:
@@ -26194,7 +26195,7 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
     return 0;
 }
 
-/* ── carregamento de módulo `.ps` ───────────────────────────────────────── */
+/* ── carregamento de módulo `.pr` ───────────────────────────────────────── */
 /*
  * Juntar um segundo programa na MESMA VM não é copiar: cada índice que o
  * bytecode carrega é relativo às tabelas do programa que o gerou. Protótipo,
@@ -26280,7 +26281,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
          * IMPORTADO, continuava publicando `nmetodos` antes do calloc. Com o
          * calloc falhando, o `return -1` deixava o descritor com contador
          * cheio e vetor NULL, e o `libera_vm` percorre `k < nmetodos`.
-         * Achado pelo `scripts/audita_c.ps`, que não existia quando o outro
+         * Achado pelo `scripts/audita_c.pr`, que não existia quando o outro
          * foi corrigido. */
         d->nome = strdup(o->nome ? o->nome : "?");
         d->npais = o->npais;
@@ -26479,7 +26480,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
     return 0;
 }
 
-/* Procura o `.ps` do módulo: LIB INSTALADA primeiro (~/.poolscript/libs),
+/* Procura o `.pr` do módulo: LIB INSTALADA primeiro (~/.poolscript/libs),
  * depois a pasta do arquivo que importa, depois a raiz do projeto — a ordem
  * está no nível 0 de `acha_modulo_ps` e em poolscript.md: um arquivo local
  * nunca ofusca uma lib instalada. */
@@ -26487,14 +26488,16 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
  *   - `.a.b` / `..a` (nível>0): RELATIVO ao dir do arquivo importador
  *     (vm->dir_modulo), subindo nível-1 pastas; nunca tenta libs.
  *   - `a.b` (nível 0): ABSOLUTO da raiz do projeto (vm->dir_script), depois
- *     lib instalada em ~/.poolscript/libs/<a.b>.ps.
+ *     lib instalada em ~/.poolscript/libs/<a.b>.pr.
  * O caminho pontuado vira caminho de pasta (`a.b` -> `a/b`). */
-/* `import 'x'`: com `/` ou extensao da linguagem e CAMINHO; senao e nome. */
+/* `import 'x'`: com `/` ou extensao da linguagem e CAMINHO; senao e nome. A
+ * extensao VELHA tambem conta como caminho: assim `import './x.ps'` cai na
+ * busca de arquivo e recebe a frase que ensina o `.pr`, em vez de virar
+ * "No module named './x.ps'". */
 static int spec_eh_caminho(const char *s)
 {
     if (strchr(s, '/')) return 1;
-    const char *ext = strrchr(s, '.');
-    return ext && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0);
+    return ps_eh_fonte(s) || ps_ext_velha(s) != NULL;
 }
 
 /* fopen("rb") abre PASTA no Linux; pra achar modulo so arquivo comum serve */
@@ -26514,30 +26517,39 @@ static void nome_visivel_modulo(const char *nome, char *out, size_t cap)
     if (!spec_eh_caminho(spec)) { snprintf(out, cap, "%s", spec); return; }
     const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
     snprintf(out, cap, "%s", b);
-    char *ext = strrchr(out, '.');
-    if (ext && ext != out && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0))
-        *ext = '\0';
+    ps_tira_ext(out);
 }
 
-/* O arquivo de um módulo `.ps`, dadas a pasta do arquivo que importa
+/* O arquivo de um módulo `.pr`, dadas a pasta do arquivo que importa
  * (`dir_modulo`) e a do arquivo executado (`dir_script`). Não depende da VM:
  * a expansão do `import *` resolve ANTES de a VM existir, e tem que achar o
  * MESMO arquivo que o import vai carregar em runtime. */
 static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
                              const char *nome, char *saida, size_t cap)
 {
-    /* `import 'caminho/alvo.ps'`: absoluto como esta, senao relativo a pasta
+    /* `import 'caminho/alvo.pr'`: absoluto como esta, senao relativo a pasta
      * do arquivo que importa. Tenta como escrito e com as extensoes; nunca
      * cai pras libs. `import 'nome'` sem caminho segue a busca comum abaixo. */
     if (nome[0] == '\x01') {
         const char *spec = nome + 1;
         if (spec_eh_caminho(spec)) {
-            static const char *EXTS_C[] = { "", ".ps", ".psl", ".p" };
+            /* Extensão de antes escrita à mão (`import './x.ps'`): NÃO carrega,
+             * mesmo com o arquivo ali do lado. O "como escrito" abaixo aceitaria
+             * qualquer arquivo existente, e aí a linha de comando recusava o
+             * `.ps` enquanto o import o engolia calado — duas respostas pro
+             * mesmo arquivo. Recusar aqui é o que faz o `carrega_modulo_ps`
+             * dizer que a extensão mudou. */
+            if (ps_ext_velha(spec)) return -1;
+            /* como escrito, e depois com a extensão da linguagem */
+            static const char *EXTS_C[] = { "", PS_EXT };
             char base[1024];
             if (spec[0] == '/') snprintf(base, sizeof(base), "%s", spec);
             else snprintf(base, sizeof(base), "%s/%s", dir_modulo[0] ? dir_modulo : ".", spec);
-            for (int e = 0; e < 4; e++) {
-                snprintf(saida, cap, "%s%s", base, EXTS_C[e]);
+            for (size_t e = 0; e < sizeof(EXTS_C) / sizeof(EXTS_C[0]); e++) {
+                /* caminho longo demais pro buffer: o que sobrou não é o
+                 * arquivo pedido, e testar o pedaço acharia outro. */
+                int n = snprintf(saida, cap, "%s%s", base, EXTS_C[e]);
+                if (n < 0 || (size_t)n >= cap) continue;
                 if (eh_arquivo_comum(saida)) return 0;
             }
             return -1;
@@ -26553,8 +26565,9 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
     for (const char *q = p; *q && rl < 510; q++) rel[rl++] = (*q == '.') ? '/' : *q;
     rel[rl] = '\0';
 
-    /* extensões válidas da linguagem — tenta as três em cada local */
-    static const char *EXTS[] = { ".ps", ".psl", ".p" };
+    /* a extensão da linguagem, tentada em cada local da ordem de resolução */
+    static const char *EXTS[] = { PS_EXT };
+    const size_t N_EXTS = sizeof(EXTS) / sizeof(EXTS[0]);
     FILE *f;
     if (nivel > 0) {
         char base[512];
@@ -26564,7 +26577,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
             if (barra) *barra = '\0';
             else { snprintf(base, sizeof(base), "%s", ".."); }
         }
-        for (int e = 0; e < 3; e++) {
+        for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", base, rel, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
@@ -26583,24 +26596,24 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
         else   libdir[0] = '\0';
     }
     if (libdir[0]) {
-        for (int e = 0; e < 3; e++) {
+        for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", libdir, p, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
     }
     /* depois: a pasta do ARQUIVO que esta importando. `import smtp` dentro de
-     * `acesso/controller.ps` (ele mesmo importado por `api/rotas.ps`) tem que
-     * achar `acesso/smtp.ps`; so a raiz do projeto era olhada, e o modulo
+     * `acesso/controller.pr` (ele mesmo importado por `api/rotas.pr`) tem que
+     * achar `acesso/smtp.pr`; so a raiz do projeto era olhada, e o modulo
      * vizinho dava "No module named 'smtp'". */
     if (dir_modulo[0] && strcmp(dir_modulo, dir_script) != 0) {
-        for (int e = 0; e < 3; e++) {
+        for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", dir_modulo, rel, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
     }
     /* depois: arquivo do projeto (raiz = dir do entry) */
     if (dir_script[0]) {
-        for (int e = 0; e < 3; e++) {
+        for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", dir_script, rel, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
@@ -26615,7 +26628,7 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
 
 /* Módulo nativo pelo nome codificado do import (-1 = não é nativo). `import
  * 'x'` (marcador \x01): sem `/` nem extensão é NOME, e o nativo ganha como no
- * `import x`; com caminho nunca é nativo — `import './json.ps'` é o arquivo,
+ * `import x`; com caminho nunca é nativo — `import './json.pr'` é o arquivo,
  * de propósito. Um lugar só: o OP_IMPORT_MOD e a expansão do `*`. */
 static int modulo_nativo_de(const char *mod)
 {
@@ -26626,7 +26639,7 @@ static int modulo_nativo_de(const char *mod)
 /* A pasta do arquivo executado, ABSOLUTA (é a base do import de arquivo
  * vizinho). Sem caminho (`-e`), vazia: só restam as libs globais.
  *
- * `pool sub/app.ps` deixava "sub" aqui, e o import relativo `from ..x import
+ * `pool sub/app.pr` deixava "sub" aqui, e o import relativo `from ..x import
  * y` subia uma pasta de "sub" pra ".." — isto é, relativo ao cwd, não ao
  * arquivo. Resolvido uma vez, tudo que usa a pasta fica igual. */
 static void dir_do_script(const char *caminho, char *out, size_t cap)
@@ -26653,7 +26666,7 @@ static void dir_do_script(const char *caminho, char *out, size_t cap)
  *
  * O compilador pergunta aqui (PSResolvedor). A resposta tem que ser a do
  * import de runtime: nativo pelo `modulo_nativo_de`, arquivo pelo
- * `acha_modulo_ps_em` com as mesmas pastas, e os nomes de um `.ps` pelo
+ * `acha_modulo_ps_em` com as mesmas pastas, e os nomes de um `.pr` pelo
  * `PSPrograma.exportados` dele — compilado (sem rodar) com o mesmo
  * resolvedor, que é o que faz a reexportação por `*` atravessar arquivos. */
 typedef struct EstrelaVisita {
@@ -26836,7 +26849,17 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
          * `ModuleNotFoundError` separado: aqui não há hierarquia de tipos de
          * erro — o catch compara o nome — e adotar um nome novo quebraria em
          * silêncio todo `catch (ImportError e)` que hoje pega módulo ausente. */
-        snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", escrito);
+        const char *velha = ps_ext_velha(escrito);
+        if (velha)
+            /* `import './x.ps'`: o arquivo pode até existir ao lado, mas com o
+             * nome de antes. "No module named" mandaria procurar o módulo
+             * errado — a resposta é o nome do arquivo, não a busca. */
+            snprintf(vm->erro, sizeof(vm->erro),
+                     "No module named '%.120s': %s e a extensao de antes, hoje o arquivo da "
+                     "linguagem e " PS_EXT " (pool scripts/migra_pr" PS_EXT " <pasta> --aplica)",
+                     escrito, velha);
+        else
+            snprintf(vm->erro, sizeof(vm->erro), "No module named '%.200s'", escrito);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "ImportError");
         return -1;
     }
@@ -27165,7 +27188,7 @@ static const char *retorno_de(const char *dono, const char *membro)
  * algo que estoura em "membro inexistente". Sete entradas fantasma já viveram
  * aqui (MailMessage.msg, MailServer.server/user, MailReader.folder/server/user
  * e Jinker.route_prefix — este último é argumento do CONSTRUTOR, não campo).
- * O `teste/confere_metadata.ps` acessa cada um de verdade; entrada fantasma
+ * O `teste/confere_metadata.pr` acessa cada um de verdade; entrada fantasma
  * derruba a checagem. */
 static const struct { const char *dono; const char *campo; const char *tipo; } CAMPOS[] = {
     { "ChannelManager", "status", NULL },
@@ -27811,7 +27834,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             e->tb[i].col   = vm.tb[i].col;
         }
         /* Módulo que não compilou: o quadro mais interno é o do ARQUIVO DA
-         * LIB, não o do `import`. Sem ele o erro dizia "em d.ps, linha 1" pra
+         * LIB, não o do `import`. Sem ele o erro dizia "em d.pr, linha 1" pra
          * um defeito que está na linha 16 de outro arquivo — e o `^^^` caía
          * em cima do `import random`, que é a única linha que estava certa. */
         if (vm.mod_erro_arquivo[0] && e->ntb < 64) {
@@ -27986,7 +28009,7 @@ static PyObject *vm_executa_fonte(PyObject *self, PyObject *args)
 
 static PyMethodDef metodos[] = {
     {"executa_fonte", vm_executa_fonte, METH_VARARGS,
-     "executa_fonte(src[, caminho]) -> roda o .ps inteiro em C (lexer+parser+compilador+VM)"},
+     "executa_fonte(src[, caminho]) -> roda o .pr inteiro em C (lexer+parser+compilador+VM)"},
     {"roda", vm_roda, METH_VARARGS,
      "roda(protos, nglobais, globais_iniciais) -> lista de globais"},
     {"estatisticas", vm_estatisticas, METH_NOARGS,

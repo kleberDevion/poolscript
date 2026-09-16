@@ -1,0 +1,12 @@
+# funct.pr — funções com escopo local
+funct somar(a, b) {
+    resultado = a + b
+    return resultado
+}
+
+funct saudar(nome) {
+    return f"Olá, {nome}!"
+}
+
+post(somar(10, 20))
+post(saudar("Pool"))

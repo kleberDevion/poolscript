@@ -1,7 +1,7 @@
 /*
  * Gerenciador de pacotes pool-native — ver ps_pkg.h.
  *
- * A verdade do que está instalado é o SISTEMA DE ARQUIVOS (os .ps em
+ * A verdade do que está instalado é o SISTEMA DE ARQUIVOS (os arquivos em
  * commands/ e libs/); o installed.json é reescrito a partir dele a cada
  * operação, pra quem lê o estado de fora. config.json guarda o registry_url.
  */
@@ -18,6 +18,7 @@
 
 #include "ps_pkg.h"
 #include "ps_http.h"
+#include "ps_ext.h"
 #include "ps_hash.h"
 
 /* ── caminhos ───────────────────────────────────────────────────────────── */
@@ -88,25 +89,21 @@ static int existe(const char *caminho)
     return stat(caminho, &st) == 0 && S_ISREG(st.st_mode);
 }
 
-/* nome base sem diretório e sem a extensão (.ps / .psl / .p) */
+/* nome base sem diretório e sem a extensão da linguagem */
 static void derive_name(const char *target, char *out, size_t cap)
 {
     const char *base = strrchr(target, '/');
     base = base ? base + 1 : target;
     snprintf(out, cap, "%s", base);
-    size_t l = strlen(out);
-    if      (l > 4 && strcmp(out + l - 4, ".psl") == 0) out[l - 4] = '\0';
-    else if (l > 3 && strcmp(out + l - 3, ".ps")  == 0) out[l - 3] = '\0';
-    else if (l > 2 && strcmp(out + l - 2, ".p")   == 0) out[l - 2] = '\0';
+    ps_tira_ext(out);
 }
 
-/* arquivo local da linguagem: .ps, .psl ou .p */
-static int termina_em_ps(const char *s)
+/* arquivo local da linguagem. A extensão velha entra aqui de propósito: o
+ * `psl install x.ps` trata como arquivo local e o erro sai dizendo o conserto,
+ * em vez de ele ir procurar `x.ps` no registry. */
+static int termina_em_fonte(const char *s)
 {
-    size_t l = strlen(s);
-    return (l > 4 && strcmp(s + l - 4, ".psl") == 0)
-        || (l > 3 && strcmp(s + l - 3, ".ps")  == 0)
-        || (l > 2 && strcmp(s + l - 2, ".p")   == 0);
+    return ps_eh_fonte(s) || ps_ext_velha(s) != NULL;
 }
 
 /* marcador na 1ª linha com conteúdo: "#!lib" -> 1, "#!cmd" -> 0, senão -1 */
@@ -150,9 +147,9 @@ static void escreve_secao(FILE *f, const char *home, const char *sub)
         struct dirent *e;
         while ((e = readdir(d)) != NULL) {
             size_t l = strlen(e->d_name);
-            if (l < 4 || strcmp(e->d_name + l - 3, ".ps") != 0) continue;
+            if (!ps_eh_fonte(e->d_name)) continue;
             char nome[256];
-            snprintf(nome, sizeof(nome), "%.*s", (int)(l - 3), e->d_name);
+            snprintf(nome, sizeof(nome), "%.*s", (int)(l - PS_EXT_TAM), e->d_name);
             fprintf(f, "%s\n    %s\"%s\": {\"source\": \"local\", \"installed_at\": \"%s\"}",
                     primeiro ? "" : ",", "", nome, ts);
             primeiro = 0;
@@ -321,7 +318,7 @@ static int registry_lookup(const char *home, const char *nome, char *url, size_t
     char idx_url[1024];
     if (registry_url(home, idx_url, sizeof(idx_url)) != 0) {
         fprintf(stderr, "Erro: nenhum registry configurado — use `psl registry set-url <url>` "
-                        "ou instale de um arquivo local (nome.ps)\n");
+                        "ou instale de um arquivo local (nome" PS_EXT ")\n");
         return -1;
     }
     if (!https_ok(idx_url)) {
@@ -423,7 +420,14 @@ int ps_pkg_install(const char *target, int modo)
     char *fonte = NULL;
     size_t ntam = 0;
 
-    if (termina_em_ps(target)) {
+    if (termina_em_fonte(target)) {
+        const char *velha = ps_ext_velha(target);
+        if (velha) {
+            fprintf(stderr, "Erro: `%s` e a extensao antiga; o arquivo da linguagem agora e `%s`.\n"
+                            "      Renomeie com: pool scripts/migra_pr%s <pasta> --aplica\n",
+                    velha, PS_EXT, PS_EXT);
+            return 1;
+        }
         if (!existe(target)) { fprintf(stderr, "Erro: arquivo nao encontrado: %s\n", target); return 1; }
         fonte = ler_txt(target, &ntam);
         if (!fonte) { fprintf(stderr, "Erro: nao consegui ler %s\n", target); return 1; }
@@ -442,7 +446,7 @@ int ps_pkg_install(const char *target, int modo)
     else { int m = peek_marker(fonte); kind = (m == 1) ? 1 : 0; }   /* auto: padrão cmd */
 
     char dest[1300];
-    snprintf(dest, sizeof(dest), "%s/%s/%s.ps", home, kind ? "libs" : "commands", nome);
+    snprintf(dest, sizeof(dest), "%s/%s/%s%s", home, kind ? "libs" : "commands", nome, PS_EXT);
     if (escrever_txt(dest, fonte, ntam) != 0) {
         free(fonte);
         fprintf(stderr, "Erro: nao consegui gravar %s\n", dest);
@@ -467,7 +471,7 @@ int ps_pkg_install(const char *target, int modo)
 static int remove_categoria(const char *home, const char *nome, int lib)
 {
     char ps[1300];
-    snprintf(ps, sizeof(ps), "%s/%s/%s.ps", home, lib ? "libs" : "commands", nome);
+    snprintf(ps, sizeof(ps), "%s/%s/%s%s", home, lib ? "libs" : "commands", nome, PS_EXT);
     int achou = 0;
     if (existe(ps)) { unlink(ps); achou = 1; }
     if (!lib) {
@@ -484,8 +488,8 @@ int ps_pkg_uninstall(const char *nome, int categoria)
     if (pkg_dirs(home, sizeof(home)) != 0) return 1;
 
     char pcmd[1300], plib[1300];
-    snprintf(pcmd, sizeof(pcmd), "%s/commands/%s.ps", home, nome);
-    snprintf(plib, sizeof(plib), "%s/libs/%s.ps", home, nome);
+    snprintf(pcmd, sizeof(pcmd), "%s/commands/%s%s", home, nome, PS_EXT);
+    snprintf(plib, sizeof(plib), "%s/libs/%s%s", home, nome, PS_EXT);
     int tem_cmd = existe(pcmd), tem_lib = existe(plib);
 
     if (categoria == PS_PKG_LIB) {
@@ -526,8 +530,8 @@ static void lista_dir(const char *home, const char *sub, const char *rotulo)
         struct dirent *e;
         while ((e = readdir(d)) != NULL && n < 512) {
             size_t l = strlen(e->d_name);
-            if (l < 4 || strcmp(e->d_name + l - 3, ".ps") != 0) continue;
-            snprintf(nomes[n], sizeof(nomes[n]), "%.*s", (int)(l - 3), e->d_name);
+            if (!ps_eh_fonte(e->d_name)) continue;
+            snprintf(nomes[n], sizeof(nomes[n]), "%.*s", (int)(l - PS_EXT_TAM), e->d_name);
             n++;
         }
         closedir(d);

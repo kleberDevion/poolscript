@@ -262,7 +262,7 @@
               "include": "#constants"
             },
             {
-              "comment": "tipo do parametro — GERADO por scripts/gera_realce.ps (mesma lista da regra de tipos)",
+              "comment": "tipo do parametro — GERADO por scripts/gera_realce.pr (mesma lista da regra de tipos)",
               "name": "storage.type.poolscript",
               "match": "\\b(str|int|flo|bool|char|long|list|dict|json|tup|Object|object|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|type|PoolFile)\\b(?!\\s*=[^=])"
             },
@@ -332,7 +332,7 @@
           "match": "[()\\[\\]{},;:.]"
         },
         {
-          "comment": "GERADO por scripts/gera_realce.ps a partir de `pool --metadata` (chave `excecoes`, a tabela do catch). As tres listas desta gramatica (tipos, builtins, excecoes) sao geradas; nao edite a mao.",
+          "comment": "GERADO por scripts/gera_realce.pr a partir de `pool --metadata` (chave `excecoes`, a tabela do catch). As tres listas desta gramatica (tipos, builtins, excecoes) sao geradas; nao edite a mao.",
           "name": "support.class.exception.poolscript",
           "match": "\\b(Exception|OSError|FileExistsError|FileNotFoundError|IsADirectoryError|NotADirectoryError|PermissionError|NetworkError|IOError|LookupError|IndexError|KeyError|ArithmeticError|ZeroDivisionError|OverflowError|ValueError|UnicodeError|UnicodeDecodeError|UnicodeEncodeError|AttributedValueError|ConversionError|RuntimeError|RecursionError|TypeError|AttributeError|NameError|ImportError|MemoryError|AssertionError|SyntaxError|NotImplementedError|TimeoutError|DatabaseError)\\b"
         }

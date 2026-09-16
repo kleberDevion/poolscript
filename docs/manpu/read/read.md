@@ -18,7 +18,7 @@ manpu.read(filepath: str) -> list | dict | str
 | `.json` | dict ou lista |
 | `.xml` | dict com `tag`, `attrs`, `text`, `children` |
 | `.html` | texto limpo, sem as tags |
-| `.txt`, `.py`, `.ps`, código | texto puro (string) |
+| `.txt`, `.py`, `.pr`, código | texto puro (string) |
 
 ---
 

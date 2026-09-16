@@ -2,7 +2,7 @@
  * Testes de UNIDADE, em C, chamando as funções direto.
  *
  * POR QUE ISTO EXISTE: a suíte inteira (`teste/ps_teste.c`, 7898 casos) é
- * fork/exec do `./pool` com um fonte `.ps`. Isso é deliberado e está certo pro
+ * fork/exec do `./pool` com um fonte `.pr`. Isso é deliberado e está certo pro
  * que ela testa — caso que MATA a VM só relata alguma coisa se rodar em outro
  * processo. Mas cria um teto: metade dos ramos de um módulo em C é tratamento
  * de erro (`malloc` que devolveu NULL, buffer curto, entrada truncada, faixa
@@ -20,7 +20,7 @@
  *   ps_ast.c     arena e nós
  *
  * O resto do motor é `static` dentro de `poolscript_vm.c` e não tem como ser
- * chamado daqui — pra esses, o caminho continua sendo `.ps` e injeção de falha.
+ * chamado daqui — pra esses, o caminho continua sendo `.pr` e injeção de falha.
  *
  *     make unidade && ./unidade
  *     ./unidade hash          # só o grupo que casa com o filtro
@@ -103,7 +103,7 @@ static void teste_sha(void)
     /* O bloco do SHA-2 é de 64 bytes (128 no 512) e o padding tem TRÊS
      * caminhos: sobra pouco, sobra exatamente, não sobra. Entrada de 55, 56,
      * 63, 64 e 119..128 bytes passa por todos — é onde mora o bug clássico de
-     * implementação de hash, e nenhum programa `.ps` escolhe esses tamanhos
+     * implementação de hash, e nenhum programa `.pr` escolhe esses tamanhos
      * de propósito. */
     static const size_t bordas[] = { 54, 55, 56, 57, 63, 64, 65, 111, 112, 119, 127, 128, 129 };
     unsigned char buf[200];
@@ -143,7 +143,7 @@ static void teste_hmac(void)
 
     /* Chave MAIOR que o bloco (64 bytes) é o ramo que hasheia a chave antes de
      * usar — caso 4 do RFC. Chave curta é o outro ramo (padding com zero).
-     * Os dois só se separam aqui; um `.ps` que use HMAC pega um dos dois. */
+     * Os dois só se separam aqui; um `.pr` que use HMAC pega um dos dois. */
     unsigned char longa[131];
     memset(longa, 0xaa, sizeof(longa));
     ps_hmac_sha256(longa, sizeof(longa),

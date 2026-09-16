@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Instala a PoolScript numa máquina: o binário (`pool`/`psl`), o servidor LSP,
-# o tipo MIME do `.ps` e o ícone.
+# o tipo MIME do `.pr` e o ícone.
 #
 # Numa máquina onde não há NADA — um WSL Debian recém-criado, por exemplo —
 # esta linha faz tudo sozinha, buscando o que faltar:
@@ -18,9 +18,10 @@
 #   sudo ./instalar.sh /opt/poolscript # outro prefixo
 #   sudo ./instalar.sh --remover
 #
-# O MIME vai pra /usr/share MESMO com outro prefixo: é a base onde o
-# PostScript está definido, e o `.ps` só resolve pra PoolScript se a nossa
-# definição estiver na mesma base.
+# O MIME vai pra /usr/share MESMO com outro prefixo: é a base que o desktop lê
+# por padrão. (Era obrigatório quando a extensão era `.ps`, que o PostScript
+# reivindica na mesma base; com `.pr` não há disputa, mas o lugar continua
+# sendo esse — é lá que o arquivo velho está, pra ser sobrescrito.)
 set -e
 
 REPO="${REPO:-https://github.com/kleberDevion/poolscript}"
@@ -300,7 +301,7 @@ else
     INCOMPLETO=1
 fi
 
-echo "== tipo MIME e ícone do .ps"
+echo "== tipo MIME e ícone do .pr"
 # Um pacote sem a pasta `dados/` fazia o `install` falhar e, com o `set -e`,
 # derrubava o script AQUI — depois do binário já instalado. Ficava uma
 # instalação pela metade que dizia "erro" sem dizer o que sobrou funcionando.
@@ -324,7 +325,7 @@ if [ -x "$PREFIXO/bin/poolscript-lsp" ]; then
     echo "  poolscript-lsp   servidor LSP (aponte o editor pra ele)"
 fi
 if [ -f "$DADOS/mime/packages/zz-poolscript.xml" ]; then
-    echo "  .ps              text/poolscript, com a logo"
+    echo "  .pr              text/poolscript, com a logo"
 fi
 if [ -n "$REMOVIDOS" ]; then
     echo

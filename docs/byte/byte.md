@@ -6,7 +6,7 @@ são do **módulo** `bytes`, em [`docs/bytes/`](../bytes/bytes.md). Esta página
 só do que se chama NO valor: `b.metodo()`, não `bytes.metodo(b)`.
 
 Cada página tem a assinatura tirada do motor (`pool --metadata`) e a saída de um
-exemplo que foi RODADO — as 44 são geradas por `scripts/gera_bytes_docs.ps`.
+exemplo que foi RODADO — as 44 são geradas por `scripts/gera_bytes_docs.pr`.
 
 Os nomes são os mesmos do `str`, e por isso vale ler as
 [quatro diferenças](../linguagem/12-metodos-string-list-dict.md) — são as que

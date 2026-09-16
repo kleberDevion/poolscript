@@ -21,13 +21,12 @@ vim.cmd.colorscheme("ariake-dark")
 
 -- ── PoolScript ──────────────────────────────────────────────────────────────
 
--- O Neovim não conhece a extensão `.ps` (ele chuta PostScript, que é o mesmo
--- engano do MIME do desktop). Aqui ela é declarada como `poolscript`.
+-- O Neovim não conhece a extensão `.pr`. Aqui ela é declarada como
+-- `poolscript`. (Era `.ps`, e aí ele chutava PostScript — o mesmo engano do
+-- MIME do desktop. Com `.pr` não há com quem colidir.)
 vim.filetype.add({
   extension = {
-    ps  = "poolscript",
-    psl = "poolscript",
-    p   = "poolscript",
+    pr = "poolscript",
   },
 })
 
@@ -55,7 +54,7 @@ vim.api.nvim_create_autocmd("FileType", {
       cmd = { "poolscript-lsp" }
     else
       -- direto do repositório clonado, útil enquanto se mexe no servidor.
-      -- (Apontava pro `lsp/servidor.ps`, que era o servidor em PoolScript e
+      -- (Apontava pro `lsp/servidor.pr`, que era o servidor em PoolScript e
       -- não existe mais: hoje o servidor é `editor/vscode/server.js`, sobre
       -- `vscode-languageserver`.)
       local repo = vim.fn.expand("~/poolscript-lang/editor/vscode/server.js")

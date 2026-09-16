@@ -12,7 +12,7 @@
  *               tabelas do VM.
  *   diagnóstico `pool --check`.
  *   prosa       `docs/<escopo>/<nome>/<nome>.md`, a mesma página que o
- *               `scripts/audita_doc.ps` confere contra o motor.
+ *               `scripts/audita_doc.pr` confere contra o motor.
  *
  * NÃO HÁ UMA EXPRESSÃO REGULAR NESTE ARQUIVO NEM NO `analise.js`.
  *
@@ -327,7 +327,7 @@ function pastaLibs() {
 function libsInstaladas() {
   try {
     return fs.readdirSync(pastaLibs())
-      .filter((f) => f.endsWith('.ps'))
+      .filter((f) => f.endsWith('.pr'))
       .map((f) => f.slice(0, -3));
   } catch (_) { return []; }
 }
@@ -337,12 +337,12 @@ function libsInstaladas() {
  * quando se resolve o import de dentro de um módulo — que é o que o `*`
  * atravessa. O motor procura nas duas (`acha_modulo_ps_em`). */
 function arquivoDoImport(mod, dirDoc, aspas, pontos, dirScript) {
-  /* `import 'caminho/alvo.ps'`: absoluto como está, senão relativo à pasta do
-   * documento; como escrito e com as extensões — a mesma busca do motor. */
+  /* `import 'caminho/alvo.pr'`: absoluto como está, senão relativo à pasta do
+   * documento; como escrito e com a extensão — a mesma busca do motor. */
   if (aspas && A.especificadorEhCaminho(mod)) {
     const base = path.isAbsolute(mod) ? mod : (dirDoc ? path.join(dirDoc, mod) : '');
     if (!base) return '';
-    for (const ext of ['', '.ps', '.psl', '.p']) {
+    for (const ext of ['', '.pr']) {
       try { if (fs.statSync(base + ext).isFile()) return base + ext; } catch (_) { /* segue */ }
     }
     return '';
@@ -354,13 +354,13 @@ function arquivoDoImport(mod, dirDoc, aspas, pontos, dirScript) {
     if (!dirDoc) return '';
     let base = dirDoc;
     for (let i = 1; i < pontos; i++) base = path.dirname(base);
-    for (const ext of ['.ps', '.psl', '.p']) {
+    for (const ext of ['.pr']) {
       const p = path.join(base, mod.split('.').join(path.sep) + ext);
       try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* segue */ }
     }
     return '';
   }
-  const rel = mod.split('.').join(path.sep) + '.ps';
+  const rel = mod.split('.').join(path.sep) + '.pr';
   for (const base of [pastaLibs(), dirDoc, dirScript]) {
     if (!base) continue;
     const p = path.join(base, rel);
@@ -369,7 +369,7 @@ function arquivoDoImport(mod, dirDoc, aspas, pontos, dirScript) {
   return '';
 }
 
-/* O índice de OUTRO arquivo .ps — pela mesma árvore, pelo mesmo caminho. */
+/* O índice de OUTRO arquivo .pr — pela mesma árvore, pelo mesmo caminho. */
 const CACHE_ARQ = new Map();     // caminho -> {mtime, idx}
 
 function indiceDeArquivo(caminho) {
@@ -392,7 +392,7 @@ function indiceDeArquivo(caminho) {
 }
 
 /* O módulo do motor que a referência designa, ou null. Import relativo e
- * caminho entre aspas nunca são módulo do motor: `import './json.ps'` é o
+ * caminho entre aspas nunca são módulo do motor: `import './json.pr'` é o
  * arquivo, de propósito — a mesma decisão do `modulo_nativo_de` da VM. */
 function nativoDe(mod, aspas, pontos) {
   if (pontos > 0 || (aspas && A.especificadorEhCaminho(mod))) return null;
@@ -432,12 +432,12 @@ function alvoDoImport(doc, nome, linha) {
  * private"). O editor oferecia o que o programa não roda.
  *
  *   módulo do motor   todo membro da tabela do VM (`--metadata`)
- *   arquivo .ps       o que ele liga no topo (`topo`, ver `analise.js`),
+ *   arquivo .pr       o que ele liga no topo (`topo`, ver `analise.js`),
  *                     menos o `private`; o nome que ELE importa sai também,
  *                     resolvido até a origem, e os `*` dele são expandidos
  *
  * Cada item leva de onde veio: `arquivo`/`linha`/`coluna` (declarado num
- * .ps, com `declarado` = o nome lá dentro) ou `mod`/`membro` (membro de módulo
+ * .pr, com `declarado` = o nome lá dentro) ou `mod`/`membro` (membro de módulo
  * do motor) — é isso que o hover e o ir-pra-definição usam.
  *
  * `pilha` são os arquivos em expansão AGORA: `a` com `*` de `b` e `b` com `*`
@@ -495,7 +495,7 @@ function exportadosDeArquivo(caminho, dirScript, pilha) {
   return [...porNome.values()];
 }
 
-/* Os membros de topo de um arquivo .ps importado — o que `mod.` e
+/* Os membros de topo de um arquivo .pr importado — o que `mod.` e
  * `from mod import` oferecem. É a regra do motor: `exportadosDeArquivo`. */
 function membrosDeArquivo(caminho, dirScript) {
   return exportadosDeArquivo(caminho, dirScript, new Set());
@@ -944,7 +944,7 @@ function dentroDeParenteses(doc, pos) {
 
 /* Os parâmetros de um nome que veio de IMPORT — nomeado (`from m import f`)
  * ou trazido por um `*`. Módulo do motor: a tabela do `--metadata`. Arquivo
- * `.ps`: a assinatura da declaração, que o item exportado já traz. Sem isto o
+ * `.pr`: a assinatura da declaração, que o item exportado já traz. Sem isto o
  * signatureHelp ficava mudo em `f(` justamente no nome que veio de fora. */
 function paramsDoImportado(doc, alvo) {
   if (!alvo) return [];
@@ -1072,7 +1072,7 @@ function pastaDoDoc(doc) {
 }
 
 /* Os membros que `from X import …` pode trazer: o que X EXPORTA — módulo do
- * motor, lib instalada ou arquivo `.ps` ao lado —, pela regra do motor. O
+ * motor, lib instalada ou arquivo `.pr` ao lado —, pela regra do motor. O
  * editor não oferece o que o `import` vai recusar. */
 function membrosParaImport(doc, mod, aspas) {
   const dir = pastaDoDoc(doc);
@@ -1095,7 +1095,7 @@ function aspaAbertaDoImport(linha) {
   return linha.indexOf(linha[i], i + 1) < 0 ? i : -1;
 }
 
-/* Dentro das aspas de um import: arquivos `.ps` e pastas a partir da pasta do
+/* Dentro das aspas de um import: arquivos `.pr` e pastas a partir da pasta do
  * documento (ou da subpasta já digitada), e — enquanto não há `/` — os
  * módulos do motor e as libs instaladas, que também vêm entre aspas. O rótulo
  * é só o último segmento: é o que o editor substitui. */
@@ -1126,7 +1126,7 @@ function completaCaminhoImport(doc, parcial) {
     for (const e of ents) {
       if (e.name.startsWith('.') || (!sub && e.name === meu)) continue;
       if (e.isDirectory()) poe(e.name, CompletionItemKind.Folder, 'pasta', e.name + '/');
-      else if (e.name.endsWith('.ps')) poe(e.name, CompletionItemKind.File, 'arquivo .ps');
+      else if (e.name.endsWith('.pr')) poe(e.name, CompletionItemKind.File, 'arquivo .pr');
     }
     poe('..', CompletionItemKind.Folder, 'pasta acima', '../');
   }
@@ -1137,7 +1137,7 @@ function completaCaminhoImport(doc, parcial) {
  * (o lexer), nunca pelo texto:
  *
  *  - `from X import <cursor>`: os MEMBROS de X — módulo do motor, lib
- *    instalada ou arquivo `.ps` — menos os já listados antes do cursor. Era o
+ *    instalada ou arquivo `.pr` — menos os já listados antes do cursor. Era o
  *    defeito da tela dele: `from mail import Mia` devolvia a lista de
  *    MÓDULOS, com `mail` e `multipart` dentro, porque este ramo não
  *    distinguia os dois lados do `import`.
@@ -1162,7 +1162,7 @@ function completaImport(doc, p) {
   const ehNome = (t) => t.t === 'DOT' || t.t.startsWith('IDENT');
 
   if (ehFrom && iImp > 0) {
-    /* `from 'x/y.ps' import <cursor>`: o módulo é a STRING. Entre `from` e
+    /* `from 'x/y.pr' import <cursor>`: o módulo é a STRING. Entre `from` e
      * `import` todo token é caminho do módulo — inclusive palavra-chave: o
      * lexer entrega `json` como KW, e filtrar só IDENT deixava `from json
      * import ` sem módulo nenhum. */
@@ -1212,7 +1212,7 @@ function completaImport(doc, p) {
     for (const e of ents) {
       if (e.name.startsWith('.') || e.name === meu) continue;
       if (e.isDirectory()) poe(e.name, 'pasta');
-      else if (e.name.endsWith('.ps')) poe(e.name.slice(0, -3), 'arquivo .ps');
+      else if (e.name.endsWith('.pr')) poe(e.name.slice(0, -3), 'arquivo .pr');
     }
   }
   return itens;

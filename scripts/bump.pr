@@ -1,0 +1,229 @@
+# Sobe a versão da LINGUAGEM em todos os lugares que a carregam — e, à parte,
+# a da EXTENSÃO do editor.
+#
+# POR QUE EXISTE. A versão é uma constante de header (`vm/ps_versao.h`), que é
+# a fonte, mas ela aparece copiada em mais quatro lugares — o título da doc e
+# três exemplos que imprimem `PoolScript X.Y.Z [PSVM]`. Subir na mão
+# significava lembrar dos cinco; o que acontecia era subir um e deixar os
+# outros mentindo.
+#
+# A extensão do VS Code tem versão PRÓPRIA (`editor/vscode/package.json`): ela
+# só muda quando gramática, tema ou servidor mudam. Até 2026-09-12 ela estava
+# na mesma lista e foi arrastada de 8.4.4 pra 15.90.x junto com a linguagem —
+# a ordem de subir pra 15.90.12 era só pra linguagem.
+#
+#     pool scripts/bump.pr              # só mostra onde as versões estão hoje
+#     pool scripts/bump.pr patch        # linguagem: 8.4.3 -> 8.4.4
+#     pool scripts/bump.pr minor        # linguagem: 8.4.3 -> 8.5.0
+#     pool scripts/bump.pr major        # linguagem: 8.4.3 -> 9.0.0
+#     pool scripts/bump.pr 9.1.2        # linguagem: exatamente essa
+#     pool scripts/bump.pr ext patch    # extensão (idem minor/major/X.Y.Z)
+#
+# Depois de subir a linguagem é PRECISO recompilar: a versão é constante de
+# compilação, e sem `make pool` o binário segue respondendo a antiga. Depois de
+# subir a extensão: `make vsix` + `make instala-vsix`.
+import os
+import sys
+
+FONTE = "vm/ps_versao.h"
+
+# Todo arquivo que carrega a versão da linguagem. Um que não esteja aqui fica
+# mentindo — foi o que acontecia antes deste script existir.
+ARQUIVOS = [
+    "vm/ps_versao.h",
+    "poolscript.md",
+    "docs/PoolScript.md",
+    "docs/os/cmd/cmd.md",
+    "docs/os/run/run.md"
+]
+
+# A versão da extensão: o manifesto é a fonte, o lock a repete duas vezes.
+EXT_FONTE = "editor/vscode/package.json"
+EXT_ARQUIVOS = [
+    "editor/vscode/package.json",
+    "editor/vscode/package-lock.json"
+]
+
+
+# A versão da extensão, lida do manifesto (a primeira `"version": "..."`).
+funct versao_ext() {
+    for each linha in os.readFile(EXT_FONTE).split("\n") {
+        if linha.strip().startswith("\"version\": \"") {
+            partes = linha.split("\"")
+            if len(partes) >= 4 {
+                return partes[3]
+            }
+        }
+    }
+    return ""
+}
+
+
+# A versão de hoje, lida da FONTE — nunca digitada.
+funct versao_atual() {
+    for each linha in os.readFile(FONTE).split("\n") {
+        if linha.strip().startswith("#define PS_VERSAO") {
+            partes = linha.split("\"")
+            if len(partes) >= 2 {
+                return partes[1]
+            }
+        }
+    }
+    return ""
+}
+
+
+funct eh_numero(txt) {
+    if len(txt) == 0 {
+        return False
+    }
+    for each c in txt {
+        if not ("0" <= c and c <= "9") {
+            return False
+        }
+    }
+    return True
+}
+
+
+# `patch`/`minor`/`major` sobem uma casa; qualquer outra coisa tem que ser uma
+# versão inteira `X.Y.Z` — aceitar lixo aqui gravaria o lixo em todos os arquivos.
+funct calcula(atual, pedido) {
+    pecas = atual.split(".")
+    if len(pecas) != 3 {
+        return ""
+    }
+    maior = int(pecas[0])
+    medio = int(pecas[1])
+    menor = int(pecas[2])
+
+    if pedido == "patch" {
+        return str(maior) + "." + str(medio) + "." + str(menor + 1)
+    }
+    if pedido == "minor" {
+        return str(maior) + "." + str(medio + 1) + ".0"
+    }
+    if pedido == "major" {
+        return str(maior + 1) + ".0.0"
+    }
+    novas = pedido.split(".")
+    if len(novas) != 3 {
+        return ""
+    }
+    for each p in novas {
+        if not eh_numero(p) {
+            return ""
+        }
+    }
+    return pedido
+}
+
+
+if __name__ == "main" {
+    atual = versao_atual()
+    if atual == "" {
+        post("não achei o `#define PS_VERSAO` em " + FONTE)
+        sys.exit(1)
+    }
+
+    args = sys.argv[1:]          # sys.argv[0] é o nome do script
+    if len(args) == 0 {
+        post("versão atual da linguagem: " + atual)
+        post("versão atual da extensão:  " + versao_ext())
+        post("")
+        post("onde a da linguagem está:")
+        for each caminho in ARQUIVOS {
+            conta = 0
+            for each linha in os.readFile(caminho).split("\n") {
+                if atual in linha {
+                    conta = conta + 1
+                }
+            }
+            post("  " + str(conta) + "x  " + caminho)
+        }
+        post("")
+        post("pra subir: pool scripts/bump.pr patch|minor|major|X.Y.Z")
+        post("extensão:  pool scripts/bump.pr ext patch|minor|major|X.Y.Z")
+        sys.exit(0)
+    }
+
+    # `ext`: só a extensão do editor, pelos arquivos DELA
+    if args[0] == "ext" {
+        if len(args) < 2 {
+            post("uso: pool scripts/bump.pr ext patch|minor|major|X.Y.Z")
+            sys.exit(1)
+        }
+        atual_ext = versao_ext()
+        if atual_ext == "" {
+            post("não achei a `\"version\"` em " + EXT_FONTE)
+            sys.exit(1)
+        }
+        nova_ext = calcula(atual_ext, args[1])
+        if nova_ext == "" {
+            post("não entendi '" + args[1] + "'.")
+            sys.exit(1)
+        }
+        if nova_ext == atual_ext {
+            post("a versão da extensão já é " + nova_ext)
+            sys.exit(0)
+        }
+        post("extensão: " + atual_ext + "  ->  " + nova_ext)
+        for each caminho in EXT_ARQUIVOS {
+            texto = os.readFile(caminho)
+            alvo = "\"version\": \"" + atual_ext + "\""
+            quantas = 0
+            for each linha in texto.split("\n") {
+                if alvo in linha {
+                    quantas = quantas + 1
+                }
+            }
+            os.writeFile(caminho, texto.replace(alvo, "\"version\": \"" + nova_ext + "\""))
+            post("  " + str(quantas) + "x  " + caminho)
+        }
+        post("")
+        post("agora: make vsix && make instala-vsix")
+        sys.exit(0)
+    }
+
+    nova = calcula(atual, args[0])
+    if nova == "" {
+        post("não entendi '" + args[0] + "'.")
+        post("use patch, minor, major ou uma versão X.Y.Z com três números.")
+        sys.exit(1)
+    }
+    if nova == atual {
+        post("a versão já é " + nova)
+        sys.exit(0)
+    }
+
+    post(atual + "  ->  " + nova)
+    post("")
+    trocou_algo = False
+    for each caminho in ARQUIVOS {
+        texto = os.readFile(caminho)
+        if not (atual in texto) {
+            post("  -   " + caminho + " (não tinha a versão)")
+            continue
+        }
+        # Conta antes de trocar: depois de trocar não dá mais pra saber quantas
+        # eram, e o número é o que mostra que nenhum lugar ficou pra trás.
+        quantas = 0
+        for each linha in texto.split("\n") {
+            if atual in linha {
+                quantas = quantas + 1
+            }
+        }
+        os.writeFile(caminho, texto.replace(atual, nova))
+        post("  " + str(quantas) + "x  " + caminho)
+        trocou_algo = True
+    }
+
+    if not trocou_algo {
+        post("nada foi trocado — confira o " + FONTE)
+        sys.exit(1)
+    }
+
+    post("")
+    post("agora recompile, senão o binário segue respondendo " + atual + ":")
+    post("    make pool")
+}

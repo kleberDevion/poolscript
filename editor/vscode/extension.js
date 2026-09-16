@@ -50,8 +50,8 @@ async function rodarArquivo() {
     return;
   }
   const doc = ed.document;
-  if (doc.languageId !== 'poolscript' && doc.languageId !== 'poolscript-psl') {
-    window.showWarningMessage('PoolScript: este arquivo não é .ps, .p nem .psl.');
+  if (doc.languageId !== 'poolscript') {
+    window.showWarningMessage('PoolScript: este arquivo não é .pr.');
     return;
   }
   if (doc.isUntitled) {
@@ -86,8 +86,8 @@ async function depurarArquivo() {
     return;
   }
   const doc = ed.document;
-  if (doc.languageId !== 'poolscript' && doc.languageId !== 'poolscript-psl') {
-    window.showWarningMessage('PoolScript: este arquivo não é .ps, .p nem .psl.');
+  if (doc.languageId !== 'poolscript') {
+    window.showWarningMessage('PoolScript: este arquivo não é .pr.');
     return;
   }
   if (doc.isUntitled) {
@@ -365,14 +365,13 @@ function comandoGrafico() {
 }
 
 const provedorConfig = {
-  /* Sem `launch.json`, F5 num .ps aberto tem que funcionar: o VS Code chama
+  /* Sem `launch.json`, F5 num .pr aberto tem que funcionar: o VS Code chama
    * aqui com uma configuração vazia, e é este preenchimento que evita obrigar
    * o usuário a escrever um arquivo de configuração pra depurar um arquivo. */
   resolveDebugConfiguration(pasta, cfg) {
     if (!cfg.type && !cfg.request && !cfg.name) {
       const ed = window.activeTextEditor;
-      if (ed && (ed.document.languageId === 'poolscript'
-              || ed.document.languageId === 'poolscript-psl')) {
+      if (ed && ed.document.languageId === 'poolscript') {
         cfg.type = 'poolscript';
         cfg.name = 'Depurar o arquivo aberto';
         cfg.request = 'launch';
@@ -380,7 +379,7 @@ const provedorConfig = {
       }
     }
     if (!cfg.programa) {
-      window.showWarningMessage('PoolScript: abra um .ps para depurar.');
+      window.showWarningMessage('PoolScript: abra um .pr para depurar.');
       return undefined;
     }
     /* O motor lê o nome do PROTOCOLO (`stopOnEntry`); a configuração é escrita
@@ -397,7 +396,7 @@ function activate(context) {
   context.subscriptions.push(commands.registerCommand('poolscript.depurar', depurarArquivo));
   context.subscriptions.push(
     languages.registerCodeLensProvider(
-      [{ language: 'poolscript' }, { language: 'poolscript-psl' }], provedorLentes));
+      [{ language: 'poolscript' }], provedorLentes));
   context.subscriptions.push(
     commands.registerCommand('poolscript.grafico', comandoGrafico),
     debug.registerDebugConfigurationProvider('poolscript', provedorConfig),
@@ -419,9 +418,8 @@ function activate(context) {
   const cliente_opts = {
     documentSelector: [
       { scheme: 'file', language: 'poolscript' },
-      { scheme: 'file', language: 'poolscript-psl' },
     ],
-    synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.{ps,psl,p}') },
+    synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.pr') },
     outputChannelName: 'PoolScript',
     initializationOptions: { pool: poolBin() },
   };

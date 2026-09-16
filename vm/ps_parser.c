@@ -1879,7 +1879,7 @@ static const char *nome_livre(P *p, const char *msg)
 }
 
 /* caminho pontilhado: a.b.c — cada parte vira um Name na lista */
-/* `import 'caminho/alvo.ps'` / `from 'nome' import x` / `PUSH 'x'`: o modulo
+/* `import 'caminho/alvo.pr'` / `from 'nome' import x` / `PUSH 'x'`: o modulo
  * vem numa STRING, como no TypeScript. Fica um literal so em `lista`, e
  * `i2 = -1` marca a forma. Com `/` ou extensao da linguagem e caminho,
  * relativo ao arquivo que importa; sem isso e nome de modulo do motor ou de
@@ -1890,7 +1890,7 @@ static int modulo_entre_aspas(P *p, PSNode *n)
     PSToken *t = atual(p);
     if (t->type != T_STR) return 0;
     if (t->texto_len == 0) {
-        perro(p, "import entre aspas vazio: esperado um caminho ('../x.ps') ou o nome de um modulo ('json')", t);
+        perro(p, "import entre aspas vazio: esperado um caminho ('../x.pr') ou o nome de um modulo ('json')", t);
         return -1;
     }
     p->pos++;
@@ -3254,7 +3254,7 @@ static PSNode *statement(P *p)
      *
      * No arquivo executado `__name__` vale "main", então a condição é
      * verdadeira também avaliada; o guard existe pelo import: um módulo
-     * chamado `main.ps` também tem `__name__ == "main"`, e o bloco dele não
+     * chamado `main.pr` também tem `__name__ == "main"`, e o bloco dele não
      * pode rodar quando é importado. Por isso o parser reconhece o desenho e
      * emite o guard — só com o literal "main". Qualquer outra string
      * (`if __name__ == "banana"`) é um `if` comum; antes ela também virava

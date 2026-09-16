@@ -4,8 +4,10 @@ Linguagem de programação **híbrida (dinâmica/estática)** — a legibilidade
 Python com a estrutura de blocos do JS/C. O bloco é `{ }`; a indentação é
 estética, não sintaxe.
 
-Extensões reconhecidas em tudo (rodar, importar, `psl install`, `pool build`,
-editor): **`.ps`**, **`.psl`**, **`.p`**.
+Extensão reconhecida em tudo (rodar, importar, `psl install`, `pool build`,
+editor): **`.pr`**. Era `.ps`, `.psl` e `.p`; quem tem arquivo com uma delas
+converte a pasta inteira com `pool scripts/migra_pr.pr <pasta> --aplica
+--libs`.
 
 ---
 
@@ -27,7 +29,7 @@ relatada em vez de derrubar a bateria. Roda com
 `make check`.
 
 Dois comandos, o **mesmo** binário/pacote:
-- **`pool`** — RODA (`pool arquivo.ps`, `pool build`, `pool repl`, `pool --version`)
+- **`pool`** — RODA (`pool arquivo.pr`, `pool build`, `pool repl`, `pool --version`)
 - **`psl`** — GERENCIA PACOTES (`psl install/uninstall/list`, `psl registry ...`)
 
 ---
@@ -35,7 +37,7 @@ Dois comandos, o **mesmo** binário/pacote:
 ## Instalação
 
 Um comando instala tudo — o binário (como `pool` e `psl`), o servidor LSP, e o
-tipo MIME + o ícone do `.ps`:
+tipo MIME + o ícone do `.pr`:
 
 ```bash
 sudo ./instalar.sh              # não precisa de make nem de compilador
@@ -79,9 +81,9 @@ publicado, ele clona o fonte, instala as dependências de compilação e compila
 Instala também o `node` se faltar, porque o servidor LSP precisa dele em tempo
 de execução. Nos dois caminhos não sobra passo manual.
 
-Depois disso o `.ps` é **`text/poolscript`** e aparece com a logo da linguagem
-no gerenciador de arquivos. (O `.ps` era do PostScript; aqui ele é da
-linguagem. `.eps` e `.ai` continuam do PostScript.)
+Depois disso o `.pr` é **`text/poolscript`** e aparece com a logo da linguagem
+no gerenciador de arquivos. (A extensão já foi `.ps`, e aí era preciso tomá-la
+do PostScript. Com `.pr` não há disputa: o PostScript fica com o `.ps` dele.)
 
 ### Compilando do fonte
 
@@ -102,17 +104,17 @@ make verifica  # dependências dinâmicas e tamanho do ELF
 ### Testar
 ```bash
 pool --version
-pool examples/01_hello.ps
+pool examples/01_hello.pr
 ```
 
 ### Editor (opcional)
-Servidor LSP em PoolScript: `pool lsp/servidor.ps`. Vale pra VS Code, Neovim,
+Servidor LSP em PoolScript: `pool lsp/servidor.pr`. Vale pra VS Code, Neovim,
 Helix e JetBrains — como ligar em cada um está em [`docs/lsp.md`](docs/lsp.md).
 
 ### Depurar
 
 No VS Code: breakpoint na canaleta, **F5**. Sem `launch.json`. O motor fala
-Debug Adapter Protocol direto (`pool --debug <porta> <arquivo.ps>`), e no fim
+Debug Adapter Protocol direto (`pool --debug <porta> <arquivo.pr>`), e no fim
 mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 [`docs/debugger.md`](docs/debugger.md).
 
@@ -170,15 +172,15 @@ nessa máquina o instalador compila do fonte.
 
 1. **lib da linguagem** (stdlib: `os`, `json`, `request`, `jinker`…)
 2. **lib instalada** via `psl install ... -asLib` (`~/.poolscript/libs/`)
-3. **arquivo `.ps/.psl/.p` do projeto** (relativo à raiz)
+3. **arquivo `.pr` do projeto** (relativo à raiz)
 
 Ou seja: **uma lib SEMPRE ganha de um arquivo local de mesmo nome** — o nome
-que você dá aos seus arquivos nunca ofusca uma lib. Um `random.psl` na pasta
+que você dá aos seus arquivos nunca ofusca uma lib. Um `random.pr` na pasta
 não atrapalha `import random` achar a lib `random` (é o inverso do Python, de
 propósito). Import de arquivo local do projeto usa caminho pontuado
 (`from pkg.modulo import x`) ou relativo (`from .vizinho import y`).
 
 ## Versionamento
 
-Versão mais recente — **15.90.37** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **15.91.0** (a fonte é `vm/ps_versao.h`; `pool --version`
 mostra a do binário).

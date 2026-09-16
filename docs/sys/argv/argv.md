@@ -13,12 +13,12 @@ sys.argv   # lista
 
 `argv[0]` é o **nome do script**; os seus argumentos vêm a partir de `argv[1]`
 — a mesma convenção de C, Python e JS. Rodando
-`pool app.ps entrada.txt saida.txt`:
+`pool app.pr entrada.txt saida.txt`:
 
 ```
 import sys
 
-post(sys.argv)        # ['app.ps', 'entrada.txt', 'saida.txt']  — aspas simples
+post(sys.argv)        # ['app.pr', 'entrada.txt', 'saida.txt']  — aspas simples
 
 # pegar o primeiro argumento (checando se existe)
 if (len(sys.argv) > 1) {
@@ -29,7 +29,7 @@ if (len(sys.argv) > 1) {
 
 | índice | é |
 |---|---|
-| `argv[0]` | o nome do script (`app.ps`) — `__main__` quando o código vem de `pool -e` |
+| `argv[0]` | o nome do script (`app.pr`) — `__main__` quando o código vem de `pool -e` |
 | `argv[1]`, `argv[2]`, … | os seus argumentos, na ordem |
 
 Então **conte quantos você espera contando o script**: um programa que precisa

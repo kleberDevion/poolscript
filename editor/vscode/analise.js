@@ -31,7 +31,7 @@
  *               LINHAS e a lista do que ligam (parâmetro, variável, laço,
  *               desempacotamento, import, action e Entity aninhadas)
  *   entidades   nome, pais, campos e métodos, com `private` e posição
- *   imports     nome ligado -> módulo do motor ou arquivo .ps
+ *   imports     nome ligado -> módulo do motor ou arquivo .pr
  *   estrelas    os `import *` do topo, na ordem (não ligam o nome do módulo)
  *   topo        o que o arquivo liga no topo — o que ele exporta
  */
@@ -173,18 +173,25 @@ function alvosDoUnpack(alvo, poe, origem) {
 
 /* ── imports ────────────────────────────────────────────────────────────── */
 
+/* A extensão da linguagem é `.pr`. As três de antes (`.ps`, `.psl`, `.p`)
+ * seguem NESTA lista de propósito, pela mesma razão do `ps_ext.h` do motor:
+ * quem ainda tem o arquivo velho escreve `import './x.ps'`, e isso tem que
+ * continuar sendo lido como CAMINHO — assim o diagnóstico fala do arquivo, e
+ * não "não existe o módulo './x.ps'". */
+const EXTS_IMPORT = ['.pr', '.ps', '.psl', '.p'];
+
 /* `import 'x'`: com `/` ou extensão da linguagem é caminho; senão é nome de
  * módulo do motor ou de lib — a mesma regra do motor. */
 function especificadorEhCaminho(spec) {
   if (spec.indexOf('/') >= 0) return true;
-  return ['.ps', '.psl', '.p'].some((e) => spec.endsWith(e));
+  return EXTS_IMPORT.some((e) => spec.endsWith(e));
 }
 
-/* O nome que `import 'pasta/alvo.ps'` liga: só o arquivo, sem pasta nem
+/* O nome que `import 'pasta/alvo.pr'` liga: só o arquivo, sem pasta nem
  * extensão. */
 function nomeDoArquivoImport(spec) {
   const base = spec.slice(spec.lastIndexOf('/') + 1);
-  for (const e of ['.ps', '.psl', '.p']) {
+  for (const e of EXTS_IMPORT) {
     if (base.endsWith(e) && base.length > e.length) return base.slice(0, -e.length);
   }
   return base;
@@ -208,7 +215,7 @@ function nomeDoArquivoImport(spec) {
  * `i2 > 0`): sem ele `..pkg.m` e `pkg.m` pareciam o mesmo módulo. */
 function ligacoesDoImport(no) {
   const itens = no.lista || [];
-  /* `import 'caminho/alvo.ps'` / `from 'json' import x`: um literal só,
+  /* `import 'caminho/alvo.pr'` / `from 'json' import x`: um literal só,
    * marcado com `i2 = -1`. O texto vai inteiro — é caminho ou nome. */
   const aspas = no.i2 === -1 && itens.length === 1 && itens[0].k === 'Literal';
   const segs = aspas ? [itens[0].texto || ''] : itens.map((x) => x.texto).filter(Boolean);

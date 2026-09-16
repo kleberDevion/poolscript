@@ -218,7 +218,7 @@ post(porta)   # 7700
 
 ### Caminhos e arquivos
 
-`pathFile`/`pathFolder` buscam pelo nome a partir do diretório do `.ps` em
+`pathFile`/`pathFolder` buscam pelo nome a partir do diretório do `.pr` em
 execução e depois do `cwd` (inclusive em subpastas) — não é preciso montar o
 caminho relativo à mão.
 

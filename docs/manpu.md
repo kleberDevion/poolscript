@@ -27,7 +27,7 @@ post(ler)
 | `.xml` | Dict com `tag`, `attrs`, `text`, `children` |
 | `.html` | Texto limpo sem tags |
 | `.json` | Dict ou lista |
-| `.txt`, `.py`, `.ps`, outros | Texto puro |
+| `.txt`, `.py`, `.pr`, outros | Texto puro |
 
 ---
 

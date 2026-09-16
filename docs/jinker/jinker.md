@@ -39,7 +39,7 @@ que volta). Todo o resto é detalhe dessas duas pontas.
 
 ## Primeiro servidor (completo, funciona)
 
-`app.ps`:
+`app.pr`:
 
 ```
 from jinker import Jinker, cors, jsonify
@@ -65,7 +65,7 @@ if __name__ == "main" {                   # 4. sobe o servidor
 }
 ```
 
-Rode `pool app.ps` e abra `http://localhost:8080/`. Cada bloco:
+Rode `pool app.pr` e abra `http://localhost:8080/`. Cada bloco:
 
 1. **`Jinker(__name__)`** cria a app — tudo pendura nela.
 2. **`@app.route("/", ...)`** registra a funct de baixo como resposta a
@@ -120,7 +120,7 @@ Let's Encrypt em produção): **[tls.md](tls.md)**.
 Duas formas:
 
 1. **`/static/` (fixo):** qualquer URL `/static/...` serve da pasta `static/`
-   **ao lado do `.ps`** — não da pasta de onde o servidor foi chamado. Nome
+   **ao lado do `.pr`** — não da pasta de onde o servidor foi chamado. Nome
    `static` é fixo, não configurável. Ver a seção em [render](render/render.md).
 2. **`static_folder` (SPA):** `Jinker(static_folder="frontend/dist")` — hospeda
    um front-end inteiro junto com a API, com fallback pra `index.html`. Página
@@ -132,7 +132,7 @@ Ordem de decisão de cada requisição: rota → path existe com outro método
 
 **O que nunca sai** pelos dois: caminho que resolve pra **fora** da pasta
 (`..`, codificado ou não, e symlink) e nome que começa com **`.`** (`.env`,
-`.git`; a exceção é `.well-known`, do Let's Encrypt). O resto sai — `.ps`
+`.git`; a exceção é `.well-known`, do Let's Encrypt). O resto sai — `.pr`
 inclusive, que é como o `psl install` baixa pacote de um registry —, então
 **não aponte `static_folder` pra raiz do projeto**. Detalhe em
 [static_folder/static_folder.md](static_folder/static_folder.md#o-que-não-sai).
@@ -143,7 +143,7 @@ inclusive, que é como o `psl install` baixa pacote de um registry —, então
 
 ```
 meu_projeto/
-  app.ps
+  app.pr
   .env
   frontend/
     dist/

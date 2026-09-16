@@ -11,7 +11,7 @@ motor — não há uma segunda lista aqui pra sair do lugar.
 
 ## O que ela faz
 
-- **Realce** de `.ps`, `.p` e `.psl`, gerado a partir do `pool --metadata`
+- **Realce** de `.pr`, gerado a partir do `pool --metadata`
   (tipos, builtins e exceções saem do motor, não de uma lista escrita à mão).
 - **Autocomplete por tipo**: `"texto".` oferece os métodos de `str`, `[1, 2].`
   os de `list`, e assim por diante; argumentos nomeados, membros de módulo e

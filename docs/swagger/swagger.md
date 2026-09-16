@@ -20,7 +20,7 @@ import swagger
 import swagger
 
 int async funct main() {
-    d = swagger.infos(target="app.ps")
+    d = swagger.infos(target="app.pr")
                .title("API de Pedidos")
                .description("API de app de pedidos e entrega")
                .version("1.0.0")
@@ -43,8 +43,8 @@ Isso escreve `docs/openapi.json`, `docs/index.html` e `docs/client.ts`.
 
 ## O builder
 
-### `swagger.infos(target="app.ps")`
-Começa o builder. `target` é o **arquivo .ps do seu app** — o swagger lê as
+### `swagger.infos(target="app.pr")`
+Começa o builder. `target` é o **arquivo .pr do seu app** — o swagger lê as
 rotas (`@app.route(...)`) dele **estaticamente** (não roda o app) pra montar os
 `paths`. Devolve o builder (tudo abaixo é encadeável).
 

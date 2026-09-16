@@ -11,10 +11,10 @@ import os
 
 Caminho relativo (`"dados.json"`, `"pasta/x.txt"`) é resolvido a partir do
 **diretório atual** (o de onde você chamou o `pool`), como em qualquer
-programa. Rodar `pool sub/prog.ps` de outra pasta faz `os.readFile("x.txt")`
-procurar no diretório atual, **não** ao lado do `.ps`.
+programa. Rodar `pool sub/prog.pr` de outra pasta faz `os.readFile("x.txt")`
+procurar no diretório atual, **não** ao lado do `.pr`.
 
-Quatro funções são a exceção e olham também a pasta do `.ps`:
+Quatro funções são a exceção e olham também a pasta do `.pr`:
 [`pathFile`](pathFile/pathFile.md), [`pathFolder`](pathFolder/pathFolder.md),
 [`loadFile`](loadFile/loadFile.md) e o `PoolFile.save()` sem caminho. As
 outras — `exists`, `isfile`, `isdir`, `size`, `readFile`, `writeFile`, `ls`,

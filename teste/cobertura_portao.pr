@@ -1,0 +1,348 @@
+# Cobertura como CATRACA, por arquivo. Só sobe.
+#
+# POR QUE ISTO EXISTE: `make cobertura` media e subia HTML como artefato.
+# Percentual agregado não decide nada — uma queda de 10 pontos num arquivo some
+# na média de 17. Sem baseline versionado, a próxima auditoria acha exatamente
+# os mesmos números, e ninguém consegue apontar QUANDO piorou.
+#
+# E teve um erro pior, que este arquivo existe pra não repetir: a primeira
+# versão gravou como piso a MEDIÇÃO DO DIA, que já era o número degradado. Piso
+# no fundo do buraco não é portão, é carimbo no buraco.
+#
+# Por isso são DUAS colunas por arquivo:
+#
+#   PISO  — o que já está coberto. Cair abaixo dele reprova.
+#   META  — o que a suíte em Python cobria (medida em `db0bcb6`, 2026-08-24,
+#           mesmo método). É o que se perdeu na migração pra fork/exec, e é
+#           dívida, não ambição. Não reprova; aparece em todo relatório até
+#           zerar, pra ninguém esquecer que existe.
+#
+# CATRACA: quando um arquivo SOBE, o piso é regravado na hora, sozinho. Ganho de
+# cobertura vira piso no mesmo instante em que acontece — não depende de alguém
+# lembrar de rodar `--grava`, e não dá pra subir hoje e perder amanhã.
+#
+#     make cobertura                              mede e cobra
+#     ./pool teste/cobertura_portao.pr            compara, cobra e cataca
+#     ./pool teste/cobertura_portao.pr --grava    adota tudo (piso E meta)
+#
+# A FOLGA existe porque a contagem de ramos oscila com o compilador e com o
+# ambiente (um `if` a mais numa macro do sistema muda o denominador). Sem ela o
+# portão vira alarme falso, e portão que grita à toa é portão desligado.
+import os
+import sys
+
+INFO = "cob/vm.info"
+BASE = "teste/cobertura_base.txt"
+FOLGA = 1.5        # pontos percentuais
+
+# Meta por arquivo: linha%/ramo% que a suíte em Python alcançava em `db0bcb6`.
+# Fonte: notas/AUDITORIA-ENGENHARIA.md §9, medido com o mesmo lcov.
+META = {
+    "poolscript_vm.c": [82.0, 53.4],
+    "ps_db.c":         [71.5, 48.9],
+    "ps_jinker.c":     [74.0, 52.1],
+    "ps_mongo.c":      [81.7, 40.8],
+    "ps_pkg.c":        [61.2, 41.8],
+    "ps_http.c":       [80.5, 64.2],
+    "ps_hash.c":       [95.4, 76.9],
+    "ps_regex.c":      [85.3, 64.9],
+    "main.c":          [70.8, 52.6],
+    "ps_qr.c":         [90.7, 69.0],
+    "ps_xlsx.c":       [84.3, 55.0],
+    "ps_compiler.c":   [93.3, 72.5],
+    "ps_parser.c":     [93.6, 67.1],
+    "ps_lexer.c":      [75.6, 67.5],
+}
+
+
+# Lê o .info do lcov e devolve {arquivo: [linha%, ramo%]}.
+#
+# Formato (LTP): SF:<arquivo> abre; LF/LH = linhas total/atingidas;
+# BRF/BRH = ramos total/atingidos; `end_of_record` fecha.
+funct le_info(caminho) {
+    if not os.exists(caminho) {
+        return {}
+    }
+    saida = {}
+    arq = ""
+    lf = 0
+    lh = 0
+    brf = 0
+    brh = 0
+    for each l in open(caminho).read().split("\n") {
+        t = l.strip()
+        if t.startswith("SF:") {
+            arq = t[3:]
+            lf = 0
+            lh = 0
+            brf = 0
+            brh = 0
+        }
+        elif t.startswith("LF:") {
+            lf = int(t[3:])
+        }
+        elif t.startswith("LH:") {
+            lh = int(t[3:])
+        }
+        elif t.startswith("BRF:") {
+            brf = int(t[4:])
+        }
+        elif t.startswith("BRH:") {
+            brh = int(t[4:])
+        }
+        elif t == "end_of_record" {
+            if arq != "" {
+                nome = arq.split("/")[-1]
+                # `.def` e `.h` entram no relatório do lcov com 0 linha
+                # executável e poluiriam o piso com um 0.0 permanente que nunca
+                # sobe. O portão é sobre unidade de compilação.
+                if not nome.endswith(".c") {
+                    arq = ""
+                    continue
+                }
+                pl = 0.0
+                pr = 0.0
+                if lf > 0 {
+                    pl = (lh * 100.0) / lf
+                }
+                if brf > 0 {
+                    pr = (brh * 100.0) / brf
+                }
+                # os ABSOLUTOS vao junto: percentual sozinho nao distingue
+                # "perdi cobertura" de "escrevi codigo novo"
+                saida[nome] = [pl, pr, brh, brf]
+            }
+            arq = ""
+        }
+    }
+    return saida
+}
+
+
+funct le_base() {
+    if not os.exists(BASE) {
+        return {}
+    }
+    saida = {}
+    for each l in open(BASE).read().split("\n") {
+        t = l.strip()
+        if t == "" or t.startswith("#") {
+            continue
+        }
+        p = t.split()
+        if len(p) >= 5 {
+            saida[p[0]] = [flo(p[1]), flo(p[2]), int(p[3]), int(p[4])]
+        }
+        elif len(p) >= 3 {
+            # formato antigo, so percentual: os absolutos ficam desconhecidos
+            # (-1) e a comparacao cai no percentual, como era
+            saida[p[0]] = [flo(p[1]), flo(p[2]), -1, -1]
+        }
+    }
+    return saida
+}
+
+
+funct grava_base(atual) {
+    nomes = atual.keys()
+    nomes.sort()
+    linhas = ["# PISO de cobertura, por arquivo:",
+              "#   <arquivo> <linha%> <ramo%> <ramos cobertos> <ramos totais>",
+              "#",
+              "# Os DOIS ULTIMOS numeros existem porque percentual sozinho mente. Em",
+              "# 31/08 o portao acusou `poolscript_vm.c 57.3% -> 55.2%` e a conclusao",
+              "# obvia (perdi teste) estava ERRADA: os ramos COBERTOS eram os mesmos",
+              "# 9167 dos dois lados. O que mudou foi o denominador, 15998 -> 16620,",
+              "# porque entraram 622 ramos de codigo novo — guardas de erro, na",
+              "# maioria. Percentual caindo por codigo novo e DILUICAO; percentual",
+              "# caindo por teste que sumiu e REGRESSAO. So a contagem absoluta",
+              "# separa as duas, e so uma delas e para o trabalho.",
+              "#",
+              "# CATRACA: o `teste/cobertura_portao.pr` regrava este arquivo SOZINHO",
+              "# toda vez que um arquivo sobe. Cair abaixo do que está aqui reprova o",
+              "# portão, com o nome do arquivo que caiu.",
+              "#",
+              "# Não confunda com META (a coluna da direita no relatório): meta é o que",
+              "# a suíte em Python cobria antes da migração, e está no próprio script.",
+              "# Este arquivo é só o piso do que existe hoje.",
+              "#",
+              "# Editar na mão pra BAIXAR um número é desligar o portão. Se a queda for",
+              "# legítima (código deletado), rode `--grava` de propósito.",
+              ""]
+    for each n in nomes {
+        v = atual[n]
+        linhas.append(n + " " + str(round(v[0], 1)) + " " + str(round(v[1], 1))
+                      + " " + str(v[2]) + " " + str(v[3]))
+    }
+    using open(BASE, "w") as f {
+        f.write(("\n").join(linhas) + "\n")
+    }
+}
+
+
+# Devolve a linha de dívida de um arquivo. O alvo é 100% de RAMO, pra TODOS os
+# arquivos — não só pros que têm número histórico.
+#
+# A primeira versão só listava quem estava em META, e com isso `ps_ast.c`,
+# `ps_mail.c` sumia do relatório: eles não tinham coluna na
+# medição do Python (estavam em zero lá também), então a ausência de meta os
+# tornava invisíveis justamente por serem os PIORES. Relatório que esconde o
+# pior arquivo é relatório que ensina a ignorá-lo.
+#
+# META continua aparecendo quando existe, como marco intermediário: é o ponto
+# onde a dívida da migração está paga. Não é o destino.
+funct divida(nome, ramo_hoje) {
+    if ramo_hoje >= 100.0 - FOLGA {
+        return ""
+    }
+    falta = str(round(100.0 - ramo_hoje, 1))
+    marco = ""
+    if nome in META {
+        alvo = META[nome][1]
+        if ramo_hoje < alvo - FOLGA {
+            marco = "  [migracao: " + str(alvo) + "%]"
+        }
+    }
+    return ("   " + nome.ljust(18) + " ramo " + str(round(ramo_hoje, 1)).rjust(5)
+            + "%   faltam " + falta.rjust(5) + marco)
+}
+
+
+if __name__ == "main" {
+    grava = false
+    for each a in sys.argv {
+        if a == "--grava" {
+            grava = true
+        }
+    }
+
+    atual = le_info(INFO)
+    if len(atual) == 0 {
+        post("nao achei", INFO, "— rode `make cobertura` antes")
+        sys.exit(1)
+    }
+
+    if grava {
+        grava_base(atual)
+        post("baseline gravado em", BASE, "com", str(len(atual)), "arquivos")
+        sys.exit(0)
+    }
+
+    piso = le_base()
+    if len(piso) == 0 {
+        post("nao ha baseline em", BASE)
+        post("rode: ./pool teste/cobertura_portao.pr --grava")
+        sys.exit(1)
+    }
+
+    caiu = []
+    diluiu = []
+    subiu = []
+    novos = []
+    nomes = atual.keys()
+    nomes.sort()
+    for each n in nomes {
+        if not n in piso {
+            novos.append(n)
+            continue
+        }
+        a = atual[n]
+        b = piso[n]
+        # o RAMO é o que decide; linha superestima (93% de linha no parser eram
+        # 67% de ramo), então o portão olha o número que não engana.
+        #
+        # E o que decide MESMO é a contagem ABSOLUTA de ramos cobertos, quando
+        # o piso a tem: percentual cai sozinho quando entra código novo, e
+        # tratar isso como regressão faz o portão gritar à toa — portão que
+        # grita à toa é portão desligado. Cobertos que DIMINUEM é teste que
+        # sumiu; cobertos iguais com o total maior é só diluição.
+        if a[1] < b[1] - FOLGA {
+            if b[2] >= 0 and a[2] >= b[2] {
+                diluiu.append([n, b[1], a[1], b[2], a[2], b[3], a[3]])
+            }
+            else {
+                caiu.append([n, b[1], a[1], b[2], a[2]])
+            }
+        }
+        elif a[1] > b[1] + FOLGA {
+            subiu.append([n, b[1], a[1]])
+        }
+    }
+
+    post("")
+    post("arquivos medidos:", len(atual), " no baseline:", len(piso))
+    if len(novos) > 0 {
+        post("SEM baseline (arquivo novo — rode --grava depois de conferir):")
+        for each n in novos {
+            post("   ", n, "ramo", str(round(atual[n][1], 1)) + "%")
+        }
+    }
+    if len(subiu) > 0 {
+        post("SUBIRAM (a catraca ja gravou o piso novo):")
+        for each s in subiu {
+            post("   ", s[0], str(round(s[1], 1)) + "% ->", str(round(s[2], 1)) + "%")
+        }
+    }
+
+    # A dívida da migração, arquivo por arquivo. Não reprova — aparece SEMPRE,
+    # até zerar. Enquanto esta lista existir, "cobertura ok" quer dizer só que
+    # não piorou hoje, não que está coberto.
+    # Do PIOR pro melhor: a ordem alfabética punha `main.c` (o segundo pior) no
+    # topo e `ps_pkg.c` (zero absoluto) no meio da lista, onde ninguém olha.
+    faltando = []
+    ordem = []
+    for each n in nomes {
+        ordem.append([atual[n][1], n])
+    }
+    ordem.sort()
+    for each par in ordem {
+        d = divida(par[1], par[0])
+        if d != "" {
+            faltando.append(d)
+        }
+    }
+    if len(faltando) > 0 {
+        post("")
+        post("FALTA PRA 100% DE RAMO — todos os arquivos, do pior pro melhor:")
+        post("(o marco [migracao] e onde a suite em Python ja estava)")
+        for each d in faltando {
+            post(d)
+        }
+    }
+
+    if len(diluiu) > 0 {
+        post("")
+        post("DILUIU (percentual caiu, ramo coberto NAO — entrou codigo novo):")
+        for each d in diluiu {
+            post("   ", d[0], str(round(d[1], 1)) + "% ->", str(round(d[2], 1)) + "%",
+                 "| cobertos", str(d[3]), "->", str(d[4]),
+                 "| ramos", str(d[5]), "->", str(d[6]),
+                 "|", str(d[6] - d[5]), "ramos novos, nenhum coberto")
+        }
+        post("   Nao reprova: nada deixou de ser testado. Mas os ramos novos")
+        post("   estao sem teste, e e por isso que a razao cai.")
+    }
+
+    if len(caiu) == 0 {
+        post("")
+        post("nenhum arquivo perdeu cobertura de ramo (folga de", str(FOLGA) + " pontos).")
+        # CATRACA: o que subiu vira piso AGORA. Se ficar pra depois, alguém
+        # perde o ganho no commit seguinte e o portão não tem como saber.
+        if len(subiu) > 0 or len(novos) > 0 or len(diluiu) > 0 {
+            grava_base(atual)
+            post("piso regravado em", BASE)
+        }
+        sys.exit(0)
+    }
+    post("")
+    post("COBERTURA DE RAMO CAIU — ramo COBERTO diminuiu, nao e diluicao:")
+    for each c in caiu {
+        post("   ", c[0], str(round(c[1], 1)) + "% ->", str(round(c[2], 1)) + "%",
+             "| cobertos", str(c[3]), "->", str(c[4]))
+    }
+    post("")
+    post("Teste removido, ou teste que parou de rodar (servico fora do ar,")
+    post("timeout, PULOU novo). Se a queda for legitima — codigo deletado —")
+    post("regrave com --grava, mas de propósito, nao por reflexo.")
+    sys.exit(1)
+}

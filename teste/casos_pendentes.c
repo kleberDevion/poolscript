@@ -149,7 +149,7 @@ const Caso CASOS_PENDENTES[] = {
  * que o Python faz com `import t` dentro de `t.py`; o que se garante aqui é
  * que termina, sem laço nem estouro de pilha. */
 { "arquivo que importa a si mesmo termina",
-  "import ps_auto_import\npost(\"ok\")\n", "ok\nok", NULL, 0, "ps_auto_import.ps" },
+  "import ps_auto_import\npost(\"ok\")\n", "ok\nok", NULL, 0, "ps_auto_import.pr" },
 
 /* ── json ───────────────────────────────────────────────────────────────── */
 { "json.parse monta emoji de par surrogate",

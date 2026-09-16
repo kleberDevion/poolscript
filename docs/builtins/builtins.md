@@ -1,6 +1,6 @@
 # Builtins da PoolScript
 
-Funções disponíveis em qualquer `.ps`, sem import.
+Funções disponíveis em qualquer `.pr`, sem import.
 
 A lista sai da tabela `BUILTINS[]` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
 

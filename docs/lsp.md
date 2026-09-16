@@ -64,7 +64,7 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   módulo do motor em qualquer ponto do arquivo. O lugar deles é depois do
   `import`, e é lá que estão;
 - **`import`** — `import ` e `from ` oferecem os módulos do motor, as libs
-  instaladas e os **arquivos e pastas** `.ps` ao lado do documento (`import
+  instaladas e os **arquivos e pastas** `.pr` ao lado do documento (`import
   pasta.` entra na pasta); `from X import ` oferece os **membros** de X —
   módulo, lib ou arquivo — menos os já listados;
 - **todo receptor expõe o que é** — `x.` responde pelo tipo de `x`, venha de
@@ -90,9 +90,9 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
 - **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;
 - **realce** — a gramática TextMate (`syntaxes/poolscript.tmLanguage.json`)
-  é **gerada** do `pool --metadata` por `scripts/gera_realce.ps`: as listas de
+  é **gerada** do `pool --metadata` por `scripts/gera_realce.pr`: as listas de
   tipos, builtins e exceções saem das tabelas do motor, e o portão
-  `gera_realce.ps --portao` reprova se o arquivo divergir do gerado. Nome novo
+  `gera_realce.pr --portao` reprova se o arquivo divergir do gerado. Nome novo
   na linguagem entra pintado ao regenerar; nenhuma lista é digitada à mão.
 
 O modelo de tipos vem do **próprio binário** (`pool --metadata`, lido das
@@ -100,7 +100,7 @@ tabelas do VM). Nada é digitado à mão, então nem o completion nem o hover
 têm como divergir do motor.
 
 A **prosa** vem de `docs/<escopo>/<nome>/<nome>.md` — a mesma página que o
-`scripts/audita_doc.ps` confere contra o motor. Não há texto digitado no
+`scripts/audita_doc.pr` confere contra o motor. Não há texto digitado no
 servidor: se a doc muda, a sugestão muda junto; se a página não existe, a
 sugestão vem sem prosa em vez de vir com invenção. É lido sob demanda e
 memorizado, então completar `regex.` toca ~10 arquivos, não 353.
@@ -166,7 +166,7 @@ O `completeopt` usa `noselect,noinsert`: o menu aparece, mas nada
 O mínimo, se preferir montar a sua:
 
 ```lua
-vim.filetype.add({ extension = { ps = "poolscript", psl = "poolscript", p = "poolscript" } })
+vim.filetype.add({ extension = { pr = "poolscript" } })
 
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "poolscript",
@@ -209,7 +209,7 @@ São três peças, e as três vêm do repositório:
 
 | peça | o que dá | onde |
 |---|---|---|
-| plugin | ícone por extensão (`.ps` → **PS** azul, `.p` → **P** azul, `.psl` → **&lt;PSL/&gt;** vermelho), indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
+| plugin | ícone do `.pr`, indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
 | bundle TextMate | o realce — **cópia** da gramática do vsix, fonte única lá | `editor/intellij/bundle` |
 | LSP4IJ | completion, hover, diagnóstico: o mesmo `poolscript-lsp` do VS Code | plugin do marketplace |
 
@@ -218,7 +218,7 @@ Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot) e:
 - realce: `Settings → Editor → TextMate Bundles → +` →
   `editor/intellij/bundle/PoolScript.tmbundle`;
 - LSP: `Settings → Languages & Frameworks → Language Servers → +` →
-  *New Language Server*, comando `poolscript-lsp`, extensões `ps;psl;p`.
+  *New Language Server*, comando `poolscript-lsp`, extensão `pr`.
 
 > O fonte do plugin morava em `ideia-icons/` e foi apagado junto com centenas
 > de arquivos no commit `d91f2e9`. O `.jar` continuou instalado e funcionando,
@@ -235,7 +235,7 @@ para `Entity`, `support.class.exception.poolscript` para as exceções,
 `string.quoted.bytes.poolscript` para `b"..."`, …). Um tema comum só conhece os
 escopos genéricos e pinta `if`, `funct`, `Entity`, `int` e `static` da mesma
 cor. Por isso a extensão traz dois temas com regra para cada escopo — e o
-portão `scripts/gera_realce.ps --portao` reprova escopo da gramática sem cor
+portão `scripts/gera_realce.pr --portao` reprova escopo da gramática sem cor
 neles.
 
 **PoolScript One Dark** (`Ctrl+K Ctrl+T`) — um papel, uma cor:

@@ -1,0 +1,383 @@
+# Servidor-alvo do `teste/jinker_roda.pr` — em LOOPBACK, sem serviço externo.
+#
+# Ele existe pra exercitar o SERVIDOR, que é a metade que a medição de
+# cobertura não via: `ps_jinker.c` marcava 24% porque o processo do servidor
+# era morto com sinal, e processo morto por sinal NÃO grava o `.gcda` do gcov.
+# Por isso a rota `/__parar`: o driver pede a parada, o servidor sai por
+# `sys.exit(0)`, e aí a cobertura dele conta.
+import jinker
+import sys
+import os
+from jinker import request
+from jinker import cors
+
+PASTA = "/tmp/ps_jinker_teste"
+os.mkdir(PASTA + "/estatico", exist_ok=true)
+os.writeFile(PASTA + "/estatico/pagina.txt", "sou estatico")
+
+# O que NAO pode sair pela rede — cada arquivo abaixo e um jeito que JA VAZOU
+# (ver `jk_sob_a_raiz` e `jk_nome_publicavel` na VM):
+os.writeFile(PASTA + "/segredo.txt", "FORA da pasta publicada")      # `..` sobe
+os.writeFile(PASTA + "/estatico/.env", "SENHA=nao")                 # oculto
+os.writeFile(PASTA + "/estatico/fonte.pr", "post(1)")               # fonte da lang
+os.mkdir(PASTA + "/estatico/.well-known", exist_ok=true)
+os.writeFile(PASTA + "/estatico/.well-known/acme", "token")         # a UNICA excecao
+# A pasta fixa `/static/` e a que fica AO LADO do .pr (aqui: teste/static/),
+# nao a do diretorio de onde o servidor foi chamado. O driver roda de
+# `./pool teste/jinker_alvo.pr` na raiz do repositorio; o `/__parar` apaga.
+os.mkdir("teste/static", exist_ok=true)
+os.writeFile("teste/static/solto.txt", "asset solto")
+# symlink DENTRO da pasta publicada apontando pra FORA: nao tem `..` na URL,
+# so o `realpath` pega. O `os` nao cria link; o `ln` do sistema serve.
+os.cmd("ln -sf /etc/passwd " + PASTA + "/estatico/link_passwd")
+os.cmd("ln -sf " + PASTA + "/segredo.txt teste/static/link_fora")
+
+app = jinker.Jinker(name="alvo", static_folder=PASTA + "/estatico", static_url="/estatico")
+
+cors(options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://permitido.test"])
+
+
+# ── básico: método, status, cabeçalho, corpo ────────────────────────────────
+@app.route("/ok")
+funct ok()
+{
+    return {"ok": true, "metodo": request.method}
+}
+
+@app.route("/texto")
+funct texto()
+{
+    r = jinker.JinkerResponse()
+    return r.header("X-Marca", "poolscript").send("texto puro")
+}
+
+@app.route("/status")
+funct com_status()
+{
+    r = jinker.JinkerResponse()
+    return r.status(418).json({"cha": true})
+}
+
+@app.route("/eco", methods=["POST", "PUT", "PATCH", "DELETE"])
+funct eco()
+{
+    return {"metodo": request.method, "corpo": request.text(), "caminho": request.path}
+}
+
+@app.route("/json", methods=["POST"])
+funct recebe_json()
+{
+    # `request.get_json()` NAO recebe campo: devolve o corpo inteiro. Quem
+    # recebe nome de campo e o `get_json()` do lado CLIENTE, da lib request —
+    # os dois se chamam igual e fazem coisas diferentes.
+    corpo = request.get_json()
+    return jinker.jsonify({"veio": corpo["nome"], "todo": corpo})
+}
+
+@app.route("/consulta")
+funct consulta()
+{
+    return {"q": request.get("q"), "faltando": request.get("nao_existe")}
+}
+
+@app.route("/cabecalho")
+funct cabecalho()
+{
+    return {"chave": request.header("X-Chave"), "todos": request.headers.len() > 0}
+}
+
+@app.route("/param/<id>")
+funct param()
+{
+    return {"id": request.path_param("id")}
+}
+
+
+# I18 — o path param chega no ARGUMENTO da funct, se ela pedir.
+#
+# A rota `/param/<id>` acima continua usando `request.path_param("id")` e nada
+# mudou pra ela: as duas formas convivem, que é o ponto da decisão ("opcional,
+# poder injetar o valor no arg da funct se o Dev quiser").
+@app.route("/injeta:id")
+funct injeta(id)
+{
+    return {"id": id}
+}
+
+# Casa por NOME, não por posição: aqui os parâmetros estão na ordem INVERSA da
+# rota, e cada um recebe o seu.
+@app.route("/inverte:a/sub:b")
+funct inverte(b, a)
+{
+    return {"a": a, "b": b}
+}
+
+
+# ── upload multipart ────────────────────────────────────────────────────────
+@app.route("/subir", methods=["POST"])
+funct subir()
+{
+    f = request.file("arquivo")
+    if f == null
+    {
+        r = jinker.JinkerResponse()
+        return r.status(400).json({"erro": "sem arquivo"})
+    }
+    destino = PASTA + "/recebido.txt"
+    f.save(destino)
+    return {"nome": f.name, "tamanho": f.size, "tipo": f.content_type,
+            "ext": f.ext, "salvou": os.exists(destino),
+            # `files()` e POR CAMPO — exige o nome; sem ele levanta.
+            "conteudo": f.bytes().decode(), "quantos": request.files("arquivo").len()}
+}
+
+
+# ── middleware: barra sem a chave, libera com ela ───────────────────────────
+@app.middleware()
+funct confere_chave()
+{
+    if request.header("X-Chave") != "abre"
+    {
+        return jinker.jsonify({"msg": "sem permissao"}), 401
+    }
+    pass
+}
+
+@app.route("/protegida", middleware=app.middleware)
+funct protegida()
+{
+    return {"entrou": true}
+}
+
+
+# ── CORS: o que foi configurado aparece ─────────────────────────────────────
+@app.route("/cors-info")
+funct cors_info()
+{
+    return {"options": cors.options(), "origins": cors.origins(), "permiser": cors.permiser()}
+}
+
+
+# ── canal e websocket ───────────────────────────────────────────────────────
+@app.route("/emitir")
+funct emitir()
+{
+    st = app.channel.emit("aviso", {"n": 1})
+    return {"emit": str(st), "status": str(app.channel.status)}
+}
+
+# Socket SEM canal: o `return` do handler volta pro REMETENTE da mensagem.
+# `app.socket().emit(...)` é pro caso de CANAL (`channel=true`), onde a mensagem
+# vai pra todo mundo inscrito — sem canal não há a quem emitir, e o cliente
+# ficava esperando um eco que nunca vinha.
+@app.socket("/ws")
+funct ws_sala()
+{
+    return "eco: " + request.text()
+}
+
+
+# ── validação do corpo com `model` ──────────────────────────────────────────
+model Usuario() {
+    nome: str(length=20)
+    idade: int
+}
+
+@app.route("/modelo", methods=["POST"], model=Usuario)
+funct modelo()
+{
+    return {"criado": request.get("nome")}
+}
+
+
+# ── atalhos por verbo: o metodo E o nome do membro ──────────────────────────
+# Quatro rotas no MESMO path, uma por verbo — e o 405 tem que listar as
+# quatro no `Allow`. A ordem de registro e a ordem do `Allow`.
+@app.get("/verbo")
+funct verbo_get()
+{
+    return {"verbo": "GET"}
+}
+
+@app.post("/verbo", model=Usuario, auth=cors.origins())
+funct verbo_post()
+{
+    return {"verbo": "POST", "nome": request.get("nome")}
+}
+
+@app.put("/verbo")
+funct verbo_put()
+{
+    return {"verbo": "PUT"}
+}
+
+@app.delete("/verbo")
+funct verbo_delete()
+{
+    return {"verbo": "DELETE"}
+}
+
+@app.patch("/verbo/<id>")
+funct verbo_patch(id)
+{
+    return {"verbo": "PATCH", "id": id}
+}
+
+
+# ── cookie ──────────────────────────────────────────────────────────────────
+# logout: o mesmo cookie com vida zero — e o que a doc do cookie mostra em
+# `POST /sair`; o Set-Cookie exato esta na tabela de la
+@app.post("/cookie-sai")
+funct cookie_sai()
+{
+    return jinker.JinkerResponse().send({"ok": true}).cookie("sid", "", max_age=0)
+}
+
+@app.route("/cookie-poe")
+funct cookie_poe()
+{
+    return jinker.JinkerResponse()
+           .send({"ok": true})
+           .cookie("sid", "abc123", max_age=3600)
+           .cookie("tema", "escuro", httponly=false, path="/x")
+}
+
+# O default nao pode sumir porque OUTRO parametro foi nomeado. Nomear
+# `secure`, `samesite` ou `domain` apagava o `HttpOnly` que o default promete:
+# o slot pulado chega UNSET e o motor lia UNSET como "passou falso". Default
+# seguro virando permissivo em silencio e o pior jeito de errar.
+# Corpo grande o bastante pra o download com `save=` valer alguma coisa: e o
+# tamanho que fazia o `.content` copiar de um buffer de 1 byte e estourar.
+@app.get("/grande")
+funct grande()
+{
+    return "y" * 300000
+}
+
+# Sem corpo (204): o cliente nao pode deixar arquivo do motor sobrando.
+@app.get("/vazio")
+funct vazio()
+{
+    return Null
+}
+
+@app.route("/cookie-defaults")
+funct cookie_defaults()
+{
+    return jinker.JinkerResponse()
+           .send({"ok": true})
+           .cookie("d_secure", "1", secure=true)
+           .cookie("d_samesite", "1", samesite="Strict")
+           .cookie("d_domain", "1", domain="e.com")
+}
+
+@app.route("/cookie-le")
+funct cookie_le()
+{
+    return {"sid": request.cookie("sid"),
+            "tema": request.cookie("tema"),
+            "nao": request.cookie("naoexiste")}
+}
+
+
+# ── handlers em CLASSE, com decorador que envolve (o uso real) ──────────────
+# O formato de um painel de verdade: rotas como métodos, um decorador de lock
+# empilhado embaixo do registrador, path param chegando no método, middleware
+# na forma `middleware=app.middleware`. A suíte sem servidor não tem como ver
+# nada disso — é aqui, pelo HTTP, que se sabe se funciona.
+bool trava_cls = false
+
+funct controla(func)
+{
+    funct envolve(*args, **kwargs)
+    {
+        while trava_cls {
+            sleep(0.05)
+        }
+        trava_cls = true
+        try {
+            return func(*args, **kwargs)
+        }
+        finally {
+            trava_cls = false
+        }
+    }
+    return envolve
+}
+
+funct middleware_que_erra()
+{
+    return 1 / 0
+}
+
+public class PainelAlvo()
+{
+    @app.post("/cls/login", middleware=app.middleware)
+    @controla
+    public funct login(self)
+    {
+        return {"ok": true, "travado": trava_cls}
+    }
+
+    @app.get("/cls/item/:id")
+    public funct item(self, str id)
+    {
+        return {"id": id}
+    }
+
+    @app.get("/cls/lock/:id")
+    @controla
+    public funct comlock(self, str id)
+    {
+        return {"id": id, "travado": trava_cls}
+    }
+
+    @app.get("/cls/mw_erra", middleware=middleware_que_erra)
+    public funct mw_erra(self)
+    {
+        return {"nao": "devia"}
+    }
+}
+
+
+# ── handler `async`: o jinker ESPERA o corpo ────────────────────────────────
+# Rota `async funct`: o corpo roda na fibra que atende a conexão, vendo a
+# requisição dela. E o `await` de um helper `async` roda o helper noutra
+# fibra, que nasce com a requisição de quem a criou — nascia sem, e o
+# `request` lá dentro não via nada.
+async funct helper_le_query()
+{
+    sleep(0.01)
+    return request.get("q")
+}
+
+@app.get("/async/direto")
+async funct rota_async()
+{
+    sleep(0.01)
+    return {"q": request.get("q")}
+}
+
+@app.get("/async/helper")
+async funct rota_await_helper()
+{
+    v = await helper_le_query()
+    return {"q": v, "depois": request.get("q")}
+}
+
+
+# ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
+@app.route("/__parar")
+funct parar()
+{
+    post("servidor-alvo: parando a pedido do driver")
+    os.rmdir("teste/static", force=true)
+    sys.exit(0)
+}
+
+
+# A chave FICA NA MESMA LINHA de propósito: no estilo Allman o motor pula o
+# bloco em silêncio (ver `casos_pendentes.c`, "if __name__ no estilo Allman").
+if __name__ == "main" {
+    app(debug=false, host="127.0.0.1", port=28952)
+}

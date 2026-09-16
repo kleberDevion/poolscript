@@ -20,6 +20,7 @@
 #include <limits.h>
 
 #include "ps_teste.h"
+#include "ps_ext.h"
 
 #define POOL "./pool"
 
@@ -165,7 +166,7 @@ static int roda(const Caso *c, Resultado *out)
         if (ponto) *ponto = '\0';
         char unico[192];
         snprintf(unico, sizeof(unico), "%s_%d", base, (int)getpid());
-        snprintf(arquivo, sizeof(arquivo), "/tmp/%s.ps", unico);
+        snprintf(arquivo, sizeof(arquivo), "/tmp/%s" PS_EXT, unico);
         /* troca cada ocorrência do nome base pelo nome único, no fonte */
         /* Se o fonte não couber, o caso roda um programa PELA METADE e a
          * comparação vale nada — falha calada, do pior tipo. Melhor recusar. */

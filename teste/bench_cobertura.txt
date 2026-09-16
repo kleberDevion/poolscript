@@ -1,7 +1,7 @@
 # Benchmark de cobertura — uma linha por arquivo:
 #   <arquivo> <ramos descobertos> <ramos cobertos> <funcoes em zero>
 #
-# Gravado pelo `teste/bench_cobertura.ps` a cada rodada. Serve pra comparar
+# Gravado pelo `teste/bench_cobertura.pr` a cada rodada. Serve pra comparar
 # RUN com RUN: a coluna 'vs. ultima' do relatorio sai daqui.
 #
 # Nao confundir com `teste/cobertura_base.txt`, que e o PISO do portao. Este

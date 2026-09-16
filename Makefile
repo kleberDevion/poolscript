@@ -56,7 +56,7 @@ FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
 # de lá, sem `-f`.
 MK := $(lastword $(MAKEFILE_LIST))
 
-# `retornos_medidos.inc` é GERADO (scripts/mede_retornos.ps) e incluído pelo
+# `retornos_medidos.inc` é GERADO (scripts/mede_retornos.pr) e incluído pelo
 # `poolscript_vm.c`. Sem ele nesta lista, regerar o .inc não recompilava nada:
 # o make olhava só os .c, via tudo em dia, e o binário seguia com a tabela
 # velha — a medição nova ficava no arquivo sem chegar no `--metadata`.
@@ -166,12 +166,12 @@ intellij:
 	fi
 	@echo "  realce: Settings > Editor > TextMate Bundles > + > $(PWD)/$(IJ)/bundle/PoolScript.tmbundle"
 	@echo "  LSP:    Settings > Languages & Frameworks > Language Servers > + >"
-	@echo "          comando 'poolscript-lsp', extensoes 'ps;psl;p' (precisa do plugin LSP4IJ)"
+	@echo "          comando 'poolscript-lsp', extensao 'pr' (precisa do plugin LSP4IJ)"
 
 .PHONY: intellij
 
 # Instala no sistema: o binário (como `pool` e `psl`, que são o mesmo) e o
-# servidor LSP, que é PoolScript e por isso precisa dos .ps ao lado. O
+# servidor LSP, que é PoolScript e por isso precisa dos .pr ao lado. O
 # `poolscript-lsp` é o atalho que o editor chama.
 PREFIXO ?= /usr/local
 install: pool
@@ -221,13 +221,14 @@ install: pool
 	       echo "  (o TIPO MIME em $(DADOS)/mime pede root: sudo make install-mime)"; }
 	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp"
 
-# Tipo MIME + ícone do `.ps` pro desktop (GNOME/KDE/XFCE/…). Fica separado
+# Tipo MIME + ícone do `.pr` pro desktop (GNOME/KDE/XFCE/…). Fica separado
 # porque num servidor sem ambiente gráfico ele não faz falta e as ferramentas
 # (`update-mime-database`) podem nem existir — daí o `|| true`.
-# A base de MIME é /usr/share por padrão, NÃO $(PREFIXO): o `glob-deleteall`
-# que tira o `.ps` do PostScript só tem efeito dentro da MESMA base onde o
-# PostScript está definido. Instalar em /usr/local/share deixaria as duas
-# definições convivendo e o PostScript ganharia pela magic.
+# A base de MIME é /usr/share por padrão, NÃO $(PREFIXO): era obrigatório
+# enquanto a extensão era `.ps` (o `glob-deleteall` que a tirava do PostScript
+# só valia dentro da MESMA base onde o PostScript está definido), e continua
+# sendo o lugar certo — é lá que está o arquivo das versões de antes, que esta
+# instalação precisa sobrescrever.
 DADOS ?= /usr/share
 install-mime:
 	install -d $(DADOS)/mime/packages \
@@ -246,7 +247,7 @@ install-mime:
 DADOS_USUARIO ?= $(HOME)/.local/share
 install-icone:
 	@./dados/espalha_icone.sh "$(DADOS_USUARIO)" instalar
-	@echo "  logo do .ps atualizada em $(DADOS_USUARIO)/icons (sem root)"
+	@echo "  logo do .pr atualizada em $(DADOS_USUARIO)/icons (sem root)"
 
 .PHONY: install install-mime install-icone desinstala
 
@@ -280,8 +281,8 @@ TESTE_FONTES := teste/ps_teste.c teste/casos_crash.c teste/casos_inteiros.c \
                 teste/casos_libs.c
 
 # o binário se chama `testar` porque `teste` é a PASTA dos casos
-testar: $(TESTE_FONTES) teste/ps_teste.h
-	$(CC) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iteste -o $@ $(TESTE_FONTES)
+testar: $(TESTE_FONTES) teste/ps_teste.h $(VM)/ps_ext.h
+	$(CC) -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Iteste -I$(VM) -o $@ $(TESTE_FONTES)
 
 # `make check` = compila os dois e roda a suíte
 # ── ferramentas prontas: sanitizers e analisador estático ───────────────────
@@ -361,7 +362,7 @@ analisa:
 # vazamento com a pilha de quem alocou. Roda UM script por vez; é ~30x mais
 # lento que nativo, então não entra no `check`.
 #
-#     make memcheck PS=teste/e2e/ws.ps
+#     make memcheck PS=teste/e2e/ws.pr
 PS ?= /dev/null
 memcheck: pool
 	valgrind --leak-check=full --show-leak-kinds=definite,indirect \
@@ -404,7 +405,7 @@ memcheck: pool
 # encolhido e a semente pra repetir.
 BENCH ?=
 bench: pool
-	@nice -n 19 ./pool teste/bench.ps $(BENCH)
+	@nice -n 19 ./pool teste/bench.pr $(BENCH)
 
 AVISOS_NIVEL ?= 1
 avisos:
@@ -428,20 +429,20 @@ avisos:
 check: pool testar
 	./testar
 	@echo
-	# Unidade em C: os ramos de erro dos modulos puros, que fonte .ps nao alcanca.
+	# Unidade em C: os ramos de erro dos modulos puros, que fonte .pr nao alcanca.
 	@$(MAKE) --no-print-directory unidade
 	@echo
-	@./pool teste/confere_metadata.ps
+	@./pool teste/confere_metadata.pr
 	@echo
 	# ASSERCOES: nenhum caso pode conferir menos do que o runner sabe conferir.
 	# Eram 1577 gravados como `NULL, "<stderr>", -1` — sem stdout e sem rc.
-	@./pool teste/confere_assercoes.ps
+	@./pool teste/confere_assercoes.pr
 	@echo
 	# DUPLICADOS: dois casos com o mesmo fonte sao um teste e uma copia. Eram
 	# 232 — o contador de casos mentindo sobre o alcance da suite.
-	@./pool teste/confere_duplicados.ps
+	@./pool teste/confere_duplicados.pr
 	@echo
-	@./pool scripts/audita_doc.ps
+	@./pool scripts/audita_doc.pr
 	@echo
 	# COBERTURA da doc, com catraca. O `audita_doc` acima confere a página que
 	# EXISTE contra o motor e passa dizendo "nenhuma divergencia" — o que se le
@@ -449,37 +450,37 @@ check: pool testar
 	# calava sobre 721 membros sem nenhuma, `hash.sha256` e `sys.stdin` entre
 	# eles. Portao que aprova medindo 15% sem dizer que sao 15% e' pior que
 	# portao nenhum, porque vira base pra afirmar que esta tudo conferido.
-	@./pool teste/confere_cobertura_doc.ps
+	@./pool teste/confere_cobertura_doc.pr
 	@echo
 	# `//` na doc. O I11 tirou `//` de comentario e o fez divisao inteira; a doc
 	# nao acompanhou e ficaram 179 paginas (725 ocorrencias) ensinando
 	# `// comentario`. Quem copia um exemplo escreve codigo que nao compila — e
 	# eu mesmo aprendi errado lendo a doc e escrevi `//` num exemplo novo. O
 	# `audita_exemplos_doc` nao pegava: essas cercas nao sao ```ps.
-	@./pool scripts/conserta_barra_doc.ps --portao
+	@./pool scripts/conserta_barra_doc.pr --portao
 	@echo
 	# STDLIB que a suite inteira nao chamava uma vez. O benchmark de cobertura
-	# (`teste/bench_cobertura.ps`) lista as funcoes em ZERO execucao, e eram 115
+	# (`teste/bench_cobertura.pr`) lista as funcoes em ZERO execucao, e eram 115
 	# so em poolscript_vm.c: `os.cwd`, `sys.platform`, `sys.stdin.read`,
 	# `date.now`, as 63 constantes de socket. Documentadas e nao testadas.
-	@./pool teste/cobre_stdlib.ps
+	@./pool teste/cobre_stdlib.pr
 	@echo
-	@./pool scripts/audita_c.ps
+	@./pool scripts/audita_c.pr
 	@echo
-	@./pool scripts/audita_exemplos_doc.ps
+	@./pool scripts/audita_exemplos_doc.pr
 	@echo
-	@./pool teste/fuzz_replay.ps
+	@./pool teste/fuzz_replay.pr
 	@echo
 	# DEPURADOR: fala DAP com o motor igual o editor faz — breakpoint na linha
 	# pedida, pilha, variaveis VIVAS no ponto (slot e reaproveitado entre
 	# blocos, entao nome errado aqui e' silencioso), passo a passo, parada na
 	# excecao e o grafico de execucao. Sobe dois processos `pool --debug`.
-	@./pool teste/depurador.ps
+	@./pool teste/depurador.pr
 	@echo
 	# Os EXEMPLOS de `examples/` — 16 programas que ninguem rodava. Sao a
 	# primeira coisa que se le pra aprender a linguagem, e apodreciam em
 	# silencio: a mudanca do indice quebrou dois de uma vez sem o gate ver.
-	@./pool teste/exemplos_roda.ps
+	@./pool teste/exemplos_roda.pr
 	@echo
 	# LEIS: o que vale pra TODO valor, não pra um exemplo. Barato o bastante
 	# pro portão; o noturno roda fundo com a semente do dia.
@@ -487,14 +488,14 @@ check: pool testar
 	@echo
 	# Drivers de LOOPBACK: CLI+psl, sockets e o jinker a fundo. Ficavam fora de
 	# qualquer alvo — escritos, passando, e sem ninguém rodando.
-	@./pool teste/cli_roda.ps
+	@./pool teste/cli_roda.pr
 	@echo
-	@./pool teste/sockets_roda.ps
+	@./pool teste/sockets_roda.pr
 	@echo
-	@./pool teste/jinker_roda.ps
+	@./pool teste/jinker_roda.pr
 	@echo
 	# Mongo: sobe o proprio mongod em /tmp e derruba. PULA se nao houver binario.
-	@./pool teste/mongo_roda.ps
+	@./pool teste/mongo_roda.pr
 	@echo
 	# LSP: o servidor agora e `editor/vscode/server.js`, sobre
 	# `vscode-languageserver` (a implementacao de REFERENCIA do protocolo). O
@@ -536,8 +537,8 @@ check: pool testar
 # `check` porque depende de serviço externo (Postgres, MySQL, mongod, SMTP) e
 # porque é pesado.
 #
-# A ORDEM IMPORTA, e por isso não é mais um `for` sobre `*.ps`: o shell ordena
-# alfabeticamente e `jinker_cli.ps` vinha ANTES de `jinker_srv.ps` — o cliente
+# A ORDEM IMPORTA, e por isso não é mais um `for` sobre `*.pr`: o shell ordena
+# alfabeticamente e `jinker_cli.pr` vinha ANTES de `jinker_srv.pr` — o cliente
 # subia sem servidor, morria com "Connection refused", e o servidor ficava
 # servindo até o timeout. O driver conhece o papel de cada script (par,
 # sozinho, servidor sem cliente), espera a porta ABRIR em vez de dormir no
@@ -547,7 +548,7 @@ check: pool testar
 #     make check-e2e E2E=jinker # só o que casa com o filtro
 E2E ?=
 check-e2e: pool
-	@./pool teste/e2e_roda.ps $(E2E)
+	@./pool teste/e2e_roda.pr $(E2E)
 
 # E2E que NÃO precisa de serviço externo: arquivo, sqlite (embutida), socket
 # (loopback) e o par jinker (loopback). São scripts que
@@ -568,11 +569,11 @@ E2E_TIMEOUT ?= 180
 check-e2e-local: pool
 	@caidos=""; \
 	for alvo in $(E2E_SEM_SERVICO); do \
-	  timeout $(E2E_TIMEOUT) ./pool teste/e2e_roda.ps $$alvo || caidos="$$caidos $$alvo"; \
+	  timeout $(E2E_TIMEOUT) ./pool teste/e2e_roda.pr $$alvo || caidos="$$caidos $$alvo"; \
 	done; \
 	if [ -n "$$caidos" ]; then \
 	  echo "e2e local: FALHARAM ->$$caidos"; \
-	  echo "  rode um por vez: ./pool teste/e2e_roda.ps <alvo>"; \
+	  echo "  rode um por vez: ./pool teste/e2e_roda.pr <alvo>"; \
 	  exit 1; \
 	fi; \
 	echo "e2e local: ok"
@@ -588,7 +589,7 @@ check-e2e-local: pool
 # `--wrap` é do linker: nenhuma linha do motor muda, o código testado é o
 # código de produção. Ver teste/ps_oom.c.
 # Testes de UNIDADE em C: linka SÓ os módulos puros (hash, regex, ast) e chama
-# as funções direto. É o que fura o teto de ~60% de ramo da suíte `.ps`, que
+# as funções direto. É o que fura o teto de ~60% de ramo da suíte `.pr`, que
 # por construção não alcança tratamento de erro — não existe programa PoolScript
 # que faça um `malloc` falhar ou passe um buffer curto pro base64.
 unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
@@ -605,10 +606,10 @@ pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	  -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
 	  -l:libgmp.so.10
 
-# Falha a i-ésima alocação de cada programa de teste/oom_varre.ps. Passar não é
+# Falha a i-ésima alocação de cada programa de teste/oom_varre.pr. Passar não é
 # "não deu erro": é "morreu limpo" — segfault, liberação dupla e trava reprovam.
 oom: pool-oom
-	@./pool teste/oom_varre.ps
+	@./pool teste/oom_varre.pr
 
 .PHONY: oom
 
@@ -636,7 +637,7 @@ pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
 # Semeia o corpus com os programas que a suíte já tem: o fuzzer parte de
 # entrada VÁLIDA e muta a partir dela, em vez de descobrir a sintaxe do zero.
 semeia: pool
-	@./pool teste/fuzz_semeia.ps
+	@./pool teste/fuzz_semeia.pr
 
 # Depois de fuzzar, o que foi achado FICA: `teste/fuzz_achados/` é versionado
 # (ver .gitignore) e o `make check` replaya tudo em todo portão. Sem isso, o
@@ -656,7 +657,7 @@ fuzz: pool-fuzz semeia
 PROP_N ?= 200
 PROP_SEMENTE ?= 1
 propriedade: pool
-	@./pool teste/propriedade.ps $(PROP_N) $(PROP_SEMENTE)
+	@./pool teste/propriedade.pr $(PROP_N) $(PROP_SEMENTE)
 
 .PHONY: propriedade
 
@@ -669,7 +670,7 @@ propriedade: pool
 LEIS_N ?= 300
 LEIS_SEMENTE ?= 1
 leis: pool
-	@nice -n 19 ./pool teste/leis.ps $(LEIS_N) $(LEIS_SEMENTE)
+	@nice -n 19 ./pool teste/leis.pr $(LEIS_N) $(LEIS_SEMENTE)
 
 .PHONY: leis
 
@@ -722,7 +723,7 @@ cobertura: testar
 	# O PORTÃO INTEIRO, não só o `testar`. Enquanto a medição rodava apenas a
 	# suíte, `ps_jinker.c`, `ps_db.c` e os 113 nativos de socket
 	# apareciam em 0% — não por falta de teste, mas porque o teste que os cobre
-	# (e2e local, drivers .ps) rodava FORA da medição. Número que ignora metade
+	# (e2e local, drivers .pr) rodava FORA da medição. Número que ignora metade
 	# do portão manda corrigir o que já está coberto.
 	# A unidade em C tem que entrar na MEDIÇÃO, senão os ramos que só ela
 	# alcança continuam contando como descobertos.
@@ -730,11 +731,11 @@ cobertura: testar
 	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
 	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm 2>/dev/null
 	@./cob/unidade > /dev/null 2>&1 || true
-	@echo "rodando os drivers .ps e o e2e local contra o mesmo binario…"
-	@for d in teste/confere_metadata.ps scripts/audita_doc.ps \
-	          scripts/audita_exemplos_doc.ps \
-	          teste/fuzz_replay.ps teste/cli_roda.ps teste/sockets_roda.ps \
-	          teste/jinker_roda.ps teste/mongo_roda.ps; do \
+	@echo "rodando os drivers .pr e o e2e local contra o mesmo binario…"
+	@for d in teste/confere_metadata.pr scripts/audita_doc.pr \
+	          scripts/audita_exemplos_doc.pr \
+	          teste/fuzz_replay.pr teste/cli_roda.pr teste/sockets_roda.pr \
+	          teste/jinker_roda.pr teste/mongo_roda.pr; do \
 	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
 	done
 	# E os que PRECISAM de serviço também, quando ele existe: `db` (PostgreSQL,
@@ -745,7 +746,7 @@ cobertura: testar
 	# ela fica igual. O `|| true` não esconde falha de teste — quem cobra esses
 	# scripts é o `make check-e2e`; aqui eles só MEDEM.
 	@for alvo in $(E2E_SEM_SERVICO) db mongo mail ws; do \
-	  nice -n 19 ./cob/pool teste/e2e_roda.ps $$alvo >/dev/null 2>&1 || true; \
+	  nice -n 19 ./cob/pool teste/e2e_roda.pr $$alvo >/dev/null 2>&1 || true; \
 	done
 	@lcov --capture --directory . --output-file cob/bruto.info \
 	  --rc branch_coverage=1 --ignore-errors mismatch,source,empty >/dev/null 2>&1
@@ -760,6 +761,6 @@ cobertura: testar
 	# agregado não decide nada — queda de 10 pontos num arquivo some na média de
 	# 17, e foi assim que a mesma cobertura reapareceu em três auditorias
 	# seguidas sem ninguém saber quando piorou.
-	@./pool teste/cobertura_portao.ps
+	@./pool teste/cobertura_portao.pr
 
 .PHONY: cobertura

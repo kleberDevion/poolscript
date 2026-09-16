@@ -2,7 +2,7 @@
 """SMTP de mentira com STARTTLS de verdade, pra testar `vm/ps_mail.c` offline.
 
 POR QUE ISTO EXISTE: `ps_mail.c` são 943 linhas em **0,6% de cobertura**. O
-único teste de mail (`teste/e2e/mail.ps`) fala com o Gmail e diz PULOU sem
+único teste de mail (`teste/e2e/mail.pr`) fala com o Gmail e diz PULOU sem
 credencial — ou seja, na prática nunca roda. Todo o SMTP (greeting, EHLO,
 STARTTLS, AUTH LOGIN, MAIL FROM/RCPT TO/DATA, QUIT) e todo o tratamento de
 erro nunca foram exercitados.

@@ -8,7 +8,7 @@
  * na linguagem — estava nas BIBLIOTECAS: `ps_db.c`, `ps_pkg.c`, `ps_hash.c`,
  * `ps_http.c` e os 254 nativos `mod_*`/`met_*` que nenhum caso chamava. A
  * suíte antiga testava em processo e alcançava tudo isso; a nova roda só
- * fork/exec de programa `.ps` e empurrou a biblioteca inteira pro `e2e`.
+ * fork/exec de programa `.pr` e empurrou a biblioteca inteira pro `e2e`.
  *
  * O que entra AQUI: o que roda em qualquer máquina, sem serviço externo —
  * hash, jwt, bytes, json, os, regex e o `psodbc` no driver sqlite (que é o
@@ -194,19 +194,19 @@ const Caso CASOS_LIBS[] = {
   "    post(\"pegou\")\n"
   "}\n", "pegou", NULL, 0 },
 { "pool --check sai != 0 quando o arquivo nao compila",
-  /* I16: saía 0 SEMPRE, então `pool --check f.ps || exit 1` nunca disparava —
+  /* I16: saía 0 SEMPRE, então `pool --check f.pr || exit 1` nunca disparava —
    * e o --check roda no editor a cada tecla e no `psl install` de pacote de
    * terceiro. */
   "import os\n"
   "import sys\n"
-  "using open(\"quebrado.ps\", \"w\") as f {\n"
+  "using open(\"quebrado.pr\", \"w\") as f {\n"
   "    f.write(\"post(\\n\")\n"
   "}\n"
-  "using open(\"bom.ps\", \"w\") as f {\n"
+  "using open(\"bom.pr\", \"w\") as f {\n"
   "    f.write(\"post(1)\\n\")\n"
   "}\n"
-  "os.cmd(\"'\" + sys.executable + \"' --check quebrado.ps > /dev/null 2>&1; echo $? > rq\")\n"
-  "os.cmd(\"'\" + sys.executable + \"' --check bom.ps > /dev/null 2>&1; echo $? > rb\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' --check quebrado.pr > /dev/null 2>&1; echo $? > rq\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' --check bom.pr > /dev/null 2>&1; echo $? > rb\")\n"
   "post(int(open(\"rq\").read().strip()) != 0, int(open(\"rb\").read().strip()) == 0)\n",
   "True True", NULL, 0 },
 

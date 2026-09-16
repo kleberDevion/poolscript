@@ -1,7 +1,7 @@
 # `os.pathFolder(name)`
 
 Devolve o **caminho absoluto** de uma pasta, buscando-a pelo nome a partir da
-pasta do `.ps` e do diretório atual. Erro se não encontrar.
+pasta do `.pr` e do diretório atual. Erro se não encontrar.
 
 ```
 os.pathFolder(name: str) -> str

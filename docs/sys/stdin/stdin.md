@@ -39,7 +39,7 @@ while True {
 ```
 
 ```
-$ printf 'a\nb\n' | pool le.ps
+$ printf 'a\nb\n' | pool le.pr
 li: a
 li: b
 ```
@@ -111,7 +111,7 @@ sys.stdin.raw(false)
 
 Uma cobrinha completa, com esse laço e desenho em ANSI (`"\x1b[2J"` limpa,
 `"\x1b[H"` volta ao canto, `"\x1b[31m"` cor), está em
-[`examples/cobrinha.ps`](../../../examples/cobrinha.ps).
+[`examples/cobrinha.pr`](../../../examples/cobrinha.pr).
 
 ---
 
