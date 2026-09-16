@@ -188,6 +188,19 @@ typedef struct {
     char   **tipos_topo_nomes;
     unsigned char *tipos_topo;
     int32_t  n_tipos_topo, cap_tipos_topo;
+    /* `import *`: quem responde os nomes que um módulo exporta (NULL no
+     * `--check`), e a resposta de cada `*` do topo do arquivo, colhida antes
+     * de compilar qualquer statement — o `liga_o_nome` de um laço que vem
+     * ANTES do import já precisa saber se o `*` liga `range`. */
+    const PSResolvedor *resolve;
+    struct { PSNode *no; char **nomes; int32_t n; int resolvido; } *estrelas;
+    int32_t  nestrelas;
+    /* o statement de topo do arquivo sendo compilado agora: `*` só vale nele */
+    PSNode  *stmt_topo;
+    /* nomes de MÓDULO gravados de dentro de uma funct com `global x` — o
+     * arquivo os liga, então saem no import como os de topo */
+    char   **globais_gravados;
+    int32_t  nglobais_gravados;
 } C;
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
@@ -504,31 +517,113 @@ static int eh_global_declarada(Unidade *u, const char *nome)
  * `from x import range`). A especialização do `for each` só pode acontecer se
  * o programa NÃO liga esse nome em lugar nenhum — senão a VM rodaria o range
  * embutido no lugar do que o usuário escreveu, calada. */
-static int liga_o_nome(PSNode *n, const char *alvo)
+/* O nome que `import m` / `PUSH m` (sem lista de nomes) liga quando não há
+ * `as`: o ÚLTIMO segmento do caminho pontuado (`import pacote.modulo` liga
+ * `modulo`), ou, entre aspas, o nome do arquivo sem pasta e sem extensão
+ * (`import '../x/util.ps'` liga `util`). Um lugar só: o compilador liga com
+ * isto e o `liga_o_nome` pergunta com isto. */
+static void import_nome_do_arquivo(const PSNode *n, char *out, size_t cap)
+{
+    out[0] = '\0';
+    if (n->i2 == -1) {
+        const char *spec = (n->lista.n > 0 && n->lista.itens[0]->texto) ? n->lista.itens[0]->texto : "";
+        const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
+        snprintf(out, cap, "%s", b);
+        char *ext = strrchr(out, '.');
+        if (ext && ext != out && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0))
+            *ext = '\0';
+    } else if (n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto) {
+        snprintf(out, cap, "%s", n->lista.itens[n->lista.n - 1]->texto);
+    }
+}
+
+/* O módulo de um import, codificado como o OP_IMPORT_MOD espera: `n->i2`
+ * pontos de nível relativo seguidos do caminho pontuado (`from .a.b import x`
+ * -> ".a.b"), ou, entre aspas (i2 == -1), o marcador \x01 + o literal como
+ * foi escrito — o runtime decide se é caminho ou nome de módulo. `encoded`
+ * tem 512 bytes. Um lugar só: a compilação do import e a expansão do `*`. */
+static void import_modulo_codificado(const PSNode *n, char *encoded)
+{
+    int el = 0;
+    if (n->i2 == -1) {
+        const char *spec = (n->lista.n > 0 && n->lista.itens[0]->texto) ? n->lista.itens[0]->texto : "";
+        int pl = (int)strlen(spec); if (pl > 500) pl = 500;
+        encoded[el++] = '\x01';
+        memcpy(encoded + el, spec, (size_t)pl); el += pl;
+    } else {
+        for (int32_t i = 0; i < n->i2 && el < 500; i++) encoded[el++] = '.';
+        for (int32_t i = 0; i < n->lista.n && el < 500; i++) {
+            if (i) encoded[el++] = '.';
+            const char *pt = n->lista.itens[i]->texto ? n->lista.itens[i]->texto : "";
+            int pl = (int)strlen(pt);
+            if (el + pl >= 500) pl = 500 - el;
+            memcpy(encoded + el, pt, (size_t)pl); el += pl;
+        }
+    }
+    encoded[el] = '\0';
+}
+
+static int nome_bate(const PSNode *x, const char *alvo)
+{
+    return x && x->texto && !strcmp(x->texto, alvo);
+}
+
+/* Toda forma que LIGA um nome entra aqui. A lista antiga via atribuição,
+ * declaração e import por lista, e deixava de fora parâmetro (`funct f(range)`),
+ * `import json as range`, variável de `catch`, `using ... as`, captura de
+ * `match`, alvo de desempacotamento e a variável da compreensão — em todos
+ * esses o `for each i in range(2)` rodava o `range` embutido, calado.
+ * Sobrar aqui só desliga o atalho; faltar troca o que o programa faz. */
+static int liga_o_nome(C *c, PSNode *n, const char *alvo)
 {
     if (!n) return 0;
     switch (n->kind) {
-        case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT:
-        case N_UNPACK_TARGET: case N_ACTION_DECL: case N_ENTITY_DECL:
-        case N_MODEL_DECL: case N_ENUM_DECL: case N_IMPORT_STMT:
-            if (n->texto && !strcmp(n->texto, alvo)) return 1;
-            for (int32_t i = 0; i < n->lista2.n; i++) {
-                PSNode *x = n->lista2.itens[i];
-                if (x && x->texto && !strcmp(x->texto, alvo)) return 1;
-            }
-            for (int32_t i = 0; i < n->lista2_alias.n; i++) {
-                PSNode *x = n->lista2_alias.itens[i];
-                if (x && x->texto && !strcmp(x->texto, alvo)) return 1;
+        case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT: case N_LIST_COMP:
+        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
+        case N_USING_STMT: case N_CATCH_CLAUSE:
+            if (nome_bate(n, alvo)) return 1;
+            break;
+        case N_MATCH_PATTERN:
+            if (nome_bate(n, alvo) || (n->texto2 && !strcmp(n->texto2, alvo))) return 1;
+            break;
+        case N_ACTION_DECL: case N_LAMBDA_EXPR: case N_UNPACK_TARGET:
+            /* parâmetros e alvos de desempacotamento são Name na `lista` */
+            if (nome_bate(n, alvo)) return 1;
+            for (int32_t i = 0; i < n->lista.n; i++) {
+                PSNode *x = n->lista.itens[i];
+                if (x && x->kind == N_NAME && nome_bate(x, alvo)) return 1;
             }
             break;
+        case N_IMPORT_STMT: {
+            /* `*` liga os nomes que o módulo exporta (e não o do módulo) */
+            if (n->texto3) {
+                for (int32_t e = 0; e < c->nestrelas; e++) {
+                    if (c->estrelas[e].no != n) continue;
+                    for (int32_t k = 0; k < c->estrelas[e].n; k++)
+                        if (!strcmp(c->estrelas[e].nomes[k], alvo)) return 1;
+                }
+                return 0;
+            }
+            if (n->texto2 && !strcmp(n->texto2, alvo)) return 1;
+            for (int32_t i = 0; i < n->lista2.n; i++)
+                if (nome_bate(n->lista2.itens[i], alvo)) return 1;
+            for (int32_t i = 0; i < n->lista2_alias.n; i++)
+                if (nome_bate(n->lista2_alias.itens[i], alvo)) return 1;
+            if (n->lista2.n == 0 && n->texto && strcmp(n->texto, "from") != 0) {
+                char base[256];
+                import_nome_do_arquivo(n, base, sizeof(base));
+                if (!strcmp(base, alvo)) return 1;
+            }
+            return 0;   /* o caminho do módulo não liga nada */
+        }
         default: break;
     }
-    if (liga_o_nome(n->a, alvo) || liga_o_nome(n->b, alvo)
-        || liga_o_nome(n->c, alvo) || liga_o_nome(n->e, alvo)) return 1;
+    if (liga_o_nome(c, n->a, alvo) || liga_o_nome(c, n->b, alvo)
+        || liga_o_nome(c, n->c, alvo) || liga_o_nome(c, n->e, alvo)) return 1;
     for (int32_t i = 0; i < n->lista.n; i++)
-        if (liga_o_nome(n->lista.itens[i], alvo)) return 1;
+        if (liga_o_nome(c, n->lista.itens[i], alvo)) return 1;
     for (int32_t i = 0; i < n->lista2.n; i++)
-        if (liga_o_nome(n->lista2.itens[i], alvo)) return 1;
+        if (liga_o_nome(c, n->lista2.itens[i], alvo)) return 1;
     return 0;
 }
 
@@ -626,12 +721,18 @@ static void varre_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
     for (int32_t i = 0; i < n->lista2.n; i++) varre_nomes(c, n->lista2.itens[i], v, cnt, cap);
 }
 
-/* Procura actions aninhadas dentro de `n` (sem entrar nelas duas vezes) e
- * coleta os nomes que elas citam. */
+/* Procura functs aninhadas dentro de `n` (sem entrar nelas duas vezes) e
+ * coleta os nomes que elas citam.
+ *
+ * A LAMBDA conta igual à nomeada. Sem ela aqui, nome citado dentro de
+ * `funct(b) { ... }` não entrava na conta e o slot de fora nunca virava
+ * célula: `funct soma_de(a) { return funct(b) { return a + b } }` dava
+ * "NameError: name 'a' is not defined" — a captura só funcionava com funct
+ * nomeada. */
 static void acha_aninhadas(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
 {
     if (!n) return;
-    if (n->kind == N_ACTION_DECL) { varre_nomes(c, n, v, cnt, cap); return; }
+    if (n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) { varre_nomes(c, n, v, cnt, cap); return; }
     acha_aninhadas(c, n->a, v, cnt, cap);
     acha_aninhadas(c, n->b, v, cnt, cap);
     acha_aninhadas(c, n->c, v, cnt, cap);
@@ -654,6 +755,8 @@ static void binda_nomes(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
         case N_ACTION_DECL:
             junta_nomes(c, v, cnt, cap, n->texto);
             return;                 /* não desce: o corpo dela é outro escopo */
+        case N_LAMBDA_EXPR:
+            return;                 /* não liga nome nenhum aqui, e o corpo é dela */
         default: break;
     }
     binda_nomes(c, n->a, v, cnt, cap);
@@ -1016,11 +1119,26 @@ static void emite_coerce_se_tipado(C *c, Unidade *u, const char *nome, int cod1)
     emite(c, u, OP_COERCE_DECL, (ni << 4) | (cod1 - 1));
 }
 
+/* `global x` + escrita de dentro de uma funct: o nome é do arquivo, e sai no
+ * import como os de topo (ver PSPrograma.exportados). */
+static void global_gravado_add(C *c, const char *nome)
+{
+    for (int32_t i = 0; i < c->nglobais_gravados; i++)
+        if (strcmp(c->globais_gravados[i], nome) == 0) return;
+    char **nv = realloc(c->globais_gravados, sizeof(char *) * (size_t)(c->nglobais_gravados + 1));
+    if (!nv) { cerro(c, "sem memoria", NULL); return; }
+    c->globais_gravados = nv;
+    char *copia = strdup(nome);
+    if (!copia) { cerro(c, "sem memoria", NULL); return; }
+    c->globais_gravados[c->nglobais_gravados++] = copia;
+}
+
 static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
 {
     if (u->eh_modulo || eh_global_declarada(u, nome)) {
         emite_coerce_se_tipado(c, u, nome, tipo_topo_de(c, nome));
         if (u->eh_modulo) mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
+        else global_gravado_add(c, nome);
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
         return;
     }
@@ -1624,6 +1742,16 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                              : "base() fora de Entity com heranca");
                 return;
             }
+            /* `base(...)` passa o `self` do frame ao `__init__` do pai (o
+             * OP_LOAD_SELF lê o slot 0). Numa funct cujo 1º parâmetro não é
+             * `self` — `funct __init__(*args)` — o slot 0 é outra coisa, e o
+             * pai inicializava a tup: `self.a = a` dava "'tup' object has no
+             * attribute 'a'". Sem self não há objeto pra entregar. */
+            if (u->eh_modulo || u->nlocais == 0 || strcmp(u->locais[0], "self") != 0) {
+                cerro_sx(c, n, "base() precisa do self: declare `funct __init__(self, ...)` "
+                               "(o self e o objeto que o pai inicializa)");
+                return;
+            }
             int32_t nkw_b = 0;
             for (int32_t i = 0; i < n->lista.n; i++)
                 if (n->lista.itens[i]->texto || n->lista.itens[i]->i2) nkw_b++;
@@ -2071,10 +2199,12 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     && n->a->a->kind == N_NAME && n->a->a->texto
                     && !strcmp(n->a->a->texto, "range")
                     && n->a->lista.n >= 1 && n->a->lista.n <= 3
-                    && !liga_o_nome(c->raiz, "range")) {
+                    && !liga_o_nome(c, c->raiz, "range")) {
                 usa_range = 1;
+                /* nomeado ou espalhado (`range(*l)`) não: o atalho lê cada
+                 * argumento como um limite, e a lista inteira virava o fim */
                 for (int32_t k = 0; k < n->a->lista.n; k++)
-                    if (n->a->lista.itens[k]->texto) { usa_range = 0; break; }  /* nomeado: não */
+                    if (n->a->lista.itens[k]->texto || n->a->lista.itens[k]->i2) { usa_range = 0; break; }
             }
             int32_t topo, fim;
             if (usa_range) {
@@ -2687,41 +2817,60 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                                "(ex: from .modulo import x)");
                 return;
             }
-            char encoded[512]; int el = 0;
-            /* `import 'x'` (i2 == -1): marcador \x01 + o literal como foi
-             * escrito; o runtime decide se e caminho ou nome de modulo. O nome
-             * ligado e o do arquivo, sem pasta e sem extensao. */
-            char base_aspas[256]; base_aspas[0] = '\0';
-            if (n->i2 == -1) {
-                const char *spec = (n->lista.n > 0 && n->lista.itens[0]->texto) ? n->lista.itens[0]->texto : "";
-                int pl = (int)strlen(spec); if (pl > 500) pl = 500;
-                encoded[el++] = '\x01';
-                memcpy(encoded + el, spec, (size_t)pl); el += pl;
-                const char *b = strrchr(spec, '/'); b = b ? b + 1 : spec;
-                snprintf(base_aspas, sizeof(base_aspas), "%s", b);
-                char *ext = strrchr(base_aspas, '.');
-                if (ext && ext != base_aspas && (strcmp(ext, ".ps") == 0 || strcmp(ext, ".psl") == 0 || strcmp(ext, ".p") == 0))
-                    *ext = '\0';
-            } else {
-                for (int32_t i = 0; i < n->i2 && el < 500; i++) encoded[el++] = '.';
-                for (int32_t i = 0; i < n->lista.n && el < 500; i++) {
-                    if (i) encoded[el++] = '.';
-                    const char *pt = n->lista.itens[i]->texto ? n->lista.itens[i]->texto : "";
-                    int pl = (int)strlen(pt);
-                    if (el + pl >= 500) pl = 500 - el;
-                    memcpy(encoded + el, pt, (size_t)pl); el += pl;
-                }
-            }
-            encoded[el] = '\0';
+            char encoded[512];
+            import_modulo_codificado(n, encoded);
+            /* O nome ligado sem `as` é o do arquivo, sem pasta e sem extensão. */
+            char base_aspas[256];
+            import_nome_do_arquivo(n, base_aspas, sizeof(base_aspas));
             const char *mod = encoded;
+
+            /* `from m import *` / `import m *` / `PUSH m GET *`: os nomes já
+             * vieram do resolvedor (pré-passada em ps_compila_com); aqui vira
+             * a lista explícita. Só no topo do arquivo: dentro de funct os
+             * slots são decididos na compilação, e o fim de um bloco apaga os
+             * nomes que nasceram nele por nome conhecido — nome que só o
+             * módulo sabe não teria como ser apagado. */
+            if (n->texto3) {
+                if (!u->eh_modulo || n != c->stmt_topo) {
+                    if (n->i2 == -1)
+                        cerro_sx(c, n, "`*` do import so vale no topo do arquivo; dentro de funct ou bloco "
+                                       "nomeie o que usa: from '%s' import a, b", mod + 1);
+                    else
+                        cerro_sx(c, n, "`*` do import so vale no topo do arquivo; dentro de funct ou bloco "
+                                       "nomeie o que usa: from %s import a, b", mod);
+                    return;
+                }
+                int32_t e = -1;
+                for (int32_t k = 0; k < c->nestrelas; k++) if (c->estrelas[k].no == n) { e = k; break; }
+                int32_t cmod = idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod));
+                emite(c, u, OP_IMPORT_MOD, cmod);
+                if ((e < 0 || !c->estrelas[e].resolvido) && c->resolve && c->resolve->nomes_de)
+                    c->out->estrela_incompleta = 1;
+                if (e < 0 || !c->estrelas[e].resolvido) {
+                    /* Não resolveu na compilação: o IMPORT_MOD dá o erro de
+                     * sempre (módulo ausente, que não compila). Se o módulo
+                     * só aparecer em runtime, o "*" diz por que não há nomes. */
+                    emite(c, u, OP_IMPORT_FROM_ESTRELA, idx_const(c, u, K_STR, 0, 0, "*", 1));
+                    emite(c, u, OP_POP_TOP, 0);
+                    return;
+                }
+                for (int32_t k = 0; k < c->estrelas[e].n && !CFALHOU(c); k++) {
+                    const char *nm = c->estrelas[e].nomes[k];
+                    emite(c, u, OP_DUP, 0);
+                    emite(c, u, OP_IMPORT_FROM_ESTRELA, idx_const(c, u, K_STR, 0, 0, nm, (int32_t)strlen(nm)));
+                    int32_t pula = emite(c, u, OP_JUMP_SE_UNSET, 0);
+                    guarda_nome(c, u, nm);
+                    if (pula >= 0) UP(c, u)->code[pula + 1] = UP(c, u)->ncode;
+                }
+                emite(c, u, OP_POP_TOP, 0);
+                return;
+            }
             /* `import pacote.modulo` liga o ÚLTIMO segmento (`modulo`), como
              * a doc diz e o interpretador faz — antes a VM recusava com
              * NotImplementedError. Import RELATIVO (`import .x`) segue exigindo
              * `from`, porque aí não há nome óbvio pra ligar. */
             int simples = (n->i2 == -1) || (n->i2 == 0 && n->lista.n >= 1);
-            const char *ultimo = (n->i2 == -1) ? base_aspas
-                               : (n->lista.n > 0 && n->lista.itens[n->lista.n - 1]->texto
-                                  ? n->lista.itens[n->lista.n - 1]->texto : mod);
+            const char *ultimo = (n->i2 == -1 || base_aspas[0]) ? base_aspas : mod;
             /* `import 'meu-mod.ps'` sem `as`: o nome do arquivo tem que servir
              * de nome de variavel, senao nao ha o que ligar. */
             if (n->i2 == -1 && !n->texto2 && n->lista2.n == 0) {
@@ -3119,6 +3268,15 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     u.idx = idx;
     u.eh_modulo = 0;
 
+    /* o `__init__` gerado recebe self + um parâmetro por campo: o limite de
+     * parâmetros vira limite de campos, e quem declarou os campos é que
+     * precisa ler isso — não quem instancia */
+    if (campos->n + 1 > PS_MAX_PARAMS) {
+        cerro_sx(c, entidade, "Entity %s: o __init__ gerado dos campos tem parametros demais "
+                              "(maximo %d: self + %d campos)",
+                 entidade->texto ? entidade->texto : "?", PS_MAX_PARAMS, PS_MAX_PARAMS - 1);
+        return -1;
+    }
     /* slot 0 é o `self`; os campos vêm depois, na ordem de declaração */
     { int32_t si = idx_local(c, &u, "self"); if (si < 256) u.certo[si] = 1; }
     int32_t ndef = 0;
@@ -3222,6 +3380,11 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
             break;
         }
     }
+    /* Passava no `--check` e quebrava em TODA chamada, inclusive a
+     * posicional, com a linha apontando a chamada e não a declaração. */
+    if (nfix > PS_MAX_PARAMS)
+        cerro_sx(c, n, "%s() tem parametros demais (maximo %d)",
+                 n->texto ? n->texto : "<funct>", PS_MAX_PARAMS);
     c->out->protos[idx].nparams = nfix;
     c->out->protos[idx].ndefaults = ndef;
     c->out->protos[idx].slot_vararg = slot_vararg;
@@ -3337,7 +3500,85 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
 }
 
 /* ── entrada ────────────────────────────────────────────────────────────── */
+static int eh_identificador(const char *s)
+{
+    if (!s || !*s) return 0;
+    for (const char *q = s; *q; q++) {
+        int letra = (*q >= 'a' && *q <= 'z') || (*q >= 'A' && *q <= 'Z') || *q == '_'
+                 || ((unsigned char)*q >= 0x80);                 /* UTF-8 */
+        int digito = (*q >= '0' && *q <= '9');
+        if (!(letra || (digito && q != s))) return 0;
+    }
+    return 1;
+}
+
+/* `PSPrograma.exportados`: o que sobrou no escopo do ARQUIVO depois de
+ * compilado (`mod_criados` — o fim de cada bloco já tirou dali o que nasceu
+ * nele) mais o que funct grava com `global x`. Fica de fora `private` (funct
+ * de módulo e class) e nome interno (`$reg0`, `  fe$x`), que não é
+ * identificador. */
+static void calcula_exportados(C *c, Unidade *u)
+{
+    PSPrograma *out = c->out;
+    int32_t cap = u->n_mod_criados + c->nglobais_gravados;
+    if (cap == 0) return;
+    out->exportados = calloc((size_t)cap, sizeof(char *));
+    if (!out->exportados) { cerro(c, "sem memoria", NULL); return; }
+    for (int passo = 0; passo < 2; passo++) {
+        char  **fonte = passo == 0 ? u->mod_criados : c->globais_gravados;
+        int32_t nf    = passo == 0 ? u->n_mod_criados : c->nglobais_gravados;
+        for (int32_t i = 0; i < nf; i++) {
+            const char *nm = fonte[i];
+            if (!eh_identificador(nm)) continue;
+            int fora = 0;
+            for (int32_t k = 0; k < out->npriv_globais && !fora; k++)
+                if (!strcmp(out->priv_globais[k], nm)) fora = 1;
+            for (int32_t k = 0; k < out->nclasses && !fora; k++)
+                if (out->classes[k].classe_privada && out->classes[k].nome && !strcmp(out->classes[k].nome, nm))
+                    fora = 1;
+            for (int32_t k = 0; k < out->nexportados && !fora; k++)
+                if (!strcmp(out->exportados[k], nm)) fora = 1;
+            if (fora) continue;
+            char *copia = strdup(nm);
+            if (!copia) { cerro(c, "sem memoria", NULL); return; }
+            out->exportados[out->nexportados++] = copia;
+        }
+    }
+}
+
+/* Os `*` do topo do arquivo, resolvidos ANTES de compilar o primeiro
+ * statement (ver o campo `estrelas` do C). */
+static void resolve_estrelas(C *c, PSNode *programa)
+{
+    if (!programa) return;
+    int32_t total = 0;
+    for (int32_t i = 0; i < programa->lista.n; i++) {
+        PSNode *s = programa->lista.itens[i];
+        if (s && s->kind == N_IMPORT_STMT && s->texto3) total++;
+    }
+    if (total == 0) return;
+    c->estrelas = calloc((size_t)total, sizeof(*c->estrelas));
+    if (!c->estrelas) { cerro(c, "sem memoria", NULL); return; }
+    for (int32_t i = 0; i < programa->lista.n; i++) {
+        PSNode *s = programa->lista.itens[i];
+        if (!s || s->kind != N_IMPORT_STMT || !s->texto3) continue;
+        int32_t e = c->nestrelas++;
+        c->estrelas[e].no = s;
+        if (!c->resolve || !c->resolve->nomes_de) continue;
+        if (s->i2 > 0 && s->lista.n == 0) continue;    /* o compilador recusa */
+        char enc[512];
+        import_modulo_codificado(s, enc);
+        c->estrelas[e].resolvido =
+            c->resolve->nomes_de(c->resolve->ctx, enc, &c->estrelas[e].nomes, &c->estrelas[e].n) == 1;
+    }
+}
+
 PSPrograma *ps_compila(PSNode *programa)
+{
+    return ps_compila_com(programa, NULL);
+}
+
+PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
 {
     PSPrograma *out = calloc(1, sizeof(PSPrograma));
     if (!out) return NULL;
@@ -3347,12 +3588,14 @@ PSPrograma *ps_compila(PSNode *programa)
     memset(&c, 0, sizeof(c));
     c.out = out;
     c.raiz = programa;
+    c.resolve = resolve;
 
     int32_t idx = novo_proto(&c, "<module>");
     if (idx < 0) return out;
 
     /* tipos declarados no topo do arquivo, antes de compilar qualquer action */
     coleta_tipos_topo(&c, programa);
+    resolve_estrelas(&c, programa);
 
     Unidade u;
     memset(&u, 0, sizeof(u));
@@ -3361,10 +3604,21 @@ PSPrograma *ps_compila(PSNode *programa)
 
     if (programa) {
         for (int32_t i = 0; i < programa->lista.n && out->ok; i++) {
+            c.stmt_topo = programa->lista.itens[i];
             stmt(&c, &u, programa->lista.itens[i]);
         }
+        c.stmt_topo = NULL;
     }
     emite(&c, &u, OP_HALT, 0);
+    if (out->ok) calcula_exportados(&c, &u);
+
+    for (int32_t e = 0; e < c.nestrelas; e++) {
+        for (int32_t k = 0; k < c.estrelas[e].n; k++) free(c.estrelas[e].nomes[k]);
+        free(c.estrelas[e].nomes);
+    }
+    free(c.estrelas);
+    for (int32_t i = 0; i < c.nglobais_gravados; i++) free(c.globais_gravados[i]);
+    free(c.globais_gravados);
 
     vardbg_fecha(&c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
@@ -3440,5 +3694,7 @@ void ps_compila_free(PSPrograma *p)
     free(p->enums);
     for (int32_t i = 0; i < p->npriv_globais; i++) free(p->priv_globais[i]);
     free(p->priv_globais);
+    for (int32_t i = 0; i < p->nexportados; i++) free(p->exportados[i]);
+    free(p->exportados);
     free(p);
 }

@@ -73,7 +73,10 @@ post(C().f(5))      # 15  — via instância, self = a instância
 
 Passar argumento demais, ou faltar um obrigatório, dá erro claro
 (`f() takes N positional arguments but M were given` / `f() missing 1 required positional argument: 'a'`) — nunca um erro
-obscuro lá adentro.
+obscuro lá adentro. A frase não conta o `self` dropado, e é a mesma quando o
+método vai como valor pra quem chama de volta (`map([7], C.f)`, `@C.f` como
+decorador). Com `nonnull` (seção 14.2), o `self` dropado não é acusado como
+Null — só os parâmetros reais são conferidos.
 
 ---
 

@@ -101,6 +101,25 @@ r = Retangulo(3, 4)
 post(r.area)              # 12
 ```
 
+`Retangulo(3, 4)` **vale a instância**, sempre — não o que o `__init__`
+retornar, e não o que ficou no primeiro parâmetro. A instância entra como o
+**primeiro posicional**: num `__init__` sem `self` que só tem `*args`, ela é o
+primeiro item da tup:
+
+```ps
+Entity E() {
+    funct __init__(*args) {
+        post(len(args), type(args[0]))   # 3 E
+    }
+}
+
+post(type(E(1, 2)))                      # E
+```
+
+A Entity também vale como função que se passa adiante: `map([1, 2], Ponto)`
+cria uma instância por item. O `__init__` não pode ser `async` nem gerador
+(`TypeError: __init__() should return None, not 'future'`).
+
 ---
 
 ## 7.3. Métodos e `self`
@@ -269,6 +288,14 @@ post(b.x, b.y)           # 1 2
 
 `base` serve para o **construtor** do pai; não é a forma de chamar um método
 qualquer da superclasse.
+
+`base(...)` entrega ao pai o `self` do construtor atual, então ele só vale num
+`__init__` que declara `self` como primeiro parâmetro. Sem `self` é erro na
+declaração:
+
+```
+SyntaxError: base() precisa do self: declare `funct __init__(self, ...)` (o self e o objeto que o pai inicializa)
+```
 
 O pai precisa **ter** construtor: um `__init__` próprio ou campos declarados
 (que sintetizam um). Se não tem nenhum dos dois, `base(...)` levanta

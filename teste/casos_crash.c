@@ -49,6 +49,42 @@ const Caso CASOS_CRASH[] = {
   "}\n"
   "addEnd(x, alvo)\n"
   "post(len(str(raiz)) > 0)\n", "True", NULL, 0 },
+/* ── recursão que passa pelo C: a folga da pilha do C, não o teto de frames ──
+ * Cada callback vindo do C (map, filter, decorador), cada retomada de gerador e
+ * cada import aninham um `vm_executa_base` na pilha do C gastando UM frame da
+ * VM: o teto de frames nunca chegava e o processo morria com SIGSEGV. A
+ * recursão direta dava RecursionError; estas davam sinal (revisão de 236eba8,
+ * 2026-09-14). */
+{ "variadico: recursao via callback do C (map) e RecursionError, nao morte por sinal",
+  "funct f(x) {\n    return map([x], f)\n}\npost(f(1))\n",
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
+{ "variadico: recursao via callback do C (filter) e RecursionError, nao morte por sinal",
+  "funct f(x) {\n    return filter([x], f)\n}\npost(f(1))\n",
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
+{ "variadico: recursao via decorador e RecursionError, nao morte por sinal",
+  "funct d(f) {\n    @d\n    funct g() {\n        return 1\n    }\n    return g\n}\n@d\nfunct h() {\n    return 2\n}\npost(h())\n",
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
+{ "gerador que consome a si mesmo recursivamente e RecursionError",
+  "funct g(n) {\n    for each x in g(n + 1) {\n        yield x\n    }\n}\npost(list(g(0)))\n",
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
+{ "RecursionError que passa pelo C e capturavel",
+  "funct f(x) {\n    return map([x], f)\n}\ntry {\n    f(1)\n} catch (RecursionError e) {\n    post(\"pegou\")\n}\npost(\"segue\")\n",
+  "pegou\nsegue", NULL, 0 },
+{ "recursao via map dentro de async e RecursionError na pilha menor da fibra",
+  "funct f(x) {\n    return map([x], f)\n}\nasync funct t() {\n    return f(1)\n}\npost(await t())\n",
+  "", "RecursionError: maximum recursion depth exceeded", 1 },
+/* Contrapeso: a folga medida não pode recusar aninhamento real dentro da
+ * fibra. Cada nível custa ~13 KB da pilha do C dela (`-fstack-usage`), e com
+ * 128 KB cabiam 8 — o 9º já era RecursionError, enquanto no programa principal
+ * cabem 601. Por isso FIB_CSTACK subiu pra 256 KB: 8 níveis passam com folga. */
+{ "oito callbacks aninhados dentro de async passam (a folga da fibra nao e limite de uso)",
+  "funct nivel(n) {\n    if n <= 0 {\n        return 0\n    }\n    return map([n - 1], nivel)[0]\n}\n"
+  "async funct t() {\n    return nivel(8)\n}\npost(await t())\n",
+  "0", NULL, 0 },
+{ "tres map aninhados dentro de async nao dao RecursionError falso",
+  "async funct t() {\n    return map([1], funct(x) {\n        return map([x], funct(y) {\n            return map([y], funct(z) {\n                return z\n            })\n        })\n    })\n}\npost(await t())\n",
+  "[[[1]]]", NULL, 0 },
+
 { "aninhamento LEGITIMO continua passando",
   /* o teto não pode virar limite de uso real: 60 blocos e 500 parênteses */
   "x = 0\n"

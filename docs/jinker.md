@@ -583,6 +583,21 @@ automático pros drivers de rede (postgres/mysql/sqlserver). SQLite roda direto
 Abrir a conexão (`connect()`) também é async pelos mesmos motivos — o handshake
 de rede vai pra thread e a fibra cede.
 
+**Handler escrito com `async` também vale.** Uma rota, um middleware, um socket
+ou um `on_message` declarado `async funct` roda o corpo ali mesmo — o servidor
+**espera** a resposta —, na fibra que atende a conexão e vendo a requisição
+dela. Um helper `async` aguardado de dentro do handler (`v = await carrega()`)
+roda noutra fibra, que nasce com a **mesma** requisição: o `request` lá dentro é
+o do handler.
+
+```
+@app.get("/perfil")
+async funct perfil() {
+    dados = await carrega_do_banco(request.get("id"))
+    return jsonify(dados)
+}
+```
+
 **Requisição de saída também não trava.** Um `request.get/post/...` (chamar uma
 API, disparar um webhook) e o `ws_connect(...)` (WebSocket de saída) fazem
 DNS+connect+TLS+envio+recepção — rede bloqueante que travaria o worker. Igual ao

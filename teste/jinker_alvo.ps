@@ -340,6 +340,32 @@ public class PainelAlvo()
 }
 
 
+# ── handler `async`: o jinker ESPERA o corpo ────────────────────────────────
+# Rota `async funct`: o corpo roda na fibra que atende a conexão, vendo a
+# requisição dela. E o `await` de um helper `async` roda o helper noutra
+# fibra, que nasce com a requisição de quem a criou — nascia sem, e o
+# `request` lá dentro não via nada.
+async funct helper_le_query()
+{
+    sleep(0.01)
+    return request.get("q")
+}
+
+@app.get("/async/direto")
+async funct rota_async()
+{
+    sleep(0.01)
+    return {"q": request.get("q")}
+}
+
+@app.get("/async/helper")
+async funct rota_await_helper()
+{
+    v = await helper_le_query()
+    return {"q": v, "depois": request.get("q")}
+}
+
+
 # ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
 @app.route("/__parar")
 funct parar()

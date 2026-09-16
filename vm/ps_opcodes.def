@@ -195,3 +195,15 @@ PS_OP(CALL_EX,     96, "CALL_EX")
  * igual a funct solta, so que o resultado mora na classe, nao num nome. */
 PS_OP(LOAD_METODO, 97, "LOAD_METODO")
 PS_OP(SET_METODO,  98, "SET_METODO")
+
+/* `import *`: o compilador já expandiu o `*` nos nomes que o módulo exporta,
+ * e cada nome vira
+ *   DUP ; IMPORT_FROM_ESTRELA nome ; JUMP_SE_UNSET fim ; <guarda o nome> ; fim:
+ * com o módulo embaixo (um POP no final).
+ *   IMPORT_FROM_ESTRELA [.., mod] -> [.., valor]  `consts[arg]` com a regra do
+ *     `from m import x`; UNSET se o nome ainda não tem valor no módulo (import
+ *     em ciclo: o `*` pula o nome, sem erro). Com consts[arg] == "*" o `*` não
+ *     foi resolvido na compilação e o módulo apareceu só em runtime: ImportError.
+ *   JUMP_SE_UNSET [.., v] -> [.., v] ou salta pra `arg` tirando o UNSET. */
+PS_OP(IMPORT_FROM_ESTRELA, 99, "IMPORT_FROM_ESTRELA")
+PS_OP(JUMP_SE_UNSET,      100, "JUMP_SE_UNSET")

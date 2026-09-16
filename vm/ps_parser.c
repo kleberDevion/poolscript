@@ -500,6 +500,20 @@ static PSNode *bloco_entrada(P *p);
  * com os comuns sendo os primeiros da lista.
  *
  * `lambda` só muda o exemplo das mensagens e recusa `self` como nome. */
+/* `*int args` e `int *args`: a estrela já decide o tipo — tup no `*`, dict no
+ * `**` —, então um tipo ali não teria o que checar. As duas ordens recebem a
+ * MESMA frase: com o tipo antes da estrela, a de `int` dizia que ele é palavra
+ * reservada e a de `String` dizia "faltou ')'", e nenhuma apontava o conserto. */
+static int recusa_tipo_em_estrela(P *p, PSToken *tt, int estrela, const char *nome)
+{
+    const char *nm = nome ? nome : "args";
+    perro_f(p, tt, "parametro `%s%s %s` nao aceita tipo: `*args` e sempre tup "
+                   "e `**kwarg` sempre dict — escreva `%s%s`",
+            estrela == 2 ? "**" : "*", tt->texto ? tt->texto : "?", nm,
+            estrela == 2 ? "**" : "*", nm);
+    return -1;
+}
+
 static int parse_parametros(P *p, PSNode *n, int lambda)
 {
     const char *nome_vararg = NULL, *nome_kwarg = NULL;
@@ -515,18 +529,15 @@ static int parse_parametros(P *p, PSNode *n, int lambda)
          * token é o próprio nome do parâmetro (`funct f(corpo)`). */
         const char *ptipo = NULL;
         PSToken *tt = atual(p);
+        if (!estrela && eh_tipo_de_retorno(tt)) {
+            PSToken *op = espia(p, 1), *nx = espia(p, 2);
+            if (op->type == T_OP && op->texto && (!strcmp(op->texto, "*") || !strcmp(op->texto, "**"))
+                    && (nx->type == T_IDENT || nx->type == T_IDENT_UPPER))
+                return recusa_tipo_em_estrela(p, tt, op->texto[1] ? 2 : 1, nx->texto);
+        }
         if (eh_tipo_de_retorno(tt)
                 && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)) {
-            if (estrela) {
-                /* `*int args`: a estrela já decide o tipo — tup no `*`, dict
-                 * no `**`. Um tipo aqui não teria o que checar. */
-                const char *nm = espia(p, 1)->texto ? espia(p, 1)->texto : "args";
-                perro_f(p, tt, "parametro `%s%s %s` nao aceita tipo: `*args` e sempre tup "
-                               "e `**kwarg` sempre dict — escreva `%s%s`",
-                        estrela == 2 ? "**" : "*", tt->texto ? tt->texto : "?", nm,
-                        estrela == 2 ? "**" : "*", nm);
-                return -1;
-            }
+            if (estrela) return recusa_tipo_em_estrela(p, tt, estrela, espia(p, 1)->texto);
             ptipo = tipo_retorno_dup(p, tt);
             p->pos++;
         }
@@ -1929,6 +1940,11 @@ static int lista_com_alias(P *p, PSNodeVec *nomes, PSNodeVec *aliases)
 {
     for (;;) {
         PSToken *t = atual(p);
+        if (checa_op(p, "*")) {
+            perro(p, "`*` traz todos os nomes e nao se mistura com uma lista: "
+                     "escreva so `*` ou so os nomes (a, b)", t);
+            return -1;
+        }
         const char *n = nome_livre(p, "esperado nome importado");
         if (FALHOU(p)) return -1;
         PSNode *no = ps_node_novo(p->arena, N_NAME, t->line, t->col);
@@ -1947,6 +1963,26 @@ static int lista_com_alias(P *p, PSNodeVec *nomes, PSNodeVec *aliases)
         }
         if (ps_vec_push(p->arena, aliases, al) != 0) return -1;
         if (!aceita(p, T_COMMA)) break;
+    }
+    return 0;
+}
+
+/* `import m *`, `from m import *`, `PUSH m GET *`: consome o `*` e marca o nó
+ * (`texto3 = "*"`). Devolve 0 também quando não há estrela; -1 em erro. */
+static int import_estrela(P *p, PSNode *n)
+{
+    if (!checa_op(p, "*")) return 0;
+    PSToken *t = atual(p);
+    p->pos++;
+    n->texto3 = dup_str(p, "*");
+    if (checa_kw(p, "as")) {
+        perro(p, "`*` nao aceita `as`: ele liga cada nome com o proprio nome", atual(p));
+        return -1;
+    }
+    if (checa(p, T_COMMA)) {
+        perro(p, "`*` traz todos os nomes e nao se mistura com uma lista: "
+                 "escreva so `*` ou so os nomes (a, b)", t);
+        return -1;
     }
     return 0;
 }
@@ -2763,7 +2799,11 @@ static PSNode *statement(P *p)
         }
     }
 
-    /* import a.b [as c] | from [.]* a.b import x [as y], z | PUSH a [as b] [GET x, y] */
+    /* import a.b [as c] | import a.b * | from [.]* a.b import (x [as y], z | *)
+     * | PUSH a [as b] [GET (x, y | *)]
+     *
+     * `*` (as três grafias são a mesma regra): `texto3 = "*"`, e o nó não liga
+     * o nome do módulo — liga os nomes que ele exporta. */
     if (checa_kw(p, "import") || checa_kw(p, "from") || checa_kw(p, "PUSH")) {
         PSNode *n = ps_node_novo(p->arena, N_IMPORT_STMT, t->line, t->col);
         if (!n) return NULL;
@@ -2777,6 +2817,12 @@ static PSNode *statement(P *p)
                 n->texto2 = nome_livre(p, "esperado nome apos 'as'");
                 if (FALHOU(p)) return NULL;
             }
+            if (checa_op(p, "*") && n->texto2) {
+                perro(p, "`import m as x *` mistura as duas formas: `import m as x` liga o modulo, "
+                         "`import m *` liga os nomes dele — escolha uma", atual(p));
+                return NULL;
+            }
+            if (import_estrela(p, n) != 0) return NULL;
             return n;
         }
         if (aceita_kw(p, "from")) {
@@ -2793,7 +2839,8 @@ static PSNode *statement(P *p)
             if (!aceita_kw(p, "import")) {
                 perro(p, "esperado 'import' apos o modulo", atual(p)); return NULL;
             }
-            if (lista_com_alias(p, &n->lista2, &n->lista2_alias) != 0) return NULL;
+            if (import_estrela(p, n) != 0) return NULL;
+            if (!n->texto3 && lista_com_alias(p, &n->lista2, &n->lista2_alias) != 0) return NULL;
             return n;
         }
         p->pos++;                                  /* PUSH */
@@ -2806,7 +2853,13 @@ static PSNode *statement(P *p)
             if (FALHOU(p)) return NULL;
         }
         if (aceita_kw(p, "GET")) {
-            if (lista_com_alias(p, &n->lista2, &n->lista2_alias) != 0) return NULL;
+            if (checa_op(p, "*") && n->texto2) {
+                perro(p, "`PUSH m as x GET *` mistura as duas formas: `as` nomeia o modulo, "
+                         "`GET *` liga os nomes dele — escolha uma", atual(p));
+                return NULL;
+            }
+            if (import_estrela(p, n) != 0) return NULL;
+            if (!n->texto3 && lista_com_alias(p, &n->lista2, &n->lista2_alias) != 0) return NULL;
         }
         return n;
     }
@@ -3199,9 +3252,13 @@ static PSNode *statement(P *p)
     /* Ponto de entrada: `if __name__ == "main":` — o bloco roda quando o
      * arquivo é executado direto e é PULADO quando ele é importado.
      *
-     * É reconhecido pela FORMA, não avaliando a condição: `__name__` vale o
-     * caminho do arquivo (é o que se passa pro `Jinker`), então compará-lo com
-     * "main" nunca daria verdadeiro. O parser vê o desenho e emite o guard.
+     * No arquivo executado `__name__` vale "main", então a condição é
+     * verdadeira também avaliada; o guard existe pelo import: um módulo
+     * chamado `main.ps` também tem `__name__ == "main"`, e o bloco dele não
+     * pode rodar quando é importado. Por isso o parser reconhece o desenho e
+     * emite o guard — só com o literal "main". Qualquer outra string
+     * (`if __name__ == "banana"`) é um `if` comum; antes ela também virava
+     * guard e o bloco rodava no arquivo executado.
      *
      * É também o único lugar onde `:` ainda abre bloco (ver `bloco_entrada`);
      * `{ }` vale igual.
@@ -3215,7 +3272,8 @@ static PSNode *statement(P *p)
             && strcmp(p->toks[k].texto, "__name__") == 0
             && p->toks[k + 1].type == T_OP && p->toks[k + 1].texto
             && strcmp(p->toks[k + 1].texto, "==") == 0
-            && p->toks[k + 2].type == T_STR) {
+            && p->toks[k + 2].type == T_STR && p->toks[k + 2].texto
+            && p->toks[k + 2].texto_len == 4 && memcmp(p->toks[k + 2].texto, "main", 4) == 0) {
             PSToken *rot = &p->toks[k + 2];
             int32_t depois = k + 3;
             if (paren) {

@@ -382,6 +382,7 @@ typedef struct {
     int32_t  n;
     char   **nomes;      /* nome de cada global, na ordem */
     unsigned char *priv; /* 1 = `private` no modulo: nao sai por import (paralelo a nomes) */
+    unsigned char *exporta; /* 1 = o arquivo liga o nome (PSPrograma.exportados), paralelo a nomes */
 } PSModuloPS;
 
 /* Inteiro de precisão arbitrária (GMP). Só existe quando um int64 estoura;
@@ -940,6 +941,24 @@ typedef struct {
     PSClosure *cl;
 } Frame;
 
+/* O alvo de uma chamada que TEM protótipo, já resolvido: funct, closure,
+ * método ligado, `__init__` da instanciação, o `__init__` do pai no `base()`.
+ *
+ * Cada entrada de chamada — OP_CALL, OP_CALL_KW, OP_CALL_BASE, o callback
+ * vindo do C — decidia sozinha entre gerador, fibra e frame, e cada uma
+ * esquecia um pedaço: o método gerador rodava o corpo e dava "yield fora de
+ * gerador", a async por nome e o método async rodavam inline, a closure async
+ * perdia as células. Agora a entrada só diz QUEM é o alvo; o que acontece com
+ * ele é decidido num lugar. */
+typedef struct {
+    int32_t    proto;
+    PSClosure *cl;         /* células da closure, ou NULL */
+    Value      self;       /* receptor (instância, self do base()); V_UNSET = nenhum */
+    int        desloca;    /* slot 0 é do self: o receptor, ou o buraco do @static */
+    int        instancia;  /* `Entity(...)`: a expressão vale `self`, não o retorno */
+    int        ignora_kw;  /* instanciação: nome sem parâmetro segue (regra antiga) */
+} Alvo;
+
 /* ── estado do depurador ──────────────────────────────────────────────────
  * Existe só com `pool --debug`. Fora disso o campo fica zerado e o laço da VM
  * paga um `if` previsível por instrução — nada mais.
@@ -1112,7 +1131,7 @@ struct VM_ {
     char   **argv_user;
     int      argc_user;
     /* Caminho do script, ou "__main__" quando não veio de arquivo. É o que
-     * `__name__` responde. */
+     * `sys.argv[0]` responde (o `__name__` do arquivo executado é "main"). */
     char     nome_script[512];
 
     /* Transporte da retomada de gerador. Não é estado durável: vale só entre
@@ -1194,6 +1213,12 @@ typedef struct Handler_ {
      * vinha de uma função chamada dentro do try. */
     int proto;
     int lbase;
+    /* A closure do frame que abriu o `try`, pelo mesmo motivo: o catch lia
+     * `frames[fp].cl`, que só é escrito quando o frame CHAMA alguém. Numa
+     * closure que pega um erro lançado nela mesma o registro era de outra
+     * chamada (ou zerado), e o `catch` perdia as células: `return v` dava
+     * "upvalue fora da faixa". */
+    PSClosure *cl;
 } Handler;
 #define MAX_HANDLERS 256
 typedef struct VM_ VM;
@@ -1760,6 +1785,7 @@ static void fin_moduleps(VM *vm, Obj *o) {
     for (int32_t i = 0; i < m->n; i++) free(m->nomes[i]);
     free(m->nomes);
     free(m->priv);
+    free(m->exporta);
     free(m->nome);
     free(m->caminho);
 }
@@ -4661,6 +4687,9 @@ static int nativa_remove_start(VM *vm, Value *args, int n, Value *out)
 static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out);
 static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
                           const Value *kw_nomes, const Value *kw_vals, int nkw, Value *out);
+static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
+                            const Value *kw_nomes, const Value *kw_vals, int nkw,
+                            int async_no_lugar, Value *out);
 /* objetos jinker chamáveis (app(), cors(), app.socket(), app.channel()): dá o
  * params (pra chamada nomeada) e a fn de despacho. 1 se é chamável, 0 senão. */
 typedef int (*FnMetodoChamavel)(VM *, Value, Value *, int, Value *);
@@ -9523,6 +9552,16 @@ static int checa_param_tipos(VM *vm, const Proto *np, const Value *vals, int n, 
  * em Null e segue — regra antiga, mantida).
  *
  * Devolve 0, ou -1 com `vm->erro`/`erro_tipo` postos. */
+/* `@static funct f(self, ...)`: o slot 0 é o BURACO do self — na chamada pela
+ * Entity não há instância, e o 1º argumento cai no 1º parâmetro real. A
+ * pergunta estava copiada em cinco lugares (OP_CALL, OP_CALL_KW, callback do
+ * C, decorador e o `nonnull`), e cada cópia é uma chance de uma divergir. */
+static int eh_static_self(const Proto *np)
+{
+    return np->eh_static && np->nparams > 0 && np->param_nomes && np->param_nomes[0]
+        && strcmp(np->param_nomes[0], "self") == 0;
+}
+
 static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, int desloca,
                      const Value *pos, int npos,
                      const Value *kw_nomes, const Value *kw_vals, int nkw,
@@ -9530,12 +9569,10 @@ static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, in
 {
     const char *nome = np->nome ? np->nome : "?";
     int nfix = np->nparams;
-    int marcado[256];
-    if (nfix > 256) {
-        snprintf(vm->erro, sizeof(vm->erro), "%s() tem parametros demais (maximo 256)", nome);
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-        return -1;
-    }
+    int marcado[PS_MAX_PARAMS];
+    /* O compilador recusa a declaração acima do limite (funct, lambda e o
+     * `__init__` gerado dos campos): proto com mais que isso é bug dele. */
+    PS_ASSERT_MSG(nfix <= PS_MAX_PARAMS, "%s(): %d parametros fixos passou do compilador", nome, nfix);
     /* Posicionais demais: erro, a não ser que haja `*args` pra recebê-los. */
     int oculto = (desloca && !self) ? 1 : 0;
     int dado = desloca + npos;
@@ -9553,29 +9590,38 @@ static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, in
         return -1;
     }
     for (int k = 0; k < np->nlocals; k++) dest[k] = MK_UNSET();
-    for (int k = 0; k < nfix; k++) marcado[k] = 0;
+    /* Receptor sem parâmetro fixo que o receba — `__init__(*args)` sem self:
+     * ele é o 1º posicional, então entra na tup. O slot 0 aqui é do próprio
+     * `*args`, e escrever o receptor ali era ver a tup sobrescrever a
+     * instância. A aridade já recusou o caso sem `*args` lá em cima. */
+    int self_na_tup = 0;
     if (desloca && np->nlocals > 0) {
-        dest[0] = self ? *self : MK_UNSET();
-        if (nfix > 0) marcado[0] = 1;
+        if (nfix == 0 && self) self_na_tup = 1;
+        else dest[0] = self ? *self : MK_UNSET();
     }
     int cabem = nfix - desloca;
     if (cabem < 0) cabem = 0;
     int fixos = npos < cabem ? npos : cabem;
-    for (int k = 0; k < fixos; k++) {
-        dest[desloca + k] = pos[k];
-        marcado[desloca + k] = 1;
-    }
+    for (int k = 0; k < fixos; k++) dest[desloca + k] = pos[k];
+    /* Os fixos em [0, preenchidos) vieram por posição (o self conta). O
+     * vetor `marcado` só é montado quando há nomeado — sem nomeado, quem
+     * falta é conta, não varredura; zerá-lo em toda chamada virava um
+     * `memset` no caminho quente de todo método. */
+    int preenchidos = desloca + fixos;
+    if (nkw > 0)
+        for (int k = 0; k < nfix; k++) marcado[k] = k < preenchidos;
     /* `*args`: o que sobrou dos posicionais, numa tup (vazia se nada sobrou). */
     if (np->slot_vararg >= 0) {
         int sobra = npos - fixos;
-        PSList *tp = nova_seq(vm, sobra, OBJ_TUPLE);
+        PSList *tp = nova_seq(vm, sobra + self_na_tup, OBJ_TUPLE);
         if (!tp) {
             snprintf(vm->erro, sizeof(vm->erro), "sem memoria em *args");
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "MemoryError");
             return -1;
         }
-        for (int k = 0; k < sobra; k++) tp->itens[k] = pos[fixos + k];
-        tp->len = sobra;
+        if (self_na_tup) tp->itens[0] = *self;
+        for (int k = 0; k < sobra; k++) tp->itens[self_na_tup + k] = pos[fixos + k];
+        tp->len = sobra + self_na_tup;
         dest[np->slot_vararg] = MK_OBJ(tp);
     }
     /* `**kwarg`: nasce vazio, e recebe cada nomeado que não casa com
@@ -9626,8 +9672,16 @@ static int liga_args(VM *vm, const Proto *np, Value *dest, const Value *self, in
      * o slot ficaria UNSET e a funct devolveria `null` calada. O slot do
      * self (desloca) fica de fora. */
     int obrig = nfix - np->ndefaults;
-    if (conta_faltantes(desloca, obrig, marcado) > 0) {
-        int q = conta_faltantes(desloca, obrig, marcado);
+    int faltam;
+    if (nkw > 0) {
+        faltam = conta_faltantes(desloca, obrig, marcado);
+    } else {
+        faltam = obrig - preenchidos;
+        if (faltam > 0)   /* a frase lista os nomes: aí o vetor é montado */
+            for (int k = 0; k < nfix; k++) marcado[k] = k < preenchidos;
+    }
+    if (faltam > 0) {
+        int q = faltam;
         snprintf(vm->erro, sizeof(vm->erro),
                  "%s() missing %d required positional argument%s: %s",
                  nome, q, q == 1 ? "" : "s", lista_faltantes(np, desloca, obrig, marcado));
@@ -10404,8 +10458,13 @@ static int bit_bignum(VM *vm, int op, Value a, Value b, Value *out)
 
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            const Value *kw_nomes, const Value *kw_vals, int nkw,
+                           const Value *self0, int desloca0, int ignora_kw0,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
+static int executa_alvo_c(VM *vm, const Alvo *a, const Value *pos, int npos,
+                          const Value *kwn, const Value *kwv, int nkw, Value *out);
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
+static int modulo_nativo_de(const char *mod);
+static void estrela_cache_solta(void);
 static int spec_eh_caminho(const char *s);
 
 /* O gerador nasce com os locais UNSET: quem chama liga os argumentos em
@@ -10461,7 +10520,11 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     }
     Proto *pr = &vm->protos[g->proto];
     int fp0 = vm->frame_topo, sp0 = vm->sp, lb0 = vm->locals_top;
-    if (fp0 + 1 >= vm->frames_teto) { snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+    /* Retomar aninha um `vm_executa_base` na pilha do C: um gerador que
+     * consome outro gerador dele mesmo (`for each x in g(n + 1)`) descia a
+     * pilha do C sem gastar frame da VM e morria com SIGSEGV. Medido ANTES de
+     * mexer no estado, pro gerador continuar retomável depois do erro. */
+    if (fp0 + 1 >= vm->frames_teto || ps_pilha_apertada()) { snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1; }
     if (lb0 + pr->nlocals >= vm->locals_teto) { snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError"); return -1; }
@@ -10492,7 +10555,7 @@ static int ger_retoma(VM *vm, PSGerador *g, Value *out)
     g->rodando = 1;
 
     Value r;
-    int rc = vm_executa_base(vm, g->proto, NULL, -1, NULL, NULL, 0, fp0, sp0, lb0, g->cl, &r);
+    int rc = vm_executa_base(vm, g->proto, NULL, -1, NULL, NULL, 0, NULL, 0, 0, fp0, sp0, lb0, g->cl, &r);
     int cedeu = vm->ger_cedeu;
     /* lê o estado ANTES de restaurar os campos de transporte */
     if (cedeu) {
@@ -15790,7 +15853,10 @@ static int ws_drena(VM *vm, PSWsConn *w, int timeout_ms)
         if (mod_json_parse(vm, um, 1, &msg) != 0) { vm->erro[0]='\0'; vm->erro_tipo[0]='\0'; msg = sv; }
         vm->stack[vm->sp - 1] = msg;   /* raiz troca pra mensagem final */
         Value ret;
-        int r = chama_valor(vm, w->on_msg, &msg, 1, &ret);
+        /* a drenagem ESPERA o callback: `async funct` roda aqui, em ordem, como
+         * o handler do jinker — virar fibra solta deixaria a mensagem seguinte
+         * passar na frente da que ainda está sendo tratada */
+        int r = chama_valor_modo(vm, w->on_msg, &msg, 1, NULL, NULL, 0, 1, &ret);
         vm->sp--;                      /* a mensagem */
         if (r != 0) { rc = -1; break; }
     }
@@ -18798,7 +18864,9 @@ static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
     if (!j) BERRO(vm, "MemoryError", "sem memoria");
     j->obj.type = OBJ_JINKER; j->obj.marked = 0;
     j->obj.next = vm->objetos; vm->objetos = (Obj *)j;
-    j->nome = strdup(n >= 1 && EH_STRING(args[0]) ? COMO_STRING(args[0])->chars : "__main__");
+    /* sem nome, o do arquivo executado: `Jinker()` e `Jinker(__name__)` no
+     * programa principal dão o mesmo "main" */
+    j->nome = strdup(n >= 1 && EH_STRING(args[0]) ? COMO_STRING(args[0])->chars : "main");
     j->static_url = strdup("/");
     j->mw_handler = MK_NULL();
     j->ch_status = MK_NULL();
@@ -19311,7 +19379,9 @@ static int jk_chama_handler(VM *vm, Value handler, PSJReq *req, Value *ret)
         }
     }
 
-    int rc = chama_valor_kw(vm, handler, NULL, 0, nkw ? kn : NULL, nkw ? kv : NULL, nkw, ret);
+    /* O jinker ESPERA o handler: `async funct` roda aqui, na fibra que atende
+     * a conexão e com a requisição dela — é o `await handler()` do framework. */
+    int rc = chama_valor_modo(vm, handler, NULL, 0, nkw ? kn : NULL, nkw ? kv : NULL, nkw, 1, ret);
     vm->jk_req = MK_NULL();
     return rc;
 }
@@ -19882,7 +19952,14 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
 #define FIB_STACK   2048          /* Values na pilha de valores da fibra */
 #define FIB_LOCALS  4096          /* Values no pool de locais */
 #define FIB_FRAMES  512           /* frames de chamada */
-#define FIB_CSTACK  (128 * 1024)  /* pilha do C da fibra (ucontext) */
+/* Pilha do C da fibra (ucontext). Cada nível de chamada que passa pelo C
+ * (callback de map/filter, decorador, retomada de gerador, import) empilha um
+ * quadro de `vm_executa_base`, medido em 12 KB (`-fstack-usage`), mais o do
+ * `chama_valor_modo`: com 128 KB e a margem de folga, a fibra aceitava 8
+ * níveis aninhados e o 9º virava RecursionError — no programa principal são
+ * 601. Teto de aninhamento não pode virar limite de uso; com 256 KB são 17.
+ * O mapeamento é reservado, não residente: só as páginas tocadas viram RAM. */
+#define FIB_CSTACK  (256 * 1024)
 
 /* PILHA DE FIBRA COM PÁGINA DE GUARDA.
  *
@@ -19940,11 +20017,15 @@ typedef struct Fiber {
     FibStatus  status;
     int        usada;             /* slot do pool ocupado */
     int        kind;              /* FIB_HTTP (handler) | FIB_ASYNC (async action) */
-    /* async action: proto + args a rodar, e o future a resolver */
-    int        a_proto;
-    Value      a_args[32];  /* os argumentos da `async funct`, crus: a fibra
-                             * liga quando roda (o CALL já validou a chamada) */
-    int        a_nargs;
+    /* async: o alvo e os argumentos a rodar, e o future a resolver. Os
+     * argumentos vão crus (a fibra liga quando roda; a chamada já validou), em
+     * tups próprias: a fibra guardava só um proto e 32 posicionais, e por isso
+     * a closure perdia as células, o método perdia o receptor e a chamada por
+     * nome nem cabia. */
+    Alvo       a_alvo;
+    Value      a_pos;       /* tup dos posicionais */
+    Value      a_kwn;       /* tup dos nomes, ou Null sem nomeados */
+    Value      a_kwv;       /* tup dos valores nomeados, alinhada com a_kwn */
     PSFuturo  *fut;
     PSFuturo  *wait_fut;         /* != NULL: fibra cedeu esperando este future */
     /* trabalho: servir uma requisição HTTP nesta conexão */
@@ -20045,10 +20126,19 @@ static void fib_trampolim(void)
     ps_pilha_le(&f->pilha_base, &f->pilha_tam);   /* pras retomadas seguintes */
     if (f->kind == FIB_ASYNC) {
         /* roda a async action no corpo da fibra; ao ceder num sleep/DB, o
-         * escalonador atende outras; ao terminar, resolve o future. */
-        Value fn; fn.t = V_FUNC; fn.as.proto = f->a_proto;
+         * escalonador atende outras; ao terminar, resolve o future. Vai
+         * direto ao frame: redespachar pelo valor veria `eh_async` de novo e
+         * criaria outra fibra. */
         Value res = MK_NULL();
-        int rc = chama_valor(vm, fn, f->a_args, f->a_nargs, &res);
+        PSList *tp = COMO_LIST(f->a_pos);
+        const Value *kwn = NULL, *kwv = NULL;
+        int nkw = 0;
+        if (EH_TUPLA(f->a_kwn)) {
+            kwn = COMO_LIST(f->a_kwn)->itens;
+            kwv = COMO_LIST(f->a_kwv)->itens;
+            nkw = COMO_LIST(f->a_kwn)->len;
+        }
+        int rc = executa_alvo_c(vm, &f->a_alvo, tp->itens, tp->len, kwn, kwv, nkw, &res);
         if (rc != 0) {
             f->fut->erro = 1;
             snprintf(f->fut->erro_msg, sizeof(f->fut->erro_msg), "%s", vm->erro);
@@ -20116,10 +20206,23 @@ static PSFuturo *novo_futuro(VM *vm)
     return fu;
 }
 
-/* arma uma fibra pra rodar `async action` proto(args...); devolve o future. NULL
- * = pool cheio ou sem memória. A fibra fica PRONTA-P/-RODAR (só corre quando o
+/* Tup com uma cópia de `n` valores (a fibra guarda os argumentos além da
+ * chamada que os empilhou). */
+static int tup_de(VM *vm, const Value *v, int n, Value *out)
+{
+    PSList *t = nova_seq(vm, n, OBJ_TUPLE);
+    if (!t) return -1;
+    for (int i = 0; i < n; i++) t->itens[i] = v[i];
+    t->len = n;
+    *out = MK_OBJ(t);
+    return 0;
+}
+
+/* arma uma fibra pra rodar a `async funct` do alvo; devolve o future. NULL =
+ * pool cheio ou sem memória. A fibra fica PRONTA-P/-RODAR (só corre quando o
  * escalonador — async_roda_ate/poll loop — a resume). */
-static PSFuturo *fib_pega_async(VM *vm, int proto, Value *args, int nargs)
+static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npos,
+                                const Value *kwn, const Value *kwv, int nkw)
 {
     Fiber *f = fib_slot();
     if (!f) return NULL;
@@ -20128,14 +20231,22 @@ static PSFuturo *fib_pega_async(VM *vm, int proto, Value *args, int nargs)
     if (!f->frames) f->frames = calloc(FIB_FRAMES, sizeof(Frame));
     if (!f->cstack) f->cstack = fib_pilha_nova();
     if (!f->stack || !f->locals || !f->frames || !f->cstack) return NULL;
+    /* As tups nascem ANTES de a fibra ficar `usada`: sem memória no meio, o
+     * slot continua livre e nenhuma raiz aponta pra lixo. */
+    Value tpos, tkwn = MK_NULL(), tkwv = MK_NULL();
+    if (tup_de(vm, pos, npos, &tpos) != 0) return NULL;
+    if (nkw > 0 && (tup_de(vm, kwn, nkw, &tkwn) != 0 || tup_de(vm, kwv, nkw, &tkwv) != 0)) return NULL;
     PSFuturo *fu = novo_futuro(vm);
     if (!fu) return NULL;
     f->pilha_base = NULL; f->pilha_tam = 0;   /* o trampolim remarca */
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_ASYNC;
-    f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
+    /* A fibra nasce com a requisição de quem a criou: `await helper()` dentro
+     * de um handler roda o helper noutra fibra, e o `request` lá dentro é o
+     * mesmo do handler. Nascia Null, e o helper não via requisição nenhuma. */
+    f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = vm->jk_req;
     f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL; f->conn = NULL;
-    f->a_proto = proto; f->a_nargs = nargs > 32 ? 32 : nargs;   /* o CALL já recusou > 32 */
-    for (int i = 0; i < f->a_nargs; i++) f->a_args[i] = args[i];
+    f->a_alvo = *a;
+    f->a_pos = tpos; f->a_kwn = tkwn; f->a_kwv = tkwv;
     f->fut = fu; fu->fib = f;
     ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
     return fu;
@@ -20379,14 +20490,26 @@ static void fib_marca_gc(VM *vm)
     if (vm->fib_atual) {   /* uma fibra é a corrente -> o MAIN está salvo em m_* */
         for (int i = 0; i < vm->m_sp; i++)         marca_valor(vm, &vm->m_stack[i]);
         for (int i = 0; i < vm->m_locals_top; i++) marca_valor(vm, &vm->m_locals[i]);
+        /* As closures dos frames do MAIN também: elas só existem ali (o CALL
+         * já as tirou da pilha de valores). Enquanto uma fibra rodava, só a
+         * pilha e os locais do MAIN eram marcados. O MAIN cedeu numa saída
+         * pro C, que publica `frames[fp].cl` (PUBLICA_FRAME): todo registro
+         * abaixo de `frame_topo` descreve um frame vivo. */
+        for (int i = 0; i < vm->m_frame_topo && i < vm->m_frames_teto; i++)
+            if (vm->m_frames[i].cl) marca_obj(vm, (Obj *)vm->m_frames[i].cl);
         marca_valor(vm, &vm->m_jk_req);
     }
     for (int i = 0; i < g_nfibs; i++) {
         Fiber *f = g_fibs[i];
         if (!f->usada) continue;
-        /* args da async action ficam vivos até o corpo consumi-los (raiz sempre) */
-        if (f->kind == FIB_ASYNC)
-            for (int k = 0; k < f->a_nargs; k++) marca_valor(vm, &f->a_args[k]);
+        /* o alvo e os argumentos da async ficam vivos até o corpo terminar */
+        if (f->kind == FIB_ASYNC) {
+            marca_valor(vm, &f->a_alvo.self);
+            if (f->a_alvo.cl) marca_obj(vm, (Obj *)f->a_alvo.cl);
+            marca_valor(vm, &f->a_pos);
+            marca_valor(vm, &f->a_kwn);
+            marca_valor(vm, &f->a_kwv);
+        }
         if (f == vm->fib_atual) continue;   /* a corrente é marcada via vm->stack */
         for (int k = 0; k < f->sp; k++)         marca_valor(vm, &f->stack[k]);
         for (int k = 0; k < f->locals_top; k++) marca_valor(vm, &f->locals[k]);
@@ -21324,6 +21447,18 @@ static Builtin BUILTINS[] = {
     goto erro_runtime; \
 } while (0)
 
+/* Saída do laço pro C — nativa, callback, import, decorador, `await` — que pode
+ * reentrar na VM, ceder a fibra ou coletar. Publica o frame corrente: o C
+ * reentra a partir de `frame_topo`, e `frames[fp].cl` passa a ser a closure
+ * que está rodando.
+ *
+ * O registro de `fp` só era escrito quando o frame CHAMAVA uma funct. Enquanto
+ * o C rodava, a closure em execução não tinha raiz nenhuma, e o GC de dentro
+ * de um callback a liberava: `fabrica(3)([1, 2])` com `map` e coleta no meio
+ * lia a closure já liberada (valgrind). E o registro velho de uma chamada
+ * anterior no mesmo índice era marcado como se fosse deste frame. */
+#define PUBLICA_FRAME() do { vm->frame_topo = fp + 1; vm->frames[fp].cl = cl; } while (0)
+
 /* ── o laço de execução ─────────────────────────────────────────────────── */
 /* Roda `proto_inicial` a partir de uma BASE de frame/pilha/locais, em vez de
  * sempre do zero. É o que permite reentrar na VM: um builtin em C (`map`,
@@ -21337,12 +21472,13 @@ static Builtin BUILTINS[] = {
  */
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            const Value *kw_nomes, const Value *kw_vals, int nkw,
+                           const Value *self0, int desloca0, int ignora_kw0,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado);
 
 static int vm_executa(VM *vm, int proto_inicial, Value *resultado)
 {
     vm_corrente = vm;
-    int r = vm_executa_base(vm, proto_inicial, NULL, 0, NULL, NULL, 0, 0, 0, 0, NULL, resultado);
+    int r = vm_executa_base(vm, proto_inicial, NULL, 0, NULL, NULL, 0, NULL, 0, 0, 0, 0, 0, NULL, resultado);
     vm_corrente = NULL;
     return r;
 }
@@ -21403,6 +21539,85 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
     return melhor;
 }
 
+enum { MEMBRO_ACHOU = 0, MEMBRO_PRIVADO = 1, MEMBRO_AUSENTE = 2 };
+
+/* O membro `nome` de um módulo, pela regra do import — a MESMA pra `from m
+ * import x`, `m.x` e `from m import *`. Devolve MEMBRO_ACHOU com o valor em
+ * `out` (UNSET = o nome é do módulo mas ainda não tem valor: import em
+ * ciclo), MEMBRO_PRIVADO, MEMBRO_AUSENTE, ou -1 com o erro posto (membro
+ * nativo calculado que falhou). Quem chama publica sp/locals_top antes: o
+ * membro nativo calculado roda código e aloca. */
+static int membro_de_modulo(VM *vm, Value alvo, const char *nome, Value *out)
+{
+    if (EH_MODPS(alvo)) {
+        PSModuloPS *m = COMO_MODPS(alvo);
+        for (int32_t k = 0; k < m->n; k++) {
+            if (strcmp(m->nomes[k], nome) != 0) continue;
+            /* `private funct` e `private class` não saem do arquivo — nem a
+             * classe private atrás de outro nome (`Q = P`) */
+            Value v = vm->globals[m->base + k];
+            if ((m->priv && m->priv[k]) || (EH_CLASS(v) && COMO_CLASS(v)->classe_privada))
+                return MEMBRO_PRIVADO;
+            if (!m->exporta || !m->exporta[k]) return MEMBRO_AUSENTE;
+            *out = v;
+            return MEMBRO_ACHOU;
+        }
+        return MEMBRO_AUSENTE;
+    }
+    const ModuloNat *mn = &MODULOS[COMO_MODULO(alvo)->idx];
+    for (int k = 0; k < mn->n; k++) {
+        const MembroMod *mm = &mn->membros[k];
+        if (strcmp(mm->nome, nome) != 0) continue;
+        if (mm->eh_valor) {
+            vm->erro_tipo[0] = '\0';
+            if (mm->fn(vm, NULL, 0, out) != 0) {
+                if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+                return -1;
+            }
+            return MEMBRO_ACHOU;
+        }
+        PSNativa *f = calloc(1, sizeof(PSNativa));
+        if (!f) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+            return -1;
+        }
+        f->obj.type = OBJ_NATIVA; f->obj.marked = 0;
+        f->obj.next = vm->objetos; vm->objetos = (Obj *)f;
+        f->nome = mm->nome;
+        f->fn = mm->fn;
+        f->params = mm->params;
+        vm->alocado += sizeof(PSNativa);
+        *out = MK_OBJ(f);
+        return MEMBRO_ACHOU;
+    }
+    return MEMBRO_AUSENTE;
+}
+
+/* "Did you mean" de `m.x`: só entre o que o módulo exporta — sugerir um
+ * builtin que ele só chamou seria mandar pra um nome que também não sai. */
+static const char *sugere_membro(VM *vm, Value alvo, const char *nome)
+{
+    if (EH_MODPS(alvo)) {
+        PSModuloPS *m = COMO_MODPS(alvo);
+        if (m->n <= 0) return NULL;
+        const char **cands = malloc(sizeof(char *) * (size_t)m->n);
+        if (!cands) return NULL;
+        int nc = 0;
+        for (int32_t k = 0; k < m->n; k++)
+            if (m->exporta && m->exporta[k] && !(m->priv && m->priv[k])) cands[nc++] = m->nomes[k];
+        const char *d = sugere_nome(nome, cands, nc);
+        free(cands);
+        return d;
+    }
+    (void)vm;
+    const ModuloNat *mn = &MODULOS[COMO_MODULO(alvo)->idx];
+    const char *cands[256];
+    int nc = mn->n < 256 ? mn->n : 256;
+    for (int k = 0; k < nc; k++) cands[k] = mn->membros[k].nome;
+    return sugere_nome(nome, cands, nc);
+}
+
 static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
 {
     /* `params` vazio = método de ZERO argumentos.
@@ -21437,9 +21652,171 @@ static int checa_aridade_nat(VM *vm, const MetodoNat *mt, int n)
     return erro_aridade(vm, mt->nome, 0, max, n);
 }
 
+/* Quem é o alvo, quando ele tem protótipo: funct, closure, ou método ligado a
+ * uma funct declarada. Devolve 1 (preencheu `a`), 0 (não tem protótipo:
+ * nativa, tipo, jinker, Entity, método que um decorador trocou) ou -1 (erro
+ * posto). O buraco do @static e o receptor saem decididos daqui.
+ *
+ * `always_inline`: está no caminho quente de TODA chamada de funct, e com um
+ * `inline` simples o gcc a deixava fora de linha nos três pontos de uso —
+ * chamada de closure medida 10% mais lenta que com o ramo escrito no laço. */
+static inline __attribute__((always_inline)) int resolve_alvo(VM *vm, Value fn, Alvo *a)
+{
+    /* do `self` basta o tipo: todo leitor pergunta `.t != V_UNSET` antes */
+    a->cl = NULL; a->self.t = V_UNSET; a->desloca = 0; a->instancia = 0; a->ignora_kw = 0;
+    if (EH_CLOSURE(fn)) {
+        /* closure é uma funct como outra qualquer: o proto é o mesmo, o que
+         * muda é levar as células junto */
+        a->cl = COMO_CLOSURE(fn);
+        a->proto = a->cl->proto;
+        a->desloca = eh_static_self(&vm->protos[a->proto]);
+        return 1;
+    }
+    if (fn.t == V_FUNC) {
+        /* Método @static acessado direto na Entity (`Classe.metodo`) chega
+         * como FUNC puro: sem instância pro `self`, o 1º argumento cai no 1º
+         * parâmetro REAL e o slot do self nasce UNSET. */
+        a->proto = fn.as.proto;
+        a->desloca = eh_static_self(&vm->protos[a->proto]);
+        return 1;
+    }
+    if (EH_BOUND(fn) && COMO_BOUND(fn)->metodo.t == V_FUNC) {
+        PSBound *b = COMO_BOUND(fn);
+        Proto *np = &vm->protos[b->metodo.as.proto];
+        /* Método de instância PRECISA declarar `self` como 1º parâmetro —
+         * senão a instância cairia no parâmetro real e daria "argumentos
+         * demais" sem nexo. */
+        if (np->nparams == 0 || !np->param_nomes || !np->param_nomes[0]
+                || strcmp(np->param_nomes[0], "self") != 0) {
+            if (np->eh_static)
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
+                         np->nome ? np->nome : "?", np->nome ? np->nome : "?");
+            else
+                snprintf(vm->erro, sizeof(vm->erro),
+                         "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
+                         np->nome ? np->nome : "?");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+            return -1;
+        }
+        a->proto = b->metodo.as.proto;
+        a->self = b->instancia;
+        a->desloca = 1;
+        return 1;
+    }
+    return 0;
+}
+
+/* Gerador e async não abrem frame: devolvem o objeto — o gerador congelado
+ * com os argumentos já ligados, ou o future da fibra. Devolve 1 com o valor
+ * em `out`, 0 se a chamada é comum (quem chamou abre o frame), -1 com o erro
+ * posto.
+ *
+ * `async_no_lugar`: quem chama é o framework que ESPERA o handler — rota,
+ * middleware e socket do jinker, mensagem do WebSocket. O corpo roda ali
+ * mesmo, que é o `await handler()` do framework: na fibra que atende a
+ * conexão, vendo a requisição dela. */
+/* O alvo vai POR VALOR de propósito: passar o ponteiro fazia o endereço do
+ * `Alvo` do laço escapar pra uma função não-inline, e o gcc era obrigado a
+ * manter os campos dele na memória em TODA chamada. Medido: 60 instruções a
+ * mais por chamada de método. Aqui o custo da cópia só aparece no caminho de
+ * gerador/async, que não abre frame mesmo. */
+static int chamada_sem_frame(VM *vm, Alvo alvo, const Value *pos, int npos,
+                             const Value *kwn, const Value *kwv, int nkw,
+                             int async_no_lugar, Value *out)
+{
+    const Alvo *a = &alvo;
+    Proto *np = &vm->protos[a->proto];
+    int vira_fibra = np->eh_async && !async_no_lugar;
+    if (!np->eh_gerador && !vira_fibra) return 0;
+    if (a->instancia) {
+        /* `Entity(...)` vale a instância: um `__init__` que devolve gerador
+         * ou future não teria onde pôr o que produz */
+        snprintf(vm->erro, sizeof(vm->erro), "__init__() should return None, not '%s'",
+                 np->eh_gerador ? "generator" : "future");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+        return -1;
+    }
+    const Value *self = a->self.t != V_UNSET ? &a->self : NULL;
+    if (np->eh_gerador) {
+        /* chamar um gerador não executa nada: o corpo só roda no 1º `next` */
+        PSGerador *g = novo_gerador(vm, a->proto);
+        if (!g) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria no gerador");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+            return -1;
+        }
+        if (liga_args(vm, np, g->locais, self, a->desloca, pos, npos, kwn, kwv, nkw, a->ignora_kw) != 0)
+            return -1;
+        g->cl = a->cl;
+        *out = MK_OBJ(g);
+        return 1;
+    }
+    /* `async funct`: NUNCA roda inline — cria a fibra e devolve o future. A
+     * chamada é validada AGORA (aridade, nome, tipo: o erro sai na chamada,
+     * não no await) ligando num rascunho acima de `locals_top`; a fibra liga
+     * de novo quando roda. */
+    if (vm->locals_top + np->nlocals >= vm->locals_teto) {
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+        return -1;
+    }
+    if (liga_args(vm, np, &vm->locals[vm->locals_top], self, a->desloca, pos, npos,
+                  kwn, kwv, nkw, a->ignora_kw) != 0)
+        return -1;
+    PSFuturo *fu = fib_pega_async(vm, a, pos, npos, kwn, kwv, nkw);
+    if (!fu) {
+        snprintf(vm->erro, sizeof(vm->erro), "sem memoria/pool cheio no async");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
+        return -1;
+    }
+    *out = MK_OBJ(fu);
+    return 1;
+}
+
+/* Abre o frame do alvo por cima do que está executando, vindo do C —
+ * callback, handler, decorador, corpo da fibra — e roda até ele voltar. */
+static int executa_alvo_c(VM *vm, const Alvo *a, const Value *pos, int npos,
+                          const Value *kwn, const Value *kwv, int nkw, Value *out)
+{
+    Proto *pr = &vm->protos[a->proto];
+    /* Cada chamada vinda do C aninha um `vm_executa_base` na pilha do C, mas
+     * gasta UM frame da VM: o teto de frames nunca chegava, e a recursão que
+     * passa por map/filter/decorador morria com SIGSEGV. A folga da pilha do C
+     * é medida aqui — a do processo, ou a da fibra, que `fib_resume` troca
+     * junto com o contexto. */
+    if (vm->frame_topo + 1 >= vm->frames_teto
+            || vm->locals_top + pr->nlocals >= vm->locals_teto
+            || ps_pilha_apertada()) {
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+        return -1;
+    }
+    int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
+    /* A instância em construção fica na pilha da VM enquanto o `__init__`
+     * roda: é a raiz dela, e o `__init__` pode reatribuir o próprio slot 0. */
+    if (a->instancia && fixa_raiz(vm, a->self) != 0) {
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+        return -1;
+    }
+    int r = vm_executa_base(vm, a->proto, pos, npos, kwn, kwv, nkw,
+                            a->self.t != V_UNSET ? &a->self : NULL, a->desloca, a->ignora_kw,
+                            vm->frame_topo, vm->sp, vm->locals_top, a->cl, out);
+    vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
+    if (r == 0 && a->instancia) *out = a->self;
+    return r;
+}
+
 static int chama_valor(VM *vm, Value fn, Value *args, int n, Value *out)
 {
-    return chama_valor_kw(vm, fn, args, n, NULL, NULL, 0, out);
+    return chama_valor_modo(vm, fn, args, n, NULL, NULL, 0, 0, out);
+}
+
+static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
+                          const Value *kw_nomes, const Value *kw_vals, int nkw, Value *out)
+{
+    return chama_valor_modo(vm, fn, args, n, kw_nomes, kw_vals, nkw, 0, out);
 }
 
 /* A instância que os registradores dos métodos de `cl` recebem: criada uma
@@ -21479,9 +21856,11 @@ static int instancia_decor(VM *vm, PSClass *cl, Value *out)
 }
 
 /* Chamada vinda do C com posicionais E nomeados (`kw_nomes`/`kw_vals`, nkw).
- * Nomeado só existe pra quem tem proto — nativa e tipo não recebem nome. */
-static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
-                          const Value *kw_nomes, const Value *kw_vals, int nkw, Value *out)
+ * Nomeado só existe pra quem tem proto — nativa e tipo não recebem nome.
+ * `async_no_lugar`: ver `chamada_sem_frame`. */
+static int chama_valor_modo(VM *vm, Value fn, Value *args, int n,
+                            const Value *kw_nomes, const Value *kw_vals, int nkw,
+                            int async_no_lugar, Value *out)
 {
     if (nkw > 0 && (fn.t == V_NATIVE || EH_NATIVA(fn) || EH_METNAT(fn) || fn.t == V_TIPO)) {
         snprintf(vm->erro, sizeof(vm->erro), "%s() takes no keyword arguments",
@@ -21515,104 +21894,90 @@ static int chama_valor_kw(VM *vm, Value fn, Value *args, int n,
         return conv(vm, args, n, out);
     }
 
-    int proto;
-    Value reais[64];
-    PSClosure *cl_chamada = NULL;
-    if (EH_CLOSURE(fn)) {
-        /* action aninhada usada como valor (callback, map/filter, handler):
-         * o proto é o mesmo, o que muda é levar as células junto. */
-        cl_chamada = COMO_CLOSURE(fn);
-        fn = MK_FUNC(cl_chamada->proto);
-    }
-    if (fn.t == V_FUNC) {
-        proto = fn.as.proto;
-        /* @static com `self` na assinatura, chamado como VALOR (map/filter/
-         * callback/handler/async): não há instância — dropa o self pra o
-         * argumento cair no 1º parâmetro REAL, e o slot do self nasce UNSET.
-         * Mesma regra do OP_CALL/OP_CALL_KW: só vale com `static`. Um método
-         * de instância chegando aqui como funct (um decorador repassando o
-         * método com `func(*args)`) já traz o receptor no 1º argumento — e
-         * deslocar empurrava a instância pro parâmetro seguinte. */
-        Proto *pf = &vm->protos[proto];
-        if (pf->eh_static && pf->param_nomes && pf->param_nomes[0]
-                && strcmp(pf->param_nomes[0], "self") == 0) {
-            /* O tipo tem que ser escrito JUNTO da mensagem: sem esta linha o
-             * `erro_tipo` ficava com o valor do erro ANTERIOR, e o catch
-             * casava pelo tipo de um erro que já tinha acontecido. */
-            if (n + 1 > 64) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
-                              snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                              return -1; }
-            reais[0] = MK_UNSET();
-            for (int i = 0; i < n; i++) reais[i + 1] = args[i];
-            args = reais;
-            n = n + 1;
-        }
-    } else if (EH_BOUND(fn)) {
-        /* método ligado: o receptor entra como argumento 0 */
-        PSBound *b = COMO_BOUND(fn);
-        if (b->metodo.t != V_FUNC) {
-            /* o método é o que um decorador pôs no lugar: chama o valor com o
-             * receptor na frente — o mesmo slot zero da funct declarada */
-            if (n + 1 > 64) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
-                              snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                              return -1; }
-            reais[0] = b->instancia;
-            for (int i = 0; i < n; i++) reais[i + 1] = args[i];
-            return chama_valor_kw(vm, b->metodo, reais, n + 1, kw_nomes, kw_vals, nkw, out);
-        }
-        proto = b->metodo.as.proto;
-        /* Método de instância PRECISA declarar `self` como 1º parâmetro (mesma
-         * regra do interp e do OP_CALL) — senão a instância cairia no parâmetro
-         * real e daria "argumentos demais" sem nexo. */
-        Proto *pb = &vm->protos[proto];
-        if (pb->nparams == 0 || !pb->param_nomes || !pb->param_nomes[0]
-                || strcmp(pb->param_nomes[0], "self") != 0) {
-            /* `@static` chamado pela instancia: a mensagem antiga mandava por
-             * `self` num metodo que por definicao nao tem self */
-            if (pb->eh_static)
-                snprintf(vm->erro, sizeof(vm->erro),
-                         "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
-                         pb->nome ? pb->nome : "?", pb->nome ? pb->nome : "?");
-            else
-                snprintf(vm->erro, sizeof(vm->erro),
-                         "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
-                         pb->nome ? pb->nome : "?");
+    /* O tipo tem que ser escrito JUNTO de toda mensagem daqui: sem isso o
+     * `erro_tipo` ficava com o valor do erro ANTERIOR, e o catch casava pelo
+     * tipo de um erro que já tinha acontecido. */
+    Alvo a;
+    if (EH_CLASS(fn)) {
+        /* Entity passada como valor (`map(l, Ponto)`) instancia, igual a
+         * `Ponto(x)` escrito à mão — era "'Entity' object is not callable". */
+        PSClass *k = COMO_CLASS(fn);
+        Value initv = MK_NULL();
+        int32_t mp = acha_metodo(k, "__init__", &initv);
+        PSInstance *ni = nova_instancia(vm, k);
+        if (!ni) {
+            snprintf(vm->erro, sizeof(vm->erro), "sem memoria ao instanciar");
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
             return -1;
         }
-        /* mesmo caso do sítio acima: o tipo tem que sair junto da mensagem */
-        if (n + 1 > 64) { snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
-                          snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
-                          return -1; }
+        Value iv = MK_OBJ(ni);
+        if (mp < 0) {
+            /* sem __init__ e sem campo, a Entity não recebe argumento */
+            if (nkw > 0 || n > 0) {
+                if (nkw > 0)
+                    snprintf(vm->erro, sizeof(vm->erro), "%s() takes no arguments", k->nome ? k->nome : "?");
+                else
+                    snprintf(vm->erro, sizeof(vm->erro), "%s() takes no arguments (%d given)",
+                             k->nome ? k->nome : "?", n);
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                return -1;
+            }
+            *out = iv;
+            return 0;
+        }
+        if (initv.t != V_FUNC) {
+            /* `__init__` trocado por decorador: roda o valor com a instância
+             * na frente; a expressão vale a instância */
+            Value reais[64], ign;
+            if (n + 1 > 64) {
+                snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+                return -1;
+            }
+            if (fixa_raiz(vm, iv) != 0) {
+                snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+                return -1;
+            }
+            reais[0] = iv;
+            for (int i = 0; i < n; i++) reais[i + 1] = args[i];
+            int rc = chama_valor_modo(vm, initv, reais, n + 1, kw_nomes, kw_vals, nkw, 0, &ign);
+            vm->sp--;
+            if (rc != 0) return -1;
+            *out = iv;
+            return 0;
+        }
+        a.proto = mp; a.cl = NULL; a.self = iv;
+        a.desloca = 1; a.instancia = 1; a.ignora_kw = 1;
+    } else if (EH_BOUND(fn) && COMO_BOUND(fn)->metodo.t != V_FUNC) {
+        /* o método é o que um decorador pôs no lugar: chama o valor com o
+         * receptor na frente — o mesmo slot zero da funct declarada */
+        PSBound *b = COMO_BOUND(fn);
+        Value reais[64];
+        if (n + 1 > 64) {
+            snprintf(vm->erro, sizeof(vm->erro), "argumentos demais (maximo 63)");
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
+            return -1;
+        }
         reais[0] = b->instancia;
         for (int i = 0; i < n; i++) reais[i + 1] = args[i];
-        args = reais;
-        n = n + 1;
+        return chama_valor_modo(vm, b->metodo, reais, n + 1, kw_nomes, kw_vals, nkw, async_no_lugar, out);
     } else {
-        snprintf(vm->erro, sizeof(vm->erro), "'%s' object is not callable", nome_do_tipo_valor(fn));
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
-        return -1;
+        int ra = resolve_alvo(vm, fn, &a);
+        if (ra < 0) return -1;
+        if (ra == 0) {
+            snprintf(vm->erro, sizeof(vm->erro), "'%s' object is not callable", nome_do_tipo_valor(fn));
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s", "TypeError");
+            return -1;
+        }
     }
 
-    /* Aridade, defaults, `*args`/`**kwarg` e tipo: é o `liga_args` na
-     * entrada do vm_executa_base que decide — o mesmo binding do OP_CALL,
-     * então `map(l, f)` com `f(x, y)` recusa igual à chamada direta. */
-    Proto *pr = &vm->protos[proto];
-    if (vm->frame_topo + 1 >= vm->frames_teto) {
-        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
-        return -1;
-    }
-    if (vm->locals_top + pr->nlocals >= vm->locals_teto) {
-        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
-        return -1;
-    }
-    int sp_salvo = vm->sp, lt_salvo = vm->locals_top, ft_salvo = vm->frame_topo;
-    int r = vm_executa_base(vm, proto, args, n, kw_nomes, kw_vals, nkw,
-                            vm->frame_topo, vm->sp, vm->locals_top, cl_chamada, out);
-    vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
-    return r;
+    /* Gerador, fibra ou frame: a mesma decisão do OP_CALL. Aridade, defaults,
+     * `*args`/`**kwarg` e tipo são do `liga_args` — `map(l, f)` com `f(x, y)`
+     * recusa igual à chamada direta. */
+    int rp = chamada_sem_frame(vm, a, args, n, kw_nomes, kw_vals, nkw, async_no_lugar, out);
+    if (rp != 0) return rp > 0 ? 0 : -1;
+    return executa_alvo_c(vm, &a, args, n, kw_nomes, kw_vals, nkw, out);
 }
 
 /* ── depurador: o DAP falado pelo próprio motor ───────────────────────────
@@ -22169,6 +22534,7 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
 
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            const Value *kw_nomes, const Value *kw_vals, int nkw,
+                           const Value *self0, int desloca0, int ignora_kw0,
                            int fp0, int sp0, int locals0, PSClosure *cl0, Value *resultado)
 {
     int fp = fp0;
@@ -22219,13 +22585,21 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     Value *stack  = vm->stack;
     Value *locals = vm->locals;
 
+    /* A chamada que TEM protótipo, resolvida pela entrada (OP_CALL,
+     * OP_CALL_KW, OP_CALL_BASE): `cp` diz quem é o alvo e `cp_*` onde estão os
+     * argumentos. O `chama_proto` decide gerador × fibra × frame. */
+    Alvo cp;
+    const Value *cp_pos = NULL, *cp_kwn = NULL, *cp_kwv = NULL;
+    int cp_npos = 0, cp_nkw = 0, cp_base = 0;
+
     /* Frame de base: é por aqui que entra a chamada vinda do C (handler do
      * jinker, chave de sort, callback de lib, decorador, fibra async). O
-     * binding é o mesmo de qualquer chamada — aridade, `*args`, `**kwarg`,
-     * tipo declarado — e fica DEPOIS de todas as declarações pra o `goto`
-     * não pular inicialização nenhuma. */
+     * binding é o mesmo de qualquer chamada — receptor, buraco do @static,
+     * aridade, `*args`, `**kwarg`, tipo declarado — e fica DEPOIS de todas as
+     * declarações pra o `goto` não pular inicialização nenhuma. */
     if (nargs_in >= 0
-            && liga_args(vm, p, &locals[locals0], NULL, 0, args, nargs_in, kw_nomes, kw_vals, nkw, 0) != 0)
+            && liga_args(vm, p, &locals[locals0], self0, desloca0, args, nargs_in,
+                         kw_nomes, kw_vals, nkw, ignora_kw0) != 0)
         goto erro_runtime;
 
     for (;;) {
@@ -22961,21 +23335,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 arg = total + 1;
                 goto chama_nomeada;
             }
-            /* Closure é uma funct como outra qualquer — normaliza pra FUNC e
-             * guarda as células pro frame. Sem isto, a funct que um decorador
-             * devolve (`route(caminho)` devolvendo `registra`, que captura
-             * `caminho`) era "not callable" quando chamada por nome. */
-            PSClosure *cl_kw = NULL;
-            if (EH_CLOSURE(alvo_kw)) {
-                cl_kw = COMO_CLOSURE(alvo_kw);
-                alvo_kw = MK_FUNC(cl_kw->proto);
-            }
             /* `P(nome="k")` instancia por nome: cria a instância aqui e
              * segue pro `__init__` como se fosse uma action nomeada. Sem
              * isto, Entity com campos tipados (que ganha um `__init__`
-             * gerado) só aceitava argumento posicional. */
-            Value inst_kw = MK_NULL();
-            int32_t proto_kw;
+             * gerado) só aceitava argumento posicional. Instanciação IGNORA
+             * nome desconhecido — `P(z=1)` deixa o campo em Null e segue. */
             if (EH_CLASS(alvo_kw)) {
                 Value initv = MK_NULL();
                 int32_t mp = acha_metodo(COMO_CLASS(alvo_kw), "__init__", &initv);
@@ -22984,15 +23348,18 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSInstance *ni = nova_instancia(vm, COMO_CLASS(alvo_kw));
                 if (!ni) ERRO(vm, "sem memoria");
-                inst_kw = MK_OBJ(ni);
+                Value inst_kw = MK_OBJ(ni);
                 if (initv.t != V_FUNC) {
                     /* `__init__` trocado por decorador: roda o valor com a
-                     * instância na frente; a expressão vale a instância */
+                     * instância na frente; a expressão vale a instância. O
+                     * slot da Entity na pilha passa a guardá-la: é a raiz
+                     * dela enquanto o valor roda. */
                     Value reais[64], ign;
                     if (npos + 1 > 64) ERRO_T(vm, "TypeError", "argumentos demais (maximo 63)");
+                    stack[sp - total - 1] = inst_kw;
                     reais[0] = inst_kw;
                     for (int k = 0; k < npos; k++) reais[k + 1] = stack[sp - total + k];
-                    vm->frame_topo = fp + 1;
+                    PUBLICA_FRAME();
                     vm->erro_tipo[0] = '\0';
                     int rc_ini;
                     REANCORA(rc_ini = chama_valor_kw(vm, initv, reais, npos + 1,
@@ -23005,13 +23372,26 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     stack[sp++] = inst_kw;
                     break;
                 }
-                proto_kw = mp;
-            } else if (alvo_kw.t == V_FUNC) {
-                proto_kw = alvo_kw.as.proto;
-            } else if (EH_BOUND(alvo_kw)) {
-                inst_kw = COMO_BOUND(alvo_kw)->instancia;
-                proto_kw = COMO_BOUND(alvo_kw)->metodo.as.proto;
-            } else if (alvo_kw.t == V_OBJ && (EH_JINKER(alvo_kw) || EH_JCORS(alvo_kw)
+                cp.proto = mp; cp.cl = NULL; cp.self = inst_kw;
+                cp.desloca = 1; cp.instancia = 1; cp.ignora_kw = 1;
+                cp_pos = &stack[sp - total]; cp_npos = npos;
+                cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw]; cp_nkw = nkw;
+                cp_base = sp - total - 1;
+                goto chama_proto;
+            }
+            /* funct, closure (a funct que um decorador devolve, capturando o
+             * que precisa) e método ligado */
+            {
+                int ra = resolve_alvo(vm, alvo_kw, &cp);
+                if (ra < 0) goto erro_runtime;
+                if (ra > 0) {
+                    cp_pos = &stack[sp - total]; cp_npos = npos;
+                    cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw]; cp_nkw = nkw;
+                    cp_base = sp - total - 1;
+                    goto chama_proto;
+                }
+            }
+            if (alvo_kw.t == V_OBJ && (EH_JINKER(alvo_kw) || EH_JCORS(alvo_kw)
                     || EH_JSOCKNS(alvo_kw) || EH_JCHAN(alvo_kw))) {
                 /* objeto jinker chamável por nome: `app(port=...)`, `cors(options=...)` */
                 const char *lista_nomes; FnMetodoChamavel jf;
@@ -23043,7 +23423,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     pos[achou] = stack[sp - nkw + k];
                     if (achou + 1 > usados) usados = achou + 1;
                 }
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
                 Value rv;
                 int rc_jf; REANCORA(rc_jf = jf(vm, alvo_kw, pos, usados, &rv));
@@ -23122,7 +23502,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (achou + 1 > usados) usados = achou + 1;
                 }
 
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
                 Value rv;
                 int rc_nat; REANCORA(rc_nat = fn_nat ? fn_nat(vm, pos, usados, &rv)
@@ -23144,77 +23524,69 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO_TF(vm, "TypeError", "'%s' object is not callable",
                         nome_do_tipo_valor(alvo_kw));
             }
+            break;
+        }
 
-            Proto *pk = &vm->protos[proto_kw];
-            /* Método de instância (bound) chamado por nome também exige `self`
-             * no slot 0 — senão a instância cairia no 1º parâmetro real. Mesma
-             * regra do OP_CALL e do interpretador. */
-            if (EH_BOUND(alvo_kw) && (!pk->param_nomes || !pk->param_nomes[0]
-                    || strcmp(pk->param_nomes[0], "self") != 0)) {
-                if (pk->eh_static)
-                    ERRO_TF(vm, "RuntimeError",
-                            "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
-                            pk->nome ? pk->nome : "?", pk->nome ? pk->nome : "?");
-                ERRO_TF(vm, "RuntimeError",
-                        "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
-                        pk->nome ? pk->nome : "?");
-            }
-
-            /* Com `self` de instância, o slot 0 já está tomado e os posicionais
-             * andam um. No @static (FUNC cujo 1º param é 'self', sem instância)
-             * também anda um, mas o slot 0 fica UNSET — dropa o self pra o
-             * posicional/nomeado cair no 1º parâmetro REAL. */
-            int eh_static_self = (inst_kw.t == V_NULL && alvo_kw.t == V_FUNC
-                                  && pk->eh_static
-                                  && pk->param_nomes && pk->param_nomes[0]
-                                  && strcmp(pk->param_nomes[0], "self") == 0);
-            int desloca = (inst_kw.t != V_NULL || eh_static_self) ? 1 : 0;
-            const Value *self_kw = inst_kw.t != V_NULL ? &inst_kw : NULL;
-
-            if (pk->eh_gerador) {
-                /* gerador chamado por nome: mesmo binding, nos locais dele */
+        /* A chamada de um alvo com protótipo, vinda de OP_CALL, OP_CALL_KW
+         * (e do CALL_EX, por eles) e OP_CALL_BASE: `cp` é o alvo, `cp_pos`/
+         * `cp_npos` os posicionais, `cp_kwn`/`cp_kwv`/`cp_nkw` os nomeados e
+         * `cp_base` o slot da pilha onde o resultado entra. Gerador e async
+         * saem pelo `chamada_sem_frame`; o resto abre frame AQUI, inline, sem
+         * pagar chamada de C no caminho quente. */
+        chama_proto: {
+            Proto *np = &vm->protos[cp.proto];
+            if (np->eh_gerador || np->eh_async) {
                 vm->sp = sp; vm->locals_top = locals_top;
-                PSGerador *g = novo_gerador(vm, proto_kw);
-                if (!g) ERRO(vm, "sem memoria no gerador");
-                if (liga_args(vm, pk, g->locais, self_kw, desloca, &stack[sp - total], npos,
-                              tn->itens, &stack[sp - nkw], nkw, EH_CLASS(alvo_kw)) != 0)
+                Value pronto;
+                if (chamada_sem_frame(vm, cp, cp_pos, cp_npos, cp_kwn, cp_kwv, cp_nkw, 0, &pronto) < 0)
                     goto erro_runtime;
-                g->cl = cl_kw;
-                sp = sp - total - 1;
-                stack[sp++] = MK_OBJ(g);
+                sp = cp_base;
+                stack[sp++] = pronto;
                 break;
             }
-
             if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-            if (locals_top + pk->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-            if (sp + pk->ncode / 2 + 8 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
+            /* Cota da pilha do chamado: cada instrução empilha no máximo um
+             * valor, então ncode/2 é teto seguro. Sem esta checagem, recursão
+             * profunda escrevia fora do array. */
+            if (sp + np->ncode / 2 + 8 >= vm->stack_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
 
-            /* O binding: posicionais, nomeados (que SOBRESCREVEM posicional,
-             * `f(1, a=2)` devolve 2), `*args`, `**kwarg`, faltantes e tipo.
-             * Instanciação IGNORA nome desconhecido — `P(z=1)` deixa o campo
-             * real em Null e segue; em funct é erro. */
-            int novo_lb = locals_top;
-            if (liga_args(vm, pk, &vm->locals[novo_lb], self_kw, desloca, &stack[sp - total], npos,
-                          tn->itens, &stack[sp - nkw], nkw, EH_CLASS(alvo_kw)) != 0)
+            /* O binding: receptor ou buraco do @static, posicionais, nomeados
+             * (que SOBRESCREVEM posicional, `f(1, a=2)` devolve 2), `*args`,
+             * `**kwarg`, faltantes e tipo. */
+            int nb = locals_top;
+            /* cópia do receptor: passar `&cp.self` prendia o `cp` inteiro na
+             * memória (o `liga_args` não é inline) */
+            Value self_cp = cp.self;
+            if (liga_args(vm, np, &vm->locals[nb], self_cp.t != V_UNSET ? &self_cp : NULL, cp.desloca,
+                          cp_pos, cp_npos, cp_kwn, cp_kwv, cp_nkw, cp.ignora_kw) != 0)
                 goto erro_runtime;
 
-            vm->frames[fp].proto       = (int)(p - vm->protos);
-            vm->frames[fp].ip          = ip;
-            vm->frames[fp].locals_base = lbase;
-            vm->frames[fp].stack_base  = sp - total - 1;
-            vm->frames[fp].nargs       = nargs;
-            vm->frames[fp].cl          = cl;
+            vm->frames[fp].proto        = (int)(p - vm->protos);
+            vm->frames[fp].ip           = ip;
+            vm->frames[fp].locals_base  = lbase;
+            vm->frames[fp].stack_base   = cp_base;
+            vm->frames[fp].nargs        = nargs;
+            vm->frames[fp].cl           = cl;
             /* instanciação devolve a instância, não o retorno do __init__ */
-            vm->frames[fp].devolve_self = EH_CLASS(alvo_kw);
+            vm->frames[fp].devolve_self = cp.instancia;
 
             fp++;
-            locals_top += pk->nlocals;
-            sp    = sp - total - 1;
-            p     = pk;
-            cl    = cl_kw;
+            locals_top += np->nlocals;
+            sp    = cp_base;
+            /* A instância em construção fica no slot da Entity, na pilha de
+             * quem chamou, e o `__init__` empilha a partir do slot seguinte.
+             * Ali ela é raiz exata do GC enquanto o `__init__` roda, o RETURN
+             * a lê de volta, e um erro que desenrola a pilha a descarta junto.
+             * O RETURN lia o slot 0 do `__init__`, que é do PRIMEIRO parâmetro:
+             * `__init__(*args)` sem self tem a tup ali, e `__init__(x) { x = 5 }`
+             * reatribui — `E(1, 2)` devolvia a tup e `E()` devolvia 5. */
+            if (cp.instancia) stack[sp++] = cp.self;
+            p     = np;
+            cl    = cp.cl;
             ip    = 0;
-            lbase = novo_lb;
-            nargs = pk->nparams;
+            lbase = nb;
+            nargs = cp_npos + cp.desloca;
             break;
         }
 
@@ -23234,12 +23606,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), "__init__", &initv);
                 if (mp >= 0 && initv.t != V_FUNC) {
                     /* `__init__` trocado por decorador: roda o valor com a
-                     * instância na frente; a expressão vale a instância */
+                     * instância na frente; a expressão vale a instância. O
+                     * slot da Entity na pilha passa a guardá-la: é a raiz
+                     * dela enquanto o valor roda. */
                     Value reais[64], ign;
                     if (n + 1 > 64) ERRO_T(vm, "TypeError", "argumentos demais (maximo 63)");
+                    stack[sp - n - 1] = iv;
                     reais[0] = iv;
                     for (int k = 0; k < n; k++) reais[k + 1] = stack[sp - n + k];
-                    vm->frame_topo = fp + 1;
+                    PUBLICA_FRAME();
                     vm->erro_tipo[0] = '\0';
                     int rc_ini;
                     REANCORA(rc_ini = chama_valor(vm, initv, reais, n + 1, &ign));
@@ -23260,25 +23635,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     }
                     sp = sp - n - 1; stack[sp++] = iv; break;
                 }
-                /* o self entra no slot 0, na frente dos argumentos */
-                Proto *np = &vm->protos[mp];
-                if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                int nb = locals_top;
-                if (liga_args(vm, np, &vm->locals[nb], &iv, 1, &stack[sp - n], n, NULL, NULL, 0, 0) != 0)
-                    goto erro_runtime;
-                vm->frames[fp].proto = (int)(p - vm->protos);
-                vm->frames[fp].ip = ip;
-                vm->frames[fp].locals_base = lbase;
-                vm->frames[fp].stack_base = sp - n - 1;
-                vm->frames[fp].nargs = nargs;
-                vm->frames[fp].cl = cl;
-                vm->frames[fp].devolve_self = 1;    /* o valor da expressão é a instância */
-                fp++;
-                locals_top += np->nlocals;
-                sp = sp - n - 1;
-                p = np; cl = NULL; ip = 0; lbase = nb; nargs = n + 1;
-                break;
+                /* o self entra na frente dos argumentos; o valor da expressão
+                 * é a instância */
+                cp.proto = mp; cp.cl = NULL; cp.self = iv;
+                cp.desloca = 1; cp.instancia = 1; cp.ignora_kw = 0;
+                cp_pos = &stack[sp - n]; cp_npos = n;
+                cp_kwn = NULL; cp_kwv = NULL; cp_nkw = 0;
+                cp_base = sp - n - 1;
+                goto chama_proto;
             }
 
             if (EH_BOUND(alvo) && COMO_BOUND(alvo)->metodo.t != V_FUNC) {
@@ -23294,132 +23658,21 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 arg = n + 1;
                 goto chama_posicional;
             }
-            if (EH_BOUND(alvo)) {
-                /* método ligado: `self` entra como primeiro argumento */
-                PSBound *b = COMO_BOUND(alvo);
-                Proto *np = &vm->protos[b->metodo.as.proto];
-                /* Método de instância PRECISA declarar `self` como 1º parâmetro.
-                 * Sem isso, a VM injetava a instância no 1º parâmetro real e o
-                 * argumento do usuário virava o 2º -> "argumentos demais" sem
-                 * nexo. Erro claro, igual ao interpretador. */
-                if (np->nparams == 0 || !np->param_nomes || !np->param_nomes[0]
-                        || strcmp(np->param_nomes[0], "self") != 0) {
-                    if (np->eh_static)
-                        ERRO_TF(vm, "RuntimeError",
-                                "funct '%s' e static: chame pela Entity (Tipo.%s(...)), nao pela instancia",
-                                np->nome ? np->nome : "?", np->nome ? np->nome : "?");
-                    ERRO_TF(vm, "RuntimeError",
-                            "funct '%s' dentro de Entity deve ter 'self' como primeiro parâmetro",
-                            np->nome ? np->nome : "?");
+            /* funct, closure (as células vão pro frame) e método ligado (o
+             * receptor entra no slot 0) */
+            {
+                int ra = resolve_alvo(vm, alvo, &cp);
+                if (ra < 0) goto erro_runtime;
+                if (ra > 0) {
+                    cp_pos = &stack[sp - n]; cp_npos = n;
+                    cp_kwn = NULL; cp_kwv = NULL; cp_nkw = 0;
+                    cp_base = sp - n - 1;
+                    goto chama_proto;
                 }
-                if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                int nb = locals_top;
-                if (liga_args(vm, np, &vm->locals[nb], &b->instancia, 1, &stack[sp - n], n,
-                              NULL, NULL, 0, 0) != 0)
-                    goto erro_runtime;
-                vm->frames[fp].proto = (int)(p - vm->protos);
-                vm->frames[fp].ip = ip;
-                vm->frames[fp].locals_base = lbase;
-                vm->frames[fp].stack_base = sp - n - 1;
-                vm->frames[fp].nargs = nargs;
-                vm->frames[fp].cl = cl;
-                vm->frames[fp].devolve_self = 0;
-                fp++;
-                locals_top += np->nlocals;
-                sp = sp - n - 1;
-                p = np; cl = NULL; ip = 0; lbase = nb; nargs = n + 1;
-                break;
             }
-
-            /* Closure é uma action como outra qualquer: normaliza pra FUNC e
-             * guarda as células, que entram no frame logo abaixo. */
-            PSClosure *cl_alvo = NULL;
-            if (EH_CLOSURE(alvo)) {
-                cl_alvo = COMO_CLOSURE(alvo);
-                alvo = MK_FUNC(cl_alvo->proto);
-            }
-            if (alvo.t == V_FUNC) {
-                Proto *np = &vm->protos[alvo.as.proto];
-                /* Método @static acessado direto na Entity (`Classe.metodo`)
-                 * chega como FUNC puro. Não há instância pra o `self`: dropa-o
-                 * pra o argumento posicional cair no 1º parâmetro REAL, e o
-                 * slot do self nasce UNSET (não bindável fora de instância).
-                 * Mesma heurística do interpretador (`params[0] == "self"`). */
-                int desloca = (np->eh_static && np->param_nomes && np->param_nomes[0]
-                               && strcmp(np->param_nomes[0], "self") == 0) ? 1 : 0;
-                if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                if (np->eh_gerador) {
-                    /* chamar um gerador não executa nada: devolve o frame
-                     * congelado, e o corpo só roda no primeiro `next`. O
-                     * binding é o mesmo, só que nos locais do gerador. */
-                    vm->sp = sp; vm->locals_top = locals_top;
-                    PSGerador *g = novo_gerador(vm, (int32_t)(np - vm->protos));
-                    if (!g) ERRO(vm, "sem memoria no gerador");
-                    if (liga_args(vm, np, g->locais, NULL, desloca, &stack[sp - n], n, NULL, NULL, 0, 0) != 0)
-                        goto erro_runtime;
-                    g->cl = cl_alvo;   /* gerador que captura mantém as células */
-                    sp = sp - n - 1;
-                    stack[sp++] = MK_OBJ(g);
-                    break;
-                }
-                if (np->eh_async) {
-                    /* `async action`: NUNCA roda inline — cria uma fibra (lazy) e
-                     * devolve um future. O corpo corre quando gather/await dirige
-                     * o escalonador (top-level) ou cede a ele (dentro de handler).
-                     * A chamada é validada AGORA (aridade, tipo — o erro sai na
-                     * chamada, não no await) ligando num rascunho acima de
-                     * `locals_top`; os argumentos seguem crus pra fibra, que
-                     * liga de novo quando roda. */
-                    if (liga_args(vm, np, &vm->locals[locals_top], NULL, desloca, &stack[sp - n], n,
-                                  NULL, NULL, 0, 0) != 0)
-                        goto erro_runtime;
-                    if (n > 32)
-                        ERRO_TF(vm, "TypeError", "%s(): async aceita no maximo 32 argumentos, recebeu %d",
-                                np->nome ? np->nome : "?", n);
-                    vm->sp = sp; vm->locals_top = locals_top;
-                    PSFuturo *fu = fib_pega_async(vm, (int32_t)(np - vm->protos),
-                                                  &stack[sp - n], n);
-                    if (!fu) ERRO(vm, "sem memoria/pool cheio no async");
-                    sp = sp - n - 1;
-                    stack[sp++] = MK_OBJ(fu);
-                    break;
-                }
-                if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-                /* Cota da pilha do chamado: cada instrução empilha no máximo
-                 * um valor, então ncode/2 é teto seguro. Sem esta checagem,
-                 * recursão profunda escrevia fora do array — corrupção de
-                 * memória silenciosa em vez de erro. */
-                if (sp + np->ncode / 2 + 8 >= vm->stack_teto)
-                    ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-
-                /* `desloca`: no @static o slot 0 (self) nasce UNSET e os
-                 * posicionais entram a partir do slot 1. Aridade, default,
-                 * `*args`, tipo: tudo no `liga_args`. */
-                int novo_lbase = locals_top;
-                if (liga_args(vm, np, &vm->locals[novo_lbase], NULL, desloca, &stack[sp - n], n,
-                              NULL, NULL, 0, 0) != 0)
-                    goto erro_runtime;
-
-                vm->frames[fp].proto       = (int)(p - vm->protos);
-                vm->frames[fp].ip          = ip;
-                vm->frames[fp].locals_base = lbase;
-                vm->frames[fp].stack_base  = sp - n - 1;
-                vm->frames[fp].nargs       = nargs;
-                vm->frames[fp].cl          = cl;
-                vm->frames[fp].devolve_self = 0;
-
-                fp++;
-                cl = cl_alvo;
-                locals_top += np->nlocals;
-                sp    = sp - n - 1;
-                p     = np;
-                ip    = 0;
-                lbase = novo_lbase;
-                nargs = n + desloca;
-            } else if (alvo.t == V_NATIVE) {
+            if (alvo.t == V_NATIVE) {
                 /* builtin em C — chamada direta, sem frame */
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';   /* o builtin escolhe o tipo */
                 Value rv;
                 if (BUILTINS[alvo.as.nativa].fn(vm, &stack[sp - n], n, &rv) != 0) {
@@ -23433,7 +23686,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp++] = rv;
             } else if (EH_NATIVA(alvo)) {
                 PSNativa *f = COMO_NATIVA(alvo);
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
                 Value rv;
                 int rc_f; REANCORA(rc_f = f->fn(vm, &stack[sp - n], n, &rv));
@@ -23446,7 +23699,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 stack[sp++] = rv;
             } else if (EH_METNAT(alvo)) {
                 PSMetodoNat *m = COMO_METNAT(alvo);
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
                 Value rv;
                 if (checa_aridade_nat(vm, &TABELAS[m->tabela][m->idx], n) != 0) goto erro_runtime;
@@ -23471,7 +23724,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     ERRO_TF(vm, "TypeError",
                             "tipo '%s' não pode ser usado como conversor",
                             tipo_nome(alvo.as.i));
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
                 Value rv;
                 if (conv(vm, &stack[sp - n], n, &rv) != 0) {
@@ -23483,7 +23736,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             } else {
                 const char *jp; FnMetodoChamavel jf;
                 if (jk_obj_callable(alvo, &jp, &jf)) {
-                    vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                    vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                     vm->erro_tipo[0] = '\0';
                     Value rv;
                     int rc_j2; REANCORA(rc_j2 = jf(vm, alvo, &stack[sp - n], n, &rv));
@@ -23509,14 +23762,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
              * caía no `catch` de uma action que já tinha retornado. */
             while (nh > 0 && handlers[nh - 1].fp >= fp) nh--;
             if (fp == fp0) {
+                /* O frame de base nunca é de instanciação: a instância que
+                 * entra pelo C volta pelo `executa_alvo_c`. */
                 if (vm->ger_ativo) vm->ger_cedeu = 0;   /* acabou, não cedeu */
-                if (vm->frames[fp0].devolve_self) r = vm->locals[lbase];
                 *resultado = r;
                 vm->sp = sp0; vm->locals_top = locals0;
                 return 0;
             }
-            /* Entity: devolve a instância, não o retorno do __init__ */
-            if (vm->frames[fp - 1].devolve_self) r = vm->locals[lbase];
+            /* Entity: devolve a instância (guardada no slot da Entity pelo
+             * chama_proto), não o retorno do __init__ */
+            if (vm->frames[fp - 1].devolve_self) r = stack[vm->frames[fp - 1].stack_base];
             fp--;
             p     = &vm->protos[vm->frames[fp].proto];
             cl    = vm->frames[fp].cl;
@@ -23889,7 +24144,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* Gerador não tem tamanho: retomar é a única forma de saber se
              * acabou, então ele sai antes da conta de `n`. */
             if (EH_GERADOR(cont)) {
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 Value item;
                 int r = ger_retoma(vm, COMO_GER(cont), &item);
                 if (r < 0) {
@@ -24118,7 +24373,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value av = stack[sp - 1];
             if (EH_FUTURO(av)) {
                 PSFuturo *fu = COMO_FUTURO(av);
-                vm->sp = sp; vm->locals_top = locals_top;   /* GC vê a pilha viva */
+                /* GC vê a pilha viva; a fibra que cede aqui guarda o
+                 * `frame_topo` e a closure DESTE frame */
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 int rc_fu; REANCORA(rc_fu = fut_resolve(vm, fu));
                 if (rc_fu != 0) goto erro_runtime;
                 stack[sp - 1] = fu->valor;
@@ -24131,7 +24388,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 for (int k = 0; k < l->len; k++) {
                     if (!EH_FUTURO(l->itens[k])) continue;
                     PSFuturo *fu = COMO_FUTURO(l->itens[k]);
-                    vm->sp = sp; vm->locals_top = locals_top;
+                    vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                     int rc_fu; REANCORA(rc_fu = fut_resolve(vm, fu));
                     if (rc_fu != 0) goto erro_runtime;
                     /* a lista pode ter sido realocada pela fibra que rodou */
@@ -24150,6 +24407,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             handlers[nh].locals_top = locals_top;
             handlers[nh].proto = (int)(p - vm->protos);
             handlers[nh].lbase = lbase;
+            handlers[nh].cl = cl;
             nh++;
             break;
 
@@ -24339,7 +24597,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value metnomev = modo == 1 ? stack[sp - 4] : MK_NULL();
             const char *nome = EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?";
             Value r = MK_NULL();
-            vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+            vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
             vm->erro_tipo[0] = '\0';
             /* 1) tem `register`: registrador nativo do jinker ou instância de
              * Entity com campo/método `register` (mesma ordem do GET_MEMBER) */
@@ -24632,89 +24890,41 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                             "type object '%s' has no attribute '%s'",
                             e->nome ? e->nome : "?", nome);
             }
-            if (EH_MODPS(alvo)) {
-                PSModuloPS *m = COMO_MODPS(alvo);
-                for (int32_t k = 0; k < m->n; k++) {
-                    if (strcmp(m->nomes[k], nome) != 0) continue;
-                    Value v = vm->globals[m->base + k];
+            if (EH_MODPS(alvo) || EH_MODULO(alvo)) {
+                /* a regra de o que sai do módulo mora em `membro_de_modulo` */
+                const char *mnome = EH_MODPS(alvo) ? COMO_MODPS(alvo)->nome
+                                                   : MODULOS[COMO_MODULO(alvo)->idx].nome;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+                Value v;
+                int rm;
+                REANCORA(rm = membro_de_modulo(vm, alvo, nome, &v));
+                if (rm < 0) goto erro_runtime;
+                if (rm == MEMBRO_ACHOU) {
                     if (v.t == V_UNSET) ERRO_T(vm, "RuntimeError", "membro nao definido no modulo");
-                    /* `private class Nome()` e `private action f()` não saem do
-                     * arquivo — mesma msg do interp */
-                    if ((EH_CLASS(v) && COMO_CLASS(v)->classe_privada)
-                            || (m->priv && m->priv[k]))
-                        ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'"
-                                " (existe, mas é private)", m->nome, nome);
                     stack[sp - 1] = v;
                     goto membro_ok;
                 }
-                {
-                    /* `from mod import x` com x ausente. Aqui NAO sai sugestao
-                     * de nome (a sugestao so sai no AttributeError de
-                     * `mod.x`); o arquivo do modulo vai entre parenteses. */
-                    if (de_import)
-                        ERRO_TF(vm, "ImportError",
-                                "cannot import name '%s' from '%s' (%s)",
-                                nome, m->nome,
-                                m->caminho ? m->caminho : "unknown location");
-                    const char *dica = sugere_nome(nome, (const char **)m->nomes, m->n);
-                    if (dica)
-                        ERRO_TF(vm, "AttributeError",
-                                "module '%s' has no attribute '%s'."
-                                " Did you mean: '%s'?",
-                                m->nome, nome, dica);
-                    ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'",
-                            m->nome, nome);
-                }
-            }
-            if (EH_MODULO(alvo)) {
-                /* acha primeiro, aloca depois: `break` dentro do laço sairia
-                 * dele, não do `case`, e o `goto` custaria um label solto */
-                const ModuloNat *mn = &MODULOS[COMO_MODULO(alvo)->idx];
-                const MembroMod *achado = NULL;
-                for (int k = 0; k < mn->n; k++)
-                    if (strcmp(mn->membros[k].nome, nome) == 0) { achado = &mn->membros[k]; break; }
-                if (!achado) {
-                    /* modulo nativo nao tem arquivo: sai
-                     * "(unknown location)" no lugar do caminho. */
-                    if (de_import)
-                        ERRO_TF(vm, "ImportError",
-                                "cannot import name '%s' from '%s' (unknown location)",
-                                nome, mn->nome);
-                    const char *cands[256];
-                    int nc = mn->n < 256 ? mn->n : 256;
-                    for (int k = 0; k < nc; k++) cands[k] = mn->membros[k].nome;
-                    const char *dica = sugere_nome(nome, cands, nc);
-                    if (dica)
-                        ERRO_TF(vm, "AttributeError",
-                                "module '%s' has no attribute '%s'."
-                                " Did you mean: '%s'?",
-                                mn->nome, nome, dica);
-                    ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'",
-                            mn->nome, nome);
-                }
-                if (achado->eh_valor) {
-                    vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
-                    vm->erro_tipo[0] = '\0';
-                    Value v;
-                    if (achado->fn(vm, NULL, 0, &v) != 0) {
-                        if (!vm->erro_tipo[0])
-                            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
-                        goto erro_runtime;
-                    }
-                    stack[sp - 1] = v;
-                    break;
-                }
-                vm->sp = sp; vm->locals_top = locals_top;
-                PSNativa *f = calloc(1, sizeof(PSNativa));
-                if (!f) ERRO(vm, "sem memoria");
-                f->obj.type = OBJ_NATIVA; f->obj.marked = 0;
-                f->obj.next = vm->objetos; vm->objetos = (Obj *)f;
-                f->nome = achado->nome;
-                f->fn = achado->fn;
-                f->params = achado->params;
-                vm->alocado += sizeof(PSNativa);
-                stack[sp - 1] = MK_OBJ(f);
-                break;
+                /* `private class Nome()` e `private funct f()` não saem do
+                 * arquivo — a frase diz que o nome existe */
+                if (rm == MEMBRO_PRIVADO)
+                    ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'"
+                            " (existe, mas é private)", mnome, nome);
+                /* `from mod import x` com x ausente: sem sugestão de nome (ela
+                 * só sai no AttributeError de `mod.x`); o arquivo do módulo
+                 * vai entre parênteses, e o nativo, que não tem arquivo, sai
+                 * como "(unknown location)". */
+                if (de_import)
+                    ERRO_TF(vm, "ImportError", "cannot import name '%s' from '%s' (%s)",
+                            nome, mnome,
+                            EH_MODPS(alvo) && COMO_MODPS(alvo)->caminho
+                                ? COMO_MODPS(alvo)->caminho : "unknown location");
+                const char *dica = sugere_membro(vm, alvo, nome);
+                if (dica)
+                    ERRO_TF(vm, "AttributeError",
+                            "module '%s' has no attribute '%s'."
+                            " Did you mean: '%s'?",
+                            mnome, nome, dica);
+                ERRO_TF(vm, "AttributeError", "module '%s' has no attribute '%s'", mnome, nome);
             }
             if (EH_QRFILE(alvo)) {
                 PSQRFile *q = COMO_QRFILE(alvo);
@@ -25152,7 +25362,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* Gerador se esgota primeiro: `a, b = gen()` é desempacotar o
              * que ele produz, não o objeto. */
             if (EH_GERADOR(seq)) {
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 stack[sp++] = seq;               /* raiz enquanto a lista cresce */
                 vm->sp = sp;
                 Value um[1] = { seq }, lista;
@@ -25263,7 +25473,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         case OP_CHECK_NONNULL: {
-            for (int k = 0; k < arg; k++) {
+            /* O buraco do self no @static nasce UNSET por construção: não é
+             * um Null que o chamador passou, e acusá-lo recusava toda chamada
+             * `C.f(5)` de um `nonnull static funct f(self, a)`. */
+            for (int k = eh_static_self(p); k < arg; k++) {
                 Value v = vm->locals[lbase + k];
                 if (v.t != V_NULL && v.t != V_UNSET) continue;
                 const char *pn = (p->param_nomes && k < p->nparams && p->param_nomes[k])
@@ -25365,20 +25578,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_IMPORT_MOD: {
             Value nomev = p->consts[arg];
             if (!EH_STRING(nomev)) ERRO(vm, "nome de modulo invalido");
-            const char *nome_imp = COMO_STRING(nomev)->chars;
-            /* `import 'x'` (marcador \x01): sem `/` nem extensao e NOME, e o
-             * modulo nativo ganha como no `import x`; com caminho nunca e
-             * nativo — `import './json.ps'` e o arquivo, de proposito. */
-            int mi = (nome_imp[0] == '\x01')
-                   ? (spec_eh_caminho(nome_imp + 1) ? -1 : acha_modulo(nome_imp + 1))
-                   : acha_modulo(nome_imp);
+            int mi = modulo_nativo_de(COMO_STRING(nomev)->chars);
             if (mi < 0) {
                 /* Não é nativo: `acha_modulo_ps` procura, nesta ordem, a lib
                  * instalada pelo `psl`, a pasta do arquivo que importa e a
                  * raiz do projeto (a ordem decidida em poolscript.md). Módulo
                  * nativo ganha de qualquer `.ps` — o contrário deixaria um
                  * `json.ps` local sequestrar o módulo `json` da linguagem. */
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 /* `anexa_programa` faz realloc de vm->protos, e `p` aponta
                  * pra dentro desse array. Guardar o ÍNDICE é obrigatório:
                  * sem isso o ponteiro fica pendurado e a próxima instrução
@@ -25421,6 +25628,38 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
+        case OP_IMPORT_FROM_ESTRELA: {
+            /* um nome do `import *`, já expandido pelo compilador: [.., mod] ->
+             * [.., valor], ou UNSET quando o módulo não o entrega agora (em
+             * ciclo, o nome ainda sem valor) — o JUMP_SE_UNSET seguinte pula
+             * o store, e o nome fica como estava */
+            Value alvo = stack[sp - 1];
+            Value nomev = p->consts[arg];
+            if (!EH_STRING(nomev) || !(EH_MODPS(alvo) || EH_MODULO(alvo)))
+                ERRO(vm, "IMPORT_FROM_ESTRELA sem modulo");
+            const char *nome = COMO_STRING(nomev)->chars;
+            if (strcmp(nome, "*") == 0) {
+                const char *mnome = EH_MODPS(alvo) ? COMO_MODPS(alvo)->nome
+                                                   : MODULOS[COMO_MODULO(alvo)->idx].nome;
+                ERRO_TF(vm, "ImportError",
+                        "`*` de '%s': os nomes do `*` sao resolvidos antes de o programa rodar, e nessa "
+                        "hora nao deu pra ler o modulo (ausente, sem compilar, ou cadeia de `*` funda "
+                        "demais) — importe pelo nome (from %s import a, b)",
+                        mnome, mnome);
+            }
+            vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+            Value v = MK_UNSET();
+            int rm;
+            REANCORA(rm = membro_de_modulo(vm, alvo, nome, &v));
+            if (rm < 0) goto erro_runtime;
+            stack[sp - 1] = rm == MEMBRO_ACHOU ? v : MK_UNSET();
+            break;
+        }
+
+        case OP_JUMP_SE_UNSET:
+            if (stack[sp - 1].t == V_UNSET) { sp--; ip = arg; }
+            break;
+
         case OP_LOAD_BASE_INIT: {
             Value paiv = stack[sp - 1];
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
@@ -25458,7 +25697,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (n + 1 > 64) ERRO_T(vm, "TypeError", "argumentos demais (maximo 63)");
                 reais[0] = selfv;
                 for (int k = 0; k < n; k++) reais[k + 1] = stack[sp - n + k];
-                vm->sp = sp; vm->locals_top = locals_top; vm->frame_topo = fp + 1;
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';
                 int rc_b;
                 REANCORA(rc_b = chama_valor(vm, initv, reais, n + 1, &rb));
@@ -25471,24 +25710,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 break;
             }
 
-            Proto *np = &vm->protos[mp];
-            if (fp + 1 >= vm->frames_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-            if (locals_top + np->nlocals >= vm->locals_teto) ERRO_T(vm, "RecursionError", "maximum recursion depth exceeded");
-            int nb = locals_top;
-            if (liga_args(vm, np, &vm->locals[nb], &selfv, 1, &stack[sp - n], n, NULL, NULL, 0, 0) != 0)
-                goto erro_runtime;
-            vm->frames[fp].proto = (int)(p - vm->protos);
-            vm->frames[fp].ip = ip;
-            vm->frames[fp].locals_base = lbase;
-            vm->frames[fp].stack_base = sp - n - 2;
-            vm->frames[fp].nargs = nargs;
-            vm->frames[fp].cl = cl;
-            vm->frames[fp].devolve_self = 0;
-            fp++;
-            locals_top += np->nlocals;
-            sp = sp - n - 2;
-            p = np; cl = NULL; ip = 0; lbase = nb; nargs = n + 1;
-            break;
+            /* o `__init__` do pai com o self atual na frente; `base(...)`
+             * vale o que ele devolver */
+            cp.proto = mp; cp.cl = NULL; cp.self = selfv;
+            cp.desloca = 1; cp.instancia = 0; cp.ignora_kw = 0;
+            cp_pos = &stack[sp - n]; cp_npos = n;
+            cp_kwn = NULL; cp_kwv = NULL; cp_nkw = 0;
+            cp_base = sp - n - 2;
+            goto chama_proto;
         }
 
         case OP_HALT:
@@ -25611,7 +25840,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             locals_top = h->locals_top;
             sp = h->sp;
             p = &vm->protos[h->proto];
-            cl = (fp >= fp0) ? vm->frames[fp].cl : cl0;
+            cl = h->cl;
             lbase = h->lbase;
             nargs = (fp > fp0) ? vm->frames[fp - 1].nargs : nargs_in;
 
@@ -25645,6 +25874,7 @@ static void libera_vm(VM *vm)
 {
     libera_objetos(vm);
     fib_pool_solta();      /* pilhas de fibra são mmap: devolvem ao sistema */
+    estrela_cache_solta(); /* o que cada arquivo exporta, lembrado pro `import *` */
     if (vm->nomes_globais) {
         for (int i = 0; i < vm->n_nomes_globais; i++) free(vm->nomes_globais[i]);
         free(vm->nomes_globais);
@@ -26289,7 +26519,12 @@ static void nome_visivel_modulo(const char *nome, char *out, size_t cap)
         *ext = '\0';
 }
 
-static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
+/* O arquivo de um módulo `.ps`, dadas a pasta do arquivo que importa
+ * (`dir_modulo`) e a do arquivo executado (`dir_script`). Não depende da VM:
+ * a expansão do `import *` resolve ANTES de a VM existir, e tem que achar o
+ * MESMO arquivo que o import vai carregar em runtime. */
+static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
+                             const char *nome, char *saida, size_t cap)
 {
     /* `import 'caminho/alvo.ps'`: absoluto como esta, senao relativo a pasta
      * do arquivo que importa. Tenta como escrito e com as extensoes; nunca
@@ -26300,7 +26535,7 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
             static const char *EXTS_C[] = { "", ".ps", ".psl", ".p" };
             char base[1024];
             if (spec[0] == '/') snprintf(base, sizeof(base), "%s", spec);
-            else snprintf(base, sizeof(base), "%s/%s", vm->dir_modulo[0] ? vm->dir_modulo : ".", spec);
+            else snprintf(base, sizeof(base), "%s/%s", dir_modulo[0] ? dir_modulo : ".", spec);
             for (int e = 0; e < 4; e++) {
                 snprintf(saida, cap, "%s%s", base, EXTS_C[e]);
                 if (eh_arquivo_comum(saida)) return 0;
@@ -26323,7 +26558,7 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
     FILE *f;
     if (nivel > 0) {
         char base[512];
-        snprintf(base, sizeof(base), "%s", vm->dir_modulo[0] ? vm->dir_modulo : ".");
+        snprintf(base, sizeof(base), "%s", dir_modulo[0] ? dir_modulo : ".");
         for (int i = 0; i < nivel - 1; i++) {   /* cada ponto extra sobe uma pasta */
             char *barra = strrchr(base, '/');
             if (barra) *barra = '\0';
@@ -26357,20 +26592,219 @@ static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
      * `acesso/controller.ps` (ele mesmo importado por `api/rotas.ps`) tem que
      * achar `acesso/smtp.ps`; so a raiz do projeto era olhada, e o modulo
      * vizinho dava "No module named 'smtp'". */
-    if (vm->dir_modulo[0] && strcmp(vm->dir_modulo, vm->dir_script) != 0) {
+    if (dir_modulo[0] && strcmp(dir_modulo, dir_script) != 0) {
         for (int e = 0; e < 3; e++) {
-            snprintf(saida, cap, "%s/%s%s", vm->dir_modulo, rel, EXTS[e]);
+            snprintf(saida, cap, "%s/%s%s", dir_modulo, rel, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
     }
     /* depois: arquivo do projeto (raiz = dir do entry) */
-    if (vm->dir_script[0]) {
+    if (dir_script[0]) {
         for (int e = 0; e < 3; e++) {
-            snprintf(saida, cap, "%s/%s%s", vm->dir_script, rel, EXTS[e]);
+            snprintf(saida, cap, "%s/%s%s", dir_script, rel, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
     }
     return -1;
+}
+
+static int acha_modulo_ps(VM *vm, const char *nome, char *saida, size_t cap)
+{
+    return acha_modulo_ps_em(vm->dir_modulo, vm->dir_script, nome, saida, cap);
+}
+
+/* Módulo nativo pelo nome codificado do import (-1 = não é nativo). `import
+ * 'x'` (marcador \x01): sem `/` nem extensão é NOME, e o nativo ganha como no
+ * `import x`; com caminho nunca é nativo — `import './json.ps'` é o arquivo,
+ * de propósito. Um lugar só: o OP_IMPORT_MOD e a expansão do `*`. */
+static int modulo_nativo_de(const char *mod)
+{
+    if (mod[0] == '\x01') return spec_eh_caminho(mod + 1) ? -1 : acha_modulo(mod + 1);
+    return acha_modulo(mod);
+}
+
+/* A pasta do arquivo executado, ABSOLUTA (é a base do import de arquivo
+ * vizinho). Sem caminho (`-e`), vazia: só restam as libs globais.
+ *
+ * `pool sub/app.ps` deixava "sub" aqui, e o import relativo `from ..x import
+ * y` subia uma pasta de "sub" pra ".." — isto é, relativo ao cwd, não ao
+ * arquivo. Resolvido uma vez, tudo que usa a pasta fica igual. */
+static void dir_do_script(const char *caminho, char *out, size_t cap)
+{
+    out[0] = '\0';
+    if (!caminho) return;
+    const char *barra = strrchr(caminho, '/');
+    if (barra) {
+        size_t n = (size_t)(barra - caminho);
+        if (n >= cap) n = cap - 1;
+        memcpy(out, caminho, n);
+        out[n] = '\0';
+    } else {
+        snprintf(out, cap, ".");
+    }
+    char *rp = realpath(out, NULL);
+    if (rp) {
+        snprintf(out, cap, "%s", rp);
+        free(rp);
+    }
+}
+
+/* ── `import *`: os nomes que um módulo exporta, antes de rodar ─────────────
+ *
+ * O compilador pergunta aqui (PSResolvedor). A resposta tem que ser a do
+ * import de runtime: nativo pelo `modulo_nativo_de`, arquivo pelo
+ * `acha_modulo_ps_em` com as mesmas pastas, e os nomes de um `.ps` pelo
+ * `PSPrograma.exportados` dele — compilado (sem rodar) com o mesmo
+ * resolvedor, que é o que faz a reexportação por `*` atravessar arquivos. */
+typedef struct EstrelaVisita {
+    const char           *caminho;   /* absoluto */
+    struct EstrelaVisita *ant;
+} EstrelaVisita;
+
+typedef struct {
+    const char    *dir_modulo;   /* pasta do arquivo que tem o `*` */
+    const char    *dir_script;   /* pasta do arquivo executado */
+    EstrelaVisita *pilha;        /* arquivos em expansão agora: corta o ciclo */
+    /* 1 quando algum `*` desta expansão bateu num arquivo que já estava sendo
+     * expandido (ciclo) e devolveu lista vazia: a lista que sai daqui está
+     * incompleta PRA ESTA árvore e não pode ser lembrada. A marca sobe. */
+    int           *cortou;
+} EstrelaCtx;
+
+/* O que cada arquivo exporta, por caminho absoluto — lembrado pelo processo.
+ *
+ * Sem isto, cada `*` re-lê, re-parseia e re-compila o módulo alvo e toda a
+ * subárvore de dependências DELE, e cada módulo carregado em runtime repetia a
+ * expansão inteira: num grafo em camadas o custo cresce exponencialmente —
+ * medido, 25 arquivos que se importam com `*` levavam 25 s pra subir, contra
+ * 0,02 s com import explícito. O arquivo não muda no meio da execução, então
+ * a resposta vale pro processo todo. */
+typedef struct { char *caminho; char **nomes; int32_t n; } EstrelaLembrada;
+static EstrelaLembrada *g_estrela_cache = NULL;
+static int g_estrela_ncache = 0, g_estrela_cap = 0;
+
+/* Cópia da lista de nomes (quem pede é dono da dele). NULL = sem memória. */
+static char **estrela_nomes_dup(char *const *nomes, int32_t n)
+{
+    char **v = calloc((size_t)(n > 0 ? n : 1), sizeof(char *));
+    if (!v) return NULL;
+    for (int32_t i = 0; i < n; i++) {
+        v[i] = strdup(nomes[i]);
+        if (!v[i]) { for (int32_t k = 0; k < i; k++) free(v[k]); free(v); return NULL; }
+    }
+    return v;
+}
+
+static void estrela_cache_poe(const char *abs, char *const *nomes, int32_t n)
+{
+    if (g_estrela_ncache + 1 > g_estrela_cap) {
+        int novo = g_estrela_cap ? g_estrela_cap * 2 : 16;
+        EstrelaLembrada *nv = realloc(g_estrela_cache, sizeof(EstrelaLembrada) * (size_t)novo);
+        if (!nv) return;                       /* sem memória: só não lembra */
+        g_estrela_cache = nv; g_estrela_cap = novo;
+    }
+    char *cam = strdup(abs);
+    char **copia = estrela_nomes_dup(nomes, n);
+    if (!cam || !copia) { free(cam); if (copia) { for (int32_t i = 0; i < n; i++) free(copia[i]); free(copia); } return; }
+    g_estrela_cache[g_estrela_ncache].caminho = cam;
+    g_estrela_cache[g_estrela_ncache].nomes = copia;
+    g_estrela_cache[g_estrela_ncache].n = n;
+    g_estrela_ncache++;
+}
+
+static void estrela_cache_solta(void)
+{
+    for (int i = 0; i < g_estrela_ncache; i++) {
+        for (int32_t k = 0; k < g_estrela_cache[i].n; k++) free(g_estrela_cache[i].nomes[k]);
+        free(g_estrela_cache[i].nomes);
+        free(g_estrela_cache[i].caminho);
+    }
+    free(g_estrela_cache);
+    g_estrela_cache = NULL; g_estrela_ncache = 0; g_estrela_cap = 0;
+}
+
+static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t *n)
+{
+    EstrelaCtx *ctx = (EstrelaCtx *)vctx;
+    *nomes = NULL; *n = 0;
+
+    int mi = modulo_nativo_de(mod);
+    if (mi >= 0) {
+        const ModuloNat *mn = &MODULOS[mi];
+        char **v = calloc((size_t)(mn->n > 0 ? mn->n : 1), sizeof(char *));
+        if (!v) return 0;
+        for (int k = 0; k < mn->n; k++) {
+            v[k] = strdup(mn->membros[k].nome);
+            if (!v[k]) { for (int q = 0; q < k; q++) free(v[q]); free(v); return 0; }
+        }
+        *nomes = v; *n = mn->n;
+        return 1;
+    }
+
+    char caminho[1024];
+    if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, sizeof(caminho)) != 0)
+        return 0;
+    char abspath[1024];
+    char *rp = realpath(caminho, NULL);
+    snprintf(abspath, sizeof(abspath), "%s", rp ? rp : caminho);
+    free(rp);
+    for (int i = 0; i < g_estrela_ncache; i++) {         /* já expandido antes */
+        if (strcmp(g_estrela_cache[i].caminho, abspath) != 0) continue;
+        char **v = estrela_nomes_dup(g_estrela_cache[i].nomes, g_estrela_cache[i].n);
+        if (!v) return 0;
+        *nomes = v; *n = g_estrela_cache[i].n;
+        return 1;
+    }
+    /* Ciclo (`a` importa `b` com `*` e `b` importa `a` com `*`): o que este
+     * arquivo exporta ainda está sendo decidido mais acima; deste ponto ele
+     * não traz nada. É o mesmo que o runtime faz com o módulo parcial. Nada
+     * disso vai pro cache: a lista de um arquivo em expansão está incompleta. */
+    for (EstrelaVisita *vi = ctx->pilha; vi; vi = vi->ant)
+        if (strcmp(vi->caminho, abspath) == 0) {
+            if (ctx->cortou) *ctx->cortou = 1;
+            return 1;
+        }
+
+    FILE *f = fopen(caminho, "rb");
+    if (!f) return 0;
+    fseek(f, 0, SEEK_END); long tam = ftell(f); rewind(f);
+    char *fonte = malloc((size_t)(tam > 0 ? tam : 1) + 1);
+    if (!fonte) { fclose(f); return 0; }
+    size_t lidos = fread(fonte, 1, (size_t)(tam > 0 ? tam : 0), f);
+    fonte[lidos] = '\0';
+    fclose(f);
+
+    PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
+    free(fonte);
+    if (!toks || !toks->ok) { if (toks) ps_lexer_free(toks); return 0; }
+    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    ps_lexer_free(toks);
+    if (!r || !r->ok) { if (r) ps_parse_free(r); return 0; }
+
+    char moddir[1024];
+    snprintf(moddir, sizeof(moddir), "%s", abspath);
+    char *barra = strrchr(moddir, '/');
+    if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
+    EstrelaVisita aqui = { abspath, ctx->pilha };
+    int cortou_aqui = 0;
+    EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui };
+    PSResolvedor res = { estrela_nomes_de, &filho };
+    PSPrograma *prog = ps_compila_com(r->programa, &res);
+    ps_parse_free(r);
+    /* Não compila: o import de runtime é que diz o SyntaxError, na linha dele.
+     * `estrela_incompleta`: um `*` DELE não expandiu, então a lista que sairia
+     * daqui perdeu nomes — recusar faz a recusa subir até o import que o
+     * programa escreveu, em vez de deixar sumir nome sem dizer nada. */
+    if (!prog || !prog->ok || prog->estrela_incompleta) { if (prog) ps_compila_free(prog); return 0; }
+
+    *nomes = prog->exportados; *n = prog->nexportados;
+    prog->exportados = NULL; prog->nexportados = 0;
+    ps_compila_free(prog);
+    /* Só lembra o que saiu COMPLETO; e a marca do ciclo sobe, pra ninguém
+     * acima lembrar uma lista que dependeu do corte. */
+    if (!cortou_aqui) estrela_cache_poe(abspath, *nomes, *n);
+    else if (ctx->cortou) *ctx->cortou = 1;
+    return 1;
 }
 
 /* Compila e RODA o módulo, e devolve o namespace sobre as globais dele.
@@ -26384,6 +26818,16 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     /* `import 'x'` chega com o marcador \x01: nas mensagens vai o literal como
      * foi escrito; no `__name__` e no nome do modulo, so o nome do arquivo. */
     const char *escrito = (nome[0] == '\x01') ? nome + 1 : nome;
+    /* Cada import roda o corpo do módulo num `vm_executa_base` aninhado na
+     * pilha do C. Uma cadeia de imports (a importa b, que importa c, ...)
+     * desce a pilha do C sem gastar frame da VM — a mesma conta do callback
+     * vindo do C. Medido na ENTRADA, antes de o módulo entrar no cache: um
+     * módulo registrado e nunca executado ficaria lá, vazio. */
+    if (ps_pilha_apertada()) {
+        snprintf(vm->erro, sizeof(vm->erro), "maximum recursion depth exceeded");
+        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RecursionError");
+        return -1;
+    }
     char nome_vis[256];
     nome_visivel_modulo(nome, nome_vis, sizeof(nome_vis));
     char caminho[1024];
@@ -26440,7 +26884,18 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         if (r) ps_parse_free(r);
         return -1;
     }
-    PSPrograma *prog = ps_compila(r->programa);
+    /* `import *` dentro do módulo resolve a partir da pasta DELE — a mesma
+     * que o corpo vai ter como `dir_modulo` quando rodar */
+    char dir_do_mod[1024];
+    snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", abspath);
+    {
+        char *b = strrchr(dir_do_mod, '/');
+        if (b) *b = '\0'; else snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", ".");
+    }
+    EstrelaVisita vis_mod = { abspath, NULL };
+    EstrelaCtx ectx_mod = { dir_do_mod, vm->dir_script, &vis_mod, NULL };
+    PSResolvedor res_mod = { estrela_nomes_de, &ectx_mod };
+    PSPrograma *prog = ps_compila_com(r->programa, &res_mod);
     ps_parse_free(r);
     if (!prog || !prog->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, prog ? prog->erro : "sem memoria");
@@ -26518,10 +26973,27 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     for (int32_t i = 0; i < prog->nglobais; i++) m->nomes[i] = strdup(prog->globais[i]);
     /* `private action` do modulo: marca o nome pra nao sair no import */
     m->priv = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), 1);
-    if (m->priv)
-        for (int32_t i = 0; i < prog->nglobais; i++)
-            for (int32_t k = 0; k < prog->npriv_globais; k++)
-                if (strcmp(prog->globais[i], prog->priv_globais[k]) == 0) m->priv[i] = 1;
+    if (!m->priv) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
+    for (int32_t i = 0; i < prog->nglobais; i++) {
+        for (int32_t k = 0; k < prog->npriv_globais; k++)
+            if (strcmp(prog->globais[i], prog->priv_globais[k]) == 0) m->priv[i] = 1;
+        /* `private class` marcada pela DECLARAÇÃO: olhar o valor falhava com
+         * o nome ainda sem valor (import em ciclo), e a frase virava "não
+         * existe" em vez de "existe, mas é private" */
+        for (int32_t k = 0; k < prog->nclasses; k++)
+            if (prog->classes[k].classe_privada && prog->classes[k].nome
+                    && strcmp(prog->globais[i], prog->classes[k].nome) == 0) m->priv[i] = 1;
+    }
+    /* O que sai por `from m import x`, `m.x` e `from m import *`: o que o
+     * arquivo liga (PSPrograma.exportados). `m->nomes` tem TODO nome que o
+     * compilador viu — inclusive o builtin que o módulo só chamou, pré-ligado
+     * pela VM —, e antes `from m import len` funcionava só porque o módulo
+     * por acaso usava `len`. */
+    m->exporta = calloc((size_t)(prog->nglobais > 0 ? prog->nglobais : 1), 1);
+    if (!m->exporta) { ps_compila_free(prog); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
+    for (int32_t i = 0; i < prog->nglobais; i++)
+        for (int32_t k = 0; k < prog->nexportados; k++)
+            if (strcmp(prog->globais[i], prog->exportados[k]) == 0) { m->exporta[i] = 1; break; }
     vm->alocado += sizeof(PSModuloPS);
 
     /* registra ANTES de rodar: módulo que importa a si mesmo pega o parcial em
@@ -26557,7 +27029,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         snprintf(vm->erro, sizeof(vm->erro), "estouro da pilha"); return -1;
     }
     vm->importando++;   /* corpo importado: o guard é pulado (igual interp) */
-    int rc = vm_executa_base(vm, bp, NULL, 0, NULL, NULL, 0, vm->frame_topo, vm->sp, vm->locals_top, NULL, &ignora);
+    int rc = vm_executa_base(vm, bp, NULL, 0, NULL, NULL, 0, NULL, 0, 0, vm->frame_topo, vm->sp, vm->locals_top, NULL, &ignora);
     vm->importando--;
     vm->sp = sp_salvo; vm->locals_top = lt_salvo; vm->frame_topo = ft_salvo;
     snprintf(vm->dir_modulo, sizeof(vm->dir_modulo), "%s", dir_prev);   /* volta o dir do importador */
@@ -27161,7 +27633,23 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         return -1;
     }
 
-    PSPrograma *prog = ps_compila(r->programa);
+    /* Diretório do script: base do `import` de arquivo vizinho. Sem caminho
+     * (código vindo de `-e` ou da extensão de teste) só restam as libs
+     * globais. Calculado ANTES de compilar: a expansão do `import *` resolve
+     * os módulos com ele, exatamente como o import vai resolver em runtime. */
+    char dir_script[sizeof(((VM *)0)->dir_script)];
+    dir_do_script(caminho, dir_script, sizeof(dir_script));
+    char abs_script[1024];
+    abs_script[0] = '\0';
+    if (caminho) {
+        char *rp = realpath(caminho, NULL);
+        snprintf(abs_script, sizeof(abs_script), "%s", rp ? rp : caminho);
+        free(rp);
+    }
+    EstrelaVisita vis_script = { abs_script, NULL };
+    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL };
+    PSResolvedor res = { estrela_nomes_de, &ectx };
+    PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {
@@ -27174,32 +27662,8 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
 
     VM vm;
     memset(&vm, 0, sizeof(vm));
-    /* Diretório do script: base do `import` de arquivo vizinho. Sem caminho
-     * (código vindo de `-e` ou da extensão de teste) só restam as libs globais. */
     snprintf(vm.nome_script, sizeof(vm.nome_script), "%s", caminho ? caminho : "__main__");
-    if (caminho) {
-        const char *barra = strrchr(caminho, '/');
-        if (barra) {
-            size_t n = (size_t)(barra - caminho);
-            if (n >= sizeof(vm.dir_script)) n = sizeof(vm.dir_script) - 1;
-            memcpy(vm.dir_script, caminho, n);
-            vm.dir_script[n] = '\0';
-        } else {
-            snprintf(vm.dir_script, sizeof(vm.dir_script), ".");
-        }
-        /* ABSOLUTO: `pool sub/app.ps` deixava "sub" aqui, e o import relativo
-         * `from ..x import y` subia uma pasta de "sub" pra ".." — isto e,
-         * relativo ao cwd, nao ao arquivo. Com `pool ./sub/app.ps` ou caminho
-         * absoluto funcionava; o resultado dependia de como o caminho foi
-         * digitado. Resolvido uma vez, tudo que usa dir_script fica igual. */
-        {
-            char *rp = realpath(vm.dir_script, NULL);
-            if (rp) {
-                snprintf(vm.dir_script, sizeof(vm.dir_script), "%s", rp);
-                free(rp);
-            }
-        }
-    }
+    snprintf(vm.dir_script, sizeof(vm.dir_script), "%s", dir_script);
     /* no começo, o "arquivo atual" é o entry: import relativo do topo resolve
      * a partir do dir dele (e o absoluto usa dir_script, que é o mesmo aqui). */
     snprintf(vm.dir_modulo, sizeof(vm.dir_modulo), "%s", vm.dir_script);
@@ -27245,8 +27709,14 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
          * como módulo pré-ligado. Registrado como `_Parsing` pra NÃO ser
          * importável — `import Parsing` é erro no interpretador, e a VM não
          * pode ser mais permissiva que a linguagem. */
+        /* No arquivo executado, `__name__` vale "main" — o mesmo texto que o
+         * guard compara, então `__name__ == "main"` é verdadeiro dentro e
+         * fora do `if`. Valia o caminho do arquivo, e a mesma expressão dava
+         * True no guard (reconhecido pela forma) e False escrita solta. O
+         * caminho continua em `sys.argv[0]`. Num módulo importado, `__name__`
+         * é o nome do módulo (carrega_modulo_ps). */
         if (!ligou && strcmp(prog->globais[i], "__name__") == 0) {
-            PSString *nm = nova_string(&vm, vm.nome_script, (int)strlen(vm.nome_script));
+            PSString *nm = nova_string(&vm, "main", 4);
             if (!nm) { libera_vm(&vm); ps_compila_free(prog);
                        e->tipo = PS_ERRO_MEMORIA; return -1; }
             vm.globals[i] = MK_OBJ(nm);

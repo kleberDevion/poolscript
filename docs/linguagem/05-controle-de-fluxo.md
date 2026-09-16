@@ -364,12 +364,16 @@ O bloco `if __name__ == "main"` roda **apenas quando o arquivo é executado
 direto**, e é pulado quando ele é **importado** por outro. É o lugar do ponto
 de entrada do programa.
 
-Ele é reconhecido pela **forma**, não avaliando a condição: no arquivo
-executado, `__name__` vale o caminho dele (é o que se passa pro `Jinker`, por
-exemplo); num módulo importado, `__name__` vale o **nome do módulo**. Comparar
-com `"main"` nunca daria verdadeiro por conta própria; o compilador vê o
-desenho e emite o guard. A chave pode ficar na linha seguinte, como em todo
-bloco.
+No arquivo executado, `__name__` vale `"main"`; num módulo importado, vale o
+**nome do módulo**. Por isso `__name__ == "main"` é verdadeiro no arquivo
+executado também fora do `if` (`post(__name__)` imprime `main`). O caminho do
+arquivo continua em `sys.argv[0]`.
+
+O `if` é reconhecido pela **forma** — `__name__ == "main"`, com o literal
+`"main"` — e o compilador emite o guard: o bloco é **pulado em todo import**,
+inclusive o de um arquivo chamado `main.ps`, cujo `__name__` também é `"main"`.
+Com qualquer outra string (`if __name__ == "banana"`) é um `if` comum. A chave
+pode ficar na linha seguinte, como em todo bloco.
 
 É também o **único** lugar da linguagem onde `:` ainda abre bloco — `{ }` vale
 igual, e a chave pode ficar na linha seguinte:
@@ -409,4 +413,5 @@ dentro não vazam).
   no-op; ligações são do case.
 - **`count each Tipo in c`** — laço sobre os elementos do tipo (`_match`,
   `_index`, `self`/`_count`).
-- **`if __name__ == "main"`** — só quando principal, pulado no import.
+- **`if __name__ == "main"`** — só quando principal, pulado no import;
+  `__name__` vale `"main"` no arquivo executado.

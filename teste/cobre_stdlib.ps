@@ -161,6 +161,120 @@ os.cmd("cd " + PASTA + "/asp/sub && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + 
 confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
         os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
 
+# ── import * com arquivo `.ps` de verdade ────────────────────────────────────
+#
+# `from m import *`, `import m *` e `PUSH m GET *` ligam o que o arquivo
+# exporta: o que ele liga no nivel do arquivo (funct, Entity, variavel, os
+# imports dele, `global x` gravado de dentro de funct), sem `private`, sem o
+# que so existe dentro de bloco e sem o builtin que ele so chamou. A mesma
+# regra passou a valer pro `from m import x` e pro `m.x`. O `*` e resolvido na
+# compilacao; o que fica pra runtime e o valor (em ciclo, o nome ainda sem
+# valor e pulado). Os casos de um arquivo so estao em casos_linguagem.c.
+EST = PASTA + "/estrela"
+os.mkdir(EST + "/sub", exist_ok=true)
+os.writeFile(EST + "/m.ps",
+    "import json\n"
+    + "funct f() {\n    return \"f\"\n}\n"
+    + "Entity E() {\n}\n"
+    + "x = 1\n"
+    + "_u = 2\n"
+    + "private funct p() {\n    return 1\n}\n"
+    + "private class Pc() {\n}\n"
+    + "if true {\n    bloco = 3\n}\n"
+    + "funct init() {\n    global cfg\n    cfg = 9\n}\n"
+    + "init()\n"
+    + "n_chamou = len(\"ab\")\n")
+
+# roda `fonte` como EST/<arq> e devolve stdout+stderr sem o fim de linha
+funct roda_est(arq, fonte) {
+    os.writeFile(EST + "/" + arq, fonte)
+    os.cmd("cd " + EST + " && '" + sys.executable + "' " + arq + " > " + arq + ".out 2>&1")
+    return os.readFile(EST + "/" + arq + ".out").strip()
+}
+
+TUDO = "f E 1 2 [1] 9"
+USA = "post(f(), type(E()), x, _u, json.stringify([1]), cfg)\n"
+confere("import *: from m import * traz funct, Entity, variavel, _nome, os imports e o global gravado",
+        roda_est("e1.ps", "from m import *\n" + USA) == TUDO)
+confere("import *: import m * e a mesma regra",
+        roda_est("e2.ps", "import m *\n" + USA) == TUDO)
+confere("import *: PUSH m GET * e a mesma regra",
+        roda_est("e3.ps", "PUSH m GET *\n" + USA) == TUDO)
+confere("import *: caminho entre aspas, nas duas grafias",
+        roda_est("e4.ps", "from './m.ps' import *\nimport './m' *\n" + USA) == TUDO)
+os.writeFile(EST + "/sub/rel.ps", "from ..m import *\n" + USA)
+os.cmd("cd " + EST + " && '" + sys.executable + "' sub/rel.ps > sub/rel.out 2>&1")
+confere("import *: relativo com pontos a partir de subpasta",
+        os.readFile(EST + "/sub/rel.out").strip() == TUDO)
+confere("import *: nao liga o nome do modulo",
+        roda_est("e5.ps", "import m *\npost(m)\n").startswith("NameError: name 'm' is not defined"))
+confere("import *: private funct fica de fora",
+        roda_est("e6.ps", "from m import *\np()\n").startswith("NameError: name 'p' is not defined"))
+confere("import *: private class fica de fora",
+        roda_est("e7.ps", "from m import *\nPc()\n").startswith("NameError: name 'Pc' is not defined"))
+confere("import *: nome que so existe dentro de bloco fica de fora",
+        roda_est("e8.ps", "from m import *\npost(bloco)\n").startswith("NameError: name 'bloco' is not defined"))
+confere("import *: o builtin que o modulo so chamou nao sai, e o do importador sobrevive",
+        roda_est("e9.ps", "funct len(v) {\n    return 99\n}\nfrom m import *\npost(len(\"a\"))\n") == "99")
+os.writeFile(EST + "/m3.ps", "funct len(v) {\n    return 7\n}\n")
+confere("import *: builtin REDEFINIDO no modulo sai, como qualquer funct dele",
+        roda_est("e10.ps", "from m3 import *\npost(len(\"a\"))\n") == "7")
+confere("import explicito: builtin que o modulo so chamou e ImportError",
+        roda_est("e11.ps", "from m import len\n").startswith("ImportError: cannot import name 'len' from 'm'"))
+confere("import explicito: m.len do builtin que o modulo so chamou e AttributeError",
+        roda_est("e12.ps", "import m\npost(m.len)\n").startswith("AttributeError: module 'm' has no attribute 'len'"))
+confere("import explicito: private continua dizendo que existe",
+        roda_est("e13.ps", "import m\npost(m.p)\n").startswith("AttributeError: module 'm' has no attribute 'p' (existe, mas é private)"))
+confere("import explicito: private class continua dizendo que existe",
+        roda_est("e14.ps", "from m import Pc\n").startswith("AttributeError: module 'm' has no attribute 'Pc' (existe, mas é private)"))
+confere("import explicito: global gravado de dentro de funct sai",
+        roda_est("e15.ps", "from m import cfg\nimport m\npost(cfg, m.cfg)\n") == "9 9")
+confere("import *: o que vem depois sobrescreve o que o * trouxe",
+        roda_est("e16.ps", "from m import *\nx = 5\npost(x)\n") == "5")
+confere("import *: o * sobrescreve o que ja existia",
+        roda_est("e17.ps", "x = 5\nfrom m import *\npost(x)\n") == "1")
+confere("import *: funct do importador usa o nome que veio do *",
+        roda_est("e18.ps", "from m import *\nfunct g() {\n    return f() + str(x)\n}\npost(g())\n") == "f1")
+confere("import *: escrita dentro de bloco atravessa ate o nome do *",
+        roda_est("e19.ps", "from m import *\nif true {\n    x = 9\n}\npost(x)\n") == "9")
+confere("import *: for each sobre o nome do * devolve o valor depois do laco",
+        roda_est("e20.ps", "from m import *\nfor each x in [7, 8] {\n}\npost(x)\n") == "1")
+confere("import *: nome novo dentro de bloco continua sumindo no fim do bloco",
+        roda_est("e21.ps", "from m import *\nif true {\n    novo = 1\n}\npost(novo)\n").startswith("NameError"))
+confere("import *: variavel tipada do importador confere o valor que chega, como o import explicito",
+        roda_est("e22.ps", "str x = \"a\"\nfrom m import *\n").split("\n")[0]
+        == roda_est("e23.ps", "str x = \"a\"\nfrom m import x\n").split("\n")[0])
+os.writeFile(EST + "/r.ps", "from json import *\n")
+confere("import *: reexportacao — o que r trouxe por * sai de r por * e por r.nome",
+        roda_est("e24.ps", "from r import *\npost(parse(\"[1]\"))\nimport r\npost(r.parse(\"[2]\"))\n") == "[1]\n[2]")
+os.writeFile(EST + "/r2.ps", "from m import *\n")
+confere("import *: reexportacao atravessa arquivo .ps",
+        roda_est("e25.ps", "from r2 import *\npost(f())\n") == "f")
+os.writeFile(EST + "/mr.ps", "funct range(n) {\n    return [\"r\"]\n}\n")
+confere("import *: range que vem do * desliga o atalho do for each",
+        roda_est("e26.ps", "from mr import *\nfor each i in range(3) {\n    post(i)\n}\n") == "r")
+os.writeFile(EST + "/ca.ps", "from cb import *\npost(fb())\n")
+os.writeFile(EST + "/cb.ps", "funct fb() {\n    return \"fb\"\n}\nfrom ca import *\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' ca.ps > ca.out 2>&1")
+confere("import *: ciclo entre dois arquivos termina e liga o que ja tem valor",
+        os.readFile(EST + "/ca.out").strip() == "fb\nfb")
+os.writeFile(EST + "/auto.ps", "x = 1\nfrom auto import *\npost(x)\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' auto.ps > auto.out 2>&1")
+confere("import *: arquivo que importa a si mesmo com * termina",
+        os.readFile(EST + "/auto.out").strip() == "1\n1")
+confere("import *: modulo que so aparece em runtime diz por que o * nao tem nomes",
+        roda_est("e27.ps", "import os\nos.writeFile(\"" + EST + "/gerado.ps\", \"z = 1\\n\")\nfrom gerado import *\n")
+            .startswith("ImportError: `*` de 'gerado': os nomes do `*` sao resolvidos antes de o programa rodar"))
+# Um `*` que aponta pra modulo ausente deixa a lista do arquivo INCOMPLETA: a
+# recusa sobe, em vez de sumir nome em silencio no arquivo de cima.
+os.writeFile(EST + "/inc_b.ps", "from naoexiste import *\nW = 1\n")
+confere("import *: modulo com * que nao resolve nao entrega lista pela metade",
+        roda_est("e28.ps", "from inc_b import *\npost(W)\n").startswith("ImportError: No module named 'naoexiste'"))
+os.writeFile(EST + "/chk.ps", "from m import *\npost(f())\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' --check chk.ps > chk.out 2>&1")
+confere("import *: --check compila sem resolver o modulo",
+        os.readFile(EST + "/chk.out").strip() == "{\"ok\":true}")
+
 # ── os.run: SEGUNDO PLANO ───────────────────────────────────────────────────
 #
 # O `run` sem `capture` dispara e volta na hora — e o que o separa do `cmd`.

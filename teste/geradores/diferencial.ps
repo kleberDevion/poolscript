@@ -209,40 +209,44 @@ funct casos_de(arq) {
             j = j + 1
         }
         i = j + 1
-        # estrutura: { LIT(nome) , LIT(fonte)... , X , Y , NUM } ,
-        # rc = o último número antes do `}` final; X e Y = os dois itens antes
-        # dele; o fonte = todo literal entre o nome e o X.
-        n = len(toks)
-        k = n - 1
-        while k >= 0 and not (toks[k][0] == "num") {
-            k = k - 1
+        # estrutura: { nome , fonte , saida , erro , rc [, arquivo [, pendente]] } ,
+        # Os campos são separados pelas vírgulas de FORA dos literais (vírgula
+        # dentro da string é token `lit`, nunca `pont`), e o fonte é o 2º campo
+        # inteiro — literais adjacentes se concatenam, como em C.
+        #
+        # A versão anterior achava o `rc` como "o último número do caso" e
+        # andava três vírgulas pra trás. Com os campos opcionais `arquivo` e
+        # `pendente` (Caso de 7 campos), o último número é o `pendente`: o
+        # recuo parava em cima do stdout esperado, que entrava colado no fim do
+        # fonte, e o diferencial passava a travar um OUTRO programa.
+        campos = [[]]
+        for each t in toks {
+            if t[0] == "pont" and (t[1] == "{" or t[1] == "}") {
+                continue
+            }
+            if t[0] == "pont" and t[1] == "," {
+                addEnd(campos, [])
+                continue
+            }
+            addEnd(campos[len(campos) - 1], t)
         }
-        if k < 4 {
+        if len(campos) < 5 or len(campos[0]) == 0 or campos[0][0][0] != "lit" {
             continue
         }
-        # anda pra trás sobre `, Y , X ,` — TRÊS vírgulas: a primeira versão
-        # andava duas e parava EM CIMA do X (o stdout esperado), que entrava
-        # no fonte. Todo caso de uma linha só virava outro programa, com a
-        # saída esperada colada no fim; 494 dos 718 reprovaram no runner.
-        virgulas = 0
-        m = k - 1
-        while m >= 0 and virgulas < 3 {
-            if toks[m][0] == "pont" and toks[m][1] == "," {
-                virgulas = virgulas + 1
+        nome = ""
+        for each t in campos[0] {
+            if t[0] == "lit" {
+                nome = nome + t[1]
             }
-            m = m - 1
         }
-        # m é o último literal do fonte; os literais do fonte estão em [2 .. m]
         fonte = []
-        q = 2
-        while q <= m {
-            if toks[q][0] == "lit" {
-                for each b in des_c(toks[q][1]) { addEnd(fonte, b) }
+        for each t in campos[1] {
+            if t[0] == "lit" {
+                for each b in des_c(t[1]) { addEnd(fonte, b) }
             }
-            q = q + 1
         }
-        if toks[1][0] == "lit" and len(fonte) > 0 {
-            addEnd(casos, [toks[1][1], fonte])
+        if len(fonte) > 0 {
+            addEnd(casos, [nome, fonte])
         }
     }
     return casos

@@ -647,6 +647,176 @@ async function main() {
          L.includes('nome') && L.includes('saudacao'), L);
   }
 
+  /* ── 12b. `import *` e a regra de EXPORTAÇÃO do motor ────────────────────
+   *
+   * As três grafias (`from m import *`, `import m *`, `PUSH m GET *`) ligam
+   * o que o módulo exporta e NÃO ligam o nome do módulo. A regra do que sai é
+   * uma só no motor, pra `*`, `from m import x` e `m.x`: o topo do arquivo,
+   * sem `private`, com `_x` incluído, e nada do que nasce dentro de bloco.
+   * Antes o editor tinha a regra dele: escondia `_x` e oferecia a funct
+   * `private` que o import recusa. Os fixtures foram rodados no `./pool`
+   * antes de virar caso: `soma_estrela`, `_interno`, `da_ponte`, `de_a` e
+   * `de_b` existem no programa; `escondida`, `so_no_bloco` e `estrela_ponte`
+   * dão NameError. */
+  {
+    const dir = path.join(os.tmpdir(), 'ps_lsp_t');
+    fs.writeFileSync(path.join(dir, 'estrela_fonte.ps'),
+      'funct soma_estrela(a) {\n    return a\n}\nprivate funct escondida() {\n    return 0\n}\n'
+      + '_interno = 1\nif true {\n    so_no_bloco = 2\n}\n');
+    fs.writeFileSync(path.join(dir, 'estrela_ponte.ps'),
+      'import estrela_fonte *\nfunct da_ponte() {\n    return 1\n}\n');
+    /* `*` de ida e volta: sem o corte de ciclo o servidor não termina */
+    fs.writeFileSync(path.join(dir, 'ciclo_a.ps'), 'from ciclo_b import *\nfunct de_a() {\n    return 1\n}\n');
+    fs.writeFileSync(path.join(dir, 'ciclo_b.ps'), 'from ciclo_a import *\nfunct de_b() {\n    return 2\n}\n');
+    const def = (id, line, ch) => ({ jsonrpc: '2.0', id, method: 'textDocument/definition',
+      params: { textDocument: { uri: URI }, position: { line, character: ch } } });
+
+    {
+      const m = await conversa('from json import *\np\n', [compl(2, 1, 1)]);
+      const L = rotulos(resp(m, 2));
+      conf('`from json import *` -> o completion sem receptor traz `parse` e `stringify`',
+           L.includes('parse') && L.includes('stringify'), L.slice(0, 10));
+    }
+    {
+      const m = await conversa('from json import \nPUSH json GET \n', [compl(2, 0, 17), compl(3, 1, 14)]);
+      const L1 = rotulos(resp(m, 2));
+      conf('`from json import ` oferece `*` (e os membros do json)', L1.includes('*') && L1.includes('parse'), L1);
+      const L2 = rotulos(resp(m, 3));
+      conf('`PUSH json GET ` oferece `*` (e os membros do json)', L2.includes('*') && L2.includes('parse'), L2);
+    }
+    {
+      const m = await conversa('import json *\nx = json.\n', [compl(2, 1, 9)]);
+      const L = rotulos(resp(m, 2));
+      conf('`import json *` NAO liga `json`: `json.` nao vira membro de modulo',
+           !L.includes('parse') && !L.includes('stringify'), L.slice(0, 10));
+    }
+    {
+      const SRC = ['from estrela_fonte import *', 'soma_estrela(1)', 'escondida()', '_interno', 'x'];
+      const m = await conversa(SRC.join('\n') + '\n', [
+        hov(3, 1, 2), def(4, 1, 2), hov(5, 2, 2), def(6, 2, 2), hov(7, 3, 2), compl(8, 4, 1),
+      ]);
+      conf('hover em nome trazido por `*` de arquivo mostra a funct e o arquivo',
+           valor(m, 3).includes('funct soma_estrela(a)') && valor(m, 3).includes('estrela_fonte.ps'), valor(m, 3));
+      const d = resp(m, 4);
+      conf('definicao de nome trazido por `*` vai na declaracao, no arquivo do modulo',
+           !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.ps') && d.result.range.start.line === 0,
+           d && d.result);
+      conf('`private funct` NAO e resolvida pelo `*` (hover mudo)', valor(m, 5) === '', valor(m, 5));
+      const d2 = resp(m, 6);
+      conf('`private funct` NAO e resolvida pelo `*` (sem definicao)', !!d2 && !d2.result, d2 && d2.result);
+      conf('`_interno` (topo, com sublinhado) E resolvido pelo `*`', valor(m, 7).includes('_interno'), valor(m, 7));
+      const L = rotulos(resp(m, 8));
+      const faltam = ['soma_estrela', '_interno'].filter((e) => !L.includes(e));
+      const sobram = ['escondida', 'so_no_bloco', 'estrela_fonte'].filter((e) => L.includes(e));
+      conf('completion depois do `*`: topo e `_x` sim; private, nome de bloco e o modulo nao',
+           faltam.length === 0 && sobram.length === 0, { faltam, sobram });
+    }
+    /* a MESMA regra no `from m import ` e no `m.` */
+    const casos = [
+      ['`from estrela_fonte import ` -> `*`, topo e `_x`; sem private nem nome de bloco',
+       ['from estrela_fonte import '], 0, ['*', 'soma_estrela', '_interno'], ['escondida', 'so_no_bloco']],
+      ['`import estrela_fonte` + `estrela_fonte.` -> topo e `_x`; sem private nem nome de bloco',
+       ['import estrela_fonte', 'estrela_fonte.'], 1, ['soma_estrela', '_interno'], ['escondida', 'so_no_bloco']],
+    ];
+    for (const [nome, linhas, line, espera, nao] of casos) {
+      const m = await conversa(linhas.join('\n') + '\n', [compl(2, line, linhas[line].length)]);
+      const L = rotulos(resp(m, 2));
+      const faltam = espera.filter((e) => !L.includes(e));
+      const sobram = nao.filter((e) => L.includes(e));
+      conf(nome, faltam.length === 0 && sobram.length === 0, { voltou: L.slice(0, 10), faltam, sobram });
+    }
+    /* `*` que atravessa arquivos (reexporte) e `*` em ciclo, nas outras duas
+     * grafias: caminho entre aspas e `PUSH m GET *` */
+    {
+      const SRC = ["import './estrela_ponte.ps' *", 'PUSH ciclo_a GET *', 'soma_estrela(2)', 's'];
+      const m = await conversa(SRC.join('\n') + '\n', [compl(2, 3, 1), def(3, 2, 2)]);
+      const L = rotulos(resp(m, 2));
+      const faltam = ['soma_estrela', 'da_ponte', 'de_a', 'de_b'].filter((e) => !L.includes(e));
+      const sobram = ['escondida', 'estrela_ponte', 'ciclo_a'].filter((e) => L.includes(e));
+      conf('`*` transitivo e em ciclo: traz o reexportado e os dois lados do ciclo',
+           faltam.length === 0 && sobram.length === 0, { faltam, sobram });
+      const d = resp(m, 3);
+      conf('definicao de nome reexportado por `*` vai no arquivo de ORIGEM',
+           !!d && !!d.result && d.result.uri.endsWith('/estrela_fonte.ps'), d && d.result);
+    }
+
+    /* ── 12c. a ORDEM do arquivo, e a assinatura de quem veio pelo `*` ─────
+     *
+     * Medido no `./pool` antes de virar caso, com um módulo que exporta `x` e
+     * `soma_ordem`:
+     *
+     *   x = 5 / `*`            -> embaixo, x é o do módulo
+     *   `*` / x = 5            -> embaixo, x é a variável
+     *   funct lendo x, x = 5 e `*` no fim          -> x é o do módulo
+     *   `*`, funct lendo x e x = 5 no fim          -> x é a variável
+     *   `*` / funct soma_ordem embaixo             -> entre os dois vale o do
+     *                                                 módulo; da funct pra
+     *                                                 baixo, a funct
+     *
+     * E o signatureHelp: `f(` de um nome vindo do `*` mostrava assinatura
+     * nenhuma, de arquivo `.ps` e de módulo do motor. */
+    fs.writeFileSync(path.join(dir, 'estrela_ordem.ps'),
+      'x = "do modulo"\nfunct soma_ordem(a) {\n    return a\n}\n');
+    const sig = (id, line, ch) => ({ jsonrpc: '2.0', id, method: 'textDocument/signatureHelp',
+      params: { textDocument: { uri: URI }, position: { line, character: ch } } });
+    const rotuloSig = (m, id) => {
+      const r = resp(m, id);
+      return r && r.result && r.result.signatures[0] ? r.result.signatures[0].label : '';
+    };
+    {
+      const ult = 'soma_estrela(';
+      const m = await conversa('from estrela_fonte import *\n' + ult, [sig(3, 1, ult.length)]);
+      conf('signatureHelp de funct vinda de `*` de arquivo .ps mostra a assinatura da declaracao',
+           rotuloSig(m, 3) === 'soma_estrela(a)', rotuloSig(m, 3));
+    }
+    {
+      const ult = 'sub(';
+      const m = await conversa('from regex import *\n' + ult, [sig(3, 1, ult.length)]);
+      const l = rotuloSig(m, 3);
+      conf('signatureHelp de funct vinda de `*` de modulo do motor mostra os params do motor',
+           l.startsWith('sub(') && l.includes('pattern'), l);
+    }
+    {
+      const m = await conversa('x = 5\nfrom estrela_ordem import *\nx\n', [hov(3, 2, 0), def(4, 2, 0)]);
+      conf('`x = 5` e `*` embaixo: na linha de baixo o x e o do MODULO',
+           valor(m, 3).includes('estrela_ordem.ps'), valor(m, 3));
+      const d = resp(m, 4);
+      conf('...e a definicao vai no arquivo do modulo',
+           !!d && !!d.result && d.result.uri.endsWith('/estrela_ordem.ps') && d.result.range.start.line === 0,
+           d && d.result);
+    }
+    {
+      const m = await conversa('from estrela_ordem import *\nx = 5\nx\n', [hov(3, 2, 0), def(4, 2, 0)]);
+      conf('`*` e `x = 5` embaixo: na linha de baixo o x e a VARIAVEL',
+           valor(m, 3).includes('linha 2') && !valor(m, 3).includes('estrela_ordem'), valor(m, 3));
+      const d = resp(m, 4);
+      conf('...e a definicao fica no proprio arquivo, na linha da atribuicao',
+           !!d && !!d.result && d.result.uri.endsWith('/a.ps') && d.result.range.start.line === 1,
+           d && d.result);
+    }
+    {
+      /* dentro da funct a linha não decide: ela roda com o arquivo já
+       * carregado, e vale a ÚLTIMA ligação do topo */
+      const m = await conversa('funct f() {\n    return x\n}\nx = 5\nfrom estrela_ordem import *\n', [hov(3, 1, 11)]);
+      conf('dentro da funct, com o `*` por ultimo no arquivo, o x e o do MODULO',
+           valor(m, 3).includes('estrela_ordem.ps'), valor(m, 3));
+    }
+    {
+      const m = await conversa('from estrela_ordem import *\nfunct f() {\n    return x\n}\nx = 5\n', [hov(3, 2, 11)]);
+      conf('dentro da funct, com a variavel por ultimo, o `*` NAO responde pelo x',
+           !valor(m, 3).includes('estrela_ordem'), valor(m, 3));
+    }
+    {
+      const SRC = ['from estrela_ordem import *', 'soma_ordem(1)', 'funct soma_ordem(a, b) {',
+                   '    return a', '}', 'soma_ordem(2)'];
+      const m = await conversa(SRC.join('\n') + '\n', [hov(3, 1, 0), hov(4, 5, 0)]);
+      conf('nome de funct NAO e hoisted por cima do `*`: acima da declaracao vale o do modulo',
+           valor(m, 3).includes('estrela_ordem.ps'), valor(m, 3));
+      conf('...e da linha da declaracao pra baixo vale a funct do arquivo',
+           valor(m, 4).includes('funct soma_ordem(a, b)') && !valor(m, 4).includes('estrela_ordem'), valor(m, 4));
+    }
+  }
+
   /* ── 13. A LISTA DELE, item por item ─────────────────────────────────────
    *
    * Ele escreveu o que não funcionava, e cada linha vira um caso:

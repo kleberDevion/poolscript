@@ -168,6 +168,9 @@ funct f(*int args) { }
 SyntaxError: parametro `*int args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`
 ```
 
+O tipo escrito **antes** da estrela (`int *args`, `String *args`, `dict **kw`)
+recebe a mesma frase.
+
 Um nomeado que **casa** com um parâmetro fixo fica nele; só o que não casa
 cai no `kwarg`:
 
@@ -214,6 +217,18 @@ decorador faz ([capítulo 14](14-decoradores.md)).
 
 Passar argumentos **de menos** (sem cobrir um parâmetro sem padrão) ou **de
 mais** é erro em tempo de execução.
+
+Uma funct tem no máximo **256 parâmetros fixos** (o `self` conta; `*args` e
+`**kwarg` não). Passar disso é erro **na declaração**, antes de rodar — vale
+pra funct, método e lambda:
+
+```
+SyntaxError: f() tem parametros demais (maximo 256)
+```
+
+O `__init__` que uma Entity gera dos campos recebe `self` + um parâmetro por
+campo, então uma Entity com mais de 255 campos é recusada do mesmo jeito:
+`Entity E: o __init__ gerado dos campos tem parametros demais (maximo 256: self + 255 campos)`.
 
 ---
 
@@ -417,6 +432,22 @@ funct fatorial(n) {
 post(fatorial(5))    # 120
 ```
 
+Recursão sem fim é `RecursionError: maximum recursion depth exceeded`
+(capturável com `catch (RecursionError e)`), também quando ela passa por uma
+função da linguagem que chama a sua de volta — `map`, `filter`, um decorador,
+um gerador que consome outro gerador dele mesmo:
+
+```
+funct f(x) {
+    return map([x], f)
+}
+f(1)
+RecursionError: maximum recursion depth exceeded
+```
+
+Dentro de uma `async funct` a pilha de cada task é menor, e esse limite chega
+antes do que no programa principal.
+
 ---
 
 ## 6.7. Geradores — `yield`
@@ -438,6 +469,12 @@ for each v in conta() {
 
 post(list(conta()))  # [1, 2, 3]
 ```
+
+Chamar um gerador **não executa nada**: devolve o gerador, e o corpo só roda no
+primeiro pedido. Vale em qualquer forma de chamada — posicional, por nome,
+espalhada (`g(*lista)`), como **método** (`obj.conta(2)`, ou `f = obj.conta` e
+depois `f(2)`) e passada a uma função que chama de volta (`map([2], obj.conta)`
+devolve uma lista de geradores).
 
 ---
 
@@ -472,6 +509,32 @@ post(await 5)               # 5 — valor comum devolve ele mesmo
 cada argumento vira um elemento do resultado, e o argumento-lista vira a
 sub-lista dos valores dele. Pra achatar, use `await fs`.
 
+**Toda chamada devolve o future**, em qualquer forma: posicional, por nome
+(`dobro(n=21)`), espalhada (`dobro(*l)`, `dobro(**d)`), como **método**
+(`obj.m(1)`, ou `f = obj.m` e depois `f(1)`), `static` pela Entity, funct
+aninhada que usa variável de fora (ela leva as variáveis junto) e passada a uma
+função que chama de volta (`map([1, 2], dobro)` devolve a lista de futures —
+`await` dela dá `[2, 4]`). Não há limite de argumentos. Os erros de chamada
+(aridade, nome, tipo) saem **na chamada**, não no `await`:
+
+```
+async funct f(a) {
+    return a
+}
+f(b=1)
+TypeError: f() got an unexpected keyword argument 'b'
+```
+
+Um `__init__` não pode ser `async` nem gerador — a instanciação vale o objeto,
+e não teria onde pôr o future: `TypeError: __init__() should return None, not 'future'`.
+
+**Handler de framework roda o corpo no lugar.** A rota, o middleware e o
+socket do `jinker`, e o `on_message` de um WebSocket de saída, **esperam** o
+handler: uma `async funct` ali roda na fibra que atende a conexão, e vê a
+requisição dela. Um helper `async` aguardado de dentro do handler
+(`v = await ler_corpo()`) roda noutra fibra, que nasce com a mesma requisição —
+o `request` lá dentro é o do handler.
+
 Roda sobre **fibras** (*green-threads*): cada `async funct` vira uma fibra e o
 escalonador as revessa; `sleep`, banco e requisições de saída cedem sozinhos. O
 modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
@@ -485,13 +548,17 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
   `action` e `reaction` saíram e são erro de sintaxe.
 - Parâmetros: posicionais + **padrão** (`b=10`); **nomeados** na chamada;
   **tipo antes do nome** (opcional); **variádicos** `*args` (tup) e `**kwarg`
-  (dict); `f(*lista)` / `f(**dict)` espalham na chamada; aridade errada é erro.
+  (dict); `f(*lista)` / `f(**dict)` espalham na chamada; aridade errada é erro;
+  no máximo 256 parâmetros fixos, conferido na declaração.
 - `return` sem valor / ausência de `return` → `null`.
 - **`int funct` / `bool funct`**: nunca propagam erro (int→`500`, bool→`False`
   no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.
 - **`static`** e **`nonnull`** vêm colados na cabeça, em qualquer ordem com os
   outros modificadores, e valem só para a funct em que estão escritos.
-- Funções são **valores** (first-class); há **recursão** e **geradores**
-  (`yield`).
+- Funções são **valores** (first-class); há **recursão** (sem fim, inclusive
+  passando por `map`/`filter`/decorador, é `RecursionError`) e **geradores**
+  (`yield`) — chamar um gerador, em qualquer forma, devolve o gerador.
 - **`async`/`await`/`gather`** funcionam sobre fibras; as tasks correm
-  concorrentes. `await` de uma **lista** resolve os futures de dentro dela.
+  concorrentes. Toda chamada de `async funct` devolve o future, em qualquer
+  forma; handler do jinker e `on_message` rodam o corpo no lugar. `await` de uma
+  **lista** resolve os futures de dentro dela.

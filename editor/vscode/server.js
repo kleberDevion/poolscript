@@ -332,7 +332,11 @@ function libsInstaladas() {
   } catch (_) { return []; }
 }
 
-function arquivoDoImport(mod, dirDoc, aspas) {
+/* `dirDoc` é a pasta de QUEM importa; `dirScript`, a do arquivo aberto no
+ * editor (o que o usuário roda). São a mesma coisa no documento, e diferem
+ * quando se resolve o import de dentro de um módulo — que é o que o `*`
+ * atravessa. O motor procura nas duas (`acha_modulo_ps_em`). */
+function arquivoDoImport(mod, dirDoc, aspas, pontos, dirScript) {
   /* `import 'caminho/alvo.ps'`: absoluto como está, senão relativo à pasta do
    * documento; como escrito e com as extensões — a mesma busca do motor. */
   if (aspas && A.especificadorEhCaminho(mod)) {
@@ -343,8 +347,21 @@ function arquivoDoImport(mod, dirDoc, aspas) {
     }
     return '';
   }
+  /* `from ..pkg.m import x`: relativo à pasta de quem importa, subindo uma
+   * pasta por ponto além do primeiro, e nunca cai nas libs — a regra do
+   * motor. Sem isto os pontos eram jogados fora e `..pkg.m` virava `pkg.m`. */
+  if (pontos > 0) {
+    if (!dirDoc) return '';
+    let base = dirDoc;
+    for (let i = 1; i < pontos; i++) base = path.dirname(base);
+    for (const ext of ['.ps', '.psl', '.p']) {
+      const p = path.join(base, mod.split('.').join(path.sep) + ext);
+      try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* segue */ }
+    }
+    return '';
+  }
   const rel = mod.split('.').join(path.sep) + '.ps';
-  for (const base of [pastaLibs(), dirDoc]) {
+  for (const base of [pastaLibs(), dirDoc, dirScript]) {
     if (!base) continue;
     const p = path.join(base, rel);
     try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* segue */ }
@@ -374,42 +391,193 @@ function indiceDeArquivo(caminho) {
   return idx;
 }
 
-/* O que um nome importado designa: módulo do motor, ou o índice do arquivo. */
-function alvoDoImport(doc, nome) {
+/* O módulo do motor que a referência designa, ou null. Import relativo e
+ * caminho entre aspas nunca são módulo do motor: `import './json.ps'` é o
+ * arquivo, de propósito — a mesma decisão do `modulo_nativo_de` da VM. */
+function nativoDe(mod, aspas, pontos) {
+  if (pontos > 0 || (aspas && A.especificadorEhCaminho(mod))) return null;
+  return META.modulos[mod] ? mod : null;
+}
+
+/* O que um nome importado designa: módulo do motor, ou o índice do arquivo.
+ * `linha` é a do cursor: o nome que nenhum import ligou ainda pode ter vindo
+ * de um `*`, e só vale se o arquivo não o ligou ali (ver `alvoDaEstrela`). */
+function alvoDoImport(doc, nome, linha) {
   const idx = idxDoc(doc);
   const imp = idx.imports.get(nome);
+  /* o `*` também vale contra um import NOMEADO: quem vem por último no
+   * arquivo é que liga o nome (ver `ligacaoDeTopo`) */
+  const est = alvoDaEstrela(doc, nome, linha);
+  if (est) return est;
   if (!imp) return null;
-  if (META.modulos[imp.mod] && !imp.membro) return { tipo: 'modulo', mod: imp.mod };
-  const dirDoc = doc.uri.startsWith('file://') ? path.dirname(doc.uri.slice(7)) : '';
-  const arq = arquivoDoImport(imp.mod, dirDoc, imp.aspas);
+  const nativo = nativoDe(imp.mod, imp.aspas, imp.pontos);
+  if (nativo && !imp.membro) return { tipo: 'modulo', mod: imp.mod };
+  const dirDoc = pastaDoDoc(doc);
+  const arq = arquivoDoImport(imp.mod, dirDoc, imp.aspas, imp.pontos, dirDoc);
   if (imp.membro) {
     /* `from mod import X` — o nome ligado é o MEMBRO, não o módulo */
-    if (META.modulos[imp.mod]) return { tipo: 'membro_modulo', mod: imp.mod, membro: imp.membro };
+    if (nativo) return { tipo: 'membro_modulo', mod: imp.mod, membro: imp.membro };
     return { tipo: 'membro_arquivo', arquivo: arq, membro: imp.membro };
   }
   if (arq) return { tipo: 'arquivo', arquivo: arq };
   return null;
 }
 
-/* Os membros de topo de um arquivo .ps importado: Entities, actions e as
- * variáveis de módulo. É o que `mod.` oferece. */
-function membrosDeArquivo(caminho) {
+/* ── o que um módulo EXPORTA ─────────────────────────────────────────────
+ *
+ * UMA regra, a do motor, pra tudo que pergunta "o que este módulo tem":
+ * `from m import <cursor>`, `m.<cursor>` e os nomes que um `*` traz. Antes
+ * eram duas regras escritas à mão, e as duas mentiam: `_x` sumia (o motor o
+ * exporta) e a funct `private` aparecia (o motor recusa com "existe, mas é
+ * private"). O editor oferecia o que o programa não roda.
+ *
+ *   módulo do motor   todo membro da tabela do VM (`--metadata`)
+ *   arquivo .ps       o que ele liga no topo (`topo`, ver `analise.js`),
+ *                     menos o `private`; o nome que ELE importa sai também,
+ *                     resolvido até a origem, e os `*` dele são expandidos
+ *
+ * Cada item leva de onde veio: `arquivo`/`linha`/`coluna` (declarado num
+ * .ps, com `declarado` = o nome lá dentro) ou `mod`/`membro` (membro de módulo
+ * do motor) — é isso que o hover e o ir-pra-definição usam.
+ *
+ * `pilha` são os arquivos em expansão AGORA: `a` com `*` de `b` e `b` com `*`
+ * de `a` é ciclo, e deste ponto o arquivo repetido não traz nada — o mesmo
+ * corte do `estrela_nomes_de` da VM. */
+function exportadosDe(ref, dirModulo, dirScript, pilha) {
+  let mod = ref.mod || '';
+  let pontos = ref.pontos || 0;
+  /* do completion o módulo chega como TEXTO (`..pkg.m`): os pontos da frente
+   * são o nível relativo */
+  if (!ref.aspas) while (mod.startsWith('.')) { pontos++; mod = mod.slice(1); }
+  if (!mod) return [];
+  const nativo = nativoDe(mod, ref.aspas, pontos);
+  if (nativo) {
+    return META.modulos[nativo].map((m) => Object.assign(
+      { kind: m.kind === 'value' ? 'campo' : 'action', escopo: nativo, tipo: m.retorna || '' },
+      m, { mod: nativo, membro: m.nome }));
+  }
+  const arq = arquivoDoImport(mod, dirModulo, ref.aspas, pontos, dirScript);
+  return arq ? exportadosDeArquivo(arq, dirScript, pilha || new Set()) : [];
+}
+
+function exportadosDeArquivo(caminho, dirScript, pilha) {
+  let abs = caminho;
+  try { abs = fs.realpathSync(caminho); } catch (_) { /* fica o caminho */ }
+  if (pilha.has(abs)) return [];
   const idx = indiceDeArquivo(caminho);
   if (!idx) return [];
-  const out = [];
-  const jaTem = new Set();
-  for (const e of idx.entidades) {
-    if (jaTem.has(e.nome)) continue;
-    jaTem.add(e.nome);
-    out.push({ nome: e.nome, kind: 'class', params: [], linha: e.linha, coluna: e.coluna });
+  const sub = new Set(pilha).add(abs);
+  const dirMod = path.dirname(abs);
+  /* `private` sai pelo NOME, em qualquer ponto da lista: é como o motor corta */
+  const privados = new Set(idx.topo.filter((b) => b.privado).map((b) => b.nome));
+  /* nome religado mais abaixo fica com a ÚLTIMA ligação — é ela que o
+   * programa tem quando o arquivo termina de rodar; a ordem é a da primeira */
+  const porNome = new Map();
+  const poe = (x) => { if (x && x.nome && !privados.has(x.nome)) porNome.set(x.nome, x); };
+  for (const b of idx.topo) {
+    if (b.estrela) {
+      for (const x of exportadosDe(b.estrela, dirMod, dirScript, sub)) poe(x);
+      continue;
+    }
+    const local = Object.assign({}, b, { arquivo: caminho, declarado: b.nome });
+    if (!b.imp) { poe(local); continue; }
+    /* nome que o arquivo IMPORTA e reexporta: resolvido até a origem, com o
+     * nome com que foi ligado aqui */
+    if (!b.imp.membro) {
+      const nativo = nativoDe(b.imp.mod, b.imp.aspas, b.imp.pontos);
+      poe(Object.assign(local, { kind: 'modulo', modNativo: nativo || undefined,
+        modArquivo: nativo ? undefined : arquivoDoImport(b.imp.mod, dirMod, b.imp.aspas, b.imp.pontos, dirScript) }));
+      continue;
+    }
+    const origem = exportadosDe(b.imp, dirMod, dirScript, sub).find((x) => x.nome === b.imp.membro);
+    poe(origem ? Object.assign({}, origem, { nome: b.nome }) : Object.assign(local, { kind: 'variavel' }));
   }
-  const mod = idx.escopos.find((s) => s.tipo === 'modulo');
-  for (const b of (mod ? mod.liga : [])) {
-    if (jaTem.has(b.nome) || b.nome.startsWith('_')) continue;
-    jaTem.add(b.nome);
-    out.push({ nome: b.nome, kind: b.kind, params: b.params || [], linha: b.linha, coluna: 0 });
+  return [...porNome.values()];
+}
+
+/* Os membros de topo de um arquivo .ps importado — o que `mod.` e
+ * `from mod import` oferecem. É a regra do motor: `exportadosDeArquivo`. */
+function membrosDeArquivo(caminho, dirScript) {
+  return exportadosDeArquivo(caminho, dirScript, new Set());
+}
+
+/* ── quem ganha: a ORDEM do arquivo ──────────────────────────────────────
+ *
+ * O motor liga na ordem em que o arquivo roda, e o `*` é uma ligação como
+ * outra qualquer. Medido no `./pool` antes de virar código:
+ *
+ *   x = 5            + `from m import *` embaixo  -> na linha de baixo x é o
+ *                                                    do módulo
+ *   `from m import *`+ x = 5 embaixo              -> x é a variável
+ *   `from m import *`+ `funct soma()` embaixo     -> entre os dois, `soma` é
+ *                                                    o do módulo; da linha da
+ *                                                    funct pra baixo, a funct
+ *                                                    (nome de funct NÃO é
+ *                                                    hoisted por cima do `*`)
+ *
+ * DENTRO de uma funct a linha não decide: a funct roda depois de o arquivo
+ * inteiro ter carregado, então vale a última ligação do topo — `funct f()
+ * { return x }` lá em cima devolve o x do módulo quando o `*` está no fim do
+ * arquivo, e a variável quando é ela que vem por último. */
+
+/* Até que linha do topo contar, pra um cursor na linha `linha`. Dentro de
+ * funct/método, o arquivo inteiro. */
+function linhaDeOrdem(idx, linha) {
+  if (linha === undefined) return Infinity;
+  const L = linha + 1;
+  for (const e of idx.escopos) {
+    if (e.tipo !== 'modulo' && e.ini <= L && L <= e.fim) return Infinity;
   }
-  return out;
+  return linha;
+}
+
+/* O nome é LOCAL de uma funct/método que contém a linha? Parâmetro e variável
+ * de dentro ganham sempre: o slot é da funct, o topo do arquivo não alcança. */
+function ligadoLocal(idx, nome, linha) {
+  if (linha === undefined) return false;
+  const L = linha + 1;
+  for (const e of idx.escopos) {
+    if (e.tipo === 'modulo' || !(e.ini <= L && L <= e.fim)) continue;
+    if (e.liga.some((b) => b.nome === nome)) return true;
+  }
+  return false;
+}
+
+/* A ÚLTIMA ligação do nome no TOPO do arquivo até a linha `ate`:
+ * `{ linha, b }` pro que o arquivo liga (funct, class, variável, import) e
+ * `{ linha, estrela, item }` quando quem liga por último é um `*`. */
+function ligacaoDeTopo(doc, nome, ate) {
+  const idx = idxDoc(doc);
+  const dir = pastaDoDoc(doc);
+  let melhor = null;
+  for (const b of idx.topo || []) {
+    const linha = b.estrela ? b.estrela.linha : b.linha;
+    if (linha > ate) continue;
+    if (b.estrela) {
+      const item = exportadosDe(b.estrela, dir, dir, new Set()).find((m) => m.nome === nome);
+      if (item) melhor = { linha, estrela: b.estrela, item };
+      continue;
+    }
+    if (b.nome === nome) melhor = { linha, b };
+  }
+  return melhor;
+}
+
+/* O alvo de um nome trazido por `*`, no formato de `alvoDoImport` — ou null
+ * quando não é a estrela que vale ali (é local da funct, ou o arquivo religou
+ * o nome depois dela). */
+function alvoDaEstrela(doc, nome, linha) {
+  const idx = idxDoc(doc);
+  if (!(idx.estrelas || []).length || ligadoLocal(idx, nome, linha)) return null;
+  const lig = ligacaoDeTopo(doc, nome, linhaDeOrdem(idx, linha));
+  if (!lig || !lig.estrela) return null;
+  const x = lig.item;
+  if (x.mod && x.membro) return { tipo: 'membro_modulo', mod: x.mod, membro: x.membro };
+  if (x.kind === 'modulo') {
+    if (x.modNativo) return { tipo: 'modulo', mod: x.modNativo };
+    return x.modArquivo ? { tipo: 'arquivo', arquivo: x.modArquivo } : null;
+  }
+  return { tipo: 'membro_arquivo', arquivo: x.arquivo, membro: x.declarado || x.nome, def: x };
 }
 
 /* ── resolução de CADEIA: `a.b.c` ────────────────────────────────────────
@@ -428,6 +596,15 @@ function achaEntidade(doc, nome, idxExtra) {
     const ix = indiceDeArquivo(alvo.arquivo);
     if (!ix) continue;
     for (const e of ix.entidades) if (e.nome === nome) return e;
+  }
+  /* Entity trazida por `*`: só a class que o arquivo EXPORTA (a `private
+   * class` não vem), e só quando é a estrela que liga o nome no fim do
+   * arquivo — é lá que uma Entity é usada, depois de tudo carregado */
+  const alvoE = alvoDaEstrela(doc, nome);
+  if (alvoE && alvoE.tipo === 'membro_arquivo' && alvoE.def && alvoE.def.kind === 'class') {
+    const ix = indiceDeArquivo(alvoE.arquivo);
+    const e = ix && ix.entidades.find((y) => y.nome === alvoE.membro);
+    if (e) return e;
   }
   return null;
 }
@@ -470,7 +647,7 @@ function tipoDoNome(doc, nome, linha) {
   }
   if (achaEntidade(doc, nome)) return { tipo: 'entity', nome, interno: false };
 
-  const alvo = alvoDoImport(doc, nome);
+  const alvo = alvoDoImport(doc, nome, linha);
   if (alvo) return { tipo: 'import', alvo };
 
   /* variável: o tipo vem da declaração (`str x = …`) ou do que foi atribuído */
@@ -514,7 +691,7 @@ function tipoDoNome(doc, nome, linha) {
      * árvore; o vínculo Jinker → jinker, do ImportStmt; o tipo da instância,
      * de `modulos.jinker[].retorna` do `--metadata`. */
     if (!cons.mod) {
-      const alvoC = alvoDoImport(doc, cons.nome);
+      const alvoC = alvoDoImport(doc, cons.nome, linha);
       if (alvoC && alvoC.tipo === 'membro_modulo') {
         for (const m of META.modulos[alvoC.mod] || []) {
           if (m.nome === alvoC.membro && m.retorna && META.tipos[m.retorna])
@@ -525,7 +702,7 @@ function tipoDoNome(doc, nome, linha) {
         return { tipo: 'entity', nome: alvoC.membro, interno: false };
     }
     if (cons.mod) {
-      const alvoM = alvoDoImport(doc, cons.mod);
+      const alvoM = alvoDoImport(doc, cons.mod, linha);
       if (alvoM && alvoM.arquivo) {
         const ix = indiceDeArquivo(alvoM.arquivo);
         if (ix && ix.entidades.some((e) => e.nome === cons.nome))
@@ -641,10 +818,9 @@ function membrosDe(doc, alvo, linha) {
   }
   if (alvo.tipo === 'import') {
     const a = alvo.alvo;
-    if (a.tipo === 'modulo') {
-      return (META.modulos[a.mod] || []).map((m) => Object.assign({ kind: 'action', escopo: a.mod }, m));
-    }
-    if (a.tipo === 'arquivo') return membrosDeArquivo(a.arquivo);
+    /* `m.`: o que o módulo exporta, pela regra única do motor */
+    if (a.tipo === 'modulo') return exportadosDe({ mod: a.mod }, '', '', new Set());
+    if (a.tipo === 'arquivo') return membrosDeArquivo(a.arquivo, pastaDoDoc(doc));
     if (a.tipo === 'membro_modulo') {
       for (const m of META.modulos[a.mod] || []) {
         if (m.nome === a.membro && m.retorna && META.tipos[m.retorna])
@@ -676,6 +852,8 @@ function assinatura(m) {
   const ret = m.retorna ? ` -> ${m.retorna}` : '';
   if (m.kind === 'campo') return `${m.tipo ? m.tipo + ' ' : ''}${m.nome}`;
   if (m.kind === 'class') return `class ${m.nome}`;
+  /* módulo que um arquivo importa e reexporta (`import os as o` no topo dele) */
+  if (m.kind === 'modulo') return `modulo ${m.nome}`;
   return `${m.nome}(${ps.join(', ')})${ret}`;
 }
 
@@ -685,6 +863,7 @@ function itemDeMembro(m, deOnde) {
   const herd = deOnde && m.de && m.de !== deOnde ? ` · de ${m.de}` : '';
   const kind = m.kind === 'campo' ? CompletionItemKind.Field
              : m.kind === 'class' ? CompletionItemKind.Class
+             : m.kind === 'modulo' ? CompletionItemKind.Module
              : CompletionItemKind.Method;
   const it = {
     label: m.nome,
@@ -763,6 +942,24 @@ function dentroDeParenteses(doc, pos) {
   return prof > 0;
 }
 
+/* Os parâmetros de um nome que veio de IMPORT — nomeado (`from m import f`)
+ * ou trazido por um `*`. Módulo do motor: a tabela do `--metadata`. Arquivo
+ * `.ps`: a assinatura da declaração, que o item exportado já traz. Sem isto o
+ * signatureHelp ficava mudo em `f(` justamente no nome que veio de fora. */
+function paramsDoImportado(doc, alvo) {
+  if (!alvo) return [];
+  if (alvo.tipo === 'membro_modulo') {
+    const m = (META.modulos[alvo.mod] || []).find((x) => x.nome === alvo.membro);
+    return m ? (m.params || []) : [];
+  }
+  if (alvo.tipo === 'membro_arquivo') {
+    const d = alvo.def
+      || (alvo.arquivo ? membrosDeArquivo(alvo.arquivo, pastaDoDoc(doc)).find((x) => x.nome === alvo.membro) : null);
+    return d ? (d.params || []) : [];
+  }
+  return [];
+}
+
 function paramsDoChamado(doc, ch, linha) {
   if (ch.receptor) {                         /* `"a,b".split(` / `b"x".decode(` */
     const m = membrosDe(doc, { tipo: 'tipo_motor', nome: ch.receptor }, linha)
@@ -774,6 +971,11 @@ function paramsDoChamado(doc, ch, linha) {
     const m = membros.find((x) => x.nome === ch.partes[ch.partes.length - 1]);
     return m ? (m.params || []) : [];
   }
+  /* o `*` que vale NESTA linha vem antes do que o arquivo declara mais
+   * abaixo — a ordem do motor; `alvoDaEstrela` devolve null quando não é ele
+   * que liga o nome ali */
+  const est = alvoDaEstrela(doc, ch.chamado, linha);
+  if (est) return paramsDoImportado(doc, est);
   const idx = idxDoc(doc);
   for (const b of A.visiveisEm(idx, linha)) {
     if (b.nome === ch.chamado && b.params) return b.params;
@@ -781,7 +983,7 @@ function paramsDoChamado(doc, ch, linha) {
   const e = achaEntidade(doc, ch.chamado);
   if (e) return e.membros.filter((m) => m.nome === '__init__')
                          .map((m) => m.params || []).flat();
-  return [];
+  return paramsDoImportado(doc, alvoDoImport(doc, ch.chamado, linha));
 }
 
 /* ── protocolo ──────────────────────────────────────────────────────────── */
@@ -869,15 +1071,12 @@ function pastaDoDoc(doc) {
   return doc.uri.startsWith('file://') ? path.dirname(doc.uri.slice(7)) : '';
 }
 
-/* Os membros que `from X import …` pode trazer: os do módulo do motor, ou os
- * de topo do arquivo `.ps` (lib instalada ou arquivo ao lado). */
+/* Os membros que `from X import …` pode trazer: o que X EXPORTA — módulo do
+ * motor, lib instalada ou arquivo `.ps` ao lado —, pela regra do motor. O
+ * editor não oferece o que o `import` vai recusar. */
 function membrosParaImport(doc, mod, aspas) {
-  if (META.modulos[mod]) {
-    return META.modulos[mod].map((m) => Object.assign(
-      { kind: m.kind === 'value' ? 'campo' : 'action', escopo: mod, tipo: m.retorna || '' }, m));
-  }
-  const arq = arquivoDoImport(mod, pastaDoDoc(doc), aspas);
-  return arq ? membrosDeArquivo(arq) : [];
+  const dir = pastaDoDoc(doc);
+  return exportadosDe({ mod, aspas }, dir, dir, new Set());
 }
 
 /* A aspa que abriu o especificador de `import`/`from`/`PUSH` e ainda não
@@ -955,16 +1154,30 @@ function completaImport(doc, p) {
   const parcial = A.cadeiaAntes(linha, p.position.character).parcial;
   const iniParcial = p.position.character - parcial.length;
   const antes = tokensDe(doc).filter((t) => t.l0 === p.position.line && t.n > 0 && t.c0 + t.n <= iniParcial);
-  const ehFrom = antes.length > 0 && antes[0].t === 'KW' && antes[0].v === 'from';
-  const iImp = antes.findIndex((t, i) => i > 0 && t.t === 'KW' && t.v === 'import');
+  /* `from m import …` e `PUSH m GET …` são a MESMA forma escrita de dois
+   * jeitos: muda só a palavra que separa o módulo dos nomes */
+  const ehFrom = antes.length > 0 && antes[0].t === 'KW' && (antes[0].v === 'from' || antes[0].v === 'PUSH');
+  const separa = ehFrom && antes[0].v === 'PUSH' ? 'GET' : 'import';
+  const iImp = antes.findIndex((t, i) => i > 0 && t.t === 'KW' && t.v === separa);
   const ehNome = (t) => t.t === 'DOT' || t.t.startsWith('IDENT');
 
   if (ehFrom && iImp > 0) {
-    /* `from 'x/y.ps' import <cursor>`: o módulo é a STRING */
+    /* `from 'x/y.ps' import <cursor>`: o módulo é a STRING. Entre `from` e
+     * `import` todo token é caminho do módulo — inclusive palavra-chave: o
+     * lexer entrega `json` como KW, e filtrar só IDENT deixava `from json
+     * import ` sem módulo nenhum. */
     const aspas = antes.length > 1 && antes[1].t === 'STR';
-    const mod = aspas ? antes[1].v : antes.slice(1, iImp).filter(ehNome).map((t) => t.v).join('');
+    const mod = aspas ? antes[1].v
+      : antes.slice(1, iImp).filter((t) => ehNome(t) || t.t === 'KW').map((t) => t.v).join('');
     const jaTem = new Set(antes.slice(iImp + 1).filter((t) => t.t.startsWith('IDENT')).map((t) => t.v));
-    return membrosParaImport(doc, mod, aspas).filter((m) => !jaTem.has(m.nome)).map((m) => itemDeMembro(m, mod));
+    const itens = membrosParaImport(doc, mod, aspas).filter((m) => !jaTem.has(m.nome)).map((m) => itemDeMembro(m, mod));
+    /* `*` traz tudo que o módulo exporta. Só no lugar do PRIMEIRO nome: o
+     * motor recusa `from m import a, *` ("não se mistura com uma lista") */
+    if (iImp === antes.length - 1) {
+      itens.unshift({ label: '*', kind: CompletionItemKind.Keyword, sortText: '0',
+                      detail: `todos os nomes que ${mod} exporta (sem ligar o nome ${mod})` });
+    }
+    return itens;
   }
 
   /* o `pasta.` já digitado antes do cursor, se houver */
@@ -1148,6 +1361,20 @@ function completa(doc, p) {
         imp.membro ? `${imp.membro} de ${imp.mod}`
                    : (imp.mod === ligado ? 'modulo' : `modulo ${imp.mod} (as ${ligado})`), '2');
   }
+  /* Os nomes que cada `*` do topo trouxe — o que o módulo EXPORTA, pela regra
+   * do motor. Da última estrela pra primeira: com dois módulos trazendo o
+   * mesmo nome, vale o de baixo. O que o arquivo já ligou (acima) ganha. */
+  const dirDoc = pastaDoDoc(doc);
+  const KIND_EXP = Object.assign({ function: CompletionItemKind.Function, value: CompletionItemKind.Variable,
+                                   campo: CompletionItemKind.Variable, modulo: CompletionItemKind.Module }, KIND);
+  for (let i = (idx.estrelas || []).length - 1; i >= 0; i--) {
+    const est = idx.estrelas[i];
+    for (const x of exportadosDe(est, dirDoc, dirDoc, new Set())) {
+      const funcao = x.kind === 'action' || x.kind === 'function';
+      poe(x.nome, KIND_EXP[x.kind] || CompletionItemKind.Variable,
+          (funcao ? assinatura({ nome: x.nome, params: x.params }) : x.kind) + ` · de ${est.mod} (*)`, '2');
+    }
+  }
   /* builtins e palavras-chave: as tabelas do motor (`--metadata` publica a
    * `BUILTINS[]` da VM e a `KEYWORDS[]` do lexer). Não apareciam — `post`,
    * `len`, `action`, `if` nunca eram sugeridos sem receptor. */
@@ -1166,7 +1393,7 @@ function completa(doc, p) {
    * compilador liga, não palavra reservada, e some pelo mesmo motivo. */
   for (const [lit, det] of LITERAIS) poe(lit, CompletionItemKind.Constant, det, '3');
   poe('__name__', CompletionItemKind.Constant,
-      'no arquivo principal, o caminho dele; num módulo importado, o nome do módulo', '3');
+      'no arquivo principal vale "main"; num módulo importado, o nome do módulo', '3');
   /* `static` e `nonnull` NÃO são palavra reservada de propósito (valem por
    * posição, só colados na cabeça da funct), então não vêm em META.keywords —
    * e sem isto o editor jamais os ofereceria. */
@@ -1393,6 +1620,43 @@ function decoradorDe(idx, nome, linha) {
   return achado;
 }
 
+/* O hover de um nome que veio de import — nomeado (`from m import f`) ou
+ * trazido por um `*`. É o mesmo texto nos dois: pro motor é a mesma ligação. */
+function hoverDoImportado(doc, alvo, nome, linha) {
+  /* nome de ARQUIVO: a declaração dele, lida do item exportado — a mesma
+   * regra que decide se ele existe */
+  const def = alvo.tipo === 'membro_arquivo'
+    ? (alvo.def || (alvo.arquivo ? membrosDeArquivo(alvo.arquivo, pastaDoDoc(doc)).find((x) => x.nome === alvo.membro) : null))
+    : null;
+  /* reexportado de módulo do motor (o arquivo fez `from json import parse`) */
+  const nat = alvo.tipo === 'membro_modulo' ? alvo : (def && def.mod ? { mod: def.mod, membro: def.membro } : null);
+  if (nat) {
+    const m = (META.modulos[nat.mod] || []).find((x) => x.nome === nat.membro);
+    if (m) {
+      const cab = nat.mod + '.' + (m.kind === 'value'
+        ? m.nome + (m.retorna ? ' -> ' + m.retorna : '')
+        : assinatura(m));
+      const prosa = resumoDe(nat.mod, nat.membro);
+      return md('```ps\n' + cab + '\n```' + (prosa ? '\n\n' + prosa : ''));
+    }
+  }
+  if (def && def.arquivo) {
+    const onde = '`' + path.basename(def.arquivo) + '` · linha ' + (def.linha + 1);
+    if (def.kind === 'action') {
+      const cab = (def.estatica ? 'static ' : '') + (def.nonnull ? 'nonnull ' : '')
+                + (def.tipo ? def.tipo + ' ' : '') + (def.async ? 'async ' : '') + 'funct '
+                + assinatura({ nome: def.declarado || def.nome, params: def.params });
+      return md('```ps\n' + cab + '\n```\n\nfunct · de ' + onde);
+    }
+    if (def.kind === 'class') return md('```ps\nclass ' + (def.declarado || def.nome) + '\n```\n\nclass · de ' + onde);
+    return md('```ps\n' + (def.tipo ? def.tipo + ' ' : '') + (def.declarado || def.nome) + '\n```\n\n'
+              + def.kind + ' · de ' + onde);
+  }
+  const n = membrosDe(doc, { tipo: 'import', alvo }, linha).length;
+  const de = alvo.arquivo ? `\n\n_de ${alvo.arquivo}_` : '';
+  return md('```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\n' + n + ' membros' + de);
+}
+
 conexao.onHover((p) => {
   const doc = docs.get(p.textDocument.uri);
   if (!doc) return null;
@@ -1455,6 +1719,13 @@ conexao.onHover((p) => {
               + '\n```' + herd + (prosa ? '\n\n' + prosa : ''));
   }
 
+  /* O `*` que liga o nome NESTA linha vem antes do que o arquivo declara mais
+   * abaixo: o motor liga na ordem do arquivo, e nome de funct não é hoisted
+   * por cima da estrela (medido no ./pool). Quando não é a estrela que vale
+   * ali, `alvoDaEstrela` devolve null e o hover segue como sempre. */
+  const est = alvoDaEstrela(doc, nome, p.position.line);
+  if (est) return hoverDoImportado(doc, est, nome, p.position.line);
+
   const idx = indiceDe(doc);
   const e = idx.entidades.find((x) => x.nome === nome);
   if (e) {
@@ -1509,22 +1780,8 @@ conexao.onHover((p) => {
     return md('```ps\n' + nome + '\n```\n\n' + linha + '\n\n`catch (' + nome + ' e)` pega ' + nome
               + (filhos.length ? ' e os descendentes' : '') + ' · [árvore de exceções](' + pagina + ')');
   }
-  const alvo = alvoDoImport(doc, nome);
-  if (alvo) {
-    if (alvo.tipo === 'membro_modulo') {
-      const m = (META.modulos[alvo.mod] || []).find((x) => x.nome === alvo.membro);
-      if (m) {
-        const cab = alvo.mod + '.' + (m.kind === 'value'
-          ? m.nome + (m.retorna ? ' -> ' + m.retorna : '')
-          : assinatura(m));
-        const prosa = resumoDe(alvo.mod, alvo.membro);
-        return md('```ps\n' + cab + '\n```' + (prosa ? '\n\n' + prosa : ''));
-      }
-    }
-    const n = membrosDe(doc, { tipo: 'import', alvo }, p.position.line).length;
-    const de = alvo.arquivo ? `\n\n_de ${alvo.arquivo}_` : '';
-    return md('```ps\nimport ' + (alvo.mod || alvo.arquivo || nome) + '\n```\n\n' + n + ' membros' + de);
-  }
+  const alvo = alvoDoImport(doc, nome, p.position.line);
+  if (alvo) return hoverDoImportado(doc, alvo, nome, p.position.line);
   return null;
 });
 
@@ -1548,15 +1805,22 @@ conexao.onDefinition((p) => {
       }
     }
     if (alvo && alvo.tipo === 'import' && alvo.alvo.arquivo) {
-      for (const m of membrosDeArquivo(alvo.alvo.arquivo)) {
-        if (m.nome !== nome) continue;
-        return { uri: 'file://' + alvo.alvo.arquivo,
+      for (const m of membrosDeArquivo(alvo.alvo.arquivo, pastaDoDoc(doc))) {
+        /* reexportado: a declaração está no arquivo de ORIGEM (`m.arquivo`);
+         * membro de módulo do motor não tem linha pra onde ir */
+        if (m.nome !== nome || !m.arquivo) continue;
+        return { uri: 'file://' + m.arquivo,
                  range: { start: { line: m.linha, character: m.coluna },
                           end: { line: m.linha, character: m.coluna + nome.length } } };
       }
     }
     return null;
   }
+
+  /* a estrela que liga o nome NESTA linha responde antes do que o arquivo
+   * declara mais abaixo — a ordem do motor, a mesma do hover */
+  const est = alvoDaEstrela(doc, nome, p.position.line);
+  if (est) return definicaoDoImportado(doc, est, nome);
 
   const e = idx.entidades.find((x) => x.nome === nome);
   if (e) return { uri: doc.uri,
@@ -1568,13 +1832,30 @@ conexao.onDefinition((p) => {
              range: { start: { line: b.linha, character: 0 },
                       end: { line: b.linha, character: nome.length } } };
   }
-  const alvo = alvoDoImport(doc, nome);
-  if (alvo && alvo.arquivo) {
+  const alvo = alvoDoImport(doc, nome, p.position.line);
+  return definicaoDoImportado(doc, alvo, nome);
+});
+
+/* Onde um nome importado foi DECLARADO — nomeado (`from m import f`) ou
+ * trazido por um `*`. Num reexporte o arquivo da declaração não é o `m`, e é
+ * nele que o editor abre. */
+function definicaoDoImportado(doc, alvo, nome) {
+  if (!alvo) return null;
+  if (alvo.tipo === 'membro_arquivo') {
+    const def = alvo.def
+      || (alvo.arquivo ? membrosDeArquivo(alvo.arquivo, pastaDoDoc(doc)).find((x) => x.nome === alvo.membro) : null);
+    if (def && def.arquivo) {
+      return { uri: 'file://' + def.arquivo,
+               range: { start: { line: def.linha, character: def.coluna },
+                        end: { line: def.linha, character: def.coluna + (def.declarado || nome).length } } };
+    }
+  }
+  if (alvo.arquivo) {
     return { uri: 'file://' + alvo.arquivo,
              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } };
   }
   return null;
-});
+}
 
 conexao.onDocumentSymbol((p) => {
   const doc = docs.get(p.textDocument.uri);

@@ -2,8 +2,8 @@
 
 Um `.ps` pode usar código de outro arquivo `.ps` ou de uma biblioteca — da
 stdlib (embutida) ou instalada. Esta seção cobre as formas de import
-(`import`, `from … import`, `PUSH … GET`), o `as`, os imports relativos e a
-ordem em que um nome é resolvido.
+(`import`, `from … import`, `PUSH … GET`), o `as`, o `*`, os imports relativos
+e a ordem em que um nome é resolvido.
 
 Verificado na VM.
 
@@ -48,6 +48,28 @@ from mymod import Ponto             # funções, Entities, constantes — tudo q
 p = Ponto(1, 2)
 ```
 
+**O que um módulo exporta** é o que o arquivo dele liga **no nível do
+arquivo**:
+
+- `funct`, `Entity`, `enum` e `model` declarados no topo;
+- variáveis atribuídas ou declaradas no topo (`x = 1`, `str nome = "a"`);
+- os nomes que os imports do próprio módulo ligam — inclusive os que vieram
+  por `*` (seção 9.2.1);
+- o nome que uma funct grava com `global x`.
+
+Fica **de fora**:
+
+- o que é `private` (`private funct`, `private class`);
+- o que só existe **dentro de um bloco** (`if`, `for each`, `try`, o guard
+  `if __name__ == "main"`) — no fim do bloco o nome some, como em qualquer
+  lugar;
+- o nome que o módulo só **usa** sem definir. Um módulo que chama `len` não
+  exporta `len`: `from m import len` é `ImportError` e `m.len` é
+  `AttributeError`, a não ser que o arquivo defina a própria `funct len`.
+
+Nome começado por `_` é exportado como qualquer outro — o que esconde é o
+`private`. É a mesma regra pra `from m import x`, pra `m.x` e pro `*`.
+
 Pedir um nome que o módulo não exporta é erro, e o **tipo depende de como você
 pediu**:
 
@@ -61,8 +83,90 @@ post(json.naotem)            # AttributeError: module 'json' has no attribute 'n
 O `ImportError` cita o **arquivo** do módulo entre parênteses; módulo nativo,
 que não tem arquivo, sai como `(unknown location)`. O `AttributeError` é o que
 traz a sugestão de nome parecido (`Did you mean: 'parse'?`) — o `ImportError`
-não sugere. Nome que existe mas é `private` sai como
+não sugere, e a sugestão só aponta nome que o módulo exporta. Nome que existe
+mas é `private` sai como
 `AttributeError: module '…' has no attribute '…' (existe, mas é private)`.
+
+### 9.2.1. `*` — todos os nomes que o módulo exporta
+
+Três grafias, **a mesma regra**:
+
+```ps
+from json import *
+post(stringify([1]), parse("[2]"))    # [1] [2]
+```
+
+```
+import json *          # igual a `from json import *`
+PUSH json GET *        # igual a `from json import *`
+```
+
+O `*` liga, sem prefixo, **cada nome que o módulo exporta** (a lista acima), do
+mesmo jeito que `from m import a, b, c` escrito à mão ligaria. **Não** liga o
+nome do módulo: depois de `import json *`, `json` sozinho é `NameError`. De
+módulo nativo (`json`, `os`, `regex`…), entram todos os membros.
+
+Vale com caminho entre aspas e com pontos: `from './util.ps' import *`,
+`import '../pacote/modulo' *`, `from ..pacote.modulo import *`.
+
+**Como os nomes se comportam** — exatamente como os de um import explícito:
+
+- o `*` **sobrescreve** o que já existia com o mesmo nome, e o que vier
+  **depois** sobrescreve o que o `*` trouxe;
+- um membro que tem o nome de um builtin passa a valer a partir da linha do
+  import (`bytes` exporta `hex`: antes do `from bytes import *`, `hex(255)` é o
+  embutido; depois, é o do módulo);
+- variável tipada do arquivo (`str x = "a"`) confere o valor que chega;
+- escrita dentro de bloco atravessa até o nome, e `for each` sobre ele devolve
+  o valor anterior no fim do laço;
+- **reexportação**: os nomes que um módulo trouxe por `*` saem dele de novo,
+  por `*` ou por `m.nome`.
+
+**Resolvido na compilação.** O `*` vira a lista de nomes antes de o programa
+rodar — é isso que faz todos os pontos acima valerem igual ao import
+explícito. O que fica pra execução é o **valor** de
+cada nome. Em import circular (dois arquivos que se importam com `*`), o nome
+que ainda não tem valor quando o import roda é pulado, sem erro; o que já tem
+valor é ligado.
+
+Duas consequências dessa escolha:
+
+- **Só no topo do arquivo.** Dentro de funct, método, lambda ou de qualquer
+  bloco (inclusive `try` e o guard), o `*` é recusado, e a mensagem diz o
+  conserto — dentro de funct os slots são decididos na compilação, e o fim de
+  um bloco apaga os nomes que nasceram nele pelo nome:
+
+  ```
+  funct g() {
+      from json import *
+  }
+  SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b
+  ```
+
+- **O módulo tem que existir quando o arquivo é compilado**, e a lista sai
+  inteira ou não sai: um `*` que aponta pra módulo ausente deixa o arquivo sem
+  a lista completa, e a recusa sobe pro import que você escreveu, em vez de
+  sumir nome em silêncio. Uma cadeia de `*` muito funda (centenas de arquivos
+  reexportando um ao outro) também é recusada. Um arquivo que o próprio
+  programa gera antes do `import *` não tem nomes a trazer:
+
+  ```
+  ImportError: `*` de 'gerado': os nomes do `*` sao resolvidos antes de o programa rodar, e nessa hora nao deu pra ler o modulo (ausente, sem compilar, ou cadeia de `*` funda demais) — importe pelo nome (from gerado import a, b)
+  ```
+
+Módulo que não existe é o `ImportError: No module named '…'` de sempre, na
+linha do import. As formas misturadas são recusadas:
+
+```
+import json as j *
+SyntaxError: `import m as x *` mistura as duas formas: `import m as x` liga o modulo, `import m *` liga os nomes dele — escolha uma
+
+from json import parse, *
+SyntaxError: `*` traz todos os nomes e nao se mistura com uma lista: escreva so `*` ou so os nomes (a, b)
+
+from json import * as t
+SyntaxError: `*` nao aceita `as`: ele liga cada nome com o proprio nome
+```
 
 ---
 
@@ -73,6 +177,7 @@ não sugere. Nome que existe mas é `private` sai como
 - **`PUSH <modulo> [as <nome>]`** — igual a `import` (liga o módulo inteiro).
 - **`PUSH <modulo> GET <x>, <y>`** — igual a `from <modulo> import <x>, <y>`
   (liga só os nomes listados).
+- **`PUSH <modulo> GET *`** — igual a `from <modulo> import *` (seção 9.2.1).
 
 ```ps
 PUSH mymod                 # == import mymod
@@ -113,6 +218,7 @@ import '/opt/app/util.ps' as u           # caminho absoluto, com `as`
   caminho como foi escrito.
 - Dentro do módulo importado, `__name__` é o nome do arquivo (`modulo`), e as
   mensagens de atributo citam esse nome: `module 'modulo' has no attribute 'x'`.
+  No arquivo executado, `__name__` vale `"main"` (seção 5.7).
 
 A string também aceita o **nome de um módulo ou de uma lib** — sem `/` e sem
 extensão, ela vale o mesmo que o `import` sem aspas:
@@ -205,9 +311,10 @@ O prefixo da mensagem (`random:`) é o nome do módulo como foi escrito no
 ## 9.6. Import não roda o guard de entrada
 
 Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não
-executa** (só roda quando o arquivo é o principal — seção 5.7). Assim, importar
-um módulo traz as definições (functs, Entities, constantes) sem disparar o
-ponto de entrada:
+executa** (só roda quando o arquivo é o principal — seção 5.7). Vale até pra um
+módulo chamado `main.ps`, cujo `__name__` também é `"main"`: o guard é pulado em
+todo import. Assim, importar um módulo traz as definições (functs, Entities,
+constantes) sem disparar o ponto de entrada:
 
 ```ps
 # mymod.ps
@@ -229,6 +336,13 @@ post(mymod.saudar("ana"))
 
 - **`import mod [as m]`** — liga o módulo; acesso por `mod.x`.
 - **`from mod import x [as y], z`** — liga nomes soltos.
+- **O que sai de um módulo**: o que o arquivo liga no nível do arquivo (funct,
+  Entity, enum, model, variável, os imports dele, `global x`), sem `private`,
+  sem o que só existe em bloco e sem o builtin que ele só usa — a mesma regra
+  pra `from mod import x`, `mod.x` e `*`.
+- **`from mod import *`** = **`import mod *`** = **`PUSH mod GET *`** — liga
+  todos os nomes que o módulo exporta, e não o nome do módulo; resolvido na
+  compilação, só no topo do arquivo; em ciclo, nome ainda sem valor é pulado.
 - **`PUSH mod [as m] [GET x, y]`** — alternativa: `PUSH` = `import`, `GET` =
   `from … import`.
 - **`import '../pasta/arquivo.ps' [as m]`** / **`from './arquivo.ps' import x`**
@@ -237,4 +351,5 @@ post(mymod.saudar("ana"))
 - **`from .mod` / `from ..pkg.mod`** — relativo com pontos.
 - Resolução (nome, sem caminho): **stdlib → lib global → arquivo ao lado de
   quem importa → arquivo do projeto**; senão `ImportError`.
-- **Importar não dispara** o guard `if __name__ == "main"` do módulo.
+- **Importar não dispara** o guard `if __name__ == "main"` do módulo; no
+  arquivo executado, `__name__` vale `"main"`.

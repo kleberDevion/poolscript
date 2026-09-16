@@ -1366,10 +1366,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "linhas: 0", NULL, 0 },
 
 /* ── ponto de entrada: `if __name__ == "main"` ──────────────────────────────
- * Substituiu o `run_selfwith_`. É a forma do Python e é reconhecida pela
- * FORMA, não avaliando a condição: `__name__` vale o caminho do arquivo (é o
- * que se passa pro `Jinker`), então a comparação nunca daria verdadeiro.
- * É o único lugar onde `:` ainda abre bloco; `{ }` vale igual. */
+ * Substituiu o `run_selfwith_`. No arquivo executado `__name__` vale "main", e
+ * a condição é verdadeira também avaliada; o guard existe pelo import (um
+ * `main.ps` importado também tem `__name__ == "main"`), e é reconhecido pela
+ * FORMA, só com o literal "main". É o único lugar onde `:` ainda abre bloco;
+ * `{ }` vale igual. */
 { "guard com dois-pontos",
   "if __name__ == \"main\":\n    post(\"direto\")\n", "direto", NULL, 0 },
 { "guard com chaves",
@@ -1419,6 +1420,22 @@ const Caso CASOS_LINGUAGEM[] = {
 { "if com __name__ mas comparando outra coisa e if normal",
   "x = 1\nif __name__ == x {\n    post(\"nao\")\n} else {\n    post(\"if normal\")\n}\n",
   "if normal", NULL, 0 },
+/* A mesma expressão dava True no guard (reconhecido pela forma) e False
+ * escrita solta, porque `__name__` valia o caminho do arquivo. */
+{ "__name__ == \"main\" vale o mesmo dentro e fora do if",
+  "post(__name__ == \"main\")\nif __name__ == \"main\" {\n    post(\"entrou\")\n}\n",
+  "True\nentrou", NULL, 0 },
+{ "__name__ no arquivo executado vale main",
+  "post(__name__)\n", "main", NULL, 0 },
+{ "__name__ comparado com variavel que vale main entra no if comum",
+  "x = \"main\"\nif __name__ == x {\n    post(\"sim\")\n}\n", "sim", NULL, 0 },
+/* Qualquer string literal virava guard: `if __name__ == "banana"` rodava o
+ * bloco no arquivo executado e o `else` nunca. */
+{ "__name__ comparado com outra string e if comum, nao guard",
+  "if __name__ == \"banana\" {\n    post(\"banana\")\n} else {\n    post(\"if comum\")\n}\n",
+  "if comum", NULL, 0 },
+{ "Jinker(__name__) e Jinker() dao o mesmo nome main",
+  "from jinker import Jinker\npost(Jinker(__name__).name, Jinker().name)\n", "main main", NULL, 0 },
 
 /* ── `{` depois de string NAO interpola quando abre bloco ───────────────────
  * `case c if m == 'GET' {` lia o `{` como interpolação da string e o case
@@ -2929,6 +2946,224 @@ const Caso CASOS_LINGUAGEM[] = {
   "async funct f(a, *args) {\n    return [a, args]\n}\npost(await f(1, 2, 3))\n", "[1, (2, 3)]", NULL, 0 },
 { "variadico: callback vindo do C (map) com *args",
   "funct f(x, *args) {\n    return x * 2\n}\npost(map([1, 2], f))\n", "[2, 4]", NULL, 0 },
+
+/* ── um só caminho de chamada: gerador, async e instância em TODA entrada ───
+ * OP_CALL, OP_CALL_KW, CALL_EX, base() e o callback vindo do C decidiam cada
+ * um sozinho entre gerador, fibra e frame, e cada um esquecia um pedaço (os
+ * pendentes da revisão de 236eba8, 2026-09-14). Cada caminho entra aqui como
+ * variante própria. */
+/* async: `f(1)` devolvia future e `f(a=1)` rodava o corpo inline */
+{ "async por nome devolve future, como a chamada posicional",
+  "async funct f(a, b=2) {\n    return [a, b]\n}\npost(type(f(1)), type(f(a=1)))\n",
+  "future future", NULL, 0 },
+{ "async: espalhado por f(**dict) devolve future",
+  "async funct f(a) {\n    return a\n}\npost(type(f(**{\"a\": 1})), await f(**{\"a\": 2}))\n",
+  "future 2", NULL, 0 },
+/* a fibra nascia sem as células da closure: "upvalue fora da faixa" */
+{ "variadico: async funct aninhada com captura roda no await como a sincrona",
+  "funct externa(v) {\n    async funct interna(a) {\n        return [a, v]\n    }\n    return interna\n}\nf = externa(10)\npost(await f(1))\n",
+  "[1, 10]", NULL, 0 },
+{ "async: closure async chamada por nome mantem as celulas",
+  "funct externa(v) {\n    async funct interna(a) {\n        return [a, v]\n    }\n    return interna\n}\nf = externa(10)\npost(await f(a=1))\n",
+  "[1, 10]", NULL, 0 },
+/* só a funct solta e a @static viravam fibra; o método rodava inline */
+{ "variadico: async como metodo de instancia devolve future nos 4 caminhos de chamada",
+  "Entity C() {\n    async funct m(self, a) {\n        return a\n    }\n}\nc = C()\nf = c.m\n"
+  "post(type(c.m(1)), type(c.m(*[1])), type(c.m(a=1)), type(f(1)))\n",
+  "future future future future", NULL, 0 },
+{ "async: metodo async como callback do C (map) devolve os futures",
+  "Entity C() {\n    async funct m(self, a) {\n        return a\n    }\n}\nc = C()\npost(await map([1, 2], c.m))\n",
+  "[1, 2]", NULL, 0 },
+{ "async: @static async chamada pela Entity",
+  "Entity C() {\n    @static\n    async funct s(self, a) {\n        return a\n    }\n}\npost(await C.s(3))\n",
+  "3", NULL, 0 },
+/* a fibra guardava 32 argumentos crus; passar disso era TypeError */
+{ "async: *args com 40 argumentos (a fibra nao tem teto de 32)",
+  "async funct f(*a) {\n    return len(a)\n}\npost(await f(*list(range(40))))\n",
+  "40", NULL, 0 },
+{ "async: nome errado e TypeError na chamada, antes do await",
+  "async funct f(a) {\n    return a\n}\nf(b=1)\n",
+  "", "TypeError: f() got an unexpected keyword argument 'b'", 1 },
+{ "async: decorador async devolve um future no lugar da funct",
+  "async funct d(f) {\n    return f\n}\n@d\nfunct h() {\n    return 2\n}\ng = await h\npost(g())\n",
+  "2", NULL, 0 },
+/* gerador: `o.conta(2)` entrava no corpo e dava "yield fora de gerador" */
+{ "variadico: gerador como metodo chamado pela instancia cria o gerador nos 4 caminhos",
+  "Entity G() {\n    funct conta(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n}\n"
+  "o = G()\npost(list(o.conta(2)))\npost(list(o.conta(*[2])))\nfor each x in o.conta(2) {\n    post(x)\n}\npost(list(o.conta(n=2)))\n",
+  "[0, 1]\n[0, 1]\n0\n1\n[0, 1]", NULL, 0 },
+{ "gerador: metodo gerador ligado solto e como callback do C",
+  "Entity G() {\n    funct conta(self, n) {\n        for each i in range(n) {\n            yield i\n        }\n    }\n}\n"
+  "o = G()\nf = o.conta\npost(list(f(2)))\npost(list(map([2], o.conta)[0]))\n",
+  "[0, 1]\n[0, 1]", NULL, 0 },
+{ "gerador: funct geradora como callback do C cria o gerador",
+  "funct g(n) {\n    for each i in range(n) {\n        yield i\n    }\n}\npost(list(map([2], g)[0]))\n",
+  "[0, 1]", NULL, 0 },
+{ "gerador: decorador gerador devolve o gerador no lugar da funct",
+  "funct d(f) {\n    yield f\n}\n@d\nfunct h() {\n    return 1\n}\npost(list(h)[0]())\n",
+  "1", NULL, 0 },
+/* instância: o RETURN lia o slot 0 do __init__, que é do 1º parâmetro */
+{ "variadico: __init__(*args) sem self devolve a instancia, nao a tup dos argumentos",
+  "Entity E() {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\ne = E(1, 2)\npost(type(e))\n",
+  "3 E\nE", NULL, 0 },
+{ "instancia: __init__(*args, **kw) sem self recebe a instancia no args",
+  "Entity E() {\n    funct __init__(*args, **kw) {\n        post(len(args), type(args[0]), kw)\n    }\n}\npost(type(E(1, a=2)))\n",
+  "2 E {'a': 2}\nE", NULL, 0 },
+{ "instancia: __init__(*args) sem self com E(*lista)",
+  "Entity E() {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\npost(type(E(*[1, 2])))\n",
+  "3 E\nE", NULL, 0 },
+{ "instancia: __init__ que reatribui o 1o parametro ainda devolve a instancia",
+  "Entity E() {\n    funct __init__(x) {\n        x = 5\n    }\n}\npost(type(E()))\n",
+  "E", NULL, 0 },
+{ "instancia: __init__(**kw) sem self recusa a instancia como posicional",
+  "Entity E() {\n    funct __init__(**kw) {\n        post(kw)\n    }\n}\nE(a=1)\n",
+  "", "TypeError: __init__() takes 0 positional arguments but 1 was given", 1 },
+/* a Entity como valor era "'Entity' object is not callable" no callback */
+{ "instancia: Entity como callback do C (map) instancia",
+  "Entity P() {\n    funct __init__(self, x) {\n        self.x = x\n    }\n}\npost(map([1, 2], P)[1].x)\n",
+  "2", NULL, 0 },
+{ "instancia: Entity sem __init__ como callback com argumento e TypeError",
+  "Entity Z() {\n}\npost(map([1], Z))\n",
+  "", "TypeError: Z() takes no arguments (1 given)", 1 },
+{ "instancia: __init__ gerador e TypeError",
+  "Entity E() {\n    funct __init__(self) {\n        yield 1\n    }\n}\nE()\n",
+  "", "TypeError: __init__() should return None, not 'generator'", 1 },
+{ "instancia: __init__ async e TypeError, tambem vindo do C",
+  "Entity E() {\n    async funct __init__(self, x) {\n        post(1)\n    }\n}\nmap([1], E)\n",
+  "", "TypeError: __init__() should return None, not 'future'", 1 },
+{ "instancia: base() numa funct sem self e recusado na declaracao",
+  "Entity A() {\n    funct __init__(self, *a) {\n        self.a = a\n    }\n}\nEntity B(A) {\n    funct __init__(*args) {\n        base(1)\n    }\n}\n",
+  "", "SyntaxError: base() precisa do self: declare `funct __init__(self, ...)` (o self e o objeto que o pai inicializa)", 2 },
+{ "instancia: base() entrega o self ao __init__(*args) do pai sem self",
+  "Entity A() {\n    funct __init__(*a) {\n        post(len(a), type(a[0]))\n    }\n}\nEntity B(A) {\n    funct __init__(self) {\n        base(1, 2)\n    }\n}\nB()\n",
+  "3 B", NULL, 0 },
+/* @static: o callback do C e o decorador contavam o buraco do self na frase */
+{ "variadico: callback do C esconde o buraco do @static na frase de aridade, como o OP_CALL",
+  "Entity C() {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\npost(map([7], C.s))\n",
+  "", "TypeError: s() takes 0 positional arguments but 1 was given", 1 },
+{ "variadico: decorador esconde o buraco do @static na frase de aridade, como o OP_CALL",
+  "Entity C() {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\n@C.s\nfunct h() {\n    return 1\n}\n",
+  "", "TypeError: s() takes 0 positional arguments but 1 was given", 1 },
+{ "static: funct @static ligada solta como callback esconde o buraco do self",
+  "Entity C() {\n    @static\n    funct s(self) {\n        return 1\n    }\n}\nf = C.s\npost(map([7], f))\n",
+  "", "TypeError: s() takes 0 positional arguments but 1 was given", 1 },
+/* nonnull: o buraco UNSET do self era acusado como parâmetro Null */
+{ "variadico: nonnull + static com self nao acusa o buraco do self como Null",
+  "Entity C() {\n    nonnull static funct f(self, a) {\n        return a\n    }\n    static funct g(self, a) {\n        return a\n    }\n}\n"
+  "post(C.g(5))\npost(C.f(5))\n",
+  "5\n5", NULL, 0 },
+{ "nonnull static: Null no parametro real continua recusado",
+  "Entity C() {\n    nonnull static funct f(self, a) {\n        return a\n    }\n}\nC.f(Null)\n",
+  "", "RuntimeError: nonnull: parametro 'a' em 'f' nao pode ser Null", 1 },
+{ "nonnull static como callback do C",
+  "Entity C() {\n    nonnull static funct f(self, a) {\n        return a\n    }\n}\npost(map([5], C.f))\n",
+  "[5]", NULL, 0 },
+
+/* ── atalho do `for each ... in range(...)`: toda forma de ligar `range` ─────
+ * O atalho não chama `range`: conta direto. Só vale se o arquivo não liga o
+ * nome em lugar nenhum, e a busca via atribuição e import por lista — o
+ * `range` do usuário era trocado pelo embutido, calado. */
+{ "espalhar: for each em range(*l) espalha como list(range(*l))",
+  "l = [1, 4]\npost(list(range(*l)))\nfor each i in range(*l) {\n    post(i)\n}\n",
+  "[1, 2, 3]\n1\n2\n3", NULL, 0 },
+{ "range: import json as range desliga o atalho",
+  "import json as range\nfor each i in range(2) {\n    post(i)\n}\n",
+  "", "TypeError: 'module' object is not callable", 1 },
+{ "range: parametro de funct chamado range",
+  "funct f(range) {\n    for each i in range(2) {\n        post(i)\n    }\n}\nf(funct(n) {\n    return [\"a\"]\n})\n",
+  "a", NULL, 0 },
+{ "range: parametro de lambda chamado range",
+  "g = funct(range) {\n    for each i in range(2) {\n        post(i)\n    }\n}\ng(funct(n) {\n    return [\"b\"]\n})\n",
+  "b", NULL, 0 },
+{ "range: variavel de catch chamada range",
+  "try {\n    raise ValueError(\"x\")\n} catch (range) {\n    for each i in range(2) {\n        post(i)\n    }\n}\n",
+  "", "TypeError: 'str' object is not callable", 1 },
+
+/* ── limite de parâmetros: da DECLARAÇÃO, não de cada chamada ────────────────
+ * Passava no `--check` e toda chamada dava "tem parametros demais" apontando
+ * a linha da chamada. Os fontes com 257 nomes são gerados pelo próprio motor. */
+{ "variadico: funct com 257 parametros fixos e recusada na declaracao, nao em cada chamada",
+  "funct f("
+  "p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25, p26, p27, p28, p29, p30, "
+  "p31, p32, p33, p34, p35, p36, p37, p38, p39, p40, p41, p42, p43, p44, p45, p46, p47, p48, p49, p50, p51, p52, p53, p54, p55, p56, p57, p58, p59, p60, "
+  "p61, p62, p63, p64, p65, p66, p67, p68, p69, p70, p71, p72, p73, p74, p75, p76, p77, p78, p79, p80, p81, p82, p83, p84, p85, p86, p87, p88, p89, p90, "
+  "p91, p92, p93, p94, p95, p96, p97, p98, p99, p100, p101, p102, p103, p104, p105, p106, p107, p108, p109, p110, p111, p112, p113, p114, p115, p116, p117, p118, p119, p120, "
+  "p121, p122, p123, p124, p125, p126, p127, p128, p129, p130, p131, p132, p133, p134, p135, p136, p137, p138, p139, p140, p141, p142, p143, p144, p145, p146, p147, p148, p149, p150, "
+  "p151, p152, p153, p154, p155, p156, p157, p158, p159, p160, p161, p162, p163, p164, p165, p166, p167, p168, p169, p170, p171, p172, p173, p174, p175, p176, p177, p178, p179, p180, "
+  "p181, p182, p183, p184, p185, p186, p187, p188, p189, p190, p191, p192, p193, p194, p195, p196, p197, p198, p199, p200, p201, p202, p203, p204, p205, p206, p207, p208, p209, p210, "
+  "p211, p212, p213, p214, p215, p216, p217, p218, p219, p220, p221, p222, p223, p224, p225, p226, p227, p228, p229, p230, p231, p232, p233, p234, p235, p236, p237, p238, p239, p240, "
+  "p241, p242, p243, p244, p245, p246, p247, p248, p249, p250, p251, p252, p253, p254, p255, p256, p257"
+  ") {\n    return p1\n}\npost(f(*list(range(257))))\n",
+  "", "SyntaxError: f() tem parametros demais (maximo 256)", 2 },
+{ "parametros: lambda com 257 parametros e recusada na declaracao",
+  "import os\nimport sys\nps = []\nfor each i in range(257) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
+  "os.writeFile(\"j.ps\", \"g = funct(\" + \", \".join(ps) + \") {\\n    return 1\\n}\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "SyntaxError: <funct>() tem parametros demais (maximo 256)", NULL, 0 },
+{ "parametros: metodo com self + 256 parametros e recusado na declaracao",
+  "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
+  "os.writeFile(\"j.ps\", \"Entity E() {\\n    funct m(self, \" + \", \".join(ps) + \") {\\n        return 1\\n    }\\n}\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "SyntaxError: m() tem parametros demais (maximo 256)", NULL, 0 },
+{ "parametros: Entity com 256 campos e recusada na declaracao",
+  "import os\nimport sys\ncs = \"\"\nfor each i in range(256) {\n    cs = cs + \"    c\" + str(i) + \": int\\n\"\n}\n"
+  "os.writeFile(\"j.ps\", \"Entity E() {\\n\" + cs + \"}\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "SyntaxError: Entity E: o __init__ gerado dos campos tem parametros demais (maximo 256: self + 255 campos)", NULL, 0 },
+{ "parametros: funct com exatamente 256 parametros roda",
+  "import os\nimport sys\nps = []\nfor each i in range(256) {\n    addEnd(ps, \"p\" + str(i))\n}\n"
+  "os.writeFile(\"j.ps\", \"funct f(\" + \", \".join(ps) + \") {\\n    return p0\\n}\\npost(f(*list(range(256))))\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' j.ps > o.txt 2>&1\")\npost(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "0", NULL, 0 },
+
+/* ── tipo escrito junto da estrela: a mesma frase nas duas ordens ─────────── */
+{ "variadico: tipo antes da estrela (int *args) recebe a mensagem dedicada do tipo em estrela",
+  "funct f(int *args) {\n    return args\n}\n",
+  "", "SyntaxError: parametro `*int args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`", 2 },
+{ "variadico: tipo antes da estrela (String *args) recebe a mensagem dedicada do tipo em estrela",
+  "funct f(String *args) {\n    return args\n}\n",
+  "", "SyntaxError: parametro `*String args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`", 2 },
+{ "tipo em estrela: dict **kw",
+  "funct f(dict **kw) {\n    return kw\n}\n",
+  "", "SyntaxError: parametro `**dict kw` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `**kw`", 2 },
+{ "tipo em estrela: lambda funct(int *a)",
+  "f = funct(int *a) {\n    return a\n}\n",
+  "", "SyntaxError: parametro `*int a` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*a`", 2 },
+{ "tipo em estrela: metodo m(self, int *a)",
+  "Entity E() {\n    funct m(self, int *a) {\n        return a\n    }\n}\n",
+  "", "SyntaxError: parametro `*int a` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*a`", 2 },
+
+/* ── o frame corrente é raiz: closure e instância durante o C ────────────────
+ * O registro do frame só era escrito quando ele CHAMAVA uma funct. O catch lia
+ * a closure de lá, e o GC de dentro de um callback do C não via a closure em
+ * execução nem a instância recém-criada (valgrind acusava leitura de bloco
+ * liberado; a saída saía certa por acaso). */
+/* Captura em LAMBDA: só a funct nomeada aninhada virava célula, então
+ * `funct soma_de(a) { return funct(b) { return a + b } }` dava
+ * "NameError: name 'a' is not defined" — em toda forma de entregar a lambda. */
+{ "lambda devolvida captura a variavel de fora",
+  "funct soma_de(a) {\n    return funct(b) {\n        return a + b\n    }\n}\nf = soma_de(10)\npost(f(5))\n",
+  "15", NULL, 0 },
+{ "lambda guardada em variavel, em lista e passada ao callback captura",
+  "funct f(a) {\n    g = funct(b) {\n        return a + b\n    }\n    return [g, map([1, 2], funct(b) {\n        return a + b\n    })]\n}\nr = f(10)\npost(r[0](5), r[1])\n",
+  "15 [11, 12]", NULL, 0 },
+{ "lambda escreve na variavel capturada, como a funct nomeada",
+  "funct conta() {\n    n = 0\n    return funct() {\n        n = n + 1\n        return n\n    }\n}\nc = conta()\npost(c(), c(), c())\n",
+  "1 2 3", NULL, 0 },
+{ "closure pega erro lancado nela mesma e ainda ve as celulas no catch",
+  "funct fora() {\n    v = 10\n    funct dentro() {\n        try {\n            raise ValueError(\"x\")\n        } catch (ValueError e) {\n            return v\n        }\n    }\n    return dentro\n}\n"
+  "g = fora()\nfunct chama() {\n    return g()\n}\npost(chama())\npost(g())\n",
+  "10\n10", NULL, 0 },
+{ "closure em execucao sobrevive ao GC de dentro de um callback do C",
+  "funct fabrica(k) {\n    funct f(nums) {\n        r = map(nums, funct(v) {\n            for each i in range(40000) {\n                s = str(i) + \"bbbbbbbbbbbbbbbb\"\n            }\n            return v * k\n        })\n        return [r, k]\n    }\n    return f\n}\n"
+  "post(fabrica(3)([1, 2]))\n",
+  "[[3, 6], 3]", NULL, 0 },
+{ "instancia descartada antes de um callback com GC nao e marcada depois de liberada",
+  "Entity Ponto() {\n    funct __init__(self, x, y) {\n        self.x = x\n    }\n}\n"
+  "funct dobro(v) {\n    lixo = \"\"\n    for each i in range(60000) {\n        lixo = str(i) + \"aaaaaaaa\"\n    }\n    return v * 2\n}\n"
+  "funct trabalha(nums) {\n    Ponto(1, 2)\n    for each i in range(60000) {\n        s = str(i) + \"bbbbbbbb\"\n    }\n    return map(nums, dobro)\n}\n"
+  "post(trabalha([10, 20]))\n",
+  "[20, 40]", NULL, 0 },
 /* ── FOTOGRAFIAS, decisao aberta (revisao de 236eba8, 2026-09-14) ──────────
  * Os quatro casos abaixo gravam o que o motor faz HOJE, nao o que deve fazer:
  * sao a prova de que o comportamento e este, pra quem decidir ter de onde
@@ -2957,6 +3192,64 @@ const Caso CASOS_LINGUAGEM[] = {
 { "static com self chamado por nome com posicionais demais: frase do CALL_KW = a do OP_CALL (fotografia)",
   "Entity C() {\n    static funct f(self, a, b=10) {\n        return a + b\n    }\n}\npost(C.f(1, 2, 3, b=4))\n",
   "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 1 },
+
+/* ── import *: as três grafias e as recusas ──────────────────────────────────
+ * `from m import *`, `import m *` e `PUSH m GET *` são a mesma regra: ligam os
+ * nomes que o módulo exporta, e não o nome do módulo. Os casos com arquivo
+ * `.ps` (private, pré-ligado, bloco, reexportação, ciclo) moram em
+ * teste/cobre_stdlib.ps, que monta os arquivos. */
+{ "import *: from json import *",
+  "from json import *\npost(stringify([1]), parse(\"[2]\"))\n", "[1] [2]", NULL, 0 },
+{ "import *: import json *",
+  "import json *\npost(stringify([1]))\n", "[1]", NULL, 0 },
+{ "import *: PUSH json GET *",
+  "PUSH json GET *\npost(stringify([1]))\n", "[1]", NULL, 0 },
+{ "import *: modulo entre aspas por nome",
+  "from 'json' import *\npost(stringify([1]))\n", "[1]", NULL, 0 },
+{ "import *: import m * nao liga o nome do modulo",
+  "import regex *\npost(regex)\n", "", "NameError: name 'regex' is not defined", 1 },
+{ "import *: modulo ausente e ImportError na linha do import",
+  "post(1)\nfrom naoexiste import *\n", "1", "ImportError: No module named 'naoexiste'", 1 },
+{ "import *: dentro de funct e recusado",
+  "funct g() {\n    from json import *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
+{ "import *: dentro de metodo e recusado",
+  "Entity E() {\n    funct m(self) {\n        import json *\n    }\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
+{ "import *: dentro de lambda e recusado",
+  "f = funct() {\n    PUSH json GET *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
+{ "import *: dentro de if e recusado",
+  "if True {\n    from json import *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
+{ "import *: dentro de try e recusado",
+  "try {\n    from json import *\n} catch (ImportError e) {\n    post(1)\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
+{ "import *: dentro do guard e recusado",
+  "if __name__ == \"main\" {\n    from json import *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from json import a, b", 2 },
+{ "import *: caminho entre aspas dentro de funct cita o caminho",
+  "funct g() {\n    from './x.ps' import *\n}\n",
+  "", "SyntaxError: `*` do import so vale no topo do arquivo; dentro de funct ou bloco nomeie o que usa: from './x.ps' import a, b", 2 },
+{ "import *: import m as x * e recusado",
+  "import json as j *\n",
+  "", "SyntaxError: `import m as x *` mistura as duas formas: `import m as x` liga o modulo, `import m *` liga os nomes dele — escolha uma", 2 },
+{ "import *: PUSH m as x GET * e recusado",
+  "PUSH json as j GET *\n",
+  "", "SyntaxError: `PUSH m as x GET *` mistura as duas formas: `as` nomeia o modulo, `GET *` liga os nomes dele — escolha uma", 2 },
+{ "import *: lista com * no fim e recusada",
+  "from json import parse, *\n",
+  "", "SyntaxError: `*` traz todos os nomes e nao se mistura com uma lista: escreva so `*` ou so os nomes (a, b)", 2 },
+{ "import *: * seguido de lista e recusado",
+  "from json import *, parse\n",
+  "", "SyntaxError: `*` traz todos os nomes e nao se mistura com uma lista: escreva so `*` ou so os nomes (a, b)", 2 },
+{ "import *: * com as e recusado",
+  "from json import * as t\n",
+  "", "SyntaxError: `*` nao aceita `as`: ele liga cada nome com o proprio nome", 2 },
+/* `bytes` exporta `hex`: depois do `*` o nome é o do módulo, como seria com
+ * `from bytes import hex` — a linha de cima ainda usa o embutido */
+{ "import *: membro do modulo sombreia o builtin de mesmo nome a partir do import",
+  "post(hex(255))\nfrom bytes import *\npost(hex(new([255, 1])))\n", "0xff\nff01", NULL, 0 },
 
 /* ── CLI ── */
 { "--check não executa o script",

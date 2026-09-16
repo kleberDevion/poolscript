@@ -32,6 +32,8 @@
  *               desempacotamento, import, action e Entity aninhadas)
  *   entidades   nome, pais, campos e métodos, com `private` e posição
  *   imports     nome ligado -> módulo do motor ou arquivo .ps
+ *   estrelas    os `import *` do topo, na ordem (não ligam o nome do módulo)
+ *   topo        o que o arquivo liga no topo — o que ele exporta
  */
 'use strict';
 
@@ -188,38 +190,161 @@ function nomeDoArquivoImport(spec) {
   return base;
 }
 
+/* O que UM ImportStmt liga. `null` quando o nó não diz módulo nenhum (linha
+ * pela metade). Senão, um de dois:
+ *
+ *   { nomes: [{ nome, imp, no }] }   cada nome ligado e o que ele designa
+ *   { estrela: { mod, aspas, pontos, linha } }
+ *                                    `from m import *` / `import m *` /
+ *                                    `PUSH m GET *` (o parser marca
+ *                                    `texto3 = "*"` nas três grafias)
+ *
+ * A estrela NÃO liga o nome do módulo — `import json *` não deixa `json`
+ * existir no arquivo, liga só o que o módulo exporta. Por isso ela não entra
+ * na tabela de nomes: quem pergunta por um nome que ninguém ligou é que vai
+ * procurá-lo nas estrelas (ver `alvoDoImport` no servidor).
+ *
+ * `pontos` é o nível do import relativo (`from ..pkg.m`, o parser marca em
+ * `i2 > 0`): sem ele `..pkg.m` e `pkg.m` pareciam o mesmo módulo. */
+function ligacoesDoImport(no) {
+  const itens = no.lista || [];
+  /* `import 'caminho/alvo.ps'` / `from 'json' import x`: um literal só,
+   * marcado com `i2 = -1`. O texto vai inteiro — é caminho ou nome. */
+  const aspas = no.i2 === -1 && itens.length === 1 && itens[0].k === 'Literal';
+  const segs = aspas ? [itens[0].texto || ''] : itens.map((x) => x.texto).filter(Boolean);
+  if (!segs.length || !segs[0]) return null;
+  const mod = aspas ? segs[0] : segs.join('.');
+  const pontos = no.i2 > 0 ? no.i2 : 0;
+  if (no.texto3 === '*') return { estrela: { mod, aspas, pontos, linha: (no.l || 1) - 1 } };
+  const nomes = [];
+  /* `from mod import a, b` NÃO liga o módulo: liga cada nome pedido. */
+  if (no.texto === 'from' || (no.lista2 || []).length) {
+    const pedidos = no.lista2 || [];
+    const apelidos = no.alias || [];
+    for (let i = 0; i < pedidos.length; i++) {
+      const nome = pedidos[i] && pedidos[i].texto;
+      if (!nome) continue;
+      const temAp = apelidos[i] && apelidos[i].texto;
+      nomes.push({ nome: temAp ? apelidos[i].texto : nome,
+                   imp: { mod, membro: nome, de_from: true, aspas, pontos },
+                   no: temAp ? apelidos[i] : pedidos[i] });
+    }
+  } else {
+    const ligado = no.texto2 ? no.texto2 : (aspas ? nomeDoArquivoImport(mod) : segs[segs.length - 1]);
+    nomes.push({ nome: ligado, imp: { mod, membro: null, de_from: false, aspas, pontos }, no });
+  }
+  return { nomes };
+}
+
+/* A tabela nome -> módulo dos imports do arquivo, e a lista das estrelas.
+ *
+ * Estrela só conta no TOPO do arquivo: o motor recusa `*` dentro de funct ou
+ * bloco (o `--check` já mostra o erro), e contá-la aqui faria o editor
+ * oferecer nomes que o programa nunca vai ter. A ordem da lista é a do
+ * arquivo — a última estrela que traz um nome é a que vale, como no motor. */
 function importsDaArvore(arvore) {
   const tab = new Map();
+  const estrelas = [];
+  const doTopo = new Set((arvore && arvore.lista) || []);
   const anda = (no) => {
     if (!no || typeof no !== 'object') return;
     if (no.k === 'ImportStmt') {
-      const itens = no.lista || [];
-      /* `import 'caminho/alvo.ps'` / `from 'json' import x`: um literal só,
-       * marcado com `i2 = -1`. O texto vai inteiro — é caminho ou nome. */
-      const aspas = no.i2 === -1 && itens.length === 1 && itens[0].k === 'Literal';
-      const segs = aspas ? [itens[0].texto || ''] : itens.map((x) => x.texto).filter(Boolean);
-      if (segs.length && segs[0]) {
-        const mod = aspas ? segs[0] : segs.join('.');
-        /* `from mod import a, b` NÃO liga o módulo: liga cada nome pedido. */
-        if (no.texto === 'from' || (no.lista2 || []).length) {
-          const pedidos = no.lista2 || [];
-          const apelidos = no.alias || [];
-          for (let i = 0; i < pedidos.length; i++) {
-            const nome = pedidos[i] && pedidos[i].texto;
-            if (!nome) continue;
-            const ap = apelidos[i] && apelidos[i].texto ? apelidos[i].texto : nome;
-            tab.set(ap, { mod, membro: nome, de_from: true, aspas });
-          }
-        } else {
-          const ligado = no.texto2 ? no.texto2 : (aspas ? nomeDoArquivoImport(mod) : segs[segs.length - 1]);
-          tab.set(ligado, { mod, membro: null, de_from: false, aspas });
-        }
-      }
+      const lig = ligacoesDoImport(no);
+      if (lig && lig.estrela) { if (doTopo.has(no)) estrelas.push(lig.estrela); }
+      else if (lig) for (const x of lig.nomes) tab.set(x.nome, x.imp);
     }
     cada(no, anda);
   };
   anda(arvore);
-  return tab;
+  return { tab, estrelas };
+}
+
+/* ── o que o ARQUIVO exporta ───────────────────────────────────────────── */
+/*
+ * A regra é a do motor (`calcula_exportados` no compilador), a MESMA pra
+ * `from m import x`, `m.x` e `*`: sai no import o que ficou ligado no escopo
+ * do arquivo — os comandos de topo do Program, e não o que nasceu dentro de
+ * if/for/try/funct, que o fim do bloco já apagou — mais o que uma funct grava
+ * com `global x`. `private` (funct e class) fica de fora, e isso é decidido
+ * pelo NOME, como lá. Nome com `_` SAI: a linguagem não tem convenção de
+ * sublinhado, e esconder `_x` era o editor inventando uma regra.
+ *
+ * Aqui só se lista o que cada comando de topo liga, na ordem do arquivo. O
+ * nome que vem de OUTRO módulo (import, `*`) segue como referência: quem acha
+ * o arquivo e o resolve é o servidor. */
+function topoDaArvore(arvore) {
+  const out = [];
+  if (!arvore) return out;
+  const poe = (nome, kind, tipo, origem, extra) => {
+    if (!nome) return;
+    out.push(Object.assign({ nome, kind, tipo: tipo || null, privado: false,
+                             linha: ((origem && origem.l) || 1) - 1, coluna: 0, no: origem }, extra || {}));
+  };
+  const comando = (no) => {
+    if (!no || typeof no !== 'object') return;
+    switch (no.k) {
+      case 'DecoratorStmt':
+        /* o bloco do `@dec` NÃO é escopo: a funct decorada é do arquivo, e o
+         * motor a exporta (empilhado, o de dentro é outro DecoratorStmt) */
+        for (const s of (no.b && no.b.lista) || []) comando(s);
+        return;
+      case 'ActionDecl':
+        poe(no.texto, 'action', no.texto2, no, {
+          privado: !!no.private, async: !!no.async, estatica: !!no.static, nonnull: !!no.nonnull,
+          params: (no.lista || []).filter((p) => p && p.texto !== 'self')
+                                  .map((p) => ({ nome: nomeParam(p), tipo: p.texto2 || null, default: null })),
+        });
+        return;
+      case 'EntityDecl':
+        poe(no.texto, 'class', null, no, { privado: !!no.private, coluna: (no.c || 1) - 1 });
+        return;
+      case 'ForEachStmt':
+        /* a variável do laço nasce no bloco do laço e morre com ele */
+        return;
+      case 'ImportStmt': {
+        const lig = ligacoesDoImport(no);
+        if (!lig) return;
+        if (lig.estrela) { out.push({ estrela: lig.estrela, linha: lig.estrela.linha }); return; }
+        for (const x of lig.nomes) {
+          poe(x.nome, 'import', null, no, { imp: x.imp, coluna: ((x.no && x.no.c) || 1) - 1 });
+        }
+        return;
+      }
+      default:
+        /* atribuição, declaração tipada, desempacotamento, model, enum */
+        ligacoesDe(no, (nome, kind, tipo, origem) => poe(nome, kind, tipo, origem));
+    }
+  };
+  for (const s of arvore.lista || []) comando(s);
+  gravadosComGlobal(arvore, (nome, origem) => poe(nome, 'variavel', null, origem));
+  return out;
+}
+
+/* `global x` dentro de uma funct + escrita em `x` na MESMA funct: o nome é do
+ * arquivo e sai no import como os de topo. Só declarar não basta — o motor
+ * registra o nome quando compila a escrita. Funct aninhada tem os `global`
+ * dela: cada uma é conferida à parte. */
+function gravadosComGlobal(arvore, poe) {
+  const funcao = (fn) => {
+    const decl = new Set();
+    const escritos = [];
+    const escreve = (nome, origem) => { if (nome) escritos.push({ nome, origem }); };
+    const anda = (no) => {
+      if (!no || typeof no !== 'object' || no.k === 'ActionDecl') return;
+      if (no.k === 'GlobalStmt') for (const x of no.lista || []) { if (x && x.texto) decl.add(x.texto); }
+      if (no.k === 'Assignment' || no.k === 'VarDecl' || no.k === 'ForEachStmt') escreve(no.texto, no);
+      if (no.k === 'UnpackAssignment') alvosDoUnpack(no.a, (nome) => escreve(nome, no), no);
+      cada(no, anda);
+    };
+    anda(fn.b);
+    for (const e of escritos) if (decl.has(e.nome)) poe(e.nome, e.origem);
+  };
+  const todas = (no) => {
+    if (!no || typeof no !== 'object') return;
+    if (no.k === 'ActionDecl') funcao(no);
+    cada(no, todas);
+  };
+  todas(arvore);
 }
 
 /* ── Entities ───────────────────────────────────────────────────────────── */
@@ -362,7 +487,8 @@ function escoposDaArvore(arvore) {
 /* ── a fachada ──────────────────────────────────────────────────────────── */
 
 function indexa(arvore) {
-  if (!arvore) return { arvore: null, escopos: [], entidades: [], imports: new Map() };
+  if (!arvore) return { arvore: null, escopos: [], entidades: [], imports: new Map(), estrelas: [], topo: [] };
+  const imps = importsDaArvore(arvore);
   return {
     /* a árvore VIAJA no índice: quem precisa de uma pergunta que o índice não
      * respondeu (qual chamada contém o cursor, o que `x = Foo()` construiu)
@@ -370,7 +496,10 @@ function indexa(arvore) {
     arvore,
     escopos: escoposDaArvore(arvore),
     entidades: entidadesDaArvore(arvore),
-    imports: importsDaArvore(arvore),
+    imports: imps.tab,
+    estrelas: imps.estrelas,
+    /* o que o arquivo liga no topo — é o que ele EXPORTA quando é importado */
+    topo: topoDaArvore(arvore),
   };
 }
 

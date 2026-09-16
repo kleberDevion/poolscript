@@ -1,4 +1,4 @@
-# `Jinker(name="__main__", oauth=None, static_folder=None, static_url="/", route_prefix="")`
+# `Jinker(name="main", oauth=None, static_folder=None, static_url="/", route_prefix="")`
 
 O construtor da aplicação. Cria o objeto `app` onde tudo se pendura — rotas,
 sockets, middleware — e onde você configura segurança (rate limit, HTTPS) e
@@ -12,7 +12,7 @@ app = Jinker(__name__)
 
 | Parâmetro | Tipo | Padrão | O que é |
 |---|---|---|---|
-| `name` | `str` | `"__main__"` | nome da app — passe `__name__` |
+| `name` | `str` | `"main"` | nome da app — passe `__name__`, que no arquivo executado vale `"main"` |
 | `oauth` | dict | `None` | segurança: rate limit (`poolip`) e HTTPS (`tls`) — ver abaixo |
 | `static_folder` | `str` | `None` | pasta com build de front a servir (SPA) — ver [static_folder](../static_folder/static_folder.md) |
 | `static_url` | `str` | `"/"` | (guardado, **ainda não usado** na correspondência de URL) |

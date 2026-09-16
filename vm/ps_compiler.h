@@ -17,6 +17,11 @@
 
 #include "ps_ast.h"
 
+/* Parâmetros FIXOS por funct (o `self` conta; `*args` e `**kwarg` não). O
+ * binding da chamada marca cada um num vetor desse tamanho, então o limite é
+ * da DECLARAÇÃO: o compilador recusa ali, e a chamada nunca vê mais que isso. */
+#define PS_MAX_PARAMS 256
+
 /* Constante numa forma que não depende do runtime. */
 typedef enum { K_NULL = 0, K_BOOL, K_INT, K_FLO, K_STR, K_BIGINT, K_BYTES } PSConstKind;
 
@@ -161,6 +166,22 @@ typedef struct {
     char   **priv_globais;
     int32_t  npriv_globais;
 
+    /* O que o `import` deste arquivo enxerga: os nomes que ele liga no nível
+     * do arquivo — funct, Entity, enum, model, variável, o que ele importou
+     * (inclusive por `*`) e o que uma funct grava com `global x` —, sem
+     * `private` e sem nome interno. É a regra de `from m import x`, de `m.x`
+     * e de `from m import *`, num lugar só: o escopo que o próprio compilador
+     * já calcula. O nome que a VM pré-liga no módulo (builtin, exceção,
+     * `__name__`) só entra se o arquivo o redefinir. */
+    char   **exportados;
+    int32_t  nexportados;
+
+    /* 1 = algum `*` do topo NÃO foi resolvido (o módulo não foi achado, não
+     * compila, ou a cadeia de `*` é funda demais pra expandir). A lista de
+     * `exportados` então está INCOMPLETA: quem expande este arquivo tem que
+     * recusar em vez de entregar uma lista que perdeu nomes em silêncio. */
+    int      estrela_incompleta;
+
     int      ok;
     char     erro[256];
     int32_t  erro_linha;
@@ -172,9 +193,25 @@ typedef struct {
     int      erro_do_programa;
 } PSPrograma;
 
+/* `import *` é resolvido NA COMPILAÇÃO: o compilador pergunta quais nomes o
+ * módulo exporta e compila como se a lista tivesse sido escrita
+ * (`from m import a, b, c`). Escopo de bloco, sombra do
+ * `for each`, tipo declarado e reexportação saem da maquinaria de sempre.
+ *
+ * `nomes_de` recebe o módulo codificado como no OP_IMPORT_MOD e devolve 1 com
+ * os nomes (vetor e strings em malloc; o compilador libera), ou 0 quando o
+ * módulo não foi achado ou não compila — aí o `*` fica pro runtime dar o
+ * ImportError/SyntaxError de sempre na linha do import. */
+typedef struct {
+    int  (*nomes_de)(void *ctx, const char *modulo, char ***nomes, int32_t *n);
+    void  *ctx;
+} PSResolvedor;
+
 /* Compila a AST. Sempre devolve algo que precisa de ps_compila_free,
- * inclusive em erro. */
+ * inclusive em erro. Sem resolvedor (`--check`), o `*` compila na forma não
+ * resolvida. */
 PSPrograma *ps_compila(PSNode *programa);
+PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve);
 void        ps_compila_free(PSPrograma *p);
 
 /* Nome legível do opcode — usado no desmonte e no teste diferencial. */

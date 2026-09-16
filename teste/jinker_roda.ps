@@ -211,6 +211,14 @@ confere("classe: o lock foi solto no finally da requisicao anterior",
 r = get(RAIZ + "/cls/mw_erra")
 confere("classe: middleware que levanta erro responde 500, nao deixa a rota rodar", r.status_code == 500)
 
+# ── handler async: o jinker espera o corpo, e o helper aguardado ve o request ─
+r = get(RAIZ + "/async/direto?q=abc")
+confere("rota async funct: o jinker espera o corpo e ele ve a requisicao",
+        r.status_code == 200 and r.get_json("q") == "abc")
+r = get(RAIZ + "/async/helper?q=xyz")
+confere("rota async: await de helper async ve o request de quem o criou",
+        r.status_code == 200 and r.get_json("q") == "xyz" and r.get_json("depois") == "xyz")
+
 # ── CORS ────────────────────────────────────────────────────────────────────
 r = get(RAIZ + "/cors-info")
 confere("cors.options() devolve o configurado", "GET" in r.get_json("options"))
@@ -353,6 +361,29 @@ catch (e)
     eco = "ERRO: " + str(e)
 }
 confere("WebSocket faz handshake e ecoa a mensagem", "alo" in eco)
+
+# `on_message` com `async funct`: a drenagem ESPERA o callback, como o jinker
+# espera o handler — o corpo roda, na ordem das mensagens.
+vindas_async = []
+async funct guarda_async(m)
+{
+    vindas_async.append(m)
+}
+eco_async = ""
+try
+{
+    ws3 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    ws3.on_message(guarda_async)
+    ws3.send("alo")
+    sleep(1)
+    eco_async = str(vindas_async)
+    ws3.close()
+}
+catch (e)
+{
+    eco_async = "ERRO: " + str(e)
+}
+confere("WebSocket: on_message com async funct roda o corpo do callback", "alo" in eco_async)
 
 # TAMANHO DO FRAME: o WebSocket codifica o comprimento em três formatos, e o
 # ramo escolhido depende do tamanho. Só o primeiro era exercitado — "alo" tem 3
