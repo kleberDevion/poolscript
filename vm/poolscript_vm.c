@@ -753,21 +753,16 @@ typedef struct PSDict_ {
  * Agora cada tipo é UMA LINHA: código, nome e o teste de pertinência. Quem
  * precisa do nome chama `tipo_nome()`, quem precisa do teste chama
  * `valor_eh_tipo()`, e os dois leem daqui. */
+/* O enum sai da tabela única `ps_tipos.def`: a ordem ali é o código gravado no
+ * bytecode. `long` é inteiro de QUALQUER tamanho (`int` promete 64 bits e por
+ * isso recusa bignum); `byte` é o tipo do valor de `b"..."` — o MÓDULO segue
+ * chamando `bytes`. */
 enum {
-    TIPO_STR = 0, TIPO_INT, TIPO_FLO, TIPO_BOOL,
-    TIPO_LIST, TIPO_DICT, TIPO_TUP, TIPO_TYPE,
-    /* estes três não vinham do enum: eram `#define` soltos 2.000 linhas
-     * abaixo, e o array de nomes tinha que adivinhar a posição deles */
-    TIPO_CHAR, TIPO_PFILE, TIPO_OBJ,
-    /* `long`: inteiro de QUALQUER tamanho. `int` promete caber em 64 bits, e
-     * é por isso que ele recusa bignum; `long` não promete, e aceita os dois.
-     * Mesma ideia do `char`, que é restrição de DECLARAÇÃO — `type()` de
-     * ambos continua respondendo `"int"`, porque o valor é um inteiro. */
-    TIPO_LONG,
-    /* `byte`: o tipo do valor de `b"..."` e do `.encode()`. O MÓDULO segue
-     * chamando `bytes` (`bytes.new`, `bytes.fromhex`) — nomes distintos, sem
-     * conflito entre tipo e módulo. */
-    TIPO_BYTE,
+#define PS_TIPO(suf, nome, aceita, decl, expr, count, model) TIPO_##suf,
+#define PS_APELIDO(grafia, suf)
+#include "ps_tipos.def"
+#undef PS_TIPO
+#undef PS_APELIDO
     TIPO__N
 };
 /* As exceções também são valores `V_TIPO`, com o índice DESLOCADO: `ValueError`
@@ -9433,20 +9428,13 @@ static int aceita_obj(const Value *v)
 static int aceita_long(const Value *v)  { return EH_INTEIRO(*v); }
 static int aceita_byte(const Value *v)  { return EH_BYTES(*v); }
 
+/* Nome e teste de pertinência na ordem de `ps_tipos.def` — a mesma do enum. */
 static const struct { const char *nome; int (*aceita)(const Value *); } TIPOS[] = {
-    { "str",      aceita_str   },
-    { "int",      aceita_int   },
-    { "flo",      aceita_flo   },
-    { "bool",     aceita_bool  },
-    { "list",     aceita_list  },
-    { "dict",     aceita_dict  },
-    { "tup",      aceita_tup   },
-    { "type",     aceita_type  },
-    { "char",     aceita_char  },
-    { "PoolFile", aceita_pfile },
-    { "Object",   aceita_obj   },
-    { "long",     aceita_long  },
-    { "byte",     aceita_byte  },
+#define PS_TIPO(suf, nome, aceita, decl, expr, count, model) { nome, aceita },
+#define PS_APELIDO(grafia, suf)
+#include "ps_tipos.def"
+#undef PS_TIPO
+#undef PS_APELIDO
 };
 
 static const char *tipo_nome(int64_t t)

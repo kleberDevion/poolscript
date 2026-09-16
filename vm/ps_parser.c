@@ -18,6 +18,7 @@
  */
 #include "ps_parser.h"
 #include "ps_pilha.h"
+#include "ps_tipos.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -194,8 +195,6 @@ static int eh_mod_funct(PSToken *t)
         || strcmp(t->texto, "NonNull") == 0;
 }
 
-static int eh_tipo_kw(PSToken *t);
-static int eh_apelido_tipo(PSToken *t);
 
 /* O tipo de RETORNO de uma funct, no nome canônico — ou NULL se este token não
  * é um tipo de retorno.
@@ -230,28 +229,17 @@ static int eh_tipo_de_retorno(PSToken *t)
     /* Nome do usuário: classe, Entity, model, apelido de tipo. */
     if (t->type == T_IDENT || t->type == T_IDENT_UPPER) return 1;
     if (t->type != T_KW) return 0;
-    static const char *const TIPOS[] = {
-        "str", "int", "long", "flo", "bool", "char", "list",
-        "dict", "tup", "json", "JSON", "Object", "object", NULL
-    };
-    for (int i = 0; TIPOS[i]; i++) if (strcmp(t->texto, TIPOS[i]) == 0) return 1;
-    return 0;
+    /* palavra-chave que é tipo declarável, pela tabela única (ps_tipos.def) */
+    const PSTipoInfo *ti = ps_tipo_info(t->texto);
+    return ti && ti->decl;
 }
 
-/* O nome canônico de um apelido, ou NULL quando o token já é o nome canônico.
- * A doc diz que a linha do tipo apelidado vale igual: `string` É `str`, e a
- * árvore guarda `str` pra quem consome não precisar saber das duas grafias. */
+/* O nome canônico do tipo deste token (`String` → `str`), ou NULL se o token
+ * não é tipo da tabela (classe, Entity). A linha do tipo apelidado vale igual,
+ * e a árvore guarda o canônico pra quem consome não saber das duas grafias. */
 static const char *canonico_de_apelido(PSToken *t)
 {
-    if (!t->texto) return NULL;
-    const char *s = t->texto;
-    if (strcmp(s, "string")     == 0 || strcmp(s, "String")     == 0) return "str";
-    if (strcmp(s, "integer")    == 0 || strcmp(s, "Integer")    == 0) return "int";
-    if (strcmp(s, "tuple")      == 0 || strcmp(s, "Tuple")      == 0) return "tup";
-    if (strcmp(s, "dictionary") == 0 || strcmp(s, "Dictionary") == 0) return "dict";
-    if (strcmp(s, "object")     == 0 || strcmp(s, "Object")     == 0) return "Object";
-    if (strcmp(s, "json")       == 0 || strcmp(s, "JSON")       == 0) return "dict";
-    return NULL;
+    return t->texto ? ps_tipo_canonico(t->texto) : NULL;
 }
 
 /* O tipo de retorno deste token, pronto pra ir na árvore. */
@@ -453,22 +441,16 @@ static int pode_iniciar_expr(PSToken *t)
  * Esta é a união das duas. */
 static int eh_tipo_count(const char *s)
 {
-    return s && (strcmp(s,"str")==0 || strcmp(s,"int")==0 || strcmp(s,"flo")==0
-              || strcmp(s,"bool")==0 || strcmp(s,"list")==0 || strcmp(s,"json")==0
-              || strcmp(s,"dict")==0 || strcmp(s,"tup")==0
-              || strcmp(s,"char")==0 || strcmp(s,"type")==0);
+    const PSTipoInfo *ti = ps_tipo_info(s);
+    return ti && ti->count;
 }
 
-/* tipos válidos como TypeName numa expressão (`x is int`) */
+/* tipos válidos como TypeName numa expressão (`x is int`) — pela tabela única */
 static int eh_tipo_kw_expr(PSToken *t)
 {
-    return t->type == T_KW && t->texto
-        && (strcmp(t->texto, "str") == 0 || strcmp(t->texto, "int") == 0
-         || strcmp(t->texto, "long") == 0
-         || strcmp(t->texto, "flo") == 0 || strcmp(t->texto, "bool") == 0
-         || strcmp(t->texto, "list") == 0 || strcmp(t->texto, "json") == 0
-         || strcmp(t->texto, "dict") == 0 || strcmp(t->texto, "tup") == 0
-         || strcmp(t->texto, "type") == 0);
+    if (t->type != T_KW || !t->texto) return 0;
+    const PSTipoInfo *ti = ps_tipo_info(t->texto);
+    return ti && ti->expr;
 }
 
 /* ── protótipos ─────────────────────────────────────────────────────────── */
@@ -2437,69 +2419,34 @@ static PSNode *return_stmt(P *p)
     return n;
 }
 
-/* Os quatro tipos-base. É a BASE das outras listas, não a lista de quem
- * declara: a declaração tipada usa `eh_tipo_kw_decl` (que soma char, long,
- * list, dict, json, tup, Object e os apelidos), o tipo de retorno usa
- * `eh_tipo_de_retorno`, e o TypeName em expressão (`x is int`) usa
- * `eh_tipo_kw_expr`. Cada uma tem um papel gramatical diferente; o que não
- * pode é a mesma pergunta ("isto é tipo aqui?") ser feita com duas listas. */
-static int eh_tipo_kw(PSToken *t)
-{
-    return t->type == T_KW && t->texto
-        && (strcmp(t->texto, "str") == 0 || strcmp(t->texto, "int") == 0
-         || strcmp(t->texto, "flo") == 0 || strcmp(t->texto, "bool") == 0);
-}
-
-/* Os tipos que abrem uma DECLARAÇÃO (`char c = "a"`, `list l = []`): uma
- * tabela só, lida por `eh_tipo_kw_decl` e publicada por
- * `ps_parser_tipos_decl`. Os quatro primeiros são também tipo de retorno. */
-static const char *const TIPOS_DECL[] = {
-    "str", "int", "flo", "bool",
-    "char", "long", "list", "dict", "json", "tup", "Object", "object",
-    "byte",    /* o tipo do valor de `b"..."`; `bytes` é o MÓDULO */
-    NULL
-};
-
-static int esta_em_lista(const char *s, const char *const *lista)
-{
-    for (int i = 0; lista[i]; i++) if (strcmp(s, lista[i]) == 0) return 1;
-    return 0;
-}
-
-/* Tipos que abrem uma DECLARAÇÃO (`char c = "a"`). É maior que o
- * `eh_tipo_kw`, que também guarda o tipo de RETORNO de action — e ali só
- * `int action`/`bool action` existem. */
-/* Apelidos de tipo em declaracao: `string`/`String` = str, `integer`/`Integer`
- * = int, `tuple`/`Tuple` = tup, `dictionary`/`Dictionary` = dict. NAO sao
- * palavras reservadas — `string` continua podendo ser variavel ou nome de
- * parametro (`regex.sub(string=...)`): o apelido so vale onde um TIPO vale,
- * antes do nome numa declaracao. */
-static int eh_apelido_tipo(PSToken *t)
-{
-    static const char *const A[] = { "string", "String", "integer", "Integer",
-                                     "tuple", "Tuple", "dictionary", "Dictionary", NULL };
-    if ((t->type != T_IDENT && t->type != T_IDENT_UPPER) || !t->texto) return 0;
-    for (int i = 0; A[i]; i++) if (strcmp(t->texto, A[i]) == 0) return 1;
-    return 0;
-}
-
+/* O token abre uma DECLARAÇÃO tipada (`char c = "a"`, `String s = "x"`)?
+ * Pela tabela única `ps_tipos.def` (coluna `decl`), com os apelidos. Apelido
+ * NÃO é palavra reservada — `string` continua podendo ser variável ou nome de
+ * parâmetro (`regex.sub(string=...)`): só vale onde um TIPO vale, antes do nome
+ * numa declaração, e é isso que o chamador confere. */
 static int eh_tipo_kw_decl(PSToken *t)
 {
-    /* `list`/`dict`/`json`/`tup` entraram aqui com a tipagem estatica: `list
-     * l = [1]` era lido como um TypeName SOLTO (statement vazio) seguido da
-     * atribuicao comum `l = [1]` — a doc prometia "guarda o proprio tipo" e
-     * nenhuma declaracao existia. */
-    return eh_tipo_kw(t) || eh_apelido_tipo(t)
-        || ((t->type == T_KW || t->type == T_IDENT) && t->texto
-            && esta_em_lista(t->texto, TIPOS_DECL));   /* `byte` é IDENT, não keyword */
+    if (!t->texto) return 0;
+    if (t->type != T_KW && t->type != T_IDENT && t->type != T_IDENT_UPPER) return 0;
+    const PSTipoInfo *ti = ps_tipo_info(t->texto);
+    return ti && ti->decl;
 }
 
-/* A lista dos tipos que abrem declaração, pra quem precisa dela FORA do
- * parser: o `--metadata` a publica e o realce do editor é gerado dela — em
- * vez de uma cópia digitada na gramática, que envelhece. */
+/* A lista dos nomes que abrem declaração (canônicos e apelidos), pra quem
+ * precisa dela FORA do parser: o `--metadata` a publica e o realce do editor é
+ * gerado dela. Montada uma vez da tabela única. */
 const char *const *ps_parser_tipos_decl(void)
 {
-    return TIPOS_DECL;
+    static const char *lista[64];
+    if (!lista[0]) {
+        int n = 0;
+        for (int i = 0; i < PS_N_TIPOS && n < 63; i++)
+            if (PS_TIPOS_INFO[i].decl) lista[n++] = PS_TIPOS_INFO[i].nome;
+        for (int i = 0; i < PS_N_APELIDOS && n < 63; i++)
+            if (PS_TIPOS_INFO[PS_TIPOS_APELIDOS[i].cod].decl) lista[n++] = PS_TIPOS_APELIDOS[i].grafia;
+        lista[n] = NULL;
+    }
+    return lista;
 }
 
 static PSNode *statement(P *p)
@@ -2799,7 +2746,7 @@ static PSNode *statement(P *p)
                 PSNode *f = ps_node_novo(p->arena, N_ENTITY_FIELD, nmt->line, nmt->col);
                 if (!f) return NULL;
                 f->texto = nome;
-                f->texto2 = dup_tok(p, tt);
+                f->texto2 = tipo_retorno_dup(p, tt);
                 if (checa_op(p, "=")) {
                     p->pos++;
                     f->a = expressao(p);
@@ -2831,7 +2778,7 @@ static PSNode *statement(P *p)
                         perro(p, "esperado tipo apos ':' no campo da Entity", tt); return NULL;
                     }
                     p->pos++;
-                    f->texto2 = dup_tok(p, tt);
+                    f->texto2 = tipo_retorno_dup(p, tt);
                     if (checa_op(p, "=")) {
                         p->pos++;
                         f->a = expressao(p);
@@ -3087,15 +3034,11 @@ static PSNode *statement(P *p)
             if (FALHOU(p)) return NULL;
             if (!exige(p, T_COLON, "esperado ':' apos nome do campo")) return NULL;
             PSToken *tt = atual(p);
-            /* os quatro tipos de campo, mais os apelidos de str e int
-             * (`string`/`String`, `integer`/`Integer`) */
-            int tipo_ok = tt->texto
-                && ((tt->type == T_KW
-                     && (strcmp(tt->texto,"str")==0 || strcmp(tt->texto,"int")==0
-                         || strcmp(tt->texto,"flo")==0 || strcmp(tt->texto,"bool")==0))
-                    || (eh_apelido_tipo(tt)
-                        && (strcmp(tt->texto,"string")==0 || strcmp(tt->texto,"String")==0
-                            || strcmp(tt->texto,"integer")==0 || strcmp(tt->texto,"Integer")==0)));
+            /* os tipos de campo de model (coluna `model` da tabela única) e os
+             * apelidos deles (`String`, `Integer`) */
+            const PSTipoInfo *mti = (tt->type == T_KW || tt->type == T_IDENT
+                                     || tt->type == T_IDENT_UPPER) ? ps_tipo_info(tt->texto) : NULL;
+            int tipo_ok = mti && mti->model;
             if (!tipo_ok) {
                 perro(p, "tipo do campo deve ser str, int, flo ou bool", tt); return NULL;
             }
@@ -3103,7 +3046,7 @@ static PSNode *statement(P *p)
             PSNode *f = ps_node_novo(p->arena, N_MODEL_FIELD, ft->line, ft->col);
             if (!f) return NULL;
             f->texto = campo;
-            f->texto2 = dup_tok(p, tt);
+            f->texto2 = tipo_retorno_dup(p, tt);
             f->i2 = -1;                       /* -1 = sem length */
             if (aceita(p, T_LPAREN)) {
                 /* A mensagem dizia "esperado 'length'" e o código só cobrava
@@ -3541,7 +3484,7 @@ static PSNode *statement(P *p)
             if ((tt->type == T_IDENT || tt->type == T_IDENT_UPPER || tt->type == T_KW)
                     && (nmt->type == T_IDENT || nmt->type == T_IDENT_UPPER)) {
                 p->pos++;                                   /* private/public */
-                const char *tipo = dup_tok(p, atual(p));
+                const char *tipo = tipo_retorno_dup(p, atual(p));
                 p->pos++;                                   /* tipo */
                 PSToken *nt2 = atual(p);
                 const char *nome = exige_nome(p, "campo");
@@ -3588,8 +3531,8 @@ static PSNode *statement(P *p)
             p->pos++;
             return action_decl(p, 0, tipo);
         }
-        /* declaração tipada: `int x = 1` */
-        const char *tipo = dup_tok(p, t);
+        /* declaração tipada: `int x = 1` — a árvore guarda o tipo canônico */
+        const char *tipo = tipo_retorno_dup(p, t);
         p->pos++;
         PSToken *nt = atual(p);
         const char *nome = exige_nome(p, "variavel");

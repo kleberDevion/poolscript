@@ -1,0 +1,49 @@
+/*
+ * Os tipos da linguagem — UMA tabela. Parser, compilador, VM e `--metadata`
+ * incluem este arquivo; ninguém mais escreve lista de tipo à mão.
+ *
+ * Antes eram mais de dez listas para a mesma pergunta ("isto é tipo aqui?"), e
+ * já discordavam: `Long` valia no compilador e não na declaração, `JSON` valia
+ * em parâmetro e não em variável, e o compilador repetia os números do enum da
+ * VM à mão.
+ *
+ * PS_TIPO(SUFIXO, "nome", aceita_fn, decl, expr, count, model)
+ *   SUFIXO   — o enum fica `TIPO_<SUFIXO>` (VM) / `PS_TIPO_<SUFIXO>` (demais)
+ *   aceita   — o teste de pertinência na VM (quem não é a VM ignora)
+ *   decl     — abre declaração `T x = v` e vale em parâmetro, retorno e campo
+ *   expr     — vale como nome de tipo numa expressão (`x is T`, `T(x)`)
+ *   count    — vale em `count T in x`
+ *   model    — vale como tipo de campo de `model`
+ *
+ * A ORDEM é o CÓDIGO gravado no bytecode (`OP_COERCE_DECL`, `OP_LOAD_TIPO`,
+ * campo de model): tipo novo entra no FIM, nunca no meio.
+ *
+ * PS_APELIDO("grafia", SUFIXO) — outro nome do mesmo tipo; vale onde o tipo
+ * vale, e a árvore guarda o nome canônico.
+ */
+PS_TIPO(STR,   "str",      aceita_str,   1, 1, 1, 1)
+PS_TIPO(INT,   "int",      aceita_int,   1, 1, 1, 1)
+PS_TIPO(FLO,   "flo",      aceita_flo,   1, 1, 1, 1)
+PS_TIPO(BOOL,  "bool",     aceita_bool,  1, 1, 1, 1)
+PS_TIPO(LIST,  "list",     aceita_list,  1, 1, 1, 0)
+PS_TIPO(DICT,  "dict",     aceita_dict,  1, 1, 1, 0)
+PS_TIPO(TUP,   "tup",      aceita_tup,   1, 1, 1, 0)
+PS_TIPO(TYPE,  "type",     aceita_type,  0, 1, 1, 0)
+PS_TIPO(CHAR,  "char",     aceita_char,  1, 0, 1, 0)
+PS_TIPO(PFILE, "PoolFile", aceita_pfile, 0, 0, 0, 0)
+PS_TIPO(OBJ,   "Object",   aceita_obj,   1, 0, 0, 0)
+PS_TIPO(LONG,  "long",     aceita_long,  1, 1, 0, 0)
+PS_TIPO(BYTE,  "byte",     aceita_byte,  1, 0, 0, 0)
+
+PS_APELIDO("string",     STR)
+PS_APELIDO("String",     STR)
+PS_APELIDO("integer",    INT)
+PS_APELIDO("Integer",    INT)
+PS_APELIDO("tuple",      TUP)
+PS_APELIDO("Tuple",      TUP)
+PS_APELIDO("dictionary", DICT)
+PS_APELIDO("Dictionary", DICT)
+PS_APELIDO("json",       DICT)
+PS_APELIDO("JSON",       DICT)
+PS_APELIDO("object",     OBJ)
+PS_APELIDO("Long",       LONG)

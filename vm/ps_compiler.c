@@ -15,6 +15,7 @@
  */
 #include "ps_compiler.h"
 #include "ps_ext.h"
+#include "ps_tipos.h"
 
 #include <stdarg.h>
 
@@ -61,13 +62,17 @@ struct Unidade {
     /* Função que ENVOLVE esta. NULL no módulo e nas actions de topo — é o que
      * limita a captura: nome não achado aqui nem no pai vira global. */
     Unidade *pai;
+    /* Os quatro vetores por SLOT abaixo (celula, celula_virgem, certo,
+     * tipo_decl) crescem junto com `locais` (ver `idx_local`). Eram fixos em
+     * 256: do slot 256 em diante o local perdia o tipo declarado (`int v299 =
+     * 1` aceitava "texto"), a via rápida e a captura por closure — calado. */
     /* Slots que viram CÉLULA porque alguma action aninhada os usa. */
-    unsigned char celula[256];
+    unsigned char *celula;
     /* Célula criada pelo `marca_celulas` que ainda não recebeu nada: o slot
      * EXISTE mas o nome ainda não vale nada. Sem separar os dois, o `for each`
      * achava que a variável dele já existia e tentava salvar o valor "de
      * fora", lendo uma célula vazia. */
-    unsigned char celula_virgem[256];
+    unsigned char *celula_virgem;
     UpvalC  *upvals;
     int32_t  nupvals;
     int32_t  cap_upvals;
@@ -88,11 +93,11 @@ struct Unidade {
      * usam LOAD_LOCAL/STORE_LOCAL direto. Nome atribuído sem tipo pode estar
      * modificando uma variável externa, então vira LOAD_NAME/STORE_NAME e a
      * decisão fica em runtime. */
-    unsigned char certo[256];
+    unsigned char *certo;
     /* Tipo DECLARADO de cada slot (`str s = ...`): 0 = sem tipo, senao o
-     * TIPO_* da VM + 1. E o que faz a tipagem ser estatica: toda escrita no
-     * slot passa pelo OP_COERCE_DECL, nao so a declaracao. */
-    unsigned char tipo_decl[256];
+     * TIPO_* da VM + 1. Toda escrita no slot passa pelo OP_COERCE_DECL, nao so
+     * a declaracao. */
+    unsigned char *tipo_decl;
     /* `int action` / `bool action`: 1 = int, 2 = bool, 0 = sem tipo. Faz o
      * RETURN converter Null e faz o corpo inteiro virar um `try` implícito —
      * é o contrato dessas duas declarações: nunca propagam erro. */
@@ -360,6 +365,14 @@ static int32_t idx_local(C *c, Unidade *u, const char *nome)
         char **nl = realloc(u->locais, sizeof(char *) * (size_t)novo);
         if (!nl) { cerro(c, "sem memoria", NULL); return -1; }
         u->locais = nl;
+        /* os vetores por slot crescem junto, com a parte nova zerada */
+        unsigned char **vets[] = { &u->celula, &u->celula_virgem, &u->certo, &u->tipo_decl };
+        for (size_t k = 0; k < sizeof(vets) / sizeof(vets[0]); k++) {
+            unsigned char *nv = realloc(*vets[k], (size_t)novo);
+            if (!nv) { cerro(c, "sem memoria", NULL); return -1; }
+            memset(nv + u->cap_locais, 0, (size_t)(novo - u->cap_locais));
+            *vets[k] = nv;
+        }
         u->cap_locais = novo;
     }
     size_t n = strlen(nome);
@@ -410,7 +423,10 @@ static void escopo_trunca(C *c, Unidade *u, int32_t marca)
         vardbg_fecha(c, u, marca);
         for (int32_t i = u->nlocais - 1; i >= marca; i--) {
             free(u->locais[i]);
-            if (i < 256) u->certo[i] = 0;
+            /* o slot volta LIMPO: sem zerar o tipo, o próximo nome que
+             * caísse nele herdava o tipo declarado do bloco que já fechou */
+            u->certo[i] = 0;
+            u->tipo_decl[i] = 0;
         }
         if (u->nlocais > marca) u->nlocais = marca;
     }
@@ -666,13 +682,8 @@ static int32_t resolve_upval(C *c, Unidade *u, const char *nome)
     for (int32_t i = 0; i < u->nupvals; i++)
         if (strcmp(u->upvals[i].nome, nome) == 0) return i;
     for (int32_t i = 0; i < u->pai->nlocais; i++)
-        /* `i < 256` PRIMEIRO: o índice é do `celula[256]`, não do `locais`
-         * (que é heap dimensionado por `nlocais`). Na ordem antiga o
-         * `arrayIndexThenCheck` do cppcheck acusava, e ele estava certo em
-         * apontar — quem lê não tem como saber qual dos dois vetores o 256
-         * limita. Conserto é deixar o código óbvio pro detector, não silenciar
-         * o detector. */
-        if (i < 256 && u->pai->celula[i] && strcmp(u->pai->locais[i], nome) == 0)
+        /* `celula` e `locais` têm a mesma capacidade (crescem juntos) */
+        if (u->pai->celula[i] && strcmp(u->pai->locais[i], nome) == 0)
             return add_upval(c, u, nome, 1, i);
     int32_t k = resolve_upval(c, u->pai, nome);
     if (k >= 0) return add_upval(c, u, nome, 0, k);
@@ -786,7 +797,7 @@ static void marca_celulas(C *c, Unidade *u, PSNode *params, PSNode *corpo)
         if (!liga) continue;
         if (eh_global_declarada(u, usados[i])) continue;   /* `global x` manda */
         int32_t slot = idx_local(c, u, usados[i]);
-        if (slot < 0 || slot >= 256 || u->celula[slot]) continue;
+        if (slot < 0 || u->celula[slot]) continue;
         u->celula[slot] = 1;
         u->celula_virgem[slot] = 1;
         emite(c, u, OP_MAKE_CELL, slot);
@@ -969,12 +980,12 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
     }
     for (int32_t i = 0; i < u->nlocais; i++) {
         if (strcmp(u->locais[i], nome) != 0) continue;
-        if (i < 256 && u->celula[i] && u->certo[i]) emite(c, u, OP_CELL_GET, i);
-        else if (i < 256 && u->celula[i]) {
+        if (u->celula[i] && u->certo[i]) emite(c, u, OP_CELL_GET, i);
+        else if (u->celula[i]) {
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
             emite(c, u, OP_CELL_GET_NAME, idx_global(c, nome));
         }
-        else if (i < 256 && u->certo[i]) emite(c, u, OP_LOAD_LOCAL, i);   /* param/tipada */
+        else if (u->certo[i]) emite(c, u, OP_LOAD_LOCAL, i);   /* param/tipada */
         else {
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
             emite(c, u, OP_LOAD_NAME, idx_global(c, nome));
@@ -1009,7 +1020,7 @@ static int nome_ja_existe(Unidade *u, const char *nome)
     }
     for (int32_t i = 0; i < u->nlocais; i++)
         if (strcmp(u->locais[i], nome) == 0)
-            return !(i < 256 && u->celula_virgem[i]);
+            return !u->celula_virgem[i];
     return 0;
 }
 
@@ -1037,25 +1048,12 @@ static void priv_global_add(C *c, const char *nome)
     if (c->out->priv_globais[c->out->npriv_globais]) c->out->npriv_globais++;
 }
 
-/* codigo TIPO_* de um nome de tipo declaravel, ou -1 */
+/* Código TIPO_* de um nome de tipo (canônico ou apelido), ou -1. É o código da
+ * tabela única `ps_tipos.def` — a mesma ordem do enum da VM e do bytecode. Aqui
+ * havia uma cópia à mão dos números do enum, e ela já divergia do parser. */
 static int cod_tipo_decl(const char *t)
 {
-    static const struct { const char *nome; int cod; } T[] = {
-        { "str", 0 }, { "int", 1 }, { "flo", 2 }, { "bool", 3 },
-        { "list", 4 }, { "dict", 5 }, { "json", 5 }, { "tup", 6 },
-        { "char", 8 }, { "Object", 10 }, { "object", 10 },
-        /* 11 = TIPO_LONG: inteiro de qualquer tamanho, bignum inclusive */
-        { "long", 11 }, { "Long", 11 },
-        /* 12 = TIPO_BYTE: o valor de `b"..."` (`bytes` é o módulo) */
-        { "byte", 12 },
-        /* apelidos (ver eh_apelido_tipo no parser): a mesma regra do tipo */
-        { "string", 0 }, { "String", 0 }, { "integer", 1 }, { "Integer", 1 },
-        { "tuple", 6 }, { "Tuple", 6 }, { "dictionary", 5 }, { "Dictionary", 5 },
-    };
-    if (!t) return -1;
-    for (size_t i = 0; i < sizeof(T) / sizeof(T[0]); i++)
-        if (strcmp(T[i].nome, t) == 0) return T[i].cod;
-    return -1;
+    return ps_tipo_codigo(t);
 }
 
 static void tipo_topo_poe(C *c, const char *nome, int cod)
@@ -1104,7 +1102,7 @@ static void coleta_tipos_topo(C *c, PSNode *n)
 static int tipo_de_upval(Unidade *u, const char *nome)
 {
     for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
-        for (int32_t i = 0; i < q->nlocais && i < 256; i++)
+        for (int32_t i = 0; i < q->nlocais; i++)
             if (strcmp(q->locais[i], nome) == 0) return q->tipo_decl[i];
     return 0;
 }
@@ -1153,16 +1151,17 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
         }
     }
     int32_t i = idx_local(c, u, nome);
-    if (certa && i < 256) u->certo[i] = 1;
-    if (i < 256) u->celula_virgem[i] = 0;
-    if (i < 256 && u->celula[i]) {
+    if (i < 0) return;
+    if (certa) u->certo[i] = 1;
+    u->celula_virgem[i] = 0;
+    if (u->celula[i]) {
         emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i]);
         if (u->certo[i]) { emite(c, u, OP_CELL_SET, i); return; }
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
         emite(c, u, OP_CELL_SET_NAME, idx_global(c, nome));
         return;
     }
-    if (i < 256 && u->certo[i]) {
+    if (u->certo[i]) {
         emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i]);
         emite(c, u, OP_STORE_LOCAL, i);
         return;
@@ -1170,7 +1169,7 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
     /* STORE_NAME decide em runtime entre local novo e global existente: se o
      * nome e um global DECLARADO com tipo no topo do arquivo, e nele que a
      * escrita vai cair (write-through), entao confere pelo tipo dele. */
-    emite_coerce_se_tipado(c, u, nome, i < 256 && u->tipo_decl[i] ? u->tipo_decl[i] : tipo_topo_de(c, nome));
+    emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i] ? u->tipo_decl[i] : tipo_topo_de(c, nome));
     emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
     emite(c, u, OP_STORE_NAME, idx_global(c, nome));
 }
@@ -1304,16 +1303,13 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
 }
 
 
-/* `count` codifica tipo e "tem valor" num argumento só. `char` (8) só existe
- * aqui; `json` e `dict` são o mesmo tipo. */
+/* `count` codifica tipo e "tem valor" num argumento só. O tipo sai da tabela
+ * única (coluna `count`): aqui havia mais uma lista à mão, e ela não conhecia
+ * `JSON`, que o parser já aceitava. */
 static int32_t arg_count(C *c, PSNode *n)
 {
-    static const char *nomes[] = { "str", "int", "flo", "bool",
-                                   "list", "dict", "tup", "type", "char" };
-    int32_t t = -1;
-    for (int32_t k = 0; k < 9; k++)
-        if (n->texto && strcmp(n->texto, nomes[k]) == 0) { t = k; break; }
-    if (t < 0 && n->texto && strcmp(n->texto, "json") == 0) t = 5;
+    const PSTipoInfo *ti = ps_tipo_info(n->texto);
+    int32_t t = (ti && ti->count) ? ti->cod : -1;
     if (t < 0) { cerro_sx(c, n, "tipo desconhecido em count"); return -1; }
     return t | ((n->b != NULL) << 8);
 }
@@ -1699,7 +1695,6 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
              * duas listas pro mesmo conceito discordando uma da outra.
              * `json` e `dict` são o MESMO tipo, e o apelido sai de lá. */
             int t = cod_tipo_decl(n->texto);
-            if (t < 0 && n->texto && strcmp(n->texto, "type") == 0) t = 7;
             if (t < 0) { cerro_sx(c, n, "tipo desconhecido"); return; }
             emite(c, u, OP_LOAD_TIPO, t);
             return;
@@ -2007,7 +2002,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * não seria local da função de fora na hora da captura). */
             if (!u->eh_modulo && n->texto) {
                 int32_t si = idx_local(c, u, n->texto);
-                if (si >= 0 && si < 256 && !u->celula[si]) u->certo[si] = 1;
+                if (si >= 0 && !u->celula[si]) u->certo[si] = 1;
             }
             int32_t idx = compila_action(c, n, u);
             if (CFALHOU(c)) return;
@@ -2030,7 +2025,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (u->eh_modulo || eh_global_declarada(u, vn)) tipo_topo_poe(c, vn, cod);
                 else {
                     int32_t sl = idx_local(c, u, vn);
-                    if (sl < 256) u->tipo_decl[sl] = (unsigned char)(cod + 1);
+                    if (sl >= 0) u->tipo_decl[sl] = (unsigned char)(cod + 1);
                 }
             }
             /* aponta o erro no INÍCIO do valor (RHS), não na sub-expressão
@@ -2274,8 +2269,6 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
         case N_MODEL_DECL: {
             /* O model vira um descritor no programa; MAKE_MODEL o instancia
              * em runtime e a validação acontece no `==` (dict contra model). */
-            static const char *tipos_m[] = { "str", "int", "flo", "bool",
-                                             "list", "dict", "tup", "type" };
             if (c->out->nmodels + 1 > c->cap_models) {
                 int32_t novo = c->cap_models < 8 ? 8 : c->cap_models * 2;
                 PSModelDef *nm = realloc(c->out->models, sizeof(PSModelDef) * (size_t)novo);
@@ -2294,16 +2287,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 PSNode *f = n->lista.itens[i];
                 def->campos[i].nome = strdup(f->texto ? f->texto : "?");
                 def->campos[i].length = (f->i2 > 0) ? f->i2 : -1;
-                int32_t t = -1;
-                for (int32_t k = 0; k < 8; k++)
-                    if (f->texto2 && strcmp(f->texto2, tipos_m[k]) == 0) { t = k; break; }
-                /* `json` e os apelidos (`string`, `Integer`…) passam pela
-                 * mesma tabela da declaracao; `char` e `Object` nao sao tipo
-                 * de campo de model */
-                if (t < 0) {
-                    int a = cod_tipo_decl(f->texto2);
-                    if (a >= 0 && a <= 6) t = a;
-                }
+                /* a coluna `model` da tabela única decide; o parser já barrou
+                 * o resto com a frase do tipo de campo */
+                const PSTipoInfo *ti = ps_tipo_info(f->texto2);
+                int32_t t = (ti && ti->model) ? ti->cod : -1;
                 if (t < 0) { cerro_sx(c, f, "tipo desconhecido em model"); return; }
                 def->campos[i].tipo = t;
             }
@@ -3277,12 +3264,12 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
         return -1;
     }
     /* slot 0 é o `self`; os campos vêm depois, na ordem de declaração */
-    { int32_t si = idx_local(c, &u, "self"); if (si < 256) u.certo[si] = 1; }
+    { int32_t si = idx_local(c, &u, "self"); if (si >= 0) u.certo[si] = 1; }
     int32_t ndef = 0;
     for (int32_t i = 0; i < campos->n; i++) {
         const char *nome = campos->itens[i]->texto ? campos->itens[i]->texto : "";
         int32_t pi = idx_local(c, &u, nome);
-        if (pi < 256) u.certo[pi] = 1;
+        if (pi >= 0) u.certo[pi] = 1;
         if (campos->itens[i]->a) ndef++;
         else if (ndef > 0) {
             /* Mesma regra da action: com `a, b=2, c` o `ndefaults` (que conta
@@ -3326,6 +3313,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     vardbg_fecha(c, &u, 0);   /* o que chegou vivo ao fim vale até a última palavra */
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
+    free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
@@ -3369,9 +3357,16 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     for (int32_t i = 0; i < n->lista.n; i++) {
         PSNode *par = n->lista.itens[i];
         int32_t pi = idx_local(c, &u, par->texto ? par->texto : "");
-        if (pi < 256) u.certo[pi] = 1;
+        if (pi < 0) break;
+        u.certo[pi] = 1;
         if (par->i2 == 1) { slot_vararg = pi; continue; }
         if (par->i2 == 2) { slot_kwarg = pi; continue; }
+        /* O tipo do parâmetro vale pra TODA escrita nele, não só pro binding
+         * da chamada: `funct f(int n) { n = "x" }` passava calado. */
+        {
+            int cod = cod_tipo_decl(par->texto2);
+            if (cod >= 0) u.tipo_decl[pi] = (unsigned char)(cod + 1);
+        }
         nfix++;
         if (par->a) ndef++;
         else if (ndef > 0) {
@@ -3432,6 +3427,8 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
         emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_INT, i, 0, NULL, 0));
         int32_t pula = emite(c, &u, OP_JUMP_IF_SET, 0);
         expr(c, &u, par->a);
+        /* o padrão também respeita o tipo: `funct f(str s = 10)` devolvia 10 */
+        emite_coerce_se_tipado(c, &u, par->texto ? par->texto : "", u.tipo_decl[i]);
         emite(c, &u, OP_STORE_LOCAL, i);
         if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
     }
@@ -3490,6 +3487,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     vardbg_fecha(c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
+    free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
@@ -3622,6 +3620,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     vardbg_fecha(&c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
+    free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);

@@ -1508,6 +1508,64 @@ const Caso CASOS_LINGUAGEM[] = {
   "s = 42\n"
   "post(s)\n",
   "", "AttributedValueError: variável s esperava str", 1 },
+/* F0 do plano da tipagem estatica (2026-09-16): o que o compilador perdia do
+ * tipo declarado, calado. */
+{ "tipagem estatica: local no slot 299 conserva o tipo (o vetor por slot era fixo em 256)",
+  "import os\nimport sys\n"
+  "linhas = [\"funct f() {\"]\n"
+  "for each i in range(300) {\n"
+  "    addEnd(linhas, \"    int v\" + str(i) + \" = \" + str(i))\n"
+  "}\n"
+  "addEnd(linhas, \"    v299 = \\\"texto\\\"\")\n"
+  "addEnd(linhas, \"    return v299\")\n"
+  "addEnd(linhas, \"}\")\n"
+  "addEnd(linhas, \"f()\")\n"
+  "os.writeFile(\"s300.pr\", \"\\n\".join(linhas) + \"\\n\")\n"
+  "os.cmd(\"'\" + sys.executable + \"' s300.pr > o.txt 2>&1\")\n"
+  "post(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
+  "AttributedValueError: variável v299 esperava int", NULL, 0 },
+/* Uma tabela de tipos so (vm/ps_tipos.def): `JSON` e `Long` eram apelido num
+ * lugar e nome solto noutro — `JSON j = {}` dava NameError e `count JSON` dava
+ * "tipo desconhecido", com a doc listando `JSON` como apelido de dict. */
+{ "tipagem estatica: JSON e Long abrem declaracao, e o tipo vale na escrita",
+  "JSON j = {\"a\": 1}\n"
+  "Long y = 5\n"
+  "post(j, y)\n"
+  "j = [1]\n",
+  "{'a': 1} 5", "AttributedValueError: variável j esperava dict", 1 },
+{ "tipagem estatica: JSON vale em `is` e em `count`, igual a dict",
+  "x = {\"a\": 1}\n"
+  "post(x is JSON, count JSON in [{\"a\": 1}, 2], count dict in [{\"a\": 1}, 2])\n",
+  "True 1 1", NULL, 0 },
+{ "tipagem estatica: parametro tipado reatribuido com outro tipo e recusado",
+  "funct f(int n) {\n"
+  "    n = \"x\"\n"
+  "    return n\n"
+  "}\n"
+  "f(1)\n",
+  "", "AttributedValueError: variável n esperava int", 1 },
+{ "tipagem estatica: padrao de parametro tipado e conferido",
+  "funct f(str s = 10) {\n"
+  "    return s\n"
+  "}\n"
+  "f()\n",
+  "", "AttributedValueError: variável s esperava str", 1 },
+{ "tipagem estatica: padrao valido e argumento passam",
+  "funct f(str s = \"ok\") {\n"
+  "    return s\n"
+  "}\n"
+  "post(f(), f(\"x\"))\n",
+  "ok x", NULL, 0 },
+{ "tipagem estatica: slot liberado no fim do bloco nao herda o tipo do nome de antes",
+  "funct f() {\n"
+  "    if True {\n"
+  "        int a = 1\n"
+  "    }\n"
+  "    b = \"texto\"\n"
+  "    return b\n"
+  "}\n"
+  "post(f())\n",
+  "texto", NULL, 0 },
 /* Sem conversao implicita (2026-09-09): a reatribuicao confere o tipo EXATO,
  * igual a criacao. `n = "7"` num `int n` era convertido pra 7; agora e erro. */
 { "tipagem estatica: `int n` recusa `n = \"7\"` — nao converte na escrita",

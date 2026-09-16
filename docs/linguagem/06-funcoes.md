@@ -313,6 +313,10 @@ Os **apelidos** resolvem para o tipo apelidado, e a árvore guarda o canônico �
 | `tuple`, `Tuple` | `tup` |
 | `dictionary`, `Dictionary`, `json`, `JSON` | `dict` |
 | `object` | `Object` |
+| `Long` | `long` |
+
+A tabela é uma só pra toda a linguagem: o apelido vale igual em declaração
+(`JSON j = {}`), parâmetro, retorno, campo, `x is JSON` e `count JSON in l`.
 
 > **Só `int` e `bool` mudam o comportamento** — o contrato de erro descrito
 > acima. Os outros hoje são só a declaração: a funct devolve o que devolver,

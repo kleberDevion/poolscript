@@ -198,7 +198,7 @@ declarado. Quem quer converter escreve a conversão: `int("7")`, `flo(5)`,
 | `list` `dict` `tup` `json` | o próprio tipo | os demais |
 | `byte` | bytes (`b"..."`, `.encode()`, arquivo em `"rb"`) | `str` (mesmo `"abc"`) e o resto |
 | `Object` / `object` | qualquer objeto que não é `str`/`list`/`dict`/`tup`/`byte`: instância de classe, servidor, conexão, arquivo e **funct** (lambda, nomeada, builtin, método) | `str`, `list`, `dict`, `tup`, `byte`, `int`, `flo`, `bool`, `Null` |
-| `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary` | apelidos de `str`, `int`, `tup`, `dict` — a linha do tipo apelidado vale igual | idem |
+| `string`/`String`, `integer`/`Integer`, `tuple`/`Tuple`, `dictionary`/`Dictionary`, `json`/`JSON`, `object`, `Long` | apelidos de `str`, `int`, `tup`, `dict`, `dict`, `Object`, `long` — a linha do tipo apelidado vale igual | idem |
 
 Tipo errado é **`AttributedValueError`**, sempre — não há mais "quase
 converteu":
