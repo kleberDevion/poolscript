@@ -26520,6 +26520,19 @@ static void nome_visivel_modulo(const char *nome, char *out, size_t cap)
     ps_tira_ext(out);
 }
 
+/* A pasta das libs instaladas: `$POOLSCRIPT_HOME/libs`, ou `~/.poolscript/libs`.
+ * Vazia se não houver nem uma nem outra variável. Um lugar só pra quem resolve
+ * import — o `import random` e o `import poolscript.libs.random` têm que olhar
+ * a MESMA pasta, e a conta estava copiada dentro do resolvedor. */
+static void pasta_libs(char *out, size_t cap)
+{
+    const char *over = getenv("POOLSCRIPT_HOME");
+    if (over && *over) { snprintf(out, cap, "%s/libs", over); return; }
+    const char *h = getenv("HOME");
+    if (h && *h) snprintf(out, cap, "%s/.poolscript/libs", h);
+    else         out[0] = '\0';
+}
+
 /* O arquivo de um módulo `.pr`, dadas a pasta do arquivo que importa
  * (`dir_modulo`) e a do arquivo executado (`dir_script`). Não depende da VM:
  * a expansão do `import *` resolve ANTES de a VM existir, e tem que achar o
@@ -26588,16 +26601,20 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
      * sempre acha a LIB, não importa como o usuário nomeou seus arquivos — o
      * nome de arquivo local nunca ofusca uma lib instalada. */
     char libdir[600];
-    const char *over = getenv("POOLSCRIPT_HOME");
-    if (over && *over) snprintf(libdir, sizeof(libdir), "%s/libs", over);
-    else {
-        const char *h = getenv("HOME");
-        if (h) snprintf(libdir, sizeof(libdir), "%s/.poolscript/libs", h);
-        else   libdir[0] = '\0';
-    }
+    pasta_libs(libdir, sizeof(libdir));
     if (libdir[0]) {
+        /* `import poolscript.libs.random`: o nome QUALIFICADO da lib instalada.
+         * O prefixo é o nome lógico da pasta de libs, não o caminho literal —
+         * vale onde as libs estiverem (`POOLSCRIPT_HOME` incluso), e cai no
+         * MESMO arquivo do `import random`. Como o cache de módulo é por
+         * caminho real, as duas formas dividem o módulo: o corpo roda uma vez.
+         * Sem achar ali, segue a busca comum abaixo — uma pasta
+         * `poolscript/libs/` do projeto continua sendo achada. */
+        static const char PREFIXO_LIBS[] = "poolscript.libs.";
+        const size_t NP = sizeof(PREFIXO_LIBS) - 1;
+        const char *nome_lib = (strncmp(p, PREFIXO_LIBS, NP) == 0 && p[NP]) ? p + NP : p;
         for (size_t e = 0; e < N_EXTS; e++) {
-            snprintf(saida, cap, "%s/%s%s", libdir, p, EXTS[e]);
+            snprintf(saida, cap, "%s/%s%s", libdir, nome_lib, EXTS[e]);
             if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
         }
     }

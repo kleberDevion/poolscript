@@ -319,10 +319,18 @@ function dentroDeTextoLivre(doc, pos) {
  *
  * A ordem de resolução é a da linguagem (docs/linguagem/09-imports.md §9.5):
  * stdlib, lib global instalada, arquivo do projeto. */
+/* `$POOLSCRIPT_HOME/libs`, ou `~/.poolscript/libs` — a regra do motor
+ * (`pasta_libs`) e do `psl`. O editor só olhava o HOME: com `POOLSCRIPT_HOME`
+ * definido, o completion descrevia uma pasta de libs que o motor não usa. */
 function pastaLibs() {
+  const over = process.env.POOLSCRIPT_HOME;
+  if (over) return path.join(over, 'libs');
   const h = process.env.HOME;
   return h ? path.join(h, '.poolscript', 'libs') : '';
 }
+
+/* `import poolscript.libs.random`: o nome qualificado da lib instalada. */
+const PREFIXO_LIBS = 'poolscript.libs.';
 
 function libsInstaladas() {
   try {
@@ -360,8 +368,19 @@ function arquivoDoImport(mod, dirDoc, aspas, pontos, dirScript) {
     }
     return '';
   }
+  /* Lib instalada primeiro. Na pasta de libs o nome vai COM os pontos
+   * (`libs/a.b.pr`), como no motor — o editor procurava `libs/a/b.pr`, que o
+   * motor nunca carrega. O prefixo `poolscript.libs.` sai antes: é o nome
+   * qualificado da mesma lib. */
+  const libs = pastaLibs();
+  if (libs) {
+    const nomeLib = mod.startsWith(PREFIXO_LIBS) && mod.length > PREFIXO_LIBS.length
+      ? mod.slice(PREFIXO_LIBS.length) : mod;
+    const p = path.join(libs, nomeLib + '.pr');
+    try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* segue */ }
+  }
   const rel = mod.split('.').join(path.sep) + '.pr';
-  for (const base of [pastaLibs(), dirDoc, dirScript]) {
+  for (const base of [dirDoc, dirScript]) {
     if (!base) continue;
     const p = path.join(base, rel);
     try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* segue */ }

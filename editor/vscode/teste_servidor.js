@@ -141,6 +141,13 @@ async function main() {
       const m = await conversa(src, [compl(2, 1, 5 + alguma.length)]);
       const L = rotulos(resp(m, 2));
       conf(`lib instalada \`${alguma}\` expoe membros`, L.length > 0, L.slice(0, 6));
+
+      /* a forma qualificada liga o MESMO nome e acha o mesmo arquivo */
+      const srcQ = `import poolscript.libs.${alguma}\nx = ${alguma}.\n`;
+      const mQ = await conversa(srcQ, [compl(2, 1, 5 + alguma.length)]);
+      const LQ = rotulos(resp(mQ, 2));
+      conf(`\`import poolscript.libs.${alguma}\` expoe os mesmos membros`,
+           LQ.length > 0 && LQ.length === L.length, { qualificado: LQ.slice(0, 6), curto: L.slice(0, 6) });
     }
   }
 

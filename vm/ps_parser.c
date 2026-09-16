@@ -1934,6 +1934,110 @@ static int caminho_modulo(P *p, PSNodeVec *v)
     return 0;
 }
 
+/* Anexa `s` (com `len` bytes) a `buf`, sem estourar; devolve o novo tamanho. */
+static size_t anexa(char *buf, size_t cap, size_t usado, const char *s, size_t len)
+{
+    if (usado >= cap) return usado;
+    size_t cabe = cap - 1 - usado;
+    if (len > cabe) len = cabe;
+    memcpy(buf + usado, s, len);
+    buf[usado + len] = '\0';
+    return usado + len;
+}
+
+/* `import .sub.m` / `PUSH .sub.m`: com ponto na frente não existe — o relativo
+ * é só com `from`. A frase de antes era a do `import` sozinho ("esperado nome de
+ * modulo depois de 'import'"), que dizia faltar o nome com o nome escrito ali, e
+ * que falava `import` até num `PUSH`.
+ *
+ * Aqui a frase diz o que FUNCIONA, com os nomes que a pessoa escreveu. As duas
+ * saídas foram medidas: o caminho entre aspas liga o módulo relativo ao arquivo
+ * (um ponto = `./`, dois = `../`), e o `from` com os mesmos pontos traz os nomes.
+ * `from . import m` NÃO é sugerido — o motor recusa essa forma. Quem escreveu
+ * `.poolscript.libs.x` estava pensando na pasta oculta das libs: pra esse, a
+ * resposta é a forma sem o ponto. Chamada com o `.` como token atual; devolve -1
+ * com o erro posto. */
+static int recusa_import_relativo(P *p, const char *palavra)
+{
+    PSToken *t0 = atual(p);
+    int i = 0, nivel = 0;
+    while (espia(p, i)->type == T_DOT) { nivel++; i++; }
+
+    char pontos[128] = "", barras[128] = "";   /* `a.b.c` e `a/b/c` */
+    size_t lp = 0, lb = 0;
+    for (;;) {
+        PSToken *t = espia(p, i);
+        if (t->type != T_IDENT && t->type != T_IDENT_UPPER && t->type != T_KW) break;
+        if (lp) { lp = anexa(pontos, sizeof(pontos), lp, ".", 1); lb = anexa(barras, sizeof(barras), lb, "/", 1); }
+        lp = anexa(pontos, sizeof(pontos), lp, t->texto, t->texto_len);
+        lb = anexa(barras, sizeof(barras), lb, t->texto, t->texto_len);
+        i++;
+        if (espia(p, i)->type != T_DOT) break;
+        i++;
+    }
+
+    if (!lp) {
+        perro_f(p, t0, "%s com ponto na frente nao existe; o relativo e so com from: "
+                       "from .modulo import nome", palavra);
+        return -1;
+    }
+    static const char LIBS[] = "poolscript.libs.";
+    if (nivel == 1 && strncmp(pontos, LIBS, sizeof(LIBS) - 1) == 0) {
+        perro_f(p, t0, "%s com ponto na frente nao existe (o relativo e so com from); "
+                       "pra lib instalada, sem o ponto: %s %s", palavra, palavra, pontos);
+        return -1;
+    }
+    char sobe[32] = "./";
+    if (nivel > 1) {
+        size_t ls = 0;
+        sobe[0] = '\0';
+        for (int k = 1; k < nivel; k++) ls = anexa(sobe, sizeof(sobe), ls, "../", 3);
+    }
+    char dots[16];
+    int nd = nivel < (int)sizeof(dots) - 1 ? nivel : (int)sizeof(dots) - 1;
+    memset(dots, '.', (size_t)nd);
+    dots[nd] = '\0';
+    if (strcmp(palavra, "PUSH") == 0)
+        perro_f(p, t0, "PUSH com ponto na frente nao existe; pelo caminho, relativo a este arquivo: "
+                       "PUSH '%s%s.pr' — e os nomes: PUSH '%s%s.pr' GET nome",
+                sobe, barras, sobe, barras);
+    else
+        perro_f(p, t0, "import com ponto na frente nao existe (o relativo e so com from); "
+                       "pra ligar o modulo: import '%s%s.pr' — pra trazer nomes: from %s%s import nome",
+                sobe, barras, dots, pontos);
+    return -1;
+}
+
+/* A palavra de nomes TROCADA entre as formas de import. Cada forma tem a sua:
+ * `from m import x` e `PUSH m GET x` (e `import m` liga o módulo inteiro). Trocar
+ * uma pela outra dava três respostas erradas, medidas:
+ *
+ *   from m GET *      "esperado 'import' apos o modulo" — não reconhecia o GET
+ *   PUSH m import A   ImportError: No module named 'A' — o `import A` virava
+ *                     OUTRO statement na mesma linha
+ *   import m GET A    NameError: name 'GET' is not defined — idem, com o GET
+ *                     lido como variável
+ *
+ * A frase diz de qual forma é a palavra escrita e dá as duas saídas, com o `*`
+ * se foi `*` que a pessoa escreveu. Chamada com a palavra errada como token
+ * atual; devolve -1 com o erro posto. */
+static int recusa_palavra_trocada(P *p, const char *forma)
+{
+    PSToken *t = atual(p);
+    const char *alvo = espia(p, 1)->type == T_OP && espia(p, 1)->texto
+                       && strcmp(espia(p, 1)->texto, "*") == 0 ? "*" : "nome";
+    if (strcmp(forma, "from") == 0)
+        perro_f(p, t, "`GET` e do PUSH; no from os nomes vem depois de `import`: "
+                      "from m import %s — ou PUSH m GET %s", alvo, alvo);
+    else if (strcmp(forma, "PUSH") == 0)
+        perro_f(p, t, "`import` e do from; no PUSH os nomes vem depois de `GET`: "
+                      "PUSH m GET %s — ou from m import %s", alvo, alvo);
+    else
+        perro_f(p, t, "`GET` e do PUSH; `import m` liga o modulo inteiro. Pra trazer "
+                      "nomes: PUSH m GET %s — ou from m import %s", alvo, alvo);
+    return -1;
+}
+
 /* lista `a, b as c` — nomes em `nomes`, alias em `aliases` (Name ou nil
  * na mesma posição, pra o par ficar alinhado sem precisar de dict) */
 static int lista_com_alias(P *p, PSNodeVec *nomes, PSNodeVec *aliases)
@@ -2812,11 +2916,13 @@ static PSNode *statement(P *p)
             n->texto = dup_str(p, "import");
             int aspas = modulo_entre_aspas(p, n);
             if (aspas < 0) return NULL;
+            if (!aspas && checa(p, T_DOT)) { recusa_import_relativo(p, "import"); return NULL; }
             if (!aspas && caminho_modulo(p, &n->lista) != 0) return NULL;
             if (aceita_kw(p, "as")) {
                 n->texto2 = nome_livre(p, "esperado nome apos 'as'");
                 if (FALHOU(p)) return NULL;
             }
+            if (checa_kw(p, "GET")) { recusa_palavra_trocada(p, "import"); return NULL; }
             if (checa_op(p, "*") && n->texto2) {
                 perro(p, "`import m as x *` mistura as duas formas: `import m as x` liga o modulo, "
                          "`import m *` liga os nomes dele — escolha uma", atual(p));
@@ -2836,6 +2942,7 @@ static PSNode *statement(P *p)
                     if (caminho_modulo(p, &n->lista) != 0) return NULL;
                 }
             }
+            if (checa_kw(p, "GET")) { recusa_palavra_trocada(p, "from"); return NULL; }
             if (!aceita_kw(p, "import")) {
                 perro(p, "esperado 'import' apos o modulo", atual(p)); return NULL;
             }
@@ -2847,11 +2954,13 @@ static PSNode *statement(P *p)
         n->texto = dup_str(p, "push");
         int aspas_push = modulo_entre_aspas(p, n);
         if (aspas_push < 0) return NULL;
+        if (!aspas_push && checa(p, T_DOT)) { recusa_import_relativo(p, "PUSH"); return NULL; }
         if (!aspas_push && caminho_modulo(p, &n->lista) != 0) return NULL;
         if (aceita_kw(p, "as")) {
             n->texto2 = nome_livre(p, "esperado nome apos 'as'");
             if (FALHOU(p)) return NULL;
         }
+        if (checa_kw(p, "import")) { recusa_palavra_trocada(p, "PUSH"); return NULL; }
         if (aceita_kw(p, "GET")) {
             if (checa_op(p, "*") && n->texto2) {
                 perro(p, "`PUSH m as x GET *` mistura as duas formas: `as` nomeia o modulo, "

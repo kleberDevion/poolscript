@@ -1728,6 +1728,49 @@ const Caso CASOS_LINGUAGEM[] = {
   "registrou\nregistrou", NULL, 0 },
 { "import sem nome nenhum",
   "import\n", "", "esperado nome de modulo depois de 'import'", 2 },
+/* `import .nome`: com ponto na frente nao existe. A frase era a do `import`
+ * sozinho — dizia faltar o nome, com o nome escrito ali, e falava `import` ate
+ * num PUSH. Agora diz o que FUNCIONA, com os nomes escritos; as duas saidas
+ * sugeridas rodam (medido). */
+{ "import .m: frase diz o caminho entre aspas e o from, com os nomes escritos",
+  "import .sub.m\n", "",
+  "import com ponto na frente nao existe (o relativo e so com from); pra ligar o modulo: "
+  "import './sub/m.pr' — pra trazer nomes: from .sub.m import nome", 2 },
+{ "import ..m: cada ponto a mais sobe uma pasta no caminho sugerido",
+  "import ..pkg.m\n", "",
+  "pra ligar o modulo: import '../pkg/m.pr' — pra trazer nomes: from ..pkg.m import nome", 2 },
+{ "import ...m: dois niveis acima",
+  "import ...pkg.m\n", "", "import '../../pkg/m.pr'", 2 },
+{ "import .poolscript.libs.x: a resposta e a forma sem o ponto",
+  "import .poolscript.libs.random\n", "",
+  "pra lib instalada, sem o ponto: import poolscript.libs.random", 2 },
+{ "PUSH .m: a frase fala PUSH, nao import",
+  "PUSH .sub.m GET v\n", "",
+  "PUSH com ponto na frente nao existe; pelo caminho, relativo a este arquivo: "
+  "PUSH './sub/m.pr' — e os nomes: PUSH './sub/m.pr' GET nome", 2 },
+{ "import . sozinho: aponta o from",
+  "import .\n", "", "o relativo e so com from: from .modulo import nome", 2 },
+/* Palavra de nomes TROCADA entre as formas: `from m import x` / `PUSH m GET x`.
+ * Antes: `from m GET *` dizia so "esperado 'import'"; `PUSH m import A` virava
+ * OUTRO statement e dava "No module named 'A'"; `import m GET A` dava NameError
+ * no `GET`. As tres agora dizem de qual forma e a palavra. */
+{ "from m GET *: GET e do PUSH, e a frase guarda o *",
+  "from './m.pr' GET *\n", "",
+  "`GET` e do PUSH; no from os nomes vem depois de `import`: from m import * — ou PUSH m GET *", 2 },
+{ "from m GET nomes: a frase sugere com nome",
+  "from m GET A, B\n", "", "from m import nome — ou PUSH m GET nome", 2 },
+{ "PUSH m import A: nao vira outro statement nem ImportError de 'A'",
+  "PUSH m import A\n", "",
+  "`import` e do from; no PUSH os nomes vem depois de `GET`: PUSH m GET nome — ou from m import nome", 2 },
+{ "PUSH m as x import *",
+  "PUSH m as x import *\n", "", "PUSH m GET * — ou from m import *", 2 },
+{ "import m GET A: nao vira NameError no GET",
+  "import m GET A\n", "",
+  "`GET` e do PUSH; `import m` liga o modulo inteiro. Pra trazer nomes: PUSH m GET nome — ou from m import nome", 2 },
+{ "import m GET *",
+  "import m GET *\n", "", "Pra trazer nomes: PUSH m GET * — ou from m import *", 2 },
+{ "from .m import x continua valendo (o relativo com from nao mudou)",
+  "from .nao_existe_mesmo import x\n", "", "ImportError: No module named '.nao_existe_mesmo'", 1 },
 { "import valido continua valendo",
   "import sys\npost(type(sys))\n", "module", NULL, 0 },
 /* ── `funct` e os modificadores COLADOS (`static funct`), 2026-09-06 ────────

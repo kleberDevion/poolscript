@@ -187,6 +187,21 @@ PUSH mymod GET valor       # == from mymod import valor
 post(valor)
 ```
 
+Cada forma tem a **sua** palavra antes dos nomes: `from … import` e
+`PUSH … GET`. Trocar uma pela outra é `SyntaxError`, e a frase diz de qual forma
+é a palavra que foi escrita — com o `*` quando foi `*`:
+
+```
+from mymod GET *
+SyntaxError: `GET` e do PUSH; no from os nomes vem depois de `import`: from m import * — ou PUSH m GET *
+
+PUSH mymod import valor
+SyntaxError: `import` e do from; no PUSH os nomes vem depois de `GET`: PUSH m GET nome — ou from m import nome
+
+import mymod GET valor
+SyntaxError: `GET` e do PUSH; `import m` liga o modulo inteiro. Pra trazer nomes: PUSH m GET nome — ou from m import nome
+```
+
 ---
 
 ## 9.4. Import por caminho — `import '…'`
@@ -254,6 +269,16 @@ Cada `.` extra sobe um diretório, a partir da pasta do arquivo atual. Um
 relativo não encontrado é `ImportError` — a mesma mensagem do absoluto
 (`No module named '..pacote.modulo'`); não há texto próprio pro relativo.
 
+O relativo é **só com `from`**. `import .modulo` e `PUSH .modulo` não existem,
+e o erro diz as duas formas que funcionam, com os nomes escritos — o caminho
+entre aspas liga o módulo (um ponto é `./`, cada ponto a mais é um `../`), e o
+`from` traz os nomes:
+
+```
+import ..pacote.modulo
+SyntaxError: import com ponto na frente nao existe (o relativo e so com from); pra ligar o modulo: import '../pacote/modulo.pr' — pra trazer nomes: from ..pacote.modulo import nome
+```
+
 > O tipo é `ImportError`, e só. Não existe um `ModuleNotFoundError` mais
 > específico; `ImportError` é o nome único para módulo ausente. Ele fica direto
 > sob `Exception` na árvore de exceções, então `catch (Exception e)` também o
@@ -288,6 +313,40 @@ ordem.
 > (`from .x import …`) **não** entram nessa ordem — são resolvidos direto contra
 > o sistema de arquivos, a partir da pasta do arquivo atual, e nunca caem nas
 > libs.
+
+### Nome qualificado da lib instalada
+
+A lib instalada também atende pelo nome completo, com o prefixo
+`poolscript.libs.`:
+
+```
+import poolscript.libs.minhalib          # liga `minhalib`
+import poolscript.libs.minhalib as m
+from poolscript.libs.minhalib import nome
+PUSH poolscript.libs.minhalib GET nome
+```
+
+- `poolscript.libs` é o **nome** da pasta de libs, não o caminho escrito: vale
+  onde as libs estiverem, inclusive com `POOLSCRIPT_HOME` (aí a pasta é
+  `$POOLSCRIPT_HOME/libs`).
+- Liga o **último** nome, como qualquer `import a.b.c`: depois de
+  `import poolscript.libs.minhalib`, usa-se `minhalib.x`.
+- É o **mesmo arquivo** do `import minhalib`, então é o mesmo módulo: com as
+  duas formas no programa, o corpo da lib roda uma vez só.
+- Se não houver lib instalada com esse nome, segue a ordem acima (itens 3 e 4),
+  e uma pasta `poolscript/libs/` do próprio projeto continua sendo achada. Sem
+  nada, é `ImportError: No module named 'poolscript.libs.x'`.
+
+Não é necessário — `import minhalib` já acha a lib antes de qualquer arquivo
+local. É a forma explícita, para quem quer deixar escrito de onde o nome vem.
+
+O ponto na frente **não** vale aqui: `import .poolscript.libs.minhalib` é o
+`import` relativo, que não existe (ver 9.4.1), e o erro diz a forma certa:
+
+```
+import .poolscript.libs.minhalib
+SyntaxError: import com ponto na frente nao existe (o relativo e so com from); pra lib instalada, sem o ponto: import poolscript.libs.minhalib
+```
 
 ### 9.5.1. Erro DENTRO do módulo importado
 

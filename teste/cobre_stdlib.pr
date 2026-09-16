@@ -161,6 +161,42 @@ os.cmd("cd " + PASTA + "/asp/sub && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + 
 confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
         os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
 
+# ── nome qualificado da lib instalada (`import poolscript.libs.x`) ───────────
+#
+# `poolscript.libs.` e o nome logico da pasta de libs: vale onde as libs
+# estiverem (aqui, o POOLSCRIPT_HOME de mentira), liga o ULTIMO nome, e cai no
+# mesmo arquivo do `import x` — entao o corpo da lib roda uma vez so, mesmo com
+# as duas formas no programa. Uma pasta `poolscript/libs/` do projeto continua
+# sendo achada quando nao ha lib instalada com aquele nome.
+os.writeFile(PASTA + "/asp/home/libs/contalib.pr", "post(\"corpo\")\nC = 3\n")
+os.mkdir(PASTA + "/asp/poolscript/libs", exist_ok=true)
+os.writeFile(PASTA + "/asp/poolscript/libs/doprojeto.pr", "P = 5\n")
+
+funct roda_qual(nome, fonte) {
+    os.writeFile(PASTA + "/asp/" + nome, fonte)
+    os.cmd("cd " + PASTA + "/asp && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable
+           + "' " + nome + " > " + nome + ".out 2>&1")
+    return os.readFile(PASTA + "/asp/" + nome + ".out").strip()
+}
+
+confere("import poolscript.libs.x liga o ultimo nome",
+        roda_qual("q1.pr", "import poolscript.libs.minhalib\npost(minhalib.LIB)\n") == "lib ok")
+confere("import poolscript.libs.x as nome",
+        roda_qual("q2.pr", "import poolscript.libs.minhalib as m\npost(m.LIB)\n") == "lib ok")
+confere("from poolscript.libs.x import nome",
+        roda_qual("q3.pr", "from poolscript.libs.minhalib import LIB\npost(LIB)\n") == "lib ok")
+confere("from poolscript.libs.x import *",
+        roda_qual("q4.pr", "from poolscript.libs.minhalib import *\npost(LIB)\n") == "lib ok")
+confere("PUSH poolscript.libs.x GET nome",
+        roda_qual("q5.pr", "PUSH poolscript.libs.minhalib GET LIB\npost(LIB)\n") == "lib ok")
+confere("forma curta e qualificada no mesmo programa: o corpo da lib roda uma vez",
+        roda_qual("q6.pr", "import contalib\nimport poolscript.libs.contalib\npost(contalib.C)\n") == "corpo\n3")
+confere("import poolscript.libs.naoexiste e ImportError",
+        roda_qual("q7.pr", "import poolscript.libs.naoexiste\n")
+            .startswith("ImportError: No module named 'poolscript.libs.naoexiste'"))
+confere("pasta poolscript/libs do PROJETO continua sendo achada",
+        roda_qual("q8.pr", "import poolscript.libs.doprojeto\npost(doprojeto.P)\n") == "5")
+
 # ── import * com arquivo `.pr` de verdade ────────────────────────────────────
 #
 # `from m import *`, `import m *` e `PUSH m GET *` ligam o que o arquivo

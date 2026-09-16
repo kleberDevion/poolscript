@@ -180,7 +180,11 @@ não atrapalha `import random` achar a lib `random` (é o inverso do Python, de
 propósito). Import de arquivo local do projeto usa caminho pontuado
 (`from pkg.modulo import x`) ou relativo (`from .vizinho import y`).
 
+A lib instalada também atende pelo nome qualificado: `import
+poolscript.libs.minhalib` liga `minhalib` e é o mesmo módulo do `import
+minhalib`, onde quer que as libs estejam (`POOLSCRIPT_HOME` incluso).
+
 ## Versionamento
 
-Versão mais recente — **15.91.0** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **15.91.1** (a fonte é `vm/ps_versao.h`; `pool --version`
 mostra a do binário).
