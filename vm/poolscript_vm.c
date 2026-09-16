@@ -21101,6 +21101,25 @@ static int acha_modulo_oculto(const char *nome)
     return -1;
 }
 
+/* Módulos que NASCEM ligados, sem import: o nome que se escreve e o registro
+ * oculto em MODULOS[] (com `_`, pra `import Parsing` seguir sendo erro).
+ * Um lugar só: as duas ligações (arquivo executado e módulo importado) e o
+ * `--metadata`, de onde o editor tira a lista. O nome estava cravado em cada
+ * ligação, e o editor não sabia de nenhum: `Parsing.` não mostrava nada. */
+static const struct { const char *nome, *registro; } MODULOS_SEM_IMPORT[] = {
+    { "Parsing", "_Parsing" },
+};
+#define N_MODULOS_SEM_IMPORT ((int)(sizeof(MODULOS_SEM_IMPORT) / sizeof(MODULOS_SEM_IMPORT[0])))
+
+/* O índice em MODULOS[] do módulo que `nome` liga sem import, ou -1. */
+static int modulo_sem_import(const char *nome)
+{
+    for (int i = 0; i < N_MODULOS_SEM_IMPORT; i++)
+        if (strcmp(MODULOS_SEM_IMPORT[i].nome, nome) == 0)
+            return acha_modulo_oculto(MODULOS_SEM_IMPORT[i].registro);
+    return -1;
+}
+
 static int acha_modulo(const char *nome)
 {
     /* `_stdout`/`_stderr` não são importáveis: existem só pra `sys.stdout`
@@ -27033,8 +27052,8 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
             if (nm) vm->globals[bg + i] = MK_OBJ(nm);
             continue;
         }
-        if (strcmp(prog->globais[i], "Parsing") == 0) {
-            int mi = acha_modulo_oculto("_Parsing");
+        {
+            int mi = modulo_sem_import(prog->globais[i]);
             if (mi >= 0) {
                 PSModulo *pm = calloc(1, sizeof(PSModulo));
                 if (pm) {
@@ -27609,7 +27628,14 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, AP[i][1]);
         }
     }
-    fprintf(f, "\n }\n}\n");
+    /* Módulos que nascem ligados, sem import (`Parsing.integer(...)`): o editor
+     * resolve `Parsing.` por esta lista, não por uma cópia dela. */
+    fprintf(f, "\n },\n \"modulos_sem_import\": [");
+    for (int i = 0; i < N_MODULOS_SEM_IMPORT; i++) {
+        if (i) fputc(',', f);
+        jm_txt(f, MODULOS_SEM_IMPORT[i].nome);
+    }
+    fprintf(f, "]\n}\n");
 }
 
 /* Despeja os avisos do lexer no STDERR.
@@ -27826,8 +27852,8 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             int64_t k = excecao_indice(prog->globais[i]);
             if (k >= 0) { vm.globals[i] = MK_TIPO(TIPO_EXC_BASE + k); ligou = 1; }
         }
-        if (!ligou && strcmp(prog->globais[i], "Parsing") == 0) {
-            int mi = acha_modulo_oculto("_Parsing");
+        if (!ligou) {
+            int mi = modulo_sem_import(prog->globais[i]);
             if (mi >= 0) {
                 PSModulo *pm = malloc(sizeof(PSModulo));
                 if (!pm) { libera_vm(&vm); ps_compila_free(prog);

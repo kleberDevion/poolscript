@@ -3,7 +3,7 @@
   "displayName": "Pyrite",
   "description": "Suporte à linguagem Pyrite (a PoolScript): realce, autocomplete que sabe o tipo (métodos por tipo, argumentos nomeados, libs instaladas), hover, definição, diagnóstico e depurador.",
   "homepage": "https://github.com/kleberDevion/poolscript/blob/main/editor/vscode/README.md",
-  "version": "8.6.1",
+  "version": "8.6.2",
   "publisher": "KleberSantanadeOliveira",
   "engines": {
     "vscode": "^1.75.0"

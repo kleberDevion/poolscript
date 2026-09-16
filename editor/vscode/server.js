@@ -428,7 +428,13 @@ function alvoDoImport(doc, nome, linha) {
    * arquivo é que liga o nome (ver `ligacaoDeTopo`) */
   const est = alvoDaEstrela(doc, nome, linha);
   if (est) return est;
-  if (!imp) return null;
+  if (!imp) {
+    /* Módulo do motor que nasce ligado, sem import (`Parsing`): a lista vem do
+     * `--metadata` do motor. Sem isto o editor só resolvia `x.membro` com `x`
+     * vindo de `import`, e `Parsing.` ficava mudo em todo lugar. */
+    const semImport = (META.modulos_sem_import || []).includes(nome);
+    return semImport && META.modulos[nome] ? { tipo: 'modulo', mod: nome } : null;
+  }
   const nativo = nativoDe(imp.mod, imp.aspas, imp.pontos);
   if (nativo && !imp.membro) return { tipo: 'modulo', mod: imp.mod };
   const dirDoc = pastaDoDoc(doc);
