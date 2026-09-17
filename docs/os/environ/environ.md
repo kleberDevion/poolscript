@@ -4,12 +4,12 @@ Devolve uma **variável de ambiente**, ou **todas** de uma vez se você não
 passar chave.
 
 ```
-os.environ(key: str = None) -> str | dict
+os.environ(key: str = None) -> str | dict | Null
 ```
 
 | Argumento | Devolve |
 |---|---|
-| `os.environ("PATH")` | o valor daquela variável |
+| `os.environ("PATH")` | o valor daquela variável, ou `Null` se ela não existe |
 | `os.environ()` | um dict com **todas** as variáveis de ambiente |
 
 ---

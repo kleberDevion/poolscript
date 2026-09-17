@@ -93,6 +93,23 @@ funct le_titulo(caminho) {
 # `docs/bytes/` e envelheceu quando o tipo virou `byte`.
 
 
+# O retorno MEDIDO tem tres formas (scripts/mede_retornos.pr): um nome, uma
+# uniao `str|Null` — a pagina tem que citar CADA lado, senao ela esconde o caso
+# do `Null` de quem vai tratar — e `*`, o tipo do conteudo guardado, que nao tem
+# nome a citar.
+funct retorno_citado(esperado, corpo) {
+    if esperado == "*" {
+        return true
+    }
+    for each lado in esperado.split("|") {
+        if not (lado in corpo) {
+            return false
+        }
+    }
+    return true
+}
+
+
 # ONDE a pagina declara o retorno. Duas formas convivem no projeto, e as duas
 # valem — exigir so uma faria "corrigir" pagina que ja diz a verdade:
 #
@@ -445,7 +462,7 @@ if __name__ == "main" {
         if corpo == "" {
             addEnd(ret_sem_secao, [caminho, nome, esperado])
         }
-        elif esperado in corpo {
+        elif retorno_citado(esperado, corpo) {
             ret_ok = ret_ok + 1
         }
         else {

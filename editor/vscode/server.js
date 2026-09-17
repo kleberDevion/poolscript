@@ -478,7 +478,7 @@ function exportadosDe(ref, dirModulo, dirScript, pilha) {
   const nativo = nativoDe(mod, ref.aspas, pontos);
   if (nativo) {
     return META.modulos[nativo].map((m) => Object.assign(
-      { kind: m.kind === 'value' ? 'campo' : 'action', escopo: nativo, tipo: m.retorna || '' },
+      { kind: m.kind === 'value' ? 'campo' : 'action', escopo: nativo, tipo: retornoVisivel(m.retorna) },
       m, { mod: nativo, membro: m.nome }));
   }
   const arq = arquivoDoImport(mod, dirModulo, ref.aspas, pontos, dirScript);
@@ -719,8 +719,9 @@ function tipoDoNome(doc, nome, linha) {
       const alvoC = alvoDoImport(doc, cons.nome, linha);
       if (alvoC && alvoC.tipo === 'membro_modulo') {
         for (const m of META.modulos[alvoC.mod] || []) {
-          if (m.nome === alvoC.membro && m.retorna && META.tipos[m.retorna])
-            return { tipo: 'tipo_motor', nome: m.retorna, via: { mod: alvoC.mod, membro: alvoC.membro } };
+          const t = tipoEncadeado(m.retorna);
+          if (m.nome === alvoC.membro && t && META.tipos[t])
+            return { tipo: 'tipo_motor', nome: t, via: { mod: alvoC.mod, membro: alvoC.membro } };
         }
       }
       if (alvoC && alvoC.tipo === 'membro_arquivo' && achaEntidade(doc, alvoC.membro))
@@ -735,8 +736,9 @@ function tipoDoNome(doc, nome, linha) {
       }
       if (alvoM && alvoM.mod && META.modulos[alvoM.mod]) {
         for (const m of META.modulos[alvoM.mod]) {
-          if (m.nome === cons.nome && m.retorna)
-            return { tipo: 'tipo_motor', nome: m.retorna, via: { mod: alvoM.mod, membro: cons.nome } };
+          const t = tipoEncadeado(m.retorna);
+          if (m.nome === cons.nome && t)
+            return { tipo: 'tipo_motor', nome: t, via: { mod: alvoM.mod, membro: cons.nome } };
         }
       }
     }
@@ -809,7 +811,7 @@ function alvoDaCadeia(doc, partes, linha) {
     /* desce um nível: o tipo do membro é o que ele devolve ou declara. A
      * procedência (`via`: de que módulo/membro o tipo saiu) desce junto —
      * é ela que diz em que pasta da doc está a prosa do próximo membro. */
-    const t = m.retorna || m.tipo || '';
+    const t = tipoEncadeado(m.retorna || m.tipo);
     const modBase = alvo.via ? alvo.via.mod : (alvo.tipo === 'import' && alvo.alvo ? alvo.alvo.mod : null);
     if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via: modBase ? { mod: modBase, membro: passo } : undefined };
     else if (t && achaEntidade(doc, t)) alvo = { tipo: 'entity', nome: t, interno: false };
@@ -848,9 +850,10 @@ function membrosDe(doc, alvo, linha) {
     if (a.tipo === 'arquivo') return membrosDeArquivo(a.arquivo, pastaDoDoc(doc));
     if (a.tipo === 'membro_modulo') {
       for (const m of META.modulos[a.mod] || []) {
-        if (m.nome === a.membro && m.retorna && META.tipos[m.retorna])
-          return (META.tipos[m.retorna] || [])
-            .map((x) => Object.assign({ kind: 'action', escopo: [`${a.mod}/${a.membro}`, a.mod, m.retorna] }, x));
+        const t = tipoEncadeado(m.retorna);
+        if (m.nome === a.membro && t && META.tipos[t])
+          return (META.tipos[t] || [])
+            .map((x) => Object.assign({ kind: 'action', escopo: [`${a.mod}/${a.membro}`, a.mod, t] }, x));
       }
       return [];
     }
@@ -872,9 +875,24 @@ function rotuloParam(p) {
   return (p.default === null || p.default === undefined) ? nome : `${nome} = ${p.default}`;
 }
 
+/* O `retorna` do motor é MEDIDO (scripts/mede_retornos.pr) e vem em três
+ * formas: um tipo (`DbCursor`), uma união (`dict|Null`, cada lado medido) e
+ * `*` (o tipo do conteúdo guardado: `d.get`, `json.parse`). `*` não é nome de
+ * tipo, então não aparece na assinatura; e encadear `cur.fetchone().` só tem
+ * por onde ir pelo lado que tem membros — o `Null` da união não tem nenhum. */
+function retornoVisivel(ret) {
+  return ret && ret !== '*' ? ret : '';
+}
+
+function tipoEncadeado(ret) {
+  if (!ret || ret === '*') return '';
+  const lados = ret.split('|').filter((x) => x !== 'Null');
+  return lados.length === 1 ? lados[0] : '';
+}
+
 function assinatura(m) {
   const ps = (m.params || []).map(rotuloParam);
-  const ret = m.retorna ? ` -> ${m.retorna}` : '';
+  const ret = retornoVisivel(m.retorna) ? ` -> ${m.retorna}` : '';
   if (m.kind === 'campo') return `${m.tipo ? m.tipo + ' ' : ''}${m.nome}`;
   if (m.kind === 'class') return `class ${m.nome}`;
   /* módulo que um arquivo importa e reexporta (`import os as o` no topo dele) */
@@ -1659,7 +1677,7 @@ function hoverDoImportado(doc, alvo, nome, linha) {
     const m = (META.modulos[nat.mod] || []).find((x) => x.nome === nat.membro);
     if (m) {
       const cab = nat.mod + '.' + (m.kind === 'value'
-        ? m.nome + (m.retorna ? ' -> ' + m.retorna : '')
+        ? m.nome + (retornoVisivel(m.retorna) ? ' -> ' + m.retorna : '')
         : assinatura(m));
       const prosa = resumoDe(nat.mod, nat.membro);
       return md('```ps\n' + cab + '\n```' + (prosa ? '\n\n' + prosa : ''));

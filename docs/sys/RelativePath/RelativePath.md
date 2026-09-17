@@ -1,10 +1,11 @@
 # `sys.RelativePath(name)`
 
 Busca um arquivo pelo nome, **recursivamente**, a partir do diretório de
-trabalho atual, e devolve o caminho encontrado.
+trabalho atual, e devolve o caminho encontrado — ou `Null`, se nenhum arquivo
+com esse nome existe ali.
 
 ```
-sys.RelativePath(name: str) -> str
+sys.RelativePath(name: str) -> str | Null
 ```
 
 ---

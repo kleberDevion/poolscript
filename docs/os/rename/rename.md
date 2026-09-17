@@ -3,7 +3,7 @@
 Renomeia um arquivo ou pasta.
 
 ```
-os.rename(src: str, dst: str) -> None
+os.rename(src: str, dst: str) -> Null
 ```
 
 | Parâmetro | O que é |

@@ -4,7 +4,7 @@ Move um arquivo ou pasta pra outro lugar. Diferente de `copy`, o original
 **deixa de existir** no lugar antigo.
 
 ```
-os.move(src: str, dst: str) -> None
+os.move(src: str, dst: str) -> Null
 ```
 
 | Parâmetro | O que é |

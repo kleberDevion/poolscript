@@ -4,7 +4,7 @@ Imprime uma mensagem **colorida** no terminal. Útil pra destacar avisos, erros
 ou informações nos logs do seu programa.
 
 ```
-os.warn(text: str = "", color: str = "yellow") -> None
+os.warn(text: str = "", color: str = "yellow") -> Null
 ```
 
 | Parâmetro | Padrão | O que é |

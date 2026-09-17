@@ -4,7 +4,7 @@ Muda o **diretório de trabalho atual** — daí em diante, caminhos relativos
 partem da nova pasta.
 
 ```
-os.chdir(path: str) -> None
+os.chdir(path: str) -> Null
 ```
 
 ---

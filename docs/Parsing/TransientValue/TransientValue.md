@@ -13,6 +13,11 @@ Parsing.TransientValue(value, to_type="str")
 | `"int"` | inteiro (trunca) |
 | `"flo"` / `"float"` | decimal |
 
+## Retorno
+
+`str`, `int` ou `flo`, conforme a tabela acima. Qualquer outro `to_type`
+devolve `str`.
+
 ---
 
 ## Uso

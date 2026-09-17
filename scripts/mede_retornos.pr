@@ -1,29 +1,209 @@
-# Descobre o TIPO DE RETORNO de cada membro, CHAMANDO ele.
+# Descobre o TIPO DE RETORNO de cada nativo, CHAMANDO ele.
 #
-#     ./pool scripts/mede_retornos.pr            # tudo que da pra medir
-#     ./pool scripts/mede_retornos.pr str list   # so esses receptores
+#     ./pool scripts/mede_retornos.pr             # mede tudo e grava vm/retornos_medidos.inc
+#     ./pool scripts/mede_retornos.pr --confere   # mede e compara com o `--metadata` do binario
 #
-# POR QUE ELE EXISTE. O `pool --metadata` publica `retorna` pra 69 de 513
-# membros: a tabela `RETORNOS[]` do motor nasceu so pra o editor conseguir
-# encadear `conn.cursor().fetchall()`, entao so lista quem devolve OBJETO.
-# Quem devolve `int`, `str`, `bool`, `list` ou `Null` nao tem entrada — e sem
-# isso a doc, o hover e o auditor ficam sem fonte, cada um chutando o seu.
+# POR QUE ELE EXISTE. A tipagem estatica confere `str s = os.getenv("X")` antes
+# de rodar, e pra isso o compilador precisa saber o que cada nativo devolve de
+# VERDADE. Uma tabela escrita a mao ja disse coisa que o motor nao faz, e o
+# `--metadata` deixava sem retorno a maior parte dos membros.
 #
-# O metodo aqui e o do projeto: MEDIR, nao deduzir. Pra cada membro, monta uma
-# chamada com valores de exemplo do tipo do receptor, roda, e anota o
-# `type()` do que voltou. O que nao der pra chamar sai marcado como tal — e
-# melhor uma lacuna declarada do que um tipo inventado.
+# O metodo e o do projeto: MEDIR, nao deduzir. Cada membro e chamado num
+# programa de verdade e o `type()` do que voltou e anotado. Quem precisa de
+# servico mede contra o servico de teste: sqlite, postgres e mariadb locais, o
+# mongod de teste (porta 27099), o jinker subido aqui mesmo e os SMTP/IMAP
+# falsos de `teste/`.
+#
+# Tres formas de retorno saem daqui:
+#   - um tipo:        `os.cwd` -> "str"
+#   - uniao medida:   o tipo muda com o ARGUMENTO ou com o estado, e cada
+#                     amostra mostra um lado: `os.getenv` -> "str|Null"
+#   - "*":            o tipo e o do CONTEUDO guardado (`d.get`, `json.parse`).
+#                     A entrada traz duas amostras que TEM que dar tipos
+#                     diferentes: e a prova de que varia, nao uma suposicao.
+#
+# Membro medido que o `--metadata` nao publica, membro publicado que ninguem
+# mediu e chamada que levanta erro: o script para e NAO grava. Lacuna nao vira
+# tipo inventado.
 import os
 import sys
 import json
+import qrcode
 
-# Receptor de exemplo por tipo, e os argumentos que a maioria dos membros
-# daquele tipo aceita. A ordem importa: a primeira combinacao que NAO levanta
-# e a que vale.
+TMP = "/tmp/ps_mede_retorno"
+META = TMP + "/meta.json"
+SAIDA = "vm/retornos_medidos.inc"
+REPO = os.cwd()
+PNG = TMP + "/amostra.png"
+PORTA_WEB = 28850
+# absoluto: os grupos rodam com `cd` na pasta de trabalho
+POOL = ""
+
+# Membro que nao devolve: nao ha o que medir, e o motivo fica escrito.
+NAO_RETORNA = {}
+NAO_RETORNA["sys|exit"] = "encerra o processo"
+
+# ── resultado ───────────────────────────────────────────────────────────────
+# RES["dono|membro"] = tipos na ordem em que apareceram
+RES = {}
+VARIA = {}
+ERROS = []
+
+
+funct anota(chave, tipo) {
+    global RES
+    if not (chave in RES) {
+        RES[chave] = []
+    }
+    if not (tipo in RES[chave]) {
+        addEnd(RES[chave], tipo)
+    }
+}
+
+
+# ── programa gerado ─────────────────────────────────────────────────────────
+# Cada grupo vira UM programa: o preparo, e cada amostra num `try` que anota
+# `R|dono|membro|tipo` (ou `E|...|erro`) num arquivo. Arquivo, e nao a saida
+# padrao: membro que imprime por conta propria (`os.warn`, `sys.stdout.write`)
+# emendaria o texto dele na linha anotada. E o servidor do jinker, que roda em
+# outro processo, anota no mesmo arquivo.
+ANOTA = '''funct mr_anota(mr_linha) {
+    using open("@TMP@/r.txt", "a") as mr_arq {
+        mr_arq.write(mr_linha.replace("\\n", " ") + "\\n")
+    }
+}
+'''
+
+
+funct troca(txt) {
+    return txt.replace("@TMP@", TMP).replace("@PNG@", PNG).replace("@PORTA@", str(PORTA_WEB)).replace("@PORTA_WS@", str(PORTA_WEB + 1))
+}
+
+
+funct amostras_de(ch) {
+    if len(ch) > 2 and ch[2] == "*" {
+        return ch[3:]
+    }
+    return ch[2:]
+}
+
+
+funct bloco(chamadas) {
+    partes = []
+    for each ch in chamadas {
+        if ch[0] == "!" {
+            addEnd(partes, ch[1])
+            continue
+        }
+        rot = ch[0] + "|" + ch[1] + "|"
+        for each e in amostras_de(ch) {
+            addEnd(partes, "try {")
+            addEnd(partes, "    mr_anota(\"R|" + rot + "\" + type(" + e + "))")
+            addEnd(partes, "} catch (mr_e) {")
+            addEnd(partes, "    mr_anota(\"E|" + rot + "\" + str(mr_e))")
+            addEnd(partes, "}")
+        }
+    }
+    return troca("\n".join(partes))
+}
+
+
+# Quantas amostras cada chave tem que anotar. Programa que morre no meio (um
+# `!` que levantou) deixa amostra sem linha — isso tambem e erro.
+funct esperadas(chamadas, conta) {
+    global VARIA
+    for each ch in chamadas {
+        if ch[0] == "!" {
+            continue
+        }
+        chave = ch[0] + "|" + ch[1]
+        if not (chave in conta) {
+            conta[chave] = 0
+        }
+        conta[chave] = conta[chave] + len(amostras_de(ch))
+        if len(ch) > 2 and ch[2] == "*" {
+            VARIA[chave] = true
+        }
+    }
+    return conta
+}
+
+
+funct colhe(nome, conta, saida) {
+    global ERROS
+    arq = TMP + "/r.txt"
+    vistas = {}
+    if os.exists(arq) {
+        for each linha in os.readFile(arq).split("\n") {
+            if len(linha) == 0 {
+                continue
+            }
+            partes = linha.split("|")
+            chave = partes[1] + "|" + partes[2]
+            resto = "|".join(partes[3:])
+            if not (chave in vistas) {
+                vistas[chave] = 0
+            }
+            vistas[chave] = vistas[chave] + 1
+            if partes[0] == "R" {
+                anota(chave, resto)
+            }
+            else {
+                addEnd(ERROS, nome + ": " + chave + " levantou: " + resto)
+            }
+        }
+    }
+    faltaram = []
+    for each chave in conta.keys() {
+        feitas = 0
+        if chave in vistas {
+            feitas = vistas[chave]
+        }
+        if feitas < conta[chave] {
+            addEnd(faltaram, chave + " (" + str(feitas) + "/" + str(conta[chave]) + ")")
+        }
+    }
+    if len(faltaram) > 0 {
+        addEnd(ERROS, nome + ": o programa parou antes de " + ", ".join(faltaram) + ". Saida: " + saida)
+    }
+}
+
+
+funct roda_programa(nome, fonte, env, entrada) {
+    os.writeFile(TMP + "/" + nome + ".pr", fonte)
+    os.cmd("cd '" + TMP + "' && " + env + " timeout 120 '" + POOL + "' '" + TMP + "/" + nome + ".pr' < " + entrada
+           + " > '" + TMP + "/" + nome + ".out' 2>&1")
+    saida = ""
+    if os.exists(TMP + "/" + nome + ".out") {
+        saida = os.readFile(TMP + "/" + nome + ".out").strip()
+    }
+    if len(saida) > 400 {
+        saida = saida[len(saida) - 400:]
+    }
+    return saida
+}
+
+
+funct roda_grupo(g) {
+    os.cmd("rm -f '" + TMP + "/r.txt'")
+    fonte = troca(ANOTA) + troca(g["prep"]) + "\n" + bloco(g["chamadas"]) + "\n"
+    env = ""
+    if "env" in g {
+        env = troca(g["env"])
+    }
+    entrada = "/dev/null"
+    if "stdin" in g {
+        os.writeFile(TMP + "/entrada.txt", g["stdin"])
+        entrada = "'" + TMP + "/entrada.txt'"
+    }
+    saida = roda_programa("g", fonte, env, entrada)
+    colhe(g["nome"], esperadas(g["chamadas"], {}), saida)
+}
+
+
+# ── metodos de tipo, medidos por tentativa ─────────────────────────────────
 # DUAS amostras por tipo, com CONTEUDO de tipo diferente. Se as duas medicoes
-# derem tipos diferentes, o retorno DEPENDE do conteudo (`d.get()` devolve o
-# valor guardado, seja ele qual for) — e anotar `int` ali seria mentira vinda
-# da amostra, nao do motor.
+# derem tipos diferentes, o retorno depende do conteudo e a chave vira "*".
 AMOSTRAS = {
     "str": {
         "recv": "\"aBc dEf\"",
@@ -53,124 +233,12 @@ AMOSTRAS = {
 }
 
 
-# Funcoes de MODULO que rodam sem servico externo. Cada uma com uma chamada
-# de exemplo escrita a mao — aqui nao da pra adivinhar argumento como nos
-# metodos de tipo, e chamar errado devolveria o tipo do ERRO, nao do retorno.
-# Modulo que precisa de banco, rede ou e-mail fica de fora: melhor a lacuna
-# declarada do que um tipo vindo de uma chamada que falhou.
-CHAMADAS = [
-    # `json.parse` NAO entra: devolve dict, list ou o escalar, conforme o JSON —
-    # medir com um objeto diria `dict` e a tabela mentiria pro editor
-    ["json", "stringify", "json.stringify({\"a\": 1})"],
-    ["date", "today", "date.today()"],
-    ["date", "time", "date.time()"],
-    ["date", "now", "date.now()"],
-    ["date", "datahora", "date.datahora()"],
-    ["date", "hora", "date.hora()"],
-    ["date", "timestamp", "date.timestamp()"],
-    ["regex", "match", "regex.match(\"a\", \"a\")"],
-    ["regex", "fullmatch", "regex.fullmatch(\"a\", \"a\")"],
-    ["regex", "search", "regex.search(\"a\", \"ba\")"],
-    ["regex", "findall", "regex.findall(\"a\", \"aa\")"],
-    ["regex", "sub", "regex.sub(\"a\", \"b\", \"aa\")"],
-    ["regex", "split", "regex.split(\",\", \"a,b\")"],
-    ["regex", "compile", "regex.compile(\"a\")"],
-    ["regex", "escape", "regex.escape(\"a.b\")"],
-    ["hash", "sha256", "hash.sha256(\"a\")"],
-    ["hash", "md5", "hash.md5(\"a\")"],
-    ["hash", "sha1", "hash.sha1(\"a\")"],
-    ["hash", "sha512", "hash.sha512(\"a\")"],
-    ["hash", "b64encode", "hash.b64encode(\"a\")"],
-    ["hash", "b64decode", "hash.b64decode(hash.b64encode(\"a\"))"],
-    ["jwt", "gen", "jwt.gen({\"a\": 1}, \"s\")"],
-    ["jwt", "check", "jwt.check(jwt.gen({\"a\": 1}, \"s\"), \"s\")"],
-    ["os", "exists", "os.exists(\"/tmp\")"],
-    ["os", "isfile", "os.isfile(\"/tmp\")"],
-    ["os", "isdir", "os.isdir(\"/tmp\")"],
-    ["os", "cwd", "os.cwd()"],
-    ["os", "ls", "os.ls(\"/tmp\")"],
-    ["os", "size", "os.size(\"/etc/hostname\")"],
-    ["os", "readFile", "os.readFile(\"/etc/hostname\")"],
-    ["os", "writeFile", "os.writeFile(\"/tmp/ps_mr.txt\", \"a\")"],
-    ["os", "environ", "os.environ()"],
-    ["os", "getenv", "os.getenv(\"HOME\")"],
-    ["os", "cmd", "os.cmd(\"true\")"],
-    ["os", "warn", "os.warn(\"\")"],
-    ["os", "mkdir", "os.mkdir(\"/tmp/ps_mr_d\", exist_ok=true)"],
-    ["sys", "platform", "sys.platform()"],
-    # com um nome que EXISTE: chamar com inexistente media o caminho de falha
-    # (Null) e a tabela diria que RelativePath sempre devolve Null
-    ["sys", "RelativePath", "sys.RelativePath(os.ls(\".\")[0][\"name\"])"],
-    ["bytes", "new", "bytes.new(\"a\")"],
-    ["bytes", "fromhex", "bytes.fromhex(\"61\")"],
-    ["bytes", "tohex", "bytes.tohex(bytes.new(\"a\"))"],
-    ["bytes", "toint", "bytes.toint(bytes.new(\"a\"))"],
-    ["bytes", "fromint", "bytes.fromint(1, 2)"],
-    ["bytes", "tolist", "bytes.tolist(bytes.new(\"a\"))"],
-    ["bytes", "concat", "bytes.concat([bytes.new(\"a\")])"],
-    ["bytes", "slice", "bytes.slice(bytes.new(\"ab\"), 1)"],
-    ["bytes", "get", "bytes.get(bytes.new(\"ab\"), 0)"],
-    ["bytes", "tobase64", "bytes.tobase64(bytes.new(\"a\"))"],
-    ["bytes", "frombase64", "bytes.frombase64(bytes.tobase64(bytes.new(\"a\")))"],
-    ["dotenv", "load", "dotenv.load()"],
-    ["qrcode", "gen", "qrcode.gen(\"a\")"],
-    ["qrcode", "QRCode", "qrcode.QRCode()"]
-]
-
-
-# Os nomes aqui NAO podem repetir os globais do `main`: reatribuir uma global
-# que ja existe faz WRITE-THROUGH (secao 4.6.2 da referencia), entao `ok = 0`
-# dentro desta funct zerava o contador de fora e o total saia errado. Achado
-# rodando o proprio script.
-funct mede_modulos() {
-    global LINHAS
-    addEnd(LINHAS, "")
-    addEnd(LINHAS, "    /* funcoes de modulo */")
-    quantos_mod = 0
-    sem_medida = []
-    for each c in CHAMADAS {
-        # `import os` sempre junto: varias chamadas de exemplo precisam dele
-        # pra montar o argumento (arquivo que existe, caminho do cwd...)
-        fonte = "import os\nimport " + c[0] + "\npost(type(" + c[2] + "))\n"
-        r = roda(fonte)
-        if r == "" {
-            addEnd(sem_medida, c[0] + "." + c[1])
-            continue
-        }
-        addEnd(LINHAS, "    { \"" + c[0] + "\", \"" + c[1] + "\", \"" + r + "\" },")
-        quantos_mod = quantos_mod + 1
-    }
-    if len(sem_medida) > 0 {
-        addEnd(LINHAS, "    /* nao medido (falhou a chamada de exemplo): " + ", ".join(sem_medida) + " */")
-    }
-    post("modulos".ljust(8), "medidos:", str(quantos_mod).rjust(3), "| nao medidos:", len(sem_medida))
-    return quantos_mod
-}
-
-
-# Membros cujo retorno depende do CONTEUDO e que as duas amostras nao pegam,
-# porque as duas dao o mesmo tipo pelo motivo errado. `"aBc dEf".get_json()`
-# devolve Null nas duas — nao porque get_json devolva Null, mas porque nenhuma
-# das duas e JSON. Medir aqui produziria `Null` e a tabela mentiria pro editor
-# e pro auditor. Ficam de fora, nomeados.
-DEPENDE_DO_CONTEUDO = ["str.get", "str.get_json"]
-
-
-funct membros_de(tipo) {
-    bruto = os.readFile(META)
-    m = json.parse(bruto)
-    if not (tipo in m["tipos"]) {
-        return []
-    }
-    return m["tipos"][tipo]
-}
-
-
-# Roda um programa e devolve a saida (ou "" se levantou).
-funct roda(fonte) {
+# Roda um programa curto e devolve o nome de tipo que ele imprimiu ("" se
+# levantou ou se a saida nao parece nome de tipo).
+funct roda_curto(fonte) {
     os.writeFile(TMP + "/m.pr", fonte)
     os.cmd("rm -f " + TMP + "/m.out")
-    os.cmd("'" + sys.executable + "' " + TMP + "/m.pr > " + TMP + "/m.out 2>&1")
+    os.cmd("'" + POOL + "' " + TMP + "/m.pr > " + TMP + "/m.out 2>&1")
     if not os.exists(TMP + "/m.out") {
         return ""
     }
@@ -178,17 +246,10 @@ funct roda(fonte) {
     if "Error" in saida or "Traceback" in saida {
         return ""
     }
-    # O que volta tem que PARECER nome de tipo. Sem esta trava, membro que
-    # imprime por conta propria (`os.warn` escreve no stderr, colhido junto)
-    # emendava a saida dele no nome do tipo e gerava C que nao compila:
-    #   { "os", "warn", "<escape de cor>
-    #   Null" },
     if len(saida) == 0 or len(saida) > 20 {
         return ""
     }
     for each c in saida {
-        # `eh_letra`, e nao `ok`: `ok` e global do main, e reatribuir global
-        # existente faz write-through — este laco zerava o contador de fora.
         eh_letra = (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or c == "_"
         if not eh_letra {
             return ""
@@ -198,101 +259,975 @@ funct roda(fonte) {
 }
 
 
-funct mede_tipo(tipo) {
+funct mede_tipo(tipo, meta, feitos) {
+    global VARIA
+    global ERROS
     a = AMOSTRAS[tipo]
-    achados = []
-    naomediu = []
-    for each membro in membros_de(tipo) {
+    nao = []
+    for each membro in meta["tipos"][tipo] {
         nome = membro["nome"]
-        if (tipo + "." + nome) in DEPENDE_DO_CONTEUDO {
-            addEnd(LINHAS, "    /* " + tipo + "." + nome + ": devolve o VALOR do JSON, tipo varia */")
+        chave = tipo + "|" + nome
+        if chave in feitos {
             continue
         }
-        eh_prop = "kind" in membro and membro["kind"] == "property"
         resultado = ""
         conf = ""
-        if eh_prop {
-            resultado = roda("x = " + a["recv"] + "\npost(type(x." + nome + "))\n")
-            conf = roda("x = " + a["recv2"] + "\npost(type(x." + nome + "))\n")
-        }
-        else {
-            for each arg in a["args"] {
-                fonte = "x = " + a["recv"] + "\npost(type(x." + nome + "(" + arg + ")))\n"
-                resultado = roda(fonte)
-                if resultado != "" {
-                    conf = roda("x = " + a["recv2"] + "\npost(type(x." + nome + "(" + arg + ")))\n")
-                    break
-                }
+        for each arg in a["args"] {
+            resultado = roda_curto("x = " + a["recv"] + "\npost(type(x." + nome + "(" + arg + ")))\n")
+            if resultado != "" {
+                conf = roda_curto("x = " + a["recv2"] + "\npost(type(x." + nome + "(" + arg + ")))\n")
+                break
             }
         }
         if resultado == "" {
-            addEnd(naomediu, nome)
-        }
-        elif conf != "" and conf != resultado {
-            # o tipo saiu diferente com conteudo diferente: e o VALOR guardado
-            addEnd(achados, [nome, "(depende do conteudo: " + resultado + " / " + conf + ")"])
-        }
-        else {
-            addEnd(achados, [nome, resultado])
-        }
-    }
-    global LINHAS
-    addEnd(LINHAS, "")
-    addEnd(LINHAS, "    /* " + tipo + " */")
-    for each par in achados {
-        if par[1].startswith("(") {
-            # retorno que depende do conteudo guardado: NAO entra na tabela —
-            # declarar um tipo fixo aqui seria a amostra falando pelo motor
-            addEnd(LINHAS, "    /* " + tipo + "." + par[0] + ": devolve o VALOR guardado, tipo varia */")
+            addEnd(nao, nome)
             continue
         }
-        addEnd(LINHAS, "    { \"" + tipo + "\", \"" + par[0] + "\", \"" + par[1] + "\" },")
+        if conf != "" and conf != resultado {
+            VARIA[chave] = true
+            anota(chave, resultado)
+            anota(chave, conf)
+        }
+        else {
+            anota(chave, resultado)
+        }
     }
-    if len(naomediu) > 0 {
-        addEnd(LINHAS, "    /* nao medido automaticamente: " + ", ".join(naomediu) + " */")
+    if len(nao) > 0 {
+        addEnd(ERROS, tipo + ": nenhuma tentativa chamou " + ", ".join(nao) + " — de a chamada em GRUPOS")
     }
-    post(tipo.ljust(8), "medidos:", str(len(achados)).rjust(3), "| nao medidos:", len(naomediu))
-    return [len(achados), len(naomediu)]
+}
+
+
+# ── os grupos escritos a mao ────────────────────────────────────────────────
+# `["dono", "membro", amostra, ...]` mede; `["dono", "membro", "*", a, b]` exige
+# que `a` e `b` deem tipos diferentes; `["!", codigo]` so executa, na ordem.
+GRUPOS = []
+
+addEnd(GRUPOS, {
+    "nome": "builtins",
+    "prep": '''import os
+os.writeFile("@TMP@/b.env", "MR_B=1")
+async funct mr_af() {
+    return 1
+}
+''',
+    "stdin": "linha\n",
+    "chamadas": [
+        ["builtins", "assert", 'assert(1 == 1)'],
+        ["builtins", "post", 'post("")'],
+        ["builtins", "len", 'len("ab")'],
+        ["builtins", "str", 'str(1)'],
+        ["builtins", "int", 'int("1")'],
+        ["builtins", "long", 'long("1")'],
+        ["builtins", "flo", 'flo("1.5")'],
+        ["builtins", "bool", 'bool(1)'],
+        ["builtins", "type", 'type(1)'],
+        ["builtins", "abs", 'abs(-1)', 'abs(-1.5)'],
+        ["builtins", "pow", 'pow(2, 3)', 'pow(2.0, 3)'],
+        ["builtins", "round", 'round(1.5)', 'round(1.25, 1)'],
+        ["builtins", "hex", 'hex(255)'],
+        ["builtins", "bin", 'bin(5)'],
+        ["builtins", "oct", 'oct(8)'],
+        ["builtins", "ord", 'ord("a")'],
+        ["builtins", "chr", 'chr(97)'],
+        ["builtins", "range", 'range(3)'],
+        ["builtins", "list", 'list("ab")'],
+        ["builtins", "tup", 'tup([1])'],
+        ["builtins", "dict", 'dict()'],
+        ["builtins", "sum", 'sum([1, 2])', 'sum([1.5, 2])'],
+        ["builtins", "min", "*", 'min([1, 2])', 'min(["a", "b"])'],
+        ["builtins", "max", "*", 'max([1, 2])', 'max(["a", "b"])'],
+        ["builtins", "sorted", 'sorted([2, 1])', 'sorted("ba")'],
+        ["builtins", "reversed", 'reversed([1, 2])', 'reversed("ab")'],
+        ["builtins", "enumerate", 'enumerate(["a"])'],
+        ["builtins", "zip", 'zip([1], [2])'],
+        ["builtins", "addEnd", 'addEnd([1], 2)'],
+        ["builtins", "addStart", 'addStart([1], 2)'],
+        ["builtins", "removeEnd", "*", 'removeEnd([1])', 'removeEnd(["a"])'],
+        ["builtins", "removeStart", "*", 'removeStart([1])', 'removeStart(["a"])'],
+        ["builtins", "map", 'map([1], funct(x) { return x })'],
+        ["builtins", "filter", 'filter([1], funct(x) { return x })'],
+        ["builtins", "open", 'open("@TMP@/b.env")'],
+        ["builtins", "sleep", 'sleep(0)'],
+        ["builtins", "gather", 'gather(mr_af(), mr_af())'],
+        ["builtins", "input", 'input()', 'input()'],
+        ["builtins", "id", 'id([])'],
+        ["builtins", "load", 'load("@TMP@/b.env")'],
+        ["__universal__", "type", '[1].type()']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "str/list/dict/tup/byte (a mao)",
+    "prep": "",
+    "chamadas": [
+        ["str", "index", '"abc".index("b")'],
+        ["str", "rindex", '"abcb".rindex("b")'],
+        ["str", "get_json", "*", "'{\"a\": 1}'.get_json()", "'[1]'.get_json()"],
+        ["str", "get", "*", "'{\"a\": 1}'.get(\"a\")", "'{\"a\": \"x\"}'.get(\"a\")"],
+        ["str", "join", '",".join(["a", "b"])'],
+        ["str", "format_map", '"{a}".format_map({"a": 1})'],
+        ["str", "translate", '"abc".translate("abc".maketrans("a", "b"))'],
+        ["list", "pop", "*", '[1].pop()', '["a"].pop()'],
+        ["dict", "get", "*", '{"a": 1}.get("a")', '{"a": "x"}.get("a")'],
+        ["dict", "pop", "*", '{"a": 1}.pop("a")', '{"a": "x"}.pop("a")'],
+        ["byte", "index", '"abc".encode().index("b".encode())'],
+        ["byte", "rindex", '"abcb".encode().rindex("b".encode())'],
+        ["byte", "join", '",".encode().join(["a".encode(), "b".encode()])'],
+        ["byte", "replace", '"abc".encode().replace("a".encode(), "b".encode())'],
+        ["byte", "maketrans", '"a".encode().maketrans("a".encode(), "b".encode())'],
+        ["byte", "translate", '"abc".encode().translate("a".encode().maketrans("a".encode(), "b".encode()))']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "json/date/regex/Pattern/Parsing",
+    "prep": '''import json
+import date
+import regex
+mr_pat = regex.compile("a(b)")
+''',
+    "chamadas": [
+        ["json", "parse", "*", 'json.parse("{}")', 'json.parse("[]")'],
+        ["json", "stringify", 'json.stringify({"a": 1})'],
+        ["date", "time", 'date.time()'],
+        ["date", "today", 'date.today()'],
+        ["date", "datahora", 'date.datahora()'],
+        ["date", "now", 'date.now()'],
+        ["date", "timestamp", 'date.timestamp()'],
+        ["date", "hora", 'date.hora()', 'date.hora(1, 2, 3)'],
+        ["regex", "compile", 'regex.compile("a")'],
+        ["regex", "match", 'regex.match("a", "a")', 'regex.match("a", "b")'],
+        ["regex", "fullmatch", 'regex.fullmatch("a", "a")', 'regex.fullmatch("a", "ab")'],
+        ["regex", "search", 'regex.search("a", "ba")', 'regex.search("a", "b")'],
+        ["regex", "findall", 'regex.findall("a", "aa")'],
+        ["regex", "sub", 'regex.sub("a", "b", "aa")'],
+        ["regex", "split", 'regex.split(",", "a,b")'],
+        ["regex", "escape", 'regex.escape("a.b")'],
+        ["Pattern", "match", 'mr_pat.match("ab")', 'mr_pat.match("x")'],
+        ["Pattern", "fullmatch", 'mr_pat.fullmatch("ab")', 'mr_pat.fullmatch("abx")'],
+        ["Pattern", "search", 'mr_pat.search("xab")', 'mr_pat.search("x")'],
+        ["Pattern", "findall", 'mr_pat.findall("abab")'],
+        ["Pattern", "sub", 'mr_pat.sub("x", "ab")'],
+        ["Pattern", "split", 'mr_pat.split("xaby")'],
+        ["Pattern", "pattern", 'mr_pat.pattern'],
+        # `string` e `TransientValue` seguem o `to` so pra int e flo — qualquer
+        # outro alvo devolve str; os outros conversores ignoram o `to`
+        ["Parsing", "string", 'Parsing.string(1)', 'Parsing.string(1, to int)', 'Parsing.string("1.5", to flo)', 'Parsing.string("true", to bool)', 'Parsing.string("1", to list)'],
+        ["Parsing", "integer", 'Parsing.integer("7")', 'Parsing.integer("7", to str)', 'Parsing.integer("7", to flo)'],
+        ["Parsing", "floating", 'Parsing.floating("1.5")', 'Parsing.floating("1.5", to str)', 'Parsing.floating("1.5", to int)'],
+        ["Parsing", "boolean", 'Parsing.boolean("true")', 'Parsing.boolean("true", to str)', 'Parsing.boolean("true", to int)'],
+        ["Parsing", "TransientValue", 'Parsing.TransientValue("7")', 'Parsing.TransientValue("7", to int)', 'Parsing.TransientValue("1.5", to flo)', 'Parsing.TransientValue("true", to bool)', 'Parsing.TransientValue("1", to list)'],
+        ["Parsing", "JSONformatt", 'Parsing.JSONformatt(\'{"a": 1}\')', 'Parsing.JSONformatt("[1]")', 'Parsing.JSONformatt("[1]", to str)'],
+        ["Parsing", "Arrayformatt", 'Parsing.Arrayformatt("1,2")', 'Parsing.Arrayformatt("1,2", to str)', 'Parsing.Arrayformatt("1,2", to tup)'],
+        ["Parsing", "Tuplasformatt", 'Parsing.Tuplasformatt("1,2")', 'Parsing.Tuplasformatt("1,2", to str)', 'Parsing.Tuplasformatt("1,2", to list)']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "os",
+    "env": "PATH='@TMP@/bin':\"$PATH\"",
+    "prep": '''import os
+os.writeFile("@TMP@/os.txt", "a")
+''',
+    "chamadas": [
+        # sem o arquivo, os dois levantam FileNotFoundError: nao ha retorno Null
+        ["os", "pathFile", 'os.pathFile("os.txt")'],
+        ["os", "pathFolder", 'os.pathFolder("bin")'],
+        ["os", "loadFile", 'os.loadFile("@PNG@", "rb")'],
+        ["os", "getenv", 'os.getenv("HOME")', 'os.getenv("MR_NAO_EXISTE")'],
+        ["os", "readFile", 'os.readFile("@TMP@/os.txt")'],
+        ["os", "writeFile", 'os.writeFile("@TMP@/os2.txt", "b")'],
+        ["os", "warn", 'os.warn("")'],
+        ["os", "ipmach", 'os.ipmach()'],
+        ["os", "mkdir", 'os.mkdir("@TMP@/d1", exist_ok=true)'],
+        ["os", "rmdir", 'os.rmdir("@TMP@/d1")'],
+        ["os", "ls", 'os.ls("@TMP@")'],
+        ["os", "cmd", 'os.cmd("true")', 'os.cmd("echo a", capture=true)'],
+        ["os", "run", 'os.run(["true"])', 'os.run(["echo", "a"], capture=true)'],
+        ["os", "code", 'os.code("@TMP@")'],
+        ["os", "exists", 'os.exists("@TMP@")'],
+        ["os", "isfile", 'os.isfile("@TMP@")'],
+        ["os", "isdir", 'os.isdir("@TMP@")'],
+        ["os", "rename", 'os.rename("@TMP@/os2.txt", "@TMP@/os3.txt")'],
+        ["os", "copy", 'os.copy("@TMP@/os3.txt", "@TMP@/os4.txt")'],
+        ["os", "move", 'os.move("@TMP@/os4.txt", "@TMP@/os5.txt")'],
+        ["os", "size", 'os.size("@TMP@/os.txt")'],
+        ["os", "cwd", 'os.cwd()'],
+        ["os", "chdir", 'os.chdir("@TMP@")'],
+        ["os", "environ", 'os.environ()', 'os.environ("HOME")', 'os.environ("MR_NAO_EXISTE")']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "sys/dotenv/jwt/hash/bytes",
+    "prep": '''import sys
+import os
+import dotenv
+import jwt
+import hash
+import bytes
+os.writeFile("@TMP@/d.env", "MR_D=1")
+''',
+    "chamadas": [
+        ["sys", "platform", 'sys.platform()'],
+        ["sys", "RelativePath", 'sys.RelativePath("d.env")', 'sys.RelativePath("mr_nao_existe.txt")'],
+        ["sys.stdout", "write", 'sys.stdout.write("")'],
+        ["sys.stdout", "writeln", 'sys.stdout.writeln("")'],
+        ["sys.stdout", "flush", 'sys.stdout.flush()'],
+        ["sys.stderr", "write", 'sys.stderr.write("")'],
+        ["sys.stderr", "writeln", 'sys.stderr.writeln("")'],
+        ["sys.stderr", "flush", 'sys.stderr.flush()'],
+        ["dotenv", "load", 'dotenv.load("@TMP@/d.env")', 'dotenv.load("@TMP@/mr_nao.env")'],
+        ["jwt", "gen", 'jwt.gen({"a": 1}, "s")'],
+        ["jwt", "check", 'jwt.check(jwt.gen({"a": 1}, "s"), "s")', 'jwt.check(jwt.gen({"a": 1}, "s"), "outro")'],
+        ["hash", "crypt", 'hash.crypt("a")'],
+        ["hash", "check", 'hash.check(hash.crypt("a"), "a")', 'hash.check(hash.crypt("a"), "b")'],
+        ["hash", "sha256", 'hash.sha256("a")'],
+        ["hash", "b64encode", 'hash.b64encode("a")'],
+        ["hash", "b64decode", 'hash.b64decode(hash.b64encode("a"))'],
+        ["bytes", "new", 'bytes.new("a")'],
+        ["bytes", "fromhex", 'bytes.fromhex("61")'],
+        ["bytes", "hex", 'bytes.hex(bytes.new("a"))'],
+        ["bytes", "base64", 'bytes.base64(bytes.new("a"))'],
+        ["bytes", "frombase64", 'bytes.frombase64(bytes.base64(bytes.new("a")))'],
+        ["bytes", "fromint", 'bytes.fromint(1, 2)'],
+        ["bytes", "toint", 'bytes.toint(bytes.new("a"))'],
+        ["bytes", "tolist", 'bytes.tolist(bytes.new("a"))'],
+        ["bytes", "concat", 'bytes.concat([bytes.new("a")])'],
+        ["bytes", "slice", 'bytes.slice(bytes.new("ab"), 1)'],
+        ["bytes", "get", 'bytes.get(bytes.new("ab"), 0)'],
+        ["bytes", "xor", 'bytes.xor(bytes.new("a"), bytes.new("b"))']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "sys.stdin",
+    "prep": "import sys\n",
+    "stdin": "abc\nlinha\n",
+    "chamadas": [
+        ["sys.stdin", "readline", 'sys.stdin.readline()'],
+        ["sys.stdin", "read", 'sys.stdin.read(1)', 'sys.stdin.read()', 'sys.stdin.read()'],
+        ["sys.stdin", "readline", 'sys.stdin.readline()'],
+        ["sys.stdin", "raw", 'sys.stdin.raw(false)']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "PoolFile",
+    "prep": '''import os
+os.writeFile("@TMP@/pf.txt", "a\\nb\\n")
+''',
+    "chamadas": [
+        ["!", 'mr_f = open("@TMP@/pf.txt")'],
+        ["PoolFile", "readline", 'mr_f.readline()'],
+        ["PoolFile", "read", 'mr_f.read()'],
+        ["PoolFile", "readline", 'mr_f.readline()'],
+        ["PoolFile", "read", 'mr_f.read()'],
+        ["PoolFile", "close", 'mr_f.close()'],
+        ["!", 'mr_f = open("@TMP@/pf.txt")'],
+        ["PoolFile", "readlines", 'mr_f.readlines()'],
+        ["!", 'mr_f.close()'],
+        ["!", 'mr_f = open("@TMP@/pf.txt", "rb")'],
+        ["PoolFile", "read", 'mr_f.read()'],
+        ["!", 'mr_f.close()'],
+        ["!", 'mr_f = open("@TMP@/pf2.txt", "w")'],
+        ["PoolFile", "write", 'mr_f.write("x")'],
+        ["PoolFile", "writelines", 'mr_f.writelines(["a", "b"])'],
+        ["!", 'mr_f.close()'],
+        ["!", 'mr_p = os.loadFile("@PNG@", "rb")'],
+        ["PoolFile", "bytes", 'mr_p.bytes()'],
+        ["PoolFile", "ext", 'mr_p.ext'],
+        ["PoolFile", "name", 'mr_p.name'],
+        ["PoolFile", "size", 'mr_p.size'],
+        ["PoolFile", "path", 'mr_p.path()'],
+        ["PoolFile", "save", 'mr_p.save("@TMP@/c1.png")'],
+        ["PoolFile", "copy", 'mr_p.copy("@TMP@/c2.png")'],
+        ["PoolFile", "move", 'mr_p.move("@TMP@/c3.png")'],
+        ["PoolFile", "delete", 'mr_p.delete()']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "qrcode/manpu/datasentity/mail offline",
+    "prep": '''import os
+import qrcode
+import manpu
+import mail
+import datasentity
+from datasentity import dataentity, asdict, astuple, aslist, asjson
+
+@dataentity
+Entity MrP() {
+    nome: str
+}
+
+Entity MrQ() {
+    nome: str
+}
+
+mr_ent = MrP(nome="a")
+mr_q = qrcode.gen("a")
+mr_c = qrcode.QRCode()
+mr_im = qrcode.make("a")
+os.cmd("rm -f '@TMP@/mp.txt' '@TMP@/mp.xlsx'")
+os.writeFile("@TMP@/anexo.txt", "anexo")
+''',
+    "chamadas": [
+        ["qrcode", "gen", 'qrcode.gen("a")'],
+        ["qrcode", "make", 'qrcode.make("a")'],
+        ["qrcode", "QRCode", 'qrcode.QRCode()'],
+        ["QRPoolFile", "bytes", 'mr_q.bytes()'],
+        ["QRPoolFile", "save", 'mr_q.save("@TMP@/q.png")'],
+        ["PoolQRCode", "add_data", 'mr_c.add_data("a")'],
+        ["PoolQRCode", "make", 'mr_c.make()'],
+        ["PoolQRCode", "make_image", 'mr_c.make_image()'],
+        ["PoolQRCode", "clear", 'mr_c.clear()'],
+        ["QRImage", "save", 'mr_im.save("@TMP@/i.png")'],
+        ["QRImage", "resize", 'mr_im.resize(10, 10)'],
+        ["QRImage", "to_file", 'mr_im.to_file()'],
+        ["QRImage", "name", 'mr_im.name'],
+        ["manpu", "write", 'manpu.write(content="ana", column=0, celula=0, target="@TMP@/mp.txt")',
+         'manpu.write(content="cabecalho", column=0, celula=0, target="@TMP@/mp.xlsx")'],
+        ["manpu", "read", 'manpu.read("@TMP@/mp.txt")', 'manpu.read("@TMP@/mp.xlsx")'],
+        ["manpu", "load", 'manpu.load("@TMP@/mp.txt")', 'manpu.load("@TMP@/mp.xlsx")'],
+        ["manpu", "src", 'manpu.src("@TMP@/mp.txt")'],
+        ["manpu", "open", 'manpu.open(target="@TMP@/mp.txt")'],
+        ["!", 'mr_mf = manpu.open(target="@TMP@/mp.txt")'],
+        ["ManpuFile", "read", 'mr_mf.read()'],
+        ["ManpuFile", "write", 'mr_mf.write(content="so isso", column=0, celula=0)'],
+        ["ManpuFile", "save", 'mr_mf.save()'],
+        ["manpu", "remove", 'manpu.remove(target="@TMP@/mp.txt", value="so isso")'],
+        ["datasentity", "dataentity", 'datasentity.dataentity(MrQ)'],
+        ["datasentity", "asdict", 'asdict(mr_ent)'],
+        ["datasentity", "astuple", 'astuple(mr_ent)'],
+        ["datasentity", "aslist", 'aslist(mr_ent)'],
+        ["datasentity", "asjson", 'asjson(mr_ent)'],
+        ["mail", "MailServer", 'mail.MailServer()'],
+        ["mail", "MailMessage", 'mail.MailMessage()'],
+        ["mail", "MailReader", 'mail.MailReader()'],
+        ["!", 'mr_m = mail.MailMessage()'],
+        ["MailMessage", "from_address", 'mr_m.from_address("a@local")'],
+        ["MailMessage", "to", 'mr_m.to("b@local")'],
+        ["MailMessage", "subject", 'mr_m.subject("s")'],
+        ["MailMessage", "body", 'mr_m.body("b")'],
+        ["MailMessage", "attach", 'mr_m.attach("@TMP@/anexo.txt")'],
+        ["MailMessage", "get_as_string", 'mr_m.get_as_string()']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "sockets",
+    "prep": '''import sockets
+mr_srv = sockets.create_server(("127.0.0.1", 0))
+mr_porta = mr_srv.getsockname()[1]
+mr_cli = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)
+''',
+    "chamadas": [
+        ["sockets", "socket", 'sockets.socket()'],
+        ["sockets", "create_server", 'sockets.create_server(("127.0.0.1", 0))'],
+        ["sockets", "socketpair", 'sockets.socketpair()'],
+        ["sockets", "gethostname", 'sockets.gethostname()'],
+        ["sockets", "getfqdn", 'sockets.getfqdn()'],
+        ["sockets", "gethostbyname", 'sockets.gethostbyname("localhost")'],
+        ["sockets", "gethostbyname_ex", 'sockets.gethostbyname_ex("localhost")'],
+        ["sockets", "gethostbyaddr", 'sockets.gethostbyaddr("127.0.0.1")'],
+        ["sockets", "getaddrinfo", 'sockets.getaddrinfo("localhost", 80)'],
+        ["sockets", "getnameinfo", 'sockets.getnameinfo(("127.0.0.1", 80), 0)'],
+        ["sockets", "getservbyname", 'sockets.getservbyname("http", "tcp")'],
+        ["sockets", "getservbyport", 'sockets.getservbyport(80, "tcp")'],
+        ["sockets", "getprotobyname", 'sockets.getprotobyname("tcp")'],
+        ["sockets", "htons", 'sockets.htons(1)'],
+        ["sockets", "htonl", 'sockets.htonl(1)'],
+        ["sockets", "ntohs", 'sockets.ntohs(1)'],
+        ["sockets", "ntohl", 'sockets.ntohl(1)'],
+        ["sockets", "inet_aton", 'sockets.inet_aton("127.0.0.1")'],
+        ["sockets", "inet_ntoa", 'sockets.inet_ntoa(sockets.inet_aton("127.0.0.1"))'],
+        ["sockets", "inet_pton", 'sockets.inet_pton(sockets.AF_INET, "127.0.0.1")'],
+        ["sockets", "inet_ntop", 'sockets.inet_ntop(sockets.AF_INET, sockets.inet_aton("127.0.0.1"))'],
+        ["sockets", "getdefaulttimeout", 'sockets.getdefaulttimeout()'],
+        ["sockets", "setdefaulttimeout", 'sockets.setdefaulttimeout(5.0)'],
+        ["sockets", "getdefaulttimeout", 'sockets.getdefaulttimeout()'],
+        ["!", 'sockets.setdefaulttimeout(Null)'],
+        ["sockets", "has_dualstack_ipv6", 'sockets.has_dualstack_ipv6()'],
+        ["sockets", "if_nameindex", 'sockets.if_nameindex()'],
+        ["sockets", "if_nametoindex", 'sockets.if_nametoindex("lo")'],
+        ["sockets", "if_indextoname", 'sockets.if_indextoname(1)'],
+        ["socket", "getsockname", 'mr_srv.getsockname()'],
+        ["socket", "connect", 'mr_cli.connect(("127.0.0.1", mr_porta))'],
+        ["!", 'mr_con = mr_srv.accept()[0]'],
+        ["sockets", "create_connection", 'sockets.create_connection(("127.0.0.1", mr_porta))'],
+        ["socket", "accept", 'mr_srv.accept()'],
+        ["socket", "getpeername", 'mr_cli.getpeername()'],
+        ["socket", "send", 'mr_cli.send("oi".encode())'],
+        ["socket", "sendall", 'mr_cli.sendall("oi".encode())'],
+        ["socket", "recv", 'mr_con.recv(10)'],
+        ["!", 'mr_cli3 = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)'],
+        ["socket", "connect_ex", 'mr_cli3.connect_ex(("127.0.0.1", mr_porta))'],
+        ["socket", "setsockopt", 'mr_cli.setsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 1)'],
+        ["socket", "getsockopt", 'mr_cli.getsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR)', 'mr_cli.getsockopt(sockets.SOL_SOCKET, sockets.SO_REUSEADDR, 4)'],
+        ["socket", "gettimeout", 'mr_cli.gettimeout()'],
+        ["socket", "settimeout", 'mr_cli.settimeout(1.0)'],
+        ["socket", "gettimeout", 'mr_cli.gettimeout()'],
+        ["socket", "getblocking", 'mr_cli.getblocking()'],
+        ["socket", "setblocking", 'mr_cli.setblocking(true)'],
+        ["socket", "fileno", 'mr_cli.fileno()'],
+        ["socket", "dup", 'mr_cli.dup()'],
+        ["socket", "shutdown", 'mr_cli.shutdown(sockets.SHUT_RDWR)'],
+        ["socket", "close", 'mr_cli.close()'],
+        ["!", 'mr_d = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)'],
+        ["socket", "detach", 'mr_d.detach()'],
+        ["!", 'mr_u1 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)'],
+        ["socket", "bind", 'mr_u1.bind(("127.0.0.1", 0))'],
+        ["!", 'mr_u2 = sockets.socket(sockets.AF_INET, sockets.SOCK_DGRAM)'],
+        ["socket", "sendto", 'mr_u2.sendto("x".encode(), mr_u1.getsockname())'],
+        ["socket", "recvfrom", 'mr_u1.recvfrom(10)'],
+        ["!", 'mr_l = sockets.socket(sockets.AF_INET, sockets.SOCK_STREAM)'],
+        ["!", 'mr_l.bind(("127.0.0.1", 0))'],
+        ["socket", "listen", 'mr_l.listen(1)']
+    ]
+})
+
+
+# Banco relacional: as MESMAS chamadas em cada driver, e o resultado de cada
+# chave e a uniao do que os tres devolveram.
+funct chamadas_db(url) {
+    return [
+        ["psodbc", "connect", 'psodbc.connect(url="' + url + '")'],
+        ["!", 'mr_c = psodbc.connect(url="' + url + '")'],
+        ["DbConnection", "cursor", 'mr_c.cursor()'],
+        ["!", 'mr_cur = mr_c.cursor()'],
+        ["DbCursor", "execute", 'mr_cur.execute("DROP TABLE IF EXISTS mr_t")'],
+        ["!", 'mr_cur.execute("CREATE TABLE mr_t (i INTEGER)")'],
+        ["!", 'mr_cur.execute("INSERT INTO mr_t VALUES (1)")'],
+        ["DbConnection", "commit", 'mr_c.commit()'],
+        ["DbCursor", "rowcount", 'mr_cur.rowcount'],
+        ["!", 'mr_cur.execute("SELECT i FROM mr_t")'],
+        ["DbCursor", "fetchall", 'mr_cur.fetchall()'],
+        ["!", 'mr_cur.execute("SELECT i FROM mr_t")'],
+        ["DbCursor", "fetchone", 'mr_cur.fetchone()'],
+        ["!", 'mr_cur.execute("SELECT i FROM mr_t WHERE i = 99")'],
+        ["DbCursor", "fetchone", 'mr_cur.fetchone()'],
+        ["!", 'mr_cur.execute("SELECT i FROM mr_t")'],
+        ["DbCursor", "fetchmany", 'mr_cur.fetchmany(1)'],
+        ["!", 'mr_cur.execute("DROP TABLE mr_t")'],
+        ["!", 'mr_c.commit()'],
+        ["DbCursor", "close", 'mr_cur.close()'],
+        ["DbConnection", "close", 'mr_c.close()']
+    ]
+}
+
+addEnd(GRUPOS, {"nome": "psodbc sqlite", "prep": "import psodbc\nimport os\n",
+                "chamadas": chamadas_db("sqlite:///@TMP@/db.db") + [
+                    ["!", 'os.cmd("rm -f \'@TMP@/q.db\'")'],
+                    ["psodbc", "query", 'psodbc.query(base="@TMP@/q.db", cmd="CREATE TABLE q (i INTEGER)")',
+                     'psodbc.query(base="@TMP@/q.db", cmd="SELECT i FROM q")'],
+                    ["!", 'psodbc.query(base="@TMP@/q.db", cmd="INSERT INTO q VALUES (1)")'],
+                    ["psodbc", "query", 'psodbc.query(base="@TMP@/q.db", cmd="SELECT i FROM q")',
+                     'psodbc.query(base="@TMP@/q.db")']
+                ]})
+addEnd(GRUPOS, {"nome": "psodbc postgres", "prep": "import psodbc\n",
+                "chamadas": chamadas_db("postgres://ps_teste:ps_teste@127.0.0.1:5432/ps_teste")})
+addEnd(GRUPOS, {"nome": "psodbc mariadb", "prep": "import psodbc\n",
+                "chamadas": chamadas_db("mariadb://ps_teste:ps_teste@127.0.0.1:3306/ps_teste")})
+
+addEnd(GRUPOS, {
+    "nome": "sqlite3",
+    "prep": '''import sqlite3
+import os
+os.cmd("rm -f '@TMP@/s3.db'")
+''',
+    "chamadas": [
+        ["sqlite3", "connect", 'sqlite3.connect("@TMP@/s3.db")'],
+        ["!", 'mr_c = sqlite3.connect("@TMP@/s3.db")'],
+        ["PoolConnection", "cursor", 'mr_c.cursor()'],
+        ["PoolConnection", "execute", 'mr_c.execute("CREATE TABLE s (i INTEGER)")'],
+        ["!", 'mr_cur = mr_c.cursor()'],
+        ["PoolCursor", "lastrowid", 'mr_cur.lastrowid'],
+        ["PoolCursor", "execute", 'mr_cur.execute("INSERT INTO s VALUES (1)")'],
+        ["PoolCursor", "lastrowid", 'mr_cur.lastrowid'],
+        ["PoolCursor", "executemany", 'mr_cur.executemany("INSERT INTO s VALUES (?)", [(2,), (3,)])'],
+        ["PoolConnection", "commit", 'mr_c.commit()'],
+        ["PoolCursor", "rowcount", 'mr_cur.rowcount'],
+        ["!", 'mr_cur.execute("SELECT i FROM s")'],
+        ["PoolCursor", "fetchall", 'mr_cur.fetchall()'],
+        ["!", 'mr_cur.execute("SELECT i FROM s")'],
+        ["PoolCursor", "fetchone", 'mr_cur.fetchone()'],
+        ["!", 'mr_cur.execute("SELECT i FROM s WHERE i = 99")'],
+        ["PoolCursor", "fetchone", 'mr_cur.fetchone()'],
+        ["!", 'mr_cur.execute("SELECT i FROM s")'],
+        ["PoolCursor", "fetchmany", 'mr_cur.fetchmany(1)'],
+        ["PoolCursor", "close", 'mr_cur.close()'],
+        ["PoolConnection", "rollback", 'mr_c.rollback()'],
+        ["PoolConnection", "close", 'mr_c.close()']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "mongo",
+    "prep": "import psodbc\n",
+    "chamadas": [
+        ["psodbc", "connect", 'psodbc.connect(driver="mongo", host="127.0.0.1", port=27099, database="ps_mede")'],
+        ["!", 'mr_c = psodbc.connect(driver="mongo", host="127.0.0.1", port=27099, database="ps_mede")'],
+        ["MongoConnection", "collection", 'mr_c.collection("t")'],
+        ["!", 'mr_col = mr_c.collection("t")'],
+        ["MongoCollection", "remove", 'mr_col.remove({})'],
+        ["MongoCollection", "insert", 'mr_col.insert({"a": 1})'],
+        ["MongoCollection", "insert_many", 'mr_col.insert_many([{"a": 2}, {"a": 3}])'],
+        ["MongoCollection", "find", 'mr_col.find({})'],
+        ["MongoCollection", "find_one", 'mr_col.find_one({"a": 1})', 'mr_col.find_one({"a": 99})'],
+        ["MongoCollection", "update", 'mr_col.update({"a": 1}, {"a": 4})'],
+        ["MongoCollection", "count", 'mr_col.count({})'],
+        ["!", 'mr_col.remove({})'],
+        ["MongoConnection", "close", 'mr_c.close()']
+    ]
+})
+
+addEnd(GRUPOS, {
+    "nome": "jinker (sem servidor)",
+    "prep": '''import jinker
+import os
+from jinker import cors
+os.writeFile("@TMP@/tpl.html", "<p>oi</p>")
+mr_app = jinker.Jinker(name="mede", static_folder="@TMP@", static_url="/s")
+mr_app2 = jinker.Jinker(name="mede2")
+''',
+    "chamadas": [
+        ["jinker", "Jinker", 'jinker.Jinker(name="x")'],
+        ["jinker", "jsonify", 'jinker.jsonify({"a": 1})'],
+        ["jinker", "render", 'jinker.render("@TMP@/tpl.html")'],
+        ["jinker", "JinkerResponse", 'jinker.JinkerResponse()'],
+        ["jinker", "JinkerRequest", 'jinker.JinkerRequest()'],
+        ["Jinker", "route", 'mr_app.route("/a")'],
+        ["Jinker", "get", 'mr_app.get("/b")'],
+        ["Jinker", "post", 'mr_app.post("/c")'],
+        ["Jinker", "put", 'mr_app.put("/d")'],
+        ["Jinker", "patch", 'mr_app.patch("/e")'],
+        ["Jinker", "delete", 'mr_app.delete("/f")'],
+        ["Jinker", "middleware", 'mr_app.middleware()'],
+        ["Jinker", "channel", 'mr_app.channel'],
+        ["Jinker", "socket", 'mr_app.socket'],
+        ["Jinker", "name", 'mr_app.name'],
+        ["Jinker", "static_folder", 'mr_app.static_folder', 'mr_app2.static_folder'],
+        ["Jinker", "static_url", 'mr_app.static_url', 'mr_app2.static_url'],
+        ["RouteRegistrar", "register", 'mr_app.route("/g").register(funct() { return "x" })'],
+        ["CorsConfig", "options", 'cors.options()', 'cors.options(["POST"])'],
+        ["CorsConfig", "origins", 'cors.origins()'],
+        ["CorsConfig", "permiser", 'cors.permiser()'],
+        ["JinkerResponse", "send", 'jinker.JinkerResponse().send("x")'],
+        ["JinkerResponse", "json", 'jinker.JinkerResponse().json({"a": 1})'],
+        ["JinkerResponse", "status", 'jinker.JinkerResponse().status(201)'],
+        ["JinkerResponse", "header", 'jinker.JinkerResponse().header("A", "b")'],
+        ["JinkerResponse", "cookie", 'jinker.JinkerResponse().cookie("a", "b")'],
+        ["JinkerResponse", "status_code", 'jinker.JinkerResponse().status_code']
+    ]
+})
+
+
+# ── jinker de pe: request, Response, RequestProxy, upload, canal, websocket ─
+SRV_BLOCOS = {
+    "@REQ@": [
+        ["RequestProxy", "get_json", "*", 'jinker.request.get_json()'],
+        ["RequestProxy", "json", "*", 'jinker.request.json()'],
+        ["RequestProxy", "get", "*", 'jinker.request.get("q")', 'jinker.request.get("x")'],
+        ["RequestProxy", "text", 'jinker.request.text()'],
+        ["RequestProxy", "path_param", 'jinker.request.path_param("nome")', 'jinker.request.path_param("mr_nao")'],
+        ["RequestProxy", "header", 'jinker.request.header("X-A")', 'jinker.request.header("X-Mr-Nao")'],
+        ["RequestProxy", "cookie", 'jinker.request.cookie("c")', 'jinker.request.cookie("mr_nao")'],
+        ["RequestProxy", "headers", 'jinker.request.headers'],
+        ["RequestProxy", "method", 'jinker.request.method'],
+        ["RequestProxy", "path", 'jinker.request.path']
+    ],
+    "@REQ2@": [
+        ["RequestProxy", "get_json", "*", 'jinker.request.get_json()'],
+        ["RequestProxy", "json", "*", 'jinker.request.json()']
+    ],
+    "@UP@": [
+        ["RequestProxy", "file", 'jinker.request.file("arq")', 'jinker.request.file("mr_nao")'],
+        ["RequestProxy", "files", 'jinker.request.files("arq")', 'jinker.request.files("mr_nao")'],
+        ["PoolFileUpload", "bytes", 'mr_f.bytes()'],
+        ["PoolFileUpload", "content_type", 'mr_f.content_type'],
+        ["PoolFileUpload", "ext", 'mr_f.ext'],
+        ["PoolFileUpload", "name", 'mr_f.name'],
+        ["PoolFileUpload", "size", 'mr_f.size'],
+        ["PoolFileUpload", "save", 'mr_f.save("@TMP@/up1.txt")'],
+        ["PoolFileUpload", "move", 'mr_f.move("@TMP@/up2.txt")']
+    ],
+    "@CANAL@": [
+        ["ChannelManager", "emit", 'app.channel.emit("aviso", {"n": 1})'],
+        ["ChannelManager", "status", 'app.channel.status']
+    ],
+    "@SALA@": [
+        ["SocketEmitter", "emit", 'mr_envia.emit(jinker.request.text(), exclude_self=false)'],
+        ["SocketEmitter", "status_send", 'mr_envia.status_send()'],
+        ["SocketNamespace", "emit", 'app.socket.emit("y", exclude_self=false)'],
+        ["SocketNamespace", "status_send", 'app.socket.status_send()']
+    ]
+}
+
+SRV = '''import jinker
+import os
+
+app = jinker.Jinker(name="mede")
+
+@app.route("/pronto")
+funct mr_pronto() {
+    return "ok"
+}
+
+@app.route("/txt", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+funct mr_txt() {
+    return "alo"
+}
+
+@app.route("/json")
+funct mr_json() {
+    return {"a": 1, "b": "x"}
+}
+
+@app.route("/lista")
+funct mr_lista() {
+    return [1, 2]
+}
+
+@app.route("/baixar")
+funct mr_baixar() {
+    mr_r = jinker.JinkerResponse()
+    return mr_r.header("Content-Disposition", "attachment; filename=r.csv").send("a,b")
+}
+
+@app.route("/req/<nome>", methods=["POST"])
+funct mr_req() {
+@REQ@
+    return "ok"
+}
+
+@app.route("/req2", methods=["POST"])
+funct mr_req2() {
+@REQ2@
+    return "ok"
+}
+
+@app.route("/up", methods=["POST"])
+funct mr_up() {
+    mr_f = jinker.request.file("arq")
+@UP@
+    return "ok"
+}
+
+@app.route("/canal")
+funct mr_canal() {
+@CANAL@
+    return "ok"
+}
+
+@app.socket("/sala", channel=true)
+funct mr_sala() {
+    mr_envia = app.socket()
+@SALA@
+}
+
+if __name__ == "main" {
+    app(debug=false, host="127.0.0.1", port=@PORTA@)
+}
+'''
+
+CLIENTE_PREP = '''import request
+import os
+U = "http://127.0.0.1:@PORTA@"
+W = "ws://127.0.0.1:@PORTA_WS@"
+mr_pronto = false
+mr_i = 0
+while mr_i < 100 and not mr_pronto {
+    try {
+        request.get(U + "/pronto")
+        mr_pronto = true
+    } catch (mr_e) {
+        sleep(0.1)
+    }
+    mr_i = mr_i + 1
+}
+os.writeFile("@TMP@/envio.txt", "conteudo")
+'''
+
+CLIENTE = [
+    ["request", "get", 'request.get(U + "/txt")'],
+    ["request", "post", 'request.post(U + "/txt")'],
+    ["request", "put", 'request.put(U + "/txt")'],
+    ["request", "patch", 'request.patch(U + "/txt")'],
+    ["request", "delete", 'request.delete(U + "/txt")'],
+    ["request", "head", 'request.head(U + "/txt")'],
+    ["request", "post", 'request.post(U + "/req/ana?q=1", body={"x": 1}, headers={"X-A": "v", "Cookie": "c=1"})'],
+    ["request", "post", 'request.post(U + "/req2", body=[1, 2])'],
+    ["request", "post", 'request.post(U + "/up", file={"arq": "@TMP@/envio.txt"})'],
+    ["request", "get", 'request.get(U + "/canal")'],
+    ["!", 'mr_r = request.get(U + "/json")'],
+    ["Response", "decode", 'mr_r.decode("utf-8")'],
+    ["Response", "content_type", 'mr_r.content_type("application/json")'],
+    ["Response", "get", "*", 'mr_r.get("a")', 'mr_r.get("b")'],
+    ["Response", "get_json", "*", 'mr_r.get_json()', 'request.get(U + "/lista").get_json()'],
+    ["Response", "json", "*", 'mr_r.json()', 'request.get(U + "/lista").json()'],
+    ["Response", "save", 'mr_r.save("@TMP@/resp.bin")'],
+    ["Response", "content", 'mr_r.content'],
+    ["Response", "filename", 'mr_r.filename', 'request.get(U + "/baixar").filename'],
+    ["Response", "ok", 'mr_r.ok'],
+    ["Response", "size", 'mr_r.size'],
+    ["Response", "status_code", 'mr_r.status_code'],
+    ["Response", "text", 'mr_r.text'],
+    ["request", "ws_connect", 'request.ws_connect(W + "/sala")'],
+    ["!", 'mr_ws = request.ws_connect(W + "/sala")'],
+    ["WsConnection", "on_message", 'mr_ws.on_message(funct(m) { pass })'],
+    ["WsConnection", "send", 'mr_ws.send("oi")'],
+    ["!", 'sleep(1)'],
+    ["WsConnection", "close", 'mr_ws.close()']
+]
+
+
+funct mede_jinker() {
+    os.cmd("rm -f '" + TMP + "/r.txt'")
+    fonte = SRV
+    conta = {}
+    for each marca in SRV_BLOCOS.keys() {
+        fonte = fonte.replace(marca, bloco(SRV_BLOCOS[marca]))
+        conta = esperadas(SRV_BLOCOS[marca], conta)
+    }
+    os.writeFile(TMP + "/srv.pr", troca(ANOTA) + troca(fonte))
+    os.cmd("cd '" + TMP + "' && setsid timeout 120 '" + POOL + "' '" + TMP + "/srv.pr' > '" + TMP + "/srv.out' 2>&1 &")
+    saida = roda_programa("cliente", troca(ANOTA) + troca(CLIENTE_PREP) + "\n" + bloco(CLIENTE) + "\n", "", "/dev/null")
+    os.cmd("pkill -f '" + TMP + "/srv.pr'")
+    conta = esperadas(CLIENTE, conta)
+    srv_saida = ""
+    if os.exists(TMP + "/srv.out") {
+        srv_saida = os.readFile(TMP + "/srv.out").strip()
+    }
+    colhe("jinker", conta, saida + " | servidor: " + srv_saida)
+}
+
+
+# ── SMTP e IMAP falsos (os de teste/e2e/mail_local.pr) ──────────────────────
+CERT = TMP + "/cert.pem"
+CHAVE = TMP + "/key.pem"
+CAIXA = TMP + "/caixa.txt"
+
+
+funct sobe_mail(script) {
+    os.cmd("rm -f '" + CAIXA + "'")
+    os.cmd("setsid python3 '" + REPO + "/" + script + "' 0 '" + CERT + "' '" + CHAVE + "' '" + CAIXA
+           + "' > '" + TMP + "/mail_srv.log' 2>&1 &")
+    i = 0
+    while i < 100 {
+        if os.exists(CAIXA) {
+            prim = os.readFile(CAIXA).split("\n")[0].split()
+            if len(prim) > 1 {
+                return int(prim[1])
+            }
+        }
+        sleep(0.1)
+        i = i + 1
+    }
+    return 0
+}
+
+
+funct mede_mail() {
+    global ERROS
+    os.cmd("openssl req -x509 -newkey rsa:2048 -keyout '" + CHAVE + "' -out '" + CERT
+           + "' -days 2 -nodes -subj '/CN=localhost' > /dev/null 2>&1")
+    porta = sobe_mail("teste/smtp_falso.py")
+    if porta == 0 {
+        addEnd(ERROS, "mail: o SMTP falso nao subiu")
+        return 0
+    }
+    roda_grupo({
+        "nome": "MailServer (SMTP falso)",
+        "env": "PS_MAIL_TLS_INSEGURO=1",
+        "prep": "import mail\nmr_s = mail.MailServer()\n",
+        "chamadas": [
+            ["MailServer", "conn", 'mr_s.conn("127.0.0.1", ' + str(porta) + ')'],
+            ["MailServer", "login", 'mr_s.login("teste@local", "segredo123")'],
+            ["!", 'mr_m = mail.MailMessage()'],
+            ["!", 'mr_m.from_address("teste@local")'],
+            ["!", 'mr_m.to("destino@local")'],
+            ["!", 'mr_m.subject("s")'],
+            ["!", 'mr_m.body("b")'],
+            ["MailServer", "send", 'mr_s.send(mr_m)'],
+            ["MailServer", "quit", 'mr_s.quit()']
+        ]
+    })
+    os.cmd("pkill -f '" + CAIXA + "'")
+    porta = sobe_mail("teste/imap_falso.py")
+    if porta == 0 {
+        addEnd(ERROS, "mail: o IMAP falso nao subiu")
+        return 0
+    }
+    roda_grupo({
+        "nome": "MailReader (IMAP falso)",
+        "env": "PS_MAIL_TLS_INSEGURO=1",
+        "prep": "import mail\nmr_r = mail.MailReader()\n",
+        "chamadas": [
+            ["MailReader", "conn", 'mr_r.conn("127.0.0.1", ' + str(porta) + ')'],
+            ["MailReader", "login", 'mr_r.login("teste@local", "segredo123")'],
+            ["MailReader", "select", 'mr_r.select("INBOX")'],
+            ["MailReader", "search", 'mr_r.search("ALL")'],
+            ["MailReader", "body", 'mr_r.body("2")'],
+            ["MailReader", "close", 'mr_r.close()']
+        ]
+    })
+    os.cmd("pkill -f '" + CAIXA + "'")
+    return 0
+}
+
+
+# ── valores de modulo (`sockets.AF_INET`, `sys.argv`...) ───────────────────
+funct mede_valores(meta, feitos) {
+    imports = []
+    chamadas = []
+    for each mod in meta["modulos"].keys() {
+        if not ("." in mod) and mod != "Parsing" {
+            addEnd(imports, "import " + mod)
+        }
+        for each mb in meta["modulos"][mod] {
+            if mb["kind"] != "value" {
+                continue
+            }
+            if (mod + "|" + mb["nome"]) in feitos {
+                continue
+            }
+            addEnd(chamadas, [mod, mb["nome"], mod + "." + mb["nome"]])
+        }
+    }
+    roda_grupo({"nome": "valores de modulo", "prep": "\n".join(imports) + "\n", "chamadas": chamadas})
 }
 
 
 if __name__ == "main" {
-    TMP = "/tmp/ps_mede_retorno"
-    META = TMP + "/meta.json"
-    SAIDA = "vm/retornos_medidos.inc"
-    LINHAS = []
+    confere = "--confere" in sys.argv
     os.mkdir(TMP, exist_ok=true)
-    os.cmd("'" + sys.executable + "' --metadata > " + META)
+    os.mkdir(TMP + "/bin", exist_ok=true)
+    POOL = os.run(["readlink", "-f", sys.executable], capture=true).strip()
+    os.cmd("'" + POOL + "' --metadata > " + META)
+    meta = json.parse(os.readFile(META))
+    # `os.code` abre o editor do sistema: aqui ele acha um `code` de mentira
+    # no PATH do grupo, e a medicao nao abre janela nenhuma.
+    os.writeFile(TMP + "/bin/code", "#!/bin/sh\nexit 0\n")
+    os.run(["chmod", "+x", TMP + "/bin/code"], capture=true)
+    qrcode.make("x").save(PNG)
 
-    alvos = []
-    for each a in sys.argv[1:] {   # sys.argv[0] é o nome do script
-        addEnd(alvos, a)
+    feitos = {}
+    for each g in GRUPOS {
+        esperadas(g["chamadas"], feitos)
     }
-    if len(alvos) == 0 {
-        alvos = ["str", "list", "dict", "tup", "byte"]
+    for each marca in SRV_BLOCOS.keys() {
+        esperadas(SRV_BLOCOS[marca], feitos)
     }
-    ok = 0
-    faltou = 0
-    for each t in alvos {
-        r = mede_tipo(t)
-        ok = ok + r[0]
-        faltou = faltou + r[1]
+    esperadas(CLIENTE, feitos)
+    # os grupos de mail montam as chamadas na hora (a porta so existe depois)
+    for each m in ["conn", "login", "send", "quit"] {
+        feitos["MailServer|" + m] = 1
     }
-    ok = ok + mede_modulos()
+    for each m in ["conn", "login", "select", "search", "body", "close"] {
+        feitos["MailReader|" + m] = 1
+    }
 
-    cab = ["/* GERADO por scripts/mede_retornos.pr — NAO edite a mao.",
-           " *",
-           " * Tipo de retorno de cada metodo de tipo, MEDIDO: o script chama o membro",
-           " * num receptor de exemplo e anota o `type()` do que voltou. Roda de novo",
-           " * quando um retorno mudar de proposito:",
-           " *",
-           " *     ./pool scripts/mede_retornos.pr",
-           " *",
-           " * Quem devolve o VALOR GUARDADO (d.get, l.pop) fica de fora, com comentario:",
-           " * ali o tipo e o do conteudo, e fixar um seria a amostra falando pelo motor.",
-           " */"]
-    tudo = "\n".join(cab + LINHAS) + "\n"
-    os.writeFile(SAIDA, tudo)
+    for each t in AMOSTRAS.keys() {
+        mede_tipo(t, meta, feitos)
+    }
+    mede_valores(meta, feitos)
+    for each g in GRUPOS {
+        post("medindo:", g["nome"])
+        roda_grupo(g)
+    }
+    post("medindo: jinker de pe")
+    mede_jinker()
+    post("medindo: mail")
+    mede_mail()
+
+    # ── cobertura: publicado x medido ───────────────────────────────────────
+    publicados = {}
+    for each mod in meta["modulos"].keys() {
+        for each mb in meta["modulos"][mod] {
+            publicados[mod + "|" + mb["nome"]] = mb.get("retorna")
+        }
+    }
+    for each t in meta["tipos"].keys() {
+        for each mb in meta["tipos"][t] {
+            publicados[t + "|" + mb["nome"]] = mb.get("retorna")
+        }
+    }
+    for each b in meta["builtins"] {
+        publicados["builtins|" + b["nome"]] = b.get("retorna")
+    }
+    for each chave in publicados.keys() {
+        if not (chave in RES) and not (chave in NAO_RETORNA) {
+            addEnd(ERROS, chave + ": publicado no --metadata e nao medido")
+        }
+    }
+    finais = {}
+    for each chave in RES.keys() {
+        if not (chave in publicados) {
+            addEnd(ERROS, chave + ": medido, mas o --metadata nao publica esse membro")
+            continue
+        }
+        if chave in VARIA {
+            if len(RES[chave]) < 2 {
+                addEnd(ERROS, chave + ": marcado como variavel, mas as amostras deram so " + RES[chave][0])
+                continue
+            }
+            finais[chave] = "*"
+        }
+        else {
+            finais[chave] = "|".join(RES[chave])
+        }
+    }
+
+    diferentes = []
+    for each chave in sorted(finais.keys()) {
+        declarado = publicados.get(chave)
+        if declarado != finais[chave] {
+            addEnd(diferentes, chave.replace("|", ".").ljust(40) + " publicado: " + str(declarado) + "  medido: " + finais[chave])
+        }
+    }
+
+    if len(ERROS) > 0 {
+        post("")
+        post("NAO GRAVADO —", len(ERROS), "problema(s):")
+        for each e in ERROS {
+            post("  ", e)
+        }
+        sys.exit(1)
+    }
+
     post("")
-    post("gravado em", SAIDA, "—", ok, "medidos,", faltou, "nao medidos")
+    post("medidos:", len(finais.keys()), "| publicado diferente do medido:", len(diferentes))
+    for each d in diferentes {
+        post("  ", d)
+    }
+    if confere {
+        sys.exit(1 if len(diferentes) > 0 else 0)
+    }
+
+    # Ordem de bytes de "dono membro": e a do `strcmp` em par (dono, membro),
+    # que o `bsearch` de vm/ps_retornos.c usa. O espaco vem antes de qualquer
+    # caractere de nome, entao `sys` fica antes de `sys.stdout`.
+    ordem = {}
+    for each chave in finais.keys() {
+        ordem[chave.replace("|", " ")] = chave
+    }
+    linhas = ["/* GERADO por scripts/mede_retornos.pr — NAO edite a mao.",
+              " *",
+              " * Tipo de retorno de cada nativo, MEDIDO: o script chama o membro num programa",
+              " * de verdade (com os servicos de teste de pe) e anota o `type()` do que voltou.",
+              " *   \"a|b\"  o tipo muda com o argumento ou com o estado; cada lado foi medido",
+              " *   \"*\"    e o tipo do conteudo guardado; duas amostras provaram que varia",
+              " * Ordenado por (dono, membro) em ordem de bytes: vm/ps_retornos.c faz bsearch.",
+              " *",
+              " *     ./pool scripts/mede_retornos.pr",
+              " */"]
+    for each k in sorted(ordem.keys()) {
+        chave = ordem[k]
+        partes = chave.split("|")
+        addEnd(linhas, "    { \"" + partes[0] + "\", \"" + partes[1] + "\", \"" + finais[chave] + "\" },")
+    }
+    os.writeFile(SAIDA, "\n".join(linhas) + "\n")
+    post("gravado em", SAIDA)
 }

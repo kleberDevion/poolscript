@@ -3,7 +3,7 @@
 Copia um arquivo de um caminho pra outro. O original permanece.
 
 ```
-os.copy(src: str, dst: str) -> None
+os.copy(src: str, dst: str) -> Null
 ```
 
 | Parâmetro | O que é |

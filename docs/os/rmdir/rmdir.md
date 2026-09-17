@@ -3,7 +3,7 @@
 Remove uma pasta.
 
 ```
-os.rmdir(path: str, force: bool = false) -> None
+os.rmdir(path: str, force: bool = false) -> Null
 ```
 
 | Parâmetro | Padrão | O que é |

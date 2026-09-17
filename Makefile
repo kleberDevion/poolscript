@@ -44,7 +44,7 @@ PGLIBFLAG := $(if $(PGLIB),-L$(PGLIB),)
 PGSTATIC  := $(if $(wildcard $(PGLIB)/libpgcommon_shlib.a),-lpgcommon_shlib -lpgport_shlib,-lpgcommon -lpgport)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/poolscript_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/poolscript_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -57,7 +57,7 @@ FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
 MK := $(lastword $(MAKEFILE_LIST))
 
 # `retornos_medidos.inc` é GERADO (scripts/mede_retornos.pr) e incluído pelo
-# `poolscript_vm.c`. Sem ele nesta lista, regerar o .inc não recompilava nada:
+# `ps_retornos.c`. Sem ele nesta lista, regerar o .inc não recompilava nada:
 # o make olhava só os .c, via tudo em dia, e o binário seguia com a tabela
 # velha — a medição nova ficava no arquivo sem chegar no `--metadata`.
 pool: $(FONTES) $(VM)/ps_versao.h $(VM)/retornos_medidos.inc $(MK)

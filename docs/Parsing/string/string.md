@@ -18,6 +18,11 @@ Parsing.string(42)                            # "42"
 
 Com `to_type`, pode já converter pra número no fim (`"int"`, `"flo"`).
 
+## Retorno
+
+`str` — ou `int`/`flo` quando `to_type` é `int`/`flo`. Qualquer outro alvo
+devolve `str`.
+
 ---
 
 ## Relacionados

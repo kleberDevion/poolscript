@@ -7,7 +7,7 @@ programa com valor vindo do usuário. Por padrão só roda; com `capture=true`,
 devolve a saída como texto.
 
 ```
-os.run(args: list | str, capture: bool = false) -> str | Null
+os.run(args: list | str, capture: bool = false) -> int | str
 ```
 
 | Parâmetro | Padrão | O que é |
@@ -47,7 +47,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["pool", "--version"], capture=true)
-post(versao)                        # "PoolScript 15.91.6 [PSVM]"
+post(versao)                        # "PoolScript 15.91.7 [PSVM]"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige

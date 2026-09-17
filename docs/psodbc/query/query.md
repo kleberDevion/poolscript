@@ -4,7 +4,7 @@ Atalho **só pra SQLite** (arquivo local). Faz a consulta e já devolve os dados
 prontos, sem você abrir cursor manualmente.
 
 ```
-psodbc.query(base: str, cmd=None, table: str = "") -> list | None | DbConnection
+psodbc.query(base: str, cmd=None, table: str = "") -> list | Null | DbConnection
 ```
 
 | Parâmetro | O que é |

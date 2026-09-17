@@ -55,6 +55,7 @@
 #include "ps_mongo.h"
 #include "ps_jinker.h"
 #include "ps_debug.h"
+#include "ps_retornos.h"
 #include "ps_gmp_min.h"
 #include <poll.h>
 #include <sys/epoll.h>
@@ -27160,137 +27161,49 @@ void ps_set_argv(int argc, char **argv)
  * introspectava a stdlib do interpretador, o que prendia o editor a ele —
  * e podia divergir do que a VM realmente aceita. */
 
-/* Tipo de RETORNO de cada membro que devolve um objeto — é o que faz o
- * editor encadear `conn = psodbc.connect()` -> `conn.cursor()` ->
- * `fetchall()`. Fica aqui, no motor, porque o tooling não pode depender
- * de introspectar a stdlib do interpretador (que vai deixar de existir).
- * Membro que não aparece nesta tabela devolve tipo primitivo ou desconhecido. */
-static const struct { const char *dono; const char *membro; const char *tipo; } RETORNOS[] = {
-    /* Os metodos de tipo entram MEDIDOS, de `vm/retornos_medidos.inc`: o
-     * script chama cada um e anota o `type()` do que voltou. Antes desta
-     * inclusao a tabela so tinha quem devolve OBJETO (era feita pro editor
-     * encadear `conn.cursor().fetchall()`), e `--metadata` publicava retorno
-     * pra 69 de 513 membros — doc, hover e auditor ficavam sem fonte, cada um
-     * chutando o seu. */
-#include "retornos_medidos.inc"
+/* O tipo de RETORNO de cada membro vem de `ps_retorno_de` (vm/ps_retornos.c),
+ * a tabela MEDIDA por scripts/mede_retornos.pr — a mesma que o compilador
+ * consulta. Aqui ela só é publicada. */
 
-    { "ChannelManager", "emit", "ChannelStatus" },
-    { "CorsConfig", "options", "list[str]" },
-    { "CorsConfig", "origins", "list[str]" },
-    { "CorsConfig", "permiser", "list[str]" },
-    { "DbConnection", "cursor", "DbCursor" },
-    { "JinkerResponse", "header", "JinkerResponse" },
-    { "JinkerResponse", "json", "JinkerResponse" },
-    { "JinkerResponse", "send", "JinkerResponse" },
-    { "JinkerResponse", "status", "JinkerResponse" },
-    { "ManpuFile", "save", "ManpuResult" },
-    { "ManpuFile", "write", "ManpuResult" },
-    { "MongoConnection", "collection", "MongoCollection" },
-    { "PoolConnection", "cursor", "PoolCursor" },
-    { "PoolConnection", "execute", "PoolCursor" },
-    { "PoolFile", "copy", "PoolFile" },
-    { "PoolFile", "move", "PoolFile" },
-    { "PoolFile", "save", "PoolFile" },
-    { "PoolFileUpload", "move", "PoolFileUpload" },
-    { "PoolFileUpload", "save", "PoolFileUpload" },
-    { "PoolQRCode", "make_image", "QRImage" },
-    { "QRImage", "resize", "QRImage" },
-    { "QRImage", "save", "QRImage" },
-    { "QRImage", "to_file", "QRPoolFile" },
-    { "Response", "content_type", "Response" },
-    { "SocketEmitter", "emit", "ChannelStatus" },
-    { "SocketEmitter", "status_send", "ChannelStatus" },
-    { "SocketNamespace", "emit", "ChannelStatus" },
-    { "SocketNamespace", "status_send", "ChannelStatus" },
-    { "jinker", "Jinker", "Jinker" },
-    { "jinker", "JinkerRequest", "JinkerRequest" },
-    { "jinker", "JinkerResponse", "JinkerResponse" },
-    { "jinker", "cors", "CorsConfig" },
-    /* `jinker.request` é o proxy da requisição corrente. Sem esta linha ele
-     * saía com `retorna: null` e o editor não sabia o que oferecer depois do
-     * ponto em `jinker.request.` */
-    { "jinker", "request", "RequestProxy" },
-    { "jinker", "jsonify", "JinkerResponse" },
-    { "jinker", "render", "JinkerResponse" },
-    { "mail", "MailMessage", "MailMessage" },
-    { "mail", "MailReader", "MailReader" },
-    { "mail", "MailServer", "MailServer" },
-    { "manpu", "open", "ManpuFile" },
-    { "manpu", "remove", "ManpuResult" },
-    { "manpu", "write", "ManpuResult" },
-    { "os", "PoolFile", "PoolFile" },
-    { "os", "loadFile", "PoolFile" },
-    /* I19: as 13 entradas de `db`, `mp`, `qr` e `requests` sairam junto com
-     * os apelidos — eram tipo de retorno declarado pra modulo que nao
-     * existe mais, e iam direto pro hover do editor. */
-    { "psodbc", "connect", "DbConnection" },
-    { "qrcode", "QRCode", "PoolQRCode" },
-    { "qrcode", "make", "QRImage" },
-    { "regex", "compile", "Pattern" },
-    { "regex", "escape", "str" },
-    { "regex", "sub", "str" },
-    { "request", "delete", "Response" },
-    { "request", "get", "Response" },
-    { "request", "head", "Response" },
-    { "request", "patch", "Response" },
-    { "request", "post", "Response" },
-    { "request", "put", "Response" },
-    { "request", "ws_connect", "WsConnection" },
-    { "sockets", "create_connection", "socket" },
-    { "sockets", "create_server", "socket" },
-    { "sockets", "socket", "socket" },
-    { "sqlite3", "connect", "PoolConnection" },
-};
-#define N_RETORNOS ((int)(sizeof(RETORNOS) / sizeof(RETORNOS[0])))
-
-static const char *retorno_de(const char *dono, const char *membro)
-{
-    for (int i = 0; i < N_RETORNOS; i++)
-        if (!strcmp(RETORNOS[i].dono, dono) && !strcmp(RETORNOS[i].membro, membro))
-            return RETORNOS[i].tipo;
-    return NULL;
-}
-
-/* CAMPOS lidos sem parênteses (`cur.rowcount`, `resp.status`, `f.name`…).
- * Não estão nas tabelas METODOS_* porque o OP_GET_MEMBER os resolve por
- * strcmp direto; sem registrá-los aqui, o autocomplete do editor não os
- * enxergava. Mesma ideia do RETORNOS: o motor é a fonte. */
-/* Campos (acesso SEM parênteses) que o metadata publica. Cada entrada aqui é
- * uma PROMESSA ao editor: se o motor não serve o campo, o autocomplete oferece
- * algo que estoura em "membro inexistente". Sete entradas fantasma já viveram
- * aqui (MailMessage.msg, MailServer.server/user, MailReader.folder/server/user
- * e Jinker.route_prefix — este último é argumento do CONSTRUTOR, não campo).
- * O `teste/confere_metadata.pr` acessa cada um de verdade; entrada fantasma
- * derruba a checagem. */
-static const struct { const char *dono; const char *campo; const char *tipo; } CAMPOS[] = {
-    { "ChannelManager", "status", NULL },
-    { "DbCursor", "rowcount", "int" },
-    { "Jinker", "channel", NULL },
-    { "Jinker", "name", NULL },
-    { "Jinker", "socket", NULL },
-    { "Jinker", "static_folder", NULL },
-    { "Jinker", "static_url", NULL },
-    { "JinkerResponse", "status_code", NULL },
-    { "Pattern", "pattern", "str" },
-    { "PoolCursor", "lastrowid", NULL },
-    { "PoolCursor", "rowcount", "int" },
-    { "PoolFile", "ext", NULL },
-    { "PoolFile", "name", NULL },
-    { "PoolFile", "size", NULL },
-    { "PoolFileUpload", "content_type", NULL },
-    { "PoolFileUpload", "ext", NULL },
-    { "PoolFileUpload", "name", NULL },
-    { "PoolFileUpload", "size", NULL },
-    { "QRImage", "name", NULL },
-    { "RequestProxy", "headers", NULL },
-    { "RequestProxy", "method", NULL },
-    { "RequestProxy", "path", NULL },
-    { "Response", "content", "byte" },
-    { "Response", "filename", "str" },
-    { "Response", "ok", "bool" },
-    { "Response", "size", "int" },
-    { "Response", "status_code", "int" },
-    { "Response", "text", "str" },
+/* Campos (acesso SEM parênteses: `cur.rowcount`, `resp.status`, `f.name`) que
+ * o metadata publica. Não estão nas tabelas METODOS_* porque o OP_GET_MEMBER
+ * os resolve por strcmp direto; sem registrá-los aqui, o autocomplete do
+ * editor não os enxergava. Cada entrada é uma PROMESSA ao editor: se o motor
+ * não serve o campo, o autocomplete oferece algo que estoura em "membro
+ * inexistente". Sete entradas fantasma já viveram aqui (MailMessage.msg,
+ * MailServer.server/user, MailReader.folder/server/user e Jinker.route_prefix
+ * — este último é argumento do CONSTRUTOR, não campo). O
+ * `teste/confere_metadata.pr` acessa cada um de verdade; entrada fantasma
+ * derruba a checagem. O tipo do campo também é o medido. */
+static const struct { const char *dono; const char *campo; } CAMPOS[] = {
+    { "ChannelManager", "status" },
+    { "DbCursor", "rowcount" },
+    { "Jinker", "channel" },
+    { "Jinker", "name" },
+    { "Jinker", "socket" },
+    { "Jinker", "static_folder" },
+    { "Jinker", "static_url" },
+    { "JinkerResponse", "status_code" },
+    { "Pattern", "pattern" },
+    { "PoolCursor", "lastrowid" },
+    { "PoolCursor", "rowcount" },
+    { "PoolFile", "ext" },
+    { "PoolFile", "name" },
+    { "PoolFile", "size" },
+    { "PoolFileUpload", "content_type" },
+    { "PoolFileUpload", "ext" },
+    { "PoolFileUpload", "name" },
+    { "PoolFileUpload", "size" },
+    { "QRImage", "name" },
+    { "RequestProxy", "headers" },
+    { "RequestProxy", "method" },
+    { "RequestProxy", "path" },
+    { "Response", "content" },
+    { "Response", "filename" },
+    { "Response", "ok" },
+    { "Response", "size" },
+    { "Response", "status_code" },
+    { "Response", "text" },
 };
 #define N_CAMPOS ((int)(sizeof(CAMPOS) / sizeof(CAMPOS[0])))
 
@@ -27428,7 +27341,7 @@ void ps_metadata_json(FILE *saida)
             fprintf(f, ", \"kind\": \"%s\", \"params\": ",
                     m->eh_valor ? "value" : "function");
             jm_params(f, m->params);
-            const char *ret = retorno_de(MODULOS[i].nome, m->nome);
+            const char *ret = ps_retorno_de(nome_vis, m->nome);
             fprintf(f, ", \"retorna\": ");
             if (ret) jm_txt(f, ret); else fprintf(f, "null");
             fputc('}', f);
@@ -27473,7 +27386,7 @@ void ps_metadata_json(FILE *saida)
             jm_txt(f, TABELAS[t][k].nome);
             fprintf(f, ", \"params\": ");
             jm_params(f, TABELAS[t][k].params);
-            const char *ret = retorno_de(rotulo, TABELAS[t][k].nome);
+            const char *ret = ps_retorno_de(rotulo, TABELAS[t][k].nome);
             fprintf(f, ", \"retorna\": ");
             if (ret) jm_txt(f, ret); else fprintf(f, "null");
             fputc('}', f);
@@ -27494,7 +27407,7 @@ void ps_metadata_json(FILE *saida)
                 jm_txt(f, nome);
                 fprintf(f, ", \"params\": ");
                 jm_params(f, TABELAS[T_MET_PFILE][k].params);
-                const char *ret = retorno_de(rotulo, nome);
+                const char *ret = ps_retorno_de(rotulo, nome);
                 fprintf(f, ", \"retorna\": ");
                 if (ret) jm_txt(f, ret); else fprintf(f, "null");
                 fputc('}', f);
@@ -27505,7 +27418,8 @@ void ps_metadata_json(FILE *saida)
             fprintf(f, ",\n   {\"nome\": ");
             jm_txt(f, CAMPOS[k].campo);
             fprintf(f, ", \"kind\": \"property\", \"params\": [], \"retorna\": ");
-            if (CAMPOS[k].tipo) jm_txt(f, CAMPOS[k].tipo); else fprintf(f, "null");
+            const char *ret = ps_retorno_de(CAMPOS[k].dono, CAMPOS[k].campo);
+            if (ret) jm_txt(f, ret); else fprintf(f, "null");
             fputc('}', f);
         }
         fprintf(f, "\n  ]");
@@ -27534,6 +27448,9 @@ void ps_metadata_json(FILE *saida)
         jm_txt(f, BUILTINS[i].nome);
         fprintf(f, ", \"params\": ");
         jm_params(f, BUILTINS[i].params);
+        const char *ret = ps_retorno_de("builtins", BUILTINS[i].nome);
+        fprintf(f, ", \"retorna\": ");
+        if (ret) jm_txt(f, ret); else fprintf(f, "null");
         fputc('}', f);
     }
     /* As exceções, com o pai: é a tabela que o `catch` consulta, e é dela que

@@ -5,7 +5,7 @@ Lê uma **variável de ambiente**. É como você pega segredos e configuração
 de um arquivo `.env`.
 
 ```
-os.getenv(key: str, default: any = None) -> str | default
+os.getenv(key: str, default: any = None) -> str | Null | default
 ```
 
 | Parâmetro | Padrão | O que é |

@@ -1097,6 +1097,25 @@ async function main() {
     const l4 = resp(m4, 45) && resp(m4, 45).result && resp(m4, 45).result.signatures[0] ? resp(m4, 45).result.signatures[0].label : '';
     conf('signatureHelp com literal de bytes como receptor (b"x".decode()', l4.startsWith('byte.decode('), l4);
   }
+  /* O `retorna` é MEDIDO e tem três formas: tipo, união (`str|Null`) e `*`
+   * (tipo do conteúdo). A união aparece inteira no hover; o `*` não é nome de
+   * tipo e não aparece; e o encadeamento segue pelo lado que tem membros. */
+  {
+    const src = 'import os\n'                                // 0
+              + 'import json\n'                              // 1
+              + 'import jinker\n'                            // 2
+              + 'a = os.getenv("X")\n'                       // 3  getenv@7
+              + 'b = json.parse("{}")\n'                     // 4  parse@9
+              + 'jinker.request.file("f").\n';               // 5
+    const m = await conversa(src, [hov(50, 3, 8), hov(51, 4, 10), compl(52, 5, 25)]);
+    conf('hover de nativo com retorno em uniao mostra os dois lados (os.getenv -> str|Null)',
+         valor(m, 50).includes('-> str|Null'), valor(m, 50));
+    conf('hover de nativo cujo retorno e o conteudo (json.parse) nao mostra `-> *`',
+         valor(m, 51).includes('json.parse(') && !valor(m, 51).includes('->'), valor(m, 51));
+    const l = rotulos(resp(m, 52));
+    conf('completion apos retorno `PoolFileUpload|Null` segue pelo PoolFileUpload',
+         l.includes('save') && l.includes('content_type'), l.slice(0, 8));
+  }
 
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
