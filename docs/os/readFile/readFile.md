@@ -14,6 +14,7 @@ O `encoding` diz em que charset o arquivo **está gravado** — a leitura decodi
 dele para o texto da linguagem:
 
 ```ps
+import os
 post(os.readFile("legado.txt", encoding="latin-1"))   # café, com o acento certo
 ```
 

@@ -5,7 +5,14 @@ Registra uma rota que responde **só a PUT** — o
 tem `methods=`: o verbo é o membro.
 
 É um membro do objeto [`Jinker`](../Jinker/Jinker.md), então na prática se
-escreve `@app.put(...)`, com `app` sendo a sua aplicação.
+escreve `@app.put(...)`, com `app` sendo a sua aplicação. Os exemplos
+pressupõem:
+
+```ps contexto
+import jinker
+from jinker import jsonify, request
+app = jinker.Jinker(__name__)
+```
 
 ```ps
 model Perfil() {

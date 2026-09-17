@@ -14,6 +14,14 @@ resp.status_code = 201  -> grava (não devolve nada)
 **`int`** — o código HTTP que a resposta vai carregar. Um `JinkerResponse`
 recém-criado nasce em `200`.
 
+Os exemplos pressupõem:
+
+```ps contexto
+from jinker import JinkerResponse, jsonify
+lista = []
+funct registra_falha(codigo) { post(codigo) }
+```
+
 ```ps
 r = JinkerResponse()
 post(r.status_code)        # 200

@@ -140,6 +140,12 @@ struct Unidade {
     SimInfo *sim;
     SimInfo *mod_sim;
     int32_t  cap_mod_sim;
+    /* Todo nome que ESTA funct liga (parâmetro, atribuição, `for each`,
+     * `catch`, import...), em qualquer ponto do corpo — é o que diz, antes de
+     * rodar, que um nome lido aqui existe. Vazio no módulo (lá vale o
+     * conjunto do arquivo, em `C`). */
+    char   **ligados;
+    int32_t  nligados, cap_ligados;
     /* O tipo de retorno escrito (`str funct f()`), canônico, e o nome da
      * funct pra mensagem. NULL = sem tipo. */
     const char *tipo_ret_nome;
@@ -233,7 +239,9 @@ typedef struct {
      * de compilar qualquer statement — o `liga_o_nome` de um laço que vem
      * ANTES do import já precisa saber se o `*` liga `range`. */
     const PSResolvedor *resolve;
-    struct { PSNode *no; char **nomes; int32_t n; int resolvido; } *estrelas;
+    /* `incompleto`: resolvido, mas um ciclo de `*` cortou a lista — o resto
+     * dos nomes só existe rodando, e o checador não pode negar nome nenhum */
+    struct { PSNode *no; char **nomes; int32_t n; int resolvido; int incompleto; } *estrelas;
     int32_t  nestrelas;
     /* o statement de topo do arquivo sendo compilado agora: `*` só vale nele */
     PSNode  *stmt_topo;
@@ -251,6 +259,15 @@ typedef struct {
      * antes de compilar: uma funct compilada antes de `x = 1` já precisa
      * saber que o `x` de fora é int (a escrita dela cai nele). */
     struct { const char *nome; SimInfo s; } *topo;
+    /* Todo nome que o ARQUIVO liga no escopo dele, em qualquer bloco, mais o
+     * que uma funct grava com `global x`. `nomes_incertos`: algum `import *`
+     * não se resolveu, e aí não dá pra dizer que um nome não existe. */
+    char   **ligados_mod;
+    int32_t  nligados_mod, cap_ligados_mod;
+    int      nomes_incertos;
+    /* o arquivo importa o jinker: `request` e `channel` são injetados quando
+     * o app sobe */
+    int      usa_jinker;
     int32_t  ntopo, cap_topo;
     /* Toda Entity, model e enum do arquivo, em qualquer profundidade, por
      * nome — é o que diz se um nome de tipo existe e quem herda de quem. */
@@ -1064,8 +1081,10 @@ static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
  * `i2`). É a mesma emissão em qualquer posição (funct solta, em cima de
  * classe, dentro de classe). O valor fica no topo da pilha: é o decorador a
  * quem o OP_DECORA entrega a funct. */
+static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde);
 static void emite_decorador_expr(C *c, Unidade *u, PSNode *dec)
 {
+    tp_confere_nome(c, u, dec->lista.itens[0]->texto, dec);
     carrega_nome(c, u, dec->lista.itens[0]->texto);
     for (int32_t i = 1; i < dec->lista.n; i++)
         emite(c, u, OP_GET_MEMBER,
@@ -1432,9 +1451,11 @@ static int tp_conta_utf8(const char *s, int32_t n)
 }
 
 /* Um tipo `d` (sem união) aceita um valor de tipo `v` (sem união)?
- * `declarado` = a regra do tipo ESCRITO; senão, a do tipo fixado pela
- * primeira atribuição. `no` é o valor, quando se tem: literal diz mais que o
- * tipo (`int` promete 64 bits, `char` é um caractere). */
+ * `declarado`: 0 = a regra do tipo fixado pela primeira atribuição; 1 = a do
+ * tipo ESCRITO; 2 = tipo escrito numa DECLARAÇÃO (`char c = 64` é o
+ * caractere daquele codepoint — regra dele, só ali; em retorno, parâmetro e
+ * campo `char` é um caractere de texto). `no` é o valor, quando se tem:
+ * literal diz mais que o tipo (`int` promete 64 bits, `char` é um caractere). */
 static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int declarado)
 {
     if (strcmp(v, "Null") == 0) return declarado ? T_NAO : T_SIM;
@@ -1455,9 +1476,9 @@ static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int decl
                            ? T_SIM : T_NAO;
                 return T_TALVEZ;
             }
-            /* inteiro vira o caractere daquele codepoint — e o intervalo só
-             * rodando (`char c = -1` é ConversionError) */
-            if (strcmp(v, "int") == 0 || strcmp(v, "bool") == 0) return T_TALVEZ;
+            /* na declaração, inteiro vira o caractere daquele codepoint — e
+             * o intervalo só rodando (`char c = -1` é ConversionError) */
+            if (strcmp(v, "int") == 0 || strcmp(v, "bool") == 0) return declarado == 2 ? T_TALVEZ : T_NAO;
             return T_NAO;
         }
         if (strcmp(d, "Object") == 0) {
@@ -1605,6 +1626,122 @@ static void tp_sombra_devolve(C *c, Unidade *u, const char *nome, int posto, con
     if (s && !tp_eh_topo(c, s)) *s = *fora;
     c->grava.tem_valor = 1;
     c->grava.tipo = fora->estado ? fora->tipo : "Null";
+}
+
+/* Os nomes que `n` liga NESTE escopo. O nome de uma funct aninhada conta; o
+ * corpo dela e o da lambda são outro escopo. Cada forma que liga nome entra
+ * — a mesma lista do `liga_o_nome`, mais o que o compilador liga sozinho
+ * (`e` do catch sem nome, `self`/`_count`/`_index`/`_match` do `count each`). */
+static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *cap)
+{
+    if (!n) return;
+    switch (n->kind) {
+        case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT: case N_LIST_COMP:
+        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL: case N_USING_STMT:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            break;
+        case N_CATCH_CLAUSE:
+            junta_nomes(c, v, cnt, cap, n->texto ? n->texto : "e");
+            break;
+        case N_MATCH_PATTERN:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            junta_nomes(c, v, cnt, cap, n->texto2);
+            break;
+        case N_COUNT_EACH_STMT:
+            junta_nomes(c, v, cnt, cap, "self");
+            junta_nomes(c, v, cnt, cap, "_count");
+            junta_nomes(c, v, cnt, cap, "_index");
+            junta_nomes(c, v, cnt, cap, "_match");
+            break;
+        case N_UNPACK_TARGET:
+            for (int32_t i = 0; i < n->lista.n; i++)
+                if (n->lista.itens[i] && n->lista.itens[i]->kind == N_NAME)
+                    junta_nomes(c, v, cnt, cap, n->lista.itens[i]->texto);
+            break;
+        case N_ACTION_DECL:
+            junta_nomes(c, v, cnt, cap, n->texto);
+            return;                          /* o corpo é outro escopo */
+        case N_LAMBDA_EXPR:
+            return;
+        case N_IMPORT_STMT: {
+            if (n->texto3) {                 /* `*`: os nomes que o módulo exporta */
+                int achou = 0;
+                for (int32_t e = 0; e < c->nestrelas; e++) {
+                    if (c->estrelas[e].no != n) continue;
+                    achou = 1;
+                    if (!c->estrelas[e].resolvido || c->estrelas[e].incompleto) c->nomes_incertos = 1;
+                    for (int32_t k = 0; k < c->estrelas[e].n; k++)
+                        junta_nomes(c, v, cnt, cap, c->estrelas[e].nomes[k]);
+                }
+                if (!achou) c->nomes_incertos = 1;
+                return;
+            }
+            char enc[512];
+            if (!(n->i2 > 0 && n->lista.n == 0)) {
+                import_modulo_codificado(n, enc);
+                if (strcmp(enc, "jinker") == 0) c->usa_jinker = 1;
+            }
+            junta_nomes(c, v, cnt, cap, n->texto2);
+            for (int32_t i = 0; i < n->lista2.n; i++) {
+                const char *apelido = (i < n->lista2_alias.n && n->lista2_alias.itens[i])
+                                    ? n->lista2_alias.itens[i]->texto : n->lista2.itens[i]->texto;
+                junta_nomes(c, v, cnt, cap, apelido);
+            }
+            if (n->lista2.n == 0 && !n->texto2 && n->texto && strcmp(n->texto, "from") != 0) {
+                char base[256];
+                import_nome_do_arquivo(n, base, sizeof(base));
+                junta_nomes(c, v, cnt, cap, base);
+            }
+            return;
+        }
+        default:
+            break;
+    }
+    tp_junta_ligados(c, n->a, v, cnt, cap);
+    tp_junta_ligados(c, n->b, v, cnt, cap);
+    tp_junta_ligados(c, n->c, v, cnt, cap);
+    tp_junta_ligados(c, n->e, v, cnt, cap);
+    for (int32_t i = 0; i < n->lista.n; i++)  tp_junta_ligados(c, n->lista.itens[i], v, cnt, cap);
+    for (int32_t i = 0; i < n->lista2.n; i++) tp_junta_ligados(c, n->lista2.itens[i], v, cnt, cap);
+}
+
+/* `global x` em qualquer funct do arquivo: a escrita cria o nome no arquivo. */
+static void tp_junta_globais(C *c, PSNode *n)
+{
+    if (!n) return;
+    if (n->kind == N_GLOBAL_STMT)
+        for (int32_t i = 0; i < n->lista.n; i++)
+            junta_nomes(c, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod, n->lista.itens[i]->texto);
+    tp_junta_globais(c, n->a);
+    tp_junta_globais(c, n->b);
+    tp_junta_globais(c, n->c);
+    tp_junta_globais(c, n->e);
+    for (int32_t i = 0; i < n->lista.n; i++)  tp_junta_globais(c, n->lista.itens[i]);
+    for (int32_t i = 0; i < n->lista2.n; i++) tp_junta_globais(c, n->lista2.itens[i]);
+}
+
+static int tp_na_lista(char **v, int32_t n, const char *nome)
+{
+    for (int32_t i = 0; i < n; i++)
+        if (strcmp(v[i], nome) == 0) return 1;
+    return 0;
+}
+
+/* O nome lido existe em algum lugar? A funct e as que a envolvem, o arquivo,
+ * o campo `static` da classe em compilação, o que a VM liga sozinha e o que o
+ * jinker injeta. Nome que nada disso liga é `NameError` certo rodando — e
+ * sai antes: uma `int funct` engolia esse erro e o programa terminava calado,
+ * com `rc=0`, sem nunca ter feito o que devia. */
+static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
+{
+    if (!nome || !*nome || c->nomes_incertos) return;
+    for (Unidade *q = u; q; q = q->pai)
+        if (tp_na_lista(q->ligados, q->nligados, nome)) return;
+    if (tp_na_lista(c->ligados_mod, c->nligados_mod, nome)) return;
+    if (c->entity_no && campo_estatico_da_classe(c, nome)) return;
+    if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return;
+    if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return;
+    terro(c, onde, "NameError", "name '%s' is not defined", nome);
 }
 
 /* O programa liga `nome` a alguma coisa? Slot reservado só pela leitura
@@ -2112,7 +2249,7 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
         return T_SIM;
     }
     if (!s->tipo) return T_SIM;
-    int v = tp_aceita(c, s->tipo, vt, c->grava.no, s->estado == 2);
+    int v = tp_aceita(c, s->tipo, vt, c->grava.no, s->estado == 2 ? 2 : 0);
     if (v == T_NAO) {
         PSNode *lit = c->grava.no;
         if (s->estado == 2 && !strcmp(s->tipo, "char") && lit && lit->kind == N_LITERAL
@@ -2290,6 +2427,7 @@ static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PS
         if (k < nfix) { marcado[k] = 1; valor[k] = a->a; }
         k++;
     }
+    int kw_errado = 0;
     for (int32_t i = 0; i < call->lista.n; i++) {
         PSNode *a = call->lista.itens[i];
         if (!a->texto) continue;
@@ -2297,12 +2435,16 @@ static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PS
         for (int q = base; q < nfix; q++)
             if (fix[q] && fix[q]->texto && !strcmp(fix[q]->texto, a->texto)) { achou = q; break; }
         if (achou >= 0) { marcado[achou] = 1; valor[achou] = a->a; continue; }
-        if (!tem_kw)
+        if (!tem_kw) {
             terro(c, a, "TypeError", "%s() got an unexpected keyword argument '%s'", nome, a->texto);
+            kw_errado = 1;
+        }
     }
+    /* a VM confere o nomeado errado ANTES do que falta e para nele: a mesma
+     * ordem aqui, senão a primeira frase da lista difere da que sai rodando */
     int faltam = 0;
     for (int q = base; q < nfix; q++) if (!marcado[q] && !fix[q]->a) faltam++;
-    if (faltam > 0) {
+    if (faltam > 0 && !kw_errado) {
         char lista[256];
         tp_lista_faltantes(lista, sizeof(lista), fix + base, marcado + base, nfix - base);
         terro(c, call, "TypeError", "%s() missing %d required positional argument%s: %s",
@@ -2747,6 +2889,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_NAME:
+            tp_confere_nome(c, u, n->texto, n);
             carrega_nome(c, u, n->texto ? n->texto : "");
             return;
 
@@ -3149,6 +3292,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 return;
             }
             const char *nome = n->a->texto ? n->a->texto : "";
+            tp_confere_nome(c, u, nome, n->a);
             carrega_nome(c, u, nome);
             emite(c, u, OP_DUP, 0);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
@@ -3455,9 +3599,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (!tp_tipo_existe(c, u, n->texto2))
                     terro(c, n, "AttributedValueError", "tipo %s não existe (campo %s de %s)", n->texto2, nome, cls);
                 else {
+                    /* declaração: o OP_COERCE_DECL logo abaixo faz o `char` */
                     const char *T = tp_canon(n->texto2);
                     const char *vt = tp_de(c, u, n->a);
-                    if (tp_aceita(c, T, vt, n->a, 1) == T_NAO)
+                    if (tp_aceita(c, T, vt, n->a, 2) == T_NAO)
                         terro(c, n->a, "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
                               nome, cls, T, vt);
                 }
@@ -3489,6 +3634,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 char base[3] = { op[0], '\0', '\0' };
                 int32_t opc = op_binario(base);
                 if (opc < 0) { cerro_sx(c, n, "operador de atribuicao invalido"); return; }
+                tp_confere_nome(c, u, n->texto, n);
                 carrega_nome(c, u, n->texto ? n->texto : "");
                 expr(c, u, n->a);
                 emite(c, u, opc, 0);
@@ -4177,8 +4323,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
 
             /* empilha os pais na ordem declarada */
-            for (int32_t i = 0; i < n->lista2.n; i++)
+            for (int32_t i = 0; i < n->lista2.n; i++) {
+                tp_confere_nome(c, u, n->lista2.itens[i]->texto, n->lista2.itens[i]);
                 carrega_nome(c, u, n->lista2.itens[i]->texto ? n->lista2.itens[i]->texto : "");
+            }
             emite(c, u, OP_MAKE_CLASS, ci);
             memset(&c->grava, 0, sizeof(c->grava));
             c->grava.tem_valor = 1;
@@ -4828,6 +4976,8 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
     free(u.sim); free(u.mod_sim);
+    for (int32_t i = 0; i < u.nligados; i++) free(u.ligados[i]);
+    free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
@@ -4873,6 +5023,10 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     /* método de Entity: o `self` é da classe — é o que confere `self.campo`
      * e `self.metodo()` antes de rodar */
     int self_da_classe = !pai && c->dentro_entity && c->entity_no && c->entity_no->texto;
+    /* os nomes que esta funct liga: parâmetros e o corpo inteiro */
+    for (int32_t i = 0; i < n->lista.n; i++)
+        junta_nomes(c, &u.ligados, &u.nligados, &u.cap_ligados, n->lista.itens[i]->texto);
+    tp_junta_ligados(c, n->b, &u.ligados, &u.nligados, &u.cap_ligados);
 
     /* Os parâmetros ocupam os primeiros slots, na ordem escrita. O parser
      * garante a ordem comuns → `*args` → `**kwarg`, então os FIXOS são os
@@ -5047,6 +5201,8 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
     free(u.sim); free(u.mod_sim);
+    for (int32_t i = 0; i < u.nligados; i++) free(u.ligados[i]);
+    free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
@@ -5158,6 +5314,8 @@ static void tp_pre_passada(C *c, PSNode *programa)
 {
     if (!programa) return;
     tp_coleta_tipos_arq(c, programa);
+    tp_junta_ligados(c, programa, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod);
+    tp_junta_globais(c, programa);
     Unidade mod;
     memset(&mod, 0, sizeof(mod));
     mod.eh_modulo = 1;
@@ -5242,8 +5400,9 @@ static void resolve_estrelas(C *c, PSNode *programa)
         if (s->i2 > 0 && s->lista.n == 0) continue;    /* o compilador recusa */
         char enc[512];
         import_modulo_codificado(s, enc);
-        c->estrelas[e].resolvido =
-            c->resolve->nomes_de(c->resolve->ctx, enc, &c->estrelas[e].nomes, &c->estrelas[e].n) == 1;
+        int r = c->resolve->nomes_de(c->resolve->ctx, enc, &c->estrelas[e].nomes, &c->estrelas[e].n);
+        c->estrelas[e].resolvido = r >= 1;
+        c->estrelas[e].incompleto = r == 2;
     }
 }
 
@@ -5305,6 +5464,8 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     for (int32_t i = 0; i < c.ntpool; i++) free(c.tpool[i]);
     free(c.tpool);
     free(c.topo);
+    for (int32_t i = 0; i < c.nligados_mod; i++) free(c.ligados_mod[i]);
+    free(c.ligados_mod);
     free(c.tipos_arq);
 
     for (int32_t e = 0; e < c.nestrelas; e++) {
@@ -5320,6 +5481,8 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
     free(u.sim); free(u.mod_sim);
+    for (int32_t i = 0; i < u.nligados; i++) free(u.ligados[i]);
+    free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);

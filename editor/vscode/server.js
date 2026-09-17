@@ -1067,13 +1067,20 @@ function diagnostica(doc) {
   });
 
   if (!r.ok) {
-    const linha = Math.max(0, (r.linha || 1) - 1);
-    const col = Math.max(0, (r.coluna || 1) - 1);
-    diags.unshift({
-      severity: DiagnosticSeverity.Error,
-      range: { start: { line: linha, character: col }, end: { line: linha, character: col + 1 } },
-      message: `${r.tipo}: ${r.msg}`,
-      source: 'poolscript',
+    /* A tipagem estática lista TODOS os erros do arquivo em `erros` (o
+     * primeiro também vem nos campos de cima). Erro de sintaxe é um só. */
+    const lista = Array.isArray(r.erros) && r.erros.length
+      ? r.erros
+      : [{ tipo: r.tipo, msg: r.msg, linha: r.linha, coluna: r.coluna }];
+    lista.slice().reverse().forEach((e) => {
+      const linha = Math.max(0, (e.linha || 1) - 1);
+      const col = Math.max(0, (e.coluna || 1) - 1);
+      diags.unshift({
+        severity: DiagnosticSeverity.Error,
+        range: { start: { line: linha, character: col }, end: { line: linha, character: col + 1 } },
+        message: `${e.tipo}: ${e.msg}`,
+        source: 'poolscript',
+      });
     });
   }
   conexao.sendDiagnostics({ uri: doc.uri, diagnostics: diags });

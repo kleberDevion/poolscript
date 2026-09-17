@@ -242,6 +242,7 @@ depuração real.
 Se você quer comparar **valor e tipo**, compare o tipo junto:
 
 ```ps
+x = 0
 if x == 0 and type(x) == "int" {
     # só entra com int 0, não com 0.0 nem false
 }
@@ -490,6 +491,7 @@ verdadeira, senão o da direita do `else`. Associa à direita, então dá pra
 encadear:
 
 ```ps
+n = 42
 sinal = "positivo" if n > 0 else "não-positivo"
 
 faixa = "alto" if n > 100 else "médio" if n > 10 else "baixo"

@@ -16,6 +16,7 @@ sequência final. Com `str`, o texto (que a linguagem guarda em UTF-8) é
 convertido para o charset pedido:
 
 ```ps
+import os
 os.writeFile("legado.txt", "café", encoding="latin-1")
 post(os.size("legado.txt"))     # 4 bytes — em utf-8 seriam 5
 ```

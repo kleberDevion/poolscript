@@ -174,6 +174,8 @@ Prefixado com `static`, o campo pertence à **classe**: é avaliado **uma vez**,
 quando a classe é declarada, e existe antes de qualquer instância.
 
 ```ps
+import jinker
+
 class App() {
     public static object mapp = jinker.Jinker(__name__)
 
@@ -194,10 +196,10 @@ regra da cabeça de funct:
 
 ```ps
 class Config() {
-    static object a = 1
-    private static object b = 2
-    private object static c = 3      # o `static` depois do tipo também vale
-    object static private d = 4
+    static int a = 1
+    private static int b = 2
+    private int static c = 3         # o `static` depois do tipo também vale
+    int static private d = 4
 }
 post(Config.a, Config.d)             # 1 4
 ```

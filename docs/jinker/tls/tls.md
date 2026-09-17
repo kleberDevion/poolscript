@@ -3,6 +3,12 @@
 Como servir o jinker em **https://** e como fazer o navegador parar de marcar
 como "não seguro".
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+from jinker import Jinker
+```
+
 Ligar HTTPS é uma linha:
 
 ```ps

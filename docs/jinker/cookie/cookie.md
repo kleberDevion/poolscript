@@ -14,6 +14,21 @@ request.cookie(nome) -> str | Null
 
 ## Gravar
 
+Os exemplos desta página pressupõem este contexto (o `app`, e as três functs
+que são do seu programa — validar a senha, emitir o token, dizer quem é o
+dono de uma sessão):
+
+```ps contexto
+import jinker
+from jinker import request
+
+app = jinker.Jinker("auth")
+token = "t-1"
+funct gera_token(usuario) { return "t-" + str(usuario) }
+funct quem_e(sid) { return "ana" }
+funct valida_senha(usuario, senha) { return 1 }
+```
+
 ```ps
 import jinker
 from jinker import request

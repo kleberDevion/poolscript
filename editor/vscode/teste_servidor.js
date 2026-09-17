@@ -324,6 +324,20 @@ async function main() {
     conf('programa valido nao gera diagnostico', !ultimo || ultimo.params.diagnostics.length === 0,
          ultimo && ultimo.params.diagnostics);
   }
+  /* A tipagem estática acha TODOS os erros do arquivo antes de rodar e o
+   * `--check` os lista em `erros`: cada um vira um diagnóstico, na linha dele. */
+  {
+    const m = await conversa('str s = 10\nint n = "a"\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const ultimo = ds[ds.length - 1];
+    const lista = ultimo ? ultimo.params.diagnostics : [];
+    conf('todos os erros de tipo do arquivo viram diagnostico, um por linha',
+         lista.length === 2 && lista[0].message.includes('variável s esperava str')
+           && lista[0].range.start.line === 0
+           && lista[1].message.includes('variável n esperava int')
+           && lista[1].range.start.line === 1,
+         lista.map((d) => d.range.start.line + ': ' + d.message));
+  }
 
   /* ── 9. AVISO (nao erro) vira sublinhado amarelo ───────────────────────── */
   {

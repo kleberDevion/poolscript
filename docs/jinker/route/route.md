@@ -77,6 +77,10 @@ entrada: o corpo é conferido **antes** de a funct rodar, e corpo torto vira
 `422` dizendo qual campo e por quê.
 
 ```ps
+import jinker
+from jinker import request
+app = jinker.Jinker(__name__)
+
 model Usuario() {
     nome: str(length=20)
     idade: int

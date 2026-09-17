@@ -53,6 +53,7 @@ ninguém previu — não há lista consultada.
 | não tem | `str` (o texto) |
 
 ```ps
+import os
 config = os.loadFile("config.json")     # dict → config["versao"]
 tabela = os.loadFile("dados.csv")       # lista de dicts
 texto  = os.loadFile("leiame.txt")      # str

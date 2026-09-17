@@ -5,8 +5,10 @@ try {
     post("capturou: " {e})
 }
 
+# (nome que nao existe e erro ANTES de rodar, nao ha catch que pegue; o que
+# o catch pega e o erro que so acontece rodando, como um indice fora da lista)
 try {
-    y = lista_inexistente[0]
+    y = [1, 2][5]
 } catch (e) {
     post("tambem capturou: " {e})
 }

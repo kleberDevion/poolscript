@@ -47,6 +47,13 @@ Menos de 2 ou mais de 8 argumentos é `TypeError`:
 Por isso encadeia, e cada chamada **acrescenta** um cookie em vez de
 substituir o anterior:
 
+Os exemplos pressupõem:
+
+```ps contexto
+from jinker import JinkerResponse
+token = "t-1"
+```
+
 ```ps
 return JinkerResponse()
        .json({"ok": true})

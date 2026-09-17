@@ -19,7 +19,9 @@ if len(sys.argv) > 2 {
 
 
 
-bool funct mainter()
+# Sem tipo na funct: uma `bool funct` só pode dar saída de bool, e esta
+# imprime o caminho achado.
+funct mainter()
 {
     try {
         if (target and sys.platform() == 'windows' and target.contains('.')) {

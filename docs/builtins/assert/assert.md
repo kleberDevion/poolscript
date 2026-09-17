@@ -18,6 +18,9 @@ código escrito em PoolScript sem montar a checagem à mão.
 ## As três formas
 
 ```ps
+x = 0
+funct soma(a, b) { return 5 }
+
 assert(x > 0)                         # falhou -> AssertionError: 0 nao e verdadeiro
 assert(x > 0, "saldo tem que ser positivo")
 assert(soma(2, 2), 4, "soma de dois")  # falhou -> AssertionError: soma de dois — veio 5, esperava 4
@@ -41,6 +44,7 @@ mensagem não tem como dizer o que veio. Recebendo os dois lados, ela diz.
   parar na primeira.
 
 ```ps
+casos = [{"veio": 4, "esperado": 4, "nome": "soma"}, {"veio": 5, "esperado": 4, "nome": "outra"}]
 falhas = 0
 for each caso in casos {
     try { assert(caso["veio"], caso["esperado"], caso["nome"]) }

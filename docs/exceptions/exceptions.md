@@ -127,6 +127,8 @@ Exception
 Pegar por família, em vez de listar filho por filho:
 
 ```ps
+import os
+caminho = "dados.txt"
 try {
     conteudo = os.readFile(caminho)
 } catch (OSError e) {
@@ -138,6 +140,8 @@ try {
 **mais específico primeiro** — o `catch` tenta na ordem em que você escreveu:
 
 ```ps
+import os
+caminho = "dados.txt"
 try {
     conteudo = os.readFile(caminho)
 } catch (FileNotFoundError e) {

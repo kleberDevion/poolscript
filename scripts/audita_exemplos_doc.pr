@@ -2,7 +2,7 @@
 #
 # POR QUE ESTE ARQUIVO EXISTE: o `audita_doc.pr` confere a ASSINATURA do título
 # de cada página contra o `--metadata`. Ninguém conferia o CÓDIGO dentro das
-# páginas. O resultado é que `docs/linguagem/06-funcoes.md` ainda apresenta
+# páginas. O resultado é que `docs/linguagem/06-funcoes.md` ainda apresentava
 #
 #     int async funct f():   ...
 #
@@ -15,18 +15,30 @@
 #
 # ESCOPO: só as cercas marcadas ```ps / ```poolscript. As cercas SEM marcação
 # misturam saída de terminal, JSON e shell — incluir tudo daria achado inventado,
-# que é pior que achado nenhum. Marcar as cercas restantes é trabalho separado,
-# e este auditor passa a cobri-las de graça no dia em que forem marcadas.
+# que é pior que achado nenhum.
+#
+# O `--check` é a tipagem estática inteira: nome que não existe, tipo errado,
+# chamada errada, tudo sai antes de rodar. Duas coisas decorrem disso:
+#
+#   - CONTEXTO. Uma página cujos exemplos pressupõem algo (`app` já criado,
+#     `import jinker`) escreve isso num bloco com a cerca ```ps contexto. Ele é
+#     conferido como qualquer bloco e vai na frente de todo bloco SEGUINTE da
+#     mesma página. É o "os exemplos abaixo pressupõem" escrito em código,
+#     visível pra quem lê e usado por quem confere — nada escondido.
+#
+#   - ERRO MOSTRADO DE PROPÓSITO. Um bloco que existe pra mostrar um erro
+#     (`# AttributedValueError: ...`) só passa se o erro que ele ANUNCIA é o
+#     que o motor dá. Antes esses blocos eram pulados; agora são conferidos:
+#     doc que promete um erro e o motor dá outro é doc errada.
+#
+# O único bloco que não se confere é o fragmento com `...` — e ele sai
+# nomeado, pra revisão humana.
 import os
 import sys
+import json
 
 RAIZ = "docs"
 TMP = "/tmp/ps_audita_doc"
-
-# Bloco que é FRAGMENTO de propósito (continuação com "...") ou que MOSTRA um
-# erro de propósito (`// SyntaxError: ...`) não é defeito. A lista é por
-# CONTEÚDO, não por número de linha — linha anda no primeiro commit.
-IGNORA_SE_TEM = ["...", "SyntaxError"]
 
 
 funct lista_md(dir) {
@@ -50,57 +62,50 @@ funct lista_md(dir) {
 # Essa indentação é do markdown, não do código: mantê-la faria o auditor acusar
 # "indentacao deve ser multiplo de 4" num exemplo correto — achado inventado.
 funct recuo(linha) {
-    n = 0
-    while n < linha.len() and linha[n] == " " {
-        n = n + 1
+    r_n = 0
+    while r_n < linha.len() and linha[r_n] == " " {
+        r_n = r_n + 1
     }
-    return n
+    return r_n
 }
 
 
+# Cada bloco: linha da cerca, código e se é o CONTEXTO da página.
 funct blocos_ps(txt) {
-    blocos = []
-    dentro = false
-    atual = []
-    ini = 0
-    margem = 0
-    n = 0
+    b_blocos = []
+    b_dentro = false
+    b_atual = []
+    b_ini = 0
+    b_margem = 0
+    b_contexto = false
+    b_n = 0
     for each linha in txt.splitlines() {
-        n = n + 1
+        b_n = b_n + 1
         limpa = linha.strip()
-        if dentro {
+        if b_dentro {
             if limpa == "```" {
-                addEnd(blocos, {"linha": ini, "codigo": "\n".join(atual)})
-                dentro = false
-                atual = []
+                addEnd(b_blocos, {"linha": b_ini, "codigo": "\n".join(b_atual), "contexto": b_contexto})
+                b_dentro = false
+                b_atual = []
             }
             else {
-                if recuo(linha) >= margem {
-                    addEnd(atual, linha[margem:linha.len()])
+                if recuo(linha) >= b_margem {
+                    addEnd(b_atual, linha[b_margem:linha.len()])
                 }
                 else {
-                    addEnd(atual, limpa)
+                    addEnd(b_atual, limpa)
                 }
             }
         }
-        elif limpa == "```ps" or limpa == "```poolscript" {
-            dentro = true
-            ini = n
-            margem = recuo(linha)
-            atual = []
+        elif limpa == "```ps" or limpa == "```poolscript" or limpa == "```ps contexto" {
+            b_dentro = true
+            b_ini = b_n
+            b_margem = recuo(linha)
+            b_atual = []
+            b_contexto = (limpa == "```ps contexto")
         }
     }
-    return blocos
-}
-
-
-funct ignora(codigo) {
-    for each marca in IGNORA_SE_TEM {
-        if marca in codigo {
-            return true
-        }
-    }
-    return false
+    return b_blocos
 }
 
 
@@ -114,36 +119,89 @@ funct confere(codigo) {
 }
 
 
+# O tipo do erro que o `--check` devolveu ("" se passou ou se a saída não é o
+# JSON do check — aí a mensagem inteira vale como tipo, pra não passar calado).
+funct tipo_do_erro(resposta) {
+    if resposta.startswith("{") {
+        r = json.parse(resposta)
+        if r["ok"] {
+            return ""
+        }
+        return r["tipo"]
+    }
+    return resposta
+}
+
+
 os.mkdir(TMP, exist_ok=true)
 lista = "--lista" in sys.argv
 
+# os nomes de erro da linguagem — do motor, não de lista digitada
+os.cmd("'" + sys.executable + "' --metadata > " + TMP + "/meta.json")
+NOMES_DE_ERRO = []
+for each e in json.parse(os.readFile(TMP + "/meta.json"))["excecoes"] {
+    addEnd(NOMES_DE_ERRO, e["nome"])
+}
+addEnd(NOMES_DE_ERRO, "SyntaxError")
+
 total = 0
+anunciados = 0
 pulados = []
 achados = []
 
 for each md in lista_md(RAIZ) {
+    contexto = ""
     for each b in blocos_ps(os.readFile(md)) {
-        if ignora(b["codigo"]) {
+        if "..." in b["codigo"] {
             addEnd(pulados, md + ":" + str(b["linha"]))
             continue
         }
         total = total + 1
-        resposta = confere(b["codigo"])
-        if "\"ok\":false" in resposta {
-            addEnd(achados, {"arq": md, "linha": b["linha"], "msg": resposta, "codigo": b["codigo"]})
+        codigo = b["codigo"]
+        resposta = ""                  # nasce aqui: o que nasce no `if` morre com ele
+        if b["contexto"] {
+            # o contexto se confere sozinho (com o que veio antes dele) e passa
+            # a valer pros blocos seguintes da página
+            resposta = confere(contexto + codigo)
+            contexto = contexto + codigo + "\n"
         }
+        else {
+            resposta = confere(contexto + codigo)
+        }
+        tipo = tipo_do_erro(resposta)
+        if tipo == "" {
+            continue
+        }
+        # erro mostrado de propósito: o bloco anuncia o erro que o motor deu
+        if tipo in codigo {
+            anunciados = anunciados + 1
+            continue
+        }
+        # o bloco anuncia OUTRO erro: a doc promete um e o motor dá outro
+        prometido = ""
+        for each nome in NOMES_DE_ERRO {
+            if nome in codigo {
+                prometido = nome
+            }
+        }
+        msg = resposta
+        if prometido != "" {
+            msg = "a pagina anuncia " + prometido + ", o motor da " + tipo + ": " + resposta
+        }
+        addEnd(achados, {"arq": md, "linha": b["linha"], "msg": msg, "codigo": codigo})
     }
 }
 
 post("blocos ```ps conferidos:", total)
+post("  dos quais mostram um erro de proposito, e o motor da ESSE erro:", anunciados)
 # Nada de corte silencioso: o que ficou de fora sai NOMEADO, pra revisão humana.
-post("blocos pulados (fragmento com '...' ou erro mostrado de propósito — confira à mão):", pulados.len())
+post("blocos pulados (fragmento com '...' — confira à mão):", pulados.len())
 for each p in pulados {
     post("  " + p)
 }
 
 if achados.len() == 0 {
-    post("  todos analisam sem erro de sintaxe")
+    post("  todos passam no --check (ou anunciam o erro que o motor da)")
     sys.exit(0)
 }
 
@@ -160,7 +218,8 @@ for each a in achados {
     }
 }
 post("")
-post("Exemplo que o motor recusa é doc errada. Corrija a página — ou, se o")
-post("bloco é fragmento de propósito, marque-o de um jeito que este auditor")
-post("reconheça, com o motivo escrito.")
+post("Exemplo que o motor recusa é doc errada. Corrija a página; se o bloco")
+post("pressupõe algo (um `app` já criado, um import), escreva isso num bloco")
+post("```ps contexto acima dele; se ele mostra um erro de propósito, o nome do")
+post("erro tem que estar no bloco, e tem que ser o erro que o motor dá.")
 sys.exit(1)

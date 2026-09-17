@@ -127,8 +127,8 @@ Entity P() { nome: str }   # campo tipado
 ## Tipos e variáveis
 
 ```
-x = 10                 # não-tipada — dinâmica, tipo pode mudar depois
-str nome = "Pool"       # tipada — só aceita valor desse tipo (ou conversível)
+x = 10                 # sem tipo escrito — o tipo fica fixado na 1ª atribuição
+str nome = "Pool"       # tipada — só aceita valor desse tipo
 int idade = 20
 flo altura = 1.75
 bool ativo = true
@@ -397,9 +397,10 @@ funct saudacao(nome="Visitante") {   # parâmetro com default
 }
 ```
 
-**Tipo de retorno opcional** (`int`/`bool`) muda o comportamento em caso de
-erro dentro da função — em vez de propagar a exceção, devolve um valor
-"sentinela" (útil para handlers HTTP-like):
+**Tipo de retorno** (`str funct`, `int funct`, `Pessoa funct`…): todo `return`
+e toda saída (`post`, stdout, arquivo) da funct têm que ser desse tipo —
+conferido antes de rodar. `int`/`bool` têm, além disso, o sentinela de erro:
+em vez de propagar a exceção, devolvem um valor (útil para handlers HTTP-like):
 
 ```
 int funct f() { return 1 / 0 }

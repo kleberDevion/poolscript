@@ -1,4 +1,4 @@
-# PoolScript v15.91.7
+# PoolScript v15.91.8
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.91.7 [PSVM]
+# PoolScript 15.91.8 [PSVM]
 ```
 
 ---
@@ -20,10 +20,13 @@ pool build          # roda todos os .pr da pasta atual
 
 ---
 
-## Só checar a sintaxe (sem rodar)
+## Só checar (sem rodar)
 
-`--check` analisa o arquivo (lexer + parser) e **não executa nada** — é o que
-um editor/LSP usa pra sublinhar erro enquanto você digita. OBS.: O a checagem de erro e sempre de cima pra baixo, caso tenha mais de 1 erro não detecta,e sempre um por '--check'
+`--check` analisa o arquivo (lexer, parser e a **tipagem estática** inteira:
+tipo, nome, aridade, membro) e **não executa nada** — é o que um editor/LSP
+usa pra sublinhar erro enquanto você digita. Erro de sintaxe para na primeira
+linha errada; erro de tipo sai **completo**, com todos os erros do arquivo em
+`erros` (o primeiro também vai nos campos de cima):
 
 ```bash
 pool --check meu_arquivo.pr
@@ -32,8 +35,16 @@ pool --check meu_arquivo.pr
 pool --check com_erro.pr
 # {"ok":false,"tipo":"SyntaxError","msg":"faltou ')' na declaracao da funct","linha":1,"coluna":11}
 
+pool --check tipos_errados.pr
+# {"ok":false,"tipo":"AttributedValueError","msg":"variável s esperava str, recebeu int","linha":1,"coluna":9,
+#  "erros":[{"tipo":"AttributedValueError","msg":"variável s esperava str, recebeu int","linha":1,"coluna":9},
+#           {"tipo":"NameError","msg":"name 'zzz' is not defined","linha":2,"coluna":6}]}
+
 cat meu_arquivo.pr | pool --check     # sem arquivo, lê da entrada padrão
 ```
+
+O mesmo veredito vale ao rodar: `pool arquivo.pr` não executa um programa com
+erro de tipo — lista os erros e sai com código 2.
 
 O campo `ok` diz o veredito, e o **código de saída acompanha**: `0` com
 `{"ok":true}`, `1` com `{"ok":false}`. Quem chama pode olhar qualquer um dos
@@ -624,6 +635,7 @@ import 'ferramentas/kit.pr' as k
 A forma canônica é o operador **`is`**, o mesmo que se usa pra testar nulo:
 
 ```poolscript
+x = 1
 if x is int {
     post("é inteiro")
 }

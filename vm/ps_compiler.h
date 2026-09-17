@@ -219,9 +219,11 @@ typedef struct {
  * `for each`, tipo declarado e reexportação saem da maquinaria de sempre.
  *
  * `nomes_de` recebe o módulo codificado como no OP_IMPORT_MOD e devolve 1 com
- * os nomes (vetor e strings em malloc; o compilador libera), ou 0 quando o
- * módulo não foi achado ou não compila — aí o `*` fica pro runtime dar o
- * ImportError/SyntaxError de sempre na linha do import. */
+ * os nomes (vetor e strings em malloc; o compilador libera), 2 quando a lista
+ * veio INCOMPLETA (um ciclo de `*` cortou a expansão: o resto dos nomes só
+ * existe rodando, então o checador estático não pode dar nome como
+ * inexistente), ou 0 quando o módulo não foi achado ou não compila — aí o `*`
+ * fica pro runtime dar o ImportError/SyntaxError de sempre na linha do import. */
 typedef struct {
     int  (*nomes_de)(void *ctx, const char *modulo, char ***nomes, int32_t *n);
     void  *ctx;

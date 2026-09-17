@@ -20,7 +20,8 @@ str nome = "ana"      # declaração com tipo (checada/coagida em toda escrita)
 ```
 
 - **Simples** (`nome = valor`): o nome recebe o valor e passa a existir; o tipo
-  é o do valor, e pode mudar em outra atribuição.
+  é o do valor, e fica **fixado**: outra atribuição com outro tipo é erro
+  (4.6.4). `Null` não fixa.
 - **Tipada** (`Tipo nome = valor`): o valor é **checado** contra o tipo
   declarado, e tem que já ser dele — nada é convertido (`int x = "7"` é erro,
   como `int x = 5.0`; converter é `int("7")`) — ver a seção 2.6. O tipo fica
@@ -90,6 +91,8 @@ O lado esquerdo pode ser um elemento, um membro ou uma chave:
 l = [1, 2, 3]
 l[0] = 99            # índice de lista
 
+Entity Ponto() { campo: int }
+obj = Ponto(0)
 obj.campo = 10       # membro de Entity (self.x dentro dela)
 
 d = { "nome": "ana" }
@@ -120,11 +123,18 @@ e as cadeias deles (`o.d["k"]`). É o que faz a troca do bubble sort caber numa
 linha:
 
 ```ps
+lista = [3, 1, 2]
+c = 0
 lista[c], lista[c + 1] = lista[c + 1], lista[c]
 
 d = {}
 d["a"], d["b"] = 1, 2       # {'a': 1, 'b': 2}
 
+Entity P() {
+    x: int
+    y: int
+}
+o = P(0, 0)
 o.x, o.y = 5, 6             # dois membros de uma Entity
 ```
 
@@ -162,6 +172,11 @@ usá-la depois — ela não existe fora do bloco. Declare
 o nome **antes** do bloco (aí a atribuição dentro dele é write-through, 4.6.2):
 
 ```ps
+linha = "  texto  "
+em_codigo = true
+funct troca(s) { return s.upper() }
+funct ajusta(s) { return s.strip() }
+
 novo = linha            # declarada FORA
 if em_codigo {
     novo = troca(linha)
@@ -216,27 +231,42 @@ post(i)              # NameError: name 'i' is not defined (i não vaza do for)
 `break` e `continue` respeitam isso: ao sair (ou reiniciar), o que nasceu no
 laço é descartado.
 
-### 4.6.4. O tipo declarado é da variável — tipagem estática
+### 4.6.4. O tipo é da variável — tipagem estática
 
 `Tipo nome = valor` fixa o tipo da **variável**, não só do valor inicial: toda
 escrita posterior nela é conferida pela mesma regra da criação (tipo exato, sem
 conversão — seção 2.6). Vale para reatribuição, `+=`,
 `for each`, desempacotamento, escrita de dentro de uma funct (§4.7) e
-closure.
+closure. A conferência é **antes de rodar** quando o tipo do valor é
+conhecido, e rodando quando não é (`d["k"]`, `json.parse`) — o programa com
+erro conhecido nem começa.
 
 ```ps
 str s = "oi"
-s = 42              # AttributedValueError: variável s esperava str
+s = 42              # AttributedValueError: variável s esperava str, recebeu int
 
 int n = 1
 n = "7"             # AttributedValueError — "7" é str, não int; escreva int("7")
 ```
 
-Uma variável criada **sem** tipo (`x = 1`) não tem essa restrição: `x = "a"`
-depois dela vale. `Object` é o tipo de qualquer objeto — instância de classe,
-servidor, conexão, arquivo — e é como se declara o que uma lib devolve:
+Uma variável criada **sem** tipo (`x = 1`) tem o tipo **fixado na primeira
+atribuição**, como o `var` do Java: o tipo é o do primeiro valor, e outro tipo
+depois é erro. `Null` não fixa nem conflita — a variável pode começar vazia
+(`x = Null`), receber o valor depois, e voltar a `Null`.
 
 ```ps
+x = 1
+x = "a"             # AttributedValueError: variável x é int (tipo fixado na primeira atribuição), recebeu str
+```
+
+Declarar o mesmo nome de novo com outro tipo também é erro (`int y = 1` e,
+depois, `long y = 2`). `Object` é o tipo de qualquer objeto — instância de
+classe, servidor, conexão, arquivo — e é como se declara o que uma lib devolve:
+
+```ps
+from jinker import Jinker
+Entity Conta() { nome: str }
+
 Object app = Jinker(__name__)
 object c = Conta("ana")      # `object` e `Object` são o mesmo tipo
 Object s = "texto"           # AttributedValueError: variável s esperava Object

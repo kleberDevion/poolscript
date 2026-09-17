@@ -2,30 +2,51 @@
 # fonte e anotando o que o motor responde HOJE.
 #
 #     ./pool scripts/regrava_dif.pr teste/casos_diferencial.c "dif #64" "dif #66" ... --grava
+#     ./pool scripts/regrava_dif.pr teste/casos_linguagem.c --lista nomes.txt --grava
 #
 # Isto é o oposto do que a suíte normalmente permite: regravar expectativa é
-# apagar memória. Só se usa quando o comportamento mudou POR DECISÃO — aqui, a
-# saída do bloco `:` da linguagem — e mesmo assim caso a caso, com o antes e o
-# depois impressos pra conferência.
+# apagar memória. Só se usa quando o comportamento mudou POR DECISÃO — a saída
+# do bloco `:`, e depois o veredito da tipagem estática, que passou a sair
+# ANTES de rodar — e mesmo assim caso a caso, com o antes e o depois impressos
+# pra conferência.
+#
+# O bloco do caso é lido como C DE VERDADE: um leitor de literal (escape por
+# escape, numa passada só) e os campos separados pela vírgula de fora. Antes o
+# fonte era remontado trocando `\n` e `\"` em sequência, o que virava um `\\n`
+# do programa (barra + n) numa quebra de linha; e a expectativa escrita na
+# mesma linha do fim do fonte entrava no programa como texto.
+#
+# A expectativa gravada é a mais forte que o runner confere: stdout EXATO
+# (vazio inclusive), a primeira linha do stderr e o rc real — 1 é erro rodando,
+# 2 é erro antes de rodar. Caso que trava, que morre sem mensagem ou cujo fonte
+# usa macro (DEC_NET) ou escape `\x` não se regrava: sai como RECUSADO.
+#
+# Os nomes de dentro das functs NAO repetem os do bloco principal: escrever num
+# nome que ja existe no modulo escreve NELE (secao 4.6.2) — `n = len(txt)`
+# dentro do leitor mexia no `n` que anda pelas linhas do arquivo.
 import os
 import sys
-import para_chaves
 
 TMP = "/tmp/ps_regrava"
 
 
+# O caso roda numa pasta SO DELE, limpa a cada vez, e a captura fica fora: um
+# caso que escreve `o.txt` (o do slot 299 grava a saida do programa que ele
+# gera) pisava no `o.txt` em que o stdout dele estava sendo capturado.
 funct roda(fonte) {
     os.mkdir(TMP, exist_ok=true)
-    alvo = TMP + "/c.pr"
-    using open(alvo, "w") as f {
-        f.write(fonte)
+    r_pasta = TMP + "/caso"
+    os.cmd("rm -rf '" + r_pasta + "'")
+    os.mkdir(r_pasta)
+    using open(r_pasta + "/c.pr", "w") as r_f {
+        r_f.write(fonte)
     }
-    os.cmd("cd " + TMP + " && GUZER_HEADLESS=1 timeout 20 '" + sys.executable +
-           "' c.pr > o.txt 2> e.txt < /dev/null; echo $? > rc.txt")
-    rc = int(open(TMP + "/rc.txt").read().strip())
-    so = open(TMP + "/o.txt").read()
-    erro = open(TMP + "/e.txt").read().split("\n")[0]
-    return [rc, so, erro]
+    os.cmd("cd '" + r_pasta + "' && GUZER_HEADLESS=1 timeout 20 '" + sys.executable +
+           "' c.pr > ../regrava_out.txt 2> ../regrava_err.txt < /dev/null; echo $? > ../regrava_rc.txt")
+    r_rc = int(open(TMP + "/regrava_rc.txt").read().strip())
+    r_so = open(TMP + "/regrava_out.txt").read()
+    r_erro = open(TMP + "/regrava_err.txt").read().split("\n")[0]
+    return [r_rc, r_so, r_erro]
 }
 
 
@@ -34,22 +55,160 @@ funct escapa_c(s) {
 }
 
 
+funct eh_separador(ch) {
+    return ch == " " or ch == "\n" or ch == "\t" or ch == "\r" or ch == "{" or ch == "}" or ch == "," or ch == "\""
+}
+
+
+# Os tokens de C do bloco de um caso, cada um [tipo, valor, inicio, fim, tem_x]:
+# "str" (literal, já desescapado), "null", "num", "pont" (`{` `}` `,`) ou
+# "outro" (macro como DEC_NET). `fim` é a posição logo depois do token.
+funct tokeniza(txt) {
+    t_toks = []
+    t_pos = 0
+    t_tam = len(txt)
+    while t_pos < t_tam {
+        t_ch = txt[t_pos]
+        if t_ch == " " or t_ch == "\n" or t_ch == "\t" or t_ch == "\r" {
+            t_pos = t_pos + 1
+            continue
+        }
+        if t_ch == "/" and t_pos + 1 < t_tam and txt[t_pos + 1] == "*" {
+            t_fimc = txt.find("*/", t_pos + 2)
+            if t_fimc < 0 {
+                t_fimc = t_tam - 2
+            }
+            t_pos = t_fimc + 2
+            continue
+        }
+        if t_ch == "\"" {
+            t_ini = t_pos
+            t_pos = t_pos + 1
+            t_val = ""
+            t_tem_x = false
+            while t_pos < t_tam and txt[t_pos] != "\"" {
+                if txt[t_pos] == "\\" and t_pos + 1 < t_tam {
+                    t_e = txt[t_pos + 1]
+                    if t_e == "n" {
+                        t_val = t_val + "\n"
+                    }
+                    elif t_e == "t" {
+                        t_val = t_val + "\t"
+                    }
+                    elif t_e == "r" {
+                        t_val = t_val + "\r"
+                    }
+                    elif t_e == "\\" {
+                        t_val = t_val + "\\"
+                    }
+                    elif t_e == "\"" {
+                        t_val = t_val + "\""
+                    }
+                    else {
+                        # `\x..` e o resto: fica como esta; o fonte que tiver
+                        # isso e recusado, porque o programa nao seria o mesmo
+                        if t_e == "x" {
+                            t_tem_x = true
+                        }
+                        t_val = t_val + "\\" + t_e
+                    }
+                    t_pos = t_pos + 2
+                    continue
+                }
+                t_val = t_val + txt[t_pos]
+                t_pos = t_pos + 1
+            }
+            t_pos = t_pos + 1
+            addEnd(t_toks, ["str", t_val, t_ini, t_pos, t_tem_x])
+            continue
+        }
+        if t_ch == "{" or t_ch == "}" or t_ch == "," {
+            addEnd(t_toks, ["pont", t_ch, t_pos, t_pos + 1, false])
+            t_pos = t_pos + 1
+            continue
+        }
+        t_j = t_pos
+        while t_j < t_tam and not eh_separador(txt[t_j]) {
+            t_j = t_j + 1
+        }
+        t_palavra = txt[t_pos:t_j]
+        t_tipo = "outro"
+        if t_palavra == "NULL" {
+            t_tipo = "null"
+        }
+        elif t_palavra.isdigit() or (t_palavra.startswith("-") and t_palavra[1:].isdigit()) {
+            t_tipo = "num"
+        }
+        addEnd(t_toks, [t_tipo, t_palavra, t_pos, t_j, false])
+        t_pos = t_j
+    }
+    return t_toks
+}
+
+
+# Separa os tokens do caso `{ nome, fonte..., saida, erro, rc[, ...] }` nos
+# campos (lista de listas de tokens). Devolve Null se o bloco nao tem a forma.
+funct campos_de(toks) {
+    if len(toks) < 2 or toks[0][0] != "pont" or toks[0][1] != "{" {
+        return Null
+    }
+    c_campos = []
+    c_atual = []
+    c_prof = 0
+    c_k = 1
+    while c_k < len(toks) {
+        c_t = toks[c_k]
+        if c_t[0] == "pont" and c_t[1] == "{" {
+            c_prof = c_prof + 1
+        }
+        elif c_t[0] == "pont" and c_t[1] == "}" {
+            if c_prof == 0 {
+                addEnd(c_campos, c_atual)
+                return c_campos
+            }
+            c_prof = c_prof - 1
+        }
+        elif c_t[0] == "pont" and c_t[1] == "," and c_prof == 0 {
+            addEnd(c_campos, c_atual)
+            c_atual = []
+            c_k = c_k + 1
+            continue
+        }
+        addEnd(c_atual, c_t)
+        c_k = c_k + 1
+    }
+    return Null
+}
+
+
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 2 {
-        post("uso: pool scripts/regrava_dif.pr <casos.c> <nome> ... [--grava]")
+        post("uso: pool scripts/regrava_dif.pr <casos.c> <nome> ... [--lista arquivo] [--grava]")
         sys.exit(1)
     }
     caminho = args[0]
     grava = false
     nomes = []
     i = 0
+    proxima_lista = false
     for each a in args {
         i = i + 1
         if i == 1 {
             continue
         }
-        if a == "--grava" {
+        if proxima_lista {
+            for each l in os.readFile(a).split("\n") {
+                if l.strip() != "" {
+                    nomes.append(l.strip())
+                }
+            }
+            proxima_lista = false
+        }
+        elif a == "--lista" {
+            proxima_lista = true
+        }
+        elif a == "--grava" {
             grava = true
         } else {
             nomes.append(a)
@@ -59,16 +218,16 @@ if __name__ == "main" {
     linhas = open(caminho).read().split("\n")
     saida = []
     trocados = 0
+    recusados = 0
+    achados = {}
     n = 0
-    alvo_ativo = ""
-    fonte_atual = ""
 
     while n < len(linhas) {
         l = linhas[n]
         # cabeçalho de caso: { "nome",
         achou = ""
         for each nome in nomes {
-            if l.startswith("{ \"" + nome + "\",") {
+            if l.startswith("{ \"" + escapa_c(nome) + "\",") {
                 achou = nome
             }
         }
@@ -77,6 +236,7 @@ if __name__ == "main" {
             n = n + 1
             continue
         }
+        achados[achou] = true
 
         # junta o corpo do caso até a linha que fecha com `},`
         bloco = [l]
@@ -89,86 +249,102 @@ if __name__ == "main" {
             bloco.append(linhas[n])
             n = n + 1
         }
-
-        # a ÚLTIMA linha do bloco tem a expectativa; reconstrói o fonte das
-        # linhas do meio (literais C) só pra rodar
-        fonte = ""
-        k = 1
-        while k < len(bloco) {
-            t = bloco[k].strip()
-            if t.startswith("\"") {
-                # tira as aspas e desescapa o mínimo
-                corpo = t
-                if corpo.endswith(",") {
-                    corpo = corpo[0:len(corpo) - 1]
-                }
-                corpo = corpo.strip()
-                if corpo.startswith("\"") and corpo.endswith("\"") {
-                    corpo = corpo[1:len(corpo) - 1]
-                }
-                fonte = fonte + corpo.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
+        txt = "\n".join(bloco)
+        toks = tokeniza(txt)
+        campos = campos_de(toks)
+        if campos == Null or len(campos) < 5 or len(campos[1]) == 0 {
+            post("RECUSADO " + achou + " — bloco fora da forma { nome, fonte, saida, erro, rc }")
+            recusados = recusados + 1
+            for each b in bloco {
+                saida.append(b)
             }
-            k = k + 1
+            continue
+        }
+        fonte = ""
+        ok = true
+        for each t in campos[1] {
+            if t[0] != "str" or t[4] {
+                ok = false
+            }
+            fonte = fonte + t[1]
+        }
+        if not ok {
+            post("RECUSADO " + achou + " — o fonte usa macro ou escape `\\x`: o programa remontado nao seria o mesmo")
+            recusados = recusados + 1
+            for each b in bloco {
+                saida.append(b)
+            }
+            continue
         }
 
         r = roda(fonte)
-        ultima = bloco[len(bloco) - 1]
-        # A expectativa nova tem que ser TÃO FORTE quanto o runner permite.
-        # A versão antiga gravava sempre `NULL, "<erro>", -1` — regravar um
-        # caso de sucesso jogava fora a conferência de stdout E de rc, e um
-        # caso que passasse limpo virava `erro=""`, que o strstr() do runner
-        # casa com qualquer coisa: caso que não verifica nada.
+        # A expectativa nova tem que ser TÃO FORTE quanto o runner permite:
+        # stdout exato, a primeira linha do stderr, e o rc de verdade.
         if r[0] == 124 {
-            post("RECUSADO " + achou + " — o fonte TRAVOU (timeout). Isso nao")
-            post("   se regrava; se investiga.")
-            sys.exit(1)
-        }
-        if r[0] == 0 {
-            # sucesso: stdout exato + rc 0 (o runner tira o \n final)
-            so = r[1]
-            while so.endswith("\n") {
-                so = so[0:len(so) - 1]
+            post("RECUSADO " + achou + " — o fonte TRAVOU (timeout). Isso nao se regrava; se investiga.")
+            recusados = recusados + 1
+            for each b in bloco {
+                saida.append(b)
             }
-            nova = "  \"" + escapa_c(so) + "\", NULL, 0 },"
+            continue
+        }
+        so = r[1]
+        while so.endswith("\n") {
+            so = so[0:len(so) - 1]
+        }
+        campo_saida = "\"" + escapa_c(so) + "\""
+        nova_exp = ""                      # nasce aqui: o que nasce no `if` morre com ele
+        if r[0] == 0 {
+            nova_exp = campo_saida + ", NULL, 0"
         }
         else {
             linha_erro = r[2]
             if linha_erro.strip() == "" {
-                post("RECUSADO " + achou + " — rc=" + str(r[0])
-                     + " sem mensagem no stderr. Expectativa vazia casa com")
-                post("   qualquer coisa; nao ha o que gravar aqui.")
-                sys.exit(1)
-            }
-            # erro: mantém o stdout que saiu ANTES do erro (se houve), a
-            # primeira linha do stderr, e nao amarra o rc (convencao da suite)
-            campo_saida = "NULL"
-            if r[1] != "" {
-                so = r[1]
-                while so.endswith("\n") {
-                    so = so[0:len(so) - 1]
+                post("RECUSADO " + achou + " — rc=" + str(r[0]) + " sem mensagem no stderr. Expectativa vazia casa com qualquer coisa.")
+                recusados = recusados + 1
+                for each b in bloco {
+                    saida.append(b)
                 }
-                campo_saida = "\"" + escapa_c(so) + "\""
+                continue
             }
-            nova = "  " + campo_saida + ", \"" + escapa_c(linha_erro) + "\", -1 },"
+            nova_exp = campo_saida + ", \"" + escapa_c(linha_erro) + "\", " + str(r[0])
         }
+        # o que vem depois do rc (arquivo fixo, pendente) fica como estava
+        ult_fonte = campos[1][len(campos[1]) - 1]
+        fim_fonte = ult_fonte[3]
+        rc_tok = campos[4][len(campos[4]) - 1]
+        k = len(toks) - 1
+        while k >= 0 and not (toks[k][0] == "pont" and toks[k][1] == "}") {
+            k = k - 1
+        }
+        fecha = toks[k]
+        extras = txt[rc_tok[3]:fecha[2]].rstrip()
+        antes = txt[fim_fonte + 1:fecha[2]].strip()
+        novo_txt = txt[0:fim_fonte] + ",\n  " + nova_exp + extras + " }" + txt[fecha[3]:]
         post("REGRAVA " + achou)
-        post("   antes: " + ultima.strip())
-        post("   agora: " + nova.strip())
+        post("   antes: " + antes)
+        post("   agora: " + nova_exp + extras)
         trocados = trocados + 1
-        k = 0
-        while k < len(bloco) - 1 {
-            saida.append(bloco[k])
-            k = k + 1
+        for each b in novo_txt.split("\n") {
+            saida.append(b)
         }
-        saida.append(nova)
     }
 
+    for each nome in nomes {
+        if not (nome in achados) {
+            post("NAO ACHEI " + nome)
+            recusados = recusados + 1
+        }
+    }
     post("")
-    post("casos regravados:", trocados)
-    if grava {
+    post("casos regravados:", trocados, "| recusados:", recusados)
+    if grava and trocados > 0 {
         using open(caminho, "w") as f {
             f.write("\n".join(saida))
         }
         post("gravado.")
+    }
+    if recusados > 0 {
+        sys.exit(1)
     }
 }

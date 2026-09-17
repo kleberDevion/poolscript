@@ -5,7 +5,14 @@ Registra uma rota que responde **só a DELETE** — o
 tem `methods=`: o verbo é o membro.
 
 É um membro do objeto [`Jinker`](../Jinker/Jinker.md), então na prática se
-escreve `@app.delete(...)`, com `app` sendo a sua aplicação.
+escreve `@app.delete(...)`, com `app` sendo a sua aplicação. Os exemplos
+pressupõem:
+
+```ps contexto
+import jinker
+from jinker import jsonify
+app = jinker.Jinker(__name__)
+```
 
 ```ps
 @app.delete("/perfil/<id>")

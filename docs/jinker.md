@@ -187,6 +187,10 @@ o valor. A funct escolhe.
 **1. Declarando o parâmetro** — o valor chega no argumento, casado pelo **nome**:
 
 ```ps
+import jinker
+from jinker import jsonify
+app = jinker.Jinker(__name__)
+
 @app.route("/user:id")            # GET /user/42
 funct perfil(id) {
     return jsonify({"user_id": id}), 200

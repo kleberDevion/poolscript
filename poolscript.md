@@ -1,8 +1,8 @@
 # PoolScript
 
-Linguagem de programação **híbrida (dinâmica/estática)** — a legibilidade do
-Python com a estrutura de blocos do JS/C. O bloco é `{ }`; a indentação é
-estética, não sintaxe.
+Linguagem de programação de **tipagem estática** — a legibilidade do Python,
+a estrutura de blocos do JS/C e a conferência de tipos do Java, antes de rodar.
+O bloco é `{ }`; a indentação é estética, não sintaxe.
 
 Extensão reconhecida em tudo (rodar, importar, `psl install`, `pool build`,
 editor): **`.pr`**. Era `.ps`, `.psl` e `.p`; quem tem arquivo com uma delas
@@ -186,5 +186,5 @@ minhalib`, onde quer que as libs estejam (`POOLSCRIPT_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **15.91.7** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **15.91.8** (a fonte é `vm/ps_versao.h`; `pool --version`
 mostra a do binário).

@@ -28,6 +28,7 @@ erro — dá pra usar `raise` sozinho, como uma parada com mensagem.
 ## 10.2. `try` / `catch` / `finally`
 
 ```ps
+entrada = "abc"
 try {
     n = int(entrada)
 } catch (ValueError e) {
@@ -79,6 +80,10 @@ O `catch` tem quatro formas, do mais específico ao mais geral:
 | `catch ()` | **qualquer** erro | — |
 
 ```ps
+funct risco() {
+    raise KeyError("chave")
+}
+
 try {
     risco()
 } catch (KeyError e) {        # só KeyError
@@ -100,7 +105,17 @@ try {
 ## 10.4. Tipos de erro embutidos
 
 Além dos tipos livres que você levanta, a VM usa estes nomes ao reportar
-erros — e você pode capturá-los por tipo:
+erros — e você pode capturá-los por tipo.
+
+O que o compilador já sabe **antes de rodar** sai antes de rodar, e o
+programa não começa — aí não há `catch` que pegue: `NameError` de um nome que
+o arquivo nunca liga, `AttributedValueError` com o valor conhecido
+(`str s = 10`), `TypeError` de aridade numa chamada a funct conhecida,
+`AttributeError` de membro que o tipo não tem (`"abc".m`, `json.naoexiste`),
+`ImportError` de nome que o módulo não exporta. O `catch` pega o **mesmo**
+erro quando ele só acontece rodando: o nome que ainda não recebeu valor, o
+valor que veio de `json.parse` ou de `d["k"]`, a chamada por um nome de tipo
+desconhecido.
 
 A divisão entre eles: **`TypeError`** quando o TIPO está errado,
 **`ValueError`** quando o tipo está certo e o VALOR não serve.
@@ -181,6 +196,7 @@ Observações:
   `AttributeError`, `IndexError`, `KeyError`, `ZeroDivisionError`,
   `OverflowError`, `AttributedValueError`, `ConversionError`, `ImportError`,
   `MemoryError`, `RuntimeError`. `SyntaxError` não é capturável (é de
-  compilação). Índice fora da faixa **levanta** `IndexError` — a linha que
+  compilação) — e o erro de tipo, de nome, de aridade ou de membro que o
+  compilador já sabe também sai antes de rodar, sem `catch` (seção 10.4). Índice fora da faixa **levanta** `IndexError` — a linha que
   dizia "aviso não-fatal (→ `null`)" contradizia a seção 10.4 desta mesma
   página e era resto do comportamento anterior a 28/08.

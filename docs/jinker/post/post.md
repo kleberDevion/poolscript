@@ -47,6 +47,9 @@ nesta página vale pros cinco.
 [`route`](../route/route.md) devolve.
 
 ```ps
+from jinker import Jinker
+app = Jinker(__name__)
+
 reg = app.post("/login")
 post(type(reg))     # _RouteRegistrar
 post(reg)           # <RouteRegistrar ['POST'] /login>

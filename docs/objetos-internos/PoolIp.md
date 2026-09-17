@@ -9,6 +9,7 @@ alcançável**: `type()` nunca devolve `PoolIp`, o nome não aparece em
 Na VM o PoolIp é **configuração**, não objeto. Você liga na criação do app:
 
 ```ps
+from jinker import Jinker
 Object app = Jinker(__name__, oauth={poolip: true, rate: 60, bloq: 1})
 ```
 

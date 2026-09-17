@@ -97,6 +97,9 @@ mesmo vale quando o corpo veio de `save=` — mover apagaria o que você pediu.
 de continuar baixando. Ele **só vale com `stream=true`**:
 
 ```ps
+import request
+url = "https://exemplo.com/arquivo.zip"
+
 request.get(url, stream=true)                    # teto padrão: 100 MB
 request.get(url, stream=true, max_size="500mb")  # teto maior
 request.get(url, stream=true, max_size=2000000)  # em bytes também vale

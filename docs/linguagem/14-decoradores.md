@@ -162,6 +162,9 @@ bibliotecas usam para **registrar** a funct decorada como um handler — o caso
 mais comum é registrar rotas de servidor com o **jinker**:
 
 ```ps
+import jinker
+app = jinker.Jinker(__name__)
+
 @app.route("/usuarios", methods=["GET"])
 funct listar() {
     return { "ok": true }
@@ -309,6 +312,9 @@ só dentro do método de baixo, não no wrapper. Um decorador que esquece o
 primeiro. Com um registrador no meio, a ordem decide o que é registrado:
 
 ```ps
+import jinker
+funct Controller(f) { return f }        # o decorador que envolve (aqui, sem lock)
+
 class Painel() {
     public static object app = jinker.Jinker(__name__)
 
@@ -329,6 +335,16 @@ registrados da classe; sem `self` (ou `static`), a própria funct. O registrador
 não troca o método.
 
 ```ps
+# um registrador seu: `rota(path)` devolve o objeto com `.register(handler)`
+Entity Registro() {
+    funct __init__(self, path) { self.path = path }
+    funct register(self, handler) { post("registrou", self.path) }
+}
+Entity Registrador() {
+    funct rota(self, path) { return Registro(path) }
+}
+r = Registrador()
+
 @r.rota("/funct")
 funct f() { return 1 }             # registra f
 
@@ -351,6 +367,8 @@ existir instância. Por isso o objeto que ele usa precisa ser um campo
 **`static`** (ver [7.4.1](07-entity.md)):
 
 ```ps
+import jinker
+
 class App() {
     public static object mapp = jinker.Jinker(__name__)   # static: existe já na declaração
 

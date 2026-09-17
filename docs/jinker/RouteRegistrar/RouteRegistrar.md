@@ -13,6 +13,14 @@ devolve é ignorado: o nome da funct decorada continua sendo a própria funct
 (é o protocolo geral de decorador, seção 14.4 da linguagem — uma lib sua pode
 oferecer `.register` do mesmo jeito, ou simplesmente devolver uma funct).
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import jinker
+from jinker import jsonify
+app = jinker.Jinker(__name__)
+```
+
 ```ps
 reg = app.get("/x")
 post(type(reg))     # _RouteRegistrar

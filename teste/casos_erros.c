@@ -14,7 +14,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(b=1))\n",
-  "", "f() missing 1 required positional argument: 'a'", 1 },
+  "", "TypeError: f() missing 1 required positional argument: 'a'", 2 },
 
 /* ── `funct` esquecido: a cabeça `{tipo|async}+ NOME(` é UMA unidade ──────
  * Eram três mensagens pro mesmo esquecimento, nenhuma com a palavra que
@@ -49,7 +49,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().m())\n",
-  "", "m() missing 1 required positional argument: 'a'", 1 },
+  "", "TypeError: m() missing 1 required positional argument: 'a'", 2 },
 { "__init__ sem argumento",
   "class C() {\n"
   "    funct __init__(self, a) {\n"
@@ -57,19 +57,19 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "x = C()\n",
-  "", "__init__() missing 1 required positional argument: 'a'", 1 },
+  "", "TypeError: __init__() missing 1 required positional argument: 'a'", 2 },
 { "funct solta sem argumento",
   "funct f(a) {\n"
   "    return a\n"
   "}\n"
   "post(f())\n",
-  "", "f() missing 1 required positional argument: 'a'", 1 },
+  "", "TypeError: f() missing 1 required positional argument: 'a'", 2 },
 { "argumentos demais",
   "funct f(a, b=2) {\n"
   "    return a\n"
   "}\n"
   "post(f(1, 2, 3))\n",
-  "", "f() takes from 1 to 2 positional arguments but 3 were given", 1 },
+  "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 2 },
 
 /* ── argumento nomeado que não existe ── */
 { "nomeado inexistente em funct",
@@ -77,7 +77,7 @@ const Caso CASOS_ERROS[] = {
   "    return a\n"
   "}\n"
   "post(f(1, c=2))\n",
-  "", "TypeError: f() got an unexpected keyword argument 'c'", 1 },
+  "", "TypeError: f() got an unexpected keyword argument 'c'", 2 },
 { "nomeado inexistente em método",
   "class C() {\n"
   "    funct m(self, a) {\n"
@@ -85,7 +85,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C().m(1, c=2))\n",
-  "", "TypeError: m() got an unexpected keyword argument 'c'", 1 },
+  "", "TypeError: m() got an unexpected keyword argument 'c'", 2 },
 
 /* ── @static: sem ele, não dá pra chamar na classe ── */
 { "método normal chamado na classe",
@@ -95,7 +95,7 @@ const Caso CASOS_ERROS[] = {
   "    }\n"
   "}\n"
   "post(C.m(5))\n",
-  "", "não tem método estático", 1 },
+  "", "RuntimeError: Entity 'C' não tem método estático 'm' — instancie primeiro", 2 },
 { "@static com self na assinatura",
   "class C() {\n"
   "    @static\n"
@@ -117,7 +117,8 @@ const Caso CASOS_ERROS[] = {
 
 /* ── f-string: erro no trecho SOBE, não vira texto cru ── */
 { "f-string com nome fora de escopo",
-  "post(f\"v: {zzz}\")\n", "", "name 'zzz' is not defined", 1 },
+  "post(f\"v: {zzz}\")\n",
+  "", "NameError: name 'zzz' is not defined", 2 },
 { "f-string com divisão por zero",
   "post(f\"x {1/0} y\")\n", "", "division by zero", 1 },
 { "f-string válida continua interpolando",

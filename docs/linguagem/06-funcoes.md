@@ -92,6 +92,9 @@ O tipo é **checado na chamada**, e checar é tudo o que ele faz — argumento d
 tipo errado é recusado, **nunca convertido**:
 
 ```ps
+funct saudacao(str nome, int vezes) {
+    return nome * vezes
+}
 saudacao(5, 3)
 # AttributedValueError: parâmetro nome de saudacao() esperava str, recebeu int
 ```
@@ -253,10 +256,38 @@ post(semret())   # null
 
 ## 6.4. Functs tipadas — o tipo antes do `funct`
 
-Prefixar a funct com `int` ou `bool` muda o **contrato de retorno**: a função
-passa a **nunca propagar erro** (o corpo vira um `try` implícito) e a garantir
-um resultado do feitio pedido. É pensado para handlers que precisam sempre
-devolver algo (por exemplo, um status).
+O que vem colado antes do `funct` (depois dos modificadores) **é o tipo de
+retorno**, e ele é um contrato conferido **antes de rodar**:
+
+- todo `return` da funct devolve um valor daquele tipo;
+- toda **saída** que o corpo faz — `post`, `sys.stdout`/`sys.stderr`, escrita
+  em arquivo — é daquele tipo;
+- chegar ao fim sem `return` é erro: o fim devolveria `Null`, que não é de
+  tipo nenhum. Só `int` e `bool` escapam, pelo sentinela abaixo.
+
+Nada é convertido: `str funct` com `return 10` é erro, não `"10"`.
+
+```ps
+str funct nome() {
+    return 10
+}
+# AttributedValueError: retorno de nome() esperava str, recebeu int
+```
+
+```ps
+int funct conta() {
+    post("total:", 1)      # saída de texto numa int funct
+    return 1
+}
+# AttributedValueError: saída de conta() esperava int, recebeu str
+```
+
+O que só se sabe rodando (o valor de `json.parse`, de `d["k"]`) é conferido
+rodando, no `return` — o mesmo erro, no outro momento.
+
+`int funct` e `bool funct` têm, além disso, o **sentinela de erro**: o corpo
+vira um `try` implícito e a funct nunca propaga exceção. É pensado para
+handlers que precisam sempre devolver algo (um status, um sim/não).
 
 `int funct`:
 
@@ -265,7 +296,7 @@ devolver algo (por exemplo, um status).
 | `return <int>` | o próprio inteiro |
 | `return null` / sem return | `0` |
 | erro/exceção no corpo | `500` |
-| `return <outro tipo>` | passa como está (não é coagido) |
+| `return <outro tipo>` | erro de tipo — que o `try` implícito transforma em `500` |
 
 ```ps
 int funct status() {
@@ -279,13 +310,9 @@ int funct quebra() {
 post(quebra())        # 500  (erro engolido)
 ```
 
-`bool funct`: o retorno vira `bool` por *truthiness* — `return 0` → `False`,
-`return 5` → `True`; **erro no corpo → `False`**; `return null`/sem return →
-`True`.
-
-> Diferente de um cast: `int funct f()` com `return "7"` devolve a **string**
-> `"7"`, não o inteiro `7`. O `int`/`bool` aqui rege o tratamento de
-> ausência/erro, não uma conversão do valor retornado.
+`bool funct`: `return <bool>` devolve ele; **erro no corpo → `False`**;
+`return null`/sem return → `True`. `return 1` é erro de tipo (e vira `False`
+pelo mesmo `try`) — não há conversão por verdadeiro/falso.
 
 ### Qualquer tipo vale como retorno
 
@@ -295,6 +322,8 @@ modificadores, **é** o tipo de retorno — qualquer tipo da linguagem
 `Object`) e também o nome de uma classe sua:
 
 ```ps
+Entity Pessoa() { nome: str }
+
 str  funct nome()      { return "ana" }
 list funct itens()     { return [1, 2] }
 Pessoa funct criar()   { return Pessoa("ana") }
@@ -318,17 +347,19 @@ Os **apelidos** resolvem para o tipo apelidado, e a árvore guarda o canônico �
 A tabela é uma só pra toda a linguagem: o apelido vale igual em declaração
 (`JSON j = {}`), parâmetro, retorno, campo, `x is JSON` e `count JSON in l`.
 
-> **Só `int` e `bool` mudam o comportamento** — o contrato de erro descrito
-> acima. Os outros hoje são só a declaração: a funct devolve o que devolver,
-> sem conversão e sem tratamento de erro.
+> `int` e `bool` são os únicos com sentinela de erro; a conferência do
+> `return` e da saída vale pra todos os tipos.
 
 Isto vale em qualquer posição — solta, dentro de `Entity`/`class` e em lambda —
 e os modificadores vêm em qualquer ordem:
 
 ```ps
+import sys
+
 public class C() {
     public static string funct main() {
         sys.stdout.writeln("Ola mundo!")
+        return "Ola mundo!"
     }
 }
 ```
@@ -503,6 +534,8 @@ post(gather(dobro(1), dobro(2), dobro(3)))     # [2, 4, 6] — os três em ~0.2s
 dela, no lugar, e item que não é future passa direto.
 
 ```ps
+async funct dobro(n) { return n * 2 }
+
 fs = [dobro(1), dobro(2), dobro(3)]
 post(await fs)              # [2, 4, 6]
 post(await [dobro(1), 99])  # [2, 99]

@@ -1,11 +1,18 @@
 # Referência da Linguagem — 2. Tipos e valores
 
-A PoolScript tem **tipagem estática por declaração**: uma variável declarada
-com tipo (`int x = 5`) **é** daquele tipo — a linguagem exige esse tipo em toda
-atribuição a ela, da criação em diante, e **não converte** nada por conta
-própria. Uma variável criada sem tipo
-(`x = 5`) carrega o tipo do valor que recebeu e pode receber outro depois. As
-duas formas convivem no mesmo programa.
+A PoolScript tem **tipagem estática**: tudo que tem tipo é conferido **antes
+de rodar** — no `pool --check` e no próprio `pool`, que não executa um
+programa com erro de tipo — como no Java. Declaração, reatribuição, parâmetro
+e o padrão dele, retorno, campo de Entity, `self.campo`, `obj.campo`: uma
+variável declarada com tipo (`int x = 5`) **é** daquele tipo, e a linguagem
+**não converte** nada por conta própria. Uma variável criada sem tipo
+(`x = 5`) tem o tipo **fixado na primeira atribuição**: `x = "a"` depois dela
+é erro. Só `Null` não fixa nem conflita.
+
+O que não dá pra saber antes de rodar — o valor de `json.parse`, de `d["k"]`,
+de `l[0]` — é conferido **rodando**, no lugar tipado. Nada passa sem
+conferência; só muda o momento. E o erro sai completo: o `--check` lista
+**todos** os erros de tipo do arquivo, não só o primeiro.
 
 ---
 
@@ -52,14 +59,17 @@ char c = -1         # ConversionError: -1 nao e um caractere valido
 
 `char` é a restrição da **declaração**, não um tipo separado em runtime: o
 valor guardado é uma `str` de comprimento 1, e `type()` responde `"str"`. Não
-existe construtor `char()` — pra converter um número use `chr(n)`.
+existe construtor `char()` — pra converter um número use `chr(n)`. O inteiro
+como codepoint vale **só na declaração**: em parâmetro (`funct f(char c)`),
+retorno (`char funct`) e campo, `char` é um caractere de texto, e um inteiro
+ali é erro de tipo.
 
 `char funct` existe, como qualquer outro tipo: o que vem antes do `funct` é o
 tipo de retorno, e não há lista branca — ver a seção 6.4.
 
-O que o tipo FAZ é outra coisa: só `int` e `bool` mudam o comportamento (o
-sentinela 500/False da seção 6). Os demais declaram o retorno e a função
-devolve o que devolver, sem conversão nem checagem.
+O tipo de retorno é um contrato conferido antes de rodar: todo `return` e
+toda saída da funct têm que ser daquele tipo (seção 6.4). `int` e `bool` têm,
+além disso, o sentinela 500/False da seção 6.
 
 ---
 
@@ -93,7 +103,7 @@ x = 1103515245 * 99999999999999999    # estourou: virou bignum
 int y = x
 # AttributedValueError: variável y esperava int, e o valor nao cabe em 64 bits
 #                       (declare como 'long y' pra aceitar inteiro de qualquer tamanho)
-long y = x                            # aceita
+long z = x                            # aceita (outro nome: `y` já é int)
 ```
 
 `long` é a declaração sem essa promessa — inteiro de qualquer tamanho, como em
@@ -102,6 +112,7 @@ C. Aceita os dois lados: `long b = 42` também vale (alarga, não converte).
 É **chamável** como os outros tipos, e converte igual ao `int`:
 
 ```ps
+x = 1103515245 * 99999999999999999
 post(long("123"), long(3.9), long())     # 123 3 0
 post(x is long, 5 is long, "a" is long)  # True True False
 ```

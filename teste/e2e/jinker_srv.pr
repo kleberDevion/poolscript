@@ -173,8 +173,10 @@ funct baixar() {
 
 @app.route("/emitir")
 funct emitir() {
-    st = app.channel.emit("aviso", {"n": 1})
-    return {"emit": str(st), "status": str(app.channel.status)}
+    # `st` e a funct da rota /status: gravar nesse nome de dentro daqui
+    # escreveria NELA (write-through do global) — o checador pegou isso
+    estado = app.channel.emit("aviso", {"n": 1})
+    return {"emit": str(estado), "status": str(app.channel.status)}
 }
 
 # a app é CHAMÁVEL: `app(...)` sobe o servidor (não existe `.run`)

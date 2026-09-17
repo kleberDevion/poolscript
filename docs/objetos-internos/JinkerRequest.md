@@ -11,6 +11,10 @@ Esta página listava `.file`, `.files`, `.get`, `.json`, `.path_param`, `.text`,
 Dentro da rota e do socket, o `request` **não é** um `JinkerRequest`:
 
 ```ps
+import jinker
+from jinker import request
+app = jinker.Jinker(__name__)
+
 @app.get("/x")
 funct h() {
     post(type(request))    # RequestProxy

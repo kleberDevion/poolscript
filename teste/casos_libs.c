@@ -181,12 +181,16 @@ const Caso CASOS_LIBS[] = {
    * AttributedValueError, e não devia — somar tipos que não somam é TypeError,
    * como no Python. AttributedValueError ficou com o que lhe cabe, que é
    * atribuir valor incompatível a variável TIPADA. É isso que ele prova
-   * agora, e a grafia continua cobrada. */
+   * agora, e a grafia continua cobrada. O valor vem de `json.parse`, cujo
+   * tipo só se sabe rodando: com o literal `10` o erro sai ANTES de rodar, e
+   * aí não há `catch` que o pegue. */
+  "import json\n"
   "try {\n"
-  "    str x = 10\n"
+  "    str x = json.parse(\"10\")\n"
   "} catch (AttributedValueError e) {\n"
   "    post(\"pegou\")\n"
-  "}\n", "pegou", NULL, 0 },
+  "}\n",
+  "pegou", NULL, 0 },
 { "'+' entre tipos que nao somam e TypeError, nao AttributedValueError",
   "try {\n"
   "    post(\"a\" + 1)\n"
@@ -789,19 +793,30 @@ const Caso CASOS_LIBS[] = {
   "    post(\"'int' and 'str'\" in str(e))\n"
   "}\n", "True", NULL, 0 },
 
+/* Nome que o arquivo NUNCA liga e erro antes de rodar. O que sobra pra
+ * rodando e o global lido antes de nascer — o arquivo o liga, so que depois. */
 { "NameError e capturavel pelo nome",
+  "funct le() {\n"
+  "    return depois\n"
+  "}\n"
   "try {\n"
-  "    post(nao_existe_mesmo)\n"
+  "    post(le())\n"
   "} catch (NameError e) {\n"
-  "    post(str(e).startswith(\"name 'nao_existe_mesmo' is not defined\"))\n"
-  "}\n", "True", NULL, 0 },
+  "    post(str(e).startswith(\"name 'depois' is not defined\"))\n"
+  "}\n"
+  "depois = 1\n",
+  "True", NULL, 0 },
 
 { "AttributeError e capturavel pelo nome",
+  /* receptor de tipo que so se sabe rodando: com o literal o erro sai antes */
+  "import json\n"
+  "x = json.parse(\"\\\"abc\\\"\")\n"
   "try {\n"
-  "    post(\"abc\".nao_existe_mesmo())\n"
+  "    post(x.nao_existe_mesmo())\n"
   "} catch (AttributeError e) {\n"
   "    post(\"'str' object has no attribute 'nao_existe_mesmo'\" in str(e))\n"
-  "}\n", "True", NULL, 0 },
+  "}\n",
+  "True", NULL, 0 },
 
 { "OverflowError e capturavel pelo nome",
   "try {\n"
@@ -838,14 +853,18 @@ const Caso CASOS_LIBS[] = {
 
 { "faltar argumento lista TODOS os que faltam",
   /* citava so o primeiro: quem esquecia tres consertava um por vez */
+  /* chamada por um nome de tipo desconhecido: com `f(1)` direto o erro sai
+   * antes de rodar, e o que se prova aqui e a frase do binding rodando */
   "funct f(x, y, z) {\n"
   "    return x\n"
   "}\n"
+  "g = [f][0]\n"
   "try {\n"
-  "    f(1)\n"
+  "    g(1)\n"
   "} catch (e) {\n"
   "    post(\"'y' and 'z'\" in str(e))\n"
-  "}\n", "True", NULL, 0 },
+  "}\n",
+  "True", NULL, 0 },
 
 { "erro de aridade diz QUANTOS vieram",
   /* \"espera 1 ou 2 argumentos\" obrigava a contar na mao justamente quem
@@ -871,13 +890,15 @@ const Caso CASOS_LIBS[] = {
    * (OP_IMPORT_FROM) — sem ele a VM ve a mesma busca nos dois casos e nao tem
    * como saber qual erro levantar. */
   "import json\n"
+  "m = [json][0]\n"
   "a = \"\"\n"
   "b = \"\"\n"
-  "try { post(json.naotem_zz) } catch (AttributeError e) { a = \"A\" }\n"
-  "post(a)\n", "A", NULL, 0 },
+  "try { post(m.naotem_zz) } catch (AttributeError e) { a = \"A\" }\n"
+  "post(a)\n",
+  "A", NULL, 0 },
 { "from X import Y ausente cita o modulo",
   "from json import naotem_zz\n",
-  "", "cannot import name 'naotem_zz' from 'json'", 1 },
+  "", "ImportError: cannot import name 'naotem_zz' from 'json' (unknown location)", 2 },
 { "modulo ausente diz o nome, no texto do CPython",
   "import naoexiste_zz_kd\n",
   "", "No module named 'naoexiste_zz_kd'", 1 },
@@ -972,7 +993,7 @@ const Caso CASOS_LIBS[] = {
 /* json: profundidade e RecursionError nos dois lados (escrever e ler); saia
  * TypeError porque so vm->erro era escrito. */
 { "json.stringify aninhado demais e RecursionError",
-  "import json\nv = 1\nfor each i in range(80) { v = [v] }\ntry { json.stringify(v) } catch (RecursionError e) { post(\"pegou:\", e) }\n",
+  "import json\nv = [1]\nfor each i in range(79) { v = [v] }\ntry { json.stringify(v) } catch (RecursionError e) { post(\"pegou:\", e) }\n",
   "pegou: json aninhado demais (linha 4)", NULL, 0 },
 { "json.parse aninhado demais e RecursionError",
   "import json\ntry { json.parse(\"[\" * 200 + \"]\" * 200) } catch (RecursionError e) { post(\"pegou:\", e) }\n",

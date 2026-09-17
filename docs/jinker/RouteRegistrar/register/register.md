@@ -29,6 +29,17 @@ requisição chegar.
 **`Null`** — sempre, nos três feitios de registrador. Ele grava e não devolve
 nada: nem o app, nem a rota, nem o próprio registrador.
 
+Os exemplos desta página pressupõem:
+
+```ps contexto
+import jinker
+from jinker import jsonify
+app = jinker.Jinker(__name__)
+funct trata() { return jsonify({"ok": true}) }
+funct trata_a() { return "a" }
+funct trata_b() { return "b" }
+```
+
 ```ps
 vol = app.get("/x").register(trata)
 post(type(vol))     # Null

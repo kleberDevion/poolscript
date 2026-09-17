@@ -12,6 +12,7 @@
 import sockets
 import json
 import os
+import sys
 
 PORTA = 47119
 ALVO  = "teste/alvo_debug.pr"

@@ -8,9 +8,14 @@ char acento = "ç"        # acento é UM caractere, não dois bytes
 char emoji = 128512
 post(a, acento, emoji, len(acento))
 
-# Declarar com mais de um caractere é erro, não corte silencioso.
+# Declarar com mais de um caractere é erro, não corte silencioso — e com um
+# literal o erro sai ANTES de rodar (`char errado = "abc"` nem deixa o
+# programa começar: AttributedValueError: variável errado esperava char (um
+# caractere), recebeu 3). Valor que só se conhece rodando é conferido rodando,
+# e aí o `try` pega:
+import json
 try {
-    char errado = "abc"
+    char errado = json.parse("\"abc\"")
 }
 catch(e) {
     post(e)

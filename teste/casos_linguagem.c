@@ -280,7 +280,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    }\n"
   "}\n"
   "a = A()\n",
-  "", "AttributedValueError: variável n esperava int", 1 },
+  "", "AttributedValueError: campo n de A esperava int, recebeu flo", 2 },
 { "tipo nao escalar guarda sem conferir, como na variavel",
   "Class A() {\n"
   "    public funct __init__(self) {\n"
@@ -436,11 +436,14 @@ const Caso CASOS_LINGUAGEM[] = {
 { "value() e values() são o mesmo",
   "d = { \"a\": 1, \"b\": 2 }\npost(d.value() == d.values())\n", "True", NULL, 0 },
 { "tupla é imutável: append",
-  "t = (1, 2, 3)\nt.append(9)\n", "", "'tup' object has no attribute 'append'", 1 },
+  "t = (1, 2, 3)\nt.append(9)\n",
+  "", "AttributeError: 'tup' object has no attribute 'append'", 2 },
 { "tupla é imutável: sort",
-  "t = (1, 2, 3)\nt.sort()\n", "", "'tup' object has no attribute 'sort'", 1 },
+  "t = (1, 2, 3)\nt.sort()\n",
+  "", "AttributeError: 'tup' object has no attribute 'sort'", 2 },
 { "tupla é imutável: copy",
-  "t = (1, 2, 3)\nt.copy()\n", "", "'tup' object has no attribute 'copy'", 1 },
+  "t = (1, 2, 3)\nt.copy()\n",
+  "", "AttributeError: 'tup' object has no attribute 'copy'", 2 },
 { "tupla lê normal",
   "t = (1, 2, 3)\npost(t.len(), t.count(1), t.index(2), t.contains(2))\n", "3 1 1 True", NULL, 0 },
 { "lista continua com tudo",
@@ -1027,18 +1030,21 @@ const Caso CASOS_LINGUAGEM[] = {
 { "char aceita caractere fora do ASCII",
   "char c = \"ç\"\nchar e = 128512\npost(c, len(c), e)\n", "ç 1 😀", NULL, 0 },
 { "char recusa mais de um caractere",
-  "char c = \"abc\"\n", "", "esperava char", 1 },
+  "char c = \"abc\"\n",
+  "", "AttributedValueError: variável c esperava char (um caractere), recebeu 3", 2 },
 { "char recusa flutuante",
-  "char c = 1.5\n", "", "esperava char", 1 },
+  "char c = 1.5\n",
+  "", "AttributedValueError: variável c esperava char, recebeu flo", 2 },
 { "char recusa codepoint invalido",
   "char c = -1\n", "", "nao e um caractere valido", 1 },
 /* `char funct` passou a EXISTIR (2026-09-08): todo tipo vale como retorno. O
  * `char` aqui declara o retorno e nao coage — devolve o 1 como esta. Quem
  * coage e a declaracao de VARIAVEL (`char c = 1`), logo acima. */
-{ "char funct existe e nao coage o retorno",
+{ "char funct: devolver int e erro de tipo — fora da declaracao, char e um caractere de texto",
   "char funct f() {\n"
   "    return 1\n"
-  "}\npost(f())\n", "1", NULL, 0 },
+  "}\npost(f())\n",
+  "", "AttributedValueError: retorno de f() esperava char, recebeu int", 2 },
 /* ── NENHUMA conversao implicita, 2026-09-09 ───────────────────────────────
  * `int b = "7"` virava 7 e `flo c = 1` virava 1.0 ("conversoes que nao perdem
  * informacao"). Ele nunca pediu isso: "se eu tenho terra eu transformo em
@@ -1049,13 +1055,17 @@ const Caso CASOS_LINGUAGEM[] = {
   "str a = \"oi\"\nint b = 7\nflo c = 1.0\nbool d = true\npost(a, b, c, d)\n",
   "oi 7 1.0 True", NULL, 0 },
 { "int NAO aceita string numerica: nao converte",
-  "int b = \"7\"\n", "", "AttributedValueError: variável b esperava int", 1 },
+  "int b = \"7\"\n",
+  "", "AttributedValueError: variável b esperava int, recebeu str", 2 },
 { "flo NAO aceita int: nao alarga",
-  "flo c = 1\n", "", "AttributedValueError: variável c esperava flo", 1 },
+  "flo c = 1\n",
+  "", "AttributedValueError: variável c esperava flo, recebeu int", 2 },
 { "flo NAO aceita string numerica",
-  "flo x = \"1.5\"\n", "", "AttributedValueError: variável x esperava flo", 1 },
+  "flo x = \"1.5\"\n",
+  "", "AttributedValueError: variável x esperava flo, recebeu str", 2 },
 { "int recusa texto invalido pelo MESMO erro (nao ha 'quase converteu')",
-  "int x = \"abc\"\n", "", "AttributedValueError: variável x esperava int", 1 },
+  "int x = \"abc\"\n",
+  "", "AttributedValueError: variável x esperava int, recebeu str", 2 },
 { "conversao e explicita: tipo(valor)",
   "int n = int(\"7\")\nflo f = flo(5)\nstr s = str(42)\npost(n, f, s)\n", "7 5.0 42", NULL, 0 },
 { "long aceita int porque int E inteiro — nao e conversao",
@@ -1462,7 +1472,8 @@ const Caso CASOS_LINGUAGEM[] = {
  * decorador cujo membro é keyword. A recusa só vale pro que não pode ser
  * nome de jeito nenhum (fim de linha, fim de arquivo). */
 { "decorador com membro que e palavra reservada",
-  "@app.route(\"/x\")\nfunct h() { return 1 }\n", "", "name 'app' is not defined", 1 },
+  "@app.route(\"/x\")\nfunct h() { return 1 }\n",
+  "", "NameError: name 'app' is not defined", 2 },
 /* Condicao que COMECA com parentese: `if (a) or (b) {` dava "esperado inicio
  * de bloco com '{'" — o parser lia o grupo como se fosse a forma `if (cond) {`
  * e exigia o bloco logo depois do `)`. O parentese e so precedencia; a
@@ -1509,7 +1520,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "str s = \"a\"\n"
   "s = 42\n"
   "post(s)\n",
-  "", "AttributedValueError: variável s esperava str", 1 },
+  "", "AttributedValueError: variável s esperava str, recebeu int", 2 },
 /* F0 do plano da tipagem estatica (2026-09-16): o que o compilador perdia do
  * tipo declarado, calado. */
 { "tipagem estatica: local no slot 299 conserva o tipo (o vetor por slot era fixo em 256)",
@@ -1525,7 +1536,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "os.writeFile(\"s300.pr\", \"\\n\".join(linhas) + \"\\n\")\n"
   "os.cmd(\"'\" + sys.executable + \"' s300.pr > o.txt 2>&1\")\n"
   "post(os.readFile(\"o.txt\").split(\"\\n\")[0])\n",
-  "AttributedValueError: variável v299 esperava int", NULL, 0 },
+  "AttributedValueError: variável v299 esperava int, recebeu str", NULL, 0 },
 /* Uma tabela de tipos so (vm/ps_tipos.def): `JSON` e `Long` eram apelido num
  * lugar e nome solto noutro — `JSON j = {}` dava NameError e `count JSON` dava
  * "tipo desconhecido", com a doc listando `JSON` como apelido de dict. */
@@ -1534,7 +1545,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "Long y = 5\n"
   "post(j, y)\n"
   "j = [1]\n",
-  "{'a': 1} 5", "AttributedValueError: variável j esperava dict", 1 },
+  "", "AttributedValueError: variável j esperava dict, recebeu list", 2 },
 { "tipagem estatica: JSON vale em `is` e em `count`, igual a dict",
   "x = {\"a\": 1}\n"
   "post(x is JSON, count JSON in [{\"a\": 1}, 2], count dict in [{\"a\": 1}, 2])\n",
@@ -1545,13 +1556,13 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return n\n"
   "}\n"
   "f(1)\n",
-  "", "AttributedValueError: variável n esperava int", 1 },
+  "", "AttributedValueError: variável n esperava int, recebeu str", 2 },
 { "tipagem estatica: padrao de parametro tipado e conferido",
   "funct f(str s = 10) {\n"
   "    return s\n"
   "}\n"
   "f()\n",
-  "", "AttributedValueError: variável s esperava str", 1 },
+  "", "AttributedValueError: parâmetro s de f() esperava str, recebeu int", 2 },
 { "tipagem estatica: padrao valido e argumento passam",
   "funct f(str s = \"ok\") {\n"
   "    return s\n"
@@ -1573,17 +1584,17 @@ const Caso CASOS_LINGUAGEM[] = {
 { "tipagem estatica: `int n` recusa `n = \"7\"` — nao converte na escrita",
   "int n = 1\n"
   "n = \"7\"\n",
-  "", "AttributedValueError: variável n esperava int", 1 },
+  "", "AttributedValueError: variável n esperava int, recebeu str", 2 },
 { "tipagem estatica: `flo f` recusa int na escrita; flo passa",
   "flo f = 1.0\n"
   "f = 2.0\n"
   "post(f)\n"
   "f = 2\n",
-  "2.0", "AttributedValueError: variável f esperava flo", 1 },
+  "", "AttributedValueError: variável f esperava flo, recebeu int", 2 },
 { "tipagem estatica: `list l` recusa string; `dict d` recusa lista",
   "list l = [1]\n"
   "l = \"x\"\n",
-  "", "AttributedValueError: variável l esperava list", 1 },
+  "", "AttributedValueError: variável l esperava list, recebeu str", 2 },
 { "tipagem estatica: Object recebe instancia de classe e o app do jinker",
   "from jinker import Jinker\n"
   "class C() {\n"
@@ -1597,7 +1608,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "1", NULL, 0 },
 { "tipagem estatica: Object recusa str e lista",
   "Object o = \"x\"\n",
-  "", "AttributedValueError: variável o esperava Object", 1 },
+  "", "AttributedValueError: variável o esperava Object, recebeu str", 2 },
 
 /* ── FUNCT E OBJETO, 2026-09-10 ────────────────────────────────────────────
  * `Object f = funct(){ … }` era recusado: `V_FUNC`/`V_NATIVE` nao sao
@@ -1617,7 +1628,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct roda(Object cb) { return cb() }\npost(roda(funct(){ return 7 }))\n",
   "7", NULL, 0 },
 { "Object continua recusando escalar e colecao",
-  "Object o = 1\n", "", "AttributedValueError: variável o esperava Object", 1 },
+  "Object o = 1\n",
+  "", "AttributedValueError: variável o esperava Object, recebeu int", 2 },
 
 /* Funct e igual a si mesma. `V_FUNC`/`V_NATIVE` caiam no `return 0` final do
  * comparador, entao `f == f` respondia False — inclusive pra builtin. */
@@ -1638,7 +1650,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    s = 5\n"
   "}\n"
   "f()\n",
-  "", "AttributedValueError: variável s esperava str", 1 },
+  "", "AttributedValueError: variável s esperava str, recebeu int", 2 },
 { "tipagem estatica: local tipado capturado por closure confere na escrita de dentro",
   "funct f() {\n"
   "    int n = 1\n"
@@ -1649,18 +1661,18 @@ const Caso CASOS_LINGUAGEM[] = {
   "    return n\n"
   "}\n"
   "post(f())\n",
-  "", "AttributedValueError: variável n esperava int", 1 },
+  "", "AttributedValueError: variável n esperava int, recebeu str", 2 },
 { "tipagem estatica: `for each` num nome declarado confere cada volta",
   "str s = \"a\"\n"
   "for each s in [1, 2] {\n"
   "    post(s)\n"
   "}\n",
-  "", "AttributedValueError: variável s esperava str", 1 },
-{ "sem tipo declarado continua livre: `x = 1` depois `x = \"a\"`",
+  "", "AttributedValueError: variável s esperava str, recebeu int", 1 },
+{ "sem tipo escrito, o tipo e FIXADO na primeira atribuicao: `x = 1` depois `x = \"a\"` e erro",
   "x = 1\n"
   "x = \"a\"\n"
   "post(x)\n",
-  "a", NULL, 0 },
+  "", "AttributedValueError: variável x é int (tipo fixado na primeira atribuição), recebeu str", 2 },
 /* Apelidos de tipo, decisao dele: string/String = str, integer/Integer = int,
  * tuple/Tuple = tup, dictionary/Dictionary = dict — a mesma regra do tipo que
  * apelidam, inclusive a estatica. */
@@ -1672,7 +1684,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "Dictionary d = {\"k\": 1}\n"
   "post(len(t), d[\"k\"])\n"
   "s = 1\n",
-  "8\n2 1", "AttributedValueError: variável s esperava str", 1 },
+  "", "AttributedValueError: variável s esperava str, recebeu int", 2 },
 { "apelido de tipo NAO e palavra reservada: `string` como variavel e como argumento nomeado",
   "import regex\n"
   "string = 5\n"
@@ -1951,7 +1963,8 @@ const Caso CASOS_LINGUAGEM[] = {
   "b = 99999999999999999999999999\npost(b is long, 5 is long, \"a\" is long, 1.5 is long)\n",
   "True True False False", NULL, 0 },
 { "long recusa o que nao e inteiro",
-  "long d = \"texto\"\n", "", "variável d esperava long", 1 },
+  "long d = \"texto\"\n",
+  "", "AttributedValueError: variável d esperava long, recebeu str", 2 },
 { "type() de bignum continua int — o valor e inteiro",
   "b = 99999999999999999999999999\nlong a = b\npost(type(a), type(b))\n", "int int", NULL, 0 },
 
@@ -2026,12 +2039,14 @@ const Caso CASOS_LINGUAGEM[] = {
  * tipo `static`. O metodo sumia da classe e o arquivo rodava sem erro nenhum e
  * sem fazer nada — foi assim que ele apareceu. */
 { "apelido de tipo na cabeca dentro de classe nao vira campo",
-  "public class C() {\n    public static string funct main() {\n        post(\"rodou\")\n    }\n}\n"
-  "C.main()\n", "rodou", NULL, 0 },
+  "public class C() {\n    public static string funct main() {\n        post(\"rodou\")\n        return \"rodou\"\n    }\n}\n"
+  "C.main()\n",
+  "rodou", NULL, 0 },
 { "static colado registra o metodo como estatico",
   "class C() {\n    static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
 { "static continua valendo depois do tipo",
-  "class C() {\n    str static funct m() {\n        post(\"ok\")\n    }\n}\nC.m()\n", "ok", NULL, 0 },
+  "class C() {\n    str static funct m() {\n        post(\"ok\")\n        return \"ok\"\n    }\n}\nC.m()\n",
+  "ok", NULL, 0 },
 
 /* ── campo `static`, 2026-09-08 ────────────────────────────────────────────
  * Campo de classe: avaliado UMA vez na declaracao, lido como `Classe.x`, por
@@ -2090,19 +2105,20 @@ const Caso CASOS_LINGUAGEM[] = {
  * existia. As dez ordens abaixo tem que dar o mesmo. */
 { "campo static: modificador antes OU depois do tipo, qualquer ordem",
   "class C(){\n"
-  "    static object a = 1\n"
-  "    private static object b = 2\n"
-  "    static private object c = 3\n"
-  "    private object static d = 4\n"
-  "    object static e = 5\n"
-  "    object private static f = 6\n"
-  "    static object private g = 7\n"
-  "    object static private h = 8\n"
+  "    static int a = 1\n"
+  "    private static int b = 2\n"
+  "    static private int c = 3\n"
+  "    private int static d = 4\n"
+  "    int static e = 5\n"
+  "    int private static f = 6\n"
+  "    static int private g = 7\n"
+  "    int static private h = 8\n"
   "    static public i = 9\n"
   "}\npost(C.a, C.b, C.c, C.d, C.e, C.f, C.g, C.h, C.i)\n",
   "1 2 3 4 5 6 7 8 9", NULL, 0 },
 { "funct: modificador depois do tipo continua valendo",
-  "class C(){\n    object private static funct m(){ return 1 }\n}\npost(C.m())\n", "1", NULL, 0 },
+  "class C(){\n    int private static funct m(){ return 1 }\n}\npost(C.m())\n",
+  "1", NULL, 0 },
 
 /* ── import por caminho entre aspas (`import '../x.pr'`), 2026-09-06 ───────
  * A string e o especificador, como no TypeScript: com `/` ou extensao da
@@ -2123,9 +2139,10 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── módulo: o erro nomeia o membro e sugere o parecido ─────────────────── */
 { "membro inexistente nomeia modulo e membro",
   "import json\npost(json.naoexiste)\n",
-  "", "module 'json' has no attribute 'naoexiste'", 1 },
+  "", "AttributeError: module 'json' has no attribute 'naoexiste'", 2 },
 { "membro parecido vira sugestao",
-  "import json\npost(json.parsee)\n", "", "Did you mean: 'parse'?", 1 },
+  "import json\npost(json.parsee)\n",
+  "", "AttributeError: module 'json' has no attribute 'parsee'. Did you mean: 'parse'?", 2 },
 
 /* ── tipo: `type(x)` é o NOME do tipo, `int` é a referência ─────────────────
  * Os dois escrevem "int" na tela. Antes disso, compará-los dava falso calado:
@@ -2376,20 +2393,20 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(saudacao(\"oi \", 3))\n", "oi oi oi ", NULL, 0 },
 { "parametro tipado recusa o tipo errado — nao converte",
   "funct saudacao(str nome, int vezes) { return nome * vezes }\n"
-  "post(saudacao(5, 3))\n", "",
-  "AttributedValueError: parâmetro nome de saudacao() esperava str, recebeu int", 1 },
+  "post(saudacao(5, 3))\n",
+  "", "AttributedValueError: parâmetro nome de saudacao() esperava str, recebeu int", 2 },
 { "apelido do tipo vale no parametro (String e str, Integer e int)",
   "funct f(String s, Integer n) { return s * n }\npost(f(\"a\", 2))\n",
   "aa", NULL, 0 },
 { "int NAO aceita flo no parametro",
-  "funct f(int n) { post(n) }\nf(1.5)\n", "",
-  "AttributedValueError: parâmetro n de f() esperava int, recebeu flo", 1 },
+  "funct f(int n) { post(n) }\nf(1.5)\n",
+  "", "AttributedValueError: parâmetro n de f() esperava int, recebeu flo", 2 },
 { "flo NAO aceita int no parametro",
-  "funct f(flo x) { post(x) }\nf(1)\n", "",
-  "AttributedValueError: parâmetro x de f() esperava flo, recebeu int", 1 },
+  "funct f(flo x) { post(x) }\nf(1)\n",
+  "", "AttributedValueError: parâmetro x de f() esperava flo, recebeu int", 2 },
 { "bool NAO aceita int no parametro",
-  "funct f(bool b) { post(b) }\nf(1)\n", "",
-  "AttributedValueError: parâmetro b de f() esperava bool, recebeu int", 1 },
+  "funct f(bool b) { post(b) }\nf(1)\n",
+  "", "AttributedValueError: parâmetro b de f() esperava bool, recebeu int", 2 },
 { "tipar e opcional e por parametro — pode misturar",
   "funct mist(str a, b, int c) { post(a, b, c) }\nmist(\"a\", [1], 2)\n",
   "a [1] 2", NULL, 0 },
@@ -2398,49 +2415,48 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(f(vezes=2, nome=\"ei \"))\n", "ei ei ", NULL, 0 },
 { "argumento nomeado de tipo errado e recusado",
   "funct f(str nome, int vezes) { return nome * vezes }\n"
-  "post(f(vezes=\"x\", nome=\"ei \"))\n", "",
-  "AttributedValueError: parâmetro vezes de f() esperava int, recebeu str", 1 },
+  "post(f(vezes=\"x\", nome=\"ei \"))\n",
+  "", "AttributedValueError: parâmetro vezes de f() esperava int, recebeu str", 2 },
 { "valor padrao convive com o tipo",
   "funct pad(str a, int n = 2) { return a * n }\npost(pad(\"x\"), pad(\"x\", 3))\n",
   "xx xxx", NULL, 0 },
 { "o tipo vale no METODO da Entity",
   "Entity P() {\n  str nome\n  public str funct diz(self, str saud) { return saud + self.nome }\n}\n"
   "P p = P(\"Ana\")\npost(p.diz(\"ola \"))\np.diz(9)\n",
-  "ola Ana",
-  "AttributedValueError: parâmetro saud de diz() esperava str, recebeu int", 1 },
+  "", "AttributedValueError: parâmetro saud de diz() esperava str, recebeu int", 2 },
 { "o tipo vale no metodo static chamado na Entity",
   "Entity P() {\n  str nome\n  @static\n  public static funct cria(str nome) { return P(nome) }\n}\n"
-  "post(P.cria(\"Ana\").nome)\nP.cria(1)\n", "Ana",
-  "AttributedValueError: parâmetro nome de cria() esperava str, recebeu int", 1 },
+  "post(P.cria(\"Ana\").nome)\nP.cria(1)\n",
+  "", "AttributedValueError: parâmetro nome de cria() esperava str, recebeu int", 2 },
 { "o tipo vale na lambda",
   "g = funct(int n) { return n + 1 }\npost(g(2))\ng(\"x\")\n", "3",
   "AttributedValueError: parâmetro n de <funct>() esperava int, recebeu str", 1 },
 { "o tipo vale no gerador",
   "funct gera(int n) { for each i in range(n) { yield i } }\n"
-  "post(list(gera(3)))\npost(list(gera(\"x\")))\n", "[0, 1, 2]",
-  "AttributedValueError: parâmetro n de gera() esperava int, recebeu str", 1 },
+  "post(list(gera(3)))\npost(list(gera(\"x\")))\n",
+  "", "AttributedValueError: parâmetro n de gera() esperava int, recebeu str", 2 },
 { "o tipo vale na async funct",
-  "async funct af(str s) { post(s) }\ngather([af(1)])\n", "",
-  "AttributedValueError: parâmetro s de af() esperava str, recebeu int", 1 },
+  "async funct af(str s) { post(s) }\ngather([af(1)])\n",
+  "", "AttributedValueError: parâmetro s de af() esperava str, recebeu int", 2 },
 { "nome de Entity serve de tipo, e subclasse passa (como em Java)",
   "Entity Animal() { str nome }\nEntity Cachorro(Animal) { }\n"
   "funct fala(Animal a) { post(a.nome) }\nfala(Cachorro(\"Rex\"))\n",
   "Rex", NULL, 0 },
 { "Entity errada no lugar de outra e recusada",
   "Entity Animal() { str nome }\nEntity Carro() { str nome }\n"
-  "funct fala(Animal a) { post(a.nome) }\nfala(Carro(\"Fusca\"))\n", "",
-  "AttributedValueError: parâmetro a de fala() esperava Animal, recebeu Carro", 1 },
+  "funct fala(Animal a) { post(a.nome) }\nfala(Carro(\"Fusca\"))\n",
+  "", "AttributedValueError: parâmetro a de fala() esperava Animal, recebeu Carro", 2 },
 { "PoolFile serve de tipo de parametro — o handle do open() E PoolFile",
   "funct pega(PoolFile f) { post(type(f)) }\n"
   "using open(\"/tmp/ps_param_tipo.txt\", \"w\") as f { pega(f) }\n",
   "PoolFile", NULL, 0 },
 { "char no parametro pede UM caractere",
-  "funct f(char c) { post(c) }\nf(\"a\")\nf(\"ab\")\n", "a",
-  "AttributedValueError: parâmetro c de f() esperava char, recebeu str", 1 },
+  "funct f(char c) { post(c) }\nf(\"a\")\nf(\"ab\")\n",
+  "", "AttributedValueError: parâmetro c de f() esperava char, recebeu str", 2 },
 { "list/dict/tup no parametro conferem o container certo",
   "funct lst(list xs, dict d, tup t) { post(len(xs), len(d), len(t)) }\n"
-  "lst([1], {\"a\": 1}, (1, 2))\nlst([1], {\"a\": 1}, [1, 2])\n", "1 1 2",
-  "AttributedValueError: parâmetro t de lst() esperava tup, recebeu list", 1 },
+  "lst([1], {\"a\": 1}, (1, 2))\nlst([1], {\"a\": 1}, [1, 2])\n",
+  "", "AttributedValueError: parâmetro t de lst() esperava tup, recebeu list", 2 },
 /* A ordem invertida dava "faltou ')' na declaracao da funct" — mensagem que
  * fala de um parentese que ninguem esqueceu. Quem escreve `x: int` inverteu a
  * ordem, e o erro tem que dizer isso. */
@@ -2494,8 +2510,11 @@ const Caso CASOS_LINGUAGEM[] = {
   "try { post({\"a\": 1}[\"z\"]) }\ncatch (LookupError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
 { "ArithmeticError pega ZeroDivisionError",
   "try { post(1 / 0) }\ncatch (ArithmeticError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
+/* O valor vem de `json.parse`, cujo tipo só se sabe rodando: com o literal
+ * `"7"` o erro sai ANTES de rodar, e aí não há `catch` que o pegue. */
 { "ValueError pega AttributedValueError da declaracao tipada",
-  "try { int x = \"7\" }\ncatch (ValueError e) { post(\"pegou\") }\n", "pegou", NULL, 0 },
+  "import json\ntry { int x = json.parse(\"\\\"7\\\"\") }\ncatch (ValueError e) { post(\"pegou\") }\n",
+  "pegou", NULL, 0 },
 { "RuntimeError pega RecursionError",
   "funct f() { return f() }\ntry { f() }\ncatch (RuntimeError e) { post(\"pegou\") }\n",
   "pegou", NULL, 0 },
@@ -2733,13 +2752,13 @@ const Caso CASOS_LINGUAGEM[] = {
  * instanciacao e OP_CALL_KW diziam "from N to M". */
 { "metodo com default: argumentos demais diz o intervalo",
   "Entity C() {\n    funct soma(self, a, b = 2) {\n        return a + b\n    }\n}\nc = C()\nc.soma(1, 2, 3)\n",
-  "", "TypeError: soma() takes from 2 to 3 positional arguments but 4 were given", 1 },
+  "", "TypeError: soma() takes from 2 to 3 positional arguments but 4 were given", 2 },
 { "@static com default: argumentos demais diz o intervalo sem contar self",
   "Entity C() {\n    @static\n    funct soma(a, b = 2) {\n        return a + b\n    }\n}\nC.soma(1, 2, 3)\n",
-  "", "TypeError: soma() takes from 1 to 2 positional arguments but 3 were given", 1 },
+  "", "TypeError: soma() takes from 1 to 2 positional arguments but 3 were given", 2 },
 { "funct sem default segue com a frase simples",
   "funct f(a) {\n    return a\n}\npost(f(1, 2))\n",
-  "", "TypeError: f() takes 1 positional argument but 2 were given", 1 },
+  "", "TypeError: f() takes 1 positional argument but 2 were given", 2 },
 /* map/filter que crescem a origem: erro de iteracao, nao MemoryError. */
 { "map que cresce a origem e RuntimeError",
   "l = [1, 2, 3]\nfunct cresce(x) { l.append(x)\n    return x }\ntry { post(map(l, cresce)) } catch (RuntimeError e) { post(\"pegou:\", e) }\n",
@@ -2797,7 +2816,8 @@ const Caso CASOS_LINGUAGEM[] = {
 { "o e capturado continua str; e is ValueError e False",
   "try { raise ValueError(\"x\") } catch (e) { post(type(e), e is ValueError) }\n", "str False", NULL, 0 },
 { "nome fora da tabela continua NameError",
-  "post(MeuErro)\n", "", "NameError: name 'MeuErro' is not defined", 1 },
+  "post(MeuErro)\n",
+  "", "NameError: name 'MeuErro' is not defined", 2 },
 { "excecao pode ser sombreada como qualquer global",
   "ValueError = 3\npost(ValueError)\n", "3", NULL, 0 },
 { "excecao em f-string e str()",
@@ -2834,7 +2854,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "", "TypeError: decorador @app.route vale 'str', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
 { "@nao_existe e NameError na linha do @, nao funct engolida",
   "@nao_existe\nfunct h() {\n    return 1\n}\npost(h())\n",
-  "", "NameError: name 'nao_existe' is not defined", 1 },
+  "", "NameError: name 'nao_existe' is not defined", 2 },
 { "@x com x inteiro e TypeError",
   "x = 5\n@x\nfunct h() {\n    return 1\n}\n",
   "", "TypeError: decorador @x vale 'int', que nao registra (.register) nem envolve (chamavel) a funct", 1 },
@@ -2934,7 +2954,8 @@ const Caso CASOS_LINGUAGEM[] = {
 { "byte: declaracao tipada aceita bytes",
   "byte x = b\"a\"\npost(x)\n", "b'a'", NULL, 0 },
 { "byte: declaracao tipada recusa str (antes passava calado)",
-  "byte y = \"texto\"\n", "", "AttributedValueError: variável y esperava byte", 1 },
+  "byte y = \"texto\"\n",
+  "", "AttributedValueError: variável y esperava byte, recebeu str", 2 },
 { "byte: is byte, sem import",
   "post(b\"a\" is byte, \"a\" is byte, byte is type, type(byte))\n", "True False True type", NULL, 0 },
 { "byte(x) e o mesmo que bytes.new(x)",
@@ -2975,7 +2996,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "1 (2,) {'x': 3}\n1 () {}", NULL, 0 },
 { "variadico: sem **kwarg o nome desconhecido continua erro",
   "funct f(a) {\n    return a\n}\npost(f(1, x=2))\n",
-  "", "TypeError: f() got an unexpected keyword argument 'x'", 1 },
+  "", "TypeError: f() got an unexpected keyword argument 'x'", 2 },
 { "variadico: tipo em estrela e recusado (a estrela ja decide tup/dict)",
   "funct f(*int args) {\n    return args\n}\n",
   "", "SyntaxError: parametro `*int args` nao aceita tipo: `*args` e sempre tup e `**kwarg` sempre dict — escreva `*args`", 2 },
@@ -3086,7 +3107,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "40", NULL, 0 },
 { "async: nome errado e TypeError na chamada, antes do await",
   "async funct f(a) {\n    return a\n}\nf(b=1)\n",
-  "", "TypeError: f() got an unexpected keyword argument 'b'", 1 },
+  "", "TypeError: f() got an unexpected keyword argument 'b'", 2 },
 { "async: decorador async devolve um future no lugar da funct",
   "async funct d(f) {\n    return f\n}\n@d\nfunct h() {\n    return 2\n}\ng = await h\npost(g())\n",
   "2", NULL, 0 },
@@ -3120,7 +3141,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "E", NULL, 0 },
 { "instancia: __init__(**kw) sem self recusa a instancia como posicional",
   "Entity E() {\n    funct __init__(**kw) {\n        post(kw)\n    }\n}\nE(a=1)\n",
-  "", "TypeError: __init__() takes 0 positional arguments but 1 was given", 1 },
+  "", "TypeError: __init__() takes 0 positional arguments but 1 was given", 2 },
 /* a Entity como valor era "'Entity' object is not callable" no callback */
 { "instancia: Entity como callback do C (map) instancia",
   "Entity P() {\n    funct __init__(self, x) {\n        self.x = x\n    }\n}\npost(map([1, 2], P)[1].x)\n",
@@ -3294,7 +3315,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * "f() takes N positional arguments but M were given" sem fixar N. */
 { "static com self chamado por nome com posicionais demais: frase do CALL_KW = a do OP_CALL (fotografia)",
   "Entity C() {\n    static funct f(self, a, b=10) {\n        return a + b\n    }\n}\npost(C.f(1, 2, 3, b=4))\n",
-  "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 1 },
+  "", "TypeError: f() takes from 1 to 2 positional arguments but 3 were given", 2 },
 
 /* ── import *: as três grafias e as recusas ──────────────────────────────────
  * `from m import *`, `import m *` e `PUSH m GET *` são a mesma regra: ligam os
@@ -3310,7 +3331,8 @@ const Caso CASOS_LINGUAGEM[] = {
 { "import *: modulo entre aspas por nome",
   "from 'json' import *\npost(stringify([1]))\n", "[1]", NULL, 0 },
 { "import *: import m * nao liga o nome do modulo",
-  "import regex *\npost(regex)\n", "", "NameError: name 'regex' is not defined", 1 },
+  "import regex *\npost(regex)\n",
+  "", "NameError: name 'regex' is not defined", 2 },
 { "import *: modulo ausente e ImportError na linha do import",
   "post(1)\nfrom naoexiste import *\n", "1", "ImportError: No module named 'naoexiste'", 1 },
 { "import *: dentro de funct e recusado",

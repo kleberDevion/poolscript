@@ -33,6 +33,11 @@ int ps_nativo_tem_membro(const char *dono, const char *membro);
  * qualquer arquivo de mesmo nome — é a ordem de resolução do import.) */
 int ps_nativo_eh_modulo(const char *nome);
 
+/* A VM liga `nome` sozinha, sem o programa escrever nada? Builtins,
+ * `__name__`, `PoolFile`, `byte`, as exceções e os módulos que nascem sem
+ * import (`Parsing`) — a mesma lista que a partida do programa usa. */
+int ps_nome_pre_ligado(const char *nome);
+
 /* O membro do módulo nativo mais parecido com `membro` (o "Did you mean" que
  * a VM dá rodando), ou NULL. */
 const char *ps_nativo_sugestao(const char *mod, const char *membro);

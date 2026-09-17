@@ -119,6 +119,8 @@ NEWLINE nem mexe na indentação. Isto habilita *method chaining* em várias
 linhas:
 
 ```ps
+import request
+u = "https://exemplo.com/api"
 resposta = request.get(url=u)
                   .json()
                   .get("dados")

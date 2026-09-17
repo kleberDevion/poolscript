@@ -97,9 +97,9 @@ funct espera_porta(prazo_decimos)
     {
         s = sockets.socket()
         s.settimeout(0.2)
-        r = s.connect_ex(("127.0.0.1", PORTA))
+        rc_con = s.connect_ex(("127.0.0.1", PORTA))
         s.close()
-        if r == 0
+        if rc_con == 0
         {
             return true
         }
@@ -273,10 +273,10 @@ SEGREDOS = ["FORA da pasta", "root:x:", "Jinker(", "SENHA=nao"]
 vazou = []
 for each caminho in VETORES
 {
-    r = cru("GET " + caminho + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+    bruto = cru("GET " + caminho + " HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
     for each s in SEGREDOS
     {
-        if s in r
+        if s in bruto
         {
             addEnd(vazou, caminho + "  entregou  " + s)
         }
@@ -334,11 +334,13 @@ confere("@app.patch registra PATCH e injeta o path param", r.get_json("id") == "
 # TODAS as rotas do path, na ordem em que foram registradas.
 r = http_post(RAIZ + "/verbo/9", body="x")
 confere("metodo errado em path existente e 405", r.status_code == 405)
-r = cru("POST /verbo/9 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-confere("405 leva Allow: com o metodo da rota", "Allow: PATCH" in r)
-confere("405 diz o motivo no corpo", "método inválido: POST /verbo/9" in r)
-r = cru("PATCH /verbo HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-confere("Allow junta os verbos de TODAS as rotas do path", "Allow: GET, POST, PUT, DELETE" in r)
+# `r` e a Response das chamadas de cima; a resposta CRUA e texto, e vai em
+# outro nome — o tipo de uma variavel e fixado na primeira atribuicao
+bruto = cru("POST /verbo/9 HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("405 leva Allow: com o metodo da rota", "Allow: PATCH" in bruto)
+confere("405 diz o motivo no corpo", "método inválido: POST /verbo/9" in bruto)
+bruto = cru("PATCH /verbo HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("Allow junta os verbos de TODAS as rotas do path", "Allow: GET, POST, PUT, DELETE" in bruto)
 
 # ── WebSocket ───────────────────────────────────────────────────────────────
 eco = ""
@@ -476,9 +478,9 @@ confere("rota SEM model nao e afetada", r.status_code == 200)
 #     legível por JavaScript é XSS virando roubo de sessão.
 #   - ler `sid` não pode casar dentro de `notsid` — é o defeito clássico de
 #     quem fatia o cabeçalho na mão.
-r = cru("GET /cookie-poe HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+bruto = cru("GET /cookie-poe HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 n_set = 0
-for each l in r.split("\r\n")
+for each l in bruto.split("\r\n")
 {
     if l.lower().startswith("set-cookie:")
     {
@@ -486,21 +488,21 @@ for each l in r.split("\r\n")
     }
 }
 confere("os DOIS cookies saem, um Set-Cookie cada", n_set == 2)
-confere("o padrao e seguro: HttpOnly e SameSite", "HttpOnly" in r and "SameSite=Lax" in r)
-confere("max_age vira Max-Age", "Max-Age=3600" in r)
+confere("o padrao e seguro: HttpOnly e SameSite", "HttpOnly" in bruto and "SameSite=Lax" in bruto)
+confere("max_age vira Max-Age", "Max-Age=3600" in bruto)
 confere("httponly=false e respeitado",
-        "tema=escuro; Path=/x; SameSite=Lax\r\n" in r)
+        "tema=escuro; Path=/x; SameSite=Lax\r\n" in bruto)
 
 # Nomear UM parametro nao pode apagar o default de outro. Era bug: o slot
 # pulado chega UNSET e `val_truthy(UNSET)` e falso, entao `secure=true`,
 # `samesite=` e `domain=` derrubavam o `httponly=true` do default.
-r = cru("GET /cookie-defaults HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+bruto = cru("GET /cookie-defaults HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 confere("secure= nomeado mantem o HttpOnly do default",
-        "Set-Cookie: d_secure=1; Path=/; SameSite=Lax; HttpOnly; Secure\r\n" in r)
+        "Set-Cookie: d_secure=1; Path=/; SameSite=Lax; HttpOnly; Secure\r\n" in bruto)
 confere("samesite= nomeado mantem o HttpOnly do default",
-        "Set-Cookie: d_samesite=1; Path=/; SameSite=Strict; HttpOnly\r\n" in r)
+        "Set-Cookie: d_samesite=1; Path=/; SameSite=Strict; HttpOnly\r\n" in bruto)
 confere("domain= nomeado mantem o HttpOnly do default",
-        "Set-Cookie: d_domain=1; Path=/; Domain=e.com; SameSite=Lax; HttpOnly\r\n" in r)
+        "Set-Cookie: d_domain=1; Path=/; Domain=e.com; SameSite=Lax; HttpOnly\r\n" in bruto)
 
 # O CORPO NUNCA FICA NA MEMORIA DO MOTOR. Ele desce da rede direto pra um
 # arquivo — o do `save=` (do usuario) ou um do motor, `.pr_resposta_XXXXXX` na
@@ -555,9 +557,9 @@ confere("cookie inexistente e null", r.get_json("nao") == null)
 
 # logout = o cookie reescrito com vida zero, mesmo path — a linha exata que
 # a doc do cookie promete na tabela de `POST /sair`
-r = cru("POST /cookie-sai HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+bruto = cru("POST /cookie-sai HTTP/1.1\r\nHost: x\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 confere("logout: Set-Cookie com valor vazio e Max-Age=0, e os padroes seguros",
-        "Set-Cookie: sid=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly\r\n" in r)
+        "Set-Cookie: sid=; Path=/; Max-Age=0; SameSite=Lax; HttpOnly\r\n" in bruto)
 
 # ── gather + request.get: pendurava em metade das rodadas ────────────────────
 #
@@ -583,23 +585,23 @@ r = get(RAIZ + "/cookie-le", headers={"Cookie": "notsid=x; sid=certo"})
 confere("nome parcial NAO casa (`sid` dentro de `notsid`)", r.get_json("sid") == "certo")
 
 # ── protocolo CRU: requisição torta é recusada COM resposta ─────────────────
-r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
-confere("Content-Length não numérico vira 400", "400" in r)
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: abc\r\n\r\n")
+confere("Content-Length não numérico vira 400", "400" in bruto)
 
-r = cru("POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\nx")
-confere("Transfer-Encoding junto com Content-Length vira 400", "400" in r)
+bruto = cru("POST /eco HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nTransfer-Encoding: chunked\r\n\r\nx")
+confere("Transfer-Encoding junto com Content-Length vira 400", "400" in bruto)
 
-r = cru("POST /eco HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
-confere("chunked é recusado com 501, não com 200 e corpo vazio", "501" in r)
+bruto = cru("POST /eco HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n")
+confere("chunked é recusado com 501, não com 200 e corpo vazio", "501" in bruto)
 
-r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nLinhaSemDoisPontos\r\n\r\n")
-confere("cabeçalho sem ':' vira 400", "400" in r)
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nLinhaSemDoisPontos\r\n\r\n")
+confere("cabeçalho sem ':' vira 400", "400" in bruto)
 
-r = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nx")
-confere("Content-Length duplicado e diferente vira 400", "400" in r)
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\nx")
+confere("Content-Length duplicado e diferente vira 400", "400" in bruto)
 
-r = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
-confere("pipelining responde as DUAS requisições", r.count("HTTP/1.1") >= 2)
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("pipelining responde as DUAS requisições", bruto.count("HTTP/1.1") >= 2)
 
 # ── parada limpa (é o que faz o gcov do servidor existir) ───────────────────
 # O pedido de parada pode errar (o servidor já estava caindo quando a resposta
@@ -666,8 +668,8 @@ else
     while i < 60
     {
         os.cmd("curl -sk --max-time 2 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
-        r = os.readFile(PASTA + "/tls_ok.txt")
-        if "\"ok\"" in r
+        txt = os.readFile(PASTA + "/tls_ok.txt")
+        if "\"ok\"" in txt
         {
             subiu = true
             break
@@ -682,8 +684,8 @@ else
     if subiu
     {
         os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
-        r = os.readFile(PASTA + "/tls_ok.txt")
-        confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in r)
+        txt = os.readFile(PASTA + "/tls_ok.txt")
+        confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in txt)
 
         # parada limpa pelo MESMO motivo do alvo HTTP: morto por sinal, o
         # servidor não grava o `.gcda` e a medição perde o lado TLS.

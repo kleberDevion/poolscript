@@ -16,6 +16,7 @@ cada iteração.
 ## 5.1. Condicional — `if` / `elif` / `else`
 
 ```ps
+nota = 8
 if nota >= 7 {
     post("aprovado")
 } elif nota >= 5 {
@@ -199,6 +200,7 @@ Como **argumento único** de uma chamada, os colchetes são dispensáveis, e iss
 vale em qualquer função:
 
 ```ps
+nums = [1, 2, 3, 4]
 post(n * 2 for each n in nums)          # [2, 4, 6, 8]
 post(sum(v for each v in nums))         # 10
 post(max(v for each v in nums))         # 4
@@ -252,6 +254,7 @@ funct ainda_nao() {
     pass                 # corpo vazio, sem erro
 }
 
+x = 5
 if x < 0 {
     pass                 # esse caso é ignorado
 } else {
@@ -282,6 +285,7 @@ Compara um valor (o *sujeito*) contra uma série de **padrões**, na ordem, e ro
 o bloco do primeiro que casar.
 
 ```ps
+comando = "oi"
 match comando {
     case "oi" {
         post("olá")
@@ -307,6 +311,7 @@ Padrões suportados (verificados):
 | Guarda — `case x if x > 5 { }` | o padrão casa **e** a condição é verdadeira | conforme o padrão |
 
 ```ps
+ponto = [0, 0]
 match ponto {
     case [0, 0] {
         post("origem")
@@ -379,6 +384,10 @@ pode ficar na linha seguinte, como em todo bloco.
 igual, e a chave pode ficar na linha seguinte:
 
 ```ps
+funct principal() {
+    post("oi")
+}
+
 if __name__ == "main":
     principal()
 ```
