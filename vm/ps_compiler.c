@@ -273,6 +273,10 @@ typedef struct {
      * nome — é o que diz se um nome de tipo existe e quem herda de quem. */
     PSNode **tipos_arq;
     int32_t  ntipos_arq, cap_tipos_arq;
+    /* métodos sem `self` que ganharam um sintetizado (tp_self_dos_metodos);
+     * a AST volta ao que era no fim da compilação */
+    struct SelfSint *self_sint;
+    int32_t  n_self_sint, cap_self_sint;
     /* Os erros de tipo: NÃO param a compilação — o `--check` lista todos. */
     PSErroTipo *erros;
     int32_t  nerros, cap_erros;
@@ -2295,6 +2299,83 @@ static int tp_metodo_estatico(C *c, const char *classe, PSNode *met)
     return 0;
 }
 
+/* Método sem `self`: o erro é da DECLARAÇÃO e sai ali, antes de rodar.
+ *
+ * A regra (7.3) é que o primeiro parâmetro de um método é `self`, a instância
+ * — a não ser que ele seja `static`, ou que comece por `*args` (a instância
+ * entra na tup, 7.2). Sem isto o que saía era o SINTOMA, longe da causa:
+ * `NameError: name 'self' is not defined` no primeiro `self` do corpo, mais um
+ * `TypeError: m() takes 0 positional arguments but 1 was given` em cada
+ * chamada — e nada na linha do `funct`, que é onde o defeito está.
+ *
+ * Depois de acusar, o método ganha um `self` sintetizado na frente dos
+ * parâmetros e o resto da conferência segue como se ele tivesse sido escrito:
+ * um erro só, o da causa, sem a cascata. O programa não roda (erro de tipo),
+ * então o parâmetro a mais nunca executa; e a AST volta ao que era no fim da
+ * compilação (`self_sint`, desfeito em ps_compila_com). */
+struct SelfSint { PSNode *met; PSNodeVec orig; PSNode *no; };
+
+static void tp_prepoe_self(C *c, PSNode *m)
+{
+    PSNode  *no    = calloc(1, sizeof(PSNode));
+    PSNode **itens = malloc(sizeof(PSNode *) * (size_t)(m->lista.n + 1));
+    if (!no || !itens) { free(no); free(itens); cerro(c, "sem memoria", m); return; }
+    if (c->n_self_sint + 1 > c->cap_self_sint) {
+        int32_t novo = c->cap_self_sint < 8 ? 8 : c->cap_self_sint * 2;
+        struct SelfSint *nv = realloc(c->self_sint, sizeof(*nv) * (size_t)novo);
+        if (!nv) { free(no); free(itens); cerro(c, "sem memoria", m); return; }
+        c->self_sint = nv; c->cap_self_sint = novo;
+    }
+    no->kind = N_NAME; no->line = m->line; no->col = m->col; no->texto = "self";
+    itens[0] = no;
+    if (m->lista.n > 0) memcpy(itens + 1, m->lista.itens, sizeof(PSNode *) * (size_t)m->lista.n);
+    struct SelfSint *s = &c->self_sint[c->n_self_sint++];
+    s->met = m; s->orig = m->lista; s->no = no;
+    m->lista.itens = itens;
+    m->lista.n += 1;
+    m->lista.cap = m->lista.n;
+    m->self_faltava = 1;
+}
+
+/* Corre os métodos de UMA classe/Entity. Idempotente (`self_faltava`): a
+ * pré-passada chama pras classes do arquivo, antes de qualquer chamada ser
+ * conferida; a compilação da classe chama de novo, pelas que a pré-passada
+ * não vê (classe dentro de funct). O `@static` é a entrada anterior da lista,
+ * como na compilação da classe. */
+static void tp_self_dos_metodos(C *c, PSNode *cls)
+{
+    if (!cls || cls->kind != N_ENTITY_DECL) return;
+    int estatico = 0;
+    for (int32_t i = 0; i < cls->lista.n && !CFALHOU(c); i++) {
+        PSNode *m = cls->lista.itens[i];
+        if (!m) continue;
+        if (m->kind == N_DECORATOR_STMT) {
+            PSNode *dec = m->a;
+            const char *dn = (dec && dec->lista.n == 1) ? dec->lista.itens[0]->texto : NULL;
+            if (dn && !strcmp(dn, "static")) estatico = 1;
+            continue;
+        }
+        if (m->kind != N_ACTION_DECL) continue;
+        int meu = estatico || m->is_static;
+        estatico = 0;
+        if (meu || m->self_faltava) continue;
+        PSNode *p0 = m->lista.n > 0 ? m->lista.itens[0] : NULL;
+        if (p0 && p0->i2 == 1) continue;                               /* `*args`: 7.2 */
+        if (p0 && p0->i2 == 0 && p0->texto && !strcmp(p0->texto, "self")) continue;
+        const char *nome = m->texto ? m->texto : "?";
+        if (p0 && p0->i2 == 0 && p0->texto)
+            terro(c, m, "TypeError", "método %s(%s) sem self: o primeiro parâmetro de um método é self, "
+                                     "não '%s' (ou marque static)", nome, p0->texto, p0->texto);
+        else if (p0 && p0->i2 == 2 && p0->texto)
+            terro(c, m, "TypeError", "método %s(**%s) sem self: o primeiro parâmetro de um método é self "
+                                     "(ou marque static)", nome, p0->texto);
+        else
+            terro(c, m, "TypeError", "método %s() sem self: o primeiro parâmetro de um método é self "
+                                     "(ou marque static)", nome);
+        tp_prepoe_self(c, m);
+    }
+}
+
 /* `alvo.nome` existe? Módulo nativo, tipo nativo (pelas tabelas da VM),
  * Entity do arquivo (campo, método, `self.x` gravado, pais) e enum. O que não
  * se sabe — tipo desconhecido, pai importado — passa. */
@@ -4223,6 +4304,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->entity_pai = (n->lista2.n > 0) ? n->lista2.itens[0]->texto : NULL;
             c->dentro_entity = 1;
             c->entity_no = n;   /* nome solto -> campo `static` desta classe */
+            tp_self_dos_metodos(c, n);   /* classe que a pré-passada não viu (aninhada) */
             /* Dentro de Entity o decorador é uma entrada SEPARADA do corpo
              * (dec_sem_captura no parser): ele não embrulha a action. Então o
              * `@static` visto aqui vale pra PRÓXIMA action da lista — é assim
@@ -5314,6 +5396,9 @@ static void tp_pre_passada(C *c, PSNode *programa)
 {
     if (!programa) return;
     tp_coleta_tipos_arq(c, programa);
+    /* método sem `self`: acusa e sintetiza ANTES de qualquer chamada ser conferida */
+    for (int32_t i = 0; i < c->ntipos_arq && !CFALHOU(c); i++)
+        tp_self_dos_metodos(c, c->tipos_arq[i]);
     tp_junta_ligados(c, programa, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod);
     tp_junta_globais(c, programa);
     Unidade mod;
@@ -5461,6 +5546,15 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
         c.erros = NULL;
     }
     free(c.erros);
+    /* a AST volta ao que era: o `self` sintetizado só existiu nesta compilação */
+    for (int32_t i = 0; i < c.n_self_sint; i++) {
+        struct SelfSint *s = &c.self_sint[i];
+        free(s->met->lista.itens);
+        s->met->lista = s->orig;
+        s->met->self_faltava = 0;
+        free(s->no);
+    }
+    free(c.self_sint);
     for (int32_t i = 0; i < c.ntpool; i++) free(c.tpool[i]);
     free(c.tpool);
     free(c.topo);

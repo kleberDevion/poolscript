@@ -97,6 +97,19 @@ confere("--check reprova fonte torto com linha e coluna",
 r = roda("echo 'post(1)' | '" + POOL + "' --check")
 confere("--check lê da entrada padrão", "\"ok\":true" in r["saida"])
 
+# Método sem `self`: UM erro, na linha do `funct` (5) — não um NameError no
+# `self` do corpo (6) nem um TypeError na chamada (10). O editor sublinha a
+# declaração, que é onde está o defeito.
+os.writeFile(PASTA + "/sem_self.pr",
+             "class C() {\n    funct __init__(self) {\n        self.x = 1\n    }\n"
+             + "    funct m() {\n        return self.x\n    }\n}\nc = C()\nc.m()\n")
+r = roda("'" + POOL + "' --check sem_self.pr")
+confere("--check: método sem self dá um erro só, na linha da declaração",
+        "\"ok\":false" in r["saida"] and "sem self" in r["saida"]
+        and "\"linha\":5" in r["saida"] and "\"linha\":6" not in r["saida"]
+        and "\"linha\":10" not in r["saida"]
+        and len(r["saida"].split("\"tipo\":")) == 3)
+
 r = roda("echo 'x = 1' | '" + POOL + "' --tokens")
 confere("--tokens devolve JSON de tokens", "\"t\":\"IDENT\"" in r["saida"] and "\"l\":1" in r["saida"])
 

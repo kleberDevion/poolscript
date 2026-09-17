@@ -3136,12 +3136,15 @@ const Caso CASOS_LINGUAGEM[] = {
 { "instancia: __init__(*args) sem self com E(*lista)",
   "Entity E() {\n    funct __init__(*args) {\n        post(len(args), type(args[0]))\n    }\n}\npost(type(E(*[1, 2])))\n",
   "3 E\nE", NULL, 0 },
-{ "instancia: __init__ que reatribui o 1o parametro ainda devolve a instancia",
+/* Era "reatribuir o 1o parametro ainda devolve a instancia": `__init__(x)`
+ * recebia a instancia em `x` e valia. Metodo sem `self` e erro (7.3) — e o
+ * erro sai na DECLARACAO, antes de rodar, dizendo que nome achou no lugar. */
+{ "instancia: __init__ com 1o parametro que nao e self e erro na declaracao",
   "Entity E() {\n    funct __init__(x) {\n        x = 5\n    }\n}\npost(type(E()))\n",
-  "E", NULL, 0 },
-{ "instancia: __init__(**kw) sem self recusa a instancia como posicional",
+  "", "TypeError: método __init__(x) sem self: o primeiro parâmetro de um método é self, não 'x' (ou marque static)", 2 },
+{ "instancia: __init__(**kw) sem self e erro na declaracao (a instancia entraria como posicional)",
   "Entity E() {\n    funct __init__(**kw) {\n        post(kw)\n    }\n}\nE(a=1)\n",
-  "", "TypeError: __init__() takes 0 positional arguments but 1 was given", 2 },
+  "", "TypeError: método __init__(**kw) sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
 /* a Entity como valor era "'Entity' object is not callable" no callback */
 { "instancia: Entity como callback do C (map) instancia",
   "Entity P() {\n    funct __init__(self, x) {\n        self.x = x\n    }\n}\npost(map([1, 2], P)[1].x)\n",

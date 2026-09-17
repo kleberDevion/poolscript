@@ -127,6 +127,23 @@ cria uma instância por item. O `__init__` não pode ser `async` nem gerador
 Um método é uma `funct` cujo **primeiro parâmetro é `self`** (a instância).
 Sem `self`, é erro (a não ser que seja `static`, 7.4).
 
+O erro é da **declaração** e sai antes de rodar, na linha do `funct` — não
+no primeiro `self` do corpo, que seria só o sintoma. É um erro só: o motor
+não repete o mesmo defeito em cada `self` e em cada chamada.
+
+```ps
+Entity Conta() {
+    saldo: int
+    funct extrato() {        # TypeError: método extrato() sem self: o primeiro parâmetro de um método é self (ou marque static)
+        return self.saldo
+    }
+}
+```
+
+Primeiro parâmetro com outro nome (`funct extrato(x)`) é o mesmo erro, e a
+mensagem diz qual nome encontrou. A exceção é `*args` na frente: a instância
+entra na tup (7.2).
+
 ```ps
 Entity Contador() {
     valor: int

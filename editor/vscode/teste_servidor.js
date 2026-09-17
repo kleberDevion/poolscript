@@ -338,6 +338,19 @@ async function main() {
            && lista[1].range.start.line === 1,
          lista.map((d) => d.range.start.line + ': ' + d.message));
   }
+  /* Método sem `self`: o erro é da DECLARAÇÃO (a causa), não do primeiro
+   * `self` do corpo (o sintoma) — o sublinhado cai na linha do `funct`, e é
+   * um só (o motor não repete o defeito em cascata). */
+  {
+    const m = await conversa('class C() {\n    funct __init__(self) {\n        self.x = 1\n    }\n'
+                             + '    funct m() {\n        return self.x\n    }\n}\nC().m()\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const ultimo = ds[ds.length - 1];
+    const lista = ultimo ? ultimo.params.diagnostics : [];
+    conf('metodo sem self: um diagnostico so, na linha da declaracao',
+         lista.length === 1 && lista[0].message.includes('sem self') && lista[0].range.start.line === 4,
+         lista.map((d) => d.range.start.line + ': ' + d.message));
+  }
 
   /* ── 9. AVISO (nao erro) vira sublinhado amarelo ───────────────────────── */
   {

@@ -115,6 +115,73 @@ const Caso CASOS_ERROS[] = {
   "post(C.m(5))\n",
   "5", NULL, 0 },
 
+/* ── método sem `self`: o erro é na DECLARAÇÃO, antes de rodar ──────────
+ * Era `NameError: name 'self' is not defined` no primeiro `self` do corpo —
+ * o sintoma, longe da causa — mais `m() takes 0 positional arguments but 1
+ * was given` em cada chamada, e nada na linha do `funct`. A regra (7.3) é da
+ * assinatura: o primeiro parâmetro de um método é `self`, e é ali que o erro
+ * aparece. Um erro só: o método ganha um `self` sintetizado depois de acusado,
+ * então o resto da conferência não repete o mesmo defeito em cascata. */
+{ "método sem self: erro na linha da declaração, não no uso",
+  "public class ServerMessage() {\n"
+  "    funct __init__(self, tup hoster) {\n"
+  "        self.host = hoster\n"
+  "    }\n"
+  "    private funct _send() {\n"
+  "        return self.host[0]\n"
+  "    }\n"
+  "}\n",
+  "", "TypeError: método _send() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
+{ "método sem self que nem usa self: a chamada pela instância receberia a instância",
+  "class C() {\n"
+  "    funct ping() {\n"
+  "        return \"pong\"\n"
+  "    }\n"
+  "}\n"
+  "post(C().ping())\n",
+  "", "TypeError: método ping() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
+{ "método com primeiro parâmetro de outro nome: diz qual",
+  "class C() {\n"
+  "    funct ping(x) {\n"
+  "        return x\n"
+  "    }\n"
+  "}\n"
+  "post(C().ping(7))\n",
+  "", "TypeError: método ping(x) sem self: o primeiro parâmetro de um método é self, não 'x' (ou marque static)", 2 },
+{ "__init__ sem self",
+  "Entity E() {\n"
+  "    funct __init__() {\n"
+  "        self.n = 1\n"
+  "    }\n"
+  "}\n"
+  "post(E().n)\n",
+  "", "TypeError: método __init__() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
+{ "método sem self em Entity com campos",
+  "Entity Conta() {\n"
+  "    saldo: int\n"
+  "    funct extrato() {\n"
+  "        return self.saldo\n"
+  "    }\n"
+  "}\n"
+  "post(Conta(10).extrato())\n",
+  "", "TypeError: método extrato() sem self: o primeiro parâmetro de um método é self (ou marque static)", 2 },
+{ "static funct sem self continua válido",
+  "class C() {\n"
+  "    static funct ping() {\n"
+  "        return \"pong\"\n"
+  "    }\n"
+  "}\n"
+  "post(C.ping())\n",
+  "pong", NULL, 0 },
+{ "__init__(*args) recebe a instância na tup (7.2): não é erro",
+  "Entity E() {\n"
+  "    funct __init__(*args) {\n"
+  "        post(len(args), type(args[0]))\n"
+  "    }\n"
+  "}\n"
+  "post(type(E(1, 2)))\n",
+  "3 E\nE", NULL, 0 },
+
 /* ── f-string: erro no trecho SOBE, não vira texto cru ── */
 { "f-string com nome fora de escopo",
   "post(f\"v: {zzz}\")\n",

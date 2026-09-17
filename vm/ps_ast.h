@@ -178,6 +178,10 @@ struct PSNode {
      * (pendente_static / pendente_nonnull). */
     int         is_static;
     int         is_nonnull;
+    /* ACTION_DECL: método sem `self` que o compilador acusou e ganhou um
+     * `self` sintetizado na frente dos parâmetros — só durante a compilação
+     * (o compilador desfaz no fim). Ver tp_self_dos_metodos. */
+    int         self_faltava;
 };
 
 /* ── arena ──────────────────────────────────────────────────────────────── */
