@@ -2,7 +2,7 @@
   <id>poolscript.icons</id>
   <name>PoolScript IDEA</name>
   <vendor>PoolScript</vendor>
-  <description>PoolScript no IntelliJ: ícone P por extensão (.ps azul, .p roxo, .psl vermelho), indentação no Enter e auto-fechamento correto de bracket/aspas (com type-over).</description>
+  <description>PoolScript no IntelliJ: a logo da linguagem no arquivo .pr, indentação no Enter e auto-fechamento correto de bracket/aspas (com type-over).</description>
   <idea-version since-build="231"/>
   <depends>com.intellij.modules.platform</depends>
   <extensions defaultExtensionNs="com.intellij">

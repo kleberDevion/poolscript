@@ -9,7 +9,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 
 /**
- * Auto-fechamento CORRETO de bracket/aspas para PoolScript (.ps/.psl/.p),
+ * Auto-fechamento CORRETO de bracket/aspas para PoolScript (.pr),
  * feito no plugin porque o IDEA não faz type-over em arquivo TextMate:
  *
  *   - digitar '{' '(' '[' insere o par e deixa o cursor no meio (uma vez só)
@@ -27,9 +27,7 @@ public class PoolBraces extends TypedHandlerDelegate {
     VirtualFile vf = file.getVirtualFile();
     if (vf == null) return false;
     String ext = vf.getExtension();
-    if (ext == null) return false;
-    ext = ext.toLowerCase();
-    return ext.equals("ps") || ext.equals("psl") || ext.equals("p");
+    return ext != null && ext.equalsIgnoreCase("pr");
   }
 
   private static char fechaDe(char c) {

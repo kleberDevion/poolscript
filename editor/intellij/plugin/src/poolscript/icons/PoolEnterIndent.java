@@ -10,7 +10,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 
 /**
- * Indentação no Enter pra PoolScript (.ps/.psl/.p) — mesmo comportamento do
+ * Indentação no Enter pra PoolScript (.pr) — mesmo comportamento do
  * VS Code, que o suporte TextMate do IDEA não dá:
  *   - linha anterior termina com aberto ({ ( [) -> nova linha entra com +4
  *   - Enter entre { e }                        -> } desce alinhado, cursor +4
@@ -33,8 +33,7 @@ public class PoolEnterIndent implements EnterHandlerDelegate {
     if (vf == null) return Result.Continue;
     String ext = vf.getExtension();
     if (ext == null) return Result.Continue;
-    ext = ext.toLowerCase();
-    if (!ext.equals("ps") && !ext.equals("psl") && !ext.equals("p")) return Result.Continue;
+    if (!ext.equalsIgnoreCase("pr")) return Result.Continue;
 
     Document doc = editor.getDocument();
     String texto = doc.getText();

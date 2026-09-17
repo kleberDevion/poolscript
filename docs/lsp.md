@@ -195,7 +195,7 @@ args = ["/caminho/do/repo/editor/vscode/server.js"]
 
 [[language]]
 name = "poolscript"
-file-types = ["ps", "psl", "p"]
+file-types = ["pr"]
 language-servers = ["poolscript"]
 ```
 

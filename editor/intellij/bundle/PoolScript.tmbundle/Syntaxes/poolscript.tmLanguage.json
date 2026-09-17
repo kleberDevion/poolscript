@@ -3,9 +3,7 @@
   "name": "PoolScript",
   "scopeName": "source.poolscript",
   "fileTypes": [
-    "ps",
-    "psl",
-    "p"
+    "pr"
   ],
   "patterns": [
     {
