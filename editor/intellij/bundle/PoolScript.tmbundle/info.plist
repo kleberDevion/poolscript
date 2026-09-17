@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>name</key><string>PoolScript</string>
+  <key>uuid</key><string>7a1b2c3d-poolscript-bundle-0001</string>
+  <key>description</key><string>PoolScript: gramática + regras de indentação pro IntelliJ</string>
+</dict>
+</plist>
