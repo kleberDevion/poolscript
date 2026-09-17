@@ -209,16 +209,21 @@ São três peças, e as três vêm do repositório:
 
 | peça | o que dá | onde |
 |---|---|---|
-| plugin | ícone do `.pr`, indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
-| bundle TextMate | o realce — **cópia** da gramática do vsix, fonte única lá | `editor/intellij/bundle` |
+| plugin | realce do `.pr`, ícone, indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
+| bundle TextMate | a gramática do realce — **cópia** da do vsix, fonte única lá; vai **dentro do jar** | `editor/intellij/bundle` |
 | LSP4IJ | completion, hover, diagnóstico: o mesmo `poolscript-lsp` do VS Code | plugin do marketplace |
 
-Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot) e:
+Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot).
+O realce vem sozinho: o IDEA só colore com bundle TextMate *registrado*, e o
+plugin registra o seu no boot (ponto de extensão
+`com.intellij.textmate.bundleProvider`), extraindo-o para
+`<sistema do IDEA>/poolscript/PoolScript.tmbundle`. Não há nada a adicionar
+em `Settings → Editor → TextMate Bundles` — era esse passo manual que deixava
+o `.pr` sem cor.
 
-- realce: `Settings → Editor → TextMate Bundles → +` →
-  `editor/intellij/bundle/PoolScript.tmbundle`;
-- LSP: `Settings → Languages & Frameworks → Language Servers → +` →
-  *New Language Server*, comando `poolscript-lsp`, extensão `pr`.
+Só o LSP ainda é configurado no IDEA: `Settings → Languages & Frameworks →
+Language Servers → +` → *New Language Server*, comando `poolscript-lsp`,
+extensão `pr`.
 
 > O fonte do plugin morava em `ideia-icons/` e foi apagado junto com centenas
 > de arquivos no commit `d91f2e9`. O `.jar` continuou instalado e funcionando,

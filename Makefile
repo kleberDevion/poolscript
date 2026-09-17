@@ -144,7 +144,8 @@ nvim:
 # é uma entrega.
 #
 # O bundle TextMate (realce) é CÓPIA da gramática do vsix — fonte única lá,
-# sincronizada aqui, então o IDEA colore igual (inclusive a paleta do C#).
+# sincronizada aqui, então o IDEA colore igual (inclusive a paleta do C#). Ele
+# vai DENTRO do jar e o plugin o registra no boot: sem passo manual no IDEA.
 #
 #     make intellij     compila, sincroniza a gramática e instala no IDEA
 IJ      := editor/intellij
@@ -164,7 +165,7 @@ intellij:
 	  echo "  plugin instalado em $$destino/poolscript-icons"; \
 	  echo "  REINICIE o IDEA (plugin so recarrega no boot)"; \
 	fi
-	@echo "  realce: Settings > Editor > TextMate Bundles > + > $(PWD)/$(IJ)/bundle/PoolScript.tmbundle"
+	@echo "  realce: automatico — o bundle vai dentro do jar e o plugin registra no boot"
 	@echo "  LSP:    Settings > Languages & Frameworks > Language Servers > + >"
 	@echo "          comando 'poolscript-lsp', extensao 'pr' (precisa do plugin LSP4IJ)"
 

@@ -24,7 +24,17 @@ ALVO=${ALVO:-17}
 
 rm -rf out dist && mkdir -p out dist
 "$JAVAC" --release "$ALVO" -nowarn -d out $(find stubs src -name '*.java')
-rm -rf out/com                      # descarta os stubs do jar
+rm -rf out/com out/org              # descarta os stubs do jar
 cp -r resources/* out/
+
+# O bundle TextMate (realce) vai DENTRO do jar, e o PoolBundle registra no
+# boot — sem o passo manual em Settings > Editor > TextMate Bundles, que era
+# onde o realce ficava sem carregar. A lista.txt diz ao plugin o que extrair.
+BUNDLE=../bundle/PoolScript.tmbundle
+[ -d "$BUNDLE" ] || { echo "build.sh: nao achei $BUNDLE" >&2; exit 1; }
+mkdir -p out/textmate
+cp -r "$BUNDLE" out/textmate/
+(cd out/textmate && find PoolScript.tmbundle -type f | sort > lista.txt)
+
 (cd out && zip -qr ../dist/poolscript-icons.jar .)
-echo "dist/poolscript-icons.jar pronto"
+echo "dist/poolscript-icons.jar pronto ($(wc -l < out/textmate/lista.txt) arquivos do bundle embutidos)"
