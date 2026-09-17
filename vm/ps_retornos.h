@@ -18,4 +18,23 @@
 
 const char *ps_retorno_de(const char *dono, const char *membro);
 
+/* `nome` é um tipo que algum nativo devolve (`DbCursor`, `_RouteRegistrar`)?
+ * É o que faz `DbCursor cur = c.cursor()` declarar um tipo que existe. */
+int ps_retorno_tipo_existe(const char *nome);
+
+/* O nativo `dono` (módulo, com o nome escrito no código, ou tipo, com o nome
+ * do `type()`) tem o membro? 1 = tem, e é método/função (o retorno da tabela
+ * é o da CHAMADA); 2 = tem, e é campo/valor (o retorno é o do próprio
+ * membro); 0 = não tem; -1 = `dono` não é módulo nem tipo conhecido. Mora na
+ * VM, junto das tabelas que o acesso a membro consulta. */
+int ps_nativo_tem_membro(const char *dono, const char *membro);
+
+/* `import nome` liga um módulo NATIVO da linguagem? (Os nativos ganham de
+ * qualquer arquivo de mesmo nome — é a ordem de resolução do import.) */
+int ps_nativo_eh_modulo(const char *nome);
+
+/* O membro do módulo nativo mais parecido com `membro` (o "Did you mean" que
+ * a VM dá rodando), ou NULL. */
+const char *ps_nativo_sugestao(const char *mod, const char *membro);
+
 #endif

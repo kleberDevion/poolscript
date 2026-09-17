@@ -114,6 +114,12 @@ typedef struct {
     int32_t  npriv;
     /* `private class Nome()` — a classe INTEIRA não é exportada no import. */
     int32_t  classe_privada;
+    /* Campos de instância com tipo escrito — `nome: str` no corpo e `private
+     * str nome = x` dentro de um método —, nome e tipo em paralelo. A VM
+     * confere toda escrita neles (OP_SET_MEMBER). */
+    char   **tip_nomes;
+    char   **tip_tipos;
+    int32_t  ntip;
 } PSClassDef;
 
 /* Campo de `model`, na forma neutra do compilador. */
@@ -142,6 +148,16 @@ typedef struct {
     PSEnumMembroDef *membros;
     int32_t          nmembros;
 } PSEnumDef;
+
+/* Um erro da tipagem estática, com a posição. `classe` é o nome do erro como a
+ * VM o daria rodando: AttributedValueError (tipo), TypeError (aridade da
+ * chamada), AttributeError (membro que o tipo não tem). */
+typedef struct {
+    char    msg[256];
+    char    classe[32];
+    int32_t linha;
+    int32_t col;
+} PSErroTipo;
 
 typedef struct {
     PSProto *protos;    /* índice 0 = módulo */
@@ -189,8 +205,12 @@ typedef struct {
     /* 1 = o PROGRAMA está errado (SyntaxError); 0 = o compilador é que ainda
      * não emite este nó (NotImplementedError). Sem isto todo erro de compilação
      * saía como "NotImplementedError", inclusive `base()` fora de lugar — o
-     * nome do erro não tinha nada a ver com o problema. */
+     * nome do erro não tinha nada a ver com o problema.
+     * 2 = erro da TIPAGEM ESTÁTICA: a lista inteira está em `erros_tipo` (o
+     * primeiro também em `erro`), e o programa não chega a rodar. */
     int      erro_do_programa;
+    PSErroTipo *erros_tipo;
+    int32_t     nerros_tipo;
 } PSPrograma;
 
 /* `import *` é resolvido NA COMPILAÇÃO: o compilador pergunta quais nomes o

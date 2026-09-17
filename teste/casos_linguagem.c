@@ -125,7 +125,9 @@ const Caso CASOS_LINGUAGEM[] = {
  * O oraculo e o CPython: cada esperado abaixo foi colhido rodando o mesmo
  * caso no python3, saida e mensagem de erro. */
 { "troca com alvo indexado (o bubble sort dele)",
-  "int funct main(lista){\n"
+  /* era `int funct` devolvendo a lista: com o tipo da funct valendo pro
+   * `return`, a declaração que diz o que ela devolve é `list funct` */
+  "list funct main(lista){\n"
   "    n = len(lista)\n"
   "    for each i in range(n - 1){\n"
   "        for each c in range(0, n - 1 - i){\n"

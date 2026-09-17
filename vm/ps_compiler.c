@@ -16,6 +16,7 @@
 #include "ps_compiler.h"
 #include "ps_ext.h"
 #include "ps_tipos.h"
+#include "ps_retornos.h"
 
 #include <stdarg.h>
 
@@ -57,6 +58,30 @@ typedef struct Unidade Unidade;
 /* Um upvalue enquanto compila: além do descritor que vai pro proto, guarda o
  * NOME, que é a chave da busca no aninhamento. */
 typedef struct { char *nome; int32_t em_local; int32_t idx; } UpvalC;
+
+/* O que a tipagem ESTÁTICA sabe de um nome: o tipo e de onde ele veio. Um por
+ * slot de função, um por nome de módulo vivo e um por global colhido antes de
+ * compilar (ver "tipagem estatica", mais abaixo).
+ *
+ * `tipo` NULL com estado 1 = o primeiro valor veio de onde o tipo só se sabe
+ * rodando (`json.parse`, `d["k"]`): a variável aceita qualquer valor, como uma
+ * de tipo Object. Os textos de tipo são estáticos, da árvore ou do `pool` do
+ * compilador — ninguém aqui é dono deles. */
+typedef struct {
+    const char *tipo;
+    /* 0 = sem tipo ainda (nunca recebeu nada, ou só Null); 1 = fixado pela
+     * primeira atribuição; 2 = declarado (`str s`, parâmetro tipado) */
+    unsigned char estado;
+    /* funct/lambda/Entity que o nome liga — é a assinatura que confere a
+     * chamada. `decorado`: um decorador geral pode trocar a funct, e aí a
+     * assinatura escrita não diz mais nada. */
+    PSNode *decl;
+    unsigned char decorado;
+    /* `import os` liga `os` ao módulo nativo; `from os import getenv` liga
+     * `getenv` ao membro dele */
+    const char *mod_nativo;
+    const char *membro_nativo;
+} SimInfo;
 
 struct Unidade {
     /* Função que ENVOLVE esta. NULL no módulo e nas actions de topo — é o que
@@ -110,6 +135,15 @@ struct Unidade {
     char   **mod_criados;
     int32_t  n_mod_criados;
     int32_t  cap_mod_criados;
+    /* Tipagem estática: um SimInfo por slot (junto dos vetores de slot) e um
+     * por nome de `mod_criados` (mesmo índice, mesma vida). */
+    SimInfo *sim;
+    SimInfo *mod_sim;
+    int32_t  cap_mod_sim;
+    /* O tipo de retorno escrito (`str funct f()`), canônico, e o nome da
+     * funct pra mensagem. NULL = sem tipo. */
+    const char *tipo_ret_nome;
+    const char *nome_funct;
 };
 
 /* `break`/`continue` precisam saber o laço em que estão. O endereço do fim
@@ -207,6 +241,38 @@ typedef struct {
      * arquivo os liga, então saem no import como os de topo */
     char   **globais_gravados;
     int32_t  nglobais_gravados;
+
+    /* ── tipagem estática ── */
+    /* Textos de tipo montados aqui (a união `a|b`): o compilador é dono. */
+    char   **tpool;
+    int32_t  ntpool, cap_tpool;
+    /* Os nomes do escopo do ARQUIVO que persistem (fora de bloco), com o tipo
+     * da declaração ou da primeira atribuição, na ordem do fonte. Colhidos
+     * antes de compilar: uma funct compilada antes de `x = 1` já precisa
+     * saber que o `x` de fora é int (a escrita dela cai nele). */
+    struct { const char *nome; SimInfo s; } *topo;
+    int32_t  ntopo, cap_topo;
+    /* Toda Entity, model e enum do arquivo, em qualquer profundidade, por
+     * nome — é o que diz se um nome de tipo existe e quem herda de quem. */
+    PSNode **tipos_arq;
+    int32_t  ntipos_arq, cap_tipos_arq;
+    /* Os erros de tipo: NÃO param a compilação — o `--check` lista todos. */
+    PSErroTipo *erros;
+    int32_t  nerros, cap_erros;
+    /* O valor que vai ser gravado agora, pro `guarda_nome_modo` conferir:
+     * quem grava e sabe o valor preenche antes e limpa depois. `tem_valor`
+     * 0 = gravação sem valor conhecido (desempacotamento, import...). */
+    struct { int tem_valor; const char *tipo; PSNode *no; const char *declara; PSNode *decl;
+             unsigned char decorado; const char *mod_nativo; const char *membro_nativo;
+             /* o nome passa a valer OUTRA coisa, de tipo desconhecido — o
+              * resultado de um decorador geral sobre a funct */
+             unsigned char redefine; } grava;
+    /* Na chamada de SAÍDA de uma funct tipada (`post` dentro de `int funct`):
+     * o tipo que cada argumento posicional tem que ter, e o rótulo do erro.
+     * `emite_args_e_chama` consome e limpa. */
+    const char *saida_tipo;
+    int         saida_indice;       /* -2 = todos os posicionais */
+    char        saida_rotulo[300];
 } C;
 
 /* Resolve o protótipo da unidade AGORA — nunca cacheia o ponteiro. */
@@ -373,6 +439,10 @@ static int32_t idx_local(C *c, Unidade *u, const char *nome)
             memset(nv + u->cap_locais, 0, (size_t)(novo - u->cap_locais));
             *vets[k] = nv;
         }
+        SimInfo *ns = realloc(u->sim, sizeof(SimInfo) * (size_t)novo);
+        if (!ns) { cerro(c, "sem memoria", NULL); return -1; }
+        memset(ns + u->cap_locais, 0, sizeof(SimInfo) * (size_t)(novo - u->cap_locais));
+        u->sim = ns;
         u->cap_locais = novo;
     }
     size_t n = strlen(nome);
@@ -427,6 +497,7 @@ static void escopo_trunca(C *c, Unidade *u, int32_t marca)
              * caísse nele herdava o tipo declarado do bloco que já fechou */
             u->certo[i] = 0;
             u->tipo_decl[i] = 0;
+            memset(&u->sim[i], 0, sizeof(SimInfo));
         }
         if (u->nlocais > marca) u->nlocais = marca;
     }
@@ -452,10 +523,18 @@ static void mod_criados_add(C *c, Unidade *u, const char *nome)
         u->mod_criados = nl;
         u->cap_mod_criados = novo;
     }
+    if (u->n_mod_criados + 1 > u->cap_mod_sim) {
+        int32_t novo = u->cap_mod_sim < 8 ? 8 : u->cap_mod_sim * 2;
+        SimInfo *ns = realloc(u->mod_sim, sizeof(SimInfo) * (size_t)novo);
+        if (!ns) { cerro(c, "sem memoria", NULL); return; }
+        u->mod_sim = ns;
+        u->cap_mod_sim = novo;
+    }
     size_t n = strlen(nome);
     char *copia = malloc(n + 1);
     if (!copia) { cerro(c, "sem memoria", NULL); return; }
     memcpy(copia, nome, n + 1);
+    memset(&u->mod_sim[u->n_mod_criados], 0, sizeof(SimInfo));
     u->mod_criados[u->n_mod_criados++] = copia;
 }
 
@@ -485,6 +564,11 @@ static int32_t op_binario(const char *s)
 }
 
 /* ── protótipos internos ────────────────────────────────────────────────── */
+/* tipagem estática (a seção "tipagem estatica", mais abaixo) */
+enum { T_NAO = 0, T_SIM = 1, T_TALVEZ = 2 };
+static const char *tp_de(C *c, Unidade *u, PSNode *n);
+static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declarado);
+static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *tipo, int declarado);
 static void expr(C *c, Unidade *u, PSNode *n);
 static void compila_fstring(C *c, Unidade *u, PSNode *n);
 static void stmt(C *c, Unidade *u, PSNode *n);
@@ -520,6 +604,38 @@ static int32_t varre_campos_priv(PSNode *n, char **nomes, int32_t achados)
     for (int32_t i = 0; i < n->lista2.n; i++)
         achados = varre_campos_priv(n->lista2.itens[i], nomes, achados);
     return achados;
+}
+
+/* Registra um campo tipado na classe (o primeiro de cada nome vale). */
+static void classe_tip_add(C *c, PSClassDef *def, const char *nome, const char *tipo)
+{
+    if (!nome || !tipo) return;
+    for (int32_t i = 0; i < def->ntip; i++)
+        if (strcmp(def->tip_nomes[i], nome) == 0) return;
+    char **nn = realloc(def->tip_nomes, sizeof(char *) * (size_t)(def->ntip + 1));
+    if (!nn) { cerro(c, "sem memoria", NULL); return; }
+    def->tip_nomes = nn;
+    char **nt = realloc(def->tip_tipos, sizeof(char *) * (size_t)(def->ntip + 1));
+    if (!nt) { cerro(c, "sem memoria", NULL); return; }
+    def->tip_tipos = nt;
+    char *cn = strdup(nome), *ct = strdup(tipo);
+    if (!cn || !ct) { free(cn); free(ct); cerro(c, "sem memoria", NULL); return; }
+    def->tip_nomes[def->ntip] = cn;
+    def->tip_tipos[def->ntip] = ct;
+    def->ntip++;
+}
+
+/* `private <tipo> <nome> = ...` dentro dos métodos: campo tipado também. */
+static void varre_campos_decl_tipados(C *c, PSNode *n, PSClassDef *def)
+{
+    if (!n) return;
+    if (n->kind == N_FIELD_DECL && n->texto && n->texto2) classe_tip_add(c, def, n->texto, n->texto2);
+    varre_campos_decl_tipados(c, n->a, def);
+    varre_campos_decl_tipados(c, n->b, def);
+    varre_campos_decl_tipados(c, n->c, def);
+    varre_campos_decl_tipados(c, n->e, def);
+    for (int32_t i = 0; i < n->lista.n; i++)  varre_campos_decl_tipados(c, n->lista.itens[i], def);
+    for (int32_t i = 0; i < n->lista2.n; i++) varre_campos_decl_tipados(c, n->lista2.itens[i], def);
 }
 
 static int eh_global_declarada(Unidade *u, const char *nome)
@@ -862,6 +978,14 @@ static void carrega_estatico(C *c, Unidade *u, const char *nome)
  * depois de nomeado (ou `**d`). */
 static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
 {
+    /* Chamada de SAÍDA numa funct tipada, com argumento que só se sabe
+     * rodando (ver `tp_confere_saida`): a conferência vai logo depois de cada
+     * um. Consumido aqui — os argumentos têm as chamadas deles. */
+    const char *saida_t = c->saida_tipo;
+    int saida_i = c->saida_indice;
+    char saida_rot[300];
+    if (saida_t) snprintf(saida_rot, sizeof(saida_rot), "%s", c->saida_rotulo);
+    c->saida_tipo = NULL;
     int32_t n = args->n, nkw = 0, estrelas = 0;
     int viu_nome = 0;
     for (int32_t i = 0; i < n; i++) {
@@ -878,8 +1002,12 @@ static void emite_args_e_chama(C *c, Unidade *u, PSNode *no, PSNodeVec *args)
         }
     }
     if (estrelas == 0) {
-        for (int32_t i = 0; i < n; i++)
+        for (int32_t i = 0; i < n; i++) {
             expr(c, u, args->itens[i]->a);
+            if (saida_t && !args->itens[i]->texto && (saida_i == -2 || saida_i == i)
+                    && tp_aceita(c, saida_t, tp_de(c, u, args->itens[i]->a), args->itens[i]->a, 1) == T_TALVEZ)
+                tp_emite_confere(c, u, saida_rot, saida_t, 1);
+        }
         if (nkw == 0) { emite(c, u, OP_CALL, n); return; }
         /* nomes dos kwargs entram como uma tupla de constantes */
         for (int32_t i = n - nkw; i < n; i++) {
@@ -1130,12 +1258,1216 @@ static void global_gravado_add(C *c, const char *nome)
     c->globais_gravados[c->nglobais_gravados++] = copia;
 }
 
-static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
+/* ══ tipagem estática: o que se sabe ANTES de rodar ══════════════════════════
+ *
+ * Tudo que tem tipo é conferido aqui, na compilação — o mesmo funil de rodar,
+ * importar e `--check`, então o veredito é o mesmo nos três. Três respostas
+ * possíveis pra "este valor serve neste lugar?":
+ *
+ *   T_SIM     sabido e certo: nada é emitido pra rodar (fica mais leve)
+ *   T_NAO     sabido e errado: erro de compilação, e a compilação SEGUE pra
+ *             achar os outros — o programa com erro não roda, e a lista sai
+ *             inteira
+ *   T_TALVEZ  o tipo só se sabe rodando (`json.parse`, `d["k"]`): a
+ *             conferência é emitida no lugar (OP_COERCE_DECL/OP_CONFERE_TIPO)
+ *
+ * Os nomes se resolvem na MESMA ordem do `carrega_nome`/`guarda_nome_modo`
+ * — campo static da classe, módulo, `global`, local, captura, global do
+ * arquivo —, só que sem criar slot nem upvalue: aqui só se pergunta. Regra
+ * de nome em dois lugares diverge; esta segue a de lá linha a linha.
+ *
+ * Variável sem tipo escrito tem o tipo fixado pela primeira atribuição, como
+ * o `var` do Java: o tipo que o compilador sabe do primeiro valor. Valor de
+ * tipo desconhecido fixa "qualquer" (aceita tudo, como Object). Null não fixa
+ * nem conflita: variável sem tipo escrito pode começar e voltar a ficar vazia.
+ * Declarado (`str s`, parâmetro tipado) não aceita Null — é a regra que já
+ * valia rodando. */
+
+/* Guarda um texto de tipo montado aqui (a união) — um só por texto. */
+static const char *tp_guarda(C *c, const char *s)
 {
-    if (u->eh_modulo || eh_global_declarada(u, nome)) {
-        emite_coerce_se_tipado(c, u, nome, tipo_topo_de(c, nome));
-        if (u->eh_modulo) mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
-        else global_gravado_add(c, nome);
+    for (int32_t i = 0; i < c->ntpool; i++)
+        if (strcmp(c->tpool[i], s) == 0) return c->tpool[i];
+    if (c->ntpool + 1 > c->cap_tpool) {
+        int32_t novo = c->cap_tpool < 16 ? 16 : c->cap_tpool * 2;
+        char **nv = realloc(c->tpool, sizeof(char *) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", NULL); return NULL; }
+        c->tpool = nv; c->cap_tpool = novo;
+    }
+    char *d = strdup(s);
+    if (!d) { cerro(c, "sem memoria", NULL); return NULL; }
+    c->tpool[c->ntpool++] = d;
+    return d;
+}
+
+/* Registra um erro da tipagem estática — sem parar a compilação. O mesmo
+ * erro no mesmo lugar entra uma vez (um nó pode ser olhado duas vezes). */
+static void terro(C *c, PSNode *n, const char *classe, const char *fmt, ...)
+{
+    PSErroTipo e;
+    memset(&e, 0, sizeof(e));
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(e.msg, sizeof(e.msg), fmt, ap);
+    va_end(ap);
+    snprintf(e.classe, sizeof(e.classe), "%s", classe);
+    e.linha = (n && n->line) ? n->line : c->linha_atual;
+    e.col   = (n && n->col)  ? n->col  : c->coluna_atual;
+    for (int32_t i = 0; i < c->nerros; i++)
+        if (c->erros[i].linha == e.linha && c->erros[i].col == e.col && !strcmp(c->erros[i].msg, e.msg))
+            return;
+    if (c->nerros + 1 > c->cap_erros) {
+        int32_t novo = c->cap_erros < 16 ? 16 : c->cap_erros * 2;
+        PSErroTipo *nv = realloc(c->erros, sizeof(PSErroTipo) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        c->erros = nv; c->cap_erros = novo;
+    }
+    c->erros[c->nerros++] = e;
+}
+
+/* Nome de tipo escrito, na grafia canônica (`String` -> `str`); nome que não
+ * é da tabela (classe, objeto nativo) fica como foi escrito. */
+static const char *tp_canon(const char *t)
+{
+    if (!t) return NULL;
+    const char *k = ps_tipo_canonico(t);
+    return k ? k : t;
+}
+
+/* `lado` é um dos lados da união `u`? */
+static int tp_tem_lado(const char *u, const char *lado)
+{
+    size_t n = strlen(lado);
+    const char *q = u;
+    while (q && *q) {
+        const char *bar = strchr(q, '|');
+        size_t len = bar ? (size_t)(bar - q) : strlen(q);
+        if (len == n && memcmp(q, lado, n) == 0) return 1;
+        q = bar ? bar + 1 : NULL;
+    }
+    return 0;
+}
+
+/* A união de dois tipos (desconhecido de um lado = desconhecido). */
+static const char *tp_uniao(C *c, const char *a, const char *b)
+{
+    if (!a || !b) return NULL;
+    if (strcmp(a, b) == 0) return a;
+    char buf[256];
+    size_t n = (size_t)snprintf(buf, sizeof(buf), "%s", a);
+    const char *q = b;
+    while (q && *q) {
+        const char *bar = strchr(q, '|');
+        size_t len = bar ? (size_t)(bar - q) : strlen(q);
+        char lado[128];
+        if (len >= sizeof(lado)) return NULL;
+        memcpy(lado, q, len); lado[len] = '\0';
+        if (!tp_tem_lado(buf, lado)) {
+            if (n + len + 2 >= sizeof(buf)) return NULL;
+            buf[n++] = '|';
+            memcpy(buf + n, lado, len + 1);
+            n += len;
+        }
+        q = bar ? bar + 1 : NULL;
+    }
+    return tp_guarda(c, buf);
+}
+
+/* A Entity/model/enum do arquivo com esse nome (a primeira), ou NULL. */
+static PSNode *tp_tipo_arq(C *c, const char *nome)
+{
+    if (!nome) return NULL;
+    for (int32_t i = 0; i < c->ntipos_arq; i++)
+        if (c->tipos_arq[i]->texto && strcmp(c->tipos_arq[i]->texto, nome) == 0) return c->tipos_arq[i];
+    return NULL;
+}
+
+static void tp_coleta_tipos_arq(C *c, PSNode *n)
+{
+    if (!n) return;
+    if ((n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) && n->texto
+            && !tp_tipo_arq(c, n->texto)) {
+        if (c->ntipos_arq + 1 > c->cap_tipos_arq) {
+            int32_t novo = c->cap_tipos_arq < 8 ? 8 : c->cap_tipos_arq * 2;
+            PSNode **nv = realloc(c->tipos_arq, sizeof(PSNode *) * (size_t)novo);
+            if (!nv) { cerro(c, "sem memoria", NULL); return; }
+            c->tipos_arq = nv; c->cap_tipos_arq = novo;
+        }
+        c->tipos_arq[c->ntipos_arq++] = n;
+    }
+    tp_coleta_tipos_arq(c, n->a);
+    tp_coleta_tipos_arq(c, n->b);
+    tp_coleta_tipos_arq(c, n->c);
+    tp_coleta_tipos_arq(c, n->e);
+    for (int32_t i = 0; i < n->lista.n; i++)  tp_coleta_tipos_arq(c, n->lista.itens[i]);
+    for (int32_t i = 0; i < n->lista2.n; i++) tp_coleta_tipos_arq(c, n->lista2.itens[i]);
+}
+
+/* 1 = a classe `filha` é `mae` ou herda dela; 0 = não; -1 = a cadeia passa
+ * por um pai que o arquivo não declara (importado): não dá pra saber. */
+static int tp_herda(C *c, const char *filha, const char *mae, int prof)
+{
+    if (strcmp(filha, mae) == 0) return 1;
+    if (prof > 32) return -1;
+    PSNode *d = tp_tipo_arq(c, filha);
+    if (!d || d->kind != N_ENTITY_DECL) return 0;
+    int incerto = 0;
+    for (int32_t i = 0; i < d->lista2.n; i++) {
+        const char *p = d->lista2.itens[i]->texto;
+        if (!p) continue;
+        int r = tp_herda(c, p, mae, prof + 1);
+        if (r == 1) return 1;
+        if (r == -1 || !tp_tipo_arq(c, p)) incerto = 1;
+    }
+    return incerto ? -1 : 0;
+}
+
+/* Quantos caracteres (não bytes) tem o literal de texto. */
+static int tp_conta_utf8(const char *s, int32_t n)
+{
+    int k = 0;
+    for (int32_t i = 0; i < n; i++)
+        if (((unsigned char)s[i] & 0xC0) != 0x80) k++;
+    return k;
+}
+
+/* Um tipo `d` (sem união) aceita um valor de tipo `v` (sem união)?
+ * `declarado` = a regra do tipo ESCRITO; senão, a do tipo fixado pela
+ * primeira atribuição. `no` é o valor, quando se tem: literal diz mais que o
+ * tipo (`int` promete 64 bits, `char` é um caractere). */
+static int tp_aceita_um(C *c, const char *d, const char *v, PSNode *no, int declarado)
+{
+    if (strcmp(v, "Null") == 0) return declarado ? T_NAO : T_SIM;
+    if (strcmp(d, v) == 0) {
+        if (declarado && strcmp(d, "int") == 0) {
+            if (no && no->kind == N_LITERAL && no->lit == L_INT) return T_SIM;
+            return T_TALVEZ;          /* conta de int pode passar de 64 bits */
+        }
+        return T_SIM;
+    }
+    if (declarado) {
+        if (strcmp(d, "int") == 0 && no && no->kind == N_LITERAL && no->lit == L_BIGINT) return T_NAO;
+        if (strcmp(d, "long") == 0) return strcmp(v, "int") == 0 ? T_SIM : T_NAO;
+        if (strcmp(d, "char") == 0) {
+            if (strcmp(v, "str") == 0) {
+                if (no && no->kind == N_LITERAL && no->lit == L_STR && no->texto)
+                    return tp_conta_utf8(no->texto, no->texto_len > 0 ? no->texto_len : (int32_t)strlen(no->texto)) == 1
+                           ? T_SIM : T_NAO;
+                return T_TALVEZ;
+            }
+            /* inteiro vira o caractere daquele codepoint — e o intervalo só
+             * rodando (`char c = -1` é ConversionError) */
+            if (strcmp(v, "int") == 0 || strcmp(v, "bool") == 0) return T_TALVEZ;
+            return T_NAO;
+        }
+        if (strcmp(d, "Object") == 0) {
+            static const char *const NAO_OBJ[] = { "str", "list", "dict", "tup", "byte", "int", "flo", "bool" };
+            for (size_t i = 0; i < sizeof(NAO_OBJ) / sizeof(NAO_OBJ[0]); i++)
+                if (strcmp(v, NAO_OBJ[i]) == 0) return T_NAO;
+            return strcmp(v, "type") == 0 ? T_TALVEZ : T_SIM;
+        }
+        if (strcmp(d, "type") == 0 && strcmp(v, "Entity") == 0) return T_TALVEZ;
+    }
+    int h = tp_herda(c, v, d, 0);
+    if (h == 1) return T_SIM;
+    if (h == -1) return T_TALVEZ;
+    return T_NAO;
+}
+
+/* `d` aceita `v`? Os dois podem ser união: cada lado do valor precisa de um
+ * lado do tipo que o aceite. Valor desconhecido: só rodando. */
+static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declarado)
+{
+    if (!d) return T_SIM;
+    if (!v) return T_TALVEZ;
+    int todos_sim = 1, algum_sim = 0, algum_talvez = 0;
+    const char *qv = v;
+    while (qv && *qv) {
+        const char *barv = strchr(qv, '|');
+        size_t lv = barv ? (size_t)(barv - qv) : strlen(qv);
+        char ladov[128];
+        if (lv >= sizeof(ladov)) return T_TALVEZ;
+        memcpy(ladov, qv, lv); ladov[lv] = '\0';
+        int melhor = T_NAO;
+        const char *qd = d;
+        while (qd && *qd) {
+            const char *bard = strchr(qd, '|');
+            size_t ld = bard ? (size_t)(bard - qd) : strlen(qd);
+            char ladod[128];
+            if (ld >= sizeof(ladod)) return T_TALVEZ;
+            memcpy(ladod, qd, ld); ladod[ld] = '\0';
+            /* o nó do valor só vale quando o valor é de um lado só */
+            int r = tp_aceita_um(c, ladod, ladov, barv || qv != v ? NULL : no, declarado);
+            if (r == T_SIM) { melhor = T_SIM; break; }
+            if (r == T_TALVEZ) melhor = T_TALVEZ;
+            qd = bard ? bard + 1 : NULL;
+        }
+        if (melhor != T_SIM) todos_sim = 0;
+        if (melhor == T_SIM) algum_sim = 1;
+        if (melhor == T_TALVEZ) algum_talvez = 1;
+        qv = barv ? barv + 1 : NULL;
+    }
+    if (todos_sim) return T_SIM;
+    if (!algum_sim && !algum_talvez) return T_NAO;
+    return T_TALVEZ;
+}
+
+/* O nome de tipo escrito existe? Tipo da linguagem, Entity/model/enum do
+ * arquivo, tipo que um nativo devolve ou tem tabela, ou nome que um import
+ * liga sem que se saiba o que é (a classe pode vir do módulo). */
+static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome);
+static int tp_tipo_existe(C *c, Unidade *u, const char *t)
+{
+    if (!t) return 1;
+    if (ps_tipo_info(t) || tp_tipo_arq(c, t)) return 1;
+    if (ps_retorno_tipo_existe(t) || ps_nativo_tem_membro(t, "type") != -1) return 1;
+    SimInfo *s = tp_sim_de(c, u, t);
+    return s && s->estado == 1 && !s->tipo && !s->decl;
+}
+
+/* ── o que se sabe de um nome ── */
+static SimInfo *tp_sim_topo(C *c, const char *nome)
+{
+    for (int32_t i = 0; i < c->ntopo; i++)
+        if (strcmp(c->topo[i].nome, nome) == 0) return &c->topo[i].s;
+    return NULL;
+}
+
+/* O tipo de cada item que o `for each` tira do iterável: texto dá texto,
+ * bytes dá int; lista, tupla e dict guardam qualquer coisa. */
+static const char *tp_elemento(const char *t)
+{
+    if (!t) return NULL;
+    if (!strcmp(t, "str")) return "str";
+    if (!strcmp(t, "byte")) return "int";
+    return NULL;
+}
+
+static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
+{
+    if (!nome) return NULL;
+    /* campo `static` da classe: não tem tipo estático aqui */
+    if (c->entity_no && !nome_e_local(u, nome) && campo_estatico_da_classe(c, nome)) return NULL;
+    if (u->eh_modulo) {
+        for (int32_t i = u->n_mod_criados - 1; i >= 0; i--)
+            if (strcmp(u->mod_criados[i], nome) == 0) return &u->mod_sim[i];
+        return tp_sim_topo(c, nome);
+    }
+    if (eh_global_declarada(u, nome)) return tp_sim_topo(c, nome);
+    for (int32_t i = 0; i < u->nlocais; i++) {
+        if (strcmp(u->locais[i], nome) != 0) continue;
+        /* slot reservado por uma LEITURA de global (o `carrega_nome` reserva
+         * e resolve rodando), ou célula ainda vazia (o CELL_GET_NAME lê o
+         * global): enquanto nada foi gravado aqui, o que vale é o global */
+        if (!u->certo[i] && u->sim[i].estado == 0) {
+            SimInfo *t = tp_sim_topo(c, nome);
+            if (t) return t;
+        }
+        return &u->sim[i];
+    }
+    for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
+        for (int32_t i = 0; i < q->nlocais; i++)
+            if (strcmp(q->locais[i], nome) == 0) return &q->sim[i];
+    return tp_sim_topo(c, nome);
+}
+
+/* O SimInfo é um dos globais colhidos antes de compilar? Esses valem pro
+ * arquivo inteiro: não se põem de lado nem se restauram por laço. */
+static int tp_eh_topo(C *c, const SimInfo *s)
+{
+    for (int32_t i = 0; i < c->ntopo; i++)
+        if (&c->topo[i].s == s) return 1;
+    return 0;
+}
+
+/* `for each x` e `[... for each x in ...]` com um `x` que já existe: sem tipo
+ * escrito, a variável do laço SOMBREIA a de fora (é outra, e a de fora volta
+ * no fim) — o tipo dela sai de cena aqui. Declarada (`str x`), é a MESMA
+ * variável, e o tipo dela vale em cada volta. 1 = o de fora foi posto de
+ * lado em `fora`, e volta com `tp_sombra_devolve`. */
+static int tp_sombra_poe(C *c, Unidade *u, const char *nome, SimInfo *fora)
+{
+    memset(fora, 0, sizeof(*fora));
+    SimInfo *s = tp_sim_de(c, u, nome);
+    if (!s || tp_eh_topo(c, s) || s->estado == 2) return 0;
+    *fora = *s;
+    memset(s, 0, sizeof(*s));
+    return 1;
+}
+
+/* Depois do laço: o tipo de fora volta, e a gravação que devolve o valor de
+ * fora não confere nada (é o valor que já estava lá). */
+static void tp_sombra_devolve(C *c, Unidade *u, const char *nome, int posto, const SimInfo *fora)
+{
+    memset(&c->grava, 0, sizeof(c->grava));
+    if (!posto) return;
+    SimInfo *s = tp_sim_de(c, u, nome);
+    if (s && !tp_eh_topo(c, s)) *s = *fora;
+    c->grava.tem_valor = 1;
+    c->grava.tipo = fora->estado ? fora->tipo : "Null";
+}
+
+/* O programa liga `nome` a alguma coisa? Slot reservado só pela leitura
+ * (o `carrega_nome` reserva um pra resolver rodando) não conta: sem nada
+ * gravado, o nome é o builtin — `post` continua sendo o `post`. */
+static int tp_nome_ligado(C *c, Unidade *u, const char *nome)
+{
+    SimInfo *s = tp_sim_de(c, u, nome);
+    return s && (s->estado || s->decl || s->mod_nativo);
+}
+
+/* ── o tipo de uma expressão ── */
+static int tp_tem_yield(PSNode *n)
+{
+    if (!n) return 0;
+    if (n->kind == N_YIELD_STMT) return 1;
+    if (n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) return 0;
+    if (tp_tem_yield(n->a) || tp_tem_yield(n->b) || tp_tem_yield(n->c) || tp_tem_yield(n->e)) return 1;
+    for (int32_t i = 0; i < n->lista.n; i++)  if (tp_tem_yield(n->lista.itens[i])) return 1;
+    for (int32_t i = 0; i < n->lista2.n; i++) if (tp_tem_yield(n->lista2.itens[i])) return 1;
+    return 0;
+}
+
+/* O retorno que a funct DECLARA — e só quando a chamada devolve esse valor:
+ * gerador devolve o gerador, `async` devolve o future. */
+static const char *tp_ret_decl(PSNode *decl)
+{
+    if (!decl || decl->kind != N_ACTION_DECL || !decl->texto2) return NULL;
+    if (decl->is_async || tp_tem_yield(decl->b)) return NULL;
+    return tp_canon(decl->texto2);
+}
+
+/* O que a tabela MEDIDA diz do nativo; `*` (tipo do conteúdo) é desconhecido. */
+static const char *tp_nativo(const char *dono, const char *membro)
+{
+    const char *r = ps_retorno_de(dono, membro);
+    if (!r || strcmp(r, "*") == 0) return NULL;
+    return r;
+}
+
+/* O método `nome` da Entity `classe` (ou de um pai), ou NULL. */
+static PSNode *tp_metodo(C *c, const char *classe, const char *nome, int prof)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL || prof > 32) return NULL;
+    for (int32_t i = 0; i < d->lista.n; i++) {
+        PSNode *m = d->lista.itens[i];
+        if (m->kind == N_ACTION_DECL && m->texto && strcmp(m->texto, nome) == 0) return m;
+    }
+    for (int32_t i = 0; i < d->lista2.n; i++) {
+        PSNode *r = d->lista2.itens[i]->texto ? tp_metodo(c, d->lista2.itens[i]->texto, nome, prof + 1) : NULL;
+        if (r) return r;
+    }
+    return NULL;
+}
+
+/* O método `nome` foi decorado por decorador geral (que pode trocá-lo)? */
+static int tp_metodo_decorado(C *c, const char *classe, PSNode *met)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL) return 0;
+    for (int32_t i = 1; i < d->lista.n; i++) {
+        if (d->lista.itens[i] != met) continue;
+        PSNode *ant = d->lista.itens[i - 1];
+        if (ant->kind != N_DECORATOR_STMT || !ant->a) return 0;
+        const char *dn = ant->a->lista.n == 1 ? ant->a->lista.itens[0]->texto : NULL;
+        return !(dn && (!strcmp(dn, "static") || !strcmp(dn, "NonNull") || !strcmp(dn, "dataentity")));
+    }
+    return 0;
+}
+
+/* Tipo escrito do campo `nome` da Entity (ou de um pai), ou NULL. */
+static PSNode *tp_campo_decl_em(PSNode *n, const char *nome)
+{
+    if (!n) return NULL;
+    if (n->kind == N_FIELD_DECL && n->texto && n->texto2 && strcmp(n->texto, nome) == 0) return n;
+    if (n->kind == N_LAMBDA_EXPR) return NULL;
+    PSNode *r;
+    if ((r = tp_campo_decl_em(n->a, nome)) || (r = tp_campo_decl_em(n->b, nome))
+            || (r = tp_campo_decl_em(n->c, nome)) || (r = tp_campo_decl_em(n->e, nome))) return r;
+    for (int32_t i = 0; i < n->lista.n; i++)  if ((r = tp_campo_decl_em(n->lista.itens[i], nome))) return r;
+    for (int32_t i = 0; i < n->lista2.n; i++) if ((r = tp_campo_decl_em(n->lista2.itens[i], nome))) return r;
+    return NULL;
+}
+
+static const char *tp_campo_tipo(C *c, const char *classe, const char *nome, int prof)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL || prof > 32) return NULL;
+    for (int32_t i = 0; i < d->lista2_alias.n; i++) {
+        PSNode *f = d->lista2_alias.itens[i];
+        if (f->kind == N_ENTITY_FIELD && f->texto && f->texto2 && strcmp(f->texto, nome) == 0)
+            return tp_canon(f->texto2);
+    }
+    for (int32_t i = 0; i < d->lista.n; i++) {
+        PSNode *fd = tp_campo_decl_em(d->lista.itens[i], nome);
+        if (fd) return tp_canon(fd->texto2);
+    }
+    for (int32_t i = 0; i < d->lista2.n; i++) {
+        const char *t = d->lista2.itens[i]->texto ? tp_campo_tipo(c, d->lista2.itens[i]->texto, nome, prof + 1) : NULL;
+        if (t) return t;
+    }
+    return NULL;
+}
+
+/* A Entity tem o membro? Método, campo do corpo, `private <tipo> x` e
+ * `self.x = ...` de qualquer método, e os dos pais. 1 = tem; 0 = não tem;
+ * -1 = um pai não é do arquivo, não dá pra saber. */
+static int tp_self_grava(PSNode *n, const char *nome)
+{
+    if (!n) return 0;
+    /* funct aninhada no método também grava no `self` (pela captura) */
+    if (n->kind == N_MEMBER_ASSIGNMENT && n->texto && strcmp(n->texto, nome) == 0) return 1;
+    /* alvo de desempacotamento `self.a, self.b = ...` chega como acesso */
+    if (n->kind == N_UNPACK_TARGET) {
+        for (int32_t i = 0; i < n->lista.n; i++) {
+            PSNode *x = n->lista.itens[i];
+            if (x && x->kind == N_MEMBER_ACCESS && x->texto && strcmp(x->texto, nome) == 0) return 1;
+        }
+    }
+    if (tp_self_grava(n->a, nome) || tp_self_grava(n->b, nome) || tp_self_grava(n->c, nome)
+            || tp_self_grava(n->e, nome)) return 1;
+    for (int32_t i = 0; i < n->lista.n; i++)  if (tp_self_grava(n->lista.itens[i], nome)) return 1;
+    for (int32_t i = 0; i < n->lista2.n; i++) if (tp_self_grava(n->lista2.itens[i], nome)) return 1;
+    return 0;
+}
+
+static int tp_classe_tem(C *c, const char *classe, const char *nome, int prof)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL || prof > 32) return -1;
+    if (strcmp(nome, "type") == 0) return 1;
+    for (int32_t i = 0; i < d->lista2_alias.n; i++)
+        if (d->lista2_alias.itens[i]->texto && strcmp(d->lista2_alias.itens[i]->texto, nome) == 0) return 1;
+    for (int32_t i = 0; i < d->lista.n; i++) {
+        PSNode *m = d->lista.itens[i];
+        if (m->kind == N_ACTION_DECL && m->texto && strcmp(m->texto, nome) == 0) return 1;
+        if (m->kind == N_ACTION_DECL && (tp_self_grava(m->b, nome) || tp_campo_decl_em(m->b, nome))) return 1;
+    }
+    int incerto = 0;
+    for (int32_t i = 0; i < d->lista2.n; i++) {
+        const char *p = d->lista2.itens[i]->texto;
+        if (!p) continue;
+        int r = tp_classe_tem(c, p, nome, prof + 1);
+        if (r == 1) return 1;
+        if (r == -1) incerto = 1;
+    }
+    return incerto ? -1 : 0;
+}
+
+/* O módulo NATIVO que a expressão é — `os` (ligado por import), `Parsing`
+ * (nasce ligado) ou `sys.stdout` — escrito em `buf`; NULL = não é módulo. */
+static const char *tp_modulo_de(C *c, Unidade *u, PSNode *n, char *buf, size_t cap)
+{
+    if (!n) return NULL;
+    if (n->kind == N_NAME && n->texto) {
+        SimInfo *s = tp_nome_ligado(c, u, n->texto) ? tp_sim_de(c, u, n->texto) : NULL;
+        if (s) {
+            if (!s->mod_nativo || s->membro_nativo) return NULL;
+            snprintf(buf, cap, "%s", s->mod_nativo);
+            return buf;
+        }
+        if (strcmp(n->texto, "Parsing") == 0) { snprintf(buf, cap, "Parsing"); return buf; }
+        return NULL;
+    }
+    if (n->kind == N_MEMBER_ACCESS && n->texto) {
+        char b2[64];
+        const char *m = tp_modulo_de(c, u, n->a, b2, sizeof(b2));
+        if (m && strcmp(m, "sys") == 0
+                && (!strcmp(n->texto, "stdout") || !strcmp(n->texto, "stderr") || !strcmp(n->texto, "stdin"))) {
+            snprintf(buf, cap, "sys.%s", n->texto);
+            return buf;
+        }
+    }
+    return NULL;
+}
+
+/* O que `x.m(...)` devolve, com `x` do tipo `t` (união: a dos lados que não
+ * são Null — chamar em Null é outro erro). */
+static const char *tp_ret_metodo(C *c, const char *t, const char *m)
+{
+    if (!t || !m) return NULL;
+    if (strchr(t, '|')) {
+        const char *acc = NULL;
+        int algum = 0;
+        const char *q = t;
+        while (q && *q) {
+            const char *bar = strchr(q, '|');
+            size_t len = bar ? (size_t)(bar - q) : strlen(q);
+            char lado[128];
+            if (len >= sizeof(lado)) return NULL;
+            memcpy(lado, q, len); lado[len] = '\0';
+            if (strcmp(lado, "Null") != 0) {
+                const char *r = tp_ret_metodo(c, lado, m);
+                if (!r) return NULL;
+                acc = algum ? tp_uniao(c, acc, r) : r;
+                algum = 1;
+            }
+            q = bar ? bar + 1 : NULL;
+        }
+        return acc;
+    }
+    if (tp_tipo_arq(c, t)) {
+        PSNode *md = tp_metodo(c, t, m, 0);
+        return (md && !tp_metodo_decorado(c, t, md)) ? tp_ret_decl(md) : NULL;
+    }
+    return ps_nativo_tem_membro(t, m) == 1 ? tp_nativo(t, m) : NULL;
+}
+
+static const char *tp_chamada(C *c, Unidade *u, PSNode *n)
+{
+    PSNode *f = n->a;
+    if (!f) return NULL;
+    if (f->kind == N_TYPE_NAME) {
+        const char *k = tp_canon(f->texto);
+        const char *r = k ? tp_nativo("builtins", k) : NULL;
+        return r ? r : NULL;
+    }
+    if (f->kind == N_NAME && f->texto) {
+        SimInfo *s = tp_nome_ligado(c, u, f->texto) ? tp_sim_de(c, u, f->texto) : NULL;
+        if (s) {
+            if (s->membro_nativo) return tp_nativo(s->mod_nativo, s->membro_nativo);
+            if (s->decl && !s->decorado) {
+                if (s->decl->kind == N_ACTION_DECL) return tp_ret_decl(s->decl);
+                if (s->decl->kind == N_ENTITY_DECL) return s->decl->texto;
+            }
+            return NULL;
+        }
+        return tp_nativo("builtins", f->texto);
+    }
+    if (f->kind == N_MEMBER_ACCESS && f->a && f->texto) {
+        char buf[64];
+        const char *mod = tp_modulo_de(c, u, f->a, buf, sizeof(buf));
+        if (mod) return ps_nativo_tem_membro(mod, f->texto) == 1 ? tp_nativo(mod, f->texto) : NULL;
+        if (f->a->kind == N_NAME && f->a->texto) {
+            SimInfo *s = tp_sim_de(c, u, f->a->texto);
+            if (s && s->decl && s->decl->kind == N_ENTITY_DECL) {
+                PSNode *md = tp_metodo(c, s->decl->texto, f->texto, 0);
+                return (md && !tp_metodo_decorado(c, s->decl->texto, md)) ? tp_ret_decl(md) : NULL;
+            }
+        }
+        return tp_ret_metodo(c, tp_de(c, u, f->a), f->texto);
+    }
+    return NULL;
+}
+
+static int tp_numerico(const char *t)
+{
+    return t && (!strcmp(t, "int") || !strcmp(t, "flo") || !strcmp(t, "bool"));
+}
+
+static int tp_sequencia(const char *t)
+{
+    return t && (!strcmp(t, "str") || !strcmp(t, "list") || !strcmp(t, "tup") || !strcmp(t, "byte"));
+}
+
+/* O tipo do resultado de `a op b`, pelas regras da seção 2.8. */
+static const char *tp_binario(C *c, const char *op, const char *a, const char *b)
+{
+    if (!op) return NULL;
+    static const char *const LOGICOS[] = { "is", "is not", "not is", "in", "not in", "and", "&&",
+                                           "or", "||", "==", "!=", "<", ">", "<=", ">=" };
+    for (size_t i = 0; i < sizeof(LOGICOS) / sizeof(LOGICOS[0]); i++)
+        if (strcmp(op, LOGICOS[i]) == 0) return "bool";
+    if (!a || !b || strchr(a, '|') || strchr(b, '|')) return NULL;
+    int na = tp_numerico(a), nb = tp_numerico(b);
+    int flo = !strcmp(a, "flo") || !strcmp(b, "flo");
+    int inteiro_b = !strcmp(b, "int") || !strcmp(b, "bool");
+    int inteiro_a = !strcmp(a, "int") || !strcmp(a, "bool");
+    if (!strcmp(op, "+")) {
+        if (na && nb) return flo ? "flo" : "int";
+        if (!strcmp(a, b) && tp_sequencia(a)) return a;
+        return NULL;
+    }
+    if (!strcmp(op, "-") || !strcmp(op, "//")) return (na && nb) ? (flo ? "flo" : "int") : NULL;
+    if (!strcmp(op, "%")) {
+        if (na && nb) return flo ? "flo" : "int";
+        return !strcmp(a, "str") ? "str" : NULL;
+    }
+    if (!strcmp(op, "*")) {
+        if (na && nb) return flo ? "flo" : "int";
+        if (tp_sequencia(a) && inteiro_b) return a;
+        if (tp_sequencia(b) && inteiro_a) return b;
+        return NULL;
+    }
+    if (!strcmp(op, "/")) return (na && nb) ? "flo" : NULL;
+    if (!strcmp(op, "**")) return (na && nb) ? (flo ? "flo" : tp_guarda(c, "int|flo")) : NULL;
+    if (!strcmp(op, "&") || !strcmp(op, "|") || !strcmp(op, "^") || !strcmp(op, "<<") || !strcmp(op, ">>")) {
+        if (inteiro_a && inteiro_b) return "int";
+        if (!strcmp(op, "|") && !strcmp(a, "dict") && !strcmp(b, "dict")) return "dict";
+        return NULL;
+    }
+    return NULL;
+}
+
+static const char *tp_de(C *c, Unidade *u, PSNode *n)
+{
+    if (!n) return NULL;
+    switch (n->kind) {
+        case N_LITERAL:
+            switch (n->lit) {
+                case L_INT: case L_BIGINT: return "int";
+                case L_FLO:   return "flo";
+                case L_STR: case L_FSTRING: return "str";
+                case L_BOOL:  return "bool";
+                case L_NULL:  return "Null";
+                case L_BYTES: return "byte";
+            }
+            return NULL;
+        case N_NAME: {
+            if (tp_nome_ligado(c, u, n->texto)) {
+                SimInfo *s = tp_sim_de(c, u, n->texto);
+                return s->estado ? s->tipo : NULL;
+            }
+            if (n->texto && strcmp(n->texto, "__name__") == 0) return "str";
+            return NULL;
+        }
+        case N_BINARY_OP: return tp_binario(c, n->texto, tp_de(c, u, n->a), tp_de(c, u, n->b));
+        case N_UNARY_OP: {
+            if (!n->texto) return NULL;
+            if (!strcmp(n->texto, "not") || !strcmp(n->texto, "Not") || !strcmp(n->texto, "!")) return "bool";
+            const char *t = tp_de(c, u, n->a);
+            if (!strcmp(n->texto, "~")) return (t && (!strcmp(t, "int") || !strcmp(t, "bool"))) ? "int" : NULL;
+            if (t && !strcmp(t, "bool")) return "int";
+            return tp_numerico(t) ? t : NULL;
+        }
+        case N_CONDITIONAL: return tp_uniao(c, tp_de(c, u, n->a), tp_de(c, u, n->c));
+        case N_CALL: return tp_chamada(c, u, n);
+        case N_LIST_LITERAL: case N_LIST_COMP: return "list";
+        case N_DICT_LITERAL: return "dict";
+        case N_TUPLE_LITERAL: return "tup";
+        case N_INTERPOLATED_STRING: case N_COLOR_STR_EXPR: return "str";
+        case N_LAMBDA_EXPR: return "funct";
+        case N_TYPE_NAME: return "type";
+        case N_COUNT_EXPR: return "int";
+        case N_POSTFIX_OP: return n->a ? tp_de(c, u, n->a) : NULL;
+        case N_INDEX_ACCESS: {
+            const char *t = tp_de(c, u, n->a);
+            if (t && !strcmp(t, "str")) return "str";
+            if (t && !strcmp(t, "byte")) return "int";
+            return NULL;
+        }
+        case N_SLICE_ACCESS: {
+            const char *t = tp_de(c, u, n->a);
+            return tp_sequencia(t) ? t : NULL;
+        }
+        case N_MEMBER_ACCESS: {
+            if (!n->texto) return NULL;
+            char buf[64];
+            const char *mod = tp_modulo_de(c, u, n->a, buf, sizeof(buf));
+            if (mod) {
+                char b2[64];
+                if (tp_modulo_de(c, u, n, b2, sizeof(b2))) return "module";
+                int k = ps_nativo_tem_membro(mod, n->texto);
+                return k == 2 ? tp_nativo(mod, n->texto) : (k == 1 ? "funct" : NULL);
+            }
+            const char *t = tp_de(c, u, n->a);
+            if (!t || strchr(t, '|')) return NULL;
+            if (tp_tipo_arq(c, t)) {
+                const char *ft = tp_campo_tipo(c, t, n->texto, 0);
+                if (ft) return ft;
+                return tp_metodo(c, t, n->texto, 0) ? "funct" : NULL;
+            }
+            int k = ps_nativo_tem_membro(t, n->texto);
+            return k == 2 ? tp_nativo(t, n->texto) : (k == 1 ? "funct" : NULL);
+        }
+        default:
+            return NULL;
+    }
+}
+
+/* ── conferências ── */
+
+/* O comando nunca deixa a execução seguir pro próximo? `return`, `raise`, um
+ * bloco que tem um desses, `if` com `else` em que todo ramo termina, `try` em
+ * que o corpo e todo `catch` terminam (ou o `finally` termina) e `while True`
+ * sem `break`. É o que decide se uma funct tipada pode chegar ao fim. */
+static int tp_tem_break(PSNode *n)
+{
+    if (!n) return 0;
+    if (n->kind == N_BREAK_STMT) return 1;
+    if (n->kind == N_WHILE_STMT || n->kind == N_FOR_EACH_STMT || n->kind == N_COUNT_EACH_STMT
+            || n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) return 0;
+    if (tp_tem_break(n->a) || tp_tem_break(n->b) || tp_tem_break(n->c) || tp_tem_break(n->e)) return 1;
+    for (int32_t i = 0; i < n->lista.n; i++)  if (tp_tem_break(n->lista.itens[i])) return 1;
+    for (int32_t i = 0; i < n->lista2.n; i++) if (tp_tem_break(n->lista2.itens[i])) return 1;
+    return 0;
+}
+
+static int tp_termina(PSNode *s)
+{
+    if (!s) return 0;
+    switch (s->kind) {
+        case N_RETURN_STMT:
+        case N_RAISE_STMT:
+            return 1;
+        case N_BLOCK:
+            for (int32_t i = 0; i < s->lista.n; i++)
+                if (tp_termina(s->lista.itens[i])) return 1;
+            return 0;
+        case N_IF_STMT: {
+            int tem_else = 0;
+            for (int32_t i = 0; i < s->lista.n; i++) {
+                PSNode *ramo = s->lista.itens[i];
+                if (!ramo->a) tem_else = 1;
+                if (!tp_termina(ramo->b)) return 0;
+            }
+            return tem_else;
+        }
+        case N_TRY_CATCH_STMT:
+            if (s->c && tp_termina(s->c)) return 1;
+            if (!tp_termina(s->a)) return 0;
+            for (int32_t i = 0; i < s->lista.n; i++)
+                if (!tp_termina(s->lista.itens[i]->b)) return 0;
+            return 1;
+        case N_WHILE_STMT:
+            return s->a && s->a->kind == N_LITERAL && s->a->lit == L_BOOL && s->a->i && !tp_tem_break(s->b);
+        case N_USING_STMT:
+            return tp_termina(s->b);
+        default:
+            return 0;
+    }
+}
+
+/* O que o import liga, pra próxima gravação: módulo nativo (`import os`), ou
+ * o membro dele (`from os import getenv`). Arquivo `.pr` fica de tipo
+ * desconhecido aqui. Membro que o nativo não tem é erro antes de rodar. */
+static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro)
+{
+    memset(&c->grava, 0, sizeof(c->grava));
+    c->grava.no = n;
+    if (!mod || n->i2 != 0 || !ps_nativo_eh_modulo(mod)) return;
+    const char *m = tp_guarda(c, mod);
+    if (!membro) {
+        c->grava.tem_valor = 1;
+        c->grava.tipo = "module";
+        c->grava.mod_nativo = m;
+        return;
+    }
+    int k = ps_nativo_tem_membro(mod, membro);
+    if (k == 0) {
+        terro(c, n, "ImportError", "cannot import name '%s' from '%s' (unknown location)", membro, mod);
+        return;
+    }
+    c->grava.tem_valor = 1;
+    if (k == 1) {
+        c->grava.tipo = "funct";
+        c->grava.mod_nativo = m;
+        c->grava.membro_nativo = tp_guarda(c, membro);
+    } else {
+        c->grava.tipo = tp_nativo(mod, membro);
+        if (!c->grava.tipo) c->grava.tem_valor = 0;
+    }
+}
+
+/* Emite a conferência RODANDO do valor no topo da pilha contra `tipo`
+ * (OP_CONFERE_TIPO). `rotulo` é o começo da mensagem ("variável x"). */
+static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *tipo, int declarado)
+{
+    if (!tipo) return;
+    char spec[512];
+    int n = snprintf(spec, sizeof(spec), "%c%s\x1f%s", declarado ? 'D' : 'I', rotulo, tipo);
+    if (n < 0 || n >= (int)sizeof(spec)) return;
+    emite(c, u, OP_CONFERE_TIPO, idx_const(c, u, K_STR, 0, 0, spec, n));
+}
+
+/* Escrita do valor de `c->grava` no nome cujo SimInfo é `s`: confere o que dá
+ * pra saber e atualiza o que se sabe do nome. Devolve T_SIM/T_NAO/T_TALVEZ. */
+static int tp_escreve(C *c, SimInfo *s, const char *nome)
+{
+    if (!s) return T_TALVEZ;
+    PSNode *onde = c->grava.no;
+    if (c->grava.redefine) {
+        memset(s, 0, sizeof(*s));
+        s->estado = 1;
+        s->decorado = 1;
+        return T_SIM;
+    }
+    if (c->grava.declara) {
+        const char *T = tp_canon(c->grava.declara);
+        if (s->estado == 2 && s->tipo && strcmp(s->tipo, T) != 0)
+            terro(c, onde, "AttributedValueError",
+                  "variável %s já foi declarada como %s e não pode ser redeclarada como %s", nome, s->tipo, T);
+        else if (s->estado == 1 && s->tipo && strcmp(s->tipo, "Null") != 0
+                 && tp_aceita(c, T, s->tipo, NULL, 1) == T_NAO)
+            terro(c, onde, "AttributedValueError",
+                  "variável %s já é %s (tipo fixado na primeira atribuição) e não pode ser redeclarada como %s",
+                  nome, s->tipo, T);
+        s->estado = 2;
+        s->tipo = T;
+        s->decl = NULL; s->decorado = 0;
+        s->mod_nativo = s->membro_nativo = NULL;
+    }
+    if (c->grava.decl) { s->decl = c->grava.decl; s->decorado = c->grava.decorado; }
+    if (c->grava.mod_nativo) { s->mod_nativo = c->grava.mod_nativo; s->membro_nativo = c->grava.membro_nativo; }
+    if (!c->grava.tem_valor) {
+        if (s->estado == 0) { s->estado = 1; s->tipo = NULL; }
+        return (s->estado == 2 || s->tipo) ? T_TALVEZ : T_SIM;
+    }
+    const char *vt = c->grava.tipo;
+    if (s->estado == 0) {
+        if (vt && strcmp(vt, "Null") == 0) return T_SIM;
+        s->estado = 1;
+        s->tipo = vt;
+        return T_SIM;
+    }
+    if (!s->tipo) return T_SIM;
+    int v = tp_aceita(c, s->tipo, vt, c->grava.no, s->estado == 2);
+    if (v == T_NAO) {
+        PSNode *lit = c->grava.no;
+        if (s->estado == 2 && !strcmp(s->tipo, "char") && lit && lit->kind == N_LITERAL
+                && lit->lit == L_STR && lit->texto)
+            /* a frase do OP_COERCE_DECL: quantos caracteres vieram */
+            terro(c, onde, "AttributedValueError", "variável %s esperava char (um caractere), recebeu %d", nome,
+                  tp_conta_utf8(lit->texto, lit->texto_len > 0 ? lit->texto_len : (int32_t)strlen(lit->texto)));
+        else if (s->estado == 2)
+            terro(c, onde, "AttributedValueError", "variável %s esperava %s, recebeu %s", nome, s->tipo, vt);
+        else
+            terro(c, onde, "AttributedValueError",
+                  "variável %s é %s (tipo fixado na primeira atribuição), recebeu %s", nome, s->tipo, vt);
+    }
+    return v;
+}
+
+/* Depois de `tp_escreve`: o que emitir pra conferir rodando. `cod1` é o tipo
+ * da tabela (TIPO_* + 1) que o OP_COERCE_DECL já sabe conferir — e converter,
+ * no caso do `char`. */
+static void tp_emite_escrita(C *c, Unidade *u, const char *nome, SimInfo *s, int veredito, int cod1)
+{
+    if (veredito == T_SIM || veredito == T_NAO) return;
+    if (cod1 > 0) { emite_coerce_se_tipado(c, u, nome, cod1); return; }
+    if (!s || !s->tipo || s->estado == 0) return;
+    char rot[300];
+    snprintf(rot, sizeof(rot), "variável %s", nome);
+    tp_emite_confere(c, u, rot, s->tipo, s->estado == 2);
+}
+
+/* O método é `static` (modificador colado ou `@static` na entrada de cima)? */
+static int tp_metodo_estatico(C *c, const char *classe, PSNode *met)
+{
+    if (met->is_static) return 1;
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL) return 0;
+    for (int32_t i = 1; i < d->lista.n; i++) {
+        if (d->lista.itens[i] != met) continue;
+        PSNode *ant = d->lista.itens[i - 1];
+        const char *dn = (ant->kind == N_DECORATOR_STMT && ant->a && ant->a->lista.n == 1)
+                       ? ant->a->lista.itens[0]->texto : NULL;
+        return dn && !strcmp(dn, "static");
+    }
+    return 0;
+}
+
+/* `alvo.nome` existe? Módulo nativo, tipo nativo (pelas tabelas da VM),
+ * Entity do arquivo (campo, método, `self.x` gravado, pais) e enum. O que não
+ * se sabe — tipo desconhecido, pai importado — passa. */
+static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
+{
+    if (!n->texto || !n->a) return;
+    char buf[64];
+    const char *mod = tp_modulo_de(c, u, n->a, buf, sizeof(buf));
+    if (mod) {
+        char b2[64];
+        if (tp_modulo_de(c, u, n, b2, sizeof(b2))) return;       /* sys.stdout */
+        if (ps_nativo_tem_membro(mod, n->texto) == 0) {
+            const char *dica = ps_nativo_sugestao(mod, n->texto);
+            if (dica)
+                terro(c, n, "AttributeError", "module '%s' has no attribute '%s'. Did you mean: '%s'?",
+                      mod, n->texto, dica);
+            else
+                terro(c, n, "AttributeError", "module '%s' has no attribute '%s'", mod, n->texto);
+        }
+        return;
+    }
+    if (n->a->kind == N_NAME && n->a->texto) {
+        SimInfo *s = tp_sim_de(c, u, n->a->texto);
+        if (s && s->decl && s->decl->kind == N_ENTITY_DECL && !s->decorado) {
+            if (tp_classe_tem(c, s->decl->texto, n->texto, 0) == 0)
+                terro(c, n, "AttributeError", "'%s' object has no attribute '%s'", s->decl->texto, n->texto);
+            return;
+        }
+        if (s && s->decl && s->decl->kind == N_ENUM_DECL) {
+            if (!strcmp(n->texto, "type")) return;
+            for (int32_t i = 0; i < s->decl->lista.n; i++)
+                if (s->decl->lista.itens[i]->texto && !strcmp(s->decl->lista.itens[i]->texto, n->texto)) return;
+            terro(c, n, "AttributeError", "type object '%s' has no attribute '%s'",
+                  s->decl->texto ? s->decl->texto : "?", n->texto);
+            return;
+        }
+    }
+    const char *t = tp_de(c, u, n->a);
+    if (!t) return;
+    /* união: só é erro se NENHUM lado (fora o Null) tem o membro */
+    int lados = 0;
+    const char *q = t;
+    while (q && *q) {
+        const char *bar = strchr(q, '|');
+        size_t len = bar ? (size_t)(bar - q) : strlen(q);
+        char lado[128];
+        if (len >= sizeof(lado)) return;
+        memcpy(lado, q, len); lado[len] = '\0';
+        q = bar ? bar + 1 : NULL;
+        if (!strcmp(lado, "Null")) continue;
+        PSNode *d = tp_tipo_arq(c, lado);
+        int r = (d && d->kind == N_ENTITY_DECL) ? tp_classe_tem(c, lado, n->texto, 0)
+              : d ? -1 : ps_nativo_tem_membro(lado, n->texto);
+        if (r != 0) return;
+        lados++;
+    }
+    if (lados > 0)
+        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'", t, n->texto);
+}
+
+/* A frase de "faltou argumento" da VM (`lista_faltantes`): 'a', 'b' and 'c'. */
+static void tp_lista_faltantes(char *buf, size_t cap, PSNode **fix, const int *marcado, int nfix)
+{
+    buf[0] = '\0';
+    int quantos = 0, escritos = 0;
+    for (int k = 0; k < nfix; k++) if (!marcado[k] && !fix[k]->a) quantos++;
+    for (int k = 0; k < nfix; k++) {
+        if (marcado[k] || fix[k]->a) continue;
+        const char *sep = escritos == 0 ? "" : (escritos == quantos - 1 ? (quantos == 2 ? " and " : ", and ") : ", ");
+        size_t u = strlen(buf);
+        if (u + 8 >= cap) break;
+        snprintf(buf + u, cap - u, "%s'%s'", sep, fix[k]->texto ? fix[k]->texto : "?");
+        escritos++;
+    }
+}
+
+/* Os argumentos de `call` contra os parâmetros `params`: quantos, quais
+ * nomes, quais faltam e o tipo de cada um — as mesmas regras e as mesmas
+ * frases do binding da VM (`liga_args`), antes de rodar.
+ *   `recebe`: a chamada põe o receptor no slot 0 (método de instância,
+ *             construtor) — ele ocupa o 1º parâmetro fixo, ou cai no `*args`
+ *             se o 1º parâmetro não for fixo;
+ *   `oculto`: `Classe.metodo()` de um `@static` cujo 1º parâmetro é `self` —
+ *             o buraco ocupa o `self` e some da frase de quantidade;
+ *   `classe`: construtor GERADO dos campos (`params` são os campos, o `self`
+ *             vem antes deles, e o tipo errado sai com a frase do campo). */
+static void tp_confere_args(C *c, Unidade *u, PSNode *call, const char *nome, PSNodeVec *params,
+                            int recebe, int oculto, const char *classe)
+{
+    PSNode *fix[PS_MAX_PARAMS];
+    int nfix = 0, tem_var = 0, tem_kw = 0, ndef = 0;
+    if (classe) fix[nfix++] = NULL;                /* o `self` do __init__ gerado */
+    for (int32_t i = 0; i < params->n && nfix < PS_MAX_PARAMS; i++) {
+        PSNode *p = params->itens[i];
+        if (classe && p->is_static) continue;
+        if (!classe && p->i2 == 1) { tem_var = 1; continue; }
+        if (!classe && p->i2 == 2) { tem_kw = 1; continue; }
+        fix[nfix++] = p;
+        if (p->a) ndef++;
+    }
+    int desloca = recebe || oculto;
+    int primeiro_fixo = classe || (params->n > 0 && params->itens[0]->i2 == 0);
+    int base = (desloca && primeiro_fixo) ? 1 : 0;   /* 1º fixo que a chamada preenche */
+    int npos = 0;
+    for (int32_t i = 0; i < call->lista.n; i++) {
+        PSNode *a = call->lista.itens[i];
+        if (a->i2) return;                       /* espalhamento: só rodando */
+        if (!a->texto) npos++;
+    }
+    int dado = desloca + npos;
+    if (dado > nfix && !tem_var) {
+        int maxpos = nfix - oculto, dados = dado - oculto;
+        if (ndef > 0)
+            terro(c, call, "TypeError", "%s() takes from %d to %d positional arguments but %d %s given",
+                  nome, maxpos - ndef, maxpos, dados, dados == 1 ? "was" : "were");
+        else
+            terro(c, call, "TypeError", "%s() takes %d positional argument%s but %d %s given",
+                  nome, maxpos, maxpos == 1 ? "" : "s", dados, dados == 1 ? "was" : "were");
+        return;
+    }
+    int marcado[PS_MAX_PARAMS];
+    PSNode *valor[PS_MAX_PARAMS];
+    memset(marcado, 0, sizeof(marcado));
+    memset(valor, 0, sizeof(valor));
+    for (int q = 0; q < base; q++) marcado[q] = 1;       /* o receptor */
+    int k = base;
+    for (int32_t i = 0; i < call->lista.n; i++) {
+        PSNode *a = call->lista.itens[i];
+        if (a->texto) continue;
+        if (k < nfix) { marcado[k] = 1; valor[k] = a->a; }
+        k++;
+    }
+    for (int32_t i = 0; i < call->lista.n; i++) {
+        PSNode *a = call->lista.itens[i];
+        if (!a->texto) continue;
+        int achou = -1;
+        for (int q = base; q < nfix; q++)
+            if (fix[q] && fix[q]->texto && !strcmp(fix[q]->texto, a->texto)) { achou = q; break; }
+        if (achou >= 0) { marcado[achou] = 1; valor[achou] = a->a; continue; }
+        if (!tem_kw)
+            terro(c, a, "TypeError", "%s() got an unexpected keyword argument '%s'", nome, a->texto);
+    }
+    int faltam = 0;
+    for (int q = base; q < nfix; q++) if (!marcado[q] && !fix[q]->a) faltam++;
+    if (faltam > 0) {
+        char lista[256];
+        tp_lista_faltantes(lista, sizeof(lista), fix + base, marcado + base, nfix - base);
+        terro(c, call, "TypeError", "%s() missing %d required positional argument%s: %s",
+              nome, faltam, faltam == 1 ? "" : "s", lista);
+    }
+    for (int q = base; q < nfix; q++) {
+        if (!marcado[q] || !fix[q]->texto2 || !valor[q]) continue;
+        const char *T = tp_canon(fix[q]->texto2);
+        const char *vt = tp_de(c, u, valor[q]);
+        if (tp_aceita(c, T, vt, valor[q], 1) != T_NAO) continue;
+        if (classe)
+            terro(c, valor[q], "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
+                  fix[q]->texto ? fix[q]->texto : "?", classe, T, vt);
+        else
+            terro(c, valor[q], "AttributedValueError", "parâmetro %s de %s() esperava %s, recebeu %s",
+                  fix[q]->texto ? fix[q]->texto : "?", nome, T, vt);
+    }
+}
+
+/* A chamada `n` tem assinatura conhecida? Funct do arquivo, construtor de
+ * Entity do arquivo (o `__init__` escrito ou o gerado dos campos), método de
+ * instância e `Classe.metodo_static()`. Decorado por decorador geral não: o
+ * decorador pode ter trocado a funct. */
+static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
+{
+    PSNode *f = n->a;
+    if (!f) return;
+    if (f->kind == N_NAME && f->texto) {
+        SimInfo *s = tp_sim_de(c, u, f->texto);
+        if (!s || !s->decl || s->decorado) return;
+        if (s->decl->kind == N_ACTION_DECL) {
+            tp_confere_args(c, u, n, s->decl->texto ? s->decl->texto : "?", &s->decl->lista, 0, 0, NULL);
+            return;
+        }
+        if (s->decl->kind != N_ENTITY_DECL || !s->decl->texto) return;
+        const char *cls = s->decl->texto;
+        PSNode *init = tp_metodo(c, cls, "__init__", 0);
+        if (init) {
+            if (tp_metodo_decorado(c, cls, init)) return;
+            tp_confere_args(c, u, n, "__init__", &init->lista, 1, 0, NULL);
+            return;
+        }
+        /* `__init__` gerado: um parâmetro por campo de instância, da própria
+         * classe — com pai, os campos dele entram por outro caminho */
+        if (s->decl->lista2.n == 0 && s->decl->lista2_alias.n > 0)
+            tp_confere_args(c, u, n, "__init__", &s->decl->lista2_alias, 1, 0, cls);
+        return;
+    }
+    if (f->kind != N_MEMBER_ACCESS || !f->texto || !f->a) return;
+    if (f->a->kind == N_NAME && f->a->texto) {
+        SimInfo *s = tp_sim_de(c, u, f->a->texto);
+        if (s && s->decl && s->decl->kind == N_ENTITY_DECL && s->decl->texto && !s->decorado) {
+            const char *cls = s->decl->texto;
+            PSNode *m = tp_metodo(c, cls, f->texto, 0);
+            if (!m || tp_metodo_decorado(c, cls, m) || tp_campo_tipo(c, cls, f->texto, 0)) return;
+            if (!tp_metodo_estatico(c, cls, m)) {
+                terro(c, f, "RuntimeError", "Entity '%s' não tem método estático '%s' — instancie primeiro",
+                      cls, f->texto);
+                return;
+            }
+            int self = m->lista.n > 0 && m->lista.itens[0]->texto && !strcmp(m->lista.itens[0]->texto, "self");
+            tp_confere_args(c, u, n, m->texto ? m->texto : "?", &m->lista, 0, self, NULL);
+            return;
+        }
+    }
+    const char *t = tp_de(c, u, f->a);
+    if (!t || strchr(t, '|') || !tp_tipo_arq(c, t)) return;
+    PSNode *m = tp_metodo(c, t, f->texto, 0);
+    if (!m || tp_metodo_decorado(c, t, m) || tp_metodo_estatico(c, t, m)) return;
+    if (tp_campo_tipo(c, t, f->texto, 0)) return;          /* campo ganha de método */
+    tp_confere_args(c, u, n, m->texto ? m->texto : "?", &m->lista, 1, 0, NULL);
+}
+
+/* A chamada é SAÍDA (`post`, `sys.stdout.write`, `f.write` num PoolFile,
+ * `os.writeFile`, `os.warn`)? Devolve o índice do posicional que sai (-2 =
+ * todos), ou -1 se não é saída. É o que a funct tipada confere: ela só dá
+ * saída do tipo dela. */
+static int tp_arg_de_saida(C *c, Unidade *u, PSNode *call)
+{
+    PSNode *f = call->a;
+    if (!f) return -1;
+    if (f->kind == N_NAME && f->texto)
+        return (!strcmp(f->texto, "post") && !tp_nome_ligado(c, u, "post")) ? -2 : -1;
+    if (f->kind != N_MEMBER_ACCESS || !f->texto || !f->a) return -1;
+    char buf[64];
+    const char *mod = tp_modulo_de(c, u, f->a, buf, sizeof(buf));
+    if (mod) {
+        if ((!strcmp(mod, "sys.stdout") || !strcmp(mod, "sys.stderr"))
+                && (!strcmp(f->texto, "write") || !strcmp(f->texto, "writeln"))) return -2;
+        if (!strcmp(mod, "os") && !strcmp(f->texto, "writeFile")) return 1;
+        if (!strcmp(mod, "os") && !strcmp(f->texto, "warn")) return 0;
+        return -1;
+    }
+    const char *t = tp_de(c, u, f->a);
+    if (t && !strcmp(t, "PoolFile") && !strcmp(f->texto, "write")) return 0;
+    return -1;
+}
+
+/* Funct tipada: os argumentos de saída da chamada `n`, antes de rodar. O que
+ * só se sabe rodando fica marcado em `c->saida_*` pro `emite_args_e_chama`
+ * emitir a conferência logo depois de avaliar cada argumento. */
+static void tp_confere_saida(C *c, Unidade *u, PSNode *n)
+{
+    c->saida_tipo = NULL;
+    if (!u->tipo_ret_nome) return;
+    int idx = tp_arg_de_saida(c, u, n);
+    if (idx == -1) return;
+    int pos = 0, talvez = 0;
+    for (int32_t i = 0; i < n->lista.n; i++) {
+        PSNode *a = n->lista.itens[i];
+        if (a->texto || a->i2) continue;
+        if (idx == -2 || idx == pos) {
+            const char *vt = tp_de(c, u, a->a);
+            int v = tp_aceita(c, u->tipo_ret_nome, vt, a->a, 1);
+            if (v == T_NAO)
+                terro(c, a->a, "AttributedValueError", "saída de %s() esperava %s, recebeu %s",
+                      u->nome_funct ? u->nome_funct : "?", u->tipo_ret_nome, vt);
+            else if (v == T_TALVEZ) talvez = 1;
+        }
+        pos++;
+    }
+    if (!talvez) return;
+    c->saida_tipo = u->tipo_ret_nome;
+    c->saida_indice = idx;
+    snprintf(c->saida_rotulo, sizeof(c->saida_rotulo), "saída de %s()", u->nome_funct ? u->nome_funct : "?");
+}
+
+/* O código da tabela (TIPO_* + 1) pro OP_COERCE_DECL de um nome DECLARADO;
+ * 0 pra nome sem tipo escrito ou com tipo fora da tabela (classe, objeto
+ * nativo), que vão pelo OP_CONFERE_TIPO. Sem o que se sabe estaticamente,
+ * vale o código que o chamador já tinha. */
+static int tp_cod1(SimInfo *s, int cod_antigo)
+{
+    if (!s) return cod_antigo;
+    if (s->estado != 2 || !s->tipo) return 0;
+    int k = ps_tipo_codigo(s->tipo);
+    return k >= 0 ? k + 1 : 0;
+}
+
+/* O SimInfo do slot da função que ENVOLVE (a dona da célula capturada). */
+static SimInfo *tp_sim_upval(Unidade *u, const char *nome)
+{
+    for (Unidade *q = u->pai; q && !q->eh_modulo; q = q->pai)
+        for (int32_t i = 0; i < q->nlocais; i++)
+            if (strcmp(q->locais[i], nome) == 0) return &q->sim[i];
+    return NULL;
+}
+
+static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
+{
+    if (u->eh_modulo) {
+        mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
+        SimInfo *s = NULL;
+        for (int32_t k = u->n_mod_criados - 1; k >= 0; k--)
+            if (strcmp(u->mod_criados[k], nome) == 0) { s = &u->mod_sim[k]; break; }
+        int v = tp_escreve(c, s, nome);
+        tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_topo_de(c, nome)));
+        emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
+        return;
+    }
+    if (eh_global_declarada(u, nome)) {
+        SimInfo *s = tp_sim_topo(c, nome);
+        int v = tp_escreve(c, s, nome);
+        tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_topo_de(c, nome)));
+        global_gravado_add(c, nome);
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
         return;
     }
@@ -1145,7 +2477,9 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
     {
         int32_t up = resolve_upval(c, u, nome);
         if (up >= 0) {
-            emite_coerce_se_tipado(c, u, nome, tipo_de_upval(u, nome));
+            SimInfo *s = tp_sim_upval(u, nome);
+            int v = tp_escreve(c, s, nome);
+            tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_de_upval(u, nome)));
             emite(c, u, OP_STORE_UPVAL, up);
             return;
         }
@@ -1154,24 +2488,51 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
     if (i < 0) return;
     if (certa) u->certo[i] = 1;
     u->celula_virgem[i] = 0;
+    /* Nome sem tipo que o ARQUIVO também liga: o STORE_NAME grava lá
+     * (write-through), então é o tipo de lá que vale. Célula não: o
+     * CELL_SET_NAME grava sempre nela — é local desta função. */
+    SimInfo *s = &u->sim[i];
+    if (!u->certo[i] && !u->celula[i]) {
+        SimInfo *t = tp_sim_topo(c, nome);
+        if (t) s = t;
+    }
+    int v = tp_escreve(c, s, nome);
     if (u->celula[i]) {
-        emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i]);
+        tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, u->tipo_decl[i]));
         if (u->certo[i]) { emite(c, u, OP_CELL_SET, i); return; }
         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
         emite(c, u, OP_CELL_SET_NAME, idx_global(c, nome));
         return;
     }
     if (u->certo[i]) {
-        emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i]);
+        tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, u->tipo_decl[i]));
         emite(c, u, OP_STORE_LOCAL, i);
         return;
     }
     /* STORE_NAME decide em runtime entre local novo e global existente: se o
      * nome e um global DECLARADO com tipo no topo do arquivo, e nele que a
      * escrita vai cair (write-through), entao confere pelo tipo dele. */
-    emite_coerce_se_tipado(c, u, nome, u->tipo_decl[i] ? u->tipo_decl[i] : tipo_topo_de(c, nome));
+    tp_emite_escrita(c, u, nome, s, v,
+                     tp_cod1(s, u->tipo_decl[i] ? u->tipo_decl[i] : tipo_topo_de(c, nome)));
     emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, i, 0, NULL, 0));
     emite(c, u, OP_STORE_NAME, idx_global(c, nome));
+}
+
+/* O valor a gravar em `c->grava` vale pra UMA gravação: esta. */
+static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
+{
+    guarda_nome_modo_no(c, u, nome, certa);
+    memset(&c->grava, 0, sizeof(c->grava));
+}
+
+/* Prepara a próxima gravação com o valor `no` (o tipo é o que se sabe dele
+ * AGORA, antes de a escrita mudar o que se sabe do nome). */
+static void grava_valor(C *c, Unidade *u, PSNode *no)
+{
+    memset(&c->grava, 0, sizeof(c->grava));
+    c->grava.tem_valor = 1;
+    c->grava.no = no;
+    c->grava.tipo = tp_de(c, u, no);
 }
 
 static void guarda_nome(C *c, Unidade *u, const char *nome)
@@ -1492,7 +2853,11 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             return;
 
         case N_CALL:
+            tp_confere_chamada(c, u, n);
             expr(c, u, n->a);
+            /* depois do chamado: ele pode ter chamadas dentro, e a marca de
+             * saída é só desta */
+            tp_confere_saida(c, u, n);
             emite_args_e_chama(c, u, n, &n->lista);
             return;
 
@@ -1531,10 +2896,13 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             /* o nome da var da compreensão SOMBREIA, como no `for each` */
             char salvo[128];
             int sombreia = nome_ja_existe(u, var);
+            SimInfo sim_fora;
+            int sim_posto = 0;
             if (sombreia) {
                 snprintf(salvo, sizeof(salvo), "  lcv$%s", var);
                 carrega_nome(c, u, var);
                 guarda_nome_modo(c, u, salvo, 1);
+                sim_posto = tp_sombra_poe(c, u, var, &sim_fora);
             }
             int32_t M = escopo_marca(u);
 
@@ -1542,6 +2910,10 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));
             int32_t topo = UP(c, u)->ncode;
             int32_t fim = emite(c, u, OP_ITER_NEXT, 0);
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1;
+            c->grava.tipo = tp_elemento(tp_de(c, u, n->a));
+            c->grava.no = n;
             guarda_nome_modo(c, u, var, 1);
 
             int32_t pula_item = -1;
@@ -1563,6 +2935,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             escopo_trunca(c, u,M);
             if (sombreia) {
                 carrega_nome(c, u, salvo);
+                tp_sombra_devolve(c, u, var, sim_posto, &sim_fora);
                 guarda_nome_modo(c, u, var, 1);
             }
             carrega_nome(c, u, acc);
@@ -1710,6 +3083,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_MEMBER_ACCESS:
+            tp_confere_membro(c, u, n);
             expr(c, u, n->a);
             emite(c, u, OP_GET_MEMBER,
                   idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
@@ -1779,6 +3153,13 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_DUP, 0);
             emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
             emite(c, u, (n->texto && n->texto[0] == '+') ? OP_ADD : OP_SUB, 0);
+            {
+                SimInfo *sx = tp_sim_de(c, u, nome);
+                memset(&c->grava, 0, sizeof(c->grava));
+                c->grava.tem_valor = 1;
+                c->grava.tipo = tp_binario(c, "+", (sx && sx->estado) ? sx->tipo : NULL, "int");
+                c->grava.no = n;
+            }
             guarda_nome(c, u, nome);
             return;
         }
@@ -2008,6 +3389,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (CFALHOU(c)) return;
             emite_funcao(c, u, idx);
             if (u->eh_modulo && n->is_private) priv_global_add(c, n->texto);
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1;
+            c->grava.tipo = "funct";
+            c->grava.no = n;
+            c->grava.decl = n;
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -2035,6 +3421,16 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (n->a->line) c->linha_atual  = n->a->line;
                 if (n->a->col)  c->coluna_atual = n->a->col;
             }
+            if (!tp_tipo_existe(c, u, n->texto2)) {
+                /* o erro é o nome do tipo; conferir o valor contra um tipo
+                 * que não existe só repetiria o mesmo erro com outra frase */
+                terro(c, n, "AttributedValueError", "tipo %s não existe (variável %s)",
+                      n->texto2 ? n->texto2 : "?", vn);
+                memset(&c->grava, 0, sizeof(c->grava));
+            } else {
+                grava_valor(c, u, n->a);
+                c->grava.declara = n->texto2;
+            }
             guarda_nome_modo(c, u, vn, 1);
             return;
         }
@@ -2054,6 +3450,18 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             const char *nome = n->texto ? n->texto : "";
             int32_t mi = idx_const(c, u, K_STR, 0, 0, nome, (int32_t)strlen(nome));
+            if (n->texto2) {
+                const char *cls = c->entity_no && c->entity_no->texto ? c->entity_no->texto : "?";
+                if (!tp_tipo_existe(c, u, n->texto2))
+                    terro(c, n, "AttributedValueError", "tipo %s não existe (campo %s de %s)", n->texto2, nome, cls);
+                else {
+                    const char *T = tp_canon(n->texto2);
+                    const char *vt = tp_de(c, u, n->a);
+                    if (tp_aceita(c, T, vt, n->a, 1) == T_NAO)
+                        terro(c, n->a, "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
+                              nome, cls, T, vt);
+                }
+            }
             carrega_nome(c, u, "self");
             expr(c, u, n->a);
             /* MESMA tabela do N_VAR_DECL: só escalar é conferido, e `list`/
@@ -2084,8 +3492,15 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 carrega_nome(c, u, n->texto ? n->texto : "");
                 expr(c, u, n->a);
                 emite(c, u, opc, 0);
+                SimInfo *sx = tp_sim_de(c, u, n->texto);
+                const char *tv = tp_binario(c, base, (sx && sx->estado) ? sx->tipo : NULL, tp_de(c, u, n->a));
+                memset(&c->grava, 0, sizeof(c->grava));
+                c->grava.tem_valor = 1;
+                c->grava.tipo = tv;
+                c->grava.no = n;
             } else {
                 expr(c, u, n->a);
+                grava_valor(c, u, n->a);
             }
             guarda_nome(c, u, n->texto ? n->texto : "");
             return;
@@ -2104,6 +3519,28 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (!n->a && c->dentro_count_each > 0) carrega_nome(c, u, "_count");
             else if (n->a) expr(c, u, n->a);
             else      emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_NULL, 0, 0, NULL, 0));
+            /* funct tipada: todo `return` devolve o tipo dela */
+            if (u->tipo_ret_nome && !(!n->a && c->dentro_count_each > 0)) {
+                if (!n->a) {
+                    if (!u->tipo_ret)
+                        terro(c, n, "AttributedValueError",
+                              "%s() devolve %s, e `return` sem valor devolveria Null",
+                              u->nome_funct ? u->nome_funct : "?", u->tipo_ret_nome);
+                } else if (!(u->tipo_ret && n->a->kind == N_LITERAL && n->a->lit == L_NULL)) {
+                    /* `return null` numa `int`/`bool funct` é o `return` seco:
+                     * o sentinela (0 / True) */
+                    const char *vt = tp_de(c, u, n->a);
+                    int v = tp_aceita(c, u->tipo_ret_nome, vt, n->a, 1);
+                    if (v == T_NAO)
+                        terro(c, n->a, "AttributedValueError", "retorno de %s() esperava %s, recebeu %s",
+                              u->nome_funct ? u->nome_funct : "?", u->tipo_ret_nome, vt);
+                    else if (v == T_TALVEZ && !u->tipo_ret) {
+                        char rot[300];
+                        snprintf(rot, sizeof(rot), "retorno de %s()", u->nome_funct ? u->nome_funct : "?");
+                        tp_emite_confere(c, u, rot, u->tipo_ret_nome, 1);
+                    }
+                }
+            }
             if (u->tipo_ret) emite(c, u, OP_COERCE_RET, u->tipo_ret);
             emite_finallys(c, u, -1);   /* todos os finally abertos nesta função */
             emite(c, u, OP_RETURN, 0);
@@ -2178,10 +3615,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * marca M, logo abaixo). Sombrear um nome de tres seria pior que
              * nao sombrear nenhum. */
             int sombreia = !n->e && nome_ja_existe(u, var_laco);
+            SimInfo sim_fora;
+            int sim_posto = 0;
             if (sombreia) {
                 snprintf(salvo, sizeof(salvo), "  fe$%s", var_laco);   /* nome não digitável */
                 carrega_nome(c, u, var_laco);
                 guarda_nome_modo(c, u, salvo, 1);
+                sim_posto = tp_sombra_poe(c, u, var_laco, &sim_fora);
             }
             int32_t M = escopo_marca(u);        /* marca ANTES da var do laço */
             /* `for each i in range(a, b, p)`: em vez de materializar a lista
@@ -2226,7 +3666,13 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * topo e desempacotado pelo MESMO emissor do `a, b = [1, 2]` —
              * mesma checagem de quantidade, mesma mensagem de erro. */
             if (n->e) guarda_em_alvo(c, u, n->e);
-            else      guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            else {
+                memset(&c->grava, 0, sizeof(c->grava));
+                c->grava.tem_valor = 1;
+                c->grava.tipo = usa_range ? "int" : tp_elemento(tp_de(c, u, n->a));
+                c->grava.no = n;
+                guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
+            }
             if (abre_laco(c, n, topo, usa_range ? 4 : 2) != 0) return;   /* estado do laço na pilha */
             /* a var do laço é re-atribuída no topo a cada volta, então limpá-la
              * por-iteração é inofensivo — corpo e var compartilham a marca */
@@ -2241,6 +3687,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             escopo_trunca(c, u,M);
             if (sombreia) {                      /* devolve o valor de fora */
                 carrega_nome(c, u, salvo);
+                tp_sombra_devolve(c, u, var_laco, sim_posto, &sim_fora);
                 guarda_nome_modo(c, u, var_laco, 1);
             }
             return;
@@ -2295,6 +3742,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 def->campos[i].tipo = t;
             }
             emite(c, u, OP_MAKE_MODEL, mi);
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.decl = n;
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -2329,6 +3778,8 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             if (CFALHOU(c)) return;
             emite(c, u, OP_MAKE_ENUM, ei);
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.decl = n;
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -2405,6 +3856,9 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     carrega_nome(c, u, reg);
                     carrega_nome(c, u, act);
                     emite_decora(c, u, dec, 0);
+                    /* o nome passa a valer o que o decorador devolveu */
+                    memset(&c->grava, 0, sizeof(c->grava));
+                    c->grava.redefine = 1;
                     guarda_nome_modo(c, u, act, 1);
                 } else if (cls_nome && met_nome) {
                     /* decorador em cima da classe: vale pro 1º método dela, com
@@ -2469,6 +3923,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
              * variáveis atribuídas no corpo SOBREVIVEM depois do bloco (é
              * deliberado). Manter igual pra não divergir. */
             expr(c, u, n->a);
+            grava_valor(c, u, n->a);
             guarda_nome_modo(c, u, n->texto ? n->texto : "_", 1);
             int32_t setup = emite(c, u, OP_SETUP_TRY, 0);
             c->dentro_try++;
@@ -2506,7 +3961,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             emite(c, u, OP_COUNT, a);
             emite(c, u, OP_DUP, 0);
             /* `self` dentro do bloco é o TOTAL, e não muda durante o laço */
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1; c->grava.tipo = "int"; c->grava.no = n;
             guarda_nome_modo(c, u, "self", 1);
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1; c->grava.tipo = "int"; c->grava.no = n;
             guarda_nome_modo(c, u, "_count", 1);
             int32_t Mb = escopo_marca(u);        /* corpo: self/_count sobrevivem ao laço */
             emite(c, u, OP_COUNT_PARES, a);
@@ -2581,6 +4040,28 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 for (int32_t i = 0; i < n->lista.n; i++)
                     def->npriv = varre_campos_priv(n->lista.itens[i], def->priv_nomes, def->npriv);
             }
+
+            /* campos de INSTÂNCIA com tipo escrito: a VM confere toda escrita
+             * neles. O `static` pertence à classe, não entra. */
+            for (int32_t i = 0; i < n->lista2_alias.n; i++) {
+                PSNode *f = n->lista2_alias.itens[i];
+                if (f->kind != N_ENTITY_FIELD || !f->texto || !f->texto2) continue;
+                if (!tp_tipo_existe(c, u, f->texto2)) {
+                    terro(c, f, "AttributedValueError", "tipo %s não existe (campo %s de %s)",
+                          f->texto2, f->texto, n->texto ? n->texto : "?");
+                    continue;
+                }
+                if (f->a) {
+                    const char *T = tp_canon(f->texto2);
+                    const char *vt = tp_de(c, u, f->a);
+                    if (tp_aceita(c, T, vt, f->a, 1) == T_NAO)
+                        terro(c, f->a, "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
+                              f->texto, n->texto ? n->texto : "?", T, vt);
+                }
+                if (!f->is_static) classe_tip_add(c, def, f->texto, f->texto2);
+            }
+            for (int32_t i = 0; i < n->lista.n; i++)
+                varre_campos_decl_tipados(c, n->lista.itens[i], def);
 
             int32_t nm = 0;
             for (int32_t i = 0; i < n->lista.n; i++)
@@ -2699,6 +4180,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             for (int32_t i = 0; i < n->lista2.n; i++)
                 carrega_nome(c, u, n->lista2.itens[i]->texto ? n->lista2.itens[i]->texto : "");
             emite(c, u, OP_MAKE_CLASS, ci);
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1;
+            c->grava.tipo = "Entity";
+            c->grava.no = n;
+            c->grava.decl = n;
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
 
             /* A classe existe. Agora, nesta ordem:
@@ -2881,6 +4367,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (n->lista2.n == 0) {
                     if (!simples) { cerro_sx(c, n, "import de modulo pontuado/relativo precisa de 'from ... import ...'"); return; }
                     emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
+                    tp_grava_import(c, n, mod, NULL);
                     guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                     return;
                 }
@@ -2890,6 +4377,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                                         ? n->lista2_alias.itens[i]->texto : membro;
                     emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
                     emite(c, u, OP_IMPORT_FROM, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
+                    tp_grava_import(c, n, mod, membro);
                     guarda_nome(c, u, apelido);
                 }
                 return;
@@ -2898,6 +4386,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (strcmp(n->texto, "import") == 0) {
                 if (!simples) { cerro_sx(c, n, "import de modulo pontuado/relativo precisa de 'from ... import ...'"); return; }
                 emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
+                tp_grava_import(c, n, mod, NULL);
                 guarda_nome(c, u, n->texto2 ? n->texto2 : ultimo);
                 return;
             }
@@ -2908,12 +4397,32 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                                     ? n->lista2_alias.itens[i]->texto : membro;
                 emite(c, u, OP_IMPORT_MOD, idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod)));
                 emite(c, u, OP_IMPORT_FROM, idx_const(c, u, K_STR, 0, 0, membro, (int32_t)strlen(membro)));
+                tp_grava_import(c, n, mod, membro);
                 guarda_nome(c, u, apelido);
             }
             return;
         }
 
         case N_MEMBER_ASSIGNMENT: {
+            /* Entity do arquivo: o campo tem que existir nela (declarado no
+             * corpo, `private <tipo> x` ou gravado em `self.x` por um método),
+             * e campo tipado recebe o tipo dele. A VM confere o tipo de novo
+             * rodando — é o que pega o `obj` que só se sabe rodando. */
+            {
+                const char *t = tp_de(c, u, n->a);
+                PSNode *d = (t && !strchr(t, '|')) ? tp_tipo_arq(c, t) : NULL;
+                if (d && d->kind == N_ENTITY_DECL && n->texto) {
+                    if (tp_classe_tem(c, t, n->texto, 0) == 0)
+                        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'", t, n->texto);
+                    const char *ft = tp_campo_tipo(c, t, n->texto, 0);
+                    if (ft && (!n->texto2 || !strcmp(n->texto2, "="))) {
+                        const char *vt = tp_de(c, u, n->b);
+                        if (tp_aceita(c, ft, vt, n->b, 1) == T_NAO)
+                            terro(c, n->b, "AttributedValueError", "campo %s de %s esperava %s, recebeu %s",
+                                  n->texto, t, ft, vt);
+                    }
+                }
+            }
             int32_t mi = idx_const(c, u, K_STR, 0, 0, n->texto ? n->texto : "",
                                    n->texto ? (int32_t)strlen(n->texto) : 0);
             expr(c, u, n->a);                 /* objeto */
@@ -3062,6 +4571,10 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 }
                 /* liga a mensagem ao nome do catch e roda o bloco */
                 int32_t Mcat = escopo_marca(u);
+                memset(&c->grava, 0, sizeof(c->grava));
+                c->grava.tem_valor = 1;
+                c->grava.tipo = "str";          /* é a mensagem do erro */
+                c->grava.no = cl;
                 guarda_nome_modo(c, u, cl->texto ? cl->texto : "e", 1);
                 bloco_stmts(c, u, cl->b);
                 escopo_fecha(c, u, Mcat);      /* var do catch (e) + corpo não vazam */
@@ -3314,6 +4827,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
+    free(u.sim); free(u.mod_sim);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
@@ -3347,6 +4861,18 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     u.eh_modulo = 0;
     if (n->texto2 && !strcmp(n->texto2, "int"))       u.tipo_ret = 1;
     else if (n->texto2 && !strcmp(n->texto2, "bool")) u.tipo_ret = 2;
+    const char *nome_f = n->texto ? n->texto : "<funct>";
+    u.nome_funct = nome_f;
+    if (n->kind == N_ACTION_DECL && n->texto2) {
+        u.tipo_ret_nome = tp_canon(n->texto2);
+        if (!tp_tipo_existe(c, &u, n->texto2))
+            terro(c, n, "AttributedValueError", "tipo %s não existe (retorno de %s())", n->texto2, nome_f);
+        /* gerador devolve o gerador: o tipo escrito não é o do `return` */
+        if (tp_tem_yield(n->b)) u.tipo_ret_nome = NULL;
+    }
+    /* método de Entity: o `self` é da classe — é o que confere `self.campo`
+     * e `self.metodo()` antes de rodar */
+    int self_da_classe = !pai && c->dentro_entity && c->entity_no && c->entity_no->texto;
 
     /* Os parâmetros ocupam os primeiros slots, na ordem escrita. O parser
      * garante a ordem comuns → `*args` → `**kwarg`, então os FIXOS são os
@@ -3359,13 +4885,23 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
         int32_t pi = idx_local(c, &u, par->texto ? par->texto : "");
         if (pi < 0) break;
         u.certo[pi] = 1;
-        if (par->i2 == 1) { slot_vararg = pi; continue; }
-        if (par->i2 == 2) { slot_kwarg = pi; continue; }
+        u.sim[pi].estado = 1;          /* valor da chamada: desconhecido */
+        if (par->i2 == 1) { slot_vararg = pi; u.sim[pi].tipo = "tup"; continue; }
+        if (par->i2 == 2) { slot_kwarg = pi; u.sim[pi].tipo = "dict"; continue; }
+        if (i == 0 && self_da_classe && par->texto && !strcmp(par->texto, "self") && !par->texto2)
+            u.sim[pi].tipo = c->entity_no->texto;
         /* O tipo do parâmetro vale pra TODA escrita nele, não só pro binding
          * da chamada: `funct f(int n) { n = "x" }` passava calado. */
         {
             int cod = cod_tipo_decl(par->texto2);
             if (cod >= 0) u.tipo_decl[pi] = (unsigned char)(cod + 1);
+        }
+        if (par->texto2) {
+            u.sim[pi].estado = 2;
+            u.sim[pi].tipo = tp_canon(par->texto2);
+            if (!tp_tipo_existe(c, &u, par->texto2))
+                terro(c, par, "AttributedValueError", "tipo %s não existe (parâmetro %s de %s())",
+                      par->texto2, par->texto ? par->texto : "?", nome_f);
         }
         nfix++;
         if (par->a) ndef++;
@@ -3428,7 +4964,22 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
         int32_t pula = emite(c, &u, OP_JUMP_IF_SET, 0);
         expr(c, &u, par->a);
         /* o padrão também respeita o tipo: `funct f(str s = 10)` devolvia 10 */
-        emite_coerce_se_tipado(c, &u, par->texto ? par->texto : "", u.tipo_decl[i]);
+        if (par->texto2) {
+            const char *vt = tp_de(c, &u, par->a);
+            const char *T = tp_canon(par->texto2);
+            int v = tp_aceita(c, T, vt, par->a, 1);
+            if (v == T_NAO)
+                terro(c, par->a, "AttributedValueError", "parâmetro %s de %s() esperava %s, recebeu %s",
+                      par->texto ? par->texto : "?", nome_f, T, vt);
+            else if (v == T_TALVEZ) {
+                if (u.tipo_decl[i]) emite_coerce_se_tipado(c, &u, par->texto ? par->texto : "", u.tipo_decl[i]);
+                else {
+                    char rot[300];
+                    snprintf(rot, sizeof(rot), "parâmetro %s de %s()", par->texto ? par->texto : "?", nome_f);
+                    tp_emite_confere(c, &u, rot, T, 1);
+                }
+            }
+        }
         emite(c, &u, OP_STORE_LOCAL, i);
         if (pula >= 0) UP(c, (&u))->code[pula + 1] = UP(c, (&u))->ncode;
     }
@@ -3448,6 +4999,13 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     if (u.tipo_ret) rede = emite(c, &u, OP_SETUP_TRY, 0);
 
     bloco_stmts(c, &u, n->b);
+    /* Chegar ao fim devolve Null, e Null não é valor de nenhum tipo escrito
+     * — a não ser `int`/`bool`, cujo fim é o sentinela 0/True. Gerador
+     * devolve o gerador. */
+    if (u.tipo_ret_nome && !u.tipo_ret && !tp_tem_yield(n->b) && !tp_termina(n->b))
+        terro(c, n, "AttributedValueError",
+              "%s() devolve %s e pode chegar ao fim sem return (o fim devolveria Null)",
+              nome_f, u.tipo_ret_nome);
     if (u.tipo_ret) emite(c, &u, OP_POP_TRY, 0);
     /* action sem return explícito devolve Null */
     emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_NULL, 0, 0, NULL, 0));
@@ -3488,12 +5046,131 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
+    free(u.sim); free(u.mod_sim);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
 
     return idx;
+}
+
+/* ── tipagem estática: a passada antes de compilar ──────────────────────────
+ *
+ * Os nomes que o ARQUIVO liga fora de bloco, com o tipo, na ordem do fonte:
+ * uma funct compilada antes de `total = 0` já precisa saber que o `total`
+ * de fora é int (a escrita dela cai nele), e uma chamada `f()` no topo
+ * precisa da assinatura de `f`. O que nasce dentro de bloco morre com ele, e
+ * não entra. A conferência é a mesma da compilação (`tp_escreve`), com o
+ * mesmo nó de posição: o erro que ela ache sai uma vez só na lista. */
+static SimInfo *tp_topo_poe(C *c, const char *nome)
+{
+    SimInfo *s = tp_sim_topo(c, nome);
+    if (s) return s;
+    if (c->ntopo + 1 > c->cap_topo) {
+        int32_t novo = c->cap_topo < 16 ? 16 : c->cap_topo * 2;
+        void *nv = realloc(c->topo, sizeof(c->topo[0]) * (size_t)novo);
+        if (!nv) { cerro(c, "sem memoria", NULL); return NULL; }
+        c->topo = nv;
+        c->cap_topo = novo;
+    }
+    c->topo[c->ntopo].nome = nome;
+    memset(&c->topo[c->ntopo].s, 0, sizeof(SimInfo));
+    return &c->topo[c->ntopo++].s;
+}
+
+static int tp_decorador_embutido(PSNode *dec)
+{
+    const char *dn = (dec && dec->lista.n == 1) ? dec->lista.itens[0]->texto : NULL;
+    return dn && (!strcmp(dn, "static") || !strcmp(dn, "NonNull") || !strcmp(dn, "dataentity"));
+}
+
+static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
+{
+    if (!s || CFALHOU(c)) return;
+    switch (s->kind) {
+        case N_VAR_DECL:
+            if (!s->texto) return;
+            grava_valor(c, mod, s->a);
+            c->grava.declara = s->texto2;
+            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            break;
+        case N_ASSIGNMENT:
+            if (!s->texto || (s->texto2 && strcmp(s->texto2, "=") != 0)) return;
+            grava_valor(c, mod, s->a);
+            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            break;
+        case N_ACTION_DECL:
+            if (!s->texto) return;
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1; c->grava.tipo = "funct"; c->grava.no = s;
+            c->grava.decl = s; c->grava.decorado = (unsigned char)decorado;
+            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            break;
+        case N_ENTITY_DECL:
+            if (!s->texto) return;
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.tem_valor = 1; c->grava.tipo = "Entity"; c->grava.no = s; c->grava.decl = s;
+            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            break;
+        case N_MODEL_DECL:
+        case N_ENUM_DECL:
+            if (!s->texto) return;
+            memset(&c->grava, 0, sizeof(c->grava));
+            c->grava.decl = s; c->grava.no = s;
+            tp_escreve(c, tp_topo_poe(c, s->texto), s->texto);
+            break;
+        case N_IMPORT_STMT: {
+            if (!s->texto || s->texto3 || (s->i2 > 0 && s->lista.n == 0)) return;
+            char enc[512], base[256];
+            import_modulo_codificado(s, enc);
+            import_nome_do_arquivo(s, base, sizeof(base));
+            int eh_from = strcmp(s->texto, "from") == 0 || (strcmp(s->texto, "push") == 0 && s->lista2.n > 0);
+            if (!eh_from) {
+                const char *nome = s->texto2 ? s->texto2 : (s->i2 == -1 || base[0] ? base : enc);
+                tp_grava_import(c, s, enc, NULL);
+                tp_escreve(c, tp_topo_poe(c, tp_guarda(c, nome)), nome);
+            } else {
+                for (int32_t i = 0; i < s->lista2.n; i++) {
+                    const char *membro = s->lista2.itens[i]->texto;
+                    const char *apelido = (i < s->lista2_alias.n && s->lista2_alias.itens[i])
+                                        ? s->lista2_alias.itens[i]->texto : membro;
+                    if (!membro || !apelido) continue;
+                    tp_grava_import(c, s, enc, membro);
+                    tp_escreve(c, tp_topo_poe(c, apelido), apelido);
+                }
+            }
+            break;
+        }
+        case N_DECORATOR_STMT: {
+            int deco = decorado || (s->a && !tp_decorador_embutido(s->a));
+            if (s->b && s->b->kind == N_BLOCK)
+                for (int32_t i = 0; i < s->b->lista.n; i++) tp_pre_stmt(c, mod, s->b->lista.itens[i], deco);
+            break;
+        }
+        default:
+            break;
+    }
+    memset(&c->grava, 0, sizeof(c->grava));
+}
+
+static void tp_pre_passada(C *c, PSNode *programa)
+{
+    if (!programa) return;
+    tp_coleta_tipos_arq(c, programa);
+    Unidade mod;
+    memset(&mod, 0, sizeof(mod));
+    mod.eh_modulo = 1;
+    for (int32_t i = 0; i < programa->lista.n && !CFALHOU(c); i++)
+        tp_pre_stmt(c, &mod, programa->lista.itens[i], 0);
+}
+
+static int tp_erro_cmp(const void *a, const void *b)
+{
+    const PSErroTipo *x = a, *y = b;
+    if (x->linha != y->linha) return x->linha < y->linha ? -1 : 1;
+    if (x->col != y->col) return x->col < y->col ? -1 : 1;
+    return 0;
 }
 
 /* ── entrada ────────────────────────────────────────────────────────────── */
@@ -3593,6 +5270,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     /* tipos declarados no topo do arquivo, antes de compilar qualquer action */
     coleta_tipos_topo(&c, programa);
     resolve_estrelas(&c, programa);
+    tp_pre_passada(&c, programa);
 
     Unidade u;
     memset(&u, 0, sizeof(u));
@@ -3609,6 +5287,26 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     emite(&c, &u, OP_HALT, 0);
     if (out->ok) calcula_exportados(&c, &u);
 
+    /* Erro de tipo: o programa não roda, e a lista vai INTEIRA, na ordem do
+     * fonte. Erro de sintaxe achado no caminho manda (a compilação parou ali
+     * e a lista estaria pela metade). */
+    if (c.nerros > 0 && out->ok) {
+        qsort(c.erros, (size_t)c.nerros, sizeof(PSErroTipo), tp_erro_cmp);
+        out->ok = 0;
+        snprintf(out->erro, sizeof(out->erro), "%s", c.erros[0].msg);
+        out->erro_linha = c.erros[0].linha;
+        out->erro_col = c.erros[0].col;
+        out->erro_do_programa = 2;
+        out->erros_tipo = c.erros;
+        out->nerros_tipo = c.nerros;
+        c.erros = NULL;
+    }
+    free(c.erros);
+    for (int32_t i = 0; i < c.ntpool; i++) free(c.tpool[i]);
+    free(c.tpool);
+    free(c.topo);
+    free(c.tipos_arq);
+
     for (int32_t e = 0; e < c.nestrelas; e++) {
         for (int32_t k = 0; k < c.estrelas[e].n; k++) free(c.estrelas[e].nomes[k]);
         free(c.estrelas[e].nomes);
@@ -3621,6 +5319,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
     free(u.locais);
     free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
+    free(u.sim); free(u.mod_sim);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
@@ -3674,6 +5373,12 @@ void ps_compila_free(PSPrograma *p)
         for (int32_t k = 0; k < p->classes[i].npriv; k++)
             free(p->classes[i].priv_nomes[k]);
         free(p->classes[i].priv_nomes);
+        for (int32_t k = 0; k < p->classes[i].ntip; k++) {
+            free(p->classes[i].tip_nomes[k]);
+            free(p->classes[i].tip_tipos[k]);
+        }
+        free(p->classes[i].tip_nomes);
+        free(p->classes[i].tip_tipos);
     }
     free(p->classes);
     for (int32_t i = 0; i < p->nmodels; i++) {
@@ -3694,5 +5399,6 @@ void ps_compila_free(PSPrograma *p)
     free(p->priv_globais);
     for (int32_t i = 0; i < p->nexportados; i++) free(p->exportados[i]);
     free(p->exportados);
+    free(p->erros_tipo);
     free(p);
 }

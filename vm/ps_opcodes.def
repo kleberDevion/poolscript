@@ -207,3 +207,15 @@ PS_OP(SET_METODO,  98, "SET_METODO")
  *   JUMP_SE_UNSET [.., v] -> [.., v] ou salta pra `arg` tirando o UNSET. */
 PS_OP(IMPORT_FROM_ESTRELA, 99, "IMPORT_FROM_ESTRELA")
 PS_OP(JUMP_SE_UNSET,      100, "JUMP_SE_UNSET")
+
+/* Tipagem estatica: o que o compilador NAO consegue saber antes de rodar
+ * (`json.parse`, `d["k"]`) e conferido aqui, no lugar tipado.
+ *   CONFERE_TIPO [.., v] -> [.., v]  consts[arg] = "<modo><rotulo>\x1f<tipo>"
+ * `tipo` e um NOME (classe, objeto nativo, tipo da linguagem) ou uniao
+ * `a|b`. `modo` 'D' = declarado (`int` promete 64 bits, subclasse serve onde
+ * a mae e pedida — a regra do parametro tipado); 'I' = fixado pela primeira
+ * atribuicao (o nome do `type()`, subclasse tambem serve). Nao bateu:
+ * AttributedValueError "<rotulo> esperava <tipo>, recebeu <tipo do valor>".
+ * O OP_COERCE_DECL continua pros tipos da tabela (cabe em 4 bits e faz o
+ * `char`). */
+PS_OP(CONFERE_TIPO,       101, "CONFERE_TIPO")

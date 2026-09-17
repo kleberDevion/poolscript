@@ -176,6 +176,7 @@ import regex
 import jinker
 import qrcode
 import manpu
+import sockets
 
 # PNG de verdade pra construir o PoolFile — o motor só o cria a partir de
 # arquivo com extensão binária.
@@ -198,6 +199,8 @@ amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
 # e o próprio qrcode da linguagem gera um PNG de verdade — sem isso as 3
 # propriedades dele nunca foram conferidas.
 amostras_fonte["PoolFile"] = ("os.loadFile(\"" + PNG + "\", \"rb\")")
+amostras_fonte["QRPoolFile"] = "qrcode.gen(\"x\")"
+amostras_fonte["socket"] = "sockets.socket()"
 
 amostras_campo = {}
 amostras_campo["MailMessage"] = mail.MailMessage()
@@ -210,6 +213,8 @@ amostras_campo["QRImage"] = qrcode.make("x")
 amostras_campo["ManpuFile"] = manpu.open(target="/tmp/ps_cm.txt")
 amostras_campo["PoolQRCode"] = qrcode.QRCode()
 amostras_campo["PoolFile"] = os.loadFile(PNG, "rb")
+amostras_campo["QRPoolFile"] = qrcode.gen("x")
+amostras_campo["socket"] = sockets.socket()
 
 # Tipo que NÃO dá pra construir aqui, e o porquê. Ele existe pra que o
 # `continue` de baixo deixe de ser silencioso: sem esta lista, tipo novo com
@@ -253,7 +258,7 @@ for each tipo in tipos.keys() {
             continue
         }
         campos_conferidos = campos_conferidos + 1
-        fonte = "import mail\nimport regex\nimport jinker\nimport qrcode\n"
+        fonte = "import mail\nimport regex\nimport jinker\nimport qrcode\nimport sockets\n"
         fonte = fonte + "_v = " + amostras_fonte[tipo] + "\npost(_v." + m["nome"] + ")"
         saida = os.run([POOL, "-e", fonte], true)
         # O motor diz "'T' object has no attribute 'x'" (AttributeError) — a

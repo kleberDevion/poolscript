@@ -3547,6 +3547,27 @@ static PSNode *statement(P *p)
         return n;
     }
 
+    /* Declaração com tipo de CLASSE ou de objeto (`Conta c = Conta()`,
+     * `DbCursor cur = con.cursor()`): dois nomes seguidos de `=`. Não há outra
+     * leitura pra isso — antes virava DUAS instruções caladas, um `Conta`
+     * solto e um `c = Conta()` sem tipo nenhum. Se o tipo existe é o
+     * compilador que diz: ele conhece as classes do arquivo e dos imports. */
+    if ((t->type == T_IDENT || t->type == T_IDENT_UPPER)
+            && (espia(p, 1)->type == T_IDENT || espia(p, 1)->type == T_IDENT_UPPER)
+            && espia(p, 2)->type == T_OP && espia(p, 2)->texto && strcmp(espia(p, 2)->texto, "=") == 0) {
+        PSToken *nt = espia(p, 1);
+        PSNode *n = ps_node_novo(p->arena, N_VAR_DECL, nt->line, nt->col);
+        if (!n) return NULL;
+        n->texto2 = dup_tok(p, t);
+        p->pos++;
+        n->texto = exige_nome(p, "variavel");
+        if (FALHOU(p)) return NULL;
+        p->pos++;                                  /* o `=` */
+        n->a = expressao(p);
+        if (FALHOU(p)) return NULL;
+        return n;
+    }
+
     /* desempacotamento: `a, b = 1, 2` / `a, *resto = l` / `(a, b), c = x` */
     if (parece_unpack(p)) {
         PSNode *n = ps_node_novo(p->arena, N_UNPACK_ASSIGNMENT, t->line, t->col);

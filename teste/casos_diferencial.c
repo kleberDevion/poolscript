@@ -52,7 +52,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "for each a, b in [1, 2] {\n    post(a)\n}\n",
   "", "TypeError: cannot unpack non-iterable int object", 1 },
 { "dif #13",
-  "int funct main(lista){\n    n = len(lista)\n    for each i in range(n - 1){\n        for each c in range(0, n - 1 - i){\n            if (lista[c] > lista[c + 1]) {\n                lista[c], lista[c + 1] = lista[c + 1], lista[c]\n            }\n        }\n    }\n    return lista\n}\npost(main([5,1,4,3,6,7]))\n",
+  "list funct main(lista){\n    n = len(lista)\n    for each i in range(n - 1){\n        for each c in range(0, n - 1 - i){\n            if (lista[c] > lista[c + 1]) {\n                lista[c], lista[c + 1] = lista[c + 1], lista[c]\n            }\n        }\n    }\n    return lista\n}\npost(main([5,1,4,3,6,7]))\n",
   "[1, 3, 4, 5, 6, 7]", NULL, 0 },
 { "dif #14",
   "d = {}\nd[\"a\"], d[\"b\"] = 1, 2\npost(d)\n",

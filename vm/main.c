@@ -148,9 +148,31 @@ static void imprime_quadro(const char *origem, int linha, int col)
 /* Erro do usuário sai EXATAMENTE como o interpretador (a autoridade): a
  * mensagem primeiro, depois o traceback do mais interno ao mais externo, e o
  * quadro do erro por último. O header só aparece quando há chamadores. */
-static int reporta(const PSErroExec *e, const char *origem)
+static int reporta(PSErroExec *e, const char *origem)
 {
     switch (e->tipo) {
+        case PS_ERRO_TIPO: {
+            /* A tipagem estática acha TODOS os erros do arquivo antes de
+             * rodar, e todos saem: consertar um e descobrir o próximo só na
+             * rodada seguinte é o que a conferência antes de rodar existe pra
+             * evitar. */
+            int n = e->ntipos > 0 ? e->ntipos : 0;
+            for (int i = 0; i < n; i++) {
+                if (i) fputc('\n', stderr);
+                fprintf(stderr, "%s: %s\n", e->tipos[i].classe, e->tipos[i].msg);
+                imprime_quadro(origem, e->tipos[i].linha, e->tipos[i].col);
+            }
+            if (n == 0) {
+                fprintf(stderr, "%s: %s\n", e->tipo_nome[0] ? e->tipo_nome : "AttributedValueError", e->msg);
+                imprime_quadro(origem, e->linha, e->col);
+            }
+            if (n > 1)
+                fprintf(stderr, "\n%d erros de tipo — o programa nao rodou.\n", n);
+            free(e->tipos);
+            e->tipos = NULL;
+            e->ntipos = 0;
+            return 2;
+        }
         case PS_ERRO_SINTAXE:
             fprintf(stderr, "SyntaxError: %s\n", e->msg);
             imprime_quadro(origem, e->linha, e->col);
@@ -458,10 +480,29 @@ static int cmd_check(const char *arquivo)
 
     const char *tipo = e.tipo == PS_ERRO_SINTAXE ? "SyntaxError"
                      : e.tipo == PS_ERRO_NAO_SUPORTADO ? "NotImplementedError"
-                     : e.tipo == PS_ERRO_MEMORIA ? "MemoryError" : "RuntimeError";
-    printf("{\"ok\":false,\"tipo\":\"%s\",\"msg\":", tipo);
+                     : e.tipo == PS_ERRO_MEMORIA ? "MemoryError"
+                     : e.tipo == PS_ERRO_TIPO && e.tipo_nome[0] ? e.tipo_nome : "RuntimeError";
+    printf("{\"ok\":false,\"tipo\":");
+    json_str(tipo);
+    printf(",\"msg\":");
     json_str(e.msg);
-    printf(",\"linha\":%d,\"coluna\":%d}\n", e.linha, e.col);
+    printf(",\"linha\":%d,\"coluna\":%d", e.linha, e.col);
+    /* Tipagem estática: a lista INTEIRA (o primeiro também vai nos campos de
+     * cima, que o editor já lia). */
+    if (e.tipo == PS_ERRO_TIPO && e.ntipos > 0) {
+        printf(",\"erros\":[");
+        for (int i = 0; i < e.ntipos; i++) {
+            if (i) putchar(',');
+            printf("{\"tipo\":");
+            json_str(e.tipos[i].classe);
+            printf(",\"msg\":");
+            json_str(e.tipos[i].msg);
+            printf(",\"linha\":%d,\"coluna\":%d}", e.tipos[i].linha, e.tipos[i].col);
+        }
+        putchar(']');
+    }
+    printf("}\n");
+    free(e.tipos);
     return CHECK_RC_FALHA;
 }
 

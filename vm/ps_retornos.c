@@ -29,6 +29,23 @@ static int compara(const void *chave, const void *item)
     return c ? c : strcmp(a->membro, b->membro);
 }
 
+int ps_retorno_tipo_existe(const char *nome)
+{
+    if (!nome || !*nome) return 0;
+    size_t n = strlen(nome);
+    for (size_t i = 0; i < N_RETORNOS; i++) {
+        const char *t = RETORNOS[i].tipo;
+        while (*t) {
+            const char *bar = strchr(t, '|');
+            size_t len = bar ? (size_t)(bar - t) : strlen(t);
+            if (len == n && memcmp(t, nome, n) == 0) return 1;
+            if (!bar) break;
+            t = bar + 1;
+        }
+    }
+    return 0;
+}
+
 const char *ps_retorno_de(const char *dono, const char *membro)
 {
     if (!dono || !membro) return NULL;

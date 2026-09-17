@@ -22,7 +22,8 @@ typedef enum {
     PS_ERRO_SINTAXE,        /* lexer ou parser */
     PS_ERRO_NAO_SUPORTADO,  /* nó que o compilador ainda não emite */
     PS_ERRO_RUNTIME,
-    PS_ERRO_MEMORIA
+    PS_ERRO_MEMORIA,
+    PS_ERRO_TIPO            /* tipagem estática: o programa nem rodou */
 } PSTipoErro;
 
 /* Um quadro do traceback: função, arquivo e linha. */
@@ -47,6 +48,11 @@ typedef struct {
      * `ntb == 0` quando não há (erro de sintaxe, etc.). */
     PSQuadroTB tb[64];
     int        ntb;
+    /* PS_ERRO_TIPO: TODOS os erros da tipagem estática do arquivo, na ordem
+     * do fonte (o primeiro também em msg/linha/col). Nenhum fica de fora da
+     * saída: o vetor é do chamador liberar (`free`). */
+    struct PSErroTipoExec { char msg[256]; char classe[32]; int linha; int col; } *tipos;
+    int        ntipos;
 } PSErroExec;
 
 /* Roda o `.pr` inteiro. 0 = sucesso; -1 preenche `e`. */
