@@ -5,6 +5,12 @@
 " declara tipo, o tipo primitivo, o modificador e o fluxo caem em grupos
 " DIFERENTES.
 "
+" As listas de tipos, apelidos, builtins e exceções são GERADAS por
+" scripts/gera_realce.pr a partir do `pool --metadata`, como as da gramática:
+" a instrução logo abaixo de cada linha `" GERADO: …` é reescrita (não edite à
+" mão — o `make check` reprova se divergir). Digitadas, apodreciam: esta cópia
+" ficou sem `long`, sem `PoolFile` e sem exceção nenhuma.
+"
 " Era exatamente isso que faltava. A versão anterior ligava `psKeyword`,
 " `psStorage`, `psStorageFunc`, `psStorageClass` e `psVerb` todos em `Keyword`:
 " `if`, `int`, `Entity` e `funct` saíam da mesma cor, e a tela inteira ficava
@@ -35,7 +41,7 @@ syn match  psCommentHash  "#.*$"
 syn match  psEscape      "\\." contained
 syn region psInterp      matchgroup=psInterpDelim start="{" end="}" contained
       \ contains=psString,psStringS,psStringT,psControl,psLogical,psType,
-      \psModifier,psVerb,psBuiltin,psBoolean,psNull,psNumber,psCall,psSelf
+      \psModifier,psVerb,psBuiltin,psException,psBoolean,psNull,psNumber,psCall,psSelf
 
 " ── strings ─────────────────────────────────────────────────────────────────
 syn region psStringT start=/[frbFRB]*'''/ end=/'''/ keepend contains=psInterp,psEscape
@@ -55,10 +61,12 @@ syn keyword psVerb     PUSH GET POST PUT DELETE JSON
 syn keyword psSelf     self
 
 " ── tipos ───────────────────────────────────────────────────────────────────
-syn keyword psType     str int long flo bool list dict json tup bytes type char
-      \ Object object
+" GERADO: tipos
+syn keyword psType     str int flo bool list dict tup char Object long byte
+      \ json JSON object Long type PoolFile
 " Apelidos de tipo (`string s = "a"`): valem por POSIÇÃO, só onde um tipo vale.
 " Fora dali são nome comum — `string = "a"` é variável, e não pode pintar.
+" GERADO: apelidos
 syn match   psType     "\<\%(string\|String\|integer\|Integer\|tuple\|Tuple\|dictionary\|Dictionary\)\>\ze\s\+[A-Za-z_]"
 
 " ── modificadores ───────────────────────────────────────────────────────────
@@ -80,9 +88,23 @@ syn match   psTypeName "[A-Za-z_]\w*" contained
 " ── builtins ────────────────────────────────────────────────────────────────
 " Os que o `pool --metadata` publica e que NÃO são também nome de tipo (esses
 " já estão em psType, e é como tipo que aparecem na maioria das linhas).
+" GERADO: builtins
 syn keyword psBuiltin  assert post len abs pow round hex bin oct ord chr range
       \ sum min max sorted reversed enumerate zip addEnd addStart removeEnd
       \ removeStart map filter open sleep gather input id load
+
+" ── exceções ────────────────────────────────────────────────────────────────
+" A tabela do `catch` (`excecoes` do --metadata). Na gramática do VS Code é
+" `support.class.exception`, a cor de suporte — a mesma dos builtins.
+" GERADO: excecoes
+syn keyword psException Exception OSError FileExistsError FileNotFoundError
+      \ IsADirectoryError NotADirectoryError PermissionError NetworkError
+      \ IOError LookupError IndexError KeyError ArithmeticError
+      \ ZeroDivisionError OverflowError ValueError UnicodeError
+      \ UnicodeDecodeError UnicodeEncodeError AttributedValueError
+      \ ConversionError RuntimeError RecursionError TypeError AttributeError
+      \ NameError ImportError MemoryError AssertionError SyntaxError
+      \ NotImplementedError TimeoutError DatabaseError
 
 " ── constantes ──────────────────────────────────────────────────────────────
 syn keyword psBoolean true True false False
@@ -117,6 +139,7 @@ hi def link psClassKw      Structure
 hi def link psFuncName     Function
 hi def link psTypeName     Type
 hi def link psBuiltin      @function.builtin
+hi def link psException    @type.builtin
 hi def link psBoolean      Boolean
 hi def link psNull         Constant
 hi def link psDunder       Constant

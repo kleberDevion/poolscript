@@ -1,24 +1,34 @@
-# Gera as listas da gramática de realce do editor a partir do MOTOR.
+# Gera as listas do realce dos editores a partir do MOTOR.
 #
 # A gramática TextMate (editor/vscode/syntaxes/poolscript.tmLanguage.json)
 # tinha listas digitadas de tipos e builtins — e pintava `Long`, que a
-# linguagem não tem, e não pintava exceção nenhuma. Regra do dono: nenhuma
+# linguagem não tinha, e não pintava exceção nenhuma. Regra do dono: nenhuma
 # lista fixa. As três alternações saem do `pool --metadata`:
 #
 #   storage.type.poolscript             <- tipos_declaraveis + tipos_apelidos + tipos_nomes
 #   support.function.builtin.poolscript <- builtins[].nome
 #   support.class.exception.poolscript  <- excecoes[].nome
 #
-#     ./pool scripts/gera_realce.pr            # reescreve as três linhas `match`
+# O syntax do Neovim (editor/nvim/syntax/poolscript.vim) é espelho da
+# gramática e tinha as MESMAS listas digitadas — e apodrecia do mesmo jeito
+# (sem `long`, sem `PoolFile`, sem exceção nenhuma). As dele saem daqui também:
+# cada `syn keyword`/`syn match` gerado vem logo depois de uma linha
+# `" GERADO: <lista>`, e é essa instrução (com as continuações `\`) que é
+# reescrita. No Vim o apelido de tipo (`string`) pinta por POSIÇÃO (só antes de
+# um nome) e o builtin que também é tipo (`str(x)`) fica em psType — por isso
+# as listas do Vim são derivadas das três, não iguais.
+#
+#     ./pool scripts/gera_realce.pr            # reescreve a gramática e o syntax
 #     ./pool scripts/gera_realce.pr --portao   # não escreve: reprova se divergir
 #
-# O resto do arquivo (comentários, escopos, lookaheads) fica como está: só a
-# linha `"match"` logo abaixo de cada `"name"` marcado é trocada.
+# O resto dos arquivos (comentários, escopos, lookaheads) fica como está.
 import os
 import sys
 import json
 
 GRAMATICA = "editor/vscode/syntaxes/poolscript.tmLanguage.json"
+VIM = "editor/nvim/syntax/poolscript.vim"
+MARCA = "\" GERADO: "
 
 # `(?!\s*=[^=])`: `int = 1` ou `type=...` como nome de argumento não é tipo.
 # `\s*(?=\()`: builtin só pinta quando CHAMADO (`route = 1` fica variável).
@@ -83,6 +93,76 @@ funct gera(linhas, listas) {
 }
 
 
+# Uma instrução `syn keyword` do Vim quebrada em linhas de continuação (`\`),
+# como o arquivo sempre foi escrito à mão.
+funct instrucao_vim(cabeca, nomes) {
+    iv_linhas = []
+    iv_atual = cabeca
+    for each iv_n in nomes {
+        if len(iv_atual) + 1 + len(iv_n) > 78 {
+            addEnd(iv_linhas, iv_atual)
+            iv_atual = "      \\ " + iv_n
+        }
+        else {
+            iv_atual = iv_atual + " " + iv_n
+        }
+    }
+    addEnd(iv_linhas, iv_atual)
+    return iv_linhas
+}
+
+
+# O syntax do Vim com as quatro instruções marcadas reescritas. `apelidos` são
+# as chaves de `tipos_apelidos` (string, String, …): pintam por posição, num
+# `syn match` próprio, e saem da lista de keywords.
+funct gera_vim(linhas, listas, apelidos) {
+    gv_tipos = []
+    for each gv_t in listas[0] {
+        if not apelidos.contains(gv_t) { addEnd(gv_tipos, gv_t) }
+    }
+    gv_builtins = []
+    for each gv_b in listas[1] {
+        if not gv_tipos.contains(gv_b) { addEnd(gv_builtins, gv_b) }
+    }
+    gv_saida = []
+    gv_i = 0
+    while gv_i < len(linhas) {
+        gv_l = linhas[gv_i]
+        addEnd(gv_saida, gv_l)
+        gv_i = gv_i + 1
+        if not gv_l.startswith(MARCA) { continue }
+        gv_qual = gv_l[len(MARCA):].strip()
+        # pula a instrução que estava aí: a cabeça e as continuações `\`
+        gv_i = gv_i + 1
+        while gv_i < len(linhas) and linhas[gv_i].startswith("      \\") {
+            gv_i = gv_i + 1
+        }
+        gv_geradas = []
+        if gv_qual == "tipos" {
+            gv_geradas = instrucao_vim("syn keyword psType    ", gv_tipos)
+        }
+        elif gv_qual == "apelidos" {
+            gv_geradas = ["syn match   psType     \"\\<\\%(" + "\\|".join(apelidos)
+                          + "\\)\\>\\ze\\s\\+[A-Za-z_]\""]
+        }
+        elif gv_qual == "builtins" {
+            gv_geradas = instrucao_vim("syn keyword psBuiltin ", gv_builtins)
+        }
+        elif gv_qual == "excecoes" {
+            gv_geradas = instrucao_vim("syn keyword psException", listas[2])
+        }
+        else {
+            post("gera_realce: marca desconhecida no syntax do Vim: " + gv_qual)
+            sys.exit(1)
+        }
+        for each gv_g in gv_geradas {
+            addEnd(gv_saida, gv_g)
+        }
+    }
+    return gv_saida
+}
+
+
 # Todo token que a gramática emite (`"name": "..."`): uma lista de escopos
 # por token — as palavras separadas por espaço são ALTERNATIVAS (a segunda e a
 # terceira existem pra tema que não conhece a primeira). Só entram os `.poolscript`.
@@ -127,16 +207,39 @@ funct tema_cobre(tema, esc) {
 }
 
 
+# As linhas em que `tem` e `gera` diferem, pro portão mostrar o que mudou.
+funct mostra_diferencas(tem, gera) {
+    md_i = 0
+    for each md_l in tem {
+        if md_i < len(gera) and gera[md_i] != md_l {
+            post("  linha " + str(md_i + 1) + ":")
+            post("    tem:  " + md_l.strip()[0:100])
+            post("    gera: " + gera[md_i].strip()[0:100])
+        }
+        md_i = md_i + 1
+    }
+}
+
+
 if __name__ == "main" {
     tmp = "/tmp/ps_realce_meta.json"
     os.cmd(sys.executable + " --metadata > " + tmp)
     meta = json.parse(os.readFile(tmp))
     listas = nomes_de(meta)
+    apelidos = []
+    for each ap in meta["tipos_apelidos"].keys() {
+        addEnd(apelidos, ap)
+    }
 
     original = os.readFile(GRAMATICA)
     linhas = original.split("\n")
     novas = gera(linhas, listas)
     gerado = "\n".join(novas)
+
+    vim_original = os.readFile(VIM)
+    vim_linhas = vim_original.split("\n")
+    vim_novas = gera_vim(vim_linhas, listas, apelidos)
+    vim_gerado = "\n".join(vim_novas)
 
     if "--portao" in sys.argv {
         # 1) escopo da gramática sem cor em algum tema da extensão: foi assim
@@ -166,26 +269,25 @@ if __name__ == "main" {
             }
             sys.exit(1)
         }
-        if gerado == original {
-            post("realce: a gramatica bate com o --metadata (" + str(len(listas[0])) + " tipos, "
+        if gerado == original and vim_gerado == vim_original {
+            post("realce: gramatica e syntax do Vim batem com o --metadata (" + str(len(listas[0])) + " tipos, "
                  + str(len(listas[1])) + " builtins, " + str(len(listas[2])) + " excecoes); "
                  + str(len(escopos_da_gramatica(linhas))) + " escopos, todos com cor nos temas")
             sys.exit(0)
         }
-        post("realce: a gramatica DIVERGE do --metadata — rode ./pool scripts/gera_realce.pr")
-        i = 0
-        for each l in linhas {
-            if i < len(novas) and novas[i] != l {
-                post("  linha " + str(i + 1) + ":")
-                post("    tem:  " + l.strip()[0:100])
-                post("    gera: " + novas[i].strip()[0:100])
-            }
-            i = i + 1
+        if gerado != original {
+            post("realce: a gramatica DIVERGE do --metadata — rode ./pool scripts/gera_realce.pr")
+            mostra_diferencas(linhas, novas)
+        }
+        if vim_gerado != vim_original {
+            post("realce: o syntax do Vim DIVERGE do --metadata — rode ./pool scripts/gera_realce.pr")
+            mostra_diferencas(vim_linhas, vim_novas)
         }
         sys.exit(1)
     }
 
     os.writeFile(GRAMATICA, gerado)
+    os.writeFile(VIM, vim_gerado)
     post("realce gerado: " + str(len(listas[0])) + " tipos, " + str(len(listas[1]))
-         + " builtins, " + str(len(listas[2])) + " excecoes")
+         + " builtins, " + str(len(listas[2])) + " excecoes (gramatica do VS Code e syntax do Vim)")
 }

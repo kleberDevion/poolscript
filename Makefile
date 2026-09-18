@@ -508,6 +508,11 @@ check: pool testar
 	    echo "PULOU o teste do LSP — falta node ou 'npm install' em editor/vscode"; \
 	  fi
 	@echo
+	# REALCE: as listas (tipos, builtins, excecoes) da gramatica do VS Code e do
+	# syntax do Neovim saem do `--metadata`. Ficaram meses sem portao: a
+	# gramatica divergiu (JSON, Long, PoolFile) e ninguem viu.
+	@./pool scripts/gera_realce.pr --portao
+	@echo
 	# NEOVIM: a config do editor tambem apodrece. A do desenvolvedor ficou DIAS
 	# truncada, sem o fechamento de () [] {}, e nada acusava.
 	@editor/nvim/teste_nvim.sh

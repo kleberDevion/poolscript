@@ -163,6 +163,14 @@ O que a config entrega, além do LSP:
 O `completeopt` usa `noselect,noinsert`: o menu aparece, mas nada
 é escrito no buffer até você escolher — o `<CR>` continua sendo quebra de linha.
 
+O realce é o `syntax/poolscript.vim`, espelho da gramática do VS Code: as
+listas de tipos, apelidos, builtins e exceções são **geradas** pelo mesmo
+`scripts/gera_realce.pr` (do `pool --metadata`), e o portão do `make check`
+reprova se divergirem. O Neovim traz `.pr` como SDL de fábrica; a config
+declara a extensão como `poolscript`, e sem ela o arquivo abre com o realce
+errado — foi o que aconteceu com a config instalada antes desta, que ainda
+só conhecia `.ps`.
+
 O mínimo, se preferir montar a sua:
 
 ```lua
