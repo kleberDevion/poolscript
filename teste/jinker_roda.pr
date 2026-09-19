@@ -168,6 +168,24 @@ confere("injeta por NOME, nao por posicao",
 r = get(RAIZ + "/param/ana")
 confere("request.path_param continua valendo", "ana" in r.text)
 
+# `<x>` e UM segmento, como `:x`. Era "o resto, com barras" (o `.+` do
+# interpretador de referencia): `/loja/<loja>/item/<item>` — exemplo da
+# propria doc — nunca casava, e `/users/<id>` engolia `/users/7/photos`
+# inteiro, escondendo a rota POST e devolvendo 405 no lugar dela.
+r = get(RAIZ + "/loja/a1/item/b2")
+confere("<x> no MEIO do caminho casa (exemplo da doc)",
+        r.get_json("loja") == "a1" and r.get_json("item") == "b2")
+r = http_post(RAIZ + "/users/7/photos", body={})
+confere("<x> no fim nao engole a barra: a rota POST mais longa e alcancada",
+        r.get_json("fotos") == "7")
+r = get(RAIZ + "/users/7")
+confere("...e a rota curta continua casando o segmento", r.get_json("um") == "7")
+r = get(RAIZ + "/users/7/photos")
+confere("GET num path que so tem POST e 405, nao a rota curta com id '7/photos'",
+        r.status_code == 405)
+r = get(RAIZ + "/users/7/")
+confere("barra extra no fim nao vira parte do valor", r.status_code == 404)
+
 r = get(RAIZ + "/cabecalho", headers={"X-Chave": "valor"})
 confere("cabeçalho do cliente chega", r.get_json("chave") == "valor")
 confere("a lista de cabeçalhos não vem vazia", r.get_json("todos") == true)

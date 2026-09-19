@@ -2,7 +2,9 @@
 
 Devolve o valor de um **parâmetro dinâmico da URL** — a parte do caminho que
 você marcou como variável na rota (`/user/<id>` ou `/user:id`; as duas casam
-`/user/42`).
+`/user/42`). O parâmetro é **um segmento**: nunca atravessa `/`. Por isso
+`/a/<id>/b` casa `/a/1/b`, e `/users/<id>` **não** casa `/users/7/photos` —
+essa URL é da rota `/users/<id>/photos`, se existir.
 
 ```
 request.path_param(key: str) -> valor | Null

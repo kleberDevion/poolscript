@@ -92,6 +92,26 @@ funct param()
     return {"id": request.path_param("id")}
 }
 
+# `<x>` e UM segmento, como `:x`: parametro no MEIO do caminho casa, e o do
+# fim nao engole `/` — `/users/7/photos` alcanca a rota POST dela.
+@app.route("/loja/<loja>/item/<item>")
+funct loja_item()
+{
+    return {"loja": request.path_param("loja"), "item": request.path_param("item")}
+}
+
+@app.route("/users/<id>")
+funct users_um()
+{
+    return {"um": request.path_param("id")}
+}
+
+@app.post("/users/<id>/photos")
+funct users_fotos()
+{
+    return {"fotos": request.path_param("id")}
+}
+
 
 # I18 — o path param chega no ARGUMENTO da funct, se ela pedir.
 #

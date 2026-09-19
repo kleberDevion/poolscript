@@ -19130,7 +19130,15 @@ static int jk_casa(VM *vm, const char *pat, const char *path, PSDict *params)
             if (vi == 0) return 0;
             if (params && jk_dict_set_str(vm, params, nome, jk_str_val(vm, val)) != 0) return 0;
         } else if (pp[0] == '/' && pp[1] == '<') {
-            /* /<name> — captura o resto (inclui barras) */
+            /* `/<nome>` é UM segmento, como `:nome` — a doc promete que
+             * `/user/<id>`, `/user/:id` e `/user:id` casam a mesma URL, e
+             * mostra `/loja/<loja>/item/<item>`.
+             *
+             * Este ramo capturava "o resto, inclusive barras" (o `.+` do
+             * interpretador de referência): `/a/<id>/b` nunca casava (o `<id>`
+             * comia `1/b` e sobrava `/b` do padrão), e `/users/<id>` engolia
+             * `/users/7/photos` inteiro — a rota POST `/users/<id>/photos`
+             * nunca era alcançada e o cliente levava 405 no lugar dela. */
             const char *fim = strchr(pp + 2, '>');
             if (!fim) return 0;
             char nome[64]; int ni = 0;
@@ -19138,10 +19146,10 @@ static int jk_casa(VM *vm, const char *pat, const char *path, PSDict *params)
             nome[ni] = '\0';
             if (*sp != '/') return 0;
             sp++;   /* consome a barra literal */
-            if (!*sp) return 0;                 /* .+ exige ao menos 1 char */
-            char val[1024]; int vi = 0;
-            while (*sp && vi < 1023) val[vi++] = *sp++;
+            char val[512]; int vi = 0;
+            while (*sp && *sp != '/' && vi < 511) val[vi++] = *sp++;
             val[vi] = '\0';
+            if (vi == 0) return 0;              /* segmento vazio não é valor */
             if (params && jk_dict_set_str(vm, params, nome, jk_str_val(vm, val)) != 0) return 0;
             pp = fim + 1;
         } else {
