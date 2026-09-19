@@ -17,8 +17,8 @@ Monta a mensagem separada (permite anexos, HTML, etc.) e envia:
 
 ```
 m = mail.MailMessage()
-m.from_address(os.getenv("MAIL_USER"))
-m.to("destino@email.com")
+m.fromAddress(os.getenv("MAIL_USER"))
+m.toAddress("destino@email.com")
 m.subject("Relatório")
 m.body("Segue em anexo.")
 m.attach("relatorio.pdf")

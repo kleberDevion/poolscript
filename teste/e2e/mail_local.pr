@@ -142,8 +142,8 @@ if __name__ == "main" {
              + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "m = mail.MailMessage()\n"
-             + "m.from_address(\"teste@local\")\n"
-             + "m.to(\"destino@local\")\n"
+             + "m.fromAddress(\"teste@local\")\n"
+             + "m.toAddress(\"destino@local\")\n"
              + "m.subject(\"assunto do teste\")\n"
              + "m.body(\"corpo da mensagem\")\n"
              + "s.send(m)\n"
@@ -204,8 +204,8 @@ if __name__ == "main" {
              + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "m = mail.MailMessage()\n"
-             + "m.from_address(\"teste@local\")\n"
-             + "m.to(\"destino@local\")\n"
+             + "m.fromAddress(\"teste@local\")\n"
+             + "m.toAddress(\"destino@local\")\n"
              + "m.subject(\"por login\")\n"
              + "m.body(\"corpo\")\n"
              + "s.send(m)\n"
@@ -240,8 +240,8 @@ if __name__ == "main" {
              + "s.conn(\"127.0.0.1\", " + str(porta) + ")\n"
              + "s.login(\"teste@local\", \"segredo123\")\n"
              + "m = mail.MailMessage()\n"
-             + "m.from_address(\"teste@local\")\n"
-             + "m.to(\"destino@local\")\n"
+             + "m.fromAddress(\"teste@local\")\n"
+             + "m.toAddress(\"destino@local\")\n"
              + "m.subject(\"com anexo\")\n"
              + "m.body(\"olha o anexo\")\n"
              + "m.attach(\"/tmp/ps_mail_anexo.txt\")\n"
@@ -459,7 +459,7 @@ if __name__ == "main" {
     # o mesmo vale pro destinatário, que vira `RCPT TO:` no fio
     r = roda("import mail\n"
              + "m = mail.MailMessage()\n"
-             + "m.to(\"dest@x.com\\r\\nRCPT TO:vitima@oculta.com\")\n"
+             + "m.toAddress(\"dest@x.com\\r\\nRCPT TO:vitima@oculta.com\")\n"
              + "post(\"PASSOU\")\n", "")
     erros = erros + conf("destinatário com CR/LF é RECUSADO",
                          r[0] != 0 and not "PASSOU" in r[1], r[1])

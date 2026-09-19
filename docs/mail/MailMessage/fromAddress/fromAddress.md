@@ -1,9 +1,9 @@
-# `MailMessage.from_address(address)`
+# `MailMessage.fromAddress(address)`
 
 Define o **remetente** do e-mail (quem envia).
 
 ```
-m.from_address(address: str) -> None
+m.fromAddress(address: str) -> None
 ```
 
 ---
@@ -12,7 +12,7 @@ m.from_address(address: str) -> None
 
 ```
 m = mail.MailMessage()
-m.from_address("eu@gmail.com")
+m.fromAddress("eu@gmail.com")
 ```
 
 Normalmente é o **mesmo e-mail** que você usa no
@@ -20,12 +20,12 @@ Normalmente é o **mesmo e-mail** que você usa no
 que o remetente bata com a conta autenticada.
 
 ```
-m.from_address(os.getenv("MAIL_USER"))    # mesmo do login
+m.fromAddress(os.getenv("MAIL_USER"))    # mesmo do login
 ```
 
 ---
 
 ## Relacionados
 
-- [`.to()`](../to/to.md) — o destinatário
+- [`.toAddress()`](../toAddress/toAddress.md) — o destinatário
 - [visão geral do MailMessage](../MailMessage.md)

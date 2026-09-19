@@ -14,8 +14,8 @@ m = mail.MailMessage()
 
 | Método | O que faz | Página |
 |---|---|---|
-| `.from_address(email)` | define o remetente | [from_address/from_address.md](from_address/from_address.md) |
-| `.to(email)` | define o destinatário | [to/to.md](to/to.md) |
+| `.fromAddress(email)` | define o remetente | [fromAddress/fromAddress.md](fromAddress/fromAddress.md) |
+| `.toAddress(email)` | define o destinatário | [toAddress/toAddress.md](toAddress/toAddress.md) |
 | `.subject(titulo)` | define o assunto | [subject/subject.md](subject/subject.md) |
 | `.body(conteudo, is_html)` | define o corpo (texto ou HTML) | [body/body.md](body/body.md) |
 | `.attach(arquivo)` | anexa um arquivo | [attach/attach.md](attach/attach.md) |
@@ -30,8 +30,8 @@ import mail
 import os
 
 m = mail.MailMessage()
-m.from_address(os.getenv("MAIL_USER"))
-m.to("cliente@email.com")
+m.fromAddress(os.getenv("MAIL_USER"))
+m.toAddress("cliente@email.com")
 m.subject("Sua fatura")
 m.body("<h1>Olá!</h1><p>Segue sua fatura.</p>", is_html=true)
 m.attach("fatura.pdf")

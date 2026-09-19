@@ -54,8 +54,8 @@ Para Gmail use uma **senha de app** — não a senha normal da conta.
 
 ```
 m = mail.MailMessage()
-m.from_address("seu@gmail.com")
-m.to("destino@email.com")
+m.fromAddress("seu@gmail.com")
+m.toAddress("destino@email.com")
 m.subject("Assunto aqui")
 m.body("Corpo do email em texto")
 
@@ -170,8 +170,8 @@ funct enviar_email(nome, email_destino) {
         )
 
         m = mail.MailMessage()
-        m.from_address(os.getenv("MAIL_SYSTEM"))
-        m.to(email_destino)
+        m.fromAddress(os.getenv("MAIL_SYSTEM"))
+        m.toAddress(email_destino)
         m.subject(f"Olá {nome}!")
         m.body(f"Login realizado em: {date.datahora()}")
 

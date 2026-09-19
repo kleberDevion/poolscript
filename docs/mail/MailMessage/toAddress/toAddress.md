@@ -1,9 +1,9 @@
-# `MailMessage.to(address)`
+# `MailMessage.toAddress(address)`
 
 Define o **destinatário** do e-mail (quem recebe).
 
 ```
-m.to(address: str) -> None
+m.toAddress(address: str) -> None
 ```
 
 ---
@@ -12,12 +12,12 @@ m.to(address: str) -> None
 
 ```
 m = mail.MailMessage()
-m.to("cliente@address.com")
+m.toAddress("cliente@address.com")
 ```
 
 ---
 
 ## Relacionados
 
-- [`.from_address()`](../from_address/from_address.md) — o remetente
+- [`.fromAddress()`](../fromAddress/fromAddress.md) — o remetente
 - [`.subject()`](../subject/subject.md) — o assunto

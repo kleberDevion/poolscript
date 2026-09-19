@@ -13,8 +13,8 @@ post("Provedores auto (leitura): gmail.com, yahoo.com, outlook.com, hotmail.com,
 # server.login("user@gmail.com", "senha-de-app")
 #
 # msg = mail.MailMessage()
-# msg.from_address("user@gmail.com")
-# msg.to("destino@site.com")
+# msg.fromAddress("user@gmail.com")
+# msg.toAddress("destino@site.com")
 # msg.subject("Teste")
 # msg.body("Olá <b>mundo</b>", true)
 # msg.attach("/tmp/relatorio.pdf")

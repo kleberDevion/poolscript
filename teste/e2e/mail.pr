@@ -22,8 +22,8 @@ else {
     # ── MailMessage: monta a mensagem ───────────────────────────────────────
     msg = mail.MailMessage()
     post("MailMessage ->", type(msg))
-    msg.from_address(usuario)
-    msg.to(usuario)
+    msg.fromAddress(usuario)
+    msg.toAddress(usuario)
     msg.subject(marca)
     msg.body("corpo em texto puro do teste e2e")
     post("get_as_string tem o assunto ->", msg.get_as_string().contains(marca))

@@ -250,8 +250,8 @@ s.login(
 )
 
 m = mail.MailMessage()
-m.from_address(os.getenv("MAIL_SYSTEM"))
-m.to("gestor@empresa.com")
+m.fromAddress(os.getenv("MAIL_SYSTEM"))
+m.toAddress("gestor@empresa.com")
 m.subject("Relatório de clientes")
 m.body(ld)
 

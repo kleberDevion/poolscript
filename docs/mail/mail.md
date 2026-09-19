@@ -31,8 +31,8 @@ load()
 
 # 1. monta a mensagem
 m = mail.MailMessage()
-m.from_address(os.getenv("MAIL_USER"))
-m.to("destino@email.com")
+m.fromAddress(os.getenv("MAIL_USER"))
+m.toAddress("destino@email.com")
 m.subject("Olá!")
 m.body("Corpo do e-mail")
 

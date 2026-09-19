@@ -13,8 +13,8 @@ m.get_as_string() -> str
 
 ```
 m = mail.MailMessage()
-m.from_address("eu@gmail.com")
-m.to("destino@email.com")
+m.fromAddress("eu@gmail.com")
+m.toAddress("destino@email.com")
 m.subject("Teste")
 m.body("Olá")
 

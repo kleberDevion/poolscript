@@ -8487,7 +8487,7 @@ static const MetodoNat METODOS_MAILSRV[] = {
     { "send", met_ms_send, "to_or_msg,subject=Null,body=Null,html=false" }, { "quit", met_ms_quit, NULL },
 };
 static const MetodoNat METODOS_MAILMSG[] = {
-    { "from_address", met_mm_from, "endereco" }, { "to", met_mm_to, "endereco" },
+    { "fromAddress", met_mm_from, "endereco" }, { "toAddress", met_mm_to, "endereco" },
     { "subject", met_mm_subject, "titulo" }, { "body", met_mm_body, "conteudo,is_html=false" },
     { "attach", met_mm_attach, "arquivo_ou_caminho" }, { "get_as_string", met_mm_asstring, NULL },
 };
@@ -13597,8 +13597,8 @@ static int mailmsg_monta(VM *vm, PSMailMsg *m, SBuf *b)
 
 static int met_mm_from(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    ARGS_MET(vm, "from_address", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "from_address() argument 1 must be str, not %s",
+    ARGS_MET(vm, "fromAddress", 1);
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "fromAddress() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
     if (mailmsg_add_cab(vm, COMO_MAILMSG(alvo), "From", COMO_STRING(args[0])->chars) != 0) return -1;
     *out = alvo;
@@ -13606,8 +13606,8 @@ static int met_mm_from(VM *vm, Value alvo, Value *args, int n, Value *out)
 }
 static int met_mm_to(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    ARGS_MET(vm, "to", 1);
-    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "to() argument 1 must be str, not %s",
+    ARGS_MET(vm, "toAddress", 1);
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "toAddress() argument 1 must be str, not %s",
                                   nome_do_tipo_valor(args[0]));
     if (mailmsg_add_cab(vm, COMO_MAILMSG(alvo), "To", COMO_STRING(args[0])->chars) != 0) return -1;
     *out = alvo;
