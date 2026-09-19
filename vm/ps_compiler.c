@@ -3167,16 +3167,12 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
         }
 
         case N_DICT_LITERAL:
+            /* A chave é expressão (parser): `{k: 1}` carrega a variável `k`,
+             * e nome que o arquivo não liga é NameError antes de rodar, como
+             * em qualquer expressão. Antes o Name virava a string "k" aqui. */
             for (int32_t i = 0; i < n->lista.n; i++) {
                 PSNode *e = n->lista.itens[i];
-                /* chave sem aspas (`{nome: 1}`) chega como Name e vira
-                 * string aqui — é o parser que a mantém como Name */
-                if (e->a && e->a->kind == N_NAME)
-                    emite(c, u, OP_LOAD_CONST,
-                          idx_const(c, u, K_STR, 0, 0, e->a->texto ? e->a->texto : "",
-                                    e->a->texto ? (int32_t)strlen(e->a->texto) : 0));
-                else
-                    expr(c, u, e->a);
+                expr(c, u, e->a);
                 expr(c, u, e->b);
             }
             emite(c, u, OP_BUILD_DICT, n->lista.n);

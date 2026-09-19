@@ -1,0 +1,162 @@
+# Acha chave de dict SEM ASPAS (`{tls: true}`) em `.pr` e nos blocos ```ps
+# da doc — a medição da F3 da tipagem estática, em que a chave de dict passa
+# a ser EXPRESSÃO: `{tls: true}` deixa de ser a chave "tls" e passa a usar a
+# variável `tls`. Cada ocorrência desta lista muda de sentido (ou vira
+# NameError antes de rodar) e precisa virar `{"tls": true}`.
+#
+#     pool scripts/acha_chaves_nuas.pr <arquivo-ou-pasta>...
+#
+# Lê os tokens do próprio motor (`pool --tokens`), não regex: um `{` é dict
+# quando vem em posição de EXPRESSÃO (depois de `=`, `(`, `,`, `[`, `:`,
+# `return`, operador…) e é bloco quando vem depois de `)`, de um nome ou de
+# palavra de fluxo (`Entity X() {`, `if x {`, `else {`). Dentro de um dict, o
+# nome que vem logo antes de `:` (depois de `{` ou de `,`) é a chave nua.
+import os
+import sys
+import json
+
+# o que fecha uma cabeça de bloco: `) {`, `nome {`, `else {`, `try {`
+ABRE_BLOCO = ["RPAREN", "IDENT", "IDENT_UPPER", "KW", "RBRACK"]
+
+
+# `os.cmd` mostra a saída do comando em vez de devolvê-la: os tokens vão pra
+# um arquivo e são lidos de lá (como o gera_realce.pr faz com o --metadata).
+funct tokens_de(texto) {
+    tmp = "/tmp/ps_chaves_nuas.pr"
+    tmp_toks = "/tmp/ps_chaves_nuas_tokens.json"
+    os.writeFile(tmp, texto)
+    os.cmd(sys.executable + " --tokens < " + tmp + " > " + tmp_toks + " 2>/dev/null")
+    saida = os.readFile(tmp_toks)
+    if saida.strip() == "" or not saida.strip().startswith("[") {
+        return []
+    }
+    return json.parse(saida)
+}
+
+
+# [linha, coluna, nome] de cada chave nua do texto.
+funct chaves_nuas(texto) {
+    cn_toks = []
+    for each t in tokens_de(texto) {
+        if t["t"] != "NEWLINE" {
+            addEnd(cn_toks, t)
+        }
+    }
+    achadas = []
+    pilha = []            # true = dict, false = bloco/outro
+    cn_i = 0
+    while cn_i < len(cn_toks) {
+        t = cn_toks[cn_i]
+        if t["t"] == "LBRACE" {
+            eh_dict = true
+            if cn_i > 0 {
+                ant = cn_toks[cn_i - 1]["t"]
+                if ABRE_BLOCO.contains(ant) {
+                    eh_dict = false
+                }
+            }
+            # `$` de `{}` no meio de f-string não chega aqui: é STR
+            addEnd(pilha, eh_dict)
+        }
+        elif t["t"] == "RBRACE" {
+            if len(pilha) > 0 {
+                removeEnd(pilha)
+            }
+        }
+        elif (t["t"] == "IDENT" or t["t"] == "IDENT_UPPER") and len(pilha) > 0 and pilha[len(pilha) - 1] {
+            if cn_i + 1 < len(cn_toks) and cn_toks[cn_i + 1]["t"] == "COLON" and cn_i > 0 {
+                ant = cn_toks[cn_i - 1]["t"]
+                if ant == "LBRACE" or ant == "COMMA" {
+                    addEnd(achadas, [t["l"], t["c"], t["v"]])
+                }
+            }
+        }
+        cn_i = cn_i + 1
+    }
+    return achadas
+}
+
+
+funct blocos_ps(txt) {
+    b_blocos = []
+    b_dentro = false
+    b_atual = []
+    b_ini = 0
+    b_n = 0
+    for each linha in txt.splitlines() {
+        b_n = b_n + 1
+        limpa = linha.strip()
+        if b_dentro {
+            if limpa == "```" {
+                addEnd(b_blocos, {"linha": b_ini, "codigo": "\n".join(b_atual)})
+                b_dentro = false
+                b_atual = []
+            }
+            else {
+                addEnd(b_atual, linha)
+            }
+        }
+        elif limpa == "```ps" or limpa == "```poolscript" or limpa == "```ps contexto" {
+            b_dentro = true
+            b_ini = b_n
+            b_atual = []
+        }
+    }
+    return b_blocos
+}
+
+
+funct arquivos_de(caminho) {
+    if os.isfile(caminho) {
+        return [caminho]
+    }
+    lista = []
+    for each e in os.ls(caminho) {
+        nome = e["name"]
+        if nome == "node_modules" or nome == "fuzz_corpus" or nome == "fuzz_achados" or nome == "out" or nome == "dist" {
+            continue
+        }
+        inteiro = caminho + "/" + nome
+        if e["type"] == "dir" {
+            for each f in arquivos_de(inteiro) {
+                addEnd(lista, f)
+            }
+        }
+        elif nome.endswith(".pr") or nome.endswith(".md") {
+            addEnd(lista, inteiro)
+        }
+    }
+    return lista
+}
+
+
+if __name__ == "main" {
+    if len(sys.argv) < 2 {
+        post("uso: pool scripts/acha_chaves_nuas.pr <arquivo-ou-pasta>...")
+        sys.exit(2)
+    }
+    total = 0
+    arquivos = 0
+    for each raiz in sys.argv[1:] {
+        for each arq in arquivos_de(raiz) {
+            texto = os.readFile(arq)
+            if arq.endswith(".md") {
+                for each b in blocos_ps(texto) {
+                    for each ch in chaves_nuas(b["codigo"]) {
+                        post(arq + ":" + str(b["linha"] + ch[0]) + ":" + str(ch[1]) + "  " + ch[2])
+                        total = total + 1
+                    }
+                }
+            }
+            else {
+                for each ch in chaves_nuas(texto) {
+                    post(arq + ":" + str(ch[0]) + ":" + str(ch[1]) + "  " + ch[2])
+                    total = total + 1
+                }
+            }
+            arquivos = arquivos + 1
+        }
+    }
+    post("")
+    post("arquivos lidos: " + str(arquivos) + "  chaves nuas: " + str(total))
+}

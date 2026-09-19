@@ -424,6 +424,33 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(len(\"ação\"), len(\"abc\"))\n", "4 3", NULL, 0 },
 
 /* ── coleções ── */
+/* ── chave do literal de dict é EXPRESSÃO (regra 8 da tipagem estática) ──
+ * Nome sem aspas era caso especial do parser: virava a string "k", então
+ * `{tls: true}` e `{"tls": true}` eram iguais e `{k + "x": 1}` era
+ * SyntaxError ("faltou ':' no dicionario"). Agora a chave segue a regra do
+ * índice (`d[k] = v`): nome é variável, texto vai com aspas, e nome que o
+ * arquivo não liga é NameError antes de rodar. */
+{ "dict: chave sem aspas é a variável, não o texto",
+  "k = \"a\"\npost({k: 1})\n",
+  "{'a': 1}", NULL, 0 },
+{ "dict: chave com conta e com chamada",
+  "k = \"a\"\nfunct f() {\n    return \"z\"\n}\npost({k + \"x\": 2, f(): 1})\n",
+  "{'ax': 2, 'z': 1}", NULL, 0 },
+{ "dict: chave com aspas segue texto",
+  "post({\"tls\": true})\n",
+  "{'tls': True}", NULL, 0 },
+{ "dict: chave nua que o arquivo não liga é NameError antes de rodar",
+  "post({tls: true})\n",
+  "", "NameError: name 'tls' is not defined", 2 },
+{ "dict: chave nua que é nome de tipo segue o objeto tipo",
+  "post({str: 1})\n",
+  "{str: 1}", NULL, 0 },
+{ "dict: aninhado com chaves de variável",
+  "a = \"x\"\nb = \"y\"\npost({a: {b: 1}})\n",
+  "{'x': {'y': 1}}", NULL, 0 },
+{ "dict: número e bool como chave (true encontra 1)",
+  "post({1: \"a\", 2.5: \"b\", true: \"c\"})\n",
+  "{1: 'c', 2.5: 'b'}", NULL, 0 },
 { "dict: in olha a chave",
   "d = { \"nome\": \"ana\", \"idade\": 30 }\npost(\"nome\" in d, \"ana\" in d)\n", "True False", NULL, 0 },
 { "dict.value() olha o valor",
@@ -2812,7 +2839,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = ValueError\nf(a=1)\n", "", "TypeError: ValueError() takes no keyword arguments", 1 },
 { "excecao devolvida de funct, como chave de dict e item de lista",
   "funct f() { return ValueError }\npost(f() is Exception, {KeyError: 1}, [TypeError])\n",
-  "True {'KeyError': 1} [TypeError]", NULL, 0 },
+  "True {KeyError: 1} [TypeError]", NULL, 0 },
 { "o e capturado continua str; e is ValueError e False",
   "try { raise ValueError(\"x\") } catch (e) { post(type(e), e is ValueError) }\n", "str False", NULL, 0 },
 { "nome fora da tabela continua NameError",

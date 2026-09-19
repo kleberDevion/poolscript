@@ -36,6 +36,30 @@ seções.
 
 `json` é apenas outro **nome** para `dict` (o mesmo tipo).
 
+#### A chave do literal de dict é uma expressão
+
+No literal `{chave: valor}` a chave é **qualquer expressão**, como o índice de
+`d[k] = v`: texto vai entre aspas, e um nome sem aspas é a **variável** com
+aquele nome — não o texto. Nome que o arquivo não liga é `NameError` antes
+de rodar, como em qualquer outra expressão.
+
+```ps
+k = "a"
+funct f() { return "z" }
+post({"tls": true})            # {'tls': True}    texto: com aspas
+post({k: 1, k + "x": 2})       # {'a': 1, 'ax': 2} a variável k, e uma conta com ela
+post({f(): 1, 1: "um"})        # {'z': 1, 1: 'um'} chamada e número
+```
+
+```ps
+post({tls: true})              # NameError: name 'tls' is not defined
+```
+
+Bloco e dict se separam pela **posição** do `{`: em posição de instrução
+(`if x {`, `Entity P() {`) é bloco; em posição de expressão (`= {`, `f({`,
+`return {`) é dict. Dentro de `Entity`, `model` e `class`, `nome: tipo` é
+declaração de campo, não entrada de dict.
+
 ### `char` — um caractere
 
 `char` serve em dois lugares: no operador `count`

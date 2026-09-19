@@ -10,7 +10,7 @@ Na VM o PoolIp é **configuração**, não objeto. Você liga na criação do ap
 
 ```ps
 from jinker import Jinker
-Object app = Jinker(__name__, oauth={poolip: true, rate: 60, bloq: 1})
+Object app = Jinker(__name__, oauth={"poolip": true, "rate": 60, "bloq": 1})
 ```
 
 | chave | o que é |

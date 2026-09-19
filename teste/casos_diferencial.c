@@ -1493,7 +1493,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "", "TypeError: ValueError() takes no keyword arguments", 1 },
 { "dif #493",
   "funct f() { return ValueError }\npost(f() is Exception, {KeyError: 1}, [TypeError])\n",
-  "True {'KeyError': 1} [TypeError]", NULL, 0 },
+  "True {KeyError: 1} [TypeError]", NULL, 0 },
 { "dif #494",
   "try { raise ValueError(\"x\") } catch (e) { post(type(e), e is ValueError) }\n",
   "str False", NULL, 0 },

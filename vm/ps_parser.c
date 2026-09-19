@@ -908,18 +908,15 @@ static PSNode *primario(P *p)
                         chave->lit = L_STR;
                         chave->texto = ps_arena_strdup(p->arena, kt->texto ? kt->texto : "",
                                                        kt->texto_len);
-                    } else if (kt->type == T_IDENT || kt->type == T_IDENT_UPPER) {
-                        /* Chave sem aspas (`{nome: 1}`) fica como Name, NÃO
-                         * como string — quem converte
-                         * pra string é o compilador. Emitir Literal aqui
-                         * geraria uma AST diferente da de referência. */
-                        p->pos++;
-                        chave = ps_node_novo(p->arena, N_NAME, kt->line, kt->col);
-                        if (!chave) return NULL;
-                        chave->texto = dup_tok(p, kt);
                     } else {
-                        /* Qualquer expressão serve de chave: `d[1] = "a"`
-                         * sempre valeu, então `{1: "a"}` também tem que valer. */
+                        /* A chave é uma EXPRESSÃO, como o índice de `d[k] = v`:
+                         * `{k: 1}` usa a variável `k`, `{k + "x": 1}` e
+                         * `{f(): 1}` valem, e texto vai entre aspas. O nome
+                         * sem aspas era caso especial (virava a string "k",
+                         * no compilador), o que fazia `{tls: true}` e
+                         * `{"tls": true}` iguais e `{k + "x": 1}` SyntaxError —
+                         * regra 8 da tipagem estática: bloco e dict se
+                         * separam pela posição, e a chave é expressão. */
                         chave = expressao(p);
                         if (FALHOU(p)) return NULL;
                     }
