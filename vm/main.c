@@ -123,23 +123,45 @@ static const char *limpa_arquivo(const char *fn, char *buf, size_t cap)
 
 /* Um quadro: "  em <arq>, linha N" + a linha do fonte + o cursor `^^^`. Igual
  * ao `_fmt_frame` do interpretador. `col<=0` => cursor na 1ª não-branco. */
+static void mostra_linha(const char *buf, size_t l, int col)
+{
+    while (l > 0 && (buf[l-1] == '\n' || buf[l-1] == '\r')) l--;
+    size_t sp;
+    if (col > 0) sp = (size_t)(col - 1);
+    else { sp = 0; while (sp < l && (buf[sp] == ' ' || buf[sp] == '\t')) sp++; }
+    fprintf(stderr, "  | %.*s\n  | %*s^^^\n", (int)l, buf, (int)sp, "");
+}
+
 static void imprime_quadro(const char *origem, int linha, int col)
 {
     char nome_buf[1024];
     fprintf(stderr, "  em %s, linha %d\n", limpa_arquivo(origem, nome_buf, sizeof(nome_buf)), linha);
     if (linha <= 0 || !origem || origem[0] == '<') return;
+    /* Executavel gerado: a linha vem do fonte EMBUTIDO. Abrir `origem` no
+     * disco lia a linha N do proprio ELF (quando `origem` era o binario) ou
+     * nada (o `.pr` nao esta na maquina de quem roda). */
+    size_t tam = 0;
+    const char *emb = ps_emb_busca(origem, &tam);
+    if (emb) {
+        const char *p = emb, *fim = emb + tam;
+        int atual = 1;
+        while (atual < linha) {
+            const char *nl = memchr(p, '\n', (size_t)(fim - p));
+            if (!nl) return;                    /* o fonte acaba antes da linha */
+            p = nl + 1; atual++;
+        }
+        if (p > fim) return;
+        const char *nl = memchr(p, '\n', (size_t)(fim - p));
+        mostra_linha(p, nl ? (size_t)(nl - p) : (size_t)(fim - p), col);
+        return;
+    }
     FILE *f = fopen(origem, "rb");
     if (!f) return;
     char buf[4096];
     int atual = 0;
     while (fgets(buf, sizeof(buf), f)) {
         if (++atual != linha) continue;
-        size_t l = strlen(buf);
-        while (l > 0 && (buf[l-1] == '\n' || buf[l-1] == '\r')) buf[--l] = '\0';
-        int sp;
-        if (col > 0) sp = col - 1;
-        else { sp = 0; while (buf[sp] == ' ' || buf[sp] == '\t') sp++; }
-        fprintf(stderr, "  | %s\n  | %*s^^^\n", buf, sp, "");
+        mostra_linha(buf, strlen(buf), col);
         break;
     }
     fclose(f);
@@ -218,7 +240,21 @@ static int reporta(PSErroExec *e, const char *origem)
  *
  * Compilar a partir de um binario JA compilado corta o payload velho antes de
  * grudar o novo: senao cada geracao carregaria o programa da anterior. */
+/* v1 grudava UM fonte. O executavel entao procurava `import banco` no disco
+ * da maquina de quem roda — e nao achava ("No module named 'banco'"). v2 leva
+ * o principal E todo `.pr` que ele alcanca por import (transitivo, lib
+ * instalada inclusive), resolvidos na compilacao exatamente como o import
+ * resolve rodando; o import do executavel le desta tabela antes do disco
+ * (ps_emb_* no ps_vm.h). Um v1 gerado antes continua rodando como rodava.
+ *
+ * Payload v2 (antes do rodape):
+ *     [16 digitos: n entradas]
+ *     entrada: [16 digitos][textual][16 digitos][real][16 digitos][fonte]
+ *     entrada 0 = cabecalho: textual = caminho do principal, real = realpath
+ *                 dele, fonte = pasta de libs da maquina que compilou
+ *     entrada 1 = o principal; 2.. = os modulos */
 #define PS_MAGIA_EMB   "PSPOOLEXE1"
+#define PS_MAGIA_EMB2  "PSPOOLEXE2"
 #define PS_MAGIA_TAM   10
 #define PS_DIG_TAM     16
 #define PS_RODAPE_TAM  (PS_DIG_TAM + PS_MAGIA_TAM)
@@ -232,9 +268,10 @@ static int ps_meu_caminho(char *out, size_t cap)
     return 0;
 }
 
-/* O fonte embutido neste binario, ou NULL. `base` recebe o tamanho do binario
- * SEM o payload (e o que se copia ao compilar de novo). */
-static char *ps_payload(const char *caminho, size_t *tam_out, long *base)
+/* O payload embutido neste binario, ou NULL. `base` recebe o tamanho do
+ * binario SEM o payload (e o que se copia ao compilar de novo); `versao`, 1
+ * (um fonte so) ou 2 (principal + modulos). */
+static char *ps_payload(const char *caminho, size_t *tam_out, long *base, int *versao)
 {
     FILE *f = fopen(caminho, "rb");
     if (!f) return NULL;
@@ -247,7 +284,11 @@ static char *ps_payload(const char *caminho, size_t *tam_out, long *base)
     if (fseek(f, fim - PS_RODAPE_TAM, SEEK_SET) != 0
             || fread(rodape, 1, PS_RODAPE_TAM, f) != PS_RODAPE_TAM) { fclose(f); return NULL; }
     rodape[PS_RODAPE_TAM] = '\0';
-    if (memcmp(rodape + PS_DIG_TAM, PS_MAGIA_EMB, PS_MAGIA_TAM) != 0) { fclose(f); return NULL; }
+    int v = 0;
+    if (memcmp(rodape + PS_DIG_TAM, PS_MAGIA_EMB, PS_MAGIA_TAM) == 0)       v = 1;
+    else if (memcmp(rodape + PS_DIG_TAM, PS_MAGIA_EMB2, PS_MAGIA_TAM) == 0) v = 2;
+    if (!v) { fclose(f); return NULL; }
+    if (versao) *versao = v;
 
     char dig[PS_DIG_TAM + 1];
     memcpy(dig, rodape, PS_DIG_TAM); dig[PS_DIG_TAM] = '\0';
@@ -268,6 +309,65 @@ static char *ps_payload(const char *caminho, size_t *tam_out, long *base)
     return buf;
 }
 
+/* Um campo do payload v2: 16 digitos com o tamanho, e os bytes. */
+static int escreve_campo(FILE *out, const char *dado, size_t tam)
+{
+    char dig[PS_DIG_TAM + 1];
+    snprintf(dig, sizeof(dig), "%0*zu", PS_DIG_TAM, tam);
+    return fwrite(dig, 1, PS_DIG_TAM, out) == PS_DIG_TAM && fwrite(dado, 1, tam, out) == tam;
+}
+
+/* 16 digitos -> tamanho. -1 = nao e numero (payload corrompido). */
+static int le16(const char *p, size_t resta, size_t *v)
+{
+    if (resta < PS_DIG_TAM) return -1;
+    char d[PS_DIG_TAM + 1];
+    memcpy(d, p, PS_DIG_TAM); d[PS_DIG_TAM] = '\0';
+    char *fim = NULL;
+    unsigned long long x = strtoull(d, &fim, 10);
+    if (!fim || *fim) return -1;
+    *v = (size_t)x;
+    return 0;
+}
+
+/* Le o payload v2: registra cada fonte na tabela de embutidos da VM, ancora a
+ * pasta do script e a de libs no que a maquina que compilou tinha, e devolve
+ * o fonte do principal (que vive na tabela). -1 = corrompido. */
+static int emb_carrega(const char *emb, size_t tam, char *main_textual, size_t cap,
+                       const char **fonte_main, size_t *tam_main)
+{
+    size_t p = 0, n = 0;
+    *fonte_main = NULL;
+    if (le16(emb, tam, &n) != 0) return -1;
+    p += PS_DIG_TAM;
+    for (size_t i = 0; i < n; i++) {
+        size_t lt = 0, lr = 0, lf = 0;
+        if (le16(emb + p, tam - p, &lt) != 0) return -1;
+        p += PS_DIG_TAM; if (p + lt > tam) return -1;
+        const char *t = emb + p; p += lt;
+        if (le16(emb + p, tam - p, &lr) != 0) return -1;
+        p += PS_DIG_TAM; if (p + lr > tam) return -1;
+        const char *r = emb + p; p += lr;
+        if (le16(emb + p, tam - p, &lf) != 0) return -1;
+        p += PS_DIG_TAM; if (p + lf > tam) return -1;
+        const char *f = emb + p; p += lf;
+        char tb[1024], rb[1024];
+        snprintf(tb, sizeof(tb), "%.*s", (int)lt, t);
+        snprintf(rb, sizeof(rb), "%.*s", (int)lr, r);
+        if (i == 0) {                                   /* cabecalho */
+            snprintf(main_textual, cap, "%s", tb);
+            ps_emb_raiz(tb);
+            char lb[600];
+            snprintf(lb, sizeof(lb), "%.*s", (int)lf, f);
+            ps_emb_libs(lb);
+            continue;
+        }
+        ps_emb_poe(tb, rb, f, lf);
+        if (i == 1) *fonte_main = ps_emb_busca(tb, tam_main);
+    }
+    return *fonte_main ? 0 : -1;
+}
+
 /* `pool fonte.pr -o saida` */
 static int cmd_compila(const char *fonte_arq, const char *saida)
 {
@@ -275,41 +375,44 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
     char *fonte = le_arquivo(fonte_arq, &tam);
     if (!fonte) return 66;
 
-    /* Nao gera executavel que ja nasce quebrado: o fonte tem que compilar. */
-    PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
-    if (!tl || !tl->ok) {
-        fprintf(stderr, "%s: %s (linha %d)\n", fonte_arq,
-                tl ? tl->erro : "sem memoria", tl ? tl->erro_linha : 0);
-        if (tl) ps_lexer_free(tl);
+    /* Nao gera executavel que ja nasce quebrado: o principal e cada modulo
+     * que ele alcanca passam pela conferencia inteira (lexer, parser e a
+     * tipagem estatica) — o mesmo `--check` — e modulo que nao se acha e erro
+     * aqui, nao na maquina de quem roda. */
+    PSEmbutido *deps = NULL;
+    int32_t ndeps = 0;
+    char libs[600], erro_dep[1400];
+    if (ps_embute_deps(fonte_arq, &deps, &ndeps, libs, sizeof(libs), erro_dep, sizeof(erro_dep)) != 0) {
+        fprintf(stderr, "pool: %s\n", erro_dep);
         free(fonte);
         return 65;
     }
-    PSParseResult *pr = ps_parse(tl->tokens, tl->n);
-    ps_lexer_free(tl);
-    if (!pr || !pr->ok) {
-        fprintf(stderr, "%s: %s (linha %d)\n", fonte_arq,
-                pr ? pr->erro : "sem memoria", pr ? pr->erro_linha : 0);
-        if (pr) ps_parse_free(pr);
-        free(fonte);
-        return 65;
+    for (int32_t i = 0; i < ndeps; i++) {
+        PSErroExec ve;
+        if (ps_verifica_fonte(deps[i].fonte, deps[i].tam, deps[i].textual, &ve, NULL, NULL) != 0) {
+            reporta(&ve, deps[i].textual);
+            fprintf(stderr, "pool: %s nao compila — nada gerado\n", deps[i].textual);
+            ps_embutidos_solta(deps, ndeps);
+            free(fonte);
+            return 65;
+        }
     }
-    ps_parse_free(pr);
 
     char meu[4096];
     if (ps_meu_caminho(meu, sizeof(meu)) != 0) {
         fprintf(stderr, "pool: nao consegui achar o proprio executavel\n");
-        free(fonte); return 70;
+        ps_embutidos_solta(deps, ndeps); free(fonte); return 70;
     }
     long base = 0;
-    char *velho = ps_payload(meu, NULL, &base);   /* corta payload anterior */
+    char *velho = ps_payload(meu, NULL, &base, NULL);   /* corta payload anterior */
     free(velho);
 
     FILE *in = fopen(meu, "rb");
-    if (!in) { fprintf(stderr, "pool: nao consegui ler %s\n", meu); free(fonte); return 70; }
+    if (!in) { fprintf(stderr, "pool: nao consegui ler %s\n", meu); ps_embutidos_solta(deps, ndeps); free(fonte); return 70; }
     FILE *out = fopen(saida, "wb");
     if (!out) {
         fprintf(stderr, "pool: nao consegui escrever %s\n", saida);
-        fclose(in); free(fonte); return 73;
+        fclose(in); ps_embutidos_solta(deps, ndeps); free(fonte); return 73;
     }
     char buf[65536];
     long resta = base;
@@ -319,25 +422,43 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
         if (lidos == 0) break;
         if (fwrite(buf, 1, lidos, out) != lidos) {
             fprintf(stderr, "pool: escrita incompleta em %s\n", saida);
-            fclose(in); fclose(out); free(fonte); return 73;
+            fclose(in); fclose(out); ps_embutidos_solta(deps, ndeps); free(fonte); return 73;
         }
         resta -= (long)lidos;
     }
     fclose(in);
+
+    /* payload v2: cabecalho + o principal + os modulos (ver o formato acima) */
+    size_t total = PS_DIG_TAM
+                 + 3 * PS_DIG_TAM + strlen(deps[0].textual) + strlen(deps[0].real) + strlen(libs);
+    for (int32_t i = 0; i < ndeps; i++)
+        total += 3 * PS_DIG_TAM + strlen(deps[i].textual) + strlen(deps[i].real) + deps[i].tam;
+    char dig[PS_DIG_TAM + 1];
+    snprintf(dig, sizeof(dig), "%0*zu", PS_DIG_TAM, (size_t)ndeps + 1);
+    int ok = fwrite(dig, 1, PS_DIG_TAM, out) == PS_DIG_TAM
+          && escreve_campo(out, deps[0].textual, strlen(deps[0].textual))
+          && escreve_campo(out, deps[0].real, strlen(deps[0].real))
+          && escreve_campo(out, libs, strlen(libs));
+    for (int32_t i = 0; ok && i < ndeps; i++)
+        ok = escreve_campo(out, deps[i].textual, strlen(deps[i].textual))
+          && escreve_campo(out, deps[i].real, strlen(deps[i].real))
+          && escreve_campo(out, deps[i].fonte, deps[i].tam);
     char rodape[PS_RODAPE_TAM + 1];
-    snprintf(rodape, sizeof(rodape), "%0*zu%s", PS_DIG_TAM, tam, PS_MAGIA_EMB);
-    if (fwrite(fonte, 1, tam, out) != tam
-            || fwrite(rodape, 1, PS_RODAPE_TAM, out) != PS_RODAPE_TAM) {
+    snprintf(rodape, sizeof(rodape), "%0*zu%s", PS_DIG_TAM, total, PS_MAGIA_EMB2);
+    if (!ok || fwrite(rodape, 1, PS_RODAPE_TAM, out) != PS_RODAPE_TAM) {
         fprintf(stderr, "pool: escrita incompleta em %s\n", saida);
-        fclose(out); free(fonte); return 73;
+        fclose(out); ps_embutidos_solta(deps, ndeps); free(fonte); return 73;
     }
     fclose(out);
+    int32_t nmod = ndeps - 1;
+    ps_embutidos_solta(deps, ndeps);
     free(fonte);
     if (chmod(saida, 0755) != 0) {
         fprintf(stderr, "pool: gerado, mas nao consegui dar permissao de execucao a %s\n", saida);
         return 73;
     }
-    printf("gerado: %s\n", saida);
+    if (nmod > 0) printf("gerado: %s (%d modulo%s embutido%s)\n", saida, nmod, nmod == 1 ? "" : "s", nmod == 1 ? "" : "s");
+    else          printf("gerado: %s\n", saida);
     return 0;
 }
 
@@ -919,13 +1040,33 @@ int main(int argc, char **argv)
         char meu[4096];
         if (ps_meu_caminho(meu, sizeof(meu)) == 0) {
             size_t tam_emb = 0;
-            char *emb = ps_payload(meu, &tam_emb, NULL);
+            int versao = 0;
+            char *emb = ps_payload(meu, &tam_emb, NULL, &versao);
             if (emb) {
                 PSErroExec ee;
                 ps_set_argv(argc - 1, argv + 1);
-                int rc = ps_roda_fonte(emb, tam_emb, meu, &ee);
+                /* `meu` segue sendo o nome do programa (sys.argv[0], recarga
+                 * do jinker); a pasta do script, os modulos e o quadro do
+                 * traceback vem do que foi embutido — o traceback dizia
+                 * "em psp-pool, linha 6" e mostrava a linha 6 do ELF. */
+                const char *origem = meu, *fonte = emb;
+                size_t tam = tam_emb;
+                char main_textual[1024] = "";
+                if (versao == 2) {
+                    if (emb_carrega(emb, tam_emb, main_textual, sizeof(main_textual), &fonte, &tam) != 0) {
+                        fprintf(stderr, "pool: o programa embutido neste executavel esta corrompido\n");
+                        free(emb);
+                        return 70;
+                    }
+                    origem = main_textual;
+                } else {
+                    /* v1 (gerado antes): um fonte so, com a pasta do ELF como
+                     * raiz, como sempre foi; o quadro le o embutido */
+                    ps_emb_poe(meu, meu, emb, tam_emb);
+                }
+                int rc = ps_roda_fonte(fonte, tam, meu, &ee);
                 free(emb);
-                if (rc != 0) return reporta(&ee, meu);
+                if (rc != 0) return reporta(&ee, origem);
                 return 0;
             }
         }

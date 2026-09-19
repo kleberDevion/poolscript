@@ -64,15 +64,34 @@ com um rodapé que diz onde ele começa. Na partida, o executável lê o própri
 arquivo, encontra o rodapé e roda o que está embutido. Não há compilador de C
 no meio — quem só quer rodar não precisa de toolchain nenhuma.
 
+**Os módulos vão junto.** Todo `.pr` que o programa alcança por `import` —
+vizinho, subpasta (`import sub.pix`), relativo (`from .guarda import x`),
+`import *` e lib instalada em `~/.poolscript/libs` — é resolvido na compilação
+exatamente como o import resolve rodando, e embutido. O executável importa
+deles antes de olhar o disco, então roda numa máquina que não tem nem os
+fontes nem as libs. Módulos nativos (`os`, `sys`, `jinker`…) já estão na VM.
+
+```bash
+pool main.pr -o app
+# gerado: app (3 modulos embutidos)
+```
+
 Consequências que valem saber:
 
-- O executável tem o tamanho do `pool` mais o seu fonte (alguns MB): ele leva a
-  VM inteira junto, que é o que o faz rodar sozinho.
+- O executável tem o tamanho do `pool` mais os seus fontes (alguns MB): ele
+  leva a VM inteira junto, que é o que o faz rodar sozinho.
 - **Recompilar a partir de um executável gerado não funciona** — ele ignora
   argumentos de linha de comando e roda o programa embutido, que é o que se
   espera de um programa compilado. Compile sempre com o `pool`.
-- Fonte que não compila **não vira executável**: o erro sai e nada é gerado.
-- O programa embutido não é ofuscado — o fonte está lá dentro, legível.
+- Fonte que não compila **não vira executável**: o principal e cada módulo
+  passam pela conferência inteira do `--check` (tipagem estática inclusive),
+  e módulo que não se acha é erro na compilação, com o arquivo e a linha do
+  import — não na máquina de quem roda.
+- Só **código** é embutido. Arquivo de dados, `.env`, certificado, banco
+  SQLite: o programa continua lendo do disco, no caminho que ele mesmo abre.
+- O traceback de um erro no executável mostra o **arquivo do fonte** e a
+  linha dele (`em banco.pr, linha 5`), lidos do que está embutido.
+- O programa embutido não é ofuscado — os fontes estão lá dentro, legíveis.
 
 Chamar `pool` **sem nenhum argumento** imprime a ajuda.
 
@@ -97,7 +116,7 @@ pode ter várias linhas
 
 ## Blocos: `{ }`
 
-```
+```pyrite
 if (nota >= 9) {
     post("Excelente!")
 } elif (nota >= 7) {

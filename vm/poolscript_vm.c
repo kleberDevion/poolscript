@@ -26695,12 +26695,108 @@ static void nome_visivel_modulo(const char *nome, char *out, size_t cap)
     ps_tira_ext(out);
 }
 
+/* ── executável gerado por `-o`: os fontes EMBUTIDOS ─────────────────────────
+ *
+ * O `-o` grudava só o arquivo principal: `import banco` no executável
+ * procurava `banco.pr` no disco da máquina de quem roda, e não achava
+ * ("No module named 'banco'"). Agora o compilador embute todo `.pr` que o
+ * programa alcança por import (transitivo, lib instalada inclusive), e o
+ * import consulta ESTA tabela antes do disco.
+ *
+ * A chave é o caminho que o `acha_modulo_ps_em` calcula — o mesmo cálculo na
+ * compilação e na partida, com a mesma pasta do script (`ps_emb_raiz`) e a
+ * mesma pasta de libs (`ps_emb_libs`) da máquina que compilou. Assim o
+ * executável resolve os módulos como se os arquivos ainda estivessem lá,
+ * esteja ele onde estiver. Cada entrada guarda o caminho textual e o real
+ * (realpath na compilação): quem roda pode ter os arquivos (o realpath
+ * resolve e dá o real) ou não (sobra o textual). Os dois valem. */
+typedef struct { char *textual; char *real; char *fonte; size_t tam; } EmbArquivo;
+static EmbArquivo *g_emb = NULL;
+static int         g_nemb = 0, g_cap_emb = 0;
+static char        g_emb_libs[600] = "";
+static char        g_emb_main[1024] = "";
+
+void ps_emb_poe(const char *textual, const char *real, const char *fonte, size_t tam)
+{
+    if (g_nemb + 1 > g_cap_emb) {
+        int novo = g_cap_emb ? g_cap_emb * 2 : 16;
+        EmbArquivo *nv = realloc(g_emb, sizeof(EmbArquivo) * (size_t)novo);
+        if (!nv) return;
+        g_emb = nv; g_cap_emb = novo;
+    }
+    EmbArquivo *e = &g_emb[g_nemb];
+    e->textual = strdup(textual ? textual : "");
+    e->real    = strdup(real ? real : "");
+    e->fonte   = malloc(tam + 1);
+    if (!e->textual || !e->real || !e->fonte) { free(e->textual); free(e->real); free(e->fonte); return; }
+    memcpy(e->fonte, fonte, tam);
+    e->fonte[tam] = '\0';
+    e->tam = tam;
+    g_nemb++;
+}
+
+void ps_emb_raiz(const char *caminho_main)
+{
+    snprintf(g_emb_main, sizeof(g_emb_main), "%s", caminho_main ? caminho_main : "");
+}
+
+void ps_emb_libs(const char *pasta)
+{
+    snprintf(g_emb_libs, sizeof(g_emb_libs), "%s", pasta ? pasta : "");
+}
+
+const char *ps_emb_busca(const char *caminho, size_t *tam)
+{
+    if (!caminho || !caminho[0]) return NULL;
+    for (int i = 0; i < g_nemb; i++) {
+        if (strcmp(g_emb[i].textual, caminho) != 0 && (!g_emb[i].real[0] || strcmp(g_emb[i].real, caminho) != 0))
+            continue;
+        if (tam) *tam = g_emb[i].tam;
+        return g_emb[i].fonte;
+    }
+    return NULL;
+}
+
+/* Arquivo-fonte existe? O embutido conta antes do disco. */
+static int fonte_existe(const char *caminho)
+{
+    return ps_emb_busca(caminho, NULL) != NULL || eh_arquivo_comum(caminho);
+}
+
+/* Lê um fonte — embutido primeiro, senão o disco. NULL = não abriu. O que
+ * volta é do chamador (`free`). */
+static char *le_fonte_modulo(const char *caminho, size_t *tam)
+{
+    size_t t = 0;
+    const char *emb = ps_emb_busca(caminho, &t);
+    if (emb) {
+        char *c = malloc(t + 1);
+        if (!c) return NULL;
+        memcpy(c, emb, t); c[t] = '\0';
+        *tam = t;
+        return c;
+    }
+    FILE *f = fopen(caminho, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END); long n = ftell(f); rewind(f);
+    char *c = malloc((size_t)(n > 0 ? n : 0) + 1);
+    if (!c) { fclose(f); return NULL; }
+    size_t lidos = fread(c, 1, (size_t)(n > 0 ? n : 0), f);
+    fclose(f);
+    c[lidos] = '\0';
+    *tam = lidos;
+    return c;
+}
+
 /* A pasta das libs instaladas: `$POOLSCRIPT_HOME/libs`, ou `~/.poolscript/libs`.
  * Vazia se não houver nem uma nem outra variável. Um lugar só pra quem resolve
  * import — o `import random` e o `import poolscript.libs.random` têm que olhar
  * a MESMA pasta, e a conta estava copiada dentro do resolvedor. */
 static void pasta_libs(char *out, size_t cap)
 {
+    /* executável gerado: a pasta de libs da máquina que COMPILOU, que é a
+     * chave com que as libs foram embutidas */
+    if (g_emb_libs[0]) { snprintf(out, cap, "%s", g_emb_libs); return; }
     const char *over = getenv("POOLSCRIPT_HOME");
     if (over && *over) { snprintf(out, cap, "%s/libs", over); return; }
     const char *h = getenv("HOME");
@@ -26738,7 +26834,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
                  * arquivo pedido, e testar o pedaço acharia outro. */
                 int n = snprintf(saida, cap, "%s%s", base, EXTS_C[e]);
                 if (n < 0 || (size_t)n >= cap) continue;
-                if (eh_arquivo_comum(saida)) return 0;
+                if (fonte_existe(saida)) return 0;
             }
             return -1;
         }
@@ -26753,10 +26849,11 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
     for (const char *q = p; *q && rl < 510; q++) rel[rl++] = (*q == '.') ? '/' : *q;
     rel[rl] = '\0';
 
-    /* a extensão da linguagem, tentada em cada local da ordem de resolução */
+    /* a extensão da linguagem, tentada em cada local da ordem de resolução.
+     * `fonte_existe` olha o embutido (executável gerado) e depois o disco —
+     * e só arquivo comum: `fopen("rb")` abria pasta. */
     static const char *EXTS[] = { PS_EXT };
     const size_t N_EXTS = sizeof(EXTS) / sizeof(EXTS[0]);
-    FILE *f;
     if (nivel > 0) {
         char base[512];
         snprintf(base, sizeof(base), "%s", dir_modulo[0] ? dir_modulo : ".");
@@ -26767,7 +26864,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
         }
         for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", base, rel, EXTS[e]);
-            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+            if (fonte_existe(saida)) return 0;
         }
         return -1;                              /* relativo não cai pras libs */
     }
@@ -26790,7 +26887,7 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
         const char *nome_lib = (strncmp(p, PREFIXO_LIBS, NP) == 0 && p[NP]) ? p + NP : p;
         for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", libdir, nome_lib, EXTS[e]);
-            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+            if (fonte_existe(saida)) return 0;
         }
     }
     /* depois: a pasta do ARQUIVO que esta importando. `import smtp` dentro de
@@ -26800,14 +26897,14 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
     if (dir_modulo[0] && strcmp(dir_modulo, dir_script) != 0) {
         for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", dir_modulo, rel, EXTS[e]);
-            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+            if (fonte_existe(saida)) return 0;
         }
     }
     /* depois: arquivo do projeto (raiz = dir do entry) */
     if (dir_script[0]) {
         for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", dir_script, rel, EXTS[e]);
-            if ((f = fopen(saida, "rb"))) { fclose(f); return 0; }
+            if (fonte_existe(saida)) return 0;
         }
     }
     return -1;
@@ -26852,6 +26949,147 @@ static void dir_do_script(const char *caminho, char *out, size_t cap)
         snprintf(out, cap, "%s", rp);
         free(rp);
     }
+}
+
+/* ── `-o`: os `.pr` que o programa alcança por import ─────────────────────────
+ *
+ * Resolvidos aqui EXATAMENTE como o import resolve rodando — o mesmo
+ * `acha_modulo_ps_em`, a mesma pasta do script, a mesma ordem lib → vizinho
+ * → raiz — de forma transitiva; nativo não entra (já está no binário). A
+ * pasta de cada módulo pro import seguinte é a do caminho TEXTUAL que a
+ * resolução deu, que é o que o executável vai ter na máquina de quem roda,
+ * onde o realpath não resolve porque os arquivos não estão lá. */
+static void coleta_imports(PSNode *n, PSNode ***v, int32_t *nv, int32_t *cap)
+{
+    if (!n) return;
+    if (n->kind == N_IMPORT_STMT) {
+        if (*nv + 1 > *cap) {
+            int32_t novo = *cap ? *cap * 2 : 16;
+            PSNode **x = realloc(*v, sizeof(PSNode *) * (size_t)novo);
+            if (!x) return;
+            *v = x; *cap = novo;
+        }
+        (*v)[(*nv)++] = n;
+    }
+    coleta_imports(n->a, v, nv, cap); coleta_imports(n->b, v, nv, cap);
+    coleta_imports(n->c, v, nv, cap); coleta_imports(n->e, v, nv, cap);
+    for (int32_t i = 0; i < n->lista.n; i++)        coleta_imports(n->lista.itens[i], v, nv, cap);
+    for (int32_t i = 0; i < n->lista2.n; i++)       coleta_imports(n->lista2.itens[i], v, nv, cap);
+    for (int32_t i = 0; i < n->lista2_alias.n; i++) coleta_imports(n->lista2_alias.itens[i], v, nv, cap);
+}
+
+void ps_embutidos_solta(PSEmbutido *lista, int32_t n)
+{
+    for (int32_t i = 0; i < n; i++) free(lista[i].fonte);
+    free(lista);
+}
+
+static int emb_ja_tem(const PSEmbutido *lista, int32_t n, const char *textual, const char *real)
+{
+    for (int32_t i = 0; i < n; i++)
+        if (!strcmp(lista[i].textual, textual) || (real[0] && !strcmp(lista[i].real, real))) return 1;
+    return 0;
+}
+
+int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
+                   char *libs, size_t libs_cap, char *erro, size_t erro_cap)
+{
+    *lista = NULL; *n = 0; erro[0] = '\0';
+    pasta_libs(libs, libs_cap);
+
+    char dir_script[1024];
+    dir_do_script(caminho_main, dir_script, sizeof(dir_script));
+
+    int32_t cap = 16;
+    PSEmbutido *l = calloc((size_t)cap, sizeof(PSEmbutido));
+    if (!l) { snprintf(erro, erro_cap, "sem memoria"); return -1; }
+
+    /* [0] = o principal, com caminho absoluto (a pasta já é a real) */
+    {
+        const char *b = strrchr(caminho_main, '/'); b = b ? b + 1 : caminho_main;
+        const char *d = dir_script[0] ? dir_script : ".";
+        size_t ld = strlen(d), lb = strlen(b);
+        if (ld + 1 + lb >= sizeof(l[0].textual)) {
+            free(l);
+            snprintf(erro, erro_cap, "caminho longo demais: %.200s", caminho_main);
+            return -1;
+        }
+        memcpy(l[0].textual, d, ld);
+        l[0].textual[ld] = '/';
+        memcpy(l[0].textual + ld + 1, b, lb + 1);
+        char *rp = realpath(caminho_main, NULL);
+        snprintf(l[0].real, sizeof(l[0].real), "%s", rp ? rp : l[0].textual);
+        free(rp);
+        l[0].fonte = le_fonte_modulo(caminho_main, &l[0].tam);
+        if (!l[0].fonte) { free(l); snprintf(erro, erro_cap, "nao consegui abrir %s", caminho_main); return -1; }
+        *n = 1;
+    }
+
+    for (int32_t i = 0; i < *n; i++) {
+        PSTokenList *toks = ps_lexer_tokenize(l[i].fonte, l[i].tam);
+        if (!toks || !toks->ok) {
+            snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
+                     toks ? toks->erro : "sem memoria", toks ? toks->erro_linha : 0);
+            if (toks) ps_lexer_free(toks);
+            ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
+            return -1;
+        }
+        PSParseResult *r = ps_parse(toks->tokens, toks->n);
+        ps_lexer_free(toks);
+        if (!r || !r->ok) {
+            snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
+                     r ? r->erro : "sem memoria", r ? r->erro_linha : 0);
+            if (r) ps_parse_free(r);
+            ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
+            return -1;
+        }
+        /* a pasta DESTE arquivo, pro import relativo e pro vizinho */
+        char dir_mod[1024];
+        snprintf(dir_mod, sizeof(dir_mod), "%s", l[i].textual);
+        { char *b = strrchr(dir_mod, '/'); if (b) *b = '\0'; else snprintf(dir_mod, sizeof(dir_mod), "."); }
+
+        PSNode **imps = NULL; int32_t nimps = 0, cap_imps = 0;
+        coleta_imports(r->programa, &imps, &nimps, &cap_imps);
+        for (int32_t k = 0; k < nimps; k++) {
+            char enc[512];
+            ps_import_modulo_codificado(imps[k], enc);
+            if (!enc[0] || modulo_nativo_de(enc) >= 0) continue;
+            char achado[1024];
+            if (acha_modulo_ps_em(dir_mod, dir_script, enc, achado, sizeof(achado)) != 0) {
+                const char *escrito = enc[0] == '\x01' ? enc + 1 : enc;
+                snprintf(erro, erro_cap, "modulo '%s' (import em %s, linha %d) nao foi achado — "
+                         "o executavel nasceria sem ele", escrito, l[i].textual, imps[k]->line);
+                free(imps); ps_parse_free(r);
+                ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
+                return -1;
+            }
+            char real[1024];
+            { char *rp = realpath(achado, NULL); snprintf(real, sizeof(real), "%s", rp ? rp : achado); free(rp); }
+            if (emb_ja_tem(l, *n, achado, real)) continue;
+            if (*n + 1 > cap) {
+                int32_t novo = cap * 2;
+                PSEmbutido *nv = realloc(l, sizeof(PSEmbutido) * (size_t)novo);
+                if (!nv) { free(imps); ps_parse_free(r); ps_embutidos_solta(l, *n); *lista = NULL; *n = 0; snprintf(erro, erro_cap, "sem memoria"); return -1; }
+                l = nv; cap = novo;
+                memset(l + *n, 0, sizeof(PSEmbutido) * (size_t)(cap - *n));
+            }
+            PSEmbutido *e = &l[*n];
+            snprintf(e->textual, sizeof(e->textual), "%s", achado);
+            snprintf(e->real, sizeof(e->real), "%s", real);
+            e->fonte = le_fonte_modulo(achado, &e->tam);
+            if (!e->fonte) {
+                snprintf(erro, erro_cap, "nao consegui abrir %s", achado);
+                free(imps); ps_parse_free(r);
+                ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
+                return -1;
+            }
+            (*n)++;
+        }
+        free(imps);
+        ps_parse_free(r);
+    }
+    *lista = l;
+    return 0;
 }
 
 /* ── `import *`: os nomes que um módulo exporta, antes de rodar ─────────────
@@ -26970,14 +27208,9 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
             return 2;      /* resolvido, mas INCOMPLETO: o ciclo cortou a lista */
         }
 
-    FILE *f = fopen(caminho, "rb");
-    if (!f) return 0;
-    fseek(f, 0, SEEK_END); long tam = ftell(f); rewind(f);
-    char *fonte = malloc((size_t)(tam > 0 ? tam : 1) + 1);
-    if (!fonte) { fclose(f); return 0; }
-    size_t lidos = fread(fonte, 1, (size_t)(tam > 0 ? tam : 0), f);
-    fonte[lidos] = '\0';
-    fclose(f);
+    size_t lidos = 0;
+    char *fonte = le_fonte_modulo(caminho, &lidos);   /* embutido ou disco */
+    if (!fonte) return 0;
 
     PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
     free(fonte);
@@ -27067,14 +27300,10 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     for (int i = 0; i < vm->nmods_ps; i++)          /* já importado antes */
         if (strcmp(vm->mods_ps[i].nome, abspath) == 0) { *out = vm->mods_ps[i].valor; return 0; }
 
-    FILE *f = fopen(caminho, "rb");
-    if (!f) { snprintf(vm->erro, sizeof(vm->erro), "nao consegui abrir %.200s", caminho); return -1; }
-    fseek(f, 0, SEEK_END); long tam = ftell(f); rewind(f);
-    char *fonte = malloc((size_t)(tam > 0 ? tam : 1) + 1);
-    if (!fonte) { fclose(f); snprintf(vm->erro, sizeof(vm->erro), "sem memoria"); return -1; }
-    size_t lidos = fread(fonte, 1, (size_t)tam, f);
-    fonte[lidos] = '\0';
-    fclose(f);
+    /* embutido no executável gerado, ou o arquivo no disco */
+    size_t lidos = 0;
+    char *fonte = le_fonte_modulo(caminho, &lidos);
+    if (!fonte) { snprintf(vm->erro, sizeof(vm->erro), "nao consegui abrir %.200s", caminho); return -1; }
 
     /* Onde o erro aparecer daqui pra baixo, é dentro DESTE arquivo — e é isso
      * que o quadro final do traceback tem que dizer. */
@@ -27886,7 +28115,14 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         ps_lexer_free(toks);
         return -1;
     }
-    ps_avisos_para_stderr(toks, caminho);
+    /* Executável gerado (`-o`): `caminho` é o ELF — vale como nome do
+     * programa (sys.argv[0], recarga do jinker) — mas a pasta do script, a
+     * resolução dos módulos e o arquivo dos quadros do traceback são os do
+     * fonte EMBUTIDO, ancorados no caminho que o principal tinha na máquina
+     * que compilou (`ps_emb_raiz`). Sem isso `import banco` procurava ao lado
+     * do ELF e o quadro dizia "em psp-pool, linha 6". */
+    const char *ancora = g_emb_main[0] ? g_emb_main : caminho;
+    ps_avisos_para_stderr(toks, ancora);
 
     PSParseResult *r = ps_parse(toks->tokens, toks->n);
     ps_lexer_free(toks);
@@ -27904,16 +28140,16 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * globais. Calculado ANTES de compilar: a expansão do `import *` resolve
      * os módulos com ele, exatamente como o import vai resolver em runtime. */
     char dir_script[sizeof(((VM *)0)->dir_script)];
-    dir_do_script(caminho, dir_script, sizeof(dir_script));
+    dir_do_script(ancora, dir_script, sizeof(dir_script));
     char abs_script[1024];
     abs_script[0] = '\0';
-    if (caminho) {
-        char *rp = realpath(caminho, NULL);
-        snprintf(abs_script, sizeof(abs_script), "%s", rp ? rp : caminho);
+    if (ancora) {
+        char *rp = realpath(ancora, NULL);
+        snprintf(abs_script, sizeof(abs_script), "%s", rp ? rp : ancora);
         free(rp);
     }
     EstrelaVisita vis_script = { abs_script, NULL };
-    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL };
+    EstrelaCtx ectx = { dir_script, dir_script, ancora ? &vis_script : NULL, NULL };
     PSResolvedor res = { estrela_nomes_de, &ectx };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
@@ -27954,10 +28190,11 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         return -1;
     }
     /* todos os protos carregados aqui são do script principal — marca o arquivo
-     * deles pro traceback (os de módulo importado são marcados ao carregar). */
-    if (caminho)
+     * deles pro traceback (os de módulo importado são marcados ao carregar).
+     * No executável gerado é o caminho do fonte embutido, não o ELF. */
+    if (ancora)
         for (int i = 0; i < vm.nprotos; i++)
-            if (!vm.protos[i].arquivo) vm.protos[i].arquivo = strdup(caminho);
+            if (!vm.protos[i].arquivo) vm.protos[i].arquivo = strdup(ancora);
 
     /* liga os builtins nativos pelos nomes que o compilador registrou */
     for (int32_t i = 0; i < prog->nglobais; i++) {

@@ -443,6 +443,62 @@ confere("fonte com erro nao gera executavel",
 r = roda("'" + POOL + "' prog.pr -o")
 confere("`-o` sem nome de saida diz o uso", r["rc"] == 64 and "uso:" in r["saida"])
 
+# ── `-o` embute os MODULOS que o programa alcanca ───────────────────────────
+#
+# O executavel grudava so o principal: `import banco` procurava `banco.pr` no
+# disco de quem roda e nao achava ("No module named 'banco'"). Agora vai junto
+# todo `.pr` alcancado por import — vizinho, subpasta, relativo, `*` e lib
+# instalada — resolvido na compilacao como o import resolve rodando. E o
+# traceback le a linha do fonte EMBUTIDO e diz o nome do ARQUIVO (`main.pr`,
+# `banco.pr`): antes dizia "em psp-pool, linha 6" e mostrava a linha 6 do ELF.
+# Medido numa pasta longe, com os fontes RENOMEADOS (nao existem mais no
+# caminho de origem) e a pasta de libs apontando pro vazio.
+EMB = PASTA + "/emb"
+os.mkdir(EMB + "/sub", exist_ok=true)
+os.mkdir(HOME + "/libs", exist_ok=true)
+os.writeFile(HOME + "/libs/minhalib.pr", "funct de_lib() {\n    return \"lib\"\n}\n")
+os.writeFile(EMB + "/banco.pr",
+             "funct reais(v) {\n    return \"R$ \" + str(v)\n}\nfunct quebra() {\n    return 1 / 0\n}\n")
+os.writeFile(EMB + "/sub/guarda.pr", "TOKEN = \"g\"\n")
+os.writeFile(EMB + "/sub/pix.pr", "from .guarda import TOKEN\nfunct pix() {\n    return \"pix-\" + TOKEN\n}\n")
+os.writeFile(EMB + "/util.pr", "funct estrela() {\n    return \"*\"\n}\n")
+os.writeFile(EMB + "/main.pr",
+             "import sys\nfrom banco import reais, quebra\nimport sub.pix\nfrom util import *\nimport minhalib\n"
+             + "post(reais(10), pix.pix(), estrela(), minhalib.de_lib())\n"
+             + "if \"quebra\" in sys.argv { quebra() }\n"
+             + "if \"erro\" in sys.argv { post(int(\"abc\")) }\n")
+r = com_home("'" + POOL + "' emb/main.pr -o emb/app")
+confere("`-o` embute os modulos alcancados e diz quantos (vizinho, subpasta, relativo, `*`, lib)",
+        r["rc"] == 0 and "5 modulos embutidos" in r["saida"])
+
+LONGE = PASTA + "/longe"
+os.mkdir(LONGE, exist_ok=true)
+os.cmd("cp " + EMB + "/app " + LONGE + "/app && mv " + EMB + " " + PASTA + "/emb_guardado")
+r = roda("cd longe && POOLSCRIPT_HOME=/nao/existe HOME=/nao/existe ./app")
+confere("o executavel roda longe, sem nenhum fonte no caminho de origem e sem libs",
+        r["rc"] == 0 and r["saida"].strip() == "R$ 10 pix-g * lib")
+r = roda("cd longe && POOLSCRIPT_HOME=/nao/existe HOME=/nao/existe ./app quebra")
+confere("erro dentro de modulo embutido: o traceback diz o modulo e mostra a linha do fonte",
+        r["rc"] != 0 and "banco.pr, linha 5" in r["saida"] and "return 1 / 0" in r["saida"])
+r = roda("cd longe && POOLSCRIPT_HOME=/nao/existe HOME=/nao/existe ./app erro")
+confere("erro no principal: o traceback diz main.pr e mostra a linha dele, nao a do ELF",
+        r["rc"] != 0 and "main.pr, linha 8" in r["saida"] and "int(\"abc\")" in r["saida"]
+        and not "app, linha" in r["saida"])
+os.cmd("mv " + PASTA + "/emb_guardado " + EMB)
+
+# modulo que nao existe: erro na COMPILACAO, nada gerado — um executavel que
+# so descobre isso na maquina de quem roda nasce quebrado
+os.writeFile(EMB + "/falta.pr", "import naoexiste\npost(1)\n")
+r = com_home("'" + POOL + "' emb/falta.pr -o emb/naodeve")
+confere("`-o` com modulo que nao se acha recusa e diz qual",
+        r["rc"] != 0 and "naoexiste" in r["saida"] and not os.exists(EMB + "/naodeve"))
+# e cada modulo passa pela mesma conferencia do --check (tipagem inclusive)
+os.writeFile(EMB + "/tipo.pr", "str s = 10\n")
+os.writeFile(EMB + "/usa_tipo.pr", "import tipo\npost(1)\n")
+r = com_home("'" + POOL + "' emb/usa_tipo.pr -o emb/naodeve2")
+confere("`-o` com erro de tipo num modulo recusa, com a mesma frase do --check",
+        r["rc"] != 0 and "esperava str" in r["saida"] and not os.exists(EMB + "/naodeve2"))
+
 # ── extensão de antes na linha de comando ───────────────────────────────────
 #
 # `.ps`, `.psl` e `.p` foram as extensões da linguagem. Hoje o arquivo é `.pr`,

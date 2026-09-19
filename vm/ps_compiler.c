@@ -715,6 +715,11 @@ static void import_modulo_codificado(const PSNode *n, char *encoded)
     encoded[el] = '\0';
 }
 
+void ps_import_modulo_codificado(const PSNode *n, char *encoded)
+{
+    import_modulo_codificado(n, encoded);
+}
+
 static int nome_bate(const PSNode *x, const char *alvo)
 {
     return x && x->texto && !strcmp(x->texto, alvo);

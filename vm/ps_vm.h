@@ -69,6 +69,33 @@ void ps_debug_porta(int porta);
 
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
 
+/* ── executável gerado por `-o`: fontes EMBUTIDOS ──────────────────────────
+ * O `-o` grudava só o arquivo principal: `import banco` no executável ia
+ * procurar `banco.pr` no disco da máquina de quem roda. Agora o binário leva
+ * todo `.pr` que o programa alcança por import, e o import olha esta tabela
+ * antes do disco. A chave é o caminho que a resolução de módulo calcula — o
+ * mesmo cálculo na compilação e na partida, com a mesma pasta do script
+ * (`ps_emb_raiz`) e a mesma pasta de libs (`ps_emb_libs`) da máquina que
+ * compilou. `real` é o realpath na máquina que compilou (quem roda pode ter
+ * os arquivos ou não; os dois nomes valem). */
+void        ps_emb_poe(const char *textual, const char *real, const char *fonte, size_t tam);
+void        ps_emb_raiz(const char *caminho_main);
+void        ps_emb_libs(const char *pasta);
+/* O fonte embutido com esse caminho (textual ou real), ou NULL. Também é o
+ * que o quadro do traceback lê: a linha vem daqui, não do disco. */
+const char *ps_emb_busca(const char *caminho, size_t *tam);
+
+/* Os `.pr` que `caminho_main` alcança por import, transitivamente — o
+ * principal em [0] — resolvidos exatamente como o import resolve rodando.
+ * `libs` recebe a pasta de libs desta máquina (vai no executável). Módulo que
+ * não se acha, ou que não parseia, é erro (-1, mensagem em `erro`): um
+ * executável que só descobre isso na máquina de quem roda nasce quebrado. O
+ * chamador libera com ps_embutidos_solta. */
+typedef struct { char textual[1024]; char real[1024]; char *fonte; size_t tam; } PSEmbutido;
+int  ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
+                    char *libs, size_t libs_cap, char *erro, size_t erro_cap);
+void ps_embutidos_solta(PSEmbutido *lista, int32_t n);
+
 /* Só VERIFICA (lexer → parser → compilador), NUNCA roda. Para o LSP/editor:
  * usa exatamente a gramática da VM pra apontar erro de sintaxe/compilação sem
  * executar o código do usuário. 0 = sem erro; -1 preenche `e`. */

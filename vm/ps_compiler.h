@@ -239,4 +239,10 @@ void        ps_compila_free(PSPrograma *p);
 /* Nome legível do opcode — usado no desmonte e no teste diferencial. */
 const char *ps_op_nome(int32_t op);
 
+/* O módulo de um nó de import, codificado como o OP_IMPORT_MOD e a expansão
+ * do `*` o recebem (`.a.b`, ou \x01 + literal entre aspas). `encoded` tem 512
+ * bytes. Exposto pro `-o` embutir os módulos que o programa alcança,
+ * resolvendo-os com o MESMO nome que o import vai usar rodando. */
+void ps_import_modulo_codificado(const PSNode *n, char *encoded);
+
 #endif /* PS_COMPILER_H */
