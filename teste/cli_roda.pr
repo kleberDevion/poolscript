@@ -499,6 +499,72 @@ r = com_home("'" + POOL + "' emb/usa_tipo.pr -o emb/naodeve2")
 confere("`-o` com erro de tipo num modulo recusa, com a mesma frase do --check",
         r["rc"] != 0 and "esperava str" in r["saida"] and not os.exists(EMB + "/naodeve2"))
 
+# ── regra 5 da tipagem estatica: assinatura dos `.pr` importados ───────────
+#
+# O checador era cego pro que o import traz: `util.soma(1, 2, 3)` passava no
+# `--check` e so estourava rodando. Agora o resolvedor entrega a AST do modulo
+# importado e a chamada, o construtor, o metodo, o membro e o nome importado
+# sao conferidos ANTES de rodar, com as MESMAS frases do runtime — medidas
+# aqui nos dois momentos. Fica de fora o que so se sabe rodando: funct
+# decorada por decorador geral, variavel do modulo e modulo em ciclo.
+IMP = PASTA + "/imp5"
+os.mkdir(IMP + "/sub", exist_ok=true)
+os.writeFile(IMP + "/util.pr",
+             "funct soma(int a, int b=1) {\n    return a + b\n}\n"
+             + "class Conta() {\n    funct __init__(self, int saldo) {\n        self.saldo = saldo\n    }\n"
+             + "    funct extrato(self) {\n        return self.saldo\n    }\n}\n"
+             + "X = 10\n"
+             + "funct deco(f) {\n    return f\n}\n"
+             + "@deco\nfunct trocada(a) {\n    return a\n}\n")
+os.writeFile(IMP + "/sub/rel.pr", "from ..util import soma\nfunct usa() {\n    return soma(\"a\")\n}\n")
+os.writeFile(IMP + "/ciclo_a.pr", "import ciclo_b\nfunct fa() {\n    return 1\n}\nfunct usa_b() {\n    return ciclo_b.fb()\n}\n")
+os.writeFile(IMP + "/ciclo_b.pr", "import ciclo_a\nfunct fb() {\n    return 2\n}\n")
+
+funct caso5(c5_nome, c5_fonte, c5_erro)
+{
+    os.writeFile(IMP + "/m.pr", c5_fonte)
+    c5_check = roda("'" + POOL + "' --check imp5/m.pr")
+    c5_roda = roda("'" + POOL + "' imp5/m.pr")
+    confere("importado: " + c5_nome + " — acusado ANTES de rodar",
+            "\"ok\":false" in c5_check["saida"] and c5_erro in c5_check["saida"])
+    confere("importado: " + c5_nome + " — a mesma frase rodando (rc 2)",
+            c5_roda["rc"] == 2 and c5_erro in c5_roda["saida"])
+}
+
+caso5("aridade de funct do modulo", "import util\npost(util.soma(1, 2, 3))\n",
+      "soma() takes from 1 to 2 positional arguments but 3 were given")
+caso5("tipo do parametro, via from-import", "from util import soma\npost(soma(\"a\"))\n",
+      "parâmetro a de soma() esperava int, recebeu str")
+caso5("argumento faltando, por apelido", "import util as u\npost(u.soma())\n",
+      "soma() missing 1 required positional argument: 'a'")
+caso5("membro que o modulo nao tem", "import util\npost(util.naoexiste)\n",
+      "module 'util' has no attribute 'naoexiste'")
+caso5("nome que o modulo nao tem", "from util import naoexiste\n",
+      "cannot import name 'naoexiste' from 'util'")
+caso5("construtor da classe importada", "import util\nc = util.Conta(\"x\")\n",
+      "parâmetro saldo de __init__() esperava int, recebeu str")
+caso5("metodo da classe importada", "from util import Conta\nConta k = Conta(1)\npost(k.extrato(9))\n",
+      "extrato() takes 1 positional argument but 2 were given")
+caso5("membro que a classe importada nao tem", "from util import Conta\nk = Conta(1)\npost(k.nada)\n",
+      "'Conta' object has no attribute 'nada'")
+caso5("modulo importado que nao compila: acusado na linha do import",
+      "import sub.rel\npost(rel.usa())\n",
+      "sub.rel: parâmetro a de soma() esperava int, recebeu str")
+
+# o que NAO pode virar erro falso
+os.writeFile(IMP + "/m.pr", "from util import trocada\npost(trocada(1, 2))\n")
+r = roda("'" + POOL + "' --check imp5/m.pr")
+confere("importado: funct decorada por decorador geral nao e conferida", "\"ok\":true" in r["saida"])
+os.writeFile(IMP + "/m.pr", "from util import X\npost(X + 1)\n")
+r = roda("'" + POOL + "' imp5/m.pr")
+confere("importado: variavel do modulo passa e roda", r["rc"] == 0 and r["saida"].strip() == "11")
+os.writeFile(IMP + "/m.pr", "import ciclo_a\npost(ciclo_a.usa_b(), ciclo_a.fa())\n")
+r = roda("'" + POOL + "' imp5/m.pr")
+confere("importado: ciclo de import nao da veredito falso e roda", r["rc"] == 0 and r["saida"].strip() == "2 1")
+os.writeFile(IMP + "/m.pr", "import util\nc = util.Conta(5)\npost(c.extrato() + util.soma(1))\n")
+r = roda("'" + POOL + "' imp5/m.pr")
+confere("importado: chamada certa passa e roda", r["rc"] == 0 and r["saida"].strip() == "7")
+
 # ── extensão de antes na linha de comando ───────────────────────────────────
 #
 # `.ps`, `.psl` e `.p` foram as extensões da linguagem. Hoje o arquivo é `.pr`,

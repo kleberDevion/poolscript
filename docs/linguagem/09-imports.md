@@ -370,6 +370,30 @@ O prefixo da mensagem (`random:`) é o nome do módulo como foi escrito no
 
 ---
 
+### 9.5.2. O que se confere antes de rodar
+
+O `--check` (e o `pool`, antes de executar) lê o módulo `.pr` importado e
+confere contra a assinatura **dele**, como faz com as functs do próprio
+arquivo:
+
+- chamada a funct do módulo — aridade, nomes e tipos dos parâmetros
+  (`util.soma(1, 2, 3)`, `soma("a")`), inclusive por apelido (`import util as u`);
+- classe importada — argumentos do construtor, métodos e campos de uma
+  instância (`Conta k = Conta(1); k.extrato(9)`);
+- membro que o módulo não exporta (`util.naoexiste`) e nome que ele não tem
+  (`from util import naoexiste`) — as mesmas frases do erro de runtime.
+
+```ps
+import util                    # util.pr: funct soma(int a, int b=1)
+post(util.soma(1, 2, 3))       # TypeError: soma() takes from 1 to 2 positional arguments but 3 were given
+```
+
+Fica de fora, de propósito, o que não dá pra saber sem rodar: funct do
+módulo decorada por um decorador geral (ele pode tê-la trocado), variável do
+módulo (o tipo é o do valor, só rodando) e módulo em ciclo de import. Módulo
+que não compila (sintaxe ou tipo) é acusado na linha do `import`, com a
+frase que o import daria rodando.
+
 ## 9.6. Import não roda o guard de entrada
 
 Quando um arquivo é **importado**, o bloco `if __name__ == "main":` dele **não

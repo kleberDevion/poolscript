@@ -51,7 +51,10 @@ typedef struct {
     /* PS_ERRO_TIPO: TODOS os erros da tipagem estática do arquivo, na ordem
      * do fonte (o primeiro também em msg/linha/col). Nenhum fica de fora da
      * saída: o vetor é do chamador liberar (`free`). */
-    struct PSErroTipoExec { char msg[256]; char classe[32]; int linha; int col; } *tipos;
+    /* `arquivo`/`linha_arq`/`col_arq`: o erro está em OUTRO arquivo (módulo
+     * importado que não compila), e o quadro dele sai junto com o do import. */
+    struct PSErroTipoExec { char msg[256]; char classe[32]; int linha; int col;
+                            char arquivo[1024]; int linha_arq; int col_arq; } *tipos;
     int        ntipos;
 } PSErroExec;
 

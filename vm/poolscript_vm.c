@@ -10514,6 +10514,8 @@ static int executa_alvo_c(VM *vm, const Alvo *a, const Value *pos, int npos,
                           const Value *kwn, const Value *kwv, int nkw, Value *out);
 static int carrega_modulo_ps(VM *vm, const char *nome, Value *out);
 static int modulo_nativo_de(const char *mod);
+static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **out);
+static void ast_cache_solta(void);
 static void estrela_cache_solta(void);
 static int spec_eh_caminho(const char *s);
 
@@ -27164,6 +27166,7 @@ static void estrela_cache_solta(void)
     }
     free(g_estrela_cache);
     g_estrela_cache = NULL; g_estrela_ncache = 0; g_estrela_cap = 0;
+    ast_cache_solta();
 }
 
 static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t *n)
@@ -27226,7 +27229,7 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
     EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui };
-    PSResolvedor res = { estrela_nomes_de, &filho };
+    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &filho };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
     /* Não compila: o import de runtime é que diz o SyntaxError, na linha dele.
@@ -27245,6 +27248,142 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     if (!cortou_aqui) estrela_cache_poe(abspath, *nomes, *n);
     else if (ctx->cortou) *ctx->cortou = 1;
     return cortou_aqui ? 2 : 1;
+}
+
+/* ── o módulo `.pr` importado, pro checador estático (regra 5) ──────────────
+ *
+ * `import util` / `from util import soma`: o compilador pergunta aqui pela
+ * AST do módulo, pra conferir chamada, membro e nome importado ANTES de
+ * rodar, com o mesmo arquivo que o import vai carregar. O módulo é lido,
+ * parseado e compilado (sem rodar) uma vez por processo — a AST fica viva no
+ * cache, porque as assinaturas apontam pra dentro dela. Cada entrada é
+ * alocada à parte: o vetor cresce enquanto um compilador de cima ainda segura
+ * ponteiros pra entradas antigas. Módulo em expansão mais acima (ciclo) não
+ * entra: o checador fica cego pra ele, e o runtime dá o erro de sempre. */
+typedef struct { char *caminho; PSParseResult *parse; PSModuloAst info; } AstLembrada;
+static AstLembrada **g_ast_cache = NULL;
+static int g_ast_n = 0, g_ast_cap = 0;
+
+static void ast_cache_solta(void)
+{
+    for (int i = 0; i < g_ast_n; i++) {
+        AstLembrada *a = g_ast_cache[i];
+        for (int32_t k = 0; k < a->info.nexportados; k++) free(a->info.exportados[k]);
+        free(a->info.exportados);
+        if (a->parse) ps_parse_free(a->parse);
+        free(a->caminho);
+        free(a);
+    }
+    free(g_ast_cache);
+    g_ast_cache = NULL; g_ast_n = 0; g_ast_cap = 0;
+}
+
+static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **out)
+{
+    EstrelaCtx *ctx = (EstrelaCtx *)vctx;
+    *out = NULL;
+    if (modulo_nativo_de(mod) >= 0) return 0;
+
+    char caminho[1024];
+    if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, sizeof(caminho)) != 0)
+        return 0;
+    char abspath[1024];
+    {
+        char *rp = realpath(caminho, NULL);
+        snprintf(abspath, sizeof(abspath), "%s", rp ? rp : caminho);
+        free(rp);
+    }
+    for (int i = 0; i < g_ast_n; i++) {
+        AstLembrada *e = g_ast_cache[i];
+        if (e->info.incompleto || strcmp(e->caminho, abspath) != 0) continue;
+        /* em construção (a compilação dele está mais acima na pilha — ciclo):
+         * não é resposta, e a pilha logo abaixo diz que não há AST pra ele */
+        if (!e->info.falhou && !e->info.programa) continue;
+        *out = &e->info;
+        return e->info.falhou ? 2 : 1;
+    }
+    for (EstrelaVisita *vi = ctx->pilha; vi; vi = vi->ant)
+        if (strcmp(vi->caminho, abspath) == 0) return 0;      /* ciclo: sem AST pra ele */
+
+    /* a entrada do cache nasce aqui; o que der errado abaixo a marca `falhou`
+     * com a frase do import de runtime (`nome: erro`), em vez de sumir */
+    AstLembrada *a = calloc(1, sizeof(AstLembrada));
+    char *cam = strdup(abspath);
+    if (!a || !cam) { free(a); free(cam); return 0; }
+    if (g_ast_n + 1 > g_ast_cap) {
+        int novo = g_ast_cap ? g_ast_cap * 2 : 16;
+        AstLembrada **nv = realloc(g_ast_cache, sizeof(AstLembrada *) * (size_t)novo);
+        if (!nv) { free(a); free(cam); return 0; }
+        g_ast_cache = nv; g_ast_cap = novo;
+    }
+    a->caminho = cam;
+    a->info.caminho = cam;
+    g_ast_cache[g_ast_n++] = a;
+    *out = &a->info;
+
+    /* o arquivo e a linha do erro, pro quadro de dentro do módulo */
+    snprintf(a->info.erro_arquivo, sizeof(a->info.erro_arquivo), "%s", abspath);
+    size_t lidos = 0;
+    char *fonte = le_fonte_modulo(caminho, &lidos);
+    if (!fonte) { a->info.falhou = 1; snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "ImportError");
+                  snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "nao consegui abrir %.200s", caminho); return 2; }
+    PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
+    free(fonte);
+    if (!toks || !toks->ok) {
+        a->info.falhou = 1;
+        snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "SyntaxError");
+        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s", toks ? toks->erro : "sem memoria");
+        if (toks) { a->info.erro_linha = toks->erro_linha; a->info.erro_col = toks->erro_col; ps_lexer_free(toks); }
+        return 2;
+    }
+    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    ps_lexer_free(toks);
+    if (!r || !r->ok) {
+        a->info.falhou = 1;
+        snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "SyntaxError");
+        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s", r ? r->erro : "sem memoria");
+        if (r) { a->info.erro_linha = r->erro_linha; a->info.erro_col = r->erro_col; ps_parse_free(r); }
+        return 2;
+    }
+
+    char moddir[1024];
+    snprintf(moddir, sizeof(moddir), "%s", abspath);
+    { char *barra = strrchr(moddir, '/'); if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", "."); }
+    EstrelaVisita aqui = { abspath, ctx->pilha };
+    int cortou_aqui = 0;
+    EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui };
+    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &filho };
+    PSPrograma *prog = ps_compila_com(r->programa, &res);
+    /* Não compila (sintaxe ou tipo): a classe e a frase do PRIMEIRO erro, as
+     * mesmas que o `carrega_modulo_ps` mostra na linha do import. */
+    if (!prog || !prog->ok) {
+        a->info.falhou = 1;
+        snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "%s",
+                 (prog && prog->erro_do_programa == 2 && prog->nerros_tipo > 0) ? prog->erros_tipo[0].classe
+                 : (prog && prog->erro_do_programa) ? "SyntaxError" : "NotImplementedError");
+        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s", prog ? prog->erro : "sem memoria");
+        if (prog) {
+            a->info.erro_linha = prog->erro_linha; a->info.erro_col = prog->erro_col;
+            /* o erro dele pode estar num módulo mais fundo: o arquivo de lá */
+            if (prog->erro_do_programa == 2 && prog->nerros_tipo > 0 && prog->erros_tipo[0].arquivo[0]) {
+                snprintf(a->info.erro_arquivo, sizeof(a->info.erro_arquivo), "%s", prog->erros_tipo[0].arquivo);
+                a->info.erro_linha = prog->erros_tipo[0].linha_arq; a->info.erro_col = prog->erros_tipo[0].col_arq;
+            }
+            ps_compila_free(prog);
+        }
+        ps_parse_free(r);
+        return 2;
+    }
+
+    a->parse = r;
+    a->info.programa = r->programa;
+    a->info.exportados = prog->exportados;
+    a->info.nexportados = prog->nexportados;
+    a->info.incompleto = cortou_aqui || prog->estrela_incompleta;
+    prog->exportados = NULL; prog->nexportados = 0;
+    ps_compila_free(prog);
+    if (cortou_aqui && ctx->cortou) *ctx->cortou = 1;
+    return 1;
 }
 
 /* Compila e RODA o módulo, e devolve o namespace sobre as globais dele.
@@ -27340,7 +27479,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     }
     EstrelaVisita vis_mod = { abspath, NULL };
     EstrelaCtx ectx_mod = { dir_do_mod, vm->dir_script, &vis_mod, NULL };
-    PSResolvedor res_mod = { estrela_nomes_de, &ectx_mod };
+    PSResolvedor res_mod = { estrela_nomes_de, estrela_modulo_de, &ectx_mod };
     PSPrograma *prog = ps_compila_com(r->programa, &res_mod);
     ps_parse_free(r);
     if (!prog || !prog->ok) {
@@ -28014,6 +28153,9 @@ static void erro_de_compilacao(const PSPrograma *prog, PSErroExec *e)
         snprintf(e->tipos[i].classe, sizeof(e->tipos[i].classe), "%s", prog->erros_tipo[i].classe);
         e->tipos[i].linha = prog->erros_tipo[i].linha;
         e->tipos[i].col = prog->erros_tipo[i].col;
+        snprintf(e->tipos[i].arquivo, sizeof(e->tipos[i].arquivo), "%s", prog->erros_tipo[i].arquivo);
+        e->tipos[i].linha_arq = prog->erros_tipo[i].linha_arq;
+        e->tipos[i].col_arq = prog->erros_tipo[i].col_arq;
     }
     e->ntipos = prog->nerros_tipo;
 }
@@ -28072,7 +28214,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
     }
     EstrelaVisita vis_script = { abs_script, NULL };
     EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL };
-    PSResolvedor res = { estrela_nomes_de, &ectx };
+    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
@@ -28150,7 +28292,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     }
     EstrelaVisita vis_script = { abs_script, NULL };
     EstrelaCtx ectx = { dir_script, dir_script, ancora ? &vis_script : NULL, NULL };
-    PSResolvedor res = { estrela_nomes_de, &ectx };
+    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }

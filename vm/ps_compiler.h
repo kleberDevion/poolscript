@@ -157,6 +157,12 @@ typedef struct {
     char    classe[32];
     int32_t linha;
     int32_t col;
+    /* Erro que na verdade está em OUTRO arquivo — o módulo importado que não
+     * compila, acusado na linha do `import`: o arquivo e a linha de dentro
+     * dele, pro quadro mostrar onde o defeito está (vazio = este arquivo). */
+    char    arquivo[1024];
+    int32_t linha_arq;
+    int32_t col_arq;
 } PSErroTipo;
 
 typedef struct {
@@ -224,8 +230,37 @@ typedef struct {
  * existe rodando, então o checador estático não pode dar nome como
  * inexistente), ou 0 quando o módulo não foi achado ou não compila — aí o `*`
  * fica pro runtime dar o ImportError/SyntaxError de sempre na linha do import. */
+/* Um módulo `.pr` importado, como o checador estático o enxerga: a AST (as
+ * assinaturas das functs e classes, pra conferir chamada e membro antes de
+ * rodar), o que ele exporta (`m.x` que não existe é AttributeError antes de
+ * rodar) e se a lista veio cortada por um ciclo de `*` (aí nome ausente não
+ * é erro). Tudo é do resolvedor e vale até o fim do processo. */
+typedef struct {
+    PSNode      *programa;
+    const char  *caminho;        /* absoluto — vai na mensagem do ImportError */
+    char       **exportados;
+    int32_t      nexportados;
+    int          incompleto;
+    /* O módulo foi achado mas NÃO compila (sintaxe ou tipo): a classe e a
+     * frase do primeiro erro, as mesmas que o import daria rodando. */
+    int          falhou;
+    char         erro_classe[32];
+    char         erro_msg[256];
+    char         erro_arquivo[1024];   /* onde o erro está de verdade (pode ser mais fundo) */
+    int32_t      erro_linha;
+    int32_t      erro_col;
+} PSModuloAst;
+
 typedef struct {
     int  (*nomes_de)(void *ctx, const char *modulo, char ***nomes, int32_t *n);
+    /* O módulo `.pr` que `modulo` (codificado como no `nomes_de`) nomeia: 1 com
+     * a AST e os exportados; 2 quando foi achado mas não compila (`falhou`,
+     * com o erro — o checador acusa na linha do import); 0 quando é nativo,
+     * não foi achado ou está em ciclo (o checador fica cego pra ele, e o
+     * runtime dá o erro de sempre). Regra 5 da tipagem estática: chamada a
+     * funct/método de `.pr` importado tem aridade, nomes e tipos conferidos
+     * antes de rodar. */
+    int  (*modulo_de)(void *ctx, const char *modulo, const PSModuloAst **out);
     void  *ctx;
 } PSResolvedor;
 

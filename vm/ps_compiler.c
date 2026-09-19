@@ -81,6 +81,11 @@ typedef struct {
      * `getenv` ao membro dele */
     const char *mod_nativo;
     const char *membro_nativo;
+    /* `import util` de um `.pr`: a AST e os exportados dele (do resolvedor), e
+     * o nome como foi escrito, pra frase "module 'util' has no attribute".
+     * `from util import f` liga `f` direto ao `decl` de dentro da AST. */
+    const PSModuloAst *mod_pr;
+    const char *mod_pr_nome;
 } SimInfo;
 
 struct Unidade {
@@ -285,6 +290,7 @@ typedef struct {
      * 0 = gravação sem valor conhecido (desempacotamento, import...). */
     struct { int tem_valor; const char *tipo; PSNode *no; const char *declara; PSNode *decl;
              unsigned char decorado; const char *mod_nativo; const char *membro_nativo;
+             const PSModuloAst *mod_pr; const char *mod_pr_nome;
              /* o nome passa a valer OUTRA coisa, de tipo desconhecido — o
               * resultado de um decorador geral sobre a funct */
              unsigned char redefine; } grava;
@@ -588,6 +594,10 @@ static int32_t op_binario(const char *s)
 /* tipagem estática (a seção "tipagem estatica", mais abaixo) */
 enum { T_NAO = 0, T_SIM = 1, T_TALVEZ = 2 };
 static const char *tp_de(C *c, Unidade *u, PSNode *n);
+static int tp_decorador_embutido(PSNode *dec);
+static SimInfo *tp_sim_mod_pr(C *c, Unidade *u, PSNode *n);
+static PSNode *modulo_decl(const PSModuloAst *ma, const char *nome, int *decorado);
+static int tp_classe_importada(C *c, PSNode *d);
 static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declarado);
 static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *tipo, int declarado);
 static void expr(C *c, Unidade *u, PSNode *n);
@@ -1759,7 +1769,7 @@ static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
 static int tp_nome_ligado(C *c, Unidade *u, const char *nome)
 {
     SimInfo *s = tp_sim_de(c, u, nome);
-    return s && (s->estado || s->decl || s->mod_nativo);
+    return s && (s->estado || s->decl || s->mod_nativo || s->mod_pr);
 }
 
 /* ── o tipo de uma expressão ── */
@@ -1985,6 +1995,17 @@ static const char *tp_chamada(C *c, Unidade *u, PSNode *n)
         char buf[64];
         const char *mod = tp_modulo_de(c, u, f->a, buf, sizeof(buf));
         if (mod) return ps_nativo_tem_membro(mod, f->texto) == 1 ? tp_nativo(mod, f->texto) : NULL;
+        {
+            SimInfo *sm = tp_sim_mod_pr(c, u, f->a);
+            if (sm) {
+                int deco = 0;
+                PSNode *d = modulo_decl(sm->mod_pr, f->texto, &deco);
+                if (!d || deco) return NULL;
+                if (d->kind == N_ACTION_DECL) return tp_ret_decl(d);
+                if (d->kind == N_ENTITY_DECL && tp_classe_importada(c, d)) return d->texto;
+                return NULL;
+            }
+        }
         if (f->a->kind == N_NAME && f->a->texto) {
             SimInfo *s = tp_sim_de(c, u, f->a->texto);
             if (s && s->decl && s->decl->kind == N_ENTITY_DECL) {
@@ -2107,6 +2128,14 @@ static const char *tp_de(C *c, Unidade *u, PSNode *n)
                 int k = ps_nativo_tem_membro(mod, n->texto);
                 return k == 2 ? tp_nativo(mod, n->texto) : (k == 1 ? "funct" : NULL);
             }
+            {
+                SimInfo *sm = tp_sim_mod_pr(c, u, n->a);
+                if (sm) {
+                    int deco = 0;
+                    PSNode *d = modulo_decl(sm->mod_pr, n->texto, &deco);
+                    return (d && d->kind == N_ACTION_DECL && !deco) ? "funct" : NULL;
+                }
+            }
             const char *t = tp_de(c, u, n->a);
             if (!t || strchr(t, '|')) return NULL;
             if (tp_tipo_arq(c, t)) {
@@ -2178,31 +2207,160 @@ static int tp_termina(PSNode *s)
 /* O que o import liga, pra próxima gravação: módulo nativo (`import os`), ou
  * o membro dele (`from os import getenv`). Arquivo `.pr` fica de tipo
  * desconhecido aqui. Membro que o nativo não tem é erro antes de rodar. */
+/* ── módulo `.pr` importado (regra 5) ── */
+
+/* O nome do módulo como o runtime o mostra ("module 'sub.pix' has no
+ * attribute"): sem os pontos de nível e sem o marcador de literal; caminho
+ * entre aspas vira só o nome do arquivo, sem pasta nem extensão. */
+static void tp_mod_visivel(const char *enc, char *buf, size_t cap)
+{
+    if (enc[0] == '\x01') {
+        const char *spec = enc + 1;
+        const char *b = strrchr(spec, '/');
+        snprintf(buf, cap, "%s", b ? b + 1 : spec);
+        size_t l = strlen(buf);
+        if (l > 3 && !strcmp(buf + l - 3, ".pr")) buf[l - 3] = '\0';
+        return;
+    }
+    while (*enc == '.') enc++;
+    snprintf(buf, cap, "%s", enc);
+}
+
+/* A funct/classe/model/enum `nome` declarada no topo do módulo (ou dentro de
+ * um bloco de decorador do topo — `decorado` diz se um decorador GERAL pode
+ * tê-la trocado, e aí a assinatura escrita não vale). NULL = não é
+ * declaração do topo (variável, ou nome que o módulo não tem). */
+static PSNode *modulo_decl(const PSModuloAst *ma, const char *nome, int *decorado)
+{
+    if (decorado) *decorado = 0;
+    if (!ma || !ma->programa || !nome) return NULL;
+    for (int32_t i = 0; i < ma->programa->lista.n; i++) {
+        PSNode *s = ma->programa->lista.itens[i];
+        if (!s) continue;
+        if ((s->kind == N_ACTION_DECL || s->kind == N_ENTITY_DECL || s->kind == N_MODEL_DECL
+                || s->kind == N_ENUM_DECL) && s->texto && !strcmp(s->texto, nome))
+            return s;
+        if (s->kind == N_DECORATOR_STMT && s->b && s->b->kind == N_BLOCK) {
+            int deco = s->a && !tp_decorador_embutido(s->a);
+            for (int32_t k = 0; k < s->b->lista.n; k++) {
+                PSNode *d = s->b->lista.itens[k];
+                if (d && (d->kind == N_ACTION_DECL || d->kind == N_ENTITY_DECL) && d->texto
+                        && !strcmp(d->texto, nome)) {
+                    if (decorado) *decorado = deco;
+                    return d;
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+static int modulo_exporta(const PSModuloAst *ma, const char *nome)
+{
+    for (int32_t i = 0; i < ma->nexportados; i++)
+        if (ma->exportados[i] && !strcmp(ma->exportados[i], nome)) return 1;
+    return 0;
+}
+
+/* O nome `n` é um módulo `.pr` importado (`import util`, `import a.b as u`)? */
+static SimInfo *tp_sim_mod_pr(C *c, Unidade *u, PSNode *n)
+{
+    if (!n || n->kind != N_NAME || !n->texto) return NULL;
+    SimInfo *s = tp_nome_ligado(c, u, n->texto) ? tp_sim_de(c, u, n->texto) : NULL;
+    return (s && s->mod_pr && !s->decl) ? s : NULL;
+}
+
+/* Registra a classe importada entre os tipos do arquivo, pra `tp_metodo`,
+ * `tp_campo_tipo` e `tp_classe_tem` (que buscam por NOME) valerem pra ela.
+ * 0 quando já existe OUTRA classe com esse nome aqui: aí não se confere
+ * nada por esse nome — conferir contra a errada seria um veredito falso. */
+static int tp_classe_importada(C *c, PSNode *d)
+{
+    if (!d || d->kind != N_ENTITY_DECL || !d->texto) return 0;
+    PSNode *ja = tp_tipo_arq(c, d->texto);
+    if (ja) return ja == d;
+    tp_coleta_tipos_arq(c, d);
+    return tp_tipo_arq(c, d->texto) == d;
+}
+
 static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro)
 {
     memset(&c->grava, 0, sizeof(c->grava));
     c->grava.no = n;
-    if (!mod || n->i2 != 0 || !ps_nativo_eh_modulo(mod)) return;
-    const char *m = tp_guarda(c, mod);
+    if (!mod) return;
+    if (n->i2 == 0 && ps_nativo_eh_modulo(mod)) {
+        const char *m = tp_guarda(c, mod);
+        if (!membro) {
+            c->grava.tem_valor = 1;
+            c->grava.tipo = "module";
+            c->grava.mod_nativo = m;
+            return;
+        }
+        int k = ps_nativo_tem_membro(mod, membro);
+        if (k == 0) {
+            terro(c, n, "ImportError", "cannot import name '%s' from '%s' (unknown location)", membro, mod);
+            return;
+        }
+        c->grava.tem_valor = 1;
+        if (k == 1) {
+            c->grava.tipo = "funct";
+            c->grava.mod_nativo = m;
+            c->grava.membro_nativo = tp_guarda(c, membro);
+        } else {
+            c->grava.tipo = tp_nativo(mod, membro);
+            if (!c->grava.tipo) c->grava.tem_valor = 0;
+        }
+        return;
+    }
+    /* Módulo `.pr`: o resolvedor entrega a AST e os exportados (compilado
+     * sem rodar, como na expansão do `*`). Sem resolvedor, ou módulo que não
+     * se acha / não compila / em ciclo, o checador fica cego pra ele — o
+     * runtime dá o erro de sempre na linha do import. */
+    const PSModuloAst *ma = NULL;
+    if (!c->resolve || !c->resolve->modulo_de) return;
+    int r = c->resolve->modulo_de(c->resolve->ctx, mod, &ma);
+    if (r == 0 || !ma) return;
+    char vis[256];
+    tp_mod_visivel(mod, vis, sizeof(vis));
+    if (r == 2) {
+        /* o módulo não compila: a frase que o import daria rodando, na
+         * linha do import — sem isto o erro só aparecia executando. O
+         * arquivo e a linha de DENTRO do módulo vão junto, pro quadro. */
+        int32_t antes = c->nerros;
+        terro(c, n, ma->erro_classe, "%s: %s", vis, ma->erro_msg);
+        if (c->nerros > antes) {
+            PSErroTipo *e = &c->erros[c->nerros - 1];
+            snprintf(e->arquivo, sizeof(e->arquivo), "%s", ma->erro_arquivo);
+            e->linha_arq = ma->erro_linha;
+            e->col_arq = ma->erro_col;
+        }
+        c->grava.tem_valor = 1;
+        return;
+    }
     if (!membro) {
         c->grava.tem_valor = 1;
         c->grava.tipo = "module";
-        c->grava.mod_nativo = m;
+        c->grava.mod_pr = ma;
+        c->grava.mod_pr_nome = tp_guarda(c, vis);
         return;
     }
-    int k = ps_nativo_tem_membro(mod, membro);
-    if (k == 0) {
-        terro(c, n, "ImportError", "cannot import name '%s' from '%s' (unknown location)", membro, mod);
+    int deco = 0;
+    PSNode *d = modulo_decl(ma, membro, &deco);
+    if (!d) {
+        /* variável do módulo (tipo só rodando), ou nome que ele não tem —
+         * a mesma frase do ImportError de runtime, antes de rodar */
+        if (!ma->incompleto && !modulo_exporta(ma, membro))
+            terro(c, n, "ImportError", "cannot import name '%s' from '%s' (%s)", membro, vis, ma->caminho);
+        c->grava.tem_valor = 1;
         return;
     }
     c->grava.tem_valor = 1;
-    if (k == 1) {
-        c->grava.tipo = "funct";
-        c->grava.mod_nativo = m;
-        c->grava.membro_nativo = tp_guarda(c, membro);
-    } else {
-        c->grava.tipo = tp_nativo(mod, membro);
-        if (!c->grava.tipo) c->grava.tem_valor = 0;
+    c->grava.decl = d;
+    c->grava.decorado = (unsigned char)deco;
+    if (d->kind == N_ACTION_DECL) c->grava.tipo = "funct";
+    else if (d->kind == N_ENTITY_DECL) {
+        c->grava.tipo = "Entity";
+        if (!tp_classe_importada(c, d)) c->grava.decl = NULL;
     }
 }
 
@@ -2243,9 +2401,11 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
         s->tipo = T;
         s->decl = NULL; s->decorado = 0;
         s->mod_nativo = s->membro_nativo = NULL;
+        s->mod_pr = NULL; s->mod_pr_nome = NULL;
     }
     if (c->grava.decl) { s->decl = c->grava.decl; s->decorado = c->grava.decorado; }
     if (c->grava.mod_nativo) { s->mod_nativo = c->grava.mod_nativo; s->membro_nativo = c->grava.membro_nativo; }
+    if (c->grava.mod_pr) { s->mod_pr = c->grava.mod_pr; s->mod_pr_nome = c->grava.mod_pr_nome; }
     if (!c->grava.tem_valor) {
         if (s->estado == 0) { s->estado = 1; s->tipo = NULL; }
         return (s->estado == 2 || s->tipo) ? T_TALVEZ : T_SIM;
@@ -2401,6 +2561,18 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
                 terro(c, n, "AttributeError", "module '%s' has no attribute '%s'", mod, n->texto);
         }
         return;
+    }
+    {
+        /* módulo `.pr` importado: o que ele não exporta não existe — a
+         * mesma frase do runtime, antes de rodar (ciclo de `*`: sem veredito) */
+        SimInfo *sm = tp_sim_mod_pr(c, u, n->a);
+        if (sm) {
+            const PSModuloAst *ma = sm->mod_pr;
+            if (!ma->incompleto && !modulo_decl(ma, n->texto, NULL) && !modulo_exporta(ma, n->texto))
+                terro(c, n, "AttributeError", "module '%s' has no attribute '%s'",
+                      sm->mod_pr_nome ? sm->mod_pr_nome : "?", n->texto);
+            return;
+        }
     }
     if (n->a->kind == N_NAME && n->a->texto) {
         SimInfo *s = tp_sim_de(c, u, n->a->texto);
@@ -2580,6 +2752,32 @@ static void tp_confere_chamada(C *c, Unidade *u, PSNode *n)
         return;
     }
     if (f->kind != N_MEMBER_ACCESS || !f->texto || !f->a) return;
+    {
+        /* `util.soma(...)` / `util.Conta(...)` de um `.pr` importado: a
+         * assinatura vem da AST do módulo (funct decorada por decorador
+         * geral não vale — pode ter sido trocada) */
+        SimInfo *sm = tp_sim_mod_pr(c, u, f->a);
+        if (sm) {
+            int deco = 0;
+            PSNode *d = modulo_decl(sm->mod_pr, f->texto, &deco);
+            if (!d || deco) return;
+            if (d->kind == N_ACTION_DECL) {
+                tp_confere_args(c, u, n, d->texto ? d->texto : "?", &d->lista, 0, 0, NULL);
+                return;
+            }
+            if (d->kind == N_ENTITY_DECL && tp_classe_importada(c, d)) {
+                PSNode *init = tp_metodo(c, d->texto, "__init__", 0);
+                if (init) {
+                    if (!tp_metodo_decorado(c, d->texto, init))
+                        tp_confere_args(c, u, n, "__init__", &init->lista, 1, 0, NULL);
+                    return;
+                }
+                if (d->lista2.n == 0 && d->lista2_alias.n > 0)
+                    tp_confere_args(c, u, n, "__init__", &d->lista2_alias, 1, 0, d->texto);
+            }
+            return;
+        }
+    }
     if (f->a->kind == N_NAME && f->a->texto) {
         SimInfo *s = tp_sim_de(c, u, f->a->texto);
         if (s && s->decl && s->decl->kind == N_ENTITY_DECL && s->decl->texto && !s->decorado) {

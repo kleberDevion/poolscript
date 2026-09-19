@@ -183,6 +183,11 @@ static int reporta(PSErroExec *e, const char *origem)
                 if (i) fputc('\n', stderr);
                 fprintf(stderr, "%s: %s\n", e->tipos[i].classe, e->tipos[i].msg);
                 imprime_quadro(origem, e->tipos[i].linha, e->tipos[i].col);
+                /* modulo importado que nao compila: o quadro de DENTRO dele,
+                 * depois do quadro do import (como o traceback: o mais fundo
+                 * por ultimo) */
+                if (e->tipos[i].arquivo[0])
+                    imprime_quadro(e->tipos[i].arquivo, e->tipos[i].linha_arq, e->tipos[i].col_arq);
             }
             if (n == 0) {
                 fprintf(stderr, "%s: %s\n", e->tipo_nome[0] ? e->tipo_nome : "AttributedValueError", e->msg);
@@ -618,7 +623,14 @@ static int cmd_check(const char *arquivo)
             json_str(e.tipos[i].classe);
             printf(",\"msg\":");
             json_str(e.tipos[i].msg);
-            printf(",\"linha\":%d,\"coluna\":%d}", e.tipos[i].linha, e.tipos[i].col);
+            printf(",\"linha\":%d,\"coluna\":%d", e.tipos[i].linha, e.tipos[i].col);
+            /* o erro esta em outro arquivo (modulo importado que nao compila) */
+            if (e.tipos[i].arquivo[0]) {
+                printf(",\"arquivo\":");
+                json_str(e.tipos[i].arquivo);
+                printf(",\"linha_arquivo\":%d,\"coluna_arquivo\":%d", e.tipos[i].linha_arq, e.tipos[i].col_arq);
+            }
+            putchar('}');
         }
         putchar(']');
     }
