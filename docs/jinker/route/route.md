@@ -105,6 +105,33 @@ O que o cliente recebe:
 | `{"nome": "<21 letras>", "idade": 1}` | `422` · `campo 'nome': no maximo 20 caracteres, veio 21` |
 | `{isto nao e json` | `400` · `corpo nao e JSON valido` |
 
+O model valida o **dado**, não só a forma
+([08-model-e-enum §8.1.2](../../linguagem/08-model-e-enum.md)): `regex`,
+`in`/`not_in`, `min`/`max`, `optional`, outro model como tipo e `list(of=…)`.
+Cada um tem a sua frase, e no aninhado ela traz o **caminho** do campo:
+
+```ps
+model Endereco() { cep: str(regex="^[0-9]{5}-[0-9]{3}$") }
+model Cadastro() {
+    nome:     str(regex="^[A-Za-z ]+$")
+    idade:    int(min=18, max=120)
+    papel:    str(in=["admin", "user"])
+    status:   str(not_in=["banido"])
+    endereco: Endereco
+    tags:     list(of=str, length=3)
+}
+```
+
+| falha | `422` · `message` |
+|---|---|
+| regex | `campo 'nome': nao casa com o padrao ^[A-Za-z ]+$` |
+| min / max | `campo 'idade': no minimo 18, veio 12` · `campo 'idade': no maximo 120, veio 130` |
+| in | `campo 'papel': esperava um de ['admin', 'user'], veio 'x'` |
+| not_in | `campo 'status': 'banido' nao e permitido` |
+| aninhado | `campo 'endereco.cep': nao casa com o padrao …` · `campo 'endereco': esperava objeto, veio str` |
+| `of` | `campo 'tags[1]': esperava str, veio int` |
+| `length` em list | `campo 'tags': no maximo 3 itens, veio 4` |
+
 **JSON quebrado é `400`, não `422`**, e a diferença não é decorativa: `422`
 significa "entendi o que você mandou e ele não serve", `400` significa "não
 consegui nem ler". Quem recebe `422` corrige um campo; quem recebe `400`

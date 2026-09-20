@@ -559,6 +559,54 @@ confere("JSON quebrado e 400, nao 422", r.status_code == 400)
 r = http_post(RAIZ + "/eco", body="corpo qualquer")
 confere("rota SEM model nao e afetada", r.status_code == 200)
 
+# O model valida o DADO: regex, in/not_in, min/max, optional, aninhado, of.
+# Cada frase abaixo e a que o cliente recebe no 422 — com o CAMINHO do campo
+# quando e aninhado (`endereco.cep`) ou item de lista (`tags[0]`).
+funct cadastro(muda)
+{
+    corpo = {"nome": "ana", "idade": 30, "papel": "admin", "status": "ativo",
+             "endereco": {"rua": "x", "cep": "12345-678"}, "tags": ["a", "b"]}
+    for each k in muda.keys()
+    {
+        corpo[k] = muda[k]
+    }
+    return http_post(RAIZ + "/modelo2", body=corpo)
+}
+r = cadastro({})
+confere("model com todos os parametros: dado bom passa", r.status_code == 200 and r.get_json("ok") == "ana")
+r = cadastro({"apelido": Null})
+confere("optional=true aceita null", r.status_code == 200)
+r = cadastro({"nome": "ana1"})
+confere("regex que nao casa: 422 com o padrao",
+        r.status_code == 422 and "campo 'nome': nao casa com o padrao ^[A-Za-z ]+$" in r.text)
+r = cadastro({"idade": 12})
+confere("min: 422 dizendo o minimo e o que veio",
+        r.status_code == 422 and "campo 'idade': no minimo 18, veio 12" in r.text)
+r = cadastro({"idade": 130})
+confere("max: 422 dizendo o maximo e o que veio",
+        r.status_code == 422 and "campo 'idade': no maximo 120, veio 130" in r.text)
+r = cadastro({"papel": "x"})
+confere("in: 422 listando os valores aceitos",
+        r.status_code == 422 and "campo 'papel': esperava um de ['admin', 'user'], veio 'x'" in r.text)
+r = cadastro({"status": "banido"})
+confere("not_in: 422 dizendo que o valor e proibido",
+        r.status_code == 422 and "campo 'status': 'banido' nao e permitido" in r.text)
+r = cadastro({"endereco": {"rua": "x", "cep": "1"}})
+confere("aninhado: a frase traz o caminho do campo",
+        r.status_code == 422 and "campo 'endereco.cep': nao casa com o padrao" in r.text)
+r = cadastro({"endereco": {"cep": "12345-678"}})
+confere("aninhado: campo faltando dentro do model de dentro",
+        r.status_code == 422 and "campo 'endereco.rua': faltando" in r.text)
+r = cadastro({"endereco": "x"})
+confere("tipo model recebendo o que nao e objeto",
+        r.status_code == 422 and "campo 'endereco': esperava objeto, veio str" in r.text)
+r = cadastro({"tags": ["a", 1]})
+confere("list(of=str): item errado diz a posicao",
+        r.status_code == 422 and "campo 'tags[1]': esperava str, veio int" in r.text)
+r = cadastro({"tags": ["a", "b", "c", "d"]})
+confere("length na list conta itens",
+        r.status_code == 422 and "campo 'tags': no maximo 3 itens, veio 4" in r.text)
+
 # ── cookie ──────────────────────────────────────────────────────────────────
 #
 # Não havia UMA ocorrência de "cookie" no motor. É a feature mais usada depois

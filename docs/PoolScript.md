@@ -1,4 +1,4 @@
-# PoolScript v15.91.18
+# PoolScript v15.91.19
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.91.18 [PSVM]
+# PoolScript 15.91.19 [PSVM]
 ```
 
 ---
@@ -453,6 +453,15 @@ Campos disponíveis:
 | `int(length=N)` | `idade: int(length=3)` | inteiro com máx N dígitos |
 | `flo` | `altura: flo` | número decimal |
 | `bool` | `ativo: bool` | true ou false |
+| `list`, `dict` | `tags: list(of=str)` · `extras: dict` | lista (cada item do tipo `of`) · objeto JSON |
+| outro model | `endereco: Endereco` | dict que passa naquele model (aninhado) |
+
+Parâmetros que validam o **dado** (qualquer ordem, valores literais):
+`regex="…"` (str), `in=[…]` e `not_in=[…]` (valores aceitos/proibidos),
+`min=N`/`max=N` (int, flo), `optional=true` (pode faltar ou vir null),
+`of=T` (item da lista). Na rota do jinker com `model=`, o 422 diz o campo e o
+motivo — `campo 'idade': no minimo 18, veio 12`. Detalhe em
+[08-model-e-enum](linguagem/08-model-e-enum.md).
 
 ---
 

@@ -122,11 +122,34 @@ typedef struct {
     int32_t  ntip;
 } PSClassDef;
 
-/* Campo de `model`, na forma neutra do compilador. */
+/* Literal de parâmetro do campo de model (`in=[…]`, `not_in=[…]`): o tipo
+ * do campo diz qual membro vale (`s` em str, `i` em int/bool, `d` em flo). */
+typedef struct {
+    int32_t tipo;
+    int64_t i;
+    double  d;
+    char   *s;
+} PSModelLit;
+
+/* Campo de `model`, na forma neutra do compilador. Além do tipo e do
+ * `length`, os parâmetros que validam o DADO: `regex` (str), `in`/`not_in`
+ * (valores permitidos/proibidos), `min`/`max` (int, flo), `optional`
+ * (pode faltar ou ser null), `of` (tipo de cada item de uma list) e o
+ * tipo que é OUTRO model (estrutura aninhada). Tudo literal, decidido na
+ * compilação. */
 typedef struct {
     char   *nome;
-    int32_t tipo;      /* TIPO_* da VM */
-    int32_t length;    /* -1 = sem limite */
+    int32_t tipo;         /* TIPO_* da VM; -1 = outro model (`tipo_model`) */
+    char   *tipo_model;   /* nome do model aninhado, quando tipo == -1 */
+    int32_t length;       /* -1 = sem limite (str: caracteres; int: dígitos; list: itens) */
+    char   *regex;        /* NULL = sem padrão */
+    PSModelLit *in;       int32_t n_in;
+    PSModelLit *not_in;   int32_t n_not_in;
+    int     tem_min, tem_max;
+    double  min, max;
+    int     optional;
+    int32_t of_tipo;      /* -1 = sem `of`; TIPO_* do item; -2 = model (`of_model`) */
+    char   *of_model;
 } PSModelCampoDef;
 
 typedef struct {

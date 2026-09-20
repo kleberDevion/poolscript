@@ -319,11 +319,25 @@ typedef struct {
     int32_t  idx;      /* posição em MODULOS */
 } PSModulo;
 
-/* Campo de um `model`: nome, tipo (TIPO_*) e limite de comprimento. */
+/* Campo de um `model`: nome, tipo (TIPO_*; -1 = outro model, `tipo_model`),
+ * limite de comprimento e os parâmetros que validam o DADO — o `regex` já
+ * COMPILADO (uma vez, quando o descritor entra na VM; cada requisição só
+ * casa), `in`/`not_in` (literais), `min`/`max`, `optional`, `of` (o tipo de
+ * cada item de uma list; -2 = model, `of_model`). */
 typedef struct {
     char   *nome;
     int32_t tipo;
+    char   *tipo_model;
     int32_t length;    /* -1 = sem limite */
+    char   *regex;
+    PSRegex *rx;
+    PSModelLit *in;      int32_t n_in;
+    PSModelLit *not_in;  int32_t n_not_in;
+    int     tem_min, tem_max;
+    double  min, max;
+    int     optional;
+    int32_t of_tipo;
+    char   *of_model;
 } PSModelCampo;
 
 typedef struct {
@@ -331,6 +345,7 @@ typedef struct {
     char         *nome;
     PSModelCampo *campos;
     int32_t       ncampos;
+    void         *dono;      /* a VM que tem a tabela de models (pro aninhado, por nome) */
 } PSModel;
 
 /* `enum Cor { RED, GREEN }` — namespace de constantes. `nome` e `nomes`
@@ -2695,6 +2710,9 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
             /* o caminho pode ser longo: %.200s pra não estourar o buffer */
             snprintf(buf, cap, "<arquivo %.200s>", ((PSArquivo *)v->as.obj)->caminho);
             return 1;
+        case OBJ_MODEL:     /* `str(Usuario)` saía "" — só o `post` sabia */
+            snprintf(buf, cap, "<model %.200s>", ((PSModel *)v->as.obj)->nome ? ((PSModel *)v->as.obj)->nome : "?");
+            return 1;
         case OBJ_SQLCONN:   snprintf(buf, cap, "<sqlite3.Connection>"); return 1;
         case OBJ_SQLCUR:    snprintf(buf, cap, "<sqlite3.Cursor>");     return 1;
         case OBJ_MAILSRV:   snprintf(buf, cap, "<MailServer>");         return 1;
@@ -3192,6 +3210,14 @@ static int valor_para_texto(TxtBuf *t, const Value *v, int dentro)
             }
             if (v->as.obj->type == OBJ_JPROXY)
                 return txt_put(t, "<jinker.request>", 16);
+            if (v->as.obj->type == OBJ_MODEL) {
+                char buf[300];
+                const char *nm = ((PSModel *)v->as.obj)->nome;
+                int nn = snprintf(buf, sizeof(buf), "<model %s>", nm ? nm : "?");
+                if (nn < 0) nn = 0;
+                if (nn >= (int)sizeof(buf)) nn = (int)sizeof(buf) - 1;
+                return txt_put(t, buf, nn);
+            }
             if (v->as.obj->type == OBJ_ENUM) {
                 char buf[300];
                 const char *nm = ((PSEnum *)v->as.obj)->nome;
@@ -9288,43 +9314,17 @@ static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
 /* Um item casa o `count` se bate no TIPO e, quando há valor, é igual a ele. */
 static int count_casa(const Value *item, int64_t tipo, const Value *val, int tem_val);
 
+static int model_valida_em(const VM *vm, const PSModelCampo *campos, int32_t ncampos, const Value *v,
+                           const char *prefixo, char *campo, size_t ccap, char *motivo, size_t mcap, int prof);
+
 /* `data == Usuario`: o dict valida contra o model. Campo ausente, tipo
- * errado ou comprimento estourado reprovam; chave extra passa. */
+ * errado, comprimento estourado, regex que não casa, valor fora de `in`/
+ * dentro de `not_in`, fora da faixa, item de lista errado ou model aninhado
+ * que reprova — tudo reprova; chave extra passa. É a MESMA função da rota
+ * (`model_valida_detalhe`), só que sem a frase. */
 static int model_valida(const PSModel *m, const Value *v)
 {
-    if (!EH_DICT(*v)) return 0;
-    PSDict *d = COMO_DICT(*v);
-    for (int32_t i = 0; i < m->ncampos; i++) {
-        const PSModelCampo *f = &m->campos[i];
-        /* chave pelo nome do campo */
-        Value achado = MK_NULL();
-        int tem = 0;
-        for (int k = 0; k < d->usados && !tem; k++) {
-            if (d->entradas[k].estado != 1) continue;
-            Value ch = d->entradas[k].chave;
-            if (EH_STRING(ch) && strcmp(COMO_STRING(ch)->chars, f->nome) == 0) {
-                achado = d->entradas[k].valor;
-                tem = 1;
-            }
-        }
-        if (!tem || achado.t == V_NULL) return 0;
-        /* tipo: int aceita flo e vice-versa (validação de dado, não de
-         * representação — é o que o interpretador faz) */
-        if (!model_campo_aceita(f->tipo, &achado)) return 0;
-        if (f->length >= 0) {
-            if (f->tipo == TIPO_STR) {
-                PSString *sv = COMO_STRING(achado);
-                if (utf8_conta(sv->chars, sv->len) > f->length) return 0;
-            } else if (f->tipo == TIPO_INT) {
-                int64_t x = (achado.t == V_INT) ? achado.as.i : (int64_t)achado.as.d;
-                if (x < 0) x = -x;
-                int dig = 1;
-                while (x >= 10) { x /= 10; dig++; }
-                if (dig > f->length) return 0;
-            }
-        }
-    }
-    return 1;
+    return model_valida_em((const VM *)m->dono, m->campos, m->ncampos, v, "", NULL, 0, NULL, 0, 0);
 }
 
 /* A MESMA validação do `==`, dizendo QUAL campo reprovou e POR QUÊ.
@@ -9359,17 +9359,150 @@ static int model_campo_aceita(int32_t tipo, const Value *v)
     }
 }
 
-static int model_valida_detalhe(const PSModel *m, const Value *v,
-                                char *campo, size_t ccap, char *motivo, size_t mcap)
+/* ── os descritores de model na VM ─────────────────────────────────────────
+ * O campo do descritor do compilador vira o campo da VM: strings copiadas e
+ * o `regex` COMPILADO uma vez aqui. Os dois pontos que copiam descritores
+ * (programa principal e módulo importado) e o destrutor usam estes. */
+static PSModelLit *mlits_copia(const PSModelLit *v, int32_t n)
 {
-    campo[0] = '\0'; motivo[0] = '\0';
-    if (!EH_DICT(*v)) {
-        snprintf(motivo, mcap, "o corpo precisa ser um objeto JSON");
-        return 0;
+    if (n <= 0) return NULL;
+    PSModelLit *o = calloc((size_t)n, sizeof(*o));
+    if (!o) return NULL;
+    for (int32_t i = 0; i < n; i++) {
+        o[i] = v[i];
+        if (!v[i].s) continue;
+        o[i].s = strdup(v[i].s);
+        if (!o[i].s) { for (int32_t k = 0; k < i; k++) free(o[k].s); free(o); return NULL; }
     }
+    return o;
+}
+static void mlits_solta_vm(PSModelLit *v, int32_t n)
+{
+    for (int32_t i = 0; i < n; i++) free(v[i].s);
+    free(v);
+}
+static int copia_campo_model(PSModelCampo *d, const PSModelCampoDef *o)
+{
+    memset(d, 0, sizeof(*d));
+    d->tipo = o->tipo; d->length = o->length;
+    d->tem_min = o->tem_min; d->tem_max = o->tem_max; d->min = o->min; d->max = o->max;
+    d->optional = o->optional; d->of_tipo = o->of_tipo;
+    d->nome = strdup(o->nome ? o->nome : "?");
+    if (!d->nome) return -1;
+    if (o->tipo_model && !(d->tipo_model = strdup(o->tipo_model))) return -1;
+    if (o->of_model && !(d->of_model = strdup(o->of_model))) return -1;
+    if (o->regex) {
+        char e[128];
+        d->regex = strdup(o->regex);
+        d->rx = ps_regex_compila(o->regex, (int)strlen(o->regex), e, sizeof(e));
+        if (!d->regex || !d->rx) return -1;
+    }
+    if (o->n_in > 0 && !(d->in = mlits_copia(o->in, o->n_in))) return -1;
+    d->n_in = o->n_in;
+    if (o->n_not_in > 0 && !(d->not_in = mlits_copia(o->not_in, o->n_not_in))) return -1;
+    d->n_not_in = o->n_not_in;
+    return 0;
+}
+static void solta_campo_model(PSModelCampo *d)
+{
+    free(d->nome); free(d->tipo_model); free(d->of_model); free(d->regex);
+    if (d->rx) ps_regex_free(d->rx);
+    mlits_solta_vm(d->in, d->n_in);
+    mlits_solta_vm(d->not_in, d->n_not_in);
+}
+
+/* O model `nome` na tabela da VM — o do programa e os dos módulos
+ * importados (anexados quando o import roda, por isso a busca é por nome e
+ * na hora de validar, não na compilação). */
+static int acha_model_por_nome(const VM *vm, const char *nome, PSModelCampo **campos, int32_t *n)
+{
+    if (!vm || !nome) return 0;
+    for (int32_t i = 0; i < vm->nmodels; i++)
+        if (vm->model_nomes[i] && strcmp(vm->model_nomes[i], nome) == 0) {
+            *campos = vm->model_campos[i]; *n = vm->model_ncampos[i];
+            return 1;
+        }
+    return 0;
+}
+
+/* Como o valor aparece na frase do 422: 'x', 12, 1.5, true. */
+static void num_texto(double x, char *buf, size_t cap)
+{
+    if (x == (double)(long long)x && x > -1e15 && x < 1e15) snprintf(buf, cap, "%lld", (long long)x);
+    else snprintf(buf, cap, "%g", x);
+}
+static void mlit_texto(const PSModelLit *l, char *buf, size_t cap)
+{
+    switch (l->tipo) {
+        case TIPO_STR:  snprintf(buf, cap, "'%s'", l->s ? l->s : ""); break;
+        case TIPO_BOOL: snprintf(buf, cap, "%s", l->i ? "true" : "false"); break;
+        case TIPO_INT:  snprintf(buf, cap, "%lld", (long long)l->i); break;
+        default:        num_texto(l->d, buf, cap); break;
+    }
+}
+static void valor_curto(const Value *v, char *buf, size_t cap)
+{
+    if (EH_STRING(*v))        snprintf(buf, cap, "'%.100s'", COMO_STRING(*v)->chars);
+    else if (v->t == V_INT)   snprintf(buf, cap, "%lld", (long long)v->as.i);
+    else if (v->t == V_FLOAT) num_texto(v->as.d, buf, cap);
+    else if (v->t == V_BOOL)  snprintf(buf, cap, "%s", v->as.b ? "true" : "false");
+    else                      snprintf(buf, cap, "%s", nome_do_tipo_valor(*v));
+}
+static int mlit_igual(const PSModelLit *l, const Value *v)
+{
+    switch (l->tipo) {
+        case TIPO_STR:  return EH_STRING(*v) && strcmp(COMO_STRING(*v)->chars, l->s ? l->s : "") == 0;
+        case TIPO_BOOL: return v->t == V_BOOL && (v->as.b != 0) == (l->i != 0);
+        case TIPO_INT:  return (v->t == V_INT && v->as.i == l->i) || (v->t == V_FLOAT && v->as.d == (double)l->i);
+        default:        return (v->t == V_FLOAT && v->as.d == l->d) || (v->t == V_INT && (double)v->as.i == l->d);
+    }
+}
+
+#define M_MOTIVO(...) do { if (motivo) snprintf(motivo, mcap, __VA_ARGS__); } while (0)
+#define M_CAMPO(rot)  do { if (campo) snprintf(campo, ccap, "%s", (rot)); } while (0)
+
+/* O valor tem o TIPO do campo (ou do item de lista)? `tipo` -1 = outro
+ * model: o valor tem que ser um dict que passa nele, e a conferência desce
+ * com o caminho (`endereco.cep`). */
+static int model_tipo_ok(const VM *vm, int32_t tipo, const char *tipo_model, const Value *um, const char *rot,
+                         char *campo, size_t ccap, char *motivo, size_t mcap, int prof)
+{
+    if (tipo == -1) {
+        if (!EH_DICT(*um)) {
+            M_CAMPO(rot); M_MOTIVO("esperava objeto, veio %s", nome_do_tipo_valor(*um)); return 0;
+        }
+        PSModelCampo *cs = NULL; int32_t nc = 0;
+        if (!acha_model_por_nome(vm, tipo_model, &cs, &nc)) {
+            M_CAMPO(rot); M_MOTIVO("model '%s' nao existe", tipo_model ? tipo_model : "?"); return 0;
+        }
+        if (prof > 32) { M_CAMPO(rot); M_MOTIVO("aninhamento fundo demais"); return 0; }
+        return model_valida_em(vm, cs, nc, um, rot, campo, ccap, motivo, mcap, prof + 1);
+    }
+    if (!model_campo_aceita(tipo, um)) {
+        M_CAMPO(rot); M_MOTIVO("esperava %s, veio %s", model_nome_tipo(tipo), nome_do_tipo_valor(*um)); return 0;
+    }
+    return 1;
+}
+
+/* A validação, UMA só pros dois usos: `==` (só True/False — `campo` e
+ * `motivo` NULL) e a rota `model=` (422 dizendo QUAL campo e POR QUÊ). O
+ * comentário antigo pedia que as duas cópias não divergissem; agora não há
+ * cópia. `prefixo` é o caminho até aqui (`endereco`), pro campo aninhado
+ * sair como `endereco.cep` e o item de lista como `tags[2]`. */
+static int model_valida_em(const VM *vm, const PSModelCampo *campos, int32_t ncampos, const Value *v,
+                           const char *prefixo, char *campo, size_t ccap, char *motivo, size_t mcap, int prof)
+{
+    if (campo) campo[0] = '\0';
+    if (motivo) motivo[0] = '\0';
+    if (!EH_DICT(*v)) { M_MOTIVO("o corpo precisa ser um objeto JSON"); return 0; }
     PSDict *d = COMO_DICT(*v);
-    for (int32_t i = 0; i < m->ncampos; i++) {
-        const PSModelCampo *f = &m->campos[i];
+    for (int32_t i = 0; i < ncampos; i++) {
+        const PSModelCampo *f = &campos[i];
+        /* o caminho cabe no `campo[128]` da rota: caminho fundo é cortado */
+        char rot[128];
+        if (prefixo && prefixo[0]) snprintf(rot, sizeof(rot), "%.60s.%.60s", prefixo, f->nome);
+        else                       snprintf(rot, sizeof(rot), "%.120s", f->nome);
+        /* chave pelo nome do campo */
         Value um = MK_NULL();
         int tem = 0;
         for (int k = 0; k < d->usados && !tem; k++) {
@@ -9380,40 +9513,94 @@ static int model_valida_detalhe(const PSModel *m, const Value *v,
                 tem = 1;
             }
         }
-        snprintf(campo, ccap, "%s", f->nome);
-        if (!tem)              { snprintf(motivo, mcap, "faltando"); return 0; }
-        if (um.t == V_NULL)    { snprintf(motivo, mcap, "nao pode ser null"); return 0; }
-
-        Value so_esse = *v;
-        (void)so_esse;
-        int tipo_ok = model_campo_aceita(f->tipo, &um);
-        if (!tipo_ok) {
-            snprintf(motivo, mcap, "esperava %s, veio %s",
-                     model_nome_tipo(f->tipo), nome_do_tipo_valor(um));
-            return 0;
+        if (!tem || um.t == V_NULL) {
+            if (f->optional) continue;               /* pode faltar ou vir null */
+            M_CAMPO(rot); M_MOTIVO("%s", tem ? "nao pode ser null" : "faltando"); return 0;
         }
+        /* tipo: int aceita flo e vice-versa (validação de dado, não de
+         * representação); outro model desce nele */
+        if (!model_tipo_ok(vm, f->tipo, f->tipo_model, &um, rot, campo, ccap, motivo, mcap, prof)) return 0;
+        if (f->tipo == -1) continue;
         if (f->length >= 0) {
             if (f->tipo == TIPO_STR) {
                 PSString *sv = COMO_STRING(um);
                 int q = utf8_conta(sv->chars, sv->len);
-                if (q > f->length) {
-                    snprintf(motivo, mcap, "no maximo %d caracteres, veio %d", f->length, q);
-                    return 0;
-                }
+                if (q > f->length) { M_CAMPO(rot); M_MOTIVO("no maximo %d caracteres, veio %d", f->length, q); return 0; }
             } else if (f->tipo == TIPO_INT) {
                 int64_t x = (um.t == V_INT) ? um.as.i : (int64_t)um.as.d;
                 if (x < 0) x = -x;
                 int dig = 1;
                 while (x >= 10) { x /= 10; dig++; }
-                if (dig > f->length) {
-                    snprintf(motivo, mcap, "no maximo %d digitos, veio %d", f->length, dig);
-                    return 0;
+                if (dig > f->length) { M_CAMPO(rot); M_MOTIVO("no maximo %d digitos, veio %d", f->length, dig); return 0; }
+            } else if (f->tipo == TIPO_LIST) {
+                int32_t q = COMO_LIST(um)->len;
+                if (q > f->length) { M_CAMPO(rot); M_MOTIVO("no maximo %d itens, veio %d", f->length, (int)q); return 0; }
+            }
+        }
+        if (f->rx && f->tipo == TIPO_STR) {
+            PSString *sv = COMO_STRING(um);
+            RxCaptura cap;
+            /* -1 (backtracking demais) reprova como "não casa": aqui não há
+             * canal de erro — o `==` responde só True/False */
+            if (ps_regex_casa_tudo(f->rx, sv->chars, sv->len, &cap) != 1) {
+                M_CAMPO(rot); M_MOTIVO("nao casa com o padrao %.120s", f->regex ? f->regex : ""); return 0;
+            }
+        }
+        if (f->n_in > 0) {
+            int achou = 0;
+            for (int32_t k = 0; k < f->n_in && !achou; k++) achou = mlit_igual(&f->in[k], &um);
+            if (!achou) {
+                if (motivo) {
+                    char lista[200] = "", um_txt[120], vt[120];
+                    size_t w = 0;
+                    for (int32_t k = 0; k < f->n_in && w < sizeof(lista) - 6; k++) {
+                        mlit_texto(&f->in[k], um_txt, sizeof(um_txt));
+                        w += (size_t)snprintf(lista + w, sizeof(lista) - w, "%s%s", k ? ", " : "", um_txt);
+                    }
+                    valor_curto(&um, vt, sizeof(vt));
+                    M_CAMPO(rot); M_MOTIVO("esperava um de [%s], veio %s", lista, vt);
                 }
+                return 0;
+            }
+        }
+        for (int32_t k = 0; k < f->n_not_in; k++) {
+            if (!mlit_igual(&f->not_in[k], &um)) continue;
+            if (motivo) { char vt[120]; valor_curto(&um, vt, sizeof(vt)); M_CAMPO(rot); M_MOTIVO("%s nao e permitido", vt); }
+            return 0;
+        }
+        if ((f->tem_min || f->tem_max) && (um.t == V_INT || um.t == V_FLOAT)) {
+            double x = um.t == V_INT ? (double)um.as.i : um.as.d;
+            char lim[64], vt[64];
+            if (f->tem_min && x < f->min) {
+                num_texto(f->min, lim, sizeof(lim)); num_texto(x, vt, sizeof(vt));
+                M_CAMPO(rot); M_MOTIVO("no minimo %s, veio %s", lim, vt); return 0;
+            }
+            if (f->tem_max && x > f->max) {
+                num_texto(f->max, lim, sizeof(lim)); num_texto(x, vt, sizeof(vt));
+                M_CAMPO(rot); M_MOTIVO("no maximo %s, veio %s", lim, vt); return 0;
+            }
+        }
+        if (f->tipo == TIPO_LIST && f->of_tipo != -1) {
+            PSList *l = COMO_LIST(um);
+            int32_t tipo_item = f->of_tipo == -2 ? -1 : f->of_tipo;
+            for (int32_t k = 0; k < l->len; k++) {
+                char rot_item[128];
+                snprintf(rot_item, sizeof(rot_item), "%.100s[%d]", rot, (int)k);
+                if (!model_tipo_ok(vm, tipo_item, f->of_model, &l->itens[k], rot_item, campo, ccap, motivo, mcap, prof))
+                    return 0;
             }
         }
     }
-    campo[0] = '\0';
+    if (campo) campo[0] = '\0';
     return 1;
+}
+#undef M_MOTIVO
+#undef M_CAMPO
+
+static int model_valida_detalhe(const PSModel *m, const Value *v,
+                                char *campo, size_t ccap, char *motivo, size_t mcap)
+{
+    return model_valida_em((const VM *)m->dono, m->campos, m->ncampos, v, "", campo, ccap, motivo, mcap, 0);
 }
 
 /* ── a tabela: uma linha por tipo, nome e pertinência juntos ───────────────
@@ -25745,6 +25932,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             m->nome = vm->model_nomes[arg];
             m->campos = vm->model_campos[arg];
             m->ncampos = vm->model_ncampos[arg];
+            m->dono = vm;
             vm->alocado += sizeof(PSModel);
             stack[sp++] = MK_OBJ(m);
             break;
@@ -26233,7 +26421,7 @@ static void libera_vm(VM *vm)
         for (int32_t i = 0; i < vm->nmodels; i++) {
             free(vm->model_nomes[i]);
             for (int32_t k = 0; k < vm->model_ncampos[i]; k++)
-                free(vm->model_campos[i][k].nome);
+                solta_campo_model(&vm->model_campos[i][k]);
             free(vm->model_campos[i]);
         }
         free(vm->model_nomes);
@@ -26368,9 +26556,8 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
                                 ? calloc((size_t)o->ncampos, sizeof(PSModelCampo)) : NULL;
             if (o->ncampos > 0 && !vm->model_campos[i]) return -1;
             for (int32_t k = 0; k < o->ncampos; k++) {
-                vm->model_campos[i][k].nome = strdup(o->campos[k].nome ? o->campos[k].nome : "?");
-                vm->model_campos[i][k].tipo = o->campos[k].tipo;
-                vm->model_campos[i][k].length = o->campos[k].length;
+                vm->model_ncampos[i] = k + 1;    /* o destrutor solta só o que já nasceu */
+                if (copia_campo_model(&vm->model_campos[i][k], &o->campos[k]) != 0) return -1;
             }
             vm->model_ncampos[i] = o->ncampos;   /* só depois do vetor existir */
         }
@@ -26663,11 +26850,8 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
             vm->model_ncampos[d] = o->ncampos;
             vm->model_campos[d]  = o->ncampos > 0
                                  ? calloc((size_t)o->ncampos, sizeof(PSModelCampo)) : NULL;
-            for (int32_t k = 0; k < o->ncampos; k++) {
-                vm->model_campos[d][k].nome   = strdup(o->campos[k].nome ? o->campos[k].nome : "?");
-                vm->model_campos[d][k].tipo   = o->campos[k].tipo;
-                vm->model_campos[d][k].length = o->campos[k].length;
-            }
+            for (int32_t k = 0; k < o->ncampos; k++)
+                if (copia_campo_model(&vm->model_campos[d][k], &o->campos[k]) != 0) return -1;
         }
         vm->nmodels = nmn;
     }

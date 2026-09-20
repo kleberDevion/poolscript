@@ -1331,7 +1331,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "v:  3\nn:  2   1.0", NULL, 0 },
 { "dif #439",
   "model M() {\n    nome: str(tamanho=10)\n}\n",
-  "", "SyntaxError: no campo do model o unico parametro e 'length' \xe2\x80\x94 escreva str(length=N)", 2 },
+  "", "SyntaxError: parametro 'tamanho' nao existe no campo do model: length, regex, in, not_in, min, max, optional, of", 2 },
 { "dif #440",
   "model M() {\n    nome: str(length=10)\n}\npost(\"ok\")\n",
   "ok", NULL, 0 },

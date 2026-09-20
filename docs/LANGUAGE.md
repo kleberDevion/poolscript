@@ -693,7 +693,11 @@ if (data == Usuario) {
 ```
 
 Campo ausente, tipo errado, ou string/int que excede o `length` declarado →
-inválido. Tipos aceitos: `str(length=N)`, `int(length=N)`, `flo`, `bool`.
+inválido. Tipos aceitos: `str`, `int`, `flo`, `bool`, `list`, `dict` e o nome
+de outro `model` (aninhado). Os parâmetros entre parênteses validam o
+**dado**: `length=N`, `regex="…"`, `in=[…]`, `not_in=[…]`, `min=N`, `max=N`,
+`optional=true`, `of=T` (item da lista) — detalhe em
+[08-model-e-enum](linguagem/08-model-e-enum.md).
 
 ---
 

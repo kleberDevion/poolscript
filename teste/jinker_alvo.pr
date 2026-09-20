@@ -254,6 +254,30 @@ funct modelo()
     return {"criado": request.get("nome")}
 }
 
+# O model valida DADO, nao so estrutura: regex, in/not_in, min/max, optional,
+# outro model como tipo (aninhado) e list(of=...). Cada frase do 422 e medida
+# em jinker_roda.pr.
+model Endereco() {
+    rua: str(length=40)
+    cep: str(regex="^[0-9]{5}-[0-9]{3}$")
+}
+
+model Cadastro() {
+    nome:     str(length=20, regex="^[A-Za-z ]+$")
+    idade:    int(min=18, max=120)
+    papel:    str(in=["admin", "user"])
+    status:   str(not_in=["banido"])
+    apelido:  str(optional=true)
+    endereco: Endereco
+    tags:     list(of=str, length=3)
+}
+
+@app.post("/modelo2", model=Cadastro)
+funct modelo2()
+{
+    return {"ok": request.get("nome")}
+}
+
 
 # ── atalhos por verbo: o metodo E o nome do membro ──────────────────────────
 # Quatro rotas no MESMO path, uma por verbo — e o 405 tem que listar as

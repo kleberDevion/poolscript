@@ -877,9 +877,24 @@ static void ast_json(FILE *f, const PSNode *n)
     if (n->is_static)  { fputs(",\"static\":true", f); }
     if (n->is_nonnull) { fputs(",\"nonnull\":true", f); }
     if (n->i2)         { fprintf(f, ",\"i2\":%d", n->i2); }
-    /* O literal de bytes tem o mesmo `texto` que o de string: sem esta marca o
-     * editor tipava `h = b"q"` como str e oferecia `upper` em vez de `decode`. */
-    if (n->kind == N_LITERAL && n->lit == L_BYTES) { fputs(",\"lit\":\"bytes\"", f); }
+    /* O literal diz qual é e traz o VALOR: bytes tem o mesmo `texto` que a
+     * string (sem a marca o editor tipava `h = b"q"` como str e oferecia
+     * `upper` em vez de `decode`), e número/bool não tinham valor nenhum na
+     * árvore — o hover do model (`idade: int(min=18)`) precisa dele. */
+    if (n->kind == N_LITERAL) {
+        switch (n->lit) {
+            case L_INT:   fprintf(f, ",\"lit\":\"int\",\"i\":%lld", (long long)n->i); break;
+            case L_FLO:
+                if (n->d == n->d && n->d - n->d == 0) fprintf(f, ",\"lit\":\"flo\",\"d\":%.17g", n->d);
+                else fputs(",\"lit\":\"flo\"", f);      /* inf/nan não é JSON */
+                break;
+            case L_BOOL:  fprintf(f, ",\"lit\":\"bool\",\"i\":%d", n->i ? 1 : 0); break;
+            case L_NULL:  fputs(",\"lit\":\"null\"", f); break;
+            case L_STR:   fputs(",\"lit\":\"str\"", f); break;
+            case L_BYTES: fputs(",\"lit\":\"bytes\"", f); break;
+            default: break;
+        }
+    }
     ast_filho(f, "a", n->a, &virg);
     ast_filho(f, "b", n->b, &virg);
     ast_filho(f, "c", n->c, &virg);

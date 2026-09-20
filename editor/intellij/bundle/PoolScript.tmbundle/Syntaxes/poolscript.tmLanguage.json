@@ -280,6 +280,11 @@
           "name": "variable.language.self.poolscript"
         },
         {
+          "comment": "Os parametros do campo de `model` (`nome: str(length=20, regex=\"...\")`): sao NOMES de parametro, nao palavra-chave — o `in` aqui nao e o operador. So quando vem `=` logo depois.",
+          "match": "\\b(length|regex|in|not_in|min|max|optional|of)(?=\\s*=[^=])",
+          "name": "variable.parameter.model.poolscript"
+        },
+        {
           "name": "keyword.control.poolscript",
           "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|with|using|await|async|import|from|as|global|count|to|of)\\b"
         },

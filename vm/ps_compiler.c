@@ -16,6 +16,7 @@
 #include "ps_compiler.h"
 #include "ps_ext.h"
 #include "ps_tipos.h"
+#include "ps_regex.h"        /* `regex=` do campo de model: compilado aqui só pra validar */
 #include "ps_retornos.h"
 
 #include <stdarg.h>
@@ -3010,6 +3011,136 @@ static void guarda_nome_modo(C *c, Unidade *u, const char *nome, int certa)
     memset(&c->grava, 0, sizeof(c->grava));
 }
 
+/* ── parâmetros do campo de `model` (regex, in, not_in, min, max, optional, of) ──
+ * Tudo aqui é constante do model, decidida na compilação: o valor tem que ser
+ * literal (número com sinal, texto, true/false, lista de literais) e caber no
+ * tipo do campo. O que não cabe é erro na linha do parâmetro — antes de
+ * rodar, como o resto da tipagem. */
+static int mlit_numero(PSNode *v, double *out, int *inteiro)
+{
+    if (!v) return 0;
+    int neg = 0;
+    if (v->kind == N_UNARY_OP && v->texto && !strcmp(v->texto, "-") && v->a) { neg = 1; v = v->a; }
+    if (v->kind != N_LITERAL) return 0;
+    if (v->lit == L_INT) { *out = neg ? -(double)v->i : (double)v->i; *inteiro = 1; return 1; }
+    if (v->lit == L_FLO) { *out = neg ? -v->d : v->d; *inteiro = 0; return 1; }
+    return 0;
+}
+
+static int mlit_de(PSNode *v, int32_t tipo, PSModelLit *out)
+{
+    memset(out, 0, sizeof(*out));
+    out->tipo = tipo;
+    double d = 0; int inteiro = 0;
+    switch (tipo) {
+        case PS_TIPO_STR:
+            if (v && v->kind == N_LITERAL && v->lit == L_STR && v->texto) { out->s = strdup(v->texto); return out->s != NULL; }
+            return 0;
+        case PS_TIPO_BOOL:
+            if (v && v->kind == N_LITERAL && v->lit == L_BOOL) { out->i = v->i; return 1; }
+            return 0;
+        case PS_TIPO_INT:
+            if (mlit_numero(v, &d, &inteiro) && inteiro) { out->i = (int64_t)d; return 1; }
+            return 0;
+        case PS_TIPO_FLO:
+            if (mlit_numero(v, &d, &inteiro)) { out->d = d; return 1; }
+            return 0;
+        default:
+            return 0;
+    }
+}
+
+/* `nome` é um model — deste arquivo (em qualquer ponto dele) ou importado? */
+static int modelo_conhecido(C *c, Unidade *u, const char *nome)
+{
+    PSNode *d = tp_tipo_arq(c, nome);
+    if (d && d->kind == N_MODEL_DECL) return 1;
+    SimInfo *s = tp_nome_ligado(c, u, nome) ? tp_sim_de(c, u, nome) : NULL;
+    return s && s->decl && s->decl->kind == N_MODEL_DECL;
+}
+
+static void mlits_solta(PSModelLit *v, int32_t n)
+{
+    for (int32_t i = 0; i < n; i++) free(v[i].s);
+    free(v);
+}
+
+/* Os parâmetros escritos no campo `f` (`lista`: nome em `texto`, valor em `a`)
+ * vão pro descritor `cd`. -1 = erro, já acusado. */
+static int compila_params_model(C *c, Unidade *u, PSNode *f, PSModelCampoDef *cd)
+{
+    const char *nc = f->texto ? f->texto : "?";
+    int32_t t = cd->tipo;
+    if (cd->length >= 0 && t != PS_TIPO_STR && t != PS_TIPO_INT && t != PS_TIPO_LIST) {
+        cerro_sx(c, f, "parametro 'length' so vale em str, int e list (campo %s)", nc); return -1;
+    }
+    for (int32_t k = 0; k < f->lista.n; k++) {
+        PSNode *par = f->lista.itens[k];
+        const char *pn = par->texto ? par->texto : "?";
+        PSNode *v = par->a;
+        if (!strcmp(pn, "regex")) {
+            if (t != PS_TIPO_STR) { cerro_sx(c, par, "parametro 'regex' so vale em str (campo %s)", nc); return -1; }
+            if (!v || v->kind != N_LITERAL || v->lit != L_STR || !v->texto) {
+                cerro_sx(c, par, "parametro 'regex' do campo %s: so literal de texto", nc); return -1;
+            }
+            char e[256] = {0};
+            int len = v->texto_len > 0 ? v->texto_len : (int)strlen(v->texto);
+            PSRegex *r = ps_regex_compila(v->texto, len, e, sizeof(e));
+            if (!r) { cerro_sx(c, par, "regex invalida no campo %s: %s", nc, e[0] ? e : "padrao invalido"); return -1; }
+            ps_regex_free(r);
+            cd->regex = strdup(v->texto);
+            if (!cd->regex) { cerro(c, "sem memoria", par); return -1; }
+        } else if (!strcmp(pn, "in") || !strcmp(pn, "not_in")) {
+            if (t != PS_TIPO_STR && t != PS_TIPO_INT && t != PS_TIPO_FLO && t != PS_TIPO_BOOL) {
+                cerro_sx(c, par, "parametro '%s' so vale em str, int, flo e bool (campo %s)", pn, nc); return -1;
+            }
+            if (!v || v->kind != N_LIST_LITERAL || v->lista.n == 0) {
+                cerro_sx(c, par, "parametro '%s' do campo %s: so lista de literais, com pelo menos um", pn, nc); return -1;
+            }
+            PSModelLit *ls = calloc((size_t)v->lista.n, sizeof(PSModelLit));
+            if (!ls) { cerro(c, "sem memoria", par); return -1; }
+            for (int32_t i = 0; i < v->lista.n; i++) {
+                if (mlit_de(v->lista.itens[i], t, &ls[i])) continue;
+                cerro_sx(c, v->lista.itens[i] ? v->lista.itens[i] : par,
+                         "parametro '%s' do campo %s: cada valor tem que ser um literal %s", pn, nc,
+                         f->texto2 ? f->texto2 : "?");
+                mlits_solta(ls, v->lista.n);
+                return -1;
+            }
+            if (pn[0] == 'i') { cd->in = ls; cd->n_in = v->lista.n; }
+            else              { cd->not_in = ls; cd->n_not_in = v->lista.n; }
+        } else if (!strcmp(pn, "min") || !strcmp(pn, "max")) {
+            if (t != PS_TIPO_INT && t != PS_TIPO_FLO) {
+                cerro_sx(c, par, "parametro '%s' so vale em int e flo (campo %s)", pn, nc); return -1;
+            }
+            double d = 0; int inteiro = 0;
+            if (!mlit_numero(v, &d, &inteiro)) { cerro_sx(c, par, "parametro '%s' do campo %s: so numero literal", pn, nc); return -1; }
+            if (pn[1] == 'i') { cd->tem_min = 1; cd->min = d; } else { cd->tem_max = 1; cd->max = d; }
+        } else if (!strcmp(pn, "optional")) {
+            if (!v || v->kind != N_LITERAL || v->lit != L_BOOL) {
+                cerro_sx(c, par, "parametro 'optional' do campo %s: so true ou false", nc); return -1;
+            }
+            cd->optional = v->i != 0;
+        } else if (!strcmp(pn, "of")) {
+            if (t != PS_TIPO_LIST) { cerro_sx(c, par, "parametro 'of' so vale em list (campo %s)", nc); return -1; }
+            const char *tn = (v && v->kind == N_NAME) ? v->texto : NULL;
+            const PSTipoInfo *oti = tn ? ps_tipo_info(tn) : NULL;
+            if (oti && oti->model && oti->cod != PS_TIPO_LIST) cd->of_tipo = oti->cod;
+            else if (tn && !oti && modelo_conhecido(c, u, tn)) {
+                cd->of_tipo = -2;
+                cd->of_model = strdup(tn);
+                if (!cd->of_model) { cerro(c, "sem memoria", par); return -1; }
+            } else {
+                cerro_sx(c, par, "parametro 'of' do campo %s: tipo desconhecido %s", nc, tn ? tn : "?"); return -1;
+            }
+        }
+    }
+    if (cd->tem_min && cd->tem_max && cd->min > cd->max) {
+        cerro_sx(c, f, "campo %s: min maior que max", nc); return -1;
+    }
+    return 0;
+}
+
 /* Prepara a próxima gravação com o valor `no` (o tipo é o que se sabe dele
  * AGORA, antes de a escrita mudar o que se sabe do nome). */
 static void grava_valor(C *c, Unidade *u, PSNode *no)
@@ -4217,14 +4348,23 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                         ? calloc((size_t)n->lista.n, sizeof(PSModelCampoDef)) : NULL;
             for (int32_t i = 0; i < n->lista.n; i++) {
                 PSNode *f = n->lista.itens[i];
-                def->campos[i].nome = strdup(f->texto ? f->texto : "?");
-                def->campos[i].length = (f->i2 > 0) ? f->i2 : -1;
-                /* a coluna `model` da tabela única decide; o parser já barrou
-                 * o resto com a frase do tipo de campo */
+                PSModelCampoDef *cd = &def->campos[i];
+                cd->nome = strdup(f->texto ? f->texto : "?");
+                cd->length = (f->i2 > 0) ? f->i2 : -1;
+                cd->of_tipo = -1;
+                /* a coluna `model` da tabela única decide o tipo; o que não
+                 * está nela tem que ser OUTRO model (estrutura aninhada),
+                 * deste arquivo ou importado */
                 const PSTipoInfo *ti = ps_tipo_info(f->texto2);
-                int32_t t = (ti && ti->model) ? ti->cod : -1;
-                if (t < 0) { cerro_sx(c, f, "tipo desconhecido em model"); return; }
-                def->campos[i].tipo = t;
+                if (ti && ti->model) cd->tipo = ti->cod;
+                else if (f->texto2 && modelo_conhecido(c, u, f->texto2)) {
+                    cd->tipo = -1;
+                    cd->tipo_model = strdup(f->texto2);
+                    if (!cd->tipo_model) { cerro(c, "sem memoria", f); return; }
+                } else {
+                    cerro_sx(c, f, "tipo desconhecido em model: %s", f->texto2 ? f->texto2 : "?"); return;
+                }
+                if (compila_params_model(c, u, f, cd) != 0) return;
             }
             emite(c, u, OP_MAKE_MODEL, mi);
             memset(&c->grava, 0, sizeof(c->grava));
@@ -5898,8 +6038,12 @@ void ps_compila_free(PSPrograma *p)
     free(p->classes);
     for (int32_t i = 0; i < p->nmodels; i++) {
         free(p->models[i].nome);
-        for (int32_t k = 0; k < p->models[i].ncampos; k++)
-            free(p->models[i].campos[k].nome);
+        for (int32_t k = 0; k < p->models[i].ncampos; k++) {
+            PSModelCampoDef *cd = &p->models[i].campos[k];
+            free(cd->nome); free(cd->tipo_model); free(cd->regex); free(cd->of_model);
+            mlits_solta(cd->in, cd->n_in);
+            mlits_solta(cd->not_in, cd->n_not_in);
+        }
         free(p->models[i].campos);
     }
     free(p->models);

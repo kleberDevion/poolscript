@@ -59,6 +59,10 @@ syn keyword psControl  if elif else while for each in is match case try catch
 syn keyword psLogical  and or not Not
 syn keyword psVerb     PUSH GET POST PUT DELETE JSON
 syn keyword psSelf     self
+" Parâmetros do campo de `model` (`nome: str(length=20, regex="…")`): nome
+" de parâmetro, não palavra-chave — o `in` aqui não é o operador. Só com `=`
+" logo depois (e não `==`).
+syn match   psModelParam "\<\%(length\|regex\|in\|not_in\|min\|max\|optional\|of\)\ze\s*=[^=]"
 
 " ── tipos ───────────────────────────────────────────────────────────────────
 " GERADO: tipos
@@ -132,6 +136,7 @@ hi def link psControl      Statement
 hi def link psLogical      @keyword.operator
 hi def link psVerb         Keyword
 hi def link psSelf         Identifier
+hi def link psModelParam   Identifier
 hi def link psType         Type
 hi def link psModifier     StorageClass
 hi def link psFunctKw      Keyword

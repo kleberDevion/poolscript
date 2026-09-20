@@ -3032,36 +3032,83 @@ static PSNode *statement(P *p)
             if (!exige(p, T_COLON, "esperado ':' apos nome do campo")) return NULL;
             PSToken *tt = atual(p);
             /* os tipos de campo de model (coluna `model` da tabela única) e os
-             * apelidos deles (`String`, `Integer`) */
+             * apelidos deles (`String`, `Integer`) — ou o NOME de outro model
+             * (estrutura aninhada; o compilador confere que ele existe) */
             const PSTipoInfo *mti = (tt->type == T_KW || tt->type == T_IDENT
                                      || tt->type == T_IDENT_UPPER) ? ps_tipo_info(tt->texto) : NULL;
             int tipo_ok = mti && mti->model;
-            if (!tipo_ok) {
-                perro(p, "tipo do campo deve ser str, int, flo ou bool", tt); return NULL;
+            int eh_model = !mti && tt->type == T_IDENT_UPPER && tt->texto;
+            if (!tipo_ok && !eh_model) {
+                perro(p, "tipo do campo deve ser str, int, flo, bool, list, dict ou o nome de um model", tt);
+                return NULL;
             }
             p->pos++;
             PSNode *f = ps_node_novo(p->arena, N_MODEL_FIELD, ft->line, ft->col);
             if (!f) return NULL;
             f->texto = campo;
-            f->texto2 = tipo_retorno_dup(p, tt);
+            f->texto2 = eh_model ? dup_tok(p, tt) : tipo_retorno_dup(p, tt);
             f->i2 = -1;                       /* -1 = sem length */
             if (aceita(p, T_LPAREN)) {
-                /* A mensagem dizia "esperado 'length'" e o código só cobrava
-                 * um IDENT qualquer: `str(tamanho=10)` passava e o número ia
-                 * pro slot de length sem ninguém ter escrito length. */
-                PSToken *id = atual(p);
-                if (id->type != T_IDENT || !id->texto || strcmp(id->texto, "length") != 0) {
-                    perro(p, "no campo do model o unico parametro e 'length' — escreva str(length=N)", id);
-                    return NULL;
+                /* Os parâmetros do campo — o que valida o DADO, não só a
+                 * estrutura: `length=N`, `regex="…"`, `in=[…]`, `not_in=[…]`,
+                 * `min=N`, `max=N`, `optional=true`, `of=T`. Vírgula entre
+                 * eles, qualquer ordem. `length` fica em `i2` como sempre; os
+                 * outros viram nós filhos (`lista`: nome em `texto`, valor em
+                 * `a`) — o `--ast` genérico já os emite, então o editor os vê.
+                 * O compilador confere literal, tipo do campo e regex. `in` é
+                 * palavra-chave da linguagem: o nome do parâmetro aceita KW. */
+                static const char *PARAMS = "length, regex, in, not_in, min, max, optional, of";
+                /* `str()` vazio vale como `str` (e é o que o editor vê ao
+                 * fechar uma linha pela metade: `x: str(` + `)`) */
+                for (; !checa(p, T_RPAREN);) {
+                    PSToken *id = atual(p);
+                    if ((id->type != T_IDENT && id->type != T_KW) || !id->texto) {
+                        perro_f(p, id, "esperado o nome de um parametro do campo do model: %s", PARAMS);
+                        return NULL;
+                    }
+                    const char *pn = id->texto;
+                    if (strcmp(pn, "length") && strcmp(pn, "regex") && strcmp(pn, "in") && strcmp(pn, "not_in")
+                            && strcmp(pn, "min") && strcmp(pn, "max") && strcmp(pn, "optional") && strcmp(pn, "of")) {
+                        perro_f(p, id, "parametro '%s' nao existe no campo do model: %s", pn, PARAMS);
+                        return NULL;
+                    }
+                    int repetido = !strcmp(pn, "length") && f->i2 >= 0;
+                    for (int32_t q = 0; q < f->lista.n && !repetido; q++)
+                        if (f->lista.itens[q]->texto && !strcmp(f->lista.itens[q]->texto, pn)) repetido = 1;
+                    if (repetido) { perro_f(p, id, "parametro '%s' repetido no campo do model", pn); return NULL; }
+                    p->pos++;
+                    if (!checa_op(p, "=")) { perro_f(p, atual(p), "esperado '=' apos '%s'", pn); return NULL; }
+                    p->pos++;
+                    if (!strcmp(pn, "length")) {
+                        PSToken *lt = atual(p);
+                        if (lt->type != T_INT) { perro(p, "esperado numero apos 'length='", lt); return NULL; }
+                        p->pos++;
+                        f->i2 = (int32_t)lt->i;
+                    } else {
+                        PSNode *par = ps_node_novo(p->arena, N_DICT_ENTRY, id->line, id->col);
+                        if (!par) return NULL;
+                        par->texto = dup_tok(p, id);
+                        if (!strcmp(pn, "of")) {
+                            /* `of=str` / `of=Endereco`: um NOME de tipo, não expressão */
+                            PSToken *ot = atual(p);
+                            if ((ot->type != T_KW && ot->type != T_IDENT && ot->type != T_IDENT_UPPER) || !ot->texto) {
+                                perro(p, "esperado um tipo ou o nome de um model apos 'of='", ot); return NULL;
+                            }
+                            p->pos++;
+                            PSNode *tn = ps_node_novo(p->arena, N_NAME, ot->line, ot->col);
+                            if (!tn) return NULL;
+                            tn->texto = ps_tipo_info(ot->texto) ? tipo_retorno_dup(p, ot) : dup_tok(p, ot);
+                            par->a = tn;
+                        } else {
+                            par->a = expressao(p);
+                            if (!par->a || FALHOU(p)) return NULL;
+                        }
+                        if (ps_vec_push(p->arena, &f->lista, par) != 0) return NULL;
+                    }
+                    if (aceita(p, T_COMMA)) continue;      /* vírgula final também vale */
+                    break;
                 }
-                p->pos++;
-                if (!checa_op(p, "=")) { perro(p, "esperado '=' apos 'length'", atual(p)); return NULL; }
-                p->pos++;
-                PSToken *lt = atual(p);
-                if (lt->type != T_INT) { perro(p, "esperado numero apos 'length='", lt); return NULL; }
-                p->pos++;
-                f->i2 = (int32_t)lt->i;
-                if (!exige(p, T_RPAREN, "esperado ')' apos o valor de length")) return NULL;
+                if (!exige(p, T_RPAREN, "esperado ')' apos os parametros do campo")) return NULL;
             }
             if (ps_vec_push(p->arena, &n->lista, f) != 0) return NULL;
             pula_indent_solto(p);

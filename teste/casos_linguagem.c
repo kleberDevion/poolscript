@@ -2680,11 +2680,68 @@ const Caso CASOS_LINGUAGEM[] = {
   "v:  3\nn:  2   1.0", NULL, 0 },
 /* `length` era so um IDENT qualquer: `str(tamanho=10)` passava e o numero
  * ia pro slot de length sem ninguem ter escrito length. */
-{ "campo de model so aceita length=",
+{ "campo de model: parametro que nao existe e acusado com a lista dos que existem",
   "model M() {\n    nome: str(tamanho=10)\n}\n", "",
-  "no campo do model o unico parametro e 'length'", 2 },
+  "parametro 'tamanho' nao existe no campo do model: length, regex, in, not_in, min, max, optional, of", 2 },
 { "campo de model com length= segue valendo",
   "model M() {\n    nome: str(length=10)\n}\npost(\"ok\")\n", "ok", NULL, 0 },
+
+/* ── model valida DADO, nao so estrutura (2026-09-20): regex, in/not_in,
+ * min/max, optional, of, model aninhado. O `==` responde True/False; a frase
+ * de cada falha e medida em teste/jinker_roda.pr (rota `model=`). ──────── */
+{ "model: regex no campo str — casa e nao casa",
+  "model M() {\n    cep: str(regex=\"^[0-9]{5}-[0-9]{3}$\")\n}\n"
+  "post({\"cep\": \"12345-678\"} == M, {\"cep\": \"1234\"} == M)\n", "True False", NULL, 0 },
+{ "model: in (so estes) e not_in (proibidos)",
+  "model M() {\n    p: str(in=[\"a\", \"b\"])\n    s: str(not_in=[\"x\"])\n}\n"
+  "post({\"p\": \"a\", \"s\": \"y\"} == M, {\"p\": \"c\", \"s\": \"y\"} == M, {\"p\": \"a\", \"s\": \"x\"} == M)\n",
+  "True False False", NULL, 0 },
+{ "model: in com int e bool, com sinal",
+  "model M() {\n    n: int(in=[-1, 2])\n    b: bool(in=[true])\n}\n"
+  "post({\"n\": -1, \"b\": true} == M, {\"n\": 3, \"b\": true} == M, {\"n\": 2, \"b\": false} == M)\n",
+  "True False False", NULL, 0 },
+{ "model: min e max em int e flo (faixa inclusiva)",
+  "model M() {\n    i: int(min=1, max=3)\n    f: flo(min=0.5)\n}\n"
+  "post({\"i\": 3, \"f\": 0.5} == M, {\"i\": 4, \"f\": 1.0} == M, {\"i\": 2, \"f\": 0.1} == M)\n",
+  "True False False", NULL, 0 },
+{ "model: optional=true pode faltar ou vir Null; presente, o tipo vale",
+  "model M() {\n    a: int\n    b: str(optional=true)\n}\n"
+  "post({\"a\": 1} == M, {\"a\": 1, \"b\": Null} == M, {\"a\": 1, \"b\": 2} == M, {\"b\": \"x\"} == M)\n",
+  "True True False False", NULL, 0 },
+{ "model: aninhado (tipo = outro model) e list(of=...) item a item, com length de itens",
+  "model E() {\n    r: str\n}\nmodel M() {\n    e: E\n    l: list(of=int, length=2)\n    ms: list(of=E)\n}\n"
+  "post({\"e\": {\"r\": \"x\"}, \"l\": [1, 2], \"ms\": [{\"r\": \"y\"}]} == M)\n"
+  "post({\"e\": {\"r\": 1}, \"l\": [1], \"ms\": []} == M)\n"
+  "post({\"e\": {\"r\": \"x\"}, \"l\": [1, 2, 3], \"ms\": []} == M)\n"
+  "post({\"e\": {\"r\": \"x\"}, \"l\": [\"a\"], \"ms\": []} == M)\n"
+  "post({\"e\": {\"r\": \"x\"}, \"l\": [], \"ms\": [{\"r\": 2}]} == M)\n"
+  "post({\"e\": \"x\", \"l\": [], \"ms\": []} == M)\n",
+  "True\nFalse\nFalse\nFalse\nFalse\nFalse", NULL, 0 },
+{ "model: dict livre e list sem of aceitam qualquer conteudo, mas exigem o tipo",
+  "model M() {\n    d: dict\n    l: list\n}\n"
+  "post({\"d\": {\"a\": 1}, \"l\": [1, \"x\"]} == M, {\"d\": [], \"l\": []} == M)\n", "True False", NULL, 0 },
+{ "model: o model usado como tipo pode ser declarado DEPOIS",
+  "model M() {\n    e: E\n}\nmodel E() {\n    r: str\n}\npost({\"e\": {\"r\": \"x\"}} == M)\n", "True", NULL, 0 },
+{ "model: str() e f-string mostram o nome (saia vazio)",
+  "model M() {\n    a: int\n}\npost(str(M), f\"{M}\")\n", "<model M> <model M>", NULL, 0 },
+{ "model: regex invalida e acusada na linha do campo, antes de rodar",
+  "model M() {\n    a: str(regex=\"[\")\n}\n", "", "regex invalida no campo a:", 2 },
+{ "model: regex so vale em str",
+  "model M() {\n    a: int(regex=\"x\")\n}\n", "", "parametro 'regex' so vale em str (campo a)", 2 },
+{ "model: in exige literais do tipo do campo",
+  "model M() {\n    a: int(in=[\"x\"])\n}\n", "", "parametro 'in' do campo a: cada valor tem que ser um literal int", 2 },
+{ "model: min maior que max e erro",
+  "model M() {\n    a: int(min=5, max=1)\n}\n", "", "campo a: min maior que max", 2 },
+{ "model: tipo que nao e da tabela nem model e acusado",
+  "model M() {\n    a: Nada\n}\n", "", "tipo desconhecido em model: Nada", 2 },
+{ "model: of com tipo desconhecido",
+  "model M() {\n    a: list(of=Nada)\n}\n", "", "parametro 'of' do campo a: tipo desconhecido Nada", 2 },
+{ "model: of so vale em list",
+  "model M() {\n    a: str(of=int)\n}\n", "", "parametro 'of' so vale em list (campo a)", 2 },
+{ "model: parametro repetido",
+  "model M() {\n    a: str(length=1, length=2)\n}\n", "", "parametro 'length' repetido no campo do model", 2 },
+{ "model: valor de parametro tem que ser literal",
+  "x = 3\nmodel M() {\n    a: int(min=x)\n}\n", "", "parametro 'min' do campo a: so numero literal", 2 },
 
 /* ── L3 DO PLANO DAS CONTRADICOES: regex (2026-09-12) — strings medidas ──── */
 /* `a{1}?` era recusado com "multiple repeat": a guarda do preguicoso olhava

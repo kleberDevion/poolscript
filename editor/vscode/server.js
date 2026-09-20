@@ -1379,6 +1379,82 @@ conexao.onCompletion((p) => {
   try { return completa(doc, p); } finally { IDX_FORCADO = null; }
 });
 
+/* O valor de um parâmetro de campo de model, como foi escrito: literal
+ * (o `--ast` traz `lit` e o valor), lista de literais, `-n`, ou o nome de
+ * tipo/model do `of=`. */
+function valorDeParamTxt(v) {
+  if (!v) return '';
+  if (v.k === 'Literal') {
+    if (v.lit === 'str') return JSON.stringify(v.texto || '');
+    if (v.lit === 'bool') return v.i ? 'true' : 'false';
+    if (v.lit === 'int' || v.lit === 'flo') return String(v.lit === 'int' ? v.i : v.d);
+    return v.texto || '…';
+  }
+  if (v.k === 'ListLiteral') return '[' + (v.lista || []).map(valorDeParamTxt).join(', ') + ']';
+  if (v.k === 'UnaryOp') return (v.texto || '') + valorDeParamTxt(v.a);
+  if (v.k === 'Name') return v.texto || '';
+  return '…';
+}
+
+/* `(length=20, regex="…")` do campo `f` de um model, como no fonte; '' sem
+ * parâmetros. `length` mora em `i2`; os outros são os nós de `lista`. */
+function paramsDeCampoTxt(f) {
+  const ps = [];
+  if (f.i2 >= 0) ps.push('length=' + f.i2);
+  for (const e of f.lista || []) if (e && e.texto) ps.push(e.texto + '=' + valorDeParamTxt(e.a));
+  return ps.length ? '(' + ps.join(', ') + ')' : '';
+}
+
+/* Os parâmetros do campo de `model`, como a doc 08 §8.1.2 os lista: nome →
+ * o que confere. É a tabela do motor (ps_parser.c, `PARAMS`), escrita uma
+ * vez aqui pro completion. */
+const PARAMS_MODEL = [
+  ['length',   'máximo de caracteres (str), dígitos (int) ou itens (list)'],
+  ['regex',    'o valor inteiro casa o padrão (str)'],
+  ['in',       'o valor é um dos da lista'],
+  ['not_in',   'o valor não é nenhum da lista (proibidos)'],
+  ['min',      'mínimo, inclusivo (int, flo)'],
+  ['max',      'máximo, inclusivo (int, flo)'],
+  ['optional', 'pode faltar ou vir null'],
+  ['of',       'tipo de cada item (list): str, int, flo, bool, dict ou um model'],
+];
+
+/* O cursor está entre os parênteses de um campo de `model`? Então os itens
+ * são os parâmetros que ainda não estão na linha; senão null. Lido nos
+ * TOKENS do motor, não no texto: a linha do campo é `nome : tipo (` antes
+ * do cursor, e o `{` aberto mais próximo acima é o de um `model Nome() {`.
+ * Sem árvore de propósito — a linha pela metade (`x: str(`) não parseia, e
+ * é exatamente quando o completion é pedido. */
+function paramsDeCampoDeModel(doc, pos) {
+  /* sem os tokens de leiaute (NEWLINE/INDENT/DEDENT): o INDENT da linha do
+   * campo vem antes do nome e não é o nome */
+  const toks = tokensDe(doc).filter((t) => t.t !== 'NEWLINE' && t.t !== 'INDENT' && t.t !== 'DEDENT');
+  const ehNome = (t) => t && (t.t === 'IDENT' || t.t === 'IDENT_UPPER' || t.t === 'KW');
+  /* os tokens desta linha, antes do cursor */
+  const antes = toks.filter((t) => t.l0 === pos.line && t.c0 < pos.character);
+  if (antes.length < 4 || !ehNome(antes[0]) || antes[1].t !== 'COLON' || !ehNome(antes[2])
+      || antes[3].t !== 'LPAREN') return null;
+  if (antes.slice(4).some((t) => t.t === 'RPAREN')) return null;
+  /* o `{` aberto mais próximo acima, saltando blocos fechados */
+  let i = toks.findIndex((t) => t === antes[0]);
+  let prof = 0, abre = -1;
+  for (i--; i >= 0; i--) {
+    if (toks[i].t === 'RBRACE') prof++;
+    else if (toks[i].t === 'LBRACE') { if (prof === 0) { abre = i; break; } prof--; }
+  }
+  if (abre < 4) return null;
+  const cab = toks.slice(abre - 4, abre);          /* model Nome ( ) */
+  if (!(cab[0].t === 'KW' && cab[0].v === 'model' && ehNome(cab[1])
+        && cab[2].t === 'LPAREN' && cab[3].t === 'RPAREN')) return null;
+  /* parâmetros que a linha já tem: nome seguido de `=` */
+  const jaTem = new Set();
+  for (let k = 4; k + 1 < antes.length; k++)
+    if (ehNome(antes[k]) && antes[k + 1].t === 'OP' && antes[k + 1].v === '=') jaTem.add(antes[k].v);
+  return PARAMS_MODEL.filter(([nome]) => !jaTem.has(nome)).map(([nome, oque], i) => ({
+    label: `${nome}=`, kind: CompletionItemKind.Variable, detail: oque, sortText: String(i),
+  }));
+}
+
 function completa(doc, p) {
 
   /* `import <cursor>` — AQUI é onde os módulos do motor e as libs instaladas
@@ -1407,6 +1483,15 @@ function completa(doc, p) {
    * remendo fecha os grupos no fim do arquivo, uma chamada podia abranger o
    * arquivo todo. O corpo de um método respondia `["flags="]` em vez do
    * escopo. */
+  /* Dentro dos parênteses de um CAMPO de `model` (`nome: str(<cursor>`): os
+   * parâmetros que validam o dado — `length`, `regex`, `in`, `not_in`, `min`,
+   * `max`, `optional`, `of` — menos os que a linha já tem. Vem antes da
+   * chamada porque isto não é chamada: `str(` aqui é o tipo do campo. */
+  if (!cad.partes.length && dentroDeParenteses(doc, p.position)) {
+    const ps = paramsDeCampoDeModel(doc, p.position);
+    if (ps) return ps;
+  }
+
   const ch = dentroDeParenteses(doc, p.position) ? chamadaEm(doc, p.position) : null;
   if (ch && !cad.partes.length) {
     const ps = paramsDoChamado(doc, ch, p.position.line);
@@ -1893,7 +1978,7 @@ conexao.onHover((p) => {
     }
     if (b.kind === 'model') {
       const campos = (no.lista || []).filter((f) => f && f.texto)
-        .map((f) => f.texto + ': ' + (f.texto2 || '') + (f.i2 >= 0 ? '(length=' + f.i2 + ')' : ''));
+        .map((f) => f.texto + ': ' + (f.texto2 || '') + paramsDeCampoTxt(f));
       return md('```ps\nmodel ' + b.nome + '() { ' + campos.join(', ') + ' }\n```\n\nmodel · declarado na ' + onde);
     }
     /* variável: o tipo é o declarado (`str x`) ou o construído (`x = Jinker(...)`) */

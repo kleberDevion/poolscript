@@ -1258,6 +1258,54 @@ async function main() {
          valor(m, 9).includes('parâmetro') && !valor(m, 9).includes('static'), valor(m, 9));
   }
 
+  /* ── 17. `model` com parâmetros de validação (regex, in, min/max, of…) ──
+   * O hover mostra os parâmetros como foram escritos; dentro dos parênteses
+   * do campo, o completion oferece os que ainda faltam na linha. */
+  {
+    const hov = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const SRC = [
+      'model Endereco() {',                                   // 0
+      '    cep: str(regex="^[0-9]{5}-[0-9]{3}$")',            // 1
+      '}',                                                    // 2
+      'model Usuario() {',                                    // 3
+      '    nome: str(length=20, regex="^[a-z]+$")',           // 4
+      '    idade: int(min=18, max=120)',                      // 5
+      '    papel: str(in=["admin", "user"])',                 // 6
+      '    apelido: str(optional=true)',                      // 7
+      '    endereco: Endereco',                               // 8
+      '    tags: list(of=str, length=3)',                     // 9
+      '    saldo: flo(min=-1.5)',                             // 10
+      '}',                                                    // 11
+      'u = Usuario',                                          // 12
+    ];
+    const m = await conversa(SRC.join('\n') + '\n', [hov(2, 12, 5)]);
+    const h = valor(m, 2);
+    conf('hover do model mostra length e regex do campo', h.includes('nome: str(length=20, regex="^[a-z]+$")'), h);
+    conf('hover do model mostra min e max', h.includes('idade: int(min=18, max=120)'), h);
+    conf('hover do model mostra in com a lista', h.includes('papel: str(in=["admin", "user"])'), h);
+    conf('hover do model mostra optional, o model aninhado e o of',
+         h.includes('apelido: str(optional=true)') && h.includes('endereco: Endereco')
+         && h.includes('tags: list(length=3, of=str)'), h);
+    conf('hover do model mostra número negativo', h.includes('saldo: flo(min=-1.5)'), h);
+    /* a linha pela metade — o momento em que o completion é pedido; o
+     * arquivo NÃO parseia, e o completion tem que responder mesmo assim */
+    const M1 = ['model Usuario() {', '    x: str(', '}'];
+    const m1 = await conversa(M1.join('\n') + '\n', [compl(3, 1, M1[1].length)]);
+    const L3 = rotulos(resp(m1, 3));
+    conf('dentro dos parênteses do campo: os 8 parâmetros do model',
+         ['length=', 'regex=', 'in=', 'not_in=', 'min=', 'max=', 'optional=', 'of='].every((e) => L3.includes(e)), L3);
+    const M2 = ['model Usuario() {', '    y: int(min=1, ', '}'];
+    const m2 = await conversa(M2.join('\n') + '\n', [compl(4, 1, M2[1].length)]);
+    const L4 = rotulos(resp(m2, 4));
+    conf('...menos o que a linha já tem', L4.includes('max=') && !L4.includes('min='), L4);
+    /* fora de model, `f(` é chamada, não campo: nada dos 8 */
+    const M3 = ['funct str2(a) { return a }', 'z = str2('];
+    const m3 = await conversa(M3.join('\n') + '\n', [compl(5, 1, M3[1].length)]);
+    const L5 = rotulos(resp(m3, 5));
+    conf('fora de model, parênteses de chamada não oferecem os parâmetros do campo', !L5.includes('regex='), L5.slice(0, 6));
+  }
+
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram`);
