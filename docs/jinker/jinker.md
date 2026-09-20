@@ -95,7 +95,7 @@ Importe de `jinker`: `from jinker import Jinker, cors, jsonify, render, request,
 | `@app.socket(...)` | registra um handler de WebSocket | [socket/socket.md](socket/socket.md) |
 | `app.channel` | envia mensagens pros WebSockets conectados | [channel/channel.md](channel/channel.md) |
 | `@app.middleware()` | verificação que roda antes de rotas | [middleware/middleware.md](middleware/middleware.md) |
-| `cors(...)` | config global de métodos + origens | [cors/cors.md](cors/cors.md) |
+| `cors(app, ...)` | métodos + origens aceitos por um servidor (ou vários) | [cors/cors.md](cors/cors.md) |
 | `request` | o que chegou na requisição | [request/request.md](request/request.md) |
 | `resp.cookie(...)` · `request.cookie(...)` | gravar e ler cookie; sessão assinada com `jwt` | [cookie/cookie.md](cookie/cookie.md) |
 | `jsonify(dados)` | atalho pra resposta JSON | [jsonify/jsonify.md](jsonify/jsonify.md) |

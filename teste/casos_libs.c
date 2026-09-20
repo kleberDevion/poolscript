@@ -963,6 +963,27 @@ const Caso CASOS_LIBS[] = {
   "import jinker\napp = jinker.Jinker()\napp.route()\n", "", "TypeError: route() takes at least 1 argument (0 given)", 1 },
 { "get() sem argumento assina get",
   "import jinker\napp = jinker.Jinker()\napp.get()\n", "", "TypeError: get() takes at least 1 argument (0 given)", 1 },
+
+/* ── cors(app, ...): o primeiro argumento e o SERVIDOR, e pode ser mais de um ──
+ * A lista era posicional "options,origins,permiser": `cors(http, origins=...)`
+ * punha o app em `options` (nao e lista: ignorado) e configurava NADA, calado.
+ * Agora os posicionais sao os apps (`*apps` no C), e a config vale por app. */
+{ "cors sem o servidor e TypeError que diz a forma",
+  "from jinker import cors\ncors(origins=[\"https://x\"])\n",
+  "", "TypeError: cors() precisa do servidor como primeiro argumento: cors(app, origins=[...])", 1 },
+{ "cors com algo que nao e Jinker no lugar do servidor",
+  "from jinker import Jinker, cors\napp = Jinker()\ncors(1, origins=[\"https://x\"])\n",
+  "", "TypeError: cors() argument 1 must be Jinker, not int", 1 },
+{ "cors(a, b, ...) configura os dois servidores; cors.options()/origins() refletem a chamada",
+  "from jinker import Jinker, cors\na = Jinker(\"a\")\nb = Jinker(\"b\")\n"
+  "cors(a, b, options=[\"GET\"], origins=[\"https://x\"])\npost(cors.options(), cors.origins())\n",
+  "['GET'] ['https://x']", NULL, 0 },
+{ "cors(app) so com o servidor: os padroes",
+  "from jinker import Jinker, cors\napp = Jinker()\ncors(app)\npost(cors.options(), cors.origins())\n",
+  "['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] []", NULL, 0 },
+{ "cors: nomeado desconhecido continua sendo erro",
+  "from jinker import Jinker, cors\napp = Jinker()\ncors(app, metodos=[\"GET\"])\n",
+  "", "TypeError: CorsConfig.__call__() got an unexpected keyword argument 'metodos'", 1 },
 /* writeFile aceita 3 (path, content, encoding) e dizia "exactly 2"; ela e
  * readFile deixavam o argumento sobrando passar calado. */
 { "os.writeFile com 1 argumento diz 'at least 2', nao 'exactly 2'",

@@ -34,7 +34,7 @@ os.cmd("ln -sf " + PASTA + "/segredo.txt teste/static/link_fora")
 
 app = jinker.Jinker(name="alvo", static_folder=PASTA + "/estatico", static_url="/estatico")
 
-cors(options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://permitido.test"])
+cors(app, options=["GET", "POST", "PUT", "DELETE", "PATCH"], origins=["http://permitido.test"])
 
 
 # ── básico: método, status, cabeçalho, corpo ────────────────────────────────

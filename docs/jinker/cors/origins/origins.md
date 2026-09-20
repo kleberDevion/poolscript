@@ -1,7 +1,8 @@
 # `cors.origins()`
 
-Devolve a lista de origens (domínios) configuradas no `cors(origins=[...])`
-global. Usado no `auth=` de uma rota pra aplicar a checagem de origem.
+Devolve a lista de origens (domínios) configuradas na última chamada de
+`cors(app, origins=[...])`. Usado no `auth=` de uma rota pra aplicar a
+checagem de origem.
 
 ```
 cors.origins() -> list
@@ -12,7 +13,7 @@ cors.origins() -> list
 ## Uso
 
 ```
-cors(origins=["https://meusite.com"])
+cors(app, origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))
 funct dados() {
@@ -28,7 +29,7 @@ configuradas". Requisição de um domínio fora da lista recebe **403 Forbidden*
 
 ## Sem restrição
 
-Se `cors(origins=[...])` não foi chamado (ou foi com lista vazia),
+Se `cors(app, origins=[...])` não foi chamado (ou foi com lista vazia),
 `cors.origins()` devolve `[]` — e `auth=cors.origins()` na prática libera todas
 as origens. Ou seja, deixar o `auth=` mesmo assim não atrapalha; ele passa a
 valer automaticamente quando você configurar origens.

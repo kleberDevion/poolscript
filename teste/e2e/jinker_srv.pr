@@ -19,7 +19,7 @@ using open(PASTA + "/pagina.txt", "w") as f {
 app = jinker.Jinker(name="e2e", static_folder=PASTA, static_url="/")
 
 # CORS global: só estes métodos, só estas origens
-cors(options=["GET", "POST", "PUT", "DELETE"], origins=["http://permitido.test"])
+cors(app, options=["GET", "POST", "PUT", "DELETE"], origins=["http://permitido.test"])
 
 # middleware: roda ANTES da rota; `pass` libera, `return` barra
 @app.middleware()

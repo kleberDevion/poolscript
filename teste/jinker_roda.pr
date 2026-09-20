@@ -242,6 +242,12 @@ r = get(RAIZ + "/cors-info")
 confere("cors.options() devolve o configurado", "GET" in r.get_json("options"))
 confere("cors.origins() devolve o configurado", "http://permitido.test" in r.get_json("origins"))
 
+# `cors(app, options=...)`: o preflight OPTIONS responde com os metodos
+# configurados pra ESTE app (a config e por servidor, nao mais global)
+pre = cru("OPTIONS /param/1 HTTP/1.1\r\nHost: x\r\nOrigin: http://permitido.test\r\n\r\n")
+confere("preflight OPTIONS lista os metodos do cors(app, options=...)",
+        "204" in pre and "Access-Control-Allow-Methods: GET, POST, PUT, DELETE, PATCH" in pre)
+
 # ── estático ────────────────────────────────────────────────────────────────
 r = get(RAIZ + "/estatico/pagina.txt")
 confere("arquivo estático é servido", r.text.strip() == "sou estatico")

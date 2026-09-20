@@ -579,6 +579,9 @@ typedef struct {
                                      * rota com `middleware=app.middleware` resolve
                                      * pra ele (jk_chama_handler roda e a resposta
                                      * dele barra a requisição); é raiz de GC. */
+    /* `cors(app, ...)`: a config de métodos/origens DESTE servidor (PSJCors);
+     * Null = nunca configurado = sem restrição. Raiz de GC. */
+    Value  cors;
     int    debug;
     char  *static_folder, *static_url;
     char  *route_prefix;    /* prefixo de TODAS as rotas: "/api" ou NULL */
@@ -1727,6 +1730,7 @@ static void gct_jinker(VM *vm, Obj *o) {
     for (int i = 0; i < j->nws; i++)    marca_valor(vm, &j->ws[i].params);
     marca_valor(vm, &j->mw_handler);
     marca_valor(vm, &j->ch_status);
+    marca_valor(vm, &j->cors);
 }
 static void gct_jreg(VM *vm, Obj *o) {
     PSJReg *r = (PSJReg *)o; marca_valor(vm, &r->app); marca_valor(vm, &r->middleware);
@@ -17968,14 +17972,14 @@ static char **jk_strvec(Value v, int upper, int *nout)
 }
 
 /* ── singletons ─────────────────────────────────────────────────────────── */
-static Value jk_cors_singleton(VM *vm)
+/* Uma config de cors com os padrões: GET/POST/PUT/PATCH/DELETE, origens
+ * vazias = permite tudo. Serve pro singleton e pra config de cada app. */
+static Value jk_cors_nova(VM *vm)
 {
-    if (EH_JCORS(vm->jk_cors)) return vm->jk_cors;
     PSJCors *c = calloc(1, sizeof(PSJCors));
     if (!c) return MK_NULL();
     c->obj.type = OBJ_JCORS; c->obj.marked = 0;
     c->obj.next = vm->objetos; vm->objetos = (Obj *)c;
-    /* default: GET/POST/PUT/PATCH/DELETE; origens vazias = permite tudo */
     static const char *DEF[] = { "GET","POST","PUT","PATCH","DELETE" };
     /* O contador só existe se o vetor existir. Com o `calloc` falhando, o
       * `if (c->metodos)` seguia em frente deixando `nmetodos = 5` e `metodos`
@@ -17987,8 +17991,29 @@ static Value jk_cors_singleton(VM *vm)
     }
     c->origens = NULL; c->norigens = 0;
     vm->alocado += sizeof(PSJCors);
-    vm->jk_cors = MK_OBJ(c);
+    return MK_OBJ(c);
+}
+static Value jk_cors_singleton(VM *vm)
+{
+    if (EH_JCORS(vm->jk_cors)) return vm->jk_cors;
+    vm->jk_cors = jk_cors_nova(vm);
     return vm->jk_cors;
+}
+/* A config que vale pra ESTE app: a de `cors(app, ...)`, ou o singleton
+ * (app nunca configurado = os padrões, sem restrição). */
+static Value jk_cors_do_app(VM *vm, Value app)
+{
+    if (EH_JINKER(app) && EH_JCORS(COMO_JINKER(app)->cors)) return COMO_JINKER(app)->cors;
+    return jk_cors_singleton(vm);
+}
+/* Cópia funda de um vetor de strings (pro singleton espelhar a config do app). */
+static char **jk_strdup_vec(char **v, int n)
+{
+    if (n <= 0) return NULL;
+    char **c = calloc((size_t)n, sizeof(char *));
+    if (!c) return NULL;
+    for (int i = 0; i < n; i++) c[i] = strdup(v[i] ? v[i] : "");
+    return c;
 }
 static Value jk_proxy_singleton(VM *vm)
 {
@@ -18019,24 +18044,80 @@ static int mod_jk_request(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-/* cors(options=, origins=, permiser=) — chamado como objeto */
+/* cors(*apps, options=, origins=, permiser=) — chamado como objeto.
+ *
+ * O primeiro argumento é o SERVIDOR (a instância do Jinker), e pode ser mais
+ * de um: os posicionais chegam empacotados numa tup em args[0]
+ * (jk_empacota_estrela, pela lista "*apps,options,origins,permiser"). Antes a
+ * lista era "options,origins,permiser", posicional: `cors(http, origins=...)`
+ * punha o app em `options` — não é lista, era ignorado, e configurava nada.
+ *
+ * Cada chamada cria UMA config e a guarda em cada app dado (`j->cors`); é
+ * ela que o registro de rota e o preflight leem. O singleton — o objeto que
+ * se importa e que tem `.options()`/`.origins()` — espelha a config da última
+ * chamada, pra esses helpers seguirem respondendo o configurado. */
 static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
-    PSJCors *c = COMO_JCORS(alvo);
-    /* args na ordem do params "options,origins,permiser"; UNSET = ausente */
-    if (n >= 1 && EH_SEQ(args[0])) {
+    Value apps = (n >= 1) ? args[0] : MK_UNSET();
+    int napps = (apps.t == V_OBJ && EH_TUPLA(apps)) ? COMO_LIST(apps)->len : 0;
+    if (napps == 0)
+        MERRO(vm, "TypeError", "cors() precisa do servidor como primeiro argumento: cors(app, origins=[...])");
+    for (int i = 0; i < napps; i++)
+        if (!EH_JINKER(COMO_LIST(apps)->itens[i]))
+            MERRO(vm, "TypeError", "cors() argument %d must be Jinker, not %s",
+                  i + 1, nome_do_tipo_valor(COMO_LIST(apps)->itens[i]));
+
+    Value nova = jk_cors_nova(vm);
+    if (!EH_JCORS(nova)) MERRO(vm, "MemoryError", "sem memoria");
+    if (fixa_raiz(vm, nova) != 0) MERRO(vm, "RuntimeError", "estouro da pilha");
+    PSJCors *c = COMO_JCORS(nova);
+    /* args na ordem da lista; UNSET = ausente */
+    if (n >= 2 && EH_SEQ(args[1])) {
         for (int i = 0; i < c->nmetodos; i++) free(c->metodos[i]);
         free(c->metodos);
-        c->metodos = jk_strvec(args[0], 1, &c->nmetodos);
+        c->metodos = jk_strvec(args[1], 1, &c->nmetodos);
     }
-    if (n >= 2 && EH_SEQ(args[1])) {
+    if (n >= 3 && EH_SEQ(args[2])) {
         for (int i = 0; i < c->norigens; i++) free(c->origens[i]);
         free(c->origens);
-        c->origens = jk_strvec(args[1], 0, &c->norigens);
+        c->origens = jk_strvec(args[2], 0, &c->norigens);
     }
-    /* permiser (args[2]) é legado — ignorado, como no wrapper */
+    /* permiser (args[3]) é legado — ignorado, como no wrapper */
+    for (int i = 0; i < napps; i++) COMO_JINKER(COMO_LIST(apps)->itens[i])->cors = nova;
+
+    /* o singleton espelha a última config */
+    PSJCors *s = COMO_JCORS(alvo);
+    if (s != c) {
+        for (int i = 0; i < s->nmetodos; i++) free(s->metodos[i]);
+        free(s->metodos);
+        for (int i = 0; i < s->norigens; i++) free(s->origens[i]);
+        free(s->origens);
+        s->metodos = jk_strdup_vec(c->metodos, c->nmetodos); s->nmetodos = s->metodos ? c->nmetodos : 0;
+        s->origens = jk_strdup_vec(c->origens, c->norigens); s->norigens = s->origens ? c->norigens : 0;
+    }
+    vm->sp--;
     *out = alvo;
     return 0;
+}
+
+/* Lista de parâmetros que começa com `*` (`"*apps,options,..."`): TODOS os
+ * posicionais viram uma tup em pos[0], e os nomeados seguem mapeando pelo
+ * índice do nome na lista (options=1, origins=2, ...). É o `*args` das
+ * functs, pra objeto chamável nativo. Devolve 1 se empacotou (e `raiz` recebe
+ * a tup, que o chamador fixa na pilha durante a chamada), 0 se a lista não
+ * tem estrela, -1 sem memória. */
+static int jk_empacota_estrela(VM *vm, const char *lista, Value *pos, int npos, int *usados, Value *raiz)
+{
+    if (!lista || lista[0] != '*') return 0;
+    PSList *tp = nova_seq(vm, npos > 0 ? npos : 0, OBJ_TUPLE);
+    if (!tp) return -1;
+    for (int k = 0; k < npos; k++) tp->itens[k] = pos[k];
+    tp->len = npos;
+    for (int k = 1; k < npos; k++) pos[k] = MK_UNSET();
+    pos[0] = MK_OBJ(tp);
+    *raiz = pos[0];
+    *usados = 1;
+    return 1;
 }
 static int met_jcors_options(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
@@ -18385,7 +18466,7 @@ static int jk_rota_nova(VM *vm, Value alvo, const char *nome, const char *verbo,
     if (!EH_STRING(args[0]))
         MERRO(vm, "TypeError", "%s() argument 1 must be str, not %s",
                   nome, nome_do_tipo_valor(args[0]));
-    Value cors = jk_cors_singleton(vm);
+    Value cors = jk_cors_do_app(vm, alvo);       /* a config DESTE app */
     PSJReg *r = jk_novo_reg(vm, alvo, JREG_ROUTE);
     if (!r) MERRO(vm, "MemoryError", "sem memoria");
     r->path = strdup(COMO_STRING(args[0])->chars);
@@ -18970,6 +19051,7 @@ static int mod_jk_Jinker(VM *vm, Value *args, int n, Value *out)
     j->static_url = strdup("/");
     j->mw_handler = MK_NULL();
     j->ch_status = MK_NULL();
+    j->cors = MK_NULL();
     j->ip_rate = 100; j->ip_bloq = 1;
     /* oauth (args[1]) — dict opcional */
     if (n >= 2 && EH_DICT(args[1])) {
@@ -19666,9 +19748,9 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     if (!origin) origin = ps_jk_header(hr, "Referer");
     if (!origin) origin = "";
 
-    /* OPTIONS: preflight CORS */
+    /* OPTIONS: preflight CORS — com os métodos configurados pra ESTE app */
     if (strcmp(hr->metodo, "OPTIONS") == 0) {
-        Value cors = jk_cors_singleton(vm);
+        Value cors = EH_JCORS(j->cors) ? j->cors : jk_cors_singleton(vm);
         char metodos[256] = "GET, POST, PUT, PATCH, DELETE";
         if (EH_JCORS(cors)) {
             PSJCors *cc = COMO_JCORS(cors);
@@ -21081,7 +21163,7 @@ static const MembroMod MOD_JINKER[] = {
 static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn)
 {
     if (EH_JINKER(alvo))  { *params = "debug,host,port,reload,workers"; *fn = jk_app_run;  return 1; }
-    if (EH_JCORS(alvo))   { *params = "options,origins,permiser"; *fn = jcors_call; return 1; }
+    if (EH_JCORS(alvo))   { *params = "*apps,options,origins,permiser"; *fn = jcors_call; return 1; }
     if (EH_JSOCKNS(alvo)) { *params = "path,channel"; *fn = jsockns_call; return 1; }
     if (EH_JCHAN(alvo))   { *params = "forAll"; *fn = jchan_call; return 1; }
     return 0;
@@ -23528,6 +23610,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 for (int k = 0; k < npos; k++) pos[k] = stack[sp - total + k];
                 for (int k = npos; k < 16; k++) pos[k] = MK_UNSET();
                 int usados = npos;
+                /* `*apps` na frente da lista: os posicionais viram uma tup em
+                 * pos[0] ANTES de mapear os nomeados (options=1, origins=2) */
+                Value raiz_estrela = MK_UNSET();
+                vm->sp = sp; vm->locals_top = locals_top;
+                if (jk_empacota_estrela(vm, lista_nomes, pos, npos, &usados, &raiz_estrela) < 0)
+                    ERRO(vm, "sem memoria");
                 for (int k = 0; k < nkw_tab; k++) {
                     Value nv = tn->itens[k];
                     if (!EH_STRING(nv)) ERRO(vm, "nome de argumento invalido");
@@ -23551,9 +23639,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     if (achou + 1 > usados) usados = achou + 1;
                 }
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+                /* a tup dos apps não está na pilha: fixa durante a chamada */
+                if (raiz_estrela.t != V_UNSET && fixa_raiz(vm, raiz_estrela) != 0) ERRO(vm, "estouro da pilha");
                 vm->erro_tipo[0] = '\0';
                 Value rv;
                 int rc_jf; REANCORA(rc_jf = jf(vm, alvo_kw, pos, usados, &rv));
+                if (raiz_estrela.t != V_UNSET) vm->sp--;
                 if (rc_jf != 0) {
                     if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                     goto erro_runtime;
@@ -23864,9 +23955,25 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 const char *jp; FnMetodoChamavel jf;
                 if (jk_obj_callable(alvo, &jp, &jf)) {
                     vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
+                    /* `*apps` na frente da lista: os posicionais viram UMA tup
+                     * (como no CALL_KW), fixa na pilha durante a chamada */
+                    Value pos_e[16];
+                    Value *pargs = &stack[sp - n];
+                    int nargs_j = n;
+                    Value raiz_estrela = MK_UNSET();
+                    if (jp && jp[0] == '*') {
+                        if (n > 16) ERRO(vm, "argumentos demais na chamada");
+                        for (int k = 0; k < n; k++) pos_e[k] = stack[sp - n + k];
+                        for (int k = n; k < 16; k++) pos_e[k] = MK_UNSET();
+                        if (jk_empacota_estrela(vm, jp, pos_e, n, &nargs_j, &raiz_estrela) < 0)
+                            ERRO(vm, "sem memoria");
+                        if (fixa_raiz(vm, raiz_estrela) != 0) ERRO(vm, "estouro da pilha");
+                        pargs = pos_e;
+                    }
                     vm->erro_tipo[0] = '\0';
                     Value rv;
-                    int rc_j2; REANCORA(rc_j2 = jf(vm, alvo, &stack[sp - n], n, &rv));
+                    int rc_j2; REANCORA(rc_j2 = jf(vm, alvo, pargs, nargs_j, &rv));
+                    if (raiz_estrela.t != V_UNSET) vm->sp--;
                     if (rc_j2 != 0) {
                         if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                         goto erro_runtime;

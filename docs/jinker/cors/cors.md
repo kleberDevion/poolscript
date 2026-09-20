@@ -1,16 +1,31 @@
-# `cors(options=None, origins=None, permiser=None)`
+# `cors(app, ..., options=None, origins=None)`
 
-Configuração **global** de acesso da aplicação: quais métodos HTTP são aceitos
-e de quais origens (domínios). É uma instância única, importada da lib.
+Configuração de acesso de um servidor: quais métodos HTTP são aceitos e de
+quais origens (domínios). O **primeiro argumento é o servidor** (a instância
+do `Jinker`), e pode ser mais de um — a mesma configuração vale pra todos os
+que forem passados.
 
 ```
-from jinker import cors
+from jinker import Jinker, cors
 
-cors(options: list = None, origins: list = None) -> cors
+app = Jinker(__name__)
+cors(app, options: list = None, origins: list = None) -> cors
 ```
 
-Chamar `cors(...)` é **opcional** — sem ele, tudo é liberado (qualquer método
-configurável por rota, qualquer origem).
+Chamar `cors(...)` é **opcional** — servidor sem `cors(app, ...)` libera tudo
+(qualquer método configurável por rota, qualquer origem).
+
+```
+cors(app, origins=["https://meusite.com"])                # um servidor
+cors(api, admin, options=["GET", "POST"], origins=["https://meusite.com"])   # dois
+```
+
+Sem o servidor é erro, antes de configurar qualquer coisa:
+
+```
+cors(origins=["https://meusite.com"])
+# TypeError: cors() precisa do servidor como primeiro argumento: cors(app, origins=[...])
+```
 
 ---
 
@@ -29,21 +44,22 @@ ou outro backend não passam por CORS (por isso continuam funcionando mesmo com
 
 ## `options` — métodos aceitos
 
-Lista dos métodos HTTP liberados globalmente:
+Lista dos métodos HTTP liberados pro servidor:
 
 ```
-cors(options=["GET", "POST", "PUT", "PATCH", "DELETE"])
+cors(app, options=["GET", "POST", "PUT", "PATCH", "DELETE"])
 ```
 
-Cada rota pode **restringir** esse conjunto com
-[`cors.options([...])`](options/options.md) no `methods=`.
+É o que o preflight `OPTIONS` responde em `Access-Control-Allow-Methods`, e
+o conjunto que uma rota sem `methods=` aceita. Cada rota pode **restringir**
+esse conjunto com [`cors.options([...])`](options/options.md) no `methods=`.
 
 ---
 
 ## `origins` — domínios permitidos
 
 ```
-cors(origins=["https://meusite.com"])
+cors(app, origins=["https://meusite.com"])
 ```
 
 | `origins=` | Efeito |
@@ -62,13 +78,30 @@ Ver [`cors.origins()`](origins/origins.md) para usar no `auth=` de uma rota.
 
 ---
 
+## A config é por servidor
+
+Cada `cors(app, ...)` cria a configuração **daquele(s)** servidor(es): é
+ela que o registro das rotas e o preflight leem. Dois servidores no mesmo
+programa podem ter configurações diferentes:
+
+```
+cors(api, origins=["https://app.meusite.com"])
+cors(admin, origins=["https://admin.meusite.com"])
+```
+
+Os helpers `cors.options()` e `cors.origins()` (sem servidor) devolvem o que
+a **última** chamada de `cors(...)` configurou — é o que se usa no
+`methods=`/`auth=` das rotas escritas logo abaixo dela.
+
+---
+
 ## Uso completo
 
 ```
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__)
-cors(options=["GET", "POST"], origins=["https://meusite.com"])
+cors(app, options=["GET", "POST"], origins=["https://meusite.com"])
 
 @app.route("/api/dados", auth=cors.origins(), methods=cors.options(["GET"]))
 funct dados() {

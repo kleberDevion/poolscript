@@ -175,15 +175,15 @@ funct perfil() {
 @app.route(
     "/api/login",
     methods=cors.options(["POST"]),   # só POST
-    auth=cors.origins()               # só origens configuradas no cors(...)
+    auth=cors.origins()               # só origens configuradas no cors(app, ...)
 )
 funct login() {
     return jsonify({"ok": true})
 }
 ```
 
-`methods` e `auth` são **opcionais**. Sem `methods`, vale o conjunto global do
-`cors()`. Sem `auth`, não há restrição de origem.
+`methods` e `auth` são **opcionais**. Sem `methods`, vale o conjunto do
+`cors(app, ...)` desse servidor. Sem `auth`, não há restrição de origem.
 
 Pra um método só, o atalho diz a mesma coisa sem a lista:
 `@app.post("/api/login", auth=cors.origins())` — ver

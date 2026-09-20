@@ -98,13 +98,18 @@ cors(options=["GET", "POST"], origins=["https://meusite.com"])
 
 ## cors()
 
-Define as configurações globais de acesso. Dois parâmetros:
+Define as configurações de acesso de um servidor. O **primeiro argumento é
+o servidor** (pode ser mais de um), e depois os dois parâmetros:
 
 ```
-cors(options=["POST", "GET", "DELETE"], origins=["https://meusite.com"])
+cors(app, options=["POST", "GET", "DELETE"], origins=["https://meusite.com"])
+cors(api, admin, origins=["https://meusite.com"])     # a mesma config pros dois
 ```
 
-**options** — métodos HTTP aceitos globalmente: `GET`, `POST`, `PUT`,
+Sem o servidor é erro (`TypeError: cors() precisa do servidor como primeiro
+argumento`). Servidor sem `cors(app, ...)` libera tudo.
+
+**options** — métodos HTTP aceitos pelo servidor: `GET`, `POST`, `PUT`,
 `PATCH`, `DELETE`. Cada rota pode restringir esse conjunto com
 `cors.options([...])`.
 

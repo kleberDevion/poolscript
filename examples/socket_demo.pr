@@ -5,7 +5,7 @@
 from jinker import Jinker, cors
 
 sk = Jinker(__name__)
-cors(options=["POST", "GET"], origins=["https://nome.com"])
+cors(sk, options=["POST", "GET"], origins=["https://nome.com"])
 
 @sk.socket("/sala:id", channel=true) {
     funct main() {

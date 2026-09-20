@@ -12,11 +12,11 @@ cors.options(["POST"]) -> list   # filtra/sobrescreve pra esta rota
 
 ## Dois usos
 
-**Sem argumento** — devolve todos os métodos definidos no `cors(options=[...])`
-global:
+**Sem argumento** — devolve todos os métodos definidos na última chamada de
+`cors(app, options=[...])`:
 
 ```
-cors(options=["GET", "POST", "DELETE"])
+cors(app, options=["GET", "POST", "DELETE"])
 # ...
 methods=cors.options()    # GET, POST, DELETE
 ```
