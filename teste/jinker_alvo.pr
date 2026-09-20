@@ -132,6 +132,34 @@ funct inverte(b, a)
     return {"a": a, "b": b}
 }
 
+# Rota LONGA declarada antes da curta com o MESMO nome de parametro: o reset
+# dos params entre tentativas deixava o slot velho, a curta gravava nele sem
+# subir `count`, e o handler nao recebia `id` (500).
+@app.get("/st/<id>/edit")
+funct st_edit(id)
+{
+    return {"rota": "edit", "id": id}
+}
+
+@app.get("/st/<id>")
+funct st_um(id)
+{
+    return {"rota": "um", "id": id}
+}
+
+# Literal DEPOIS do parametro no mesmo segmento: o valor vai ate o literal.
+@app.route("/x/<id>.json")
+funct x_json()
+{
+    return {"id": request.path_param("id")}
+}
+
+@app.route("/y/<a>-<b>")
+funct y_dois()
+{
+    return {"a": request.path_param("a"), "b": request.path_param("b")}
+}
+
 
 # ── upload multipart ────────────────────────────────────────────────────────
 @app.route("/subir", methods=["POST"])
@@ -194,6 +222,23 @@ funct emitir()
 funct ws_sala()
 {
     return "eco: " + request.text()
+}
+
+# Socket LONGO antes do curto com o mesmo parametro: a conexao em `/chat/geral`
+# tem que entrar na sala automatica `geral` (mesmo reset de params das rotas).
+@app.socket("/chat/<sala>/admin", channel=true)
+funct chat_admin()
+{
+    return "admin"
+}
+
+@app.socket("/chat/<sala>", channel=true)
+funct chat()
+{
+    sala = request.path_param("sala")
+    send = app.socket()
+    send.emit(payload={"emit": sala}, room_id=sala, exclude_self=false)
+    return "ret:" + str(sala)
 }
 
 

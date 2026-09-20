@@ -167,6 +167,19 @@ funct perfil() {
 > equivalentes. (Houve uma versão em que `/user:id` só casava a URL colada,
 > `/user42`; não faz sentido e não existe mais.)
 
+**Literal depois do parâmetro, no mesmo segmento** — o valor vai até o
+literal que o padrão traz logo depois dele (a primeira ocorrência):
+
+```
+@app.route("/rel/<id>.json")      # /rel/5.json  → id = "5";  /rel/5 → 404
+@app.route("/faixa/<de>-<ate>")   # /faixa/1-9   → de = "1", ate = "9"
+```
+
+O valor de um parâmetro **não tem limite de tamanho** — um JWT de 800
+caracteres no path casa e chega inteiro em `request.path_param`. E `%00` no
+path (byte nulo codificado) é requisição inválida: `400`, nenhuma rota
+responde por ele.
+
 ---
 
 ## Restringindo método e origem

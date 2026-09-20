@@ -352,6 +352,11 @@ int ps_jk_le_request(PSJkConn *c, PSJkReq *r)
     char *q = strchr(alvo, '?');
     if (q) { *q = '\0'; r->query = jk_ar_faixa(r, q + 1, q + 1 + strlen(q + 1)); }
     else     r->query = jk_ar_faixa(r, "", "");
+    /* `%00` decodifica pra byte 0 e TRUNCA o path antes do roteamento:
+     * `/users/7%00/photos` virava `/users/7` e a rota curta respondia 200
+     * por um caminho que só existe como POST. Byte nulo não é caminho; é
+     * sintaxe do cliente, 400 como o resto desta linha. */
+    if (strstr(alvo, "%00")) { ps_jk_req_solta(r); return PSJK_MALFORM; }
     ps_jk_urldecode(alvo);
     r->path = alvo;
     if (!r->query) { ps_jk_req_solta(r); return -1; }

@@ -1544,6 +1544,22 @@ static int dict_set(VM *vm, PSDict *d, const Value *chave, const Value *valor)
     return 0;
 }
 
+/* Esvazia o dict DE VERDADE. `count = usados = 0` sozinho não esvazia: o
+ * `indices[]` continua apontando pros slots velhos, e o próximo `dict_set`
+ * da mesma chave acha o slot, troca só o valor e não sobe `count` — o dict
+ * "vazio" responde à chave e diz que tem 0 entradas. Era o reset dos params
+ * de rota do jinker: `/st/<id>/edit` falhava depois de capturar `id`,
+ * `/st/<id>` gravava no slot velho e o handler recebia zero argumentos (500);
+ * o socket `/chat/<sala>` não entrava na sala. E o GC (`gct_dict`) só marca
+ * até `usados`, então a string do slot velho ficava viva sem marca. */
+static void dict_limpa(PSDict *d)
+{
+    if (!d || (d->count == 0 && d->usados == 0)) return;
+    d->count = 0;
+    d->usados = 0;
+    for (int i = 0; i < d->icap; i++) d->indices[i] = DICT_VAZIO;
+}
+
 /* Remove a chave. Deixa lápide no índice e buraco no denso: a ordem de
  * inserção das outras não pode mudar, e a cadeia de sondagem de quem entrou
  * depois não pode ser cortada. */
@@ -6425,10 +6441,7 @@ static int met_d_clear(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     (void)args;
     if (n != 0) return erro_aridade(vm, "clear", 0, 0, n);
-    PSDict *d = COMO_DICT(alvo);
-    d->count = 0;
-    d->usados = 0;
-    for (int i = 0; i < d->icap; i++) d->indices[i] = DICT_VAZIO;
+    dict_limpa(COMO_DICT(alvo));
     *out = MK_NULL();
     return 0;
 }
@@ -19180,6 +19193,29 @@ static void jk_acao_origin(JkRota *rt, const char *origin, char *out, size_t cap
 }
 
 /* ── casamento de rota (:id e /<id>) ────────────────────────────────────── */
+/* Captura o valor de um parâmetro dinâmico a partir de `*sp_io`. O valor vai
+ * até a próxima barra, o fim do path, ou `lim` — o literal que o padrão traz
+ * logo depois do parâmetro (`.` em `/x/<id>.json`, `-` em `/y/<a>-<b>`); com
+ * `lim` = '\0' ou '/', é "até a barra ou o fim", como sempre foi. A primeira
+ * ocorrência do literal fecha o valor (não é guloso). Antes o valor ia sempre
+ * até a barra, o `.json` do padrão sobrava e a rota nunca casava (404).
+ *
+ * Sem buffer: era `char val[512]`, e um valor de 512+ bytes (um JWT no path)
+ * não casava a rota — 404 sem explicação. `nova_string` não dispara GC. */
+static int jk_captura_param(VM *vm, PSDict *params, const char *nome,
+                            const char **sp_io, char lim)
+{
+    const char *sp = *sp_io, *ini = sp;
+    while (*sp && *sp != '/' && *sp != lim) sp++;
+    if (sp == ini) return 0;               /* segmento vazio não é valor */
+    if (params) {
+        PSString *o = nova_string(vm, ini, (int)(sp - ini));
+        if (!o || jk_dict_set_str(vm, params, nome, MK_OBJ(o)) != 0) return 0;
+    }
+    *sp_io = sp;
+    return 1;
+}
+
 /* Devolve 1 se casa; preenche `params` (dict) com os parâmetros dinâmicos. */
 static int jk_casa(VM *vm, const char *pat, const char *path, PSDict *params)
 {
@@ -19205,13 +19241,10 @@ static int jk_casa(VM *vm, const char *pat, const char *path, PSDict *params)
                 if (*sp != '/') return 0;
                 sp++;
             }
-            /* captura até '/' ou fim */
-            char val[512]; int vi = 0;
-            while (*sp && *sp != '/' && vi < 511) val[vi++] = *sp++;
-            val[vi] = '\0';
-            if (vi == 0) return 0;
-            if (params && jk_dict_set_str(vm, params, nome, jk_str_val(vm, val)) != 0) return 0;
-        } else if (pp[0] == '/' && pp[1] == '<') {
+            /* `*pp` é o que vem depois do nome no padrão: '\0', '/' ou o
+             * literal colado (`/x/:id.json` → '.') */
+            if (!jk_captura_param(vm, params, nome, &sp, *pp)) return 0;
+        } else if (pp[0] == '<' || (pp[0] == '/' && pp[1] == '<')) {
             /* `/<nome>` é UM segmento, como `:nome` — a doc promete que
              * `/user/<id>`, `/user/:id` e `/user:id` casam a mesma URL, e
              * mostra `/loja/<loja>/item/<item>`.
@@ -19220,19 +19253,22 @@ static int jk_casa(VM *vm, const char *pat, const char *path, PSDict *params)
              * interpretador de referência): `/a/<id>/b` nunca casava (o `<id>`
              * comia `1/b` e sobrava `/b` do padrão), e `/users/<id>` engolia
              * `/users/7/photos` inteiro — a rota POST `/users/<id>/photos`
-             * nunca era alcançada e o cliente levava 405 no lugar dela. */
-            const char *fim = strchr(pp + 2, '>');
-            if (!fim) return 0;
+             * nunca era alcançada e o cliente levava 405 no lugar dela.
+             *
+             * `<nome>` SEM a barra na frente é o segundo parâmetro do mesmo
+             * segmento (`/y/<a>-<b>`): captura sem consumir barra. Um `<`
+             * solto no padrão, sem `>`, é literal. */
+            int com_barra = (pp[0] == '/');
+            const char *fim = strchr(pp + 1 + com_barra, '>');
+            if (!fim) { if (*pp != *sp) return 0; pp++; sp++; continue; }
             char nome[64]; int ni = 0;
-            for (const char *q = pp + 2; q < fim && ni < 63; q++) nome[ni++] = *q;
+            for (const char *q = pp + 1 + com_barra; q < fim && ni < 63; q++) nome[ni++] = *q;
             nome[ni] = '\0';
-            if (*sp != '/') return 0;
-            sp++;   /* consome a barra literal */
-            char val[512]; int vi = 0;
-            while (*sp && *sp != '/' && vi < 511) val[vi++] = *sp++;
-            val[vi] = '\0';
-            if (vi == 0) return 0;              /* segmento vazio não é valor */
-            if (params && jk_dict_set_str(vm, params, nome, jk_str_val(vm, val)) != 0) return 0;
+            if (com_barra) {
+                if (*sp != '/') return 0;
+                sp++;   /* consome a barra literal */
+            }
+            if (!jk_captura_param(vm, params, nome, &sp, fim[1])) return 0;
             pp = fim + 1;
         } else {
             if (*pp != *sp) return 0;
@@ -19624,12 +19660,18 @@ static void jk_ws_aceita(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr)
     Value pv = params ? MK_OBJ(params) : MK_NULL();
     if (params && fixa_raiz(vm, pv) != 0) { ps_jk_close(c); return; }
     for (int i = 0; i < j->nsocks; i++) {
-        if (params) { params->count = 0; params->usados = 0; }
+        if (params) dict_limpa(params);
         if (jk_casa(vm, j->socks[i].path, hr->path, params)) { idx = i; break; }
     }
     if (idx < 0) {
         if (params) vm->sp--;
-        ps_jk_ws_envia_close(c, 1008, "path não encontrado");
+        /* Recusa de handshake é resposta HTTP (RFC 6455 §4.2.2), com a mesma
+         * frase do 404 do HTTP. Saía um frame de close WS (`88 16 03 f0 …`)
+         * numa conexão que nunca foi promovida — o cliente lia lixo sem linha
+         * de status. */
+        char m404[700];
+        snprintf(m404, sizeof(m404), "rota não encontrada: %s %s", hr->metodo, hr->path ? hr->path : "");
+        jk_erro_json(c, 404, m404, 0, "*");
         ps_jk_close(c);
         return;
     }
@@ -19785,7 +19827,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
             for (int k = 0; k < j->rotas[i].nmetodos; k++)
                 if (strcasecmp(j->rotas[i].metodos[k], met) == 0) { mok = 1; break; }
             if (!mok) continue;
-            if (params) { params->count = 0; params->usados = 0; }
+            if (params) dict_limpa(params);
             if (jk_casa(vm, j->rotas[i].path, hr->path, params)) { rota = &j->rotas[i]; break; }
         }
     }
@@ -19803,7 +19845,7 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
     if (!rota && j->nrotas > 0) {
         char permitidos[256]; int wp = 0; permitidos[0] = '\0';
         for (int i = 0; i < j->nrotas; i++) {
-            if (params) { params->count = 0; params->usados = 0; }
+            if (params) dict_limpa(params);
             if (!jk_casa(vm, j->rotas[i].path, hr->path, params)) continue;
             for (int k = 0; k < j->rotas[i].nmetodos; k++) {
                 const char *m = j->rotas[i].metodos[k];

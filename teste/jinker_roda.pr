@@ -49,12 +49,13 @@ funct confere(nome, cond)
 
 # Requisição CRUA: abre o socket, escreve os bytes exatos e lê a resposta. É o
 # único jeito de testar requisição torta — nenhum cliente HTTP decente deixa
-# você mandar `Content-Length: abc`.
-funct cru(bytes_pedido)
+# você mandar `Content-Length: abc`. `cru_em` recebe a porta (a do WebSocket
+# é PORTA + 1); `cru` é o atalho pra porta HTTP.
+funct cru_em(porta, bytes_pedido)
 {
     s = sockets.socket()
     s.settimeout(5.0)
-    s.connect(("127.0.0.1", PORTA))
+    s.connect(("127.0.0.1", porta))
     s.sendall(bytes_pedido.encode())
     resposta = ""
     erro = ""
@@ -80,14 +81,21 @@ funct cru(bytes_pedido)
         # Timeout de leitura é ESPERADO em conexão keep-alive: o servidor
         # respondeu e não fecha. Qualquer outro erro é defeito do teste e tem
         # que aparecer — engolir calado foi o que escondeu o problema acima.
+        # A frase da lib de sockets é "timed out" (não "timeout"): o filtro
+        # antigo não a pegava e a suíte inteira imprimia o ruído.
         erro = str(e)
-        if not "timeout" in erro and not "Timeout" in erro
+        if not "timed out" in erro and not "timeout" in erro and not "Timeout" in erro
         {
             post("      (cru) erro lendo a resposta:", erro)
         }
     }
     s.close()
     return resposta
+}
+
+funct cru(bytes_pedido)
+{
+    return cru_em(PORTA, bytes_pedido)
 }
 
 funct espera_porta(prazo_decimos)
@@ -185,6 +193,38 @@ confere("GET num path que so tem POST e 405, nao a rota curta com id '7/photos'"
         r.status_code == 405)
 r = get(RAIZ + "/users/7/")
 confere("barra extra no fim nao vira parte do valor", r.status_code == 404)
+
+# Rota LONGA declarada antes da curta com o MESMO nome de parametro
+# (`/st/<id>/edit` e `/st/<id>`): o reset dos params entre uma tentativa e
+# outra so zerava `count` e `usados`, o indice continuava apontando pro slot
+# velho, a curta gravava nele sem subir `count`, e o handler recebia ZERO
+# argumentos — 500 "missing 1 required positional argument".
+r = get(RAIZ + "/st/7")
+confere("rota curta depois da longa com o mesmo parametro casa e injeta o valor",
+        r.status_code == 200 and r.get_json("id") == "7" and r.get_json("rota") == "um")
+r = get(RAIZ + "/st/7/edit")
+confere("...e a longa continua casando", r.get_json("rota") == "edit" and r.get_json("id") == "7")
+
+# Literal DEPOIS do parametro no mesmo segmento: `<id>` captura ate o literal.
+r = get(RAIZ + "/x/5.json")
+confere("`/x/<id>.json` casa `/x/5.json` com id=5", r.status_code == 200 and r.get_json("id") == "5")
+r = get(RAIZ + "/x/5")
+confere("`/x/<id>.json` NAO casa `/x/5` (falta o literal)", r.status_code == 404)
+r = get(RAIZ + "/y/1-2")
+confere("`/y/<a>-<b>`: dois parametros no mesmo segmento",
+        r.get_json("a") == "1" and r.get_json("b") == "2")
+
+# Sem limite de tamanho no valor: era `char[512]`, e a partir de 512 bytes a
+# rota nao casava (404) — um JWT no path passa disso facil.
+longo = "a" * 600
+r = get(RAIZ + "/param/" + longo)
+confere("parametro de 600 caracteres casa e chega inteiro",
+        r.status_code == 200 and r.get_json("id") == longo)
+
+# `%00` decodificava pra byte nulo e TRUNCAVA o path: `/users/7%00/photos`
+# virava `/users/7` e a rota curta respondia 200. Byte nulo e 400.
+bruto = cru("GET /users/7%00/photos HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+confere("`%00` no path e 400, nao outra rota", "HTTP/1.1 400" in bruto)
 
 r = get(RAIZ + "/cabecalho", headers={"X-Chave": "valor"})
 confere("cabeçalho do cliente chega", r.get_json("chave") == "valor")
@@ -387,6 +427,35 @@ catch (e)
     eco = "ERRO: " + str(e)
 }
 confere("WebSocket faz handshake e ecoa a mensagem", "alo" in eco)
+
+# Upgrade num path que NAO existe: a recusa e uma resposta HTTP 404 (RFC 6455
+# §4.2.2). Saia um frame de close WS cru (`88 16 03 f0 …`) numa conexao que
+# nunca foi promovida, e o cliente lia lixo sem linha de status.
+bruto_ws = cru_em(PORTA + 1, "GET /nope HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
+confere("WebSocket em path inexistente recebe HTTP 404 com a frase do HTTP",
+        bruto_ws.startswith("HTTP/1.1 404") and "rota não encontrada: GET /nope" in bruto_ws)
+
+# Socket LONGO declarado antes do curto com o mesmo parametro (`/chat/<sala>/admin`
+# e `/chat/<sala>`): a conexao em `/chat/geral` tem que entrar na sala `geral`
+# — o mesmo reset de params das rotas HTTP deixava `count` em 0 e a conexao
+# ficava sem sala; o emit pra sala nunca chegava.
+sala_msgs = ""
+try
+{
+    ws4 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/chat/geral")
+    sala_vindas = []
+    ws4.on_message(funct(m) { sala_vindas.append(str(m)) })
+    ws4.send("oi")
+    sleep(1)
+    sala_msgs = str(sala_vindas)
+    ws4.close()
+}
+catch (e)
+{
+    sala_msgs = "ERRO: " + str(e)
+}
+confere("socket curto depois do longo entra na sala automatica: o emit pra sala chega",
+        "emit" in sala_msgs and "ret:geral" in sala_msgs)
 
 # `on_message` com `async funct`: a drenagem ESPERA o callback, como o jinker
 # espera o handler — o corpo roda, na ordem das mensagens.

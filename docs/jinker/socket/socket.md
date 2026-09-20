@@ -32,6 +32,11 @@ funct mensagem() {
 }
 ```
 
+Path que **não** bate com nenhum `@app.socket` recebe uma resposta HTTP
+`404` normal (`{"error": true, "code": 404, "message": "rota não encontrada:
+GET /x"}`) e a conexão fecha — o handshake nunca acontece, como a RFC 6455
+manda para recusa.
+
 ---
 
 ## Enviando mensagens: `app.socket()` (emissor)
