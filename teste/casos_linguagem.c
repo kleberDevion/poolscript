@@ -2743,6 +2743,35 @@ const Caso CASOS_LINGUAGEM[] = {
 { "model: valor de parametro tem que ser literal",
   "x = 3\nmodel M() {\n    a: int(min=x)\n}\n", "", "parametro 'min' do campo a: so numero literal", 2 },
 
+/* Membro com o nome errado: a frase APONTA o nome incorreto sugerindo o
+ * parecido (o "Did you mean" que a frase de modulo ja tinha), antes de rodar
+ * e rodando, em tipo nativo e em Entity. Um `raplace` num str do painel
+ * dele passou por "o replace sumiu" — a frase so dizia "'str' object". */
+{ "membro errado em str: sugere o certo, antes de rodar",
+  "s = \"abc\"\npost(s.raplace(\"a\", \"b\"))\n", "",
+  "AttributeError: 'str' object has no attribute 'raplace'. Did you mean: 'replace'?", 2 },
+{ "membro errado em str: a mesma frase rodando (tipo so se sabe na chamada)",
+  "funct f(s) {\n    return s.raplace(\"a\", \"b\")\n}\npost(f(\"abc\"))\n", "",
+  "AttributeError: 'str' object has no attribute 'raplace'. Did you mean: 'replace'?", 1 },
+{ "membro errado em list sugere o metodo de list",
+  "xs = [1]\nxs.apend(2)\n", "", "'list' object has no attribute 'apend'. Did you mean: 'append'?", 2 },
+{ "membro errado numa Entity: sugere o metodo, antes de rodar",
+  "class Conta() {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
+  "c = Conta()\npost(c.extrat())\n", "",
+  "AttributeError: 'Conta' object has no attribute 'extrat'. Did you mean: 'extrato'?", 2 },
+{ "membro errado numa Entity vindo de parametro sem tipo: a mesma frase rodando",
+  "class Conta() {\n    funct __init__(self) { self.saldo = 1 }\n    funct extrato(self) { return self.saldo }\n}\n"
+  "funct f(c) {\n    return c.extrat()\n}\npost(f(Conta()))\n", "",
+  "AttributeError: 'Conta' object has no attribute 'extrat'. Did you mean: 'extrato'?", 1 },
+{ "campo errado numa Entity: sugere o campo gravado em self",
+  "class Conta() {\n    funct __init__(self) { self.saldo = 1 }\n}\nc = Conta()\npost(c.sald)\n", "",
+  "'Conta' object has no attribute 'sald'. Did you mean: 'saldo'?", 2 },
+{ "metodo static errado pela classe: sugere",
+  "class K() {\n    static funct dobro(n) { return n * 2 }\n}\npost(K.dobr(2))\n", "",
+  "'K' object has no attribute 'dobr'. Did you mean: 'dobro'?", 2 },
+{ "nome sem parecido nenhum: a frase fica como era",
+  "s = \"abc\"\npost(s.zzzz())\n", "", "AttributeError: 'str' object has no attribute 'zzzz'", 2 },
+
 /* ── L3 DO PLANO DAS CONTRADICOES: regex (2026-09-12) — strings medidas ──── */
 /* `a{1}?` era recusado com "multiple repeat": a guarda do preguicoso olhava
  * `min != 1 || max != 1`, e `{1}` deixa os dois em 1. */

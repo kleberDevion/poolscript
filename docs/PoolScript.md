@@ -1,4 +1,4 @@
-# PoolScript v15.91.19
+# PoolScript v15.91.20
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.91.19 [PSVM]
+# PoolScript 15.91.20 [PSVM]
 ```
 
 ---
@@ -370,7 +370,7 @@ Tipos disponíveis:
 | `ValueError` | o tipo está certo e o **valor** não serve: `int("abc")`, `max([])` |
 | `ZeroDivisionError` | divisão ou resto por zero |
 | `NameError` | nome que não existe no escopo (`post(x)`) |
-| `AttributeError` | membro que o objeto não tem (`"abc".m`, `json.naoexiste`) |
+| `AttributeError` | membro que o objeto não tem (`"abc".m`, `json.naoexiste`); nome parecido é apontado: `'str' object has no attribute 'raplace'. Did you mean: 'replace'?` |
 | `OverflowError` | número que não cabe no destino (`int(flo("inf"))`) |
 | `AttributedValueError` | valor incompatível em variável **tipada** (`str x = 10`) — não cobre o `+` |
 | `KeyError` | chave não existe no dict. A mensagem é só a chave: `'z'` |

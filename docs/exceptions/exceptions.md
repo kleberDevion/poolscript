@@ -76,7 +76,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `ValueError` | **o tipo está certo e o valor não serve**: `int("abc")`, `"banana".index("zz")`, `max([])`, `chr(99999999)`. |
 | `ZeroDivisionError` | divisão ou resto por zero. O texto separa quatro casos: `1/0` → `division by zero`; `1.0/0` → `flo division by zero`; `1%0` → `integer modulo by zero`; `1.5%0.0` → `flo modulo` |
 | `NameError` | nome que não existe no escopo: `post(x)` → `name 'x' is not defined` |
-| `AttributeError` | membro que o objeto não tem: `"abc".m` → `'str' object has no attribute 'm'`; também `module 'json' has no attribute 'x'` |
+| `AttributeError` | membro que o objeto não tem: `"abc".m` → `'str' object has no attribute 'm'`; também `module 'json' has no attribute 'x'`. Nome parecido com um que existe é apontado: `"abc".raplace(…)` → `'str' object has no attribute 'raplace'. Did you mean: 'replace'?` — em tipo, classe e módulo, antes de rodar e rodando |
 | `OverflowError` | número que não cabe no destino: `int(flo("inf"))` → `cannot convert flo infinity to integer` |
 | `RecursionError` | recursão ou expressão funda demais: `maximum recursion depth exceeded`. Antes era `RuntimeError`, e por isso só dava pra pegar junto com todo o resto |
 | `MemoryError` | sem memória. A mensagem diz ONDE acabou — `sem memoria em sorted()` — em vez de vir vazia: num processo que morreu de memória essa é a única pista que sobra |

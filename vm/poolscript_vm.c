@@ -21977,6 +21977,62 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
     return melhor;
 }
 
+const char *ps_nativo_sugestao(const char *mod, const char *membro);
+
+/* Os nomes que uma classe tem — métodos, campos tipados, `static` e os dos
+ * pais — pro "Did you mean" de `obj.raplace`. Até 256; o resto não entra. */
+static void junta_cands_classe(PSClass *cl, const char **cands, int *n, int prof)
+{
+    if (!cl || *n >= 256 || prof > 32) return;
+    for (int32_t i = 0; i < cl->nmetodos && *n < 256; i++)
+        if (cl->met_nomes && cl->met_nomes[i]) cands[(*n)++] = cl->met_nomes[i];
+    for (int32_t i = 0; i < cl->ntip && *n < 256; i++)
+        if (cl->tip_nomes && cl->tip_nomes[i]) cands[(*n)++] = cl->tip_nomes[i];
+    if (EH_DICT(cl->estaticos)) {
+        PSDict *d = COMO_DICT(cl->estaticos);
+        for (int k = 0; k < d->usados && *n < 256; k++)
+            if (d->entradas[k].estado == 1 && EH_STRING(d->entradas[k].chave))
+                cands[(*n)++] = COMO_STRING(d->entradas[k].chave)->chars;
+    }
+    for (int32_t i = 0; i < cl->npais; i++) junta_cands_classe(cl->pais[i], cands, n, prof + 1);
+}
+
+/* O membro mais parecido com `nome` no valor `alvo` — classe, instância (a
+ * classe dela mais os `self.x` já gravados) ou tipo nativo (a tabela dele).
+ * NULL = nada parecido; a frase fica como era. A frase de membro ausente
+ * dizia só "'str' object has no attribute 'raplace'" — quem lia via o
+ * `str` conversor e concluía que o `replace` tinha sumido. Agora aponta o
+ * nome incorreto sugerindo o certo, como a de módulo já fazia. */
+static const char *sugere_membro_valor(Value alvo, const char *nome)
+{
+    if (!nome) return NULL;
+    const char *cands[256];
+    int n = 0;
+    if (EH_CLASS(alvo)) {
+        junta_cands_classe(COMO_CLASS(alvo), cands, &n, 0);
+    } else if (EH_INST(alvo)) {
+        PSInstance *in = COMO_INST(alvo);
+        junta_cands_classe(in->classe, cands, &n, 0);
+        PSDict *d = (PSDict *)in->campos;
+        if (d)
+            for (int k = 0; k < d->usados && n < 256; k++)
+                if (d->entradas[k].estado == 1 && EH_STRING(d->entradas[k].chave))
+                    cands[n++] = COMO_STRING(d->entradas[k].chave)->chars;
+    } else {
+        return ps_nativo_sugestao(nome_do_tipo_valor(alvo), nome);
+    }
+    return sugere_nome(nome, cands, n);
+}
+
+/* ". Did you mean: 'x'?" ou "" — o sufixo da frase de membro ausente. */
+static const char *dica_membro(Value alvo, const char *nome, char *buf, size_t cap)
+{
+    const char *s = sugere_membro_valor(alvo, nome);
+    if (!s) return "";
+    snprintf(buf, cap, ". Did you mean: '%s'?", s);
+    return buf;
+}
+
 enum { MEMBRO_ACHOU = 0, MEMBRO_PRIVADO = 1, MEMBRO_AUSENTE = 2 };
 
 /* O membro `nome` de um módulo, pela regra do import — a MESMA pra `from m
@@ -25170,9 +25226,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             Value mnv = p->consts[arg];
             if (!EH_CLASS(cv) || !EH_STRING(mnv)) ERRO(vm, "LOAD_METODO sem classe");
             Value mv = MK_NULL();
-            if (acha_metodo(COMO_CLASS(cv), COMO_STRING(mnv)->chars, &mv) < 0)
-                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
-                        COMO_CLASS(cv)->nome ? COMO_CLASS(cv)->nome : "?", COMO_STRING(mnv)->chars);
+            if (acha_metodo(COMO_CLASS(cv), COMO_STRING(mnv)->chars, &mv) < 0) {
+                char dica[160];
+                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
+                        COMO_CLASS(cv)->nome ? COMO_CLASS(cv)->nome : "?", COMO_STRING(mnv)->chars,
+                        dica_membro(cv, COMO_STRING(mnv)->chars, dica, sizeof(dica)));
+            }
             stack[sp - 1] = mv;
             break;
         }
@@ -25336,8 +25395,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         stack[sp - 1] = MK_OBJ(mn);
                         break;
                     }
-                    ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
-                            nome_do_tipo_valor(alvo), nome);
+                    {
+                        char dica[160];
+                        ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
+                                nome_do_tipo_valor(alvo), nome, dica_membro(alvo, nome, dica, sizeof(dica)));
+                    }
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
                 /* Receptor + o valor do método. Método `static` lido pela
@@ -25361,9 +25423,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 /* método estático: chamado direto na Entity */
                 Value metv = MK_NULL();
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), nome, &metv);
-                if (mp < 0) ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
-                                    COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?",
-                                    nome);
+                if (mp < 0) {
+                    char dica[160];
+                    ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
+                            COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?",
+                            nome, dica_membro(alvo, nome, dica, sizeof(dica)));
+                }
                 /* Sem instância, só `@static` vale — é a regra do
                  * interpretador (PoolEntityClass.__getattr__). Antes a VM
                  * aceitava QUALQUER método aqui e dropava o `self` calada: o
@@ -25688,8 +25753,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                          * mensagem do KeyError e a chave, entre aspas */
                         ERRO_TF(vm, "KeyError", "'%s'", nome);
                     }
-                    ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
-                            nome_do_tipo_valor(alvo), nome);
+                    {
+                        char dica[160];
+                        ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
+                                nome_do_tipo_valor(alvo), nome, dica_membro(alvo, nome, dica, sizeof(dica)));
+                    }
                 }
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSMetodoNat *m = novo_metnat(vm, alvo, tab, mi);
@@ -25733,10 +25801,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     ERRO(vm, "sem memoria");
                 break;
             }
-            if (!EH_INST(alvo))
-                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'",
-                        nome_do_tipo_valor(alvo),
-                        EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?");
+            if (!EH_INST(alvo)) {
+                char dica[160];
+                const char *nm = EH_STRING(nomev) ? COMO_STRING(nomev)->chars : "?";
+                ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
+                        nome_do_tipo_valor(alvo), nm, dica_membro(alvo, nm, dica, sizeof(dica)));
+            }
             PSInstance *inst = COMO_INST(alvo);
             if (EH_STRING(nomev) && priv_barrado(inst->classe, COMO_STRING(nomev)->chars, (int32_t)(p - vm->protos)))
                 ERRO_TF(vm, "RuntimeError",
@@ -28180,7 +28250,27 @@ const char *ps_nativo_sugestao(const char *mod, const char *membro)
         for (int k = 0; k < nc; k++) cands[k] = MODULOS[i].membros[k].nome;
         return sugere_nome(membro, cands, nc);
     }
-    return NULL;
+    /* tipo nativo (`str`, `list`, `byte`, `PoolFile`…): a tabela de métodos
+     * dele, os campos e o que todo valor tem — a mesma lista do
+     * `ps_nativo_tem_membro` */
+    const char *cands[512];
+    int n = 0, achou = 0;
+    for (int t = 0; t < (int)(sizeof(TAM_TABELA) / sizeof(TAM_TABELA[0])); t++) {
+        const char *rot = t == T_MET_PFILE ? "PoolFile" : jm_rotulo_tabela(t);
+        if (!rot || strcmp(rot, mod) != 0) continue;
+        achou = 1;
+        for (int k = 0; k < TAM_TABELA[t] && n < 512; k++) cands[n++] = TABELAS[t][k].nome;
+    }
+    for (int k = 0; k < N_CAMPOS && n < 512; k++)
+        if (strcmp(CAMPOS[k].dono, mod) == 0) { achou = 1; cands[n++] = CAMPOS[k].campo; }
+    if (!achou) return NULL;
+    for (int k = 0; k < TAM_TABELA[T_MET_UNIV] && n < 512; k++) cands[n++] = METODOS_UNIV[k].nome;
+    return sugere_nome(membro, cands, n);
+}
+
+const char *ps_sugere_nome(const char *alvo, const char **nomes, int n)
+{
+    return (alvo && nomes && n > 0) ? sugere_nome(alvo, nomes, n) : NULL;
 }
 
 int ps_nome_pre_ligado(const char *nome)

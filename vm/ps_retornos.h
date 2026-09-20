@@ -38,8 +38,14 @@ int ps_nativo_eh_modulo(const char *nome);
  * import (`Parsing`) — a mesma lista que a partida do programa usa. */
 int ps_nome_pre_ligado(const char *nome);
 
-/* O membro do módulo nativo mais parecido com `membro` (o "Did you mean" que
- * a VM dá rodando), ou NULL. */
+/* O membro mais parecido com `membro` num módulo nativo OU num tipo nativo
+ * (`str`, `list`, `byte`…) — o "Did you mean" que a VM dá rodando —, ou
+ * NULL. O checador usa o mesmo, pra frase antes de rodar ser a mesma. */
 const char *ps_nativo_sugestao(const char *mod, const char *membro);
+
+/* O nome de `nomes` mais parecido com `alvo` (distância de edição pequena),
+ * ou NULL — a régua única do "Did you mean", pro checador aplicar aos
+ * membros de uma classe do arquivo. */
+const char *ps_sugere_nome(const char *alvo, const char **nomes, int n);
 
 #endif

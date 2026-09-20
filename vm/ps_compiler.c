@@ -2601,6 +2601,61 @@ static void tp_self_dos_metodos(C *c, PSNode *cls)
     }
 }
 
+/* Os nomes que uma Entity do arquivo tem — campos declarados, métodos,
+ * `self.x` gravados nos métodos e os dos pais — pro "Did you mean" da frase
+ * de membro ausente antes de rodar (a mesma régua da VM). */
+static void tp_junta_self_gravados(PSNode *n, const char **v, int *cnt)
+{
+    if (!n || *cnt >= 256) return;
+    if (n->kind == N_LAMBDA_EXPR) return;
+    if (n->kind == N_MEMBER_ASSIGNMENT && n->texto && n->a && n->a->kind == N_NAME
+            && n->a->texto && !strcmp(n->a->texto, "self")) v[(*cnt)++] = n->texto;
+    if (n->kind == N_FIELD_DECL && n->texto) v[(*cnt)++] = n->texto;
+    tp_junta_self_gravados(n->a, v, cnt);
+    tp_junta_self_gravados(n->b, v, cnt);
+    tp_junta_self_gravados(n->c, v, cnt);
+    tp_junta_self_gravados(n->e, v, cnt);
+    for (int32_t i = 0; i < n->lista.n; i++)  tp_junta_self_gravados(n->lista.itens[i], v, cnt);
+    for (int32_t i = 0; i < n->lista2.n; i++) tp_junta_self_gravados(n->lista2.itens[i], v, cnt);
+}
+static void tp_junta_membros_classe(C *c, const char *classe, const char **v, int *cnt, int prof)
+{
+    PSNode *d = tp_tipo_arq(c, classe);
+    if (!d || d->kind != N_ENTITY_DECL || prof > 32 || *cnt >= 256) return;
+    for (int32_t i = 0; i < d->lista2_alias.n && *cnt < 256; i++)
+        if (d->lista2_alias.itens[i] && d->lista2_alias.itens[i]->texto) v[(*cnt)++] = d->lista2_alias.itens[i]->texto;
+    for (int32_t i = 0; i < d->lista.n && *cnt < 256; i++) {
+        PSNode *m = d->lista.itens[i];
+        if (!m) continue;
+        if (m->kind == N_ACTION_DECL && m->texto) v[(*cnt)++] = m->texto;
+        if (m->kind == N_ACTION_DECL) tp_junta_self_gravados(m->b, v, cnt);
+    }
+    for (int32_t i = 0; i < d->lista2.n; i++)
+        if (d->lista2.itens[i] && d->lista2.itens[i]->texto)
+            tp_junta_membros_classe(c, d->lista2.itens[i]->texto, v, cnt, prof + 1);
+}
+static const char *tp_sugere_membro(C *c, const char *tipo, const char *nome)
+{
+    if (!tipo || !nome || strchr(tipo, '|')) return NULL;
+    PSNode *d = tp_tipo_arq(c, tipo);
+    if (d && d->kind == N_ENTITY_DECL) {
+        const char *v[256];
+        int cnt = 0;
+        tp_junta_membros_classe(c, tipo, v, &cnt, 0);
+        return ps_sugere_nome(nome, v, cnt);
+    }
+    if (d) return NULL;
+    return ps_nativo_sugestao(tipo, nome);
+}
+/* ". Did you mean: 'x'?" ou "" — o mesmo sufixo que a VM põe rodando */
+static const char *tp_dica_membro(C *c, const char *tipo, const char *nome, char *buf, size_t cap)
+{
+    const char *s = tp_sugere_membro(c, tipo, nome);
+    if (!s) return "";
+    snprintf(buf, cap, ". Did you mean: '%s'?", s);
+    return buf;
+}
+
 /* `alvo.nome` existe? Módulo nativo, tipo nativo (pelas tabelas da VM),
  * Entity do arquivo (campo, método, `self.x` gravado, pais) e enum. O que não
  * se sabe — tipo desconhecido, pai importado — passa. */
@@ -2637,8 +2692,11 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
     if (n->a->kind == N_NAME && n->a->texto) {
         SimInfo *s = tp_sim_de(c, u, n->a->texto);
         if (s && s->decl && s->decl->kind == N_ENTITY_DECL && !s->decorado) {
-            if (tp_classe_tem(c, s->decl->texto, n->texto, 0) == 0)
-                terro(c, n, "AttributeError", "'%s' object has no attribute '%s'", s->decl->texto, n->texto);
+            if (tp_classe_tem(c, s->decl->texto, n->texto, 0) == 0) {
+                char dica[160];
+                terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", s->decl->texto, n->texto,
+                      tp_dica_membro(c, s->decl->texto, n->texto, dica, sizeof(dica)));
+            }
             return;
         }
         if (s && s->decl && s->decl->kind == N_ENUM_DECL) {
@@ -2669,8 +2727,11 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
         if (r != 0) return;
         lados++;
     }
-    if (lados > 0)
-        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'", t, n->texto);
+    if (lados > 0) {
+        char dica[160];
+        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", t, n->texto,
+              tp_dica_membro(c, t, n->texto, dica, sizeof(dica)));
+    }
 }
 
 /* A frase de "faltou argumento" da VM (`lista_faltantes`): 'a', 'b' and 'c'. */
@@ -5040,8 +5101,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 const char *t = tp_de(c, u, n->a);
                 PSNode *d = (t && !strchr(t, '|')) ? tp_tipo_arq(c, t) : NULL;
                 if (d && d->kind == N_ENTITY_DECL && n->texto) {
-                    if (tp_classe_tem(c, t, n->texto, 0) == 0)
-                        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'", t, n->texto);
+                    if (tp_classe_tem(c, t, n->texto, 0) == 0) {
+                        char dica[160];
+                        terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", t, n->texto,
+                              tp_dica_membro(c, t, n->texto, dica, sizeof(dica)));
+                    }
                     const char *ft = tp_campo_tipo(c, t, n->texto, 0);
                     if (ft && (!n->texto2 || !strcmp(n->texto2, "="))) {
                         const char *vt = tp_de(c, u, n->b);
