@@ -228,12 +228,29 @@ Quem enxerga o campo, e como:
 | De onde | Como se escreve |
 |---|---|
 | de fora | `App.mapp` |
-| no corpo da classe (decoradores) e nos métodos `static` da **própria** classe | `mapp`, o nome solto |
-| num método comum | `self.mapp` ou `App.mapp` |
-| numa classe filha | `self.mapp` ou `Pai.mapp` — o nome solto cobre só os `static` da própria classe |
+| dentro da classe — corpo (decoradores), método `static` ou método comum | `mapp`, o nome solto (também `self.mapp` e `App.mapp` num método comum) |
+| numa classe filha | `mapp`, o nome solto, igual — o `static` do pai é da filha (também `self.mapp` e `Pai.mapp`) |
+
+A regra é uma só: **o que `App.x` alcança de fora, `x` alcança de dentro** —
+e vale pro **método `static`** do mesmo jeito. `s()` solto dentro de qualquer
+método chama o `static funct s()` da classe (ou de um pai), com a aridade
+conferida antes de rodar como em `App.s()`. Método comum (com `self`) não:
+`m()` solto é `NameError` — ele é da instância, `self.m()`.
+
+```ps
+class Pai() {
+    public static int total = 7
+    static funct dobro(n) { return n * 2 }
+}
+class Filha(Pai) {
+    funct f(self) { return dobro(total) }    # 14 — campo e método static do pai, soltos
+}
+```
 
 Um parâmetro ou variável local com o mesmo nome **ganha** do campo: `funct
-m(self, x)` devolve o `x` recebido, não o `C.x`.
+m(self, x)` devolve o `x` recebido, não o `C.x`. O editor oferece os mesmos
+nomes: dentro da classe, o completion lista os `static` dela (e dos pais)
+soltos, e o hover/definição num nome solto vai no campo ou método.
 
 É **um só** valor, compartilhado: `K.n = K.n + 1` num método muda o que toda
 instância lê em `self.n`. E ele **não entra** no construtor sintetizado —

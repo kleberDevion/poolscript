@@ -1206,6 +1206,58 @@ async function main() {
     conf('...e a completion ainda responde (sem travar)', !!resp(m4, 64));
   }
 
+  /* ── 16. `static` da classe pelo nome SOLTO — o que o motor aceita, o editor mostra ──
+   * "quando crio dentro de classes, tudo fica ofuscado, nada é visível se não
+   * tiver self". O motor resolve campo E método static (da classe e dos pais)
+   * pelo nome solto, de qualquer método; o editor só oferecia depois de
+   * `self.`. Parâmetro com o mesmo nome ganha, como no motor. */
+  {
+    const hov = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/hover',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    const def = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/definition',
+      params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+    /* (`base` é palavra reservada — o `base(...)` da herança — e não serve de
+     * nome de campo; o fixture usa `raiz`) */
+    const SRC = [
+      'class Pai() {',                          // 0
+      '    public static int raiz = 1',         // 1
+      '    static funct dobro(n) { return n * 2 }',   // 2
+      '}',                                      // 3
+      'class Api(Pai) {',                       // 4
+      '    public static int total = 3',        // 5
+      '    static funct s(a) { return a }',     // 6
+      '    funct m(self) { return 1 }',         // 7
+      '    funct n(self) {',                    // 8
+      '        return total + raiz + s(1) + dobro(2)',   // 9
+      '    }',                                  // 10
+      '    funct p(self, total) {',             // 11
+      '        return total',                   // 12
+      '    }',                                  // 13
+      '}',                                      // 14
+    ];
+    const cs = (trecho) => SRC[9].indexOf(trecho) + 1;    /* coluna DENTRO do nome */
+    const m = await conversa(SRC.join('\n') + '\n', [
+      compl(2, 9, 8), hov(3, 9, cs('total')), hov(4, 9, cs('raiz')), hov(5, 9, SRC[9].indexOf('s(')),
+      hov(6, 9, cs('dobro')), def(7, 9, cs('total')), def(8, 9, cs('dobro')), hov(9, 12, 16),
+    ]);
+    const L = rotulos(resp(m, 2));
+    const faltam = ['total', 'raiz', 's', 'dobro'].filter((e) => !L.includes(e));
+    conf('dentro do método, o completion oferece os `static` da classe e do pai pelo nome solto',
+         faltam.length === 0, { faltam });
+    conf('...e NÃO oferece o método comum solto (`m` é `self.m`)', !L.includes('m'), L.filter((x) => x === 'm'));
+    conf('hover em campo static solto mostra o campo', valor(m, 3).includes('static int total'), valor(m, 3));
+    conf('hover em campo static do PAI solto diz de quem herdou',
+         valor(m, 4).includes('static int raiz') && valor(m, 4).includes('herdado de `Pai`'), valor(m, 4));
+    conf('hover em método static solto mostra a assinatura', valor(m, 5).includes('static funct s(a)'), valor(m, 5));
+    conf('hover em método static do PAI solto', valor(m, 6).includes('dobro(n)') && valor(m, 6).includes('Pai'), valor(m, 6));
+    const d7 = resp(m, 7) && resp(m, 7).result;
+    conf('definição do campo static solto vai na linha da declaração', !!d7 && d7.range.start.line === 5, d7);
+    const d8 = resp(m, 8) && resp(m, 8).result;
+    conf('definição do método static do pai vai na declaração dele', !!d8 && d8.range.start.line === 2, d8);
+    conf('parâmetro com o mesmo nome GANHA do static (hover é o parâmetro)',
+         valor(m, 9).includes('parâmetro') && !valor(m, 9).includes('static'), valor(m, 9));
+  }
+
   console.log('');
   if (falhas) { console.log(`lsp: ${feitos} checagens, ${falhas} FALHARAM`); process.exit(1); }
   console.log(`lsp: ${feitos} checagens, todas passaram`);

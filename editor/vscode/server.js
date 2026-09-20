@@ -649,6 +649,26 @@ function achaEntidade(doc, nome, idxExtra) {
 
 /* Membros de uma Entity COM herança. `interno` = o cursor está dentro dela,
  * então `private` conta — a mesma regra que a VM impõe em runtime. */
+/* O membro `static` que o nome SOLTO alcança de dentro da classe `ent` — o
+ * que `App.x` alcança de fora, `x` alcança de dentro (campo e método static,
+ * da classe e dos pais). Parâmetro ou variável do método com o mesmo nome
+ * ganha do campo, como no motor: quem chama confere o local antes. */
+function estaticoSolto(doc, ent, nome) {
+  if (!ent) return null;
+  return membrosDaEntidade(doc, ent.nome, true).find((m) => m.nome === nome && m.estatica) || null;
+}
+
+/* A ligação `nome` visível na linha que NÃO é do módulo (parâmetro ou
+ * variável do próprio método/funct): é a que sombreia o membro static. */
+function ligacaoLocal(idx, nome, linha) {
+  for (const b of A.visiveisEm(idx, linha)) {
+    if (b.nome !== nome) continue;
+    const esc = idx.escopos.find((s) => s.liga.includes(b));
+    if (esc && esc.tipo !== 'modulo') return b;
+  }
+  return null;
+}
+
 function membrosDaEntidade(doc, nome, interno, vistos) {
   vistos = vistos || new Set();
   if (vistos.has(nome)) return [];
@@ -1433,6 +1453,19 @@ function completa(doc, p) {
 
   const ent = A.entidadeEm(idx, p.position.line);
   if (ent) poe('self', CompletionItemKind.Keyword, `a instância de ${ent.nome}`, '0');
+  /* Os membros `static` da classe (e dos pais) pelo nome SOLTO: o motor os
+   * resolve de dentro de qualquer método e do corpo da classe, e o editor
+   * não os oferecia — "nada é visível se não tiver self". Um local com o
+   * mesmo nome já entrou acima e ganha (o `poe` não repete). */
+  if (ent) {
+    for (const m of membrosDaEntidade(doc, ent.nome, true)) {
+      if (!m.estatica) continue;
+      const det = m.kind === 'action'
+        ? 'static ' + assinatura(m) + ' — de ' + m.de
+        : 'static ' + (m.tipo ? m.tipo + ' ' : '') + m.nome + ' — de ' + m.de;
+      poe(m.nome, m.kind === 'action' ? CompletionItemKind.Method : CompletionItemKind.Field, det, '0');
+    }
+  }
 
   /* Dentro do corpo de uma Entity/class, o CONSTRUTOR. Não é palavra
    * reservada nem builtin — é convenção de nome —, então não vinha de tabela
@@ -1823,6 +1856,21 @@ conexao.onHover((p) => {
     return md('```ps\nclass ' + e.nome + (e.bases.length ? '(' + e.bases.join(', ') + ')' : '')
               + '\n```\n\n' + e.membros.length + ' membros');
   }
+  /* nome solto dentro da classe = membro `static` dela (ou de um pai), a não
+   * ser que um parâmetro/variável do método o sombreie */
+  {
+    const ent = A.entidadeEm(idx, p.position.line);
+    const st = ent && !ligacaoLocal(idx, nome, p.position.line) ? estaticoSolto(doc, ent, nome) : null;
+    if (st) {
+      const herd = st.de !== ent.nome ? `\n\nherdado de \`${st.de}\`` : '';
+      const cab = st.kind === 'action'
+        ? 'static ' + (st.nonnull ? 'nonnull ' : '') + (st.retorna ? st.retorna + ' ' : '') + 'funct ' + assinatura(st)
+        : 'static ' + (st.tipo ? st.tipo + ' ' : '') + st.nome;
+      return md('```ps\n' + cab + '\n```\n\n' + (st.kind === 'action' ? 'método' : 'campo')
+                + ' static de `' + st.de + '` · declarad' + (st.kind === 'action' ? 'o' : 'o')
+                + ' na linha ' + (st.linha + 1) + ' — pelo nome solto ou `' + st.de + '.' + st.nome + '`' + herd);
+    }
+  }
   for (const b of A.visiveisEm(idx, p.position.line)) {
     if (b.nome !== nome) continue;
     const no = b.no || {};
@@ -1917,6 +1965,18 @@ conexao.onDefinition((p) => {
   if (e) return { uri: doc.uri,
                   range: { start: { line: e.linha, character: e.coluna },
                            end: { line: e.linha, character: e.coluna + nome.length } } };
+  /* nome solto dentro da classe = membro `static` dela (ou de um pai), se
+   * nenhum local do método o sombreia — a mesma precedência do motor */
+  {
+    const ent = A.entidadeEm(idx, p.position.line);
+    const st = ent && !ligacaoLocal(idx, nome, p.position.line) ? estaticoSolto(doc, ent, nome) : null;
+    if (st) {
+      const dono = achaEntidade(doc, st.de);
+      const uri = dono && dono.arquivo ? uriDe(dono.arquivo) : doc.uri;
+      return { uri, range: { start: { line: st.linha, character: st.coluna },
+                             end: { line: st.linha, character: st.coluna + nome.length } } };
+    }
+  }
   for (const b of A.visiveisEm(idx, p.position.line)) {
     if (b.nome !== nome) continue;
     return { uri: doc.uri,

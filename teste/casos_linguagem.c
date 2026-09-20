@@ -1930,6 +1930,26 @@ const Caso CASOS_LINGUAGEM[] = {
   "nonnull async funct f(v) {\n    return v\n}\npost(gather(f(7))[0])\n", "7", NULL, 0 },
 { "static colado tambem vale fora de Entity (marca inofensiva)",
   "static funct f() {\n    return 1\n}\npost(f())\n", "1", NULL, 0 },
+/* O que `App.x` alcanca de fora, `x` alcanca de dentro da classe: campo E
+ * metodo static, da classe e dos pais, em metodo comum ou static. So o campo
+ * entrava; `s()` solto passava no --check e dava NameError rodando. */
+{ "metodo static pelo nome solto, de metodo comum e de metodo static",
+  "class A() {\n    public static int total = 3\n    static funct s() {\n        return 1\n    }\n"
+  "    funct n(self) {\n        return s() + total\n    }\n    static funct t() {\n        return s()\n    }\n}\n"
+  "post(A().n(), A.t())\n", "4 1", NULL, 0 },
+{ "static do PAI pelo nome solto na classe filha (campo e metodo)",
+  "class Pai() {\n    public static int total = 7\n    static funct s() {\n        return 2\n    }\n}\n"
+  "class Filha(Pai) {\n    funct f(self) {\n        return total + s()\n    }\n}\npost(Filha().f())\n",
+  "9", NULL, 0 },
+{ "static solto: a aridade do metodo e conferida antes de rodar, como em A.s()",
+  "class A() {\n    static funct s(a) {\n        return a\n    }\n    funct n(self) {\n        return s(1, 2)\n    }\n}\n",
+  "", "TypeError: s() takes 1 positional argument but 2 were given", 2 },
+{ "metodo COMUM pelo nome solto nao existe: NameError antes de rodar (era so rodando)",
+  "class A() {\n    funct m(self) {\n        return 1\n    }\n    funct n(self) {\n        return m()\n    }\n}\npost(A().n())\n",
+  "", "NameError: name 'm' is not defined", 2 },
+{ "parametro com o mesmo nome ganha do static (o nome solto e o parametro)",
+  "class A() {\n    public static int total = 1\n    funct n(self, total) {\n        return total\n    }\n}\npost(A().n(\"p\"))\n",
+  "p", NULL, 0 },
 { "NonNull colado, na grafia do decorador antigo",
   "NonNull funct e(v) {\n    return v\n}\ne(Null)\n",
   "", "nonnull: parametro 'v' em 'e' nao pode ser Null", 1 },

@@ -901,6 +901,12 @@ post(Util.dobro(21))    # 42   — sem instanciar Util
 Chamar um `static` pela instância é erro: `funct 'dobro' e static: chame pela
 Entity (Tipo.dobro(...)), nao pela instancia`.
 
+Dentro da classe (corpo, método `static` ou método comum) o `static` — campo
+ou método, da classe ou de um pai — é alcançado pelo **nome solto**: `dobro(21)`
+num método de `Util` é `Util.dobro(21)`, com a aridade conferida antes de
+rodar. Método comum não: `m()` solto é `NameError`, ele é `self.m()`
+(07-entity §7.4.1).
+
 ### `nonnull` — barra argumentos Null
 
 Com `nonnull` na cabeça, a chamada falha se qualquer argumento recebido for

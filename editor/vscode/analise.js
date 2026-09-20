@@ -363,8 +363,11 @@ function membrosDaEntity(no) {
 
   for (const f of no.alias || []) {                       /* campos declarados */
     if (f.k !== 'EntityField') continue;
+    /* `estatica`: o campo é da CLASSE (`static int total`), e por isso o nome
+     * solto o alcança de dentro dela — o editor tem que oferecer o que o
+     * motor aceita */
     poe({ nome: f.texto, kind: 'campo', tipo: f.texto2 || '',
-          privado: !!f.private, linha: f.l - 1, coluna: f.c - 1 });
+          privado: !!f.private, estatica: !!f.static, linha: f.l - 1, coluna: f.c - 1 });
   }
   /* Modificador vindo da GRAFIA ANTIGA: `@static` / `@NonNull` são nós irmãos
    * (DecoratorStmt) na frente do método, não marcas dentro dele. Sem olhar pra

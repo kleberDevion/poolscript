@@ -278,6 +278,9 @@ typedef struct {
      * nome — é o que diz se um nome de tipo existe e quem herda de quem. */
     PSNode **tipos_arq;
     int32_t  ntipos_arq, cap_tipos_arq;
+    /* O que se sabe do membro `static` que um nome solto alcança de dentro da
+     * classe (tipo do campo, assinatura do método) — montado a cada consulta. */
+    SimInfo  sim_estatico;
     /* métodos sem `self` que ganharam um sintetizado (tp_self_dos_metodos);
      * a AST volta ao que era no fim da compilação */
     struct SelfSint *self_sint;
@@ -979,17 +982,48 @@ static int nome_e_local(Unidade *u, const char *nome)
     return 0;
 }
 
-/* `nome` é um campo `static` da Entity que está sendo compilada? */
-static int campo_estatico_da_classe(C *c, const char *nome)
+static PSNode *tp_tipo_arq(C *c, const char *nome);
+static int tp_metodo_estatico(C *c, const char *classe, PSNode *met);
+static int tp_metodo_decorado(C *c, const char *classe, PSNode *met);
+
+/* O membro `static` (campo ou método) que o nome solto alcança de dentro da
+ * classe `e` — dela ou de um pai conhecido no arquivo. `dono` recebe a classe
+ * que o declara. O que `App.x` alcança de fora, `x` alcança de dentro: só o
+ * campo entrava, e um `s()` de método static passava no `--check` e dava
+ * NameError rodando — "não faz sentido não expor algo na classe só porque
+ * é static". */
+static PSNode *estatico_em(C *c, PSNode *e, const char *nome, int prof, PSNode **dono)
 {
-    PSNode *e = c->entity_no;
-    if (!e || !nome) return 0;
+    if (!e || e->kind != N_ENTITY_DECL || prof > 32) return NULL;
     for (int32_t i = 0; i < e->lista2_alias.n; i++) {
         PSNode *f = e->lista2_alias.itens[i];
         if (f && f->kind == N_ENTITY_FIELD && f->is_static && f->texto
-                && strcmp(f->texto, nome) == 0) return 1;
+                && strcmp(f->texto, nome) == 0) { if (dono) *dono = e; return f; }
     }
-    return 0;
+    for (int32_t i = 0; i < e->lista.n; i++) {
+        PSNode *m = e->lista.itens[i];
+        if (m && m->kind == N_ACTION_DECL && m->texto && strcmp(m->texto, nome) == 0
+                && e->texto && tp_metodo_estatico(c, e->texto, m)) { if (dono) *dono = e; return m; }
+    }
+    for (int32_t i = 0; i < e->lista2.n; i++) {
+        PSNode *p = e->lista2.itens[i];
+        PSNode *r = (p && p->texto) ? estatico_em(c, tp_tipo_arq(c, p->texto), nome, prof + 1, dono) : NULL;
+        if (r) return r;
+    }
+    return NULL;
+}
+
+static PSNode *estatico_da_classe(C *c, const char *nome, PSNode **dono)
+{
+    if (dono) *dono = NULL;
+    if (!c->entity_no || !nome) return NULL;
+    return estatico_em(c, c->entity_no, nome, 0, dono);
+}
+
+/* `nome` é um membro `static` da Entity que está sendo compilada (ou de um pai)? */
+static int campo_estatico_da_classe(C *c, const char *nome)
+{
+    return estatico_da_classe(c, nome, NULL) != NULL;
 }
 
 /* `mapp` dentro da classe App -> `App.mapp` (a classe é um global). */
@@ -1587,8 +1621,26 @@ static const char *tp_elemento(const char *t)
 static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
 {
     if (!nome) return NULL;
-    /* campo `static` da classe: não tem tipo estático aqui */
-    if (c->entity_no && !nome_e_local(u, nome) && campo_estatico_da_classe(c, nome)) return NULL;
+    /* membro `static` da classe pelo nome solto: o tipo do campo e a
+     * assinatura do método valem como em `App.x` — `s(1, 2)` num `static
+     * funct s()` é acusado, `total + "a"` num `static int total` também */
+    if (c->entity_no && !nome_e_local(u, nome)) {
+        PSNode *dono = NULL;
+        PSNode *st = estatico_da_classe(c, nome, &dono);
+        if (st) {
+            SimInfo *s = &c->sim_estatico;
+            memset(s, 0, sizeof(*s));
+            if (st->kind == N_ACTION_DECL) {
+                s->estado = 1; s->tipo = "funct"; s->decl = st;
+                s->decorado = (unsigned char)(dono && dono->texto && tp_metodo_decorado(c, dono->texto, st));
+            } else if (st->texto2) {
+                s->estado = 2; s->tipo = tp_canon(st->texto2);
+            } else {
+                s->estado = 1;
+            }
+            return s;
+        }
+    }
     if (u->eh_modulo) {
         for (int32_t i = u->n_mod_criados - 1; i >= 0; i--)
             if (strcmp(u->mod_criados[i], nome) == 0) return &u->mod_sim[i];
@@ -1657,9 +1709,15 @@ static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *
     if (!n) return;
     switch (n->kind) {
         case N_ASSIGNMENT: case N_VAR_DECL: case N_FOR_EACH_STMT: case N_LIST_COMP:
-        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL: case N_USING_STMT:
+        case N_USING_STMT:
             junta_nomes(c, v, cnt, cap, n->texto);
             break;
+        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
+            /* o NOME da classe é do escopo; os métodos e campos dela não —
+             * `m()` solto num método com `funct m(self)` é NameError rodando,
+             * e com os métodos na lista o `--check` dizia ok */
+            junta_nomes(c, v, cnt, cap, n->texto);
+            return;
         case N_CATCH_CLAUSE:
             junta_nomes(c, v, cnt, cap, n->texto ? n->texto : "e");
             break;
