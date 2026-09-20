@@ -217,9 +217,9 @@ São três peças, e as três vêm do repositório:
 
 | peça | o que dá | onde |
 |---|---|---|
-| plugin | realce do `.pr`, ícone, indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
+| plugin | realce do `.pr`, o servidor LSP declarado ao LSP4IJ, ícone, indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
 | bundle TextMate | a gramática do realce — **cópia** da do vsix, fonte única lá; vai **dentro do jar** | `editor/intellij/bundle` |
-| LSP4IJ | completion, hover, diagnóstico: o mesmo `poolscript-lsp` do VS Code | plugin do marketplace |
+| LSP4IJ | o cliente LSP genérico do IDEA (plugin do marketplace); é a ele que o plugin da PoolScript entrega o `poolscript-lsp` | marketplace |
 
 Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot).
 O realce vem sozinho: o IDEA só colore com bundle TextMate *registrado*, e o
@@ -229,9 +229,29 @@ plugin registra o seu no boot (ponto de extensão
 em `Settings → Editor → TextMate Bundles` — era esse passo manual que deixava
 o `.pr` sem cor.
 
-Só o LSP ainda é configurado no IDEA: `Settings → Languages & Frameworks →
-Language Servers → +` → *New Language Server*, comando `poolscript-lsp`,
-extensão `pr`.
+O LSP também vem sozinho: o plugin declara o servidor ao LSP4IJ (pontos de
+extensão `com.redhat.devtools.lsp4ij.server` e `fileNamePatternMapping`,
+`*.pr` com languageId `poolscript`), com o caminho **absoluto** do
+`poolscript-lsp` e o do `pool` em `initializationOptions` — o PATH do IDEA
+aberto pelo desktop não é o do terminal. Precisa do plugin LSP4IJ instalado e
+do `node` na máquina.
+
+> **Migração:** quem cadastrou o servidor à mão (`Settings → Languages &
+> Frameworks → Language Servers`, "PoolScript") **apaga o cadastro** — o
+> manual ainda mapeava `*.ps`, e era por isso que o `.pr` abria sem completion
+> (só a de palavras do próprio IDEA); com os dois, sobem dois processos. O
+> plugin avisa num balão se achar um.
+
+Pra ver que respondeu: `View → Tool Windows → Language Servers` → PoolScript
+→ aba *Traces* (com *Trace: verbose* na aba *Debug*) mostra o `initialize`
+com `initializationOptions.pool`, o `didOpen` com `languageId: poolscript` e
+a resposta do `textDocument/completion`. Erro de registro do plugin vai pro
+`idea.log`. O IDEA soma à lista a completion de palavras do próprio arquivo
+(o VS Code a desliga; o IDEA não tem isso).
+
+Quando o servidor não consegue rodar o `pool` (fora do PATH do editor, por
+exemplo), ele **avisa** o cliente (`window/showMessage`, balão no IDEA, toast
+no VS Code) em vez de responder listas vazias em silêncio.
 
 > O fonte do plugin morava em `ideia-icons/` e foi apagado junto com centenas
 > de arquivos no commit `d91f2e9`. O `.jar` continuou instalado e funcionando,
@@ -291,11 +311,12 @@ outra linguagem.
 |---|---|
 | `editor/vscode/server.js` | o servidor, sobre `vscode-languageserver` |
 | `editor/vscode/extension.js` | o cliente do VS Code — só levanta o servidor |
-| `editor/vscode/teste_servidor.js` | dirige o servidor como o editor faria e confere as respostas |
+| `editor/vscode/teste_servidor.js` | dirige o servidor como o editor faria e confere as respostas — inclusive como um cliente que não é o VS Code (initialize mínimo, URI `file:/` e percent-encoded, `pool` ausente → aviso) |
+| `editor/intellij/plugin/teste_intellij.sh` + `teste/ConfereLsp4ij.java` | o plugin contra os jars REAIS do IDEA e do LSP4IJ (o EP, a factory, o comando resolvido, as `initializationOptions`) e o `poolscript-lsp` instalado respondendo ao LSP4J de verdade |
 
-O teste entra no `make check` (PULA sem node, dizendo que pulou). Cada caso
-dele é uma das linhas da tabela lá em cima: são defeitos reproduzidos, não
-features inventadas.
+Os testes entram no `make check` (PULAM sem node/IDEA, dizendo que pularam).
+Cada caso deles é uma das linhas da tabela lá em cima: são defeitos
+reproduzidos, não features inventadas.
 
 **A divisão, que é a razão do desenho:**
 

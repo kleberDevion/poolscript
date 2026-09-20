@@ -23444,8 +23444,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (!EH_TUPLA(nomes)) ERRO(vm, "CALL_KW sem tabela de nomes");
             PSList *tn = COMO_LIST(nomes);
             int total = arg;
-            int nkw = tn->len;
-            int npos = total - nkw;
+            int nkw_tab = tn->len;              /* os nomeados DESTA chamada (`nkw` e o parametro do frame) */
+            int npos = total - nkw_tab;
             Value alvo_kw = stack[sp - total - 1];
             /* Método ligado cujo valor é o que um decorador pôs no lugar: o
              * receptor entra como 1º posicional e a chamada é do VALOR —
@@ -23490,7 +23490,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     vm->erro_tipo[0] = '\0';
                     int rc_ini;
                     REANCORA(rc_ini = chama_valor_kw(vm, initv, reais, npos + 1,
-                                                     tn->itens, &stack[sp - nkw], nkw, &ign));
+                                                     tn->itens, &stack[sp - nkw_tab], nkw_tab, &ign));
                     if (rc_ini != 0) {
                         if (!vm->erro_tipo[0]) snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "RuntimeError");
                         goto erro_runtime;
@@ -23502,7 +23502,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 cp.proto = mp; cp.cl = NULL; cp.self = inst_kw;
                 cp.desloca = 1; cp.instancia = 1; cp.ignora_kw = 1;
                 cp_pos = &stack[sp - total]; cp_npos = npos;
-                cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw]; cp_nkw = nkw;
+                cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw_tab]; cp_nkw = nkw_tab;
                 cp_base = sp - total - 1;
                 goto chama_proto;
             }
@@ -23513,7 +23513,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (ra < 0) goto erro_runtime;
                 if (ra > 0) {
                     cp_pos = &stack[sp - total]; cp_npos = npos;
-                    cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw]; cp_nkw = nkw;
+                    cp_kwn = tn->itens; cp_kwv = &stack[sp - nkw_tab]; cp_nkw = nkw_tab;
                     cp_base = sp - total - 1;
                     goto chama_proto;
                 }
@@ -23528,7 +23528,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 for (int k = 0; k < npos; k++) pos[k] = stack[sp - total + k];
                 for (int k = npos; k < 16; k++) pos[k] = MK_UNSET();
                 int usados = npos;
-                for (int k = 0; k < nkw; k++) {
+                for (int k = 0; k < nkw_tab; k++) {
                     Value nv = tn->itens[k];
                     if (!EH_STRING(nv)) ERRO(vm, "nome de argumento invalido");
                     const char *alvo_nome = COMO_STRING(nv)->chars;
@@ -23547,7 +23547,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
-                    pos[achou] = stack[sp - nkw + k];
+                    pos[achou] = stack[sp - nkw_tab + k];
                     if (achou + 1 > usados) usados = achou + 1;
                 }
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
@@ -23606,7 +23606,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (npos > 16) ERRO(vm, "argumentos demais na chamada");
                 for (int k = 0; k < npos; k++) pos[k] = stack[sp - total + k];
                 for (int k = npos; k < 16; k++) pos[k] = MK_NULL();
-                for (int k = 0; k < nkw; k++) {
+                for (int k = 0; k < nkw_tab; k++) {
                     Value nv = tn->itens[k];
                     if (!EH_STRING(nv)) ERRO(vm, "nome de argumento invalido");
                     const char *alvo_nome = COMO_STRING(nv)->chars;
@@ -23625,7 +23625,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "TypeError");
                         goto erro_runtime;
                     }
-                    pos[achou] = stack[sp - nkw + k];
+                    pos[achou] = stack[sp - nkw_tab + k];
                     if (achou + 1 > usados) usados = achou + 1;
                 }
 
@@ -24154,8 +24154,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     ERRO_T(vm, "IndexError", "string index out of range");
                 if (i < 0) i += ncp;
                 int b = utf8_byte_de(s->chars, s->len, i);
-                uint32_t cp;
-                int k = utf8_le(s->chars, s->len, b, &cp);
+                uint32_t ponto;
+                int k = utf8_le(s->chars, s->len, b, &ponto);
                 if (!k) k = 1;
                 vm->sp = sp; vm->locals_top = locals_top;
                 PSString *c = nova_string(vm, s->chars + b, k);
@@ -24309,8 +24309,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * segue O(n) no laço inteiro. Aloca, então publica o estado
                  * antes (ponto seguro do GC). */
                 PSString *str = COMO_STRING(cont);
-                uint32_t cp;
-                int passo = utf8_le(str->chars, str->len, (int)i, &cp);
+                uint32_t ponto;
+                int passo = utf8_le(str->chars, str->len, (int)i, &ponto);
                 if (!passo) { sp -= 2; ip = arg; break; }
                 stack[sp - 1] = MK_INT(i + passo);
                 vm->sp = sp; vm->locals_top = locals_top;
@@ -24426,8 +24426,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 } else {
                     for (int64_t i = i0; (st > 0 ? i < i1 : i > i1); i += st) {
                         int b = utf8_byte_de(src->chars, src->len, i);
-                        uint32_t cp;
-                        int k = utf8_le(src->chars, src->len, b, &cp);
+                        uint32_t ponto;
+                        int k = utf8_le(src->chars, src->len, b, &ponto);
                         if (!k) k = 1;
                         if (txt_put(&t, src->chars + b, k) != 0) { ERRO(vm, "sem memoria"); }
                     }
@@ -24586,9 +24586,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         case OP_EXC_CASA: {
             Value pedido = stack[--sp];
             Value levantado = stack[--sp];
-            const char *p = EH_STRING(pedido)    ? COMO_STRING(pedido)->chars    : "";
-            const char *l = EH_STRING(levantado) ? COMO_STRING(levantado)->chars : "";
-            stack[sp++] = MK_BOOL(excecao_eh(l, p));
+            const char *pedido_s = EH_STRING(pedido)    ? COMO_STRING(pedido)->chars    : "";
+            const char *l        = EH_STRING(levantado) ? COMO_STRING(levantado)->chars : "";
+            stack[sp++] = MK_BOOL(excecao_eh(l, pedido_s));
             break;
         }
 
@@ -24615,13 +24615,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                  * comprimento 1: `char` é a restrição da DECLARAÇÃO, não um
                  * tipo separado (nenhum valor responde `char` ao `type()`). */
                 if (v.t == V_INT || v.t == V_BOOL) {
-                    int64_t cp = v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i;
-                    if (cp < 0 || cp > 0x10FFFF)
+                    int64_t codigo = v.t == V_BOOL ? (v.as.b ? 1 : 0) : v.as.i;
+                    if (codigo < 0 || codigo > 0x10FFFF)
                         ERRO_TF(vm, "ConversionError",
                                 "%lld nao e um caractere valido (declarado como 'char %s')",
-                                (long long)cp, decl_nome);
+                                (long long)codigo, decl_nome);
                     char buf[4];
-                    int nb = utf8_escreve(buf, (uint32_t)cp);
+                    int nb = utf8_escreve(buf, (uint32_t)codigo);
                     PSString *cs = nova_string(vm, buf, nb);
                     if (!cs) ERRO(vm, "sem memoria");
                     stack[sp - 1] = MK_OBJ(cs);
@@ -25193,8 +25193,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     } else if (strcmp(nome, "ext") == 0) {
                         /* COM o ponto (".png"), igual ao PoolFile carregado —
                          * um tipo só não pode dar duas respostas pro mesmo campo */
-                        const char *p = strrchr(base, '.');
-                        snprintf(ebuf, sizeof(ebuf), "%s", p ? p : "");
+                        const char *ponto_ext = strrchr(base, '.');
+                        snprintf(ebuf, sizeof(ebuf), "%s", ponto_ext ? ponto_ext : "");
                         txt = ebuf;
                     } else if (strcmp(nome, "size") == 0) {
                         if (ah->f) fflush(ah->f);
@@ -25386,14 +25386,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_CLASS(alvo)) {
                 /* `Classe.x = v` — campo `static`. É por aqui que o compilador
                  * grava os inicializadores logo depois de criar a classe. */
-                PSClass *cl = COMO_CLASS(alvo);
+                PSClass *classe = COMO_CLASS(alvo);
                 vm->sp = sp; vm->locals_top = locals_top;
-                if (!EH_DICT(cl->estaticos)) {
+                if (!EH_DICT(classe->estaticos)) {
                     PSDict *d = novo_dict(vm, 4);
                     if (!d) ERRO(vm, "sem memoria");
-                    cl->estaticos = MK_OBJ(d);
+                    classe->estaticos = MK_OBJ(d);
                 }
-                if (dict_set(vm, COMO_DICT(cl->estaticos), &nomev, &valor) != 0)
+                if (dict_set(vm, COMO_DICT(classe->estaticos), &nomev, &valor) != 0)
                     ERRO(vm, "sem memoria");
                 break;
             }
@@ -25505,8 +25505,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (!conv) ERRO(vm, "sem memoria no desempacotamento");
                 stack[sp++] = MK_OBJ(conv);      /* raiz enquanto aloca os chars */
                 for (int b2 = 0, q = 0; q < quant; q++) {
-                    unsigned int cp;
-                    int u2 = utf8_le(sv->chars, sv->len, b2, &cp);
+                    unsigned int ponto;
+                    int u2 = utf8_le(sv->chars, sv->len, b2, &ponto);
                     if (!u2) break;
                     PSString *ch = nova_string(vm, sv->chars + b2, u2);
                     if (!ch) ERRO(vm, "sem memoria no desempacotamento");

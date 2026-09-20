@@ -37,4 +37,10 @@ cp -r "$BUNDLE" out/textmate/
 (cd out/textmate && find PoolScript.tmbundle -type f | sort > lista.txt)
 
 (cd out && zip -qr ../dist/poolscript-icons.jar .)
+# Stub que vai parar DENTRO do jar sombreia a classe real do IDEA/LSP4IJ e
+# estoura no boot (ClassCastException): o jar só pode ter o que é nosso.
+if unzip -l dist/poolscript-icons.jar | awk '{print $4}' | grep -q '^\(com\|org\)/'; then
+  echo "build.sh: stub vazou pro jar (pasta com/ ou org/) — sombrearia a classe real do IDEA" >&2
+  exit 1
+fi
 echo "dist/poolscript-icons.jar pronto ($(wc -l < out/textmate/lista.txt) arquivos do bundle embutidos)"

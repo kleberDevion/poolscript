@@ -1,14 +1,16 @@
 <idea-plugin>
   <id>poolscript.icons</id>
   <name>PoolScript IDEA</name>
-  <version>1.1.0</version>
+  <version>1.2.0</version>
   <vendor>PoolScript</vendor>
-  <description>PoolScript no IntelliJ: realce do .pr (bundle TextMate embutido, registrado sozinho no boot), a logo da linguagem no arquivo, indentação no Enter e auto-fechamento correto de bracket/aspas (com type-over).</description>
+  <description>PoolScript no IntelliJ: realce do .pr (bundle TextMate embutido, registrado sozinho no boot), o servidor LSP da linguagem declarado ao LSP4IJ (completion, hover, definição, outline e diagnóstico, sem cadastro manual), a logo da linguagem no arquivo, indentação no Enter e auto-fechamento correto de bracket/aspas (com type-over).</description>
   <idea-version since-build="231"/>
   <depends>com.intellij.modules.platform</depends>
   <!-- O realce depende do plugin TextMate do IDEA; opcional pra que ícone,
        indentação e brackets sigam funcionando se alguém o desligar. -->
   <depends optional="true" config-file="poolscript-textmate.xml">org.jetbrains.plugins.textmate</depends>
+  <!-- O LSP depende do plugin LSP4IJ (marketplace); opcional pelo mesmo motivo. -->
+  <depends optional="true" config-file="poolscript-lsp4ij.xml">com.redhat.devtools.lsp4ij</depends>
   <extensions defaultExtensionNs="com.intellij">
     <fileIconProvider implementation="poolscript.icons.PoolIconProvider"/>
     <enterHandlerDelegate implementation="poolscript.icons.PoolEnterIndent"/>

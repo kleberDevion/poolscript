@@ -35,9 +35,15 @@ function conf(nome, cond, detalhe) {
  * dez checagens "falhavam" por defeito do harness, não do servidor. Testar
  * cliente de protocolo sem esperar a resposta é medir o relógio, não o
  * servidor. */
-function conversa(texto, pedidos) {
+/* `op` (opcional) é o que muda de cliente pra cliente: `uri` do documento
+ * aberto, `inicializa` (os params inteiros do `initialize`, no lugar dos do
+ * VS Code) e `env` do processo do servidor. */
+function conversa(texto, pedidos, op) {
+  op = op || {};
+  const uriDoc = op.uri || URI;
   return new Promise((resolve, reject) => {
-    const p = spawn(process.execPath, [SERVIDOR, '--stdio'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const p = spawn(process.execPath, [SERVIDOR, '--stdio'],
+                    { stdio: ['pipe', 'pipe', 'pipe'], env: op.env || process.env });
     let buf = Buffer.alloc(0);
     const msgs = [];
     const esperados = new Set(pedidos.map((q) => q.id).filter((x) => x !== undefined));
@@ -91,10 +97,10 @@ function conversa(texto, pedidos) {
     p.on('error', reject);
 
     manda({ jsonrpc: '2.0', id: 1, method: 'initialize',
-            params: { rootUri: null, capabilities: {}, initializationOptions: { pool: POOL } } });
+            params: op.inicializa || { rootUri: null, capabilities: {}, initializationOptions: { pool: POOL } } });
     manda({ jsonrpc: '2.0', method: 'initialized', params: {} });
     manda({ jsonrpc: '2.0', method: 'textDocument/didOpen',
-            params: { textDocument: { uri: URI, languageId: 'poolscript', version: 1, text: texto } } });
+            params: { textDocument: { uri: uriDoc, languageId: 'poolscript', version: 1, text: texto } } });
     for (const q of pedidos) manda(q);
     /* Sem pedido nenhum, o que se espera é o DIAGNÓSTICO. O teto de 20 s
      * abaixo continua sendo a rede: se ele nunca vier, o caso falha por não
@@ -113,8 +119,8 @@ const rotulos = (m) => {
   return its.map((i) => i.label);
 };
 
-const compl = (id, l, c) => ({ jsonrpc: '2.0', id, method: 'textDocument/completion',
-  params: { textDocument: { uri: URI }, position: { line: l, character: c } } });
+const compl = (id, l, c, uri) => ({ jsonrpc: '2.0', id, method: 'textDocument/completion',
+  params: { textDocument: { uri: uri || URI }, position: { line: l, character: c } } });
 
 async function main() {
   fs.mkdirSync(path.join(os.tmpdir(), 'ps_lsp_t'), { recursive: true });
@@ -1142,6 +1148,62 @@ async function main() {
     const l = rotulos(resp(m, 52));
     conf('completion apos retorno `PoolFileUpload|Null` segue pelo PoolFileUpload',
          l.includes('save') && l.includes('content_type'), l.slice(0, 8));
+  }
+
+  /* ── clientes que NÃO são o VS Code (LSP4IJ/IntelliJ, Neovim, Helix) ─────
+   * O servidor não lê capabilities nem workspaceFolders — mas o LSP4IJ manda
+   * a URI com percent-encoding (`%20`, `%C3%A7`) e, no fallback, com uma
+   * barra só (`file:/…`); cortar `file://` na unha deixava a pasta com `%20`
+   * dentro e sumiam os vizinhos do `import`, e o go-to-definition devolvia
+   * URI crua com espaço, que o cliente rejeita. E sem o `pool` no PATH do
+   * editor o servidor respondia VAZIO sem avisar — o sintoma "não sugere
+   * nada" do IntelliJ, sem um rastro. */
+  {
+    const { pathToFileURL, fileURLToPath } = require('url');
+    const raiz = path.join(os.tmpdir(), 'ps_lsp_t', 'pasta com espaço');
+    fs.mkdirSync(raiz, { recursive: true });
+    const vizinhoAbs = path.join(raiz, 'vizinho.pr');
+    fs.writeFileSync(vizinhoAbs, 'funct f() {\n    return 1\n}\n');
+    const aAbs = path.join(raiz, 'a.pr');
+    const uriCod = pathToFileURL(aAbs).href;                         // file:///…/pasta%20com%20espa%C3%A7o/a.pr
+    const uriUmaBarra = 'file:/' + uriCod.slice('file:///'.length);  // file:/…  (o fallback do LSP4J)
+    const defEm = (id, l, c, uri) => ({ jsonrpc: '2.0', id, method: 'textDocument/definition',
+      params: { textDocument: { uri }, position: { line: l, character: c } } });
+
+    /* 1. `initialize` como o LSP4J manda: sem initializationOptions — o
+     *    servidor cai no PATH, que aqui tem o pool */
+    const poolDir = path.dirname(path.resolve(POOL));
+    const envMin = Object.assign({}, process.env, { PATH: poolDir + path.delimiter + (process.env.PATH || '') });
+    const m1 = await conversa('import regex\nx = regex.\n', [compl(60, 1, 10)],
+                              { inicializa: { rootUri: null, capabilities: {} }, env: envMin });
+    const L1 = rotulos(resp(m1, 60));
+    conf('initialize minimo (capabilities vazias, sem initializationOptions) -> `regex.` responde',
+         L1.length >= 5, L1.slice(0, 6));
+
+    /* 2. URI com UMA barra */
+    const m2 = await conversa('import \n', [compl(61, 0, 7, uriUmaBarra)], { uri: uriUmaBarra });
+    const L2 = rotulos(resp(m2, 61));
+    conf('URI `file:/…` (uma barra) ainda lista o arquivo vizinho no `import`', L2.includes('vizinho'), L2.slice(0, 8));
+
+    /* 3. URI percent-encoded (pasta com espaço e acento) + definition */
+    const m3 = await conversa('from vizinho import f\nf()\n',
+                              [compl(62, 0, 7, uriCod), defEm(63, 1, 0, uriCod)], { uri: uriCod });
+    const L3 = rotulos(resp(m3, 62));
+    conf('URI percent-encoded lista o vizinho no `import`', L3.includes('vizinho'), L3.slice(0, 8));
+    const d3 = resp(m3, 63) && resp(m3, 63).result;
+    conf('definition devolve URI CODIFICADA (a que o cliente aceita) apontando pro vizinho',
+         !!d3 && d3.uri === pathToFileURL(vizinhoAbs).href, d3 && d3.uri);
+
+    /* 4. pool inexistente: o servidor AVISA em vez de responder vazio calado */
+    const m4 = await conversa('import regex\nx = regex.\n', [compl(64, 1, 10)],
+                              { inicializa: { rootUri: null, capabilities: {},
+                                              initializationOptions: { pool: '/nao/existe/pool' } } });
+    const aviso = m4.find((x) => x.method === 'window/showMessage');
+    conf('pool inexistente: o servidor avisa o cliente (window/showMessage) citando o caminho',
+         !!aviso && !!aviso.params && String(aviso.params.message).includes('/nao/existe/pool'),
+         aviso && aviso.params);
+    conf('...e manda o detalhe em window/logMessage', m4.some((x) => x.method === 'window/logMessage'));
+    conf('...e a completion ainda responde (sem travar)', !!resp(m4, 64));
   }
 
   console.log('');

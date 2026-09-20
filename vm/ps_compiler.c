@@ -1314,10 +1314,11 @@ static void global_gravado_add(C *c, const char *nome)
  * arquivo —, só que sem criar slot nem upvalue: aqui só se pergunta. Regra
  * de nome em dois lugares diverge; esta segue a de lá linha a linha.
  *
- * Variável sem tipo escrito tem o tipo fixado pela primeira atribuição, como
- * o `var` do Java: o tipo que o compilador sabe do primeiro valor. Valor de
- * tipo desconhecido fixa "qualquer" (aceita tudo, como Object). Null não fixa
- * nem conflita: variável sem tipo escrito pode começar e voltar a ficar vazia.
+ * Variável sem tipo escrito tem o tipo fixado pela primeira atribuição: o
+ * tipo que o compilador sabe do primeiro valor, e dali em diante só ele vale.
+ * Valor de tipo desconhecido fixa "qualquer" (aceita tudo, como Object). Null
+ * não fixa nem conflita: variável sem tipo escrito pode começar e voltar a
+ * ficar vazia.
  * Declarado (`str s`, parâmetro tipado) não aceita Null — é a regra que já
  * valia rodando. */
 

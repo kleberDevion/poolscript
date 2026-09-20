@@ -30,12 +30,13 @@
 
 const {
   createConnection, ProposedFeatures, TextDocuments, TextDocumentSyncKind,
-  CompletionItemKind, DiagnosticSeverity, SymbolKind, MarkupKind,
+  CompletionItemKind, DiagnosticSeverity, SymbolKind, MarkupKind, MessageType,
 } = require('vscode-languageserver/node');
 const { TextDocument } = require('vscode-languageserver-textdocument');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const url = require('url');
 const A = require('./analise.js');
 
 const conexao = createConnection(ProposedFeatures.all);
@@ -48,6 +49,11 @@ const docs = new TextDocuments(TextDocument);
  * que não é o dele. */
 let POOL = 'pool';
 let RAIZ_DOC = null;
+/* O último motivo de o motor não ter rodado (binário ausente, stderr). Sem
+ * isto o servidor subia, respondia tudo e devolvia listas VAZIAS sem um
+ * aviso — "o LSP não sugere nada" no IntelliJ, sem deixar rastro. */
+let ULTIMO_ERRO_MOTOR = '';
+let META_ERRO = '';
 
 function motor(args, entrada) {
   try {
@@ -62,6 +68,8 @@ function motor(args, entrada) {
      * ainda é o JSON que interessa — e no caso do `--ast` vem com a árvore
      * PARCIAL, que é o que permite completar enquanto se digita. */
     if (e && typeof e.stdout === 'string') return e.stdout;
+    ULTIMO_ERRO_MOTOR = (e && e.code === 'ENOENT') ? 'nao achei o binario'
+                      : ((e && (e.stderr || e.message)) ? String(e.stderr || e.message).trim() : 'sem resposta');
     return '';
   }
 }
@@ -69,10 +77,15 @@ function motor(args, entrada) {
 /* Módulos, tipos e membros, das tabelas do VM. Lido uma vez. */
 let META = { modulos: {}, tipos: {}, acesso: {}, excecoes: [] };
 function carregaMeta() {
+  ULTIMO_ERRO_MOTOR = '';
   const bruto = motor(['--metadata']);
   if (bruto.trim().startsWith('{')) {
-    try { META = JSON.parse(bruto); } catch (_) { /* fica o vazio */ }
+    try { META = JSON.parse(bruto); return; } catch (_) { /* fica o vazio */ }
   }
+  META_ERRO = 'PoolScript: nao consegui rodar o motor `' + POOL + ' --metadata`'
+            + (ULTIMO_ERRO_MOTOR ? ' (' + ULTIMO_ERRO_MOTOR + ')' : '')
+            + '. Sem ele a completion fica vazia: aponte o binario em initializationOptions.pool '
+            + 'ou ponha o `pool` no PATH do editor.';
 }
 
 /* Onde `docs/` está: ao lado do binário instalado, ou na raiz do repositório. */
@@ -1048,6 +1061,18 @@ conexao.onInitialize((params) => {
   };
 });
 
+/* Depois do aperto de mão, o que o `initialize` descobriu e não pode ficar
+ * calado: sem o motor, o cliente recebe a mensagem (balão no IntelliJ, toast
+ * no VS Code, linha no Neovim) e o detalhe vai pro log dele. Notificações,
+ * nunca request — o servidor continua sem pedir nada ao cliente. */
+conexao.onInitialized(() => {
+  if (!META_ERRO) return;
+  /* `window/showMessage` (notificação), e não o `showWarningMessage` da lib,
+   * que vira `window/showMessageRequest` — um request ao cliente. */
+  conexao.sendNotification('window/showMessage', { type: MessageType.Warning, message: META_ERRO });
+  conexao.console.warn(META_ERRO + ' | PATH=' + (process.env.PATH || '') + ' | cwd=' + process.cwd());
+});
+
 /* diagnóstico: quem decide é o `--check` do motor, não uma segunda gramática */
 function diagnostica(doc) {
   const bruto = motor(['--check'], doc.getText());
@@ -1116,9 +1141,25 @@ function emImport(doc, pos) {
   return prim === 'import' || prim === 'from' || prim === 'PUSH';
 }
 
+/* O caminho do documento no disco ('' se a URI não é de arquivo). Aceita
+ * `file:///…`, `file:/…` (uma barra só — o fallback do LSP4J) e o
+ * percent-encoding (`%20`, `%C3%A7`): o IntelliJ manda a URI codificada, e
+ * cortar `file://` na unha deixava a pasta com `%20` dentro — sem os vizinhos
+ * no `import`. */
+function caminhoDoDoc(uri) {
+  try { return url.fileURLToPath(uri); } catch (_) { return ''; }
+}
+
 /* A pasta do documento no disco ("" se a URI não é de arquivo). */
 function pastaDoDoc(doc) {
-  return doc.uri.startsWith('file://') ? path.dirname(doc.uri.slice(7)) : '';
+  const c = caminhoDoDoc(doc.uri);
+  return c ? path.dirname(c) : '';
+}
+
+/* A URI de um caminho do disco, codificada como o cliente exige: `'file://'
+ * + caminho` cru, com espaço ou acento, era rejeitado pelo IntelliJ. */
+function uriDe(caminho) {
+  return url.pathToFileURL(path.resolve(caminho)).href;
 }
 
 /* Os membros que `from X import …` pode trazer: o que X EXPORTA — módulo do
@@ -1170,7 +1211,7 @@ function completaCaminhoImport(doc, parcial) {
   const dir = pastaDoDoc(doc);
   const base = path.isAbsolute(sub) ? sub : (dir ? path.join(dir, sub) : '');
   if (base) {
-    const meu = doc.uri.startsWith('file://') ? path.basename(doc.uri.slice(7)) : '';
+    const meu = path.basename(caminhoDoDoc(doc.uri));
     let ents = [];
     try { ents = fs.readdirSync(base, { withFileTypes: true }); } catch (_) { ents = []; }
     for (const e of ents) {
@@ -1256,7 +1297,7 @@ function completaImport(doc, p) {
   const dir = pastaDoDoc(doc);
   if (dir) {
     const base = path.join(dir, ...sub);
-    const meu = doc.uri.startsWith('file://') ? path.basename(doc.uri.slice(7)) : '';
+    const meu = path.basename(caminhoDoDoc(doc.uri));
     let ents = [];
     try { ents = fs.readdirSync(base, { withFileTypes: true }); } catch (_) { ents = []; }
     for (const e of ents) {
@@ -1849,7 +1890,7 @@ conexao.onDefinition((p) => {
       for (const m of membrosDaEntidade(doc, alvo.nome, true)) {
         if (m.nome !== nome) continue;
         const dono = achaEntidade(doc, m.de || alvo.nome);
-        const uri = dono && dono.arquivo ? 'file://' + dono.arquivo : doc.uri;
+        const uri = dono && dono.arquivo ? uriDe(dono.arquivo) : doc.uri;
         return { uri, range: { start: { line: m.linha, character: m.coluna },
                                end: { line: m.linha, character: m.coluna + nome.length } } };
       }
@@ -1859,7 +1900,7 @@ conexao.onDefinition((p) => {
         /* reexportado: a declaração está no arquivo de ORIGEM (`m.arquivo`);
          * membro de módulo do motor não tem linha pra onde ir */
         if (m.nome !== nome || !m.arquivo) continue;
-        return { uri: 'file://' + m.arquivo,
+        return { uri: uriDe(m.arquivo),
                  range: { start: { line: m.linha, character: m.coluna },
                           end: { line: m.linha, character: m.coluna + nome.length } } };
       }
@@ -1895,13 +1936,13 @@ function definicaoDoImportado(doc, alvo, nome) {
     const def = alvo.def
       || (alvo.arquivo ? membrosDeArquivo(alvo.arquivo, pastaDoDoc(doc)).find((x) => x.nome === alvo.membro) : null);
     if (def && def.arquivo) {
-      return { uri: 'file://' + def.arquivo,
+      return { uri: uriDe(def.arquivo),
                range: { start: { line: def.linha, character: def.coluna },
                         end: { line: def.linha, character: def.coluna + (def.declarado || nome).length } } };
     }
   }
   if (alvo.arquivo) {
-    return { uri: 'file://' + alvo.arquivo,
+    return { uri: uriDe(alvo.arquivo),
              range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } };
   }
   return null;

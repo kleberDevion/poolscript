@@ -87,6 +87,17 @@ $(EXT)/node_modules:
 	cd $(EXT) && npm install --omit=dev --no-audit --no-fund
 
 vsix: $(EXT)/node_modules
+	# O @vscode/vsce 4 (2026-09) exige Node >= 22, e os transitivos das versoes
+	# 2 e 3 tambem passaram a exigir Node 20+: com Node 18 o `npx` baixa e
+	# estoura no meio ("File is not defined", "styleText is not a function").
+	# Dizer isso ANTES e melhor que a pilha do npx. O servidor LSP nao depende
+	# disto: `make install` ja entrega o server.js que o VS Code usa.
+	@n=$$(node -p 'Number(process.versions.node.split(".")[0])'); \
+	if [ "$$n" -lt 22 ]; then \
+	  echo "vsix: empacotar exige Node >= 22 (aqui: $$(node -v)); o @vscode/vsce e seus transitivos nao rodam mais no 18."; \
+	  echo "      Instale um Node novo (nvm/apt) ou aponte um: PATH=/caminho/do/node22/bin:\$$PATH make vsix"; \
+	  exit 1; \
+	fi
 	cd $(EXT) && npx --yes @vscode/vsce package --allow-missing-repository --skip-license
 	@ls -1 $(EXT)/*.vsix
 
@@ -166,8 +177,10 @@ intellij:
 	  echo "  REINICIE o IDEA (plugin so recarrega no boot)"; \
 	fi
 	@echo "  realce: automatico — o bundle vai dentro do jar e o plugin registra no boot"
-	@echo "  LSP:    Settings > Languages & Frameworks > Language Servers > + >"
-	@echo "          comando 'poolscript-lsp', extensao 'pr' (precisa do plugin LSP4IJ)"
+	@echo "  LSP:    automatico — o plugin declara o servidor ao LSP4IJ (plugin do marketplace);"
+	@echo "          se ha um 'PoolScript' cadastrado A MAO em Settings > Language Servers,"
+	@echo "          apague-o: senao sobem dois servidores"
+	@$(IJ)/plugin/teste_intellij.sh
 
 .PHONY: intellij
 
@@ -329,13 +342,19 @@ ANALISA_FORA := $(VM)/poolscript_vm.c
 # verificada lendo o código; a alternativa (sair 0 pra tudo) é o portão que não
 # reprova, que foi o que este alvo já era uma vez.
 #
-#   ps_xlsx.c:345   `o->b` do Out — liberado por quem monta o ZIP (free(zip.b))
-#   ps_db.c:75      `res->cols[i]` — liberado em ps_db_res_libera:31
-ANALISA_ACEITOS := ps_xlsx.c:345 ps_db.c:75
+#   ps_xlsx.c  leak of `nb`     — o `realloc` de `o->b` do Out (out_add); liberado
+#                                 por quem monta o ZIP (free(zip.b))
+#   ps_db.c    leak of `strdup` — `res->cols[i]` (res_col_nome); liberado em
+#                                 ps_db_res_libera
+# Cada entrada e um padrao de `grep` (regex basica, sem espaco: `.` casa o
+# espaco e as aspas do gcc) casando ARQUIVO + MENSAGEM, nao arquivo:linha —
+# a linha anda a cada edicao e o portao reprovava o mesmo falso positivo de
+# antes, ja conferido, so porque o codigo acima dele cresceu (345 -> 357).
+ANALISA_ACEITOS := ps_xlsx.c:[0-9]*:[0-9]*:.*leak.of..nb. ps_db.c:[0-9]*:[0-9]*:.*leak.of..strdup
 ANALISA_ALVO := $(if $(ANALISA_TUDO),$(FONTES),$(filter-out $(ANALISA_FORA),$(FONTES)))
 
 analisa:
-	@achou=0; faltou=""; \
+	@set -f; achou=0; faltou=""; \
 	for f in $(ANALISA_ALVO); do \
 	  saida=$$( (ulimit -v $$(($(ANALISA_MB) * 1024)); \
 	             nice -n 19 $(CC) $(CFLAGS) -I$(VM) -fanalyzer -c -o /dev/null $$f) 2>&1 ); \
@@ -516,6 +535,10 @@ check: pool testar
 	# NEOVIM: a config do editor tambem apodrece. A do desenvolvedor ficou DIAS
 	# truncada, sem o fechamento de () [] {}, e nada acusava.
 	@editor/nvim/teste_nvim.sh
+	@echo
+	# INTELLIJ: o plugin contra os jars REAIS do IDEA e do LSP4IJ (stub que nao
+	# casa so quebra em runtime), e o servidor respondendo ao LSP4J. PULA sem IDEA.
+	@editor/intellij/plugin/teste_intellij.sh
 	@echo
 	@$(MAKE) --no-print-directory analisa
 	@echo
