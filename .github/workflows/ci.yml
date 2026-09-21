@@ -28,14 +28,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      # As dependências são as do LINK do Makefile, e em todos os jobs iguais:
+      # o Makefile compila contra o MariaDB (`-I/usr/include/mariadb
+      # -lmariadb`), linka o libpq ESTÁTICO (`-lpgcommon -lpgport`, do
+      # postgresql-server-dev) e o `-lgssapi_krb5` (libkrb5-dev). A lista
+      # instalava `libmysqlclient-dev` e não tinha os outros dois: o `make pool`
+      # morria em `mysql.h: No such file or directory` e todos os jobs ficaram
+      # vermelhos de 27/08 a 21/09 — reproduzido num Ubuntu 24.04 limpo.
       - name: dependências
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev
+            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
       - run: make pool testar
       # `make check` é o portão INTEIRO e é o mesmo comando que roda na máquina:
       # suíte + metadata + audita_doc + audita_c + exemplos da doc + replay de
@@ -54,10 +61,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev
+            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
       - run: make pool
       # A SEMENTE MUDA a cada dia, de propósito: teste de propriedade com
       # semente fixa vira exemplo congelado, que é o que ele veio substituir.
@@ -82,10 +89,10 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc clang libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            gcc clang libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev
+            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
       - run: make pool testar
       # A MESMA suíte sob sanitizer: o binário -O2 é justamente o que esconde
       # leitura fora de faixa.
@@ -126,16 +133,49 @@ jobs:
     name: cobertura (catraca por arquivo)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    # A base foi medida com os bancos DE PÉ. Sem eles o e2e de banco diz
+    # PULOU, os ramos de ps_db.c e ps_mongo.c somem da medição e o portão
+    # acusa uma queda que não é de teste. Os serviços sobem com o que o e2e
+    # espera: teste/e2e/db.pr (usuário, senha e banco `ps_teste`, portas 5432
+    # e 3306) e teste/e2e/mongo.pr (mongod na 27099).
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ps_teste
+          POSTGRES_PASSWORD: ps_teste
+          POSTGRES_DB: ps_teste
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ps_teste -d ps_teste"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: ps_teste_raiz
+          MARIADB_DATABASE: ps_teste
+          MARIADB_USER: ps_teste
+          MARIADB_PASSWORD: ps_teste
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      mongo:
+        image: mongo:7
+        ports: ["27099:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     steps:
       - uses: actions/checkout@v4
       - name: dependências
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            gcc lcov libsqlite3-dev libpq-dev libmysqlclient-dev unixodbc-dev \
+            gcc lcov libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
             libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
             libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev
+            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
       # `make cobertura` termina no PORTÃO (teste/cobertura_portao.pr): compara
       # arquivo por arquivo com teste/cobertura_base.txt e sai != 0 se algum
       # perdeu cobertura de RAMO. Subir é livre.

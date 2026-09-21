@@ -607,6 +607,56 @@ r = cadastro({"tags": ["a", "b", "c", "d"]})
 confere("length na list conta itens",
         r.status_code == 422 and "campo 'tags': no maximo 3 itens, veio 4" in r.text)
 
+# ── cliente HTTP: corpo chunked e corpo ate a conexao fechar ───────────────
+#
+# O jinker sempre responde com Content-Length, entao dois caminhos do cliente
+# (`request.get`) nunca rodavam — a cobertura media zero execucoes em
+# `le_corpo_chunked` e `le_corpo_ate_fechar`. Um servidor CRU (sockets) numa
+# porta propria responde as duas formas, uma conexao cada, e sai. Ele avisa
+# que esta ouvindo por ARQUIVO, nao por sonda: uma sonda de porta consumiria
+# o `accept` da primeira resposta. `settimeout` no accept: se o teste cair
+# antes, o servidor nao fica pendurado.
+CRU_PORTA = 28958
+os.cmd("rm -f " + PASTA + "/cru_pronto")
+os.writeFile(PASTA + "/cru_http.pr",
+    "import os\nimport sockets\n"
+    + "srv = sockets.create_server((\"127.0.0.1\", " + str(CRU_PORTA) + "))\n"
+    + "srv.settimeout(15.0)\n"
+    + "os.writeFile(\"" + PASTA + "/cru_pronto\", \"1\")\n"
+    + "c = srv.accept()[0]\nc.recv(65536)\n"
+    + "c.sendall(\"HTTP/1.1 200 OK\\r\\nTransfer-Encoding: chunked\\r\\nConnection: close\\r\\n\\r\\n"
+    + "5\\r\\nola, \\r\\n5\\r\\nmundo\\r\\n0\\r\\n\\r\\n\".encode())\nc.close()\n"
+    + "c = srv.accept()[0]\nc.recv(65536)\n"
+    + "c.sendall(\"HTTP/1.1 200 OK\\r\\nConnection: close\\r\\n\\r\\ncorpo ate fechar\".encode())\nc.close()\n"
+    + "srv.close()\n")
+os.cmd("setsid '" + sys.executable + "' " + PASTA + "/cru_http.pr > " + PASTA + "/cru_http.log 2>&1 < /dev/null &")
+cru_ouve = false
+i = 0
+while i < 50
+{
+    if os.exists(PASTA + "/cru_pronto")
+    {
+        cru_ouve = true
+        break
+    }
+    sleep(0.1)
+    i = i + 1
+}
+confere("servidor cru de teste subiu", cru_ouve)
+corpo_chunked = ""
+corpo_fecha = ""
+try
+{
+    corpo_chunked = get("http://127.0.0.1:" + str(CRU_PORTA) + "/chunked", timeout=5).text
+    corpo_fecha = get("http://127.0.0.1:" + str(CRU_PORTA) + "/fecha", timeout=5).text
+}
+catch (e)
+{
+    post("      (cru http) erro:", str(e))
+}
+confere("cliente HTTP junta o corpo chunked", corpo_chunked == "ola, mundo")
+confere("cliente HTTP le o corpo sem Content-Length ate a conexao fechar", corpo_fecha == "corpo ate fechar")
+
 # ── cookie ──────────────────────────────────────────────────────────────────
 #
 # Não havia UMA ocorrência de "cookie" no motor. É a feature mais usada depois
@@ -827,6 +877,24 @@ else
         os.cmd("curl -sk --max-time 3 https://127.0.0.1:28953/ok > " + PASTA + "/tls_ok.txt 2>/dev/null; true")
         txt = os.readFile(PASTA + "/tls_ok.txt")
         confere("a resposta atravessa o TLS inteira", "\"protocolo\": \"https\"" in txt)
+
+        # O cliente HTTPS DA LINGUAGEM (`request.get("https://...")`) nao tinha
+        # teste nenhum — o de cima usa curl. Contra o self-signed daqui ele tem
+        # que RECUSAR (valida o certificado com as CAs do sistema) e dizer por
+        # que. Cobre o handshake do cliente (`liga_tls`), que a cobertura
+        # media com zero execucoes.
+        tls_cli = ""
+        try
+        {
+            get("https://127.0.0.1:28953/ok", timeout=3)
+            tls_cli = "ACEITOU o self-signed"
+        }
+        catch (e)
+        {
+            tls_cli = str(e)
+        }
+        confere("cliente HTTPS da linguagem recusa o certificado autoassinado e diz o motivo",
+                "falha no handshake TLS com 127.0.0.1: certificate verify failed" in tls_cli)
 
         # parada limpa pelo MESMO motivo do alvo HTTP: morto por sinal, o
         # servidor não grava o `.gcda` e a medição perde o lado TLS.

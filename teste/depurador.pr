@@ -126,7 +126,10 @@ funct pede(sock, comando, argumentos) {
 
 # ── o teste ─────────────────────────────────────────────────────────────────
 post("subindo o motor em modo debug na porta", PORTA)
-os.run("./pool --debug " + str(PORTA) + " " + ALVO)
+# `sys.executable`, não `./pool`: sob `make cobertura` o motor que roda o
+# teste é o instrumentado (`cob/pool`), e o depurador tem que ser ELE — com o
+# `./pool` fixo, o `ps_debug.c` ficava de fora da medição (0% de ramo).
+os.run("'" + sys.executable + "' --debug " + str(PORTA) + " " + ALVO)
 
 # O motor precisa de um instante pra abrir o socket. Tentar conectar em laço é
 # mais confiável que dormir um tempo fixo, que falha em máquina carregada.
@@ -296,7 +299,7 @@ eventos = []
 proximo_seq = 0
 post("")
 post("segunda sessao: alvo que quebra")
-os.run("./pool --debug " + str(PORTA2) + " teste/alvo_debug_erro.pr")
+os.run("'" + sys.executable + "' --debug " + str(PORTA2) + " teste/alvo_debug_erro.pr")
 
 sock = Null
 tentativa = 0

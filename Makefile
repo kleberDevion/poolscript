@@ -740,7 +740,10 @@ check-debug: pool-debug testar
 # A auditoria de testes apontou que cobertura NUNCA tinha sido medida. E a
 # métrica que importa é RAMO TOMADO, não linha: 93% de linha no parser eram 67%
 # de ramos. Linha superestima — é a razão de o SQLite medir MC-DC.
-cobertura: testar
+# `pool` como pré-requisito: o alvo TERMINA no portão (`./pool
+# teste/cobertura_portao.pr`), e no CI não havia `./pool` — o job morria no
+# último passo sem ter comparado nada.
+cobertura: pool testar
 	@rm -rf cob && mkdir -p cob
 	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) \
 	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
@@ -756,15 +759,18 @@ cobertura: testar
 	# do portão manda corrigir o que já está coberto.
 	# A unidade em C tem que entrar na MEDIÇÃO, senão os ramos que só ela
 	# alcança continuam contando como descobertos.
+	# O MESMO link do alvo `unidade` (com ps_xlsx.c -lz -lexpat): sem o xlsx o
+	# link falhava, o `2>/dev/null` escondia e o `|| true` seguia — a unidade
+	# nunca entrou na medição. Falha de link ou de teste agora derruba o alvo.
 	@echo "rodando os testes de unidade instrumentados…"
 	@$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/unidade teste/unidade.c \
-	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c -lm 2>/dev/null
-	@./cob/unidade > /dev/null 2>&1 || true
+	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c -lz -lexpat -lm
+	@./cob/unidade > /dev/null
 	@echo "rodando os drivers .pr e o e2e local contra o mesmo binario…"
 	@for d in teste/confere_metadata.pr scripts/audita_doc.pr \
 	          scripts/audita_exemplos_doc.pr \
 	          teste/fuzz_replay.pr teste/cli_roda.pr teste/sockets_roda.pr \
-	          teste/jinker_roda.pr teste/mongo_roda.pr; do \
+	          teste/jinker_roda.pr teste/mongo_roda.pr teste/depurador.pr; do \
 	  nice -n 19 ./cob/pool $$d >/dev/null 2>&1 || true; \
 	done
 	# E os que PRECISAM de serviço também, quando ele existe: `db` (PostgreSQL,
