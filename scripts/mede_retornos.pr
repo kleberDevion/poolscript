@@ -395,6 +395,8 @@ mr_pat = regex.compile("a(b)")
         ["date", "datahora", 'date.datahora()'],
         ["date", "now", 'date.now()'],
         ["date", "timestamp", 'date.timestamp()'],
+        ["date", "timestamp_ms", 'date.timestamp_ms()'],
+        ["date", "monotonic", 'date.monotonic()'],
         ["date", "hora", 'date.hora()', 'date.hora(1, 2, 3)'],
         ["regex", "compile", 'regex.compile("a")'],
         ["regex", "match", 'regex.match("a", "a")', 'regex.match("a", "b")'],

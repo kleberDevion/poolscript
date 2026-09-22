@@ -595,6 +595,13 @@ typedef struct {
     int    canal;     /* entra no broadcast (socket com channel=true) */
     Value  params;    /* dict dos path params */
     void  *epw;       /* watcher do epoll (EpWs*) — identifica o fd no epoll_wait */
+    /* A fibra que está atendendo uma mensagem DESTA conexão agora, e a marca
+     * de remoção adiada. O handler cede (sleep, banco, request); se a conexão
+     * morresse nesse meio-tempo, a fibra acordaria com o `PSJkConn` já
+     * liberado. Enquanto `fib` não é NULL, `jk_ws_del` só marca `morrendo` e
+     * quem fecha de verdade é o fim da fibra. */
+    void  *fib;
+    int    morrendo;
 } JkWsAtiva;
 
 /* watchers do epoll: o data.ptr de cada fd registrado aponta pra algo cujo
@@ -1234,12 +1241,13 @@ struct VM_ {
      * falhou (mais interno). */
     struct { int proto; int linha; int col; } tb[64];
     int     ntb;
-    /* Traceback preservado de um import que estourou DENTRO do módulo: sem isto
-     * o erro_runtime externo reconstruiria o tb só com o frame do `import` e a
-     * linha de dentro do módulo (onde o erro está de verdade) se perderia. */
+    /* Traceback preservado de um erro que aconteceu em OUTRO contexto: o corpo
+     * de um módulo importado, ou a fibra de uma `async funct`. Sem isto o
+     * erro_runtime externo reconstruiria o tb só com o frame de fora (o
+     * `import`, o `await`) e a linha onde o erro está de verdade se perderia. */
     struct { int proto; int linha; int col; } tb_mod[64];
     int     ntb_mod;
-    int     import_falhou;   /* 1 = o erro atual veio de dentro de um módulo importado */
+    int     import_falhou;   /* 1 = o erro atual veio de dentro de um módulo/fibra */
     int     importando;      /* >0 = rodando o corpo de um módulo importado (o guard pula) */
     /* Módulo que NÃO COMPILOU. O `tb` acima guarda índice de proto, e um
      * módulo que nem compilou não tem proto nenhum — então o erro saía como
@@ -1700,8 +1708,17 @@ typedef struct PSFuturo {
     struct Fiber *fib;      /* fibra que roda a action (NULL após concluir) */
     int    done;
     int    erro;           /* 1 = a action levantou */
+    /* 1 = alguém já LEU esse erro (`await`, `gather`, `post`). Erro que ninguém
+     * leu é anunciado no stderr no fim do programa: erro é erro, e sumir com
+     * ele calado escondia falha de tarefa. */
+    int    erro_lido;
     char   erro_msg[256];
     char   erro_tipo[64];
+    /* O traceback de DENTRO da tarefa. Sem ele o erro era atribuído à linha do
+     * `await` (ou da chamada), e não à do `raise` — a pessoa lia a linha
+     * errada. Guarda os quadros mais internos, que são os que importam. */
+    struct { int proto; int linha; int col; } tb[16];
+    int    ntb;
     Value  valor;          /* resultado quando done */
 } PSFuturo;
 
@@ -9391,6 +9408,34 @@ static int mod_date_timestamp(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+/* O relógio do sistema em MILISSEGUNDOS. O `timestamp()` é int em segundos e
+ * não dá pra medir nada abaixo disso — "levou 1s 240ms", debounce, prazo
+ * próprio, desempenho. O tipo dele não muda (int em segundos): trocar
+ * quebraria código já escrito, então o milissegundo é membro novo. */
+static int mod_date_timestamp_ms(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args;
+    EXIGE_ARGS(vm, "timestamp_ms", 0);
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    *out = MK_INT((int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+    return 0;
+}
+
+/* Relógio MONOTÔNICO, em segundos com fração. É o que serve pra medir
+ * duração: não anda pra trás quando o sistema acerta a hora, e é a mesma base
+ * que o motor já usa pro escalonador e pros prazos do jinker. O zero dele não
+ * significa nada — só a diferença entre duas leituras. */
+static int mod_date_monotonic(VM *vm, Value *args, int n, Value *out)
+{
+    (void)args;
+    EXIGE_ARGS(vm, "monotonic", 0);
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    *out = MK_FLOAT((double)ts.tv_sec + (double)ts.tv_nsec / 1e9);
+    return 0;
+}
+
 /* `hora(hours, minutes, days)` devolve SEGUNDOS — some com timestamp(). */
 static int mod_date_hora(VM *vm, Value *args, int n, Value *out)
 {
@@ -10755,6 +10800,7 @@ static const MembroMod MOD_DATE[] = {
     { "time", mod_date_time, 0, NULL }, { "today", mod_date_today, 0, NULL },
     { "datahora", mod_date_datahora, 0, NULL }, { "now", mod_date_now, 0, NULL },
     { "timestamp", mod_date_timestamp, 0, NULL }, { "hora", mod_date_hora, 0, "hours,minutes,days" },
+    { "timestamp_ms", mod_date_timestamp_ms, 0, NULL }, { "monotonic", mod_date_monotonic, 0, NULL },
 };
 
 
@@ -11695,6 +11741,26 @@ static int mod_sys_argv(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
+/* Erro de tarefa `async` que NINGUÉM leu.
+ *
+ * A exceção de uma tarefa fica guardada no future até alguém dar `await`. Se o
+ * programa termina sem aguardar, ela sumia: tarefa quebrava e o programa saía
+ * 0, calado. Erro é erro — sai no stderr, com a mensagem original. Quem quer
+ * tratar continua usando `await`, que é onde o erro é capturável. */
+static void avisa_futures_com_erro(VM *vm)
+{
+    for (Obj *o = vm->objetos; o; o = o->next) {
+        if (o->type != OBJ_FUTURO) continue;
+        PSFuturo *f = (PSFuturo *)o;
+        if (!f->erro || f->erro_lido) continue;
+        f->erro_lido = 1;
+        fflush(stdout);
+        fprintf(stderr, "%s: %s\n  em tarefa async que ninguem aguardou (sem `await`)\n",
+                f->erro_tipo[0] ? f->erro_tipo : "RuntimeError", f->erro_msg);
+        fflush(stderr);
+    }
+}
+
 static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
 {
     (void)out;
@@ -11706,6 +11772,7 @@ static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
               nome_do_tipo_valor(args[0]));
     }
     fflush(stdout);
+    avisa_futures_com_erro(vm);   /* erro de tarefa não some nem pelo exit() */
     /* `exit()` não passa pelo `libera_vm`, então os finalizadores não rodam e
      * os arquivos do motor com corpo de resposta ficariam no disco. Só os
      * deste processo: o filho do fork do jinker não apaga o do pai. */
@@ -16645,6 +16712,7 @@ static int ws_drena(VM *vm, PSWsConn *w, int timeout_ms)
  * encher) — mesma thread do pool, a fibra cede. */
 typedef struct { PSJkConn *c; const char *msg; size_t n; int rc; } WsSendOff;
 static void ws_send_off(void *p){ WsSendOff *o = (WsSendOff *)p;
+    if (!o->c) { o->rc = -1; return; }          /* conexão fechada no meio */
     o->rc = ps_jk_ws_envia_texto_cli(o->c, o->msg, o->n); }
 
 static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
@@ -16659,6 +16727,15 @@ static int met_ws_send(VM *vm, Value alvo, Value *args, int n, Value *out)
     }
     /* mensagens pendentes primeiro, na ordem de chegada */
     if (ws_drena(vm, w, 0) != 0) return -1;
+    /* A drenagem roda o `on_message` do usuário, e ele pode FECHAR a conexão
+     * (chamando `close`, ou porque o par desligou). Sem reconferir aqui, o
+     * envio abaixo ia com o ponteiro nulo e o processo caía dentro do
+     * `conn_escreve` — medido com o ASan na suíte do jinker. */
+    if (!w->conn) {
+        printf("Error: não conectado\n");
+        *out = MK_NULL();
+        return 0;
+    }
     int rc;
     if (EH_STRING(args[0])) {
         PSString *s = COMO_STRING(args[0]);
@@ -20340,6 +20417,10 @@ static void jk_ws_add(VM *vm, PSJinker *j, struct PSJkConn *conn, int idx_sock,
     j->ws[k].params = params;
     EpWs *w = malloc(sizeof(EpWs));
     j->ws[k].epw = w;
+    /* A entrada vem de um vetor realocado, não de calloc: sem zerar estes
+     * dois, o `fib` nascia com lixo, toda mensagem era tomada por "já tem
+     * fibra atendendo" e o handler nunca rodava. */
+    j->ws[k].fib = NULL; j->ws[k].morrendo = 0;
     if (w) {
         w->tipo = EPW_WS; w->conn = conn;
         if (g_jk_epfd >= 0) {
@@ -20352,11 +20433,36 @@ static void jk_ws_add(VM *vm, PSJinker *j, struct PSJkConn *conn, int idx_sock,
 }
 static void jk_ws_del(PSJinker *j, int i)
 {
+    /* Fibra atendendo esta conexão agora: fechar aqui deixaria ela acordar com
+     * o `PSJkConn` liberado. Marca e sai — quem fecha é o fim da fibra. */
+    if (j->ws[i].fib) { j->ws[i].morrendo = 1; return; }
     if (g_jk_epfd >= 0) epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, ps_jk_fd(j->ws[i].conn), NULL);
     free(j->ws[i].epw);
     ps_jk_close(j->ws[i].conn);
     free(j->ws[i].sala);
     j->ws[i] = j->ws[--j->nws];
+}
+
+/* Índice da conexão no vetor de ativas. -1 se ela já saiu. Tem que ser
+ * procurado DE NOVO depois de cada cedência: o vetor compacta quando outra
+ * conexão morre, e o índice de antes passa a apontar pra outra. */
+static int jk_ws_idx(PSJinker *j, struct PSJkConn *c)
+{
+    for (int i = 0; i < j->nws; i++) if (j->ws[i].conn == c) return i;
+    return -1;
+}
+
+/* Liga/desliga o EPOLLIN da conexão WS. Enquanto a fibra atende uma mensagem,
+ * o fd fica DESARMADO: senão o próximo frame dispara o epoll de novo e nasce
+ * uma segunda fibra na mesma conexão — duas mensagens da mesma conexão
+ * rodando ao mesmo tempo, fora de ordem. */
+static void jk_ws_arma(PSJinker *j, int i, int on)
+{
+    if (g_jk_epfd < 0 || i < 0 || i >= j->nws || !j->ws[i].epw) return;
+    struct epoll_event ev;
+    ev.events = on ? EPOLLIN : 0;
+    ev.data.ptr = j->ws[i].epw;
+    epoll_ctl(g_jk_epfd, EPOLL_CTL_MOD, ps_jk_fd(j->ws[i].conn), &ev);
 }
 
 /* Aceita uma conexão WS: handshake, casa a rota, calcula a sala e registra.
@@ -20410,21 +20516,47 @@ static void jk_ws_aceita(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr)
     if (j->debug) { printf("[jinker-ws] cliente conectou: %s (%d total)\n", hr->path, j->nws); fflush(stdout); }
 }
 
-/* Processa UMA mensagem da conexão WS de índice `i`. Remove a conexão (e
- * devolve 0) se ela caiu/fechou; 1 se seguiu viva. */
+/* Lê o frame numa THREAD (pelo fib_offload): só dados C viajam. Sem isto o
+ * cliente que demora a mandar o frame segura a fibra — e, antes das fibras,
+ * segurava o worker inteiro. */
+typedef struct { struct PSJkConn *c; char *raw; size_t nraw; int fr; } WsFrameOff;
+static void ws_frame_off(void *v)
+{
+    WsFrameOff *o = (WsFrameOff *)v;
+    o->fr = ps_jk_ws_le_frame(o->c, &o->raw, &o->nraw);
+}
+
+/* O mesmo, pro handshake: ler as linhas da requisição numa thread. */
+typedef struct { struct PSJkConn *c; PSJkReq *hr; int rc; } WsReqOff;
+static void ws_req_off(void *v)
+{
+    WsReqOff *o = (WsReqOff *)v;
+    o->rc = ps_jk_le_request(o->c, o->hr);
+}
+
+/* Processa UMA mensagem da conexão WS de índice `i`. Devolve 0 quando a
+ * conexão caiu/fechou (quem remove é o fim da fibra), 1 se seguiu viva.
+ *
+ * Roda DENTRO de uma fibra (`FIB_WS`): o handler pode dormir, consultar banco
+ * ou chamar `request` que o servidor continua atendendo o resto. */
 static int jk_ws_processa(VM *vm, PSJinker *j, int i)
 {
     struct PSJkConn *c = j->ws[i].conn;
     int idx = j->ws[i].idx_sock;
     Value pv = j->ws[i].params;
-    char *raw = NULL; size_t nraw = 0;
-    int fr = ps_jk_ws_le_frame(c, &raw, &nraw);
-    if (fr != 0) {
+    WsFrameOff fo; fo.c = c; fo.raw = NULL; fo.nraw = 0; fo.fr = 0;
+    fib_offload(vm, ws_frame_off, &fo);
+    char *raw = fo.raw; size_t nraw = fo.nraw;
+    (void)nraw;
+    if (fo.fr != 0) {
         free(raw);
-        jk_ws_del(j, i);
-        if (j->debug) { printf("[jinker-ws] cliente desconectou (%d total)\n", j->nws); fflush(stdout); }
+        if (j->debug) { printf("[jinker-ws] cliente desconectou (%d total)\n", j->nws - 1); fflush(stdout); }
         return 0;
     }
+    /* a cedência acima pode ter mexido no vetor: reacha a entrada */
+    i = jk_ws_idx(j, c);
+    if (i < 0) { free(raw); return 0; }
+    pv = j->ws[i].params;
     PSJReq *req = calloc(1, sizeof(PSJReq));
     if (!req) { free(raw); return 1; }
     req->obj.type = OBJ_JREQ; req->obj.marked = 0;
@@ -20937,7 +21069,12 @@ static void fib_pilha_solta(void *p)
 }
 
 typedef enum { FIB_LIVRE = 0, FIB_SUSPENSA, FIB_PRONTA } FibStatus;
-enum { FIB_HTTP = 0, FIB_ASYNC = 1 };   /* o que a fibra roda */
+/* O que a fibra roda. `FIB_WS` nasceu porque o handler de socket era chamado
+ * DIRETO do laço do worker: sem fibra, `sleep`, banco, `request` e processo
+ * caem no caminho que NÃO cede, e o servidor inteiro parava enquanto um
+ * handler de WebSocket trabalhava (medido: 3,4 s numa rota que responde em
+ * 0,7 ms durante uma rota lenta). */
+enum { FIB_HTTP = 0, FIB_ASYNC = 1, FIB_WS = 2 };
 
 typedef struct Fiber {
     PS_CTX ctx;                   /* contexto do C desta fibra */
@@ -20971,6 +21108,14 @@ typedef struct Fiber {
     /* trabalho: servir uma requisição HTTP nesta conexão */
     PSJinker  *j;
     struct PSJkConn *conn;
+    /* WebSocket: 0 = fazer o handshake desta conexão; 1 = atender uma
+     * mensagem dela. `ws_atual` é o remetente corrente DESTA fibra (o que o
+     * `emit(exclude_self=true)` exclui) e `ws_salvo` guarda o de quem foi
+     * interrompido — era um campo só no Jinker, e com duas fibras intercaladas
+     * o emit excluía a conexão errada. */
+    int        ws_fase;
+    struct PSJkConn *ws_atual;
+    struct PSJkConn *ws_salvo;
     char       ip[64];
     PSJkReq    hr;                /* a requisição é DONA da fibra (vive além do yield) */
     int        leu;              /* 1 = a requisição foi lida com sucesso */
@@ -21036,6 +21181,8 @@ static void fib_troca_entra(VM *vm, Fiber *f)
     vm->sp = f->sp; vm->locals_top = f->locals_top; vm->frame_topo = f->frame_topo;
     vm->stack_teto = FIB_STACK; vm->locals_teto = FIB_LOCALS; vm->frames_teto = FIB_FRAMES;
     vm->jk_req = f->jk_req;
+    /* o remetente corrente é POR FIBRA (ver o campo `ws_atual`) */
+    if (f->j) { f->ws_salvo = f->j->ws_atual; f->j->ws_atual = f->ws_atual; }
     vm->fib_atual = f;
 }
 
@@ -21044,6 +21191,7 @@ static void fib_troca_sai(VM *vm, Fiber *f)
 {
     f->sp = vm->sp; f->locals_top = vm->locals_top; f->frame_topo = vm->frame_topo;
     f->jk_req = vm->jk_req;
+    if (f->j) { f->ws_atual = f->j->ws_atual; f->j->ws_atual = f->ws_salvo; }
 
     vm->stack = vm->m_stack; vm->locals = vm->m_locals; vm->frames = vm->m_frames;
     vm->sp = vm->m_sp; vm->locals_top = vm->m_locals_top; vm->frame_topo = vm->m_frame_topo;
@@ -21081,13 +21229,51 @@ static void fib_trampolim(void)
         int rc = executa_alvo_c(vm, &f->a_alvo, tp->itens, tp->len, kwn, kwv, nkw, &res);
         if (rc != 0) {
             f->fut->erro = 1;
+            f->fut->erro_lido = 0;
             snprintf(f->fut->erro_msg, sizeof(f->fut->erro_msg), "%s", vm->erro);
             snprintf(f->fut->erro_tipo, sizeof(f->fut->erro_tipo), "%s", vm->erro_tipo);
+            /* guarda ONDE quebrou: os quadros mais internos do traceback da
+             * fibra. Quem re-levanta (o `await`, a própria chamada) os
+             * prepende, e a linha acusada passa a ser a do `raise`. */
+            int n_pega = vm->ntb < 16 ? vm->ntb : 16;
+            int base = vm->ntb - n_pega;
+            for (int k = 0; k < n_pega; k++) {
+                f->fut->tb[k].proto = vm->tb[base + k].proto;
+                f->fut->tb[k].linha = vm->tb[base + k].linha;
+                f->fut->tb[k].col   = vm->tb[base + k].col;
+            }
+            f->fut->ntb = n_pega;
             vm->erro[0] = '\0'; vm->erro_tipo[0] = '\0';  /* re-levantado no await/gather */
         } else {
             f->fut->valor = res;
         }
         f->fut->done = 1; f->fut->fib = NULL;
+        f->status = FIB_PRONTA;
+        ps_ctx_swap(&f->ctx, &vm->sched_ctx);
+        return;
+    }
+    if (f->kind == FIB_WS) {
+        if (f->ws_fase == 0) {
+            /* handshake: a leitura vai pra thread. Antes ela acontecia no laço
+             * do worker, e um cliente que abrisse a conexão sem mandar as
+             * linhas segurava o servidor por até 30 s (SO_RCVTIMEO). */
+            WsReqOff ro; ro.c = f->conn; ro.hr = &f->hr; ro.rc = 0;
+            fib_offload(vm, ws_req_off, &ro);
+            if (ro.rc == PSJK_OK) {
+                jk_ws_aceita(vm, f->j, f->conn, &f->hr);
+                ps_jk_req_solta(&f->hr);
+            } else {
+                if (ro.rc == PSJK_MALFORM)
+                    ps_jk_responde(f->conn, 400, "text/plain", "requisicao malformada\n", 22, NULL, 0);
+                else if (ro.rc == PSJK_NAOIMPL)
+                    ps_jk_responde(f->conn, 501, "text/plain", "Transfer-Encoding nao suportado\n", 32, NULL, 0);
+                ps_jk_close(f->conn);
+            }
+            f->rc = 1;
+        } else {
+            int i = jk_ws_idx(f->j, f->conn);
+            f->rc = (i >= 0) ? jk_ws_processa(vm, f->j, i) : 0;
+        }
         f->status = FIB_PRONTA;
         ps_ctx_swap(&f->ctx, &vm->sched_ctx);
         return;
@@ -21129,7 +21315,19 @@ static Fiber *fib_pega(VM *vm, PSJinker *j, struct PSJkConn *c, const char *ip)
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = MK_NULL();
     f->j = j; f->conn = c; snprintf(f->ip, sizeof(f->ip), "%s", ip);
     f->leu = 0; f->rc = 0; f->keep_alive = 0; f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL;
+    f->ws_fase = 0; f->ws_atual = NULL; f->ws_salvo = NULL;
     ps_ctx_make(&f->ctx, f->cstack, FIB_CSTACK, fib_trampolim);
+    return f;
+}
+
+/* Uma fibra pra atender o WebSocket: `fase` 0 = fazer o handshake da conexão
+ * recém-aceita, 1 = atender uma mensagem de uma conexão já ativa. */
+static Fiber *fib_pega_ws(VM *vm, PSJinker *j, struct PSJkConn *c, int fase)
+{
+    Fiber *f = fib_pega(vm, j, c, "");
+    if (!f) return NULL;
+    f->kind = FIB_WS;
+    f->ws_fase = fase;
     return f;
 }
 
@@ -21185,6 +21383,10 @@ static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npo
      * mesmo do handler. Nascia Null, e o helper não via requisição nenhuma. */
     f->sp = 0; f->locals_top = 0; f->frame_topo = 0; f->jk_req = vm->jk_req;
     f->tem_timer = 0; f->wait_fd = -1; f->wait_fut = NULL; f->conn = NULL;
+    /* O slot vem do pool e pode ter servido um handler antes: sem zerar, o
+     * `j` de outra conexão sobreviveria aqui e a troca de contexto leria
+     * ponteiro morto. */
+    f->j = NULL; f->ws_fase = 0; f->ws_atual = NULL; f->ws_salvo = NULL;
     f->a_alvo = *a;
     f->a_pos = tpos; f->a_kwn = tkwn; f->a_kwv = tkwv;
     f->fut = fu; fu->fib = f;
@@ -21399,6 +21601,22 @@ static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
 
 /* Resolve UM future: dentro de fibra CEDE ao escalonador; no top-level DIRIGE.
  * Devolve 0 (ok, valor em fu->valor) ou -1 (erro já em vm->erro/erro_tipo). */
+/* Passa pro erro corrente o traceback de DENTRO da tarefa. Usa o mesmo
+ * mecanismo do erro que vem de dentro de um módulo importado (`tb_mod` +
+ * `import_falhou`): o `erro_runtime` prepende os quadros de fora e deixa o
+ * quadro do `raise` por último, que é a linha que a pessoa precisa ver. */
+static void fut_passa_traceback(VM *vm, PSFuturo *fu)
+{
+    if (fu->ntb <= 0) return;
+    vm->ntb_mod = fu->ntb < 64 ? fu->ntb : 64;
+    for (int i = 0; i < vm->ntb_mod; i++) {
+        vm->tb_mod[i].proto = fu->tb[i].proto;
+        vm->tb_mod[i].linha = fu->tb[i].linha;
+        vm->tb_mod[i].col   = fu->tb[i].col;
+    }
+    vm->import_falhou = 1;
+}
+
 static int fut_resolve(VM *vm, PSFuturo *fu)
 {
     if (!fu->done) {
@@ -21414,9 +21632,11 @@ static int fut_resolve(VM *vm, PSFuturo *fu)
         }
     }
     if (fu->erro) {
+        fu->erro_lido = 1;             /* quem aguardou recebeu o erro */
         snprintf(vm->erro, sizeof(vm->erro), "%s", fu->erro_msg);
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
                  fu->erro_tipo[0] ? fu->erro_tipo : "RuntimeError");
+        fut_passa_traceback(vm, fu);
         return -1;
     }
     return 0;
@@ -21449,6 +21669,12 @@ static void fib_marca_gc(VM *vm)
             marca_valor(vm, &f->a_pos);
             marca_valor(vm, &f->a_kwn);
             marca_valor(vm, &f->a_kwv);
+            /* E O FUTURE. Faltava: um future que o programa não alcança mais
+             * era COLETADO enquanto a fibra dele ainda ia escrever o resultado
+             * nele — `heap-use-after-free` confirmado com o ASan dentro do
+             * jinker (escrita no campo `valor`, 16 bytes no offset 352 de
+             * 368). Enquanto a fibra vive, o future dela é raiz. */
+            if (f->fut) marca_obj(vm, (Obj *)f->fut);
         }
         if (f == vm->fib_atual) continue;   /* a corrente é marcada via vm->stack */
         for (int k = 0; k < f->sp; k++)         marca_valor(vm, &f->stack[k]);
@@ -21545,6 +21771,69 @@ static void http_pos_fibra(SrvLoop *s, HttpConn *h, Fiber *f)
     }
     ps_jk_conn_solta_buf(h->c);               /* ociosa: solta o buffer de 16KB */
     http_arma(s, h, 1);
+}
+
+/* depois de rodar/retomar a fibra de um WebSocket: se ela terminou, fecha a
+ * conexão (frame de fim, erro, ou remoção adiada) ou re-arma o fd pra próxima
+ * mensagem; se cedeu, segue ocupada. */
+static void ws_serve(VM *vm, PSJinker *j, struct PSJkConn *c, int fase);
+
+/* depois de rodar/retomar a fibra de um WebSocket: se ela terminou, fecha a
+ * conexão (frame de fim, erro, ou remoção adiada) ou re-arma o fd pra próxima
+ * mensagem; se cedeu, segue ocupada. */
+static void ws_pos_fibra(VM *vm, PSJinker *j, Fiber *f)
+{
+    if (f->status != FIB_PRONTA) return;      /* cedeu: segue ocupada */
+    struct PSJkConn *c = f->conn;
+    int i = jk_ws_idx(j, c);
+    if (i >= 0) {
+        j->ws[i].fib = NULL;
+        if (!f->rc || j->ws[i].morrendo) {
+            j->ws[i].morrendo = 0;
+            jk_ws_del(j, i);
+            c = NULL;
+        } else {
+            jk_ws_arma(j, i, 1);
+        }
+    } else {
+        c = NULL;
+    }
+    fib_libera(f);
+    /* O que já está no BUFFER não dispara o epoll de novo (nível): handshake e
+     * primeiro frame chegam no mesmo pacote, o leitor da requisição buferiza o
+     * que passou do cabeçalho, e a mensagem ficaria parada pra sempre —
+     * medido: o cliente conectava, mandava, e o handler nunca rodava. É o
+     * mesmo caso do pipelining do HTTP (`ps_jk_conn_pendente`). */
+    if (c && ps_jk_conn_pendente(c)) ws_serve(vm, j, c, 1);
+}
+
+/* Atende o WebSocket `c` numa fibra: `fase` 0 = handshake da conexão aceita,
+ * 1 = uma mensagem de conexão já ativa. Enquanto sobrar dado no buffer, serve
+ * de novo — o epoll não avisa do que já saiu do socket. */
+static void ws_serve(VM *vm, PSJinker *j, struct PSJkConn *c, int fase)
+{
+    for (;;) {
+        if (fase == 1) {
+            int i = jk_ws_idx(j, c);
+            if (i < 0 || j->ws[i].fib) return;
+            Fiber *f = fib_pega_ws(vm, j, c, 1);
+            if (!f) return;            /* pool cheio: o fd fica armado, tenta depois */
+            /* desarma enquanto a fibra atende: o próximo frame espera a vez e
+             * a ordem da conexão fica de pé */
+            j->ws[i].fib = f;
+            jk_ws_arma(j, i, 0);
+            fib_resume(vm, f);
+            if (f->status != FIB_PRONTA) return;    /* cedeu: o escalonador segue */
+            ws_pos_fibra(vm, j, f);
+            return;                    /* o pos_fibra já reatende o que sobrou */
+        }
+        Fiber *f = fib_pega_ws(vm, j, c, 0);
+        if (!f) { ps_jk_close(c); return; }
+        fib_resume(vm, f);
+        if (f->status != FIB_PRONTA) return;
+        ws_pos_fibra(vm, j, f);
+        return;
+    }
 }
 
 /* serve UMA requisição de `h` numa fibra. Pool cheio -> enfileira (back-pressure). */
@@ -21753,6 +22042,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 fib_resume(vm, f);
                 mexeu = 1;
                 if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
+                else if (f->kind == FIB_WS) ws_pos_fibra(vm, j, f);
                 else if (f->status == FIB_PRONTA) fib_libera(f);
             }
         }
@@ -21797,23 +22087,12 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             } else if (tipo == EPW_LWS) {
                 char ip[64] = "";
                 struct PSJkConn *c = ps_jk_accept(fd_ws, NULL, ip, sizeof(ip));
-                if (c) {
-                    PSJkReq hr;
-                    int lido = ps_jk_le_request(c, &hr);
-                    if (lido == PSJK_OK) { jk_ws_aceita(vm, j, c, &hr); ps_jk_req_solta(&hr); }
-                    else {
-                        if (lido == PSJK_MALFORM)
-                            ps_jk_responde(c, 400, "text/plain", "requisicao malformada\n", 22, NULL, 0);
-                        else if (lido == PSJK_NAOIMPL)
-                            ps_jk_responde(c, 501, "text/plain", "Transfer-Encoding nao suportado\n", 32, NULL, 0);
-                        ps_jk_close(c);
-                    }
-                }
+                /* handshake numa FIBRA: a leitura das linhas cede, então um
+                 * cliente lento não segura o servidor */
+                if (c) ws_serve(vm, j, c, 0);
             } else if (tipo == EPW_WS) {
                 EpWs *w = (EpWs *)evs[e].data.ptr;
-                int idx = -1;
-                for (int k = 0; k < j->nws; k++) if (j->ws[k].conn == w->conn) { idx = k; break; }
-                if (idx >= 0) jk_ws_processa(vm, j, idx);
+                ws_serve(vm, j, w->conn, 1);
             } else if (tipo == EPW_FIBWAIT) {
                 /* uma thread do pool terminou a I/O bloqueante -> retoma a fibra
                  * (pode ser handler HTTP ou fibra async — trata por kind) */
@@ -21821,6 +22100,7 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
                 HttpConn *h = (f->kind == FIB_HTTP) ? (HttpConn *)f->dono : NULL;
                 fib_resume(vm, f);
                 if (f->kind == FIB_HTTP) http_pos_fibra(&S, h, f);
+                else if (f->kind == FIB_WS) ws_pos_fibra(vm, j, f);
                 else if (f->status == FIB_PRONTA) fib_libera(f);
             } else {   /* EPW_HTTP */
                 HttpConn *h = (HttpConn *)evs[e].data.ptr;
@@ -22786,6 +23066,34 @@ static int chamada_sem_frame(VM *vm, Alvo alvo, const Value *pos, int npos,
         return -1;
     }
     *out = MK_OBJ(fu);
+    /* A TAREFA COMEÇA AGORA. A fibra roda até o primeiro ponto em que cede
+     * (`sleep`, I/O, `await`) e devolve o controle a quem chamou. Antes ela
+     * nascia suspensa e só andava num `await`/`gather`/`post`: sem isso o
+     * corpo NUNCA rodava — e dentro do jinker rodava, porque o laço do
+     * servidor iniciava a fibra órfã, então a mesma linha significava coisas
+     * diferentes conforme o programa.
+     *
+     * Só quando NÃO estamos dentro de outra fibra: `fib_troca_entra`/`sai` e o
+     * `sched_ctx` são um jogo só, e entrar numa fibra de dentro de outra
+     * perderia o contexto de quem estava rodando. Dentro do jinker o laço
+     * inicia a fibra na volta seguinte, como sempre fez. */
+    if (!vm->fib_atual && fu->fib) {
+        Fiber *nf = fu->fib;
+        fib_resume(vm, nf);
+        if (nf->status == FIB_PRONTA) {
+            fib_libera(nf);
+            /* Terminou inteira aqui, sem ceder: se levantou, o erro é DESTA
+             * chamada — a mesma coisa que uma funct comum faria. */
+            if (fu->erro) {
+                fu->erro_lido = 1;
+                snprintf(vm->erro, sizeof(vm->erro), "%s", fu->erro_msg);
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
+                         fu->erro_tipo[0] ? fu->erro_tipo : "RuntimeError");
+                fut_passa_traceback(vm, fu);
+                return -1;
+            }
+        }
+    }
     return 1;
 }
 
@@ -29437,6 +29745,10 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     Value resultado;
     int rc = vm_executa(&vm, 0, &resultado);
     fflush(stdout);
+    /* Tarefa `async` que quebrou e ninguém aguardou: o erro sai agora, em vez
+     * de morrer dentro do future. O programa NÃO espera tarefa pendente —
+     * quem quer o resultado usa `await`. */
+    avisa_futures_com_erro(&vm);
     if (vm.dbg.ativo) {
         char corpo[96];
         snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}", rc == 0 ? 0 : 1);

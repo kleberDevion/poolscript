@@ -21,6 +21,12 @@
 #include "ps_ext.h"
 
 #include "ps_versao.h"
+/* A data desta compilação, gerada pelo Makefile. Dois binários da MESMA versão
+ * (o instalado e o recém-compilado) respondiam igual ao `--version`, e não
+ * havia como saber o que tinha na máquina. O prefixo `PoolScript <versao>
+ * [PSVM]` não muda: quem lê a saída (o servidor LSP tira a versão dela)
+ * continua valendo. */
+#include "ps_build.h"
 
 #define SPEC_URL "https://github.com/kleberDevion/poolscript"
 
@@ -1347,7 +1353,7 @@ int main(int argc, char **argv)
     const char *cmd = argv[1];
 
     if (!strcmp(cmd, "--version") || !strcmp(cmd, "-V") || !strcmp(cmd, "-v")) {
-        printf("PoolScript %s [PSVM]\n", PS_VERSAO);
+        printf("PoolScript %s [PSVM] (%s)\n", PS_VERSAO, PS_BUILD_DATA);
         return 0;
     }
     if (!strcmp(cmd, "--help") || !strcmp(cmd, "-h") || !strcmp(cmd, "help")) {

@@ -1002,6 +1002,28 @@ const Caso CASOS_LIBS[] = {
 { "os.run em string nao trunca em 62 palavras nem em 4096 bytes",
   "import os\ns = \"echo\"\nfor each i in range(3000) { s = s + \" x\" }\npost(os.run(s, true).strip().split(\" \").len())\n", "3000", NULL, 0 },
 
+/* ── relogio com fracao ──────────────────────────────────────────────────
+ *
+ * `date.timestamp()` e int em SEGUNDOS: nao dava pra medir 350 ms, nem fazer
+ * "levou 1s 240ms", debounce ou prazo proprio. O tipo dele nao mudou (isso
+ * quebraria codigo escrito); os dois membros novos e que tem a fracao. */
+{ "date.monotonic mede duracao com fracao",
+  "import date\n"
+  "a = date.monotonic()\n"
+  "sleep(0.35)\n"
+  "d = date.monotonic() - a\n"
+  "post(type(a), d >= 0.3 and d < 0.9)\n", "flo True", NULL, 0 },
+{ "date.monotonic so anda pra frente",
+  "import date\n"
+  "a = date.monotonic()\n"
+  "b = date.monotonic()\n"
+  "post(b >= a)\n", "True", NULL, 0 },
+{ "date.timestamp_ms e o mesmo relogio do timestamp, em milissegundos",
+  "import date\n"
+  "s = date.timestamp()\n"
+  "ms = date.timestamp_ms()\n"
+  "post(type(ms), ms // 1000 - s <= 1 and ms // 1000 - s >= -1)\n", "int True", NULL, 0 },
+
 /* ── `os.run(args, capture="live")`: o processo VIVO ──────────────────────
  *
  * Do relatorio do backend da IDE (2026-09-22): com os dois modos de antes nao

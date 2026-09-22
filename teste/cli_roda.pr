@@ -61,6 +61,12 @@ POOL = sys.executable
 # ── superfície da CLI (vm/main.c) ───────────────────────────────────────────
 r = roda("'" + POOL + "' --version")
 confere("--version imprime a versão", "PoolScript" in r["saida"] and r["rc"] == 0)
+# A DATA da build distingue dois binários da mesma versão (o instalado e o
+# recém-compilado respondiam igual). O prefixo não muda: quem lê a saída — o
+# servidor LSP tira a versão dela — continua valendo.
+confere("--version traz a data da build entre parênteses",
+        "[PSVM] (" in r["saida"] and r["saida"].strip().endswith(")")
+        and "-" in r["saida"].split("(")[1])
 r = roda("'" + POOL + "' -V")
 confere("-V é o mesmo que --version", "PoolScript" in r["saida"] and r["rc"] == 0)
 
@@ -202,6 +208,16 @@ confere("--check acusa o módulo ausente uma vez só",
         len(r["saida"].split("No module named")) == 3)
 r = roda("printf 'import os\\nimport util\\n' | '" + POOL + "' --check --path proj/main.pr")
 confere("--check não acusa módulo que existe (nativo e vizinho)", "\"ok\":true" in r["saida"])
+
+# A coluna aponta o NOME, não a palavra-chave: o editor sublinhava `import`.
+r = roda("printf 'import naoexiste_zz\\n' | '" + POOL + "' --check")
+confere("o erro do import aponta a coluna do nome do módulo", "\"coluna\":8" in r["saida"])
+r = roda("printf '    from pacote.sub import x\\n' | '" + POOL + "' --check")
+confere("com indentação e caminho pontilhado, a coluna é a do primeiro segmento",
+        "\"coluna\":10" in r["saida"])
+r = roda("printf 'from json import naoexiste_zz\\n' | '" + POOL + "' --check")
+confere("nome que o módulo não tem aponta a coluna do NOME importado",
+        "\"coluna\":18" in r["saida"])
 r = roda("'" + POOL + "' --check proj/main.pr")
 confere("--check por caminho continua aprovando o import vizinho", "\"ok\":true" in r["saida"])
 
@@ -239,6 +255,33 @@ confere("--contexto diz a classe e o método",
 r = roda("printf 'post(abcdef)' | '" + POOL + "' --contexto 1:9")
 confere("--contexto no meio da palavra devolve o pedaço antes do cursor",
         "\"parcial\":\"abc\"" in r["saida"])
+
+# ── `async funct`: erro de tarefa não some, e aponta a linha certa ──────────
+#
+# A exceção de uma tarefa ficava guardada no future; sem `await`, sumia — o
+# programa saía 0 e calado. E quando alguém aguardava, a linha acusada era a do
+# `await`, não a do `raise`.
+os.writeFile(PASTA + "/tarefa_erro.pr",
+             "async funct falha()\n{\n    sleep(0.01)\n    raise ValueError(\"quebrei\")\n}\n"
+             + "async funct boa()\n{\n    sleep(0.2)\n    return 1\n}\n"
+             + "f = falha()\ng = boa()\npost(await g)\n")
+r = roda("'" + POOL + "' tarefa_erro.pr")
+confere("erro de tarefa que ninguém aguardou aparece no fim",
+        "quebrei" in r["saida"] and "ninguem aguardou" in r["saida"])
+
+os.writeFile(PASTA + "/tarefa_await.pr",
+             "async funct falha()\n{\n    sleep(0.01)\n    raise ValueError(\"quebrei\")\n}\n"
+             + "f = falha()\nv = await f\n")
+r = roda("'" + POOL + "' tarefa_await.pr")
+confere("o traceback da tarefa termina na linha do raise",
+        "linha 4" in r["saida"] and r["rc"] != 0)
+
+os.writeFile(PASTA + "/tarefa_comeca.pr",
+             "async funct t()\n{\n    post(\"corpo\")\n    sleep(0.01)\n    post(\"resto\")\n}\n"
+             + "f = t()\npost(\"chamou\")\nawait f\n")
+r = roda("'" + POOL + "' tarefa_comeca.pr")
+confere("a tarefa começa na chamada, antes da linha seguinte",
+        r["saida"].strip() == "corpo\nchamou\nresto")
 
 # ── código pela metade: o editor precisa do que sobrou ──────────────────────
 #

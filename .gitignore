@@ -1,4 +1,8 @@
 # ── artefatos de build ──────────────────────────────────────────────────────
+# Data da compilação, gerada pelo Makefile a cada `make pool` (o `--version`
+# usa pra distinguir dois binários da mesma versão). Versionar isto só geraria
+# ruído: muda em toda máquina que compila.
+vm/ps_build.h
 # Extensão C da VM — gere com ./rebuild_vm.sh
 src/poolscript/vm/*.so
 src/poolscript/vm/*.pyd

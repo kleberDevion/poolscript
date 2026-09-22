@@ -515,10 +515,35 @@ devolve uma lista de geradores).
 
 ## 6.8. Assíncrono — `async` / `await` / `gather`
 
-Uma funct marcada `async` (`async funct`) **não roda na chamada**: devolve um
-**future** (uma promessa do resultado). O valor sai com
+Uma funct marcada `async` (`async funct`) devolve um **future** (uma promessa
+do resultado) e **começa a rodar na chamada**: o corpo corre até o primeiro
+ponto em que ele **cede** — `sleep`, I/O (banco, `request`, `os.run`), ou um
+`await` de dentro — e aí o controle volta pra quem chamou. O valor sai com
 `await` (espera um future) ou `gather` (espera vários). As tasks correm
 **concorrentes** — enquanto uma espera I/O, as outras andam.
+
+```ps
+async funct t() {
+    post("comecei")      # sai AGORA, na linha da chamada
+    sleep(0.1)
+    post("terminei")
+}
+
+f = t()
+post("chamei")           # "comecei" já saiu antes desta linha
+await f                  # aqui o resto do corpo roda
+```
+
+**Quem espera é o `await`.** Uma tarefa que cedeu só continua quando alguém
+dirige o escalonador (`await`, `gather`, `post` de um future) — ou, dentro do
+`jinker`, quando o servidor volta ao laço. No fim do programa o motor **não**
+espera tarefa pendente: se o resultado importa, `await` nela.
+
+**Erro de tarefa não some.** Se a exceção acontece antes do primeiro ponto de
+cedência, ela sobe na própria chamada, como em funct comum. Se acontece
+depois e ninguém aguardou aquele future, a mensagem sai no **stderr** no fim
+do programa, dizendo que era de uma tarefa sem `await`. Em qualquer caso o
+traceback termina na linha do `raise`, não na do `await`.
 
 ```ps
 async funct dobro(n) {

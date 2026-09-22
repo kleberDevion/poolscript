@@ -795,6 +795,49 @@ confere("Content-Length duplicado e diferente vira 400", "400" in bruto)
 bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 confere("pipelining responde as DUAS requisições", bruto.count("HTTP/1.1") >= 2)
 
+# ── o handler de socket não pode congelar o servidor ────────────────────────
+#
+# O handler de `@app.socket` era chamado DIRETO do laço do worker, sem fibra:
+# o `sleep(3)` dele caía no caminho cego e parava tudo. Medido antes: `/ok`
+# levava 3,4 s e a segunda conexão WebSocket só entrava quando a primeira
+# terminava. Em ROTA o mesmo cenário já respondia em 0,7 ms.
+travou = ""
+try
+{
+    ws_l = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/lentows")
+    lento_vindas = []
+    ws_l.on_message(funct(m) { lento_vindas.append(str(m)) })
+    ws_l.send("vai")
+    sleep(0.5)                      # o handler está dormindo agora
+
+    t0 = date.timestamp()
+    r = get(RAIZ + "/ok")
+    t1 = date.timestamp()
+    confere("rota HTTP responde enquanto o handler de socket dorme",
+            r.status == 200 and (t1 - t0) <= 1)
+
+    # e outra conexão WebSocket entra na hora, sem esperar o handler
+    t2 = date.timestamp()
+    ws_l2 = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+    segundas = []
+    ws_l2.on_message(funct(m) { segundas.append(str(m)) })
+    ws_l2.send("oi")
+    sleep(0.5)
+    t3 = date.timestamp()
+    confere("segunda conexão WebSocket entra e é atendida durante o handler lento",
+            (t3 - t2) <= 1 and "eco: oi" in str(segundas))
+
+    sleep(3.2)                      # deixa o handler lento terminar
+    travou = str(lento_vindas)
+    ws_l.close()
+    ws_l2.close()
+}
+catch (e)
+{
+    travou = "ERRO: " + str(e)
+}
+confere("o handler lento termina e responde a quem mandou", "lento-fim" in travou)
+
 # ── o comando externo na rota não segura as outras requisições ──────────────
 #
 # O worker é UM. Com a espera do filho na própria fibra, um `os.run` de 3 s na

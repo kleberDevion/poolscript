@@ -723,6 +723,51 @@ const Caso CASOS_LINGUAGEM[] = {
   "}\n"
   "post(s)\n",
   "30", NULL, 0 },
+/* ── `async funct` roda QUANDO E CHAMADA ─────────────────────────────────
+ *
+ * Antes a fibra era criada e ninguem a executava: sem `await`/`gather`/`post`,
+ * o corpo nao rodava NUNCA (medido: future criado, sleep(1) no principal,
+ * nenhum passo). Dentro do jinker o laco iniciava a fibra orfa sozinho, entao
+ * a mesma linha significava coisas diferentes conforme o programa. Agora a
+ * chamada roda o corpo ate o primeiro ponto em que ele cede. */
+{ "async funct roda ate o primeiro sleep na chamada",
+  "async funct t() {\n"
+  "    post(\"a\")\n"
+  "    sleep(0.05)\n"
+  "    post(\"b\")\n"
+  "}\n"
+  "f = t()\n"
+  "post(\"chamou\")\n"
+  "v = await f\n"
+  "post(\"fim\")\n",
+  "a\nchamou\nb\nfim", NULL, 0 },
+{ "async funct sem ponto de cedencia roda inteira na chamada",
+  "async funct t() {\n"
+  "    post(\"corpo\")\n"
+  "    return 7\n"
+  "}\n"
+  "f = t()\n"
+  "post(\"depois\")\n"
+  "post(await f)\n",
+  "corpo\ndepois\n7", NULL, 0 },
+{ "gather continua rodando as tarefas junto",
+  "async funct t(n) {\n"
+  "    sleep(0.2)\n"
+  "    return n * 2\n"
+  "}\n"
+  "post(gather(t(1), t(2), t(3)))\n",
+  "[2, 4, 6]", NULL, 0 },
+/* ERRO E ERRO: a excecao que acontece ANTES do primeiro ponto de cedencia sobe
+ * na hora, no ponto da chamada — e a linha acusada e a do `raise`, nao a do
+ * `await` (o traceback vinha da fibra e era jogado fora). */
+{ "erro antes do primeiro sleep sobe na propria chamada",
+  "async funct t() {\n"
+  "    raise ValueError(\"quebrei\")\n"
+  "}\n"
+  "post(\"antes\")\n"
+  "f = t()\n"
+  "post(\"nao chega aqui\")\n",
+  "antes", "ValueError: quebrei", 1 },
 { "closure em async funct (fibra)",
   "async funct t(k) {\n"
   "    funct calc() {\n"

@@ -2343,6 +2343,22 @@ static int tp_classe_importada(C *c, PSNode *d)
     return tp_tipo_arq(c, d->texto) == d;
 }
 
+/* O nó que o erro do import deve APONTAR: o nome do módulo (`n->lista` tem um
+ * nó por parte do caminho, cada um com a coluna dele) ou o nome importado
+ * (`n->lista2`). Antes o erro saía sempre na coluna do `import`/`from` — o
+ * editor sublinhava a palavra-chave em vez do nome errado. */
+static PSNode *tp_no_do_import(PSNode *n, const char *membro)
+{
+    if (!n) return n;
+    if (membro)
+        for (int32_t i = 0; i < n->lista2.n; i++)
+            if (n->lista2.itens[i] && n->lista2.itens[i]->texto
+                && strcmp(n->lista2.itens[i]->texto, membro) == 0)
+                return n->lista2.itens[i];
+    if (n->lista.n > 0 && n->lista.itens[0]) return n->lista.itens[0];
+    return n;
+}
+
 static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro)
 {
     memset(&c->grava, 0, sizeof(c->grava));
@@ -2358,7 +2374,8 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
         }
         int k = ps_nativo_tem_membro(mod, membro);
         if (k == 0) {
-            terro(c, n, "ImportError", "cannot import name '%s' from '%s' (unknown location)", membro, mod);
+            terro(c, tp_no_do_import(n, membro), "ImportError",
+                  "cannot import name '%s' from '%s' (unknown location)", membro, mod);
             return;
         }
         c->grava.tem_valor = 1;
@@ -2386,7 +2403,7 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
          * antes o `--check` dizia `{"ok":true}` e um typo no import só
          * aparecia na execução. O `terro` não repete a mesma linha/coluna, e
          * por isso `from m import a, b, c` acusa uma vez só. */
-        terro(c, n, "ImportError", "No module named '%s'", vis);
+        terro(c, tp_no_do_import(n, NULL), "ImportError", "No module named '%s'", vis);
         c->grava.tem_valor = 1;
         return;
     }
@@ -2419,7 +2436,8 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
         /* variável do módulo (tipo só rodando), ou nome que ele não tem —
          * a mesma frase do ImportError de runtime, antes de rodar */
         if (!ma->incompleto && !modulo_exporta(ma, membro))
-            terro(c, n, "ImportError", "cannot import name '%s' from '%s' (%s)", membro, vis, ma->caminho);
+            terro(c, tp_no_do_import(n, membro), "ImportError",
+                  "cannot import name '%s' from '%s' (%s)", membro, vis, ma->caminho);
         c->grava.tem_valor = 1;
         return;
     }
@@ -5962,7 +5980,7 @@ static void resolve_estrelas(C *c, PSNode *programa)
              * import comum, na linha do import */
             char vis[256];
             tp_mod_visivel(enc, vis, sizeof(vis));
-            terro(c, s, "ImportError", "No module named '%s'", vis);
+            terro(c, tp_no_do_import(s, NULL), "ImportError", "No module named '%s'", vis);
         }
         c->estrelas[e].resolvido = (r == 1 || r == 2);
         c->estrelas[e].incompleto = r == 2;

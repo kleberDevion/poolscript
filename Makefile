@@ -60,7 +60,21 @@ MK := $(lastword $(MAKEFILE_LIST))
 # `ps_retornos.c`. Sem ele nesta lista, regerar o .inc não recompilava nada:
 # o make olhava só os .c, via tudo em dia, e o binário seguia com a tabela
 # velha — a medição nova ficava no arquivo sem chegar no `--metadata`.
-pool: $(FONTES) $(VM)/ps_versao.h $(VM)/retornos_medidos.inc $(MK)
+# `ps_build.h` é GERADO: a DATA da compilação, pra o `--version` distinguir
+# dois binários da mesma versão (um instalado e um recém-compilado respondiam
+# igual, e quem perguntava "o que tem nesta máquina" não tinha como saber).
+# Escreve num temporário e só troca quando MUDA (`cmp -s`): trocar sempre
+# relinkaria o binário a cada `make`. Um `-D` no CFLAGS não serve — o make não
+# rastreia mudança de receita, e o valor ficaria preso no da compilação
+# anterior, que é o mesmo defeito que este alvo existe pra evitar.
+FORCE:
+$(VM)/ps_build.h: FORCE
+	@printf '/* GERADO pelo Makefile — a data desta compilacao. */\n#define PS_BUILD_DATA "%s"\n' \
+	    "$$(date +%Y-%m-%d)" > $@.novo
+	@cmp -s $@.novo $@ 2>/dev/null || mv $@.novo $@
+	@rm -f $@.novo
+
+pool: $(FONTES) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
 	  $(PGLIBFLAG) -Wl,-Bstatic -lsqlite3 -lpq $(PGSTATIC) -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libgmp.so.10
 

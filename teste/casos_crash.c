@@ -171,8 +171,15 @@ const Caso CASOS_CRASH[] = {
    * timeout de 20 s do runner), porque cada nível cria uma fibra e espera. Com
    * as fibras criadas de uma vez, o mesmo estouro sai em 0,76 s — 20x mais
    * rápido pra provar exatamente a mesma coisa. Teste lento é teste que alguém
-   * acaba desligando. */
+   * acaba desligando.
+   *
+   * O `sleep` dentro da tarefa entrou em 2026-09-22, quando `async funct`
+   * passou a RODAR na chamada: sem ponto de cedência cada tarefa termina na
+   * hora e devolve o slot, o pool nunca enche e o caso deixava de exercitar o
+   * teto. Com o `sleep` as 9000 ficam suspensas, que é a situação que o teto
+   * existe pra cobrir. */
   "async funct f(n) {\n"
+  "    sleep(5)\n"
   "    return n\n"
   "}\n"
   "fs = []\n"

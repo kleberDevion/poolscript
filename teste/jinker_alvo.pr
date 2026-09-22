@@ -224,6 +224,17 @@ funct ws_sala()
     return "eco: " + request.text()
 }
 
+# Handler de socket LENTO: enquanto ele roda, o servidor tem que continuar
+# atendendo — rota HTTP e OUTRA conexão WebSocket. Antes o handler era chamado
+# direto do laço do worker, sem fibra, e o `sleep` dele parava o servidor
+# inteiro: `/ok` levava 3,4 s e a segunda conexão só entrava no fim.
+@app.socket("/lentows")
+funct ws_lento()
+{
+    sleep(3)
+    return "lento-fim"
+}
+
 # Socket LONGO antes do curto com o mesmo parametro: a conexao em `/chat/geral`
 # tem que entrar na sala automatica `geral` (mesmo reset de params das rotas).
 @app.socket("/chat/<sala>/admin", channel=true)

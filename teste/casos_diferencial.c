@@ -2112,9 +2112,14 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #698",
   "funct fundo(n) {\n    if n <= 0 {\n        return 0\n    }\n    return 1 + fundo(n - 1)\n}\nasync funct dentro() {\n    return fundo(100000)\n}\ntry {\n    f = dentro()\n    _r = await f\n    post(\"passou sem reclamar\")\n} catch (e) {\n    post(\"recusou\")\n}\n",
   "recusou", NULL, 0 },
+/* REGRAVADO pela mesma decisao: as 9000 tarefas nao tem ponto de cedencia,
+ * entao cada chamada roda o corpo inteiro e DEVOLVE o slot da fibra. O pool
+ * nao enche mais, e o `gather` da lista devolve a lista resolvida dentro de
+ * uma lista (uma lista = um argumento) — dai o 1. Antes as 9000 ficavam
+ * suspensas, o pool estourava e o teste via "recusou". */
 { "dif #699",
   "async funct f(n) {\n    return n\n}\nfs = []\ni = 0\ntry {\n    while i < 9000 {\n        addEnd(fs, f(i))\n        i = i + 1\n    }\n    post(len(gather(fs)))\n} catch (e) {\n    post(\"recusou\")\n}\n",
-  "recusou", NULL, 0 },
+  "1", NULL, 0 },
 { "dif #700",
   "import os\ntry {\n    os.writeFile(\"/dev/full\", \"x\" * 200000)\n    post(\"nao levantou\")\n} catch (e) {\n    post(\"levantou\")\n}\n",
   "levantou", NULL, 0 },
@@ -2232,9 +2237,13 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #738",
   "async funct lenta(n) {\n    sleep(0.3)\n    return n\n}\na = lenta(1)\nb = lenta(2)\npost(await a)\npost(await b)\n\n",
   "1\n2", NULL, 0 },
+/* REGRAVADO por decisao (2026-09-22): `async funct` roda quando e CHAMADA, ate
+ * o primeiro ponto em que cede. A divisao por zero acontece antes de qualquer
+ * cedencia, entao o erro e da propria chamada — como em funct comum. Antes o
+ * corpo nao rodava nunca sem `await` e o programa imprimia "nao_lancou_ainda". */
 { "dif #739",
   "async funct falha() {\n    x = 1 / 0\n    return x\n}\nf = falha()\nsleep(0.05)\npost(\"nao_lancou_ainda\")\n\n",
-  "nao_lancou_ainda", NULL, 0 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "dif #740",
   "async funct ident(n) {\n    sleep(0.05)\n    return n\n}\na = ident(1)\nb = ident(2)\nc = ident(3)\npost(await c)\npost(await b)\npost(await a)\n\n",
   "3\n2\n1", NULL, 0 },

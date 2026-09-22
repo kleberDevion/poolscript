@@ -23,8 +23,9 @@ Os formatos são os do sistema operacional —
   `(dados, endereco)`.
 
 No VM em C, a I/O bloqueante (connect/accept/recv/send) roda no pool de
-threads e **cede a fibra** — dentro de um handler do jinker um socket lento
-NÃO trava os outros requests (o mesmo async uniforme de DB/HTTP/mail).
+threads e **cede a fibra** — dentro de um handler do jinker (rota HTTP **ou**
+`@app.socket`) um socket lento NÃO trava as outras requisições, o mesmo async
+uniforme de banco/HTTP/mail.
 
 ---
 

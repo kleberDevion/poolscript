@@ -20,6 +20,8 @@ Todas as funções usam o horário **local** da máquina.
 | `date.datahora()` | data + hora (BR) | `"25/07/2026 14:30:05"` | [datahora/datahora.md](datahora/datahora.md) |
 | `date.now()` | data + hora (ISO) | `"2026-07-25 14:30:05"` | [now/now.md](now/now.md) |
 | `date.timestamp()` | timestamp Unix (int) | `1785000000` | [timestamp/timestamp.md](timestamp/timestamp.md) |
+| `date.timestamp_ms()` | timestamp Unix em milissegundos (int) | `1785000000123` | [timestamp_ms/timestamp_ms.md](timestamp_ms/timestamp_ms.md) |
+| `date.monotonic()` | relógio monotônico, segundos com fração (flo) | `41923.0239` | [monotonic/monotonic.md](monotonic/monotonic.md) |
 | `date.hora(h, m, d)` | duração em segundos (int) | `86400` | [hora/hora.md](hora/hora.md) |
 
 > As três primeiras devolvem **string** (bom pra exibir/gravar). `timestamp` e

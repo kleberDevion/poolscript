@@ -32,6 +32,10 @@ const Caso CASOS_COBERTURA[] = {
   "post(await b)\n"
   "\n",
   "1\n2", NULL, 0 },
+/* REGRAVADO em 2026-09-22: `async funct` roda quando e CHAMADA, ate o primeiro
+ * ponto em que cede. A divisao por zero acontece antes de qualquer cedencia,
+ * entao o erro e da propria chamada. Antes o corpo nao rodava sem `await` e o
+ * programa imprimia "nao_lancou_ainda". */
 { "git: test_async_deep #2",
   "async funct falha() {\n"
   "    x = 1 / 0\n"
@@ -41,7 +45,7 @@ const Caso CASOS_COBERTURA[] = {
   "sleep(0.05)\n"
   "post(\"nao_lancou_ainda\")\n"
   "\n",
-  "nao_lancou_ainda", NULL, 0 },
+  "", "ZeroDivisionError: division by zero", 1 },
 { "git: test_async_deep #7",
   "async funct ident(n) {\n"
   "    sleep(0.05)\n"

@@ -13,6 +13,12 @@ funct nome() {
 
 O servidor WebSocket sobe automaticamente na porta **HTTP + 1** (se o HTTP é `8080`, o WS é `8081`).
 
+**O handler cede, como a rota.** Cada mensagem é atendida numa fibra própria:
+`sleep`, banco, `request`, mail e `os.run` esperam sem segurar o servidor. Um
+handler que demora 3 segundos não impede as rotas HTTP de responderem nem
+outra conexão de entrar. Enquanto uma mensagem da MESMA conexão está sendo
+atendida, a seguinte espera a vez — a ordem de quem mandou é preservada.
+
 ---
 
 ## Salas automáticas por parâmetro dinâmico
