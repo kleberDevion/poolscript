@@ -251,8 +251,11 @@ typedef struct {
  * os nomes (vetor e strings em malloc; o compilador libera), 2 quando a lista
  * veio INCOMPLETA (um ciclo de `*` cortou a expansão: o resto dos nomes só
  * existe rodando, então o checador estático não pode dar nome como
- * inexistente), ou 0 quando o módulo não foi achado ou não compila — aí o `*`
- * fica pro runtime dar o ImportError/SyntaxError de sempre na linha do import. */
+ * inexistente), 3 quando o módulo NÃO EXISTE e quem pergunta é o `--check` (o
+ * compilador acusa `ImportError: No module named` na linha do import), ou 0
+ * quando não compila, está em ciclo, ou não foi achado mas quem pergunta vai
+ * RODAR — aí o `*` fica pro runtime dar o ImportError/SyntaxError de sempre na
+ * linha do import. */
 /* Um módulo `.pr` importado, como o checador estático o enxerga: a AST (as
  * assinaturas das functs e classes, pra conferir chamada e membro antes de
  * rodar), o que ele exporta (`m.x` que não existe é AttributeError antes de
@@ -278,11 +281,12 @@ typedef struct {
     int  (*nomes_de)(void *ctx, const char *modulo, char ***nomes, int32_t *n);
     /* O módulo `.pr` que `modulo` (codificado como no `nomes_de`) nomeia: 1 com
      * a AST e os exportados; 2 quando foi achado mas não compila (`falhou`,
-     * com o erro — o checador acusa na linha do import); 0 quando é nativo,
-     * não foi achado ou está em ciclo (o checador fica cego pra ele, e o
-     * runtime dá o erro de sempre). Regra 5 da tipagem estática: chamada a
-     * funct/método de `.pr` importado tem aridade, nomes e tipos conferidos
-     * antes de rodar. */
+     * com o erro — o checador acusa na linha do import); 3 quando NÃO EXISTE e
+     * quem pergunta é o `--check` (o checador acusa `No module named`); 0
+     * quando é nativo, está em ciclo, ou não foi achado mas quem pergunta vai
+     * RODAR (o checador fica cego pra ele, e o runtime dá o erro de sempre).
+     * Regra 5 da tipagem estática: chamada a funct/método de `.pr` importado
+     * tem aridade, nomes e tipos conferidos antes de rodar. */
     int  (*modulo_de)(void *ctx, const char *modulo, const PSModuloAst **out);
     void  *ctx;
 } PSResolvedor;

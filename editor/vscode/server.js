@@ -1102,9 +1102,16 @@ conexao.onInitialized(() => {
   conexao.console.warn(META_ERRO + ' | PATH=' + (process.env.PATH || '') + ' | cwd=' + process.cwd());
 });
 
-/* diagnóstico: quem decide é o `--check` do motor, não uma segunda gramática */
+/* diagnóstico: quem decide é o `--check` do motor, não uma segunda gramática.
+ *
+ * O buffer vai pelo stdin, e o `--path` diz DE QUAL arquivo ele é: sem isso o
+ * motor não sabe onde o arquivo mora, não acha os módulos vizinhos e pula a
+ * conferência entre arquivos calado — `util.naoexiste()` de um `import util`
+ * ao lado não aparecia no editor. */
 function diagnostica(doc) {
-  const bruto = motor(['--check'], doc.getText());
+  const caminho = caminhoDoDoc(doc.uri);
+  const args = caminho ? ['--check', '--path', caminho] : ['--check'];
+  const bruto = motor(args, doc.getText());
   let r;
   try { r = JSON.parse(bruto); } catch (_) { return; }
   if (!r) return;

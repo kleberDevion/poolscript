@@ -27496,6 +27496,11 @@ typedef struct {
      * expandido (ciclo) e devolveu lista vazia: a lista que sai daqui está
      * incompleta PRA ESTA árvore e não pode ser lembrada. A marca sobe. */
     int           *cortou;
+    /* 1 no `--check`: módulo que não existe vira ERRO do checador (código 3),
+     * em vez de "não sei" calado. Rodando fica 0 — quem dá o ImportError é o
+     * próprio import, na hora, e módulo gerado em tempo de execução continua
+     * valendo. */
+    int            so_checa;
 } EstrelaCtx;
 
 /* O que cada arquivo exporta, por caminho absoluto — lembrado pelo processo.
@@ -27571,7 +27576,7 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
 
     char caminho[1024];
     if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, sizeof(caminho)) != 0)
-        return 0;
+        return ctx->so_checa ? 3 : 0;
     char abspath[1024];
     char *rp = realpath(caminho, NULL);
     snprintf(abspath, sizeof(abspath), "%s", rp ? rp : caminho);
@@ -27610,7 +27615,7 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", ".");
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
-    EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui };
+    EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &filho };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
@@ -27668,7 +27673,7 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
 
     char caminho[1024];
     if (acha_modulo_ps_em(ctx->dir_modulo, ctx->dir_script, mod, caminho, sizeof(caminho)) != 0)
-        return 0;
+        return ctx->so_checa ? 3 : 0;
     char abspath[1024];
     {
         char *rp = realpath(caminho, NULL);
@@ -27733,7 +27738,7 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
     { char *barra = strrchr(moddir, '/'); if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", "."); }
     EstrelaVisita aqui = { abspath, ctx->pilha };
     int cortou_aqui = 0;
-    EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui };
+    EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &filho };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     /* Não compila (sintaxe ou tipo): a classe e a frase do PRIMEIRO erro, as
@@ -27860,7 +27865,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         if (b) *b = '\0'; else snprintf(dir_do_mod, sizeof(dir_do_mod), "%s", ".");
     }
     EstrelaVisita vis_mod = { abspath, NULL };
-    EstrelaCtx ectx_mod = { dir_do_mod, vm->dir_script, &vis_mod, NULL };
+    EstrelaCtx ectx_mod = { dir_do_mod, vm->dir_script, &vis_mod, NULL, 0 };   /* rodando */
     PSResolvedor res_mod = { estrela_nomes_de, estrela_modulo_de, &ectx_mod };
     PSPrograma *prog = ps_compila_com(r->programa, &res_mod);
     ps_parse_free(r);
@@ -28615,7 +28620,9 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
         free(rp);
     }
     EstrelaVisita vis_script = { abs_script, NULL };
-    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL };
+    /* `so_checa = 1`: aqui é o `--check`, e módulo que não existe é erro do
+     * checador, não silêncio. Rodando (`ps_roda_fonte`) segue 0. */
+    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL, 1 };
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
@@ -28693,7 +28700,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         free(rp);
     }
     EstrelaVisita vis_script = { abs_script, NULL };
-    EstrelaCtx ectx = { dir_script, dir_script, ancora ? &vis_script : NULL, NULL };
+    EstrelaCtx ectx = { dir_script, dir_script, ancora ? &vis_script : NULL, NULL, 0 };   /* rodando */
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
     PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);

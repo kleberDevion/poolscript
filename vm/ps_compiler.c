@@ -2379,9 +2379,18 @@ static void tp_grava_import(C *c, PSNode *n, const char *mod, const char *membro
     const PSModuloAst *ma = NULL;
     if (!c->resolve || !c->resolve->modulo_de) return;
     int r = c->resolve->modulo_de(c->resolve->ctx, mod, &ma);
-    if (r == 0 || !ma) return;
     char vis[256];
     tp_mod_visivel(mod, vis, sizeof(vis));
+    if (r == 3) {
+        /* O módulo não existe. A frase é a MESMA que o import daria rodando —
+         * antes o `--check` dizia `{"ok":true}` e um typo no import só
+         * aparecia na execução. O `terro` não repete a mesma linha/coluna, e
+         * por isso `from m import a, b, c` acusa uma vez só. */
+        terro(c, n, "ImportError", "No module named '%s'", vis);
+        c->grava.tem_valor = 1;
+        return;
+    }
+    if (r == 0 || !ma) return;
     if (r == 2) {
         /* o módulo não compila: a frase que o import daria rodando, na
          * linha do import — sem isto o erro só aparecia executando. O
@@ -5948,7 +5957,14 @@ static void resolve_estrelas(C *c, PSNode *programa)
         char enc[512];
         import_modulo_codificado(s, enc);
         int r = c->resolve->nomes_de(c->resolve->ctx, enc, &c->estrelas[e].nomes, &c->estrelas[e].n);
-        c->estrelas[e].resolvido = r >= 1;
+        if (r == 3) {
+            /* `from m import *` de módulo que não existe: mesma frase do
+             * import comum, na linha do import */
+            char vis[256];
+            tp_mod_visivel(enc, vis, sizeof(vis));
+            terro(c, s, "ImportError", "No module named '%s'", vis);
+        }
+        c->estrelas[e].resolvido = (r == 1 || r == 2);
         c->estrelas[e].incompleto = r == 2;
     }
 }

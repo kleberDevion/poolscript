@@ -308,8 +308,15 @@ confere("import *: modulo com * que nao resolve nao entrega lista pela metade",
         roda_est("e28.pr", "from inc_b import *\npost(W)\n").startswith("ImportError: No module named 'naoexiste'"))
 os.writeFile(EST + "/chk.pr", "from m import *\npost(f())\n")
 os.cmd("cd " + EST + " && '" + sys.executable + "' --check chk.pr > chk.out 2>&1")
-confere("import *: --check compila sem resolver o modulo",
+confere("import *: --check resolve o * do modulo vizinho",
         os.readFile(EST + "/chk.out").strip() == "{\"ok\":true}")
+# E quando o modulo NAO existe, o `--check` acusa com a MESMA frase de rodar.
+# Antes dizia `{"ok":true}`: um typo no import so aparecia na execucao.
+os.writeFile(EST + "/chk2.pr", "from naoexiste_zz import *\npost(f())\n")
+os.cmd("cd " + EST + " && '" + sys.executable + "' --check chk2.pr > chk2.out 2>&1")
+confere("import *: --check acusa o modulo ausente do *",
+        "No module named 'naoexiste_zz'" in os.readFile(EST + "/chk2.out")
+        and "ImportError" in os.readFile(EST + "/chk2.out"))
 
 # ── os.run: SEGUNDO PLANO ───────────────────────────────────────────────────
 #

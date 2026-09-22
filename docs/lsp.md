@@ -347,5 +347,38 @@ Comandos do binário que existem pra servir o editor:
 | Comando | Devolve |
 |---|---|
 | `pool --metadata` | módulos, tipos e métodos, das tabelas do VM |
-| `pool --tokens` | tokens do lexer (fonte pelo stdin), com posição e tamanho |
-| `pool --check` | o erro de compilação em JSON, com linha e coluna |
+| `pool --tokens [arq]` | tokens do lexer, com posição e tamanho |
+| `pool --ast [arq]` | a árvore do parser em JSON |
+| `pool --contexto L:C [arq]` | o que o cursor toca naquela posição |
+| `pool --check [arq]` | o erro de compilação em JSON, com linha e coluna |
+| `pool --check --path <arq>` | o mesmo, para um buffer não salvo que VALE como aquele arquivo |
+
+**Arquivo ou buffer.** Os quatro primeiros aceitam o caminho do arquivo; sem
+caminho, leem o fonte da entrada padrão, que é como o editor manda o buffer
+ainda não salvo.
+
+**`--check --path`.** Sem o caminho, o motor não sabe onde o arquivo mora:
+não acha os módulos vizinhos e pula a conferência entre arquivos sem avisar.
+Com ele, `import util` ao lado resolve igual ao arquivo salvo — é a forma que
+o servidor usa.
+
+```
+printf 'import util\nutil.naoexiste()\n' | pool --check --path src/main.pr
+```
+
+**Módulo que não existe.** O `--check` acusa `ImportError: No module named
+'x'`, a mesma frase que aparece ao rodar, em `import x`, `from x import y` e
+`from x import *`. A exceção conhecida: módulo GERADO em tempo de execução (o
+programa escreve o `.pr` e depois importa) é acusado pelo checador, porque
+antes de rodar o arquivo não existe.
+
+**Unidade das posições.** Linha e coluna começam em 1 e contam CARACTERE (code
+point), não byte nem unidade UTF-16. O protocolo LSP conta UTF-16, então o
+cliente converte: para texto acentuado as duas contagens coincidem, mas cada
+caractere fora do plano básico vale 2 em UTF-16 e 1 aqui.
+
+O `--contexto` responde `topo`, `membro` (com `receptor` ou `tipo`), `nenhum`,
+`decorador`, `import`, `texto` (o cursor está dentro de uma string) e
+`comentario`. Dentro de `{}` de uma f-string ele resolve o que está lá como
+código. Quando o cursor está dentro de uma funct ou classe, vem também
+`escopo` (`C.m`).

@@ -161,6 +161,85 @@ confere("--contexto além do fim não quebra", r["rc"] == 0 or "\"contexto\"" in
 r = roda("printf '' | '" + POOL + "' --contexto 1:1")
 confere("--contexto de arquivo vazio não quebra", "\"contexto\"" in r["saida"])
 
+# ── comandos de editor: arquivo no argumento, buffer com caminho, import ────
+#
+# O editor precisa das duas formas: o ARQUIVO salvo (e aí ele passa o caminho)
+# e o BUFFER não salvo (stdin). Antes, `--tokens`/`--ast`/`--contexto`
+# ignoravam o argumento calados e liam o stdin — com o terminal herdado, o
+# comando TRAVAVA esperando entrada que ninguém ia mandar.
+os.mkdir(PASTA + "/proj", exist_ok=true)
+os.writeFile(PASTA + "/proj/util.pr", "funct soma(a, b)\n{\n    return a + b\n}\n")
+os.writeFile(PASTA + "/proj/main.pr", "import util\npost(util.soma(1, 2))\n")
+
+r = roda("'" + POOL + "' --tokens proj/main.pr < /dev/null")
+confere("--tokens lê o arquivo do argumento", "\"v\":\"util\"" in r["saida"])
+r = roda("'" + POOL + "' --ast proj/main.pr < /dev/null")
+confere("--ast lê o arquivo do argumento", "\"k\":\"ImportStmt\"" in r["saida"])
+r = roda("'" + POOL + "' --contexto 2:11 proj/main.pr < /dev/null")
+confere("--contexto lê o arquivo do argumento", "\"receptor\":\"util\"" in r["saida"])
+
+# `--path`: o buffer vem do stdin, mas vale como se fosse aquele arquivo — é
+# assim que o módulo VIZINHO é achado. Sem isso, o editor não conferia nada
+# entre arquivos, e calado.
+r = roda("printf 'import util\\nutil.naoexiste()\\n' | '" + POOL + "' --check --path proj/main.pr")
+confere("--check --path enxerga o módulo vizinho",
+        "\"ok\":false" in r["saida"] and "naoexiste" in r["saida"])
+r = roda("printf 'import util\\npost(util.soma(1, 2))\\n' | '" + POOL + "' --check --path proj/main.pr")
+confere("--check --path aprova o que está certo", "\"ok\":true" in r["saida"])
+
+# Módulo que não existe: o `--check` dizia `{"ok":true}` e o erro só aparecia
+# rodando. Um typo no import passava limpo pelo editor.
+r = roda("printf 'import nao_existe_zz\\n' | '" + POOL + "' --check")
+confere("--check acusa módulo que não existe",
+        "ImportError" in r["saida"] and "No module named" in r["saida"]
+        and "nao_existe_zz" in r["saida"])
+r = roda("printf 'from nao_existe_zz import coisa\\npost(coisa)\\n' | '" + POOL + "' --check")
+confere("--check acusa módulo que não existe no from", "No module named" in r["saida"])
+r = roda("printf 'from nao_existe_zz import *\\n' | '" + POOL + "' --check")
+confere("--check acusa módulo que não existe no from *", "No module named" in r["saida"])
+r = roda("printf 'from nao_existe_zz import a, b, c\\n' | '" + POOL + "' --check")
+confere("--check acusa o módulo ausente uma vez só",
+        len(r["saida"].split("No module named")) == 3)
+r = roda("printf 'import os\\nimport util\\n' | '" + POOL + "' --check --path proj/main.pr")
+confere("--check não acusa módulo que existe (nativo e vizinho)", "\"ok\":true" in r["saida"])
+r = roda("'" + POOL + "' --check proj/main.pr")
+confere("--check por caminho continua aprovando o import vizinho", "\"ok\":true" in r["saida"])
+
+# Arquivo que não dá `fseek` (pipe, /dev/stdin): saía 66 calado.
+r = roda("printf 'post(7)\\n' | '" + POOL + "' /dev/stdin")
+confere("pool roda fonte vindo de pipe", r["saida"].strip() == "7" and r["rc"] == 0)
+
+# ── `--contexto`: o que faltava pro editor não completar no lugar errado ────
+#
+# A coluna do lexer conta CARACTERE; o corte do receptor contava BYTE, então
+# um acento antes na linha devolvia `" o"` em vez de `os`.
+r = roda("printf 'f(\"é\", os.' | '" + POOL + "' --contexto 1:11")
+confere("--contexto não se perde com acento antes do receptor",
+        "\"receptor\":\"os\"" in r["saida"])
+# dentro de string e de comentário o editor não pode abrir completion
+r = roda("printf 'x = \"os.pa\"' | '" + POOL + "' --contexto 1:11")
+confere("--contexto dentro de string diz `texto`", "\"contexto\":\"texto\"" in r["saida"])
+r = roda("printf 'x = 1 # veja os.' | '" + POOL + "' --contexto 1:17")
+confere("--contexto dentro de comentário diz `comentario`",
+        "\"contexto\":\"comentario\"" in r["saida"])
+# mas o que está dentro de `{}` de f-string é CÓDIGO, e completa como código
+r = roda("printf 'x = 1\\npost(f\"oi {x} {os.pa}\")\\n' | '" + POOL + "' --contexto 2:21")
+confere("--contexto dentro de {} da f-string enxerga o membro",
+        "\"contexto\":\"membro\"" in r["saida"] and "\"receptor\":\"os\"" in r["saida"])
+# em que funct/classe o cursor está — `topo` não quer dizer escopo global
+r = roda("printf 'funct soma(a)\\n{\\n    a\\n}\\n' | '" + POOL + "' --contexto 3:6")
+confere("--contexto diz em que funct o cursor está", "\"escopo\":\"soma\"" in r["saida"])
+# (o escopo sai da ÁRVORE; com a linha quebrada no meio, a árvore ainda para
+# no primeiro erro — é o que o lote da recuperação de erro resolve)
+r = roda("printf 'class C()\\n{\\n    funct m(self)\\n    {\\n        self.x\\n    }\\n}\\n' | '"
+         + POOL + "' --contexto 5:14")
+confere("--contexto diz a classe e o método",
+        "\"escopo\":\"C.m\"" in r["saida"] and "\"receptor\":\"self\"" in r["saida"])
+# no meio da palavra, o pedaço ANTES do cursor é o que se está digitando
+r = roda("printf 'post(abcdef)' | '" + POOL + "' --contexto 1:9")
+confere("--contexto no meio da palavra devolve o pedaço antes do cursor",
+        "\"parcial\":\"abc\"" in r["saida"])
+
 # ── `build`: roda todos os .pr da pasta, em ordem ───────────────────────────
 #
 # `cmd_build` varre o diretório, filtra pela extensão da linguagem (`.pr`),

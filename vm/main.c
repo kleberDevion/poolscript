@@ -37,10 +37,12 @@ static void ajuda(void)
 "  pool build                Roda todos os " PS_EXT " da pasta atual\n"
 "  pool --check [arq" PS_EXT "]     So analisa (nao roda); JSON com o erro. Sem\n"
 "                            arquivo, le da entrada padrao\n"
+"  pool --check --path <arq> Confere o fonte da entrada padrao COMO SE fosse\n"
+"                            esse arquivo (acha os modulos vizinhos)\n"
 "  pool //doc                Mostra a URL da especificacao\n"
-"  pool --contexto L:C       O que o cursor toca (pro editor); fonte no stdin\n"
-"  pool --tokens             Tokens do lexer em JSON (pro realce); fonte no stdin\n"
-"  pool --ast                A arvore do parser em JSON (pro editor); stdin\n"
+"  pool --contexto L:C [arq] O que o cursor toca (pro editor); sem arquivo, stdin\n"
+"  pool --tokens [arq]       Tokens do lexer em JSON (pro realce); sem arquivo, stdin\n"
+"  pool --ast [arq]          A arvore do parser em JSON (pro editor); sem arquivo, stdin\n"
 "  pool --version / -V       Mostra a versao\n"
 "  pool --help / -h          Mostra esta ajuda\n"
 "\n"
@@ -84,16 +86,28 @@ static char *le_arquivo(const char *caminho, size_t *tam)
         fprintf(stderr, "pool: nao consegui abrir '%s'\n", caminho);
         return NULL;
     }
-    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
-    long n = ftell(f);
-    if (n < 0) { fclose(f); return NULL; }
-    rewind(f);
-    char *buf = malloc((size_t)n + 1);
+    /* Lê em laço, sem `fseek`. O tamanho de antes vinha de `fseek`+`ftell`, que
+     * só funciona em arquivo comum: `pool /dev/stdin` e qualquer redirecionamento
+     * de pipe caíam no `return NULL` e o binário saía 66 SEM dizer nada. */
+    size_t cap = 65536, n = 0;
+    char *buf = malloc(cap);
     if (!buf) { fclose(f); fprintf(stderr, "pool: sem memoria\n"); return NULL; }
-    size_t lidos = fread(buf, 1, (size_t)n, f);
+    for (;;) {
+        size_t r = fread(buf + n, 1, cap - n - 1, f);
+        n += r;
+        if (r == 0) break;
+        if (n + 1 >= cap) {
+            cap *= 2;
+            char *nb = realloc(buf, cap);
+            if (!nb) { free(buf); fclose(f); fprintf(stderr, "pool: sem memoria\n"); return NULL; }
+            buf = nb;
+        }
+    }
+    int falhou = ferror(f);
     fclose(f);
-    buf[lidos] = '\0';
-    *tam = lidos;
+    if (falhou) { free(buf); fprintf(stderr, "pool: erro lendo '%s'\n", caminho); return NULL; }
+    buf[n] = '\0';
+    *tam = n;
     return buf;
 }
 
@@ -556,8 +570,13 @@ static void json_str(const char *s)
 
 /* `pool --check [arquivo.pr]` — lexer/parser/compilador da VM, SEM rodar, com
  * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
- * manda o conteúdo não salvo). NUNCA executa o código. */
-static int cmd_check(const char *arquivo)
+ * manda o conteúdo não salvo). NUNCA executa o código.
+ *
+ * `--path <caminho>` diz de QUAL arquivo é o buffer do stdin. Sem ele, o
+ * motor não sabe onde o arquivo mora, não acha os módulos vizinhos e pula a
+ * conferência entre arquivos CALADO — que é justamente o modo que o editor
+ * usa. Com ele, `import util` ao lado resolve igual ao arquivo salvo. */
+static int cmd_check(const char *arquivo, const char *como)
 {
     size_t tam = 0;
     char *fonte = NULL;
@@ -579,7 +598,7 @@ static int cmd_check(const char *arquivo)
     PSErroExec e;
     PSAviso *avisos = NULL;
     int32_t navisos = 0;
-    int rc = ps_verifica_fonte(fonte, tam, arquivo, &e, &avisos, &navisos);
+    int rc = ps_verifica_fonte(fonte, tam, arquivo ? arquivo : como, &e, &avisos, &navisos);
     free(fonte);
 
     /* Os AVISOS entram no mesmo JSON, e entram tanto no caso `ok` quanto no de
@@ -678,6 +697,31 @@ static char *le_stdin_todo(size_t *tam)
     return b;
 }
 
+/* O fonte de um comando de editor: o ARQUIVO quando veio caminho, senão o
+ * buffer do stdin (o que o editor ainda não salvou). Os dois modos existem
+ * porque o editor precisa dos dois: conferir o arquivo do disco e conferir o
+ * que está na tela. */
+static char *le_fonte_editor(const char *arquivo, size_t *tam)
+{
+    return arquivo ? le_arquivo(arquivo, tam) : le_stdin_todo(tam);
+}
+
+/* Quantos CARACTERES o token ocupa no fonte. O lexer mede em `nchars`; quando
+ * não mediu, conta os caracteres do texto. Pontuação sem texto ocupa 1.
+ *
+ * Tudo que compara posição com o cursor passa por aqui: a coluna do lexer
+ * conta CARACTERE, e somar `texto_len` (BYTES) desalinhava tudo depois de um
+ * acento — `f("é", os.` devolvia `" o"` como receptor. */
+static int tok_chars(const PSToken *t)
+{
+    if (t->nchars > 0) return t->nchars;
+    if (!t->texto) return 1;
+    int n = 0;
+    for (int32_t k = 0; k < t->texto_len; k++)
+        if (((unsigned char)t->texto[k] & 0xC0) != 0x80) n++;
+    return n > 0 ? n : 1;
+}
+
 /* Índice do último token que TERMINA em ou antes de (linha, col). -1 se não há.
  * O lexer dá o início do token; o fim sai do texto (ou de 1 pra pontuação). */
 static int tok_antes(const PSTokenList *tl, int linha, int col)
@@ -687,9 +731,10 @@ static int tok_antes(const PSTokenList *tl, int linha, int col)
         const PSToken *t = &tl->tokens[i];
         if (t->type == T_NEWLINE || t->type == T_INDENT
             || t->type == T_DEDENT || t->type == T_EOF) continue;
+        if (t->type == T_COMMENT) continue;
         if (t->line > linha) break;
         if (t->line < linha) { achado = i; continue; }
-        int fim = t->col + (t->texto ? t->texto_len : 1);
+        int fim = t->col + tok_chars(t);
         if (fim <= col) achado = i;
     }
     return achado;
@@ -754,10 +799,10 @@ static int json_escapa(FILE *f, const char *s, int n)
     return 0;
 }
 
-static int cmd_tokens(void)
+static int cmd_tokens(const char *arquivo)
 {
     size_t tam = 0;
-    char *fonte = le_stdin_todo(&tam);
+    char *fonte = le_fonte_editor(arquivo, &tam);
     if (!fonte) { printf("[]\n"); return 1; }
     PSTokenList *tl = ps_lexer_tokenize_editor(fonte, tam);
     if (!tl) { free(fonte); printf("[]\n"); return 1; }
@@ -905,10 +950,10 @@ static void ast_json(FILE *f, const PSNode *n)
     fputc('}', f);
 }
 
-static int cmd_ast(void)
+static int cmd_ast(const char *arquivo)
 {
     size_t tam = 0;
-    char *fonte = le_stdin_todo(&tam);
+    char *fonte = le_fonte_editor(arquivo, &tam);
     if (!fonte) { printf("{\"ok\":false,\"msg\":\"sem entrada\"}\n"); return 1; }
 
     PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
@@ -939,34 +984,152 @@ static int cmd_ast(void)
     return rc;
 }
 
-static int cmd_contexto(const char *pos)
+/* Deslocamento em BYTES da posição (linha, coluna) do cursor. A coluna conta
+ * CARACTERE, como o lexer conta — por isso o `& 0xC0` pula os bytes de
+ * continuação do UTF-8. Além do fim, devolve o fim. */
+static size_t off_de_pos(const char *fonte, size_t tam, int linha, int col)
 {
-    int linha = 0, col = 0;
-    if (!pos || sscanf(pos, "%d:%d", &linha, &col) != 2 || linha < 1 || col < 1) {
-        printf("{\"contexto\":\"erro\",\"msg\":\"uso: pool --contexto <linha>:<coluna>\"}\n");
-        return 1;
+    int ln = 1, cl = 1;
+    for (size_t k = 0; k <= tam; k++) {
+        if (ln == linha && cl == col) return k;
+        if (k == tam) break;
+        if (fonte[k] == '\n') { ln++; cl = 1; }
+        else if (((unsigned char)fonte[k] & 0xC0) != 0x80) cl++;
     }
-    size_t tam = 0;
-    char *fonte = le_stdin_todo(&tam);
-    if (!fonte) { printf("{\"contexto\":\"erro\",\"msg\":\"sem memoria\"}\n"); return 1; }
+    return tam;
+}
 
-    PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
-    if (!tl) { free(fonte); printf("{\"contexto\":\"erro\",\"msg\":\"lexer falhou\"}\n"); return 1; }
+/* O token que CONTÉM o cursor — não o anterior a ele. É o que diz "o cursor
+ * está dentro de uma string/comentário", onde o editor NÃO pode abrir
+ * completion, e o que dá o pedaço já digitado no meio de um nome.
+ *
+ * Comentário vai até o fim da linha, então o cursor logo depois do último
+ * caractere ainda está DENTRO dele; string tem fecho, e depois do fecho o
+ * cursor já está fora. */
+static int tok_no_cursor(const PSTokenList *tl, int linha, int col)
+{
+    for (int32_t i = 0; i < tl->n; i++) {
+        const PSToken *t = &tl->tokens[i];
+        if (t->line != linha) continue;
+        if (t->type == T_NEWLINE || t->type == T_INDENT
+            || t->type == T_DEDENT || t->type == T_EOF) continue;
+        int fim = t->col + tok_chars(t);
+        if (col > t->col && (col < fim || (t->type == T_COMMENT && col <= fim)))
+            return (int)i;
+    }
+    return -1;
+}
 
-    /* nome parcial: só conta se ENCOSTA no cursor (`ge|`, não `ge |`) */
-    const char *parcial = "";
+/* Dentro de uma f-string, o que está entre `{` e `}` é CÓDIGO: ali o editor
+ * completa como em qualquer outro lugar. Devolve 1 quando o cursor está numa
+ * interpolação ABERTA e copia em `expr` o texto do `{` até o cursor. `{{` e
+ * `}}` são chave literal e não abrem nada. */
+static int fstring_interp(const char *fonte, size_t ini, size_t fim, char *expr, size_t cap)
+{
+    size_t abriu = 0;
+    int dentro = 0;
+    for (size_t k = ini; k < fim; k++) {
+        if (fonte[k] == '{') {
+            if (!dentro && k + 1 < fim && fonte[k + 1] == '{') { k++; continue; }
+            if (!dentro) { dentro = 1; abriu = k + 1; }
+        } else if (fonte[k] == '}') {
+            if (!dentro && k + 1 < fim && fonte[k + 1] == '}') { k++; continue; }
+            dentro = 0;
+        }
+    }
+    if (!dentro) return 0;
+    size_t n = fim - abriu;
+    if (n + 1 > cap) n = cap - 1;
+    memcpy(expr, fonte + abriu, n);
+    expr[n] = '\0';
+    return 1;
+}
+
+/* A última linha que a subárvore ocupa: o fim de uma funct ou de uma classe
+ * não está no nó dela (só o `Block` de chaves registra `linha_fim`), então sai
+ * do maior número de linha lá dentro. */
+static int32_t no_linha_max(const PSNode *n)
+{
+    if (!n) return 0;
+    int32_t m = n->line > n->linha_fim ? n->line : n->linha_fim;
+    const PSNode *fs[4] = { n->a, n->b, n->c, n->e };
+    for (int i = 0; i < 4; i++) { int32_t k = no_linha_max(fs[i]); if (k > m) m = k; }
+    const PSNodeVec *vs[3] = { &n->lista, &n->lista2, &n->lista2_alias };
+    for (int i = 0; i < 3; i++)
+        for (int32_t k = 0; k < vs[i]->n; k++) {
+            int32_t q = no_linha_max(vs[i]->itens[k]);
+            if (q > m) m = q;
+        }
+    return m;
+}
+
+/* Monta em `buf` a funct/classe que contém a linha, do mais de fora pro mais
+ * de dentro: `C.m`. Vazio quando o cursor está no corpo do arquivo.
+ *
+ * `topo` como contexto quer dizer "sem receptor", não "escopo global": sem
+ * isto o editor não sabia se o cursor estava dentro de uma função. */
+static void escopo_no(const PSNode *n, int linha, char *buf, size_t cap)
+{
+    if (!n) return;
+    if ((n->kind == N_ACTION_DECL || n->kind == N_ENTITY_DECL) && n->texto
+        && n->line <= linha && linha <= no_linha_max(n)) {
+        size_t u = strlen(buf);
+        if (u + 1 < cap) snprintf(buf + u, cap - u, "%s%s", u ? "." : "", n->texto);
+    }
+    const PSNode *fs[4] = { n->a, n->b, n->c, n->e };
+    for (int i = 0; i < 4; i++) escopo_no(fs[i], linha, buf, cap);
+    const PSNodeVec *vs[3] = { &n->lista, &n->lista2, &n->lista2_alias };
+    for (int i = 0; i < 3; i++)
+        for (int32_t k = 0; k < vs[i]->n; k++) escopo_no(vs[i]->itens[k], linha, buf, cap);
+}
+
+/* O que o cursor toca, resolvido sobre uma lista de tokens. Fica separado do
+ * comando porque o MESMO cálculo roda de novo, sozinho, sobre o pedaço de
+ * código de dentro de uma f-string. */
+typedef struct {
+    const char *ctx;          /* topo | membro | nenhum | decorador | import | texto | comentario */
+    char       *recv;         /* malloc do chamador; NULL quando não há nome */
+    const char *tipo;         /* receptor literal: str, int, list… */
+    char        parcial[256];
+} CtxCursor;
+
+static void contexto_resolve(const char *fonte, size_t tam, const PSTokenList *tl,
+                             int linha, int col, CtxCursor *s)
+{
+    s->ctx = "topo";
     int i = tok_antes(tl, linha, col);
-    if (i >= 0) {
+
+    /* nome parcial: o que já foi digitado ANTES do cursor. Encostado no fim
+     * (`ge|`) ou no meio da palavra (`rea|dFile`) — no meio, o editor filtra
+     * pelo pedaço da esquerda, que é o que o usuário escreveu. */
+    int dentro = tok_no_cursor(tl, linha, col);
+    if (dentro >= 0) {
+        const PSToken *t = &tl->tokens[dentro];
+        if ((t->type == T_IDENT || t->type == T_IDENT_UPPER || t->type == T_KW) && t->texto) {
+            int nch = col - t->col;
+            int bytes = 0, contados = 0;
+            while (bytes < t->texto_len && contados < nch) {
+                bytes++;
+                while (bytes < t->texto_len && ((unsigned char)t->texto[bytes] & 0xC0) == 0x80) bytes++;
+                contados++;
+            }
+            if (bytes > 0 && (size_t)bytes < sizeof(s->parcial)) {
+                memcpy(s->parcial, t->texto, (size_t)bytes);
+                s->parcial[bytes] = '\0';
+            }
+            i = dentro - 1;
+        }
+    } else if (i >= 0) {
         const PSToken *t = &tl->tokens[i];
         if ((t->type == T_IDENT || t->type == T_IDENT_UPPER || t->type == T_KW)
-            && t->line == linha && t->col + t->texto_len == col) {
-            parcial = t->texto ? t->texto : "";
+            && t->line == linha && t->col + tok_chars(t) == col) {
+            if (t->texto && (size_t)t->texto_len < sizeof(s->parcial)) {
+                memcpy(s->parcial, t->texto, (size_t)t->texto_len);
+                s->parcial[t->texto_len] = '\0';
+            }
             i--;
         }
     }
-
-    const char *ctx = "topo";
-    char *recv = NULL;
 
     if (i >= 0 && tl->tokens[i].type == T_DOT) {
         int ini = inicio_da_cadeia(tl, i - 1);
@@ -975,72 +1138,121 @@ static int cmd_contexto(const char *pos)
              * original (`f(a, b)`), que é o que o resolvedor de tipo espera */
             const PSToken *a = &tl->tokens[ini];
             const PSToken *p = &tl->tokens[i];
-            size_t off_a = 0, off_p = 0, off = 0;
-            int ln = 1, cl = 1;
-            for (size_t k = 0; k <= tam; k++) {
-                if (ln == a->line && cl == a->col) off_a = k;
-                if (ln == p->line && cl == p->col) { off_p = k; break; }
-                if (k < tam && fonte[k] == '\n') { ln++; cl = 1; } else cl++;
-                off = k;
-            }
-            (void)off;
+            size_t off_a = off_de_pos(fonte, tam, a->line, a->col);
+            size_t off_p = off_de_pos(fonte, tam, p->line, p->col);
             if (off_p > off_a) {
-                recv = malloc(off_p - off_a + 1);
-                if (recv) {
-                    memcpy(recv, fonte + off_a, off_p - off_a);
-                    recv[off_p - off_a] = '\0';
+                s->recv = malloc(off_p - off_a + 1);
+                if (s->recv) {
+                    memcpy(s->recv, fonte + off_a, off_p - off_a);
+                    s->recv[off_p - off_a] = '\0';
                     /* apara espaço da direita (o `.` pode vir depois de espaço) */
-                    for (char *e = recv + strlen(recv); e > recv && (e[-1]==' '||e[-1]=='\t'); e--) e[-1] = '\0';
-                    ctx = "membro";
+                    for (char *e = s->recv + strlen(s->recv); e > s->recv && (e[-1]==' '||e[-1]=='\t'); e--) e[-1] = '\0';
+                    s->ctx = "membro";
                 }
             }
         }
         /* Receptor LITERAL (`"a.b".up`, `[1,2].so`): não tem nome pra resolver,
          * mas tem tipo — e tipo tem método. O regex devolvia null aqui e o
          * editor não oferecia nada. */
-        if (!recv && i >= 1) {
-            const char *tipo = NULL;
+        if (!s->recv && i >= 1) {
             switch (tl->tokens[i - 1].type) {
-                case T_STR: case T_FSTRING: tipo = "str";  break;
-                case T_BYTES:               tipo = "byte"; break;
-                case T_INT:                 tipo = "int";  break;
-                case T_FLO:                 tipo = "flo";  break;
-                case T_BOOL:                tipo = "bool"; break;
-                case T_RBRACK:              tipo = "list"; break;
-                case T_RBRACE:              tipo = "dict"; break;
+                case T_STR: case T_FSTRING: s->tipo = "str";  break;
+                case T_BYTES:               s->tipo = "byte"; break;
+                case T_INT:                 s->tipo = "int";  break;
+                case T_FLO:                 s->tipo = "flo";  break;
+                case T_BOOL:                s->tipo = "bool"; break;
+                case T_RBRACK:              s->tipo = "list"; break;
+                case T_RBRACE:              s->tipo = "dict"; break;
                 default: break;
             }
-            if (tipo) {
-                printf("{\"contexto\":\"membro\"");
-                jsonf("parcial", parcial);
-                jsonf("tipo", tipo);
-                printf("}\n");
-                ps_lexer_free(tl); free(fonte);
-                return 0;
-            }
+            if (s->tipo) { s->ctx = "membro"; return; }
         }
         /* nem nome nem tipo: NADA a oferecer — nunca cair no topo depois de um ponto */
-        if (!recv) ctx = "nenhum";
+        if (!s->recv) s->ctx = "nenhum";
     } else if (i >= 0 && tl->tokens[i].type == T_AT) {
-        ctx = "decorador";
+        s->ctx = "decorador";
     } else {
         /* `import x` / `from x import y` */
         for (int k = i; k >= 0 && tl->tokens[k].line == linha; k--) {
             const PSToken *t = &tl->tokens[k];
             if (t->type == T_KW && t->texto
                 && (!strcmp(t->texto, "import") || !strcmp(t->texto, "from"))) {
-                ctx = "import";
+                s->ctx = "import";
                 break;
             }
         }
     }
+}
 
-    printf("{\"contexto\":\"%s\"", ctx);
-    jsonf("parcial", parcial);
-    if (recv) jsonf("receptor", recv);
+static int cmd_contexto(const char *pos, const char *arquivo)
+{
+    int linha = 0, col = 0;
+    if (!pos || sscanf(pos, "%d:%d", &linha, &col) != 2 || linha < 1 || col < 1) {
+        printf("{\"contexto\":\"erro\",\"msg\":\"uso: pool --contexto <linha>:<coluna> [arquivo" PS_EXT "]\"}\n");
+        return 1;
+    }
+    size_t tam = 0;
+    char *fonte = le_fonte_editor(arquivo, &tam);
+    if (!fonte) { printf("{\"contexto\":\"erro\",\"msg\":\"sem memoria\"}\n"); return 1; }
+
+    /* lexer do EDITOR: o comentário vira token, e é assim que se sabe que o
+     * cursor está dentro de um (antes ele sumia e o cursor caía no `topo`) */
+    PSTokenList *tl = ps_lexer_tokenize_editor(fonte, tam);
+    if (!tl) { free(fonte); printf("{\"contexto\":\"erro\",\"msg\":\"lexer falhou\"}\n"); return 1; }
+
+    CtxCursor s;
+    memset(&s, 0, sizeof(s));
+    s.ctx = "topo";
+
+    int resolvido = 0;
+    int dentro = tok_no_cursor(tl, linha, col);
+    if (dentro >= 0) {
+        const PSToken *t = &tl->tokens[dentro];
+        if (t->type == T_COMMENT) { s.ctx = "comentario"; resolvido = 1; }
+        else if (t->type == T_FSTRING) {
+            size_t ini = off_de_pos(fonte, tam, t->line, t->col);
+            size_t fim = off_de_pos(fonte, tam, linha, col);
+            char expr[512];
+            s.ctx = "texto";
+            if (fim > ini && fstring_interp(fonte, ini, fim, expr, sizeof(expr))) {
+                size_t nexpr = strlen(expr);
+                PSTokenList *sub = ps_lexer_tokenize(expr, nexpr);
+                if (sub) {
+                    int ccol = 1;
+                    for (size_t k = 0; k < nexpr; k++)
+                        if (((unsigned char)expr[k] & 0xC0) != 0x80) ccol++;
+                    contexto_resolve(expr, nexpr, sub, 1, ccol, &s);
+                    ps_lexer_free(sub);
+                }
+            }
+            resolvido = 1;
+        }
+        else if (t->type == T_STR || t->type == T_BYTES) { s.ctx = "texto"; resolvido = 1; }
+    }
+    if (!resolvido) contexto_resolve(fonte, tam, tl, linha, col, &s);
+
+    /* em que funct/classe o cursor está: vem da ÁRVORE, não dos tokens */
+    char escopo[256] = "";
+    {
+        PSTokenList *tp = ps_lexer_tokenize(fonte, tam);
+        if (tp) {
+            PSParseResult *r = ps_parse(tp->tokens, tp->n);
+            if (r) {
+                escopo_no(r->programa, linha, escopo, sizeof(escopo));
+                ps_parse_free(r);
+            }
+            ps_lexer_free(tp);
+        }
+    }
+
+    printf("{\"contexto\":\"%s\"", s.ctx);
+    jsonf("parcial", s.parcial);
+    if (s.recv) jsonf("receptor", s.recv);
+    if (s.tipo) jsonf("tipo", s.tipo);
+    if (escopo[0]) jsonf("escopo", escopo);
     printf("}\n");
 
-    free(recv);
+    free(s.recv);
     ps_lexer_free(tl);
     free(fonte);
     return 0;
@@ -1115,17 +1327,26 @@ int main(int argc, char **argv)
         printf("Especificacao da PoolScript:\n  %s\n", SPEC_URL);
         return 0;
     }
-    if (!strcmp(cmd, "--check") || !strcmp(cmd, "check"))
-        return cmd_check(argc >= 3 ? argv[2] : NULL);
+    if (!strcmp(cmd, "--check") || !strcmp(cmd, "check")) {
+        /* `--check arquivo.pr` confere o arquivo; `--check --path arquivo.pr`
+         * confere o BUFFER do stdin como se ele fosse aquele arquivo. */
+        if (argc >= 4 && (!strcmp(argv[2], "--path") || !strcmp(argv[2], "path")))
+            return cmd_check(NULL, argv[3]);
+        if (argc == 3 && (!strcmp(argv[2], "--path") || !strcmp(argv[2], "path"))) {
+            fprintf(stderr, "uso: pool --check --path <caminho" PS_EXT ">  (o fonte vem da entrada padrao)\n");
+            return 64;
+        }
+        return cmd_check(argc >= 3 ? argv[2] : NULL, NULL);
+    }
     /* modelo de tipos direto do motor — o editor e a auditoria de doc leem
      * daqui em vez de introspectar a stdlib do interpretador */
     /* o editor pergunta o contexto do cursor pro LEXER, nao pra um regex */
     if (!strcmp(cmd, "--tokens") || !strcmp(cmd, "tokens"))
-        return cmd_tokens();
+        return cmd_tokens(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--ast") || !strcmp(cmd, "ast"))
-        return cmd_ast();
+        return cmd_ast(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--contexto") || !strcmp(cmd, "contexto"))
-        return cmd_contexto(argc >= 3 ? argv[2] : NULL);
+        return cmd_contexto(argc >= 3 ? argv[2] : NULL, argc >= 4 ? argv[3] : NULL);
     if (!strcmp(cmd, "--metadata") || !strcmp(cmd, "metadata")) {
         ps_metadata_json(stdout);
         return 0;

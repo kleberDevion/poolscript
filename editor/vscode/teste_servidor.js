@@ -358,6 +358,39 @@ async function main() {
          lista.map((d) => d.range.start.line + ': ' + d.message));
   }
 
+  /* O buffer não salvo é conferido COMO SE fosse o arquivo dele (`--check
+   * --path <caminho>`): sem o caminho, o motor não sabe onde o arquivo mora,
+   * não acha o módulo vizinho e pula a conferência entre arquivos CALADO —
+   * `vizinho.naoexiste()` de um `import vizinho` ao lado não aparecia. */
+  {
+    const dir = path.join(os.tmpdir(), 'ps_lsp_t');
+    fs.writeFileSync(path.join(dir, 'vizinho_t.pr'), 'funct soma(a, b)\n{\n    return a + b\n}\n');
+    const m = await conversa('import vizinho_t\nvizinho_t.naoexiste()\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const lista = ds.length ? ds[ds.length - 1].params.diagnostics : [];
+    conf('erro de membro em modulo vizinho aparece no buffer aberto',
+         lista.length === 1 && lista[0].message.includes('naoexiste')
+           && lista[0].range.start.line === 1,
+         lista.map((d) => d.range.start.line + ': ' + d.message));
+  }
+  {
+    const m = await conversa('import vizinho_t\npost(vizinho_t.soma(1, 2))\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const lista = ds.length ? ds[ds.length - 1].params.diagnostics : [];
+    conf('import de modulo vizinho correto nao gera diagnostico', lista.length === 0, lista);
+  }
+  /* Módulo que não existe: o `--check` acusa com a frase do runtime, então o
+   * typo no import passa a aparecer no editor em vez de só ao rodar. */
+  {
+    const m = await conversa('import vizinho_zz_nao_existe\npost(1)\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const lista = ds.length ? ds[ds.length - 1].params.diagnostics : [];
+    conf('import de modulo inexistente vira diagnostico',
+         lista.length === 1 && lista[0].message.includes('No module named')
+           && lista[0].range.start.line === 0,
+         lista.map((d) => d.range.start.line + ': ' + d.message));
+  }
+
   /* ── 9. AVISO (nao erro) vira sublinhado amarelo ───────────────────────── */
   {
     const m = await conversa('x = "C:\\pasta"\n', []);
