@@ -13,11 +13,11 @@ r.login(user: str, password: str) -> None
 
 ```
 r = mail.MailReader()
-r.conn("gmail.com")
+r.conn(os.getenv("MAIL_IMAP"))
 r.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 ```
 
-Assim como no envio, o Gmail/Outlook exigem **senha de aplicativo**, não a
+Assim como no envio, muitos servidores exigem **senha de aplicativo**, não a
 senha normal — ver [`MailServer.login`](../../MailServer/login/login.md).
 
 ---

@@ -13,7 +13,7 @@ r = mail.MailReader()
 
 | Método | O que faz | Página |
 |---|---|---|
-| `.conn(provedor)` | conecta ao servidor IMAP | [conn/conn.md](conn/conn.md) |
+| `.conn(host, port)` | conecta ao servidor IMAP | [conn/conn.md](conn/conn.md) |
 | `.login(user, senha)` | autentica | [login/login.md](login/login.md) |
 | `.select(pasta)` | escolhe a pasta (INBOX, etc.) | [select/select.md](select/select.md) |
 | `.search(criterio, term, limit)` | busca e-mails | [search/search.md](search/search.md) |
@@ -32,7 +32,7 @@ from dotenv import load
 load()
 
 r = mail.MailReader()
-r.conn("gmail.com")
+r.conn(os.getenv("MAIL_IMAP"))                  # porta 993
 r.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 r.select("INBOX")
 

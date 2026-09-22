@@ -12,7 +12,7 @@ r.close() -> None
 
 ```
 r = mail.MailReader()
-r.conn("gmail.com")
+r.conn("imap.meuservidor.com")
 r.login(user, senha)
 r.select("INBOX")
 emails = r.search("ALL", limit=10)

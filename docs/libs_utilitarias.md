@@ -44,11 +44,13 @@ import mail
 
 ```
 s = mail.MailServer()
-s.conn("gmail.com")
+s.conn("smtp.meuservidor.com")          # porta 587; outra: s.conn(host, 2525)
 s.login(user="seu@gmail.com", password="sua_senha_app")
 ```
 
-Para Gmail use uma **senha de app** — não a senha normal da conta.
+`.conn()` recebe o host do servidor SMTP (está nas configurações da sua conta
+de e-mail) e usa como está escrito — a lib não traduz domínio em servidor.
+Muitos servidores exigem uma **senha de app** — não a senha normal da conta.
 
 ### Montando e enviando
 
@@ -73,11 +75,12 @@ m.body("<h1>Olá!</h1><p>Bem vindo.</p>", true)
 
 ```
 r = mail.MailReader()
-r.conn("gmail.com")
+r.conn("imap.meuservidor.com")          # porta 993
 r.login(user="seu@gmail.com", password="sua_senha_app")
 ```
 
-`.conn()` auto-mapeia o mesmo conjunto de provedores do `MailServer` (gmail, yahoo, outlook, hotmail, live) pra host/porta IMAP — só o Proton não tem mapeamento automático aqui porque exige a ponte local (Proton Mail Bridge); nesse caso passe `host` e `port` manualmente: `r.conn("127.0.0.1", 1143)`.
+`.conn()` recebe o host do servidor IMAP, com TLS, e porta 993 quando não se
+passa outra: `r.conn("127.0.0.1", 1143)` pra um servidor local.
 
 `.select()` escolhe a pasta e retorna o próprio objeto, então dá pra encadear direto com `.search()`:
 
@@ -135,7 +138,7 @@ load()
 
 funct verificar_caixa() {
     r = mail.MailReader()
-    r.conn("gmail.com")
+    r.conn(os.getenv("MAIL_IMAP"))
     r.login(user=os.getenv("MAIL_SYSTEM"), password=os.getenv("PASSWORD_SYSTEM"))
 
     nao_lidos = r.select("INBOX", true).search("UNSEEN")
@@ -163,7 +166,7 @@ load()
 funct enviar_email(nome, email_destino) {
     try {
         s = mail.MailServer()
-        s.conn("gmail.com")
+        s.conn(os.getenv("MAIL_SMTP"))
         s.login(
             user=os.getenv("MAIL_SYSTEM"),
             password=os.getenv("PASSWORD_SYSTEM")
@@ -296,6 +299,8 @@ Estrutura do `.env`:
 ```
 DB_PATH=database.db
 SECRET_KEY=minha_chave_super_secreta_aqui
+MAIL_SMTP=smtp.meuservidor.com
+MAIL_IMAP=imap.meuservidor.com
 MAIL_SYSTEM=seu@gmail.com
 PASSWORD_SYSTEM=senha_app_gmail
 PORT=7700

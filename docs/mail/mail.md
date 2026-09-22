@@ -1,8 +1,8 @@
 # mail — Enviar e ler e-mails
 
 Lib pra **enviar** e-mails (via SMTP) e **ler** a caixa de entrada (via IMAP).
-Auto-configura os servidores dos provedores comuns (gmail, outlook, yahoo…) —
-você só passa `"gmail.com"` e a lib sabe host e porta.
+Você passa o host do servidor; sem porta, a lib usa 587 no envio e 993 na
+leitura.
 
 ```
 import mail
@@ -38,16 +38,16 @@ m.body("Corpo do e-mail")
 
 # 2. conecta, loga e envia
 s = mail.MailServer()
-s.conn("gmail.com")                              # host/porta automáticos
+s.conn(os.getenv("MAIL_SMTP"))                   # porta 587
 s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 s.send(m)
 s.quit()
 ```
 
-> **Gmail e senha de app:** provedores como o Gmail não aceitam sua senha
-> normal — você gera uma **senha de aplicativo** nas configurações da conta e
-> usa ela no `login`. E confira o **host**: é `"gmail.com"` (a lib mapeia pra
-> `smtp.gmail.com`), não digite o host errado.
+> **Senha de app:** muitos servidores não aceitam a senha normal da conta —
+> você gera uma **senha de aplicativo** nas configurações da conta e usa ela
+> no `login`. E confira o **host**: um host digitado errado pode entregar seu
+> usuário e senha a um servidor de terceiros.
 
 ---
 
@@ -55,7 +55,7 @@ s.quit()
 
 ```
 r = mail.MailReader()
-r.conn("gmail.com")
+r.conn(os.getenv("MAIL_IMAP"))                   # porta 993
 r.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 r.select("INBOX")
 emails = r.search("ALL", limit=10)

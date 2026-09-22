@@ -243,7 +243,7 @@ using mp.open(target="relatorio.csv") as arq {
 ld = mp.load("relatorio.csv")
 
 s = mail.MailServer()
-s.conn("gmail.com")
+s.conn(os.getenv("MAIL_SMTP"))
 s.login(
     user=os.getenv("MAIL_SYSTEM"),
     password=os.getenv("PASSWORD_SYSTEM")

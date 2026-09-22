@@ -23,8 +23,8 @@ API fica dona do resto.
 ```
 app = Jinker(__name__, static_folder="dist", static_url="/app")
 
-# dist/app.js      →  GET /app/app.js      ✅ serve o arquivo
-# dist/style.css   →  GET /app/style.css   ✅
+# dist/app.js      →  GET /app/app.js      serve o arquivo
+# dist/style.css   →  GET /app/style.css   serve o arquivo
 # GET /users                               → NÃO é estático → vai pra API/404
 ```
 

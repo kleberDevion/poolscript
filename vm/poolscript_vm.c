@@ -8526,7 +8526,7 @@ static int met_mr_search(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_body(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_mr_close(VM *vm, Value alvo, Value *args, int n, Value *out);
 static const MetodoNat METODOS_MAILSRV[] = {
-    { "conn", met_ms_conn, "provedor_ou_host,porta=Null" }, { "login", met_ms_login, "usuario,senha" },
+    { "conn", met_ms_conn, "host,porta=Null" }, { "login", met_ms_login, "usuario,senha" },
     { "send", met_ms_send, "to_or_msg,subject=Null,body=Null,html=false" }, { "quit", met_ms_quit, NULL },
 };
 static const MetodoNat METODOS_MAILMSG[] = {
@@ -8535,7 +8535,7 @@ static const MetodoNat METODOS_MAILMSG[] = {
     { "attach", met_mm_attach, "arquivo_ou_caminho" }, { "get_as_string", met_mm_asstring, NULL },
 };
 static const MetodoNat METODOS_MAILRD[] = {
-    { "conn", met_mr_conn, "provedor_ou_host,porta=Null" }, { "login", met_mr_login, "usuario,senha" },
+    { "conn", met_mr_conn, "host,porta=Null" }, { "login", met_mr_login, "usuario,senha" },
     { "select", met_mr_select, "folder=\"INBOX\",readonly=true" },
     { "search", met_mr_search, "criterion_type=\"ALL\",term=Null,limit=Null,include_body=false" },
     { "body", met_mr_body, "id" }, { "close", met_mr_close, NULL },
@@ -9104,7 +9104,7 @@ static int j_texto(VM *vm, JLeitor *j, Value *out)
                     }
                     j->i += 4;
                     /* Fora do BMP o JSON escreve um PAR de surrogates
-                     * (`\ud83d\ude00` = 😀). Cada metade sozinha não é
+                     * (`\ud83d\ude00` = U+1F600). Cada metade sozinha não é
                      * caractere: emitir as duas dava 6 bytes de lixo. */
                     if (cp >= 0xD800 && cp <= 0xDBFF) {
                         if (j->i + 6 > j->n || j->s[j->i] != '\\' || j->s[j->i + 1] != 'u')
@@ -13620,38 +13620,11 @@ static const MembroMod MOD_SQLITE3[] = {
 
 
 /* ── módulo mail ────────────────────────────────────────────────────────── */
-/* SMTP/IMAP/MIME em C (ps_mail.c). O provedor conhecido vira host+porta, como
- * a tabela de hosts conhecidos. */
-
-typedef struct { const char *provedor, *host; int porta; } MailProv;
-static const MailProv SMTP_PROV[] = {
-    { "gmail.com", "smtp.gmail.com", 587 },
-    { "yahoo.com", "smtp.mail.yahoo.com", 587 },
-    { "outlook.com", "smtp.office365.com", 587 },
-    { "hotmail.com", "smtp.office365.com", 587 },
-    { "live.com", "smtp.office365.com", 587 },
-    { "proton.me", "smtp.protonmail.ch", 587 },
-};
-static const MailProv IMAP_PROV[] = {
-    { "gmail.com", "imap.gmail.com", 993 },
-    { "yahoo.com", "imap.mail.yahoo.com", 993 },
-    { "outlook.com", "outlook.office365.com", 993 },
-    { "hotmail.com", "outlook.office365.com", 993 },
-    { "live.com", "outlook.office365.com", 993 },
-};
-
-static void resolve_provedor(const MailProv *tab, int n, const char *entrada,
-                             int porta_in, char *host, size_t cap, int *porta)
-{
-    for (int i = 0; i < n; i++)
-        if (strcmp(tab[i].provedor, entrada) == 0) {
-            snprintf(host, cap, "%s", tab[i].host);
-            *porta = tab[i].porta;
-            return;
-        }
-    snprintf(host, cap, "%s", entrada);
-    *porta = porta_in > 0 ? porta_in : (tab == IMAP_PROV ? 993 : 587);
-}
+/* SMTP/IMAP/MIME em C (ps_mail.c). O `conn` recebe o HOST como está escrito,
+ * sem tabela de provedores; sem porta, a do protocolo (587 no envio, 993 na
+ * leitura). */
+#define MAIL_PORTA_SMTP 587
+#define MAIL_PORTA_IMAP 993
 
 /* Erro de rede vira OSError; erro de uso (ordem errada de chamada) vira
  * RuntimeError — é a divisão entre erro de rede e erro de uso. */
@@ -15050,9 +15023,8 @@ static int met_ms_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
                                   nome_do_tipo_valor(args[0]));
     int porta_in = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
     char host[256];
-    int porta;
-    resolve_provedor(SMTP_PROV, (int)(sizeof(SMTP_PROV)/sizeof(SMTP_PROV[0])),
-                     COMO_STRING(args[0])->chars, porta_in, host, sizeof(host), &porta);
+    snprintf(host, sizeof(host), "%s", COMO_STRING(args[0])->chars);
+    int porta = porta_in > 0 ? porta_in : MAIL_PORTA_SMTP;
     PSMailSrv *m = COMO_MAILSRV(alvo);
     if (m->conn) { ps_mail_solta(m->conn); m->conn = NULL; }
     char e[180];
@@ -15151,9 +15123,8 @@ static int met_mr_conn(VM *vm, Value alvo, Value *args, int n, Value *out)
                                   nome_do_tipo_valor(args[0]));
     int porta_in = (n == 2 && args[1].t == V_INT) ? (int)args[1].as.i : 0;
     char host[256];
-    int porta;
-    resolve_provedor(IMAP_PROV, (int)(sizeof(IMAP_PROV)/sizeof(IMAP_PROV[0])),
-                     COMO_STRING(args[0])->chars, porta_in, host, sizeof(host), &porta);
+    snprintf(host, sizeof(host), "%s", COMO_STRING(args[0])->chars);
+    int porta = porta_in > 0 ? porta_in : MAIL_PORTA_IMAP;
     PSMailMsg_reader *m = COMO_MAILRD(alvo);
     if (m->conn) { ps_mail_solta(m->conn); m->conn = NULL; }
     char e[180];

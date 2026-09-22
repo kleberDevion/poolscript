@@ -1055,7 +1055,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "char converte inteiro pelo codepoint",
   "char opa = 64\npost(opa)\n", "@", NULL, 0 },
 { "char aceita caractere fora do ASCII",
-  "char c = \"ç\"\nchar e = 128512\npost(c, len(c), e)\n", "ç 1 😀", NULL, 0 },
+  "char c = \"ç\"\nchar e = 134071\npost(c, len(c), e)\n", "ç 1 𠮷", NULL, 0 },
 { "char recusa mais de um caractere",
   "char c = \"abc\"\n",
   "", "AttributedValueError: variável c esperava char (um caractere), recebeu 3", 2 },

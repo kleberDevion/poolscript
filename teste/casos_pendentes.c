@@ -152,9 +152,9 @@ const Caso CASOS_PENDENTES[] = {
   "import ps_auto_import\npost(\"ok\")\n", "ok\nok", NULL, 0, "ps_auto_import.pr" },
 
 /* ── json ───────────────────────────────────────────────────────────────── */
-{ "json.parse monta emoji de par surrogate",
-  "import json\npost(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n",
-  "{'a': '😀'}", NULL, 0 },
+{ "json.parse monta caractere de par surrogate",
+  "import json\npost(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n",
+  "{'a': '𠮷'}", NULL, 0 },
 
 /* ── regex ──────────────────────────────────────────────────────────────── */
 { "sub interpreta \\n e \\t no replacement",

@@ -171,7 +171,7 @@ sempre funcionou, o que não funcionava era acento — e agora funciona.**
 
 ```
 reader = mail.MailReader()
-reader.conn("gmail.com")
+reader.conn("imap.meuservidor.com")  # porta 993
 reader.login("user@gmail.com", "senha-de-app")
 reader.select("INBOX", true)          # readonly=true por padrão
 

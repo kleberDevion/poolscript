@@ -140,11 +140,11 @@ const Caso CASOS_COBERTURA[] = {
   "post(regex.sub(r\"(\\d)\", r\"[\\g<1>]\", \"a1\"))\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em topo",
+{ "matriz: json_par_surrogate em topo",
   "import json\n"
-  "post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em topo",
   "async funct d(n) {\n"
   "    return n * 2\n"
@@ -273,14 +273,14 @@ const Caso CASOS_COBERTURA[] = {
   "f()\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em funct",
+{ "matriz: json_par_surrogate em funct",
   "funct f() {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "f()\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em funct",
   "funct f() {\n"
   "    async funct d(n) {\n"
@@ -408,13 +408,13 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em bloco_if",
+{ "matriz: json_par_surrogate em bloco_if",
   "if true {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em bloco_if",
   "if true {\n"
   "    async funct d(n) {\n"
@@ -517,13 +517,13 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em bloco_chaves",
+{ "matriz: json_par_surrogate em bloco_chaves",
   "if (true) {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: nul em bloco_chaves",
   "if (true) {\n"
   "    post(len(\"a\\x00b\"))\n"
@@ -628,13 +628,13 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]\na[1]", NULL, 0 },
-{ "matriz: json_emoji em for_each",
+{ "matriz: json_par_surrogate em for_each",
   "for each _i in range(2) {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
-  "{'a': '😀'}\n{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}\n{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em for_each",
   "for each _i in range(2) {\n"
   "    async funct d(n) {\n"
@@ -784,15 +784,15 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em while",
+{ "matriz: json_par_surrogate em while",
   "n = 0\n"
   "while n < 1 {\n"
   "    n = n + 1\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em while",
   "n = 0\n"
   "while n < 1 {\n"
@@ -950,15 +950,15 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em try",
+{ "matriz: json_par_surrogate em try",
   "try {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "} catch(e) {\n"
   "    post(\"CATCH:\", e)\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em try",
   "try {\n"
   "    async funct d(n) {\n"
@@ -1142,17 +1142,17 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]\nfim", NULL, 0 },
-{ "matriz: json_emoji em finally",
+{ "matriz: json_par_surrogate em finally",
   "try {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "} catch(e) {\n"
   "    post(\"C\")\n"
   "} finally {\n"
   "    post(\"fim\")\n"
   "}\n"
   "\n",
-  "{'a': '😀'}\nfim", NULL, 0 },
+  "{'a': '𠮷'}\nfim", NULL, 0 },
 { "matriz: await_lista em finally",
   "try {\n"
   "    async funct d(n) {\n"
@@ -1331,16 +1331,16 @@ const Caso CASOS_COBERTURA[] = {
   "K().m()\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em metodo",
+{ "matriz: json_par_surrogate em metodo",
   "Entity K() {\n"
   "    funct m(self) {\n"
   "        import json\n"
-  "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "    }\n"
   "}\n"
   "K().m()\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em metodo",
   "Entity K() {\n"
   "    funct m(self) {\n"
@@ -1528,17 +1528,17 @@ const Caso CASOS_COBERTURA[] = {
   "fora()\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em aninhada",
+{ "matriz: json_par_surrogate em aninhada",
   "funct fora() {\n"
   "    funct dentro() {\n"
   "        import json\n"
-  "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "    }\n"
   "    dentro()\n"
   "}\n"
   "fora()\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em aninhada",
   "funct fora() {\n"
   "    funct dentro() {\n"
@@ -1730,17 +1730,17 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em gerador",
+{ "matriz: json_par_surrogate em gerador",
   "funct g() {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "    yield 1\n"
   "}\n"
   "for each _v in g() {\n"
   "    _u = _v\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em gerador",
   "funct g() {\n"
   "    async funct d(n) {\n"
@@ -1906,15 +1906,15 @@ const Caso CASOS_COBERTURA[] = {
   "post(await a())\n"
   "\n",
   "a[1]\n1", NULL, 0 },
-{ "matriz: json_emoji em async",
+{ "matriz: json_par_surrogate em async",
   "async funct a() {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "    return 1\n"
   "}\n"
   "post(await a())\n"
   "\n",
-  "{'a': '😀'}\n1", NULL, 0 },
+  "{'a': '𠮷'}\n1", NULL, 0 },
 { "matriz: await_lista em async",
   "async funct a() {\n"
   "    async funct d(n) {\n"
@@ -2046,13 +2046,13 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em using",
+{ "matriz: json_par_surrogate em using",
   "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    import json\n"
-  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "    post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em using",
   "using open(\"/tmp/ps_mtz.txt\", \"w\") as _f {\n"
   "    async funct d(n) {\n"
@@ -2202,15 +2202,15 @@ const Caso CASOS_COBERTURA[] = {
   "}\n"
   "\n",
   "a[1]", NULL, 0 },
-{ "matriz: json_emoji em match",
+{ "matriz: json_par_surrogate em match",
   "match 1 {\n"
   "    case 1 {\n"
   "        import json\n"
-  "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud83d\\\\ude00\\\"}\"))\n"
+  "        post(json.parse(\"{\\\"a\\\": \\\"\\\\ud842\\\\udfb7\\\"}\"))\n"
   "    }\n"
   "}\n"
   "\n",
-  "{'a': '😀'}", NULL, 0 },
+  "{'a': '𠮷'}", NULL, 0 },
 { "matriz: await_lista em match",
   "match 1 {\n"
   "    case 1 {\n"

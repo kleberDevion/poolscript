@@ -12,7 +12,7 @@ s.quit() -> None
 
 ```
 s = mail.MailServer()
-s.conn("gmail.com")
+s.conn("smtp.meuservidor.com")
 s.login(user, senha)
 s.send(m)
 s.quit()          # fecha a conexão

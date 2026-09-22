@@ -1,27 +1,27 @@
-# `MailReader.conn(provider_or_host, port=None)`
+# `MailReader.conn(host, port=None)`
 
-Conecta ao servidor **IMAP** (leitura). Igual ao envio, aceita o nome do
-provedor (auto-configura) ou host manual.
+Conecta ao servidor **IMAP** (leitura) no `host` dado, com TLS. Sem `port`, usa
+a 993.
 
 ```
-r.conn(provider_or_host: str, port: int = None) -> None
+r.conn(host: str, port: int = None) -> bool
 ```
+
+Devolve `true` quando conectou; falha de rede, de TLS ou de host inexistente é
+erro (não devolve `false`).
 
 ---
 
-## Provedores auto-configurados
+## Exemplo
 
 ```
-r.conn("gmail.com")       # → imap.gmail.com:993
-r.conn("outlook.com")     # → outlook.office365.com:993
-r.conn("yahoo.com")       # → imap.mail.yahoo.com:993
+r.conn("imap.meuservidor.com")          # porta 993
+r.conn("127.0.0.1", 1143)               # servidor local em outra porta
 ```
 
-## Host manual
-
-```
-r.conn("imap.meuservidor.com", 993)
-```
+O `host` é usado como está escrito: a lib não traduz domínio de e-mail em
+servidor. O endereço do servidor IMAP vem das configurações da sua conta de
+e-mail.
 
 ---
 

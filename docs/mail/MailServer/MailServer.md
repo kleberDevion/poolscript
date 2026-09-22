@@ -13,7 +13,7 @@ s = mail.MailServer()
 
 | Método | O que faz | Página |
 |---|---|---|
-| `.conn(provedor, port)` | conecta ao servidor SMTP | [conn/conn.md](conn/conn.md) |
+| `.conn(host, port)` | conecta ao servidor SMTP | [conn/conn.md](conn/conn.md) |
 | `.login(user, senha)` | autentica | [login/login.md](login/login.md) |
 | `.send(msg)` | envia a mensagem | [send/send.md](send/send.md) |
 | `.quit()` | encerra a conexão | [quit/quit.md](quit/quit.md) |
@@ -36,7 +36,7 @@ m.subject("Assunto")
 m.body("Corpo")
 
 s = mail.MailServer()
-s.conn("gmail.com")                             # 1. conecta
+s.conn(os.getenv("MAIL_SMTP"))                  # 1. conecta (porta 587)
 s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))   # 2. loga
 s.send(m)                                       # 3. envia
 s.quit()                                        # 4. fecha

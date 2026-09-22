@@ -1,19 +1,18 @@
 # Lib `mail` — envio (SMTP) e leitura (IMAP) de email
-# Para rodar de verdade, descomente e use credenciais reais (gmail exige senha de app).
+# Para rodar de verdade, descomente e use o host e as credenciais do seu servidor.
+# `conn(host)` usa o host como está escrito; sem porta: 587 no envio, 993 na leitura.
 import mail
 
 post("== Lib mail carregada ==")
-post("Provedores auto (envio): gmail.com, yahoo.com, outlook.com, hotmail.com, proton.me")
-post("Provedores auto (leitura): gmail.com, yahoo.com, outlook.com, hotmail.com, live.com")
 
 # Exemplo — envio (não executa de verdade):
 #
 # server = mail.MailServer()
-# server.conn("gmail.com")
-# server.login("user@gmail.com", "senha-de-app")
+# server.conn("smtp.meuservidor.com")
+# server.login("user@meuservidor.com", "senha-de-app")
 #
 # msg = mail.MailMessage()
-# msg.fromAddress("user@gmail.com")
+# msg.fromAddress("user@meuservidor.com")
 # msg.toAddress("destino@site.com")
 # msg.subject("Teste")
 # msg.body("Olá <b>mundo</b>", true)
@@ -25,8 +24,8 @@ post("Provedores auto (leitura): gmail.com, yahoo.com, outlook.com, hotmail.com,
 # Exemplo — leitura (não executa de verdade):
 #
 # reader = mail.MailReader()
-# reader.conn("gmail.com")
-# reader.login("user@gmail.com", "senha-de-app")
+# reader.conn("imap.meuservidor.com")
+# reader.login("user@meuservidor.com", "senha-de-app")
 #
 # nao_lidos = reader.select("INBOX", true).search("UNSEEN")
 # for each e in nao_lidos:

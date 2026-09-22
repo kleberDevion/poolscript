@@ -69,7 +69,7 @@ declaração de campo, não entrada de dict.
 char a = "x"        # um caractere
 char opa = 64       # inteiro converte pelo codepoint -> "@"
 char c = "ç"        # acento conta como UM caractere
-char e = 128512     # 😀
+char e = 134071     # "𠮷" (U+20BB7: fora do plano básico, 4 bytes em UTF-8)
 ```
 
 O que ele garante é **um caractere só** — declarar com mais de um é erro, e

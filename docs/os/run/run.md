@@ -47,7 +47,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["pool", "--version"], capture=true)
-post(versao)                        # "PoolScript 15.91.21 [PSVM]"
+post(versao)                        # "PoolScript 15.91.22 [PSVM]"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
@@ -64,7 +64,7 @@ são só texto. Compare:
 ```
 nome = "x; rm -rf ~"                # valor malicioso vindo de fora
 
-os.cmd("mkdir " + nome)             # ⚠️ o shell executa o `rm -rf ~`
+os.cmd("mkdir " + nome)             # PERIGO: o shell executa o `rm -rf ~`
 os.run(["mkdir", nome])             # seguro: cria uma pasta chamada
                                     #   literalmente "x; rm -rf ~"
 ```

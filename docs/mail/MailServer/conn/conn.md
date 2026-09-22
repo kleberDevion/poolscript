@@ -1,42 +1,35 @@
-# `MailServer.conn(provider_or_host, port=None)`
+# `MailServer.conn(host, port=None)`
 
-Conecta ao servidor SMTP (envio). Aceita o **nome do provedor** (auto-configura
-host e porta) ou um host manual.
+Conecta ao servidor SMTP (envio) no `host` dado. Sem `port`, usa a 587 (a porta
+de envio com STARTTLS).
 
 ```
-s.conn(provider_or_host: str, port: int = None) -> None
+s.conn(host: str, port: int = None) -> bool
 ```
+
+Devolve `true` quando conectou; falha de rede, de TLS ou de host inexistente é
+erro (não devolve `false`).
 
 ---
 
-## Provedores auto-configurados
-
-Passe só o domínio — a lib sabe o resto:
+## Exemplo
 
 ```
-s.conn("gmail.com")       # → smtp.gmail.com:587
-s.conn("outlook.com")     # → smtp.office365.com:587
-s.conn("hotmail.com")     # → smtp.office365.com:587
-s.conn("yahoo.com")       # → smtp.mail.yahoo.com:587
-s.conn("proton.me")       # → smtp.protonmail.ch:587
+s.conn("smtp.meuservidor.com")          # porta 587
+s.conn("smtp.meuservidor.com", 2525)    # outra porta
 ```
 
-## Host manual
-
-Pra um servidor próprio, passe host e porta:
-
-```
-s.conn("smtp.meuservidor.com", 587)
-```
+O `host` é usado como está escrito: a lib não traduz domínio de e-mail em
+servidor. `s.conn("meudominio.com")` tenta `meudominio.com:587` — o endereço do
+servidor SMTP vem das configurações da sua conta de e-mail.
 
 ---
 
-## ⚠️ Cuidado com o host errado
+## Cuidado com o host errado
 
-Digitar o host errado (ex: `"smtp.gamil.com"` — "gamil" em vez de "gmail") pode
-te conectar a um **servidor de terceiros** que aceita a conexão e recebe seu
-usuário/senha. Prefira sempre o nome do provedor (`"gmail.com"`) em vez de
-digitar o host SMTP na mão.
+Um host digitado errado pode te conectar a um **servidor de terceiros** que
+aceita a conexão e recebe seu usuário/senha no `login`. Confira o host antes
+de rodar.
 
 ---
 

@@ -77,8 +77,8 @@ INT_BORDA = [0, 1, -1, 2, -2, 10, 255, 256, 65535, 65536,
              9223372036854775807, -9223372036854775808]
 
 # Texto com o que costuma quebrar: vazio, ASCII, acento (2 bytes), CJK (3),
-# emoji (4), aspas, barra invertida, controle.
-TXT_BORDA = ["", "a", "ab", "abc", "ção", "über", "日本語", "🙂",
+# fora do plano básico (4), aspas, barra invertida, controle.
+TXT_BORDA = ["", "a", "ab", "abc", "ção", "über", "日本語", "𠮷",
              "a'b", "a\"b", "a\\b", "a\tb", "a\nb", " ", "  a  ",
              "aAbB", "123", "0", "-1"]
 

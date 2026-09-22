@@ -34,7 +34,7 @@ conn.close()
 
 ---
 
-## ⚠️ O erro nº 1: esquecer o `on_message`
+## O erro nº 1: esquecer o `on_message`
 
 Sem `conn.on_message(...)`, as mensagens que o servidor manda **chegam e são
 descartadas em silêncio** — nenhum erro, nada aparece. É o motivo mais comum

@@ -13,7 +13,7 @@ conn.on_message(callback) -> None
 
 ---
 
-## ⚠️ Sem isto, você não recebe NADA
+## Sem isto, você não recebe NADA
 
 Este é o ponto mais importante da lib. Um WebSocket recebe mensagens numa
 thread em segundo plano. Se você **não** registrou um `on_message`, essas

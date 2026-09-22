@@ -19,7 +19,7 @@ from dotenv import load
 load()
 
 s = mail.MailServer()
-s.conn("gmail.com")
+s.conn(os.getenv("MAIL_SMTP"))
 s.login(os.getenv("MAIL_USER"), os.getenv("MAIL_PASS"))
 ```
 
@@ -27,9 +27,9 @@ Guarde usuário e senha no `.env` — nunca no código.
 
 ---
 
-## ⚠️ Gmail/Outlook: use senha de aplicativo
+## Senha de aplicativo
 
-Provedores modernos **não aceitam a senha normal** da sua conta por SMTP. Você
+Muitos servidores **não aceitam a senha normal** da sua conta por SMTP. Você
 precisa gerar uma **senha de aplicativo** (App Password) nas configurações de
 segurança da conta e usar essa senha no `login`. Com a senha normal, o login
 falha com erro de autenticação.
