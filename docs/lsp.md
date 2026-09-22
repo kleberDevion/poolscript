@@ -107,14 +107,21 @@ memorizado, então completar `regex.` toca ~10 arquivos, não 353.
 
 ## VS Code
 
-A extensão **psl-poolscript** é o cliente. Ela não tem cérebro nenhum: são ~70
-linhas de JavaScript cuja única função é levantar o `poolscript-lsp` e falar
-LSP com ele — o VS Code só carrega extensão com ponto de entrada JS, e essa é
-a regra do editor, não uma escolha do projeto. Completion, hover, diagnóstico
-e realce vêm todos do servidor em PoolScript.
+A extensão **pyrite** é o cliente: ela sobe o servidor e fala LSP com ele.
+O servidor é o **`poolscript-lsp` instalado** — o MESMO que o IntelliJ e o
+Neovim sobem —, então um `make install` (ou o `instalar.sh`) atualiza os três
+editores de uma vez; no VS Code, recarregue a janela depois. A extensão o
+procura no PATH do editor e em `/usr/local/bin`, `/usr/bin`, `~/.local/bin`,
+`~/bin` e `~/.poolscript/bin` (um VS Code aberto pelo menu não herda o PATH
+do shell). Só quando não acha nenhum ela usa o `server.js` que vem dentro da
+vsix, que é uma cópia de reserva e envelhece: o painel **Saída → PoolScript**
+diz, na primeira linha, qual dos dois subiu (`servidor: /usr/local/bin/poolscript-lsp`
+ou `servidor: embutido …`), e o servidor informa a versão do motor que usa.
 
-Com o `make install` (ou o `instalar.sh`) feito, não há o que configurar: a
-extensão acha o `poolscript-lsp` no PATH sozinha.
+Até 2026-09-21 a extensão subia SEMPRE o embutido, e o VS Code ficou dias
+rodando um servidor de 17/09 enquanto o IntelliJ e o Neovim tinham as
+correções — hover de model sem os parâmetros, static sem hover, import com
+acento quebrado só nele.
 
 Duas configurações existem, pra quando se está mexendo no servidor:
 

@@ -79,7 +79,7 @@ bundle: pool
 # package.json, e é ele que garante a mesma versão do cliente LSP em qualquer
 # máquina.
 #
-#     make vsix           gera editor/vscode/psl-poolscript-<versao>.vsix
+#     make vsix           gera editor/vscode/pyrite-<versao>.vsix (Node >= 22)
 #     make instala-vsix   gera e instala no VS Code local
 EXT := editor/vscode
 
@@ -91,7 +91,10 @@ vsix: $(EXT)/node_modules
 	# 2 e 3 tambem passaram a exigir Node 20+: com Node 18 o `npx` baixa e
 	# estoura no meio ("File is not defined", "styleText is not a function").
 	# Dizer isso ANTES e melhor que a pilha do npx. O servidor LSP nao depende
-	# disto: `make install` ja entrega o server.js que o VS Code usa.
+	# disto: o cliente sobe o `poolscript-lsp` INSTALADO (o mesmo do IntelliJ e
+	# do Neovim), entao `make install` atualiza o servidor do VS Code tambem. A
+	# vsix so precisa ser refeita quando o CLIENTE (extension.js) ou a gramatica
+	# mudam — o server.js dela e so a reserva de quem nao fez `make install`.
 	@n=$$(node -p 'Number(process.versions.node.split(".")[0])'); \
 	if [ "$$n" -lt 22 ]; then \
 	  echo "vsix: empacotar exige Node >= 22 (aqui: $$(node -v)); o @vscode/vsce e seus transitivos nao rodam mais no 18."; \

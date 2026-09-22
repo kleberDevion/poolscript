@@ -11,6 +11,8 @@
  * no PATH.
  */
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 const net = require('net');
 const { spawn } = require('child_process');
 const vscode = require('vscode');
@@ -27,6 +29,23 @@ let saidaDebug;
 function poolBin() {
   const dado = workspace.getConfiguration('poolscript').get('pool');
   return (typeof dado === 'string' && dado.trim()) ? dado.trim() : 'pool';
+}
+
+// O `poolscript-lsp` instalado, em caminho absoluto: o PATH do editor e as
+// pastas onde o `make install`/`instalar.sh` o põem — a mesma busca do
+// cliente do IntelliJ (editor/intellij/plugin/.../PoolLspFactory.java). Um
+// VS Code aberto pelo menu não herda o PATH do shell, e ~/.local/bin fica de
+// fora dele. `null` quando não há nenhum executável.
+function poolscriptLsp() {
+  const casa = os.homedir();
+  const pastas = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
+    .concat(['/usr/local/bin', '/usr/bin', path.join(casa, '.local', 'bin'),
+             path.join(casa, 'bin'), path.join(casa, '.poolscript', 'bin')]);
+  for (const p of pastas) {
+    const c = path.join(p, 'poolscript-lsp');
+    try { fs.accessSync(c, fs.constants.X_OK); if (fs.statSync(c).isFile()) return c; } catch (_) { /* segue */ }
+  }
+  return null;
 }
 
 /* Aspas simples ao redor, e aspas simples de dentro escapadas: o caminho vai
@@ -405,15 +424,20 @@ function activate(context) {
 
   if (!workspace.getConfiguration('poolscript').get('lsp.ativo')) return;
 
-  // O servidor roda no MESMO Node do VS Code, pelo módulo `vscode-languageserver`.
-  // Antes era um processo externo (`poolscript-lsp`, PoolScript implementando o
-  // protocolo à mão): quem não tivesse feito `make install` ficava sem nada, e o
-  // protocolo era metade do trabalho pra um resultado pior.
-  const servidor = {
-    run:   { module: path.join(__dirname, 'server.js'), transport: TransportKind.stdio },
-    debug: { module: path.join(__dirname, 'server.js'), transport: TransportKind.stdio,
-             options: { execArgv: ['--nolazy', '--inspect=6009'] } },
-  };
+  // O servidor é o `poolscript-lsp` INSTALADO — o mesmo que o IntelliJ e o
+  // Neovim sobem —, pra que um `make install` atualize os três editores de
+  // uma vez. Antes subia sempre o `server.js` embutido na vsix; a vsix não é
+  // reempacotada a cada mudança do servidor, e o VS Code ficou rodando o de
+  // 17/09 enquanto os outros dois tinham as correções (19 de 187 checagens
+  // falhavam nele). O embutido fica de reserva, pra máquina sem `make install`.
+  const lsp = poolscriptLsp();
+  const embutido = path.join(__dirname, 'server.js');
+  const servidor = lsp
+    ? { run:   { command: lsp, transport: TransportKind.stdio },
+        debug: { command: lsp, transport: TransportKind.stdio } }
+    : { run:   { module: embutido, transport: TransportKind.stdio },
+        debug: { module: embutido, transport: TransportKind.stdio,
+                 options: { execArgv: ['--nolazy', '--inspect=6009'] } } };
 
   const cliente_opts = {
     documentSelector: [
@@ -425,6 +449,8 @@ function activate(context) {
   };
 
   cliente = new LanguageClient('poolscript', 'PoolScript', servidor, cliente_opts);
+  // qual servidor subiu, no painel de saída "PoolScript"
+  cliente.outputChannel.appendLine('servidor: ' + (lsp || `embutido (${embutido}) — poolscript-lsp não achado`));
 
   cliente.start().catch((e) => {
     // Falhar calado deixaria o usuário sem completion sem saber por quê.

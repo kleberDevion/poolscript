@@ -1077,9 +1077,18 @@ conexao.onInitialize((params) => {
       documentSymbolProvider: true,
       signatureHelpProvider: { triggerCharacters: ['(', ','] },
     },
-    serverInfo: { name: 'poolscript-lsp', version: '3' },
+    /* a versão do MOTOR que o servidor usa (`PoolScript 15.91.21 [PSVM]` →
+     * `15.91.21`): era `'3'` fixo, e com dois servidores diferentes no ar
+     * (o embutido na vsix e o instalado) não havia como ver qual respondia */
+    serverInfo: { name: 'poolscript-lsp', version: versaoDoMotor() },
   };
 });
+
+function versaoDoMotor() {
+  const partes = String(motor(['--version']) || '').split(' ');
+  const v = partes.find((p) => p.length > 0 && [...p].every((ch) => (ch >= '0' && ch <= '9') || ch === '.'));
+  return v || 'desconhecida';
+}
 
 /* Depois do aperto de mão, o que o `initialize` descobriu e não pode ficar
  * calado: sem o motor, o cliente recebe a mensagem (balão no IntelliJ, toast
