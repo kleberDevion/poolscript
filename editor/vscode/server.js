@@ -220,9 +220,14 @@ function remendaPontosSoltos(texto) {
  * caso que o teste cobre. */
 function fechaAbertos(texto) {
   const bruto = motor(['--tokens'], texto);
-  if (!bruto.trim().startsWith('[')) return texto;
+  const t0 = bruto.trim();
+  if (!t0.startsWith('[') && !t0.startsWith('{')) return texto;
   let toks;
-  try { toks = JSON.parse(bruto); } catch (_) { return texto; }
+  try {
+    const j = JSON.parse(bruto);
+    toks = Array.isArray(j) ? j : (Array.isArray(j.tokens) ? j.tokens : null);
+  } catch (_) { return texto; }
+  if (!toks) return texto;
   const pilha = [];
   const par = { LPAREN: ')', LBRACK: ']', LBRACE: '}' };
   const fecha = { RPAREN: 'LPAREN', RBRACK: 'LBRACK', RBRACE: 'LBRACE' };
@@ -311,8 +316,16 @@ function tokensDe(doc) {
   if (c && c.versao === doc.version) return c.toks;
   const bruto = motor(['--tokens'], doc.getText());
   let toks = [];
-  if (bruto.trim().startsWith('[')) {
-    try { toks = JSON.parse(bruto); } catch (_) { toks = []; }
+  /* O motor devolve `{"tokens":[…],"erros":[…]}`; a forma antiga era um array
+   * puro, e com erro de lexer vinha `[]` — o realce morria por um caractere.
+   * As duas formas são aceitas: a vsix pode estar rodando um motor mais velho
+   * que o instalado. */
+  const t0 = bruto.trim();
+  if (t0.startsWith('[') || t0.startsWith('{')) {
+    try {
+      const j = JSON.parse(bruto);
+      toks = Array.isArray(j) ? j : (Array.isArray(j.tokens) ? j.tokens : []);
+    } catch (_) { toks = []; }
   }
   for (const t of toks) { t.l0 = t.l - 1; t.c0 = t.c - 1; }
   CACHE_TOK.set(doc.uri, { versao: doc.version, toks });
@@ -752,9 +765,9 @@ function tipoDoNome(doc, nome, linha) {
       const alvoC = alvoDoImport(doc, cons.nome, linha);
       if (alvoC && alvoC.tipo === 'membro_modulo') {
         for (const m of META.modulos[alvoC.mod] || []) {
-          const t = tipoEncadeado(m.retorna);
-          if (m.nome === alvoC.membro && t && META.tipos[t])
-            return { tipo: 'tipo_motor', nome: t, via: { mod: alvoC.mod, membro: alvoC.membro } };
+          if (m.nome !== alvoC.membro) continue;
+          const a = alvoDoRetorno(m.retorna, { mod: alvoC.mod, membro: alvoC.membro });
+          if (a) return a;
         }
       }
       if (alvoC && alvoC.tipo === 'membro_arquivo' && achaEntidade(doc, alvoC.membro))
@@ -769,9 +782,12 @@ function tipoDoNome(doc, nome, linha) {
       }
       if (alvoM && alvoM.mod && META.modulos[alvoM.mod]) {
         for (const m of META.modulos[alvoM.mod]) {
+          if (m.nome !== cons.nome) continue;
+          const via = { mod: alvoM.mod, membro: cons.nome };
+          const a = alvoDoRetorno(m.retorna, via);
+          if (a) return a;
           const t = tipoEncadeado(m.retorna);
-          if (m.nome === cons.nome && t)
-            return { tipo: 'tipo_motor', nome: t, via: { mod: alvoM.mod, membro: cons.nome } };
+          if (t) return { tipo: 'tipo_motor', nome: t, via };
         }
       }
     }
@@ -846,7 +862,10 @@ function alvoDaCadeia(doc, partes, linha) {
      * é ela que diz em que pasta da doc está a prosa do próximo membro. */
     const t = tipoEncadeado(m.retorna || m.tipo);
     const modBase = alvo.via ? alvo.via.mod : (alvo.tipo === 'import' && alvo.alvo ? alvo.alvo.mod : null);
-    if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via: modBase ? { mod: modBase, membro: passo } : undefined };
+    const via = modBase ? { mod: modBase, membro: passo } : undefined;
+    const uniao = !t ? alvoDoRetorno(m.retorna || m.tipo, via) : null;
+    if (t && META.tipos[t]) alvo = { tipo: 'tipo_motor', nome: t, via };
+    else if (uniao) alvo = uniao;
     else if (t && achaEntidade(doc, t)) alvo = { tipo: 'entity', nome: t, interno: false };
     else if (m.kind === 'class' && achaEntidade(doc, m.nome)) alvo = { tipo: 'entity', nome: m.nome, interno: false };
     /* membro existe, retorno desconhecido (`request.get(...).`): universais */
@@ -867,6 +886,27 @@ function membrosDe(doc, alvo, linha) {
       .map((m) => ({ nome: m.texto, kind: 'campo', tipo: '', linha: m.l - 1, coluna: m.c - 1 }));
   }
   if (alvo.tipo === 'entity') return membrosDaEntidade(doc, alvo.nome, !!alvo.interno);
+  if (alvo.tipo === 'uniao') {
+    /* Retorno com mais de um tipo (`os.run` devolve int, str ou Process): os
+     * membros dos dois lados, sem repetir, cada um dizendo de qual tipo veio.
+     * O universal entra uma vez só, no fim. */
+    const vistos = new Set();
+    const juntos = [];
+    for (const t of alvo.nomes) {
+      const escopo = alvo.via ? [`${alvo.via.mod}/${alvo.via.membro}`, alvo.via.mod, t] : t;
+      for (const m of META.tipos[t] || []) {
+        if (vistos.has(m.nome)) continue;
+        vistos.add(m.nome);
+        juntos.push(Object.assign({ kind: 'action', escopo, de: t }, m));
+      }
+    }
+    for (const m of META.tipos.__universal__ || []) {
+      if (vistos.has(m.nome)) continue;
+      vistos.add(m.nome);
+      juntos.push(Object.assign({ kind: 'action', escopo: '__universal__' }, m));
+    }
+    return juntos;
+  }
   if (alvo.tipo === 'tipo_motor') {
     /* onde está a prosa: pela procedência (`jinker/Jinker`, `jinker`) antes
      * do nome do tipo — ver `paginaDe` */
@@ -921,6 +961,25 @@ function tipoEncadeado(ret) {
   if (!ret || ret === '*') return '';
   const lados = ret.split('|').filter((x) => x !== 'Null');
   return lados.length === 1 ? lados[0] : '';
+}
+
+/* Os lados de um retorno com MAIS DE UM tipo (`int|str|Process`), só os que o
+ * motor publica como tipo. Antes qualquer união virava "desconhecido" e o
+ * completion caía nos universais: `p = os.run(..., capture="live")` + `p.`
+ * oferecia só `type`, e o mesmo valia pra `psodbc.connect(...)`. */
+function tiposDaUniao(ret) {
+  if (!ret || ret === '*') return [];
+  return ret.split('|').filter((x) => x !== 'Null' && META.tipos && META.tipos[x]);
+}
+
+/* O alvo de um retorno: um tipo só, uma UNIÃO de tipos, ou nada. */
+function alvoDoRetorno(ret, via) {
+  const t = tipoEncadeado(ret);
+  if (t && META.tipos[t]) return { tipo: 'tipo_motor', nome: t, via };
+  const lados = tiposDaUniao(ret);
+  if (lados.length === 1) return { tipo: 'tipo_motor', nome: lados[0], via };
+  if (lados.length > 1) return { tipo: 'uniao', nomes: lados, via };
+  return null;
 }
 
 function assinatura(m) {

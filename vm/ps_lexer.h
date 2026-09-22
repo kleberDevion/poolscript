@@ -25,7 +25,11 @@ typedef enum {
     /* Só existe no modo do editor (`ps_lexer_tokenize_editor`): o lexer
      * normal DESCARTA comentário, e o parser nunca vê este tipo. Fica por
      * ultimo pra nao mexer no valor numerico de nenhum outro. */
-    T_COMMENT
+    T_COMMENT,
+    /* So existe no MODO DE RECUPERACAO: o trecho que o lexer nao entendeu
+     * (caractere estranho), pra o realce saber onde ele esta em vez de perder
+     * o arquivo inteiro. Tambem por ultimo, pelo mesmo motivo. */
+    T_ERRO
 } PSTokType;
 
 typedef struct {
@@ -83,6 +87,15 @@ typedef struct {
     PSAviso *avisos;
     int32_t  navisos;
     int32_t  cap_avisos;
+
+    /* TODOS os erros, no MODO DE RECUPERAÇÃO (ver `ps_lexer_tokenize_modo`).
+     * O editor precisa do que sobrou: com o modo de parar no primeiro erro, um
+     * caractere estranho no meio do arquivo apagava os tokens das linhas boas
+     * e a tela inteira perdia a cor. Rodando o programa nada disso vale — o
+     * primeiro erro para, como sempre. */
+    PSAviso *erros;
+    int32_t  nerros;
+    int32_t  cap_erros;
 } PSTokenList;
 
 /* Imprime no stderr os avisos que a lista juntou, no formato
@@ -97,6 +110,13 @@ PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len);
 /* Igual, mas guarda tambem os COMENTARIOS como T_COMMENT. Serve ao realce do
  * editor, que precisa saber onde eles estao; o compilador usa a de cima. */
 PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len);
+/* As duas de cima, com os dois interruptores na mao:
+ *   `comentarios` = guarda os comentarios como token (realce);
+ *   `recupera`    = SEGUE depois do erro, juntando todos em `erros`, em vez de
+ *                   parar no primeiro. So os comandos de editor usam; rodar o
+ *                   programa continua parando no primeiro erro. */
+PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len,
+                                    int comentarios, int recupera);
 void         ps_lexer_free(PSTokenList *lista);
 
 /* Nome do tipo de token — usado nas mensagens e no teste diferencial. */

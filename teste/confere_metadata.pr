@@ -201,6 +201,7 @@ amostras_fonte["PoolQRCode"] = "qrcode.QRCode()"
 amostras_fonte["PoolFile"] = ("os.loadFile(\"" + PNG + "\", \"rb\")")
 amostras_fonte["QRPoolFile"] = "qrcode.gen(\"x\")"
 amostras_fonte["socket"] = "sockets.socket()"
+amostras_fonte["Process"] = "os.run([\"cat\"], capture=\"live\")"
 
 amostras_campo = {}
 amostras_campo["MailMessage"] = mail.MailMessage()
@@ -215,6 +216,9 @@ amostras_campo["PoolQRCode"] = qrcode.QRCode()
 amostras_campo["PoolFile"] = os.loadFile(PNG, "rb")
 amostras_campo["QRPoolFile"] = qrcode.gen("x")
 amostras_campo["socket"] = sockets.socket()
+# `cat` fica esperando a entrada, então o processo está VIVO enquanto os campos
+# (`pid`, `returncode`) são lidos — que é o estado em que eles interessam.
+amostras_campo["Process"] = os.run(["cat"], capture="live")
 
 # Tipo que NÃO dá pra construir aqui, e o porquê. Ele existe pra que o
 # `continue` de baixo deixe de ser silencioso: sem esta lista, tipo novo com

@@ -18,6 +18,7 @@
 #     ./pool teste/jinker_roda.pr
 import os
 import sys
+import date
 import sockets
 from request import get
 from request import post as http_post
@@ -793,6 +794,24 @@ confere("Content-Length duplicado e diferente vira 400", "400" in bruto)
 
 bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\n\r\nGET /texto HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
 confere("pipelining responde as DUAS requisições", bruto.count("HTTP/1.1") >= 2)
+
+# ── o comando externo na rota não segura as outras requisições ──────────────
+#
+# O worker é UM. Com a espera do filho na própria fibra, um `os.run` de 3 s na
+# rota `/lento` fazia TODA outra requisição esperar esses 3 s. Aqui a `/lento` é
+# disparada de outro processo e, enquanto ela roda, o `/ok` tem que responder na
+# hora.
+# o `try` é porque o servidor cai antes de a `/lento` responder: sem ele, o
+# processo de fundo escreve um NetworkError no meio da saída da suíte
+os.run([sys.executable, "-e",
+        "import request\ntry { request.get(\"" + RAIZ + "/lento\") } catch (e) { pass }"],
+       capture=false)
+sleep(0.5)
+t0 = date.timestamp()
+r = get(RAIZ + "/ok")
+t1 = date.timestamp()
+confere("os.run dentro da rota nao segura as outras requisicoes",
+        r.status == 200 and (t1 - t0) <= 1)
 
 # ── parada limpa (é o que faz o gcov do servidor existir) ───────────────────
 # O pedido de parada pode errar (o servidor já estava caindo quando a resposta

@@ -391,6 +391,54 @@ async function main() {
          lista.map((d) => d.range.start.line + ': ' + d.message));
   }
 
+  /* ── 8b. retorno com MAIS DE UM tipo ────────────────────────────────────
+   *
+   * `os.run` devolve int (pid), str (saída) ou Process (`capture="live"`).
+   * Qualquer união virava "desconhecido" e o completion caía nos universais:
+   * `p.` oferecia só `type`. Agora vêm os membros dos lados que são tipo. */
+  {
+    const ult = 'p.';
+    const m = await conversa('import os\np = os.run(["cat"], capture="live")\n' + ult,
+                             [compl(60, 2, ult.length)]);
+    const L = rotulos(resp(m, 60));
+    conf('completion do processo vivo (uniao int|str|Process)',
+         L.includes('write') && L.includes('read') && L.includes('wait')
+           && L.includes('pid') && L.includes('returncode'),
+         L.slice(0, 12));
+  }
+  {
+    /* o lado `str` da mesma união continua aparecendo: os dois são oferecidos */
+    const ult = 'p.';
+    const m = await conversa('import os\np = os.run(["cat"], capture="live")\n' + ult,
+                             [compl(61, 2, ult.length)]);
+    const L = rotulos(resp(m, 61));
+    conf('a uniao nao esconde o outro lado (metodos de str juntos)',
+         L.includes('upper') && L.includes('strip'), L.slice(0, 12));
+  }
+
+  /* ── 8c. o arquivo PELA METADE (é o estado normal de quem digita) ───────
+   *
+   * Com o parser parando no primeiro erro, a árvore acabava ali e tudo que
+   * vinha depois sumia: a variável de cima não era mais conhecida. Agora o
+   * statement quebrado é registrado e o parser segue. */
+  {
+    const ult = 'nome.';
+    const m = await conversa('nome = "ana"\nif y > 0 \npost(1)\n' + ult,
+                             [compl(62, 3, ult.length)]);
+    const L = rotulos(resp(m, 62));
+    conf('completion embaixo de linha quebrada ainda conhece a variavel',
+         L.includes('upper') && L.includes('strip'), L.slice(0, 8));
+  }
+  {
+    /* string sem fechar: o lexer inteiro morria e o realce/completion iam junto */
+    const ult = 'nome.';
+    const m = await conversa('nome = "ana"\nx = "sem fechar\n' + ult,
+                             [compl(63, 2, ult.length)]);
+    const L = rotulos(resp(m, 63));
+    conf('completion depois de string sem fechar ainda funciona',
+         L.includes('upper'), L.slice(0, 8));
+  }
+
   /* ── 9. AVISO (nao erro) vira sublinhado amarelo ───────────────────────── */
   {
     const m = await conversa('x = "C:\\pasta"\n', []);

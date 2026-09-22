@@ -119,6 +119,29 @@ funct confere(codigo) {
 }
 
 
+# O bloco só cita MÓDULO DE EXEMPLO?
+#
+# As páginas de import falam de `import mymod`, `from './irmao.pr' import w`,
+# `import '/opt/app/util.pr'` — módulos que não existem nem devem existir no
+# repositório. O `--check` passou a acusar módulo ausente (e é o certo: um typo
+# no import tem que aparecer no editor), mas o assunto desses blocos é a FORMA
+# do import, não a instalação. Então o bloco cujos erros são TODOS "No module
+# named" conta como exemplo válido — e vai pra uma lista impressa no fim, pra
+# ninguém descobrir isso por acaso.
+funct so_modulo_de_exemplo(resposta) {
+    if not resposta.startswith("{") { return false }
+    r = json.parse(resposta)
+    if r["ok"] { return false }
+    if r["tipo"] != "ImportError" { return false }
+    erros = r.get("erros")
+    if erros == Null { return "No module named" in r["msg"] }
+    for each e in erros {
+        if not "No module named" in e["msg"] { return false }
+    }
+    return true
+}
+
+
 # O tipo do erro que o `--check` devolveu ("" se passou ou se a saída não é o
 # JSON do check — aí a mensagem inteira vale como tipo, pra não passar calado).
 funct tipo_do_erro(resposta) {
@@ -148,6 +171,7 @@ total = 0
 anunciados = 0
 pulados = []
 achados = []
+exemplos_de_modulo = []
 
 for each md in lista_md(RAIZ) {
     contexto = ""
@@ -170,6 +194,10 @@ for each md in lista_md(RAIZ) {
         }
         tipo = tipo_do_erro(resposta)
         if tipo == "" {
+            continue
+        }
+        if so_modulo_de_exemplo(resposta) {
+            addEnd(exemplos_de_modulo, md + ":" + str(b["linha"]))
             continue
         }
         # erro mostrado de propósito: o bloco anuncia o erro que o motor deu
@@ -198,6 +226,11 @@ post("  dos quais mostram um erro de proposito, e o motor da ESSE erro:", anunci
 post("blocos pulados (fragmento com '...' — confira à mão):", pulados.len())
 for each p in pulados {
     post("  " + p)
+}
+post("blocos que citam módulo de exemplo (o import não resolve aqui):",
+     exemplos_de_modulo.len())
+for each e in exemplos_de_modulo {
+    post("  " + e)
 }
 
 if achados.len() == 0 {

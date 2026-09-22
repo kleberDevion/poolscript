@@ -153,6 +153,20 @@ _cache    = []        # IDENT
 Usuario   = ...       # IDENT_UPPER (uma Entity/classe)
 ```
 
+**Sem acento no nome.** Letra acentuada e qualquer letra fora do ASCII (`ação`,
+`preço`, `π`) **não** entram em identificador — e o erro diz a regra:
+
+```
+ação = 1
+```
+
+```
+SyntaxError: nome so aceita letra sem acento, digito e _: 'ç'
+```
+
+Acento vale à vontade dentro de **string** e de **comentário**; o que a regra
+limita é só o nome.
+
 ---
 
 ## 1.5. Palavras reservadas (keywords)

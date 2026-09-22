@@ -1002,6 +1002,103 @@ const Caso CASOS_LIBS[] = {
 { "os.run em string nao trunca em 62 palavras nem em 4096 bytes",
   "import os\ns = \"echo\"\nfor each i in range(3000) { s = s + \" x\" }\npost(os.run(s, true).strip().split(\" \").len())\n", "3000", NULL, 0 },
 
+/* ── `os.run(args, capture="live")`: o processo VIVO ──────────────────────
+ *
+ * Do relatorio do backend da IDE (2026-09-22): com os dois modos de antes nao
+ * dava pra escrever no stdin do filho, ler a saida ENQUANTO ele roda, saber o
+ * codigo de saida nem matar — e terminal integrado era impossivel. */
+{ "run live: escreve no filho, le a saida e pega o codigo",
+  "import os\n"
+  "p = os.run([\"cat\"], capture=\"live\")\n"
+  "p.write(\"oi\\n\")\n"
+  "p.close()\n"
+  "post(p.read(100).strip())\n"
+  "post(p.wait())\n", "oi\n0", NULL, 0 },
+{ "run live: o tipo do objeto",
+  "import os\np = os.run([\"cat\"], capture=\"live\")\npost(type(p))\np.close()\np.wait()\n",
+  "Process", NULL, 0 },
+{ "run live: readline devolve linha a linha enquanto o filho roda",
+  "import os\n"
+  "p = os.run([\"sh\", \"-c\", \"echo a; sleep 0.2; echo b\"], capture=\"live\")\n"
+  "post(p.readline().strip())\n"
+  "post(p.readline().strip())\n"
+  "post(p.wait())\n", "a\nb\n0", NULL, 0 },
+{ "run live: o stderr vem separado do stdout",
+  "import os\n"
+  "p = os.run([\"sh\", \"-c\", \"echo out; echo err 1>&2\"], capture=\"live\")\n"
+  "post(p.read(100).strip())\n"
+  "post(p.read_err(100).strip())\n"
+  "p.wait()\n", "out\nerr", NULL, 0 },
+{ "run live: codigo de saida no wait e no returncode",
+  "import os\n"
+  "p = os.run([\"sh\", \"-c\", \"exit 3\"], capture=\"live\")\n"
+  "post(p.returncode)\n"
+  "post(p.wait())\n"
+  "post(p.returncode)\n", "Null\n3\n3", NULL, 0 },
+{ "run live: kill mata e o codigo diz o sinal",
+  "import os\n"
+  "p = os.run([\"sleep\", \"30\"], capture=\"live\")\n"
+  "p.kill()\n"
+  "post(p.wait())\n", "-15", NULL, 0 },
+{ "run live: o pid e o do filho",
+  "import os\n"
+  "p = os.run([\"sleep\", \"0.2\"], capture=\"live\")\n"
+  "post(p.pid > 0)\n"
+  "post(p.wait())\n", "True\n0", NULL, 0 },
+/* Com `pty=true` o filho acha que esta num terminal: `input()`, cor e
+ * programa interativo passam a funcionar — e o que o terminal integrado pede. */
+{ "run live com pty: o filho ve um terminal",
+  "import os\n"
+  "p = os.run([\"sh\", \"-c\", \"test -t 0 && echo tty\"], capture=\"live\", pty=true)\n"
+  "post(p.read(100).strip())\n"
+  "post(p.wait())\n", "tty\n0", NULL, 0 },
+{ "run live com pty: o stderr chega junto, como num terminal",
+  "import os\n"
+  "p = os.run([\"sh\", \"-c\", \"echo err 1>&2\"], capture=\"live\", pty=true)\n"
+  "post(p.read(100).strip())\n"
+  "post(p.read_err(10))\n"
+  "p.wait()\n", "err", NULL, 0 },
+{ "run com pty exige capture live ou true",
+  "import os\nos.run([\"echo\", \"oi\"], capture=false, pty=true)\n", "",
+  "ValueError: run(): pty=true precisa de capture=\"live\" ou capture=true (ninguem leria o terminal)", 1 },
+/* Um caractere de 4 bytes cortado entre duas leituras nao pode sair pela
+ * metade. O `read` espera o resto da sequencia chegar: devolver "" com o
+ * processo ainda escrevendo diria "acabou" no meio da palavra. */
+{ "run live: caractere de 4 bytes cortado entre dois read nao sai pela metade",
+  "import os\n"
+  "p = os.run([\"sh\", \"-c\", \"printf '\\\\360\\\\240'; sleep 0.3; printf '\\\\256\\\\267'\"], capture=\"live\")\n"
+  "a = p.read(10)\n"
+  "b = p.read(10)\n"
+  "post(len(a))\n"
+  "post(len(b))\n"
+  "post(a + b)\n"
+  "p.wait()\n", "1\n0\n\xf0\xa0\xae\xb7", NULL, 0 },
+{ "run live: using fecha os canais no fim do bloco",
+  "import os\n"
+  "using os.run([\"cat\"], capture=\"live\") as p {\n"
+  "    p.write(\"x\\n\")\n"
+  "    p.close()\n"
+  "    post(p.read(10).strip())\n"
+  "}\n"
+  "post(\"fim\")\n", "x\nfim", NULL, 0 },
+/* Defeitos que vinham junto com o fork de antes. */
+/* O bit do SIGPIPE (sinal 13) e o de valor 1 no QUARTO digito hexadecimal da
+ * direita pra esquerda da mascara `SigIgn`. A mascara INTEIRA nao serve de
+ * afirmacao: quem rodou a suite pode ter ignorado outro sinal (o `nohup`
+ * ignora o SIGHUP), e isso desce por heranca sem ter nada a ver com o motor. */
+{ "processo filho nao herda o SIGPIPE ignorado do motor",
+  "import os\n"
+  "r = os.run([\"cat\", \"/proc/self/status\"], capture=true)\n"
+  "sig = \"\"\n"
+  "for each l in r.split(\"\\n\") { if l.startswith(\"SigIgn\") { sig = l.split(\"\\t\")[1].strip() } }\n"
+  "post(sig[len(sig) - 4] in \"02468ace\")\n", "True", NULL, 0 },
+{ "processo filho nao herda os descritores abertos do motor",
+  "import os\n"
+  "import sockets\n"
+  "s = sockets.socket()\n"
+  "post(os.run([\"sh\", \"-c\", \"ls /proc/self/fd | wc -l\"], capture=true).strip())\n"
+  "s.close()\n", "4", NULL, 0 },
+
 /* ── L4c DO PLANO DAS CONTRADICOES: servicos, tabelas, metadata ──────────
  * (2026-09-12) Strings medidas no binario. */
 /* body/search sem conexao mandavam chamar .select(), que por si so falha. */

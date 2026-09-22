@@ -444,7 +444,8 @@ os.writeFile("@TMP@/os.txt", "a")
         ["os", "rmdir", 'os.rmdir("@TMP@/d1")'],
         ["os", "ls", 'os.ls("@TMP@")'],
         ["os", "cmd", 'os.cmd("true")', 'os.cmd("echo a", capture=true)'],
-        ["os", "run", 'os.run(["true"])', 'os.run(["echo", "a"], capture=true)'],
+        ["os", "run", 'os.run(["true"])', 'os.run(["echo", "a"], capture=true)',
+                      'os.run(["true"], capture="live")'],
         ["os", "code", 'os.code("@TMP@")'],
         ["os", "exists", 'os.exists("@TMP@")'],
         ["os", "isfile", 'os.isfile("@TMP@")'],
@@ -455,7 +456,26 @@ os.writeFile("@TMP@/os.txt", "a")
         ["os", "size", 'os.size("@TMP@/os.txt")'],
         ["os", "cwd", 'os.cwd()'],
         ["os", "chdir", 'os.chdir("@TMP@")'],
-        ["os", "environ", 'os.environ()', 'os.environ("HOME")', 'os.environ("MR_NAO_EXISTE")']
+        ["os", "environ", 'os.environ()', 'os.environ("HOME")', 'os.environ("MR_NAO_EXISTE")'],
+        # O processo VIVO (`capture="live"`). A ordem importa: `returncode` e
+        # Null enquanto roda e int depois do `wait`, entao um ainda rodando e
+        # outro ja terminado sao medidos juntos.
+        ["!", 'mr_p = os.run(["cat"], capture="live")'],
+        ["!", 'mr_p2 = os.run(["true"], capture="live")'],
+        ["!", 'mr_p2.wait()'],
+        ["Process", "pid", 'mr_p.pid'],
+        ["Process", "returncode", 'mr_p.returncode', 'mr_p2.returncode'],
+        ["Process", "write", 'mr_p.write("oi")'],
+        ["Process", "close", 'mr_p.close()'],
+        ["Process", "read", 'mr_p.read(10)'],
+        ["Process", "readline", 'mr_p.readline()'],
+        ["Process", "read_err", 'mr_p.read_err(10)'],
+        ["Process", "wait", 'mr_p.wait()'],
+        ["Process", "kill", 'mr_p.kill()'],
+        ["!", 'mr_pt = os.run(["sleep", "5"], capture="live", pty=true)'],
+        ["Process", "resize", 'mr_pt.resize(100, 40)'],
+        ["!", 'mr_pt.kill()'],
+        ["!", 'mr_pt.wait()']
     ]
 })
 

@@ -1149,9 +1149,12 @@ const Caso CASOS_DIFERENCIAL[] = {
 { "dif #378",
   "import hash\npost(hash.b64decode(\"Z\"))\n",
   "", "ValueError: Invalid base64-encoded string: number of data characters (1) cannot be 1 more than a multiple of 4", 1 },
+/* A frase mudou por decisao (2026-09-22): letra acentuada COLADA num nome
+ * passa a dizer a REGRA do identificador, nao so o sintoma. O `ç` solto
+ * (#380, abaixo) continua com "caractere inesperado". */
 { "dif #379",
   "x = fun\xc3\xa7" "ao(\n",
-  "", "SyntaxError: caractere inesperado: '\xc3\xa7'", 2 },
+  "", "SyntaxError: nome so aceita letra sem acento, digito e _: '\xc3\xa7'", 2 },
 { "dif #380",
   "x = \xc3\xa7\n",
   "", "SyntaxError: caractere inesperado: '\xc3\xa7'", 2 },

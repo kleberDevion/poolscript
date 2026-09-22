@@ -79,6 +79,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <termios.h>
+/* `os.run(..., pty=true)`: o filho num terminal de verdade. Na glibc >= 2.34
+ * (a distribuicao pede 2.38) o `forkpty` mora na propria libc — nao precisa de
+ * -lutil. O ioctl e pra `resize`. */
+#include <pty.h>
+#include <sys/ioctl.h>
 #include <string.h>
 
 #include "ps_lexer.h"
@@ -149,6 +154,7 @@ typedef enum {
     OBJ_BIGINT,    /* inteiro de precisão arbitrária (GMP mpz) — promovido no overflow */
     OBJ_FUTURO,    /* `async action` — resultado pendente de uma fibra */
     OBJ_SOCKET,    /* lib sockets — socket cru (TCP/UDP/UNIX) */
+    OBJ_PROCESSO,  /* os.run(..., capture="live") — o processo filho VIVO */
     OBJ_REGEX,     /* regex.compile() — padrao ja compilado (re.Pattern) */
     OBJ_CELULA,    /* caixa de uma variável capturada por action aninhada */
     OBJ_CLOSURE,   /* action aninhada + as células que ela capturou */
@@ -281,6 +287,25 @@ typedef struct {
     int    familia, tipo, proto;
     double timeout;    /* segundos; < 0 = bloqueante (Null, default) */
 } PSSocket;
+/* `os.run(args, capture="live")`: o processo filho VIVO. Escreve no stdin
+ * dele, lê a saída ENQUANTO ele roda, espera o código e mata.
+ *
+ * Com `pty=true` o filho roda num terminal de verdade: `fd_out` é o mestre do
+ * pty (leitura E escrita), `fd_err` é -1 — terminal tem um canal só, então o
+ * stderr do filho chega junto com o stdout, como no terminal do usuário. */
+typedef struct {
+    Obj    obj;
+    int    pid;
+    int    fd_in, fd_out, fd_err;   /* -1 = fechado */
+    int    eh_pty;
+    int    terminou;                /* 1 depois que o waitpid recolheu */
+    int    codigo;                  /* código de saída, ou -sinal */
+    /* O que já veio do filho e ainda não foi entregue. `readline` precisa
+     * guardar o resto da leitura, e um caractere UTF-8 cortado no meio de duas
+     * leituras fica aqui até completar — sair pela metade viraria lixo. */
+    char  *buf;    int nbuf, capbuf;
+    char  *buferr; int nbuferr, capbuferr;
+} PSProcesso;
 /* `regex.compile(padrao)`: o padrao COMPILADO uma vez e reusado — o mesmo
  * PSRegex que as funcoes do modulo compilam e jogam fora a cada chamada. */
 typedef struct {
@@ -309,7 +334,7 @@ enum { T_MET_STR = 0, T_MET_LIST, T_MET_DICT, T_MET_UNIV, T_MET_ARQ,
        T_MET_JINKER, T_MET_JCORS, T_MET_JREG, T_MET_JRESP, T_MET_JPROXY,
        T_MET_JUPLOAD, T_MET_JSOCKNS, T_MET_JEMIT, T_MET_JCHAN, T_MET_WSCONN,
        T_MET_QRBUILD, T_MET_QRIMAGE, T_MET_MPFILE,
-       T_MET_SOCKET, T_MET_REGEX, T_MET_TUPLA };
+       T_MET_SOCKET, T_MET_PROCESSO, T_MET_REGEX, T_MET_TUPLA };
 
 /* Módulo nativo: um nome e uma tabela de membros. Não tem estado, então o
  * objeto guarda só o índice do descritor — dois `import json` no mesmo
@@ -842,6 +867,8 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 #define EH_REGEX(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_REGEX)
 #define COMO_REGEX(v)  ((PSRegexObj *)(v).as.obj)
 #define COMO_SOCKET(v) ((PSSocket*)(v).as.obj)
+#define EH_PROCESSO(v)   ((v).t == V_OBJ && (v).as.obj->type == OBJ_PROCESSO)
+#define COMO_PROCESSO(v) ((PSProcesso*)(v).as.obj)
 #define EH_ARQUIVO(v)  ((v).t == V_OBJ && (v).as.obj->type == OBJ_ARQUIVO)
 #define COMO_ARQ(v)    ((PSArquivo*)(v).as.obj)
 #define EH_MODPS(v)    ((v).t == V_OBJ && (v).as.obj->type == OBJ_MODULO_PS)
@@ -1849,6 +1876,46 @@ static void fin_socket(VM *vm, Obj *o) {   /* fecha o que o usuário esqueceu */
     if (s->fd >= 0) close(s->fd);
 }
 
+/* Filhos que o programa largou sem esperar. Sem recolher, cada um vira ZUMBI
+ * na tabela de processos até o motor terminar. Não matamos ninguém: quem
+ * disparou pode querer que continue — só o status é recolhido, e só depois que
+ * o filho morreu por conta própria. */
+static int *g_proc_largados = NULL;
+static int  g_proc_nlargados = 0, g_proc_caplargados = 0;
+
+static void proc_recolhe_largados(void)
+{
+    for (int i = 0; i < g_proc_nlargados; ) {
+        if (waitpid(g_proc_largados[i], NULL, WNOHANG) != 0)
+            g_proc_largados[i] = g_proc_largados[--g_proc_nlargados];
+        else
+            i++;
+    }
+}
+
+static void proc_larga(int pid)
+{
+    proc_recolhe_largados();
+    if (waitpid(pid, NULL, WNOHANG) != 0) return;      /* já terminou */
+    if (g_proc_nlargados + 1 > g_proc_caplargados) {
+        int novo = g_proc_caplargados ? g_proc_caplargados * 2 : 8;
+        int *nv = realloc(g_proc_largados, sizeof(int) * (size_t)novo);
+        if (!nv) return;                               /* sem memória: só não recolhe */
+        g_proc_largados = nv; g_proc_caplargados = novo;
+    }
+    g_proc_largados[g_proc_nlargados++] = pid;
+}
+
+static void fin_processo(VM *vm, Obj *o) {
+    (void)vm;
+    PSProcesso *p = (PSProcesso *)o;
+    if (p->fd_in  >= 0) close(p->fd_in);
+    if (p->fd_out >= 0) close(p->fd_out);
+    if (p->fd_err >= 0) close(p->fd_err);
+    free(p->buf); free(p->buferr);
+    if (!p->terminou && p->pid > 0) proc_larga(p->pid);
+}
+
 static void fin_regex(VM *vm, Obj *o) {
     (void)vm;
     PSRegexObj *r = (PSRegexObj *)o;
@@ -1894,6 +1961,7 @@ static const GcInfo GC_INFO[OBJ__COUNT] = {
     [OBJ_GERADOR]    = { GC_FN,   0, gct_gerador, 0, fin_gerador },
     [OBJ_FUTURO]     = { GC_FN,   0, gct_futuro, sizeof(PSFuturo), NULL },   /* o libera_obj ANTIGO esquecia o alocado-= do futuro (leak de conta); agora conta */
     [OBJ_SOCKET]     = { GC_LEAF, 0, NULL, sizeof(PSSocket), fin_socket },
+    [OBJ_PROCESSO]   = { GC_LEAF, 0, NULL, sizeof(PSProcesso), fin_processo },
     [OBJ_REGEX]      = { GC_LEAF, 0, NULL, sizeof(PSRegexObj), fin_regex },
     [OBJ_ARQUIVO]    = { GC_LEAF, 0, NULL, 0, fin_arquivo },   /* globais vivem em vm->globals (raiz) */
     [OBJ_MODULO_PS]  = { GC_LEAF, 0, NULL, sizeof(PSModuloPS), fin_moduleps },
@@ -2752,6 +2820,12 @@ static int descreve_obj(const Value *v, char *buf, size_t cap)
                           sk->familia, sk->tipo, sk->proto, sk->fd);
             return 1;
         }
+        case OBJ_PROCESSO: {
+            PSProcesso *p = (PSProcesso *)v->as.obj;
+            if (p->terminou) snprintf(buf, cap, "<Process pid=%d returncode=%d>", p->pid, p->codigo);
+            else snprintf(buf, cap, "<Process pid=%d rodando%s>", p->pid, p->eh_pty ? " pty" : "");
+            return 1;
+        }
         case OBJ_JSOCKNS: {
             PSJSockNs *ns = (PSJSockNs *)v->as.obj;
             snprintf(buf, cap, "<SocketNamespace %s>",
@@ -2996,6 +3070,10 @@ static void escreve_valor(const Value *v, int dentro)
                 if (sk->fd < 0) fputs("<socket fechado>", stdout);
                 else printf("<socket family=%d type=%d proto=%d fd=%d>",
                             sk->familia, sk->tipo, sk->proto, sk->fd);
+            } else if (v->as.obj->type == OBJ_PROCESSO) {
+                PSProcesso *p = (PSProcesso *)v->as.obj;
+                if (p->terminou) printf("<Process pid=%d returncode=%d>", p->pid, p->codigo);
+                else printf("<Process pid=%d rodando%s>", p->pid, p->eh_pty ? " pty" : "");
             } else if (v->as.obj->type == OBJ_QRBUILD) {
                 fputs("<PoolQRCode>", stdout);
             } else if (v->as.obj->type == OBJ_QRIMAGE) {
@@ -3802,6 +3880,7 @@ static const char *const NOME_DE_OBJ[OBJ__COUNT] = {
     [OBJ_QRIMAGE]    = "QRImage",
     [OBJ_MANPU_FILE] = "ManpuFile",
     [OBJ_SOCKET]     = "socket",
+    [OBJ_PROCESSO]   = "Process",
     [OBJ_REGEX]      = "Pattern",
 };
 /* O registrador do jinker: um nome por kind, na ordem de JREG_MIDDLEWARE,
@@ -6572,6 +6651,7 @@ static int met_type(VM *vm, Value alvo, Value *args, int n, Value *out)
                 case OBJ_QRIMAGE:     t = "QRImage"; break;
                 case OBJ_MANPU_FILE:  t = "ManpuFile"; break;
                 case OBJ_SOCKET:      t = "socket"; break;
+                case OBJ_PROCESSO:    t = "Process"; break;
                 case OBJ_REGEX:       t = "Pattern"; break;
                 case OBJ__COUNT:      break;   /* sentinela: nunca ocorre */
             }
@@ -8764,6 +8844,27 @@ static const MetodoNat METODOS_SOCKET[] = {
     { "dup", met_sk_dup, NULL },
 };
 
+/* `os.run(args, capture="live")` — o processo filho vivo. `pid` e
+ * `returncode` são CAMPOS (sem parênteses): não fazem nada, só respondem. */
+static int met_pr_write(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_close(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_read(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_readline(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_read_err(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_wait(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_kill(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out);
+static const MetodoNat METODOS_PROCESSO[] = {
+    { "write", met_pr_write, "texto" },
+    { "close", met_pr_close, NULL },
+    { "read", met_pr_read, "n=4096" },
+    { "readline", met_pr_readline, NULL },
+    { "read_err", met_pr_read_err, "n=4096" },
+    { "wait", met_pr_wait, NULL },
+    { "kill", met_pr_kill, "sinal=15" },
+    { "resize", met_pr_resize, "colunas,linhas" },
+};
+
 static int met_qrb_add_data(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_qrb_make(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_qrb_make_image(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -8821,7 +8922,8 @@ static const MetodoNat *TABELAS[] = { METODOS_STR, METODOS_LIST, METODOS_DICT,
                                       METODOS_JSOCKNS, METODOS_JEMIT, METODOS_JCHAN,
                                       METODOS_WSCONN, METODOS_QRBUILD, METODOS_QRIMAGE,
                                       METODOS_MPFILE,
-                                      METODOS_SOCKET, METODOS_REGEX, METODOS_TUPLA };
+                                      METODOS_SOCKET, METODOS_PROCESSO,
+                                      METODOS_REGEX, METODOS_TUPLA };
 static const int TAM_TABELA[] = {
     N_METODOS_STR,
     (int)(sizeof(METODOS_LIST) / sizeof(METODOS_LIST[0])),
@@ -8855,6 +8957,7 @@ static const int TAM_TABELA[] = {
     (int)(sizeof(METODOS_QRIMAGE) / sizeof(METODOS_QRIMAGE[0])),
     (int)(sizeof(METODOS_MPFILE) / sizeof(METODOS_MPFILE[0])),
     (int)(sizeof(METODOS_SOCKET) / sizeof(METODOS_SOCKET[0])),
+    (int)(sizeof(METODOS_PROCESSO) / sizeof(METODOS_PROCESSO[0])),
     (int)(sizeof(METODOS_REGEX) / sizeof(METODOS_REGEX[0])),
     (int)(sizeof(METODOS_TUPLA) / sizeof(METODOS_TUPLA[0])),
 };
@@ -8900,6 +9003,7 @@ static int acha_metodo_valor(Value alvo, const char *nome, int *tab, int *idx)
     else if (EH_QRIMAGE(alvo)) qual = T_MET_QRIMAGE;
     else if (EH_MPFILE(alvo))  qual = T_MET_MPFILE;
     else if (EH_SOCKET(alvo))  qual = T_MET_SOCKET;
+    else if (EH_PROCESSO(alvo)) qual = T_MET_PROCESSO;
     else if (EH_REGEX(alvo))   qual = T_MET_REGEX;
     else return -1;
     for (int i = 0; i < TAM_TABELA[qual]; i++)
@@ -12875,6 +12979,77 @@ static int checa_exec_erro(VM *vm, int rfd, const char *prog)
 
 /* Lê tudo que o processo escreveu. `stdout` vazio cai pro `stderr`: comando
  * que falhou tem a mensagem lá, e devolver vazio esconderia o motivo. */
+static void proc_filho_limpa(int canal);   /* def. junto do processo vivo */
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);
+
+/* Drena os dois canos do filho e espera ele terminar. Roda numa THREAD (pelo
+ * `fib_offload`), então não toca na VM: só fds, SBuf e waitpid.
+ *
+ * OS DOIS CANOS AO MESMO TEMPO, com poll(). Antes era `while(read(stdout))`
+ * até o fim e SÓ DEPOIS o stderr. O cano tem 64 KB: um comando que escreve
+ * mais que isso no stderr antes de o stdout acabar trava o filho na escrita, o
+ * filho nunca fecha o stdout, e o pai fica esperando para sempre. Não é
+ * lentidão, é impasse — medido: 200 KB no stderr e o `pool` pendurou até o
+ * timeout matar.
+ *
+ * E o TETO: os dois buffers cresciam sem limite, então a saída inteira do
+ * comando virava RSS do processo. Instalar um pacote grande derrubava a
+ * máquina por falta de memória. Passando do teto, o erro diz o que fazer em
+ * vez de o sistema matar o processo. */
+typedef struct {
+    int    fds[2];
+    SBuf  *destino[2];
+    pid_t  pid;
+    int    st;
+    int    estourou;
+} DrenaProc;
+
+static void drena_proc_off(void *v)
+{
+    DrenaProc *d = (DrenaProc *)v;
+    char buf[65536];
+    int vivos = 2;
+    while (vivos > 0 && !d->estourou) {
+        struct pollfd pf[2];
+        int np = 0, idx[2];
+        for (int k = 0; k < 2; k++)
+            if (d->fds[k] >= 0) { pf[np].fd = d->fds[k]; pf[np].events = POLLIN; pf[np].revents = 0; idx[np] = k; np++; }
+        if (np == 0) break;
+        if (poll(pf, (nfds_t)np, -1) < 0) { if (errno == EINTR) continue; break; }
+        for (int j = 0; j < np; j++) {
+            if (!(pf[j].revents & (POLLIN | POLLHUP | POLLERR))) continue;
+            int k = idx[j];
+            ssize_t r = read(d->fds[k], buf, sizeof(buf));
+            if (r > 0) {
+                if (sb_bytes(d->destino[k], buf, (int)r) != 0) { d->estourou = 1; break; }
+            } else if (r == 0 || (r < 0 && errno != EINTR)) {
+                close(d->fds[k]); d->fds[k] = -1; vivos--;
+            }
+        }
+    }
+    /* Falta de memória de verdade: continua DRENANDO e jogando fora, senão o
+     * filho fica travado na escrita e o waitpid abaixo nunca volta —
+     * trocaríamos um impasse por outro. */
+    if (d->estourou)
+        for (int k = 0; k < 2; k++)
+            while (d->fds[k] >= 0) {
+                ssize_t r = read(d->fds[k], buf, sizeof(buf));
+                if (r > 0) continue;
+                if (r < 0 && errno == EINTR) continue;
+                close(d->fds[k]); d->fds[k] = -1; vivos--;
+            }
+    for (int k = 0; k < 2; k++) if (d->fds[k] >= 0) close(d->fds[k]);
+    waitpid(d->pid, &d->st, 0);
+}
+
+/* Espera um filho terminar sem travar as outras fibras. */
+typedef struct { pid_t pid; int st; } EsperaProc;
+static void espera_proc_off(void *v)
+{
+    EsperaProc *e = (EsperaProc *)v;
+    waitpid(e->pid, &e->st, 0);
+}
+
 static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
                          int capturar, Value *out)
 {
@@ -12889,10 +13064,11 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
         if (pid < 0) { close(ep[0]); close(ep[1]); BERRO(vm, "RuntimeError", "nao consegui criar processo"); }
         if (pid == 0) {
             close(ep[0]);
+            proc_filho_limpa(ep[1]);
             if (cmd_sh) execl("/bin/sh", "sh", "-c", cmd_sh, (char *)NULL);
             else        execvp(argv_[0], argv_);
             int err = errno;
-            if (write(ep[1], &err, sizeof(err)) < 0) { /* filho sai a seguir; nada a tratar */ }
+            if (write(3, &err, sizeof(err)) < 0) { /* filho sai a seguir; nada a tratar */ }
             _exit(127);
         }
         close(ep[1]);
@@ -12900,8 +13076,8 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
             int st; waitpid(pid, &st, 0);
             return -1;
         }
-        int st;
-        waitpid(pid, &st, 0);
+        EsperaProc e; e.pid = pid; e.st = 0;
+        fib_offload(vm, espera_proc_off, &e);   /* não trava as outras fibras */
         *out = MK_NULL();
         return 0;
     }
@@ -12916,10 +13092,11 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
         close(ep[0]);
         dup2(po[1], 1); dup2(pe[1], 2);
         close(po[0]); close(po[1]); close(pe[0]); close(pe[1]);
+        proc_filho_limpa(ep[1]);
         if (cmd_sh) execl("/bin/sh", "sh", "-c", cmd_sh, (char *)NULL);
         else        execvp(argv_[0], argv_);
         int err = errno;
-        if (write(ep[1], &err, sizeof(err)) < 0) { /* filho sai a seguir; nada a tratar */ }
+        if (write(3, &err, sizeof(err)) < 0) { /* filho sai a seguir; nada a tratar */ }
         _exit(127);
     }
     close(po[1]); close(pe[1]); close(ep[1]);
@@ -12944,43 +13121,16 @@ static int roda_processo(VM *vm, const char *cmd_sh, char *const *argv_,
      * comando virava RSS do processo. Instalar um pacote grande derrubava a
      * máquina por falta de memória. Passando do teto, o erro diz o que fazer
      * em vez de o sistema matar o processo. */
-    int fds[2] = { po[0], pe[0] };
-    SBuf *destino[2] = { &so, &se };
-    int vivos = 2;
-    int estourou = 0;
-    while (vivos > 0 && !estourou) {
-        struct pollfd pf[2];
-        int np = 0, idx[2];
-        for (int k = 0; k < 2; k++)
-            if (fds[k] >= 0) { pf[np].fd = fds[k]; pf[np].events = POLLIN; pf[np].revents = 0; idx[np] = k; np++; }
-        if (np == 0) break;
-        if (poll(pf, (nfds_t)np, -1) < 0) { if (errno == EINTR) continue; break; }
-        for (int j = 0; j < np; j++) {
-            if (!(pf[j].revents & (POLLIN | POLLHUP | POLLERR))) continue;
-            int k = idx[j];
-            ssize_t r = read(fds[k], buf, sizeof(buf));
-            if (r > 0) {
-                if (sb_bytes(destino[k], buf, (int)r) != 0) { estourou = 1; break; }
-            } else if (r == 0 || (r < 0 && errno != EINTR)) {
-                close(fds[k]); fds[k] = -1; vivos--;
-            }
-        }
-    }
-    /* Falta de memória de verdade: continua DRENANDO e jogando fora, senão o
-     * filho fica travado na escrita e o waitpid abaixo nunca volta —
-     * trocaríamos um impasse por outro. */
-    if (estourou)
-        for (int k = 0; k < 2; k++)
-            while (fds[k] >= 0) {
-                ssize_t r = read(fds[k], buf, sizeof(buf));
-                if (r > 0) continue;
-                if (r < 0 && errno == EINTR) continue;
-                close(fds[k]); fds[k] = -1; vivos--;
-            }
-    for (int k = 0; k < 2; k++) if (fds[k] >= 0) close(fds[k]);
-    int st;
-    waitpid(pid, &st, 0);
-    if (estourou) BERRO(vm, "MemoryError", "sem memoria");
+    (void)buf;
+    DrenaProc dp;
+    dp.fds[0] = po[0]; dp.fds[1] = pe[0];
+    dp.destino[0] = &so; dp.destino[1] = &se;
+    dp.pid = pid; dp.st = 0; dp.estourou = 0;
+    /* A espera CEDE: dentro do jinker ou de um `async`, esperar o comando
+     * terminar travava o worker inteiro — as outras requisições ficavam na
+     * fila atrás de um `os.cmd`. */
+    fib_offload(vm, drena_proc_off, &dp);
+    if (dp.estourou) BERRO(vm, "MemoryError", "sem memoria");
 
     SBuf *escolhido = &so;
     int fim = so.n;
@@ -13062,9 +13212,10 @@ static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
             if (neto == 0) {
                 close(cano[1]);
                 setsid();                 /* solta do terminal de quem chamou */
+                proc_filho_limpa(canoerr[1]);
                 execvp(vetor[0], vetor);
                 int e = errno;            /* execvp so volta em erro */
-                ssize_t ig = write(canoerr[1], &e, sizeof(e));
+                ssize_t ig = write(3, &e, sizeof(e));
                 (void)ig;
                 _exit(127);
             }
@@ -13092,10 +13243,396 @@ static int os_run_dispara(VM *vm, char **vetor, int capturar, Value *out)
     return roda_processo(vm, NULL, vetor, capturar, out);
 }
 
+/* ── o processo VIVO: `os.run(args, capture="live")` ──────────────────────
+ *
+ * Com `capture=false` o processo é disparado e some; com `capture=true` o
+ * programa espera e recebe o texto no fim. Nenhum dos dois serve pra um
+ * editor: não dá pra escrever no stdin do filho, ler o que ele já imprimiu,
+ * saber o código de saída nem matar. Este modo entrega o processo em si.
+ *
+ * Toda espera passa pelo `fib_offload`: dentro do jinker ou de um `async`,
+ * esperar o filho não trava as outras requisições. */
+
+static void fib_offload(VM *vm, void (*fn)(void *), void *arg);   /* def. junto do jinker */
+
+/* O que TODO filho faz entre o fork e o exec.
+ *
+ * 1. Nenhum descritor do motor atravessa o `exec`: o socket de escuta do
+ *    jinker, o epoll, a conexão de banco e todo arquivo aberto eram herdados
+ *    (medido: o filho via 5 descritores com um socket aberto aqui, e um filho
+ *    com `setsid` segurava a porta do servidor depois de ele sair). Marcar
+ *    CLOEXEC em cada `socket()`/`open()` não fecharia os que as libs de banco
+ *    abrem por conta própria; `closefrom` fecha todos de uma vez.
+ * 2. O SIGPIPE volta ao padrão: o motor o IGNORA, e o `exec` carrega o ignorar
+ *    pro filho — um `prog | head` dentro dele não morria no cano fechado.
+ *
+ * `canal` é o cano do erro de exec, o único que precisa sobreviver; ele vai
+ * pro descritor 3 e é marcado CLOEXEC, então o exec bem-sucedido o fecha
+ * sozinho e o pai lê EOF. */
+static void proc_filho_limpa(int canal)
+{
+    if (canal != 3) { dup2(canal, 3); }
+    fcntl(3, F_SETFD, FD_CLOEXEC);
+    closefrom(4);
+    signal(SIGPIPE, SIG_DFL);
+}
+
+/* Cresce `*buf` e acrescenta `n` bytes. 0 ok, -1 sem memória. */
+static int proc_buf_poe(char **buf, int *nbuf, int *cap, const char *dados, int n)
+{
+    if (*nbuf + n > *cap) {
+        int novo = *cap ? *cap : 4096;
+        while (novo < *nbuf + n) novo *= 2;
+        char *nv = realloc(*buf, (size_t)novo);
+        if (!nv) return -1;
+        *buf = nv; *cap = novo;
+    }
+    memcpy(*buf + *nbuf, dados, (size_t)n);
+    *nbuf += n;
+    return 0;
+}
+
+/* Quantos bytes do fim de `b` são um caractere UTF-8 CORTADO (sequência
+ * começada e ainda incompleta). Esses ficam guardados pro próximo `read`:
+ * entregar meio caractere devolveria lixo que nem `len` conta direito. */
+static int proc_sobra_utf8(const char *b, int n)
+{
+    for (int volta = 1; volta <= 3 && volta <= n; volta++) {
+        unsigned char c = (unsigned char)b[n - volta];
+        if ((c & 0xC0) == 0x80) continue;                 /* continuação */
+        int precisa = (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+        return precisa > volta ? volta : 0;
+    }
+    return 0;
+}
+
+typedef struct { int fd; char pedaco[4096]; ssize_t lidos; int err; } ProcLerOff;
+static void proc_ler_off(void *v)
+{
+    ProcLerOff *o = (ProcLerOff *)v;
+    o->lidos = read(o->fd, o->pedaco, sizeof(o->pedaco));
+    o->err = errno;
+}
+typedef struct { int pid; int st; int rc; } ProcEsperaOff;
+static void proc_espera_off(void *v)
+{
+    ProcEsperaOff *o = (ProcEsperaOff *)v;
+    o->rc = (int)waitpid(o->pid, &o->st, 0);
+}
+
+static PSProcesso *novo_processo(VM *vm, int pid, int fd_in, int fd_out, int fd_err, int eh_pty)
+{
+    PSProcesso *p = calloc(1, sizeof(PSProcesso));
+    if (!p) return NULL;
+    p->obj.type = OBJ_PROCESSO; p->obj.marked = 0;
+    p->obj.next = vm->objetos; vm->objetos = (Obj *)p;
+    p->pid = pid; p->fd_in = fd_in; p->fd_out = fd_out; p->fd_err = fd_err;
+    p->eh_pty = eh_pty; p->codigo = 0; p->terminou = 0;
+    vm->alocado += sizeof(PSProcesso);
+    return p;
+}
+
+/* Dispara `vetor` com canos (ou um pty) e devolve o objeto do processo. */
+static int os_run_vivo(VM *vm, char **vetor, int pty, Value *out)
+{
+    proc_recolhe_largados();
+    int ep[2];                                 /* cano do erro de exec */
+    if (pipe(ep) != 0) BERRO(vm, "IOError", "run(): nao consegui criar o cano (%s)", strerror(errno));
+    fcntl(ep[1], F_SETFD, FD_CLOEXEC);
+
+    int ent[2] = {-1,-1}, sai[2] = {-1,-1}, err[2] = {-1,-1};
+    int mestre = -1;
+    pid_t pid;
+    if (pty) {
+        struct winsize ws = { 24, 80, 0, 0 };
+        pid = forkpty(&mestre, NULL, NULL, &ws);
+        if (pid < 0) { close(ep[0]); close(ep[1]); BERRO(vm, "IOError", "run(): forkpty falhou (%s)", strerror(errno)); }
+    } else {
+        if (pipe(ent) != 0 || pipe(sai) != 0 || pipe(err) != 0) {
+            for (int i = 0; i < 2; i++) { if (ent[i] >= 0) close(ent[i]); if (sai[i] >= 0) close(sai[i]); if (err[i] >= 0) close(err[i]); }
+            close(ep[0]); close(ep[1]);
+            BERRO(vm, "IOError", "run(): nao consegui criar o cano (%s)", strerror(errno));
+        }
+        pid = fork();
+        if (pid < 0) {
+            close(ent[0]); close(ent[1]); close(sai[0]); close(sai[1]); close(err[0]); close(err[1]);
+            close(ep[0]); close(ep[1]);
+            BERRO(vm, "IOError", "run(): fork falhou (%s)", strerror(errno));
+        }
+    }
+    if (pid == 0) {
+        close(ep[0]);
+        if (!pty) {
+            dup2(ent[0], 0); dup2(sai[1], 1); dup2(err[1], 2);
+            close(ent[0]); close(ent[1]); close(sai[0]); close(sai[1]); close(err[0]); close(err[1]);
+        }
+        proc_filho_limpa(ep[1]);
+        execvp(vetor[0], vetor);
+        int e = errno;                    /* o cano do erro agora é o 3 */
+        ssize_t ig = write(3, &e, sizeof(e));
+        (void)ig;
+        _exit(127);
+    }
+    close(ep[1]);
+    if (!pty) { close(ent[0]); close(sai[1]); close(err[1]); }
+    int erro_exec = 0;
+    ssize_t le = read(ep[0], &erro_exec, sizeof(erro_exec));
+    close(ep[0]);
+    if (le == (ssize_t)sizeof(erro_exec)) {
+        if (!pty) { close(ent[1]); close(sai[0]); close(err[0]); }
+        else close(mestre);
+        int st; waitpid(pid, &st, 0);
+        BERRO(vm, "IOError", "run(): %s: %s", vetor[0], strerror(erro_exec));
+    }
+    PSProcesso *p = pty ? novo_processo(vm, (int)pid, mestre, mestre, -1, 1)
+                        : novo_processo(vm, (int)pid, ent[1], sai[0], err[0], 0);
+    if (!p) {
+        if (!pty) { close(ent[1]); close(sai[0]); close(err[0]); } else close(mestre);
+        BERRO(vm, "MemoryError", "sem memoria em run()");
+    }
+    *out = MK_OBJ(p);
+    return 0;
+}
+
+/* Lê uma vez do canal e guarda no buffer do lado certo. Devolve 1 quando
+ * chegou algo, 0 no fim do canal e -1 em erro (já com o erro levantado). */
+static int proc_enche(VM *vm, PSProcesso *p, int stderr_lado)
+{
+    int fd = stderr_lado ? p->fd_err : p->fd_out;
+    if (fd < 0) return 0;
+    ProcLerOff o; o.fd = fd; o.lidos = 0; o.err = 0;
+    fib_offload(vm, proc_ler_off, &o);         /* esperar o filho não trava as fibras */
+    if (o.lidos < 0) {
+        /* pty fechado do outro lado dá EIO: é o fim da saída, não erro */
+        if (o.err == EIO && p->eh_pty) return 0;
+        if (o.err == EINTR) return 1;
+        BERRO(vm, "IOError", "read(): %s", strerror(o.err));
+    }
+    if (o.lidos == 0) return 0;
+    int rc = stderr_lado
+        ? proc_buf_poe(&p->buferr, &p->nbuferr, &p->capbuferr, o.pedaco, (int)o.lidos)
+        : proc_buf_poe(&p->buf, &p->nbuf, &p->capbuf, o.pedaco, (int)o.lidos);
+    if (rc != 0) BERRO(vm, "MemoryError", "sem memoria em read()");
+    return 1;
+}
+
+/* Entrega até `n` bytes do buffer, sem cortar caractere UTF-8 no meio. */
+static int proc_entrega(VM *vm, PSProcesso *p, int stderr_lado, int n, Value *out)
+{
+    char **buf = stderr_lado ? &p->buferr : &p->buf;
+    int *nbuf = stderr_lado ? &p->nbuferr : &p->nbuf;
+    int quer = n < *nbuf ? n : *nbuf;
+    quer -= proc_sobra_utf8(*buf, quer);
+    if (quer < 0) quer = 0;
+    PSString *s = nova_string(vm, *buf, quer);
+    if (!s) MERRO(vm, "MemoryError", "sem memoria");
+    memmove(*buf, *buf + quer, (size_t)(*nbuf - quer));
+    *nbuf -= quer;
+    *out = MK_OBJ(s);
+    return 0;
+}
+
+static int proc_le(VM *vm, Value alvo, Value *args, int n, Value *out, int stderr_lado)
+{
+    if (n > 1) return erro_aridade(vm, stderr_lado ? "read_err" : "read", 0, 1, n);
+    int quanto = 4096;
+    if (n == 1) {
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "%s() argument 1 must be int, not %s",
+                                      stderr_lado ? "read_err" : "read", nome_do_tipo_valor(args[0]));
+        quanto = (int)args[0].as.i;
+        if (quanto < 0) quanto = 0;
+    }
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    /* Espera só até CHEGAR algo — o ponto do modo vivo é ver a saída enquanto
+     * o processo roda, não no fim. Com o buffer já cheio, entrega na hora.
+     *
+     * O laço existe pelo caractere CORTADO: se o que chegou é só o começo de
+     * uma sequência UTF-8, não há nada inteiro pra entregar, e devolver "" com
+     * o processo ainda escrevendo seria dizer "acabou" no meio da palavra. */
+    const char *buf = stderr_lado ? p->buferr : p->buf;
+    int *nbuf = stderr_lado ? &p->nbuferr : &p->nbuf;
+    for (;;) {
+        int tem = *nbuf < quanto ? *nbuf : quanto;
+        tem -= proc_sobra_utf8(buf, tem);
+        if (tem > 0 || quanto == 0) break;
+        int r = proc_enche(vm, p, stderr_lado);
+        if (r < 0) return -1;
+        if (r == 0) break;                      /* fim do canal */
+        buf = stderr_lado ? p->buferr : p->buf; /* o realloc pode ter mudado */
+    }
+    return proc_entrega(vm, p, stderr_lado, quanto, out);
+}
+
+static int met_pr_read(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    return proc_le(vm, alvo, args, n, out, 0);
+}
+
+static int met_pr_read_err(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    /* Com pty não existe canal separado: o terminal tem um só, e o stderr do
+     * filho já chegou junto no `read`. */
+    if (p->eh_pty) {
+        if (n > 1) return erro_aridade(vm, "read_err", 0, 1, n);
+        PSString *s = nova_string(vm, "", 0);
+        if (!s) MERRO(vm, "MemoryError", "sem memoria");
+        *out = MK_OBJ(s);
+        return 0;
+    }
+    return proc_le(vm, alvo, args, n, out, 1);
+}
+
+static int met_pr_readline(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) return erro_aridade(vm, "readline", 0, 0, n);
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    for (;;) {
+        for (int i = 0; i < p->nbuf; i++)
+            if (p->buf[i] == '\n') return proc_entrega(vm, p, 0, i + 1, out);
+        int r = proc_enche(vm, p, 0);
+        if (r < 0) return -1;
+        if (r == 0) return proc_entrega(vm, p, 0, p->nbuf, out);   /* fim: o que sobrou */
+    }
+}
+
+static int met_pr_write(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "write", 1);
+    if (!EH_STRING(args[0])) MERRO(vm, "TypeError", "write() argument 1 must be str, not %s",
+                                  nome_do_tipo_valor(args[0]));
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    if (p->fd_in < 0) MERRO(vm, "RuntimeError", "erro de execução: a entrada do processo ja foi fechada");
+    PSString *s = COMO_STRING(args[0]);
+    int escritos = 0;
+    while (escritos < s->len) {
+        ssize_t w = write(p->fd_in, s->chars + escritos, (size_t)(s->len - escritos));
+        if (w < 0) {
+            if (errno == EINTR) continue;
+            MERRO(vm, "IOError", "write(): %s", strerror(errno));
+        }
+        escritos += (int)w;
+    }
+    *out = MK_INT(escritos);
+    return 0;
+}
+
+static int met_pr_close(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args; (void)vm;
+    if (n != 0) return erro_aridade(vm, "close", 0, 0, n);
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    if (p->eh_pty) {
+        /* Terminal: fechar o mestre mataria a sessão e a saída que falta ler.
+         * O fim de entrada é o caractere de EOF (Ctrl+D), como no teclado. */
+        if (p->fd_in >= 0) { char eof = 4; ssize_t ig = write(p->fd_in, &eof, 1); (void)ig; }
+    } else if (p->fd_in >= 0) {
+        close(p->fd_in);
+        p->fd_in = -1;
+    }
+    *out = MK_BOOL(1);
+    return 0;
+}
+
+static int met_pr_wait(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)args;
+    if (n != 0) return erro_aridade(vm, "wait", 0, 0, n);
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    if (p->terminou) { *out = MK_INT(p->codigo); return 0; }
+    ProcEsperaOff o; o.pid = p->pid; o.st = 0; o.rc = 0;
+    fib_offload(vm, proc_espera_off, &o);
+    if (o.rc < 0) MERRO(vm, "IOError", "wait(): %s", strerror(errno));
+    p->terminou = 1;
+    /* Morto por sinal vira `-sinal`: `p.kill()` dá -15, e quem só olha "== 0"
+     * continua vendo que não terminou bem. */
+    p->codigo = WIFEXITED(o.st) ? WEXITSTATUS(o.st)
+              : WIFSIGNALED(o.st) ? -WTERMSIG(o.st) : 0;
+    *out = MK_INT(p->codigo);
+    return 0;
+}
+
+static int met_pr_kill(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    if (n > 1) return erro_aridade(vm, "kill", 0, 1, n);
+    int sinal = SIGTERM;
+    if (n == 1) {
+        if (args[0].t != V_INT) MERRO(vm, "TypeError", "kill() argument 1 must be int, not %s",
+                                      nome_do_tipo_valor(args[0]));
+        sinal = (int)args[0].as.i;
+    }
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    if (p->terminou) { *out = MK_BOOL(0); return 0; }
+    *out = MK_BOOL(kill((pid_t)p->pid, sinal) == 0);
+    return 0;
+}
+
+static int met_pr_resize(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    EXIGE_ARGS(vm, "resize", 2);
+    if (args[0].t != V_INT || args[1].t != V_INT)
+        MERRO(vm, "TypeError", "resize() argument %d must be int, not %s",
+              args[0].t != V_INT ? 1 : 2, nome_do_tipo_valor(args[0].t != V_INT ? args[0] : args[1]));
+    PSProcesso *p = COMO_PROCESSO(alvo);
+    if (!p->eh_pty)
+        MERRO(vm, "RuntimeError", "erro de execução: resize() so vale com pty=true (sem terminal nao ha tamanho)");
+    struct winsize ws;
+    ws.ws_col = (unsigned short)args[0].as.i;
+    ws.ws_row = (unsigned short)args[1].as.i;
+    ws.ws_xpixel = 0; ws.ws_ypixel = 0;
+    if (ioctl(p->fd_out, TIOCSWINSZ, &ws) != 0) MERRO(vm, "IOError", "resize(): %s", strerror(errno));
+    kill((pid_t)p->pid, SIGWINCH);             /* o filho redesenha */
+    *out = MK_BOOL(1);
+    return 0;
+}
+
+/* `capture=true, pty=true`: roda no terminal e devolve o texto no fim. Serve
+ * pra programa que muda de saída quando não está num terminal (cor, barra de
+ * progresso, pergunta). Um terminal tem um canal só, então stdout e stderr
+ * chegam juntos. */
+static int os_run_captura_pty(VM *vm, char **vetor, Value *out)
+{
+    Value vp;
+    if (os_run_vivo(vm, vetor, 1, &vp) != 0) return -1;
+    /* A leitura CEDE (fib_offload): sem fixar, o GC poderia coletar o processo
+     * recém-criado enquanto outra fibra roda. */
+    if (fixa_raiz(vm, vp) != 0) BERRO(vm, "RuntimeError", "estouro da pilha");
+    PSProcesso *p = COMO_PROCESSO(vp);
+    for (;;) {
+        int r = proc_enche(vm, p, 0);
+        if (r < 0) { vm->sp--; return -1; }
+        if (r == 0) break;
+    }
+    ProcEsperaOff o; o.pid = p->pid; o.st = 0; o.rc = 0;
+    fib_offload(vm, proc_espera_off, &o);
+    p->terminou = 1;
+    p->codigo = WIFEXITED(o.st) ? WEXITSTATUS(o.st) : WIFSIGNALED(o.st) ? -WTERMSIG(o.st) : 0;
+    if (p->fd_out >= 0) { close(p->fd_out); p->fd_out = -1; p->fd_in = -1; }
+    /* mesma aparação do `capture=true` de sempre */
+    int fim = p->nbuf;
+    while (fim > 0 && (p->buf[fim-1] == '\n' || p->buf[fim-1] == ' '
+                       || p->buf[fim-1] == '\t' || p->buf[fim-1] == '\r')) fim--;
+    int ini = 0;
+    while (ini < fim && (p->buf[ini] == '\n' || p->buf[ini] == ' ')) ini++;
+    int rc = devolve_texto(vm, out, p->buf ? p->buf + ini : "", fim - ini);
+    vm->sp--;
+    return rc;
+}
+
 static int mod_os_run(VM *vm, Value *args, int n, Value *out)
 {
-    if (n < 1 || n > 2) return erro_aridade(vm, "run", 1, 2, n);
-    int capturar = (n == 2) && val_truthy(&args[1]);
+    if (n < 1 || n > 3) return erro_aridade(vm, "run", 1, 3, n);
+    /* `capture="live"` devolve o PROCESSO; os outros dois modos não mudam. */
+    int vivo = (n >= 2) && EH_STRING(args[1]) && strcmp(COMO_STRING(args[1])->chars, "live") == 0;
+    if (n >= 2 && EH_STRING(args[1]) && !vivo)
+        BERRO(vm, "ValueError", "run(): capture de texto so aceita \"live\" (veio \"%.20s\")",
+              COMO_STRING(args[1])->chars);
+    int capturar = !vivo && (n >= 2) && val_truthy(&args[1]);
+    int pty = (n == 3) && val_truthy(&args[2]);
+    if (pty && !vivo && !capturar)
+        BERRO(vm, "ValueError",
+              "run(): pty=true precisa de capture=\"live\" ou capture=true (ninguem leria o terminal)");
     char **vetor = NULL;
     char *copia = NULL;
     int q = 0, cap = 0;
@@ -13143,7 +13680,9 @@ static int mod_os_run(VM *vm, Value *args, int n, Value *out)
         if (vazio) BERRO(vm, "TypeError", "run() sem comando");
         BERRO(vm, "MemoryError", "sem memoria em run()");
     }
-    int rc = os_run_dispara(vm, vetor, capturar, out);
+    int rc = vivo ? os_run_vivo(vm, vetor, pty, out)
+           : (capturar && pty) ? os_run_captura_pty(vm, vetor, out)
+           : os_run_dispara(vm, vetor, capturar, out);
     free(vetor); free(copia);
     return rc;
 }
@@ -13167,11 +13706,21 @@ static int mod_os_code(VM *vm, Value *args, int n, Value *out)
             char bin[2048];
             snprintf(bin, sizeof(bin), "%s/%s", dir, EDITORES[i]);
             if (access(bin, X_OK) != 0) continue;
-            pid_t pid = fork();
-            if (pid == 0) {
-                execl(bin, EDITORES[i], alvo, (char *)NULL);
-                _exit(127);
+            /* Fork DUPLO, como o `run` em segundo plano: o filho do meio sai
+             * na hora e o editor é adotado pelo init. Com um fork só, o editor
+             * ficava ZUMBI na tabela de processos até o programa terminar —
+             * ninguém chamava `waitpid` por ele. */
+            pid_t meio = fork();
+            if (meio == 0) {
+                if (fork() == 0) {
+                    setsid();
+                    proc_filho_limpa(2);   /* sem cano de erro: o 3 nasce fechado */
+                    execl(bin, EDITORES[i], alvo, (char *)NULL);
+                    _exit(127);
+                }
+                _exit(0);
             }
+            if (meio > 0) waitpid(meio, NULL, 0);
             char msg[64];
             int k = snprintf(msg, sizeof(msg), "Abrindo %s...", EDITORES[i]);
             return devolve_texto(vm, out, msg, k);
@@ -13198,7 +13747,8 @@ static const MembroMod MOD_OS[] = {
     { "readFile", mod_os_readfile, 0, "path,encoding" }, { "writeFile", mod_os_writefile, 0, "path,content,encoding" },
     { "warn", mod_os_warn, 0, "text,color" }, { "ipmach", mod_os_ipmach, 0, NULL },
     { "mkdir", mod_os_mkdir, 0, "path,exist_ok" }, { "rmdir", mod_os_rmdir, 0, "path,force" }, { "ls", mod_os_ls, 0, "path" },
-    { "cmd", mod_os_cmd, 0, "command,capture" }, { "run", mod_os_run, 0, "args,capture" },
+    { "cmd", mod_os_cmd, 0, "command,capture=false" },
+    { "run", mod_os_run, 0, "args,capture=false,pty=false" },
     { "code", mod_os_code, 0, "path" },
     { "exists", mod_os_exists, 0, "path" }, { "isfile", mod_os_isfile, 0, "path" }, { "isdir", mod_os_isdir, 0, "path" },
     { "rename", mod_os_rename, 0, "src,dst" }, { "copy", mod_os_copy, 0, "src,dst" }, { "move", mod_os_move, 0, "src,dst" },
@@ -25495,6 +26045,16 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 if (strcmp(nome, "type") == 0)   { stack[sp - 1] = MK_INT(sk->tipo); break; }
                 if (strcmp(nome, "proto") == 0)  { stack[sp - 1] = MK_INT(sk->proto); break; }
             }
+            if (EH_PROCESSO(alvo)) {
+                /* `pid` e `returncode` são CAMPOS (sem parêntese): não fazem
+                 * nada, só respondem. `returncode` é Null enquanto roda. */
+                PSProcesso *pr = COMO_PROCESSO(alvo);
+                if (strcmp(nome, "pid") == 0) { stack[sp - 1] = MK_INT(pr->pid); break; }
+                if (strcmp(nome, "returncode") == 0) {
+                    stack[sp - 1] = pr->terminou ? MK_INT(pr->codigo) : MK_NULL();
+                    break;
+                }
+            }
             if (EH_REGEX(alvo)) {
                 /* `.pattern` é CAMPO (sem parêntese), como no re.Pattern */
                 PSRegexObj *rxo = COMO_REGEX(alvo);
@@ -25810,6 +26370,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (EH_SOCKET(v)) {
                 PSSocket *sk = COMO_SOCKET(v);
                 if (sk->fd >= 0) { close(sk->fd); sk->fd = -1; }
+            }
+            if (EH_PROCESSO(v)) {
+                /* fecha os canais; o filho segue vivo se quiser — quem quer
+                 * esperar chama `wait()` dentro do bloco */
+                PSProcesso *pr = COMO_PROCESSO(v);
+                if (pr->fd_in >= 0 && pr->fd_in != pr->fd_out) close(pr->fd_in);
+                if (pr->fd_out >= 0) close(pr->fd_out);
+                if (pr->fd_err >= 0) close(pr->fd_err);
+                pr->fd_in = pr->fd_out = pr->fd_err = -1;
             }
             if (EH_ARQUIVO(v)) {
                 PSArquivo *a = COMO_ARQ(v);
@@ -28071,6 +28640,8 @@ static const struct { const char *dono; const char *campo; } CAMPOS[] = {
     { "PoolFileUpload", "ext" },
     { "PoolFileUpload", "name" },
     { "PoolFileUpload", "size" },
+    { "Process", "pid" },
+    { "Process", "returncode" },
     { "QRImage", "name" },
     /* Os nove abaixo o OP_GET_MEMBER sempre serviu e a tabela não dizia: o
      * editor não os oferecia, e o checador de tipos (que recusa membro que o
@@ -28193,6 +28764,7 @@ static const char *jm_rotulo_tabela(int t)
         case T_MET_QRIMAGE:   return "QRImage";
         case T_MET_MPFILE:    return "ManpuFile";
         case T_MET_SOCKET:    return "socket";
+        case T_MET_PROCESSO:  return "Process";
         case T_MET_REGEX:     return "Pattern";
         default:              return NULL;
     }
@@ -28567,6 +29139,23 @@ static void erro_de_compilacao(const PSPrograma *prog, PSErroExec *e)
     e->ntipos = prog->nerros_tipo;
 }
 
+/* Copia os erros de sintaxe pra lista que o `--check` publica. O JSON já tinha
+ * `erros` pros erros de tipo; sintaxe passa a usar a mesma. */
+static void verifica_erros_sintaxe(PSErroExec *e, const PSAviso *erros, int32_t n)
+{
+    if (n <= 0) return;
+    struct PSErroTipoExec *v = calloc((size_t)n, sizeof(*v));
+    if (!v) return;
+    for (int32_t i = 0; i < n; i++) {
+        snprintf(v[i].classe, sizeof(v[i].classe), "SyntaxError");
+        snprintf(v[i].msg, sizeof(v[i].msg), "%s", erros[i].msg);
+        v[i].linha = erros[i].linha;
+        v[i].col = erros[i].col;
+    }
+    e->tipos = v;
+    e->ntipos = n;
+}
+
 int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e,
                       PSAviso **avisos, int32_t *navisos)
 {
@@ -28576,12 +29165,18 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
     if (avisos) *avisos = NULL;
     if (navisos) *navisos = 0;
 
-    PSTokenList *toks = ps_lexer_tokenize(fonte, len);
+    /* Modo de RECUPERAÇÃO: o `--check` é o que o editor roda a cada tecla, e
+     * listar UM erro por vez faz consertar em fila indiana. O lexer e o parser
+     * seguem depois do erro e devolvem TODOS — os de sintaxe vão em `e->tipos`,
+     * a mesma lista que os de tipo já usavam. Rodar o programa não passa por
+     * aqui e continua parando no primeiro erro. */
+    PSTokenList *toks = ps_lexer_tokenize_modo(fonte, len, 0, 1);
     if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
-    if (!toks->ok) {
+    if (toks->nerros > 0) {
         e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
-        e->linha = toks->erro_linha; e->col = toks->erro_col;
+        snprintf(e->msg, sizeof(e->msg), "%s", toks->erros[0].msg);
+        e->linha = toks->erros[0].linha; e->col = toks->erros[0].col;
+        verifica_erros_sintaxe(e, toks->erros, toks->nerros);
         ps_lexer_free(toks);
         return -1;
     }
@@ -28595,13 +29190,22 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
             *navisos = toks->navisos;
         }
     }
-    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    PSParseResult *r = ps_parse_modo(toks->tokens, toks->n, 1);
     ps_lexer_free(toks);
     if (!r) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!r->ok) {
         e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
-        e->linha = r->erro_linha; e->col = r->erro_col;
+        /* o PRIMEIRO da lista, não o último: recuperando, cada erro novo
+         * sobrescreve o campo simples do parser */
+        const char *msg = r->nerros > 0 ? r->erros[0].msg : r->erro;
+        snprintf(e->msg, sizeof(e->msg), "%s", msg);
+        e->linha = r->nerros > 0 ? r->erros[0].linha : r->erro_linha;
+        e->col   = r->nerros > 0 ? r->erros[0].col   : r->erro_col;
+        verifica_erros_sintaxe(e, r->erros, r->nerros);
+        /* A conferência de TIPO não roda com a sintaxe quebrada: o statement
+         * descartado leva junto os nomes que ele ligava, e cada uso deles
+         * viraria um "name is not defined" que não existe — erro na causa, não
+         * na cascata. */
         ps_parse_free(r);
         return -1;
     }

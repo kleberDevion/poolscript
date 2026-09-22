@@ -347,8 +347,8 @@ Comandos do binário que existem pra servir o editor:
 | Comando | Devolve |
 |---|---|
 | `pool --metadata` | módulos, tipos e métodos, das tabelas do VM |
-| `pool --tokens [arq]` | tokens do lexer, com posição e tamanho |
-| `pool --ast [arq]` | a árvore do parser em JSON |
+| `pool --tokens [arq]` | `{"tokens":[…],"erros":[…]}` — tokens do lexer, com posição e tamanho |
+| `pool --ast [arq]` | a árvore do parser em JSON, com `erros` quando há |
 | `pool --contexto L:C [arq]` | o que o cursor toca naquela posição |
 | `pool --check [arq]` | o erro de compilação em JSON, com linha e coluna |
 | `pool --check --path <arq>` | o mesmo, para um buffer não salvo que VALE como aquele arquivo |
@@ -371,6 +371,22 @@ printf 'import util\nutil.naoexiste()\n' | pool --check --path src/main.pr
 `from x import *`. A exceção conhecida: módulo GERADO em tempo de execução (o
 programa escreve o `.pr` e depois importa) é acusado pelo checador, porque
 antes de rodar o arquivo não existe.
+
+**Código pela metade.** Enquanto se digita, o arquivo passa a maior parte do
+tempo inválido — e é exatamente aí que o editor precisa de resposta. Os
+comandos de editor **não param no primeiro erro**:
+
+- `--tokens` devolve os tokens das linhas boas; o trecho que o lexer não
+  entendeu vira um token `ERRO`, e a lista `erros` diz o que sublinhar. String
+  sem fechar vale até o fim da linha.
+- `--ast` devolve a árvore INTEIRA, com o que vem depois do erro: o statement
+  quebrado é registrado em `erros` e o parser segue no próximo.
+- `--check` lista TODOS os erros de sintaxe em `erros`, como já fazia com os de
+  tipo. Com sintaxe quebrada, a conferência de tipo não roda: o statement
+  descartado levaria junto os nomes que ele liga, e cada uso viraria um "name
+  is not defined" que não existe.
+
+Rodar o programa (`pool arquivo.pr`) não muda: o primeiro erro para.
 
 **Unidade das posições.** Linha e coluna começam em 1 e contam CARACTERE (code
 point), não byte nem unidade UTF-16. O protocolo LSP conta UTF-16, então o

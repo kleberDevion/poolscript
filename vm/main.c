@@ -632,9 +632,10 @@ static int cmd_check(const char *arquivo, const char *como)
     printf(",\"msg\":");
     json_str(e.msg);
     printf(",\"linha\":%d,\"coluna\":%d", e.linha, e.col);
-    /* Tipagem estática: a lista INTEIRA (o primeiro também vai nos campos de
-     * cima, que o editor já lia). */
-    if (e.tipo == PS_ERRO_TIPO && e.ntipos > 0) {
+    /* A lista INTEIRA (o primeiro também vai nos campos de cima, que o editor
+     * já lia): erros de tipo, e agora também os de SINTAXE — o parser não para
+     * mais no primeiro, então dá pra sublinhar todos de uma vez. */
+    if ((e.tipo == PS_ERRO_TIPO || e.tipo == PS_ERRO_SINTAXE) && e.ntipos > 0) {
         printf(",\"erros\":[");
         for (int i = 0; i < e.ntipos; i++) {
             if (i) putchar(',');
@@ -784,7 +785,12 @@ static void jsonf(const char *chave, const char *valor)
  * byte); INDENT/DEDENT/NEWLINE saem com `n` 0, porque não ocupam texto — quem
  * pinta ignora, quem precisa da ESTRUTURA (converter de bloco, por exemplo)
  * usa. Comentário entra como "COMMENT" — o compilador descarta, o realce
- * precisa. NUNCA executa o código: só tokeniza. */
+ * precisa. NUNCA executa o código: só tokeniza.
+ *
+ * A saída é um OBJETO, `{"tokens":[…],"erros":[…]}`: era um array puro, e com
+ * erro de lexer vinha `[]` — o arquivo inteiro perdia a cor por causa de um
+ * caractere. Agora o trecho ruim vira um token `ERRO`, os tokens das linhas
+ * boas continuam vindo, e `erros` (só quando há) diz o que sublinhar. */
 static int json_escapa(FILE *f, const char *s, int n)
 {
     for (int i = 0; i < n; i++) {
@@ -804,21 +810,15 @@ static int cmd_tokens(const char *arquivo)
     size_t tam = 0;
     char *fonte = le_fonte_editor(arquivo, &tam);
     if (!fonte) { printf("[]\n"); return 1; }
-    PSTokenList *tl = ps_lexer_tokenize_editor(fonte, tam);
+    /* Modo de RECUPERAÇÃO: o trecho que o lexer não entendeu vira um token
+     * `ERRO` e a análise segue. Antes, um caractere estranho no meio do
+     * arquivo fazia isto devolver `[]` — e como o arquivo passa a maior parte
+     * do tempo inválido enquanto se digita, a tela inteira perdia a cor. Os
+     * erros saem em `erros`, depois da lista. */
+    PSTokenList *tl = ps_lexer_tokenize_modo(fonte, tam, 1, 1);
     if (!tl) { free(fonte); printf("[]\n"); return 1; }
-    /* Lexer que ERROU não entrega lista confiável: os tokens param no ponto do
-     * erro e quem consome (o realce, o conversor de bloco) acabaria decidindo
-     * com dado pela metade. Vazio + código 1 diz "não dá", em vez de mentir. */
-    if (!tl->ok) {
-        fprintf(stderr, "pool --tokens: %s (linha %d, coluna %d)\n",
-                tl->erro, tl->erro_linha, tl->erro_col);
-        printf("[]\n");
-        ps_lexer_free(tl);
-        free(fonte);
-        return 1;
-    }
 
-    fputc('[', stdout);
+    fputs("{\"tokens\":[", stdout);
     int primeiro = 1;
     for (int32_t i = 0; i < tl->n; i++) {
         const PSToken *t = &tl->tokens[i];
@@ -837,10 +837,22 @@ static int cmd_tokens(const char *arquivo)
         if (t->texto) json_escapa(stdout, t->texto, t->texto_len);
         fputs("\"}", stdout);
     }
-    fputs("]\n", stdout);
+    fputc(']', stdout);
+    if (tl->nerros > 0) {
+        printf(",\"erros\":[");
+        for (int32_t i = 0; i < tl->nerros; i++) {
+            if (i) putchar(',');
+            printf("{\"msg\":");
+            json_str(tl->erros[i].msg);
+            printf(",\"linha\":%d,\"coluna\":%d}", tl->erros[i].linha, tl->erros[i].col);
+        }
+        putchar(']');
+    }
+    fputs("}\n", stdout);
+    int rc = tl->nerros > 0 ? 1 : 0;
     ps_lexer_free(tl);
     free(fonte);
-    return 0;
+    return rc;
 }
 
 /* ── `--ast`: a ÁRVORE, em JSON, pro editor ──────────────────────────────
@@ -956,30 +968,49 @@ static int cmd_ast(const char *arquivo)
     char *fonte = le_fonte_editor(arquivo, &tam);
     if (!fonte) { printf("{\"ok\":false,\"msg\":\"sem entrada\"}\n"); return 1; }
 
-    PSTokenList *tl = ps_lexer_tokenize(fonte, tam);
+    /* Modo de RECUPERAÇÃO nos dois: o lexer não para no caractere estranho e o
+     * parser não para no primeiro erro de sintaxe — o statement quebrado é
+     * registrado e ele pula pro próximo. Sem isso a árvore acabava na linha do
+     * erro, e o painel de estrutura do editor esvaziava dali pra baixo
+     * justamente enquanto se digita. Os erros saem em `erros`. */
+    PSTokenList *tl = ps_lexer_tokenize_modo(fonte, tam, 0, 1);
     free(fonte);
-    if (!tl || !tl->ok) {
-        printf("{\"ok\":false,\"tipo\":\"SyntaxError\",\"msg\":\"");
-        if (tl) json_escapa(stdout, tl->erro, (int)strlen(tl->erro));
-        printf("\",\"linha\":%d,\"coluna\":%d,\"arvore\":null}\n",
-               tl ? tl->erro_linha : 0, tl ? tl->erro_col : 0);
-        if (tl) ps_lexer_free(tl);
-        return 1;
-    }
-    PSParseResult *r = ps_parse(tl->tokens, tl->n);
-    ps_lexer_free(tl);
-    if (!r) { printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
+    if (!tl) { printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
+    PSParseResult *r = ps_parse_modo(tl->tokens, tl->n, 1);
+    if (!r) { ps_lexer_free(tl); printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
 
-    if (!r->ok) {
+    int nerros = tl->nerros + r->nerros;
+    if (nerros > 0) {
+        /* o primeiro erro continua nos campos de cima, como o editor já lia */
+        const char *msg = tl->nerros > 0 ? tl->erros[0].msg : r->erros[0].msg;
+        int32_t l = tl->nerros > 0 ? tl->erros[0].linha : r->erros[0].linha;
+        int32_t c = tl->nerros > 0 ? tl->erros[0].col : r->erros[0].col;
         printf("{\"ok\":false,\"tipo\":\"SyntaxError\",\"msg\":\"");
-        json_escapa(stdout, r->erro, (int)strlen(r->erro));
-        printf("\",\"linha\":%d,\"coluna\":%d,\"arvore\":", r->erro_linha, r->erro_col);
+        json_escapa(stdout, msg, (int)strlen(msg));
+        printf("\",\"linha\":%d,\"coluna\":%d,\"erros\":[", l, c);
+        int primeiro = 1;
+        for (int32_t i = 0; i < tl->nerros; i++) {
+            if (!primeiro) putchar(',');
+            primeiro = 0;
+            printf("{\"msg\":");
+            json_str(tl->erros[i].msg);
+            printf(",\"linha\":%d,\"coluna\":%d}", tl->erros[i].linha, tl->erros[i].col);
+        }
+        for (int32_t i = 0; i < r->nerros; i++) {
+            if (!primeiro) putchar(',');
+            primeiro = 0;
+            printf("{\"msg\":");
+            json_str(r->erros[i].msg);
+            printf(",\"linha\":%d,\"coluna\":%d}", r->erros[i].linha, r->erros[i].col);
+        }
+        printf("],\"arvore\":");
     } else {
         printf("{\"ok\":true,\"arvore\":");
     }
     ast_json(stdout, r->programa);
     fputs("}\n", stdout);
-    int rc = r->ok ? 0 : 1;
+    int rc = nerros > 0 ? 1 : 0;
+    ps_lexer_free(tl);
     ps_parse_free(r);
     return rc;
 }

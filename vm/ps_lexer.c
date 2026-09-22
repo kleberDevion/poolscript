@@ -115,6 +115,9 @@ typedef struct {
     /* 1 = guarda os comentários como T_COMMENT, pro realce do editor. O
      * caminho do compilador roda com 0 e continua descartando. */
     int         marca_comentarios;
+    /* 1 = SEGUE depois do erro (modo dos comandos de editor): o trecho ruim
+     * vira um token T_ERRO, o erro entra na lista e a análise continua. */
+    int         recupera;
 
     PSTokenList *out;
 } Lexer;
@@ -151,8 +154,27 @@ static void avanca1(Lexer *lx)
     lx->pos++;
 }
 
+/* Guarda o erro na LISTA (modo de recuperação). Sem memória, só não guarda —
+ * perder a linha do segundo erro é melhor que derrubar a análise. */
+static void erro_na_lista(Lexer *lx, const char *msg, int32_t l, int32_t c)
+{
+    PSTokenList *o = lx->out;
+    if (o->nerros >= 64) return;             /* arquivo ruim não vira enxurrada */
+    if (o->nerros >= o->cap_erros) {
+        int32_t nc = o->cap_erros ? o->cap_erros * 2 : 8;
+        PSAviso *nv = realloc(o->erros, sizeof(PSAviso) * (size_t)nc);
+        if (!nv) return;
+        o->erros = nv; o->cap_erros = nc;
+    }
+    snprintf(o->erros[o->nerros].msg, sizeof(o->erros[o->nerros].msg), "%s", msg);
+    o->erros[o->nerros].linha = l;
+    o->erros[o->nerros].col = c;
+    o->nerros++;
+}
+
 static void erro(Lexer *lx, const char *msg)
 {
+    erro_na_lista(lx, msg, lx->linha, lx->col);
     if (!lx->out->ok) return;          /* preserva o primeiro erro */
     lx->out->ok = 0;
     snprintf(lx->out->erro, sizeof(lx->out->erro), "%s", msg);
@@ -182,6 +204,7 @@ static void aviso_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
 
 static void erro_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
 {
+    erro_na_lista(lx, msg, l, c);
     if (!lx->out->ok) return;
     lx->out->ok = 0;
     snprintf(lx->out->erro, sizeof(lx->out->erro), "%s", msg);
@@ -487,15 +510,26 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
             return;
         }
         if (c == '\n') {
-            free(bf.b);
             erro(lx, "string nao fechada antes da quebra de linha");
+            /* RECUPERAÇÃO: a string vale até o fim da linha e vira token. Sem
+             * isto o realce perdia a linha inteira, e é assim que uma string
+             * fica na maior parte do tempo em que se digita. */
+            if (lx->recupera) {
+                PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
+                if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
+            }
+            free(bf.b);
             return;
         }
         if (buf_push(&bf, c) != 0) { free(bf.b); erro(lx, "sem memoria"); return; }
         avanca1(lx);
     }
-    free(bf.b);
     erro_em(lx, "string nao fechada ate o fim do arquivo", l0, c0);
+    if (lx->recupera) {
+        PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
+        if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
+    }
+    free(bf.b);
 }
 
 static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int bytes, int32_t c_tok)
@@ -797,15 +831,18 @@ static int le_operador(Lexer *lx)
 }
 
 /* ── laço principal ─────────────────────────────────────────────────────── */
-static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios);
+static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios, int recupera);
 
 PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len)
-{ return tokeniza(fonte, len, 0); }
+{ return tokeniza(fonte, len, 0, 0); }
 
 PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len)
-{ return tokeniza(fonte, len, 1); }
+{ return tokeniza(fonte, len, 1, 0); }
 
-static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
+PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len, int comentarios, int recupera)
+{ return tokeniza(fonte, len, comentarios, recupera); }
+
+static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios, int recupera)
 {
     PSTokenList *out = calloc(1, sizeof(PSTokenList));
     if (!out) return NULL;
@@ -821,6 +858,7 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
     lx.nindent = 1;
     lx.out = out;
     lx.marca_comentarios = com_comentarios;
+    lx.recupera = recupera;
 
     /* espaços iniciais da primeira linha não geram INDENT */
     while (lx.pos < lx.len && (lx.src[lx.pos] == ' ' || lx.src[lx.pos] == '\t')) {
@@ -840,7 +878,7 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
         col0 = lx.col; lin0 = lx.linha; n0 = out->n;                          \
     } while (0)
 
-    while (lx.pos < lx.len && out->ok) {
+    while (lx.pos < lx.len && (out->ok || lx.recupera)) {
         FECHA_SPAN();
         char c = lx.src[lx.pos];
 
@@ -888,21 +926,50 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios)
             unsigned char b0 = (unsigned char)c;
             int nb = b0 < 0x80 ? 1 : (b0 & 0xE0) == 0xC0 ? 2
                    : (b0 & 0xF0) == 0xE0 ? 3 : (b0 & 0xF8) == 0xF0 ? 4 : 0;
+            char ch[5] = "";
             if (nb > 0 && lx.pos + (size_t)nb <= lx.len) {
-                char ch[5];
                 memcpy(ch, lx.src + lx.pos, (size_t)nb);
                 ch[nb] = '\0';
-                snprintf(m, sizeof(m), "caractere inesperado: '%s'", ch);
+                /* Letra fora do ASCII COLADA num nome (`ação`, `π`): a frase
+                 * de antes ("caractere inesperado") dizia o sintoma. A regra é
+                 * que nome só aceita letra sem acento — é isso que a pessoa
+                 * precisa saber pra consertar. */
+                if (b0 >= 0x80 && (lx.pos > 0 && (eh_alpha(lx.src[lx.pos - 1])
+                                                  || eh_digito(lx.src[lx.pos - 1])
+                                                  || lx.src[lx.pos - 1] == '_')))
+                    snprintf(m, sizeof(m), "nome so aceita letra sem acento, digito e _: '%s'", ch);
+                else if (b0 >= 0x80 && (eh_alpha(espia(&lx, nb)) || espia(&lx, nb) == '_'))
+                    snprintf(m, sizeof(m), "nome so aceita letra sem acento, digito e _: '%s'", ch);
+                else
+                    snprintf(m, sizeof(m), "caractere inesperado: '%s'", ch);
             } else {
                 snprintf(m, sizeof(m), "byte inesperado: 0x%02X", b0);
             }
             erro(&lx, m);
+            /* RECUPERAÇÃO: o trecho vira um token de erro e a análise segue.
+             * Sem isto, um caractere estranho no meio do arquivo apagava os
+             * tokens de TODAS as linhas — a tela inteira perdia a cor. */
+            if (lx.recupera) {
+                int32_t l0 = lx.linha, c0 = lx.col;
+                int avanca = nb > 0 ? nb : 1;
+                for (int k = 0; k < avanca && lx.pos < lx.len; k++) avanca1(&lx);
+                PSToken *tk = novo_token(&lx, T_ERRO, l0, c0);
+                if (tk) {
+                    tk->texto = ch[0] ? strdup(ch) : strdup("?");
+                    tk->texto_len = tk->texto ? (int32_t)strlen(tk->texto) : 0;
+                    tk->nchars = 1;
+                }
+                continue;
+            }
         }
     }
     FECHA_SPAN();
 #undef FECHA_SPAN
 
-    if (out->ok) {
+    /* O EOF sai sempre no modo de recuperação: o parser precisa dele pra
+     * parar, e uma lista sem EOF faria o `atual()` dele ler o último token
+     * para sempre. */
+    if (out->ok || lx.recupera) {
         while (lx.nindent > 1) {
             lx.nindent--;
             PSToken *tk = novo_token(&lx, T_DEDENT, lx.linha, lx.col);
@@ -919,6 +986,7 @@ void ps_lexer_free(PSTokenList *lista)
     for (int32_t i = 0; i < lista->n; i++) free(lista->tokens[i].texto);
     free(lista->tokens);
     free(lista->avisos);
+    free(lista->erros);
     free(lista);
 }
 
@@ -926,6 +994,7 @@ const char *ps_tok_nome(PSTokType t)
 {
     switch (t) {
         case T_COMMENT:     return "COMMENT";
+        case T_ERRO:        return "ERRO";
         case T_EOF:         return "EOF";
         case T_KW:          return "KW";
         case T_IDENT:       return "IDENT";

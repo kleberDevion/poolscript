@@ -240,6 +240,50 @@ r = roda("printf 'post(abcdef)' | '" + POOL + "' --contexto 1:9")
 confere("--contexto no meio da palavra devolve o pedaço antes do cursor",
         "\"parcial\":\"abc\"" in r["saida"])
 
+# ── código pela metade: o editor precisa do que sobrou ──────────────────────
+#
+# Enquanto se digita, o arquivo passa a maior parte do tempo inválido. Antes,
+# um caractere estranho fazia o `--tokens` devolver `[]` (a tela inteira
+# perdia a cor) e um erro de sintaxe fazia o `--ast` parar ali (o painel de
+# estrutura esvaziava da linha do erro pra baixo).
+r = roda("printf 'x = 1\\nstr ação = 2\\ny = 3\\n' | '" + POOL + "' --tokens")
+confere("--tokens devolve os tokens das linhas boas apesar do caractere estranho",
+        "\"v\":\"x\"" in r["saida"] and "\"v\":\"y\"" in r["saida"])
+confere("--tokens diz o erro do lexer junto com os tokens",
+        "\"erros\":[" in r["saida"] and "sem acento" in r["saida"])
+confere("--tokens marca o trecho ruim como token ERRO",
+        "\"t\":\"ERRO\"" in r["saida"])
+r = roda("printf 'x = \"aberta\\ny = 2\\n' | '" + POOL + "' --tokens")
+confere("--tokens com string sem fechar não perde a linha seguinte",
+        "\"v\":\"y\"" in r["saida"])
+
+r = roda("printf 'import os\\nx = 1\\nif x > 0 \\npost(1)\\nfunct f() { return 7 }\\n' | '"
+         + POOL + "' --ast")
+confere("--ast devolve o que vem DEPOIS do erro de sintaxe",
+        "\"texto\":\"f\"" in r["saida"])
+confere("--ast lista os erros de sintaxe", "\"erros\":[" in r["saida"])
+
+r = roda("printf 'if x > 0 \\npost(1)\\nwhile y \\npost(2)\\n' | '" + POOL + "' --check")
+confere("--check lista TODOS os erros de sintaxe, não só o primeiro",
+        len(r["saida"].split("\"linha\":")) >= 3)
+
+# com erro de sintaxe, a conferência de tipo não roda: statement descartado
+# faria nome existente aparecer como inexistente (cascata)
+r = roda("printf 'n = 1\\nif n > 0 \\npost(n)\\n' | '" + POOL + "' --check")
+confere("--check com sintaxe torta não inventa erro de nome",
+        not "NameError" in r["saida"])
+
+# o programa RODANDO continua parando no primeiro erro
+os.writeFile(PASTA + "/torto2.pr", "x = 1\nif x > 0 \npost(1)\n")
+r = roda("'" + POOL + "' torto2.pr")
+confere("rodar continua parando no primeiro erro de sintaxe",
+        r["rc"] != 0 and "SyntaxError" in r["saida"])
+
+# nome com acento: a mensagem diz a regra, não só "caractere inesperado"
+r = roda("printf 'ação = 1\\n' | '" + POOL + "' --check")
+confere("nome com acento explica a regra do identificador",
+        "sem acento" in r["saida"])
+
 # ── `build`: roda todos os .pr da pasta, em ordem ───────────────────────────
 #
 # `cmd_build` varre o diretório, filtra pela extensão da linguagem (`.pr`),

@@ -1,19 +1,19 @@
-# `os.run(args, capture=false)`
+# `os.run(args, capture=false, pty=false)`
 
 Executa um comando **sem shell** — cada argumento é uma entrada separada da
 lista, então caracteres de shell (`;`, `|`, `$`, `&`, `>`) viram **texto
 literal** e não conseguem injetar comando. É a forma **segura** de rodar
-programa com valor vindo do usuário. Por padrão só roda; com `capture=true`,
-devolve a saída como texto.
+programa com valor vindo do usuário.
 
 ```
-os.run(args: list | str, capture: bool = false) -> int | str
+os.run(args: list | str, capture: bool | str = false, pty: bool = false) -> int | str | Process
 ```
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
 | `args` | — | lista `["programa", "arg1", "arg2"]` (recomendado) ou string |
-| `capture` | `false` | `true` = **espera** e devolve a saída; `false` = dispara em segundo plano e devolve o **PID** |
+| `capture` | `false` | `false` = dispara em segundo plano e devolve o **PID**; `true` = **espera** e devolve a saída; `"live"` = devolve o [`Process`](../Process/Process.md), pra conversar com ele enquanto roda |
+| `pty` | `false` | `true` = o filho roda num **terminal de verdade**; precisa de `capture="live"` ou `capture=true` |
 
 ---
 
@@ -35,9 +35,10 @@ os.run(["kill", str(pid)])      # se precisar interromper
 ```
 
 O processo é **solto do terminal** (`setsid`) e sobrevive ao fim do programa
-que o disparou — quem quiser esperar, espera pelo PID. E não deixa zumbi: o
-disparo é por fork duplo, então o processo é adotado pelo init e ninguém
-precisa recolher o código de saída.
+que o disparou. E não deixa zumbi: o disparo é por fork duplo, então o processo
+é adotado pelo init e ninguém precisa recolher o código de saída — o outro lado
+disso é que **não dá pra esperar por esse PID**, nem saber como ele terminou.
+Quem precisa disso usa `capture="live"`, abaixo.
 
 A saída dele vai pro mesmo terminal do programa. Pra mandar pra outro lugar,
 redirecione no próprio comando (`["sh", "-c", "prog > log.txt 2>&1"]`) — mas
@@ -47,12 +48,59 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["pool", "--version"], capture=true)
-post(versao)                        # "PoolScript 15.91.25 [PSVM]"
+post(versao)                        # "PoolScript 15.91.26 [PSVM]"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
 o fim dele. Devolve o **stdout** (sem espaços nas pontas); se o comando não
-produziu stdout mas gerou erro, devolve o **stderr** — igual ao `os.cmd`.
+produziu stdout mas gerou erro, devolve o **stderr** — igual ao `os.cmd`. A
+espera **cede**: dentro de uma rota do jinker ou de uma `async funct`, as
+outras requisições continuam sendo atendidas enquanto o comando roda.
+
+---
+
+## `capture="live"` — o processo vivo
+
+Os dois modos acima resolvem "dispare e esqueça" e "rode e me dê o texto no
+fim". O que eles não fazem é **conversar** com o processo: escrever na entrada
+dele, ler o que ele já imprimiu, saber o código de saída, matar. Isso é
+[`Process`](../Process/Process.md):
+
+```
+p = os.run(["pool", "prog.pr"], capture="live")
+p.write("sim\n")                 # vai pro stdin do filho
+p.close()                        # fecha a entrada (fim de arquivo pra ele)
+post(p.readline())               # a primeira linha que ele imprimir
+post(p.wait())                   # o código de saída
+```
+
+Com `using`, os canais fecham no fim do bloco:
+
+```
+using os.run(["wc", "-l"], capture="live") as p {
+    p.write("a\nb\nc\n")
+    p.close()
+    post(p.read().strip())       # "3"
+}
+```
+
+## `pty=true` — o filho num terminal
+
+Programa interativo se comporta diferente quando não está num terminal: some a
+cor, o `input()` não aparece, a barra de progresso vira lixo. Com `pty=true` o
+filho ganha um terminal de verdade:
+
+```
+p = os.run(["sh", "-c", "test -t 0 && echo tem terminal"], capture="live", pty=true)
+post(p.read().strip())           # "tem terminal"
+```
+
+Um terminal tem **um canal só**: com `pty=true`, o stderr do filho chega junto
+no `read`, e `read_err` devolve `""`. O tamanho começa em 80x24 e muda com
+[`resize`](../Process/Process.md).
+
+`pty=true` com `capture=false` é `ValueError`: ninguém leria o terminal, e o
+filho travaria com o buffer cheio.
 
 ---
 
@@ -110,7 +158,8 @@ post(versao_de("nao_existe"))   # "nao_existe não encontrado"
 
 Diferença importante para o [`os.cmd`](../cmd/cmd.md): como o `cmd` passa pelo
 shell, um comando inexistente **não** vira `IOError` — o shell roda, não acha, e
-`cmd` devolve `Null` (a mensagem "command not found" vai pro stderr).
+o `cmd` devolve `Null` **sem `capture`**; com `capture=true` ele devolve o
+texto do stderr do shell ("command not found"), porque o stdout veio vazio.
 
 ---
 

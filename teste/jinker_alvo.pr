@@ -455,6 +455,17 @@ async funct rota_await_helper()
 }
 
 
+# `os.run(capture=true)` DENTRO da rota: a espera do filho não pode segurar o
+# worker (é um só aqui). Antes o `roda_processo` esperava na própria fibra e
+# toda outra requisição ficava na fila atrás do comando.
+@app.route("/lento")
+funct lento()
+{
+    os.run(["sleep", "3"], capture=true)
+    return {"lento": true}
+}
+
+
 # ── parada limpa: sem isso o gcov do servidor não grava nada ────────────────
 @app.route("/__parar")
 funct parar()

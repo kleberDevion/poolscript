@@ -1,7 +1,9 @@
 # `os.cmd(command, capture=false)`
 
 Executa um **comando no terminal** do sistema. Por padrão só roda; com
-`capture=true`, devolve a saída como texto.
+`capture=true`, devolve a saída como texto. Nos dois modos ele **espera** o
+comando terminar, e a espera cede: numa rota do jinker ou numa `async funct`,
+o resto continua sendo atendido enquanto o comando roda.
 
 ```
 os.cmd(command: str, capture: bool = false) -> str | Null
@@ -25,7 +27,7 @@ os.cmd("git status")              # a saída vai direto pro terminal
 
 ```
 versao = os.cmd("pool --version", capture=true)
-post(versao)                      # "PoolScript 15.91.25 [PSVM]"
+post(versao)                      # "PoolScript 15.91.26 [PSVM]"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando

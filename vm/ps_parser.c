@@ -108,8 +108,26 @@ static const char *dup_str(P *p, const char *s)
 }
 
 /* ── erro ───────────────────────────────────────────────────────────────── */
+/* Guarda o erro na LISTA (modo de recuperação). Sem memória, só não guarda. */
+static void perro_na_lista(P *p, const char *msg, PSToken *t)
+{
+    PSParseResult *o = p->out;
+    if (o->nerros >= 64) return;             /* arquivo ruim não vira enxurrada */
+    if (o->nerros >= o->cap_erros) {
+        int32_t nc = o->cap_erros ? o->cap_erros * 2 : 8;
+        PSAviso *nv = realloc(o->erros, sizeof(PSAviso) * (size_t)nc);
+        if (!nv) return;
+        o->erros = nv; o->cap_erros = nc;
+    }
+    snprintf(o->erros[o->nerros].msg, sizeof(o->erros[o->nerros].msg), "%s", msg);
+    o->erros[o->nerros].linha = t ? t->line : 0;
+    o->erros[o->nerros].col = t ? t->col : 0;
+    o->nerros++;
+}
+
 static void perro(P *p, const char *msg, PSToken *t)
 {
+    perro_na_lista(p, msg, t);
     if (!p->out->ok) return;              /* preserva o primeiro erro */
     p->out->ok = 0;
     snprintf(p->out->erro, sizeof(p->out->erro), "%s", msg);
@@ -124,12 +142,15 @@ static void perro(P *p, const char *msg, PSToken *t)
  * genérico que obriga a adivinhar de qual parâmetro se trata. */
 static void perro_f(P *p, PSToken *t, const char *fmt, ...)
 {
-    if (!p->out->ok) return;              /* preserva o primeiro erro */
-    p->out->ok = 0;
+    char msg[256];
     va_list ap;
     va_start(ap, fmt);
-    vsnprintf(p->out->erro, sizeof(p->out->erro), fmt, ap);
+    vsnprintf(msg, sizeof(msg), fmt, ap);
     va_end(ap);
+    perro_na_lista(p, msg, t);
+    if (!p->out->ok) return;              /* preserva o primeiro erro */
+    p->out->ok = 0;
+    snprintf(p->out->erro, sizeof(p->out->erro), "%s", msg);
     p->out->erro_linha = t ? t->line : 0;
     p->out->erro_col = t ? t->col : 0;
 }
@@ -3695,6 +3716,11 @@ static PSNode *statement(P *p)
 /* ── entrada ────────────────────────────────────────────────────────────── */
 PSParseResult *ps_parse(PSToken *toks, int32_t n)
 {
+    return ps_parse_modo(toks, n, 0);
+}
+
+PSParseResult *ps_parse_modo(PSToken *toks, int32_t n, int recupera)
+{
     PSParseResult *r = calloc(1, sizeof(PSParseResult));
     if (!r) return NULL;
     r->ok = 1;
@@ -3712,15 +3738,34 @@ PSParseResult *ps_parse(PSToken *toks, int32_t n)
     if (!prog) { r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); return r; }
 
     pula_separadores(&p);
-    while (!checa(&p, T_EOF) && r->ok) {
+    while (!checa(&p, T_EOF) && (r->ok || recupera)) {
+        int32_t antes = p.pos;
         PSNode *s = statement(&p);
-        if (!r->ok) break;
+        if (!r->ok) {
+            if (!recupera) break;
+            /* RECUPERAÇÃO: o statement quebrado já foi registrado na lista.
+             * Zera o estado de descida (profundidade, grupos abertos) e pula
+             * pro próximo começo de statement — sem isto, o resto do arquivo
+             * seria lido com o parser em meio de expressão. */
+            if (r->nerros >= 64) break;
+            r->ok = 1;
+            p.prof = 0; p.grupo_depth = 0; p.chave_abre_bloco = 0;
+            while (!checa(&p, T_EOF)
+                   && !checa(&p, T_NEWLINE) && !checa(&p, T_DEDENT) && !checa(&p, T_RBRACE))
+                p.pos++;
+            if (checa(&p, T_RBRACE) || checa(&p, T_DEDENT)) p.pos++;
+            if (p.pos == antes) p.pos++;      /* nunca ficar parado no mesmo token */
+            pula_separadores(&p);
+            continue;
+        }
         if (s && ps_vec_push(&r->arena, &prog->lista, s) != 0) {
             r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); break;
         }
         pula_separadores(&p);
         if (s == NULL && checa(&p, T_EOF)) break;
     }
+    /* A lista de erros é o veredito: recuperar não é aprovar. */
+    if (recupera && r->nerros > 0) r->ok = 0;
     r->programa = prog;
     return r;
 }
@@ -3729,5 +3774,6 @@ void ps_parse_free(PSParseResult *r)
 {
     if (!r) return;
     ps_arena_free(&r->arena);
+    free(r->erros);
     free(r);
 }

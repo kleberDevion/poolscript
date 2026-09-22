@@ -2402,7 +2402,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * hexadecimal engolir o `a` e o `o` como digitos, e o fonte do caso sai
  * corrompido. Literal adjacente encerra o escape. */
 { "caractere inesperado sai INTEIRO, nao meio byte",
-  "x = fun" "\xc3\xa7" "ao(\n", "", "caractere inesperado: 'ç'", 2 },
+  "x = fun" "\xc3\xa7" "ao(\n", "", "nome so aceita letra sem acento, digito e _: 'ç'", 2 },
 { "o --check devolve JSON valido com acento no erro",
   "x = \xc3\xa7\n", "", "'ç'", 2 },
 
