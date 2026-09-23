@@ -85,19 +85,17 @@ baixa() {   # baixa <destino> <url>
     fi
 }
 
-# As dependências de compilação, na ordem em que o link as pede. Os nomes são
-# de Debian/Ubuntu; o pacote do OpenLDAP trocou de nome entre versões
-# (`libldap2-dev` → `libldap-dev`), então as duas grafias são tentadas.
+# As dependências de compilação. Os nomes são de Debian/Ubuntu.
 #
-# `postgresql-server-dev-all` está aqui porque a libpq entra ESTÁTICA, e a
-# `libpq.a` referencia 33 símbolos que moram na `libpgcommon.a`/`libpgport.a`.
-# O `libpq-dev` sozinho não traz essas duas — no Debian 13 ele instala só a
-# `libpq.a`, e o link morre em `cannot find -lpgcommon`.
+# Os clientes de banco (Postgres, MySQL, ODBC, Mongo) não são ligados ao
+# `pool` — cada driver abre a biblioteca na primeira conexão (vm/ps_dl.h) —,
+# então daqui eles entram pelos CABEÇALHOS (os -dev), que trazem a biblioteca
+# junto. O `postgresql-server-dev-all`, o Kerberos, o LDAP e o ltdl só eram
+# necessários pra ligar a libpq estática, e saíram.
 DEPS_BUILD="build-essential git pkg-config nodejs npm
-            libsqlite3-dev libpq-dev postgresql-server-dev-all
-            unixodbc-dev libssl-dev libpng-dev
-            libexpat1-dev zlib1g-dev libmariadb-dev libzstd-dev libltdl-dev
-            libkrb5-dev libmongoc-dev libbson-dev libgmp-dev"
+            libsqlite3-dev libpq-dev unixodbc-dev libssl-dev libpng-dev
+            libexpat1-dev zlib1g-dev libmariadb-dev
+            libmongoc-dev libbson-dev libgmp-dev"
 
 compila_do_fonte() {   # compila_do_fonte <pasta_temporária>
     local tmp="$1"
@@ -108,7 +106,6 @@ compila_do_fonte() {   # compila_do_fonte <pasta_temporária>
     fi
     echo "== instalando as dependências de compilação"
     apt_instala $DEPS_BUILD
-    apt_instala libldap-dev || apt_instala libldap2-dev
     echo "== clonando o fonte"
     git clone --depth 1 "$REPO" "$tmp/fonte"
     echo "== compilando (leva alguns minutos)"

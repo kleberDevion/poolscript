@@ -28,36 +28,26 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      # As dependências são as do LINK do Makefile, e em todos os jobs iguais:
-      # o Makefile compila contra o MariaDB (`-I/usr/include/mariadb
-      # -lmariadb`), linka o libpq ESTÁTICO (`-lpgcommon -lpgport`, do
-      # postgresql-server-dev) e o `-lgssapi_krb5` (libkrb5-dev). A lista
-      # instalava `libmysqlclient-dev` e não tinha os outros dois: o `make pool`
-      # morria em `mysql.h: No such file or directory` e todos os jobs ficaram
-      # vermelhos de 27/08 a 21/09 — reproduzido num Ubuntu 24.04 limpo.
+      # Os clientes de banco (Postgres, MySQL, ODBC, Mongo) NÃO são mais
+      # ligados ao `pool`: cada driver abre a biblioteca no primeiro
+      # `connect` (vm/ps_dl.h). Daqui eles precisam só dos CABEÇALHOS pra
+      # compilar — e a biblioteca de verdade, que vem junto com o -dev, pros
+      # testes que conectam (o do Mongo sobe o próprio mongod).
       #
-      # A máquina do GitHub NÃO é uma Ubuntu limpa: a imagem instala o
-      # PostgreSQL e o `libpq-dev` do repositório do próprio PostgreSQL (hoje
-      # o 18) e depois tira esse repositório, então o `apt-get install
-      # libpq-dev` daqui não troca a versão. O Makefile liga o `libpq.a`
-      # ESTÁTICO com o `libpgcommon`/`libpgport` do postgresql-server-dev-16 da
-      # Ubuntu; com o libpq 18 o link morre em `undefined reference to
-      # pg_fe_run_oauth_flow` e todos os jobs ficaram vermelhos até 22/09 —
-      # reproduzido num container com a mesma preparação da imagem
-      # (install-postgresql.sh). A última linha do passo volta o libpq pra
-      # versão do server-dev-16, que é a que o Makefile espera.
+      # Isso aposentou dois remendos: o libpq era ligado ESTÁTICO com o
+      # pgcommon/pgport do postgresql-server-dev, e a imagem do GitHub traz o
+      # libpq 18 do repositório do PostgreSQL — o link morria em `undefined
+      # reference to pg_fe_run_oauth_flow` e o passo rebaixava o libpq pra
+      # versão da Ubuntu. Sem ligação, qualquer libpq serve (a interface usada
+      # é a estável, de soname 5). Kerberos, LDAP e ltdl só entravam arrastados
+      # pelo link estático.
       - name: dependências
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
-            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
-          # libpq na versão da Ubuntu, a mesma do postgresql-server-dev-16
-          # (ver o comentário do job portão)
-          v=$(dpkg-query -W -f='${Version}' postgresql-server-dev-16)
-          sudo apt-get install -y --allow-downgrades libpq-dev=$v libpq5=$v
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libgmp-dev libx11-dev libmongoc-dev libbson-dev
       - run: make pool testar
       # `make check` é o portão INTEIRO e é o mesmo comando que roda na máquina:
       # suíte + metadata + audita_doc + audita_c + exemplos da doc + replay de
@@ -77,13 +67,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
-            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
-          # libpq na versão da Ubuntu, a mesma do postgresql-server-dev-16
-          # (ver o comentário do job portão)
-          v=$(dpkg-query -W -f='${Version}' postgresql-server-dev-16)
-          sudo apt-get install -y --allow-downgrades libpq-dev=$v libpq5=$v
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libgmp-dev libx11-dev libmongoc-dev libbson-dev
       - run: make pool
       # A SEMENTE MUDA a cada dia, de propósito: teste de propriedade com
       # semente fixa vira exemplo congelado, que é o que ele veio substituir.
@@ -109,13 +94,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc clang libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
-            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
-          # libpq na versão da Ubuntu, a mesma do postgresql-server-dev-16
-          # (ver o comentário do job portão)
-          v=$(dpkg-query -W -f='${Version}' postgresql-server-dev-16)
-          sudo apt-get install -y --allow-downgrades libpq-dev=$v libpq5=$v
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libgmp-dev libx11-dev libmongoc-dev libbson-dev
       - run: make pool testar
       # A MESMA suíte sob sanitizer: o binário -O2 é justamente o que esconde
       # leitura fora de faixa.
@@ -196,13 +176,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
             gcc lcov libsqlite3-dev libpq-dev libmariadb-dev libmariadb-dev-compat unixodbc-dev \
-            libssl-dev libpng-dev libexpat1-dev zlib1g-dev libzstd-dev \
-            libltdl-dev libldap2-dev libgmp-dev libx11-dev \
-            libmongoc-dev libbson-dev postgresql-server-dev-16 libkrb5-dev
-          # libpq na versão da Ubuntu, a mesma do postgresql-server-dev-16
-          # (ver o comentário do job portão)
-          v=$(dpkg-query -W -f='${Version}' postgresql-server-dev-16)
-          sudo apt-get install -y --allow-downgrades libpq-dev=$v libpq5=$v
+            libssl-dev libpng-dev libexpat1-dev zlib1g-dev \
+            libgmp-dev libx11-dev libmongoc-dev libbson-dev
       # `make cobertura` termina no PORTÃO (teste/cobertura_portao.pr): compara
       # arquivo por arquivo com teste/cobertura_base.txt e sai != 0 se algum
       # perdeu cobertura de RAMO. Subir é livre.

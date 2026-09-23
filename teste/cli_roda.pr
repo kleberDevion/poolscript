@@ -526,6 +526,62 @@ confere("--check lista o grupo sem par E o erro de outra linha, em ordem",
         erros_do_check(r["saida"]) == [[1, 8, "parentese '(' aberto nao foi fechado"],
                                        [5, 5, "expressao invalida"]])
 
+# ── o `pool` só carrega a biblioteca que o programa usa ─────────────────────
+#
+# Ligado aos clientes de banco (Postgres, MySQL, ODBC, Mongo), o `pool`
+# carregava na partida de TODO programa essas bibliotecas e o que elas
+# arrastam — 36 no `ldd`, 90% do trabalho de um `pool --version` (callgrind),
+# e o binário nem abria numa máquina sem o cliente do Mongo. Agora cada driver
+# abre a sua na primeira conexão. Isto já se perdeu uma vez: fica travado.
+r = roda("ldd '" + POOL + "'")
+confere("o pool nao depende de cliente de banco na partida",
+        r["rc"] == 0 and not "libpq" in r["saida"] and not "libmariadb" in r["saida"]
+        and not "libmongoc" in r["saida"] and not "libodbc" in r["saida"]
+        and not "libgssapi" in r["saida"] and not "libldap" in r["saida"])
+
+# ── conferir N funct custa proporcional a N, não a N² ───────────────────────
+#
+# Rodada 4 da Jinga. As listas de nomes do compilador eram varridas do começo
+# a cada declaração: 10 mil funct de uma linha levavam 0,8 s pra conferir e 40
+# mil, 32 s — ao rodar também. Sem número absoluto (a máquina muda): a razão
+# entre 20 mil e 5 mil funct. Linear dá perto de 4; o quadrático de antes dava
+# 16. Melhor de três, pra ruído de agenda não reprovar.
+import date
+funct gera_decl(n)
+{
+    partes = []
+    i = 0
+    while i < n
+    {
+        addEnd(partes, "int funct f" + str(i) + "(int a) { return a + " + str(i) + " }")
+        i = i + 1
+    }
+    addEnd(partes, "post(f0(1))")
+    return "\n".join(partes) + "\n"
+}
+funct melhor_de_tres(cmd)
+{
+    melhor = 1000000.0
+    k = 0
+    while k < 3
+    {
+        t0 = date.monotonic()
+        roda(cmd)
+        t = date.monotonic() - t0
+        if t < melhor
+        {
+            melhor = t
+        }
+        k = k + 1
+    }
+    return melhor
+}
+os.writeFile(PASTA + "/decl5k.pr", gera_decl(5000))
+os.writeFile(PASTA + "/decl20k.pr", gera_decl(20000))
+t5  = melhor_de_tres("'" + POOL + "' --check decl5k.pr")
+t20 = melhor_de_tres("'" + POOL + "' --check decl20k.pr")
+confere("--check de 20 mil funct custa perto de 4x o de 5 mil (era 16x)", t20 < t5 * 8)
+
 # O LIMITE da regra: palavra-chave como argumento nomeado, compreensão e lambda
 # com declaração dentro são continuação VÁLIDA de uma linha com `(` aberto — e
 # continuam passando. A sincronia por declaração só roda em arquivo que já tem

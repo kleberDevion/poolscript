@@ -1,4 +1,4 @@
-# PoolScript v15.91.31
+# PoolScript v15.91.32
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.91.31 [PSVM] (2026-09-22)
+# PoolScript 15.91.32 [PSVM] (2026-09-22)
 #                            ^ a data da compilação DESTE binário: duas
 #                              cópias da mesma versão se distinguem por ela
 ```

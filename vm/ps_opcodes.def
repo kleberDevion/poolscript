@@ -219,3 +219,11 @@ PS_OP(JUMP_SE_UNSET,      100, "JUMP_SE_UNSET")
  * O OP_COERCE_DECL continua pros tipos da tabela (cabe em 4 bits e faz o
  * `char`). */
 PS_OP(CONFERE_TIPO,       101, "CONFERE_TIPO")
+
+/* `int funct` / `bool funct` pegaram um erro no corpo: o sentinela (500 /
+ * False) continua saindo, mas o ERRO SAI JUNTO no stderr, no formato do
+ * traceback, com a linha dizendo que a funct devolveu o sentinela no lugar
+ * dele. Antes o `try` implícito descartava a mensagem com um POP_TOP e o erro
+ * sumia calado — a IDE mostrava "500 linhas".
+ *   ENGOLE [.., msg] -> [..]   arg = 1 (int, 500) ou 2 (bool, False) */
+PS_OP(ENGOLE,             102, "ENGOLE")

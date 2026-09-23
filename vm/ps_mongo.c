@@ -8,6 +8,69 @@
 #include <mongoc/mongoc.h>
 
 #include "ps_mongo.h"
+#include "ps_dl.h"
+
+/* O cliente do Mongo NÃO é ligado ao executável: abre no primeiro `connect`
+ * (ver ps_dl.h). Era ele que arrastava o gnutls, o SASL e o criptografador do
+ * Mongo pra partida de todo programa. Esta lista é TODA função das duas
+ * bibliotecas que este arquivo chama, inclusive as que vêm por macro:
+ * `BSON_APPEND_DOCUMENT` -> `bson_append_document`, `BSON_APPEND_INT64` ->
+ * `bson_append_int64`, `BSON_ITER_HOLDS_DOCUMENT` -> `bson_iter_type`. Faltar
+ * uma não passa calado: sem a biblioteca na ligação, o nome não existe. */
+#define MG_FUNCS(X) X(bson_append_document) X(bson_append_int64) X(bson_iter_type)       \
+    X(bson_as_relaxed_extended_json)                                                     \
+    X(bson_destroy) X(bson_free) X(bson_init_from_json) X(bson_init_static)               \
+    X(bson_iter_document) X(bson_iter_init) X(bson_iter_next) X(bson_new)                 \
+    X(bson_new_from_json) X(mongoc_bulk_operation_destroy) X(mongoc_bulk_operation_execute) \
+    X(mongoc_bulk_operation_insert) X(mongoc_client_destroy) X(mongoc_client_get_collection) \
+    X(mongoc_client_get_database) X(mongoc_client_new_from_uri)                          \
+    X(mongoc_collection_count_documents) X(mongoc_collection_create_bulk_operation_with_opts) \
+    X(mongoc_collection_delete_many) X(mongoc_collection_destroy)                         \
+    X(mongoc_collection_find_with_opts) X(mongoc_collection_insert_one)                   \
+    X(mongoc_collection_update_many) X(mongoc_cursor_destroy) X(mongoc_cursor_error)      \
+    X(mongoc_cursor_next) X(mongoc_database_destroy) X(mongoc_init) X(mongoc_uri_destroy)  \
+    X(mongoc_uri_new_with_error)
+
+MG_FUNCS(PS_DL_PONTEIRO)
+
+static int  g_mg_estado;
+static char g_mg_motivo[320];
+static const char *const MG_NOMES[] = { "libmongoc-1.0.so.0", "libmongoc-1.0.so", NULL };
+
+#define bson_append_document dl_bson_append_document
+#define bson_append_int64 dl_bson_append_int64
+#define bson_iter_type dl_bson_iter_type
+#define bson_as_relaxed_extended_json dl_bson_as_relaxed_extended_json
+#define bson_destroy dl_bson_destroy
+#define bson_free dl_bson_free
+#define bson_init_from_json dl_bson_init_from_json
+#define bson_init_static dl_bson_init_static
+#define bson_iter_document dl_bson_iter_document
+#define bson_iter_init dl_bson_iter_init
+#define bson_iter_next dl_bson_iter_next
+#define bson_new dl_bson_new
+#define bson_new_from_json dl_bson_new_from_json
+#define mongoc_bulk_operation_destroy dl_mongoc_bulk_operation_destroy
+#define mongoc_bulk_operation_execute dl_mongoc_bulk_operation_execute
+#define mongoc_bulk_operation_insert dl_mongoc_bulk_operation_insert
+#define mongoc_client_destroy dl_mongoc_client_destroy
+#define mongoc_client_get_collection dl_mongoc_client_get_collection
+#define mongoc_client_get_database dl_mongoc_client_get_database
+#define mongoc_client_new_from_uri dl_mongoc_client_new_from_uri
+#define mongoc_collection_count_documents dl_mongoc_collection_count_documents
+#define mongoc_collection_create_bulk_operation_with_opts dl_mongoc_collection_create_bulk_operation_with_opts
+#define mongoc_collection_delete_many dl_mongoc_collection_delete_many
+#define mongoc_collection_destroy dl_mongoc_collection_destroy
+#define mongoc_collection_find_with_opts dl_mongoc_collection_find_with_opts
+#define mongoc_collection_insert_one dl_mongoc_collection_insert_one
+#define mongoc_collection_update_many dl_mongoc_collection_update_many
+#define mongoc_cursor_destroy dl_mongoc_cursor_destroy
+#define mongoc_cursor_error dl_mongoc_cursor_error
+#define mongoc_cursor_next dl_mongoc_cursor_next
+#define mongoc_database_destroy dl_mongoc_database_destroy
+#define mongoc_init dl_mongoc_init
+#define mongoc_uri_destroy dl_mongoc_uri_destroy
+#define mongoc_uri_new_with_error dl_mongoc_uri_new_with_error
 
 struct PSMongo {
     mongoc_client_t   *cli;
@@ -21,6 +84,8 @@ static int mongo_global = 0;
 
 PSMongo *ps_mongo_conecta(const char *uri, const char *dbname, char *erro, size_t ecap)
 {
+    PS_DL_CARREGA(g_mg_estado, g_mg_motivo, MG_NOMES, "o modulo mongo", MG_FUNCS, erro, ecap);
+    if (g_mg_estado != 1) return NULL;
     if (!mongo_global) { mongoc_init(); mongo_global = 1; }
     bson_error_t be;
     mongoc_uri_t *u = mongoc_uri_new_with_error(uri, &be);

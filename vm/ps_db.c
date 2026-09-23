@@ -16,6 +16,84 @@
 
 #include "ps_db.h"
 #include "ps_pgerr.h"
+#include "ps_dl.h"
+
+/* ── os clientes de banco: carregados no PRIMEIRO connect de cada driver ───
+ *
+ * O sqlite vem dentro do `pool`. O Postgres, o MySQL e o ODBC NÃO são mais
+ * ligados ao executável: cada um é aberto na primeira conexão daquele driver
+ * (ver ps_dl.h). Programa que não usa banco não carrega nenhum; o que só usa
+ * sqlite também não. As listas abaixo são TODAS as funções que este arquivo
+ * chama de cada biblioteca — chamar uma que não está aqui não liga (o nome
+ * não existe sem a biblioteca), então esquecer uma não passa calado. */
+#define PG_FUNCS(X) X(PQclear) X(PQcmdTuples) X(PQconnectdbParams) X(PQerrorMessage)  \
+    X(PQexec) X(PQexecParams) X(PQfinish) X(PQfname) X(PQftype) X(PQgetisnull)         \
+    X(PQgetvalue) X(PQnfields) X(PQntuples) X(PQresultErrorField) X(PQresultStatus)    \
+    X(PQstatus)
+#define MY_FUNCS(X) X(mysql_affected_rows) X(mysql_close) X(mysql_error)                \
+    X(mysql_fetch_fields) X(mysql_fetch_lengths) X(mysql_fetch_row) X(mysql_field_count) \
+    X(mysql_free_result) X(mysql_init) X(mysql_num_fields) X(mysql_num_rows)              \
+    X(mysql_real_connect) X(mysql_real_escape_string) X(mysql_real_query)                 \
+    X(mysql_store_result)
+#define OD_FUNCS(X) X(SQLAllocHandle) X(SQLBindParameter) X(SQLDescribeCol)             \
+    X(SQLDisconnect) X(SQLDriverConnect) X(SQLExecDirect) X(SQLFetch) X(SQLFreeHandle)   \
+    X(SQLGetData) X(SQLGetDiagRec) X(SQLNumResultCols) X(SQLRowCount) X(SQLSetEnvAttr)
+
+PG_FUNCS(PS_DL_PONTEIRO)
+MY_FUNCS(PS_DL_PONTEIRO)
+OD_FUNCS(PS_DL_PONTEIRO)
+
+static int  g_pg_estado, g_my_estado, g_od_estado;
+static char g_pg_motivo[320], g_my_motivo[320], g_od_motivo[320];
+static const char *const PG_NOMES[] = { "libpq.so.5", "libpq.so", NULL };
+static const char *const MY_NOMES[] = { "libmariadb.so.3", "libmysqlclient.so.21", "libmariadb.so", NULL };
+static const char *const OD_NOMES[] = { "libodbc.so.2", "libodbc.so", NULL };
+
+/* Daqui pra baixo, o nome da função é o ponteiro. */
+#define PQclear dl_PQclear
+#define PQcmdTuples dl_PQcmdTuples
+#define PQconnectdbParams dl_PQconnectdbParams
+#define PQerrorMessage dl_PQerrorMessage
+#define PQexec dl_PQexec
+#define PQexecParams dl_PQexecParams
+#define PQfinish dl_PQfinish
+#define PQfname dl_PQfname
+#define PQftype dl_PQftype
+#define PQgetisnull dl_PQgetisnull
+#define PQgetvalue dl_PQgetvalue
+#define PQnfields dl_PQnfields
+#define PQntuples dl_PQntuples
+#define PQresultErrorField dl_PQresultErrorField
+#define PQresultStatus dl_PQresultStatus
+#define PQstatus dl_PQstatus
+#define mysql_affected_rows dl_mysql_affected_rows
+#define mysql_close dl_mysql_close
+#define mysql_error dl_mysql_error
+#define mysql_fetch_fields dl_mysql_fetch_fields
+#define mysql_fetch_lengths dl_mysql_fetch_lengths
+#define mysql_fetch_row dl_mysql_fetch_row
+#define mysql_field_count dl_mysql_field_count
+#define mysql_free_result dl_mysql_free_result
+#define mysql_init dl_mysql_init
+#define mysql_num_fields dl_mysql_num_fields
+#define mysql_num_rows dl_mysql_num_rows
+#define mysql_real_connect dl_mysql_real_connect
+#define mysql_real_escape_string dl_mysql_real_escape_string
+#define mysql_real_query dl_mysql_real_query
+#define mysql_store_result dl_mysql_store_result
+#define SQLAllocHandle dl_SQLAllocHandle
+#define SQLBindParameter dl_SQLBindParameter
+#define SQLDescribeCol dl_SQLDescribeCol
+#define SQLDisconnect dl_SQLDisconnect
+#define SQLDriverConnect dl_SQLDriverConnect
+#define SQLExecDirect dl_SQLExecDirect
+#define SQLFetch dl_SQLFetch
+#define SQLFreeHandle dl_SQLFreeHandle
+#define SQLGetData dl_SQLGetData
+#define SQLGetDiagRec dl_SQLGetDiagRec
+#define SQLNumResultCols dl_SQLNumResultCols
+#define SQLRowCount dl_SQLRowCount
+#define SQLSetEnvAttr dl_SQLSetEnvAttr
 
 struct PSDbConn {
     PSDbDriver drv;
@@ -503,6 +581,8 @@ PSDbConn *ps_db_conecta(PSDbDriver drv, const char *host, int porta,
         return c;
     }
     if (drv == PS_DB_POSTGRES) {
+        PS_DL_CARREGA(g_pg_estado, g_pg_motivo, PG_NOMES, "o driver postgres", PG_FUNCS, erro, ecap);
+        if (g_pg_estado != 1) { free(c); return NULL; }
         char pstr[16]; snprintf(pstr, sizeof(pstr), "%d", porta ? porta : 5432);
         const char *kw[6], *vl[6]; int k = 0;
         kw[k]="host"; vl[k++]= host && host[0] ? host : "localhost";
@@ -519,6 +599,8 @@ PSDbConn *ps_db_conecta(PSDbDriver drv, const char *host, int porta,
         return c;
     }
     if (drv == PS_DB_MYSQL) {
+        PS_DL_CARREGA(g_my_estado, g_my_motivo, MY_NOMES, "o driver mysql", MY_FUNCS, erro, ecap);
+        if (g_my_estado != 1) { free(c); return NULL; }
         c->my = mysql_init(NULL);
         if (!c->my) { snprintf(erro, ecap, "sem memoria"); free(c); return NULL; }
         if (!mysql_real_connect(c->my, host && host[0] ? host : "localhost",
@@ -530,6 +612,8 @@ PSDbConn *ps_db_conecta(PSDbDriver drv, const char *host, int porta,
         return c;
     }
     if (drv == PS_DB_MSSQL) {
+        PS_DL_CARREGA(g_od_estado, g_od_motivo, OD_NOMES, "o driver odbc", OD_FUNCS, erro, ecap);
+        if (g_od_estado != 1) { free(c); return NULL; }
         /* `base` carrega o connection string ODBC completo (o VM monta) */
         if (!SQL_SUCCEEDED(SQLAllocHandle(SQL_HANDLE_ENV, SQL_NULL_HANDLE, &c->od_env))) {
             snprintf(erro, ecap, "sem memoria (odbc)"); free(c); return NULL;

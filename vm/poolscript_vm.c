@@ -1284,6 +1284,10 @@ struct VM_ {
 
     char    erro[256];
     char    erro_tipo[64];   /* nome do tipo, pra casar `catch (Tipo e)` */
+    /* Onde aconteceu o último erro que um `try` PEGOU (proto, linha, coluna).
+     * O desvio pro tratador troca o frame, e com ele o ponto do erro sumia —
+     * é daqui que o `int funct` que engoliu o erro diz de onde ele veio. */
+    int     pego_proto, pego_linha, pego_col;
     /* Traceback do erro não-capturado: do <module> (mais externo) ao frame que
      * falhou (mais interno). */
     struct { int proto; int linha; int col; } tb[64];
@@ -11794,6 +11798,29 @@ static int mod_sys_argv(VM *vm, Value *args, int n, Value *out)
  * programa termina sem aguardar, ela sumia: tarefa quebrava e o programa saía
  * 0, calado. Erro é erro — sai no stderr, com a mensagem original. Quem quer
  * tratar continua usando `await`, que é onde o erro é capturável. */
+void (*ps_gancho_quadro)(const char *arquivo, int linha, int col) = NULL;
+
+/* `int funct`/`bool funct` pegaram um erro (OP_ENGOLE): o erro vai pro stderr
+ * no formato do traceback — tipo, mensagem, onde aconteceu — e a linha que diz
+ * o que a funct devolveu no lugar. O programa segue com o sentinela. */
+static void engole_avisa(VM *vm, Proto *pf, int tipo_ret)
+{
+    fflush(stdout);
+    fprintf(stderr, "%s: %s\n", vm->erro_tipo[0] ? vm->erro_tipo : "RuntimeError", vm->erro);
+    if (vm->pego_proto >= 0 && vm->pego_proto < vm->nprotos && vm->pego_linha > 0) {
+        Proto *pe = &vm->protos[vm->pego_proto];
+        const char *arq = pe->arquivo && pe->arquivo[0] ? pe->arquivo
+                        : (vm->nome_script[0] ? vm->nome_script : "<script>");
+        if (ps_gancho_quadro) ps_gancho_quadro(arq, vm->pego_linha, vm->pego_col);
+        else fprintf(stderr, "  em %s, linha %d\n", arq, vm->pego_linha);
+    }
+    fprintf(stderr, "  %s funct %s() devolveu %s no lugar do erro\n",
+            tipo_ret == 1 ? "int" : "bool",
+            pf && pf->nome && pf->nome[0] ? pf->nome : "?",
+            tipo_ret == 1 ? "500" : "False");
+    fflush(stderr);
+}
+
 static PSFuturo **g_futs_erro;
 static int        g_nfuts_erro;
 
@@ -26021,6 +26048,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (nh > 0) nh--;
             break;
 
+        case OP_ENGOLE:
+            /* o `try` implícito de `int funct`/`bool funct` pegou um erro: o
+             * sentinela sai (o compilador o empilha a seguir) e o erro sai
+             * JUNTO, no stderr — "o int não pode engolir erro" */
+            sp--;                                       /* a mensagem do catch */
+            engole_avisa(vm, p, arg);
+            break;
+
         case OP_RAISE: {
             Value v = stack[--sp];
             vm->sp = sp; vm->locals_top = locals_top;
@@ -27513,6 +27548,10 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         {
             nh--;
             Handler *h = &handlers[nh];
+            /* o ponto do erro, ANTES de trocar de frame (ver `pego_proto`) */
+            vm->pego_proto = p ? (int)(p - vm->protos) : -1;
+            vm->pego_linha = linha_agora;
+            vm->pego_col   = col_agora;
             fp = h->fp;
             locals_top = h->locals_top;
             sp = h->sp;
@@ -27577,6 +27616,16 @@ static void libera_vm(VM *vm)
             for (int k = 0; k < vm->protos[i].nvars; k++)
                 free(vm->protos[i].vars[k].nome);
             free(vm->protos[i].vars);
+            /* A tabela de capturas de toda funct aninhada (closure): copiada
+             * na carga do programa e de cada módulo, e nunca solta — o
+             * LeakSanitizer acusava em todo programa com closure, e o
+             * `make check-asan` desligava a detecção pra não ver. */
+            if (vm->protos[i].upval_nomes) {
+                for (int k = 0; k < vm->protos[i].nupvals; k++)
+                    free(vm->protos[i].upval_nomes[k]);
+                free(vm->protos[i].upval_nomes);
+            }
+            free(vm->protos[i].upvals);
         }
         free(vm->protos);
     }

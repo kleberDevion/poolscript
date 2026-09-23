@@ -261,13 +261,26 @@ real da lib de banco por trás (`sqlite3`, `psycopg2`, `mysql.connector`,
 
 ## Requisitos por driver
 
-Os clientes de banco entram **estáticos** no binário `pool` — não há pacote
-pra instalar pra usar `sqlite`, `postgres` ou `mysql`.
+O `sqlite` vem **dentro** do `pool`. Os outros clientes são bibliotecas do
+sistema que o `pool` abre **na primeira conexão daquele driver** — nunca na
+partida. Programa que não usa banco não carrega nenhuma, e o que só usa
+`sqlite` também não: o `pool` abre (e abre rápido) numa máquina sem nenhum
+cliente de banco instalado.
 
-| driver | precisa de algo na máquina? |
-|---|---|
-| `sqlite` | não — embutido |
-| `postgres` | não — embutido |
-| `mysql`/`mariadb` | não — embutido |
-| `mssql`/`sqlserver` | o **driver ODBC do SQL Server** instalado no sistema (o gerenciador ODBC é embutido; o driver do fabricante não) |
-| `mongo` | `libmongoc` no sistema |
+| driver | o que precisa na máquina | pacote no Debian/Ubuntu |
+|---|---|---|
+| `sqlite` | nada — embutido | — |
+| `postgres` | `libpq.so.5` | `libpq5` |
+| `mysql`/`mariadb` | `libmariadb.so.3` | `libmariadb3` |
+| `mssql`/`sqlserver` | `libodbc.so.2` e o **driver ODBC do SQL Server** do fabricante | `libodbc2` + o driver |
+| `mongo` | `libmongoc-1.0.so.0` | `libmongoc-1.0-0t64` |
+
+Faltando a biblioteca, o `connect` daquele driver levanta um erro que diz
+qual é — e o programa segue (dá pra pegar com `try`):
+
+```
+o driver postgres precisa da biblioteca libpq.so.5, que nao foi encontrada (libpq.so.5: cannot open shared object file: No such file or directory)
+```
+
+O pacote portátil (`make bundle`) leva as quatro junto, com o que elas
+arrastam.

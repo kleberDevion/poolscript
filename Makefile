@@ -27,21 +27,21 @@ CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
 
-# O diretório das libs do PostgreSQL tem a VERSÃO no nome (`.../16/lib`), e
-# essa versão muda com a distribuição: fixar `16` fazia o link falhar em
-# qualquer máquina com outra (o Debian 13 traz a 17). Descobre no momento do
-# build e pega a mais nova; se não houver nenhuma, sai vazio e o link usa o
-# caminho padrão do sistema.
-PGLIB     := $(shell ls -d /usr/lib/postgresql/*/lib 2>/dev/null | sort -V | tail -1)
-PGLIBFLAG := $(if $(PGLIB),-L$(PGLIB),)
-
-# A `libpq.a` é a build ESTÁTICA da biblioteca COMPARTILHADA, e os símbolos que
-# ela deixa em aberto (`pg_encoding_to_char`, `pg_char_to_encoding`, …) moram na
-# variante `_shlib` do pgcommon/pgport. Na pg16 as duas variantes definem esses
-# símbolos, então `-lpgcommon` simples funcionava por acidente; na pg17 (Debian
-# 13) só a `_shlib` define, e o link morre em `undefined reference`. A `_shlib`
-# é a certa nas duas — a outra fica de reserva pra distribuição que não a tenha.
-PGSTATIC  := $(if $(wildcard $(PGLIB)/libpgcommon_shlib.a),-lpgcommon_shlib -lpgport_shlib,-lpgcommon -lpgport)
+# O QUE O `pool` LIGA. Os clientes de banco — Postgres, MySQL, ODBC e Mongo —
+# NÃO entram: cada driver abre a biblioteca dele no primeiro `connect`
+# (vm/ps_dl.h). Ligados, eles e o que arrastam (Kerberos, LDAP, gnutls, SASL:
+# 36 bibliotecas) eram carregados na partida de TODO programa — medido com
+# callgrind, 90% do trabalho de um `pool --version` era o carregador dinâmico
+# relocando essas bibliotecas. Só carrega a biblioteca que o programa usa.
+# Os cabeçalhos continuam no CFLAGS: o código compila contra eles, só não liga.
+#
+# O sqlite, o TLS, o PNG, o XML e o zlib entram ESTÁTICOS no `pool`: o binário
+# roda em máquina sem as .so deles, e estático não custa nada na partida. O
+# gmp (inteiro grande) é da linguagem, não de um módulo.
+LIBS_SISTEMA   := -lrt -lpthread -ldl -lm -l:libgmp.so.10
+LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic $(LIBS_SISTEMA)
+# as variantes de teste (asan, debug, fuzz, oom, cobertura) ligam dinâmico
+LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz $(LIBS_SISTEMA)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
            $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/poolscript_vm.c $(VM)/main.c
@@ -74,9 +74,13 @@ $(VM)/ps_build.h: FORCE
 	@cmp -s $@.novo $@ 2>/dev/null || mv $@.novo $@
 	@rm -f $@.novo
 
-pool: $(FONTES) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(MK)
-	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) \
-	  $(PGLIBFLAG) -Wl,-Bstatic -lsqlite3 -lpq $(PGSTATIC) -lodbc -lssl -lcrypto -lpng -lexpat -lz -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt  -lpthread -ldl -lm -l:libgmp.so.10
+# Os CABEÇALHOS da VM também: mudar só um `.h` (uma macro, um campo de struct)
+# não refazia o binário — o make olhava os `.c`, via tudo em dia, e o `pool`
+# seguia com o comportamento velho.
+CABECALHOS := $(wildcard $(VM)/*.h)
+
+pool: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(MK)
+	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(LIBS_POOL)
 
 # Bundle PORTÁTIL: pool + todas as .so numa pasta lib/, com wrapper. Roda em
 # qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls, krb5,
@@ -321,13 +325,9 @@ testar: $(TESTE_FONTES) teste/ps_teste.h $(VM)/ps_ext.h
 # CADA operação com comportamento indefinido, e para no ponto exato. Acha a
 # classe inteira (estouro de buffer, uso após liberar, shift inválido, overflow
 # de signed) sem ninguém adivinhar o caso.
-pool-asan: $(FONTES) $(VM)/ps_versao.h $(MK)
+pool-asan: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -fsanitize=address,undefined -fno-omit-frame-pointer \
-	  -I$(VM) -o $@ $(FONTES) \
-	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
-	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
-	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libgmp.so.10
+	  -I$(VM) -o $@ $(FONTES) $(LIBS_TESTE)
 
 # Análise estática do gcc: caminho de execução simbólico, acha vazamento,
 # desreferência de NULL e uso de não-inicializado sem rodar o programa.
@@ -643,14 +643,10 @@ unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)
 	  $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c -lz -lexpat -lm
 	@./$@
 
-pool-oom: $(FONTES) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
+pool-oom: $(FONTES) $(CABECALHOS) teste/ps_oom.c $(VM)/ps_versao.h $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ $(FONTES) teste/ps_oom.c \
 	  -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=strdup \
-	  $(PGLIBFLAG) -Wl,-Bstatic -lsqlite3 -lpq $(PGSTATIC) \
-	  -lmariadb -lodbc -lssl -lcrypto -lpng -lexpat -lz \
-	  -Wl,-Bdynamic -lmariadb -lstdc++ -lzstd -lltdl -lldap -llber -lgssapi_krb5 \
-	  -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libgmp.so.10
+	  $(LIBS_POOL)
 
 # Falha a i-ésima alocação de cada programa de teste/oom_varre.pr. Passar não é
 # "não deu erro": é "morreu limpo" — segfault, liberação dupla e trava reprovam.
@@ -670,15 +666,11 @@ FUZZ_FONTES := $(filter-out $(VM)/main.c,$(FONTES))
 FUZZ_T ?= 120
 FUZZ_CORPUS := teste/fuzz_corpus
 
-pool-fuzz: $(FUZZ_FONTES) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
+pool-fuzz: $(FUZZ_FONTES) $(CABECALHOS) teste/ps_fuzz.c $(VM)/ps_versao.h $(MK)
 	clang -O1 -g -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer \
 	  -Wno-everything -I$(VM) -I/usr/include/postgresql -I/usr/include/mariadb \
 	  -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0 \
-	  -o $@ $(FUZZ_FONTES) teste/ps_fuzz.c \
-	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
-	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
-	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libgmp.so.10
+	  -o $@ $(FUZZ_FONTES) teste/ps_fuzz.c $(LIBS_TESTE)
 
 # Semeia o corpus com os programas que a suíte já tem: o fuzzer parte de
 # entrada VÁLIDA e muta a partir dela, em vez de descobrir a sintaxe do zero.
@@ -724,9 +716,12 @@ leis: pool
 # A suíte roda o binário -O2, que é exatamente o que ESCONDE a classe de
 # defeito de memória: leitura fora de faixa em -O2 costuma "funcionar". O
 # `pool-asan` já existia e nada o rodava — este alvo é a ligação que faltava.
+# VAZAMENTO CONTA: a detecção ficava desligada (`detect_leaks=0`), e com ela a
+# tabela de capturas de toda closure, que nunca era solta, passava em todo
+# portão. Ligada, qualquer memória que o motor não devolve reprova o caso.
 check-asan: pool-asan testar
-	@echo "suite inteira sob AddressSanitizer + UBSan…"
-	@PS_POOL=pool-asan ASAN_OPTIONS=detect_leaks=0:abort_on_error=0 \
+	@echo "suite inteira sob AddressSanitizer + UBSan + LeakSanitizer…"
+	@PS_POOL=pool-asan ASAN_OPTIONS=detect_leaks=1:abort_on_error=0 \
 	  UBSAN_OPTIONS=print_stacktrace=1 nice -n 19 ./testar
 
 .PHONY: check-asan
@@ -740,12 +735,8 @@ check-asan: pool-asan testar
 # Roda a suíte inteira contra o binário com `-DPS_DEBUG`. Invariante quebrada
 # vira `abort()`, e o runner (subprocesso por caso) reporta como morte por
 # sinal em vez de derrubar a bateria.
-pool-debug: $(FONTES) $(VM)/ps_versao.h $(MK)
-	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) \
-	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
-	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
-	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libgmp.so.10
+pool-debug: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(MK)
+	$(CC) -O1 -g -DPS_DEBUG $(CFLAGS_BASE) -I$(VM) -o $@ $(FONTES) $(LIBS_TESTE)
 
 check-debug: pool-debug testar
 	@echo "suite inteira com as invariantes do motor ligadas…"
@@ -762,11 +753,7 @@ check-debug: pool-debug testar
 # último passo sem ter comparado nada.
 cobertura: pool testar
 	@rm -rf cob && mkdir -p cob
-	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) \
-	  $(PGLIBFLAG) -lsqlite3 -lpq -lmariadb -lodbc -lssl \
-	  -lcrypto -lpng -lexpat -lz -lstdc++ -lzstd -lltdl -lldap -llber \
-	  -lgssapi_krb5 -lmongoc-1.0 -lbson-1.0 -lrt -lpthread -ldl -lm \
-	  -l:libgmp.so.10
+	$(CC) -O0 -g --coverage $(CFLAGS_BASE) -I$(VM) -o cob/pool $(FONTES) $(LIBS_TESTE)
 	@echo "rodando a suite contra o binario instrumentado…"
 	@PS_POOL=cob/pool nice -n 19 ./testar 2>&1 | tail -2
 	# O PORTÃO INTEIRO, não só o `testar`. Enquanto a medição rodava apenas a

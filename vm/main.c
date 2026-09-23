@@ -1476,6 +1476,9 @@ int main(int argc, char **argv)
      * que impede a recursão de estourar (ver `ps_pilha_apertada`). Feito no
      * main porque aqui a pilha ainda está praticamente intocada. */
     ps_pilha_marca_processo();
+    /* o quadro do traceback é o MESMO pro erro que para o programa e pro que
+     * só é avisado (o do `int funct` que devolveu 500) */
+    ps_gancho_quadro = imprime_quadro;
 
     /* Executavel gerado por `-o`: o programa esta grudado neste binario. Roda
      * ele e ignora os subcomandos — quem chama um programa compilado espera o

@@ -51,6 +51,97 @@ const char *ps_op_nome(int32_t op)
     return "?";
 }
 
+/* ── índice de nomes ─────────────────────────────────────────────────────── */
+/* Nome -> posição numa lista, por hash. As listas de nomes do compilador (os
+ * globais, os nomes colhidos do topo, os criados no módulo, os ligados no
+ * módulo) eram procuradas com `strcmp` do começo ao fim — uma vez por
+ * declaração, e cada declaração crescia a lista. Arquivo com N funções pagava
+ * N²: 10 mil funções de uma linha levavam 0,8 s pra conferir e 40 mil, 32 s,
+ * ao rodar também. A lista continua sendo a dona das strings; o índice só
+ * aponta pra elas, e quem tira um nome da lista tira do índice ANTES de
+ * liberar a string. */
+typedef struct {
+    const char **k;       /* NULL = vazio; IX_LAPIDE = removido */
+    int32_t     *v;
+    int32_t      cap;     /* potência de 2; 0 = índice ainda vazio */
+    int32_t      usados;  /* ocupados + lápides: é o que decide crescer */
+} IdxNomes;
+#define IX_LAPIDE ((const char *)1)
+
+static uint32_t ix_hash(const char *s)
+{
+    uint32_t h = 2166136261u;
+    for (; *s; s++) { h ^= (unsigned char)*s; h *= 16777619u; }
+    return h;
+}
+
+/* A posição guardada pro nome, ou -1. */
+static int32_t ix_busca(const IdxNomes *ix, const char *nome)
+{
+    if (!ix->cap || !nome) return -1;
+    uint32_t m = (uint32_t)ix->cap - 1, i = ix_hash(nome) & m;
+    for (;;) {
+        const char *k = ix->k[i];
+        if (!k) return -1;
+        if (k != IX_LAPIDE && strcmp(k, nome) == 0) return ix->v[i];
+        i = (i + 1) & m;
+    }
+}
+
+static int ix_poe(IdxNomes *ix, const char *nome, int32_t val);
+
+static int ix_cresce(IdxNomes *ix)
+{
+    IdxNomes novo = {0};
+    novo.cap = ix->cap ? ix->cap * 2 : 16;
+    novo.k = calloc((size_t)novo.cap, sizeof(*novo.k));
+    novo.v = calloc((size_t)novo.cap, sizeof(*novo.v));
+    if (!novo.k || !novo.v) { free(novo.k); free(novo.v); return -1; }
+    for (int32_t i = 0; i < ix->cap; i++)
+        if (ix->k[i] && ix->k[i] != IX_LAPIDE) ix_poe(&novo, ix->k[i], ix->v[i]);
+    free(ix->k); free(ix->v);
+    *ix = novo;
+    return 0;
+}
+
+/* Guarda (ou troca) a posição do nome. -1 = sem memória. */
+static int ix_poe(IdxNomes *ix, const char *nome, int32_t val)
+{
+    if ((ix->usados + 1) * 10 > ix->cap * 7 && ix_cresce(ix) != 0) return -1;
+    uint32_t m = (uint32_t)ix->cap - 1, i = ix_hash(nome) & m;
+    int32_t lapide = -1;
+    for (;;) {
+        const char *k = ix->k[i];
+        if (!k) break;
+        if (k == IX_LAPIDE) { if (lapide < 0) lapide = (int32_t)i; }
+        else if (strcmp(k, nome) == 0) { ix->v[i] = val; return 0; }
+        i = (i + 1) & m;
+    }
+    if (lapide >= 0) i = (uint32_t)lapide;
+    else ix->usados++;
+    ix->k[i] = nome;
+    ix->v[i] = val;
+    return 0;
+}
+
+static void ix_tira(IdxNomes *ix, const char *nome)
+{
+    if (!ix->cap || !nome) return;
+    uint32_t m = (uint32_t)ix->cap - 1, i = ix_hash(nome) & m;
+    for (;;) {
+        const char *k = ix->k[i];
+        if (!k) return;
+        if (k != IX_LAPIDE && strcmp(k, nome) == 0) { ix->k[i] = IX_LAPIDE; return; }
+        i = (i + 1) & m;
+    }
+}
+
+static void ix_solta(IdxNomes *ix)
+{
+    free(ix->k); free(ix->v);
+    memset(ix, 0, sizeof(*ix));
+}
+
 /* ── estado ─────────────────────────────────────────────────────────────── */
 /* Guarda o ÍNDICE do protótipo, não o ponteiro: uma action aninhada chama
  * `novo_proto`, que faz realloc do array — qualquer PSProto* guardado aqui
@@ -110,6 +201,11 @@ struct Unidade {
     int32_t  idx;
     int32_t  cap_code;
     int32_t  cap_consts;
+    /* Índice das constantes (posição + 1; 0 = vazio): a deduplicação varria
+     * o vetor inteiro a cada constante nova, e o `<module>` de um arquivo com
+     * milhares de declarações tem milhares delas. */
+    int32_t *ix_consts;
+    int32_t  cap_ix_consts, n_ix_consts;
     char   **locais;       /* nome de cada slot local */
     int32_t  nlocais;
     int32_t  cap_locais;
@@ -141,6 +237,7 @@ struct Unidade {
     char   **mod_criados;
     int32_t  n_mod_criados;
     int32_t  cap_mod_criados;
+    IdxNomes ix_mod;      /* nome -> posição em `mod_criados` */
     /* Tipagem estática: um SimInfo por slot (junto dos vetores de slot) e um
      * por nome de `mod_criados` (mesmo índice, mesma vida). */
     SimInfo *sim;
@@ -186,6 +283,7 @@ typedef struct {
     PSPrograma *out;
     int32_t     cap_protos;
     int32_t     cap_globais;
+    IdxNomes    ix_globais;     /* nome -> posição em `out->globais` */
     Laco        lacos[MAX_LACOS];
     int         nlacos;
     /* contador de compreensões de lista, pra o nome do acumulador ser único
@@ -270,11 +368,13 @@ typedef struct {
      * não se resolveu, e aí não dá pra dizer que um nome não existe. */
     char   **ligados_mod;
     int32_t  nligados_mod, cap_ligados_mod;
+    IdxNomes ix_ligados_mod;   /* nome -> posição em `ligados_mod` */
     int      nomes_incertos;
     /* o arquivo importa o jinker: `request` e `channel` são injetados quando
      * o app sobe */
     int      usa_jinker;
     int32_t  ntopo, cap_topo;
+    IdxNomes ix_topo;          /* nome -> posição em `topo` */
     /* Toda Entity, model e enum do arquivo, em qualquer profundidade, por
      * nome — é o que diz se um nome de tipo existe e quem herda de quem. */
     PSNode **tipos_arq;
@@ -343,7 +443,10 @@ static void cerro_sx(C *c, PSNode *n, const char *fmt, ...)
 static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
 {
     if (UP(c, u)->ncode + 2 > u->cap_code) {
-        int32_t novo = u->cap_code < 64 ? 64 : u->cap_code * 2;
+        /* começa pequeno: uma funct de uma linha usa ~12 palavras, e cada
+         * proto nascia com 64 em três vetores (código, linha, coluna) —
+         * 768 bytes por função, a maior parte vazia */
+        int32_t novo = u->cap_code < 16 ? 16 : u->cap_code * 2;
         int32_t *nc = realloc(UP(c, u)->code, sizeof(int32_t) * (size_t)novo);
         if (!nc) { cerro(c, "sem memoria", NULL); return -1; }
         UP(c, u)->code = nc;
@@ -366,26 +469,94 @@ static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
     return pos;
 }
 
+/* A proto TERMINOU de ser compilada: os vetores dela encolhem ao tamanho
+ * usado. Todas as protos do arquivo ficam vivas até a VM copiá-las, então a
+ * folga de cada uma somava no pico — num arquivo de 200 mil funct, era a maior
+ * parte da memória do compilador. */
+static void proto_encolhe(C *c, Unidade *u)
+{
+    PSProto *p = UP(c, u);
+    if (p->ncode > 0 && p->ncode < u->cap_code) {
+        size_t t = sizeof(int32_t) * (size_t)p->ncode;
+        int32_t *a = realloc(p->code, t);    if (a) p->code = a;
+        int32_t *b = realloc(p->linhas, t);  if (b) p->linhas = b;
+        int32_t *d = realloc(p->colunas, t); if (d) p->colunas = d;
+        if (a && b && d) u->cap_code = p->ncode;
+    }
+    if (p->nconsts > 0 && p->nconsts < u->cap_consts) {
+        PSConst *k = realloc(p->consts, sizeof(PSConst) * (size_t)p->nconsts);
+        if (k) { p->consts = k; u->cap_consts = p->nconsts; }
+    }
+    /* o índice das constantes só serve enquanto a unidade compila */
+    free(u->ix_consts);
+    u->ix_consts = NULL; u->cap_ix_consts = u->n_ix_consts = 0;
+}
+
 /* Dedup por tipo E valor: `1` e `True` não podem colidir, senão o pool
  * devolveria o índice de um valor de outro tipo. */
+/* A MESMA igualdade que a deduplicação sempre usou: texto por bytes, flo por
+ * `==` (então 0.0 e -0.0 são a mesma constante, e NaN nunca repete). */
+static int const_igual(const PSConst *e, PSConstKind k, int64_t i, double d,
+                       const char *s, int32_t slen)
+{
+    if (e->kind != k) return 0;
+    if (k == K_STR || k == K_BIGINT || k == K_BYTES)
+        return e->slen == slen && memcmp(e->s, s, (size_t)slen) == 0;
+    if (k == K_FLO) return e->d == d;
+    if (k == K_NULL) return 1;
+    return e->i == i;
+}
+
+/* O hash respeita a igualdade acima: -0.0 cai no balde do 0.0. */
+static uint32_t const_hash(PSConstKind k, int64_t i, double d, const char *s, int32_t slen)
+{
+    uint32_t h = 2166136261u ^ (uint32_t)k;
+    const unsigned char *b; size_t n;
+    if (k == K_STR || k == K_BIGINT || k == K_BYTES) { b = (const unsigned char *)s; n = (size_t)slen; }
+    else if (k == K_FLO) { if (d == 0.0) d = 0.0; b = (const unsigned char *)&d; n = sizeof(d); }
+    else if (k == K_NULL) { b = NULL; n = 0; }
+    else { b = (const unsigned char *)&i; n = sizeof(i); }
+    for (size_t q = 0; q < n; q++) { h ^= b[q]; h *= 16777619u; }
+    return h;
+}
+
+/* Põe a constante `x` (já no vetor) no índice da unidade. -1 = sem memória. */
+static int const_indexa(Unidade *u, const PSConst *consts, int32_t x)
+{
+    if ((u->n_ix_consts + 1) * 10 > u->cap_ix_consts * 7) {
+        int32_t nc = u->cap_ix_consts ? u->cap_ix_consts * 2 : 8;
+        int32_t *nv = calloc((size_t)nc, sizeof(int32_t));
+        if (!nv) return -1;
+        for (int32_t q = 0; q < u->cap_ix_consts; q++) {
+            int32_t v = u->ix_consts[q];
+            if (!v) continue;
+            const PSConst *e = &consts[v - 1];
+            uint32_t j = const_hash(e->kind, e->i, e->d, e->s, e->slen) & (uint32_t)(nc - 1);
+            while (nv[j]) j = (j + 1) & (uint32_t)(nc - 1);
+            nv[j] = v;
+        }
+        free(u->ix_consts);
+        u->ix_consts = nv; u->cap_ix_consts = nc;
+    }
+    const PSConst *e = &consts[x];
+    uint32_t j = const_hash(e->kind, e->i, e->d, e->s, e->slen) & (uint32_t)(u->cap_ix_consts - 1);
+    while (u->ix_consts[j]) j = (j + 1) & (uint32_t)(u->cap_ix_consts - 1);
+    u->ix_consts[j] = x + 1;
+    u->n_ix_consts++;
+    return 0;
+}
+
 static int32_t idx_const(C *c, Unidade *u, PSConstKind k,
                          int64_t i, double d, const char *s, int32_t slen)
 {
-    for (int32_t x = 0; x < UP(c, u)->nconsts; x++) {
-        PSConst *e = &UP(c, u)->consts[x];
-        if (e->kind != k) continue;
-        if (k == K_STR || k == K_BIGINT || k == K_BYTES) {
-            if (e->slen == slen && memcmp(e->s, s, (size_t)slen) == 0) return x;
-        } else if (k == K_FLO) {
-            if (e->d == d) return x;
-        } else if (k == K_NULL) {
-            return x;
-        } else {
-            if (e->i == i) return x;
-        }
+    if (u->cap_ix_consts) {
+        uint32_t m = (uint32_t)u->cap_ix_consts - 1;
+        for (uint32_t j = const_hash(k, i, d, s, slen) & m; u->ix_consts[j]; j = (j + 1) & m)
+            if (const_igual(&UP(c, u)->consts[u->ix_consts[j] - 1], k, i, d, s, slen))
+                return u->ix_consts[j] - 1;
     }
     if (UP(c, u)->nconsts + 1 > u->cap_consts) {
-        int32_t novo = u->cap_consts < 16 ? 16 : u->cap_consts * 2;
+        int32_t novo = u->cap_consts < 4 ? 4 : u->cap_consts * 2;
         PSConst *nc = realloc(UP(c, u)->consts, sizeof(PSConst) * (size_t)novo);
         if (!nc) { cerro(c, "sem memoria", NULL); return -1; }
         UP(c, u)->consts = nc;
@@ -401,13 +572,16 @@ static int32_t idx_const(C *c, Unidade *u, PSConstKind k,
         e->s[slen] = '\0';
         e->slen = slen;
     }
+    if (const_indexa(u, UP(c, u)->consts, UP(c, u)->nconsts) != 0) {
+        cerro(c, "sem memoria", NULL); return -1;
+    }
     return UP(c, u)->nconsts++;
 }
 
 static int32_t idx_global(C *c, const char *nome)
 {
-    for (int32_t i = 0; i < c->out->nglobais; i++)
-        if (strcmp(c->out->globais[i], nome) == 0) return i;
+    int32_t ja = ix_busca(&c->ix_globais, nome);
+    if (ja >= 0) return ja;
     if (c->out->nglobais + 1 > c->cap_globais) {
         int32_t novo = c->cap_globais < 16 ? 16 : c->cap_globais * 2;
         char **ng = realloc(c->out->globais, sizeof(char *) * (size_t)novo);
@@ -419,6 +593,9 @@ static int32_t idx_global(C *c, const char *nome)
     char *copia = malloc(n + 1);
     if (!copia) { cerro(c, "sem memoria", NULL); return -1; }
     memcpy(copia, nome, n + 1);
+    if (ix_poe(&c->ix_globais, copia, c->out->nglobais) != 0) {
+        free(copia); cerro(c, "sem memoria", NULL); return -1;
+    }
     c->out->globais[c->out->nglobais] = copia;
     return c->out->nglobais++;
 }
@@ -517,8 +694,10 @@ static void escopo_emite_clears(C *c, Unidade *u, int32_t marca)
 static void escopo_trunca(C *c, Unidade *u, int32_t marca)
 {
     if (u->eh_modulo) {
-        for (int32_t i = u->n_mod_criados - 1; i >= marca; i--)
+        for (int32_t i = u->n_mod_criados - 1; i >= marca; i--) {
+            ix_tira(&u->ix_mod, u->mod_criados[i]);   /* antes do free: o índice aponta pra ela */
             free(u->mod_criados[i]);
+        }
         if (u->n_mod_criados > marca) u->n_mod_criados = marca;
     } else {
         vardbg_fecha(c, u, marca);
@@ -545,8 +724,7 @@ static void escopo_fecha(C *c, Unidade *u, int32_t marca)
  * registrado (em qualquer escopo já aberto) é write-through — não reentra. */
 static void mod_criados_add(C *c, Unidade *u, const char *nome)
 {
-    for (int32_t i = 0; i < u->n_mod_criados; i++)
-        if (strcmp(u->mod_criados[i], nome) == 0) return;
+    if (ix_busca(&u->ix_mod, nome) >= 0) return;
     if (u->n_mod_criados + 1 > u->cap_mod_criados) {
         int32_t novo = u->cap_mod_criados < 8 ? 8 : u->cap_mod_criados * 2;
         char **nl = realloc(u->mod_criados, sizeof(char *) * (size_t)novo);
@@ -565,6 +743,9 @@ static void mod_criados_add(C *c, Unidade *u, const char *nome)
     char *copia = malloc(n + 1);
     if (!copia) { cerro(c, "sem memoria", NULL); return; }
     memcpy(copia, nome, n + 1);
+    if (ix_poe(&u->ix_mod, copia, u->n_mod_criados) != 0) {
+        free(copia); cerro(c, "sem memoria", NULL); return;
+    }
     memset(&u->mod_sim[u->n_mod_criados], 0, sizeof(SimInfo));
     u->mod_criados[u->n_mod_criados++] = copia;
 }
@@ -853,7 +1034,12 @@ static int32_t resolve_upval(C *c, Unidade *u, const char *nome)
 static void junta_nomes(C *c, char ***v, int32_t *n, int32_t *cap, const char *nome)
 {
     if (!nome || !*nome) return;
-    for (int32_t i = 0; i < *n; i++) if (!strcmp((*v)[i], nome)) return;
+    /* A lista do MÓDULO tem índice: ela junta um nome por declaração do
+     * arquivo, e a varredura aqui era o N² de um arquivo com milhares de
+     * funct. As de funct aninhada são curtas e seguem varridas. */
+    IdxNomes *ix = (v == &c->ligados_mod) ? &c->ix_ligados_mod : NULL;
+    if (ix) { if (ix_busca(ix, nome) >= 0) return; }
+    else for (int32_t i = 0; i < *n; i++) if (!strcmp((*v)[i], nome)) return;
     if (*n + 1 > *cap) {
         int32_t novo = *cap < 8 ? 8 : *cap * 2;
         char **nv = realloc(*v, sizeof(char *) * (size_t)novo);
@@ -864,6 +1050,7 @@ static void junta_nomes(C *c, char ***v, int32_t *n, int32_t *cap, const char *n
     char *copia = malloc(ln + 1);
     if (!copia) { cerro(c, "sem memoria", NULL); return; }
     memcpy(copia, nome, ln + 1);
+    if (ix && ix_poe(ix, copia, *n) != 0) { free(copia); cerro(c, "sem memoria", NULL); return; }
     (*v)[(*n)++] = copia;
 }
 
@@ -1214,11 +1401,7 @@ static void carrega_nome(C *c, Unidade *u, const char *nome)
 static int nome_ja_existe(Unidade *u, const char *nome)
 {
     if (!nome || !*nome) return 0;
-    if (u->eh_modulo) {
-        for (int32_t i = 0; i < u->n_mod_criados; i++)
-            if (strcmp(u->mod_criados[i], nome) == 0) return 1;
-        return 0;
-    }
+    if (u->eh_modulo) return ix_busca(&u->ix_mod, nome) >= 0;
     for (int32_t i = 0; i < u->nlocais; i++)
         if (strcmp(u->locais[i], nome) == 0)
             return !u->celula_virgem[i];
@@ -1604,9 +1787,8 @@ static int tp_tipo_existe(C *c, Unidade *u, const char *t)
 /* ── o que se sabe de um nome ── */
 static SimInfo *tp_sim_topo(C *c, const char *nome)
 {
-    for (int32_t i = 0; i < c->ntopo; i++)
-        if (strcmp(c->topo[i].nome, nome) == 0) return &c->topo[i].s;
-    return NULL;
+    int32_t i = ix_busca(&c->ix_topo, nome);
+    return i >= 0 ? &c->topo[i].s : NULL;
 }
 
 /* O tipo de cada item que o `for each` tira do iterável: texto dá texto,
@@ -1643,8 +1825,8 @@ static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
         }
     }
     if (u->eh_modulo) {
-        for (int32_t i = u->n_mod_criados - 1; i >= 0; i--)
-            if (strcmp(u->mod_criados[i], nome) == 0) return &u->mod_sim[i];
+        int32_t k = ix_busca(&u->ix_mod, nome);
+        if (k >= 0) return &u->mod_sim[k];
         return tp_sim_topo(c, nome);
     }
     if (eh_global_declarada(u, nome)) return tp_sim_topo(c, nome);
@@ -1669,9 +1851,13 @@ static SimInfo *tp_sim_de(C *c, Unidade *u, const char *nome)
  * arquivo inteiro: não se põem de lado nem se restauram por laço. */
 static int tp_eh_topo(C *c, const SimInfo *s)
 {
-    for (int32_t i = 0; i < c->ntopo; i++)
-        if (&c->topo[i].s == s) return 1;
-    return 0;
+    /* pelo endereço: o SimInfo de um global colhido mora DENTRO do vetor
+     * `topo` — varrer o vetor a cada pergunta era mais um custo por nome */
+    if (!c->ntopo || !s) return 0;
+    const char *ini = (const char *)&c->topo[0].s;
+    const char *fim = ini + (size_t)c->ntopo * sizeof(c->topo[0]);
+    const char *q = (const char *)s;
+    return q >= ini && q < fim && (size_t)(q - ini) % sizeof(c->topo[0]) == 0;
 }
 
 /* `for each x` e `[... for each x in ...]` com um `x` que já existe: sem tipo
@@ -1816,7 +2002,7 @@ static void tp_confere_nome(C *c, Unidade *u, const char *nome, PSNode *onde)
     if (!nome || !*nome || c->nomes_incertos) return;
     for (Unidade *q = u; q; q = q->pai)
         if (tp_na_lista(q->ligados, q->nligados, nome)) return;
-    if (tp_na_lista(c->ligados_mod, c->nligados_mod, nome)) return;
+    if (ix_busca(&c->ix_ligados_mod, nome) >= 0) return;
     if (c->entity_no && campo_estatico_da_classe(c, nome)) return;
     if (ps_nome_pre_ligado(nome) || ps_tipo_info(nome)) return;
     if (c->usa_jinker && (!strcmp(nome, "request") || !strcmp(nome, "channel"))) return;
@@ -3039,9 +3225,8 @@ static void guarda_nome_modo_no(C *c, Unidade *u, const char *nome, int certa)
 {
     if (u->eh_modulo) {
         mod_criados_add(c, u, nome);  /* p/ escopo de bloco */
-        SimInfo *s = NULL;
-        for (int32_t k = u->n_mod_criados - 1; k >= 0; k--)
-            if (strcmp(u->mod_criados[k], nome) == 0) { s = &u->mod_sim[k]; break; }
+        int32_t km = ix_busca(&u->ix_mod, nome);
+        SimInfo *s = km >= 0 ? &u->mod_sim[km] : NULL;
         int v = tp_escreve(c, s, nome);
         tp_emite_escrita(c, u, nome, s, v, tp_cod1(s, tipo_topo_de(c, nome)));
         emite(c, u, OP_STORE_GLOBAL, idx_global(c, nome));
@@ -5594,6 +5779,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     }
     emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_NULL, 0, 0, NULL, 0));
     emite(c, &u, OP_RETURN, 0);
+    proto_encolhe(c, &u);
 
     vardbg_fecha(c, &u, 0);   /* o que chegou vivo ao fim vale até a última palavra */
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
@@ -5604,6 +5790,7 @@ static int32_t sintetiza_init(C *c, PSNode *entidade)
     free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
+    ix_solta(&u.ix_mod);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
     return idx;
@@ -5792,7 +5979,9 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
 
     if (rede >= 0) {
         UP(c, (&u))->code[rede + 1] = UP(c, (&u))->ncode;
-        emite(c, &u, OP_POP_TOP, 0);          /* descarta a mensagem do erro */
+        /* o erro sai no stderr JUNTO com o sentinela — descartá-lo calado
+         * mostrava "500" como se fosse resultado */
+        emite(c, &u, OP_ENGOLE, u.tipo_ret == 1 ? 1 : 2);
         if (u.tipo_ret == 1)
             emite(c, &u, OP_LOAD_CONST, idx_const(c, &u, K_INT, 500, 0, NULL, 0));
         else
@@ -5819,6 +6008,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     }
     for (int32_t i = 0; i < u.nupvals; i++) free(u.upvals[i].nome);
     free(u.upvals);
+    proto_encolhe(c, &u);
 
     vardbg_fecha(c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
@@ -5829,6 +6019,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
     free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
+    ix_solta(&u.ix_mod);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
 
@@ -5854,6 +6045,7 @@ static SimInfo *tp_topo_poe(C *c, const char *nome)
         c->topo = nv;
         c->cap_topo = novo;
     }
+    if (ix_poe(&c->ix_topo, nome, c->ntopo) != 0) { cerro(c, "sem memoria", NULL); return NULL; }
     c->topo[c->ntopo].nome = nome;
     memset(&c->topo[c->ntopo].s, 0, sizeof(SimInfo));
     return &c->topo[c->ntopo++].s;
@@ -5983,26 +6175,33 @@ static void calcula_exportados(C *c, Unidade *u)
     if (cap == 0) return;
     out->exportados = calloc((size_t)cap, sizeof(char *));
     if (!out->exportados) { cerro(c, "sem memoria", NULL); return; }
+    /* O que NÃO sai do módulo (os `private`) e o que já saiu, indexados: cada
+     * nome era conferido contra todos os anteriores — N² num arquivo com
+     * milhares de funct, e isto roda também ao executar. */
+    IdxNomes fora_ix = {0}, ja_ix = {0};
+    for (int32_t k = 0; k < out->npriv_globais; k++)
+        if (ix_poe(&fora_ix, out->priv_globais[k], k) != 0) goto sem_memoria;
+    for (int32_t k = 0; k < out->nclasses; k++)
+        if (out->classes[k].classe_privada && out->classes[k].nome
+                && ix_poe(&fora_ix, out->classes[k].nome, k) != 0) goto sem_memoria;
     for (int passo = 0; passo < 2; passo++) {
         char  **fonte = passo == 0 ? u->mod_criados : c->globais_gravados;
         int32_t nf    = passo == 0 ? u->n_mod_criados : c->nglobais_gravados;
         for (int32_t i = 0; i < nf; i++) {
             const char *nm = fonte[i];
             if (!eh_identificador(nm)) continue;
-            int fora = 0;
-            for (int32_t k = 0; k < out->npriv_globais && !fora; k++)
-                if (!strcmp(out->priv_globais[k], nm)) fora = 1;
-            for (int32_t k = 0; k < out->nclasses && !fora; k++)
-                if (out->classes[k].classe_privada && out->classes[k].nome && !strcmp(out->classes[k].nome, nm))
-                    fora = 1;
-            for (int32_t k = 0; k < out->nexportados && !fora; k++)
-                if (!strcmp(out->exportados[k], nm)) fora = 1;
-            if (fora) continue;
+            if (ix_busca(&fora_ix, nm) >= 0 || ix_busca(&ja_ix, nm) >= 0) continue;
             char *copia = strdup(nm);
-            if (!copia) { cerro(c, "sem memoria", NULL); return; }
+            if (!copia) goto sem_memoria;
+            if (ix_poe(&ja_ix, copia, out->nexportados) != 0) { free(copia); goto sem_memoria; }
             out->exportados[out->nexportados++] = copia;
         }
     }
+    ix_solta(&fora_ix); ix_solta(&ja_ix);
+    return;
+sem_memoria:
+    ix_solta(&fora_ix); ix_solta(&ja_ix);
+    cerro(c, "sem memoria", NULL);
 }
 
 /* Os `*` do topo do arquivo, resolvidos ANTES de compilar o primeiro
@@ -6107,8 +6306,11 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     for (int32_t i = 0; i < c.ntpool; i++) free(c.tpool[i]);
     free(c.tpool);
     free(c.topo);
+    ix_solta(&c.ix_topo);
     for (int32_t i = 0; i < c.nligados_mod; i++) free(c.ligados_mod[i]);
     free(c.ligados_mod);
+    ix_solta(&c.ix_ligados_mod);
+    ix_solta(&c.ix_globais);        /* as chaves são do programa de saída: só o índice sai */
     free(c.tipos_arq);
 
     for (int32_t e = 0; e < c.nestrelas; e++) {
@@ -6118,6 +6320,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     free(c.estrelas);
     for (int32_t i = 0; i < c.nglobais_gravados; i++) free(c.globais_gravados[i]);
     free(c.globais_gravados);
+    proto_encolhe(&c, &u);
 
     vardbg_fecha(&c, &u, 0);
     for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
@@ -6128,6 +6331,7 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     free(u.ligados);
     for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
     free(u.mod_criados);
+    ix_solta(&u.ix_mod);
     for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
     free(u.globais_decl);
     for (int32_t i = 0; i < c.n_tipos_topo; i++) free(c.tipos_topo_nomes[i]);

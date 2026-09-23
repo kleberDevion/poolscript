@@ -289,6 +289,19 @@ rodando, no `return` — o mesmo erro, no outro momento.
 vira um `try` implícito e a funct nunca propaga exceção. É pensado para
 handlers que precisam sempre devolver algo (um status, um sim/não).
 
+O erro **não some**: o sentinela sai como valor e o erro sai **junto** no
+stderr, no formato do traceback — tipo, mensagem, onde aconteceu — com uma
+linha dizendo o que a funct devolveu no lugar. O programa segue com o
+sentinela (o código de saída não muda por isso).
+
+```
+Boom: x
+  em app.pr, linha 6
+  |     raise Boom("x")
+  |     ^^^
+  int funct quebra() devolveu 500 no lugar do erro
+```
+
 `int funct`:
 
 | Situação | Devolve |
@@ -307,7 +320,7 @@ post(status())        # 0
 int funct quebra() {
     raise Boom("x")
 }
-post(quebra())        # 500  (erro engolido)
+post(quebra())        # 500 — e o erro sai no stderr
 ```
 
 `bool funct`: `return <bool>` devolve ele; **erro no corpo → `False`**;
@@ -636,7 +649,8 @@ modelo é *stackful* (cada task tem pilha própria): escala bem até a casa das
   no máximo 256 parâmetros fixos, conferido na declaração.
 - `return` sem valor / ausência de `return` → `null`.
 - **`int funct` / `bool funct`**: nunca propagam erro (int→`500`, bool→`False`
-  no erro) e tratam `null` (int→`0`, bool→`True`); não coagem o valor retornado.
+  no erro, e o erro sai junto no stderr) e tratam `null` (int→`0`,
+  bool→`True`); não coagem o valor retornado.
 - **`static`** e **`nonnull`** vêm colados na cabeça, em qualquer ordem com os
   outros modificadores, e valem só para a funct em que estão escritos.
 - Funções são **valores** (first-class); há **recursão** (sem fim, inclusive

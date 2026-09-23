@@ -2061,6 +2061,18 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(d(4), p(), gather(t(1))[0])\n", "8 p 1", NULL, 0 },
 { "funct como lambda",
   "f = funct(x) {\n    return x * 10\n}\npost(f(5))\n", "50", NULL, 0 },
+/* `int funct`/`bool funct` devolvem o sentinela (500 / False) — e o erro SAI
+ * JUNTO no stderr. Antes o `try` implicito descartava a mensagem e o erro
+ * sumia calado: "o int nao pode engolir erro, o 500 sai junto". */
+{ "int funct que falha devolve 500 e o erro sai junto",
+  "int funct conta() {\n    raise ValueError(\"falhei\")\n}\npost(conta())\n",
+  "500", "int funct conta() devolveu 500 no lugar do erro", 0 },
+{ "bool funct que falha devolve False e o erro sai junto",
+  "bool funct valida() {\n    raise ValueError(\"falhei\")\n}\npost(valida())\n",
+  "False", "bool funct valida() devolveu False no lugar do erro", 0 },
+{ "o erro engolido mostra a linha do fonte onde aconteceu",
+  "funct f() {\n    x = 1 / 0\n}\nint funct g() {\n    f()\n    return 1\n}\npost(g())\n",
+  "500", "  |     x = 1 / 0\n", 0 },
 /* O corpo da lambda passada como ARGUMENTO herdava o "estou dentro de um
  * grupo" da chamada, e `if x == "" {` lá dentro virava a string `""`
  * interpolando `{...}`: "faltou '}' na interpolacao" em código válido. A mesma

@@ -186,5 +186,5 @@ minhalib`, onde quer que as libs estejam (`POOLSCRIPT_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **15.91.31** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **15.91.32** (a fonte é `vm/ps_versao.h`; `pool --version`
 mostra a do binário).

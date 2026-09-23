@@ -88,6 +88,13 @@ void        ps_emb_libs(const char *pasta);
  * que o quadro do traceback lê: a linha vem daqui, não do disco. */
 const char *ps_emb_busca(const char *caminho, size_t *tam);
 
+/* Quem imprime UM quadro de traceback no stderr (arquivo, linha, o trecho do
+ * fonte e o `^^^`). O `main` põe o dele, que é o mesmo do erro não pego; sem
+ * ninguém (o alvo de fuzz não tem `main`), a VM imprime só "em arquivo, linha
+ * N". Usado quando a VM avisa de um erro que NÃO parou o programa — o do
+ * `int funct` que devolveu 500 no lugar do erro. */
+extern void (*ps_gancho_quadro)(const char *arquivo, int linha, int col);
+
 /* Os `.pr` que `caminho_main` alcança por import, transitivamente — o
  * principal em [0] — resolvidos exatamente como o import resolve rodando.
  * `libs` recebe a pasta de libs desta máquina (vai no executável). Módulo que

@@ -43,6 +43,20 @@ ldd pool | awk '{print $3}' | grep '^/' | sort -u | while read -r so; do
     cp -L "$so" "$SAIDA/lib/" 2>/dev/null || true
 done
 
+# E os clientes de banco, que o `pool` abre só no primeiro `connect` do driver
+# (vm/ps_dl.h) — por isso o `ldd` acima não os vê. Os nomes são os primeiros
+# de PG_NOMES, MY_NOMES, OD_NOMES (vm/ps_db.c) e MG_NOMES (vm/ps_mongo.c). Cada
+# um vai com o que ELE arrasta (Kerberos, LDAP, gnutls...). Faltando um nesta
+# máquina, o bundle sairia sem aquele driver: para aqui em vez de sair capenga.
+for nome in libpq.so.5 libmariadb.so.3 libodbc.so.2 libmongoc-1.0.so.0; do
+    so=$(ldconfig -p | awk -v n="$nome" '$1 == n {print $NF; exit}')
+    [ -n "$so" ] || { echo "falta $nome nesta maquina: o bundle sairia sem esse driver" >&2; exit 1; }
+    for dep in "$so" $(ldd "$so" | awk '{print $3}' | grep '^/'); do
+        echo "$dep" | grep -Eq "$NUCLEO" && continue
+        cp -L "$dep" "$SAIDA/lib/" 2>/dev/null || true
+    done
+done
+
 # wrapper: aponta o loader pras .so que foram junto
 cat > "$SAIDA/pool" <<'WRAP'
 #!/bin/sh
