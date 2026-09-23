@@ -1375,6 +1375,37 @@ const Caso CASOS_LINGUAGEM[] = {
   "funct g(x) {\n    return x\n}\n"
   "v = 3\npost(g(f\"v={v}\"))\n", "v=3", NULL, 0 },
 
+/* As interpolações são NÓS FILHOS do literal, com a posição real. Enquanto a
+ * f-string era um token opaco, o que estava dentro das chaves não existia pra
+ * ninguém que anda na árvore — e a captura de closure anda na árvore: uma
+ * variável usada SÓ dentro da f-string não era capturada e dava NameError. */
+{ "closure captura nome usado so dentro da f-string",
+  "funct fora() {\n"
+  "    x = 5\n"
+  "    funct dentro() {\n"
+  "        post(f\"x vale {x}\")\n"
+  "    }\n"
+  "    return dentro\n"
+  "}\n"
+  "d = fora()\n"
+  "d()\n", "x vale 5", NULL, 0 },
+{ "closure captura nome de duas interpolacoes",
+  "funct fora() {\n"
+  "    a = 1\n"
+  "    b = 2\n"
+  "    return funct(){ return f\"{a}-{b}\" }\n"
+  "}\n"
+  "post(fora()())\n", "1-2", NULL, 0 },
+{ "erro dentro da f-string aponta a COLUNA da expressao",
+  "x = 0\n"
+  "post(f\"r: {1 / x}\")\n", "", "|              ^^^", 1 },
+{ "chave literal {{ }} nao vira interpolacao",
+  "v = 9\npost(f\"{{{v}}}\")\n", "{9}", NULL, 0 },
+{ "f-string tripla continua interpolando",
+  "v = 4\npost(f\"\"\"a {v} b\"\"\")\n", "a 4 b", NULL, 0 },
+{ "f-string com escape antes da chave",
+  "v = 2\npost(f\"a\\tb {v}\")\n", "a\tb 2", NULL, 0 },
+
 /* ── input(): fim da entrada é `null`, linha vazia é `""` ───────────────────
  * O runner roda todo caso com stdin em /dev/null, então aqui a entrada já
  * começa acabada. Sem o `null`, `while true: input()` giraria pra sempre

@@ -96,6 +96,43 @@ const Caso CASOS_ERROS[] = {
   "}\n"
   "post(C.m(5))\n",
   "", "RuntimeError: Entity 'C' não tem método estático 'm' — instancie primeiro", 2 },
+/* Campo declarado SEM `static` lido pela Entity: a frase tem que apontar a
+ * causa (falta a instância). Antes saía "'C' object has no attribute 'author'.
+ * Did you mean: 'author'?" — sugeria o nome que estava escrito certo. */
+{ "campo de instância lido pela classe",
+  "class C() {\n"
+  "    public string author = \"admin\"\n"
+  "}\n"
+  "post(C.author)\n",
+  "", "RuntimeError: Entity 'C' não tem campo estático 'author' — instancie primeiro", 2 },
+{ "campo de instância herdado, lido pela classe",
+  "class Base() {\n"
+  "    public string author = \"admin\"\n"
+  "}\n"
+  "class C(Base) {\n"
+  "}\n"
+  "post(C.author)\n",
+  "", "RuntimeError: Entity 'C' não tem campo estático 'author' — instancie primeiro", 2 },
+{ "campo static lido pela classe continua valendo",
+  "class C() {\n"
+  "    public static string casa = \"acme\"\n"
+  "}\n"
+  "post(C.casa)\n",
+  "acme", NULL, 0 },
+{ "campo de instância pela instância continua valendo",
+  "class C() {\n"
+  "    public string author = \"admin\"\n"
+  "}\n"
+  "x = C()\n"
+  "post(x.author)\n",
+  "admin", NULL, 0 },
+/* O "Did you mean" nunca sugere o nome que foi escrito. */
+{ "membro ausente parecido ainda sugere",
+  "class C() {\n"
+  "    public string author = \"admin\"\n"
+  "}\n"
+  "post(C().autor)\n",
+  "", "AttributeError: 'C' object has no attribute 'autor'. Did you mean: 'author'?", 2 },
 { "@static com self na assinatura",
   "class C() {\n"
   "    @static\n"
