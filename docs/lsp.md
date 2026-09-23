@@ -388,10 +388,51 @@ comandos de editor **não param no primeiro erro**:
 
 Rodar o programa (`pool arquivo.pr`) não muda: o primeiro erro para.
 
+**Onde cada coisa TERMINA.** Todo token do `--tokens` e todo nó do `--ast`
+trazem `l2` e `c2`: a linha e a coluna logo depois do último caractere. Sem
+elas o editor só sabia onde começa — sublinhava um caractere, e uma string de
+três linhas ou um comentário de bloco não tinham fim nenhum pra dobrar.
+
+```
+$ printf 'x = "ab"\n' | pool --tokens
+{"tokens":[{"t":"IDENT","l":1,"c":1,"n":1,"l2":1,"c2":2,"v":"x"},…,
+           {"t":"STR","l":1,"c":5,"n":4,"l2":1,"c2":9,"v":"ab"},…]}
+```
+
+**Dentro da f-string.** A f-string é UM token, mas o que está entre `{}` é
+código. O token dela traz `interp`, o intervalo de cada interpolação — é com
+ele que o editor sabe que ali não vale a regra de "cursor dentro de string",
+inclusive no espaço entre os tokens e com a chave ainda aberta, que é como o
+arquivo fica enquanto se digita:
+
+```
+$ printf 'post(f"oi {x}")\n' | pool --tokens
+{"t":"FSTRING","l":1,"c":6,"n":9,"l2":1,"c2":15,
+ "interp":[{"l":1,"c":12,"l2":1,"c2":13}],"v":"oi {x}"}
+```
+
+O `--tokens` publica também os tokens de dentro, marcados com `"em":"fstring"`
+e com a posição real no fonte (quem só quer o realce de string ignora esses).
+O `--ast` traz as expressões como nós filhos do literal, em `lista`:
+
+```
+$ printf 'post(f"oi {n.upper()}")\n' | pool --ast
+… {"k":"Literal","l":1,"c":6,"l2":1,"c2":23,"texto":"oi {n.upper()}",
+   "lista":[{"k":"Call","l":1,"c":19,…}]}
+```
+
 **Unidade das posições.** Linha e coluna começam em 1 e contam CARACTERE (code
-point), não byte nem unidade UTF-16. O protocolo LSP conta UTF-16, então o
-cliente converte: para texto acentuado as duas contagens coincidem, mas cada
-caractere fora do plano básico vale 2 em UTF-16 e 1 aqui.
+point), não byte nem unidade UTF-16. O protocolo LSP conta UTF-16: cada
+caractere fora do plano básico vale 2 lá e 1 aqui (para texto acentuado as
+duas contagens coincidem).
+
+Com `--utf16`, o motor entrega e aceita a contagem do protocolo, e o cliente
+não converte nada. Vale em `--tokens`, `--ast`, `--contexto` e `--check` — na
+saída e, no `--contexto`, também na coluna que se pede:
+
+```
+$ printf 'a = "x"\npost(a)\n' | pool --tokens --utf16
+```
 
 O `--contexto` responde `topo`, `membro` (com `receptor` ou `tipo`), `nenhum`,
 `decorador`, `import`, `texto` (o cursor está dentro de uma string) e

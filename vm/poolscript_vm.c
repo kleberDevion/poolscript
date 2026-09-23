@@ -608,10 +608,54 @@ typedef struct {
  * PRIMEIRO campo é `int tipo`, pra dispatch. Aqui os do WS e listen; o do HTTP
  * (HttpConn) fica junto do loop. g_jk_epfd é o epoll do worker — jk_ws_add/del
  * registram/desregistram as conexões WS nele. */
-enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS, EPW_FIBWAIT };
+enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS, EPW_FIBWAIT,
+       /* conexão que morreu no MEIO da volta: o objeto ainda existe, mas
+        * ninguém mais o atende. Ver `ep_morre` abaixo. Por último, pra não
+        * mexer no valor numérico de nenhum outro. */
+       EPW_MORTO };
 static int g_jk_epfd = -1;
 typedef struct { int tipo; struct PSJkConn *conn; } EpWs;
 typedef struct { int tipo; struct Fiber *f; } EpFibW;   /* fibra esperando um fd (offload) */
+
+/* ENTERRO ADIADO do que o epoll aponta.
+ *
+ * `epoll_wait` devolve um LOTE de eventos. Tirar um fd do epoll (EPOLL_CTL_DEL)
+ * não apaga os eventos desse lote que já estão na mão: se o objeto apontado por
+ * `data.ptr` for liberado enquanto o laço ainda percorre o lote, o próximo
+ * evento da MESMA volta lê memória liberada. Medido com ASan: uma conexão de
+ * WebSocket fechada dentro do `ws_serve` de um evento derrubava o servidor
+ * inteiro no evento seguinte, com `heap-use-after-free` na leitura do `tipo`
+ * (`jk_app_run`) — falha intermitente, porque só acontece quando duas coisas
+ * caem no mesmo lote.
+ *
+ * Então quem morre é MARCADO (`tipo = EPW_MORTO`, e o laço pula) e só é
+ * liberado no fim da volta, quando nenhum evento daquele lote pode mais
+ * alcançá-lo. Vale pro WebSocket (`EpWs`) e pro HTTP (`HttpConn`): os dois são
+ * `data.ptr` e os dois eram liberados na hora. */
+static void **g_ep_mortos = NULL;
+static int    g_n_ep_mortos = 0, g_cap_ep_mortos = 0;
+
+static void ep_morre(void *p)
+{
+    if (!p) return;
+    if (g_n_ep_mortos == g_cap_ep_mortos) {
+        int nc = g_cap_ep_mortos ? g_cap_ep_mortos * 2 : 16;
+        void **nv = realloc(g_ep_mortos, sizeof(void *) * (size_t)nc);
+        /* sem memória pra anotar: VAZA em vez de liberar. Um bloco perdido é
+         * caro; liberar aqui é o defeito que este mecanismo existe pra evitar. */
+        if (!nv) return;
+        g_ep_mortos = nv; g_cap_ep_mortos = nc;
+    }
+    g_ep_mortos[g_n_ep_mortos++] = p;
+}
+
+/* Fim da volta do laço: agora o lote de eventos acabou e ninguém mais aponta
+ * pros mortos. */
+static void ep_enterra(void)
+{
+    for (int i = 0; i < g_n_ep_mortos; i++) free(g_ep_mortos[i]);
+    g_n_ep_mortos = 0;
+}
 
 /* PoolIp — rate limit por IP (janela 60 s) e ban em dias */
 typedef struct { char ip[64]; double *ts; int n, cap; } JkIpHit;
@@ -20437,7 +20481,8 @@ static void jk_ws_del(PSJinker *j, int i)
      * o `PSJkConn` liberado. Marca e sai — quem fecha é o fim da fibra. */
     if (j->ws[i].fib) { j->ws[i].morrendo = 1; return; }
     if (g_jk_epfd >= 0) epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, ps_jk_fd(j->ws[i].conn), NULL);
-    free(j->ws[i].epw);
+    /* marca e adia: o lote de eventos desta volta ainda pode apontar pra cá */
+    if (j->ws[i].epw) { ((EpWs *)j->ws[i].epw)->tipo = EPW_MORTO; ep_morre(j->ws[i].epw); }
     ps_jk_close(j->ws[i].conn);
     free(j->ws[i].sala);
     j->ws[i] = j->ws[--j->nws];
@@ -21723,12 +21768,16 @@ static void http_arma(SrvLoop *s, HttpConn *h, int on)
 
 static void http_remove(SrvLoop *s, HttpConn *h)
 {
+    if (h->tipo == EPW_MORTO) return;          /* já enterrado nesta volta */
     epoll_ctl(s->epfd, EPOLL_CTL_DEL, ps_jk_fd(h->c), NULL);
     ps_jk_close(h->c);
     int i = h->idx;
     s->conns[i] = s->conns[--s->nconns];
     s->conns[i]->idx = i;
-    free(h);
+    /* marca e adia: o lote de eventos desta volta ainda pode apontar pra cá, e
+     * a fila de espera (`fila`) também guarda o ponteiro */
+    h->tipo = EPW_MORTO;
+    ep_morre(h);
 }
 
 /* Põe a conexão na fila dos que esperam vez. Devolve 0, ou -1 se a fila não
@@ -21859,6 +21908,7 @@ static void http_drena_fila(VM *vm, SrvLoop *s)
         if (g_nfibs < FIB_HARD) livre = 1;   /* pode crescer o pool */
         if (!livre) break;
         HttpConn *h = s->fila[--s->nfila]; h->na_fila = 0;
+        if (h->tipo == EPW_MORTO) continue;    /* fechou antes de chegar a vez */
         http_serve(vm, s, h);
     }
 }
@@ -22063,6 +22113,9 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         /* (2) fds prontos: cada data.ptr começa com `int tipo` */
         for (int e = 0; e < nready; e++) {
             int tipo = *(int *)evs[e].data.ptr;
+            /* a conexão morreu atendendo um evento ANTERIOR deste mesmo lote:
+             * o objeto continua vivo só pra esta leitura (ver `ep_morre`) */
+            if (tipo == EPW_MORTO) continue;
             if (tipo == EPW_LHTTP) {
                 /* drena TODO o backlog de accept (o listen é não-bloqueante) */
                 for (;;) {
@@ -22147,13 +22200,20 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
         }
 
         if (vm->alocado > vm->proximo_gc) gc_coleta(vm);
+
+        /* (5) o lote de eventos acabou: agora dá pra liberar quem morreu nele */
+        ep_enterra();
     }
     for (int i = 0; i < S.nconns; i++) {
         epoll_ctl(epfd, EPOLL_CTL_DEL, ps_jk_fd(S.conns[i]->c), NULL);
         ps_jk_close(S.conns[i]->c); free(S.conns[i]);
     }
     free(S.conns); free(S.fila);
-    while (j->nws > 0) jk_ws_del(j, j->nws - 1);
+    /* `fib = NULL` antes: com fibra marcada, `jk_ws_del` só anota `morrendo` e
+     * volta sem tirar a entrada — o `while` giraria pra sempre no desligamento
+     * com uma conexão de WebSocket sendo atendida. */
+    while (j->nws > 0) { j->ws[j->nws - 1].fib = NULL; jk_ws_del(j, j->nws - 1); }
+    ep_enterra();
     close(epfd); g_jk_epfd = -1;
 
     close(fd);

@@ -554,6 +554,10 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
             continue;
         }
         if (c == aspa) {
+            /* `{` aberto e nunca fechado (`f"a {b"`): o trecho vale até aqui.
+             * Quem digita passa a maior parte do tempo neste estado, e sem o
+             * registro o editor tratava o que está sendo escrito como texto. */
+            if (fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
             lx->pos++; lx->col++;
             PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
             if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
@@ -566,6 +570,7 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
              * isto o realce perdia a linha inteira, e é assim que uma string
              * fica na maior parte do tempo em que se digita. */
             if (lx->recupera) {
+                if (fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
                 PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
                 if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
             }
@@ -577,6 +582,7 @@ static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int
     }
     erro_em(lx, "string nao fechada ate o fim do arquivo", l0, c0);
     if (lx->recupera) {
+        if (fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
         PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
         if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
     }
@@ -589,9 +595,12 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int byt
     char tres[4] = { aspa, aspa, aspa, '\0' };
     lx->pos += 3; lx->col += 3;
     Buf bf = {0};
+    /* a mesma contagem de `le_string`: a f-string tripla também interpola */
+    size_t i_off = 0; int32_t i_lin = 0, i_col = 0, i_prof = 0;
 
     while (lx->pos < lx->len) {
         if (lx->pos + 2 < lx->len && strncmp(lx->src + lx->pos, tres, 3) == 0) {
+            if (fstring && i_off) interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
             lx->pos += 3; lx->col += 3;
             PSToken *tk = novo_token(lx, bytes ? T_BYTES : fstring ? T_FSTRING : T_STR, l0, c0);
             if (tk) guarda_texto(lx, tk, bf.b ? bf.b : "", bf.n);
@@ -599,6 +608,28 @@ static void le_string_tripla(Lexer *lx, char aspa, int fstring, int raw, int byt
             return;
         }
         char c = lx->src[lx->pos];
+        if (fstring) {
+            if (c == '{' && !i_prof && lx->pos + 1 < lx->len && lx->src[lx->pos + 1] == '{') {
+                buf_push(&bf, '{'); buf_push(&bf, '{');
+                avanca1(lx); avanca1(lx);
+                continue;
+            }
+            if (c == '}' && !i_prof && lx->pos + 1 < lx->len && lx->src[lx->pos + 1] == '}') {
+                buf_push(&bf, '}'); buf_push(&bf, '}');
+                avanca1(lx); avanca1(lx);
+                continue;
+            }
+            if (c == '{') {
+                if (!i_prof) { i_off = lx->pos + 1; i_lin = lx->linha; i_col = lx->col + 1; }
+                i_prof++;
+            } else if (c == '}' && i_prof) {
+                i_prof--;
+                if (!i_prof && i_off) {
+                    interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
+                    i_off = 0;
+                }
+            }
+        }
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
             int rc = decode_escape(lx, &bf, bytes);
             if (rc == -2) { free(bf.b); return; }

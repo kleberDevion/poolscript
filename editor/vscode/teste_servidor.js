@@ -522,6 +522,35 @@ async function main() {
          valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
+  /* ── 9a-bis. dentro da f-string é CÓDIGO ──────────────────────────────────
+   * A f-string era UM token e UM literal: `{nome.upper()}` não existia pra
+   * árvore, então hover, definição e completion paravam na borda da aspa. O
+   * motor passou a publicar as interpolações como nós filhos do literal, com
+   * a posição real — o índice do servidor anda em `lista` e recebe isto sem
+   * saber que veio de dentro de uma string. */
+  {
+    const FS = [
+      'funct saudacao(str nome) {',
+      '    return f"ola, {nome.upper()}"',
+      '}',
+      'total = 3',
+      'post(f"sao {tot',
+    ];
+    const m = await conversa(FS.join('\n') + '\n', [
+      { jsonrpc: '2.0', id: 90, method: 'textDocument/hover',
+        params: { textDocument: { uri: URI }, position: { line: 1, character: 20 } } },
+      { jsonrpc: '2.0', id: 91, method: 'textDocument/completion',
+        params: { textDocument: { uri: URI }, position: { line: 4, character: 15 } } },
+    ]);
+    const h = resp(m, 90);
+    const txt = h && h.result && h.result.contents ? h.result.contents.value : '';
+    conf('hover no nome DENTRO da f-string diz de que funct ele é',
+         txt.includes('nome'), txt);
+    const L = rotulos(resp(m, 91));
+    conf('completion dentro da f-string oferece as variáveis do arquivo',
+         L.includes('total'), L);
+  }
+
   /* ── 9b. exceção: hover diz a família (da tabela do catch, via --metadata) ─ */
   {
     const EXC = ['try {', '    x = 1', '} catch (FileNotFoundError e) {', '    post(e, OSError)', '}'];

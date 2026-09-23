@@ -336,10 +336,24 @@ function tokensDe(doc) {
   return toks;
 }
 
+/* O cursor está dentro de um `{...}` de f-string? Ali é CÓDIGO, não texto: o
+ * motor manda o intervalo de cada interpolação no token da f-string (`interp`),
+ * medido pelo lexer. Sem isto, hover, definição e completion paravam na aspa —
+ * `f"ola, {nome.upper()}"` era uma string e mais nada. */
+function dentroDeInterpolacao(t, pos) {
+  for (const r of t.interp || []) {
+    const depoisDoInicio = pos.line > r.l - 1 || (pos.line === r.l - 1 && pos.character >= r.c - 1);
+    const antesDoFim = pos.line < r.l2 - 1 || (pos.line === r.l2 - 1 && pos.character <= r.c2 - 1);
+    if (depoisDoInicio && antesDoFim) return true;
+  }
+  return false;
+}
+
 function dentroDeTextoLivre(doc, pos) {
   for (const t of tokensDe(doc)) {
-    if (t.l0 !== pos.line) continue;
     if (t.t !== 'STR' && t.t !== 'FSTRING' && t.t !== 'BYTES' && t.t !== 'COMMENT') continue;
+    if (t.t === 'FSTRING' && dentroDeInterpolacao(t, pos)) return false;
+    if (t.l0 !== pos.line) continue;
     if (pos.character > t.c0 && pos.character <= t.c0 + t.n) return true;
   }
   return false;

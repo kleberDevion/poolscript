@@ -914,6 +914,34 @@ static int cmd_tokens(const char *arquivo)
         if (t->linha_fim)
             printf(",\"l2\":%d,\"c2\":%d",
                    t->linha_fim, col_para_utf16(t->linha_fim, t->col_fim));
+        /* O INTERVALO de cada `{...}` da f-string, no próprio token dela.
+         * Sem ele o editor tem os tokens de dentro (abaixo) mas não o que
+         * está ENTRE eles: o espaço depois do `{` e o pedaço ainda vazio
+         * enquanto se digita voltavam a valer como texto livre, e o
+         * completion não abria em `f"{ ` nem logo depois do `{`. A regra de
+         * onde a interpolação começa e acaba continua sendo só do lexer. */
+        if (t->type == T_FSTRING) {
+            int primeira_int = 1;
+            for (int32_t k = 0; k < tl->ninterps; k++) {
+                if (tl->interps[k].tok != i) continue;
+                size_t off = tl->interps[k].off;
+                int32_t len = tl->interps[k].len;
+                if (len < 0 || off + (size_t)len > tam) continue;
+                int lin = tl->interps[k].linha, cl = tl->interps[k].col;
+                for (int32_t z = 0; z < len; z++) {
+                    unsigned char ch = (unsigned char)fonte[off + z];
+                    if (ch == '\n') { lin++; cl = 1; continue; }
+                    if ((ch & 0xC0) != 0x80) cl++;
+                }
+                fputs(primeira_int ? ",\"interp\":[" : ",", stdout);
+                primeira_int = 0;
+                printf("{\"l\":%d,\"c\":%d,\"l2\":%d,\"c2\":%d}",
+                       tl->interps[k].linha,
+                       col_para_utf16(tl->interps[k].linha, tl->interps[k].col),
+                       lin, col_para_utf16(lin, cl));
+            }
+            if (!primeira_int) fputc(']', stdout);
+        }
         fputs(",\"v\":\"", stdout);
         if (t->texto) json_escapa(stdout, t->texto, t->texto_len);
         fputs("\"}", stdout);

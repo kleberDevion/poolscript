@@ -505,7 +505,15 @@ try
     ws2.send(medio)
     sleep(1)
     ws2.send(grande)
-    sleep(2)
+    # ESPERA COM PRAZO, não `sleep` fixo: a volta dos 70000 bytes é rápida, mas
+    # não é instantânea, e o tempo fixo fazia esta checagem falhar sozinha de
+    # vez em quando — teste que pisca é teste que ninguém acredita.
+    esperou = 0
+    while esperou < 100 and len(recebidas) < 2
+    {
+        sleep(0.1)
+        esperou = esperou + 1
+    }
     ws2.close()
     for each r in recebidas
     {
@@ -855,6 +863,70 @@ r = get(RAIZ + "/ok")
 t1 = date.timestamp()
 confere("os.run dentro da rota nao segura as outras requisicoes",
         r.status == 200 and (t1 - t0) <= 1)
+
+# ── várias conexões morrendo na MESMA volta do laço ─────────────────────────
+#
+# `epoll_wait` devolve um LOTE de eventos. Tirar o fd do epoll não apaga os
+# eventos desse lote que já estão na mão do servidor: enquanto ele percorria o
+# lote, fechar uma conexão liberava NA HORA o objeto que o `data.ptr` do evento
+# seguinte aponta, e o servidor lia memória liberada — SIGSEGV no meio do
+# atendimento, e o cliente via só "sem resposta".
+#
+# Era intermitente de propósito: precisa de duas coisas no mesmo lote. O frame
+# grande garante a primeira (a leitura do servidor vai pro offload e a fibra
+# cede, então quem fecha é o evento de volta do offload); dez conexões caindo
+# juntas garantem a segunda. Medido contra o motor com o defeito: o alvo morre
+# em 3 de 3 rodadas; com a correção, 3 de 3 de pé.
+#
+# Fica por ÚLTIMO de propósito: são 60 conexões de WebSocket abertas e fechadas,
+# e esse tanto no meio da suíte atrapalha as medições de tempo que vêm depois.
+lote_ok = true
+rodada = 0
+while rodada < 6
+{
+    lote = []
+    i = 0
+    while i < 10
+    {
+        try
+        {
+            w = ws_connect("ws://127.0.0.1:" + str(PORTA + 1) + "/ws")
+            w.send("g" * 70000)
+            lote.append(w)
+        }
+        catch (e)
+        {
+            lote_ok = false
+        }
+        i = i + 1
+    }
+    for each w in lote
+    {
+        try
+        {
+            w.close()
+        }
+        catch (e)
+        {
+            pass
+        }
+    }
+    sleep(0.2)
+    try
+    {
+        rl = get(RAIZ + "/ok", timeout=5)
+        if rl.status_code != 200
+        {
+            lote_ok = false
+        }
+    }
+    catch (e)
+    {
+        lote_ok = false
+    }
+    rodada = rodada + 1
+}
+confere("dez conexoes WS caindo juntas nao derrubam o servidor", lote_ok)
 
 # ── parada limpa (é o que faz o gcov do servidor existir) ───────────────────
 # O pedido de parada pode errar (o servidor já estava caindo quando a resposta
