@@ -632,6 +632,30 @@ static int col_de_utf16(int linha, int col)
     return cp;
 }
 
+/* TAMANHO do token (`n`, em caracteres) -> o mesmo trecho em unidades UTF-16.
+ * Com `--utf16` a coluna já saía na conta do editor, mas o `n` ficava em
+ * caractere: no mesmo token, `c2 - c` dava 4 e `n` dava 3, e quem pinta pelo
+ * `n` errava uma casa por caractere fora do plano básico. Anda o trecho real
+ * no fonte a partir de (linha, col), atravessando quebra de linha (que vale 1
+ * nas duas contas) — então vale também pra string e comentário de várias
+ * linhas. */
+static int n_para_utf16(int linha, int col, int n)
+{
+    if (!g_utf16 || n <= 0 || !g_fonte) return n;
+    size_t k = off_da_linha(linha);
+    for (int cp = 1; cp < col && k < g_fonte_tam && g_fonte[k] != '\n'; cp++) {
+        k++;
+        while (k < g_fonte_tam && ((unsigned char)g_fonte[k] & 0xC0) == 0x80) k++;
+    }
+    int u = 0;
+    for (int i = 0; i < n && k < g_fonte_tam; i++) {
+        u += u16_do_char((unsigned char)g_fonte[k]);
+        k++;
+        while (k < g_fonte_tam && ((unsigned char)g_fonte[k] & 0xC0) == 0x80) k++;
+    }
+    return u;
+}
+
 /* `pool --check [arquivo.pr]` — lexer/parser/compilador da VM, SEM rodar, com
  * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
  * manda o conteúdo não salvo). NUNCA executa o código.
@@ -908,7 +932,8 @@ static int cmd_tokens(const char *arquivo)
         if (!primeiro) fputc(',', stdout);
         primeiro = 0;
         printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d",
-               ps_tok_nome(t->type), t->line, col_para_utf16(t->line, t->col), nch);
+               ps_tok_nome(t->type), t->line, col_para_utf16(t->line, t->col),
+               n_para_utf16(t->line, t->col, nch));
         /* onde ele TERMINA: é o que permite sublinhar e dobrar string de
          * várias linhas e comentário de bloco, que `n` não mede */
         if (t->linha_fim)
@@ -972,7 +997,8 @@ static int cmd_tokens(const char *arquivo)
                     }
                     fputc(',', stdout);
                     printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"em\":\"fstring\",\"v\":\"",
-                           ps_tok_nome(s->type), lin, col_para_utf16(lin, col), snch);
+                           ps_tok_nome(s->type), lin, col_para_utf16(lin, col),
+                           n_para_utf16(lin, col, snch));
                     if (s->texto) json_escapa(stdout, s->texto, s->texto_len);
                     fputs("\"}", stdout);
                 }

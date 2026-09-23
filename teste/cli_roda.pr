@@ -331,6 +331,10 @@ confere("sem --utf16 a coluna conta CARACTERE",
 r = roda("printf 'a = \"\\360\\240\\256\\267\" + b\\n' | '" + POOL + "' --tokens --utf16")
 confere("com --utf16 o caractere fora do plano básico vale 2",
         "\"c\":12,\"n\":1,\"l2\":1,\"c2\":13,\"v\":\"b\"" in r["saida"])
+# o TAMANHO do token vai na mesma conta que as colunas: a string tem aspa,
+# o caractere de 2 unidades e aspa — 4 em UTF-16, e `c2 - c` também dá 4
+confere("com --utf16 o n da string conta o caractere como 2",
+        "\"t\":\"STR\",\"l\":1,\"c\":5,\"n\":4,\"l2\":1,\"c2\":9" in r["saida"])
 # a posição do cursor CHEGA na mesma conta: com `--utf16` o motor recebe a
 # coluna do editor e acha o mesmo lugar
 r = roda("printf 'x = \"\\360\\240\\256\\267\"\\nx.up' | '" + POOL + "' --contexto 2:5")

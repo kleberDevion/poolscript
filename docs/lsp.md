@@ -428,7 +428,9 @@ duas contagens coincidem).
 
 Com `--utf16`, o motor entrega e aceita a contagem do protocolo, e o cliente
 não converte nada. Vale em `--tokens`, `--ast`, `--contexto` e `--check` — na
-saída e, no `--contexto`, também na coluna que se pede:
+saída e, no `--contexto`, também na coluna que se pede. No `--tokens` o `n` (o
+tamanho do token) vai na mesma conta: numa string com um caractere fora do
+plano básico, `n` e `c2 - c` dão o mesmo número.
 
 ```
 $ printf 'a = "x"\npost(a)\n' | pool --tokens --utf16

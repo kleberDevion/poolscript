@@ -48,7 +48,7 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 
 ```
 versao = os.run(["pool", "--version"], capture=true)
-post(versao)                        # "PoolScript 15.91.29 [PSVM] (2026-09-22)"
+post(versao)                        # "PoolScript 15.91.30 [PSVM] (2026-09-22)"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
