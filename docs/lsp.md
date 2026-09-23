@@ -380,13 +380,37 @@ comandos de editor **não param no primeiro erro**:
   entendeu vira um token `ERRO`, e a lista `erros` diz o que sublinhar. String
   sem fechar vale até o fim da linha.
 - `--ast` devolve a árvore INTEIRA, com o que vem depois do erro: o statement
-  quebrado é registrado em `erros` e o parser segue no próximo.
-- `--check` lista TODOS os erros de sintaxe em `erros`, como já fazia com os de
-  tipo. Com sintaxe quebrada, a conferência de tipo não roda: o statement
-  descartado levaria junto os nomes que ele liga, e cada uso viraria um "name
-  is not defined" que não existe.
+  quebrado é registrado em `erros` e o parser segue no próximo — no topo do
+  arquivo **e dentro de bloco**. Uma linha quebrada no corpo de uma funct (ou
+  de um `if`, de uma classe) não derruba a funct: ela continua na árvore com o
+  resto do corpo, e nada do corpo vaza pro nível de cima.
+- `--check` lista TODOS os erros de sintaxe em `erros`, os do lexer e os do
+  parser juntos, na ordem do arquivo, como já fazia com os de tipo. Com
+  sintaxe quebrada, a conferência de tipo não roda: o statement descartado
+  levaria junto os nomes que ele liga, e cada uso viraria um "name is not
+  defined" que não existe.
 
-Rodar o programa (`pool arquivo.pr`) não muda: o primeiro erro para.
+**Parêntese esquecido aberto.** Dentro de `(`, `[` e `{` de dicionário a
+quebra de linha não conta, então um `(` sem par transformava o resto do
+arquivo numa expressão só. Agora:
+
+- o erro sai **no abridor** — `parentese '(' aberto nao foi fechado` (e
+  `colchete '['...`, `chave '{'...`) —, uma vez por esquecimento: `funct f( {`
+  é um `(` sem par, e o `{` colado nele não vira um segundo erro;
+- o motor fecha o grupo e marca o ponto com um token `SINC` no `--tokens`
+  (sem texto, `n` 0): num fechador que não casa (o `}` da funct com um `(`
+  aberto dentro dela), no fim do arquivo, e numa linha que só pode ser começo
+  de declaração — `funct nome`, `int funct nome`, `class Nome`, `@decorador`,
+  `import`, `from`. Com isso a declaração de baixo volta pra árvore.
+
+A regra da declaração é palpite, e por isso só roda quando o arquivo já tem
+grupo sem par: arquivo válido nunca passa por ela, e o `--check` não recusa
+continuação válida como `f(1,\n  class=2)` (palavra-chave como argumento
+nomeado) nem `h(funct(v) {\n  funct interna() {...}\n})` (declaração dentro
+do corpo de uma lambda).
+
+Rodar o programa (`pool arquivo.pr`) continua parando no primeiro erro — e o
+`(` esquecido também é acusado nele, não na linha de baixo.
 
 **Onde cada coisa TERMINA.** Todo token do `--tokens` e todo nó do `--ast`
 trazem `l2` e `c2`: a linha e a coluna logo depois do último caractere. Sem

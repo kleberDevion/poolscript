@@ -768,6 +768,103 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = t()\n"
   "post(\"nao chega aqui\")\n",
   "antes", "ValueError: quebrei", 1 },
+/* ── a tarefa ANDA enquanto o principal espera ───────────────────────────
+ *
+ * Rodada 3 da Jinga. Num script, a tarefa que cedeu so voltava num `await`:
+ * com o principal dormindo 1 s, a de 0,2 s nao terminava — e o mesmo codigo
+ * terminava dentro do `jinker`, cujo laco roda as tarefas sozinho. Agora todo
+ * ponto em que o principal ESPERA (`sleep`, I/O) roda as tarefas. O fim do
+ * programa continua nao esperando ninguem. */
+{ "tarefa anda enquanto o principal dorme",
+  "async funct t() {\n"
+  "    post(\"t antes\")\n"
+  "    sleep(0.1)\n"
+  "    post(\"t depois\")\n"
+  "}\n"
+  "f = t()\n"
+  "post(\"voltei\")\n"
+  "sleep(0.4)\n"
+  "post(\"acordei\")\n",
+  "t antes\nvoltei\nt depois\nacordei", NULL, 0 },
+{ "tarefa anda enquanto o principal espera I/O",
+  "import os\n"
+  "async funct t() {\n"
+  "    sleep(0.1)\n"
+  "    post(\"tarefa\")\n"
+  "}\n"
+  "f = t()\n"
+  "os.run([\"sleep\", \"0.4\"], capture=true)\n"
+  "post(\"principal\")\n",
+  "tarefa\nprincipal", NULL, 0 },
+/* A doc prometia que a tarefa roda "ate o primeiro ponto em que cede — sleep,
+ * I/O". Num script o I/O nao cedia: rodava inline e travava o principal. */
+{ "I/O da tarefa cede na chamada",
+  "import os\n"
+  "async funct t() {\n"
+  "    post(\"a\")\n"
+  "    os.run([\"sleep\", \"0.2\"], capture=true)\n"
+  "    post(\"b\")\n"
+  "}\n"
+  "f = t()\n"
+  "post(\"chamou\")\n"
+  "await f\n"
+  "post(\"fim\")\n",
+  "a\nchamou\nb\nfim", NULL, 0 },
+{ "erro depois de ceder aparece no fim, com o principal dormindo",
+  "async funct t() {\n"
+  "    sleep(0.1)\n"
+  "    raise Exception(\"depois da cedencia\")\n"
+  "}\n"
+  "f = t()\n"
+  "sleep(0.3)\n"
+  "post(\"fim\")\n",
+  "fim", "ninguem aguardou", 0 },
+/* O future de uma `tarefa()` solta nao e alcancavel pelo programa: o aviso do
+ * fim procurava no heap, e o GC o levava antes. Agora ele e raiz ate o erro ser
+ * lido ou avisado. As duas listas grandes forcam coleta. */
+{ "erro de tarefa solta nao some com o GC",
+  "async funct t() {\n"
+  "    sleep(0.1)\n"
+  "    raise Exception(\"erro da tarefa solta\")\n"
+  "}\n"
+  "t()\n"
+  "sleep(0.3)\n"
+  "l = []\n"
+  "for each i in range(300000) {\n"
+  "    l.append(str(i) + \"x\")\n"
+  "}\n"
+  "l = Null\n"
+  "m = []\n"
+  "for each i in range(300000) {\n"
+  "    m.append(str(i) + \"y\")\n"
+  "}\n"
+  "post(\"fim\")\n",
+  "fim", "erro da tarefa solta", 0 },
+{ "fim do programa continua sem esperar a tarefa",
+  "async funct t() {\n"
+  "    sleep(5)\n"
+  "    post(\"nunca\")\n"
+  "}\n"
+  "t()\n"
+  "sleep(0.1)\n"
+  "post(\"fim\")\n",
+  "fim", NULL, 0 },
+/* A tarefa roda DENTRO do `sleep` do principal — e pode fazer `import`, que
+ * realoca a tabela de protos. O principal volta do builtin com o ponteiro pro
+ * proto dele reancorado; sem isso, lia memoria solta (o ASan acusa). */
+{ "tarefa que importa enquanto o principal dorme",
+  "if __name__ == \"main\" {\n"
+  "    async funct t() {\n"
+  "        sleep(0.05)\n"
+  "        import ps_mod_reanc as m\n"
+  "        post(\"importou\", m.X)\n"
+  "    }\n"
+  "    f = t()\n"
+  "    sleep(0.3)\n"
+  "    post(\"fim\")\n"
+  "}\n"
+  "X = 7\n",
+  "importou 7\nfim", NULL, 0, "ps_mod_reanc.pr" },
 { "closure em async funct (fibra)",
   "async funct t(k) {\n"
   "    funct calc() {\n"
@@ -1964,6 +2061,25 @@ const Caso CASOS_LINGUAGEM[] = {
   "post(d(4), p(), gather(t(1))[0])\n", "8 p 1", NULL, 0 },
 { "funct como lambda",
   "f = funct(x) {\n    return x * 10\n}\npost(f(5))\n", "50", NULL, 0 },
+/* O corpo da lambda passada como ARGUMENTO herdava o "estou dentro de um
+ * grupo" da chamada, e `if x == "" {` lá dentro virava a string `""`
+ * interpolando `{...}`: "faltou '}' na interpolacao" em código válido. A mesma
+ * lambda numa variável passava. */
+{ "lambda como argumento com if de string vazia",
+  "funct g(cb) {\n    return cb(\"\")\n}\n"
+  "post(g(funct(x) {\n    if x == \"\" {\n        return \"vazio\"\n    }\n    return \"cheio\"\n}))\n",
+  "vazio", NULL, 0 },
+{ "lambda como argumento ainda interpola string com {}",
+  "h = funct(cb) { return cb(4) }\n"
+  "post(h(funct(v) {\n    return \"x=\" {v}\n}))\n", "x=4", NULL, 0 },
+/* Parêntese esquecido aberto: rodando, o erro sai no `(` — a linha de baixo
+ * é a declaração seguinte engolida, não um parâmetro com nome errado. */
+{ "parentese aberto na declaracao culpa o parentese",
+  "funct f(\nint funct depois(int a) {\n    return a\n}\n", "",
+  "parentese '(' aberto nao foi fechado", 2 },
+{ "parentese aberto na lambda culpa o parentese",
+  "g = funct(\nint funct depois(int a) {\n    return a\n}\n", "",
+  "parentese '(' aberto nao foi fechado", 2 },
 /* Em POSICAO DE EXPRESSAO o que vem nao e declaracao de valor, e funcao sem
  * nome — entao os modificadores valem ali tambem. So o `funct(` pelado era
  * lambda: qualquer modificador na frente jogava a linha no caminho da

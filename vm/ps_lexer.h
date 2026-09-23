@@ -29,7 +29,13 @@ typedef enum {
     /* So existe no MODO DE RECUPERACAO: o trecho que o lexer nao entendeu
      * (caractere estranho), pra o realce saber onde ele esta em vez de perder
      * o arquivo inteiro. Tambem por ultimo, pelo mesmo motivo. */
-    T_ERRO
+    T_ERRO,
+    /* So existe no MODO DE RECUPERACAO: o ponto onde o lexer FECHOU A FORCA um
+     * `(`, `[` ou `{` que o codigo deixou aberto (o erro vai pro abridor). Nao
+     * ocupa texto. Pro parser e uma fronteira dura: nenhuma construcao aceita
+     * este token, e a recuperacao para nele — sem ele, um `(` esquecido fazia o
+     * resto do arquivo virar uma expressao so, e a arvore perdia tudo depois. */
+    T_SINC
 } PSTokType;
 
 typedef struct {
@@ -115,6 +121,18 @@ typedef struct {
                       char *txt; /* o trecho, cru, terminado em NUL */ } *interps;
     int32_t  ninterps;
     int32_t  cap_interps;
+
+    /* Quantos grupos (`(`, `[`, `{`) o lexer teve que fechar a forca, no modo
+     * de recuperacao. Diferente de zero = o codigo tem parentese/colchete/chave
+     * sem par, e vale a segunda passada (ver `ps_lexer_tokenize_modo`). */
+    int32_t  grupos_forcados;
+    /* O TRECHO de cada grupo fechado a forca: do abridor (l1, c1) ate o ponto
+     * onde o lexer o fechou (l2, c2). O que o parser acusar ali dentro e
+     * sintoma do mesmo grupo sem par — `funct f( {` e um `(` esquecido, nao
+     * tambem um "esperado nome de parametro" no `{` — e sai da lista dele. */
+    struct PSFechado { int32_t l1, c1, l2, c2; } *fechados;
+    int32_t  nfechados;
+    int32_t  cap_fechados;
 } PSTokenList;
 
 /* Imprime no stderr os avisos que a lista juntou, no formato
@@ -133,7 +151,15 @@ PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len);
  *   `comentarios` = guarda os comentarios como token (realce);
  *   `recupera`    = SEGUE depois do erro, juntando todos em `erros`, em vez de
  *                   parar no primeiro. So os comandos de editor usam; rodar o
- *                   programa continua parando no primeiro erro. */
+ *                   programa continua parando no primeiro erro.
+ *
+ * No modo de recuperacao, `(`, `[` e `{` sem par viram erro NO ABRIDOR, e o
+ * lexer fecha o grupo a forca (token T_SINC) no fechador que nao casa ou no fim
+ * do arquivo. Se isso aconteceu, roda uma SEGUNDA passada que tambem fecha o
+ * grupo de expressao aberto quando uma linha nova so pode ser comeco de
+ * declaracao (`funct nome`, `int funct nome`, `class Nome`, `@`, `import`...).
+ * Essa regra e heuristica, por isso so vale quando ja ha grupo sem par: arquivo
+ * valido nunca chega nela, e o `--check` nao recusa codigo valido. */
 PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len,
                                     int comentarios, int recupera);
 void         ps_lexer_free(PSTokenList *lista);

@@ -487,8 +487,28 @@ funct parar()
 }
 
 
+# TAREFA CRIADA ANTES DO SERVIDOR SUBIR, esperando I/O quando ele sobe. O
+# epoll nasce com a primeira tarefa e a espera dela é registrada nele; o
+# servidor trocava esse epoll por um novo e a tarefa esperava pra sempre. Ele
+# tem que REAPROVEITAR — a rota abaixo diz se a tarefa terminou.
+TAREFA_ANTES = "pendente"
+
+async funct tarefa_antes_do_servidor()
+{
+    global TAREFA_ANTES
+    os.run(["sleep", "0.3"], capture=true)
+    TAREFA_ANTES = "terminou"
+}
+
+@app.route("/tarefa_antes")
+funct tarefa_antes()
+{
+    return {"estado": TAREFA_ANTES}
+}
+
 # A chave FICA NA MESMA LINHA de propósito: no estilo Allman o motor pula o
 # bloco em silêncio (ver `casos_pendentes.c`, "if __name__ no estilo Allman").
 if __name__ == "main" {
+    tarefa_pendente = tarefa_antes_do_servidor()
     app(debug=false, host="127.0.0.1", port=28952)
 }

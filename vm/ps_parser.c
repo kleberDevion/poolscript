@@ -50,6 +50,9 @@ typedef struct {
      * decodificado e não serve pra recalcular coluna). NULL = parse de um
      * trecho solto, sem interpolação pra expandir. */
     PSTokenList *tl;
+    /* Modo de recuperação (comandos de editor): statement quebrado é anotado e
+     * o parser segue no próximo — no topo E dentro de bloco. */
+    int        recupera;
 } P;
 
 /* TETO DE PROFUNDIDADE do parser.
@@ -117,6 +120,10 @@ static const char *dup_str(P *p, const char *s)
 static void perro_na_lista(P *p, const char *msg, PSToken *t)
 {
     PSParseResult *o = p->out;
+    /* Esbarrar num T_SINC é falhar CALADO: o lexer já acusou o `(`/`[`/`{`
+     * sem par no abridor, que é a causa. O que o parser diria ali ("faltou
+     * ')'", "esperado nome de parametro") é sintoma do mesmo esquecimento. */
+    if (t && t->type == T_SINC) return;
     if (o->nerros >= 64) return;             /* arquivo ruim não vira enxurrada */
     if (o->nerros >= o->cap_erros) {
         int32_t nc = o->cap_erros ? o->cap_erros * 2 : 8;
@@ -328,6 +335,8 @@ static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
 {
     if (checa(p, t)) return &p->toks[p->pos++];
     PSToken *tk = atual(p);
+    /* grupo que o lexer fechou à força: ele já acusou o abridor */
+    if (tk->type == T_SINC) { perro(p, msg, tk); return NULL; }
     perro(p, msg, (tk->line != abre->line) ? abre : tk);
     return NULL;
 }
@@ -523,7 +532,7 @@ static int recusa_tipo_em_estrela(P *p, PSToken *tt, int estrela, const char *no
     return -1;
 }
 
-static int parse_parametros(P *p, PSNode *n, int lambda)
+static int parse_parametros(P *p, PSNode *n, int lambda, PSToken *abre)
 {
     const char *nome_vararg = NULL, *nome_kwarg = NULL;
     if (checa(p, T_RPAREN)) return 0;
@@ -556,6 +565,20 @@ static int parse_parametros(P *p, PSNode *n, int lambda)
             pn = dup_tok(p, nt);               /* `self` é o único KW aceito */
             p->pos++;
         } else {
+            /* O `(` FICOU ABERTO: o token abre uma linha depois dele e não
+             * pode ser nome de parâmetro. A culpa é do `(` — o `int` de
+             * `int funct depois(...)` na linha de baixo não é um parâmetro
+             * com nome errado, é a declaração seguinte engolida. A frase era
+             * "'int' e palavra reservada ... nome de parametro", na linha de
+             * baixo, apontando o sintoma. */
+            if (abre && nt->type != T_SINC && nt->line > abre->line && p->pos > 0
+                    && p->toks[p->pos - 1].line < nt->line
+                    && (nt->type == T_KW
+                        || (nt->type != T_IDENT && nt->type != T_IDENT_UPPER)
+                        || eh_contextual_reservada(nt->texto))) {
+                perro(p, "parentese '(' aberto nao foi fechado", abre);
+                return -1;
+            }
             pn = exige_nome(p, "parametro");
             if (FALHOU(p)) return -1;
         }
@@ -629,12 +652,23 @@ static int estrela_de_argumento(P *p)
 static PSNode *lambda_apos_kw(P *p)
 {
     PSToken *t = atual(p);
+    PSToken *abre = espia(p, 1);               /* o `(` */
     p->pos += 2;                               /* funct ( */
     PSNode *n = ps_node_novo(p->arena, N_LAMBDA_EXPR, t->line, t->col);
     if (!n) return NULL;
-    if (parse_parametros(p, n, 1) != 0) return NULL;
-    if (!exige(p, T_RPAREN, "faltou ')' na lambda")) return NULL;
+    if (parse_parametros(p, n, 1, abre) != 0) return NULL;
+    if (!exige_fecha(p, T_RPAREN, "faltou ')' na lambda", abre)) return NULL;
+    /* O corpo é um BLOCO de statements, mesmo com a lambda dentro de uma
+     * chamada ou de uma lista: o `grupo_depth` de fora não vale lá dentro.
+     * Herdado, ele fazia `if x == "" {` no corpo ser lido como a string `""`
+     * interpolando `{...}` — "faltou '}' na interpolacao" em código válido, e
+     * só quando a lambda era argumento (numa variável passava). */
+    int gd = p->grupo_depth, cab = p->chave_abre_bloco;
+    p->grupo_depth = 0;
+    p->chave_abre_bloco = 0;
     n->b = bloco(p);
+    p->grupo_depth = gd;
+    p->chave_abre_bloco = cab;
     if (FALHOU(p)) return NULL;
     return n;
 }
@@ -1645,6 +1679,68 @@ static void pula_indent_solto(P *p)
            || checa(p, T_INDENT) || checa(p, T_DEDENT)) p->pos++;
 }
 
+/* ── recuperação: pular o statement quebrado ────────────────────────────── */
+/* O statement que começou em `ini` falhou, com o cursor onde falhou. Anda até o
+ * FIM dele contando a partir do COMEÇO: a quebra de linha (ou `;`) fora de
+ * qualquer `(`, `[` ou `{` aberto pelo próprio statement, ou o `}` que fecha o
+ * bloco de fora — este não é consumido, é do bloco. Um T_SINC é fronteira dura
+ * (o lexer fechou ali um grupo sem par) e é consumido. Nunca para antes do
+ * ponto da falha.
+ *
+ * Contar desde o começo é o que impede o VAZAMENTO: pular só até a próxima
+ * quebra de linha jogava o resto do corpo de uma funct quebrada pro nível de
+ * cima — `y = 2` aparecia como variável global na árvore, e o `}` da funct
+ * virava um erro fantasma. */
+static void pula_statement(P *p, int32_t ini)
+{
+    int32_t falha = p->pos;
+    int prof = 0;
+    int32_t k = ini;
+    for (; k < p->n; k++) {
+        PSTokType ty = p->toks[k].type;
+        if (ty == T_EOF) break;
+        if (ty == T_SINC) {
+            if (k >= falha) { k++; break; }
+            prof = 0;
+            continue;
+        }
+        if (ty == T_LPAREN || ty == T_LBRACK || ty == T_LBRACE) { prof++; continue; }
+        if (ty == T_RPAREN || ty == T_RBRACK || ty == T_RBRACE) {
+            if (prof > 0) { prof--; continue; }
+            if (ty == T_RBRACE && k >= falha) break;
+            continue;
+        }
+        if ((ty == T_NEWLINE || ty == T_SEMI || ty == T_DEDENT) && prof == 0 && k >= falha) break;
+    }
+    p->pos = k;
+}
+
+/* O que a descida do parser deixa pendurado quando um statement falha no meio.
+ * Dentro de bloco, recuperar é voltar ao estado de ANTES do statement — zerar,
+ * como o topo faz, perderia o `grupo_depth` do corpo de uma lambda. */
+typedef struct { int prof, grupo_depth, chave_abre_bloco, dec_sem_captura; } EstadoP;
+
+static EstadoP estado_salva(P *p)
+{
+    EstadoP e = { p->prof, p->grupo_depth, p->chave_abre_bloco, p->dec_sem_captura };
+    return e;
+}
+
+/* Recupera o statement que falhou dentro de um bloco. Devolve 1 se dá pra
+ * seguir no próximo statement do MESMO bloco, 0 se não (fora do modo de
+ * recuperação, ou erros demais). */
+static int recupera_no_bloco(P *p, int32_t ini, EstadoP e)
+{
+    if (!p->recupera || p->out->nerros >= 64) return 0;
+    p->out->ok = 1;
+    p->prof = e.prof;
+    p->grupo_depth = e.grupo_depth;
+    p->chave_abre_bloco = e.chave_abre_bloco;
+    p->dec_sem_captura = e.dec_sem_captura;
+    pula_statement(p, ini);
+    return 1;
+}
+
 /* Bloco do GUARD (`if __name__ == "main":`) — o ÚNICO lugar da linguagem onde
  * `:` + indentação ainda abre bloco. Todo o resto usa `{ }` (ver `bloco`).
  *
@@ -1669,8 +1765,15 @@ static PSNode *bloco_entrada(P *p)
     b->estilo = "colon";
     pula_separadores_com_dedent(p);
     while (!checa(p, T_DEDENT) && !checa(p, T_EOF)) {
+        int32_t ini = p->pos;
+        EstadoP e = estado_salva(p);
         PSNode *st = statement(p);
-        if (FALHOU(p)) return NULL;
+        if (FALHOU(p)) {
+            if (!recupera_no_bloco(p, ini, e)) return NULL;
+            if (p->pos == ini) p->pos++;
+            pula_separadores_com_dedent(p);
+            continue;
+        }
         if (st && ps_vec_push(p->arena, &b->lista, st) != 0) {
             perro(p, "sem memoria", t); return NULL;
         }
@@ -1735,8 +1838,17 @@ static PSNode *bloco_no(P *p)
          * consumidos pela chamada aninhada de bloco(). */
         pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+            int32_t ini = p->pos;
+            EstadoP e = estado_salva(p);
             PSNode *s = statement(p);
-            if (FALHOU(p)) return NULL;
+            if (FALHOU(p)) {
+                /* statement quebrado DENTRO do bloco: anota e segue no próximo
+                 * do mesmo bloco — a funct continua na árvore com o que sobrou */
+                if (!recupera_no_bloco(p, ini, e)) return NULL;
+                if (p->pos == ini) p->pos++;          /* sempre anda */
+                pula_indent_solto(p);
+                continue;
+            }
             if (s && ps_vec_push(p->arena, &b->lista, s) != 0) {
                 perro(p, "sem memoria", t); return NULL;
             }
@@ -2478,9 +2590,10 @@ static PSNode *action_decl(P *p, int is_async, const char *tipo_retorno)
     n->texto2 = tipo_retorno;
     n->is_async = is_async;
 
-    if (!exige(p, T_LPAREN, "faltou '(' na declaracao da funct")) return NULL;
-    if (parse_parametros(p, n, 0) != 0) return NULL;
-    if (!exige(p, T_RPAREN, "faltou ')' na declaracao da funct")) return NULL;
+    PSToken *abre = exige(p, T_LPAREN, "faltou '(' na declaracao da funct");
+    if (!abre) return NULL;
+    if (parse_parametros(p, n, 0, abre) != 0) return NULL;
+    if (!exige_fecha(p, T_RPAREN, "faltou ')' na declaracao da funct", abre)) return NULL;
     while (checa(p, T_NEWLINE)) p->pos++;      /* `{` pode vir na linha seguinte */
     n->b = bloco(p);
     if (FALHOU(p)) return NULL;
@@ -2740,6 +2853,11 @@ static PSNode *statement_no(P *p)
         if (!exige(p, T_LBRACE, "esperado '{' para abrir o corpo da Entity")) return NULL;
         pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+            /* Membro quebrado não derruba a classe: as falhas de PARSE desta
+             * volta vão pro `membro_falhou` (no fim do laço), que anota, pula
+             * o membro e segue no próximo. Falta de memória continua saindo. */
+            int32_t ini_m = p->pos;
+            EstadoP e_m = estado_salva(p);
             PSToken *mt = atual(p);
             /* modificador de visibilidade opcional antes de campo/método.
              * `is_private` não entra na serialização do AST (não é código), então
@@ -2778,7 +2896,7 @@ static PSNode *statement_no(P *p)
                          "'%s' saiu da linguagem; o metodo se declara com 'funct': funct %s(self) { ... }",
                          mt->texto, espia(p, 1)->texto ? espia(p, 1)->texto : "nome");
                 perro(p, m, mt);
-                return NULL;
+                goto membro_falhou;
             }
             /* `pass` sozinho: corpo vazio de classe. Não vira
              * membro nenhum — só ocupa o lugar pra a Entity poder existir sem
@@ -2793,7 +2911,7 @@ static PSNode *statement_no(P *p)
                 p->dec_sem_captura = 1;
                 PSNode *d = statement(p);
                 p->dec_sem_captura = salvo_flag;
-                if (FALHOU(p)) return NULL;
+                if (FALHOU(p)) goto membro_falhou;
                 if (ps_vec_push(p->arena, &n->lista, d) != 0) return NULL;
             /* MÉTODO: a cabeça inteira, com os modificadores em qualquer ordem
              * (`int static funct r()`, `static funct s()`, `async funct t()`).
@@ -2807,7 +2925,7 @@ static PSNode *statement_no(P *p)
              * escrito na tela. Um só lugar decide o que é cabeça de funct. */
             } else if (cabeca_de_funct(p, 0) >= 0) {
                 PSNode *a = statement(p);
-                if (FALHOU(p)) return NULL;
+                if (FALHOU(p)) goto membro_falhou;
                 /* Só sobrescreve se a visibilidade veio ANTES do resto: em
                  * `static private funct m()` quem a leu foi a cabeça, e
                  * carimbar 0 aqui apagaria o `private` da pessoa. */
@@ -2849,7 +2967,7 @@ static PSNode *statement_no(P *p)
                 }
                 PSToken *nmt = atual(p);
                 const char *nome = exige_nome(p, "campo");
-                if (FALHOU(p)) return NULL;
+                if (FALHOU(p)) goto membro_falhou;
                 PSNode *f = ps_node_novo(p->arena, N_ENTITY_FIELD, nmt->line, nmt->col);
                 if (!f) return NULL;
                 f->texto = nome;
@@ -2857,7 +2975,7 @@ static PSNode *statement_no(P *p)
                 if (checa_op(p, "=")) {
                     p->pos++;
                     f->a = expressao(p);
-                    if (FALHOU(p)) return NULL;
+                    if (FALHOU(p)) goto membro_falhou;
                 }
                 f->is_private = membro_priv;
                 f->is_static  = campo_static;
@@ -2882,30 +3000,35 @@ static PSNode *statement_no(P *p)
                     p->pos++;
                     PSToken *tt = atual(p);
                     if (tt->type != T_IDENT && tt->type != T_IDENT_UPPER && tt->type != T_KW) {
-                        perro(p, "esperado tipo apos ':' no campo da Entity", tt); return NULL;
+                        perro(p, "esperado tipo apos ':' no campo da Entity", tt); goto membro_falhou;
                     }
                     p->pos++;
                     f->texto2 = tipo_retorno_dup(p, tt);
                     if (checa_op(p, "=")) {
                         p->pos++;
                         f->a = expressao(p);
-                        if (FALHOU(p)) return NULL;
+                        if (FALHOU(p)) goto membro_falhou;
                     }
                 } else if (checa_op(p, "=")) {
                     p->pos++;
                     f->a = expressao(p);
-                    if (FALHOU(p)) return NULL;
+                    if (FALHOU(p)) goto membro_falhou;
                 } else {
                     perro(p, "dentro de Entity entra 'funct', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
-                    return NULL;
+                    goto membro_falhou;
                 }
                 f->is_private = membro_priv;
                 f->is_static  = campo_static;
                 if (ps_vec_push(p->arena, &n->lista2_alias, f) != 0) return NULL;
             } else {
                 perro(p, "dentro de Entity entra 'funct', decorador ou campo: 'nome = valor', 'nome: tipo' ou 'tipo nome = valor'", mt);
-                return NULL;
+                goto membro_falhou;
             }
+            pula_indent_solto(p);
+            continue;
+        membro_falhou:
+            if (!recupera_no_bloco(p, ini_m, e_m)) return NULL;
+            if (p->pos == ini_m) p->pos++;            /* sempre anda */
             pula_indent_solto(p);
         }
         /* A LINHA DO `}` da Entity — mesma razão do `linha_fim` do bloco: sem
@@ -3136,10 +3259,13 @@ static PSNode *statement_no(P *p)
         if (!abre_model) return NULL;
         pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+            /* campo quebrado não derruba o model: ver `membro_falhou` da Entity */
+            int32_t ini_m = p->pos;
+            EstadoP e_m = estado_salva(p);
             PSToken *ft = atual(p);
             const char *campo = exige_nome(p, "campo");
-            if (FALHOU(p)) return NULL;
-            if (!exige(p, T_COLON, "esperado ':' apos nome do campo")) return NULL;
+            if (FALHOU(p)) goto campo_falhou;
+            if (!exige(p, T_COLON, "esperado ':' apos nome do campo")) goto campo_falhou;
             PSToken *tt = atual(p);
             /* os tipos de campo de model (coluna `model` da tabela única) e os
              * apelidos deles (`String`, `Integer`) — ou o NOME de outro model
@@ -3150,7 +3276,7 @@ static PSNode *statement_no(P *p)
             int eh_model = !mti && tt->type == T_IDENT_UPPER && tt->texto;
             if (!tipo_ok && !eh_model) {
                 perro(p, "tipo do campo deve ser str, int, flo, bool, list, dict ou o nome de um model", tt);
-                return NULL;
+                goto campo_falhou;
             }
             p->pos++;
             PSNode *f = ps_node_novo(p->arena, N_MODEL_FIELD, ft->line, ft->col);
@@ -3174,24 +3300,24 @@ static PSNode *statement_no(P *p)
                     PSToken *id = atual(p);
                     if ((id->type != T_IDENT && id->type != T_KW) || !id->texto) {
                         perro_f(p, id, "esperado o nome de um parametro do campo do model: %s", PARAMS);
-                        return NULL;
+                        goto campo_falhou;
                     }
                     const char *pn = id->texto;
                     if (strcmp(pn, "length") && strcmp(pn, "regex") && strcmp(pn, "in") && strcmp(pn, "not_in")
                             && strcmp(pn, "min") && strcmp(pn, "max") && strcmp(pn, "optional") && strcmp(pn, "of")) {
                         perro_f(p, id, "parametro '%s' nao existe no campo do model: %s", pn, PARAMS);
-                        return NULL;
+                        goto campo_falhou;
                     }
                     int repetido = !strcmp(pn, "length") && f->i2 >= 0;
                     for (int32_t q = 0; q < f->lista.n && !repetido; q++)
                         if (f->lista.itens[q]->texto && !strcmp(f->lista.itens[q]->texto, pn)) repetido = 1;
-                    if (repetido) { perro_f(p, id, "parametro '%s' repetido no campo do model", pn); return NULL; }
+                    if (repetido) { perro_f(p, id, "parametro '%s' repetido no campo do model", pn); goto campo_falhou; }
                     p->pos++;
-                    if (!checa_op(p, "=")) { perro_f(p, atual(p), "esperado '=' apos '%s'", pn); return NULL; }
+                    if (!checa_op(p, "=")) { perro_f(p, atual(p), "esperado '=' apos '%s'", pn); goto campo_falhou; }
                     p->pos++;
                     if (!strcmp(pn, "length")) {
                         PSToken *lt = atual(p);
-                        if (lt->type != T_INT) { perro(p, "esperado numero apos 'length='", lt); return NULL; }
+                        if (lt->type != T_INT) { perro(p, "esperado numero apos 'length='", lt); goto campo_falhou; }
                         p->pos++;
                         f->i2 = (int32_t)lt->i;
                     } else {
@@ -3202,7 +3328,7 @@ static PSNode *statement_no(P *p)
                             /* `of=str` / `of=Endereco`: um NOME de tipo, não expressão */
                             PSToken *ot = atual(p);
                             if ((ot->type != T_KW && ot->type != T_IDENT && ot->type != T_IDENT_UPPER) || !ot->texto) {
-                                perro(p, "esperado um tipo ou o nome de um model apos 'of='", ot); return NULL;
+                                perro(p, "esperado um tipo ou o nome de um model apos 'of='", ot); goto campo_falhou;
                             }
                             p->pos++;
                             PSNode *tn = ps_node_novo(p->arena, N_NAME, ot->line, ot->col);
@@ -3211,16 +3337,22 @@ static PSNode *statement_no(P *p)
                             par->a = tn;
                         } else {
                             par->a = expressao(p);
-                            if (!par->a || FALHOU(p)) return NULL;
+                            if (FALHOU(p)) goto campo_falhou;
+                            if (!par->a) return NULL;
                         }
                         if (ps_vec_push(p->arena, &f->lista, par) != 0) return NULL;
                     }
                     if (aceita(p, T_COMMA)) continue;      /* vírgula final também vale */
                     break;
                 }
-                if (!exige(p, T_RPAREN, "esperado ')' apos os parametros do campo")) return NULL;
+                if (!exige(p, T_RPAREN, "esperado ')' apos os parametros do campo")) goto campo_falhou;
             }
             if (ps_vec_push(p->arena, &n->lista, f) != 0) return NULL;
+            pula_indent_solto(p);
+            continue;
+        campo_falhou:
+            if (!recupera_no_bloco(p, ini_m, e_m)) return NULL;
+            if (p->pos == ini_m) p->pos++;
             pula_indent_solto(p);
         }
         pula_indent_solto(p);
@@ -3241,19 +3373,27 @@ static PSNode *statement_no(P *p)
         if (!abre_enum) return NULL;
         pula_indent_solto(p);
         while (!checa(p, T_RBRACE) && !checa(p, T_EOF)) {
+            /* membro quebrado não derruba o enum: ver `membro_falhou` da Entity */
+            int32_t ini_m = p->pos;
+            EstadoP e_m = estado_salva(p);
             PSToken *mt = atual(p);
             const char *nome_m = exige_nome(p, "membro");
-            if (FALHOU(p)) return NULL;
+            if (FALHOU(p)) goto enum_falhou;
             PSNode *m = ps_node_novo(p->arena, N_ENUM_MEMBER, mt->line, mt->col);
             if (!m) return NULL;
             m->texto = nome_m;
             if (checa_op(p, "=")) {
                 p->pos++;
                 m->a = expressao(p);          /* valor explícito */
-                if (FALHOU(p)) return NULL;
+                if (FALHOU(p)) goto enum_falhou;
             }
             if (ps_vec_push(p->arena, &n->lista, m) != 0) return NULL;
             aceita(p, T_COMMA);               /* vírgula opcional entre membros */
+            pula_indent_solto(p);
+            continue;
+        enum_falhou:
+            if (!recupera_no_bloco(p, ini_m, e_m)) return NULL;
+            if (p->pos == ini_m) p->pos++;
             pula_indent_solto(p);
         }
         pula_indent_solto(p);
@@ -3836,6 +3976,7 @@ static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTok
     p.toks = toks; p.n = n;
     p.arena = &r->arena; p.out = r;
     p.tl = tl;
+    p.recupera = recupera;
 
     PSNode *prog = ps_node_novo(&r->arena, N_PROGRAM, 1, 1);
     if (!prog) { r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); return r; }
@@ -3852,10 +3993,11 @@ static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTok
              * seria lido com o parser em meio de expressão. */
             if (r->nerros >= 64) break;
             r->ok = 1;
-            p.prof = 0; p.grupo_depth = 0; p.chave_abre_bloco = 0;
-            while (!checa(&p, T_EOF)
-                   && !checa(&p, T_NEWLINE) && !checa(&p, T_DEDENT) && !checa(&p, T_RBRACE))
-                p.pos++;
+            p.prof = 0; p.grupo_depth = 0; p.chave_abre_bloco = 0; p.dec_sem_captura = 0;
+            /* até o fim do statement contado desde o começo dele: um bloco
+             * que ele abriu não despeja o resto do corpo aqui em cima */
+            pula_statement(&p, antes);
+            /* no topo, `}` e DEDENT soltos são lixo: consome */
             if (checa(&p, T_RBRACE) || checa(&p, T_DEDENT)) p.pos++;
             if (p.pos == antes) p.pos++;      /* nunca ficar parado no mesmo token */
             pula_separadores(&p);
@@ -3867,8 +4009,27 @@ static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTok
         pula_separadores(&p);
         if (s == NULL && checa(&p, T_EOF)) break;
     }
-    /* A lista de erros é o veredito: recuperar não é aprovar. */
-    if (recupera && r->nerros > 0) r->ok = 0;
+    /* O que caiu DENTRO de um grupo que o lexer fechou à força é sintoma dele
+     * (o lexer já acusou o abridor): sai da lista. `funct f( {` é um `(` sem
+     * par, e não também um "esperado nome de parametro" no `{`. */
+    if (recupera && tl && tl->nfechados > 0) {
+        int32_t w = 0;
+        for (int32_t i = 0; i < r->nerros; i++) {
+            int32_t el = r->erros[i].linha, ec = r->erros[i].col;
+            int dentro = 0;
+            for (int32_t k = 0; k < tl->nfechados && !dentro; k++) {
+                const struct PSFechado *f = &tl->fechados[k];
+                int depois_do_abridor = el > f->l1 || (el == f->l1 && ec > f->c1);
+                int antes_do_fecho    = el < f->l2 || (el == f->l2 && ec < f->c2);
+                dentro = depois_do_abridor && antes_do_fecho;
+            }
+            if (!dentro) r->erros[w++] = r->erros[i];
+        }
+        r->nerros = w;
+    }
+    /* A lista de erros é o veredito: recuperar não é aprovar. Falha calada num
+     * T_SINC também reprova: o erro dela está na lista do lexer. */
+    if (recupera && (r->nerros > 0 || (tl && tl->nfechados > 0))) r->ok = 0;
     r->programa = prog;
     return r;
 }

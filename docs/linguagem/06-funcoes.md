@@ -534,10 +534,32 @@ post("chamei")           # "comecei" já saiu antes desta linha
 await f                  # aqui o resto do corpo roda
 ```
 
-**Quem espera é o `await`.** Uma tarefa que cedeu só continua quando alguém
-dirige o escalonador (`await`, `gather`, `post` de um future) — ou, dentro do
-`jinker`, quando o servidor volta ao laço. No fim do programa o motor **não**
-espera tarefa pendente: se o resultado importa, `await` nela.
+**A tarefa anda sempre que o programa principal espera.** Uma tarefa que cedeu
+continua quando o principal para pra esperar alguma coisa:
+
+- o `await`, o `gather` e o `post` de um future — esperam a tarefa;
+- o `sleep` do principal — enquanto ele dorme, as tarefas andam;
+- a I/O do principal (`request`, banco, `os.run`, sockets, e-mail) — enquanto
+  ela não volta, as tarefas andam.
+
+É a mesma regra dentro do `jinker`, onde o laço do servidor roda as tarefas
+entre uma requisição e outra: o mesmo código se comporta igual num script e
+no servidor.
+
+```ps
+async funct t() {
+    sleep(0.1)
+    post("tarefa")
+}
+
+f = t()
+sleep(0.5)               # a tarefa termina durante este sono
+post("principal")        # tarefa, principal
+```
+
+Enquanto o principal **roda** (sem esperar nada), as tarefas ficam paradas —
+elas só andam nos pontos de espera. No fim do programa o motor **não** espera
+tarefa pendente: se o resultado importa, `await` nela.
 
 **Erro de tarefa não some.** Se a exceção acontece antes do primeiro ponto de
 cedência, ela sobe na própria chamada, como em funct comum. Se acontece

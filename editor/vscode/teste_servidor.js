@@ -522,6 +522,32 @@ async function main() {
          valor(m, 21).includes('mapping.post(') && valor(m, 21).includes('POST'), valor(m, 21).slice(0, 200));
   }
 
+  /* ── 9a-ter. linha quebrada DENTRO da funct não apaga a funct ─────────────
+   * O parser não se recuperava dentro de bloco: um statement quebrado no corpo
+   * derrubava a funct inteira da árvore, e o que vinha depois vazava pro topo.
+   * Enquanto se digita é exatamente o estado do arquivo — e o completion
+   * perdia a variável local que está logo acima do cursor. */
+  {
+    const QB = [
+      'funct calcula(int valor) {',
+      '    x = = 1',
+      '    total_local = valor * 2',
+      '    post(total_l',
+      '}',
+      'fora = 1',
+      'fo',
+    ];
+    const m = await conversa(QB.join('\n') + '\n', [compl(95, 3, 16), compl(96, 6, 2)]);
+    const L = rotulos(resp(m, 95));
+    conf('local declarada depois de uma linha quebrada aparece no completion',
+         L.includes('total_local'), L);
+    /* e do lado de FORA ela não existe: antes a recuperação despejava o resto
+     * do corpo no topo, e a local virava global */
+    const F = rotulos(resp(m, 96));
+    conf('a local da funct quebrada nao vaza pra fora dela',
+         F.includes('fora') && !F.includes('total_local'), F);
+  }
+
   /* ── 9a-bis. dentro da f-string é CÓDIGO ──────────────────────────────────
    * A f-string era UM token e UM literal: `{nome.upper()}` não existia pra
    * árvore, então hover, definição e completion paravam na borda da aspa. O

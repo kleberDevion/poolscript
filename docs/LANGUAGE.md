@@ -551,8 +551,9 @@ posições e os exemplos de biblioteca:
 
 ## `async` / `await`
 
-`async funct` roda em uma fibra e devolve imediatamente um **future**
-(`type(f)` é `future`) — a chamada em si nunca bloqueia:
+`async funct` roda em uma fibra e devolve um **future** (`type(f)` é
+`future`). O corpo **começa na chamada** e corre até o primeiro ponto em que
+cede (`sleep`, I/O, `await`); aí a chamada volta com o future:
 
 ```
 async funct lenta(n) {
@@ -560,18 +561,21 @@ async funct lenta(n) {
     return n
 }
 
-f = lenta(1)          # não bloqueia — devolve um future na hora
-post(await f)          # só aqui bloqueia até o resultado
+f = lenta(1)          # roda até o sleep e volta com o future
+post(await f)          # espera o resultado
 ```
 
-Semântica (igual à de qualquer linguagem com async/await.s
+Semântica (detalhes em `docs/linguagem/06-funcoes.md` §6.8):
 
 - Duas ou mais chamadas `async` disparadas antes de qualquer `await` rodam
-  **em paralelo** (não seriado).
-- Exceção dentro de uma `async funct` **não aparece na chamada** — só aparece
-  quando você dá `await`. O tipo original é PRESERVADO: um `raise
-  ValueError(...)` dentro da funct chega como `ValueError` no `catch`, não
-  convertido em outra coisa.
+  **concorrentes** (não seriado).
+- A tarefa anda sempre que o programa principal **espera**: no `await`, no
+  `gather`, no `sleep` e na I/O dele. No fim do programa, tarefa pendente não
+  é esperada.
+- Exceção **antes** do primeiro ponto de cedência sobe na própria chamada;
+  **depois**, sobe no `await` — ou, se ninguém aguardou, sai no stderr no fim
+  do programa. O tipo original é PRESERVADO: um `raise ValueError(...)` dentro
+  da funct chega como `ValueError` no `catch`, não convertido em outra coisa.
 - `await` numa **lista** funciona como um `gather`: aguarda todos os
   futures da lista (misturados com valores já prontos) e devolve a lista de
   resultados; se algum tiver dado erro, o erro propaga no `await`.
@@ -1104,7 +1108,7 @@ sorted(lista)  reversed(lista)  enumerate(lista)  zip(a, b, ...)
 addEnd(l, v)  removeEnd(l)  addStart(l, v)  removeStart(l)
 map(lista, fn)  filter(lista, fn)   # atenção: lista vem PRIMEIRO, depois a função
 
-sleep(segundos)      # pausa a execução (útil dentro de async funct)
+sleep(segundos)      # pausa a execução; no principal, as tarefas async andam enquanto isso
 gather(...)          # agrega múltiplos futures
 ```
 

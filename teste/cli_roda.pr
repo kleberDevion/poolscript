@@ -15,6 +15,7 @@
 # Reprova com rc != 0 e a lista do que falhou.
 import os
 import sys
+import json
 
 PASTA = "/tmp/ps_cli_teste"
 HOME  = PASTA + "/home"
@@ -383,6 +384,159 @@ confere("rodar continua parando no primeiro erro de sintaxe",
 r = roda("printf 'ação = 1\\n' | '" + POOL + "' --check")
 confere("nome com acento explica a regra do identificador",
         "sem acento" in r["saida"])
+
+# ── parêntese esquecido aberto: o erro vai no `(`, e o resto do arquivo fica ─
+#
+# Rodada 3 da Jinga. Dentro de `(` a quebra de linha não conta, então com
+# `funct f(` esquecido aberto a declaração de baixo virava parâmetro: o erro
+# saía NELA ("'int' e palavra reservada ... nome de parametro", na linha
+# errada) e ela sumia da árvore. Com `funct f( {` sumia tudo depois do `(`.
+# E um statement quebrado DENTRO de uma funct derrubava a funct inteira: o
+# resto do corpo vazava pro topo (a árvore mostrava `y` como global) e o `}`
+# virava um erro fantasma.
+funct topo(saida)
+{
+    d = json.parse(saida)
+    nomes = []
+    for each n in d["arvore"]["lista"]
+    {
+        t = ""
+        if "texto" in n
+        {
+            t = str(n["texto"])
+        }
+        addEnd(nomes, n["k"] + ":" + t)
+    }
+    return nomes
+}
+funct corpo_de(saida, nome)
+{
+    d = json.parse(saida)
+    for each n in d["arvore"]["lista"]
+    {
+        if "texto" in n and n["texto"] == nome and "b" in n
+        {
+            nomes = []
+            for each s in n["b"]["lista"]
+            {
+                t = ""
+                if "texto" in s
+                {
+                    t = str(s["texto"])
+                }
+                addEnd(nomes, s["k"] + ":" + t)
+            }
+            return nomes
+        }
+    }
+    return Null
+}
+funct erros_do_check(saida)
+{
+    d = json.parse(saida)
+    if "erros" in d
+    {
+        return [[e["linha"], e["coluna"], e["msg"]] for each e in d["erros"]]
+    }
+    return []
+}
+
+os.writeFile(PASTA + "/aberto.pr",
+             "import os\npost(1)\nfunct f(\nint funct depois(int a) {\n    return a\n}\nz = 3\n")
+r = roda("'" + POOL + "' --check aberto.pr")
+confere("parentese esquecido: o erro sai no `(`, um só",
+        erros_do_check(r["saida"]) == [[3, 8, "parentese '(' aberto nao foi fechado"]])
+r = roda("'" + POOL + "' --ast aberto.pr")
+confere("parentese esquecido: a declaracao de baixo continua na arvore",
+        "ActionDecl:depois" in topo(r["saida"]) and "Assignment:z" in topo(r["saida"]))
+r = roda("'" + POOL + "' --tokens aberto.pr")
+confere("--tokens marca onde o motor fechou o grupo (SINC)", "\"t\":\"SINC\"" in r["saida"])
+r = roda("'" + POOL + "' aberto.pr")
+confere("rodando, o erro tambem sai no `(` da linha 3",
+        r["rc"] != 0 and "parentese '(' aberto nao foi fechado" in r["saida"]
+        and "linha 3" in r["saida"])
+
+os.writeFile(PASTA + "/quebrado.pr", "import os\nfunct f( {\npost(1)\n")
+r = roda("'" + POOL + "' --check quebrado.pr")
+confere("`funct f( {`: um erro, no `(` — o `{` logo depois nao vira outro",
+        erros_do_check(r["saida"]) == [[2, 8, "parentese '(' aberto nao foi fechado"]])
+
+os.writeFile(PASTA + "/multi.pr",
+             "import os\nfunct f( {\npost(1)\nx = = 2\nint funct depois(int a) {\n    return a\n}\n")
+r = roda("'" + POOL + "' --ast multi.pr")
+confere("`funct f( {` nao engole a declaracao que vem depois",
+        "ActionDecl:depois" in topo(r["saida"]))
+
+os.writeFile(PASTA + "/corpo.pr",
+             "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")
+r = roda("'" + POOL + "' --ast corpo.pr")
+confere("statement quebrado dentro da funct: a funct fica, nada vaza pro topo",
+        topo(r["saida"]) == ["ActionDecl:a", "ActionDecl:b"])
+confere("statement quebrado dentro da funct: o resto do corpo continua dentro dela",
+        corpo_de(r["saida"], "a") == ["Assignment:y"])
+r = roda("'" + POOL + "' --check corpo.pr")
+confere("statement quebrado dentro da funct: sem erro fantasma no `}`",
+        erros_do_check(r["saida"]) == [[2, 9, "expressao invalida"]])
+
+os.writeFile(PASTA + "/fecha.pr",
+             "funct a() {\n    x = f(\n}\nfunct b() {\n    return 3\n}\n")
+r = roda("'" + POOL + "' --ast fecha.pr")
+confere("`(` aberto fechado pelo `}` da funct: as duas funct ficam",
+        topo(r["saida"]) == ["ActionDecl:a", "ActionDecl:b"])
+r = roda("'" + POOL + "' --check fecha.pr")
+confere("`(` aberto fechado pelo `}` da funct: o erro sai no `(`",
+        erros_do_check(r["saida"]) == [[2, 10, "parentese '(' aberto nao foi fechado"]])
+
+# os corpos com laço próprio (classe, model, enum) também seguram o membro
+# quebrado: a declaração fica na árvore com o que sobrou
+funct membros(saida, k)
+{
+    d = json.parse(saida)
+    for each n in d["arvore"]["lista"]
+    {
+        if n["k"] == k
+        {
+            nomes = []
+            for each s in n["lista"]
+            {
+                addEnd(nomes, str(s["texto"]))
+            }
+            return nomes
+        }
+    }
+    return Null
+}
+os.writeFile(PASTA + "/classe.pr",
+             "class C() {\n    public int = = 1\n    funct n(self) { return 1 }\n}\nz = 1\n")
+r = roda("'" + POOL + "' --ast classe.pr")
+confere("membro quebrado nao derruba a classe", membros(r["saida"], "EntityDecl") == ["n"])
+os.writeFile(PASTA + "/modelo.pr", "model M() {\n    nome: str(\n    idade: int\n}\nz = 1\n")
+r = roda("'" + POOL + "' --ast modelo.pr")
+confere("campo com `(` aberto nao derruba o model", "ModelDecl:M" in topo(r["saida"]))
+os.writeFile(PASTA + "/enumr.pr", "enum Cor {\n    A = = 1\n    B = 2\n}\nz = 1\n")
+r = roda("'" + POOL + "' --ast enumr.pr")
+confere("membro quebrado nao derruba o enum", membros(r["saida"], "EnumDecl") == ["B"])
+
+# o erro do lexer (grupo sem par) não esconde mais o erro de sintaxe de outra
+# linha: o `--check` lista os dois, na ordem do arquivo
+os.writeFile(PASTA + "/dois.pr",
+             "funct f(\nint funct depois(int a) {\n    return a\n}\nx = = 3\n")
+r = roda("'" + POOL + "' --check dois.pr")
+confere("--check lista o grupo sem par E o erro de outra linha, em ordem",
+        erros_do_check(r["saida"]) == [[1, 8, "parentese '(' aberto nao foi fechado"],
+                                       [5, 5, "expressao invalida"]])
+
+# O LIMITE da regra: palavra-chave como argumento nomeado, compreensão e lambda
+# com declaração dentro são continuação VÁLIDA de uma linha com `(` aberto — e
+# continuam passando. A sincronia por declaração só roda em arquivo que já tem
+# grupo sem par.
+os.writeFile(PASTA + "/validos.pr",
+             "funct g(*a, **k) { return k }\npost(g(1,\nclass=2, from=3, import=4))\n"
+             + "post([x * 2\nfor each x in [1, 2]])\nh = funct(cb) { return cb(1) }\n"
+             + "post(h(funct(v) {\n    funct interna(w) { return w + 1 }\n    return interna(v)\n}))\n")
+r = roda("'" + POOL + "' --check validos.pr")
+confere("continuacao valida dentro de `(` continua passando no --check",
+        r["saida"].strip() == "{\"ok\":true}")
 
 # ── `build`: roda todos os .pr da pasta, em ordem ───────────────────────────
 #

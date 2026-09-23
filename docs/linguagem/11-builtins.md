@@ -111,7 +111,7 @@ post(removeStart(l))  # 1   (e l == [2, 3, 4])
 | Builtin | Assinatura | O que faz |
 |---|---|---|
 | `gather` | `gather(a, b, …)` | espera vários `async funct` **concorrentes** e devolve os valores numa lista (na ordem). Valor comum passa direto. Aceita lista de futures. |
-| `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `null`. |
+| `sleep` | `sleep(segundos)` | pausa a execução pelo tempo dado (aceita fração). Devolve `null`. Dentro de uma tarefa `async`, cede; no programa principal, as tarefas pendentes andam enquanto ele dorme (§6.8). |
 | `id` | `id(x)` | identidade do valor como `int`. Para objetos, o endereço; para imediatos, o conteúdo bruto. O número em si não é estável entre execuções — use só pra comparar identidade. |
 
 ---

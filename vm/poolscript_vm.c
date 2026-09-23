@@ -612,7 +612,10 @@ enum { EPW_HTTP = 1, EPW_WS, EPW_LHTTP, EPW_LWS, EPW_FIBWAIT,
        /* conexão que morreu no MEIO da volta: o objeto ainda existe, mas
         * ninguém mais o atende. Ver `ep_morre` abaixo. Por último, pra não
         * mexer no valor numérico de nenhum outro. */
-       EPW_MORTO };
+       EPW_MORTO,
+       /* a I/O que o PROGRAMA PRINCIPAL mandou pro pool terminou (ver
+        * `sched_roda`): ele esperava por ela dirigindo as tarefas */
+       EPW_PRINCIPAL };
 static int g_jk_epfd = -1;
 typedef struct { int tipo; struct PSJkConn *conn; } EpWs;
 typedef struct { int tipo; struct Fiber *f; } EpFibW;   /* fibra esperando um fd (offload) */
@@ -11791,11 +11794,17 @@ static int mod_sys_argv(VM *vm, Value *args, int n, Value *out)
  * programa termina sem aguardar, ela sumia: tarefa quebrava e o programa saía
  * 0, calado. Erro é erro — sai no stderr, com a mensagem original. Quem quer
  * tratar continua usando `await`, que é onde o erro é capturável. */
+static PSFuturo **g_futs_erro;
+static int        g_nfuts_erro;
+
 static void avisa_futures_com_erro(VM *vm)
 {
-    for (Obj *o = vm->objetos; o; o = o->next) {
-        if (o->type != OBJ_FUTURO) continue;
-        PSFuturo *f = (PSFuturo *)o;
+    (void)vm;
+    /* a lista de raízes (ver `fut_guarda_erro`), e não o heap: o future de
+     * uma `tarefa()` solta não é alcançável pelo programa, e o GC o levava
+     * antes de o aviso chegar nele */
+    for (int i = 0; i < g_nfuts_erro; i++) {
+        PSFuturo *f = g_futs_erro[i];
         if (!f->erro || f->erro_lido) continue;
         f->erro_lido = 1;
         fflush(stdout);
@@ -21179,6 +21188,27 @@ static Fiber **g_fibs = NULL;    /* vetor DINÂMICO de ponteiros p/ fibras */
 static int     g_nfibs = 0, g_cap_fibs = 0;
 static VM   *g_fib_vm;            /* makecontext não passa args: a fibra lê daqui */
 
+/* FUTURES COM ERRO AINDA NÃO LIDO — raízes do GC até alguém ler o erro (o
+ * `await`, o `gather`) ou o fim do programa avisar dele.
+ *
+ * "Erro de tarefa não some": era a promessa, e o aviso do fim do programa
+ * procurava os futures no heap. Mas depois que a fibra termina ninguém mais
+ * segura o future de uma `tarefa()` solta — o GC o levava, e o erro sumia
+ * calado, dependendo só de a coleta passar antes do fim. */
+static PSFuturo **g_futs_erro = NULL;
+static int        g_nfuts_erro = 0, g_cap_futs_erro = 0;
+
+static void fut_guarda_erro(PSFuturo *fu)
+{
+    if (g_nfuts_erro == g_cap_futs_erro) {
+        int nc = g_cap_futs_erro ? g_cap_futs_erro * 2 : 8;
+        PSFuturo **nv = realloc(g_futs_erro, sizeof(PSFuturo *) * (size_t)nc);
+        if (!nv) return;             /* sem memória: o erro fica sem garantia, como antes */
+        g_futs_erro = nv; g_cap_futs_erro = nc;
+    }
+    g_futs_erro[g_nfuts_erro++] = fu;
+}
+
 /* Devolve o pool inteiro ao sistema. O pool nunca era desmontado — as pilhas
  * viviam até o processo morrer, o que "funcionava" porque `malloc` some junto.
  * Com `mmap` isso vira mapeamento pendurado, e o valgrind/ASan passam a
@@ -21275,6 +21305,7 @@ static void fib_trampolim(void)
         if (rc != 0) {
             f->fut->erro = 1;
             f->fut->erro_lido = 0;
+            fut_guarda_erro(f->fut);
             snprintf(f->fut->erro_msg, sizeof(f->fut->erro_msg), "%s", vm->erro);
             snprintf(f->fut->erro_tipo, sizeof(f->fut->erro_tipo), "%s", vm->erro_tipo);
             /* guarda ONDE quebrou: os quadros mais internos do traceback da
@@ -21422,6 +21453,11 @@ static PSFuturo *fib_pega_async(VM *vm, const Alvo *a, const Value *pos, int npo
     PSFuturo *fu = novo_futuro(vm);
     if (!fu) return NULL;
     f->pilha_base = NULL; f->pilha_tam = 0;   /* o trampolim remarca */
+    /* O epoll nasce com a PRIMEIRA tarefa: sem ele o `fib_offload` roda a I/O
+     * inline, e a tarefa que começa na chamada não cedia no `request`, no banco
+     * nem no `os.run` — travava o principal até terminar, ao contrário do que a
+     * linguagem promete (o corpo roda até o primeiro ponto em que CEDE). */
+    if (g_jk_epfd < 0) g_jk_epfd = epoll_create1(EPOLL_CLOEXEC);
     f->usada = 1; f->status = FIB_SUSPENSA; f->kind = FIB_ASYNC;
     /* A fibra nasce com a requisição de quem a criou: `await helper()` dentro
      * de um handler roda o helper noutra fibra, e o `request` lá dentro é o
@@ -21534,9 +21570,31 @@ static void pool_submete(void (*fn)(void *), void *arg, int efd)
  * `sleep()` dentro de handler (timer + volta pro escalonador). Fora de fibra
  * não há a quem ceder: dorme de verdade, curto. Serve a quem precisa esperar
  * um recurso que outra fibra está usando (a conexão de banco, por exemplo). */
+static int  fib_async_vivas(void);
+static void sched_roda(VM *vm, PSFuturo **alvos, int nalvos,
+                       const struct timespec *prazo, int efd);
+
+/* Um instante `ms` milissegundos à frente, no relógio monotônico. */
+static struct timespec prazo_em_ms(long long ms)
+{
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
+    t.tv_sec  += (time_t)(ms / 1000);
+    t.tv_nsec += (long)(ms % 1000) * 1000000L;
+    if (t.tv_nsec >= 1000000000L) { t.tv_sec++; t.tv_nsec -= 1000000000L; }
+    return t;
+}
+
 static void fib_espera_ms(VM *vm, int ms)
 {
     Fiber *f = vm->fib_atual;
+    /* no PRINCIPAL, com tarefa viva, a espera roda as tarefas: é assim que a
+     * que segura a conexão de banco termina e a solta — dormindo cego, o
+     * `while (ocupada)` do principal girava pra sempre */
+    if (!f && fib_async_vivas()) {
+        struct timespec prazo = prazo_em_ms(ms);
+        sched_roda(vm, NULL, 0, &prazo, -1);
+        return;
+    }
     if (!f || g_jk_epfd < 0) {
         struct timespec t = { ms / 1000, (long)(ms % 1000) * 1000000L };
         nanosleep(&t, NULL);
@@ -21554,6 +21612,23 @@ static void fib_espera_ms(VM *vm, int ms)
 
 static void fib_offload(VM *vm, void (*fn)(void *), void *arg)
 {
+    /* PRINCIPAL com tarefa viva: a I/O vai pro pool e, enquanto ela não volta,
+     * o principal roda as tarefas. Rodando inline, um `request.get` ou um
+     * `os.run` no principal congelava toda tarefa pendente até terminar. Sem
+     * tarefa viva, inline como sempre — nada muda pra quem não usa async. */
+    if (!vm->fib_atual && fib_async_vivas()) {
+        int efd = eventfd(0, EFD_CLOEXEC);
+        if (efd >= 0) {
+            pool_garante();
+            pool_submete(fn, arg, efd);
+            sched_roda(vm, NULL, 0, NULL, efd);
+            /* a leitura bloqueia até o pool terminar — já terminou se o
+             * escalonador viu o aviso; se não pôde registrar, espera aqui */
+            uint64_t drena; ssize_t r = read(efd, &drena, sizeof(drena)); (void)r;
+            close(efd);
+            return;
+        }
+    }
     if (!vm->fib_atual || g_jk_epfd < 0) { fn(arg); return; }   /* fora de handler: inline */
     int efd = eventfd(0, EFD_CLOEXEC);
     if (efd < 0) { fn(arg); return; }                           /* sem eventfd: inline */
@@ -21584,7 +21659,33 @@ static long fib_ms_ate(struct timespec *wake, struct timespec *agora)
     return (long)(wake->tv_sec - agora->tv_sec) * 1000
          + (wake->tv_nsec - agora->tv_nsec) / 1000000;
 }
-static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
+/* Há tarefa (`async funct`) viva? Sem nenhuma, quem espera no programa
+ * principal espera como sempre — nada muda pra um script que não usa async. */
+static int fib_async_vivas(void)
+{
+    for (int i = 0; i < g_nfibs; i++)
+        if (g_fibs[i]->usada && g_fibs[i]->kind == FIB_ASYNC) return 1;
+    return 0;
+}
+
+static int g_ep_principal = EPW_PRINCIPAL;   /* só o tipo importa: ver `sched_roda` */
+
+/* O PROGRAMA PRINCIPAL ESPERA DIRIGINDO AS TAREFAS.
+ *
+ * Roda as fibras async prontas (nunca iniciadas, timer vencido, future
+ * resolvido) e espera os eventos delas (timer de `sleep`, eventfd de I/O) até
+ * a condição de quem chamou:
+ *   `alvos`  — todos esses futures resolvidos (é o `await`, o `gather`);
+ *   `prazo`  — o relógio passar deste instante (é o `sleep` do principal);
+ *   `efd`    — este eventfd disparar (é a I/O do principal que foi pro pool).
+ *
+ * Era só o primeiro caso: fora do servidor, uma tarefa que cedeu só andava
+ * quando alguém dava `await`. Com o principal dormindo 1 s, a tarefa de 0,2 s
+ * não terminava — e o mesmo código terminava dentro do `jinker`, cujo laço
+ * roda as tarefas sozinho. Agora todo ponto em que o principal ESPERA roda as
+ * tarefas, como lá. O fim do programa continua não esperando ninguém. */
+static void sched_roda(VM *vm, PSFuturo **alvos, int nalvos,
+                       const struct timespec *prazo, int efd)
 {
     /* O epoll do top-level e UM SO e PERSISTE. Era criado por chamada e
      * fechado quando os alvos desta chamada resolviam — mas as outras fibras
@@ -21595,11 +21696,18 @@ static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
      * pendurava em metade das rodadas (medido com strace: `close(3)` logo
      * apos o primeiro future, e os writes em 5 e 6 chegando ao epoll morto). */
     if (g_jk_epfd < 0) g_jk_epfd = epoll_create1(EPOLL_CLOEXEC);
+    int efd_pronto = 0;
+    if (efd >= 0) {
+        struct epoll_event ev; ev.events = EPOLLIN; ev.data.ptr = &g_ep_principal;
+        /* sem registrar não há como ser avisado: quem chamou espera o efd
+         * bloqueando, como antes */
+        if (g_jk_epfd < 0 || epoll_ctl(g_jk_epfd, EPOLL_CTL_ADD, efd, &ev) != 0) return;
+    }
     struct epoll_event evs[64];
     for (;;) {
-        int falta = 0;
+        int falta = nalvos > 0 ? 0 : 1;
         for (int i = 0; i < nalvos; i++) if (alvos[i] && !alvos[i]->done) { falta = 1; break; }
-        if (!falta) break;
+        if (!falta || efd_pronto) break;
 
         /* (1) roda toda fibra async pronta pra rodar */
         int rodou = 0;
@@ -21617,10 +21725,14 @@ static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
             rodou = 1;
             if (f->status == FIB_PRONTA) fib_libera(f);
         }
+        /* o prazo é conferido DEPOIS de rodar as prontas: `sleep(0)` ainda dá
+         * a vez a quem já podia andar */
+        clock_gettime(CLOCK_MONOTONIC, &agora);
+        if (prazo && (agora.tv_sec > prazo->tv_sec
+                      || (agora.tv_sec == prazo->tv_sec && agora.tv_nsec >= prazo->tv_nsec))) break;
         if (rodou) continue;
 
         /* (2) nada pronto: espera o próximo evento */
-        clock_gettime(CLOCK_MONOTONIC, &agora);
         int timeout = -1, tem_fd = 0, tem_timer = 0;
         for (int i = 0; i < g_nfibs; i++) {
             Fiber *f = g_fibs[i];
@@ -21632,16 +21744,34 @@ static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
                 tem_timer = 1;
             }
         }
-        if (!tem_fd && !tem_timer) break;   /* nada pra esperar e alvos abertos: evita travar */
+        if (prazo) {
+            /* arredondado pra CIMA: acordar antes do prazo só faria girar */
+            long long ns = (long long)(prazo->tv_sec - agora.tv_sec) * 1000000000LL
+                         + (prazo->tv_nsec - agora.tv_nsec);
+            long ms = (long)((ns + 999999LL) / 1000000LL);
+            if (ms < 0) ms = 0;
+            if (timeout < 0 || ms < timeout) timeout = (int)ms;
+        }
+        /* nada pra esperar (nenhuma tarefa com timer ou I/O, sem prazo e sem
+         * I/O do principal): alvos abertos não vão fechar — evita travar */
+        if (!tem_fd && !tem_timer && !prazo && efd < 0) break;
         int nr = epoll_wait(g_jk_epfd, evs, 64, timeout);
         for (int e = 0; e < nr; e++) {
-            if (*(int *)evs[e].data.ptr != EPW_FIBWAIT) continue;
+            int tipo = *(int *)evs[e].data.ptr;
+            if (tipo == EPW_PRINCIPAL) { efd_pronto = 1; continue; }
+            if (tipo != EPW_FIBWAIT) continue;
             Fiber *f = ((EpFibW *)evs[e].data.ptr)->f;
             fib_resume(vm, f);
             if (f->status == FIB_PRONTA) fib_libera(f);
         }
         /* timers vencidos são pegos no passo (1) da próxima volta */
     }
+    if (efd >= 0) epoll_ctl(g_jk_epfd, EPOLL_CTL_DEL, efd, NULL);
+}
+
+static void async_roda_ate(VM *vm, PSFuturo **alvos, int nalvos)
+{
+    sched_roda(vm, alvos, nalvos, NULL, -1);
 }
 
 /* Resolve UM future: dentro de fibra CEDE ao escalonador; no top-level DIRIGE.
@@ -21728,6 +21858,16 @@ static void fib_marca_gc(VM *vm)
             if (f->frames[k].cl) marca_obj(vm, (Obj *)f->frames[k].cl);
         marca_valor(vm, &f->jk_req);
     }
+    /* os futures com erro que ninguém leu: raízes até serem lidos ou
+     * avisados. Os já lidos saem da lista aqui — daí em diante valem as
+     * referências do programa, como qualquer objeto. */
+    int w = 0;
+    for (int i = 0; i < g_nfuts_erro; i++) {
+        if (g_futs_erro[i]->erro_lido) continue;
+        marca_obj(vm, (Obj *)g_futs_erro[i]);
+        g_futs_erro[w++] = g_futs_erro[i];
+    }
+    g_nfuts_erro = w;
 }
 
 /* ── epoll: readiness O(1) pra segurar MUITA conexão ociosa ───────────────
@@ -22055,7 +22195,12 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
      * requisição HTTP roda numa FIBRA; se o handler cede numa I/O (hoje: sleep),
      * a fibra suspende e o loop atende outras, retomando no timer. Pool de fibras
      * cheio -> back-pressure (desarma a fd e enfileira; nunca bloqueia). */
-    int epfd = epoll_create1(0);
+    /* O epoll pode JÁ EXISTIR: nasce com a primeira tarefa (`async funct`), e
+     * uma tarefa criada antes do servidor subir registrou nele a espera da I/O
+     * dela. Trocar por um epoll novo largava esses registros, e a tarefa
+     * esperava pra sempre. Reaproveita; só fecha no fim o que criou aqui. */
+    int epfd_meu = g_jk_epfd < 0;
+    int epfd = epfd_meu ? epoll_create1(EPOLL_CLOEXEC) : g_jk_epfd;
     if (epfd < 0) {
         close(fd); if (fd_ws >= 0) close(fd_ws); if (ssl_ctx) ps_jk_tls_ctx_solta(ssl_ctx);
         BERRO(vm, "NetworkError", "epoll_create1: %s", strerror(errno));
@@ -22116,6 +22261,9 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
             /* a conexão morreu atendendo um evento ANTERIOR deste mesmo lote:
              * o objeto continua vivo só pra esta leitura (ver `ep_morre`) */
             if (tipo == EPW_MORTO) continue;
+            /* espera do principal (`sched_roda`) não vive além dela; se um dia
+             * sobrar registro no epoll compartilhado, não é conexão HTTP */
+            if (tipo == EPW_PRINCIPAL) continue;
             if (tipo == EPW_LHTTP) {
                 /* drena TODO o backlog de accept (o listen é não-bloqueante) */
                 for (;;) {
@@ -22214,7 +22362,8 @@ static int jk_app_run(VM *vm, Value alvo, Value *args, int n, Value *out)
      * com uma conexão de WebSocket sendo atendida. */
     while (j->nws > 0) { j->ws[j->nws - 1].fib = NULL; jk_ws_del(j, j->nws - 1); }
     ep_enterra();
-    close(epfd); g_jk_epfd = -1;
+    /* os fds de escuta saem do epoll sozinhos no `close` logo abaixo */
+    if (epfd_meu) { close(epfd); g_jk_epfd = -1; }
 
     close(fd);
     if (fd_ws >= 0) close(fd_ws);
@@ -22368,8 +22517,29 @@ static int acha_modulo(const char *nome)
 }
 
 
-/* Pausa a execução. Nada a ver com async — é sono do processo, e serve tanto
- * pra ritmar um laço quanto pra simular trabalho dentro de `async action`. */
+/* O PRINCIPAL dorme `seg` segundos. Com tarefa viva, o sono roda as tarefas
+ * (ver `sched_roda`); sem nenhuma, é o `nanosleep` de sempre. */
+static void dorme_principal(VM *vm, double seg)
+{
+    if (fib_async_vivas()) {
+        struct timespec prazo; clock_gettime(CLOCK_MONOTONIC, &prazo);
+        prazo.tv_sec  += (time_t)seg;
+        prazo.tv_nsec += (long)((seg - (double)(time_t)seg) * 1e9);
+        if (prazo.tv_nsec >= 1000000000L) { prazo.tv_sec++; prazo.tv_nsec -= 1000000000L; }
+        sched_roda(vm, NULL, 0, &prazo, -1);
+        return;
+    }
+    struct timespec t;
+    t.tv_sec  = (time_t)seg;
+    t.tv_nsec = (long)((seg - (double)t.tv_sec) * 1e9);
+    /* laço porque um sinal pode interromper antes da hora */
+    while (nanosleep(&t, &t) == -1 && errno == EINTR) { }
+}
+
+/* Pausa a execução. Dentro de uma tarefa ou de um handler, CEDE: as outras
+ * tarefas e requisições andam enquanto esta dorme. No programa principal, o
+ * sono também roda as tarefas pendentes — o mesmo código anda igual num script
+ * e dentro do servidor. */
 static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
 {
     EXIGE_ARGS(vm, "sleep", 1);
@@ -22426,21 +22596,17 @@ static int nativa_sleep(VM *vm, Value *args, int n, Value *out)
                     drenou = 1;
                 }
                 if (!drenou) {   /* nenhuma conexão viva: dorme o resto */
-                    struct timespec t;
-                    t.tv_sec  = (time_t)falta;
-                    t.tv_nsec = (long)((falta - (double)t.tv_sec) * 1e9);
-                    while (nanosleep(&t, &t) == -1 && errno == EINTR) { }
+                    dorme_principal(vm, falta);
                     break;
                 }
             }
         } else {
-            /* fora de fibra e sem WebSocket: dorme bloqueante como sempre */
-            struct timespec t;
-            t.tv_sec  = (time_t)seg;
-            t.tv_nsec = (long)((seg - (double)t.tv_sec) * 1e9);
-            /* laço porque um sinal pode interromper antes da hora */
-            while (nanosleep(&t, &t) == -1 && errno == EINTR) { }
+            /* fora de fibra e sem WebSocket */
+            dorme_principal(vm, seg);
         }
+    } else if (!vm->fib_atual && fib_async_vivas()) {
+        /* `sleep(0)` no principal: dá a vez às tarefas que já podem andar */
+        dorme_principal(vm, 0);
     }
     *out = MK_NULL();
     return 0;
@@ -24949,9 +25115,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         chama_proto: {
             Proto *np = &vm->protos[cp.proto];
             if (np->eh_gerador || np->eh_async) {
-                vm->sp = sp; vm->locals_top = locals_top;
+                /* A tarefa COMEÇA a rodar aqui dentro (até o primeiro ponto em
+                 * que cede): o estado do principal tem que estar publicado —
+                 * inclusive os frames, que o GC marca a partir dele — e o `p`
+                 * reancorado na volta, porque o corpo pode ter feito `import`
+                 * e realocado `vm->protos`. */
+                vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 Value pronto;
-                if (chamada_sem_frame(vm, cp, cp_pos, cp_npos, cp_kwn, cp_kwv, cp_nkw, 0, &pronto) < 0)
+                int rc_s; REANCORA(rc_s = chamada_sem_frame(vm, cp, cp_pos, cp_npos, cp_kwn, cp_kwv, cp_nkw, 0, &pronto));
+                if (rc_s < 0)
                     goto erro_runtime;
                 sp = cp_base;
                 stack[sp++] = pronto;
@@ -25088,7 +25260,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
                 vm->erro_tipo[0] = '\0';   /* o builtin escolhe o tipo */
                 Value rv;
-                if (BUILTINS[alvo.as.nativa].fn(vm, &stack[sp - n], n, &rv) != 0) {
+                /* REANCORA: `sleep`, `gather`, `post` de future e toda I/O do
+                 * principal RODAM TAREFAS enquanto esperam — e uma tarefa que
+                 * faz `import` realoca `vm->protos`, deixando o `p` daqui
+                 * apontando pra memória solta. */
+                int rc_b; REANCORA(rc_b = BUILTINS[alvo.as.nativa].fn(vm, &stack[sp - n], n, &rv));
+                if (rc_b != 0) {
                     /* Sai pelo desenrolamento, não por `return`: erro de
                      * builtin é capturável por `try`, igual a qualquer outro. */
                     if (!vm->erro_tipo[0])
@@ -29567,13 +29744,16 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
      * aqui e continua parando no primeiro erro. */
     PSTokenList *toks = ps_lexer_tokenize_modo(fonte, len, 0, 1);
     if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
-    if (toks->nerros > 0) {
-        e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", toks->erros[0].msg);
-        e->linha = toks->erros[0].linha; e->col = toks->erros[0].col;
-        verifica_erros_sintaxe(e, toks->erros, toks->nerros);
-        ps_lexer_free(toks);
-        return -1;
+    /* Os erros do LEXER não param mais a conferência: o parser roda mesmo
+     * assim e os dois entram na mesma lista. Parar aqui escondia o resto — um
+     * `(` sem par na linha 1 (que o lexer acusa) sumia com o erro de sintaxe da
+     * linha 50. Com o grupo fechado à força (T_SINC), o parser segue são. */
+    int32_t nlex = toks->nerros;
+    PSAviso *lex = NULL;
+    if (nlex > 0) {
+        lex = malloc(sizeof(PSAviso) * (size_t)nlex);
+        if (!lex) { ps_lexer_free(toks); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+        memcpy(lex, toks->erros, sizeof(PSAviso) * (size_t)nlex);
     }
     /* os avisos saem ANTES do free: a lista morre logo abaixo. Quem pediu vira
      * dono do vetor. */
@@ -29587,16 +29767,34 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
     }
     PSParseResult *r = ps_parse_lista(toks, 1);
     ps_lexer_free(toks);
-    if (!r) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
-    if (!r->ok) {
+    if (!r) { free(lex); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+    if (nlex > 0 || !r->ok) {
+        /* lexer + parser numa lista só, na ordem do arquivo */
+        int32_t nj = nlex + r->nerros;
+        PSAviso *junto = nj > 0 ? malloc(sizeof(PSAviso) * (size_t)nj) : NULL;
+        if (junto) {
+            if (nlex) memcpy(junto, lex, sizeof(PSAviso) * (size_t)nlex);
+            if (r->nerros) memcpy(junto + nlex, r->erros, sizeof(PSAviso) * (size_t)r->nerros);
+            for (int32_t a = 1; a < nj; a++) {            /* inserção: estável, e a lista é curta */
+                PSAviso x = junto[a];
+                int32_t b = a - 1;
+                while (b >= 0 && (junto[b].linha > x.linha
+                                  || (junto[b].linha == x.linha && junto[b].col > x.col))) {
+                    junto[b + 1] = junto[b]; b--;
+                }
+                junto[b + 1] = x;
+            }
+        } else nj = 0;
         e->tipo = PS_ERRO_SINTAXE;
         /* o PRIMEIRO da lista, não o último: recuperando, cada erro novo
          * sobrescreve o campo simples do parser */
-        const char *msg = r->nerros > 0 ? r->erros[0].msg : r->erro;
+        const char *msg = nj > 0 ? junto[0].msg : r->erro;
         snprintf(e->msg, sizeof(e->msg), "%s", msg);
-        e->linha = r->nerros > 0 ? r->erros[0].linha : r->erro_linha;
-        e->col   = r->nerros > 0 ? r->erros[0].col   : r->erro_col;
-        verifica_erros_sintaxe(e, r->erros, r->nerros);
+        e->linha = nj > 0 ? junto[0].linha : r->erro_linha;
+        e->col   = nj > 0 ? junto[0].col   : r->erro_col;
+        verifica_erros_sintaxe(e, junto, nj);
+        free(junto);
+        free(lex);
         /* A conferência de TIPO não roda com a sintaxe quebrada: o statement
          * descartado leva junto os nomes que ele ligava, e cada uso deles
          * viraria um "name is not defined" que não existe — erro na causa, não

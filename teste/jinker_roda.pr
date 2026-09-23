@@ -864,6 +864,14 @@ t1 = date.timestamp()
 confere("os.run dentro da rota nao segura as outras requisicoes",
         r.status == 200 and (t1 - t0) <= 1)
 
+# ── tarefa criada antes do servidor subir ───────────────────────────────────
+# O alvo cria uma tarefa que espera 0,3 s de I/O e só então chama `app()`. O
+# servidor reaproveita o epoll em que a espera dela está registrada; trocando
+# por um novo, a tarefa ficava pendurada pra sempre.
+r = get(RAIZ + "/tarefa_antes")
+confere("tarefa criada antes do servidor termina a I/O dela",
+        r.status == 200 and r.get_json("estado") == "terminou")
+
 # ── várias conexões morrendo na MESMA volta do laço ─────────────────────────
 #
 # `epoll_wait` devolve um LOTE de eventos. Tirar o fd do epoll não apaga os
