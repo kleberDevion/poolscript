@@ -283,6 +283,38 @@ r = roda("'" + POOL + "' tarefa_comeca.pr")
 confere("a tarefa começa na chamada, antes da linha seguinte",
         r["saida"].strip() == "corpo\nchamou\nresto")
 
+# ── onde cada coisa TERMINA, e a f-string por dentro ────────────────────────
+#
+# Sem coluna final, o editor sublinha 1 caractere e a seleção estrutural
+# (Ctrl+W) não tem onde parar. E a f-string saía como UM token: as expressões
+# de dentro não existiam pro realce nem pro "ir pra definição".
+r = roda("printf 'nome = \"ana\"\\n' | '" + POOL + "' --tokens")
+confere("--tokens diz onde o token termina",
+        "\"c2\":" in r["saida"] and "\"l2\":" in r["saida"])
+r = roda("printf 'funct f(a)\\n{\\n    return a\\n}\\n' | '" + POOL + "' --ast")
+confere("--ast diz a coluna final do nó", "\"c2\":" in r["saida"])
+
+r = roda("printf 'x = 1\\npost(f\"oi {x} {x + 2}\")\\n' | '" + POOL + "' --tokens")
+confere("--tokens publica os tokens de dentro da f-string",
+        "\"v\":\"x\"" in r["saida"] and "\"v\":\"+\"" in r["saida"])
+confere("os tokens da f-string têm a posição real no fonte",
+        "\"l\":2" in r["saida"] and "\"c\":12" in r["saida"])
+
+# A contagem de coluna do protocolo do editor é UTF-16; a do motor é
+# caractere. Com `--utf16` o motor entrega a do editor, e quem não pede não vê
+# diferença.
+# (o `printf` do sh não entende `\x`; os bytes do 𠮷 vão em octal)
+r = roda("printf 'a = \"\\360\\240\\256\\267\" + b\\n' | '" + POOL + "' --tokens")
+confere("sem --utf16 a coluna conta CARACTERE",
+        "\"c\":11,\"n\":1,\"l2\":1,\"c2\":12,\"v\":\"b\"" in r["saida"])
+r = roda("printf 'a = \"\\360\\240\\256\\267\" + b\\n' | '" + POOL + "' --tokens --utf16")
+confere("com --utf16 o caractere fora do plano básico vale 2",
+        "\"c\":12,\"n\":1,\"l2\":1,\"c2\":13,\"v\":\"b\"" in r["saida"])
+# a posição do cursor CHEGA na mesma conta: com `--utf16` o motor recebe a
+# coluna do editor e acha o mesmo lugar
+r = roda("printf 'x = \"\\360\\240\\256\\267\"\\nx.up' | '" + POOL + "' --contexto 2:5")
+confere("--contexto sem --utf16 lê coluna em caractere", "\"parcial\":\"up\"" in r["saida"])
+
 # ── código pela metade: o editor precisa do que sobrou ──────────────────────
 #
 # Enquanto se digita, o arquivo passa a maior parte do tempo inválido. Antes,

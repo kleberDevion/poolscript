@@ -35,6 +35,11 @@ PSParseResult *ps_parse(PSToken *toks, int32_t n);
  * próximo statement e continua, e a árvore sai com o que veio DEPOIS do erro.
  * Só os comandos de editor usam. */
 PSParseResult *ps_parse_modo(PSToken *toks, int32_t n, int recupera);
+/* Com a LISTA do lexer (e não só o vetor de tokens), a árvore sai mais
+ * completa: as expressões de dentro de cada f-string viram nós filhos do
+ * literal, com a linha e a coluna REAIS no fonte. Sem a lista (parse de um
+ * trecho solto), a f-string continua sendo só o literal. */
+PSParseResult *ps_parse_lista(PSTokenList *tl, int recupera);
 void           ps_parse_free(PSParseResult *r);
 
 /* Os tipos que abrem declaração (`list l = []`), terminados em NULL. Fonte

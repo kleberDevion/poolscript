@@ -22772,6 +22772,13 @@ static const char *sugere_nome(const char *alvo, const char **nomes, int n)
     int teto = (int)strlen(alvo) <= 4 ? 1 : 3;
     for (int i = 0; i < n; i++) {
         if (!nomes[i]) continue;
+        /* NUNCA sugerir o próprio nome. O nome escrito está entre os
+         * candidatos sempre que ele EXISTE e o problema é outro (campo de
+         * instância lido pela Entity, membro private), e aí saía
+         * "'book' object has no attribute 'author'. Did you mean: 'author'?"
+         * — a frase acusava um erro de digitação que não houve e escondia a
+         * causa de verdade. */
+        if (strcmp(alvo, nomes[i]) == 0) continue;
         int d = dist_edicao(alvo, nomes[i], teto);
         if (d <= teto && (!melhor || d < md)) { melhor = nomes[i]; md = d; }
     }
@@ -22796,6 +22803,20 @@ static void junta_cands_classe(PSClass *cl, const char **cands, int *n, int prof
                 cands[(*n)++] = COMO_STRING(d->entradas[k].chave)->chars;
     }
     for (int32_t i = 0; i < cl->npais; i++) junta_cands_classe(cl->pais[i], cands, n, prof + 1);
+}
+
+/* `nome` é campo DECLARADO da classe (`public string author = ""`), próprio ou
+ * herdado? Sem `static` ele só existe na instância, e ler pela Entity tem que
+ * dizer isso — a frase genérica de membro ausente mandava procurar erro de
+ * digitação num nome que está escrito certo, na linha de cima. */
+static int classe_tem_campo(PSClass *cl, const char *nome, int prof)
+{
+    if (!cl || prof > 32) return 0;
+    for (int32_t i = 0; i < cl->ntip; i++)
+        if (cl->tip_nomes && cl->tip_nomes[i] && strcmp(cl->tip_nomes[i], nome) == 0) return 1;
+    for (int32_t i = 0; i < cl->npais; i++)
+        if (classe_tem_campo(cl->pais[i], nome, prof + 1)) return 1;
+    return 0;
 }
 
 /* O membro mais parecido com `nome` no valor `alvo` — classe, instância (a
@@ -26253,6 +26274,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 Value metv = MK_NULL();
                 int32_t mp = acha_metodo(COMO_CLASS(alvo), nome, &metv);
                 if (mp < 0) {
+                    /* O campo EXISTE, mas é da instância: a causa é a falta do
+                     * `static` (ou da instância), não um nome errado. */
+                    if (classe_tem_campo(COMO_CLASS(alvo), nome, 0))
+                        ERRO_TF(vm, "RuntimeError",
+                                "Entity '%s' não tem campo estático '%s' — instancie primeiro",
+                                COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?", nome);
                     char dica[160];
                     ERRO_TF(vm, "AttributeError", "'%s' object has no attribute '%s'%s",
                             COMO_CLASS(alvo)->nome ? COMO_CLASS(alvo)->nome : "?",
@@ -28295,7 +28322,7 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
             ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
             return -1;
         }
-        PSParseResult *r = ps_parse(toks->tokens, toks->n);
+        PSParseResult *r = ps_parse_lista(toks, 0);
         ps_lexer_free(toks);
         if (!r || !r->ok) {
             snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
@@ -28482,7 +28509,7 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
     free(fonte);
     if (!toks || !toks->ok) { if (toks) ps_lexer_free(toks); return 0; }
-    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    PSParseResult *r = ps_parse_lista(toks, 0);
     ps_lexer_free(toks);
     if (!r || !r->ok) { if (r) ps_parse_free(r); return 0; }
 
@@ -28600,7 +28627,7 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
         if (toks) { a->info.erro_linha = toks->erro_linha; a->info.erro_col = toks->erro_col; ps_lexer_free(toks); }
         return 2;
     }
-    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    PSParseResult *r = ps_parse_lista(toks, 0);
     ps_lexer_free(toks);
     if (!r || !r->ok) {
         a->info.falhou = 1;
@@ -28723,7 +28750,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         if (toks) ps_lexer_free(toks);
         return -1;
     }
-    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    PSParseResult *r = ps_parse_lista(toks, 0);
     ps_lexer_free(toks);
     if (!r || !r->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, r ? r->erro : "sem memoria");
@@ -29498,7 +29525,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
             *navisos = toks->navisos;
         }
     }
-    PSParseResult *r = ps_parse_modo(toks->tokens, toks->n, 1);
+    PSParseResult *r = ps_parse_lista(toks, 1);
     ps_lexer_free(toks);
     if (!r) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!r->ok) {
@@ -29587,7 +29614,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     const char *ancora = g_emb_main[0] ? g_emb_main : caminho;
     ps_avisos_para_stderr(toks, ancora);
 
-    PSParseResult *r = ps_parse(toks->tokens, toks->n);
+    PSParseResult *r = ps_parse_lista(toks, 0);
     ps_lexer_free(toks);
     if (!r) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!r->ok) {

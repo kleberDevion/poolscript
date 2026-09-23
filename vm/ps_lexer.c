@@ -488,14 +488,65 @@ static int decode_escape(Lexer *lx, Buf *bf, int bytes)
  * medido a partir do prefixo; a coluna começava na aspa, e o token saía
  * deslocado um ou dois caracteres pra direita — o editor achava que o `.`
  * de `b"q".` estava DENTRO da string e não completava nada. */
+/* Guarda um `{...}` de f-string: o pedaço no fonte e onde ele começa. O token
+ * ainda não nasceu, então o índice dele é o próximo (`out->n`). */
+static void interp_poe(Lexer *lx, size_t off, int32_t len, int32_t linha, int32_t col)
+{
+    PSTokenList *o = lx->out;
+    if (o->ninterps >= 512) return;            /* f-string absurda não vira enxurrada */
+    if (o->ninterps >= o->cap_interps) {
+        int32_t nc = o->cap_interps ? o->cap_interps * 2 : 8;
+        struct PSInterp *nv = realloc(o->interps, sizeof(*nv) * (size_t)nc);
+        if (!nv) return;
+        o->interps = nv; o->cap_interps = nc;
+    }
+    o->interps[o->ninterps].tok = o->n;        /* o token da f-string nasce a seguir */
+    o->interps[o->ninterps].off = off;
+    o->interps[o->ninterps].len = len;
+    o->interps[o->ninterps].linha = linha;
+    o->interps[o->ninterps].col = col;
+    /* o trecho CRU: é dele que saem os tokens e a árvore de dentro da
+     * interpolação, com a posição de verdade */
+    char *txt = malloc((size_t)len + 1);
+    if (txt) { memcpy(txt, lx->src + off, (size_t)len); txt[len] = '\0'; }
+    o->interps[o->ninterps].txt = txt;
+    o->ninterps++;
+}
+
 static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int32_t c_tok)
 {
     int32_t l0 = lx->linha, c0 = c_tok;
     lx->pos++; lx->col++;
     Buf bf = {0};
+    /* posição da interpolação ABERTA (0 = nenhuma) e profundidade de chaves */
+    size_t i_off = 0; int32_t i_lin = 0, i_col = 0, i_prof = 0;
 
     while (lx->pos < lx->len) {
         char c = lx->src[lx->pos];
+        if (fstring) {
+            /* `{{` e `}}` são chave literal, não interpolação — a mesma regra
+             * que o compilador aplica ao gerar o código da f-string. */
+            if (c == '{' && !i_prof && lx->pos + 1 < lx->len && lx->src[lx->pos + 1] == '{') {
+                buf_push(&bf, '{'); buf_push(&bf, '{');
+                avanca1(lx); avanca1(lx);
+                continue;
+            }
+            if (c == '}' && !i_prof && lx->pos + 1 < lx->len && lx->src[lx->pos + 1] == '}') {
+                buf_push(&bf, '}'); buf_push(&bf, '}');
+                avanca1(lx); avanca1(lx);
+                continue;
+            }
+            if (c == '{') {
+                if (!i_prof) { i_off = lx->pos + 1; i_lin = lx->linha; i_col = lx->col + 1; }
+                i_prof++;
+            } else if (c == '}' && i_prof) {
+                i_prof--;
+                if (!i_prof && i_off) {
+                    interp_poe(lx, i_off, (int32_t)(lx->pos - i_off), i_lin, i_col);
+                    i_off = 0;
+                }
+            }
+        }
         if (!raw && c == '\\' && lx->pos + 1 < lx->len) {
             int rc = decode_escape(lx, &bf, bytes);
             if (rc == -2) { free(bf.b); return; }            /* erro ja registrado */
@@ -871,10 +922,17 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios,
      * na MESMA linha, o tamanho é a diferença de coluna. É o que o realce do
      * editor precisa e o `texto` não dá — string decodificada não tem aspas. */
     int32_t col0 = lx.col, lin0 = lx.linha, n0 = out->n;
+/* O FIM sai daqui também, e sem a condição de "mesma linha": é o que faltava
+ * pro editor sublinhar e dobrar string de várias linhas e comentário de bloco.
+ * `nchars` continua só pro token de uma linha, que é onde ele faz sentido. */
 #define FECHA_SPAN()                                                          \
     do {                                                                      \
-        if (out->n == n0 + 1 && lx.linha == lin0 && lx.col > col0)            \
-            out->tokens[n0].nchars = lx.col - col0;                           \
+        if (out->n == n0 + 1) {                                               \
+            if (lx.linha == lin0 && lx.col > col0)                            \
+                out->tokens[n0].nchars = lx.col - col0;                       \
+            out->tokens[n0].linha_fim = lx.linha;                             \
+            out->tokens[n0].col_fim = lx.col;                                 \
+        }                                                                     \
         col0 = lx.col; lin0 = lx.linha; n0 = out->n;                          \
     } while (0)
 
@@ -987,6 +1045,8 @@ void ps_lexer_free(PSTokenList *lista)
     free(lista->tokens);
     free(lista->avisos);
     free(lista->erros);
+    for (int32_t i = 0; i < lista->ninterps; i++) free(lista->interps[i].txt);
+    free(lista->interps);
     free(lista);
 }
 

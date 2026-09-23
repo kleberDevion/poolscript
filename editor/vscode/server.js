@@ -232,6 +232,10 @@ function fechaAbertos(texto) {
   const par = { LPAREN: ')', LBRACK: ']', LBRACE: '}' };
   const fecha = { RPAREN: 'LPAREN', RBRACK: 'LBRACK', RBRACE: 'LBRACE' };
   for (const t of toks) {
+    /* o que está DENTRO de uma f-string (`em: "fstring"`) já está contado no
+     * token da própria f-string: contar de novo o `(` de `f"{g(1)}"` fecharia
+     * um parêntese que não está aberto */
+    if (t.em) continue;
     if (par[t.t]) { pilha.push(t.t); continue; }
     if (fecha[t.t]) {
       /* fecha o que estiver aberto; desemparelhado é erro do usuário, não

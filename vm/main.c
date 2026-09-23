@@ -574,6 +574,64 @@ static void json_str(const char *s)
  * conseguir conferir não é conferir e aprovar. */
 #define CHECK_RC_FALHA 1
 
+/* ── `--utf16`: a coluna na conta do editor ──────────────────────────────
+ *
+ * O motor conta CARACTERE (code point); o protocolo LSP e o JavaScript contam
+ * unidades UTF-16, onde todo caractere fora do plano básico vale 2. Pra texto
+ * acentuado as duas contagens coincidem; com emoji ou ideograma estendido o
+ * cursor do editor caía uma casa à frente a cada um deles. Com `--utf16` o
+ * motor entrega a conta do editor, na entrada e na saída; sem a opção, nada
+ * muda. */
+static int g_utf16 = 0;
+static const char *g_fonte = NULL;
+static size_t g_fonte_tam = 0;
+
+/* Byte onde a linha começa (1-based). O fim do fonte se a linha não existe. */
+static size_t off_da_linha(int linha)
+{
+    if (!g_fonte) return 0;
+    int ln = 1;
+    for (size_t k = 0; k < g_fonte_tam; k++) {
+        if (ln == linha) return k;
+        if (g_fonte[k] == '\n') ln++;
+    }
+    return g_fonte_tam;
+}
+
+/* Quantas unidades UTF-16 o caractere que começa em `b` ocupa: 2 só fora do
+ * plano básico (o par substituto), 1 no resto. */
+static int u16_do_char(unsigned char b) { return b >= 0xF0 ? 2 : 1; }
+
+/* coluna em CARACTERES -> coluna em unidades UTF-16 */
+static int col_para_utf16(int linha, int col)
+{
+    if (!g_utf16 || col <= 1 || !g_fonte) return col;
+    size_t k = off_da_linha(linha);
+    int cp = 1, u = 1;
+    while (k < g_fonte_tam && g_fonte[k] != '\n' && cp < col) {
+        u += u16_do_char((unsigned char)g_fonte[k]);
+        k++;
+        while (k < g_fonte_tam && ((unsigned char)g_fonte[k] & 0xC0) == 0x80) k++;
+        cp++;
+    }
+    return u;
+}
+
+/* coluna em unidades UTF-16 -> coluna em CARACTERES (o que o motor usa) */
+static int col_de_utf16(int linha, int col)
+{
+    if (!g_utf16 || col <= 1 || !g_fonte) return col;
+    size_t k = off_da_linha(linha);
+    int cp = 1, u = 1;
+    while (k < g_fonte_tam && g_fonte[k] != '\n' && u < col) {
+        u += u16_do_char((unsigned char)g_fonte[k]);
+        k++;
+        while (k < g_fonte_tam && ((unsigned char)g_fonte[k] & 0xC0) == 0x80) k++;
+        cp++;
+    }
+    return cp;
+}
+
 /* `pool --check [arquivo.pr]` — lexer/parser/compilador da VM, SEM rodar, com
  * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
  * manda o conteúdo não salvo). NUNCA executa o código.
@@ -605,7 +663,9 @@ static int cmd_check(const char *arquivo, const char *como)
     PSAviso *avisos = NULL;
     int32_t navisos = 0;
     int rc = ps_verifica_fonte(fonte, tam, arquivo ? arquivo : como, &e, &avisos, &navisos);
-    free(fonte);
+    /* o fonte fica vivo até o fim: com `--utf16` a conversão de coluna precisa
+     * dele pra saber onde estão os caracteres fora do plano básico */
+    g_fonte = fonte; g_fonte_tam = tam;
 
     /* Os AVISOS entram no mesmo JSON, e entram tanto no caso `ok` quanto no de
      * erro: um `\p` que nao e escape nao impede o programa de compilar, mas o
@@ -619,12 +679,14 @@ static int cmd_check(const char *arquivo, const char *como)
                 if (i) putchar(',');
                 printf("{\"msg\":");
                 json_str(avisos[i].msg);
-                printf(",\"linha\":%d,\"coluna\":%d}", avisos[i].linha, avisos[i].col);
+                printf(",\"linha\":%d,\"coluna\":%d}", avisos[i].linha,
+                       col_para_utf16(avisos[i].linha, avisos[i].col));
             }
             putchar(']');
         }
         printf("}\n");
         free(avisos);
+        free(fonte);
         return 0;
     }
     free(avisos);
@@ -637,7 +699,7 @@ static int cmd_check(const char *arquivo, const char *como)
     json_str(tipo);
     printf(",\"msg\":");
     json_str(e.msg);
-    printf(",\"linha\":%d,\"coluna\":%d", e.linha, e.col);
+    printf(",\"linha\":%d,\"coluna\":%d", e.linha, col_para_utf16(e.linha, e.col));
     /* A lista INTEIRA (o primeiro também vai nos campos de cima, que o editor
      * já lia): erros de tipo, e agora também os de SINTAXE — o parser não para
      * mais no primeiro, então dá pra sublinhar todos de uma vez. */
@@ -649,7 +711,8 @@ static int cmd_check(const char *arquivo, const char *como)
             json_str(e.tipos[i].classe);
             printf(",\"msg\":");
             json_str(e.tipos[i].msg);
-            printf(",\"linha\":%d,\"coluna\":%d", e.tipos[i].linha, e.tipos[i].col);
+            printf(",\"linha\":%d,\"coluna\":%d", e.tipos[i].linha,
+                   col_para_utf16(e.tipos[i].linha, e.tipos[i].col));
             /* o erro esta em outro arquivo (modulo importado que nao compila) */
             if (e.tipos[i].arquivo[0]) {
                 printf(",\"arquivo\":");
@@ -662,6 +725,7 @@ static int cmd_check(const char *arquivo, const char *como)
     }
     printf("}\n");
     free(e.tipos);
+    free(fonte);
     return CHECK_RC_FALHA;
 }
 
@@ -708,9 +772,14 @@ static char *le_stdin_todo(size_t *tam)
  * buffer do stdin (o que o editor ainda não salvou). Os dois modos existem
  * porque o editor precisa dos dois: conferir o arquivo do disco e conferir o
  * que está na tela. */
+static char *le_fonte_editor(const char *arquivo, size_t *tam);
+
 static char *le_fonte_editor(const char *arquivo, size_t *tam)
 {
-    return arquivo ? le_arquivo(arquivo, tam) : le_stdin_todo(tam);
+    char *f = arquivo ? le_arquivo(arquivo, tam) : le_stdin_todo(tam);
+    /* o fonte fica visível pra conversão de coluna (`--utf16`) */
+    g_fonte = f; g_fonte_tam = f ? *tam : 0;
+    return f;
 }
 
 /* Quantos CARACTERES o token ocupa no fonte. O lexer mede em `nchars`; quando
@@ -838,10 +907,50 @@ static int cmd_tokens(const char *arquivo)
         }
         if (!primeiro) fputc(',', stdout);
         primeiro = 0;
-        printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"v\":\"",
-               ps_tok_nome(t->type), t->line, t->col, nch);
+        printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d",
+               ps_tok_nome(t->type), t->line, col_para_utf16(t->line, t->col), nch);
+        /* onde ele TERMINA: é o que permite sublinhar e dobrar string de
+         * várias linhas e comentário de bloco, que `n` não mede */
+        if (t->linha_fim)
+            printf(",\"l2\":%d,\"c2\":%d",
+                   t->linha_fim, col_para_utf16(t->linha_fim, t->col_fim));
+        fputs(",\"v\":\"", stdout);
         if (t->texto) json_escapa(stdout, t->texto, t->texto_len);
         fputs("\"}", stdout);
+        /* A F-STRING POR DENTRO: o que está entre `{` e `}` é CÓDIGO, e sai
+         * como token, com a linha e a coluna REAIS no fonte. Antes a f-string
+         * inteira era um token só: o realce não pintava a interpolação e o
+         * editor não sabia que `nome` ali é a variável `nome`. O trecho é
+         * re-analisado pelo MESMO lexer — não há segunda gramática. */
+        if (t->type == T_FSTRING) {
+            for (int32_t k = 0; k < tl->ninterps; k++) {
+                if (tl->interps[k].tok != i) continue;
+                size_t off = tl->interps[k].off;
+                int32_t len = tl->interps[k].len;
+                if (len <= 0 || off + (size_t)len > tam) continue;
+                PSTokenList *sub = ps_lexer_tokenize_modo(fonte + off, (size_t)len, 1, 1);
+                if (!sub) continue;
+                for (int32_t q = 0; q < sub->n; q++) {
+                    const PSToken *s = &sub->tokens[q];
+                    if (s->type == T_EOF || s->type == T_NEWLINE
+                        || s->type == T_INDENT || s->type == T_DEDENT) continue;
+                    int lin = tl->interps[k].linha + s->line - 1;
+                    int col = (s->line == 1) ? tl->interps[k].col + s->col - 1 : s->col;
+                    int snch = s->nchars;
+                    if (snch <= 0 && s->texto) {
+                        snch = 0;
+                        for (int32_t z = 0; z < s->texto_len; z++)
+                            if (((unsigned char)s->texto[z] & 0xC0) != 0x80) snch++;
+                    }
+                    fputc(',', stdout);
+                    printf("{\"t\":\"%s\",\"l\":%d,\"c\":%d,\"n\":%d,\"em\":\"fstring\",\"v\":\"",
+                           ps_tok_nome(s->type), lin, col_para_utf16(lin, col), snch);
+                    if (s->texto) json_escapa(stdout, s->texto, s->texto_len);
+                    fputs("\"}", stdout);
+                }
+                ps_lexer_free(sub);
+            }
+        }
     }
     fputc(']', stdout);
     if (tl->nerros > 0) {
@@ -928,8 +1037,10 @@ static void ast_json(FILE *f, const PSNode *n)
     if (!n) { fputs("null", f); return; }
     int virg = 0;
     fputc('{', f);
-    fprintf(f, "\"k\":\"%s\",\"l\":%d,\"c\":%d", ps_node_nome(n->kind), n->line, n->col);
+    fprintf(f, "\"k\":\"%s\",\"l\":%d,\"c\":%d", ps_node_nome(n->kind), n->line,
+            col_para_utf16(n->line, n->col));
     if (n->linha_fim) fprintf(f, ",\"l2\":%d", n->linha_fim);
+    if (n->col_fim)   fprintf(f, ",\"c2\":%d", col_para_utf16(n->linha_fim ? n->linha_fim : n->line, n->col_fim));
     virg = 1;
     ast_txt(f, "texto",  n->texto,  &virg);
     ast_txt(f, "texto2", n->texto2, &virg);
@@ -982,7 +1093,7 @@ static int cmd_ast(const char *arquivo)
     PSTokenList *tl = ps_lexer_tokenize_modo(fonte, tam, 0, 1);
     free(fonte);
     if (!tl) { printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
-    PSParseResult *r = ps_parse_modo(tl->tokens, tl->n, 1);
+    PSParseResult *r = ps_parse_lista(tl, 1);
     if (!r) { ps_lexer_free(tl); printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
 
     int nerros = tl->nerros + r->nerros;
@@ -1231,6 +1342,9 @@ static int cmd_contexto(const char *pos, const char *arquivo)
     size_t tam = 0;
     char *fonte = le_fonte_editor(arquivo, &tam);
     if (!fonte) { printf("{\"contexto\":\"erro\",\"msg\":\"sem memoria\"}\n"); return 1; }
+    /* com `--utf16` a posição CHEGA na conta do editor: converte pra caractere,
+     * que é como o lexer conta */
+    col = col_de_utf16(linha, col);
 
     /* lexer do EDITOR: o comentário vira token, e é assim que se sabe que o
      * cursor está dentro de um (antes ele sumia e o cursor caía no `topo`) */
@@ -1273,7 +1387,7 @@ static int cmd_contexto(const char *pos, const char *arquivo)
     {
         PSTokenList *tp = ps_lexer_tokenize(fonte, tam);
         if (tp) {
-            PSParseResult *r = ps_parse(tp->tokens, tp->n);
+            PSParseResult *r = ps_parse_lista(tp, 0);
             if (r) {
                 escopo_no(r->programa, linha, escopo, sizeof(escopo));
                 ps_parse_free(r);
@@ -1349,6 +1463,17 @@ int main(int argc, char **argv)
     }
 
     if (argc < 2) { ajuda(); return 0; }
+
+    /* `--utf16` vale pros comandos de editor, em qualquer posição: linha e
+     * coluna passam a ser contadas como o protocolo do editor conta. Sai do
+     * argv aqui pra cada comando não ter que tratá-lo. */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--utf16") != 0) continue;
+        g_utf16 = 1;
+        for (int k = i; k + 1 < argc; k++) argv[k] = argv[k + 1];
+        argc--;
+        i--;
+    }
 
     const char *cmd = argv[1];
 

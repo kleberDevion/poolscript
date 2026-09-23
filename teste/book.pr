@@ -1,0 +1,13 @@
+public Class book(){
+    public string bookName = "";
+    public string author = "admin";
+    public string dateCreated = "";
+
+
+    public static funct isBook(){
+
+    }
+}
+
+nome = book()
+post(nome.author)

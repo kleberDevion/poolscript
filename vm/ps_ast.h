@@ -118,6 +118,10 @@ struct PSNode {
      * dele — parâmetro e variável local sumiam da sugestão exatamente onde se
      * está escrevendo. A árvore tinha só onde cada coisa começa. */
     int32_t    linha_fim;
+    /* Coluna onde o nó TERMINA (logo depois do último caractere dele). Sem
+     * ela o editor sublinhava 1 caractere e a seleção estrutural não tinha
+     * onde parar: a árvore dizia só onde cada coisa começa. 0 = não medido. */
+    int32_t    col_fim;
 
     /* texto: nome de variável/action/membro/operador/parâmetro.
      * Aponta pra dentro da arena; não precisa de free. */

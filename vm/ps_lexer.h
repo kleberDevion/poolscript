@@ -50,6 +50,12 @@ typedef struct {
      * `texto_len`: `"oi"` tem texto "oi" (2) e ocupa 4 no fonte. O realce do
      * editor precisa do segundo. 0 = não medido (INDENT/DEDENT/NEWLINE). */
     int32_t   nchars;
+    /* Onde o token TERMINA (a posição logo depois do último caractere dele).
+     * `nchars` só serve pra token de uma linha só; uma string de três linhas
+     * ou um comentário de bloco não tinham fim nenhum, e o editor não tinha
+     * como sublinhar nem dobrar. 0 = não medido. */
+    int32_t   linha_fim;
+    int32_t   col_fim;
 } PSToken;
 
 /* Um aviso do lexer: o programa compila, mas provavelmente não faz o que
@@ -96,6 +102,19 @@ typedef struct {
     PSAviso *erros;
     int32_t  nerros;
     int32_t  cap_erros;
+
+    /* As INTERPOLAÇÕES das f-strings: um registro por `{...}`, com o pedaço no
+     * FONTE (offset em bytes e tamanho) e a linha/coluna onde ele começa.
+     *
+     * Tem que ser anotado aqui, na varredura do fonte cru: o `texto` do token
+     * sai DECODIFICADO (`\t` vira um byte), então recalcular a posição a
+     * partir dele erra a coluna sempre que houver escape antes da chave. Sem
+     * isso a f-string era UM token: `nome.upper()` dentro de `{}` não existia
+     * pro realce, pro "ir pra definição" nem pro completion. */
+    struct PSInterp { int32_t tok; size_t off; int32_t len; int32_t linha; int32_t col;
+                      char *txt; /* o trecho, cru, terminado em NUL */ } *interps;
+    int32_t  ninterps;
+    int32_t  cap_interps;
 } PSTokenList;
 
 /* Imprime no stderr os avisos que a lista juntou, no formato

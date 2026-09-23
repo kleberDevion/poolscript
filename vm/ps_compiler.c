@@ -2723,7 +2723,17 @@ static void tp_confere_membro(C *c, Unidade *u, PSNode *n)
                 char dica[160];
                 terro(c, n, "AttributeError", "'%s' object has no attribute '%s'%s", s->decl->texto, n->texto,
                       tp_dica_membro(c, s->decl->texto, n->texto, dica, sizeof(dica)));
+                return;
             }
+            /* Campo declarado SEM `static` lido pela Entity: existe, mas só na
+             * instância. Antes o `--check` calava e a VM mandava procurar erro
+             * de digitação num nome escrito certo. A frase é a mesma do método
+             * não-estático, e a causa é a mesma. */
+            if (tp_campo_tipo(c, s->decl->texto, n->texto, 0)
+                    && !estatico_em(c, s->decl, n->texto, 0, NULL))
+                terro(c, n, "RuntimeError",
+                      "Entity '%s' não tem campo estático '%s' — instancie primeiro",
+                      s->decl->texto ? s->decl->texto : "?", n->texto);
             return;
         }
         if (s && s->decl && s->decl->kind == N_ENUM_DECL) {
@@ -3278,6 +3288,31 @@ static void carimba_pos(PSNode *n, int32_t linha, int32_t col)
     for (int32_t i = 0; i < n->lista2_alias.n; i++) carimba_pos(n->lista2_alias.itens[i], linha, col);
 }
 
+/* Quantas interpolações a varredura acha no texto — a MESMA regra do laço
+ * abaixo, só contando. Serve pra conferir se os filhos que o parser já trouxe
+ * correspondem, um a um, ao que este laço vai cortar. */
+static int32_t conta_interp(const char *t, int32_t len)
+{
+    int32_t q = 0;
+    for (int32_t i = 0; i < len; ) {
+        if (t[i] == '{' && i + 1 < len && t[i + 1] == '{') { i += 2; continue; }
+        if (t[i] == '}' && i + 1 < len && t[i + 1] == '}') { i += 2; continue; }
+        if (t[i] == '{') {
+            int prof = 1;
+            int32_t j = i + 1;
+            while (j < len && prof > 0) {
+                if (t[j] == '{') prof++;
+                else if (t[j] == '}') prof--;
+                j++;
+            }
+            if (prof != 0) return -1;
+            q++; i = j; continue;
+        }
+        i++;
+    }
+    return q;
+}
+
 static void compila_fstring(C *c, Unidade *u, PSNode *n)
 {
     const char *t = n->texto ? n->texto : "";
@@ -3285,6 +3320,17 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
      * de string — com strlen o resto do texto sumia calado. */
     int32_t len = n->texto_len > 0 ? n->texto_len : (int32_t)strlen(t);
     int32_t partes = 0;
+
+    /* O PARSER já parseou cada `{...}`, a partir do fonte cru, com a linha e a
+     * coluna de verdade: os nós estão em `n->lista`. Quando a contagem bate,
+     * é essa sub-árvore que vale — sem re-lexar, e o traceback de `f"{1/x}"`
+     * aponta a divisão em vez do começo da string.
+     *
+     * A contagem é o portão: string tripla não registra interpolação, e um
+     * parse feito sem a lista do lexer (`ps_parse`) não traz filho nenhum. Aí
+     * o caminho de baixo, que corta na mão, continua valendo inteiro. */
+    int32_t k_filho = 0;
+    int usa_filhos = n->lista.n > 0 && conta_interp(t, len) == n->lista.n;
 
     char *buf = malloc((size_t)len + 1);
     if (!buf) { cerro(c, "sem memoria na f-string", n); return; }
@@ -3308,6 +3354,13 @@ static void compila_fstring(C *c, Unidade *u, PSNode *n)
                 j++;
             }
             if (prof != 0) { free(buf); cerro_sx(c, n, "chave nao fechada na f-string"); return; }
+
+            if (usa_filhos) {
+                expr(c, u, n->lista.itens[k_filho++]);
+                partes++;
+                i = j;
+                continue;
+            }
 
             /* trecho entre as chaves: lexa, parseia e compila como expressão */
             int32_t elen = j - 1 - (i + 1);

@@ -45,6 +45,11 @@ typedef struct {
     int        grupo_depth;
     /* Profundidade da descida recursiva. Ver PS_PARSE_PROF_MAX. */
     int        prof;
+    /* A lista do lexer, quando quem chamou a tem: é dela que saem os trechos
+     * `{...}` das f-strings, com o offset no FONTE (o `texto` do token já vem
+     * decodificado e não serve pra recalcular coluna). NULL = parse de um
+     * trecho solto, sem interpolação pra expandir. */
+    PSTokenList *tl;
 } P;
 
 /* TETO DE PROFUNDIDADE do parser.
@@ -476,6 +481,7 @@ static int eh_tipo_kw_expr(PSToken *t)
 
 /* ── protótipos ─────────────────────────────────────────────────────────── */
 static PSNode *expressao(P *p);
+static void    fstring_filhos(P *p, PSNode *n, int32_t i_tok);
 static PSNode *e_ou(P *p);
 static PSNode *unario(P *p);
 static PSNode *potencia(P *p);
@@ -755,13 +761,17 @@ static PSNode *primario(P *p)
         case T_FSTRING: {
             /* f-string continua sendo Literal, com kind FSTRING: a
              * interpolação é resolvida em tempo de execução, não aqui —
-             * é a regra. */
+             * é a regra. Os `{...}` viram nós FILHOS quando o parser tem a
+             * lista do lexer: é o que dá posição real a cada expressão, pro
+             * editor e pro traceback. */
+            int32_t i_tok = p->pos;
             p->pos++;
             PSNode *n = ps_node_novo(p->arena, N_LITERAL, t->line, t->col);
             if (!n) return NULL;
             n->lit = L_FSTRING;
             n->texto = ps_arena_strdup(p->arena, t->texto ? t->texto : "", t->texto_len);
             n->texto_len = t->texto_len;
+            if (p->tl) fstring_filhos(p, n, i_tok);
             return n;
         }
         case T_BOOL: {
@@ -1518,6 +1528,72 @@ static PSNode *expressao_no(P *p);
 /* Casca que conta a descida. O corpo tem muitos `return`, e um contador
  * espalhado por todos eles é convite a esquecer um — aqui entrar e sair sempre
  * fecham. Ver PS_PARSE_PROF_MAX. */
+/* Marca no nó onde ele TERMINA: a posição logo depois do último token que o
+ * parser consumiu pra montá-lo. Fica num lugar só (as duas portas por onde
+ * todo nó passa: `expressao` e `statement`) em vez de espalhado por cada
+ * construção. */
+static void fecha_no(P *p, PSNode *n, int32_t pos_ini)
+{
+    if (!n || p->pos <= pos_ini || p->pos == 0) return;
+    PSToken *ult = &p->toks[p->pos - 1];
+    int32_t lf = ult->linha_fim ? ult->linha_fim : ult->line;
+    int32_t cf = ult->col_fim ? ult->col_fim : ult->col + (ult->nchars > 0 ? ult->nchars : 1);
+    /* nunca encolher: um nó que já sabia onde acaba (o `Block` de chaves) fica
+     * com o fim dele */
+    if (lf > n->linha_fim || (lf == n->linha_fim && cf > n->col_fim)) {
+        n->linha_fim = lf;
+        n->col_fim = cf;
+    }
+}
+
+/* Empurra a posição real pra sub-árvore de uma interpolação. O trecho foi
+ * lexado sozinho, então os nós nascem na linha 1: a primeira linha soma a
+ * coluna do `{`, as seguintes já vêm certas. */
+static void fstring_pos(PSNode *n, int32_t linha, int32_t col)
+{
+    if (!n) return;
+    if (n->line == 1) n->col = col + n->col - 1;
+    n->line = linha + n->line - 1;
+    if (n->linha_fim == 1 && n->col_fim) n->col_fim = col + n->col_fim - 1;
+    if (n->linha_fim) n->linha_fim = linha + n->linha_fim - 1;
+    fstring_pos(n->a, linha, col);
+    fstring_pos(n->b, linha, col);
+    fstring_pos(n->c, linha, col);
+    fstring_pos(n->e, linha, col);
+    for (int32_t i = 0; i < n->lista.n; i++)        fstring_pos(n->lista.itens[i], linha, col);
+    for (int32_t i = 0; i < n->lista2.n; i++)       fstring_pos(n->lista2.itens[i], linha, col);
+    for (int32_t i = 0; i < n->lista2_alias.n; i++) fstring_pos(n->lista2_alias.itens[i], linha, col);
+}
+
+/* Os `{...}` da f-string do token `i_tok` viram nós filhos do literal. Cada
+ * trecho é lexado e parseado com o MESMO lexer e o MESMO parser (não há
+ * segunda gramática) e nasce na arena desta árvore, então ele sobrevive ao
+ * fim do parse do trecho. Trecho que não parseia não vira nó: quem reclama é
+ * o compilador, com a frase que ele já dava. */
+static void fstring_filhos(P *p, PSNode *n, int32_t i_tok)
+{
+    for (int32_t k = 0; k < p->tl->ninterps; k++) {
+        if (p->tl->interps[k].tok != i_tok || !p->tl->interps[k].txt) continue;
+        const char *txt = p->tl->interps[k].txt;
+        PSTokenList *sub = ps_lexer_tokenize(txt, strlen(txt));
+        if (!sub) continue;
+        if (!sub->ok) { ps_lexer_free(sub); continue; }
+        P sp = {0};
+        sp.toks = sub->tokens; sp.n = sub->n; sp.arena = p->arena; sp.out = p->out;
+        int32_t erros_antes = p->out->nerros;
+        int ok_antes = p->out->ok;
+        PSNode *e = expressao(&sp);
+        /* erro DENTRO do trecho não derruba o arquivo: o compilador é quem
+         * decide a frase, e ele refaz este caminho */
+        p->out->nerros = erros_antes;
+        p->out->ok = ok_antes;
+        ps_lexer_free(sub);
+        if (!e) continue;
+        fstring_pos(e, p->tl->interps[k].linha, p->tl->interps[k].col);
+        ps_vec_push(p->arena, &n->lista, e);
+    }
+}
+
 static PSNode *expressao(P *p)
 {
     if (p->prof >= PS_PARSE_PROF_MAX || ps_pilha_apertada()) {
@@ -1525,7 +1601,9 @@ static PSNode *expressao(P *p)
         return NULL;
     }
     p->prof++;
+    int32_t ini = p->pos;
     PSNode *r = expressao_no(p);
+    fecha_no(p, r, ini);
     p->prof--;
     return r;
 }
@@ -2467,7 +2545,18 @@ const char *const *ps_parser_tipos_decl(void)
     return lista;
 }
 
+static PSNode *statement_no(P *p);
+
 static PSNode *statement(P *p)
+{
+    pula_separadores(p);
+    int32_t ini = p->pos;
+    PSNode *r = statement_no(p);
+    fecha_no(p, r, ini);
+    return r;
+}
+
+static PSNode *statement_no(P *p)
 {
     pula_separadores(p);
     PSToken *t = atual(p);
@@ -3714,12 +3803,25 @@ static PSNode *statement(P *p)
 }
 
 /* ── entrada ────────────────────────────────────────────────────────────── */
+static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTokenList *tl);
+
 PSParseResult *ps_parse(PSToken *toks, int32_t n)
 {
-    return ps_parse_modo(toks, n, 0);
+    return ps_parse_com(toks, n, 0, NULL);
 }
 
 PSParseResult *ps_parse_modo(PSToken *toks, int32_t n, int recupera)
+{
+    return ps_parse_com(toks, n, recupera, NULL);
+}
+
+PSParseResult *ps_parse_lista(PSTokenList *tl, int recupera)
+{
+    if (!tl) return NULL;
+    return ps_parse_com(tl->tokens, tl->n, recupera, tl);
+}
+
+static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTokenList *tl)
 {
     PSParseResult *r = calloc(1, sizeof(PSParseResult));
     if (!r) return NULL;
@@ -3733,6 +3835,7 @@ PSParseResult *ps_parse_modo(PSToken *toks, int32_t n, int recupera)
     P p = {0};
     p.toks = toks; p.n = n;
     p.arena = &r->arena; p.out = r;
+    p.tl = tl;
 
     PSNode *prog = ps_node_novo(&r->arena, N_PROGRAM, 1, 1);
     if (!prog) { r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); return r; }

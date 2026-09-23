@@ -286,7 +286,7 @@
         },
         {
           "name": "keyword.control.poolscript",
-          "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|with|using|await|async|import|from|as|global|count|to|of)\\b"
+          "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|using|await|async|import|from|as|global|count|to|of)\\b"
         },
         {
           "name": "keyword.operator.logical.poolscript",
