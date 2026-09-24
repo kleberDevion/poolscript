@@ -133,6 +133,25 @@ typedef struct {
     struct PSFechado { int32_t l1, c1, l2, c2; } *fechados;
     int32_t  nfechados;
     int32_t  cap_fechados;
+
+    /* MODO FLUXO (`ps_lexer_fluxo`): o token nasce quando o parser pede
+     * (`ps_lexer_tok`) e a lista nunca tem o arquivo inteiro. Guardar o vetor
+     * de todos os tokens antes de parsear custava ~1,5 KB por linha: um
+     * arquivo de 1 milhão de linhas pedia gigabytes só pra isso, e a máquina
+     * entrava na swap. Os tokens ficam em BLOCOS que nunca mudam de lugar — o
+     * parser segura `PSToken *` durante uma classe ou um bloco inteiro — e o
+     * parser solta os blocos de trás a cada declaração de topo
+     * (`ps_lexer_solta_ate`). `tokens` fica NULL; `n` conta os que já
+     * nasceram, e o índice de cada um é o mesmo do modo de lista inteira. */
+    int      fluxo;
+    struct PSTokBloco **blocos;
+    int32_t  nblocos;
+    int32_t  cap_blocos;
+    int32_t  soltos;         /* blocos [0, soltos) já foram soltos */
+    void    *lexer;          /* o lexer no meio do arquivo; NULL = chegou no fim */
+    /* Quantos `{...}` já foram anotados desde o começo do arquivo: o teto de
+     * `interps` conta o arquivo inteiro, mesmo depois que os velhos saem. */
+    int32_t  interps_total;
 } PSTokenList;
 
 /* Imprime no stderr os avisos que a lista juntou, no formato
@@ -162,6 +181,23 @@ PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len);
  * valido nunca chega nela, e o `--check` nao recusa codigo valido. */
 PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len,
                                     int comentarios, int recupera);
+/* Lista em MODO FLUXO (ver o campo `fluxo`): nada é lido ainda. `fonte`
+ * tem que viver até a lista ser liberada. `recupera` e `sincroniza` são os
+ * das passadas de `ps_lexer_tokenize_modo`. */
+PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera, int sincroniza);
+/* O token `i` (índice absoluto), lendo o fonte até ele se preciso. NULL = o
+ * arquivo acabou antes dele. Nas duas formas de lista. No modo fluxo, se o
+ * lexer parar num erro sem o modo de recuperação, a lista ganha um EOF pra
+ * quem está parseando parar — `ok == 0` continua dizendo que o arquivo não
+ * vale. */
+PSToken     *ps_lexer_tok(PSTokenList *lista, int32_t i);
+/* Lê o fonte até o fim: `ok`, `erro`, `avisos`, `erros` e `fechados` ficam
+ * completos, como na lista inteira. */
+void         ps_lexer_drena(PSTokenList *lista);
+/* Modo fluxo: solta os blocos cujos tokens vêm TODOS antes do índice `i`. Ler
+ * um token solto depois disso é erro de quem chamou. Na lista inteira não faz
+ * nada. */
+void         ps_lexer_solta_ate(PSTokenList *lista, int32_t i);
 void         ps_lexer_free(PSTokenList *lista);
 
 /* Nome do tipo de token — usado nas mensagens e no teste diferencial. */

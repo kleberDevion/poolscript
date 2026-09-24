@@ -108,8 +108,27 @@ typedef struct {
     int32_t  cap;
 } PSNodeVec;
 
+/* Os campos estão agrupados por tamanho (1, 4 e 8 bytes) de propósito: o nó
+ * era 200 bytes com o compilador em `int` e as marcas de 0/1 em `int`, e um
+ * arquivo grande é milhares deles ao mesmo tempo. Assim são 160. */
 struct PSNode {
-    PSNodeKind kind;
+    uint8_t    kind;        /* PSNodeKind (cabe num byte) */
+    uint8_t    lit;         /* PSLitKind, nos literais */
+    uint8_t    is_async;
+    /* ACTION_DECL / ENTITY_FIELD: marcado `private` (encapsulamento). NÃO é
+     * serializado no diff de AST/bytecode — é metadado de acesso, não código. */
+    uint8_t    is_private;
+    /* ACTION_DECL: modificadores COLADOS na cabeça (`static funct m(a)`,
+     * `nonnull funct f(v)`) — a forma da linguagem; os decoradores `@static`
+     * e `@NonNull` continuam valendo e chegam ao compilador por outro caminho
+     * (pendente_static / pendente_nonnull). */
+    uint8_t    is_static;
+    uint8_t    is_nonnull;
+    /* ACTION_DECL: método sem `self` que o compilador acusou e ganhou um
+     * `self` sintetizado na frente dos parâmetros — só durante a compilação
+     * (o compilador desfaz no fim). Ver tp_self_dos_metodos. */
+    uint8_t    self_faltava;
+
     int32_t    line;
     int32_t    col;
     /* Onde o nó TERMINA (0 = não registrado). Hoje só o `Block` preenche, que
@@ -122,19 +141,25 @@ struct PSNode {
      * ela o editor sublinhava 1 caractere e a seleção estrutural não tinha
      * onde parar: a árvore dizia só onde cada coisa começa. 0 = não medido. */
     int32_t    col_fim;
-
-    /* texto: nome de variável/action/membro/operador/parâmetro.
-     * Aponta pra dentro da arena; não precisa de free. */
-    const char *texto;
-
-    /* literais */
-    PSLitKind   lit;
-    int64_t     i;
-    double      d;
     /* Bytes de `texto` num literal de string. O `\x00` é um byte válido no
      * meio da string, então strlen() truncaria: o comprimento tem que viajar
      * junto do ponteiro desde o lexer. 0 = não informado (usa strlen). */
     int32_t     texto_len;
+    int32_t     i2;           /* star_index, level do import, length do model;
+                               * no parâmetro (Name) e no argumento (CallArg):
+                               * 1 = `*args`/`*x`, 2 = `**kwarg`/`**d` */
+
+    /* literais */
+    int64_t     i;
+    double      d;
+
+    /* texto: nome de variável/action/membro/operador/parâmetro.
+     * Aponta pra dentro da arena; não precisa de free. */
+    const char *texto;
+    const char *texto2;
+    const char *texto3;
+    /* BLOCK: "brace" ou "colon"; ACTION_DECL: tipo de retorno ou NULL */
+    const char *estilo;
 
     /* filhos — o significado depende de `kind`:
      *   BINARY_OP        a=esq,   b=dir
@@ -161,31 +186,9 @@ struct PSNode {
      * alguns ponteiros nulos, pago pela arena sem fragmentar nada. */
     PSNode     *c;
     PSNode     *e;
-    const char *texto2;
-    const char *texto3;
-    int32_t     i2;           /* star_index, level do import, length do model;
-                               * no parâmetro (Name) e no argumento (CallArg):
-                               * 1 = `*args`/`*x`, 2 = `**kwarg`/`**d` */
     PSNodeVec   lista;
     PSNodeVec   lista2;       /* nomes importados, chaves de match, args de decorador */
     PSNodeVec   lista2_alias; /* alias de cada nome de import (Name ou NULL), alinhado com lista2 */
-
-    /* BLOCK: "brace" ou "colon"; ACTION_DECL: tipo de retorno ou NULL */
-    const char *estilo;
-    int         is_async;
-    /* ACTION_DECL / ENTITY_FIELD: marcado `private` (encapsulamento). NÃO é
-     * serializado no diff de AST/bytecode — é metadado de acesso, não código. */
-    int         is_private;
-    /* ACTION_DECL: modificadores COLADOS na cabeça (`static funct m(a)`,
-     * `nonnull funct f(v)`) — a forma da linguagem; os decoradores `@static`
-     * e `@NonNull` continuam valendo e chegam ao compilador por outro caminho
-     * (pendente_static / pendente_nonnull). */
-    int         is_static;
-    int         is_nonnull;
-    /* ACTION_DECL: método sem `self` que o compilador acusou e ganhou um
-     * `self` sintetizado na frente dos parâmetros — só durante a compilação
-     * (o compilador desfaz no fim). Ver tp_self_dos_metodos. */
-    int         self_faltava;
 };
 
 /* ── arena ──────────────────────────────────────────────────────────────── */
@@ -200,6 +203,10 @@ void  ps_arena_init(PSArena *a);
 void *ps_arena_alloc(PSArena *a, size_t n);
 char *ps_arena_strdup(PSArena *a, const char *s, int n);
 void  ps_arena_free(PSArena *a);
+/* Esvazia a arena e fica com UM bloco pronto pra reusar: é o que o parser
+ * incremental faz entre uma declaração de topo e a seguinte, sem devolver e
+ * pedir o bloco de novo ao alocador a cada uma. */
+void  ps_arena_reinicia(PSArena *a);
 
 PSNode *ps_node_novo(PSArena *a, PSNodeKind k, int32_t line, int32_t col);
 int     ps_vec_push(PSArena *a, PSNodeVec *v, PSNode *no);

@@ -16,6 +16,8 @@
 #include <stdint.h>
 
 #include "ps_ast.h"
+#include "ps_lexer.h"
+#include "ps_parser.h"
 
 /* Parâmetros FIXOS por funct (o `self` conta; `*args` e `**kwarg` não). O
  * binding da chamada marca cada um num vetor desse tamanho, então o limite é
@@ -59,10 +61,11 @@ typedef struct {
 typedef struct {
     char    *nome;
     int32_t *code;      /* pares [opcode, arg] */
-    int32_t *linhas;    /* linha do fonte de cada palavra do code (paralelo) —
-                         * pro erro de runtime dizer ONDE aconteceu */
-    int32_t *colunas;   /* coluna do fonte de cada palavra (paralelo a code) —
-                         * pro cursor `^^^` cair na posição certa, igual ao interp */
+    int32_t *linhas;    /* linha do fonte de cada INSTRUÇÃO (ncode/2 entradas:
+                         * a da palavra `ip` é `linhas[ip / 2]`) — pro erro de
+                         * runtime dizer ONDE aconteceu */
+    int32_t *colunas;   /* coluna do fonte de cada instrução (idem) — pro
+                         * cursor `^^^` cair na posição certa */
     int32_t  ncode;
     PSConst *consts;
     int32_t  nconsts;
@@ -297,6 +300,27 @@ typedef struct {
 PSPrograma *ps_compila(PSNode *programa);
 PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve);
 void        ps_compila_free(PSPrograma *p);
+
+/* Compila DIRETO DO FONTE, sem a árvore do arquivo inteiro na memória: o
+ * arquivo é lido uma declaração de topo por vez, duas vezes (colher os
+ * cabeçalhos; gerar o código). É o mesmo resultado de lexer + parser +
+ * `ps_compila_com`, com a memória de UMA declaração em vez da do arquivo.
+ *
+ * `fc` recebe a lista do lexer (`ok`, `erro`, `avisos`, `erros`; sem os
+ * tokens) e o resultado do parser (`ok`, `erro`, `erros`, e em `programa` a
+ * árvore PODADA: os cabeçalhos que outro arquivo consulta ao importar este —
+ * é o que o cache de módulos guarda). Os dois são de quem chamou:
+ * `ps_lexer_free` e `ps_parse_free`. Com erro de sintaxe (lexer ou parser)
+ * devolve NULL e não compila; sem memória, NULL com os dois campos NULL.
+ * `recupera` é o do parser: com ele, todos os erros de sintaxe, não só o
+ * primeiro (sem a segunda passada de sincronia: pra lista definitiva com
+ * grupo sem par, `ps_parse_fonte`). */
+typedef struct {
+    PSTokenList   *lexer;
+    PSParseResult *parse;
+} PSFonteCompilado;
+PSPrograma *ps_compila_fonte(const char *fonte, size_t len, int recupera,
+                             const PSResolvedor *resolve, PSFonteCompilado *fc);
 
 /* Nome legível do opcode — usado no desmonte e no teste diferencial. */
 const char *ps_op_nome(int32_t op);

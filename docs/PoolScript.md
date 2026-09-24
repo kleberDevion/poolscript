@@ -1,4 +1,4 @@
-# PoolScript v15.91.32
+# PoolScript v15.91.33
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 pool --version
-# PoolScript 15.91.32 [PSVM] (2026-09-22)
+# PoolScript 15.91.33 [PSVM] (2026-09-22)
 #                            ^ a data da compilação DESTE binário: duas
 #                              cópias da mesma versão se distinguem por ela
 ```
@@ -19,6 +19,15 @@ pool --version
 pool meu_arquivo.pr
 pool build          # roda todos os .pr da pasta atual
 ```
+
+O arquivo pode ter o tamanho que for. O motor não guarda o arquivo inteiro
+na memória: lê uma declaração de topo por vez, fica só com o que outra
+declaração precisa dela (o cabeçalho da funct, os campos da Entity) e com o
+código gerado, e solta o resto antes de ler a seguinte. O que cresce com o
+tamanho do programa é o código compilado, não a leitura dele. Medido com
+`/usr/bin/time` em 2026-09-23: 200 mil functs de uma linha rodavam com
+612 MB de pico e passaram a 353 MB; 20 mil, de 63 MB a 38 MB. O tempo caiu
+junto (200 mil linhas: 16 s para 5,9 s).
 
 ---
 

@@ -462,8 +462,29 @@ static void teste_pilha(void)
 static void teste_ast(void)
 {
     grupo("ast");
+    /* O nó da árvore é o que sobra de cada declaração na memória enquanto um
+     * arquivo grande compila (os cabeçalhos podados): era 200 bytes com as
+     * marcas de 0/1 em `int`; os campos foram agrupados por tamanho. Um campo
+     * novo que o faça crescer de novo tem que passar por aqui. */
+    CONF(sizeof(PSNode) <= 160, "PSNode tem %zu bytes (teto 160)", sizeof(PSNode));
+
     PSArena a;
     ps_arena_init(&a);
+    /* `reinicia` esvazia mas fica com um bloco pronto: o parser incremental
+     * chama a cada declaração de topo */
+    {
+        PSArena r;
+        ps_arena_init(&r);
+        void *q1 = ps_arena_alloc(&r, 64);
+        void *q2 = ps_arena_alloc(&r, 2 * 1024 * 1024);   /* bloco só dele */
+        CONF(q1 && q2, "arena pra reiniciar nao alocou");
+        ps_arena_reinicia(&r);
+        CONF(r.blocos != NULL && r.total == 0, "reinicia nao deixou um bloco pronto");
+        void *q3 = ps_arena_alloc(&r, 64);
+        CONF(q3 == q1, "reinicia nao reaproveitou o primeiro bloco");
+        ps_arena_free(&r);
+        CONF(r.blocos == NULL, "free depois de reinicia deixou bloco");
+    }
 
     /* alocação normal, alocação grande (força bloco novo) e alinhamento */
     void *p1 = ps_arena_alloc(&a, 8);

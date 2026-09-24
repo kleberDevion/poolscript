@@ -582,6 +582,31 @@ t5  = melhor_de_tres("'" + POOL + "' --check decl5k.pr")
 t20 = melhor_de_tres("'" + POOL + "' --check decl20k.pr")
 confere("--check de 20 mil funct custa perto de 4x o de 5 mil (era 16x)", t20 < t5 * 8)
 
+# ── a memória não guarda o arquivo inteiro ──────────────────────────────────
+#
+# Rodar um arquivo custava ~3 KB de memória POR LINHA: o vetor com todos os
+# tokens e a árvore inteira ficavam na memória até o fim da compilação, e um
+# arquivo de 1 milhão de linhas pedia 4 GB (a máquina entrava na swap). Agora o
+# motor lê uma declaração de topo por vez, guarda só os cabeçalhos e o código
+# gerado, e a VM assume o programa compilado em vez de copiá-lo. O pico medido
+# por `/usr/bin/time -f %M` (KB) entre 20 mil e 5 mil funct dá o custo das 15
+# mil a mais; era 3,1 KB por linha e passou a ~1,5 KB. Teto folgado pra ruído,
+# apertado o bastante pra pegar a volta do arquivo inteiro.
+funct pico_kb(cmd)
+{
+    r = roda("/usr/bin/time -f '%M' " + cmd + " > /dev/null")
+    linhas = r["saida"].strip().split("\n")
+    return int(linhas[linhas.len() - 1].strip())
+}
+if os.exists("/usr/bin/time")
+{
+    m5  = pico_kb("'" + POOL + "' decl5k.pr")
+    m20 = pico_kb("'" + POOL + "' decl20k.pr")
+    por_linha = (m20 - m5) * 1024 / 15000
+    confere("rodar 20 mil funct custa menos de 2,2 KB de memoria por linha (era 3,1 KB): "
+            + str(por_linha) + " B", por_linha < 2200)
+}
+
 # O LIMITE da regra: palavra-chave como argumento nomeado, compreensão e lambda
 # com declaração dentro são continuação VÁLIDA de uma linha com `(` aberto — e
 # continuam passando. A sincronia por declaração só roda em arquivo que já tem
@@ -966,6 +991,20 @@ funct caso5(c5_nome, c5_fonte, c5_erro)
 
 caso5("aridade de funct do modulo", "import util\npost(util.soma(1, 2, 3))\n",
       "soma() takes from 1 to 2 positional arguments but 3 were given")
+
+# A assinatura de um nome importado é a do MÓDULO, mesmo quando a declaração
+# dele está na mesma linha e coluna de uma declaração deste arquivo (a
+# compilação por declaração casa os nós pela posição no fonte, e um `funct`
+# na linha 1 de cada arquivo é o caso comum). Quebrado, `f(1, 2)` era
+# conferido contra `g()` e recusado.
+os.writeFile(IMP + "/util_pos.pr", "funct f(a, b) {\n    return a + b\n}\n")
+os.writeFile(IMP + "/m.pr", "funct g() {\n    return 1\n}\nfrom util_pos import f\npost(f(1, 2))\n")
+r = roda("'" + POOL + "' --check imp5/m.pr")
+confere("importado na mesma posicao de uma declaracao local: --check aceita",
+        r["saida"].strip() == "{\"ok\":true}")
+r = roda("'" + POOL + "' imp5/m.pr")
+confere("importado na mesma posicao de uma declaracao local: roda com a assinatura do modulo",
+        r["rc"] == 0 and r["saida"].strip() == "3")
 caso5("tipo do parametro, via from-import", "from util import soma\npost(soma(\"a\"))\n",
       "parâmetro a de soma() esperava int, recebeu str")
 caso5("argumento faltando, por apelido", "import util as u\npost(u.soma())\n",

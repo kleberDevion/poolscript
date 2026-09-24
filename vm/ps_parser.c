@@ -53,6 +53,10 @@ typedef struct {
     /* Modo de recuperação (comandos de editor): statement quebrado é anotado e
      * o parser segue no próximo — no topo E dentro de bloco. */
     int        recupera;
+    /* A lista em MODO FLUXO (`ps_parse_fonte`), ou NULL. Com ela, `toks` e `n`
+     * não valem: o token nasce quando é pedido (`tok_i`, `tem`) e os de trás
+     * são soltos a cada declaração de topo. */
+    PSTokenList *fl;
 } P;
 
 /* TETO DE PROFUNDIDADE do parser.
@@ -167,14 +171,50 @@ static void perro_f(P *p, PSToken *t, const char *fmt, ...)
     p->out->erro_col = t ? t->col : 0;
 }
 
+/* O token `i` (índice absoluto), que tem que existir (`tem`). No modo fluxo o
+ * lexer lê o fonte até ele na hora. */
+static PSToken *tok_i(P *p, int32_t i)
+{
+    return p->fl ? ps_lexer_tok(p->fl, i) : &p->toks[i];
+}
+
+/* Existe o token `i`? É o `i < n` de sempre: no modo fluxo o tamanho da lista
+ * só é conhecido quando o lexer chega no fim do arquivo. */
+static int tem(P *p, int32_t i)
+{
+    return p->fl ? ps_lexer_tok(p->fl, i) != NULL : i < p->n;
+}
+
+/* O último token (o EOF), pra quem passou do fim. No modo fluxo a lista
+ * termina em EOF — a não ser que o lexer tenha parado sem memória antes de
+ * emiti-lo: aí o último token é um token qualquer, e devolvê-lo faria o
+ * parser andar em círculos sobre ele (um NEWLINE no fim é um laço infinito em
+ * `pula_separadores`). Nesse caso o EOF é um token fixo: o parser para, e
+ * quem chamou lê o erro na lista do lexer. */
+static PSToken *tok_eof(P *p)
+{
+    static PSToken eof_vazio = { .type = T_EOF, .line = 1, .col = 1 };
+    if (!p->fl) return &p->toks[p->n - 1];
+    PSToken *u = p->fl->n > 0 ? ps_lexer_tok(p->fl, p->fl->n - 1) : NULL;
+    return (u && u->type == T_EOF) ? u : &eof_vazio;
+}
+
 static PSToken *atual(P *p)
 {
+    if (p->fl) {
+        PSToken *t = ps_lexer_tok(p->fl, p->pos);
+        return t ? t : tok_eof(p);
+    }
     return &p->toks[p->pos < p->n ? p->pos : p->n - 1];
 }
 
 static PSToken *espia(P *p, int off)
 {
     int32_t i = p->pos + off;
+    if (p->fl) {
+        PSToken *t = ps_lexer_tok(p->fl, i);
+        return t ? t : tok_eof(p);
+    }
     if (i >= p->n) i = p->n - 1;
     return &p->toks[i];
 }
@@ -322,7 +362,7 @@ static int aceita_kw(P *p, const char *kw)
 
 static PSToken *exige(P *p, PSTokType t, const char *msg)
 {
-    if (checa(p, t)) return &p->toks[p->pos++];
+    if (checa(p, t)) return tok_i(p, p->pos++);
     perro(p, msg, atual(p));
     return NULL;
 }
@@ -333,7 +373,7 @@ static PSToken *exige(P *p, PSTokType t, const char *msg)
  * o fecha-com-origem. */
 static PSToken *exige_fecha(P *p, PSTokType t, const char *msg, PSToken *abre)
 {
-    if (checa(p, t)) return &p->toks[p->pos++];
+    if (checa(p, t)) return tok_i(p, p->pos++);
     PSToken *tk = atual(p);
     /* grupo que o lexer fechou à força: ele já acusou o abridor */
     if (tk->type == T_SINC) { perro(p, msg, tk); return NULL; }
@@ -572,7 +612,7 @@ static int parse_parametros(P *p, PSNode *n, int lambda, PSToken *abre)
              * "'int' e palavra reservada ... nome de parametro", na linha de
              * baixo, apontando o sintoma. */
             if (abre && nt->type != T_SINC && nt->line > abre->line && p->pos > 0
-                    && p->toks[p->pos - 1].line < nt->line
+                    && tok_i(p, p->pos - 1)->line < nt->line
                     && (nt->type == T_KW
                         || (nt->type != T_IDENT && nt->type != T_IDENT_UPPER)
                         || eh_contextual_reservada(nt->texto))) {
@@ -1569,7 +1609,7 @@ static PSNode *expressao_no(P *p);
 static void fecha_no(P *p, PSNode *n, int32_t pos_ini)
 {
     if (!n || p->pos <= pos_ini || p->pos == 0) return;
-    PSToken *ult = &p->toks[p->pos - 1];
+    PSToken *ult = tok_i(p, p->pos - 1);
     int32_t lf = ult->linha_fim ? ult->linha_fim : ult->line;
     int32_t cf = ult->col_fim ? ult->col_fim : ult->col + (ult->nchars > 0 ? ult->nchars : 1);
     /* nunca encolher: um nó que já sabia onde acaba (o `Block` de chaves) fica
@@ -1696,8 +1736,8 @@ static void pula_statement(P *p, int32_t ini)
     int32_t falha = p->pos;
     int prof = 0;
     int32_t k = ini;
-    for (; k < p->n; k++) {
-        PSTokType ty = p->toks[k].type;
+    for (; tem(p, k); k++) {
+        PSTokType ty = tok_i(p, k)->type;
         if (ty == T_EOF) break;
         if (ty == T_SINC) {
             if (k >= falha) { k++; break; }
@@ -1820,9 +1860,9 @@ static PSNode *bloco_no(P *p)
      * exige. */
     if (checa(p, T_NEWLINE) || checa(p, T_INDENT)) {
         int32_t k = p->pos;
-        while (k < p->n && (p->toks[k].type == T_NEWLINE
-                            || p->toks[k].type == T_INDENT)) k++;
-        if (k < p->n && p->toks[k].type == T_LBRACE) {
+        while (tem(p, k) && (tok_i(p, k)->type == T_NEWLINE
+                             || tok_i(p, k)->type == T_INDENT)) k++;
+        if (tem(p, k) && tok_i(p, k)->type == T_LBRACE) {
             p->pos = k;
             t = atual(p);
         }
@@ -2403,8 +2443,8 @@ static int parece_unpack(P *p)
     int viu_virgula = 0, viu_estrela = 0;
     int prof = 0;
 
-    while (i < p->n) {
-        PSToken *t = &p->toks[i];
+    while (tem(p, i)) {
+        PSToken *t = tok_i(p, i);
         if (t->type == T_OP && t->texto && strcmp(t->texto, "*") == 0) {
             viu_estrela = 1; i++; continue;
         }
@@ -2413,16 +2453,16 @@ static int parece_unpack(P *p)
         if (t->type == T_IDENT || t->type == T_IDENT_UPPER) {
             i++;
             for (;;) {                       /* cadeia de sufixos do alvo */
-                if (i + 1 < p->n && p->toks[i].type == T_DOT
-                        && (p->toks[i+1].type == T_IDENT
-                         || p->toks[i+1].type == T_IDENT_UPPER
-                         || p->toks[i+1].type == T_KW)) { i += 2; continue; }
-                if (i < p->n && p->toks[i].type == T_LBRACK) {
+                if (tem(p, i + 1) && tok_i(p, i)->type == T_DOT
+                        && (tok_i(p, i + 1)->type == T_IDENT
+                         || tok_i(p, i + 1)->type == T_IDENT_UPPER
+                         || tok_i(p, i + 1)->type == T_KW)) { i += 2; continue; }
+                if (tem(p, i) && tok_i(p, i)->type == T_LBRACK) {
                     int d = 0;               /* pula o índice inteiro, balanceado */
-                    while (i < p->n) {
-                        if (p->toks[i].type == T_LBRACK) d++;
-                        else if (p->toks[i].type == T_RBRACK) d--;
-                        else if (p->toks[i].type == T_EOF) return 0;
+                    while (tem(p, i)) {
+                        if (tok_i(p, i)->type == T_LBRACK) d++;
+                        else if (tok_i(p, i)->type == T_RBRACK) d--;
+                        else if (tok_i(p, i)->type == T_EOF) return 0;
                         i++;
                         if (d == 0) break;
                     }
@@ -2432,7 +2472,7 @@ static int parece_unpack(P *p)
                 break;
             }
             /* `f(...)` é chamada, não alvo — nem depois de sufixo (`o.m(`) */
-            if (i < p->n && p->toks[i].type == T_LPAREN) return 0;
+            if (tem(p, i) && tok_i(p, i)->type == T_LPAREN) return 0;
             continue;
         }
         if (t->type == T_COMMA) { viu_virgula = 1; i++; continue; }
@@ -3046,16 +3086,17 @@ static PSNode *statement_no(P *p)
             || (t->type == T_KW && t->texto && strcmp(t->texto, "self") == 0)) {
         int32_t k = p->pos + 1;
         int n_dots = 0;
-        while (k + 1 < p->n && p->toks[k].type == T_DOT
-               && (p->toks[k+1].type == T_IDENT || p->toks[k+1].type == T_IDENT_UPPER
-                   || p->toks[k+1].type == T_KW)) {
+        while (tem(p, k + 1) && tok_i(p, k)->type == T_DOT
+               && (tok_i(p, k + 1)->type == T_IDENT || tok_i(p, k + 1)->type == T_IDENT_UPPER
+                   || tok_i(p, k + 1)->type == T_KW)) {
             n_dots++; k += 2;
         }
-        if (n_dots > 0 && k < p->n && p->toks[k].type == T_OP && p->toks[k].texto
-                && (strcmp(p->toks[k].texto, "=")  == 0 || strcmp(p->toks[k].texto, "+=") == 0
-                 || strcmp(p->toks[k].texto, "-=") == 0 || strcmp(p->toks[k].texto, "*=") == 0
-                 || strcmp(p->toks[k].texto, "/=") == 0 || strcmp(p->toks[k].texto, "%=") == 0)) {
-            const char *op_membro = dup_tok(p, &p->toks[k]);
+        PSToken *tk_op = tem(p, k) ? tok_i(p, k) : NULL;
+        if (n_dots > 0 && tk_op && tk_op->type == T_OP && tk_op->texto
+                && (strcmp(tk_op->texto, "=")  == 0 || strcmp(tk_op->texto, "+=") == 0
+                 || strcmp(tk_op->texto, "-=") == 0 || strcmp(tk_op->texto, "*=") == 0
+                 || strcmp(tk_op->texto, "/=") == 0 || strcmp(tk_op->texto, "%=") == 0)) {
+            const char *op_membro = dup_tok(p, tk_op);
             PSNode *base = ps_node_novo(p->arena, N_NAME, t->line, t->col);
             if (!base) return NULL;
             base->texto = dup_tok(p, t);
@@ -3064,11 +3105,11 @@ static PSNode *statement_no(P *p)
                 PSNode *ma = ps_node_novo(p->arena, N_MEMBER_ACCESS, t->line, t->col);
                 if (!ma) return NULL;
                 ma->a = base;
-                ma->texto = dup_tok(p, &p->toks[j + 1]);
+                ma->texto = dup_tok(p, tok_i(p, j + 1));
                 base = ma;
                 j += 2;
             }
-            const char *ultimo = dup_tok(p, &p->toks[j + 1]);
+            const char *ultimo = dup_tok(p, tok_i(p, j + 1));
             p->pos = k + 1;
             PSNode *n = ps_node_novo(p->arena, N_MEMBER_ASSIGNMENT, t->line, t->col);
             if (!n) return NULL;
@@ -3612,18 +3653,18 @@ static PSNode *statement_no(P *p)
     if (checa_kw(p, "if")) {
         int32_t k = p->pos + 1;
         int paren = 0;
-        if (k < p->n && p->toks[k].type == T_LPAREN) { paren = 1; k++; }
-        if (k + 2 < p->n
-            && p->toks[k].type == T_IDENT && p->toks[k].texto
-            && strcmp(p->toks[k].texto, "__name__") == 0
-            && p->toks[k + 1].type == T_OP && p->toks[k + 1].texto
-            && strcmp(p->toks[k + 1].texto, "==") == 0
-            && p->toks[k + 2].type == T_STR && p->toks[k + 2].texto
-            && p->toks[k + 2].texto_len == 4 && memcmp(p->toks[k + 2].texto, "main", 4) == 0) {
-            PSToken *rot = &p->toks[k + 2];
+        if (tem(p, k) && tok_i(p, k)->type == T_LPAREN) { paren = 1; k++; }
+        if (tem(p, k + 2)
+            && tok_i(p, k)->type == T_IDENT && tok_i(p, k)->texto
+            && strcmp(tok_i(p, k)->texto, "__name__") == 0
+            && tok_i(p, k + 1)->type == T_OP && tok_i(p, k + 1)->texto
+            && strcmp(tok_i(p, k + 1)->texto, "==") == 0
+            && tok_i(p, k + 2)->type == T_STR && tok_i(p, k + 2)->texto
+            && tok_i(p, k + 2)->texto_len == 4 && memcmp(tok_i(p, k + 2)->texto, "main", 4) == 0) {
+            PSToken *rot = tok_i(p, k + 2);
             int32_t depois = k + 3;
             if (paren) {
-                if (depois >= p->n || p->toks[depois].type != T_RPAREN) goto if_normal;
+                if (!tem(p, depois) || tok_i(p, depois)->type != T_RPAREN) goto if_normal;
                 depois++;
             }
             /* A chave pode vir na linha seguinte, como em todo bloco da
@@ -3632,11 +3673,11 @@ static PSNode *statement_no(P *p)
              * da falso, e o bloco era pulado sem erro nenhum. */
             {
                 int32_t q = depois;
-                while (q < p->n && p->toks[q].type == T_NEWLINE) q++;
-                if (q < p->n && p->toks[q].type == T_LBRACE) depois = q;
+                while (tem(p, q) && tok_i(p, q)->type == T_NEWLINE) q++;
+                if (tem(p, q) && tok_i(p, q)->type == T_LBRACE) depois = q;
             }
-            if (depois >= p->n
-                || (p->toks[depois].type != T_COLON && p->toks[depois].type != T_LBRACE))
+            if (!tem(p, depois)
+                || (tok_i(p, depois)->type != T_COLON && tok_i(p, depois)->type != T_LBRACE))
                 goto if_normal;
             PSNode *n = ps_node_novo(p->arena, N_RUN_SELFWITH_STMT, t->line, t->col);
             if (!n) return NULL;
@@ -3944,6 +3985,8 @@ static PSNode *statement_no(P *p)
 
 /* ── entrada ────────────────────────────────────────────────────────────── */
 static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTokenList *tl);
+static int  proxima_topo(P *p, PSNode **out);
+static void termina_topo(P *p);
 
 PSParseResult *ps_parse(PSToken *toks, int32_t n)
 {
@@ -3959,6 +4002,30 @@ PSParseResult *ps_parse_lista(PSTokenList *tl, int recupera)
 {
     if (!tl) return NULL;
     return ps_parse_com(tl->tokens, tl->n, recupera, tl);
+}
+
+PSParseResult *ps_parse_fonte(const char *fonte, size_t len, int recupera, PSTokenList **lexer)
+{
+    *lexer = NULL;
+    PSTokenList *fl = ps_lexer_fluxo(fonte, len, recupera, 0);
+    if (!fl) return NULL;
+    PSParseResult *r = ps_parse_com(NULL, 0, recupera, fl);
+    /* A segunda passada de `ps_lexer_tokenize_modo`: grupo sem par no arquivo
+     * liga a sincronia por declaração, e o parse refaz com ela. Só código
+     * quebrado, no modo de recuperação, chega aqui. */
+    if (recupera && fl->grupos_forcados > 0) {
+        PSTokenList *fl2 = ps_lexer_fluxo(fonte, len, recupera, 1);
+        PSParseResult *r2 = fl2 ? ps_parse_com(NULL, 0, recupera, fl2) : NULL;
+        if (r2) {
+            ps_parse_free(r);
+            ps_lexer_free(fl);
+            r = r2; fl = fl2;
+        } else {
+            ps_lexer_free(fl2);
+        }
+    }
+    *lexer = fl;
+    return r;
 }
 
 static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTokenList *tl)
@@ -3977,38 +4044,74 @@ static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTok
     p.arena = &r->arena; p.out = r;
     p.tl = tl;
     p.recupera = recupera;
+    p.fl = (tl && tl->fluxo) ? tl : NULL;
 
     PSNode *prog = ps_node_novo(&r->arena, N_PROGRAM, 1, 1);
     if (!prog) { r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); return r; }
 
     pula_separadores(&p);
-    while (!checa(&p, T_EOF) && (r->ok || recupera)) {
-        int32_t antes = p.pos;
-        PSNode *s = statement(&p);
+    for (;;) {
+        PSNode *s;
+        if (!proxima_topo(&p, &s)) break;
+        if (s && ps_vec_push(&r->arena, &prog->lista, s) != 0) {
+            r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); break;
+        }
+    }
+    termina_topo(&p);
+    r->programa = prog;
+    return r;
+}
+
+/* A próxima declaração de topo. 1 = parseou uma (`*out` pode ser NULL: um
+ * statement vazio, e quem chama pede a seguinte); 0 = o arquivo acabou, ou o
+ * parse parou num erro. Quem chama faz o `pula_separadores` inicial. */
+static int proxima_topo(P *p, PSNode **out)
+{
+    PSParseResult *r = p->out;
+    *out = NULL;
+    for (;;) {
+        if (checa(p, T_EOF) || !(r->ok || p->recupera)) return 0;
+        int32_t antes = p->pos;
+        /* Nada volta pra uma declaração de topo que já terminou: no modo
+         * fluxo, os tokens de antes desta saem da memória. O de `antes - 1`
+         * fica — `fecha_no` lê o último consumido. */
+        if (p->fl) ps_lexer_solta_ate(p->fl, antes - 1);
+        PSNode *s = statement(p);
         if (!r->ok) {
-            if (!recupera) break;
+            if (!p->recupera) return 0;
             /* RECUPERAÇÃO: o statement quebrado já foi registrado na lista.
              * Zera o estado de descida (profundidade, grupos abertos) e pula
              * pro próximo começo de statement — sem isto, o resto do arquivo
              * seria lido com o parser em meio de expressão. */
-            if (r->nerros >= 64) break;
+            if (r->nerros >= 64) return 0;
             r->ok = 1;
-            p.prof = 0; p.grupo_depth = 0; p.chave_abre_bloco = 0; p.dec_sem_captura = 0;
+            p->prof = 0; p->grupo_depth = 0; p->chave_abre_bloco = 0; p->dec_sem_captura = 0;
             /* até o fim do statement contado desde o começo dele: um bloco
              * que ele abriu não despeja o resto do corpo aqui em cima */
-            pula_statement(&p, antes);
+            pula_statement(p, antes);
             /* no topo, `}` e DEDENT soltos são lixo: consome */
-            if (checa(&p, T_RBRACE) || checa(&p, T_DEDENT)) p.pos++;
-            if (p.pos == antes) p.pos++;      /* nunca ficar parado no mesmo token */
-            pula_separadores(&p);
+            if (checa(p, T_RBRACE) || checa(p, T_DEDENT)) p->pos++;
+            if (p->pos == antes) p->pos++;      /* nunca ficar parado no mesmo token */
+            pula_separadores(p);
             continue;
         }
-        if (s && ps_vec_push(&r->arena, &prog->lista, s) != 0) {
-            r->ok = 0; snprintf(r->erro, sizeof(r->erro), "sem memoria"); break;
-        }
-        pula_separadores(&p);
-        if (s == NULL && checa(&p, T_EOF)) break;
+        pula_separadores(p);
+        if (s == NULL && checa(p, T_EOF)) return 0;
+        *out = s;
+        return 1;
     }
+}
+
+/* Depois da última declaração: o veredito do arquivo inteiro. */
+static void termina_topo(P *p)
+{
+    PSParseResult *r = p->out;
+    PSTokenList *tl = p->tl;
+    int recupera = p->recupera;
+    /* O parse pode ter parado antes do fim (erro, ou o teto de erros): o resto
+     * do fonte ainda passa pelo lexer, pra `fechados` abaixo e o `ok`, os
+     * erros e os avisos da lista ficarem os do arquivo inteiro. */
+    if (p->fl) ps_lexer_drena(p->fl);
     /* O que caiu DENTRO de um grupo que o lexer fechou à força é sintoma dele
      * (o lexer já acusou o abridor): sai da lista. `funct f( {` é um `(` sem
      * par, e não também um "esperado nome de parametro" no `{`. */
@@ -4030,8 +4133,58 @@ static PSParseResult *ps_parse_com(PSToken *toks, int32_t n, int recupera, PSTok
     /* A lista de erros é o veredito: recuperar não é aprovar. Falha calada num
      * T_SINC também reprova: o erro dela está na lista do lexer. */
     if (recupera && (r->nerros > 0 || (tl && tl->nfechados > 0))) r->ok = 0;
-    r->programa = prog;
-    return r;
+}
+
+/* ── parser incremental ─────────────────────────────────────────────────── */
+struct PSParserInc {
+    P             p;
+    PSParseResult *r;
+    PSTokenList   *fl;
+    int           acabou;
+};
+
+PSParserInc *ps_parse_inc_abre(const char *fonte, size_t len, int recupera)
+{
+    PSParserInc *pi = calloc(1, sizeof(*pi));
+    if (!pi) return NULL;
+    pi->fl = ps_lexer_fluxo(fonte, len, recupera, 0);
+    pi->r = calloc(1, sizeof(PSParseResult));
+    if (!pi->fl || !pi->r) { ps_lexer_free(pi->fl); free(pi->r); free(pi); return NULL; }
+    pi->r->ok = 1;
+    ps_arena_init(&pi->r->arena);
+    pi->p.arena = &pi->r->arena; pi->p.out = pi->r;
+    pi->p.tl = pi->fl; pi->p.fl = pi->fl;
+    pi->p.recupera = recupera;
+    pula_separadores(&pi->p);
+    return pi;
+}
+
+PSNode *ps_parse_inc_proxima(PSParserInc *pi)
+{
+    if (pi->acabou) return NULL;
+    /* a declaração anterior morre aqui: quem precisava dela já copiou */
+    ps_arena_reinicia(&pi->r->arena);
+    for (;;) {
+        PSNode *s;
+        if (!proxima_topo(&pi->p, &s)) {
+            termina_topo(&pi->p);
+            pi->acabou = 1;
+            return NULL;
+        }
+        if (s) return s;
+    }
+}
+
+PSParseResult *ps_parse_inc_resultado(PSParserInc *pi) { return pi->r; }
+PSTokenList   *ps_parse_inc_lexer(PSParserInc *pi)     { return pi->fl; }
+
+void ps_parse_inc_fecha(PSParserInc *pi, PSTokenList **lexer)
+{
+    if (!pi) { if (lexer) *lexer = NULL; return; }
+    if (!pi->acabou) { termina_topo(&pi->p); pi->acabou = 1; }
+    if (lexer) *lexer = pi->fl; else ps_lexer_free(pi->fl);
+    ps_parse_free(pi->r);
+    free(pi);
 }
 
 void ps_parse_free(PSParseResult *r)

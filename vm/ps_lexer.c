@@ -133,8 +133,44 @@ typedef struct {
      * grupos de expressão abertos (ver `ps_lexer_tokenize_modo`). */
     int         sincroniza;
 
+    /* Onde começou a volta anterior do laço (ver `fecha_span`). Moram aqui, e
+     * não em variáveis do laço, porque no modo fluxo o laço para e volta
+     * quando o parser pede mais token. */
+    int32_t     span_col0, span_lin0, span_n0;
+
     PSTokenList *out;
 } Lexer;
+
+/* ── armazenamento dos tokens no MODO FLUXO ────────────────────────────── */
+#define PS_TOK_BLOCO 4096
+
+/* Texto dos tokens de um bloco, em pedaços: um `malloc` por pedaço, não por
+ * token. Some junto com o bloco. */
+typedef struct TextoPedaco {
+    struct TextoPedaco *prox;
+    size_t cap, usado;
+    char   dados[];
+} TextoPedaco;
+
+struct PSTokBloco {
+    PSToken      toks[PS_TOK_BLOCO];
+    TextoPedaco *textos;
+};
+
+/* O token `i` já nascido, nas duas formas de lista. */
+static PSToken *tok_de(PSTokenList *o, int32_t i)
+{
+    if (!o->fluxo) return &o->tokens[i];
+    return &o->blocos[i / PS_TOK_BLOCO]->toks[i % PS_TOK_BLOCO];
+}
+
+static void bloco_solta(struct PSTokBloco *b)
+{
+    if (!b) return;
+    TextoPedaco *t = b->textos;
+    while (t) { TextoPedaco *prox = t->prox; free(t); t = prox; }
+    free(b);
+}
 
 enum { G_PAREN = 1, G_BRACK, G_DICT, G_BLOCO };
 
@@ -231,14 +267,33 @@ static void erro_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
 static PSToken *novo_token(Lexer *lx, PSTokType t, int32_t linha, int32_t col)
 {
     PSTokenList *o = lx->out;
-    if (o->n + 1 > o->cap) {
-        int32_t novo = o->cap < 64 ? 64 : o->cap * 2;
-        PSToken *p = realloc(o->tokens, sizeof(PSToken) * (size_t)novo);
-        if (!p) { erro(lx, "sem memoria"); return NULL; }
-        o->tokens = p;
-        o->cap = novo;
+    PSToken *tk;
+    if (o->fluxo) {
+        int32_t b = o->n / PS_TOK_BLOCO;
+        if (b >= o->nblocos) {
+            if (o->nblocos >= o->cap_blocos) {
+                int32_t nc = o->cap_blocos < 16 ? 16 : o->cap_blocos * 2;
+                struct PSTokBloco **nv = realloc(o->blocos, sizeof(*nv) * (size_t)nc);
+                if (!nv) { erro(lx, "sem memoria"); return NULL; }
+                o->blocos = nv; o->cap_blocos = nc;
+            }
+            struct PSTokBloco *nb = malloc(sizeof(*nb));
+            if (!nb) { erro(lx, "sem memoria"); return NULL; }
+            nb->textos = NULL;
+            o->blocos[o->nblocos++] = nb;
+        }
+        tk = &o->blocos[b]->toks[o->n % PS_TOK_BLOCO];
+        o->n++;
+    } else {
+        if (o->n + 1 > o->cap) {
+            int32_t novo = o->cap < 64 ? 64 : o->cap * 2;
+            PSToken *p = realloc(o->tokens, sizeof(PSToken) * (size_t)novo);
+            if (!p) { erro(lx, "sem memoria"); return NULL; }
+            o->tokens = p;
+            o->cap = novo;
+        }
+        tk = &o->tokens[o->n++];
     }
-    PSToken *tk = &o->tokens[o->n++];
     memset(tk, 0, sizeof(*tk));
     tk->type = t;
     tk->line = linha;
@@ -246,10 +301,34 @@ static PSToken *novo_token(Lexer *lx, PSTokType t, int32_t linha, int32_t col)
     return tk;
 }
 
+/* O texto do token que ACABOU de nascer (todo chamador cria o token e guarda o
+ * texto em seguida). No modo fluxo ele vai pro pedaço de texto do bloco do
+ * token, e morre com o bloco.
+ *
+ * Sem memória pro texto, o token é DESFEITO (`o->n--`): no modo fluxo o
+ * parser lê os tokens enquanto o lexer os produz, e um token de palavra-chave
+ * sem texto era um `strcmp(NULL)` no parser (achado pelo `make oom`). Na
+ * lista inteira ninguém parseia depois de `ok = 0`, mas a regra é uma só. */
 static int guarda_texto(Lexer *lx, PSToken *tk, const char *s, int n)
 {
-    tk->texto = malloc((size_t)n + 1);
-    if (!tk->texto) { erro(lx, "sem memoria"); return -1; }
+    PSTokenList *o = lx->out;
+    if (o->fluxo) {
+        struct PSTokBloco *b = o->blocos[(o->n - 1) / PS_TOK_BLOCO];
+        size_t precisa = (size_t)n + 1;
+        TextoPedaco *t = b->textos;
+        if (!t || t->usado + precisa > t->cap) {
+            size_t cap = precisa > 16384 ? precisa : 16384;
+            TextoPedaco *nt = malloc(sizeof(TextoPedaco) + cap);
+            if (!nt) { o->n--; erro(lx, "sem memoria"); return -1; }
+            nt->prox = t; nt->cap = cap; nt->usado = 0;
+            b->textos = t = nt;
+        }
+        tk->texto = t->dados + t->usado;
+        t->usado += precisa;
+    } else {
+        tk->texto = malloc((size_t)n + 1);
+        if (!tk->texto) { o->n--; erro(lx, "sem memoria"); return -1; }
+    }
     memcpy(tk->texto, s, (size_t)n);
     tk->texto[n] = '\0';
     tk->texto_len = n;
@@ -674,7 +753,9 @@ static int decode_escape(Lexer *lx, Buf *bf, int bytes)
 static void interp_poe(Lexer *lx, size_t off, int32_t len, int32_t linha, int32_t col)
 {
     PSTokenList *o = lx->out;
-    if (o->ninterps >= 512) return;            /* f-string absurda não vira enxurrada */
+    /* f-string absurda não vira enxurrada. Conta o arquivo inteiro, e não o
+     * que está na lista: no modo fluxo os de trás já saíram. */
+    if (o->interps_total >= 512) return;
     if (o->ninterps >= o->cap_interps) {
         int32_t nc = o->cap_interps ? o->cap_interps * 2 : 8;
         struct PSInterp *nv = realloc(o->interps, sizeof(*nv) * (size_t)nc);
@@ -692,6 +773,7 @@ static void interp_poe(Lexer *lx, size_t off, int32_t len, int32_t linha, int32_
     if (txt) { memcpy(txt, lx->src + off, (size_t)len); txt[len] = '\0'; }
     o->interps[o->ninterps].txt = txt;
     o->ninterps++;
+    o->interps_total++;
 }
 
 static void le_string(Lexer *lx, char aspa, int fstring, int raw, int bytes, int32_t c_tok)
@@ -1060,7 +1142,7 @@ static int le_punct(Lexer *lx)
          * anterior é o penúltimo. Ler `n - 1` classificava o `{` por ele
          * mesmo e todo bloco virava dicionário. */
         if (o->n > 1) {
-            PSToken *a = &o->tokens[o->n - 2];
+            PSToken *a = tok_de(o, o->n - 2);
             if (a->type == T_OP || a->type == T_COMMA || a->type == T_COLON
                     || a->type == T_LPAREN || a->type == T_LBRACK
                     || a->type == T_LBRACE) dict = 1;
@@ -1124,6 +1206,167 @@ PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len, int comentari
     return l;
 }
 
+/* Span do token no FONTE, medido num lugar só. Todo ramo do laço termina a
+ * volta, então a medição acontece no TOPO da volta seguinte (e uma última
+ * vez depois do laço): se desde a volta anterior nasceu UM token na MESMA
+ * linha, o tamanho é a diferença de coluna. É o que o realce do editor
+ * precisa e o `texto` não dá — string decodificada não tem aspas.
+ *
+ * O FIM sai daqui também, e sem a condição de "mesma linha": é o que faltava
+ * pro editor sublinhar e dobrar string de várias linhas e comentário de
+ * bloco. `nchars` continua só pro token de uma linha, que é onde ele faz
+ * sentido. O T_SINC não ocupa texto e não conta: o fechador que nasce junto
+ * com ele (`)` depois de um `(` fechado à força) continua tendo o span
+ * medido. */
+static void fecha_span(Lexer *lx)
+{
+    PSTokenList *out = lx->out;
+    int32_t alvo = -1, quantos = 0;
+    for (int32_t k = lx->span_n0; k < out->n; k++)
+        if (tok_de(out, k)->type != T_SINC) { alvo = k; quantos++; }
+    if (quantos == 1) {
+        PSToken *t = tok_de(out, alvo);
+        if (lx->linha == lx->span_lin0 && lx->col > lx->span_col0)
+            t->nchars = lx->col - lx->span_col0;
+        t->linha_fim = lx->linha;
+        t->col_fim = lx->col;
+    }
+    lx->span_col0 = lx->col; lx->span_lin0 = lx->linha; lx->span_n0 = out->n;
+}
+
+static void lx_inicia(Lexer *lx, PSTokenList *out, const char *fonte, size_t len,
+                      int com_comentarios, int recupera, int sincroniza)
+{
+    memset(lx, 0, sizeof(*lx));
+    lx->src = fonte;
+    lx->len = len;
+    lx->linha = 1;
+    lx->col = 1;
+    lx->indent[0] = 0;
+    lx->nindent = 1;
+    lx->out = out;
+    lx->marca_comentarios = com_comentarios;
+    lx->recupera = recupera;
+    lx->sincroniza = recupera && sincroniza;
+
+    /* espaços iniciais da primeira linha não geram INDENT */
+    while (lx->pos < lx->len && (lx->src[lx->pos] == ' ' || lx->src[lx->pos] == '\t')) {
+        lx->pos++; lx->col++;
+    }
+    lx->span_col0 = lx->col; lx->span_lin0 = lx->linha; lx->span_n0 = out->n;
+}
+
+/* Uma volta do laço principal. 0 = o laço acabou (fim do fonte, ou erro fora
+ * do modo de recuperação) e falta só `lx_fim`. */
+static int lx_passo(Lexer *lx)
+{
+    if (!(lx->pos < lx->len && (lx->out->ok || lx->recupera))) return 0;
+    fecha_span(lx);
+    char c = lx->src[lx->pos];
+
+    if (c == '\n') { trata_newline(lx); return 1; }
+    if (c == '\r') { lx->pos++; return 1; }
+    if (c == ' ' || c == '\t') { lx->pos++; lx->col++; return 1; }
+
+    /* `//` era COMENTARIO DE LINHA e agora e o operador de divisao
+     * inteira (I11). Nao da pra ter os dois: `a // b` teria que ser
+     * divisao num contexto e comentario no outro, e nenhuma regra de
+     * desambiguacao sobrevive a `x = a //b` contra `x = a  // b`.
+     *
+     * O comentario de linha continua sendo `#`, que a linguagem sempre
+     * aceitou e que a maior parte do repositorio ja usava. */
+    if (c == '#') { pula_comentario_linha(lx); return 1; }
+
+    if (c == '"' && espia(lx, 1) == '"' && espia(lx, 2) == '"') {
+        pula_comentario_bloco(lx); return 1;
+    }
+    if (c == '\'' && espia(lx, 1) == '\'' && espia(lx, 2) == '\'') {
+        le_string_tripla(lx, '\'', 0, 0, 0, lx->col); return 1;
+    }
+    if (c == '"' || c == '\'') { le_string(lx, c, 0, 0, 0, lx->col); return 1; }
+
+    if (eh_digito(c)) { le_numero(lx); return 1; }
+    if (eh_alpha(c) || c == '_') { le_ident(lx); return 1; }
+
+    if (le_punct(lx)) return 1;
+    if (c == '<' && le_cor(lx)) return 1;
+    if (le_operador(lx)) return 1;
+
+    /* O caractere sai INTEIRO, não o primeiro byte dele.
+     *
+     * Com `%c` a mensagem levava meio caractere: `ç` é 0xC3 0xA7, e
+     * imprimir só o 0xC3 produz UTF-8 INVÁLIDO dentro da mensagem de
+     * erro. Isso não é cosmético — o LSP serializa a mensagem em JSON,
+     * e byte inválido quebra o JSON: o editor recusava a resposta
+     * ("Expected ',' or '}' ... in JSON") e derrubava o servidor. Um
+     * acento fora do lugar matava o suporte a editor inteiro.
+     *
+     * Um byte de continuação (10xxxxxx) sozinho não forma caractere;
+     * nesse caso mostra o valor numérico, que é a informação útil. */
+    char m[80];
+    unsigned char b0 = (unsigned char)c;
+    int nb = b0 < 0x80 ? 1 : (b0 & 0xE0) == 0xC0 ? 2
+           : (b0 & 0xF0) == 0xE0 ? 3 : (b0 & 0xF8) == 0xF0 ? 4 : 0;
+    char ch[5] = "";
+    if (nb > 0 && lx->pos + (size_t)nb <= lx->len) {
+        memcpy(ch, lx->src + lx->pos, (size_t)nb);
+        ch[nb] = '\0';
+        /* Letra fora do ASCII COLADA num nome (`ação`, `π`): a frase
+         * de antes ("caractere inesperado") dizia o sintoma. A regra é
+         * que nome só aceita letra sem acento — é isso que a pessoa
+         * precisa saber pra consertar. */
+        if (b0 >= 0x80 && (lx->pos > 0 && (eh_alpha(lx->src[lx->pos - 1])
+                                           || eh_digito(lx->src[lx->pos - 1])
+                                           || lx->src[lx->pos - 1] == '_')))
+            snprintf(m, sizeof(m), "nome so aceita letra sem acento, digito e _: '%s'", ch);
+        else if (b0 >= 0x80 && (eh_alpha(espia(lx, nb)) || espia(lx, nb) == '_'))
+            snprintf(m, sizeof(m), "nome so aceita letra sem acento, digito e _: '%s'", ch);
+        else
+            snprintf(m, sizeof(m), "caractere inesperado: '%s'", ch);
+    } else {
+        snprintf(m, sizeof(m), "byte inesperado: 0x%02X", b0);
+    }
+    erro(lx, m);
+    /* RECUPERAÇÃO: o trecho vira um token de erro e a análise segue.
+     * Sem isto, um caractere estranho no meio do arquivo apagava os
+     * tokens de TODAS as linhas — a tela inteira perdia a cor. */
+    if (lx->recupera) {
+        int32_t l0 = lx->linha, c0 = lx->col;
+        int avanca = nb > 0 ? nb : 1;
+        for (int k = 0; k < avanca && lx->pos < lx->len; k++) avanca1(lx);
+        PSToken *tk = novo_token(lx, T_ERRO, l0, c0);
+        if (tk) {
+            const char *txt = ch[0] ? ch : "?";
+            guarda_texto(lx, tk, txt, (int)strlen(txt));
+            tk->nchars = 1;
+        }
+    }
+    return 1;
+}
+
+/* Depois da última volta: o span do último token e o que o fim do arquivo
+ * fecha. O EOF sai sempre no modo de recuperação: o parser precisa dele pra
+ * parar, e uma lista sem EOF faria o `atual()` dele ler o último token para
+ * sempre. No modo FLUXO ele sai também quando o lexer parou num erro: quem
+ * parseia está no meio do arquivo e precisa parar (o `ok == 0` continua
+ * dizendo que o arquivo não vale). */
+static void lx_fim(Lexer *lx)
+{
+    PSTokenList *out = lx->out;
+    fecha_span(lx);
+    if (out->ok || lx->recupera) {
+        grupo_fim(lx);
+        while (lx->nindent > 1) {
+            lx->nindent--;
+            PSToken *tk = novo_token(lx, T_DEDENT, lx->linha, lx->col);
+            if (tk) tk->i = 0;
+        }
+        novo_token(lx, T_EOF, lx->linha, lx->col);
+    } else if (out->fluxo) {
+        novo_token(lx, T_EOF, lx->linha, lx->col);
+    }
+}
+
 static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios, int recupera,
                              int sincroniza)
 {
@@ -1132,156 +1375,78 @@ static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios,
     out->ok = 1;
 
     Lexer lx;
-    memset(&lx, 0, sizeof(lx));
-    lx.src = fonte;
-    lx.len = len;
-    lx.linha = 1;
-    lx.col = 1;
-    lx.indent[0] = 0;
-    lx.nindent = 1;
-    lx.out = out;
-    lx.marca_comentarios = com_comentarios;
-    lx.recupera = recupera;
-    lx.sincroniza = recupera && sincroniza;
-
-    /* espaços iniciais da primeira linha não geram INDENT */
-    while (lx.pos < lx.len && (lx.src[lx.pos] == ' ' || lx.src[lx.pos] == '\t')) {
-        lx.pos++; lx.col++;
-    }
-
-    /* Span do token no FONTE, medido num lugar só. Todo ramo do laço faz
-     * `continue`, então a medição acontece no TOPO da iteração seguinte (e uma
-     * última vez depois do laço): se desde a iteração anterior nasceu UM token
-     * na MESMA linha, o tamanho é a diferença de coluna. É o que o realce do
-     * editor precisa e o `texto` não dá — string decodificada não tem aspas. */
-    int32_t col0 = lx.col, lin0 = lx.linha, n0 = out->n;
-/* O FIM sai daqui também, e sem a condição de "mesma linha": é o que faltava
- * pro editor sublinhar e dobrar string de várias linhas e comentário de bloco.
- * `nchars` continua só pro token de uma linha, que é onde ele faz sentido. */
-/* O T_SINC não ocupa texto e não conta: o fechador que nasce junto com ele
- * (`)` depois de um `(` fechado à força) continua tendo o span medido. */
-#define FECHA_SPAN()                                                          \
-    do {                                                                      \
-        int32_t alvo_ = -1, quantos_ = 0;                                     \
-        for (int32_t k_ = n0; k_ < out->n; k_++)                              \
-            if (out->tokens[k_].type != T_SINC) { alvo_ = k_; quantos_++; }   \
-        if (quantos_ == 1) {                                                  \
-            if (lx.linha == lin0 && lx.col > col0)                            \
-                out->tokens[alvo_].nchars = lx.col - col0;                    \
-            out->tokens[alvo_].linha_fim = lx.linha;                          \
-            out->tokens[alvo_].col_fim = lx.col;                              \
-        }                                                                     \
-        col0 = lx.col; lin0 = lx.linha; n0 = out->n;                          \
-    } while (0)
-
-    while (lx.pos < lx.len && (out->ok || lx.recupera)) {
-        FECHA_SPAN();
-        char c = lx.src[lx.pos];
-
-        if (c == '\n') { trata_newline(&lx); continue; }
-        if (c == '\r') { lx.pos++; continue; }
-        if (c == ' ' || c == '\t') { lx.pos++; lx.col++; continue; }
-
-        /* `//` era COMENTARIO DE LINHA e agora e o operador de divisao
-         * inteira (I11). Nao da pra ter os dois: `a // b` teria que ser
-         * divisao num contexto e comentario no outro, e nenhuma regra de
-         * desambiguacao sobrevive a `x = a //b` contra `x = a  // b`.
-         *
-         * O comentario de linha continua sendo `#`, que a linguagem sempre
-         * aceitou e que a maior parte do repositorio ja usava. */
-        if (c == '#') { pula_comentario_linha(&lx); continue; }
-
-        if (c == '"' && espia(&lx, 1) == '"' && espia(&lx, 2) == '"') {
-            pula_comentario_bloco(&lx); continue;
-        }
-        if (c == '\'' && espia(&lx, 1) == '\'' && espia(&lx, 2) == '\'') {
-            le_string_tripla(&lx, '\'', 0, 0, 0, lx.col); continue;
-        }
-        if (c == '"' || c == '\'') { le_string(&lx, c, 0, 0, 0, lx.col); continue; }
-
-        if (eh_digito(c)) { le_numero(&lx); continue; }
-        if (eh_alpha(c) || c == '_') { le_ident(&lx); continue; }
-
-        if (le_punct(&lx)) continue;
-        if (c == '<' && le_cor(&lx)) continue;
-        if (le_operador(&lx)) continue;
-
-        {
-            /* O caractere sai INTEIRO, não o primeiro byte dele.
-             *
-             * Com `%c` a mensagem levava meio caractere: `ç` é 0xC3 0xA7, e
-             * imprimir só o 0xC3 produz UTF-8 INVÁLIDO dentro da mensagem de
-             * erro. Isso não é cosmético — o LSP serializa a mensagem em JSON,
-             * e byte inválido quebra o JSON: o editor recusava a resposta
-             * ("Expected ',' or '}' ... in JSON") e derrubava o servidor. Um
-             * acento fora do lugar matava o suporte a editor inteiro.
-             *
-             * Um byte de continuação (10xxxxxx) sozinho não forma caractere;
-             * nesse caso mostra o valor numérico, que é a informação útil. */
-            char m[80];
-            unsigned char b0 = (unsigned char)c;
-            int nb = b0 < 0x80 ? 1 : (b0 & 0xE0) == 0xC0 ? 2
-                   : (b0 & 0xF0) == 0xE0 ? 3 : (b0 & 0xF8) == 0xF0 ? 4 : 0;
-            char ch[5] = "";
-            if (nb > 0 && lx.pos + (size_t)nb <= lx.len) {
-                memcpy(ch, lx.src + lx.pos, (size_t)nb);
-                ch[nb] = '\0';
-                /* Letra fora do ASCII COLADA num nome (`ação`, `π`): a frase
-                 * de antes ("caractere inesperado") dizia o sintoma. A regra é
-                 * que nome só aceita letra sem acento — é isso que a pessoa
-                 * precisa saber pra consertar. */
-                if (b0 >= 0x80 && (lx.pos > 0 && (eh_alpha(lx.src[lx.pos - 1])
-                                                  || eh_digito(lx.src[lx.pos - 1])
-                                                  || lx.src[lx.pos - 1] == '_')))
-                    snprintf(m, sizeof(m), "nome so aceita letra sem acento, digito e _: '%s'", ch);
-                else if (b0 >= 0x80 && (eh_alpha(espia(&lx, nb)) || espia(&lx, nb) == '_'))
-                    snprintf(m, sizeof(m), "nome so aceita letra sem acento, digito e _: '%s'", ch);
-                else
-                    snprintf(m, sizeof(m), "caractere inesperado: '%s'", ch);
-            } else {
-                snprintf(m, sizeof(m), "byte inesperado: 0x%02X", b0);
-            }
-            erro(&lx, m);
-            /* RECUPERAÇÃO: o trecho vira um token de erro e a análise segue.
-             * Sem isto, um caractere estranho no meio do arquivo apagava os
-             * tokens de TODAS as linhas — a tela inteira perdia a cor. */
-            if (lx.recupera) {
-                int32_t l0 = lx.linha, c0 = lx.col;
-                int avanca = nb > 0 ? nb : 1;
-                for (int k = 0; k < avanca && lx.pos < lx.len; k++) avanca1(&lx);
-                PSToken *tk = novo_token(&lx, T_ERRO, l0, c0);
-                if (tk) {
-                    tk->texto = ch[0] ? strdup(ch) : strdup("?");
-                    tk->texto_len = tk->texto ? (int32_t)strlen(tk->texto) : 0;
-                    tk->nchars = 1;
-                }
-                continue;
-            }
-        }
-    }
-    FECHA_SPAN();
-#undef FECHA_SPAN
-
-    /* O EOF sai sempre no modo de recuperação: o parser precisa dele pra
-     * parar, e uma lista sem EOF faria o `atual()` dele ler o último token
-     * para sempre. */
-    if (out->ok || lx.recupera) {
-        grupo_fim(&lx);
-        while (lx.nindent > 1) {
-            lx.nindent--;
-            PSToken *tk = novo_token(&lx, T_DEDENT, lx.linha, lx.col);
-            if (tk) tk->i = 0;
-        }
-        novo_token(&lx, T_EOF, lx.linha, lx.col);
-    }
+    lx_inicia(&lx, out, fonte, len, com_comentarios, recupera, sincroniza);
+    while (lx_passo(&lx)) {}
+    lx_fim(&lx);
     return out;
+}
+
+PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera, int sincroniza)
+{
+    PSTokenList *out = calloc(1, sizeof(PSTokenList));
+    if (!out) return NULL;
+    out->ok = 1;
+    out->fluxo = 1;
+    Lexer *lx = malloc(sizeof(Lexer));
+    if (!lx) { free(out); return NULL; }
+    lx_inicia(lx, out, fonte, len, 0, recupera, sincroniza);
+    out->lexer = lx;
+    return out;
+}
+
+/* Uma volta a mais do lexer do fluxo; no fim do fonte fecha a lista. */
+static void fluxo_avanca(PSTokenList *o)
+{
+    Lexer *lx = o->lexer;
+    if (lx_passo(lx)) return;
+    lx_fim(lx);
+    free(lx);
+    o->lexer = NULL;
+}
+
+PSToken *ps_lexer_tok(PSTokenList *o, int32_t i)
+{
+    if (i < 0) return NULL;
+    /* Dois tokens ALÉM do pedido: o span (`nchars`, `col_fim`) de um token só
+     * fica pronto no começo da volta seguinte do laço (`fecha_span`), e o
+     * parser lê o do token que acabou de consumir. */
+    while (o->lexer && o->n <= i + 2) fluxo_avanca(o);
+    return i < o->n ? tok_de(o, i) : NULL;
+}
+
+void ps_lexer_drena(PSTokenList *o)
+{
+    while (o->lexer) fluxo_avanca(o);
+}
+
+void ps_lexer_solta_ate(PSTokenList *o, int32_t i)
+{
+    if (!o->fluxo) return;
+    int32_t ate = i / PS_TOK_BLOCO;              /* o bloco de `i` fica */
+    if (ate > o->nblocos) ate = o->nblocos;
+    if (ate <= o->soltos) return;
+    for (int32_t b = o->soltos; b < ate; b++) { bloco_solta(o->blocos[b]); o->blocos[b] = NULL; }
+    o->soltos = ate;
+    /* os `{...}` das f-strings dos blocos soltos saem junto */
+    int32_t corte = ate * PS_TOK_BLOCO, w = 0;
+    for (int32_t k = 0; k < o->ninterps; k++) {
+        if (o->interps[k].tok < corte) free(o->interps[k].txt);
+        else o->interps[w++] = o->interps[k];
+    }
+    o->ninterps = w;
 }
 
 void ps_lexer_free(PSTokenList *lista)
 {
     if (!lista) return;
-    for (int32_t i = 0; i < lista->n; i++) free(lista->tokens[i].texto);
-    free(lista->tokens);
+    if (lista->fluxo) {
+        for (int32_t b = 0; b < lista->nblocos; b++) bloco_solta(lista->blocos[b]);
+        free(lista->blocos);
+        free(lista->lexer);
+    } else {
+        for (int32_t i = 0; i < lista->n; i++) free(lista->tokens[i].texto);
+        free(lista->tokens);
+    }
     free(lista->avisos);
     free(lista->erros);
     for (int32_t i = 0; i < lista->ninterps; i++) free(lista->interps[i].txt);

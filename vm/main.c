@@ -1144,11 +1144,14 @@ static int cmd_ast(const char *arquivo)
      * registrado e ele pula pro próximo. Sem isso a árvore acabava na linha do
      * erro, e o painel de estrutura do editor esvaziava dali pra baixo
      * justamente enquanto se digita. Os erros saem em `erros`. */
-    PSTokenList *tl = ps_lexer_tokenize_modo(fonte, tam, 0, 1);
+    PSTokenList *tl = NULL;
+    PSParseResult *r = ps_parse_fonte(fonte, tam, 1, &tl);
     free(fonte);
-    if (!tl) { printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
-    PSParseResult *r = ps_parse_lista(tl, 1);
-    if (!r) { ps_lexer_free(tl); printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1; }
+    if (!r || !tl) {
+        if (r) ps_parse_free(r);
+        ps_lexer_free(tl);
+        printf("{\"ok\":false,\"msg\":\"sem memoria\",\"arvore\":null}\n"); return 1;
+    }
 
     int nerros = tl->nerros + r->nerros;
     if (nerros > 0) {
@@ -1535,7 +1538,7 @@ int main(int argc, char **argv)
     const char *cmd = argv[1];
 
     if (!strcmp(cmd, "--version") || !strcmp(cmd, "-V") || !strcmp(cmd, "-v")) {
-        printf("PoolScript %s [PSVM] (%s)\n", PS_VERSAO, PS_BUILD_DATA);
+        printf("Jinga %s [PSVM] (%s) Runtime standalone\n", PS_VERSAO, PS_BUILD_DATA);
         return 0;
     }
     if (!strcmp(cmd, "--help") || !strcmp(cmd, "-h") || !strcmp(cmd, "help")) {
@@ -1543,7 +1546,7 @@ int main(int argc, char **argv)
         return 0;
     }
     if (!strcmp(cmd, "//doc")) {
-        printf("Especificacao da PoolScript:\n  %s\n", SPEC_URL);
+        printf("Especificacao da Jinga (%s):\n  %s\n", PS_VERSAO, SPEC_URL);
         return 0;
     }
     if (!strcmp(cmd, "--check") || !strcmp(cmd, "check")) {

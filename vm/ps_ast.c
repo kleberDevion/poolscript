@@ -61,12 +61,29 @@ void ps_arena_free(PSArena *a)
     a->total = 0;
 }
 
+void ps_arena_reinicia(PSArena *a)
+{
+    /* Fica o bloco do fim da lista (o primeiro que nasceu, de tamanho
+     * padrão); os outros vão embora. Um bloco grande de um nó gigante não
+     * fica preso: ele nunca é o primeiro. */
+    PSArenaBloco *b = a->blocos, *ultimo = NULL;
+    while (b) {
+        PSArenaBloco *prox = b->prox;
+        if (!prox) { ultimo = b; break; }
+        free(b);
+        b = prox;
+    }
+    if (ultimo) { ultimo->prox = NULL; ultimo->usado = 0; }
+    a->blocos = ultimo;
+    a->total = 0;
+}
+
 PSNode *ps_node_novo(PSArena *a, PSNodeKind k, int32_t line, int32_t col)
 {
     PSNode *n = ps_arena_alloc(a, sizeof(PSNode));
     if (!n) return NULL;
     memset(n, 0, sizeof(*n));
-    n->kind = k;
+    n->kind = (uint8_t)k;
     n->line = line;
     n->col = col;
     return n;
@@ -75,7 +92,10 @@ PSNode *ps_node_novo(PSArena *a, PSNodeKind k, int32_t line, int32_t col)
 int ps_vec_push(PSArena *a, PSNodeVec *v, PSNode *no)
 {
     if (v->n + 1 > v->cap) {
-        int32_t novo = v->cap < 8 ? 8 : v->cap * 2;
+        /* começa com 2: a maioria das listas (argumentos, parâmetros, corpo
+         * de uma funct curta) tem 1 ou 2 itens, e 8 lugares por lista eram
+         * a maior sobra da arena */
+        int32_t novo = v->cap < 2 ? 2 : v->cap * 2;
         /* A arena não realoca no lugar: copia pro bloco novo e abandona o
          * antigo. Desperdiça um pouco, mas mantém o free trivial (um único
          * ps_arena_free no fim) — trade justo pra uma estrutura efêmera. */

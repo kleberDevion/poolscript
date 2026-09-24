@@ -995,8 +995,9 @@ static int model_campo_aceita(int32_t tipo, const Value *v);
 
 typedef struct {
     int32_t  *code;
-    int32_t  *linhas;      /* linha do fonte de cada palavra do code (ou NULL) */
-    int32_t  *colunas;     /* coluna do fonte de cada palavra (ou NULL) */
+    int32_t  *linhas;      /* linha do fonte de cada INSTRUÇÃO (ncode/2 entradas;
+                            * a da palavra `ip` é `linhas[ip / 2]`), ou NULL */
+    int32_t  *colunas;     /* coluna do fonte de cada instrução (idem), ou NULL */
     int       ncode;
     Value    *consts;
     int       nconsts;
@@ -1013,7 +1014,8 @@ typedef struct {
      * CHECA — argumento de tipo errado é erro, nunca conversão. */
     char    **param_tipos;
     char     *nome;        /* nome da action — usado na mensagem de erro */
-    char     *arquivo;     /* arquivo-fonte deste proto — pro traceback (ou NULL) */
+    const char *arquivo;   /* arquivo-fonte deste proto — pro traceback (ou NULL);
+                            * é da tabela `VM.arquivos`, compartilhado */
     int       eh_gerador;  /* chamar cria gerador em vez de empilhar frame */
     int       eh_async;    /* `async action` — chamar cria fibra+future */
     int       eh_static;   /* `@static` — chamável na Entity sem instância */
@@ -1163,6 +1165,11 @@ static inline void ps_ctx_make(PS_CTX *ctx, void *stack, size_t size, void (*ent
 struct VM_ {
     Proto  *protos;
     int     nprotos;
+    /* Os caminhos de arquivo que os protos apontam (`Proto.arquivo`), um por
+     * arquivo: cada proto tinha a própria cópia do caminho inteiro, e um
+     * arquivo com milhares de functs era milhares de cópias iguais. */
+    char  **arquivos;
+    int     narquivos;
     PSClassDefC *classes;
     int          nclasses;
     /* descritores de model — copiados do programa, mesma lição do classes */
@@ -23732,7 +23739,7 @@ static int64_t dbg_inteiro(Value v, int64_t padrao)
 static int dbg_linha(Proto *pr, int ip)
 {
     if (!pr->linhas || ip < 2 || (ip - 2) >= pr->ncode) return 0;
-    return pr->linhas[ip - 2];
+    return pr->linhas[(ip - 2) / 2];
 }
 
 static const char *dbg_arquivo(Proto *pr)
@@ -24094,7 +24101,7 @@ static void dbg_serve(VM *vm, int fp)
 static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
 {
     Debug *g = &vm->dbg;
-    int linha = (p->linhas && ip >= 0 && ip < p->ncode) ? p->linhas[ip] : 0;
+    int linha = (p->linhas && ip >= 0 && ip < p->ncode) ? p->linhas[ip / 2] : 0;
     if (linha <= 0) return;
 
     int proto_id = (int)(p - vm->protos);
@@ -26457,8 +26464,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     nova->ntip = i + 1;
                 }
             }
-            nova->npais = def->npais;
             nova->pais = def->npais > 0 ? calloc((size_t)def->npais, sizeof(PSClass *)) : NULL;
+            /* vetor antes do contador: sem memória o objeto fica com 0 pais
+             * (o GC o percorre pelo contador) — achado pelo `make oom` */
+            if (def->npais > 0 && !nova->pais) ERRO_T(vm, "MemoryError", "sem memoria");
+            nova->npais = def->npais;
             for (int32_t i = def->npais - 1; i >= 0; i--) {
                 Value pv = stack[--sp];
                 if (!EH_CLASS(pv)) ERRO(vm, "pai de Entity precisa ser outra Entity");
@@ -27460,9 +27470,9 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * `ip` do frame. `ip` já avançou 2 na busca, então a
          * instrução é a de `ip-2`. */
         int linha_agora = (p && p->linhas && ip >= 2 && (ip - 2) < p->ncode)
-                          ? p->linhas[ip - 2] : 0;
+                          ? p->linhas[(ip - 2) / 2] : 0;
         int col_agora   = (p && p->colunas && ip >= 2 && (ip - 2) < p->ncode)
-                          ? p->colunas[ip - 2] : 0;
+                          ? p->colunas[(ip - 2) / 2] : 0;
         /* Procura o `try` mais interno ainda ativo. Restaurar fp/sp/
          * locals_top é o que permite capturar erro levantado vários frames
          * abaixo: a máquina volta exatamente ao estado do `try`. */
@@ -27515,7 +27525,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     int qip = vm->frames[f].ip;
                     vm->tb[vm->ntb].proto = vm->frames[f].proto;
                     vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
-                                            ? pr->linhas[qip - 2] : 0;
+                                            ? pr->linhas[(qip - 2) / 2] : 0;
                     vm->tb[vm->ntb].col = 0;
                     vm->ntb++;
                 }
@@ -27532,7 +27542,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     int qip = vm->frames[f].ip;
                     vm->tb[vm->ntb].proto = vm->frames[f].proto;
                     vm->tb[vm->ntb].linha = (pr->linhas && qip >= 2 && (qip - 2) < pr->ncode)
-                                            ? pr->linhas[qip - 2] : 0;
+                                            ? pr->linhas[(qip - 2) / 2] : 0;
                     vm->tb[vm->ntb].col = 0;   /* 0 = reporta usa a 1ª não-branco */
                     vm->ntb++;
                 }
@@ -27602,7 +27612,7 @@ static void libera_vm(VM *vm)
             free(vm->protos[i].colunas);
             free(vm->protos[i].consts);
             free(vm->protos[i].nome);
-            free(vm->protos[i].arquivo);
+            /* `arquivo` é da tabela `vm->arquivos`, solta abaixo */
             if (vm->protos[i].param_nomes) {
                 for (int k = 0; k < vm->protos[i].nparams; k++)
                     free(vm->protos[i].param_nomes[k]);
@@ -27629,6 +27639,8 @@ static void libera_vm(VM *vm)
         }
         free(vm->protos);
     }
+    for (int i = 0; i < vm->narquivos; i++) free(vm->arquivos[i]);
+    free(vm->arquivos);
     if (vm->classes) {
         for (int i = 0; i < vm->nclasses; i++) {
             free(vm->classes[i].nome);
@@ -27722,6 +27734,66 @@ static int copia_campos_tipados(PSClassDefC *d, const PSClassDef *o)
         d->ntip = k + 1;
     }
     return 0;
+}
+
+/* O caminho `s` como a VM o guarda: uma cópia só por arquivo, compartilhada
+ * por todos os protos dele (ver `VM.arquivos`). NULL sem memória. */
+static const char *vm_arquivo(VM *vm, const char *s)
+{
+    for (int i = 0; i < vm->narquivos; i++)
+        if (strcmp(vm->arquivos[i], s) == 0) return vm->arquivos[i];
+    char **nv = realloc(vm->arquivos, sizeof(char *) * (size_t)(vm->narquivos + 1));
+    if (!nv) return NULL;
+    vm->arquivos = nv;
+    char *copia = strdup(s);
+    if (!copia) return NULL;
+    vm->arquivos[vm->narquivos++] = copia;
+    return copia;
+}
+
+/* O proto da VM ASSUME os vetores do proto compilado: mesmos ponteiros, e o
+ * compilado fica sem eles (o `ps_compila_free` solta só o que sobrou). Os
+ * tipos são os mesmos dos dois lados; o que a VM precisa que exista mesmo
+ * vazio (`code` de um proto sem instrução) é criado aqui. */
+static int proto_assume(Proto *p, PSProto *o)
+{
+    /* vetor primeiro, contador depois: nunca há um instante em que o
+     * contador diz "tem N" e o vetor ainda é NULL (o `libera_vm` percorre
+     * pelo contador) */
+    p->code = o->code;                 o->code = NULL;
+    if (!p->code) p->code = malloc(sizeof(int32_t));
+    p->linhas = o->linhas;             o->linhas = NULL;
+    p->colunas = o->colunas;           o->colunas = NULL;
+    p->ncode = o->ncode;
+    p->nlocals = o->nlocals;
+    p->ndefaults = o->ndefaults;
+    p->slot_vararg = o->slot_vararg;
+    p->slot_kwarg = o->slot_kwarg;
+    p->eh_gerador = o->eh_gerador;
+    p->eh_async = o->eh_async;
+    p->eh_static = o->eh_static;
+    int falta = p->code == NULL;
+    p->upvals = o->upvals;             o->upvals = NULL;
+    p->upval_nomes = o->upval_nomes;   o->upval_nomes = NULL;
+    if (o->nupvals > 0 && !p->upval_nomes)
+        p->upval_nomes = calloc((size_t)o->nupvals, sizeof(char *));
+    if (p->upval_nomes) {
+        for (int32_t k = 0; k < o->nupvals; k++)
+            if (!p->upval_nomes[k] && !(p->upval_nomes[k] = strdup("?"))) falta = 1;
+        p->nupvals = o->nupvals;
+    } else if (o->nupvals > 0) {
+        falta = 1;
+    }
+    p->nome = o->nome;                 o->nome = NULL;
+    p->param_nomes = o->param_nomes;   o->param_nomes = NULL;
+    if (p->param_nomes)
+        for (int32_t k = 0; k < o->nparams; k++)
+            if (!p->param_nomes[k] && !(p->param_nomes[k] = strdup(""))) falta = 1;
+    p->param_tipos = o->param_tipos;   o->param_tipos = NULL;
+    p->nparams = o->nparams;
+    p->vars = o->vars;                 o->vars = NULL;
+    p->nvars = o->nvars;               o->nvars = 0;
+    return falta ? -1 : 0;             /* sem memória: o que foi assumido já é da VM */
 }
 
 static int carrega_protos(VM *vm, PSPrograma *prog)
@@ -27823,93 +27895,17 @@ static int carrega_protos(VM *vm, PSPrograma *prog)
     for (int32_t i = 0; i < prog->nprotos; i++) {
         PSProto *o = &prog->protos[i];
         Proto *p = &vm->protos[i];
-        p->ncode = o->ncode;
-        p->code = malloc(sizeof(int32_t) * (size_t)(o->ncode > 0 ? o->ncode : 1));
+        /* A VM ASSUME os vetores do programa compilado (código, linhas,
+         * nomes, capturas, tabela do debugger) em vez de copiá-los: o
+         * PSPrograma é liberado logo depois, e ter o programa inteiro duas
+         * vezes na memória era o pico de um arquivo grande. O `ps_compila_free`
+         * só solta o que ficou (os campos assumidos vão a NULL). As constantes
+         * continuam convertidas (PSConst -> Value). */
+        int faltou = proto_assume(p, o);
         p->nconsts = o->nconsts;
         p->consts = malloc(sizeof(Value) * (size_t)(o->nconsts > 0 ? o->nconsts : 1));
-        p->nlocals = o->nlocals;
-        p->nparams = o->nparams;
-        p->ndefaults = o->ndefaults;
-        p->slot_vararg = o->slot_vararg;
-        p->slot_kwarg = o->slot_kwarg;
-        p->eh_gerador = o->eh_gerador;
-        p->eh_async = o->eh_async;
-        p->eh_static = o->eh_static;
-        /* upvalues: o PSPrograma some antes da execução, então copia */
-        p->nupvals = o->nupvals;
-        p->upvals = NULL;
-        p->upval_nomes = NULL;
-        if (o->nupvals > 0) {
-            p->upvals = malloc(sizeof(PSUpval) * (size_t)o->nupvals);
-            if (!p->upvals) return -1;
-            memcpy(p->upvals, o->upvals, sizeof(PSUpval) * (size_t)o->nupvals);
-            p->upval_nomes = calloc((size_t)o->nupvals, sizeof(char *));
-            if (!p->upval_nomes) return -1;
-            for (int32_t k = 0; k < o->nupvals; k++)
-                p->upval_nomes[k] = strdup(o->upval_nomes && o->upval_nomes[k]
-                                           ? o->upval_nomes[k] : "?");
-        }
-        /* COPIA os nomes: o PSPrograma é liberado logo depois de carregar,
-         * antes da execução. Guardar o ponteiro dele deixava `param_nomes`
-         * pendurado e a primeira chamada nomeada segfaultava. */
-        /* mesma razão do param_nomes: o PSPrograma some antes da execução */
-        p->nome = strdup(o->nome ? o->nome : "?");
-        if (!p->nome) return -1;
-        p->param_nomes = NULL;
-        if (o->param_nomes && o->nparams > 0) {
-            p->param_nomes = calloc((size_t)o->nparams, sizeof(char *));
-            if (!p->param_nomes) return -1;
-            for (int32_t k = 0; k < o->nparams; k++) {
-                const char *src_n = o->param_nomes[k] ? o->param_nomes[k] : "";
-                size_t ln = strlen(src_n);
-                p->param_nomes[k] = malloc(ln + 1);
-                if (!p->param_nomes[k]) return -1;
-                memcpy(p->param_nomes[k], src_n, ln + 1);
-            }
-        }
-        /* mesma cópia pros tipos declarados dos parâmetros */
-        p->param_tipos = NULL;
-        if (o->param_tipos && o->nparams > 0) {
-            p->param_tipos = calloc((size_t)o->nparams, sizeof(char *));
-            if (!p->param_tipos) return -1;
-            for (int32_t k = 0; k < o->nparams; k++) {
-                if (!o->param_tipos[k]) continue;   /* este não tem tipo */
-                size_t lt = strlen(o->param_tipos[k]);
-                p->param_tipos[k] = malloc(lt + 1);
-                if (!p->param_tipos[k]) return -1;
-                memcpy(p->param_tipos[k], o->param_tipos[k], lt + 1);
-            }
-        }
-        /* tabela de variáveis do debugger: a VM precisa ser dona das strings,
-         * porque o PSPrograma é liberado antes da execução começar. */
-        /* Monta num local e publica ponteiro E contador JUNTOS, no fim: assim
-         * não existe instante em que `p->vars` está visível pela metade. */
-        p->vars  = NULL;
-        p->nvars = 0;
-        if (o->vars && o->nvars > 0) {
-            PSVarDbg *vs = calloc((size_t)o->nvars, sizeof(PSVarDbg));
-            if (vs) {
-                for (int32_t k = 0; k < o->nvars; k++) {
-                    vs[k] = o->vars[k];
-                    vs[k].nome = o->vars[k].nome ? strdup(o->vars[k].nome) : NULL;
-                }
-                p->vars  = vs;
-                p->nvars = o->nvars;
-            }
-        }
-        if (!p->code || !p->consts) return -1;
-        memcpy(p->code, o->code, sizeof(int32_t) * (size_t)o->ncode);
-        /* tabela de linhas (pro erro de runtime dizer onde) — pode faltar */
-        p->linhas = NULL;
-        if (o->linhas && o->ncode > 0) {
-            p->linhas = malloc(sizeof(int32_t) * (size_t)o->ncode);
-            if (p->linhas) memcpy(p->linhas, o->linhas, sizeof(int32_t) * (size_t)o->ncode);
-        }
-        p->colunas = NULL;
-        if (o->colunas && o->ncode > 0) {
-            p->colunas = malloc(sizeof(int32_t) * (size_t)o->ncode);
-            if (p->colunas) memcpy(p->colunas, o->colunas, sizeof(int32_t) * (size_t)o->ncode);
-        }
+        if (!p->nome) { p->nome = strdup("?"); if (!p->nome) return -1; }
+        if (faltou || !p->code || !p->consts) return -1;
 
         /* zera antes: se criar string disparar GC, o pool precisa estar
          * num estado marcável */
@@ -28120,77 +28116,19 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
     for (int32_t i = 0; i < prog->nprotos; i++) {
         PSProto *o = &prog->protos[i];
         Proto   *d = &vm->protos[*base_proto + i];
-        d->ncode = o->ncode;
-        d->code = malloc(sizeof(int32_t) * (size_t)(o->ncode > 0 ? o->ncode : 1));
-        if (!d->code) return -1;
-        memcpy(d->code, o->code, sizeof(int32_t) * (size_t)o->ncode);
+        /* a VM assume os vetores do compilado (ver `proto_assume`); o código
+         * é relocado no lugar — linhas e tabela do debugger são do fonte e
+         * não sofrem relocação */
+        int faltou = proto_assume(d, o);
+        /* o contador acompanha o que já foi assumido: uma falha no meio do
+         * laço (constante sem memória) deixa esses vetores com a VM, e o
+         * `libera_vm` os solta — antes vazavam, nem o programa compilado os
+         * tinha mais */
+        vm->nprotos = *base_proto + i + 1;
+        if (faltou || !d->code) return -1;
+        if (!d->nome) { d->nome = strdup("?"); if (!d->nome) return -1; }
         reloca_codigo(d->code, d->ncode, *base_proto, *base_global, *base_classe,
                       base_model, base_enum);
-        /* linhas não sofrem relocação (são do fonte, não índices) */
-        d->linhas = NULL;
-        if (o->linhas && o->ncode > 0) {
-            d->linhas = malloc(sizeof(int32_t) * (size_t)o->ncode);
-            if (d->linhas) memcpy(d->linhas, o->linhas, sizeof(int32_t) * (size_t)o->ncode);
-        }
-        d->colunas = NULL;
-        if (o->colunas && o->ncode > 0) {
-            d->colunas = malloc(sizeof(int32_t) * (size_t)o->ncode);
-            if (d->colunas) memcpy(d->colunas, o->colunas, sizeof(int32_t) * (size_t)o->ncode);
-        }
-        /* tabela do debugger — como as linhas, é do fonte e não sofre relocação.
-         * Este é o caminho do `import`: sem copiar AQUI também, o debugger via
-         * variáveis no arquivo principal e nenhuma dentro de um módulo. */
-        d->vars  = NULL;
-        d->nvars = 0;
-        if (o->vars && o->nvars > 0) {
-            PSVarDbg *vs = calloc((size_t)o->nvars, sizeof(PSVarDbg));
-            if (vs) {
-                for (int32_t k = 0; k < o->nvars; k++) {
-                    vs[k] = o->vars[k];
-                    vs[k].nome = o->vars[k].nome ? strdup(o->vars[k].nome) : NULL;
-                }
-                d->vars  = vs;
-                d->nvars = o->nvars;
-            }
-        }
-
-        d->nlocals = o->nlocals;
-        d->nparams = o->nparams;
-        d->ndefaults = o->ndefaults;
-        d->slot_vararg = o->slot_vararg;
-        d->slot_kwarg = o->slot_kwarg;
-        d->eh_gerador = o->eh_gerador;
-        d->eh_async = o->eh_async;
-        d->eh_static = o->eh_static;
-        /* upvalues: o PSPrograma some antes da execução, então copia */
-        d->nupvals = o->nupvals;
-        d->upvals = NULL;
-        d->upval_nomes = NULL;
-        if (o->nupvals > 0) {
-            d->upvals = malloc(sizeof(PSUpval) * (size_t)o->nupvals);
-            if (!d->upvals) return -1;
-            memcpy(d->upvals, o->upvals, sizeof(PSUpval) * (size_t)o->nupvals);
-            d->upval_nomes = calloc((size_t)o->nupvals, sizeof(char *));
-            if (!d->upval_nomes) return -1;
-            for (int32_t k = 0; k < o->nupvals; k++)
-                d->upval_nomes[k] = strdup(o->upval_nomes && o->upval_nomes[k]
-                                           ? o->upval_nomes[k] : "?");
-        }
-        d->nome = strdup(o->nome ? o->nome : "?");
-        d->param_nomes = NULL;
-        if (o->param_nomes && o->nparams > 0) {
-            d->param_nomes = calloc((size_t)o->nparams, sizeof(char *));
-            if (!d->param_nomes) return -1;
-            for (int32_t k = 0; k < o->nparams; k++)
-                d->param_nomes[k] = strdup(o->param_nomes[k] ? o->param_nomes[k] : "");
-        }
-        d->param_tipos = NULL;
-        if (o->param_tipos && o->nparams > 0) {
-            d->param_tipos = calloc((size_t)o->nparams, sizeof(char *));
-            if (!d->param_tipos) return -1;
-            for (int32_t k = 0; k < o->nparams; k++)
-                d->param_tipos[k] = o->param_tipos[k] ? strdup(o->param_tipos[k]) : NULL;
-        }
 
         d->consts = calloc((size_t)(o->nconsts > 0 ? o->nconsts : 1), sizeof(Value));
         if (!d->consts) return -1;
@@ -28600,17 +28538,18 @@ int ps_embute_deps(const char *caminho_main, PSEmbutido **lista, int32_t *n,
     }
 
     for (int32_t i = 0; i < *n; i++) {
-        PSTokenList *toks = ps_lexer_tokenize(l[i].fonte, l[i].tam);
-        if (!toks || !toks->ok) {
+        PSTokenList *toks = NULL;
+        PSParseResult *r = ps_parse_fonte(l[i].fonte, l[i].tam, 0, &toks);
+        if (!r || !toks || !toks->ok) {
             snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
                      toks ? toks->erro : "sem memoria", toks ? toks->erro_linha : 0);
-            if (toks) ps_lexer_free(toks);
+            ps_lexer_free(toks);
+            if (r) ps_parse_free(r);
             ps_embutidos_solta(l, *n); *lista = NULL; *n = 0;
             return -1;
         }
-        PSParseResult *r = ps_parse_lista(toks, 0);
         ps_lexer_free(toks);
-        if (!r || !r->ok) {
+        if (!r->ok) {
             snprintf(erro, erro_cap, "%s: %s (linha %d)", l[i].textual,
                      r ? r->erro : "sem memoria", r ? r->erro_linha : 0);
             if (r) ps_parse_free(r);
@@ -28792,13 +28731,6 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     char *fonte = le_fonte_modulo(caminho, &lidos);   /* embutido ou disco */
     if (!fonte) return 0;
 
-    PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
-    free(fonte);
-    if (!toks || !toks->ok) { if (toks) ps_lexer_free(toks); return 0; }
-    PSParseResult *r = ps_parse_lista(toks, 0);
-    ps_lexer_free(toks);
-    if (!r || !r->ok) { if (r) ps_parse_free(r); return 0; }
-
     char moddir[1024];
     snprintf(moddir, sizeof(moddir), "%s", abspath);
     char *barra = strrchr(moddir, '/');
@@ -28807,8 +28739,12 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     int cortou_aqui = 0;
     EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &filho };
-    PSPrograma *prog = ps_compila_com(r->programa, &res);
-    ps_parse_free(r);
+    /* compilado direto do fonte, uma declaração por vez (ps_compila_fonte) */
+    PSFonteCompilado fc;
+    PSPrograma *prog = ps_compila_fonte(fonte, lidos, 0, &res, &fc);
+    free(fonte);
+    ps_lexer_free(fc.lexer);
+    ps_parse_free(fc.parse);
     /* Não compila: o import de runtime é que diz o SyntaxError, na linha dele.
      * `estrela_incompleta`: um `*` DELE não expandiu, então a lista que sairia
      * daqui perdeu nomes — recusar faz a recusa subir até o import que o
@@ -28904,25 +28840,6 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
     char *fonte = le_fonte_modulo(caminho, &lidos);
     if (!fonte) { a->info.falhou = 1; snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "ImportError");
                   snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "nao consegui abrir %.200s", caminho); return 2; }
-    PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
-    free(fonte);
-    if (!toks || !toks->ok) {
-        a->info.falhou = 1;
-        snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "SyntaxError");
-        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s", toks ? toks->erro : "sem memoria");
-        if (toks) { a->info.erro_linha = toks->erro_linha; a->info.erro_col = toks->erro_col; ps_lexer_free(toks); }
-        return 2;
-    }
-    PSParseResult *r = ps_parse_lista(toks, 0);
-    ps_lexer_free(toks);
-    if (!r || !r->ok) {
-        a->info.falhou = 1;
-        snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "SyntaxError");
-        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s", r ? r->erro : "sem memoria");
-        if (r) { a->info.erro_linha = r->erro_linha; a->info.erro_col = r->erro_col; ps_parse_free(r); }
-        return 2;
-    }
-
     char moddir[1024];
     snprintf(moddir, sizeof(moddir), "%s", abspath);
     { char *barra = strrchr(moddir, '/'); if (barra) *barra = '\0'; else snprintf(moddir, sizeof(moddir), "%s", "."); }
@@ -28930,7 +28847,26 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
     int cortou_aqui = 0;
     EstrelaCtx filho = { moddir, ctx->dir_script, &aqui, &cortou_aqui, ctx->so_checa };
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &filho };
-    PSPrograma *prog = ps_compila_com(r->programa, &res);
+    /* compilado direto do fonte, uma declaração por vez; o que fica no cache
+     * é a árvore PODADA (os cabeçalhos), não o módulo inteiro */
+    PSFonteCompilado fc;
+    PSPrograma *prog = ps_compila_fonte(fonte, lidos, 0, &res, &fc);
+    free(fonte);
+    PSParseResult *r = fc.parse;
+    if (!fc.lexer || !fc.lexer->ok || !r || !r->ok) {
+        a->info.falhou = 1;
+        snprintf(a->info.erro_classe, sizeof(a->info.erro_classe), "SyntaxError");
+        int lex_ruim = fc.lexer && !fc.lexer->ok;
+        snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s",
+                 lex_ruim ? fc.lexer->erro : (r && !r->ok) ? r->erro : "sem memoria");
+        if (lex_ruim) { a->info.erro_linha = fc.lexer->erro_linha; a->info.erro_col = fc.lexer->erro_col; }
+        else if (r && !r->ok) { a->info.erro_linha = r->erro_linha; a->info.erro_col = r->erro_col; }
+        ps_lexer_free(fc.lexer);
+        ps_parse_free(r);
+        ps_compila_free(prog);
+        return 2;
+    }
+    ps_lexer_free(fc.lexer);
     /* Não compila (sintaxe ou tipo): a classe e a frase do PRIMEIRO erro, as
      * mesmas que o `carrega_modulo_ps` mostra na linha do import. */
     if (!prog || !prog->ok) {
@@ -29026,26 +28962,6 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     vm->mod_erro_arquivo[0] = '\0';
     vm->mod_erro_linha = vm->mod_erro_col = 0;
 
-    PSTokenList *toks = ps_lexer_tokenize(fonte, lidos);
-    free(fonte);
-    if (!toks || !toks->ok) {
-        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, toks ? toks->erro : "sem memoria");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
-        snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
-        if (toks) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
-        if (toks) ps_lexer_free(toks);
-        return -1;
-    }
-    PSParseResult *r = ps_parse_lista(toks, 0);
-    ps_lexer_free(toks);
-    if (!r || !r->ok) {
-        snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, r ? r->erro : "sem memoria");
-        snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
-        snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
-        if (r) { vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col; }
-        if (r) ps_parse_free(r);
-        return -1;
-    }
     /* `import *` dentro do módulo resolve a partir da pasta DELE — a mesma
      * que o corpo vai ter como `dir_modulo` quando rodar */
     char dir_do_mod[1024];
@@ -29057,8 +28973,29 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     EstrelaVisita vis_mod = { abspath, NULL };
     EstrelaCtx ectx_mod = { dir_do_mod, vm->dir_script, &vis_mod, NULL, 0 };   /* rodando */
     PSResolvedor res_mod = { estrela_nomes_de, estrela_modulo_de, &ectx_mod };
-    PSPrograma *prog = ps_compila_com(r->programa, &res_mod);
-    ps_parse_free(r);
+    /* compilado direto do fonte, uma declaração por vez (ps_compila_fonte) */
+    PSFonteCompilado fc;
+    PSPrograma *prog = ps_compila_fonte(fonte, lidos, 0, &res_mod, &fc);
+    free(fonte);
+    {
+        PSTokenList *toks = fc.lexer;
+        PSParseResult *r = fc.parse;
+        int lex_ruim = toks && !toks->ok, sint_ruim = r && !r->ok;
+        if (!toks || !r || lex_ruim || sint_ruim) {
+            const char *msg = lex_ruim ? toks->erro : sint_ruim ? r->erro : "sem memoria";
+            snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, msg);
+            snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
+            snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
+            if (lex_ruim) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
+            else if (sint_ruim) { vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col; }
+            ps_lexer_free(toks);
+            ps_parse_free(r);
+            ps_compila_free(prog);
+            return -1;
+        }
+        ps_lexer_free(toks);
+        ps_parse_free(r);
+    }
     if (!prog || !prog->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, prog ? prog->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
@@ -29077,8 +29014,11 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         return -1;
     }
     /* protos recém-anexados são deste módulo — marca o arquivo pro traceback */
-    for (int32_t i = 0; i < prog->nprotos; i++)
-        if (!vm->protos[bp + i].arquivo) vm->protos[bp + i].arquivo = strdup(abspath);
+    {
+        const char *arq = vm_arquivo(vm, abspath);
+        for (int32_t i = 0; i < prog->nprotos; i++)
+            if (!vm->protos[bp + i].arquivo) vm->protos[bp + i].arquivo = arq;
+    }
 
     /* builtins também valem dentro do módulo */
     for (int32_t i = 0; i < prog->nglobais; i++) {
@@ -29791,8 +29731,51 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
      * seguem depois do erro e devolvem TODOS — os de sintaxe vão em `e->tipos`,
      * a mesma lista que os de tipo já usavam. Rodar o programa não passa por
      * aqui e continua parando no primeiro erro. */
-    PSTokenList *toks = ps_lexer_tokenize_modo(fonte, len, 0, 1);
-    if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+    /* O MESMO resolvedor de rodar: o `--check` compilava cego pro que o
+     * import traz — `import *` ficava sem expandir e o checador não podia
+     * dizer que um nome não existe. Um arquivo passava aqui e falhava ao
+     * rodar, que é o contrário do que o `--check` existe pra fazer. Sem
+     * caminho (buffer do editor) só restam as libs globais, como ao rodar. */
+    char dir_script[sizeof(((VM *)0)->dir_script)];
+    dir_do_script(caminho, dir_script, sizeof(dir_script));
+    char abs_script[1024];
+    abs_script[0] = '\0';
+    if (caminho) {
+        char *rp = realpath(caminho, NULL);
+        snprintf(abs_script, sizeof(abs_script), "%s", rp ? rp : caminho);
+        free(rp);
+    }
+    EstrelaVisita vis_script = { abs_script, NULL };
+    /* `so_checa = 1`: aqui é o `--check`, e módulo que não existe é erro do
+     * checador, não silêncio. Rodando (`ps_roda_fonte`) segue 0. */
+    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL, 1 };
+    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
+
+    /* Compilado direto do fonte, uma declaração por vez (ps_compila_fonte),
+     * sem a árvore nem os tokens do arquivo inteiro na memória. */
+    PSFonteCompilado fc;
+    PSPrograma *prog = ps_compila_fonte(fonte, len, 1, &res, &fc);
+    PSTokenList *toks = fc.lexer;
+    PSParseResult *r = fc.parse;
+    if (!r || !toks) {
+        ps_parse_free(r);
+        ps_lexer_free(toks);
+        ps_compila_free(prog);
+        e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
+    }
+    if (!toks->ok || !r->ok) {
+        /* A lista DEFINITIVA de erros de sintaxe é a das duas passadas do
+         * lexer (grupo sem par liga a sincronia por declaração); a
+         * compilação fez só a primeira. Só código quebrado chega aqui. */
+        ps_parse_free(r); ps_lexer_free(toks);
+        ps_compila_free(prog); prog = NULL;
+        toks = NULL;
+        r = ps_parse_fonte(fonte, len, 1, &toks);
+        if (!r || !toks) {
+            ps_parse_free(r); ps_lexer_free(toks);
+            e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
+        }
+    }
     /* Os erros do LEXER não param mais a conferência: o parser roda mesmo
      * assim e os dois entram na mesma lista. Parar aqui escondia o resto — um
      * `(` sem par na linha 1 (que o lexer acusa) sumia com o erro de sintaxe da
@@ -29801,7 +29784,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
     PSAviso *lex = NULL;
     if (nlex > 0) {
         lex = malloc(sizeof(PSAviso) * (size_t)nlex);
-        if (!lex) { ps_lexer_free(toks); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+        if (!lex) { ps_lexer_free(toks); ps_parse_free(r); ps_compila_free(prog); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
         memcpy(lex, toks->erros, sizeof(PSAviso) * (size_t)nlex);
     }
     /* os avisos saem ANTES do free: a lista morre logo abaixo. Quem pediu vira
@@ -29814,9 +29797,7 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
             *navisos = toks->navisos;
         }
     }
-    PSParseResult *r = ps_parse_lista(toks, 1);
     ps_lexer_free(toks);
-    if (!r) { free(lex); e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (nlex > 0 || !r->ok) {
         /* lexer + parser numa lista só, na ordem do arquivo */
         int32_t nj = nlex + r->nerros;
@@ -29849,28 +29830,9 @@ int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErro
          * viraria um "name is not defined" que não existe — erro na causa, não
          * na cascata. */
         ps_parse_free(r);
+        ps_compila_free(prog);
         return -1;
     }
-    /* O MESMO resolvedor de rodar: o `--check` compilava cego pro que o
-     * import traz — `import *` ficava sem expandir e o checador não podia
-     * dizer que um nome não existe. Um arquivo passava aqui e falhava ao
-     * rodar, que é o contrário do que o `--check` existe pra fazer. Sem
-     * caminho (buffer do editor) só restam as libs globais, como ao rodar. */
-    char dir_script[sizeof(((VM *)0)->dir_script)];
-    dir_do_script(caminho, dir_script, sizeof(dir_script));
-    char abs_script[1024];
-    abs_script[0] = '\0';
-    if (caminho) {
-        char *rp = realpath(caminho, NULL);
-        snprintf(abs_script, sizeof(abs_script), "%s", rp ? rp : caminho);
-        free(rp);
-    }
-    EstrelaVisita vis_script = { abs_script, NULL };
-    /* `so_checa = 1`: aqui é o `--check`, e módulo que não existe é erro do
-     * checador, não silêncio. Rodando (`ps_roda_fonte`) segue 0. */
-    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL, 1 };
-    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
-    PSPrograma *prog = ps_compila_com(r->programa, &res);
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {
@@ -29903,15 +29865,6 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     e->tipos = NULL;
     e->ntipos = 0;
 
-    PSTokenList *toks = ps_lexer_tokenize(fonte, len);
-    if (!toks) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
-    if (!toks->ok) {
-        e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
-        e->linha = toks->erro_linha; e->col = toks->erro_col;
-        ps_lexer_free(toks);
-        return -1;
-    }
     /* Executável gerado (`-o`): `caminho` é o ELF — vale como nome do
      * programa (sys.argv[0], recarga do jinker) — mas a pasta do script, a
      * resolução dos módulos e o arquivo dos quadros do traceback são os do
@@ -29919,18 +29872,6 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
      * que compilou (`ps_emb_raiz`). Sem isso `import banco` procurava ao lado
      * do ELF e o quadro dizia "em psp-pool, linha 6". */
     const char *ancora = g_emb_main[0] ? g_emb_main : caminho;
-    ps_avisos_para_stderr(toks, ancora);
-
-    PSParseResult *r = ps_parse_lista(toks, 0);
-    ps_lexer_free(toks);
-    if (!r) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
-    if (!r->ok) {
-        e->tipo = PS_ERRO_SINTAXE;
-        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
-        e->linha = r->erro_linha; e->col = r->erro_col;
-        ps_parse_free(r);
-        return -1;
-    }
 
     /* Diretório do script: base do `import` de arquivo vizinho. Sem caminho
      * (código vindo de `-e` ou da extensão de teste) só restam as libs
@@ -29948,7 +29889,40 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     EstrelaVisita vis_script = { abs_script, NULL };
     EstrelaCtx ectx = { dir_script, dir_script, ancora ? &vis_script : NULL, NULL, 0 };   /* rodando */
     PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
-    PSPrograma *prog = ps_compila_com(r->programa, &res);
+
+    /* Compilado direto do fonte, uma declaração de topo por vez
+     * (ps_compila_fonte): nem os tokens nem a árvore do arquivo inteiro
+     * existem na memória. O erro do LEXER continua mandando: o parser pode
+     * ter tropeçado antes no mesmo trecho. */
+    PSFonteCompilado fc;
+    PSPrograma *prog = ps_compila_fonte(fonte, len, 0, &res, &fc);
+    PSTokenList *toks = fc.lexer;
+    PSParseResult *r = fc.parse;
+    if (!r || !toks) {
+        ps_parse_free(r);
+        ps_lexer_free(toks);
+        ps_compila_free(prog);
+        e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
+    }
+    if (!toks->ok) {
+        e->tipo = PS_ERRO_SINTAXE;
+        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
+        e->linha = toks->erro_linha; e->col = toks->erro_col;
+        ps_lexer_free(toks);
+        ps_parse_free(r);
+        ps_compila_free(prog);
+        return -1;
+    }
+    ps_avisos_para_stderr(toks, ancora);
+    ps_lexer_free(toks);
+    if (!r->ok) {
+        e->tipo = PS_ERRO_SINTAXE;
+        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
+        e->linha = r->erro_linha; e->col = r->erro_col;
+        ps_parse_free(r);
+        ps_compila_free(prog);
+        return -1;
+    }
     ps_parse_free(r);
     if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
     if (!prog->ok) {
@@ -29989,9 +29963,11 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     /* todos os protos carregados aqui são do script principal — marca o arquivo
      * deles pro traceback (os de módulo importado são marcados ao carregar).
      * No executável gerado é o caminho do fonte embutido, não o ELF. */
-    if (ancora)
+    if (ancora) {
+        const char *arq = vm_arquivo(&vm, ancora);
         for (int i = 0; i < vm.nprotos; i++)
-            if (!vm.protos[i].arquivo) vm.protos[i].arquivo = strdup(ancora);
+            if (!vm.protos[i].arquivo) vm.protos[i].arquivo = arq;
+    }
 
     /* liga os builtins nativos pelos nomes que o compilador registrou */
     for (int32_t i = 0; i < prog->nglobais; i++) {

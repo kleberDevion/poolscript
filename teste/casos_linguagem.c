@@ -1204,6 +1204,30 @@ const Caso CASOS_LINGUAGEM[] = {
 { "char recusa flutuante",
   "char c = 1.5\n",
   "", "AttributedValueError: variável c esperava char, recebeu flo", 2 },
+/* O nome de classe que fixa o tipo de um global vinha da árvore da
+ * declaração em compilação, e a compilação por declaração solta essa árvore
+ * antes da funct seguinte: a mensagem saía com lixo no lugar de `Bar`. As
+ * atribuições de `h` reocupam a memória da declaração anterior. */
+{ "tipo fixado por global de dentro de funct sobrevive a declaracao seguinte",
+  "g = Null\n"
+  "Entity Bar() {\n"
+  "    funct __init__(self) {\n"
+  "        self.x = 1\n"
+  "    }\n"
+  "}\n"
+  "funct f(Bar b) {\n"
+  "    global g\n"
+  "    g = b\n"
+  "}\n"
+  "funct h() {\n"
+  "    a1 = 1\n    a2 = 2\n    a3 = 3\n    a4 = 4\n    a5 = 5\n    a6 = 6\n"
+  "    a7 = 7\n    a8 = 8\n    a9 = 9\n    a10 = 10\n    a11 = 11\n    a12 = 12\n"
+  "    int x = g\n"
+  "    return x\n"
+  "}\n"
+  "f(Bar())\n"
+  "post(h())\n",
+  "", "AttributedValueError: variável x esperava int, recebeu Bar", 2 },
 { "char recusa codepoint invalido",
   "char c = -1\n", "", "nao e um caractere valido", 1 },
 /* `char funct` passou a EXISTIR (2026-09-08): todo tipo vale como retorno. O

@@ -326,10 +326,29 @@ typedef struct {
      * instrução, pra o erro de runtime dizer ONDE aconteceu. */
     int32_t linha_atual;
     int32_t coluna_atual;
-    /* Raiz da AST do programa — a especialização do `for each ... in range`
-     * precisa varrer o arquivo INTEIRO pra saber se `range` foi redefinido
-     * em algum ponto (inclusive depois do laço). */
-    PSNode *raiz;
+    /* `range` foi ligado em algum ponto do arquivo (inclusive depois do
+     * laço)? A especialização do `for each ... in range` precisa saber. Antes
+     * era uma varredura da árvore inteira a cada laço; a árvore inteira não
+     * existe mais, e a resposta é colhida na primeira passada. */
+    int range_ligado;
+
+    /* ── compilação em DUAS PASSADAS sobre o fonte (ver ps_compila_fonte) ──
+     *
+     * A árvore do arquivo inteiro custava ~1,6 KB por linha e ficava na
+     * memória até o fim da compilação: 1 milhão de linhas eram gigabytes, e a
+     * máquina entrava na swap. Agora o arquivo é lido uma declaração de topo
+     * por vez. Na primeira passada, o compilador guarda de cada declaração só
+     * o que OUTRAS declarações precisam (a "poda": cabeçalhos, campos, e os
+     * fatos dos corpos que o checador consulta) na arena `keep`; na segunda,
+     * lê de novo, gera o código de cada declaração e a solta.
+     *
+     * `gemeos`: o nó podado que corresponde a um nó da segunda passada, pela
+     * posição no fonte. É o que o `SimInfo.decl` guarda — a declaração da
+     * segunda passada morre no fim do statement dela, o gêmeo vive até o fim. */
+    int      fase;               /* 1 = colhendo, 2 = gerando código, 0 = árvore inteira */
+    PSArena *keep;
+    struct Gemeo { uint64_t chave; PSNode *no; } *gemeos;
+    int32_t  ngemeos, cap_gemeos;
     /* Tipo declarado dos nomes de MODULO (`str s = ...` no topo do arquivo,
      * dentro ou fora de bloco), colhido numa passada antes de compilar: uma
      * action compilada ANTES da declaracao ainda precisa saber o tipo pra
@@ -346,7 +365,7 @@ typedef struct {
     /* `incompleto`: resolvido, mas um ciclo de `*` cortou a lista — o resto
      * dos nomes só existe rodando, e o checador não pode negar nome nenhum */
     struct { PSNode *no; char **nomes; int32_t n; int resolvido; int incompleto; } *estrelas;
-    int32_t  nestrelas;
+    int32_t  nestrelas, cap_estrelas;
     /* o statement de topo do arquivo sendo compilado agora: `*` só vale nele */
     PSNode  *stmt_topo;
     /* nomes de MÓDULO gravados de dentro de uma funct com `global x` — o
@@ -450,20 +469,19 @@ static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
         int32_t *nc = realloc(UP(c, u)->code, sizeof(int32_t) * (size_t)novo);
         if (!nc) { cerro(c, "sem memoria", NULL); return -1; }
         UP(c, u)->code = nc;
-        /* tabelas de linha e coluna crescem junto com o code (mesma capacidade) */
-        int32_t *nl = realloc(UP(c, u)->linhas, sizeof(int32_t) * (size_t)novo);
+        /* tabelas de linha e coluna crescem junto com o code: UMA entrada por
+         * instrução (duas palavras), metade do tamanho do code */
+        int32_t *nl = realloc(UP(c, u)->linhas, sizeof(int32_t) * (size_t)(novo / 2));
         if (!nl) { cerro(c, "sem memoria", NULL); return -1; }
         UP(c, u)->linhas = nl;
-        int32_t *ncol = realloc(UP(c, u)->colunas, sizeof(int32_t) * (size_t)novo);
+        int32_t *ncol = realloc(UP(c, u)->colunas, sizeof(int32_t) * (size_t)(novo / 2));
         if (!ncol) { cerro(c, "sem memoria", NULL); return -1; }
         UP(c, u)->colunas = ncol;
         u->cap_code = novo;
     }
     int32_t pos = UP(c, u)->ncode;
-    UP(c, u)->linhas[pos]     = c->linha_atual;
-    UP(c, u)->linhas[pos + 1] = c->linha_atual;
-    UP(c, u)->colunas[pos]     = c->coluna_atual;
-    UP(c, u)->colunas[pos + 1] = c->coluna_atual;
+    UP(c, u)->linhas[pos / 2]  = c->linha_atual;
+    UP(c, u)->colunas[pos / 2] = c->coluna_atual;
     UP(c, u)->code[UP(c, u)->ncode++] = op;
     UP(c, u)->code[UP(c, u)->ncode++] = arg;
     return pos;
@@ -478,9 +496,10 @@ static void proto_encolhe(C *c, Unidade *u)
     PSProto *p = UP(c, u);
     if (p->ncode > 0 && p->ncode < u->cap_code) {
         size_t t = sizeof(int32_t) * (size_t)p->ncode;
-        int32_t *a = realloc(p->code, t);    if (a) p->code = a;
-        int32_t *b = realloc(p->linhas, t);  if (b) p->linhas = b;
-        int32_t *d = realloc(p->colunas, t); if (d) p->colunas = d;
+        size_t t2 = sizeof(int32_t) * (size_t)(p->ncode / 2);
+        int32_t *a = realloc(p->code, t);     if (a) p->code = a;
+        int32_t *b = realloc(p->linhas, t2);  if (b) p->linhas = b;
+        int32_t *d = realloc(p->colunas, t2); if (d) p->colunas = d;
         if (a && b && d) u->cap_code = p->ncode;
     }
     if (p->nconsts > 0 && p->nconsts < u->cap_consts) {
@@ -783,6 +802,7 @@ static int tp_decorador_embutido(PSNode *dec);
 static SimInfo *tp_sim_mod_pr(C *c, Unidade *u, PSNode *n);
 static PSNode *modulo_decl(const PSModuloAst *ma, const char *nome, int *decorado);
 static int tp_classe_importada(C *c, PSNode *d);
+static int mesmo_no(const PSNode *a, const PSNode *b);
 static int tp_aceita(C *c, const char *d, const char *v, PSNode *no, int declarado);
 static void tp_emite_confere(C *c, Unidade *u, const char *rotulo, const char *tipo, int declarado);
 static void expr(C *c, Unidade *u, PSNode *n);
@@ -950,7 +970,7 @@ static int liga_o_nome(C *c, PSNode *n, const char *alvo)
             /* `*` liga os nomes que o módulo exporta (e não o do módulo) */
             if (n->texto3) {
                 for (int32_t e = 0; e < c->nestrelas; e++) {
-                    if (c->estrelas[e].no != n) continue;
+                    if (!mesmo_no(c->estrelas[e].no, n)) continue;
                     for (int32_t k = 0; k < c->estrelas[e].n; k++)
                         if (!strcmp(c->estrelas[e].nomes[k], alvo)) return 1;
                 }
@@ -1591,6 +1611,74 @@ static const char *tp_canon(const char *t)
     return k ? k : t;
 }
 
+/* `tp_canon` pra um texto que vai ficar guardado além da declaração de onde
+ * veio (o `SimInfo.tipo` de um nome de módulo): um tipo da tabela é estático;
+ * um nome de classe é copiado pro pool do compilador, porque a árvore da
+ * segunda passada morre no fim do statement. */
+static const char *tp_canon_guarda(C *c, const char *t)
+{
+    if (!t) return NULL;
+    const char *k = ps_tipo_canonico(t);
+    if (k) return k;
+    /* sem memória pro pool o `tp_guarda` já acusou (a compilação falha);
+     * devolve o texto da árvore pra ninguém desreferenciar NULL até lá */
+    k = tp_guarda(c, t);
+    return k ? k : t;
+}
+
+/* ── gêmeos: o nó podado de um nó da segunda passada ────────────────────── */
+static uint64_t gemeo_chave(const PSNode *n)
+{
+    return ((uint64_t)(uint32_t)n->line << 32) | ((uint64_t)(uint32_t)n->col << 8) | (uint64_t)(n->kind & 0xFF);
+}
+
+static void gemeo_poe(C *c, PSNode *podado)
+{
+    if (!podado) return;
+    if ((c->ngemeos + 1) * 10 > c->cap_gemeos * 7) {
+        int32_t nc = c->cap_gemeos ? c->cap_gemeos * 2 : 64;
+        struct Gemeo *nv = calloc((size_t)nc, sizeof(*nv));
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        for (int32_t i = 0; i < c->cap_gemeos; i++) {
+            if (!c->gemeos[i].no) continue;
+            uint32_t m = (uint32_t)nc - 1, j = (uint32_t)(c->gemeos[i].chave * 11400714819323198485ull >> 20) & m;
+            while (nv[j].no) j = (j + 1) & m;
+            nv[j] = c->gemeos[i];
+        }
+        free(c->gemeos);
+        c->gemeos = nv; c->cap_gemeos = nc;
+    }
+    uint64_t ch = gemeo_chave(podado);
+    uint32_t m = (uint32_t)c->cap_gemeos - 1, j = (uint32_t)(ch * 11400714819323198485ull >> 20) & m;
+    while (c->gemeos[j].no) {
+        if (c->gemeos[j].chave == ch) { c->gemeos[j].no = podado; return; }
+        j = (j + 1) & m;
+    }
+    c->gemeos[j].chave = ch; c->gemeos[j].no = podado;
+    c->ngemeos++;
+}
+
+/* O gêmeo podado de `n`, ou o próprio `n` quando não há (compilação da
+ * árvore inteira, ou declaração que só vive dentro do statement). */
+static PSNode *gemeo_de(C *c, PSNode *n)
+{
+    if (!n || !c->cap_gemeos) return n;
+    uint64_t ch = gemeo_chave(n);
+    uint32_t m = (uint32_t)c->cap_gemeos - 1, j = (uint32_t)(ch * 11400714819323198485ull >> 20) & m;
+    while (c->gemeos[j].no) {
+        if (c->gemeos[j].chave == ch) return c->gemeos[j].no;
+        j = (j + 1) & m;
+    }
+    return n;
+}
+
+/* O mesmo nó, seja o ponteiro ou o gêmeo dele na outra passada. */
+static int mesmo_no(const PSNode *a, const PSNode *b)
+{
+    if (a == b) return 1;
+    return a && b && a->kind == b->kind && a->line == b->line && a->col == b->col;
+}
+
 /* `lado` é um dos lados da união `u`? */
 static int tp_tem_lado(const char *u, const char *lado)
 {
@@ -1932,7 +2020,7 @@ static void tp_junta_ligados(C *c, PSNode *n, char ***v, int32_t *cnt, int32_t *
             if (n->texto3) {                 /* `*`: os nomes que o módulo exporta */
                 int achou = 0;
                 for (int32_t e = 0; e < c->nestrelas; e++) {
-                    if (c->estrelas[e].no != n) continue;
+                    if (!mesmo_no(c->estrelas[e].no, n)) continue;
                     achou = 1;
                     if (!c->estrelas[e].resolvido || c->estrelas[e].incompleto) c->nomes_incertos = 1;
                     for (int32_t k = 0; k < c->estrelas[e].n; k++)
@@ -2069,7 +2157,7 @@ static int tp_metodo_decorado(C *c, const char *classe, PSNode *met)
     PSNode *d = tp_tipo_arq(c, classe);
     if (!d || d->kind != N_ENTITY_DECL) return 0;
     for (int32_t i = 1; i < d->lista.n; i++) {
-        if (d->lista.itens[i] != met) continue;
+        if (!mesmo_no(d->lista.itens[i], met)) continue;
         PSNode *ant = d->lista.itens[i - 1];
         if (ant->kind != N_DECORATOR_STMT || !ant->a) return 0;
         const char *dn = ant->a->lista.n == 1 ? ant->a->lista.itens[0]->texto : NULL;
@@ -2661,7 +2749,7 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
         return T_SIM;
     }
     if (c->grava.declara) {
-        const char *T = tp_canon(c->grava.declara);
+        const char *T = tp_canon_guarda(c, c->grava.declara);
         if (s->estado == 2 && s->tipo && strcmp(s->tipo, T) != 0)
             terro(c, onde, "AttributedValueError",
                   "variável %s já foi declarada como %s e não pode ser redeclarada como %s", nome, s->tipo, T);
@@ -2687,7 +2775,10 @@ static int tp_escreve(C *c, SimInfo *s, const char *nome)
     if (s->estado == 0) {
         if (vt && strcmp(vt, "Null") == 0) return T_SIM;
         s->estado = 1;
-        s->tipo = vt;
+        /* guardado: o SimInfo de um nome de módulo vive até o fim da
+         * compilação, e `vt` pode ser o nome de uma classe lido da árvore da
+         * declaração atual, que morre com ela na segunda passada */
+        s->tipo = tp_canon_guarda(c, vt);
         return T_SIM;
     }
     if (!s->tipo) return T_SIM;
@@ -2728,7 +2819,7 @@ static int tp_metodo_estatico(C *c, const char *classe, PSNode *met)
     PSNode *d = tp_tipo_arq(c, classe);
     if (!d || d->kind != N_ENTITY_DECL) return 0;
     for (int32_t i = 1; i < d->lista.n; i++) {
-        if (d->lista.itens[i] != met) continue;
+        if (!mesmo_no(d->lista.itens[i], met)) continue;
         PSNode *ant = d->lista.itens[i - 1];
         const char *dn = (ant->kind == N_DECORATOR_STMT && ant->a && ant->a->lista.n == 1)
                        ? ant->a->lista.itens[0]->texto : NULL;
@@ -3740,8 +3831,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                         static const char *NOME_LIT[] = {
                             "int", "flo", "str", "bool", "Null", "str", "int", "byte"
                         };
-                        const char *tn = (n->b->lit >= 0 && n->b->lit <= L_BYTES)
-                                         ? NOME_LIT[n->b->lit] : "?";
+                        const char *tn = n->b->lit <= L_BYTES ? NOME_LIT[n->b->lit] : "?";
                         cerro_sx(c, n,
                                  "'is' com literal '%s' a direita — 'is' compara"
                                  " TIPO (`x is int`); para comparar valor use '=='",
@@ -4333,7 +4423,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->grava.tem_valor = 1;
             c->grava.tipo = "funct";
             c->grava.no = n;
-            c->grava.decl = n;
+            /* o gêmeo podado, não o nó desta passada: o nó morre com o
+             * statement, e a assinatura tem que valer até o fim (só aqui, nos
+             * nós DESTE arquivo — a declaração de um módulo importado vem de
+             * outra árvore e podia colidir por posição) */
+            c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -4575,7 +4669,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     && n->a->a->kind == N_NAME && n->a->a->texto
                     && !strcmp(n->a->a->texto, "range")
                     && n->a->lista.n >= 1 && n->a->lista.n <= 3
-                    && !liga_o_nome(c, c->raiz, "range")) {
+                    && !c->range_ligado) {
                 usa_range = 1;
                 /* nomeado ou espalhado (`range(*l)`) não: o atalho lê cada
                  * argumento como um limite, e a lista inteira virava o fim */
@@ -4694,7 +4788,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             }
             emite(c, u, OP_MAKE_MODEL, mi);
             memset(&c->grava, 0, sizeof(c->grava));
-            c->grava.decl = n;
+            /* o gêmeo podado, não o nó desta passada: o nó morre com o
+             * statement, e a assinatura tem que valer até o fim (só aqui, nos
+             * nós DESTE arquivo — a declaração de um módulo importado vem de
+             * outra árvore e podia colidir por posição) */
+            c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -4730,7 +4828,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             if (CFALHOU(c)) return;
             emite(c, u, OP_MAKE_ENUM, ei);
             memset(&c->grava, 0, sizeof(c->grava));
-            c->grava.decl = n;
+            /* o gêmeo podado, não o nó desta passada: o nó morre com o
+             * statement, e a assinatura tem que valer até o fim (só aqui, nos
+             * nós DESTE arquivo — a declaração de um módulo importado vem de
+             * outra árvore e podia colidir por posição) */
+            c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
             return;
         }
@@ -5138,7 +5240,11 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             c->grava.tem_valor = 1;
             c->grava.tipo = "Entity";
             c->grava.no = n;
-            c->grava.decl = n;
+            /* o gêmeo podado, não o nó desta passada: o nó morre com o
+             * statement, e a assinatura tem que valer até o fim (só aqui, nos
+             * nós DESTE arquivo — a declaração de um módulo importado vem de
+             * outra árvore e podia colidir por posição) */
+            c->grava.decl = gemeo_de(c, n);
             guarda_nome_modo(c, u, n->texto ? n->texto : "", 1);
 
             /* A classe existe. Agora, nesta ordem:
@@ -5267,7 +5373,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     return;
                 }
                 int32_t e = -1;
-                for (int32_t k = 0; k < c->nestrelas; k++) if (c->estrelas[k].no == n) { e = k; break; }
+                for (int32_t k = 0; k < c->nestrelas; k++) if (mesmo_no(c->estrelas[k].no, n)) { e = k; break; }
                 int32_t cmod = idx_const(c, u, K_STR, 0, 0, mod, (int32_t)strlen(mod));
                 emite(c, u, OP_IMPORT_MOD, cmod);
                 if ((e < 0 || !c->estrelas[e].resolvido) && c->resolve && c->resolve->nomes_de)
@@ -6036,6 +6142,7 @@ static int32_t compila_action(C *c, PSNode *n, Unidade *pai)
  * mesmo nó de posição: o erro que ela ache sai uma vez só na lista. */
 static SimInfo *tp_topo_poe(C *c, const char *nome)
 {
+    if (!nome) return NULL;            /* `tp_guarda` sem memória: o erro já saiu */
     SimInfo *s = tp_sim_topo(c, nome);
     if (s) return s;
     if (c->ntopo + 1 > c->cap_topo) {
@@ -6126,22 +6233,6 @@ static void tp_pre_stmt(C *c, Unidade *mod, PSNode *s, int decorado)
     memset(&c->grava, 0, sizeof(c->grava));
 }
 
-static void tp_pre_passada(C *c, PSNode *programa)
-{
-    if (!programa) return;
-    tp_coleta_tipos_arq(c, programa);
-    /* método sem `self`: acusa e sintetiza ANTES de qualquer chamada ser conferida */
-    for (int32_t i = 0; i < c->ntipos_arq && !CFALHOU(c); i++)
-        tp_self_dos_metodos(c, c->tipos_arq[i]);
-    tp_junta_ligados(c, programa, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod);
-    tp_junta_globais(c, programa);
-    Unidade mod;
-    memset(&mod, 0, sizeof(mod));
-    mod.eh_modulo = 1;
-    for (int32_t i = 0; i < programa->lista.n && !CFALHOU(c); i++)
-        tp_pre_stmt(c, &mod, programa->lista.itens[i], 0);
-}
-
 static int tp_erro_cmp(const void *a, const void *b)
 {
     const PSErroTipo *x = a, *y = b;
@@ -6204,40 +6295,259 @@ sem_memoria:
     cerro(c, "sem memoria", NULL);
 }
 
-/* Os `*` do topo do arquivo, resolvidos ANTES de compilar o primeiro
+/* Um `*` do topo do arquivo, resolvido ANTES de compilar o primeiro
  * statement (ver o campo `estrelas` do C). */
-static void resolve_estrelas(C *c, PSNode *programa)
+static void resolve_estrela(C *c, PSNode *s)
 {
-    if (!programa) return;
-    int32_t total = 0;
-    for (int32_t i = 0; i < programa->lista.n; i++) {
-        PSNode *s = programa->lista.itens[i];
-        if (s && s->kind == N_IMPORT_STMT && s->texto3) total++;
+    if (!s || s->kind != N_IMPORT_STMT || !s->texto3) return;
+    if (c->nestrelas + 1 > c->cap_estrelas) {
+        int32_t nc = c->cap_estrelas < 4 ? 4 : c->cap_estrelas * 2;
+        void *nv = realloc(c->estrelas, sizeof(*c->estrelas) * (size_t)nc);
+        if (!nv) { cerro(c, "sem memoria", NULL); return; }
+        c->estrelas = nv; c->cap_estrelas = nc;
     }
-    if (total == 0) return;
-    c->estrelas = calloc((size_t)total, sizeof(*c->estrelas));
-    if (!c->estrelas) { cerro(c, "sem memoria", NULL); return; }
-    for (int32_t i = 0; i < programa->lista.n; i++) {
-        PSNode *s = programa->lista.itens[i];
-        if (!s || s->kind != N_IMPORT_STMT || !s->texto3) continue;
-        int32_t e = c->nestrelas++;
-        c->estrelas[e].no = s;
-        if (!c->resolve || !c->resolve->nomes_de) continue;
-        if (s->i2 > 0 && s->lista.n == 0) continue;    /* o compilador recusa */
-        char enc[512];
-        import_modulo_codificado(s, enc);
-        int r = c->resolve->nomes_de(c->resolve->ctx, enc, &c->estrelas[e].nomes, &c->estrelas[e].n);
-        if (r == 3) {
-            /* `from m import *` de módulo que não existe: mesma frase do
-             * import comum, na linha do import */
-            char vis[256];
-            tp_mod_visivel(enc, vis, sizeof(vis));
-            terro(c, tp_no_do_import(s, NULL), "ImportError", "No module named '%s'", vis);
-        }
-        c->estrelas[e].resolvido = (r == 1 || r == 2);
-        c->estrelas[e].incompleto = r == 2;
+    int32_t e = c->nestrelas++;
+    memset(&c->estrelas[e], 0, sizeof(c->estrelas[e]));
+    c->estrelas[e].no = s;
+    if (!c->resolve || !c->resolve->nomes_de) return;
+    if (s->i2 > 0 && s->lista.n == 0) return;    /* o compilador recusa */
+    char enc[512];
+    import_modulo_codificado(s, enc);
+    int r = c->resolve->nomes_de(c->resolve->ctx, enc, &c->estrelas[e].nomes, &c->estrelas[e].n);
+    if (r == 3) {
+        /* `from m import *` de módulo que não existe: mesma frase do
+         * import comum, na linha do import */
+        char vis[256];
+        tp_mod_visivel(enc, vis, sizeof(vis));
+        terro(c, tp_no_do_import(s, NULL), "ImportError", "No module named '%s'", vis);
     }
+    c->estrelas[e].resolvido = (r == 1 || r == 2);
+    c->estrelas[e].incompleto = r == 2;
 }
+
+/* ── a PODA: o que fica de uma declaração depois da primeira passada ──────
+ *
+ * Copia pra arena `keep` só o que outra declaração pode consultar. De uma
+ * funct fica o cabeçalho (nome, parâmetros com padrão, tipo de retorno,
+ * marcas); do corpo ficam só os FATOS que os leitores de corpo do checador
+ * procuram — e a poda os deixa na forma que cada leitor já sabe ler, então
+ * nenhum leitor muda:
+ *   - `yield` direto no corpo (tp_tem_yield): um N_YIELD_STMT;
+ *   - `obj.x = ...` e `self.a, self.b = ...` (tp_self_grava,
+ *     tp_junta_self_gravados): o N_MEMBER_ASSIGNMENT / N_UNPACK_TARGET só com
+ *     o nome;
+ *   - `private T x = ...` no corpo (tp_campo_decl_em): o N_FIELD_DECL;
+ *   - `global x` (tp_junta_globais);
+ *   - Entity/model/enum declarados lá dentro (tp_coleta_tipos_arq), podados
+ *     por sua vez;
+ *   - funct e lambda aninhadas: o cabeçalho, com o corpo podado do mesmo
+ *     jeito — os leitores que param nelas continuam parando, os que descem
+ *     continuam descendo.
+ * Entity, model e enum ficam inteiros, com os métodos podados como functs. O
+ * resto (import, atribuição, `if`, o bloco do `main`...) é copiado inteiro,
+ * com as functs de dentro podadas. */
+static PSNode *poda(C *c, PSNode *n);
+static PSNode *poda_funct(C *c, PSNode *n);
+
+static PSNode *copia_raso(C *c, const PSNode *n)
+{
+    PSNode *k = ps_node_novo(c->keep, n->kind, n->line, n->col);
+    if (!k) { cerro(c, "sem memoria", NULL); return NULL; }
+    k->linha_fim = n->linha_fim; k->col_fim = n->col_fim;
+    k->lit = n->lit; k->i = n->i; k->d = n->d; k->texto_len = n->texto_len; k->i2 = n->i2;
+    k->estilo = n->estilo;
+    k->is_async = n->is_async; k->is_private = n->is_private;
+    k->is_static = n->is_static; k->is_nonnull = n->is_nonnull;
+    if (n->texto) {
+        int len = n->texto_len > 0 ? n->texto_len : (int)strlen(n->texto);
+        k->texto = ps_arena_strdup(c->keep, n->texto, len);
+    }
+    if (n->texto2) k->texto2 = ps_arena_strdup(c->keep, n->texto2, (int)strlen(n->texto2));
+    if (n->texto3) k->texto3 = ps_arena_strdup(c->keep, n->texto3, (int)strlen(n->texto3));
+    if ((n->texto && !k->texto) || (n->texto2 && !k->texto2) || (n->texto3 && !k->texto3)) {
+        cerro(c, "sem memoria", NULL); return NULL;
+    }
+    return k;
+}
+
+static void poda_vec(C *c, const PSNodeVec *de, PSNodeVec *para)
+{
+    if (de->n == 0) return;
+    para->itens = ps_arena_alloc(c->keep, sizeof(PSNode *) * (size_t)de->n);
+    if (!para->itens) { cerro(c, "sem memoria", NULL); return; }
+    para->n = para->cap = de->n;
+    for (int32_t i = 0; i < de->n; i++) para->itens[i] = poda(c, de->itens[i]);
+}
+
+static int poda_poe(C *c, PSNode *bloco, PSNode *k)
+{
+    if (!k) return -1;
+    if (ps_vec_push(c->keep, &bloco->lista, k) != 0) { cerro(c, "sem memoria", NULL); return -1; }
+    return 0;
+}
+
+/* Os fatos de um corpo, na lista de `bloco`. Não entra em funct/lambda
+ * aninhada: elas viram nós podados próprios. */
+static void colhe_fatos(C *c, PSNode *n, PSNode *bloco, int *viu_yield)
+{
+    if (!n || CFALHOU(c)) return;
+    switch (n->kind) {
+        case N_ACTION_DECL: case N_LAMBDA_EXPR:
+            poda_poe(c, bloco, poda_funct(c, n));
+            return;
+        case N_ENTITY_DECL: case N_MODEL_DECL: case N_ENUM_DECL:
+            poda_poe(c, bloco, poda(c, n));
+            return;
+        case N_YIELD_STMT:
+            if (!*viu_yield) { *viu_yield = 1; poda_poe(c, bloco, copia_raso(c, n)); }
+            break;
+        case N_MEMBER_ASSIGNMENT: {
+            PSNode *k = copia_raso(c, n);
+            if (k && n->a && n->a->kind == N_NAME) k->a = copia_raso(c, n->a);
+            poda_poe(c, bloco, k);
+            break;
+        }
+        case N_UNPACK_TARGET: {
+            PSNode *k = copia_raso(c, n);
+            if (!k) break;
+            for (int32_t i = 0; i < n->lista.n; i++) {
+                PSNode *x = n->lista.itens[i];
+                if (x && x->kind == N_MEMBER_ACCESS) poda_poe(c, k, copia_raso(c, x));
+            }
+            poda_poe(c, bloco, k);
+            break;
+        }
+        case N_FIELD_DECL:
+            poda_poe(c, bloco, copia_raso(c, n));
+            break;
+        case N_GLOBAL_STMT: {
+            PSNode *k = copia_raso(c, n);
+            if (!k) break;
+            for (int32_t i = 0; i < n->lista.n; i++)
+                if (n->lista.itens[i]) poda_poe(c, k, copia_raso(c, n->lista.itens[i]));
+            poda_poe(c, bloco, k);
+            break;
+        }
+        default:
+            break;
+    }
+    colhe_fatos(c, n->a, bloco, viu_yield);
+    colhe_fatos(c, n->b, bloco, viu_yield);
+    colhe_fatos(c, n->c, bloco, viu_yield);
+    colhe_fatos(c, n->e, bloco, viu_yield);
+    for (int32_t i = 0; i < n->lista.n; i++)        colhe_fatos(c, n->lista.itens[i], bloco, viu_yield);
+    for (int32_t i = 0; i < n->lista2.n; i++)       colhe_fatos(c, n->lista2.itens[i], bloco, viu_yield);
+    for (int32_t i = 0; i < n->lista2_alias.n; i++) colhe_fatos(c, n->lista2_alias.itens[i], bloco, viu_yield);
+}
+
+/* Corpo sem fato nenhum (a maioria) fica NULL: todo leitor de corpo aceita
+ * NULL, e é um nó a menos por funct. Os fatos são colhidos num vetor da
+ * pilha do C primeiro, porque a arena não devolve o que alocou. */
+static PSNode *poda_corpo(C *c, PSNode *b)
+{
+    if (!b) return NULL;
+    PSNode tmp;
+    memset(&tmp, 0, sizeof(tmp));
+    int viu_yield = 0;
+    colhe_fatos(c, b, &tmp, &viu_yield);
+    if (tmp.lista.n == 0) return NULL;
+    PSNode *k = ps_node_novo(c->keep, N_BLOCK, b->line, b->col);
+    if (!k) { cerro(c, "sem memoria", NULL); return NULL; }
+    k->linha_fim = b->linha_fim; k->col_fim = b->col_fim; k->estilo = b->estilo;
+    k->lista = tmp.lista;
+    return k;
+}
+
+static PSNode *poda_funct(C *c, PSNode *n)
+{
+    PSNode *k = copia_raso(c, n);
+    if (!k) return NULL;
+    gemeo_poe(c, k);
+    k->a = poda(c, n->a);
+    k->b = poda_corpo(c, n->b);
+    k->c = poda(c, n->c);
+    k->e = poda(c, n->e);
+    poda_vec(c, &n->lista, &k->lista);
+    poda_vec(c, &n->lista2, &k->lista2);
+    poda_vec(c, &n->lista2_alias, &k->lista2_alias);
+    return k;
+}
+
+static PSNode *poda(C *c, PSNode *n)
+{
+    if (!n || CFALHOU(c)) return NULL;
+    if (n->kind == N_ACTION_DECL || n->kind == N_LAMBDA_EXPR) return poda_funct(c, n);
+    PSNode *k = copia_raso(c, n);
+    if (!k) return NULL;
+    if (n->kind == N_ENTITY_DECL || n->kind == N_MODEL_DECL || n->kind == N_ENUM_DECL) gemeo_poe(c, k);
+    k->a = poda(c, n->a);
+    k->b = poda(c, n->b);
+    k->c = poda(c, n->c);
+    k->e = poda(c, n->e);
+    poda_vec(c, &n->lista, &k->lista);
+    poda_vec(c, &n->lista2, &k->lista2);
+    poda_vec(c, &n->lista2_alias, &k->lista2_alias);
+    return k;
+}
+
+/* ── as duas passadas ───────────────────────────────────────────────────── */
+static void compila_prepara(C *c, PSPrograma *out, const PSResolvedor *resolve)
+{
+    memset(c, 0, sizeof(*c));
+    c->out = out;
+    c->resolve = resolve;
+}
+
+/* Primeira passada, uma declaração de topo: o que se colhe da declaração
+ * INTEIRA (`cheia`) e o que se registra da PODADA (`podada`, que é a que
+ * vive até o fim). Na compilação da árvore inteira as duas são o mesmo nó. */
+static void passada1_stmt(C *c, PSNode *cheia, PSNode *podada)
+{
+    if (CFALHOU(c)) return;
+    coleta_tipos_topo(c, cheia);
+    resolve_estrela(c, podada);
+    tp_coleta_tipos_arq(c, podada);
+    tp_junta_ligados(c, cheia, &c->ligados_mod, &c->nligados_mod, &c->cap_ligados_mod);
+    tp_junta_globais(c, cheia);
+    if (!c->range_ligado && liga_o_nome(c, cheia, "range")) c->range_ligado = 1;
+}
+
+/* Fim da primeira passada: o que precisa de TODAS as declarações colhidas. */
+static void passada1_fim(C *c, PSNode *programa)
+{
+    if (!programa || CFALHOU(c)) return;
+    /* método sem `self`: acusa e sintetiza ANTES de qualquer chamada ser conferida */
+    for (int32_t i = 0; i < c->ntipos_arq && !CFALHOU(c); i++)
+        tp_self_dos_metodos(c, c->tipos_arq[i]);
+    Unidade mod;
+    memset(&mod, 0, sizeof(mod));
+    mod.eh_modulo = 1;
+    for (int32_t i = 0; i < programa->lista.n && !CFALHOU(c); i++)
+        tp_pre_stmt(c, &mod, programa->lista.itens[i], 0);
+}
+
+/* Segunda passada, uma declaração de topo: o código dela. O `self`
+ * sintetizado num método desta declaração é desfeito aqui mesmo, porque o nó
+ * dela morre com o statement (na árvore inteira, o nó vive; desfazer cedo é
+ * igual). */
+static void passada2_stmt(C *c, Unidade *u, PSNode *s)
+{
+    if (CFALHOU(c)) return;
+    int32_t marca = c->n_self_sint;
+    c->stmt_topo = s;
+    stmt(c, u, s);
+    c->stmt_topo = NULL;
+    for (int32_t i = marca; i < c->n_self_sint; i++) {
+        struct SelfSint *x = &c->self_sint[i];
+        free(x->met->lista.itens);
+        x->met->lista = x->orig;
+        x->met->self_faltava = 0;
+        free(x->no);
+    }
+    c->n_self_sint = marca;
+}
+
+static void compila_termina(C *c, Unidade *u);
 
 PSPrograma *ps_compila(PSNode *programa)
 {
@@ -6251,93 +6561,178 @@ PSPrograma *ps_compila_com(PSNode *programa, const PSResolvedor *resolve)
     out->ok = 1;
 
     C c;
-    memset(&c, 0, sizeof(c));
-    c.out = out;
-    c.raiz = programa;
-    c.resolve = resolve;
+    compila_prepara(&c, out, resolve);
 
     int32_t idx = novo_proto(&c, "<module>");
     if (idx < 0) return out;
 
     /* tipos declarados no topo do arquivo, antes de compilar qualquer action */
-    coleta_tipos_topo(&c, programa);
-    resolve_estrelas(&c, programa);
-    tp_pre_passada(&c, programa);
+    if (programa)
+        for (int32_t i = 0; i < programa->lista.n && out->ok; i++)
+            passada1_stmt(&c, programa->lista.itens[i], programa->lista.itens[i]);
+    passada1_fim(&c, programa);
 
     Unidade u;
     memset(&u, 0, sizeof(u));
     u.idx = idx;
     u.eh_modulo = 1;
 
-    if (programa) {
-        for (int32_t i = 0; i < programa->lista.n && out->ok; i++) {
-            c.stmt_topo = programa->lista.itens[i];
-            stmt(&c, &u, programa->lista.itens[i]);
-        }
-        c.stmt_topo = NULL;
+    if (programa)
+        for (int32_t i = 0; i < programa->lista.n && out->ok; i++)
+            passada2_stmt(&c, &u, programa->lista.itens[i]);
+    compila_termina(&c, &u);
+    return out;
+}
+
+PSPrograma *ps_compila_fonte(const char *fonte, size_t len, int recupera,
+                             const PSResolvedor *resolve, PSFonteCompilado *fc)
+{
+    fc->lexer = NULL; fc->parse = NULL;
+    PSPrograma *out = calloc(1, sizeof(PSPrograma));
+    PSParseResult *keep = calloc(1, sizeof(PSParseResult));
+    PSParserInc *pi = ps_parse_inc_abre(fonte, len, recupera);
+    if (!out || !keep || !pi) {
+        free(out); free(keep); ps_parse_inc_fecha(pi, NULL);
+        return NULL;
     }
-    emite(&c, &u, OP_HALT, 0);
-    if (out->ok) calcula_exportados(&c, &u);
+    out->ok = 1;
+    keep->ok = 1;
+    ps_arena_init(&keep->arena);
+    fc->parse = keep;
+
+    C c;
+    compila_prepara(&c, out, resolve);
+    c.keep = &keep->arena;
+    c.fase = 1;
+
+    PSNode *programa = ps_node_novo(c.keep, N_PROGRAM, 1, 1);
+    int32_t idx = programa ? novo_proto(&c, "<module>") : -1;
+    if (idx < 0) {
+        ps_parse_inc_fecha(pi, &fc->lexer);
+        ps_compila_free(out);
+        return NULL;
+    }
+    keep->programa = programa;
+
+    /* PRIMEIRA PASSADA: lê, colhe, poda, solta. Com erro de sintaxe o
+     * compilador para de colher (o arquivo não compila), mas o parser segue
+     * até o fim no modo de recuperação, pra lista de erros ficar inteira. */
+    for (;;) {
+        PSNode *s = ps_parse_inc_proxima(pi);
+        if (!s) break;
+        PSParseResult *rp = ps_parse_inc_resultado(pi);
+        if (!out->ok || !rp->ok || rp->nerros > 0 || !ps_parse_inc_lexer(pi)->ok) continue;
+        PSNode *k = poda(&c, s);
+        if (!k || ps_vec_push(c.keep, &programa->lista, k) != 0) { cerro(&c, "sem memoria", NULL); continue; }
+        passada1_stmt(&c, s, k);
+    }
+    {
+        PSParseResult *rp = ps_parse_inc_resultado(pi);
+        keep->ok = rp->ok;
+        snprintf(keep->erro, sizeof(keep->erro), "%s", rp->erro);
+        keep->erro_linha = rp->erro_linha; keep->erro_col = rp->erro_col;
+        keep->erros = rp->erros; keep->nerros = rp->nerros; keep->cap_erros = rp->cap_erros;
+        rp->erros = NULL; rp->nerros = rp->cap_erros = 0;
+    }
+    ps_parse_inc_fecha(pi, &fc->lexer);
+    if (!fc->lexer || !fc->lexer->ok || !keep->ok) {
+        /* sintaxe: quem chamou lê o erro em `fc`; não há programa */
+        Unidade u0;
+        memset(&u0, 0, sizeof(u0));
+        u0.idx = idx; u0.eh_modulo = 1;
+        compila_termina(&c, &u0);
+        ps_compila_free(out);
+        return NULL;
+    }
+    passada1_fim(&c, programa);
+
+    /* SEGUNDA PASSADA: lê de novo, gera o código de cada declaração e a
+     * solta. A sintaxe já foi aprovada: o mesmo fonte, o mesmo parser. */
+    c.fase = 2;
+    Unidade u;
+    memset(&u, 0, sizeof(u));
+    u.idx = idx;
+    u.eh_modulo = 1;
+    pi = ps_parse_inc_abre(fonte, len, 0);
+    if (!pi) cerro(&c, "sem memoria", NULL);
+    while (pi && out->ok) {
+        PSNode *s = ps_parse_inc_proxima(pi);
+        if (!s) {
+            if (!ps_parse_inc_resultado(pi)->ok) cerro(&c, "sem memoria", NULL);
+            break;
+        }
+        passada2_stmt(&c, &u, s);
+    }
+    ps_parse_inc_fecha(pi, NULL);
+    compila_termina(&c, &u);
+    return out;
+}
+
+static void compila_termina(C *c, Unidade *u)
+{
+    PSPrograma *out = c->out;
+    emite(c, u, OP_HALT, 0);
+    if (out->ok) calcula_exportados(c, u);
 
     /* Erro de tipo: o programa não roda, e a lista vai INTEIRA, na ordem do
      * fonte. Erro de sintaxe achado no caminho manda (a compilação parou ali
      * e a lista estaria pela metade). */
-    if (c.nerros > 0 && out->ok) {
-        qsort(c.erros, (size_t)c.nerros, sizeof(PSErroTipo), tp_erro_cmp);
+    if (c->nerros > 0 && out->ok) {
+        qsort(c->erros, (size_t)c->nerros, sizeof(PSErroTipo), tp_erro_cmp);
         out->ok = 0;
-        snprintf(out->erro, sizeof(out->erro), "%s", c.erros[0].msg);
-        out->erro_linha = c.erros[0].linha;
-        out->erro_col = c.erros[0].col;
+        snprintf(out->erro, sizeof(out->erro), "%s", c->erros[0].msg);
+        out->erro_linha = c->erros[0].linha;
+        out->erro_col = c->erros[0].col;
         out->erro_do_programa = 2;
-        out->erros_tipo = c.erros;
-        out->nerros_tipo = c.nerros;
-        c.erros = NULL;
+        out->erros_tipo = c->erros;
+        out->nerros_tipo = c->nerros;
+        c->erros = NULL;
     }
-    free(c.erros);
+    free(c->erros);
     /* a AST volta ao que era: o `self` sintetizado só existiu nesta compilação */
-    for (int32_t i = 0; i < c.n_self_sint; i++) {
-        struct SelfSint *s = &c.self_sint[i];
+    for (int32_t i = 0; i < c->n_self_sint; i++) {
+        struct SelfSint *s = &c->self_sint[i];
         free(s->met->lista.itens);
         s->met->lista = s->orig;
         s->met->self_faltava = 0;
         free(s->no);
     }
-    free(c.self_sint);
-    for (int32_t i = 0; i < c.ntpool; i++) free(c.tpool[i]);
-    free(c.tpool);
-    free(c.topo);
-    ix_solta(&c.ix_topo);
-    for (int32_t i = 0; i < c.nligados_mod; i++) free(c.ligados_mod[i]);
-    free(c.ligados_mod);
-    ix_solta(&c.ix_ligados_mod);
-    ix_solta(&c.ix_globais);        /* as chaves são do programa de saída: só o índice sai */
-    free(c.tipos_arq);
+    free(c->self_sint);
+    for (int32_t i = 0; i < c->ntpool; i++) free(c->tpool[i]);
+    free(c->tpool);
+    free(c->topo);
+    ix_solta(&c->ix_topo);
+    for (int32_t i = 0; i < c->nligados_mod; i++) free(c->ligados_mod[i]);
+    free(c->ligados_mod);
+    ix_solta(&c->ix_ligados_mod);
+    ix_solta(&c->ix_globais);        /* as chaves são do programa de saída: só o índice sai */
+    free(c->tipos_arq);
+    free(c->gemeos);
 
-    for (int32_t e = 0; e < c.nestrelas; e++) {
-        for (int32_t k = 0; k < c.estrelas[e].n; k++) free(c.estrelas[e].nomes[k]);
-        free(c.estrelas[e].nomes);
+    for (int32_t e = 0; e < c->nestrelas; e++) {
+        for (int32_t k = 0; k < c->estrelas[e].n; k++) free(c->estrelas[e].nomes[k]);
+        free(c->estrelas[e].nomes);
     }
-    free(c.estrelas);
-    for (int32_t i = 0; i < c.nglobais_gravados; i++) free(c.globais_gravados[i]);
-    free(c.globais_gravados);
-    proto_encolhe(&c, &u);
+    free(c->estrelas);
+    for (int32_t i = 0; i < c->nglobais_gravados; i++) free(c->globais_gravados[i]);
+    free(c->globais_gravados);
+    proto_encolhe(c, u);
 
-    vardbg_fecha(&c, &u, 0);
-    for (int32_t i = 0; i < u.nlocais; i++) free(u.locais[i]);
-    free(u.locais);
-    free(u.celula); free(u.celula_virgem); free(u.certo); free(u.tipo_decl);
-    free(u.sim); free(u.mod_sim);
-    for (int32_t i = 0; i < u.nligados; i++) free(u.ligados[i]);
-    free(u.ligados);
-    for (int32_t i = 0; i < u.n_mod_criados; i++) free(u.mod_criados[i]);
-    free(u.mod_criados);
-    ix_solta(&u.ix_mod);
-    for (int32_t i = 0; i < u.nglobais_decl; i++) free(u.globais_decl[i]);
-    free(u.globais_decl);
-    for (int32_t i = 0; i < c.n_tipos_topo; i++) free(c.tipos_topo_nomes[i]);
-    free(c.tipos_topo_nomes);
-    free(c.tipos_topo);
-    return out;
+    vardbg_fecha(c, u, 0);
+    for (int32_t i = 0; i < u->nlocais; i++) free(u->locais[i]);
+    free(u->locais);
+    free(u->celula); free(u->celula_virgem); free(u->certo); free(u->tipo_decl);
+    free(u->sim); free(u->mod_sim);
+    for (int32_t i = 0; i < u->nligados; i++) free(u->ligados[i]);
+    free(u->ligados);
+    for (int32_t i = 0; i < u->n_mod_criados; i++) free(u->mod_criados[i]);
+    free(u->mod_criados);
+    ix_solta(&u->ix_mod);
+    for (int32_t i = 0; i < u->nglobais_decl; i++) free(u->globais_decl[i]);
+    free(u->globais_decl);
+    for (int32_t i = 0; i < c->n_tipos_topo; i++) free(c->tipos_topo_nomes[i]);
+    free(c->tipos_topo_nomes);
+    free(c->tipos_topo);
 }
 
 void ps_compila_free(PSPrograma *p)
