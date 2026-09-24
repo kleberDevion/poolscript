@@ -97,12 +97,20 @@ bundle: pool
 # package.json, e é ele que garante a mesma versão do cliente LSP em qualquer
 # máquina.
 #
-#     make vsix           gera editor/vscode/pyrite-<versao>.vsix (Node >= 22)
+#     make logo           regenera a logo (SVG do desktop + PNG dos editores) de scripts/gera_logo.pr
+#     make vsix           gera editor/vscode/jinga-<versao>.vsix (Node >= 22)
 #     make instala-vsix   gera e instala no VS Code local
 EXT := editor/vscode
 
 $(EXT)/node_modules:
 	cd $(EXT) && npm install --omit=dev --no-audit --no-fund
+
+# A logo (o J) nasce de UMA geometria, em Jinga: o SVG do tipo MIME e os PNG
+# do VS Code e do IntelliJ saem do mesmo script — mudou o desenho, roda isto.
+logo: pool
+	./pool scripts/gera_logo.pr
+
+.PHONY: logo
 
 vsix: $(EXT)/node_modules
 	# O @vscode/vsce 4 (2026-09) exige Node >= 22, e os transitivos das versoes

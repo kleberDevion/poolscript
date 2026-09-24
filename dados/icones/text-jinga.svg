@@ -1,26 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 1000 1000">
   <!--
-    A logo da linguagem, CHAPADA.
-
-    A logo e uma renderizacao 3D, com degrade dentro de cada faceta. A 16px
-    no explorador de arquivos isso vira papa. Icone de linguagem que le em
-    16px e poligono de cor solida — o do Ruby e assim.
-
-    A geometria NAO foi inventada: cada poligono aqui e uma faceta medida na
-    propria imagem (regiao conexa do quantizado, casco convexo simplificado),
-    pintada com a cor media que a foto tem ali dentro. O que se perdeu foi o
-    degrade; a forma e a dela.
-
-    Os tons levam um piso de brilho: na foto a lateral direita e quase preta e
-    sumia no tema escuro do editor.
+    A logo da Jinga: o J. GERADO por scripts/gera_logo.pr, da mesma
+    geometria que faz os PNG dos editores; não edite à mão, mude o
+    script. As bordas da haste são tangentes ao anel do gancho: é o
+    pescoço sem degrau.
   -->
-  <polygon points="437,42 492,178 365,398 350,415 166,483 20,322 100,148 235,53 330,26" fill="#e8bd47"/>
-  <polygon points="433,41 287,333 192,473 166,483 20,322 97,155 223,57 330,26" fill="#e8bd47"/>
-  <polygon points="175,483 347,169 482,177 353,413" fill="#755d1d"/>
-  <polygon points="284,182 285,337 229,403 219,403 102,262" fill="#9f6a04"/>
-  <polygon points="437,42 491,165 447,250 348,169 389,77" fill="#a37818"/>
-  <polygon points="95,264 139,390 138,444 71,370 32,310" fill="#ad7200"/>
-  <polygon points="432,44 484,173 390,75" fill="#7a692c"/>
-  <polygon points="184,470 245,394 280,426 196,472" fill="#966100"/>
-  <polygon points="277,235 281,331 239,308 262,242" fill="#7d560c"/>
+  <defs>
+    <linearGradient id="g" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#6e46ff"/>
+      <stop offset="1" stop-color="#a88cf8"/>
+    </linearGradient>
+  </defs>
+  <path d="M183.8,516.6 A250.0 250.0 0 1 1 674.2,613.7 L719.0,410.0 L535.5,476.1 L513.0,578.3 A85.0 85.0 0 1 0 349.2,533.7 Z" fill="url(#g)"/>
+  <polygon points="548.8,424.5 784.0,339.8 827.0,144.5 591.8,229.2" fill="url(#g)"/>
 </svg>

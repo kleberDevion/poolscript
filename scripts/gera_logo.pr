@@ -1,0 +1,351 @@
+# Gera a logo da Jinga — o "J" — a partir de UMA geometria, em vetor (SVG) e
+# em pixel (PNG), sem biblioteca de fora: o rasterizador e o escritor de PNG
+# estão aqui, em Jinga.
+#
+#   jinga scripts/gera_logo.pr            # grava todos os arquivos
+#   jinga scripts/gera_logo.pr <pasta>    # grava uma prévia (previa.png, 512px) na pasta
+#
+# Saídas:
+#   dados/icones/text-jinga.svg                          o ícone do .pr no desktop (vetor)
+#   editor/vscode/images/icon.png                        256 px, fundo escuro (a vitrine da extensão)
+#   editor/vscode/images/arquivo.png                     128 px, fundo transparente (ícone do arquivo)
+#   editor/intellij/plugin/resources/icons/jinga_pr.png  16 px  (e @2x, 32 px)
+#
+# A GEOMETRIA. O J é três peças: o GANCHO (um anel cortado), a HASTE (uma
+# barra inclinada) e a BANDEIRA (o pingo do j, um paralelogramo solto). O
+# PESCOÇO — onde a haste nasce do gancho — é o que a versão desenhada à mão
+# tinha torto: a haste encostava no anel num degrau. Aqui as duas bordas da
+# haste são TANGENTES às duas circunferências do anel (a de fora e a de
+# dentro), no ponto em que o raio é perpendicular à direção da haste: o anel
+# vira haste sem canto, com a mesma largura, como numa letra de verdade.
+import bytes
+import os
+import sys
+
+# ── vetores ──────────────────────────────────────────────────────────────────
+funct norma(v) {
+    tam = (v[0] * v[0] + v[1] * v[1]) ** 0.5
+    return [v[0] / tam, v[1] / tam]
+}
+funct soma(a, b) { return [a[0] + b[0], a[1] + b[1]] }
+funct vezes(v, k) { return [v[0] * k, v[1] * k] }
+funct ponto(a, b) { return a[0] * b[0] + a[1] * b[1] }
+funct cruz(a, b) { return a[0] * b[1] - a[1] * b[0] }
+
+# Onde a reta P + s*d cruza a reta Q + t*e.
+funct cruza(P, d, Q, e) {
+    det = d[0] * (0 - e[1]) - (0 - e[0]) * d[1]
+    rx = Q[0] - P[0]
+    ry = Q[1] - P[1]
+    s = (rx * (0 - e[1]) - (0 - e[0]) * ry) / det
+    return soma(P, vezes(d, s))
+}
+
+# Onde a reta P + s*d (d unitário) cruza a circunferência de centro C e raio r,
+# na menor solução positiva de s.
+funct cruza_circulo(P, d, C, r) {
+    w = [P[0] - C[0], P[1] - C[1]]
+    b = ponto(w, d)
+    c = ponto(w, w) - r * r
+    delta = (b * b - c) ** 0.5
+    s = 0 - b - delta
+    if s < 0 {
+        s = 0 - b + delta
+    }
+    return soma(P, vezes(d, s))
+}
+
+# ── a geometria, numa caixa de 1000 x 1000 (y pra baixo) ─────────────────────
+C  = [430.0, 560.0]      # centro do gancho
+R  = 250.0               # raio de fora
+RI = 85.0                # raio de dentro (largura do traço = 165)
+W  = R - RI
+d  = norma([0.22, -1.0])           # direção da haste (sobe, inclinada pra direita)
+n  = [0 - d[1], d[0]]              # normal pra DIREITA da haste (radial no pescoço)
+e  = norma([1.0, -0.36])           # direção do corte de cima e das bordas da bandeira
+
+# pescoço: os pontos de tangência (fora e dentro)
+PO = soma(C, vezes(n, R))
+PI = soma(C, vezes(n, RI))
+# topo da haste: a borda de fora chega em y = 410; o corte é paralelo a `e`
+LO = (PO[1] - 410.0) / (0 - d[1])
+TO = soma(PO, vezes(d, LO))
+TI = cruza(PI, d, TO, e)
+# ponta esquerda do gancho: um corte reto do anel de fora (a 190 graus, um
+# pouco acima do centro) ao anel de dentro (a 198 graus): sobe de leve pra
+# direita, como na letra
+EO = soma(C, vezes([-0.98481, -0.17365], R))
+EI = soma(C, vezes([-0.95106, -0.30902], RI))
+DL = norma([EI[0] - EO[0], EI[1] - EO[1]])
+VL = [-0.81915, -0.57358]          # 215 graus: a borda do setor excluído, além do corte
+# a bandeira: separada da haste por um vão, deslocada pra direita
+up = [e[1], 0 - e[0]]                        # normal do corte, pra cima
+FBL = soma(soma(TI, vezes(up, 44.0)), vezes(e, 30.0))
+FW = 250.0
+FH = 200.0
+FBR = soma(FBL, vezes(e, FW))
+FTL = soma(FBL, vezes(d, FH))
+FTR = soma(FBR, vezes(d, FH))
+
+# o lado do gancho em relação ao corte da esquerda (referência: o fundo do
+# gancho) e ao corte de cima (referência: o centro)
+FUNDO_G = [C[0], C[1] + R]
+LADO_ESQ  = cruz(DL, [FUNDO_G[0] - EO[0], FUNDO_G[1] - EO[1]]) > 0
+LADO_TOPO = cruz(e, [C[0] - TO[0], C[1] - TO[1]]) > 0
+
+# cores: degradê do canto de baixo-esquerda (violeta) pro de cima-direita (lilás)
+COR0 = [110, 70, 255]
+COR1 = [168, 140, 248]
+FUNDO = [10, 10, 16]
+
+# ── o teste "este ponto está no J?" (é o que o rasterizador pergunta) ────────
+funct no_gancho(P) {
+    vx = P[0] - C[0]
+    vy = P[1] - C[1]
+    d2 = vx * vx + vy * vy
+    if d2 > R * R or d2 < RI * RI {
+        return false
+    }
+    # fora do setor de cima (entre o pescoço e a ponta esquerda, passando por cima)
+    u = [vx, vy]
+    if cruz(n, u) < 0 and cruz(u, VL) < 0 {
+        return false
+    }
+    # do lado certo do corte da esquerda
+    return (cruz(DL, [P[0] - EO[0], P[1] - EO[1]]) > 0) == LADO_ESQ
+}
+funct na_haste(P) {
+    v = [P[0] - PO[0], P[1] - PO[1]]
+    a = ponto(v, d)
+    b = 0 - ponto(v, n)
+    if a < 0 or b < 0 or b > W {
+        return false
+    }
+    return (cruz(e, [P[0] - TO[0], P[1] - TO[1]]) > 0) == LADO_TOPO
+}
+# inversa da base (e, d) da bandeira
+DETF = cruz(e, d)
+funct na_bandeira(P) {
+    vx = P[0] - FBL[0]
+    vy = P[1] - FBL[1]
+    s = (vx * d[1] - vy * d[0]) / DETF
+    t = (e[0] * vy - e[1] * vx) / DETF
+    return s >= 0 and s <= FW and t >= 0 and t <= FH
+}
+funct dentro(P) {
+    return no_gancho(P) or na_haste(P) or na_bandeira(P)
+}
+
+# a caixa que o desenho ocupa (pra centralizar e escalar)
+XMIN = C[0] - R
+XMAX = max(FTR[0], FBR[0])
+YMIN = min(FTL[1], FTR[1])
+YMAX = C[1] + R
+
+# ── SVG ──────────────────────────────────────────────────────────────────────
+funct num(v) { return str(int(round(v * 10)) / 10) }
+funct par(P) { return num(P[0]) + "," + num(P[1]) }
+funct hexcor(c) {
+    return "#" + hex(c[0])[2:].rjust(2, "0") + hex(c[1])[2:].rjust(2, "0") + hex(c[2])[2:].rjust(2, "0")
+}
+
+funct svg() {
+    # M ponta esquerda de fora -> arco de fora (sentido horário, > 180 graus)
+    # até o pescoço -> haste até o corte -> corte -> haste pra baixo até o
+    # pescoço de dentro -> arco de dentro (anti-horário) -> fecha no corte.
+    caminho = ("M" + par(EO)
+        + " A" + num(R) + " " + num(R) + " 0 1 1 " + par(PO)
+        + " L" + par(TO) + " L" + par(TI) + " L" + par(PI)
+        + " A" + num(RI) + " " + num(RI) + " 0 1 0 " + par(EI) + " Z")
+    bandeira = par(FBL) + " " + par(FBR) + " " + par(FTR) + " " + par(FTL)
+    return ("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"512\" height=\"512\" viewBox=\"0 0 1000 1000\">\n"
+        + "  <!--\n"
+        + "    A logo da Jinga: o J. GERADO por scripts/gera_logo.pr, da mesma\n"
+        + "    geometria que faz os PNG dos editores; não edite à mão, mude o\n"
+        + "    script. As bordas da haste são tangentes ao anel do gancho: é o\n"
+        + "    pescoço sem degrau.\n"
+        + "  -->\n"
+        + "  <defs>\n"
+        + "    <linearGradient id=\"g\" x1=\"0\" y1=\"1\" x2=\"1\" y2=\"0\">\n"
+        + "      <stop offset=\"0\" stop-color=\"" + hexcor(COR0) + "\"/>\n"
+        + "      <stop offset=\"1\" stop-color=\"" + hexcor(COR1) + "\"/>\n"
+        + "    </linearGradient>\n"
+        + "  </defs>\n"
+        + "  <path d=\"" + caminho + "\" fill=\"url(#g)\"/>\n"
+        + "  <polygon points=\"" + bandeira + "\" fill=\"url(#g)\"/>\n"
+        + "</svg>\n")
+}
+
+# ── PNG (RGBA, deflate sem compressão) ───────────────────────────────────────
+TABELA_CRC = []
+funct monta_crc() {
+    global TABELA_CRC
+    i = 0
+    while i < 256 {
+        c = i
+        k = 0
+        while k < 8 {
+            if c & 1 {
+                c = 3988292384 ^ (c >> 1)
+            } else {
+                c = c >> 1
+            }
+            k = k + 1
+        }
+        addEnd(TABELA_CRC, c)
+        i = i + 1
+    }
+}
+funct crc32(dados) {
+    c = 4294967295
+    for each x in dados {
+        c = TABELA_CRC[(c ^ x) & 255] ^ (c >> 8)
+    }
+    return c ^ 4294967295
+}
+funct adler32(dados) {
+    a = 1
+    b = 0
+    for each x in dados {
+        a = (a + x) % 65521
+        b = (b + a) % 65521
+    }
+    return (b << 16) | a
+}
+funct be32(v) { return [(v >> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255] }
+funct chunk(tipo, dados) {
+    corpo = []
+    for each ch in tipo { addEnd(corpo, ord(ch)) }
+    for each x in dados { addEnd(corpo, x) }
+    saida = be32(len(dados))
+    for each x in corpo { addEnd(saida, x) }
+    for each x in be32(crc32(corpo)) { addEnd(saida, x) }
+    return saida
+}
+funct zlib_cru(dados) {
+    saida = [120, 1]
+    i = 0
+    total = len(dados)
+    while i < total or total == 0 {
+        qtd = min(65535, total - i)
+        final = 1 if i + qtd >= total else 0
+        addEnd(saida, final)
+        addEnd(saida, qtd & 255)
+        addEnd(saida, (qtd >> 8) & 255)
+        addEnd(saida, (qtd ^ 65535) & 255)
+        addEnd(saida, ((qtd ^ 65535) >> 8) & 255)
+        j = 0
+        while j < qtd {
+            addEnd(saida, dados[i + j])
+            j = j + 1
+        }
+        i = i + qtd
+        if total == 0 { break }
+    }
+    for each x in be32(adler32(dados)) { addEnd(saida, x) }
+    return saida
+}
+funct png(largura, altura, pixels) {
+    # pixels: lista plana RGBA, linha a linha
+    cru = []
+    y = 0
+    while y < altura {
+        addEnd(cru, 0)
+        inicio = y * largura * 4
+        i = 0
+        while i < largura * 4 {
+            addEnd(cru, pixels[inicio + i])
+            i = i + 1
+        }
+        y = y + 1
+    }
+    saida = [137, 80, 78, 71, 13, 10, 26, 10]
+    ihdr = be32(largura) + be32(altura) + [8, 6, 0, 0, 0]
+    for each x in chunk("IHDR", ihdr) { addEnd(saida, x) }
+    for each x in chunk("IDAT", zlib_cru(cru)) { addEnd(saida, x) }
+    for each x in chunk("IEND", []) { addEnd(saida, x) }
+    return bytes.new(saida)
+}
+
+# ── rasterizador: 4x4 amostras por pixel, degradê, fundo opcional ─────────────
+funct rasteriza(tam, fracao, com_fundo, raio_canto) {
+    # o desenho ocupa `fracao` do lado, centralizado
+    lw = XMAX - XMIN
+    lh = YMAX - YMIN
+    maior = max(lw, lh)
+    escala = maior / (tam * fracao)             # unidades da caixa por pixel
+    ox = XMIN + lw / 2 - (tam / 2) * escala      # canto do pixel (0,0) na caixa
+    oy = YMIN + lh / 2 - (tam / 2) * escala
+    pixels = []
+    py = 0
+    while py < tam {
+        px = 0
+        while px < tam {
+            cobre = 0
+            sy = 0
+            while sy < 4 {
+                sx = 0
+                while sx < 4 {
+                    X = ox + (px + (sx + 0.5) / 4) * escala
+                    Y = oy + (py + (sy + 0.5) / 4) * escala
+                    if dentro([X, Y]) {
+                        cobre = cobre + 1
+                    }
+                    sx = sx + 1
+                }
+                sy = sy + 1
+            }
+            # cor do degradê neste pixel (de baixo-esquerda pra cima-direita)
+            X = ox + (px + 0.5) * escala
+            Y = oy + (py + 0.5) * escala
+            t = ((X - XMIN) + (YMAX - Y)) / (lw + lh)
+            if t < 0 { t = 0 }
+            if t > 1 { t = 1 }
+            cr = COR0[0] + (COR1[0] - COR0[0]) * t
+            cg = COR0[1] + (COR1[1] - COR0[1]) * t
+            cb = COR0[2] + (COR1[2] - COR0[2]) * t
+            a = cobre / 16.0
+            if com_fundo {
+                # fundo escuro com cantos arredondados; o J é composto por cima
+                fx = min(px + 0.5, tam - px - 0.5)
+                fy = min(py + 0.5, tam - py - 0.5)
+                fa = 1.0
+                if fx < raio_canto and fy < raio_canto {
+                    dx = raio_canto - fx
+                    dy = raio_canto - fy
+                    dist = (dx * dx + dy * dy) ** 0.5
+                    fa = min(1.0, max(0.0, raio_canto - dist + 0.5))
+                }
+                addEnd(pixels, int(round(FUNDO[0] + (cr - FUNDO[0]) * a)))
+                addEnd(pixels, int(round(FUNDO[1] + (cg - FUNDO[1]) * a)))
+                addEnd(pixels, int(round(FUNDO[2] + (cb - FUNDO[2]) * a)))
+                addEnd(pixels, int(round(255 * fa)))
+            } else {
+                addEnd(pixels, int(round(cr)))
+                addEnd(pixels, int(round(cg)))
+                addEnd(pixels, int(round(cb)))
+                addEnd(pixels, int(round(255 * a)))
+            }
+            px = px + 1
+        }
+        py = py + 1
+    }
+    return png(tam, tam, pixels)
+}
+
+monta_crc()
+if __name__ == "main" {
+    if len(sys.argv) > 1 {
+        pasta = sys.argv[1]
+        os.writeFile(pasta + "/previa.png", rasteriza(512, 0.74, true, 96))
+        os.writeFile(pasta + "/previa.svg", svg())
+        post("prévia em " + pasta)
+    } else {
+        os.writeFile("dados/icones/text-jinga.svg", svg())
+        os.writeFile("editor/vscode/images/icon.png", rasteriza(256, 0.74, true, 48))
+        os.writeFile("editor/vscode/images/arquivo.png", rasteriza(128, 0.9, false, 0))
+        os.writeFile("editor/intellij/plugin/resources/icons/jinga_pr.png", rasteriza(16, 0.96, false, 0))
+        os.writeFile("editor/intellij/plugin/resources/icons/jinga_pr@2x.png", rasteriza(32, 0.96, false, 0))
+        post("logo gerada: svg + 4 png")
+    }
+}
