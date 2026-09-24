@@ -38,7 +38,7 @@ FOLGA = 1.5        # pontos percentuais
 # Meta por arquivo: linha%/ramo% que a suíte em Python alcançava em `db0bcb6`.
 # Fonte: notas/AUDITORIA-ENGENHARIA.md §9, medido com o mesmo lcov.
 META = {
-    "poolscript_vm.c": [82.0, 53.4],
+    "jinga_vm.c":      [82.0, 53.4],
     "ps_db.c":         [71.5, 48.9],
     "ps_jinker.c":     [74.0, 52.1],
     "ps_mongo.c":      [81.7, 40.8],
@@ -150,7 +150,7 @@ funct grava_base(atual) {
               "#   <arquivo> <linha%> <ramo%> <ramos cobertos> <ramos totais>",
               "#",
               "# Os DOIS ULTIMOS numeros existem porque percentual sozinho mente. Em",
-              "# 31/08 o portao acusou `poolscript_vm.c 57.3% -> 55.2%` e a conclusao",
+              "# 31/08 o portao acusou `poolscript_vm.c (hoje jinga_vm.c) 57.3% -> 55.2%` e a conclusao",
               "# obvia (perdi teste) estava ERRADA: os ramos COBERTOS eram os mesmos",
               "# 9167 dos dois lados. O que mudou foi o denominador, 15998 -> 16620,",
               "# porque entraram 622 ramos de codigo novo — guardas de erro, na",

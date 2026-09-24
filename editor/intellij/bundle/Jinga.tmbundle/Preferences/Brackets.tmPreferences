@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>name</key><string>Pares de bracket PoolScript</string>
-  <key>scope</key><string>source.poolscript</string>
+  <key>name</key><string>Pares de bracket Jinga</string>
+  <key>scope</key><string>source.jinga</string>
   <key>settings</key>
   <dict>
     <!-- realce do par correspondente (só destaca, não digita nada) -->
@@ -13,7 +13,7 @@
       <array><string>(</string><string>)</string></array>
       <array><string>[</string><string>]</string></array>
     </array>
-    <!-- VAZIO de propósito: o IDEA NÃO auto-fecha nada em PoolScript.
+    <!-- VAZIO de propósito: o IDEA NÃO auto-fecha nada em Jinga.
          Você digita { e } você mesmo — sem o } fantasma que virava {}}. -->
     <key>smartTypingPairs</key>
     <array/>

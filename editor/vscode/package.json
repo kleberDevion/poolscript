@@ -1,7 +1,7 @@
 {
-  "name": "pyrite",
-  "displayName": "Pyrite",
-  "description": "Suporte à linguagem Pyrite (a PoolScript): realce, autocomplete que sabe o tipo (métodos por tipo, argumentos nomeados, libs instaladas), hover, definição, diagnóstico e depurador.",
+  "name": "jinga",
+  "displayName": "Jinga",
+  "description": "Suporte à linguagem Jinga: realce, autocomplete que sabe o tipo (métodos por tipo, argumentos nomeados, libs instaladas), hover, definição, diagnóstico e depurador.",
   "homepage": "https://github.com/kleberDevion/poolscript/blob/main/editor/vscode/README.md",
   "version": "8.6.8",
   "publisher": "KleberSantanadeOliveira",
@@ -14,18 +14,16 @@
   "icon": "images/icon.png",
   "main": "./extension.js",
   "activationEvents": [
-    "onLanguage:poolscript",
-    "onDebugResolve:poolscript"
+    "onLanguage:jinga",
+    "onDebugResolve:jinga"
   ],
   "contributes": {
     "languages": [
       {
-        "id": "poolscript",
+        "id": "jinga",
         "aliases": [
-          "Pyrite",
-          "PoolScript",
-          "poolscript",
-          "ps"
+          "Jinga",
+          "jinga"
         ],
         "extensions": [
           ".pr"
@@ -39,87 +37,87 @@
     ],
     "grammars": [
       {
-        "language": "poolscript",
-        "scopeName": "source.poolscript",
-        "path": "./syntaxes/poolscript.tmLanguage.json"
+        "language": "jinga",
+        "scopeName": "source.jinga",
+        "path": "./syntaxes/jinga.tmLanguage.json"
       }
     ],
     "commands": [
       {
-        "command": "poolscript.rodar",
+        "command": "jinga.rodar",
         "title": "Rodar arquivo",
-        "category": "Pyrite",
+        "category": "Jinga",
         "icon": "$(play)"
       },
       {
-        "command": "poolscript.depurar",
+        "command": "jinga.depurar",
         "title": "Depurar arquivo",
-        "category": "Pyrite",
+        "category": "Jinga",
         "icon": "$(debug-alt)"
       },
       {
-        "command": "poolscript.grafico",
+        "command": "jinga.grafico",
         "title": "Gráfico de execução",
-        "category": "Pyrite",
+        "category": "Jinga",
         "icon": "$(graph)"
       }
     ],
     "menus": {
       "editor/title/run": [
         {
-          "command": "poolscript.rodar",
-          "when": "resourceLangId == poolscript",
+          "command": "jinga.rodar",
+          "when": "resourceLangId == jinga",
           "group": "navigation@1"
         },
         {
-          "command": "poolscript.depurar",
-          "when": "resourceLangId == poolscript",
+          "command": "jinga.depurar",
+          "when": "resourceLangId == jinga",
           "group": "navigation@2"
         }
       ],
       "editor/context": [
         {
-          "command": "poolscript.rodar",
-          "when": "resourceLangId == poolscript",
+          "command": "jinga.rodar",
+          "when": "resourceLangId == jinga",
           "group": "navigation@1"
         },
         {
-          "command": "poolscript.depurar",
-          "when": "resourceLangId == poolscript",
+          "command": "jinga.depurar",
+          "when": "resourceLangId == jinga",
           "group": "navigation@2"
         }
       ],
       "commandPalette": [
         {
-          "command": "poolscript.rodar",
-          "when": "resourceLangId == poolscript"
+          "command": "jinga.rodar",
+          "when": "resourceLangId == jinga"
         },
         {
-          "command": "poolscript.depurar",
-          "when": "resourceLangId == poolscript"
+          "command": "jinga.depurar",
+          "when": "resourceLangId == jinga"
         },
         {
-          "command": "poolscript.grafico",
-          "when": "resourceLangId == poolscript"
+          "command": "jinga.grafico",
+          "when": "resourceLangId == jinga"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "poolscript.rodar",
+        "command": "jinga.rodar",
         "key": "ctrl+f5",
-        "when": "editorTextFocus && resourceLangId == poolscript"
+        "when": "editorTextFocus && resourceLangId == jinga"
       }
     ],
     "breakpoints": [
-      { "language": "poolscript" }
+      { "language": "jinga" }
     ],
     "debuggers": [
       {
-        "type": "poolscript",
-        "label": "Pyrite",
+        "type": "jinga",
+        "label": "Jinga",
         "languages": [
-          "poolscript"
+          "jinga"
         ],
         "configurationAttributes": {
           "launch": {
@@ -155,7 +153,7 @@
         },
         "initialConfigurations": [
           {
-            "type": "poolscript",
+            "type": "jinga",
             "request": "launch",
             "name": "Depurar o arquivo aberto",
             "programa": "${file}"
@@ -163,10 +161,10 @@
         ],
         "configurationSnippets": [
           {
-            "label": "Pyrite: depurar o arquivo aberto",
+            "label": "Jinga: depurar o arquivo aberto",
             "description": "Roda o .pr em foco sob o depurador do motor.",
             "body": {
-              "type": "poolscript",
+              "type": "jinga",
               "request": "launch",
               "name": "Depurar o arquivo aberto",
               "programa": "^\"\\${file}\""
@@ -177,18 +175,18 @@
     ],
     "themes": [
       {
-        "label": "Pyrite C# Dark",
+        "label": "Jinga C# Dark",
         "uiTheme": "vs-dark",
-        "path": "./themes/poolscript-csharp-dark.json"
+        "path": "./themes/jinga-csharp-dark.json"
       },
       {
-        "label": "Pyrite One Dark",
+        "label": "Jinga One Dark",
         "uiTheme": "vs-dark",
-        "path": "./themes/poolscript-one-dark.json"
+        "path": "./themes/jinga-one-dark.json"
       }
     ],
     "configurationDefaults": {
-      "[poolscript]": {
+      "[jinga]": {
         "editor.wordBasedSuggestions": "off",
         "editor.suggest.showWords": false,
         "editor.suggestSelection": "first",
@@ -197,17 +195,17 @@
       }
     },
     "configuration": {
-      "title": "Pyrite",
+      "title": "Jinga",
       "properties": {
-        "poolscript.lsp.ativo": {
+        "jinga.lsp.ativo": {
           "type": "boolean",
           "default": true,
           "description": "Liga o servidor de linguagem. Desligado, a extensão fica só com o realce da gramática."
         },
-        "poolscript.pool": {
+        "jinga.jinga": {
           "type": "string",
           "default": "",
-          "description": "Caminho do binário `pool`. Vazio = usa o do PATH. O servidor pergunta módulos, tokens e diagnóstico PRA ELE, então apontar outro faz o completion descrever um motor diferente do que você roda."
+          "description": "Caminho do binário `jinga`. Vazio = usa o do PATH. O servidor pergunta módulos, tokens e diagnóstico PRA ELE, então apontar outro faz o completion descrever um motor diferente do que você roda."
         }
       }
     }

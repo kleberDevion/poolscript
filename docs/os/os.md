@@ -2,7 +2,7 @@
 
 A lib `os` reúne o que você precisa pra mexer com **arquivos e pastas**, ler
 **variáveis de ambiente**, e rodar **comandos do terminal**. É o canivete do
-sistema operacional dentro da PoolScript.
+sistema operacional dentro da Jinga.
 
 ```
 import os
@@ -10,8 +10,8 @@ import os
 ```
 
 Caminho relativo (`"dados.json"`, `"pasta/x.txt"`) é resolvido a partir do
-**diretório atual** (o de onde você chamou o `pool`), como em qualquer
-programa. Rodar `pool sub/prog.pr` de outra pasta faz `os.readFile("x.txt")`
+**diretório atual** (o de onde você chamou o `jinga`), como em qualquer
+programa. Rodar `jinga sub/prog.pr` de outra pasta faz `os.readFile("x.txt")`
 procurar no diretório atual, **não** ao lado do `.pr`.
 
 Quatro funções são a exceção e olham também a pasta do `.pr`:

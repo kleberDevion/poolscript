@@ -1,6 +1,6 @@
 # Referência da Linguagem — 7. Entity (classes e objetos)
 
-`Entity` é a construção de orientação a objetos da PoolScript: define um **tipo**
+`Entity` é a construção de orientação a objetos da Jinga: define um **tipo**
 com campos e métodos, do qual se criam **instâncias**. Esta seção cobre a
 declaração, os campos e o construtor (sintetizado ou próprio), os métodos e o
 `self`, os métodos `static`, a herança com `base`, e o encapsulamento

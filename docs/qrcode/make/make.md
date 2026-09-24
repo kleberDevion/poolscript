@@ -26,7 +26,7 @@ img.save("site.png")
 
 - **`make`** — atalho: devolve a imagem, você chama `.save()`. Os parâmetros
   têm nome longo (`fill_color`, `back_color`, `box_size`).
-- **[`gen`](../gen/gen.md)** — função de alto nível da PoolScript, com opção de
+- **[`gen`](../gen/gen.md)** — função de alto nível da Jinga, com opção de
   salvar direto (`save=`), redimensionar (`qr32=`) e nomes mais curtos
   (`color`, `bg`, `size`).
 

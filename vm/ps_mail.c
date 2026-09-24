@@ -249,7 +249,7 @@ PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap)
         if (erro) snprintf(erro, cap, "servidor nao respondeu 220 no greeting");
         goto falha;
     }
-    if (smtp_manda(c, "EHLO poolscript.local") != 0
+    if (smtp_manda(c, "EHLO jinga.local") != 0
             || smtp_resposta(c, extras, sizeof(extras)) != 250) {
         if (erro) snprintf(erro, cap, "EHLO recusado");
         goto falha;
@@ -279,7 +279,7 @@ PSMailConn *ps_smtp_conecta(const char *host, int porta, char *erro, size_t cap)
     }
     c->nbuf = 0;                       /* nada legível atravessa o handshake */
     if (liga_tls(c, host, erro, cap) != 0) goto falha;
-    if (smtp_manda(c, "EHLO poolscript.local") != 0
+    if (smtp_manda(c, "EHLO jinga.local") != 0
             || smtp_resposta(c, extras, sizeof(extras)) != 250) {
         if (erro) snprintf(erro, cap, "EHLO recusado depois do TLS");
         goto falha;

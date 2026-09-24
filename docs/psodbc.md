@@ -57,7 +57,7 @@ Nem todo parâmetro vale pra todo driver — esta tabela diz qual usa o quê:
   (`Trusted_Connection=yes`) — útil pra SQL Server local logado na sua conta.
 
 **`host` com instância nomeada — armadilha de escape:** em
-`"localhost\SQLEXPRESS"` o `\S` não é escape conhecido e a PoolScript
+`"localhost\SQLEXPRESS"` o `\S` não é escape conhecido e a Jinga
 **descarta a barra** silenciosamente (vira `localhostSQLEXPRESS`). Escreva
 `r"localhost\SQLEXPRESS"` (string raw) ou `"localhost\\SQLEXPRESS"`.
 
@@ -261,10 +261,10 @@ real da lib de banco por trás (`sqlite3`, `psycopg2`, `mysql.connector`,
 
 ## Requisitos por driver
 
-O `sqlite` vem **dentro** do `pool`. Os outros clientes são bibliotecas do
-sistema que o `pool` abre **na primeira conexão daquele driver** — nunca na
+O `sqlite` vem **dentro** do `jinga`. Os outros clientes são bibliotecas do
+sistema que o `jinga` abre **na primeira conexão daquele driver** — nunca na
 partida. Programa que não usa banco não carrega nenhuma, e o que só usa
-`sqlite` também não: o `pool` abre (e abre rápido) numa máquina sem nenhum
+`sqlite` também não: o `jinga` abre (e abre rápido) numa máquina sem nenhum
 cliente de banco instalado.
 
 | driver | o que precisa na máquina | pacote no Debian/Ubuntu |

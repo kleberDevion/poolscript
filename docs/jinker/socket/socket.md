@@ -94,7 +94,7 @@ reage a ela.
 
 ---
 
-## Cliente WebSocket em PoolScript
+## Cliente WebSocket em Jinga
 
 Do outro lado, conecta com `request.ws_connect` (lib `request`) e registra
 `on_message` pra ver o que chega:

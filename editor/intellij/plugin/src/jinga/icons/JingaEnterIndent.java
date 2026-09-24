@@ -1,4 +1,4 @@
-package poolscript.icons;
+package jinga.icons;
 
 import com.intellij.codeInsight.editorActions.enter.EnterHandlerDelegate;
 import com.intellij.openapi.actionSystem.DataContext;
@@ -10,14 +10,14 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 
 /**
- * Indentação no Enter pra PoolScript (.pr) — mesmo comportamento do
+ * Indentação no Enter pra Jinga (.pr) — mesmo comportamento do
  * VS Code, que o suporte TextMate do IDEA não dá:
  *   - linha anterior termina com aberto ({ ( [) -> nova linha entra com +4
  *   - Enter entre { e }                        -> } desce alinhado, cursor +4
  *   - linha nova começando com fechamento      -> desalinha 4
  *   - resto                                    -> copia a indentação de cima
  */
-public class PoolEnterIndent implements EnterHandlerDelegate {
+public class JingaEnterIndent implements EnterHandlerDelegate {
   private static final int PASSO = 4;
 
   @Override

@@ -22,5 +22,5 @@ catch(e) {
 }
 
 # `char` também é a palavra que o `count` usa pra contar caracteres.
-frase = "poolscript"
+frase = "jinga"
 post(count each char in frase)

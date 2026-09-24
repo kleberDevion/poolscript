@@ -66,7 +66,7 @@ import request
 
 funct baixar() {
     try {
-        url = "https://exemplo.com/PoolScript-Setup.exe"
+        url = "https://exemplo.com/Jinga-Setup.exe"
 
         # content_type: garante que veio mesmo um binário (senão dá raise).
         f = request.get(url)
@@ -84,7 +84,7 @@ funct baixar() {
 
 **O nome do arquivo**, quando você passa uma **pasta** (ex: `"downloads/"` ou
 `"."`), vem do header `Content-Disposition` do servidor; se não tiver, do fim da
-URL. Se você passar o caminho **com nome** (`"downloads/pool.exe"`), usa o seu.
+URL. Se você passar o caminho **com nome** (`"downloads/jinga.exe"`), usa o seu.
 
 Um segundo `.save()` no mesmo `Response` **copia**: o primeiro arquivo fica. O
 mesmo vale quando o corpo veio de `save=` — mover apagaria o que você pediu.
@@ -134,7 +134,7 @@ resp = request.get(url)
 if (resp.size <= 100) {
     return 400                     # pequeno demais, provável erro
 }
-using open("downloads/pool.exe", "wb") as f {
+using open("downloads/jinga.exe", "wb") as f {
     f.write(resp.content)
 }
 ```

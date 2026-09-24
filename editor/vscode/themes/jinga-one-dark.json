@@ -1,5 +1,5 @@
 {
-  "name": "PoolScript One Dark",
+  "name": "Jinga One Dark",
   "type": "dark",
   "colors": {
     "editor.background": "#282C34",
@@ -19,133 +19,133 @@
   },
   "tokenColors": [
     {
-      "name": "PoolScript: comentário",
-      "scope": ["comment.line.number-sign.poolscript", "comment.block.poolscript"],
+      "name": "Jinga: comentário",
+      "scope": ["comment.line.number-sign.jinga", "comment.block.jinga"],
       "settings": { "foreground": "#5C6370", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: controle de fluxo (if for while return try match import …)",
-      "scope": ["keyword.control.poolscript"],
+      "name": "Jinga: controle de fluxo (if for while return try match import …)",
+      "scope": ["keyword.control.jinga"],
       "settings": { "foreground": "#C678DD", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: operador-palavra (and or not is in)",
-      "scope": ["keyword.operator.logical.poolscript"],
+      "name": "Jinga: operador-palavra (and or not is in)",
+      "scope": ["keyword.operator.logical.jinga"],
       "settings": { "foreground": "#C678DD", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: verbos (PUSH GET POST PUT DELETE JSON)",
-      "scope": ["keyword.control.verb.poolscript"],
+      "name": "Jinga: verbos (PUSH GET POST PUT DELETE JSON)",
+      "scope": ["keyword.control.verb.jinga"],
       "settings": { "foreground": "#C678DD", "fontStyle": "bold" }
     },
     {
-      "name": "PoolScript: a palavra funct",
-      "scope": ["storage.type.function.poolscript"],
+      "name": "Jinga: a palavra funct",
+      "scope": ["storage.type.function.jinga"],
       "settings": { "foreground": "#E06C75", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: nome da funct (declaração e chamada)",
-      "scope": ["entity.name.function.poolscript", "entity.name.function.call.poolscript"],
+      "name": "Jinga: nome da funct (declaração e chamada)",
+      "scope": ["entity.name.function.jinga", "entity.name.function.call.jinga"],
       "settings": { "foreground": "#61AFEF", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: Entity class model enum",
-      "scope": ["storage.type.class.poolscript"],
+      "name": "Jinga: Entity class model enum",
+      "scope": ["storage.type.class.jinga"],
       "settings": { "foreground": "#D19A66", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: nome da Entity/model",
-      "scope": ["entity.name.type.class.poolscript"],
+      "name": "Jinga: nome da Entity/model",
+      "scope": ["entity.name.type.class.jinga"],
       "settings": { "foreground": "#E5C07B", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: pai herdado",
-      "scope": ["entity.other.inherited-class.poolscript"],
+      "name": "Jinga: pai herdado",
+      "scope": ["entity.other.inherited-class.jinga"],
       "settings": { "foreground": "#E5C07B", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: tipos (str int byte list dict …) e prefixo de string (f r b)",
-      "scope": ["storage.type.poolscript", "storage.type.string.prefix.poolscript"],
+      "name": "Jinga: tipos (str int byte list dict …) e prefixo de string (f r b)",
+      "scope": ["storage.type.jinga", "storage.type.string.prefix.jinga"],
       "settings": { "foreground": "#4EC9B0", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: modificadores (static nonnull private public)",
-      "scope": ["storage.modifier.poolscript"],
+      "name": "Jinga: modificadores (static nonnull private public)",
+      "scope": ["storage.modifier.jinga"],
       "settings": { "foreground": "#ABB2BF", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: builtins (post len range …)",
-      "scope": ["support.function.builtin.poolscript"],
+      "name": "Jinga: builtins (post len range …)",
+      "scope": ["support.function.builtin.jinga"],
       "settings": { "foreground": "#DCDCAA", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: exceções (Exception ValueError …)",
-      "scope": ["support.class.exception.poolscript"],
+      "name": "Jinga: exceções (Exception ValueError …)",
+      "scope": ["support.class.exception.jinga"],
       "settings": { "foreground": "#F78C6C", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: decorador (@ e o nome)",
-      "scope": ["meta.decorator.poolscript", "punctuation.decorator.poolscript", "entity.name.function.decorator.poolscript"],
+      "name": "Jinga: decorador (@ e o nome)",
+      "scope": ["meta.decorator.jinga", "punctuation.decorator.jinga", "entity.name.function.decorator.jinga"],
       "settings": { "foreground": "#FF79C6", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: self",
-      "scope": ["variable.language.self.poolscript"],
+      "name": "Jinga: self",
+      "scope": ["variable.language.self.jinga"],
       "settings": { "foreground": "#56B6C2", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: parâmetro",
-      "scope": ["variable.parameter.poolscript"],
+      "name": "Jinga: parâmetro",
+      "scope": ["variable.parameter.jinga"],
       "settings": { "foreground": "#9CDCFE", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: propriedade (.x sem chamada)",
-      "scope": ["variable.other.property.poolscript"],
+      "name": "Jinga: propriedade (.x sem chamada)",
+      "scope": ["variable.other.property.jinga"],
       "settings": { "foreground": "#ABB2BF", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: string",
-      "scope": ["string.quoted.double.poolscript", "string.quoted.single.poolscript", "string.quoted.triple.poolscript"],
+      "name": "Jinga: string",
+      "scope": ["string.quoted.double.jinga", "string.quoted.single.jinga", "string.quoted.triple.jinga"],
       "settings": { "foreground": "#98C379", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: literal de bytes b\"...\"",
-      "scope": ["string.quoted.bytes.poolscript"],
+      "name": "Jinga: literal de bytes b\"...\"",
+      "scope": ["string.quoted.bytes.jinga"],
       "settings": { "foreground": "#B5CEA8", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: escape na string",
-      "scope": ["constant.character.escape.poolscript"],
+      "name": "Jinga: escape na string",
+      "scope": ["constant.character.escape.jinga"],
       "settings": { "foreground": "#56B6C2", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: chaves da interpolação",
-      "scope": ["punctuation.definition.template-expression.begin.poolscript", "punctuation.definition.template-expression.end.poolscript"],
+      "name": "Jinga: chaves da interpolação",
+      "scope": ["punctuation.definition.template-expression.begin.jinga", "punctuation.definition.template-expression.end.jinga"],
       "settings": { "foreground": "#C678DD", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: número",
-      "scope": ["constant.numeric.poolscript"],
+      "name": "Jinga: número",
+      "scope": ["constant.numeric.jinga"],
       "settings": { "foreground": "#D19A66", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: true false Null",
-      "scope": ["constant.language.boolean.poolscript", "constant.language.null.poolscript"],
+      "name": "Jinga: true false Null",
+      "scope": ["constant.language.boolean.jinga", "constant.language.null.jinga"],
       "settings": { "foreground": "#D19A66", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: operador de símbolo e pontuação",
-      "scope": ["keyword.operator.poolscript", "punctuation.poolscript"],
+      "name": "Jinga: operador de símbolo e pontuação",
+      "scope": ["keyword.operator.jinga", "punctuation.jinga"],
       "settings": { "foreground": "#ABB2BF", "fontStyle": "" }
     },
     {
-      "name": "PoolScript: dunder (__name__ __init__)",
-      "scope": ["support.variable.dunder.poolscript"],
+      "name": "Jinga: dunder (__name__ __init__)",
+      "scope": ["support.variable.dunder.jinga"],
       "settings": { "foreground": "#E5C07B", "fontStyle": "italic" }
     },
     {
-      "name": "PoolScript: trecho interpolado volta à cor do texto",
-      "scope": ["meta.embedded.poolscript"],
+      "name": "Jinga: trecho interpolado volta à cor do texto",
+      "scope": ["meta.embedded.jinga"],
       "settings": { "foreground": "#ABB2BF", "fontStyle": "" }
     },
     {
@@ -302,9 +302,9 @@
     {
       "scope": [
         "comment",
-        "comment.line.double-slash.poolscript",
-        "comment.line.number-sign.poolscript",
-        "comment.block.poolscript"
+        "comment.line.double-slash.jinga",
+        "comment.line.number-sign.jinga",
+        "comment.block.jinga"
       ],
       "settings": {
         "foreground": "#5C6370",
@@ -314,9 +314,9 @@
     {
       "scope": [
         "string",
-        "string.quoted.double.poolscript",
-        "string.quoted.single.poolscript",
-        "string.quoted.triple.poolscript"
+        "string.quoted.double.jinga",
+        "string.quoted.single.jinga",
+        "string.quoted.triple.jinga"
       ],
       "settings": {
         "foreground": "#98C379"
@@ -324,7 +324,7 @@
     },
     {
       "scope": [
-        "constant.character.escape.poolscript"
+        "constant.character.escape.jinga"
       ],
       "settings": {
         "foreground": "#56B6C2"
@@ -332,7 +332,7 @@
     },
     {
       "scope": [
-        "constant.numeric.poolscript"
+        "constant.numeric.jinga"
       ],
       "settings": {
         "foreground": "#D19A66"
@@ -340,8 +340,8 @@
     },
     {
       "scope": [
-        "constant.language.boolean.poolscript",
-        "constant.language.null.poolscript"
+        "constant.language.boolean.jinga",
+        "constant.language.null.jinga"
       ],
       "settings": {
         "foreground": "#D19A66"
@@ -349,7 +349,7 @@
     },
     {
       "scope": [
-        "keyword.control.poolscript"
+        "keyword.control.jinga"
       ],
       "settings": {
         "foreground": "#C678DD"
@@ -357,7 +357,7 @@
     },
     {
       "scope": [
-        "keyword.operator.logical.poolscript"
+        "keyword.operator.logical.jinga"
       ],
       "settings": {
         "foreground": "#56B6C2"
@@ -365,9 +365,9 @@
     },
     {
       "scope": [
-        "storage.type.poolscript",
-        "storage.type.function.poolscript",
-        "storage.type.class.poolscript"
+        "storage.type.jinga",
+        "storage.type.function.jinga",
+        "storage.type.class.jinga"
       ],
       "settings": {
         "foreground": "#C678DD"
@@ -375,7 +375,7 @@
     },
     {
       "scope": [
-        "storage.modifier.poolscript"
+        "storage.modifier.jinga"
       ],
       "settings": {
         "foreground": "#E06C75",
@@ -384,8 +384,8 @@
     },
     {
       "scope": [
-        "entity.name.function.poolscript",
-        "entity.name.function.call.poolscript"
+        "entity.name.function.jinga",
+        "entity.name.function.call.jinga"
       ],
       "settings": {
         "foreground": "#61AFEF"
@@ -393,7 +393,7 @@
     },
     {
       "scope": [
-        "entity.name.type.poolscript"
+        "entity.name.type.jinga"
       ],
       "settings": {
         "foreground": "#E5C07B"
@@ -401,9 +401,9 @@
     },
     {
       "scope": [
-        "entity.name.function.decorator.poolscript",
-        "punctuation.decorator.poolscript",
-        "meta.decorator.poolscript"
+        "entity.name.function.decorator.jinga",
+        "punctuation.decorator.jinga",
+        "meta.decorator.jinga"
       ],
       "settings": {
         "foreground": "#E5C07B"
@@ -411,7 +411,7 @@
     },
     {
       "scope": [
-        "meta.embedded.poolscript"
+        "meta.embedded.jinga"
       ],
       "settings": {
         "foreground": "#ABB2BF"

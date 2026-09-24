@@ -184,7 +184,7 @@ funct campos_de(toks) {
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 2 {
-        post("uso: pool scripts/regrava_dif.pr <casos.c> <nome> ... [--lista arquivo] [--grava]")
+        post("uso: jinga scripts/regrava_dif.pr <casos.c> <nome> ... [--lista arquivo] [--grava]")
         sys.exit(1)
     }
     caminho = args[0]

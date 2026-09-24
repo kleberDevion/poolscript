@@ -1,13 +1,13 @@
 /*
- * Cliente LSP da PoolScript para o VS Code.
+ * Cliente LSP da Jinga para o VS Code.
  *
  * Este arquivo é o soquete: quem faz o trabalho é `server.js`, sobre
  * `vscode-languageserver` — a implementação de REFERÊNCIA do protocolo. O
- * cérebro da linguagem continua sendo o motor (`pool --metadata`, `--tokens`,
+ * cérebro da linguagem continua sendo o motor (`jinga --metadata`, `--tokens`,
  * `--check`); nada de lista de método escrita à mão.
  *
- * `"poolscript.lsp.ativo": false` desliga e sobra só o realce da gramática,
- * que é declarativo. `"poolscript.pool"` aponta o binário quando ele não está
+ * `"jinga.lsp.ativo": false` desliga e sobra só o realce da gramática,
+ * que é declarativo. `"jinga.jinga"` aponta o binário quando ele não está
  * no PATH.
  */
 const path = require('path');
@@ -24,26 +24,31 @@ let terminal;
 let saidaDebug;
 
 // O binário da linguagem. O servidor pergunta TUDO pra ele — módulos, tokens,
-// diagnóstico — então apontar pro `pool` errado faz o completion descrever um
+// diagnóstico — então apontar pro `jinga` errado faz o completion descrever um
 // motor que não é o que o usuário roda.
-function poolBin() {
-  const dado = workspace.getConfiguration('poolscript').get('pool');
-  return (typeof dado === 'string' && dado.trim()) ? dado.trim() : 'pool';
+function jingaBin() {
+  const dado = workspace.getConfiguration('jinga').get('jinga');
+  return (typeof dado === 'string' && dado.trim()) ? dado.trim() : 'jinga';
 }
 
-// O `poolscript-lsp` instalado, em caminho absoluto: o PATH do editor e as
+// O `jinga-lsp` instalado, em caminho absoluto: o PATH do editor e as
 // pastas onde o `make install`/`instalar.sh` o põem — a mesma busca do
 // cliente do IntelliJ (editor/intellij/plugin/.../PoolLspFactory.java). Um
 // VS Code aberto pelo menu não herda o PATH do shell, e ~/.local/bin fica de
-// fora dele. `null` quando não há nenhum executável.
-function poolscriptLsp() {
+// fora dele. `poolscript-lsp` é o nome de antes do rename: uma instalação
+// antiga ainda vale, e ela entra depois do nome de hoje em CADA pasta.
+// `null` quando não há nenhum executável.
+function jingaLsp() {
   const casa = os.homedir();
   const pastas = (process.env.PATH || '').split(path.delimiter).filter(Boolean)
     .concat(['/usr/local/bin', '/usr/bin', path.join(casa, '.local', 'bin'),
-             path.join(casa, 'bin'), path.join(casa, '.poolscript', 'bin')]);
+             path.join(casa, 'bin'), path.join(casa, '.jinga', 'bin'),
+             path.join(casa, '.poolscript', 'bin')]);
   for (const p of pastas) {
-    const c = path.join(p, 'poolscript-lsp');
-    try { fs.accessSync(c, fs.constants.X_OK); if (fs.statSync(c).isFile()) return c; } catch (_) { /* segue */ }
+    for (const nome of ['jinga-lsp', 'poolscript-lsp']) {
+      const c = path.join(p, nome);
+      try { fs.accessSync(c, fs.constants.X_OK); if (fs.statSync(c).isFile()) return c; } catch (_) { /* segue */ }
+    }
   }
   return null;
 }
@@ -65,22 +70,22 @@ function pro_shell(s) {
 async function rodarArquivo() {
   const ed = window.activeTextEditor;
   if (!ed) {
-    window.showWarningMessage('PoolScript: nenhum arquivo aberto pra rodar.');
+    window.showWarningMessage('Jinga: nenhum arquivo aberto pra rodar.');
     return;
   }
   const doc = ed.document;
-  if (doc.languageId !== 'poolscript') {
-    window.showWarningMessage('PoolScript: este arquivo não é .pr.');
+  if (doc.languageId !== 'jinga') {
+    window.showWarningMessage('Jinga: este arquivo não é .pr.');
     return;
   }
   if (doc.isUntitled) {
-    window.showWarningMessage('PoolScript: salve o arquivo antes de rodar.');
+    window.showWarningMessage('Jinga: salve o arquivo antes de rodar.');
     return;
   }
   if (doc.isDirty) await doc.save();
 
   if (!terminal || terminal.exitStatus !== undefined) {
-    terminal = window.createTerminal({ name: 'PoolScript' });
+    terminal = window.createTerminal({ name: 'Jinga' });
   }
   terminal.show(true);
   const arq = doc.uri.fsPath;
@@ -88,7 +93,7 @@ async function rodarArquivo() {
    * `import` por caminho) sai do diretório atual, então rodar da raiz do
    * projeto acharia arquivo diferente do que o programa espera. */
   terminal.sendText('cd ' + pro_shell(path.dirname(arq)));
-  terminal.sendText(pro_shell(poolBin()) + ' ' + pro_shell(path.basename(arq)));
+  terminal.sendText(pro_shell(jingaBin()) + ' ' + pro_shell(path.basename(arq)));
 }
 
 /* Começa uma sessão de depuração no arquivo do editor.
@@ -101,16 +106,16 @@ async function rodarArquivo() {
 async function depurarArquivo() {
   const ed = window.activeTextEditor;
   if (!ed) {
-    window.showWarningMessage('PoolScript: nenhum arquivo aberto pra depurar.');
+    window.showWarningMessage('Jinga: nenhum arquivo aberto pra depurar.');
     return;
   }
   const doc = ed.document;
-  if (doc.languageId !== 'poolscript') {
-    window.showWarningMessage('PoolScript: este arquivo não é .pr.');
+  if (doc.languageId !== 'jinga') {
+    window.showWarningMessage('Jinga: este arquivo não é .pr.');
     return;
   }
   if (doc.isUntitled) {
-    window.showWarningMessage('PoolScript: salve o arquivo antes de depurar.');
+    window.showWarningMessage('Jinga: salve o arquivo antes de depurar.');
     return;
   }
   if (doc.isDirty) await doc.save();
@@ -118,7 +123,7 @@ async function depurarArquivo() {
   const arq = doc.uri.fsPath;
   const pasta = workspace.getWorkspaceFolder(doc.uri);
   await debug.startDebugging(pasta, {
-    type: 'poolscript',
+    type: 'jinga',
     request: 'launch',
     name: 'Depurar ' + path.basename(arq),
     programa: arq,
@@ -131,7 +136,7 @@ async function depurarArquivo() {
  * O mesmo lugar em que o Java põe o `Run | Debug` acima do `main`: quem abriu o
  * arquivo age ali, sem procurar botão no topo nem decorar atalho.
  *
- * A âncora é o `if __name__ == "main" {`, que é onde um programa PoolScript
+ * A âncora é o `if __name__ == "main" {`, que é onde um programa Jinga
  * começa de verdade. Sem essa guarda o arquivo roda de cima a baixo, e aí a
  * âncora é a primeira linha com código — pôr na linha 1 fixa deixaria a lente
  * flutuando acima de comentário de cabeçalho, longe do que ela executa.
@@ -157,8 +162,8 @@ const provedorLentes = {
     if (alvo < 0) return [];
     const faixa = new vscode.Range(alvo, 0, alvo, 0);
     return [
-      new vscode.CodeLens(faixa, { title: 'Rodar',   command: 'poolscript.rodar' }),
-      new vscode.CodeLens(faixa, { title: 'Depurar', command: 'poolscript.depurar' })
+      new vscode.CodeLens(faixa, { title: 'Rodar',   command: 'jinga.rodar' }),
+      new vscode.CodeLens(faixa, { title: 'Depurar', command: 'jinga.depurar' })
     ];
   }
 };
@@ -209,30 +214,30 @@ const fabricaAdaptador = {
     const cfg = sessao.configuration;
     const programa = cfg.programa;
     if (!programa) {
-      window.showErrorMessage('PoolScript: a configuração de depuração não diz qual arquivo rodar.');
+      window.showErrorMessage('Jinga: a configuração de depuração não diz qual arquivo rodar.');
       return null;
     }
     const porta = await portaLivre();
     const cwd = cfg.cwd || path.dirname(programa);
     const args = ['--debug', String(porta), programa].concat(cfg.args || []);
 
-    if (!saidaDebug) saidaDebug = window.createOutputChannel('PoolScript (depuração)');
+    if (!saidaDebug) saidaDebug = window.createOutputChannel('Jinga (depuração)');
     saidaDebug.show(true);
-    saidaDebug.appendLine('$ ' + poolBin() + ' ' + args.join(' '));
+    saidaDebug.appendLine('$ ' + jingaBin() + ' ' + args.join(' '));
 
-    const proc = spawn(poolBin(), args, { cwd });
+    const proc = spawn(jingaBin(), args, { cwd });
     /* A saída do PROGRAMA vai pra este painel. Ela não pode ir pelo protocolo:
      * o DAP tem socket próprio justamente pra um `post()` no meio de uma
      * mensagem não quebrar o enquadramento. */
     proc.stdout.on('data', (d) => saidaDebug.append(String(d)));
     proc.stderr.on('data', (d) => saidaDebug.append(String(d)));
-    proc.on('error', (e) => window.showErrorMessage('PoolScript: não consegui rodar o motor — ' + e.message));
+    proc.on('error', (e) => window.showErrorMessage('Jinga: não consegui rodar o motor — ' + e.message));
 
     try {
       await esperaPorta(porta, 10000);
     } catch (e) {
       proc.kill();
-      window.showErrorMessage('PoolScript: ' + e.message);
+      window.showErrorMessage('Jinga: ' + e.message);
       return null;
     }
     return new vscode.DebugAdapterServer(porta);
@@ -243,7 +248,7 @@ const fabricaAdaptador = {
  *
  * Por onde o programa passou, e em que linha ele quebrou. O motor acumula as
  * arestas (linha → linha) durante a execução e as entrega no pedido
- * `poolscriptGrafico`; aresta repetida vira contador, então um laço de um
+ * `jingaGrafico`; aresta repetida vira contador, então um laço de um
  * milhão de voltas é uma seta com peso, não um milhão de setas.
  */
 let ultimoGrafico = null;
@@ -335,7 +340,7 @@ function svgDoGrafico(g) {
 
 function mostraGrafico(g) {
   const painel = window.createWebviewPanel(
-    'poolscriptGrafico', 'PoolScript: gráfico de execução',
+    'jingaGrafico', 'Jinga: gráfico de execução',
     vscode.ViewColumn.Beside, {});
   const quebrou = g.quebrou && g.quebrou.linha > 0;
   painel.webview.html =
@@ -360,7 +365,7 @@ const fabricaRastreador = {
       async onDidSendMessage(m) {
         if (!m || m.type !== 'event' || m.event !== 'terminated') return;
         try {
-          const g = await sessao.customRequest('poolscriptGrafico');
+          const g = await sessao.customRequest('jingaGrafico');
           ultimoGrafico = g;
           /* Abre sozinho só quando quebrou — que é o caso em que o gráfico
            * responde a pergunta que a pessoa tem na hora. Sem erro, ela abre
@@ -377,7 +382,7 @@ const fabricaRastreador = {
 function comandoGrafico() {
   if (!ultimoGrafico) {
     window.showInformationMessage(
-      'PoolScript: rode uma sessão de depuração primeiro — o gráfico é o caminho que ela percorreu.');
+      'Jinga: rode uma sessão de depuração primeiro — o gráfico é o caminho que ela percorreu.');
     return;
   }
   mostraGrafico(ultimoGrafico);
@@ -390,15 +395,15 @@ const provedorConfig = {
   resolveDebugConfiguration(pasta, cfg) {
     if (!cfg.type && !cfg.request && !cfg.name) {
       const ed = window.activeTextEditor;
-      if (ed && ed.document.languageId === 'poolscript') {
-        cfg.type = 'poolscript';
+      if (ed && ed.document.languageId === 'jinga') {
+        cfg.type = 'jinga';
         cfg.name = 'Depurar o arquivo aberto';
         cfg.request = 'launch';
         cfg.programa = ed.document.uri.fsPath;
       }
     }
     if (!cfg.programa) {
-      window.showWarningMessage('PoolScript: abra um .pr para depurar.');
+      window.showWarningMessage('Jinga: abra um .pr para depurar.');
       return undefined;
     }
     /* O motor lê o nome do PROTOCOLO (`stopOnEntry`); a configuração é escrita
@@ -411,26 +416,26 @@ const provedorConfig = {
 function activate(context) {
   /* Os comandos ficam FORA do `if` do LSP: quem desliga o servidor de
    * linguagem não está pedindo pra perder o botão de rodar. */
-  context.subscriptions.push(commands.registerCommand('poolscript.rodar', rodarArquivo));
-  context.subscriptions.push(commands.registerCommand('poolscript.depurar', depurarArquivo));
+  context.subscriptions.push(commands.registerCommand('jinga.rodar', rodarArquivo));
+  context.subscriptions.push(commands.registerCommand('jinga.depurar', depurarArquivo));
   context.subscriptions.push(
     languages.registerCodeLensProvider(
-      [{ language: 'poolscript' }], provedorLentes));
+      [{ language: 'jinga' }], provedorLentes));
   context.subscriptions.push(
-    commands.registerCommand('poolscript.grafico', comandoGrafico),
-    debug.registerDebugConfigurationProvider('poolscript', provedorConfig),
-    debug.registerDebugAdapterDescriptorFactory('poolscript', fabricaAdaptador),
-    debug.registerDebugAdapterTrackerFactory('poolscript', fabricaRastreador));
+    commands.registerCommand('jinga.grafico', comandoGrafico),
+    debug.registerDebugConfigurationProvider('jinga', provedorConfig),
+    debug.registerDebugAdapterDescriptorFactory('jinga', fabricaAdaptador),
+    debug.registerDebugAdapterTrackerFactory('jinga', fabricaRastreador));
 
-  if (!workspace.getConfiguration('poolscript').get('lsp.ativo')) return;
+  if (!workspace.getConfiguration('jinga').get('lsp.ativo')) return;
 
-  // O servidor é o `poolscript-lsp` INSTALADO — o mesmo que o IntelliJ e o
+  // O servidor é o `jinga-lsp` INSTALADO — o mesmo que o IntelliJ e o
   // Neovim sobem —, pra que um `make install` atualize os três editores de
   // uma vez. Antes subia sempre o `server.js` embutido na vsix; a vsix não é
   // reempacotada a cada mudança do servidor, e o VS Code ficou rodando o de
   // 17/09 enquanto os outros dois tinham as correções (19 de 187 checagens
   // falhavam nele). O embutido fica de reserva, pra máquina sem `make install`.
-  const lsp = poolscriptLsp();
+  const lsp = jingaLsp();
   const embutido = path.join(__dirname, 'server.js');
   const servidor = lsp
     ? { run:   { command: lsp, transport: TransportKind.stdio },
@@ -441,22 +446,22 @@ function activate(context) {
 
   const cliente_opts = {
     documentSelector: [
-      { scheme: 'file', language: 'poolscript' },
+      { scheme: 'file', language: 'jinga' },
     ],
     synchronize: { fileEvents: workspace.createFileSystemWatcher('**/*.pr') },
-    outputChannelName: 'PoolScript',
-    initializationOptions: { pool: poolBin() },
+    outputChannelName: 'Jinga',
+    initializationOptions: { jinga: jingaBin() },
   };
 
-  cliente = new LanguageClient('poolscript', 'PoolScript', servidor, cliente_opts);
-  // qual servidor subiu, no painel de saída "PoolScript"
-  cliente.outputChannel.appendLine('servidor: ' + (lsp || `embutido (${embutido}) — poolscript-lsp não achado`));
+  cliente = new LanguageClient('jinga', 'Jinga', servidor, cliente_opts);
+  // qual servidor subiu, no painel de saída "Jinga"
+  cliente.outputChannel.appendLine('servidor: ' + (lsp || `embutido (${embutido}) — jinga-lsp não achado`));
 
   cliente.start().catch((e) => {
     // Falhar calado deixaria o usuário sem completion sem saber por quê.
     window.showErrorMessage(
-      `PoolScript: o servidor de linguagem não subiu. Confira se o \`pool\` está ` +
-      `no PATH (ou aponte \`poolscript.pool\`). Detalhe: ${e.message}`
+      `Jinga: o servidor de linguagem não subiu. Confira se o \`jinga\` está ` +
+      `no PATH (ou aponte \`jinga.jinga\`). Detalhe: ${e.message}`
     );
   });
 

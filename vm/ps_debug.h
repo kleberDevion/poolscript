@@ -4,7 +4,7 @@
  * Só o enquadramento: ler e escrever mensagens `Content-Length: N\r\n\r\nJSON`
  * num descritor. Nada aqui sabe o que é `Value`, `VM` ou breakpoint — igual ao
  * `ps_jinker.c`, que fala HTTP sem conhecer a linguagem. A cola com a VM (os
- * frames, as variáveis, o passo) mora no `poolscript_vm.c`, que é quem enxerga
+ * frames, as variáveis, o passo) mora no `jinga_vm.c`, que é quem enxerga
  * as estruturas internas.
  *
  * O DAP é o mesmo protocolo que o VS Code usa pra qualquer depurador; falar ele

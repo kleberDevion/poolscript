@@ -1,5 +1,5 @@
 /*
- * Lexer da PoolScript em C puro.
+ * Lexer da Jinga em C puro.
  *
  * Este cabeçalho é a fronteira da etapa "tudo nativo": nada aqui depende de
  * nada além da libc, então o mesmo código serve tanto pra extensão (durante a
@@ -157,7 +157,7 @@ typedef struct {
 /* Imprime no stderr os avisos que a lista juntou, no formato
  * `<arquivo>:<linha>: SyntaxWarning: ...`. stderr, e nao stdout, porque
  * stdout e o canal de dado do programa e do JSON do `--check`. Definida em
- * poolscript_vm.c. */
+ * jinga_vm.c. */
 void ps_avisos_para_stderr(const PSTokenList *toks, const char *caminho);
 
 /* Analisa `fonte` (UTF-8, terminada em NUL). Sempre devolve uma lista que

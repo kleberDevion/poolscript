@@ -6,7 +6,7 @@ todos juntos.
 
 Cinco nomes desta lista **não são tipo da VM**, e a página de cada um explica o
 que existe no lugar: `DataEntityMeta`, `MiddlewareRegistrar`, `PoolIp`,
-`QRCode` e `Route`. A lista viva de tipos sai de `pool --metadata`.
+`QRCode` e `Route`. A lista viva de tipos sai de `jinga --metadata`.
 
 Onde uma página mostra **valor padrão** de parâmetro (`.emit(payload=None, …)`,
 `.options(subset=None)`, `.make(fit=True)`), o padrão é o que está escrito

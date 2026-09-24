@@ -1,6 +1,6 @@
 # jinker — Servidor HTTP
 
-Lib de servidor HTTP da PoolScript. **Zero dependências externas** — HTTP e
+Lib de servidor HTTP da Jinga. **Zero dependências externas** — HTTP e
 WebSocket são do próprio motor.
 
 ## O que é e como funciona (leia isto primeiro)
@@ -62,7 +62,7 @@ if __name__ == "main" {
 }
 ```
 
-Rode com `pool app.pr` e teste no navegador `http://localhost:8080/` — você vê
+Rode com `jinga app.pr` e teste no navegador `http://localhost:8080/` — você vê
 o JSON. Entendendo cada bloco:
 
 1. **`Jinker(__name__)`** cria a aplicação. Tudo (rotas, sockets) pendura nela.
@@ -351,7 +351,7 @@ funct pagina() {
 O caminho é resolvido, nesta ordem, relativo a:
 
 1. **A pasta do arquivo `.pr` em execução** (onde está o seu `app.pr`);
-2. **O diretório atual** (`cwd`, de onde você rodou `pool`).
+2. **O diretório atual** (`cwd`, de onde você rodou `jinga`).
 
 O primeiro que tiver o arquivo vence. Um caminho absoluto
 (`render("C:/algo/x.html")`) é usado como está, sem busca.
@@ -555,7 +555,7 @@ if __name__ == "main" {
 
 ## Concorrência e escala
 
-Esta seção descreve como o `pool` serve as requisições.
+Esta seção descreve como o `jinga` serve as requisições.
 
 ### Como as requisições rodam
 

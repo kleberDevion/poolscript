@@ -25,11 +25,11 @@ MAX_DIGITO = 99
 # motivo no arquivo também seria trocado.
 ARQUIVOS = [
     ["vm/ps_versao.h",     "#define PS_VERSAO \"(\\d+\\.\\d+\\.\\d+)\"", "#define PS_VERSAO \""],
-    ["docs/PoolScript.md", "PoolScript v(\\d+\\.\\d+\\.\\d+)",           "PoolScript v"],
+    ["docs/Jinga.md", "Jinga v(\\d+\\.\\d+\\.\\d+)",           "Jinga v"],
     # A doc mostra a saída LITERAL do `pool --version`, que não tem o "v" e tem
     # o sufixo [PSVM]. Sem esta entrada essa linha não subia junto e ficava
     # anunciando uma versão velha dentro do próprio arquivo da versão nova.
-    ["docs/PoolScript.md", "PoolScript (\\d+\\.\\d+\\.\\d+) \\[PSVM\\]",  "PoolScript "],
+    ["docs/Jinga.md", "Jinga (\\d+\\.\\d+\\.\\d+) \\[PSVM\\]",  "Jinga "],
     ["poolscript.md",      "Versão mais recente — \\*\\*(\\d+\\.\\d+\\.\\d+)\\*\\*", "Versão mais recente — **"],
     # A EXTENSÃO do VS Code. Ficou em 8.3.93 enquanto a linguagem já era
     # 8.3.96: quem olha a lista de extensões vê uma versão que não é a do

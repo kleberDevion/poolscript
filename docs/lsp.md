@@ -1,17 +1,22 @@
-# Editores — a PoolScript em VS Code, JetBrains e Neovim
+# Editores — a Jinga em VS Code, JetBrains e Neovim
 
 O suporte a editor é um **servidor LSP sobre `vscode-languageserver`** — a
 implementação de referência do protocolo, a mesma que as extensões sérias do
 VS Code usam:
 
 ```bash
-poolscript-lsp          # instalado por `make install`; precisa de node
+jinga-lsp               # instalado por `make install`; precisa de node
 ```
 
 Ele fala **Language Server Protocol** por stdin/stdout, então serve qualquer
 editor que seja cliente LSP — VS Code, Neovim, Helix, Emacs, JetBrains.
 
-**Por que não é escrito em PoolScript.** Era, e o resultado foi ruim: o
+Os nomes de antes do rename continuam valendo: `poolscript-lsp`, `pool` e
+`psl` seguem instalados como atalhos do mesmo binário, `POOLSCRIPT_HOME` ainda
+é lida, `import poolscript.libs.X` ainda importa, e uma `~/.poolscript`
+existente vira `~/.jinga` na primeira chamada do `jpkg` (com aviso).
+
+**Por que não é escrito em Jinga.** Era, e o resultado foi ruim: o
 servidor anterior implementava o protocolo à mão, anunciava QUATRO capacidades
 e respondia `-32601` pra todo o resto — sem ir-pra-definição, sem outline, sem
 signature help. E o pouco que fazia, fazia adivinhando com busca de string no
@@ -20,7 +25,7 @@ texto cru, o que dava:
 | escrito no editor | o que acontecia |
 |---|---|
 | `import json as js` → `js.` | ZERO sugestão — o `as` era ignorado |
-| `import random` | ZERO — lib instalada em `~/.poolscript/libs` não era catalogada |
+| `import random` | ZERO — lib instalada em `~/.jinga/libs` não era catalogada |
 | `regex.sub("(", ` | o parêntese DENTRO DA STRING quebrava o detector |
 | `f(` com `funct f(a, b)` | função LOCAL não oferecia parâmetro nenhum |
 | `regex.sub("a", "b", ` | reoferecia os cinco parâmetros, inclusive os dois já dados |
@@ -87,15 +92,15 @@ sendo — é o conhecimento da linguagem, e esse vem do motor.
   e a linha; num parâmetro, `byte raw` e a funct dona; numa funct do arquivo,
   `int async funct f(...)` e o decorador em cima; num `model`, os campos;
 - **outline** — a classe como um nó, com campos e métodos aninhados dentro;
-- **diagnóstico** — `pool --check` no arquivo, ao abrir e ao salvar, com linha
+- **diagnóstico** — `jinga --check` no arquivo, ao abrir e ao salvar, com linha
   e coluna do erro;
-- **realce** — a gramática TextMate (`syntaxes/poolscript.tmLanguage.json`)
-  é **gerada** do `pool --metadata` por `scripts/gera_realce.pr`: as listas de
+- **realce** — a gramática TextMate (`syntaxes/jinga.tmLanguage.json`)
+  é **gerada** do `jinga --metadata` por `scripts/gera_realce.pr`: as listas de
   tipos, builtins e exceções saem das tabelas do motor, e o portão
   `gera_realce.pr --portao` reprova se o arquivo divergir do gerado. Nome novo
   na linguagem entra pintado ao regenerar; nenhuma lista é digitada à mão.
 
-O modelo de tipos vem do **próprio binário** (`pool --metadata`, lido das
+O modelo de tipos vem do **próprio binário** (`jinga --metadata`, lido das
 tabelas do VM). Nada é digitado à mão, então nem o completion nem o hover
 têm como divergir do motor.
 
@@ -107,15 +112,15 @@ memorizado, então completar `regex.` toca ~10 arquivos, não 353.
 
 ## VS Code
 
-A extensão **pyrite** é o cliente: ela sobe o servidor e fala LSP com ele.
-O servidor é o **`poolscript-lsp` instalado** — o MESMO que o IntelliJ e o
+A extensão **Jinga** é o cliente: ela sobe o servidor e fala LSP com ele.
+O servidor é o **`jinga-lsp` instalado** — o MESMO que o IntelliJ e o
 Neovim sobem —, então um `make install` (ou o `instalar.sh`) atualiza os três
 editores de uma vez; no VS Code, recarregue a janela depois. A extensão o
 procura no PATH do editor e em `/usr/local/bin`, `/usr/bin`, `~/.local/bin`,
-`~/bin` e `~/.poolscript/bin` (um VS Code aberto pelo menu não herda o PATH
-do shell). Só quando não acha nenhum ela usa o `server.js` que vem dentro da
-vsix, que é uma cópia de reserva e envelhece: o painel **Saída → PoolScript**
-diz, na primeira linha, qual dos dois subiu (`servidor: /usr/local/bin/poolscript-lsp`
+`~/bin`, `~/.jinga/bin` e `~/.poolscript/bin` (um VS Code aberto pelo menu não
+herda o PATH do shell). Só quando não acha nenhum ela usa o `server.js` que vem
+dentro da vsix, que é uma cópia de reserva e envelhece: o painel **Saída → Jinga**
+diz, na primeira linha, qual dos dois subiu (`servidor: /usr/local/bin/jinga-lsp`
 ou `servidor: embutido …`), e o servidor informa a versão do motor que usa.
 
 Até 2026-09-21 a extensão subia SEMPRE o embutido, e o VS Code ficou dias
@@ -128,10 +133,10 @@ Duas configurações existem, pra quando se está mexendo no servidor:
 ```json
 {
   # roda o servidor direto do repositório, sem instalar
-  "poolscript.pool": "/caminho/do/repo/pool",
+  "jinga.jinga": "/caminho/do/repo/pool",
 
   # desliga o servidor; sobra o realce da gramática, que é declarativo
-  "poolscript.lsp.ativo": false
+  "jinga.lsp.ativo": false
 }
 ```
 
@@ -139,14 +144,14 @@ Duas configurações existem, pra quando se está mexendo no servidor:
 > (`Ctrl+Shift+P` → *Developer: Reload Window*) — ele mantém a extensão antiga
 > em memória — o processo antigo do servidor continua rodando até isso.
 
-O painel **Saída → PoolScript** mostra a conversa com o servidor; é o primeiro
+O painel **Saída → Jinga** mostra a conversa com o servidor; é o primeiro
 lugar a olhar quando algo não vem — foi ele que mostrou o enquadramento
 quebrado que derrubava o servidor a cada acento.
 
 ## Neovim
 
 Nativo, sem plugin nenhum. A configuração pronta está em
-`editor/nvim/poolscript.lua` e se instala com:
+`editor/nvim/jinga.lua` e se instala com:
 
 ```bash
 make nvim          # vai pra ~/.config/nvim/init.lua
@@ -170,25 +175,25 @@ O que a config entrega, além do LSP:
 O `completeopt` usa `noselect,noinsert`: o menu aparece, mas nada
 é escrito no buffer até você escolher — o `<CR>` continua sendo quebra de linha.
 
-O realce é o `syntax/poolscript.vim`, espelho da gramática do VS Code: as
+O realce é o `syntax/jinga.vim`, espelho da gramática do VS Code: as
 listas de tipos, apelidos, builtins e exceções são **geradas** pelo mesmo
-`scripts/gera_realce.pr` (do `pool --metadata`), e o portão do `make check`
+`scripts/gera_realce.pr` (do `jinga --metadata`), e o portão do `make check`
 reprova se divergirem. O Neovim traz `.pr` como SDL de fábrica; a config
-declara a extensão como `poolscript`, e sem ela o arquivo abre com o realce
+declara a extensão como `jinga`, e sem ela o arquivo abre com o realce
 errado — foi o que aconteceu com a config instalada antes desta, que ainda
 só conhecia `.ps`.
 
 O mínimo, se preferir montar a sua:
 
 ```lua
-vim.filetype.add({ extension = { pr = "poolscript" } })
+vim.filetype.add({ extension = { pr = "jinga" } })
 
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "poolscript",
+  pattern = "jinga",
   callback = function()
     vim.lsp.start({
-      name = "poolscript",
-      cmd = { "poolscript-lsp" },        -- ou { "node", "<repo>/editor/vscode/server.js", "--stdio" }
+      name = "jinga",
+      cmd = { "jinga-lsp" },             -- ou { "node", "<repo>/editor/vscode/server.js", "--stdio" }
       root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, { upward = true })[1]),
     })
   end,
@@ -204,14 +209,14 @@ servidor anexa e que o completion responde. PULA sem `nvim`.
 Em `~/.config/helix/languages.toml`:
 
 ```toml
-[language-server.poolscript]
+[language-server.jinga]
 command = "node"
 args = ["/caminho/do/repo/editor/vscode/server.js"]
 
 [[language]]
-name = "poolscript"
+name = "jinga"
 file-types = ["pr"]
-language-servers = ["poolscript"]
+language-servers = ["jinga"]
 ```
 
 ## JetBrains (IntelliJ, PyCharm, …)
@@ -226,37 +231,37 @@ São três peças, e as três vêm do repositório:
 |---|---|---|
 | plugin | realce do `.pr`, o servidor LSP declarado ao LSP4IJ, ícone, indentação no Enter, auto-fechamento de bracket/aspas com type-over | `editor/intellij/plugin` |
 | bundle TextMate | a gramática do realce — **cópia** da do vsix, fonte única lá; vai **dentro do jar** | `editor/intellij/bundle` |
-| LSP4IJ | o cliente LSP genérico do IDEA (plugin do marketplace); é a ele que o plugin da PoolScript entrega o `poolscript-lsp` | marketplace |
+| LSP4IJ | o cliente LSP genérico do IDEA (plugin do marketplace); é a ele que o plugin da Jinga entrega o `jinga-lsp` | marketplace |
 
 Depois do `make intellij`, **reinicie o IDEA** (plugin só carrega no boot).
 O realce vem sozinho: o IDEA só colore com bundle TextMate *registrado*, e o
 plugin registra o seu no boot (ponto de extensão
 `com.intellij.textmate.bundleProvider`), extraindo-o para
-`<sistema do IDEA>/poolscript/PoolScript.tmbundle`. Não há nada a adicionar
+`<sistema do IDEA>/jinga/Jinga.tmbundle`. Não há nada a adicionar
 em `Settings → Editor → TextMate Bundles` — era esse passo manual que deixava
 o `.pr` sem cor.
 
 O LSP também vem sozinho: o plugin declara o servidor ao LSP4IJ (pontos de
 extensão `com.redhat.devtools.lsp4ij.server` e `fileNamePatternMapping`,
-`*.pr` com languageId `poolscript`), com o caminho **absoluto** do
-`poolscript-lsp` e o do `pool` em `initializationOptions` — o PATH do IDEA
+`*.pr` com languageId `jinga`), com o caminho **absoluto** do
+`jinga-lsp` e o do `jinga` em `initializationOptions` — o PATH do IDEA
 aberto pelo desktop não é o do terminal. Precisa do plugin LSP4IJ instalado e
 do `node` na máquina.
 
 > **Migração:** quem cadastrou o servidor à mão (`Settings → Languages &
-> Frameworks → Language Servers`, "PoolScript") **apaga o cadastro** — o
+> Frameworks → Language Servers`, "Jinga") **apaga o cadastro** — o
 > manual ainda mapeava `*.ps`, e era por isso que o `.pr` abria sem completion
 > (só a de palavras do próprio IDEA); com os dois, sobem dois processos. O
 > plugin avisa num balão se achar um.
 
-Pra ver que respondeu: `View → Tool Windows → Language Servers` → PoolScript
+Pra ver que respondeu: `View → Tool Windows → Language Servers` → Jinga
 → aba *Traces* (com *Trace: verbose* na aba *Debug*) mostra o `initialize`
-com `initializationOptions.pool`, o `didOpen` com `languageId: poolscript` e
+com `initializationOptions.jinga`, o `didOpen` com `languageId: jinga` e
 a resposta do `textDocument/completion`. Erro de registro do plugin vai pro
 `idea.log`. O IDEA soma à lista a completion de palavras do próprio arquivo
 (o VS Code a desliga; o IDEA não tem isso).
 
-Quando o servidor não consegue rodar o `pool` (fora do PATH do editor, por
+Quando o servidor não consegue rodar o `jinga` (fora do PATH do editor, por
 exemplo), ele **avisa** o cliente (`window/showMessage`, balão no IDEA, toast
 no VS Code) em vez de responder listas vazias em silêncio.
 
@@ -270,15 +275,15 @@ no VS Code) em vez de responder listas vazias em silêncio.
 ## Tema
 
 A gramática emite um escopo **próprio** para cada construção da linguagem
-(`storage.type.function.poolscript` para `funct`, `storage.type.class.poolscript`
-para `Entity`, `support.class.exception.poolscript` para as exceções,
-`string.quoted.bytes.poolscript` para `b"..."`, …). Um tema comum só conhece os
+(`storage.type.function.jinga` para `funct`, `storage.type.class.jinga`
+para `Entity`, `support.class.exception.jinga` para as exceções,
+`string.quoted.bytes.jinga` para `b"..."`, …). Um tema comum só conhece os
 escopos genéricos e pinta `if`, `funct`, `Entity`, `int` e `static` da mesma
 cor. Por isso a extensão traz dois temas com regra para cada escopo — e o
 portão `scripts/gera_realce.pr --portao` reprova escopo da gramática sem cor
 neles.
 
-**PoolScript One Dark** (`Ctrl+K Ctrl+T`) — um papel, uma cor:
+**Jinga One Dark** (`Ctrl+K Ctrl+T`) — um papel, uma cor:
 
 | papel | cor |
 |---|---|
@@ -301,15 +306,15 @@ neles.
 | dunder (`__name__ __init__`) | `#E5C07B` itálico |
 | comentário | `#5C6370` itálico |
 
-**PoolScript C# Dark** — a paleta do C# no VS Code (`#569CD6` palavra da
+**Jinga C# Dark** — a paleta do C# no VS Code (`#569CD6` palavra da
 linguagem e tipo primitivo, `#C586C0` controle, `#4EC9B0` nome de tipo e
 exceção, `#DCDCAA` método, builtin e decorador, `#9CDCFE` parâmetro,
 `#CE9178` string, `#D69D85` bytes, `#B5CEA8` número, `#6A9955` comentário).
 
 Quem usa outro tema pode levar a paleta junto: copie as regras de
-`editor/vscode/themes/poolscript-one-dark.json` (as que começam com
-`"PoolScript:"`) para `editor.tokenColorCustomizations.textMateRules` no seu
-`settings.json` — os escopos terminam em `.poolscript`, então não tocam em
+`editor/vscode/themes/jinga-one-dark.json` (as que começam com
+`"Jinga:"`) para `editor.tokenColorCustomizations.textMateRules` no seu
+`settings.json` — os escopos terminam em `.jinga`, então não tocam em
 outra linguagem.
 
 ## Por dentro (pra quem mexe no repositório)
@@ -318,8 +323,8 @@ outra linguagem.
 |---|---|
 | `editor/vscode/server.js` | o servidor, sobre `vscode-languageserver` |
 | `editor/vscode/extension.js` | o cliente do VS Code — só levanta o servidor |
-| `editor/vscode/teste_servidor.js` | dirige o servidor como o editor faria e confere as respostas — inclusive como um cliente que não é o VS Code (initialize mínimo, URI `file:/` e percent-encoded, `pool` ausente → aviso) |
-| `editor/intellij/plugin/teste_intellij.sh` + `teste/ConfereLsp4ij.java` | o plugin contra os jars REAIS do IDEA e do LSP4IJ (o EP, a factory, o comando resolvido, as `initializationOptions`) e o `poolscript-lsp` instalado respondendo ao LSP4J de verdade |
+| `editor/vscode/teste_servidor.js` | dirige o servidor como o editor faria e confere as respostas — inclusive como um cliente que não é o VS Code (initialize mínimo, URI `file:/` e percent-encoded, `jinga` ausente → aviso) |
+| `editor/intellij/plugin/teste_intellij.sh` + `teste/ConfereLsp4ij.java` | o plugin contra os jars REAIS do IDEA e do LSP4IJ (o EP, a factory, o comando resolvido, as `initializationOptions`) e o `jinga-lsp` instalado respondendo ao LSP4J de verdade |
 
 Os testes entram no `make check` (PULAM sem node/IDEA, dizendo que pularam).
 Cada caso deles é uma das linhas da tabela lá em cima: são defeitos
@@ -330,15 +335,15 @@ reproduzidos, não features inventadas.
 | camada | quem faz |
 |---|---|
 | protocolo | `vscode-languageserver` — sync incremental, capacidades, cancelamento |
-| análise léxica | `pool --tokens`, o lexer DE VERDADE. `STR` e `COMMENT` chegam como um token cada, então parêntese dentro de string ou comentário não existe como pontuação — a família inteira de defeitos de detecção some por construção |
-| o que a linguagem tem | `pool --metadata`, das tabelas do VM |
-| diagnóstico | `pool --check` |
+| análise léxica | `jinga --tokens`, o lexer DE VERDADE. `STR` e `COMMENT` chegam como um token cada, então parêntese dentro de string ou comentário não existe como pontuação — a família inteira de defeitos de detecção some por construção |
+| o que a linguagem tem | `jinga --metadata`, das tabelas do VM |
+| diagnóstico | `jinga --check` |
 | prosa | `docs/<escopo>/<nome>/<nome>.md` |
 
 Nenhuma lista de módulo, método ou lib é digitada no servidor. Se o motor
 ganha um método, o completion ganha junto, sem mudança no servidor.
 
-O binário que o servidor consulta vem do cliente (`poolscript.pool`) ou do
+O binário que o servidor consulta vem do cliente (`jinga.jinga`) ou do
 PATH — apontar outro faria o completion descrever um motor diferente do que o
 usuário roda.
 
@@ -346,12 +351,12 @@ Comandos do binário que existem pra servir o editor:
 
 | Comando | Devolve |
 |---|---|
-| `pool --metadata` | módulos, tipos e métodos, das tabelas do VM |
-| `pool --tokens [arq]` | `{"tokens":[…],"erros":[…]}` — tokens do lexer, com posição e tamanho |
-| `pool --ast [arq]` | a árvore do parser em JSON, com `erros` quando há |
-| `pool --contexto L:C [arq]` | o que o cursor toca naquela posição |
-| `pool --check [arq]` | o erro de compilação em JSON, com linha e coluna |
-| `pool --check --path <arq>` | o mesmo, para um buffer não salvo que VALE como aquele arquivo |
+| `jinga --metadata` | módulos, tipos e métodos, das tabelas do VM |
+| `jinga --tokens [arq]` | `{"tokens":[…],"erros":[…]}` — tokens do lexer, com posição e tamanho |
+| `jinga --ast [arq]` | a árvore do parser em JSON, com `erros` quando há |
+| `jinga --contexto L:C [arq]` | o que o cursor toca naquela posição |
+| `jinga --check [arq]` | o erro de compilação em JSON, com linha e coluna |
+| `jinga --check --path <arq>` | o mesmo, para um buffer não salvo que VALE como aquele arquivo |
 
 **Arquivo ou buffer.** Os quatro primeiros aceitam o caminho do arquivo; sem
 caminho, leem o fonte da entrada padrão, que é como o editor manda o buffer
@@ -363,7 +368,7 @@ Com ele, `import util` ao lado resolve igual ao arquivo salvo — é a forma que
 o servidor usa.
 
 ```
-printf 'import util\nutil.naoexiste()\n' | pool --check --path src/main.pr
+printf 'import util\nutil.naoexiste()\n' | jinga --check --path src/main.pr
 ```
 
 **Módulo que não existe.** O `--check` acusa `ImportError: No module named
@@ -409,7 +414,7 @@ continuação válida como `f(1,\n  class=2)` (palavra-chave como argumento
 nomeado) nem `h(funct(v) {\n  funct interna() {...}\n})` (declaração dentro
 do corpo de uma lambda).
 
-Rodar o programa (`pool arquivo.pr`) continua parando no primeiro erro — e o
+Rodar o programa (`jinga arquivo.pr`) continua parando no primeiro erro — e o
 `(` esquecido também é acusado nele, não na linha de baixo.
 
 **Onde cada coisa TERMINA.** Todo token do `--tokens` e todo nó do `--ast`
@@ -418,7 +423,7 @@ elas o editor só sabia onde começa — sublinhava um caractere, e uma string d
 três linhas ou um comentário de bloco não tinham fim nenhum pra dobrar.
 
 ```
-$ printf 'x = "ab"\n' | pool --tokens
+$ printf 'x = "ab"\n' | jinga --tokens
 {"tokens":[{"t":"IDENT","l":1,"c":1,"n":1,"l2":1,"c2":2,"v":"x"},…,
            {"t":"STR","l":1,"c":5,"n":4,"l2":1,"c2":9,"v":"ab"},…]}
 ```
@@ -430,7 +435,7 @@ inclusive no espaço entre os tokens e com a chave ainda aberta, que é como o
 arquivo fica enquanto se digita:
 
 ```
-$ printf 'post(f"oi {x}")\n' | pool --tokens
+$ printf 'post(f"oi {x}")\n' | jinga --tokens
 {"t":"FSTRING","l":1,"c":6,"n":9,"l2":1,"c2":15,
  "interp":[{"l":1,"c":12,"l2":1,"c2":13}],"v":"oi {x}"}
 ```
@@ -440,7 +445,7 @@ e com a posição real no fonte (quem só quer o realce de string ignora esses).
 O `--ast` traz as expressões como nós filhos do literal, em `lista`:
 
 ```
-$ printf 'post(f"oi {n.upper()}")\n' | pool --ast
+$ printf 'post(f"oi {n.upper()}")\n' | jinga --ast
 … {"k":"Literal","l":1,"c":6,"l2":1,"c2":23,"texto":"oi {n.upper()}",
    "lista":[{"k":"Call","l":1,"c":19,…}]}
 ```
@@ -457,7 +462,7 @@ tamanho do token) vai na mesma conta: numa string com um caractere fora do
 plano básico, `n` e `c2 - c` dão o mesmo número.
 
 ```
-$ printf 'a = "x"\npost(a)\n' | pool --tokens --utf16
+$ printf 'a = "x"\npost(a)\n' | jinga --tokens --utf16
 ```
 
 O `--contexto` responde `topo`, `membro` (com `receptor` ou `tipo`), `nenhum`,

@@ -2,7 +2,7 @@
 
 Chamados direto no valor: `d.metodo()`. Lembre: `x in d` testa a **chave**; para procurar um **valor**, `x in d.value()`.
 
-A lista sai da tabela `METODOS_DICT` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
+A lista sai da tabela `METODOS_DICT` de `vm/jinga_vm.c`, publicada por `jinga --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|

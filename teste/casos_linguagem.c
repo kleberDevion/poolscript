@@ -2037,7 +2037,12 @@ const Caso CASOS_LINGUAGEM[] = {
   "pra ligar o modulo: import '../pkg/m.pr' — pra trazer nomes: from ..pkg.m import nome", 2 },
 { "import ...m: dois niveis acima",
   "import ...pkg.m\n", "", "import '../../pkg/m.pr'", 2 },
-{ "import .poolscript.libs.x: a resposta e a forma sem o ponto",
+{ "import .jinga.libs.x: a resposta e a forma sem o ponto",
+  "import .jinga.libs.random\n", "",
+  "pra lib instalada, sem o ponto: import jinga.libs.random", 2 },
+/* `poolscript.libs.` e o nome de antes do rename da linguagem: a mesma
+ * resposta, com o nome que a pessoa escreveu */
+{ "import .poolscript.libs.x (nome antigo): a mesma resposta",
   "import .poolscript.libs.random\n", "",
   "pra lib instalada, sem o ponto: import poolscript.libs.random", 2 },
 { "PUSH .m: a frase fala PUSH, nao import",
@@ -2525,7 +2530,7 @@ const Caso CASOS_LINGUAGEM[] = {
  * O casador é recursivo e gasta um quadro de pilha C por caractere. O teto de
  * PASSOS (2 milhões) não protegia disso: a pilha de 8 MB acaba muito antes, e
  * o processo morria de SIGSEGV, sem mensagem. Achado escrevendo o semeador do
- * fuzzer em PoolScript — o `pool` inteiro caiu casando
+ * fuzzer em Jinga — o motor inteiro caiu casando
  * `"((?:[^"\\]|\\.)*)"` contra um trecho de 29 mil caracteres. */
 { "regex profundo demais e erro, nao morte",
   "import regex\n"
@@ -2544,7 +2549,7 @@ const Caso CASOS_LINGUAGEM[] = {
 /* ── classe negada DENTRO de `[]`: `[\s\S]`, `[a\D]`, `[^\S]` ────────────────
  * O motor RECUSAVA isso com "classe negada (\D \W \S) dentro de [] nao
  * suportada". `[\s\S]` é o "qualquer coisa, inclusive \n" que todo mundo
- * escreve — o buraco apareceu escrevendo ferramenta EM PoolScript, que é onde
+ * escreve — o buraco apareceu escrevendo ferramenta EM Jinga, que é onde
  * a linguagem deixa de ser hipótese.
  *
  * A negação não podia ser o flag da classe inteira: `[a\D]` não é

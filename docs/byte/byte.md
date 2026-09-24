@@ -5,7 +5,7 @@ funções de **criar e converter** — `bytes.new`, `bytes.fromhex`, `bytes.xor`
 são do **módulo** `bytes`, em [`docs/bytes/`](../bytes/bytes.md). Esta página é
 só do que se chama NO valor: `b.metodo()`, não `bytes.metodo(b)`.
 
-Cada página tem a assinatura tirada do motor (`pool --metadata`) e a saída de um
+Cada página tem a assinatura tirada do motor (`jinga --metadata`) e a saída de um
 exemplo que foi RODADO — as 44 são geradas por `scripts/gera_bytes_docs.pr`.
 
 Os nomes são os mesmos do `str`, e por isso vale ler as

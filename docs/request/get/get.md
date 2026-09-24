@@ -38,7 +38,7 @@ dados = resp.get_json()    # corpo parseado (dict ou lista)
 Coloque os parâmetros na própria URL:
 
 ```
-resp = request.get("https://api.x.com/buscar?termo=poolscript&limite=10")
+resp = request.get("https://api.x.com/buscar?termo=jinga&limite=10")
 ```
 
 ---

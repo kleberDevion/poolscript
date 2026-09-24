@@ -105,7 +105,7 @@ funct conta(texto, palavra) {
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 1 {
-        post("uso: pool scripts/remove_grafia_antiga.pr [--grava] <arq> [<arq>...]")
+        post("uso: jinga scripts/remove_grafia_antiga.pr [--grava] <arq> [<arq>...]")
         sys.exit(1)
     }
     grava = false

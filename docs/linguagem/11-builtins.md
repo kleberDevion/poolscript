@@ -1,7 +1,7 @@
 # Referência da Linguagem — 11. Builtins
 
 Os **builtins** são as funções sempre disponíveis, **sem `import`**. São **40**
-no total — a contagem viva sai de `pool --metadata` (campo `builtins`), que é a
+no total — a contagem viva sai de `jinga --metadata` (campo `builtins`), que é a
 tabela `BUILTINS[]` da VM. Esta seção é a visão geral; cada builtin tem uma
 página detalhada em [`docs/builtins/`](../builtins/builtins.md).
 

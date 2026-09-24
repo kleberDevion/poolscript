@@ -5,10 +5,10 @@
 # trabalho: **onde vale mexer**. Percentual sozinho não decide isso:
 #
 #   ps_ast.c          94.2% de ramo   →   5 ramos descobertos
-#   poolscript_vm.c   55.6% de ramo   →   7383 ramos descobertos
+#   jinga_vm.c        55.6% de ramo   →   7383 ramos descobertos
 #
 # Os dois "faltam pra 100%", e a lista ordenada por percentual põe o `ps_db.c`
-# (337 ramos no total) na frente do `poolscript_vm.c` (16620). Ordenar por
+# (337 ramos no total) na frente do `jinga_vm.c` (16620). Ordenar por
 # percentual é ordenar por tamanho do denominador ao contrário.
 #
 # As quatro colunas que este arquivo mede, e o que cada uma decide:

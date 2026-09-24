@@ -7,7 +7,7 @@ esperar o código de saída e matar.
 ```
 import os
 
-p = os.run(["pool", "prog.pr"], capture="live")
+p = os.run(["jinga", "prog.pr"], capture="live")
 ```
 
 Os outros dois modos do [`os.run`](../run/run.md) não fazem isso: `capture=false`

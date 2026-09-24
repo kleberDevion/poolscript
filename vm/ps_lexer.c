@@ -1,5 +1,5 @@
 /*
- * Lexer da PoolScript em C puro.
+ * Lexer da Jinga em C puro.
  *
  * As regras que não são óbvias, e que os testes diferenciais cobrem:
  *

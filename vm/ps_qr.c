@@ -467,7 +467,7 @@ int ps_qr_matriz(const char *dados, int ndados, char nivel,
 typedef struct { unsigned char *b; size_t n, cap; } PngBuf;
 
 /* minúsculo ASCII local — ps_qr.c é uma unidade de tradução própria e não
- * enxerga o `minusculo` do poolscript_vm.c */
+ * enxerga o `minusculo` do jinga_vm.c */
 static void qr_minusculo(const char *s, char *out, size_t cap)
 {
     /* `cap == 0` ANTES de qualquer coisa: `cap` é `size_t`, então `cap - 1`

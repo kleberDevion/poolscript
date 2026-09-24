@@ -12,12 +12,12 @@ request.get(key: str) -> valor | Null
 
 ## Exemplos
 
-**Da query string** (`/buscar?termo=poolscript`):
+**Da query string** (`/buscar?termo=jinga`):
 
 ```
 @app.route("/buscar", methods=cors.options(["GET"]))
 funct buscar() {
-    termo = request.get("termo")     # "poolscript"
+    termo = request.get("termo")     # "jinga"
     return jsonify({"buscando": termo})
 }
 ```

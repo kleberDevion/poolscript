@@ -1,6 +1,6 @@
-# PoolScript
+# Jinga
 
-Doc — **[`poolscript.md`](poolscript.md)**.
+Doc — **[`jinga.md`](jinga.md)**.
 
 - Sintaxe da linguagem: [`docs/LANGUAGE.md`](docs/LANGUAGE.md)
 - Referência das libs (por método): [`docs/INDEX.md`](docs/INDEX.md)
@@ -11,7 +11,7 @@ Doc — **[`poolscript.md`](poolscript.md)**.
 
 ```bash
 sudo ./instalar.sh          # binário + servidor LSP + MIME e ícone do .pr
-pool examples/01_hello.pr
+jinga examples/01_hello.pr
 ```
 
 Numa máquina onde ainda não há nada (um WSL Debian novo, por exemplo), o

@@ -5,7 +5,7 @@
  * escreve `catch (DatabaseError e)` pega qualquer um dos 251 sem ter que
  * conhecer o SQLSTATE. Quem quer so a chave duplicada escreve
  * `catch (UniqueViolation e)`. A ligacao e feita em `excecao_pai()`
- * (vm/poolscript_vm.c), que pergunta a ESTA tabela — nao ha uma segunda copia
+ * (vm/jinga_vm.c), que pergunta a ESTA tabela — nao ha uma segunda copia
  * da lista pra sair de sincronia. */
 #ifndef PS_PGERR_H
 #define PS_PGERR_H

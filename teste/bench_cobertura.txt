@@ -6,7 +6,7 @@
 #
 # Nao confundir com `teste/cobertura_base.txt`, que e o PISO do portao. Este
 # arquivo nao reprova nada — so lembra do numero anterior.
-poolscript_vm.c 8994 10990 135
+jinga_vm.c 8994 10990 135
 ps_compiler.c 1344 3145 3
 ps_parser.c 785 1745 0
 ps_mail.c 333 421 0

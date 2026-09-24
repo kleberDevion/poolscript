@@ -1,4 +1,4 @@
-package poolscript.icons;
+package jinga.icons;
 
 import com.intellij.openapi.application.PathManager;
 import org.jetbrains.plugins.textmate.api.TextMateBundleProvider;
@@ -18,17 +18,17 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Registra o realce da PoolScript no IDEA SOZINHO, no boot.
+ * Registra o realce da Jinga no IDEA SOZINHO, no boot.
  *
  * O IDEA só colore com bundle TextMate que esteja registrado: ou o usuário
  * adiciona na mão (Settings > Editor > TextMate Bundles > +), ou um plugin
  * entrega pelo ponto de extensão `com.intellij.textmate.bundleProvider`. Era
  * o passo manual — e sem ele o `.pr` abria sem cor, por mais que o jar estivesse
- * instalado. Agora o bundle vai DENTRO do jar (`textmate/PoolScript.tmbundle`,
+ * instalado. Agora o bundle vai DENTRO do jar (`textmate/Jinga.tmbundle`,
  * copiado pelo build.sh) e este provedor:
  *
  *   1. extrai o bundle pro diretório de sistema do IDEA
- *      (<system>/poolscript/PoolScript.tmbundle), sobrescrevendo — assim um
+ *      (<system>/jinga/Jinga.tmbundle), sobrescrevendo — assim um
  *      jar novo com gramática nova vale no próximo boot, sem cache velho;
  *   2. devolve o caminho pro IDEA registrar, como faz com os bundles de fábrica.
  *
@@ -38,10 +38,10 @@ import java.util.List;
  * A lista de arquivos (`textmate/lista.txt`) é gerada pelo build.sh a partir do
  * bundle — nada de nome fixo aqui: o bundle muda, a lista acompanha.
  */
-public class PoolBundle implements TextMateBundleProvider {
+public class JingaBundle implements TextMateBundleProvider {
   private static final String RAIZ  = "/textmate/";
   private static final String LISTA = RAIZ + "lista.txt";
-  private static final String NOME  = "PoolScript";
+  private static final String NOME  = "Jinga";
 
   @Override
   public List<PluginBundle> getBundles() {
@@ -50,11 +50,11 @@ public class PoolBundle implements TextMateBundleProvider {
       if (arquivos.isEmpty()) {
         throw new IOException("jar sem " + LISTA + " — o build.sh nao embutiu o bundle");
       }
-      Path destino = Paths.get(PathManager.getSystemPath(), "poolscript");
+      Path destino = Paths.get(PathManager.getSystemPath(), "jinga");
       for (String rel : arquivos) {
         Path alvo = destino.resolve(rel);
         Files.createDirectories(alvo.getParent());
-        try (InputStream in = PoolBundle.class.getResourceAsStream(RAIZ + rel)) {
+        try (InputStream in = JingaBundle.class.getResourceAsStream(RAIZ + rel)) {
           if (in == null) throw new IOException("falta no jar: " + RAIZ + rel);
           Files.copy(in, alvo, StandardCopyOption.REPLACE_EXISTING);
         }
@@ -62,13 +62,13 @@ public class PoolBundle implements TextMateBundleProvider {
       return Collections.singletonList(new PluginBundle(NOME, destino.resolve(NOME + ".tmbundle")));
     } catch (IOException e) {
       // sobe pro log do IDEA (idea.log) em vez de sumir calado sem realce
-      throw new UncheckedIOException("PoolScript: nao consegui extrair o bundle TextMate", e);
+      throw new UncheckedIOException("Jinga: nao consegui extrair o bundle TextMate", e);
     }
   }
 
   private static List<String> lista() throws IOException {
     List<String> r = new ArrayList<>();
-    try (InputStream in = PoolBundle.class.getResourceAsStream(LISTA)) {
+    try (InputStream in = JingaBundle.class.getResourceAsStream(LISTA)) {
       if (in == null) return r;
       BufferedReader br = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
       String linha;

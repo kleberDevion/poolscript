@@ -165,7 +165,7 @@ for each t in ["()", "(1,)", "(1, 2, 3)", "(\"a\", \"b\")"] {
 # pela regra que dispensava a conferência. Excluir do oráculo o que se acha
 # que é diferente é o jeito mais eficiente de nunca descobrir que não era.
 #
-# `.len()` fica de fora porque é método SÓ da PoolScript: `bytes` do Python não
+# `.len()` fica de fora porque é método SÓ da Jinga: `bytes` do Python não
 # tem, então ali não há oráculo de verdade. Ele é conferido em casos_libs.c.
 BYT = ["\"\".encode()", "\"a\".encode()", "\"abc\".encode()", "\"Hello, World\".encode()",
        "\"aaa\".encode()", "\"  a b  \".encode()", "\"a-b-c\".encode()", "\"ABC\".encode()",
@@ -294,7 +294,7 @@ funct pra_python(e) {
 }
 
 
-# `reversed` da PoolScript devolve LISTA e o do Python devolve um iterador cujo
+# `reversed` da Jinga devolve LISTA e o do Python devolve um iterador cujo
 # repr é `<list_reverseiterator ...>`: aí a diferença é real e de desenho.
 #
 # `.encode()` ESTAVA nesta lista e não devia: o repr de bytes é igual ao do
@@ -361,7 +361,7 @@ funct monta_caso(nome, expr, saida) {
         # Aqui os dois valores são CERTOS por construção, não medidos: o caso é
         # sempre `post(<expr>)`, a expressão é avaliada ANTES de imprimir, então
         # quem levanta não imprime nada (stdout vazio); e erro não capturado na
-        # PoolScript sai com 1.
+        # Jinga sai com 1.
         return "{ \"" + nome + "\", " + fonte + ", \"\", " + cstr(msg) + ", 1 },"
     }
     return "{ \"" + nome + "\", " + fonte + ", " + cstr(saida) + ", NULL, 0 },"
@@ -382,7 +382,7 @@ if __name__ == "main" {
     }
     post("expressoes:", len(uniq))
 
-    # ── 3. o lado PoolScript, num programa só ───────────────────────────────
+    # ── 3. o lado Jinga, num programa só ───────────────────────────────
     linhas = []
     for each e in uniq {
         linhas.append("try {")
@@ -417,7 +417,7 @@ if __name__ == "main" {
     drv.append("    if isinstance(v, (list, tuple, dict, int)): return repr(v)")
     # `None`, com N maiúsculo, porque é o que o `print` do Python imprime.
     #
-    # Estava `'null'`, que não é o que NENHUM dos dois imprime: a PoolScript
+    # Estava `'null'`, que não é o que NENHUM dos dois imprime: a Jinga
     # diz `Null` (I22, inicial maiúscula) e o Python diz `None`. Com o oráculo
     # inventando uma terceira grafia, o comentário `DIVERGE` de todo caso que
     # devolve nulo citava um valor que o Python nunca produziu — e o número de
@@ -481,7 +481,7 @@ if __name__ == "main" {
     post("  sem oraculo       :", len(sem_or), " (repr de bytes/iterador)")
     if len(difere) > 0 {
         post("")
-        post("  --- divergencias (PoolScript | Python) ---")
+        post("  --- divergencias (Jinga | Python) ---")
         for each d in difere[0:400] {
             post("   ", d[0], "->", d[1], "|", d[2])
         }
@@ -546,7 +546,7 @@ if __name__ == "main" {
         n = n + 1
     }
     out.append("")
-    out.append("/* ── divergem do Python: comportamento da PoolScript, travado ───────── */")
+    out.append("/* ── divergem do Python: comportamento da Jinga, travado ────────────── */")
     for each p in difere {
         out.append("/* Python daria: " + repr_py(p[2]) + " */")
         out.append(monta_caso("oraculo #" + str(n) + " (DIVERGE)", p[0], p[1]))

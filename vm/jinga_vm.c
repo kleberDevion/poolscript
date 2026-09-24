@@ -1,6 +1,6 @@
 
 /*
- * VM da PoolScript em C — modelo de valores próprio + GC mark-and-sweep.
+ * VM da Jinga em C — modelo de valores próprio + GC mark-and-sweep.
  *
  * Etapa 1 (feita): int/float/bool/Null como valores nativos numa union
  *   etiquetada. Resultado medido: fib(22) de 597ms (tree-walker) pra 1,4ms,
@@ -5717,7 +5717,7 @@ static int met_join(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_replace(VM *vm, Value alvo, Value *args, int n, Value *out);
 
 /* `.replace([alvos], novo)` e `.replace([alvos], [novos])` — extensão da
- * PoolScript. Aplica os replaces de string em cadeia sobre o resultado
+ * Jinga. Aplica os replaces de string em cadeia sobre o resultado
  * corrente, na ordem da lista; `novos` par a par, ou o mesmo `novo` pra
  * todos. Reusa met_replace pra cada par (mesma semântica de substring). */
 static int met_replace_lista(VM *vm, Value alvo, PSList *alvos, Value novo, Value *out)
@@ -6437,7 +6437,7 @@ static int met_l_index(VM *vm, Value alvo, Value *args, int n, Value *out)
      * repr, e diz de que sequencia ele nao faz parte. Tupla e lista tem
      * frases DIFERENTES — a mesma funcao serve as duas aqui (METODOS_TUPLA
      * reusa met_l_index), entao o ramo tem que existir. O nome do tipo e o do
-     * type() da PoolScript: "tup". */
+     * type() da Jinga: "tup". */
     if (EH_TUPLA(alvo)) MERRO(vm, "ValueError", "tup.index(x): x not in tup");
     {
         TXTBUF_AUTO ib = {0};
@@ -16051,7 +16051,7 @@ static const MembroMod MOD_MAIL[] = {
 static const char *REQ_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36 PoolScript/0.3";
+    "Chrome/120.0.0.0 Safari/537.36 Jinga/0.3";
 static const char *REQ_ACCEPT = "application/json, text/plain, */*";
 
 /* Content-Disposition ou o fim da URL → nome de arquivo. */
@@ -16516,7 +16516,7 @@ static int request_comum(VM *vm, const char *nome, const char *metodo, Value *ar
     if (multipart) {
         static unsigned mp_seq = 0;
         char boundary[80];
-        snprintf(boundary, sizeof(boundary), "----poolscript%08x%08x%08x",
+        snprintf(boundary, sizeof(boundary), "----jinga%08x%08x%08x",
                  (unsigned)getpid(), (unsigned)time(NULL), ++mp_seq);
         SBuf mp = {0};
         int falhou = 0;
@@ -22751,7 +22751,7 @@ static int fixa_raiz(VM *vm, Value v)
     return 0;
 }
 
-/* map/filter recebem uma action da PoolScript e a chamam item a item — são
+/* map/filter recebem uma action da Jinga e a chamam item a item — são
  * os primeiros builtins que voltam pra dentro da VM. */
 static int nativa_map(VM *vm, Value *args, int n, Value *out)
 {
@@ -22808,7 +22808,7 @@ static int nativa_filter(VM *vm, Value *args, int n, Value *out)
  *
  * POR QUE ELE FALTAVA, E POR QUE ISSO IMPORTA. A linguagem se testa com 9201
  * casos e não dava a quem ESCREVE nela nenhuma forma de testar o próprio
- * código: não havia `assert` nos embutidos nem runner. Quem usava PoolScript
+ * código: não havia `assert` nos embutidos nem runner. Quem usava Jinga
  * de verdade escrevia `if x != y { post("erro") }` na mão e contava na cabeça.
  * Linguagem que não deixa testar é linguagem pra script de cinquenta linhas.
  *
@@ -22961,7 +22961,7 @@ static Builtin BUILTINS[] = {
 /* ── o laço de execução ─────────────────────────────────────────────────── */
 /* Roda `proto_inicial` a partir de uma BASE de frame/pilha/locais, em vez de
  * sempre do zero. É o que permite reentrar na VM: um builtin em C (`map`,
- * `filter`) chama uma action da PoolScript sem pisar no frame de quem o
+ * `filter`) chama uma action da Jinga sem pisar no frame de quem o
  * chamou — o laço aninhado trabalha acima da marca d'água publicada.
  *
  * `args`/`nargs_in` preenchem os primeiros locais; o resto nasce UNSET, igual
@@ -24058,7 +24058,7 @@ static void dbg_serve(VM *vm, int fp)
             dbg_variaveis(vm, &b, ref);
             sb_bytes(&b, "", 1);
             dbg_resposta(vm, seq, cmd, b.b ? b.b : "{\"variables\":[]}");
-        } else if (strcmp(cmd, "poolscriptGrafico") == 0) {
+        } else if (strcmp(cmd, "jingaGrafico") == 0 || strcmp(cmd, "poolscriptGrafico") == 0) {
             SBUF_AUTO b = {0};
             dbg_grafico(vm, &b);
             sb_bytes(&b, "", 1);
@@ -27304,7 +27304,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             if (mi < 0) {
                 /* Não é nativo: `acha_modulo_ps` procura, nesta ordem, a lib
                  * instalada pelo `psl`, a pasta do arquivo que importa e a
-                 * raiz do projeto (a ordem decidida em poolscript.md). Módulo
+                 * raiz do projeto (a ordem decidida em jinga.md). Módulo
                  * nativo ganha de qualquer `.pr` — o contrário deixaria um
                  * `json.pr` local sequestrar o módulo `json` da linguagem. */
                 vm->sp = sp; vm->locals_top = locals_top; PUBLICA_FRAME();
@@ -28169,7 +28169,7 @@ static int anexa_programa(VM *vm, PSPrograma *prog,
 
 /* Procura o `.pr` do módulo: LIB INSTALADA primeiro (~/.poolscript/libs),
  * depois a pasta do arquivo que importa, depois a raiz do projeto — a ordem
- * está no nível 0 de `acha_modulo_ps` e em poolscript.md: um arquivo local
+ * está no nível 0 de `acha_modulo_ps` e em jinga.md: um arquivo local
  * nunca ofusca uma lib instalada. */
 /* Resolve o nome codificado (ver o compilador) num caminho de arquivo:
  *   - `.a.b` / `..a` (nível>0): RELATIVO ao dir do arquivo importador
@@ -28300,20 +28300,28 @@ static char *le_fonte_modulo(const char *caminho, size_t *tam)
     return c;
 }
 
-/* A pasta das libs instaladas: `$POOLSCRIPT_HOME/libs`, ou `~/.poolscript/libs`.
- * Vazia se não houver nem uma nem outra variável. Um lugar só pra quem resolve
- * import — o `import random` e o `import poolscript.libs.random` têm que olhar
- * a MESMA pasta, e a conta estava copiada dentro do resolvedor. */
+/* A pasta das libs instaladas: `$JINGA_HOME/libs` (ou `$POOLSCRIPT_HOME`, o
+ * nome de antes do rename), senão `~/.jinga/libs`. Enquanto o `jpkg` não
+ * moveu a `~/.poolscript` antiga (ele move na primeira chamada), as libs
+ * continuam sendo achadas lá. Vazia sem HOME nenhum. Um lugar só pra quem
+ * resolve import — o `import random` e o `import jinga.libs.random` têm que
+ * olhar a MESMA pasta, e a conta estava copiada dentro do resolvedor. */
 static void pasta_libs(char *out, size_t cap)
 {
     /* executável gerado: a pasta de libs da máquina que COMPILOU, que é a
      * chave com que as libs foram embutidas */
     if (g_emb_libs[0]) { snprintf(out, cap, "%s", g_emb_libs); return; }
-    const char *over = getenv("POOLSCRIPT_HOME");
+    const char *over = getenv("JINGA_HOME");
+    if (!over || !*over) over = getenv("POOLSCRIPT_HOME");
     if (over && *over) { snprintf(out, cap, "%s/libs", over); return; }
     const char *h = getenv("HOME");
-    if (h && *h) snprintf(out, cap, "%s/.poolscript/libs", h);
-    else         out[0] = '\0';
+    if (!h || !*h) { out[0] = '\0'; return; }
+    snprintf(out, cap, "%s/.jinga/libs", h);
+    if (access(out, F_OK) != 0) {
+        char velha[1024];
+        snprintf(velha, sizeof(velha), "%s/.poolscript/libs", h);
+        if (access(velha, F_OK) == 0) snprintf(out, cap, "%s", velha);
+    }
 }
 
 /* O arquivo de um módulo `.pr`, dadas a pasta do arquivo que importa
@@ -28381,22 +28389,26 @@ static int acha_modulo_ps_em(const char *dir_modulo, const char *dir_script,
         return -1;                              /* relativo não cai pras libs */
     }
 
-    /* nível 0. LIB INSTALADA primeiro (~/.poolscript/libs): `import random`
+    /* nível 0. LIB INSTALADA primeiro (~/.jinga/libs): `import random`
      * sempre acha a LIB, não importa como o usuário nomeou seus arquivos — o
      * nome de arquivo local nunca ofusca uma lib instalada. */
     char libdir[600];
     pasta_libs(libdir, sizeof(libdir));
     if (libdir[0]) {
-        /* `import poolscript.libs.random`: o nome QUALIFICADO da lib instalada.
+        /* `import jinga.libs.random`: o nome QUALIFICADO da lib instalada.
          * O prefixo é o nome lógico da pasta de libs, não o caminho literal —
-         * vale onde as libs estiverem (`POOLSCRIPT_HOME` incluso), e cai no
+         * vale onde as libs estiverem (`JINGA_HOME` incluso), e cai no
          * MESMO arquivo do `import random`. Como o cache de módulo é por
          * caminho real, as duas formas dividem o módulo: o corpo roda uma vez.
+         * `poolscript.libs.` é o nome de antes do rename e continua valendo.
          * Sem achar ali, segue a busca comum abaixo — uma pasta
-         * `poolscript/libs/` do projeto continua sendo achada. */
-        static const char PREFIXO_LIBS[] = "poolscript.libs.";
-        const size_t NP = sizeof(PREFIXO_LIBS) - 1;
-        const char *nome_lib = (strncmp(p, PREFIXO_LIBS, NP) == 0 && p[NP]) ? p + NP : p;
+         * `jinga/libs/` do projeto continua sendo achada. */
+        static const char *const PREFIXOS_LIBS[] = { "jinga.libs.", "poolscript.libs." };
+        const char *nome_lib = p;
+        for (size_t k = 0; k < 2; k++) {
+            size_t np = strlen(PREFIXOS_LIBS[k]);
+            if (strncmp(p, PREFIXOS_LIBS[k], np) == 0 && p[np]) { nome_lib = p + np; break; }
+        }
         for (size_t e = 0; e < N_EXTS; e++) {
             snprintf(saida, cap, "%s/%s%s", libdir, nome_lib, EXTS[e]);
             if (fonte_existe(saida)) return 0;
@@ -30274,13 +30286,13 @@ static PyMethodDef metodos[] = {
 
 static struct PyModuleDef modulo = {
     PyModuleDef_HEAD_INIT,
-    "poolscript_vm",
-    "VM da PoolScript em C, com modelo de valores proprio e GC",
+    "jinga_vm",
+    "VM da Jinga em C, com modelo de valores proprio e GC",
     -1,
     metodos
 };
 
-PyMODINIT_FUNC PyInit_poolscript_vm(void)
+PyMODINIT_FUNC PyInit_jinga_vm(void)
 {
     return PyModule_Create(&modulo);
 }

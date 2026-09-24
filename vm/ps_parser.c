@@ -1,5 +1,5 @@
 /*
- * Parser recursivo-descendente da PoolScript em C puro.
+ * Parser recursivo-descendente da Jinga em C puro.
  *
  * Recursive-descent sobre o subconjunto que a VM compila, incluindo a cadeia
  * de precedência inteira (do mais fraco pro mais forte):
@@ -2184,7 +2184,7 @@ static size_t anexa(char *buf, size_t cap, size_t usado, const char *s, size_t l
  * saídas foram medidas: o caminho entre aspas liga o módulo relativo ao arquivo
  * (um ponto = `./`, dois = `../`), e o `from` com os mesmos pontos traz os nomes.
  * `from . import m` NÃO é sugerido — o motor recusa essa forma. Quem escreveu
- * `.poolscript.libs.x` estava pensando na pasta oculta das libs: pra esse, a
+ * `.jinga.libs.x` estava pensando na pasta oculta das libs: pra esse, a
  * resposta é a forma sem o ponto. Chamada com o `.` como token atual; devolve -1
  * com o erro posto. */
 static int recusa_import_relativo(P *p, const char *palavra)
@@ -2211,8 +2211,11 @@ static int recusa_import_relativo(P *p, const char *palavra)
                        "from .modulo import nome", palavra);
         return -1;
     }
-    static const char LIBS[] = "poolscript.libs.";
-    if (nivel == 1 && strncmp(pontos, LIBS, sizeof(LIBS) - 1) == 0) {
+    /* `jinga.libs.` é o nome de hoje; `poolscript.libs.` é o de antes do
+     * rename, e continua valendo */
+    static const char LIBS[] = "jinga.libs.", LIBS_ANTIGO[] = "poolscript.libs.";
+    if (nivel == 1 && (strncmp(pontos, LIBS, sizeof(LIBS) - 1) == 0
+                       || strncmp(pontos, LIBS_ANTIGO, sizeof(LIBS_ANTIGO) - 1) == 0)) {
         perro_f(p, t0, "%s com ponto na frente nao existe (o relativo e so com from); "
                        "pra lib instalada, sem o ponto: %s %s", palavra, palavra, pontos);
         return -1;

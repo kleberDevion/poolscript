@@ -1,5 +1,5 @@
 /*
- * AST da PoolScript em C puro.
+ * AST da Jinga em C puro.
  *
  * Representação: union etiquetada + ARENA.
  *

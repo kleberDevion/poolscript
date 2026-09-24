@@ -43,7 +43,7 @@ hash.b64encode("ab")            # "YWI="              (1 char de padding)
 hash.b64encode("a")             # "YQ=="              (2 chars de padding)
 hash.b64encode("")              # ""
 hash.b64encode("ç")             # "w6c="              (2 bytes em UTF-8)
-hash.b64encode("PoolScript")    # "UG9vbFNjcmlwdA=="  (10 bytes -> 16 chars)
+hash.b64encode("Jinga")    # "SmluZ2E="  (5 bytes -> 8 chars)
 ```
 
 ---

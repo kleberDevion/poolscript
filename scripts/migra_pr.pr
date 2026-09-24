@@ -10,11 +10,11 @@
 # depois não podem ser de nome). É isso que impede `x.ps` de comer o `x.ps1` do
 # PowerShell e `a.ps` de estragar `ba.ps`.
 #
-#     pool scripts/migra_pr.pr <pasta>                        # só mostra
-#     pool scripts/migra_pr.pr <pasta> --aplica                # renomeia e arruma
-#     pool scripts/migra_pr.pr <pasta> --aplica --so-renome    # sem referências
-#     pool scripts/migra_pr.pr <pasta> --sem fuzz_corpus       # pula uma pasta
-#     pool scripts/migra_pr.pr --libs --aplica                 # libs instaladas
+#     jinga scripts/migra_pr.pr <pasta>                        # só mostra
+#     jinga scripts/migra_pr.pr <pasta> --aplica                # renomeia e arruma
+#     jinga scripts/migra_pr.pr <pasta> --aplica --so-renome    # sem referências
+#     jinga scripts/migra_pr.pr <pasta> --sem fuzz_corpus       # pula uma pasta
+#     jinga scripts/migra_pr.pr --libs --aplica                 # libs instaladas
 #
 # Dentro de um repositório git o renome é comum (`os.rename`): o git enxerga o
 # renome pelo conteúdo no `git add -A`, e o histórico segue o arquivo.
@@ -290,13 +290,23 @@ funct pula_caminho(caminho) {
 }
 
 
-# As libs instaladas (`~/.poolscript/libs`, ou `$POOLSCRIPT_HOME/libs`): o
+# As libs instaladas (`~/.jinga/libs`, ou `$JINGA_HOME/libs`): o
 # arquivo delas tem que virar `.pr`, senão `import math` deixa de achar. O
-# `installed.json` guarda NOME, não caminho, então ele não muda.
+# `installed.json` guarda NOME, não caminho, então ele não muda. A ordem é a
+# do motor (`pkg_home`): `JINGA_HOME`, senão `POOLSCRIPT_HOME` (o nome de
+# antes do rename), senão `~/.jinga` — e uma `~/.poolscript` que o `jpkg`
+# ainda não moveu é usada onde está.
 funct migra_libs(aplica) {
-    home = os.getenv("POOLSCRIPT_HOME", "")
+    home = os.getenv("JINGA_HOME", "")
     if home == "" {
-        home = os.getenv("HOME", "") + "/.poolscript"
+        home = os.getenv("POOLSCRIPT_HOME", "")
+    }
+    if home == "" {
+        home = os.getenv("HOME", "") + "/.jinga"
+        velha = os.getenv("HOME", "") + "/.poolscript"
+        if not os.exists(home) and os.exists(velha) {
+            home = velha
+        }
     }
     total = 0
     for each pasta in ["libs", "commands"] {
@@ -365,7 +375,7 @@ funct principal() {
         i = i + 1
     }
     if len(alvos) == 0 and not libs {
-        post("uso: pool scripts/migra_pr.pr <pasta> [--aplica] [--so-renome] [--libs]")
+        post("uso: jinga scripts/migra_pr.pr <pasta> [--aplica] [--so-renome] [--libs]")
         post("     sem --aplica ele so mostra o que faria")
         return 2
     }

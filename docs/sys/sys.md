@@ -17,7 +17,7 @@ import sys
 | `sys.stderr` | escrever na saída de erro | [stderr/stderr.md](stderr/stderr.md) |
 | `sys.argv` | argumentos da linha de comando | [argv/argv.md](argv/argv.md) |
 | `sys.stdin` | ler da entrada padrão (`read()`, `read(n)`, `readline()`); modo cru `raw()` pra tecla na hora, sem travar | [stdin/stdin.md](stdin/stdin.md) |
-| `sys.executable` | o caminho do binário `pool` que está rodando | — |
+| `sys.executable` | o caminho do binário `jinga` que está rodando | — |
 
 ---
 

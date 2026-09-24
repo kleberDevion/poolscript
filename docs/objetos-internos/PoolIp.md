@@ -3,7 +3,7 @@
 Esta página descrevia um tipo `PoolIp` com `.check(ip)`, `.is_banned(ip)`,
 `.unban(ip)`, `.banned_list()`, `.bloq`, `.rate` e `.window`. **Nada disso é
 alcançável**: `type()` nunca devolve `PoolIp`, o nome não aparece em
-`pool --metadata`, e `app.poolip` é
+`jinga --metadata`, e `app.poolip` é
 `AttributeError: 'Jinker' object has no attribute 'poolip'`.
 
 Na VM o PoolIp é **configuração**, não objeto. Você liga na criação do app:

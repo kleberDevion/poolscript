@@ -45,6 +45,6 @@ x e y
 
 ## Bordas
 
-- a forma com lista é extensão da PoolScript
+- a forma com lista é extensão da Jinga
 
 [← índice](../str.md)

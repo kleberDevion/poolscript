@@ -1,7 +1,7 @@
 # `assert(cond, esperado=Null, mensagem=Null)`
 
 Falha com `AssertionError` quando a condição não passa. É o que permite testar
-código escrito em PoolScript sem montar a checagem à mão.
+código escrito em Jinga sem montar a checagem à mão.
 
 ## Parâmetros
 

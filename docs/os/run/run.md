@@ -47,8 +47,8 @@ aí é shell, e vale a advertência de injeção lá embaixo.
 ## Capturar a saída — aí espera
 
 ```
-versao = os.run(["pool", "--version"], capture=true)
-post(versao)                        # "PoolScript 15.91.33 [PSVM] (2026-09-22)"
+versao = os.run(["jinga", "--version"], capture=true)
+post(versao)                        # "Jinga 15.92.0 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true` o `run` **espera** o processo terminar: colher a saída exige
@@ -67,7 +67,7 @@ dele, ler o que ele já imprimiu, saber o código de saída, matar. Isso é
 [`Process`](../Process/Process.md):
 
 ```
-p = os.run(["pool", "prog.pr"], capture="live")
+p = os.run(["jinga", "prog.pr"], capture="live")
 p.write("sim\n")                 # vai pro stdin do filho
 p.close()                        # fecha a entrada (fim de arquivo pra ele)
 post(p.readline())               # a primeira linha que ele imprimir
@@ -128,7 +128,7 @@ redirecionamento, variável) numa string que **você** controla.
 Também aceita string, dividida respeitando aspas, **sem** interpretar shell:
 
 ```
-os.run("pool -e \"post(1+1)\"", capture=true)   # "2"
+os.run("jinga -e \"post(1+1)\"", capture=true)   # "2"
 ```
 
 A forma com lista é a recomendada — não depende das regras de divisão por

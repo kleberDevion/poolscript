@@ -1,7 +1,7 @@
 # `JinkerRequest` — vazio de propósito
 
 O tipo existe e é criável (`JinkerRequest()`), mas **não tem membro nenhum**:
-`pool --metadata` publica a lista vazia, e qualquer acesso é
+`jinga --metadata` publica a lista vazia, e qualquer acesso é
 `AttributeError: 'JinkerRequest' object has no attribute '…'`.
 
 Esta página listava `.file`, `.files`, `.get`, `.json`, `.path_param`, `.text`,

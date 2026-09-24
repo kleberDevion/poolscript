@@ -23,7 +23,7 @@ True
 
 ## A tabela completa do que ele responde
 
-Esta é a tabela do motor (`nome_do_tipo_valor` em `vm/poolscript_vm.c`),
+Esta é a tabela do motor (`nome_do_tipo_valor` em `vm/jinga_vm.c`),
 transcrita inteira. Repare no padrão: **valor da linguagem responde em
 minúsculas**, **objeto entregue por uma lib responde com o próprio nome, em
 CamelCase**.

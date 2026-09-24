@@ -4,9 +4,9 @@
 # variável `tls`. Cada ocorrência desta lista muda de sentido (ou vira
 # NameError antes de rodar) e precisa virar `{"tls": true}`.
 #
-#     pool scripts/acha_chaves_nuas.pr <arquivo-ou-pasta>...
+#     jinga scripts/acha_chaves_nuas.pr <arquivo-ou-pasta>...
 #
-# Lê os tokens do próprio motor (`pool --tokens`), não regex: um `{` é dict
+# Lê os tokens do próprio motor (`jinga --tokens`), não regex: um `{` é dict
 # quando vem em posição de EXPRESSÃO (depois de `=`, `(`, `,`, `[`, `:`,
 # `return`, operador…) e é bloco quando vem depois de `)`, de um nome ou de
 # palavra de fluxo (`Entity X() {`, `if x {`, `else {`). Dentro de um dict, o
@@ -96,7 +96,7 @@ funct blocos_ps(txt) {
                 addEnd(b_atual, linha)
             }
         }
-        elif limpa == "```ps" or limpa == "```poolscript" or limpa == "```ps contexto" {
+        elif limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto" {
             b_dentro = true
             b_ini = b_n
             b_atual = []
@@ -132,7 +132,7 @@ funct arquivos_de(caminho) {
 
 if __name__ == "main" {
     if len(sys.argv) < 2 {
-        post("uso: pool scripts/acha_chaves_nuas.pr <arquivo-ou-pasta>...")
+        post("uso: jinga scripts/acha_chaves_nuas.pr <arquivo-ou-pasta>...")
         sys.exit(2)
     }
     total = 0

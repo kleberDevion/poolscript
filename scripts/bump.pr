@@ -3,7 +3,7 @@
 #
 # POR QUE EXISTE. A versão é uma constante de header (`vm/ps_versao.h`), que é
 # a fonte, mas ela aparece copiada em mais quatro lugares — o título da doc e
-# três exemplos que imprimem `PoolScript X.Y.Z [PSVM]`. Subir na mão
+# três exemplos que imprimem `Jinga X.Y.Z [PSVM]`. Subir na mão
 # significava lembrar dos cinco; o que acontecia era subir um e deixar os
 # outros mentindo.
 #
@@ -12,12 +12,12 @@
 # na mesma lista e foi arrastada de 8.4.4 pra 15.90.x junto com a linguagem —
 # a ordem de subir pra 15.90.12 era só pra linguagem.
 #
-#     pool scripts/bump.pr              # só mostra onde as versões estão hoje
-#     pool scripts/bump.pr patch        # linguagem: 8.4.3 -> 8.4.4
-#     pool scripts/bump.pr minor        # linguagem: 8.4.3 -> 8.5.0
-#     pool scripts/bump.pr major        # linguagem: 8.4.3 -> 9.0.0
-#     pool scripts/bump.pr 9.1.2        # linguagem: exatamente essa
-#     pool scripts/bump.pr ext patch    # extensão (idem minor/major/X.Y.Z)
+#     jinga scripts/bump.pr              # só mostra onde as versões estão hoje
+#     jinga scripts/bump.pr patch        # linguagem: 8.4.3 -> 8.4.4
+#     jinga scripts/bump.pr minor        # linguagem: 8.4.3 -> 8.5.0
+#     jinga scripts/bump.pr major        # linguagem: 8.4.3 -> 9.0.0
+#     jinga scripts/bump.pr 9.1.2        # linguagem: exatamente essa
+#     jinga scripts/bump.pr ext patch    # extensão (idem minor/major/X.Y.Z)
 #
 # Depois de subir a linguagem é PRECISO recompilar: a versão é constante de
 # compilação, e sem `make pool` o binário segue respondendo a antiga. Depois de
@@ -31,8 +31,8 @@ FONTE = "vm/ps_versao.h"
 # mentindo — foi o que acontecia antes deste script existir.
 ARQUIVOS = [
     "vm/ps_versao.h",
-    "poolscript.md",
-    "docs/PoolScript.md",
+    "jinga.md",
+    "docs/Jinga.md",
     "docs/os/cmd/cmd.md",
     "docs/os/run/run.md"
 ]
@@ -142,15 +142,15 @@ if __name__ == "main" {
             post("  " + str(conta) + "x  " + caminho)
         }
         post("")
-        post("pra subir: pool scripts/bump.pr patch|minor|major|X.Y.Z")
-        post("extensão:  pool scripts/bump.pr ext patch|minor|major|X.Y.Z")
+        post("pra subir: jinga scripts/bump.pr patch|minor|major|X.Y.Z")
+        post("extensão:  jinga scripts/bump.pr ext patch|minor|major|X.Y.Z")
         sys.exit(0)
     }
 
     # `ext`: só a extensão do editor, pelos arquivos DELA
     if args[0] == "ext" {
         if len(args) < 2 {
-            post("uso: pool scripts/bump.pr ext patch|minor|major|X.Y.Z")
+            post("uso: jinga scripts/bump.pr ext patch|minor|major|X.Y.Z")
             sys.exit(1)
         }
         atual_ext = versao_ext()

@@ -28,7 +28,7 @@ post(reg)           # <RouteRegistrar ['GET'] /x>
 ```
 
 O nome que `type()` devolve tem underline na frente (`_RouteRegistrar`): é
-tipo interno, e o underline diz isso. Em `pool --metadata` o escopo aparece
+tipo interno, e o underline diz isso. Em `jinga --metadata` o escopo aparece
 como `RouteRegistrar`, sem o underline.
 
 ---

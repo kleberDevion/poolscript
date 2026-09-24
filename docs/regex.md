@@ -1,6 +1,6 @@
 # regex — Expressões Regulares
 
-Motor de expressões regulares do próprio `pool` (`vm/ps_regex.c`).
+Motor de expressões regulares do próprio `jinga` (`vm/ps_regex.c`).
 
 ```
 from regex import match, search, findall, sub, split, escape
@@ -42,7 +42,7 @@ findall("\d+", "a1b2c3")   # ["1", "2", "3"]
 ## sub(pattern, repl, string, count=0)
 
 Substitui ocorrências do padrão. Retorna string (encadeável, tem os
-métodos estendidos de string da PoolScript).
+métodos estendidos de string da Jinga).
 
 ```
 sub("\s+", "_", "hello world")   # "hello_world"

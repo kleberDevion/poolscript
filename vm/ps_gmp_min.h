@@ -3,7 +3,7 @@
  *
  * Igual ao ps_x11_min.h: a libgmp.so.10 já vem no sistema, mas sem header
  * (libgmp-dev). A ABI da GMP é estável e pública; declaro só o `mpz` e as
- * funções que o bignum da PoolScript usa, e linko direto contra libgmp.so.10.
+ * funções que o bignum da Jinga usa, e linko direto contra libgmp.so.10.
  * Zero download.
  *
  * Os símbolos reais são `__gmpz_*` (o gmp.h só faz `#define mpz_add __gmpz_add`);

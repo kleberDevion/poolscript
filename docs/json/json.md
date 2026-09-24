@@ -1,6 +1,6 @@
 # json — Converter entre texto JSON e dados
 
-Lib pra converter entre uma **string JSON** e os **dados** da PoolScript (dicts,
+Lib pra converter entre uma **string JSON** e os **dados** da Jinga (dicts,
 listas). Você usa quando recebe/manda JSON como texto e precisa ir e voltar.
 
 ```

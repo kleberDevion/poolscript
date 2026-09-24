@@ -15,7 +15,7 @@
     "esperam (entity.name.type.class, variable.parameter, ...) — sem isso o",
     "tema pintaria cores certas em lugares errados."
   ],
-  "name": "PoolScript C# Dark",
+  "name": "Jinga C# Dark",
   "type": "dark",
   "colors": {
     "editor.background": "#1E1E1E",
@@ -46,43 +46,43 @@
   },
   "tokenColors": [
     {
-      "name": "PoolScript: builtin chamado — método, no C#",
-      "scope": ["support.function.builtin.poolscript"],
+      "name": "Jinga: builtin chamado — método, no C#",
+      "scope": ["support.function.builtin.jinga"],
       "settings": { "foreground": "#DCDCAA" }
     },
     {
-      "name": "PoolScript: exceção — nome de tipo, no C#",
-      "scope": ["support.class.exception.poolscript"],
+      "name": "Jinga: exceção — nome de tipo, no C#",
+      "scope": ["support.class.exception.jinga"],
       "settings": { "foreground": "#4EC9B0" }
     },
     {
-      "name": "PoolScript: decorador — atributo, no C#",
-      "scope": ["meta.decorator.poolscript", "punctuation.decorator.poolscript", "entity.name.function.decorator.poolscript"],
+      "name": "Jinga: decorador — atributo, no C#",
+      "scope": ["meta.decorator.jinga", "punctuation.decorator.jinga", "entity.name.function.decorator.jinga"],
       "settings": { "foreground": "#DCDCAA" }
     },
     {
-      "name": "PoolScript: literal de bytes e prefixo de string",
-      "scope": ["string.quoted.bytes.poolscript"],
+      "name": "Jinga: literal de bytes e prefixo de string",
+      "scope": ["string.quoted.bytes.jinga"],
       "settings": { "foreground": "#D69D85" }
     },
     {
-      "name": "PoolScript: prefixo f/r/b",
-      "scope": ["storage.type.string.prefix.poolscript"],
+      "name": "Jinga: prefixo f/r/b",
+      "scope": ["storage.type.string.prefix.jinga"],
       "settings": { "foreground": "#569CD6" }
     },
     {
-      "name": "PoolScript: operador e pontuação",
-      "scope": ["keyword.operator.poolscript", "punctuation.poolscript"],
+      "name": "Jinga: operador e pontuação",
+      "scope": ["keyword.operator.jinga", "punctuation.jinga"],
       "settings": { "foreground": "#D4D4D4" }
     },
     {
-      "name": "PoolScript: dunder",
-      "scope": ["support.variable.dunder.poolscript"],
+      "name": "Jinga: dunder",
+      "scope": ["support.variable.dunder.jinga"],
       "settings": { "foreground": "#9CDCFE" }
     },
     {
-      "name": "PoolScript: trecho interpolado",
-      "scope": ["meta.embedded.poolscript"],
+      "name": "Jinga: trecho interpolado",
+      "scope": ["meta.embedded.jinga"],
       "settings": { "foreground": "#D4D4D4" }
     },
     {
@@ -94,8 +94,8 @@
       "name": "controle de fluxo — o roxo do C#",
       "scope": [
         "keyword.control",
-        "keyword.control.poolscript",
-        "keyword.control.verb.poolscript"
+        "keyword.control.jinga",
+        "keyword.control.verb.jinga"
       ],
       "settings": { "foreground": "#C586C0" }
     },
@@ -104,11 +104,11 @@
       "scope": [
         "storage",
         "storage.type",
-        "storage.type.poolscript",
-        "storage.type.class.poolscript",
-        "storage.type.function.poolscript",
+        "storage.type.jinga",
+        "storage.type.class.jinga",
+        "storage.type.function.jinga",
         "storage.modifier",
-        "storage.modifier.poolscript",
+        "storage.modifier.jinga",
         "keyword.other",
         "support.type"
       ],
@@ -129,10 +129,10 @@
       "scope": [
         "entity.name.type",
         "entity.name.type.class",
-        "entity.name.type.class.poolscript",
-        "entity.name.type.poolscript",
+        "entity.name.type.class.jinga",
+        "entity.name.type.jinga",
         "entity.other.inherited-class",
-        "entity.other.inherited-class.poolscript",
+        "entity.other.inherited-class.jinga",
         "support.class"
       ],
       "settings": { "foreground": "#4EC9B0" }
@@ -141,10 +141,10 @@
       "name": "nome de método e chamada — o amarelo do C#",
       "scope": [
         "entity.name.function",
-        "entity.name.function.poolscript",
-        "entity.name.function.call.poolscript",
+        "entity.name.function.jinga",
+        "entity.name.function.call.jinga",
         "support.function",
-        "support.function.builtin.poolscript",
+        "support.function.builtin.jinga",
         "meta.function-call"
       ],
       "settings": { "foreground": "#DCDCAA" }
@@ -152,9 +152,9 @@
     {
       "name": "atributo/decorador",
       "scope": [
-        "entity.name.function.decorator.poolscript",
-        "punctuation.decorator.poolscript",
-        "meta.decorator.poolscript"
+        "entity.name.function.decorator.jinga",
+        "punctuation.decorator.jinga",
+        "meta.decorator.jinga"
       ],
       "settings": { "foreground": "#DCDCAA" }
     },
@@ -163,52 +163,52 @@
       "scope": [
         "variable",
         "variable.parameter",
-        "variable.parameter.poolscript",
+        "variable.parameter.jinga",
         "variable.other",
-        "variable.other.property.poolscript",
-        "meta.embedded.poolscript"
+        "variable.other.property.jinga",
+        "meta.embedded.jinga"
       ],
       "settings": { "foreground": "#9CDCFE" }
     },
     {
       "name": "`self` é o `this`: palavra da linguagem, não variável",
-      "scope": ["variable.language", "variable.language.self.poolscript"],
+      "scope": ["variable.language", "variable.language.self.jinga"],
       "settings": { "foreground": "#569CD6" }
     },
     {
       "name": "string",
       "scope": [
         "string",
-        "string.quoted.double.poolscript",
-        "string.quoted.single.poolscript",
-        "string.quoted.triple.poolscript"
+        "string.quoted.double.jinga",
+        "string.quoted.single.jinga",
+        "string.quoted.triple.jinga"
       ],
       "settings": { "foreground": "#CE9178" }
     },
     {
       "name": "escape dentro da string",
-      "scope": ["constant.character.escape", "constant.character.escape.poolscript"],
+      "scope": ["constant.character.escape", "constant.character.escape.jinga"],
       "settings": { "foreground": "#D7BA7D" }
     },
     {
       "name": "interpolação: as chaves saem da cor da string",
       "scope": [
-        "punctuation.definition.template-expression.begin.poolscript",
-        "punctuation.definition.template-expression.end.poolscript"
+        "punctuation.definition.template-expression.begin.jinga",
+        "punctuation.definition.template-expression.end.jinga"
       ],
       "settings": { "foreground": "#569CD6" }
     },
     {
       "name": "número",
-      "scope": ["constant.numeric", "constant.numeric.poolscript"],
+      "scope": ["constant.numeric", "constant.numeric.jinga"],
       "settings": { "foreground": "#B5CEA8" }
     },
     {
       "name": "true / false / null",
       "scope": [
         "constant.language",
-        "constant.language.boolean.poolscript",
-        "constant.language.null.poolscript"
+        "constant.language.boolean.jinga",
+        "constant.language.null.jinga"
       ],
       "settings": { "foreground": "#569CD6" }
     },

@@ -2,7 +2,7 @@
 # Confere o plugin do IntelliJ contra os jars REAIS do IDEA e do LSP4IJ — o
 # que os stubs não conferem. Stub que não casa com o binário só quebra em
 # runtime, calado; aqui é o runtime: as classes reais, o LSP4J real e o
-# `poolscript-lsp` instalado respondendo a um `initialize` + `completion`.
+# `jinga-lsp` instalado respondendo a um `initialize` + `completion`.
 #
 # POR QUE ISTO EXISTE: o bundle TextMate e o servidor LSP eram cadastrados à
 # mão no IDEA, e o cadastro da máquina ainda dizia `*.ps` — o `.pr` abria sem
@@ -12,11 +12,12 @@
 #     editor/intellij/plugin/teste_intellij.sh
 #
 # PULA (dizendo o motivo) sem IDEA/JBR ou sem o LSP4IJ instalado — nunca finge
-# que passou. Como o teste do Neovim, mede o `poolscript-lsp` INSTALADO.
+# que passou. Como o teste do Neovim, mede o `jinga-lsp` INSTALADO (ou o
+# atalho antigo `poolscript-lsp`, se só ele existir — a mesma ordem do plugin).
 set -u
 
 AQUI=$(cd "$(dirname "$0")" && pwd)
-JAR="$AQUI/dist/poolscript-icons.jar"
+JAR="$AQUI/dist/jinga-icons.jar"
 
 # o IDEA: IDEA_HOME, senão /opt/idea*, senão o Toolbox
 IDEA=${IDEA_HOME:-}
@@ -55,6 +56,6 @@ if ! "$JAVAC" -nowarn -cp "$CP" -d "$TMP" "$AQUI/teste/ConfereLsp4ij.java" 2>"$T
   head -20 "$TMP/javac.txt"
   exit 1
 fi
-LSP=$(command -v poolscript-lsp 2>/dev/null || true)
-POOL=$(command -v pool 2>/dev/null || true)
-"$JAVA" -cp "$TMP:$CP" ConfereLsp4ij "$JAR" "$LSP" "$POOL"
+LSP=$(command -v jinga-lsp 2>/dev/null || command -v poolscript-lsp 2>/dev/null || true)
+MOTOR=$(command -v jinga 2>/dev/null || command -v pool 2>/dev/null || true)
+"$JAVA" -cp "$TMP:$CP" ConfereLsp4ij "$JAR" "$LSP" "$MOTOR"

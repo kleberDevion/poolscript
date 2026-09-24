@@ -1,16 +1,16 @@
 /*
- * Servidor LSP da PoolScript, sobre `vscode-languageserver`.
+ * Servidor LSP da Jinga, sobre `vscode-languageserver`.
  *
  * A DIVISÃO, e ela é a razão do arquivo:
  *
  *   protocolo   `vscode-languageserver`, a implementação de REFERÊNCIA. Sync
  *               incremental, capacidades, cancelamento — nada disso é nosso.
- *   estrutura   `pool --ast`. A ÁRVORE DO PARSER, o mesmo que compila o
+ *   estrutura   `jinga --ast`. A ÁRVORE DO PARSER, o mesmo que compila o
  *               programa. Quem sabe o que é variável, de quem é o membro e o
  *               que está em escopo naquela linha é ele. Vive em `analise.js`.
- *   tabelas     `pool --metadata` — módulos, tipos e métodos, lidos das
+ *   tabelas     `jinga --metadata` — módulos, tipos e métodos, lidos das
  *               tabelas do VM.
- *   diagnóstico `pool --check`.
+ *   diagnóstico `jinga --check`.
  *   prosa       `docs/<escopo>/<nome>/<nome>.md`, a mesma página que o
  *               `scripts/audita_doc.pr` confere contra o motor.
  *
@@ -44,10 +44,23 @@ const docs = new TextDocuments(TextDocument);
 
 /* ── o motor ─────────────────────────────────────────────────────────────
  *
- * `POOL` vem do cliente (initializationOptions) ou do PATH. É o mesmo binário
- * que o usuário roda: apontar pra outro faria o completion descrever um motor
- * que não é o dele. */
-let POOL = 'pool';
+ * `POOL` vem do cliente (initializationOptions `jinga`, ou `pool`, o nome de
+ * antes do rename) ou do PATH. É o mesmo binário que o usuário roda: apontar
+ * pra outro faria o completion descrever um motor que não é o dele. */
+let POOL = 'jinga';
+
+/* O binário do PATH: `jinga`, e `pool` quando só a instalação antiga existe —
+ * o `make install` de antes do rename punha `pool` e nada mais, e um editor
+ * nessa máquina ficaria sem completion por causa de um nome. */
+function binarioDoPath() {
+  for (const nome of ['jinga', 'pool']) {
+    try {
+      const onde = execFileSync('sh', ['-c', 'command -v ' + nome], { encoding: 'utf8' }).trim();
+      if (onde) return nome;
+    } catch (_) { /* segue pro próximo nome */ }
+  }
+  return 'jinga';
+}
 let RAIZ_DOC = null;
 /* O último motivo de o motor não ter rodado (binário ausente, stderr). Sem
  * isto o servidor subia, respondia tudo e devolvia listas VAZIAS sem um
@@ -82,13 +95,15 @@ function carregaMeta() {
   if (bruto.trim().startsWith('{')) {
     try { META = JSON.parse(bruto); return; } catch (_) { /* fica o vazio */ }
   }
-  META_ERRO = 'PoolScript: nao consegui rodar o motor `' + POOL + ' --metadata`'
+  META_ERRO = 'Jinga: nao consegui rodar o motor `' + POOL + ' --metadata`'
             + (ULTIMO_ERRO_MOTOR ? ' (' + ULTIMO_ERRO_MOTOR + ')' : '')
-            + '. Sem ele a completion fica vazia: aponte o binario em initializationOptions.pool '
-            + 'ou ponha o `pool` no PATH do editor.';
+            + '. Sem ele a completion fica vazia: aponte o binario em initializationOptions.jinga '
+            + 'ou ponha o `jinga` no PATH do editor.';
 }
 
-/* Onde `docs/` está: ao lado do binário instalado, ou na raiz do repositório. */
+/* Onde `docs/` está: ao lado do binário instalado (`share/jinga/docs`, ou
+ * `share/poolscript/docs` de uma instalação de antes do rename), ou na raiz
+ * do repositório. */
 function raizDoc() {
   if (RAIZ_DOC !== null) return RAIZ_DOC;
   let base = '.';
@@ -97,6 +112,7 @@ function raizDoc() {
     if (onde) base = path.dirname(fs.realpathSync(onde));
   } catch (_) { /* usa o cwd */ }
   const cands = [
+    path.join(base, '..', 'share', 'jinga', 'docs'),
     path.join(base, '..', 'share', 'poolscript', 'docs'),
     path.join(base, 'docs'),
     'docs',
@@ -214,7 +230,7 @@ function remendaPontosSoltos(texto) {
  * pede a assinatura ou o nome do próximo argumento — o parser não produz o nó
  * `Call`, e sem ele não há o que responder.
  *
- * QUEM CONTA OS PARÊNTESES É O LEXER (`pool --tokens`), não uma varredura de
+ * QUEM CONTA OS PARÊNTESES É O LEXER (`jinga --tokens`), não uma varredura de
  * caractere: string e comentário chegam como UM token cada, então o `(` de
  * dentro de `"a("` não existe aqui. Contar no texto cru erraria exatamente no
  * caso que o teste cobre. */
@@ -363,18 +379,25 @@ function dentroDeTextoLivre(doc, pos) {
  *
  * A ordem de resolução é a da linguagem (docs/linguagem/09-imports.md §9.5):
  * stdlib, lib global instalada, arquivo do projeto. */
-/* `$POOLSCRIPT_HOME/libs`, ou `~/.poolscript/libs` — a regra do motor
- * (`pasta_libs`) e do `psl`. O editor só olhava o HOME: com `POOLSCRIPT_HOME`
- * definido, o completion descrevia uma pasta de libs que o motor não usa. */
+/* `$JINGA_HOME/libs` (ou `$POOLSCRIPT_HOME`, o nome de antes do rename),
+ * senão `~/.jinga/libs` — a regra do motor (`pasta_libs`) e do `jpkg`. O
+ * editor só olhava o HOME: com a variável definida, o completion descrevia
+ * uma pasta de libs que o motor não usa. Enquanto o `jpkg` não moveu a
+ * `~/.poolscript` antiga (ele move na primeira chamada), as libs ainda moram
+ * lá: é o mesmo fallback do motor. */
 function pastaLibs() {
-  const over = process.env.POOLSCRIPT_HOME;
+  const over = process.env.JINGA_HOME || process.env.POOLSCRIPT_HOME;
   if (over) return path.join(over, 'libs');
   const h = process.env.HOME;
-  return h ? path.join(h, '.poolscript', 'libs') : '';
+  if (!h) return '';
+  const nova = path.join(h, '.jinga', 'libs');
+  try { if (fs.statSync(nova).isDirectory()) return nova; } catch (_) { /* segue */ }
+  return path.join(h, '.poolscript', 'libs');
 }
 
-/* `import poolscript.libs.random`: o nome qualificado da lib instalada. */
-const PREFIXO_LIBS = 'poolscript.libs.';
+/* `import jinga.libs.random`: o nome qualificado da lib instalada.
+ * `poolscript.libs.` é o de antes do rename e o motor continua aceitando. */
+const PREFIXOS_LIBS = ['jinga.libs.', 'poolscript.libs.'];
 
 function libsInstaladas() {
   try {
@@ -414,12 +437,12 @@ function arquivoDoImport(mod, dirDoc, aspas, pontos, dirScript) {
   }
   /* Lib instalada primeiro. Na pasta de libs o nome vai COM os pontos
    * (`libs/a.b.pr`), como no motor — o editor procurava `libs/a/b.pr`, que o
-   * motor nunca carrega. O prefixo `poolscript.libs.` sai antes: é o nome
+   * motor nunca carrega. O prefixo `jinga.libs.` sai antes: é o nome
    * qualificado da mesma lib. */
   const libs = pastaLibs();
   if (libs) {
-    const nomeLib = mod.startsWith(PREFIXO_LIBS) && mod.length > PREFIXO_LIBS.length
-      ? mod.slice(PREFIXO_LIBS.length) : mod;
+    const prefixo = PREFIXOS_LIBS.find((p) => mod.startsWith(p) && mod.length > p.length);
+    const nomeLib = prefixo ? mod.slice(prefixo.length) : mod;
     const p = path.join(libs, nomeLib + '.pr');
     try { if (fs.statSync(p).isFile()) return p; } catch (_) { /* segue */ }
   }
@@ -1143,7 +1166,11 @@ function paramsDoChamado(doc, ch, linha) {
 
 conexao.onInitialize((params) => {
   const op = (params.initializationOptions || {});
-  if (op.pool) POOL = op.pool;
+  /* `jinga` é o nome de hoje; `pool` é o de antes do rename e um cliente
+   * antigo (a vsix não reempacotada, um IntelliJ de ontem) ainda manda ele. */
+  if (op.jinga) POOL = op.jinga;
+  else if (op.pool) POOL = op.pool;
+  else POOL = binarioDoPath();
   carregaMeta();
   return {
     capabilities: {
@@ -1154,10 +1181,10 @@ conexao.onInitialize((params) => {
       documentSymbolProvider: true,
       signatureHelpProvider: { triggerCharacters: ['(', ','] },
     },
-    /* a versão do MOTOR que o servidor usa (`PoolScript 15.91.21 [PSVM]` →
-     * `15.91.21`): era `'3'` fixo, e com dois servidores diferentes no ar
+    /* a versão do MOTOR que o servidor usa (`Jinga 15.91.33 [PSVM]` →
+     * `15.91.33`): era `'3'` fixo, e com dois servidores diferentes no ar
      * (o embutido na vsix e o instalado) não havia como ver qual respondia */
-    serverInfo: { name: 'poolscript-lsp', version: versaoDoMotor() },
+    serverInfo: { name: 'jinga-lsp', version: versaoDoMotor() },
   };
 });
 
@@ -1200,7 +1227,7 @@ function diagnostica(doc) {
       severity: DiagnosticSeverity.Warning,
       range: { start: { line: l, character: c }, end: { line: l, character: c + 2 } },
       message: a.msg,
-      source: 'poolscript',
+      source: 'jinga',
     };
   });
 
@@ -1217,7 +1244,7 @@ function diagnostica(doc) {
         severity: DiagnosticSeverity.Error,
         range: { start: { line: linha, character: col }, end: { line: linha, character: col + 1 } },
         message: `${e.tipo}: ${e.msg}`,
-        source: 'poolscript',
+        source: 'jinga',
       });
     });
   }
@@ -1757,7 +1784,7 @@ function nomeSob(doc, pos) {
 /* ── hover ────────────────────────────────────────────────────────────────
  *
  * Cada resposta sai de uma fonte, e a fonte é dita aqui:
- *   palavra-chave      -> `pool --tokens` diz que é KW; a prosa é a SEÇÃO de
+ *   palavra-chave      -> `jinga --tokens` diz que é KW; a prosa é a SEÇÃO de
  *                         docs/linguagem/NN-*.md cujo título traz a palavra em
  *                         crase (`## 5.1. Condicional — \`if\` / \`elif\`…`),
  *                         ou a página do builtin (docs/builtins/post/post.md)

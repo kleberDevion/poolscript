@@ -18,7 +18,7 @@ Com `launch.json`, os campos são:
 
 ```json
 {
-  "type": "poolscript",
+  "type": "jinga",
   "request": "launch",
   "name": "Depurar o arquivo aberto",
   "programa": "${file}",
@@ -35,13 +35,13 @@ Com `launch.json`, os campos são:
 | `args` | argumentos do programa — é o que o `sys.argv` dele devolve |
 | `cwd` | pasta de trabalho; o padrão é a do arquivo |
 
-A saída do programa (`post`, `os.stdout`) vai para o painel **PoolScript
+A saída do programa (`post`, `os.stdout`) vai para o painel **Jinga
 (depuração)**. Ela não passa pelo protocolo de propósito — ver a seção 4.
 
 ## 2. Na linha de comando
 
 ```bash
-pool --debug <porta> <arquivo.pr> [args do programa]
+jinga --debug <porta> <arquivo.pr> [args do programa]
 ```
 
 O motor escuta em `127.0.0.1:<porta>` e **não executa a primeira instrução
@@ -91,9 +91,9 @@ de ser registradas e as existentes seguem contando, de modo que o caminho
 quente continua correto.
 
 No VS Code ele abre sozinho quando o programa quebra, com a linha da falha em
-vermelho. Sem erro, abra pela paleta: **PoolScript: Gráfico de execução**.
+vermelho. Sem erro, abra pela paleta: **Jinga: Gráfico de execução**.
 
-Pelo protocolo, é o pedido `poolscriptGrafico` (extensão nossa ao DAP), que
+Pelo protocolo, é o pedido `jingaGrafico` (extensão nossa ao DAP), que
 responde:
 
 ```json

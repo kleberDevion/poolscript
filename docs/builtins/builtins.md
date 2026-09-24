@@ -1,8 +1,8 @@
-# Builtins da PoolScript
+# Builtins da Jinga
 
 Funções disponíveis em qualquer `.pr`, sem import.
 
-A lista sai da tabela `BUILTINS[]` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
+A lista sai da tabela `BUILTINS[]` de `vm/jinga_vm.c`, publicada por `jinga --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|
@@ -39,7 +39,7 @@ A lista sai da tabela `BUILTINS[]` de `vm/poolscript_vm.c`, publicada por `pool 
 | [`round`](round/round.md) | `round(n, casas=0)` | Arredonda um número, opcionalmente com casas decimais. |
 | [`sleep`](sleep/sleep.md) | `sleep(segundos)` | Pausa a execução pelo tempo dado (aceita fração). |
 | [`sorted`](sorted/sorted.md) | `sorted(lista)` | Nova lista com os itens em ordem crescente; a original não muda. |
-| [`str`](str/str.md) | `str(x)` | Converte qualquer valor para texto, na renderização da PoolScript. |
+| [`str`](str/str.md) | `str(x)` | Converte qualquer valor para texto, na renderização da Jinga. |
 | [`sum`](sum/sum.md) | `sum(lista)` | Soma os números de uma lista. |
 | [`type`](type/type.md) | `type(x)` | Nome do tipo do valor, como string. |
 | [`zip`](zip/zip.md) | `zip(a, b, ...)` | Lista de tuplas pareando os iteráveis; para no menor. |

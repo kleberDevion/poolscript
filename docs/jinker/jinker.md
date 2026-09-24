@@ -1,6 +1,6 @@
 # jinker — Servidor HTTP + WebSocket
 
-Lib de servidor HTTP da PoolScript. **Zero dependências externas** — HTTP e
+Lib de servidor HTTP da Jinga. **Zero dependências externas** — HTTP e
 WebSocket são do próprio motor.
 
 Esta é a **página de referência** da lib. Cada membro tem sua própria página
@@ -65,7 +65,7 @@ if __name__ == "main" {                   # 4. sobe o servidor
 }
 ```
 
-Rode `pool app.pr` e abra `http://localhost:8080/`. Cada bloco:
+Rode `jinga app.pr` e abra `http://localhost:8080/`. Cada bloco:
 
 1. **`Jinker(__name__)`** cria a app — tudo pendura nela.
 2. **`@app.route("/", ...)`** registra a funct de baixo como resposta a

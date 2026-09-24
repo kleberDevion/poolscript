@@ -87,7 +87,7 @@ funct escreve_literais(texto, recuo)
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 1 {
-        post("uso: pool scripts/casos_para_chaves.pr <casos_x.c> [--grava]")
+        post("uso: jinga scripts/casos_para_chaves.pr <casos_x.c> [--grava]")
         sys.exit(1)
     }
     caminho = args[0]

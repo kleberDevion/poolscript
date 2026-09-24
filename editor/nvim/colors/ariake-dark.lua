@@ -18,7 +18,7 @@
 --   support.function/type    #93DDFB   Builtin, escape, regexp
 --   (global)                 #B9BED5   Normal, operador, pontuação
 --
--- Instalado por `make nvim` no repositório da PoolScript.
+-- Instalado por `make nvim` no repositório da Jinga.
 
 local c = {
   -- interface (do color-theme.json)
@@ -122,12 +122,12 @@ hi("Underlined",     { underline = true })
 hi("Error",          { fg = "#ffffff", bg = c.del })
 hi("Todo",           { fg = c.constante, bold = true })
 
--- ── PoolScript: onde este tema DIVERGE do Ariake original ──────────────────
+-- ── Jinga: onde este tema DIVERGE do Ariake original ──────────────────
 --
 -- O Ariake pinta `keyword` e `storage` com a MESMA tinta (#7e7edd). Em C ou em
 -- JS isso passa; aqui não: `if`, `funct`, `private` e `int` saíam todos da
 -- mesma cor, e a tela virava um bloco só. Os três grupos abaixo são da
--- PoolScript (syntax/poolscript.vim) e ganham tinta própria — todas já da
+-- Jinga (syntax/jinga.vim) e ganham tinta própria — todas já da
 -- paleta do tema, nenhuma cor inventada.
 --
 -- Como o realce usa `hi def link`, que só vale se ninguém definiu antes, estas
@@ -193,7 +193,7 @@ hi("LspReferenceText",      { bg = c.bg_linha })
 hi("LspReferenceRead",      { bg = c.bg_linha })
 hi("LspReferenceWrite",     { bg = c.bg_linha })
 
--- Realce semântico do LSP. O servidor da PoolScript manda estes tipos, então
+-- Realce semântico do LSP. O servidor da Jinga manda estes tipos, então
 -- eles apontam pras mesmas cores dos escopos equivalentes do tema original.
 hi("@lsp.type.keyword",     { fg = c.keyword })
 hi("@lsp.type.string",      { fg = c.string })

@@ -12,7 +12,7 @@ import sys
 — a convenção de C, Python e JS:
 
 ```
-# $ pool app.pr criar joao
+# $ jinga app.pr criar joao
 script  = sys.argv[0]   # "app.pr"
 comando = sys.argv[1]   # "criar"
 nome    = sys.argv[2]   # "joao"

@@ -5,7 +5,7 @@
 # de memória. Este script existia, dependia de um `audita_doc_sigs.py` e de um
 # `.audita_sigs.json` que não existem mais desde o porte pra C, e sumiu do
 # repositório junto — a auditoria deixou de existir sem ninguém notar. Agora a
-# fonte é `pool --metadata`, lida das tabelas do próprio VM.
+# fonte é `jinga --metadata`, lida das tabelas do próprio VM.
 #
 #     ./pool scripts/audita_doc.pr           # relata
 #     ./pool scripts/audita_doc.pr --tudo    # lista também as páginas OK
@@ -71,12 +71,12 @@ funct le_titulo(caminho) {
 
 # ── tipo de erro citado na doc TEM que existir no motor ─────────────────────
 #
-# POR QUE: `docs/PoolScript.md` listava `PermissionError` e `ConnectionError`
+# POR QUE: `docs/Jinga.md` listava `PermissionError` e `ConnectionError`
 # numa tabela de "tipos disponiveis". O motor NUNCA levanta nenhum dos dois —
 # zero ponto no `vm/`. Quem seguisse a doc escrevia `catch (PermissionError e)`,
 # o handler jamais disparava, o erro escapava e o programa morria com rc=1.
 #
-# A tabela derivou porque `PoolScript.md` e `LANGUAGE.md` nao estavam no escopo
+# A tabela derivou porque `Jinga.md` e `LANGUAGE.md` nao estavam no escopo
 # de nenhum auditor: o `audita_doc` conferia assinatura de metodo, nao taxonomia
 # de erro. Deriva sem detector e so questao de tempo.
 #
@@ -170,7 +170,7 @@ funct tipos_do_motor() {
         #
         # O padrao antigo era a string entre aspas em QUALQUER lugar do .c, e
         # isso deixava passar fantasma. Foi assim que `NotImplementedError`
-        # passou a "existir": ele aparece tambem no JSON do `pool --check` e num
+        # passou a "existir": ele aparece tambem no JSON do `jinga --check` e num
         # PyErr_Format do embed Python — nenhum dos dois e excecao de runtime.
         #
         # Enumerar os macros nao serve (sao muitos: ERRO_T, ERRO_TF, BERRO,
@@ -499,7 +499,7 @@ if __name__ == "main" {
     post("arquivos .md sem título de assinatura:", len(sem_titulo))
     post("  motor nao declara os parametros (lacuna do --metadata):", len(motor_mudo))
     post("")
-    post("NAO CONFERIDO: valores default. `pool --metadata` nao os expoe (309")
+    post("NAO CONFERIDO: valores default. `jinga --metadata` nao os expoe (309")
     post("parametros, zero defaults) porque cada nativa resolve o dela no corpo")
     post("em C. `flags=0` na doc continua sem verificacao — so a existencia e a")
     post("ordem de `flags`.")

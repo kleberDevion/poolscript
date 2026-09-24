@@ -1,4 +1,4 @@
-package poolscript.icons;
+package jinga.icons;
 
 import com.intellij.codeInsight.editorActions.TypedHandlerDelegate;
 import com.intellij.openapi.editor.Document;
@@ -9,7 +9,7 @@ import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiFile;
 
 /**
- * Auto-fechamento CORRETO de bracket/aspas para PoolScript (.pr),
+ * Auto-fechamento CORRETO de bracket/aspas para Jinga (.pr),
  * feito no plugin porque o IDEA não faz type-over em arquivo TextMate:
  *
  *   - digitar '{' '(' '[' insere o par e deixa o cursor no meio (uma vez só)
@@ -20,9 +20,9 @@ import com.intellij.psi.PsiFile;
  * O bundle TextMate tem smartTypingPairs VAZIO, então este handler é a ÚNICA
  * fonte de auto-close — sem conflito, sem duplicação.
  */
-public class PoolBraces extends TypedHandlerDelegate {
+public class JingaBraces extends TypedHandlerDelegate {
 
-  private static boolean ehPoolScript(PsiFile file) {
+  private static boolean ehJinga(PsiFile file) {
     if (file == null) return false;
     VirtualFile vf = file.getVirtualFile();
     if (vf == null) return false;
@@ -41,7 +41,7 @@ public class PoolBraces extends TypedHandlerDelegate {
 
   @Override
   public Result beforeCharTyped(char c, Project project, Editor editor, PsiFile file, FileType fileType) {
-    if (!ehPoolScript(file)) return Result.CONTINUE;
+    if (!ehJinga(file)) return Result.CONTINUE;
 
     Document doc = editor.getDocument();
     int off = editor.getCaretModel().getOffset();

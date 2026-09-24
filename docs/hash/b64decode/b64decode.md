@@ -49,7 +49,7 @@ Nada é recusado nem substituído na saída.
 import hash
 
 hash.b64decode("YWJj")               # "abc"
-hash.b64decode("UG9vbFNjcmlwdA==")   # "PoolScript"
+hash.b64decode("SmluZ2E=")   # "Jinga"
 hash.b64decode("YQ==")               # "a"
 hash.b64decode("YQ")                 # "a"    (mesmo sem padding)
 hash.b64decode("Y WJ\nj")            # "abc"  (espaço e quebra ignorados)

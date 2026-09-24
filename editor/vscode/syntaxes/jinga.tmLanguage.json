@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
-  "name": "PoolScript",
-  "scopeName": "source.poolscript",
+  "name": "Jinga",
+  "scopeName": "source.jinga",
   "fileTypes": [
     "pr"
   ],
@@ -35,12 +35,12 @@
     "comments": {
       "patterns": [
         {
-          "name": "comment.block.poolscript",
+          "name": "comment.block.jinga",
           "begin": "\"\"\"",
           "end": "\"\"\""
         },
         {
-          "name": "comment.line.number-sign.poolscript",
+          "name": "comment.line.number-sign.jinga",
           "match": "#.*$"
         }
       ]
@@ -49,50 +49,50 @@
       "patterns": [
         {
           "comment": "literal de BYTES (b/B, br/rb cru): escopo proprio, sem interpolacao — bytes nao interpola",
-          "name": "string.quoted.bytes.poolscript",
+          "name": "string.quoted.bytes.jinga",
           "begin": "\\b([bB][rR]?|[rR][bB])(''')",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "'''",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.bytes.poolscript",
+          "name": "string.quoted.bytes.jinga",
           "begin": "\\b([bB][rR]?|[rR][bB])(\")",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.bytes.poolscript",
+          "name": "string.quoted.bytes.jinga",
           "begin": "\\b([bB][rR]?|[rR][bB])(')",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "'",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             }
           ]
         },
         {
           "comment": "f-string: SO ela interpola `{expr}` dentro das aspas. Na string comum a interpolacao por chaves fica FORA (`\"texto\" {x} \"mais\"`), entao um `{` dentro de \"...\" e texto — a regra antiga abria interpolacao ali e o arquivo inteiro ia junto ate um `}` qualquer.",
-          "name": "string.quoted.triple.poolscript",
+          "name": "string.quoted.triple.jinga",
           "begin": "\\b([fF][rR]?|[rR][fF])(''')",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "'''",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             },
             {
@@ -101,13 +101,13 @@
           ]
         },
         {
-          "name": "string.quoted.double.poolscript",
+          "name": "string.quoted.double.jinga",
           "begin": "\\b([fF][rR]?|[rR][fF])(\")",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             },
             {
@@ -116,13 +116,13 @@
           ]
         },
         {
-          "name": "string.quoted.single.poolscript",
+          "name": "string.quoted.single.jinga",
           "begin": "\\b([fF][rR]?|[rR][fF])(')",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "'",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             },
             {
@@ -131,37 +131,37 @@
           ]
         },
         {
-          "name": "string.quoted.triple.poolscript",
+          "name": "string.quoted.triple.jinga",
           "begin": "([rR]?)'''",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "'''",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.double.poolscript",
+          "name": "string.quoted.double.jinga",
           "begin": "([rR]?)\"",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "\"",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             }
           ]
         },
         {
-          "name": "string.quoted.single.poolscript",
+          "name": "string.quoted.single.jinga",
           "begin": "([rR]?)'",
-          "beginCaptures": { "1": { "name": "storage.type.string.prefix.poolscript" } },
+          "beginCaptures": { "1": { "name": "storage.type.string.prefix.jinga" } },
           "end": "'",
           "patterns": [
             {
-              "name": "constant.character.escape.poolscript",
+              "name": "constant.character.escape.jinga",
               "match": "\\\\."
             }
           ]
@@ -169,17 +169,17 @@
       ]
     },
     "interp": {
-      "name": "meta.embedded.poolscript",
+      "name": "meta.embedded.jinga",
       "begin": "\\{",
       "end": "\\}",
       "beginCaptures": {
         "0": {
-          "name": "punctuation.definition.template-expression.begin.poolscript"
+          "name": "punctuation.definition.template-expression.begin.jinga"
         }
       },
       "endCaptures": {
         "0": {
-          "name": "punctuation.definition.template-expression.end.poolscript"
+          "name": "punctuation.definition.template-expression.end.jinga"
         }
       },
       "patterns": [
@@ -201,14 +201,14 @@
       ]
     },
     "decorators": {
-      "name": "meta.decorator.poolscript",
+      "name": "meta.decorator.jinga",
       "match": "(@)([A-Za-z_][\\w]*(?:\\.[A-Za-z_]\\w*)*)",
       "captures": {
         "1": {
-          "name": "punctuation.decorator.poolscript"
+          "name": "punctuation.decorator.jinga"
         },
         "2": {
-          "name": "entity.name.function.decorator.poolscript"
+          "name": "entity.name.function.decorator.jinga"
         }
       }
     },
@@ -218,10 +218,10 @@
           "match": "\\b(funct)\\s+([A-Za-z_]\\w*)",
           "captures": {
             "1": {
-              "name": "storage.type.function.poolscript keyword.declaration.function.poolscript keyword.poolscript"
+              "name": "storage.type.function.jinga keyword.declaration.function.jinga keyword.jinga"
             },
             "2": {
-              "name": "entity.name.function.poolscript"
+              "name": "entity.name.function.jinga"
             }
           }
         },
@@ -229,10 +229,10 @@
           "match": "\\b(Entity|class|Class|model|enum)\\s+([A-Za-z_]\\w*)",
           "captures": {
             "1": {
-              "name": "storage.type.class.poolscript keyword.declaration.class.poolscript keyword.poolscript"
+              "name": "storage.type.class.jinga keyword.declaration.class.jinga keyword.jinga"
             },
             "2": {
-              "name": "entity.name.type.class.poolscript"
+              "name": "entity.name.type.class.jinga"
             }
           }
         },
@@ -241,7 +241,7 @@
           "match": "(?<=\\b(?:Entity|class|Class)\\s{1,20})[A-Za-z_]\\w*\\s*\\(\\s*([A-Za-z_]\\w*)",
           "captures": {
             "1": {
-              "name": "entity.other.inherited-class.poolscript"
+              "name": "entity.other.inherited-class.jinga"
             }
           }
         },
@@ -261,12 +261,12 @@
             },
             {
               "comment": "tipo do parametro — GERADO por scripts/gera_realce.pr (mesma lista da regra de tipos)",
-              "name": "storage.type.poolscript",
+              "name": "storage.type.jinga",
               "match": "\\b(str|int|flo|bool|list|dict|tup|char|Object|long|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|json|JSON|object|Long|type|PoolFile)\\b(?!\\s*=[^=])"
             },
             {
               "match": "\\b[A-Za-z_]\\w*\\b",
-              "name": "variable.parameter.poolscript"
+              "name": "variable.parameter.jinga"
             }
           ]
         }
@@ -277,66 +277,66 @@
         {
           "comment": "`self` e o `this` do C#",
           "match": "\\bself\\b",
-          "name": "variable.language.self.poolscript"
+          "name": "variable.language.self.jinga"
         },
         {
           "comment": "Os parametros do campo de `model` (`nome: str(length=20, regex=\"...\")`): sao NOMES de parametro, nao palavra-chave — o `in` aqui nao e o operador. So quando vem `=` logo depois.",
           "match": "\\b(length|regex|in|not_in|min|max|optional|of)(?=\\s*=[^=])",
-          "name": "variable.parameter.model.poolscript"
+          "name": "variable.parameter.model.jinga"
         },
         {
-          "name": "keyword.control.poolscript",
-          "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|with|using|await|async|import|from|as|global|count|to|of)\\b"
+          "name": "keyword.control.jinga",
+          "match": "\\b(if|elif|else|while|for|each|in|is|match|case|try|catch|finally|raise|return|yield|break|continue|using|await|async|import|from|as|global|count|to|of)\\b"
         },
         {
-          "name": "keyword.operator.logical.poolscript",
+          "name": "keyword.operator.logical.jinga",
           "match": "\\b(and|or|not|Not)\\b"
         },
         {
           "comment": "A PALAVRA que declara funcao. Escopo proprio, com dois nomes de reserva atras: um tema que nao conheca `storage.type.function` ainda casa `keyword.declaration.function`, e um que nao conheca nenhum dos dois casa `keyword`. Sem essa cauda, tema que so estiliza o generico deixava `funct` sem cor nenhuma.",
-          "name": "storage.type.function.poolscript keyword.declaration.function.poolscript keyword.poolscript",
+          "name": "storage.type.function.jinga keyword.declaration.function.jinga keyword.jinga",
           "match": "\\b(funct)\\b"
         },
         {
           "comment": "As palavras que declaram TIPO. Iam no mesmo escopo dos tipos primitivos, e com isso `Entity`, `class` e `int` saiam da mesma cor — a pagina inteira azul. O `(?!\\s*=)` tira o caso `model=Rota`: ali `model` e NOME DE ARGUMENTO da rota, nao declaracao de model, e pintar de palavra-chave mentia sobre o que a linha faz.",
-          "name": "storage.type.class.poolscript keyword.declaration.class.poolscript keyword.poolscript",
+          "name": "storage.type.class.jinga keyword.declaration.class.jinga keyword.jinga",
           "match": "\\b(Entity|class|Class|model|enum)\\b(?!\\s*=)"
         },
         {
           "comment": "idem: `int = 1` ou `type=...` como nome de argumento nao e tipo",
-          "name": "storage.type.poolscript",
+          "name": "storage.type.jinga",
           "match": "\\b(str|int|flo|bool|list|dict|tup|char|Object|long|byte|string|String|integer|Integer|tuple|Tuple|dictionary|Dictionary|json|JSON|object|Long|type|PoolFile)\\b(?!\\s*=[^=])"
         },
         {
           "comment": "static/nonnull sao modificadores COLADOS na declaracao — de funct E de campo (`static object mapp = ...`), em qualquer ordem com o tipo e a visibilidade. Pintam quando vem uma palavra atras (modificador, tipo, nome ou funct); `static` sozinho numa expressao continua nome comum. A lista antiga de tipos no lookahead nao tinha long/object/list e nao cobria campo.",
-          "name": "storage.modifier.poolscript keyword.modifier.poolscript keyword.poolscript",
+          "name": "storage.modifier.jinga keyword.modifier.jinga keyword.jinga",
           "match": "\\b(static|nonnull|NonNull)\\b(?=\\s+[A-Za-z_])"
         },
         {
-          "name": "storage.modifier.poolscript keyword.modifier.poolscript keyword.poolscript",
+          "name": "storage.modifier.jinga keyword.modifier.jinga keyword.jinga",
           "match": "\\b(private|public)\\b"
         },
         {
-          "name": "keyword.control.verb.poolscript",
+          "name": "keyword.control.verb.jinga",
           "match": "\\b(PUSH|GET|POST|PUT|DELETE|JSON)\\b"
         },
         {
           "comment": "builtins de verdade, e so quando CHAMADOS: `route` e `listen` sairam daqui porque sao metodos, e pintados soltos manchavam a variavel de quem escreve `route = 1`",
-          "name": "support.function.builtin.poolscript",
+          "name": "support.function.builtin.jinga",
           "match": "\\b(assert|post|len|str|int|long|flo|bool|type|abs|pow|round|hex|bin|oct|ord|chr|range|list|tup|dict|sum|min|max|sorted|reversed|enumerate|zip|addEnd|addStart|removeEnd|removeStart|map|filter|open|sleep|gather|input|id|load)\\s*(?=\\()"
         },
         {
           "comment": "operadores de simbolo e pontuacao: sem escopo, o tema nao tinha como pinta-los, e ficavam na cor do texto comum",
-          "name": "keyword.operator.poolscript",
+          "name": "keyword.operator.jinga",
           "match": "\\*\\*|//|==|!=|<=|>=|&&|\\|\\||<<|>>|\\+=|-=|\\*=|/=|%=|\\+\\+|--|[-+*/%=<>!&|^~]"
         },
         {
-          "name": "punctuation.poolscript",
+          "name": "punctuation.jinga",
           "match": "[()\\[\\]{},;:.]"
         },
         {
           "comment": "GERADO por scripts/gera_realce.pr a partir de `pool --metadata` (chave `excecoes`, a tabela do catch). As tres listas desta gramatica (tipos, builtins, excecoes) sao geradas; nao edite a mao.",
-          "name": "support.class.exception.poolscript",
+          "name": "support.class.exception.jinga",
           "match": "\\b(Exception|OSError|FileExistsError|FileNotFoundError|IsADirectoryError|NotADirectoryError|PermissionError|NetworkError|IOError|LookupError|IndexError|KeyError|ArithmeticError|ZeroDivisionError|OverflowError|ValueError|UnicodeError|UnicodeDecodeError|UnicodeEncodeError|AttributedValueError|ConversionError|RuntimeError|RecursionError|TypeError|AttributeError|NameError|ImportError|MemoryError|AssertionError|SyntaxError|NotImplementedError|TimeoutError|DatabaseError)\\b"
         }
       ]
@@ -344,31 +344,31 @@
     "constants": {
       "patterns": [
         {
-          "name": "constant.language.boolean.poolscript",
+          "name": "constant.language.boolean.jinga",
           "match": "\\b(true|True|false|False)\\b"
         },
         {
-          "name": "constant.language.null.poolscript",
+          "name": "constant.language.null.jinga",
           "match": "\\b(Null|null|None|none)\\b"
         }
       ]
     },
     "numbers": {
-      "name": "constant.numeric.poolscript",
+      "name": "constant.numeric.jinga",
       "match": "\\b(0[xX][0-9a-fA-F]+|0[oO][0-7]+|0[bB][01]+|\\d+\\.?\\d*([eE][+-]?\\d+)?)\\b"
     },
     "calls": {
       "patterns": [
         {
           "comment": "__name__, __init__, __file__: nomes da linguagem, nao variaveis do usuario",
-          "name": "support.variable.dunder.poolscript",
+          "name": "support.variable.dunder.jinga",
           "match": "\\b__\\w+__\\b"
         },
         {
           "match": "\\b([A-Za-z_]\\w*)\\s*(?=\\()",
           "captures": {
             "1": {
-              "name": "entity.name.function.call.poolscript"
+              "name": "entity.name.function.call.jinga"
             }
           }
         },
@@ -377,7 +377,7 @@
           "match": "(?<=\\.)([A-Za-z_]\\w*)\\b(?!\\s*\\()",
           "captures": {
             "1": {
-              "name": "variable.other.property.poolscript"
+              "name": "variable.other.property.jinga"
             }
           }
         }

@@ -1,7 +1,7 @@
 # `MiddlewareRegistrar` — não existe
 
 Esta página descrevia um tipo `MiddlewareRegistrar` com `.register(handler)`.
-**Ele não existe**: o nome não aparece em `pool --metadata`, e o que
+**Ele não existe**: o nome não aparece em `jinga --metadata`, e o que
 `app.middleware` vale é uma função:
 
 ```ps

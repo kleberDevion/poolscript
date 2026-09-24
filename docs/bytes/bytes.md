@@ -1,6 +1,6 @@
 # bytes — Criar e converter sequências de bytes
 
-Lib pra trabalhar com **dados binários** em PoolScript puro: converter
+Lib pra trabalhar com **dados binários** em Jinga puro: converter
 hex/base64, empacotar/desempacotar inteiros, fatiar, concatenar e fazer XOR —
 sem depender de nenhuma lib externa. É o que dá autonomia pra construir suas
 próprias ferramentas binárias.

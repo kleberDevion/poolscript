@@ -4,7 +4,7 @@
 #
 # POR QUE UM GERADOR, E NÃO 42 ARQUIVOS ESCRITOS À MÃO:
 #
-#   1. A ASSINATURA sai de `pool --metadata`, ou seja, da tabela do próprio VM.
+#   1. A ASSINATURA sai de `jinga --metadata`, ou seja, da tabela do próprio VM.
 #      A regra do projeto é que assinatura de doc nunca é digitada de memória —
 #      e com 42 métodos, digitar de memória é garantia de divergência.
 #   2. A SAÍDA de cada exemplo é obtida RODANDO o exemplo. O bloco ```saida

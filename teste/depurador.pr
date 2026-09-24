@@ -149,7 +149,7 @@ if sock == Null {
 }
 post("conectado")
 
-r = pede(sock, "initialize", { "adapterID": "poolscript" })
+r = pede(sock, "initialize", { "adapterID": "jinga" })
 if r != Null and r["body"]["supportsConfigurationDoneRequest"] == True {
     passou = passou + 1
 } else {
@@ -267,7 +267,7 @@ if ev != Null {
 }
 
 # ── o gráfico de execução ───────────────────────────────────────────────────
-r = pede(sock, "poolscriptGrafico", {})
+r = pede(sock, "jingaGrafico", {})
 g = r["body"]
 if len(g["nos"]) > 0 and len(g["arestas"]) > 0 {
     passou = passou + 1
@@ -316,7 +316,7 @@ if sock == Null {
     sys.exit(1)
 }
 
-pede(sock, "initialize", { "adapterID": "poolscript" })
+pede(sock, "initialize", { "adapterID": "jinga" })
 pede(sock, "setBreakpoints", { "source": { "path": "teste/alvo_debug_erro.pr" },
                                "breakpoints": [] })
 pede(sock, "configurationDone", {})
@@ -363,6 +363,7 @@ eventos = []
 pede(sock, "continue", { "threadId": 1 })
 espera_evento(sock, "terminated")
 
+# `poolscriptGrafico` e o nome de antes do rename: o motor responde aos dois
 r = pede(sock, "poolscriptGrafico", {})
 g = r["body"]
 if g["quebrou"]["linha"] == 5 {

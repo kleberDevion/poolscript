@@ -1,0 +1,17 @@
+<idea-plugin>
+  <!-- Carregado só com o plugin LSP4IJ (marketplace) ligado. O servidor LSP da
+       Jinga passa a ser declarado AQUI, com o mapeamento `*.pr`: nada a
+       cadastrar em Settings > Languages & Frameworks > Language Servers — era
+       esse cadastro manual, ainda em `*.ps`, que deixava o `.pr` sem
+       completion. O languageId "jinga" é o que vai no didOpen. -->
+  <extensions defaultExtensionNs="com.redhat.devtools.lsp4ij">
+    <server id="jinga" name="Jinga" factoryClass="jinga.lsp.JingaLspFactory"
+            supportsLightEdit="true" icon="/icons/jinga_pr.png"
+            description="jinga-lsp: completion, hover, definição, outline e diagnóstico do motor"/>
+    <fileNamePatternMapping serverId="jinga" patterns="*.pr" languageId="jinga"/>
+  </extensions>
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- o balão de "há um servidor cadastrado à mão" -->
+    <notificationGroup id="Jinga" displayType="BALLOON"/>
+  </extensions>
+</idea-plugin>

@@ -4,8 +4,8 @@ Chamados direto no valor: `t.metodo()`. A tupla é **imutável**, então aqui s�
 existem os métodos de **leitura**: nenhum deles muta nada e nenhum devolve
 `null` — todos devolvem um valor (`int` ou `bool`).
 
-A lista sai da tabela `METODOS_TUPLA` de `vm/poolscript_vm.c`, publicada por
-`pool --metadata`; cada página traz um exemplo executável.
+A lista sai da tabela `METODOS_TUPLA` de `vm/jinga_vm.c`, publicada por
+`jinga --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|

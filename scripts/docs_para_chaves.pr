@@ -1,4 +1,4 @@
-# Converte os blocos de código PoolScript de um `.md` do estilo `:` pro `{ }`.
+# Converte os blocos de código Jinga de um `.md` do estilo `:` pro `{ }`.
 #
 #     ./pool scripts/docs_para_chaves.pr docs/LANGUAGE.md          # confere
 #     ./pool scripts/docs_para_chaves.pr docs/LANGUAGE.md --grava
@@ -7,16 +7,16 @@
 # tocado — a prosa que EXPLICA o bloco `:` tem que ser reescrita a mão, porque
 # não é tradução, é mudança do que se diz.
 #
-# Bloco cujo conteúdo não é PoolScript válido (saída de terminal, JSON, shell)
+# Bloco cujo conteúdo não é Jinga válido (saída de terminal, JSON, shell)
 # é deixado como está: o conversor só mexe onde o lexer reconhece um `:` de
 # bloco.
 import os
 import sys
 import para_chaves
 
-# Linguagens de cerca que são PoolScript. Cerca sem linguagem também entra:
+# Linguagens de cerca que são Jinga. Cerca sem linguagem também entra:
 # a doc usa ``` puro pra exemplo da linguagem em vários lugares.
-PS_LANGS = ["ps", "poolscript", "psl", ""]
+PS_LANGS = ["ps", "jinga", "psl", ""]
 
 
 funct converte_md(texto) {
@@ -70,7 +70,7 @@ funct converte_md(texto) {
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 1 {
-        post("uso: pool scripts/docs_para_chaves.pr <arquivo.md> [--grava]")
+        post("uso: jinga scripts/docs_para_chaves.pr <arquivo.md> [--grava]")
         sys.exit(1)
     }
     grava = false

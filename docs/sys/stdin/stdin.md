@@ -39,7 +39,7 @@ while True {
 ```
 
 ```
-$ printf 'a\nb\n' | pool le.pr
+$ printf 'a\nb\n' | jinga le.pr
 li: a
 li: b
 ```

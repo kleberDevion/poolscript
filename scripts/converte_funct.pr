@@ -1,11 +1,11 @@
 # Troca as grafias antigas `action` e `reaction` pela palavra da linguagem,
-# `funct`, num fonte PoolScript.
+# `funct`, num fonte Jinga.
 #
 #     ./pool scripts/converte_funct.pr arquivo.pr           # mostra o resultado
 #     ./pool scripts/converte_funct.pr arquivo.pr --grava   # sobrescreve
 #     ./pool scripts/converte_funct.pr --lista a.pr b.pr    # em lote, gravando
 #
-# Quem decide o que e a PALAVRA e o lexer do motor (`pool --tokens`), nunca o
+# Quem decide o que e a PALAVRA e o lexer do motor (`jinga --tokens`), nunca o
 # texto: `action` dentro de string, de comentario ou como nome de arquivo
 # (`examples/action.pr`) nao e palavra reservada, e so o lexer separa isso sem
 # errar. Cada token vem com linha, coluna e tamanho — a troca e cirurgica.
@@ -150,8 +150,8 @@ funct converte_arquivo(caminho, grava) {
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 1 {
-        post("uso: pool scripts/converte_funct.pr <arquivo.pr> [--grava]")
-        post("     pool scripts/converte_funct.pr --lista <a.pr> <b.pr> ...")
+        post("uso: jinga scripts/converte_funct.pr <arquivo.pr> [--grava]")
+        post("     jinga scripts/converte_funct.pr --lista <a.pr> <b.pr> ...")
         sys.exit(1)
     }
     lote = args[0] == "--lista"

@@ -6,7 +6,7 @@
  * que ela testa — caso que MATA a VM só relata alguma coisa se rodar em outro
  * processo. Mas cria um teto: metade dos ramos de um módulo em C é tratamento
  * de erro (`malloc` que devolveu NULL, buffer curto, entrada truncada, faixa
- * invertida), e **não existe programa PoolScript que faça uma alocação
+ * invertida), e **não existe programa Jinga que faça uma alocação
  * falhar**. Por construção, aquela suíte para por volta de 60% de ramo.
  *
  * Este binário fura o teto: linka os mesmos `.c` e chama as funções pela API
@@ -19,7 +19,7 @@
  *   ps_regex.c   compilação e casamento
  *   ps_ast.c     arena e nós
  *
- * O resto do motor é `static` dentro de `poolscript_vm.c` e não tem como ser
+ * O resto do motor é `static` dentro de `jinga_vm.c` e não tem como ser
  * chamado daqui — pra esses, o caminho continua sendo `.pr` e injeção de falha.
  *
  *     make unidade && ./unidade
@@ -709,7 +709,7 @@ static void teste_regex_fundo(void)
  * `.xlsx` corrompido (ou montado à mão) com `orig` maior que o buffer fazia o
  * `memcpy` do STORED ler 16 MB a partir de um buffer de 60 bytes — SIGSEGV
  * quando passava do fim do heap, e leitura de memória alheia quando não.
- * Não existe programa PoolScript que produza esse arquivo, por isso o caso
+ * Não existe programa Jinga que produza esse arquivo, por isso o caso
  * vive aqui: monta o ZIP byte a byte e chama a API pública. */
 static void le16w(unsigned char *p, unsigned v) { p[0] = v & 0xFF; p[1] = (v >> 8) & 0xFF; }
 static void le32w(unsigned char *p, unsigned long v)

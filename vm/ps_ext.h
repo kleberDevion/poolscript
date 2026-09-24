@@ -2,7 +2,7 @@
  * A extensão de arquivo da linguagem, num lugar só.
  *
  * Era uma tripla (`.ps`, `.psl`, `.p`) copiada em SEIS pontos do motor — duas
- * vezes no `poolscript_vm.c` (resolução de módulo e `spec_eh_caminho`), no
+ * vezes no `jinga_vm.c` (resolução de módulo e `spec_eh_caminho`), no
  * `ps_compiler.c` (nome ligado pelo import entre aspas), no `main.c` (`pool
  * build`) e duas no `ps_pkg.c` (nome do pacote e "é arquivo local?") —, cada
  * cópia com sua própria forma: vetor de strings num, cadeia de `strcmp` por

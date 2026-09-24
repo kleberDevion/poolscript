@@ -18,7 +18,7 @@ efeito — antes disso, a única evidência era o diff.
 
 Está em Python porque o assunto é ser um servidor errado de propósito
 (certificado inválido, resposta 535, corte no meio do DATA), e a stdlib do
-Python já traz `ssl` com tudo isso na mão. A PoolScript fala com ele como
+Python já traz `ssl` com tudo isso na mão. A Jinga fala com ele como
 falaria com o Gmail.
 
     python3 teste/smtp_falso.py 0 <cert.pem> <key.pem> <caixa.txt>

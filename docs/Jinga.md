@@ -1,23 +1,29 @@
-# PoolScript v15.91.33
+# Jinga v15.92.0
 
 ---
 
 Versão:
 
 ```bash
-pool --version
-# PoolScript 15.91.33 [PSVM] (2026-09-22)
-#                            ^ a data da compilação DESTE binário: duas
-#                              cópias da mesma versão se distinguem por ela
+jinga --version
+# Jinga 15.92.0 [PSVM] (2026-09-24) Runtime standalone
+#                       ^ a data da compilação DESTE binário: duas
+#                         cópias da mesma versão se distinguem por ela
 ```
+
+Os nomes de antes do rename continuam valendo: `pool` e `psl` seguem
+instalados como atalhos do mesmo binário (e `poolscript-lsp` do servidor do
+editor), `POOLSCRIPT_HOME` ainda é lida, `import poolscript.libs.X` ainda
+importa, e uma `~/.poolscript` existente vira `~/.jinga` na primeira chamada
+do `jpkg` (com aviso).
 
 ---
 
 ## Rodando arquivos
 
 ```bash
-pool meu_arquivo.pr
-pool build          # roda todos os .pr da pasta atual
+jinga meu_arquivo.pr
+jinga build          # roda todos os .pr da pasta atual
 ```
 
 O arquivo pode ter o tamanho que for. O motor não guarda o arquivo inteiro
@@ -40,21 +46,21 @@ linha errada; erro de tipo sai **completo**, com todos os erros do arquivo em
 `erros` (o primeiro também vai nos campos de cima):
 
 ```bash
-pool --check meu_arquivo.pr
+jinga --check meu_arquivo.pr
 # {"ok":true}
 
-pool --check com_erro.pr
+jinga --check com_erro.pr
 # {"ok":false,"tipo":"SyntaxError","msg":"faltou ')' na declaracao da funct","linha":1,"coluna":11}
 
-pool --check tipos_errados.pr
+jinga --check tipos_errados.pr
 # {"ok":false,"tipo":"AttributedValueError","msg":"variável s esperava str, recebeu int","linha":1,"coluna":9,
 #  "erros":[{"tipo":"AttributedValueError","msg":"variável s esperava str, recebeu int","linha":1,"coluna":9},
 #           {"tipo":"NameError","msg":"name 'zzz' is not defined","linha":2,"coluna":6}]}
 
-cat meu_arquivo.pr | pool --check     # sem arquivo, lê da entrada padrão
+cat meu_arquivo.pr | jinga --check     # sem arquivo, lê da entrada padrão
 ```
 
-O mesmo veredito vale ao rodar: `pool arquivo.pr` não executa um programa com
+O mesmo veredito vale ao rodar: `jinga arquivo.pr` não executa um programa com
 erro de tipo — lista os erros e sai com código 2.
 
 O campo `ok` diz o veredito, e o **código de saída acompanha**: `0` com
@@ -65,9 +71,9 @@ dois.
 
 ## REPL — não existe
 
-`pool repl` responde que o REPL interativo ainda não está no binário C (ele
-precisa de estado persistente na VM), e `pool` sem argumento imprime a ajuda.
-Para rodar código sem criar arquivo, use `pool -e "<codigo>"`.
+`jinga repl` responde que o REPL interativo ainda não está no binário C (ele
+precisa de estado persistente na VM), e `jinga` sem argumento imprime a ajuda.
+Para rodar código sem criar arquivo, use `jinga -e "<codigo>"`.
 
 ---
 
@@ -182,13 +188,13 @@ post(cmd[1])  # ('joao',)
 Acessa partes de strings e listas com `[inicio:fim:passo]`:
 
 ```
-str nome = "poolscript"
+str nome = "jinga"
 
-post(nome[0:4])    # pool
-post(nome[4:])     # script
-post(nome[:4])     # pool
-post(nome[::-1])   # tpircsloop — invertido
-post(nome[::2])    # posrp — de 2 em 2
+post(nome[0:4])    # jing
+post(nome[4:])     # a
+post(nome[:4])     # jing
+post(nome[::-1])   # agnij — invertido
+post(nome[::2])    # jna — de 2 em 2
 
 list nums = [1, 2, 3, 4, 5]
 post(nums[1:3])    # [2, 3]
@@ -654,7 +660,7 @@ import 'ferramentas/kit.pr' as k
 
 A forma canônica é o operador **`is`**, o mesmo que se usa pra testar nulo:
 
-```poolscript
+```jinga
 x = 1
 if x is int {
     post("é inteiro")
@@ -667,7 +673,7 @@ if x not is none {
 `type(x)` devolve o **nome** do tipo em texto — serve pra mostrar e pra
 registrar, não é o tipo em si:
 
-```poolscript
+```jinga
 post(type(200))     # int
 post(type("a"))     # str
 post(type(none))    # Null
@@ -681,7 +687,7 @@ tempo de execução: `chr(65)` é `str`.
 Comparar o resultado funciona das duas maneiras — com o nome em texto ou com a
 referência de tipo:
 
-```poolscript
+```jinga
 post(type(200) == "int")   # True
 post(type(200) == int)     # True
 ```
@@ -693,7 +699,7 @@ post(type(200) == int)     # True
 Para instância de Entity, `is` compara a **classe exata** — ele não sobe pela
 herança:
 
-```poolscript
+```jinga
 Entity Animal() { }
 Entity Gato(Animal) { }
 g = Gato()

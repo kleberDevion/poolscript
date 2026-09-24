@@ -1,7 +1,7 @@
 # Referência da Linguagem — 6. Funções
 
 Uma função agrupa um trecho de código sob um nome, recebe parâmetros e devolve
-um valor. Na PoolScript ela se declara com **`funct`**. Esta seção cobre a
+um valor. Na Jinga ela se declara com **`funct`**. Esta seção cobre a
 definição, os parâmetros, o retorno, as formas tipadas (`int funct`/`bool
 funct`), os modificadores colados (`static`, `nonnull`), funções como valores,
 recursão e geradores.

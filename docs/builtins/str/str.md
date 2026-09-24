@@ -1,6 +1,6 @@
 # `str(x)`
 
-Converte qualquer valor para texto, na renderização da PoolScript.
+Converte qualquer valor para texto, na renderização da Jinga.
 
 ## Parâmetros
 

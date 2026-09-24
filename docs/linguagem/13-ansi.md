@@ -1,6 +1,6 @@
 # Referência da Linguagem — 13. Cores e ANSI
 
-A PoolScript escreve cor no terminal de duas formas: um **literal de cor**
+A Jinga escreve cor no terminal de duas formas: um **literal de cor**
 embutido na linguagem (`<cor>"texto"`), que cobre a cor de **primeiro plano**
 (texto) de um jeito seguro e auto-fechado; e as **sequências ANSI manuais**
 (via o escape `\e`), para tudo o mais — negrito, sublinhado, fundo, 256 cores.

@@ -294,7 +294,7 @@ casar vence:
 1. **stdlib** — as bibliotecas embutidas (`import json`, `import os`,
    `import sys`, `import request`, `import jinker`, …).
 2. **lib instalada globalmente** — o que foi instalado com
-   `psl install … -asLib` (em `~/.poolscript/libs/`). Vem **antes** dos
+   `jpkg install … -asLib` (em `~/.jinga/libs/`). Vem **antes** dos
    arquivos locais: o nome de um arquivo seu nunca ofusca uma lib instalada.
 3. **arquivo ao lado de quem importa** — a pasta do arquivo que contém o
    `import`. É o que faz `import smtp` dentro de `acesso/controller.pr` achar
@@ -317,35 +317,37 @@ ordem.
 ### Nome qualificado da lib instalada
 
 A lib instalada também atende pelo nome completo, com o prefixo
-`poolscript.libs.`:
+`jinga.libs.`:
 
 ```
-import poolscript.libs.minhalib          # liga `minhalib`
-import poolscript.libs.minhalib as m
-from poolscript.libs.minhalib import nome
-PUSH poolscript.libs.minhalib GET nome
+import jinga.libs.minhalib          # liga `minhalib`
+import jinga.libs.minhalib as m
+from jinga.libs.minhalib import nome
+PUSH jinga.libs.minhalib GET nome
 ```
 
-- `poolscript.libs` é o **nome** da pasta de libs, não o caminho escrito: vale
-  onde as libs estiverem, inclusive com `POOLSCRIPT_HOME` (aí a pasta é
-  `$POOLSCRIPT_HOME/libs`).
+- `jinga.libs` é o **nome** da pasta de libs, não o caminho escrito: vale
+  onde as libs estiverem, inclusive com `JINGA_HOME` (aí a pasta é
+  `$JINGA_HOME/libs`).
 - Liga o **último** nome, como qualquer `import a.b.c`: depois de
-  `import poolscript.libs.minhalib`, usa-se `minhalib.x`.
+  `import jinga.libs.minhalib`, usa-se `minhalib.x`.
 - É o **mesmo arquivo** do `import minhalib`, então é o mesmo módulo: com as
   duas formas no programa, o corpo da lib roda uma vez só.
 - Se não houver lib instalada com esse nome, segue a ordem acima (itens 3 e 4),
-  e uma pasta `poolscript/libs/` do próprio projeto continua sendo achada. Sem
-  nada, é `ImportError: No module named 'poolscript.libs.x'`.
+  e uma pasta `jinga/libs/` do próprio projeto continua sendo achada. Sem
+  nada, é `ImportError: No module named 'jinga.libs.x'`.
+- O prefixo de antes do rename, `poolscript.libs.`, continua aceito e cai na
+  mesma lib.
 
 Não é necessário — `import minhalib` já acha a lib antes de qualquer arquivo
 local. É a forma explícita, para quem quer deixar escrito de onde o nome vem.
 
-O ponto na frente **não** vale aqui: `import .poolscript.libs.minhalib` é o
+O ponto na frente **não** vale aqui: `import .jinga.libs.minhalib` é o
 `import` relativo, que não existe (ver 9.4.1), e o erro diz a forma certa:
 
 ```
-import .poolscript.libs.minhalib
-SyntaxError: import com ponto na frente nao existe (o relativo e so com from); pra lib instalada, sem o ponto: import poolscript.libs.minhalib
+import .jinga.libs.minhalib
+SyntaxError: import com ponto na frente nao existe (o relativo e so com from); pra lib instalada, sem o ponto: import jinga.libs.minhalib
 ```
 
 ### 9.5.1. Erro DENTRO do módulo importado
@@ -372,7 +374,7 @@ O prefixo da mensagem (`random:`) é o nome do módulo como foi escrito no
 
 ### 9.5.2. O que se confere antes de rodar
 
-O `--check` (e o `pool`, antes de executar) lê o módulo `.pr` importado e
+O `--check` (e o `jinga`, antes de executar) lê o módulo `.pr` importado e
 confere contra a assinatura **dele**, como faz com as functs do próprio
 arquivo:
 

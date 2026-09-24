@@ -1,6 +1,6 @@
 # `s.contains(sub)`
 
-True se contém a substring (extensão da PoolScript).
+True se contém a substring (extensão da Jinga).
 
 ## Parâmetros
 

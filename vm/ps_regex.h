@@ -1,5 +1,5 @@
 /*
- * Motor de expressão regular da PoolScript, em C puro.
+ * Motor de expressão regular da Jinga, em C puro.
  *
  * Sem dependência da VM — recebe e devolve buffers de bytes. É o que permite
  * `regex_lib`, `parsing_lib` e os métodos `match`/`findall`/`sub` de string

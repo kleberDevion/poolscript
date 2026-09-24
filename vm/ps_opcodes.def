@@ -1,7 +1,7 @@
 /* ── opcodes da VM: a ÚNICA lista ────────────────────────────────────────
  *
  * Este arquivo é incluído por `ps_compiler.c` (que EMITE) e por
- * `poolscript_vm.c` (que EXECUTA), cada um definindo PS_OP do seu jeito.
+ * `jinga_vm.c` (que EXECUTA), cada um definindo PS_OP do seu jeito.
  * Antes ele era escrito à mão nos dois, mais um terceiro switch com os
  * nomes do desmontador — três listas que nada no build conferia. Número
  * trocado num dos lados não dá erro de compilação: dá bytecode que executa

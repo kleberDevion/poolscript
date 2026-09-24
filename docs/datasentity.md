@@ -31,7 +31,7 @@ post(user.nome)   # "Kleber"
 
 ## asdict(instance)
 
-Converte a instância pra `dict` PoolScript.
+Converte a instância pra `dict` Jinga.
 
 ```
 asdict(user)

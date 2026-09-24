@@ -1,5 +1,5 @@
 /*
- * Compilador AST → bytecode da PoolScript, em C puro.
+ * Compilador AST → bytecode da Jinga, em C puro.
  *
  * Fronteira de acoplamento: o compilador NÃO conhece `Value`, `Obj` nem o
  * GC da VM. Ele emite constantes numa forma neutra (`PSConst`), e é a VM que

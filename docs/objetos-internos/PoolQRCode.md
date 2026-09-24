@@ -17,7 +17,7 @@ post(type(img), img.name)      # QRImage qrcode.png
 ```
 
 Todos os parâmetros podem ser omitidos — `qrcode.QRCode()` e `qr.make()` sem
-argumento funcionam. Os defaults **não** aparecem em `pool --metadata`: ele
+argumento funcionam. Os defaults **não** aparecem em `jinga --metadata`: ele
 publica os nomes dos parâmetros das funções de módulo, mas não os valores
 padrão. Quem quiser o default, é o que está escrito aqui.
 

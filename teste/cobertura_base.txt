@@ -2,7 +2,7 @@
 #   <arquivo> <linha%> <ramo%> <ramos cobertos> <ramos totais>
 #
 # Os DOIS ULTIMOS numeros existem porque percentual sozinho mente. Em
-# 31/08 o portao acusou `poolscript_vm.c 57.3% -> 55.2%` e a conclusao
+# 31/08 o portao acusou `poolscript_vm.c (hoje jinga_vm.c) 57.3% -> 55.2%` e a conclusao
 # obvia (perdi teste) estava ERRADA: os ramos COBERTOS eram os mesmos
 # 9167 dos dois lados. O que mudou foi o denominador, 15998 -> 16620,
 # porque entraram 622 ramos de codigo novo — guardas de erro, na
@@ -22,7 +22,7 @@
 # legítima (código deletado), rode `--grava` de propósito.
 
 main.c 75.6 59.7 389 652
-poolscript_vm.c 79.8 55.0 10990 19984
+jinga_vm.c 79.8 55.0 10990 19984
 ps_ast.c 99.1 94.2 81 86
 ps_compiler.c 94.6 70.1 3145 4489
 ps_db.c 70.3 49.9 209 419

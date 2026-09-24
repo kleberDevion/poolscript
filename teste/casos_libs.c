@@ -673,7 +673,7 @@ const Caso CASOS_LIBS[] = {
   "c.close()\n",
   "[{'a': 1, 'b': Null}]", NULL, 0 },
 
-/* ── sqlite3: o outro caminho (nativo, dentro do poolscript_vm.c) ────────── */
+/* ── sqlite3: o outro caminho (nativo, dentro do jinga_vm.c) ─────────────── */
 { "sqlite3: cria, insere e le",
   "import sqlite3\n"
   "c = sqlite3.connect(\"s.db\")\n"

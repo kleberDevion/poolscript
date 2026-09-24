@@ -45,7 +45,7 @@ import java.util.jar.JarFile;
  * contra os stubs. Stub que não casa com o binário só quebra em runtime, e
  * aqui é o runtime: as classes reais, o LSP4J real, o servidor instalado.
  *
- *     ConfereLsp4ij <jar do plugin> <poolscript-lsp resolvido ou ""> <pool resolvido ou "">
+ *     ConfereLsp4ij <jar do plugin> <jinga-lsp resolvido ou ""> <jinga resolvido ou "">
  *
  * Chamado por teste_intellij.sh, com o java do JBR do IDEA e o classpath do
  * plugin + lsp4ij/lib + IDEA/lib. Sai 1 se algo falhou.
@@ -70,7 +70,9 @@ public class ConfereLsp4ij {
   public static void main(String[] args) throws Exception {
     String jarPath = args[0];
     String lsp = args.length > 1 ? args[1] : "";
-    String pool = args.length > 2 ? args[2] : "";
+    String motor = args.length > 2 ? args[2] : "";
+    /* o nome que o shell resolveu (jinga-lsp, ou o atalho antigo poolscript-lsp) */
+    String nomeLsp = lsp.isEmpty() ? "jinga-lsp" : new File(lsp).getName();
 
     /* 1. o jar so tem o que e nosso: stub embarcado sombrearia a classe real */
     try (JarFile jar = new JarFile(jarPath)) {
@@ -83,13 +85,13 @@ public class ConfereLsp4ij {
 
       /* 2. plugin.xml declara a dependencia OPCIONAL do LSP4IJ com o config-file */
       String px = lerDoJar(jar, "META-INF/plugin.xml");
-      confere("plugin.xml tem <depends optional config-file=\"poolscript-lsp4ij.xml\">com.redhat.devtools.lsp4ij",
-              px != null && px.contains("config-file=\"poolscript-lsp4ij.xml\"") && px.contains("com.redhat.devtools.lsp4ij")
+      confere("plugin.xml tem <depends optional config-file=\"jinga-lsp4ij.xml\">com.redhat.devtools.lsp4ij",
+              px != null && px.contains("config-file=\"jinga-lsp4ij.xml\"") && px.contains("com.redhat.devtools.lsp4ij")
                 && px.contains("optional=\"true\""), px);
 
-      /* 3. o XML do EP: server@id == mapping@serverId, *.pr, languageId poolscript */
-      String lx = lerDoJar(jar, "META-INF/poolscript-lsp4ij.xml");
-      confere("poolscript-lsp4ij.xml esta no jar", lx != null, null);
+      /* 3. o XML do EP: server@id == mapping@serverId, *.pr, languageId jinga */
+      String lx = lerDoJar(jar, "META-INF/jinga-lsp4ij.xml");
+      confere("jinga-lsp4ij.xml esta no jar", lx != null, null);
       String factoryClass = null;
       if (lx != null) {
         Document d = DocumentBuilderFactory.newInstance().newDocumentBuilder()
@@ -102,7 +104,7 @@ public class ConfereLsp4ij {
                 server == null ? "sem <server>" : map == null ? "sem <fileNamePatternMapping>" : server.getAttribute("id") + " x " + map.getAttribute("serverId"));
         confere("mapping cobre *.pr", map != null && (";" + map.getAttribute("patterns") + ";").contains(";*.pr;"),
                 map != null ? map.getAttribute("patterns") : null);
-        confere("mapping manda languageId=poolscript no didOpen", map != null && "poolscript".equals(map.getAttribute("languageId")),
+        confere("mapping manda languageId=jinga no didOpen", map != null && "jinga".equals(map.getAttribute("languageId")),
                 map != null ? map.getAttribute("languageId") : null);
       }
 
@@ -120,29 +122,62 @@ public class ConfereLsp4ij {
       if (!(prov instanceof ProcessStreamConnectionProvider)) { System.exit(1); return; }
       ProcessStreamConnectionProvider p = (ProcessStreamConnectionProvider) prov;
       List<String> cmd = p.getCommands();
-      confere("comando = poolscript-lsp resolvido + --stdio",
+      confere("comando = " + nomeLsp + " resolvido + --stdio",
               cmd != null && cmd.size() == 2 && cmd.get(1).equals("--stdio")
-                && (lsp.isEmpty() ? cmd.get(0).equals("poolscript-lsp") : cmd.get(0).equals(lsp)), cmd);
+                && (lsp.isEmpty() ? cmd.get(0).equals("jinga-lsp") : cmd.get(0).equals(lsp)), cmd);
       confere("pasta de trabalho existe", p.getWorkingDirectory() != null && new File(p.getWorkingDirectory()).isDirectory(),
               p.getWorkingDirectory());
 
-      /* 6. initializationOptions serializado pelo Gson REAL do IDEA */
+      /* 6. initializationOptions serializado pelo Gson REAL do IDEA (a chave `pool` e a que o servidor le) */
       Object opts = p.getInitializationOptions(null);
       String json = new Gson().toJson(opts);
-      String esperado = pool.isEmpty() ? "{}" : "{\"pool\":\"" + pool + "\"}";
+      String esperado = motor.isEmpty() ? "{}" : "{\"pool\":\"" + motor + "\"}";
       confere("initializationOptions vira " + esperado, json.equals(esperado), json);
 
-      /* 7. a busca do executavel: fallback fora do PATH, e null pro que nao existe */
+      /* 7. a busca do executavel: fallback fora do PATH, null pro que nao existe,
+            o nome antigo de reserva e as duas pastas do usuario */
       Method acha = f.getDeclaredMethod("acha", String.class, String.class);
       acha.setAccessible(true);
-      Object porFallback = acha.invoke(null, "poolscript-lsp", "/nao/existe");
-      confere("acha() cai nas pastas de fallback quando o PATH nao tem o poolscript-lsp",
+      Object porFallback = acha.invoke(null, nomeLsp, "/nao/existe");
+      confere("acha() cai nas pastas de fallback quando o PATH nao tem o " + nomeLsp,
               lsp.isEmpty() ? porFallback == null : lsp.equals(porFallback), porFallback);
       confere("acha() devolve null pro que nao existe", acha.invoke(null, "xyz-nao-existe-123", System.getenv("PATH")) == null, null);
+      Method achaQualquer = f.getDeclaredMethod("achaQualquer", String[].class, String.class);
+      achaQualquer.setAccessible(true);
+      Object porReserva = achaQualquer.invoke(null, (Object) new String[] { "xyz-nao-existe-123", nomeLsp }, System.getenv("PATH"));
+      confere("achaQualquer() cai no nome de reserva quando o primeiro nao existe",
+              lsp.isEmpty() ? porReserva == null : lsp.equals(porReserva), porReserva);
+      Method pastas = f.getDeclaredMethod("pastasDeBusca", String.class);
+      pastas.setAccessible(true);
+      @SuppressWarnings("unchecked")
+      List<String> ps = (List<String>) pastas.invoke(null, "");
+      String home = System.getProperty("user.home");
+      confere("pastasDeBusca() tem ~/.jinga/bin e ~/.poolscript/bin",
+              ps.contains(home + "/.jinga/bin") && ps.contains(home + "/.poolscript/bin"), ps);
+      /* os dois nomes lado a lado numa pasta que vem ANTES no PATH: o novo ganha —
+         com os arrays que o plugin usa de verdade, nao com copia deles */
+      Path lado = Files.createTempDirectory("jinga_ij_bin_");
+      for (String n : new String[] { "jinga-lsp", "poolscript-lsp", "jinga", "pool" }) {
+        Path e = lado.resolve(n);
+        Files.write(e, "#!/bin/sh\n".getBytes(StandardCharsets.UTF_8));
+        e.toFile().setExecutable(true);
+      }
+      java.lang.reflect.Field campoLsp = f.getDeclaredField("LSP");
+      java.lang.reflect.Field campoMotor = f.getDeclaredField("MOTOR");
+      campoLsp.setAccessible(true);
+      campoMotor.setAccessible(true);
+      Object ganhaLsp = achaQualquer.invoke(null, campoLsp.get(null), lado.toString());
+      Object ganhaMotor = achaQualquer.invoke(null, campoMotor.get(null), lado.toString());
+      confere("LSP: jinga-lsp ganha de poolscript-lsp quando os dois existem",
+              lado.resolve("jinga-lsp").toString().equals(ganhaLsp), ganhaLsp);
+      confere("MOTOR: jinga ganha de pool quando os dois existem",
+              lado.resolve("jinga").toString().equals(ganhaMotor), ganhaMotor);
+      for (String n : new String[] { "jinga-lsp", "poolscript-lsp", "jinga", "pool" }) Files.deleteIfExists(lado.resolve(n));
+      Files.deleteIfExists(lado);
 
       /* 8. ponta a ponta com o LSP4J de verdade, como o LSP4IJ faz */
       if (lsp.isEmpty()) {
-        System.out.println("  PULOU  ponta a ponta — falta `poolscript-lsp` (rode `sudo make install`)");
+        System.out.println("  PULOU  ponta a ponta — falta `jinga-lsp` (rode `sudo make install`)");
       } else {
         pontaAPonta(p, opts);
       }
@@ -183,12 +218,12 @@ public class ConfereLsp4ij {
       Object init = srv.initialize(ip).get(20, TimeUnit.SECONDS);
       confere("LSP4J: initialize respondido", init != null, null);
       srv.initialized(new InitializedParams());
-      srv.getTextDocumentService().didOpen(new DidOpenTextDocumentParams(new TextDocumentItem(uri, "poolscript", 1, texto)));
+      srv.getTextDocumentService().didOpen(new DidOpenTextDocumentParams(new TextDocumentItem(uri, "jinga", 1, texto)));
       CompletionParams cp = new CompletionParams(new TextDocumentIdentifier(uri), new Position(1, 10));
       Either<List<CompletionItem>, CompletionList> r = srv.getTextDocumentService().completion(cp).get(20, TimeUnit.SECONDS);
       int n = r == null ? 0 : (r.isLeft() ? r.getLeft().size() : r.getRight().getItems().size());
       confere("LSP4J: completion em `regex.` responde (" + n + " itens)", n >= 5, n);
-      confere("LSP4J: nenhum aviso de motor ausente (o pool foi achado)", avisos.isEmpty(), avisos);
+      confere("LSP4J: nenhum aviso de motor ausente (o motor foi achado)", avisos.isEmpty(), avisos);
       srv.shutdown().get(10, TimeUnit.SECONDS);
       srv.exit();
     } catch (Exception e) {

@@ -1,4 +1,4 @@
-# Roda TODO bloco ```ps da documentação pelo `pool --check`.
+# Roda TODO bloco ```ps da documentação pelo `jinga --check`.
 #
 # POR QUE ESTE ARQUIVO EXISTE: o `audita_doc.pr` confere a ASSINATURA do título
 # de cada página contra o `--metadata`. Ninguém conferia o CÓDIGO dentro das
@@ -13,7 +13,7 @@
 #     ./pool scripts/audita_exemplos_doc.pr          # relata e reprova
 #     ./pool scripts/audita_exemplos_doc.pr --lista  # mostra o bloco inteiro
 #
-# ESCOPO: só as cercas marcadas ```ps / ```poolscript. As cercas SEM marcação
+# ESCOPO: só as cercas marcadas ```ps / ```jinga. As cercas SEM marcação
 # misturam saída de terminal, JSON e shell — incluir tudo daria achado inventado,
 # que é pior que achado nenhum.
 #
@@ -97,7 +97,7 @@ funct blocos_ps(txt) {
                 }
             }
         }
-        elif limpa == "```ps" or limpa == "```poolscript" or limpa == "```ps contexto" {
+        elif limpa == "```ps" or limpa == "```jinga" or limpa == "```ps contexto" {
             b_dentro = true
             b_ini = b_n
             b_margem = recuo(linha)

@@ -2,7 +2,7 @@
 
 Esta página descrevia um tipo `Route`, com `.auth`, `.handler`, `.methods`,
 `.middleware` e `.path`. **Nada disso existe na VM**: `type()` nunca devolve
-`Route`, o nome não aparece em `pool --metadata`, e nenhum dos cinco atributos
+`Route`, o nome não aparece em `jinga --metadata`, e nenhum dos cinco atributos
 é alcançável.
 
 O que existe de verdade:

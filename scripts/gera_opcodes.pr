@@ -1,7 +1,7 @@
 # Gera `vm/ps_opcodes.def` a partir do que HOJE está escrito à mão.
 #
 # POR QUE ISTO EXISTE: os 87 opcodes estavam declarados TRÊS vezes — o enum em
-# `ps_compiler.c`, o enum idêntico em `poolscript_vm.c` e o switch de nomes do
+# `ps_compiler.c`, o enum idêntico em `jinga_vm.c` e o switch de nomes do
 # desmontador. Nada no build conferia que as três listas batiam. Um opcode novo
 # com número errado num dos lados não dá erro de compilação: dá bytecode que
 # executa a instrução ERRADA, e o defeito aparece longe da causa.
@@ -19,7 +19,7 @@ import regex
 import sys
 
 COMPILADOR = "vm/ps_compiler.c"
-MAQUINA = "vm/poolscript_vm.c"
+MAQUINA = "vm/jinga_vm.c"
 DESTINO = "vm/ps_opcodes.def"
 
 
@@ -156,7 +156,7 @@ if __name__ == "main" {
         "/* ── opcodes da VM: a ÚNICA lista ────────────────────────────────────────",
         " *",
         " * Este arquivo é incluído por `ps_compiler.c` (que EMITE) e por",
-        " * `poolscript_vm.c` (que EXECUTA), cada um definindo PS_OP do seu jeito.",
+        " * `jinga_vm.c` (que EXECUTA), cada um definindo PS_OP do seu jeito.",
         " * Antes ele era escrito à mão nos dois, mais um terceiro switch com os",
         " * nomes do desmontador — três listas que nada no build conferia. Número",
         " * trocado num dos lados não dá erro de compilação: dá bytecode que executa",

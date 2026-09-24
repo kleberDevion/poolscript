@@ -21,7 +21,7 @@ set -e
 DADOS="${1:-/usr/share}"
 ACAO="${2:-instalar}"
 AQUI=$(dirname "$(readlink -f "$0")")
-SVG="$AQUI/icones/text-poolscript.svg"
+SVG="$AQUI/icones/text-jinga.svg"
 
 # `scalable/mimetypes` é o diretório certo pra SVG; o hicolor já declara essa
 # seção, e nos temas que não declaram o arquivo fica inerte (não atrapalha) —
@@ -41,10 +41,12 @@ espalha() {
             case "$ACAO" in
                 instalar)
                     mkdir -p "$alvo" 2>/dev/null || continue
-                    cp -f "$SVG" "$alvo/text-poolscript.svg" 2>/dev/null || true
+                    cp -f "$SVG" "$alvo/text-jinga.svg" 2>/dev/null || true
+                    # o desenho do nome antigo sai: o tipo antigo tambem saiu
+                    rm -f "$alvo/text-poolscript.svg" 2>/dev/null || true
                     ;;
                 remover)
-                    rm -f "$alvo/text-poolscript.svg" 2>/dev/null || true
+                    rm -f "$alvo/text-jinga.svg" "$alvo/text-poolscript.svg" 2>/dev/null || true
                     ;;
             esac
         done
@@ -63,8 +65,10 @@ fi
 # o hicolor recebe de qualquer jeito: é o fallback portátil
 if [ "$ACAO" = instalar ]; then
     mkdir -p "$DADOS/icons/hicolor/scalable/mimetypes"
-    cp -f "$SVG" "$DADOS/icons/hicolor/scalable/mimetypes/text-poolscript.svg"
-else
+    cp -f "$SVG" "$DADOS/icons/hicolor/scalable/mimetypes/text-jinga.svg"
     rm -f "$DADOS/icons/hicolor/scalable/mimetypes/text-poolscript.svg"
+else
+    rm -f "$DADOS/icons/hicolor/scalable/mimetypes/text-jinga.svg" \
+          "$DADOS/icons/hicolor/scalable/mimetypes/text-poolscript.svg"
 fi
 gtk-update-icon-cache -f -t "$DADOS/icons/hicolor" >/dev/null 2>&1 || true

@@ -2,7 +2,7 @@
 
 Chamados direto no valor: `l.metodo()`. A MAIORIA muta a lista no lugar e devolve `null` — não encadeia. Para uma cópia modificada, use os builtins `sorted(l)`/`reversed(l)`.
 
-A lista sai da tabela `METODOS_LIST` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
+A lista sai da tabela `METODOS_LIST` de `vm/jinga_vm.c`, publicada por `jinga --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|

@@ -1,7 +1,7 @@
 /*
  * Tabela de retorno dos nativos. O conteúdo vem INTEIRO de
  * `retornos_medidos.inc`, gerado por scripts/mede_retornos.pr: não há entrada
- * escrita à mão. A tabela à mão que vivia no poolscript_vm.c declarou tipo que
+ * escrita à mão. A tabela à mão que vivia no jinga_vm.c declarou tipo que
  * o motor não devolve (`os.PoolFile -> PoolFile`, quando o valor é o próprio
  * tipo) e deixava sem retorno a maior parte dos membros.
  *

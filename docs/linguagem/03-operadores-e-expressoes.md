@@ -404,7 +404,7 @@ resultado "certo" e nunca reclamava — até o dia em que não desse. Aqui é er
 e não aviso, porque a linguagem não tem canal de aviso e foi justamente o
 silêncio que criou o problema.
 
-O erro é de **compilação**, então o `pool --check` do editor já o mostra.
+O erro é de **compilação**, então o `jinga --check` do editor já o mostra.
 `x is y` com dois nomes continua valendo: `y` pode guardar um tipo.
 
 ---

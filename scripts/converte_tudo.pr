@@ -54,7 +54,7 @@ if __name__ == "main" {
         }
     }
     if len(alvos) == 0 {
-        post("uso: pool scripts/converte_tudo.pr <arquivo|pasta> ... [--grava]")
+        post("uso: jinga scripts/converte_tudo.pr <arquivo|pasta> ... [--grava]")
         sys.exit(1)
     }
 

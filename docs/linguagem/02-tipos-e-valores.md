@@ -1,7 +1,7 @@
 # Referência da Linguagem — 2. Tipos e valores
 
-A PoolScript tem **tipagem estática**: tudo que tem tipo é conferido **antes
-de rodar** — no `pool --check` e no próprio `pool`, que não executa um
+A Jinga tem **tipagem estática**: tudo que tem tipo é conferido **antes
+de rodar** — no `jinga --check` e no próprio `jinga`, que não executa um
 programa com erro de tipo — como no Java. Declaração, reatribuição, parâmetro
 e o padrão dele, retorno, campo de Entity, `self.campo`, `obj.campo`: uma
 variável declarada com tipo (`int x = 5`) **é** daquele tipo, e a linguagem

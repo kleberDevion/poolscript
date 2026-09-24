@@ -1,12 +1,12 @@
-" Realce da PoolScript para Vim/Neovim.
+" Realce da Jinga para Vim/Neovim.
 "
-" Espelho de editor/vscode/syntaxes/poolscript.tmLanguage.json — mesmas listas,
+" Espelho de editor/vscode/syntaxes/jinga.tmLanguage.json — mesmas listas,
 " e, o que mais importa, a MESMA SEPARAÇÃO: a palavra que declara função, a que
 " declara tipo, o tipo primitivo, o modificador e o fluxo caem em grupos
 " DIFERENTES.
 "
 " As listas de tipos, apelidos, builtins e exceções são GERADAS por
-" scripts/gera_realce.pr a partir do `pool --metadata`, como as da gramática:
+" scripts/gera_realce.pr a partir do `jinga --metadata`, como as da gramática:
 " a instrução logo abaixo de cada linha `" GERADO: …` é reescrita (não edite à
 " mão — o `make check` reprova se divergir). Digitadas, apodreciam: esta cópia
 " ficou sem `long`, sem `PoolFile` e sem exceção nenhuma.
@@ -90,7 +90,7 @@ syn match   psFuncName "[A-Za-z_]\w*" contained
 syn match   psTypeName "[A-Za-z_]\w*" contained
 
 " ── builtins ────────────────────────────────────────────────────────────────
-" Os que o `pool --metadata` publica e que NÃO são também nome de tipo (esses
+" Os que o `jinga --metadata` publica e que NÃO são também nome de tipo (esses
 " já estão em psType, e é como tipo que aparecem na maioria das linhas).
 " GERADO: builtins
 syn keyword psBuiltin  assert post len abs pow round hex bin oct ord chr range
@@ -155,4 +155,4 @@ hi def link psCall         @function.call
 " e perde o meio do comentário
 syn sync fromstart
 
-let b:current_syntax = "poolscript"
+let b:current_syntax = "jinga"

@@ -1,7 +1,7 @@
 # Cobre a STDLIB DA LINGUAGEM que nenhum teste chamava uma vez sequer.
 #
 # POR QUE ELE EXISTE. O `teste/bench_cobertura.pr` lista as funções em ZERO
-# execução, e a lista de `poolscript_vm.c` tinha 115 — não ramos de erro
+# execução, e a lista de `jinga_vm.c` tinha 115 — não ramos de erro
 # esquecidos, mas funções inteiras da biblioteca padrão:
 #
 #     sys.platform  sys.RelativePath  sys.stdin.read/readline
@@ -132,7 +132,7 @@ confere("`import vizinho` dentro de modulo de subpasta acha o arquivo ao lado",
 # A string e o especificador: com `/` ou extensao e caminho relativo ao
 # arquivo que importa; sem isso e nome de modulo do motor ou lib instalada.
 # Aqui o que precisa de arquivo de verdade: relativo, pai, sem extensao, `as`,
-# PUSH/GET, absoluto, lib (POOLSCRIPT_HOME), modulo do motor entre aspas e
+# PUSH/GET, absoluto, lib (JINGA_HOME), modulo do motor entre aspas e
 # `__name__` dentro do modulo importado por caminho.
 os.mkdir(PASTA + "/asp/sub", exist_ok=true)
 os.mkdir(PASTA + "/asp/pacote", exist_ok=true)
@@ -154,48 +154,52 @@ os.writeFile(PASTA + "/asp/sub/filho.pr",
     + "import './meu-mod.pr' as mm\n"
     + "post(modulo.z, w, zz, json.stringify([1]), st([2]), minhalib.LIB, pm.z, w2, abs.f(), mm.q)\n")
 ESPERADO_ASP = "99 7 99 [1] [2] lib ok 99 7 f de modulo 1"
-os.cmd("cd " + PASTA + "/asp && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable + "' sub/filho.pr > saida_asp.out 2>&1")
+os.cmd("cd " + PASTA + "/asp && JINGA_HOME=" + PASTA + "/asp/home '" + sys.executable + "' sub/filho.pr > saida_asp.out 2>&1")
 confere("import por caminho: relativo, pai, sem extensao, `as`, PUSH/GET, absoluto, lib e modulo do motor entre aspas",
         os.readFile(PASTA + "/asp/saida_asp.out").strip() == ESPERADO_ASP)
-os.cmd("cd " + PASTA + "/asp/sub && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable + "' filho.pr > ../saida_asp2.out 2>&1")
+os.cmd("cd " + PASTA + "/asp/sub && JINGA_HOME=" + PASTA + "/asp/home '" + sys.executable + "' filho.pr > ../saida_asp2.out 2>&1")
 confere("import por caminho resolve pela pasta do arquivo, nao pelo cwd",
         os.readFile(PASTA + "/asp/saida_asp2.out").strip() == ESPERADO_ASP)
 
-# ── nome qualificado da lib instalada (`import poolscript.libs.x`) ───────────
+# ── nome qualificado da lib instalada (`import jinga.libs.x`) ────────────────
 #
-# `poolscript.libs.` e o nome logico da pasta de libs: vale onde as libs
-# estiverem (aqui, o POOLSCRIPT_HOME de mentira), liga o ULTIMO nome, e cai no
+# `jinga.libs.` e o nome logico da pasta de libs: vale onde as libs
+# estiverem (aqui, o JINGA_HOME de mentira), liga o ULTIMO nome, e cai no
 # mesmo arquivo do `import x` — entao o corpo da lib roda uma vez so, mesmo com
-# as duas formas no programa. Uma pasta `poolscript/libs/` do projeto continua
-# sendo achada quando nao ha lib instalada com aquele nome.
+# as duas formas no programa. Uma pasta `jinga/libs/` do projeto continua
+# sendo achada quando nao ha lib instalada com aquele nome. `poolscript.libs.`
+# e o nome de antes do rename da linguagem e continua valendo.
 os.writeFile(PASTA + "/asp/home/libs/contalib.pr", "post(\"corpo\")\nC = 3\n")
-os.mkdir(PASTA + "/asp/poolscript/libs", exist_ok=true)
-os.writeFile(PASTA + "/asp/poolscript/libs/doprojeto.pr", "P = 5\n")
+os.mkdir(PASTA + "/asp/jinga/libs", exist_ok=true)
+os.writeFile(PASTA + "/asp/jinga/libs/doprojeto.pr", "P = 5\n")
 
 funct roda_qual(nome, fonte) {
     os.writeFile(PASTA + "/asp/" + nome, fonte)
-    os.cmd("cd " + PASTA + "/asp && POOLSCRIPT_HOME=" + PASTA + "/asp/home '" + sys.executable
+    os.cmd("cd " + PASTA + "/asp && JINGA_HOME=" + PASTA + "/asp/home '" + sys.executable
            + "' " + nome + " > " + nome + ".out 2>&1")
     return os.readFile(PASTA + "/asp/" + nome + ".out").strip()
 }
 
-confere("import poolscript.libs.x liga o ultimo nome",
-        roda_qual("q1.pr", "import poolscript.libs.minhalib\npost(minhalib.LIB)\n") == "lib ok")
-confere("import poolscript.libs.x as nome",
-        roda_qual("q2.pr", "import poolscript.libs.minhalib as m\npost(m.LIB)\n") == "lib ok")
-confere("from poolscript.libs.x import nome",
-        roda_qual("q3.pr", "from poolscript.libs.minhalib import LIB\npost(LIB)\n") == "lib ok")
-confere("from poolscript.libs.x import *",
-        roda_qual("q4.pr", "from poolscript.libs.minhalib import *\npost(LIB)\n") == "lib ok")
-confere("PUSH poolscript.libs.x GET nome",
-        roda_qual("q5.pr", "PUSH poolscript.libs.minhalib GET LIB\npost(LIB)\n") == "lib ok")
+confere("import jinga.libs.x liga o ultimo nome",
+        roda_qual("q1.pr", "import jinga.libs.minhalib\npost(minhalib.LIB)\n") == "lib ok")
+confere("import jinga.libs.x as nome",
+        roda_qual("q2.pr", "import jinga.libs.minhalib as m\npost(m.LIB)\n") == "lib ok")
+confere("from jinga.libs.x import nome",
+        roda_qual("q3.pr", "from jinga.libs.minhalib import LIB\npost(LIB)\n") == "lib ok")
+confere("from jinga.libs.x import *",
+        roda_qual("q4.pr", "from jinga.libs.minhalib import *\npost(LIB)\n") == "lib ok")
+confere("PUSH jinga.libs.x GET nome",
+        roda_qual("q5.pr", "PUSH jinga.libs.minhalib GET LIB\npost(LIB)\n") == "lib ok")
 confere("forma curta e qualificada no mesmo programa: o corpo da lib roda uma vez",
-        roda_qual("q6.pr", "import contalib\nimport poolscript.libs.contalib\npost(contalib.C)\n") == "corpo\n3")
-confere("import poolscript.libs.naoexiste e ImportError",
-        roda_qual("q7.pr", "import poolscript.libs.naoexiste\n")
-            .startswith("ImportError: No module named 'poolscript.libs.naoexiste'"))
-confere("pasta poolscript/libs do PROJETO continua sendo achada",
-        roda_qual("q8.pr", "import poolscript.libs.doprojeto\npost(doprojeto.P)\n") == "5")
+        roda_qual("q6.pr", "import contalib\nimport jinga.libs.contalib\npost(contalib.C)\n") == "corpo\n3")
+confere("import jinga.libs.naoexiste e ImportError",
+        roda_qual("q7.pr", "import jinga.libs.naoexiste\n")
+            .startswith("ImportError: No module named 'jinga.libs.naoexiste'"))
+confere("pasta jinga/libs do PROJETO continua sendo achada",
+        roda_qual("q8.pr", "import jinga.libs.doprojeto\npost(doprojeto.P)\n") == "5")
+confere("import poolscript.libs.x (o nome de antes do rename) continua importando a mesma lib",
+        roda_qual("q9.pr", "import poolscript.libs.minhalib\nimport jinga.libs.minhalib as j\npost(minhalib.LIB, j.LIB)\n")
+            == "lib ok lib ok")
 
 # ── import * com arquivo `.pr` de verdade ────────────────────────────────────
 #

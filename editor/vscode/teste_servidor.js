@@ -2,7 +2,7 @@
  * Dirige o servidor LSP como o VS Code faria: escreve mensagens enquadradas na
  * entrada dele e confere as respostas. Não precisa de editor nenhum.
  *
- *     node editor/vscode/teste_servidor.js [caminho-do-pool]
+ *     node editor/vscode/teste_servidor.js [caminho-do-jinga]
  *
  * CADA CASO AQUI É UMA RECLAMAÇÃO REPRODUZIDA. Não são testes de feature
  * inventados: são os defeitos que o servidor anterior tinha, medidos antes de
@@ -14,7 +14,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const POOL = process.argv[2] || 'pool';
+const JINGA = process.argv[2] || 'jinga';
 const SERVIDOR = path.join(__dirname, 'server.js');
 
 let falhas = 0;
@@ -97,10 +97,10 @@ function conversa(texto, pedidos, op) {
     p.on('error', reject);
 
     manda({ jsonrpc: '2.0', id: 1, method: 'initialize',
-            params: op.inicializa || { rootUri: null, capabilities: {}, initializationOptions: { pool: POOL } } });
+            params: op.inicializa || { rootUri: null, capabilities: {}, initializationOptions: { jinga: JINGA } } });
     manda({ jsonrpc: '2.0', method: 'initialized', params: {} });
     manda({ jsonrpc: '2.0', method: 'textDocument/didOpen',
-            params: { textDocument: { uri: uriDoc, languageId: 'poolscript', version: 1, text: texto } } });
+            params: { textDocument: { uri: uriDoc, languageId: 'jinga', version: 1, text: texto } } });
     for (const q of pedidos) manda(q);
     /* Sem pedido nenhum, o que se espera é o DIAGNÓSTICO. O teto de 20 s
      * abaixo continua sendo a rede: se ele nunca vier, o caso falha por não
@@ -110,6 +110,15 @@ function conversa(texto, pedidos, op) {
 }
 
 const URI = 'file://' + path.join(os.tmpdir(), 'ps_lsp_t', 'a.pr');
+
+/* As libs instaladas: `~/.jinga/libs`, ou `~/.poolscript/libs` enquanto o
+ * `jpkg` não moveu a pasta antiga — o mesmo fallback do motor e do servidor. */
+function pastaLibs() {
+  if (!process.env.HOME) return '';
+  const nova = path.join(process.env.HOME, '.jinga', 'libs');
+  try { if (fs.statSync(nova).isDirectory()) return nova; } catch (_) { /* segue */ }
+  return path.join(process.env.HOME, '.poolscript', 'libs');
+}
 
 
 const resp = (msgs, id) => msgs.find((m) => m.id === id);
@@ -132,16 +141,16 @@ async function main() {
     conf('`import json as js` -> `js.` sugere os membros do json', L.includes('parse') && L.includes('stringify'), L);
   }
 
-  /* ── 2. lib instalada em ~/.poolscript/libs — dava ZERO ────────────────── */
+  /* ── 2. lib instalada em ~/.jinga/libs — dava ZERO ─────────────────────── */
   {
-    const libs = process.env.HOME ? path.join(process.env.HOME, '.poolscript', 'libs') : '';
+    const libs = pastaLibs();
     let alguma = '';
     try {
       const f = fs.readdirSync(libs).find((x) => x.endsWith('.pr')) || '';
       alguma = f.slice(0, f.length - '.pr'.length);
     } catch (_) { /* sem libs instaladas */ }
     if (!alguma) {
-      console.log('  PULOU lib instalada — nenhuma em ~/.poolscript/libs');
+      console.log('  PULOU lib instalada — nenhuma em ~/.jinga/libs');
     } else {
       const src = `import ${alguma}\nx = ${alguma}.\n`;
       const m = await conversa(src, [compl(2, 1, 5 + alguma.length)]);
@@ -149,10 +158,10 @@ async function main() {
       conf(`lib instalada \`${alguma}\` expoe membros`, L.length > 0, L.slice(0, 6));
 
       /* a forma qualificada liga o MESMO nome e acha o mesmo arquivo */
-      const srcQ = `import poolscript.libs.${alguma}\nx = ${alguma}.\n`;
+      const srcQ = `import jinga.libs.${alguma}\nx = ${alguma}.\n`;
       const mQ = await conversa(srcQ, [compl(2, 1, 5 + alguma.length)]);
       const LQ = rotulos(resp(mQ, 2));
-      conf(`\`import poolscript.libs.${alguma}\` expoe os mesmos membros`,
+      conf(`\`import jinga.libs.${alguma}\` expoe os mesmos membros`,
            LQ.length > 0 && LQ.length === L.length, { qualificado: LQ.slice(0, 6), curto: L.slice(0, 6) });
     }
   }
@@ -1046,7 +1055,7 @@ async function main() {
   {
     /* O "teto" que ele apontou: a lib expõe a classe, e a classe expõe os
      * métodos dela. Parar na classe é o teto. */
-    const libs = process.env.HOME ? path.join(process.env.HOME, '.poolscript', 'libs') : '';
+    const libs = pastaLibs();
     let comClasse = '';
     let classe = '';
     try {
@@ -1063,7 +1072,7 @@ async function main() {
       }
     } catch (_) { /* sem libs */ }
     if (!comClasse) {
-      console.log('  PULOU o teto de exposicao — nenhuma lib com class em ~/.poolscript/libs');
+      console.log('  PULOU o teto de exposicao — nenhuma lib com class em ~/.jinga/libs');
     } else {
       const src = `import ${comClasse}\ninst = ${comClasse}.${classe}()\ninst.\n`;
       const m = await conversa(src, [compl(2, 2, 5)]);
@@ -1083,21 +1092,21 @@ async function main() {
     const man = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
     const c = man.contributes || {};
     const cmds = (c.commands || []).map((x) => x.command);
-    conf('o manifesto declara o comando de rodar', cmds.includes('poolscript.rodar'), cmds);
+    conf('o manifesto declara o comando de rodar', cmds.includes('jinga.rodar'), cmds);
     conf('o botão de rodar aparece na barra do editor',
-         ((c.menus || {})['editor/title/run'] || []).some((m) => m.command === 'poolscript.rodar'),
+         ((c.menus || {})['editor/title/run'] || []).some((m) => m.command === 'jinga.rodar'),
          Object.keys(c.menus || {}));
     conf('o comando tem atalho (ctrl+f5)',
-         (c.keybindings || []).some((k) => k.command === 'poolscript.rodar' && k.key),
+         (c.keybindings || []).some((k) => k.command === 'jinga.rodar' && k.key),
          (c.keybindings || []).map((k) => k.key));
     conf('o comando só aparece em arquivo da linguagem',
          (c.commands || []).length > 0
-         && ((c.menus || {}).commandPalette || []).every((m) => (m.when || '').includes('poolscript')),
+         && ((c.menus || {}).commandPalette || []).every((m) => (m.when || '').includes('jinga')),
          (c.menus || {}).commandPalette);
     /* O cliente registra o comando ANTES do `return` que desliga o LSP: quem
      * põe `lsp.ativo: false` não está pedindo pra perder o botão. */
     const cli = fs.readFileSync(path.join(__dirname, 'extension.js'), 'utf8');
-    const iReg = cli.indexOf("registerCommand('poolscript.rodar'");
+    const iReg = cli.indexOf("registerCommand('jinga.rodar'");
     const iOff = cli.indexOf("get('lsp.ativo')");
     conf('o comando é registrado mesmo com o LSP desligado',
          iReg > 0 && iOff > 0 && iReg < iOff, { iReg, iOff });
@@ -1107,10 +1116,10 @@ async function main() {
      * gengiva do depurador é declarativa, e falta dela não dá erro nenhum —
      * o F5 simplesmente não faz nada, que é o pior modo de quebrar. */
     conf('o manifesto permite breakpoint em .pr',
-         (c.breakpoints || []).some((b) => b.language === 'poolscript'),
+         (c.breakpoints || []).some((b) => b.language === 'jinga'),
          c.breakpoints);
-    const dbg = (c.debuggers || []).find((d) => d.type === 'poolscript');
-    conf('o manifesto declara o depurador poolscript', !!dbg,
+    const dbg = (c.debuggers || []).find((d) => d.type === 'jinga');
+    conf('o manifesto declara o depurador jinga', !!dbg,
          (c.debuggers || []).map((d) => d.type));
     conf('a configuração de launch exige o programa',
          !!dbg && ((dbg.configurationAttributes || {}).launch || {}).required
@@ -1120,16 +1129,16 @@ async function main() {
          !!dbg && (dbg.initialConfigurations || []).length > 0,
          dbg && dbg.initialConfigurations);
     conf('a extensão acorda pra depurar',
-         (man.activationEvents || []).includes('onDebugResolve:poolscript'),
+         (man.activationEvents || []).includes('onDebugResolve:jinga'),
          man.activationEvents);
     conf('o comando do gráfico existe',
-         (c.commands || []).some((x) => x.command === 'poolscript.grafico'),
+         (c.commands || []).some((x) => x.command === 'jinga.grafico'),
          (c.commands || []).map((x) => x.command));
     /* Rodar e Depurar lado a lado no topo do editor: quem está com o arquivo
      * aberto escolhe ali, sem ter que decorar que o atalho global é F5. */
     conf('o botão de depurar fica ao lado do de rodar',
          ((c.menus || {})['editor/title/run'] || [])
-           .some((x) => x.command === 'poolscript.depurar'),
+           .some((x) => x.command === 'jinga.depurar'),
          ((c.menus || {})['editor/title/run'] || []).map((x) => x.command));
     /* `Rodar | Depurar` inline, em cima do ponto de entrada — o lugar em que o
      * Java põe o `Run | Debug` acima do `main`. */
@@ -1145,9 +1154,9 @@ async function main() {
          && cli.indexOf('linhaDeEntrada') > 0,
          { ancora: cli.indexOf('__name__') });
     conf('o comando de depurar é registrado mesmo com o LSP desligado',
-         cli.indexOf("registerCommand('poolscript.depurar'") > 0
-         && cli.indexOf("registerCommand('poolscript.depurar'") < iOff,
-         { reg: cli.indexOf("registerCommand('poolscript.depurar'"), iOff });
+         cli.indexOf("registerCommand('jinga.depurar'") > 0
+         && cli.indexOf("registerCommand('jinga.depurar'") < iOff,
+         { reg: cli.indexOf("registerCommand('jinga.depurar'"), iOff });
 
     /* A fábrica do adaptador tem que ESPERAR o motor abrir a porta antes de
      * devolver o descritor: o VS Code conecta na hora, e devolver antes dá
@@ -1165,9 +1174,9 @@ async function main() {
     /* O gráfico é buscado no `terminated`, enquanto a sessão ainda responde. */
     conf('o gráfico é capturado antes da sessão fechar',
          cli.indexOf("'terminated'") > 0
-         && cli.indexOf("customRequest('poolscriptGrafico')") > cli.indexOf("'terminated'"),
+         && cli.indexOf("customRequest('jingaGrafico')") > cli.indexOf("'terminated'"),
          { terminated: cli.indexOf("'terminated'"),
-           pedido: cli.indexOf("customRequest('poolscriptGrafico')") });
+           pedido: cli.indexOf("customRequest('jingaGrafico')") });
   }
 
   /* ── 14. MÉTODOS DE TIPO NO HOVER — parâmetro tipado, literal, receptor sem tipo ──
@@ -1291,7 +1300,7 @@ async function main() {
    * a URI com percent-encoding (`%20`, `%C3%A7`) e, no fallback, com uma
    * barra só (`file:/…`); cortar `file://` na unha deixava a pasta com `%20`
    * dentro e sumiam os vizinhos do `import`, e o go-to-definition devolvia
-   * URI crua com espaço, que o cliente rejeita. E sem o `pool` no PATH do
+   * URI crua com espaço, que o cliente rejeita. E sem o `jinga` no PATH do
    * editor o servidor respondia VAZIO sem avisar — o sintoma "não sugere
    * nada" do IntelliJ, sem um rastro. */
   {
@@ -1307,9 +1316,10 @@ async function main() {
       params: { textDocument: { uri }, position: { line: l, character: c } } });
 
     /* 1. `initialize` como o LSP4J manda: sem initializationOptions — o
-     *    servidor cai no PATH, que aqui tem o pool */
-    const poolDir = path.dirname(path.resolve(POOL));
-    const envMin = Object.assign({}, process.env, { PATH: poolDir + path.delimiter + (process.env.PATH || '') });
+     *    servidor cai no PATH, que aqui tem o binário (`jinga`, ou `pool` numa
+     *    instalação de antes do rename: é o `command -v` do servidor que escolhe) */
+    const jingaDir = path.dirname(path.resolve(JINGA));
+    const envMin = Object.assign({}, process.env, { PATH: jingaDir + path.delimiter + (process.env.PATH || '') });
     const m1 = await conversa('import regex\nx = regex.\n', [compl(60, 1, 10)],
                               { inicializa: { rootUri: null, capabilities: {} }, env: envMin });
     const L1 = rotulos(resp(m1, 60));
@@ -1330,16 +1340,30 @@ async function main() {
     conf('definition devolve URI CODIFICADA (a que o cliente aceita) apontando pro vizinho',
          !!d3 && d3.uri === pathToFileURL(vizinhoAbs).href, d3 && d3.uri);
 
-    /* 4. pool inexistente: o servidor AVISA em vez de responder vazio calado */
+    /* 4. jinga inexistente: o servidor AVISA em vez de responder vazio calado.
+     *    O caminho que ele cita é o de `initializationOptions.jinga` — se a
+     *    opção fosse ignorada, o servidor cairia no PATH e a mensagem não
+     *    teria esse caminho. */
     const m4 = await conversa('import regex\nx = regex.\n', [compl(64, 1, 10)],
                               { inicializa: { rootUri: null, capabilities: {},
-                                              initializationOptions: { pool: '/nao/existe/pool' } } });
+                                              initializationOptions: { jinga: '/nao/existe/jinga' } } });
     const aviso = m4.find((x) => x.method === 'window/showMessage');
-    conf('pool inexistente: o servidor avisa o cliente (window/showMessage) citando o caminho',
-         !!aviso && !!aviso.params && String(aviso.params.message).includes('/nao/existe/pool'),
+    conf('jinga inexistente: o servidor avisa o cliente (window/showMessage) citando o caminho',
+         !!aviso && !!aviso.params && String(aviso.params.message).includes('/nao/existe/jinga'),
          aviso && aviso.params);
     conf('...e manda o detalhe em window/logMessage', m4.some((x) => x.method === 'window/logMessage'));
     conf('...e a completion ainda responde (sem travar)', !!resp(m4, 64));
+
+    /* 5. `initializationOptions.pool` é o nome de ANTES do rename: um cliente
+     *    antigo (vsix não reempacotada, IntelliJ de ontem) ainda manda ele, e
+     *    o servidor tem que honrar — a prova é o mesmo aviso citando o caminho */
+    const m5 = await conversa('import regex\nx = regex.\n', [compl(65, 1, 10)],
+                              { inicializa: { rootUri: null, capabilities: {},
+                                              initializationOptions: { pool: '/nao/existe/pool' } } });
+    const avisoPool = m5.find((x) => x.method === 'window/showMessage');
+    conf('`initializationOptions.pool` (nome antigo) ainda aponta o binario: o aviso cita ESSE caminho',
+         !!avisoPool && !!avisoPool.params && String(avisoPool.params.message).includes('/nao/existe/pool'),
+         avisoPool && avisoPool.params);
   }
 
   /* ── 16. `static` da classe pelo nome SOLTO — o que o motor aceita, o editor mostra ──

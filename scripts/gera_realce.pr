@@ -1,15 +1,15 @@
 # Gera as listas do realce dos editores a partir do MOTOR.
 #
-# A gramática TextMate (editor/vscode/syntaxes/poolscript.tmLanguage.json)
+# A gramática TextMate (editor/vscode/syntaxes/jinga.tmLanguage.json)
 # tinha listas digitadas de tipos e builtins — e pintava `Long`, que a
 # linguagem não tinha, e não pintava exceção nenhuma. Regra do dono: nenhuma
-# lista fixa. As três alternações saem do `pool --metadata`:
+# lista fixa. As três alternações saem do `jinga --metadata`:
 #
-#   storage.type.poolscript             <- tipos_declaraveis + tipos_apelidos + tipos_nomes
-#   support.function.builtin.poolscript <- builtins[].nome
-#   support.class.exception.poolscript  <- excecoes[].nome
+#   storage.type.jinga             <- tipos_declaraveis + tipos_apelidos + tipos_nomes
+#   support.function.builtin.jinga <- builtins[].nome
+#   support.class.exception.jinga  <- excecoes[].nome
 #
-# O syntax do Neovim (editor/nvim/syntax/poolscript.vim) é espelho da
+# O syntax do Neovim (editor/nvim/syntax/jinga.vim) é espelho da
 # gramática e tinha as MESMAS listas digitadas — e apodrecia do mesmo jeito
 # (sem `long`, sem `PoolFile`, sem exceção nenhuma). As dele saem daqui também:
 # cada `syn keyword`/`syn match` gerado vem logo depois de uma linha
@@ -26,16 +26,16 @@ import os
 import sys
 import json
 
-GRAMATICA = "editor/vscode/syntaxes/poolscript.tmLanguage.json"
-VIM = "editor/nvim/syntax/poolscript.vim"
+GRAMATICA = "editor/vscode/syntaxes/jinga.tmLanguage.json"
+VIM = "editor/nvim/syntax/jinga.vim"
 MARCA = "\" GERADO: "
 
 # `(?!\s*=[^=])`: `int = 1` ou `type=...` como nome de argumento não é tipo.
 # `\s*(?=\()`: builtin só pinta quando CHAMADO (`route = 1` fica variável).
 REGRAS = [
-    ["storage.type.poolscript",             "\\\\b(", ")\\\\b(?!\\\\s*=[^=])"],
-    ["support.function.builtin.poolscript", "\\\\b(", ")\\\\s*(?=\\\\()"],
-    ["support.class.exception.poolscript",  "\\\\b(", ")\\\\b"],
+    ["storage.type.jinga",             "\\\\b(", ")\\\\b(?!\\\\s*=[^=])"],
+    ["support.function.builtin.jinga", "\\\\b(", ")\\\\s*(?=\\\\()"],
+    ["support.class.exception.jinga",  "\\\\b(", ")\\\\b"],
 ]
 
 
@@ -165,7 +165,7 @@ funct gera_vim(linhas, listas, apelidos) {
 
 # Todo token que a gramática emite (`"name": "..."`): uma lista de escopos
 # por token — as palavras separadas por espaço são ALTERNATIVAS (a segunda e a
-# terceira existem pra tema que não conhece a primeira). Só entram os `.poolscript`.
+# terceira existem pra tema que não conhece a primeira). Só entram os `.jinga`.
 funct escopos_da_gramatica(linhas) {
     saida = []
     for each l in linhas {
@@ -177,7 +177,7 @@ funct escopos_da_gramatica(linhas) {
         valor = valor[0:valor.find("\"")]
         alternativas = []
         for each esc in valor.split(" ") {
-            if esc.endswith(".poolscript") {
+            if esc.endswith(".jinga") {
                 addEnd(alternativas, esc)
             }
         }
@@ -190,7 +190,7 @@ funct escopos_da_gramatica(linhas) {
 
 
 # Os escopos que um tema cobre: a união de todos os `scope` de `tokenColors`.
-# Regra genérica cobre por prefixo (`keyword` cobre `keyword.control.poolscript`).
+# Regra genérica cobre por prefixo (`keyword` cobre `keyword.control.jinga`).
 funct tema_cobre(tema, esc) {
     for each regra in tema["tokenColors"] {
         escopos = regra["scope"]

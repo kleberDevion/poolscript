@@ -46,7 +46,7 @@ funct junta_md(dir, acc) {
 
 # Onde `//` começa nesta linha, ignorando `://`. -1 = não tem.
 #
-# Usa `find` do motor, não varredura em PoolScript: indexar `L[i]` numa string
+# Usa `find` do motor, não varredura em Jinga: indexar `L[i]` numa string
 # UTF-8 custa O(n) (conta code points), então o laço char a char virava O(n²)
 # por linha.
 #

@@ -192,7 +192,7 @@ funct acha_contador(caminho, linhas, achados) {
 # 5. Lista de opcode escrita à mão fora do `.def`.
 #
 # Os 87 opcodes já estiveram declarados TRÊS vezes: um enum em `ps_compiler.c`,
-# um enum idêntico em `poolscript_vm.c` e o switch de nomes do desmontador.
+# um enum idêntico em `jinga_vm.c` e o switch de nomes do desmontador.
 # Nada no build conferia que batiam, e o modo de falhar é o pior que existe:
 # número trocado num dos lados NÃO dá erro de compilação, dá bytecode que
 # executa outra instrução, com o defeito aparecendo longe da causa.
@@ -220,7 +220,7 @@ funct acha_opcode_solto(caminho, linhas, achados) {
 #    em minúscula.
 #
 # A terceira coluna das tabelas (`METODOS_STR`, `MembroMod`, ...) é a assinatura
-# que o `pool --metadata` publica, e o `jm_params` a copia VERBATIM: ele parte
+# que o `jinga --metadata` publica, e o `jm_params` a copia VERBATIM: ele parte
 # em `,` e não faz `strip`. Um `"sub, inicio=0"` vira um parâmetro chamado
 # `" inicio"`, COM O ESPAÇO NO NOME — e é assim que ele aparece no hover do
 # editor e em qualquer doc gerada dela. Eram 14 parâmetros assim (I21b).

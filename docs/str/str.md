@@ -2,14 +2,14 @@
 
 Chamados direto no valor: `"texto".metodo()`. Número também recebe método de string por conversão automática (`(150).isdigit()`), exceto `len`.
 
-A lista sai da tabela `METODOS_STR` de `vm/poolscript_vm.c`, publicada por `pool --metadata`; cada página traz um exemplo executável.
+A lista sai da tabela `METODOS_STR` de `vm/jinga_vm.c`, publicada por `jinga --metadata`; cada página traz um exemplo executável.
 
 | nome | assinatura | o que faz |
 |---|---|---|
 | [`capitalize`](capitalize/capitalize.md) | `s.capitalize()` | Só a primeira letra da string em maiúscula; o resto minúsculo. |
 | [`casefold`](casefold/casefold.md) | `s.casefold()` | Minúsculas agressivas para comparação sem caixa. |
 | [`center`](center/center.md) | `s.center(width, fillchar)` | Centraliza preenchendo dos dois lados. |
-| [`contains`](contains/contains.md) | `s.contains(sub)` | True se contém a substring (extensão da PoolScript). |
+| [`contains`](contains/contains.md) | `s.contains(sub)` | True se contém a substring (extensão da Jinga). |
 | [`count`](count/count.md) | `s.count(sub, inicio=0, fim=null)` | Quantas ocorrências (sem sobreposição) da substring. |
 | [`encode`](encode/encode.md) | `s.encode(encoding="utf-8", errors="strict")` | Converte a string para bytes. |
 | [`endswith`](endswith/endswith.md) | `s.endswith(sufixo)` | True se termina com o sufixo. |

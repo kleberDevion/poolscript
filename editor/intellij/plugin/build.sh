@@ -9,7 +9,7 @@
 # plugin não se reconstrói, não acompanha a gramática e não se instala em outra
 # máquina: existia um binário, não uma entrega.
 #
-#     editor/intellij/plugin/build.sh          # gera dist/poolscript-icons.jar
+#     editor/intellij/plugin/build.sh          # gera dist/jinga-icons.jar
 #     make intellij                            # gera e INSTALA no IDEA
 set -e
 cd "$(dirname "$0")"
@@ -27,20 +27,20 @@ rm -rf out dist && mkdir -p out dist
 rm -rf out/com out/org              # descarta os stubs do jar
 cp -r resources/* out/
 
-# O bundle TextMate (realce) vai DENTRO do jar, e o PoolBundle registra no
+# O bundle TextMate (realce) vai DENTRO do jar, e o JingaBundle registra no
 # boot — sem o passo manual em Settings > Editor > TextMate Bundles, que era
 # onde o realce ficava sem carregar. A lista.txt diz ao plugin o que extrair.
-BUNDLE=../bundle/PoolScript.tmbundle
+BUNDLE=../bundle/Jinga.tmbundle
 [ -d "$BUNDLE" ] || { echo "build.sh: nao achei $BUNDLE" >&2; exit 1; }
 mkdir -p out/textmate
 cp -r "$BUNDLE" out/textmate/
-(cd out/textmate && find PoolScript.tmbundle -type f | sort > lista.txt)
+(cd out/textmate && find Jinga.tmbundle -type f | sort > lista.txt)
 
-(cd out && zip -qr ../dist/poolscript-icons.jar .)
+(cd out && zip -qr ../dist/jinga-icons.jar .)
 # Stub que vai parar DENTRO do jar sombreia a classe real do IDEA/LSP4IJ e
 # estoura no boot (ClassCastException): o jar só pode ter o que é nosso.
-if unzip -l dist/poolscript-icons.jar | awk '{print $4}' | grep -q '^\(com\|org\)/'; then
+if unzip -l dist/jinga-icons.jar | awk '{print $4}' | grep -q '^\(com\|org\)/'; then
   echo "build.sh: stub vazou pro jar (pasta com/ ou org/) — sombrearia a classe real do IDEA" >&2
   exit 1
 fi
-echo "dist/poolscript-icons.jar pronto ($(wc -l < out/textmate/lista.txt) arquivos do bundle embutidos)"
+echo "dist/jinga-icons.jar pronto ($(wc -l < out/textmate/lista.txt) arquivos do bundle embutidos)"

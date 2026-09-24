@@ -2,7 +2,7 @@
 
 Um **decorador** é um marcador `@nome` escrito na linha **antes** de uma
 `funct` (ou de uma `Entity`), que muda como aquela declaração é tratada. A
-PoolScript tem o `@dataentity` embutido e uma forma geral `@objeto.metodo(...)`
+Jinga tem o `@dataentity` embutido e uma forma geral `@objeto.metodo(...)`
 usada por bibliotecas para registrar handlers.
 
 Dois marcadores que eram decoradores viraram **modificadores colados** na

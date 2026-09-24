@@ -1,42 +1,49 @@
-# PoolScript
+# Jinga
 
 Linguagem de programação de **tipagem estática** — a legibilidade do Python,
 a estrutura de blocos do JS/C e a conferência de tipos do Java, antes de rodar.
 O bloco é `{ }`; a indentação é estética, não sintaxe.
 
-Extensão reconhecida em tudo (rodar, importar, `psl install`, `pool build`,
+Extensão reconhecida em tudo (rodar, importar, `jpkg install`, `jinga build`,
 editor): **`.pr`**. Era `.ps`, `.psl` e `.p`; quem tem arquivo com uma delas
-converte a pasta inteira com `pool scripts/migra_pr.pr <pasta> --aplica
+converte a pasta inteira com `jinga scripts/migra_pr.pr <pasta> --aplica
 --libs`.
 
 ---
 
 ## Como funciona — a PSVM
 
-PoolScript roda numa **máquina virtual em C**: lexer → parser → compilador →
-bytecode → VM. Tudo vive em `vm/` e vira um binário só, o `pool`.
+Jinga roda numa **máquina virtual em C**: lexer → parser → compilador →
+bytecode → VM. Tudo vive em `vm/` e vira um binário só, o `jinga` (no
+repositório, `make pool` o gera como `./pool`).
 
 | Etapa | Arquivo |
 |---|---|
 | lexer | `vm/ps_lexer.c` |
 | parser (recursive-descent, produz AST) | `vm/ps_parser.c` |
 | compilador pra bytecode | `vm/ps_compiler.c` |
-| máquina virtual + stdlib | `vm/poolscript_vm.c` e `vm/ps_*.c` |
+| máquina virtual + stdlib | `vm/jinga_vm.c` e `vm/ps_*.c` |
 
-A suíte de testes também é em C (`teste/`): cada caso roda o `pool` de VERDADE
+A suíte de testes também é em C (`teste/`): cada caso roda o `jinga` de VERDADE
 num subprocesso, então caso que mata a VM (segfault, SIGFPE) vira falha
 relatada em vez de derrubar a bateria. Roda com
 `make check`.
 
 Dois comandos, o **mesmo** binário/pacote:
-- **`pool`** — RODA (`pool arquivo.pr`, `pool build`, `pool repl`, `pool --version`)
-- **`psl`** — GERENCIA PACOTES (`psl install/uninstall/list`, `psl registry ...`)
+- **`jinga`** — RODA (`jinga arquivo.pr`, `jinga build`, `jinga repl`, `jinga --version`)
+- **`jpkg`** — GERENCIA PACOTES (`jpkg install/uninstall/list`, `jpkg registry ...`)
+
+`pool` e `psl` são os nomes de antes do rename e continuam instalados como
+atalhos dos mesmos comandos (o servidor do editor também atende por
+`poolscript-lsp`); `POOLSCRIPT_HOME` ainda é lida, `import poolscript.libs.X`
+ainda importa, e uma `~/.poolscript` existente vira `~/.jinga` na primeira
+chamada do `jpkg`, com aviso.
 
 ---
 
 ## Instalação
 
-Um comando instala tudo — o binário (como `pool` e `psl`), o servidor LSP, e o
+Um comando instala tudo — o binário (como `jinga` e `jpkg`), o servidor LSP, e o
 tipo MIME + o ícone do `.pr`:
 
 ```bash
@@ -46,14 +53,15 @@ sudo ./instalar.sh --remover
 
 Do repositório com o fonte, `sudo make install` faz o mesmo.
 
-O instalador também **apaga qualquer PoolScript antiga que responda pelo
+O instalador também **apaga qualquer Jinga antiga que responda pelo
 comando**. Uma instalação velha em `~/.local/bin` vem antes de `/usr/local/bin`
 e sequestra o `pool`: era o caso do shim em Python, que respondia
-`ModuleNotFoundError: No module named 'poolscript'` com a instalação nova
+`ModuleNotFoundError` com a instalação nova
 intacta e invisível logo atrás. São três frentes, porque tirar só uma não
 resolve:
 
-- **PATH** — `pool`, `psl` e `poolscript-lsp` em toda pasta que não seja a do
+- **PATH** — `jinga`, `jpkg`, `jinga-lsp` e os nomes antigos (`pool`, `psl`,
+  `poolscript-lsp`) em toda pasta que não seja a do
   prefixo. Inclui o PATH do usuário que chamou o `sudo`, lido de um shell
   *interativo*: o `.bashrc` do Debian retorna cedo quando não é interativo, e
   sem isso as pastas do Windows no WSL (`/mnt/c/.../npm`) não apareceriam. Lá
@@ -61,10 +69,10 @@ resolve:
   e todos saem.
 - **alias** — `alias pool='...'` no `.bashrc` aponta pro caminho velho direto,
   sem passar pelo PATH, e sobrevive ao `hash -r`. As linhas que *definem* o
-  alias dos três comandos são removidas; o resto do arquivo fica, e uma cópia
-  vai pra `<arquivo>.antes-da-poolscript`.
+  alias dos comandos são removidas; o resto do arquivo fica, e uma cópia
+  vai pra `<arquivo>.antes-da-jinga`.
 - **cache do shell aberto** — esse o instalador não alcança de fora. No
-  terminal que já estava aberto: `unalias pool psl 2>/dev/null; hash -r`, ou
+  terminal que já estava aberto: `unalias jinga jpkg pool psl 2>/dev/null; hash -r`, ou
   abra um novo.
 
 ### Numa máquina onde não há nada
@@ -81,7 +89,7 @@ publicado, ele clona o fonte, instala as dependências de compilação e compila
 Instala também o `node` se faltar, porque o servidor LSP precisa dele em tempo
 de execução. Nos dois caminhos não sobra passo manual.
 
-Depois disso o `.pr` é **`text/poolscript`** e aparece com a logo da linguagem
+Depois disso o `.pr` é **`text/jinga`** e aparece com a logo da linguagem
 no gerenciador de arquivos. (A extensão já foi `.ps`, e aí era preciso tomá-la
 do PostScript. Com `.pr` não há disputa: o PostScript fica com o `.ps` dele.)
 
@@ -103,18 +111,19 @@ make verifica  # dependências dinâmicas e tamanho do ELF
 
 ### Testar
 ```bash
-pool --version
-pool examples/01_hello.pr
+jinga --version
+jinga examples/01_hello.pr
 ```
 
 ### Editor (opcional)
-Servidor LSP em PoolScript: `pool lsp/servidor.pr`. Vale pra VS Code, Neovim,
+Servidor LSP: `jinga-lsp` (instalado pelo `make install`; sobre
+`vscode-languageserver`, precisa de node). Vale pra VS Code, Neovim,
 Helix e JetBrains — como ligar em cada um está em [`docs/lsp.md`](docs/lsp.md).
 
 ### Depurar
 
 No VS Code: breakpoint na canaleta, **F5**. Sem `launch.json`. O motor fala
-Debug Adapter Protocol direto (`pool --debug <porta> <arquivo.pr>`), e no fim
+Debug Adapter Protocol direto (`jinga --debug <porta> <arquivo.pr>`), e no fim
 mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 [`docs/debugger.md`](docs/debugger.md).
 
@@ -122,7 +131,7 @@ mostra o **gráfico de execução** com a linha que quebrou em vermelho — ver
 
 ## Guia de deploy (rodar num servidor/VPS)
 
-O binário **PSVM** (`pool`) já traz **embutido** (não precisa instalar nada):
+O binário **PSVM** (`jinga`) já traz **embutido** (não precisa instalar nada):
 
 > **sqlite, libpq (postgres), mysqlclient, odbc, openssl (TLS), png, expat, z.**
 > Ou seja: Todas as libs que são padrão da linguagem ja estão com suas dependencias embutidas no ELF, so existem
@@ -143,7 +152,7 @@ sudo apt update && sudo apt install -y \
 Se faltar alguma: `ldd ./pool | grep "not found"` mostra o nome exato.
 
 **Alternativa sem instalar nada** — bundle portátil (`make bundle`): gera
-`dist/pool-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper
+`dist/jinga-portable/` = binário + pasta `lib/` com todas as `.so`, e o wrapper
 carrega de lá. É só copiar a pasta pro VPS e rodar.
 
 O núcleo do glibc NÃO vai junto (levá-lo quebra o `getaddrinfo`), então o alvo
@@ -171,7 +180,7 @@ nessa máquina o instalador compila do fonte.
 `import x` procura nesta ordem:
 
 1. **lib da linguagem** (stdlib: `os`, `json`, `request`, `jinker`…)
-2. **lib instalada** via `psl install ... -asLib` (`~/.poolscript/libs/`)
+2. **lib instalada** via `jpkg install ... -asLib` (`~/.jinga/libs/`)
 3. **arquivo `.pr` do projeto** (relativo à raiz)
 
 Ou seja: **uma lib SEMPRE ganha de um arquivo local de mesmo nome** — o nome
@@ -181,10 +190,10 @@ propósito). Import de arquivo local do projeto usa caminho pontuado
 (`from pkg.modulo import x`) ou relativo (`from .vizinho import y`).
 
 A lib instalada também atende pelo nome qualificado: `import
-poolscript.libs.minhalib` liga `minhalib` e é o mesmo módulo do `import
-minhalib`, onde quer que as libs estejam (`POOLSCRIPT_HOME` incluso).
+jinga.libs.minhalib` liga `minhalib` e é o mesmo módulo do `import
+minhalib`, onde quer que as libs estejam (`JINGA_HOME` incluso).
 
 ## Versionamento
 
-Versão mais recente — **15.91.33** (a fonte é `vm/ps_versao.h`; `pool --version`
+Versão mais recente — **15.92.0** (a fonte é `vm/ps_versao.h`; `jinga --version`
 mostra a do binário).

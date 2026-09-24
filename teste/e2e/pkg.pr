@@ -1,11 +1,11 @@
-# `psl` de ponta a ponta, sem rede e sem tocar no ~/.poolscript de verdade.
+# `jpkg` de ponta a ponta, sem rede e sem tocar no ~/.jinga de verdade.
 #
 # POR QUE ISTO EXISTE: `vm/ps_pkg.c` estava em **0,0% de cobertura** — 570
 # linhas, o gerenciador de pacotes inteiro, sem um único teste. Não por ser
-# difícil: `psl install arquivo.pr` é 100% local, não precisa de rede nem de
+# difícil: `jpkg install arquivo.pr` é 100% local, não precisa de rede nem de
 # serviço. Simplesmente ninguém tinha escrito.
 #
-# O isolamento é `POOLSCRIPT_HOME`, que o próprio `pkg_home` respeita antes do
+# O isolamento é `JINGA_HOME`, que o próprio `pkg_home` respeita antes do
 # `$HOME`. Sem isso o teste instalaria pacote de mentira na máquina de quem
 # roda — que é o tipo de teste que a gente aprende a não rodar.
 #
@@ -27,7 +27,7 @@ RAIZ = "/tmp/ps_pkg_teste"
 # sempre False e um teste escrito assim aprova qualquer coisa — falso verde
 # perfeito, do tipo que passa por revisão.
 funct psl(args) {
-    cmd = ("POOLSCRIPT_HOME='" + RAIZ + "' '" + sys.executable + "' " + args
+    cmd = ("JINGA_HOME='" + RAIZ + "' '" + sys.executable + "' " + args
            + " > /tmp/ps_pkg_out.txt 2>&1; echo $? > /tmp/ps_pkg_rc.txt")
     os.cmd(cmd)
     rc = int(open("/tmp/ps_pkg_rc.txt").read().strip())
@@ -141,6 +141,6 @@ if __name__ == "main" {
         post("psl: FALHOU em", erros, "checagens")
         sys.exit(1)
     }
-    post("OK — psl instala, lista, desinstala e recusa o que tem que recusar")
+    post("OK — jpkg instala, lista, desinstala e recusa o que tem que recusar")
     sys.exit(0)
 }

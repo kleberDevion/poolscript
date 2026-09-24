@@ -1,9 +1,9 @@
-# Converte um fonte PoolScript do estilo `:` + indentação pro estilo `{ }`.
+# Converte um fonte Jinga do estilo `:` + indentação pro estilo `{ }`.
 #
 #     ./pool scripts/para_chaves.pr arquivo.pr          # mostra o resultado
 #     ./pool scripts/para_chaves.pr arquivo.pr --grava  # sobrescreve
 #
-# Quem decide o que é bloco é o LEXER DO MOTOR (`pool --tokens`), não um regex:
+# Quem decide o que é bloco é o LEXER DO MOTOR (`jinga --tokens`), não um regex:
 # `:` de dicionário (`{"a": 1}`), de fatia (`s[1:3]`) e de campo de Entity
 # (`nome: int`) NÃO abrem bloco, e só o lexer sabe distinguir sem errar. A
 # marca de um `:` de bloco é única: vem NEWLINE e depois INDENT.
@@ -224,7 +224,7 @@ funct junta_continuacoes(linhas) {
 if __name__ == "main" {
     args = sys.argv[1:]          # sys.argv[0] é o nome do script
     if len(args) < 1 {
-        post("uso: pool scripts/para_chaves.pr <arquivo.pr> [--grava]")
+        post("uso: jinga scripts/para_chaves.pr <arquivo.pr> [--grava]")
         sys.exit(1)
     }
     caminho = args[0]

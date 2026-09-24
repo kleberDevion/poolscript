@@ -1,6 +1,6 @@
 # `json.stringify(value)`
 
-Converte dados da PoolScript (dict, lista, etc.) em uma **string JSON**.
+Converte dados da Jinga (dict, lista, etc.) em uma **string JSON**.
 
 ```
 json.stringify(value) -> str

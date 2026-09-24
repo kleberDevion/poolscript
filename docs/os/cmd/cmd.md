@@ -11,7 +11,7 @@ os.cmd(command: str, capture: bool = false) -> str | Null
 
 | Parâmetro | Padrão | O que é |
 |---|---|---|
-| `command` | — | a linha de comando a executar (ex: `"pool --version"`) |
+| `command` | — | a linha de comando a executar (ex: `"jinga --version"`) |
 | `capture` | `false` | `true` = devolve a saída; `false` = só roda e devolve `Null` |
 
 ---
@@ -26,8 +26,8 @@ os.cmd("git status")              # a saída vai direto pro terminal
 ## Capturar a saída
 
 ```
-versao = os.cmd("pool --version", capture=true)
-post(versao)                      # "PoolScript 15.91.33 [PSVM] (2026-09-22)"
+versao = os.cmd("jinga --version", capture=true)
+post(versao)                      # "Jinga 15.92.0 [PSVM] (2026-09-24) Runtime standalone"
 ```
 
 Com `capture=true`, devolve o **stdout** (sem espaços nas pontas). Se o comando

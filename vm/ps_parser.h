@@ -1,5 +1,5 @@
 /*
- * Parser da PoolScript em C puro.
+ * Parser da Jinga em C puro.
  */
 #ifndef PS_PARSER_H
 #define PS_PARSER_H

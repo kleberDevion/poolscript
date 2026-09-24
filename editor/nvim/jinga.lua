@@ -1,7 +1,7 @@
 -- Configuração do Neovim.
 --
 -- Duas coisas: o tema Ariake Dark (o MESMO do VS Code, convertido escopo por
--- escopo em colors/ariake-dark.lua) e o servidor LSP da PoolScript.
+-- escopo em colors/ariake-dark.lua) e o servidor LSP da Jinga.
 --
 -- O LSP aqui é NATIVO: não há extensão, não há empacotamento, não há cliente
 -- de terceiro no meio. Se o completion funciona aqui e não no VS Code, o
@@ -19,20 +19,20 @@ vim.opt.mouse = "a"
 
 vim.cmd.colorscheme("ariake-dark")
 
--- ── PoolScript ──────────────────────────────────────────────────────────────
+-- ── Jinga ───────────────────────────────────────────────────────────────────
 
--- O Neovim não conhece a extensão `.pr`. Aqui ela é declarada como
--- `poolscript`. (Era `.ps`, e aí ele chutava PostScript — o mesmo engano do
+-- O Neovim traz `.pr` como SDL de fábrica (filetype.lua). Aqui ela é declarada
+-- como `jinga`. (Era `.ps`, e aí ele chutava PostScript — o mesmo engano do
 -- MIME do desktop. Com `.pr` não há com quem colidir.)
 vim.filetype.add({
   extension = {
-    pr = "poolscript",
+    pr = "jinga",
   },
 })
 
 -- Comentário e indentação da linguagem, pro `gc` e o `>>` funcionarem.
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "poolscript",
+  pattern = "jinga",
   callback = function()
     vim.bo.commentstring = "# %s"
     vim.bo.expandtab = true
@@ -44,13 +44,15 @@ vim.api.nvim_create_autocmd("FileType", {
 -- Sobe o servidor ao abrir um arquivo da linguagem. `vim.lsp.start` reaproveita
 -- o mesmo processo pros arquivos do mesmo projeto (a chave é `name` + `root_dir`).
 vim.api.nvim_create_autocmd("FileType", {
-  pattern = "poolscript",
+  pattern = "jinga",
   callback = function(args)
-    -- Prefere o `poolscript-lsp` do PATH (o que o `make install` põe). Se não
-    -- houver, roda o servidor direto de um repositório clonado — útil enquanto
-    -- se mexe nele.
+    -- Prefere o `jinga-lsp` do PATH (o que o `make install` põe; `poolscript-lsp`
+    -- é o nome de antes do rename e ainda vale). Se não houver, roda o servidor
+    -- direto de um repositório clonado — útil enquanto se mexe nele.
     local cmd
-    if vim.fn.executable("poolscript-lsp") == 1 then
+    if vim.fn.executable("jinga-lsp") == 1 then
+      cmd = { "jinga-lsp" }
+    elseif vim.fn.executable("poolscript-lsp") == 1 then
       cmd = { "poolscript-lsp" }
     else
       -- direto do repositório clonado, útil enquanto se mexe no servidor.
@@ -62,14 +64,14 @@ vim.api.nvim_create_autocmd("FileType", {
         cmd = { "node", repo, "--stdio" }
       else
         vim.notify(
-          "PoolScript: nao achei `poolscript-lsp` no PATH. Rode `sudo make install` no repositorio.",
+          "Jinga: nao achei `jinga-lsp` no PATH. Rode `sudo make install` no repositorio.",
           vim.log.levels.WARN)
         return
       end
     end
 
     vim.lsp.start({
-      name = "poolscript",
+      name = "jinga",
       cmd = cmd,
       root_dir = vim.fs.dirname(vim.fs.find({ ".git" }, {
         upward = true, path = vim.fn.expand("%:p:h"),

@@ -1,10 +1,10 @@
-# PoolScript v8.3.90 — Referência da linguagem
+# Jinga v8.3.90 — Referência da linguagem
 
 Este mark down tem alguams specs da linguagem.
 
 > Arquitetura (para quem for mexer no código): lexer (`vm/ps_lexer.c`) →
 > parser recursive-descent que produz uma AST (`vm/ps_parser.c`) → compilador
-> pra bytecode (`vm/ps_compiler.c`) → máquina virtual (`vm/poolscript_vm.c`).
+> pra bytecode (`vm/ps_compiler.c`) → máquina virtual (`vm/jinga_vm.c`).
 > Tudo em C, sem dependência de runtime externo.
 
 ---
@@ -41,21 +41,24 @@ Este mark down tem alguams specs da linguagem.
 ## Rodando código
 
 ```bash
-pool arquivo.pr       # roda um arquivo
-pool arquivo.pr -o nome   # gera um executável que roda sozinho
-pool -e "<codigo>"    # roda o código direto da linha de comando
-pool build            # roda todos os .pr da pasta atual
-pool --version / -v / -V       # versão do binário
-pool --help    / -h       # ajuda
+jinga arquivo.pr       # roda um arquivo
+jinga arquivo.pr -o nome   # gera um executável que roda sozinho
+jinga -e "<codigo>"    # roda o código direto da linha de comando
+jinga build            # roda todos os .pr da pasta atual
+jinga --version / -v / -V       # versão do binário
+jinga --help    / -h       # ajuda
 ```
 
-### Compilar: `pool arquivo.pr -o nome`
+`pool` é o nome de antes do rename e continua instalado como atalho do mesmo
+binário.
 
-Gera um **executável que roda sozinho** — sem o `.pr` ao lado e sem o `pool`
+### Compilar: `jinga arquivo.pr -o nome`
+
+Gera um **executável que roda sozinho** — sem o `.pr` ao lado e sem o `jinga`
 instalado na máquina de quem roda.
 
 ```bash
-pool programa.pr -o programa
+jinga programa.pr -o programa
 ./programa um dois        # os argumentos chegam em sys.argv
 ```
 
@@ -66,23 +69,23 @@ no meio — quem só quer rodar não precisa de toolchain nenhuma.
 
 **Os módulos vão junto.** Todo `.pr` que o programa alcança por `import` —
 vizinho, subpasta (`import sub.pix`), relativo (`from .guarda import x`),
-`import *` e lib instalada em `~/.poolscript/libs` — é resolvido na compilação
+`import *` e lib instalada em `~/.jinga/libs` — é resolvido na compilação
 exatamente como o import resolve rodando, e embutido. O executável importa
 deles antes de olhar o disco, então roda numa máquina que não tem nem os
 fontes nem as libs. Módulos nativos (`os`, `sys`, `jinker`…) já estão na VM.
 
 ```bash
-pool main.pr -o app
+jinga main.pr -o app
 # gerado: app (3 modulos embutidos)
 ```
 
 Consequências que valem saber:
 
-- O executável tem o tamanho do `pool` mais os seus fontes (alguns MB): ele
+- O executável tem o tamanho do `jinga` mais os seus fontes (alguns MB): ele
   leva a VM inteira junto, que é o que o faz rodar sozinho.
 - **Recompilar a partir de um executável gerado não funciona** — ele ignora
   argumentos de linha de comando e roda o programa embutido, que é o que se
-  espera de um programa compilado. Compile sempre com o `pool`.
+  espera de um programa compilado. Compile sempre com o `jinga`.
 - Fonte que não compila **não vira executável**: o principal e cada módulo
   passam pela conferência inteira do `--check` (tipagem estática inclusive),
   e módulo que não se acha é erro na compilação, com o arquivo e a linha do
@@ -93,9 +96,9 @@ Consequências que valem saber:
   linha dele (`em banco.pr, linha 5`), lidos do que está embutido.
 - O programa embutido não é ofuscado — os fontes estão lá dentro, legíveis.
 
-Chamar `pool` **sem nenhum argumento** imprime a ajuda.
+Chamar `jinga` **sem nenhum argumento** imprime a ajuda.
 
-O **REPL não existe** neste binário: `pool repl` responde
+O **REPL não existe** neste binário: `jinga repl` responde
 `o REPL interativo ainda nao esta no binario C (precisa de estado persistente
 na VM)` e aponta as duas formas acima.
 
@@ -269,7 +272,7 @@ post(f'Clima: {grau} graus')     # mesma coisa
 ```
 
 **Concatenação com interpolação** (sem `f`, útil em `post(...)` com vários
-argumentos espaçados — chamadas em PoolScript aceitam argumentos separados só
+argumentos espaçados — chamadas em Jinga aceitam argumentos separados só
 por espaço, sem vírgula):
 
 ```
@@ -1058,7 +1061,7 @@ import 'json'                         # sem barra e sem extensão: nome de módu
 ```
 
 Libs embutidas (lazy-loaded, só carregam quando importadas) — a lista sai de
-`pool --metadata` (campo `modulos`):
+`jinga --metadata` (campo `modulos`):
 
 `os, sys, json, date, regex, dotenv, jwt, hash, bytes, sqlite3, mail,
 request, qrcode, manpu, psodbc, jinker, sockets, datasentity`.
@@ -1254,7 +1257,7 @@ O que `open()` devolve. Fechar é responsabilidade de quem abriu — ou do
 
 ## Erros nomeados
 
-Os erros de runtime da PoolScript têm um `code` estável — é o nome que o
+Os erros de runtime da Jinga têm um `code` estável — é o nome que o
 `catch (Tipo nome)` filtra:
 
 | `code` | Quando ocorre |

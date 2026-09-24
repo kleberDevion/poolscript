@@ -1,4 +1,4 @@
-# Binário standalone da PoolScript — tudo em C.
+# Binário standalone da Jinga — tudo em C.
 #
 # Os clientes de banco (sqlite, libpq, MariaDB Connector/C, unixODBC), o TLS, o PNG e
 # o zlib entram ESTÁTICOS: o `pool` roda em máquina que não tem nenhum deles.
@@ -44,7 +44,7 @@ LIBS_POOL      := -Wl,-Bstatic -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz -Wl,-B
 LIBS_TESTE     := -lsqlite3 -lssl -lcrypto -lpng -lexpat -lz $(LIBS_SISTEMA)
 VM      := vm
 FONTES  := $(VM)/ps_lexer.c $(VM)/ps_ast.c $(VM)/ps_parser.c \
-           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/poolscript_vm.c $(VM)/main.c
+           $(VM)/ps_compiler.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_mail.c $(VM)/ps_http.c $(VM)/ps_qr.c $(VM)/ps_xlsx.c $(VM)/ps_db.c $(VM)/ps_mongo.c $(VM)/ps_jinker.c $(VM)/ps_pkg.c $(VM)/ps_debug.c $(VM)/ps_retornos.c $(VM)/jinga_vm.c $(VM)/main.c
 
 # A sqlite entra ESTÁTICA (libsqlite3.a): o binário continua rodando em
 # máquina que não tem libsqlite3.so. Ela é domínio público, sem custo de
@@ -82,9 +82,9 @@ CABECALHOS := $(wildcard $(VM)/*.h)
 pool: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(VM)/ps_build.h $(VM)/retornos_medidos.inc $(MK)
 	$(CC) $(CFLAGS) -I$(VM) -o $@ $(FONTES) $(LIBS_POOL)
 
-# Bundle PORTÁTIL: pool + todas as .so numa pasta lib/, com wrapper. Roda em
-# qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls, krb5,
-# ldap etc. vão junto. Gera dist/pool-portable/ e dist/pool-portable.tar.gz.
+# Bundle PORTÁTIL: o binário + todas as .so numa pasta lib/, com wrapper. Roda
+# em qualquer VPS x86-64 (glibc compatível) SEM apt install — mongo, gnutls,
+# krb5, ldap etc. vão junto. Gera dist/jinga-portable/ e dist/jinga-portable.tar.gz.
 bundle: pool
 	./build_bundle.sh
 
@@ -109,7 +109,7 @@ vsix: $(EXT)/node_modules
 	# 2 e 3 tambem passaram a exigir Node 20+: com Node 18 o `npx` baixa e
 	# estoura no meio ("File is not defined", "styleText is not a function").
 	# Dizer isso ANTES e melhor que a pilha do npx. O servidor LSP nao depende
-	# disto: o cliente sobe o `poolscript-lsp` INSTALADO (o mesmo do IntelliJ e
+	# disto: o cliente sobe o `jinga-lsp` INSTALADO (o mesmo do IntelliJ e
 	# do Neovim), entao `make install` atualiza o servidor do VS Code tambem. A
 	# vsix so precisa ser refeita quando o CLIENTE (extension.js) ou a gramatica
 	# mudam — o server.js dela e so a reserva de quem nao fez `make install`.
@@ -149,7 +149,8 @@ nvim:
 	# instalada era de antes da reforma, nao conhecia `funct` e pintava `//`
 	# de comentario (nesta linguagem `//` e divisao inteira). Fora do git,
 	# nada disso aparecia num diff.
-	install -m644 editor/nvim/syntax/poolscript.vim $(NVIM_CFG)/syntax/
+	install -m644 editor/nvim/syntax/jinga.vim $(NVIM_CFG)/syntax/
+	rm -f $(NVIM_CFG)/syntax/poolscript.vim
 	# GUARDA COPIA E INSTALA, em vez de recusar.
 	#
 	# Recusar parecia prudente e nao era: o init.lua da maquina ficou DIAS preso
@@ -157,11 +158,11 @@ nvim:
 	# de edicao permanente — e o alvo dizia "nao vou sobrescrever" toda vez, o que
 	# se le como "esta tudo certo". Um backup datado resolve o medo real (perder
 	# edicao sua) sem deixar a config apodrecer.
-	@if [ -f $(NVIM_CFG)/init.lua ] && ! cmp -s editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua; then \
+	@if [ -f $(NVIM_CFG)/init.lua ] && ! cmp -s editor/nvim/jinga.lua $(NVIM_CFG)/init.lua; then \
 	  cp $(NVIM_CFG)/init.lua $(NVIM_CFG)/init.lua.bak-$$(date +%Y%m%d-%H%M%S); \
 	  echo "  o init.lua anterior virou init.lua.bak-<data> (ele DIFERIA)"; \
 	fi
-	install -m644 editor/nvim/poolscript.lua $(NVIM_CFG)/init.lua
+	install -m644 editor/nvim/jinga.lua $(NVIM_CFG)/init.lua
 	@echo "  init.lua instalado"
 	@echo "  tema + LSP em $(NVIM_CFG)"
 
@@ -189,48 +190,54 @@ intellij:
 	@destino=$$(ls -d $(IJ_HOME)/IntelliJIdea* $(IJ_HOME)/IdeaIC* 2>/dev/null | head -1); \
 	if [ -z "$$destino" ]; then \
 	  echo "  nao achei instalacao do IntelliJ em $(IJ_HOME)"; \
-	  echo "  o jar esta em $(IJ)/plugin/dist/poolscript-icons.jar — instale pelo"; \
+	  echo "  o jar esta em $(IJ)/plugin/dist/jinga-icons.jar — instale pelo"; \
 	  echo "  Settings > Plugins > engrenagem > Install Plugin from Disk"; \
 	else \
-	  install -d "$$destino/poolscript-icons/lib"; \
-	  install -m644 $(IJ)/plugin/dist/poolscript-icons.jar "$$destino/poolscript-icons/lib/"; \
-	  echo "  plugin instalado em $$destino/poolscript-icons"; \
+	  rm -rf "$$destino/poolscript-icons"; \
+	  install -d "$$destino/jinga-icons/lib"; \
+	  install -m644 $(IJ)/plugin/dist/jinga-icons.jar "$$destino/jinga-icons/lib/"; \
+	  echo "  plugin instalado em $$destino/jinga-icons"; \
 	  echo "  REINICIE o IDEA (plugin so recarrega no boot)"; \
 	fi
 	@echo "  realce: automatico — o bundle vai dentro do jar e o plugin registra no boot"
 	@echo "  LSP:    automatico — o plugin declara o servidor ao LSP4IJ (plugin do marketplace);"
-	@echo "          se ha um 'PoolScript' cadastrado A MAO em Settings > Language Servers,"
+	@echo "          se ha um 'Jinga' (ou 'PoolScript') cadastrado A MAO em Settings > Language Servers,"
 	@echo "          apague-o: senao sobem dois servidores"
 	@$(IJ)/plugin/teste_intellij.sh
 
 .PHONY: intellij
 
-# Instala no sistema: o binário (como `pool` e `psl`, que são o mesmo) e o
-# servidor LSP, que é PoolScript e por isso precisa dos .pr ao lado. O
-# `poolscript-lsp` é o atalho que o editor chama.
+# Instala no sistema: o binário (como `jinga` e `jpkg`, que são o mesmo — e
+# como `pool` e `psl`, os nomes de antes do rename, pra nada quebrar) e o
+# servidor LSP. O `jinga-lsp` (e o antigo `poolscript-lsp`) é o atalho que o
+# editor chama.
 PREFIXO ?= /usr/local
 install: pool
-	install -d $(PREFIXO)/bin $(PREFIXO)/share/poolscript/lsp
+	install -d $(PREFIXO)/bin $(PREFIXO)/share/jinga/lsp
+	install -m755 pool $(PREFIXO)/bin/jinga
+	install -m755 pool $(PREFIXO)/bin/jpkg
 	install -m755 pool $(PREFIXO)/bin/pool
 	install -m755 pool $(PREFIXO)/bin/psl
+	# o que sobrou de uma instalacao com o nome antigo
+	rm -rf $(PREFIXO)/share/poolscript
 	# O SERVIDOR LSP e `editor/vscode/server.js`, sobre `vscode-languageserver`.
 	# Vai junto com as bibliotecas que ele importa (~3 MB) pra que Neovim,
 	# IntelliJ e qualquer editor que fale LSP tenham o MESMO cerebro que o VS
-	# Code — antes cada um dependia de um servidor em PoolScript que respondia
+	# Code — antes cada um dependia de um servidor em Jinga que respondia
 	# `-32601` pra quase tudo.
 	# `analise.js` vai JUNTO: o server exige ele (`require('./analise.js')`), e
 	# instalar so o server.js deixava o Neovim e o IntelliJ com um servidor que
 	# morre no boot por MODULE_NOT_FOUND. O VS Code nao via porque a vsix leva a
 	# pasta inteira — o defeito so aparecia nos outros dois editores.
 	install -m644 editor/vscode/server.js editor/vscode/analise.js \
-	        $(PREFIXO)/share/poolscript/lsp/
+	        $(PREFIXO)/share/jinga/lsp/
 	@for m in vscode-languageserver vscode-languageserver-protocol \
 	          vscode-languageserver-types vscode-jsonrpc \
 	          vscode-languageserver-textdocument semver; do \
 	    if [ -d editor/vscode/node_modules/$$m ]; then \
-	      rm -rf $(PREFIXO)/share/poolscript/lsp/node_modules/$$m; \
-	      mkdir -p $(PREFIXO)/share/poolscript/lsp/node_modules; \
-	      cp -r editor/vscode/node_modules/$$m $(PREFIXO)/share/poolscript/lsp/node_modules/; \
+	      rm -rf $(PREFIXO)/share/jinga/lsp/node_modules/$$m; \
+	      mkdir -p $(PREFIXO)/share/jinga/lsp/node_modules; \
+	      cp -r editor/vscode/node_modules/$$m $(PREFIXO)/share/jinga/lsp/node_modules/; \
 	    fi; \
 	  done
 	# A DOC vai junto: a prosa das sugestões e do hover sai de
@@ -238,13 +245,15 @@ install: pool
 	# mas responde sem explicação nenhuma — que é justamente o que o completion
 	# não pode voltar a ser. Só as páginas, não o resto do repositório.
 	@cd docs && find . -name '*.md' -exec install -Dm644 {} \
-	        $(PREFIXO)/share/poolscript/docs/{} \;
-	printf '#!/bin/sh\n# Servidor LSP da PoolScript. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "poolscript-lsp precisa do node (o servidor usa vscode-languageserver)" >&2\n  exit 1\nfi\nexec node %s/share/poolscript/lsp/server.js "$${@:---stdio}"\n' \
-	        '$(PREFIXO)' > $(PREFIXO)/bin/poolscript-lsp
-	chmod 755 $(PREFIXO)/bin/poolscript-lsp
+	        $(PREFIXO)/share/jinga/docs/{} \;
+	printf '#!/bin/sh\n# Servidor LSP da Jinga. Ver docs/lsp.md.\nif ! command -v node >/dev/null 2>&1; then\n  echo "jinga-lsp precisa do node (o servidor usa vscode-languageserver)" >&2\n  exit 1\nfi\nexec node %s/share/jinga/lsp/server.js "$${@:---stdio}"\n' \
+	        '$(PREFIXO)' > $(PREFIXO)/bin/jinga-lsp
+	chmod 755 $(PREFIXO)/bin/jinga-lsp
+	# o nome antigo do servidor continua respondendo (config de editor feita antes)
+	cp $(PREFIXO)/bin/jinga-lsp $(PREFIXO)/bin/poolscript-lsp
 	# O MIME NÃO derruba o install. Ele escreve em $(DADOS) (/usr/share por
 	# padrão, ver a nota abaixo), então sem root ele falha — e falhava levando
-	# junto um install que já tinha copiado o `pool`, o `psl` e o LSP com
+	# junto um install que já tinha copiado o `jinga`, o `jpkg` e o LSP com
 	# sucesso. O ícone do arquivo no gerenciador é uma comodidade do desktop;
 	# ele não pode dar "Erro 2" num install que deu certo.
 	# Sem root ele cai no `install-icone` — que atualiza a LOGO no diretório do
@@ -254,7 +263,7 @@ install: pool
 	@$(MAKE) --no-print-directory install-mime PREFIXO=$(PREFIXO) 2>/dev/null \
 	  || { $(MAKE) --no-print-directory install-icone; \
 	       echo "  (o TIPO MIME em $(DADOS)/mime pede root: sudo make install-mime)"; }
-	@echo "instalado em $(PREFIXO): pool, psl, poolscript-lsp"
+	@echo "instalado em $(PREFIXO): jinga, jpkg, jinga-lsp (e os nomes antigos pool, psl, poolscript-lsp)"
 
 # Tipo MIME + ícone do `.pr` pro desktop (GNOME/KDE/XFCE/…). Fica separado
 # porque num servidor sem ambiente gráfico ele não faz falta e as ferramentas
@@ -268,9 +277,12 @@ DADOS ?= /usr/share
 install-mime:
 	install -d $(DADOS)/mime/packages \
 	           $(DADOS)/icons/hicolor/scalable/mimetypes
-	install -m644 dados/zz-poolscript.xml $(DADOS)/mime/packages/
-	install -m644 dados/icones/text-poolscript.svg \
+	install -m644 dados/zz-jinga.xml $(DADOS)/mime/packages/
+	install -m644 dados/icones/text-jinga.svg \
 	        $(DADOS)/icons/hicolor/scalable/mimetypes/
+	# o registro do nome antigo sai: senao ficam dois tipos pro mesmo `.pr`
+	rm -f $(DADOS)/mime/packages/zz-poolscript.xml \
+	      $(DADOS)/icons/hicolor/scalable/mimetypes/text-poolscript.svg
 	-update-mime-database $(DADOS)/mime 2>/dev/null || true
 	@./dados/espalha_icone.sh "$(DADOS)" instalar
 
@@ -287,9 +299,10 @@ install-icone:
 .PHONY: install install-mime install-icone desinstala
 
 desinstala:
-	rm -f $(PREFIXO)/bin/pool $(PREFIXO)/bin/psl $(PREFIXO)/bin/poolscript-lsp
-	rm -rf $(PREFIXO)/share/poolscript
-	rm -f $(DADOS)/mime/packages/zz-poolscript.xml
+	rm -f $(PREFIXO)/bin/jinga $(PREFIXO)/bin/jpkg $(PREFIXO)/bin/jinga-lsp \
+	      $(PREFIXO)/bin/pool $(PREFIXO)/bin/psl $(PREFIXO)/bin/poolscript-lsp
+	rm -rf $(PREFIXO)/share/jinga $(PREFIXO)/share/poolscript
+	rm -f $(DADOS)/mime/packages/zz-jinga.xml $(DADOS)/mime/packages/zz-poolscript.xml
 	-update-mime-database $(DADOS)/mime 2>/dev/null || true
 	-./dados/espalha_icone.sh "$(DADOS)" remover
 
@@ -336,14 +349,14 @@ pool-asan: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(MK)
 # nunca chega a rodar — o alvo imprimia "nada" acontecesse o que acontecesse.
 # Tem que compilar de verdade, jogando o objeto fora.
 #
-# Um arquivo por invocação, e não todos de uma vez: o `poolscript_vm.c` sozinho
+# Um arquivo por invocação, e não todos de uma vez: o `jinga_vm.c` sozinho
 # esgota a memória desta máquina quando analisado junto com os outros.
 # TETO DE MEMÓRIA, e ele não é opcional. Esta máquina tem 7,7 GB e costuma
 # estar com ~3,5 GB livres; o `-fanalyzer` num fonte grande passa de 6 GB
 # sozinho e o OOM killer derruba a sessão inteira, não só o gcc. O `ulimit -v`
 # faz o GCC desistir e reportar, em vez de levar a máquina junto.
 #
-# `poolscript_vm.c` (21.908 linhas) fica FORA por padrão pelo mesmo motivo: ele
+# `jinga_vm.c` (30 mil linhas) fica FORA por padrão pelo mesmo motivo: ele
 # nunca terminou aqui. Ele é relatado como não coberto — em voz alta, porque
 # omitir isso seria dizer "limpo" sobre metade do motor. Pra rodar mesmo assim,
 # numa máquina que aguente:
@@ -351,7 +364,7 @@ pool-asan: $(FONTES) $(CABECALHOS) $(VM)/ps_versao.h $(MK)
 #     make analisa ANALISA_TUDO=1 ANALISA_MB=12000
 ANALISA_MB   ?= 2000
 ANALISA_TUDO ?=
-ANALISA_FORA := $(VM)/poolscript_vm.c
+ANALISA_FORA := $(VM)/jinga_vm.c
 
 # Falso positivo CONFERIDO, um por linha, com o motivo. O `-fanalyzer` não
 # segue posse através de struct nem de parâmetro de saída, então acusa como
@@ -498,7 +511,7 @@ check: pool testar
 	@echo
 	# STDLIB que a suite inteira nao chamava uma vez. O benchmark de cobertura
 	# (`teste/bench_cobertura.pr`) lista as funcoes em ZERO execucao, e eram 115
-	# so em poolscript_vm.c: `os.cwd`, `sys.platform`, `sys.stdin.read`,
+	# so em jinga_vm.c: `os.cwd`, `sys.platform`, `sys.stdin.read`,
 	# `date.now`, as 63 constantes de socket. Documentadas e nao testadas.
 	@./pool teste/cobre_stdlib.pr
 	@echo
@@ -523,7 +536,7 @@ check: pool testar
 	# pro portão; o noturno roda fundo com a semente do dia.
 	@$(MAKE) --no-print-directory leis
 	@echo
-	# Drivers de LOOPBACK: CLI+psl, sockets e o jinker a fundo. Ficavam fora de
+	# Drivers de LOOPBACK: CLI+jpkg, sockets e o jinker a fundo. Ficavam fora de
 	# qualquer alvo — escritos, passando, e sem ninguém rodando.
 	@./pool teste/cli_roda.pr
 	@echo
@@ -636,7 +649,7 @@ check-e2e-local: pool
 # código de produção. Ver teste/ps_oom.c.
 # Testes de UNIDADE em C: linka SÓ os módulos puros (hash, regex, ast) e chama
 # as funções direto. É o que fura o teto de ~60% de ramo da suíte `.pr`, que
-# por construção não alcança tratamento de erro — não existe programa PoolScript
+# por construção não alcança tratamento de erro — não existe programa Jinga
 # que faça um `malloc` falhar ou passe um buffer curto pro base64.
 unidade: teste/unidade.c $(VM)/ps_pilha.c $(VM)/ps_hash.c $(VM)/ps_regex.c $(VM)/ps_ast.c $(VM)/ps_xlsx.c $(MK)
 	$(CC) $(CFLAGS) -g -I$(VM) -o $@ teste/unidade.c \

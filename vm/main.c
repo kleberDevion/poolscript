@@ -1,11 +1,12 @@
 /*
- * `pool` — o executável da PoolScript.
+ * `jinga` — o executável da Jinga.
  *
  * Roda o fonte pela `ps_roda_fonte`; o erro vira texto no stderr e código de
  * saída. Os comandos de RUNTIME (rodar, repl, build, help…) e os de PACOTE
- * (`psl install`/`uninstall`/`list`/`registry`, implementados em ps_pkg.c)
- * vivem no MESMO binário: `pool` roda, `psl` gerencia pacotes, e o help e a
- * doc respeitam essa divisão.
+ * (`jpkg install`/`uninstall`/`list`/`registry`, implementados em ps_pkg.c)
+ * vivem no MESMO binário: `jinga` roda, `jpkg` gerencia pacotes, e o help e a
+ * doc respeitam essa divisão. `pool` e `psl` são os nomes de antes do rename
+ * e continuam instalados como atalhos do mesmo binário.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +24,7 @@
 #include "ps_versao.h"
 /* A data desta compilação, gerada pelo Makefile. Dois binários da MESMA versão
  * (o instalado e o recém-compilado) respondiam igual ao `--version`, e não
- * havia como saber o que tinha na máquina. O prefixo `PoolScript <versao>
+ * havia como saber o que tinha na máquina. O prefixo `Jinga <versao>
  * [PSVM]` não muda: quem lê a saída (o servidor LSP tira a versão dela)
  * continua valendo. */
 #include "ps_build.h"
@@ -33,34 +34,37 @@
 static void ajuda(void)
 {
     printf(
-"PoolScript %s — PSVM (VM em C, runtime standalone)\n"
+"Jinga %s — PSVM (VM em C, runtime standalone)\n"
 "\n"
 "Uso:\n"
-"  pool arquivo.pr           Roda um arquivo\n"
-"  pool arquivo.pr -o nome   Gera um executavel que roda sozinho (sem o fonte\n"
-"                            e sem o pool instalado)\n"
-"  pool -e \"<codigo>\"        Roda codigo inline (uma linha)\n"
-"  pool build                Roda todos os " PS_EXT " da pasta atual\n"
-"  pool --check [arq" PS_EXT "]     So analisa (nao roda); JSON com o erro. Sem\n"
-"                            arquivo, le da entrada padrao\n"
-"  pool --check --path <arq> Confere o fonte da entrada padrao COMO SE fosse\n"
-"                            esse arquivo (acha os modulos vizinhos)\n"
-"  pool //doc                Mostra a URL da especificacao\n"
-"  pool --contexto L:C [arq] O que o cursor toca (pro editor); sem arquivo, stdin\n"
-"  pool --tokens [arq]       Tokens do lexer em JSON (pro realce); sem arquivo, stdin\n"
-"  pool --ast [arq]          A arvore do parser em JSON (pro editor); sem arquivo, stdin\n"
-"  pool --version / -V       Mostra a versao\n"
-"  pool --help / -h          Mostra esta ajuda\n"
+"  jinga arquivo.pr           Roda um arquivo\n"
+"  jinga arquivo.pr -o nome   Gera um executavel que roda sozinho (sem o fonte\n"
+"                             e sem a jinga instalada)\n"
+"  jinga -e \"<codigo>\"        Roda codigo inline (uma linha)\n"
+"  jinga build                Roda todos os " PS_EXT " da pasta atual\n"
+"  jinga --check [arq" PS_EXT "]     So analisa (nao roda); JSON com o erro. Sem\n"
+"                             arquivo, le da entrada padrao\n"
+"  jinga --check --path <arq> Confere o fonte da entrada padrao COMO SE fosse\n"
+"                             esse arquivo (acha os modulos vizinhos)\n"
+"  jinga //doc                Mostra a URL da especificacao\n"
+"  jinga --contexto L:C [arq] O que o cursor toca (pro editor); sem arquivo, stdin\n"
+"  jinga --tokens [arq]       Tokens do lexer em JSON (pro realce); sem arquivo, stdin\n"
+"  jinga --ast [arq]          A arvore do parser em JSON (pro editor); sem arquivo, stdin\n"
+"  jinga --utf16 ...          Com --tokens/--ast/--contexto/--check: colunas em UTF-16\n"
+"  jinga --version / -V       Mostra a versao\n"
+"  jinga --help / -h          Mostra esta ajuda\n"
 "\n"
 "Pacotes (lib e comando " PS_EXT "):\n"
-"  psl install <arq" PS_EXT ">          Instala (o arquivo decide via #!lib / #!cmd)\n"
-"  psl install <arq" PS_EXT "> -asLib   Forca lib importavel (import nome)\n"
-"  psl install <nome>            Busca <nome> no registry configurado\n"
-"  psl uninstall <nome>          Remove (acha sozinho: comando ou lib)\n"
-"  psl uninstall <nome> -asLib   Forca a categoria lib\n"
-"  psl list                      Lista comandos e libs instalados\n"
-"  psl registry set-url <url>    Configura o indice de pacotes\n"
-"  psl registry show             Mostra o registry configurado\n"
+"  jpkg install <arq" PS_EXT ">          Instala (o arquivo decide via #!lib / #!cmd)\n"
+"  jpkg install <arq" PS_EXT "> -asLib   Forca lib importavel (import nome)\n"
+"  jpkg install <nome>            Busca <nome> no registry configurado\n"
+"  jpkg uninstall <nome>          Remove (acha sozinho: comando ou lib)\n"
+"  jpkg uninstall <nome> -asLib   Forca a categoria lib\n"
+"  jpkg list                      Lista comandos e libs instalados\n"
+"  jpkg registry set-url <url>    Configura o indice de pacotes\n"
+"  jpkg registry show             Mostra o registry configurado\n"
+"\n"
+"`pool` e `psl` sao os nomes antigos dos mesmos comandos e continuam valendo.\n"
 "\n"
 "Libs internas: %s\n"
 "\n"
@@ -80,24 +84,24 @@ static char *le_arquivo(const char *caminho, size_t *tam)
     const char *velha = ps_ext_velha(caminho);
     if (velha) {
         fprintf(stderr,
-            "pool: '%s' usa a extensao %s, que a linguagem nao usa mais.\n"
+            "jinga: '%s' usa a extensao %s, que a linguagem nao usa mais.\n"
             "      Hoje o arquivo da linguagem e " PS_EXT ".\n"
             "      Pra converter uma pasta inteira (arquivos, referencias e libs):\n"
-            "          pool scripts/migra_pr" PS_EXT " <pasta> --aplica --libs\n",
+            "          jinga scripts/migra_pr" PS_EXT " <pasta> --aplica --libs\n",
             caminho, velha);
         return NULL;
     }
     FILE *f = fopen(caminho, "rb");
     if (!f) {
-        fprintf(stderr, "pool: nao consegui abrir '%s'\n", caminho);
+        fprintf(stderr, "jinga: nao consegui abrir '%s'\n", caminho);
         return NULL;
     }
     /* Lê em laço, sem `fseek`. O tamanho de antes vinha de `fseek`+`ftell`, que
-     * só funciona em arquivo comum: `pool /dev/stdin` e qualquer redirecionamento
+     * só funciona em arquivo comum: `jinga /dev/stdin` e qualquer redirecionamento
      * de pipe caíam no `return NULL` e o binário saía 66 SEM dizer nada. */
     size_t cap = 65536, n = 0;
     char *buf = malloc(cap);
-    if (!buf) { fclose(f); fprintf(stderr, "pool: sem memoria\n"); return NULL; }
+    if (!buf) { fclose(f); fprintf(stderr, "jinga: sem memoria\n"); return NULL; }
     for (;;) {
         size_t r = fread(buf + n, 1, cap - n - 1, f);
         n += r;
@@ -105,13 +109,13 @@ static char *le_arquivo(const char *caminho, size_t *tam)
         if (n + 1 >= cap) {
             cap *= 2;
             char *nb = realloc(buf, cap);
-            if (!nb) { free(buf); fclose(f); fprintf(stderr, "pool: sem memoria\n"); return NULL; }
+            if (!nb) { free(buf); fclose(f); fprintf(stderr, "jinga: sem memoria\n"); return NULL; }
             buf = nb;
         }
     }
     int falhou = ferror(f);
     fclose(f);
-    if (falhou) { free(buf); fprintf(stderr, "pool: erro lendo '%s'\n", caminho); return NULL; }
+    if (falhou) { free(buf); fprintf(stderr, "jinga: erro lendo '%s'\n", caminho); return NULL; }
     buf[n] = '\0';
     *tam = n;
     return buf;
@@ -250,13 +254,13 @@ static int reporta(PSErroExec *e, const char *origem)
 
 /* ── `-o`: gerar um executavel que roda sozinho ──────────────────────────────
  *
- * `pool programa.pr -o programa` produz um binario que NAO precisa do fonte
- * nem do `pool` instalado: e uma copia deste mesmo binario com o programa
+ * `jinga programa.pr -o programa` produz um binario que NAO precisa do fonte
+ * nem da `jinga` instalada: e uma copia deste mesmo binario com o programa
  * grudado no fim, mais um rodape que diz onde ele comeca.
  *
  * Rodape (os ultimos RODAPE_TAM bytes do arquivo):
  *
- *     [ ...binario do pool... ][ fonte ][ tamanho do fonte, 16 digitos ][ MAGIA ]
+ *     [ ...binario da jinga... ][ fonte ][ tamanho do fonte, 16 digitos ][ MAGIA ]
  *
  * Na partida, o binario le o proprio arquivo, ve a magia no fim e, se estiver
  * la, roda o fonte embutido em vez de olhar os argumentos. Assim o mesmo
@@ -393,7 +397,7 @@ static int emb_carrega(const char *emb, size_t tam, char *main_textual, size_t c
     return *fonte_main ? 0 : -1;
 }
 
-/* `pool fonte.pr -o saida` */
+/* `jinga fonte.pr -o saida` */
 static int cmd_compila(const char *fonte_arq, const char *saida)
 {
     size_t tam = 0;
@@ -408,7 +412,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
     int32_t ndeps = 0;
     char libs[600], erro_dep[1400];
     if (ps_embute_deps(fonte_arq, &deps, &ndeps, libs, sizeof(libs), erro_dep, sizeof(erro_dep)) != 0) {
-        fprintf(stderr, "pool: %s\n", erro_dep);
+        fprintf(stderr, "jinga: %s\n", erro_dep);
         free(fonte);
         return 65;
     }
@@ -416,7 +420,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
         PSErroExec ve;
         if (ps_verifica_fonte(deps[i].fonte, deps[i].tam, deps[i].textual, &ve, NULL, NULL) != 0) {
             reporta(&ve, deps[i].textual);
-            fprintf(stderr, "pool: %s nao compila — nada gerado\n", deps[i].textual);
+            fprintf(stderr, "jinga: %s nao compila — nada gerado\n", deps[i].textual);
             ps_embutidos_solta(deps, ndeps);
             free(fonte);
             return 65;
@@ -425,7 +429,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
 
     char meu[4096];
     if (ps_meu_caminho(meu, sizeof(meu)) != 0) {
-        fprintf(stderr, "pool: nao consegui achar o proprio executavel\n");
+        fprintf(stderr, "jinga: nao consegui achar o proprio executavel\n");
         ps_embutidos_solta(deps, ndeps); free(fonte); return 70;
     }
     long base = 0;
@@ -433,10 +437,10 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
     free(velho);
 
     FILE *in = fopen(meu, "rb");
-    if (!in) { fprintf(stderr, "pool: nao consegui ler %s\n", meu); ps_embutidos_solta(deps, ndeps); free(fonte); return 70; }
+    if (!in) { fprintf(stderr, "jinga: nao consegui ler %s\n", meu); ps_embutidos_solta(deps, ndeps); free(fonte); return 70; }
     FILE *out = fopen(saida, "wb");
     if (!out) {
-        fprintf(stderr, "pool: nao consegui escrever %s\n", saida);
+        fprintf(stderr, "jinga: nao consegui escrever %s\n", saida);
         fclose(in); ps_embutidos_solta(deps, ndeps); free(fonte); return 73;
     }
     char buf[65536];
@@ -446,7 +450,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
         size_t lidos = fread(buf, 1, quer, in);
         if (lidos == 0) break;
         if (fwrite(buf, 1, lidos, out) != lidos) {
-            fprintf(stderr, "pool: escrita incompleta em %s\n", saida);
+            fprintf(stderr, "jinga: escrita incompleta em %s\n", saida);
             fclose(in); fclose(out); ps_embutidos_solta(deps, ndeps); free(fonte); return 73;
         }
         resta -= (long)lidos;
@@ -471,7 +475,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
     char rodape[PS_RODAPE_TAM + 1];
     snprintf(rodape, sizeof(rodape), "%0*zu%s", PS_DIG_TAM, total, PS_MAGIA_EMB2);
     if (!ok || fwrite(rodape, 1, PS_RODAPE_TAM, out) != PS_RODAPE_TAM) {
-        fprintf(stderr, "pool: escrita incompleta em %s\n", saida);
+        fprintf(stderr, "jinga: escrita incompleta em %s\n", saida);
         fclose(out); ps_embutidos_solta(deps, ndeps); free(fonte); return 73;
     }
     fclose(out);
@@ -479,7 +483,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
     ps_embutidos_solta(deps, ndeps);
     free(fonte);
     if (chmod(saida, 0755) != 0) {
-        fprintf(stderr, "pool: gerado, mas nao consegui dar permissao de execucao a %s\n", saida);
+        fprintf(stderr, "jinga: gerado, mas nao consegui dar permissao de execucao a %s\n", saida);
         return 73;
     }
     if (nmod > 0) printf("gerado: %s (%d modulo%s embutido%s)\n", saida, nmod, nmod == 1 ? "" : "s", nmod == 1 ? "" : "s");
@@ -492,7 +496,7 @@ static int cmd_compila(const char *fonte_arq, const char *saida)
 static int cmd_build(void)
 {
     DIR *d = opendir(".");
-    if (!d) { fprintf(stderr, "pool: nao consegui abrir a pasta atual\n"); return 1; }
+    if (!d) { fprintf(stderr, "jinga: nao consegui abrir a pasta atual\n"); return 1; }
 
     /* coleta os arquivos da linguagem e ordena */
     char **nomes = NULL; int n = 0, cap = 0;
@@ -562,9 +566,9 @@ static void json_str(const char *s)
 /* CÓDIGO DE SAÍDA do `--check`: 0 quando compila, 1 quando não.
  *
  * Ele saía 0 SEMPRE, inclusive imprimindo `{"ok":false}`. Isso torna
- * `pool --check f.pr || exit 1` e `set -e` falso verde — e o `--check` é o que
+ * `jinga --check f.pr || exit 1` e `set -e` falso verde — e o `--check` é o que
  * o editor roda a cada tecla, o que a CI roda em arquivo que veio de fora, e o
- * que o `psl install` roda em pacote de TERCEIRO.
+ * que o `jpkg install` roda em pacote de TERCEIRO.
  *
  * É a convenção de todo conferidor de sintaxe: o código de saída diz se
  * passou. O JSON no stdout não muda — quem lê o JSON continua lendo igual;
@@ -656,7 +660,7 @@ static int n_para_utf16(int linha, int col, int n)
     return u;
 }
 
-/* `pool --check [arquivo.pr]` — lexer/parser/compilador da VM, SEM rodar, com
+/* `jinga --check [arquivo.pr]` — lexer/parser/compilador da VM, SEM rodar, com
  * o resultado em JSON pro editor. Sem arquivo, lê o buffer do stdin (o editor
  * manda o conteúdo não salvo). NUNCA executa o código.
  *
@@ -753,7 +757,7 @@ static int cmd_check(const char *arquivo, const char *como)
     return CHECK_RC_FALHA;
 }
 
-/* ── `pool --contexto <linha>:<coluna>` ───────────────────────────────────
+/* ── `jinga --contexto <linha>:<coluna>` ───────────────────────────────────
  *
  * O que o editor precisa saber pra completar: o que vem antes do cursor.
  * Responde com o LEXER de verdade, não com regex.
@@ -874,7 +878,7 @@ static void jsonf(const char *chave, const char *valor)
     json_str(valor);
 }
 
-/* `pool --tokens` — o fonte vem pelo stdin e sai a lista de tokens do LEXER
+/* `jinga --tokens` — o fonte vem pelo stdin e sai a lista de tokens do LEXER
  * DE VERDADE, em JSON:
  *
  *   [{"t":"KW","l":1,"c":1,"n":5,"v":"funct"}, ...]
@@ -1393,7 +1397,7 @@ static int cmd_contexto(const char *pos, const char *arquivo)
 {
     int linha = 0, col = 0;
     if (!pos || sscanf(pos, "%d:%d", &linha, &col) != 2 || linha < 1 || col < 1) {
-        printf("{\"contexto\":\"erro\",\"msg\":\"uso: pool --contexto <linha>:<coluna> [arquivo" PS_EXT "]\"}\n");
+        printf("{\"contexto\":\"erro\",\"msg\":\"uso: jinga --contexto <linha>:<coluna> [arquivo" PS_EXT "]\"}\n");
         return 1;
     }
     size_t tam = 0;
@@ -1504,7 +1508,7 @@ int main(int argc, char **argv)
                 char main_textual[1024] = "";
                 if (versao == 2) {
                     if (emb_carrega(emb, tam_emb, main_textual, sizeof(main_textual), &fonte, &tam) != 0) {
-                        fprintf(stderr, "pool: o programa embutido neste executavel esta corrompido\n");
+                        fprintf(stderr, "jinga: o programa embutido neste executavel esta corrompido\n");
                         free(emb);
                         return 70;
                     }
@@ -1555,7 +1559,7 @@ int main(int argc, char **argv)
         if (argc >= 4 && (!strcmp(argv[2], "--path") || !strcmp(argv[2], "path")))
             return cmd_check(NULL, argv[3]);
         if (argc == 3 && (!strcmp(argv[2], "--path") || !strcmp(argv[2], "path"))) {
-            fprintf(stderr, "uso: pool --check --path <caminho" PS_EXT ">  (o fonte vem da entrada padrao)\n");
+            fprintf(stderr, "uso: jinga --check --path <caminho" PS_EXT ">  (o fonte vem da entrada padrao)\n");
             return 64;
         }
         return cmd_check(argc >= 3 ? argv[2] : NULL, NULL);
@@ -1573,23 +1577,23 @@ int main(int argc, char **argv)
         ps_metadata_json(stdout);
         return 0;
     }
-    /* Depurador: `pool --debug <porta> arquivo.pr`. O motor escuta DAP na porta
+    /* Depurador: `jinga --debug <porta> arquivo.pr`. O motor escuta DAP na porta
      * e o editor conecta — é a extensão do VS Code quem escolhe a porta livre e
      * passa aqui. Ver docs/debugger.md. */
     if (!strcmp(cmd, "--debug") || !strcmp(cmd, "debug")) {
         if (argc < 4) {
-            fprintf(stderr, "uso: pool --debug <porta> <arquivo.pr>\n");
+            fprintf(stderr, "uso: jinga --debug <porta> <arquivo.pr>\n");
             return 64;
         }
         char *fim = NULL;
         long porta = strtol(argv[2], &fim, 10);
         if (fim == argv[2] || *fim || porta < 1 || porta > 65535) {
-            fprintf(stderr, "pool --debug: porta invalida: %s\n", argv[2]);
+            fprintf(stderr, "jinga --debug: porta invalida: %s\n", argv[2]);
             return 64;
         }
         ps_debug_porta((int)porta);
         /* Consome o `--debug <porta>` e deixa a linha como se o usuário tivesse
-         * escrito `pool arquivo.pr <args>`: o arquivo volta pra argv[1] e os
+         * escrito `jinga arquivo.pr <args>`: o arquivo volta pra argv[1] e os
          * argumentos dele continuam depois, senão o `sys.argv` do programa
          * receberia o próprio nome do arquivo como primeiro argumento. */
         for (int k = 1; k + 2 < argc; k++) argv[k] = argv[k + 2];
@@ -1598,20 +1602,20 @@ int main(int argc, char **argv)
     }
     if (!strcmp(cmd, "build")) return cmd_build();
     if (!strcmp(cmd, "compile")) {
-        if (argc < 4) { fprintf(stderr, "uso: pool compile <arquivo.pr> -o <saida>\n"); return 64; }
+        if (argc < 4) { fprintf(stderr, "uso: jinga compile <arquivo.pr> -o <saida>\n"); return 64; }
         if (strcmp(argv[3], "-o") != 0 || argc < 5) {
-            fprintf(stderr, "uso: pool compile <arquivo.pr> -o <saida>\n"); return 64;
+            fprintf(stderr, "uso: jinga compile <arquivo.pr> -o <saida>\n"); return 64;
         }
         return cmd_compila(argv[2], argv[4]);
     }
     /* ── pacotes (só .pr: lib/comando) ──────────────────────────────── */
     if (!strcmp(cmd, "install")) {
-        if (argc < 3) { fprintf(stderr, "uso: psl install <arquivo.pr | nome> [-asLib]\n"); return 1; }
+        if (argc < 3) { fprintf(stderr, "uso: jpkg install <arquivo.pr | nome> [-asLib]\n"); return 1; }
         int modo = tem_flag(argc, argv, 3, "-asLib") ? PS_PKG_LIB : PS_PKG_AUTO;
         return ps_pkg_install(argv[2], modo);
     }
     if (!strcmp(cmd, "uninstall")) {
-        if (argc < 3) { fprintf(stderr, "uso: psl uninstall <nome> [-asLib]\n"); return 1; }
+        if (argc < 3) { fprintf(stderr, "uso: jpkg uninstall <nome> [-asLib]\n"); return 1; }
         int cat = tem_flag(argc, argv, 3, "-asLib") ? PS_PKG_LIB : PS_PKG_AUTO;
         return ps_pkg_uninstall(argv[2], cat);
     }
@@ -1619,9 +1623,9 @@ int main(int argc, char **argv)
     if (!strcmp(cmd, "registry")) return ps_pkg_registry(argc - 2, argv + 2);
     if (!strcmp(cmd, "repl")) {
         fprintf(stderr,
-            "pool: o REPL interativo ainda nao esta no binario C "
+            "jinga: o REPL interativo ainda nao esta no binario C "
             "(precisa de estado persistente na VM).\n"
-            "      Por enquanto: `pool arquivo.pr` ou `pool -e \"<codigo>\"`.\n");
+            "      Por enquanto: `jinga arquivo.pr` ou `jinga -e \"<codigo>\"`.\n");
         return 64;
     }
 
@@ -1634,11 +1638,11 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* `pool programa.pr -o saida` — gera o executavel em vez de rodar. */
+    /* `jinga programa.pr -o saida` — gera o executavel em vez de rodar. */
     if (argc >= 4 && !strcmp(argv[2], "-o"))
         return cmd_compila(cmd, argv[3]);
     if (argc == 3 && !strcmp(argv[2], "-o")) {
-        fprintf(stderr, "uso: pool %s -o <saida>\n", cmd);
+        fprintf(stderr, "uso: jinga %s -o <saida>\n", cmd);
         return 64;
     }
 

@@ -1,4 +1,4 @@
-# CI da PoolScript.
+# CI da Jinga.
 #
 # A auditoria de 2026-08-27 apontou o buraco central: as ferramentas existem
 # (OOM, fuzz, ASan, cobertura, e2e, auditoria de doc e de padrões em C) e
@@ -29,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Os clientes de banco (Postgres, MySQL, ODBC, Mongo) NÃO são mais
-      # ligados ao `pool`: cada driver abre a biblioteca no primeiro
+      # ligados ao `jinga`: cada driver abre a biblioteca no primeiro
       # `connect` (vm/ps_dl.h). Daqui eles precisam só dos CABEÇALHOS pra
       # compilar — e a biblioteca de verdade, que vem junto com o -dev, pros
       # testes que conectam (o do Mongo sobe o próprio mongod).

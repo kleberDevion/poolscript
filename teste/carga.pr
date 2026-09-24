@@ -8,7 +8,7 @@
 # SERVIDOR, nao do cliente.
 #
 # Comparacao de MOTOR (interpretador): tres programas equivalentes — laco
-# aritmetico, chamada de funct, dicionario — em PoolScript, Python e Node,
+# aritmetico, chamada de funct, dicionario — em Jinga, Python e Node,
 # cronometrados do mesmo jeito (menor de 3 execucoes, custo de partida
 # descontado).
 #
@@ -106,12 +106,12 @@ funct rodada(porta, k, total) {
 
 
 funct carga_http() {
-    post("── servidor HTTP: requisicoes por segundo (cliente: PoolScript, " + str(POR_NIVEL) + " req por nivel) ──")
+    post("── servidor HTTP: requisicoes por segundo (cliente: Jinga, " + str(POR_NIVEL) + " req por nivel) ──")
     os.writeFile(PASTA + "/srv_ps.pr",
         "import jinker\nfrom jinker import Jinker\napp = Jinker(__name__)\n"
         + "@app.get(\"/ping\")\nfunct ping() {\n    return {\"ok\": true}\n}\n"
         + "if __name__ == \"main\" {\n    app(debug=false, host=\"127.0.0.1\", port=" + str(PORTA_PS) + ")\n}\n")
-    servidores = [["jinker (PoolScript)", "'" + sys.executable + "' srv_ps.pr", PORTA_PS]]
+    servidores = [["jinker (Jinga)", "'" + sys.executable + "' srv_ps.pr", PORTA_PS]]
     if tem("python3") {
         os.writeFile(PASTA + "/srv_py.py",
             "from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler\n"
@@ -204,7 +204,7 @@ funct carga_motor() {
     if tem("node") {
         partida["js"] = mede_cmd("node vazio.js")
     }
-    post("  caso           PoolScript      Python 3        Node")
+    post("  caso           Jinga      Python 3        Node")
     for each nome in ["aritmetica", "chamada", "dict"] {
         p = progs[nome]
         os.writeFile(PASTA + "/" + nome + ".pr", p["ps"])

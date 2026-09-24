@@ -1,6 +1,6 @@
 # Exceptions — erros, `raise` e `catch`
 
-Um erro na PoolScript tem um **tipo** (um nome) e uma **mensagem**. Você pode
+Um erro na Jinga tem um **tipo** (um nome) e uma **mensagem**. Você pode
 deixá-lo **propagar** (para o programa com uma mensagem limpa — `catch` é
 opcional) ou **capturar** com `try/catch`.
 
@@ -85,7 +85,7 @@ ainda pode pegá-lo) — `catch (KeyError)` não vira um catch-tudo silencioso.
 | `AssertionError` | `assert(...)` que não passou. Com um valor só, o texto é o valor recebido (`false nao e verdadeiro`); com dois, os dois lados (`veio 3, esperava 4`); com uma nota, ela vem na frente. É capturável como qualquer outra — um teste pode contar as falhas em vez de parar na primeira |
 | `NotImplemented` | função de lib "stub": existe, e ainda não faz nada. O nome é esse mesmo, **sem** o `Error` no fim — `catch (NotImplementedError e)` não pega esta |
 | `NotImplementedError` | módulo importado que **não compila** por motivo que não é sintaxe. É outro erro, apesar do nome parecido — não confunda com o de cima |
-| `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `pool --check` relata |
+| `SyntaxError` | erro de sintaxe. Não é capturável em tempo de execução: acontece **antes** de o programa rodar, e é o que o `jinga --check` relata |
 | `KeyError` | chave inexistente num dict: `d["naoexiste"]`. A mensagem é a **chave**, e só ela: `KeyError: 'naoexiste'`. Vale igual em `d.chave` e `d.pop("chave")` |
 | `ImportError` | módulo não encontrado: `import naoexiste` |
 | `ConversionError` | `char c = -1` — inteiro que não é um codepoint válido. Só isso: a declaração tipada **não converte** (`int z = "abc"` é `AttributedValueError`, porque `"abc"` é `str`). A lib `Parsing` **não** levanta — ela é best-effort e devolve `0`/`0.0`/`{}` |
@@ -228,7 +228,7 @@ Regras que valem junto:
 - Os nomes são globais como `PoolFile`: dá pra sombrear (`ValueError = 3`), e
   nome fora da árvore (`MeuErro`) continua `NameError` até você levantá-lo com
   `raise MeuErro(...)`.
-- O editor conhece os nomes (completion, hover e realce) pelo `pool --metadata`
+- O editor conhece os nomes (completion, hover e realce) pelo `jinga --metadata`
   (chave `excecoes`), que sai da mesma tabela do motor.
 
 ---

@@ -61,7 +61,7 @@ pode ocupar várias linhas
 
 ## 1.3. Espaço em branco e delimitação de blocos
 
-O bloco da PoolScript é **`{ }`**, e só. Quem delimita é a chave; a
+O bloco da Jinga é **`{ }`**, e só. Quem delimita é a chave; a
 **indentação não tem significado** nenhum pro compilador:
 
 ```ps
@@ -200,7 +200,7 @@ Duas coisas **não** estão nesta tabela, e não é esquecimento:
 - Os **modificadores colados** `static` e `nonnull` (seção 6), pela mesma
   razão: só valem na cabeça de uma `funct`.
 
-A lista viva sai do próprio motor, com `pool --metadata` (campo `keywords`).
+A lista viva sai do próprio motor, com `jinga --metadata` (campo `keywords`).
 
 Os **builtins** (`post`, `input`, `len`, `range`, `addEnd`, `chr`, `ord`, ...)
 também são nomes reservados, mas são **funções**, não palavras de controle —
@@ -273,7 +273,7 @@ no texto; use '\\p' se ela e mesmo pra estar ali
 `"C:\pasta"` tem 8 caracteres e vale `C:\pasta`. Isso já foi
 diferente e era pior: a barra sumia **calada**, o valor virava `C:pasta` (7), e
 quem escrevia um caminho do Windows perdia um byte sem ficar sabendo. O aviso
-vai pro **stderr** (não suja a saída do programa) e o `pool --check` o devolve
+vai pro **stderr** (não suja a saída do programa) e o `jinga --check` o devolve
 no JSON, então o editor sublinha.
 
 Aviso não é erro: o programa roda e sai com 0.

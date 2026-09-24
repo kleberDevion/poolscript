@@ -1,5 +1,5 @@
 /*
- * Suíte de testes da PoolScript — em C
+ * Suíte de testes da Jinga — em C
  *
  * Cada caso é um programa `.pr` + o que se espera dele. O runner NÃO executa
  * o programa dentro deste processo: ele faz fork/exec do `./pool`. Isso é

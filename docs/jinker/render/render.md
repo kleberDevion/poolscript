@@ -42,7 +42,7 @@ funct pagina() {
 Um caminho **relativo** é resolvido, nesta ordem, contra:
 
 1. **A pasta do `.pr` em execução** (onde está seu `app.pr`);
-2. **O diretório atual** (`cwd`, de onde você rodou `pool`).
+2. **O diretório atual** (`cwd`, de onde você rodou `jinga`).
 
 O primeiro que contiver o arquivo vence. Um caminho **absoluto**
 (`render("C:/site/x.html")`) é usado como está, sem busca.

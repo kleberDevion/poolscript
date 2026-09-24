@@ -15,7 +15,7 @@ bool
 ## Exemplos
 
 ```ps
-post("poolscript".startswith("pool"))
+post("jinga".startswith("jin"))
 ```
 
 ```saida

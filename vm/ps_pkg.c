@@ -1,5 +1,5 @@
 /*
- * Gerenciador de pacotes pool-native — ver ps_pkg.h.
+ * Gerenciador de pacotes da Jinga — ver ps_pkg.h.
  *
  * A verdade do que está instalado é o SISTEMA DE ARQUIVOS (os arquivos em
  * commands/ e libs/); o installed.json é reescrito a partir dele a cada
@@ -23,13 +23,28 @@
 
 /* ── caminhos ───────────────────────────────────────────────────────────── */
 
+/* A pasta do usuário: `$JINGA_HOME` (ou `$POOLSCRIPT_HOME`, o nome de antes do
+ * rename), senão `~/.jinga`. Uma `~/.poolscript` de antes é MOVIDA pra
+ * `~/.jinga` na primeira chamada (`rename(2)`: mesmo sistema de arquivos),
+ * com um aviso de uma linha — os comandos e libs instalados continuam
+ * valendo. Se não der pra mover, ela continua sendo usada onde está. */
 static int pkg_home(char *out, size_t cap)
 {
-    const char *over = getenv("POOLSCRIPT_HOME");
+    const char *over = getenv("JINGA_HOME");
+    if (!over || !*over) over = getenv("POOLSCRIPT_HOME");
     if (over && *over) { snprintf(out, cap, "%s", over); return 0; }
     const char *h = getenv("HOME");
     if (!h || !*h) return -1;
-    snprintf(out, cap, "%s/.poolscript", h);
+    snprintf(out, cap, "%s/.jinga", h);
+    char velha[1024];
+    snprintf(velha, sizeof(velha), "%s/.poolscript", h);
+    struct stat st;
+    if (stat(out, &st) != 0 && stat(velha, &st) == 0 && S_ISDIR(st.st_mode)) {
+        if (rename(velha, out) == 0)
+            fprintf(stderr, "jpkg: %s virou %s (a pasta da Jinga mudou de nome)\n", velha, out);
+        else
+            snprintf(out, cap, "%s", velha);
+    }
     return 0;
 }
 
@@ -47,7 +62,7 @@ static void mkdirp(const char *caminho)
 static int pkg_dirs(char *home, size_t cap)
 {
     if (pkg_home(home, cap) != 0) {
-        fprintf(stderr, "Erro: nao consegui achar o HOME (defina HOME ou POOLSCRIPT_HOME)\n");
+        fprintf(stderr, "Erro: nao consegui achar o HOME (defina HOME ou JINGA_HOME)\n");
         return -1;
     }
     char d[1200];
@@ -99,7 +114,7 @@ static void derive_name(const char *target, char *out, size_t cap)
 }
 
 /* arquivo local da linguagem. A extensão velha entra aqui de propósito: o
- * `psl install x.ps` trata como arquivo local e o erro sai dizendo o conserto,
+ * `jpkg install x.ps` trata como arquivo local e o erro sai dizendo o conserto,
  * em vez de ele ir procurar `x.ps` no registry. */
 static int termina_em_fonte(const char *s)
 {
@@ -124,7 +139,7 @@ static int peek_marker(const char *texto)
     return -1;
 }
 
-/* ── installed.json (derivado do filesystem, pro psl ver) ───────────────── */
+/* ── installed.json (derivado do filesystem, pro jpkg ver) ──────────────── */
 
 static const char *agora_iso(char *buf, size_t cap)
 {
@@ -173,7 +188,7 @@ static void regen_installed(const char *home)
     fclose(f);
 }
 
-/* ── PATH: garante ~/.poolscript/bin no shell rc (Linux) ────────────────── */
+/* ── PATH: garante ~/.jinga/bin no shell rc (Linux) ─────────────────────── */
 
 static void ensure_bin_no_path(const char *home)
 {
@@ -192,7 +207,7 @@ static void ensure_bin_no_path(const char *home)
             p = sep ? sep + 1 : NULL;
         }
     }
-    if (getenv("POOLSCRIPT_HOME")) {
+    if (getenv("JINGA_HOME") || getenv("POOLSCRIPT_HOME")) {
         printf("  (adicione %s ao seu PATH para usar os comandos)\n", bindir);
         return;
     }
@@ -200,7 +215,7 @@ static void ensure_bin_no_path(const char *home)
     if (!h) return;
     char linha[1400];
     snprintf(linha, sizeof(linha),
-             "\n# PoolScript — comandos instalados via `psl install`\nexport PATH=\"%s:$PATH\"\n",
+             "\n# Jinga — comandos instalados via `jpkg install`\nexport PATH=\"%s:$PATH\"\n",
              bindir);
     int add = 0;
     const char *rcs[2] = { ".bashrc", ".profile" };
@@ -233,8 +248,12 @@ static void write_shim(const char *home, const char *name, const char *ps_path)
         fprintf(stderr, "caminho do comando '%s' longo demais — nao instalei\n", name);
         return;
     }
+    /* O atalho chama `jinga`; numa máquina que só tem o nome de antes do
+     * rename instalado (`pool`), cai nele — os dois são o mesmo binário. */
     char corpo[1400];
-    int n = snprintf(corpo, sizeof(corpo), "#!/bin/sh\nexec pool \"%s\" \"$@\"\n", ps_path);
+    int n = snprintf(corpo, sizeof(corpo),
+                     "#!/bin/sh\nif command -v jinga >/dev/null 2>&1; then exec jinga \"%s\" \"$@\"; fi\n"
+                     "exec pool \"%s\" \"$@\"\n", ps_path, ps_path);
     if (n < 0 || (size_t)n >= sizeof(corpo)) {
         fprintf(stderr, "caminho '%s' longo demais para o comando '%s' — nao instalei\n",
                 ps_path, name);
@@ -317,7 +336,7 @@ static int registry_lookup(const char *home, const char *nome, char *url, size_t
 {
     char idx_url[1024];
     if (registry_url(home, idx_url, sizeof(idx_url)) != 0) {
-        fprintf(stderr, "Erro: nenhum registry configurado — use `psl registry set-url <url>` "
+        fprintf(stderr, "Erro: nenhum registry configurado — use `jpkg registry set-url <url>` "
                         "ou instale de um arquivo local (nome" PS_EXT ")\n");
         return -1;
     }
@@ -424,7 +443,7 @@ int ps_pkg_install(const char *target, int modo)
         const char *velha = ps_ext_velha(target);
         if (velha) {
             fprintf(stderr, "Erro: `%s` e a extensao antiga; o arquivo da linguagem agora e `%s`.\n"
-                            "      Renomeie com: pool scripts/migra_pr%s <pasta> --aplica\n",
+                            "      Renomeie com: jinga scripts/migra_pr%s <pasta> --aplica\n",
                     velha, PS_EXT, PS_EXT);
             return 1;
         }
@@ -552,7 +571,7 @@ int ps_pkg_list(void)
     char home[1024];
     if (pkg_dirs(home, sizeof(home)) != 0) return 1;
     lista_dir(home, "commands", "Comandos");
-    lista_dir(home, "libs", "Libs PoolScript");
+    lista_dir(home, "libs", "Libs Jinga");
     return 0;
 }
 
@@ -566,15 +585,15 @@ int ps_pkg_registry(int argc, char **argv)
     if (argc == 0 || !strcmp(argv[0], "show")) {
         char url[1024];
         if (registry_url(home, url, sizeof(url)) == 0) printf("registry atual: %s\n", url);
-        else printf("nenhum registry configurado — use `psl registry set-url <url>`\n");
+        else printf("nenhum registry configurado — use `jpkg registry set-url <url>`\n");
         return 0;
     }
     if (!strcmp(argv[0], "set-url")) {
-        if (argc < 2) { fprintf(stderr, "uso: psl registry set-url <url>\n"); return 1; }
+        if (argc < 2) { fprintf(stderr, "uso: jpkg registry set-url <url>\n"); return 1; }
         if (registry_set(home, argv[1]) != 0) { fprintf(stderr, "Erro: nao consegui gravar config\n"); return 1; }
         printf("registry configurado: %s\n", argv[1]);
         return 0;
     }
-    fprintf(stderr, "uso: psl registry [show | set-url <url>]\n");
+    fprintf(stderr, "uso: jpkg registry [show | set-url <url>]\n");
     return 1;
 }

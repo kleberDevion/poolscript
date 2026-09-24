@@ -1,7 +1,7 @@
 /*
- * Entrada pura da VM da PoolScript.
+ * Entrada pura da VM da Jinga.
  *
- * O mesmo `poolscript_vm.c` compila de dois jeitos:
+ * O mesmo `jinga_vm.c` compila de dois jeitos:
  *
  *   com a macro da extensão de teste diferencial → módulo carregável `.so`
  *   sem ela                                       → objeto de um binário standalone
@@ -133,7 +133,7 @@ const char *ps_modulos_publicos(void);
 
 /* Marca a base da pilha do processo. É a referência da medição de folga que
  * impede a recursão profunda de estourar a pilha (ver `ps_pilha_apertada` em
- * poolscript_vm.c). Tem que ser chamada no início do `main`, com a pilha ainda
+ * jinga_vm.c). Tem que ser chamada no início do `main`, com a pilha ainda
  * praticamente intocada. */
 void ps_pilha_marca_processo(void);
 

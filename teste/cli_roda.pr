@@ -2,7 +2,7 @@
 #
 # POR QUE ESTE ARQUIVO EXISTE: `vm/main.c` estava em 19,7% de ramo e
 # `vm/ps_pkg.c` em 0,0% — 26 de 26 funções nunca executadas. Não é código
-# morto: é a porta de entrada do usuário (`pool arquivo.pr`, `psl install`) e o
+# morto: é a porta de entrada do usuário (`jinga arquivo.pr`, `jpkg install`) e o
 # único lugar do projeto que BAIXA E INSTALA CÓDIGO DE TERCEIRO. A suíte em C
 # só sabia rodar `pool <arquivo>`; argumento, variável de ambiente e código de
 # saída ficavam fora, e com eles a CLI inteira.
@@ -48,7 +48,7 @@ funct roda(cmd)
 
 funct com_home(cmd)
 {
-    return roda("POOLSCRIPT_HOME=" + HOME + " " + cmd)
+    return roda("JINGA_HOME=" + HOME + " " + cmd)
 }
 
 if os.exists(PASTA)
@@ -61,20 +61,50 @@ POOL = sys.executable
 
 # ── superfície da CLI (vm/main.c) ───────────────────────────────────────────
 r = roda("'" + POOL + "' --version")
-confere("--version imprime a versão", "PoolScript" in r["saida"] and r["rc"] == 0)
+confere("--version imprime a versão", "Jinga" in r["saida"] and r["rc"] == 0)
 # A DATA da build distingue dois binários da mesma versão (o instalado e o
 # recém-compilado respondiam igual). O prefixo não muda: quem lê a saída — o
 # servidor LSP tira a versão dela — continua valendo.
 confere("--version traz a data da build entre parênteses",
-        "[PSVM] (" in r["saida"] and r["saida"].strip().endswith(")")
-        and "-" in r["saida"].split("(")[1])
+        "[PSVM] (" in r["saida"] and ")" in r["saida"].split("(")[1]
+        and "-" in r["saida"].split("(")[1].split(")")[0])
 r = roda("'" + POOL + "' -V")
-confere("-V é o mesmo que --version", "PoolScript" in r["saida"] and r["rc"] == 0)
+confere("-V é o mesmo que --version", "Jinga" in r["saida"] and r["rc"] == 0)
+
+# ── os nomes de antes do rename continuam valendo ───────────────────────────
+#
+# A linguagem se chamava PoolScript: quem instalou antes tem `~/.poolscript`,
+# `POOLSCRIPT_HOME` no ambiente e `import poolscript.libs.x` nos programas.
+# Nada disso pode quebrar de um dia pro outro. O contrato é: a variável antiga
+# ainda é lida (a nova ganha quando as duas existem), a forma antiga do import
+# ainda importa, e a pasta antiga vira `~/.jinga` na primeira chamada do `jpkg`
+# — com aviso, porque mover pasta calado é o tipo de coisa que some.
+os.mkdir(PASTA + "/home_antigo/libs", exist_ok=true)
+os.writeFile(PASTA + "/home_antigo/libs/velha.pr", "V = \"da pasta antiga\"\n")
+os.writeFile(PASTA + "/usa_velha.pr",
+             "import velha\nimport poolscript.libs.velha as p\nimport jinga.libs.velha as j\npost(velha.V, p.V, j.V)\n")
+r = roda("POOLSCRIPT_HOME=" + PASTA + "/home_antigo '" + POOL + "' usa_velha.pr")
+confere("POOLSCRIPT_HOME ainda e lida, e import poolscript.libs.x e jinga.libs.x acham a mesma lib",
+        r["rc"] == 0 and r["saida"].strip() == "da pasta antiga da pasta antiga da pasta antiga")
+os.mkdir(PASTA + "/home_novo/libs", exist_ok=true)
+os.writeFile(PASTA + "/home_novo/libs/velha.pr", "V = \"da pasta nova\"\n")
+r = roda("JINGA_HOME=" + PASTA + "/home_novo POOLSCRIPT_HOME=" + PASTA + "/home_antigo '" + POOL + "' usa_velha.pr")
+confere("com as duas variaveis, JINGA_HOME ganha",
+        r["rc"] == 0 and r["saida"].strip() == "da pasta nova da pasta nova da pasta nova")
+os.mkdir(PASTA + "/casa/.poolscript/libs", exist_ok=true)
+os.writeFile(PASTA + "/casa/.poolscript/libs/velha.pr", "V = \"migrada\"\n")
+r = roda("HOME=" + PASTA + "/casa '" + POOL + "' list")
+confere("jpkg move ~/.poolscript pra ~/.jinga na primeira chamada e avisa",
+        r["rc"] == 0 and "virou" in r["saida"] and os.exists(PASTA + "/casa/.jinga/libs/velha.pr")
+        and not os.exists(PASTA + "/casa/.poolscript"))
+r = roda("HOME=" + PASTA + "/casa '" + POOL + "' usa_velha.pr")
+confere("depois de movida, a lib e achada em ~/.jinga",
+        r["rc"] == 0 and r["saida"].strip() == "migrada migrada migrada")
 
 r = roda("'" + POOL + "' --help")
-confere("--help lista os modos", "pool arquivo.pr" in r["saida"] and r["rc"] == 0)
+confere("--help lista os modos", "jinga arquivo.pr" in r["saida"] and r["rc"] == 0)
 r = roda("'" + POOL + "' -h")
-confere("-h é o mesmo que --help", "pool arquivo.pr" in r["saida"])
+confere("-h é o mesmo que --help", "jinga arquivo.pr" in r["saida"])
 
 r = roda("'" + POOL + "' //doc")
 confere("//doc aponta a especificação", "http" in r["saida"])
@@ -224,7 +254,7 @@ confere("--check por caminho continua aprovando o import vizinho", "\"ok\":true"
 
 # Arquivo que não dá `fseek` (pipe, /dev/stdin): saía 66 calado.
 r = roda("printf 'post(7)\\n' | '" + POOL + "' /dev/stdin")
-confere("pool roda fonte vindo de pipe", r["saida"].strip() == "7" and r["rc"] == 0)
+confere("jinga roda fonte vindo de pipe", r["saida"].strip() == "7" and r["rc"] == 0)
 
 # ── `--contexto`: o que faltava pro editor não completar no lugar errado ────
 #
@@ -661,7 +691,7 @@ confere("-e sem código é erro", r["rc"] != 0)
 r = roda("'" + POOL + "'")
 confere("sem argumento nenhum mostra a ajuda", "Uso:" in r["saida"])
 r = roda("'" + POOL + "' --version")
-confere("--version diz a versão", "PoolScript" in r["saida"] and r["rc"] == 0)
+confere("--version diz a versão", "Jinga" in r["saida"] and r["rc"] == 0)
 r = roda("'" + POOL + "' --help")
 confere("--help lista os comandos", "Uso:" in r["saida"] and r["rc"] == 0)
 
@@ -684,23 +714,23 @@ confere("build roda os .pr da pasta", "um" in r["saida"])
 os.writeFile(PASTA + "/hello.pr", "#!cmd\nfunct main() {\n    post(\"oi do pacote\")\n}\nmain()\n")
 
 r = com_home("'" + POOL + "' install hello.pr")
-confere("psl install cria o comando", "instalado" in r["saida"] and r["rc"] == 0)
-confere("psl install grava o .pr e o atalho",
+confere("jpkg install cria o comando", "instalado" in r["saida"] and r["rc"] == 0)
+confere("jpkg install grava o .pr e o atalho",
         os.isfile(HOME + "/commands/hello.pr") and os.isfile(HOME + "/bin/hello"))
-confere("psl install registra em installed.json", os.isfile(HOME + "/installed.json"))
+confere("jpkg install registra em installed.json", os.isfile(HOME + "/installed.json"))
 
 r = com_home("'" + POOL + "' list")
-confere("psl list mostra o comando instalado", "hello" in r["saida"])
+confere("jpkg list mostra o comando instalado", "hello" in r["saida"])
 
 r = com_home("sh " + HOME + "/bin/hello")
 confere("o atalho instalado executa o pacote", "oi do pacote" in r["saida"])
 
 r = com_home("'" + POOL + "' uninstall hello")
-confere("psl uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.pr") == false)
+confere("jpkg uninstall remove", r["rc"] == 0 and os.exists(HOME + "/commands/hello.pr") == false)
 
 os.writeFile(PASTA + "/minhalib.pr", "#!lib\nfunct dobro(x) {\n    return x * 2\n}\n")
 r = com_home("'" + POOL + "' install minhalib.pr -asLib")
-confere("psl install -asLib instala como biblioteca", r["rc"] == 0)
+confere("jpkg install -asLib instala como biblioteca", r["rc"] == 0)
 confere("a lib vai pra pasta de libs", os.isfile(HOME + "/libs/minhalib.pr"))
 
 os.writeFile(PASTA + "/usa.pr", "import minhalib\npost(minhalib.dobro(21))\n")
@@ -716,7 +746,7 @@ r = roda("'" + POOL + "' usa_exc.pr")
 confere("exceção é valor dentro de módulo importado", r["saida"].strip() == "True ValueError")
 
 r = com_home("'" + POOL + "' uninstall minhalib -asLib")
-confere("psl uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.pr") == false)
+confere("jpkg uninstall -asLib remove a lib", os.exists(HOME + "/libs/minhalib.pr") == false)
 
 # nome instalado como comando E como lib: sem flag, o uninstall dizia "Erro:"
 # e removia o comando mesmo assim. Comando destrutivo sob "Erro:" para.
@@ -797,7 +827,7 @@ if subiu
     com_home("'" + POOL + "' registry set-url " + raiz_url + "/index.json")
 
     r = com_home("'" + POOL + "' install pacote")
-    confere("psl install <nome> baixa do registry e confere o sha256",
+    confere("jpkg install <nome> baixa do registry e confere o sha256",
             r["rc"] == 0 and os.isfile(HOME + "/commands/pacote.pr"))
 
     r = com_home("sh " + HOME + "/bin/pacote")
@@ -932,13 +962,13 @@ confere("`-o` embute os modulos alcancados e diz quantos (vizinho, subpasta, rel
 LONGE = PASTA + "/longe"
 os.mkdir(LONGE, exist_ok=true)
 os.cmd("cp " + EMB + "/app " + LONGE + "/app && mv " + EMB + " " + PASTA + "/emb_guardado")
-r = roda("cd longe && POOLSCRIPT_HOME=/nao/existe HOME=/nao/existe ./app")
+r = roda("cd longe && JINGA_HOME=/nao/existe HOME=/nao/existe ./app")
 confere("o executavel roda longe, sem nenhum fonte no caminho de origem e sem libs",
         r["rc"] == 0 and r["saida"].strip() == "R$ 10 pix-g * lib")
-r = roda("cd longe && POOLSCRIPT_HOME=/nao/existe HOME=/nao/existe ./app quebra")
+r = roda("cd longe && JINGA_HOME=/nao/existe HOME=/nao/existe ./app quebra")
 confere("erro dentro de modulo embutido: o traceback diz o modulo e mostra a linha do fonte",
         r["rc"] != 0 and "banco.pr, linha 5" in r["saida"] and "return 1 / 0" in r["saida"])
-r = roda("cd longe && POOLSCRIPT_HOME=/nao/existe HOME=/nao/existe ./app erro")
+r = roda("cd longe && JINGA_HOME=/nao/existe HOME=/nao/existe ./app erro")
 confere("erro no principal: o traceback diz main.pr e mostra a linha dele, nao a do ELF",
         r["rc"] != 0 and "main.pr, linha 8" in r["saida"] and "int(\"abc\")" in r["saida"]
         and not "app, linha" in r["saida"])
@@ -1041,7 +1071,7 @@ confere("importado: chamada certa passa e roda", r["rc"] == 0 and r["saida"].str
 #
 # `.ps`, `.psl` e `.p` foram as extensões da linguagem. Hoje o arquivo é `.pr`,
 # e o motor NÃO lê os nomes velhos. O que importa aqui é a FRASE: o arquivo
-# existe, é PoolScript válido, e mesmo assim não roda — sem dizer o conserto,
+# existe, é Jinga válido, e mesmo assim não roda — sem dizer o conserto,
 # isso é um "nao consegui abrir" que não explica nada. A recusa vale nos quatro
 # caminhos que leem arquivo (rodar, `--check`, `-o` e `--debug`), e vale só
 # para as três de antes: qualquer outro nome continua rodando.
@@ -1107,7 +1137,7 @@ confere("o programa migrado roda", r["rc"] == 0 and "7" in r["saida"])
 
 # ── relatório ───────────────────────────────────────────────────────────────
 post("")
-post("cli/psl:", ok, "checagens passaram")
+post("cli/jpkg:", ok, "checagens passaram")
 if falhas.len() > 0
 {
     post("FALHARAM:", falhas.len())

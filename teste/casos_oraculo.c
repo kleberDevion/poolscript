@@ -5849,7 +5849,7 @@ const Caso CASOS_ORACULO[] = {
 { "oraculo #5835", "post(\"ab\" * 3)\n", "ababab", NULL, 0 },
 { "oraculo #5836", "post(\"ab\" * 10)\n", "abababababababababab", NULL, 0 },
 
-/* ── divergem do Python: comportamento da PoolScript, travado ───────── */
+/* ── divergem do Python: comportamento da Jinga, travado ────────────── */
 /* Python daria: '<<ERRO>>' */
 { "oraculo #5837 (DIVERGE)", "post([].len())\n", "0", NULL, 0 },
 /* Python daria: '<<ERRO>>' */

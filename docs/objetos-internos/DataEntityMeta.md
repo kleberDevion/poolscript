@@ -2,7 +2,7 @@
 
 Esta página descrevia um tipo `DataEntityMeta`, "marcador interno" de uma
 Entity decorada com `@dataentity`. **Ele não existe na VM**: o nome não aparece
-em `pool --metadata`, não está no fonte do motor, e `type()` nunca o devolve.
+em `jinga --metadata`, não está no fonte do motor, e `type()` nunca o devolve.
 
 O que o `@dataentity` deixa é uma Entity comum:
 

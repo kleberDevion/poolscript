@@ -1,8 +1,8 @@
 <idea-plugin>
   <!-- Carregado só quando o plugin "TextMate Bundles" do IDEA está ligado (vem
-       ligado de fábrica). O bundle da PoolScript vai dentro do jar e é
+       ligado de fábrica). O bundle da Jinga vai dentro do jar e é
        registrado no boot: nada de Settings > Editor > TextMate Bundles. -->
   <extensions defaultExtensionNs="com.intellij">
-    <textmate.bundleProvider implementation="poolscript.icons.PoolBundle"/>
+    <textmate.bundleProvider implementation="jinga.icons.JingaBundle"/>
   </extensions>
 </idea-plugin>

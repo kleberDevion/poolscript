@@ -1,6 +1,6 @@
 # `json.parse(text)`
 
-Converte uma **string JSON** em dados da PoolScript (dict ou lista).
+Converte uma **string JSON** em dados da Jinga (dict ou lista).
 
 ```
 json.parse(text: str) -> dict | list
