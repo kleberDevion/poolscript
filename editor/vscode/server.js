@@ -1240,9 +1240,14 @@ function diagnostica(doc) {
     lista.slice().reverse().forEach((e) => {
       const linha = Math.max(0, (e.linha || 1) - 1);
       const col = Math.max(0, (e.coluna || 1) - 1);
+      /* o motor diz onde o trecho acusado termina (`l2`/`c2`, como nos
+       * tokens); sem isso, um caractere */
+      const fim = (e.l2 > 0 && e.c2 > 0)
+        ? { line: e.l2 - 1, character: e.c2 - 1 }
+        : { line: linha, character: col + 1 };
       diags.unshift({
         severity: DiagnosticSeverity.Error,
-        range: { start: { line: linha, character: col }, end: { line: linha, character: col + 1 } },
+        range: { start: { line: linha, character: col }, end: fim },
         message: `${e.tipo}: ${e.msg}`,
         source: 'jinga',
       });

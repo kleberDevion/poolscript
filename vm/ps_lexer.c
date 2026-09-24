@@ -127,11 +127,16 @@ typedef struct {
      * fechava um `[`, e um `(` esquecido engolia o resto do arquivo sem que
      * ninguém dissesse onde ele estava. Com a pilha, o fechador que não casa e
      * o grupo aberto no fim do arquivo viram erro no ABRIDOR. */
-    struct { unsigned char tipo; int32_t linha, col; } grupos[256];
+    struct { unsigned char tipo; int32_t linha, col; int32_t indent; } grupos[256];
     int         ngrupos;
-    /* 1 = segunda passada: a linha que só pode começar declaração fecha os
-     * grupos de expressão abertos (ver `ps_lexer_tokenize_modo`). */
+    /* 1 = segunda passada: a linha que só pode começar declaração, ou que
+     * volta à indentação da linha do abridor, fecha o grupo de expressão
+     * aberto (ver `ps_lexer_tokenize_modo`) — SÓ se ele é um dos `alvos`: os
+     * grupos que a PRIMEIRA passada achou sem par (posição do abridor). Um
+     * grupo que fecha direito nunca é tocado pelo palpite. */
     int         sincroniza;
+    struct PSFechado *alvos;
+    int32_t     nalvos;
 
     /* Onde começou a volta anterior do laço (ver `fecha_span`). Moram aqui, e
      * não em variáveis do laço, porque no modo fluxo o laço para e volta
@@ -208,7 +213,7 @@ static void avanca1(Lexer *lx)
 
 /* Guarda o erro na LISTA (modo de recuperação). Sem memória, só não guarda —
  * perder a linha do segundo erro é melhor que derrubar a análise. */
-static void erro_na_lista(Lexer *lx, const char *msg, int32_t l, int32_t c)
+static void erro_na_lista(Lexer *lx, const char *msg, int32_t l, int32_t c, int32_t l2, int32_t c2)
 {
     PSTokenList *o = lx->out;
     if (o->nerros >= 64) return;             /* arquivo ruim não vira enxurrada */
@@ -221,12 +226,15 @@ static void erro_na_lista(Lexer *lx, const char *msg, int32_t l, int32_t c)
     snprintf(o->erros[o->nerros].msg, sizeof(o->erros[o->nerros].msg), "%s", msg);
     o->erros[o->nerros].linha = l;
     o->erros[o->nerros].col = c;
+    o->erros[o->nerros].linha_fim = l2;
+    o->erros[o->nerros].col_fim = c2;
     o->nerros++;
 }
 
+/* Erro no caractere da posição atual: o trecho é ele. */
 static void erro(Lexer *lx, const char *msg)
 {
-    erro_na_lista(lx, msg, lx->linha, lx->col);
+    erro_na_lista(lx, msg, lx->linha, lx->col, lx->linha, lx->col + 1);
     if (!lx->out->ok) return;          /* preserva o primeiro erro */
     lx->out->ok = 0;
     snprintf(lx->out->erro, sizeof(lx->out->erro), "%s", msg);
@@ -251,17 +259,26 @@ static void aviso_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
     snprintf(o->avisos[o->navisos].msg, sizeof(o->avisos[o->navisos].msg), "%s", msg);
     o->avisos[o->navisos].linha = l;
     o->avisos[o->navisos].col = c;
+    o->avisos[o->navisos].linha_fim = 0;
+    o->avisos[o->navisos].col_fim = 0;
     o->navisos++;
 }
 
-static void erro_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
+/* Erro que começa em (l, c) e termina em (l2, c2). */
+static void erro_em_ate(Lexer *lx, const char *msg, int32_t l, int32_t c, int32_t l2, int32_t c2)
 {
-    erro_na_lista(lx, msg, l, c);
+    erro_na_lista(lx, msg, l, c, l2, c2);
     if (!lx->out->ok) return;
     lx->out->ok = 0;
     snprintf(lx->out->erro, sizeof(lx->out->erro), "%s", msg);
     lx->out->erro_linha = l;
     lx->out->erro_col = c;
+}
+/* Erro que começa em (l, c) e vai até onde o lexer está agora: a string ou o
+ * comentário de bloco sem fechar, o número sem dígito. */
+static void erro_em(Lexer *lx, const char *msg, int32_t l, int32_t c)
+{
+    erro_em_ate(lx, msg, l, c, lx->linha, lx->col);
 }
 
 static PSToken *novo_token(Lexer *lx, PSTokType t, int32_t linha, int32_t col)
@@ -369,7 +386,7 @@ static const char *grupo_msg(unsigned char tipo)
 
 /* Anota o trecho de um grupo fechado à força (ver `fechados` em ps_lexer.h).
  * Sem memória, só não anota: o parser acusaria um sintoma a mais, nada pior. */
-static void grupo_anota(Lexer *lx, int32_t l1, int32_t c1, int32_t l2, int32_t c2)
+static void grupo_anota(Lexer *lx, unsigned char tipo, int32_t l1, int32_t c1, int32_t l2, int32_t c2)
 {
     PSTokenList *o = lx->out;
     o->grupos_forcados++;
@@ -383,7 +400,28 @@ static void grupo_anota(Lexer *lx, int32_t l1, int32_t c1, int32_t l2, int32_t c
     o->fechados[o->nfechados].c1 = c1;
     o->fechados[o->nfechados].l2 = l2;
     o->fechados[o->nfechados].c2 = c2;
+    o->fechados[o->nfechados].tipo = tipo;
     o->nfechados++;
+}
+
+/* Indentação (espaços/tabs iniciais) da linha em que `pos` está. Só a
+ * segunda passada precisa: é a régua da regra "voltou à indentação do
+ * abridor = o grupo acabou". */
+static int32_t lx_indent_da_linha(const Lexer *lx, size_t pos)
+{
+    size_t i = pos;
+    while (i > 0 && lx->src[i - 1] != '\n') i--;
+    int32_t n = 0;
+    while (i < lx->len && (lx->src[i] == ' ' || lx->src[i] == '\t')) { n++; i++; }
+    return n;
+}
+
+/* O grupo aberto em (l, c) é um dos que a primeira passada achou sem par? */
+static int lx_eh_alvo(const Lexer *lx, int32_t l, int32_t c)
+{
+    for (int32_t k = 0; k < lx->nalvos; k++)
+        if (lx->alvos[k].l1 == l && lx->alvos[k].c1 == c) return 1;
+    return 0;
 }
 
 static void grupo_abre(Lexer *lx, unsigned char tipo, int32_t l, int32_t c)
@@ -393,6 +431,7 @@ static void grupo_abre(Lexer *lx, unsigned char tipo, int32_t l, int32_t c)
      * recuperação fina, mas a pilha nunca mente sobre o que está abaixo */
     if (lx->ngrupos >= (int)(sizeof(lx->grupos) / sizeof(lx->grupos[0]))) return;
     lx->grupos[lx->ngrupos].tipo = tipo;
+    lx->grupos[lx->ngrupos].indent = lx->sincroniza ? lx_indent_da_linha(lx, lx->pos) : 0;
     lx->grupos[lx->ngrupos].linha = l;
     lx->grupos[lx->ngrupos].col = c;
     lx->ngrupos++;
@@ -413,8 +452,8 @@ static void grupo_forca(Lexer *lx, int ate, int32_t l, int32_t c)
         if (t == G_PAREN || t == G_BRACK) { if (lx->paren_depth > 0) lx->paren_depth--; }
         else if (lx->chave_depth > 0) lx->chave_depth--;
     }
-    erro_em(lx, grupo_msg(t0), la, ca);
-    grupo_anota(lx, la, ca, l, c);
+    erro_em_ate(lx, grupo_msg(t0), la, ca, la, ca + 1);   /* o trecho é o abridor */
+    grupo_anota(lx, t0, la, ca, l, c);
     novo_token(lx, T_SINC, l, c);
 }
 
@@ -450,8 +489,9 @@ static void grupo_fim(Lexer *lx)
         if (lx->grupos[k].tipo == G_BLOCO) { k--; continue; }
         int base = k;
         while (base - 1 >= 0 && lx->grupos[base - 1].tipo != G_BLOCO) base--;
-        erro_em(lx, grupo_msg(lx->grupos[base].tipo), lx->grupos[base].linha, lx->grupos[base].col);
-        grupo_anota(lx, lx->grupos[base].linha, lx->grupos[base].col, lx->linha, lx->col + 1);
+        erro_em_ate(lx, grupo_msg(lx->grupos[base].tipo), lx->grupos[base].linha, lx->grupos[base].col,
+                    lx->grupos[base].linha, lx->grupos[base].col + 1);
+        grupo_anota(lx, lx->grupos[base].tipo, lx->grupos[base].linha, lx->grupos[base].col, lx->linha, lx->col + 1);
         acusou = 1;
         k = base - 1;
     }
@@ -517,18 +557,28 @@ static void trata_newline(Lexer *lx)
     lx->col = 1;
 
     /* SEGUNDA PASSADA (só quando a primeira achou grupo sem par): dentro de
-     * grupo de EXPRESSÃO, uma linha que só pode começar declaração fecha os
-     * grupos abertos até o bloco de fora. Sem isto, `funct f(` esquecido
-     * aberto engolia a `int funct depois(...)` de baixo como se fosse
-     * parâmetro, e o erro saía nela em vez de no `(`. */
-    if (lx->sincroniza && lx->ngrupos > 0 && lx->grupos[lx->ngrupos - 1].tipo != G_BLOCO
-            && lx_so_declaracao(lx, lx->pos)) {
+     * grupo de EXPRESSÃO que a primeira passada achou sem par (um dos
+     * `alvos`), a linha nova fecha os grupos abertos até o bloco de fora
+     * quando (a) só pode começar declaração, ou (b) volta à indentação da
+     * linha do abridor (ou menos) sem começar com um fechador. Sem (a),
+     * `funct f(` esquecido engolia a `int funct depois(...)` de baixo como se
+     * fosse parâmetro; sem (b), engolia o `post(1)` e o `x = = 2` de baixo,
+     * e o erro real da linha 4 sumia da lista como "sintoma" do `(`.
+     * Continuação indentada mais fundo (`f(\n    1,\n    2)`) segue sendo
+     * continuação; linha vazia ou só comentário não decide nada. Grupo que
+     * fecha direito nunca está em `alvos`, e o palpite não o toca. */
+    if (lx->sincroniza && lx->ngrupos > 0 && lx->grupos[lx->ngrupos - 1].tipo != G_BLOCO) {
         int k = lx->ngrupos - 1;
         while (k - 1 >= 0 && lx->grupos[k - 1].tipo != G_BLOCO) k--;
-        size_t q = lx->pos;
-        int32_t c = 1;
-        while (q < lx->len && (lx->src[q] == ' ' || lx->src[q] == '\t')) { q++; c++; }
-        grupo_forca(lx, k, lx->linha, c);
+        if (lx_eh_alvo(lx, lx->grupos[k].linha, lx->grupos[k].col)) {
+            size_t q = lx->pos;
+            int32_t c = 1;
+            while (q < lx->len && (lx->src[q] == ' ' || lx->src[q] == '\t')) { q++; c++; }
+            int vazia = q >= lx->len || lx->src[q] == '\n' || lx->src[q] == '\r' || lx->src[q] == '#';
+            int fechador = !vazia && (lx->src[q] == ')' || lx->src[q] == ']' || lx->src[q] == '}');
+            int recuou = !vazia && !fechador && c - 1 <= lx->grupos[k].indent;
+            if (recuou || lx_so_declaracao(lx, lx->pos)) grupo_forca(lx, k, lx->linha, c);
+        }
     }
 
     /* Dentro de `(` e `[` a indentação não conta (expressão multilinha). Mas
@@ -1183,13 +1233,13 @@ static int le_operador(Lexer *lx)
 
 /* ── laço principal ─────────────────────────────────────────────────────── */
 static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios, int recupera,
-                             int sincroniza);
+                             const struct PSFechado *alvos, int32_t nalvos);
 
 PSTokenList *ps_lexer_tokenize(const char *fonte, size_t len)
-{ return tokeniza(fonte, len, 0, 0, 0); }
+{ return tokeniza(fonte, len, 0, 0, NULL, 0); }
 
 PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len)
-{ return tokeniza(fonte, len, 1, 0, 0); }
+{ return tokeniza(fonte, len, 1, 0, NULL, 0); }
 
 /* Duas passadas no modo de recuperação. A primeira só usa regras EXATAS
  * (fechador que não casa, grupo aberto no fim). Se ela achou grupo sem par, a
@@ -1198,9 +1248,9 @@ PSTokenList *ps_lexer_tokenize_editor(const char *fonte, size_t len)
  * par, nunca chega aqui, e o `--check` não pode recusá-lo por causa disto. */
 PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len, int comentarios, int recupera)
 {
-    PSTokenList *l = tokeniza(fonte, len, comentarios, recupera, 0);
+    PSTokenList *l = tokeniza(fonte, len, comentarios, recupera, NULL, 0);
     if (recupera && l && l->grupos_forcados > 0) {
-        PSTokenList *l2 = tokeniza(fonte, len, comentarios, recupera, 1);
+        PSTokenList *l2 = tokeniza(fonte, len, comentarios, recupera, l->fechados, l->nfechados);
         if (l2) { ps_lexer_free(l); return l2; }
     }
     return l;
@@ -1235,7 +1285,8 @@ static void fecha_span(Lexer *lx)
 }
 
 static void lx_inicia(Lexer *lx, PSTokenList *out, const char *fonte, size_t len,
-                      int com_comentarios, int recupera, int sincroniza)
+                      int com_comentarios, int recupera,
+                      const struct PSFechado *alvos, int32_t nalvos)
 {
     memset(lx, 0, sizeof(*lx));
     lx->src = fonte;
@@ -1247,7 +1298,14 @@ static void lx_inicia(Lexer *lx, PSTokenList *out, const char *fonte, size_t len
     lx->out = out;
     lx->marca_comentarios = com_comentarios;
     lx->recupera = recupera;
-    lx->sincroniza = recupera && sincroniza;
+    /* a segunda passada existe pelos alvos: sem alvo, não há o que sincronizar.
+     * Cópia própria: a lista da primeira passada pode ser liberada antes de o
+     * lexer do fluxo terminar. */
+    if (recupera && alvos && nalvos > 0) {
+        lx->alvos = malloc(sizeof(*lx->alvos) * (size_t)nalvos);
+        if (lx->alvos) { memcpy(lx->alvos, alvos, sizeof(*lx->alvos) * (size_t)nalvos); lx->nalvos = nalvos; }
+    }
+    lx->sincroniza = lx->nalvos > 0;
 
     /* espaços iniciais da primeira linha não geram INDENT */
     while (lx->pos < lx->len && (lx->src[lx->pos] == ' ' || lx->src[lx->pos] == '\t')) {
@@ -1365,23 +1423,26 @@ static void lx_fim(Lexer *lx)
     } else if (out->fluxo) {
         novo_token(lx, T_EOF, lx->linha, lx->col);
     }
+    free(lx->alvos);
+    lx->alvos = NULL; lx->nalvos = 0;
 }
 
 static PSTokenList *tokeniza(const char *fonte, size_t len, int com_comentarios, int recupera,
-                             int sincroniza)
+                             const struct PSFechado *alvos, int32_t nalvos)
 {
     PSTokenList *out = calloc(1, sizeof(PSTokenList));
     if (!out) return NULL;
     out->ok = 1;
 
     Lexer lx;
-    lx_inicia(&lx, out, fonte, len, com_comentarios, recupera, sincroniza);
+    lx_inicia(&lx, out, fonte, len, com_comentarios, recupera, alvos, nalvos);
     while (lx_passo(&lx)) {}
     lx_fim(&lx);
     return out;
 }
 
-PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera, int sincroniza)
+PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera,
+                            const struct PSFechado *alvos, int32_t nalvos)
 {
     PSTokenList *out = calloc(1, sizeof(PSTokenList));
     if (!out) return NULL;
@@ -1389,9 +1450,39 @@ PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera, int sin
     out->fluxo = 1;
     Lexer *lx = malloc(sizeof(Lexer));
     if (!lx) { free(out); return NULL; }
-    lx_inicia(lx, out, fonte, len, 0, recupera, sincroniza);
+    lx_inicia(lx, out, fonte, len, 0, recupera, alvos, nalvos);
     out->lexer = lx;
     return out;
+}
+
+const char *ps_lexer_grupo_msg(unsigned char tipo) { return grupo_msg(tipo); }
+
+static void fluxo_avanca(PSTokenList *o);
+
+/* Lê o fonte inteiro no modo de recuperação soltando os blocos de tokens
+ * conforme nascem: o que sobra é `fechados` (e `ok`/`erros`). Segunda passada
+ * com os alvos da primeira, como o parser faz. */
+static PSTokenList *sonda_passada(const char *fonte, size_t len,
+                                  const struct PSFechado *alvos, int32_t nalvos)
+{
+    PSTokenList *o = ps_lexer_fluxo(fonte, len, 1, alvos, nalvos);
+    if (!o) return NULL;
+    while (o->lexer) {
+        fluxo_avanca(o);
+        if (o->n >= (o->soltos + 2) * PS_TOK_BLOCO) ps_lexer_solta_ate(o, o->n - PS_TOK_BLOCO);
+    }
+    ps_lexer_solta_ate(o, o->n > 0 ? o->n - 1 : 0);
+    return o;
+}
+
+PSTokenList *ps_lexer_sonda_grupos(const char *fonte, size_t len)
+{
+    PSTokenList *l = sonda_passada(fonte, len, NULL, 0);
+    if (l && l->grupos_forcados > 0) {
+        PSTokenList *l2 = sonda_passada(fonte, len, l->fechados, l->nfechados);
+        if (l2) { ps_lexer_free(l); return l2; }
+    }
+    return l;
 }
 
 /* Uma volta a mais do lexer do fluxo; no fim do fonte fecha a lista. */

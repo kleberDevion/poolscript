@@ -577,8 +577,12 @@ tarefa pendente: se o resultado importa, `await` nela.
 **Erro de tarefa não some.** Se a exceção acontece antes do primeiro ponto de
 cedência, ela sobe na própria chamada, como em funct comum. Se acontece
 depois e ninguém aguardou aquele future, a mensagem sai no **stderr** no fim
-do programa, dizendo que era de uma tarefa sem `await`. Em qualquer caso o
-traceback termina na linha do `raise`, não na do `await`.
+do programa, dizendo que era de uma tarefa sem `await`, e o programa
+**termina com código de saída 1** — o mesmo de uma exceção não pega no
+principal — mesmo que o resto tenha corrido até o fim. Erro é erro, também
+pra quem só olha o código (`&&`, `set -e`, o CI). `sys.exit(n)` explícito
+mantém o `n` que você escolheu; o erro é impresso do mesmo jeito. Em
+qualquer caso o traceback termina na linha do `raise`, não na do `await`.
 
 ```ps
 async funct dobro(n) {

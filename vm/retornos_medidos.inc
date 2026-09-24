@@ -13,6 +13,7 @@
     { "CorsConfig", "options", "list" },
     { "CorsConfig", "origins", "list" },
     { "CorsConfig", "permiser", "list" },
+    { "CorsConfig", "local", "bool" },
     { "DbConnection", "close", "Null" },
     { "DbConnection", "commit", "Null" },
     { "DbConnection", "cursor", "DbCursor" },

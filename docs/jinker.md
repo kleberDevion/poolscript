@@ -89,7 +89,7 @@ Quando você for pro sério, adiciona a configuração de acesso global:
 from jinker import Jinker, cors, jsonify
 
 app = Jinker(__name__)
-cors(options=["GET", "POST"], origins=["https://meusite.com"])
+cors(app, options=["GET", "POST"], origins=["https://meusite.com"])
 ```
 
 `cors(...)` é opcional (sem ele, tudo é liberado). A próxima seção explica.
@@ -99,11 +99,12 @@ cors(options=["GET", "POST"], origins=["https://meusite.com"])
 ## cors()
 
 Define as configurações de acesso de um servidor. O **primeiro argumento é
-o servidor** (pode ser mais de um), e depois os dois parâmetros:
+o servidor** (pode ser mais de um), e depois os parâmetros:
 
 ```
 cors(app, options=["POST", "GET", "DELETE"], origins=["https://meusite.com"])
 cors(api, admin, origins=["https://meusite.com"])     # a mesma config pros dois
+cors(app, origins=["https://meusite.com"], local=false)   # modo estrito: só a lista
 ```
 
 Sem o servidor é erro (`TypeError: cors() precisa do servidor como primeiro
@@ -114,7 +115,8 @@ argumento`). Servidor sem `cors(app, ...)` libera tudo.
 `cors.options([...])`.
 
 **origins** — lista de origens (domínios) permitidas a acessar a API.
-São checadas contra o header `Origin`/`Referer` da requisição:
+São checadas contra o header `Origin`/`Referer` da requisição, **nas rotas e
+no handshake do WebSocket** (um site fora da lista não abre o socket):
 
 | `origins=` | Efeito |
 |---|---|
@@ -122,12 +124,23 @@ São checadas contra o header `Origin`/`Referer` da requisição:
 | `["https://meusite.com"]` | Só requisições vindas desse domínio |
 | `["https://a.com", "https://b.com"]` | Vários domínios permitidos |
 
-Regras automáticas (não precisa configurar):
-- **Origens locais** (`localhost`, `127.x.x.x`, `0.0.0.0`, `::1`) são sempre
-  permitidas, mesmo com uma lista de `origins` restrita — pra você testar
-  local sem liberar o mundo.
+Origem fora da lista recebe `403` com `{"error": true, "code": 403,
+"message": "Origem não autorizada: https://outro.com"}`, **sem**
+`Access-Control-Allow-Origin` (uma recusa não libera origem nenhuma).
+
+Regras do modo padrão (`local=true`, não precisa configurar):
+- **Origens locais** (`localhost`, `127.x.x.x`, `0.0.0.0`, `::1`, também
+  `[::1]:porta`) são permitidas, mesmo com uma lista de `origins` restrita —
+  pra você testar local sem liberar o mundo. `127.evil.com` **não** é local:
+  depois do `127.` só vale dígito e ponto.
 - **Cliente sem `Origin`** (Insomnia, Postman, `curl`, outro backend) passa —
   a checagem de origem é uma proteção de *browser*, não bloqueia ferramenta.
+
+**local** — `local=false` é o **modo estrito**: só a lista vale. Origem local
+fora da lista é `403`, e pedido **sem `Origin`** também é `403` (no HTTP e no
+WebSocket). `Origin: null` (arquivo aberto do disco, sandbox) só passa se
+`"null"` estiver na lista. `cors.local()` devolve o modo. Ver
+[`cors.local()`](jinker/cors/local/local.md).
 
 > **Legado:** o parâmetro `permiser=` e o método `cors.permiser()` ainda
 > existem por compatibilidade (não vão ser removidos), mas `permiser=` na
@@ -665,7 +678,7 @@ str DB_PATH = os.getenv("DB_PATH")
 str SECRET = os.getenv("SECRET_KEY")
 
 app = Jinker(__name__)
-cors(options=["POST", "GET"], origins=["https://meusite.com"])
+cors(app, options=["POST", "GET"], origins=["https://meusite.com"])
 
 # Middleware de autenticação
 @app.middleware()

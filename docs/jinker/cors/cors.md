@@ -1,4 +1,4 @@
-# `cors(app, ..., options=None, origins=None)`
+# `cors(app, ..., options=None, origins=None, local=True)`
 
 Configuração de acesso de um servidor: quais métodos HTTP são aceitos e de
 quais origens (domínios). O **primeiro argumento é o servidor** (a instância
@@ -9,7 +9,7 @@ que forem passados.
 from jinker import Jinker, cors
 
 app = Jinker(__name__)
-cors(app, options: list = None, origins: list = None) -> cors
+cors(app, options: list = None, origins: list = None, local: bool = True) -> cors
 ```
 
 Chamar `cors(...)` é **opcional** — servidor sem `cors(app, ...)` libera tudo
@@ -68,13 +68,50 @@ cors(app, origins=["https://meusite.com"])
 | `["https://meusite.com"]` | só esse domínio |
 | `["https://a.com", "https://b.com"]` | vários domínios |
 
-Regras automáticas:
+A lista vale nas **rotas** (é o `auth=` padrão de cada uma) e no **handshake
+do WebSocket** de todo `@app.socket` do servidor — um site fora da lista não
+abre o socket. A comparação é exata (esquema, host e porta; barra final é
+ignorada). A recusa é `403`:
 
-- **Origens locais** (`localhost`, `127.x.x.x`, `0.0.0.0`, `::1`) sempre
-  passam, mesmo com lista restrita — pra testar local sem liberar o mundo.
+```
+{"error": true, "code": 403, "message": "Origem não autorizada: https://outro.com"}
+```
+
+sem `Access-Control-Allow-Origin` — uma recusa de origem não libera origem
+nenhuma. No WebSocket a recusa é essa mesma resposta HTTP, antes do
+handshake (RFC 6455 §4.2.2).
+
+Regras do modo padrão (`local=True`):
+
+- **Origens locais** (`localhost`, `127.x.x.x`, `0.0.0.0`, `::1`, também
+  entre colchetes com porta, `[::1]:8080`) passam mesmo com lista restrita —
+  pra testar local sem liberar o mundo. Só o host conta, a porta não.
+  `127.evil.com` **não** é local: depois do `127.` só vale dígito e ponto.
 - **Cliente sem header `Origin`** (Postman, `curl`, backend) passa.
 
 Ver [`cors.origins()`](origins/origins.md) para usar no `auth=` de uma rota.
+
+---
+
+## `local` — modo estrito
+
+```
+cors(app, origins=["https://meusite.com"], local=false)
+```
+
+Com `local=false` **só a lista vale**, no HTTP e no WebSocket:
+
+| Pedido | `local=True` (padrão) | `local=false` |
+|---|---|---|
+| `Origin` da lista | passa | passa |
+| `Origin` fora da lista | `403` | `403` |
+| `Origin: http://localhost:5173` (fora da lista) | passa | `403` |
+| sem `Origin` (`curl`, backend) | passa | `403` `Origem não autorizada: (sem origin)` |
+| `Origin: null` | `403` | passa **só** se `"null"` estiver na lista |
+
+Sem `origins` (lista vazia), `local=false` não muda nada: sem lista não há o
+que conferir. `local=` que não é bool é `TypeError` na chamada. O valor
+configurado vem em [`cors.local()`](local/local.md).
 
 ---
 
@@ -131,3 +168,4 @@ doc velha.
 |---|---|---|
 | `cors.options([...])` | resolve/filtra métodos pra uma rota | [options/options.md](options/options.md) |
 | `cors.origins()` | devolve as origens configuradas (usado em `auth=`) | [origins/origins.md](origins/origins.md) |
+| `cors.local()` | `false` = modo estrito (`local=false`) | [local/local.md](local/local.md) |

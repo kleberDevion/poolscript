@@ -202,7 +202,7 @@ funct protegida()
 @app.route("/cors-info")
 funct cors_info()
 {
-    return {"options": cors.options(), "origins": cors.origins(), "permiser": cors.permiser()}
+    return {"options": cors.options(), "origins": cors.origins(), "permiser": cors.permiser(), "local": cors.local()}
 }
 
 

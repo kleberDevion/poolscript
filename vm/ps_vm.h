@@ -23,7 +23,12 @@ typedef enum {
     PS_ERRO_NAO_SUPORTADO,  /* nó que o compilador ainda não emite */
     PS_ERRO_RUNTIME,
     PS_ERRO_MEMORIA,
-    PS_ERRO_TIPO            /* tipagem estática: o programa nem rodou */
+    PS_ERRO_TIPO,           /* tipagem estática: o programa nem rodou */
+    /* O programa correu até o fim, mas uma tarefa `async` que ninguém
+     * aguardou quebrou: o erro JÁ SAIU no stderr, e o código de saída é 1
+     * (o mesmo de uma exceção não pega no principal). Saía 0, e um script de
+     * build ou um CI tratava a falha como sucesso. */
+    PS_ERRO_TAREFA
 } PSTipoErro;
 
 /* Um quadro do traceback: função, arquivo e linha. */
@@ -53,7 +58,9 @@ typedef struct {
      * saída: o vetor é do chamador liberar (`free`). */
     /* `arquivo`/`linha_arq`/`col_arq`: o erro está em OUTRO arquivo (módulo
      * importado que não compila), e o quadro dele sai junto com o do import. */
+    /* `linha_fim`/`col_fim`: onde o trecho acusado termina (0 = não medido). */
     struct PSErroTipoExec { char msg[256]; char classe[32]; int linha; int col;
+                            int linha_fim; int col_fim;
                             char arquivo[1024]; int linha_arq; int col_arq; } *tipos;
     int        ntipos;
 } PSErroExec;

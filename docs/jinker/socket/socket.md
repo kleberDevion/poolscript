@@ -43,6 +43,15 @@ Path que **não** bate com nenhum `@app.socket` recebe uma resposta HTTP
 GET /x"}`) e a conexão fecha — o handshake nunca acontece, como a RFC 6455
 manda para recusa.
 
+**Origem.** O handshake confere o `Origin` com a lista de
+`cors(app, origins=[...])`, a mesma regra das rotas: site fora da lista recebe
+`403` (`{"error": true, "code": 403, "message": "Origem não autorizada:
+https://outro.com"}`, sem `Access-Control-Allow-Origin`) e a conexão fecha.
+No modo padrão origem local e cliente sem `Origin` (um programa, outro
+backend) passam; com `cors(app, ..., local=false)` só a lista vale, e sem
+`Origin` é `403`. Sem `cors(app, ...)`, qualquer origem abre o socket. Ver
+[`cors`](../cors/cors.md).
+
 ---
 
 ## Enviando mensagens: `app.socket()` (emissor)

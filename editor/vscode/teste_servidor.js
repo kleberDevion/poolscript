@@ -339,6 +339,17 @@ async function main() {
     conf('programa valido nao gera diagnostico', !ultimo || ultimo.params.diagnostics.length === 0,
          ultimo && ultimo.params.diagnostics);
   }
+  /* O `--check` diz onde o trecho acusado TERMINA (`l2`/`c2`): o sublinhado
+   * cobre a expressao inteira (`"abc"`, colunas 9-13), nao um caractere. */
+  {
+    const m = await conversa('int x = "abc"\n', []);
+    const ds = m.filter((x) => x.method === 'textDocument/publishDiagnostics');
+    const lista = ds.length ? ds[ds.length - 1].params.diagnostics : [];
+    const r = lista[0] && lista[0].range;
+    conf('diagnostico cobre o trecho inteiro que o motor acusou (l2/c2 do --check)',
+         !!r && r.start.line === 0 && r.start.character === 8 && r.end.line === 0 && r.end.character === 13,
+         r);
+  }
   /* A tipagem estática acha TODOS os erros do arquivo antes de rodar e o
    * `--check` os lista em `erros`: cada um vira um diagnóstico, na linha dele. */
   {

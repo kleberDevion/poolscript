@@ -12,7 +12,8 @@ Configuração global de CORS. Instância única por aplicação.
 |---|---|
 | `.options(subset=None)` | cors.options()           → todos os métodos configurados |
 | `.origins()` | cors.origins() → lista de origens configuradas (usado em auth=). |
-| `.permiser()` |  |
+| `.permiser()` | apelido legado de `.origins()` |
+| `.local()` | cors.local() → `false` quando foi configurado `cors(app, ..., local=false)` (modo estrito: só a lista de origens vale, nem localhost nem cliente sem `Origin`). |
 
 ### `.options(...)`
 

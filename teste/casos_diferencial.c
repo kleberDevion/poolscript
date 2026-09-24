@@ -1238,7 +1238,7 @@ const Caso CASOS_DIFERENCIAL[] = {
   "", "SyntaxError: no parametro o tipo vem ANTES do nome: escreva `funct(int x)`, nao `funct(x: int)`", 2 },
 { "dif #407",
   "funct f(a\n",
-  "", "SyntaxError: faltou ')' na declaracao da funct", 2 },
+  "", "SyntaxError: parentese '(' aberto nao foi fechado", 2 },
 { "dif #408",
   "funct f(a, b = 10) { return a + b }\npost(f(5), f(5, 1))\n",
   "15 6", NULL, 0 },

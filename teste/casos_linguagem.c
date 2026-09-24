@@ -818,7 +818,41 @@ const Caso CASOS_LINGUAGEM[] = {
   "f = t()\n"
   "sleep(0.3)\n"
   "post(\"fim\")\n",
+  "fim", "ninguem aguardou", 1 },
+/* O erro da tarefa saia no stderr e o programa saia com 0: um script de build
+ * ou o CI tratava a falha como sucesso. Agora e 1, o mesmo de uma excecao nao
+ * pega no principal. `sys.exit(n)` explicito mantem o `n` — e o erro continua
+ * sendo impresso. */
+{ "erro de tarefa nao lida: sys.exit(0) mantem o 0, e o erro sai mesmo assim",
+  "import sys\n"
+  "async funct t() {\n"
+  "    sleep(0.1)\n"
+  "    raise Exception(\"depois da cedencia\")\n"
+  "}\n"
+  "f = t()\n"
+  "sleep(0.3)\n"
+  "post(\"fim\")\n"
+  "sys.exit(0)\n",
   "fim", "ninguem aguardou", 0 },
+{ "erro de tarefa nao lida: sys.exit(3) mantem o 3",
+  "import sys\n"
+  "async funct t() {\n"
+  "    sleep(0.1)\n"
+  "    raise Exception(\"depois da cedencia\")\n"
+  "}\n"
+  "f = t()\n"
+  "sleep(0.3)\n"
+  "sys.exit(3)\n",
+  "", "ninguem aguardou", 3 },
+{ "tarefa que termina bem: o programa continua saindo com 0",
+  "async funct t() {\n"
+  "    sleep(0.1)\n"
+  "    post(\"t\")\n"
+  "}\n"
+  "f = t()\n"
+  "sleep(0.3)\n"
+  "post(\"fim\")\n",
+  "t\nfim", NULL, 0 },
 /* O future de uma `tarefa()` solta nao e alcancavel pelo programa: o aviso do
  * fim procurava no heap, e o GC o levava antes. Agora ele e raiz ate o erro ser
  * lido ou avisado. As duas listas grandes forcam coleta. */
@@ -839,7 +873,7 @@ const Caso CASOS_LINGUAGEM[] = {
   "    m.append(str(i) + \"y\")\n"
   "}\n"
   "post(\"fim\")\n",
-  "fim", "erro da tarefa solta", 0 },
+  "fim", "erro da tarefa solta", 1 },
 { "fim do programa continua sem esperar a tarefa",
   "async funct t() {\n"
   "    sleep(5)\n"
@@ -2746,8 +2780,11 @@ const Caso CASOS_LINGUAGEM[] = {
 { "a mesma inversao na lambda tambem e apontada",
   "g = funct(x: int) { return x }\n", "",
   "no parametro o tipo vem ANTES do nome: escreva `funct(int x)`", 2 },
-{ "parentese que falta de verdade continua dizendo que falta",
-  "funct f(a\n", "", "faltou ')' na declaracao da funct", 2 },
+/* Rodando, a frase e a do editor: o `(` aberto, no `(`. Dizia "faltou ')' na
+ * declaracao da funct" — o mesmo esquecimento com outro nome e outra coluna
+ * do que o `--check` mostrava, e a IDE parecia se contradizer. */
+{ "parentese que falta de verdade continua dizendo que falta, no abridor",
+  "funct f(a\n", "", "parentese '(' aberto nao foi fechado", 2 },
 { "parametro sem tipo continua valendo",
   "funct f(a, b = 10) { return a + b }\npost(f(5), f(5, 1))\n", "15 6", NULL, 0 },
 

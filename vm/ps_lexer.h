@@ -70,6 +70,12 @@ typedef struct {
     char    msg[160];
     int32_t linha;
     int32_t col;
+    /* Onde o trecho acusado TERMINA (a posição logo depois do último
+     * caractere dele): o token, num erro do parser; o abridor, num grupo sem
+     * par; o trecho lido, num erro do lexer. 0 = não medido. O editor
+     * sublinha daqui até ali em vez de adivinhar. */
+    int32_t linha_fim;
+    int32_t col_fim;
 } PSAviso;
 
 /* As palavras-chave da linguagem, terminadas em NULL. Fonte única: a tabela
@@ -130,7 +136,7 @@ typedef struct {
      * onde o lexer o fechou (l2, c2). O que o parser acusar ali dentro e
      * sintoma do mesmo grupo sem par — `funct f( {` e um `(` esquecido, nao
      * tambem um "esperado nome de parametro" no `{` — e sai da lista dele. */
-    struct PSFechado { int32_t l1, c1, l2, c2; } *fechados;
+    struct PSFechado { int32_t l1, c1, l2, c2; unsigned char tipo; } *fechados;
     int32_t  nfechados;
     int32_t  cap_fechados;
 
@@ -184,7 +190,17 @@ PSTokenList *ps_lexer_tokenize_modo(const char *fonte, size_t len,
 /* Lista em MODO FLUXO (ver o campo `fluxo`): nada é lido ainda. `fonte`
  * tem que viver até a lista ser liberada. `recupera` e `sincroniza` são os
  * das passadas de `ps_lexer_tokenize_modo`. */
-PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera, int sincroniza);
+PSTokenList *ps_lexer_fluxo(const char *fonte, size_t len, int recupera,
+                            const struct PSFechado *alvos, int32_t nalvos);
+
+/* Só os GRUPOS sem par de um fonte, sem guardar token nenhum: as duas
+ * passadas do modo de recuperação (a segunda com os alvos da primeira), com
+ * os blocos de tokens soltos conforme nascem. O resultado tem `fechados`
+ * (e `ok`, `erros`) e nada mais. É o que o modo de RODAR usa quando o parser
+ * falha, pra dizer o mesmo que o editor: o `(` esquecido, não o sintoma. */
+PSTokenList *ps_lexer_sonda_grupos(const char *fonte, size_t len);
+/* A frase do erro de um grupo sem par, pelo `tipo` gravado em `fechados`. */
+const char  *ps_lexer_grupo_msg(unsigned char tipo);
 /* O token `i` (índice absoluto), lendo o fonte até ele se preciso. NULL = o
  * arquivo acabou antes dele. Nas duas formas de lista. No modo fluxo, se o
  * lexer parar num erro sem o modo de recuperação, a lista ganha um EOF pra

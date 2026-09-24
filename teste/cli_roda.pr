@@ -496,6 +496,55 @@ os.writeFile(PASTA + "/multi.pr",
 r = roda("'" + POOL + "' --ast multi.pr")
 confere("`funct f( {` nao engole a declaracao que vem depois",
         "ActionDecl:depois" in topo(r["saida"]))
+# A linha de baixo que VOLTA a indentacao da linha do `(` fecha o grupo ali:
+# `post(1)` e `x = = 2` nao sao argumentos de `f(`, sao as linhas seguintes.
+# Antes o grupo so fechava na declaracao (linha 5), tudo entre o `(` e ela
+# era "sintoma" e saia da lista — o erro REAL da linha 4 sumia, e `post(1)`
+# sumia da arvore.
+confere("o que esta depois do `(` aberto volta pra arvore",
+        "ExpressionStmt:" in topo(r["saida"]))
+r = roda("'" + POOL + "' --check multi.pr")
+confere("o erro real da linha de baixo nao some como sintoma do `(`",
+        erros_do_check(r["saida"]) == [[2, 8, "parentese '(' aberto nao foi fechado"],
+                                       [4, 5, "expressao invalida"]])
+# Rodando, o MESMO erro do editor: o `(` esquecido em 2:8, nao o "esperado
+# nome de parametro" no `{` da coluna 10. A sonda de grupos do modo de
+# recuperacao escolhe a frase quando o parser para dentro de um grupo sem
+# par. Vale tambem pro modulo importado.
+r = roda("'" + POOL + "' quebrado.pr")
+confere("rodando `funct f( {`: a frase e a coluna sao as do `--check` (o `(`)",
+        r["rc"] != 0 and "parentese '(' aberto nao foi fechado" in r["saida"]
+        and "linha 2" in r["saida"] and "|        ^^^" in r["saida"])
+os.writeFile(PASTA + "/mq.pr", "funct f( {\npost(1)\n")
+os.writeFile(PASTA + "/main_q.pr", "import mq\n")
+r = roda("'" + POOL + "' main_q.pr")
+confere("modulo importado com `funct f( {`: rodando acusa o `(` dele",
+        r["rc"] != 0 and "mq: parentese '(' aberto nao foi fechado" in r["saida"]
+        and "em mq.pr, linha 1" in r["saida"])
+r = roda("'" + POOL + "' --check main_q.pr")
+confere("--check do importador acusa o `(` do modulo, na coluna do `(`",
+        "mq: parentese '(' aberto nao foi fechado" in r["saida"] and "\"coluna_arquivo\":8" in r["saida"])
+
+# Cada erro do --check diz onde o trecho acusado TERMINA (`l2`/`c2`, a
+# posicao logo depois do ultimo caractere), como os tokens e os nos: o token
+# no erro de sintaxe, o abridor no grupo sem par, o no inteiro no erro de tipo.
+funct fins_do_check(saida)
+{
+    d = json.parse(saida)
+    return [[e["linha"], e["coluna"], e["l2"], e["c2"]] for each e in d["erros"]]
+}
+os.writeFile(PASTA + "/fim.pr", "x = = 2\nfunct f(\n")
+r = roda("'" + POOL + "' --check fim.pr")
+confere("--check: l2/c2 do erro de sintaxe e o fim do token; do grupo sem par, o abridor",
+        fins_do_check(r["saida"]) == [[1, 5, 1, 6], [2, 8, 2, 9]])
+os.writeFile(PASTA + "/fim_tipo.pr", "int x = \"abc\"\n")
+r = roda("'" + POOL + "' --check fim_tipo.pr")
+confere("--check: l2/c2 do erro de tipo cobre a expressao inteira",
+        fins_do_check(r["saida"]) == [[1, 9, 1, 14]])
+r = roda("printf 'x = \"\\360\\240\\256\\267\" = 2\\n' | '" + POOL + "' --check")
+confere("--check sem --utf16: c2 em caractere", fins_do_check(r["saida"]) == [[1, 9, 1, 10]])
+r = roda("printf 'x = \"\\360\\240\\256\\267\" = 2\\n' | '" + POOL + "' --check --utf16")
+confere("--check --utf16: c2 convertido como a coluna", fins_do_check(r["saida"]) == [[1, 10, 1, 11]])
 
 os.writeFile(PASTA + "/corpo.pr",
              "funct a() {\n    x = = 1\n    y = 2\n}\nfunct b() {\n    return 3\n}\n")

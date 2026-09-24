@@ -138,6 +138,9 @@ static void perro_na_lista(P *p, const char *msg, PSToken *t)
     snprintf(o->erros[o->nerros].msg, sizeof(o->erros[o->nerros].msg), "%s", msg);
     o->erros[o->nerros].linha = t ? t->line : 0;
     o->erros[o->nerros].col = t ? t->col : 0;
+    /* o trecho acusado é o token: o editor sublinha ele inteiro */
+    o->erros[o->nerros].linha_fim = (t && t->col_fim) ? t->linha_fim : 0;
+    o->erros[o->nerros].col_fim = t ? t->col_fim : 0;
     o->nerros++;
 }
 
@@ -4010,14 +4013,15 @@ PSParseResult *ps_parse_lista(PSTokenList *tl, int recupera)
 PSParseResult *ps_parse_fonte(const char *fonte, size_t len, int recupera, PSTokenList **lexer)
 {
     *lexer = NULL;
-    PSTokenList *fl = ps_lexer_fluxo(fonte, len, recupera, 0);
+    PSTokenList *fl = ps_lexer_fluxo(fonte, len, recupera, NULL, 0);
     if (!fl) return NULL;
     PSParseResult *r = ps_parse_com(NULL, 0, recupera, fl);
     /* A segunda passada de `ps_lexer_tokenize_modo`: grupo sem par no arquivo
-     * liga a sincronia por declaração, e o parse refaz com ela. Só código
+     * liga a sincronia (por declaração e por indentação) SÓ pros grupos que a
+     * primeira passada achou sem par, e o parse refaz com ela. Só código
      * quebrado, no modo de recuperação, chega aqui. */
     if (recupera && fl->grupos_forcados > 0) {
-        PSTokenList *fl2 = ps_lexer_fluxo(fonte, len, recupera, 1);
+        PSTokenList *fl2 = ps_lexer_fluxo(fonte, len, recupera, fl->fechados, fl->nfechados);
         PSParseResult *r2 = fl2 ? ps_parse_com(NULL, 0, recupera, fl2) : NULL;
         if (r2) {
             ps_parse_free(r);
@@ -4150,7 +4154,7 @@ PSParserInc *ps_parse_inc_abre(const char *fonte, size_t len, int recupera)
 {
     PSParserInc *pi = calloc(1, sizeof(*pi));
     if (!pi) return NULL;
-    pi->fl = ps_lexer_fluxo(fonte, len, recupera, 0);
+    pi->fl = ps_lexer_fluxo(fonte, len, recupera, NULL, 0);
     pi->r = calloc(1, sizeof(PSParseResult));
     if (!pi->fl || !pi->r) { ps_lexer_free(pi->fl); free(pi->r); free(pi); return NULL; }
     pi->r->ok = 1;

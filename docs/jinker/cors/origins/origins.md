@@ -22,8 +22,13 @@ funct dados() {
 ```
 
 `auth=cors.origins()` diz "essa rota só aceita requisições das origens
-configuradas". Requisição de um domínio fora da lista recebe **403 Forbidden**
-(exceto origens locais e clientes sem `Origin` — ver [`cors`](../cors.md)).
+configuradas". Requisição de um domínio fora da lista recebe **403 Forbidden**,
+sem `Access-Control-Allow-Origin`. No modo padrão origens locais e clientes
+sem `Origin` passam; com `cors(app, ..., local=false)` só a lista vale — ver
+[`cors`](../cors.md) e [`cors.local()`](../local/local.md).
+
+A lista vale sozinha no **handshake do WebSocket** (`@app.socket` não tem
+`auth=`): a mesma checagem, a mesma recusa.
 
 ---
 

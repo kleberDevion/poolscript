@@ -394,6 +394,13 @@ comandos de editor **não param no primeiro erro**:
   sintaxe quebrada, a conferência de tipo não roda: o statement descartado
   levaria junto os nomes que ele liga, e cada uso viraria um "name is not
   defined" que não existe.
+- cada item de `erros` traz `l2`/`c2`: a posição logo depois do último
+  caractere do trecho acusado, como nos tokens e nos nós — o token, num
+  erro de sintaxe (`x = = 2` → `"linha":1,"coluna":5,"l2":1,"c2":6`); o
+  abridor, num grupo sem par; o nó inteiro, num erro de tipo (`int x =
+  "abc"` → colunas 9 a 14, a string toda). `0` quando o motor não mediu.
+  Com `--utf16`, `c2` sai convertido como `coluna`. O servidor sublinha de
+  `coluna` até `c2`.
 
 **Parêntese esquecido aberto.** Dentro de `(`, `[` e `{` de dicionário a
 quebra de linha não conta, então um `(` sem par transformava o resto do
@@ -404,15 +411,32 @@ arquivo numa expressão só. Agora:
   é um `(` sem par, e o `{` colado nele não vira um segundo erro;
 - o motor fecha o grupo e marca o ponto com um token `SINC` no `--tokens`
   (sem texto, `n` 0): num fechador que não casa (o `}` da funct com um `(`
-  aberto dentro dela), no fim do arquivo, e numa linha que só pode ser começo
+  aberto dentro dela), no fim do arquivo, numa linha que só pode ser começo
   de declaração — `funct nome`, `int funct nome`, `class Nome`, `@decorador`,
-  `import`, `from`. Com isso a declaração de baixo volta pra árvore.
+  `import`, `from` — e numa linha que **volta à indentação da linha do
+  abridor** (ou menos) sem começar com `)`, `]` ou `}`. Com isso a
+  declaração de baixo volta pra árvore, e o `post(1)` embaixo de um
+  `funct f( {` também: ele é a linha seguinte, não um argumento;
+- o que o parser acusaria **entre** o abridor e o ponto onde o grupo fechou
+  é sintoma do mesmo esquecimento e sai da lista (`funct f( {` não vira
+  também um "esperado nome de parametro" no `{`). O que vem **depois** do
+  fecho fica: `x = = 2` na linha de baixo é um erro por si só e aparece.
 
-A regra da declaração é palpite, e por isso só roda quando o arquivo já tem
-grupo sem par: arquivo válido nunca passa por ela, e o `--check` não recusa
-continuação válida como `f(1,\n  class=2)` (palavra-chave como argumento
-nomeado) nem `h(funct(v) {\n  funct interna() {...}\n})` (declaração dentro
-do corpo de uma lambda).
+As duas regras (declaração e indentação) são palpite, e por isso só valem
+na segunda passada e só pros grupos que a primeira passada achou sem par:
+arquivo válido nunca passa por elas, um grupo que fecha direito nunca é
+tocado, e o `--check` não recusa continuação válida como `f(1,\n  class=2)`
+(palavra-chave como argumento nomeado), `f(\n1,\n2)` (continuação sem
+indentação, dentro de um grupo que fecha) nem `h(funct(v) {\n  funct
+interna() {...}\n})` (declaração dentro do corpo de uma lambda).
+
+**Rodando, o mesmo erro.** `jinga arquivo.pr` não recupera (para no primeiro
+erro), mas a frase e a posição são as do editor: quando o parser para dentro
+de um grupo que o modo de recuperação fecharia à força, o motor acusa o
+abridor — `parentese '(' aberto nao foi fechado` em 2:8 pra `funct f( {`, e
+não "esperado nome de parametro" no `{`. Vale pro programa e pro módulo
+importado (`mq: parentese '(' aberto nao foi fechado`, com o quadro de
+dentro do módulo).
 
 Rodar o programa (`jinga arquivo.pr`) continua parando no primeiro erro — e o
 `(` esquecido também é acusado nele, não na linha de baixo.

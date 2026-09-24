@@ -1,0 +1,42 @@
+# Servidor-alvo do `teste/jinker_roda.pr` em MODO ESTRITO de origem — loopback.
+#
+# POR QUE E UM ARQUIVO A PARTE do `jinker_alvo.pr`: `cors(app, ..., local=false)`
+# e uma config do servidor inteiro (rotas e WebSocket), e um processo sobe um
+# servidor. O alvo principal fica no modo padrao (origem local passa, cliente
+# sem `Origin` passa); este sobe com `local=false`, onde SO a lista vale:
+#
+#   - pedido sem `Origin` -> 403, no HTTP e no handshake do WebSocket;
+#   - `Origin: http://localhost:9999` -> 403 (local nao passa por fora da lista);
+#   - `Origin: null` passa SO porque esta na lista, explicitamente.
+#
+# A rota `/__parar` existe pelo mesmo motivo do alvo HTTP: processo morto por
+# SINAL nao grava o `.gcda` do gcov.
+import jinker
+import sys
+from jinker import cors
+
+app = jinker.Jinker(name="alvo_estrito")
+
+cors(app, origins=["http://permitido.test", "null"], local=false)
+
+@app.route("/ok")
+funct ok()
+{
+    return {"ok": true, "local": cors.local()}
+}
+
+@app.socket("/ws")
+funct ws_eco(msg)
+{
+    return "eco:" + msg
+}
+
+@app.route("/__parar")
+funct parar()
+{
+    sys.exit(0)
+}
+
+if __name__ == "main" {
+    app(debug=false, host="127.0.0.1", port=28962)
+}

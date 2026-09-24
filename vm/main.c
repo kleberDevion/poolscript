@@ -228,6 +228,9 @@ static int reporta(PSErroExec *e, const char *origem)
             fprintf(stderr, "SyntaxError: %s\n", e->msg);
             imprime_quadro(origem, e->linha, e->col);
             return 2;
+        case PS_ERRO_TAREFA:
+            /* o traceback da tarefa já saiu no fim do programa; só o código */
+            return 1;
         case PS_ERRO_NAO_SUPORTADO:
             fprintf(stderr, "NotImplementedError: %s\n", e->msg);
             imprime_quadro(origem, e->linha, e->col);
@@ -741,6 +744,11 @@ static int cmd_check(const char *arquivo, const char *como)
             json_str(e.tipos[i].msg);
             printf(",\"linha\":%d,\"coluna\":%d", e.tipos[i].linha,
                    col_para_utf16(e.tipos[i].linha, e.tipos[i].col));
+            /* onde o trecho acusado TERMINA, como nos tokens e nos nós do
+             * `--ast` (0 = nao medido): o editor sublinha o trecho inteiro em
+             * vez de estender ate o fim do token que comeca ali */
+            printf(",\"l2\":%d,\"c2\":%d", e.tipos[i].linha_fim,
+                   col_para_utf16(e.tipos[i].linha_fim, e.tipos[i].col_fim));
             /* o erro esta em outro arquivo (modulo importado que nao compila) */
             if (e.tipos[i].arquivo[0]) {
                 printf(",\"arquivo\":");

@@ -842,6 +842,7 @@ mr_app2 = jinker.Jinker(name="mede2")
         ["CorsConfig", "options", 'cors.options()', 'cors.options(["POST"])'],
         ["CorsConfig", "origins", 'cors.origins()'],
         ["CorsConfig", "permiser", 'cors.permiser()'],
+        ["CorsConfig", "local", 'cors.local()'],
         ["JinkerResponse", "send", 'jinker.JinkerResponse().send("x")'],
         ["JinkerResponse", "json", 'jinker.JinkerResponse().json({"a": 1})'],
         ["JinkerResponse", "status", 'jinker.JinkerResponse().status(201)'],

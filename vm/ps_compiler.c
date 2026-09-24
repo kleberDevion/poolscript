@@ -1590,6 +1590,11 @@ static void terro(C *c, PSNode *n, const char *classe, const char *fmt, ...)
     snprintf(e.classe, sizeof(e.classe), "%s", classe);
     e.linha = (n && n->line) ? n->line : c->linha_atual;
     e.col   = (n && n->col)  ? n->col  : c->coluna_atual;
+    /* o trecho é o nó inteiro (a expressão, a chamada), não um caractere */
+    if (n && n->col_fim) {
+        e.linha_fim = n->linha_fim ? n->linha_fim : n->line;
+        e.col_fim   = n->col_fim;
+    }
     for (int32_t i = 0; i < c->nerros; i++)
         if (c->erros[i].linha == e.linha && c->erros[i].col == e.col && !strcmp(c->erros[i].msg, e.msg))
             return;

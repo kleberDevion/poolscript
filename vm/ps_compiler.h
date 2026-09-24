@@ -183,6 +183,10 @@ typedef struct {
     char    classe[32];
     int32_t linha;
     int32_t col;
+    /* Onde o nó acusado TERMINA (logo depois do último caractere); 0 = não
+     * medido. O `--check` publica como `l2`/`c2`. */
+    int32_t linha_fim;
+    int32_t col_fim;
     /* Erro que na verdade está em OUTRO arquivo — o módulo importado que não
      * compila, acusado na linha do `import`: o arquivo e a linha de dentro
      * dele, pro quadro mostrar onde o defeito está (vazio = este arquivo). */

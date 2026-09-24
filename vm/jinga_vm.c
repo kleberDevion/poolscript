@@ -695,6 +695,9 @@ typedef struct {
     Obj    obj;
     char **metodos; int nmetodos;
     char **origens; int norigens;
+    int    local;    /* 1 = origem local passa por fora da lista e pedido sem
+                      * Origin passa (padrão); 0 = `cors(app, ..., local=false)`,
+                      * modo estrito: SÓ a lista vale, no HTTP e no WebSocket */
 } PSJCors;
 
 /* registrar descartável do decorador */
@@ -8786,6 +8789,7 @@ static int met_jk_middleware(VM *vm, Value alvo, Value *args, int n, Value *out)
 static int met_jcors_options(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jcors_origins(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jcors_permiser(VM *vm, Value alvo, Value *args, int n, Value *out);
+static int met_jcors_local(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jreg_register(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jresp_send(VM *vm, Value alvo, Value *args, int n, Value *out);
 static int met_jresp_json(VM *vm, Value alvo, Value *args, int n, Value *out);
@@ -8820,6 +8824,7 @@ static const MetodoNat METODOS_JCORS[] = {
     { "options", met_jcors_options, "subset" },
     { "origins", met_jcors_origins, NULL },
     { "permiser", met_jcors_permiser, NULL },
+    { "local", met_jcors_local, NULL },
 };
 static const MetodoNat METODOS_JREG[] = {
     { "register", met_jreg_register, "handler" },
@@ -11831,9 +11836,12 @@ static void engole_avisa(VM *vm, Proto *pf, int tipo_ret)
 static PSFuturo **g_futs_erro;
 static int        g_nfuts_erro;
 
-static void avisa_futures_com_erro(VM *vm)
+/* Devolve quantos erros avisou: o fim do programa usa pra sair com 1 — um
+ * traceback no stderr com "exit code 0" embaixo fazia o CI aprovar a falha. */
+static int avisa_futures_com_erro(VM *vm)
 {
     (void)vm;
+    int avisados = 0;
     /* a lista de raízes (ver `fut_guarda_erro`), e não o heap: o future de
      * uma `tarefa()` solta não é alcançável pelo programa, e o GC o levava
      * antes de o aviso chegar nele */
@@ -11845,7 +11853,9 @@ static void avisa_futures_com_erro(VM *vm)
         fprintf(stderr, "%s: %s\n  em tarefa async que ninguem aguardou (sem `await`)\n",
                 f->erro_tipo[0] ? f->erro_tipo : "RuntimeError", f->erro_msg);
         fflush(stderr);
+        avisados++;
     }
+    return avisados;
 }
 
 static int mod_sys_exit(VM *vm, Value *args, int n, Value *out)
@@ -18875,6 +18885,7 @@ static Value jk_cors_nova(VM *vm)
         c->nmetodos = 5;
     }
     c->origens = NULL; c->norigens = 0;
+    c->local = 1;
     vm->alocado += sizeof(PSJCors);
     return MK_OBJ(c);
 }
@@ -18929,18 +18940,25 @@ static int mod_jk_request(VM *vm, Value *args, int n, Value *out)
     return 0;
 }
 
-/* cors(*apps, options=, origins=, permiser=) — chamado como objeto.
+/* cors(*apps, options=, origins=, permiser=, local=) — chamado como objeto.
  *
  * O primeiro argumento é o SERVIDOR (a instância do Jinker), e pode ser mais
  * de um: os posicionais chegam empacotados numa tup em args[0]
- * (jk_empacota_estrela, pela lista "*apps,options,origins,permiser"). Antes a
- * lista era "options,origins,permiser", posicional: `cors(http, origins=...)`
- * punha o app em `options` — não é lista, era ignorado, e configurava nada.
+ * (jk_empacota_estrela, pela lista "*apps,options,origins,permiser,local").
+ * Antes a lista era "options,origins,permiser", posicional:
+ * `cors(http, origins=...)` punha o app em `options` — não é lista, era
+ * ignorado, e configurava nada.
+ *
+ * `local=false` é o modo estrito: só a lista de `origins` vale — origem local
+ * não passa por fora dela e pedido SEM `Origin` é recusado, no HTTP e no
+ * WebSocket. O padrão (`local=true`) é o de sempre: local passa, ferramenta
+ * sem `Origin` passa.
  *
  * Cada chamada cria UMA config e a guarda em cada app dado (`j->cors`); é
- * ela que o registro de rota e o preflight leem. O singleton — o objeto que
- * se importa e que tem `.options()`/`.origins()` — espelha a config da última
- * chamada, pra esses helpers seguirem respondendo o configurado. */
+ * ela que o registro de rota, o preflight e o handshake do WebSocket leem. O
+ * singleton — o objeto que se importa e que tem `.options()`/`.origins()`/
+ * `.local()` — espelha a config da última chamada, pra esses helpers
+ * seguirem respondendo o configurado. */
 static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
 {
     Value apps = (n >= 1) ? args[0] : MK_UNSET();
@@ -18951,6 +18969,15 @@ static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
         if (!EH_JINKER(COMO_LIST(apps)->itens[i]))
             MERRO(vm, "TypeError", "cors() argument %d must be Jinker, not %s",
                   i + 1, nome_do_tipo_valor(COMO_LIST(apps)->itens[i]));
+    /* local= (args[4]) é bool; conferido ANTES de criar a config, pra não
+     * deixar raiz fixada ao sair por erro */
+    int local = 1;
+    if (n >= 5 && args[4].t != V_UNSET && args[4].t != V_NULL) {
+        if (args[4].t != V_BOOL)
+            MERRO(vm, "TypeError", "cors(local=) precisa de bool (true/false), veio %s",
+                  nome_do_tipo_valor(args[4]));
+        local = args[4].as.b ? 1 : 0;
+    }
 
     Value nova = jk_cors_nova(vm);
     if (!EH_JCORS(nova)) MERRO(vm, "MemoryError", "sem memoria");
@@ -18968,6 +18995,7 @@ static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
         c->origens = jk_strvec(args[2], 0, &c->norigens);
     }
     /* permiser (args[3]) é legado — ignorado, como no wrapper */
+    c->local = local;
     for (int i = 0; i < napps; i++) COMO_JINKER(COMO_LIST(apps)->itens[i])->cors = nova;
 
     /* o singleton espelha a última config */
@@ -18979,6 +19007,7 @@ static int jcors_call(VM *vm, Value alvo, Value *args, int n, Value *out)
         free(s->origens);
         s->metodos = jk_strdup_vec(c->metodos, c->nmetodos); s->nmetodos = s->metodos ? c->nmetodos : 0;
         s->origens = jk_strdup_vec(c->origens, c->norigens); s->norigens = s->origens ? c->norigens : 0;
+        s->local = c->local;
     }
     vm->sp--;
     *out = alvo;
@@ -19051,6 +19080,13 @@ static int met_jcors_origins(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n; return jk_origens_lista(vm, alvo, out); }
 static int met_jcors_permiser(VM *vm, Value alvo, Value *args, int n, Value *out)
 { (void)args; (void)n; return jk_origens_lista(vm, alvo, out); }
+/* cors.local() -> bool: false = modo estrito (`cors(app, ..., local=false)`) */
+static int met_jcors_local(VM *vm, Value alvo, Value *args, int n, Value *out)
+{
+    (void)vm; (void)args; (void)n;
+    *out = MK_BOOL(COMO_JCORS(alvo)->local != 0);
+    return 0;
+}
 
 /* ── JinkerResponse ─────────────────────────────────────────────────────── */
 static PSJResp *jk_novo_resp(VM *vm)
@@ -20029,6 +20065,9 @@ static int jk_poolip_check(PSJinker *j, const char *ip, char *motivo, size_t mca
 }
 
 /* ── CORS: origem local / permitida ─────────────────────────────────────── */
+/* Host de `localhost`, `0.0.0.0`, `::1` (também entre colchetes, `[::1]:8080`)
+ * ou `127.x.y.z` — a porta não conta. `127.` só é local quando o resto é
+ * dígito e ponto: `127.evil.com` era aceito como local. */
 static int jk_is_local(const char *origin)
 {
     if (!origin || !origin[0]) return 0;
@@ -20037,27 +20076,46 @@ static int jk_is_local(const char *origin)
     const char *dd = strstr(origin, "://");
     if (dd) h = dd + 3;
     int i = 0;
-    while (h[i] && h[i] != ':' && h[i] != '/' && i < (int)sizeof(host)-1) { host[i] = (char)tolower((unsigned char)h[i]); i++; }
-    host[i] = '\0';
-    if (!strcmp(host,"localhost")||!strcmp(host,"127.0.0.1")||!strcmp(host,"127.1.0.1")
-        ||!strcmp(host,"0.0.0.0")||!strcmp(host,"::1")) return 1;
-    if (strncmp(host, "127.", 4) == 0) return 1;
+    if (h[0] == '[') {                       /* IPv6 literal: [::1]:porta */
+        const char *fim = strchr(h, ']');
+        if (!fim) return 0;
+        for (const char *p = h + 1; p < fim && i < (int)sizeof(host)-1; p++) host[i++] = (char)tolower((unsigned char)*p);
+        host[i] = '\0';
+    } else {
+        while (h[i] && h[i] != ':' && h[i] != '/' && i < (int)sizeof(host)-1) { host[i] = (char)tolower((unsigned char)h[i]); i++; }
+        host[i] = '\0';
+    }
+    if (!strcmp(host,"localhost")||!strcmp(host,"0.0.0.0")||!strcmp(host,"::1")) return 1;
+    if (strncmp(host, "127.", 4) == 0) {
+        if (!host[4]) return 0;
+        for (const char *p = host + 4; *p; p++)
+            if (!isdigit((unsigned char)*p) && *p != '.') return 0;
+        return 1;
+    }
     return 0;
 }
-static int jk_origem_ok(JkRota *rt, const char *origin, const char *sec_fetch)
+/* `auth`/`nauth` = a lista de origens (a da rota, ou a do `cors(app, ...)`
+ * pro WebSocket); `local` = o modo da config do app: 1 (padrão) deixa origem
+ * local passar por fora da lista e aceita cliente sem `Origin` (ferramenta,
+ * outro backend); 0 (`local=false`) só aceita o que está na lista, e pedido
+ * sem `Origin` é recusado. Lista vazia = sem restrição, nos dois modos. */
+static int jk_origem_ok(char **auth, int nauth, int local, const char *origin, const char *sec_fetch)
 {
-    if (rt->nauth == 0) return 1;                    /* sem restrição */
-    if ((!origin || !origin[0]) && (!sec_fetch || !sec_fetch[0])) return 1;  /* tool client */
-    if (jk_is_local(origin)) return 1;
-    char oc[512]; snprintf(oc, sizeof(oc), "%s", origin ? origin : "");
+    if (nauth == 0) return 1;                        /* sem restrição */
+    if (!origin || !origin[0]) {
+        if (!local) return 0;                        /* estrito: sem Origin = recusa */
+        return (!sec_fetch || !sec_fetch[0]);        /* tool client */
+    }
+    if (local && jk_is_local(origin)) return 1;
+    char oc[512]; snprintf(oc, sizeof(oc), "%s", origin);
     size_t nn = strlen(oc); while (nn && oc[nn-1]=='/') oc[--nn]='\0';
-    for (int i = 0; i < rt->nauth; i++) if (strcmp(rt->auth[i], oc) == 0) return 1;
+    for (int i = 0; i < nauth; i++) if (strcmp(auth[i], oc) == 0) return 1;
     return 0;
 }
-static void jk_acao_origin(JkRota *rt, const char *origin, char *out, size_t cap)
+static void jk_acao_origin(JkRota *rt, int local, const char *origin, char *out, size_t cap)
 {
     if (!rt || rt->nauth == 0) { snprintf(out, cap, "*"); return; }
-    if (jk_is_local(origin)) { snprintf(out, cap, "%s", origin && origin[0] ? origin : "*"); return; }
+    if (local && jk_is_local(origin)) { snprintf(out, cap, "%s", origin && origin[0] ? origin : "*"); return; }
     char oc[512]; snprintf(oc, sizeof(oc), "%s", origin ? origin : "");
     size_t nn = strlen(oc); while (nn && oc[nn-1]=='/') oc[--nn]='\0';
     for (int i = 0; i < rt->nauth; i++) if (strcmp(rt->auth[i], oc) == 0) { snprintf(out, cap, "%s", origin); return; }
@@ -20418,9 +20476,14 @@ static void jk_erro_json_h(struct PSJkConn *c, int code, const char *msg, int ke
                       "{\"error\": true, \"code\": %d, \"message\": \"%s\"}", code, seg);
     if (nc < 0) nc = 0;
     if ((size_t)nc >= sizeof(corpo)) nc = (int)sizeof(corpo) - 1;
+    /* `acao_origin` NULL = sem `Access-Control-Allow-Origin` nenhum: é o 403
+     * de origem — recusa de origem não pode liberar origem (saía `*`). */
     char extra[768];
-    snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: %s\r\n%s",
-             acao_origin ? acao_origin : "*", cabecalhos ? cabecalhos : "");
+    if (acao_origin)
+        snprintf(extra, sizeof(extra), "Access-Control-Allow-Origin: %s\r\n%s",
+                 acao_origin, cabecalhos ? cabecalhos : "");
+    else
+        snprintf(extra, sizeof(extra), "%s", cabecalhos ? cabecalhos : "");
     ps_jk_responde(c, code, "application/json; charset=utf-8", corpo, (size_t)nc, extra, keep);
 }
 static void jk_erro_json(struct PSJkConn *c, int code, const char *msg, int keep,
@@ -20576,6 +20639,28 @@ static void jk_ws_aceita(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr)
         jk_erro_json(c, 404, m404, 0, "*");
         ps_jk_close(c);
         return;
+    }
+    /* Origem: a MESMA regra do HTTP, no handshake. A lista é a de
+     * `cors(app, origins=[...])` (o socket não tem `auth=`), lida na hora do
+     * pedido; sem `cors()`, sem restrição. A lista só valia nas rotas —
+     * qualquer site abria o WebSocket. A recusa é HTTP 403 (RFC 6455 §4.2.2),
+     * sem `Access-Control-Allow-Origin`. */
+    {
+        Value cfgv = jk_cors_do_app(vm, MK_OBJ(j));
+        PSJCors *cfg = EH_JCORS(cfgv) ? COMO_JCORS(cfgv) : NULL;
+        const char *origin = ps_jk_header(hr, "Origin");
+        if (!origin) origin = ps_jk_header(hr, "Referer");
+        if (!origin) origin = "";
+        if (cfg && !jk_origem_ok(cfg->origens, cfg->norigens, cfg->local, origin,
+                                 ps_jk_header(hr, "Sec-Fetch-Site"))) {
+            if (params) vm->sp--;
+            char m403[700];
+            snprintf(m403, sizeof(m403), "Origem não autorizada: %s", origin[0] ? origin : "(sem origin)");
+            jk_erro_json(c, 403, m403, 0, NULL);
+            ps_jk_close(c);
+            if (j->debug) { printf("[jinker-ws] origem recusada: %s (%s)\n", hr->path, origin[0] ? origin : "sem origin"); fflush(stdout); }
+            return;
+        }
     }
     if (ps_jk_ws_handshake(c, hr) != 0) { if (params) vm->sp--; ps_jk_close(c); return; }
 
@@ -20910,16 +20995,21 @@ static int jk_serve_uma(VM *vm, PSJinker *j, struct PSJkConn *c, PSJkReq *hr, co
         return hr->keep_alive;
     }
 
-    /* origem permitida? */
+    /* origem permitida? A lista é a da rota (`auth=`, ou a do cors do app
+     * copiada no registro); o modo (`local=`) é o da config do app NA HORA
+     * do pedido. */
     const char *sec = ps_jk_header(hr, "Sec-Fetch-Site");
-    if (!jk_origem_ok(rota, origin, sec)) {
+    Value cfgv = jk_cors_do_app(vm, MK_OBJ(j));
+    int local = EH_JCORS(cfgv) ? COMO_JCORS(cfgv)->local : 1;
+    if (!jk_origem_ok(rota->auth, rota->nauth, local, origin, sec)) {
         if (params) vm->sp--;
         char msg[600]; snprintf(msg, sizeof(msg), "Origem não autorizada: %s", origin[0] ? origin : "(sem origin)");
-        jk_erro_json(c, 403, msg, hr->keep_alive, "*");
+        /* NULL = sem Access-Control-Allow-Origin: saía `*` numa recusa de origem */
+        jk_erro_json(c, 403, msg, hr->keep_alive, NULL);
         return hr->keep_alive;
     }
 
-    char acao[512]; jk_acao_origin(rota, origin, acao, sizeof(acao));
+    char acao[512]; jk_acao_origin(rota, local, origin, acao, sizeof(acao));
 
     /* monta a requisição */
     PSJReq *req = jk_monta_req(vm, hr, params);
@@ -22436,7 +22526,7 @@ static const MembroMod MOD_JINKER[] = {
 static int jk_obj_callable(Value alvo, const char **params, FnMetodoChamavel *fn)
 {
     if (EH_JINKER(alvo))  { *params = "debug,host,port,reload,workers"; *fn = jk_app_run;  return 1; }
-    if (EH_JCORS(alvo))   { *params = "*apps,options,origins,permiser"; *fn = jcors_call; return 1; }
+    if (EH_JCORS(alvo))   { *params = "*apps,options,origins,permiser,local"; *fn = jcors_call; return 1; }
     if (EH_JSOCKNS(alvo)) { *params = "path,channel"; *fn = jsockns_call; return 1; }
     if (EH_JCHAN(alvo))   { *params = "forAll"; *fn = jchan_call; return 1; }
     return 0;
@@ -28775,6 +28865,9 @@ static int estrela_nomes_de(void *vctx, const char *mod, char ***nomes, int32_t 
     return cortou_aqui ? 2 : 1;
 }
 
+static void sintaxe_na_causa(const char *fonte, size_t len, char *msg, size_t cap,
+                             int32_t *linha, int32_t *col);
+
 /* ── o módulo `.pr` importado, pro checador estático (regra 5) ──────────────
  *
  * `import util` / `from util import soma`: o compilador pergunta aqui pela
@@ -28863,7 +28956,6 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
      * é a árvore PODADA (os cabeçalhos), não o módulo inteiro */
     PSFonteCompilado fc;
     PSPrograma *prog = ps_compila_fonte(fonte, lidos, 0, &res, &fc);
-    free(fonte);
     PSParseResult *r = fc.parse;
     if (!fc.lexer || !fc.lexer->ok || !r || !r->ok) {
         a->info.falhou = 1;
@@ -28872,12 +28964,20 @@ static int estrela_modulo_de(void *vctx, const char *mod, const PSModuloAst **ou
         snprintf(a->info.erro_msg, sizeof(a->info.erro_msg), "%s",
                  lex_ruim ? fc.lexer->erro : (r && !r->ok) ? r->erro : "sem memoria");
         if (lex_ruim) { a->info.erro_linha = fc.lexer->erro_linha; a->info.erro_col = fc.lexer->erro_col; }
-        else if (r && !r->ok) { a->info.erro_linha = r->erro_linha; a->info.erro_col = r->erro_col; }
+        else if (r && !r->ok) {
+            a->info.erro_linha = r->erro_linha; a->info.erro_col = r->erro_col;
+            /* o mesmo erro que o editor daria no módulo: o `(` esquecido
+             * (o fonte ainda está vivo: é ele que a sonda relê) */
+            sintaxe_na_causa(fonte, lidos, a->info.erro_msg, sizeof(a->info.erro_msg),
+                             &a->info.erro_linha, &a->info.erro_col);
+        }
+        free(fonte);
         ps_lexer_free(fc.lexer);
         ps_parse_free(r);
         ps_compila_free(prog);
         return 2;
     }
+    free(fonte);
     ps_lexer_free(fc.lexer);
     /* Não compila (sintaxe ou tipo): a classe e a frase do PRIMEIRO erro, as
      * mesmas que o `carrega_modulo_ps` mostra na linha do import. */
@@ -28988,18 +29088,26 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
     /* compilado direto do fonte, uma declaração por vez (ps_compila_fonte) */
     PSFonteCompilado fc;
     PSPrograma *prog = ps_compila_fonte(fonte, lidos, 0, &res_mod, &fc);
-    free(fonte);
     {
         PSTokenList *toks = fc.lexer;
         PSParseResult *r = fc.parse;
         int lex_ruim = toks && !toks->ok, sint_ruim = r && !r->ok;
         if (!toks || !r || lex_ruim || sint_ruim) {
             const char *msg = lex_ruim ? toks->erro : sint_ruim ? r->erro : "sem memoria";
+            char causa[256];
+            if (lex_ruim) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
+            else if (sint_ruim) {
+                /* o mesmo erro que o editor: o `(` esquecido, não o sintoma
+                 * (o fonte ainda está vivo: é ele que a sonda relê) */
+                vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col;
+                snprintf(causa, sizeof(causa), "%s", r->erro);
+                sintaxe_na_causa(fonte, lidos, causa, sizeof(causa), &vm->mod_erro_linha, &vm->mod_erro_col);
+                msg = causa;
+            }
             snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, msg);
             snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "SyntaxError");
             snprintf(vm->mod_erro_arquivo, sizeof(vm->mod_erro_arquivo), "%s", abspath);
-            if (lex_ruim) { vm->mod_erro_linha = toks->erro_linha; vm->mod_erro_col = toks->erro_col; }
-            else if (sint_ruim) { vm->mod_erro_linha = r->erro_linha; vm->mod_erro_col = r->erro_col; }
+            free(fonte);
             ps_lexer_free(toks);
             ps_parse_free(r);
             ps_compila_free(prog);
@@ -29008,6 +29116,7 @@ static int carrega_modulo_ps(VM *vm, const char *nome, Value *out)
         ps_lexer_free(toks);
         ps_parse_free(r);
     }
+    free(fonte);
     if (!prog || !prog->ok) {
         snprintf(vm->erro, sizeof(vm->erro), "%.60s: %.180s", nome_vis, prog ? prog->erro : "sem memoria");
         snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "%s",
@@ -29705,6 +29814,8 @@ static void erro_de_compilacao(const PSPrograma *prog, PSErroExec *e)
         snprintf(e->tipos[i].classe, sizeof(e->tipos[i].classe), "%s", prog->erros_tipo[i].classe);
         e->tipos[i].linha = prog->erros_tipo[i].linha;
         e->tipos[i].col = prog->erros_tipo[i].col;
+        e->tipos[i].linha_fim = prog->erros_tipo[i].linha_fim;
+        e->tipos[i].col_fim = prog->erros_tipo[i].col_fim;
         snprintf(e->tipos[i].arquivo, sizeof(e->tipos[i].arquivo), "%s", prog->erros_tipo[i].arquivo);
         e->tipos[i].linha_arq = prog->erros_tipo[i].linha_arq;
         e->tipos[i].col_arq = prog->erros_tipo[i].col_arq;
@@ -29724,9 +29835,38 @@ static void verifica_erros_sintaxe(PSErroExec *e, const PSAviso *erros, int32_t 
         snprintf(v[i].msg, sizeof(v[i].msg), "%s", erros[i].msg);
         v[i].linha = erros[i].linha;
         v[i].col = erros[i].col;
+        v[i].linha_fim = erros[i].linha_fim;
+        v[i].col_fim = erros[i].col_fim;
     }
     e->tipos = v;
     e->ntipos = n;
+}
+
+/* Rodando (sem recuperação) o parser para no SINTOMA de um `(` esquecido:
+ * `funct f( {` dava "esperado nome de parametro" no `{` (coluna 10), e o
+ * `--check` dizia "parentese '(' aberto nao foi fechado" no `(` (coluna 8) —
+ * o editor e o terminal se contradiziam na mesma linha. A sonda de grupos
+ * (as duas passadas do modo de recuperação, sem guardar token) diz se a
+ * posição do erro cai dentro de um grupo fechado à força; se cai, a frase e
+ * a posição passam a ser as do abridor — as mesmas do editor. Vale pro
+ * programa e pro módulo importado. */
+static void sintaxe_na_causa(const char *fonte, size_t len, char *msg, size_t cap,
+                             int32_t *linha, int32_t *col)
+{
+    PSTokenList *tl = ps_lexer_sonda_grupos(fonte, len);
+    if (!tl) return;
+    for (int32_t k = 0; k < tl->nfechados; k++) {
+        const struct PSFechado *f = &tl->fechados[k];
+        int no_abridor = (*linha == f->l1 && *col == f->c1);
+        int depois     = *linha > f->l1 || (*linha == f->l1 && *col > f->c1);
+        int antes      = *linha < f->l2 || (*linha == f->l2 && *col < f->c2);
+        if (no_abridor || (depois && antes)) {
+            snprintf(msg, cap, "%s", ps_lexer_grupo_msg(f->tipo));
+            *linha = f->l1; *col = f->c1;
+            break;
+        }
+    }
+    ps_lexer_free(tl);
 }
 
 int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e,
@@ -29931,6 +30071,7 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
         e->tipo = PS_ERRO_SINTAXE;
         snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
         e->linha = r->erro_linha; e->col = r->erro_col;
+        { int32_t l = e->linha, c = e->col; sintaxe_na_causa(fonte, len, e->msg, sizeof(e->msg), &l, &c); e->linha = l; e->col = c; }
         ps_parse_free(r);
         ps_compila_free(prog);
         return -1;
@@ -30069,11 +30210,12 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
     fflush(stdout);
     /* Tarefa `async` que quebrou e ninguém aguardou: o erro sai agora, em vez
      * de morrer dentro do future. O programa NÃO espera tarefa pendente —
-     * quem quer o resultado usa `await`. */
-    avisa_futures_com_erro(&vm);
+     * quem quer o resultado usa `await`. E o programa sai com 1: erro é erro,
+     * também no código de saída (`sys.exit(n)` explícito mantém o `n`). */
+    int tarefas_com_erro = avisa_futures_com_erro(&vm);
     if (vm.dbg.ativo) {
         char corpo[96];
-        snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}", rc == 0 ? 0 : 1);
+        snprintf(corpo, sizeof corpo, "{\"exitCode\":%d}", (rc == 0 && tarefas_com_erro == 0) ? 0 : 1);
         dbg_evento(&vm, "exited", corpo);
         dbg_evento(&vm, "terminated", NULL);
         /* Fica atendendo depois do fim: é aqui que o editor busca o gráfico de
@@ -30112,6 +30254,14 @@ int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec
             e->tb[i].col   = vm.mod_erro_col;
             e->linha       = vm.mod_erro_linha;
         }
+        libera_vm(&vm);
+        return -1;
+    }
+    if (tarefas_com_erro > 0) {
+        /* já impresso por `avisa_futures_com_erro`; quem reporta só devolve 1 */
+        e->tipo = PS_ERRO_TAREFA;
+        snprintf(e->msg, sizeof(e->msg), "%d erro(s) em tarefa async que ninguem aguardou", tarefas_com_erro);
+        e->tipo_nome[0] = '\0';
         libera_vm(&vm);
         return -1;
     }

@@ -436,6 +436,146 @@ bruto_ws = cru_em(PORTA + 1, "GET /nope HTTP/1.1\r\nHost: x\r\nUpgrade: websocke
 confere("WebSocket em path inexistente recebe HTTP 404 com a frase do HTTP",
         bruto_ws.startswith("HTTP/1.1 404") and "rota não encontrada: GET /nope" in bruto_ws)
 
+# ── origem no handshake do WebSocket ────────────────────────────────────────
+# A lista de `cors(app, origins=[...])` so valia nas rotas: qualquer site abria
+# o WebSocket. Agora o handshake confere o `Origin` com a MESMA regra do HTTP.
+# No 101 o servidor deixa a conexao aberta (o `cru_em` esperaria o timeout
+# inteiro), entao a leitura para na linha de status; na recusa (403/404) o
+# servidor fecha, e a leitura vai ate o fim — o corpo chega num segundo pacote.
+funct handshake_em(porta, extra)
+{
+    s = sockets.socket()
+    s.settimeout(5.0)
+    s.connect(("127.0.0.1", porta))
+    s.sendall(("GET /ws HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+               + "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n"
+               + extra + "\r\n").encode())
+    resposta = ""
+    try
+    {
+        while true
+        {
+            pedaco = s.recv(4096)
+            if len(pedaco) == 0
+            {
+                break
+            }
+            resposta = resposta + pedaco.decode()
+            if resposta.startswith("HTTP/1.1 101")
+            {
+                break
+            }
+        }
+    }
+    catch (e)
+    {
+        post("      (handshake) erro lendo a resposta:", str(e))
+    }
+    s.close()
+    return resposta
+}
+hs = handshake_em(PORTA + 1, "Origin: http://permitido.test\r\n")
+confere("WebSocket: Origin da lista faz o handshake (101)", hs.startswith("HTTP/1.1 101"))
+hs = handshake_em(PORTA + 1, "Origin: http://evil.test\r\n")
+confere("WebSocket: Origin fora da lista e HTTP 403 com a frase do HTTP",
+        hs.startswith("HTTP/1.1 403") and "Origem não autorizada: http://evil.test" in hs)
+confere("WebSocket: o 403 de origem NAO libera origem (sem Access-Control-Allow-Origin)",
+        not "Access-Control-Allow-Origin" in hs)
+hs = handshake_em(PORTA + 1, "")
+confere("WebSocket: sem Origin passa no modo padrao (cliente que nao e navegador)", hs.startswith("HTTP/1.1 101"))
+hs = handshake_em(PORTA + 1, "Origin: http://localhost:9999\r\n")
+confere("WebSocket: origem local passa no modo padrao", hs.startswith("HTTP/1.1 101"))
+hs = handshake_em(PORTA + 1, "Origin: http://[::1]:9999\r\n")
+confere("WebSocket: [::1] com porta e local", hs.startswith("HTTP/1.1 101"))
+hs = handshake_em(PORTA + 1, "Origin: http://127.evil.com\r\n")
+confere("WebSocket: 127.evil.com NAO e local (403)", hs.startswith("HTTP/1.1 403"))
+
+# O mesmo no HTTP: a recusa de origem saia com `Access-Control-Allow-Origin: *`
+# — uma recusa que liberava tudo.
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://evil.test\r\nConnection: close\r\n\r\n")
+confere("HTTP: origem fora da lista e 403", bruto.startswith("HTTP/1.1 403"))
+confere("HTTP: o 403 de origem NAO traz Access-Control-Allow-Origin", not "Access-Control-Allow-Origin" in bruto)
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://127.evil.com\r\nConnection: close\r\n\r\n")
+confere("HTTP: 127.evil.com NAO passa como local", bruto.startswith("HTTP/1.1 403"))
+bruto = cru("GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://[::1]:5\r\nConnection: close\r\n\r\n")
+confere("HTTP: [::1] e local no modo padrao", bruto.startswith("HTTP/1.1 200"))
+r = get(RAIZ + "/cors-info")
+confere("cors.local() e true no modo padrao", r.get_json("local") == true)
+
+# ── modo estrito: cors(app, ..., local=false) ───────────────────────────────
+# Servidor A PARTE (teste/jinker_alvo_estrito.pr): a config e do servidor
+# inteiro. So a lista vale — nem localhost, nem cliente sem Origin.
+ESTRITO = 28962
+os.cmd("setsid '" + sys.executable + "' teste/jinker_alvo_estrito.pr > "
+       + PASTA + "/estrito.log 2>&1 < /dev/null & echo $! > " + PASTA + "/estrito.pid")
+estrito_subiu = false
+i = 0
+while i < 100
+{
+    s = sockets.socket()
+    s.settimeout(0.2)
+    rc_con = s.connect_ex(("127.0.0.1", ESTRITO))
+    s.close()
+    if rc_con == 0
+    {
+        estrito_subiu = true
+        break
+    }
+    sleep(0.1)
+    i = i + 1
+}
+confere("o alvo estrito subiu", estrito_subiu)
+if estrito_subiu
+{
+    bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+    confere("estrito: HTTP sem Origin e 403", bruto.startswith("HTTP/1.1 403") and "(sem origin)" in bruto)
+    bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://localhost:9999\r\nConnection: close\r\n\r\n")
+    confere("estrito: localhost fora da lista e 403", bruto.startswith("HTTP/1.1 403"))
+    confere("estrito: o 403 sai sem Access-Control-Allow-Origin", not "Access-Control-Allow-Origin" in bruto)
+    bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: http://permitido.test\r\nConnection: close\r\n\r\n")
+    confere("estrito: Origin da lista e 200 e cors.local() e false",
+            bruto.startswith("HTTP/1.1 200") and "\"local\": false" in bruto)
+    confere("estrito: a resposta ecoa a origem da lista", "Access-Control-Allow-Origin: http://permitido.test" in bruto)
+    bruto = cru_em(ESTRITO, "GET /ok HTTP/1.1\r\nHost: x\r\nOrigin: null\r\nConnection: close\r\n\r\n")
+    confere("estrito: Origin null passa SO porque esta na lista", bruto.startswith("HTTP/1.1 200"))
+    hs = handshake_em(ESTRITO + 1, "")
+    confere("estrito: WebSocket sem Origin e 403", hs.startswith("HTTP/1.1 403") and "(sem origin)" in hs)
+    hs = handshake_em(ESTRITO + 1, "Origin: http://localhost:9999\r\n")
+    confere("estrito: WebSocket de localhost fora da lista e 403", hs.startswith("HTTP/1.1 403"))
+    hs = handshake_em(ESTRITO + 1, "Origin: http://permitido.test\r\n")
+    confere("estrito: WebSocket com Origin da lista faz o handshake", hs.startswith("HTTP/1.1 101"))
+    hs = handshake_em(ESTRITO + 1, "Origin: null\r\n")
+    confere("estrito: WebSocket com Origin null listado faz o handshake", hs.startswith("HTTP/1.1 101"))
+
+    # para o alvo estrito (o /__parar tambem exige a origem)
+    cru_em(ESTRITO, "GET /__parar HTTP/1.1\r\nHost: x\r\nOrigin: http://permitido.test\r\nConnection: close\r\n\r\n")
+    estrito_parou = false
+    i = 0
+    while i < 50
+    {
+        s = sockets.socket()
+        s.settimeout(0.2)
+        fechou = s.connect_ex(("127.0.0.1", ESTRITO)) != 0
+        s.close()
+        if fechou
+        {
+            estrito_parou = true
+            break
+        }
+        sleep(0.1)
+        i = i + 1
+    }
+    confere("o alvo estrito parou pelo /__parar", estrito_parou)
+    if not estrito_parou
+    {
+        os.cmd("kill $(cat " + PASTA + "/estrito.pid) 2>/dev/null; true")
+    }
+}
+else
+{
+    post(os.readFile(PASTA + "/estrito.log"))
+}
+
 # Socket LONGO declarado antes do curto com o mesmo parametro (`/chat/<sala>/admin`
 # e `/chat/<sala>`): a conexao em `/chat/geral` tem que entrar na sala `geral`
 # — o mesmo reset de params das rotas HTTP deixava `count` em 0 e a conexao
