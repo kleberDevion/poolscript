@@ -357,6 +357,7 @@ Comandos do binário que existem pra servir o editor:
 | `jinga --contexto L:C [arq]` | o que o cursor toca naquela posição |
 | `jinga --check [arq]` | o erro de compilação em JSON, com linha e coluna |
 | `jinga --check --path <arq>` | o mesmo, para um buffer não salvo que VALE como aquele arquivo |
+| `jinga --bytecode [arq]` | o bytecode que o compilador gera, uma instrução por linha (`ip NOME arg ; significado`), por proto |
 
 **Arquivo ou buffer.** Os quatro primeiros aceitam o caminho do arquivo; sem
 caminho, leem o fonte da entrada padrão, que é como o editor manda o buffer

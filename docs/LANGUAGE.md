@@ -1,5 +1,3 @@
-# Jinga v8.3.90 — Referência da linguagem
-
 Este mark down tem alguams specs da linguagem.
 
 > Arquitetura (para quem for mexer no código): lexer (`vm/ps_lexer.c`) →

@@ -79,6 +79,10 @@ void ps_debug_porta(int porta);
 
 int ps_roda_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e);
 
+/* `jinga --bytecode`: compila como pra rodar e imprime o bytecode de cada
+ * proto em `saida`; NUNCA executa. 0 = ok; -1 preenche `e` como ao rodar. */
+int ps_desmonta_fonte(const char *fonte, size_t len, const char *caminho, FILE *saida, PSErroExec *e);
+
 /* ── executável gerado por `-o`: fontes EMBUTIDOS ──────────────────────────
  * O `-o` grudava só o arquivo principal: `import banco` no executável ia
  * procurar `banco.pr` no disco da máquina de quem roda. Agora o binário leva

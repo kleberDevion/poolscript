@@ -325,6 +325,35 @@ confere("--tokens diz onde o token termina",
 r = roda("printf 'funct f(a)\\n{\\n    return a\\n}\\n' | '" + POOL + "' --ast")
 confere("--ast diz a coluna final do nó", "\"c2\":" in r["saida"])
 
+# `--bytecode`: o que o compilador gera, uma instrução por linha, com o
+# significado do argumento — é como se afirma o que um laço VIRA.
+funct opcodes_de(saida, proto)
+{
+    nomes = []
+    dentro = false
+    for each l in saida.split("\n")
+    {
+        if l.startswith("== proto ")
+        {
+            dentro = l.startswith("== proto " + str(proto) + " ")
+            continue
+        }
+        if dentro and l.strip() != ""
+        {
+            addEnd(nomes, l.split()[1])
+        }
+    }
+    return nomes
+}
+os.writeFile(PASTA + "/laco.pr", "int n = 0\nwhile n < 1000000000 {\n    n++\n}\npost(n)\n")
+r = roda("'" + POOL + "' --bytecode laco.pr")
+confere("--bytecode lista o proto do modulo", r["rc"] == 0 and "== proto 0 <module>" in r["saida"])
+confere("--bytecode diz o nome do global e o alvo do salto",
+        "LOAD_GLOBAL      " in r["saida"] and "; n" in r["saida"] and "; -> " in r["saida"])
+confere("--bytecode mostra a constante", "; 1000000000" in r["saida"])
+r = roda("printf 'x = = 1\\n' | '" + POOL + "' --bytecode")
+confere("--bytecode com erro de sintaxe sai como ao rodar", r["rc"] != 0 and "SyntaxError" in r["saida"])
+
 r = roda("printf 'x = 1\\npost(f\"oi {x} {x + 2}\")\\n' | '" + POOL + "' --tokens")
 confere("--tokens publica os tokens de dentro da f-string",
         "\"v\":\"x\"" in r["saida"] and "\"v\":\"+\"" in r["saida"])

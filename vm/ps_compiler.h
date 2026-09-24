@@ -14,6 +14,7 @@
 #define PS_COMPILER_H
 
 #include <stdint.h>
+#include <stdio.h>
 
 #include "ps_ast.h"
 #include "ps_lexer.h"
@@ -328,6 +329,8 @@ PSPrograma *ps_compila_fonte(const char *fonte, size_t len, int recupera,
 
 /* Nome legível do opcode — usado no desmonte e no teste diferencial. */
 const char *ps_op_nome(int32_t op);
+/* O bytecode de cada proto, uma instrução por linha (`jinga --bytecode`). */
+void ps_desmonta(const PSPrograma *prog, FILE *saida);
 
 /* O módulo de um nó de import, codificado como o OP_IMPORT_MOD e a expansão
  * do `*` o recebem (`.a.b`, ou \x01 + literal entre aspas). `encoded` tem 512

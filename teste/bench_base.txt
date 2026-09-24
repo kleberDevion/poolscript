@@ -8,30 +8,36 @@
 # contra `aritmetica` cancela: CPU mais lenta desacelera tudo junto.
 #
 # governor na medição: powersave
-# binário: PoolScript 8.3.84 [PSVM]
+# binário: Jinga 15.93.0 [PSVM] (2026-09-24) Runtime standalone
 #
 # NÃO entra no `make check` — roda em `make bench` e no noturno.
 # Piora acima de 20.0% na razão é o que se cobra.
 
 aritmetica 1.0
-chamada 0.198
-closure 0.181
-dict 0.557
-gc 0.38
-lista_indice 0.404
-metodo 0.635
-objeto 0.283
-partida 0.038
-texto 27.977
+chamada 0.32
+closure 0.274
+dict 0.522
+fib 0.344
+fib_int 0.508
+gc 0.499
+laco_tipado 2.622
+lista_indice 0.47
+metodo 1.016
+objeto 0.341
+partida 0.01
+texto 55.518
 
 # ms desta gravação — informativo, NÃO é o que se compara:
-#   aritmetica       200.9 ms
-#   chamada          39.8 ms
-#   closure          36.3 ms
-#   dict             111.9 ms
-#   gc               76.3 ms
-#   lista_indice     81.3 ms
-#   metodo           127.7 ms
-#   objeto           56.8 ms
-#   partida          7.7 ms
-#   texto            5620.7 ms
+#   aritmetica       258.0 ms
+#   chamada          82.7 ms
+#   closure          70.7 ms
+#   dict             134.7 ms
+#   fib              88.9 ms
+#   fib_int          131.0 ms
+#   gc               128.8 ms
+#   laco_tipado      676.6 ms
+#   lista_indice     121.3 ms
+#   metodo           262.2 ms
+#   objeto           88.0 ms
+#   partida          2.7 ms
+#   texto            14323.9 ms

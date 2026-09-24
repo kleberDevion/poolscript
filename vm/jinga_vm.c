@@ -29869,6 +29869,62 @@ static void sintaxe_na_causa(const char *fonte, size_t len, char *msg, size_t ca
     ps_lexer_free(tl);
 }
 
+/* `jinga --bytecode arquivo.pr`: compila como pra rodar (sem recuperação,
+ * mesmo resolvedor de import) e imprime o bytecode de cada proto. Erro de
+ * compilação sai como ao rodar. NUNCA executa. */
+int ps_desmonta_fonte(const char *fonte, size_t len, const char *caminho, FILE *saida, PSErroExec *e)
+{
+    e->tipo = PS_ERRO_NENHUM; e->msg[0] = '\0'; e->tipo_nome[0] = '\0';
+    e->linha = e->col = 0; e->ntb = 0;
+    e->tipos = NULL; e->ntipos = 0;
+    char dir_script[sizeof(((VM *)0)->dir_script)];
+    dir_do_script(caminho, dir_script, sizeof(dir_script));
+    char abs_script[1024];
+    abs_script[0] = '\0';
+    if (caminho) {
+        char *rp = realpath(caminho, NULL);
+        snprintf(abs_script, sizeof(abs_script), "%s", rp ? rp : caminho);
+        free(rp);
+    }
+    EstrelaVisita vis_script = { abs_script, NULL };
+    EstrelaCtx ectx = { dir_script, dir_script, caminho ? &vis_script : NULL, NULL, 1 };
+    PSResolvedor res = { estrela_nomes_de, estrela_modulo_de, &ectx };
+    PSFonteCompilado fc;
+    PSPrograma *prog = ps_compila_fonte(fonte, len, 0, &res, &fc);
+    PSTokenList *toks = fc.lexer;
+    PSParseResult *r = fc.parse;
+    if (!r || !toks) {
+        ps_parse_free(r); ps_lexer_free(toks); ps_compila_free(prog);
+        e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1;
+    }
+    if (!toks->ok) {
+        e->tipo = PS_ERRO_SINTAXE;
+        snprintf(e->msg, sizeof(e->msg), "%s", toks->erro);
+        e->linha = toks->erro_linha; e->col = toks->erro_col;
+        ps_lexer_free(toks); ps_parse_free(r); ps_compila_free(prog);
+        return -1;
+    }
+    ps_lexer_free(toks);
+    if (!r->ok) {
+        e->tipo = PS_ERRO_SINTAXE;
+        snprintf(e->msg, sizeof(e->msg), "%s", r->erro);
+        e->linha = r->erro_linha; e->col = r->erro_col;
+        { int32_t l = e->linha, c = e->col; sintaxe_na_causa(fonte, len, e->msg, sizeof(e->msg), &l, &c); e->linha = l; e->col = c; }
+        ps_parse_free(r); ps_compila_free(prog);
+        return -1;
+    }
+    ps_parse_free(r);
+    if (!prog) { e->tipo = PS_ERRO_MEMORIA; snprintf(e->msg, sizeof(e->msg), "sem memoria"); return -1; }
+    if (!prog->ok) {
+        erro_de_compilacao(prog, e);
+        ps_compila_free(prog);
+        return -1;
+    }
+    ps_desmonta(prog, saida);
+    ps_compila_free(prog);
+    return 0;
+}
+
 int ps_verifica_fonte(const char *fonte, size_t len, const char *caminho, PSErroExec *e,
                       PSAviso **avisos, int32_t *navisos)
 {

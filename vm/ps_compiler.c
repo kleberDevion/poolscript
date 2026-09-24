@@ -51,6 +51,82 @@ const char *ps_op_nome(int32_t op)
     return "?";
 }
 
+/* ── desmontador: `jinga --bytecode arquivo.pr` ─────────────────────────
+ *
+ * O que cada laço VIRA é o que decide a velocidade, e sem ver o bytecode toda
+ * otimização é palpite. Uma linha por instrução: `ip  NOME  arg  ; o que o
+ * arg significa` — a constante, o nome do global, o alvo do salto, o proto.
+ * É texto, não JSON: é pra gente ler e pra teste afirmar a sequência. */
+static void desmonta_const(const PSConst *k, FILE *f)
+{
+    switch (k->kind) {
+        case K_NULL:   fputs("Null", f); break;
+        case K_BOOL:   fputs(k->i ? "true" : "false", f); break;
+        case K_INT:    fprintf(f, "%lld", (long long)k->i); break;
+        case K_FLO:    fprintf(f, "%g", k->d); break;
+        case K_BIGINT: fprintf(f, "%s (bigint)", k->s ? k->s : ""); break;
+        case K_BYTES:  fprintf(f, "bytes[%d]", (int)k->slen); break;
+        case K_STR: {
+            fputc('"', f);
+            for (int32_t i = 0; i < k->slen && i < 40; i++) {
+                unsigned char c = (unsigned char)k->s[i];
+                if (c == '\n') fputs("\\n", f);
+                else if (c == '"') fputs("\\\"", f);
+                else if (c < 32) fprintf(f, "\\x%02x", c);
+                else fputc(c, f);
+            }
+            if (k->slen > 40) fputs("...", f);
+            fputc('"', f);
+            break;
+        }
+    }
+}
+
+void ps_desmonta(const PSPrograma *prog, FILE *f)
+{
+    if (!prog) return;
+    for (int32_t pi = 0; pi < prog->nprotos; pi++) {
+        const PSProto *p = &prog->protos[pi];
+        fprintf(f, "== proto %d %s nlocals=%d nparams=%d%s%s\n", pi,
+                (p->nome && p->nome[0]) ? p->nome : "<modulo>", p->nlocals, p->nparams,
+                p->eh_gerador ? " gerador" : "", p->eh_async ? " async" : "");
+        for (int32_t ip = 0; ip + 1 < p->ncode; ip += 2) {
+            int32_t op = p->code[ip], arg = p->code[ip + 1];
+            fprintf(f, "%6d  %-16s %-8d", ip, ps_op_nome(op), arg);
+            switch (op) {
+                case OP_LOAD_CONST: case OP_GET_MEMBER: case OP_SET_MEMBER:
+                case OP_IMPORT_MOD: case OP_IMPORT_FROM: case OP_LOAD_METODO:
+                case OP_SET_METODO: case OP_IMPORT_FROM_ESTRELA: case OP_CONFERE_TIPO:
+                    if (arg >= 0 && arg < p->nconsts) { fputs("; ", f); desmonta_const(&p->consts[arg], f); }
+                    break;
+                case OP_COERCE_DECL:
+                    if ((arg >> 4) >= 0 && (arg >> 4) < p->nconsts) {
+                        fputs("; ", f); desmonta_const(&p->consts[arg >> 4], f);
+                        fprintf(f, " tipo=%d", arg & 15);
+                    }
+                    break;
+                case OP_LOAD_GLOBAL: case OP_STORE_GLOBAL: case OP_LOAD_NAME:
+                case OP_STORE_NAME: case OP_CLEAR_GLOBAL: case OP_CELL_GET_NAME:
+                case OP_CELL_SET_NAME:
+                    if (arg >= 0 && arg < prog->nglobais && prog->globais[arg])
+                        fprintf(f, "; %s", prog->globais[arg]);
+                    break;
+                case OP_JUMP: case OP_JUMP_IF_FALSE: case OP_JUMP_IF_TRUE:
+                case OP_JUMP_IF_SET: case OP_JUMP_SE_UNSET: case OP_SKIP_IF_IMPORT:
+                case OP_SETUP_TRY: case OP_ITER_NEXT: case OP_ITER_RANGE:
+                    fprintf(f, "; -> %d", arg);
+                    break;
+                case OP_MAKE_FUNCTION: case OP_MAKE_CLOSURE:
+                    if (arg >= 0 && arg < prog->nprotos && prog->protos[arg].nome)
+                        fprintf(f, "; %s", prog->protos[arg].nome);
+                    break;
+                default: break;
+            }
+            fputc('\n', f);
+        }
+    }
+}
+
 /* ── índice de nomes ─────────────────────────────────────────────────────── */
 /* Nome -> posição numa lista, por hash. As listas de nomes do compilador (os
  * globais, os nomes colhidos do topo, os criados no módulo, os ligados no

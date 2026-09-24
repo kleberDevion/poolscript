@@ -50,6 +50,7 @@ static void ajuda(void)
 "  jinga --contexto L:C [arq] O que o cursor toca (pro editor); sem arquivo, stdin\n"
 "  jinga --tokens [arq]       Tokens do lexer em JSON (pro realce); sem arquivo, stdin\n"
 "  jinga --ast [arq]          A arvore do parser em JSON (pro editor); sem arquivo, stdin\n"
+"  jinga --bytecode [arq]     O bytecode que o compilador gera, uma instrucao por linha\n"
 "  jinga --utf16 ...          Com --tokens/--ast/--contexto/--check: colunas em UTF-16\n"
 "  jinga --version / -V       Mostra a versao\n"
 "  jinga --help / -h          Mostra esta ajuda\n"
@@ -1145,6 +1146,21 @@ static void ast_json(FILE *f, const PSNode *n)
     fputc('}', f);
 }
 
+/* `jinga --bytecode [arq]`: o bytecode de cada proto, uma instrução por linha,
+ * pra ver (e pra teste afirmar) o que um laço vira. Erro de compilação sai
+ * como ao rodar. */
+static int cmd_bytecode(const char *arquivo)
+{
+    size_t tam = 0;
+    char *fonte = le_fonte_editor(arquivo, &tam);
+    if (!fonte) { fprintf(stderr, "jinga: sem entrada\n"); return 1; }
+    PSErroExec e;
+    int rc = ps_desmonta_fonte(fonte, tam, arquivo, stdout, &e);
+    free(fonte);
+    if (rc != 0) return reporta(&e, arquivo ? arquivo : "<stdin>");
+    return 0;
+}
+
 static int cmd_ast(const char *arquivo)
 {
     size_t tam = 0;
@@ -1579,6 +1595,8 @@ int main(int argc, char **argv)
         return cmd_tokens(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--ast") || !strcmp(cmd, "ast"))
         return cmd_ast(argc >= 3 ? argv[2] : NULL);
+    if (!strcmp(cmd, "--bytecode") || !strcmp(cmd, "bytecode"))
+        return cmd_bytecode(argc >= 3 ? argv[2] : NULL);
     if (!strcmp(cmd, "--contexto") || !strcmp(cmd, "contexto"))
         return cmd_contexto(argc >= 3 ? argv[2] : NULL, argc >= 4 ? argv[3] : NULL);
     if (!strcmp(cmd, "--metadata") || !strcmp(cmd, "metadata")) {

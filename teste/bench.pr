@@ -81,6 +81,18 @@ CASOS = [
 
     ["gc", "i = 0\nwhile (i < 300000) {\n    l = [i, i + 1, [i]]\n    d = {\"a\": l}\n    i = i + 1\n}\npost(\"fim\")\n",
      "lixo por iteração: é o custo do coletor, não do despacho"],
+
+    # O laço que o dono da linguagem mediu contra outro interpretador
+    # (2026-09-24): variável DECLARADA int, comparação com constante, `++`.
+    # É o alvo dos opcodes especializados (JF_*, INC_GLOBAL_INT).
+    ["laco_tipado", "int n = 0\nwhile n < 10000000 {\n    n++\n}\npost(n)\n",
+     "int declarado: LOAD_GLOBAL/comparação+desvio/incremento — o laço tipado mais simples"],
+
+    ["fib", "funct fib(int n) {\n    if n < 2 {\n        return n\n    }\n    return fib(n - 1) + fib(n - 2)\n}\npost(fib(27))\n",
+     "chamada recursiva com parâmetro tipado: montagem de quadro + conferência de tipo"],
+
+    ["fib_int", "int funct fib(int n) {\n    if n < 2 {\n        return n\n    }\n    return fib(n - 1) + fib(n - 2)\n}\npost(fib(27))\n",
+     "o mesmo com `int funct`: mede o try implícito do retorno tipado"],
 ]
 
 
