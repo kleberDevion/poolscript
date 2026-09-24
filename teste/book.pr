@@ -1,13 +1,13 @@
 public Class book(){
-    public string bookName = "";
-    public string author = "admin";
-    public string dateCreated = "";
-
-
-    public static funct isBook(){
-
+    public static funct isBook(*args){
+       for each i in args {
+          if (i == 'cu'){
+             post(f'De seu {i} pro kid kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk')
+             continue
+          }
+          break
+       }
+       return;
     }
 }
-
-nome = book()
-post(nome.author)
+post(book.isBook('cu', 'cu', 'cu'))
