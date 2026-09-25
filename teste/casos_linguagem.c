@@ -935,6 +935,85 @@ const Caso CASOS_LINGUAGEM[] = {
   "if not n { post(\"X\") }\n"
   "post(n)\n",
   "1", NULL, 0 },
+
+/* ── range decodificado uma vez (RANGE_PREPARA + ITER_RANGE so aritmetica) ── */
+{ "range: passo negativo, flo truncado, str numerica e bool como limite",
+  "s = []\n"
+  "for each i in range(10, 0, -3) { s.append(i) }\n"
+  "for each i in range(2.9) { s.append(i) }\n"
+  "for each i in range(\"3\") { s.append(i) }\n"
+  "for each i in range(true, 3) { s.append(i) }\n"
+  "for each i in range(5, 5) { s.append(i) }\n"
+  "post(s)\n",
+  "[10, 7, 4, 1, 0, 1, 0, 1, 2, 1, 2]", NULL, 0 },
+{ "range com str nao numerica levanta como antes, na linha do for each",
+  "for each i in range(\"x\") { post(i) }\n",
+  "", "'str' object cannot be interpreted as an integer", -1 },
+{ "range com passo zero levanta como antes",
+  "for each i in range(1, 2, 0) { post(i) }\n",
+  "", "range() arg 3 must not be zero", -1 },
+{ "range grande com break, continue e return dentro",
+  "funct f() {\n"
+  "    n = 0\n"
+  "    for each i in range(0, 1000000000000000000, 100000000000000000) {\n"
+  "        if i == 0 { continue }\n"
+  "        n = n + 1\n"
+  "        if n == 3 { break }\n"
+  "    }\n"
+  "    for each j in range(100) {\n"
+  "        if j == 7 { return [n, j] }\n"
+  "    }\n"
+  "    return Null\n"
+  "}\n"
+  "post(f())\n",
+  "[3, 7]", NULL, 0 },
+{ "range dentro de gerador com yield no meio do laco",
+  "funct g() {\n"
+  "    for each i in range(1, 4) {\n"
+  "        yield i * 10\n"
+  "    }\n"
+  "}\n"
+  "s = 0\n"
+  "for each v in g() { s = s + v }\n"
+  "post(s)\n",
+  "60", NULL, 0 },
+
+/* ── caminho quente da chamada (posicional exato, sem liga_args) ── */
+/* o valor vem de um indice de lista pra o checador estatico nao tipar (um
+ * literal `true` ele recusa antes de rodar): aqui e a conferencia de RUNTIME */
+{ "chamada exata com parametro tipado passa e o tipo errado levanta a mesma frase",
+  "funct f(int a, str b) { return b + str(a) }\n"
+  "post(f(1, \"x\"))\n"
+  "v = [true][0]\n"
+  "post(f(v, \"x\"))\n",
+  "x1", "parâmetro a de f() esperava int, recebeu bool", -1 },
+{ "chamada com aridade errada continua dando as frases do binding completo",
+  "funct f(a, b) { return a }\n"
+  "post(f(1))\n",
+  "", "missing 1 required positional argument", -1 },
+{ "chamada com argumento a mais continua dando a frase do binding completo",
+  "funct f(a) { return a }\n"
+  "post(f(1, 2))\n",
+  "", "takes 1 positional argument but 2 were given", -1 },
+{ "metodo, @static, padrao, *args e nomeado seguem funcionando",
+  "Entity P() {\n"
+  "    funct __init__(self, n) { self.n = n }\n"
+  "    funct mais(self, k) { return self.n + k }\n"
+  "    @static\n"
+  "    funct dobro(x) { return x * 2 }\n"
+  "}\n"
+  "funct d(a, b = 2) { return a + b }\n"
+  "funct v(*args) { return len(args) }\n"
+  "p = P(5)\n"
+  "post(p.mais(1), P.dobro(4), d(1), d(1, 5), d(a=3), v(1, 2, 3), v())\n",
+  "6 8 3 6 5 3 0", NULL, 0 },
+{ "recursao no caminho quente: fib com parametro tipado",
+  "funct fib(int n) {\n"
+  "    if n < 2 { return n }\n"
+  "    return fib(n - 1) + fib(n - 2)\n"
+  "}\n"
+  "post(fib(20))\n",
+  "6765", NULL, 0 },
 /* O future de uma `tarefa()` solta nao e alcancavel pelo programa: o aviso do
  * fim procurava no heap, e o GC o levava antes. Agora ele e raiz ate o erro ser
  * lido ou avisado. As duas listas grandes forcam coleta. */

@@ -249,3 +249,10 @@ PS_OP(INC_GLOBAL_INT,     109, "INC_GLOBAL_INT")
 PS_OP(DEC_GLOBAL_INT,     110, "DEC_GLOBAL_INT")
 PS_OP(INC_LOCAL_INT,      111, "INC_LOCAL_INT")
 PS_OP(DEC_LOCAL_INT,      112, "DEC_LOCAL_INT")
+
+/* `for each i in range(...)`: decodifica início/fim/passo UMA vez, antes do
+ * laço, e deixa os três slots como [ini, quantidade, passo] em int — o
+ * ITER_RANGE de cada volta vira só aritmética. Antes ele redecodificava os
+ * três operandos e recalculava a quantidade a cada iteração.
+ *   RANGE_PREPARA [.., ini, fim, passo, 0] -> [.., ini, quant, passo, 0] */
+PS_OP(RANGE_PREPARA,      113, "RANGE_PREPARA")

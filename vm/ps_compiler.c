@@ -4844,6 +4844,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 if (na == 3) expr(c, u, n->a->lista.itens[2]->a);
                 else         emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 1, 0, NULL, 0));
                 emite(c, u, OP_LOAD_CONST, idx_const(c, u, K_INT, 0, 0, NULL, 0));  /* contador */
+                emite(c, u, OP_RANGE_PREPARA, 0);    /* decodifica os três uma vez */
                 topo = UP(c, u)->ncode;
                 fim = emite(c, u, OP_ITER_RANGE, 0);
             } else {

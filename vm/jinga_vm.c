@@ -1016,6 +1016,11 @@ typedef struct {
      * nenhum parâmetro tem tipo; NULL numa posição = aquele não tem. A VM só
      * CHECA — argumento de tipo errado é erro, nunca conversão. */
     char    **param_tipos;
+    /* O tipo de cada parâmetro já RESOLVIDO na carga: índice em TIPOS[]
+     * (0..), -1 = sem tipo, -2 = nome fora da tabela (classe: casa pelo
+     * nome). NULL = nenhum parâmetro tem tipo. A conferência por chamada
+     * deixa de varrer a tabela com strcmp. */
+    int8_t   *param_cod;
     char     *nome;        /* nome da action — usado na mensagem de erro */
     const char *arquivo;   /* arquivo-fonte deste proto — pro traceback (ou NULL);
                             * é da tabela `VM.arquivos`, compartilhado */
@@ -9997,7 +10002,17 @@ static int checa_param_tipos(VM *vm, const Proto *np, const Value *vals, int n, 
         if (!t) continue;
         const Value *v = &vals[k];
         if (v->t == V_UNSET) continue;
-        if (param_casa_tipo(v, t)) continue;
+        /* código resolvido na carga: tipo da tabela confere direto; classe
+         * (-2) ainda casa pelo nome */
+        if (np->param_cod) {
+            int8_t cod = np->param_cod[idx];
+            /* os quatro tipos mais comuns em linha, sem passar pela tabela */
+            if (cod == TIPO_INT)       { if (v->t == V_INT) continue; }
+            else if (cod == TIPO_STR)  { if (EH_STRING(*v)) continue; }
+            else if (cod == TIPO_FLO)  { if (v->t == V_FLOAT) continue; }
+            else if (cod == TIPO_BOOL) { if (v->t == V_BOOL) continue; }
+            else if (cod >= 0 ? valor_eh_tipo(v, cod) : param_casa_tipo(v, t)) continue;
+        } else if (param_casa_tipo(v, t)) continue;
         snprintf(vm->erro, sizeof(vm->erro),
                  "parâmetro %s de %s() esperava %s, recebeu %s",
                  (np->param_nomes && np->param_nomes[idx]) ? np->param_nomes[idx] : "?",
@@ -25451,7 +25466,23 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* cópia do receptor: passar `&cp.self` prendia o `cp` inteiro na
              * memória (o `liga_args` não é inline) */
             Value self_cp = cp.self;
-            if (liga_args(vm, np, &vm->locals[nb], self_cp.t != V_UNSET ? &self_cp : NULL, cp.desloca,
+            /* CAMINHO QUENTE da chamada: só posicionais, aridade exata, sem
+             * padrão, sem `*args`/`**kwarg`, receptor (se há) presente —
+             * cópia direta, sem `liga_args`. Qualquer outra forma, inclusive
+             * toda aridade errada, segue pelo binding completo e dá as
+             * mesmas frases. */
+            if (cp_nkw == 0 && np->ndefaults == 0 && np->slot_vararg < 0 && np->slot_kwarg < 0
+                    && cp_npos + cp.desloca == np->nparams
+                    && !(cp.desloca && self_cp.t == V_UNSET)) {
+                Value *d_ = &vm->locals[nb];
+                if (cp.desloca) d_[0] = self_cp;
+                /* laço, não memcpy: com 1 a 3 argumentos a chamada da libc
+                 * custava mais que a cópia */
+                for (int k = 0; k < cp_npos; k++) d_[cp.desloca + k] = cp_pos[k];
+                for (int k = np->nparams; k < np->nlocals; k++) d_[k] = MK_UNSET();
+                if (np->param_cod && checa_param_tipos(vm, np, d_, np->nparams, 0) != 0)
+                    goto erro_runtime;
+            } else if (liga_args(vm, np, &vm->locals[nb], self_cp.t != V_UNSET ? &self_cp : NULL, cp.desloca,
                           cp_pos, cp_npos, cp_kwn, cp_kwv, cp_nkw, cp.ignora_kw) != 0)
                 goto erro_runtime;
 
@@ -26020,26 +26051,38 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        PS_CASE(ITER_RANGE) {
+        PS_CASE(RANGE_PREPARA) {
             /* `for each i in range(...)` — a lista NUNCA é construída.
-             * Pilha: [.., ini, fim, passo, i]. Antes o range materializava
-             * tudo: 20 milhões de itens custavam 325 MB, contra 13 MB do
-             * `while` equivalente. Agora é aritmética e memória constante. */
-            Value vi = stack[sp - 4], vf = stack[sp - 3], vp = stack[sp - 2];
-            int64_t i = stack[sp - 1].as.i;
+             * Pilha: [.., ini, fim, passo, 0]. Os três operandos são
+             * decodificados UMA vez aqui (int, bool, flo truncado, str
+             * numérica — as mesmas regras e frases de sempre) e os slots
+             * ficam [ini, quant, passo] em int: a volta do laço vira só
+             * aritmética. Antes o ITER_RANGE redecodificava os três e
+             * recalculava a quantidade a cada iteração. */
             int64_t ini, fim, passo;
-            if (num_de_range(vm, vi, &ini) != 0
-                || num_de_range(vm, vf, &fim) != 0
-                || num_de_range(vm, vp, &passo) != 0) goto erro_runtime;
+            if (num_de_range(vm, stack[sp - 4], &ini) != 0
+                || num_de_range(vm, stack[sp - 3], &fim) != 0
+                || num_de_range(vm, stack[sp - 2], &passo) != 0) goto erro_runtime;
             if (passo == 0)
                 ERRO_T(vm, "ValueError", "range() arg 3 must not be zero");
             int64_t quant = (passo > 0)
                 ? (fim > ini ? (fim - ini + passo - 1) / passo : 0)
                 : (fim < ini ? (ini - fim - passo - 1) / (-passo) : 0);
-            if (i >= quant) { sp -= 4; ip = arg; break; }
-            stack[sp - 1] = MK_INT(i + 1);
-            stack[sp++] = MK_INT(ini + i * passo);
-            break;
+            stack[sp - 4] = MK_INT(ini);
+            stack[sp - 3] = MK_INT(quant);
+            stack[sp - 2] = MK_INT(passo);
+            stack[sp - 1] = MK_INT(0);
+            PROXIMA();
+        }
+        PS_CASE(ITER_RANGE) {
+            /* Pilha: [.., ini, quant, passo, i] — tudo int, preparado pelo
+             * RANGE_PREPARA. 20 milhões de itens em memória constante. */
+            int64_t i = stack[sp - 1].as.i;
+            if (i >= stack[sp - 3].as.i) { sp -= 4; ip = arg; PROXIMA(); }
+            int64_t val_ = stack[sp - 4].as.i + i * stack[sp - 2].as.i;   /* antes do sp++ */
+            stack[sp - 1].as.i = i + 1;
+            stack[sp++] = MK_INT(val_);
+            PROXIMA();
         }
 
         PS_CASE(ITER_NEXT) {
@@ -27915,6 +27958,7 @@ static void libera_vm(VM *vm)
                     free(vm->protos[i].param_tipos[k]);
                 free(vm->protos[i].param_tipos);
             }
+            free(vm->protos[i].param_cod);
             for (int k = 0; k < vm->protos[i].nvars; k++)
                 free(vm->protos[i].vars[k].nome);
             free(vm->protos[i].vars);
@@ -28083,6 +28127,16 @@ static int proto_assume(Proto *p, PSProto *o)
             if (!p->param_nomes[k] && !(p->param_nomes[k] = strdup(""))) falta = 1;
     p->param_tipos = o->param_tipos;   o->param_tipos = NULL;
     p->nparams = o->nparams;
+    /* os códigos de tipo, resolvidos uma vez aqui e não em toda chamada */
+    if (p->param_tipos && o->nparams > 0) {
+        p->param_cod = malloc((size_t)o->nparams);
+        if (!p->param_cod) falta = 1;
+        else for (int32_t k = 0; k < o->nparams; k++) {
+            const char *t = p->param_tipos[k];
+            if (!t || !*t) p->param_cod[k] = -1;
+            else { int64_t ti = tipo_indice(t); p->param_cod[k] = ti >= 0 ? (int8_t)ti : -2; }
+        }
+    }
     p->vars = o->vars;                 o->vars = NULL;
     p->nvars = o->nvars;               o->nvars = 0;
     return falta ? -1 : 0;             /* sem memória: o que foi assumido já é da VM */

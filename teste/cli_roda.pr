@@ -369,6 +369,10 @@ confere("condicao que nao e comparacao fica JUMP_IF_FALSE", "JUMP_IF_FALSE" in o
 confere("== no if e no lado esquerdo do and vira JF_EQ; != no if vira JF_NE",
         "JF_EQ" in opcodes_de(r["saida"], 0) and "JF_NE" in opcodes_de(r["saida"], 0)
         and "TO_BOOL" in opcodes_de(r["saida"], 0))
+os.writeFile(PASTA + "/rng.pr", "s = 0\nfor each i in range(3) {\n    s = s + i\n}\npost(s)\n")
+r = roda("'" + POOL + "' --bytecode rng.pr")
+confere("range decodificado uma vez: RANGE_PREPARA antes do ITER_RANGE",
+        "RANGE_PREPARA" in opcodes_de(r["saida"], 0) and "ITER_RANGE" in opcodes_de(r["saida"], 0))
 r = roda("printf 'x = = 1\\n' | '" + POOL + "' --bytecode")
 confere("--bytecode com erro de sintaxe sai como ao rodar", r["rc"] != 0 and "SyntaxError" in r["saida"])
 
