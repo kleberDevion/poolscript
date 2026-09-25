@@ -2415,6 +2415,19 @@ static int32_t acha_metodo(PSClass *cl, const char *nome, Value *valor)
 /* Nome do global de índice `arg`, pra mensagem de erro. Primeiro o script
  * principal (nomes_globais); se não achar, procura nos módulos `.pr` já
  * carregados (cada um cobre a faixa [base, base+n)). "?" só se nada bater. */
+/* Nome da variável local do `slot` viva no `ip` (a tabela guarda faixa: o
+ * mesmo slot é outra variável noutro bloco). Só pra mensagem de erro. */
+static const char *nome_do_local(const Proto *p, int32_t slot, int32_t ip)
+{
+    for (int k = 0; k < p->nvars; k++) {
+        const PSVarDbg *d = &p->vars[k];
+        if (d->slot != slot || ip < d->ip_ini) continue;
+        if (d->ip_fim >= 0 && ip >= d->ip_fim) continue;
+        return d->nome ? d->nome : "?";
+    }
+    return "?";
+}
+
 static const char *nome_do_global(VM *vm, int32_t arg)
 {
     if (arg >= 0 && arg < vm->n_nomes_globais && vm->nomes_globais && vm->nomes_globais[arg])
@@ -24800,15 +24813,21 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             "'%s' not supported between instances of '%s' and '%s'",          \
             #C_OP, TIPO0(va, ta), TIPO0(vb, tb))
 
-#define CMP(OPNAME, C_OP)                                                     \
-        PS_CASE(OPNAME) {                                                     \
+/* O corpo da comparação, compartilhado pela comparação solta (`CMP`, que
+ * empilha o bool) e pela fundida com o desvio (`JF`, que salta). Quando
+ * `FIM` roda, `b` já foi tirado e `stack[sp - 1]` é o lugar de `a`; `r_` é
+ * o resultado. */
+#define CMP_CORPO(C_OP, FIM)                                                  \
+        {                                                                     \
             /* caminho quente: int com int, sem função, sem coerção */        \
             if (stack[sp - 1].t == V_INT && stack[sp - 2].t == V_INT) {       \
                 sp--;                                                         \
-                stack[sp - 1] = MK_BOOL(stack[sp - 1].as.i C_OP stack[sp].as.i); \
+                int r_ = stack[sp - 1].as.i C_OP stack[sp].as.i;              \
+                FIM;                                                          \
                 PROXIMA();                                                    \
             }                                                                 \
             Value b = stack[--sp], a = stack[sp - 1];                         \
+            int r_;                                                           \
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */    \
             /* bool conta como int (0/1) — bool é subtipo de int na            \
              * linguagem, então `true < 3`, `false < true` valem, igual ao     \
@@ -24831,13 +24850,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     || b.t == V_NULL || b.t == V_UNSET)                       \
                 CMP_RECUSA(C_OP, a, ta0, b, tb0);                             \
             if (a.t == V_INT && b.t == V_INT)                                 \
-                stack[sp - 1] = MK_BOOL(a.as.i C_OP b.as.i);                  \
+                r_ = (a.as.i C_OP b.as.i);                                    \
             else if (EH_STRING(a) && EH_STRING(b)) {                          \
                 PSString *x = COMO_STRING(a), *y = COMO_STRING(b);            \
                 int m = x->len < y->len ? x->len : y->len;                    \
                 int c = memcmp(x->chars, y->chars, (size_t)m);                \
                 if (c == 0) c = (x->len > y->len) - (x->len < y->len);        \
-                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+                r_ = (c C_OP 0);                                              \
             /* bytes com bytes: lexicográfico POR BYTE. `sorted` já sabia    \
              * comparar os dois (compara_valores_par), mas o OPERADOR não —   \
              * `a < b` levantava e `sorted([a,b])` funcionava, para o mesmo   \
@@ -24847,12 +24866,12 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int m = x->len < y->len ? x->len : y->len;                    \
                 int c = m > 0 ? memcmp(x->chars, y->chars, (size_t)m) : 0;    \
                 if (c == 0) c = (x->len > y->len) - (x->len < y->len);        \
-                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+                r_ = (c C_OP 0);                                              \
             } else if (EH_INTEIRO(a) && EH_INTEIRO(b)) {                      \
                 mpz_t za, zb; mpz_init(za); mpz_init(zb);                     \
                 mpz_de_val(za, a); mpz_de_val(zb, b);                         \
                 int c = mpz_cmp(za, zb); mpz_clear(za); mpz_clear(zb);        \
-                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+                r_ = (c C_OP 0);                                              \
             } else if (EH_SEQ(a) && EH_SEQ(b)) {                              \
                 /* lista com lista (e tupla com tupla) compara elemento a      \
                  * elemento, como o sorted() já fazia internamente — só o      \
@@ -24864,22 +24883,76 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 int c = compara_valores_par(&a, &b, &ma, &mb);                \
                 if (c == -2)                                                  \
                     CMP_RECUSA(C_OP, *ma, ma->t, *mb, mb->t);                 \
-                stack[sp - 1] = MK_BOOL(c C_OP 0);                            \
+                r_ = (c C_OP 0);                                              \
             } else {                                                          \
                 if (!(EH_INTEIRO(a) || a.t == V_FLOAT) ||                     \
                     !(EH_INTEIRO(b) || b.t == V_FLOAT))                       \
                     CMP_RECUSA(C_OP, a, ta0, b, tb0);                         \
                 double x = (a.t == V_FLOAT) ? a.as.d : int_como_double(a);    \
                 double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);    \
-                stack[sp - 1] = MK_BOOL(x C_OP y);                            \
+                r_ = (x C_OP y);                                              \
             }                                                                 \
+            FIM;                                                              \
             PROXIMA();                                                        \
         }
+/* comparação solta: empilha o bool no lugar de `a` */
+#define CMP(OPNAME, C_OP) PS_CASE(OPNAME) CMP_CORPO(C_OP, stack[sp - 1] = MK_BOOL(r_))
         CMP(LT, <)
         CMP(GT, >)
         CMP(LE, <=)
         CMP(GE, >=)
 #undef CMP
+/* comparação fundida com o desvio: tira `a` e salta se deu falso */
+#define JF(OPNAME, C_OP) PS_CASE(OPNAME) CMP_CORPO(C_OP, (sp--, (void)(!r_ ? (ip = arg) : ip)))
+        JF(JF_LT, <)
+        JF(JF_GT, >)
+        JF(JF_LE, <=)
+        JF(JF_GE, >=)
+#undef JF
+#undef CMP_CORPO
+        PS_CASE(JF_EQ) {
+            Value b = stack[--sp], a = stack[--sp];
+            int r_ = (a.t == V_INT && b.t == V_INT) ? (a.as.i == b.as.i) : val_iguais(&a, &b);
+            if (!r_) ip = arg;
+            PROXIMA();
+        }
+        PS_CASE(JF_NE) {
+            Value b = stack[--sp], a = stack[--sp];
+            int r_ = (a.t == V_INT && b.t == V_INT) ? (a.as.i != b.as.i) : !val_iguais(&a, &b);
+            if (!r_) ip = arg;
+            PROXIMA();
+        }
+
+/* `x++`/`x--` numa variável declarada `int`: soma em cima do slot, sem passar
+ * pela pilha. A variável é V_INT por construção (COERCE_DECL em toda escrita);
+ * o estouro de 64 bits dá exatamente o erro que o COERCE_DECL dava. */
+#define INC_DEC(OPNAME, PONT, DELTA, NOME)                                    \
+        PS_CASE(OPNAME) {                                                     \
+            Value *v_ = (PONT);                                               \
+            if (v_->t == V_INT) {                                             \
+                int64_t r_;                                                   \
+                if (!__builtin_add_overflow(v_->as.i, (int64_t)(DELTA), &r_)) { \
+                    v_->as.i = r_;                                            \
+                    PROXIMA();                                                \
+                }                                                             \
+                const char *vn_ = (NOME);                                     \
+                snprintf(vm->erro, sizeof(vm->erro),                          \
+                         "variável %s esperava int, e o valor nao cabe em 64 bits " \
+                         "(declare como 'long %s' pra aceitar inteiro de qualquer tamanho)", \
+                         vn_, vn_);                                           \
+                snprintf(vm->erro_tipo, sizeof(vm->erro_tipo), "AttributedValueError"); \
+                goto erro_runtime;                                            \
+            }                                                                 \
+            if (v_->t == V_UNSET)                                             \
+                ERRO_TF(vm, "NameError", "name '%s' is not defined", (NOME)); \
+            ERRO_TF(vm, "AttributedValueError", "variável %s esperava int, recebeu %s", \
+                    (NOME), nome_do_tipo_valor(*v_));                         \
+        }
+        INC_DEC(INC_GLOBAL_INT, &vm->globals[arg], 1, nome_do_global(vm, arg))
+        INC_DEC(DEC_GLOBAL_INT, &vm->globals[arg], -1, nome_do_global(vm, arg))
+        INC_DEC(INC_LOCAL_INT, &locals[lbase + arg], 1, nome_do_local(p, arg, ip - 2))
+        INC_DEC(DEC_LOCAL_INT, &locals[lbase + arg], -1, nome_do_local(p, arg, ip - 2))
+#undef INC_DEC
 
         PS_CASE(EQ) {
             Value b = stack[--sp], a = stack[sp - 1];
@@ -28180,6 +28253,7 @@ static void reloca_codigo(int32_t *code, int ncode,
             case OP_LOAD_GLOBAL: case OP_STORE_GLOBAL:
             case OP_LOAD_NAME:   case OP_STORE_NAME:
             case OP_CLEAR_GLOBAL:
+            case OP_INC_GLOBAL_INT: case OP_DEC_GLOBAL_INT:
             /* Estes dois também carregam índice de GLOBAL: são o caminho da
              * célula quando o nome capturado não tem slot certo. Sem relocar,
              * uma closure dentro de módulo importado lia/escrevia o global de

@@ -227,3 +227,25 @@ PS_OP(CONFERE_TIPO,       101, "CONFERE_TIPO")
  * sumia calado — a IDE mostrava "500 linhas".
  *   ENGOLE [.., msg] -> [..]   arg = 1 (int, 500) ou 2 (bool, False) */
 PS_OP(ENGOLE,             102, "ENGOLE")
+
+/* Comparação + desvio numa instrução só: `cond; JUMP_IF_FALSE` em que
+ * `cond` acaba numa comparação. O bool não passa pela pilha, e um laço
+ * `while a < b` gasta um despacho no lugar de dois. Mesmas regras e mesmas
+ * frases de erro da comparação solta.
+ *   JF_LT alvo [.., a, b] -> [..]   salta pra `alvo` se NÃO (a < b) */
+PS_OP(JF_LT,              103, "JF_LT")
+PS_OP(JF_GT,              104, "JF_GT")
+PS_OP(JF_LE,              105, "JF_LE")
+PS_OP(JF_GE,              106, "JF_GE")
+PS_OP(JF_EQ,              107, "JF_EQ")
+PS_OP(JF_NE,              108, "JF_NE")
+
+/* `x++`, `x--`, `x += 1`, `x -= 1` como statement numa variável DECLARADA
+ * `int` (que por isso é sempre V_INT): uma instrução no lugar de sete
+ * (carrega, DUP, const, soma, confere o tipo, guarda, POP_TOP). O estouro de
+ * 64 bits dá o mesmo erro que o COERCE_DECL dava. `arg` = índice do global
+ * ou slot do local. */
+PS_OP(INC_GLOBAL_INT,     109, "INC_GLOBAL_INT")
+PS_OP(DEC_GLOBAL_INT,     110, "DEC_GLOBAL_INT")
+PS_OP(INC_LOCAL_INT,      111, "INC_LOCAL_INT")
+PS_OP(DEC_LOCAL_INT,      112, "DEC_LOCAL_INT")

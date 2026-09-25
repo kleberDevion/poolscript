@@ -114,7 +114,13 @@ void ps_desmonta(const PSPrograma *prog, FILE *f)
                 case OP_JUMP: case OP_JUMP_IF_FALSE: case OP_JUMP_IF_TRUE:
                 case OP_JUMP_IF_SET: case OP_JUMP_SE_UNSET: case OP_SKIP_IF_IMPORT:
                 case OP_SETUP_TRY: case OP_ITER_NEXT: case OP_ITER_RANGE:
+                case OP_JF_LT: case OP_JF_GT: case OP_JF_LE: case OP_JF_GE:
+                case OP_JF_EQ: case OP_JF_NE:
                     fprintf(f, "; -> %d", arg);
+                    break;
+                case OP_INC_GLOBAL_INT: case OP_DEC_GLOBAL_INT:
+                    if (arg >= 0 && arg < prog->nglobais && prog->globais[arg])
+                        fprintf(f, "; %s", prog->globais[arg]);
                     break;
                 case OP_MAKE_FUNCTION: case OP_MAKE_CLOSURE:
                     if (arg >= 0 && arg < prog->nprotos && prog->protos[arg].nome)
@@ -561,6 +567,71 @@ static int32_t emite(C *c, Unidade *u, int32_t op, int32_t arg)
     UP(c, u)->code[UP(c, u)->ncode++] = op;
     UP(c, u)->code[UP(c, u)->ncode++] = arg;
     return pos;
+}
+
+/* ── superinstruções: o que o laço quente vira ───────────────────────────
+ *
+ * `cond; JUMP_IF_FALSE alvo` em que `cond` acabou numa comparação vira UMA
+ * instrução `JF_<cmp> alvo` (a comparação e o desvio, sem empilhar o bool).
+ * Recebe o índice do JUMP_IF_FALSE recém-emitido e devolve o índice da
+ * instrução que passa a carregar o alvo — quem chamou patcha `[idx + 1]`
+ * como já fazia. Só reconhece o padrão que acabou de ser emitido; qualquer
+ * outra forma de condição fica como está. */
+static int32_t funde_salto_falso(C *c, Unidade *u, int32_t salto)
+{
+    if (salto < 2 || UP(c, u)->ncode != salto + 2) return salto;
+    int32_t *code = UP(c, u)->code;
+    int32_t jf;
+    switch (code[salto - 2]) {
+        case OP_LT: jf = OP_JF_LT; break;
+        case OP_GT: jf = OP_JF_GT; break;
+        case OP_LE: jf = OP_JF_LE; break;
+        case OP_GE: jf = OP_JF_GE; break;
+        case OP_EQ: jf = OP_JF_EQ; break;
+        case OP_NE: jf = OP_JF_NE; break;
+        default: return salto;
+    }
+    code[salto - 2] = jf;
+    code[salto - 1] = 0;
+    UP(c, u)->ncode = salto;
+    return salto - 2;
+}
+
+/* `x++`/`x--` como statement, e `x += 1`/`x -= 1`, numa variável DECLARADA
+ * `int` com global ou slot direto viram UMA instrução `INC/DEC_*_INT`. O
+ * reconhecimento é pelo padrão que o compilador acabou de emitir:
+ *   A: LOAD DUP LOAD_CONST(1) ADD|SUB COERCE_DECL(int) STORE POP_TOP
+ *   B: LOAD LOAD_CONST(1) ADD|SUB COERCE_DECL(int) STORE
+ * O COERCE_DECL de `int` só existe em variável declarada `int` — que por
+ * isso é sempre V_INT em runtime, e é o que a instrução fundida assume. O
+ * estouro de 64 bits dá o mesmo erro que o COERCE_DECL dava. Nenhum salto
+ * aponta pra dentro do trecho: é o código de um statement só, e alvo que
+ * apontava pro começo dele continua apontando pra instrução fundida. */
+static void funde_incremento(C *c, Unidade *u)
+{
+    PSProto *p = UP(c, u);
+    int32_t *code = p->code;
+    int32_t n = p->ncode;
+    int32_t ini, k, op, cd, st;
+    if (n >= 14 && code[n - 2] == OP_POP_TOP && code[n - 12] == OP_DUP) {
+        ini = n - 14; k = n - 10; op = n - 8; cd = n - 6; st = n - 4;
+    } else if (n >= 10) {
+        ini = n - 10; k = n - 8; op = n - 6; cd = n - 4; st = n - 2;
+    } else return;
+    if (code[k] != OP_LOAD_CONST) return;
+    if (code[op] != OP_ADD && code[op] != OP_SUB) return;
+    if (code[cd] != OP_COERCE_DECL || (code[cd + 1] & 15) != PS_TIPO_INT) return;
+    int32_t kidx = code[k + 1];
+    if (kidx < 0 || kidx >= p->nconsts || p->consts[kidx].kind != K_INT || p->consts[kidx].i != 1) return;
+    if (code[ini + 1] != code[st + 1]) return;
+    int32_t novo;
+    if (code[ini] == OP_LOAD_GLOBAL && code[st] == OP_STORE_GLOBAL)
+        novo = code[op] == OP_ADD ? OP_INC_GLOBAL_INT : OP_DEC_GLOBAL_INT;
+    else if (code[ini] == OP_LOAD_LOCAL && code[st] == OP_STORE_LOCAL)
+        novo = code[op] == OP_ADD ? OP_INC_LOCAL_INT : OP_DEC_LOCAL_INT;
+    else return;
+    code[ini] = novo;
+    p->ncode = ini + 2;
 }
 
 /* A proto TERMINOU de ser compilada: os vetores dela encolhem ao tamanho
@@ -3939,6 +4010,7 @@ static void expr_no(C *c, Unidade *u, PSNode *n)
                 int eh_and = (n->texto[0] == 'a' || n->texto[0] == '&');
                 expr(c, u, n->a);
                 int32_t curto = emite(c, u, eh_and ? OP_JUMP_IF_FALSE : OP_JUMP_IF_TRUE, 0);
+                if (eh_and) curto = funde_salto_falso(c, u, curto);
                 expr(c, u, n->b);
                 emite(c, u, OP_TO_BOOL, 0);
                 int32_t pula_fim = emite(c, u, OP_JUMP, 0);
@@ -4620,12 +4692,14 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                 grava_valor(c, u, n->a);
             }
             guarda_nome(c, u, n->texto ? n->texto : "");
+            if (strcmp(op, "=") != 0) funde_incremento(c, u);   /* `x += 1` em int declarado */
             return;
         }
 
         case N_EXPRESSION_STMT:
             expr(c, u, n->a);
             emite(c, u, OP_POP_TOP, 0);
+            funde_incremento(c, u);          /* `x++` em int declarado */
             return;
 
         case N_RETURN_STMT:
@@ -4682,7 +4756,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
                     break;
                 }
                 expr(c, u, ramo->a);                   /* condição: fora do escopo do corpo */
-                int32_t salto_falso = emite(c, u, OP_JUMP_IF_FALSE, 0);
+                int32_t salto_falso = funde_salto_falso(c, u, emite(c, u, OP_JUMP_IF_FALSE, 0));
                 int32_t M = escopo_marca(u);
                 bloco_stmts(c, u, ramo->b);
                 escopo_fecha(c, u, M);
@@ -4697,7 +4771,7 @@ static void stmt_no(C *c, Unidade *u, PSNode *n)
             int32_t M = escopo_marca(u);        /* sem var de laço: corpo == laço */
             int32_t topo = UP(c, u)->ncode;
             expr(c, u, n->a);
-            int32_t sai = emite(c, u, OP_JUMP_IF_FALSE, 0);
+            int32_t sai = funde_salto_falso(c, u, emite(c, u, OP_JUMP_IF_FALSE, 0));
             if (abre_laco(c, n, topo, 0) != 0) return;
             c->lacos[c->nlacos - 1].escopo_marca = M;
             c->lacos[c->nlacos - 1].escopo_marca_body = M;

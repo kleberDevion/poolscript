@@ -351,6 +351,24 @@ confere("--bytecode lista o proto do modulo", r["rc"] == 0 and "== proto 0 <modu
 confere("--bytecode diz o nome do global e o alvo do salto",
         "LOAD_GLOBAL      " in r["saida"] and "; n" in r["saida"] and "; -> " in r["saida"])
 confere("--bytecode mostra a constante", "; 1000000000" in r["saida"])
+# O laço tipado vira 5 instruções por volta: a comparação FUNDIDA com o
+# desvio (JF_LT) e o `n++` numa instrução só (INC_GLOBAL_INT), sem DUP,
+# POP_TOP nem COERCE_DECL — eram 12.
+confere("laco tipado: comparacao+desvio e n++ fundidos",
+        opcodes_de(r["saida"], 0) == ["LOAD_CONST", "STORE_GLOBAL", "LOAD_GLOBAL", "LOAD_CONST",
+                                      "JF_LT", "INC_GLOBAL_INT", "JUMP", "LOAD_GLOBAL",
+                                      "LOAD_GLOBAL", "CALL", "POP_TOP", "HALT"])
+os.writeFile(PASTA + "/laco2.pr",
+             "funct f() {\n    int i = 10\n    while i > 0 {\n        i--\n    }\n    int j = 0\n    j += 1\n    return i + j\n}\nx = 0\nwhile x {\n    x = 0\n}\nif x == 1 and x > 2 {\n    post(1)\n}\nif x != 2 {\n    post(2)\n}\n")
+r = roda("'" + POOL + "' --bytecode laco2.pr")
+confere("i-- e j += 1 em int local viram DEC/INC_LOCAL_INT",
+        "DEC_LOCAL_INT" in opcodes_de(r["saida"], 1) and "INC_LOCAL_INT" in opcodes_de(r["saida"], 1)
+        and not "COERCE_DECL" in opcodes_de(r["saida"], 1))
+confere("condicao que nao e comparacao fica JUMP_IF_FALSE", "JUMP_IF_FALSE" in opcodes_de(r["saida"], 0))
+# no `and` só o lado ESQUERDO funde (o direito passa por TO_BOOL)
+confere("== no if e no lado esquerdo do and vira JF_EQ; != no if vira JF_NE",
+        "JF_EQ" in opcodes_de(r["saida"], 0) and "JF_NE" in opcodes_de(r["saida"], 0)
+        and "TO_BOOL" in opcodes_de(r["saida"], 0))
 r = roda("printf 'x = = 1\\n' | '" + POOL + "' --bytecode")
 confere("--bytecode com erro de sintaxe sai como ao rodar", r["rc"] != 0 and "SyntaxError" in r["saida"])
 

@@ -853,6 +853,88 @@ const Caso CASOS_LINGUAGEM[] = {
   "sleep(0.3)\n"
   "post(\"fim\")\n",
   "t\nfim", NULL, 0 },
+
+/* ── superinstrucoes: JF_* (comparacao+desvio) e INC/DEC_*_INT (`x++` em int
+ * declarado). O comportamento e o mesmo das instrucoes soltas; o que muda e
+ * o numero de despachos. Cada caso abaixo passa pelo caminho fundido. */
+{ "n++ em int declarado no modulo estoura como o COERCE_DECL estourava",
+  "int n = 9223372036854775807\n"
+  "n++\n"
+  "post(n)\n",
+  "", "variável n esperava int, e o valor nao cabe em 64 bits (declare como 'long n'", -1 },
+{ "n-- em int declarado no minimo de 64 bits",
+  "int n = -9223372036854775807 - 1\n"
+  "n--\n",
+  "", "variável n esperava int, e o valor nao cabe em 64 bits", -1 },
+{ "i++ em int declarado LOCAL estoura com o nome da variavel",
+  "funct f() {\n"
+  "    int i = 9223372036854775807\n"
+  "    i++\n"
+  "    return i\n"
+  "}\n"
+  "f()\n",
+  "", "variável i esperava int, e o valor nao cabe em 64 bits (declare como 'long i'", -1 },
+{ "n++ em int inferido (sem declaracao) promove a bigint",
+  "n = 9223372036854775807\n"
+  "n++\n"
+  "post(n)\n",
+  "9223372036854775808", NULL, 0 },
+{ "n++ em long promove a bigint",
+  "long n = 9223372036854775807\n"
+  "n++\n"
+  "post(n)\n",
+  "9223372036854775808", NULL, 0 },
+{ "x++, x--, x += 1 e x -= 1 em int declarado, global e local",
+  "int a = 5\n"
+  "a++\n"
+  "a += 1\n"
+  "a--\n"
+  "a -= 1\n"
+  "funct f() {\n"
+  "    int b = 10\n"
+  "    b++\n"
+  "    b += 1\n"
+  "    b--\n"
+  "    b -= 1\n"
+  "    b -= 1\n"
+  "    return b\n"
+  "}\n"
+  "post(a, f())\n",
+  "5 9", NULL, 0 },
+{ "x++ como VALOR (nao statement) continua devolvendo o valor antigo",
+  "int a = 5\n"
+  "b = a++\n"
+  "post(a, b)\n",
+  "6 5", NULL, 0 },
+{ "comparacao fundida: while e if com int, flo, str, bool e lista",
+  "int i = 0\n"
+  "while i < 3 { i++ }\n"
+  "s = \"\"\n"
+  "if 1 < 1.5 { s = s + \"a\" }\n"
+  "if \"a\" < \"b\" { s = s + \"b\" }\n"
+  "if true < 2 { s = s + \"c\" }\n"
+  "if [1, 2] == [1, 2] { s = s + \"d\" }\n"
+  "if [1] != [2] { s = s + \"e\" }\n"
+  "if 2 ** 70 > 1 { s = s + \"f\" }\n"
+  "if 3 >= 3 and 2 <= 2 { s = s + \"g\" }\n"
+  "if 1 == 1.0 { s = s + \"h\" }\n"
+  "if 5 > 6 { s = s + \"X\" }\n"
+  "post(i, s)\n",
+  "3 abcdefgh", NULL, 0 },
+{ "comparacao fundida com Null levanta a mesma frase da comparacao solta",
+  "x = Null\n"
+  "if x < 1 { post(1) }\n",
+  "", "'<' not supported between instances of 'Null' and 'int'", -1 },
+{ "comparacao fundida entre tipos incompativeis levanta como a solta",
+  "while \"a\" > 1 { post(1) }\n",
+  "", "'>' not supported between instances of 'str' and 'int'", -1 },
+{ "condicao que nao e comparacao segue pela verdade do valor",
+  "l = [1]\n"
+  "n = 0\n"
+  "while l { n++\n l = [] }\n"
+  "if not n { post(\"X\") }\n"
+  "post(n)\n",
+  "1", NULL, 0 },
 /* O future de uma `tarefa()` solta nao e alcancavel pelo programa: o aviso do
  * fim procurava no heap, e o GC o levava antes. Agora ele e raiz ate o erro ser
  * lido ou avisado. As duas listas grandes forcam coleta. */
