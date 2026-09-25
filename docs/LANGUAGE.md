@@ -65,6 +65,11 @@ com um rodapé que diz onde ele começa. Na partida, o executável lê o própri
 arquivo, encontra o rodapé e roda o que está embutido. Não há compilador de C
 no meio — quem só quer rodar não precisa de toolchain nenhuma.
 
+O que está embutido é o **fonte**: o executável compila pra bytecode na
+partida (milissegundos) e roda no mesmo motor que `jinga arquivo.pr` usa —
+a velocidade é a mesma, nem mais, nem menos (ver "Desempenho" em
+`docs/Jinga.md`).
+
 **Os módulos vão junto.** Todo `.pr` que o programa alcança por `import` —
 vizinho, subpasta (`import sub.pix`), relativo (`from .guarda import x`),
 `import *` e lib instalada em `~/.jinga/libs` — é resolvido na compilação

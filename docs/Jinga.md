@@ -1,4 +1,4 @@
-# Jinga v15.93.5
+# Jinga v15.93.6
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 15.93.5 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 15.93.6 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```
@@ -34,6 +34,39 @@ tamanho do programa é o código compilado, não a leitura dele. Medido com
 `/usr/bin/time` em 2026-09-23: 200 mil functs de uma linha rodavam com
 612 MB de pico e passaram a 353 MB; 20 mil, de 63 MB a 38 MB. O tempo caiu
 junto (200 mil linhas: 16 s para 5,9 s).
+
+---
+
+## Desempenho
+
+O programa vira bytecode e roda numa máquina virtual em C. O laço da VM
+despacha por goto calculado, só confere o coletor de lixo onde um laço volta
+ou uma funct é chamada, e o compilador funde o que sabe: `while a < b` é uma
+instrução (comparação e desvio), `n++` numa variável `int` declarada é uma
+instrução, `for each i in range(...)` decodifica os limites uma vez, e a
+chamada com argumentos posicionais na aridade exata copia direto pros slots.
+`jinga --bytecode arquivo.pr` mostra o que cada laço virou.
+
+Medido com contadores de hardware (`perf stat`, instruções / ciclos), que
+não dependem do clock da máquina, entre a versão 15.93.1 e a 15.93.6:
+
+| programa | antes | depois |
+|---|---|---|
+| `int n = 0; while n < 10000000 { n++ }` | 5,19 G / 1,59 G (12 bytecodes por volta) | 1,12 G / 0,46 G (5 por volta) |
+| `fib(27)` com `int n` (317.811 chamadas) | 605 M / 203 M | 349 M / 116 M |
+| lista: 1 milhão de `l[i % 200000]` | 1,14 G / 334 M | 731 M / 268 M |
+| dict: 300 mil `d[str(i)]` | 1,07 G / 345 M | 935 M / 329 M |
+| objeto: 300 mil `p.mais()` | 798 M / 211 M | 628 M / 163 M |
+| 60 mil `s = s + "abc"` | 19,6 s | 0,31 s |
+
+A concatenação era quadrática porque toda string nascia com o hash pronto:
+`s = s + "abc"` hashava a string inteira a cada volta. O hash agora é
+calculado na primeira vez que alguém precisa dele (chave de dict, `==`).
+
+Nesta máquina (notebook, governor `powersave`) o relógio de parede varia até
+2x entre duas execuções iguais conforme a temperatura; `teste/bench.pr`
+(`make bench`) mede em rodízio e compara razões, e a comparação entre dois
+binários se faz com `perf stat`.
 
 ---
 

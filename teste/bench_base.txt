@@ -8,36 +8,36 @@
 # contra `aritmetica` cancela: CPU mais lenta desacelera tudo junto.
 #
 # governor na medição: powersave
-# binário: Jinga 15.93.0 [PSVM] (2026-09-24) Runtime standalone
+# binário: Jinga 15.93.5 [PSVM] (2026-09-24) Runtime standalone
 #
 # NÃO entra no `make check` — roda em `make bench` e no noturno.
 # Piora acima de 20.0% na razão é o que se cobra.
 
 aritmetica 1.0
-chamada 0.32
-closure 0.274
-dict 0.522
-fib 0.344
-fib_int 0.508
-gc 0.499
-laco_tipado 2.622
-lista_indice 0.47
-metodo 1.016
-objeto 0.341
-partida 0.01
-texto 55.518
+chamada 0.231
+closure 0.122
+dict 0.704
+fib 0.181
+fib_int 0.263
+gc 1.023
+laco_tipado 0.917
+lista_indice 0.459
+metodo 0.756
+objeto 0.291
+partida 0.022
+texto 0.916
 
 # ms desta gravação — informativo, NÃO é o que se compara:
-#   aritmetica       258.0 ms
-#   chamada          82.7 ms
-#   closure          70.7 ms
-#   dict             134.7 ms
-#   fib              88.9 ms
-#   fib_int          131.0 ms
-#   gc               128.8 ms
-#   laco_tipado      676.6 ms
-#   lista_indice     121.3 ms
-#   metodo           262.2 ms
-#   objeto           88.0 ms
-#   partida          2.7 ms
-#   texto            14323.9 ms
+#   aritmetica       237.4 ms
+#   chamada          54.8 ms
+#   closure          29.0 ms
+#   dict             167.0 ms
+#   fib              43.0 ms
+#   fib_int          62.5 ms
+#   gc               242.9 ms
+#   laco_tipado      217.6 ms
+#   lista_indice     109.1 ms
+#   metodo           179.6 ms
+#   objeto           69.2 ms
+#   partida          5.3 ms
+#   texto            217.5 ms

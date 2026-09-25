@@ -14,8 +14,15 @@
 # COMO ELE MEDE: cada caso roda num processo próprio, cronometrado por fora com
 # precisão de nanossegundo, REPETIDO e ficando com o MENOR tempo — a mediana
 # ainda carrega o ruído de escalonamento, o mínimo é o mais próximo do custo
-# real. `partida` mede um script vazio, pra dar o custo fixo de subir o
-# processo; os outros já vêm com ele descontado.
+# real. As repetições são em RODÍZIO (uma de cada caso por rodada), pra
+# deriva térmica do laptop pegar todos os casos parecido. `partida` mede um
+# script vazio, pra dar o custo fixo de subir o processo; os outros já vêm
+# com ele descontado.
+#
+# Pra comparar DOIS BINÁRIOS nesta máquina o que vale é contador de
+# hardware, não relógio: `sudo perf stat -e instructions,cycles jinga x.pr`
+# — instruções não dependem do clock, e o clock aqui cai pela metade quando
+# esquenta.
 #
 #     ./pool teste/bench.pr                  mede e mostra
 #     ./pool teste/bench.pr --grava          adota como referência
@@ -179,11 +186,28 @@ if __name__ == "main" {
     tempos = {}
     piores = []
 
-    # a partida entra descontada dos outros, então mede primeiro
-    using open("/tmp/ps_bench_caso.pr", "w") as f {
-        f.write(CASOS[0][1])
+    # RODÍZIO: uma execução de CADA caso por rodada, REPETE rodadas, o menor
+    # de cada um vale. Medir os 5 de um caso e só depois os 5 do seguinte
+    # deixava a temperatura decidir: numa tarde de 2026-09-24 a `partida`
+    # foi de 2,7 pra 5,8 ms entre o começo e o fim da mesma rodada, e a
+    # razão contra a régua (medida no começo, fria) acusou "PIOROU" em cinco
+    # casos que os contadores de hardware mostravam mais rápidos. No rodízio
+    # a deriva térmica pega todos os casos parecido, e a razão sobrevive.
+    for each c in CASOS {
+        using open("/tmp/ps_bench_" + c[0] + ".pr", "w") as f {
+            f.write(c[1])
+        }
     }
-    partida = mede("/tmp/ps_bench_caso.pr")
+    brutos = {}
+    for each r in range(REPETE) {
+        for each c in CASOS {
+            t = mede_uma("/tmp/ps_bench_" + c[0] + ".pr")
+            if not c[0] in brutos or t < brutos[c[0]] {
+                brutos[c[0]] = t
+            }
+        }
+    }
+    partida = brutos["partida"]
     tempos["partida"] = partida
     post("   partida".ljust(20), str(round(partida, 1)).rjust(9) + " ms   (custo fixo do processo)")
 
@@ -191,10 +215,7 @@ if __name__ == "main" {
         if c[0] == "partida" {
             continue
         }
-        using open("/tmp/ps_bench_caso.pr", "w") as f {
-            f.write(c[1])
-        }
-        t = mede("/tmp/ps_bench_caso.pr") - partida
+        t = brutos[c[0]] - partida
         if t < 0.0 {
             t = 0.0
         }
