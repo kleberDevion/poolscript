@@ -1,4 +1,4 @@
-# Jinga v15.93.1
+# Jinga v15.93.2
 
 ---
 
@@ -6,7 +6,7 @@ Versão:
 
 ```bash
 jinga --version
-# Jinga 15.93.1 [PSVM] (2026-09-24) Runtime standalone
+# Jinga 15.93.2 [PSVM] (2026-09-24) Runtime standalone
 #                       ^ a data da compilação DESTE binário: duas
 #                         cópias da mesma versão se distinguem por ela
 ```

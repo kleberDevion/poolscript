@@ -24226,6 +24226,61 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
     dbg_serve(vm, fp);
 }
 
+/* ── despacho do laço ────────────────────────────────────────────────────
+ *
+ * Com o GCC o laço despacha por GOTO CALCULADO: cada opcode tem um rótulo,
+ * e uma tabela indexada pelo NÚMERO do opcode (contíguos no .def) leva
+ * direto ao tratador — sem a comparação de faixa do `switch`. `PS_CASE(X)`
+ * põe o rótulo E o `case`, então o mesmo corpo compila nos dois modos
+ * (`-DPS_SEM_GOTO`, ou compilador sem a extensão, volta ao `switch`).
+ *
+ * `no-crossjumping`/`no-gcse`: sem isso o GCC funde as caudas iguais dos
+ * tratadores num salto indireto só e desfaz o que o goto calculado dá. */
+#if defined(__GNUC__) && !defined(PS_SEM_GOTO)
+#  define PS_GOTO 1
+#  define PS_CASE(x) L_##x: case OP_##x:
+/* Despacho REPLICADO: o tratador quente busca a próxima instrução e salta
+ * ele mesmo, em vez de voltar ao topo do laço — cada sítio de salto indireto
+ * ganha o próprio histórico no preditor. Os tratadores frios terminam em
+ * `break` e voltam ao topo, que faz a mesma coisa. */
+#  define PROXIMA() do { o = p->code[ip]; arg = p->code[ip + 1]; ip += 2; goto *tab[o]; } while (0)
+#else
+#  define PS_CASE(x) case OP_##x:
+#  define PROXIMA() continue
+#endif
+
+/* Ponto seguro do GC: aqui sp/locals_top descrevem exatamente o que está
+ * vivo. Publicar no VM antes de coletar é o que torna as raízes visíveis
+ * pro coletor. O closure do frame em execução não está em lugar nenhum da
+ * pilha (o CALL já o consumiu): publicar `gc_fp`+`gc_cl` é o que impede o
+ * coletor de liberar as células debaixo da action.
+ *
+ * ONDE ele fica: rodava antes de TODA instrução (uma comparação por
+ * instrução, no caminho mais quente que existe). Alocar nunca coleta —
+ * só soma em `alocado` — então basta que TODO laço e TODA recursão passem
+ * por um ponto seguro: ele fica no salto de RECUO (`JUMP` pra trás, que é
+ * a volta de qualquer `while`/`for each`) e na entrada de cada CALL. Código
+ * em linha reta entre dois desses pontos aloca uma quantidade limitada
+ * pelo próprio tamanho do código. Nos dois sítios a pilha está consistente
+ * (fronteira de statement; alvo e argumentos ainda empilhados). */
+#define PONTO_SEGURO()                                                       \
+    do {                                                                     \
+        if (vm->alocado > vm->proximo_gc) {                                  \
+            vm->sp = sp;                                                     \
+            vm->locals_top = locals_top;                                     \
+            int fp_salvo_ = vm->gc_fp;                                       \
+            PSClosure *cl_salvo_ = vm->gc_cl;                                \
+            vm->gc_fp = fp;                                                  \
+            vm->gc_cl = cl;                                                  \
+            gc_coleta(vm);                                                   \
+            vm->gc_fp = fp_salvo_;                                           \
+            vm->gc_cl = cl_salvo_;                                           \
+        }                                                                    \
+    } while (0)
+
+#if defined(__GNUC__) && !defined(__clang__)
+__attribute__((optimize("no-crossjumping")))
+#endif
 static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nargs_in,
                            const Value *kw_nomes, const Value *kw_vals, int nkw,
                            const Value *self0, int desloca0, int ignora_kw0,
@@ -24296,49 +24351,71 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                          kw_nomes, kw_vals, nkw, ignora_kw0) != 0)
         goto erro_runtime;
 
-    for (;;) {
-        /* Ponto seguro do GC: aqui sp/locals_top descrevem exatamente o que
-         * está vivo. Publicar no VM antes de coletar é o que torna as raízes
-         * visíveis pro coletor. */
-        if (vm->alocado > vm->proximo_gc) {
-            vm->sp = sp;
-            vm->locals_top = locals_top;
-            /* O closure do frame em execução não está em lugar nenhum da
-             * pilha (o CALL já o consumiu): publicar `gc_fp`+`gc_cl` é o que
-             * impede o coletor de liberar as células debaixo da action. */
-            int fp_salvo = vm->gc_fp;
-            PSClosure *cl_salvo = vm->gc_cl;
-            vm->gc_fp = fp;
-            vm->gc_cl = cl;
-            gc_coleta(vm);
-            vm->gc_fp = fp_salvo;
-            vm->gc_cl = cl_salvo;
-        }
+#ifdef PS_GOTO
+    /* A tabela de despacho, indexada pelo número do opcode. A segunda manda
+     * TUDO pro depurador, que dá o passo e pula pro tratador de verdade:
+     * com o depurador desligado, o `if` dele some do caminho de cada
+     * instrução. `tab` é escolhida na entrada e de novo depois de cada
+     * passo (o depurador pode se desligar de dentro do `dbg_serve`). */
+    static const void *const TAB[] = {
+#define PS_OP(nome, num, texto) [num] = &&L_##nome,
+#include "ps_opcodes.def"
+#undef PS_OP
+    };
+    static const void *const TAB_DBG[] = {
+#define PS_OP(nome, num, texto) [num] = &&L_dbg,
+#include "ps_opcodes.def"
+#undef PS_OP
+    };
+    const void *const *tab = vm->dbg.ativo ? TAB_DBG : TAB;
+#endif
 
+    int32_t o, arg;
+    for (;;) {
+        o   = p->code[ip];
+        arg = p->code[ip + 1];
+        ip += 2;
+
+#ifdef PS_GOTO
+        goto *tab[o];
+    L_dbg:
+        /* quem depura espera parar EM CIMA da instrução que vai rodar */
+        dbg_passo(vm, p, ip - 2, fp, sp, locals_top);
+        tab = vm->dbg.ativo ? TAB_DBG : TAB;
+        goto *TAB[o];
+#else
         /* Depurador: um `if` previsível por instrução, e só. Fica ANTES de
          * consumir o opcode porque quem depura espera parar EM CIMA da linha
          * que vai rodar, não depois dela. */
-        if (vm->dbg.ativo) dbg_passo(vm, p, ip, fp, sp, locals_top);
-
-        int32_t o   = p->code[ip];
-        int32_t arg = p->code[ip + 1];
-        ip += 2;
+        if (vm->dbg.ativo) dbg_passo(vm, p, ip - 2, fp, sp, locals_top);
+#endif
 
         switch (o) {
 
-        case OP_LOAD_LOCAL:
+        PS_CASE(LOAD_LOCAL)
             stack[sp++] = locals[lbase + arg];
-            break;
+            PROXIMA();
 
-        case OP_LOAD_CONST:
+        PS_CASE(LOAD_CONST)
             stack[sp++] = p->consts[arg];
-            break;
+            PROXIMA();
 
-        case OP_STORE_LOCAL:
+        PS_CASE(STORE_LOCAL)
             locals[lbase + arg] = stack[--sp];
-            break;
+            PROXIMA();
 
-        case OP_ADD: {
+        PS_CASE(ADD) {
+            /* caminho quente: int com int que não estoura — em linha, sem
+             * publicar sp nem chamar `int_arit` (o estouro e o bigint seguem
+             * pelo caminho de baixo) */
+            if (stack[sp - 1].t == V_INT && stack[sp - 2].t == V_INT) {
+                int64_t r_;
+                if (!__builtin_add_overflow(stack[sp - 2].as.i, stack[sp - 1].as.i, &r_)) {
+                    sp--;
+                    stack[sp - 1] = MK_INT(r_);
+                    PROXIMA();
+                }
+            }
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
@@ -24411,7 +24488,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             break;
         }
-        case OP_SUB: {
+        PS_CASE(SUB) {
+            if (stack[sp - 1].t == V_INT && stack[sp - 2].t == V_INT) {
+                int64_t r_;
+                if (!__builtin_sub_overflow(stack[sp - 2].as.i, stack[sp - 1].as.i, &r_)) {
+                    sp--;
+                    stack[sp - 1] = MK_INT(r_);
+                    PROXIMA();
+                }
+            }
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
@@ -24425,7 +24510,15 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                          TIPO0(a, ta0), TIPO0(b, tb0));
             break;
         }
-        case OP_MUL: {
+        PS_CASE(MUL) {
+            if (stack[sp - 1].t == V_INT && stack[sp - 2].t == V_INT) {
+                int64_t r_;
+                if (!__builtin_mul_overflow(stack[sp - 2].as.i, stack[sp - 1].as.i, &r_)) {
+                    sp--;
+                    stack[sp - 1] = MK_INT(r_);
+                    PROXIMA();
+                }
+            }
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
@@ -24508,7 +24601,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             }
             break;
         }
-        case OP_DIV: {
+        PS_CASE(DIV) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
@@ -24544,7 +24637,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          *   7 // 2    -> 3      e  -7 // 2 -> -4  (piso, nao truncamento)
          *   7 // 0    -> ZeroDivisionError
          */
-        case OP_POW: {
+        PS_CASE(POW) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -24590,7 +24683,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     TIPO0(a, ta0), TIPO0(b, tb0));
         }
 
-        case OP_FLOORDIV: {
+        PS_CASE(FLOORDIV) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -24636,7 +24729,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     TIPO0(a, ta0), TIPO0(b, tb0));
         }
 
-        case OP_MOD: {
+        PS_CASE(MOD) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }   /* bool = int (0/1), igual ao interp */
@@ -24679,7 +24772,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                            TIPO0(a, ta0), TIPO0(b, tb0));
             break;
         }
-        case OP_NEG: {
+        PS_CASE(NEG) {
             Value a = stack[sp - 1];
             VType ta0 = a.t;   /* antes da coercao: ver TIPO0 */
             /* bool entra na aritmética como 0/1 em todo lugar (`true + 1` é 2);
@@ -24708,7 +24801,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             #C_OP, TIPO0(va, ta), TIPO0(vb, tb))
 
 #define CMP(OPNAME, C_OP)                                                     \
-        case OPNAME: {                                                        \
+        PS_CASE(OPNAME) {                                                     \
+            /* caminho quente: int com int, sem função, sem coerção */        \
+            if (stack[sp - 1].t == V_INT && stack[sp - 2].t == V_INT) {       \
+                sp--;                                                         \
+                stack[sp - 1] = MK_BOOL(stack[sp - 1].as.i C_OP stack[sp].as.i); \
+                PROXIMA();                                                    \
+            }                                                                 \
             Value b = stack[--sp], a = stack[sp - 1];                         \
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */    \
             /* bool conta como int (0/1) — bool é subtipo de int na            \
@@ -24774,41 +24873,51 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 double y = (b.t == V_FLOAT) ? b.as.d : int_como_double(b);    \
                 stack[sp - 1] = MK_BOOL(x C_OP y);                            \
             }                                                                 \
-            break;                                                            \
+            PROXIMA();                                                        \
         }
-        CMP(OP_LT, <)
-        CMP(OP_GT, >)
-        CMP(OP_LE, <=)
-        CMP(OP_GE, >=)
+        CMP(LT, <)
+        CMP(GT, >)
+        CMP(LE, <=)
+        CMP(GE, >=)
 #undef CMP
 
-        case OP_EQ: {
+        PS_CASE(EQ) {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_INT && b.t == V_INT) { stack[sp - 1] = MK_BOOL(a.as.i == b.as.i); PROXIMA(); }
             stack[sp - 1] = MK_BOOL(val_iguais(&a, &b));
-            break;
+            PROXIMA();
         }
-        case OP_NE: {
+        PS_CASE(NE) {
             Value b = stack[--sp], a = stack[sp - 1];
+            if (a.t == V_INT && b.t == V_INT) { stack[sp - 1] = MK_BOOL(a.as.i != b.as.i); PROXIMA(); }
             stack[sp - 1] = MK_BOOL(!val_iguais(&a, &b));
-            break;
+            PROXIMA();
         }
 
-        case OP_JUMP_IF_FALSE: {
+        PS_CASE(JUMP_IF_FALSE) {
+            /* bool e int decidem em linha; o resto pergunta ao `val_truthy` */
             Value v = stack[--sp];
-            if (!val_truthy(&v)) ip = arg;
-            break;
+            int f_;
+            if (v.t == V_BOOL)      f_ = v.as.b;
+            else if (v.t == V_INT)  f_ = v.as.i != 0;
+            else                    f_ = val_truthy(&v);
+            if (!f_) ip = arg;
+            PROXIMA();
         }
-        case OP_JUMP:
+        PS_CASE(JUMP)
+            /* salto de RECUO = volta de laço: é aqui que o GC pode coletar
+             * (ver PONTO_SEGURO); o salto adiante não custa nada */
+            if (arg < ip) PONTO_SEGURO();
             ip = arg;
-            break;
+            PROXIMA();
 
-        case OP_SKIP_IF_IMPORT:
+        PS_CASE(SKIP_IF_IMPORT)
             /* guard `if __name__ == "main"`: pula o bloco quando o arquivo está sendo importado
              * (só roda como principal) — mesma regra do interp. */
             if (vm->importando > 0) ip = arg;
             break;
 
-        case OP_LOAD_GLOBAL:
+        PS_CASE(LOAD_GLOBAL)
             if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
             /* UNSET = nunca atribuída. Ler antes de definir é erro, como no
              * interpretador ("variável não definida") — não pode devolver
@@ -24817,18 +24926,18 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 ERRO_TF(vm, "NameError", "name '%s' is not defined",
                         nome_do_global(vm, arg));
             stack[sp++] = vm->globals[arg];
-            break;
-        case OP_STORE_GLOBAL:
+            PROXIMA();
+        PS_CASE(STORE_GLOBAL)
             if (arg >= vm->nglobals) ERRO(vm, "global fora da tabela");
             vm->globals[arg] = stack[--sp];
-            break;
+            PROXIMA();
 
-        case OP_MAKE_FUNCTION:
+        PS_CASE(MAKE_FUNCTION)
             stack[sp++] = MK_FUNC(arg);
             break;
 
         /* ── closure ────────────────────────────────────────────────────── */
-        case OP_MAKE_CELL: {
+        PS_CASE(MAKE_CELL) {
             /* Põe uma célula no slot, guardando o que já estava lá (o
              * argumento, quando o parâmetro é capturado). */
             PSCelula *cel = calloc(1, sizeof(PSCelula));
@@ -24842,14 +24951,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         /* slot CERTO (parâmetro ou declaração tipada): a célula tem valor */
-        case OP_CELL_GET: {
+        PS_CASE(CELL_GET) {
             Value c0 = vm->locals[lbase + arg];
             if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
             stack[sp++] = COMO_CELULA(c0)->v;
             break;
         }
 
-        case OP_CELL_SET: {
+        PS_CASE(CELL_SET) {
             Value c0 = vm->locals[lbase + arg];
             if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
             COMO_CELULA(c0)->v = stack[--sp];
@@ -24857,7 +24966,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         /* nome sem tipo: mesma subida de escopo do LOAD_NAME/STORE_NAME */
-        case OP_CELL_GET_NAME: {
+        PS_CASE(CELL_GET_NAME) {
             Value li = stack[--sp];
             Value c0 = vm->locals[lbase + li.as.i];
             if (!EH_CELULA(c0)) ERRO(vm, "slot capturado sem celula (bug do compilador)");
@@ -24872,7 +24981,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_CELL_SET_NAME: {
+        PS_CASE(CELL_SET_NAME) {
             /* Sempre grava na CÉLULA (e não na global, como o STORE_NAME):
              * o compilador só cria célula pra nome que ESTA função liga, então
              * ele é local daqui — e a action aninhada tem que enxergar. */
@@ -24884,7 +24993,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_LOAD_UPVAL: {
+        PS_CASE(LOAD_UPVAL) {
             if (!cl || arg >= cl->nups || !cl->ups[arg])
                 ERRO(vm, "upvalue fora da faixa (bug do compilador)");
             Value v0 = cl->ups[arg]->v;
@@ -24897,14 +25006,14 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_STORE_UPVAL: {
+        PS_CASE(STORE_UPVAL) {
             if (!cl || arg >= cl->nups || !cl->ups[arg])
                 ERRO(vm, "upvalue fora da faixa (bug do compilador)");
             cl->ups[arg]->v = stack[--sp];
             break;
         }
 
-        case OP_MAKE_CLOSURE: {
+        PS_CASE(MAKE_CLOSURE) {
             Proto *np = &vm->protos[arg];
             PSClosure *nc = calloc(1, sizeof(PSClosure));
             if (!nc) ERRO(vm, "sem memoria no closure");
@@ -24930,7 +25039,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_LIST_EXTEND: {
+        PS_CASE(LIST_EXTEND) {
             /* [.., lista, x] -> [.., lista] — o `*x` de uma chamada. Só
              * list/tup: espalhar str ou gerador seria conversão calada. */
             Value x = stack[--sp];
@@ -24946,7 +25055,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_DICT_MERGE: {
+        PS_CASE(DICT_MERGE) {
             /* [.., dict, x] -> [.., dict] — o `**x` de uma chamada. A chave
              * repetida ganha da anterior: é a regra do último nomeado. */
             Value x = stack[--sp];
@@ -24965,7 +25074,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_CALL_EX: {
+        PS_CASE(CALL_EX) {
+            PONTO_SEGURO();
             /* [.., f, lista, dict] -> a chamada. Espalha a lista como
              * posicionais e o dict como nomeados NA PILHA e salta pro topo
              * do CALL (sem nomeado) ou do CALL_KW (com): é lá que já mora a
@@ -25001,7 +25111,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         chama_nomeada:
-        case OP_CALL_KW: {
+        PS_CASE(CALL_KW) {
+            PONTO_SEGURO();
             /* Pilha: callee, v1..vN, tupla_de_nomes.
              * Reposiciona cada nomeado no slot do parâmetro correspondente e
              * segue pelo caminho normal do CALL. Fazer isso aqui (e não no
@@ -25300,7 +25411,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         }
 
         chama_posicional:
-        case OP_CALL: {
+        PS_CASE(CALL) {
+            PONTO_SEGURO();
             int n = arg;
             Value alvo = stack[sp - n - 1];
 
@@ -25484,7 +25596,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_RETURN: {
+        PS_CASE(RETURN) {
             Value r = stack[sp - 1];
             /* `return` de dentro de um `try` abandona o handler dele. Sem
              * esta limpeza o handler continuava registrado depois do frame
@@ -25514,11 +25626,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_POP_TOP:
+        PS_CASE(POP_TOP)
             sp--;
-            break;
+            PROXIMA();
 
-        case OP_BIT_OR: {
+        PS_CASE(BIT_OR) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -25537,7 +25649,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             stack[sp - 1] = MK_INT(a.as.i | b.as.i);
             break;
         }
-        case OP_BIT_XOR: {
+        PS_CASE(BIT_XOR) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -25556,7 +25668,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             stack[sp - 1] = MK_INT(a.as.i ^ b.as.i);
             break;
         }
-        case OP_BIT_AND: {
+        PS_CASE(BIT_AND) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -25575,7 +25687,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             stack[sp - 1] = MK_INT(a.as.i & b.as.i);
             break;
         }
-        case OP_LSHIFT: {
+        PS_CASE(LSHIFT) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -25605,7 +25717,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             stack[sp - 1] = MK_INT(a.as.i << b.as.i);
             break;
         }
-        case OP_RSHIFT: {
+        PS_CASE(RSHIFT) {
             Value b = stack[--sp], a = stack[sp - 1];
             VType ta0 = a.t, tb0 = b.t;   /* antes da coercao: ver TIPO0 */
             if (a.t == V_BOOL) { a.t = V_INT; a.as.i = a.as.b ? 1 : 0; }
@@ -25628,7 +25740,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             stack[sp - 1] = MK_INT(a.as.i >> b.as.i);
             break;
         }
-        case OP_BIT_NOT: {
+        PS_CASE(BIT_NOT) {
             Value a = stack[sp - 1];
             /* Inteiro grande como nos vizinhos | ^ & << >>: recusá-lo dizia
              * "bad operand type ... 'int'" sobre o único tipo que ~ aceita. */
@@ -25648,7 +25760,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_BUILD_LIST: {
+        PS_CASE(BUILD_LIST) {
             /* publica antes de alocar: os itens estão na pilha e precisam
              * estar visíveis se este malloc disparar coleta */
             vm->sp = sp; vm->locals_top = locals_top;
@@ -25661,7 +25773,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_BUILD_DICT: {
+        PS_CASE(BUILD_DICT) {
             vm->sp = sp; vm->locals_top = locals_top;
             PSDict *d = novo_dict(vm, arg > 0 ? arg : 1);
             if (!d) ERRO(vm, "sem memoria ao criar dict");
@@ -25684,7 +25796,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_INDEX_GET: {
+        PS_CASE(INDEX_GET) {
             Value idx = stack[--sp];
             Value alvo = stack[sp - 1];
             /* `l[true]` é `l[1]`: bool é 0/1 na linguagem inteira, então
@@ -25771,7 +25883,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_INDEX_SET: {
+        PS_CASE(INDEX_SET) {
             Value valor = stack[--sp];
             Value idx   = stack[--sp];
             if (idx.t == V_BOOL) { idx.t = V_INT; idx.as.i = idx.as.b ? 1 : 0; }
@@ -25805,29 +25917,29 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_DUP2:
+        PS_CASE(DUP2)
             stack[sp]     = stack[sp - 2];
             stack[sp + 1] = stack[sp - 1];
             sp += 2;
             break;
 
-        case OP_DUP:
+        PS_CASE(DUP)
             stack[sp] = stack[sp - 1];
             sp++;
-            break;
+            PROXIMA();
 
         /* Giros do topo. O desempacotamento com alvo indexado
          * (`l[i], l[j] = l[j], l[i]`) precisa deles: o UNPACK empurra o valor
          * ANTES de o compilador avaliar container e indice, e o INDEX_SET quer
          * o valor por ultimo. Nao mexem em objeto nenhum — so na ordem. */
-        case OP_SWAP: {                 /* [.., a, b] -> [.., b, a] */
+        PS_CASE(SWAP) {                 /* [.., a, b] -> [.., b, a] */
             Value t = stack[sp - 1];
             stack[sp - 1] = stack[sp - 2];
             stack[sp - 2] = t;
             break;
         }
 
-        case OP_ROT3: {                 /* [.., a, b, c] -> [.., b, c, a] */
+        PS_CASE(ROT3) {                 /* [.., a, b, c] -> [.., b, c, a] */
             Value a = stack[sp - 3];
             stack[sp - 3] = stack[sp - 2];
             stack[sp - 2] = stack[sp - 1];
@@ -25835,7 +25947,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_ITER_RANGE: {
+        PS_CASE(ITER_RANGE) {
             /* `for each i in range(...)` — a lista NUNCA é construída.
              * Pilha: [.., ini, fim, passo, i]. Antes o range materializava
              * tudo: 20 milhões de itens custavam 325 MB, contra 13 MB do
@@ -25857,7 +25969,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_ITER_NEXT: {
+        PS_CASE(ITER_NEXT) {
             /* Pilha: [.., container, indice].
              * Sem objeto iterador: o par na pilha é o estado. Isso evita
              * alocar (e portanto evita interagir com o GC) num laço que é
@@ -25924,7 +26036,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_BUILD_STR: {
+        PS_CASE(BUILD_STR) {
             /* interpolação: concatena `arg` valores como texto */
             vm->sp = sp; vm->locals_top = locals_top;
             TXTBUF_AUTO t = {0};
@@ -25940,7 +26052,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_BUILD_TUPLE: {
+        PS_CASE(BUILD_TUPLE) {
             vm->sp = sp; vm->locals_top = locals_top;
             PSList *l = nova_seq(vm, arg > 0 ? arg : 0, OBJ_TUPLE);
             if (!l) ERRO(vm, "sem memoria ao criar tupla");
@@ -25951,7 +26063,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_SLICE: {
+        PS_CASE(SLICE) {
             /* pilha: alvo, inicio, fim, passo — Null = ausente */
             Value passo = stack[--sp], fim = stack[--sp], ini = stack[--sp];
             Value alvo = stack[sp - 1];
@@ -26053,13 +26165,13 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_JUMP_IF_SET: {
+        PS_CASE(JUMP_IF_SET) {
             Value idx = stack[--sp];
             if (idx.t == V_INT && vm->locals[lbase + idx.as.i].t != V_UNSET) ip = arg;
             break;
         }
 
-        case OP_LOAD_NAME: {
+        PS_CASE(LOAD_NAME) {
             /* local tem prioridade se já foi escrito nesta função; senão
              * cai na global — é a subida de escopo do interpretador */
             Value li = stack[--sp];
@@ -26075,7 +26187,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_STORE_NAME: {
+        PS_CASE(STORE_NAME) {
             /* se a global JÁ existe, escreve nela; senão vira local novo */
             Value li = stack[--sp];
             Value v = stack[--sp];
@@ -26087,17 +26199,17 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_CLEAR_LOCAL:
+        PS_CASE(CLEAR_LOCAL)
             /* fim de bloco: apaga um slot de local nascido no bloco */
             vm->locals[lbase + arg] = MK_UNSET();
             break;
 
-        case OP_CLEAR_GLOBAL:
+        PS_CASE(CLEAR_GLOBAL)
             /* fim de bloco (nível de módulo): apaga um global nascido no bloco */
             if (arg < vm->nglobals) vm->globals[arg] = MK_UNSET();
             break;
 
-        case OP_AWAIT: {
+        PS_CASE(AWAIT) {
             /* `await expr` — se é future, dirige o escalonador até resolver e
              * troca pelo valor; se não é future, fica como está (await x == x). */
             Value av = stack[sp - 1];
@@ -26129,7 +26241,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_SETUP_TRY:
+        PS_CASE(SETUP_TRY)
             if (nh >= MAX_HANDLERS) ERRO(vm, "try aninhado demais");
             handlers[nh].ip = arg;
             handlers[nh].fp = fp;
@@ -26141,11 +26253,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             nh++;
             break;
 
-        case OP_POP_TRY:
+        PS_CASE(POP_TRY)
             if (nh > 0) nh--;
             break;
 
-        case OP_ENGOLE:
+        PS_CASE(ENGOLE)
             /* o `try` implícito de `int funct`/`bool funct` pegou um erro: o
              * sentinela sai (o compilador o empilha a seguir) e o erro sai
              * JUNTO, no stderr — "o int não pode engolir erro" */
@@ -26153,7 +26265,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             engole_avisa(vm, p, arg);
             break;
 
-        case OP_RAISE: {
+        PS_CASE(RAISE) {
             Value v = stack[--sp];
             vm->sp = sp; vm->locals_top = locals_top;
             /* `raise erro` com uma EXCEÇÃO guardada em variável levanta aquele
@@ -26171,7 +26283,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             goto erro_runtime;
         }
 
-        case OP_RERAISE: {
+        PS_CASE(RERAISE) {
             Value tipo = stack[--sp], msg = stack[--sp];
             vm->sp = sp; vm->locals_top = locals_top;
             TXTBUF_AUTO t = {0};
@@ -26182,7 +26294,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             goto erro_runtime;
         }
 
-        case OP_PUSH_ERR_TYPE: {
+        PS_CASE(PUSH_ERR_TYPE) {
             vm->sp = sp; vm->locals_top = locals_top;
             PSString *ts = nova_string(vm, vm->erro_tipo, (int)strlen(vm->erro_tipo));
             if (!ts) ERRO(vm, "sem memoria");
@@ -26194,7 +26306,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
          * compilador emitia OP_EQ — dois nomes comparados letra a letra — a
          * pergunta agora passa pela tabela de exceções, então o pai pega o
          * filho. */
-        case OP_EXC_CASA: {
+        PS_CASE(EXC_CASA) {
             Value pedido = stack[--sp];
             Value levantado = stack[--sp];
             const char *pedido_s = EH_STRING(pedido)    ? COMO_STRING(pedido)->chars    : "";
@@ -26203,7 +26315,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_COERCE_DECL: {
+        PS_CASE(COERCE_DECL) {
             /* NENHUMA conversão implícita (decisão dele, 2026-09-09): o tipo
              * escrito é o tipo que o valor JÁ tem que ter. `int x = "7"`,
              * `flo x = 5` e `flo x = "1.5"` convertiam aqui, e ele nunca pediu
@@ -26214,8 +26326,18 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             /* operando empacotado: tipo nos 4 bits baixos, índice do nome da
              * variável (const string) no resto — ver ps_compiler.c. */
             int tipo = arg & 15;
-            int nome_idx = (int)((unsigned)arg >> 4);
             Value v = stack[sp - 1];
+            /* caminho quente: a tag já diz que confere — sem decodificar o
+             * nome nem passar pela tabela de tipos (é o que roda em TODA
+             * escrita numa variável declarada) */
+            switch (tipo) {
+                case TIPO_INT:  if (v.t == V_INT) PROXIMA(); break;
+                case TIPO_STR:  if (EH_STRING(v)) PROXIMA(); break;
+                case TIPO_FLO:  if (v.t == V_FLOAT) PROXIMA(); break;
+                case TIPO_BOOL: if (v.t == V_BOOL) PROXIMA(); break;
+                default: break;
+            }
+            int nome_idx = (int)((unsigned)arg >> 4);
             const char *decl_nome = "?";
             if (nome_idx >= 0 && nome_idx < p->nconsts && EH_STRING(p->consts[nome_idx]))
                 decl_nome = COMO_STRING(p->consts[nome_idx])->chars;
@@ -26285,7 +26407,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_COERCE_RET: {
+        PS_CASE(COERCE_RET) {
             /* `int funct` sem valor de volta devolve 0; `bool funct`, True. O
              * resto tem que JÁ ser do tipo: aqui o `bool funct` passava tudo
              * por bool() — `return 1` virava True, conversão que ninguém
@@ -26301,7 +26423,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     p->nome ? p->nome : "?", arg == 1 ? "int" : "bool", nome_do_tipo_valor(v));
         }
 
-        case OP_CONFERE_TIPO: {
+        PS_CASE(CONFERE_TIPO) {
             Value sv = p->consts[arg];
             if (!EH_STRING(sv)) ERRO(vm, "especificacao de tipo invalida");
             PSString *ss = COMO_STRING(sv);
@@ -26323,22 +26445,28 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                     nrot, ss->chars + 1, ntipos, tipos, nome_do_tipo_valor(v));
         }
 
-        case OP_NOT:
+        PS_CASE(NOT)
+            if (stack[sp - 1].t == V_BOOL) { stack[sp - 1].as.b = !stack[sp - 1].as.b; PROXIMA(); }
             stack[sp - 1] = MK_BOOL(!val_truthy(&stack[sp - 1]));
-            break;
+            PROXIMA();
 
-        case OP_TO_BOOL:
+        PS_CASE(TO_BOOL)
+            if (stack[sp - 1].t == V_BOOL) PROXIMA();
             stack[sp - 1] = MK_BOOL(val_truthy(&stack[sp - 1]));
-            break;
+            PROXIMA();
 
-        case OP_JUMP_IF_TRUE: {
+        PS_CASE(JUMP_IF_TRUE) {
             sp--;
             Value v = stack[sp];
-            if (val_truthy(&v)) ip = arg;
-            break;
+            int f_;
+            if (v.t == V_BOOL)      f_ = v.as.b;
+            else if (v.t == V_INT)  f_ = v.as.i != 0;
+            else                    f_ = val_truthy(&v);
+            if (f_) ip = arg;
+            PROXIMA();
         }
 
-        case OP_LEN: {
+        PS_CASE(LEN) {
             Value v = stack[sp - 1];
             if (EH_SEQ(v))         stack[sp - 1] = MK_INT(COMO_LIST(v)->len);
             else if (EH_STRING(v)) stack[sp - 1] = MK_INT(COMO_STRING(v)->len);
@@ -26350,7 +26478,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         /* O protocolo do decorador, num lugar só (ver ps_opcodes.def).
          * [.., dec, funct, nome] -> [.., resultado]. Os três ficam na pilha
          * até o fim: são raízes do GC durante as chamadas. */
-        case OP_DECORA: {
+        PS_CASE(DECORA) {
             /* modo 0 (funct solta):    [.., decorador, funct, nome]
              * modo 1 (método de classe): [.., classe, nome_metodo, decorador, funct, nome]
              * -> [.., resultado]. `funct` é o valor atual do método (a funct
@@ -26439,7 +26567,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_LOAD_METODO: {
+        PS_CASE(LOAD_METODO) {
             /* [.., classe] -> [.., o valor atual do método `consts[arg]`] */
             Value cv = stack[sp - 1];
             Value mnv = p->consts[arg];
@@ -26455,7 +26583,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_SET_METODO: {
+        PS_CASE(SET_METODO) {
             /* [.., classe, valor] -> [..]: o valor passa a ser o método
              * `consts[arg]` na tabela da classe que o DECLARA */
             Value mv = stack[--sp];
@@ -26473,7 +26601,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_HAS_KEY: {
+        PS_CASE(HAS_KEY) {
             /* Diferente do INDEX_GET: chave ausente devolve False em vez de
              * levantar erro — padrão de match precisa TESTAR, não exigir. */
             Value chave = stack[--sp];
@@ -26484,7 +26612,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_MAKE_CLASS: {
+        PS_CASE(MAKE_CLASS) {
             /* pais vêm da pilha (podem ser declarados depois da filha) */
             if (arg < 0 || arg >= vm->nclasses) ERRO(vm, "classe fora da tabela");
             PSClassDefC *def = &vm->classes[arg];
@@ -26568,8 +26696,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_IMPORT_FROM:
-        case OP_GET_MEMBER: {
+        PS_CASE(IMPORT_FROM)
+        PS_CASE(GET_MEMBER) {
             /* IMPORT_FROM e o GET_MEMBER do `from mod import x`: mesma busca,
              * outro erro quando o nome nao existe — ImportError num, AttributeError
              * no outro. */
@@ -27007,7 +27135,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_SET_MEMBER: {
+        PS_CASE(SET_MEMBER) {
             Value valor = stack[--sp];
             Value alvo = stack[--sp];
             Value nomev = p->consts[arg];
@@ -27068,11 +27196,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_LOAD_SELF:
+        PS_CASE(LOAD_SELF)
             stack[sp++] = vm->locals[lbase];      /* `self` é sempre o slot 0 */
             break;
 
-        case OP_CLOSE_SE_TEM: {
+        PS_CASE(CLOSE_SE_TEM) {
             Value v = stack[--sp];
             if (EH_SOCKET(v)) {
                 PSSocket *sk = COMO_SOCKET(v);
@@ -27114,7 +27242,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_YIELD: {
+        PS_CASE(YIELD) {
             /* Só o frame BASE cede: um `yield` dentro de uma action chamada
              * pelo gerador não é do gerador. */
             if (fp != fp0 || !vm->ger_ativo) ERRO(vm, "yield fora de gerador");
@@ -27144,7 +27272,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             return 0;
         }
 
-        case OP_UNPACK: {
+        PS_CASE(UNPACK) {
             int n_alvos = arg & 0xFF;
             int star = ((arg >> 8) & 0xFF) - 1;      /* -1 = sem estrela */
             Value seq = stack[--sp];
@@ -27239,7 +27367,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_MAKE_MODEL: {
+        PS_CASE(MAKE_MODEL) {
             vm->sp = sp; vm->locals_top = locals_top;
             PSModel *m = calloc(1, sizeof(PSModel));
             if (!m) ERRO(vm, "sem memoria no model");
@@ -27255,7 +27383,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_MAKE_ENUM: {
+        PS_CASE(MAKE_ENUM) {
             vm->sp = sp; vm->locals_top = locals_top;
             int32_t nm = vm->enum_nmembros[arg];
             int32_t nexp = 0;
@@ -27284,7 +27412,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_CHECK_NONNULL: {
+        PS_CASE(CHECK_NONNULL) {
             /* O buraco do self no @static nasce UNSET por construção: não é
              * um Null que o chamador passou, e acusá-lo recusava toda chamada
              * `C.f(5)` de um `nonnull static funct f(self, a)`. */
@@ -27302,8 +27430,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_COUNT:
-        case OP_COUNT_PARES: {
+        PS_CASE(COUNT)
+        PS_CASE(COUNT_PARES) {
             Value val = stack[--sp];
             Value cont = stack[--sp];
             int64_t tipo = arg & 0xFF;
@@ -27319,11 +27447,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_LOAD_TIPO:
+        PS_CASE(LOAD_TIPO)
             stack[sp++] = MK_TIPO(arg);
             break;
 
-        case OP_IS: {
+        PS_CASE(IS) {
             Value b = stack[--sp], a = stack[sp - 1];
             int r;
             /* tipo vs tipo -> IDENTIDADE (`str is str`, `int is int`); todo
@@ -27343,7 +27471,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_IN: {
+        PS_CASE(IN) {
             Value cont = stack[--sp], alvo = stack[sp - 1];
             int r = 0;
             if (EH_SEQ(cont)) {
@@ -27387,7 +27515,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_IMPORT_MOD: {
+        PS_CASE(IMPORT_MOD) {
             Value nomev = p->consts[arg];
             if (!EH_STRING(nomev)) ERRO(vm, "nome de modulo invalido");
             int mi = modulo_nativo_de(COMO_STRING(nomev)->chars);
@@ -27440,7 +27568,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_IMPORT_FROM_ESTRELA: {
+        PS_CASE(IMPORT_FROM_ESTRELA) {
             /* um nome do `import *`, já expandido pelo compilador: [.., mod] ->
              * [.., valor], ou UNSET quando o módulo não o entrega agora (em
              * ciclo, o nome ainda sem valor) — o JUMP_SE_UNSET seguinte pula
@@ -27468,11 +27596,11 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_JUMP_SE_UNSET:
+        PS_CASE(JUMP_SE_UNSET)
             if (stack[sp - 1].t == V_UNSET) { sp--; ip = arg; }
             break;
 
-        case OP_LOAD_BASE_INIT: {
+        PS_CASE(LOAD_BASE_INIT) {
             Value paiv = stack[sp - 1];
             if (!EH_CLASS(paiv)) ERRO(vm, "base() exige uma Entity pai");
             Value initv = MK_NULL();
@@ -27491,7 +27619,8 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             break;
         }
 
-        case OP_CALL_BASE: {
+        PS_CASE(CALL_BASE) {
+            PONTO_SEGURO();
             int n = arg;
             Value selfv = stack[sp - n - 1];
             Value paiv  = stack[sp - n - 2];
@@ -27532,7 +27661,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
             goto chama_proto;
         }
 
-        case OP_HALT:
+        PS_CASE(HALT)
             vm->sp = sp;
             vm->locals_top = locals_top;
             *resultado = MK_NULL();
