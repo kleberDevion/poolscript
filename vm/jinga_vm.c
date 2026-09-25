@@ -205,7 +205,7 @@ struct Value_ {
 typedef struct {
     Obj      obj;
     int32_t  len;
-    uint32_t hash;
+    uint32_t hash;          /* 0 = ainda não calculado; peça por `str_hash` */
     char     chars[];       /* membro flexível: string vive junto do cabeçalho,
                              * numa alocação só em vez de duas */
 } PSString;
@@ -1392,6 +1392,17 @@ static uint32_t hash_str(const char *chars, int len)
     return h;
 }
 
+/* O hash da string, calculado na PRIMEIRA vez que alguém precisa dele
+ * (`hash == 0` = ainda não; o raro hash que dá 0 de verdade só é refeito).
+ * Toda string nascia com o hash pronto, e concatenar em laço hashava a
+ * string INTEIRA a cada volta: 60 mil `s = s + "abc"` gastavam 97% do tempo
+ * no FNV (O(n²)) — e a maioria das strings nunca entra num dict. */
+static inline uint32_t str_hash(PSString *s)
+{
+    if (s->hash == 0) s->hash = hash_str(s->chars, s->len);
+    return s->hash;
+}
+
 static PSString *nova_string(VM *vm, const char *chars, int len)
 {
     PSString *s = malloc(sizeof(PSString) + (size_t)len + 1);
@@ -1403,7 +1414,7 @@ static PSString *nova_string(VM *vm, const char *chars, int len)
     s->len  = len;
     memcpy(s->chars, chars, (size_t)len);
     s->chars[len] = '\0';
-    s->hash = hash_str(chars, len);
+    s->hash = 0;                       /* preguiçoso: ver str_hash */
     vm->alocado += sizeof(PSString) + (size_t)len + 1;
     return s;
 }
@@ -1555,7 +1566,7 @@ static uint32_t hash_valor(const Value *v)
         case V_TIPO:  return 0x7ed0u ^ (uint32_t)v->as.i;
         case V_OBJ:
             if (v->as.obj->type == OBJ_STRING || v->as.obj->type == OBJ_BYTES)
-                return ((PSString *)v->as.obj)->hash;
+                return str_hash((PSString *)v->as.obj);
             if (v->as.obj->type == OBJ_BIGINT) {
                 char *s = bigint_str(((PSBigInt *)v->as.obj)->v);
                 uint32_t h = s ? hash_str(s, (int)strlen(s)) : 0;
@@ -2594,7 +2605,9 @@ static int val_truthy(const Value *v)
 static int strings_iguais(const PSString *a, const PSString *b)
 {
     if (a == b) return 1;
-    if (a->len != b->len || a->hash != b->hash) return 0;   /* descarte barato */
+    if (a->len != b->len) return 0;
+    /* descarte barato só quando os DOIS hashes já existem (0 = não calculado) */
+    if (a->hash && b->hash && a->hash != b->hash) return 0;
     return memcmp(a->chars, b->chars, (size_t)a->len) == 0;
 }
 
@@ -7121,7 +7134,7 @@ static PSString *novo_bytes(VM *vm, const char *dados, int n)
     b->len = n;
     memcpy(b->chars, dados, (size_t)n);
     b->chars[n] = '\0';
-    b->hash = hash_str(b->chars, n);
+    b->hash = 0;                       /* preguiçoso: ver str_hash */
     vm->alocado += sizeof(PSString) + (size_t)n + 1;
     return b;
 }
@@ -16162,7 +16175,7 @@ static PSString *resp_corpo(VM *vm, PSResponse *rp)
     b->obj.next = vm->objetos; vm->objetos = (Obj *)b;
     b->len = (int)lidos;
     b->chars[lidos] = '\0';
-    b->hash = hash_str(b->chars, (int)lidos);
+    b->hash = 0;                       /* preguiçoso: ver str_hash */
     vm->alocado += sizeof(PSString) + rp->nbytes + 1;
     rp->corpo = MK_OBJ(b);
     return b;
@@ -24466,7 +24479,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 memcpy(r->chars, x->chars, (size_t)x->len);
                 memcpy(r->chars + x->len, y->chars, (size_t)y->len);
                 r->chars[r->len] = '\0';
-                r->hash = hash_str(r->chars, r->len);
+                r->hash = 0;           /* preguiçoso: ver str_hash */
                 vm->alocado += sizeof(PSString) + (size_t)r->len + 1;
                 stack[sp - 1] = MK_OBJ(r);
             }
@@ -24481,7 +24494,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
                 memcpy(r->chars, x->chars, (size_t)x->len);
                 memcpy(r->chars + x->len, y->chars, (size_t)y->len);
                 r->chars[r->len] = '\0';
-                r->hash = hash_str(r->chars, r->len);
+                r->hash = 0;           /* preguiçoso: ver str_hash */
                 vm->alocado += sizeof(PSString) + (size_t)r->len + 1;
                 stack[sp - 1] = MK_OBJ(r);
             }
