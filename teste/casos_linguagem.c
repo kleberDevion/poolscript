@@ -865,7 +865,7 @@ const Caso CASOS_LINGUAGEM[] = {
 { "n-- em int declarado no minimo de 64 bits",
   "int n = -9223372036854775807 - 1\n"
   "n--\n",
-  "", "variável n esperava int, e o valor nao cabe em 64 bits", -1 },
+  "", "variável n esperava int, e o valor nao cabe em 64 bits (declare como 'long n'", -1 },
 { "i++ em int declarado LOCAL estoura com o nome da variavel",
   "funct f() {\n"
   "    int i = 9223372036854775807\n"
