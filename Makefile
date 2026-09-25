@@ -25,6 +25,16 @@ CC      ?= gcc
 # número saía, mas não era o que o alvo dizia estar medindo.
 CFLAGS_BASE ?= -Wall -Wextra -Wno-unused-parameter -Wduplicated-branches \
            -I/usr/include/postgresql -I/usr/include/mariadb -DUTF8PROC_EXPORTS -I/usr/include/libmongoc-1.0 -I/usr/include/libbson-1.0
+# O laço da VM despacha por goto calculado. O GCC junta todos os gotos num
+# salto indireto só e depois os duplica de volta em cada tratador — mas só
+# quando a cauda de despacho cabe em `max-goto-duplication-insns` (8 de
+# fábrica). Com os blocos do código de máquina no laço a cauda passou de 8,
+# 52 sítios viraram 2 e o interpretador ficou 16% mais lento em instruções
+# (medido com perf stat). O clang não tem o parâmetro (e o fuzz usa flags
+# próprias).
+ifeq ($(findstring clang,$(CC)),)
+CFLAGS_BASE += --param=max-goto-duplication-insns=64
+endif
 CFLAGS  ?= -O2 $(CFLAGS_BASE)
 
 # O QUE O `pool` LIGA. Os clientes de banco — Postgres, MySQL, ODBC e Mongo —

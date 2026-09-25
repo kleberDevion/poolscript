@@ -24292,7 +24292,7 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
  * ele mesmo, em vez de voltar ao topo do laço — cada sítio de salto indireto
  * ganha o próprio histórico no preditor. Os tratadores frios terminam em
  * `break` e voltam ao topo, que faz a mesma coisa. */
-#  define PROXIMA() do { o = p->code[ip]; arg = p->code[ip + 1]; ip += 2; goto *tab[o]; } while (0)
+#  define PROXIMA() do { o = p->code[ip]; arg = p->code[ip + 1]; ip += 2; goto *despacho[o]; } while (0)
 #else
 #  define PS_CASE(x) case OP_##x:
 #  define PROXIMA() continue
@@ -24301,15 +24301,20 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
 /* Código de máquina (x86-64, só com o goto calculado): o proto é compilado
  * na primeira execução e o laço entra nele em cada fronteira de frame. O
  * que o nativo não faz em linha, ele devolve ao interpretador instrução a
- * instrução (`entra_nativo`/`L_uma`). */
+ * instrução (`L_uma`, pela tabela TAB_UMA). */
 #if defined(PS_GOTO) && defined(__x86_64__) && !defined(PS_SEM_JIT)
 #  define PS_JIT 1
 #  include "ps_jit_x64.h"
+/* Não salta direto pro nativo: só troca a tabela de despacho, e o PRÓXIMO
+ * despacho (o topo do laço, ou o PROXIMA do tratador) cai em L_uma, que
+ * entra no código de máquina. Um `goto` de dentro do CALL e do RETURN pra
+ * um bloco com chamada de função mudava a alocação de registradores do
+ * laço inteiro (medido: +16% de instruções sem nativo nenhum). */
 #  define JIT_TENTA(pp)                                                      \
     do {                                                                     \
         if ((pp)->jit_estado != 2 && !vm->dbg.ativo                          \
                 && ((pp)->nativo || jit_compila_proto(vm, (pp)) == 0))       \
-            goto entra_nativo;                                               \
+            despacho = TAB_UMA;                                              \
     } while (0)
 #endif
 
@@ -24342,6 +24347,12 @@ static void dbg_passo(VM *vm, Proto *p, int ip, int fp, int sp, int locals_top)
         }                                                                    \
     } while (0)
 
+/* Só `no-crossjumping`: `no-gcse` piora (medido: +45% de instruções). O
+ * GCC FATORA todos os gotos calculados num salto indireto só e depois os
+ * duplica de volta em cada tratador — mas só quando a cauda de despacho
+ * tem até `max-goto-duplication-insns` instruções; com os blocos do código
+ * de máquina no laço a cauda cresceu e os 52 sítios viraram 2, passando por
+ * um bloco que recarrega tudo da pilha. O limite sobe no Makefile. */
 #if defined(__GNUC__) && !defined(__clang__)
 __attribute__((optimize("no-crossjumping")))
 #endif
@@ -24419,7 +24430,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
     /* A tabela de despacho, indexada pelo número do opcode. A segunda manda
      * TUDO pro depurador, que dá o passo e pula pro tratador de verdade:
      * com o depurador desligado, o `if` dele some do caminho de cada
-     * instrução. `tab` é escolhida na entrada e de novo depois de cada
+     * instrução. `despacho` é escolhida na entrada e de novo depois de cada
      * passo (o depurador pode se desligar de dentro do `dbg_serve`). */
     static const void *const TAB[] = {
 #define PS_OP(nome, num, texto) [num] = &&L_##nome,
@@ -24431,7 +24442,7 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
 #include "ps_opcodes.def"
 #undef PS_OP
     };
-    const void *const *tab = vm->dbg.ativo ? TAB_DBG : TAB;
+    const void *const *despacho = vm->dbg.ativo ? TAB_DBG : TAB;
 #ifdef PS_JIT
     /* Depois de uma instrução-ilha (a que o nativo devolveu), TODO despacho
      * cai em L_uma, que volta pro código de máquina do frame corrente. */
@@ -24453,32 +24464,31 @@ static int vm_executa_base(VM *vm, int proto_inicial, const Value *args, int nar
         ip += 2;
 
 #ifdef PS_GOTO
-        goto *tab[o];
+        goto *despacho[o];
     L_dbg:
         /* quem depura espera parar EM CIMA da instrução que vai rodar */
         dbg_passo(vm, p, ip - 2, fp, sp, locals_top);
-        tab = vm->dbg.ativo ? TAB_DBG : TAB;
+        despacho = vm->dbg.ativo ? TAB_DBG : TAB;
         goto *TAB[o];
 #ifdef PS_JIT
-    entra_nativo: {
-        /* O código de máquina do frame corrente roda a partir de `ip` até
-         * uma instrução que ele não faz em linha; volta com `sp` e o `ip`
-         * dela (+2). O interpretador executa ESSA instrução com o tratador
-         * de sempre — a tabela `TAB_UMA` faz o despacho seguinte cair em
-         * L_uma, que reentra no nativo na instrução seguinte. */
-        JitCtx cx_;
-        cx_.fp = fp; cx_.lbase = lbase; cx_.sp = sp; cx_.locals_top = locals_top; cx_.ip = ip;
-        ((JitFn)p->nativo)(vm, &cx_, (const char *)p->nativo + p->nativo_ip[ip / 2]);
-        sp = cx_.sp;
-        ip = cx_.ip - 2;
-        tab = TAB_UMA;
-        o = p->code[ip]; arg = p->code[ip + 1]; ip += 2;
-        goto *TAB[o];
-    }
     L_uma:
-        /* a ilha rodou (e pode ter trocado de frame: CALL, RETURN, catch) */
-        if (p->jit_estado == 1 && p->nativo && !vm->dbg.ativo) { ip -= 2; tab = TAB; goto entra_nativo; }
-        tab = vm->dbg.ativo ? TAB_DBG : TAB;
+        /* Chegou aqui por um despacho com `despacho == TAB_UMA`: ou o frame
+         * acabou de ganhar código de máquina (JIT_TENTA), ou uma ilha rodou
+         * (e pode ter trocado de frame: CALL, RETURN, catch). Se o frame
+         * corrente tem nativo, o código de máquina roda a partir DESTA
+         * instrução até uma que ele não faz em linha; volta com `sp` e o
+         * `ip` dela, que o interpretador executa com o tratador de sempre —
+         * e o despacho seguinte cai aqui de novo. A troca fica em
+         * `jit_roda`, fora do laço; `ip` e `sp` nunca têm o endereço tomado
+         * (senão o GCC os tiraria dos registradores no laço inteiro). */
+        if (p->jit_estado == 1 && p->nativo && !vm->dbg.ativo) {
+            int32_t ip_novo_;
+            sp = jit_roda(vm, p, fp, lbase, sp, locals_top, ip - 2, &ip_novo_);
+            ip = ip_novo_;
+            o = p->code[ip]; arg = p->code[ip + 1]; ip += 2;
+            goto *TAB[o];
+        }
+        despacho = vm->dbg.ativo ? TAB_DBG : TAB;
         goto *TAB[o];
 #endif
 #else

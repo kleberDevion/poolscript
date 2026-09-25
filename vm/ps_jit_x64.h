@@ -8,8 +8,8 @@
  * `range` — e pra QUALQUER outra coisa (opcode sem gabarito, operando que
  * não é int, estouro, global não definido, coleta de lixo devida) ele SAI
  * pro interpretador, que executa exatamente aquela instrução com o tratador
- * de sempre e volta pro nativo na instrução seguinte (`entra_nativo` e
- * `L_uma` no laço da VM). Consequências:
+ * de sempre e volta pro nativo na instrução seguinte (`L_uma` e a tabela
+ * TAB_UMA no laço da VM). Consequências:
  *   - nenhuma regra é duplicada: erro, chamada, retorno, try, gerador,
  *     fibra, import, depurador — tudo continua sendo do interpretador, com
  *     as mesmas frases;
@@ -148,6 +148,7 @@ typedef struct {
     int32_t *pos;     /* offset nativo de cada instrução */
     uint8_t *ilha;    /* 1 = a instrução precisa de ilha (saída pro interpretador) */
     int32_t  ninstr;
+    int32_t  ilhas_certas;   /* instruções SEM gabarito: sempre saem pro interpretador */
 } JitGen;
 
 static void jg_fix(JitGen *g, size_t campo, int tipo, int32_t alvo)
@@ -163,7 +164,7 @@ static void jg_fix(JitGen *g, size_t campo, int tipo, int32_t alvo)
 }
 /* desvia pra ilha da instrução `i` quando `cc` */
 static void jg_ilha_se(JitGen *g, int cc, int32_t i) { g->ilha[i] = 1; jg_fix(g, x_jcc(&g->j, cc), FIX_ILHA, i); }
-static void jg_ilha_sempre(JitGen *g, int32_t i)     { g->ilha[i] = 1; jg_fix(g, x_jmp(&g->j), FIX_ILHA, i); }
+static void jg_ilha_sempre(JitGen *g, int32_t i)     { g->ilha[i] = 2; g->ilhas_certas++; jg_fix(g, x_jmp(&g->j), FIX_ILHA, i); }
 static void jg_salta_se(JitGen *g, int cc, int32_t i) { jg_fix(g, x_jcc(&g->j, cc), FIX_INSTR, i); }
 static void jg_salta(JitGen *g, int32_t i)            { jg_fix(g, x_jmp(&g->j), FIX_INSTR, i); }
 
@@ -461,6 +462,34 @@ static int jit_compila_proto(VM *vm, Proto *p)
     for (int32_t i = 0; i < g.ninstr && !j->falhou; i++) jg_instr(&g, p, i);
     x_ud2(j);                                           /* cair do fim é impossível: RETURN/HALT são ilhas */
 
+    /* Sair pro interpretador e voltar custa uns 30 a 90 ciclos — o mesmo que
+     * três a oito instruções interpretadas. Um proto em que mais de 15% das
+     * instruções SEMPRE saem (membro de objeto, coleção, chamada) fica mais
+     * lento em nativo do que interpretado: medido em `p.mais()` num laço,
+     * 215 M ciclos contra 163 M. Esse fica com o interpretador. O que conta
+     * é o que roda MUITO: quando o proto tem laço, a proporção é medida só
+     * dentro dos laços (o `post()` do fim do script não decide nada); sem
+     * laço, no proto inteiro. */
+    {
+        uint8_t *em_laco = calloc((size_t)g.ninstr, 1);
+        int32_t n_laco = 0, ilhas_laco = 0;
+        if (em_laco) {
+            for (int32_t i = 0; i < g.ninstr; i++) {
+                int32_t ip = i * 2, op = p->code[ip], alvo = p->code[ip + 1];
+                if (op != OP_JUMP || alvo < 0 || alvo >= ip) continue;
+                for (int32_t k = alvo / 2; k <= i; k++) em_laco[k] = 1;
+            }
+            for (int32_t i = 0; i < g.ninstr; i++) {
+                if (!em_laco[i]) continue;
+                n_laco++;
+                if (g.ilha[i] == 2) ilhas_laco++;
+            }
+            free(em_laco);
+        }
+        if (n_laco > 0) { if (ilhas_laco * 100 > n_laco * 15) j->falhou = 1; }
+        else if (g.ilhas_certas * 100 > g.ninstr * 15) j->falhou = 1;
+    }
+
     /* saída: publica o topo da pilha e devolve */
     size_t sai = j->n;
     x_mov_r64_r64(j, RAX, RBX);
@@ -514,6 +543,21 @@ static int jit_compila_proto(VM *vm, Proto *p)
     p->nativo_ip = g.pos;
     p->jit_estado = 1;
     return 0;
+}
+
+/* Roda o código de máquina do frame a partir de `*ip`; devolve o `sp` e
+ * deixa em `*ip` a instrução em que o nativo parou (pra o interpretador
+ * executá-la). Fora do laço da VM, e sem inline, de propósito: o bloco em
+ * linha mudava a alocação de registradores do laço inteiro e o
+ * interpretador ficava mais lento mesmo sem nativo nenhum. */
+static __attribute__((noinline)) int32_t jit_roda(VM *vm, Proto *p, int fp, int lbase, int32_t sp,
+                                                  int locals_top, int32_t ip, int32_t *ip_novo)
+{
+    JitCtx cx;
+    cx.fp = fp; cx.lbase = lbase; cx.sp = sp; cx.locals_top = locals_top; cx.ip = ip;
+    ((JitFn)p->nativo)(vm, &cx, (const char *)p->nativo + p->nativo_ip[ip / 2]);
+    *ip_novo = cx.ip - 2;
+    return cx.sp;
 }
 
 static void jit_solta(VM *vm)
